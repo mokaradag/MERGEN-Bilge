@@ -1,0 +1,792 @@
+# R/helpers_mcp_tools.R
+# -------------------------------------------------------------------
+# MCP helper utilities and tools for MERGEN
+# -------------------------------------------------------------------
+
+suppressWarnings({
+  library(jsonlite)
+  library(readxl)
+  library(data.table)
+  library(DBI)
+})
+
+# Null-coalescing helper
+`%||%` <- function(a, b) if (is.null(a)) b else a
+
+# Create a private env to avoid scoping problems (e.g., futures)
+helpers_mcp_tools <- new.env(parent = globalenv())
+
+# Try to copy the global function into our tools env
+if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
+  assign(
+    "safe_read_excel_table",
+    get("safe_read_excel_table", envir = globalenv(), inherits = TRUE),
+    envir = helpers_mcp_tools
+  )
+}
+
+# GUARANTEE: if it still doesn't exist here (e.g., in a worker), provide a minimal fallback
+if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
+  helpers_mcp_tools$safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
+    # Minimal, robust fallback (first sheet, treat first row as header)
+    df <- readxl::read_excel(path, sheet = sheet, col_names = TRUE)
+    if (is.finite(n_max)) df <- head(df, n_max)
+    df <- as.data.frame(df, stringsAsFactors = FALSE)
+    if (anyNA(names(df)) || any(names(df) == "")) {
+      names(df) <- paste0("X", seq_along(df))
+    }
+    names(df) <- make.names(names(df), unique = TRUE, allow_ = TRUE)
+    df
+  }
+}
+
+# --- NEW: universal table reader (xlsx/xls/csv/rds/rdata) --------------------
+helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = Inf) {
+  ext <- tolower(tools::file_ext(path))
+  as_dt <- function(df) data.table::as.data.table(as.data.frame(df, stringsAsFactors = FALSE))
+
+  # helper: sanitize names (never NA/empty)
+  sanitize_names <- function(df) {
+    nms <- names(df)
+    if (anyNA(nms) || any(nms == "")) nms <- paste0("X", seq_along(nms))
+    names(df) <- make.names(nms, unique = TRUE, allow_ = TRUE)
+    df
+  }
+
+  if (ext %in% c("xlsx", "xls")) {
+    df <- helpers_mcp_tools$safe_read_excel_table(path, sheet = sheet, n_max = n_max)
+    return(as_dt(sanitize_names(df)))
+  }
+
+  if (ext %in% c("csv", "txt")) {
+    df <- tryCatch(data.table::fread(path, nThread = 1), error = function(e) {
+      # fallback for weird encodings
+      read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+    })
+    if (is.finite(n_max)) df <- head(df, n_max)
+    return(as_dt(sanitize_names(df)))
+  }
+
+  if (ext %in% c("rds")) {
+    obj <- readRDS(path)
+    if (inherits(obj, c("data.frame","data.table","tbl_df"))) {
+      df <- obj
+    } else if (is.list(obj) && length(obj)) {
+      # pick first data-frame-like thing
+      ix <- which(vapply(obj, function(x) inherits(x, c("data.frame","data.table","tbl_df")), logical(1)))
+      if (length(ix)) df <- obj[[ix[1]]] else stop("RDS has no data.frame-like object")
+    } else {
+      stop("RDS is not a data.frame-like object")
+    }
+    if (is.finite(n_max)) df <- head(df, n_max)
+    return(as_dt(sanitize_names(df)))
+  }
+
+  if (ext %in% c("rdata","rda")) {
+    e <- new.env(parent = emptyenv())
+    nm <- load(path, envir = e)
+    picks <- nm[vapply(nm, function(n) inherits(e[[n]], c("data.frame","data.table","tbl_df")), logical(1))]
+    if (!length(picks)) stop("RData has no data.frame-like object")
+    df <- e[[picks[1]]]
+    if (is.finite(n_max)) df <- head(df, n_max)
+    return(as_dt(sanitize_names(df)))
+  }
+
+  stop(sprintf("Unsupported file type: .%s", ext))
+}
+
+# ============================
+# Session file registry helpers
+# ============================
+helpers_mcp_tools$ensure_session_file_registry <- function(session = NULL) {
+  if (is.null(session)) return(invisible())
+  if (is.null(session$userData$current_session_files)) {
+    session$userData$current_session_files <- list()
+  }
+  invisible()
+}
+
+helpers_mcp_tools$reset_session_file_registry <- function(session = NULL) {
+  if (!is.null(session)) session$userData$current_session_files <- list()
+  invisible(TRUE)
+}
+
+helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_path, display_name = NULL) {
+  helpers_mcp_tools$ensure_session_file_registry(session)
+  if (is.null(token) || !nzchar(token)) return(invisible(FALSE))
+  session$userData$current_session_files[[token]] <- list(
+    path = abs_path,
+    name = display_name %||% basename(abs_path)
+  )
+  invisible(TRUE)
+}
+
+helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
+  helpers_mcp_tools$ensure_session_file_registry(session)
+
+  if (is.null(arg) || !nzchar(arg)) {
+    return(list(ok = FALSE, error = "file_name parameter is empty"))
+  }
+
+  cat("[RESOLVE] Looking for:", arg, "\n")
+
+  # --- NEW: 0) Absolute path fast-path -------------------------------
+  # Accept "C:/.../file.xlsx" or "/var/tmp/file.xlsx" straight away.
+  is_abs <- grepl("^([A-Za-z]:)?[\\/]", arg)
+  if (is_abs) {
+    # Don't fail if normalizePath can't resolve yet; just check existence.
+    p <- try(normalizePath(arg, winslash = "/", mustWork = FALSE), silent = TRUE)
+    if (!inherits(p, "try-error") && file.exists(p)) {
+      cat("[RESOLVE] Absolute path exists ->", p, "\n")
+      return(list(ok = TRUE, path = p, display = basename(p)))
+    }
+  }
+
+  # --- 1) Session registry matches -----------------------------------
+  all_files <- session$userData$current_session_files
+  base_arg  <- basename(arg)  # NEW: support basename matching
+
+  if (!is.null(all_files) && length(all_files) > 0) {
+    cat("[RESOLVE] Checking", length(all_files), "files in session\n")
+
+    for (key in names(all_files)) {
+      file_obj <- all_files[[key]]
+      path_to_check <- file_obj$path %||% file_obj$datapath
+      nm <- file_obj$name %||% basename(path_to_check)
+
+      # Exact key or exact stored name
+      if (identical(key, arg) || identical(nm, arg)) {
+        cat("[RESOLVE] Match by key/name ->", path_to_check, "Exists:", file.exists(path_to_check), "\n")
+        if (!is.null(path_to_check) && file.exists(path_to_check)) {
+          return(list(ok = TRUE,
+                      path = normalizePath(path_to_check, winslash = "/"),
+                      display = nm))
+        }
+      }
+
+      # NEW: basename match (handles when the tool passes an absolute path)
+      if (identical(nm, base_arg) || identical(basename(path_to_check %||% ""), base_arg)) {
+        cat("[RESOLVE] Basename match ->", path_to_check, "Exists:", file.exists(path_to_check), "\n")
+        if (!is.null(path_to_check) && file.exists(path_to_check)) {
+          return(list(ok = TRUE,
+                      path = normalizePath(path_to_check, winslash = "/"),
+                      display = nm))
+        }
+      }
+    }
+  } else {
+    cat("[RESOLVE] No files in session registry!\n")
+  }
+
+  # --- 2) Global registry (per-user) ---------------------------------------
+  # Look into the JSON index created by global_register_file()
+  idx_path <- getOption("mergen.index_path")
+  uid <- NULL
+  if (!is.null(session) && !is.null(session$userData$user_id)) {
+    uid <- as.character(session$userData$user_id)
+  } else if (exists("current_user_id", envir = .GlobalEnv)) {
+    # fallback if available in global env
+    uid <- as.character(get("current_user_id", envir = .GlobalEnv))
+  }
+
+  if (!is.null(idx_path) && file.exists(idx_path)) {
+    idx <- jsonlite::read_json(idx_path, simplifyVector = TRUE)
+
+    # 2a) per-user bucket (preferred)
+    if (!is.null(uid) && !is.null(idx[[uid]])) {
+      p <- idx[[uid]][[tolower(base_arg)]]
+      if (is.list(p) && !is.null(p$path)) p <- p$path   # NEW: unwrap {path, display}
+      if (!is.null(p) && file.exists(p)) {
+        return(list(ok = TRUE, path = normalizePath(p, winslash = "/"), display = basename(p)))
+      }
+    }
+    # 2b) legacy flat
+    p2 <- idx[[tolower(base_arg)]]
+    if (is.list(p2) && !is.null(p2$path)) p2 <- p2$path  # NEW
+    if (!is.null(p2) && file.exists(p2)) {
+      return(list(ok = TRUE, path = normalizePath(p2, winslash = "/"), display = basename(p2)))
+    }
+    # 2c) cross-bucket (first match)
+    if (length(idx)) {
+      for (bucket_name in names(idx)) {
+        bucket <- idx[[bucket_name]]
+        if (is.list(bucket)) {
+          p3 <- bucket[[tolower(base_arg)]]
+          if (is.list(p3) && !is.null(p3$path)) p3 <- p3$path  # NEW
+          if (!is.null(p3) && file.exists(p3)) {
+            return(list(ok = TRUE, path = normalizePath(p3, winslash = "/"), display = basename(p3)))
+          }
+        }
+      }
+    }
+  }
+
+  # --- 3) Fallback directories (only if arg does NOT contain a slash) ----
+  # (renumbered since we inserted the global registry above)
+  if (!grepl("[/\\\\]", arg)) {
+    fb <- c(
+      getOption("mergen.files_root"),
+      getOption("mergen.mcp_base_dir")
+    )
+    fb <- fb[!is.null(fb) & nzchar(fb)]
+    # also the per-user subfolder under the MCP base, if available
+    if (!is.null(uid)) {
+      mcp_base <- getOption("mergen.mcp_base_dir")
+      if (!is.null(mcp_base) && nzchar(mcp_base)) {
+        fb <- c(file.path(mcp_base, paste0("user_", uid)), fb)
+      }
+    }
+    for (base_dir in unique(fb)) {
+      candidate <- file.path(base_dir, base_arg)
+      if (file.exists(candidate)) {
+        return(list(ok = TRUE, path = normalizePath(candidate, winslash = "/"), display = basename(candidate)))
+      }
+    }
+  }
+
+  # --- 3) (Optional) global registry by basename ----------------------
+  # If you have a global lookup, try it by basename without failing if absent.
+  if (exists("global_lookup_file", mode = "function")) {
+    p <- try(global_lookup_file(base_arg), silent = TRUE)
+    if (!inherits(p, "try-error") && is.character(p) && nzchar(p) && file.exists(p)) {
+      cat("[RESOLVE] Global registry hit ->", p, "\n")
+      return(list(ok = TRUE, path = normalizePath(p, winslash = "/"), display = basename(p)))
+    }
+  }
+
+  # --- 4) Not found ----------------------------------------------------
+  known <- if (!is.null(all_files)) {
+    unique(vapply(all_files, function(x) x$name %||% "?", character(1)))
+  } else character(0)
+
+  cat("[RESOLVE] NOT FOUND! Available files:", paste(known, collapse = ", "), "\n")
+  list(
+    ok = FALSE,
+    error = sprintf("Dosya '%s' bulunamadı.\nMevcut dosyalar: %s",
+                    arg, if (length(known)) paste(known, collapse = ", ") else "(hiç dosya yok)")
+  )
+}
+
+# ============================
+# Dependency checks (DuckDB)
+# ============================
+helpers_mcp_tools$safe_has_duckdb <- function() {
+  requireNamespace("duckdb", quietly = TRUE)
+}
+
+# ============================
+# Argument normalizer
+# ============================
+helpers_mcp_tools$normalize_args <- function(args) {
+  if (!is.list(args)) args <- list()
+
+  # file name synonyms
+  if (is.null(args$file_name)) {
+    args$file_name <- args$filename %||% args$fileId %||% args$file %||% args$dosya
+  }
+  # column synonyms
+  if (is.null(args$column)) {
+    args$column <- args$col %||% args$field %||% args$kolon %||% args$column_name
+  }
+  # sql synonyms
+  if (is.null(args$sql)) {
+    args$sql <- args$query %||% args$sorgu
+  }
+
+  args
+}
+
+# Back-compat dotted alias (some earlier code may call this)
+.normalize_args <- helpers_mcp_tools$normalize_args
+
+# ============================
+# Tool 1: analyze_uploaded_file
+# ============================
+helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
+  res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
+  if (!isTRUE(res$ok)) return(list(error = res$error))
+
+  path <- res$path
+
+  df <- tryCatch({
+    data.table::as.data.table(helpers_mcp_tools$safe_read_excel_table(path))
+  }, error = function(e) e)
+  
+  if (inherits(df, "error")) {
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), df$message)))
+  }
+
+  n_rows <- nrow(df)
+  n_cols <- ncol(df)
+  cols   <- names(df)
+
+  types <- vapply(df, function(x) class(x)[1], character(1))
+
+  num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
+  num_summary <- lapply(num_cols, function(cn) {
+    vals <- df[[cn]]
+    list(
+      sütun    = cn,
+      ortalama = mean(vals, na.rm = TRUE),
+      medyan   = median(vals, na.rm = TRUE),
+      minimum  = suppressWarnings(min(vals, na.rm = TRUE)),
+      maksimum = suppressWarnings(max(vals, na.rm = TRUE)),
+      toplam   = sum(vals, na.rm = TRUE),
+      sayi     = sum(!is.na(vals))
+    )
+  })
+
+  list(
+    dosya_adı        = basename(path),
+    satır_sayısı     = n_rows,
+    sütun_sayısı     = n_cols,
+    sütun_isimleri   = cols,
+    sütun_tipleri    = unname(types),
+    sayısal_sütunlar = num_cols,
+    sayısal_özet     = num_summary
+  )
+}
+
+# ==================================
+# Tool 2: get_column_statistics
+# ==================================
+helpers_mcp_tools$get_column_statistics <- function(file_name, column, session = NULL) {
+  res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
+  if (!isTRUE(res$ok)) return(list(error = res$error))
+  if (is.null(column) || !nzchar(column)) return(list(error = "column parametresi boş"))
+
+  path <- res$path
+  dt <- tryCatch({
+    data.table::as.data.table(helpers_mcp_tools$safe_read_excel_table(path))
+  }, error = function(e) e)
+  
+  if (inherits(dt, "error")) {
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+  }
+
+  if (!(column %in% names(dt))) {
+    return(list(error = sprintf("Sütun bulunamadı: %s. Mevcut sütunlar: %s",
+                                column, paste(names(dt), collapse = ", "))))
+  }
+
+  vec <- dt[[column]]
+
+  if (is.numeric(vec)) {
+    list(
+      dosya_adı  = basename(path),
+      sütun      = column,
+      tür        = "numeric",
+      sayi       = sum(!is.na(vec)),
+      ortalama   = mean(vec, na.rm = TRUE),
+      medyan     = median(vec, na.rm = TRUE),
+      minimum    = suppressWarnings(min(vec, na.rm = TRUE)),
+      maksimum   = suppressWarnings(max(vec, na.rm = TRUE)),
+      toplam     = sum(vec, na.rm = TRUE),
+      stdev      = sd(vec, na.rm = TRUE),
+      null_sayısı = sum(is.na(vec))
+    )
+  } else {
+    tb   <- sort(table(vec, useNA = "ifany"), decreasing = TRUE)
+    top5 <- head(tb, 5)
+    list(
+      dosya_adı        = basename(path),
+      sütun            = column,
+      tür              = "categorical",
+      benzersiz_deger  = length(unique(vec)),
+      ilk_5_deger      = as.list(top5),
+      null_sayısı      = sum(is.na(vec))
+    )
+  }
+}
+
+# ==================================
+# Tool 3: sql_query_uploaded_file
+# ==================================
+helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = NULL) {
+  if (!helpers_mcp_tools$safe_has_duckdb()) {
+    return(list(error = "DuckDB yüklü değil. Lütfen install.packages('duckdb') çalıştırın."))
+  }
+
+  res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
+  if (!isTRUE(res$ok)) return(list(error = res$error))
+  if (is.null(sql) || !nzchar(sql)) return(list(error = "sql parametresi boş"))
+
+  path <- res$path
+  dt <- tryCatch({
+    data.table::as.data.table(helpers_mcp_tools$safe_read_excel_table(path))
+  }, error = function(e) e)
+  
+  if (inherits(dt, "error")) {
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+  }
+
+  # Normalize date/time as character so DuckDB doesn't choke on write
+  for (nm in names(dt)) {
+    if (inherits(dt[[nm]], "POSIXt") || inherits(dt[[nm]], "Date")) {
+      dt[[nm]] <- as.character(dt[[nm]])
+    }
+  }
+
+  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
+
+  DBI::dbWriteTable(con, "t", as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
+
+  # Tolerate different quoting styles
+  q <- sql
+  q <- gsub("`", "\"", q, fixed = TRUE)
+  q <- gsub("\\[", "\"", q)
+  q <- gsub("\\]", "\"", q)
+
+  ans <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) e)
+  if (inherits(ans, "error")) {
+    return(list(
+      error = sprintf("SQL çalıştırılamadı: %s", ans$message),
+      hint  = "Tablo adı 't'. Sütun adlarını tam yazın; metinleri tek tırnakla yazın: Department = 'IT'."
+    ))
+  }
+
+  preview <- ans
+  if (nrow(preview) > 50) preview <- head(preview, 50)
+
+  list(
+    dosya_adı      = basename(path),
+    satır_sayısı   = nrow(ans),
+    sütun_sayısı   = ncol(ans),
+    sonuç_önizleme = preview
+  )
+}
+
+# ==================================
+# Tool 4: prepare_chart_data  (NEW)
+# ==================================
+helpers_mcp_tools$prepare_chart_data <- function(
+  file_name,
+  chart_type,
+  x = NULL,
+  y = NULL,
+  group = NULL,
+  agg = NULL,
+  bins = NULL,
+  top_n = NULL,
+  # --- new rendering options ---
+  stack = NULL,
+  donut = NULL,
+  orientation = NULL,
+  smooth = NULL,
+  # ---------------------------------------------------
+  filter_sql = NULL,
+  limit = 5000,
+  session = NULL
+) {
+  # Normalize and hard-block box/boxplot (no longer supported)
+  chart_type <- tolower(chart_type %||% "")
+  if (chart_type %in% c("box","boxplot","box_plot","bx")) chart_type <- "hist"
+
+  # 1) resolve file
+  res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
+  if (!isTRUE(res$ok)) return(list(error = res$error, ok = FALSE))
+
+  # 2) read
+  dt <- tryCatch({
+    helpers_mcp_tools$safe_read_table_generic(res$path)
+  }, error = function(e) e)
+  if (inherits(dt, "error")) {
+    return(list(error = sprintf("Dosya okunamadı: %s — %s", basename(res$path), dt$message), ok = FALSE))
+  }
+
+  # --- ensure mappings for pie/donut: x must exist (categorical preferred) ---
+  if (tolower(chart_type) %in% c("pie","donut") && (is.null(x) || !nzchar(x))) {
+    cat_cols <- names(dt)[vapply(dt, function(v) is.character(v) || is.factor(v), logical(1))]
+    if (length(cat_cols)) {
+      x <- cat_cols[1]
+    } else {
+      # fallback: use first column
+      x <- names(dt)[1]
+    }
+  }
+
+  # 3) optional filter with DuckDB WHERE
+  if (!is.null(filter_sql) && nzchar(filter_sql) && helpers_mcp_tools$safe_has_duckdb()) {
+    con <- DBI::dbConnect(duckdb::duckdb(), dbdir=":memory:")
+    on.exit(try(DBI::dbDisconnect(con, shutdown=TRUE), silent=TRUE), add=TRUE)
+    DBI::dbWriteTable(con, "t", as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
+
+    q <- sprintf('SELECT * FROM t WHERE %s', filter_sql)
+    q <- gsub("`", "\"", q, fixed = TRUE)
+    q <- gsub("\\[", "\"", q); q <- gsub("\\]", "\"", q)
+
+    filt <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) e)
+    if (!inherits(filt, "error")) dt <- data.table::as.data.table(filt)
+  }
+
+  # 4) thin to only needed columns
+  cols <- unique(na.omit(c(x, y, group)))
+  if (!length(cols)) {
+    # let ChartLab decide mapping; send sample only
+    subset_dt <- dt
+  } else {
+    missing <- setdiff(cols, names(dt))
+    if (length(missing)) {
+      return(list(
+        error = sprintf("Sütun(lar) bulunamadı: %s. Mevcut: %s", paste(missing, collapse = ", "), paste(names(dt), collapse = ", ")),
+        ok = FALSE
+      ))
+    }
+    subset_dt <- dt[, ..cols]
+  }
+
+  # 5) limit rows and coerce time cols (ChartLab will format)
+  if (is.finite(limit) && nrow(subset_dt) > limit) subset_dt <- head(subset_dt, limit)
+  for (nm in names(subset_dt)) {
+    if (inherits(subset_dt[[nm]], "POSIXt")) next
+    if (inherits(subset_dt[[nm]], "Date")) next
+    # leave as-is; ChartLab will handle coercions cautiously
+  }
+
+  schema <- vapply(subset_dt, function(z) class(z)[1], character(1))
+
+  # 6) build chart spec payload
+  list(
+    ok = TRUE,
+    `__mcp_plot` = TRUE,        # <--- GLUE FLAG (server will route to ChartLab)
+    file = basename(res$path),
+    chart = list(
+      type = tolower(chart_type),             # "hist"|"bar"|"line"|"scatter"|"box"|"area"
+      mapping = list(x = x, y = y, group = group),
+      params = list(
+        agg = agg, bins = bins, top_n = top_n,
+        stack = stack, donut = donut, orientation = orientation, smooth = smooth
+      ),
+      data = as.data.frame(subset_dt),
+      schema = as.list(schema),
+      n = nrow(subset_dt)
+    ),
+    message = "Grafik verileri hazırlandı; ChartLab'a iletildi."
+  )
+}
+
+# ============================
+# Tool router
+# ============================
+helpers_mcp_tools$execute_parsed_tool <- function(tc, session = NULL) {
+  fn   <- tc$function_name %||% tc$name %||% tc$tool %||% tc$action
+  args <- helpers_mcp_tools$normalize_args(tc$arguments %||% tc$parameters %||% list())
+
+  if (is.null(fn) || !nzchar(fn)) return(list(error = "Araç adı boş"))
+
+	switch(tolower(fn),
+	  "analyze_uploaded_file"   = helpers_mcp_tools$analyze_uploaded_file(args$file_name, session),
+	  "get_column_statistics"   = helpers_mcp_tools$get_column_statistics(args$file_name, args$column, session),
+	  "get_column_stats"        = helpers_mcp_tools$get_column_statistics(args$file_name, args$column, session), # alias
+	  "sql_query_uploaded_file" = helpers_mcp_tools$sql_query_uploaded_file(args$file_name, args$sql, session),
+	  "prepare_chart_data"      = helpers_mcp_tools$prepare_chart_data(
+		file_name  = args$file_name,
+		chart_type = args$chart_type,
+		x          = args$x %||% args$xlabel %||% args$x_col,
+		y          = args$y %||% args$ylabel %||% args$y_col,
+		group      = args$group %||% args$color %||% args$hue,
+		agg        = args$agg,
+		bins       = args$bins,
+		top_n      = args$top_n,
+		filter_sql = args$filter_sql,
+		limit      = args$limit %||% 5000,
+		session    = session
+	  ),
+	  # --- RData Lake tool'ları ---
+	  "rdata_search"  = if (exists("helpers_rdata_lake", inherits = TRUE))
+						  helpers_rdata_lake$execute_tool("rdata_search", args) else list(error="RData Lake modülü yok."),
+	  "rdata_sql"     = if (exists("helpers_rdata_lake", inherits = TRUE))
+						  helpers_rdata_lake$execute_tool("rdata_sql", args) else list(error="RData Lake modülü yok."),
+	  "rdata_metrics" = if (exists("helpers_rdata_lake", inherits = TRUE))
+						  helpers_rdata_lake$execute_tool("rdata_metrics", args) else list(error="RData Lake modülü yok."),
+	  {
+		list(error = sprintf("Bilinmeyen araç: %s", fn))
+	  }
+	)
+}
+
+# ============================
+# OpenAI tools schema
+# ============================
+helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
+  list(
+    tools = list(
+      list(
+        type = "function",
+        `function` = list(
+          name = "analyze_uploaded_file",
+          description = "Yüklü Excel dosyasının temel özetini çıkarır (satır, sütun, sütun adları, sayısal özet).",
+          parameters = list(
+            type = "object",
+            properties = list(
+              file_name = list(type = "string",
+                               description = "Sohbetteki dosya jetonu (file_123...) veya gerçek dosya adı (dummy.xlsx).")
+            ),
+            required = list("file_name")
+          )
+        )
+      ),
+      list(
+        type = "function",
+        `function` = list(
+          name = "get_column_statistics",
+          description = "Belirli bir sütunun istatistiklerini döndürür (numeric: ort, medyan, min, max; categorical: frekans).",
+          parameters = list(
+            type = "object",
+            properties = list(
+              file_name = list(type = "string", description = "Dosya jetonu veya adı."),
+              column    = list(type = "string", description = "İstatistikleri istenen sütun adı.")
+            ),
+            required = list("file_name", "column")
+          )
+        )
+      ),
+      list(
+        type = "function",
+        `function` = list(
+          name = "sql_query_uploaded_file",
+          description = "Karma/nested analizler için SQL çalıştırır. Tablo adı: t. Örnek: SELECT AVG(Salary) FROM t WHERE Department='IT';",
+          parameters = list(
+            type = "object",
+            properties = list(
+              file_name = list(type = "string", description = "Dosya jetonu veya adı."),
+              sql       = list(type = "string", description = "DuckDB uyumlu SQL; tablo adı 't'.")
+            ),
+            required = list("file_name", "sql")
+          )
+        )
+      ),
+      list(
+        type = "function",
+        `function` = list(
+          name = "prepare_chart_data",
+          description = "Grafik için veriyi hazırlar ve bir 'chart spec' döndürür. Tablo adı: t. Excel/CSV/RDS/RData desteklenir.",
+          parameters = list(
+            type = "object",
+            properties = list(
+              file_name  = list(type = "string", description = "Dosya jetonu veya yolu/adı."),
+              chart_type = list(type = "string",
+					description = "One of: hist | bar | line | scatter | area | pie | donut | pareto. (bar supports orientation + stacking; line/area support smoothing)"),
+              x          = list(type = "string", description = "X ekseni sütunu (opsiyonel)"),
+              y          = list(type = "string", description = "Y ekseni sütunu (opsiyonel)"),
+              group      = list(type = "string", description = "Renk/seri grubu (opsiyonel)"),
+              agg        = list(type = "string", description = "sum|mean|median|min|max (opsiyonel)"),
+              bins       = list(type = "integer", description = "Histogram için kutu sayısı (opsiyonel)"),
+              top_n      = list(type = "integer", description = "Bar grafikte en çok görülen ilk N (opsiyonel)"),
+			  stack       = list(type = "string",  description = "Stacking mode for bar/area: none|normal|percent (optional)"),
+              donut       = list(type = "boolean", description = "If true with pie, renders a donut (optional)"),
+              orientation = list(type = "string",  description = "Bar/pareto orientation: v|vertical|h|horizontal (optional)"),
+              smooth      = list(type = "boolean", description = "If true, line→spline and area→areaspline (optional)"),
+              filter_sql = list(type = "string", description = "WHERE klozu (opsiyonel). Ör: Department='IT' AND Salary>1000"),
+              limit      = list(type = "integer", description = "Satır sınırı (varsayılan 5000)")
+            ),
+            required = list("file_name", "chart_type")
+          )
+        )
+      )
+    )
+  )
+}
+
+# ============================
+# Tool-use instruction prompt
+# ============================
+helpers_mcp_tools$get_mcp_tools_prompt <- function() {
+  paste(
+    "Aşağıdaki araçları çağırabilirsin. JSON ile **tek bir araç** çağır; ardından araç çıktısına göre Türkçe cevap ver.",
+    "",
+    "Araçlar:",
+    "1) analyze_uploaded_file(file_name) — satır/sütun sayısı, sütun adları, sayısal özet.",
+    "2) get_column_statistics(file_name, column) — tek sütun için istatistik.",
+    "3) sql_query_uploaded_file(file_name, sql) — karma/nested mantık için SQL (filtrele → grupla → sırala → LIMIT → toplam/ortalama). Tablo adı 't'.",
+	"4) prepare_chart_data(file_name, chart_type, x, y, group, agg, bins, top_n, filter_sql, limit) — grafik için veri ve tanım üretir.",
+	"- chart_type: hist | bar | line | scatter | area | pie | donut | pareto; opsiyonlar: stack, donut, orientation, smooth",
+    "",
+    "Kurallar:",
+    "- Sadece araç çağrısı gerekiyorsa başka açıklama yazma.",
+    "- JSON örneği: {\"name\":\"sql_query_uploaded_file\",\"arguments\":{\"file_name\":\"dummy.xlsx\",\"sql\":\"SELECT AVG(Salary) FROM t\"}}",
+    "- Sütun adlarını birebir kullan, metinlerde tek tırnak: Department='IT'.",
+    "- Karma sorgularda her zaman **sql_query_uploaded_file** kullan.",
+    "- Planlama/düşünme metni yazma (örn. 'We need to call…', 'We will call…').",
+	"- Grafik/çizim gerektiğinde **prepare_chart_data** kullan; çıktı ChartLab tarafından çizilir.",
+    sep = "\n"
+  )
+}
+
+# ============================
+# Parse textual tool calls
+# ============================
+helpers_mcp_tools$parse_tool_calls_from_text <- function(text) {
+  if (is.null(text) || !nzchar(text)) return(list())
+  out <- list()
+
+  # 1) <tool_call> ... </tool_call>
+  tc_blocks <- gregexpr("<tool_call>(.*?)</tool_call>", text, perl = TRUE)
+  if (tc_blocks[[1]][1] != -1) {
+    blocks <- regmatches(text, tc_blocks)[[1]]
+    blocks <- gsub("^<tool_call>|</tool_call>$", "", blocks)
+    for (blk in blocks) {
+      try({
+        obj  <- jsonlite::fromJSON(blk, simplifyVector = FALSE)
+        fn   <- obj$name %||% obj$tool %||% obj$action
+        args <- obj$arguments %||% obj$parameters %||% list()
+        if (is.character(args)) {
+          args <- tryCatch(jsonlite::fromJSON(args, simplifyVector = FALSE), error = function(e) list())
+        }
+        out[[length(out) + 1]] <- list(function_name = fn, arguments = args)
+      }, silent = TRUE)
+    }
+  }
+
+  # 2) Inline JSON {"name|tool|action": "...", "arguments|parameters": {...}}
+  json_pat <- paste0(
+    "\\{\\s*\"(tool|name|action)\"\\s*:\\s*\"[^\"]+\"[\\s\\S]*?",
+    "\"(arguments|parameters)\"\\s*:\\s*\\{[\\s\\S]*?\\}\\s*\\}"
+  )
+  rgx <- gregexpr(json_pat, text, perl = TRUE)
+  if (rgx[[1]][1] != -1) {
+    objs <- regmatches(text, rgx)[[1]]
+    for (o in objs) {
+      try({
+        obj  <- jsonlite::fromJSON(o, simplifyVector = FALSE)
+        fn   <- obj$name %||% obj$tool %||% obj$action
+        args <- obj$arguments %||% obj$parameters %||% list()
+        if (is.character(args)) {
+          args <- tryCatch(jsonlite::fromJSON(args, simplifyVector = FALSE), error = function(e) list())
+        }
+        out[[length(out) + 1]] <- list(function_name = fn, arguments = args)
+      }, silent = TRUE)
+    }
+  }
+
+  # 3) Whole message is JSON
+  if (length(out) == 0) {
+    try({
+      obj <- jsonlite::fromJSON(text, simplifyVector = FALSE)
+      if (is.list(obj) && (!is.null(obj$name) || !is.null(obj$tool) || !is.null(obj$action))) {
+        fn   <- obj$name %||% obj$tool %||% obj$action
+        args <- obj$arguments %||% obj$parameters %||% list()
+        if (is.character(args)) {
+          args <- tryCatch(jsonlite::fromJSON(args, simplifyVector = FALSE), error = function(e) list())
+        }
+        out[[length(out) + 1]] <- list(function_name = fn, arguments = args)
+      }
+    }, silent = TRUE)
+  }
+
+  out
+}
+
+# ============================
+# Public wrappers (used by global.R)
+# ============================
+get_openai_tools              <- function(session = NULL) helpers_mcp_tools$get_openai_tools(session)
+get_mcp_tools_prompt          <- function()               helpers_mcp_tools$get_mcp_tools_prompt()
+parse_tool_calls_from_text    <- function(x)              helpers_mcp_tools$parse_tool_calls_from_text(x)
+execute_parsed_tool           <- function(tc, session=NULL) helpers_mcp_tools$execute_parsed_tool(tc, session)
+register_session_file         <- function(session, token, path, nm=NULL) helpers_mcp_tools$register_uploaded_file(session, token, path, nm)
+reset_session_file_registry   <- function(session = NULL) helpers_mcp_tools$reset_session_file_registry(session)
+environment(helpers_mcp_tools$analyze_uploaded_file)   <- helpers_mcp_tools
+environment(helpers_mcp_tools$get_column_statistics)   <- helpers_mcp_tools
+environment(helpers_mcp_tools$sql_query_uploaded_file) <- helpers_mcp_tools
