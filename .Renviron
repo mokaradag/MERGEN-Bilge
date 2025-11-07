@@ -1,0 +1,21 @@
+# This file stores secret environment variables for your Shiny app.
+# It should be added to your .gitignore file to prevent it from being
+# committed to version control.
+
+DB_SERVER="your_server_address"
+DB_DATABASE="your_database_name"
+
+# 32+ chars random secret for encrypting user API keys
+AI_KEYS_MASTER="change_this_to_a_long_random_secret_string"
+
+LOCAL_LLM_ENDPOINT=https://your-actual-api-endpoint.com/v1/chat/completions
+DB_DSN=TestConnection
+
+# Persisted base folder for MCP-file uploads (UNC or local path)
+MCP_FILES_BASE=//mainserver/share/mergen_uploads
+
+SERVICE_DESK_API_KEY_URL=https://<your-servicedesk>/api-key
+SERVICE_DESK_RATE_LIMIT_URL=https://<your-servicedesk>/rate-limit
+
+MERGEN_RDATA_DAILY_PATH=//server/share/RdataDaily
+MERGEN_RDATA_WEEKLY_PATH=//server/share/Rdata
