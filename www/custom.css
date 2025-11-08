@@ -4652,7 +4652,29 @@ body.font-xlarge {
   overflow-wrap: break-word;
 }
 
-/* Kullanıcı avatarı için resim stili */
+/* User avatar base styles */
+.user-avatar {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;  /* Prevent shrinking */
+  max-width: 40px !important;  /* Prevent growing */
+  min-height: 40px !important;
+  max-height: 40px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-right: 12px !important;
+  font-size: 18px !important;
+  color: white !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+/* Ensure image inside avatar is contained */
 .user-avatar img {
   width: 40px !important;
   height: 40px !important;
@@ -4662,22 +4684,14 @@ body.font-xlarge {
   border-radius: 50% !important;
 }
 
-/* Resim yüklenemediğinde fallback için arka plan */
+/* Remove gradient background when image is present */
 .user-avatar:has(img) {
   background: transparent !important;
 }
 
-/* Resim yüklenemezse gradient göster */
-.user-avatar.gradient-user {
-  background: linear-gradient(135deg, #667eea, #764ba2) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
-.user-avatar.gradient-user i {
-  font-size: 18px !important;
-  color: white !important;
+/* Fallback style when image fails to load */
+.user-avatar img[src*="data:image/svg"] {
+  background: linear-gradient(135deg, #667eea, #764ba2);
 }
 
 /* Fix welcome container to prevent scroll */
