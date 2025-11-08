@@ -233,30 +233,32 @@ healthServer <- function(id, perf_tracker) {
 		  } else {
 			list(available = "N/A", total = "N/A", usage_pct = 0)
 		  }
-		} else {
-		  # Linux/Mac için df komutu ile disk bilgisi
-		  df_cmd <- sprintf("df -h '%s' 2>/dev/null | tail -1", app_dir)
-		  df_output <- system(df_cmd, intern = TRUE)
-		  
-		  if (length(df_output) > 0 && nzchar(df_output)) {
-			# Boşluklara göre ayır (birden fazla boşluk olabilir)
-			parts <- unlist(strsplit(df_output, "\\s+"))
-			
-			# Tipik df çıktısı: Filesystem Size Used Avail Use% Mounted
-			# parts[2] = Size, parts[4] = Avail, parts[5] = Use%
-			if (length(parts) >= 5) {
-			  list(
-				available = parts[4],  # Kullanılabilir alan
-				total = parts[2],      # Toplam alan
-				usage_pct = as.numeric(sub("%", "", parts[5]))  # Kullanım yüzdesi
-			  )
 			} else {
-			  list(available = "N/A", total = "N/A", usage_pct = 0)
+			  # Linux/Mac için df komutu ile disk bilgisi
+			  df_cmd <- sprintf("df -h '%s' 2>/dev/null | tail -1", app_dir)
+			  df_output <- system(df_cmd, intern = TRUE)
+
+			  if (length(df_output) > 0 && nzchar(df_output)) {
+					# Boşluklara göre ayır (birden fazla boşluk olabilir)
+					parts <- unlist(strsplit(trimws(df_output), "\\s+"))
+					parts <- parts[parts != ""]
+
+					# Tipik df çıktısı: Filesystem Size Used Avail Use% Mounted
+					if (length(parts) >= 5) {
+					  usage_val <- suppressWarnings(as.numeric(sub("%", "", parts[5])))
+					  if (is.na(usage_val)) usage_val <- 0
+					  list(
+							available = parts[4],  # Kullanılabilir alan
+							total = parts[2],      # Toplam alan
+							usage_pct = round(usage_val)
+					  )
+					} else {
+					  list(available = "N/A", total = "N/A", usage_pct = 0)
+					}
+			  } else {
+					list(available = "N/A", total = "N/A", usage_pct = 0)
+			  }
 			}
-		  } else {
-			list(available = "N/A", total = "N/A", usage_pct = 0)
-		  }
-		}
 	  }, error = function(e) {
 		cat("[HEALTH] Disk bilgisi alınamadı:", conditionMessage(e), "\n")
 		list(available = "N/A", total = "N/A", usage_pct = 0)

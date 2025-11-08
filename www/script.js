@@ -1923,95 +1923,73 @@
       }
     });
 
-// Cinematic character image transition with pronounced fade
+// Smooth character image cross-fade with preload + cleanup guards
 Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
   const container = document.getElementById(data.containerId);
   if (!container) return;
-  
-  const currentImg = container.querySelector('.character-image');
-  
-  if (currentImg) {
-    // Get exact dimensions and position
-    const currentRect = currentImg.getBoundingClientRect();
-    const currentWidth = currentImg.offsetWidth;
-    const currentHeight = currentImg.offsetHeight;
-    const containerRect = container.getBoundingClientRect();
-    const leftOffset = currentRect.left - containerRect.left;
-    const topOffset = currentRect.top - containerRect.top;
-    
-    // Force current image to full opacity and remove any animations
-    currentImg.style.animation = 'none';
-    currentImg.style.opacity = '1';
-    
-    // Create new image with exact same dimensions
-    const newImg = document.createElement('img');
-    newImg.src = data.imageUrl;
-    newImg.className = 'character-image';
-    newImg.alt = data.displayName;
-    newImg.style.position = 'absolute';
-    newImg.style.left = leftOffset + 'px';
-    newImg.style.top = topOffset + 'px';
-    newImg.style.width = currentWidth + 'px';
-    newImg.style.height = currentHeight + 'px';
-    newImg.style.maxWidth = currentWidth + 'px';
-    newImg.style.maxHeight = currentHeight + 'px';
-    newImg.style.objectFit = 'contain';
-    newImg.style.opacity = '0';
-    newImg.style.animation = 'none';
-    
-    newImg.onload = function() {
-      container.style.position = 'relative';
-      container.appendChild(newImg);
-      
-      // Force browser reflow to ensure initial opacity is applied
-      void newImg.offsetHeight;
-      void currentImg.offsetHeight;
-      
-      // Use requestAnimationFrame for smooth transition start
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          // Set transitions with pronounced timing
-          currentImg.style.transition = 'opacity 2s ease-in-out';
-          newImg.style.transition = 'opacity 2s ease-in-out';
-          
-          // Trigger the fade
-          currentImg.style.opacity = '0';
-          newImg.style.opacity = '1';
-        });
-      });
-      
-      // Clean up after transition completes
-      setTimeout(() => {
-        currentImg.remove();
-        newImg.style.position = 'static';
-        newImg.style.left = 'auto';
-        newImg.style.top = 'auto';
-        newImg.style.width = 'auto';
-        newImg.style.height = 'auto';
-        newImg.style.maxWidth = '100%';
-        newImg.style.maxHeight = '100%';
-        newImg.style.transition = '';
-      }, 2100);
-    };
-  } else {
-    // No current image, just fade in
-    const newImg = document.createElement('img');
-    newImg.src = data.imageUrl;
-    newImg.className = 'character-image';
-    newImg.alt = data.displayName;
-    newImg.style.opacity = '0';
-    newImg.style.animation = 'none';
-    container.appendChild(newImg);
-    
-    void newImg.offsetHeight;
-    
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        newImg.style.transition = 'opacity 2s ease-in-out';
-        newImg.style.opacity = '1';
-      });
-    });
+
+  if (!container.__characterImageState) {
+    container.__characterImageState = { pendingImage: null };
   }
+
+  const state = container.__characterImageState;
+
+  if (state.pendingImage) {
+    state.pendingImage.onload = null;
+    state.pendingImage.onerror = null;
+    state.pendingImage = null;
+  }
+
+  const existingImages = Array.from(container.querySelectorAll('.character-image'));
+  const incoming = new Image();
+  incoming.className = 'character-image';
+  incoming.alt = data.displayName || '';
+
+  incoming.onload = function() {
+    if (state.pendingImage !== incoming) {
+      return;
+    }
+
+    state.pendingImage = null;
+
+    if (getComputedStyle(container).position === 'static') {
+      container.style.position = 'relative';
+    }
+
+    container.appendChild(incoming);
+
+    // Force layout before toggling visibility
+    void incoming.offsetWidth;
+    incoming.classList.add('is-visible');
+
+    existingImages.forEach((img) => {
+      img.classList.remove('is-visible');
+      img.classList.add('is-exiting');
+      img.addEventListener(
+        'transitionend',
+        (event) => {
+          if (event.propertyName === 'opacity' && img.parentNode === container) {
+            img.remove();
+          }
+        },
+        { once: true }
+      );
+    });
+  };
+
+  incoming.onerror = function() {
+    if (state.pendingImage === incoming) {
+      state.pendingImage = null;
+    }
+    console.error('Karakter görseli yüklenemedi:', data.imageUrl);
+    existingImages.forEach((img) => {
+      img.classList.add('is-visible');
+      img.classList.remove('is-exiting');
+    });
+  };
+
+  state.pendingImage = incoming;
+  incoming.src = data.imageUrl;
 });
 
 // Character info update with word-by-word typing

@@ -67,18 +67,25 @@ settingsUI <- function(id) {
           padding: 16px;
           overflow: hidden;
           position: relative;
+		  min-height: 260px;
         }
         
         .character-image {
-          max-width: 100%;
-          max-height: 100%;
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
           object-fit: contain;
           opacity: 0;
-          animation: fadeInImage 0.8s ease forwards;
+          transition: opacity 0.6s ease;
         }
-        
-        @keyframes fadeInImage {
-          to { opacity: 1; }
+
+        .character-image.is-visible {
+          opacity: 1;
+        }
+
+        .character-image.is-exiting {
+          opacity: 0;
         }
         
         .character-info-container {
@@ -392,17 +399,18 @@ settingsServer <- function(id, parent_session = NULL) {
 	  api_url  <- resolve_local_llm_endpoint(model_id)
 
 	  vres <- try(validate_api_key(key_plain, model_id = model_id, endpoint = api_url, timeout_seconds = 6), silent = TRUE)
-	  if (!inherits(vres, "try-error") && is.list(vres)) {
-		if (identical(vres$valid, FALSE)) {
-		  showToast(session, paste("API anahtarı geçersiz:", vres$message %||% ""), "error")
-		  return()  # kaydetme!
-		}
-		if (isTRUE(vres$valid)) {
-		  # Başarılı doğrulamada ayrı bir toast göstermiyoruz; kaydetme başarılı olursa tek bir toast çıkacak.
-		} else {
-		  showToast(session, paste("Anahtar doğrulanamadı:", vres$message %||% "Bilinmiyor"), "warning")
-		  # doğrulanamadı ama yine de kaydetmeye izin veriyoruz
-		}
+	  if (inherits(vres, "try-error") || !is.list(vres)) {
+			err_msg <- tryCatch(conditionMessage(attr(vres, "condition")), error = function(e) "Bilinmeyen hata")
+			showToast(session, paste("Anahtar doğrulaması başarısız:", err_msg), "error")
+			return()
+	  }
+	  if (identical(vres$valid, FALSE)) {
+			showToast(session, paste("API anahtarı geçersiz:", vres$message %||% ""), "error")
+			return()  # kaydetme!
+	  }
+	  if (!isTRUE(vres$valid)) {
+			showToast(session, paste("Anahtar doğrulanamadı (kaydedilmedi):", vres$message %||% "Doğrulama başarısız."), "error")
+			return()
 	  }
 
 		# 2) Kaydet + oturuma yaz (hata güvenli)

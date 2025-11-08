@@ -113,15 +113,20 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
 	  api_url  <- resolve_local_llm_endpoint(model_id)
       vres <- try(validate_api_key(key_plain, model_id = model_id, endpoint = api_url, timeout_seconds = 6), silent = TRUE)
 
-      if (!inherits(vres, "try-error") && is.list(vres)) {
-        if (identical(vres$valid, FALSE)) {
-          showToast(session, paste("API anahtarı geçersiz:", vres$message %||% ""), "error")
-          return()
-        }
-        if (!isTRUE(vres$valid)) {
-          showToast(session, paste("Anahtar doğrulanamadı:", vres$message %||% "Bilinmiyor"), "warning")
-          # allow saving anyway
-        }
+      if (inherits(vres, "try-error") || !is.list(vres)) {
+        err_msg <- tryCatch(conditionMessage(attr(vres, "condition")), error = function(e) "Bilinmeyen hata")
+        showToast(session, paste("Anahtar doğrulaması başarısız:", err_msg), "error")
+        return()
+      }
+
+      if (identical(vres$valid, FALSE)) {
+        showToast(session, paste("API anahtarı geçersiz:", vres$message %||% ""), "error")
+        return()
+      }
+
+      if (!isTRUE(vres$valid)) {
+        showToast(session, paste("Anahtar doğrulanamadı (kaydedilmedi):", vres$message %||% "Doğrulama başarısız."), "error")
+        return()
       }
 
       # persist (encrypted) + expose to session
