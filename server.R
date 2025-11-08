@@ -202,13 +202,50 @@ server <- function(input, output, session) {
 	  ");
 	}, once = TRUE)
 		
-  # Always show the current model name in the Ana Söyleşi header
-  output$current_model_display <- renderText({
-	selected_model_id <- settings_data$model_selection %||% api_config$local_models[1]
-	display_name <- names(api_config$local_models)[api_config$local_models == selected_model_id]
-	if (length(display_name) == 0) display_name <- selected_model_id
-	display_name
-  })
+	# Karakter avatarı, karakter adı ve model adını Ana Söyleşi başlığında göster
+	output$current_model_display <- renderUI({
+	  # Model bilgisini al
+	  selected_model_id <- settings_data$model_selection %||% api_config$local_models[1]
+	  display_name <- names(api_config$local_models)[api_config$local_models == selected_model_id]
+	  if (length(display_name) == 0) display_name <- selected_model_id
+	  
+	  # Karakter bilgisini al
+	  selected_char_id <- settings_data$selected_character %||% "mergen"
+	  chars_data <- get_characters_data()
+	  char_info <- Find(function(x) x$id == selected_char_id, chars_data$styles)
+	  
+	  # Varsayılan değerler (karakter bulunamazsa)
+	  if (is.null(char_info)) {
+		char_info <- list(
+		  display_name = "MERGEN",
+		  avatar = "characters/avatar/Mergen_avatar_original.png",
+		  accent = "#7C4DFF"
+		)
+	  }
+	  
+	  # Arka plan rengini karakter vurgu rengine göre ayarla (şeffaflıkla)
+	  bg_color <- paste0(char_info$accent, "26")  # %15 opaklık için hex alpha değeri
+	  border_color <- paste0(char_info$accent, "40")  # %25 opaklık
+	  
+	  # UI elemanını oluştur: <avatar> <karakter adı> ": " <model adı>
+	  div(
+		class = "header-stat-item",
+		title = paste0("Karakter: ", char_info$display_name, " | Model: ", display_name),
+		style = paste0(
+		  "background: ", bg_color, "; ",
+		  "border-color: ", border_color, ";"
+		),
+		tags$img(
+		  src = char_info$avatar,
+		  alt = char_info$display_name,
+		  style = "width: 20px; height: 20px; border-radius: 50%; object-fit: cover; margin-right: 6px;"
+		),
+		span(
+		  style = "font-weight: 600;",
+		  paste0(char_info$display_name, ": ", display_name)
+		)
+	  )
+	})
   
   # MCP modu göstergesi için reaktif çıktı (Ana Söyleşi başlığında kullanılır)
   output$mcp_mode_indicator <- renderUI({

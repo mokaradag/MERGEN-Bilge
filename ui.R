@@ -144,19 +144,11 @@ ui <- dashboardPage(
 			  h4("Söyleşi", class = "page-title"),
 			  # MCP modu göstergesi (Excel veya RData aktifse gösterilir) - moved to left
 			  uiOutput("mcp_mode_indicator"),
-			  conditionalPanel(
-				condition = "!output.show_welcome_screen",
-				# This will display the model name
-				div(class = "header-stat-item",
-					title = "Mevcut sohbette kullanılan yapay zeka modeli",
-					tags$img(
-					  src = "mergen_avatar.png",
-					  alt = "Model",
-					  style = "width: 18px; height: 18px; border-radius: 4px; object-fit: cover;"
-					),
-					textOutput("current_model_display", inline = TRUE)
-				)
-			  ),
+				conditionalPanel(
+				  condition = "!output.show_welcome_screen",
+				  # Karakter avatarı, karakter adı ve model adını göster
+				  uiOutput("current_model_display")
+				),
 			  conditionalPanel(
 				condition = "!output.show_welcome_screen",
 				div(class = "chat-stats", tags$span(class = "stat-item", tags$i(class = "fas fa-comment-dots"), textOutput("message_count", inline = TRUE)))
