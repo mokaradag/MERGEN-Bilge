@@ -3554,20 +3554,57 @@ table.dataTable thead th:first-child::after {
 
 /* --- Style for Model Name in Chat Header --- */
 .header-stat-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  background-color: var(--background-dark);
-  color: #888 !important;
-  padding: 5px 12px;
-  border-radius: 8px;
-  font-size: 13px;
+  background: rgba(147, 51, 234, 0.15);  /* Purple transparent background */
+  color: #c4b5fd !important;              /* Light purple text */
+  padding: 4px 10px;                      /* Match MCP indicator padding */
+  border-radius: 6px;                     /* Match MCP indicator radius */
+  font-size: 11px;                        /* Match MCP indicator font size */
   font-weight: 500;
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(147, 51, 234, 0.25);  /* Purple border with transparency */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);    /* Match MCP shadow */
+  transition: all 0.2s ease;
+  cursor: default;
+  opacity: 0.85;
+  margin-left: 12px;
+  margin-right: 12px;
+}
+
+.header-stat-item:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(147, 51, 234, 0.4);
 }
 
 .header-stat-item .fa-robot {
-  color: var(--info-color);
+  color: #a78bfa;  /* Brighter purple for icon */
+  font-size: 12px;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Pulse animation for robot icon */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+/* Responsive: Mobile screens */
+@media (max-width: 768px) {
+  .header-stat-item span {
+    display: none;
+  }
+  
+  .header-stat-item {
+    padding: 6px 10px;
+    margin-right: 8px;
+  }
 }
 
 /* --- Attached File Indicator Badge --- */
