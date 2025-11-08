@@ -658,13 +658,16 @@ observeEvent(input$source_file_clicked, {
 	if (skip_mcp_once) quick_action_skip_mcp(FALSE)
 
 	# Öncelikli kural: Hızlı eylem → araç yok
+	rdata_allowed <- isTRUE(cfg_rdata_on)
+	excel_allowed <- isTRUE(cfg_excel_on) && uploaded_count > 0
+
 	if (skip_mcp_once) {
 	  tool_family <- "none"
-	} else if (is_rdata_intent(user_message_text)) {
+	} else if (rdata_allowed && is_rdata_intent(user_message_text)) {
 	  tool_family <- "rdata"
-	} else if (cfg_excel_on && uploaded_count > 0) {
+	} else if (excel_allowed) {
 	  tool_family <- "mcp_excel"
-	} else if (cfg_rdata_on) {
+	} else if (rdata_allowed) {
 	  tool_family <- "rdata"
 	} else {
 	  tool_family <- "none"
