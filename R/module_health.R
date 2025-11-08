@@ -66,9 +66,11 @@ healthUI <- function(id) {
 		),  # Rate Limits kartının kapanışı
 		column(
 		  width = 6,
+		  class = "health-column",
 		  div(
-			class = "health-card",
-			h3(tags$i(class = "fas fa-server"), " Sistem Kaynakları", class = "settings-title"),
+			class = "settings-card health-card",  # Diğer kartlarla aynı dış stil
+			style = "margin-top: 20px;",  # Üstteki kartla aynı boşluk
+			h3(tagList(icon("server"), " Sistem Kaynakları"), class = "settings-title"),
 			div(class = "health-content", uiOutput(ns("health_system_resources")))
 		  )
 		)
@@ -207,25 +209,56 @@ healthServer <- function(id, perf_tracker) {
 	output$health_system_resources <- renderUI({
 	  health_refresh_trigger()
 	  
-	  # Disk bilgisi - uygulama dizini
+	  # Disk bilgisi - uygulama dizini için platform-bağımsız yaklaşım
 	  app_dir <- getwd()
 	  disk_info <- tryCatch({
 		if (.Platform$OS.type == "windows") {
-		  # Windows için disk bilgisi
-		  fs_stats <- system(paste0('fsutil volume diskfree ', substr(app_dir, 1, 2)), 
-							intern = TRUE, ignore.stderr = TRUE)
-		  list(available = "N/A", total = "N/A", usage_pct = 0)
+		  # Windows için disk bilgisi (wmic komutu)
+		  drive_letter <- substr(app_dir, 1, 2)
+		  wmic_cmd <- sprintf('wmic logicaldisk where "DeviceID=\'%s\'" get Size,FreeSpace /format:list', drive_letter)
+		  wmic_output <- system(wmic_cmd, intern = TRUE, ignore.stderr = TRUE)
+		  
+		  # Parse output
+		  free_bytes <- as.numeric(gsub("FreeSpace=", "", grep("FreeSpace=", wmic_output, value = TRUE)[1]))
+		  total_bytes <- as.numeric(gsub("Size=", "", grep("Size=", wmic_output, value = TRUE)[1]))
+		  
+		  if (!is.na(free_bytes) && !is.na(total_bytes) && total_bytes > 0) {
+			used_bytes <- total_bytes - free_bytes
+			usage_pct <- round((used_bytes / total_bytes) * 100, 1)
+			list(
+			  available = sprintf("%.1f GB", free_bytes / (1024^3)),
+			  total = sprintf("%.1f GB", total_bytes / (1024^3)),
+			  usage_pct = usage_pct
+			)
+		  } else {
+			list(available = "N/A", total = "N/A", usage_pct = 0)
+		  }
 		} else {
-		  # Linux/Mac için df komutu
-		  df_output <- system(paste0("df -h '", app_dir, "' | tail -1"), intern = TRUE)
-		  parts <- strsplit(df_output, "\\s+")[[1]]
-		  list(
-			available = parts[4],
-			total = parts[2],
-			usage_pct = as.numeric(sub("%", "", parts[5]))
-		  )
+		  # Linux/Mac için df komutu ile disk bilgisi
+		  df_cmd <- sprintf("df -h '%s' 2>/dev/null | tail -1", app_dir)
+		  df_output <- system(df_cmd, intern = TRUE)
+		  
+		  if (length(df_output) > 0 && nzchar(df_output)) {
+			# Boşluklara göre ayır (birden fazla boşluk olabilir)
+			parts <- unlist(strsplit(df_output, "\\s+"))
+			
+			# Tipik df çıktısı: Filesystem Size Used Avail Use% Mounted
+			# parts[2] = Size, parts[4] = Avail, parts[5] = Use%
+			if (length(parts) >= 5) {
+			  list(
+				available = parts[4],  # Kullanılabilir alan
+				total = parts[2],      # Toplam alan
+				usage_pct = as.numeric(sub("%", "", parts[5]))  # Kullanım yüzdesi
+			  )
+			} else {
+			  list(available = "N/A", total = "N/A", usage_pct = 0)
+			}
+		  } else {
+			list(available = "N/A", total = "N/A", usage_pct = 0)
+		  }
 		}
 	  }, error = function(e) {
+		cat("[HEALTH] Disk bilgisi alınamadı:", conditionMessage(e), "\n")
 		list(available = "N/A", total = "N/A", usage_pct = 0)
 	  })
 	  
@@ -238,7 +271,10 @@ healthServer <- function(id, perf_tracker) {
 	  })
 	  
 	  # Oturum bilgisi
-	  session_count <- length(ls(envir = .GlobalEnv, pattern = "^session"))
+	  session_count <- tryCatch({
+		length(ls(envir = .GlobalEnv, pattern = "^session"))
+	  }, error = function(e) { 1 })
+	  
 	  r_version <- paste0(R.version$major, ".", R.version$minor)
 	  
 	  # DuckDB bağlantı durumu
@@ -258,7 +294,7 @@ healthServer <- function(id, perf_tracker) {
 	  })
 	  
 	  HTML(sprintf(
-		'<div style="line-height: 2;">
+		'<div style="line-height: 1.8;">
 		  <span style="color: #a78bfa; font-weight: bold;">Disk Kullanımı:</span><br>
 		  <span style="color: #60a5fa; margin-left: 10px;">Toplam:</span> <span style="color: #fff;">%s</span><br>
 		  <span style="color: #60a5fa; margin-left: 10px;">Kullanılabilir:</span> <span style="color: #fff;">%s</span><br>

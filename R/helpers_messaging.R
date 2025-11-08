@@ -202,16 +202,16 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
           class = "user-message",
           div(
             class = "message-header",
-            div(
-              class = "user-avatar",
-              style = "overflow: hidden; width: 40px; height: 40px;",
-              tags$img(
-                src = paste0("https://url......./", user_config$userId, ".jpg"),
-                alt = user_config$name,
-                style = "width: 100%; height: 100%; object-fit: cover;",
-                onerror = "this.style.display='none'; this.parentElement.classList.add('gradient-user'); this.parentElement.innerHTML='<i class=\"fas fa-user\"></i>';"
-              )
-            ),
+			div(
+			  class = "user-avatar",
+			  # Kullanıcı fotoğrafını göster, başarısız olursa gradient ve ikon göster
+			  tags$img(
+				src = get_user_picture(user_config$userId),
+				alt = user_config$name,
+				style = "width: 40px; height: 40px; object-fit: cover; border-radius: 50%;",
+				onerror = "this.style.display='none'; this.parentElement.classList.add('gradient-user'); this.parentElement.innerHTML='<i class=\"fas fa-user-circle\"></i>';"
+			  )
+			),
             div(
               class = "message-info",
               div(class = "message-author", user_config$name),

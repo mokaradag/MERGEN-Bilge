@@ -629,6 +629,17 @@ try({
 # Word preview mode: "html" (client-side via mammoth.js) or "pdf" (server-side convert via LibreOffice)
 options(mergen.word_preview_mode = "html")
 
+# Kullanıcı fotoğrafı URL'sini oluştur
+get_user_picture <- function(userId) {
+  sapply(userId, function(userId) {
+    if (is.null(userId) || is.na(userId)) {
+      return(NULL)
+    }
+    paste0("https://URL............/", userId, ".jpg")
+  }) |>
+    as.vector()
+}
+
 primary_llm_endpoint   <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
 secondary_llm_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT", primary_llm_endpoint)
 secondary_llm_api_key  <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT_API_KEY", "")
