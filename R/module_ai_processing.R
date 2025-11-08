@@ -22,33 +22,49 @@ aiProcessingServer <- function(id) {
       settings_copy <- current_settings
       
       # Get API configuration
-      api_endpoint <- if (!is.null(api_config$local_llm_endpoint)) {
-        api_config$local_llm_endpoint
-      } else if (!is.null(api_config$local_llm$endpoint)) {
-        api_config$local_llm$endpoint
-      } else {
-        "http://localhost:11434/api/generate"
+      if (is.null(model_selected) || !nzchar(model_selected)) {
+        model_selected <- current_settings$model_selection %||% as.character(api_config$local_models[1]) %||% ""
+      }
+      model_selected <- as.character(model_selected)[1]
+      creds <- resolve_local_llm_credentials(model_selected)
+      api_endpoint <- creds$endpoint
+      if (!nzchar(api_endpoint)) {
+        api_endpoint <- "http://localhost:11434/api/generate"
       }
       
-		# Use the per-session key injected via current_settings$shiny_session
-		api_key_val <- try({
-		  sess <- settings_copy$shiny_session
-		  if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) as.character(sess$userData$ai_api_key)[1] else NULL
-		}, silent = TRUE)
+	requires_key <- !grepl("(?i)(localhost|127\\.0\\.0\\.1|ollama)", api_endpoint)
+	allow_user_key <- isTRUE(creds$allow_user_key)
+	api_key_val <- NULL
 
-		if (is.null(api_key_val) || !nzchar(api_key_val)) {
-		  # Fail fast with a friendly error (promise resolved)
-		  return(promises::promise_resolve(list(
+	if (allow_user_key) {
+	  api_key_val <- try({
+		sess <- settings_copy$shiny_session
+		if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) as.character(sess$userData$ai_api_key)[1] else NULL
+	  }, silent = TRUE)
+	}
+
+	if (is.null(api_key_val) || !nzchar(api_key_val)) {
+	  default_key <- creds$default_api_key %||% ""
+	  if (nzchar(default_key)) {
+			api_key_val <- as.character(default_key)[1]
+	  }
+	}
+
+	if ((is.null(api_key_val) || !nzchar(api_key_val)) && requires_key) {
+	  # Fail fast with a friendly error (promise resolved)
+	  return(promises::promise_resolve(list(
 			content = NULL,
 			duration = 0,
 			success = FALSE,
 			error = "API anahtarı bulunamadı. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin."
-		  )))
-		}
+	  )))
+	}
       
-      if (is.null(model_selected) || model_selected == "") {
+	  if (is.null(model_selected) || !nzchar(model_selected)) {
         model_selected <- "mergen-local-model"
       }
+	  
+	  settings_copy$model_selection <- model_selected
       
       # Create future promise for async processing
       p <- future_promise({
@@ -168,25 +184,44 @@ aiProcessingServer <- function(id) {
       if (is.null(model_selected) || model_selected == "") {
         model_selected <- api_config$local_models[1]
       }
+	  
+	  creds <- resolve_local_llm_credentials(model_selected)
+      api_endpoint <- creds$endpoint
+      requires_key <- !grepl("(?i)(localhost|127\\.0\\.0\\.1|ollama)", api_endpoint)
+	  allow_user_key <- isTRUE(creds$allow_user_key)
       
       # Set model in settings
       settings_for_llm <- settings_copy
       settings_for_llm$model_selection <- model_selected
 	  
-	  # Fail fast if API key is missing (streaming path) ===
-		api_key_val <- try({
-		  sess <- settings_for_llm$shiny_session
-		  if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) as.character(sess$userData$ai_api_key)[1] else NULL
-		}, silent = TRUE)
+	# Fail fast if API key is missing (streaming path) ===
+	api_key_val <- NULL
+	if (allow_user_key) {
+	  api_key_val <- try({
+		sess <- settings_for_llm$shiny_session
+		if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) as.character(sess$userData$ai_api_key)[1] else NULL
+	  }, silent = TRUE)
+	}
 
-		if (is.null(api_key_val) || !nzchar(api_key_val)) {
-		  return(promises::promise_resolve(list(
+	if (is.null(api_key_val) || !nzchar(api_key_val)) {
+	  default_key <- creds$default_api_key %||% ""
+	  if (nzchar(default_key)) {
+			api_key_val <- as.character(default_key)[1]
+	  }
+	}
+
+	if (!is.null(api_key_val) && nzchar(api_key_val)) {
+	  settings_for_llm$api_key_override <- as.character(api_key_val)[1]
+	}
+
+	if ((is.null(api_key_val) || !nzchar(api_key_val)) && requires_key) {
+	  return(promises::promise_resolve(list(
 			content = NULL,
 			duration = 0,
 			success = FALSE,
 			error = "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin."
-		  )))
-		}
+	  )))
+	}
       
       # Create future promise
       p <- future_promise({
