@@ -23,11 +23,11 @@ tagList(
       div(
         class = "files-header",
         h3("Toplu Dosya Yükleme", class = "page-title"),
-        actionButton(
-          ns("clear_files"),
-          label = tagList(icon("trash-alt"), "Tümünü Temizle"),
-          class = "btn-modern btn-danger"
-        )
+		actionButton(
+		  ns("clear_files"),
+		  label = tagList(icon("trash-alt"), span("Tümünü Temizle", class = "btn-text")),
+		  class = "btn-modern btn-danger"
+		)
       ),
       # Scrollable content area
       div(

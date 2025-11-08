@@ -3556,12 +3556,11 @@ table.dataTable thead th:first-child::after {
 .header-stat-item {
   display: inline-flex;
   align-items: center;
-  gap: 0;  /* Gap'i 0 yap, margin-right ile kontrol et */
+  gap: 0;
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
-  /* background ve border renkleri inline style ile karakter rengine göre ayarlanacak */
   border: 1px solid;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
@@ -3569,7 +3568,8 @@ table.dataTable thead th:first-child::after {
   opacity: 0.85;
   margin-left: 12px;
   margin-right: 12px;
-  color: #c4b5fd !important;  /* Açık mor-beyaz ton */
+  color: #e5e5e5 !important;
+  height: 28px;
 }
 
 .header-stat-item:hover {
@@ -4951,7 +4951,7 @@ body.font-xlarge {
    MCP Mode Göstergesi Stilleri
    ============================================ */
 
-/* MCP gösterge temel stil - badge style, not button */
+/* MCP gösterge temel stil - header-stat-item ile aynı yükseklikte */
 .mcp-indicator {
   display: inline-flex;
   align-items: center;
@@ -4967,6 +4967,7 @@ body.font-xlarge {
   border: 1px solid transparent;
   cursor: default;
   opacity: 0.85;
+  height: 28px;
 }
 
 /* Excel MCP aktif - subtle green badge */
@@ -5098,6 +5099,47 @@ body.font-xlarge {
   }
   
   .chat-header-right .btn-modern {
+    padding: 6px 10px !important;
+  }
+}
+
+/* ============================================
+   Dosya Yönetimi Header Button Stilleri
+   ============================================ */
+
+/* Tümünü Temizle butonu - Ana Söyleşi butonlarıyla aynı stil */
+.files-header .btn-modern {
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.files-header .btn-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(220, 38, 38, 0.15)) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.files-header .btn-danger:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(220, 38, 38, 0.25)) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.files-header .btn-modern i {
+  font-size: 13px;
+}
+
+/* Responsive: Mobil ekranlarda sadece ikon göster */
+@media (max-width: 768px) {
+  .files-header .btn-modern .btn-text {
+    display: none;
+  }
+  
+  .files-header .btn-modern {
     padding: 6px 10px !important;
   }
 }

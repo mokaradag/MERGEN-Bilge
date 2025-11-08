@@ -241,7 +241,7 @@ server <- function(input, output, session) {
 		  style = "width: 20px; height: 20px; border-radius: 50%; object-fit: cover; margin-right: 6px;"
 		),
 		span(
-		  style = "font-weight: 600;",
+		  style = "font-weight: 600; color: #e5e5e5;",  # Açık gri renk - arka planla iyi kontrast sağlar
 		  paste0(char_info$display_name, ": ", display_name)
 		)
 	  )

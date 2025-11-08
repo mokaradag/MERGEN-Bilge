@@ -62,7 +62,16 @@ healthUI <- function(id) {
               h3(tagList(icon("shield-alt"), " Hız Sınırlama Durumu"), class = "settings-title"),
               div(class = "health-content", uiOutput(ns("health_rate_limits")))
             )
-          )
+		# Mevcut Rate Limits kartından sonra, aynı fluidRow içinde:
+		),  # Rate Limits kartının kapanışı
+		column(
+		  width = 6,
+		  div(
+			class = "health-card",
+			h3(tags$i(class = "fas fa-server"), " Sistem Kaynakları", class = "settings-title"),
+			div(class = "health-content", uiOutput(ns("health_system_resources")))
+		  )
+		)
         )
       )
     )
@@ -193,6 +202,81 @@ healthServer <- function(id, perf_tracker) {
         global_count, global_usage_pct
       ))
     })
+	
+	# Sistem kaynaklarını göster (disk, bellek, oturum bilgisi)
+	output$health_system_resources <- renderUI({
+	  health_refresh_trigger()
+	  
+	  # Disk bilgisi - uygulama dizini
+	  app_dir <- getwd()
+	  disk_info <- tryCatch({
+		if (.Platform$OS.type == "windows") {
+		  # Windows için disk bilgisi
+		  fs_stats <- system(paste0('fsutil volume diskfree ', substr(app_dir, 1, 2)), 
+							intern = TRUE, ignore.stderr = TRUE)
+		  list(available = "N/A", total = "N/A", usage_pct = 0)
+		} else {
+		  # Linux/Mac için df komutu
+		  df_output <- system(paste0("df -h '", app_dir, "' | tail -1"), intern = TRUE)
+		  parts <- strsplit(df_output, "\\s+")[[1]]
+		  list(
+			available = parts[4],
+			total = parts[2],
+			usage_pct = as.numeric(sub("%", "", parts[5]))
+		  )
+		}
+	  }, error = function(e) {
+		list(available = "N/A", total = "N/A", usage_pct = 0)
+	  })
+	  
+	  # Bellek bilgisi
+	  mem_info <- tryCatch({
+		mem_used_mb <- as.numeric(pryr::mem_used()) / 1024^2
+		sprintf("%.1f MB", mem_used_mb)
+	  }, error = function(e) {
+		"N/A"
+	  })
+	  
+	  # Oturum bilgisi
+	  session_count <- length(ls(envir = .GlobalEnv, pattern = "^session"))
+	  r_version <- paste0(R.version$major, ".", R.version$minor)
+	  
+	  # DuckDB bağlantı durumu
+	  duckdb_status <- tryCatch({
+		if (exists("helpers_rdata_lake", mode = "list")) {
+		  if (file.exists(helpers_rdata_lake$db_path)) {
+			db_size <- file.size(helpers_rdata_lake$db_path) / 1024^2
+			sprintf("✓ Aktif (%.1f MB)", db_size)
+		  } else {
+			"○ Hazır değil"
+		  }
+		} else {
+		  "○ Yüklenmedi"
+		}
+	  }, error = function(e) {
+		"✗ Hata"
+	  })
+	  
+	  HTML(sprintf(
+		'<div style="line-height: 2;">
+		  <span style="color: #a78bfa; font-weight: bold;">Disk Kullanımı:</span><br>
+		  <span style="color: #60a5fa; margin-left: 10px;">Toplam:</span> <span style="color: #fff;">%s</span><br>
+		  <span style="color: #60a5fa; margin-left: 10px;">Kullanılabilir:</span> <span style="color: #fff;">%s</span><br>
+		  <span style="color: #60a5fa; margin-left: 10px;">Doluluk:</span> <span style="color: #fff;">%d%%</span><br><br>
+		  
+		  <span style="color: #a78bfa; font-weight: bold;">Bellek & Oturum:</span><br>
+		  <span style="color: #60a5fa; margin-left: 10px;">R Bellek Kullanımı:</span> <span style="color: #fff;">%s</span><br>
+		  <span style="color: #60a5fa; margin-left: 10px;">R Sürümü:</span> <span style="color: #fff;">%s</span><br>
+		  <span style="color: #60a5fa; margin-left: 10px;">Aktif Oturum:</span> <span style="color: #fff;">%d</span><br><br>
+		  
+		  <span style="color: #a78bfa; font-weight: bold;">RData Lake:</span><br>
+		  <span style="color: #60a5fa; margin-left: 10px;">DuckDB Durumu:</span> <span style="color: #fff;">%s</span>
+		</div>',
+		disk_info$total, disk_info$available, disk_info$usage_pct,
+		mem_info, r_version, session_count,
+		duckdb_status
+	  ))
+	})
     
     observeEvent(input$refresh_health, {
       health_refresh_trigger(health_refresh_trigger() + 1)
