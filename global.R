@@ -629,21 +629,50 @@ try({
 # Word preview mode: "html" (client-side via mammoth.js) or "pdf" (server-side convert via LibreOffice)
 options(mergen.word_preview_mode = "html")
 
+primary_llm_endpoint   <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
+secondary_llm_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT", primary_llm_endpoint)
+secondary_llm_api_key  <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT_API_KEY", "")
+
 api_config <- list(
-  local_llm_endpoint = Sys.getenv("LOCAL_LLM_ENDPOINT", ""),
+  # Backwards compatibility: keep the legacy single-endpoint field
+  local_llm_endpoint = primary_llm_endpoint,
+  # Multiple endpoint support (reference by key in model map below)
+  local_llm_endpoints = list(
+    primary   = primary_llm_endpoint,
+    secondary = secondary_llm_endpoint
+  ),
+  local_llm_endpoint_keys = list(
+    primary   = NULL,
+    secondary = secondary_llm_api_key
+  ),
+  local_llm_endpoint_user_managed = c(
+    primary   = TRUE,
+    secondary = FALSE
+  ),
+  local_llm_default_endpoint_key = "primary",
   # Dropdown labels  -> technical ids (unchanged)
   local_models = c(
     "Dropdown display model 1" = "technical name 1",
     "Dropdown display model 2" = "technical name 2",
     "Dropdown display model 3" = "technical name 3",
-    "Dropdown display model 4" = "technical name 4"
+    "Dropdown display model 4" = "technical name 4",
+	"Dropdown display model 5" = "technical name 5",
+    "Dropdown display model 6" = "technical name 6"
   ),
-  # NEW: technical ids -> base folders (use ONLY the technical ids here)
+  # Map each technical id to an endpoint key (or direct URL if preferred)
+  local_model_endpoint_map = c(
+    "technical name 1" = "primary",
+    "technical name 2" = "primary",
+    "technical name 3" = "primary",
+    "technical name 4" = "primary",
+    "technical name 5" = "secondary",
+    "technical name 6" = "secondary"
+  ),
+  # technical ids -> base folders (use ONLY the technical ids here)
   local_model_paths = list(
     "technical name 1" = "\\\\main folder\\secondary folder\\repository\\top folder",
     "technical name 2" = "\\\\main folder\\secondary folder\\repository\\top folder2"
-    # "technical name 3" = "",
-    # "technical name 4" = ""
+    # "technical name 3" = ""
   )
 )
 
@@ -652,6 +681,92 @@ try({
   bases <- unique(unname(api_config$local_model_paths %||% character()))
   invisible(lapply(bases, function(p) .build_basename_index(p)))
 }, silent = TRUE)
+
+# Resolve the appropriate local endpoint for a given technical model id
+resolve_local_llm_endpoint <- function(model_id = NULL, config = api_config) {
+  default_endpoint <- config$local_llm_endpoint %||% config$local_llm$endpoint %||% ""
+  endpoints <- config$local_llm_endpoints %||% list()
+  endpoint_map <- config$local_model_endpoint_map %||% character()
+
+  pick_endpoint <- function(key) {
+    if (is.null(key) || !nzchar(key)) {
+      return(NULL)
+    }
+    from_list <- endpoints[[key]]
+    if (!is.null(from_list) && nzchar(from_list)) {
+      return(from_list)
+    }
+    if (grepl("^https?://", key, ignore.case = TRUE)) {
+      return(key)
+    }
+    NULL
+  }
+
+  # Prefer the endpoint tied to the requested model
+  if (!is.null(model_id) && nzchar(model_id)) {
+    endpoint_key <- endpoint_map[[model_id]]
+    chosen <- pick_endpoint(endpoint_key)
+    if (!is.null(chosen) && nzchar(chosen)) {
+      return(chosen)
+    }
+  }
+
+  # Next try the declared default key (if any)
+  default_key <- config$local_llm_default_endpoint_key %||% endpoint_map[[as.character(config$local_models[1])]] %||% names(endpoints)[1]
+  chosen_default <- pick_endpoint(default_key)
+  if (!is.null(chosen_default) && nzchar(chosen_default)) {
+    return(chosen_default)
+  }
+
+  # Fallback: first non-empty endpoint from the list
+  if (length(endpoints)) {
+    for (ep in endpoints) {
+      if (!is.null(ep) && nzchar(ep)) {
+        return(ep)
+      }
+    }
+  }
+
+  default_endpoint
+}
+
+# Resolve both endpoint and any default API key for the given model
+resolve_local_llm_credentials <- function(model_id = NULL, config = api_config) {
+  endpoints <- config$local_llm_endpoints %||% list()
+  endpoint_map <- config$local_model_endpoint_map %||% character()
+  key_map <- config$local_llm_endpoint_keys %||% list()
+  user_key_flags <- config$local_llm_endpoint_user_managed %||% logical()
+
+  default_key_id <- config$local_llm_default_endpoint_key %||% names(endpoints)[1] %||% ""
+  endpoint_key <- NULL
+
+  if (!is.null(model_id) && nzchar(as.character(model_id)[1])) {
+    endpoint_key <- endpoint_map[[as.character(model_id)[1]]]
+  }
+
+  if (is.null(endpoint_key) || !nzchar(endpoint_key)) {
+    endpoint_key <- default_key_id
+  }
+
+  endpoint_url <- resolve_local_llm_endpoint(model_id, config)
+  default_api_key <- key_map[[endpoint_key]] %||% ""
+
+  if (is.null(default_api_key) || is.na(default_api_key)) {
+    default_api_key <- ""
+  }
+  
+  allow_user_key <- TRUE
+  if (!is.null(endpoint_key) && nzchar(endpoint_key) && length(user_key_flags)) {
+    allow_user_key <- isTRUE(user_key_flags[[endpoint_key]])
+  }
+
+  list(
+    endpoint = endpoint_url %||% "",
+    endpoint_key = endpoint_key %||% "",
+    default_api_key = as.character(default_api_key)[1] %||% "",
+    allow_user_key = allow_user_key
+  )
+}
 
 # --- SERVICE DESK LINKS (configure via .Renviron) ---
 SERVICE_DESK <- list(
@@ -805,16 +920,16 @@ validate_api_key <- function(api_key, model_id = NULL, endpoint = NULL, timeout_
     return(list(valid = FALSE, message = "Anahtar boş."))
   }
 
-  # 1) Health endpoint varsa onu kullan
-  health_url <- Sys.getenv("LLM_HEALTH_ENDPOINT", "")
-  if (!nzchar(endpoint)) {
-    endpoint <- api_config$local_llm_endpoint %||% api_config$local_llm$endpoint %||% ""
-  }
-
-  # 2) Model belirle
+  # 1) Model belirle
   if (is.null(model_id) || !nzchar(model_id)) {
     # İlk modelin TEKNİK ID'sini kullan (api_config$local_models bir named vector)
     model_id <- as.character(api_config$local_models[1])
+  }
+  
+  # 2) Health endpoint varsa onu kullan
+  health_url <- Sys.getenv("LLM_HEALTH_ENDPOINT", "")
+  if (!nzchar(endpoint)) {
+    endpoint <- resolve_local_llm_endpoint(model_id)
   }
 
   hdrs <- httr::add_headers(
@@ -1583,13 +1698,35 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
               })
               table_md <- paste(c(header, separator, rows), collapse = "\n")
               
+			  source_table_values <- raw$source_table_values
+              if ((is.null(source_table_values) || !length(source_table_values)) && "source_table" %in% names(df)) {
+                st_vals <- unique(df$source_table)
+                st_vals <- st_vals[!is.na(st_vals)]
+                source_table_values <- sort(as.character(st_vals))
+              }
+              source_table_line <- if (!is.null(source_table_values) && length(source_table_values)) {
+                paste0("source_table değerleri: ", paste(source_table_values, collapse = ", "))
+              } else {
+                "UYARI: Bu sonuç source_table sütununu içermiyor. Lütfen sorgunuza ekleyin."
+              }
+
+              dropped_cols <- raw$dropped_all_na_columns
+              dropped_line <- if (!is.null(dropped_cols) && length(dropped_cols)) {
+                paste0("Tamamen NA olduğu için gizlenen sütunlar: ", paste(dropped_cols, collapse = ", "))
+              } else {
+                ""
+              }
+			  
               result_text <- paste0(
                 "╔════════════════════════════════════════╗\n",
                 "║  VERİTABANINDAN GELEN GERÇEK VERİ      ║\n",
                 "╚════════════════════════════════════════╝\n\n",
                 "SQL Sorgusu: ", raw$sql_effective %||% "N/A", "\n",
                 "Dönen Toplam Satır: ", nrow(df), "\n",
-                "Dönen Toplam Sütun: ", ncol(df), "\n\n",
+                "Dönen Toplam Sütun: ", ncol(df), "\n",
+                source_table_line, "\n",
+                if (nzchar(dropped_line)) paste0(dropped_line, "\n") else "",
+                "\n",
                 "⬇️ AŞAĞIDA ", nrow(df), " SATIR GERÇEK VERİ VAR ⬇️\n",
                 "BU SAYILARI AYNEN KULLAN - UYDURMA!\n\n",
                 table_md, "\n\n",
@@ -2069,22 +2206,29 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	llm_start_time <- Sys.time()
     selected_model <- current_settings$model_selection
     
-    # Handle both potential api_config structures
-    api_url <- if (!is.null(api_config$local_llm_endpoint)) {
-      api_config$local_llm_endpoint  # Your structure
-    } else if (!is.null(api_config$local_llm$endpoint)) {
-      api_config$local_llm$endpoint  # Alternative structure
-    } else {
-      stop("API endpoint not found in configuration")
-    }
+    creds <- resolve_local_llm_credentials(selected_model)
+    api_url <- creds$endpoint
+    if (!nzchar(api_url)) {
+	  stop("API endpoint not found in configuration")
+	}
     
-	# Türkçe yorum: Önce worker güvenli override anahtarını dene; yoksa session'dan al
-	api_key <- as.character(current_settings$api_key %||% current_settings$api_key_override %||% "")
-	if (!nzchar(api_key)) {
-	  sess <- current_settings$shiny_session %||% NULL
-	  if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) {
-		api_key <- as.character(sess$userData$ai_api_key)[1]
+	default_api_key <- creds$default_api_key %||% ""
+	allow_user_key <- isTRUE(creds$allow_user_key)
+	# Türkçe yorum: Önce ilgili uç için kullanıcı anahtarı kullanılabilir mi bak
+	api_key <- ""
+	if (allow_user_key) {
+	  api_key <- as.character(current_settings$api_key %||% current_settings$api_key_override %||% "")
+	  if (!nzchar(api_key)) {
+		sess <- current_settings$shiny_session %||% NULL
+		if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) {
+			  api_key <- as.character(sess$userData$ai_api_key)[1]
+		}
 	  }
+	} else {
+	  api_key <- as.character(current_settings$api_key_override %||% "")
+	}
+	if (!nzchar(api_key) && nzchar(default_api_key)) {
+	  api_key <- as.character(default_api_key)[1]
 	}
 	# Türkçe: Yerel uçlar (Ollama/LM Studio vb.) için anahtar zorunlu değil
 	is_local_noauth <- grepl("(?i)(localhost|127\\.0\\.0\\.1|ollama)", api_url)
