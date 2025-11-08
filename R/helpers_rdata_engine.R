@@ -380,10 +380,20 @@ rdata_answer_question <- function(question, limit = 100, want_chart = FALSE) {
 }
 
 # Ham SQL çalıştır (güvenli alan: sadece SELECT)
-rdata_sql_query <- function(sql, limit = 1000) {
+rdata_sql_query <- function(sql, limit = NULL) {
   con <- RDATA_ENGINE$con; stopifnot(!is.null(con))
   s <- trimws(sql)
   if (!grepl("^select\\b", tolower(s))) stop("Sadece SELECT sorgularına izin veriliyor.")
-  if (!grepl("limit\\b", tolower(s))) s <- paste0(s, " LIMIT ", as.integer(limit))
+  if (!is.null(limit)) {
+    suppressWarnings({
+      lim_val <- try(as.integer(limit), silent = TRUE)
+      if (!inherits(lim_val, "try-error")) {
+        lv <- lim_val[1]
+        if (is.finite(lv) && lv > 0 && !grepl("limit\\b", tolower(s))) {
+          s <- paste0(s, " LIMIT ", lv)
+        }
+      }
+    })
+  }
   DBI::dbGetQuery(con, s)
 }

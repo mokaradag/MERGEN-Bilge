@@ -2740,13 +2740,13 @@ table.dataTable thead th:first-child::after {
   flex: 1;
 }
 
-/* Make pairs of cards same height */
+/* Kartların yüksekliklerini eşitle ve kaydırma çubuğunu önle */
 .health-column > .health-card:first-child {
-  min-height: 320px;
+  min-height: 430px;
 }
 
 .health-column > .health-card:last-child {
-  min-height: 380px;
+  min-height: 430px;
 }
 
 .health-content pre {
@@ -4021,7 +4021,7 @@ body.font-xlarge .message-content {
 }
 
 .label-large {
-  font-size: 14px !important;
+  font-size: 16px !important;
   font-weight: 700 !important;
 }
 

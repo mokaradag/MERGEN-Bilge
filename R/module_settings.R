@@ -386,10 +386,10 @@ settingsServer <- function(id, parent_session = NULL) {
 	  }
 
 	  # 1) Doğrula (seçili modeli kullanarak; yoksa ilkini)
-	  api_url  <- api_config$local_llm_endpoint %||% api_config$local_llm$endpoint %||% ""
-		model_id <- isolate(settings$model_selection) %||% as.character(api_config$local_models[1])
-		if (!nzchar(model_id)) model_id <- as.character(api_config$local_models[1])
-		model_id <- as.character(model_id)
+	  model_id <- isolate(settings$model_selection) %||% as.character(api_config$local_models[1])
+	  if (!nzchar(model_id)) model_id <- as.character(api_config$local_models[1])
+	  model_id <- as.character(model_id)
+	  api_url  <- resolve_local_llm_endpoint(model_id)
 
 	  vres <- try(validate_api_key(key_plain, model_id = model_id, endpoint = api_url, timeout_seconds = 6), silent = TRUE)
 	  if (!inherits(vres, "try-error") && is.list(vres)) {

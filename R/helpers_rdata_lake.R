@@ -47,7 +47,7 @@ helpers_rdata_lake$parse_tool_calls_from_text_legacy <- function(text) {
       if (mm[1] > 0) {
         seg <- regmatches(p, mm)
         sql <- sub("^(?:sql\\s*=\\s*)?([\"'])([\\s\\S]*?)\\1$", "\\2", seg)
-        out[[length(out)+1]] <- list(function_name = "rdata_sql", arguments = list(sql = sql, limit = 200))
+        out[[length(out)+1]] <- list(function_name = "rdata_sql", arguments = list(sql = sql))
       }
     }
   }
@@ -94,7 +94,7 @@ helpers_rdata_lake$parse_tool_calls_from_text_legacy <- function(text) {
       qv <- if (qx[1] > 0) sub("^question\\s*=\\s*([\"'])([\\s\\S]*?)\\1$", "\\2", regmatches(p, qx)) else ""
       lx <- regexpr("limit\\s*=\\s*([0-9]+)", p, perl = TRUE)
       lv <- if (lx[1] > 0) as.integer(sub("^limit\\s*=\\s*([0-9]+)$", "\\1", regmatches(p, lx))) else 100L
-      out[[length(out)+1]] <- list(function_name = "rdata_ask", arguments = list(question = qv, limit = lv))
+      out[[length(out)+1]] <- list(function_name = "rdata_ask", arguments = list(question = qv))
     }
   }
   
@@ -114,8 +114,18 @@ helpers_rdata_lake$execute_tool <- function(name, args) {
   nm <- tolower(as.character(name %||% ""))
   if (identical(nm, "rdata_sql")) {
     sql   <- as.character(args$sql %||% "")
-    limit <- as.integer(args$limit %||% 1000)
-    return(helpers_rdata_lake$rdata_sql(sql, preview_rows = limit))
+    raw_limit <- args$limit
+    preview_rows <- NULL
+    if (!is.null(raw_limit)) {
+      suppressWarnings({
+        candidate <- try(as.integer(raw_limit), silent = TRUE)
+        if (!inherits(candidate, "try-error")) {
+          cand_val <- candidate[1]
+          if (is.finite(cand_val) && cand_val > 0) preview_rows <- cand_val
+        }
+      })
+    }
+    return(helpers_rdata_lake$rdata_sql(sql, preview_rows = preview_rows))
   } else if (identical(nm, "rdata_metrics")) {
     cat("[EXECUTE_TOOL] rdata_metrics called\n")
     cat("[EXECUTE_TOOL] args class: ", class(args), " names: ", paste(names(args), collapse=", "), "\n")
@@ -153,21 +163,31 @@ helpers_rdata_lake$execute_tool <- function(name, args) {
     result <- helpers_rdata_lake$rdata_metrics(proje_adi = pa, proje_kodu = pk)
     cat("[EXECUTE_TOOL] rdata_metrics returned: ", if(is.list(result) && !is.null(result$error)) "ERROR" else "SUCCESS", "\n")
     return(result)
-	} else if (identical(nm, "rdata_ask")) {
-	  q   <- as.character(args$question %||% "")
-	  lim <- as.integer(args$limit %||% 100)
-	  # Türkçe: Soruyu derleyip ortaya çıkan SQL'i çalıştır
-	  plan <- try(helpers_rdata_lake$rdata_compile_sql(q, limit = lim), silent = TRUE)
-	  if (inherits(plan, "try-error") || is.null(plan$sql)) {
-		# Türkçe: Derleme başarısızsa güvenli fallback kullan
-		con <- helpers_rdata_lake$db_connect(readonly = TRUE)
-		on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
-		sql <- helpers_rdata_lake$compose_dynamic_fallback_sql(con, limit = lim)
-	  } else {
-		sql <- plan$sql
-	  }
-	  res <- helpers_rdata_lake$rdata_sql(sql, preview_rows = lim)
-	  return(res)
+  } else if (identical(nm, "rdata_ask")) {
+          q   <- as.character(args$question %||% "")
+          raw_limit <- args$limit
+          lim <- NULL
+          if (!is.null(raw_limit)) {
+            suppressWarnings({
+              lim_try <- try(as.integer(raw_limit), silent = TRUE)
+              if (!inherits(lim_try, "try-error")) {
+                lim_val <- lim_try[1]
+                if (is.finite(lim_val) && lim_val > 0) lim <- lim_val
+              }
+            })
+          }
+          # Türkçe: Soruyu derleyip ortaya çıkan SQL'i çalıştır
+          plan <- try(helpers_rdata_lake$rdata_compile_sql(q, limit = lim), silent = TRUE)
+          if (inherits(plan, "try-error") || is.null(plan$sql)) {
+                # Türkçe: Derleme başarısızsa güvenli fallback kullan
+                con <- helpers_rdata_lake$db_connect(readonly = TRUE)
+                on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
+                sql <- helpers_rdata_lake$compose_dynamic_fallback_sql(con, limit = lim)
+          } else {
+                sql <- plan$sql
+          }
+          res <- helpers_rdata_lake$rdata_sql(sql, preview_rows = lim)
+          return(res)
 
   } else if (identical(nm, "rdata_column_search")) {
     # Türkçe yorum: Sütun arama aracı — model ilk keşifte bunu çağırmalı
@@ -187,7 +207,17 @@ helpers_rdata_lake$execute_tool <- function(name, args) {
     dims <- args$dimensions %||% list()
     mets <- args$metrics    %||% list()
     fil  <- args$filters    %||% list()
-    lim  <- as.integer(args$limit %||% 100)
+    raw_lim <- args$limit
+    lim <- NULL
+    if (!is.null(raw_lim)) {
+      suppressWarnings({
+        lim_try <- try(as.integer(raw_lim), silent = TRUE)
+        if (!inherits(lim_try, "try-error")) {
+          lim_val <- lim_try[1]
+          if (is.finite(lim_val) && lim_val > 0) lim <- lim_val
+        }
+      })
+    }
     return(helpers_rdata_lake$rdata_smart_query(dimensions = dims, metrics = mets, filters = fil, limit = lim))
 	
   }
@@ -296,7 +326,7 @@ helpers_rdata_lake$rdata_column_search <- function(query, limit = 10L, sample_ea
 }
 
 # ---- Akıllı sorgu: boyut/metrik adlarından SQL üret ve çalıştır ----
-helpers_rdata_lake$rdata_smart_query <- function(dimensions = NULL, metrics = NULL, filters = NULL, limit = 100L) {
+helpers_rdata_lake$rdata_smart_query <- function(dimensions = NULL, metrics = NULL, filters = NULL, limit = NULL) {
   con <- helpers_rdata_lake$db_connect(readonly = TRUE)
   on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
 
@@ -348,12 +378,25 @@ helpers_rdata_lake$rdata_smart_query <- function(dimensions = NULL, metrics = NU
 
   grp <- if (length(dims)) paste("GROUP BY", paste(sprintf('"%s"', dims), collapse = ", ")) else ""
   ord <- sprintf('ORDER BY "%s" DESC', mets[1])
-  lim <- if (is.finite(limit) && limit > 0) sprintf("LIMIT %d", as.integer(limit)[1]) else ""
+  lim_txt <- ""
+  lim_val <- NULL
+  if (!is.null(limit)) {
+    suppressWarnings({
+      lim_try <- try(as.integer(limit), silent = TRUE)
+      if (!inherits(lim_try, "try-error")) {
+        cand <- lim_try[1]
+        if (is.finite(cand) && cand > 0) {
+          lim_val <- cand
+          lim_txt <- sprintf("LIMIT %d", cand)
+        }
+      }
+    })
+  }
 
-  sql <- sprintf("SELECT %s FROM fact_universe %s %s %s %s", sel_list, wc, grp, ord, lim)
+  sql <- sprintf("SELECT %s FROM fact_universe %s %s %s %s", sel_list, wc, grp, ord, lim_txt)
 
   # Türkçe: Otomatik source_table filtresi eklensin
-  helpers_rdata_lake$rdata_sql(sql, preview_rows = as.integer(limit %||% 100))
+  helpers_rdata_lake$rdata_sql(sql, preview_rows = lim_val)
 }
 
 # Türkçe yorum: Geçici durum temizleme - her çağrı öncesi ve sonrası
@@ -422,7 +465,7 @@ helpers_rdata_lake$metric_names_from_schema <- function(avail_cols) {
 }
 
 # ---- Dinamik fallback SELECT derleyici (sütunlar tam dinamik) ----
-helpers_rdata_lake$compose_dynamic_fallback_sql <- function(con, limit = 100, desired_dims = NULL) {
+helpers_rdata_lake$compose_dynamic_fallback_sql <- function(con, limit = NULL, desired_dims = NULL) {
   # Türkçe yorum: fact_universe mevcut kolonları çek.
   info <- try(DBI::dbGetQuery(con, "PRAGMA table_info(fact_universe)"), silent = TRUE)
   avail_cols <- if (!inherits(info, "try-error") && nrow(info)) as.character(info$name) else character(0)
@@ -470,9 +513,21 @@ helpers_rdata_lake$compose_dynamic_fallback_sql <- function(con, limit = 100, de
 	  sel_list,
 	  "",  # WHERE yok
 	  if (nzchar(grp_list)) paste("GROUP BY", grp_list) else "",
-	  ord_col,
-	  if (is.finite(limit) && limit > 0) sprintf("LIMIT %d", as.integer(limit)[1]) else ""
-	)
+          ord_col,
+          {
+            lim_txt <- ""
+            if (!is.null(limit)) {
+              suppressWarnings({
+                lim_try <- try(as.integer(limit), silent = TRUE)
+                if (!inherits(lim_try, "try-error")) {
+                  lim_val <- lim_try[1]
+                  if (is.finite(lim_val) && lim_val > 0) lim_txt <- sprintf("LIMIT %d", lim_val)
+                }
+              })
+            }
+            lim_txt
+          }
+        )
 }
 
 # ---- DuckDB bağlantısı (her çağrıda aç-kapat) ----
@@ -659,10 +714,19 @@ helpers_rdata_lake$write_table <- function(con, dt, table_name) {
 }
 
 # Soru → DuckDB SQL derleyici (SCHEMA ve fact_universe üstünden)
-helpers_rdata_lake$rdata_compile_sql <- function(question, limit = 100) {
-  # Varsayılanlar
-	limit <- as.integer(limit)[1]
-	if (!is.finite(limit) || limit <= 0) limit <- getOption("mergen.rdata.compile_default_limit", 1000)  # Türkçe: daha yüksek varsayılan
+helpers_rdata_lake$rdata_compile_sql <- function(question, limit = NULL) {
+  lim_txt <- ""
+  if (!is.null(limit)) {
+    suppressWarnings({
+      lim_try <- try(as.integer(limit), silent = TRUE)
+      if (!inherits(lim_try, "try-error")) {
+        lim_val <- lim_try[1]
+        if (is.finite(lim_val) && lim_val > 0) {
+          lim_txt <- sprintf("LIMIT %d", lim_val)
+        }
+      }
+    })
+  }
 
   # Bağlantı ve fact_universe kontrolü
   con <- helpers_rdata_lake$db_connect(readonly = TRUE)
@@ -817,14 +881,14 @@ helpers_rdata_lake$rdata_compile_sql <- function(question, limit = 100) {
     %s
     %s
     ORDER BY %s DESC
-    LIMIT %d
+    %s
   ",
     sel_list,
     from_tbl,
     wc,
     if (nzchar(grp_list)) paste("GROUP BY", grp_list) else "",
     ord_col,
-    limit
+    lim_txt
   )
 
   list(sql = sql, dims = dims, metrics = mets, from = from_tbl)
@@ -1743,8 +1807,7 @@ helpers_rdata_lake$get_openai_tools_extra <- function() {
           parameters = list(
             type = "object",
             properties = list(
-              query = list(type = "string", description = "Aranacak kelime (örn: 'iscilik', 'proje', 'yil')"),
-              limit = list(type = "integer", description = "Maksimum sonuç", default = 10)
+              query = list(type = "string", description = "Aranacak kelime (örn: 'iscilik', 'proje', 'yil')")
             ),
             required = list("query")
           )
@@ -1754,7 +1817,7 @@ helpers_rdata_lake$get_openai_tools_extra <- function() {
         type = "function",
         `function` = list(
           name = "rdata_smart_query",
-          description = "Akıllı sorgu: boyut ve metrik adlarını (yaklaşık) ver, SQL otomatik oluşturulur",
+          description = "Akıllı sorgu: boyut ve metrik adlarını (yaklaşık) ver, SQL otomatik oluşturulur (LIMIT kullanma, source_table alanını dahil et)",
           parameters = list(
             type = "object",
             properties = list(
@@ -1762,8 +1825,7 @@ helpers_rdata_lake$get_openai_tools_extra <- function() {
                                 description = "Boyut sütunları (örn: ['proje', 'yil'])"),
               metrics    = list(type = "array", items = list(type = "string"),
                                 description = "Metrik sütunları (örn: ['iscilik', 'kalan'])"),
-              filters    = list(type = "object", description = "Filtreler (örn: {yil: 2024})"),
-              limit      = list(type = "integer", default = 100)
+              filters    = list(type = "object", description = "Filtreler (örn: {yil: 2024})")
             ),
             required = list()  # Türkçe: zorunlu alan yok; model içeriğe göre doldurur
           )
@@ -1773,12 +1835,11 @@ helpers_rdata_lake$get_openai_tools_extra <- function() {
         type = "function",
         `function` = list(
           name = "rdata_sql",
-          description = "DuckDB SQL sorgusu çalıştır (fact_universe tablosu üzerinden). SÜTUN ADLARINI TAM OLARAK YAZIN!",
+          description = "DuckDB SQL sorgusu çalıştır (fact_universe). LIMIT/TOP yok, source_table sütununu da seç.",
           parameters = list(
             type = "object",
             properties = list(
-              sql          = list(type = "string",  description = "SELECT sorgusu"),
-              preview_rows = list(type = "integer", description = "Önizleme satır sayısı", default = 50)
+              sql          = list(type = "string",  description = "SELECT sorgusu")
             ),
             required = list("sql")
           )
@@ -1807,8 +1868,7 @@ helpers_rdata_lake$get_openai_tools_extra <- function() {
           parameters = list(
             type = "object",
             properties = list(
-              question = list(type = "string",  description = "Doğal dilde soru"),
-              limit    = list(type = "integer", description = "Sonuç limiti", default = 100)
+              question = list(type = "string",  description = "Doğal dilde soru")
             ),
             required = list("question")
           )
@@ -1863,19 +1923,24 @@ helpers_rdata_lake$parse_tool_calls_from_text <- function(txt) {
 # rData araçları için metinsel JSON çağrı yönergesi
 helpers_rdata_lake$get_rdata_tools_prompt <- function() {
   paste(
-    "Aşağıdaki rData araçlarını çağır. Tek bir JSON araç çağrısı üret; ardından araç sonucuyla Türkçe yanıt yaz.",
+    "Sadece aşağıdaki rData araçlarını kullan. Tek bir JSON araç çağrısı üret ve aracın döndürdüğü TÜM satırları Türkçe açıkla.",
+    "",
+    "Kırmızı çizgiler:",
+    "- fact_universe üzerindeki sorgularda LIMIT/TOP/SAMPLE benzeri kısıtlar kullanma; tüm veriyi işle.",
+    "- Her sorguda source_table sütununu da getir ve yanıtta hangi tablolardan geldiğini belirt.",
+    "- Sorunun gerektirdiği tüm filtreleme, grupla, sıralama veya toplulaştırmaları SQL içinde uygula.",
+    "- Tamamen NA olan sütunları sonuçta gösterme.",
+    "- Yalnızca veritabanından gelen gerçek değerleri raporla; uydurma bilgi ekleme.",
     "",
     "Araçlar:",
-    "1) rdata_search(text, limit=10) — RData Lake katalogunda tablo/nesne arar.",
-    "2) rdata_sql(sql, limit=10000) — DuckDB uyumlu SELECT çalıştırır (genelde 'fact_universe' üzerinden). Limit parametresi kaç satır döneceğini belirler.",
-    "3) rdata_metrics(proje_adi, proje_kodu) — temel proje metriklerini döndürür.",
+    "1) rdata_search(text) — RData Lake kataloğunda tablo/sütun ara (SQL üretmez).",
+    "2) rdata_sql(sql) — DuckDB uyumlu SELECT çalıştırır (varsayılan tablo: fact_universe).",
+    "3) rdata_metrics(proje_adi, proje_kodu) — belirli proje metriklerini getirir.",
     "",
-    "Kurallar:",
-    "- Bir turda sadece tek bir araç çağır.",
-    "- Metinlerde tek tırnak kullan; sütun adlarını birebir yaz.",
-    "- JSON örneği:",
-    "{\"name\":\"rdata_sql\",\"arguments\":{\"sql\":\"SELECT ProjeAdi, SUM(GerceklesenIscilik_sa) FROM fact_universe WHERE Yil=2024 GROUP BY ProjeAdi\",\"limit\":10000}}",
-    "- Dosya (Excel/CSV) araçlarını KULLANMA; sadece rdata_* araçlarını kullan.",
+    "JSON örneği:",
+    "{\"name\":\"rdata_sql\",\"arguments\":{\"sql\":\"SELECT source_table, ... FROM fact_universe WHERE ...\"}}",
+    "",
+    "Dosya (Excel/CSV) araçlarını KULLANMA; sadece rdata_* araçlarını kullan.",
     sep = "\n"
   )
 }
@@ -1887,7 +1952,7 @@ rdata_metrics <- function(...) { cat("[RDATA_LAKE] shim rdata_metrics(file) -> l
 
 # --- Uyumluluk: eski rdata_sql_query API'sini destekle ---
 if (!exists("rdata_sql_query", inherits = FALSE)) {
-  rdata_sql_query <- function(sql, limit = 1000) {
+  rdata_sql_query <- function(sql, limit = NULL) {
     # Türkçe yorum: Lake'in rdata_sql çıktısını data.frame'e çevirip döndür.
     res <- helpers_rdata_lake$rdata_sql(sql, preview_rows = limit)
     if (is.list(res) && !is.null(res$error)) stop(res$error)
@@ -2032,7 +2097,7 @@ helpers_rdata_lake$inject_source_table_filter <- function(sql_txt) {
 }
 
 # --- Ana: SQL çalıştır + kimlikleri şemaya göre yeniden yaz + standart çıktı ---
-helpers_rdata_lake$rdata_sql <- function(sql, preview_rows = 10000L) {
+helpers_rdata_lake$rdata_sql <- function(sql, preview_rows = NULL) {
   # Türkçe: Gerçek DuckDB sorgusu çalıştır ve 'preview' olarak döndür.
   if (!is.character(sql) || !nzchar(sql[1])) {
     return(list(error = "SQL boş."))
@@ -2044,9 +2109,16 @@ helpers_rdata_lake$rdata_sql <- function(sql, preview_rows = 10000L) {
 
   # Savunmacı: LIMIT yoksa, sadece önizleme amaçıyla üst limite zorla (force_preview_limit TRUE ise)
   if (isTRUE(getOption("mergen.rdata.force_preview_limit", FALSE))) {
-    # Türkçe: SELECT gövdesine otomatik LIMIT ekleme (varsa dokunma)
-    if (!grepl("(?i)\\bLIMIT\\b", sql_txt, perl = TRUE)) {
-      sql_txt <- paste(sql_txt, sprintf("LIMIT %d", as.integer(preview_rows %||% 100)))
+    if (!is.null(preview_rows)) {
+      suppressWarnings({
+        forced_limit <- try(as.integer(preview_rows), silent = TRUE)
+        if (!inherits(forced_limit, "try-error")) {
+          forced_val <- forced_limit[1]
+          if (is.finite(forced_val) && forced_val > 0 && !grepl("(?i)\\bLIMIT\\b", sql_txt, perl = TRUE)) {
+            sql_txt <- paste(sql_txt, sprintf("LIMIT %d", forced_val))
+          }
+        }
+      })
     }
   }
 
@@ -2092,7 +2164,23 @@ if (!inherits(df, "try-error")) {
     ))
   }
 
-  # Türkçe: Tüm veriyi döndür (artık limit yok)
+  # Türkçe: Tüm veriyi döndür (artık limit yok) ve tamamen NA olan sütunları atla
+  source_tables <- character(0)
+  removed_all_na <- character(0)
+  if ("source_table" %in% names(df)) {
+    source_tables <- unique(df$source_table)
+    source_tables <- source_tables[!is.na(source_tables)]
+    source_tables <- sort(as.character(source_tables))
+  }
+
+  if (is.data.frame(df) && nrow(df) > 0) {
+    na_mask <- vapply(df, function(col) all(is.na(col)), logical(1L))
+    removed_all_na <- names(na_mask)[na_mask]
+    if (any(na_mask)) {
+      df <- df[, !na_mask, drop = FALSE]
+    }
+  }
+  
   n_all <- nrow(df)
   prev <- df  # Türkçe: Artık kesme yapmıyoruz, tüm sonucu döndür
 
@@ -2103,6 +2191,8 @@ if (!inherits(df, "try-error")) {
     row_count = n_all,
     column_count = ncol(df),
     preview = as.data.frame(prev, stringsAsFactors = FALSE),
-    `sonuç_önizleme` = as.data.frame(prev, stringsAsFactors = FALSE)  # Türkçe: Gerçek veriyi içeren alan eklendi
+    `sonuç_önizleme` = as.data.frame(prev, stringsAsFactors = FALSE),  # Türkçe: Gerçek veriyi içeren alan eklendi
+    source_table_values = source_tables,
+    dropped_all_na_columns = removed_all_na
   )
 }
