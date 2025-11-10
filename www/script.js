@@ -1944,6 +1944,11 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
   const incoming = new Image();
   incoming.className = 'character-image';
   incoming.alt = data.displayName || '';
+  if ('decoding' in incoming) {
+    incoming.decoding = 'async';
+  }
+  incoming.loading = 'lazy';
+  incoming.style.willChange = 'opacity, transform, filter';
 
   incoming.onload = function() {
     if (state.pendingImage !== incoming) {

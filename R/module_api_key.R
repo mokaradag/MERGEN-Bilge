@@ -136,7 +136,13 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         save_user_api_key(system_username, key_plain)
         session$userData$ai_api_key <- key_plain
         removeModal()
-        showToast(session, "API anahtarı kaydedildi.", "success")
+        success_msg <- vres$message %||% "API anahtarı kaydedildi."
+        if (!nzchar(success_msg)) {
+          success_msg <- "API anahtarı kaydedildi."
+        } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
+          success_msg <- paste("API anahtarı kaydedildi —", success_msg)
+        }
+        showToast(session, success_msg, "success")
       }, error = function(e) {
         showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
       })

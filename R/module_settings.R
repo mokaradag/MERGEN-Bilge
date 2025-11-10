@@ -15,99 +15,117 @@ settingsUI <- function(id) {
         .character-selector-card {
           background: var(--background-light);
           border: 1px solid var(--border-color);
-          border-radius: 12px;
-          padding: 24px;
-          margin-bottom: 24px;
+          border-radius: 16px;
+          padding: 28px;
+          margin-bottom: 32px;
+          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
         }
         
         .character-selector-buttons {
           display: flex;
-          gap: 8px;
-          margin-bottom: 24px;
-          background: var(--background-dark);
-          padding: 6px;
-          border-radius: 10px;
+          gap: 12px;
+          margin-bottom: 28px;
+          background: rgba(12, 13, 24, 0.9);
+          padding: 10px;
+          border-radius: 14px;
+          box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35);
         }
         
         .character-btn {
           flex: 1;
-          padding: 12px 16px;
-          border: none;
-          border-radius: 6px;
-          background: transparent;
+          padding: 16px 20px;
+          border: 1px solid transparent;
+          border-radius: 10px;
+          background: linear-gradient(145deg, rgba(32, 33, 52, 0.95), rgba(18, 19, 34, 0.92));
           color: var(--text-secondary);
-          font-size: 14px;
+          font-size: 15px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
           position: relative;
+		  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
         }
         
         .character-btn:hover {
+		  transform: translateY(-2px);
+          box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
           color: var(--text-primary);
         }
         
         .character-btn.active {
-          color: white !important;
+          color: #ffffff !important;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 12px currentColor;
+          border-color: currentColor;
         }
         
         .character-display-area {
           display: grid;
-          grid-template-columns: 3fr 9fr;
-          gap: 24px;
-          min-height: 280px;
+          grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+          gap: 32px;
+          align-items: stretch;
+          min-height: 360px;
         }
         
         .character-image-container {
+		  position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--background-dark);
-          border-radius: 12px;
-          padding: 16px;
           overflow: hidden;
-          position: relative;
-		  min-height: 260px;
+          min-height: 360px;
+          border-radius: 18px;
+          background: radial-gradient(circle at 20% 20%, rgba(124, 77, 255, 0.25), transparent 55%),
+                      radial-gradient(circle at 80% 30%, rgba(58, 171, 255, 0.2), transparent 60%),
+                      rgba(8, 9, 18, 0.95);
+          box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.35), 0 18px 45px rgba(0, 0, 0, 0.45);
         }
         
         .character-image {
           position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
+          inset: -6%;
+          width: 112%;
+          height: 112%;
           object-fit: contain;
           opacity: 0;
-          transition: opacity 0.6s ease;
+          transform: scale(1.08);
+          transition: opacity 0.65s ease, transform 0.85s ease, filter 0.85s ease;
+          filter: drop-shadow(0 20px 55px rgba(0, 0, 0, 0.45));
+          will-change: opacity, transform, filter;
         }
 
         .character-image.is-visible {
           opacity: 1;
+		  transform: scale(1);
         }
 
         .character-image.is-exiting {
           opacity: 0;
+		  transform: scale(0.95);
+          filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.3));
         }
         
         .character-info-container {
           display: flex;
           flex-direction: column;
           justify-content: center;
-          background: #000000;
-          border-radius: 12px;
-          padding: 24px;
+          background: linear-gradient(160deg, rgba(8, 9, 18, 0.96), rgba(8, 11, 26, 0.9));
+          border-radius: 18px;
+          padding: 32px;
+          box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35);
         }
         
         .character-title {
-          font-size: 18px;
+		  font-size: 20px;
           font-weight: 700;
-          margin-bottom: 16px;
+          margin-bottom: 18px;
           opacity: 0;
           animation: fadeIn 0.6s ease 0.2s forwards;
         }
         
         .character-lore {
-          font-size: 15px;
-          line-height: 1.7;
+          font-size: 16px;
+          line-height: 1.8;
           color: var(--text-secondary);
           opacity: 0;
           animation: typingFade 1s ease 0.5s forwards;
@@ -120,8 +138,18 @@ settingsUI <- function(id) {
         @keyframes typingFade {
           to { opacity: 1; }
         }
+
+        @media (max-width: 1280px) {
+          .character-display-area {
+            grid-template-columns: 1fr;
+            gap: 24px;
+          }
+          .character-image-container {
+            min-height: 320px;
+          }
+        }
 		
-		/* ----- Modal close button shape harmonization ----- */
+        /* ----- Modal close button shape harmonization ----- */
 		.modal-footer .btn-default,
 		.modal-footer .btn-secondary,
 		.modal-footer button,
@@ -415,10 +443,17 @@ settingsServer <- function(id, parent_session = NULL) {
 
 		# 2) Kaydet + oturuma yaz (hata güvenli)
 		tryCatch({
-		  save_user_api_key(session$userData$system_username, key_plain)
+		  system_username <- session$userData$system_username %||% Sys.info()[["user"]]
+		  save_user_api_key(system_username, key_plain)
 		  session$userData$ai_api_key <- key_plain
 		  removeModal()
-		  showToast(session, "API anahtarı güncellendi.", "success")
+		  success_msg <- vres$message %||% "API anahtarı güncellendi."
+		  if (!nzchar(success_msg)) {
+			success_msg <- "API anahtarı güncellendi."
+		  } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
+			success_msg <- paste("API anahtarı güncellendi —", success_msg)
+		  }
+		  showToast(session, success_msg, "success")
 		}, error = function(e) {
 		  showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
 		})

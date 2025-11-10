@@ -936,6 +936,51 @@ validate_api_key <- function(api_key, model_id = NULL, endpoint = NULL, timeout_
     `Content-Type` = "application/json",
     `Authorization` = paste("Bearer", api_key)
   )
+  
+  # Helper: build a lightweight models URL (fast validation)
+  derive_models_url <- function(ep) {
+    if (!nzchar(ep)) {
+      return("")
+    }
+
+    url_no_query <- sub("\\?.*$", "", ep)
+    url_no_query <- sub("/+$", "", url_no_query)
+
+    if (grepl("/v1/", url_no_query, fixed = TRUE)) {
+      sub("(/v1/).*", "\\1models", url_no_query)
+    } else {
+      paste0(url_no_query, "/v1/models")
+    }
+  }
+
+  models_url <- derive_models_url(endpoint)
+  model_fail_detail <- ""
+
+  if (nzchar(models_url)) {
+    res_models <- try(
+      httr::GET(models_url, hdrs, httr::accept_json(), httr::timeout(min(timeout_seconds, 4))),
+      silent = TRUE
+    )
+
+    if (!inherits(res_models, "try-error")) {
+      sc_models <- httr::status_code(res_models)
+      if (sc_models == 200) {
+        return(list(valid = TRUE, message = "Anahtar doğrulandı (model listesi)."))
+      }
+      if (sc_models %in% c(401, 403)) {
+        return(list(valid = FALSE, message = "Anahtar reddedildi (401/403)."))
+      }
+      if (sc_models == 429) {
+        model_fail_detail <- "Model listesi isteği hız limitine takıldı (429)."
+      } else if (sc_models >= 500) {
+        model_fail_detail <- paste("Model listesi isteği sunucu hatası verdi:", sc_models)
+      } else {
+        model_fail_detail <- paste("Model listesi isteği beklenmedik yanıt döndürdü:", sc_models)
+      }
+    } else {
+      model_fail_detail <- "Model listesi isteğine ulaşılamadı (bağlantı/timeout)."
+    }
+  }
 
   # Önce health (GET) dene (varsa)
   if (nzchar(health_url)) {
@@ -957,12 +1002,16 @@ validate_api_key <- function(api_key, model_id = NULL, endpoint = NULL, timeout_
     model = model_id,
     messages = list(list(role = "system", content = "health check")),
     stream = FALSE,
-    temperature = 0
+    temperature = 0,
+    max_tokens = 1,
+    top_p = 1,
+    n = 1
   )
 
   res2 <- try(httr::POST(endpoint, hdrs, body = body, encode = "json", httr::timeout(timeout_seconds)), silent = TRUE)
   if (inherits(res2, "try-error")) {
-    return(list(valid = NA, message = "Doğrulama yapılamadı (bağlantı/timeout)."))
+    extra <- if (nzchar(model_fail_detail)) paste(model_fail_detail, "→ sohbet doğrulaması da başarısız oldu.") else "Doğrulama yapılamadı (bağlantı/timeout)."
+    return(list(valid = NA, message = extra))
   }
 
   sc2 <- httr::status_code(res2)
@@ -970,7 +1019,11 @@ validate_api_key <- function(api_key, model_id = NULL, endpoint = NULL, timeout_
   if (sc2 %in% c(401, 403)) return(list(valid = FALSE, message = "Anahtar reddedildi (401/403)."))
   if (sc2 == 429)  return(list(valid = NA,   message = "Hız limiti (429) — daha sonra deneyin."))
   if (sc2 >= 500)  return(list(valid = NA,   message = paste("Sunucu hatası:", sc2)))
-  return(list(valid = NA, message = paste("Beklenmedik durum:", sc2)))
+  msg <- paste("Beklenmedik durum:", sc2)
+  if (nzchar(model_fail_detail)) {
+    msg <- paste(model_fail_detail, "→", msg)
+  }
+  return(list(valid = NA, message = msg))
 }
 
 # ---------------------------------------------------------------------------
