@@ -1949,6 +1949,10 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
   }
   incoming.loading = 'lazy';
   incoming.style.willChange = 'opacity, transform, filter';
+  incoming.style.height = '100%';
+  incoming.style.maxHeight = '100%';
+  incoming.style.width = 'auto';
+  incoming.style.maxWidth = 'none';
 
   incoming.onload = function() {
     if (state.pendingImage !== incoming) {

@@ -99,7 +99,7 @@ server <- function(input, output, session) {
   # --- Core Reactive Values for the Application ---
 	values <- reactiveValues(
 	  messages = list(),
-	  saved_chats = load_chats_from_db(current_user_id),
+	  saved_chats = load_chats_from_db(current_user_id, include_messages = FALSE),
 	  show_welcome = TRUE,
 	  current_chat_id = NULL,
 	  last_request_time = NULL,
@@ -721,7 +721,7 @@ observeEvent(input$source_file_clicked, {
 	  tryCatch({
 		new_id <- create_new_chat_in_db(current_user_id, initial_title = chat_title)
 		values$current_chat_id <- new_id
-		values$saved_chats <- load_chats_from_db(current_user_id)
+		values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
 		saved_chats_data$refresh()
 	  }, error = function(e) {
 		showToast(session, paste("Yeni sohbet oluşturulamadı:", e$message), "error")
@@ -1341,19 +1341,42 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   
   observeEvent(saved_chats_data$load_chat_id(), {
 	chat_id <- saved_chats_data$load_chat_id()
-	
+
 	# Prevent duplicate loads
 	if (load_chat_in_progress()) {
 	  return()
 	}
-	
+
 	load_chat_in_progress(TRUE)
-	
+
 	chat_to_load <- values$saved_chats[[chat_id]]
+	if (!is.null(chat_to_load) && (is.null(chat_to_load$messages) || length(chat_to_load$messages) == 0)) {
+	  detail <- tryCatch(
+		load_chat_messages_from_db(chat_id),
+		error = function(e) {
+		  warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
+		  NULL
+		}
+	  )
+	  if (!is.null(detail)) {
+		if (!is.null(detail$title) && !is.na(detail$title)) {
+		  chat_to_load$title <- detail$title
+		}
+		if (!is.null(detail$timestamp) && !is.na(detail$timestamp)) {
+		  chat_to_load$timestamp <- detail$timestamp
+		}
+		chat_to_load$messages <- detail$messages
+		chat_to_load$message_count <- detail$message_count
+		saved_copy <- values$saved_chats
+		saved_copy[[chat_id]] <- chat_to_load
+		values$saved_chats <- saved_copy
+	  }
+	}
+
 	if (!is.null(chat_to_load)) {
 	  removeUI(selector = "#chat_content_container > *", multiple = TRUE)
-	  
-	  values$messages <- chat_to_load$messages
+
+	  values$messages <- chat_to_load$messages %||% list()
 	  all_feedback <- load_feedback_from_db(current_user_id)
 	  values$liked_messages <- all_feedback$liked
 	  values$disliked_messages <- all_feedback$disliked
@@ -1443,8 +1466,8 @@ observeEvent(file_manager_data$get_file_to_preview(), {
 	chat_id <- saved_chats_data$delete_chat_id()
 	req(chat_id)
 	delete_chat_from_db(chat_id, current_user_id)
-  
-	values$saved_chats <- load_chats_from_db(current_user_id)
+
+	values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
 	saved_chats_data$refresh()
   
   }, ignoreInit = TRUE)

@@ -1,4 +1,4 @@
-# helpers_database.R
+# R/helpers_database.R
 # Complete, corrected helpers for DB access and worker-safe operations.
 # - Never serialize pool/DBI external pointers into workers.
 # - Worker functions create their own DB connections (no 'pool' needed).
@@ -215,14 +215,43 @@ get_or_create_user <- function(username) {
 
 # Load chats and their messages for a user (returns list)
 # process_message_content() fallback is provided if missing.
-load_chats_from_db <- function(user_id) {
+load_chats_from_db <- function(user_id, include_messages = TRUE) {
   stopifnot(!is.null(user_id))
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
+  
+  if (!isTRUE(include_messages)) {
+    query <- "
+      SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,
+             COUNT(m.MessageID) AS MessageCount,
+             MAX(m.MessageTimestamp) AS LastMessageTimestamp
+      FROM MB_Chats c
+      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+      WHERE c.UserID = ? AND c.IsDeleted = 0
+      GROUP BY c.ChatID, c.ChatTitle, c.CreateTimestamp
+      ORDER BY c.CreateTimestamp DESC
+    "
+    summary_data <- dbGetQuery(conn, query, params = list(user_id))
+    if (nrow(summary_data) == 0) return(list())
+
+    formatted <- lapply(seq_len(nrow(summary_data)), function(i) {
+      row <- summary_data[i, ]
+      msg_count <- ifelse(is.na(row$MessageCount), 0L, row$MessageCount)
+      list(
+        title = row$ChatTitle,
+        messages = NULL,
+        timestamp = row$CreateTimestamp,
+        last_message_timestamp = row$LastMessageTimestamp,
+        message_count = as.integer(msg_count)
+      )
+    })
+    names(formatted) <- as.character(summary_data$ChatID)
+    return(formatted)
+  }
 
   query <- "
-    SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp, 
+    SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,
            m.MessageID, m.MessageContent, m.MessageType, m.MessageTimestamp, m.MessageOrder
     FROM MB_Chats c
     JOIN MB_Messages m ON c.ChatID = m.ChatID
@@ -235,28 +264,7 @@ load_chats_from_db <- function(user_id) {
   chat_list <- split(all_data, all_data$ChatID)
 
   formatted_chats <- lapply(chat_list, function(chat_df) {
-    messages <- lapply(seq_len(nrow(chat_df)), function(i) {
-      row <- chat_df[i, ]
-      processed <- if (exists("process_message_content", mode = "function")) {
-        process_message_content(row$MessageContent, row$MessageType)
-      } else {
-        list(html = row$MessageContent, has_code = FALSE)
-      }
-      
-      # Convert timestamp to GMT+3 (Turkey Time)
-      timestamp_gmt3 <- row$MessageTimestamp
-      attr(timestamp_gmt3, "tzone") <- "Europe/Istanbul"  # This ensures GMT+3 for Turkey
-      
-      list(
-        id = as.character(row$MessageID),
-        db_id = as.integer(row$MessageID),
-        content = row$MessageContent,
-        html_content = processed$html,
-        has_code = processed$has_code,
-        type = row$MessageType,
-        timestamp = format(timestamp_gmt3, "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
-      )
-    })
+	messages <- format_chat_messages(chat_df)
     list(
       title = chat_df$ChatTitle[1],
       messages = messages,
@@ -266,6 +274,67 @@ load_chats_from_db <- function(user_id) {
   })
   names(formatted_chats) <- names(chat_list)
   return(formatted_chats)
+}
+
+format_chat_messages <- function(chat_df) {
+  lapply(seq_len(nrow(chat_df)), function(i) {
+    row <- chat_df[i, ]
+    processed <- if (exists("process_message_content", mode = "function")) {
+      process_message_content(row$MessageContent, row$MessageType)
+    } else {
+      list(html = row$MessageContent, has_code = FALSE)
+    }
+
+    timestamp_gmt3 <- row$MessageTimestamp
+    attr(timestamp_gmt3, "tzone") <- "Europe/Istanbul"
+
+    list(
+      id = as.character(row$MessageID),
+      db_id = as.integer(row$MessageID),
+      content = row$MessageContent,
+      html_content = processed$html,
+      has_code = processed$has_code,
+      type = row$MessageType,
+      timestamp = format(timestamp_gmt3, "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
+    )
+  })
+}
+
+load_chat_messages_from_db <- function(chat_id) {
+  stopifnot(!is.null(chat_id))
+
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info))
+
+  query <- "
+    SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+           m.MessageType, m.MessageTimestamp, m.MessageOrder
+    FROM MB_Chats c
+    LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+    WHERE c.ChatID = ?
+    ORDER BY m.MessageOrder ASC
+  "
+
+  chat_param <- suppressWarnings(as.integer(chat_id))
+  if (is.na(chat_param)) {
+    chat_param <- chat_id
+  }
+
+  chat_df <- dbGetQuery(conn, query, params = list(chat_param))
+  if (nrow(chat_df) == 0) {
+    return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
+  }
+
+  messages_df <- chat_df[!is.na(chat_df$MessageID), , drop = FALSE]
+  messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df) else list()
+
+  list(
+    title = chat_df$ChatTitle[1],
+    timestamp = chat_df$CreateTimestamp[1],
+    messages = messages,
+    message_count = length(messages)
+  )
 }
 
 # Create new chat, return ChatID integer (UPDATED with validation)

@@ -64,16 +64,16 @@ settingsUI <- function(id) {
           grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
           gap: 32px;
           align-items: stretch;
-          min-height: 360px;
+          min-height: 600px;
         }
         
         .character-image-container {
 		  position: relative;
           display: flex;
-          align-items: center;
+          align-items: stretch;
           justify-content: center;
           overflow: hidden;
-          min-height: 360px;
+          min-height: 600px;
           border-radius: 18px;
           background: radial-gradient(circle at 20% 20%, rgba(124, 77, 255, 0.25), transparent 55%),
                       radial-gradient(circle at 80% 30%, rgba(58, 171, 255, 0.2), transparent 60%),
@@ -83,25 +83,27 @@ settingsUI <- function(id) {
         
         .character-image {
           position: absolute;
-          inset: -6%;
-          width: 112%;
-          height: 112%;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%) scale(1.04);
+          height: 100%;
+          width: auto;
+          max-width: none;
           object-fit: contain;
           opacity: 0;
-          transform: scale(1.08);
-          transition: opacity 0.65s ease, transform 0.85s ease, filter 0.85s ease;
+          transition: opacity 0.6s ease, transform 0.85s ease, filter 0.85s ease;
           filter: drop-shadow(0 20px 55px rgba(0, 0, 0, 0.45));
           will-change: opacity, transform, filter;
         }
 
         .character-image.is-visible {
           opacity: 1;
-		  transform: scale(1);
+          transform: translate(-50%, -50%) scale(1);
         }
 
         .character-image.is-exiting {
           opacity: 0;
-		  transform: scale(0.95);
+          transform: translate(-50%, -50%) scale(0.96);
           filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.3));
         }
         
@@ -109,6 +111,7 @@ settingsUI <- function(id) {
           display: flex;
           flex-direction: column;
           justify-content: center;
+		  min-height: 600px;
           background: linear-gradient(160deg, rgba(8, 9, 18, 0.96), rgba(8, 11, 26, 0.9));
           border-radius: 18px;
           padding: 32px;
@@ -143,9 +146,11 @@ settingsUI <- function(id) {
           .character-display-area {
             grid-template-columns: 1fr;
             gap: 24px;
+			min-height: 480px;
           }
-          .character-image-container {
-            min-height: 320px;
+          .character-image-container,
+          .character-info-container {
+            min-height: 480px;
           }
         }
 		

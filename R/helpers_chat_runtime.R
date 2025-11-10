@@ -79,6 +79,43 @@ chat_add_message <- function(session, values, settings_data, output,
   }
 
   values$messages <- append(values$messages, list(new_message))
+  
+  if (!is.null(values$current_chat_id)) {
+    chat_key <- as.character(values$current_chat_id)
+    saved_chats_copy <- values$saved_chats
+    if (is.null(saved_chats_copy) || !is.list(saved_chats_copy)) {
+      saved_chats_copy <- list()
+    }
+
+    entry <- saved_chats_copy[[chat_key]]
+    if (is.null(entry)) {
+      entry <- list(
+        title = NULL,
+        timestamp = Sys.time(),
+        messages = list(),
+        message_count = 0L
+      )
+    }
+
+    existing_messages <- entry$messages
+    if (is.null(existing_messages) || !is.list(existing_messages)) {
+      existing_messages <- list()
+    }
+
+    entry$messages <- append(existing_messages, list(new_message))
+    entry$message_count <- length(entry$messages)
+    entry$last_message_timestamp <- Sys.time()
+
+    if (is.null(entry$timestamp) || is.na(entry$timestamp)) {
+      entry$timestamp <- Sys.time()
+    }
+    if (is.null(entry$title) || is.na(entry$title)) {
+      entry$title <- "Yeni Söyleşi"
+    }
+
+    saved_chats_copy[[chat_key]] <- entry
+    values$saved_chats <- saved_chats_copy
+  }
 
   is_last_user_msg <- (new_message$type == "user" && length(values$messages) > 0 &&
                          tail(values$messages, 1)[[1]]$id == new_message$id)
@@ -263,9 +300,6 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
 chat_start_new_chat <- function(session, values, saved_chats_data, session_files, filePreview, current_user_id) {
   removeUI(selector = "#chat_content_container > *", multiple = TRUE)
-
-  values$saved_chats <- load_chats_from_db(current_user_id)
-  saved_chats_data$refresh()
 
   values$messages <- list()
   values$current_chat_id <- NULL
