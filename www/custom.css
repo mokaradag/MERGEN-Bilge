@@ -5104,11 +5104,137 @@ body.font-xlarge {
 
 /* Responsive: Mobil ekranlarda sadece ikon göster */
 @media (max-width: 768px) {
-  .chat-header-right .btn-modern .btn-text {
+  .files-header .btn-modern .btn-text {
     display: none;
   }
   
-  .chat-header-right .btn-modern {
+  .files-header .btn-modern {
+    padding: 6px 10px !important;
+  }
+}
+
+/* ============================================
+   Söyleşi Geçmişi Header Button Stilleri
+   ============================================ */
+
+/* Söyleşi Geçmişi sayfasındaki butonlar için Ana Söyleşi ile aynı stil */
+.history-actions .btn-modern {
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Yenile butonu - Turuncu tema */
+.history-actions .btn-primary {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.25), rgba(247, 147, 30, 0.15)) !important;
+  color: #ff9966 !important;
+  border-color: rgba(255, 107, 53, 0.3) !important;
+}
+
+.history-actions .btn-primary:hover {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.35), rgba(247, 147, 30, 0.25)) !important;
+  border-color: rgba(255, 107, 53, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Bugün butonu - Mavi tema */
+.history-actions .btn-info {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(99, 102, 241, 0.15)) !important;
+  color: #60a5fa !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+.history-actions .btn-info:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(99, 102, 241, 0.25)) !important;
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Excel'e Aktar butonu - Yeşil tema */
+.history-actions .btn-success {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.15)) !important;
+  color: #4ade80 !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.history-actions .btn-success:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.25)) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.history-actions .btn-modern i {
+  font-size: 13px;
+}
+
+/* Responsive: Mobil ekranlarda sadece ikon göster */
+@media (max-width: 768px) {
+  .history-actions .btn-modern .btn-text {
+    display: none;
+  }
+  
+  .history-actions .btn-modern {
+    padding: 6px 10px !important;
+  }
+}
+
+/* ============================================
+   Kayıtlı Söyleşiler Header Button Stilleri
+   ============================================ */
+
+/* Kayıtlı Söyleşiler sayfasındaki Yenile butonu için Ana Söyleşi ile aynı stil */
+.chat-actions .btn-modern {
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Yenile butonu - Turuncu tema */
+.chat-actions .btn-primary {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.25), rgba(247, 147, 30, 0.15)) !important;
+  color: #ff9966 !important;
+  border-color: rgba(255, 107, 53, 0.3) !important;
+}
+
+.chat-actions .btn-primary:hover {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.35), rgba(247, 147, 30, 0.25)) !important;
+  border-color: rgba(255, 107, 53, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Tümünü Temizle butonu - Kırmızı tema (zaten doğru stil uygulanmış, burada tekrar tanımlıyoruz) */
+.chat-actions .btn-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(220, 38, 38, 0.15)) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.chat-actions .btn-danger:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(220, 38, 38, 0.25)) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.chat-actions .btn-modern i {
+  font-size: 13px;
+}
+
+/* Responsive: Mobil ekranlarda sadece ikon göster */
+@media (max-width: 768px) {
+  .chat-actions .btn-modern .btn-text {
+    display: none;
+  }
+  
+  .chat-actions .btn-modern {
     padding: 6px 10px !important;
   }
 }
