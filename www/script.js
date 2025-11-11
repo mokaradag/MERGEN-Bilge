@@ -1941,20 +1941,18 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
   }
 
   const existingImages = Array.from(container.querySelectorAll('.character-image'));
-  const incoming = new Image();
+  const incoming = document.createElement('img');
   incoming.className = 'character-image';
   incoming.alt = data.displayName || '';
   if ('decoding' in incoming) {
     incoming.decoding = 'async';
   }
-  incoming.loading = 'lazy';
   incoming.style.willChange = 'opacity, transform, filter';
   incoming.style.height = '100%';
-  incoming.style.maxHeight = '100%';
   incoming.style.width = 'auto';
-  incoming.style.maxWidth = 'none';
+  incoming.style.maxHeight = '100%';
 
-  incoming.onload = function() {
+  const applyVisibleState = () => {
     if (state.pendingImage !== incoming) {
       return;
     }
@@ -1986,7 +1984,9 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
     });
   };
 
-  incoming.onerror = function() {
+  incoming.addEventListener('load', applyVisibleState, { once: true });
+
+  incoming.addEventListener('error', function() {
     if (state.pendingImage === incoming) {
       state.pendingImage = null;
     }
@@ -1995,10 +1995,20 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
       img.classList.add('is-visible');
       img.classList.remove('is-exiting');
     });
-  };
+  }, { once: true });
 
   state.pendingImage = incoming;
-  incoming.src = data.imageUrl;
+
+  const url = (typeof data.imageUrl === 'string' && data.imageUrl.length)
+    ? data.imageUrl.replace(/^\/+/, '')
+    : '';
+
+  if (!url) {
+    state.pendingImage = null;
+    return;
+  }
+
+  incoming.src = url;
 });
 
 // Character info update with word-by-word typing

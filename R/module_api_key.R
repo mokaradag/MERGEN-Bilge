@@ -108,10 +108,21 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         showToast(session, "Anahtar boş olamaz.", "warning"); return()
       }
 
-      # quick validation (same logic as before)
-      model_id <- as.character(api_config$local_models[1])
-	  api_url  <- resolve_local_llm_endpoint(model_id)
-      vres <- try(validate_api_key(key_plain, model_id = model_id, endpoint = api_url, timeout_seconds = 6), silent = TRUE)
+      target <- determine_api_key_validation_target(NULL, api_config)
+      if (!isTRUE(target$allow_user_key) || !nzchar(target$endpoint)) {
+        showToast(session, "Bu ortamda kullanıcı tarafından yönetilen bir API anahtarı bulunmuyor.", "error")
+        return()
+      }
+
+      vres <- try(
+        validate_api_key(
+          key_plain,
+          model_id = target$model_id,
+          endpoint = target$endpoint,
+          timeout_seconds = 6
+        ),
+        silent = TRUE
+      )
 
       if (inherits(vres, "try-error") || !is.list(vres)) {
         err_msg <- tryCatch(conditionMessage(attr(vres, "condition")), error = function(e) "Bilinmeyen hata")
@@ -137,6 +148,9 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         session$userData$ai_api_key <- key_plain
         removeModal()
         success_msg <- vres$message %||% "API anahtarı kaydedildi."
+		if (isTRUE(target$fallback_used)) {
+          success_msg <- paste(success_msg, "Not: Doğrulama birincil uç noktada yapıldı.")
+        }
         if (!nzchar(success_msg)) {
           success_msg <- "API anahtarı kaydedildi."
         } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {

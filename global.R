@@ -768,6 +768,64 @@ resolve_local_llm_credentials <- function(model_id = NULL, config = api_config) 
   )
 }
 
+determine_api_key_validation_target <- function(requested_model_id = NULL, config = api_config) {
+  models_vector <- config$local_models %||% character()
+  requested_model_id <- as.character(requested_model_id %||% models_vector[1] %||% "")
+
+  target_creds <- resolve_local_llm_credentials(requested_model_id, config)
+  target_model <- requested_model_id
+  target_endpoint <- target_creds$endpoint %||% resolve_local_llm_endpoint(requested_model_id, config)
+  target_key <- target_creds$endpoint_key %||% ""
+  allow_user_key <- isTRUE(target_creds$allow_user_key)
+  fallback_used <- FALSE
+
+  if (!allow_user_key) {
+    endpoint_map <- config$local_model_endpoint_map %||% character()
+    user_flags <- config$local_llm_endpoint_user_managed %||% logical()
+    managed_keys <- names(user_flags)[vapply(user_flags, isTRUE, logical(1))]
+
+    fallback_model <- NULL
+    if (length(managed_keys)) {
+      for (key in managed_keys) {
+        candidate_vec <- names(endpoint_map)[which(endpoint_map == key)]
+        candidate_vec <- candidate_vec[!is.na(candidate_vec) & nzchar(candidate_vec)]
+        if (length(candidate_vec)) {
+          fallback_model <- candidate_vec[1]
+          break
+        }
+      }
+    }
+
+    if (is.null(fallback_model) || !nzchar(fallback_model)) {
+      fallback_model <- models_vector[1] %||% ""
+    }
+
+    fallback_creds <- resolve_local_llm_credentials(fallback_model, config)
+    if (isTRUE(fallback_creds$allow_user_key) && nzchar(fallback_creds$endpoint %||% "")) {
+      target_model <- fallback_model
+      target_endpoint <- fallback_creds$endpoint
+      target_key <- fallback_creds$endpoint_key %||% ""
+      allow_user_key <- TRUE
+      fallback_used <- !identical(target_model, requested_model_id)
+    } else {
+      allow_user_key <- FALSE
+    }
+  }
+
+  if (!nzchar(target_endpoint)) {
+    target_endpoint <- resolve_local_llm_endpoint(target_model, config)
+  }
+
+  list(
+    model_id = target_model,
+    endpoint = target_endpoint %||% "",
+    endpoint_key = target_key %||% "",
+    allow_user_key = allow_user_key,
+    fallback_used = fallback_used,
+    requested_model_id = requested_model_id
+  )
+}
+
 # --- SERVICE DESK LINKS (configure via .Renviron) ---
 SERVICE_DESK <- list(
   api_key_request_url = Sys.getenv("SERVICE_DESK_API_KEY_URL", "https://servicedesk.example.com/api-key"),

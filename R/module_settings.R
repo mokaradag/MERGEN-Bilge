@@ -425,13 +425,25 @@ settingsServer <- function(id, parent_session = NULL) {
 		showToast(session, "Anahtar boş olamaz.", "warning"); return()
 	  }
 
-	  # 1) Doğrula (seçili modeli kullanarak; yoksa ilkini)
-	  model_id <- isolate(settings$model_selection) %||% as.character(api_config$local_models[1])
-	  if (!nzchar(model_id)) model_id <- as.character(api_config$local_models[1])
-	  model_id <- as.character(model_id)
-	  api_url  <- resolve_local_llm_endpoint(model_id)
+	  target <- determine_api_key_validation_target(isolate(settings$model_selection), api_config)
+	  if (!isTRUE(target$allow_user_key) || !nzchar(target$endpoint)) {
+			showToast(session, "Bu model için kullanıcı tarafından yönetilen bir API anahtarı yok.", "error")
+			return()
+	  }
 
-	  vres <- try(validate_api_key(key_plain, model_id = model_id, endpoint = api_url, timeout_seconds = 6), silent = TRUE)
+	  if (isTRUE(target$fallback_used)) {
+			showToast(session, "Seçili model sabit anahtar kullanıyor; doğrulama birincil uç nokta ile yapılacak.", "info")
+	  }
+
+	  vres <- try(
+			validate_api_key(
+			  key_plain,
+			  model_id = target$model_id,
+			  endpoint = target$endpoint,
+			  timeout_seconds = 6
+			),
+			silent = TRUE
+	  )
 	  if (inherits(vres, "try-error") || !is.list(vres)) {
 			err_msg <- tryCatch(conditionMessage(attr(vres, "condition")), error = function(e) "Bilinmeyen hata")
 			showToast(session, paste("Anahtar doğrulaması başarısız:", err_msg), "error")
@@ -453,12 +465,15 @@ settingsServer <- function(id, parent_session = NULL) {
 		  session$userData$ai_api_key <- key_plain
 		  removeModal()
 		  success_msg <- vres$message %||% "API anahtarı güncellendi."
+		  if (isTRUE(target$fallback_used)) {
+			success_msg <- paste(success_msg, "Not: Doğrulama birincil uç nokta ile tamamlandı.")
+		  }
 		  if (!nzchar(success_msg)) {
 			success_msg <- "API anahtarı güncellendi."
 		  } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
 			success_msg <- paste("API anahtarı güncellendi —", success_msg)
 		  }
-		  showToast(session, success_msg, "success")
+		  showToast(session, success_m	sg, "success")
 		}, error = function(e) {
 		  showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
 		})

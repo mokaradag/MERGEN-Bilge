@@ -44,6 +44,34 @@ historyServer <- function(id, all_messages) {
   moduleServer(id, function(input, output, session) {
     
     trigger_refresh <- reactiveVal(0)
+	messages_cache <- reactiveVal(list())
+
+    get_history_messages <- function(chat_id, chat_info) {
+      chat_key <- as.character(chat_id %||% "")
+      cache <- messages_cache()
+
+      stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
+      stamp_key <- if (inherits(stamp_obj, "POSIXt")) {
+        format(stamp_obj, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+      } else {
+        as.character(stamp_obj %||% "")
+      }
+
+      cached <- cache[[chat_key]]
+      if (!is.null(cached) && identical(cached$stamp, stamp_key)) {
+        return(cached$messages)
+      }
+
+      fresh <- try(load_chat_messages_from_db(chat_key), silent = TRUE)
+      messages <- list()
+      if (!inherits(fresh, "try-error") && is.list(fresh)) {
+        messages <- fresh$messages %||% list()
+      }
+
+      cache[[chat_key]] <- list(messages = messages, stamp = stamp_key)
+      messages_cache(cache)
+      messages
+    }
     
     # FIX #5: Add "Bugün" button handler
     observeEvent(input$today_filter, {
@@ -62,7 +90,10 @@ historyServer <- function(id, all_messages) {
       
       for (chat_id in names(chats)) {
         chat_info <- chats[[chat_id]]
-        messages <- chat_info$messages
+        messages <- chat_info$messages	
+		if ((is.null(messages) || length(messages) == 0) && (chat_info$message_count %||% 0) > 0) {
+          messages <- get_history_messages(chat_id, chat_info)
+        }
         
         if (length(messages) > 0) {
           user_messages <- messages[sapply(messages, function(x) x$type == "user")]
