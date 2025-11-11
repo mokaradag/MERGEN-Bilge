@@ -148,10 +148,19 @@ historyServer <- function(id, all_messages) {
     })
 	
 	schedule_later <- function(delay, callback) {
+	  domain <- session$domain %||% shiny::getDefaultReactiveDomain()
+      runner <- function() {
+        if (!is.null(domain)) {
+          shiny::withReactiveDomain(domain, callback)
+        } else {
+          callback()
+        }
+      }
+	  
       if (requireNamespace("later", quietly = TRUE)) {
-        later::later(callback, delay)
+        later::later(runner, delay)
       } else {
-        callback()
+        runner()
       }
     }
 
