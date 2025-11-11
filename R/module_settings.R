@@ -61,8 +61,8 @@ settingsUI <- function(id) {
         
         .character-display-area {
           display: grid;
-          grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-          gap: 32px;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+          gap: 20px;
           align-items: stretch;
           min-height: 600px;
         }
@@ -70,7 +70,7 @@ settingsUI <- function(id) {
         .character-image-container {
 		  position: relative;
           display: flex;
-          align-items: stretch;
+          align-items: center;
           justify-content: center;
           overflow: hidden;
           min-height: 600px;
@@ -85,26 +85,25 @@ settingsUI <- function(id) {
           position: absolute;
           top: 50%;
           left: 50%;
-          transform: translate(-50%, -50%) scale(1.04);
+          transform: translate(-50%, -50%);
           height: 100%;
           width: auto;
           max-width: none;
           object-fit: contain;
           opacity: 0;
-          transition: opacity 0.6s ease, transform 0.85s ease, filter 0.85s ease;
-          filter: drop-shadow(0 20px 55px rgba(0, 0, 0, 0.45));
-          will-change: opacity, transform, filter;
+		  transition: opacity 0.9s ease-in-out, filter 1.1s ease-in-out;
+          filter: blur(14px) saturate(120%) brightness(1.05);
+          will-change: opacity, filter;
         }
 
         .character-image.is-visible {
           opacity: 1;
-          transform: translate(-50%, -50%) scale(1);
+          filter: blur(0) saturate(110%) brightness(1);
         }
 
         .character-image.is-exiting {
           opacity: 0;
-          transform: translate(-50%, -50%) scale(0.96);
-          filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.3));
+		  filter: blur(16px) saturate(85%) brightness(0.92);
         }
         
         .character-info-container {
@@ -114,7 +113,7 @@ settingsUI <- function(id) {
 		  min-height: 600px;
           background: linear-gradient(160deg, rgba(8, 9, 18, 0.96), rgba(8, 11, 26, 0.9));
           border-radius: 18px;
-          padding: 32px;
+          padding: 32px 34px 32px 28px;
           box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35);
         }
         

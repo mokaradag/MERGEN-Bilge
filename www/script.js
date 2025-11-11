@@ -1947,7 +1947,7 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
   if ('decoding' in incoming) {
     incoming.decoding = 'async';
   }
-  incoming.style.willChange = 'opacity, transform, filter';
+  incoming.style.willChange = 'opacity, filter';
   incoming.style.height = '100%';
   incoming.style.width = 'auto';
   incoming.style.maxHeight = '100%';

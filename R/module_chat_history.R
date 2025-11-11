@@ -136,7 +136,10 @@ historyServer <- function(id, all_messages) {
       }
 
       messages_cache(cache)
-	  invisible(NULL)
+      if (length(to_fetch) > 0) {
+        trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
+      }
+      invisible(NULL)
     }
     
     # FIX #5: Add "Bugün" button handler
@@ -177,14 +180,14 @@ historyServer <- function(id, all_messages) {
 
       prefetch_active(TRUE)
 
-      schedule_later(0.05, function() {
+	  schedule_later(0.01, function() {
         ids <- pending_prefetch()
         if (length(ids) == 0) {
           prefetch_active(FALSE)
           return()
         }
 
-        batch_size <- min(10, length(ids))
+        batch_size <- min(25, length(ids))
         batch <- ids[seq_len(batch_size)]
         remaining <- ids[-seq_len(batch_size)]
         pending_prefetch(remaining)
@@ -216,57 +219,62 @@ historyServer <- function(id, all_messages) {
       schedule_prefetch()
     }, ignoreNULL = FALSE, priority = 1)
 	
-    filtered_history <- reactive({
-      req(all_messages())
+    filtered_history <- shiny::bindCache(
+      reactive({
+        req(all_messages())
+        trigger_refresh()
+
+        history_list <- list()
+        chats <- all_messages()
+        chat_ids <- names(chats)
+
+        ensure_history_cache(chat_ids, chats)
+
+        cache <- messages_cache()
+        for (chat_id in chat_ids) {
+          cached <- cache[[chat_id]]
+          if (!is.null(cached) && length(cached$rows) > 0) {
+            history_list <- c(history_list, cached$rows)
+          }
+        }
+
+        if (length(history_list) == 0) {
+          return(data.frame(
+            Chat_ID = character(0),
+            Tarih = character(0),
+            Soru = character(0),
+            Cevap = character(0)
+          ))
+        }
+
+        history_data <- data.table::rbindlist(history_list)
+
+        # Apply date filter
+        if (!is.null(input$date_range) && length(input$date_range) == 2) {
+          dates <- tryCatch(
+            as.Date(history_data$Tarih, format = "%d.%m.%Y - %H:%M"),
+            error = function(e) as.Date(NA)
+          )
+
+          if (any(!is.na(dates))) {
+            mask <- dates >= input$date_range[1] & dates <= input$date_range[2]
+            history_data <- history_data[mask & !is.na(mask), ]
+          }
+        }
+
+        # Sort by date
+        if (nrow(history_data) > 0) {
+          history_data[, sort_ts := as.POSIXct(Tarih, format = "%d.%m.%Y - %H:%M", tz = Sys.timezone())]
+          data.table::setorder(history_data, -sort_ts)
+          history_data[, sort_ts := NULL]
+        }
+
+        return(history_data)
+      }),
+      input$date_range,
+      messages_cache(),
       trigger_refresh()
-      
-      history_list <- list()
-      chats <- all_messages()
-	  chat_ids <- names(chats)
-      
-	  ensure_history_cache(chat_ids, chats)
-        
-      cache <- messages_cache()
-      for (chat_id in chat_ids) {
-        cached <- cache[[chat_id]]
-        if (!is.null(cached) && length(cached$rows) > 0) {
-          history_list <- c(history_list, cached$rows)
-        }
-      }
-      
-      if (length(history_list) == 0) {
-        return(data.frame(
-          Chat_ID = character(0),
-          Tarih = character(0),
-          Soru = character(0),
-          Cevap = character(0)
-        ))
-      }
-      
-      history_data <- data.table::rbindlist(history_list)
-      
-      # Apply date filter
-      if (!is.null(input$date_range) && length(input$date_range) == 2) {
-        dates <- tryCatch(
-          as.Date(history_data$Tarih, format = "%d.%m.%Y - %H:%M"),
-          error = function(e) as.Date(NA)
-        )
-        
-        if (any(!is.na(dates))) {
-          mask <- dates >= input$date_range[1] & dates <= input$date_range[2]
-          history_data <- history_data[mask & !is.na(mask), ]
-        }
-      }
-      
-      # Sort by date
-      if (nrow(history_data) > 0) {
-        history_data[, sort_ts := as.POSIXct(Tarih, format = "%d.%m.%Y - %H:%M", tz = Sys.timezone())]
-        data.table::setorder(history_data, -sort_ts)
-        history_data[, sort_ts := NULL]
-      }
-      
-      return(history_data)
-    })
+    )
     
     output$history_table <- renderDataTable({
       DT::datatable(
@@ -303,6 +311,8 @@ historyServer <- function(id, all_messages) {
         )
     })
     
+	outputOptions(output, "history_table", suspendWhenHidden = FALSE)
+	
     output$export_history <- downloadHandler(
       filename = function() {
         paste0("mergen_sohbet_gecmisi_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".xlsx")
