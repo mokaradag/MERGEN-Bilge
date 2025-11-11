@@ -1906,14 +1906,16 @@ table.dataTable tbody tr.selected {
 }
 
 .btn-secondary {
-  background: var(--background-light) !important;
-  color: var(--text-secondary) !important;
-  border: 1px solid var(--border-color) !important;
+  background: linear-gradient(135deg, rgba(71, 85, 105, 0.25), rgba(51, 65, 85, 0.15)) !important;
+  color: #94a3b8 !important;
+  border: none !important;
 }
 
 .btn-secondary:hover {
-  background: var(--background-dark) !important;
-  border-color: var(--text-muted) !important;
+  background: linear-gradient(135deg, rgba(71, 85, 105, 0.35), rgba(51, 65, 85, 0.25)) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(71, 85, 105, 0.3) !important;
+  transform: translateY(-1px) !important;
 }
 
 .btn-success {
@@ -4862,8 +4864,8 @@ body.font-xlarge {
 
 .character-display-area {
   display: grid;
-  grid-template-columns: minmax(300px, 340px) minmax(0, 1.3fr);
-  column-gap: clamp(10px, 1.6vw, 18px);
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1.65fr);
+  column-gap: clamp(14px, 2vw, 20px);
   row-gap: 18px;
   align-items: stretch;
 }
@@ -5092,7 +5094,6 @@ body.font-xlarge {
   padding: 6px 12px !important;  /* Daha küçük padding */
   font-size: 13px !important;     /* Daha küçük font */
   font-weight: 600 !important;
-  border: 1px solid transparent !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
@@ -5163,7 +5164,6 @@ body.font-xlarge {
   padding: 6px 12px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
-  border: 1px solid transparent !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
@@ -5233,7 +5233,6 @@ body.font-xlarge {
   padding: 6px 12px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
-  border: 1px solid transparent !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
@@ -5289,7 +5288,6 @@ body.font-xlarge {
   padding: 6px 12px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
-  border: 1px solid transparent !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
