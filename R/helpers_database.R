@@ -337,6 +337,96 @@ load_chat_messages_from_db <- function(chat_id) {
   )
 }
 
+load_chat_messages_batch <- function(chat_ids) {
+  if (is.null(chat_ids) || length(chat_ids) == 0) {
+    return(list())
+  }
+
+  ids <- unique(as.character(chat_ids))
+  ids <- ids[nzchar(ids)]
+  if (length(ids) == 0) {
+    return(list())
+  }
+
+  placeholder <- paste(rep("?", length(ids)), collapse = ", ")
+
+  param_values <- lapply(ids, function(id) {
+    numeric_id <- suppressWarnings(as.integer(id))
+    if (!is.na(numeric_id)) {
+      numeric_id
+    } else {
+      id
+    }
+  })
+
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info))
+
+  query <- paste0(
+    "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
+    "       m.MessageID, m.MessageContent, m.MessageType,",
+    "       m.MessageTimestamp, m.MessageOrder",
+    "  FROM MB_Chats c",
+    "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
+    " WHERE c.ChatID IN (", placeholder, ")",
+    " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
+  )
+
+  result <- dbGetQuery(conn, query, params = param_values)
+
+  if (nrow(result) == 0) {
+    empty <- stats::setNames(vector("list", length(ids)), ids)
+    return(lapply(empty, function(...) {
+      list(
+        title = NULL,
+        timestamp = NULL,
+        messages = list(),
+        message_count = 0L,
+        last_message_timestamp = NULL
+      )
+    }))
+  }
+
+  split_rows <- split(result, result$ChatID)
+  names(split_rows) <- as.character(names(split_rows))
+  formatted <- lapply(split_rows, function(chat_df) {
+    messages_df <- chat_df[!is.na(chat_df$MessageID), , drop = FALSE]
+    messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df) else list()
+    last_ts <- if (nrow(messages_df) > 0) {
+      messages_df$MessageTimestamp[nrow(messages_df)]
+    } else {
+      chat_df$CreateTimestamp[1]
+    }
+
+    list(
+      title = chat_df$ChatTitle[1],
+      timestamp = chat_df$CreateTimestamp[1],
+      messages = messages,
+      message_count = length(messages),
+      last_message_timestamp = last_ts
+    )
+  })
+  names(formatted) <- as.character(names(formatted))
+
+  # Ensure all requested chats are represented, even if the query missed some
+  formatted <- formatted[order(match(names(formatted), ids))]
+  missing_ids <- setdiff(ids, names(formatted))
+  if (length(missing_ids) > 0) {
+    for (mid in missing_ids) {
+      formatted[[mid]] <- list(
+        title = NULL,
+        timestamp = NULL,
+        messages = list(),
+        message_count = 0L,
+        last_message_timestamp = NULL
+      )
+    }
+  }
+
+  formatted
+}
+
 # Create new chat, return ChatID integer (UPDATED with validation)
 create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   stopifnot(!is.null(user_id))

@@ -55,6 +55,59 @@ savedChatsServer <- function(id, saved_chats) {
 
     search_term_debounced <- reactiveVal()
     search_timer <- reactiveTimer(300)
+	
+	    empty_meta <- function() {
+      data.frame(
+        chat_id = character(),
+        title = character(),
+        title_lower = character(),
+        timestamp = as.POSIXct(character()),
+        message_count = integer(),
+        display_date = character(),
+        month_key = character(),
+        month_label = character(),
+        stringsAsFactors = FALSE
+      )
+    }
+
+    cached_meta <- reactiveVal(empty_meta())
+
+    parse_timestamp <- function(value) {
+      if (inherits(value, "POSIXt")) {
+        return(value)
+      }
+      if (is.numeric(value)) {
+        return(as.POSIXct(value, origin = "1970-01-01", tz = Sys.timezone()))
+      }
+      if (is.character(value) && nzchar(value)) {
+        parsed <- suppressWarnings(as.POSIXct(value, tz = Sys.timezone()))
+        if (is.na(parsed)) {
+          parsed <- suppressWarnings(as.POSIXct(value, format = "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul"))
+        }
+        if (is.na(parsed)) {
+          parsed <- suppressWarnings(as.POSIXct(value, format = "%Y-%m-%d %H:%M:%S", tz = Sys.timezone()))
+        }
+        if (!is.na(parsed)) {
+          return(parsed)
+        }
+      }
+      Sys.time()
+    }
+
+    month_map <- c(
+      "January" = "Ocak",
+      "February" = "Şubat",
+      "March" = "Mart",
+      "April" = "Nisan",
+      "May" = "Mayıs",
+      "June" = "Haziran",
+      "July" = "Temmuz",
+      "August" = "Ağustos",
+      "September" = "Eylül",
+      "October" = "Ekim",
+      "November" = "Kasım",
+      "December" = "Aralık"
+    )
 
     observeEvent(input$search_chats, {
       search_timer()
@@ -65,6 +118,44 @@ savedChatsServer <- function(id, saved_chats) {
       search_term_debounced(input$search_chats)
     })
     
+	    observeEvent(saved_chats(), {
+      chats <- saved_chats()
+
+      if (is.null(chats) || length(chats) == 0) {
+        cached_meta(empty_meta())
+        return()
+      }
+
+      ids <- names(chats)
+      titles <- vapply(chats, function(chat) chat$title %||% "Söyleşi", character(1))
+      timestamps <- vapply(chats, function(chat) {
+        raw <- chat$last_message_timestamp %||% chat$timestamp
+        parse_timestamp(raw)
+      }, as.POSIXct(Sys.time()))
+
+      message_counts <- vapply(chats, function(chat) as.integer(chat$message_count %||% 0L), integer(1))
+
+      month_keys <- format(timestamps, "%Y-%m")
+      month_labels <- paste0(month_map[format(timestamps, "%B")], " ", format(timestamps, "%Y"))
+      month_labels[is.na(month_labels)] <- format(timestamps[is.na(month_labels)], "%B %Y")
+
+      meta <- data.frame(
+        chat_id = ids,
+        title = titles,
+        title_lower = tolower(titles),
+        timestamp = timestamps,
+        message_count = message_counts,
+        display_date = format(timestamps, "%d.%m.%Y"),
+        month_key = month_keys,
+        month_label = month_labels,
+        stringsAsFactors = FALSE
+      )
+
+      meta <- meta[order(meta$timestamp, decreasing = TRUE), , drop = FALSE]
+      rownames(meta) <- NULL
+      cached_meta(meta)
+    }, ignoreNULL = FALSE)
+	
     # FIX #2: Escape regex special characters in search
     escape_regex <- function(string) {
       gsub("([\\[\\]\\{\\}\\(\\)\\*\\+\\?\\.\\^\\$\\|\\\\])", "\\\\\\1", string)
@@ -72,54 +163,60 @@ savedChatsServer <- function(id, saved_chats) {
     
     # FIX #2: Search from entire list, not just paginated
     filtered_saved_chats <- reactive({
-      chats <- saved_chats()
+      meta <- cached_meta()
       refresh_trigger()
       search_term <- input$search_chats
-      
-      if (is.null(chats) || length(chats) == 0) {
-        return(list())
+
+      if (nrow(meta) == 0) {
+        return(meta)
       }
       
-      # Sort by timestamp (newest first)
-      timestamps <- sapply(chats, function(x) {
-        if (inherits(x$timestamp, "POSIXct")) {
-          x$timestamp
-        } else {
-          as.POSIXct(x$timestamp, origin = "1970-01-01")
-        }
-      })
-      sorted_indices <- order(timestamps, decreasing = TRUE)
-      chats <- chats[sorted_indices]
-      
-      # FIX #2: Apply search with escaped regex
       if (!is.null(search_term) && nchar(search_term) > 0) {
         escaped_term <- escape_regex(search_term)
-        chats <- chats[sapply(chats, function(chat) {
-          tryCatch({
-            grepl(escaped_term, chat$title, ignore.case = TRUE, fixed = FALSE)
-          }, error = function(e) {
-            # Fallback to fixed matching if regex still fails
-            grepl(search_term, chat$title, ignore.case = TRUE, fixed = TRUE)
-          })
-        })]
+		matches <- tryCatch({
+          grepl(escaped_term, meta$title, ignore.case = TRUE, perl = TRUE)
+        }, error = function(e) {
+          rep(FALSE, nrow(meta))
+        })
+
+        if (!any(matches)) {
+          matches <- grepl(search_term, meta$title, ignore.case = TRUE, fixed = TRUE)
+        }
+
+        meta <- meta[matches, , drop = FALSE]
       }
       
-      return(chats)
+       meta
     })
     
     # Paginated chats
     paginated_chats <- reactive({
-      all_chats <- filtered_saved_chats()
-      if (length(all_chats) == 0) return(list())
+      meta <- filtered_saved_chats()
+      if (nrow(meta) == 0) return(meta)
       
       start_idx <- (current_page() - 1) * chats_per_page + 1
-      end_idx <- min(start_idx + chats_per_page - 1, length(all_chats))
-      
-      all_chats[start_idx:end_idx]
+      start_idx <- max(1, start_idx)
+      end_idx <- min(start_idx + chats_per_page - 1, nrow(meta))
+
+      meta[start_idx:end_idx, , drop = FALSE]
     })
     
     total_pages <- reactive({
-      ceiling(length(filtered_saved_chats()) / chats_per_page)
+      meta <- filtered_saved_chats()
+      if (nrow(meta) == 0) {
+        return(0L)
+      }
+      ceiling(nrow(meta) / chats_per_page)
+    })
+
+    observeEvent(filtered_saved_chats(), {
+      meta <- filtered_saved_chats()
+      total <- if (nrow(meta) == 0) 0L else ceiling(nrow(meta) / chats_per_page)
+      if (total == 0) {
+        current_page(1)
+      } else if (current_page() > total) {
+        current_page(total)
+      }
     })
     
     # FIX #13: Add First/Last page navigation
@@ -155,10 +252,11 @@ savedChatsServer <- function(id, saved_chats) {
     
     # Render the list of saved chat cards
     output$saved_chats_list <- renderUI({
-      chats <- paginated_chats()
+      chats_meta <- paginated_chats()
+      filtered_meta <- filtered_saved_chats()
       
       # Handle empty states (preserve original behavior)
-      if (is.null(chats) || length(chats) == 0) {
+      if (nrow(chats_meta) == 0) {
         if (!is.null(input$search_chats) && nchar(input$search_chats) > 0) {
           return(
             div(
@@ -168,7 +266,7 @@ savedChatsServer <- function(id, saved_chats) {
               p("Aramanızla eşleşen kayıtlı söyleşi bulunamadı.")
             )
           )
-        } else if (length(filtered_saved_chats()) == 0) {
+        } else if (nrow(filtered_meta) == 0) {
           return(
             div(
               class = "empty-state",
@@ -181,68 +279,36 @@ savedChatsServer <- function(id, saved_chats) {
           return(div()) # Empty page, but chats exist
         }
       }
-      
-      # ---- Group chats by month-year ----
-      chats_by_month <- list()
-      for (chat_id in names(chats)) {
-        chat <- chats[[chat_id]]
-        month_key <- format(chat$timestamp, "%Y-%m")
-        month_label_raw <- format(chat$timestamp, "%B %Y")
-        # Convert English months to Turkish
-        month_label <- gsub("January", "Ocak", month_label_raw)
-        month_label <- gsub("February", "Şubat", month_label)
-        month_label <- gsub("March", "Mart", month_label)
-        month_label <- gsub("April", "Nisan", month_label)
-        month_label <- gsub("May", "Mayıs", month_label)
-        month_label <- gsub("June", "Haziran", month_label)
-        month_label <- gsub("July", "Temmuz", month_label)
-        month_label <- gsub("August", "Ağustos", month_label)
-        month_label <- gsub("September", "Eylül", month_label)
-        month_label <- gsub("October", "Ekim", month_label)
-        month_label <- gsub("November", "Kasım", month_label)
-        month_label <- gsub("December", "Aralık", month_label)
-        
-        if (is.null(chats_by_month[[month_key]])) {
-          chats_by_month[[month_key]] <- list(
-            label = month_label,
-            chats = list()
-          )
-        }
-        chats_by_month[[month_key]]$chats[[chat_id]] <- chat
-      }
-      
-      # Sort months: newest first
-      chats_by_month <- chats_by_month[order(names(chats_by_month), decreasing = TRUE)]
-      
-      # ---- Render grouped UI (UPDATED STYLING) ----
+            
+      month_order <- unique(chats_meta$month_key)
+	  
       tagList(
-        lapply(chats_by_month, function(month_group) {
-          ids <- names(month_group$chats)
-          ids <- ids[order(
-            sapply(ids, function(id) month_group$chats[[id]]$timestamp),
-            decreasing = TRUE
-          )]
-          
-          # Only take first 25 to make 5x5 grid
-          ids <- head(ids, 25)
+        lapply(month_order, function(month_key) {
+          month_rows <- chats_meta[chats_meta$month_key == month_key, , drop = FALSE]
+          if (nrow(month_rows) == 0) return(NULL)
+
+          month_rows <- month_rows[order(month_rows$timestamp, decreasing = TRUE), , drop = FALSE]
+          month_rows <- month_rows[seq_len(min(nrow(month_rows), 25)), , drop = FALSE]
           
           div(
             class = "month-group",
             style = "margin: 0 15px 20px 0; background: rgba(18, 18, 18, 0.6); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 138, 0, 0.2); backdrop-filter: blur(10px);",
             h4(
-              month_group$label, 
+              month_rows$month_label[1],
               style = "color: #ff8a00; margin-bottom: 20px; font-size: 20px; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255, 138, 0, 0.3); text-underline-offset: 5px;"
             ),
             div(
               class = "saved-chats-grid-custom",
               style = "display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 15px; width: 100%; overflow-x: hidden;",
-              lapply(ids, function(chat_id) {
-                chat <- month_group$chats[[chat_id]]
+              lapply(seq_len(nrow(month_rows)), function(idx) {
+                chat_row <- month_rows[idx, ]
+                chat_id <- chat_row$chat_id
                 div(
                   class = "saved-chat-card saved-chat-card-small animate-fadeIn",
                   style = "min-width: 0; overflow: hidden;",
                   `data-chat-id` = chat_id,
-                  onclick = sprintf("
+                  onclick = sprintf(
+                    "
                     if (!this.dataset.loading) {
                       this.dataset.loading = 'true';
                       Shiny.setInputValue('%s', '%s', {priority: 'event'});
@@ -251,7 +317,7 @@ savedChatsServer <- function(id, saved_chats) {
                   ", ns("load_chat_id"), chat_id),
                   div(
                     class = "chat-card-header",
-                    h5(chat$title, class = "chat-title chat-title-small", style = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"),
+                    h5(chat_row$title, class = "chat-title chat-title-small", style = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"),
                     div(
                       class = "chat-actions",
                       actionButton(
@@ -268,8 +334,8 @@ savedChatsServer <- function(id, saved_chats) {
                   ),
                   div(
                     class = "chat-card-meta chat-card-meta-small",
-                    span(class = "message-count", paste(chat$message_count, "mesaj")),
-                    span(class = "chat-date", format(chat$timestamp, "%d.%m.%Y"))
+                    span(class = "message-count", paste(chat_row$message_count, "mesaj")),
+                    span(class = "chat-date", chat_row$display_date)
                   )
                 )
               })
@@ -284,13 +350,9 @@ savedChatsServer <- function(id, saved_chats) {
       req(input$delete_chat_request)
       chat_id <- input$delete_chat_request
       
-      # Find the chat title from the current filtered list
-      chats <- filtered_saved_chats()
-      chat_title <- if (chat_id %in% names(chats)) {
-        chats[[chat_id]]$title
-      } else {
-        "Bu söyleşi"
-      }
+      meta <- cached_meta()
+      match_idx <- match(chat_id, meta$chat_id)
+      chat_title <- if (!is.na(match_idx)) meta$title[match_idx] else "Bu söyleşi"
       
       showModal(modalDialog(
         title = "Söyleşiyi Sil",
@@ -312,7 +374,7 @@ savedChatsServer <- function(id, saved_chats) {
     })
     
     observeEvent(input$clear_all_chats, {
-      if (length(filtered_saved_chats()) > 0) {
+      if (nrow(filtered_saved_chats()) > 0) {
         showModal(modalDialog(
           title = "Tüm Söyleşileri Temizle",
           "Tüm kayıtlı söyleşileri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz!",

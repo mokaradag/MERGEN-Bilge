@@ -1967,7 +1967,19 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
 
     // Force layout before toggling visibility
     void incoming.offsetWidth;
-    incoming.classList.add('is-visible');
+    requestAnimationFrame(() => {
+      incoming.classList.add('is-visible');
+    });
+
+    incoming.addEventListener(
+      'transitionend',
+      (event) => {
+        if (event.propertyName === 'opacity') {
+          incoming.classList.remove('is-entering');
+        }
+      },
+      { once: true }
+    );
 
     existingImages.forEach((img) => {
       img.classList.remove('is-visible');

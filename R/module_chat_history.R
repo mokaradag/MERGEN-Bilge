@@ -46,31 +46,87 @@ historyServer <- function(id, all_messages) {
     trigger_refresh <- reactiveVal(0)
 	messages_cache <- reactiveVal(list())
 
-    get_history_messages <- function(chat_id, chat_info) {
-      chat_key <- as.character(chat_id %||% "")
-      cache <- messages_cache()
-
+    stamp_for_chat <- function(chat_info) {
       stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
-      stamp_key <- if (inherits(stamp_obj, "POSIXt")) {
+      if (inherits(stamp_obj, "POSIXt")) {
         format(stamp_obj, "%Y-%m-%d %H:%M:%S", tz = "UTC")
       } else {
         as.character(stamp_obj %||% "")
       }
+    }
 
-      cached <- cache[[chat_key]]
-      if (!is.null(cached) && identical(cached$stamp, stamp_key)) {
-        return(cached$messages)
+    build_history_rows <- function(chat_title, messages) {
+      if (length(messages) == 0) {
+        return(list())
       }
 
-      fresh <- try(load_chat_messages_from_db(chat_key), silent = TRUE)
-      messages <- list()
-      if (!inherits(fresh, "try-error") && is.list(fresh)) {
-        messages <- fresh$messages %||% list()
+      user_messages <- messages[sapply(messages, function(x) x$type == "user")]
+      ai_messages <- messages[sapply(messages, function(x) x$type %in% c("ai", "assistant"))]
+
+      if (length(user_messages) == 0 || length(ai_messages) == 0) {
+        return(list())
       }
 
-      cache[[chat_key]] <- list(messages = messages, stamp = stamp_key)
+      n <- min(length(user_messages), length(ai_messages))
+      lapply(seq_len(n), function(i) {
+        list(
+          Chat_ID = chat_title,
+          Tarih = user_messages[[i]]$timestamp,
+          Soru = substr(user_messages[[i]]$content, 1, 100),
+          Cevap = substr(ai_messages[[i]]$content, 1, 100)
+        )
+      })
+    }
+
+    ensure_history_cache <- function(chat_ids, chats) {
+      if (length(chat_ids) == 0) {
+        return(invisible(NULL))
+      }
+
+      cache <- messages_cache()
+      to_fetch <- character()
+      stamp_map <- list()
+
+      for (chat_id in chat_ids) {
+        chat_info <- chats[[chat_id]]
+        if (is.null(chat_info)) next
+
+        stamp_key <- stamp_for_chat(chat_info)
+        stamp_map[[chat_id]] <- stamp_key
+
+        cached <- cache[[chat_id]]
+        if (!is.null(cached) && identical(cached$stamp, stamp_key)) {
+          next
+        }
+
+        if (!is.null(chat_info$messages) && length(chat_info$messages) > 0) {
+          rows <- build_history_rows(chat_info$title %||% chat_id, chat_info$messages)
+          cache[[chat_id]] <- list(rows = rows, stamp = stamp_key)
+        } else {
+          to_fetch <- c(to_fetch, chat_id)
+        }
+      }
+
+      if (length(to_fetch) > 0) {
+        fetched <- try(load_chat_messages_batch(to_fetch), silent = TRUE)
+        if (inherits(fetched, "try-error") || length(fetched) == 0) {
+          for (chat_id in to_fetch) {
+            cache[[chat_id]] <- list(rows = list(), stamp = stamp_map[[chat_id]])
+          }
+        } else {
+          for (chat_id in to_fetch) {
+            data <- fetched[[chat_id]] %||% fetched[[as.character(chat_id)]]
+            messages <- if (is.list(data) && !is.null(data$messages)) data$messages else list()
+            chat_info <- chats[[chat_id]]
+            title <- chat_info$title %||% data$title %||% chat_id
+            rows <- build_history_rows(title, messages)
+            cache[[chat_id]] <- list(rows = rows, stamp = stamp_map[[chat_id]])
+          }
+        }
+      }
+
       messages_cache(cache)
-      messages
+	  invisible(NULL)
     }
     
     # FIX #5: Add "Bugün" button handler
@@ -87,30 +143,15 @@ historyServer <- function(id, all_messages) {
       
       history_list <- list()
       chats <- all_messages()
+	  chat_ids <- names(chats)
       
-      for (chat_id in names(chats)) {
-        chat_info <- chats[[chat_id]]
-        messages <- chat_info$messages	
-		if ((is.null(messages) || length(messages) == 0) && (chat_info$message_count %||% 0) > 0) {
-          messages <- get_history_messages(chat_id, chat_info)
-        }
+	  ensure_history_cache(chat_ids, chats)
         
-        if (length(messages) > 0) {
-          user_messages <- messages[sapply(messages, function(x) x$type == "user")]
-          ai_messages <- messages[sapply(messages, function(x) x$type %in% c("ai", "assistant"))]
-          
-          if (length(user_messages) > 0 && length(ai_messages) > 0) {
-            n <- min(length(user_messages), length(ai_messages))
-            
-            for (i in 1:n) {
-              history_list[[length(history_list) + 1]] <- list(
-                Chat_ID = chat_info$title,
-                Tarih = user_messages[[i]]$timestamp,
-                Soru = substr(user_messages[[i]]$content, 1, 100),
-                Cevap = substr(ai_messages[[i]]$content, 1, 100)
-              )
-            }
-          }
+      cache <- messages_cache()
+      for (chat_id in chat_ids) {
+        cached <- cache[[chat_id]]
+        if (!is.null(cached) && length(cached$rows) > 0) {
+          history_list <- c(history_list, cached$rows)
         }
       }
       
