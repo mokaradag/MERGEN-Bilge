@@ -130,8 +130,10 @@ savedChatsServer <- function(id, saved_chats) {
       titles <- vapply(chats, function(chat) chat$title %||% "Söyleşi", character(1))
       timestamps <- vapply(chats, function(chat) {
         raw <- chat$last_message_timestamp %||% chat$timestamp
-        parse_timestamp(raw)
-      }, as.POSIXct(Sys.time()))
+        as.numeric(parse_timestamp(raw))
+      }, numeric(1))
+
+      timestamps <- as.POSIXct(timestamps, origin = "1970-01-01", tz = Sys.timezone())
 
       message_counts <- vapply(chats, function(chat) as.integer(chat$message_count %||% 0L), integer(1))
 
@@ -251,9 +253,10 @@ savedChatsServer <- function(id, saved_chats) {
     })
     
     # Render the list of saved chat cards
-    output$saved_chats_list <- renderUI({
-      chats_meta <- paginated_chats()
-      filtered_meta <- filtered_saved_chats()
+    output$saved_chats_list <- shiny::bindCache(
+      renderUI({
+        chats_meta <- paginated_chats()
+        filtered_meta <- filtered_saved_chats()
       
       # Handle empty states (preserve original behavior)
       if (nrow(chats_meta) == 0) {
@@ -343,7 +346,10 @@ savedChatsServer <- function(id, saved_chats) {
           )
         })
       )
-    })
+      }),
+      current_page(),
+      filtered_saved_chats()
+    )
     
     # Handle delete request
     observeEvent(input$delete_chat_request, {

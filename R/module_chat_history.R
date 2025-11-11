@@ -45,6 +45,9 @@ historyServer <- function(id, all_messages) {
     
     trigger_refresh <- reactiveVal(0)
 	messages_cache <- reactiveVal(list())
+	pending_prefetch <- reactiveVal(character())
+    prefetch_active <- reactiveVal(FALSE)
+    latest_chats <- reactiveVal(list())
 
     stamp_for_chat <- function(chat_info) {
       stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
@@ -87,9 +90,20 @@ historyServer <- function(id, all_messages) {
       to_fetch <- character()
       stamp_map <- list()
 
-      for (chat_id in chat_ids) {
+      normalized_ids <- as.character(chat_ids)
+      normalized_ids <- normalized_ids[nzchar(normalized_ids)]
+
+      for (chat_id in normalized_ids) {
         chat_info <- chats[[chat_id]]
         if (is.null(chat_info)) next
+		
+		if (identical(chat_id, "current_chat")) {
+          if (!is.null(chat_info$messages) && length(chat_info$messages) > 0) {
+            rows <- build_history_rows(chat_info$title %||% chat_id, chat_info$messages)
+            cache[[chat_id]] <- list(rows = rows, stamp = Sys.time())
+          }
+          next
+        }
 
         stamp_key <- stamp_for_chat(chat_info)
         stamp_map[[chat_id]] <- stamp_key
@@ -99,28 +113,24 @@ historyServer <- function(id, all_messages) {
           next
         }
 
-        if (!is.null(chat_info$messages) && length(chat_info$messages) > 0) {
-          rows <- build_history_rows(chat_info$title %||% chat_id, chat_info$messages)
-          cache[[chat_id]] <- list(rows = rows, stamp = stamp_key)
-        } else {
-          to_fetch <- c(to_fetch, chat_id)
-        }
+        to_fetch <- c(to_fetch, chat_id)
       }
 
       if (length(to_fetch) > 0) {
-        fetched <- try(load_chat_messages_batch(to_fetch), silent = TRUE)
+        fetched <- try(load_history_rows_batch(to_fetch), silent = TRUE)
         if (inherits(fetched, "try-error") || length(fetched) == 0) {
           for (chat_id in to_fetch) {
             cache[[chat_id]] <- list(rows = list(), stamp = stamp_map[[chat_id]])
           }
         } else {
           for (chat_id in to_fetch) {
-            data <- fetched[[chat_id]] %||% fetched[[as.character(chat_id)]]
-            messages <- if (is.list(data) && !is.null(data$messages)) data$messages else list()
-            chat_info <- chats[[chat_id]]
-            title <- chat_info$title %||% data$title %||% chat_id
-            rows <- build_history_rows(title, messages)
-            cache[[chat_id]] <- list(rows = rows, stamp = stamp_map[[chat_id]])
+            pairs <- fetched[[chat_id]] %||% fetched[[as.character(chat_id)]]
+            if (!is.list(pairs) || length(pairs) == 0) {
+              cache[[chat_id]] <- list(rows = list(), stamp = stamp_map[[chat_id]])
+              next
+            }
+
+            cache[[chat_id]] <- list(rows = pairs, stamp = stamp_map[[chat_id]])
           }
         }
       }
@@ -136,7 +146,59 @@ historyServer <- function(id, all_messages) {
                           end = Sys.Date())
       showToast(session, "Bugünün kayıtları gösteriliyor.", "info")
     })
-    
+
+    schedule_prefetch <- function() {
+      if (isTRUE(prefetch_active())) {
+        return()
+      }
+
+      batch_ids <- pending_prefetch()
+      if (length(batch_ids) == 0) {
+        prefetch_active(FALSE)
+        return()
+      }
+
+      prefetch_active(TRUE)
+
+      shiny::later(0.05, function() {
+        ids <- pending_prefetch()
+        if (length(ids) == 0) {
+          prefetch_active(FALSE)
+          return()
+        }
+
+        batch_size <- min(10, length(ids))
+        batch <- ids[seq_len(batch_size)]
+        remaining <- ids[-seq_len(batch_size)]
+        pending_prefetch(remaining)
+
+        chats <- latest_chats()
+        subset_chats <- chats[names(chats) %in% c(batch, "current_chat")]
+        try(ensure_history_cache(batch, subset_chats), silent = TRUE)
+
+        if (length(pending_prefetch()) > 0) {
+          prefetch_active(FALSE)
+          schedule_prefetch()
+        } else {
+          prefetch_active(FALSE)
+        }
+      })
+    }
+
+    observeEvent(all_messages(), {
+      chats <- all_messages() %||% list()
+      latest_chats(chats)
+
+      ids <- setdiff(names(chats), "current_chat")
+      if (length(ids) == 0) {
+        return()
+      }
+
+      current_queue <- pending_prefetch()
+      pending_prefetch(unique(c(current_queue, ids)))
+      schedule_prefetch()
+    }, ignoreNULL = FALSE, priority = 1)
+	
     filtered_history <- reactive({
       req(all_messages())
       trigger_refresh()
@@ -189,11 +251,12 @@ historyServer <- function(id, all_messages) {
       return(history_data)
     })
     
-    output$history_table <- renderDataTable({
-      DT::datatable(
-        filtered_history(),
-        colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
-        escape = FALSE,
+    output$history_table <- shiny::bindCache(
+      renderDataTable({
+        DT::datatable(
+          filtered_history(),
+          colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
+          escape = FALSE,
         class = "display compact stripe hover dark-table",
         options = list(
           selection = "none",
@@ -222,7 +285,9 @@ historyServer <- function(id, all_messages) {
           color = '#e6e6e6',
           backgroundColor = 'transparent'
         )
-    })
+      }),
+      filtered_history()
+    )
     
     output$export_history <- downloadHandler(
       filename = function() {

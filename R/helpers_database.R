@@ -427,6 +427,102 @@ load_chat_messages_batch <- function(chat_ids) {
   formatted
 }
 
+# Lightweight history fetch: return paired user/assistant rows per chat
+load_history_rows_batch <- function(chat_ids) {
+  if (is.null(chat_ids) || length(chat_ids) == 0) {
+    return(list())
+  }
+
+  ids <- unique(as.character(chat_ids))
+  ids <- ids[nzchar(ids)]
+  if (length(ids) == 0) {
+    return(list())
+  }
+
+  placeholder <- paste(rep("?", length(ids)), collapse = ", ")
+
+  param_values <- lapply(ids, function(id) {
+    numeric_id <- suppressWarnings(as.integer(id))
+    if (!is.na(numeric_id)) {
+      numeric_id
+    } else {
+      id
+    }
+  })
+
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info))
+
+  query <- paste0(
+    "WITH ordered AS (",
+    "  SELECT c.ChatID, c.ChatTitle,",
+    "         m.MessageContent, m.MessageType,",
+    "         m.MessageTimestamp, m.MessageOrder,",
+    "         ROW_NUMBER() OVER (PARTITION BY c.ChatID ORDER BY m.MessageOrder) AS rn",
+    "    FROM MB_Chats c",
+    "    LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
+    "   WHERE c.ChatID IN (", placeholder, ")",
+    "     AND c.IsDeleted = 0",
+    ")",
+    "SELECT o.ChatID, o.ChatTitle,",
+    "       o.MessageTimestamp AS UserTimestamp,",
+    "       o.MessageContent   AS UserMessage,",
+    "       LEAD(o.MessageContent) OVER (PARTITION BY o.ChatID ORDER BY o.rn) AS AssistantMessage,",
+    "       LEAD(o.MessageType)    OVER (PARTITION BY o.ChatID ORDER BY o.rn) AS AssistantType,",
+    "       LEAD(o.MessageTimestamp) OVER (PARTITION BY o.ChatID ORDER BY o.rn) AS AssistantTimestamp",
+    "  FROM ordered o",
+    " WHERE o.MessageType = 'user'",
+    " ORDER BY o.ChatID, o.rn"
+  )
+
+  result <- dbGetQuery(conn, query, params = param_values)
+
+  if (nrow(result) == 0) {
+    return(stats::setNames(vector("list", length(ids)), ids))
+  }
+
+  result$ChatID <- as.character(result$ChatID)
+
+  splits <- split(result, result$ChatID)
+
+  formatted <- lapply(splits, function(df) {
+    valid <- df[df$AssistantType %in% c("assistant", "ai"), , drop = FALSE]
+    if (nrow(valid) == 0) {
+      return(list())
+    }
+
+    lapply(seq_len(nrow(valid)), function(i) {
+      row <- valid[i, ]
+
+      ts <- row$UserTimestamp
+      if (inherits(ts, "POSIXt")) {
+        attr(ts, "tzone") <- "Europe/Istanbul"
+        formatted_ts <- format(ts, "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
+      } else {
+        formatted_ts <- as.character(ts %||% "")
+      }
+
+      list(
+        Chat_ID = row$ChatTitle %||% row$ChatID,
+        Tarih = formatted_ts,
+        Soru = substr(row$UserMessage %||% "", 1, 100),
+        Cevap = substr(row$AssistantMessage %||% "", 1, 100)
+      )
+    })
+  })
+
+  missing_ids <- setdiff(ids, names(formatted))
+  if (length(missing_ids) > 0) {
+    for (mid in missing_ids) {
+      formatted[[mid]] <- list()
+    }
+  }
+
+  formatted <- formatted[order(match(names(formatted), ids))]
+  formatted
+}
+
 # Create new chat, return ChatID integer (UPDATED with validation)
 create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   stopifnot(!is.null(user_id))
