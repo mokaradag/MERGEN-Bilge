@@ -146,6 +146,14 @@ historyServer <- function(id, all_messages) {
                           end = Sys.Date())
       showToast(session, "Bugünün kayıtları gösteriliyor.", "info")
     })
+	
+	schedule_later <- function(delay, callback) {
+      if (requireNamespace("later", quietly = TRUE)) {
+        later::later(callback, delay)
+      } else {
+        callback()
+      }
+    }
 
     schedule_prefetch <- function() {
       if (isTRUE(prefetch_active())) {
@@ -160,7 +168,7 @@ historyServer <- function(id, all_messages) {
 
       prefetch_active(TRUE)
 
-      shiny::later(0.05, function() {
+      schedule_later(0.05, function() {
         ids <- pending_prefetch()
         if (length(ids) == 0) {
           prefetch_active(FALSE)
@@ -251,12 +259,11 @@ historyServer <- function(id, all_messages) {
       return(history_data)
     })
     
-    output$history_table <- shiny::bindCache(
-      renderDataTable({
-        DT::datatable(
-          filtered_history(),
-          colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
-          escape = FALSE,
+    output$history_table <- renderDataTable({
+      DT::datatable(
+        filtered_history(),
+        colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
+        escape = FALSE,
         class = "display compact stripe hover dark-table",
         options = list(
           selection = "none",
@@ -285,9 +292,7 @@ historyServer <- function(id, all_messages) {
           color = '#e6e6e6',
           backgroundColor = 'transparent'
         )
-      }),
-      filtered_history()
-    )
+    })
     
     output$export_history <- downloadHandler(
       filename = function() {

@@ -253,10 +253,9 @@ savedChatsServer <- function(id, saved_chats) {
     })
     
     # Render the list of saved chat cards
-    output$saved_chats_list <- shiny::bindCache(
-      renderUI({
-        chats_meta <- paginated_chats()
-        filtered_meta <- filtered_saved_chats()
+    output$saved_chats_list <- renderUI({
+      chats_meta <- paginated_chats()
+      filtered_meta <- filtered_saved_chats()
       
       # Handle empty states (preserve original behavior)
       if (nrow(chats_meta) == 0) {
@@ -346,10 +345,7 @@ savedChatsServer <- function(id, saved_chats) {
           )
         })
       )
-      }),
-      current_page(),
-      filtered_saved_chats()
-    )
+    })
     
     # Handle delete request
     observeEvent(input$delete_chat_request, {
