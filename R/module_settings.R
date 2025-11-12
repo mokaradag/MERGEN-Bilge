@@ -82,30 +82,30 @@ settingsUI <- function(id) {
           box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.35), 0 18px 45px rgba(0, 0, 0, 0.45);
         }
         
-        .character-image {
-          position: absolute;
-          top: 50%;
-          left: 100%;
-          transform: translate(-100%, -50%);
-          height: 100%;
-          width: auto;
-          max-width: none;
-          object-fit: contain;
-          opacity: 0;
-		  transition: opacity 0.9s ease-in-out, filter 1.1s ease-in-out;
-          filter: blur(14px) saturate(120%) brightness(1.05);
-          will-change: opacity, filter;
-        }
+		.character-image {
+		  position: absolute;
+		  top: 50% !important;
+		  left: 50% !important;
+		  transform: translate(-50%, -50%) !important;
+		  height: 100% !important;
+		  width: auto !important;
+		  max-width: none !important;
+		  object-fit: contain !important;
+		  opacity: 0;
+		  transition: opacity .55s ease, filter .6s ease !important;
+		  filter: blur(3px) saturate(110%) brightness(1.02) !important;
+		  will-change: opacity, filter;
+		}
 
-        .character-image.is-visible {
-          opacity: 1;
-          filter: blur(0) saturate(110%) brightness(1);
-        }
+		.character-image.is-visible {
+		  opacity: 1;
+		  filter: blur(0) saturate(106%) brightness(1) !important;
+		}
 
-        .character-image.is-exiting {
-          opacity: 0;
-		  filter: blur(16px) saturate(85%) brightness(0.92);
-        }
+		.character-image.is-exiting {
+		  opacity: 0;
+		  filter: blur(5px) saturate(95%) brightness(.96) !important;
+		}
         
         .character-info-container {
           display: flex;
@@ -618,7 +618,8 @@ settingsServer <- function(id, parent_session = NULL) {
         session$sendCustomMessage("updateCharacterButtons", list(
           character = char_id,
           accent = char$accent,
-          accent_active = char$accent_active
+          accent_active = char$accent_active,
+		  accent_hover  = char$accent_hover
         ))
         
         # Smooth image transition with fade out/in

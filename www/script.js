@@ -1887,39 +1887,35 @@
     
     // Character button management
 	Shiny.addCustomMessageHandler('updateCharacterButtons', function(data) {
-      // Remove active class from all buttons
-      document.querySelectorAll('.character-btn').forEach(btn => {
-        btn.classList.remove('active');
-        btn.style.removeProperty('background');
-        btn.style.removeProperty('--character-active-color');
-        btn.style.removeProperty('--character-active-glow');
-      });
+	  // Reset all buttons
+	  document.querySelectorAll('.character-btn').forEach(btn => {
+		btn.classList.remove('active');
+		btn.style.removeProperty('--character-active-border');
+		btn.style.removeProperty('--character-active-glow');
+	  });
 
-      // Add active class and color to selected button
-      const activeBtn = document.querySelector(`[data-character="${data.character}"]`);
-      if (activeBtn) {
-        activeBtn.classList.add('active');
-        activeBtn.style.removeProperty('background');
-        const accentActive = data.accent_active || '#ff8c42';
-        const accent = data.accent || accentActive;
+	  const activeBtn = document.querySelector(`[data-character="${data.character}"]`);
+	  if (!activeBtn) return;
 
-        const hexToRgba = (hex, alpha) => {
-          if (!hex) return `rgba(255, 140, 66, ${alpha})`;
-          let c = hex.replace('#', '');
-          if (c.length === 3) {
-            c = c.split('').map(ch => ch + ch).join('');
-          }
-          const num = parseInt(c, 16);
-          const r = (num >> 16) & 255;
-          const g = (num >> 8) & 255;
-          const b = num & 255;
-          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        };
+	  activeBtn.classList.add('active');
 
-        activeBtn.style.setProperty('--character-active-color', accentActive);
-        activeBtn.style.setProperty('--character-active-glow', hexToRgba(accent, 0.45));
-      }
-    });
+	  // Use HOVER color for the active border, as requested
+	  const accentHover = data.accent_hover || data.accent_active || data.accent || '#ff8c42';
+
+	  // Helpers
+	  const hexToRgba = (hex, a) => {
+		let c = (hex || '').replace('#', '');
+		if (!c) return `rgba(255,140,66,${a})`;
+		if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
+		const n = parseInt(c, 16);
+		const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+		return `rgba(${r}, ${g}, ${b}, ${a})`;
+	  };
+
+	  // Expose as CSS variables consumed by CSS rules
+	  activeBtn.style.setProperty('--character-active-border', accentHover);
+	  activeBtn.style.setProperty('--character-active-glow', hexToRgba(accentHover, 0.40));
+	});
     
     // Character info update handler
     Shiny.addCustomMessageHandler('updateCharacterInfo', function(data) {
