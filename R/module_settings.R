@@ -269,9 +269,9 @@ settingsUI <- function(id) {
 					div(
 					  class = "checkbox-item",
 					  checkboxInput(
-						inputId = ns("enable_rdata_tools"),
-						label = tags$span("Proje ve Kaynak Analizi", style = "white-space: nowrap;"),
-						value = TRUE
+							inputId = ns("enable_rdata_tools"),
+							label = tags$span("Proje ve Kaynak Analizi", style = "white-space: nowrap;"),
+							value = FALSE
 					  )
 					),
 					# Mevcut: MCP Excel analizi
@@ -403,7 +403,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_typing_indicator = TRUE,
 	  enable_streaming        = TRUE,
 	  enable_widescreen       = TRUE,
-	  enable_rdata_tools      = TRUE,
+	  enable_rdata_tools      = FALSE,
 	  enable_mcp_tools        = FALSE,
 	  font_size               = "medium"
 	)
@@ -715,8 +715,8 @@ settingsServer <- function(id, parent_session = NULL) {
 		  updateCheckboxInput(session, "enable_rdata_tools", value = settings$enable_rdata_tools)
 		} else {
 		  # Eski kayıtlar için varsayılanı koru
-		  settings$enable_rdata_tools <- TRUE
-		  updateCheckboxInput(session, "enable_rdata_tools", value = TRUE)
+		  settings$enable_rdata_tools <- FALSE
+		  updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
 		}
 
 		if (!is.null(loaded$enable_mcp_tools)) {
@@ -795,7 +795,7 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$enable_typing_indicator <- TRUE
       settings$enable_streaming        <- TRUE
 	  settings$enable_widescreen       <- TRUE
-	  settings$enable_rdata_tools      <- TRUE
+	  settings$enable_rdata_tools      <- FALSE
 	  settings$enable_mcp_tools        <- FALSE
       settings$font_size               <- "medium"
       

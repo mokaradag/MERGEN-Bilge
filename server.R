@@ -1282,12 +1282,15 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   # This observer runs only once at startup to show the welcome screen
 	observeEvent(TRUE, {
 	  if (isTRUE(values$show_welcome)) {
-		insertUI(
-		  selector = "#chat_content_container",
-		  where = "beforeEnd",
-		  ui = createWelcomeScreen(values$saved_chats)
-		)
-		session$sendCustomMessage("showNeuralAnimation", list())
+			insertUI(
+			  selector = "#chat_content_container",
+			  where = "beforeEnd",
+			  ui = createWelcomeScreen(values$saved_chats),
+			  immediate = TRUE
+			)
+			session$onFlushed(function() {
+			  session$sendCustomMessage("showNeuralAnimation", list())
+			}, once = TRUE)
 	  }
 
 	  # ✅ Preload htmlwidget dependencies once (hidden)

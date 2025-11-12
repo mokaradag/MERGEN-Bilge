@@ -1886,31 +1886,38 @@
     });
     
     // Character button management
-    Shiny.addCustomMessageHandler('updateCharacterButtons', function(data) {
+	Shiny.addCustomMessageHandler('updateCharacterButtons', function(data) {
       // Remove active class from all buttons
       document.querySelectorAll('.character-btn').forEach(btn => {
         btn.classList.remove('active');
-        btn.style.background = 'transparent';
+        btn.style.removeProperty('background');
+        btn.style.removeProperty('--character-active-color');
+        btn.style.removeProperty('--character-active-glow');
       });
-      
+
       // Add active class and color to selected button
       const activeBtn = document.querySelector(`[data-character="${data.character}"]`);
       if (activeBtn) {
         activeBtn.classList.add('active');
-        activeBtn.style.background = data.accent_active;
-        
-        // Add hover effects
-        activeBtn.addEventListener('mouseenter', function() {
-          if (this.classList.contains('active')) {
-            this.style.background = data.accent;
+        activeBtn.style.removeProperty('background');
+        const accentActive = data.accent_active || '#ff8c42';
+        const accent = data.accent || accentActive;
+
+        const hexToRgba = (hex, alpha) => {
+          if (!hex) return `rgba(255, 140, 66, ${alpha})`;
+          let c = hex.replace('#', '');
+          if (c.length === 3) {
+            c = c.split('').map(ch => ch + ch).join('');
           }
-        });
-        
-        activeBtn.addEventListener('mouseleave', function() {
-          if (this.classList.contains('active')) {
-            this.style.background = data.accent_active;
-          }
-        });
+          const num = parseInt(c, 16);
+          const r = (num >> 16) & 255;
+          const g = (num >> 8) & 255;
+          const b = num & 255;
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+
+        activeBtn.style.setProperty('--character-active-color', accentActive);
+        activeBtn.style.setProperty('--character-active-glow', hexToRgba(accent, 0.45));
       }
     });
     
