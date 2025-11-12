@@ -1889,9 +1889,14 @@
 	Shiny.addCustomMessageHandler('updateCharacterButtons', function(data) {
 	  // Reset all buttons
 	  document.querySelectorAll('.character-btn').forEach(btn => {
-		btn.classList.remove('active');
-		btn.style.removeProperty('--character-active-border');
-		btn.style.removeProperty('--character-active-glow');
+			btn.classList.remove('active');
+			btn.style.removeProperty('--character-active-border');
+			btn.style.removeProperty('--character-active-glow');
+			btn.style.removeProperty('--character-accent');
+			btn.style.removeProperty('--character-accent-strong');
+			btn.style.removeProperty('--character-accent-outline');
+			btn.style.removeProperty('--character-accent-soft');
+			btn.style.removeProperty('--character-accent-glow');
 	  });
 
 	  const activeBtn = document.querySelector(`[data-character="${data.character}"]`);
@@ -1899,22 +1904,24 @@
 
 	  activeBtn.classList.add('active');
 
-	  // Use HOVER color for the active border, as requested
-	  const accentHover = data.accent_hover || data.accent_active || data.accent || '#ff8c42';
+	  const accentBase = data.accent || '#ff8c42';
+	  const accentActive = data.accent_active || accentBase;
+	  const accentHover = data.accent_hover || accentActive;
 
-	  // Helpers
 	  const hexToRgba = (hex, a) => {
-		let c = (hex || '').replace('#', '');
-		if (!c) return `rgba(255,140,66,${a})`;
-		if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
-		const n = parseInt(c, 16);
-		const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-		return `rgba(${r}, ${g}, ${b}, ${a})`;
+			let c = (hex || '').replace('#', '');
+			if (!c) return `rgba(255,140,66,${a})`;
+			if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
+			const n = parseInt(c, 16);
+			const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+			return `rgba(${r}, ${g}, ${b}, ${a})`;
 	  };
 
-	  // Expose as CSS variables consumed by CSS rules
-	  activeBtn.style.setProperty('--character-active-border', accentHover);
-	  activeBtn.style.setProperty('--character-active-glow', hexToRgba(accentHover, 0.40));
+	  activeBtn.style.setProperty('--character-accent', accentBase);
+	  activeBtn.style.setProperty('--character-accent-strong', accentActive);
+	  activeBtn.style.setProperty('--character-accent-outline', accentHover);
+	  activeBtn.style.setProperty('--character-accent-soft', hexToRgba(accentBase, 0.24));
+	  activeBtn.style.setProperty('--character-accent-glow', hexToRgba(accentHover, 0.48));
 	});
     
     // Character info update handler
