@@ -4865,7 +4865,7 @@ body.font-xlarge {
 .character-display-area {
   display: grid;
   grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-  column-gap: clamp(14px, 1.6vw, 22px);
+  column-gap: 0;
   row-gap: 18px;
   align-items: stretch;
   justify-content: flex-start;
@@ -4930,7 +4930,7 @@ body.font-xlarge {
 @media (max-width: 1440px) {
   .character-display-area {
     grid-template-columns: minmax(280px, 320px) minmax(0, 1.25fr);
-    column-gap: clamp(12px, 2vw, 18px);
+	column-gap: 0;
     row-gap: 24px;
   }
 }
@@ -4938,7 +4938,8 @@ body.font-xlarge {
 @media (max-width: 1280px) {
   .character-display-area {
     grid-template-columns: 1fr;
-    gap: 24px;
+    column-gap: 0;
+    row-gap: 24px;
     justify-items: center;
   }
   .character-image-container,

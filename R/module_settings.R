@@ -62,7 +62,8 @@ settingsUI <- function(id) {
         .character-display-area {
           display: grid;
           grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
-          gap: 20px;
+          column-gap: 0;
+          row-gap: 24px;
           align-items: stretch;
           min-height: 600px;
         }
@@ -144,8 +145,9 @@ settingsUI <- function(id) {
         @media (max-width: 1280px) {
           .character-display-area {
             grid-template-columns: 1fr;
-            gap: 24px;
-			min-height: 480px;
+            column-gap: 0;
+            row-gap: 24px;
+            min-height: 480px;
           }
           .character-image-container,
           .character-info-container {
