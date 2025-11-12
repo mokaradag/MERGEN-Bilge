@@ -33,6 +33,7 @@ historyUI <- function(id) {
         ),
         div(
           class = "history-table-card",
+		  tags$style(HTML(sprintf("#%s table.dataTable thead th { text-align: center !important; }", ns("history_table")))),
           DTOutput(ns("history_table"))
         )
       )

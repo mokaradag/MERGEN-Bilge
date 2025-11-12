@@ -4166,6 +4166,18 @@ body.font-xlarge {
   box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3) !important;
 }
 
+/* Accent button for rate limit increase */
+.btn-rate {
+  background: linear-gradient(135deg, #6366f1, #4338ca) !important;
+  color: #f8fafc !important;
+  border: none !important;
+}
+
+.btn-rate:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+}
+
 /* Fix for download button styling */
 .file-action-btn.file-download {
   background: rgba(255, 255, 255, 0.1) !important;
@@ -4955,7 +4967,8 @@ body.font-xlarge {
 .character-info-container {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  align-items: flex-start;
   width: 1125px;
   gap: 18px;
   min-height: 100%;
