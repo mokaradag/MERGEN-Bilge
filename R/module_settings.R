@@ -61,7 +61,7 @@ settingsUI <- function(id) {
         
         .character-display-area {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+          grid-template-columns: minmax(380px, 0.85fr) minmax(0, 1.15fr);
           column-gap: 0;
           row-gap: 24px;
           align-items: stretch;
@@ -85,8 +85,8 @@ settingsUI <- function(id) {
         .character-image {
           position: absolute;
           top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
+          left: 100%;
+          transform: translate(-100%, -50%);
           height: 100%;
           width: auto;
           max-width: none;
@@ -114,8 +114,9 @@ settingsUI <- function(id) {
 		  min-height: 600px;
           background: linear-gradient(160deg, rgba(8, 9, 18, 0.96), rgba(8, 11, 26, 0.9));
           border-radius: 18px;
-          padding: 32px 34px 32px 28px;
+          padding: 32px clamp(22px, 2.4vw, 28px) 32px clamp(10px, 1.2vw, 16px);
           box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35);
+		  margin-left: -250px;
         }
         
         .character-title {
