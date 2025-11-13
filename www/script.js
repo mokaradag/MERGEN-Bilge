@@ -1730,55 +1730,80 @@
     const NeuralWelcomeAnimation = {
       canvas: null,
       ctx: null,
+      wrapper: null,
       particles: [],
       animationId: null,
       particleCount: 100,
-    
-      init: function() {
+      primaryRGB: { r: 255, g: 107, b: 53 },
+      resizeHandler: null,
+
+      init: function(attempt = 0) {
         const container = document.querySelector('.welcome-container');
-        if (!container) return;
-    
+        if (!container) {
+          if (attempt < 10) {
+            setTimeout(() => this.init(attempt + 1), 120);
+          }
+          return;
+        }
+
+        if (this.animationId || this.wrapper) {
+          this.destroy(true);
+        }
+
         let wrapper = container.querySelector('.neural-background');
         if (!wrapper) {
           wrapper = document.createElement('div');
           wrapper.className = 'neural-background';
-          const cv = document.createElement('canvas');
-          cv.className = 'neural-canvas-welcome';
-          wrapper.appendChild(cv);
           container.insertBefore(wrapper, container.firstChild);
+        } else {
+          wrapper.className = 'neural-background';
         }
-    
+
         let canvas = wrapper.querySelector('canvas.neural-canvas-welcome');
         if (!canvas) {
           canvas = document.createElement('canvas');
           canvas.className = 'neural-canvas-welcome';
           wrapper.appendChild(canvas);
+        } else {
+          canvas.className = 'neural-canvas-welcome';
         }
-    
+
+        this.wrapper = wrapper;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
-    
-        // Use CSS --primary-color for the canvas color
+
         const cssPrimary = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
-        function hexToRgb(hex){ let c=hex.replace('#',''); if (c.length===3) c=c.split('').map(x=>x+x).join(''); const n=parseInt(c,16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}; }
-        this.primaryRGB = hexToRgb(cssPrimary || '#ff6b35');
-    
+        const hexToRgb = (hex) => {
+          let c = (hex || '').replace('#', '');
+          if (!c) return { r: 255, g: 107, b: 53 };
+          if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
+          const n = parseInt(c, 16);
+          if (Number.isNaN(n)) return { r: 255, g: 107, b: 53 };
+          return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+        };
+        this.primaryRGB = hexToRgb(cssPrimary);
+
         this.resize();
-        window.addEventListener('resize', () => this.resize(), { passive: true });
-    
+
+        if (this.resizeHandler) {
+          window.removeEventListener('resize', this.resizeHandler);
+        }
+        this.resizeHandler = () => this.resize();
+        window.addEventListener('resize', this.resizeHandler, { passive: true });
+
         this.createParticles();
         this.animate();
       },
-      
+
       resize: function() {
-        if (!this.canvas) return;
-        const container = this.canvas.parentElement;
-        this.canvas.width = container.clientWidth;
-        this.canvas.height = container.clientHeight;
+        if (!this.canvas || !this.wrapper) return;
+        this.canvas.width = this.wrapper.clientWidth;
+        this.canvas.height = this.wrapper.clientHeight;
       },
-      
+
       createParticles: function() {
         this.particles = [];
+        if (!this.canvas) return;
         for (let i = 0; i < this.particleCount; i++) {
           this.particles.push({
             x: Math.random() * this.canvas.width,
@@ -1790,34 +1815,32 @@
           });
         }
       },
-      
+
       animate: function() {
         if (!this.ctx || !this.canvas) return;
-        
-        // Clear canvas
+        if (!this.wrapper || !document.body.contains(this.wrapper)) {
+          this.destroy(true);
+          return;
+        }
+
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Update and draw particles
+
         this.particles.forEach((p, i) => {
-          // Update position
           p.x += p.vx;
           p.y += p.vy;
-          
-          // Bounce off walls
+
           if (p.x < 0 || p.x > this.canvas.width) p.vx *= -1;
           if (p.y < 0 || p.y > this.canvas.height) p.vy *= -1;
-          
-          // Draw particle
+
           this.ctx.beginPath();
           this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
           this.ctx.fillStyle = `rgba(${this.primaryRGB.r}, ${this.primaryRGB.g}, ${this.primaryRGB.b}, ${p.opacity})`;
           this.ctx.fill();
-          
-          // Draw connections to nearby particles
+
           for (let j = i + 1; j < this.particles.length; j++) {
             const p2 = this.particles[j];
-            const distance = Math.sqrt((p.x - p2.x) ** 2 + (p.y - p2.y) ** 2);
-            
+            const distance = Math.hypot(p.x - p2.x, p.y - p2.y);
+
             if (distance < 100) {
               this.ctx.beginPath();
               this.ctx.moveTo(p.x, p.y);
@@ -1829,26 +1852,105 @@
             }
           }
         });
-        
-        // Continue animation
+
         this.animationId = requestAnimationFrame(() => this.animate());
       },
-      
-      destroy: function() {
+
+      destroy: function(skipFade) {
         if (this.animationId) {
           cancelAnimationFrame(this.animationId);
           this.animationId = null;
         }
-        
-        const bg = document.querySelector('.neural-background');
-        if (bg) {
-          bg.classList.add('fade-out');
-          setTimeout(() => bg.remove(), 500);
+
+        if (this.resizeHandler) {
+          window.removeEventListener('resize', this.resizeHandler);
+          this.resizeHandler = null;
         }
-        
+
+        const wrapper = this.wrapper;
+        this.wrapper = null;
+
+        if (wrapper) {
+          if (skipFade) {
+            wrapper.remove();
+          } else {
+            wrapper.classList.add('fade-out');
+            setTimeout(() => {
+              if (wrapper.parentNode) {
+                wrapper.remove();
+              }
+            }, 500);
+          }
+        }
+
         this.canvas = null;
         this.ctx = null;
         this.particles = [];
+      }
+    };
+
+    const StickyLayoutObserver = {
+      historyObserver: null,
+      savedObserver: null,
+      observedHistoryPanels: new WeakSet(),
+      observedSavedElements: new WeakSet(),
+
+      ensureObservers() {
+        if (typeof ResizeObserver === 'undefined') return false;
+        if (!this.historyObserver) {
+          this.historyObserver = new ResizeObserver(entries => {
+            entries.forEach(entry => {
+              const container = entry.target.closest('.history-scrollable-content');
+              if (!container) return;
+              const height = entry.target.getBoundingClientRect().height;
+              container.style.setProperty('--history-controls-height', `${Math.round(height)}px`);
+            });
+          });
+        }
+        if (!this.savedObserver) {
+          this.savedObserver = new ResizeObserver(entries => {
+            entries.forEach(entry => {
+              const container = entry.target.closest('.saved-chats-scrollable');
+              if (!container) return;
+              const search = container.querySelector('.saved-chats-sticky');
+              const height = search ? search.getBoundingClientRect().height : 0;
+              container.style.setProperty('--saved-chats-search-height', `${Math.round(height)}px`);
+              const gap = parseFloat(getComputedStyle(container).getPropertyValue('--saved-chats-gap')) || 16;
+              container.style.setProperty('--saved-chats-pagination-offset', `${Math.round(height + gap)}px`);
+            });
+          });
+        }
+        return true;
+      },
+
+      refresh() {
+        if (!this.ensureObservers()) return;
+
+        document.querySelectorAll('.history-scrollable-content').forEach(container => {
+          const panel = container.querySelector('.history-sticky-panel');
+          if (panel && !this.observedHistoryPanels.has(panel)) {
+            this.historyObserver.observe(panel);
+            this.observedHistoryPanels.add(panel);
+          }
+          if (panel) {
+            const height = panel.getBoundingClientRect().height;
+            container.style.setProperty('--history-controls-height', `${Math.round(height)}px`);
+          }
+        });
+
+        document.querySelectorAll('.saved-chats-scrollable').forEach(container => {
+          const search = container.querySelector('.saved-chats-sticky');
+          if (search && !this.observedSavedElements.has(search)) {
+            this.savedObserver.observe(search);
+            this.observedSavedElements.add(search);
+          }
+          if (search) {
+            const height = search.getBoundingClientRect().height;
+            container.style.setProperty('--saved-chats-search-height', `${Math.round(height)}px`);
+            const gap = parseFloat(getComputedStyle(container).getPropertyValue('--saved-chats-gap')) || 16;
+            container.style.setProperty('--saved-chats-pagination-offset', `${Math.round(height + gap)}px`);
+          }
+        });
       }
     };
     
@@ -1856,7 +1958,20 @@
     Shiny.addCustomMessageHandler('showNeuralAnimation', function(message) {
       setTimeout(() => {
         NeuralWelcomeAnimation.init();
-      }, 100);
+        StickyLayoutObserver.refresh();
+      }, 120);
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      StickyLayoutObserver.refresh();
+    });
+
+    $(document).on('shiny:value', () => {
+      requestAnimationFrame(() => StickyLayoutObserver.refresh());
+    });
+
+    $(document).on('shiny:recalculated', () => {
+      requestAnimationFrame(() => StickyLayoutObserver.refresh());
     });
     
     // Watch for chat messages and destroy animation when chat starts
@@ -2057,25 +2172,122 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
   loreDiv.style.lineHeight = '1.7';
   loreDiv.style.color = 'var(--text-secondary)';
   loreDiv.style.opacity = '0';
-  
+
   // Clear and add elements
   infoArea.innerHTML = '';
   infoArea.appendChild(titleDiv);
   infoArea.appendChild(loreDiv);
-  
+
+  const extrasContainer = document.createElement('div');
+  extrasContainer.className = 'character-extra-sections';
+  infoArea.appendChild(extrasContainer);
+
+  const renderExtras = () => {
+    extrasContainer.innerHTML = '';
+
+    if (typeof data.style === 'string' && data.style.trim().length) {
+      const styleCard = document.createElement('div');
+      styleCard.className = 'character-style-card';
+
+      const styleHeading = document.createElement('h5');
+      styleHeading.className = 'character-style-heading';
+      styleHeading.textContent = 'Yanıt Stratejisi';
+
+      const styleBody = document.createElement('p');
+      styleBody.className = 'character-style-body';
+      styleBody.textContent = data.style;
+
+      styleCard.appendChild(styleHeading);
+      styleCard.appendChild(styleBody);
+      extrasContainer.appendChild(styleCard);
+    }
+
+    if (Array.isArray(data.metrics) && data.metrics.length) {
+      const metricsGrid = document.createElement('div');
+      metricsGrid.className = 'character-metrics-grid';
+
+      data.metrics.forEach(metric => {
+        if (!metric) return;
+        const label = metric.label || '';
+        const rawValue = Number(metric.value);
+        const value = Number.isFinite(rawValue) ? Math.max(0, Math.min(100, rawValue)) : 0;
+
+        const metricCard = document.createElement('div');
+        metricCard.className = 'character-metric';
+
+        const header = document.createElement('div');
+        header.className = 'character-metric-header';
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'character-metric-label';
+        labelSpan.textContent = label;
+
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'character-metric-value';
+        valueSpan.textContent = `${Math.round(value)}%`;
+
+        header.appendChild(labelSpan);
+        header.appendChild(valueSpan);
+
+        const bar = document.createElement('div');
+        bar.className = 'character-metric-bar';
+
+        const fill = document.createElement('div');
+        fill.className = 'character-metric-bar-fill';
+        fill.style.width = `${value}%`;
+        if (data.accentColor) {
+          fill.style.background = data.accentColor;
+          fill.style.boxShadow = `0 0 18px ${data.accentColor}55`;
+        }
+
+        bar.appendChild(fill);
+
+        metricCard.appendChild(header);
+        metricCard.appendChild(bar);
+        metricsGrid.appendChild(metricCard);
+      });
+
+      extrasContainer.appendChild(metricsGrid);
+    }
+
+    if (Array.isArray(data.signatureMoves) && data.signatureMoves.length) {
+      const signatureWrapper = document.createElement('div');
+      signatureWrapper.className = 'character-signature-wrapper';
+
+      const signatureHeading = document.createElement('h5');
+      signatureHeading.className = 'character-style-heading';
+      signatureHeading.textContent = 'Karakterin İmzası';
+
+      const list = document.createElement('ul');
+      list.className = 'character-signature-list';
+
+      data.signatureMoves.forEach(move => {
+        if (!move) return;
+        const item = document.createElement('li');
+        item.textContent = move;
+        list.appendChild(item);
+      });
+
+      signatureWrapper.appendChild(signatureHeading);
+      signatureWrapper.appendChild(list);
+      extrasContainer.appendChild(signatureWrapper);
+    }
+  };
+
   // Fade in title
   setTimeout(() => {
     titleDiv.style.transition = 'opacity 0.4s ease';
     titleDiv.style.opacity = '1';
   }, 100);
-  
+
   // Start typing effect for lore after title appears
   setTimeout(() => {
     loreDiv.style.opacity = '1';
     if (window.typeCharacterLore) {
-      window.typeCharacterLore(data.lore, loreId, 60);
+      window.typeCharacterLore(data.lore, loreId, 60, renderExtras);
     } else {
       loreDiv.textContent = data.lore;
+      renderExtras();
     }
   }, 500);
 });

@@ -1,5 +1,5 @@
 // Character typing effect - word by word
-window.typeCharacterLore = function(text, elementId, delay = 80) {
+window.typeCharacterLore = function(text, elementId, delay = 80, onComplete) {
   const element = document.getElementById(elementId);
   if (!element) return;
   
@@ -16,8 +16,10 @@ window.typeCharacterLore = function(text, elementId, delay = 80) {
       element.textContent += words[index];
       index++;
       setTimeout(typeWord, delay);
+    } else if (typeof onComplete === 'function') {
+      onComplete();
     }
   }
-  
+
   typeWord();
 };

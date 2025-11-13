@@ -308,94 +308,7 @@ settingsServer <- function(id, parent_session = NULL) {
     temp_selected_character <- reactiveVal("mergen")
 
     # Load character data
-    characters_data <- reactive({
-      list(
-        title = "Yanıt Stili — Karakter Seçimi",
-        default_style = "mergen",
-        styles = list(
-          list(
-            id = "mergen",
-            label = "Mergen",
-            display_name = "MERGEN",
-            subtitle = "Standart",
-            avatar = "characters/avatar/Mergen_avatar_original.png",
-            image = "characters/resim/Mergen_resim_original.png",
-            accent = "#7C4DFF",
-            accent_hover = "#8E66FF",
-            accent_active = "#6A3BE6",
-            selection_card_tr = "\"Zihin Yayından Çıkan Ok\" — hızlı, net, uygulanabilir",
-            lore_tr = "Mergen, Türk ve Altay anlatılarında bilgeliğin ve keskin zekânın sembolüdür. Bazı kaynaklarda Kayra'nın oğlu olarak geçer. Oku ve yayı, isabetli düşünceyi ve doğru soruyu bulmayı temsil eder. Gök katlarının sessizliğinde düşünür, karmaşığı özüne indirir. Şaman inançlarında 'akıl veren' olarak bilinir; günümüz yorumunda ise veriyi süzer, gürültüyü susturur. Mergen'i seçtiğinizde fazla söze gerek kalmaz: hedef, nişan ve net sonuç.",
-            style_tr = "Önce kısa özet, ardından adım adım plan ve küçük örnek",
-            system_prompt_en = "Be a balanced, pragmatic assistant. First provide a 2–3 sentence executive summary, then a concise step-by-step plan, then a minimal example/output. Avoid rhetoric and hedging. Use precise, actionable language. Ask for missing constraints only if they block progress.",
-            parameters = list(temperature = 0.4)
-          ),
-          list(
-            id = "ulgen",
-            label = "Ülgen",
-            display_name = "ÜLGEN",
-            subtitle = "Yapıcı Uzman",
-            avatar = "characters/avatar/Ulgen_avatar_original.png",
-            image = "characters/resim/Ulgen_resim_original.png",
-            accent = "#2F6DF6",
-            accent_hover = "#4C80F7",
-            accent_active = "#1E59E0",
-            selection_card_tr = "\"Göğün Işığı\" — moral yükseltir, yolu aydınlatır",
-            lore_tr = "Ülgen, göğün aydınlık yüzüdür; iyilik, düzen ve üretkenliğin tanrısı olarak tanınır. Üst gök katlarında yaşadığına inanılır; insanlara ateşi, zanaatı ve doğru yolu öğreten bir rehberdir. Kozmik dengede karşıtı Erlik olsa da amacı çatışma değil, düzen kurmaktır. Eski törenlerde beyaz renklerle anılır; umut ve yeniden başlama duygusunu simgeler. Ülgen'i seçtiğinizde sis dağılır, seçenekler berraklaşır ve eylem planı ortaya çıkar.",
-            style_tr = "Sorunu çerçevele; çözüm seçenekleri + artı/eksi; gerekçeli öneri; eylem listesi",
-            system_prompt_en = "Act like a constructive expert: quickly frame the problem; propose 2–3 viable solution paths with trade-offs; recommend one path with rationale; end with a checklist of next actions and acceptance criteria. Keep the tone positive and professional.",
-            parameters = list(temperature = 0.5)
-          ),
-          list(
-            id = "kayra",
-            label = "Kayra",
-            display_name = "KAYRA",
-            subtitle = "Stratejist",
-            avatar = "characters/avatar/Kayra_avatar_original.png",
-            image = "characters/resim/Kayra_resim_original.png",
-            accent = "#12A97B",
-            accent_hover = "#26B790",
-            accent_active = "#0C8C63",
-            selection_card_tr = "\"Evrenin Haritacısı\" — büyük resmi kurar, yolu fazlara böler",
-            lore_tr = "Kayra Han, bazı Sibirya ve Türk anlatılarında yaratıcı ve en yüce ilke olarak yer alır; kaosu ayırıp göğü, yeri ve suları düzene sokan güç olarak bilinir. Bazı varyantlarda Ülgen ve Erlik'in babası kabul edilir; kararları denge ve ilkelere dayanır. Onun sesi acele etmez; uzun vadeli görüş, sağlam kilometre taşları ve sorumluluk paylaşımı ister. Kayra'yı seçtiğinizde vizyon haritaya, harita da uygulanabilir bir yol planına dönüşür.",
-            style_tr = "Amaçlar ve ilkeler → seçenekler/trade-off → karar matrisi → fazlı roadmap",
-            system_prompt_en = "Operate as a strategist: state objectives and guiding principles; map alternatives with trade-offs; provide a decision matrix; outline a phased roadmap with milestones, owners, and risks; include governance/policy notes when relevant.",
-            parameters = list(temperature = 0.3, long_form = TRUE)
-          ),
-          list(
-            id = "erlik",
-            label = "Erlik",
-            display_name = "ERLİK",
-            subtitle = "Eleştirel Eş",
-            avatar = "characters/avatar/Erlik_avatar_original.png",
-            image = "characters/resim/Erlik_resim_original.png",
-            accent = "#B66A2C",
-            accent_hover = "#C27A3D",
-            accent_active = "#8F5321",
-            selection_card_tr = "\"Varsayım Avcısı\" — kör noktayı görür, nazikçe dürtükler",
-            lore_tr = "Erlik Han, yeraltı âleminin hükümdarı olarak tanınır; kozmik dengede eksikleri, kusurları ve sınavları görünür kılan karşıt güçtür. Amacı korkutmak değil, yanlışı düzeltmek için perdeyi aralamaktır; demir ve toprakla özdeşleşir. Anlatılarda hastalık ve kıtlık gibi riskleri hatırlatır; böylece tedbiri doğurur. Erlik'i seçtiğinizde keskin sorular gelir: 'Neye dayanıyor? Ne ters gidebilir?' ve planın zayıf halkaları güçlenir.",
-            style_tr = "Varsayımlar → riskler & karşı örnekler → nazik sorgu → risk azaltma → kontrol listesi",
-            system_prompt_en = "Be a respectful critical partner. Surface hidden assumptions; list risks and counterexamples; ask sharp but polite why/how questions; propose risk-mitigating alternatives; conclude with a concise pre-flight checklist. Keep language diplomatic, not scary.",
-            parameters = list(temperature = 0.4)
-          ),
-          list(
-            id = "umay",
-            label = "Umay Ana",
-            display_name = "UMAY ANA",
-            subtitle = "Rehber",
-            avatar = "characters/avatar/Umay_Ana_avatar_original.png",
-            image = "characters/resim/Umay_Ana_resim_original.png",
-            accent = "#E98686",
-            accent_hover = "#EE9B9B",
-            accent_active = "#D96F6F",
-            selection_card_tr = "\"Nazik Öğretici\" — yeni başlayanların korkusunu alır",
-            lore_tr = "Umay Ana, Türk dünyasında bereketin ve çocukların koruyucu ruhu olarak sevilir; turna kuşuyla, sıcaklık ve şefkatle anılır. Halk inançlarında annenin ve yuvanın hamisi kabul edilir; adı eski metinlerde de yaşar. Karmaşayı küçük lokmalara böler; telaşı sakinliğe, belirsizliği güvene çevirir. Umay'ı seçtiğinizde dil yumuşar; adımlar küçülür, ipuçları belirir ve yeni başlayanlar için kapı aralanır.",
-            style_tr = "Basit dil; küçük numaralı adımlar; sık hata/ipuçları; kısa güvenlik notu; mini örnek",
-            system_prompt_en = "Be an empathetic teacher for beginners. Explain in simple language; break tasks into small numbered steps; include common pitfalls and tips; add a short safety/ethics note if relevant; provide a minimal working example.",
-            parameters = list(temperature = 0.6)
-          )
-        )
-      )
-    })
+	characters_data <- reactive(get_characters_data())
     
     # Initialize character UI (run once)
     observeEvent(TRUE, {
@@ -457,6 +370,9 @@ settingsServer <- function(id, parent_session = NULL) {
           title = char$selection_card_tr,
           lore = char$lore_tr,
           accentColor = char$accent,
+          style = char$style_tr,
+          metrics = char$profile_metrics,
+          signatureMoves = char$signature_moves,
           infoAreaId = session$ns("character_info_area")
         ))
       }
@@ -469,13 +385,74 @@ settingsServer <- function(id, parent_session = NULL) {
       
       char <- Find(function(x) x$id == char_id, chars$styles)
       if (is.null(char)) return(NULL)
+	  
+	  metrics <- char$profile_metrics %||% list()
+      signature <- char$signature_moves %||% list()
+
+      metric_nodes <- lapply(metrics, function(metric) {
+        value <- metric$value %||% 0L
+        value <- suppressWarnings(as.integer(value))
+        if (!is.finite(value)) value <- 0L
+        value <- max(min(value, 100L), 0L)
+        label <- metric$label %||% ""
+
+        div(
+          class = "character-metric",
+          div(
+            class = "character-metric-header",
+            span(class = "character-metric-label", label),
+            span(class = "character-metric-value", paste0(value, "%"))
+          ),
+          div(
+            class = "character-metric-bar",
+            div(
+              class = "character-metric-bar-fill",
+              style = paste0("width: ", value, "%; background: ", char$accent, ";")
+            )
+          )
+        )
+      })
+
+      signature_nodes <- NULL
+      if (length(signature) > 0) {
+        signature_nodes <- tags$ul(
+          class = "character-signature-list",
+          lapply(signature, function(item) {
+            tags$li(item)
+          })
+        )
+      }
       
       tagList(
-        div(class = "character-title character-title-animate", 
-            style = paste0("color: ", char$accent), 
-            char$selection_card_tr),
-        div(class = "character-lore character-lore-animate", 
-            char$lore_tr)
+        div(
+          class = "character-title character-title-animate",
+          style = paste0("color: ", char$accent),
+          char$selection_card_tr
+        ),
+        div(
+          class = "character-lore character-lore-animate",
+          char$lore_tr
+        ),
+        if (!is.null(char$style_tr) && nzchar(char$style_tr)) {
+          div(
+            class = "character-style-card",
+            tags$h5("Yanıt Stratejisi", class = "character-style-heading"),
+            tags$p(char$style_tr, class = "character-style-body")
+          )
+        },
+        if (length(metric_nodes) > 0) {
+          div(
+            class = "character-metrics-grid",
+            metric_nodes
+          )
+        },
+        if (!is.null(signature_nodes)) {
+          div(
+            class = "character-signature-wrapper",
+            tags$h5("Karakterin İmzası", class = "character-style-heading"),
+            signature_nodes
+          )
+        }
       )
     })
     

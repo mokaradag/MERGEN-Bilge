@@ -46,7 +46,10 @@ tagList(
                 ns("bulk_upload"),
                 label = NULL,
                 multiple = TRUE,
-                buttonLabel = tagList(icon("folder-open"), "Göz At"),
+                buttonLabel = tagList(
+                  icon("folder-open", class = "file-browse-icon"),
+                  span("Göz At")
+                ),
                 placeholder = "Henüz dosya seçilmedi"
               )
             ),
@@ -315,7 +318,6 @@ fileManagerServer <- function(
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
     bulk_files_to_process <- reactiveVal(NULL)
-    file_to_preview       <- reactiveVal(NULL)
     file_removed          <- reactiveVal(NULL)
     all_files_cleared     <- reactiveVal(FALSE)
 
@@ -584,7 +586,6 @@ fileManagerServer <- function(
       req(info)
 
       if (input$file_action$action == "view") {
-        file_to_preview(info)
         message_data(list(type = "view_file", content = info$id, html = NULL))
         message_trigger(message_trigger() + 1)
 
@@ -787,7 +788,6 @@ fileManagerServer <- function(
     # expose to parent
 	list(
 	  get_bulk_files           = reactive({ bulk_files_to_process() }),
-	  get_file_to_preview      = reactive({ file_to_preview() }),
 	  message_trigger          = reactive({ message_trigger() }),
 	  get_message              = reactive({ message_data() }),
 	  file_contents            = reactive({ module_values$file_contents }),

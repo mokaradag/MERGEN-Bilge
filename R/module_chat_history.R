@@ -17,9 +17,9 @@ historyUI <- function(id) {
         )
       ),
       div(
-        class = "scrollable-content",
+        class = "scrollable-content history-scrollable-content",
         div(
-          class = "history-controls date-filter dark-date-picker",
+          class = "history-controls date-filter dark-date-picker history-sticky-panel",
           dateRangeInput(
             inputId = ns("date_range"),
             label = "Tarih Aralığı:",
@@ -289,6 +289,7 @@ historyServer <- function(id, all_messages) {
           lengthMenu = list(c(5, 10, 25, 50, -1), c('5', '10', '25', '50', 'Tümü')),
           dom = 'lfrtip',
           responsive = TRUE,
+		  autoWidth = TRUE,
           language = list(
             search = "Ara:",
             lengthMenu = "Sayfa başına _MENU_ kayıt göster",

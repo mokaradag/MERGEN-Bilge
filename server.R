@@ -1442,28 +1442,21 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   # Rest of observers...
   observeEvent(file_manager_data$message_trigger(), {
 	req(file_manager_data$message_trigger() > 0)
-	
+
 	msg <- file_manager_data$get_message()
-	
+
 	if (!is.null(msg)) {
-	  if (is.null(msg$type) || msg$type != "view_file") {
-		add_message(msg$content, type = "system", html = msg$html)
+	  if (identical(msg$type, "view_file")) {
+			file_id <- msg$content
+			file_info <- file_manager_data$file_contents()[[file_id]]
+			if (!is.null(file_info)) {
+			  openAnyPreview(file_info, session, filePreview)
+			}
 	  } else {
-		file_id <- msg$content
-		file_info <- file_manager_data$file_contents()[[file_id]]
-		if (!is.null(file_info)) {
-		  filePreview$open(file_info)
-		}
+			add_message(msg$content, type = "system", html = msg$html)
 	  }
 	}
   }, ignoreInit = TRUE)
-
-observeEvent(file_manager_data$get_file_to_preview(), {
-  file_to_preview <- file_manager_data$get_file_to_preview()
-  req(file_to_preview)
-
-  openAnyPreview(file_to_preview, session, filePreview)
-}, ignoreInit = TRUE)
 	
   observeEvent(saved_chats_data$delete_chat_id(), {
 	chat_id <- saved_chats_data$delete_chat_id()
