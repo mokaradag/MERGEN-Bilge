@@ -575,18 +575,57 @@
     
       // Cinematic Intro Animation
       function initIntro() {
-        const canvas = document.getElementById('neural-canvas');
-        if (!canvas) return;
-    
-        const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    
+        const introContainer = document.getElementById('intro-container');
+        if (!introContainer) return;
+
+        let canvas = document.getElementById('neural-canvas');
+        if (!canvas) {
+          canvas = document.createElement('canvas');
+          canvas.id = 'neural-canvas';
+          canvas.className = 'neural-canvas';
+          introContainer.insertBefore(canvas, introContainer.firstChild);
+        }
+
+        const finishIntro = () => {
+          document.body.classList.add('app-ready');
+          const $intro = $('#intro-container');
+          $intro.addClass('fade-out');
+          setTimeout(() => {
+            if ($intro.length) {
+              $intro.remove();
+            }
+          }, 1000);
+        };
+
+        let ctx = null;
+        try {
+          ctx = canvas.getContext('2d');
+        } catch (err) {
+          console.error('Intro canvas context error:', err);
+        }
+
+        if (!ctx) {
+          setTimeout(finishIntro, 300);
+          return;
+        }
+
+        const sizeCanvas = () => {
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+        };
+
+        sizeCanvas();
+        window.addEventListener('resize', sizeCanvas, { passive: true });
+
         const particles = [];
         const particleCount = 300;
-    
+
         class Particle {
           constructor() {
+            this.reset();
+          }
+
+          reset() {
             this.x = Math.random() * canvas.width;
             this.y = Math.random() * canvas.height;
             this.vx = (Math.random() - 0.5) * 0.2;
@@ -595,14 +634,14 @@
             const colors = ['rgba(255, 255, 255, 0.9)', 'rgba(200, 220, 255, 0.8)', 'rgba(150, 180, 255, 0.7)'];
             this.color = colors[Math.floor(Math.random() * colors.length)];
           }
-    
+
           update() {
             this.x += this.vx;
             this.y += this.vy;
             if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
             if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
           }
-    
+
           draw() {
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -610,18 +649,18 @@
             ctx.fill();
           }
         }
-    
+
         for (let i = 0; i < particleCount; i++) {
           particles.push(new Particle());
         }
-    
-        function animate() {
+
+        const animate = () => {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           particles.forEach(p => { p.update(); p.draw(); });
-    
+
           for (let i = 0; i < particles.length; i++) {
             for (let j = i + 1; j < particles.length; j++) {
-              const distance = Math.sqrt((particles[i].x - particles[j].x) ** 2 + (particles[i].y - particles[j].y) ** 2);
+              const distance = Math.hypot(particles[i].x - particles[j].x, particles[i].y - particles[j].y);
               if (distance < 150) {
                 ctx.beginPath();
                 ctx.moveTo(particles[i].x, particles[i].y);
@@ -633,16 +672,11 @@
             }
           }
           requestAnimationFrame(animate);
-        }
-    
+        };
+
         animate();
-    
-        setTimeout(() => {
-          document.body.classList.add('app-ready');
-        
-          $('#intro-container').addClass('fade-out');
-          setTimeout(() => $('#intro-container').remove(), 1000);
-        }, 500);
+
+        setTimeout(finishIntro, 500);
       }
     
       initIntro();
@@ -2226,6 +2260,11 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
 Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
   const infoArea = document.getElementById(data.infoAreaId);
   if (!infoArea) return;
+  
+  const previousHeight = infoArea.getBoundingClientRect().height;
+  if (previousHeight > 0) {
+    infoArea.style.minHeight = `${Math.round(previousHeight)}px`;
+  }
 
   const accent = data.accentColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-color');
   infoArea.innerHTML = '';
@@ -2365,6 +2404,17 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
 
   const extrasState = renderExtras();
 
+  const releaseHeight = (() => {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      requestAnimationFrame(() => {
+        infoArea.style.minHeight = '';
+      });
+    };
+  })();
+  
   const startExtrasSequence = (() => {
     let started = false;
     return () => {
@@ -2373,62 +2423,66 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
       extrasContainer.classList.remove('is-pending');
       extrasContainer.classList.add('is-ready');
 
-      extrasState.revealables.forEach((el, index) => {
+      extrasState.revealables.forEach((el) => {
         if (!el) return;
-        el.style.transitionDelay = `${index * 80}ms`;
-        el.classList.add('is-visible');
-      });
-
-      extrasState.metricFills.forEach((fill, index) => {
-        if (!fill) return;
-        const target = fill.dataset.targetWidth || '0%';
-        fill.style.transitionDelay = `${index * 40}ms`;{
+        el.style.transitionDelay = '0ms';
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            fill.style.width = target;
-          });
+          el.classList.add('is-visible');
         });
       });
 
-      extrasState.typingTargets.forEach((target, index) => {
-        const startDelay = index * 90;
-        setTimeout(() => {
-          const text = target.text || '';
-          if (!target.id) return;
-          if (target.mode === 'word' && window.typeCharacterLore) {
-            window.typeCharacterLore(text, target.id, target.delay || 55);
-          } else if (window.typeCharacterText) {
-            window.typeCharacterText(target.id, text, target.delay || 35);
-          } else {
-            const el = document.getElementById(target.id);
-            if (el) el.textContent = text;
-          }
-        }, startDelay);
+      extrasState.metricFills.forEach((fill) => {
+        if (!fill) return;
+        const target = fill.dataset.targetWidth || '0%';
+        fill.style.transitionDelay = '0ms';
+        requestAnimationFrame(() => {
+          fill.style.width = target;
+        });
       });
+
+      extrasState.typingTargets.forEach((target) => {
+        const text = target.text || '';
+        if (!target.id) return;
+        if (target.mode === 'word' && window.typeCharacterLore) {
+          window.typeCharacterLore(text, target.id, target.delay || 55);
+        } else if (window.typeCharacterText) {
+          window.typeCharacterText(target.id, text, target.delay || 35);
+        } else {
+          const el = document.getElementById(target.id);
+          if (el) el.textContent = text;
+        }
+      });
+
+      releaseHeight();
     };
   })();
 
+  const kickoffExtras = () => {
+    requestAnimationFrame(() => startExtrasSequence());
+  };
+
+  kickoffExtras();
+  setTimeout(kickoffExtras, 600);
+  
   requestAnimationFrame(() => {
     titleDiv.style.transition = 'opacity 0.4s ease';
     titleDiv.style.opacity = '1';
   });
 
-  setTimeout(() => {
+  const startLoreTyping = () => {
     loreDiv.style.opacity = '1';
     const loreText = data.lore || '';
     if (window.typeCharacterLore) {
-      window.typeCharacterLore(loreText, loreId, 60, startExtrasSequence);;
+      window.typeCharacterLore(loreText, loreId, 60, kickoffExtras);
     } else if (window.typeCharacterText) {
-      window.typeCharacterText(loreId, loreText, 35, startExtrasSequence);
+      window.typeCharacterText(loreId, loreText, 35, kickoffExtras);
     } else {
       loreDiv.textContent = loreText;
-      startExtrasSequence();
+      kickoffExtras();
     }
-  }, 400);
+  };
 
-  setTimeout(() => {
-    startExtrasSequence();
-  }, 420);
+  setTimeout(startLoreTyping, 280);
 });
 
 // Handle source link clicks

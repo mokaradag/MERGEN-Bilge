@@ -241,10 +241,18 @@ fileManagerServer <- function(
 	  })
 	  session$sendCustomMessage(ns("setAttachState"), list(ids = to_uncheck, checked = FALSE))
 
-	  if (length(invalid_ids) > 0) {
-		showToast(session, "MCP: Excel modunda yalnızca Excel dosyaları bağlanabilir. Uygun olmayan seçimler kaldırıldı.", "warning")
+	  if (length(invalid_ids) > 0 && length(extra_ids) > 0) {
+		showToast(session,
+				 "MCP: Sadece tek bir Excel dosyası tutuldu; diğer türler ve fazladan seçimler kaldırıldı.",
+				 "warning")
+	  } else if (length(invalid_ids) > 0) {
+		showToast(session,
+				 "MCP: Excel modunda yalnızca Excel dosyaları bağlanabilir. Uygun olmayan seçimler kaldırıldı.",
+				 "warning")
 	  } else {
-		showToast(session, "MCP açıkken yalnızca tek bir Excel dosyası seçilebilir.", "warning")
+		showToast(session,
+				 "MCP açıkken yalnızca tek bir Excel dosyası seçilebilir; fazladan seçimler kaldırıldı.",
+				 "warning")
 	  }
 	})
   
