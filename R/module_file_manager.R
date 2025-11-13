@@ -68,9 +68,9 @@ tagList(
 		  class = "files-table-card",
 		  h3("Yüklenen Dosyalar", class = "section-title"),
 		  div(
-			id = ns("attach_rule_hint"),
-			style = "margin: 6px 0 12px 0; font-size: 12px; color: #a3a3a3;",
-			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir; kapalıyken birden fazla seçim yapabilirsiniz."
+				id = ns("attach_rule_hint"),
+				style = "margin: 6px 0 12px 0; font-size: 12px; color: #a3a3a3;",
+				"Seçim kuralı: MCP (Excel) açıkken yalnızca tek bir Excel dosyası bağlanabilir; kapalıyken birden fazla seçim yapabilirsiniz."
 		  ),
 		  DT::dataTableOutput(ns("files_table"))
 		)
@@ -122,6 +122,12 @@ fileManagerServer <- function(
 	  module_values$file_contents[[fid]] %||% NULL
 	}
 
+	is_excel_file <- function(info) {
+	  if (is.null(info)) return(FALSE)
+	  ext <- tolower(info$type %||% tools::file_ext(info$name) %||% "")
+	  ext %in% c("xls", "xlsx", "xlsm", "xlsb", "xltx", "xltm")
+	}
+
 	# Update parent session_files using the bridge we were given
 	attach_in_parent <- function(file_obj) {
 	  if (is.null(session_files_reactive)) return(invisible())
@@ -150,7 +156,14 @@ fileManagerServer <- function(
 	  info <- get_file_by_id(fid)
 	  req(info)
 
-	  if (checked) {
+  if (checked) {
+		if (isTRUE(mcp_enabled_reactive()) && !is_excel_file(info)) {
+		  session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+		  module_values$files_in_context[[fid]] <- NULL
+		  detach_in_parent(fname)
+		  showToast(session, "MCP: Excel modunda yalnızca Excel dosyaları bağlanabilir.", "error")
+		  return()
+		}
 		# MCP ON? allow only one
 		if (isTRUE(mcp_enabled_reactive())) {
 		  # Uncheck all other selected ones
@@ -180,20 +193,59 @@ fileManagerServer <- function(
 
 	  # Update the hint text dynamically
 	  txt <- if (isTRUE(mcp_enabled_reactive())) {
-		"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
+			"Seçim kuralı: MCP (Excel) açıkken yalnızca tek bir Excel dosyası bağlanabilir."
 	  } else {
-		"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
+			"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
 	  }
 	  shinyjs::html(id = "attach_rule_hint", html = txt, add = FALSE)
 	}, ignoreInit = TRUE)
-	
+
 	observe({
 	  txt <- if (isTRUE(mcp_enabled_reactive())) {
-		"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
+			"Seçim kuralı: MCP (Excel) açıkken yalnızca tek bir Excel dosyası bağlanabilir."
 	  } else {
-		"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
+			"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
 	  }
 	  shinyjs::html(id = "attach_rule_hint", html = txt, add = FALSE)
+	})
+
+	observeEvent(mcp_enabled_reactive(), {
+	  if (!isTRUE(mcp_enabled_reactive())) return()
+	  selected_ids <- names(module_values$files_in_context)
+	  if (!length(selected_ids)) return()
+
+	  keep_id <- NULL
+	  invalid_ids <- character()
+	  extra_ids <- character()
+
+	  for (fid in selected_ids) {
+		info <- module_values$file_contents[[fid]]
+		if (is.null(info)) next
+
+		if (!is_excel_file(info)) {
+		  invalid_ids <- c(invalid_ids, fid)
+		} else if (is.null(keep_id)) {
+		  keep_id <- fid
+		} else {
+		  extra_ids <- c(extra_ids, fid)
+		}
+	  }
+
+	  to_uncheck <- unique(c(invalid_ids, extra_ids))
+	  if (!length(to_uncheck)) return()
+
+	  module_values$files_in_context[to_uncheck] <- NULL
+	  lapply(to_uncheck, function(fid) {
+		info <- module_values$file_contents[[fid]]
+		if (!is.null(info)) detach_in_parent(info$name)
+	  })
+	  session$sendCustomMessage(ns("setAttachState"), list(ids = to_uncheck, checked = FALSE))
+
+	  if (length(invalid_ids) > 0) {
+		showToast(session, "MCP: Excel modunda yalnızca Excel dosyaları bağlanabilir. Uygun olmayan seçimler kaldırıldı.", "warning")
+	  } else {
+		showToast(session, "MCP açıkken yalnızca tek bir Excel dosyası seçilebilir.", "warning")
+	  }
 	})
   
   # --- NEW: persistent storage helpers -----------------------------------------

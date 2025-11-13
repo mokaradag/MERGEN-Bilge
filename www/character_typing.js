@@ -23,3 +23,28 @@ window.typeCharacterLore = function(text, elementId, delay = 80, onComplete) {
 
   typeWord();
 };
+
+// Generic typing helper (character by character)
+window.typeCharacterText = function(target, text, delay = 35, onComplete) {
+  const element = typeof target === 'string' ? document.getElementById(target) : target;
+  if (!element) {
+    if (typeof onComplete === 'function') onComplete();
+    return;
+  }
+
+  const characters = Array.from(text || '');
+  let index = 0;
+  element.textContent = '';
+
+  function typeNext() {
+    if (index < characters.length) {
+      element.textContent += characters[index];
+      index++;
+      setTimeout(typeNext, delay);
+    } else if (typeof onComplete === 'function') {
+      onComplete();
+    }
+  }
+
+  typeNext();
+};

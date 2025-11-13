@@ -20,17 +20,18 @@ savedChatsUI <- function(id) {
         class = "scrollable-content saved-chats-scrollable",
         div(
           class = "saved-chats-controls saved-chats-sticky",
-          textInput(ns("search_chats"), label = NULL, placeholder = "Söyleşilerde ara...", width = "300px")
-        ),
-        # FIX #13: Enhanced pagination with First/Last buttons (moved above list)
-        div(
-          class = "pagination-controls saved-chats-pagination-sticky",
-          style = "text-align: center; padding: 10px 0;",
-          actionButton(ns("first_page"), "« İlk", class = "btn-modern btn-secondary"),
-          actionButton(ns("prev_page"), "‹ Önceki", class = "btn-modern btn-secondary"),
-          span(textOutput(ns("page_info"), inline = TRUE), style = "margin: 0 20px;"),
-          actionButton(ns("next_page"), "Sonraki ›", class = "btn-modern btn-secondary"),
-          actionButton(ns("last_page"), "Son »", class = "btn-modern btn-secondary")
+          div(
+            class = "saved-chats-search-row",
+            textInput(ns("search_chats"), label = NULL, placeholder = "Söyleşilerde ara...", width = "100%")
+          ),
+          div(
+            class = "pagination-controls",
+            actionButton(ns("first_page"), "« İlk", class = "btn-modern btn-secondary"),
+            actionButton(ns("prev_page"), "‹ Önceki", class = "btn-modern btn-secondary"),
+            span(textOutput(ns("page_info"), inline = TRUE)),
+            actionButton(ns("next_page"), "Sonraki ›", class = "btn-modern btn-secondary"),
+            actionButton(ns("last_page"), "Son »", class = "btn-modern btn-secondary")
+          )
         ),
         uiOutput(ns("saved_chats_list"))
       )

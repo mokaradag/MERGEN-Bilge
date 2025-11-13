@@ -324,6 +324,8 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
     ui = createWelcomeScreen(values$saved_chats)
   )
 
-  session$sendCustomMessage("showNeuralAnimation", list())
+  session$onFlushed(function() {
+    session$sendCustomMessage("showNeuralAnimation", list())
+  }, once = TRUE)
   showToast(session, "Yeni söyleşi başlatıldı.", "success")
 }

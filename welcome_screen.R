@@ -64,7 +64,7 @@ welcome_recent_chats_ui <- function(saved_chats) {
 
   tagList(
     h4("Son Söyleşiler", class = "welcome-subtitle",
-       style = "margin-top: 85px; margin-bottom: 0;"),
+       style = "margin-top: 70px; margin-bottom: 0;"),
     div(
       class = "recent-chats-container",
       style = "margin-top: 0;",
@@ -107,7 +107,7 @@ createWelcomeScreen <- function(saved_chats) {
             )
         )
     ),
-    p("Size nasıl yardımcı olabilirim?", class = "welcome-subtitle", style = "margin: 36px 0 24px;"),
+    p("Size nasıl yardımcı olabilirim?", class = "welcome-subtitle", style = "margin: 64px 0 28px;"),
     welcome_capabilities_grid(),
     welcome_recent_chats_ui(saved_chats)
   )

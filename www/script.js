@@ -1890,15 +1890,17 @@
     };
 
     const StickyLayoutObserver = {
-      historyObserver: null,
+      historyPanelObserver: null,
+      historyToolbarObserver: null,
       savedObserver: null,
       observedHistoryPanels: new WeakSet(),
+      observedHistoryToolbars: new WeakSet(),
       observedSavedElements: new WeakSet(),
 
       ensureObservers() {
         if (typeof ResizeObserver === 'undefined') return false;
-        if (!this.historyObserver) {
-          this.historyObserver = new ResizeObserver(entries => {
+        if (!this.historyPanelObserver) {
+          this.historyPanelObserver = new ResizeObserver(entries => {
             entries.forEach(entry => {
               const container = entry.target.closest('.history-scrollable-content');
               if (!container) return;
@@ -1907,16 +1909,23 @@
             });
           });
         }
+        if (!this.historyToolbarObserver) {
+          this.historyToolbarObserver = new ResizeObserver(entries => {
+            entries.forEach(entry => {
+              const container = entry.target.closest('.history-scrollable-content');
+              if (!container) return;
+              const height = entry.target.getBoundingClientRect().height;
+              container.style.setProperty('--history-toolbar-height', `${Math.round(height)}px`);
+            });
+          });
+        }
         if (!this.savedObserver) {
           this.savedObserver = new ResizeObserver(entries => {
             entries.forEach(entry => {
               const container = entry.target.closest('.saved-chats-scrollable');
               if (!container) return;
-              const search = container.querySelector('.saved-chats-sticky');
-              const height = search ? search.getBoundingClientRect().height : 0;
-              container.style.setProperty('--saved-chats-search-height', `${Math.round(height)}px`);
-              const gap = parseFloat(getComputedStyle(container).getPropertyValue('--saved-chats-gap')) || 16;
-              container.style.setProperty('--saved-chats-pagination-offset', `${Math.round(height + gap)}px`);
+              const height = entry.target.getBoundingClientRect().height;
+              container.style.setProperty('--saved-chats-controls-height', `${Math.round(height)}px`);
             });
           });
         }
@@ -1929,26 +1938,48 @@
         document.querySelectorAll('.history-scrollable-content').forEach(container => {
           const panel = container.querySelector('.history-sticky-panel');
           if (panel && !this.observedHistoryPanels.has(panel)) {
-            this.historyObserver.observe(panel);
+            this.historyPanelObserver.observe(panel);
             this.observedHistoryPanels.add(panel);
           }
           if (panel) {
             const height = panel.getBoundingClientRect().height;
             container.style.setProperty('--history-controls-height', `${Math.round(height)}px`);
           }
+
+          const toolbar = container.querySelector('.history-table-toolbar');
+          if (toolbar && !this.observedHistoryToolbars.has(toolbar)) {
+            this.historyToolbarObserver.observe(toolbar);
+            this.observedHistoryToolbars.add(toolbar);
+          }
+          if (toolbar) {
+            const height = toolbar.getBoundingClientRect().height;
+            container.style.setProperty('--history-toolbar-height', `${Math.round(height)}px`);
+          }
+
+          const historyRoot = container.closest('.history-container');
+          const header = historyRoot ? historyRoot.querySelector('.history-header-fixed') : null;
+          if (header) {
+            const height = header.getBoundingClientRect().height;
+            container.style.setProperty('--history-header-height', `${Math.round(height)}px`);
+          }
         });
 
         document.querySelectorAll('.saved-chats-scrollable').forEach(container => {
-          const search = container.querySelector('.saved-chats-sticky');
-          if (search && !this.observedSavedElements.has(search)) {
-            this.savedObserver.observe(search);
-            this.observedSavedElements.add(search);
+          const sticky = container.querySelector('.saved-chats-sticky');
+          if (sticky && !this.observedSavedElements.has(sticky)) {
+            this.savedObserver.observe(sticky);
+            this.observedSavedElements.add(sticky);
           }
-          if (search) {
-            const height = search.getBoundingClientRect().height;
-            container.style.setProperty('--saved-chats-search-height', `${Math.round(height)}px`);
-            const gap = parseFloat(getComputedStyle(container).getPropertyValue('--saved-chats-gap')) || 16;
-            container.style.setProperty('--saved-chats-pagination-offset', `${Math.round(height + gap)}px`);
+          if (sticky) {
+            const height = sticky.getBoundingClientRect().height;
+            container.style.setProperty('--saved-chats-controls-height', `${Math.round(height)}px`);
+          }
+
+          const savedRoot = container.closest('.content-container');
+          const savedHeader = savedRoot ? savedRoot.querySelector('.files-header') : null;
+          if (savedHeader) {
+            const headerHeight = savedHeader.getBoundingClientRect().height;
+            container.style.setProperty('--saved-chats-header-height', `${Math.round(headerHeight)}px`);
           }
         });
       }
@@ -1966,13 +1997,21 @@
       StickyLayoutObserver.refresh();
     });
 
-    $(document).on('shiny:value', () => {
+    window.addEventListener('resize', () => {
       requestAnimationFrame(() => StickyLayoutObserver.refresh());
     });
 
-    $(document).on('shiny:recalculated', () => {
+    $(document).on('shiny:value', () => {
       requestAnimationFrame(() => StickyLayoutObserver.refresh());
     });
+	
+      $(document).on('shiny:recalculated', () => {
+        requestAnimationFrame(() => StickyLayoutObserver.refresh());
+      });
+
+      $(document).on('draw.dt', () => {
+        requestAnimationFrame(() => StickyLayoutObserver.refresh());
+      });
     
     // Watch for chat messages and destroy animation when chat starts
     document.addEventListener('DOMContentLoaded', function() {
@@ -2039,15 +2078,6 @@
 	  activeBtn.style.setProperty('--character-accent-glow', hexToRgba(accentHover, 0.48));
 	});
     
-    // Character info update handler
-    Shiny.addCustomMessageHandler('updateCharacterInfo', function(data) {
-      const infoArea = document.querySelector('[id$="character_info_area"]');
-      if (infoArea) {
-        // Force clear and update
-        infoArea.innerHTML = data.html;
-      }
-    });
-
 // Smooth character image cross-fade with preload + cleanup guards
 Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
   const container = document.getElementById(data.containerId);
@@ -2152,54 +2182,56 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
 Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
   const infoArea = document.getElementById(data.infoAreaId);
   if (!infoArea) return;
-  
-  // Create title element
+
+  const accent = data.accentColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-color');
+  infoArea.innerHTML = '';
+
   const titleDiv = document.createElement('div');
   titleDiv.className = 'character-title';
-  titleDiv.style.color = data.accentColor;
-  titleDiv.style.fontSize = '22px';
-  titleDiv.style.fontWeight = '700';
-  titleDiv.style.marginBottom = '16px';
-  titleDiv.textContent = data.title;
+  titleDiv.style.color = accent;
   titleDiv.style.opacity = '0';
+  titleDiv.textContent = data.title || '';
+  infoArea.appendChild(titleDiv);
   
-  // Create lore element with unique ID
-  const loreDiv = document.createElement('div');
   const loreId = 'character_lore_' + Date.now();
+  const loreDiv = document.createElement('div');
   loreDiv.id = loreId;
   loreDiv.className = 'character-lore';
-  loreDiv.style.fontSize = '17px';
-  loreDiv.style.lineHeight = '1.7';
-  loreDiv.style.color = 'var(--text-secondary)';
   loreDiv.style.opacity = '0';
-
-  // Clear and add elements
-  infoArea.innerHTML = '';
-  infoArea.appendChild(titleDiv);
+  loreDiv.textContent = '';
   infoArea.appendChild(loreDiv);
 
   const extrasContainer = document.createElement('div');
-  extrasContainer.className = 'character-extra-sections';
+  extrasContainer.className = 'character-extra-sections is-pending';
   infoArea.appendChild(extrasContainer);
 
   const renderExtras = () => {
     extrasContainer.innerHTML = '';
+    const revealables = [];
+    const metricFills = [];
+    const typingTargets = [];
+    let uniqueSeed = Date.now();
 
     if (typeof data.style === 'string' && data.style.trim().length) {
       const styleCard = document.createElement('div');
       styleCard.className = 'character-style-card';
+      styleCard.dataset.reveal = 'block';
 
       const styleHeading = document.createElement('h5');
       styleHeading.className = 'character-style-heading';
-      styleHeading.textContent = 'Yanıt Stratejisi';
+      styleHeading.textContent = 'Yanıt stratejisi';
 
       const styleBody = document.createElement('p');
-      styleBody.className = 'character-style-body';
-      styleBody.textContent = data.style;
+        styleBody.className = 'character-style-body';
+        const styleId = `character_style_${uniqueSeed++}`;
+        styleBody.id = styleId;
+        styleBody.textContent = '';
+      typingTargets.push({ id: styleId, text: data.style, mode: 'word', delay: 45 });
 
       styleCard.appendChild(styleHeading);
       styleCard.appendChild(styleBody);
       extrasContainer.appendChild(styleCard);
+      revealables.push(styleCard);
     }
 
     if (Array.isArray(data.metrics) && data.metrics.length) {
@@ -2214,6 +2246,7 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
 
         const metricCard = document.createElement('div');
         metricCard.className = 'character-metric';
+        metricCard.dataset.reveal = 'metric';
 
         const header = document.createElement('div');
         header.className = 'character-metric-header';
@@ -2234,10 +2267,11 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
 
         const fill = document.createElement('div');
         fill.className = 'character-metric-bar-fill';
-        fill.style.width = `${value}%`;
-        if (data.accentColor) {
-          fill.style.background = data.accentColor;
-          fill.style.boxShadow = `0 0 18px ${data.accentColor}55`;
+        fill.style.width = '0%';
+        fill.dataset.targetWidth = `${value}%`;
+        if (accent) {
+          fill.style.background = accent;
+          fill.style.boxShadow = `0 0 18px ${accent}55`;
         }
 
         bar.appendChild(fill);
@@ -2245,6 +2279,8 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
         metricCard.appendChild(header);
         metricCard.appendChild(bar);
         metricsGrid.appendChild(metricCard);
+        revealables.push(metricCard);
+        metricFills.push(fill);
       });
 
       extrasContainer.appendChild(metricsGrid);
@@ -2253,10 +2289,11 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
     if (Array.isArray(data.signatureMoves) && data.signatureMoves.length) {
       const signatureWrapper = document.createElement('div');
       signatureWrapper.className = 'character-signature-wrapper';
+      signatureWrapper.dataset.reveal = 'block';
 
       const signatureHeading = document.createElement('h5');
       signatureHeading.className = 'character-style-heading';
-      signatureHeading.textContent = 'Karakterin İmzası';
+      signatureHeading.textContent = 'Karakterin imzası';
 
       const list = document.createElement('ul');
       list.className = 'character-signature-list';
@@ -2264,32 +2301,81 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
       data.signatureMoves.forEach(move => {
         if (!move) return;
         const item = document.createElement('li');
-        item.textContent = move;
+          const span = document.createElement('span');
+          const sigId = `character_signature_${uniqueSeed++}`;
+          span.id = sigId;
+          span.textContent = '';
+        typingTargets.push({ id: sigId, text: move, mode: 'word', delay: 40 });
+        item.appendChild(span);
         list.appendChild(item);
       });
 
       signatureWrapper.appendChild(signatureHeading);
       signatureWrapper.appendChild(list);
       extrasContainer.appendChild(signatureWrapper);
+      revealables.push(signatureWrapper);
     }
+
+    return { revealables, metricFills, typingTargets };
   };
 
-  // Fade in title
-  setTimeout(() => {
+  const extrasState = renderExtras();
+
+  const revealExtras = () => {
+    extrasContainer.classList.remove('is-pending');
+    extrasContainer.classList.add('is-ready');
+
+    extrasState.revealables.forEach((el, index) => {
+      if (!el) return;
+      el.style.transitionDelay = `${index * 80}ms`;
+      el.classList.add('is-visible');
+    });
+
+    extrasState.metricFills.forEach((fill, index) => {
+      if (!fill) return;
+      const target = fill.dataset.targetWidth || '0%';
+      fill.style.transitionDelay = `${index * 60}ms`;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          fill.style.width = target;
+        });
+      });
+    });
+
+    extrasState.typingTargets.forEach((target, index) => {
+      const startDelay = 180 + index * 90;
+      setTimeout(() => {
+        const text = target.text || '';
+        if (!target.id) return;
+        if (target.mode === 'word' && window.typeCharacterLore) {
+          window.typeCharacterLore(text, target.id, target.delay || 55);
+        } else if (window.typeCharacterText) {
+          window.typeCharacterText(target.id, text, target.delay || 35);
+        } else {
+          const el = document.getElementById(target.id);
+          if (el) el.textContent = text;
+        }
+      }, startDelay);
+    });
+  };
+
+  requestAnimationFrame(() => {
     titleDiv.style.transition = 'opacity 0.4s ease';
     titleDiv.style.opacity = '1';
-  }, 100);
+  });
 
-  // Start typing effect for lore after title appears
   setTimeout(() => {
     loreDiv.style.opacity = '1';
+    const loreText = data.lore || '';
     if (window.typeCharacterLore) {
-      window.typeCharacterLore(data.lore, loreId, 60, renderExtras);
+      window.typeCharacterLore(loreText, loreId, 60, revealExtras);
+    } else if (window.typeCharacterText) {
+      window.typeCharacterText(loreId, loreText, 35, revealExtras);
     } else {
-      loreDiv.textContent = data.lore;
-      renderExtras();
+      loreDiv.textContent = loreText;
+      revealExtras();
     }
-  }, 500);
+  }, 400);
 });
 
 // Handle source link clicks

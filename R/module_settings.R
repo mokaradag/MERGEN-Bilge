@@ -48,7 +48,7 @@ settingsUI <- function(id) {
                 div(
                   class = "character-info-container",
                   id = ns("character_info_area"),
-                  uiOutput(ns("character_info_display"))
+                  div(class = "character-info-placeholder", "Karakter bilgisi yükleniyor...")
                 )
               )
             ),
@@ -376,85 +376,6 @@ settingsServer <- function(id, parent_session = NULL) {
           infoAreaId = session$ns("character_info_area")
         ))
       }
-
-    # Render character info
-    output$character_info_display <- renderUI({
-      char_id <- temp_selected_character()
-      chars <- characters_data()
-      if (is.null(chars)) return(NULL)
-      
-      char <- Find(function(x) x$id == char_id, chars$styles)
-      if (is.null(char)) return(NULL)
-	  
-	  metrics <- char$profile_metrics %||% list()
-      signature <- char$signature_moves %||% list()
-
-      metric_nodes <- lapply(metrics, function(metric) {
-        value <- metric$value %||% 0L
-        value <- suppressWarnings(as.integer(value))
-        if (!is.finite(value)) value <- 0L
-        value <- max(min(value, 100L), 0L)
-        label <- metric$label %||% ""
-
-        div(
-          class = "character-metric",
-          div(
-            class = "character-metric-header",
-            span(class = "character-metric-label", label),
-            span(class = "character-metric-value", paste0(value, "%"))
-          ),
-          div(
-            class = "character-metric-bar",
-            div(
-              class = "character-metric-bar-fill",
-              style = paste0("width: ", value, "%; background: ", char$accent, ";")
-            )
-          )
-        )
-      })
-
-      signature_nodes <- NULL
-      if (length(signature) > 0) {
-        signature_nodes <- tags$ul(
-          class = "character-signature-list",
-          lapply(signature, function(item) {
-            tags$li(item)
-          })
-        )
-      }
-      
-      tagList(
-        div(
-          class = "character-title character-title-animate",
-          style = paste0("color: ", char$accent),
-          char$selection_card_tr
-        ),
-        div(
-          class = "character-lore character-lore-animate",
-          char$lore_tr
-        ),
-        if (!is.null(char$style_tr) && nzchar(char$style_tr)) {
-          div(
-            class = "character-style-card",
-            tags$h5("Yanıt Stratejisi", class = "character-style-heading"),
-            tags$p(char$style_tr, class = "character-style-body")
-          )
-        },
-        if (length(metric_nodes) > 0) {
-          div(
-            class = "character-metrics-grid",
-            metric_nodes
-          )
-        },
-        if (!is.null(signature_nodes)) {
-          div(
-            class = "character-signature-wrapper",
-            tags$h5("Karakterin İmzası", class = "character-style-heading"),
-            signature_nodes
-          )
-        }
-      )
-    })
     
     # Handle character selection (temporary, not saved)
     observeEvent(input$character_clicked, {

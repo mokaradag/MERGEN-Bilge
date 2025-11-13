@@ -5,9 +5,9 @@ historyUI <- function(id) {
   
   tagList(
     div(
-      class = "content-container",
+      class = "content-container history-container",
       div(
-        class = "files-header",
+        class = "files-header history-header-fixed",
         h3("Söyleşi Geçmişi", class = "page-title"),
         div(
           class = "history-actions",
@@ -283,11 +283,11 @@ historyServer <- function(id, all_messages) {
         colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
         escape = FALSE,
         class = "display compact stripe hover dark-table",
+		selection = "none",
         options = list(
-          selection = "none",
           pageLength = 10,
           lengthMenu = list(c(5, 10, 25, 50, -1), c('5', '10', '25', '50', 'Tümü')),
-          dom = 'lfrtip',
+          dom = '<"history-table-toolbar"lf>rtip',
           responsive = TRUE,
 		  autoWidth = TRUE,
           language = list(
