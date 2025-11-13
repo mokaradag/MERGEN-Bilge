@@ -1892,10 +1892,48 @@
     const StickyLayoutObserver = {
       historyPanelObserver: null,
       historyToolbarObserver: null,
+	  historyHeaderObserver: null,
       savedObserver: null,
       observedHistoryPanels: new WeakSet(),
       observedHistoryToolbars: new WeakSet(),
+	  observedHistoryHeaders: new WeakSet(),
       observedSavedElements: new WeakSet(),
+
+      updateHistoryOffsets(container) {
+        if (!container) return;
+        const historyRoot = container.closest('.history-container');
+        const header = historyRoot ? historyRoot.querySelector('.history-header-fixed') : null;
+        const panel = container.querySelector('.history-sticky-panel');
+        const toolbar = container.querySelector('.history-table-toolbar');
+        const headerHeight = header ? header.getBoundingClientRect().height : 0;
+        const panelHeight = panel ? panel.getBoundingClientRect().height : 0;
+        const toolbarHeight = toolbar ? toolbar.getBoundingClientRect().height : 0;
+        const gap = parseFloat(getComputedStyle(container).getPropertyValue('--history-stack-gap')) || 12;
+        const stickyOffset = headerHeight + gap;
+        const toolbarOffset = stickyOffset + panelHeight + gap;
+        const theadOffset = toolbarOffset + toolbarHeight + gap;
+
+        container.style.setProperty('--history-header-height', `${Math.round(headerHeight)}px`);
+        container.style.setProperty('--history-controls-height', `${Math.round(panelHeight)}px`);
+        container.style.setProperty('--history-toolbar-height', `${Math.round(toolbarHeight)}px`);
+        container.style.setProperty('--history-sticky-offset', `${Math.round(stickyOffset)}px`);
+        container.style.setProperty('--history-toolbar-offset', `${Math.round(toolbarOffset)}px`);
+        container.style.setProperty('--history-thead-offset', `${Math.round(theadOffset)}px`);
+      },
+
+      updateSavedOffsets(container) {
+        if (!container) return;
+        const sticky = container.querySelector('.saved-chats-sticky');
+        const savedRoot = container.closest('.content-container');
+        const savedHeader = savedRoot ? savedRoot.querySelector('.files-header') : null;
+        const stickyHeight = sticky ? sticky.getBoundingClientRect().height : 0;
+        const headerHeight = savedHeader ? savedHeader.getBoundingClientRect().height : 0;
+        const gap = 16;
+
+        container.style.setProperty('--saved-chats-controls-height', `${Math.round(stickyHeight)}px`);
+        container.style.setProperty('--saved-chats-header-height', `${Math.round(headerHeight)}px`);
+        container.style.setProperty('--saved-chats-sticky-offset', `${Math.round(headerHeight + gap)}px`);
+      },
 
       ensureObservers() {
         if (typeof ResizeObserver === 'undefined') return false;
@@ -1904,8 +1942,7 @@
             entries.forEach(entry => {
               const container = entry.target.closest('.history-scrollable-content');
               if (!container) return;
-              const height = entry.target.getBoundingClientRect().height;
-              container.style.setProperty('--history-controls-height', `${Math.round(height)}px`);
+              this.updateHistoryOffsets(container);
             });
           });
         }
@@ -1914,8 +1951,17 @@
             entries.forEach(entry => {
               const container = entry.target.closest('.history-scrollable-content');
               if (!container) return;
-              const height = entry.target.getBoundingClientRect().height;
-              container.style.setProperty('--history-toolbar-height', `${Math.round(height)}px`);
+              this.updateHistoryOffsets(container);
+            });
+          });
+        }
+        if (!this.historyHeaderObserver) {
+          this.historyHeaderObserver = new ResizeObserver(entries => {
+            entries.forEach(entry => {
+              const historyContainer = entry.target.closest('.history-container');
+              const scrollable = historyContainer ? historyContainer.querySelector('.history-scrollable-content') : null;
+              if (!scrollable) return;
+              this.updateHistoryOffsets(scrollable);
             });
           });
         }
@@ -1924,8 +1970,7 @@
             entries.forEach(entry => {
               const container = entry.target.closest('.saved-chats-scrollable');
               if (!container) return;
-              const height = entry.target.getBoundingClientRect().height;
-              container.style.setProperty('--saved-chats-controls-height', `${Math.round(height)}px`);
+              this.updateSavedOffsets(container);
             });
           });
         }
@@ -1941,27 +1986,21 @@
             this.historyPanelObserver.observe(panel);
             this.observedHistoryPanels.add(panel);
           }
-          if (panel) {
-            const height = panel.getBoundingClientRect().height;
-            container.style.setProperty('--history-controls-height', `${Math.round(height)}px`);
-          }
 
           const toolbar = container.querySelector('.history-table-toolbar');
           if (toolbar && !this.observedHistoryToolbars.has(toolbar)) {
             this.historyToolbarObserver.observe(toolbar);
             this.observedHistoryToolbars.add(toolbar);
           }
-          if (toolbar) {
-            const height = toolbar.getBoundingClientRect().height;
-            container.style.setProperty('--history-toolbar-height', `${Math.round(height)}px`);
-          }
 
           const historyRoot = container.closest('.history-container');
           const header = historyRoot ? historyRoot.querySelector('.history-header-fixed') : null;
-          if (header) {
-            const height = header.getBoundingClientRect().height;
-            container.style.setProperty('--history-header-height', `${Math.round(height)}px`);
+          if (header && !this.observedHistoryHeaders.has(header)) {
+            this.historyHeaderObserver.observe(header);
+            this.observedHistoryHeaders.add(header);
           }
+
+          this.updateHistoryOffsets(container);
         });
 
         document.querySelectorAll('.saved-chats-scrollable').forEach(container => {
@@ -1970,17 +2009,8 @@
             this.savedObserver.observe(sticky);
             this.observedSavedElements.add(sticky);
           }
-          if (sticky) {
-            const height = sticky.getBoundingClientRect().height;
-            container.style.setProperty('--saved-chats-controls-height', `${Math.round(height)}px`);
-          }
 
-          const savedRoot = container.closest('.content-container');
-          const savedHeader = savedRoot ? savedRoot.querySelector('.files-header') : null;
-          if (savedHeader) {
-            const headerHeight = savedHeader.getBoundingClientRect().height;
-            container.style.setProperty('--saved-chats-header-height', `${Math.round(headerHeight)}px`);
-          }
+          this.updateSavedOffsets(container);
         });
       }
     };
@@ -2015,20 +2045,34 @@
     
     // Watch for chat messages and destroy animation when chat starts
     document.addEventListener('DOMContentLoaded', function() {
-      const observer = new MutationObserver(function(mutations) {
-        const hasMessages = document.querySelector('.message-bubble');
-        if (hasMessages) {
-          NeuralWelcomeAnimation.destroy();
-        }
-      });
-      
       const chatContainer = document.querySelector('#chat_content_container');
-      if (chatContainer) {
-        observer.observe(chatContainer, {
-          childList: true,
-          subtree: true
-        });
-      }
+      if (!chatContainer) return;
+
+      let welcomeActive = false;
+      const mutationHandler = () => {
+        const hasMessages = chatContainer.querySelector('.message-bubble');
+        if (hasMessages) {
+          welcomeActive = false;
+          NeuralWelcomeAnimation.destroy();
+          return;
+        }
+
+        const hasWelcome = !!chatContainer.querySelector('.welcome-container');
+        if (hasWelcome && !welcomeActive) {
+          welcomeActive = true;
+          NeuralWelcomeAnimation.init();
+        } else if (!hasWelcome && welcomeActive) {
+          welcomeActive = false;
+          NeuralWelcomeAnimation.destroy(true);
+        }
+      };
+
+      mutationHandler();
+      const observer = new MutationObserver(mutationHandler);
+      observer.observe(chatContainer, {
+        childList: true,
+        subtree: true
+      });
     });
     
     // Update health timestamp
@@ -2321,43 +2365,48 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
 
   const extrasState = renderExtras();
 
-  const revealExtras = () => {
-    extrasContainer.classList.remove('is-pending');
-    extrasContainer.classList.add('is-ready');
+  const startExtrasSequence = (() => {
+    let started = false;
+    return () => {
+      if (started) return;
+      started = true;
+      extrasContainer.classList.remove('is-pending');
+      extrasContainer.classList.add('is-ready');
 
-    extrasState.revealables.forEach((el, index) => {
-      if (!el) return;
-      el.style.transitionDelay = `${index * 80}ms`;
-      el.classList.add('is-visible');
-    });
+      extrasState.revealables.forEach((el, index) => {
+        if (!el) return;
+        el.style.transitionDelay = `${index * 80}ms`;
+        el.classList.add('is-visible');
+      });
 
-    extrasState.metricFills.forEach((fill, index) => {
-      if (!fill) return;
-      const target = fill.dataset.targetWidth || '0%';
-      fill.style.transitionDelay = `${index * 60}ms`;
-      requestAnimationFrame(() => {
+      extrasState.metricFills.forEach((fill, index) => {
+        if (!fill) return;
+        const target = fill.dataset.targetWidth || '0%';
+        fill.style.transitionDelay = `${index * 40}ms`;{
         requestAnimationFrame(() => {
-          fill.style.width = target;
+          requestAnimationFrame(() => {
+            fill.style.width = target;
+          });
         });
       });
-    });
 
-    extrasState.typingTargets.forEach((target, index) => {
-      const startDelay = 180 + index * 90;
-      setTimeout(() => {
-        const text = target.text || '';
-        if (!target.id) return;
-        if (target.mode === 'word' && window.typeCharacterLore) {
-          window.typeCharacterLore(text, target.id, target.delay || 55);
-        } else if (window.typeCharacterText) {
-          window.typeCharacterText(target.id, text, target.delay || 35);
-        } else {
-          const el = document.getElementById(target.id);
-          if (el) el.textContent = text;
-        }
-      }, startDelay);
-    });
-  };
+      extrasState.typingTargets.forEach((target, index) => {
+        const startDelay = index * 90;
+        setTimeout(() => {
+          const text = target.text || '';
+          if (!target.id) return;
+          if (target.mode === 'word' && window.typeCharacterLore) {
+            window.typeCharacterLore(text, target.id, target.delay || 55);
+          } else if (window.typeCharacterText) {
+            window.typeCharacterText(target.id, text, target.delay || 35);
+          } else {
+            const el = document.getElementById(target.id);
+            if (el) el.textContent = text;
+          }
+        }, startDelay);
+      });
+    };
+  })();
 
   requestAnimationFrame(() => {
     titleDiv.style.transition = 'opacity 0.4s ease';
@@ -2368,14 +2417,18 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
     loreDiv.style.opacity = '1';
     const loreText = data.lore || '';
     if (window.typeCharacterLore) {
-      window.typeCharacterLore(loreText, loreId, 60, revealExtras);
+      window.typeCharacterLore(loreText, loreId, 60, startExtrasSequence);;
     } else if (window.typeCharacterText) {
-      window.typeCharacterText(loreId, loreText, 35, revealExtras);
+      window.typeCharacterText(loreId, loreText, 35, startExtrasSequence);
     } else {
       loreDiv.textContent = loreText;
-      revealExtras();
+      startExtrasSequence();
     }
   }, 400);
+
+  setTimeout(() => {
+    startExtrasSequence();
+  }, 420);
 });
 
 // Handle source link clicks

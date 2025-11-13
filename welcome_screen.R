@@ -107,7 +107,7 @@ createWelcomeScreen <- function(saved_chats) {
             )
         )
     ),
-    p("Size nasıl yardımcı olabilirim?", class = "welcome-subtitle", style = "margin: 64px 0 28px;"),
+    p("Size nasıl yardımcı olabilirim?", class = "welcome-subtitle", style = "margin: 84px 0 32px;"),
     welcome_capabilities_grid(),
     welcome_recent_chats_ui(saved_chats)
   )
