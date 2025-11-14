@@ -5005,7 +5005,17 @@ body.font-xlarge {
   border-radius: 18px;
   background: linear-gradient(165deg, rgba(8, 9, 18, 0.96), rgba(10, 12, 26, 0.9));
   box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35);
-  overflow-y: auto;
+  overflow: hidden;
+}
+
+.character-info-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 18px;
 }
 
 .character-extra-sections {
@@ -5014,8 +5024,9 @@ body.font-xlarge {
   gap: 18px;
   width: 100%;
   transition: opacity 0.4s ease, transform 0.4s ease;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
+  margin-top: auto;
 }
 
 .character-info-placeholder {
@@ -5025,11 +5036,12 @@ body.font-xlarge {
 }
 
 .character-lore {
-  flex: 0 0 auto;
-  max-height: 220px;
+  flex: 1 1 auto;
+  max-height: none;
   width: 100%;
   overflow-y: auto;
   padding-right: 6px;
+  min-height: 0;
 }
 
 .character-extra-sections.is-pending {
@@ -5412,6 +5424,52 @@ body.font-xlarge {
   
   .files-header .btn-modern {
     padding: 6px 10px !important;
+  }
+}
+
+/* ============================================
+   Ana Söyleşi Welcome Screen Overrides
+   ============================================ */
+.chat-container:has(.welcome-container) {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.welcome-container {
+  max-width: 1260px;
+  width: 100%;
+  padding: 48px 32px 24px;
+  gap: 32px;
+}
+
+.welcome-container .capabilities-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  max-width: none;
+  width: 100%;
+}
+
+.welcome-container .recent-chats-container {
+  width: 100%;
+}
+
+.welcome-container .neural-background {
+  opacity: 1;
+  width: 20%;
+  left: 50%;
+  transform: translateX(-250%);
+}
+
+@media (max-width: 1200px) {
+  .chat-container:has(.welcome-container) {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .welcome-container {
+    padding: 40px 20px 20px;
   }
 }
 

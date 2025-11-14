@@ -2110,31 +2110,36 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
 });
 
 // Character info update with word-by-word typing
-Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
-  const infoArea = document.getElementById(data.infoAreaId);
-  if (!infoArea) return;
-  
-  const accent = data.accentColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-color');
-  infoArea.innerHTML = '';
+  Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
+    const infoArea = document.getElementById(data.infoAreaId);
+    if (!infoArea) return;
 
-  const titleDiv = document.createElement('div');
-  titleDiv.className = 'character-title';
-  titleDiv.style.color = accent;
-  titleDiv.style.opacity = '0';
-  titleDiv.textContent = data.title || '';
-  infoArea.appendChild(titleDiv);
-  
-  const loreId = 'character_lore_' + Date.now();
-  const loreDiv = document.createElement('div');
-  loreDiv.id = loreId;
-  loreDiv.className = 'character-lore';
-  loreDiv.style.opacity = '0';
-  loreDiv.textContent = '';
-  infoArea.appendChild(loreDiv);
+    const accent = data.accentColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-color');
+    infoArea.innerHTML = '';
 
-  const extrasContainer = document.createElement('div');
-  extrasContainer.className = 'character-extra-sections is-pending';
-  infoArea.appendChild(extrasContainer);
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'character-title';
+    titleDiv.style.color = accent;
+    titleDiv.style.opacity = '0';
+    titleDiv.textContent = data.title || '';
+    infoArea.appendChild(titleDiv);
+
+    const bodyWrapper = document.createElement('div');
+    bodyWrapper.className = 'character-info-body';
+
+    const loreId = 'character_lore_' + Date.now();
+    const loreDiv = document.createElement('div');
+    loreDiv.id = loreId;
+    loreDiv.className = 'character-lore';
+    loreDiv.style.opacity = '0';
+    loreDiv.textContent = '';
+
+    const extrasContainer = document.createElement('div');
+    extrasContainer.className = 'character-extra-sections is-pending';
+
+    bodyWrapper.appendChild(loreDiv);
+    bodyWrapper.appendChild(extrasContainer);
+    infoArea.appendChild(bodyWrapper);
 
   const renderExtras = () => {
     extrasContainer.innerHTML = '';
@@ -2277,20 +2282,26 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
         });
       });
 
-      extrasState.typingTargets.forEach((target) => {
-        const text = target.text || '';
-        if (!target.id) return;
-        if (target.mode === 'word' && window.typeCharacterLore) {
-          window.typeCharacterLore(text, target.id, target.delay || 55);
-        } else if (window.typeCharacterText) {
-          window.typeCharacterText(target.id, text, target.delay || 35);
-        } else {
-          const el = document.getElementById(target.id);
-          if (el) el.textContent = text;
-        }
-      });
-    };
-  })();
+        extrasState.typingTargets.forEach((target) => {
+          const text = target.text || '';
+          if (!target.id) return;
+          if (target.mode === 'word' && window.typeCharacterLore) {
+            const words = text.match(/\S+/g) || [];
+            const desiredDuration = 2200;
+            const delay = words.length > 0 ? Math.max(12, Math.min(40, Math.round(desiredDuration / words.length))) : 0;
+            window.typeCharacterLore(text, target.id, delay);
+          } else if (window.typeCharacterText) {
+            const charCount = text.length;
+            const desiredDuration = 2200;
+            const delay = charCount > 0 ? Math.max(8, Math.min(30, Math.round(desiredDuration / charCount))) : 0;
+            window.typeCharacterText(target.id, text, delay);
+          } else {
+            const el = document.getElementById(target.id);
+            if (el) el.textContent = text;
+          }
+        });
+      };
+    })();
   
   requestAnimationFrame(() => {
     titleDiv.style.transition = 'opacity 0.4s ease';
@@ -2308,13 +2319,13 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
     }
 
     const wordCount = (loreText.match(/\S+/g) || []).length;
-    const targetDuration = 3600;
-    const loreDelay = wordCount > 0 ? Math.max(18, Math.min(45, Math.round(targetDuration / wordCount))) : 0;
+    const targetDuration = 2200;
+    const loreDelay = wordCount > 0 ? Math.max(10, Math.min(32, Math.round(targetDuration / wordCount))) : 0;
 	
     if (window.typeCharacterLore) {
       window.typeCharacterLore(loreText, loreId, loreDelay);
     } else if (window.typeCharacterText) {
-      const charDelay = loreText.length > 0 ? Math.max(8, Math.min(24, Math.round(targetDuration / loreText.length))) : 0;
+      const charDelay = loreText.length > 0 ? Math.max(6, Math.min(20, Math.round(targetDuration / loreText.length))) : 0;
       window.typeCharacterText(loreId, loreText, charDelay);
     } else {
       loreDiv.textContent = loreText;
