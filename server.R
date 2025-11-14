@@ -1087,7 +1087,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			  content_preview = substr(res$content %||% "", 1, 800)
 			))
 
-			perf_tracker$track_request(res$duration)
+            perf_tracker$track_request(res$duration)
+
+			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+			values$typing <- FALSE
 
 			if (isTRUE(stop_generation()) || !identical(active_request_id(), res$req_id)) {
 			  try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id,
@@ -1099,9 +1102,9 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			}
 
 			try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id,
-							 model_selected, res$duration, TRUE), silent = TRUE)
+											 model_selected, res$duration, TRUE), silent = TRUE)
 
-			# NEW: make chart specs available to the message renderer (streaming path)
+            # NEW: make chart specs available to the message renderer (streaming path)
 			if (is.list(res$chart_store) && length(res$chart_store) > 0) {
 			  if (is.null(session$userData$chart_store) || !is.list(session$userData$chart_store)) {
 				session$userData$chart_store <- list()

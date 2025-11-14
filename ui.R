@@ -137,51 +137,48 @@ ui <- dashboardPage(
       # Main Chat Tab (Core UI, not a module)
       tabItem(
         tabName = "chat",
-        conditionalPanel(
-          condition = "!output.show_welcome_screen",
+        div(
+          class = "chat-header",
           div(
-            class = "chat-header",
-            div(
-              class = "chat-header-left",
-              h4("Söyleşi", class = "page-title"),
-              # MCP modu göstergesi (Excel veya RData aktifse gösterilir) - moved to left
-              uiOutput("mcp_mode_indicator"),
-              conditionalPanel(
-                condition = "!output.show_welcome_screen",
-                # Karakter avatarı, karakter adı ve model adını göster
-                uiOutput("current_model_display")
-              ),
-              conditionalPanel(
-                condition = "!output.show_welcome_screen",
-                div(
-                  class = "chat-stats",
-                  tags$span(
-                    class = "stat-item",
-                    tags$i(class = "fas fa-comment-dots"),
-                    textOutput("message_count", inline = TRUE)
-                  )
+            class = "chat-header-left",
+            h4("Söyleşi", class = "page-title"),
+            # MCP modu göstergesi (Excel veya RData aktifse gösterilir) - moved to left
+            uiOutput("mcp_mode_indicator"),
+            conditionalPanel(
+              condition = "!output.show_welcome_screen",
+              # Karakter avatarı, karakter adı ve model adını göster
+              uiOutput("current_model_display")
+            ),
+            conditionalPanel(
+              condition = "!output.show_welcome_screen",
+              div(
+                class = "chat-stats",
+                tags$span(
+                  class = "stat-item",
+                  tags$i(class = "fas fa-comment-dots"),
+                  textOutput("message_count", inline = TRUE)
                 )
+              )
+            )
+          ),
+          div(
+            class = "chat-header-right chat-actions",
+            actionButton(
+              "new_chat_btn",
+              label = tagList(icon("plus"), span("Yeni Söyleşi", class = "btn-text")),
+              class = "btn-modern btn-primary"
+            ),
+            conditionalPanel(
+              condition = "!output.show_welcome_screen",
+              actionButton(
+                "copy_chat_btn",
+                label = tagList(icon("clipboard"), span("Sohbeti Kopyala", class = "btn-text")),
+                class = "btn-modern btn-info"
               )
             ),
-			div(
-              class = "chat-header-right chat-actions",
-              actionButton(
-                "new_chat_btn",
-                label = tagList(icon("plus"), span("Yeni Söyleşi", class = "btn-text")),
-                class = "btn-modern btn-primary"
-              ),
-              conditionalPanel(
-                condition = "!output.show_welcome_screen",
-                actionButton(
-                  "copy_chat_btn",
-                  label = tagList(icon("clipboard"), span("Sohbeti Kopyala", class = "btn-text")),
-                  class = "btn-modern btn-info"
-                )
-              ),
-              conditionalPanel(
-                condition = "!output.show_welcome_screen",
-                downloadButton("export_current_chat_txt", "Sohbeti Dışa Aktar", class = "btn-modern btn-success")
-              )
+            conditionalPanel(
+              condition = "!output.show_welcome_screen",
+              downloadButton("export_current_chat_txt", "Sohbeti Dışa Aktar", class = "btn-modern btn-success")
             )
           )
         ),
