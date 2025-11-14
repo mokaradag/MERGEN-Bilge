@@ -572,7 +572,7 @@
           }
           link.href = 'mergen_avatar.png';
         })();
-    
+
       // Cinematic Intro Animation
       function initIntro() {
         const introContainer = document.getElementById('intro-container');
@@ -678,7 +678,7 @@
 
         setTimeout(finishIntro, 500);
       }
-    
+
       initIntro();
     
       // Global variables
@@ -1923,159 +1923,12 @@
       }
     };
 
-    const StickyLayoutObserver = {
-      historyPanelObserver: null,
-      historyToolbarObserver: null,
-	  historyHeaderObserver: null,
-      savedObserver: null,
-      observedHistoryPanels: new WeakSet(),
-      observedHistoryToolbars: new WeakSet(),
-	  observedHistoryHeaders: new WeakSet(),
-      observedSavedElements: new WeakSet(),
-
-      updateHistoryOffsets(container) {
-        if (!container) return;
-        const historyRoot = container.closest('.history-container');
-        const header = historyRoot ? historyRoot.querySelector('.history-header-fixed') : null;
-        const panel = container.querySelector('.history-sticky-panel');
-        const toolbar = container.querySelector('.history-table-toolbar');
-        const headerHeight = header ? header.getBoundingClientRect().height : 0;
-        const panelHeight = panel ? panel.getBoundingClientRect().height : 0;
-        const toolbarHeight = toolbar ? toolbar.getBoundingClientRect().height : 0;
-        const gap = parseFloat(getComputedStyle(container).getPropertyValue('--history-stack-gap')) || 12;
-        const stickyOffset = headerHeight + gap;
-        const toolbarOffset = stickyOffset + panelHeight + gap;
-        const theadOffset = toolbarOffset + toolbarHeight + gap;
-
-        container.style.setProperty('--history-header-height', `${Math.round(headerHeight)}px`);
-        container.style.setProperty('--history-controls-height', `${Math.round(panelHeight)}px`);
-        container.style.setProperty('--history-toolbar-height', `${Math.round(toolbarHeight)}px`);
-        container.style.setProperty('--history-sticky-offset', `${Math.round(stickyOffset)}px`);
-        container.style.setProperty('--history-toolbar-offset', `${Math.round(toolbarOffset)}px`);
-        container.style.setProperty('--history-thead-offset', `${Math.round(theadOffset)}px`);
-      },
-
-      updateSavedOffsets(container) {
-        if (!container) return;
-        const sticky = container.querySelector('.saved-chats-sticky');
-        const savedRoot = container.closest('.content-container');
-        const savedHeader = savedRoot ? savedRoot.querySelector('.files-header') : null;
-        const stickyHeight = sticky ? sticky.getBoundingClientRect().height : 0;
-        const headerHeight = savedHeader ? savedHeader.getBoundingClientRect().height : 0;
-        const gap = 16;
-
-        container.style.setProperty('--saved-chats-controls-height', `${Math.round(stickyHeight)}px`);
-        container.style.setProperty('--saved-chats-header-height', `${Math.round(headerHeight)}px`);
-        container.style.setProperty('--saved-chats-sticky-offset', `${Math.round(headerHeight + gap)}px`);
-      },
-
-      ensureObservers() {
-        if (typeof ResizeObserver === 'undefined') return false;
-        if (!this.historyPanelObserver) {
-          this.historyPanelObserver = new ResizeObserver(entries => {
-            entries.forEach(entry => {
-              const container = entry.target.closest('.history-scrollable-content');
-              if (!container) return;
-              this.updateHistoryOffsets(container);
-            });
-          });
-        }
-        if (!this.historyToolbarObserver) {
-          this.historyToolbarObserver = new ResizeObserver(entries => {
-            entries.forEach(entry => {
-              const container = entry.target.closest('.history-scrollable-content');
-              if (!container) return;
-              this.updateHistoryOffsets(container);
-            });
-          });
-        }
-        if (!this.historyHeaderObserver) {
-          this.historyHeaderObserver = new ResizeObserver(entries => {
-            entries.forEach(entry => {
-              const historyContainer = entry.target.closest('.history-container');
-              const scrollable = historyContainer ? historyContainer.querySelector('.history-scrollable-content') : null;
-              if (!scrollable) return;
-              this.updateHistoryOffsets(scrollable);
-            });
-          });
-        }
-        if (!this.savedObserver) {
-          this.savedObserver = new ResizeObserver(entries => {
-            entries.forEach(entry => {
-              const container = entry.target.closest('.saved-chats-scrollable');
-              if (!container) return;
-              this.updateSavedOffsets(container);
-            });
-          });
-        }
-        return true;
-      },
-
-      refresh() {
-        if (!this.ensureObservers()) return;
-
-        document.querySelectorAll('.history-scrollable-content').forEach(container => {
-          const panel = container.querySelector('.history-sticky-panel');
-          if (panel && !this.observedHistoryPanels.has(panel)) {
-            this.historyPanelObserver.observe(panel);
-            this.observedHistoryPanels.add(panel);
-          }
-
-          const toolbar = container.querySelector('.history-table-toolbar');
-          if (toolbar && !this.observedHistoryToolbars.has(toolbar)) {
-            this.historyToolbarObserver.observe(toolbar);
-            this.observedHistoryToolbars.add(toolbar);
-          }
-
-          const historyRoot = container.closest('.history-container');
-          const header = historyRoot ? historyRoot.querySelector('.history-header-fixed') : null;
-          if (header && !this.observedHistoryHeaders.has(header)) {
-            this.historyHeaderObserver.observe(header);
-            this.observedHistoryHeaders.add(header);
-          }
-
-          this.updateHistoryOffsets(container);
-        });
-
-        document.querySelectorAll('.saved-chats-scrollable').forEach(container => {
-          const sticky = container.querySelector('.saved-chats-sticky');
-          if (sticky && !this.observedSavedElements.has(sticky)) {
-            this.savedObserver.observe(sticky);
-            this.observedSavedElements.add(sticky);
-          }
-
-          this.updateSavedOffsets(container);
-        });
-      }
-    };
-    
     // Initialize neural animation when welcome screen appears
     Shiny.addCustomMessageHandler('showNeuralAnimation', function(message) {
       setTimeout(() => {
         NeuralWelcomeAnimation.init();
-        StickyLayoutObserver.refresh();
       }, 120);
     });
-
-    document.addEventListener('DOMContentLoaded', () => {
-      StickyLayoutObserver.refresh();
-    });
-
-    window.addEventListener('resize', () => {
-      requestAnimationFrame(() => StickyLayoutObserver.refresh());
-    });
-
-    $(document).on('shiny:value', () => {
-      requestAnimationFrame(() => StickyLayoutObserver.refresh());
-    });
-	
-      $(document).on('shiny:recalculated', () => {
-        requestAnimationFrame(() => StickyLayoutObserver.refresh());
-      });
-
-      $(document).on('draw.dt', () => {
-        requestAnimationFrame(() => StickyLayoutObserver.refresh());
-      });
     
     // Watch for chat messages and destroy animation when chat starts
     document.addEventListener('DOMContentLoaded', function() {
@@ -2261,11 +2114,6 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
   const infoArea = document.getElementById(data.infoAreaId);
   if (!infoArea) return;
   
-  const previousHeight = infoArea.getBoundingClientRect().height;
-  if (previousHeight > 0) {
-    infoArea.style.minHeight = `${Math.round(previousHeight)}px`;
-  }
-
   const accent = data.accentColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-color');
   infoArea.innerHTML = '';
 
@@ -2403,17 +2251,6 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
   };
 
   const extrasState = renderExtras();
-
-  const releaseHeight = (() => {
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      requestAnimationFrame(() => {
-        infoArea.style.minHeight = '';
-      });
-    };
-  })();
   
   const startExtrasSequence = (() => {
     let started = false;
@@ -2423,9 +2260,10 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
       extrasContainer.classList.remove('is-pending');
       extrasContainer.classList.add('is-ready');
 
-      extrasState.revealables.forEach((el) => {
+      extrasState.revealables.forEach((el, index) => {
         if (!el) return;
-        el.style.transitionDelay = '0ms';
+        const delay = Math.min(120, index * 35);
+        el.style.transitionDelay = `${delay}ms`;
         requestAnimationFrame(() => {
           el.classList.add('is-visible');
         });
@@ -2434,7 +2272,6 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
       extrasState.metricFills.forEach((fill) => {
         if (!fill) return;
         const target = fill.dataset.targetWidth || '0%';
-        fill.style.transitionDelay = '0ms';
         requestAnimationFrame(() => {
           fill.style.width = target;
         });
@@ -2452,17 +2289,8 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
           if (el) el.textContent = text;
         }
       });
-
-      releaseHeight();
     };
   })();
-
-  const kickoffExtras = () => {
-    requestAnimationFrame(() => startExtrasSequence());
-  };
-
-  kickoffExtras();
-  setTimeout(kickoffExtras, 600);
   
   requestAnimationFrame(() => {
     titleDiv.style.transition = 'opacity 0.4s ease';
@@ -2472,13 +2300,24 @@ Shiny.addCustomMessageHandler('updateCharacterInfoTyping', function(data) {
   const startLoreTyping = () => {
     loreDiv.style.opacity = '1';
     const loreText = data.lore || '';
+    startExtrasSequence();
+
+    if (!loreText) {
+      loreDiv.textContent = '';
+      return;
+    }
+
+    const wordCount = (loreText.match(/\S+/g) || []).length;
+    const targetDuration = 3600;
+    const loreDelay = wordCount > 0 ? Math.max(18, Math.min(45, Math.round(targetDuration / wordCount))) : 0;
+	
     if (window.typeCharacterLore) {
-      window.typeCharacterLore(loreText, loreId, 60, kickoffExtras);
+      window.typeCharacterLore(loreText, loreId, loreDelay);
     } else if (window.typeCharacterText) {
-      window.typeCharacterText(loreId, loreText, 35, kickoffExtras);
+      const charDelay = loreText.length > 0 ? Math.max(8, Math.min(24, Math.round(targetDuration / loreText.length))) : 0;
+      window.typeCharacterText(loreId, loreText, charDelay);
     } else {
       loreDiv.textContent = loreText;
-      kickoffExtras();
     }
   };
 

@@ -5,9 +5,9 @@ historyUI <- function(id) {
   
   tagList(
     div(
-      class = "content-container history-container",
+      class = "content-container",
       div(
-        class = "files-header history-header-fixed",
+        class = "files-header",
         h3("Söyleşi Geçmişi", class = "page-title"),
         div(
           class = "history-actions",
@@ -17,9 +17,9 @@ historyUI <- function(id) {
         )
       ),
       div(
-        class = "scrollable-content history-scrollable-content",
+        class = "scrollable-content",
         div(
-          class = "history-controls date-filter dark-date-picker history-sticky-panel",
+          class = "history-controls date-filter dark-date-picker",
           dateRangeInput(
             inputId = ns("date_range"),
             label = "Tarih Aralığı:",
@@ -283,13 +283,12 @@ historyServer <- function(id, all_messages) {
         colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
         escape = FALSE,
         class = "display compact stripe hover dark-table",
-		selection = "none",
         options = list(
+          selection = "none",
           pageLength = 10,
           lengthMenu = list(c(5, 10, 25, 50, -1), c('5', '10', '25', '50', 'Tümü')),
-          dom = '<"history-table-toolbar"lf>rtip',
+          dom = 'lfrtip',
           responsive = TRUE,
-		  autoWidth = TRUE,
           language = list(
             search = "Ara:",
             lengthMenu = "Sayfa başına _MENU_ kayıt göster",
