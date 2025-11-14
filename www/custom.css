@@ -4798,7 +4798,8 @@ body.font-xlarge {
 }
 
 .welcome-container .welcome-subtitle {
-  margin: 56px 0 28px !important;
+  margin-top: 40px !important;
+  margin-bottom: 0px !important;
 }
 
 .welcome-container .neural-background {
