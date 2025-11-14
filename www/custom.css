@@ -222,9 +222,9 @@ body {
 
 /* Chat Container */
 .chat-container {
-  height: calc(100vh - 220px);
-  min-height: calc(100vh - 220px);
-  max-height: calc(100vh - 220px);
+  height: calc(100vh - 250px);
+  min-height: calc(100vh - 250px);
+  max-height: calc(100vh - 250px);
   overflow-y: auto;
   overflow-x: visible;
   padding: 16px 32px 180px; 
@@ -355,6 +355,11 @@ body {
   line-height: 1.4;
 }
 
+.welcome-intro-subtitle {
+  margin-bottom: 2px !important;
+  margin-top: 0 !important;
+}
+
 /* Quick Templates */
 .quick-templates-section {
   width: 100%;
@@ -397,6 +402,14 @@ body {
   font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+.recent-chat-meta {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.2;
 }
 
 /* Capabilities Grid */
@@ -3716,6 +3729,7 @@ table.dataTable thead th:first-child::after {
 .welcome-container .capabilities-grid {
   gap: 12px; /* Reduced gap */
   margin-bottom: 0; /* Remove bottom margin */
+  margin-top: 4px;
 }
 
 .welcome-container .capability-card {

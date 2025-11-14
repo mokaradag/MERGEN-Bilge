@@ -85,7 +85,7 @@ welcome_recent_chats_ui <- function(saved_chats) {
           ", chat_id),
           p(class = "template-text", tags$strong(chat$title)),
           span(
-            style = "font-size: 12px; color: var(--text-muted);",
+            class = "recent-chat-meta",
             paste(chat$message_count, "mesaj -", format(chat$timestamp, "%d.%m.%Y"))
           )
         )
@@ -107,7 +107,10 @@ createWelcomeScreen <- function(saved_chats) {
             )
         )
     ),
-	p("Size nasıl yardımcı olabilirim?", class = "welcome-subtitle", style = "margin-bottom: 4px;"),
+	p(
+	  "Size nasıl yardımcı olabilirim?",
+	  class = "welcome-subtitle welcome-intro-subtitle"
+	),
     welcome_capabilities_grid(),
     welcome_recent_chats_ui(saved_chats)
   )

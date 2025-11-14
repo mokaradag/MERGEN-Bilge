@@ -2162,7 +2162,7 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
         const styleId = `character_style_${uniqueSeed++}`;
         styleBody.id = styleId;
         styleBody.textContent = '';
-      typingTargets.push({ id: styleId, text: data.style, mode: 'word', delay: 45 });
+      typingTargets.push({ id: styleId, text: data.style, mode: 'word', duration: 3200 });
 
       styleCard.appendChild(styleHeading);
       styleCard.appendChild(styleBody);
@@ -2241,7 +2241,7 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
           const sigId = `character_signature_${uniqueSeed++}`;
           span.id = sigId;
           span.textContent = '';
-        typingTargets.push({ id: sigId, text: move, mode: 'word', delay: 40 });
+        typingTargets.push({ id: sigId, text: move, mode: 'word', duration: 3200 });
         item.appendChild(span);
         list.appendChild(item);
       });
@@ -2285,14 +2285,13 @@ Shiny.addCustomMessageHandler('transitionCharacterImage', function(data) {
         extrasState.typingTargets.forEach((target) => {
           const text = target.text || '';
           if (!target.id) return;
+          const desiredDuration = Math.max(1200, Number(target.duration) || 2200);
           if (target.mode === 'word' && window.typeCharacterLore) {
             const words = text.match(/\S+/g) || [];
-            const desiredDuration = 2200;
             const delay = words.length > 0 ? Math.max(12, Math.min(40, Math.round(desiredDuration / words.length))) : 0;
             window.typeCharacterLore(text, target.id, delay);
           } else if (window.typeCharacterText) {
             const charCount = text.length;
-            const desiredDuration = 2200;
             const delay = charCount > 0 ? Math.max(8, Math.min(30, Math.round(desiredDuration / charCount))) : 0;
             window.typeCharacterText(target.id, text, delay);
           } else {
