@@ -1143,9 +1143,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 
             perf_tracker$track_request(res$duration)
 
-			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-			values$typing <- FALSE
-
 			if (isTRUE(stop_generation()) || !identical(active_request_id(), res$req_id)) {
 			  try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id,
 							   model_selected, res$duration, FALSE), silent = TRUE)
@@ -1168,6 +1165,8 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 
 			followup_questions <- build_followup_suggestions(user_message_text, res$content)
 			simulate_streaming_stoppable(res$content, followups = followup_questions)
+			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+			values$typing <- FALSE
 			invisible(NULL)
 		  },
 		  onRejected = function(err) {

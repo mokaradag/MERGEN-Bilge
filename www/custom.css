@@ -5717,7 +5717,6 @@ body.font-xlarge {
   display: flex;
   align-items: center;
   gap: 8px;
-  text-transform: uppercase;
   font-size: inherit;
   line-height: 1.35;
   letter-spacing: 0.08em;
