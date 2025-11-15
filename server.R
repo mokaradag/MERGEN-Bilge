@@ -99,7 +99,7 @@ server <- function(input, output, session) {
   # --- Core Reactive Values for the Application ---
 	values <- reactiveValues(
 	  messages = list(),
-	  saved_chats = load_chats_from_db(current_user_id, include_messages = FALSE),
+	  saved_chats = list(),
 	  show_welcome = TRUE,
 	  current_chat_id = NULL,
 	  last_request_time = NULL,
@@ -109,6 +109,50 @@ server <- function(input, output, session) {
 	  disliked_messages = initial_feedback$disliked,
 	  current_font_size = "medium",
 	  temp_files = list()
+	)
+
+	session$userData$welcome_screen_attached <- FALSE
+
+	render_welcome_screen <- function(saved_chats, replace_existing = FALSE) {
+	  if (!isTRUE(shiny::isolate(values$show_welcome))) {
+		return(invisible(NULL))
+	  }
+
+	  if (isTRUE(replace_existing) && isTRUE(session$userData$welcome_screen_attached)) {
+		shinyjs::runjs("$('#chat_content_container .welcome-container').remove();")
+	  }
+
+	  insertUI(
+		selector = "#chat_content_container",
+		where = "beforeEnd",
+		ui = createWelcomeScreen(saved_chats),
+		immediate = TRUE
+	  )
+
+	  session$userData$welcome_screen_attached <- TRUE
+
+	  session$onFlushed(function() {
+		session$sendCustomMessage("showNeuralAnimation", list())
+	  }, once = TRUE)
+	}
+
+	session$userData$initial_saved_chats_promise <- promises::then(
+	  promises::future_promise({
+		load_chats_from_db(current_user_id, include_messages = FALSE)
+	  }),
+	  onFulfilled = function(chats) {
+		chats <- chats %||% list()
+		values$saved_chats <- chats
+
+		if (length(chats) > 0) {
+		  render_welcome_screen(chats, replace_existing = TRUE)
+		}
+		NULL
+	  },
+	  onRejected = function(err) {
+		warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
+		NULL
+	  }
 	)
 	
 	# chat export wiring (copy & export)
@@ -1285,15 +1329,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   # This observer runs only once at startup to show the welcome screen
 	observeEvent(TRUE, {
 	  if (isTRUE(values$show_welcome)) {
-			insertUI(
-			  selector = "#chat_content_container",
-			  where = "beforeEnd",
-			  ui = createWelcomeScreen(values$saved_chats),
-			  immediate = TRUE
-			)
-			session$onFlushed(function() {
-			  session$sendCustomMessage("showNeuralAnimation", list())
-			}, once = TRUE)
+					render_welcome_screen(values$saved_chats)
 	  }
 
 	  # ✅ Preload htmlwidget dependencies once (hidden)
