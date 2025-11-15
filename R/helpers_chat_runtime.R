@@ -290,6 +290,15 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
           ))
 		  
 		  push_followup_update(session, streaming_state$msg_id, followups, pending = FALSE)
+          try(
+            shinyjs::runjs(
+              sprintf(
+                "(function(){var box=document.getElementById('followup_container_%s'); if(box){box.classList.remove('pending');}})();",
+                streaming_state$msg_id
+              )
+            ),
+            silent = TRUE
+          )
 
           if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
             for (r in chart_info$renderers) {

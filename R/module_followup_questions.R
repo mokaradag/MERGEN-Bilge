@@ -51,13 +51,22 @@
   }
 
   ensure_question <- function(text) {
-    if (!nzchar(text)) return("")
-    trimmed <- trimws(text)
-    if (grepl("\\?$", trimmed)) {
-      trimmed
-    } else {
-      paste0(trimmed, "?")
+    if (is.null(text) || !length(text)) {
+      return(character(0))
     }
+
+    trimmed <- trimws(as.character(text))
+    trimmed <- trimmed[nzchar(trimmed)]
+    if (!length(trimmed)) {
+      return(character(0))
+    }
+
+    needs_q <- !grepl("\\?$", trimmed, perl = TRUE)
+    if (any(needs_q)) {
+      trimmed[needs_q] <- paste0(trimmed[needs_q], "?")
+    }
+
+    trimmed
   }
 
   build_templates <- function(topic = NULL) {

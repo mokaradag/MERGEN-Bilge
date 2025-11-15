@@ -1409,7 +1409,11 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	}
 
 	build_followup_suggestions <- function(user_text, ai_text) {
-	  if (!isTRUE(isolate(settings_data$enable_followups))) {
+          enabled_flag <- settings_data$enable_followups
+          if (is.null(enabled_flag)) {
+            enabled_flag <- TRUE
+          }
+          if (!isTRUE(enabled_flag)) {
 		return(NULL)
 	  }
 

@@ -5707,14 +5707,10 @@ body.font-xlarge {
 }
 
 .followup-suggestions-box.pending {
-  opacity: 0;
-  max-height: 0;
-  margin-top: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-width: 0;
-  overflow: hidden;
-  pointer-events: none;
+  opacity: 0.65;
+  filter: grayscale(0.15);
+  border-style: dashed;
+  transition: opacity 0.2s ease;
 }
 
 .followup-suggestions-title {
