@@ -1407,6 +1407,31 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id)
 	}
 
+	# Çok temel bir perspektif düzeltici (fazla agresif olmasın)
+	ensure_user_perspective <- function(texts) {
+	  if (is.null(texts) || !length(texts)) return(texts)
+	  out <- texts
+
+	  # Örnek: "Programın çıktısını değiştirmek istiyor musunuz?"
+	  #  → "Programın çıktısını değiştirmek istiyorum, nasıl yapabilirim?"
+	  out <- gsub(
+		"istiyor musunuz\\?$",
+		"istiyorum, nasıl yapabilirim?",
+		out,
+		ignore.case = TRUE
+	  )
+
+	  # Örnek: "X yapmak ister misiniz?" → "X yapmak istiyorum, nasıl yapabilirim?"
+	  out <- gsub(
+		"ister misiniz\\?$",
+		"istiyorum, nasıl yapabilirim?",
+		out,
+		ignore.case = TRUE
+	  )
+
+	  out
+	}
+
 	normalize_followup_texts <- function(items, limit = 3L) {
 	  if (is.null(items) || !length(items)) return(NULL)
 	  texts <- trimws(as.character(items))
@@ -1417,6 +1442,9 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 
 	  texts <- texts[nchar(texts) > 3]
 	  texts <- substr(texts, 1, 220)
+
+	  texts <- ensure_user_perspective(texts)
+
 	  needs_q <- !grepl("\\?$", texts, perl = TRUE)
 	  texts[needs_q] <- paste0(texts[needs_q], "?")
 
@@ -1490,13 +1518,19 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		"Yalnızca JSON olarak yanıt ver ve formatı bozma.",
 		"Şema: {\"followups\": [\"soru1\", \"soru2\", \"soru3\"]}.",
 		"Her soru Türkçe olmalı, 6-18 kelime arası olmalı ve '?' ile bitmeli.",
+		"SORULARI KULLANICININ AĞZINDAN YAZ: Bunlar, kullanıcının bir sonraki turda asistanla konuşurken soracağı sorular olsun.",
+		"Kullanıcıya hitap eden biçimler (\"istiyor musunuz\", \"ister misiniz\", \"ister miydiniz\" vb.) KULLANMA.",
+		"Bunun yerine birinci tekil kişi kullan: örn. \"... nasıl yapabilirim?\", \"... bana gösterebilir misin?\", \"... hakkında daha ayrıntılı anlatır mısın?\"",
+		"Örnek yanlış: \"Programın çıktısını nasıl değiştirmek istersiniz?\"",
+		"Örnek doğru:  \"Programın çıktısını nasıl değiştirebilirim?\"",
 		"Ek açıklama, markdown veya düz yazı ekleme."
 	  )
 
 	  context_prompt <- paste(
 		"Kullanıcının sorusu:", truncate_followup_context(user_text %||% ""),
 		"\n\nAsistanın yanıtı:", truncate_followup_context(ai_text %||% ""),
-		"\n\nTalimat: Bu yanıtı takip edecek 3 kısa soru öner."
+		"\n\nTalimat: Bu yanıtı okuyan KULLANICININ, bir sonraki turda asistan'a sorabileceği 3 kısa takip sorusu öner.",
+		"Soruları mutlaka kullanıcının bakış açısından yaz (\"Ben\", \"bana\", \"nasıl ... yapabilirim?\" gibi)."
 	  )
 
 	  messages <- list(
