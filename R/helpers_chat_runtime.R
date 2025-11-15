@@ -32,7 +32,8 @@ chat_generate_title_from_prompt <- function(prompt, max_len = 60) {
 
 chat_add_message <- function(session, values, settings_data, output,
                              content, type = "user", html = NULL,
-                             current_user_id, filePreview = NULL) {
+                             current_user_id, filePreview = NULL,
+                             followups = NULL) {
   if (isTRUE(values$show_welcome)) {
     removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
     values$show_welcome <- FALSE
@@ -60,6 +61,10 @@ chat_add_message <- function(session, values, settings_data, output,
     html_content = processed$html, has_code = processed$has_code,
     type = type, timestamp = timestamp
   )
+  
+  if (!is.null(followups) && length(followups) > 0) {
+    new_message$followups <- followups
+  }
 
   if (!is.null(values$current_chat_id)) {
     tryCatch({
@@ -165,7 +170,8 @@ chat_add_message <- function(session, values, settings_data, output,
   return(new_message)
 }
 
-chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation) {
+chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
+                                   followups = NULL) {
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
 
   timestamp <- format_timestamp()
@@ -179,6 +185,10 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     timestamp = timestamp,
     is_streaming = TRUE
   )
+  
+  if (!is.null(followups) && length(followups) > 0) {
+    initial_msg$followups <- followups
+  }
   values$messages <- append(values$messages, list(initial_msg))
 
   selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
@@ -240,6 +250,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
           values$messages[[msg_index]]$html_content <- final_html
           values$messages[[msg_index]]$has_code <- final_hascode
           values$messages[[msg_index]]$is_streaming <- FALSE
+          if (!is.null(followups) && length(followups) > 0) {
+            values$messages[[msg_index]]$followups <- followups
+          }
 
           session$sendCustomMessage("finalizeStreamingMessage", list(
             id = streaming_state$msg_id,

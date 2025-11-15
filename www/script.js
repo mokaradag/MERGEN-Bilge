@@ -1317,6 +1317,18 @@
           );
         }
       });
+
+      $(document).on('click', '.followup-option', function(e) {
+        e.preventDefault();
+        const question = $(this).data('question');
+        if (!question || !window.Shiny || !Shiny.setInputValue) {
+          return;
+        }
+        Shiny.setInputValue('followup_question_clicked', {
+          text: question,
+          nonce: Date.now()
+        }, { priority: 'event' });
+      });
     
       $(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function(e) {
         const tabId = $(e.target).attr('data-value');
@@ -1525,12 +1537,17 @@
           
           // Replace with final formatted HTML
           messageDiv.innerHTML = data.html;
-          
+
             // Initialize CodeMirror (do not rely on server `hasCode`)
             if (window.initializeCodeMirrorInElement) {
               setTimeout(() => window.initializeCodeMirrorInElement('message_wrapper_' + data.id), 0);
             }
-          
+
+          const followupBox = document.getElementById('followup_container_' + data.id);
+          if (followupBox) {
+            followupBox.classList.remove('pending');
+          }
+
           // Final scroll adjustment
           if (window.isNearBottom) {
             window.smartScrollToBottom();

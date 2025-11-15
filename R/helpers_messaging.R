@@ -184,6 +184,47 @@ process_message_content <- function(content, type = "user") {
   return(list(html = paste(html_parts, collapse = ""), has_code = has_code))
 }
 
+build_followup_container <- function(message_id, followups = NULL, pending = FALSE) {
+  if (is.null(followups) || length(followups) == 0) {
+    return(NULL)
+  }
+
+  classes <- c("followup-suggestions-box")
+  if (isTRUE(pending)) {
+    classes <- c(classes, "pending")
+  }
+
+  buttons <- lapply(seq_along(followups), function(idx) {
+    question <- followups[[idx]] %||% ""
+    if (!nzchar(question)) return(NULL)
+
+    tags$button(
+      type = "button",
+      class = "followup-option",
+      `data-question` = question,
+      span(htmltools::htmlEscape(question)),
+      tags$i(class = "fas fa-arrow-up-right-from-square")
+    )
+  })
+
+  buttons <- Filter(Negate(is.null), buttons)
+  if (!length(buttons)) {
+    return(NULL)
+  }
+
+  div(
+    id = paste0("followup_container_", message_id),
+    class = paste(classes, collapse = " "),
+    `data-has-items` = "true",
+    div(
+      class = "followup-suggestions-title",
+      tags$i(class = "fas fa-lightbulb"),
+      span("Önerilen Takip Soruları")
+    ),
+    div(class = "followup-suggestions-list", buttons)
+  )
+}
+
 #' Pure UI builder for message bubbles (no access to values$)
 #' Pass liked_ids / disliked_ids explicitly.
 render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE,
@@ -307,7 +348,12 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
           div(class = "message-content",
               id = msg$id,
               `data-streaming` = if(is_streaming) "true" else "false",
-              HTML(msg$html_content))
+              HTML(msg$html_content)),
+          build_followup_container(
+            msg$id,
+            msg$followups %||% NULL,
+            pending = isTRUE(msg$is_streaming)
+          )
         )
       )
 

@@ -91,6 +91,9 @@ server <- function(input, output, session) {
   # Initialize File Preview module (replaces preview outputs + modal helpers)
   filePreview <- filePreviewServer("file_preview")
   
+  # Lightweight follow-up suggestion generator
+  followup_tools <- followupSuggestionsServer("followup_module")
+  
   init_docx_preview_js(session)
   
   # Load existing feedback when the app starts
@@ -524,7 +527,8 @@ observeEvent(input$source_file_clicked, {
   )
 	
 # Simplified - uses AI module
-  generate_non_streaming_stoppable <- function(chat_history, current_settings, user_prompt_msg, chat_id_val, model_selected) {
+  generate_non_streaming_stoppable <- function(chat_history, current_settings, user_prompt_msg,
+                                               chat_id_val, model_selected, last_user_text = NULL) {
 	
 	# DEBUG: snapshot request (non-streaming)
 	safe_settings <- current_settings; safe_settings$shiny_session <- NULL
@@ -617,14 +621,16 @@ observeEvent(input$source_file_clicked, {
 			  # --- /ChartLab fallback ---
 
 		  # Hata yutulmasın diye sarmalıyoruz
+		  followup_questions <- build_followup_suggestions(last_user_text, result$content)
+
 		  tryCatch({
-			ai_msg <- add_message(result$content, "ai")
+				ai_msg <- add_message(result$content, "ai", followups = followup_questions)
 		  }, error = function(e) {
-			cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
-			cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
-			showToast(session, "Render hatası: içerik boş/uygunsuz. Günlüğe yazıldı.", "error")
-			# Sohbet akışını bozmamak için placeholder
-			ai_msg <- add_message("⚠️ Model boş bir yanıt döndürdü (loglandı).", "ai")
+				cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
+				cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
+				showToast(session, "Render hatası: içerik boş/uygunsuz. Günlüğe yazıldı.", "error")
+				# Sohbet akışını bozmamak için placeholder
+				ai_msg <- add_message("⚠️ Model boş bir yanıt döndürdü (loglandı).", "ai")
 		  })
 
 		  tryCatch({
@@ -1156,7 +1162,8 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			  session$userData$chart_store <- utils::modifyList(session$userData$chart_store, res$chart_store)
 			}
 
-			simulate_streaming_stoppable(res$content)
+			followup_questions <- build_followup_suggestions(user_message_text, res$content)
+			simulate_streaming_stoppable(res$content, followups = followup_questions)
 			invisible(NULL)
 		  },
 		  onRejected = function(err) {
@@ -1201,7 +1208,14 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	} else {
 	  cat("[MONITORING] Starting AI request (NON-STREAMING mode)\n")
 	  # Use the non-streaming version
-	  generate_non_streaming_stoppable(messages_to_process, current_settings, user_prompt_msg, chat_id_val, model_selected)
+	  generate_non_streaming_stoppable(
+		messages_to_process,
+		current_settings,
+		user_prompt_msg,
+		chat_id_val,
+		model_selected,
+		last_user_text = user_message_text
+	  )
 	}
 	
 	invisible(NULL)
@@ -1366,16 +1380,55 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  chat_generate_title_from_prompt(prompt, max_len)
 	}
 
-	simulate_streaming_stoppable <- function(full_response) {
-	  chat_simulate_streaming(full_response, session, values, settings_data, output, stop_generation)
+	simulate_streaming_stoppable <- function(full_response, followups = NULL) {
+	  chat_simulate_streaming(
+		full_response,
+		session,
+		values,
+		settings_data,
+		output,
+		stop_generation,
+		followups = followups
+	  )
 	}
 
-	add_message <- function(content, type = "user", html = NULL) {
-	  chat_add_message(session, values, settings_data, output, content, type, html, current_user_id)
+	add_message <- function(content, type = "user", html = NULL, followups = NULL) {
+	  chat_add_message(
+		session, values, settings_data, output,
+		content, type, html, current_user_id,
+		followups = followups
+	  )
 	}
 
 	start_new_chat <- function() {
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id)
+	}
+
+	build_followup_suggestions <- function(user_text, ai_text) {
+	  if (!isTRUE(isolate(settings_data$enable_followups))) {
+		return(NULL)
+	  }
+	  if (is.null(followup_tools) || is.null(followup_tools$generate)) {
+		return(NULL)
+	  }
+
+	  suggestions <- tryCatch(
+		followup_tools$generate(user_text %||% "", ai_text %||% "",
+							   min_questions = 2L, max_questions = 3L),
+		error = function(e) NULL
+	  )
+
+	  if (is.null(suggestions) || !length(suggestions)) {
+		return(NULL)
+	  }
+
+	  suggestions <- unique(trimws(as.character(suggestions)))
+	  suggestions <- suggestions[nzchar(suggestions)]
+	  if (!length(suggestions)) {
+		return(NULL)
+	  }
+
+	  head(suggestions, 3L)
 	}
 
   # Load saved chat observer with debouncing
@@ -1520,7 +1573,13 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   # [Keep all these as they were]
 
   observeEvent(input$new_chat_btn, {
-	start_new_chat()
+        start_new_chat()
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$followup_question_clicked, {
+        req(is.list(input$followup_question_clicked))
+        req(nzchar(input$followup_question_clicked$text %||% ""))
+        send_message(input$followup_question_clicked)
   }, ignoreInit = TRUE)
 						  
   output$message_count <- renderText({ length(values$messages) })

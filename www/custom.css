@@ -5488,7 +5488,6 @@ body.font-xlarge {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 110px;
 }
 
 .welcome-container .neural-background {
@@ -5695,4 +5694,74 @@ body.font-xlarge {
   .files-header .btn-modern {
     padding: 6px 10px !important;
   }
+}
+
+.followup-suggestions-box {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #11131c, #1c1f2b);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  transition: all 0.25s ease;
+}
+
+.followup-suggestions-box.pending {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.followup-suggestions-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: #a5b4ff;
+  margin-bottom: 10px;
+}
+
+.followup-suggestions-title i {
+  color: #f6c343;
+  font-size: 0.9rem;
+}
+
+.followup-suggestions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.followup-option {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: #f4f6ff;
+  font-size: 0.92rem;
+  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.followup-option:hover {
+  background: rgba(86, 102, 255, 0.25);
+  border-color: #5666ff;
+  box-shadow: 0 6px 20px rgba(86, 102, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.followup-option i {
+  font-size: 0.85rem;
+  opacity: 0.8;
 }

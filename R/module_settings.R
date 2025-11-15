@@ -63,13 +63,27 @@ settingsUI <- function(id) {
 				  h4("Model Seçimi", class = "setting-subtitle"),
 				  p("Kullanmak istediğiniz modeli seçin.", class = "setting-description", style = "margin-top:4px;"),
 				  div(
-					class = "setting-item",
-					selectInput(
-					  inputId = ns("model_selection"),
-					  label   = NULL,
-					  choices = api_config$local_models,
-					  selected = api_config$local_models[1],
-					  width = "100%"
+						class = "setting-item",
+						selectInput(
+						  inputId = ns("model_selection"),
+						  label   = NULL,
+						  choices = api_config$local_models,
+						  selected = api_config$local_models[1],
+						  width = "100%"
+						)
+				  ),
+				  div(
+					class = "setting-item followup-toggle",
+					h4("Yanıt Sonrası Öneriler", class = "setting-subtitle"),
+					p(
+					  "Model yanıtlarının sonunda otomatik takip soruları görüntüleyin.",
+					  class = "setting-description",
+					  style = "margin-top:4px;"
+					),
+					checkboxInput(
+					  inputId = ns("enable_followups"),
+					  label = "Takip sorusu önerilerini göster",
+					  value = TRUE
 					)
 				  )
 				),
@@ -228,6 +242,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_widescreen       = TRUE,
 	  enable_rdata_tools      = FALSE,
 	  enable_mcp_tools        = FALSE,
+	  enable_followups        = TRUE,
 	  font_size               = "medium"
 	)
 	
@@ -432,6 +447,10 @@ settingsServer <- function(id, parent_session = NULL) {
         settings$enable_widescreen <- loaded$enable_widescreen
         updateCheckboxInput(session, "enable_widescreen", value = loaded$enable_widescreen)
       }
+      if (!is.null(loaded$enable_followups)) {
+        settings$enable_followups <- isTRUE(loaded$enable_followups)
+        updateCheckboxInput(session, "enable_followups", value = settings$enable_followups)
+      }
 		if (!is.null(loaded$enable_rdata_tools)) {
 		  settings$enable_rdata_tools <- isTRUE(loaded$enable_rdata_tools)
 		  updateCheckboxInput(session, "enable_rdata_tools", value = settings$enable_rdata_tools)
@@ -472,6 +491,7 @@ settingsServer <- function(id, parent_session = NULL) {
     observeEvent(input$enable_typing_indicator, { settings$enable_typing_indicator <- input$enable_typing_indicator })
 	observeEvent(input$enable_streaming,  { settings$enable_streaming  <- input$enable_streaming })
 	observeEvent(input$enable_widescreen, { settings$enable_widescreen <- input$enable_widescreen })
+	observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
 
 	# Karşılıklı dışlama mantığı
 	observeEvent(input$enable_rdata_tools, {
@@ -519,6 +539,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$enable_widescreen       <- TRUE
 	  settings$enable_rdata_tools      <- FALSE
 	  settings$enable_mcp_tools        <- FALSE
+	  settings$enable_followups        <- TRUE
       settings$font_size               <- "medium"
       
       updateSelectInput(session, "model_selection", selected = settings$model_selection)
@@ -531,6 +552,7 @@ settingsServer <- function(id, parent_session = NULL) {
       updateCheckboxInput(session, "enable_widescreen",       value = settings$enable_widescreen)
 	  updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
       updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
+      updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
       
       session$sendCustomMessage("clearSettings", list())
       showToast(session, "Ayarlar sıfırlandı!", "info")
