@@ -80,10 +80,13 @@ settingsUI <- function(id) {
 					  class = "setting-description",
 					  style = "margin-top:4px;"
 					),
-					checkboxInput(
-					  inputId = ns("enable_followups"),
-					  label = "Takip sorusu önerilerini göster",
-					  value = TRUE
+					div(
+					  class = "checkbox-item followup-checkbox",
+					  checkboxInput(
+						inputId = ns("enable_followups"),
+						label = tags$span("Takip sorusu önerilerini göster"),
+						value = TRUE
+					  )
 					)
 				  )
 				),

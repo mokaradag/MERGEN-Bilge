@@ -92,7 +92,11 @@ server <- function(input, output, session) {
   filePreview <- filePreviewServer("file_preview")
   
   # Lightweight follow-up suggestion generator
+  fallback_followup_tool <- create_followup_suggestions_tool()
   followup_tools <- followupSuggestionsServer("followup_module")
+  if (is.null(followup_tools) || is.null(followup_tools$generate)) {
+    followup_tools <- fallback_followup_tool
+  }
   
   init_docx_preview_js(session)
   
@@ -1408,15 +1412,25 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  if (!isTRUE(isolate(settings_data$enable_followups))) {
 		return(NULL)
 	  }
-	  if (is.null(followup_tools) || is.null(followup_tools$generate)) {
-		return(NULL)
+
+      generator <- followup_tools$generate
+          if (!is.function(generator)) {
+            generator <- fallback_followup_tool$generate
 	  }
 
-	  suggestions <- tryCatch(
-		followup_tools$generate(user_text %||% "", ai_text %||% "",
-							   min_questions = 2L, max_questions = 3L),
-		error = function(e) NULL
-	  )
+	  safe_generate <- function(fn) {
+		if (!is.function(fn)) return(NULL)
+		tryCatch(
+		  fn(user_text %||% "", ai_text %||% "",
+			 min_questions = 2L, max_questions = 3L),
+		  error = function(e) NULL
+		)
+	  }
+
+	  suggestions <- safe_generate(generator)
+	  if (is.null(suggestions) || !length(suggestions)) {
+		suggestions <- safe_generate(fallback_followup_tool$generate)
+	  }
 
 	  if (is.null(suggestions) || !length(suggestions)) {
 		return(NULL)
