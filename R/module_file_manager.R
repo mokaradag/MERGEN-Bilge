@@ -124,8 +124,16 @@ fileManagerServer <- function(
 
 	is_excel_file <- function(info) {
 	  if (is.null(info)) return(FALSE)
-	  ext <- tolower(info$type %||% tools::file_ext(info$name) %||% "")
-	  ext %in% c("xls", "xlsx", "xlsm", "xlsb", "xltx", "xltm")
+	  excel_exts <- c("xls", "xlsx", "xlsm", "xlsb", "xltx", "xltm")
+	  excel_mimes <- c(
+		"application/vnd.ms-excel",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.ms-excel.sheet.macroenabled.12",
+		"application/vnd.ms-excel.sheet.binary.macroenabled.12"
+	  )
+	  ext <- tolower(tools::file_ext(info$name %||% ""))
+	  mime <- tolower(info$type %||% "")
+	  (nzchar(ext) && ext %in% excel_exts) || (nzchar(mime) && mime %in% excel_mimes)
 	}
 
 	# Update parent session_files using the bridge we were given

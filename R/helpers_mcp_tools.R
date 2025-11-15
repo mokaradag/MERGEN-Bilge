@@ -16,6 +16,38 @@ suppressWarnings({
 # Create a private env to avoid scoping problems (e.g., futures)
 helpers_mcp_tools <- new.env(parent = globalenv())
 
+# Pull helper utilities from the global env when available (workers inherit them)
+if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
+  assign(
+    "normalize_excel_path",
+    get("normalize_excel_path", envir = globalenv(), inherits = TRUE),
+    envir = helpers_mcp_tools
+  )
+}
+
+if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
+  helpers_mcp_tools$normalize_excel_path <- function(path) {
+    if (is.null(path) || !nzchar(path)) return(path)
+    expanded <- tryCatch(path.expand(path), error = function(e) path)
+    winslash <- if (.Platform$OS.type == "windows") "\\" else "/"
+    normalized <- tryCatch(
+      normalizePath(expanded, winslash = winslash, mustWork = FALSE),
+      error = function(e) expanded
+    )
+    if (!file.exists(normalized)) {
+      normalized <- tryCatch(
+        normalizePath(expanded, winslash = winslash, mustWork = TRUE),
+        error = function(e) normalized
+      )
+    }
+    native <- tryCatch(enc2native(normalized), error = function(e) normalized)
+    if (.Platform$OS.type == "windows") {
+      native <- tryCatch(utils::shortPathName(native), error = function(e) native)
+    }
+    native
+  }
+}
+
 # Try to copy the global function into our tools env
 if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
   assign(
@@ -28,8 +60,16 @@ if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
 # GUARANTEE: if it still doesn't exist here (e.g., in a worker), provide a minimal fallback
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
+    if (!file.exists(path)) stop(sprintf("Dosya bulunamadı: %s", path))
+    ext <- tolower(tools::file_ext(path))
+    if (!ext %in% c("xlsx", "xls", "xlsm")) {
+      stop(sprintf("Excel uzantısı bekleniyor (.xlsx/.xls/.xlsm), bulundu: .%s", ext))
+    }
+
+    path_prepared <- helpers_mcp_tools$normalize_excel_path(path)
+	
     # Minimal, robust fallback (first sheet, treat first row as header)
-    df <- readxl::read_excel(path, sheet = sheet, col_names = TRUE)
+    df <- readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE)
     if (is.finite(n_max)) df <- head(df, n_max)
     df <- as.data.frame(df, stringsAsFactors = FALSE)
     if (anyNA(names(df)) || any(names(df) == "")) {
