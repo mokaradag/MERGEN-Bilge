@@ -1432,6 +1432,18 @@
 
         box.appendChild(title);
         box.appendChild(list);
+
+        const shouldAutoScroll = (typeof window === 'undefined') ? false :
+          (typeof window.isNearBottom === 'undefined' || window.isNearBottom === true);
+        if (shouldAutoScroll) {
+          setTimeout(() => {
+            if (typeof window.smartScrollToBottom === 'function') {
+              window.smartScrollToBottom(true);
+            } else if (typeof scrollToBottom === 'function') {
+              scrollToBottom(true);
+            }
+          }, 20);
+        }
       }
 
       Shiny.addCustomMessageHandler('updateFollowupSuggestions', renderFollowupSuggestions);

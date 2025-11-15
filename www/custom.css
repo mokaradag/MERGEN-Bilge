@@ -5718,7 +5718,8 @@ body.font-xlarge {
   align-items: center;
   gap: 8px;
   text-transform: uppercase;
-  font-size: 0.8rem;
+  font-size: inherit;
+  line-height: 1.35;
   letter-spacing: 0.08em;
   color: #a5b4ff;
   margin-bottom: 10px;
@@ -5740,7 +5741,8 @@ body.font-xlarge {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   color: #f4f6ff;
-  font-size: 0.92rem;
+  font-size: inherit;
+  line-height: 1.4;
   padding: 6px 14px;
   display: inline-flex;
   align-items: center;
