@@ -28,9 +28,25 @@
     unique(head(tokens, limit))
   }
 
+  safe_title_case <- function(tokens) {
+    if (!length(tokens)) return(character(0))
+    tryCatch({
+      suppressWarnings(
+        stringi::stri_trans_totitle(
+          tokens,
+          opts_brkiter = stringi::stri_opts_brkiter(type = "word", locale = "tr_TR")
+        )
+      )
+    }, warning = function(w) {
+      stringr::str_to_title(tokens)
+    }, error = function(e) {
+      tokens
+    })
+  }
+
   format_topic <- function(tokens) {
     if (length(tokens) == 0) return(NULL)
-    title_tokens <- stringr::str_to_title(tokens, locale = "tr")
+	title_tokens <- safe_title_case(tokens)
     trimws(paste(title_tokens, collapse = " "))
   }
 

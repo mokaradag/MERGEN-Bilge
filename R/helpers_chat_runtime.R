@@ -30,6 +30,28 @@ chat_generate_title_from_prompt <- function(prompt, max_len = 60) {
   paste0(title, "...")
 }
 
+push_followup_update <- function(session, message_id, followups, pending = FALSE) {
+  if (is.null(session) || is.null(message_id)) {
+    return(invisible(NULL))
+  }
+
+  cleaned <- followups %||% character(0)
+  cleaned <- trimws(as.character(cleaned))
+  cleaned <- cleaned[nzchar(cleaned)]
+  if (!length(cleaned)) {
+    return(invisible(NULL))
+  }
+
+  payload <- list(
+    id = message_id,
+    followups = unname(cleaned),
+    pending = isTRUE(pending)
+  )
+
+  try(session$sendCustomMessage("updateFollowupSuggestions", payload), silent = TRUE)
+  invisible(NULL)
+}
+
 chat_add_message <- function(session, values, settings_data, output,
                              content, type = "user", html = NULL,
                              current_user_id, filePreview = NULL,
@@ -144,6 +166,10 @@ chat_add_message <- function(session, values, settings_data, output,
     ui = ui_to_insert, immediate = TRUE
   )
 
+  if (identical(type, "ai") || identical(type, "assistant")) {
+    push_followup_update(session, new_message$id, followups, pending = FALSE)
+  }
+  
   if (!is.null(chart_info) && isTRUE(chart_info$found) && length(chart_info$renderers)) {
     for (r in chart_info$renderers) {
       local_r <- r
@@ -217,6 +243,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     content = ""
   ))
 
+  push_followup_update(session, msg_id, followups, pending = TRUE)
+  
   words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
   if (length(words) == 0) words <- c(full_response)
 
@@ -260,6 +288,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
             hasCode = final_hascode,
             enableActions = TRUE
           ))
+		  
+		  push_followup_update(session, streaming_state$msg_id, followups, pending = FALSE)
 
           if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
             for (r in chart_info$renderers) {
