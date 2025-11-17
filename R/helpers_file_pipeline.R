@@ -37,10 +37,17 @@ processAndSummarizeFile <- function(file_info,
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
                               duration = NULL, type = "message")
 
-  # Ensure file is persisted under MCP base
-  dest <- file_info$datapath
-  if (!is_under_mcp_base(dest)) {
-    dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), current_user_id)
+  # Ensure file is persisted under MCP base (handle UNC verification failures)
+  dest <- file_info$datapath %||% file_info$path %||% ""
+  needs_copy <- !is_under_mcp_base(dest) || !path_exists_relaxed(dest)
+  if (isTRUE(needs_copy)) {
+    fallback_path <- file_info$original_datapath %||% file_info$path %||% file_info$datapath
+    fallback_path <- as.character(fallback_path %||% "")
+    if (!nzchar(fallback_path)) {
+      stop(sprintf("Dosya yolu bulunamadı: %s", file_info$name %||% ""))
+    }
+    src_payload <- list(name = file_info$name, datapath = fallback_path)
+    dest <- copy_to_mcp_base(src_payload, current_user_id)
   }
 
   # Keep in session for MCP tools
@@ -157,6 +164,9 @@ handle_file_upload_batch <- function(uploads_df,
       return(invisible(NULL))
     }
     uf <- uploads[[i]]
+    if (is.null(uf$original_datapath)) {
+      uf$original_datapath <- uf$datapath
+    }
     removeNotification(note_id)
     note_id <<- showNotification(sprintf("[%d/%d] İşleniyor: %s", i, total, uf$name),
                                  duration = NULL, type = "message")
@@ -176,18 +186,10 @@ handle_file_upload_batch <- function(uploads_df,
       return(invisible(NULL))
     }
 
-    dest_norm <- tryCatch(
-      normalizePath(dest, winslash = "/", mustWork = FALSE),
-      error = function(e) dest
-    )
-
-    if (!isTRUE(file.exists(dest_norm))) {
-      alt_path <- gsub("/", "\\\\", dest_norm, fixed = TRUE)
-      if (isTRUE(file.exists(alt_path))) {
-        dest_norm <- alt_path
-      } else {
-        cat("[UPLOAD] Uyarı: kopyalanan dosya doğrulanamadı ancak işleme devam ediliyor:", dest_norm, "\n")
-      }
+    dest_norm <- dest
+    if (!path_exists_relaxed(dest_norm)) {
+      display_path <- tryCatch(normalizePath(dest_norm, winslash = "/", mustWork = FALSE), error = function(e) dest_norm)
+      cat("[UPLOAD] Uyarı: kopyalanan dosya doğrulanamadı ancak işleme devam ediliyor:", display_path, "\n")
     }
 
     uf$datapath <- dest_norm

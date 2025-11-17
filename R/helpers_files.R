@@ -1,5 +1,72 @@
 # R/helpers_files.R
 
+# Relaxed file.exists for UNC + long paths ("\\\\?\\UNC" etc.)
+path_exists_relaxed <- function(path) {
+  if (is.null(path) || length(path) == 0) {
+    return(FALSE)
+  }
+
+  candidate <- as.character(path[1])
+  if (!nzchar(candidate)) {
+    return(FALSE)
+  }
+
+  cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
+  cand_unc   <- sub("^//\\?/UNC", "//", cand_slash, perl = TRUE)
+  cand_drop  <- sub("^//\\?/", "//", cand_unc,   perl = TRUE)
+  cand_back  <- gsub("/", "\\\\", cand_slash, fixed = TRUE)
+  cand_back_unc  <- gsub("/", "\\\\", cand_unc,  fixed = TRUE)
+  cand_back_drop <- gsub("/", "\\\\", cand_drop, fixed = TRUE)
+  cand_drive     <- sub("^//", "", cand_drop)
+  cand_back_drive <- gsub("/", "\\\\", cand_drive, fixed = TRUE)
+
+  variants <- unique(trimws(Filter(nzchar, c(
+    candidate,
+    cand_slash,
+    cand_unc,
+    cand_drop,
+    cand_back,
+    cand_back_unc,
+    cand_back_drop,
+    cand_drive,
+    cand_back_drive
+  ))))
+
+  for (chk in variants) {
+    # base::file.exists occasionally returns logical(0) for invalid paths
+    exists_base <- tryCatch(isTRUE(file.exists(chk)), warning = function(w) FALSE, error = function(e) FALSE)
+    if (isTRUE(exists_base)) {
+      return(TRUE)
+    }
+
+    exists_fs <- tryCatch(isTRUE(fs::file_exists(chk)), warning = function(w) FALSE, error = function(e) FALSE)
+    if (isTRUE(exists_fs)) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
+normalize_for_path_compare <- function(path) {
+  if (is.null(path) || length(path) == 0) {
+    return("")
+  }
+
+  candidate <- as.character(path[1])
+  if (!nzchar(candidate)) {
+    return("")
+  }
+
+  cleaned <- gsub("\\\\", "/", candidate, fixed = TRUE)
+  cleaned <- sub("^//\\?/UNC", "//", cleaned, perl = TRUE)
+  cleaned <- sub("^//\\?/", "//", cleaned, perl = TRUE)
+  cleaned <- sub("^//(?=[A-Za-z]:)", "", cleaned, perl = TRUE)
+  cleaned <- gsub("(?<!:)//+", "/", cleaned, perl = TRUE)
+  cleaned <- trimws(cleaned)
+  tolower(cleaned)
+}
+
 # Copy an upload to MCP base (per-user) and return normalized path
 copy_to_mcp_base <- function(upload, user_id) {
   base <- Sys.getenv("MCP_FILES_BASE")
@@ -14,8 +81,9 @@ copy_to_mcp_base <- function(upload, user_id) {
 
   # Work with a short/ASCII-safe source path whenever possible
   src_original <- upload$datapath
-  src_short <- safe_windows_short_path(src_original, must_exist = file.exists(src_original))
-  if (!isTRUE(file.exists(src_short)) && isTRUE(file.exists(src_original))) {
+  src_exists   <- path_exists_relaxed(src_original)
+  src_short <- safe_windows_short_path(src_original, must_exist = src_exists)
+  if (!path_exists_relaxed(src_short) && src_exists) {
     src_short <- src_original
   }
   
@@ -24,7 +92,7 @@ copy_to_mcp_base <- function(upload, user_id) {
   base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
   if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
-    return(safe_windows_short_path(src_norm, must_exist = file.exists(src_norm)))
+    return(safe_windows_short_path(src_norm, must_exist = path_exists_relaxed(src_norm)))
   }
 
   # per-user bucket
@@ -33,11 +101,11 @@ copy_to_mcp_base <- function(upload, user_id) {
 
   ext <- tools::file_ext(upload$name)
   src_for_copy <- src_short
-  if (!isTRUE(file.exists(src_for_copy)) && isTRUE(file.exists(src_original))) {
+  if (!path_exists_relaxed(src_for_copy) && src_exists) {
     src_for_copy <- src_original
   }
 
-  unique_tag <- if (file.exists(src_for_copy)) {
+  unique_tag <- if (path_exists_relaxed(src_for_copy)) {
     digest::digest(file = src_for_copy, algo = "xxhash64")
   } else {
     # Rarely, the temporary upload might already be gone (e.g. aggressive AV or
@@ -60,7 +128,7 @@ copy_to_mcp_base <- function(upload, user_id) {
     )
   )
 
-  if (!file.exists(src_for_copy)) {
+  if (!path_exists_relaxed(src_for_copy)) {
     stop(sprintf("Kaynak dosya bulunamadı: %s", upload$datapath))
   }
 
@@ -84,7 +152,7 @@ copy_to_mcp_base <- function(upload, user_id) {
       FALSE
     })
 
-    if (!isTRUE(base_ok) || !file.exists(dest)) {
+    if (!isTRUE(base_ok) || !path_exists_relaxed(dest)) {
       stop(sprintf(
         "Kopyalanamadı: %s -> %s (%s)",
         src_for_copy,
@@ -94,11 +162,11 @@ copy_to_mcp_base <- function(upload, user_id) {
     }
   }
   
-  if (!fs::file_exists(dest)) {
+  if (!path_exists_relaxed(dest)) {
     stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", src_for_copy, dest))
   }
   dest_norm <- normalizePath(dest, winslash = "/", mustWork = TRUE)
-  safe_windows_short_path(dest_norm, must_exist = TRUE)
+  safe_windows_short_path(dest_norm, must_exist = path_exists_relaxed(dest_norm))
 }
 
 # Is path under MCP base?
@@ -106,9 +174,14 @@ is_under_mcp_base <- function(p) {
   base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) return(FALSE)
-  np <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
-  nb <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
-  startsWith(tolower(np), tolower(paste0(nb, "/"))) || tolower(np) == tolower(nb)
+  np_raw <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
+  nb_raw <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
+  np <- normalize_for_path_compare(np_raw)
+  nb <- normalize_for_path_compare(nb_raw)
+  if (!nzchar(np) || !nzchar(nb)) return(FALSE)
+  if (identical(np, nb)) return(TRUE)
+  nb_dir <- if (endsWith(nb, "/")) nb else paste0(nb, "/")
+  startsWith(np, nb_dir)
 }
 
 # Turn a data.frame into simple CSV markdown (used for quick previews)
