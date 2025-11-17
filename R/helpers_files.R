@@ -32,15 +32,20 @@ copy_to_mcp_base <- function(upload, user_id) {
   fs::dir_create(user_dir, recurse = TRUE)
 
   ext <- tools::file_ext(upload$name)
-  unique_tag <- if (file.exists(src_short)) {
-    digest::digest(file = src_short, algo = "xxhash64")
+  src_for_copy <- src_short
+  if (!isTRUE(file.exists(src_for_copy)) && isTRUE(file.exists(src_original))) {
+    src_for_copy <- src_original
+  }
+
+  unique_tag <- if (file.exists(src_for_copy)) {
+    digest::digest(file = src_for_copy, algo = "xxhash64")
   } else {
     # Rarely, the temporary upload might already be gone (e.g. aggressive AV or
     # short-lived network share).  Fall back to a time/random-based hash to
     # avoid crashing the upload flow.
     cat(
       "[copy_to_mcp_base] Kaynak dosya bulunamadı, rastgele etiket kullanılıyor:",
-      src_short, "\n"
+      src_for_copy, "\n"
     )
     digest::digest(paste(upload$name, Sys.time(), runif(1)), algo = "xxhash64")
   }
@@ -55,9 +60,42 @@ copy_to_mcp_base <- function(upload, user_id) {
     )
   )
 
-  fs::file_copy(upload$datapath, dest, overwrite = TRUE)
+  if (!file.exists(src_for_copy)) {
+    stop(sprintf("Kaynak dosya bulunamadı: %s", upload$datapath))
+  }
+
+  copy_ok <- tryCatch({
+    fs::file_copy(src_for_copy, dest, overwrite = TRUE)
+    TRUE
+  }, error = function(e) {
+    cat("[copy_to_mcp_base] fs::file_copy başarısız oldu, base::file.copy denenecek:", e$message, "\n")
+    e
+  })
+
+  if (!isTRUE(copy_ok)) {
+    fs_err <- copy_ok
+    base_ok <- tryCatch({
+      file.copy(src_for_copy, dest, overwrite = TRUE)
+    }, warning = function(w) {
+      cat("[copy_to_mcp_base] base::file.copy uyarı verdi:", w$message, "\n")
+      FALSE
+    }, error = function(e) {
+      cat("[copy_to_mcp_base] base::file.copy hata verdi:", e$message, "\n")
+      FALSE
+    })
+
+    if (!isTRUE(base_ok) || !file.exists(dest)) {
+      stop(sprintf(
+        "Kopyalanamadı: %s -> %s (%s)",
+        src_for_copy,
+        dest,
+        if (inherits(fs_err, "error")) fs_err$message else "bilinmeyen hata"
+      ))
+    }
+  }
+  
   if (!fs::file_exists(dest)) {
-    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
+    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", src_for_copy, dest))
   }
   dest_norm <- normalizePath(dest, winslash = "/", mustWork = TRUE)
   safe_windows_short_path(dest_norm, must_exist = TRUE)

@@ -161,11 +161,39 @@ handle_file_upload_batch <- function(uploads_df,
     note_id <<- showNotification(sprintf("[%d/%d] İşleniyor: %s", i, total, uf$name),
                                  duration = NULL, type = "message")
 
-    try({
-      dest <- copy_to_mcp_base(uf, current_user_id)
-      uf$datapath <- dest
-    }, silent = TRUE)
+    dest <- tryCatch({
+      copy_to_mcp_base(uf, current_user_id)
+    }, error = function(e) {
+      msg <- sprintf("%s kopyalanamadı: %s", uf$name %||% uf$datapath, conditionMessage(e))
+      cat("[UPLOAD] copy_to_mcp_base hata verdi:", msg, "\n")
+      showToast(session, msg, "error")
+      NULL
+    })
 
+    if (is.null(dest) || !nzchar(dest)) {
+      removeNotification(note_id)
+      shinyjs::delay(50, process_next(i + 1))
+      return(invisible(NULL))
+    }
+
+    dest_norm <- tryCatch(
+      normalizePath(dest, winslash = "/", mustWork = FALSE),
+      error = function(e) dest
+    )
+
+    if (!isTRUE(file.exists(dest_norm))) {
+      alt_path <- gsub("/", "\\\\", dest_norm, fixed = TRUE)
+      if (isTRUE(file.exists(alt_path))) {
+        dest_norm <- alt_path
+      } else {
+        cat("[UPLOAD] Uyarı: kopyalanan dosya doğrulanamadı ancak işleme devam ediliyor:", dest_norm, "\n")
+      }
+    }
+
+    uf$datapath <- dest_norm
+    uf$path <- dest_norm
+	
+    file_to_add_reactive(NULL)
     file_to_add_reactive(uf)
 
     processAndSummarizeFile(
