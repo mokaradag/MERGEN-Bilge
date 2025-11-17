@@ -115,6 +115,11 @@ server <- function(input, output, session) {
     session$userData$mcp_registry_snapshot <- files_snapshot %||% list()
     session$userData$mcp_registry_snapshot
   }
+  
+  # Make sure we always have a snapshot object on session start
+  if (is.null(session$userData$mcp_registry_snapshot)) {
+    session$userData$mcp_registry_snapshot <- session$userData$current_session_files %||% list()
+  }
 
 	# Expose username & (later) api key to this session
 	session$userData$system_username <- system_username
@@ -1037,8 +1042,12 @@ observeEvent(input$source_file_clicked, {
 	# === NEW: Read the model selection from settings_data via reactiveValuesToList ===
 	current_settings <- reactiveValuesToList(settings_data)
 	model_selected <- current_settings$model_selection
+	
+	# Ensure we have a snapshot handy before any per-request changes
+	mcp_snapshot <- session$userData$mcp_registry_snapshot %||% (session$userData$current_session_files %||% list())
+		
 	current_settings$current_user_id <- current_user_id
-	current_settings$mcp_registry_snapshot <- mcp_snapshot %||% (session$userData$current_session_files %||% list())
+    current_settings$mcp_registry_snapshot <- mcp_snapshot
 
 	# Bu isteğin araç ailesini ilet
 	current_settings$tool_family <- tool_family  # mcp_excel | rdata | none
