@@ -1353,6 +1353,27 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     
     # NEW — resolve the OpenAI tool schema once per call
     session_obj <- settings$shiny_session %||% NULL
+    registry_snapshot <- settings$mcp_registry_snapshot %||% NULL
+    if (!is.null(registry_snapshot)) {
+      needs_stub <- is.null(session_obj) ||
+        is.null(session_obj$userData) ||
+        is.null(session_obj$userData$current_session_files) ||
+        length(session_obj$userData$current_session_files) == 0
+      if (needs_stub && length(registry_snapshot) > 0) {
+        session_stub <- session_obj
+        if (is.null(session_stub) || !is.environment(session_stub)) {
+          session_stub <- new.env(parent = emptyenv())
+        }
+        if (is.null(session_stub$userData) || !is.environment(session_stub$userData)) {
+          session_stub$userData <- new.env(parent = emptyenv())
+        }
+        session_stub$userData$current_session_files <- registry_snapshot
+        if (is.null(session_stub$userData$user_id) && !is.null(settings$current_user_id)) {
+          session_stub$userData$user_id <- settings$current_user_id
+        }
+        session_obj <- session_stub
+      }
+    }
 	
 	# --- ARAÇ AİLESİ SEÇİMİ: yalnızca tek aile (mcp_excel veya rdata) yüklenir ---
 	# Not: server tarafı her istek için settings$tool_family sağlar.

@@ -104,8 +104,17 @@ server <- function(input, output, session) {
 	# Get their permanent UserID from our database
 	current_user_id <- get_or_create_user(system_username)
 
-	cache_dir <- file.path(cache_root, paste0("user_", current_user_id), cache_session_token(session$token %||% "anon"))
+    cache_dir <- file.path(cache_root, paste0("user_", current_user_id), cache_session_token(session$token %||% "anon"))
 	dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+	
+  # Minimal snapshot that can be serialized and shipped to AI workers
+  update_mcp_registry_snapshot <- function(files_snapshot = NULL) {
+    if (is.null(files_snapshot)) {
+      files_snapshot <- session$userData$current_session_files %||% list()
+    }
+    session$userData$mcp_registry_snapshot <- files_snapshot %||% list()
+    session$userData$mcp_registry_snapshot
+  }
 
 	# Expose username & (later) api key to this session
 	session$userData$system_username <- system_username
@@ -1028,6 +1037,8 @@ observeEvent(input$source_file_clicked, {
 	# === NEW: Read the model selection from settings_data via reactiveValuesToList ===
 	current_settings <- reactiveValuesToList(settings_data)
 	model_selected <- current_settings$model_selection
+	current_settings$current_user_id <- current_user_id
+	current_settings$mcp_registry_snapshot <- mcp_snapshot %||% (session$userData$current_session_files %||% list())
 
 	# Bu isteğin araç ailesini ilet
 	current_settings$tool_family <- tool_family  # mcp_excel | rdata | none
@@ -1141,6 +1152,7 @@ observeEvent(input$source_file_clicked, {
   }
 
 	  session$userData$current_session_files <- csf
+      mcp_snapshot <- update_mcp_registry_snapshot(csf)
 	  if (
 		exists("helpers_mcp_tools", inherits = TRUE) &&
 		is.function(helpers_mcp_tools$reset_session_file_registry) &&
@@ -1175,6 +1187,11 @@ observeEvent(input$source_file_clicked, {
 	  }
 	} else {
 	  session$userData$current_session_files <- list()
+	  mcp_snapshot <- update_mcp_registry_snapshot(list())
+	}
+
+	if (!exists("mcp_snapshot", inherits = FALSE)) {
+	  mcp_snapshot <- update_mcp_registry_snapshot()
 	}
 
 	# DOSYA yollarını yalnızca Excel modunda ilet
