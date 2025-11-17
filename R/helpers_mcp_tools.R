@@ -42,23 +42,39 @@ copy_function_from_global("normalize_excel_path")
 if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
-    expanded <- tryCatch(path.expand(path), error = function(e) path)
-    winslash <- if (.Platform$OS.type == "windows") "\\" else "/"
-    normalized <- tryCatch(
-      normalizePath(expanded, winslash = winslash, mustWork = FALSE),
-      error = function(e) expanded
-    )
-    if (!file.exists(normalized)) {
-      normalized <- tryCatch(
-        normalizePath(expanded, winslash = winslash, mustWork = TRUE),
-        error = function(e) normalized
-      )
-    }
-    native <- tryCatch(enc2native(normalized), error = function(e) normalized)
+ 
+    # For Windows: use shortPathName FIRST to avoid encoding issues with Turkish characters
     if (.Platform$OS.type == "windows") {
-      native <- tryCatch(utils::shortPathName(native), error = function(e) native)
+      # First normalize the path with forward slashes to ensure consistency
+      normalized <- tryCatch(
+        normalizePath(path, winslash = "/", mustWork = FALSE),
+        error = function(e) path
+      )
+
+      # Check if file exists before trying shortPathName
+      if (file.exists(normalized)) {
+        # Use shortPathName to get 8.3 format which avoids Unicode issues
+        short <- tryCatch(
+          utils::shortPathName(normalized),
+          error = function(e) {
+            # If shortPathName fails, return the normalized path as-is
+            normalized
+          }
+        )
+        return(short)
+      } else {
+        # File doesn't exist - return normalized path for error reporting
+        return(normalized)
+      }
     }
-    native
+
+    # For non-Windows systems, just normalize with forward slashes
+    normalized <- tryCatch(
+      normalizePath(path, winslash = "/", mustWork = FALSE),
+      error = function(e) path
+    )
+
+    return(normalized)
   }
   rebind_helper_function("normalize_excel_path")
 }
