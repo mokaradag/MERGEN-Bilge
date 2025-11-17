@@ -12,8 +12,15 @@ copy_to_mcp_base <- function(upload, user_id) {
   base <- safe_windows_short_path(base, must_exist = dir.exists(base))
   fs::dir_create(base, recurse = TRUE)
 
+  # Work with a short/ASCII-safe source path whenever possible
+  src_original <- upload$datapath
+  src_short <- safe_windows_short_path(src_original, must_exist = file.exists(src_original))
+  if (!isTRUE(file.exists(src_short)) && isTRUE(file.exists(src_original))) {
+    src_short <- src_original
+  }
+  
   # Skip re-copy if already under base
-  src_norm  <- tryCatch(normalizePath(upload$datapath, winslash = "/", mustWork = FALSE), error = function(e) upload$datapath)
+  src_norm  <- tryCatch(normalizePath(src_short, winslash = "/", mustWork = FALSE), error = function(e) src_short)
   base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
   if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
@@ -25,7 +32,7 @@ copy_to_mcp_base <- function(upload, user_id) {
   fs::dir_create(user_dir, recurse = TRUE)
 
   ext <- tools::file_ext(upload$name)
-  unique_tag <- digest::digest(file = upload$datapath, algo = "xxhash64")
+  unique_tag <- digest::digest(file = src_short, algo = "xxhash64")
 
   dest <- fs::path(
     user_dir,
