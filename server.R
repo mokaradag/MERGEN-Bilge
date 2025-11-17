@@ -49,14 +49,9 @@ server <- function(input, output, session) {
 	output$deps_pl <- plotly::renderPlotly({
 	  plotly::plotly_empty(type = "scatter", mode = "markers")
 	})
-	# Eski kodların başvurduğu 'plotly_html' çıktısı için gizli yer tutucu
-	output$plotly_html <- plotly::renderPlotly({
-	  plotly::plotly_empty(type = "scatter", mode = "markers")
-	})
   } else {
-	# Plotly yoksa bile bu çıktıları tanımla (hata/uyarı önleme)
+	# Plotly yoksa bile bu çıktıyı tanımla (hata/uyarı önleme)
 	output$deps_pl <- renderUI(NULL)
-	output$plotly_html <- renderUI(NULL)
   }
 
   # ---- small helpers ---------------------------------------------------------
@@ -1365,11 +1360,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  selector = "body", where = "beforeEnd",
 		  ui = tags$div(
 			style = "width:1px;height:1px;overflow:hidden;position:absolute;left:-9999px;top:-9999px;",
-			tagList(
-			  plotly::plotlyOutput("deps_pl", width = "1px", height = "1px"),
-			  # Bazı bileşenler 'plotly_html' isminde çıktıyı bekleyebiliyor
-			  plotly::plotlyOutput("plotly_html", width = "1px", height = "1px")
-			)
+			plotly::plotlyOutput("deps_pl", width = "1px", height = "1px")
 		  ),
 		  immediate = TRUE
 		)
