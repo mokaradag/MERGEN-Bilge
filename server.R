@@ -40,6 +40,43 @@ server <- function(input, output, session) {
   # ==== FIX: copy uploads to MCP base immediately ====
   mcp_saved_path <- reactiveVal(NULL)
   
+  # per-session MCP cache (stores read-ready copies on the local disk)
+  cache_root <- getOption(
+    "mergen.session_cache_dir",
+    normalizePath(file.path(getwd(), "session_cache"), winslash = "/", mustWork = FALSE)
+  )
+  dir.create(cache_root, recursive = TRUE, showWarnings = FALSE)
+
+  cache_session_token <- function(tok) {
+    if (is.null(tok) || !nzchar(tok)) {
+      return(sprintf("sess_%s", format(Sys.time(), "%Y%m%d%H%M%S")))
+    }
+    gsub("[^A-Za-z0-9_-]", "_", tok)
+  }
+
+  cache_dir <- file.path(cache_root, cache_session_token(session$token %||% "anon"))
+  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+
+  cache_mcp_file_locally <- function(src_path) {
+    if (is.null(src_path) || !nzchar(src_path) || !file.exists(src_path)) {
+      return(NULL)
+    }
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    dest <- file.path(cache_dir, basename(src_path))
+    copied <- FALSE
+    try({
+      copied <- isTRUE(file.copy(src_path, dest, overwrite = TRUE))
+    }, silent = TRUE)
+    if (!copied && !file.exists(dest)) {
+      return(NULL)
+    }
+    tryCatch(normalizePath(dest, winslash = "/", mustWork = FALSE), error = function(e) dest)
+  }
+
+  session$onSessionEnded(function() {
+    try(unlink(cache_dir, recursive = TRUE, force = TRUE), silent = TRUE)
+  })
+  
   # One-time widget deps (enables charts rendered into string-inserted containers)
   if (requireNamespace("highcharter", quietly = TRUE)) {
 	output$deps_hc <- highcharter::renderHighchart({ highcharter::highchart() })
@@ -66,6 +103,9 @@ server <- function(input, output, session) {
 
 	# Get their permanent UserID from our database
 	current_user_id <- get_or_create_user(system_username)
+
+	cache_dir <- file.path(cache_root, paste0("user_", current_user_id), cache_session_token(session$token %||% "anon"))
+	dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
 	# Expose username & (later) api key to this session
 	session$userData$system_username <- system_username
@@ -1073,23 +1113,62 @@ observeEvent(input$source_file_clicked, {
 
 		path_now <- tryCatch(normalizePath(path_now, winslash = "/", mustWork = TRUE), error = function(e) path_now)
 
+		path_original <- path_now
 		tryCatch({
 		  if (!is_under_mcp_base(path_now) && isTRUE(current_settings$enable_mcp_tools)) {
-			copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), current_user_id)
-			if (nzchar(copied) && file.exists(copied)) path_now <- copied
+				copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), current_user_id)
+				if (nzchar(copied) && file.exists(copied)) path_now <- copied
 		  }
 		}, error = function(e) {
 		  cat("[FILE STORE] copy_to_mcp_base failed:", e$message, "\n")
 		})
 
-		file_obj <- list(name = fname, datapath = path_now, path = path_now)
+		cached_path <- cache_mcp_file_locally(path_now)
+		if (is.null(cached_path) || !nzchar(cached_path)) {
+		  cached_path <- path_now
+		} else if (!identical(cached_path, path_now)) {
+		  cat("[FILE STORE] Local MCP cache prepared:", cached_path, "\n")
+		}
+
+		file_obj <- list(
+		  name = fname,
+		  datapath = cached_path,
+		  path = cached_path,
+		  source_path = path_original
+		)
 		csf[[fname]] <- file_obj
 		if (!is.null(fid)) csf[[fid]] <- file_obj
-	  }
+  }
 
 	  session$userData$current_session_files <- csf
+	  if (
+		exists("helpers_mcp_tools", inherits = TRUE) &&
+		is.function(helpers_mcp_tools$reset_session_file_registry) &&
+		is.function(helpers_mcp_tools$register_uploaded_file)
+	  ) {
+			helpers_mcp_tools$reset_session_file_registry(session)
+			registered_keys <- character()
+			for (key in names(csf)) {
+			  obj <- csf[[key]]
+			  if (!is.list(obj)) next
+			  path_reg <- obj$path %||% obj$datapath
+			  if (is.null(path_reg) || !nzchar(path_reg) || !file.exists(path_reg)) next
+			  display <- obj$name %||% key
+			  tokens <- unique(c(key, display))
+			  for (tk in tokens) {
+					if (!nzchar(tk) || tk %in% registered_keys) next
+					try(helpers_mcp_tools$register_uploaded_file(
+					  session = session,
+					  token = tk,
+					  abs_path = path_reg,
+					  display_name = display
+					), silent = TRUE)
+					registered_keys <- c(registered_keys, tk)
+			  }
+			}
+	  }
 	  if (length(csf)) {
-		unique_names <- unique(vapply(csf, function(x) x$name %||% "", character(1)))
+			unique_names <- unique(vapply(csf, function(x) x$name %||% "", character(1)))
 		cat("[FILE STORE] MCP files (selected): ", paste(unique_names[nzchar(unique_names)], collapse = ", "), "\n", sep = "")
 	  } else {
 		cat("[FILE STORE] No valid MCP files after filtering.\n")

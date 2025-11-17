@@ -1264,6 +1264,67 @@ build_excel_digest_json <- function(path, top_levels = 12) {
   jsonlite::toJSON(prof, dataframe = "rows", na = "string", auto_unbox = TRUE)
 }
 
+# --- MCP Excel fallback helpers -------------------------------------------------
+get_mcp_excel_candidates <- function(session_obj) {
+  if (is.null(session_obj)) return(character())
+  files <- session_obj$userData$current_session_files
+  if (is.null(files) || !length(files)) return(character())
+  display_names <- vapply(files, function(obj) {
+    nm <- obj$name %||% obj$display %||% ""
+    if (!is.character(nm) || length(nm) == 0) nm <- ""
+    as.character(nm[1])
+  }, character(1))
+  display_names <- unique(display_names[nzchar(display_names)])
+  if (!length(display_names)) {
+    display_names <- unique(names(files))
+    display_names <- display_names[nzchar(display_names)]
+  }
+  display_names
+}
+
+build_mcp_excel_summary <- function(analysis_result, display_name) {
+  if (is.null(analysis_result) || !is.list(analysis_result)) return(NULL)
+  satir <- analysis_result$satır_sayısı %||% analysis_result$row_count
+  sutun <- analysis_result$sütun_sayısı %||% analysis_result$column_count
+  cols  <- analysis_result$sütun_isimleri %||% analysis_result$columns
+  nums  <- analysis_result$sayısal_sütunlar %||% analysis_result$numeric_columns
+
+  lines <- c(
+    sprintf("Dosya: %s", display_name %||% analysis_result$dosya_adı %||% "(bilinmiyor)"),
+    sprintf("Toplam satır: %s", satir %||% "(bilinmiyor)"),
+    sprintf("Toplam sütun: %s", sutun %||% "(bilinmiyor)")
+  )
+
+  if (length(cols)) {
+    lines <- c(lines, sprintf("Sütunlar (%d): %s", length(cols), paste(cols, collapse = ", ")))
+  }
+  if (length(nums)) {
+    lines <- c(lines, sprintf("Sayısal sütunlar: %s", paste(nums, collapse = ", ")))
+  }
+
+  paste(lines, collapse = "\n")
+}
+
+mcp_excel_tool_fallback <- function(session_obj) {
+  if (!exists("helpers_mcp_tools", inherits = TRUE) ||
+      !is.function(helpers_mcp_tools$analyze_uploaded_file)) {
+    return(NULL)
+  }
+  candidates <- get_mcp_excel_candidates(session_obj)
+  if (!length(candidates)) return(NULL)
+
+  for (disp in candidates) {
+    res <- try(helpers_mcp_tools$analyze_uploaded_file(disp, session_obj), silent = TRUE)
+    if (!inherits(res, "try-error") && is.list(res) && is.null(res$error)) {
+      text <- build_mcp_excel_summary(res, disp)
+      if (!is.null(text)) {
+        return(list(text = text, citation = disp))
+      }
+    }
+  }
+  NULL
+}
+
 # Allow the model to do multiple tool/LLM rounds when tools are enabled
 MAX_MCP_RECURSION <- 4
 
@@ -1659,6 +1720,22 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
                  is.function(helpers_mcp_tools$parse_tool_calls_from_text)) {
         # Türkçe: Excel ailesinde metinsel ayrıştırıcıyı kullan
         tool_calls <- helpers_mcp_tools$parse_tool_calls_from_text(ai_content %||% "")
+      }
+	  
+      if (length(tool_calls) == 0 && identical(tool_family, "mcp_excel") && recursion_depth == 0) {
+        fb <- try(mcp_excel_tool_fallback(session_obj), silent = TRUE)
+        if (!inherits(fb, "try-error") && is.list(fb) && !is.null(fb$text)) {
+          text_out <- fb$text
+          cite <- fb$citation %||% ""
+          if (nzchar(cite)) {
+            text_out <- paste0(text_out, "\n\nKaynakça:\n1) ", cite)
+          }
+          return(list(
+            content = text_out,
+            duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
+            chart_store = charts_to_store
+          ))
+        }
       }
     
       if (length(tool_calls) > 0) {
