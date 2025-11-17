@@ -16,71 +16,46 @@ suppressWarnings({
 # Create a private env to avoid scoping problems (e.g., futures)
 helpers_mcp_tools <- new.env(parent = globalenv())
 
-# Ensure helper functions that get copied into this env keep looking up
-# dependencies from helpers_mcp_tools instead of the parent global env.
-rebind_helper_function <- function(fname) {
-  if (!exists(fname, envir = helpers_mcp_tools, inherits = FALSE)) return(invisible(FALSE))
-  fn <- get(fname, envir = helpers_mcp_tools, inherits = FALSE)
-  if (is.function(fn)) {
-    environment(fn) <- helpers_mcp_tools
-    assign(fname, fn, envir = helpers_mcp_tools)
-    return(invisible(TRUE))
-  }
-  invisible(FALSE)
-}
-
-copy_function_from_global <- function(fname) {
-  if (!exists(fname, envir = globalenv(), inherits = TRUE)) return(invisible(FALSE))
-  assign(fname, get(fname, envir = globalenv(), inherits = TRUE), envir = helpers_mcp_tools)
-  rebind_helper_function(fname)
-  invisible(TRUE)
-}
-
 # Pull helper utilities from the global env when available (workers inherit them)
-copy_function_from_global("normalize_excel_path")
+if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
+  assign(
+    "normalize_excel_path",
+    get("normalize_excel_path", envir = globalenv(), inherits = TRUE),
+    envir = helpers_mcp_tools
+  )
+}
 
 if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
- 
-    # For Windows: use shortPathName FIRST to avoid encoding issues with Turkish characters
-    if (.Platform$OS.type == "windows") {
-      # First normalize the path with forward slashes to ensure consistency
-      normalized <- tryCatch(
-        normalizePath(path, winslash = "/", mustWork = FALSE),
-        error = function(e) path
-      )
-
-      # Check if file exists before trying shortPathName
-      if (file.exists(normalized)) {
-        # Use shortPathName to get 8.3 format which avoids Unicode issues
-        short <- tryCatch(
-          utils::shortPathName(normalized),
-          error = function(e) {
-            # If shortPathName fails, return the normalized path as-is
-            normalized
-          }
-        )
-        return(short)
-      } else {
-        # File doesn't exist - return normalized path for error reporting
-        return(normalized)
-      }
-    }
-
-    # For non-Windows systems, just normalize with forward slashes
+    expanded <- tryCatch(path.expand(path), error = function(e) path)
+    winslash <- if (.Platform$OS.type == "windows") "\\" else "/"
     normalized <- tryCatch(
-      normalizePath(path, winslash = "/", mustWork = FALSE),
-      error = function(e) path
+      normalizePath(expanded, winslash = winslash, mustWork = FALSE),
+      error = function(e) expanded
     )
-
-    return(normalized)
+    if (!file.exists(normalized)) {
+      normalized <- tryCatch(
+        normalizePath(expanded, winslash = winslash, mustWork = TRUE),
+        error = function(e) normalized
+      )
+    }
+    native <- tryCatch(enc2native(normalized), error = function(e) normalized)
+    if (.Platform$OS.type == "windows") {
+      native <- tryCatch(utils::shortPathName(native), error = function(e) native)
+    }
+    native
   }
-  rebind_helper_function("normalize_excel_path")
 }
 
 # Try to copy the global function into our tools env
-copy_function_from_global("safe_read_excel_table")
+if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
+  assign(
+    "safe_read_excel_table",
+    get("safe_read_excel_table", envir = globalenv(), inherits = TRUE),
+    envir = helpers_mcp_tools
+  )
+}
 
 # GUARANTEE: if it still doesn't exist here (e.g., in a worker), provide a minimal fallback
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
@@ -103,7 +78,6 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
     names(df) <- make.names(names(df), unique = TRUE, allow_ = TRUE)
     df
   }
-  rebind_helper_function("safe_read_excel_table")
 }
 
 # --- NEW: universal table reader (xlsx/xls/csv/rds/rdata) --------------------
