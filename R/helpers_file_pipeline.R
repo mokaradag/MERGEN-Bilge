@@ -37,9 +37,14 @@ processAndSummarizeFile <- function(file_info,
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
                               duration = NULL, type = "message")
 
-  # Ensure file is persisted under MCP base (handle UNC verification failures)
+  # Ensure file is persisted under MCP base only when required
   dest <- file_info$datapath %||% file_info$path %||% ""
-  needs_copy <- !is_under_mcp_base(dest) || !path_exists_relaxed(dest)
+  trusted_dest <- isTRUE(file_info$persisted_under_mcp)
+  if (!nzchar(dest)) {
+    stop(sprintf("Dosya yolu bulunamadı: %s", file_info$name %||% ""))
+  }
+
+  needs_copy <- !trusted_dest && (!is_under_mcp_base(dest) || !path_exists_relaxed(dest))
   if (isTRUE(needs_copy)) {
     fallback_path <- file_info$original_datapath %||% file_info$path %||% file_info$datapath
     fallback_path <- as.character(fallback_path %||% "")
@@ -48,6 +53,21 @@ processAndSummarizeFile <- function(file_info,
     }
     src_payload <- list(name = file_info$name, datapath = fallback_path)
     dest <- copy_to_mcp_base(src_payload, current_user_id)
+    trusted_dest <- TRUE
+  }
+
+  if (!trusted_dest && !path_exists_relaxed(dest)) {
+    fallback_path <- file_info$original_datapath %||% file_info$path %||% file_info$datapath
+    fallback_path <- as.character(fallback_path %||% "")
+    if (nzchar(fallback_path) && !identical(normalize_for_path_compare(dest),
+                                           normalize_for_path_compare(fallback_path)) &&
+        path_exists_relaxed(fallback_path)) {
+      src_payload <- list(name = file_info$name, datapath = fallback_path)
+      dest <- copy_to_mcp_base(src_payload, current_user_id)
+      trusted_dest <- TRUE
+    } else {
+      stop(sprintf("Dosya bulunamadı: %s", dest))
+    }
   }
 
   # Keep in session for MCP tools
@@ -194,6 +214,7 @@ handle_file_upload_batch <- function(uploads_df,
 
     uf$datapath <- dest_norm
     uf$path <- dest_norm
+	uf$persisted_under_mcp <- TRUE
 	
     file_to_add_reactive(NULL)
     file_to_add_reactive(uf)

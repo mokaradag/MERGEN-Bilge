@@ -469,7 +469,8 @@ fileManagerServer <- function(
       file_size <- suppressWarnings(as.numeric(file_info$size %||% NA_real_))
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
     
-      if (!nzchar(file_name) || !nzchar(in_path) || !file.exists(in_path)) {
+      path_ok <- nzchar(in_path) && (path_exists_relaxed(in_path) || isTRUE(file_info$persisted_under_mcp))
+      if (!nzchar(file_name) || !path_ok) {
         showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
         return(NULL)
       }
