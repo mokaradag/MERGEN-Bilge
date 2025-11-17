@@ -16,14 +16,28 @@ suppressWarnings({
 # Create a private env to avoid scoping problems (e.g., futures)
 helpers_mcp_tools <- new.env(parent = globalenv())
 
-# Pull helper utilities from the global env when available (workers inherit them)
-if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "normalize_excel_path",
-    get("normalize_excel_path", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
+# Ensure helper functions that get copied into this env keep looking up
+# dependencies from helpers_mcp_tools instead of the parent global env.
+rebind_helper_function <- function(fname) {
+  if (!exists(fname, envir = helpers_mcp_tools, inherits = FALSE)) return(invisible(FALSE))
+  fn <- get(fname, envir = helpers_mcp_tools, inherits = FALSE)
+  if (is.function(fn)) {
+    environment(fn) <- helpers_mcp_tools
+    assign(fname, fn, envir = helpers_mcp_tools)
+    return(invisible(TRUE))
+  }
+  invisible(FALSE)
 }
+
+copy_function_from_global <- function(fname) {
+  if (!exists(fname, envir = globalenv(), inherits = TRUE)) return(invisible(FALSE))
+  assign(fname, get(fname, envir = globalenv(), inherits = TRUE), envir = helpers_mcp_tools)
+  rebind_helper_function(fname)
+  invisible(TRUE)
+}
+
+# Pull helper utilities from the global env when available (workers inherit them)
+copy_function_from_global("normalize_excel_path")
 
 if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$normalize_excel_path <- function(path) {
@@ -46,16 +60,11 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
     }
     native
   }
+  rebind_helper_function("normalize_excel_path")
 }
 
 # Try to copy the global function into our tools env
-if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "safe_read_excel_table",
-    get("safe_read_excel_table", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
-}
+copy_function_from_global("safe_read_excel_table")
 
 # GUARANTEE: if it still doesn't exist here (e.g., in a worker), provide a minimal fallback
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
@@ -78,6 +87,7 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
     names(df) <- make.names(names(df), unique = TRUE, allow_ = TRUE)
     df
   }
+  rebind_helper_function("safe_read_excel_table")
 }
 
 # --- NEW: universal table reader (xlsx/xls/csv/rds/rdata) --------------------
