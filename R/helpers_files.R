@@ -32,7 +32,18 @@ copy_to_mcp_base <- function(upload, user_id) {
   fs::dir_create(user_dir, recurse = TRUE)
 
   ext <- tools::file_ext(upload$name)
-  unique_tag <- digest::digest(file = src_short, algo = "xxhash64")
+  unique_tag <- if (file.exists(src_short)) {
+    digest::digest(file = src_short, algo = "xxhash64")
+  } else {
+    # Rarely, the temporary upload might already be gone (e.g. aggressive AV or
+    # short-lived network share).  Fall back to a time/random-based hash to
+    # avoid crashing the upload flow.
+    cat(
+      "[copy_to_mcp_base] Kaynak dosya bulunamadı, rastgele etiket kullanılıyor:",
+      src_short, "\n"
+    )
+    digest::digest(paste(upload$name, Sys.time(), runif(1)), algo = "xxhash64")
+  }
 
   dest <- fs::path(
     user_dir,
