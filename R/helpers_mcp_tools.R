@@ -161,6 +161,28 @@ helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_
   invisible(TRUE)
 }
 
+helpers_mcp_tools$get_default_file_name <- function(session = NULL) {
+  helpers_mcp_tools$ensure_session_file_registry(session)
+  files <- session$userData$current_session_files
+  if (is.null(files) || !length(files)) return(NULL)
+
+  # Extract human friendly names (deduplicate to ignore file_id aliases)
+  names_vec <- vapply(files, function(obj) {
+    nm <- obj$name %||% obj$display %||% obj$filename %||% ""
+    if (!is.character(nm) || length(nm) == 0) nm <- ""
+    as.character(nm[1])
+  }, character(1))
+
+  names_vec <- unique(names_vec[nzchar(names_vec)])
+  if (length(names_vec) == 1) return(names_vec[1])
+  NULL
+}
+
+helpers_mcp_tools$auto_file_name <- function(file_name, session = NULL) {
+  if (!is.null(file_name) && nzchar(file_name)) return(file_name)
+  helpers_mcp_tools$get_default_file_name(session)
+}
+
 helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   helpers_mcp_tools$ensure_session_file_registry(session)
 
@@ -343,6 +365,7 @@ helpers_mcp_tools$normalize_args <- function(args) {
 # Tool 1: analyze_uploaded_file
 # ============================
 helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
+  file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
   if (!isTRUE(res$ok)) return(list(error = res$error))
 
@@ -391,6 +414,7 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
 # Tool 2: get_column_statistics
 # ==================================
 helpers_mcp_tools$get_column_statistics <- function(file_name, column, session = NULL) {
+  file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
   if (!isTRUE(res$ok)) return(list(error = res$error))
   if (is.null(column) || !nzchar(column)) return(list(error = "column parametresi boş"))
@@ -447,6 +471,7 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
     return(list(error = "DuckDB yüklü değil. Lütfen install.packages('duckdb') çalıştırın."))
   }
 
+  file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
   if (!isTRUE(res$ok)) return(list(error = res$error))
   if (is.null(sql) || !nzchar(sql)) return(list(error = "sql parametresi boş"))
@@ -519,6 +544,7 @@ helpers_mcp_tools$prepare_chart_data <- function(
   limit = 5000,
   session = NULL
 ) {
+  file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   # Normalize and hard-block box/boxplot (no longer supported)
   chart_type <- tolower(chart_type %||% "")
   if (chart_type %in% c("box","boxplot","box_plot","bx")) chart_type <- "hist"
@@ -830,3 +856,10 @@ reset_session_file_registry   <- function(session = NULL) helpers_mcp_tools$rese
 environment(helpers_mcp_tools$analyze_uploaded_file)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$get_column_statistics)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$sql_query_uploaded_file) <- helpers_mcp_tools
+environment(helpers_mcp_tools$prepare_chart_data)      <- helpers_mcp_tools
+environment(helpers_mcp_tools$resolve_file_argument)   <- helpers_mcp_tools
+environment(helpers_mcp_tools$normalize_excel_path)    <- helpers_mcp_tools
+environment(helpers_mcp_tools$safe_read_excel_table)   <- helpers_mcp_tools
+environment(helpers_mcp_tools$safe_read_table_generic) <- helpers_mcp_tools
+environment(helpers_mcp_tools$get_default_file_name)   <- helpers_mcp_tools
+environment(helpers_mcp_tools$auto_file_name)          <- helpers_mcp_tools

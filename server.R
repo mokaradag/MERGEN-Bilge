@@ -1028,60 +1028,89 @@ observeEvent(input$source_file_clicked, {
 	}
 	cat("================================\n\n")
 	
-	# Yalnızca Excel modunda dosyaları MCP tabanına koy
-	if (identical(tool_family, "mcp_excel") && length(fm_files) > 0) {
-	  csf <- session$userData$current_session_files %||% list()
-	  for (fid in names(fm_files)) {
-		finfo <- fm_files[[fid]]
-		file_obj <- list(
-		  name     = finfo$name,
-		  datapath = finfo$datapath %||% finfo$path,
-		  path     = finfo$datapath %||% finfo$path
-		)
-		# Store by BOTH filename and token
-		csf[[finfo$name]] <- file_obj
-		csf[[fid]] <- file_obj
-
-		# Persist ONLY if MCP tools are enabled; keep temp flow otherwise
-		tryCatch({
-			if (isTRUE(current_settings$enable_mcp_tools)) {
-			  path_now <- file_obj$path
-			  if (!is_under_mcp_base(path_now)) {
-				path_now <- copy_to_mcp_base(list(name = finfo$name, datapath = path_now), current_user_id)
-				file_obj$path <- path_now
-				file_obj$datapath <- path_now
-				csf[[finfo$name]] <- file_obj
-				csf[[fid]] <- file_obj
-			  }
-			  # NOTE: registration now happens only in processAndSummarizeFile(), to avoid duplicates
-			}
-		}, error = function(e) {
-		  cat("[GLOBAL REGISTRY] Failed:", e$message, "\n")
-		})
+	# Yalnızca Excel modunda seçili dosyaları MCP tabanına koy
+	if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
+	  resolve_from_manager <- function(target_name) {
+		if (!length(fm_files)) return(NULL)
+		for (fid in names(fm_files)) {
+		  obj <- fm_files[[fid]]
+		  nm  <- obj$name %||% basename(obj$datapath %||% obj$path %||% "")
+		  if (identical(nm, target_name)) {
+			return(list(info = obj, id = fid))
+		  }
+		}
+		NULL
 	  }
+
+	  pick_existing_path <- function(info) {
+		candidates <- c(info$persisted_path, info$path, info$datapath)
+		candidates <- candidates[!vapply(candidates, function(x) is.null(x) || !nzchar(as.character(x)[1]), logical(1))]
+		for (cand in candidates) {
+		  c0 <- as.character(cand)[1]
+		  if (nzchar(c0) && file.exists(c0)) return(c0)
+		}
+		NULL
+	  }
+
+	  csf <- list()
+	  for (fname in uploaded_names) {
+		fm_hit <- resolve_from_manager(fname)
+		finfo  <- fm_hit$info %||% list(name = fname)
+		fid    <- fm_hit$id %||% NULL
+
+		path_now <- pick_existing_path(finfo)
+		if (is.null(path_now) || !nzchar(path_now)) {
+		  resolved <- try(resolve_uploaded_file(fname, current_user_id), silent = TRUE)
+		  if (!inherits(resolved, "try-error") && nzchar(resolved) && file.exists(resolved)) {
+			path_now <- resolved
+		  }
+		}
+
+		if (is.null(path_now) || !nzchar(path_now) || !file.exists(path_now)) {
+		  cat("[FILE STORE] Path missing for", fname, "- skipping\n")
+		  next
+		}
+
+		path_now <- tryCatch(normalizePath(path_now, winslash = "/", mustWork = TRUE), error = function(e) path_now)
+
+		tryCatch({
+		  if (!is_under_mcp_base(path_now) && isTRUE(current_settings$enable_mcp_tools)) {
+			copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), current_user_id)
+			if (nzchar(copied) && file.exists(copied)) path_now <- copied
+		  }
+		}, error = function(e) {
+		  cat("[FILE STORE] copy_to_mcp_base failed:", e$message, "\n")
+		})
+
+		file_obj <- list(name = fname, datapath = path_now, path = path_now)
+		csf[[fname]] <- file_obj
+		if (!is.null(fid)) csf[[fid]] <- file_obj
+	  }
+
 	  session$userData$current_session_files <- csf
-	  cat("[FILE STORE] MCP files (by filename): ",
-		  paste(names(csf), collapse = ", "), "\n", sep = "")
+	  if (length(csf)) {
+		unique_names <- unique(vapply(csf, function(x) x$name %||% "", character(1)))
+		cat("[FILE STORE] MCP files (selected): ", paste(unique_names[nzchar(unique_names)], collapse = ", "), "\n", sep = "")
+	  } else {
+		cat("[FILE STORE] No valid MCP files after filtering.\n")
+	  }
+	} else {
+	  session$userData$current_session_files <- list()
 	}
 
 	# DOSYA yollarını yalnızca Excel modunda ilet
 	current_settings$file_paths <- list()
-	if (identical(tool_family, "mcp_excel") && length(current_session_files) > 0) {
+	if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
+	  registry_paths <- session$userData$current_session_files %||% list()
 	  for (fname in uploaded_names) {
-		file_obj <- current_session_files[[fname]]
-		
-		# Try multiple path sources
-		full_path <- NULL
-		if (is.list(file_obj)) {
-		  full_path <- file_obj$datapath %||% file_obj$path %||% file_obj$name
-		} else if (is.character(file_obj)) {
-		  full_path <- file_obj
-		}
-		
-		if (!is.null(full_path)) {
-		  current_settings$file_paths[[fname]] <- as.character(full_path)
-		  cat("[FILE PATH ADDED]", fname, "->", full_path, "\n")
-		}
+		file_obj <- registry_paths[[fname]]
+		if (!is.list(file_obj)) next
+
+		full_path <- file_obj$path %||% file_obj$datapath
+		if (is.null(full_path) || !nzchar(full_path)) next
+
+		current_settings$file_paths[[fname]] <- as.character(full_path)
+		cat("[FILE PATH ADDED]", fname, "->", full_path, "\n")
 	  }
 	}
 	
