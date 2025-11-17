@@ -9,6 +9,7 @@ copy_to_mcp_base <- function(upload, user_id) {
       default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
     )
   }
+  base <- safe_windows_short_path(base, must_exist = dir.exists(base))
   fs::dir_create(base, recurse = TRUE)
 
   # Skip re-copy if already under base
@@ -16,7 +17,7 @@ copy_to_mcp_base <- function(upload, user_id) {
   base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
   if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
-    return(src_norm)
+    return(safe_windows_short_path(src_norm, must_exist = file.exists(src_norm)))
   }
 
   # per-user bucket
@@ -40,7 +41,8 @@ copy_to_mcp_base <- function(upload, user_id) {
   if (!fs::file_exists(dest)) {
     stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
   }
-  normalizePath(dest, winslash = "/", mustWork = TRUE)
+  dest_norm <- normalizePath(dest, winslash = "/", mustWork = TRUE)
+  safe_windows_short_path(dest_norm, must_exist = TRUE)
 }
 
 # Is path under MCP base?

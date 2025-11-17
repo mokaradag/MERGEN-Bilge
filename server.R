@@ -43,9 +43,10 @@ server <- function(input, output, session) {
   # per-session MCP cache (stores read-ready copies on the local disk)
   cache_root <- getOption(
     "mergen.session_cache_dir",
-    normalizePath(file.path(getwd(), "session_cache"), winslash = "/", mustWork = FALSE)
+    normalizePath(file.path(tempdir(), "mergen_session_cache"), winslash = "/", mustWork = FALSE)
   )
   dir.create(cache_root, recursive = TRUE, showWarnings = FALSE)
+  cache_root <- safe_windows_short_path(cache_root, must_exist = dir.exists(cache_root))
 
   cache_session_token <- function(tok) {
     if (is.null(tok) || !nzchar(tok)) {
@@ -56,6 +57,7 @@ server <- function(input, output, session) {
 
   cache_dir <- file.path(cache_root, cache_session_token(session$token %||% "anon"))
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  cache_dir <- safe_windows_short_path(cache_dir, must_exist = dir.exists(cache_dir))
 
   cache_mcp_file_locally <- function(src_path) {
     if (is.null(src_path) || !nzchar(src_path) || !file.exists(src_path)) {
@@ -63,14 +65,22 @@ server <- function(input, output, session) {
     }
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     dest <- file.path(cache_dir, basename(src_path))
+    src_for_copy <- try(normalize_excel_path(src_path), silent = TRUE)
+    if (inherits(src_for_copy, "try-error") || is.null(src_for_copy) || !nzchar(src_for_copy)) {
+      src_for_copy <- src_path
+    }
     copied <- FALSE
     try({
-      copied <- isTRUE(file.copy(src_path, dest, overwrite = TRUE))
+      copied <- isTRUE(file.copy(src_for_copy, dest, overwrite = TRUE))
     }, silent = TRUE)
     if (!copied && !file.exists(dest)) {
       return(NULL)
     }
-    tryCatch(normalizePath(dest, winslash = "/", mustWork = FALSE), error = function(e) dest)
+    dest_norm <- tryCatch(normalizePath(dest, winslash = "/", mustWork = FALSE), error = function(e) dest)
+    if (file.exists(dest_norm)) {
+      dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
+    }
+    dest_norm
   }
 
   session$onSessionEnded(function() {
@@ -1132,6 +1142,7 @@ observeEvent(input$source_file_clicked, {
 		}
 
 		path_now <- tryCatch(normalizePath(path_now, winslash = "/", mustWork = TRUE), error = function(e) path_now)
+		path_now <- safe_windows_short_path(path_now, must_exist = file.exists(path_now))
 
 		path_original <- path_now
 		tryCatch({
@@ -1149,6 +1160,7 @@ observeEvent(input$source_file_clicked, {
 		} else if (!identical(cached_path, path_now)) {
 		  cat("[FILE STORE] Local MCP cache prepared:", cached_path, "\n")
 		}
+		cached_path <- safe_windows_short_path(cached_path, must_exist = file.exists(cached_path))
 
 		file_obj <- list(
 		  name = fname,

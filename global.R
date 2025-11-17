@@ -125,6 +125,34 @@ library(urltools)
 library(writexl)
 library(xml2)
 
+# Normalize Windows paths (turn unicode-heavy paths into short 8.3 variants)
+safe_windows_short_path <- function(path, must_exist = FALSE) {
+  if (.Platform$OS.type != "windows") {
+    return(path)
+  }
+
+  if (is.null(path) || length(path) == 0) {
+    return(path)
+  }
+
+  candidate <- as.character(path[1])
+  if (is.na(candidate) || !nzchar(candidate)) {
+    return(candidate)
+  }
+
+  candidate_fs <- gsub("/", "\\\\", candidate, fixed = TRUE)
+  if (isTRUE(must_exist) && !file.exists(candidate_fs)) {
+    return(candidate)
+  }
+
+  short_raw <- tryCatch(utils::shortPathName(candidate_fs), error = function(e) candidate_fs)
+  if (!nzchar(short_raw)) {
+    short_raw <- candidate_fs
+  }
+
+  gsub("\\\\", "/", short_raw, fixed = TRUE)
+}
+
 # Ortamda AES-GCM var mı? Eski openssl sürümlerinde bu fonksiyon yoktur.
 HAVE_AES_GCM <- isTRUE("aes_gcm_encrypt" %in% getNamespaceExports("openssl"))
 
@@ -135,16 +163,19 @@ have_plotly_gg   <- (requireNamespace("plotly", quietly = TRUE) && requireNamesp
 # ===== Shared file store (same for main + workers) =====
 MERGEN_FILES_ROOT <- tools::R_user_dir("mergen", which = "data")
 dir.create(MERGEN_FILES_ROOT, showWarnings = FALSE, recursive = TRUE)
+MERGEN_FILES_ROOT <- safe_windows_short_path(MERGEN_FILES_ROOT, must_exist = dir.exists(MERGEN_FILES_ROOT))
 
 # Always-persisted uploads base: ./mergen_uploads  (override with MCP_FILES_BASE if set)
 MERGEN_UPLOADS_DIR <- normalizePath(file.path(getwd(), "mergen_uploads"),
                                     winslash = "/", mustWork = FALSE)
 dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
+MERGEN_UPLOADS_DIR <- safe_windows_short_path(MERGEN_UPLOADS_DIR, must_exist = dir.exists(MERGEN_UPLOADS_DIR))
 
 # Base dir for persisted uploads (defaults to mergen_uploads/, can be overridden by MCP_FILES_BASE)
 MERGEN_MCP_BASE_DIR <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
 MERGEN_MCP_BASE_DIR <- normalizePath(MERGEN_MCP_BASE_DIR, winslash = "/", mustWork = FALSE)
 dir.create(MERGEN_MCP_BASE_DIR, showWarnings = FALSE, recursive = TRUE)
+MERGEN_MCP_BASE_DIR <- safe_windows_short_path(MERGEN_MCP_BASE_DIR, must_exist = dir.exists(MERGEN_MCP_BASE_DIR))
 
 # Registry lives under app data; now supports per-user buckets
 MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
@@ -516,11 +547,12 @@ normalize_excel_path <- function(path) {
       error = function(e) normalized
     )
   }
-  native <- tryCatch(enc2native(normalized), error = function(e) normalized)
   if (.Platform$OS.type == "windows") {
-    native <- tryCatch(utils::shortPathName(native), error = function(e) native)
+    normalized <- safe_windows_short_path(normalized, must_exist = file.exists(normalized))
+  } else {
+    normalized <- enc2utf8(normalized)
   }
-  native
+  normalized
 }
 
 safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
@@ -2961,15 +2993,20 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
 
 # 'A&&B&&C.docx' ipucu ile arama (indeksteki tüm C.docx adaylarını A/B parçalarına göre puanla)
 .search_with_hint <- function(base_path, hint) {
-  pr <- strsplit(hint, "&&", fixed = TRUE)[[1]]
-  pr <- trimws(pr); pr <- pr[nzchar(pr)]
-  if (!length(pr)) return(NULL)
-  last <- tail(pr, 1)
+  if (!is.character(hint) || length(hint) == 0 || is.na(hint[1])) {
+    return(NULL)
+  }
+
+  parts <- tryCatch(strsplit(as.character(hint[1]), "&&", fixed = TRUE)[[1]], error = function(e) character(0))
+  parts <- trimws(parts)
+  parts <- parts[nzchar(parts)]
+  if (!length(parts)) return(NULL)
+  last <- tail(parts, 1)
   idx <- .build_basename_index(base_path)
   cand <- idx$map[[tolower(basename(last))]]
   if (is.null(cand) || !length(cand)) return(NULL)
 
-  left <- if (length(pr) > 1) pr[seq_len(length(pr) - 1)] else character(0)
+  left <- if (length(parts) > 1) parts[seq_len(length(parts) - 1)] else character(0)
   if (!length(left)) {
     for (p in cand) { if (file.exists(p)) return(p) }
     return(NULL)
