@@ -60,24 +60,25 @@ server <- function(input, output, session) {
   cache_dir <- safe_windows_short_path(cache_dir, must_exist = dir.exists(cache_dir))
 
   cache_mcp_file_locally <- function(src_path) {
-    if (is.null(src_path) || !nzchar(src_path) || !file.exists(src_path)) {
+    src_path_chr <- as.character(src_path %||% "")
+    if (!nzchar(src_path_chr) || !path_exists_relaxed(src_path_chr)) {
       return(NULL)
     }
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    dest <- file.path(cache_dir, basename(src_path))
-    src_for_copy <- try(normalize_excel_path(src_path), silent = TRUE)
+    dest <- file.path(cache_dir, basename(src_path_chr))
+    src_for_copy <- try(normalize_excel_path(src_path_chr), silent = TRUE)
     if (inherits(src_for_copy, "try-error") || is.null(src_for_copy) || !nzchar(src_for_copy)) {
-      src_for_copy <- src_path
+      src_for_copy <- src_path_chr
     }
     copied <- FALSE
     try({
       copied <- isTRUE(file.copy(src_for_copy, dest, overwrite = TRUE))
     }, silent = TRUE)
-    if (!copied && !file.exists(dest)) {
+    if (!copied && !path_exists_relaxed(dest)) {
       return(NULL)
     }
     dest_norm <- tryCatch(normalizePath(dest, winslash = "/", mustWork = FALSE), error = function(e) dest)
-    if (file.exists(dest_norm)) {
+    if (path_exists_relaxed(dest_norm)) {
       dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
     }
     dest_norm
@@ -653,9 +654,9 @@ observeEvent(input$source_file_clicked, {
 				  }
 
 				  # Türkçe yorum: prepare_chart_data ile otomatik grafik üret ve yanıta ekle
-				  if (!is.null(fp) && nzchar(fp) && file.exists(fp) &&
-					  exists("helpers_mcp_tools", inherits = TRUE) &&
-					  is.function(helpers_mcp_tools$prepare_chart_data)) {
+				  if (!is.null(fp) && nzchar(fp) && path_exists_relaxed(fp) &&
+						  exists("helpers_mcp_tools", inherits = TRUE) &&
+						  is.function(helpers_mcp_tools$prepare_chart_data)) {
 
 					fb <- try(helpers_mcp_tools$prepare_chart_data(
 					  file_name  = fp,
@@ -981,11 +982,11 @@ observeEvent(input$source_file_clicked, {
 		  fobj <- session$userData$current_session_files[[fname]] %||% NULL
 		  if (is.list(fobj)) {
 			fpath <- fobj$datapath %||% fobj$path %||% ""
-			if (nzchar(fpath) && file.exists(fpath)) {
+			if (nzchar(fpath) && path_exists_relaxed(fpath)) {
 			  rawtxt <- readFileContentToString(list(
-				name = fname,
-				datapath = fpath,
-				size = file.info(fpath)$size
+					name = fname,
+					datapath = fpath,
+					size = file.info(fpath)$size
 			  ))
 			  sumtxt <- substr(rawtxt %||% "", 1, per_file_cap)
 			}
@@ -1087,11 +1088,11 @@ observeEvent(input$source_file_clicked, {
 	  }
 	  
 	  for (fname in names(session$userData$current_session_files)) {
-		fobj <- session$userData$current_session_files[[fname]]
-		if (is.list(fobj)) {
-		  fpath <- fobj$datapath %||% fobj$path
-		  cat("[MCP]   -", fname, "->", fpath, "(exists:", file.exists(fpath), ")\n")
-		}
+			fobj <- session$userData$current_session_files[[fname]]
+			if (is.list(fobj)) {
+			  fpath <- fobj$datapath %||% fobj$path
+			  cat("[MCP]   -", fname, "->", fpath, "(exists:", path_exists_relaxed(fpath), ")\n")
+			}
 	  }
 	} else {
 	  cat("[MCP] NO FILES STORED - MCP will not work!\n")
@@ -1113,13 +1114,13 @@ observeEvent(input$source_file_clicked, {
 	  }
 
 	  pick_existing_path <- function(info) {
-		candidates <- c(info$persisted_path, info$path, info$datapath)
-		candidates <- candidates[!vapply(candidates, function(x) is.null(x) || !nzchar(as.character(x)[1]), logical(1))]
-		for (cand in candidates) {
-		  c0 <- as.character(cand)[1]
-		  if (nzchar(c0) && file.exists(c0)) return(c0)
-		}
-		NULL
+			candidates <- c(info$persisted_path, info$path, info$datapath)
+			candidates <- candidates[!vapply(candidates, function(x) is.null(x) || !nzchar(as.character(x)[1]), logical(1))]
+			for (cand in candidates) {
+			  c0 <- as.character(cand)[1]
+			  if (nzchar(c0) && path_exists_relaxed(c0)) return(c0)
+			}
+			NULL
 	  }
 
 	  csf <- list()
@@ -1131,24 +1132,24 @@ observeEvent(input$source_file_clicked, {
 		path_now <- pick_existing_path(finfo)
 		if (is.null(path_now) || !nzchar(path_now)) {
 		  resolved <- try(resolve_uploaded_file(fname, current_user_id), silent = TRUE)
-		  if (!inherits(resolved, "try-error") && nzchar(resolved) && file.exists(resolved)) {
-			path_now <- resolved
+		  if (!inherits(resolved, "try-error") && nzchar(resolved) && path_exists_relaxed(resolved)) {
+				path_now <- resolved
 		  }
 		}
 
-		if (is.null(path_now) || !nzchar(path_now) || !file.exists(path_now)) {
+		if (is.null(path_now) || !nzchar(path_now) || !path_exists_relaxed(path_now)) {
 		  cat("[FILE STORE] Path missing for", fname, "- skipping\n")
 		  next
 		}
 
 		path_now <- tryCatch(normalizePath(path_now, winslash = "/", mustWork = TRUE), error = function(e) path_now)
-		path_now <- safe_windows_short_path(path_now, must_exist = file.exists(path_now))
+		path_now <- safe_windows_short_path(path_now, must_exist = path_exists_relaxed(path_now))
 
 		path_original <- path_now
 		tryCatch({
 		  if (!is_under_mcp_base(path_now) && isTRUE(current_settings$enable_mcp_tools)) {
-				copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), current_user_id)
-				if (nzchar(copied) && file.exists(copied)) path_now <- copied
+						copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), current_user_id)
+						if (nzchar(copied) && path_exists_relaxed(copied)) path_now <- copied
 		  }
 		}, error = function(e) {
 		  cat("[FILE STORE] copy_to_mcp_base failed:", e$message, "\n")
@@ -1160,7 +1161,7 @@ observeEvent(input$source_file_clicked, {
 		} else if (!identical(cached_path, path_now)) {
 		  cat("[FILE STORE] Local MCP cache prepared:", cached_path, "\n")
 		}
-		cached_path <- safe_windows_short_path(cached_path, must_exist = file.exists(cached_path))
+		cached_path <- safe_windows_short_path(cached_path, must_exist = path_exists_relaxed(cached_path))
 
 		file_obj <- list(
 		  name = fname,
@@ -1185,7 +1186,7 @@ observeEvent(input$source_file_clicked, {
 			  obj <- csf[[key]]
 			  if (!is.list(obj)) next
 			  path_reg <- obj$path %||% obj$datapath
-			  if (is.null(path_reg) || !nzchar(path_reg) || !file.exists(path_reg)) next
+			  if (is.null(path_reg) || !nzchar(path_reg) || !path_exists_relaxed(path_reg)) next
 			  display <- obj$name %||% key
 			  tokens <- unique(c(key, display))
 			  for (tk in tokens) {

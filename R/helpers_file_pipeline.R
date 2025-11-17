@@ -73,7 +73,11 @@ processAndSummarizeFile <- function(file_info,
   # Keep in session for MCP tools
   if (is.null(session$userData$current_session_files)) session$userData$current_session_files <- list()
   session$userData$current_session_files[[file_info$name]] <- list(
-    name = file_info$name, datapath = dest, path = dest
+    name = file_info$name,
+    datapath = dest,
+    path = dest,
+    persisted_path = dest,
+    persisted_under_mcp = TRUE
   )
 
   # Snapshot settings once

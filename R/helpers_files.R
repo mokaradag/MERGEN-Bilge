@@ -202,7 +202,7 @@ dataframeToMarkdown <- function(df) {
 # Read a file to string (including compact Excel digest)
 readFileContentToString <- function(file_info) {
   tryCatch({
-    if (!file.exists(file_info$datapath)) return("Hata: Dosya bulunamadı.")
+    if (!path_exists_relaxed(file_info$datapath)) return("Hata: Dosya bulunamadı.")
 
     file_ext  <- tolower(tools::file_ext(file_info$name))
     file_size <- file.info(file_info$datapath)$size

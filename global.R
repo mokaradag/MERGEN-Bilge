@@ -243,7 +243,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
   log_debug("resolve_uploaded_file(): requested='{requested}', user_id='{user_id}'")
   if (is.null(requested) || !(is.character(requested) && length(requested) > 0 && nzchar(requested[1]))) return(NULL)
 
-  if (file.exists(requested[1])) {
+  if (path_exists_relaxed(requested[1])) {
     p <- normalizePath(requested[1], winslash = "/", mustWork = TRUE)
     log_info("resolve_uploaded_file(): doğrudan mevcut dosya bulundu -> {p}")
     return(p)
@@ -267,7 +267,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
           ent <- bucket[[nm]]
           ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
           ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
-          if (!is.null(ent_path) && file.exists(ent_path) && identical(ent_disp, full_key)) {
+          if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
             p <- normalizePath(ent_path, winslash = "/", mustWork = FALSE)
             log_info("resolve_uploaded_file(): kullanıcı kovasında TAM adla bulundu -> {p}")
             return(p)
@@ -278,7 +278,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
       # Sonra basename anahtarı
       hit <- bucket[[key]]
       if (is.list(hit) && !is.null(hit$path)) hit <- hit$path  # yeni yapı
-      if (!is.null(hit) && file.exists(hit)) {
+      if (!is.null(hit) && path_exists_relaxed(hit)) {
         p <- normalizePath(hit, winslash = "/", mustWork = FALSE)
         log_info("resolve_uploaded_file(): kullanıcı kovasında basename ile bulundu -> {p}")
         return(p)
@@ -301,7 +301,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
           ent <- bucket[[nm]]
           ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
           ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
-          if (!is.null(ent_path) && file.exists(ent_path) && identical(ent_disp, full_key)) {
+          if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
             p <- normalizePath(ent_path, winslash = "/", mustWork = FALSE)
             log_info("resolve_uploaded_file(): display ile kovalar arasında bulundu (bucket='{bucket_name}') -> {p}")
             return(p)
@@ -314,7 +314,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
   # 3) Basename ile klasik aramalar (düz + çapraz)
   hit <- idx[[key]]
   if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
-  if (!is.null(hit) && file.exists(hit)) {
+  if (!is.null(hit) && path_exists_relaxed(hit)) {
     p <- normalizePath(hit, winslash = "/", mustWork = FALSE)
     log_info("resolve_uploaded_file(): legacy haritada (basename) bulundu -> {p}")
     return(p)
@@ -326,7 +326,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
       if (is.list(bucket)) {
         hit <- bucket[[key]]
         if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
-        if (!is.null(hit) && file.exists(hit)) {
+        if (!is.null(hit) && path_exists_relaxed(hit)) {
           p <- normalizePath(hit, winslash = "/", mustWork = FALSE)
           log_info("resolve_uploaded_file(): çapraz kovada (basename) bulundu (bucket='{bucket_name}') -> {p}")
           return(p)
@@ -541,14 +541,14 @@ normalize_excel_path <- function(path) {
     normalizePath(expanded, winslash = winslash, mustWork = FALSE),
     error = function(e) expanded
   )
-  if (!file.exists(normalized)) {
+  if (!path_exists_relaxed(normalized)) {
     normalized <- tryCatch(
       normalizePath(expanded, winslash = winslash, mustWork = TRUE),
       error = function(e) normalized
     )
   }
   if (.Platform$OS.type == "windows") {
-    normalized <- safe_windows_short_path(normalized, must_exist = file.exists(normalized))
+    normalized <- safe_windows_short_path(normalized, must_exist = path_exists_relaxed(normalized))
   } else {
     normalized <- enc2utf8(normalized)
   }
@@ -556,7 +556,7 @@ normalize_excel_path <- function(path) {
 }
 
 safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
-  if (!file.exists(path)) stop(sprintf("Dosya bulunamadı: %s", path))
+  if (!path_exists_relaxed(path)) stop(sprintf("Dosya bulunamadı: %s", path))
   ext <- tolower(tools::file_ext(path))
   if (!ext %in% c("xlsx", "xls", "xlsm")) {
     stop(sprintf("Excel uzantısı bekleniyor (.xlsx/.xls/.xlsm), bulundu: .%s", ext))
@@ -2980,7 +2980,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   key <- tolower(basename(target_filename))
   cand <- idx$map[[key]]
   if (is.null(cand) || !length(cand)) return(NULL)
-  for (p in cand) { if (file.exists(p)) return(p) }
+  for (p in cand) { if (path_exists_relaxed(p)) return(p) }
   NULL
 }
 
@@ -3008,7 +3008,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
 
   left <- if (length(parts) > 1) parts[seq_len(length(parts) - 1)] else character(0)
   if (!length(left)) {
-    for (p in cand) { if (file.exists(p)) return(p) }
+    for (p in cand) { if (path_exists_relaxed(p)) return(p) }
     return(NULL)
   }
 
@@ -3016,7 +3016,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   ord <- order(scores, decreasing = TRUE, na.last = NA)
   for (i in ord) {
     p <- cand[[i]]
-    if (file.exists(p)) return(p)
+    if (path_exists_relaxed(p)) return(p)
   }
   NULL
 }

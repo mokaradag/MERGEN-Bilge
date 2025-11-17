@@ -27,7 +27,7 @@ filePreviewServer <- function(id) {
       content = function(file) {
         if (!is.null(file_storage$preview_file) &&
             !is.null(file_storage$preview_file$datapath) &&
-            file.exists(file_storage$preview_file$datapath)) {
+            path_exists_relaxed(file_storage$preview_file$datapath)) {
           file.copy(file_storage$preview_file$datapath, file, overwrite = TRUE)
         } else {
           writeLines("File not found", file)
@@ -37,16 +37,16 @@ filePreviewServer <- function(id) {
 
 	open <- function(file_info) {
 	  tryCatch({
-		# --- Robust path resolution: supports datapath, path, or index lookup ---
-		datapath <- file_info$datapath %||% file_info$path %||%
-		  resolve_uploaded_file(file_info$name, session$userData$user_id)
+			# --- Robust path resolution: supports datapath, path, or index lookup ---
+			datapath <- file_info$datapath %||% file_info$path %||%
+			  resolve_uploaded_file(file_info$name, session$userData$user_id)
 
-		if (is.null(datapath) || !nzchar(datapath) || !file.exists(datapath)) {
-		  showToast(session,
-					sprintf("Dosya bulunamadı veya erişilemiyor: %s", file_info$name %||% ""),
-					"error")
-		  return(invisible(NULL))
-		}
+			if (is.null(datapath) || !nzchar(datapath) || !path_exists_relaxed(datapath)) {
+			  showToast(session,
+									sprintf("Dosya bulunamadı veya erişilemiyor: %s", file_info$name %||% ""),
+									"error")
+			  return(invisible(NULL))
+			}
 
 		datapath <- normalizePath(datapath, winslash = "/", mustWork = FALSE)
 

@@ -155,13 +155,13 @@ openAnyPreview <- function(file_info, session, filePreview) {
     # not: aynı isimli PDF varsa tekrar kullan (hız)
     try({
       # hedef PDF yolu
-      if (!file.exists(path0)) stop(sprintf("Kaynak DOCX bulunamadı: %s", path0))
+      if (!path_exists_relaxed(path0)) stop(sprintf("Kaynak DOCX bulunamadı: %s", path0))
       pdf_path_guess <- sub("\\.docx$|\\.docm$|\\.doc$", ".pdf", path0, ignore.case = TRUE)
-      if (!file.exists(pdf_path_guess)) {
+      if (!path_exists_relaxed(pdf_path_guess)) {
         # yoksa dönüştür
         pdf_path_guess <- convert_docx_to_pdf(path0)  # hata verirse catch'e düşer
       }
-      if (!file.exists(pdf_path_guess)) stop(sprintf("PDF üretilemedi: %s", pdf_path_guess))
+      if (!path_exists_relaxed(pdf_path_guess)) stop(sprintf("PDF üretilemedi: %s", pdf_path_guess))
 
       # PDF için yeni file_info oluştur
       pdf_info <- list(
@@ -229,12 +229,12 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
   if (!is.null(uid)) {
     log_debug("[SRC_CLICK] (a) kullanıcı kovası aranıyor… user_id={uid}")
     cand_user_full <- try(resolve_uploaded_file(filename_full, user_id = uid), silent = TRUE)
-    if (!inherits(cand_user_full, "try-error") && !is.null(cand_user_full) && file.exists(cand_user_full)) {
+    if (!inherits(cand_user_full, "try-error") && !is.null(cand_user_full) && path_exists_relaxed(cand_user_full)) {
       found_path <- normalizePath(cand_user_full, winslash = "/", mustWork = FALSE)
       log_info("[SRC_CLICK] kullanıcı kovasında (TAM ad) bulundu -> {found_path}")
     } else {
       cand_user_base <- try(resolve_uploaded_file(filename_base, user_id = uid), silent = TRUE)
-      if (!inherits(cand_user_base, "try-error") && !is.null(cand_user_base) && file.exists(cand_user_base)) {
+      if (!inherits(cand_user_base, "try-error") && !is.null(cand_user_base) && path_exists_relaxed(cand_user_base)) {
         found_path <- normalizePath(cand_user_base, winslash = "/", mustWork = FALSE)
         log_info("[SRC_CLICK] kullanıcı kovasında (basename) bulundu -> {found_path}")
       }
@@ -261,7 +261,7 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
           normalizePath(do.call(file.path, as.list(c(base_dir, rel_parts, last_part))), winslash = "/", mustWork = FALSE),
           error = function(e) do.call(file.path, as.list(c(base_dir, rel_parts, last_part)))
         )
-        if (file.exists(candidate_rel)) {
+        if (path_exists_relaxed(candidate_rel)) {
           found_path <- candidate_rel
           log_info("[SRC_CLICK] (b2) ipucu ile direkt bulundu -> {found_path}")
           break
@@ -271,7 +271,7 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
       # 3) Son çare: sadece dosya adına göre arama
       log_debug("[SRC_CLICK] (b3) rekürsif dosya adı araması: base='{base_dir}', name='{filename_base}'")
       candidate_scan <- try(search_file_in_folder(base_dir, filename_base), silent = TRUE)
-      if (!inherits(candidate_scan, "try-error") && !is.null(candidate_scan) && file.exists(candidate_scan)) {
+      if (!inherits(candidate_scan, "try-error") && !is.null(candidate_scan) && path_exists_relaxed(candidate_scan)) {
         found_path <- normalizePath(candidate_scan, winslash = "/", mustWork = FALSE)
         log_info("[SRC_CLICK] (b3) rekürsif aramada bulundu -> {found_path}")
         break
@@ -285,12 +285,12 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
 
     # Tam ipucu -> sonra basename
     cand_global_full <- try(resolve_uploaded_file(raw_hint, user_id = NULL), silent = TRUE)
-    if (!inherits(cand_global_full, "try-error") && !is.null(cand_global_full) && file.exists(cand_global_full)) {
+    if (!inherits(cand_global_full, "try-error") && !is.null(cand_global_full) && path_exists_relaxed(cand_global_full)) {
       found_path <- normalizePath(cand_global_full, winslash = "/", mustWork = FALSE)
       log_info("[SRC_CLICK] genel indexte (TAM) bulundu -> {found_path}")
     } else {
       cand_global <- try(resolve_uploaded_file(filename_base, user_id = NULL), silent = TRUE)
-      if (!inherits(cand_global, "try-error") && !is.null(cand_global) && file.exists(cand_global)) {
+      if (!inherits(cand_global, "try-error") && !is.null(cand_global) && path_exists_relaxed(cand_global)) {
         found_path <- normalizePath(cand_global, winslash = "/", mustWork = FALSE)
         log_info("[SRC_CLICK] genel indexte (basename) bulundu -> {found_path}")
       }

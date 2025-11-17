@@ -303,7 +303,7 @@ fileManagerServer <- function(
 	  for (i in seq_len(nrow(df))) {
 		p <- df$path[i]
 		display_name <- df$name[i]
-		if (!file.exists(p)) next
+		if (!path_exists_relaxed(p)) next
 		finfo <- file.info(p)
 
 		# Avoid POSIXt '*' issue: wrap Sys.time() with as.numeric()
@@ -357,7 +357,8 @@ fileManagerServer <- function(
 		  datapath       = p,
 		  size           = finfo$size,
 		  type           = tools::file_ext(display_name),
-		  persisted_path = p
+		  persisted_path = p,
+		  persisted_under_mcp = TRUE
 		)
 	  }
 	}
@@ -498,7 +499,13 @@ fileManagerServer <- function(
         type     = file_info$type %||% "",
         id       = file_id
       )
-    
+
+      persisted_hint <- file_info$persisted_path %||% stable_path
+      if (isTRUE(file_info$persisted_under_mcp) && nzchar(persisted_hint)) {
+        saved$persisted_path <- persisted_hint
+        saved$persisted_under_mcp <- TRUE
+      }
+	  
       module_values$file_contents[[file_id]] <- saved
       session$userData$temp_files[[file_id]] <- NULL  # no temp we own here
     
@@ -682,7 +689,7 @@ fileManagerServer <- function(
       # 1) Try to delete the persisted copy under mergen_uploads/user_<id>
       uid <- isolate(session$userData$user_id %||% NULL)
       persisted <- try(resolve_uploaded_file(info$name, uid), silent = TRUE)
-      if (!inherits(persisted, "try-error") && !is.null(persisted) && file.exists(persisted)) {
+      if (!inherits(persisted, "try-error") && !is.null(persisted) && path_exists_relaxed(persisted)) {
         try(unlink(persisted, force = TRUE), silent = TRUE)
       }
       # Remove from index
