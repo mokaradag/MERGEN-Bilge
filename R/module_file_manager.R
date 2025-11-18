@@ -481,6 +481,11 @@ fileManagerServer <- function(
       already_persisted <- isTRUE(file_info$persisted_under_mcp)
       persisted_path <- as.character(file_info$persisted_path %||% "")
 
+      if (!already_persisted && nzchar(in_path) && path_exists_relaxed(in_path) && is_under_mcp_base(in_path)) {
+        persisted_path <- in_path
+        already_persisted <- TRUE
+      }
+	  
       if (already_persisted && nzchar(persisted_path) && path_exists_relaxed(persisted_path)) {
         in_path <- persisted_path
       } else {
@@ -531,9 +536,18 @@ fileManagerServer <- function(
         id       = file_id
       )
 
-      if (isTRUE(already_persisted) && nzchar(stable_path)) {
+      if (nzchar(stable_path)) {
         saved$persisted_path <- stable_path
         saved$persisted_under_mcp <- TRUE
+      }
+	  
+      if (nzchar(stable_path)) {
+        try(global_register_file(
+          stable_path,
+          file_name,
+          user_id = uid,
+          persist_under_mcp_base = TRUE
+        ), silent = TRUE)
       }
 	  
       module_values$file_contents[[file_id]] <- saved

@@ -219,6 +219,7 @@ handle_file_upload_batch <- function(uploads_df,
     uf$datapath <- dest_norm
     uf$path <- dest_norm
 	uf$persisted_under_mcp <- TRUE
+	uf$persisted_path <- dest_norm
 	
     file_to_add_reactive(NULL)
     file_to_add_reactive(uf)
