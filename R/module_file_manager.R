@@ -475,6 +475,37 @@ fileManagerServer <- function(
         showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
         return(NULL)
       }
+	  
+      # Persist into MCP bucket immediately so previews & MCP tools have a stable path
+      uid <- isolate(session$userData$user_id %||% NULL)
+      already_persisted <- isTRUE(file_info$persisted_under_mcp)
+      persisted_path <- as.character(file_info$persisted_path %||% "")
+
+      if (already_persisted && nzchar(persisted_path) && path_exists_relaxed(persisted_path)) {
+        in_path <- persisted_path
+      } else {
+        copy_payload <- list(name = file_name, datapath = in_path)
+        copied_path <- tryCatch(
+          copy_to_mcp_base(copy_payload, uid %||% session$userData$user_id %||% "unknown"),
+          error = function(e) e
+        )
+
+        if (inherits(copied_path, "error") || !is.character(copied_path) || !nzchar(copied_path) ||
+            !path_exists_relaxed(copied_path)) {
+          err_msg <- if (inherits(copied_path, "error")) conditionMessage(copied_path) else "bilinmeyen hata"
+          showToast(session,
+                    sprintf("'%s' MCP klasörüne kopyalanamadı: %s", file_name, err_msg),
+                    "error")
+          return(NULL)
+        }
+
+        in_path <- copied_path
+        persisted_path <- copied_path
+        already_persisted <- TRUE
+      }
+
+      # refresh size info after persisting (temporary path could have disappeared)
+      file_size <- suppressWarnings(as.numeric(file.info(in_path)$size))
     
       # Validate type
       allowed_extensions <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
@@ -487,7 +518,7 @@ fileManagerServer <- function(
       # ALWAYS use a stable “display id” for the table; do not depend on a temp copy
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
     
-      # Use the path we already have (can be Shiny temp OR persisted mergen_uploads)
+      # Use the path we persisted (Shiny temp'leri yerine kalıcı kopya)
       stable_path <- in_path
     
       # If Shiny’s upload temp disappears later it’s fine; preview code reads immediately,
@@ -500,9 +531,8 @@ fileManagerServer <- function(
         id       = file_id
       )
 
-      persisted_hint <- file_info$persisted_path %||% stable_path
-      if (isTRUE(file_info$persisted_under_mcp) && nzchar(persisted_hint)) {
-        saved$persisted_path <- persisted_hint
+      if (isTRUE(already_persisted) && nzchar(stable_path)) {
+        saved$persisted_path <- stable_path
         saved$persisted_under_mcp <- TRUE
       }
 	  
