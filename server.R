@@ -393,7 +393,8 @@ server <- function(input, output, session) {
 	  "file_manager_module",
 	  new_file_trigger = reactive({ file_to_add() }),
 	  session_files_reactive = session_files,
-	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) })
+	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
+	  user_id = current_user_id
 	)
 	
 	observeEvent(settings_data$enable_mcp_tools, {

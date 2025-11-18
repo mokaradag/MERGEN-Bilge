@@ -84,10 +84,41 @@ fileManagerServer <- function(
   id,
   new_file_trigger = reactive(NULL),
   session_files_reactive = NULL,
-  mcp_enabled_reactive = reactive({ FALSE })
+  mcp_enabled_reactive = reactive({ FALSE }),
+  user_id = NULL
 ) {
   moduleServer(id, function(input, output, session) {
   ns <- session$ns
+
+    module_user_id <- user_id %||% session$userData$user_id %||% "unknown"
+    module_user_id_chr <- as.character(module_user_id)
+
+    ensure_session_registry <- function() {
+      if (is.null(session$userData$current_session_files) ||
+          !is.list(session$userData$current_session_files)) {
+        session$userData$current_session_files <- list()
+      }
+    }
+
+    register_session_file <- function(filename, fpath) {
+      ensure_session_registry()
+      fname <- as.character(filename %||% "")
+      if (!nzchar(fname)) return(invisible(FALSE))
+      norm_path <- tryCatch(
+        normalizePath(fpath, winslash = "/", mustWork = FALSE),
+        error = function(e) as.character(fpath %||% "")
+      )
+      if (!nzchar(norm_path) || !path_exists_relaxed(norm_path)) {
+        return(invisible(FALSE))
+      }
+
+      session$userData$current_session_files[[fname]] <- list(
+        name = fname,
+        datapath = norm_path,
+        path = norm_path
+      )
+      invisible(TRUE)
+    }
   
     # Dosya uzantısına göre ikon + etiket HTML'i üretir
   ext_icon_html <- function(ext) {
@@ -272,7 +303,7 @@ fileManagerServer <- function(
                  normalizePath(file.path(getwd(), "mergen_uploads"),
                                winslash = "/", mustWork = FALSE))
     )
-    file.path(base, sprintf("user_%s", as.character(session$userData$user_id %||% "unknown")))
+    file.path(base, sprintf("user_%s", module_user_id_chr))
   }
     
   list_user_folder_files <- function() {
@@ -282,7 +313,7 @@ fileManagerServer <- function(
   }
   
 	refresh_from_user_folder <- function() {
-	  uid <- session$userData$user_id %||% "unknown"
+	  uid <- module_user_id_chr
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
 	 # Reset table + state, then rebuild (preserving original display names)
@@ -292,9 +323,11 @@ fileManagerServer <- function(
 	  if (inherits(df, "try-error") || is.null(df) || nrow(df) == 0) return(invisible(NULL))
 
 	for (i in seq_len(nrow(df))) {
-		p <- df$path[i]
+		p_raw <- df$path[i]
+		p <- tryCatch(normalizePath(p_raw, winslash = "/", mustWork = FALSE),
+					   error = function(e) p_raw)
 		display_name <- df$name[i]
-		if (!file.exists(p)) next
+		if (!path_exists_relaxed(p)) next
 		finfo <- file.info(p)
 
 		# Avoid POSIXt '*' issue: wrap Sys.time() with as.numeric()
@@ -342,14 +375,16 @@ fileManagerServer <- function(
 			)
 		)
 
-		module_values$file_contents[[fid]] <- list(
-		  id             = fid,
-		  name           = display_name,
-		  datapath       = p,
-		  size           = finfo$size,
-		  type           = tools::file_ext(display_name),
-		  persisted_path = p
-		)
+			module_values$file_contents[[fid]] <- list(
+			  id             = fid,
+			  name           = display_name,
+			  datapath       = p,
+			  size           = finfo$size,
+			  type           = tools::file_ext(display_name),
+			  persisted_path = p
+			)
+
+			register_session_file(display_name, p)
 	  }
 	}
 
@@ -382,26 +417,6 @@ fileManagerServer <- function(
 
     message_trigger <- reactiveVal(0)
     message_data    <- reactiveVal(NULL)
-
-    # ---- INITIAL LOAD FROM PERSISTED FOLDER ----
-    observeEvent(TRUE, {
-      uid <- isolate(session$userData$user_id %||% NULL)
-      if (is.null(uid)) return()
-    
-      existing <- try(mergen_list_user_files(uid), silent = TRUE)
-      if (inherits(existing, "try-error") || nrow(existing) == 0) return()
-    
-      for (i in seq_len(nrow(existing))) {
-        finfo <- list(
-          name     = existing$name[i],
-          datapath = existing$path[i],
-          size     = suppressWarnings(file.info(existing$path[i])$size),
-          type     = mime::guess_type(existing$path[i]) %||% ""
-        )
-        # generate_message = FALSE to avoid flooding the chat
-        process_uploaded_file(finfo, generate_message = FALSE)
-      }
-    }, once = TRUE, ignoreInit = TRUE)
 
     files_added_to_context <- reactiveVal(NULL)   # -> parent
 
@@ -437,6 +452,9 @@ fileManagerServer <- function(
     
       # Drop from module state
       module_values$file_contents[[fid]] <- NULL
+	  
+      ensure_session_registry()
+      session$userData$current_session_files[[filename]] <- NULL
     
       # Remove the row in the datatable (by id or by name as fallback)
       rm_idx <- which(
@@ -472,7 +490,8 @@ fileManagerServer <- function(
       }
 
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
-      stable_path <- in_path
+      stable_path <- tryCatch(normalizePath(in_path, winslash = "/", mustWork = FALSE),
+                              error = function(e) in_path)
 
       if (!is.finite(file_size) || is.na(file_size)) {
         file_size <- suppressWarnings(as.numeric(file.info(stable_path)$size))
@@ -486,6 +505,8 @@ fileManagerServer <- function(
         id       = file_id,
         persisted_path = stable_path
       )
+
+      register_session_file(file_name, stable_path)
 	  
       module_values$file_contents[[file_id]] <- saved
       session$userData$temp_files[[file_id]] <- NULL  # no temp we own here
@@ -668,13 +689,16 @@ fileManagerServer <- function(
       req(info)
     
       # 1) Try to delete the persisted copy under mergen_uploads/user_<id>
-      uid <- isolate(session$userData$user_id %||% NULL)
+	  uid <- module_user_id_chr
       persisted <- try(resolve_uploaded_file(info$name, uid), silent = TRUE)
       if (!inherits(persisted, "try-error") && !is.null(persisted) && file.exists(persisted)) {
         try(unlink(persisted, force = TRUE), silent = TRUE)
       }
       # Remove from index
       if (!is.null(uid)) try(mergen_remove_from_index(uid, info$name), silent = TRUE)
+
+      ensure_session_registry()
+      session$userData$current_session_files[[info$name]] <- NULL
     
       # 2) Also drop any local temp we might have created (we no longer create one, but keep for safety)
       if (!is.null(session$userData$temp_files[[file_id]])) {
@@ -710,7 +734,7 @@ fileManagerServer <- function(
       removeModal()
     
       # 1) Physically delete everything in the user's persisted bucket and clear index
-      uid <- isolate(session$userData$user_id %||% NULL)
+	  uid <- module_user_id_chr
       if (!is.null(uid)) try(mergen_clear_user_bucket(uid), silent = TRUE)
     
       # 2) Notify parent that all files are gone
@@ -722,6 +746,8 @@ fileManagerServer <- function(
       module_values$file_contents <- list()
       module_values$files_in_context <- list()
       session$userData$temp_files <- list()
+      ensure_session_registry()
+      session$userData$current_session_files <- list()
     
       all_files_cleared(TRUE)
       showToast(session, "Tüm dosyalar (diskten de) temizlendi.", "warning")

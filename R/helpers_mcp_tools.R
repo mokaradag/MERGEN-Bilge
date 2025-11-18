@@ -200,13 +200,18 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
 
   cat("[RESOLVE] Looking for:", arg, "\n")
 
+  path_ok <- function(candidate) {
+    if (is.null(candidate) || !nzchar(candidate)) return(FALSE)
+    isTRUE(path_exists_relaxed(candidate))
+  }
+  
   # --- NEW: 0) Absolute path fast-path -------------------------------
   # Accept "C:/.../file.xlsx" or "/var/tmp/file.xlsx" straight away.
   is_abs <- grepl("^([A-Za-z]:)?[\\/]", arg)
   if (is_abs) {
     # Don't fail if normalizePath can't resolve yet; just check existence.
     p <- try(normalizePath(arg, winslash = "/", mustWork = FALSE), silent = TRUE)
-    if (!inherits(p, "try-error") && file.exists(p)) {
+    if (!inherits(p, "try-error") && path_ok(p)) {
       cat("[RESOLVE] Absolute path exists ->", p, "\n")
       return(list(ok = TRUE, path = p, display = basename(p)))
     }
@@ -226,9 +231,9 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
 
       # Exact key or exact stored name
       if (identical(key, arg) || identical(nm, arg)) {
-        cat("[RESOLVE] Match by key/name ->", path_to_check, "Exists:", file.exists(path_to_check), "\n")
-        if (!is.null(path_to_check) && file.exists(path_to_check)) {
-          resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = TRUE), error = function(e) path_to_check)
+        cat("[RESOLVE] Match by key/name ->", path_to_check, "Exists:", path_ok(path_to_check), "\n")
+        if (!is.null(path_to_check) && path_ok(path_to_check)) {
+          resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = FALSE), error = function(e) path_to_check)
           resolved_path <- helpers_mcp_tools$normalize_excel_path(resolved_path)
           return(list(ok = TRUE,
                       path = resolved_path,
@@ -238,9 +243,9 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
 
       # NEW: basename match (handles when the tool passes an absolute path)
       if (identical(nm, base_arg) || identical(basename(path_to_check %||% ""), base_arg)) {
-        cat("[RESOLVE] Basename match ->", path_to_check, "Exists:", file.exists(path_to_check), "\n")
-        if (!is.null(path_to_check) && file.exists(path_to_check)) {
-          resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = TRUE), error = function(e) path_to_check)
+        cat("[RESOLVE] Basename match ->", path_to_check, "Exists:", path_ok(path_to_check), "\n")
+        if (!is.null(path_to_check) && path_ok(path_to_check)) {
+          resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = FALSE), error = function(e) path_to_check)
           resolved_path <- helpers_mcp_tools$normalize_excel_path(resolved_path)
           return(list(ok = TRUE,
                       path = resolved_path,
@@ -270,7 +275,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     if (!is.null(uid) && !is.null(idx[[uid]])) {
       p <- idx[[uid]][[tolower(base_arg)]]
       if (is.list(p) && !is.null(p$path)) p <- p$path   # NEW: unwrap {path, display}
-      if (!is.null(p) && file.exists(p)) {
+      if (!is.null(p) && path_ok(p)) {
         resolved_path <- helpers_mcp_tools$normalize_excel_path(p)
         return(list(ok = TRUE, path = resolved_path, display = basename(p)))
       }
@@ -278,7 +283,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     # 2b) legacy flat
     p2 <- idx[[tolower(base_arg)]]
     if (is.list(p2) && !is.null(p2$path)) p2 <- p2$path  # NEW
-    if (!is.null(p2) && file.exists(p2)) {
+    if (!is.null(p2) && path_ok(p2)) {
       resolved_path <- helpers_mcp_tools$normalize_excel_path(p2)
       return(list(ok = TRUE, path = resolved_path, display = basename(p2)))
     }
@@ -289,7 +294,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
         if (is.list(bucket)) {
           p3 <- bucket[[tolower(base_arg)]]
           if (is.list(p3) && !is.null(p3$path)) p3 <- p3$path  # NEW
-          if (!is.null(p3) && file.exists(p3)) {
+          if (!is.null(p3) && path_ok(p3)) {
             resolved_path <- helpers_mcp_tools$normalize_excel_path(p3)
             return(list(ok = TRUE, path = resolved_path, display = basename(p3)))
           }
@@ -315,7 +320,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     }
     for (base_dir in unique(fb)) {
       candidate <- file.path(base_dir, base_arg)
-      if (file.exists(candidate)) {
+      if (path_ok(candidate)) {
         resolved_path <- helpers_mcp_tools$normalize_excel_path(candidate)
         return(list(ok = TRUE, path = resolved_path, display = basename(candidate)))
       }
@@ -326,7 +331,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   # If you have a global lookup, try it by basename without failing if absent.
   if (exists("global_lookup_file", mode = "function")) {
     p <- try(global_lookup_file(base_arg), silent = TRUE)
-    if (!inherits(p, "try-error") && is.character(p) && nzchar(p) && file.exists(p)) {
+    if (!inherits(p, "try-error") && is.character(p) && nzchar(p) && path_ok(p)) {
       cat("[RESOLVE] Global registry hit ->", p, "\n")
       resolved_path <- helpers_mcp_tools$normalize_excel_path(p)
       return(list(ok = TRUE, path = resolved_path, display = basename(p)))

@@ -139,7 +139,6 @@ handle_file_upload_batch <- function(uploads_df,
   process_next <- function(i) {
     if (i > total) {
       removeNotification(note_id)
-      showToast(session, "Dosyalar alındı ve işleniyor…", "info")
       return(invisible(NULL))
     }
     uf <- uploads[[i]]
@@ -162,7 +161,7 @@ handle_file_upload_batch <- function(uploads_df,
       file_manager_data = file_manager_data,
       session_files_reactive = session_files_reactive,
       update_manager_ui = TRUE,
-      show_toast = FALSE,
+      show_toast = TRUE,
       auto_attach = FALSE
     )
 
