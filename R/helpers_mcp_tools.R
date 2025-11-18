@@ -16,6 +16,24 @@ suppressWarnings({
 # Create a private env to avoid scoping problems (e.g., futures)
 helpers_mcp_tools <- new.env(parent = globalenv())
 
+# Ensure shared filesystem helpers exist inside this environment
+if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
+  assign(
+    "path_exists_relaxed",
+    get("path_exists_relaxed", envir = globalenv(), inherits = TRUE),
+    envir = helpers_mcp_tools
+  )
+}
+
+if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
+  helpers_mcp_tools$path_exists_relaxed <- function(path) {
+    if (is.null(path) || !length(path)) return(FALSE)
+    candidate <- as.character(path[1])
+    if (!nzchar(candidate)) return(FALSE)
+    isTRUE(file.exists(candidate))
+  }
+}
+
 # Pull helper utilities from the global env when available (workers inherit them)
 if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
   assign(

@@ -316,75 +316,48 @@ fileManagerServer <- function(
 	  uid <- module_user_id_chr
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
-	 # Reset table + state, then rebuild (preserving original display names)
+	  # Reset table + state, then rebuild via the shared upload handler
 	  module_values$files <- module_values$files[0, ]
 	  module_values$file_contents <- list()
+	  ensure_session_registry()
+	  session$userData$current_session_files <- list()
 
 	  if (inherits(df, "try-error") || is.null(df) || nrow(df) == 0) return(invisible(NULL))
 
-	for (i in seq_len(nrow(df))) {
-		p_raw <- df$path[i]
-		p <- tryCatch(normalizePath(p_raw, winslash = "/", mustWork = FALSE),
-					   error = function(e) p_raw)
-		display_name <- df$name[i]
-		if (!path_exists_relaxed(p)) next
-		finfo <- file.info(p)
+	  guess_mime <- function(path_or_name) {
+			if (!requireNamespace("mime", quietly = TRUE)) return("")
+			val <- tryCatch(mime::guess_type(path_or_name), error = function(e) "")
+			val %||% ""
+	  }
 
-		# Avoid POSIXt '*' issue: wrap Sys.time() with as.numeric()
-		fid <- paste0("persist_", as.integer(as.numeric(Sys.time()) * 1000), "_", sample(100000:999999, 1))
+	  for (i in seq_len(nrow(df))) {
+			p_raw <- df$path[i]
+			display_name <- df$name[i]
+			if (!nzchar(display_name)) next
 
-		actions <- as.character(tags$div(
-		  class = "file-actions",
-		  tags$button(class = "file-action-btn file-view js-file-action",
-					  title = "Görüntüle", `data-action` = "view", `data-file-id` = fid, icon("eye")),
-		  tags$button(class = "file-action-btn file-download js-download-btn",
-					  title = "İndir", `data-download-id` = fid, icon("download")),
-		  tags$button(class = "file-action-btn file-delete js-file-action",
-					  title = "Sil", `data-action` = "delete", `data-file-id` = fid, icon("trash")),
-		  HTML(as.character(tags$span(style="display:none;",
-			  shiny::downloadLink(outputId = ns(paste0("download_", fid)), label = ""))))
-		))
-		
-		attach_cell <- as.character(tags$div(
-		  class = "attach-cell",
-		  tags$input(
-			id = ns(paste0("attach_", fid)),
-			type = "checkbox",
-			class = "attach-checkbox",
-			`data-file-id` = fid,
-			`data-filename` = display_name,
-			title = "Bu dosyayı model bağlamına ekle/çıkar",
-			`aria-label` = "Model bağlamına ekle veya çıkar"
-		  )
-		))
+			p <- tryCatch(normalizePath(p_raw, winslash = "/", mustWork = FALSE),
+						  error = function(e) p_raw)
+			if (!path_exists_relaxed(p)) next
 
-		# Uzantıyı küçük harfe çevir (ikon eşlemesi için)
-		ext <- tolower(tools::file_ext(display_name))
+			finfo <- file.info(p)
+			uploaded_ts <- if (!is.na(finfo$mtime)) format(finfo$mtime, "%Y-%m-%d %H:%M") else NULL
+			file_type <- guess_mime(display_name)
+			if (!nzchar(file_type)) file_type <- guess_mime(p)
+			if (!nzchar(file_type)) file_type <- tools::file_ext(display_name)
 
-		module_values$files <- rbind(
-		  module_values$files,
-			data.frame(
-			  Dosya_Adi       = display_name,
-			  Boyut           = paste(round(finfo$size / 1024, 2), "KB"),
-			  # Tür sütunu: ikon + etiket
-			  Tur             = ext_icon_html(ext),
-			  Yuklenme_Tarihi = format(finfo$mtime, "%Y-%m-%d %H:%M"),
-			  Islemler        = actions,
-			  Model_Baglam    = attach_cell,
-			  stringsAsFactors = FALSE
-			)
-		)
-
-			module_values$file_contents[[fid]] <- list(
-			  id             = fid,
-			  name           = display_name,
-			  datapath       = p,
-			  size           = finfo$size,
-			  type           = tools::file_ext(display_name),
-			  persisted_path = p
+			persisted_info <- list(
+			  name     = display_name,
+			  datapath = p,
+			  path     = p,
+			  size     = finfo$size,
+			  type     = file_type
 			)
 
-			register_session_file(display_name, p)
+			process_uploaded_file(
+			  persisted_info,
+			  generate_message = FALSE,
+			  uploaded_at = uploaded_ts
+			)
 	  }
 	}
 
@@ -472,7 +445,7 @@ fileManagerServer <- function(
     }
 
     # Persist a stable copy + add to table
-    process_uploaded_file <- function(file_info, generate_message = TRUE) {
+	process_uploaded_file <- function(file_info, generate_message = TRUE, uploaded_at = NULL) {
       file_name <- as.character(file_info$name %||% "")
       file_size <- suppressWarnings(as.numeric(file_info$size %||% NA_real_))
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
@@ -548,14 +521,14 @@ fileManagerServer <- function(
 		module_values$files <- rbind(
 		  module_values$files,
 		  data.frame(
-			Dosya_Adi       = file_name,
-			Boyut           = paste(round((file_size %||% 0) / 1024, 2), "KB"),
-			# Tür sütunu: ikon + etiket
-			Tur             = ext_icon_html(ext),
-			Yuklenme_Tarihi = format_timestamp(),
-			Islemler        = actions,
-			Model_Baglam    = attach_cell,
-			stringsAsFactors = FALSE
+				Dosya_Adi       = file_name,
+				Boyut           = paste(round((file_size %||% 0) / 1024, 2), "KB"),
+				# Tür sütunu: ikon + etiket
+				Tur             = ext_icon_html(ext),
+				Yuklenme_Tarihi = uploaded_at %||% format_timestamp(),
+				Islemler        = actions,
+				Model_Baglam    = attach_cell,
+				stringsAsFactors = FALSE
 		  )
 		)
     
