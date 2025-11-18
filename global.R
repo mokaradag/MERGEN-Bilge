@@ -536,38 +536,43 @@ monitor_workers <- function() {
 normalize_excel_path <- function(path) {
   if (is.null(path) || !nzchar(path)) return(path)
   expanded <- tryCatch(path.expand(path), error = function(e) path)
-  winslash <- if (.Platform$OS.type == "windows") "\\" else "/"
   normalized <- tryCatch(
-    normalizePath(expanded, winslash = winslash, mustWork = FALSE),
+    normalizePath(expanded, winslash = "/", mustWork = FALSE),
     error = function(e) expanded
   )
-  if (!path_exists_relaxed(normalized)) {
-    normalized <- tryCatch(
-      normalizePath(expanded, winslash = winslash, mustWork = TRUE),
-      error = function(e) normalized
-    )
-  }
   if (.Platform$OS.type == "windows") {
-    normalized <- safe_windows_short_path(normalized, must_exist = path_exists_relaxed(normalized))
-  } else {
-    normalized <- enc2utf8(normalized)
+    normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
   }
   normalized
 }
 
 safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
-  if (!path_exists_relaxed(path)) stop(sprintf("Dosya bulunamadı: %s", path))
-  ext <- tolower(tools::file_ext(path))
+  candidates <- unique(Filter(function(x) {
+    is.character(x) && length(x) > 0 && nzchar(x[1])
+  }, c(path, normalize_excel_path(path))))
+
+  resolved_path <- NULL
+  for (cand in candidates) {
+    cand_chr <- as.character(cand)[1]
+    if (isTRUE(path_exists_relaxed(cand_chr))) {
+      resolved_path <- cand_chr
+      break
+    }
+  }
+
+  if (is.null(resolved_path)) {
+    stop(sprintf("Dosya bulunamadı: %s", path))
+  }
+
+  ext <- tolower(tools::file_ext(resolved_path))
   if (!ext %in% c("xlsx", "xls", "xlsm")) {
     stop(sprintf("Excel uzantısı bekleniyor (.xlsx/.xls/.xlsm), bulundu: .%s", ext))
   }
-
-  path_prepared <- normalize_excel_path(path)
   
   # 1) Read the sheet without assuming headers; keep everything
   raw <- tryCatch(
-    readxl::read_excel(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal"),
-    error = function(e) stop(sprintf("readxl::read_excel hatası: %s (dosya: %s)", e$message, path))
+    readxl::read_excel(resolved_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"),
+    error = function(e) stop(sprintf("readxl::read_excel hatası: %s (dosya: %s)", e$message, resolved_path))
   )
   if (nrow(raw) == 0 || ncol(raw) == 0) return(data.frame())
 
@@ -602,7 +607,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
 
   # 6) Final read: treat header row as column names
   df <- readxl::read_excel(
-    path_prepared,
+    resolved_path,
     sheet = sheet,
     range = rng,
     col_names = TRUE,

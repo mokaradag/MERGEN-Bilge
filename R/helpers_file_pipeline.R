@@ -10,19 +10,11 @@ Başlık, kısa açıklama (2-3 cümle) ve en fazla 5 madde halinde ana noktalar
          content = paste0("Dosya adı: ", filename,
                           "\nİçerik (kısaltılmış olabilir):\n", snippet))
   )
-	tryCatch({
-	  # Türkçe yorum: LLM yanıtını daima düz metne indir
-	  sset <- if (is.list(settings)) settings else reactiveValuesToList(settings)
-	  res  <- call_llm_with_retry(chat, sset, max_retries = 2)
-	  txt  <- if (is.list(res)) (res$content %||% res$ai_text %||% res) else res
-	  if (!is.character(txt) || length(txt) == 0 || !nzchar(txt[1])) {
-		paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
-	  } else {
-		as.character(txt[1])
-	  }
-	}, error = function(e) {
-	  paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
-	})
+  tryCatch({
+    call_llm_with_retry(chat, reactiveValuesToList(settings), max_retries = 2)
+  }, error = function(e) {
+    paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
+  })
 }
 
 processAndSummarizeFile <- function(file_info,
@@ -37,68 +29,40 @@ processAndSummarizeFile <- function(file_info,
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
                               duration = NULL, type = "message")
 
-  dest <- file_info$datapath %||% file_info$path %||% ""
-  if (!nzchar(dest)) {
-    stop(sprintf("Dosya yolu bulunamadı: %s", file_info$name %||% ""))
-  }
-
-  if (!is_under_mcp_base(dest) || !path_exists_relaxed(dest)) {
-    src_payload <- list(name = file_info$name, datapath = dest)
-    dest <- copy_to_mcp_base(src_payload, current_user_id)
+  # Ensure file is persisted under MCP base
+  dest <- file_info$datapath
+  if (!is_under_mcp_base(dest)) {
+    dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), current_user_id)
   }
 
   # Keep in session for MCP tools
   if (is.null(session$userData$current_session_files)) session$userData$current_session_files <- list()
   session$userData$current_session_files[[file_info$name]] <- list(
-    name = file_info$name,
-    datapath = dest,
-    path = dest
+    name = file_info$name, datapath = dest, path = dest
   )
 
-  # Register immediately so the file list stays in sync even if summarization fails
-  try(
-    global_register_file(
-      dest,
-      file_info$name,
-      user_id = current_user_id,
-      persist_under_mcp_base = TRUE
-    ),
-    silent = TRUE
-  )
-
-  file_ext <- tolower(tools::file_ext(file_info$name))
-  file_size <- suppressWarnings(file.info(dest)$size)
-
-  digest_payload <- tryCatch({
-    if (file_ext %in% c("xlsx", "xls", "xlsm")) {
-      build_excel_digest_json(dest, top_levels = 12)
-    } else {
-      txt <- readFileContentToString(list(name = file_info$name, datapath = dest, size = file_size))
-      substr(txt, 1, 50000)
-    }
-  }, error = function(e) {
-    paste0("Özet hazırlanırken içerik okunamadı: ", conditionMessage(e))
-  })
-
-  # Snapshot settings once (drop live session refs)
+  # Snapshot settings once
   settings_snapshot <- tryCatch(reactiveValuesToList(settings), error = function(e) list())
   settings_snapshot$shiny_session <- NULL
-  api_key_val <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
-  settings_snapshot$api_key_override <- api_key_val
 
   promises::future_promise({
-    summary_text <- summarize_file_with_llm(digest_payload, file_info$name, settings_snapshot)
+    file_ext <- tolower(tools::file_ext(file_info$name))
+    digest <- switch(file_ext,
+      "xlsx" = , "xls" = build_excel_digest_json(dest, top_levels = 12),
+      {
+        txt <- readFileContentToString(list(name = file_info$name, datapath = dest, size = file.info(dest)$size))
+        substr(txt, 1, 50000)
+      }
+    )
+    summary_text <- summarize_file_with_llm(digest, file_info$name, settings_snapshot)
     list(summary = summary_text, dest = dest, ext = file_ext)
   }) %...>%
     (function(res) {
-      # Türkçe yorum: Özet metnini her zaman karakter olarak tut
-      summary_clean <- if (is.list(res$summary)) (res$summary$content %||% "") else as.character(res$summary %||% "")
-
       if (isTRUE(auto_attach)) {
         current_files <- session_files_reactive() %||% list()
         current_files[[file_info$name]] <- list(
           name = file_info$name,
-          summary = summary_clean,
+          summary = res$summary,
           size = file.info(res$dest)$size,
           type = res$ext
         )
@@ -106,26 +70,26 @@ processAndSummarizeFile <- function(file_info,
       }
 
       if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
-      session$userData$file_summaries[[file_info$name]] <- summary_clean
+      session$userData$file_summaries[[file_info$name]] <- res$summary
 
       if (isTRUE(update_manager_ui) && !is.null(file_manager_data$sync_file_to_context)) {
-        file_manager_data$sync_file_to_context(file_info$name, summary_clean)
+        file_manager_data$sync_file_to_context(file_info$name, res$summary)
       }
+
+      try(global_register_file(
+            res$dest, file_info$name,
+            user_id = current_user_id,
+            persist_under_mcp_base = TRUE
+          ),
+          silent = TRUE
+      )
 
       removeNotification(note_id)
       if (isTRUE(show_toast)) showToast(session, paste(file_info$name, "özetlendi."), "success")
     }) %...!%
     (function(e) {
       removeNotification(note_id)
-      fallback_summary <- paste0("Özet oluşturulamadı: ", conditionMessage(e))
-      if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
-      session$userData$file_summaries[[file_info$name]] <- fallback_summary
-      if (isTRUE(update_manager_ui) && !is.null(file_manager_data$sync_file_to_context)) {
-        file_manager_data$sync_file_to_context(file_info$name, fallback_summary)
-      }
-      showToast(session,
-               paste("Dosya özetlenemedi ancak kaydedildi:", file_info$name, "-", conditionMessage(e)),
-               "warning")
+      showToast(session, paste("Dosya işlenemedi:", conditionMessage(e)), "error")
     })
 
   invisible(NULL)
@@ -183,24 +147,11 @@ handle_file_upload_batch <- function(uploads_df,
     note_id <<- showNotification(sprintf("[%d/%d] İşleniyor: %s", i, total, uf$name),
                                  duration = NULL, type = "message")
 
-    dest <- tryCatch({
-      copy_to_mcp_base(uf, current_user_id)
-    }, error = function(e) {
-      msg <- sprintf("%s kopyalanamadı: %s", uf$name %||% uf$datapath, conditionMessage(e))
-      cat("[UPLOAD] copy_to_mcp_base hata verdi:", msg, "\n")
-      showToast(session, msg, "error")
-      NULL
-    })
+    try({
+      dest <- copy_to_mcp_base(uf, current_user_id)
+      uf$datapath <- dest
+    }, silent = TRUE)
 
-    if (is.null(dest) || !nzchar(dest)) {
-      removeNotification(note_id)
-      shinyjs::delay(50, process_next(i + 1))
-      return(invisible(NULL))
-    }
-
-    uf$datapath <- dest
-    uf$path <- dest
-	
     file_to_add_reactive(uf)
 
     processAndSummarizeFile(

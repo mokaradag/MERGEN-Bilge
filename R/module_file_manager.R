@@ -285,16 +285,16 @@ fileManagerServer <- function(
 	  uid <- session$userData$user_id %||% "unknown"
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
-	  # Reset table + state, then rebuild (preserving original display names)
+	 # Reset table + state, then rebuild (preserving original display names)
 	  module_values$files <- module_values$files[0, ]
 	  module_values$file_contents <- list()
 
 	  if (inherits(df, "try-error") || is.null(df) || nrow(df) == 0) return(invisible(NULL))
 
-	  for (i in seq_len(nrow(df))) {
+	for (i in seq_len(nrow(df))) {
 		p <- df$path[i]
 		display_name <- df$name[i]
-		if (!path_exists_relaxed(p)) next
+		if (!file.exists(p)) next
 		finfo <- file.info(p)
 
 		# Avoid POSIXt '*' issue: wrap Sys.time() with as.numeric()
@@ -459,7 +459,7 @@ fileManagerServer <- function(
       file_size <- suppressWarnings(as.numeric(file_info$size %||% NA_real_))
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
 
-      if (!nzchar(file_name) || !nzchar(in_path) || !path_exists_relaxed(in_path)) {
+      if (!nzchar(file_name) || !nzchar(in_path) || !file.exists(in_path)) {
         showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
         return(NULL)
       }
@@ -670,7 +670,7 @@ fileManagerServer <- function(
       # 1) Try to delete the persisted copy under mergen_uploads/user_<id>
       uid <- isolate(session$userData$user_id %||% NULL)
       persisted <- try(resolve_uploaded_file(info$name, uid), silent = TRUE)
-      if (!inherits(persisted, "try-error") && !is.null(persisted) && path_exists_relaxed(persisted)) {
+      if (!inherits(persisted, "try-error") && !is.null(persisted) && file.exists(persisted)) {
         try(unlink(persisted, force = TRUE), silent = TRUE)
       }
       # Remove from index
