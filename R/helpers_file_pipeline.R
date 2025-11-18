@@ -55,61 +55,77 @@ processAndSummarizeFile <- function(file_info,
     path = dest
   )
 
-  # Snapshot settings once
-	settings_snapshot <- tryCatch(reactiveValuesToList(settings), error = function(e) list())
-	# Türkçe yorum: Session nesnesini serileştirmemek için NULL yap; API anahtarını ayrı geçir
-	settings_snapshot$shiny_session <- NULL
-	api_key_val <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
-	settings_snapshot$api_key_override <- api_key_val
+  # Register immediately so the file list stays in sync even if summarization fails
+  try(
+    global_register_file(
+      dest,
+      file_info$name,
+      user_id = current_user_id,
+      persist_under_mcp_base = TRUE
+    ),
+    silent = TRUE
+  )
+
+  file_ext <- tolower(tools::file_ext(file_info$name))
+  file_size <- suppressWarnings(file.info(dest)$size)
+
+  digest_payload <- tryCatch({
+    if (file_ext %in% c("xlsx", "xls", "xlsm")) {
+      build_excel_digest_json(dest, top_levels = 12)
+    } else {
+      txt <- readFileContentToString(list(name = file_info$name, datapath = dest, size = file_size))
+      substr(txt, 1, 50000)
+    }
+  }, error = function(e) {
+    paste0("Özet hazırlanırken içerik okunamadı: ", conditionMessage(e))
+  })
+
+  # Snapshot settings once (drop live session refs)
+  settings_snapshot <- tryCatch(reactiveValuesToList(settings), error = function(e) list())
+  settings_snapshot$shiny_session <- NULL
+  api_key_val <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
+  settings_snapshot$api_key_override <- api_key_val
 
   promises::future_promise({
-    file_ext <- tolower(tools::file_ext(file_info$name))
-    digest <- switch(file_ext,
-      "xlsx" = , "xls" = build_excel_digest_json(dest, top_levels = 12),
-      {
-        txt <- readFileContentToString(list(name = file_info$name, datapath = dest, size = file.info(dest)$size))
-        substr(txt, 1, 50000)
-      }
-    )
-    summary_text <- summarize_file_with_llm(digest, file_info$name, settings_snapshot)
+    summary_text <- summarize_file_with_llm(digest_payload, file_info$name, settings_snapshot)
     list(summary = summary_text, dest = dest, ext = file_ext)
   }) %...>%
     (function(res) {
-		# Türkçe yorum: Özet metnini her zaman karakter olarak tut
-		summary_clean <- if (is.list(res$summary)) (res$summary$content %||% "") else as.character(res$summary %||% "")
+      # Türkçe yorum: Özet metnini her zaman karakter olarak tut
+      summary_clean <- if (is.list(res$summary)) (res$summary$content %||% "") else as.character(res$summary %||% "")
 
-		if (isTRUE(auto_attach)) {
-		  current_files <- session_files_reactive() %||% list()
-		  current_files[[file_info$name]] <- list(
-			name = file_info$name,
-			summary = summary_clean,
-			size = file.info(res$dest)$size,
-			type = res$ext
-		  )
-		  session_files_reactive(current_files)
-		}
+      if (isTRUE(auto_attach)) {
+        current_files <- session_files_reactive() %||% list()
+        current_files[[file_info$name]] <- list(
+          name = file_info$name,
+          summary = summary_clean,
+          size = file.info(res$dest)$size,
+          type = res$ext
+        )
+        session_files_reactive(current_files)
+      }
 
-		if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
-		session$userData$file_summaries[[file_info$name]] <- summary_clean
+      if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
+      session$userData$file_summaries[[file_info$name]] <- summary_clean
 
-		if (isTRUE(update_manager_ui) && !is.null(file_manager_data$sync_file_to_context)) {
-		  file_manager_data$sync_file_to_context(file_info$name, summary_clean)
-		}
-
-      try(global_register_file(
-            res$dest, file_info$name,
-            user_id = current_user_id,
-            persist_under_mcp_base = TRUE
-          ),
-          silent = TRUE
-      )
+      if (isTRUE(update_manager_ui) && !is.null(file_manager_data$sync_file_to_context)) {
+        file_manager_data$sync_file_to_context(file_info$name, summary_clean)
+      }
 
       removeNotification(note_id)
       if (isTRUE(show_toast)) showToast(session, paste(file_info$name, "özetlendi."), "success")
     }) %...!%
     (function(e) {
       removeNotification(note_id)
-      showToast(session, paste("Dosya işlenemedi:", conditionMessage(e)), "error")
+      fallback_summary <- paste0("Özet oluşturulamadı: ", conditionMessage(e))
+      if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
+      session$userData$file_summaries[[file_info$name]] <- fallback_summary
+      if (isTRUE(update_manager_ui) && !is.null(file_manager_data$sync_file_to_context)) {
+        file_manager_data$sync_file_to_context(file_info$name, fallback_summary)
+      }
+      showToast(session,
+               paste("Dosya özetlenemedi ancak kaydedildi:", file_info$name, "-", conditionMessage(e)),
+               "warning")
     })
 
   invisible(NULL)
