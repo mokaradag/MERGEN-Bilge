@@ -274,16 +274,7 @@ fileManagerServer <- function(
     )
     file.path(base, sprintf("user_%s", as.character(session$userData$user_id %||% "unknown")))
   }
-  
-  is_under_mcp_base <- function(p) {
-    if (is.null(p) || !nzchar(p)) return(FALSE)
-    base <- getOption("mergen.mcp_base_dir", Sys.getenv("MCP_FILES_BASE", ""))
-    if (!nzchar(base)) return(FALSE)
-    np <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
-    nb <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
-    startsWith(tolower(np), tolower(paste0(nb, "/"))) || identical(tolower(np), tolower(nb))
-  }
-  
+    
   list_user_folder_files <- function() {
     udir <- get_user_upload_dir()
     if (!dir.exists(udir)) return(character(0))
@@ -357,8 +348,7 @@ fileManagerServer <- function(
 		  datapath       = p,
 		  size           = finfo$size,
 		  type           = tools::file_ext(display_name),
-		  persisted_path = p,
-		  persisted_under_mcp = TRUE
+		  persisted_path = p
 		)
 	  }
 	}
@@ -465,90 +455,37 @@ fileManagerServer <- function(
 
     # Persist a stable copy + add to table
     process_uploaded_file <- function(file_info, generate_message = TRUE) {
-      # Normalize incoming structure (Shiny df row OR list)
       file_name <- as.character(file_info$name %||% "")
       file_size <- suppressWarnings(as.numeric(file_info$size %||% NA_real_))
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
-    
-      path_ok <- nzchar(in_path) && (path_exists_relaxed(in_path) || isTRUE(file_info$persisted_under_mcp))
-      if (!nzchar(file_name) || !path_ok) {
+
+      if (!nzchar(file_name) || !nzchar(in_path) || !path_exists_relaxed(in_path)) {
         showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
         return(NULL)
       }
 	  
-      # Persist into MCP bucket immediately so previews & MCP tools have a stable path
-      uid <- isolate(session$userData$user_id %||% NULL)
-      already_persisted <- isTRUE(file_info$persisted_under_mcp)
-      persisted_path <- as.character(file_info$persisted_path %||% "")
-
-      if (!already_persisted && nzchar(in_path) && path_exists_relaxed(in_path) && is_under_mcp_base(in_path)) {
-        persisted_path <- in_path
-        already_persisted <- TRUE
-      }
-	  
-      if (already_persisted && nzchar(persisted_path) && path_exists_relaxed(persisted_path)) {
-        in_path <- persisted_path
-      } else {
-        copy_payload <- list(name = file_name, datapath = in_path)
-        copied_path <- tryCatch(
-          copy_to_mcp_base(copy_payload, uid %||% session$userData$user_id %||% "unknown"),
-          error = function(e) e
-        )
-
-        if (inherits(copied_path, "error") || !is.character(copied_path) || !nzchar(copied_path) ||
-            !path_exists_relaxed(copied_path)) {
-          err_msg <- if (inherits(copied_path, "error")) conditionMessage(copied_path) else "bilinmeyen hata"
-          showToast(session,
-                    sprintf("'%s' MCP klasörüne kopyalanamadı: %s", file_name, err_msg),
-                    "error")
-          return(NULL)
-        }
-
-        in_path <- copied_path
-        persisted_path <- copied_path
-        already_persisted <- TRUE
-      }
-
-      # refresh size info after persisting (temporary path could have disappeared)
-      file_size <- suppressWarnings(as.numeric(file.info(in_path)$size))
-    
-      # Validate type
       allowed_extensions <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
       file_ext <- tolower(tools::file_ext(file_name))
       if (!file_ext %in% allowed_extensions) {
         showToast(session, sprintf("'%s' dosya türü desteklenmiyor!", file_ext), "error")
         return(NULL)
       }
-    
-      # ALWAYS use a stable “display id” for the table; do not depend on a temp copy
+
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
-    
-      # Use the path we persisted (Shiny temp'leri yerine kalıcı kopya)
       stable_path <- in_path
-    
-      # If Shiny’s upload temp disappears later it’s fine; preview code reads immediately,
-      # and server will persist a copy separately (processAndSummarizeFile).
+
+      if (!is.finite(file_size) || is.na(file_size)) {
+        file_size <- suppressWarnings(as.numeric(file.info(stable_path)$size))
+      }
+	  
       saved <- list(
         name     = file_name,
         datapath = stable_path,
         size     = file_size,
         type     = file_info$type %||% "",
-        id       = file_id
+        id       = file_id,
+        persisted_path = stable_path
       )
-
-      if (nzchar(stable_path)) {
-        saved$persisted_path <- stable_path
-        saved$persisted_under_mcp <- TRUE
-      }
-	  
-      if (nzchar(stable_path)) {
-        try(global_register_file(
-          stable_path,
-          file_name,
-          user_id = uid,
-          persist_under_mcp_base = TRUE
-        ), silent = TRUE)
-      }
 	  
       module_values$file_contents[[file_id]] <- saved
       session$userData$temp_files[[file_id]] <- NULL  # no temp we own here

@@ -76,47 +76,20 @@ copy_to_mcp_base <- function(upload, user_id) {
       default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
     )
   }
-  base <- safe_windows_short_path(base, must_exist = dir.exists(base))
   fs::dir_create(base, recurse = TRUE)
 
-  # Work with a short/ASCII-safe source path whenever possible
-  src_original <- upload$datapath
-  src_exists   <- path_exists_relaxed(src_original)
-  src_short <- safe_windows_short_path(src_original, must_exist = src_exists)
-  if (!path_exists_relaxed(src_short) && src_exists) {
-    src_short <- src_original
-  }
-  
-  # Skip re-copy if already under base
-  src_norm  <- tryCatch(normalizePath(src_short, winslash = "/", mustWork = FALSE), error = function(e) src_short)
+  src_norm  <- tryCatch(normalizePath(upload$datapath, winslash = "/", mustWork = FALSE), error = function(e) upload$datapath)
   base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
   if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
-    return(safe_windows_short_path(src_norm, must_exist = path_exists_relaxed(src_norm)))
+    return(src_norm)
   }
 
-  # per-user bucket
   user_dir <- fs::path(base, sprintf("user_%s", as.character(user_id)))
   fs::dir_create(user_dir, recurse = TRUE)
 
   ext <- tools::file_ext(upload$name)
-  src_for_copy <- src_short
-  if (!path_exists_relaxed(src_for_copy) && src_exists) {
-    src_for_copy <- src_original
-  }
-
-  unique_tag <- if (path_exists_relaxed(src_for_copy)) {
-    digest::digest(file = src_for_copy, algo = "xxhash64")
-  } else {
-    # Rarely, the temporary upload might already be gone (e.g. aggressive AV or
-    # short-lived network share).  Fall back to a time/random-based hash to
-    # avoid crashing the upload flow.
-    cat(
-      "[copy_to_mcp_base] Kaynak dosya bulunamadı, rastgele etiket kullanılıyor:",
-      src_for_copy, "\n"
-    )
-    digest::digest(paste(upload$name, Sys.time(), runif(1)), algo = "xxhash64")
-  }
+  unique_tag <- digest::digest(file = upload$datapath, algo = "xxhash64")
 
   dest <- fs::path(
     user_dir,
@@ -128,45 +101,15 @@ copy_to_mcp_base <- function(upload, user_id) {
     )
   )
 
-  if (!path_exists_relaxed(src_for_copy)) {
+  if (!file.exists(upload$datapath)) {
     stop(sprintf("Kaynak dosya bulunamadı: %s", upload$datapath))
   }
 
-  copy_ok <- tryCatch({
-    fs::file_copy(src_for_copy, dest, overwrite = TRUE)
-    TRUE
-  }, error = function(e) {
-    cat("[copy_to_mcp_base] fs::file_copy başarısız oldu, base::file.copy denenecek:", e$message, "\n")
-    e
-  })
-
-  if (!isTRUE(copy_ok)) {
-    fs_err <- copy_ok
-    base_ok <- tryCatch({
-      file.copy(src_for_copy, dest, overwrite = TRUE)
-    }, warning = function(w) {
-      cat("[copy_to_mcp_base] base::file.copy uyarı verdi:", w$message, "\n")
-      FALSE
-    }, error = function(e) {
-      cat("[copy_to_mcp_base] base::file.copy hata verdi:", e$message, "\n")
-      FALSE
-    })
-
-    if (!isTRUE(base_ok) || !path_exists_relaxed(dest)) {
-      stop(sprintf(
-        "Kopyalanamadı: %s -> %s (%s)",
-        src_for_copy,
-        dest,
-        if (inherits(fs_err, "error")) fs_err$message else "bilinmeyen hata"
-      ))
-    }
+  fs::file_copy(upload$datapath, dest, overwrite = TRUE)
+  if (!fs::file_exists(dest)) {
+    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
   }
-  
-  if (!path_exists_relaxed(dest)) {
-    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", src_for_copy, dest))
-  }
-  dest_norm <- normalizePath(dest, winslash = "/", mustWork = TRUE)
-  safe_windows_short_path(dest_norm, must_exist = path_exists_relaxed(dest_norm))
+  normalizePath(dest, winslash = "/", mustWork = TRUE)
 }
 
 # Is path under MCP base?

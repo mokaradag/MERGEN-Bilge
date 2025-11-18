@@ -37,37 +37,14 @@ processAndSummarizeFile <- function(file_info,
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
                               duration = NULL, type = "message")
 
-  # Ensure file is persisted under MCP base only when required
   dest <- file_info$datapath %||% file_info$path %||% ""
-  trusted_dest <- isTRUE(file_info$persisted_under_mcp)
   if (!nzchar(dest)) {
     stop(sprintf("Dosya yolu bulunamadı: %s", file_info$name %||% ""))
   }
 
-  needs_copy <- !trusted_dest && (!is_under_mcp_base(dest) || !path_exists_relaxed(dest))
-  if (isTRUE(needs_copy)) {
-    fallback_path <- file_info$original_datapath %||% file_info$path %||% file_info$datapath
-    fallback_path <- as.character(fallback_path %||% "")
-    if (!nzchar(fallback_path)) {
-      stop(sprintf("Dosya yolu bulunamadı: %s", file_info$name %||% ""))
-    }
-    src_payload <- list(name = file_info$name, datapath = fallback_path)
+  if (!is_under_mcp_base(dest) || !path_exists_relaxed(dest)) {
+    src_payload <- list(name = file_info$name, datapath = dest)
     dest <- copy_to_mcp_base(src_payload, current_user_id)
-    trusted_dest <- TRUE
-  }
-
-  if (!trusted_dest && !path_exists_relaxed(dest)) {
-    fallback_path <- file_info$original_datapath %||% file_info$path %||% file_info$datapath
-    fallback_path <- as.character(fallback_path %||% "")
-    if (nzchar(fallback_path) && !identical(normalize_for_path_compare(dest),
-                                           normalize_for_path_compare(fallback_path)) &&
-        path_exists_relaxed(fallback_path)) {
-      src_payload <- list(name = file_info$name, datapath = fallback_path)
-      dest <- copy_to_mcp_base(src_payload, current_user_id)
-      trusted_dest <- TRUE
-    } else {
-      stop(sprintf("Dosya bulunamadı: %s", dest))
-    }
   }
 
   # Keep in session for MCP tools
@@ -75,9 +52,7 @@ processAndSummarizeFile <- function(file_info,
   session$userData$current_session_files[[file_info$name]] <- list(
     name = file_info$name,
     datapath = dest,
-    path = dest,
-    persisted_path = dest,
-    persisted_under_mcp = TRUE
+    path = dest
   )
 
   # Snapshot settings once
@@ -188,9 +163,6 @@ handle_file_upload_batch <- function(uploads_df,
       return(invisible(NULL))
     }
     uf <- uploads[[i]]
-    if (is.null(uf$original_datapath)) {
-      uf$original_datapath <- uf$datapath
-    }
     removeNotification(note_id)
     note_id <<- showNotification(sprintf("[%d/%d] İşleniyor: %s", i, total, uf$name),
                                  duration = NULL, type = "message")
@@ -210,18 +182,9 @@ handle_file_upload_batch <- function(uploads_df,
       return(invisible(NULL))
     }
 
-    dest_norm <- dest
-    if (!path_exists_relaxed(dest_norm)) {
-      display_path <- tryCatch(normalizePath(dest_norm, winslash = "/", mustWork = FALSE), error = function(e) dest_norm)
-      cat("[UPLOAD] Uyarı: kopyalanan dosya doğrulanamadı ancak işleme devam ediliyor:", display_path, "\n")
-    }
-
-    uf$datapath <- dest_norm
-    uf$path <- dest_norm
-	uf$persisted_under_mcp <- TRUE
-	uf$persisted_path <- dest_norm
+    uf$datapath <- dest
+    uf$path <- dest
 	
-    file_to_add_reactive(NULL)
     file_to_add_reactive(uf)
 
     processAndSummarizeFile(
