@@ -261,74 +261,31 @@ fileManagerServer <- function(
 	  uid <- module_user_id_chr
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
-	  # Reset table + state, then rebuild (preserving original display names)
 	  module_values$files <- module_values$files[0, ]
 	  module_values$file_contents <- list()
 	  ensure_session_registry()
 	  session$userData$current_session_files <- list()
 
-	  if (inherits(df, "try-error") || is.null(df) || nrow(df) == 0) return(invisible(NULL))
+	  if (inherits(df, "try-error") || is.null(df) || nrow(df) == 0) {
+			return(invisible(NULL))
+	  }
 
 	  for (i in seq_len(nrow(df))) {
-		p <- df$path[i]
-		display_name <- df$name[i]
-                if (!file.exists(p)) next
-                register_session_file(display_name, p)
-		finfo <- file.info(p)
+			p <- df$path[i]
+			display_name <- df$name[i]
+			if (!path_exists_relaxed(p)) next
 
-		# Avoid POSIXt '*' issue: wrap Sys.time() with as.numeric()
-		fid <- paste0("persist_", as.integer(as.numeric(Sys.time()) * 1000), "_", sample(100000:999999, 1))
-
-		actions <- as.character(tags$div(
-		  class = "file-actions",
-		  tags$button(class = "file-action-btn file-view js-file-action",
-					  title = "Görüntüle", `data-action` = "view", `data-file-id` = fid, icon("eye")),
-		  tags$button(class = "file-action-btn file-download js-download-btn",
-					  title = "İndir", `data-download-id` = fid, icon("download")),
-		  tags$button(class = "file-action-btn file-delete js-file-action",
-					  title = "Sil", `data-action` = "delete", `data-file-id` = fid, icon("trash")),
-		  HTML(as.character(tags$span(style="display:none;",
-			  shiny::downloadLink(outputId = ns(paste0("download_", fid)), label = ""))))
-		))
-		
-		attach_cell <- as.character(tags$div(
-		  class = "attach-cell",
-		  tags$input(
-			id = ns(paste0("attach_", fid)),
-			type = "checkbox",
-			class = "attach-checkbox",
-			`data-file-id` = fid,
-			`data-filename` = display_name,
-			title = "Bu dosyayı model bağlamına ekle/çıkar",
-			`aria-label` = "Model bağlamına ekle veya çıkar"
-		  )
-		))
-
-		# Uzantıyı küçük harfe çevir (ikon eşlemesi için)
-		ext <- tolower(tools::file_ext(display_name))
-
-		module_values$files <- rbind(
-		  module_values$files,
-			data.frame(
-			  Dosya_Adi       = display_name,
-			  Boyut           = paste(round(finfo$size / 1024, 2), "KB"),
-			  # Tür sütunu: ikon + etiket
-			  Tur             = ext_icon_html(ext),
-			  Yuklenme_Tarihi = format(finfo$mtime, "%Y-%m-%d %H:%M"),
-			  Islemler        = actions,
-			  Model_Baglam    = attach_cell,
-			  stringsAsFactors = FALSE
+			finfo <- list(
+			  name     = display_name,
+			  datapath = p,
+			  size     = suppressWarnings(file.info(p)$size),
+			  type     = mime::guess_type(p) %||% tools::file_ext(display_name)
 			)
-		)
 
-		module_values$file_contents[[fid]] <- list(
-		  id             = fid,
-		  name           = display_name,
-		  datapath       = p,
-		  size           = finfo$size,
-		  type           = tools::file_ext(display_name),
-		  persisted_path = p
-		)
+			saved <- process_uploaded_file(finfo, generate_message = FALSE)
+			if (!is.null(saved$id) && !is.null(module_values$file_contents[[saved$id]])) {
+			  module_values$file_contents[[saved$id]]$persisted_path <- p
+			}
 	  }
 	}
 
@@ -349,9 +306,7 @@ fileManagerServer <- function(
     )
 
     # --- NEW: initial population from the user's persistent folder
-    observeEvent(TRUE, {
-      refresh_from_user_folder()
-    }, once = TRUE)
+    refresh_from_user_folder()
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
@@ -363,27 +318,33 @@ fileManagerServer <- function(
     message_trigger <- reactiveVal(0)
     message_data    <- reactiveVal(NULL)
 
-    # ---- INITIAL LOAD FROM PERSISTED FOLDER ----
-    observeEvent(TRUE, {
-      uid <- isolate(module_user_id_chr)
-      if (is.null(uid)) return()
-    
-      existing <- try(mergen_list_user_files(uid), silent = TRUE)
-      if (inherits(existing, "try-error") || nrow(existing) == 0) return()
-    
-      for (i in seq_len(nrow(existing))) {
-        finfo <- list(
-          name     = existing$name[i],
-          datapath = existing$path[i],
-          size     = suppressWarnings(file.info(existing$path[i])$size),
-          type     = mime::guess_type(existing$path[i]) %||% ""
-        )
-        # generate_message = FALSE to avoid flooding the chat
-        process_uploaded_file(finfo, generate_message = FALSE)
-      }
-    }, once = TRUE, ignoreInit = TRUE)
-
     files_added_to_context <- reactiveVal(NULL)   # -> parent
+
+    sync_file_to_context <- function(filename, summary = NULL, persisted_path = NULL) {
+      if (!length(module_values$file_contents)) return(invisible(FALSE))
+
+      updated <- FALSE
+      for (id in names(module_values$file_contents)) {
+        entry <- module_values$file_contents[[id]]
+        if (!identical(entry$name, filename)) next
+
+        if (!is.null(summary)) {
+          module_values$file_contents[[id]]$summary <- summary
+        }
+
+        if (!is.null(persisted_path) && nzchar(persisted_path)) {
+          norm_path <- tryCatch(normalizePath(persisted_path, winslash = "/", mustWork = FALSE),
+                                error = function(e) persisted_path)
+          module_values$file_contents[[id]]$persisted_path <- norm_path
+          module_values$file_contents[[id]]$datapath <- norm_path
+          register_session_file(filename, norm_path)
+        }
+
+        updated <- TRUE
+      }
+
+      invisible(updated)
+    }
 
     # ---------- HELPERS ----------
     format_timestamp <- function() format(Sys.time(), "%Y-%m-%d %H:%M")
@@ -843,7 +804,8 @@ fileManagerServer <- function(
 	  all_files_cleared        = reactive({ all_files_cleared() }),
 	  files_added_to_context   = reactive({ files_added_to_context() }),
 	  remove_file_from_manager = function(filename) { remove_file_by_name(filename, quiet = TRUE) },
-	  set_attachment_checked   = set_attachment_checked
+	  set_attachment_checked   = set_attachment_checked,
+	  sync_file_to_context     = sync_file_to_context
 	)
   })
 }

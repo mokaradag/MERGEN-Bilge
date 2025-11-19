@@ -11,7 +11,14 @@ Başlık, kısa açıklama (2-3 cümle) ve en fazla 5 madde halinde ana noktalar
                           "\nİçerik (kısaltılmış olabilir):\n", snippet))
   )
   tryCatch({
-    res <- call_llm_with_retry(chat, reactiveValuesToList(settings), max_retries = 2)
+    warn_msgs <- character(0)
+    res <- withCallingHandlers(
+      call_llm_with_retry(chat, reactiveValuesToList(settings), max_retries = 2),
+      warning = function(w) {
+        warn_msgs <<- c(warn_msgs, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
     if (is.list(res) && !is.null(res$content)) {
       res <- res$content
     }
@@ -85,8 +92,12 @@ processAndSummarizeFile <- function(file_info,
       if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
       session$userData$file_summaries[[file_info$name]] <- res$summary
 
-      if (isTRUE(update_manager_ui) && !is.null(file_manager_data$sync_file_to_context)) {
-        file_manager_data$sync_file_to_context(file_info$name, res$summary)
+      if (!is.null(file_manager_data$sync_file_to_context)) {
+        file_manager_data$sync_file_to_context(
+          file_info$name,
+          summary = res$summary,
+          persisted_path = res$dest
+        )
       }
 
       try(global_register_file(
