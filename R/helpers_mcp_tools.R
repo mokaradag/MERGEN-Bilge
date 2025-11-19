@@ -173,6 +173,33 @@ helpers_mcp_tools$reset_session_file_registry <- function(session = NULL) {
   invisible(TRUE)
 }
 
+helpers_mcp_tools$get_session_user_id <- function(session = NULL) {
+  if (is.null(session)) return(NULL)
+  session$userData$user_id %||%
+    session$userData$current_user_id %||%
+    session$userData$userId %||%
+    session$userData$id %||%
+    session$userData$userID %||%
+    NULL
+}
+
+helpers_mcp_tools$update_session_file_path <- function(session = NULL, tokens = NULL, new_path = NULL) {
+  if (is.null(session) || is.null(new_path) || !nzchar(new_path)) return(invisible(FALSE))
+  helpers_mcp_tools$ensure_session_file_registry(session)
+  token_set <- unique(as.character(tokens %||% character(0)))
+  updated <- FALSE
+  for (key in names(session$userData$current_session_files)) {
+    obj <- session$userData$current_session_files[[key]]
+    nm <- obj$name %||% key
+    if (key %in% token_set || nm %in% token_set) {
+      session$userData$current_session_files[[key]]$path <- new_path
+      session$userData$current_session_files[[key]]$datapath <- new_path
+      updated <- TRUE
+    }
+  }
+  invisible(updated)
+}
+
 helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_path, display_name = NULL) {
   helpers_mcp_tools$ensure_session_file_registry(session)
   if (is.null(token) || !nzchar(token)) return(invisible(FALSE))
@@ -184,6 +211,7 @@ helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_
     path = normalized_path,
     name = display_name %||% basename(abs_path)
   )
+  cat("[RESOLVE] registry token", token, "->", normalized_path, "\n")
   invisible(TRUE)
 }
 
@@ -242,33 +270,78 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   if (!is.null(all_files) && length(all_files) > 0) {
     cat("[RESOLVE] Checking", length(all_files), "files in session\n")
 
+    rehydrate_missing_path <- function(preferred_tokens) {
+      tokens <- unique(Filter(nzchar, as.character(preferred_tokens %||% character(0))))
+      if (!length(tokens)) return(NULL)
+      uid <- helpers_mcp_tools$get_session_user_id(session)
+
+      if (exists("resolve_uploaded_file", mode = "function")) {
+        for (tok in tokens) {
+          recovered <- try(resolve_uploaded_file(tok, user_id = uid), silent = TRUE)
+          if (!inherits(recovered, "try-error") && path_ok(recovered)) {
+            cat("[RESOLVE] Missing path recovered via resolve_uploaded_file ->", recovered, "\n")
+            return(recovered)
+          }
+        }
+      }
+
+      base_dir <- getOption("mergen.mcp_base_dir") %||% Sys.getenv("MCP_FILES_BASE", "")
+      if (!is.null(uid) && nzchar(base_dir)) {
+        user_dir <- file.path(base_dir, sprintf("user_%s", uid))
+        for (tok in tokens) {
+          candidate <- file.path(user_dir, basename(tok))
+          if (path_ok(candidate)) {
+            cat("[RESOLVE] Missing path recovered via MCP base dir ->", candidate, "\n")
+            return(candidate)
+          }
+        }
+      }
+
+      NULL
+    }
+	
     for (key in names(all_files)) {
       file_obj <- all_files[[key]]
       path_to_check <- file_obj$path %||% file_obj$datapath
       nm <- file_obj$name %||% basename(path_to_check)
+      path_base <- basename(path_to_check %||% "")
 
-      # Exact key or exact stored name
-      if (identical(key, arg) || identical(nm, arg)) {
-        cat("[RESOLVE] Match by key/name ->", path_to_check, "Exists:", path_ok(path_to_check), "\n")
-        if (!is.null(path_to_check) && path_ok(path_to_check)) {
-          resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = FALSE), error = function(e) path_to_check)
-          resolved_path <- helpers_mcp_tools$normalize_excel_path(resolved_path)
-          return(list(ok = TRUE,
-                      path = resolved_path,
-                      display = nm))
+      matched <- any(c(
+        identical(key, arg),
+        identical(nm, arg),
+        identical(path_base, arg),
+        identical(key, base_arg),
+        identical(nm, base_arg),
+        identical(path_base, base_arg)
+      ))
+      if (!matched) next
+
+      cat("[RESOLVE] Match ->", path_to_check, "Exists:", path_ok(path_to_check), "\n")
+      resolved_path <- NULL
+
+      if (!is.null(path_to_check) && path_ok(path_to_check)) {
+        resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = FALSE),
+                                  error = function(e) path_to_check)
+        resolved_path <- helpers_mcp_tools$normalize_excel_path(resolved_path)
+      } else {
+        cat("[RESOLVE] Stored path missing for", nm %||% key, "- attempting rehydrate\n")
+        recovered <- rehydrate_missing_path(c(nm, key, arg, base_arg, path_base))
+        if (!is.null(recovered) && path_ok(recovered)) {
+          resolved_path <- helpers_mcp_tools$normalize_excel_path(recovered)
+          helpers_mcp_tools$update_session_file_path(session, c(key, nm), resolved_path)
+          file_obj$path <- resolved_path
+          file_obj$datapath <- resolved_path
+          all_files[[key]] <- file_obj
+        } else {
+          cat("[RESOLVE] Path rehydrate failed for", nm %||% key, "\n")
         }
       }
 
-      # NEW: basename match (handles when the tool passes an absolute path)
-      if (identical(nm, base_arg) || identical(basename(path_to_check %||% ""), base_arg)) {
-        cat("[RESOLVE] Basename match ->", path_to_check, "Exists:", path_ok(path_to_check), "\n")
-        if (!is.null(path_to_check) && path_ok(path_to_check)) {
-          resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = FALSE), error = function(e) path_to_check)
-          resolved_path <- helpers_mcp_tools$normalize_excel_path(resolved_path)
-          return(list(ok = TRUE,
-                      path = resolved_path,
-                      display = nm))
-        }
+      if (!is.null(resolved_path)) {
+        display_val <- nm %||% basename(resolved_path)
+        return(list(ok = TRUE,
+                    path = resolved_path,
+                    display = display_val))
       }
     }
   } else {
