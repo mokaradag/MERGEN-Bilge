@@ -261,7 +261,7 @@ fileManagerServer <- function(
 	  uid <- module_user_id_chr
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
-	  module_values$files <- module_values$files[0, ]
+	  module_values$files <- empty_files_df()
 	  module_values$file_contents <- list()
 	  ensure_session_registry()
 	  session$userData$current_session_files <- list()
@@ -290,16 +290,20 @@ fileManagerServer <- function(
 	}
 
     # ---------- STATE ----------
+	empty_files_df <- function() {
+	  data.frame(
+		Dosya_Adi = character(0),
+		Boyut = character(0),
+		Tur = character(0),
+		Yuklenme_Tarihi = character(0),
+		Islemler = character(0),
+		Model_Baglam = character(0),   # NEW COLUMN (renders the checkbox)
+		stringsAsFactors = FALSE
+	  )
+	}
+		
     module_values <- reactiveValues(
-		files = data.frame(
-		  Dosya_Adi = character(0),
-		  Boyut = character(0),
-		  Tur = character(0),
-		  Yuklenme_Tarihi = character(0),
-		  Islemler = character(0),
-		  Model_Baglam = character(0),   # NEW COLUMN (renders the checkbox)
-		  stringsAsFactors = FALSE
-		),
+      files = empty_files_df(),
       file_contents = list(),
       file_id_to_delete = NULL,
       files_in_context = list()
