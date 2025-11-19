@@ -473,8 +473,10 @@ fileManagerServer <- function(
 
     # -----------------------------------------------------------------------
     # Startup load ----------------------------------------------------------
-    load_persisted_records()
-    update_attach_hint()
+    observeEvent(TRUE, {
+      load_persisted_records()
+      update_attach_hint()
+    }, once = TRUE)
 
     # -----------------------------------------------------------------------
     # UI events -------------------------------------------------------------
