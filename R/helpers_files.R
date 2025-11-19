@@ -76,20 +76,17 @@ copy_to_mcp_base <- function(upload, user_id) {
       default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
     )
   }
-  
   fs::dir_create(base, recurse = TRUE)
 
+  # Skip re-copy if already under base
   src_norm  <- tryCatch(normalizePath(upload$datapath, winslash = "/", mustWork = FALSE), error = function(e) upload$datapath)
   base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
-
-  # If the uploaded temp path already lives under the MCP base, keep it as-is
-  base_prefix <- paste0(tolower(base_norm), "/")
-  src_norm_lower <- tolower(src_norm)
-  if (startsWith(src_norm_lower, base_prefix) || identical(src_norm_lower, tolower(base_norm))) {
+  if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
-    return(safe_windows_short_path(src_norm, must_exist = file.exists(src_norm)))
+    return(src_norm)
   }
 
+  # per-user bucket
   user_dir <- fs::path(base, sprintf("user_%s", as.character(user_id)))
   fs::dir_create(user_dir, recurse = TRUE)
 
@@ -106,20 +103,11 @@ copy_to_mcp_base <- function(upload, user_id) {
     )
   )
 
-  if (!file.exists(upload$datapath)) {
-    stop(sprintf("Kaynak dosya bulunamadı: %s", upload$datapath))
+  fs::file_copy(upload$datapath, dest, overwrite = TRUE)
+  if (!fs::file_exists(dest)) {
+    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
   }
-
-  dest_chr <- as.character(dest)
-  dir.create(dirname(dest_chr), recursive = TRUE, showWarnings = FALSE)
-
-  fs::file_copy(upload$datapath, dest_chr, overwrite = TRUE)
-  if (!fs::file_exists(dest_chr)) {
-    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest_chr))
-  }
-  
-  dest_norm <- tryCatch(normalizePath(dest_chr, winslash = "/", mustWork = TRUE), error = function(e) dest_chr)
-  safe_windows_short_path(dest_norm, must_exist = TRUE)
+  normalizePath(dest, winslash = "/", mustWork = TRUE)
 }
 
 # Is path under MCP base?
@@ -127,14 +115,9 @@ is_under_mcp_base <- function(p) {
   base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) return(FALSE)
-  np_raw <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
-  nb_raw <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
-  np <- normalize_for_path_compare(np_raw)
-  nb <- normalize_for_path_compare(nb_raw)
-  if (!nzchar(np) || !nzchar(nb)) return(FALSE)
-  if (identical(np, nb)) return(TRUE)
-  nb_dir <- if (endsWith(nb, "/")) nb else paste0(nb, "/")
-  startsWith(np, nb_dir)
+  np <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
+  nb <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
+  startsWith(tolower(np), tolower(paste0(nb, "/"))) || tolower(np) == tolower(nb)
 }
 
 # Turn a data.frame into simple CSV markdown (used for quick previews)

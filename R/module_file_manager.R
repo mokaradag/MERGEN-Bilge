@@ -23,11 +23,11 @@ tagList(
       div(
         class = "files-header",
         h3("Toplu Dosya Yükleme", class = "page-title"),
-		actionButton(
-		  ns("clear_files"),
-		  label = tagList(icon("trash-alt"), span("Tümünü Temizle", class = "btn-text")),
-		  class = "btn-modern btn-danger"
-		)
+        actionButton(
+          ns("clear_files"),
+          label = tagList(icon("trash-alt"), "Tümünü Temizle"),
+          class = "btn-modern btn-danger"
+        )
       ),
       # Scrollable content area
       div(
@@ -46,10 +46,7 @@ tagList(
                 ns("bulk_upload"),
                 label = NULL,
                 multiple = TRUE,
-                buttonLabel = tagList(
-                  icon("folder-open", class = "file-browse-icon"),
-                  span("Göz At")
-                ),
+                buttonLabel = tagList(icon("folder-open"), "Göz At"),
                 placeholder = "Henüz dosya seçilmedi"
               )
             ),
@@ -68,9 +65,9 @@ tagList(
 		  class = "files-table-card",
 		  h3("Yüklenen Dosyalar", class = "section-title"),
 		  div(
-				id = ns("attach_rule_hint"),
-				style = "margin: 6px 0 12px 0; font-size: 12px; color: #a3a3a3;",
-				"Seçim kuralı: MCP (Excel) açıkken yalnızca tek bir Excel dosyası bağlanabilir; kapalıyken birden fazla seçim yapabilirsiniz."
+			id = ns("attach_rule_hint"),
+			style = "margin: 6px 0 12px 0; font-size: 12px; color: #a3a3a3;",
+			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir; kapalıyken birden fazla seçim yapabilirsiniz."
 		  ),
 		  DT::dataTableOutput(ns("files_table"))
 		)
@@ -93,37 +90,6 @@ fileManagerServer <- function(
     module_user_id <- user_id %||% session$userData$user_id %||% "unknown"
     module_user_id_chr <- as.character(module_user_id)
 
-    normalize_session_path <- function(path) {
-      if (is.null(path) || length(path) == 0) return(path)
-      candidate <- as.character(path[1])
-      if (!nzchar(candidate)) return(candidate)
-      normalized <- tryCatch(
-        normalizePath(candidate, winslash = "/", mustWork = FALSE),
-        error = function(e) candidate
-      )
-      normalized <- safe_windows_short_path(normalized, must_exist = path_exists_relaxed(normalized))
-      enc2utf8(gsub("\\\\", "/", normalized, fixed = TRUE))
-    }
-
-    format_size_display <- function(bytes) {
-      val <- suppressWarnings(as.numeric(bytes))
-      if (!is.finite(val) || is.na(val) || val < 0) {
-        return("—")
-      }
-      units <- c("B", "KB", "MB", "GB", "TB")
-      if (val == 0) {
-        return("0 B")
-      }
-      pow <- floor(log(val, 1024))
-      pow <- max(0, min(pow, length(units) - 1))
-      adj <- val / (1024 ^ pow)
-      if (pow == 0) {
-        sprintf("%d %s", round(adj), units[pow + 1])
-      } else {
-        sprintf("%.2f %s", adj, units[pow + 1])
-      }
-    }
-
     ensure_session_registry <- function() {
       if (is.null(session$userData$current_session_files) ||
           !is.list(session$userData$current_session_files)) {
@@ -139,16 +105,22 @@ fileManagerServer <- function(
         normalizePath(fpath, winslash = "/", mustWork = FALSE),
         error = function(e) as.character(fpath %||% "")
       )
-      norm_path <- normalize_session_path(norm_path)
-      if (!nzchar(norm_path) || !path_exists_relaxed(norm_path)) {
-        return(invisible(FALSE))
-      }
-
+	if (!nzchar(norm_path)) return(invisible(FALSE))
+	
       session$userData$current_session_files[[fname]] <- list(
         name = fname,
         datapath = norm_path,
-        path = norm_path
+        path = norm_path,
+        persisted_path = norm_path
       )
+      invisible(TRUE)
+    }
+
+    unregister_session_file <- function(filename) {
+      ensure_session_registry()
+      fname <- as.character(filename %||% "")
+      if (!nzchar(fname)) return(invisible(FALSE))
+      session$userData$current_session_files[[fname]] <- NULL
       invisible(TRUE)
     }
   
@@ -185,20 +157,6 @@ fileManagerServer <- function(
 	  module_values$file_contents[[fid]] %||% NULL
 	}
 
-	is_excel_file <- function(info) {
-	  if (is.null(info)) return(FALSE)
-	  excel_exts <- c("xls", "xlsx", "xlsm", "xlsb", "xltx", "xltm")
-	  excel_mimes <- c(
-		"application/vnd.ms-excel",
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		"application/vnd.ms-excel.sheet.macroenabled.12",
-		"application/vnd.ms-excel.sheet.binary.macroenabled.12"
-	  )
-	  ext <- tolower(tools::file_ext(info$name %||% ""))
-	  mime <- tolower(info$type %||% "")
-	  (nzchar(ext) && ext %in% excel_exts) || (nzchar(mime) && mime %in% excel_mimes)
-	}
-
 	# Update parent session_files using the bridge we were given
 	attach_in_parent <- function(file_obj) {
 	  if (is.null(session_files_reactive)) return(invisible())
@@ -227,14 +185,7 @@ fileManagerServer <- function(
 	  info <- get_file_by_id(fid)
 	  req(info)
 
-  if (checked) {
-		if (isTRUE(mcp_enabled_reactive()) && !is_excel_file(info)) {
-		  session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
-		  module_values$files_in_context[[fid]] <- NULL
-		  detach_in_parent(fname)
-		  showToast(session, "MCP: Excel modunda yalnızca Excel dosyaları bağlanabilir.", "error")
-		  return()
-		}
+	  if (checked) {
 		# MCP ON? allow only one
 		if (isTRUE(mcp_enabled_reactive())) {
 		  # Uncheck all other selected ones
@@ -264,7 +215,7 @@ fileManagerServer <- function(
 
 	  # Update the hint text dynamically
 	  txt <- if (isTRUE(mcp_enabled_reactive())) {
-			"Seçim kuralı: MCP (Excel) açıkken yalnızca tek bir Excel dosyası bağlanabilir."
+			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
 	  } else {
 			"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
 	  }
@@ -273,58 +224,11 @@ fileManagerServer <- function(
 
 	observe({
 	  txt <- if (isTRUE(mcp_enabled_reactive())) {
-			"Seçim kuralı: MCP (Excel) açıkken yalnızca tek bir Excel dosyası bağlanabilir."
+			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
 	  } else {
 			"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
 	  }
 	  shinyjs::html(id = "attach_rule_hint", html = txt, add = FALSE)
-	})
-
-	observeEvent(mcp_enabled_reactive(), {
-	  if (!isTRUE(mcp_enabled_reactive())) return()
-	  selected_ids <- names(module_values$files_in_context)
-	  if (!length(selected_ids)) return()
-
-	  keep_id <- NULL
-	  invalid_ids <- character()
-	  extra_ids <- character()
-
-	  for (fid in selected_ids) {
-		info <- module_values$file_contents[[fid]]
-		if (is.null(info)) next
-
-		if (!is_excel_file(info)) {
-		  invalid_ids <- c(invalid_ids, fid)
-		} else if (is.null(keep_id)) {
-		  keep_id <- fid
-		} else {
-		  extra_ids <- c(extra_ids, fid)
-		}
-	  }
-
-	  to_uncheck <- unique(c(invalid_ids, extra_ids))
-	  if (!length(to_uncheck)) return()
-
-	  module_values$files_in_context[to_uncheck] <- NULL
-	  lapply(to_uncheck, function(fid) {
-		info <- module_values$file_contents[[fid]]
-		if (!is.null(info)) detach_in_parent(info$name)
-	  })
-	  session$sendCustomMessage(ns("setAttachState"), list(ids = to_uncheck, checked = FALSE))
-
-	  if (length(invalid_ids) > 0 && length(extra_ids) > 0) {
-		showToast(session,
-				 "MCP: Sadece tek bir Excel dosyası tutuldu; diğer türler ve fazladan seçimler kaldırıldı.",
-				 "warning")
-	  } else if (length(invalid_ids) > 0) {
-		showToast(session,
-				 "MCP: Excel modunda yalnızca Excel dosyaları bağlanabilir. Uygun olmayan seçimler kaldırıldı.",
-				 "warning")
-	  } else {
-		showToast(session,
-				 "MCP açıkken yalnızca tek bir Excel dosyası seçilebilir; fazladan seçimler kaldırıldı.",
-				 "warning")
-	  }
 	})
   
   # --- NEW: persistent storage helpers -----------------------------------------
@@ -337,6 +241,15 @@ fileManagerServer <- function(
     )
     file.path(base, sprintf("user_%s", module_user_id_chr))
   }
+  
+  is_under_mcp_base <- function(p) {
+    if (is.null(p) || !nzchar(p)) return(FALSE)
+    base <- getOption("mergen.mcp_base_dir", Sys.getenv("MCP_FILES_BASE", ""))
+    if (!nzchar(base)) return(FALSE)
+    np <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
+    nb <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
+    startsWith(tolower(np), tolower(paste0(nb, "/"))) || identical(tolower(np), tolower(nb))
+  }
     
   list_user_folder_files <- function() {
     udir <- get_user_upload_dir()
@@ -348,59 +261,74 @@ fileManagerServer <- function(
 	  uid <- module_user_id_chr
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
-	  if (inherits(df, "try-error") || is.null(df)) {
-		fallback_paths <- list_user_folder_files()
-		if (!length(fallback_paths)) return(invisible(NULL))
-		df <- data.frame(
-		  path = fallback_paths,
-		  name = basename(fallback_paths),
-		  stringsAsFactors = FALSE
-		)
-	  }
-
-	  if (nrow(df) == 0) return(invisible(NULL))
-		  
-	  # Reset table + state, then rebuild via the shared upload handler
+	  # Reset table + state, then rebuild (preserving original display names)
 	  module_values$files <- module_values$files[0, ]
 	  module_values$file_contents <- list()
 	  ensure_session_registry()
 	  session$userData$current_session_files <- list()
 
-	  guess_mime <- function(path_or_name) {
-			if (!requireNamespace("mime", quietly = TRUE)) return("")
-			val <- tryCatch(mime::guess_type(path_or_name), error = function(e) "")
-			val %||% ""
-	  }
+	  if (inherits(df, "try-error") || is.null(df) || nrow(df) == 0) return(invisible(NULL))
 
 	  for (i in seq_len(nrow(df))) {
-			p_raw <- df$path[i]
-			display_name <- df$name[i]
-			if (!nzchar(display_name)) next
+		p <- df$path[i]
+		display_name <- df$name[i]
+                if (!file.exists(p)) next
+                register_session_file(display_name, p)
+		finfo <- file.info(p)
 
-			p <- tryCatch(normalizePath(p_raw, winslash = "/", mustWork = FALSE),
-						  error = function(e) p_raw)
-			p <- normalize_session_path(p)
-			if (!path_exists_relaxed(p)) next
+		# Avoid POSIXt '*' issue: wrap Sys.time() with as.numeric()
+		fid <- paste0("persist_", as.integer(as.numeric(Sys.time()) * 1000), "_", sample(100000:999999, 1))
 
-			finfo <- file.info(p)
-			uploaded_ts <- if (!is.na(finfo$mtime)) format(finfo$mtime, "%Y-%m-%d %H:%M") else NULL
-			file_type <- guess_mime(display_name)
-			if (!nzchar(file_type)) file_type <- guess_mime(p)
-			if (!nzchar(file_type)) file_type <- tools::file_ext(display_name)
+		actions <- as.character(tags$div(
+		  class = "file-actions",
+		  tags$button(class = "file-action-btn file-view js-file-action",
+					  title = "Görüntüle", `data-action` = "view", `data-file-id` = fid, icon("eye")),
+		  tags$button(class = "file-action-btn file-download js-download-btn",
+					  title = "İndir", `data-download-id` = fid, icon("download")),
+		  tags$button(class = "file-action-btn file-delete js-file-action",
+					  title = "Sil", `data-action` = "delete", `data-file-id` = fid, icon("trash")),
+		  HTML(as.character(tags$span(style="display:none;",
+			  shiny::downloadLink(outputId = ns(paste0("download_", fid)), label = ""))))
+		))
+		
+		attach_cell <- as.character(tags$div(
+		  class = "attach-cell",
+		  tags$input(
+			id = ns(paste0("attach_", fid)),
+			type = "checkbox",
+			class = "attach-checkbox",
+			`data-file-id` = fid,
+			`data-filename` = display_name,
+			title = "Bu dosyayı model bağlamına ekle/çıkar",
+			`aria-label` = "Model bağlamına ekle veya çıkar"
+		  )
+		))
 
-			persisted_info <- list(
-			  name     = display_name,
-			  datapath = p,
-			  path     = p,
-			  size     = finfo$size,
-			  type     = file_type
+		# Uzantıyı küçük harfe çevir (ikon eşlemesi için)
+		ext <- tolower(tools::file_ext(display_name))
+
+		module_values$files <- rbind(
+		  module_values$files,
+			data.frame(
+			  Dosya_Adi       = display_name,
+			  Boyut           = paste(round(finfo$size / 1024, 2), "KB"),
+			  # Tür sütunu: ikon + etiket
+			  Tur             = ext_icon_html(ext),
+			  Yuklenme_Tarihi = format(finfo$mtime, "%Y-%m-%d %H:%M"),
+			  Islemler        = actions,
+			  Model_Baglam    = attach_cell,
+			  stringsAsFactors = FALSE
 			)
+		)
 
-			process_uploaded_file(
-			  persisted_info,
-			  generate_message = FALSE,
-			  uploaded_at = uploaded_ts
-			)
+		module_values$file_contents[[fid]] <- list(
+		  id             = fid,
+		  name           = display_name,
+		  datapath       = p,
+		  size           = finfo$size,
+		  type           = tools::file_ext(display_name),
+		  persisted_path = p
+		)
 	  }
 	}
 
@@ -428,11 +356,32 @@ fileManagerServer <- function(
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
     bulk_files_to_process <- reactiveVal(NULL)
+	bulk_files_to_process <- reactiveVal(NULL)
     file_removed          <- reactiveVal(NULL)
     all_files_cleared     <- reactiveVal(FALSE)
 
     message_trigger <- reactiveVal(0)
     message_data    <- reactiveVal(NULL)
+
+    # ---- INITIAL LOAD FROM PERSISTED FOLDER ----
+    observeEvent(TRUE, {
+      uid <- isolate(module_user_id_chr)
+      if (is.null(uid)) return()
+    
+      existing <- try(mergen_list_user_files(uid), silent = TRUE)
+      if (inherits(existing, "try-error") || nrow(existing) == 0) return()
+    
+      for (i in seq_len(nrow(existing))) {
+        finfo <- list(
+          name     = existing$name[i],
+          datapath = existing$path[i],
+          size     = suppressWarnings(file.info(existing$path[i])$size),
+          type     = mime::guess_type(existing$path[i]) %||% ""
+        )
+        # generate_message = FALSE to avoid flooding the chat
+        process_uploaded_file(finfo, generate_message = FALSE)
+      }
+    }, once = TRUE, ignoreInit = TRUE)
 
     files_added_to_context <- reactiveVal(NULL)   # -> parent
 
@@ -468,9 +417,7 @@ fileManagerServer <- function(
     
       # Drop from module state
       module_values$file_contents[[fid]] <- NULL
-	  
-      ensure_session_registry()
-      session$userData$current_session_files[[filename]] <- NULL
+	  unregister_session_file(filename)
     
       # Remove the row in the datatable (by id or by name as fallback)
       rm_idx <- which(
@@ -488,16 +435,18 @@ fileManagerServer <- function(
     }
 
     # Persist a stable copy + add to table
-	process_uploaded_file <- function(file_info, generate_message = TRUE, uploaded_at = NULL) {
+    process_uploaded_file <- function(file_info, generate_message = TRUE) {
+      # Normalize incoming structure (Shiny df row OR list)
       file_name <- as.character(file_info$name %||% "")
       file_size <- suppressWarnings(as.numeric(file_info$size %||% NA_real_))
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
-
-      if (!nzchar(file_name) || !nzchar(in_path) || !path_exists_relaxed(in_path)) {
+    
+      if (!nzchar(file_name) || !nzchar(in_path) || !file.exists(in_path)) {
         showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
         return(NULL)
       }
-	  
+    
+      # Validate type
       allowed_extensions <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
       file_ext <- tolower(tools::file_ext(file_name))
       if (!file_ext %in% allowed_extensions) {
@@ -505,23 +454,20 @@ fileManagerServer <- function(
         return(NULL)
       }
 
+      # ALWAYS use a stable “display id” for the table; do not depend on a temp copy
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
-      stable_path <- tryCatch(normalizePath(in_path, winslash = "/", mustWork = FALSE),
-                              error = function(e) in_path)
-	  stable_path <- normalize_session_path(stable_path)
-
-      if (!is.finite(file_size) || is.na(file_size)) {
-        file_size <- suppressWarnings(as.numeric(file.info(stable_path)$size))
-      }
-
-      size_label <- format_size_display(file_size)
-	  
+    
+      # Use the path we already have (can be Shiny temp OR persisted mergen_uploads)
+      stable_path <- in_path
+    
+      # If Shiny’s upload temp disappears later it’s fine; preview code reads immediately,
+      # and server will persist a copy separately (processAndSummarizeFile).
       saved <- list(
-        name     = file_name,
-        datapath = stable_path,
-        size     = file_size,
-        type     = file_info$type %||% "",
-        id       = file_id,
+        name           = file_name,
+        datapath       = stable_path,
+        size           = file_size,
+        type           = file_info$type %||% "",
+        id             = file_id,
         persisted_path = stable_path
       )
 
@@ -567,14 +513,14 @@ fileManagerServer <- function(
 		module_values$files <- rbind(
 		  module_values$files,
 		  data.frame(
-				Dosya_Adi       = file_name,
-				Boyut           = size_label,
-				# Tür sütunu: ikon + etiket
-				Tur             = ext_icon_html(ext),
-				Yuklenme_Tarihi = uploaded_at %||% format_timestamp(),
-				Islemler        = actions,
-				Model_Baglam    = attach_cell,
-				stringsAsFactors = FALSE
+			Dosya_Adi       = file_name,
+			Boyut           = paste(round((file_size %||% 0) / 1024, 2), "KB"),
+			# Tür sütunu: ikon + etiket
+			Tur             = ext_icon_html(ext),
+			Yuklenme_Tarihi = format_timestamp(),
+			Islemler        = actions,
+			Model_Baglam    = attach_cell,
+			stringsAsFactors = FALSE
 		  )
 		)
     
@@ -683,6 +629,7 @@ fileManagerServer <- function(
       req(info)
 
       if (input$file_action$action == "view") {
+        file_to_preview(info)
         message_data(list(type = "view_file", content = info$id, html = NULL))
         message_trigger(message_trigger() + 1)
 
@@ -708,16 +655,13 @@ fileManagerServer <- function(
       req(info)
     
       # 1) Try to delete the persisted copy under mergen_uploads/user_<id>
-	  uid <- module_user_id_chr
+      uid <- isolate(module_user_id_chr)
       persisted <- try(resolve_uploaded_file(info$name, uid), silent = TRUE)
       if (!inherits(persisted, "try-error") && !is.null(persisted) && file.exists(persisted)) {
         try(unlink(persisted, force = TRUE), silent = TRUE)
       }
       # Remove from index
       if (!is.null(uid)) try(mergen_remove_from_index(uid, info$name), silent = TRUE)
-
-      ensure_session_registry()
-      session$userData$current_session_files[[info$name]] <- NULL
     
       # 2) Also drop any local temp we might have created (we no longer create one, but keep for safety)
       if (!is.null(session$userData$temp_files[[file_id]])) {
@@ -728,7 +672,8 @@ fileManagerServer <- function(
       # 3) Clean module state / table row
       file_removed(info)  # -> parent observers
       module_values$file_contents[[file_id]] <- NULL
-      idx <- which(grepl(paste0('data-file-id=\"', file_id, '\"'), module_values$files$Islemler))
+      unregister_session_file(info$name)      
+	  idx <- which(grepl(paste0('data-file-id=\"', file_id, '\"'), module_values$files$Islemler))
       if (length(idx) > 0) module_values$files <- module_values$files[-idx, , drop = FALSE]
     
       showToast(session, paste("Dosya silindi:", info$name), "warning")
@@ -753,7 +698,7 @@ fileManagerServer <- function(
       removeModal()
     
       # 1) Physically delete everything in the user's persisted bucket and clear index
-	  uid <- module_user_id_chr
+      uid <- isolate(module_user_id_chr)
       if (!is.null(uid)) try(mergen_clear_user_bucket(uid), silent = TRUE)
     
       # 2) Notify parent that all files are gone
@@ -890,6 +835,7 @@ fileManagerServer <- function(
     # expose to parent
 	list(
 	  get_bulk_files           = reactive({ bulk_files_to_process() }),
+	  get_file_to_preview      = reactive({ file_to_preview() }),
 	  message_trigger          = reactive({ message_trigger() }),
 	  get_message              = reactive({ message_data() }),
 	  file_contents            = reactive({ module_values$file_contents }),
