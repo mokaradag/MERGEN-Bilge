@@ -356,7 +356,7 @@ fileManagerServer <- function(
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
     bulk_files_to_process <- reactiveVal(NULL)
-	bulk_files_to_process <- reactiveVal(NULL)
+	file_to_preview       <- reactiveVal(NULL)
     file_removed          <- reactiveVal(NULL)
     all_files_cleared     <- reactiveVal(FALSE)
 
