@@ -153,6 +153,25 @@ safe_windows_short_path <- function(path, must_exist = FALSE) {
   gsub("\\\\", "/", short_raw, fixed = TRUE)
 }
 
+# Helper: keep UTF-8 path strings intact while normalizing separators
+normalize_utf8_path <- function(path, mustWork = FALSE) {
+  if (is.null(path) || length(path) == 0) {
+    return(path)
+  }
+
+  candidate <- as.character(path[1])
+  if (is.na(candidate) || !nzchar(candidate)) {
+    return(candidate)
+  }
+
+  normalized <- tryCatch(
+    normalizePath(candidate, winslash = "/", mustWork = mustWork),
+    error = function(e) candidate
+  )
+
+  enc2utf8(normalized)
+}
+
 # Ortamda AES-GCM var mı? Eski openssl sürümlerinde bu fonksiyon yoktur.
 HAVE_AES_GCM <- isTRUE("aes_gcm_encrypt" %in% getNamespaceExports("openssl"))
 
@@ -163,19 +182,17 @@ have_plotly_gg   <- (requireNamespace("plotly", quietly = TRUE) && requireNamesp
 # ===== Shared file store (same for main + workers) =====
 MERGEN_FILES_ROOT <- tools::R_user_dir("mergen", which = "data")
 dir.create(MERGEN_FILES_ROOT, showWarnings = FALSE, recursive = TRUE)
-MERGEN_FILES_ROOT <- safe_windows_short_path(MERGEN_FILES_ROOT, must_exist = dir.exists(MERGEN_FILES_ROOT))
+MERGEN_FILES_ROOT <- normalize_utf8_path(MERGEN_FILES_ROOT, mustWork = dir.exists(MERGEN_FILES_ROOT))
 
 # Always-persisted uploads base: ./mergen_uploads  (override with MCP_FILES_BASE if set)
-MERGEN_UPLOADS_DIR <- normalizePath(file.path(getwd(), "mergen_uploads"),
-                                    winslash = "/", mustWork = FALSE)
+MERGEN_UPLOADS_DIR <- file.path(getwd(), "mergen_uploads")
 dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
-MERGEN_UPLOADS_DIR <- safe_windows_short_path(MERGEN_UPLOADS_DIR, must_exist = dir.exists(MERGEN_UPLOADS_DIR))
+MERGEN_UPLOADS_DIR <- normalize_utf8_path(MERGEN_UPLOADS_DIR, mustWork = dir.exists(MERGEN_UPLOADS_DIR))
 
 # Base dir for persisted uploads (defaults to mergen_uploads/, can be overridden by MCP_FILES_BASE)
 MERGEN_MCP_BASE_DIR <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
-MERGEN_MCP_BASE_DIR <- normalizePath(MERGEN_MCP_BASE_DIR, winslash = "/", mustWork = FALSE)
 dir.create(MERGEN_MCP_BASE_DIR, showWarnings = FALSE, recursive = TRUE)
-MERGEN_MCP_BASE_DIR <- safe_windows_short_path(MERGEN_MCP_BASE_DIR, must_exist = dir.exists(MERGEN_MCP_BASE_DIR))
+MERGEN_MCP_BASE_DIR <- normalize_utf8_path(MERGEN_MCP_BASE_DIR, mustWork = dir.exists(MERGEN_MCP_BASE_DIR))
 
 # Registry lives under app data; now supports per-user buckets
 MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
@@ -191,10 +208,10 @@ mergen_register_uploaded_file <- function(src_path,
                                           persist_under_mcp_base = TRUE) {
   base_dir <- if (isTRUE(persist_under_mcp_base)) MERGEN_MCP_BASE_DIR else MERGEN_FILES_ROOT
   user_folder <- if (!is.null(user_id)) file.path(base_dir, paste0("user_", as.character(user_id))) else base_dir
-  dir.create(user_folder, showWarnings = FALSE, recursive = TRUE)
+  fs::dir_create(user_folder, recurse = TRUE)
 
-  src_norm  <- normalizePath(src_path, winslash = "/", mustWork = FALSE)
-  base_norm <- normalizePath(base_dir, winslash = "/", mustWork = FALSE)
+  src_norm  <- normalize_utf8_path(src_path, mustWork = FALSE)
+  base_norm <- normalize_utf8_path(base_dir, mustWork = dir.exists(base_dir))
 
   # If the source already lives under the chosen base, don't copy — just index it
   if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
@@ -202,9 +219,19 @@ mergen_register_uploaded_file <- function(src_path,
   } else {
     unique_name <- paste0(format(Sys.time(), "%Y%m%d%H%M%S"), "_", sprintf("%04d", sample(0:9999, 1)), "_", basename(as_name))
     dest <- file.path(user_folder, unique_name)
-    ok <- file.copy(src_path, dest, overwrite = TRUE)
-    if (!ok) stop("Dosya kopyalanamadı: ", src_path)
-    dest_norm <- normalizePath(dest, winslash = "/", mustWork = TRUE)
+    copy_ok <- tryCatch({
+      fs::file_copy(src_path, dest, overwrite = TRUE)
+      TRUE
+    }, error = function(e) {
+      message(sprintf("[UPLOAD] copy failed: %s", e$message))
+      FALSE
+    })
+
+    if (!isTRUE(copy_ok) || !fs::file_exists(dest)) {
+      stop(sprintf("Dosya kopyalanamadı: %s -> %s", src_path, dest))
+    }
+
+    dest_norm <- normalize_utf8_path(dest, mustWork = TRUE)
   }
 
   idx <- .load_index()
@@ -343,8 +370,8 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
 mergen_user_upload_dir <- function(user_id) {
   base <- getOption("mergen.mcp_base_dir", MERGEN_MCP_BASE_DIR)
   p <- file.path(base, sprintf("user_%s", as.character(user_id)))
-  dir.create(p, showWarnings = FALSE, recursive = TRUE)
-  normalizePath(p, winslash = "/", mustWork = FALSE)
+  fs::dir_create(p, recurse = TRUE)
+  normalize_utf8_path(p, mustWork = dir.exists(p))
 }
 
 mergen_list_user_files <- function(user_id) {
@@ -362,8 +389,9 @@ mergen_list_user_files <- function(user_id) {
       if (is.list(v) && !is.null(v$display) && nzchar(v$display)) v$display else k
     }, character(1))
 
+    norm_paths <- vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE)
     return(data.frame(
-      path = normalizePath(unname(paths), winslash = "/", mustWork = FALSE),
+      path = unname(norm_paths),
       name = unname(names_disp),
       stringsAsFactors = FALSE
     ))
@@ -374,7 +402,7 @@ mergen_list_user_files <- function(user_id) {
   if (!dir.exists(dir)) return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   paths <- list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
   data.frame(
-    path = normalizePath(paths, winslash = "/", mustWork = FALSE),
+    path = vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE),
     name = basename(paths),
     stringsAsFactors = FALSE
   )

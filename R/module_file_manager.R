@@ -93,6 +93,13 @@ fileManagerServer <- function(
     module_user_id <- user_id %||% session$userData$user_id %||% "unknown"
     module_user_id_chr <- as.character(module_user_id)
 
+    normalize_session_path <- function(path) {
+      if (is.null(path) || length(path) == 0) return(path)
+      candidate <- as.character(path[1])
+      if (!nzchar(candidate)) return(candidate)
+      enc2utf8(gsub("\\\\", "/", candidate, fixed = TRUE))
+    }
+
     ensure_session_registry <- function() {
       if (is.null(session$userData$current_session_files) ||
           !is.list(session$userData$current_session_files)) {
@@ -108,6 +115,7 @@ fileManagerServer <- function(
         normalizePath(fpath, winslash = "/", mustWork = FALSE),
         error = function(e) as.character(fpath %||% "")
       )
+      norm_path <- normalize_session_path(norm_path)
       if (!nzchar(norm_path) || !path_exists_relaxed(norm_path)) {
         return(invisible(FALSE))
       }
@@ -337,6 +345,7 @@ fileManagerServer <- function(
 
 			p <- tryCatch(normalizePath(p_raw, winslash = "/", mustWork = FALSE),
 						  error = function(e) p_raw)
+			p <- normalize_session_path(p)
 			if (!path_exists_relaxed(p)) next
 
 			finfo <- file.info(p)
@@ -450,7 +459,7 @@ fileManagerServer <- function(
       file_size <- suppressWarnings(as.numeric(file_info$size %||% NA_real_))
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
 
-      if (!nzchar(file_name) || !nzchar(in_path) || !file.exists(in_path)) {
+      if (!nzchar(file_name) || !nzchar(in_path) || !path_exists_relaxed(in_path)) {
         showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
         return(NULL)
       }
@@ -465,6 +474,7 @@ fileManagerServer <- function(
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
       stable_path <- tryCatch(normalizePath(in_path, winslash = "/", mustWork = FALSE),
                               error = function(e) in_path)
+	  stable_path <- normalize_session_path(stable_path)
 
       if (!is.finite(file_size) || is.na(file_size)) {
         file_size <- suppressWarnings(as.numeric(file.info(stable_path)$size))
