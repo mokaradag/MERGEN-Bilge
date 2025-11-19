@@ -76,21 +76,22 @@ copy_to_mcp_base <- function(upload, user_id) {
       default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
     )
   }
+  
   fs::dir_create(base, recurse = TRUE)
-  dir.create(base, recursive = TRUE, showWarnings = FALSE)
 
   src_norm  <- tryCatch(normalizePath(upload$datapath, winslash = "/", mustWork = FALSE), error = function(e) upload$datapath)
   base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
-  src_cmp  <- normalize_for_path_compare(src_norm)
-  base_cmp <- normalize_for_path_compare(base_norm)
-  if (nzchar(base_cmp) && (identical(src_cmp, base_cmp) || startsWith(src_cmp, paste0(base_cmp, "/")))) {
+
+  # If the uploaded temp path already lives under the MCP base, keep it as-is
+  base_prefix <- paste0(tolower(base_norm), "/")
+  src_norm_lower <- tolower(src_norm)
+  if (startsWith(src_norm_lower, base_prefix) || identical(src_norm_lower, tolower(base_norm))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
-    return(src_norm)
+    return(safe_windows_short_path(src_norm, must_exist = file.exists(src_norm)))
   }
 
   user_dir <- fs::path(base, sprintf("user_%s", as.character(user_id)))
   fs::dir_create(user_dir, recurse = TRUE)
-  dir.create(as.character(user_dir), recursive = TRUE, showWarnings = FALSE)
 
   ext <- tools::file_ext(upload$name)
   unique_tag <- digest::digest(file = upload$datapath, algo = "xxhash64")
@@ -110,13 +111,14 @@ copy_to_mcp_base <- function(upload, user_id) {
   }
 
   dest_chr <- as.character(dest)
+  dir.create(dirname(dest_chr), recursive = TRUE, showWarnings = FALSE)
 
   fs::file_copy(upload$datapath, dest_chr, overwrite = TRUE)
   if (!fs::file_exists(dest_chr)) {
     stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest_chr))
   }
   
-  dest_norm <- normalize_utf8_path(dest_chr, mustWork = TRUE)
+  dest_norm <- tryCatch(normalizePath(dest_chr, winslash = "/", mustWork = TRUE), error = function(e) dest_chr)
   safe_windows_short_path(dest_norm, must_exist = TRUE)
 }
 

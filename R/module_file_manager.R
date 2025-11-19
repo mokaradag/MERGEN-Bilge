@@ -348,13 +348,23 @@ fileManagerServer <- function(
 	  uid <- module_user_id_chr
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
+	  if (inherits(df, "try-error") || is.null(df)) {
+		fallback_paths <- list_user_folder_files()
+		if (!length(fallback_paths)) return(invisible(NULL))
+		df <- data.frame(
+		  path = fallback_paths,
+		  name = basename(fallback_paths),
+		  stringsAsFactors = FALSE
+		)
+	  }
+
+	  if (nrow(df) == 0) return(invisible(NULL))
+		  
 	  # Reset table + state, then rebuild via the shared upload handler
 	  module_values$files <- module_values$files[0, ]
 	  module_values$file_contents <- list()
 	  ensure_session_registry()
 	  session$userData$current_session_files <- list()
-
-	  if (inherits(df, "try-error") || is.null(df) || nrow(df) == 0) return(invisible(NULL))
 
 	  guess_mime <- function(path_or_name) {
 			if (!requireNamespace("mime", quietly = TRUE)) return("")
