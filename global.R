@@ -168,6 +168,9 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     normalizePath(candidate, winslash = "/", mustWork = mustWork),
     error = function(e) candidate
   )
+  
+  # Windows'ta özel karakter içeren yollar için kısa (8.3) formu tercih et
+  normalized <- safe_windows_short_path(normalized, must_exist = FALSE)
 
   enc2utf8(normalized)
 }
@@ -213,8 +216,21 @@ mergen_register_uploaded_file <- function(src_path,
   src_norm  <- normalize_utf8_path(src_path, mustWork = FALSE)
   base_norm <- normalize_utf8_path(base_dir, mustWork = dir.exists(base_dir))
 
+  normalize_for_compare <- function(p) {
+    if (is.null(p)) return("")
+    val <- tolower(as.character(p))
+    val <- gsub("\\\\", "/", val, fixed = TRUE)
+    val <- sub("^//\\?/", "", val, perl = TRUE)
+    val <- sub("^//(?=[A-Za-z]:)", "", val, perl = TRUE)
+    val <- gsub("(?<!:)//+", "/", val, perl = TRUE)
+    trimws(val)
+  }
+
+  src_cmp  <- normalize_for_compare(src_norm)
+  base_cmp <- normalize_for_compare(base_norm)
+  
   # If the source already lives under the chosen base, don't copy — just index it
-  if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
+  if (nzchar(base_cmp) && (identical(src_cmp, base_cmp) || startsWith(src_cmp, paste0(base_cmp, "/")))) {
     dest_norm <- src_norm
   } else {
     unique_name <- paste0(format(Sys.time(), "%Y%m%d%H%M%S"), "_", sprintf("%04d", sample(0:9999, 1)), "_", basename(as_name))
@@ -233,6 +249,8 @@ mergen_register_uploaded_file <- function(src_path,
 
     dest_norm <- normalize_utf8_path(dest, mustWork = TRUE)
   }
+  
+  dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
 
   idx <- .load_index()
   key <- tolower(basename(as_name))

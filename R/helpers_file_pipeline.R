@@ -11,7 +11,20 @@ Başlık, kısa açıklama (2-3 cümle) ve en fazla 5 madde halinde ana noktalar
                           "\nİçerik (kısaltılmış olabilir):\n", snippet))
   )
   tryCatch({
-    call_llm_with_retry(chat, reactiveValuesToList(settings), max_retries = 2)
+    res <- call_llm_with_retry(chat, reactiveValuesToList(settings), max_retries = 2)
+    if (is.list(res) && !is.null(res$content)) {
+      res <- res$content
+    }
+    if (!is.character(res) || length(res) == 0 || is.na(res[1])) {
+      res <- ""
+    } else {
+      res <- as.character(res)[1]
+    }
+    if (!nzchar(res)) {
+      paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
+    } else {
+      res
+    }
   }, error = function(e) {
     paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
   })

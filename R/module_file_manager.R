@@ -97,7 +97,31 @@ fileManagerServer <- function(
       if (is.null(path) || length(path) == 0) return(path)
       candidate <- as.character(path[1])
       if (!nzchar(candidate)) return(candidate)
-      enc2utf8(gsub("\\\\", "/", candidate, fixed = TRUE))
+      normalized <- tryCatch(
+        normalizePath(candidate, winslash = "/", mustWork = FALSE),
+        error = function(e) candidate
+      )
+      normalized <- safe_windows_short_path(normalized, must_exist = path_exists_relaxed(normalized))
+      enc2utf8(gsub("\\\\", "/", normalized, fixed = TRUE))
+    }
+
+    format_size_display <- function(bytes) {
+      val <- suppressWarnings(as.numeric(bytes))
+      if (!is.finite(val) || is.na(val) || val < 0) {
+        return("—")
+      }
+      units <- c("B", "KB", "MB", "GB", "TB")
+      if (val == 0) {
+        return("0 B")
+      }
+      pow <- floor(log(val, 1024))
+      pow <- max(0, min(pow, length(units) - 1))
+      adj <- val / (1024 ^ pow)
+      if (pow == 0) {
+        sprintf("%d %s", round(adj), units[pow + 1])
+      } else {
+        sprintf("%.2f %s", adj, units[pow + 1])
+      }
     }
 
     ensure_session_registry <- function() {
@@ -479,6 +503,8 @@ fileManagerServer <- function(
       if (!is.finite(file_size) || is.na(file_size)) {
         file_size <- suppressWarnings(as.numeric(file.info(stable_path)$size))
       }
+
+      size_label <- format_size_display(file_size)
 	  
       saved <- list(
         name     = file_name,
@@ -532,7 +558,7 @@ fileManagerServer <- function(
 		  module_values$files,
 		  data.frame(
 				Dosya_Adi       = file_name,
-				Boyut           = paste(round((file_size %||% 0) / 1024, 2), "KB"),
+				Boyut           = size_label,
 				# Tür sütunu: ikon + etiket
 				Tur             = ext_icon_html(ext),
 				Yuklenme_Tarihi = uploaded_at %||% format_timestamp(),

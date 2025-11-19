@@ -77,16 +77,20 @@ copy_to_mcp_base <- function(upload, user_id) {
     )
   }
   fs::dir_create(base, recurse = TRUE)
+  dir.create(base, recursive = TRUE, showWarnings = FALSE)
 
   src_norm  <- tryCatch(normalizePath(upload$datapath, winslash = "/", mustWork = FALSE), error = function(e) upload$datapath)
   base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
-  if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
+  src_cmp  <- normalize_for_path_compare(src_norm)
+  base_cmp <- normalize_for_path_compare(base_norm)
+  if (nzchar(base_cmp) && (identical(src_cmp, base_cmp) || startsWith(src_cmp, paste0(base_cmp, "/")))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
     return(src_norm)
   }
 
   user_dir <- fs::path(base, sprintf("user_%s", as.character(user_id)))
   fs::dir_create(user_dir, recurse = TRUE)
+  dir.create(as.character(user_dir), recursive = TRUE, showWarnings = FALSE)
 
   ext <- tools::file_ext(upload$name)
   unique_tag <- digest::digest(file = upload$datapath, algo = "xxhash64")
@@ -105,11 +109,15 @@ copy_to_mcp_base <- function(upload, user_id) {
     stop(sprintf("Kaynak dosya bulunamadı: %s", upload$datapath))
   }
 
-  fs::file_copy(upload$datapath, dest, overwrite = TRUE)
-  if (!fs::file_exists(dest)) {
-    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
+  dest_chr <- as.character(dest)
+
+  fs::file_copy(upload$datapath, dest_chr, overwrite = TRUE)
+  if (!fs::file_exists(dest_chr)) {
+    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest_chr))
   }
-  normalizePath(dest, winslash = "/", mustWork = TRUE)
+  
+  dest_norm <- normalize_utf8_path(dest_chr, mustWork = TRUE)
+  safe_windows_short_path(dest_norm, must_exist = TRUE)
 }
 
 # Is path under MCP base?
