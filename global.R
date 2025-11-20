@@ -2,6 +2,7 @@
 
 # Force UTF-8 encoding globally
 options(encoding = "UTF-8")
+options(future.rng.onMisuse = "ignore")
 try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
 
 # Limit suppression to only this locale call

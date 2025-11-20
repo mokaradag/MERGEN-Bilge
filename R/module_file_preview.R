@@ -17,7 +17,7 @@ filePreviewServer <- function(id) {
       ))
     })
 
-    output$download_preview_file <- downloadHandler(
+	output$download_preview_file <- downloadHandler(
       filename = function() {
         if (!is.null(file_storage$preview_file)) {
           return(file_storage$preview_file$name)
@@ -27,8 +27,11 @@ filePreviewServer <- function(id) {
       content = function(file) {
         if (!is.null(file_storage$preview_file) &&
             !is.null(file_storage$preview_file$datapath) &&
-            file.exists(file_storage$preview_file$datapath)) {
-          file.copy(file_storage$preview_file$datapath, file, overwrite = TRUE)
+            path_exists_relaxed(file_storage$preview_file$datapath)) {
+          tryCatch(
+            fs::file_copy(file_storage$preview_file$datapath, file, overwrite = TRUE),
+            error = function(e) file.copy(file_storage$preview_file$datapath, file, overwrite = TRUE)
+          )
         } else {
           writeLines("File not found", file)
         }
@@ -37,11 +40,10 @@ filePreviewServer <- function(id) {
 
 	open <- function(file_info) {
 	  tryCatch({
-			# --- Robust path resolution: supports datapath, path, or index lookup ---
 			datapath <- file_info$datapath %||% file_info$path %||%
 			  resolve_uploaded_file(file_info$name, session$userData$user_id)
 
-			if (is.null(datapath) || !nzchar(datapath) || !file.exists(datapath)) {
+			if (is.null(datapath) || !nzchar(datapath) || !path_exists_relaxed(datapath)) {
 			  showToast(session,
 									sprintf("Dosya bulunamadı veya erişilemiyor: %s", file_info$name %||% ""),
 									"error")

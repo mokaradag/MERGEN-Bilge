@@ -315,10 +315,12 @@ fileManagerServer <- function(
 			  next
 			}
 
+			f_size <- tryCatch(fs::file_info(p)$size, error = function(e) suppressWarnings(file.info(p)$size))
+
 			finfo <- list(
 			  name     = display_name,
 			  datapath = p,
-			  size     = suppressWarnings(file.info(p)$size),
+			  size     = f_size,
 			  type     = mime::guess_type(p) %||% tools::file_ext(display_name)
 			)
 
@@ -453,7 +455,7 @@ fileManagerServer <- function(
     process_uploaded_file <- function(file_info, generate_message = TRUE) {
       # Normalize incoming structure (Shiny df row OR list)
       file_name <- as.character(file_info$name %||% "")
-      file_size <- suppressWarnings(as.numeric(file_info$size %||% NA_real_))
+      file_size <- as.numeric(file_info$size %||% NA_real_)
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
       fm_debug("process_start", sprintf("name=%s path=%s msg=%s", file_name, in_path, generate_message))
 	  
@@ -560,14 +562,20 @@ fileManagerServer <- function(
       saved
     }
 
-    # Dynamic downloads
+	# Dynamic downloads
     observe({
       lapply(names(module_values$file_contents), function(fid) {
         local({
           my_id <- fid
           output[[paste0("download_", my_id)]] <- downloadHandler(
             filename = function() module_values$file_contents[[my_id]]$name,
-            content  = function(file) file.copy(module_values$file_contents[[my_id]]$datapath, file, overwrite = TRUE),
+            content  = function(file) {
+                src <- module_values$file_contents[[my_id]]$datapath
+                tryCatch(
+                    fs::file_copy(src, file, overwrite = TRUE),
+                    error = function(e) file.copy(src, file, overwrite = TRUE)
+                )
+            },
             contentType = "application/octet-stream"
           )
           outputOptions(output, paste0("download_", my_id), suspendWhenHidden = FALSE)
