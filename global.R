@@ -392,38 +392,88 @@ mergen_user_upload_dir <- function(user_id) {
   normalize_utf8_path(p, mustWork = dir.exists(p))
 }
 
-mergen_list_user_files <- function(user_id) {
+mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   idx <- .load_index()
   uid <- as.character(user_id)
   bucket <- idx[[uid]]
+  
+  drop_stale_entries <- function(keys_to_remove) {
+    if (!length(keys_to_remove)) return(invisible(FALSE))
+    idx_local <- .load_index()
+    if (is.null(idx_local[[uid]])) return(invisible(FALSE))
+    for (key in unique(keys_to_remove)) {
+      idx_local[[uid]][[key]] <- NULL
+    }
+    if (is.list(idx_local[[uid]]) && !length(idx_local[[uid]])) {
+      idx_local[[uid]] <- NULL
+    }
+    .save_index(idx_local)
+    TRUE
+  }
 
   if (!is.null(bucket) && length(bucket) > 0) {
-    # Support both legacy string values and new list entries {path, display}
-    paths <- vapply(bucket, function(v) {
-      if (is.list(v) && !is.null(v$path)) v$path else as.character(v)
-    }, character(1))
-    names_disp <- vapply(names(bucket), function(k) {
-      v <- bucket[[k]]
-      if (is.list(v) && !is.null(v$display) && nzchar(v$display)) v$display else k
-    }, character(1))
+    entries <- lapply(names(bucket), function(key) {
+      val <- bucket[[key]]
+      list(
+        key = key,
+        path = normalize_utf8_path(if (is.list(val) && !is.null(val$path)) val$path else as.character(val), mustWork = FALSE),
+        name = {
+          disp <- if (is.list(val) && !is.null(val$display)) val$display else NA_character_
+          disp <- disp %||% NA_character_
+          if (!is.na(disp) && nzchar(disp)) disp else key
+        }
+      )
+    })
 
-    norm_paths <- vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE)
-    return(data.frame(
-      path = unname(norm_paths),
-      name = unname(names_disp),
-      stringsAsFactors = FALSE
-    ))
+    df <- do.call(rbind, lapply(entries, function(rec) {
+      data.frame(key = rec$key, path = rec$path, name = rec$name, stringsAsFactors = FALSE)
+    }))
+
+    exists_vec <- vapply(df$path, path_exists_relaxed, logical(1))
+
+    if (prune_missing && any(!exists_vec)) {
+      missing_keys <- unique(df$key[!exists_vec])
+      missing_names <- unique(df$name[!exists_vec])
+      log_warn("[INDEX] {length(missing_keys)} kayıt bulunamadı (user={uid}): {paste(missing_names, collapse = ', ')} — indeks temizleniyor")
+      drop_stale_entries(missing_keys)
+    }
+
+    df <- df[exists_vec, , drop = FALSE]
+    if (nrow(df) > 0) {
+      out <- data.frame(
+        path = df$path,
+        name = df$name,
+        stringsAsFactors = FALSE
+      )
+      attr(out, "source") <- "index"
+      attr(out, "count") <- nrow(out)
+      log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: index)")
+      return(out)
+    }
   }
 
   # Fallback: plain folder listing (pre-index or very old data)
   dir <- mergen_user_upload_dir(user_id)
-  if (!dir.exists(dir)) return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
+  if (!dir.exists(dir)) {
+    log_info("[INDEX] user={uid} için klasör bulunamadı: {dir}")
+    return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
+  }
+  
   paths <- list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
-  data.frame(
+  if (!length(paths)) {
+    log_info("[INDEX] user={uid} klasörü boş: {dir}")
+    return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
+  }
+
+  out <- data.frame(
     path = vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE),
     name = basename(paths),
     stringsAsFactors = FALSE
   )
+  attr(out, "source") <- "filesystem"
+  attr(out, "count") <- nrow(out)
+  log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: filesystem)")
+  out
 }
 
 mergen_remove_from_index <- function(user_id, filename) {

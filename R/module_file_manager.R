@@ -294,20 +294,25 @@ fileManagerServer <- function(
 			fm_debug("refresh_error", msg)
 			return(invisible(NULL))
 	  }
+	  
+      source_tag <- attr(df, "source") %||% "unknown"
 
 	  if (is.null(df) || nrow(df) == 0) {
-			fm_debug("refresh_done", "no persisted files found")
+		fm_debug("refresh_done", sprintf("no persisted files found (source=%s)", source_tag))
 		return(invisible(NULL))
 	  }
 
-      fm_debug("refresh_found", sprintf("%d candidate file(s)", nrow(df)))
+	  fm_debug("refresh_found", sprintf("%d candidate file(s) (source=%s)", nrow(df), source_tag))
 		  
 	  for (i in seq_len(nrow(df))) {
 			p <- df$path[i]
 			display_name <- df$name[i]
 			exists_now <- path_exists_relaxed(p)
 			fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
-			if (!exists_now) next
+			if (!exists_now) {
+			  fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
+			  next
+			}
 
 			finfo <- list(
 			  name     = display_name,
