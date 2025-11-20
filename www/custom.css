@@ -3034,34 +3034,36 @@ table.dataTable thead th:first-child::after {
 }
 
 #bulk_upload_div .input-group {
-  display: flex !important;
+  display: inline-flex !important;
   flex-direction: row !important;
   align-items: center !important;
   justify-content: center !important;
-  width: 100% !important;
-  gap: 6px !important;
+  width: auto !important;
+  gap: 8px !important;
   position: relative !important;
   z-index: 2;
+  flex-wrap: nowrap !important;
 }
 
 #bulk_upload_div .btn-file,
 #bulk_upload_div input[readonly] {
-  height: 38px;
+  height: 44px;
   vertical-align: middle;
 }
 
 #bulk_upload_div .btn-file {
   margin: 0 !important;
-  border-radius: 6px !important; 
+  border-radius: 6px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   flex: 0 0 auto !important;
-  height: 40px !important;
+  height: 44px !important;
   padding: 0 20px !important;
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  background-color: var(--primary-color) !important;
+  border: 1px solid var(--primary-color) !important;
   color: white !important;
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
 }
 
 #bulk_upload_div .btn-file i {
@@ -3072,10 +3074,12 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div input[type="text"][readonly] {
   margin: 0 !important;
   border-radius: 6px !important;
-  height: 40px !important;
+  height: 44px !important;
   flex: 1 1 auto !important;
+  min-width: 260px !important;
+  max-width: 360px !important;
   background-color: rgba(0, 0, 0, 0.2) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
   color: #e0e0e0 !important;
   text-align: left !important;
   padding-left: 12px !important;
@@ -3085,9 +3089,9 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div .shiny-file-input-progress {
   width: 100% !important;
   margin-top: 16px !important; /* Place below the inputs */
-  height: 6px !important;
-  border-radius: 3px;
-  background-color: rgba(255, 255, 255, 0.1);
+  height: 12px !important;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.12);
   position: relative !important;
   z-index: 1;
   clear: both;
@@ -3096,7 +3100,7 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div .shiny-file-input-progress .progress-bar {
   height: 100%;
   background-color: var(--primary-color);
-  border-radius: 3px;
+  border-radius: 6px;
 }
 
 .file-browse-icon {
