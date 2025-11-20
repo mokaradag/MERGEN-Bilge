@@ -2906,74 +2906,91 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div {
   text-align: center;
   width: 100%;
-  max-width: 500px;
+  max-width: 600px;
   margin: 0 auto;
 }
 
-.main-drop-zone .shiny-input-container {
-  display: inline-block;
-  position: relative !important;
-  text-align: center;
-  left: -10px !important;
+#bulk_upload_div .shiny-input-container {
+  width: 100% !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 0 !important;
 }
 
-.main-drop-zone .input-group {
-  display: inline-flex !important;
-  align-items: stretch !important;
+#bulk_upload_div .input-group {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
   justify-content: center !important;
-  gap: 6px !important;
-  width: auto;
+  width: 100% !important;
+  gap: 10px !important;
+  position: relative !important;
+  z-index: 2;
   flex-wrap: nowrap !important;
 }
 
-.main-drop-zone .btn-file {
+#bulk_upload_div .btn-file {
   margin: 0 !important;
-  border-radius: 6px !important;
-  min-height: 44px !important;
+  border-radius: 8px !important;
   height: 44px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 6px 20px !important;
+  padding: 0 24px !important;
   background-color: var(--primary-color) !important;
   border: 1px solid var(--primary-color) !important;
   color: white !important;
-  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.2);
+  flex-shrink: 0 !important;
+  float: none !important;
 }
 
-.main-drop-zone .btn-file i {
+#bulk_upload_div .btn-file i {
   margin-right: 8px !important;
+  line-height: 1 !important;
 }
 
-.main-drop-zone input[readonly] {
-  border-radius: 6px !important;
+#bulk_upload_div input[type="text"][readonly] {
+  margin: 0 !important;
+  border-radius: 8px !important;
   height: 44px !important;
-  width: 100% !important;
-  min-width: 320px !important;
-  max-width: 480px !important;
+  flex: 0 1 350px !important;
+  width: auto !important;
+  min-width: 200px !important;
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #e0e0e0 !important;
   text-align: left !important;
-  padding: 10px 12px !important;
-  line-height: 1.25 !important;
-  vertical-align: middle !important;
+  padding-left: 12px !important;
+  box-shadow: none !important;
 }
 
-.shiny-file-input-progress {
-  display: block !important;
+#bulk_upload_div .shiny-file-input-progress {
   width: 100% !important;
-  max-width: 480px !important;
-  margin: 14px auto 0 auto !important;
-  height: 18px !important;
-  border-radius: 6px;
-  background-color: rgba(255,255,255,0.1);
+  max-width: 450px !important;
+  margin: 16px auto 0 auto !important;
+  height: 24px !important;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.1);
+  display: block !important;
+  visibility: visible !important;
 }
 
-.shiny-file-input-progress .progress-bar {
+#bulk_upload_div .shiny-file-input-progress .progress-bar {
   height: 100%;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  font-size: 12px;
+  line-height: 24px !important;
+  font-size: 13px !important;
+  font-weight: 500;
+  border-radius: 12px;
+  background-color: var(--success-color) !important;
+  color: #000 !important;
+}
+
+.shiny-file-input-progress span {
+  display: block;
+  width: 100%;
+  text-align: center;
 }
 
 /* Settings column layout */
