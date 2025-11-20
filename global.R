@@ -175,6 +175,28 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
   enc2utf8(normalized)
 }
 
+# Guard against misconfigured base directories (e.g., relative paths that already
+# include the working directory but miss a leading slash). If we detect a
+# working-directory prefix without a leading separator, force it to be treated
+# as an absolute path and fall back to the default when resolution fails.
+sanitize_base_dir <- function(path_candidate, fallback_dir) {
+  raw <- as.character(path_candidate %||% "")
+  if (!nzchar(raw)) return(fallback_dir)
+
+  # If the path is not absolute but starts with the current working directory
+  # (minus leading slash), prepend '/' so normalizePath does not duplicate it.
+  is_absolute <- grepl("^[A-Za-z]:|^/", raw)
+  if (!is_absolute) {
+    wd_no_slash <- sub("^/+", "", getwd())
+    if (startsWith(raw, wd_no_slash)) {
+      raw <- paste0("/", raw)
+    }
+  }
+
+  normalized <- normalize_utf8_path(raw, mustWork = FALSE)
+  if (!nzchar(normalized)) fallback_dir else normalized
+}
+
 # Ortamda AES-GCM var mı? Eski openssl sürümlerinde bu fonksiyon yoktur.
 HAVE_AES_GCM <- isTRUE("aes_gcm_encrypt" %in% getNamespaceExports("openssl"))
 
@@ -193,9 +215,16 @@ dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
 MERGEN_UPLOADS_DIR <- normalize_utf8_path(MERGEN_UPLOADS_DIR, mustWork = dir.exists(MERGEN_UPLOADS_DIR))
 
 # Base dir for persisted uploads (defaults to mergen_uploads/, can be overridden by MCP_FILES_BASE)
-MERGEN_MCP_BASE_DIR <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
-dir.create(MERGEN_MCP_BASE_DIR, showWarnings = FALSE, recursive = TRUE)
-MERGEN_MCP_BASE_DIR <- normalize_utf8_path(MERGEN_MCP_BASE_DIR, mustWork = dir.exists(MERGEN_MCP_BASE_DIR))
+MERGEN_MCP_BASE_DIR <- sanitize_base_dir(Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR), MERGEN_UPLOADS_DIR)
+MERGEN_MCP_BASE_DIR <- tryCatch({
+  dir.create(MERGEN_MCP_BASE_DIR, showWarnings = FALSE, recursive = TRUE)
+  normalize_utf8_path(MERGEN_MCP_BASE_DIR, mustWork = dir.exists(MERGEN_MCP_BASE_DIR))
+}, error = function(e) {
+  message(sprintf("[MCP BASE] '%s' oluşturulamadı (%s) – yerel 'mergen_uploads' klasörüne düşüldü.",
+                  MERGEN_MCP_BASE_DIR, conditionMessage(e)))
+  dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
+  normalize_utf8_path(MERGEN_UPLOADS_DIR, mustWork = dir.exists(MERGEN_UPLOADS_DIR))
+})
 
 # Registry lives under app data; now supports per-user buckets
 MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
@@ -388,7 +417,20 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
 mergen_user_upload_dir <- function(user_id) {
   base <- getOption("mergen.mcp_base_dir", MERGEN_MCP_BASE_DIR)
   p <- file.path(base, sprintf("user_%s", as.character(user_id)))
-  fs::dir_create(p, recurse = TRUE)
+  created <- tryCatch({
+    fs::dir_create(p, recurse = TRUE)
+    TRUE
+  }, error = function(e) {
+    log_warn("[INDEX] Kullanıcı klasörü oluşturulamadı ({conditionMessage(e)}); varsayılan dizine düşülüyor")
+    FALSE
+  })
+
+  if (!isTRUE(created) || !dir.exists(p)) {
+    fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
+    fs::dir_create(fallback, recurse = TRUE)
+    return(normalize_utf8_path(fallback, mustWork = dir.exists(fallback)))
+  }
+  
   normalize_utf8_path(p, mustWork = dir.exists(p))
 }
 
