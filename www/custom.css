@@ -2836,13 +2836,10 @@ table.dataTable thead th:first-child::after {
   color: var(--text-primary) !important;
 }
 
-/* Turkish text for upload complete */
-.shiny-file-input-progress:after {
-  content: "Yükleme Tamamlandı" !important;
-}
-
-.shiny-file-input-progress .progress-bar:after {
-  content: none !important;
+#bulk_upload_div .shiny-file-input-progress .progress-bar {
+  color: white !important;
+  font-weight: 600 !important;
+  text-align: center !important;
 }
 
 /* Cinematic Intro */
@@ -2931,15 +2928,6 @@ table.dataTable thead th:first-child::after {
   gap: 16px;
 }
 
-/* File input spacing fix */
-.shiny-input-container label.btn-file {
-  margin-left: 2px !important;
-}
-
-.shiny-input-container input[readonly] {
-  margin-right: 20px !important;
-}
-
 .checkbox-wrapper {
   display: flex !important;
   align-items: center !important;
@@ -2965,26 +2953,6 @@ table.dataTable thead th:first-child::after {
   line-height: 1 !important;
 }
 
-/* File input specific spacing */
-.shiny-input-container label[for="bulk_upload"] {
-  margin-right: 4px !important;
-  margin-bottom: 0 !important;
-}
-
-.shiny-input-container input[type="text"][readonly] {
-  margin-left: 0 !important;
-}
-
-/* Ensure inline display */
-.shiny-input-container .input-group {
-  display: inline-flex !important;
-  align-items: center !important;
-}
-
-.shiny-input-container .input-group .btn {
-  margin-right: 4px !important;
-}
-
 #bulk_upload_div .form-group {
   margin-bottom: 0;
   position: relative;
@@ -2996,10 +2964,15 @@ table.dataTable thead th:first-child::after {
   align-items: center !important;
   justify-content: center !important;
   width: 100% !important;
-  gap: 12px !important;
+  gap: 16px !important;
   position: relative !important;
   z-index: 2;
   flex-wrap: nowrap !important;
+}
+
+#bulk_upload_div .input-group > * {
+  position: relative !important;
+  float: none !important;
 }
 
 #bulk_upload_div .btn-file,
@@ -3047,7 +3020,7 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div .shiny-file-input-progress {
   width: 100% !important;
   margin-top: 16px !important;
-  height: 28px !important;
+  height: 36px !important;
   border-radius: 6px;
   background-color: rgba(255, 255, 255, 0.12);
   position: relative !important;
@@ -3055,12 +3028,18 @@ table.dataTable thead th:first-child::after {
   clear: both;
   display: flex !important;
   align-items: center !important;
+  font-size: 14px !important;
+  line-height: 36px !important;
 }
 
 #bulk_upload_div .shiny-file-input-progress .progress-bar {
   height: 100%;
   background-color: var(--primary-color);
   border-radius: 6px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
 }
 
 .file-browse-icon {
