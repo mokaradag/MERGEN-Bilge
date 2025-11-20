@@ -320,39 +320,27 @@ fileManagerServer <- function(
 			  next
 			}
 			
-			# 'path_exists_relaxed' dosyanın var olduğunu biliyor (exists_now=TRUE),
-            # ancak 'p' değişkeni hala yanlış slash (örn. Linux'ta ters slash) içeriyor olabilir.
-            # Burada çalışan doğru yol varyasyonunu (p_resolved) açıkça bulup 'p'ye atıyoruz.
+			# Windows UNC yolları (\\server\share) veritabanından tek slash (/server/share) olarak gelebilir.
+            # Bu durumda R dosyayı bulamaz. Eğer dosya bu haliyle erişilemiyorsa, başına slash ekleyip (//server/share) 
+            # UNC formatına çevirerek deniyoruz.
             
-            # 1. Önce tüm ters slash'leri düz slash yap (R ve Linux için güvenli)
-            p_slash <- gsub("\\\\", "/", p)
+            # 1. Tüm ters slash'leri R standardı olan düz slash'e çevir
+            p_fixed <- gsub("\\\\", "/", p)
             
-            # 2. Olası adayları belirle (orijinal ve düzeltilmiş)
-            candidates <- unique(c(p, p_slash))
-            p_resolved <- NULL
-            
-            # 3. Hangi adayın gerçekten diskte erişilebilir olduğunu bul
-            for (cand in candidates) {
-               if (isTRUE(try(file.exists(cand), silent=TRUE)) || isTRUE(try(fs::file_exists(cand), silent=TRUE))) {
-                 p_resolved <- cand
-                 break
-               }
+            # 2. Eğer dosya bu haliyle doğrudan bulunamıyorsa onarmayı dene
+            if (!file.exists(p_fixed) && !fs::file_exists(p_fixed)) {
+              
+              # 3. Eğer yol tek slash ile başlıyorsa (örn: /rehisds/...) ama çift slash değilse
+              if (grepl("^/[^/]", p_fixed)) {
+                 p_unc <- paste0("/", p_fixed) # Başına slash ekle -> //rehisds/...
+                 # Eğer bu UNC varyasyonu diskte varsa, yolu güncelle
+                 if (file.exists(p_unc) || fs::file_exists(p_unc)) {
+                    p_fixed <- p_unc
+                 }
+              }
             }
-            
-            # 4. Çalışan yolu bulduysak 'p' değişkenini güncelle ve normalize et
-            if (!is.null(p_resolved)) {
-               # Normalize etmeyi dene (tam yol için)
-               p_norm <- tryCatch(normalizePath(p_resolved, winslash = "/", mustWork = TRUE), error = function(e) NULL)
-               if (!is.null(p_norm)) {
-                 p <- p_norm
-               } else {
-                 # Normalize çalışmazsa bile (örn. yetki sorunu), çalışan varyantı kullan
-                 p <- p_resolved
-               }
-            } else {
-               # Fallback: Hiçbiri 'file.exists' geçmediyse, en azından düz slash'li hali kullan
-               p <- p_slash
-            }
+            # 4. Onarılmış yolu ana değişkene ata
+            p <- p_fixed
 
             # CHANGE: Robust size calculation that handles NA/errors gracefully
 			f_size <- tryCatch({
