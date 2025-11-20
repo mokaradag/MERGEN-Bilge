@@ -320,12 +320,38 @@ fileManagerServer <- function(
 			  next
 			}
 			
-			# Dosya varlığı doğrulandı (exists_now=TRUE), ancak yol stringi (p)
-            # base R fonksiyonları veya readxl için tam uyumlu olmayabilir (örn. sembolik link, encoding).
-            # Bu yüzden yolu işletim sistemi için canonical hale getiriyoruz.
-            p_norm <- tryCatch(normalizePath(p, winslash = "/", mustWork = TRUE), error = function(e) NULL)
-            if (!is.null(p_norm)) {
-              p <- p_norm
+			# 'path_exists_relaxed' dosyanın var olduğunu biliyor (exists_now=TRUE),
+            # ancak 'p' değişkeni hala yanlış slash (örn. Linux'ta ters slash) içeriyor olabilir.
+            # Burada çalışan doğru yol varyasyonunu (p_resolved) açıkça bulup 'p'ye atıyoruz.
+            
+            # 1. Önce tüm ters slash'leri düz slash yap (R ve Linux için güvenli)
+            p_slash <- gsub("\\\\", "/", p)
+            
+            # 2. Olası adayları belirle (orijinal ve düzeltilmiş)
+            candidates <- unique(c(p, p_slash))
+            p_resolved <- NULL
+            
+            # 3. Hangi adayın gerçekten diskte erişilebilir olduğunu bul
+            for (cand in candidates) {
+               if (isTRUE(try(file.exists(cand), silent=TRUE)) || isTRUE(try(fs::file_exists(cand), silent=TRUE))) {
+                 p_resolved <- cand
+                 break
+               }
+            }
+            
+            # 4. Çalışan yolu bulduysak 'p' değişkenini güncelle ve normalize et
+            if (!is.null(p_resolved)) {
+               # Normalize etmeyi dene (tam yol için)
+               p_norm <- tryCatch(normalizePath(p_resolved, winslash = "/", mustWork = TRUE), error = function(e) NULL)
+               if (!is.null(p_norm)) {
+                 p <- p_norm
+               } else {
+                 # Normalize çalışmazsa bile (örn. yetki sorunu), çalışan varyantı kullan
+                 p <- p_resolved
+               }
+            } else {
+               # Fallback: Hiçbiri 'file.exists' geçmediyse, en azından düz slash'li hali kullan
+               p <- p_slash
             }
 
             # CHANGE: Robust size calculation that handles NA/errors gracefully
