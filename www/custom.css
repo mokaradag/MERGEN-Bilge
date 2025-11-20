@@ -2993,7 +2993,7 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div .input-group {
   display: flex !important;
   flex-direction: row !important;
-  align-items: stretch !important;
+  align-items: center !important;
   justify-content: center !important;
   width: 100% !important;
   gap: 12px !important;
@@ -3015,6 +3015,7 @@ table.dataTable thead th:first-child::after {
   align-items: center !important;
   justify-content: center !important;
   flex: 0 0 auto !important;
+  order: -1 !important;
   height: 44px !important;
   padding: 0 20px !important;
   background-color: var(--primary-color) !important;
@@ -3045,13 +3046,15 @@ table.dataTable thead th:first-child::after {
 
 #bulk_upload_div .shiny-file-input-progress {
   width: 100% !important;
-  margin-top: 16px !important; /* Place below the inputs */
-  height: 12px !important;
+  margin-top: 16px !important;
+  height: 28px !important;
   border-radius: 6px;
   background-color: rgba(255, 255, 255, 0.12);
   position: relative !important;
   z-index: 1;
   clear: both;
+  display: flex !important;
+  align-items: center !important;
 }
 
 #bulk_upload_div .shiny-file-input-progress .progress-bar {
