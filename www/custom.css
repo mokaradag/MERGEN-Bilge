@@ -2841,11 +2841,6 @@ table.dataTable thead th:first-child::after {
   content: "Yükleme Tamamlandı" !important;
 }
 
-/* Turkish text for file upload progress */
-.shiny-file-input-progress .progress-bar {
-  font-family: var(--font-primary) !important;
-}
-
 .shiny-file-input-progress .progress-bar:after {
   content: none !important;
 }
@@ -2910,7 +2905,9 @@ table.dataTable thead th:first-child::after {
 /* Center file upload controls */
 #bulk_upload_div {
   text-align: center;
-    
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .main-drop-zone .shiny-input-container {
@@ -2923,18 +2920,51 @@ table.dataTable thead th:first-child::after {
 .main-drop-zone .input-group {
   display: inline-flex !important;
   align-items: center !important;
-  gap: 110px !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  width: 100%;
 }
 
 .main-drop-zone .btn-file {
-  margin-right: 8px !important;
-  margin-top: 5px !important;
-  min-width: 110px !important;
-  min-height: 38px !important;
-  padding: 6px 18px !important;
+  margin-right: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  min-height: 42px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 6px 20px !important;
 }
+
+.main-drop-zone .btn-file i {
+  margin-right: 8px !important;
+}
+
 .main-drop-zone input[readonly] {
-  max-width: 200px !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  height: 42px !important;
+  width: 100% !important;
+  min-width: 300px !important;
+  max-width: 450px !important;
+  margin-left: -1px !important;
+  text-align: left !important;
+  padding-left: 12px !important;
+}
+
+.shiny-file-input-progress {
+  display: block !important;
+  width: 100% !important;
+  max-width: 450px !important; /* Match input width approx */
+  margin: 12px auto 0 auto !important; /* Top margin pushes it down */
+  height: 6px !important;
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.1);
+}
+
+.shiny-file-input-progress .progress-bar {
+  height: 100%;
+  border-radius: 4px;
 }
 
 /* Settings column layout */

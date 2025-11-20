@@ -201,6 +201,48 @@ fileManagerServer <- function(
 	  fm_debug("detach", sprintf("removed %s from session context", file_name))
 	}
 	
+	# MCP ayarı değiştiğinde (Örn: Excel modu açıldığında) mevcut seçimleri doğrula
+    observeEvent(mcp_enabled_reactive(), {
+      if (isTRUE(mcp_enabled_reactive())) {
+        # 1. Mevcut seçili dosyaları kontrol et
+        attached_ids <- names(module_values$files_in_context)
+        removed_any <- FALSE
+        
+        for (fid in attached_ids) {
+           info <- module_values$file_contents[[fid]]
+           if (is.null(info)) next
+           
+           ext <- tolower(tools::file_ext(info$name))
+           # Excel değilse kaldır
+           if (!ext %in% c("xls", "xlsx")) {
+              module_values$files_in_context[[fid]] <- NULL
+              detach_in_parent(info$name)
+              # Arayüzdeki tiki kaldır
+              session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+              removed_any <- TRUE
+           }
+        }
+        
+        if (removed_any) {
+           showToast(session, "MCP Excel modu açıldığı için uyumsuz dosyalar seçimden kaldırıldı.", "warning")
+        }
+        
+        # 2. Eğer birden fazla Excel dosyası seçiliyse, sadece birini bırak (MCP kuralı)
+        remaining <- names(module_values$files_in_context)
+        if (length(remaining) > 1) {
+           # İlkini tut, diğerlerini kaldır
+           to_remove <- remaining[-1]
+           for (fid in to_remove) {
+              module_values$files_in_context[[fid]] <- NULL
+              info <- module_values$file_contents[[fid]]
+              detach_in_parent(info$name)
+              session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+           }
+           showToast(session, "MCP Excel modu tek dosya destekler. Fazla seçimler kaldırıldı.", "warning")
+        }
+      }
+    }, ignoreInit = TRUE)
+
 	observeEvent(input$attach_toggled, {
 	  req(input$attach_toggled)
 	  fid <- input$attach_toggled$id
@@ -210,8 +252,18 @@ fileManagerServer <- function(
 	  req(info)
 
 	if (checked) {
-		# MCP ON? allow only one
+		# MCP ON? allow only one AND check extension
 		if (isTRUE(mcp_enabled_reactive())) {
+		  
+          # Türkçe: Uzantı kontrolü - Sadece Excel
+          ext <- tolower(tools::file_ext(fname))
+          if (!ext %in% c("xls", "xlsx")) {
+             showToast(session, "MCP: Excel modunda sadece Excel dosyaları (.xls, .xlsx) seçilebilir.", "warning")
+             # Tiki hemen geri al
+             session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+             return()
+          }
+		  
 		  # Uncheck all other selected ones
 		  others <- names(module_values$files_in_context)
 		  others <- setdiff(others, fid)
@@ -227,6 +279,7 @@ fileManagerServer <- function(
 			showToast(session, "MCP açıkken sadece 1 dosya eklenebilir.", "warning")
 		  }
 		}
+		
 		# Mark this one selected
 			module_values$files_in_context[[fid]] <- TRUE
 			attach_in_parent(info)
