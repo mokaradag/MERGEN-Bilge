@@ -115,13 +115,18 @@ fileManagerServer <- function(
     register_session_file <- function(filename, fpath) {
       ensure_session_registry()
       fname <- as.character(filename %||% "")
-      if (!nzchar(fname)) return(invisible(FALSE))
-	  
-      norm_path <- tryCatch(
-        normalize_mcp_path(fpath, must_exist = FALSE),
-        error = function(e) as.character(fpath %||% "")
-      )
-	if (!nzchar(norm_path)) return(invisible(FALSE))
+		if (!nzchar(fname)) return(invisible(FALSE))
+			  
+			  # CHANGE: Trust existing paths to avoid UNC duplication errors
+			  norm_path <- if (path_exists_relaxed(fpath)) {
+				as.character(fpath)
+			  } else {
+				tryCatch(
+				  normalize_mcp_path(fpath, must_exist = FALSE),
+				  error = function(e) as.character(fpath %||% "")
+				)
+			  }
+			if (!nzchar(norm_path)) return(invisible(FALSE))
 	
       session$userData$current_session_files[[fname]] <- list(
         name = fname,
@@ -315,7 +320,15 @@ fileManagerServer <- function(
 			  next
 			}
 
-			f_size <- tryCatch(fs::file_info(p)$size, error = function(e) suppressWarnings(file.info(p)$size))
+            # CHANGE: Robust size calculation that handles NA/errors gracefully
+			f_size <- tryCatch({
+               s <- fs::file_info(p)$size
+               if (is.na(s)) stop("NA size")
+               as.numeric(s)
+            }, error = function(e) {
+               s <- suppressWarnings(file.info(p)$size)
+               if (is.na(s)) 0 else as.numeric(s)
+            })
 
 			finfo <- list(
 			  name     = display_name,
@@ -478,11 +491,16 @@ fileManagerServer <- function(
       # ALWAYS use a stable “display id” for the table; do not depend on a temp copy
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
     
-      # Use the path we already have (can be Shiny temp OR persisted mergen_uploads)
-      stable_path <- tryCatch(
-        normalize_mcp_path(in_path, must_exist = FALSE),
-        error = function(e) in_path
-      )
+		# Use the path we already have (can be Shiny temp OR persisted mergen_uploads)
+      # CHANGE: Do NOT re-normalize if path already works (fixes UNC duplication)
+      stable_path <- if (path_exists_relaxed(in_path)) {
+         in_path
+      } else {
+         tryCatch(
+          normalize_mcp_path(in_path, must_exist = FALSE),
+          error = function(e) in_path
+        )
+      }
     
       # If Shiny’s upload temp disappears later it’s fine; preview code reads immediately,
       # and server will persist a copy separately (processAndSummarizeFile).

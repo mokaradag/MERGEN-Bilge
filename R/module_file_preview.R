@@ -47,10 +47,12 @@ filePreviewServer <- function(id) {
 			  showToast(session,
 									sprintf("Dosya bulunamadı veya erişilemiyor: %s", file_info$name %||% ""),
 									"error")
-			  return(invisible(NULL))
+				return(invisible(NULL))
 			}
 
-		datapath <- normalizePath(datapath, winslash = "/", mustWork = FALSE)
+        # CHANGE: Removed normalizePath which was corrupting UNC paths. 
+        # Just ensure slashes are consistent for R.
+		datapath <- gsub("\\\\", "/", datapath)
 
 		# Keep a normalized copy for the downloader as well
 		file_storage$preview_file <- list(
