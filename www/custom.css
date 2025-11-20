@@ -2906,7 +2906,7 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div {
   text-align: center;
   width: 100%;
-  max-width: 600px;
+  max-width: 500px;
   margin: 0 auto;
 }
 
@@ -2955,8 +2955,8 @@ table.dataTable thead th:first-child::after {
 .shiny-file-input-progress {
   display: block !important;
   width: 100% !important;
-  max-width: 450px !important; /* Match input width approx */
-  margin: 12px auto 0 auto !important; /* Top margin pushes it down */
+  max-width: 450px !important;
+  margin: 12px auto 0 auto !important;
   height: 6px !important;
   border-radius: 4px;
   background-color: rgba(255,255,255,0.1);
@@ -3028,16 +3028,20 @@ table.dataTable thead th:first-child::after {
   margin-right: 4px !important;
 }
 
-/* File upload alignment fix */
 #bulk_upload_div .form-group {
-  display: inline-flex;
-  align-items: center;
   margin-bottom: 0;
+  position: relative;
 }
 
 #bulk_upload_div .input-group {
-  display: flex;
-  align-items: center;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  gap: 6px !important;
+  position: relative !important;
+  z-index: 2;
 }
 
 #bulk_upload_div .btn-file,
@@ -3047,9 +3051,52 @@ table.dataTable thead th:first-child::after {
 }
 
 #bulk_upload_div .btn-file {
-  display: flex;
-  align-items: center;
-  margin-right: 8px;
+  margin: 0 !important;
+  border-radius: 6px !important; 
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  height: 40px !important;
+  padding: 0 20px !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+}
+
+#bulk_upload_div .btn-file i {
+  margin-right: 8px !important;
+  line-height: 1 !important;
+}
+
+#bulk_upload_div input[type="text"][readonly] {
+  margin: 0 !important;
+  border-radius: 6px !important;
+  height: 40px !important;
+  flex: 1 1 auto !important;
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #e0e0e0 !important;
+  text-align: left !important;
+  padding-left: 12px !important;
+  box-shadow: none !important;
+}
+
+#bulk_upload_div .shiny-file-input-progress {
+  width: 100% !important;
+  margin-top: 16px !important; /* Place below the inputs */
+  height: 6px !important;
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.1);
+  position: relative !important;
+  z-index: 1;
+  clear: both;
+}
+
+#bulk_upload_div .shiny-file-input-progress .progress-bar {
+  height: 100%;
+  background-color: var(--primary-color);
+  border-radius: 3px;
 }
 
 .file-browse-icon {
