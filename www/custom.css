@@ -2919,21 +2919,26 @@ table.dataTable thead th:first-child::after {
 
 .main-drop-zone .input-group {
   display: inline-flex !important;
-  align-items: center !important;
+  align-items: stretch !important;
   justify-content: center !important;
-  gap: 0 !important;
-  width: 100%;
+  gap: 6px !important;
+  width: auto;
+  flex-wrap: nowrap !important;
 }
 
 .main-drop-zone .btn-file {
-  margin-right: 0 !important;
-  border-top-right-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  min-height: 42px !important;
+  margin: 0 !important;
+  border-radius: 6px !important;
+  min-height: 44px !important;
+  height: 44px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   padding: 6px 20px !important;
+  background-color: var(--primary-color) !important;
+  border: 1px solid var(--primary-color) !important;
+  color: white !important;
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
 }
 
 .main-drop-zone .btn-file i {
@@ -2941,30 +2946,34 @@ table.dataTable thead th:first-child::after {
 }
 
 .main-drop-zone input[readonly] {
-  border-top-left-radius: 0 !important;
-  border-bottom-left-radius: 0 !important;
-  height: 42px !important;
+  border-radius: 6px !important;
+  height: 44px !important;
   width: 100% !important;
-  min-width: 300px !important;
-  max-width: 450px !important;
-  margin-left: -1px !important;
+  min-width: 320px !important;
+  max-width: 480px !important;
   text-align: left !important;
-  padding-left: 12px !important;
+  padding: 10px 12px !important;
+  line-height: 1.25 !important;
+  vertical-align: middle !important;
 }
 
 .shiny-file-input-progress {
   display: block !important;
   width: 100% !important;
-  max-width: 450px !important;
-  margin: 12px auto 0 auto !important;
-  height: 6px !important;
-  border-radius: 4px;
+  max-width: 480px !important;
+  margin: 14px auto 0 auto !important;
+  height: 18px !important;
+  border-radius: 6px;
   background-color: rgba(255,255,255,0.1);
 }
 
 .shiny-file-input-progress .progress-bar {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 /* Settings column layout */
