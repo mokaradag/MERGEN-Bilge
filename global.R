@@ -197,6 +197,41 @@ sanitize_base_dir <- function(path_candidate, fallback_dir) {
   if (!nzchar(normalized)) fallback_dir else normalized
 }
 
+# Preserve UNC-like network paths without forcing normalizePath (which can
+# incorrectly prepend the working directory on non-Windows systems).
+normalize_mcp_path <- function(path, must_exist = FALSE) {
+  if (is.null(path) || length(path) == 0) return("")
+
+  candidate <- trimws(as.character(path[1] %||% ""))
+  if (!nzchar(candidate)) return("")
+
+  # UNC prefix (e.g., \\server/share or //server/share) should be left intact
+  if (grepl("^\\\\", candidate) || grepl("^//", candidate)) {
+    cleaned <- gsub("\\\\", "/", candidate, fixed = TRUE)
+    cleaned <- sub("^/{3,}", "//", cleaned)
+    return(cleaned)
+  }
+
+  normalize_utf8_path(candidate, mustWork = must_exist)
+}
+
+resolve_mcp_base_dir <- function() {
+  raw <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
+  base <- normalize_mcp_path(raw, must_exist = FALSE)
+
+  created <- tryCatch({
+    fs::dir_create(base, recurse = TRUE)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!isTRUE(created) || !dir.exists(base)) {
+    base <- MERGEN_UPLOADS_DIR
+    fs::dir_create(base, recurse = TRUE)
+  }
+
+  normalize_mcp_path(base, must_exist = dir.exists(base))
+}
+
 # Ortamda AES-GCM var mı? Eski openssl sürümlerinde bu fonksiyon yoktur.
 HAVE_AES_GCM <- isTRUE("aes_gcm_encrypt" %in% getNamespaceExports("openssl"))
 
@@ -215,16 +250,7 @@ dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
 MERGEN_UPLOADS_DIR <- normalize_utf8_path(MERGEN_UPLOADS_DIR, mustWork = dir.exists(MERGEN_UPLOADS_DIR))
 
 # Base dir for persisted uploads (defaults to mergen_uploads/, can be overridden by MCP_FILES_BASE)
-MERGEN_MCP_BASE_DIR <- sanitize_base_dir(Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR), MERGEN_UPLOADS_DIR)
-MERGEN_MCP_BASE_DIR <- tryCatch({
-  dir.create(MERGEN_MCP_BASE_DIR, showWarnings = FALSE, recursive = TRUE)
-  normalize_utf8_path(MERGEN_MCP_BASE_DIR, mustWork = dir.exists(MERGEN_MCP_BASE_DIR))
-}, error = function(e) {
-  message(sprintf("[MCP BASE] '%s' oluşturulamadı (%s) – yerel 'mergen_uploads' klasörüne düşüldü.",
-                  MERGEN_MCP_BASE_DIR, conditionMessage(e)))
-  dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
-  normalize_utf8_path(MERGEN_UPLOADS_DIR, mustWork = dir.exists(MERGEN_UPLOADS_DIR))
-})
+MERGEN_MCP_BASE_DIR <- resolve_mcp_base_dir()
 
 # Registry lives under app data; now supports per-user buckets
 MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
@@ -238,12 +264,12 @@ mergen_register_uploaded_file <- function(src_path,
                                           as_name = basename(src_path),
                                           user_id = NULL,
                                           persist_under_mcp_base = TRUE) {
-  base_dir <- if (isTRUE(persist_under_mcp_base)) MERGEN_MCP_BASE_DIR else MERGEN_FILES_ROOT
+  base_dir <- if (isTRUE(persist_under_mcp_base)) resolve_mcp_base_dir() else MERGEN_FILES_ROOT
   user_folder <- if (!is.null(user_id)) file.path(base_dir, paste0("user_", as.character(user_id))) else base_dir
   fs::dir_create(user_folder, recurse = TRUE)
 
-  src_norm  <- normalize_utf8_path(src_path, mustWork = FALSE)
-  base_norm <- normalize_utf8_path(base_dir, mustWork = dir.exists(base_dir))
+  src_norm  <- normalize_mcp_path(src_path, must_exist = FALSE)
+  base_norm <- normalize_mcp_path(base_dir, must_exist = dir.exists(base_dir))
 
   normalize_for_compare <- function(p) {
     if (is.null(p)) return("")
@@ -276,7 +302,7 @@ mergen_register_uploaded_file <- function(src_path,
       stop(sprintf("Dosya kopyalanamadı: %s -> %s", src_path, dest))
     }
 
-    dest_norm <- normalize_utf8_path(dest, mustWork = TRUE)
+    dest_norm <- normalize_mcp_path(dest, must_exist = TRUE)
   }
   
   dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
@@ -415,7 +441,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
 
 # ---- USER UPLOADS HELPERS (persistence) ----
 mergen_user_upload_dir <- function(user_id) {
-  base <- getOption("mergen.mcp_base_dir", MERGEN_MCP_BASE_DIR)
+  base <- resolve_mcp_base_dir()
   p <- file.path(base, sprintf("user_%s", as.character(user_id)))
   created <- tryCatch({
     fs::dir_create(p, recurse = TRUE)
@@ -428,10 +454,10 @@ mergen_user_upload_dir <- function(user_id) {
   if (!isTRUE(created) || !dir.exists(p)) {
     fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
     fs::dir_create(fallback, recurse = TRUE)
-    return(normalize_utf8_path(fallback, mustWork = dir.exists(fallback)))
+    return(normalize_mcp_path(fallback, must_exist = dir.exists(fallback)))
   }
   
-  normalize_utf8_path(p, mustWork = dir.exists(p))
+  normalize_mcp_path(p, must_exist = dir.exists(p))
 }
 
 mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
@@ -471,7 +497,41 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
       data.frame(key = rec$key, path = rec$path, name = rec$name, stringsAsFactors = FALSE)
     }))
 
-    exists_vec <- vapply(df$path, path_exists_relaxed, logical(1))
+    rehydrated <- list()
+    exists_vec <- vapply(seq_len(nrow(df)), function(i) {
+      p <- df$path[i]
+      exists_now <- path_exists_relaxed(p)
+
+      if (!exists_now) {
+        alt <- tryCatch({
+          candidate <- file.path(mergen_user_upload_dir(user_id), basename(p %||% df$name[i]))
+          normalize_mcp_path(candidate, must_exist = dir.exists(dirname(candidate)))
+        }, error = function(e) NULL)
+
+        if (!is.null(alt) && path_exists_relaxed(alt)) {
+          df$path[i] <<- alt
+          rehydrated[[df$key[i]]] <<- alt
+          exists_now <- TRUE
+          log_info("[INDEX] {df$name[i]} yolu yeniden oluşturuldu -> {alt}")
+        }
+      }
+
+      exists_now
+    }, logical(1))
+
+    if (length(rehydrated)) {
+      idx_local <- .load_index()
+      if (!is.null(idx_local[[uid]])) {
+        for (k in names(rehydrated)) {
+          if (is.list(idx_local[[uid]][[k]])) {
+            idx_local[[uid]][[k]]$path <- rehydrated[[k]]
+          } else if (!is.null(idx_local[[uid]][[k]])) {
+            idx_local[[uid]][[k]] <- rehydrated[[k]]
+          }
+        }
+        .save_index(idx_local)
+      }
+    }
 
     if (prune_missing && any(!exists_vec)) {
       missing_keys <- unique(df$key[!exists_vec])

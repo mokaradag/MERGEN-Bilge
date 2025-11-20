@@ -76,12 +76,14 @@ copy_to_mcp_base <- function(upload, user_id) {
       default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
     )
   }
+  base <- normalize_mcp_path(base, must_exist = FALSE)
   fs::dir_create(base, recurse = TRUE)
 
   # Skip re-copy if already under base
-  src_norm  <- tryCatch(normalizePath(upload$datapath, winslash = "/", mustWork = FALSE), error = function(e) upload$datapath)
-  base_norm <- tryCatch(normalizePath(base,          winslash = "/", mustWork = FALSE), error = function(e) base)
-  if (startsWith(tolower(src_norm), tolower(paste0(base_norm, "/")))) {
+  src_norm  <- normalize_mcp_path(upload$datapath, must_exist = FALSE)
+  base_norm <- normalize_mcp_path(base, must_exist = dir.exists(base))
+
+  if (startsWith(normalize_for_path_compare(src_norm), paste0(normalize_for_path_compare(base_norm), "/"))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
     return(src_norm)
   }
@@ -107,7 +109,7 @@ copy_to_mcp_base <- function(upload, user_id) {
   if (!fs::file_exists(dest)) {
     stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
   }
-  normalizePath(dest, winslash = "/", mustWork = TRUE)
+  normalize_mcp_path(dest, must_exist = TRUE)
 }
 
 # Is path under MCP base?
@@ -115,9 +117,10 @@ is_under_mcp_base <- function(p) {
   base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) return(FALSE)
-  np <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
-  nb <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
-  startsWith(tolower(np), tolower(paste0(nb, "/"))) || tolower(np) == tolower(nb)
+  np <- normalize_mcp_path(p, must_exist = FALSE)
+  nb <- normalize_mcp_path(base, must_exist = dir.exists(base))
+  startsWith(normalize_for_path_compare(np), paste0(normalize_for_path_compare(nb), "/")) ||
+  normalize_for_path_compare(np) == normalize_for_path_compare(nb)
 }
 
 # Turn a data.frame into simple CSV markdown (used for quick previews)
