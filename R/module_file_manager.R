@@ -457,10 +457,11 @@ fileManagerServer <- function(
       in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
       fm_debug("process_start", sprintf("name=%s path=%s msg=%s", file_name, in_path, generate_message))
 	  
-      if (!nzchar(file_name) || !nzchar(in_path) || !file.exists(in_path)) {
+      # CHANGE: Use path_exists_relaxed instead of file.exists to handle long paths/UNC/spaces
+      if (!nzchar(file_name) || !nzchar(in_path) || !path_exists_relaxed(in_path)) {
         showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
         fm_debug("process_abort", sprintf("invalid path for %s", file_name))
-		return(NULL)
+		    return(NULL)
       }
     
       # Validate type
@@ -469,7 +470,7 @@ fileManagerServer <- function(
       if (!file_ext %in% allowed_extensions) {
         showToast(session, sprintf("'%s' dosya türü desteklenmiyor!", file_ext), "error")
         fm_debug("process_abort", sprintf("unsupported extension: %s", file_ext))
-		return(NULL)
+		    return(NULL)
       }
 
       # ALWAYS use a stable “display id” for the table; do not depend on a temp copy
@@ -493,7 +494,7 @@ fileManagerServer <- function(
       )
 
       register_session_file(file_name, stable_path)
-	  fm_debug("process_saved", sprintf("id=%s persisted=%s", file_id, stable_path))
+	    fm_debug("process_saved", sprintf("id=%s persisted=%s", file_id, stable_path))
 	  
       module_values$file_contents[[file_id]] <- saved
       session$userData$temp_files[[file_id]] <- NULL  # no temp we own here

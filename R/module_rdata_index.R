@@ -27,11 +27,12 @@ rdataIndexServer <- function(id) {
 	  )
 	})
 
-    observeEvent(input$refresh_all, {
+	observeEvent(input$refresh_all, {
       showNotification("Klasörler yeniden taranıyor…", duration = NULL, type = "message", id = "idx_note")
+        # Added seed = TRUE to fix the warning
 		promises::future_promise({
 		  helpers_rdata_lake$rdata_refresh_all()
-		}) %...>% (function(.) {
+		}, seed = TRUE) %...>% (function(.) {
         removeNotification("idx_note")
         showNotification("RData lake güncellendi.", type = "message")
         output$status <- renderText({
