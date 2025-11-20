@@ -116,8 +116,9 @@ fileManagerServer <- function(
       ensure_session_registry()
       fname <- as.character(filename %||% "")
       if (!nzchar(fname)) return(invisible(FALSE))
+	  
       norm_path <- tryCatch(
-        normalizePath(fpath, winslash = "/", mustWork = FALSE),
+        normalize_mcp_path(fpath, must_exist = FALSE),
         error = function(e) as.character(fpath %||% "")
       )
 	if (!nzchar(norm_path)) return(invisible(FALSE))
@@ -475,7 +476,10 @@ fileManagerServer <- function(
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
     
       # Use the path we already have (can be Shiny temp OR persisted mergen_uploads)
-      stable_path <- in_path
+      stable_path <- tryCatch(
+        normalize_mcp_path(in_path, must_exist = FALSE),
+        error = function(e) in_path
+      )
     
       # If Shiny’s upload temp disappears later it’s fine; preview code reads immediately,
       # and server will persist a copy separately (processAndSummarizeFile).
