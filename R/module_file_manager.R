@@ -319,6 +319,14 @@ fileManagerServer <- function(
 			  fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
 			  next
 			}
+			
+			# Dosya varlığı doğrulandı (exists_now=TRUE), ancak yol stringi (p)
+            # base R fonksiyonları veya readxl için tam uyumlu olmayabilir (örn. sembolik link, encoding).
+            # Bu yüzden yolu işletim sistemi için canonical hale getiriyoruz.
+            p_norm <- tryCatch(normalizePath(p, winslash = "/", mustWork = TRUE), error = function(e) NULL)
+            if (!is.null(p_norm)) {
+              p <- p_norm
+            }
 
             # CHANGE: Robust size calculation that handles NA/errors gracefully
 			f_size <- tryCatch({
