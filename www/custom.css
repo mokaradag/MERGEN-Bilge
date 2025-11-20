@@ -2918,75 +2918,6 @@ table.dataTable thead th:first-child::after {
   margin-bottom: 0 !important;
 }
 
-#bulk_upload_div .input-group {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 100% !important;
-  gap: 10px !important;
-  position: relative !important;
-  z-index: 2;
-  flex-wrap: nowrap !important;
-}
-
-#bulk_upload_div .btn-file {
-  margin: 0 !important;
-  border-radius: 8px !important;
-  height: 44px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 0 24px !important;
-  background-color: var(--primary-color) !important;
-  border: 1px solid var(--primary-color) !important;
-  color: white !important;
-  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.2);
-  flex-shrink: 0 !important;
-  float: none !important;
-}
-
-#bulk_upload_div .btn-file i {
-  margin-right: 8px !important;
-  line-height: 1 !important;
-}
-
-#bulk_upload_div input[type="text"][readonly] {
-  margin: 0 !important;
-  border-radius: 8px !important;
-  height: 44px !important;
-  flex: 0 1 350px !important;
-  width: auto !important;
-  min-width: 200px !important;
-  background-color: rgba(0, 0, 0, 0.2) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  color: #e0e0e0 !important;
-  text-align: left !important;
-  padding-left: 12px !important;
-  box-shadow: none !important;
-}
-
-#bulk_upload_div .shiny-file-input-progress {
-  width: 100% !important;
-  max-width: 450px !important;
-  margin: 16px auto 0 auto !important;
-  height: 24px !important;
-  border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.1);
-  display: block !important;
-  visibility: visible !important;
-}
-
-#bulk_upload_div .shiny-file-input-progress .progress-bar {
-  height: 100%;
-  line-height: 24px !important;
-  font-size: 13px !important;
-  font-weight: 500;
-  border-radius: 12px;
-  background-color: var(--success-color) !important;
-  color: #000 !important;
-}
-
 .shiny-file-input-progress span {
   display: block;
   width: 100%;
@@ -3060,12 +2991,12 @@ table.dataTable thead th:first-child::after {
 }
 
 #bulk_upload_div .input-group {
-  display: inline-flex !important;
+  display: flex !important;
   flex-direction: row !important;
-  align-items: center !important;
+  align-items: stretch !important;
   justify-content: center !important;
-  width: auto !important;
-  gap: 8px !important;
+  width: 100% !important;
+  gap: 12px !important;
   position: relative !important;
   z-index: 2;
   flex-wrap: nowrap !important;
