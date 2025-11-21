@@ -1350,9 +1350,12 @@ body {
 .dark-date-picker .input-group-addon,
 .dark-date-picker .input-group-prepend > .input-group-text,
 .dark-date-picker .input-group-append > .input-group-text {
-  background-color: var(--background-light) !important;
-  border-color: var(--border-color) !important;
+  background-color: transparent !important;
+  border: none !important;
   color: var(--text-muted) !important;
+  font-size: 20px !important;
+  font-weight: 500 !important;
+  padding: 0 8px !important;
 }
 
 /* Font size and response style dropdowns */
@@ -2566,9 +2569,11 @@ table.dataTable tbody tr.selected {
 
 /* Date range separator */
 .date-filter .input-group-addon {
-  background-color: var(--background-light) !important;
-  border-color: var(--border-color) !important;
+  background-color: transparent !important;
+  border: none !important;
   color: var(--text-secondary) !important;
+  font-size: 20px !important;
+  padding: 0 2px !important;
 }
 
 /* Search box dark theme */
