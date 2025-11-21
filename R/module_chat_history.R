@@ -220,62 +220,57 @@ historyServer <- function(id, all_messages) {
       schedule_prefetch()
     }, ignoreNULL = FALSE, priority = 1)
 	
-    filtered_history <- shiny::bindCache(
-      reactive({
-        req(all_messages())
-        trigger_refresh()
-
-        history_list <- list()
-        chats <- all_messages()
-        chat_ids <- names(chats)
-
-        ensure_history_cache(chat_ids, chats)
-
-        cache <- messages_cache()
-        for (chat_id in chat_ids) {
-          cached <- cache[[chat_id]]
-          if (!is.null(cached) && length(cached$rows) > 0) {
-            history_list <- c(history_list, cached$rows)
-          }
-        }
-
-        if (length(history_list) == 0) {
-          return(data.frame(
-            Chat_ID = character(0),
-            Tarih = character(0),
-            Soru = character(0),
-            Cevap = character(0)
-          ))
-        }
-
-        history_data <- data.table::rbindlist(history_list)
-
-        # Apply date filter
-        if (!is.null(input$date_range) && length(input$date_range) == 2) {
-          dates <- tryCatch(
-            as.Date(history_data$Tarih, format = "%d.%m.%Y - %H:%M"),
-            error = function(e) as.Date(NA)
-          )
-
-          if (any(!is.na(dates))) {
-            mask <- dates >= input$date_range[1] & dates <= input$date_range[2]
-            history_data <- history_data[mask & !is.na(mask), ]
-          }
-        }
-
-        # Sort by date
-        if (nrow(history_data) > 0) {
-          history_data[, sort_ts := as.POSIXct(Tarih, format = "%d.%m.%Y - %H:%M", tz = Sys.timezone())]
-          data.table::setorder(history_data, -sort_ts)
-          history_data[, sort_ts := NULL]
-        }
-
-        return(history_data)
-      }),
-      input$date_range,
-      messages_cache(),
+    filtered_history <- reactive({
+      req(all_messages())
       trigger_refresh()
-    )
+
+      history_list <- list()
+      chats <- all_messages()
+      chat_ids <- names(chats)
+
+      ensure_history_cache(chat_ids, chats)
+
+      cache <- messages_cache()
+      for (chat_id in chat_ids) {
+        cached <- cache[[chat_id]]
+        if (!is.null(cached) && length(cached$rows) > 0) {
+          history_list <- c(history_list, cached$rows)
+        }
+	  }
+
+      if (length(history_list) == 0) {
+        return(data.frame(
+          Chat_ID = character(0),
+          Tarih = character(0),
+          Soru = character(0),
+          Cevap = character(0)
+        ))
+      }
+
+      history_data <- data.table::rbindlist(history_list)
+
+      # Apply date filter
+      if (!is.null(input$date_range) && length(input$date_range) == 2) {
+        dates <- tryCatch(
+          as.Date(history_data$Tarih, format = "%d.%m.%Y - %H:%M"),
+          error = function(e) as.Date(NA)
+        )
+
+        if (any(!is.na(dates))) {
+          mask <- dates >= input$date_range[1] & dates <= input$date_range[2]
+          history_data <- history_data[mask & !is.na(mask), ]
+        }
+	  }
+
+      # Sort by date
+      if (nrow(history_data) > 0) {
+        history_data[, sort_ts := as.POSIXct(Tarih, format = "%d.%m.%Y - %H:%M", tz = Sys.timezone())]
+        data.table::setorder(history_data, -sort_ts)
+        history_data[, sort_ts := NULL]
+      }
+
+      return(history_data)
+    })
     
     output$history_table <- renderDataTable({
       DT::datatable(

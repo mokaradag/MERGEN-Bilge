@@ -1483,6 +1483,28 @@ kbd {
   min-width: 300px;
 }
 
+/* Tarih aralığı girişlerini yan yana hizala */
+.history-controls .input-daterange {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.history-controls .input-daterange input.form-control {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.history-controls .input-daterange .input-group-addon,
+.history-controls .input-daterange .input-group-prepend > .input-group-text,
+.history-controls .input-daterange .input-group-append > .input-group-text {
+  height: 38px;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
 .history-actions {
   display: flex;
   gap: 12px;
