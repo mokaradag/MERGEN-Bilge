@@ -16,6 +16,26 @@ tagList(
 		  /* center the header cell of the last column (Model Bağlamı) */
 		  .files-table-card table.dataTable thead th:last-child { text-align: center !important; }
 		"))),
+    # JS to translate progress bar text and apply success class
+    tags$script(HTML("
+      $(document).ready(function() {
+        var observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' || mutation.type === 'characterData') {
+              var $bar = $(mutation.target).closest('.progress-bar');
+              if ($bar.length && $bar.text().indexOf('Upload complete') > -1) {
+                $bar.text('Yükleme tamamlandı');
+                $bar.addClass('upload-complete-success');
+              }
+            }
+          });
+        });
+        var target = document.getElementById('bulk_upload_div');
+        if (target) {
+          observer.observe(target, { childList: true, subtree: true, characterData: true });
+        }
+      });
+    ")),
     div(
       class = "content-container",
       style = "padding-right: 20px;",
@@ -40,14 +60,15 @@ tagList(
             class = "main-drop-zone",
             tags$i(class = "fas fa-upload fa-3x"),
             h4("Dosyaları buraya sürükleyin veya göz atın"),
-            div(
+			div(
               id = "bulk_upload_div",
               fileInput(
                 ns("bulk_upload"),
                 label = NULL,
                 multiple = TRUE,
                 buttonLabel = tagList(icon("folder-open"), "Göz At"),
-                placeholder = "Henüz dosya seçilmedi"
+                placeholder = "Henüz dosya seçilmedi",
+                accept = c(".txt", ".pdf", ".docx", ".xlsx", ".xls", ".csv", ".json", ".R", ".r", ".py", ".md", ".log", ".xml", ".html")
               )
             ),
             p(class = "upload-hint", "Birden fazla dosya seçebilirsiniz"),
@@ -690,9 +711,11 @@ fileManagerServer <- function(
       shinyjs::runjs(sprintf("$('#%s').show();", ns("execute_bulk_upload_container")))
     }, ignoreInit = TRUE)
 
-    observeEvent(input$clear_pending_files, {
+	observeEvent(input$clear_pending_files, {
       shinyjs::reset(ns("bulk_upload"))
       shinyjs::runjs(sprintf("$('#%s').hide();", ns("execute_bulk_upload_container")))
+      # Explicitly hide/reset progress bar
+      shinyjs::runjs("$('#bulk_upload_div .progress').hide();")
       session$sendCustomMessage('resetBulkUploadCaption', list())
       showToast(session, "Seçili dosyalar kaldırıldı.", "info")
     })
@@ -706,11 +729,13 @@ fileManagerServer <- function(
     }, ignoreInit = TRUE)
 
     # bulk upload button
-    observeEvent(input$execute_bulk_upload, {
+	observeEvent(input$execute_bulk_upload, {
       req(input$bulk_upload)
 
       files_df <- input$bulk_upload
       shinyjs::reset(ns("bulk_upload"))
+      # Explicitly hide/reset progress bar
+      shinyjs::runjs("$('#bulk_upload_div .progress').hide();")
       session$sendCustomMessage('resetBulkUploadCaption', list())
       shinyjs::runjs(sprintf("$('#%s').hide();", ns("execute_bulk_upload_container")))
 
