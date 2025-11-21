@@ -1,4 +1,3 @@
-
     let globalMessageObserver = null;
     
     /* NEW: global widescreen flag and helpers */
@@ -1245,7 +1244,7 @@
           if ($label.length) {
             const text = ($label.text() || '').trim();
             if (/upload complete/i.test(text)) {
-              $label.text('Yükleme tamamlandı');
+              $label.text('Aktarım için hazır');
               $bar.addClass('upload-complete');
             } else if (/uploading/i.test(text)) {
               $label.text('Yükleniyor...');
@@ -1322,12 +1321,14 @@
                   const $grp = $input.closest('.input-group');
                   $input.val('');
                   $grp.find('.form-control').val('').attr('placeholder', 'Henüz dosya seçilmedi');
-                }
+                 }
                 const $progress = $('#bulk_upload_div .shiny-file-input-progress');
                 $progress.hide();
                 $progress.find('.progress-bar').removeClass('upload-complete');
                 $('#bulk_upload_div .progress').hide();
                 $progress.find('.progress-bar').css('width', '0%');
+                $progress.find('.progress-bar').text('');
+                $progress.find('span').text('');
             });
 
             // Handle clear button click
@@ -1346,6 +1347,8 @@
               $progress.find('.progress-bar').removeClass('upload-complete');
               $('#bulk_upload_div .progress').hide();
               $progress.find('.progress-bar').css('width', '0%');
+              $progress.find('.progress-bar').text('');
+              $progress.find('span').text('');
             });
 
           } else {

@@ -24,7 +24,7 @@ tagList(
             if (mutation.type === 'childList' || mutation.type === 'characterData') {
               var $bar = $(mutation.target).closest('.progress-bar');
               if ($bar.length && $bar.text().indexOf('Upload complete') > -1) {
-                $bar.text('Yükleme tamamlandı');
+                $bar.text('Aktarım için hazır');
                 $bar.addClass('upload-complete-success');
               }
             }

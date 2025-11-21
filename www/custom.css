@@ -1870,8 +1870,8 @@ table.dataTable tbody tr.selected {
   color: var(--text-secondary);
   padding: 20px;
   border-radius: 8px;
-  max-height: 60vh;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.6;
