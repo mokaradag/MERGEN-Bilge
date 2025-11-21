@@ -215,8 +215,6 @@ historyServer <- function(id, all_messages) {
         return()
       }
 	  
-      ensure_history_cache(ids, chats)
-
       current_queue <- pending_prefetch()
       pending_prefetch(unique(c(current_queue, ids)))
       schedule_prefetch()
