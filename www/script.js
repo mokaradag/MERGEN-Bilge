@@ -1204,11 +1204,11 @@
         dragCounterFM++;
         if (dragCounterFM === 1) $fmDrop.addClass('dragging');
       });
-      $(document).on('dragleave', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) {␊
-        e.preventDefault(); e.stopPropagation();␊
-        dragCounterFM--;␊
-        if (dragCounterFM <= 0) { dragCounterFM = 0; $fmDrop.removeClass('dragging'); }␊
-      });␊
+      $(document).on('dragleave', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        dragCounterFM--;
+        if (dragCounterFM <= 0) { dragCounterFM = 0; $fmDrop.removeClass('dragging'); }
+      });
       $(document).on('dragover', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) { e.preventDefault(); e.stopPropagation(); });
         $(document).on('drop', '#file_manager_module-main_drop_zone', function (e) {
           e.preventDefault(); e.stopPropagation();
