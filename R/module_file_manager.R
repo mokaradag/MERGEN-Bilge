@@ -558,9 +558,16 @@ fileManagerServer <- function(
       allowed_extensions <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
       file_ext <- tolower(tools::file_ext(file_name))
       if (!file_ext %in% allowed_extensions) {
-        showToast(session, sprintf("'%s' dosya türü desteklenmiyor!", file_ext), "error")
+        showToast(
+          session,
+          sprintf(
+            "'%s' uzantılı dosya desteklenmiyor. Desteklenen türler: TXT, PDF, DOCX, XLSX, XLS, CSV, JSON, R, PY, MD, LOG, XML, HTML.",
+            toupper(file_ext)
+          ),
+          "warning"
+        )
         fm_debug("process_abort", sprintf("unsupported extension: %s", file_ext))
-		    return(NULL)
+		return(NULL)
       }
 
       # ALWAYS use a stable “display id” for the table; do not depend on a temp copy

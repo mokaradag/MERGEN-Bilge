@@ -1204,11 +1204,11 @@
         dragCounterFM++;
         if (dragCounterFM === 1) $fmDrop.addClass('dragging');
       });
-      $(document).on('dragleave', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) {
-        e.preventDefault(); e.stopPropagation();
-        dragCounterFM--;
-        if (dragCounterFM <= 0) { dragCounterFM = 0; $fmDrop.removeClass('dragging'); }
-      });
+      $(document).on('dragleave', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) {␊
+        e.preventDefault(); e.stopPropagation();␊
+        dragCounterFM--;␊
+        if (dragCounterFM <= 0) { dragCounterFM = 0; $fmDrop.removeClass('dragging'); }␊
+      });␊
       $(document).on('dragover', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) { e.preventDefault(); e.stopPropagation(); });
         $(document).on('drop', '#file_manager_module-main_drop_zone', function (e) {
           e.preventDefault(); e.stopPropagation();
@@ -1233,7 +1233,40 @@
             showToast('Dosya bırakma başarısız oldu.', 'error');
           }
         });
-    
+
+        function updateBulkUploadProgressBar() {
+          const $progress = $('#bulk_upload_div .shiny-file-input-progress');
+          if (!$progress.length) return;
+
+          const $bar = $progress.find('.progress-bar');
+          const $label = $progress.find('span');
+
+          if ($label.length) {
+            const text = ($label.text() || '').trim();
+            if (/upload complete/i.test(text)) {
+              $label.text('Yükleme tamamlandı');
+              $bar.addClass('upload-complete');
+            } else if (/uploading/i.test(text)) {
+              $label.text('Yükleniyor...');
+              $bar.removeClass('upload-complete');
+            } else {
+              $bar.removeClass('upload-complete');
+            }
+          }
+        }
+
+        function initBulkUploadProgressObserver() {
+          const container = document.querySelector('#bulk_upload_div');
+          if (!container || container._bulkProgressObserver) return;
+
+          const observer = new MutationObserver(() => updateBulkUploadProgressBar());
+          observer.observe(container, { childList: true, subtree: true, characterData: true });
+          container._bulkProgressObserver = observer;
+          updateBulkUploadProgressBar();
+        }
+
+        initBulkUploadProgressObserver();
+
         $(document).on('change', '#file_manager_module-bulk_upload', function () {
           const hasFiles = this.files && this.files.length > 0;
             const $grp = $(this).closest('.input-group');
@@ -1243,8 +1276,13 @@
             } else {
               $txt.val('').attr('placeholder', 'Henüz dosya seçilmedi');
             }
+          const $progress = $('#bulk_upload_div .shiny-file-input-progress');
+          if (hasFiles && $progress.length) {
+            $progress.show();
+            $progress.find('.progress-bar').removeClass('upload-complete');
+          }
           const $container = $('#file_manager_module-execute_bulk_upload_container');
-          
+
           if (hasFiles) {
             // Clear any existing buttons first
             $container.empty();
@@ -1284,8 +1322,11 @@
                   $input.val('');
                   $grp.find('.form-control').val('').attr('placeholder', 'Henüz dosya seçilmedi');
                 }
+                const $progress = $('#bulk_upload_div .shiny-file-input-progress');
+                $progress.hide();
+                $progress.find('.progress-bar').removeClass('upload-complete');
             });
-            
+
             // Handle clear button click
             $clearBtn.off('click').on('click', function(e) {
               e.preventDefault();
@@ -1297,8 +1338,11 @@
               $container.hide().empty();
               // Show toast notification
               showToast('Dosya seçimi temizlendi', 'info');
+              const $progress = $('#bulk_upload_div .shiny-file-input-progress');
+              $progress.hide();
+              $progress.find('.progress-bar').removeClass('upload-complete');
             });
-            
+
           } else {
             $container.hide().empty();
           }
@@ -1803,6 +1847,9 @@
           // Reset the visible text box caption
           const $grp = $input.closest('.input-group');
           $grp.find('.form-control').val('').attr('placeholder', 'Henüz dosya seçilmedi');
+          const $progress = $('#bulk_upload_div .shiny-file-input-progress');
+          $progress.hide();
+          $progress.find('.progress-bar').removeClass('upload-complete');
         });
         
       window.copyMessageContent = function(btn, content) {

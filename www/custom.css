@@ -3022,7 +3022,7 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div .shiny-file-input-progress {
   width: 100% !important;
   margin-top: 16px !important;
-  height: 36px !important;
+  height: 26px !important;
   border-radius: 6px;
   background-color: rgba(255, 255, 255, 0.12);
   position: relative !important;
@@ -3031,7 +3031,7 @@ table.dataTable thead th:first-child::after {
   display: flex !important;
   align-items: center !important;
   font-size: 14px !important;
-  line-height: 36px !important;
+  line-height: 26px !important;
 }
 
 #bulk_upload_div .shiny-file-input-progress .progress-bar {
@@ -3042,6 +3042,10 @@ table.dataTable thead th:first-child::after {
   align-items: center !important;
   justify-content: center !important;
   white-space: nowrap !important;
+}
+
+#bulk_upload_div .shiny-file-input-progress .progress-bar.upload-complete {
+  background-color: #28a745;
 }
 
 .file-browse-icon {
