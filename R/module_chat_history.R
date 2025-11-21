@@ -151,8 +151,8 @@ historyServer <- function(id, all_messages) {
       showToast(session, "Bugünün kayıtları gösteriliyor.", "info")
     })
 	
-	schedule_later <- function(delay, callback) {
-	  domain <- session$domain %||% shiny::getDefaultReactiveDomain()
+    schedule_later <- function(delay, callback) {
+      domain <- session$domain %||% shiny::getDefaultReactiveDomain()
       runner <- function() {
         if (!is.null(domain)) {
           shiny::withReactiveDomain(domain, callback)
@@ -181,14 +181,14 @@ historyServer <- function(id, all_messages) {
 
       prefetch_active(TRUE)
 
-	  schedule_later(0.01, function() {
+      schedule_later(0, function() {
         ids <- pending_prefetch()
         if (length(ids) == 0) {
           prefetch_active(FALSE)
           return()
         }
 
-        batch_size <- min(25, length(ids))
+        batch_size <- min(100, length(ids))
         batch <- ids[seq_len(batch_size)]
         remaining <- ids[-seq_len(batch_size)]
         pending_prefetch(remaining)
@@ -214,6 +214,8 @@ historyServer <- function(id, all_messages) {
       if (length(ids) == 0) {
         return()
       }
+	  
+      ensure_history_cache(ids, chats)
 
       current_queue <- pending_prefetch()
       pending_prefetch(unique(c(current_queue, ids)))

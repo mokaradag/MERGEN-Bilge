@@ -1503,6 +1503,12 @@ kbd {
   display: flex !important;
   align-items: center;
   justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  font-weight: 600;
+  padding: 0 4px;
 }
 
 .history-actions {
