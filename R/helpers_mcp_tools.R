@@ -1,7 +1,4 @@
 # R/helpers_mcp_tools.R
-# -------------------------------------------------------------------
-# MCP helper utilities and tools for MERGEN
-# -------------------------------------------------------------------
 
 suppressWarnings({
   library(jsonlite)
@@ -46,22 +43,54 @@ if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
 if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
-    expanded <- tryCatch(path.expand(path), error = function(e) path)
-    winslash <- if (.Platform$OS.type == "windows") "\\" else "/"
-    normalized <- tryCatch(
-      normalizePath(expanded, winslash = winslash, mustWork = FALSE),
-      error = function(e) expanded
-    )
-    if (!file.exists(normalized)) {
-      normalized <- tryCatch(
-        normalizePath(expanded, winslash = winslash, mustWork = TRUE),
-        error = function(e) normalized
-      )
+    
+    # 1. Standardize slashes
+    p_fixed <- gsub("\\\\", "/", path)
+    
+    # 2. UNC Repair (Logic aligned with module_file_manager)
+    # Checks if path is missing leading slash for UNC (//server...)
+    
+    path_exists_check <- function(p) {
+      if (file.exists(p)) return(TRUE)
+      if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(p)) return(TRUE)
+      FALSE
     }
+
+    if (!path_exists_check(p_fixed)) {
+      # If path starts with single slash but not double (and isn't a local absolute path like C:/),
+      # try prepending slash for UNC.
+      # Note: C:/ starts with C:, so regex ^/[^/] targets /server/share but not //server/share
+      if (grepl("^/[^/]", p_fixed)) {
+        p_unc <- paste0("/", p_fixed)
+        if (path_exists_check(p_unc)) {
+          p_fixed <- p_unc
+        }
+      }
+    }
+
+    # 3. Path Expand / Normalize
+    # Use tryCatch to avoid crashing on encoding errors
+    normalized <- tryCatch({
+        if (path_exists_check(p_fixed)) {
+            # mustWork=TRUE canonicalizes the path (fixing casing etc.)
+            normalizePath(p_fixed, winslash = "/", mustWork = TRUE)
+        } else {
+            # fallback if doesn't exist (or network lag)
+            normalizePath(path.expand(p_fixed), winslash = "/", mustWork = FALSE)
+        }
+    }, error = function(e) p_fixed)
+    
+    # 4. Windows Short Path (8.3) fallback for encoding safety
+    # This is critical for Turkish characters on some Windows systems
     if (.Platform$OS.type == "windows") {
       normalized <- tryCatch({
-        short_raw <- utils::shortPathName(gsub("/", "\\\\", normalized, fixed = TRUE))
-        gsub("\\\\", "/", short_raw, fixed = TRUE)
+        # Only attempt short path if file exists, otherwise it fails
+        if (path_exists_check(normalized)) {
+           short_raw <- utils::shortPathName(gsub("/", "\\\\", normalized, fixed = TRUE))
+           gsub("\\\\", "/", short_raw, fixed = TRUE)
+        } else {
+           normalized
+        }
       }, error = function(e) normalized)
     } else {
       normalized <- enc2utf8(normalized)
@@ -82,13 +111,19 @@ if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
 # GUARANTEE: if it still doesn't exist here (e.g., in a worker), provide a minimal fallback
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
-    if (!file.exists(path)) stop(sprintf("Dosya bulunamadı: %s", path))
+    path_prepared <- helpers_mcp_tools$normalize_excel_path(path)
+    
+    if (!file.exists(path_prepared) && !file.exists(path)) {
+        # Try one last check with fs if available
+        if (!requireNamespace("fs", quietly=TRUE) || !fs::file_exists(path_prepared)) {
+             stop(sprintf("Dosya bulunamadı: %s", path_prepared))
+        }
+    }
+    
     ext <- tolower(tools::file_ext(path))
     if (!ext %in% c("xlsx", "xls", "xlsm")) {
       stop(sprintf("Excel uzantısı bekleniyor (.xlsx/.xls/.xlsm), bulundu: .%s", ext))
     }
-
-    path_prepared <- helpers_mcp_tools$normalize_excel_path(path)
 	
     # Minimal, robust fallback (first sheet, treat first row as header)
     df <- readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE)
@@ -104,7 +139,10 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
 
 # --- NEW: universal table reader (xlsx/xls/csv/rds/rdata) --------------------
 helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = Inf) {
-  ext <- tolower(tools::file_ext(path))
+  # First normalize/fix the path using the robust helper
+  path_fixed <- helpers_mcp_tools$normalize_excel_path(path)
+  
+  ext <- tolower(tools::file_ext(path_fixed))
   as_dt <- function(df) data.table::as.data.table(as.data.frame(df, stringsAsFactors = FALSE))
 
   # helper: sanitize names (never NA/empty)
@@ -116,21 +154,21 @@ helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = I
   }
 
   if (ext %in% c("xlsx", "xls")) {
-    df <- helpers_mcp_tools$safe_read_excel_table(path, sheet = sheet, n_max = n_max)
+    df <- helpers_mcp_tools$safe_read_excel_table(path_fixed, sheet = sheet, n_max = n_max)
     return(as_dt(sanitize_names(df)))
   }
 
   if (ext %in% c("csv", "txt")) {
-    df <- tryCatch(data.table::fread(path, nThread = 1), error = function(e) {
+    df <- tryCatch(data.table::fread(path_fixed, nThread = 1), error = function(e) {
       # fallback for weird encodings
-      read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+      read.csv(path_fixed, stringsAsFactors = FALSE, check.names = FALSE)
     })
     if (is.finite(n_max)) df <- head(df, n_max)
     return(as_dt(sanitize_names(df)))
   }
 
   if (ext %in% c("rds")) {
-    obj <- readRDS(path)
+    obj <- readRDS(path_fixed)
     if (inherits(obj, c("data.frame","data.table","tbl_df"))) {
       df <- obj
     } else if (is.list(obj) && length(obj)) {
@@ -146,7 +184,7 @@ helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = I
 
   if (ext %in% c("rdata","rda")) {
     e <- new.env(parent = emptyenv())
-    nm <- load(path, envir = e)
+    nm <- load(path_fixed, envir = e)
     picks <- nm[vapply(nm, function(n) inherits(e[[n]], c("data.frame","data.table","tbl_df")), logical(1))]
     if (!length(picks)) stop("RData has no data.frame-like object")
     df <- e[[picks[1]]]
@@ -203,10 +241,13 @@ helpers_mcp_tools$update_session_file_path <- function(session = NULL, tokens = 
 helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_path, display_name = NULL) {
   helpers_mcp_tools$ensure_session_file_registry(session)
   if (is.null(token) || !nzchar(token)) return(invisible(FALSE))
+  
+  # Use robust normalization
   normalized_path <- try(helpers_mcp_tools$normalize_excel_path(abs_path), silent = TRUE)
   if (inherits(normalized_path, "try-error") || is.null(normalized_path) || !nzchar(normalized_path)) {
     normalized_path <- abs_path
   }
+  
   session$userData$current_session_files[[token]] <- list(
     path = normalized_path,
     name = display_name %||% basename(abs_path)
@@ -245,18 +286,25 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   }
 
   cat("[RESOLVE] Looking for:", arg, "\n")
+  
+  # Helper to check existence via base or fs
+  path_ok_robust <- function(candidate) {
+    if (is.null(candidate) || !nzchar(candidate)) return(FALSE)
+    if (isTRUE(file.exists(candidate))) return(TRUE)
+    if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(candidate)) return(TRUE)
+    FALSE
+  }
 
   path_ok <- function(candidate) {
-    if (is.null(candidate) || !nzchar(candidate)) return(FALSE)
-    isTRUE(path_exists_relaxed(candidate))
+     path_ok_robust(candidate)
   }
   
   # --- NEW: 0) Absolute path fast-path -------------------------------
   # Accept "C:/.../file.xlsx" or "/var/tmp/file.xlsx" straight away.
   is_abs <- grepl("^([A-Za-z]:)?[\\/]", arg)
   if (is_abs) {
-    # Don't fail if normalizePath can't resolve yet; just check existence.
-    p <- try(normalizePath(arg, winslash = "/", mustWork = FALSE), silent = TRUE)
+    # Use the robust normalizer immediately to handle UNC/Encoding
+    p <- try(helpers_mcp_tools$normalize_excel_path(arg), silent = TRUE)
     if (!inherits(p, "try-error") && path_ok(p)) {
       cat("[RESOLVE] Absolute path exists ->", p, "\n")
       return(list(ok = TRUE, path = p, display = basename(p)))
@@ -320,9 +368,9 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       resolved_path <- NULL
 
       if (!is.null(path_to_check) && path_ok(path_to_check)) {
-        resolved_path <- tryCatch(normalizePath(path_to_check, winslash = "/", mustWork = FALSE),
+        # CHANGE: Use normalize_excel_path directly to fix UNC and Encoding
+        resolved_path <- tryCatch(helpers_mcp_tools$normalize_excel_path(path_to_check),
                                   error = function(e) path_to_check)
-        resolved_path <- helpers_mcp_tools$normalize_excel_path(resolved_path)
       } else {
         cat("[RESOLVE] Stored path missing for", nm %||% key, "- attempting rehydrate\n")
         recovered <- rehydrate_missing_path(c(nm, key, arg, base_arg, path_base))
