@@ -166,6 +166,16 @@ handle_file_upload_batch <- function(uploads_df,
       return(invisible(NULL))
     }
     uf <- uploads[[i]]
+	
+    allowed_exts <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
+    ext <- tolower(tools::file_ext(uf$name))
+    
+    if (!ext %in% allowed_exts) {
+      showToast(session, sprintf("'%s' uzantılı dosya desteklenmiyor. İşlem atlandı.", ext), "warning")
+      shinyjs::delay(50, process_next(i + 1))
+      return(invisible(NULL))
+    }
+	
     removeNotification(note_id)
     note_id <<- showNotification(sprintf("[%d/%d] İşleniyor: %s", i, total, uf$name),
                                  duration = NULL, type = "message")

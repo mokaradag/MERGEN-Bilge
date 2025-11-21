@@ -714,8 +714,7 @@ fileManagerServer <- function(
 	observeEvent(input$clear_pending_files, {
       shinyjs::reset(ns("bulk_upload"))
       shinyjs::runjs(sprintf("$('#%s').hide();", ns("execute_bulk_upload_container")))
-      # Explicitly hide/reset progress bar
-      shinyjs::runjs("$('#bulk_upload_div .progress').hide();")
+	  shinyjs::runjs("$('#bulk_upload_div .progress').hide(); $('#bulk_upload_div .shiny-file-input-progress').hide();")
       session$sendCustomMessage('resetBulkUploadCaption', list())
       showToast(session, "Seçili dosyalar kaldırıldı.", "info")
     })
@@ -734,8 +733,7 @@ fileManagerServer <- function(
 
       files_df <- input$bulk_upload
       shinyjs::reset(ns("bulk_upload"))
-      # Explicitly hide/reset progress bar
-      shinyjs::runjs("$('#bulk_upload_div .progress').hide();")
+	  shinyjs::runjs("$('#bulk_upload_div .progress').hide(); $('#bulk_upload_div .shiny-file-input-progress').hide();")
       session$sendCustomMessage('resetBulkUploadCaption', list())
       shinyjs::runjs(sprintf("$('#%s').hide();", ns("execute_bulk_upload_container")))
 
@@ -871,7 +869,8 @@ fileManagerServer <- function(
     
       all_files_cleared(TRUE)
       showToast(session, "Tüm dosyalar (diskten de) temizlendi.", "warning")
-      session$sendCustomMessage('resetBulkUploadCaption', list())
+	  session$sendCustomMessage('resetBulkUploadCaption', list())
+      shinyjs::runjs("$('#bulk_upload_div .progress').hide(); $('#bulk_upload_div .shiny-file-input-progress').hide();")
       message_data(list(type = "system", content = "Tüm dosyalar kalıcı klasörden silindi.", html = NULL))
       message_trigger(message_trigger() + 1)
       shinyjs::delay(100, { all_files_cleared(FALSE) })
