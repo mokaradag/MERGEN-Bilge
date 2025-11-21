@@ -5802,7 +5802,7 @@ body.font-xlarge {
 
 /* Adjust text size to fit new height */
 #bulk_upload_div .shiny-file-input-progress .progress-bar {
-  font-size: 9px !important;
+  font-size: 14px !important;
   line-height: 12px !important;
   font-weight: 600;
   transition: width 0.6s ease;
