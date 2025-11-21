@@ -1234,21 +1234,87 @@
           }
         });
     
+        const allowedBulkExtensions = ['txt','pdf','docx','xlsx','xls','csv','json','r','py','md','log','xml','html'];
+
+        const hideBulkUploadProgress = () => {
+          const $progress = $('#bulk_upload_div .shiny-file-input-progress');
+          if ($progress.length) {
+            $progress.addClass('hidden-progress');
+            const $bar = $progress.find('.progress-bar');
+            $bar.removeClass('progress-complete');
+            $bar.text('');
+            $bar.css('width', '0%');
+          }
+        };
+
+        const translateProgressText = ($bar) => {
+          if (!$bar || !$bar.length) return;
+          const raw = ($bar.text() || '').trim();
+          if (/upload complete/i.test(raw)) {
+            $bar.text('Yükleme tamamlandı');
+          } else if (/uploading/i.test(raw)) {
+            $bar.text('Yükleniyor...');
+          }
+        };
+
+        const observeBulkUploadProgress = () => {
+          const progress = document.querySelector('#bulk_upload_div .shiny-file-input-progress .progress-bar');
+          if (!progress) return;
+
+          progress.closest('.shiny-file-input-progress')?.classList.remove('hidden-progress');
+
+          const updateState = () => {
+            const $bar = $(progress);
+            translateProgressText($bar);
+            const width = parseFloat(progress.style.width || '0');
+            const text = ($bar.text() || '').toLowerCase();
+            if (text.includes('tamam') || width >= 100) {
+              $bar.addClass('progress-complete');
+            } else {
+              $bar.removeClass('progress-complete');
+            }
+          };
+
+          updateState();
+
+          const observer = new MutationObserver(() => updateState());
+          observer.observe(progress, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true, characterData: true });
+        };
+
         $(document).on('change', '#file_manager_module-bulk_upload', function () {
           const hasFiles = this.files && this.files.length > 0;
-            const $grp = $(this).closest('.input-group');
-            const $txt = $grp.find('.form-control');
-            if (hasFiles) {
-              $txt.val(Array.from(this.files).map(f => f.name).join(', '));
-            } else {
+          const $grp = $(this).closest('.input-group');
+          const $txt = $grp.find('.form-control');
+
+          if (hasFiles) {
+            const names = Array.from(this.files).map(f => f.name);
+            const invalid = names.filter(name => {
+              const parts = name.split('.');
+              const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+              return !allowedBulkExtensions.includes(ext);
+            });
+
+            if (invalid.length) {
+              showToast(`Desteklenmeyen dosya türü: ${invalid.join(', ')}`, 'warning');
+              $(this).val('');
               $txt.val('').attr('placeholder', 'Henüz dosya seçilmedi');
+              hideBulkUploadProgress();
+              $('#file_manager_module-execute_bulk_upload_container').hide().empty();
+              return;
             }
+
+            $txt.val(names.join(', '));
+          } else {
+            $txt.val('').attr('placeholder', 'Henüz dosya seçilmedi');
+            hideBulkUploadProgress();
+          }
+
           const $container = $('#file_manager_module-execute_bulk_upload_container');
-          
+
           if (hasFiles) {
             // Clear any existing buttons first
             $container.empty();
-            
+
             // Create button container
             const $buttonWrapper = $('<div></div>').css({
               'display': 'flex',
@@ -1256,39 +1322,41 @@
               'gap': '10px',
               'margin-top': '20px'
             });
-            
+
             // Create "Dosyaları Yükle" button
             const $uploadBtn = $('<button></button>')
               .attr('id', 'file_manager_module-execute_bulk_upload')
               .addClass('btn btn-modern btn-success')
               .html('<i class="fas fa-upload"></i> Dosyaları Yükle');
-            
-            // Create "Dosyaları Temizle" button  
+
+            // Create "Dosyaları Temizle" button
             const $clearBtn = $('<button></button>')
               .attr('id', 'file_manager_module-clear_pending_files')
               .addClass('btn btn-modern btn-warning')
               .html('<i class="fas fa-times"></i> Dosyaları Temizle');
-            
+
             // Add buttons to wrapper and container
             $buttonWrapper.append($uploadBtn).append($clearBtn);
             $container.append($buttonWrapper).show();
-            
+
             // Handle upload button click
             $uploadBtn.off('click').on('click', function(e) {
               e.preventDefault();
+              hideBulkUploadProgress();
               Shiny.setInputValue('file_manager_module-execute_bulk_upload', Math.random(), {priority: 'event'});
-                // Immediately clear the visible caption and the file input (UX)
-                const $input = $('#file_manager_module-bulk_upload');
-                if ($input.length) {
-                  const $grp = $input.closest('.input-group');
-                  $input.val('');
-                  $grp.find('.form-control').val('').attr('placeholder', 'Henüz dosya seçilmedi');
-                }
+              // Immediately clear the visible caption and the file input (UX)
+              const $input = $('#file_manager_module-bulk_upload');
+              if ($input.length) {
+                const $group = $input.closest('.input-group');
+                $input.val('');
+                $group.find('.form-control').val('').attr('placeholder', 'Henüz dosya seçilmedi');
+              }
             });
-            
+
             // Handle clear button click
             $clearBtn.off('click').on('click', function(e) {
               e.preventDefault();
+              hideBulkUploadProgress();
               // Clear the file input
               $('#file_manager_module-bulk_upload').val('');
               // Trigger change to reset UI
@@ -1298,7 +1366,9 @@
               // Show toast notification
               showToast('Dosya seçimi temizlendi', 'info');
             });
-            
+
+            observeBulkUploadProgress();
+
           } else {
             $container.hide().empty();
           }

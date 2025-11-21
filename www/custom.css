@@ -3009,7 +3009,7 @@ table.dataTable thead th:first-child::after {
   height: 44px !important;
   flex: 1 1 auto !important;
   min-width: 260px !important;
-  max-width: 360px !important;
+  max-width: 485px !important;
   background-color: rgba(0, 0, 0, 0.2) !important;
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
   color: #e0e0e0 !important;
@@ -3022,7 +3022,7 @@ table.dataTable thead th:first-child::after {
 #bulk_upload_div .shiny-file-input-progress {
   width: 100% !important;
   margin-top: 16px !important;
-  height: 36px !important;
+  height: 32px !important;
   border-radius: 6px;
   background-color: rgba(255, 255, 255, 0.12);
   position: relative !important;
@@ -3030,8 +3030,12 @@ table.dataTable thead th:first-child::after {
   clear: both;
   display: flex !important;
   align-items: center !important;
-  font-size: 14px !important;
-  line-height: 36px !important;
+  font-size: 13px !important;
+  line-height: 32px !important;
+}
+
+#bulk_upload_div .shiny-file-input-progress.hidden-progress {
+  display: none !important;
 }
 
 #bulk_upload_div .shiny-file-input-progress .progress-bar {
@@ -3042,6 +3046,12 @@ table.dataTable thead th:first-child::after {
   align-items: center !important;
   justify-content: center !important;
   white-space: nowrap !important;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#bulk_upload_div .shiny-file-input-progress .progress-bar.progress-complete {
+  background-color: var(--success-color) !important;
+  color: #0d220f !important;
 }
 
 .file-browse-icon {
