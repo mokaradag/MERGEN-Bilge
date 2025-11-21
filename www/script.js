@@ -1,3 +1,4 @@
+
     let globalMessageObserver = null;
     
     /* NEW: global widescreen flag and helpers */
@@ -1325,6 +1326,8 @@
                 const $progress = $('#bulk_upload_div .shiny-file-input-progress');
                 $progress.hide();
                 $progress.find('.progress-bar').removeClass('upload-complete');
+                $('#bulk_upload_div .progress').hide();
+                $progress.find('.progress-bar').css('width', '0%');
             });
 
             // Handle clear button click
@@ -1341,6 +1344,8 @@
               const $progress = $('#bulk_upload_div .shiny-file-input-progress');
               $progress.hide();
               $progress.find('.progress-bar').removeClass('upload-complete');
+              $('#bulk_upload_div .progress').hide();
+              $progress.find('.progress-bar').css('width', '0%');
             });
 
           } else {
