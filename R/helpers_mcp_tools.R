@@ -151,10 +151,15 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
       stop(sprintf("Excel uzantısı bekleniyor, bulundu: .%s", ext))
     }
 	
-    # Read
+	# Read
     df <- tryCatch({
       readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE)
     }, error = function(e) {
+      # [FIX] Libxls mismatch recovery
+      if (grepl("libxls error", conditionMessage(e), ignore.case = TRUE)) {
+         return(readxl::read_xlsx(path_prepared, sheet = sheet, col_names = TRUE))
+      }
+
       # Fallback: Try ShortPathName if not already tried (fix for Turkish chars)
       if (.Platform$OS.type == "windows") {
          short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error=function(x) NULL)

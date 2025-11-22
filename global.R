@@ -848,6 +848,11 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
     reader <- pick_reader(path_prepared)
     reader(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal")
   }, error = function(e) {
+    # [FIX] Libxls mismatch recovery (e.g. ShortPath .XLS pointing to .xlsx content)
+    if (grepl("libxls error", conditionMessage(e), ignore.case = TRUE)) {
+      return(readxl::read_xlsx(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
+    }
+
     # Windows ShortPath fallback
     if (.Platform$OS.type == "windows") {
       short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error = function(x) NULL)
@@ -905,6 +910,17 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
       n_max = if (is.finite(n_max)) n_max else NULL
     )
   }, error = function(e) {
+    # [FIX] Libxls mismatch recovery (e.g. ShortPath .XLS pointing to .xlsx content)
+    if (grepl("libxls error", conditionMessage(e), ignore.case = TRUE)) {
+      return(readxl::read_xlsx(
+        path_prepared, 
+        sheet = sheet, 
+        range = rng, 
+        col_names = TRUE, 
+        n_max = if (is.finite(n_max)) n_max else NULL
+      ))
+    }
+
     # Retry with ShortPath for final read if needed
     if (.Platform$OS.type == "windows") {
       short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error = function(x) NULL)
