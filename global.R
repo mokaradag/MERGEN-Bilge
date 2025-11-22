@@ -828,25 +828,31 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
     else stop(sprintf("Dosya bulunamadı (Path: %s)", path_prepared))
   }
 
+  # [FIX] Detect format from content signature to avoid .XLS vs .xlsx mismatch in ShortPaths
+  guessed_fmt <- tryCatch(readxl::excel_format(path_prepared), error = function(e) NULL)
+
   ext <- tolower(tools::file_ext(path_prepared))
-  if (!ext %in% c("xlsx", "xls", "xlsm")) {
+  if (is.null(guessed_fmt) && !ext %in% c("xlsx", "xls", "xlsm")) {
     stop(sprintf("Excel uzantısı bekleniyor, bulundu: .%s", ext))
   }
 
   raw <- tryCatch({
-    readxl::read_excel(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal")
+    readxl::read_excel(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal", format = guessed_fmt)
   }, error = function(e) {
     if (.Platform$OS.type == "windows") {
       short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error = function(x) NULL)
       if (!is.null(short_p) && nzchar(short_p)) {
-        return(readxl::read_excel(short_p, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
+        # Determine format for the short path as well
+        short_fmt <- tryCatch(readxl::excel_format(short_p), error = function(e) NULL)
+        return(readxl::read_excel(short_p, sheet = sheet, col_names = FALSE, .name_repair = "minimal", format = short_fmt))
       }
     }
 
     if (grepl("unable to translate", conditionMessage(e), fixed = TRUE)) {
       utf8_path <- tryCatch(enc2utf8(path_prepared), error = function(x) path_prepared)
       if (!identical(utf8_path, path_prepared) && file.exists(utf8_path)) {
-        return(readxl::read_excel(utf8_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
+        utf8_fmt <- tryCatch(readxl::excel_format(utf8_path), error = function(e) NULL)
+        return(readxl::read_excel(utf8_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal", format = utf8_fmt))
       }
     }
 
@@ -883,7 +889,8 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
     sheet = sheet,
     range = rng,
     col_names = TRUE,
-    n_max = if (is.finite(n_max)) n_max else NULL
+    n_max = if (is.finite(n_max)) n_max else NULL,
+    format = guessed_fmt
   )
 
   if (anyNA(names(df)) || any(names(df) == "")) {
