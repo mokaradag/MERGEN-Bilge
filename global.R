@@ -828,38 +828,48 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
     else stop(sprintf("Dosya bulunamadı (Path: %s)", path_prepared))
   }
 
-  # [FIX] Detect format from content signature to avoid .XLS vs .xlsx mismatch in ShortPaths
-  guessed_fmt <- tryCatch(readxl::excel_format(path_prepared), error = function(e) NULL)
-
-  ext <- tolower(tools::file_ext(path_prepared))
-  if (is.null(guessed_fmt) && !ext %in% c("xlsx", "xls", "xlsm")) {
-    stop(sprintf("Excel uzantısı bekleniyor, bulundu: .%s", ext))
+  # [FIX] Helper to choose correct reader (xlsx vs xls) based on signature
+  # This solves the issue where Windows ShortPaths (e.g. DATA~1.XLS) have .XLS extension
+  # but contain XML (.xlsx) data, which confuses the default read_excel().
+  pick_reader <- function(p) {
+    fmt <- tryCatch(readxl::excel_format(p), error = function(e) NULL)
+    if (is.null(fmt)) {
+      # Fallback to extension if signature detection fails
+      ext <- tolower(tools::file_ext(p))
+      if (ext %in% c("xlsx", "xlsm")) return(readxl::read_xlsx)
+      return(readxl::read_xls)
+    }
+    if (fmt %in% c("xlsx", "xlsm")) return(readxl::read_xlsx)
+    return(readxl::read_xls)
   }
 
+  # 1. Initial Raw Read (to detect headers)
   raw <- tryCatch({
-    readxl::read_excel(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal", format = guessed_fmt)
+    reader <- pick_reader(path_prepared)
+    reader(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal")
   }, error = function(e) {
+    # Windows ShortPath fallback
     if (.Platform$OS.type == "windows") {
       short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error = function(x) NULL)
       if (!is.null(short_p) && nzchar(short_p)) {
-        # Determine format for the short path as well
-        short_fmt <- tryCatch(readxl::excel_format(short_p), error = function(e) NULL)
-        return(readxl::read_excel(short_p, sheet = sheet, col_names = FALSE, .name_repair = "minimal", format = short_fmt))
+        reader_s <- pick_reader(short_p)
+        return(reader_s(short_p, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
       }
     }
-
+    # UTF-8 fallback
     if (grepl("unable to translate", conditionMessage(e), fixed = TRUE)) {
       utf8_path <- tryCatch(enc2utf8(path_prepared), error = function(x) path_prepared)
       if (!identical(utf8_path, path_prepared) && file.exists(utf8_path)) {
-        utf8_fmt <- tryCatch(readxl::excel_format(utf8_path), error = function(e) NULL)
-        return(readxl::read_excel(utf8_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal", format = utf8_fmt))
+        reader_u <- pick_reader(utf8_path)
+        return(reader_u(utf8_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
       }
     }
-
     stop(e)
   })
+
   if (nrow(raw) == 0 || ncol(raw) == 0) return(data.frame())
 
+  # 2. Detect Header Row
   non_empty <- as.data.frame(lapply(raw, function(x) !(is.na(x) | (is.character(x) & trimws(x) == ""))))
   row_score <- rowSums(data.matrix(non_empty), na.rm = TRUE)
 
@@ -884,14 +894,33 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
 
   rng <- cellranger::cell_limits(ul = c(header_row, col_min), lr = c(row_max, col_max))
 
-  df <- readxl::read_excel(
-    path_prepared,
-    sheet = sheet,
-    range = rng,
-    col_names = TRUE,
-    n_max = if (is.finite(n_max)) n_max else NULL,
-    format = guessed_fmt
-  )
+  # 3. Final Read
+  df <- tryCatch({
+    reader_final <- pick_reader(path_prepared)
+    reader_final(
+      path_prepared,
+      sheet = sheet,
+      range = rng,
+      col_names = TRUE,
+      n_max = if (is.finite(n_max)) n_max else NULL
+    )
+  }, error = function(e) {
+    # Retry with ShortPath for final read if needed
+    if (.Platform$OS.type == "windows") {
+      short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error = function(x) NULL)
+      if (!is.null(short_p) && nzchar(short_p)) {
+        reader_final_s <- pick_reader(short_p)
+        return(reader_final_s(
+          short_p,
+          sheet = sheet,
+          range = rng,
+          col_names = TRUE,
+          n_max = if (is.finite(n_max)) n_max else NULL
+        ))
+      }
+    }
+    stop(e)
+  })
 
   if (anyNA(names(df)) || any(names(df) == "")) {
     names(df) <- paste0("X", seq_along(df))
