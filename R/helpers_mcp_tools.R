@@ -247,6 +247,28 @@ helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = I
   stop(sprintf("Unsupported file type: .%s", ext))
 }
 
+helpers_mcp_tools$create_md_table <- function(df) {
+  if (is.null(df) || nrow(df) == 0) return("_Veri yok_")
+  
+  # Ensure clean character data
+  safe_df <- as.data.frame(lapply(df, function(x) {
+    if (is.numeric(x)) return(format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE))
+    if (is.logical(x)) return(ifelse(x, "TRUE", "FALSE"))
+    if (inherits(x, "Date") || inherits(x, "POSIXt")) return(as.character(x))
+    as.character(x)
+  }), stringsAsFactors = FALSE)
+  
+  cols <- names(safe_df)
+  header <- paste0("| ", paste(cols, collapse = " | "), " |")
+  sep    <- paste0("| ", paste(rep("---", length(cols)), collapse = " | "), " |")
+  
+  rows <- vapply(seq_len(nrow(safe_df)), function(i) {
+    paste0("| ", paste(safe_df[i, ], collapse = " | "), " |")
+  }, character(1))
+  
+  paste(c(header, sep, rows), collapse = "\n")
+}
+
 # ============================
 # Session file registry helpers
 # ============================
@@ -591,46 +613,44 @@ helpers_mcp_tools$normalize_args <- function(args) {
 helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
-  if (!isTRUE(res$ok)) return(list(error = res$error))
+  if (!isTRUE(res$ok)) return(paste("Hata:", res$error))
 
   path <- res$path
-
   df <- tryCatch({
     data.table::as.data.table(helpers_mcp_tools$safe_read_excel_table(path))
   }, error = function(e) e)
   
   if (inherits(df, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), df$message)))
+    return(sprintf("Excel dosyası okunamadı: %s — %s", basename(path), df$message))
   }
 
   n_rows <- nrow(df)
   n_cols <- ncol(df)
   cols   <- names(df)
 
-  types <- vapply(df, function(x) class(x)[1], character(1))
-
+  # Numeric summary table
   num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
-  num_summary <- lapply(num_cols, function(cn) {
-    vals <- df[[cn]]
-    list(
-      sütun    = cn,
-      ortalama = mean(vals, na.rm = TRUE),
-      medyan   = median(vals, na.rm = TRUE),
-      minimum  = suppressWarnings(min(vals, na.rm = TRUE)),
-      maksimum = suppressWarnings(max(vals, na.rm = TRUE)),
-      toplam   = sum(vals, na.rm = TRUE),
-      sayi     = sum(!is.na(vals))
-    )
-  })
+  num_table_md <- ""
+  
+  if (length(num_cols) > 0) {
+    summary_data <- do.call(rbind, lapply(num_cols, function(cn) {
+      vals <- df[[cn]]
+      data.frame(
+        Sütun = cn,
+        Ortalama = mean(vals, na.rm = TRUE),
+        Medyan = median(vals, na.rm = TRUE),
+        Min = suppressWarnings(min(vals, na.rm = TRUE)),
+        Max = suppressWarnings(max(vals, na.rm = TRUE)),
+        Dolu_Kayit = sum(!is.na(vals)),
+        stringsAsFactors = FALSE
+      )
+    }))
+    num_table_md <- paste0("\n\n#### Sayısal Sütun Özeti\n", helpers_mcp_tools$create_md_table(summary_data))
+  }
 
-  list(
-    dosya_adı        = basename(path),
-    satır_sayısı     = n_rows,
-    sütun_sayısı     = n_cols,
-    sütun_isimleri   = cols,
-    sütun_tipleri    = unname(types),
-    sayısal_sütunlar = num_cols,
-    sayısal_özet     = num_summary
+  sprintf(
+    "### Dosya Özeti: %s\n\n- **Satır Sayısı:** %d\n- **Sütun Sayısı:** %d\n- **Sütunlar:** %s%s",
+    basename(path), n_rows, n_cols, paste(cols, collapse = ", "), num_table_md
   )
 }
 
@@ -640,8 +660,8 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
 helpers_mcp_tools$get_column_statistics <- function(file_name, column, session = NULL) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
-  if (!isTRUE(res$ok)) return(list(error = res$error))
-  if (is.null(column) || !nzchar(column)) return(list(error = "column parametresi boş"))
+  if (!isTRUE(res$ok)) return(paste("Hata:", res$error))
+  if (is.null(column) || !nzchar(column)) return("Hata: column parametresi boş")
 
   path <- res$path
   dt <- tryCatch({
@@ -649,41 +669,52 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+    return(sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message))
   }
 
   if (!(column %in% names(dt))) {
-    return(list(error = sprintf("Sütun bulunamadı: %s. Mevcut sütunlar: %s",
-                                column, paste(names(dt), collapse = ", "))))
+    return(sprintf("Sütun bulunamadı: **%s**. Mevcut sütunlar: %s", column, paste(names(dt), collapse = ", ")))
   }
 
   vec <- dt[[column]]
+  
+  header <- sprintf("### İstatistikler: %s (%s)", column, basename(path))
 
   if (is.numeric(vec)) {
-    list(
-      dosya_adı  = basename(path),
-      sütun      = column,
-      tür        = "numeric",
-      sayi       = sum(!is.na(vec)),
-      ortalama   = mean(vec, na.rm = TRUE),
-      medyan     = median(vec, na.rm = TRUE),
-      minimum    = suppressWarnings(min(vec, na.rm = TRUE)),
-      maksimum   = suppressWarnings(max(vec, na.rm = TRUE)),
-      toplam     = sum(vec, na.rm = TRUE),
-      stdev      = sd(vec, na.rm = TRUE),
-      null_sayısı = sum(is.na(vec))
+    stats_df <- data.frame(
+      Metrik = c("Kayıt Sayısı", "Ortalama", "Medyan", "Minimum", "Maksimum", "Toplam", "Standart Sapma", "Boş Değer"),
+      Değer = c(
+        sum(!is.na(vec)),
+        mean(vec, na.rm = TRUE),
+        median(vec, na.rm = TRUE),
+        suppressWarnings(min(vec, na.rm = TRUE)),
+        suppressWarnings(max(vec, na.rm = TRUE)),
+        sum(vec, na.rm = TRUE),
+        sd(vec, na.rm = TRUE),
+        sum(is.na(vec))
+      ),
+      stringsAsFactors = FALSE
     )
+    return(paste0(header, "\n\n", helpers_mcp_tools$create_md_table(stats_df)))
+    
   } else {
-    tb   <- sort(table(vec, useNA = "ifany"), decreasing = TRUE)
-    top5 <- head(tb, 5)
-    list(
-      dosya_adı        = basename(path),
-      sütun            = column,
-      tür              = "categorical",
-      benzersiz_deger  = length(unique(vec)),
-      ilk_5_deger      = as.list(top5),
-      null_sayısı      = sum(is.na(vec))
+    # Categorical
+    tb <- sort(table(vec, useNA = "ifany"), decreasing = TRUE)
+    top5 <- head(tb, 10) # Increased to 10 for better context
+    
+    stats_df <- data.frame(
+      Değer = names(top5),
+      Adet = as.numeric(top5),
+      Oran = sprintf("%.1f%%", 100 * as.numeric(top5) / length(vec)),
+      stringsAsFactors = FALSE
     )
+    
+    summary_text <- sprintf(
+      "- **Benzersiz Değer Sayısı:** %d\n- **Boş Değer Sayısı:** %d",
+      length(unique(vec)), sum(is.na(vec))
+    )
+    
+    return(paste0(header, "\n", summary_text, "\n\n#### En Sık Görülen Değerler\n", helpers_mcp_tools$create_md_table(stats_df)))
   }
 }
 
@@ -692,13 +723,13 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
 # ==================================
 helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = NULL) {
   if (!helpers_mcp_tools$safe_has_duckdb()) {
-    return(list(error = "DuckDB yüklü değil. Lütfen install.packages('duckdb') çalıştırın."))
+    return("Hata: DuckDB yüklü değil.")
   }
 
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
-  if (!isTRUE(res$ok)) return(list(error = res$error))
-  if (is.null(sql) || !nzchar(sql)) return(list(error = "sql parametresi boş"))
+  if (!isTRUE(res$ok)) return(paste("Hata:", res$error))
+  if (is.null(sql) || !nzchar(sql)) return("Hata: sql parametresi boş")
 
   path <- res$path
   dt <- tryCatch({
@@ -706,10 +737,10 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+    return(sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message))
   }
 
-  # Normalize date/time as character so DuckDB doesn't choke on write
+  # Normalize date/time as character
   for (nm in names(dt)) {
     if (inherits(dt[[nm]], "POSIXt") || inherits(dt[[nm]], "Date")) {
       dt[[nm]] <- as.character(dt[[nm]])
@@ -721,7 +752,7 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
 
   DBI::dbWriteTable(con, "t", as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
 
-  # Tolerate different quoting styles
+  # Tolerate quoting styles
   q <- sql
   q <- gsub("`", "\"", q, fixed = TRUE)
   q <- gsub("\\[", "\"", q)
@@ -729,20 +760,23 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
 
   ans <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) e)
   if (inherits(ans, "error")) {
-    return(list(
-      error = sprintf("SQL çalıştırılamadı: %s", ans$message),
-      hint  = "Tablo adı 't'. Sütun adlarını tam yazın; metinleri tek tırnakla yazın: Department = 'IT'."
+    return(sprintf(
+      "**SQL Hatası:** %s\n\n_İpucu: Tablo adı 't' olmalıdır. Stringler tek tırnak ile yazılmalıdır._", 
+      ans$message
     ))
   }
 
   preview <- ans
-  if (nrow(preview) > 50) preview <- head(preview, 50)
+  limit_msg <- ""
+  if (nrow(preview) > 20) {
+    preview <- head(preview, 20)
+    limit_msg <- sprintf("\n_(İlk 20 satır gösteriliyor. Toplam sonuç: %d satır)_", nrow(ans))
+  }
 
-  list(
-    dosya_adı      = basename(path),
-    satır_sayısı   = nrow(ans),
-    sütun_sayısı   = ncol(ans),
-    sonuç_önizleme = preview
+  paste0(
+    "### Sorgu Sonucu\n**Dosya:** ", basename(path), "\n**SQL:** `", sql, "`\n\n",
+    helpers_mcp_tools$create_md_table(preview),
+    limit_msg
   )
 }
 
