@@ -1041,10 +1041,16 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
     "Kurallar:",
     "- Sadece araç çağrısı gerekiyorsa başka açıklama yazma.",
     "- JSON örneği: {\"name\":\"sql_query_uploaded_file\",\"arguments\":{\"file_name\":\"dummy.xlsx\",\"sql\":\"SELECT AVG(Salary) FROM t\"}}",
-    "- Sütun adlarını birebir kullan, metinlerde tek tırnak: Department='IT'.",
+	"- Sütun adlarını birebir kullan, metinlerde tek tırnak: Department='IT'.",
     "- Karma sorgularda her zaman **sql_query_uploaded_file** kullan.",
     "- Planlama/düşünme metni yazma (örn. 'We need to call…', 'We will call…').",
 	"- Grafik/çizim gerektiğinde **prepare_chart_data** kullan; çıktı ChartLab tarafından çizilir.",
+    "",
+    "ÇIKTI FORMATI KURALLARI (ÇOK ÖNEMLİ):",
+    "- ASLA '=== Araç: ... ===' ibaresini veya JSON formatındaki ham çıktıları yanıta yansıtma.",
+    "- Araçtan gelen veriyi oku, yorumla ve son kullanıcıya doğal, akıcı bir Türkçe ile yanıt ver.",
+    "- Yanıtın bir bilgisayar komut çıktısı gibi değil, bir insanın konuşması gibi görünmelidir.",
+    "- Tabloları ve listeleri Markdown formatında, okunaklı şekilde sun.",
     sep = "\n"
   )
 }
