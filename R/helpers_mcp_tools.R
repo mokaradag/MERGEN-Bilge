@@ -43,6 +43,11 @@ if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
 if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
+
+    # 0. Absolute Trust: If it exists as-is, don't touch it. 
+    # This fixes UNC/Turkish char issues where normalization breaks valid paths.
+    if (file.exists(path)) return(path)
+    if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(path)) return(path)
 	
     # Let the shared MCP normalizer clean early if available
     if (exists("normalize_mcp_path", envir = globalenv(), inherits = TRUE)) {
@@ -140,8 +145,12 @@ if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
 
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
-    # Use the robust normalizer
-    path_prepared <- helpers_mcp_tools$normalize_excel_path(path)
+    # Use the robust normalizer ONLY if path doesn't already work
+    path_prepared <- if (file.exists(path) || (requireNamespace("fs", quietly=TRUE) && fs::file_exists(path))) {
+       path 
+    } else {
+       helpers_mcp_tools$normalize_excel_path(path)
+    }
     
     # Final check before passing to readxl
     if (!file.exists(path_prepared) && !fs::file_exists(path_prepared)) {
@@ -416,10 +425,9 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       cat("[RESOLVE] Match ->", path_to_check, "Exists:", path_ok(path_to_check), "\n")
       resolved_path <- NULL
 
-      if (!is.null(path_to_check) && path_ok(path_to_check)) {
-        # CHANGE: Use normalize_excel_path directly to fix UNC and Encoding
-        resolved_path <- tryCatch(helpers_mcp_tools$normalize_excel_path(path_to_check),
-                                  error = function(e) path_to_check)
+	  if (!is.null(path_to_check) && path_ok(path_to_check)) {
+        # FOUND: Return as-is. Do NOT re-normalize, as it breaks UNC/Encoding on Windows.
+        resolved_path <- path_to_check
       } else {
         cat("[RESOLVE] Stored path missing for", nm %||% key, "- attempting rehydrate\n")
         recovered <- rehydrate_missing_path(c(nm, key, arg, base_arg, path_base))
@@ -506,10 +514,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
         fb <- c(file.path(mcp_base, paste0("user_", uid)), fb)
       }
     }
-    for (base_dir in unique(fb)) {
+	for (base_dir in unique(fb)) {
       candidate <- file.path(base_dir, base_arg)
       if (path_ok(candidate)) {
-        resolved_path <- helpers_mcp_tools$normalize_excel_path(candidate)
+        resolved_path <- candidate # Return as-is
         return(list(ok = TRUE, path = resolved_path, display = basename(candidate)))
       }
     }
