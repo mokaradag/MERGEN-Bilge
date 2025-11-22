@@ -44,11 +44,10 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
 
-    # 0. Absolute Trust: If it exists as-is, don't touch it. 
-    # This fixes UNC/Turkish char issues where normalization breaks valid paths.
-    if (file.exists(path)) return(path)
-    if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(path)) return(path)
-	
+    # [DEĞİŞİKLİK] Step 0 kaldırıldı. 
+    # "Absolute Trust" bloğu, Türkçe karakterli yollarda readxl'in çökmesine neden oluyordu.
+    # Dosya var olsa bile aşağıda ShortPath (8.3) formatına çevrilmesini istiyoruz.
+
     # Let the shared MCP normalizer clean early if available
     if (exists("normalize_mcp_path", envir = globalenv(), inherits = TRUE)) {
       try_norm <- try(get("normalize_mcp_path", envir = globalenv(), inherits = TRUE)(path, must_exist = FALSE), silent = TRUE)
@@ -85,6 +84,7 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
     if (grepl("^//", p_fixed)) {
       # CHECK FOR EXISTENCE AND RETURN SHORT PATH IF POSSIBLE (Fixes encoding issues on UNC)
       if (.Platform$OS.type == "windows") {
+        # Try to force ShortPathName immediately for UNC
         try_short <- tryCatch(utils::shortPathName(gsub("/", "\\\\", p_fixed, fixed = TRUE)), error = function(e) NULL)
         if (!is.null(try_short) && nzchar(try_short) && file.exists(try_short)) {
            return(gsub("\\\\", "/", try_short, fixed = TRUE))
@@ -145,16 +145,15 @@ if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
 
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
-    # Use the robust normalizer ONLY if path doesn't already work
-    path_prepared <- if (file.exists(path) || (requireNamespace("fs", quietly=TRUE) && fs::file_exists(path))) {
-       path 
-    } else {
-       helpers_mcp_tools$normalize_excel_path(path)
-    }
+    # [DEĞİŞİKLİK] Windows'ta her zaman normalize_excel_path kullan.
+    # Eski kod: if(file.exists(path)) path else normalize_excel_path(path)
+    # Bu durum "Geliştirme" gibi yolları ShortPath'e çevirmeden readxl'e yolluyor ve patlatıyordu.
+    
+    path_prepared <- helpers_mcp_tools$normalize_excel_path(path)
     
     # Final check before passing to readxl
     if (!file.exists(path_prepared) && !fs::file_exists(path_prepared)) {
-        # Last ditch: check if original path works
+        # Last ditch: check if original path works (maybe normalization broke it, unlikely on Windows)
         if (file.exists(path)) path_prepared <- path
         else stop(sprintf("Dosya bulunamadı (Path: %s)", path_prepared))
     }
