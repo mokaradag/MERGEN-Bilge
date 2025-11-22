@@ -44,10 +44,14 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
 
-    # 1. Standardize slashes
     p_fixed <- gsub("\\\\", "/", path)
     
-    # Helper: Check existence (Robust)
+    # 1. Aggressive UNC Repair for Windows
+    # If it starts with / but not //, convert to // immediately
+    if (.Platform$OS.type == "windows" && grepl("^/[^/]", p_fixed)) {
+       p_fixed <- paste0("/", p_fixed)
+    }
+
     path_exists_check <- function(p) {
       if (is.null(p) || !nzchar(p)) return(FALSE)
       tryCatch({
@@ -57,48 +61,39 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
       }, error = function(e) FALSE)
     }
 
-    # 2. Pre-check: If it exists as-is (or as UTF-8), return immediately
-    # This prevents normalizePath from messing up valid UNC paths
-    if (path_exists_check(p_fixed)) return(p_fixed)
-    
-    p_utf8 <- tryCatch(enc2utf8(p_fixed), error = function(e) p_fixed)
-    if (path_exists_check(p_utf8)) return(p_utf8)
-
-    # 3. UNC Repair (Windows): fix /server/share -> //server/share
-    if (grepl("^/[^/]", p_fixed)) {
-       p_unc <- paste0("/", p_fixed)
-       if (path_exists_check(p_unc)) return(p_unc)
-       
-       p_unc_utf8 <- tryCatch(enc2utf8(p_unc), error = function(e) p_unc)
-       if (path_exists_check(p_unc_utf8)) return(p_unc_utf8)
-    }
-
-    # 4. Windows Short Path (8.3) fallback
-    # Crucial for Turkish characters (e.g. "Geliştirme") causing issues in readxl
+    # 2. Try to resolve existence + Convert to ShortPath (8.3)
+    # This is critical for 'readxl' to handle Turkish characters on Windows
     if (.Platform$OS.type == "windows") {
-       # Try to find a valid candidate to convert to short path
-       candidate <- NULL
-       if (path_exists_check(p_fixed)) candidate <- p_fixed
-       else if (path_exists_check(p_utf8)) candidate <- p_utf8
-       else if (exists("p_unc") && path_exists_check(p_unc)) candidate <- p_unc
+       candidates <- unique(c(p_fixed, tryCatch(enc2utf8(p_fixed), error = function(e) NULL)))
        
-       if (!is.null(candidate)) {
-         short_p <- tryCatch({
-           # shortPathName requires backslashes usually
-           raw_short <- utils::shortPathName(gsub("/", "\\\\", candidate, fixed = TRUE))
-           gsub("\\\\", "/", raw_short, fixed = TRUE)
-         }, error = function(e) candidate)
-         return(short_p)
+       for (cand in candidates) {
+         if (path_exists_check(cand)) {
+            # If found, try to get Short Path
+            short_p <- tryCatch({
+               # shortPathName requires backslashes
+               raw_short <- utils::shortPathName(gsub("/", "\\\\", cand, fixed = TRUE))
+               gsub("\\\\", "/", raw_short, fixed = TRUE)
+            }, error = function(e) NULL)
+            
+            # If ShortPath works, return it (Solves encoding issues)
+            if (!is.null(short_p) && nzchar(short_p)) return(short_p)
+            
+            # If ShortPath fails but file exists, return the candidate found
+            return(cand)
+         }
        }
+    } else {
+       # Linux/Mac simple check
+       if (path_exists_check(p_fixed)) return(p_fixed)
     }
 
-    # 5. Last resort: Standard normalization (careful with UNC)
-    # Only run if it's NOT a UNC path (doesn't start with //) to avoid the /rehisds/rehisds doubling
-    if (!grepl("^//", p_fixed)) {
-        tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
-    } else {
-        p_fixed
+    # 3. If not found, return without normalizePath if it looks absolute on Windows
+    # This prevents /rehisds/... becoming C:/.../rehisds/... or double prefixes
+    if (.Platform$OS.type == "windows" && (grepl("^//", p_fixed) || grepl("^/", p_fixed))) {
+        return(p_fixed)
     }
+
+    tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
   }
 }
 

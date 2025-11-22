@@ -56,6 +56,14 @@ normalize_for_path_compare <- function(path) {
 
 # Copy an upload to MCP base (per-user) and return normalized path
 copy_to_mcp_base <- function(upload, user_id) {
+  # Local safe normalizer to avoid global path doubling issues
+  safe_norm <- function(p) {
+     if (is.null(p) || !nzchar(p)) return("")
+     p <- gsub("\\\\", "/", p)
+     if (.Platform$OS.type == "windows" && grepl("^/[^/]", p)) p <- paste0("/", p)
+     p
+  }
+
   base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) {
     base <- getOption(
@@ -63,12 +71,14 @@ copy_to_mcp_base <- function(upload, user_id) {
       default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
     )
   }
-  base <- normalize_mcp_path(base, must_exist = FALSE)
+  
+  # Use safe local normalization
+  base <- safe_norm(base)
   fs::dir_create(base, recurse = TRUE)
 
   # Skip re-copy if already under base
-  src_norm  <- normalize_mcp_path(upload$datapath, must_exist = FALSE)
-  base_norm <- normalize_mcp_path(base, must_exist = dir.exists(base))
+  src_norm  <- safe_norm(upload$datapath)
+  base_norm <- base # already normalized
 
   if (startsWith(normalize_for_path_compare(src_norm), paste0(normalize_for_path_compare(base_norm), "/"))) {
     cat("[copy_to_mcp_base] Skipped re-copy; already under MCP base:", src_norm, "\n")
@@ -104,8 +114,15 @@ is_under_mcp_base <- function(p) {
   base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) return(FALSE)
-  np <- normalize_mcp_path(p, must_exist = FALSE)
-  nb <- normalize_mcp_path(base, must_exist = dir.exists(base))
+  
+  safe_norm <- function(x) {
+     x <- gsub("\\\\", "/", x)
+     if (.Platform$OS.type == "windows" && grepl("^/[^/]", x)) x <- paste0("/", x)
+     x
+  }
+  
+  np <- safe_norm(p)
+  nb <- safe_norm(base)
   startsWith(normalize_for_path_compare(np), paste0(normalize_for_path_compare(nb), "/")) ||
   normalize_for_path_compare(np) == normalize_for_path_compare(nb)
 }
