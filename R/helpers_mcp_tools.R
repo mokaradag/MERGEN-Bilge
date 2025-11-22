@@ -78,7 +78,15 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
 
     # If already UNC (//server/share), skip normalizePath entirely to avoid path doubling
     if (grepl("^//", p_fixed)) {
-      return(enc2utf8(gsub("/{3,}", "//", p_fixed)))
+      # CHECK FOR EXISTENCE AND RETURN SHORT PATH IF POSSIBLE (Fixes encoding issues on UNC)
+      if (.Platform$OS.type == "windows") {
+        try_short <- tryCatch(utils::shortPathName(gsub("/", "\\\\", p_fixed, fixed = TRUE)), error = function(e) NULL)
+        if (!is.null(try_short) && nzchar(try_short) && file.exists(try_short)) {
+           return(gsub("\\\\", "/", try_short, fixed = TRUE))
+        }
+      }
+      # Do NOT enc2utf8 here, it breaks readxl on Windows
+      return(gsub("/{3,}", "//", p_fixed))
     }
 
     path_exists_check <- function(p) {
@@ -92,16 +100,21 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
 
     # 2. Try to resolve existence + Convert to ShortPath (8.3) on Windows
     if (.Platform$OS.type == "windows") {
+      # Try candidates as-is first (System encoding), then UTF8
       candidates <- unique(c(p_fixed, tryCatch(enc2utf8(p_fixed), error = function(e) NULL)))
 
       for (cand in candidates) {
-        if (path_exists_check(cand)) {
+        if (!is.null(cand) && path_exists_check(cand)) {
+          # Use ShortPathName to avoid encoding hell (e.g. "Geliştirme" -> "GEL~1")
           short_p <- tryCatch({
             raw_short <- utils::shortPathName(gsub("/", "\\\\", cand, fixed = TRUE))
             gsub("\\\\", "/", raw_short, fixed = TRUE)
           }, error = function(e) NULL)
 
           if (!is.null(short_p) && nzchar(short_p)) return(short_p)
+          
+          # If short path fails but file exists, return the candidate that WORKED
+          # Do NOT re-encode it
           return(cand)
         }
       }
@@ -111,7 +124,8 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
 
     # 3. Last resort: lightweight normalization without altering UNC-style roots
     normalized <- tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
-    enc2utf8(dedupe_leading_repeat(normalized))
+    # Remove enc2utf8 to prevent readxl errors on Windows
+    dedupe_leading_repeat(normalized)
   }
 }
 
@@ -142,7 +156,19 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
     }
 	
     # Read
-    df <- readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE)
+    df <- tryCatch({
+      readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE)
+    }, error = function(e) {
+      # Fallback: Try ShortPathName if not already tried (fix for Turkish chars)
+      if (.Platform$OS.type == "windows") {
+         short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error=function(x) NULL)
+         if (!is.null(short_p) && nzchar(short_p)) {
+            return(readxl::read_excel(short_p, sheet = sheet, col_names = TRUE))
+         }
+      }
+      stop(e)
+    })
+
     if (is.finite(n_max)) df <- head(df, n_max)
     df <- as.data.frame(df, stringsAsFactors = FALSE)
     if (anyNA(names(df)) || any(names(df) == "")) {
@@ -230,7 +256,7 @@ helpers_mcp_tools$reset_session_file_registry <- function(session = NULL) {
 helpers_mcp_tools$get_session_user_id <- function(session = NULL) {
   if (is.null(session)) return(NULL)
   session$userData$user_id %||%
-    session$userData$current_user_id %||%
+    session$userData$current_session_files %||%
     session$userData$userId %||%
     session$userData$id %||%
     session$userData$userID %||%
