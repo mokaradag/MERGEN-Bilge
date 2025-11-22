@@ -44,24 +44,34 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
     
-    # 1. Standardize slashes
+	# 1. Standardize slashes
     p_fixed <- gsub("\\\\", "/", path)
     
-    # 2. UNC Repair (Logic aligned with module_file_manager)
-    # Checks if path is missing leading slash for UNC (//server...)
-    
-    path_exists_check <- function(p) {
-      if (file.exists(p)) return(TRUE)
-      if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(p)) return(TRUE)
-      FALSE
+    # --- START OF MODIFICATION ---
+    # Türkçe: Windows ortamında encoding (karakter kodlaması) sorunlarını çözmek için
+    if (.Platform$OS.type == "windows") {
+      p_fixed <- tryCatch(enc2utf8(p_fixed), error = function(e) p_fixed)
     }
 
+    # Helper function: Dosya varlık kontrolü (fs ve base birlikte)
+    path_exists_check <- function(p) {
+      if (is.null(p) || !nzchar(p)) return(FALSE)
+      tryCatch({
+        if (file.exists(p)) return(TRUE)
+        if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(p)) return(TRUE)
+        FALSE
+      }, error = function(e) FALSE)
+    }
+    
+    # 2. Eğer dosya bu haliyle doğrudan bulunamıyorsa onarmayı dene (UNC Repair)
     if (!path_exists_check(p_fixed)) {
-      # If path starts with single slash but not double (and isn't a local absolute path like C:/),
-      # try prepending slash for UNC.
-      # Note: C:/ starts with C:, so regex ^/[^/] targets /server/share but not //server/share
+      
+      # Türkçe: Eğer yol tek slash ile başlıyorsa (örn: /rehisds/...) ama çift slash değilse
+      # Windows UNC yolları (\\server\share) bazen tek slash olarak gelebilir.
       if (grepl("^/[^/]", p_fixed)) {
-        p_unc <- paste0("/", p_fixed)
+        p_unc <- paste0("/", p_fixed) # Başına slash ekle -> //rehisds/...
+        
+        # Eğer bu UNC varyasyonu diskte varsa, yolu güncelle
         if (path_exists_check(p_unc)) {
           p_fixed <- p_unc
         }
