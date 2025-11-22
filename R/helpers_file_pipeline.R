@@ -113,7 +113,8 @@ processAndSummarizeFile <- function(file_info,
     }) %...!%
     (function(e) {
       removeNotification(note_id)
-      showToast(session, paste("Dosya işlenemedi:", conditionMessage(e)), "error")
+      msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
+      showToast(session, paste("Dosya işlenemedi:", msg), "error")
     })
 
   invisible(NULL)

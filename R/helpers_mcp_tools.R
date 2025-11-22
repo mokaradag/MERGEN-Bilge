@@ -45,11 +45,32 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
     if (is.null(path) || !nzchar(path)) return(path)
 
     p_fixed <- gsub("\\\\", "/", path)
-    
-    # 1. Aggressive UNC Repair for Windows
-    # If it starts with / but not //, convert to // immediately
-    if (.Platform$OS.type == "windows" && grepl("^/[^/]", p_fixed)) {
-       p_fixed <- paste0("/", p_fixed)
+
+    # Helper: remove accidental leading duplication (e.g., /srv/share/srv/share/...) which
+    # breaks existence checks for network paths.
+    dedupe_leading_repeat <- function(p) {
+      if (!nzchar(p)) return(p)
+      slashes <- sub("^(/*).*", "\\1", p)
+      parts <- strsplit(sub("^/+", "", p), "/", fixed = TRUE)[[1]]
+      if (length(parts) < 4) return(p)
+      if (identical(parts[1:2], parts[3:4])) {
+        rebuilt <- paste(c(slashes, parts[1:2], parts[-(1:4)]), collapse = "/")
+        return(gsub("/{2,}", "/", rebuilt))
+      }
+      p
+    }
+
+    p_fixed <- dedupe_leading_repeat(p_fixed)
+
+    # 1. Aggressive UNC Repair
+    # If it starts with / but not //, convert to // immediately (keeps network roots intact)
+    if (grepl("^/[^/]", p_fixed)) {
+      p_fixed <- paste0("/", p_fixed)
+    }
+
+    # If already UNC (//server/share), skip normalizePath entirely to avoid path doubling
+    if (grepl("^//", p_fixed)) {
+      return(enc2utf8(gsub("/{3,}", "//", p_fixed)))
     }
 
     path_exists_check <- function(p) {
@@ -61,39 +82,28 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
       }, error = function(e) FALSE)
     }
 
-    # 2. Try to resolve existence + Convert to ShortPath (8.3)
-    # This is critical for 'readxl' to handle Turkish characters on Windows
+    # 2. Try to resolve existence + Convert to ShortPath (8.3) on Windows
     if (.Platform$OS.type == "windows") {
-       candidates <- unique(c(p_fixed, tryCatch(enc2utf8(p_fixed), error = function(e) NULL)))
-       
-       for (cand in candidates) {
-         if (path_exists_check(cand)) {
-            # If found, try to get Short Path
-            short_p <- tryCatch({
-               # shortPathName requires backslashes
-               raw_short <- utils::shortPathName(gsub("/", "\\\\", cand, fixed = TRUE))
-               gsub("\\\\", "/", raw_short, fixed = TRUE)
-            }, error = function(e) NULL)
-            
-            # If ShortPath works, return it (Solves encoding issues)
-            if (!is.null(short_p) && nzchar(short_p)) return(short_p)
-            
-            # If ShortPath fails but file exists, return the candidate found
-            return(cand)
-         }
-       }
+      candidates <- unique(c(p_fixed, tryCatch(enc2utf8(p_fixed), error = function(e) NULL)))
+
+      for (cand in candidates) {
+        if (path_exists_check(cand)) {
+          short_p <- tryCatch({
+            raw_short <- utils::shortPathName(gsub("/", "\\\\", cand, fixed = TRUE))
+            gsub("\\\\", "/", raw_short, fixed = TRUE)
+          }, error = function(e) NULL)
+
+          if (!is.null(short_p) && nzchar(short_p)) return(short_p)
+          return(cand)
+        }
+      }
     } else {
-       # Linux/Mac simple check
-       if (path_exists_check(p_fixed)) return(p_fixed)
+      if (path_exists_check(p_fixed)) return(enc2utf8(p_fixed))
     }
 
-    # 3. If not found, return without normalizePath if it looks absolute on Windows
-    # This prevents /rehisds/... becoming C:/.../rehisds/... or double prefixes
-    if (.Platform$OS.type == "windows" && (grepl("^//", p_fixed) || grepl("^/", p_fixed))) {
-        return(p_fixed)
-    }
-
-    tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
+    # 3. Last resort: lightweight normalization without altering UNC-style roots
+    normalized <- tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
+    enc2utf8(dedupe_leading_repeat(normalized))
   }
 }
 
@@ -241,10 +251,17 @@ helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_
   if (is.null(token) || !nzchar(token)) return(invisible(FALSE))
   
   # Use robust normalization
-  normalized_path <- try(helpers_mcp_tools$normalize_excel_path(abs_path), silent = TRUE)
-  if (inherits(normalized_path, "try-error") || is.null(normalized_path) || !nzchar(normalized_path)) {
-    normalized_path <- abs_path
+  normalize_for_registry <- function(p) {
+    if (exists("normalize_mcp_path", mode = "function")) {
+      out <- try(normalize_mcp_path(p, must_exist = FALSE), silent = TRUE)
+      if (!inherits(out, "try-error") && nzchar(out)) return(out)
+    }
+    out <- try(helpers_mcp_tools$normalize_excel_path(p), silent = TRUE)
+    if (!inherits(out, "try-error") && !is.null(out) && nzchar(out)) return(out)
+    p
   }
+  
+  normalized_path <- normalize_for_registry(abs_path)
   
   session$userData$current_session_files[[token]] <- list(
     path = normalized_path,

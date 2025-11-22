@@ -501,8 +501,13 @@ fileManagerServer <- function(
         }
 
         if (!is.null(persisted_path) && nzchar(persisted_path)) {
-          norm_path <- tryCatch(normalizePath(persisted_path, winslash = "/", mustWork = FALSE),
-                                error = function(e) persisted_path)
+          norm_path <- tryCatch({
+            if (exists("normalize_mcp_path", mode = "function")) {
+              normalize_mcp_path(persisted_path, must_exist = FALSE)
+            } else {
+              persisted_path
+            }
+          }, error = function(e) persisted_path)
           module_values$file_contents[[id]]$persisted_path <- norm_path
           module_values$file_contents[[id]]$datapath <- norm_path
           register_session_file(filename, norm_path)

@@ -345,7 +345,8 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
   if (is.null(requested) || !(is.character(requested) && length(requested) > 0 && nzchar(requested[1]))) return(NULL)
 
   if (path_exists_relaxed(requested[1])) {
-    p <- normalizePath(requested[1], winslash = "/", mustWork = TRUE)
+    p <- tryCatch(normalize_mcp_path(requested[1], must_exist = TRUE),
+                 error = function(e) normalizePath(requested[1], winslash = "/", mustWork = TRUE))
     log_info("resolve_uploaded_file(): doğrudan mevcut dosya bulundu -> {p}")
     return(p)
   }
@@ -369,7 +370,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
           ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
           ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
           if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
-            p <- normalizePath(ent_path, winslash = "/", mustWork = FALSE)
+            p <- normalize_mcp_path(ent_path, must_exist = FALSE)
             log_info("resolve_uploaded_file(): kullanıcı kovasında TAM adla bulundu -> {p}")
             return(p)
           }
@@ -380,7 +381,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
       hit <- bucket[[key]]
       if (is.list(hit) && !is.null(hit$path)) hit <- hit$path  # yeni yapı
       if (!is.null(hit) && path_exists_relaxed(hit)) {
-        p <- normalizePath(hit, winslash = "/", mustWork = FALSE)
+        p <- normalize_mcp_path(hit, must_exist = FALSE)
         log_info("resolve_uploaded_file(): kullanıcı kovasında basename ile bulundu -> {p}")
         return(p)
       } else {
@@ -403,7 +404,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
           ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
           ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
           if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
-            p <- normalizePath(ent_path, winslash = "/", mustWork = FALSE)
+            p <- normalize_mcp_path(ent_path, must_exist = FALSE)
             log_info("resolve_uploaded_file(): display ile kovalar arasında bulundu (bucket='{bucket_name}') -> {p}")
             return(p)
           }
@@ -416,7 +417,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
   hit <- idx[[key]]
   if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
   if (!is.null(hit) && path_exists_relaxed(hit)) {
-    p <- normalizePath(hit, winslash = "/", mustWork = FALSE)
+    p <- normalize_mcp_path(hit, must_exist = FALSE)
     log_info("resolve_uploaded_file(): legacy haritada (basename) bulundu -> {p}")
     return(p)
   }
@@ -428,7 +429,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
         hit <- bucket[[key]]
         if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
         if (!is.null(hit) && path_exists_relaxed(hit)) {
-          p <- normalizePath(hit, winslash = "/", mustWork = FALSE)
+          p <- normalize_mcp_path(hit, must_exist = FALSE)
           log_info("resolve_uploaded_file(): çapraz kovada (basename) bulundu (bucket='{bucket_name}') -> {p}")
           return(p)
         }
