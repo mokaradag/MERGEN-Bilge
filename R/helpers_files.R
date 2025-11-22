@@ -1,48 +1,35 @@
 # R/helpers_files.R
 
-# Relaxed file.exists for UNC + long paths ("\\\\?\\UNC" etc.)
+# Relaxed file.exists for UNC + long paths + Encoding variants
 path_exists_relaxed <- function(path) {
-  if (is.null(path) || length(path) == 0) {
-    return(FALSE)
-  }
+  if (is.null(path) || length(path) == 0) return(FALSE)
 
   candidate <- as.character(path[1])
-  if (!nzchar(candidate)) {
-    return(FALSE)
-  }
+  if (!nzchar(candidate)) return(FALSE)
 
+  # Generate variants: Slashes, Backslashes, UNC
   cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
-  cand_unc   <- sub("^//\\?/UNC", "//", cand_slash, perl = TRUE)
-  cand_drop  <- sub("^//\\?/", "//", cand_unc,   perl = TRUE)
-  cand_back  <- gsub("/", "\\\\", cand_slash, fixed = TRUE)
-  cand_back_unc  <- gsub("/", "\\\\", cand_unc,  fixed = TRUE)
-  cand_back_drop <- gsub("/", "\\\\", cand_drop, fixed = TRUE)
-  cand_drive     <- sub("^//", "", cand_drop)
-  cand_back_drive <- gsub("/", "\\\\", cand_drive, fixed = TRUE)
-
+  
   variants <- unique(trimws(Filter(nzchar, c(
     candidate,
     cand_slash,
-    cand_unc,
-    cand_drop,
-    cand_back,
-    cand_back_unc,
-    cand_back_drop,
-    cand_drive,
-    cand_back_drive
+    # UNC repairs
+    sub("^//\\?/UNC", "//", cand_slash, perl = TRUE),
+    sub("^//\\?/", "//", cand_slash, perl = TRUE),
+    # Fix missing leading slash for UNC (common R issue on Windows)
+    if (grepl("^/[^/]", cand_slash)) paste0("/", cand_slash) else NULL,
+    gsub("/", "\\\\", cand_slash, fixed = TRUE)
   ))))
 
   for (chk in variants) {
-    # base::file.exists occasionally returns logical(0) for invalid paths
-    exists_base <- tryCatch(isTRUE(file.exists(chk)), warning = function(w) FALSE, error = function(e) FALSE)
-    if (isTRUE(exists_base)) {
-      return(TRUE)
-    }
-
-    exists_fs <- tryCatch(isTRUE(fs::file_exists(chk)), warning = function(w) FALSE, error = function(e) FALSE)
-    if (isTRUE(exists_fs)) {
-      return(TRUE)
-    }
+    # 1. Check as is
+    if (tryCatch(isTRUE(file.exists(chk)), error=function(e) FALSE)) return(TRUE)
+    if (tryCatch(isTRUE(fs::file_exists(chk)), error=function(e) FALSE)) return(TRUE)
+    
+    # 2. Check UTF-8 encoded (for Turkish chars)
+    chk_utf8 <- tryCatch(enc2utf8(chk), error=function(e) chk)
+    if (tryCatch(isTRUE(file.exists(chk_utf8)), error=function(e) FALSE)) return(TRUE)
+    if (tryCatch(isTRUE(fs::file_exists(chk_utf8)), error=function(e) FALSE)) return(TRUE)
   }
 
   FALSE

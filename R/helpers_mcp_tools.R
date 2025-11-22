@@ -43,17 +43,11 @@ if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
 if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
-    
-	# 1. Standardize slashes
+
+    # 1. Standardize slashes
     p_fixed <- gsub("\\\\", "/", path)
     
-    # --- START OF MODIFICATION ---
-    # Türkçe: Windows ortamında encoding (karakter kodlaması) sorunlarını çözmek için
-    if (.Platform$OS.type == "windows") {
-      p_fixed <- tryCatch(enc2utf8(p_fixed), error = function(e) p_fixed)
-    }
-
-    # Helper function: Dosya varlık kontrolü (fs ve base birlikte)
+    # Helper: Check existence (Robust)
     path_exists_check <- function(p) {
       if (is.null(p) || !nzchar(p)) return(FALSE)
       tryCatch({
@@ -62,50 +56,49 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
         FALSE
       }, error = function(e) FALSE)
     }
+
+    # 2. Pre-check: If it exists as-is (or as UTF-8), return immediately
+    # This prevents normalizePath from messing up valid UNC paths
+    if (path_exists_check(p_fixed)) return(p_fixed)
     
-    # 2. Eğer dosya bu haliyle doğrudan bulunamıyorsa onarmayı dene (UNC Repair)
-    if (!path_exists_check(p_fixed)) {
-      
-      # Türkçe: Eğer yol tek slash ile başlıyorsa (örn: /rehisds/...) ama çift slash değilse
-      # Windows UNC yolları (\\server\share) bazen tek slash olarak gelebilir.
-      if (grepl("^/[^/]", p_fixed)) {
-        p_unc <- paste0("/", p_fixed) # Başına slash ekle -> //rehisds/...
-        
-        # Eğer bu UNC varyasyonu diskte varsa, yolu güncelle
-        if (path_exists_check(p_unc)) {
-          p_fixed <- p_unc
-        }
-      }
+    p_utf8 <- tryCatch(enc2utf8(p_fixed), error = function(e) p_fixed)
+    if (path_exists_check(p_utf8)) return(p_utf8)
+
+    # 3. UNC Repair (Windows): fix /server/share -> //server/share
+    if (grepl("^/[^/]", p_fixed)) {
+       p_unc <- paste0("/", p_fixed)
+       if (path_exists_check(p_unc)) return(p_unc)
+       
+       p_unc_utf8 <- tryCatch(enc2utf8(p_unc), error = function(e) p_unc)
+       if (path_exists_check(p_unc_utf8)) return(p_unc_utf8)
     }
 
-    # 3. Path Expand / Normalize
-    # Use tryCatch to avoid crashing on encoding errors
-    normalized <- tryCatch({
-        if (path_exists_check(p_fixed)) {
-            # mustWork=TRUE canonicalizes the path (fixing casing etc.)
-            normalizePath(p_fixed, winslash = "/", mustWork = TRUE)
-        } else {
-            # fallback if doesn't exist (or network lag)
-            normalizePath(path.expand(p_fixed), winslash = "/", mustWork = FALSE)
-        }
-    }, error = function(e) p_fixed)
-    
-    # 4. Windows Short Path (8.3) fallback for encoding safety
-    # This is critical for Turkish characters on some Windows systems
+    # 4. Windows Short Path (8.3) fallback
+    # Crucial for Turkish characters (e.g. "Geliştirme") causing issues in readxl
     if (.Platform$OS.type == "windows") {
-      normalized <- tryCatch({
-        # Only attempt short path if file exists, otherwise it fails
-        if (path_exists_check(normalized)) {
-           short_raw <- utils::shortPathName(gsub("/", "\\\\", normalized, fixed = TRUE))
-           gsub("\\\\", "/", short_raw, fixed = TRUE)
-        } else {
-           normalized
-        }
-      }, error = function(e) normalized)
-    } else {
-      normalized <- enc2utf8(normalized)
+       # Try to find a valid candidate to convert to short path
+       candidate <- NULL
+       if (path_exists_check(p_fixed)) candidate <- p_fixed
+       else if (path_exists_check(p_utf8)) candidate <- p_utf8
+       else if (exists("p_unc") && path_exists_check(p_unc)) candidate <- p_unc
+       
+       if (!is.null(candidate)) {
+         short_p <- tryCatch({
+           # shortPathName requires backslashes usually
+           raw_short <- utils::shortPathName(gsub("/", "\\\\", candidate, fixed = TRUE))
+           gsub("\\\\", "/", raw_short, fixed = TRUE)
+         }, error = function(e) candidate)
+         return(short_p)
+       }
     }
-    normalized
+
+    # 5. Last resort: Standard normalization (careful with UNC)
+    # Only run if it's NOT a UNC path (doesn't start with //) to avoid the /rehisds/rehisds doubling
+    if (!grepl("^//", p_fixed)) {
+        tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
+    } else {
+        p_fixed
+    }
   }
 }
 
@@ -118,24 +111,24 @@ if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
   )
 }
 
-# GUARANTEE: if it still doesn't exist here (e.g., in a worker), provide a minimal fallback
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
+    # Use the robust normalizer
     path_prepared <- helpers_mcp_tools$normalize_excel_path(path)
     
-    if (!file.exists(path_prepared) && !file.exists(path)) {
-        # Try one last check with fs if available
-        if (!requireNamespace("fs", quietly=TRUE) || !fs::file_exists(path_prepared)) {
-             stop(sprintf("Dosya bulunamadı: %s", path_prepared))
-        }
+    # Final check before passing to readxl
+    if (!file.exists(path_prepared) && !fs::file_exists(path_prepared)) {
+        # Last ditch: check if original path works
+        if (file.exists(path)) path_prepared <- path
+        else stop(sprintf("Dosya bulunamadı (Path: %s)", path_prepared))
     }
     
-    ext <- tolower(tools::file_ext(path))
+    ext <- tolower(tools::file_ext(path_prepared))
     if (!ext %in% c("xlsx", "xls", "xlsm")) {
-      stop(sprintf("Excel uzantısı bekleniyor (.xlsx/.xls/.xlsm), bulundu: .%s", ext))
+      stop(sprintf("Excel uzantısı bekleniyor, bulundu: .%s", ext))
     }
 	
-    # Minimal, robust fallback (first sheet, treat first row as header)
+    # Read
     df <- readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE)
     if (is.finite(n_max)) df <- head(df, n_max)
     df <- as.data.frame(df, stringsAsFactors = FALSE)
