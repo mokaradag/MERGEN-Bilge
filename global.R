@@ -759,46 +759,15 @@ monitor_workers <- function() {
 # --- ROBUST EXCEL TABLE READER (auto-detects top-left of the real table) ---
 normalize_excel_path <- function(path) {
   if (is.null(path) || !nzchar(path)) return(path)
-  
-  candidate <- as.character(path[1])
-
-  # Prefer the MCP-safe normalizer (keeps UNC prefixes + UTF-8 characters)
-  if (exists("normalize_mcp_path", inherits = TRUE)) {
-    try_norm <- try(normalize_mcp_path(candidate, must_exist = FALSE), silent = TRUE)
-    if (!inherits(try_norm, "try-error") && !is.null(try_norm) && nzchar(try_norm)) {
-      candidate <- try_norm
-    }
-  }
-
-  # Normalize slash style and collapse accidental duplicated server/share pairs
-  candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
-  parts <- strsplit(sub("^/+", "", candidate), "/", fixed = TRUE)[[1]]
-  if (length(parts) >= 4 && identical(parts[1:2], parts[3:4])) {
-    candidate <- paste(c("//", parts[1:2], parts[-(1:4)]), collapse = "/")
-  }
-
-  # If path starts with a single slash but looks like UNC, promote to //server/share
-  if (grepl("^/[^/]", candidate)) {
-    candidate <- paste0("/", sub("^/+", "", candidate))
-  }
-
-  # Preserve UNC forms (//server/share) without normalizePath mangling
-  if (grepl("^//", candidate)) {
-    cleaned <- gsub("/{3,}", "//", candidate)
-    return(enc2utf8(cleaned))
-  }
-  
+  expanded <- tryCatch(path.expand(path), error = function(e) path)
   normalized <- tryCatch(
-    normalizePath(candidate, winslash = "/", mustWork = FALSE),
-    error = function(e) candidate
+    normalizePath(expanded, winslash = "/", mustWork = FALSE),
+    error = function(e) expanded
   )
-  
   if (.Platform$OS.type == "windows") {
     normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
-    normalized <- safe_windows_short_path(normalized, must_exist = FALSE)
   }
-
-  enc2utf8(normalized)
+  normalized
 }
 
 safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
@@ -816,7 +785,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
   }
 
   if (is.null(resolved_path)) {
-    stop(sprintf("Dosya bulunamadı: %s", enc2utf8(path)))
+    stop(sprintf("Dosya bulunamadı: %s", path))
   }
 
   ext <- tolower(tools::file_ext(resolved_path))
@@ -827,10 +796,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
   # 1) Read the sheet without assuming headers; keep everything
   raw <- tryCatch(
     readxl::read_excel(resolved_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"),
-    error = function(e) {
-      msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
-      stop(sprintf("readxl::read_excel hatası: %s (dosya: %s)", msg, enc2utf8(resolved_path)))
-    }
+    error = function(e) stop(sprintf("readxl::read_excel hatası: %s (dosya: %s)", e$message, resolved_path))
   )
   if (nrow(raw) == 0 || ncol(raw) == 0) return(data.frame())
 
