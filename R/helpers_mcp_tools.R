@@ -613,15 +613,17 @@ helpers_mcp_tools$normalize_args <- function(args) {
 helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
-  if (!isTRUE(res$ok)) return(paste("Hata:", res$error))
+  # [FIX] Return list for error
+  if (!isTRUE(res$ok)) return(list(error = res$error))
 
   path <- res$path
   df <- tryCatch({
     data.table::as.data.table(helpers_mcp_tools$safe_read_excel_table(path))
   }, error = function(e) e)
   
+  # [FIX] Return list for error
   if (inherits(df, "error")) {
-    return(sprintf("Excel dosyası okunamadı: %s — %s", basename(path), df$message))
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), df$message)))
   }
 
   n_rows <- nrow(df)
@@ -648,10 +650,11 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
     num_table_md <- paste0("\n\n#### Sayısal Sütun Özeti\n", helpers_mcp_tools$create_md_table(summary_data))
   }
 
-  sprintf(
+  # [FIX] Wrap markdown in a list to avoid '$ operator' error
+  list(result = sprintf(
     "### Dosya Özeti: %s\n\n- **Satır Sayısı:** %d\n- **Sütun Sayısı:** %d\n- **Sütunlar:** %s%s",
     basename(path), n_rows, n_cols, paste(cols, collapse = ", "), num_table_md
-  )
+  ))
 }
 
 # ==================================
@@ -660,8 +663,9 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
 helpers_mcp_tools$get_column_statistics <- function(file_name, column, session = NULL) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
-  if (!isTRUE(res$ok)) return(paste("Hata:", res$error))
-  if (is.null(column) || !nzchar(column)) return("Hata: column parametresi boş")
+  # [FIX] Return list for error
+  if (!isTRUE(res$ok)) return(list(error = res$error))
+  if (is.null(column) || !nzchar(column)) return(list(error = "column parametresi boş"))
 
   path <- res$path
   dt <- tryCatch({
@@ -669,17 +673,18 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message))
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
   }
 
   if (!(column %in% names(dt))) {
-    return(sprintf("Sütun bulunamadı: **%s**. Mevcut sütunlar: %s", column, paste(names(dt), collapse = ", ")))
+    return(list(error = sprintf("Sütun bulunamadı: **%s**. Mevcut sütunlar: %s", column, paste(names(dt), collapse = ", "))))
   }
 
   vec <- dt[[column]]
   
   header <- sprintf("### İstatistikler: %s (%s)", column, basename(path))
 
+  output_md <- ""
   if (is.numeric(vec)) {
     stats_df <- data.frame(
       Metrik = c("Kayıt Sayısı", "Ortalama", "Medyan", "Minimum", "Maksimum", "Toplam", "Standart Sapma", "Boş Değer"),
@@ -695,12 +700,12 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
       ),
       stringsAsFactors = FALSE
     )
-    return(paste0(header, "\n\n", helpers_mcp_tools$create_md_table(stats_df)))
+    output_md <- paste0(header, "\n\n", helpers_mcp_tools$create_md_table(stats_df))
     
   } else {
     # Categorical
     tb <- sort(table(vec, useNA = "ifany"), decreasing = TRUE)
-    top5 <- head(tb, 10) # Increased to 10 for better context
+    top5 <- head(tb, 10) 
     
     stats_df <- data.frame(
       Değer = names(top5),
@@ -714,8 +719,11 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
       length(unique(vec)), sum(is.na(vec))
     )
     
-    return(paste0(header, "\n", summary_text, "\n\n#### En Sık Görülen Değerler\n", helpers_mcp_tools$create_md_table(stats_df)))
+    output_md <- paste0(header, "\n", summary_text, "\n\n#### En Sık Görülen Değerler\n", helpers_mcp_tools$create_md_table(stats_df))
   }
+  
+  # [FIX] Wrap result in list
+  list(result = output_md)
 }
 
 # ==================================
@@ -723,13 +731,14 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
 # ==================================
 helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = NULL) {
   if (!helpers_mcp_tools$safe_has_duckdb()) {
-    return("Hata: DuckDB yüklü değil.")
+    return(list(error = "DuckDB yüklü değil. Lütfen install.packages('duckdb') çalıştırın."))
   }
 
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
-  if (!isTRUE(res$ok)) return(paste("Hata:", res$error))
-  if (is.null(sql) || !nzchar(sql)) return("Hata: sql parametresi boş")
+  # [FIX] Return list for error
+  if (!isTRUE(res$ok)) return(list(error = res$error))
+  if (is.null(sql) || !nzchar(sql)) return(list(error = "sql parametresi boş"))
 
   path <- res$path
   dt <- tryCatch({
@@ -737,7 +746,7 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message))
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
   }
 
   # Normalize date/time as character
@@ -760,10 +769,11 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
 
   ans <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) e)
   if (inherits(ans, "error")) {
-    return(sprintf(
+    # [FIX] Return as 'result' so LLM sees the SQL error message nicely
+    return(list(result = sprintf(
       "**SQL Hatası:** %s\n\n_İpucu: Tablo adı 't' olmalıdır. Stringler tek tırnak ile yazılmalıdır._", 
       ans$message
-    ))
+    )))
   }
 
   preview <- ans
@@ -773,11 +783,12 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
     limit_msg <- sprintf("\n_(İlk 20 satır gösteriliyor. Toplam sonuç: %d satır)_", nrow(ans))
   }
 
-  paste0(
+  # [FIX] Wrap result in list
+  list(result = paste0(
     "### Sorgu Sonucu\n**Dosya:** ", basename(path), "\n**SQL:** `", sql, "`\n\n",
     helpers_mcp_tools$create_md_table(preview),
     limit_msg
-  )
+  ))
 }
 
 # ==================================
