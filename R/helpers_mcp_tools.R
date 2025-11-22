@@ -43,6 +43,14 @@ if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
 if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
   helpers_mcp_tools$normalize_excel_path <- function(path) {
     if (is.null(path) || !nzchar(path)) return(path)
+	
+    # Let the shared MCP normalizer clean early if available
+    if (exists("normalize_mcp_path", envir = globalenv(), inherits = TRUE)) {
+      try_norm <- try(get("normalize_mcp_path", envir = globalenv(), inherits = TRUE)(path, must_exist = FALSE), silent = TRUE)
+      if (!inherits(try_norm, "try-error") && !is.null(try_norm) && nzchar(try_norm)) {
+        path <- try_norm
+      }
+    }
 
     p_fixed <- gsub("\\\\", "/", path)
 

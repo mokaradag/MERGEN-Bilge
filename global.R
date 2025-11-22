@@ -206,11 +206,35 @@ normalize_mcp_path <- function(path, must_exist = FALSE) {
   candidate <- trimws(as.character(path[1] %||% ""))
   if (!nzchar(candidate)) return("")
 
-  # UNC prefix (e.g., \\server/share or //server/share) should be left intact
+  # Normalize slash style up-front
+  candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
+
+  # Collapse accidental duplicated server/share prefixes that show up as
+  #   /rehisds/uygulamalar/rehisds/uygulamalar/Primavera/...
+  dedupe_leading_pair <- function(p) {
+    parts <- strsplit(sub("^/+", "", p), "/", fixed = TRUE)[[1]]
+    if (length(parts) >= 4 && identical(parts[1:2], parts[3:4])) {
+      paste(c("", "", parts[1:2], parts[-(1:4)]), collapse = "/")
+    } else {
+      p
+    }
+  }
+
+  candidate <- dedupe_leading_pair(candidate)
+
+  # UNC prefix (\\server/share or //server/share) should be preserved exactly
   if (grepl("^\\\\", candidate) || grepl("^//", candidate)) {
-    cleaned <- gsub("\\\\", "/", candidate, fixed = TRUE)
-    cleaned <- sub("^/{3,}", "//", cleaned)
-    return(cleaned)
+    cleaned <- gsub("/{3,}", "//", candidate)
+    return(enc2utf8(cleaned))
+  }
+
+  # Paths like "/server/share/..." coming from Windows UNC drops should be
+  # treated as UNC (do NOT let normalizePath prepend the working directory).
+  maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
+  if (maybe_unc) {
+    cleaned <- paste0("//", sub("^/+", "", candidate))
+    cleaned <- dedupe_leading_pair(cleaned)
+    return(enc2utf8(cleaned))
   }
 
   normalize_utf8_path(candidate, mustWork = must_exist)
