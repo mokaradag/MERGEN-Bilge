@@ -158,9 +158,18 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
         else stop(sprintf("Dosya bulunamadı (Path: %s)", path_prepared))
     }
     
-    ext <- tolower(tools::file_ext(path_prepared))
+	ext <- tolower(tools::file_ext(path_prepared))
     if (!ext %in% c("xlsx", "xls", "xlsm")) {
       stop(sprintf("Excel uzantısı bekleniyor, bulundu: .%s", ext))
+    }
+
+    if (.Platform$OS.type == "windows") {
+      if (grepl("^//", path_prepared) || grepl("[^ -~]", path_prepared)) {
+        tmp_copy <- tempfile(fileext = paste0(".", ext))
+        if (tryCatch(file.copy(path_prepared, tmp_copy, overwrite = TRUE), error = function(e) FALSE)) {
+          path_prepared <- tmp_copy
+        }
+      }
     }
 	
     # Read
