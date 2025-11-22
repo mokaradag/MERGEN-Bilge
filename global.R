@@ -792,12 +792,6 @@ normalize_excel_path <- function(path) {
   }
 
   if (grepl("^//", p_fixed)) {
-    if (.Platform$OS.type == "windows") {
-      try_short <- tryCatch(utils::shortPathName(gsub("/", "\\\\", p_fixed, fixed = TRUE)), error = function(e) NULL)
-      if (!is.null(try_short) && nzchar(try_short) && file.exists(try_short)) {
-        return(gsub("\\\\", "/", try_short, fixed = TRUE))
-      }
-    }
     return(gsub("/{3,}", "//", p_fixed))
   }
 
@@ -815,13 +809,6 @@ normalize_excel_path <- function(path) {
 
     for (cand in candidates) {
       if (!is.null(cand) && path_exists_check(cand)) {
-        short_p <- tryCatch({
-          raw_short <- utils::shortPathName(gsub("/", "\\\\", cand, fixed = TRUE))
-          gsub("\\\\", "/", raw_short, fixed = TRUE)
-        }, error = function(e) NULL)
-
-        if (!is.null(short_p) && nzchar(short_p)) return(short_p)
-
         return(cand)
       }
     }
