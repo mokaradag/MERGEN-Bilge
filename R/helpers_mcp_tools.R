@@ -73,6 +73,11 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
     }
 
     p_fixed <- dedupe_leading_repeat(p_fixed)
+	
+    # Ensure UTF-8 on non-Windows hosts so readxl doesn't choke on Turkish chars
+    if (.Platform$OS.type != "windows") {
+      p_fixed <- tryCatch(enc2utf8(p_fixed), error = function(e) p_fixed)
+    }
 
     # 1. Aggressive UNC Repair
     # If it starts with / but not //, convert to // immediately (keeps network roots intact)
@@ -174,6 +179,15 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
             return(readxl::read_excel(short_p, sheet = sheet, col_names = TRUE))
          }
       }
+	  
+      # Linux/UTF-8 guard: re-encode path if translation failed
+      if (grepl("unable to translate", conditionMessage(e), fixed = TRUE)) {
+        utf8_path <- tryCatch(enc2utf8(path_prepared), error = function(x) path_prepared)
+        if (!identical(utf8_path, path_prepared) && file.exists(utf8_path)) {
+          return(readxl::read_excel(utf8_path, sheet = sheet, col_names = TRUE))
+        }
+      }
+	  
       stop(e)
     })
 
@@ -304,6 +318,11 @@ helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_
   }
   
   normalized_path <- normalize_for_registry(abs_path)
+  
+  if (!helpers_mcp_tools$path_exists_relaxed(normalized_path)) {
+    cat("[RESOLVE] Skip registry; path missing ->", normalized_path, "\n")
+    return(invisible(FALSE))
+  }
   
   session$userData$current_session_files[[token]] <- list(
     path = normalized_path,
