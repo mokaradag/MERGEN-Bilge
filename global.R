@@ -759,53 +759,117 @@ monitor_workers <- function() {
 # --- ROBUST EXCEL TABLE READER (auto-detects top-left of the real table) ---
 normalize_excel_path <- function(path) {
   if (is.null(path) || !nzchar(path)) return(path)
-  expanded <- tryCatch(path.expand(path), error = function(e) path)
-  normalized <- tryCatch(
-    normalizePath(expanded, winslash = "/", mustWork = FALSE),
-    error = function(e) expanded
-  )
-  if (.Platform$OS.type == "windows") {
-    normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
-  }
-  normalized
-}
 
-safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
-  candidates <- unique(Filter(function(x) {
-    is.character(x) && length(x) > 0 && nzchar(x[1])
-  }, c(path, normalize_excel_path(path))))
-
-  resolved_path <- NULL
-  for (cand in candidates) {
-    cand_chr <- as.character(cand)[1]
-    if (isTRUE(path_exists_relaxed(cand_chr))) {
-      resolved_path <- cand_chr
-      break
+  if (exists("normalize_mcp_path", envir = globalenv(), inherits = TRUE)) {
+    try_norm <- try(get("normalize_mcp_path", envir = globalenv(), inherits = TRUE)(path, must_exist = FALSE), silent = TRUE)
+    if (!inherits(try_norm, "try-error") && !is.null(try_norm) && nzchar(try_norm)) {
+      path <- try_norm
     }
   }
 
-  if (is.null(resolved_path)) {
-    stop(sprintf("Dosya bulunamadı: %s", path))
+  p_fixed <- gsub("\\\\", "/", path)
+
+  dedupe_leading_repeat <- function(p) {
+    if (!nzchar(p)) return(p)
+    slashes <- sub("^(/*).*", "\\1", p)
+    parts <- strsplit(sub("^/+", "", p), "/", fixed = TRUE)[[1]]
+    if (length(parts) < 4) return(p)
+    if (identical(parts[1:2], parts[3:4])) {
+      rebuilt <- paste(c(slashes, parts[1:2], parts[-(1:4)]), collapse = "/")
+      return(gsub("/{2,}", "/", rebuilt))
+    }
+    p
   }
 
-  ext <- tolower(tools::file_ext(resolved_path))
-  if (!ext %in% c("xlsx", "xls", "xlsm")) {
-    stop(sprintf("Excel uzantısı bekleniyor (.xlsx/.xls/.xlsm), bulundu: .%s", ext))
+  p_fixed <- dedupe_leading_repeat(p_fixed)
+
+  if (.Platform$OS.type != "windows") {
+    p_fixed <- tryCatch(enc2utf8(p_fixed), error = function(e) p_fixed)
+  }
+
+  if (grepl("^/[^/]", p_fixed)) {
+    p_fixed <- paste0("/", p_fixed)
+  }
+
+  if (grepl("^//", p_fixed)) {
+    if (.Platform$OS.type == "windows") {
+      try_short <- tryCatch(utils::shortPathName(gsub("/", "\\\\", p_fixed, fixed = TRUE)), error = function(e) NULL)
+      if (!is.null(try_short) && nzchar(try_short) && file.exists(try_short)) {
+        return(gsub("\\\\", "/", try_short, fixed = TRUE))
+      }
+    }
+    return(gsub("/{3,}", "//", p_fixed))
+  }
+
+  path_exists_check <- function(p) {
+    if (is.null(p) || !nzchar(p)) return(FALSE)
+    tryCatch({
+      if (file.exists(p)) return(TRUE)
+      if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(p)) return(TRUE)
+      FALSE
+    }, error = function(e) FALSE)
   }
   
-  # 1) Read the sheet without assuming headers; keep everything
-  raw <- tryCatch(
-    readxl::read_excel(resolved_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"),
-    error = function(e) stop(sprintf("readxl::read_excel hatası: %s (dosya: %s)", e$message, resolved_path))
-  )
+  if (.Platform$OS.type == "windows") {
+    candidates <- unique(c(p_fixed, tryCatch(enc2utf8(p_fixed), error = function(e) NULL)))
+
+    for (cand in candidates) {
+      if (!is.null(cand) && path_exists_check(cand)) {
+        short_p <- tryCatch({
+          raw_short <- utils::shortPathName(gsub("/", "\\\\", cand, fixed = TRUE))
+          gsub("\\\\", "/", raw_short, fixed = TRUE)
+        }, error = function(e) NULL)
+
+        if (!is.null(short_p) && nzchar(short_p)) return(short_p)
+
+        return(cand)
+      }
+    }
+  } else {
+    if (path_exists_check(p_fixed)) return(enc2utf8(p_fixed))
+  }
+
+  normalized <- tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
+  dedupe_leading_repeat(normalized)
+}
+
+safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
+  path_prepared <- normalize_excel_path(path)
+
+  if (!file.exists(path_prepared) && !fs::file_exists(path_prepared)) {
+    if (file.exists(path)) path_prepared <- path
+    else stop(sprintf("Dosya bulunamadı (Path: %s)", path_prepared))
+  }
+
+  ext <- tolower(tools::file_ext(path_prepared))
+  if (!ext %in% c("xlsx", "xls", "xlsm")) {
+    stop(sprintf("Excel uzantısı bekleniyor, bulundu: .%s", ext))
+  }
+
+  raw <- tryCatch({
+    readxl::read_excel(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal")
+  }, error = function(e) {
+    if (.Platform$OS.type == "windows") {
+      short_p <- tryCatch(utils::shortPathName(gsub("/", "\\\\", path_prepared)), error = function(x) NULL)
+      if (!is.null(short_p) && nzchar(short_p)) {
+        return(readxl::read_excel(short_p, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
+      }
+    }
+
+    if (grepl("unable to translate", conditionMessage(e), fixed = TRUE)) {
+      utf8_path <- tryCatch(enc2utf8(path_prepared), error = function(x) path_prepared)
+      if (!identical(utf8_path, path_prepared) && file.exists(utf8_path)) {
+        return(readxl::read_excel(utf8_path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
+      }
+    }
+
+    stop(e)
+  })
   if (nrow(raw) == 0 || ncol(raw) == 0) return(data.frame())
 
-  # 2) Non-empty mask
   non_empty <- as.data.frame(lapply(raw, function(x) !(is.na(x) | (is.character(x) & trimws(x) == ""))))
   row_score <- rowSums(data.matrix(non_empty), na.rm = TRUE)
 
-  # 3) Heuristic: first row that looks like a header (>= min_header_cols non-empty)
-  # and (ideally) followed by another non-sparse row
   header_row <- NA_integer_
   for (r in seq_len(nrow(raw))) {
     if (row_score[r] >= min_header_cols) {
@@ -815,39 +879,30 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
   }
   if (is.na(header_row)) header_row <- 1L
 
-  # 4) Determine column bounds around the header area
   lookahead_rows <- seq(header_row, min(header_row + 10, nrow(raw)))
   col_score <- colSums(data.matrix(non_empty[lookahead_rows, , drop = FALSE]), na.rm = TRUE)
   if (all(col_score == 0)) return(data.frame())
   col_min <- which(col_score > 0)[1]
   col_max <- tail(which(col_score > 0), 1)
 
-  # 5) Determine bottom row across these columns (end of the block)
   in_block <- rowSums(data.matrix(non_empty[, col_min:col_max, drop = FALSE]), na.rm = TRUE)
   row_max <- tail(which(in_block > 0), 1)
   if (is.na(row_max)) row_max <- nrow(raw)
 
   rng <- cellranger::cell_limits(ul = c(header_row, col_min), lr = c(row_max, col_max))
 
-  # 6) Final read: treat header row as column names
   df <- readxl::read_excel(
-    resolved_path,
+    path_prepared,
     sheet = sheet,
     range = rng,
     col_names = TRUE,
     n_max = if (is.finite(n_max)) n_max else NULL
   )
 
-  # Ensure safe, unique names (avoid NA/"")
   if (anyNA(names(df)) || any(names(df) == "")) {
     names(df) <- paste0("X", seq_along(df))
   }
   names(df) <- make.names(names(df), unique = TRUE, allow_ = TRUE)
-
-  # (Opsiyonel politika): A1 dışı başlangıç için bilgilendirici mesaj
-  if (header_row != 1L) {
-    message(sprintf("BİLGİ: Tablo A1 hücresinden başlamıyor; başlangıç konumu satır %d, sütun %d.", header_row, col_min))
-  }
 
   as.data.frame(df, stringsAsFactors = FALSE)
 }
