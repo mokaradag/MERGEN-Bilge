@@ -133,7 +133,7 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
     if (!file.exists(path_prepared) && !fs::file_exists(path_prepared)) {
         # Last ditch: check if original path works
         if (file.exists(path)) path_prepared <- path
-        else stop(sprintf("Dosya bulunamadı (Path: %s)", path_prepared))
+        else stop(sprintf("Dosya bulunamadı (Path: %s)", enc2utf8(path_prepared)))
     }
     
     ext <- tolower(tools::file_ext(path_prepared))
@@ -142,7 +142,13 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
     }
 	
     # Read
-    df <- readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE)
+    df <- tryCatch(
+      readxl::read_excel(path_prepared, sheet = sheet, col_names = TRUE),
+      error = function(e) {
+        msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
+        stop(msg)
+      }
+    )
     if (is.finite(n_max)) df <- head(df, n_max)
     df <- as.data.frame(df, stringsAsFactors = FALSE)
     if (anyNA(names(df)) || any(names(df) == "")) {
@@ -560,7 +566,8 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   }, error = function(e) e)
   
   if (inherits(df, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), df$message)))
+    msg <- tryCatch(enc2utf8(df$message), error = function(err) df$message)
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), msg)))
   }
 
   n_rows <- nrow(df)
@@ -609,7 +616,8 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+    msg <- tryCatch(enc2utf8(dt$message), error = function(err) dt$message)
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), msg)))
   }
 
   if (!(column %in% names(dt))) {
@@ -666,7 +674,8 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+    msg <- tryCatch(enc2utf8(dt$message), error = function(err) dt$message)
+    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), msg)))
   }
 
   # Normalize date/time as character so DuckDB doesn't choke on write
