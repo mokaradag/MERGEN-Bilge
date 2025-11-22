@@ -2331,6 +2331,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
               cat("[GLOBAL] *** UYARI: DataFrame BOŞ (0 satır) ***\n")
               result_text <- "UYARI: Sorgu sonucu boş döndü."
             }
+          } else if (is.list(raw) && !is.null(raw$result) && is.character(raw$result)) {
+            cat("[GLOBAL] ✓ Liste içindeki result metni kullanılacak\n")
+            result_text <- paste(raw$result, collapse = "\n\n")
+          } else if (is.character(raw) && length(raw)) {
+            cat("[GLOBAL] ✓ Ham karakter vektörü kullanılacak\n")
+            result_text <- paste(raw, collapse = "\n\n")
           } else {
             cat("[GLOBAL] *** UYARI: df DataFrame değil! JSON formatında dönecek ***\n")
             result_text <- jsonlite::toJSON(raw, auto_unbox = TRUE, pretty = TRUE)
@@ -2360,9 +2366,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         
         # Türkçe: LLM için sonuç mesajı oluştur
         results_text <- paste(
-          sapply(tool_results, function(tr) {
-            paste0("=== Araç: ", tr$tool, " ===\n", tr$result)
-          }),
+          vapply(tool_results, function(tr) trimws(tr$result), character(1)),
           collapse = "\n\n"
         )
 		
