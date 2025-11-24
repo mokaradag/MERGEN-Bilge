@@ -682,19 +682,18 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   num_table_md <- ""
   
   if (length(num_cols) > 0) {
-    summary_data <- do.call(rbind, lapply(num_cols, function(cn) {
+	summary_data <- do.call(rbind, lapply(num_cols, function(cn) {
       vals <- df[[cn]]
       d <- data.frame(
-        Sütun = cn,
-        Ortalama = mean(vals, na.rm = TRUE),
-        Medyan = median(vals, na.rm = TRUE),
-        Min = suppressWarnings(min(vals, na.rm = TRUE)),
-        Max = suppressWarnings(max(vals, na.rm = TRUE)),
-        Dolu = sum(!is.na(vals)), # Geçici isim
+        cn,
+        mean(vals, na.rm = TRUE),
+        median(vals, na.rm = TRUE),
+        suppressWarnings(min(vals, na.rm = TRUE)),
+        suppressWarnings(max(vals, na.rm = TRUE)),
+        sum(!is.na(vals)),
         stringsAsFactors = FALSE
       )
-      # Başlıkları elle düzelt (Türkçe karakter ve boşluk için)
-      names(d)[names(d) == "Dolu"] <- "Dolu Kayıt"
+      names(d) <- c("Sütun", "Ortalama", "Medyan", "Min", "Max", "Dolu Kayıt")
       d
     }))
     num_table_md <- paste0("\n\n#### Sayısal Sütun Özeti\n", helpers_mcp_tools$create_md_table(summary_data))
@@ -739,8 +738,8 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
   output_md <- ""
   if (is.numeric(vec)) {
     stats_df <- data.frame(
-      Metrik = c("Kayıt Sayısı", "Ortalama", "Medyan", "Minimum", "Maksimum", "Toplam", "Standart Sapma", "Boş Değer"),
-      Değer = c(
+      c("Kayıt Sayısı", "Ortalama", "Medyan", "Minimum", "Maksimum", "Toplam", "Standart Sapma", "Boş Değer"),
+      c(
         sum(!is.na(vec)),
         mean(vec, na.rm = TRUE),
         median(vec, na.rm = TRUE),
@@ -752,6 +751,7 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
       ),
       stringsAsFactors = FALSE
     )
+    names(stats_df) <- c("Metrik", "Değer")
     output_md <- paste0(header, "\n\n", helpers_mcp_tools$create_md_table(stats_df))
     
   } else {
@@ -957,6 +957,49 @@ helpers_mcp_tools$prepare_chart_data <- function(
   )
 }
 
+# ==================================
+# Tool 5: get_distinct_values (NEW)
+# ==================================
+helpers_mcp_tools$get_distinct_values <- function(file_name, column, limit = 50, session = NULL) {
+  file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
+  res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
+  if (!isTRUE(res$ok)) return(list(error = res$error))
+  
+  if (is.null(column) || !nzchar(column)) return(list(error = "column parametresi boş"))
+
+  path <- res$path
+  dt <- tryCatch({
+    data.table::as.data.table(helpers_mcp_tools$safe_read_excel_table(path))
+  }, error = function(e) e)
+  
+  if (inherits(dt, "error")) return(list(error = sprintf("Dosya okunamadı: %s", dt$message)))
+
+  if (!(column %in% names(dt))) {
+    return(list(error = sprintf("Sütun '%s' bulunamadı. Mevcut: %s", column, paste(names(dt), collapse=", "))))
+  }
+
+  vals <- unique(dt[[column]])
+  vals <- vals[!is.na(vals)]
+  count <- length(vals)
+  
+  # Return top N
+  shown_vals <- head(sort(vals), limit)
+  
+  display_name <- res$display %||% basename(path)
+  
+  msg <- paste0(
+    "### Benzersiz Değerler: ", column, " (", display_name, ")\n",
+    "- **Toplam Benzersiz Sayı:** ", count, "\n",
+    "- **Listelenen (İlk ", length(shown_vals), "):** ", paste(shown_vals, collapse = ", ")
+  )
+  
+  if (count > limit) {
+    msg <- paste0(msg, "\n\n_(Liste çok uzun olduğu için ilk ", limit, " kayıt gösterildi. Tam liste için SQL kullanabilirsiniz.)_")
+  }
+  
+  list(result = msg)
+}
+
 # ============================
 # Tool router
 # ============================
@@ -969,7 +1012,8 @@ helpers_mcp_tools$execute_parsed_tool <- function(tc, session = NULL) {
 	switch(tolower(fn),
 	  "analyze_uploaded_file"   = helpers_mcp_tools$analyze_uploaded_file(args$file_name, session),
 	  "get_column_statistics"   = helpers_mcp_tools$get_column_statistics(args$file_name, args$column, session),
-	  "get_column_stats"        = helpers_mcp_tools$get_column_statistics(args$file_name, args$column, session), # alias
+	  "get_distinct_values"     = helpers_mcp_tools$get_distinct_values(args$file_name, args$column, args$limit %||% 50, session),
+	  "get_column_stats"        = helpers_mcp_tools$get_column_statistics(args$file_name, args$column, session),
 	  "sql_query_uploaded_file" = helpers_mcp_tools$sql_query_uploaded_file(args$file_name, args$sql, session),
 	  "prepare_chart_data"      = helpers_mcp_tools$prepare_chart_data(
 		file_name  = args$file_name,
@@ -1048,6 +1092,22 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
           )
         )
       ),
+	  list(
+        type = "function",
+        `function` = list(
+          name = "get_distinct_values",
+          description = "Bir sütundaki benzersiz (unique) değerleri listeler. Filtreleme yapmadan önce kategori isimlerini öğrenmek için kullan.",
+          parameters = list(
+            type = "object",
+            properties = list(
+              file_name = list(type = "string", description = "Dosya adı."),
+              column    = list(type = "string", description = "Benzersiz değerleri istenen sütun."),
+              limit     = list(type = "integer", description = "Maksimum kaç değer dönsün (varsayılan 50).")
+            ),
+            required = list("file_name", "column")
+          )
+        )
+      ),
       list(
         type = "function",
         `function` = list(
@@ -1085,26 +1145,30 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-    "Aşağıdaki araçları çağırabilirsin. JSON ile **tek bir araç** çağır; ardından araç çıktısına göre Türkçe cevap ver.",
+    "Aşağıdaki araçları kullanarak kullanıcının Excel dosyasıyla ilgili sorularını yanıtla. JSON ile **tek bir araç** çağır.",
     "",
     "Araçlar:",
-    "1) analyze_uploaded_file(file_name) — Dosya hakkında genel bilgi yoksa İLK bunu çağır. Satır/sütun sayısı ve sütun adlarını öğrenmek için kullanılır.",
-    "2) get_column_statistics(file_name, column) — Tek bir sütunun dağılımını (frekans, min/max) detaylı incelemek için.",
-    "3) sql_query_uploaded_file(file_name, sql) — Filtreleme, sıralama (en yüksek/en düşük), gruplama ve listeleme soruları için. Tablo adı 't'.",
-	"4) prepare_chart_data(file_name, chart_type, x, y, group, agg, bins, top_n, filter_sql, limit) — Grafik çizimi istendiğinde kullan.",
-	"- chart_type: hist | bar | line | scatter | area | pie | donut | pareto; opsiyonlar: stack, donut, orientation, smooth",
+    "1) analyze_uploaded_file(file_name) — SADECE dosya ilk yüklendiğinde genel yapı (satır/sütun) öğrenmek için. Spesifik sorular (örn. 'ortalama kaç') için BUNU KULLANMA.",
+    "2) get_column_statistics(file_name, column) — Sayısal bir sütunun ortalama, min, max değerleri veya kategorik dağılımı için.",
+    "3) get_distinct_values(file_name, column, limit) — 'Hangi departmanlar var?', 'Proje isimleri neler?' gibi liste soruları için.",
+    "4) sql_query_uploaded_file(file_name, sql) — Karmaşık filtreleme, sıralama, gruplama ve 'En yüksek X' soruları için EN GÜÇLÜ araç. Tablo adı 't'.",
+    "5) prepare_chart_data(...) — Grafik çizimi istendiğinde kullan.",
     "",
-    "Kurallar:",
-    "- Eğer kullanıcının sorusu 'En çok kazanan 10 kişi', 'Satışları listele' gibi sıralama veya filtreleme içeriyorsa **sql_query_uploaded_file** kullan; ORDER BY + LIMIT yaz.",
-    "- SQL yazarken sütun isimleri boşluklu ise çift tırnak veya köşeli parantez kullan: [Müşteri Adı] veya \"Müşteri Adı\".",
-    "- **SQL Alias Kullanımı:** SELECT sorgularında sütunlara mutlaka Türkçe ve anlaşılır takma adlar (alias) ver. Alias'ı köşeli parantez içinde yaz (örn: `SELECT AVG(Maas) AS [Ortalama Maaş] ...`).",
-	"- Sütun adlarını tam bilmiyorsan önce analyze_uploaded_file ile öğren.",
+    "⚠️ KRİTİK KURALLAR (HATA YAPMA):",
+    "1. **SQL Alias Zorunluluğu:** SELECT sorgularında sütun başlıklarını MUTLAKA köşeli parantez içinde Türkçe ve anlaşılır isimlendir.",
+    "   - YANLIŞ: SELECT AVG(Salary) FROM t",
+    "   - DOĞRU:  SELECT AVG(Salary) AS [Ortalama Maaş], MAX(Salary) AS [En Yüksek Maaş] FROM t",
     "",
-    "YANIT FORMATI (ÖNEMLİ):",
-    "- Araçtan gelen veriyi sadece ekrana basma; bir uzman gibi **yorumla ve analiz et**.",
-    "- Örneğin 'Ortalama 500' demek yerine 'Ortalama değer 500 olarak hesaplanmıştır, bu da beklentinin üzerindedir...' gibi içgörü kat.",
-    "- ASLA JSON formatını veya '=== Araç ===' yazılarını yanıta ekleme.",
-    "- Tabloları Markdown olarak sun.",
+    "2. **Tek Seferde Doğru Cevap:**",
+    "   - Kullanıcı 'Ortalama yaş kaç?' derse, ASLA sadece `analyze_uploaded_file` çağırıp durma. Doğrudan `get_column_statistics` veya `sql_query_uploaded_file` kullan.",
+    "   - Soru net bir sayı veya liste istiyorsa, özeti geç ve hesaplamayı yapan aracı seç.",
+    "",
+    "3. **Yorum ve İçgörü (ÖNEMLİ):**",
+    "   - Aracı çalıştırdıktan sonra sadece tabloyu ekrana basıp bırakma.",
+    "   - Sonuçların altına mutlaka **'Yorum ve İçgörü'** başlıklı bir paragraf ekle.",
+    "   - Bir insan uzman gibi konuş: 'Bu sonuçlar beklentinin üzerinde...', 'Dikkat çeken nokta şudur...' gibi analizler yap.",
+    "",
+    "4. **Format:** Yanıtını Markdown formatında ver.",
     sep = "\n"
   )
 }
