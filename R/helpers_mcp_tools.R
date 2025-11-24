@@ -627,7 +627,7 @@ helpers_mcp_tools$prettify_column_name <- function(nm) {
   if (!nzchar(raw)) return("")
 
   # Strip wrapping quotes/brackets
-  cleaned <- gsub('^[`"\[]|[`"\]]$', "", raw)
+  cleaned <- gsub("^[`\"\\[]|[`\"\\]]$", "", raw)
   cleaned <- gsub("_+", " ", cleaned)
   cleaned <- gsub("(?<=[a-z])(?=[A-Z])", " ", cleaned, perl = TRUE)
   cleaned <- trimws(cleaned)
