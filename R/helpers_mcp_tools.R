@@ -184,7 +184,7 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
     if (anyNA(names(df)) || any(names(df) == "")) {
       names(df) <- paste0("X", seq_along(df))
     }
-    names(df) <- make.names(names(df), unique = TRUE, allow_ = TRUE)
+    names(df) <- make.unique(names(df), sep = "_")
     df
   }
 }
@@ -201,7 +201,7 @@ helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = I
   sanitize_names <- function(df) {
     nms <- names(df)
     if (anyNA(nms) || any(nms == "")) nms <- paste0("X", seq_along(nms))
-    names(df) <- make.names(nms, unique = TRUE, allow_ = TRUE)
+    names(df) <- make.unique(nms, sep = "_")
     df
   }
 
@@ -637,23 +637,27 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   if (length(num_cols) > 0) {
     summary_data <- do.call(rbind, lapply(num_cols, function(cn) {
       vals <- df[[cn]]
-      data.frame(
+      d <- data.frame(
         Sütun = cn,
         Ortalama = mean(vals, na.rm = TRUE),
         Medyan = median(vals, na.rm = TRUE),
         Min = suppressWarnings(min(vals, na.rm = TRUE)),
         Max = suppressWarnings(max(vals, na.rm = TRUE)),
-        Dolu_Kayit = sum(!is.na(vals)),
+        Dolu = sum(!is.na(vals)), # Geçici isim
         stringsAsFactors = FALSE
       )
+      # Başlıkları elle düzelt (Türkçe karakter ve boşluk için)
+      names(d)[names(d) == "Dolu"] <- "Dolu Kayıt"
+      d
     }))
     num_table_md <- paste0("\n\n#### Sayısal Sütun Özeti\n", helpers_mcp_tools$create_md_table(summary_data))
   }
 
-  # [FIX] Wrap markdown in a list to avoid '$ operator' error
+  display_name <- res$display %||% basename(path)
+  
   list(result = sprintf(
     "### Dosya Özeti: %s\n\n- **Satır Sayısı:** %d\n- **Sütun Sayısı:** %d\n- **Sütunlar:** %s%s",
-    basename(path), n_rows, n_cols, paste(cols, collapse = ", "), num_table_md
+    display_name, n_rows, n_cols, paste(cols, collapse = ", "), num_table_md
   ))
 }
 
@@ -783,9 +787,10 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
     limit_msg <- sprintf("\n_(İlk 20 satır gösteriliyor. Toplam sonuç: %d satır)_", nrow(ans))
   }
 
-  # [FIX] Wrap result in list
+  display_name <- res$display %||% basename(path)
+
   list(result = paste0(
-    "### Sorgu Sonucu\n**Dosya:** ", basename(path), "\n**SQL:** `", sql, "`\n\n",
+    "### Sorgu Sonucu\n**Dosya:** ", display_name, "\n**SQL:** `", sql, "`\n\n",
     helpers_mcp_tools$create_md_table(preview),
     limit_msg
   ))
@@ -977,16 +982,16 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
           )
         )
       ),
-      list(
+	  list(
         type = "function",
         `function` = list(
           name = "sql_query_uploaded_file",
-          description = "Karma/nested analizler için SQL çalıştırır. Tablo adı: t. Örnek: SELECT AVG(Salary) FROM t WHERE Department='IT';",
+          description = "SQL ile filtreleme, sıralama, gruplama ve 'Top N' listeleme yapar. Sıralama (ORDER BY) ve listeleme soruları için bunu kullan. Tablo adı: t.",
           parameters = list(
             type = "object",
             properties = list(
               file_name = list(type = "string", description = "Dosya jetonu veya adı."),
-              sql       = list(type = "string", description = "DuckDB uyumlu SQL; tablo adı 't'.")
+              sql       = list(type = "string", description = "DuckDB uyumlu SQL; tablo adı 't'. Örnek: SELECT * FROM t ORDER BY Age DESC LIMIT 10")
             ),
             required = list("file_name", "sql")
           )
@@ -1032,25 +1037,23 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
     "Aşağıdaki araçları çağırabilirsin. JSON ile **tek bir araç** çağır; ardından araç çıktısına göre Türkçe cevap ver.",
     "",
     "Araçlar:",
-    "1) analyze_uploaded_file(file_name) — satır/sütun sayısı, sütun adları, sayısal özet.",
-    "2) get_column_statistics(file_name, column) — tek sütun için istatistik.",
-    "3) sql_query_uploaded_file(file_name, sql) — karma/nested mantık için SQL (filtrele → grupla → sırala → LIMIT → toplam/ortalama). Tablo adı 't'.",
-	"4) prepare_chart_data(file_name, chart_type, x, y, group, agg, bins, top_n, filter_sql, limit) — grafik için veri ve tanım üretir.",
+    "1) analyze_uploaded_file(file_name) — Dosya hakkında genel bilgi yoksa İLK bunu çağır. Satır/sütun sayısı ve sütun adlarını öğrenmek için kullanılır.",
+    "2) get_column_statistics(file_name, column) — Tek bir sütunun dağılımını (frekans, min/max) detaylı incelemek için.",
+    "3) sql_query_uploaded_file(file_name, sql) — Filtreleme, sıralama (en yüksek/en düşük), gruplama ve listeleme soruları için. Tablo adı 't'.",
+	"4) prepare_chart_data(file_name, chart_type, x, y, group, agg, bins, top_n, filter_sql, limit) — Grafik çizimi istendiğinde kullan.",
 	"- chart_type: hist | bar | line | scatter | area | pie | donut | pareto; opsiyonlar: stack, donut, orientation, smooth",
     "",
     "Kurallar:",
-    "- Sadece araç çağrısı gerekiyorsa başka açıklama yazma.",
-    "- JSON örneği: {\"name\":\"sql_query_uploaded_file\",\"arguments\":{\"file_name\":\"dummy.xlsx\",\"sql\":\"SELECT AVG(Salary) FROM t\"}}",
-	"- Sütun adlarını birebir kullan, metinlerde tek tırnak: Department='IT'.",
-    "- Karma sorgularda her zaman **sql_query_uploaded_file** kullan.",
-    "- Planlama/düşünme metni yazma (örn. 'We need to call…', 'We will call…').",
-	"- Grafik/çizim gerektiğinde **prepare_chart_data** kullan; çıktı ChartLab tarafından çizilir.",
+    "- Eğer kullanıcının sorusu 'En çok kazanan 10 kişi', 'Satışları listele' gibi sıralama veya filtreleme içeriyorsa **sql_query_uploaded_file** kullan.",
+    "- SQL yazarken sütun isimleri boşluklu ise çift tırnak kullan: \"Müşteri Adı\".",
+    "- **SQL Alias Kullanımı:** SELECT sorgularında sütunlara mutlaka Türkçe ve anlaşılır takma adlar (alias) ver. Köşeli parantez kullanma, çift tırnak kullan. Örn: `SELECT AVG(Maas) AS \"Ortalama Maaş\" ...`",
+	"- Sütun adlarını tam bilmiyorsan önce analyze_uploaded_file ile öğren.",
     "",
-    "ÇIKTI FORMATI KURALLARI (ÇOK ÖNEMLİ):",
-    "- ASLA '=== Araç: ... ===' ibaresini veya JSON formatındaki ham çıktıları yanıta yansıtma.",
-    "- Araçtan gelen veriyi oku, yorumla ve son kullanıcıya doğal, akıcı bir Türkçe ile yanıt ver.",
-    "- Yanıtın bir bilgisayar komut çıktısı gibi değil, bir insanın konuşması gibi görünmelidir.",
-    "- Tabloları ve listeleri Markdown formatında, okunaklı şekilde sun.",
+    "YANIT FORMATI (ÖNEMLİ):",
+    "- Araçtan gelen veriyi sadece ekrana basma; bir uzman gibi **yorumla ve analiz et**.",
+    "- Örneğin 'Ortalama 500' demek yerine 'Ortalama değer 500 olarak hesaplanmıştır, bu da beklentinin üzerindedir...' gibi içgörü kat.",
+    "- ASLA JSON formatını veya '=== Araç ===' yazılarını yanıta ekleme.",
+    "- Tabloları Markdown olarak sun.",
     sep = "\n"
   )
 }
