@@ -2275,6 +2275,11 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             cat("[GLOBAL] Sütun isimleri:", paste(colnames(df), collapse=", "), "\n")
             
             if (nrow(df) > 0) {
+              # Ensure UTF-8 headers/cells so Turkish characters render correctly
+              df <- as.data.frame(df, stringsAsFactors = FALSE)
+              df[] <- lapply(df, function(col) tryCatch(enc2utf8(as.character(col)), error = function(e) col))
+              colnames(df) <- tryCatch(enc2utf8(colnames(df)), error = function(e) colnames(df))
+			  
               cat("[GLOBAL] ✓ VERİ VAR - İLK SATIR:\n")
               print(df[1, , drop=FALSE])
               

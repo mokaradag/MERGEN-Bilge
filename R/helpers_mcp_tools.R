@@ -250,15 +250,17 @@ helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = I
 helpers_mcp_tools$create_md_table <- function(df) {
   if (is.null(df) || nrow(df) == 0) return("_Veri yok_")
   
-  # Ensure clean character data
+  # Ensure clean UTF-8 character data (prevents S\u00fc tun style escapes)
   safe_df <- as.data.frame(lapply(df, function(x) {
     if (is.numeric(x)) return(format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE, trim = TRUE))
     if (is.logical(x)) return(ifelse(x, "TRUE", "FALSE"))
     if (inherits(x, "Date") || inherits(x, "POSIXt")) return(as.character(x))
     as.character(x)
   }), stringsAsFactors = FALSE)
-  
-  cols <- names(safe_df)
+
+  safe_df[] <- lapply(safe_df, function(col) tryCatch(enc2utf8(col), error = function(e) col))
+
+  cols <- tryCatch(enc2utf8(names(safe_df)), error = function(e) names(safe_df))
   header <- paste0("| ", paste(cols, collapse = " | "), " |")
   sep    <- paste0("| ", paste(rep("---", length(cols)), collapse = " | "), " |")
   
@@ -437,7 +439,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     for (key in names(all_files)) {
       file_obj <- all_files[[key]]
       path_to_check <- file_obj$path %||% file_obj$datapath
-      nm <- file_obj$name %||% basename(path_to_check)
+      nm <- file_obj$name %||% file_obj$display %||% basename(path_to_check)
       path_base <- basename(path_to_check %||% "")
 
       matched <- any(c(
@@ -471,7 +473,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       }
 
       if (!is.null(resolved_path)) {
-        display_val <- nm %||% basename(resolved_path)
+        display_val <- file_obj$display %||% nm %||% basename(resolved_path)
         return(list(ok = TRUE,
                     path = resolved_path,
                     display = display_val))
@@ -497,19 +499,29 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
 
     # 2a) per-user bucket (preferred)
     if (!is.null(uid) && !is.null(idx[[uid]])) {
-      p <- idx[[uid]][[tolower(base_arg)]]
-      if (is.list(p) && !is.null(p$path)) p <- p$path   # NEW: unwrap {path, display}
+      entry <- idx[[uid]][[tolower(base_arg)]]
+      p <- entry
+      disp <- NULL
+      if (is.list(entry)) {
+        disp <- entry$display
+        if (!is.null(entry$path)) p <- entry$path   # NEW: unwrap {path, display}
+      }
       if (!is.null(p) && path_ok(p)) {
         resolved_path <- helpers_mcp_tools$normalize_excel_path(p)
-        return(list(ok = TRUE, path = resolved_path, display = basename(p)))
+        display_val <- disp %||% basename(p)
+        return(list(ok = TRUE, path = resolved_path, display = display_val))
       }
     }
     # 2b) legacy flat
     p2 <- idx[[tolower(base_arg)]]
-    if (is.list(p2) && !is.null(p2$path)) p2 <- p2$path  # NEW
+    disp2 <- NULL
+    if (is.list(p2)) {
+      disp2 <- p2$display
+      if (!is.null(p2$path)) p2 <- p2$path  # NEW
+    }
     if (!is.null(p2) && path_ok(p2)) {
       resolved_path <- helpers_mcp_tools$normalize_excel_path(p2)
-      return(list(ok = TRUE, path = resolved_path, display = basename(p2)))
+      return(list(ok = TRUE, path = resolved_path, display = disp2 %||% basename(p2)))
     }
     # 2c) cross-bucket (first match)
     if (length(idx)) {
@@ -517,10 +529,14 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
         bucket <- idx[[bucket_name]]
         if (is.list(bucket)) {
           p3 <- bucket[[tolower(base_arg)]]
-          if (is.list(p3) && !is.null(p3$path)) p3 <- p3$path  # NEW
+          disp3 <- NULL
+          if (is.list(p3)) {
+            disp3 <- p3$display
+            if (!is.null(p3$path)) p3 <- p3$path  # NEW
+          }
           if (!is.null(p3) && path_ok(p3)) {
             resolved_path <- helpers_mcp_tools$normalize_excel_path(p3)
-            return(list(ok = TRUE, path = resolved_path, display = basename(p3)))
+            return(list(ok = TRUE, path = resolved_path, display = disp3 %||% basename(p3)))
           }
         }
       }
@@ -604,6 +620,37 @@ helpers_mcp_tools$normalize_args <- function(args) {
   args
 }
 
+# Human-friendly column aliases for SQL outputs
+helpers_mcp_tools$prettify_column_name <- function(nm) {
+  if (is.null(nm) || length(nm) == 0) return("")
+  raw <- as.character(nm[1])
+  if (!nzchar(raw)) return("")
+
+  # Strip wrapping quotes/brackets
+  cleaned <- gsub('^[`"\[]|[`"\]]$', "", raw)
+  cleaned <- gsub("_+", " ", cleaned)
+  cleaned <- gsub("(?<=[a-z])(?=[A-Z])", " ", cleaned, perl = TRUE)
+  cleaned <- trimws(cleaned)
+
+  lower <- tolower(cleaned)
+  if (grepl("^(avg|mean)", lower)) cleaned <- paste("Ortalama", trimws(sub("(?i)^(avg|mean)", "", cleaned)))
+  if (grepl("^(sum|total)", lower)) cleaned <- paste("Toplam", trimws(sub("(?i)^(sum|total)", "", cleaned)))
+  if (grepl("count", lower)) cleaned <- paste("Adet", trimws(sub("(?i)count", "", cleaned)))
+  if (grepl("max", lower)) cleaned <- paste("Maksimum", trimws(sub("(?i)max", "", cleaned)))
+  if (grepl("min", lower)) cleaned <- paste("Minimum", trimws(sub("(?i)min", "", cleaned)))
+
+  cleaned <- trimws(cleaned)
+  if (identical(cleaned, "")) cleaned <- raw
+
+  tryCatch(enc2utf8(cleaned), error = function(e) cleaned)
+}
+
+helpers_mcp_tools$prettify_result_colnames <- function(df) {
+  if (!is.data.frame(df)) return(df)
+  colnames(df) <- vapply(colnames(df), helpers_mcp_tools$prettify_column_name, character(1))
+  df
+}
+
 # Back-compat dotted alias (some earlier code may call this)
 .normalize_args <- helpers_mcp_tools$normalize_args
 
@@ -654,6 +701,7 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   }
 
   display_name <- res$display %||% basename(path)
+  display_name <- tryCatch(enc2utf8(display_name), error = function(e) display_name)
   
   list(result = sprintf(
     "### Dosya Özeti: %s\n\n- **Satır Sayısı:** %d\n- **Sütun Sayısı:** %d\n- **Sütunlar:** %s%s",
@@ -780,6 +828,8 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
     )))
   }
 
+  ans <- helpers_mcp_tools$prettify_result_colnames(ans)
+	
   preview <- ans
   limit_msg <- ""
   if (nrow(preview) > 20) {
@@ -788,6 +838,7 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
   }
 
   display_name <- res$display %||% basename(path)
+  display_name <- tryCatch(enc2utf8(display_name), error = function(e) display_name)
 
   list(result = paste0(
     "### Sorgu Sonucu\n**Dosya:** ", display_name, "\n**SQL:** `", sql, "`\n\n",
@@ -1044,9 +1095,9 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
 	"- chart_type: hist | bar | line | scatter | area | pie | donut | pareto; opsiyonlar: stack, donut, orientation, smooth",
     "",
     "Kurallar:",
-    "- Eğer kullanıcının sorusu 'En çok kazanan 10 kişi', 'Satışları listele' gibi sıralama veya filtreleme içeriyorsa **sql_query_uploaded_file** kullan.",
-    "- SQL yazarken sütun isimleri boşluklu ise çift tırnak kullan: \"Müşteri Adı\".",
-    "- **SQL Alias Kullanımı:** SELECT sorgularında sütunlara mutlaka Türkçe ve anlaşılır takma adlar (alias) ver. Köşeli parantez kullanma, çift tırnak kullan. Örn: `SELECT AVG(Maas) AS \"Ortalama Maaş\" ...`",
+    "- Eğer kullanıcının sorusu 'En çok kazanan 10 kişi', 'Satışları listele' gibi sıralama veya filtreleme içeriyorsa **sql_query_uploaded_file** kullan; ORDER BY + LIMIT yaz.",
+    "- SQL yazarken sütun isimleri boşluklu ise çift tırnak veya köşeli parantez kullan: [Müşteri Adı] veya \"Müşteri Adı\".",
+    "- **SQL Alias Kullanımı:** SELECT sorgularında sütunlara mutlaka Türkçe ve anlaşılır takma adlar (alias) ver. Alias'ı köşeli parantez içinde yaz (örn: `SELECT AVG(Maas) AS [Ortalama Maaş] ...`).",
 	"- Sütun adlarını tam bilmiyorsan önce analyze_uploaded_file ile öğren.",
     "",
     "YANIT FORMATI (ÖNEMLİ):",
@@ -1056,6 +1107,31 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
     "- Tabloları Markdown olarak sun.",
     sep = "\n"
   )
+}
+
+# Lightweight SQL extractor (so plain SELECT blocks are still executed)
+helpers_mcp_tools$extract_sql_from_text <- function(text) {
+  if (is.null(text) || !nzchar(text)) return(NULL)
+
+  # Prefer fenced sql blocks
+  block_rgx <- "```sql\\s*([\\s\\S]*?)```"
+  m <- regexpr(block_rgx, text, perl = TRUE)
+  if (m[1] != -1) {
+    sql <- regmatches(text, m)[1]
+    sql <- gsub("^```sql", "", sql)
+    sql <- gsub("```$", "", sql)
+    return(trimws(sql))
+  }
+
+  # Fallback: first SELECT ... pattern
+  plain_sel <- regexpr("(?is)select\\s+[\\s\\S]+?($|;)", text, perl = TRUE)
+  if (plain_sel[1] != -1) {
+    sql <- regmatches(text, plain_sel)[1]
+    sql <- sub(";+$", "", sql)
+    return(trimws(sql))
+  }
+
+  NULL
 }
 
 # ============================
@@ -1119,6 +1195,17 @@ helpers_mcp_tools$parse_tool_calls_from_text <- function(text) {
     }, silent = TRUE)
   }
 
+  # 4) Plain SQL without explicit tool markup
+  if (length(out) == 0) {
+    sql_candidate <- helpers_mcp_tools$extract_sql_from_text(text)
+    if (!is.null(sql_candidate) && nzchar(sql_candidate)) {
+      out[[length(out) + 1]] <- list(
+        function_name = "sql_query_uploaded_file",
+        arguments = list(sql = sql_candidate)
+      )
+    }
+  }
+  
   out
 }
 
