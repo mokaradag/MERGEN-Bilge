@@ -25,8 +25,8 @@ options(
   mergen.duckdb.temp_directory     = Sys.getenv("MERGEN_DUCKDB_TEMP_DIR", tempdir()) # DuckDB geçici dizin
 )
 
-# Türkçe: YALNIZCA GERÇEK VERİ kipini aç — LLM'in ikinci yazım geçişini atla
-options(mergen.ai.strict_data_only = TRUE)
+# Yorumlu yanıtlara izin ver (LLM'in ikinci yazım geçişi açık kalsın)
+options(mergen.ai.strict_data_only = FALSE)
 
 # --- LOGGING SETUP ---
 # Create logs directory if it doesn't exist
@@ -2173,8 +2173,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		# IMPORTANT: we're in a worker. Do NOT touch the Shiny session here.
 		chart_blocks_text <- ""
 		try({
-			# Türkçe yorum: __mcp_plot şartını kaldır — chart alanı olan tüm sonuçlar geçerlidir
-			chart_specs <- Filter(function(x) is.list(x) && !is.null(x[["chart"]]), tool_results_raw)
+				# __mcp_plot şartını kaldır — chart alanı olan tüm sonuçlar geçerlidir
+				chart_specs <- Filter(function(x) is.list(x) && !is.null(x[["chart"]]), tool_results_raw)
 		  if (length(chart_specs)) {
 
 			parts <- vapply(seq_along(chart_specs), function(i) {
@@ -2202,6 +2202,64 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			)
 		  }
 		}, silent = TRUE)
+
+		build_chart_summary <- function(raw_chart) {
+		  chart <- raw_chart$chart %||% raw_chart
+		  if (is.null(chart) || !is.list(chart)) {
+			return("Grafik verisi hazırlandı.")
+		  }
+
+		  desc_parts <- c()
+		  chart_type <- chart$type %||% chart$chart_type %||% ""
+		  if (nzchar(chart_type)) desc_parts <- c(desc_parts, paste0("Tür: ", chart_type))
+
+		  mapping <- chart$mapping %||% list()
+		  axes <- c()
+		  if (nzchar(mapping$x %||% "")) axes <- c(axes, paste0("X=", mapping$x))
+		  if (nzchar(mapping$y %||% "")) axes <- c(axes, paste0("Y=", mapping$y))
+		  if (nzchar(mapping$group %||% "")) axes <- c(axes, paste0("Gruplama=", mapping$group))
+		  if (length(axes)) desc_parts <- c(desc_parts, paste(axes, collapse = ", "))
+
+		  row_hint <- chart$n %||% if (is.data.frame(chart$data)) nrow(chart$data) else NULL
+		  if (is.finite(row_hint)) desc_parts <- c(desc_parts, paste0("Örnek satır sayısı: ", row_hint))
+
+		  summary_line <- if (length(desc_parts)) paste(desc_parts, collapse = " | ") else "Dosyadaki verilerden üretildi"
+		  paste0("Grafik hazırlandı. ", summary_line, ". Grafik aşağıda yer alıyor.")
+		}
+
+		build_auto_insight <- function(raw_results) {
+		  # 1) Grafik varsa öne al
+		  chart_pick <- Filter(function(x) is.list(x) && (!is.null(x[["chart"]]) || isTRUE(x[["__mcp_plot"]])), raw_results)
+		  if (length(chart_pick)) {
+			return(paste0(build_chart_summary(chart_pick[[1]]), " Eğilimleri yorumlarken serilerin dağılımına odaklan."))
+		  }
+
+		  # 2) DataFrame önizlemesi varsa kısa özet çıkar
+		  for (rr in raw_results) {
+			df <- rr$`sonuç_önizleme` %||% rr$preview
+			if (is.data.frame(df) && nrow(df) > 0) {
+			  num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
+			  if (length(num_cols)) {
+				vals <- suppressWarnings(as.numeric(df[[num_cols[1]]]))
+				avg  <- if (all(is.na(vals))) NA_real_ else mean(vals, na.rm = TRUE)
+				mn   <- if (all(is.na(vals))) NA_real_ else min(vals, na.rm = TRUE)
+				mx   <- if (all(is.na(vals))) NA_real_ else max(vals, na.rm = TRUE)
+				return(sprintf(
+				  "Yorum ve İçgörü: Örnek %d satır içinde '%s' sütunu %.2f ortalama, %.2f–%.2f aralığında.",
+				  nrow(df), num_cols[1], avg, mn, mx
+				))
+			  }
+
+			  head_cols <- paste(head(colnames(df), 3), collapse = ", ")
+			  return(sprintf(
+				"Yorum ve İçgörü: İlk %d satırda dikkat çeken sütunlar: %s. Örnekleri kontrol ederek bulguları özetle.",
+				nrow(df), head_cols
+			  ))
+			}
+		  }
+
+		  "Yorum ve İçgörü: Sonuçlar yukarıda. Öne çıkan eğilimleri kısaca yorumla ve kullanıcıya rehberlik et."
+		}
             
         # If any tool returned error, aggregate and short-circuit
         errs <- vapply(tool_results_raw, function(r) if (is.list(r) && !is.null(r$error)) r$error else "", "")
@@ -2268,9 +2326,13 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           }
           
           cat("[GLOBAL] df class:", class(df), "\n")
-          cat("[GLOBAL] df is.data.frame:", is.data.frame(df), "\n")
-          
-          if (is.data.frame(df)) {
+          cat("[GLOBAL] df is.data.frame:", is.data.frame(df), "\n") 
+
+          if (is.list(raw) && (!is.null(raw$chart) || isTRUE(raw$`__mcp_plot`))) {
+            cat("[GLOBAL] Grafik sonucu algılandı; JSON yerine özet kullanılacak.\n")
+            result_text <- build_chart_summary(raw)
+
+          } else if (is.data.frame(df)) {
             cat("[GLOBAL] DataFrame boyutu: ", nrow(df), " satır x ", ncol(df), " sütun\n")
             cat("[GLOBAL] Sütun isimleri:", paste(colnames(df), collapse=", "), "\n")
             
@@ -2377,14 +2439,18 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		
 		# Türkçe: SIKI MOD — yalnızca GERÇEK VERİ tablosunu döndür, ikinci LLM geçişini atla
 		if (isTRUE(getOption("mergen.ai.strict_data_only", TRUE))) {
+		  insight_txt <- build_auto_insight(tool_results_raw)
 		  final_txt <- results_text
 		  # Araçlar grafik ürettiyse ekle
 		  if (exists("chart_blocks_text") && is.character(chart_blocks_text) && nzchar(chart_blocks_text)) {
-			final_txt <- paste0(final_txt, "\n\n", chart_blocks_text)
+				final_txt <- paste0(final_txt, "\n\n", chart_blocks_text)
+		  }
+		  if (nzchar(insight_txt)) {
+				final_txt <- paste(final_txt, insight_txt, sep = "\n\n")
 		  }
 		  return(list(
-			content     = final_txt,
-			duration    = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
+				content     = final_txt,
+				duration    = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
 			chart_store = charts_to_store
 		  ))
 		}
