@@ -699,11 +699,11 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
     num_table_md <- paste0("\n\n#### Sayısal Sütun Özeti\n", helpers_mcp_tools$create_md_table(summary_data))
   }
 
-  display_name <- res$display %||% basename(path)
+display_name <- res$display %||% basename(path)
   display_name <- tryCatch(enc2utf8(display_name), error = function(e) display_name)
   
   list(result = sprintf(
-    "### Dosya Özeti: %s\n\n- **Satır Sayısı:** %d\n- **Sütun Sayısı:** %d\n- **Sütunlar:** %s%s",
+    "### Dosya Özeti: %s\n\n- **Satır Sayısı:** %d\n- **Sütun Sayısı:** %d\n- **Sütunlar:** %s%s\n\n(SİSTEM: Lütfen bu dosya özetine dayanarak verinin içeriği hakkında kısa bir yorum yap ve kullanıcıya ne yapabileceğini öner.)",
     display_name, n_rows, n_cols, paste(cols, collapse = ", "), num_table_md
   ))
 }
@@ -771,11 +771,10 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
       length(unique(vec)), sum(is.na(vec))
     )
     
-    output_md <- paste0(header, "\n", summary_text, "\n\n#### En Sık Görülen Değerler\n", helpers_mcp_tools$create_md_table(stats_df))
+	output_md <- paste0(header, "\n", summary_text, "\n\n#### En Sık Görülen Değerler\n", helpers_mcp_tools$create_md_table(stats_df))
   }
   
-  # [FIX] Wrap result in list
-  list(result = output_md)
+  list(result = paste0(output_md, "\n\n(SİSTEM: Lütfen bu istatistikleri analiz et, değerlerin dağılımını yorumla ve kullanıcıya içgörü sağla.)"))
 }
 
 # ==================================
@@ -843,7 +842,8 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
   list(result = paste0(
     "### Sorgu Sonucu\n**Dosya:** ", display_name, "\n**SQL:** `", sql, "`\n\n",
     helpers_mcp_tools$create_md_table(preview),
-    limit_msg
+    limit_msg,
+    "\n\n(SİSTEM: Bu tabloyu analiz et. Sonuçlar ne anlama geliyor? Kullanıcı için önemli noktaları vurgula ve yorumla.)"
   ))
 }
 
@@ -938,22 +938,32 @@ helpers_mcp_tools$prepare_chart_data <- function(
   schema <- vapply(subset_dt, function(z) class(z)[1], character(1))
 
   # 6) build chart spec payload
-  list(
-    ok = TRUE,
-    `__mcp_plot` = TRUE,        # <--- GLUE FLAG (server will route to ChartLab)
-    file = basename(res$path),
-    chart = list(
-      type = tolower(chart_type),             # "hist"|"bar"|"line"|"scatter"|"box"|"area"
-      mapping = list(x = x, y = y, group = group),
-      params = list(
-        agg = agg, bins = bins, top_n = top_n,
-        stack = stack, donut = donut, orientation = orientation, smooth = smooth
-      ),
-      data = as.data.frame(subset_dt),
-      schema = as.list(schema),
-      n = nrow(subset_dt)
+  spec <- list(
+    type = tolower(chart_type),
+    mapping = list(x = x, y = y, group = group),
+    params = list(
+      agg = agg, bins = bins, top_n = top_n,
+      stack = stack, donut = donut, orientation = orientation, smooth = smooth
     ),
-    message = "Grafik verileri hazırlandı; ChartLab'a iletildi."
+    data = as.data.frame(subset_dt),
+    schema = as.list(schema),
+    n = nrow(subset_dt)
+  )
+
+  ref_id <- paste0("mcp_chart_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
+  cs <- list()
+  cs[[ref_id]] <- spec
+  
+  summary_info <- sprintf("Grafik türü: %s, Veri satır sayısı: %d", chart_type, nrow(subset_dt))
+  if (!is.null(x)) summary_info <- paste0(summary_info, ", X: ", x)
+  if (!is.null(y)) summary_info <- paste0(summary_info, ", Y: ", y)
+
+  list(
+    result = paste0(
+      "```chartlab\n", jsonlite::toJSON(list(ref = ref_id), auto_unbox = TRUE), "\n```",
+      "\n\n(SİSTEM: Grafik başarıyla oluşturuldu. ", summary_info, ". Lütfen grafiğin ne gösterdiğini ve verinin ne anlama geldiğini yorumla.)"
+    ),
+    chart_store = cs
   )
 }
 
@@ -997,7 +1007,7 @@ helpers_mcp_tools$get_distinct_values <- function(file_name, column, limit = 50,
     msg <- paste0(msg, "\n\n_(Liste çok uzun olduğu için ilk ", limit, " kayıt gösterildi. Tam liste için SQL kullanabilirsiniz.)_")
   }
   
-  list(result = msg)
+  list(result = paste0(msg, "\n\n(SİSTEM: Bu değerleri analiz et ve çeşitlilik/içerik hakkında yorum yap.)"))
 }
 
 # ============================
