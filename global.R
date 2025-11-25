@@ -2206,7 +2206,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		build_chart_summary <- function(raw_chart) {
 		  chart <- raw_chart$chart %||% raw_chart
 		  if (is.null(chart) || !is.list(chart)) {
-			return("Grafik verisi hazırlandı.")
+			return("Grafik hazırlandı; veri kısa süreli özetlendi.")
 		  }
 
 		  desc_parts <- c()
@@ -2220,18 +2220,51 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		  if (nzchar(mapping$group %||% "")) axes <- c(axes, paste0("Gruplama=", mapping$group))
 		  if (length(axes)) desc_parts <- c(desc_parts, paste(axes, collapse = ", "))
 
-		  row_hint <- chart$n %||% if (is.data.frame(chart$data)) nrow(chart$data) else NULL
+		  df <- chart$data
+		  row_hint <- chart$n %||% if (is.data.frame(df)) nrow(df) else NULL
 		  if (is.finite(row_hint)) desc_parts <- c(desc_parts, paste0("Örnek satır sayısı: ", row_hint))
 
 		  summary_line <- if (length(desc_parts)) paste(desc_parts, collapse = " | ") else "Dosyadaki verilerden üretildi"
-		  paste0("Grafik hazırlandı. ", summary_line, ". Grafik aşağıda yer alıyor.")
+
+		  # Hızlı içgörü: sayısal eksen varsa dağılımı özetle
+		  quick_observation <- NULL
+		  if (is.data.frame(df)) {
+			num_candidate <- NULL
+			if (nzchar(mapping$y %||% "") && is.numeric(df[[mapping$y]])) num_candidate <- df[[mapping$y]]
+			if (is.null(num_candidate) && nzchar(mapping$x %||% "") && is.numeric(df[[mapping$x]])) num_candidate <- df[[mapping$x]]
+
+			if (!is.null(num_candidate)) {
+			  num_candidate <- suppressWarnings(as.numeric(num_candidate))
+			  num_candidate <- num_candidate[is.finite(num_candidate)]
+			  if (length(num_candidate)) {
+				quick_observation <- sprintf(
+				  "Ortanca %.2f, min %.2f, max %.2f; dağılım genişliği %.2f.",
+				  stats::median(num_candidate), min(num_candidate), max(num_candidate),
+				  max(num_candidate) - min(num_candidate)
+				)
+			  }
+			} else if (nzchar(mapping$x %||% "") && !is.numeric(df[[mapping$x]])) {
+			  top_levels <- sort(table(df[[mapping$x]]), decreasing = TRUE)
+			  top_levels <- head(top_levels, 3)
+			  quick_observation <- paste0(
+				"En sık kategoriler: ",
+				paste(sprintf("%s (%d)", names(top_levels), as.integer(top_levels)), collapse = ", ")
+			  )
+			}
+		  }
+
+		  if (nzchar(quick_observation)) {
+			paste0("Grafik hazırlandı: ", summary_line, ". İlk gözlem: ", quick_observation)
+		  } else {
+			paste0("Grafik hazırlandı: ", summary_line, ".")
+		  }
 		}
 
 		build_auto_insight <- function(raw_results) {
 		  # 1) Grafik varsa öne al
 		  chart_pick <- Filter(function(x) is.list(x) && (!is.null(x[["chart"]]) || isTRUE(x[["__mcp_plot"]])), raw_results)
 		  if (length(chart_pick)) {
-			return(paste0(build_chart_summary(chart_pick[[1]]), " Eğilimleri yorumlarken serilerin dağılımına odaklan."))
+			return(build_chart_summary(chart_pick[[1]]))
 		  }
 
 		  # 2) DataFrame önizlemesi varsa kısa özet çıkar
@@ -2241,24 +2274,28 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			  num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
 			  if (length(num_cols)) {
 				vals <- suppressWarnings(as.numeric(df[[num_cols[1]]]))
-				avg  <- if (all(is.na(vals))) NA_real_ else mean(vals, na.rm = TRUE)
-				mn   <- if (all(is.na(vals))) NA_real_ else min(vals, na.rm = TRUE)
-				mx   <- if (all(is.na(vals))) NA_real_ else max(vals, na.rm = TRUE)
-				return(sprintf(
-				  "Yorum ve İçgörü: Örnek %d satır içinde '%s' sütunu %.2f ortalama, %.2f–%.2f aralığında.",
-				  nrow(df), num_cols[1], avg, mn, mx
-				))
+				vals <- vals[is.finite(vals)]
+				if (length(vals)) {
+				  avg  <- mean(vals)
+				  med  <- stats::median(vals)
+				  mn   <- min(vals)
+				  mx   <- max(vals)
+				  return(sprintf(
+					"İçgörü: %d satırın %s sütunu min %.2f, medyan %.2f, ortalama %.2f, max %.2f — dağılımı bu aralıkta odaklan.",
+					nrow(df), num_cols[1], mn, med, avg, mx
+				  ))
+				}
 			  }
 
 			  head_cols <- paste(head(colnames(df), 3), collapse = ", ")
 			  return(sprintf(
-				"Yorum ve İçgörü: İlk %d satırda dikkat çeken sütunlar: %s. Örnekleri kontrol ederek bulguları özetle.",
+				"İçgörü: İlk %d satırda öne çıkan sütunlar %s; satır örneklerini kullanarak eğilimi açıkla.",
 				nrow(df), head_cols
 			  ))
 			}
 		  }
 
-		  "Yorum ve İçgörü: Sonuçlar yukarıda. Öne çıkan eğilimleri kısaca yorumla ve kullanıcıya rehberlik et."
+		  "İçgörü: Sonuçlar yukarıda; önemli eğilim veya uç değer varsa kısaca açıkla."
 		}
             
         # If any tool returned error, aggregate and short-circuit
@@ -2437,8 +2474,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           collapse = "\n\n"
         )
 		
-		# Türkçe: SIKI MOD — yalnızca GERÇEK VERİ tablosunu döndür, ikinci LLM geçişini atla
-		if (isTRUE(getOption("mergen.ai.strict_data_only", TRUE))) {
+        # Yalnızca GERÇEK VERİ tablosunu döndür, ikinci LLM geçişini atla
+        if (isTRUE(getOption("mergen.ai.strict_data_only", FALSE))) {
 		  insight_txt <- build_auto_insight(tool_results_raw)
 		  final_txt <- results_text
 		  # Araçlar grafik ürettiyse ekle
@@ -2489,8 +2526,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         ))
 		chat_history <- append(chat_history, list(
           list(role = "user", content = paste0(
-            "Araç sonuçları:\n\n", 
-            results_text, 
+            "Araç sonuçları:\n\n",
+            results_text,
             "\n\n╔═══════════════════════════════════════════════════════╗\n",
             "║  MUTLAK KURAL - ASLA İHLAL ETME                      ║\n",
             "╚═══════════════════════════════════════════════════════╝\n\n",
@@ -2501,6 +2538,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             "✓ Hiçbir değeri yuvarlaMA, değiştirME\n",
             "✓ Tablodaki her satırı kullan\n",
             "✓ ProjeAdi ve sayıları BİREBİR kopyala\n\n",
+            "✓ Yanıtı TEK SEFERDE tamamla; ek deneme veya ikinci tur bekleme.\n",
+            "✓ Sonuçları yorumla: trend, uç değer veya dağılımı kısaca açıkla.\n",
+            "✓ Grafik varsa, eksenler ve göze çarpan deseni 1-2 cümlede özetle.\n\n",
             "ASLA YAPMA:\n",
             "✗ 'Örnek Çıktı' yazma\n",
             "✗ Sahte sayılar üretme\n",
