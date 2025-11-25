@@ -12,7 +12,8 @@ healthUI <- function(id) {
             class = "chat-header settings-header-fixed",
             div(
               class = "chat-header-left",
-              h4("Sistem Durumu", class = "page-title")
+			  h4("Sistem Durumu", class = "page-title"),
+              span(class = "admin-badge", icon("shield-alt"), "ADMIN")
             ),
             div(
               class = "chat-header-right",
