@@ -36,10 +36,7 @@ ui <- dashboardPage(
       ),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
 	  menuItem("Ayarlar", tabName = "settings", icon = icon("cog")),
-      conditionalPanel(
-        condition = "output.show_admin_menu",
-        menuItem("Yönetici Paneli", tabName = "admin_analytics", icon = icon("chart-bar"))
-      ),
+      menuItemOutput("admin_menu_item"),
       menuItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
     ),
     # A static footer at the bottom of the sidebar.

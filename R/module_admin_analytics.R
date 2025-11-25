@@ -105,11 +105,11 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       showToast(session, "Veriler güncellendi", "success")
     })
     
-    safe_query <- function(query) {
+	safe_query <- function(query) {
       tryCatch({
-        con <- pool::poolCheckout(pool)
-        on.exit(pool::poolReturn(con))
-        DBI::dbGetQuery(con, query)
+        conn_info <- get_connection()
+        on.exit(release_connection(conn_info))
+        DBI::dbGetQuery(conn_info$conn, query)
       }, error = function(e) {
         log_error("[ADMIN] SQL Error: {conditionMessage(e)}")
         data.frame()
@@ -381,11 +381,11 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       tagList(
         div(
           class = "metrics-grid",
-          create_metric_card("Toplam Kullanıcı", format(total_users, big.mark = "."), "users", "blue"),
+		  create_metric_card("Toplam Kullanıcı", format(total_users, big.mark = ".", decimal.mark = ","), "users", "blue"),
           create_metric_card("Bugün Aktif", active_today, "user-clock", "green"),
-          create_metric_card("Toplam Sohbet", format(total_chats, big.mark = "."), "comments", "purple"),
-          create_metric_card("Toplam Mesaj", format(total_messages, big.mark = "."), "envelope", "orange"),
-          create_metric_card("YZ Çağrısı", format(total_ai_calls, big.mark = "."), "robot", "cyan"),
+          create_metric_card("Toplam Sohbet", format(total_chats, big.mark = ".", decimal.mark = ","), "comments", "purple"),
+          create_metric_card("Toplam Mesaj", format(total_messages, big.mark = ".", decimal.mark = ","), "envelope", "orange"),
+          create_metric_card("YZ Çağrısı", format(total_ai_calls, big.mark = ".", decimal.mark = ","), "robot", "cyan"),
           create_metric_card("Ort. Yanıt Süresi", avg_response, "clock", "yellow"),
           create_metric_card("Hata Oranı", error_rate, "exclamation-triangle", "red"),
           create_metric_card("Ort. Sohbet Uzunluğu", paste(avg_chat_len, "mesaj"), "layer-group", "teal")

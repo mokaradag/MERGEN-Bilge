@@ -152,6 +152,12 @@ server <- function(input, output, session) {
   })
   outputOptions(output, "show_admin_menu", suspendWhenHidden = FALSE)
   
+  output$admin_menu_item <- renderMenu({
+    if (isTRUE(user_config$auth_level == "ADMIN")) {
+      menuItem("Yönetici Paneli", tabName = "admin_analytics", icon = icon("chart-bar"))
+    }
+  })
+  
   if (isTRUE(user_config$auth_level == "ADMIN")) {
     adminAnalyticsServer("admin_analytics_module", pool = pool)
   }
