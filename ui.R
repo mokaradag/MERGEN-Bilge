@@ -35,7 +35,11 @@ ui <- dashboardPage(
         menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark"))
       ),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
-      menuItem("Ayarlar", tabName = "settings", icon = icon("cog")),
+	  menuItem("Ayarlar", tabName = "settings", icon = icon("cog")),
+      conditionalPanel(
+        condition = "output.show_admin_menu",
+        menuItem("Yönetici Paneli", tabName = "admin_analytics", icon = icon("chart-bar"))
+      ),
       menuItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
     ),
     # A static footer at the bottom of the sidebar.
@@ -232,6 +236,9 @@ ui <- dashboardPage(
       
       # Settings Tab
       tabItem(tabName = "settings", settingsUI("settings_module")),
+
+	  # Admin Analytics Tab (ADMIN only)
+      tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),
 
       # Health Check Tab (modularized)
       tabItem(tabName = "health", healthUI("health_module"))

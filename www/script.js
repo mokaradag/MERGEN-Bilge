@@ -2116,6 +2116,13 @@
         elem.textContent = 'Son Güncelleme: ' + data.time;
       }
     });
+	
+	Shiny.addCustomMessageHandler('updateAdminTimestamp', function(data) {
+		var el = document.getElementById(data.id);
+		if (el) {
+		  el.textContent = 'Son Güncelleme: ' + data.time;
+		}
+	  });
     
     // Character button management
 	Shiny.addCustomMessageHandler('updateCharacterButtons', function(data) {

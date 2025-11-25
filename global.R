@@ -977,6 +977,7 @@ source("R/module_followup_questions.R", encoding = "UTF-8")
 source("R/module_chat_actions.R",  encoding = "UTF-8")
 source("R/module_chat_export.R",   encoding = "UTF-8")
 source("R/module_rdata_admin.R", encoding = "UTF-8")
+source("R/module_admin_analytics.R", encoding = "UTF-8")
 
 # --- GLOBAL CONFIGURATION ---
 
@@ -1215,7 +1216,8 @@ SERVICE_DESK <- list(
 user_config <- list(
   name = "Ahmet Yılmaz", 
   icon = "user-circle",
-  userId = "12345" 
+  userId = "12345",
+  auth_level = "ADMIN"
 )
 
 # --- GLOBAL HELPER FUNCTIONS ---

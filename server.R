@@ -147,6 +147,15 @@ server <- function(input, output, session) {
   # Mount health module
   healthServer("health_module", perf_tracker = perf_tracker)
   
+  output$show_admin_menu <- reactive({
+    isTRUE(user_config$auth_level == "ADMIN")
+  })
+  outputOptions(output, "show_admin_menu", suspendWhenHidden = FALSE)
+  
+  if (isTRUE(user_config$auth_level == "ADMIN")) {
+    adminAnalyticsServer("admin_analytics_module", pool = pool)
+  }
+  
   # RData admin: JS ile input$rdata_admin-refresh_now tetiklenebilir
   rdataAdminServer("rdata_admin")
 
