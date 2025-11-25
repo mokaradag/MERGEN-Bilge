@@ -2237,26 +2237,36 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			  num_candidate <- suppressWarnings(as.numeric(num_candidate))
 			  num_candidate <- num_candidate[is.finite(num_candidate)]
 			  if (length(num_candidate)) {
-				quick_observation <- sprintf(
-				  "Ortanca %.2f, min %.2f, max %.2f; dağılım genişliği %.2f.",
-				  stats::median(num_candidate), min(num_candidate), max(num_candidate),
-				  max(num_candidate) - min(num_candidate)
+                        med_val <- stats::median(num_candidate)
+                        q1 <- stats::quantile(num_candidate, 0.25, na.rm = TRUE)
+                        q3 <- stats::quantile(num_candidate, 0.75, na.rm = TRUE)
+                        mn <- min(num_candidate)
+                        mx <- max(num_candidate)
+                        iqr_span <- q3 - q1
+                        tail_hint <- if (med_val > mean(c(q1, q3))) "üst" else "alt"
+                        quick_observation <- paste(
+                          sprintf("Ortanca %.2f (Q1=%.2f, Q3=%.2f), min %.2f, max %.2f.", med_val, q1, q3, mn, mx),
+                          sprintf("Değerler %s kuyrukta yoğunlaşıyor; dışa taşan uçlar için kutu yaylarını inceleyebilirsin.", tail_hint),
+                          sprintf("IQR %.2f olduğundan veri yayılımı %s; bu aralık grafik üzerinde renk/yoğunluk olarak hissedilir.", iqr_span, if (iqr_span > 0) "belirgin" else "düşük")
 				)
 			  }
 			} else if (nzchar(mapping$x %||% "") && !is.numeric(df[[mapping$x]])) {
 			  top_levels <- sort(table(df[[mapping$x]]), decreasing = TRUE)
 			  top_levels <- head(top_levels, 3)
+			  top_share <- round(as.numeric(top_levels) / sum(top_levels) * 100, 1)
 			  quick_observation <- paste0(
 				"En sık kategoriler: ",
-				paste(sprintf("%s (%d)", names(top_levels), as.integer(top_levels)), collapse = ", ")
+				paste(sprintf("%s (%d, %s%%)", names(top_levels), as.integer(top_levels), format(top_share, nsmall = 1)), collapse = ", "),
+				". Yoğunluğun bu gruplarda toplandığını vurgula; kalan uzun kuyruğu da kısaca hatırlat."
 			  )
 			}
 		  }
 
+		  base_line <- paste0("Grafik hazırlandı: ", summary_line, ".")
 		  if (nzchar(quick_observation)) {
-			paste0("Grafik hazırlandı: ", summary_line, ". İlk gözlem: ", quick_observation)
+			paste(base_line, quick_observation, "Eksenlerdeki deseni iki cümleyle anlat ve kullanıcının aklında net bir tablo oluşmasını sağla.")
 		  } else {
-			paste0("Grafik hazırlandı: ", summary_line, ".")
+			paste(base_line, "Veri dağılımını ve olası uç değerleri kısaca betimleyip okuyucuya yol gösterici bir paragraf ekle.")
 		  }
 		}
 
@@ -2280,22 +2290,30 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 				  med  <- stats::median(vals)
 				  mn   <- min(vals)
 				  mx   <- max(vals)
+				  sdv  <- stats::sd(vals)
 				  return(sprintf(
-					"İçgörü: %d satırın %s sütunu min %.2f, medyan %.2f, ortalama %.2f, max %.2f — dağılımı bu aralıkta odaklan.",
-					nrow(df), num_cols[1], mn, med, avg, mx
+					paste(
+					  "İçgörü: %d satırın %s sütunu min %.2f, medyan %.2f, ortalama %.2f, max %.2f.",
+					  "Standart sapma %.2f; dağılımın genişliği ve olası uç noktalar üzerine birkaç cümle kur.",
+					  "Kısa, öğretici bir paragrafla kullanıcının görebileceği trendleri ve aksiyon önerilerini anlat."
+					),
+					nrow(df), num_cols[1], mn, med, avg, mx, sdv
 				  ))
 				}
 			  }
 
 			  head_cols <- paste(head(colnames(df), 3), collapse = ", ")
 			  return(sprintf(
-				"İçgörü: İlk %d satırda öne çıkan sütunlar %s; satır örneklerini kullanarak eğilimi açıkla.",
+				paste(
+				  "İçgörü: İlk %d satırda öne çıkan sütunlar %s; satır örneklerini kullanarak eğilimleri anlat.",
+				  "Okuyucuya rehberlik edecek 4-5 cümlelik bir paragraf yaz; hangi kolonların dikkat çektiğini ve neden önemli olabileceğini açıkla."
+				),
 				nrow(df), head_cols
 			  ))
 			}
 		  }
 
-		  "İçgörü: Sonuçlar yukarıda; önemli eğilim veya uç değer varsa kısaca açıkla."
+		  "İçgörü: Sonuçlar yukarıda; dağılımı, beklenmedik değerleri ve olası aksiyonları birkaç cümleyle rehber gibi açıkla."
 		}
             
         # If any tool returned error, aggregate and short-circuit
@@ -2539,7 +2557,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             "✓ Tablodaki her satırı kullan\n",
             "✓ ProjeAdi ve sayıları BİREBİR kopyala\n\n",
             "✓ Yanıtı TEK SEFERDE tamamla; ek deneme veya ikinci tur bekleme.\n",
-            "✓ Sonuçları yorumla: trend, uç değer veya dağılımı kısaca açıkla.\n",
+            "✓ Sonuçları yorumla: trend, uç değer ve dağılımı en az 4-5 cümlelik öğretici bir paragrafla açıkla; kullanıcının hangi desene odaklanması gerektiğini belirt.\n",
             "✓ Grafik varsa, eksenler ve göze çarpan deseni 1-2 cümlede özetle.\n\n",
             "ASLA YAPMA:\n",
             "✗ 'Örnek Çıktı' yazma\n",
