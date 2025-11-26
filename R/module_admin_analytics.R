@@ -5,7 +5,68 @@ adminAnalyticsUI <- function(id) {
   
   tagList(
     tags$head(
-      tags$link(rel = "stylesheet", type = "text/css", href = "css/admin_analytics.css")
+      tags$link(rel = "stylesheet", type = "text/css", href = "css/admin_analytics.css"),
+      tags$style(HTML("
+        .admin-analytics-container {
+          height: 100vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          position: relative;
+        }
+        .admin-header-fixed {
+          position: sticky;
+          top: 0;
+          z-index: 1000;
+          background: var(--background-dark, #1a1a2e);
+          flex-shrink: 0;
+          border-bottom: 1px solid var(--border-color, #333);
+        }
+        .admin-scrollable-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 20px 25px 40px 25px;
+        }
+        .equal-height-row {
+          display: flex;
+          flex-wrap: wrap;
+        }
+        .equal-height-row > [class*='col-'] {
+          display: flex;
+          flex-direction: column;
+        }
+        .equal-height-row .analytics-card {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+        .equal-height-row .analytics-card .table-container {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+        .scrollable-table-equal {
+          flex: 1;
+          overflow-y: auto;
+          max-height: 320px;
+        }
+        .metrics-grid-3 {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 20px;
+          margin-bottom: 20px;
+        }
+        @media (max-width: 992px) {
+          .metrics-grid-3 {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+        @media (max-width: 576px) {
+          .metrics-grid-3 {
+            grid-template-columns: 1fr;
+          }
+        }
+      "))
     ),
     div(
       class = "admin-analytics-container",
@@ -64,6 +125,10 @@ adminAnalyticsUI <- function(id) {
               tabPanel(
                 title = tags$span(title = "Gelişmiş sistem metrikleri ve detaylı analizler", tagList(icon("chart-area"), " Gelişmiş Analizler")),
                 value = "advanced_analytics"
+              ),
+              tabPanel(
+                title = tags$span(title = "Sistem sağlığı ve performans özeti", tagList(icon("heartbeat"), " Sistem Özeti")),
+                value = "system_summary"
               )
             )
           )
@@ -105,6 +170,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     )
     
     turkish_months <- c("Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
+    turkish_days <- c("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
     
     format_turkish_date <- function(date_val) {
       if (is.na(date_val) || is.null(date_val)) return("")
@@ -118,6 +184,15 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       if (is.na(x) || is.null(x)) return("0")
       as.character(as.integer(x))
     }
+    
+    modern_colors <- list(
+      primary = c("#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899"),
+      success = c("#10b981", "#22c55e", "#84cc16"),
+      warning = c("#f59e0b", "#f97316", "#fbbf24"),
+      danger = c("#ef4444", "#f43f5e", "#dc2626"),
+      info = c("#06b6d4", "#0ea5e9", "#3b82f6"),
+      neutral = c("#64748b", "#94a3b8", "#cbd5e1")
+    )
     
     analytics_refresh_trigger <- reactiveVal(0)
     analytics_last_update <- reactiveVal(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
@@ -178,8 +253,13 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         "),
         active_users_today = safe_query("
           SELECT COUNT(DISTINCT UserID) as cnt 
-          FROM MB_Chats 
-          WHERE CAST(CreateTimestamp AS DATE) = CAST(GETDATE() AS DATE) AND IsDeleted = 0
+          FROM (
+            SELECT UserID FROM MB_Chats 
+            WHERE CAST(CreateTimestamp AS DATE) = CAST(GETDATE() AS DATE) AND IsDeleted = 0
+            UNION
+            SELECT UserID FROM MB_Usage_Log 
+            WHERE CAST(RequestTimestamp AS DATE) = CAST(GETDATE() AS DATE)
+          ) combined
         "),
         top_users = safe_query("
           SELECT TOP 10 
@@ -255,12 +335,11 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         model_feedback = safe_query("
           SELECT 
             u.ModelUsed,
-            SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END) as likes,
-            SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END) as dislikes,
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END), 0) as likes,
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END), 0) as dislikes,
             COUNT(DISTINCT u.LogID) as total_responses
           FROM MB_Usage_Log u
-          LEFT JOIN MB_Messages m ON u.MessageID = m.MessageID
-          LEFT JOIN MB_Feedback f ON m.MessageID = f.MessageID
+          LEFT JOIN MB_Feedback f ON u.MessageID = f.MessageID
           GROUP BY u.ModelUsed
           ORDER BY total_responses DESC
         "),
@@ -293,13 +372,11 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         "),
         usage_by_day = safe_query("
           SELECT 
-            DATENAME(WEEKDAY, CreateTimestamp) as day_name,
             DATEPART(WEEKDAY, CreateTimestamp) as day_num,
             COUNT(*) as cnt
           FROM MB_Chats
           WHERE IsDeleted = 0
-          GROUP BY DATENAME(WEEKDAY, CreateTimestamp), DATEPART(WEEKDAY, CreateTimestamp)
-          ORDER BY day_num
+          GROUP BY DATEPART(WEEKDAY, CreateTimestamp)
         "),
         usage_by_hour = safe_query("
           SELECT 
@@ -326,13 +403,13 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         weekly_trend = safe_query("
           SELECT TOP 24
             DATEPART(YEAR, CreateTimestamp) as year_num,
-            DATEPART(WEEK, CreateTimestamp) as week_num,
+            DATEPART(ISO_WEEK, CreateTimestamp) as week_num,
             MIN(CAST(CreateTimestamp AS DATE)) as week_start,
             MAX(CAST(CreateTimestamp AS DATE)) as week_end,
             COUNT(*) as cnt
           FROM MB_Chats
           WHERE IsDeleted = 0 AND CreateTimestamp >= DATEADD(week, -24, GETDATE())
-          GROUP BY DATEPART(YEAR, CreateTimestamp), DATEPART(WEEK, CreateTimestamp)
+          GROUP BY DATEPART(YEAR, CreateTimestamp), DATEPART(ISO_WEEK, CreateTimestamp)
           ORDER BY year_num DESC, week_num DESC
         "),
         new_user_activation = safe_query("
@@ -420,22 +497,13 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         regenerated_responses = safe_query("
           SELECT TOP 20
             c.ChatTitle,
-            STUFF((
-              SELECT ', ' + ul2.ModelUsed
-              FROM MB_Usage_Log ul2
-              WHERE ul2.ChatID = c.ChatID
-              GROUP BY ul2.ModelUsed
-              FOR XML PATH('')
-            ), 1, 2, '') as ModelUsed,
-            COUNT(DISTINCT ul.LogID) as regen_count
+            u.KullaniciAdi as user_name,
+            (SELECT COUNT(*) FROM MB_Messages WHERE ChatID = c.ChatID AND MessageType = 'ai') as ai_count,
+            (SELECT COUNT(*) FROM MB_Messages WHERE ChatID = c.ChatID AND MessageType = 'user') as user_count
           FROM MB_Chats c
-          JOIN MB_Usage_Log ul ON c.ChatID = ul.ChatID
+          JOIN MB_Users u ON c.UserID = u.UserID
           WHERE c.IsDeleted = 0
-          GROUP BY c.ChatID, c.ChatTitle
-          HAVING COUNT(DISTINCT ul.LogID) > (
-            SELECT COUNT(*) FROM MB_Messages m2 WHERE m2.ChatID = c.ChatID AND m2.MessageType = 'user'
-          )
-          ORDER BY regen_count DESC
+          ORDER BY ai_count DESC
         "),
         response_time_feedback = safe_query("
           SELECT 
@@ -445,11 +513,10 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               WHEN u.ResponseDuration <= 20 THEN '10-20 sn'
               ELSE '20+ sn'
             END as duration_bucket,
-            SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END) as likes,
-            SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END) as dislikes
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END), 0) as likes,
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END), 0) as dislikes
           FROM MB_Usage_Log u
-          JOIN MB_Messages m ON u.MessageID = m.MessageID
-          LEFT JOIN MB_Feedback f ON m.MessageID = f.MessageID
+          LEFT JOIN MB_Feedback f ON u.MessageID = f.MessageID
           WHERE u.ResponseSuccess = 1
           GROUP BY CASE 
             WHEN u.ResponseDuration <= 5 THEN '0-5 sn'
@@ -466,8 +533,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               WHEN LEN(m.MessageContent) < 3000 THEN 'Uzun (1500-3000)'
               ELSE 'Çok Uzun (> 3000)'
             END as length_bucket,
-            SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END) as likes,
-            SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END) as dislikes
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END), 0) as likes,
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END), 0) as dislikes
           FROM MB_Messages m
           LEFT JOIN MB_Feedback f ON m.MessageID = f.MessageID
           WHERE m.MessageType = 'ai'
@@ -480,12 +547,13 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         "),
         model_usage_trend = safe_query("
           SELECT 
-            CAST(u.LogTimestamp AS DATE) as usage_date,
+            CAST(m.MessageTimestamp AS DATE) as usage_date,
             u.ModelUsed,
             COUNT(*) as cnt
           FROM MB_Usage_Log u
-          WHERE u.LogTimestamp >= DATEADD(day, -14, GETDATE())
-          GROUP BY CAST(u.LogTimestamp AS DATE), u.ModelUsed
+          JOIN MB_Messages m ON u.MessageID = m.MessageID
+          WHERE m.MessageTimestamp >= DATEADD(day, -14, GETDATE())
+          GROUP BY CAST(m.MessageTimestamp AS DATE), u.ModelUsed
           ORDER BY usage_date
         "),
         user_activity_heatmap = safe_query("
@@ -499,11 +567,12 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         "),
         avg_response_by_hour = safe_query("
           SELECT 
-            DATEPART(HOUR, LogTimestamp) as hour_num,
-            AVG(ResponseDuration) as avg_duration
-          FROM MB_Usage_Log
-          WHERE ResponseSuccess = 1
-          GROUP BY DATEPART(HOUR, LogTimestamp)
+            DATEPART(HOUR, m.MessageTimestamp) as hour_num,
+            AVG(u.ResponseDuration) as avg_duration
+          FROM MB_Usage_Log u
+          JOIN MB_Messages m ON u.MessageID = m.MessageID
+          WHERE u.ResponseSuccess = 1
+          GROUP BY DATEPART(HOUR, m.MessageTimestamp)
           ORDER BY hour_num
         "),
         chat_length_distribution = safe_query("
@@ -546,6 +615,31 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             WHERE c.IsDeleted = 0
           ) sub
           WHERE first_feedback IS NOT NULL
+        "),
+        today_stats = safe_query("
+          SELECT 
+            (SELECT COUNT(*) FROM MB_Chats WHERE CAST(CreateTimestamp AS DATE) = CAST(GETDATE() AS DATE) AND IsDeleted = 0) as chats_today,
+            (SELECT COUNT(*) FROM MB_Messages WHERE CAST(MessageTimestamp AS DATE) = CAST(GETDATE() AS DATE)) as messages_today,
+            (SELECT COUNT(*) FROM MB_Usage_Log WHERE CAST(RequestTimestamp AS DATE) = CAST(GETDATE() AS DATE)) as ai_calls_today,
+            (SELECT AVG(ResponseDuration) FROM MB_Usage_Log WHERE CAST(RequestTimestamp AS DATE) = CAST(GETDATE() AS DATE) AND ResponseSuccess = 1) as avg_response_today
+        "),
+        this_week_stats = safe_query("
+          SELECT 
+            COUNT(DISTINCT UserID) as weekly_users,
+            COUNT(*) as weekly_chats
+          FROM MB_Chats 
+          WHERE CreateTimestamp >= DATEADD(day, -7, GETDATE()) AND IsDeleted = 0
+        "),
+        feedback_trend = safe_query("
+          SELECT 
+            CAST(m.MessageTimestamp AS DATE) as feedback_date,
+            SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END) as likes,
+            SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END) as dislikes
+          FROM MB_Feedback f
+          JOIN MB_Messages m ON f.MessageID = m.MessageID
+          WHERE m.MessageTimestamp >= DATEADD(day, -30, GETDATE())
+          GROUP BY CAST(m.MessageTimestamp AS DATE)
+          ORDER BY feedback_date
         ")
       )
     })
@@ -587,6 +681,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         "chat_quality" = chat_quality_ui(),
         "time_analysis" = time_analysis_ui(),
         "advanced_analytics" = advanced_analytics_ui(),
+        "system_summary" = system_summary_ui(),
         overview_ui()
       )
     })
@@ -612,41 +707,41 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           create_metric_card("Toplam Kullanıcı", format_number(total_users), "users", "blue", 
             tooltip = "Sistemde kayıtlı olan tüm benzersiz kullanıcıların toplam sayısı."),
           create_metric_card("Bugün Aktif", format_number(active_today), "user-clock", "green", 
-            tooltip = "Bugün en az bir söyleşi başlatan veya mevcut söyleşilerine devam eden kullanıcı sayısı."),
+            tooltip = "Bugün en az bir söyleşi başlatan veya YZ çağrısı yapan kullanıcı sayısı."),
           create_metric_card("Toplam Söyleşi", format_number(total_chats), "comments", "purple", 
             tooltip = "Sistemde oluşturulan tüm söyleşi oturumlarının toplam sayısı."),
-          create_metric_card("Toplam Mesaj", format_number(total_messages), "envelope", "cyan", 
-            tooltip = "Tüm söyleşilerdeki kullanıcı ve YZ mesajlarının toplam sayısı."),
-          create_metric_card("YZ Çağrısı", format_number(total_ai_calls), "robot", "orange", 
-            tooltip = "Yapay zeka API'sine yapılan toplam istek sayısı."),
-          create_metric_card("Ortalama Yanıt Süresi", avg_response, "clock", "green", 
-            tooltip = "Başarılı YZ yanıtlarının ortalama süresi (saniye)."),
-          create_metric_card("Hata Oranı", error_rate, "exclamation-triangle", "red", 
-            tooltip = "Başarısız YZ çağrılarının oranı."),
-          create_metric_card("Ort. Söyleşi Uzunluğu", avg_chat_len, "comment-dots", "blue", 
+          create_metric_card("Toplam Mesaj", format_number(total_messages), "envelope", "orange",
+            tooltip = "Kullanıcı ve YZ mesajları dahil tüm mesajların sayısı."),
+          create_metric_card("YZ Çağrısı", format_number(total_ai_calls), "robot", "cyan",
+            tooltip = "Yapay zeka API'sine yapılan toplam çağrı sayısı."),
+          create_metric_card("Ortalama Yanıt Süresi", avg_response, "stopwatch", "yellow",
+            tooltip = "Başarılı YZ yanıtlarının ortalama üretim süresi."),
+          create_metric_card("Hata Oranı", error_rate, "exclamation-triangle", "red",
+            tooltip = "Başarısız YZ çağrılarının toplam çağrılara oranı."),
+          create_metric_card("Ort. Mesaj/Söyleşi", avg_chat_len, "chart-bar", "teal",
             tooltip = "Her söyleşideki ortalama mesaj sayısı.")
         ),
         fluidRow(
           column(
-            width = 6,
+            width = 8,
             div(
               class = "analytics-card",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("chart-area"), " Günlük Söyleşi Trendi (Son 30 Gün)"),
-                create_info_button("Son 30 gündeki günlük söyleşi sayısı trendi.")
+                h4(class = "card-title", icon("chart-area"), " Son 30 Gün Söyleşi Trendi"),
+                create_info_button("Son 30 gündeki günlük söyleşi sayılarının eğilimi.")
               ),
               highcharter::highchartOutput(ns("daily_trend_chart"), height = "300px")
             )
           ),
           column(
-            width = 6,
+            width = 4,
             div(
               class = "analytics-card",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("chart-pie"), " Geri Bildirim Özeti"),
-                create_info_button("Kullanıcıların YZ yanıtlarına verdikleri beğeni ve beğenmeme geri bildirimlerinin dağılımı.")
+                h4(class = "card-title", icon("thumbs-up"), " Geri Bildirim Dağılımı"),
+                create_info_button("Beğeni ve beğenmeme dağılımını gösterir.")
               ),
               highcharter::highchartOutput(ns("feedback_donut_chart"), height = "300px")
             )
@@ -658,6 +753,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     users_ui <- function() {
       tagList(
         fluidRow(
+          class = "equal-height-row",
           column(
             width = 6,
             div(
@@ -666,7 +762,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("trophy"), " En Aktif Kullanıcılar"),
-                create_info_button("En fazla mesaj gönderen ilk 10 kullanıcının listesi.")
+                create_info_button("En fazla mesaj gönderen kullanıcılar.")
               ),
               highcharter::highchartOutput(ns("top_users_chart"), height = "350px")
             )
@@ -681,7 +777,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
                 h4(class = "card-title", icon("star"), " Güçlü Kullanıcılar"),
                 create_info_button("En yoğun sistem kullanıcıları.")
               ),
-              div(class = "table-container", style = "height: 320px; overflow-y: auto;", DT::dataTableOutput(ns("power_users_table")))
+              div(class = "table-container scrollable-table-equal", DT::dataTableOutput(ns("power_users_table")))
             )
           )
         ),
@@ -693,7 +789,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("calendar-week"), " Günlere Göre Kullanım"),
-                create_info_button("Haftanın günlerine göre söyleşi dağılımı.")
+                create_info_button("Haftanın günlerine göre söyleşi dağılımı (Pazartesi'den başlar).")
               ),
               highcharter::highchartOutput(ns("usage_by_day_chart"), height = "300px")
             )
@@ -750,7 +846,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("exclamation-circle"), " Model Hata Oranları"),
-                create_info_button("Her modelin hata oranını gösterir (%). Tooltip'te hata sayısı ve toplam çağrı sayısı gösterilir.")
+                create_info_button("Her modelin hata oranını gösterir (%).")
               ),
               highcharter::highchartOutput(ns("model_errors_chart"), height = "350px")
             )
@@ -797,7 +893,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("robot"), " Modellere Göre Geri Bildirim"),
-                create_info_button("Her model için beğeni, beğenmeme sayıları ve toplam yanıt sayısı. Oranlar toplam yanıta göre hesaplanır.")
+                create_info_button("Her model için beğeni, beğenmeme sayıları ve toplam yanıt sayısı.")
               ),
               div(class = "table-container", DT::dataTableOutput(ns("model_feedback_table")))
             )
@@ -863,36 +959,37 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             tooltip = "Her söyleşideki ortalama mesaj sayısı."),
           create_metric_card("Kullanıcı Tutma Oranı", retention_rate, "user-check", "green",
             tooltip = "Birden fazla söyleşi başlatan kullanıcıların oranı."),
-          create_metric_card("Ort. Oturum Süresi", avg_session, "hourglass-half", "purple",
-            tooltip = "Söyleşilerin ortalama süresi (dakika)."),
-          create_metric_card("Toplam Geri Bildirim", format_number(total_feedback), "thumbs-up", "cyan",
-            tooltip = "Alınan toplam geri bildirim sayısı.")
+          create_metric_card("Ort. Oturum Süresi", avg_session, "hourglass-half", "orange",
+            tooltip = "Söyleşilerin ortalama süre uzunluğu."),
+          create_metric_card("Toplam Geri Bildirim", format_number(total_feedback), "comments", "purple",
+            tooltip = "Verilen tüm geri bildirimlerin sayısı.")
         ),
         fluidRow(
+          class = "equal-height-row",
           column(
             width = 6,
             div(
               class = "analytics-card",
-              style = "min-height: 380px;",
+              style = "min-height: 420px;",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("chart-pie"), " Kodlu ve Kodsuz Yanıtlar"),
-                create_info_button("Kod içeren ve içermeyen YZ yanıtlarının dağılımı.")
+                h4(class = "card-title", icon("code"), " Kodlu ve Kodsuz Yanıtlar"),
+                create_info_button("YZ yanıtlarının kod içerip içermediğine göre dağılımı.")
               ),
-              highcharter::highchartOutput(ns("code_ratio_chart"), height = "300px")
+              highcharter::highchartOutput(ns("code_ratio_chart"), height = "350px")
             )
           ),
           column(
             width = 6,
             div(
               class = "analytics-card",
-              style = "min-height: 380px;",
+              style = "min-height: 420px;",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("comments"), " En Uzun Söyleşiler"),
-                create_info_button("En fazla mesaj içeren söyleşilerin listesi.")
+                h4(class = "card-title", icon("list-ol"), " En Uzun Söyleşiler"),
+                create_info_button("En fazla mesaj içeren söyleşiler.")
               ),
-              div(class = "table-container", style = "height: 280px; overflow-y: auto;", DT::dataTableOutput(ns("longest_chats_table")))
+              div(class = "table-container scrollable-table-equal", DT::dataTableOutput(ns("longest_chats_table")))
             )
           )
         ),
@@ -904,9 +1001,9 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("redo"), " En Çok Yeniden Oluşturulan Yanıtlar"),
-                create_info_button("YZ yanıtlarının kullanıcı mesajlarından fazla olduğu durumlar.")
+                create_info_button("Birden fazla YZ yanıtı içeren söyleşiler (yeniden oluşturma göstergesi).")
               ),
-              div(class = "table-container scrollable-table", DT::dataTableOutput(ns("regenerated_table")))
+              div(class = "table-container", DT::dataTableOutput(ns("regenerated_table")))
             )
           )
         )
@@ -916,30 +1013,35 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     time_analysis_ui <- function() {
       data <- analytics_data()
       
-      peak_hours_text <- ""
+      peak_hour <- "N/A"
       if (nrow(data$peak_hours) > 0) {
-        peak_hours_text <- paste(sprintf("%02d:00", data$peak_hours$hour_num[1:min(3, nrow(data$peak_hours))]), collapse = ", ")
+        peak_hour <- sprintf("%02d:00", data$peak_hours$hour_num[1])
       }
       
-      weekly_count <- if (nrow(data$weekly_trend) > 0) nrow(data$weekly_trend) else 0
+      weekly_users <- if (nrow(data$this_week_stats) > 0) data$this_week_stats$weekly_users[1] else 0
+      weekly_chats <- if (nrow(data$this_week_stats) > 0) data$this_week_stats$weekly_chats[1] else 0
       
       monthly_growth_text <- "N/A"
       if (nrow(data$monthly_growth) >= 2) {
-        last_month <- data$monthly_growth$chat_count[nrow(data$monthly_growth)]
-        prev_month <- data$monthly_growth$chat_count[nrow(data$monthly_growth) - 1]
-        if (prev_month > 0) {
-          growth_pct <- ((last_month - prev_month) / prev_month) * 100
-          monthly_growth_text <- sprintf("%+.1f%%", growth_pct)
+        mg <- data$monthly_growth
+        mg <- mg[order(mg$year_num, mg$month_num), ]
+        if (nrow(mg) >= 2) {
+          prev <- mg$chat_count[nrow(mg) - 1]
+          curr <- mg$chat_count[nrow(mg)]
+          if (prev > 0) {
+            growth <- ((curr - prev) / prev) * 100
+            monthly_growth_text <- sprintf("%+.1f%%", growth)
+          }
         }
       }
       
       tagList(
         div(
-          class = "metrics-grid metrics-grid-small",
-          create_metric_card("En Yoğun Saatler", peak_hours_text, "clock", "cyan",
-            tooltip = "Sistemin en yoğun kullanıldığı ilk 3 saat dilimi."),
-          create_metric_card("Haftalık Veri", paste0(weekly_count, " hafta"), "calendar-alt", "green",
-            tooltip = "Mevcut haftalık trend verisinin kapsadığı hafta sayısı."),
+          class = "metrics-grid-3",
+          create_metric_card("En Yoğun Saat", peak_hour, "clock", "orange",
+            tooltip = "En fazla söyleşi başlatılan saat dilimi."),
+          create_metric_card("Haftalık Kullanıcı", format_number(weekly_users), "users", "blue",
+            tooltip = "Son 7 günde aktif olan benzersiz kullanıcı sayısı."),
           create_metric_card("Aylık Büyüme", monthly_growth_text, "chart-line", "purple",
             tooltip = "Son ayın bir önceki aya göre söyleşi sayısı değişimi (%).")
         ),
@@ -1000,11 +1102,22 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         }
       }
       
+      today_chats <- if (nrow(data$today_stats) > 0 && !is.na(data$today_stats$chats_today[1])) data$today_stats$chats_today[1] else 0
+      today_ai <- if (nrow(data$today_stats) > 0 && !is.na(data$today_stats$ai_calls_today[1])) data$today_stats$ai_calls_today[1] else 0
+      today_avg <- if (nrow(data$today_stats) > 0 && !is.na(data$today_stats$avg_response_today[1])) 
+        sprintf("%.1f sn", data$today_stats$avg_response_today[1]) else "N/A"
+      
       tagList(
         div(
           class = "metrics-grid metrics-grid-small",
           create_metric_card("İlk Yanıt Beğeni Oranı", first_response_like, "check-circle", "green",
-            tooltip = "Her söyleşideki ilk YZ yanıtının beğenilme oranı.")
+            tooltip = "Her söyleşideki ilk YZ yanıtının beğenilme oranı."),
+          create_metric_card("Bugünkü Söyleşi", format_number(today_chats), "comments", "blue",
+            tooltip = "Bugün oluşturulan söyleşi sayısı."),
+          create_metric_card("Bugünkü YZ Çağrısı", format_number(today_ai), "robot", "purple",
+            tooltip = "Bugün yapılan YZ API çağrısı sayısı."),
+          create_metric_card("Bugünkü Ort. Yanıt", today_avg, "stopwatch", "orange",
+            tooltip = "Bugünkü ortalama YZ yanıt süresi.")
         ),
         fluidRow(
           column(
@@ -1043,6 +1156,67 @@ adminAnalyticsServer <- function(id, pool = NULL) {
                 create_info_button("Günün saatlerine göre ortalama YZ yanıt süresi.")
               ),
               highcharter::highchartOutput(ns("avg_response_by_hour_chart"), height = "300px")
+            )
+          )
+        )
+      )
+    }
+    
+    system_summary_ui <- function() {
+      data <- analytics_data()
+      
+      total_users <- if (nrow(data$total_users) > 0) data$total_users$cnt[1] else 0
+      total_chats <- if (nrow(data$total_chats) > 0) data$total_chats$cnt[1] else 0
+      total_ai <- if (nrow(data$total_ai_calls) > 0) data$total_ai_calls$cnt[1] else 0
+      
+      like_count <- 0
+      dislike_count <- 0
+      if (nrow(data$feedback_summary) > 0) {
+        for (i in 1:nrow(data$feedback_summary)) {
+          if (data$feedback_summary$FeedbackType[i] == "like") like_count <- data$feedback_summary$cnt[i]
+          if (data$feedback_summary$FeedbackType[i] == "dislike") dislike_count <- data$feedback_summary$cnt[i]
+        }
+      }
+      
+      satisfaction <- "N/A"
+      total_fb <- like_count + dislike_count
+      if (total_fb > 0) {
+        satisfaction <- sprintf("%.1f%%", (like_count / total_fb) * 100)
+      }
+      
+      tagList(
+        div(
+          class = "metrics-grid",
+          create_metric_card("Toplam Kullanıcı", format_number(total_users), "users", "blue"),
+          create_metric_card("Toplam Söyleşi", format_number(total_chats), "comments", "purple"),
+          create_metric_card("Toplam YZ Çağrısı", format_number(total_ai), "robot", "cyan"),
+          create_metric_card("Beğeni Sayısı", format_number(like_count), "thumbs-up", "green"),
+          create_metric_card("Beğenmeme Sayısı", format_number(dislike_count), "thumbs-down", "red"),
+          create_metric_card("Memnuniyet Oranı", satisfaction, "smile", "yellow")
+        ),
+        fluidRow(
+          column(
+            width = 6,
+            div(
+              class = "analytics-card",
+              div(
+                class = "card-title-row",
+                h4(class = "card-title", icon("chart-line"), " Geri Bildirim Trendi (30 Gün)"),
+                create_info_button("Son 30 gündeki günlük beğeni/beğenmeme trendi.")
+              ),
+              highcharter::highchartOutput(ns("feedback_trend_chart"), height = "300px")
+            )
+          ),
+          column(
+            width = 6,
+            div(
+              class = "analytics-card",
+              div(
+                class = "card-title-row",
+                h4(class = "card-title", icon("pie-chart"), " Model Dağılımı"),
+                create_info_button("Kullanılan modellerin dağılımı.")
+              ),
+              highcharter::highchartOutput(ns("model_distribution_chart"), height = "300px")
             )
           )
         )
@@ -1098,13 +1272,15 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data <- analytics_data()$feedback_summary
       if (nrow(data) == 0) return(highcharter::highchart())
       
-      likes <- sum(data$cnt[data$FeedbackType == "like"], na.rm = TRUE)
-      dislikes <- sum(data$cnt[data$FeedbackType == "dislike"], na.rm = TRUE)
+      data$label <- ifelse(data$FeedbackType == "like", "Beğeni", "Beğenmeme")
       
-      chart_data <- list(
-        list(name = "Beğeni", y = likes, color = "#10b981"),
-        list(name = "Beğenmeme", y = dislikes, color = "#ef4444")
-      )
+      chart_data <- lapply(1:nrow(data), function(i) {
+        list(
+          name = data$label[i],
+          y = data$cnt[i],
+          color = if (data$FeedbackType[i] == "like") "#10b981" else "#ef4444"
+        )
+      })
       
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "pie", backgroundColor = "transparent") %>%
@@ -1124,8 +1300,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
           borderColor = "#333",
-          style = list(color = "#fff"),
-          pointFormat = "<b>{point.y}</b> adet ({point.percentage:.1f}%)"
+          style = list(color = "#fff")
         ) %>%
         highcharter::hc_credits(enabled = FALSE)
     })
@@ -1134,18 +1309,22 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data <- analytics_data()$top_users
       if (nrow(data) == 0) return(highcharter::highchart())
       
-      data <- head(data, 10)
+      data <- data[order(-data$message_count), ]
+      
+      display_names <- sapply(1:nrow(data), function(i) {
+        if (!is.na(data$full_name[i]) && nzchar(data$full_name[i])) {
+          data$full_name[i]
+        } else {
+          data$user_name[i]
+        }
+      })
       
       chart_data <- lapply(1:nrow(data), function(i) {
         list(
           y = data$message_count[i],
-          name = data$user_name[i],
-          full_name = if (!is.na(data$full_name[i]) && nzchar(data$full_name[i])) data$full_name[i] else data$user_name[i]
+          full_name = display_names[i],
+          user_name = data$user_name[i]
         )
-      })
-      
-      display_names <- sapply(1:nrow(data), function(i) {
-        if (!is.na(data$full_name[i]) && nzchar(data$full_name[i])) data$full_name[i] else data$user_name[i]
       })
       
       highcharter::highchart() %>%
@@ -1153,7 +1332,10 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
           categories = display_names,
-          labels = list(style = list(color = "#999"))
+          labels = list(
+            style = list(color = "#999"),
+            formatter = JS("function() { return this.value; }")
+          )
         ) %>%
         highcharter::hc_yAxis(
           title = list(text = "Mesaj Sayısı", style = list(color = "#999")),
@@ -1169,8 +1351,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_add_series(
           name = "Mesaj",
           data = chart_data,
-          colors = c("#ff6b35", "#f7931e", "#fbbf24", "#22c55e", "#3b82f6", 
-                     "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f43f5e")
+          colors = c("#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", 
+                     "#f43f5e", "#ef4444", "#f97316", "#f59e0b", "#eab308")
         ) %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
@@ -1197,8 +1379,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         options = list(
           dom = 't',
           pageLength = 15,
-          scrollY = "280px",
-          scrollCollapse = TRUE,
+          scrollY = FALSE,
           ordering = TRUE,
           order = list(list(3, 'desc')),
           language = turkish_dt_language,
@@ -1218,15 +1399,22 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data <- analytics_data()$usage_by_day
       if (nrow(data) == 0) return(highcharter::highchart())
       
-      turkish_days <- c("Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi")
-      data$day_label <- turkish_days[data$day_num]
-      data <- data[order(data$day_num), ]
+      day_mapping <- data.frame(
+        sql_day = 1:7,
+        monday_start = c(7, 1, 2, 3, 4, 5, 6),
+        stringsAsFactors = FALSE
+      )
+      
+      data <- merge(data, day_mapping, by.x = "day_num", by.y = "sql_day", all.x = TRUE)
+      data <- data[order(data$monday_start), ]
+      
+      day_labels <- turkish_days[data$monday_start]
       
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "column", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = data$day_label,
+          categories = day_labels,
           labels = list(style = list(color = "#999"))
         ) %>%
         highcharter::hc_yAxis(
@@ -1237,13 +1425,14 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_plotOptions(
           column = list(
             borderWidth = 0,
+            borderRadius = 4,
             colorByPoint = TRUE
           )
         ) %>%
         highcharter::hc_add_series(
           name = "Söyleşi",
           data = data$cnt,
-          colors = c("#f43f5e", "#ff6b35", "#f7931e", "#fbbf24", "#22c55e", "#3b82f6", "#8b5cf6")
+          colors = c("#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e", "#ef4444")
         ) %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
@@ -1363,7 +1552,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_add_series(
           name = "Süre",
           data = chart_data,
-          colors = c("#22c55e", "#84cc16", "#fbbf24", "#f7931e", "#ff6b35", "#ef4444")
+          colors = c("#10b981", "#22c55e", "#84cc16", "#f59e0b", "#f97316", "#ef4444")
         ) %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
@@ -1411,7 +1600,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_add_series(
           name = "Hata Oranı",
           data = chart_data,
-          colors = c("#22c55e", "#84cc16", "#fbbf24", "#f7931e", "#ff6b35", "#ef4444")
+          colors = c("#10b981", "#22c55e", "#84cc16", "#f59e0b", "#f97316", "#ef4444")
         ) %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
@@ -1431,7 +1620,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data$ResponseDuration <- round(data$ResponseDuration, 2)
       data$query_time <- format(as.POSIXct(data$query_time), "%d.%m.%Y %H:%M")
       display_data <- data[, c("row_num", "ModelUsed", "ResponseDuration", "query_preview", "query_time")]
-      colnames(display_data) <- c("#", "Model", "Süre (sn)", "Sorgu", "Tarih")
+      colnames(display_data) <- c("#", "Model", "Süre (sn)", "Sorgu Önizleme", "Tarih")
       
       DT::datatable(
         display_data,
@@ -1440,14 +1629,13 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           pageLength = 20,
           scrollY = "350px",
           scrollCollapse = TRUE,
-          ordering = TRUE,
-          order = list(list(2, 'desc')),
+          ordering = FALSE,
           language = turkish_dt_language,
           columnDefs = list(
-            list(className = 'dt-center', targets = c(0, 1, 2, 4)),
+            list(className = 'dt-center', targets = c(0, 2, 4)),
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
-            list(orderable = FALSE, targets = 0)
+            list(width = '250px', targets = 3)
           )
         ),
         class = "admin-datatable",
@@ -1463,7 +1651,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data$ResponseDuration <- round(data$ResponseDuration, 2)
       data$query_time <- format(as.POSIXct(data$query_time), "%d.%m.%Y %H:%M")
       display_data <- data[, c("row_num", "ModelUsed", "ResponseDuration", "query_preview", "query_time")]
-      colnames(display_data) <- c("#", "Model", "Süre (sn)", "Sorgu", "Tarih")
+      colnames(display_data) <- c("#", "Model", "Süre (sn)", "Sorgu Önizleme", "Tarih")
       
       DT::datatable(
         display_data,
@@ -1472,14 +1660,13 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           pageLength = 20,
           scrollY = "350px",
           scrollCollapse = TRUE,
-          ordering = TRUE,
-          order = list(list(2, 'asc')),
+          ordering = FALSE,
           language = turkish_dt_language,
           columnDefs = list(
-            list(className = 'dt-center', targets = c(0, 1, 2, 4)),
+            list(className = 'dt-center', targets = c(0, 2, 4)),
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
-            list(orderable = FALSE, targets = 0)
+            list(width = '250px', targets = 3)
           )
         ),
         class = "admin-datatable",
@@ -1492,9 +1679,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
       
       data$row_num <- 1:nrow(data)
-      data$like_rate <- ifelse(data$total_responses > 0, round((data$likes / data$total_responses) * 100, 1), 0)
-      data$dislike_rate <- ifelse(data$total_responses > 0, round((data$dislikes / data$total_responses) * 100, 1), 0)
-      
+      data$like_rate <- round(ifelse(data$total_responses > 0, (data$likes / data$total_responses) * 100, 0), 1)
+      data$dislike_rate <- round(ifelse(data$total_responses > 0, (data$dislikes / data$total_responses) * 100, 0), 1)
       display_data <- data[, c("row_num", "ModelUsed", "likes", "dislikes", "total_responses", "like_rate", "dislike_rate")]
       colnames(display_data) <- c("#", "Model", "Beğeni", "Beğenmeme", "Toplam Yanıt", "Beğeni Oranı (%)", "Beğenmeme Oranı (%)")
       
@@ -1616,7 +1802,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         list(
           name = data$has_code[i],
           y = data$cnt[i],
-          color = if (data$has_code[i] == "Kodlu") "#60a5fa" else "#a78bfa"
+          color = if (data$has_code[i] == "Kodlu") "#8b5cf6" else "#64748b"
         )
       })
       
@@ -1625,7 +1811,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_plotOptions(
           pie = list(
-            innerSize = "60%",
+            innerSize = "50%",
             borderWidth = 0,
             dataLabels = list(
               enabled = TRUE,
@@ -1634,12 +1820,12 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             )
           )
         ) %>%
-        highcharter::hc_add_series(name = "Yanıt Türü", data = chart_data) %>%
+        highcharter::hc_add_series(name = "Yanıt", data = chart_data) %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
           borderColor = "#333",
           style = list(color = "#fff"),
-          pointFormat = "<b>{point.y}</b> adet ({point.percentage:.1f}%)"
+          pointFormat = "<b>{point.y}</b> yanıt ({point.percentage:.1f}%)"
         ) %>%
         highcharter::hc_credits(enabled = FALSE)
     })
@@ -1649,7 +1835,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
       
       data$row_num <- 1:nrow(data)
-      display_data <- data[, c("row_num", "ChatTitle", "msg_count", "full_name")]
+      data$display_name <- ifelse(!is.na(data$full_name) & nzchar(data$full_name), data$full_name, data$user_name)
+      display_data <- data[, c("row_num", "ChatTitle", "msg_count", "display_name")]
       colnames(display_data) <- c("#", "Söyleşi Başlığı", "Mesaj", "Kullanıcı")
       
       DT::datatable(
@@ -1657,13 +1844,12 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         options = list(
           dom = 't',
           pageLength = 20,
-          scrollY = "240px",
-          scrollCollapse = TRUE,
+          scrollY = FALSE,
           ordering = TRUE,
           order = list(list(2, 'desc')),
           language = turkish_dt_language,
           columnDefs = list(
-            list(className = 'dt-center', targets = c(0, 2, 3)),
+            list(className = 'dt-center', targets = c(0, 2)),
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
@@ -1678,10 +1864,24 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data <- analytics_data()$regenerated_responses
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
       
+      data <- data[data$ai_count > data$user_count, ]
+      
+      if (nrow(data) == 0) {
+        return(DT::datatable(
+          data.frame(Mesaj = "Yeniden oluşturma tespit edilmedi"),
+          options = list(dom = 't', language = turkish_dt_language),
+          class = "admin-datatable",
+          rownames = FALSE
+        ))
+      }
+      
+      data$regen_count <- data$ai_count - data$user_count
+      data <- data[order(-data$regen_count), ]
+      data <- head(data, 20)
       data$row_num <- 1:nrow(data)
-      data$ModelUsed <- ifelse(is.na(data$ModelUsed) | !nzchar(data$ModelUsed), "Bilinmiyor", data$ModelUsed)
-      display_data <- data[, c("row_num", "ChatTitle", "ModelUsed", "regen_count")]
-      colnames(display_data) <- c("#", "Söyleşi Başlığı", "Model(ler)", "Yeniden Oluşturma")
+      
+      display_data <- data[, c("row_num", "ChatTitle", "user_name", "ai_count", "user_count", "regen_count")]
+      colnames(display_data) <- c("#", "Söyleşi Başlığı", "Kullanıcı", "YZ Yanıt", "Kullanıcı Mesaj", "Yeniden Oluşturma")
       
       DT::datatable(
         display_data,
@@ -1691,10 +1891,10 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           scrollY = "250px",
           scrollCollapse = TRUE,
           ordering = TRUE,
-          order = list(list(3, 'desc')),
+          order = list(list(5, 'desc')),
           language = turkish_dt_language,
           columnDefs = list(
-            list(className = 'dt-center', targets = c(0, 3)),
+            list(className = 'dt-center', targets = c(0, 3, 4, 5)),
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
@@ -1711,7 +1911,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       
       data <- data[order(data$year_num, data$week_num), ]
       
-      data$week_label <- paste0("Hafta ", data$week_num, " (", data$year_num, ")")
+      data$week_label <- paste0("Hafta ", data$week_num)
       data$week_range <- paste0(
         format(as.Date(data$week_start), "%d.%m"),
         " - ",
@@ -1773,8 +1973,9 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       
       data$row_num <- 1:nrow(data)
       data$first_chat <- format(as.POSIXct(data$first_chat), "%d.%m.%Y")
-      display_data <- data[, c("row_num", "user_name", "full_name", "first_chat", "chat_count", "active_days")]
-      colnames(display_data) <- c("#", "Kullanıcı Adı", "Tam Ad", "İlk Söyleşi", "Söyleşi Sayısı", "Aktif Gün")
+      data$display_name <- ifelse(!is.na(data$full_name) & nzchar(data$full_name), data$full_name, data$user_name)
+      display_data <- data[, c("row_num", "display_name", "first_chat", "chat_count", "active_days")]
+      colnames(display_data) <- c("#", "Kullanıcı", "İlk Söyleşi", "Söyleşi Sayısı", "Aktif Gün")
       
       DT::datatable(
         display_data,
@@ -1784,11 +1985,10 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           scrollY = "280px",
           scrollCollapse = TRUE,
           ordering = TRUE,
-          order = list(list(3, 'desc')),
+          order = list(list(2, 'desc')),
           language = turkish_dt_language,
           columnDefs = list(
-            list(className = 'dt-center', targets = c(0, 3, 4, 5)),
-            list(className = 'dt-left', targets = c(1, 2)),
+            list(className = 'dt-center', targets = c(0, 2, 3, 4)),
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
@@ -1813,16 +2013,24 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           categories = data$month_label,
           labels = list(style = list(color = "#999"))
         ) %>%
-        highcharter::hc_yAxis(
-          title = list(text = "Sayı", style = list(color = "#999")),
-          labels = list(style = list(color = "#999")),
-          gridLineColor = "#444"
+        highcharter::hc_yAxis_multiples(
+          list(
+            title = list(text = "Söyleşi Sayısı", style = list(color = "#3b82f6")),
+            labels = list(style = list(color = "#999")),
+            gridLineColor = "#444"
+          ),
+          list(
+            title = list(text = "Benzersiz Kullanıcı", style = list(color = "#f59e0b")),
+            labels = list(style = list(color = "#999")),
+            opposite = TRUE,
+            gridLineWidth = 0
+          )
         ) %>%
         highcharter::hc_plotOptions(
           column = list(borderWidth = 0)
         ) %>%
-        highcharter::hc_add_series(name = "Söyleşi", data = data$chat_count, color = "#3b82f6") %>%
-        highcharter::hc_add_series(name = "Benzersiz Kullanıcı", data = data$unique_users, color = "#f59e0b") %>%
+        highcharter::hc_add_series(name = "Söyleşi", data = data$chat_count, color = "#3b82f6", yAxis = 0) %>%
+        highcharter::hc_add_series(name = "Benzersiz Kullanıcı", data = data$unique_users, color = "#f59e0b", type = "spline", yAxis = 1, marker = list(enabled = TRUE)) %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
           borderColor = "#333",
@@ -1841,17 +2049,24 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       dates <- sort(unique(data$usage_date))
       date_labels <- sapply(dates, format_turkish_date)
       
-      series_list <- lapply(models, function(m) {
+      model_colors <- c("#6366f1", "#8b5cf6", "#a855f7", "#06b6d4", "#22c55e", "#f59e0b", "#ef4444", "#ec4899")
+      
+      series_list <- lapply(seq_along(models), function(idx) {
+        m <- models[idx]
         model_data <- data[data$ModelUsed == m, ]
         counts <- sapply(dates, function(d) {
           row <- model_data[model_data$usage_date == d, ]
           if (nrow(row) > 0) row$cnt[1] else 0
         })
-        list(name = m, data = as.list(counts))
+        list(
+          name = m, 
+          data = as.list(counts),
+          color = model_colors[((idx - 1) %% length(model_colors)) + 1]
+        )
       })
       
       hc <- highcharter::highchart() %>%
-        highcharter::hc_chart(type = "line", backgroundColor = "transparent") %>%
+        highcharter::hc_chart(type = "spline", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
           categories = date_labels,
@@ -1861,6 +2076,12 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           title = list(text = "Kullanım Sayısı", style = list(color = "#999")),
           labels = list(style = list(color = "#999")),
           gridLineColor = "#444"
+        ) %>%
+        highcharter::hc_plotOptions(
+          spline = list(
+            marker = list(enabled = TRUE, radius = 3),
+            lineWidth = 2
+          )
         ) %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a",
@@ -1872,7 +2093,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_credits(enabled = FALSE)
       
       for (s in series_list) {
-        hc <- hc %>% highcharter::hc_add_series(name = s$name, data = s$data)
+        hc <- hc %>% highcharter::hc_add_series(name = s$name, data = s$data, color = s$color)
       }
       
       hc
@@ -1889,10 +2110,13 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       
       if (nrow(data) == 0) return(highcharter::highchart())
       
+      pie_colors <- c("#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899")
+      
       chart_data <- lapply(1:nrow(data), function(i) {
         list(
           name = as.character(data$length_bucket[i]),
-          y = data$chat_count[i]
+          y = data$chat_count[i],
+          color = pie_colors[i]
         )
       })
       
@@ -1961,9 +2185,106 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           backgroundColor = "#1a1a1a",
           borderColor = "#333",
           style = list(color = "#fff"),
-          pointFormat = "<b>{point.y}</b> saniye"
+          valueSuffix = " sn"
         ) %>%
         highcharter::hc_legend(enabled = FALSE) %>%
+        highcharter::hc_credits(enabled = FALSE)
+    })
+    
+    output$feedback_trend_chart <- highcharter::renderHighchart({
+      data <- analytics_data()$feedback_trend
+      if (nrow(data) == 0) return(highcharter::highchart())
+      
+      data <- data[order(data$feedback_date), ]
+      data$date_label <- sapply(data$feedback_date, format_turkish_date)
+      
+      highcharter::highchart() %>%
+        highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
+        highcharter::hc_title(text = NULL) %>%
+        highcharter::hc_xAxis(
+          categories = data$date_label,
+          labels = list(style = list(color = "#999"))
+        ) %>%
+        highcharter::hc_yAxis(
+          title = list(text = "Geri Bildirim Sayısı", style = list(color = "#999")),
+          labels = list(style = list(color = "#999")),
+          gridLineColor = "#444"
+        ) %>%
+        highcharter::hc_plotOptions(
+          areaspline = list(
+            marker = list(enabled = FALSE),
+            lineWidth = 2
+          )
+        ) %>%
+        highcharter::hc_add_series(
+          name = "Beğeni",
+          data = data$likes,
+          color = "#10b981",
+          fillColor = list(
+            linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
+            stops = list(
+              list(0, "rgba(16, 185, 129, 0.2)"),
+              list(1, "rgba(16, 185, 129, 0)")
+            )
+          )
+        ) %>%
+        highcharter::hc_add_series(
+          name = "Beğenmeme",
+          data = data$dislikes,
+          color = "#ef4444",
+          fillColor = list(
+            linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
+            stops = list(
+              list(0, "rgba(239, 68, 68, 0.2)"),
+              list(1, "rgba(239, 68, 68, 0)")
+            )
+          )
+        ) %>%
+        highcharter::hc_tooltip(
+          backgroundColor = "#1a1a1a",
+          borderColor = "#333",
+          style = list(color = "#fff"),
+          shared = TRUE
+        ) %>%
+        highcharter::hc_legend(itemStyle = list(color = "#999")) %>%
+        highcharter::hc_credits(enabled = FALSE)
+    })
+    
+    output$model_distribution_chart <- highcharter::renderHighchart({
+      data <- analytics_data()$model_performance
+      if (nrow(data) == 0) return(highcharter::highchart())
+      
+      model_colors <- c("#6366f1", "#8b5cf6", "#a855f7", "#06b6d4", "#22c55e", "#f59e0b", "#ef4444", "#ec4899")
+      
+      chart_data <- lapply(1:nrow(data), function(i) {
+        list(
+          name = data$ModelUsed[i],
+          y = data$total_count[i],
+          color = model_colors[((i - 1) %% length(model_colors)) + 1]
+        )
+      })
+      
+      highcharter::highchart() %>%
+        highcharter::hc_chart(type = "pie", backgroundColor = "transparent") %>%
+        highcharter::hc_title(text = NULL) %>%
+        highcharter::hc_plotOptions(
+          pie = list(
+            innerSize = "50%",
+            borderWidth = 0,
+            dataLabels = list(
+              enabled = TRUE,
+              format = "<b>{point.name}</b>: {point.percentage:.1f}%",
+              style = list(color = "#fff", textOutline = "none")
+            )
+          )
+        ) %>%
+        highcharter::hc_add_series(name = "Kullanım", data = chart_data) %>%
+        highcharter::hc_tooltip(
+          backgroundColor = "#1a1a1a",
+          borderColor = "#333",
+          style = list(color = "#fff"),
+          pointFormat = "<b>{point.y}</b> çağrı ({point.percentage:.1f}%)"
+        ) %>%
         highcharter::hc_credits(enabled = FALSE)
     })
     
