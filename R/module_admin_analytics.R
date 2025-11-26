@@ -56,15 +56,22 @@ adminAnalyticsUI <- function(id) {
           gap: 20px;
           margin-bottom: 20px;
         }
+        /* Assuming metrics-grid-5 is defined in css/admin_analytics.css or behaves similarly */
+        .metrics-grid-5 {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 20px;
+          margin-bottom: 20px;
+        }
+        @media (max-width: 1200px) {
+           .metrics-grid-5 { grid-template-columns: repeat(3, 1fr); }
+        }
         @media (max-width: 992px) {
-          .metrics-grid-3 {
-            grid-template-columns: repeat(2, 1fr);
-          }
+          .metrics-grid-3 { grid-template-columns: repeat(2, 1fr); }
+          .metrics-grid-5 { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 576px) {
-          .metrics-grid-3 {
-            grid-template-columns: 1fr;
-          }
+          .metrics-grid-3, .metrics-grid-5 { grid-template-columns: 1fr; }
         }
       "))
     ),
@@ -256,8 +263,10 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             SELECT UserID FROM MB_Usage_Log
             WHERE CAST(RequestTimestamp AS DATE) = CAST(GETDATE() AS DATE)
             UNION
-            SELECT UserID FROM MB_Messages
-            WHERE CAST(MessageTimestamp AS DATE) = CAST(GETDATE() AS DATE)
+            SELECT c.UserID 
+            FROM MB_Messages m
+            JOIN MB_Chats c ON m.ChatID = c.ChatID
+            WHERE CAST(m.MessageTimestamp AS DATE) = CAST(GETDATE() AS DATE)
           ) combined
         "),
         top_users = safe_query("
@@ -334,11 +343,11 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         model_feedback = safe_query("
           SELECT
             u.ModelUsed,
-            SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END) as likes,
-            SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END) as dislikes,
-            COUNT(DISTINCT u.LogID) as total_responses
-          FROM MB_Feedback f
-          JOIN MB_Usage_Log u ON f.MessageID = u.MessageID
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END), 0) as likes,
+            ISNULL(SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END), 0) as dislikes,
+            COUNT(u.LogID) as total_responses
+          FROM MB_Usage_Log u
+          LEFT JOIN MB_Feedback f ON u.MessageID = f.MessageID
           GROUP BY u.ModelUsed
           ORDER BY total_responses DESC
         "),
@@ -502,6 +511,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           FROM MB_Chats c
           JOIN MB_Users u ON c.UserID = u.UserID
           WHERE c.IsDeleted = 0
+          AND (SELECT COUNT(*) FROM MB_Messages WHERE ChatID = c.ChatID AND MessageType = 'ai') > 
+              (SELECT COUNT(*) FROM MB_Messages WHERE ChatID = c.ChatID AND MessageType = 'user')
           ORDER BY ai_count DESC
         "),
         response_time_feedback = safe_query("
@@ -898,7 +909,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
 
       tagList(
         div(
-          class = "metrics-grid",
+          class = "metrics-grid-3",
           create_metric_card("Beğeni Sayısı", format_number(like_count), "thumbs-up", "green"),
           create_metric_card("Beğenmeme Sayısı", format_number(dislike_count), "thumbs-down", "red"),
           create_metric_card("Memnuniyet Oranı", satisfaction, "smile", "yellow")
@@ -996,7 +1007,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       
       tagList(
         div(
-          class = "metrics-grid metrics-grid-small",
+          class = "metrics-grid-5",
           create_metric_card("Hemen Çıkma Oranı", bounce_rate, "door-open", "red",
             tooltip = "2 veya daha az mesaj içeren söyleşilerin oranı."),
           create_metric_card("Ortalama Mesaj/Söyleşi", avg_msg, "comment-dots", "blue",
@@ -1328,7 +1339,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_chart(type = "bar", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = display_names,
+          categories = as.list(display_names),
           labels = list(
             style = list(color = "#999"),
             formatter = JS("function() { return this.value; }")
