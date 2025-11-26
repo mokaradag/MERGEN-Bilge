@@ -1,3 +1,5 @@
+# R/module_admin_analytics.R
+
 adminAnalyticsUI <- function(id) {
   ns <- NS(id)
   
