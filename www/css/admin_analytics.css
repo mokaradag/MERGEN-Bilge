@@ -1,7 +1,13 @@
 /* www/css/admin_analytics.css */
 
+.tab-pane#admin_analytics,
+.tab-pane#admin_analytics > .content {
+  height: 100vh;
+  overflow: hidden;
+}
+
 .admin-analytics-container {
-  height: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -92,6 +98,10 @@
   background: var(--background-dark);
 }
 
+.admin-scrollable-content::-webkit-scrollbar {
+  width: 10px;
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -100,7 +110,7 @@
 }
 
 .metrics-grid-small {
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .metric-card {
@@ -127,6 +137,9 @@
 .metric-card.orange .metric-icon { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
 .metric-card.cyan .metric-icon { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
 .metric-card.red .metric-icon { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+.metric-card.yellow .metric-icon { background: linear-gradient(135deg, #facc15 0%, #eab308 100%); }
+.metric-card.teal .metric-icon { background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); }
+.metric-card.slate .metric-icon { background: linear-gradient(135deg, #64748b 0%, #475569 100%); }
 
 .metric-icon {
   width: 52px;
