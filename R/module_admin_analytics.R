@@ -6,7 +6,7 @@ adminAnalyticsUI <- function(id) {
   tagList(
     tags$head(
       tags$link(rel = "stylesheet", type = "text/css", href = "css/admin_analytics.css"),
-      tags$style(HTML("
+	  tags$style(HTML("
         .admin-analytics-container {
           height: 100vh;
           display: flex;
@@ -14,9 +14,12 @@ adminAnalyticsUI <- function(id) {
           overflow: hidden;
           position: relative;
         }
+        /* Hides the empty tab content divs generated automatically by tabsetPanel inside the header */
+        .admin-tabs-container .tab-content {
+          display: none !important;
+        }
         .admin-header-fixed {
-          position: sticky;
-          top: 0;
+          position: relative; /* Changed from sticky to relative for better flex behavior */
           z-index: 1000;
           background: var(--background-dark, #1a1a2e);
           flex-shrink: 0;
