@@ -1,0 +1,79 @@
+### Genel Bakış
+
+Veritabanı şeması, yapılan tüm konuşmaları takip etmek için ilişkisel bir modelde tasarlanmıştır. Bu yapı, `MB_` (muhtemelen "Mergen Bilge" için) ön ekine sahip beş ana tablo ve kullanıcı detayları için bir harici tablo etrafında şekillenmektedir. Sistem; kullanıcıları, onların sohbet oturumlarını, bu oturumlardaki bireysel mesajları, mesajlara yapılan geri bildirimleri ve yapay zeka kullanım günlüklerini etkin bir şekilde saklamaktadır. Önemli bir özellik olarak, verilerin denetim veya geri yükleme amacıyla korunmasını sağlayan "soft delete" (geçici silme) yönteminin (`IsDeleted` bayrağı) kullanılması, modern bir veritabanı tasarımı için mükemmel bir yaklaşımdır.
+
+---
+### Tablo Yapılarının Detayları
+
+#### 1. `MB_Users`
+Bu tablo, uygulama ile etkileşime giren her bir benzersiz kullanıcı hakkındaki temel bilgileri saklar.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
+| :--- | :--- | :--- | :--- |
+| `UserID` | `INT` veya `BIGINT` | Her kullanıcı için benzersiz tanımlayıcı. | Birincil Anahtar (Primary Key), muhtemelen `IDENTITY` (otomatik artan) özelliğine sahip. |
+| `KullaniciAdi` | `NVARCHAR(255)` | Kullanıcının sistemdeki kullanıcı adı (ör. `ahmet.yilmaz`). | Bir kullanıcıyı benzersiz olarak tanımlar. |
+| `KaynakAdi` | `NVARCHAR(255)` | Kullanıcının tam adı, muhtemelen harici bir kaynaktan alınır. | `DC01_user_base` tablosundan doldurulur. |
+| `LastLoginDate`| `DATETIME` | Kullanıcının son oturum başlangıcının zaman damgası. | Uygulama her başlatıldığında güncellenir. |
+
+#### 2. `MB_Chats`
+Bu tablo, her bir sohbet oturumunun üst verilerini tutar.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
+| :--- | :--- | :--- | :--- |
+| `ChatID` | `INT` veya `BIGINT` | Her sohbet oturumu için benzersiz tanımlayıcı. | Birincil Anahtar, muhtemelen `IDENTITY`. |
+| `UserID` | `INT` veya `BIGINT` | Sohbeti `MB_Users` tablosundaki bir kullanıcıya bağlar. | `MB_Users.UserID`'ye Yabancı Anahtar (Foreign Key). |
+| `ChatTitle` | `NVARCHAR(500)` | Genellikle ilk istemden otomatik olarak oluşturulan sohbet başlığı. | |
+| `CreateTimestamp`| `DATETIME` | Sohbet oturumunun oluşturulduğu zaman damgası. | Sohbetleri sıralamak için kullanılır. |
+| `IsDeleted` | `BIT` veya `TINYINT` | Sohbetin silinip silinmediğini belirten bayrak (0 veya 1). | "Geçici silme" (soft delete) yöntemini uygular. |
+
+#### 3. `MB_Messages`
+Bu ana tablo, tüm konuşmalardaki kullanıcı ve yapay zeka tarafından oluşturulan her bir mesajı saklar.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
+| :--- | :--- | :--- | :--- |
+| `MessageID` | `INT` veya `BIGINT` | Her mesaj için benzersiz tanımlayıcı. | Birincil Anahtar, muhtemelen `IDENTITY`. |
+| `ChatID` | `INT` veya `BIGINT` | Mesajı `MB_Chats` tablosundaki bir konuşmaya bağlar. | `MB_Chats.ChatID`'ye Yabancı Anahtar. |
+| `MessageContent`| `NVARCHAR(MAX)` | Mesajın tam ve ham metin içeriği. | |
+| `MessageType` | `NVARCHAR(50)` | Mesajın türü, örn. 'user', 'ai', 'system'. | |
+| `MessageTimestamp`| `DATETIME` | Mesajın oluşturulduğu zaman damgası. | |
+| `MessageOrder` | `INT` | Bir sohbet içindeki mesajların doğru sırasını korumak için bir numara. | Konuşmaları yeniden oluşturmak için gereklidir. |
+
+#### 4. `MB_Feedback`
+Bu tablo, belirli yapay zeka mesajlarına kullanıcılar tarafından yapılan geri bildirimleri (beğenme/beğenmeme) izler.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
+| :--- | :--- | :--- | :--- |
+| `UserID` | `INT` veya `BIGINT` | Geri bildirimi sağlayan kullanıcı. | `MessageID` ile birlikte bileşik anahtarın (composite key) bir parçasıdır. |
+| `MessageID` | `INT` veya `BIGINT` | Geri bildirim alan yapay zeka mesajı. | `UserID` ile birlikte bileşik anahtarın bir parçasıdır. |
+| `FeedbackType`| `NVARCHAR(50)` | Geri bildirim türü, örn. 'like' veya 'dislike'. | |
+
+#### 5. `MB_Usage_Log`
+Bu tablo, her bir yapay zeka etkileşiminin ayrıntılarını kaydederek denetim ve performans izleme amaçlı kullanılır.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
+| :--- | :--- | :--- | :--- |
+| `LogID` | `INT` veya `BIGINT` | Günlük girdisi için benzersiz tanımlayıcı. | (Tahmin edilen) Birincil Anahtar, muhtemelen `IDENTITY`. |
+| `ChatID` | `INT` veya `BIGINT` | YZ çağrısının yapıldığı sohbet. | `MB_Chats.ChatID`'ye Yabancı Anahtar. |
+| `MessageID` | `INT` veya `BIGINT` | YZ çağrısını tetikleyen kullanıcı mesajı. | `MB_Messages.MessageID`'ye Yabancı Anahtar. |
+| `UserID` | `INT` veya `BIGINT` | YZ çağrısını tetikleyen kullanıcı. | `MB_Users.UserID`'ye Yabancı Anahtar. |
+| `ModelUsed` | `NVARCHAR(100)`| Yanıt için kullanılan yapay zeka modelinin adı. | ör. 'llama4:scout' |
+| `ResponseDuration`| `DECIMAL` veya `FLOAT` | Yapay zekanın yanıt üretmesi için geçen saniye cinsinden süre. | |
+| `ResponseSuccess`| `BIT` veya `TINYINT` | YZ çağrısının başarılı olup olmadığını belirten bayrak (0 veya 1). | |
+
+#### 6. `DC01_user_base` (Harici Tablo)
+Bu tablo, kullanıcı bilgilerini (örneğin tam ad) almak için kullanılan mevcut, harici bir kaynak tablo olarak görünmektedir.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama |
+| :--- | :--- | :--- |
+| `KullaniciAdi`| `NVARCHAR(255)` | Sistemdeki kullanıcı adı. |
+| `KaynakAdi` | `NVARCHAR(255)` | Kullanıcının tam adı. |
+
+---
+### Tablo İlişkileri
+
+Tablolar mantıksal bir hiyerarşi içinde birbirine bağlıdır:
+
+* **`MB_Users`** `1` <--> `*` **`MB_Chats`** (Bir kullanıcının birden fazla sohbeti olabilir).
+* **`MB_Chats`** `1` <--> `*` **`MB_Messages`** (Bir sohbetin birden fazla mesajı olabilir).
+* **`MB_Messages`** `1` <--> `*` **`MB_Feedback`** (Bir mesaja birden fazla kullanıcı geri bildirimde bulunabilir, ancak mevcut uygulama mantığı mesaj başına bir kullanıcı geri bildirimini zorunlu kılmaktadır).
+* **`MB_Messages`** `1` <--> `1` **`MB_Usage_Log`** (Bir kullanıcı istemi mesajı, bir yapay zeka kullanım günlüğü girdisiyle sonuçlanır).
