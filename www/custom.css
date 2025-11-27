@@ -1458,7 +1458,7 @@ kbd {
   top: 0;
   z-index: 100;
   background: var(--background-light);
-  border-radius: 0 16px 16px 0;
+  border-radius: 0;
   padding: 0 16px !important;
   height: 50px;
   min-height: 50px;
@@ -1472,7 +1472,7 @@ kbd {
 .scrollable-content {
   overflow-y: auto;
   flex-grow: 1;
-  height: calc(100vh - 90px);
+  height: calc(100vh - 70px);
   padding: 0 25px 10px 25px;
 }
 

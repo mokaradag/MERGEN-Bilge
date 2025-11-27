@@ -83,7 +83,7 @@ adminAnalyticsUI <- function(id) {
     ),
     div(
       class = "admin-analytics-container",
-      div(
+	  div(
         class = "admin-header-fixed",
         div(
           class = "chat-header settings-header-fixed",
@@ -103,9 +103,10 @@ adminAnalyticsUI <- function(id) {
               class = "btn-modern btn-primary"
             )
           )
-        ),
-        div(
-          class = "admin-tabs-sticky-wrapper",
+        )
+      ),
+      div(
+        class = "admin-tabs-sticky-wrapper",
           div(
             class = "admin-tabs-container",
             tabsetPanel(
