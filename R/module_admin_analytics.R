@@ -83,7 +83,7 @@ adminAnalyticsUI <- function(id) {
     ),
     div(
       class = "admin-analytics-container",
-	  div(
+      div(
         class = "admin-header-fixed",
         div(
           class = "chat-header settings-header-fixed",
@@ -94,9 +94,11 @@ adminAnalyticsUI <- function(id) {
           ),
           div(
             class = "chat-header-right",
-            span(id = ns("admin_last_update"),
-                 style = "color: #999; margin-right: 15px; font-size: 14px;",
-                 "Son Güncelleme: --"),
+            span(
+              id = ns("admin_last_update"),
+              style = "color: #999; margin-right: 15px; font-size: 14px;",
+              "Son Güncelleme: --"
+            ),
             actionButton(
               ns("refresh_analytics"),
               label = tagList(icon("sync-alt"), "Yenile"),
@@ -107,39 +109,59 @@ adminAnalyticsUI <- function(id) {
       ),
       div(
         class = "admin-tabs-sticky-wrapper",
-          div(
-            class = "admin-tabs-container",
-            tabsetPanel(
-              id = ns("admin_tabs"),
-              type = "pills",
-              tabPanel(
-                title = tags$span(title = "Genel sistem metrikleri ve özet istatistikler", tagList(icon("chart-line"), " Genel Bakış")),
-                value = "overview"
+        div(
+          class = "admin-tabs-container",
+          tabsetPanel(
+            id = ns("admin_tabs"),
+            type = "pills",
+            tabPanel(
+              title = tags$span(
+                title = "Genel sistem metrikleri ve özet istatistikler",
+                tagList(icon("chart-line"), " Genel Bakış")
               ),
-              tabPanel(
-                title = tags$span(title = "Kullanıcı aktiviteleri ve davranış analizi", tagList(icon("users"), " Kullanıcı Analizi")),
-                value = "users"
+              value = "overview"
+            ),
+            tabPanel(
+              title = tags$span(
+                title = "Kullanıcı aktiviteleri ve davranış analizi",
+                tagList(icon("users"), " Kullanıcı Analizi")
               ),
-              tabPanel(
-                title = tags$span(title = "Yapay zeka model performansı ve hata oranları", tagList(icon("robot"), " YZ Performansı")),
-                value = "ai_perf"
+              value = "users"
+            ),
+            tabPanel(
+              title = tags$span(
+                title = "Yapay zeka model performansı ve hata oranları",
+                tagList(icon("robot"), " YZ Performansı")
               ),
-              tabPanel(
-                title = tags$span(title = "Kullanıcı geri bildirimleri ve memnuniyet analizi", tagList(icon("thumbs-up"), " Geri Bildirim")),
-                value = "feedback"
+              value = "ai_perf"
+            ),
+            tabPanel(
+              title = tags$span(
+                title = "Kullanıcı geri bildirimleri ve memnuniyet analizi",
+                tagList(icon("thumbs-up"), " Geri Bildirim")
               ),
-              tabPanel(
-                title = tags$span(title = "Söyleşi kalitesi ve içerik analizi", tagList(icon("comments"), " Sohbet Kalitesi")),
-                value = "chat_quality"
+              value = "feedback"
+            ),
+            tabPanel(
+              title = tags$span(
+                title = "Söyleşi kalitesi ve içerik analizi",
+                tagList(icon("comments"), " Sohbet Kalitesi")
               ),
-              tabPanel(
-                title = tags$span(title = "Zamana göre kullanım ve aktivite analizi", tagList(icon("clock"), " Zaman Analizi")),
-                value = "time_analysis"
+              value = "chat_quality"
+            ),
+            tabPanel(
+              title = tags$span(
+                title = "Zamana göre kullanım ve aktivite analizi",
+                tagList(icon("clock"), " Zaman Analizi")
               ),
-              tabPanel(
-                title = tags$span(title = "Gelişmiş sistem metrikleri ve detaylı analizler", tagList(icon("chart-area"), " Gelişmiş Analizler")),
-                value = "advanced_analytics"
-              )
+              value = "time_analysis"
+            ),
+            tabPanel(
+              title = tags$span(
+                title = "Gelişmiş sistem metrikleri ve detaylı analizler",
+                tagList(icon("chart-area"), " Gelişmiş Analizler")
+              ),
+              value = "advanced_analytics"
             )
           )
         )
