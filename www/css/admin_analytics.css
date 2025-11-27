@@ -60,7 +60,8 @@ section.content,
 .admin-tabs-sticky-wrapper {
   background: var(--background-dark);
   padding: 15px 25px 15px 25px;
-  position: relative;
+  position: sticky;
+  top: 50px;
   z-index: 105;
   flex-shrink: 0;
 }
@@ -505,4 +506,24 @@ section.content,
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+
+.analytics-card .highcharts-container {
+  min-height: 320px;
+}
+
+.metrics-grid + .row .analytics-card {
+  min-height: 400px;
+}
+
+.metrics-grid + .row .analytics-card .highcharts-container {
+  height: 340px !important;
+}
+
+.tooltip {
+  pointer-events: none;
+}
+
+.tooltip.in {
+  transition: opacity 0.15s ease-out;
 }

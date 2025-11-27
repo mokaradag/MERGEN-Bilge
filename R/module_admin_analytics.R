@@ -241,7 +241,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       })
     })
     
-    observeEvent(input$refresh_analytics, {
+	observeEvent(input$refresh_analytics, {
+      shinyjs::runjs("$('.tooltip').remove();")
       analytics_refresh_trigger(analytics_refresh_trigger() + 1)
       analytics_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
       session$sendCustomMessage("updateAdminTimestamp", list(
@@ -283,7 +284,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           FROM MB_Feedback 
           GROUP BY FeedbackType
         "),
-        active_users_today = safe_query("
+		active_users_today = safe_query("
           SELECT COUNT(DISTINCT UserID) as cnt
           FROM (
             SELECT UserID FROM MB_Chats
@@ -296,6 +297,9 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             FROM MB_Messages m
             JOIN MB_Chats c ON m.ChatID = c.ChatID
             WHERE CAST(m.MessageTimestamp AS DATE) = CAST(GETDATE() AS DATE)
+            UNION
+            SELECT UserID FROM MB_Users
+            WHERE CAST(LastLoginDate AS DATE) = CAST(GETDATE() AS DATE)
           ) combined
         "),
         top_users = safe_query("
@@ -369,14 +373,18 @@ adminAnalyticsServer <- function(id, pool = NULL) {
           GROUP BY ModelUsed
           ORDER BY error_rate ASC
         "),
-        model_feedback = safe_query("
+		model_feedback = safe_query("
           SELECT
             u.ModelUsed,
             ISNULL(SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END), 0) as likes,
             ISNULL(SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END), 0) as dislikes,
-            COUNT(u.LogID) as total_responses
+            COUNT(DISTINCT u.LogID) as total_responses
           FROM MB_Usage_Log u
-          LEFT JOIN MB_Feedback f ON u.MessageID = f.MessageID
+          LEFT JOIN MB_Messages m_user ON u.MessageID = m_user.MessageID
+          LEFT JOIN MB_Messages m_ai ON m_ai.ChatID = m_user.ChatID 
+            AND m_ai.MessageType = 'ai' 
+            AND m_ai.MessageOrder = m_user.MessageOrder + 1
+          LEFT JOIN MB_Feedback f ON m_ai.MessageID = f.MessageID
           GROUP BY u.ModelUsed
           ORDER BY total_responses DESC
         "),
@@ -544,7 +552,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               (SELECT COUNT(*) FROM MB_Messages WHERE ChatID = c.ChatID AND MessageType = 'user')
           ORDER BY ai_count DESC
         "),
-        response_time_feedback = safe_query("
+		response_time_feedback = safe_query("
           SELECT 
             CASE 
               WHEN u.ResponseDuration <= 5 THEN '0-5 sn'
@@ -555,8 +563,12 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             ISNULL(SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END), 0) as likes,
             ISNULL(SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END), 0) as dislikes
           FROM MB_Usage_Log u
-          LEFT JOIN MB_Feedback f ON u.MessageID = f.MessageID
-          WHERE u.ResponseSuccess = 1
+          LEFT JOIN MB_Messages m_user ON u.MessageID = m_user.MessageID
+          LEFT JOIN MB_Messages m_ai ON m_ai.ChatID = m_user.ChatID 
+            AND m_ai.MessageType = 'ai' 
+            AND m_ai.MessageOrder = m_user.MessageOrder + 1
+          LEFT JOIN MB_Feedback f ON m_ai.MessageID = f.MessageID
+          WHERE u.ResponseSuccess = 1 AND u.ResponseDuration IS NOT NULL
           GROUP BY CASE 
             WHEN u.ResponseDuration <= 5 THEN '0-5 sn'
             WHEN u.ResponseDuration <= 10 THEN '5-10 sn'
@@ -755,7 +767,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             tooltip = "Başarılı YZ yanıtlarının ortalama üretim süresi."),
           create_metric_card("Hata Oranı", error_rate, "exclamation-triangle", "red",
             tooltip = "Başarısız YZ çağrılarının toplam çağrılara oranı."),
-          create_metric_card("Ort. Mesaj/Söyleşi", avg_chat_len, "chart-bar", "teal",
+		  create_metric_card("Ortalama Mesaj/Söyleşi", avg_chat_len, "chart-bar", "teal",
             tooltip = "Her söyleşideki ortalama mesaj sayısı.")
         ),
         fluidRow(
@@ -765,7 +777,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
               class = "analytics-card",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("chart-area"), " Son 30 Gün Söyleşi Trendi"),
+                h4(class = "card-title", icon("chart-area"), " Son 30 Günlük Söyleşi Eğilimi"),
                 create_info_button("Son 30 gündeki günlük söyleşi sayılarının eğilimi.")
               ),
               highcharter::highchartOutput(ns("daily_trend_chart"), height = "300px")
@@ -1097,9 +1109,14 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     time_analysis_ui <- function() {
       data <- analytics_data()
       
-      peak_hour <- "N/A"
-      if (nrow(data$peak_hours) > 0) {
-        peak_hour <- sprintf("%02d:00", data$peak_hours$hour_num[1])
+	peak_hour <- "N/A"
+      if (nrow(data$peak_hours) >= 2) {
+        h1 <- data$peak_hours$hour_num[1]
+        h2 <- data$peak_hours$hour_num[2]
+        peak_hour <- sprintf("%02d:00-%02d:00, %02d:00-%02d:00", h1, h1+1, h2, h2+1)
+      } else if (nrow(data$peak_hours) == 1) {
+        h1 <- data$peak_hours$hour_num[1]
+        peak_hour <- sprintf("%02d:00-%02d:00", h1, h1+1)
       }
       
       weekly_users <- if (nrow(data$this_week_stats) > 0) data$this_week_stats$weekly_users[1] else 0
@@ -1122,8 +1139,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       tagList(
         div(
           class = "metrics-grid-3",
-          create_metric_card("En Yoğun Saat", peak_hour, "clock", "orange",
-            tooltip = "En fazla söyleşi başlatılan saat dilimi."),
+		  create_metric_card("En Yoğun Saat Dilimleri", peak_hour, "clock", "orange",
+            tooltip = "En fazla söyleşi başlatılan saat dilimleri."),
           create_metric_card("Haftalık Kullanıcı", format_number(weekly_users), "users", "blue",
             tooltip = "Son 7 günde aktif olan benzersiz kullanıcı sayısı."),
           create_metric_card("Aylık Büyüme", monthly_growth_text, "chart-line", "purple",
@@ -1177,7 +1194,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     advanced_analytics_ui <- function() {
       data <- analytics_data()
       
-      first_response_like <- "N/A"
+      first_response_like <- "-"
       if (nrow(data$first_response_success) > 0) {
         frs <- data$first_response_success
         total <- frs$first_likes[1] + frs$first_dislikes[1]
@@ -1188,8 +1205,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       
       today_chats <- if (nrow(data$today_stats) > 0 && !is.na(data$today_stats$chats_today[1])) data$today_stats$chats_today[1] else 0
       today_ai <- if (nrow(data$today_stats) > 0 && !is.na(data$today_stats$ai_calls_today[1])) data$today_stats$ai_calls_today[1] else 0
-      today_avg <- if (nrow(data$today_stats) > 0 && !is.na(data$today_stats$avg_response_today[1])) 
-        sprintf("%.1f sn", data$today_stats$avg_response_today[1]) else "N/A"
+	  today_avg <- if (nrow(data$today_stats) > 0 && !is.na(data$today_stats$avg_response_today[1])) 
+        sprintf("%.1f sn", data$today_stats$avg_response_today[1]) else "-"
       
       tagList(
         div(
@@ -1200,7 +1217,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             tooltip = "Bugün oluşturulan söyleşi sayısı."),
           create_metric_card("Bugünkü YZ Çağrısı", format_number(today_ai), "robot", "purple",
             tooltip = "Bugün yapılan YZ API çağrısı sayısı."),
-          create_metric_card("Bugünkü Ort. Yanıt", today_avg, "stopwatch", "orange",
+		  create_metric_card("Bugünkü Ortalama Yanıt", today_avg, "stopwatch", "orange",
             tooltip = "Bugünkü ortalama YZ yanıt süresi.")
         ),
         fluidRow(
@@ -1848,7 +1865,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_plotOptions(
           pie = list(
-            innerSize = "50%",
+            innerSize = "70%",
             borderWidth = 0,
             dataLabels = list(
               enabled = TRUE,
