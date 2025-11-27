@@ -240,7 +240,7 @@ body {
 /* Chat Header */
 .chat-header {
   background: var(--background-light);
-  border-radius: 0 16px 16px 0;
+  border-radius: 0;
   padding: 0 16px;
   height: 50px;
   min-height: 50px;
@@ -1472,7 +1472,7 @@ kbd {
 .scrollable-content {
   overflow-y: auto;
   flex-grow: 1;
-  height: calc(100vh - 70px);
+  height: calc(100vh - 90px);
   padding: 0 25px 10px 25px;
 }
 
@@ -3087,7 +3087,7 @@ table.dataTable thead th:first-child::after {
   height: 50px;
   min-height: 50px;
   box-shadow: var(--shadow-md);
-  border-radius: 0 16px 16px 0;
+  border-radius: 0;
   margin-bottom: 20px;
 }
 
