@@ -163,10 +163,10 @@ wire_chart_output <- function(output, out_id, spec) {
         fun(z, na.rm = TRUE)
       }
 
-      if (identical(type,"hist")) {
+	if (identical(type,"hist")) {
         req(x)
         h <- hist(df[[x]], breaks = if (isTRUE(!is.na(bins))) bins else "Sturges", plot = FALSE)
-        hchart(h) %>% hc_subtitle(text = paste0("Otomatik: hist (x=", x, ")"))
+        hchart(h) %>% hc_add_theme(custom_theme) %>% hc_subtitle(text = paste0("Otomatik: hist (x=", x, ")"))
 
       } else if (identical(type,"bar")) {
         if (!is.null(y)) {
@@ -174,18 +174,18 @@ wire_chart_output <- function(output, out_id, spec) {
           if (is.null(grp)) {
             dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg))
             names(dd) <- c(x, "val")
-            hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val))
+		hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val)) %>% hc_add_theme(custom_theme)
           } else {
             dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg))
             names(dd) <- c(x, grp, "val")
-            hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val, group = !!rlang::sym(grp)))
+            hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val, group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
           }
         } else {
           req(x)
           dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
           names(dd) <- c(x, "n")
           if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-          hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = n))
+		  hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = n)) %>% hc_add_theme(custom_theme)
         }
 
       } else if (identical(type,"pie") || identical(type,"donut")) {
@@ -198,12 +198,15 @@ wire_chart_output <- function(output, out_id, spec) {
           names(dd) <- c(x, "val")
         }
         if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-        pie_df <- data.frame(name = dd[[x]], y = as.numeric(dd$val), stringsAsFactors = FALSE)
+		pie_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
+        pie_data <- lapply(seq_len(nrow(dd)), function(i) {
+          list(name = as.character(dd[[x]][i]), y = dd$val[i], color = pie_colors[((i - 1) %% length(pie_colors)) + 1])
+        })
         inner <- if (identical(type,"donut") || isTRUE(params$donut)) "60%" else "0%"
         highchart() %>%
-          hc_exporting(enabled = TRUE) %>% hc_add_theme(hc_theme_darkunica()) %>%
-          hc_add_series(type = "pie", data = highcharter::list_parse2(pie_df), innerSize = inner,
-                        dataLabels = list(enabled = TRUE), name = x)
+          hc_exporting(enabled = TRUE) %>% hc_add_theme(custom_theme) %>%
+          hc_add_series(type = "pie", data = pie_data, innerSize = inner, name = x) %>%
+          hc_plotOptions(pie = list(borderWidth = 0, dataLabels = list(enabled = TRUE, format = "<b>{point.name}</b>: {point.percentage:.1f}%", style = list(color = "#fff", textOutline = "none"))))
 
       } else if (identical(type, "pareto")) {
         req(x)
@@ -219,7 +222,7 @@ wire_chart_output <- function(output, out_id, spec) {
         if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
         dd$cum <- cumsum(dd$val); tot <- sum(dd$val, na.rm = TRUE)
         dd$cum_pct <- if (tot > 0) 100 * dd$cum / tot else 0
-        hc %>% hc_xAxis(categories = dd[[x]]) %>%
+        highchart() %>% hc_add_theme(custom_theme) %>% hc_exporting(enabled = TRUE) %>% hc_xAxis(categories = dd[[x]]) %>%
           hc_yAxis_multiples(
             list(title = list(text = "Değer")),
             list(title = list(text = "Kümülatif %"), opposite = TRUE, max = 100,
@@ -229,20 +232,20 @@ wire_chart_output <- function(output, out_id, spec) {
           hc_add_series(name = "Kümülatif %", type = "line", data = round(dd$cum_pct, 2), yAxis = 1,
                         tooltip = list(valueSuffix = "%")) %>%
           hc_tooltip(shared = TRUE)
-      } else if (identical(type,"line")) {
+	  } else if (identical(type,"line")) {
         req(x, y)
-        if (is.null(grp)) hchart(df, "line",    hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y)))
-        else              hchart(df, "line",    hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp)))
-      } else if (identical(type,"scatter")) {
+        if (is.null(grp)) hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
+        else              hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+	  } else if (identical(type,"scatter")) {
         req(x, y)
-        if (is.null(grp)) hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y)))
-        else              hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp)))
-      } else if (identical(type,"area")) {
+        if (is.null(grp)) hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
+        else              hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+	  } else if (identical(type,"area")) {
         req(x, y)
-        if (is.null(grp)) hchart(df, "area",    hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y)))
-        else              hchart(df, "area",    hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp)))
-      } else {
-        highchart() %>% hc_title(text = "Bilinmeyen grafik türü")
+        if (is.null(grp)) hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
+        else              hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+	  } else {
+        highchart() %>% hc_add_theme(custom_theme) %>% hc_title(text = "Bilinmeyen grafik türü")
       }
     })
     return(invisible(TRUE))
