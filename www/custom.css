@@ -1445,31 +1445,33 @@ kbd {
 }
 
 .content-container {
-  height: calc(100vh - 100px); /* Adjust based on your header/footer heights */
+  height: calc(100vh - 70px);
   display: flex;
   flex-direction: column;
+  padding: 0 25px;
 }
 
 .files-header {
   position: sticky;
   top: 0;
   z-index: 100;
-  padding-bottom: 20px;
-
   background: var(--background-light);
   border-radius: 16px;
-  padding: 16px 12px 8px 12px !important;
+  padding: 0 16px !important;
+  height: 50px;
+  min-height: 50px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   box-shadow: var(--shadow-md);
-  align-items: center;
   margin-bottom: 20px;
 }
 
 .scrollable-content {
   overflow-y: auto;
-  flex-grow: 1; /* Allows this area to fill remaining space and scroll */
+  flex-grow: 1;
+  height: calc(100vh - 140px);
+  padding-bottom: 20px;
 }
 
 .history-controls {
@@ -1529,11 +1531,11 @@ kbd {
 }
 
 .page-title {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
+  margin: 0 !important;
+  line-height: 50px;
 }
 
 .page-subtitle {
@@ -2170,10 +2172,6 @@ table.dataTable tbody tr.selected {
 }
 
 @media (max-width: 768px) {
-  .sidebar-toggle {
-    background: var(--background-light) !important;
-  }
-  
   .content-wrapper {
     margin-left: 0 !important;
   }
@@ -2412,20 +2410,6 @@ table.dataTable tbody tr.selected {
   background-color: #e6e6e6 !important;
   height: 2px !important;
   border-radius: 1px !important;
-}
-
-/* Sidebar toggle when collapsed */
-.sidebar-toggle {
-  background-color: #2a2a2a !important;
-  border: 1px solid #404040 !important;
-  color: #e6e6e6 !important;
-}
-
-.sidebar-toggle:hover,
-.sidebar-toggle:focus {
-  background-color: #353535 !important;
-  border-color: #505050 !important;
-  color: #ffffff !important;
 }
 
 /* Static Navigation Bar */
@@ -3097,16 +3081,20 @@ table.dataTable thead th:first-child::after {
   position: sticky !important;
   z-index: 100;
   background: var(--background-light);
-  padding: 8px 8px !important;
+  padding: 0 16px !important;
+  height: 50px;
+  min-height: 50px;
   box-shadow: var(--shadow-md);
+  border-radius: 16px;
+  margin-bottom: 20px;
 }
 
 /* Scrollable content area */
 .settings-scrollable-content {
-  height: calc(100vh - 180px); /* Adjust based on header height */
+  height: calc(100vh - 130px);
   overflow-y: auto;
   padding: 20px;
-  margin-top: -10px; /* Offset for fixed header */
+  margin-top: 0;
 }
 
 /* Restored non-sticky history/saved chat layout */
@@ -5853,4 +5841,15 @@ body.font-xlarge {
 .admin-datatable thead th,
 .admin-datatable tbody td {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+/* ============================================
+   Hide Sidebar Toggle Button
+   ============================================ */
+.sidebar-toggle {
+  display: none !important;
+}
+
+.navbar-toggle {
+  display: none !important;
 }

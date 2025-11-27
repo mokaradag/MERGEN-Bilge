@@ -36,9 +36,8 @@ tagList(
         }
       });
     ")),
-    div(
+	div(
       class = "content-container",
-      style = "padding-right: 20px;",
       # Header matching "Ayarlar" page style
       div(
         class = "files-header",

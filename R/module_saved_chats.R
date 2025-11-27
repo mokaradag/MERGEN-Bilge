@@ -3,10 +3,9 @@
 savedChatsUI <- function(id) {
   ns <- NS(id)
   
-  tagList(
+tagList(
     div(
       class = "content-container",
-      style = "padding-right: 20px;",
       div(
         class = "files-header",
         h3("Kayıtlı Söyleşiler", class = "page-title"),
