@@ -1367,10 +1367,10 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       
 	  display_names <- data$user_name
       
-      chart_data <- lapply(1:nrow(data), function(i) {
+	  chart_data <- lapply(1:nrow(data), function(i) {
         list(
           y = data$message_count[i],
-          full_name = display_names[i],
+          full_name = if (!is.na(data$full_name[i]) && nzchar(data$full_name[i])) data$full_name[i] else data$user_name[i],
           user_name = data$user_name[i]
         )
       })
@@ -1751,15 +1751,15 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         rownames = FALSE
 	  ) %>%
         DT::formatStyle(
-          'Beğeni Oranı (%)',
-          background = DT::styleColorBar(c(0, 100), 'rgba(16, 185, 129, 0.4)'),
+          'Beğeni',
+          background = DT::styleColorBar(range(c(0, display_data$Beğeni)), 'rgba(16, 185, 129, 0.5)'),
           backgroundSize = '98% 88%',
           backgroundRepeat = 'no-repeat',
           backgroundPosition = 'center'
         ) %>%
         DT::formatStyle(
-          'Beğenmeme Oranı (%)',
-          background = DT::styleColorBar(c(0, 100), 'rgba(239, 68, 68, 0.4)'),
+          'Beğenmeme',
+          background = DT::styleColorBar(range(c(0, display_data$Beğenmeme)), 'rgba(239, 68, 68, 0.5)'),
           backgroundSize = '98% 88%',
           backgroundRepeat = 'no-repeat',
           backgroundPosition = 'center'
