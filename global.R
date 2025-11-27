@@ -1794,9 +1794,23 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	
 	# --- Grafik niyeti algılayıcı + zorunlu yedek oluşturucu --------------------
 	# Türkçe yorum: Son kullanıcı mesajında grafik isteği var mı?
+	detect_chart_type_from_text <- function(text) {
+	  if (!is.character(text) || length(text) == 0 || !nzchar(text[1])) return("auto")
+	  txt <- tolower(text[1])
+	  if (grepl("\\b(histogram|histogramı|histogramını|dağılım grafiği)\\b", txt, perl = TRUE)) return("hist")
+	  if (grepl("\\b(çizgi|line|trend|zaman serisi|time series|eğilim)\\b", txt, perl = TRUE)) return("line")
+	  if (grepl("\\b(bar|çubuk|sütun|column|karşılaştır)\\b", txt, perl = TRUE)) return("bar")
+	  if (grepl("\\b(pie|pasta|dilim|pay)\\b", txt, perl = TRUE)) return("pie")
+	  if (grepl("\\b(donut|halka)\\b", txt, perl = TRUE)) return("donut")
+	  if (grepl("\\b(area|alan)\\b", txt, perl = TRUE)) return("area")
+	  if (grepl("\\b(pareto)\\b", txt, perl = TRUE)) return("pareto")
+	  if (grepl("\\b(scatter|saçılım|nokta|dağılım|serpilme)\\b", txt, perl = TRUE)) return("scatter")
+	  "auto"
+	}
+
 	chart_intent_flag <- FALSE
-	try({
-	  last_user_txt <- NULL
+		try({
+		  last_user_txt <- NULL
 	  if (length(chat_history) > 0) {
 		for (i in seq_along(chat_history)) {
 		  msg <- chat_history[[i]]
@@ -1828,10 +1842,10 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			length(charts_to_store) == 0) {
 
 		  first_path <- as.character(settings$file_paths[[1]])
-		  # Türkçe yorum: Otomatik tür seçimi; x/y belirtilmemişse ChartLab zaten seçecek
+		  detected_type <- detect_chart_type_from_text(last_user_txt)
 		  fb <- helpers_mcp_tools$prepare_chart_data(
 			file_name  = first_path,
-			chart_type = "auto",
+			chart_type = detected_type,
 			limit      = 4000,
 			session    = NULL
 		  )
@@ -1860,11 +1874,20 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			exists("helpers_mcp_tools", inherits = TRUE) &&
 			is.function(helpers_mcp_tools$get_mcp_tools_prompt)) {
 
-		  # Türkçe yorum: Görselleştirme isteklerinde mutlaka prepare_chart_data çağrılmalı
-		  # Türkçe yorum: Metin analizi/karma sorgular için sql_query_uploaded_file kullanılmalı
+		  # Görselleştirme isteklerinde mutlaka prepare_chart_data çağrılmalı
+		  # Metin analizi/karma sorgular için sql_query_uploaded_file kullanılmalı
 		  tool_prompt <- paste0(
 			helpers_mcp_tools$get_mcp_tools_prompt(),
-			"\nGÖRSELLEŞTİRME KURALI: Kullanıcı 'grafik', 'grafiğini çiz', 'plot', 'çiz', 'chart', 'histogram', 'bar', 'line', 'trend', 'dağılım', 'scatter', 'pie', 'donut', 'pareto' vb. bir talep verirse *daima* 'prepare_chart_data' aracını çağır.\n",
+			"\n\n### GRAFİK TİPİ EŞLEŞTİRME TABLOSU (KESİNLİKLE UYGULA):",
+			"\n- histogram, histogramı, dağılım grafiği → chart_type='hist'",
+			"\n- çizgi, çizgi grafiği, line, trend, zaman serisi, eğilim → chart_type='line'",
+			"\n- bar, çubuk, sütun, karşılaştırma grafiği → chart_type='bar'",
+			"\n- pasta, pie, dilim, pay grafiği → chart_type='pie'",
+			"\n- donut, halka → chart_type='donut'",
+			"\n- alan, area → chart_type='area'",
+			"\n- pareto → chart_type='pareto'",
+			"\n- scatter, saçılım, nokta grafiği, serpilme → chart_type='scatter'",
+			"\n\nGÖRSELLEŞTİRME KURALI: Kullanıcı 'grafik', 'grafiğini çiz', 'plot', 'çiz', 'chart', 'histogram', 'bar', 'line', 'trend', 'dağılım', 'scatter', 'pie', 'donut', 'pareto' vb.",
 			"• file_name: ekli Excel dosyasının adı\n",
 			"• chart_type: kullanıcı açıkça belirtmişse onu kullan; yoksa 'auto' ver\n",
 			"• x / y / group: kullanıcı belirtmemişse NULL bırak (ChartLab otomatik seçecektir)\n",

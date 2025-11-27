@@ -1117,8 +1117,8 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
             type = "object",
             properties = list(
               file_name  = list(type = "string", description = "Dosya jetonu veya yolu/adı."),
-              chart_type = list(type = "string",
-					description = "One of: hist | bar | line | scatter | area | pie | donut | pareto. (bar supports orientation + stacking; line/area support smoothing)"),
+			  chart_type = list(type = "string",
+					description = "ZORUNLU. histogram/dağılım→'hist', çizgi/line/trend→'line', bar/çubuk/sütun→'bar', pasta/pie→'pie', donut/halka→'donut', alan/area→'area', pareto→'pareto', saçılım/scatter/nokta→'scatter'. Kullanıcının isteğine göre DOĞRU TİPİ SEÇ."),
               x          = list(type = "string", description = "X ekseni sütunu (opsiyonel)"),
               y          = list(type = "string", description = "Y ekseni sütunu (opsiyonel)"),
               group      = list(type = "string", description = "Renk/seri grubu (opsiyonel)"),

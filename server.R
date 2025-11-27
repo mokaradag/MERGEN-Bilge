@@ -674,9 +674,12 @@ observeEvent(input$source_file_clicked, {
 						  exists("helpers_mcp_tools", inherits = TRUE) &&
 						  is.function(helpers_mcp_tools$prepare_chart_data)) {
 
+					  detected_type <- if (exists("detect_chart_type_from_text", mode = "function")) {
+					  detect_chart_type_from_text(user_prompt_msg$content[1])
+					} else { "auto" }
 					fb <- try(helpers_mcp_tools$prepare_chart_data(
 					  file_name  = fp,
-					  chart_type = "auto",
+					  chart_type = detected_type,
 					  limit      = 4000,
 					  session    = session
 					), silent = TRUE)
