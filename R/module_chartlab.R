@@ -19,6 +19,77 @@ chartLabUI <- function(id) {
   )
 }
 
+mergen_dark_theme <- function() {
+  categorical_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
+  sequential_colors <- c("#1e3a5f", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe")
+  diverging_colors <- c("#ef4444", "#f97316", "#fbbf24", "#fef3c7", "#a7f3d0", "#34d399", "#10b981")
+  highcharter::hc_theme(
+    chart = list(
+      backgroundColor = "transparent",
+      style = list(fontFamily = "Inter, system-ui, -apple-system, sans-serif")
+    ),
+    colors = categorical_colors,
+    title = list(style = list(color = "#fff", fontWeight = "600")),
+    subtitle = list(style = list(color = "#999")),
+    xAxis = list(
+      labels = list(style = list(color = "#999")),
+      title = list(style = list(color = "#999")),
+      gridLineColor = "#333",
+      lineColor = "#444",
+      tickColor = "#444"
+    ),
+    yAxis = list(
+      labels = list(style = list(color = "#999")),
+      title = list(style = list(color = "#999")),
+      gridLineColor = "#333",
+      lineColor = "#444",
+      tickColor = "#444"
+    ),
+    legend = list(
+      itemStyle = list(color = "#999"),
+      itemHoverStyle = list(color = "#fff"),
+      itemHiddenStyle = list(color = "#666")
+    ),
+    tooltip = list(
+      backgroundColor = "#1a1a1a",
+      borderColor = "#333",
+      style = list(color = "#fff")
+    ),
+    plotOptions = list(
+      series = list(borderWidth = 0),
+      column = list(borderWidth = 0, borderRadius = 4),
+      bar = list(borderWidth = 0, borderRadius = 4),
+      pie = list(
+        borderWidth = 0,
+        dataLabels = list(
+          color = "#fff",
+          style = list(textOutline = "none")
+        )
+      ),
+      area = list(
+        fillOpacity = 0.25,
+        marker = list(enabled = FALSE)
+      ),
+      areaspline = list(
+        fillOpacity = 0.25,
+        marker = list(enabled = FALSE)
+      ),
+      line = list(
+        lineWidth = 2.5,
+        marker = list(enabled = TRUE, radius = 3)
+      ),
+      spline = list(
+        lineWidth = 2.5,
+        marker = list(enabled = TRUE, radius = 3)
+      ),
+      scatter = list(
+        marker = list(radius = 5, symbol = "circle")
+      )
+    ),
+    credits = list(enabled = FALSE)
+  )
+}
+
 #' ChartLab Server
 #' Exposes: $push_spec(spec)  where spec is result$chart from prepare_chart_data
 chartLabServer <- function(id) {
@@ -112,11 +183,11 @@ chartLabServer <- function(id) {
 
       # choose engine
       if (have_hc()) {
-        output[[out_id]] <- highcharter::renderHighchart({
+		output[[out_id]] <- highcharter::renderHighchart({
           library(highcharter)
           hc <- highchart() %>% hc_exporting(enabled = TRUE) %>%
             hc_title(text = paste0(toupper(type), " — ", file_label)) %>%
-            hc_add_theme(hc_theme_darkunica())
+            hc_add_theme(mergen_dark_theme())
 
           # Flip chart to horizontal if requested (safer than switching to 'bar' in complex combos)
           if (orientation %in% c("h","horizontal")) {
@@ -148,12 +219,17 @@ chartLabServer <- function(id) {
 			  if (isTRUE(!is.na(top_n))) dd <- head(dd, top_n)
 
 			  # Consistently build on the same 'hc' to avoid flicker
+			pie_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
+			  pie_data <- lapply(seq_len(nrow(dd)), function(i) {
+			    list(name = as.character(dd[[x]][i]), y = dd$val[i], color = pie_colors[((i - 1) %% length(pie_colors)) + 1])
+			  })
 			  hc <- hc %>%
-				hchart(dd, "pie", hcaes(name = !!rlang::sym(x), y = val)) %>%
-				hc_plotOptions(pie = list(
-				  innerSize  = if (identical(type, "donut") || donut) "60%" else "0%",
-				  dataLabels = list(enabled = TRUE)
-				))
+			    hc_add_series(type = "pie", data = pie_data, name = x) %>%
+			    hc_plotOptions(pie = list(
+			      innerSize = if (identical(type, "donut") || donut) "60%" else "0%",
+			      borderWidth = 0,
+			      dataLabels = list(enabled = TRUE, format = "<b>{point.name}</b>: {point.percentage:.1f}%", style = list(color = "#fff", textOutline = "none"))
+			    ))
           } else if (identical(type,"bar")) {
             # Unified vertical/horizontal bars with optional stacking and optional y-aggregation
             chart_type <- if (orientation %in% c("h", "horizontal")) "bar" else "column"

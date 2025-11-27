@@ -142,9 +142,20 @@ wire_chart_output <- function(output, out_id, spec) {
 
   # ---------- engines ----------
   if (requireNamespace("highcharter", quietly = TRUE)) {
-    output[[out_id]] <- highcharter::renderHighchart({
+	output[[out_id]] <- highcharter::renderHighchart({
       library(highcharter)
-      hc <- highchart() %>% hc_exporting(enabled = TRUE) %>% hc_add_theme(hc_theme_darkunica())
+      categorical_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
+      custom_theme <- highcharter::hc_theme(
+        chart = list(backgroundColor = "transparent"),
+        colors = categorical_colors,
+        xAxis = list(labels = list(style = list(color = "#999")), gridLineColor = "#333", lineColor = "#444"),
+        yAxis = list(labels = list(style = list(color = "#999")), gridLineColor = "#333", lineColor = "#444"),
+        legend = list(itemStyle = list(color = "#999")),
+        tooltip = list(backgroundColor = "#1a1a1a", borderColor = "#333", style = list(color = "#fff")),
+        plotOptions = list(series = list(borderWidth = 0), pie = list(borderWidth = 0, dataLabels = list(color = "#fff", style = list(textOutline = "none")))),
+        credits = list(enabled = FALSE)
+      )
+      hc <- highchart() %>% hc_exporting(enabled = TRUE) %>% hc_add_theme(custom_theme)
 
       aggfun <- function(z, f) {
         f <- tolower(f %||% "sum")
