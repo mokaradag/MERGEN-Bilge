@@ -33,9 +33,13 @@ section.content,
   position: sticky;
   top: 0;
   z-index: 110;
-  background: var(--background-dark);
+  background: var(--background-light);
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-color);
+  border-radius: 0 16px 16px 0;
+  height: 50px;
+  min-height: 50px;
+  box-shadow: var(--shadow-md);
 }
 
 .admin-badge {

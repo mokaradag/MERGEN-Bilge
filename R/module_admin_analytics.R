@@ -18,12 +18,15 @@ adminAnalyticsUI <- function(id) {
         .admin-tabs-container .tab-content {
           display: none !important;
         }
-        .admin-header-fixed {
-          position: relative; /* Changed from sticky to relative for better flex behavior */
+		.admin-header-fixed {
+          position: relative;
           z-index: 1000;
-          background: var(--background-dark, #1a1a2e);
+          background: var(--background-light, #2a2a2a);
           flex-shrink: 0;
-          border-bottom: 1px solid var(--border-color, #333);
+          border-radius: 0 16px 16px 0;
+          height: 50px;
+          min-height: 50px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
         .admin-scrollable-content {
           flex: 1;

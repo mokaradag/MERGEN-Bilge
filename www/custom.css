@@ -240,8 +240,10 @@ body {
 /* Chat Header */
 .chat-header {
   background: var(--background-light);
-  border-radius: 16px;
-  padding: 8px 8px; /* Changed from 20px 30px */
+  border-radius: 0 16px 16px 0;
+  padding: 0 16px;
+  height: 50px;
+  min-height: 50px;
   margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
@@ -1445,10 +1447,10 @@ kbd {
 }
 
 .content-container {
-  height: calc(100vh - 70px);
+  height: calc(100vh - 50px);
   display: flex;
   flex-direction: column;
-  padding: 0 25px;
+  padding: 0 25px 0 0;
 }
 
 .files-header {
@@ -1456,7 +1458,7 @@ kbd {
   top: 0;
   z-index: 100;
   background: var(--background-light);
-  border-radius: 16px;
+  border-radius: 0 16px 16px 0;
   padding: 0 16px !important;
   height: 50px;
   min-height: 50px;
@@ -1470,8 +1472,8 @@ kbd {
 .scrollable-content {
   overflow-y: auto;
   flex-grow: 1;
-  height: calc(100vh - 140px);
-  padding-bottom: 20px;
+  height: calc(100vh - 120px);
+  padding-bottom: 10px;
 }
 
 .history-controls {
@@ -3085,13 +3087,13 @@ table.dataTable thead th:first-child::after {
   height: 50px;
   min-height: 50px;
   box-shadow: var(--shadow-md);
-  border-radius: 16px;
+  border-radius: 0 16px 16px 0;
   margin-bottom: 20px;
 }
 
 /* Scrollable content area */
 .settings-scrollable-content {
-  height: calc(100vh - 130px);
+  height: calc(100vh - 110px);
   overflow-y: auto;
   padding: 20px;
   margin-top: 0;
@@ -4002,13 +4004,6 @@ body.font-xlarge .message-content {
 }
 
 /* Ensure proper vertical alignment in chat header */
-.chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: nowrap;
-}
-
 .chat-header-left {
   display: flex;
   align-items: center;
