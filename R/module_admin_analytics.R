@@ -1055,7 +1055,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             tooltip = "Her söyleşideki ortalama mesaj sayısı."),
           create_metric_card("Kullanıcı Tutma Oranı", retention_rate, "user-check", "green",
             tooltip = "Birden fazla söyleşi başlatan kullanıcıların oranı."),
-          create_metric_card("Ort. Oturum Süresi", avg_session, "hourglass-half", "orange",
+		  create_metric_card("Ortalama Oturum Süresi", avg_session, "hourglass-half", "orange",
             tooltip = "Söyleşilerin ortalama süre uzunluğu."),
           create_metric_card("Toplam Geri Bildirim", format_number(total_feedback), "comments", "purple",
             tooltip = "Verilen tüm geri bildirimlerin sayısı.")
@@ -1365,13 +1365,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       
       data <- data[order(-data$message_count), ]
       
-      display_names <- sapply(1:nrow(data), function(i) {
-        if (!is.na(data$full_name[i]) && nzchar(data$full_name[i])) {
-          data$full_name[i]
-        } else {
-          data$user_name[i]
-        }
-      })
+	  display_names <- data$user_name
       
       chart_data <- lapply(1:nrow(data), function(i) {
         list(
@@ -1755,17 +1749,17 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         ),
         class = "admin-datatable",
         rownames = FALSE
-      ) %>%
+	  ) %>%
         DT::formatStyle(
           'Beğeni Oranı (%)',
-          background = DT::styleColorBar(c(0, 100), '#10b981'),
+          background = DT::styleColorBar(c(0, 100), 'rgba(16, 185, 129, 0.4)'),
           backgroundSize = '98% 88%',
           backgroundRepeat = 'no-repeat',
           backgroundPosition = 'center'
         ) %>%
         DT::formatStyle(
           'Beğenmeme Oranı (%)',
-          background = DT::styleColorBar(c(0, 100), '#ef4444'),
+          background = DT::styleColorBar(c(0, 100), 'rgba(239, 68, 68, 0.4)'),
           backgroundSize = '98% 88%',
           backgroundRepeat = 'no-repeat',
           backgroundPosition = 'center'
