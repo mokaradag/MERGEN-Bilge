@@ -1749,21 +1749,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         ),
         class = "admin-datatable",
         rownames = FALSE
-	  ) %>%
-        DT::formatStyle(
-          'Beğeni',
-          background = DT::styleColorBar(range(c(0, display_data$Beğeni)), 'rgba(16, 185, 129, 0.5)'),
-          backgroundSize = '98% 88%',
-          backgroundRepeat = 'no-repeat',
-          backgroundPosition = 'center'
-        ) %>%
-        DT::formatStyle(
-          'Beğenmeme',
-          background = DT::styleColorBar(range(c(0, display_data$Beğenmeme)), 'rgba(239, 68, 68, 0.5)'),
-          backgroundSize = '98% 88%',
-          backgroundRepeat = 'no-repeat',
-          backgroundPosition = 'center'
-        )
+      )
     })
     
     output$response_time_feedback_chart <- highcharter::renderHighchart({
