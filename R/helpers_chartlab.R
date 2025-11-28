@@ -329,3 +329,64 @@ wire_chart_output <- function(output, out_id, spec) {
   })
   invisible(FALSE)
 }
+
+build_chartlab_message_static <- function(raw_text, message_id) {
+  txt <- as.character(raw_text %||% "")
+  if (!grepl("```chartlab", txt, fixed = TRUE)) {
+    return(list(found = FALSE))
+  }
+
+  parts <- list()
+  remaining <- txt
+  while (TRUE) {
+    open <- regexpr("```chartlab\\s*", remaining, perl = TRUE)
+    if (open[1] == -1) { parts <- append(parts, list(list(kind="text", value=remaining))); break }
+    pre <- substr(remaining, 1, open[1]-1)
+    parts <- append(parts, list(list(kind="text", value=pre)))
+    rest <- substr(remaining, open[1] + attr(open,"match.length"), nchar(remaining))
+    close <- regexpr("```", rest, perl = TRUE)
+    if (close[1] == -1) { parts <- append(parts, list(list(kind="text", value=paste0("```chartlab\n", rest)))); break }
+    json_block <- substr(rest, 1, close[1]-1)
+    parts <- append(parts, list(list(kind="chart", value=json_block)))
+    remaining <- substr(rest, close[1]+attr(close,"match.length"), nchar(rest))
+  }
+
+  html_chunks <- list()
+  chart_counter <- 0
+  renderers <- list()
+
+  for (p in parts) {
+    if (identical(p$kind, "text")) {
+      if (nzchar(trimws(p$value))) {
+        html_chunks <- append(
+          html_chunks,
+          commonmark::markdown_html(p$value, hardbreaks = TRUE, extensions = c("strikethrough", "table"))
+        )
+      }
+    } else if (identical(p$kind, "chart")) {
+      chart_counter <- chart_counter + 1
+      out_id <- paste0("chart_", message_id, "_", chart_counter)
+
+      spec <- NULL
+      try(spec <- jsonlite::fromJSON(p$value, simplifyVector = TRUE), silent = TRUE)
+
+      if (is.null(spec)) {
+        html_chunks <- append(
+          html_chunks,
+          '<div class="chart-card"><div style="color:#f87171">Grafik tanımı çözümlenemedi.</div></div>'
+        )
+      } else {
+        container_html <- sprintf(
+          '<div class="chart-card" data-chartlab-spec="%s" data-chart-id="%s"><div class="chartlab-placeholder" id="%s" style="min-height:380px;display:flex;align-items:center;justify-content:center;"><span style="color:#9ca3af;">Grafik yükleniyor...</span></div></div>',
+          htmltools::htmlEscape(p$value, attribute = TRUE),
+          out_id,
+          out_id
+        )
+        html_chunks <- append(html_chunks, container_html)
+        renderers <- append(renderers, list(list(output_id = out_id, spec = spec)))
+      }
+    }
+  }
+
+  list(found = (chart_counter > 0), html = paste(html_chunks, collapse = ""), renderers = renderers)
+}

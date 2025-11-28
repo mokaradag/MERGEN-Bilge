@@ -1892,6 +1892,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			"• file_name: ekli Excel dosyasının adı\n",
 			"• chart_type: kullanıcı açıkça belirtmişse onu kullan; yoksa 'auto' ver\n",
 			"• x / y / group: kullanıcı belirtmemişse NULL bırak (ChartLab otomatik seçecektir)\n",
+			"\n\n### ÇOKLU GRAFİK KURALI:",
+			"\nKullanıcı 'çeşitli grafikler', 'farklı görselleştirmeler', 'birden fazla grafik' istediğinde:",
+			"\n1. prepare_chart_data aracını FARKLI chart_type ve sütun kombinasyonlarıyla EN AZ 3 KEZ çağır",
+			"\n2. Her grafik için ayrı bir yorum/analiz paragrafı yaz",
+			"\n3. Örnek: Histogram + Bar + Scatter veya Line + Pie + Bar kombinasyonları",
+			"\n4. Her grafikten sonra kısa bir içgörü ekle (örn: 'Bu dağılım normal dağılıma yakın görünüyor')\n",
 			"\nKarmaşık/nested mantık (filtrele + grupla + sırala + LIMIT, koşullu ortalama/toplam) için *tek* bir SQL sorgusu yaz ve 'sql_query_uploaded_file' aracını kullan. Tablo adı: t.\n"
 		  )
 

@@ -2637,3 +2637,58 @@ Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
     overlay.classList.remove('is-active', 'is-playing');
   };
 });
+
+window.renderSavedCharts = function(wrapperId) {
+  var wrapper = document.getElementById(wrapperId);
+  if (!wrapper) return;
+  
+  var chartCards = wrapper.querySelectorAll('.chart-card[data-chartlab-spec]');
+  chartCards.forEach(function(card) {
+    var specJson = card.getAttribute('data-chartlab-spec');
+    var chartId = card.getAttribute('data-chart-id');
+    if (!specJson || !chartId) return;
+    
+    try {
+      var spec = JSON.parse(specJson);
+      var container = card.querySelector('.chartlab-placeholder');
+      if (!container) return;
+      
+      if (typeof Highcharts !== 'undefined' && spec.data) {
+        container.innerHTML = '';
+        var chartType = (spec.type || 'column').toLowerCase();
+        var mapping = spec.mapping || {};
+        var data = spec.data || [];
+        
+        var seriesData = [];
+        if (Array.isArray(data) && data.length > 0) {
+          if (chartType === 'pie' || chartType === 'donut') {
+            seriesData = data.map(function(row) {
+              return { name: row[mapping.x] || '', y: parseFloat(row[mapping.y]) || row.count || 1 };
+            });
+          } else {
+            var categories = data.map(function(row) { return row[mapping.x] || ''; });
+            var values = data.map(function(row) { return parseFloat(row[mapping.y]) || 0; });
+            seriesData = [{ name: mapping.y || 'Değer', data: values }];
+          }
+        }
+        
+        Highcharts.chart(container, {
+          chart: { type: chartType === 'donut' ? 'pie' : chartType, backgroundColor: 'transparent' },
+          title: { text: spec.title || null, style: { color: '#fff' } },
+          xAxis: chartType !== 'pie' && chartType !== 'donut' ? { categories: categories, labels: { style: { color: '#999' } } } : undefined,
+          yAxis: chartType !== 'pie' && chartType !== 'donut' ? { title: { text: mapping.y || '' }, labels: { style: { color: '#999' } }, gridLineColor: '#333' } : undefined,
+          plotOptions: {
+            pie: { innerSize: chartType === 'donut' ? '50%' : 0, dataLabels: { color: '#fff' } },
+            series: { borderWidth: 0 }
+          },
+          series: chartType === 'pie' || chartType === 'donut' ? [{ name: 'Değer', data: seriesData }] : seriesData,
+          legend: { itemStyle: { color: '#999' } },
+          tooltip: { backgroundColor: '#1a1a1a', style: { color: '#fff' } },
+          credits: { enabled: false }
+        });
+      }
+    } catch(e) {
+      console.error('Chart render error:', e);
+    }
+  });
+};

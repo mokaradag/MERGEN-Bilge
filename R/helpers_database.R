@@ -260,10 +260,31 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
 format_chat_messages <- function(chat_df) {
   lapply(seq_len(nrow(chat_df)), function(i) {
     row <- chat_df[i, ]
-    processed <- if (exists("process_message_content", mode = "function")) {
-      process_message_content(row$MessageContent, row$MessageType)
+    
+    content_text <- row$MessageContent %||% ""
+    msg_type <- row$MessageType %||% "user"
+    
+    has_chartlab <- grepl("```chartlab", content_text, fixed = TRUE)
+    
+    processed <- if (has_chartlab && identical(msg_type, "ai")) {
+      if (exists("build_chartlab_message_static", mode = "function")) {
+        chart_result <- build_chartlab_message_static(content_text, as.character(row$MessageID))
+        if (isTRUE(chart_result$found)) {
+          list(html = chart_result$html, has_code = FALSE)
+        } else if (exists("process_message_content", mode = "function")) {
+          process_message_content(content_text, msg_type)
+        } else {
+          list(html = content_text, has_code = FALSE)
+        }
+      } else if (exists("process_message_content", mode = "function")) {
+        process_message_content(content_text, msg_type)
+      } else {
+        list(html = content_text, has_code = FALSE)
+      }
+    } else if (exists("process_message_content", mode = "function")) {
+      process_message_content(content_text, msg_type)
     } else {
-      list(html = row$MessageContent, has_code = FALSE)
+      list(html = content_text, has_code = FALSE)
     }
 
     timestamp_gmt3 <- row$MessageTimestamp
@@ -523,20 +544,7 @@ save_message_to_db <- function(chat_id, msg) {
     VALUES (?, ?, ?, ?, ?)
   "
   
-	ts <- if (!is.null(msg$timestamp)) {
-		if (inherits(msg$timestamp, "POSIXt")) {
-		  format(msg$timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
-		} else {
-		  parsed_time <- as.POSIXct(msg$timestamp, format = "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
-		  if (is.na(parsed_time)) {
-			format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
-		  } else {
-			format(parsed_time, "%Y-%m-%d %H:%M:%S")
-		  }
-		}
-  } else {
-	format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
-  }
+  ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
   max_order_query <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]

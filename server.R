@@ -1814,48 +1814,63 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  values$current_chat_id <- chat_id
 	  values$show_welcome <- FALSE
 	  
-	  if (length(values$messages) > 0) {
-		for (i in seq_along(values$messages)) {
-		  msg <- values$messages[[i]]
-		  is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
-		  
-		  # Get character data for this message
-		  selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-		  chars_data <- get_characters_data()
-		  character_data <- if (!is.null(chars_data)) {
-			Find(function(x) x$id == selected_char_id, chars_data$styles)
-		  } else NULL
-		  
-		  ui_to_insert <- render_message_bubble_ui(
-			msg, settings_data,
-			is_last_user_message = is_last_user_msg,
-			character_data = character_data,
-			liked_ids = values$liked_messages,
-			disliked_ids = values$disliked_messages
-		  )
-		  
-		  insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
-		  
-		  if(isTRUE(msg$has_code)) {
-			wrapper_id <- paste0("message_wrapper_", msg$id)
-			shinyjs::runjs(sprintf("
-			  setTimeout(() => { 
-				if (window.initializeCodeMirrorInElement) {
-				  window.initializeCodeMirrorInElement('%s');
-				}
-				const wrapper = document.getElementById('%s');
-				if (wrapper) {
-				  const cmInstances = wrapper.querySelectorAll('.CodeMirror');
-				  cmInstances.forEach(cm => {
-					if (cm.CodeMirror) cm.CodeMirror.refresh();
-				  });
-				}
-			  }, 200);
-			", wrapper_id, wrapper_id))
-		  }
+	if (length(values$messages) > 0) {
+	  for (i in seq_along(values$messages)) {
+		msg <- values$messages[[i]]
+		is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
+		
+		# Get character data for this message
+		selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+		chars_data <- get_characters_data()
+		character_data <- if (!is.null(chars_data)) {
+		  Find(function(x) x$id == selected_char_id, chars_data$styles)
+		} else NULL
+		
+		ui_to_insert <- render_message_bubble_ui(
+		  msg, settings_data,
+		  is_last_user_message = is_last_user_msg,
+		  character_data = character_data,
+		  liked_ids = values$liked_messages,
+		  disliked_ids = values$disliked_messages
+		)
+		
+		insertUI(
+		  selector = "#chat_content_container",
+		  where = "beforeEnd",
+		  ui = ui_to_insert
+		)
+		
+		wrapper_id <- paste0("message_wrapper_", msg$id)
+		
+		if (isTRUE(msg$has_code)) {
+		  shinyjs::runjs(sprintf("
+			setTimeout(() => { 
+			  if (window.initializeCodeMirrorInElement) {
+				window.initializeCodeMirrorInElement('%s');
+			  }
+			  const wrapper = document.getElementById('%s');
+			  if (wrapper) {
+				const cmInstances = wrapper.querySelectorAll('.CodeMirror');
+				cmInstances.forEach(cm => {
+				  if (cm.CodeMirror) cm.CodeMirror.refresh();
+				});
+			  }
+			}, 200);
+		  ", wrapper_id, wrapper_id))
 		}
-		shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
+		
+		if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
+		  shinyjs::delay(300, {
+			shinyjs::runjs(sprintf(
+			  "window.renderSavedCharts && window.renderSavedCharts('%s');",
+			  wrapper_id
+			))
+		  })
+		}
 	  }
+	  
+	  shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
+	}
 	  
 	  updateTabItems(session, "tabs", "chat")
 	  showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")
