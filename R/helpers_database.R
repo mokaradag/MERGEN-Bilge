@@ -74,25 +74,6 @@ release_connection <- function(conn_info) {
   invisible(NULL)
 }
 
-# Release connection returned by get_connection()
-release_connection <- function(conn_info) {
-  if (is.null(conn_info)) return(invisible(NULL))
-  if (isTRUE(conn_info$pooled)) {
-    tryCatch({
-      poolReturn(conn_info$conn)
-    }, error = function(e) {
-      # ignore
-    })
-  } else {
-    tryCatch({
-      DBI::dbDisconnect(conn_info$conn)
-    }, error = function(e) {
-      # ignore
-    })
-  }
-  invisible(NULL)
-}
-
 # Worker-side helper: create a fresh DBI connection in the worker with retry logic
 worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
   for (i in 1:max_retries) {
@@ -117,12 +98,12 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
 validate_username <- function(username) {
   # Only allow alphanumeric, underscore, dot, and hyphen
   if (!grepl("^[a-zA-Z0-9_.-]+$", username)) {
-    stop("Invalid username format. Only alphanumeric characters, underscore, dot, and hyphen are allowed.")
+    stop("Geçersiz kullanıcı adı formatı. Sadece harf, rakam, alt çizgi, nokta ve tire kullanılabilir.")
   }
   
   # Check length constraints
   if (nchar(username) < 3 || nchar(username) > 50) {
-    stop("Username must be between 3 and 50 characters.")
+    stop("Kullanıcı adı 3-50 karakter arasında olmalıdır.")
   }
   
   return(TRUE)
