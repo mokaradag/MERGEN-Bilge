@@ -19,69 +19,223 @@
   opacity: 1;
 }
 
-/* Video elementi */
+/* Video elementi - 720x1280 orijinal videodan 57px üst/alt kırpma ile */
 .character-video {
+  /* Orijinal 720x1280, kırpılmış 720x1166, oran korunarak 620px yükseklik = ~383px genişlik */
   height: 620px;
-  width: auto;
-  max-width: 100%;
+  width: 383px;
   object-fit: cover;
-  object-position: center;
+  /* Üstten ve alttan 57px kırpma için center kullan (orantılı kırpma) */
+  object-position: center center;
   border-radius: 18px;
   background: transparent;
   display: block;
   margin: 0 auto;
+  position: relative;
+  z-index: 2;
 }
+
+/* ============================================
+   Gelişmiş Ateş/Alev Efekti Animasyonu
+   ============================================ */
+
+/* Ateş efekti wrapper - video etrafında katmanlı alev */
+.character-video-overlay::before,
+.character-video-overlay::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 26px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+/* Video oynarken ateş efektini göster */
+.character-video-overlay.is-playing::before,
+.character-video-overlay.is-playing::after,
+.character-video-overlay.is-ended::before,
+.character-video-overlay.is-ended::after {
+  opacity: 1;
+}
+
+/* Birinci katman - iç alev halkası */
+.character-video-overlay::before {
+  background: 
+    radial-gradient(ellipse at 50% 0%, var(--video-accent-color, #7C4DFF) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 100%, var(--video-accent-color, #7C4DFF) 0%, transparent 60%),
+    radial-gradient(ellipse at 0% 50%, var(--video-accent-color, #7C4DFF) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 50%, var(--video-accent-color, #7C4DFF) 0%, transparent 50%);
+  filter: blur(12px);
+  animation: fireLayerInner 2s ease-in-out infinite alternate;
+}
+
+/* İkinci katman - dış alev halkası */
+.character-video-overlay::after {
+  inset: -16px;
+  border-radius: 34px;
+  background: 
+    radial-gradient(ellipse at 50% -10%, var(--video-accent-color, #7C4DFF) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 110%, var(--video-accent-color, #7C4DFF) 0%, transparent 55%),
+    radial-gradient(ellipse at -10% 50%, var(--video-accent-color, #7C4DFF) 0%, transparent 45%),
+    radial-gradient(ellipse at 110% 50%, var(--video-accent-color, #7C4DFF) 0%, transparent 45%);
+  filter: blur(20px);
+  animation: fireLayerOuter 3s ease-in-out infinite alternate;
+}
+
+/* İç alev animasyonu */
+@keyframes fireLayerInner {
+  0% {
+    opacity: 0.6;
+    filter: blur(12px) brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    filter: blur(10px) brightness(1.2);
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 0.7;
+    filter: blur(14px) brightness(1.1);
+    transform: scale(0.98);
+  }
+}
+
+/* Dış alev animasyonu */
+@keyframes fireLayerOuter {
+  0% {
+    opacity: 0.4;
+    filter: blur(20px) brightness(0.9);
+    transform: scale(1);
+  }
+  33% {
+    opacity: 0.6;
+    filter: blur(18px) brightness(1.15);
+    transform: scale(1.03);
+  }
+  66% {
+    opacity: 0.5;
+    filter: blur(22px) brightness(1.05);
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 0.45;
+    filter: blur(20px) brightness(1);
+    transform: scale(1.01);
+  }
+}
+
+/* Video bittiğinde statik ama hafif titreşimli alev */
+.character-video-overlay.is-ended::before {
+  animation: fireLayerInnerStatic 4s ease-in-out infinite;
+}
+
+.character-video-overlay.is-ended::after {
+  animation: fireLayerOuterStatic 5s ease-in-out infinite;
+}
+
+@keyframes fireLayerInnerStatic {
+  0%, 100% {
+    opacity: 0.5;
+    filter: blur(12px) brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    filter: blur(11px) brightness(1.08);
+    transform: scale(1.01);
+  }
+}
+
+@keyframes fireLayerOuterStatic {
+  0%, 100% {
+    opacity: 0.35;
+    filter: blur(20px) brightness(0.95);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.42;
+    filter: blur(19px) brightness(1.02);
+    transform: scale(1.01);
+  }
+}
+
+/* Ateş parçacıkları container */
+.fire-particles {
+  position: absolute;
+  inset: -20px;
+  border-radius: 38px;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.character-video-overlay.is-playing .fire-particles,
+.character-video-overlay.is-ended .fire-particles {
+  opacity: 1;
+}
+
+/* Ateş parçacıkları */
+.fire-particle {
+  position: absolute;
+  width: var(--particle-size, 6px);
+  height: var(--particle-size, 6px);
+  background: var(--video-accent-color, #7C4DFF);
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0;
+  animation: fireParticleRise var(--particle-duration, 2s) ease-out infinite;
+  animation-delay: var(--particle-delay, 0s);
+}
+
+@keyframes fireParticleRise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(1);
+  }
+  10% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(calc(var(--particle-travel, -80px))) scale(0.3);
+  }
+}
+
 /* Sinematik halo/glow efekti - video oynarken */
 .character-video-overlay.is-playing .character-video {
   animation: cinematicHalo 3s ease-in-out infinite;
 }
 
-/* Sinematik halo animasyonu - daha sofistike ve dinamik */
+/* Sinematik halo animasyonu - ateş efekti ile uyumlu */
 @keyframes cinematicHalo {
   0% {
     box-shadow: 
-      0 0 20px var(--video-accent-color, #7C4DFF),
-      0 0 40px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 50%, transparent),
-      0 0 80px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 30%, transparent),
-      0 0 120px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 15%, transparent),
-      inset 0 0 0 2px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 80%, transparent);
-    filter: brightness(1);
-  }
-  25% {
-    box-shadow: 
-      0 0 30px var(--video-accent-color, #7C4DFF),
-      0 0 60px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 65%, transparent),
-      0 0 100px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 40%, transparent),
-      0 0 150px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 20%, transparent),
-      inset 0 0 0 3px var(--video-accent-color, #7C4DFF);
-    filter: brightness(1.05);
+      0 0 15px var(--video-accent-color, #7C4DFF),
+      0 0 30px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 40%, transparent),
+      inset 0 0 0 2px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 70%, transparent);
+    filter: brightness(1) saturate(1.1);
   }
   50% {
     box-shadow: 
-      0 0 25px var(--video-accent-color, #7C4DFF),
-      0 0 50px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 55%, transparent),
-      0 0 90px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 35%, transparent),
-      0 0 130px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 18%, transparent),
-      inset 0 0 0 2px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 90%, transparent);
-    filter: brightness(1.02);
-  }
-  75% {
-    box-shadow: 
-      0 0 35px var(--video-accent-color, #7C4DFF),
-      0 0 70px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 70%, transparent),
-      0 0 110px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 45%, transparent),
-      0 0 160px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 22%, transparent),
-      inset 0 0 0 3px var(--video-accent-color, #7C4DFF);
-    filter: brightness(1.08);
+      0 0 20px var(--video-accent-color, #7C4DFF),
+      0 0 40px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 50%, transparent),
+      inset 0 0 0 2px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 85%, transparent);
+    filter: brightness(1.05) saturate(1.2);
   }
   100% {
     box-shadow: 
-      0 0 20px var(--video-accent-color, #7C4DFF),
-      0 0 40px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 50%, transparent),
-      0 0 80px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 30%, transparent),
-      0 0 120px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 15%, transparent),
-      inset 0 0 0 2px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 80%, transparent);
-    filter: brightness(1);
+      0 0 15px var(--video-accent-color, #7C4DFF),
+      0 0 30px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 40%, transparent),
+      inset 0 0 0 2px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 70%, transparent);
+    filter: brightness(1) saturate(1.1);
   }
 }
 

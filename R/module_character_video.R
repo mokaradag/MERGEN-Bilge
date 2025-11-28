@@ -40,13 +40,15 @@ characterVideoUI <- function(id) {
   ns <- NS(id)
   
   tagList(
-    # Video container - resim container'ının üzerine bindirilecek
+    # Video container - ateş efekti ile birlikte
     div(
       id = ns("video_overlay"),
       class = "character-video-overlay",
       style = "display: none;",
       
-	  # Video elementi - varsayılan ses AÇIK
+      # Ateş parçacıkları JS tarafından eklenecek
+      
+      # Video elementi - varsayılan ses AÇIK
       tags$video(
         id = ns("character_video"),
         class = "character-video",

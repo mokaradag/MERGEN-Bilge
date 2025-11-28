@@ -5018,9 +5018,9 @@ body.font-xlarge {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  width: min(420px, 32vw);
-  min-width: 340px;
+  overflow: visible;
+  width: 420px;
+  min-width: 383px;
   height: 620px;
   border-radius: 18px;
   background: transparent;
@@ -5042,6 +5042,13 @@ body.font-xlarge {
   filter: blur(12px) saturate(112%) brightness(1.04);
   transition: opacity 1.05s ease, filter 1.05s ease;
   will-change: opacity, filter;
+}
+
+/* Video aktifken karakter resmini gizle */
+.character-image-container:has(.character-video-overlay.is-active) .character-image {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .character-image.is-visible {
