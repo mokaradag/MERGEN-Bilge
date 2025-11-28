@@ -42,9 +42,14 @@ settingsUI <- function(id) {
                 class = "character-selector-buttons",
                 id = ns("character_buttons")
               ),
-              div(
-                class = "character-display-area",
-                div(class = "character-image-container", id = ns("character_image_area")),
+				div(
+				  class = "character-display-area",
+				  div(
+					class = "character-image-container", 
+					id = ns("character_image_area"),
+					# Video modülü UI'ı
+					characterVideoUI(ns("character_video"))
+				  ),
                 div(
                   class = "character-info-container",
                   id = ns("character_info_area"),
@@ -553,13 +558,16 @@ settingsServer <- function(id, parent_session = NULL) {
       updateCheckboxInput(session, "enable_typing_indicator", value = settings$enable_typing_indicator)
       updateCheckboxInput(session, "enable_streaming",        value = settings$enable_streaming)
       updateCheckboxInput(session, "enable_widescreen",       value = settings$enable_widescreen)
-	  updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
+	    updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
       updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
       updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
       
       session$sendCustomMessage("clearSettings", list())
       showToast(session, "Ayarlar sıfırlandı!", "info")
     })
+    
+	# Karakter video modülünü başlat
+    characterVideoServer("character_video", temp_selected_character)
     
     # IMPORTANT: Return the settings reactive values directly
     return(settings)

@@ -77,6 +77,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", href = "codemirror/addon/fold/foldgutter.min.css"),
 
     tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/character_video.css"),
 
     # --- Local JavaScript Files ---
     # Core CodeMirror

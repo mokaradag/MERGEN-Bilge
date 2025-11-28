@@ -2502,3 +2502,131 @@ $(document).on('click', '.source-link', function() {
     nonce: Math.random()
   }, {priority: 'event'});
 });
+
+// ============================================
+// Karakter Video İşleyicileri
+// ============================================
+
+// Video ses açma/kapama fonksiyonu
+function toggleVideoMute(videoId) {
+  const video = document.getElementById(videoId);
+  const muteBtn = video ? video.parentElement.querySelector('.video-mute-btn') : null;
+  
+  if (!video || !muteBtn) return;
+  
+  video.muted = !video.muted;
+  
+  if (video.muted) {
+    muteBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+    muteBtn.classList.remove('is-unmuted');
+    muteBtn.title = 'Sesi Aç';
+  } else {
+    muteBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+    muteBtn.classList.add('is-unmuted');
+    muteBtn.title = 'Sesi Kapat';
+  }
+}
+
+// Karakter video oynatma handler'ı
+Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
+  const video = document.getElementById(data.videoElementId);
+  const overlay = document.getElementById(data.overlayId);
+  const muteBtn = document.getElementById(data.muteButtonId);
+  const imageContainer = document.getElementById(data.containerId);
+  
+  if (!video || !overlay) {
+    console.warn('[Video] Elementler bulunamadı:', data.videoElementId, data.overlayId);
+    return;
+  }
+  
+  // Önceki videoyu durdur ve sıfırla
+  video.pause();
+  video.currentTime = 0;
+  overlay.classList.remove('is-active', 'is-playing');
+  
+  // Accent rengini ayarla
+  const accentColor = data.accentColor || '#7C4DFF';
+  overlay.style.setProperty('--video-accent-color', accentColor);
+  
+  // Video kaynağını ayarla
+  video.src = data.videoSrc;
+  video.load();
+  
+  // Ses butonunu sıfırla
+  if (muteBtn) {
+    muteBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+    muteBtn.classList.remove('is-unmuted');
+    video.muted = true;
+  }
+  
+  // Video yüklendiğinde
+  video.onloadeddata = function() {
+    // Resim container'ına göre konumlandır
+    if (imageContainer) {
+      // Overlay'i resim container'ının içine taşı (henüz değilse)
+      if (overlay.parentElement !== imageContainer) {
+        imageContainer.style.position = 'relative';
+        imageContainer.appendChild(overlay);
+      }
+    }
+    
+    // Gecikme sonrası oynat
+    setTimeout(function() {
+      // Resmi gizle (fade out)
+      const charImage = imageContainer ? imageContainer.querySelector('.character-image') : null;
+      if (charImage) {
+        charImage.style.transition = 'opacity 0.4s ease';
+        charImage.style.opacity = '0';
+      }
+      
+      // Video overlay'i göster
+      overlay.style.display = 'flex';
+      
+      // Küçük bir gecikme ile fade in
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          overlay.classList.add('is-active');
+          
+          // Videoyu oynat
+          video.play().then(function() {
+            overlay.classList.add('is-playing');
+          }).catch(function(err) {
+            console.warn('[Video] Oynatma hatası:', err);
+          });
+        });
+      });
+    }, data.delay || 1000);
+  };
+  
+  // Video bittiğinde
+  video.onended = function() {
+    // Halo animasyonunu durdur
+    overlay.classList.remove('is-playing');
+    
+    // Resmi geri getir (fade in)
+    const charImage = imageContainer ? imageContainer.querySelector('.character-image') : null;
+    
+    // Kısa gecikme sonra geri dön
+    setTimeout(function() {
+      overlay.classList.remove('is-active');
+      
+      if (charImage) {
+        charImage.style.transition = 'opacity 0.5s ease';
+        charImage.style.opacity = '1';
+      }
+      
+      // Overlay'i gizle
+      setTimeout(function() {
+        overlay.style.display = 'none';
+        video.src = '';
+      }, 500);
+    }, 300);
+  };
+  
+  // Hata durumu
+  video.onerror = function() {
+    console.error('[Video] Yükleme hatası:', data.videoSrc);
+    overlay.style.display = 'none';
+    overlay.classList.remove('is-active', 'is-playing');
+  };
+});
