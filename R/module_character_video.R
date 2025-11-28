@@ -40,29 +40,42 @@ characterVideoUI <- function(id) {
   ns <- NS(id)
   
   tagList(
-    # Video container - ateş efekti ile birlikte
+    # Video container - gelişmiş efektler ile
     div(
       id = ns("video_overlay"),
       class = "character-video-overlay",
       style = "display: none;",
       
+      # Enerji dalgası efekti
+      div(class = "energy-wave"),
+      
+      # Işık hüzmeleri
+      div(class = "light-beam beam-1"),
+      div(class = "light-beam beam-2"),
+      div(class = "light-beam beam-3"),
+      div(class = "light-beam beam-4"),
+      
       # Ateş parçacıkları JS tarafından eklenecek
       
-      # Video elementi - varsayılan ses AÇIK
-      tags$video(
-        id = ns("character_video"),
-        class = "character-video",
-        playsinline = TRUE,
-        preload = "auto"
+      # Video wrapper - kırpma için
+      div(
+        class = "character-video-wrapper",
+        # Video elementi - varsayılan ses AÇIK
+        tags$video(
+          id = ns("character_video"),
+          class = "character-video",
+          playsinline = TRUE,
+          preload = "auto"
+        )
       ),
       
-      # Ses kontrol butonu
+      # Ses kontrol butonu - SES AÇIK ikonu ile başla
       tags$button(
         id = ns("mute_toggle"),
-        class = "video-mute-btn",
-        title = "Sesi Aç/Kapat",
+        class = "video-mute-btn is-unmuted",
+        title = "Sesi Kapat",
         onclick = sprintf("toggleVideoMute('%s')", ns("character_video")),
-        tags$i(class = "fa-solid fa-volume-xmark")
+        tags$i(class = "fa-solid fa-volume-high")
       )
     )
   )

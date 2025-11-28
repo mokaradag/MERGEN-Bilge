@@ -2526,12 +2526,12 @@ Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
   
   // Video kaynağını ayarla
   video.src = data.videoSrc;
-  video.muted = true; // Varsayılan sessiz
+  video.muted = false; // Varsayılan SES AÇIK
   
-  // Mute butonunu güncelle
+  // Mute butonunu güncelle - ses açık olarak başla
   if (muteBtn) {
-    muteBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
-    muteBtn.classList.remove('is-unmuted');
+    muteBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+    muteBtn.classList.add('is-unmuted');
   }
   
   // Video yüklendiğinde
@@ -2545,40 +2545,42 @@ Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
       charImage.style.visibility = 'hidden';
     }
     
-    // Ateş parçacıkları ekle (yoksa)
+	// Ateş parçacıkları ekle (yoksa)
     if (!overlay.querySelector('.fire-particles')) {
       const particlesContainer = document.createElement('div');
       particlesContainer.className = 'fire-particles';
       
-      // 12 adet ateş parçacığı oluştur
-      for (let i = 0; i < 12; i++) {
+      // 20 adet gelişmiş ateş parçacığı oluştur
+      for (let i = 0; i < 20; i++) {
         const particle = document.createElement('div');
         particle.className = 'fire-particle';
         
-        // Rastgele pozisyon (kenarlar boyunca)
-        const side = i % 4; // 0: üst, 1: sağ, 2: alt, 3: sol
+        // Kenarlar boyunca dağıt
+        const side = i % 4;
         let left, top;
+        const offset = (i / 20) * 100;
         
         if (side === 0) { // Üst
-          left = (10 + (i / 12) * 80) + '%';
-          top = '0%';
+          left = (5 + offset * 0.9) + '%';
+          top = '-5%';
         } else if (side === 1) { // Sağ
-          left = '100%';
-          top = (10 + ((i - 3) / 12) * 80) + '%';
+          left = '105%';
+          top = (5 + offset * 0.9) + '%';
         } else if (side === 2) { // Alt
-          left = (90 - (i / 12) * 80) + '%';
-          top = '100%';
+          left = (95 - offset * 0.9) + '%';
+          top = '105%';
         } else { // Sol
-          left = '0%';
-          top = (90 - ((i - 9) / 12) * 80) + '%';
+          left = '-5%';
+          top = (95 - offset * 0.9) + '%';
         }
         
         particle.style.left = left;
         particle.style.top = top;
-        particle.style.setProperty('--particle-size', (4 + Math.random() * 4) + 'px');
-        particle.style.setProperty('--particle-duration', (1.5 + Math.random() * 1.5) + 's');
-        particle.style.setProperty('--particle-delay', (Math.random() * 2) + 's');
-        particle.style.setProperty('--particle-travel', (-60 - Math.random() * 40) + 'px');
+        particle.style.setProperty('--particle-size', (3 + Math.random() * 6) + 'px');
+        particle.style.setProperty('--particle-duration', (1.2 + Math.random() * 2) + 's');
+        particle.style.setProperty('--particle-delay', (Math.random() * 3) + 's');
+        particle.style.setProperty('--particle-travel', (-50 - Math.random() * 60) + 'px');
+        particle.style.setProperty('--particle-drift', (-15 + Math.random() * 30) + 'px');
         
         particlesContainer.appendChild(particle);
       }
