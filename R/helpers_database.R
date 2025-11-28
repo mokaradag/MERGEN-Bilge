@@ -525,18 +525,18 @@ save_message_to_db <- function(chat_id, msg) {
   
 	ts <- if (!is.null(msg$timestamp)) {
 		if (inherits(msg$timestamp, "POSIXt")) {
-		  as.POSIXct(format(msg$timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
+		  format(msg$timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 		} else {
 		  parsed_time <- as.POSIXct(msg$timestamp, format = "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
 		  if (is.na(parsed_time)) {
-			as.POSIXct(format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
+			format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 		  } else {
-			as.POSIXct(format(parsed_time, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
+			format(parsed_time, "%Y-%m-%d %H:%M:%S")
 		  }
 		}
-	  } else {
-		as.POSIXct(format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
-	  }
+  } else {
+	format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
+  }
 
   max_order_query <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
@@ -697,7 +697,7 @@ worker_save_assistant_response <- function(chat_id, response_text,
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
   # FIX: Add 3 hours to timestamp for GMT+3
-  timestamp_gmt3 <- timestamp + 3*60*60
+  timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
   insert_q <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
