@@ -46,11 +46,10 @@ characterVideoUI <- function(id) {
       class = "character-video-overlay",
       style = "display: none;",
       
-      # Video elementi
+	  # Video elementi - varsayılan ses AÇIK
       tags$video(
         id = ns("character_video"),
         class = "character-video",
-        muted = TRUE,
         playsinline = TRUE,
         preload = "auto"
       ),

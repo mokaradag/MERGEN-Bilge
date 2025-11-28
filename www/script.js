@@ -2552,11 +2552,11 @@ Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
   video.src = data.videoSrc;
   video.load();
   
-  // Ses butonunu sıfırla
+  // Ses butonunu sıfırla - varsayılan olarak ses AÇIK
   if (muteBtn) {
-    muteBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
-    muteBtn.classList.remove('is-unmuted');
-    video.muted = true;
+    muteBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+    muteBtn.classList.add('is-unmuted');
+    video.muted = false;
   }
   
   // Video yüklendiğinde
@@ -2570,57 +2570,55 @@ Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
       }
     }
     
-    // Gecikme sonrası oynat
-    setTimeout(function() {
-      // Resmi gizle (fade out)
-      const charImage = imageContainer ? imageContainer.querySelector('.character-image') : null;
-      if (charImage) {
-        charImage.style.transition = 'opacity 0.4s ease';
-        charImage.style.opacity = '0';
-      }
-      
-      // Video overlay'i göster
-      overlay.style.display = 'flex';
-      
-      // Küçük bir gecikme ile fade in
+    // Karakter resmini kalıcı olarak gizle (video eklendi, resme gerek yok)
+    const charImage = imageContainer ? imageContainer.querySelector('.character-image') : null;
+    if (charImage) {
+      charImage.style.transition = 'opacity 0.4s ease';
+      charImage.style.opacity = '0';
+      charImage.style.visibility = 'hidden';
+    }
+    
+    // Video overlay'i HEMEN göster
+    overlay.style.display = 'flex';
+    overlay.classList.remove('is-ended');
+    
+    // Küçük bir gecikme ile fade in (görünürlük için)
+    requestAnimationFrame(function() {
       requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-          overlay.classList.add('is-active');
-          
-          // Videoyu oynat
+        overlay.classList.add('is-active');
+        
+        // 1 saniye sonra videoyu oynat
+        setTimeout(function() {
           video.play().then(function() {
             overlay.classList.add('is-playing');
           }).catch(function(err) {
             console.warn('[Video] Oynatma hatası:', err);
+            // Autoplay engellenirse sessiz dene
+            video.muted = true;
+            if (muteBtn) {
+              muteBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+              muteBtn.classList.remove('is-unmuted');
+            }
+            video.play().then(function() {
+              overlay.classList.add('is-playing');
+            }).catch(function(e) {
+              console.error('[Video] Sessiz oynatma da başarısız:', e);
+            });
           });
-        });
+        }, data.delay || 1000);
       });
-    }, data.delay || 1000);
+    });
   };
   
-  // Video bittiğinde
+  // Video bittiğinde - video ekranda kalsın, kaybolmasın
   video.onended = function() {
-    // Halo animasyonunu durdur
+    // Animasyonlu haloyu durdur, statik haloya geç
     overlay.classList.remove('is-playing');
+    overlay.classList.add('is-ended');
     
-    // Resmi geri getir (fade in)
-    const charImage = imageContainer ? imageContainer.querySelector('.character-image') : null;
-    
-    // Kısa gecikme sonra geri dön
-    setTimeout(function() {
-      overlay.classList.remove('is-active');
-      
-      if (charImage) {
-        charImage.style.transition = 'opacity 0.5s ease';
-        charImage.style.opacity = '1';
-      }
-      
-      // Overlay'i gizle
-      setTimeout(function() {
-        overlay.style.display = 'none';
-        video.src = '';
-      }, 500);
-    }, 300);
+    // Video ekranda kalacak, resim gizli kalacak
+    // Herhangi bir gizleme veya sıfırlama yapılmıyor
+    console.log('[Video] Video bitti, ekranda kalıyor');
   };
   
   // Hata durumu
