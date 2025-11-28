@@ -2507,7 +2507,7 @@ function toggleVideoMute(videoId) {
 // Karakter videosu oynatma - ateş efekti ile
 Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
   const overlayId = data.overlayId;
-  const videoId = data.videoId;
+  const videoId = data.videoElementId;
   const muteButtonId = data.muteButtonId;
   
   const overlay = document.getElementById(overlayId);
