@@ -523,28 +523,20 @@ save_message_to_db <- function(chat_id, msg) {
     VALUES (?, ?, ?, ?, ?)
   "
   
-  # FIX: Get current time with GMT+3 offset for Turkey
-  ts <- if (!is.null(msg$timestamp)) {
-    if (inherits(msg$timestamp, "POSIXt")) {
-      # Add 3 hours to existing timestamp
-      msg$timestamp + 3*60*60
-    } else {
-      # Parse and add 3 hours
-      parsed_time <- as.POSIXct(msg$timestamp, format = "%d.%m.%Y - %H:%M")
-      if (is.na(parsed_time)) {
-        Sys.time() + 3*60*60
-      } else {
-        parsed_time + 3*60*60
-      }
-    }
-  } else {
-    # Add 3 hours to current system time for GMT+3
-    Sys.time() + 3*60*60
-  }
-  
-  if (is.na(ts)) {
-    ts <- Sys.time() + 3*60*60
-  }
+	ts <- if (!is.null(msg$timestamp)) {
+		if (inherits(msg$timestamp, "POSIXt")) {
+		  as.POSIXct(format(msg$timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
+		} else {
+		  parsed_time <- as.POSIXct(msg$timestamp, format = "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
+		  if (is.na(parsed_time)) {
+			as.POSIXct(format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
+		  } else {
+			as.POSIXct(format(parsed_time, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
+		  }
+		}
+	  } else {
+		as.POSIXct(format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"), tz = "UTC")
+	  }
 
   max_order_query <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
