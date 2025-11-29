@@ -466,13 +466,13 @@ load_history_rows_batch <- function(chat_ids) {
           ts_val <- pending_user$timestamp %||% pending_user$timestamp_raw %||% pending_user$time
 
           formatted_ts <- if (inherits(ts_val, "POSIXt")) {
-            attr(ts_val, "tzone") <- "Europe/Istanbul"
-            format(ts_val, "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
+            format(ts_val, "%d.%m.%Y - %H:%M", tz = attr(ts_val, "tzone") %||% "")
           } else if (is.character(ts_val) && nzchar(ts_val)) {
             ts_val
           } else {
             tryCatch({
-              format(as.POSIXct(ts_val, origin = "1970-01-01", tz = "Europe/Istanbul"), "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
+              parsed <- as.POSIXct(ts_val, origin = "1970-01-01", tz = "UTC")
+              format(parsed, "%d.%m.%Y - %H:%M", tz = attr(parsed, "tzone") %||% "UTC")
             }, error = function(...) "")
           }
 
