@@ -77,7 +77,7 @@ wire_chart_output <- function(output, out_id, spec) {
   is_num <- function(v) is.numeric(v) || inherits(v, c("Date","POSIXct","POSIXt"))
   first_or_null <- function(x) if (length(x)) x[[1]] else NULL
 
-  # -------- auto guess missing mapping/type ----------
+  # -------- auto guess missing mapping/type + sanitize mapping ----------
   auto_guess <- function(sp) {
     sp$type    <- tolower(sp$type %||% "")
     sp$mapping <- sp$mapping %||% list()
@@ -94,16 +94,23 @@ wire_chart_output <- function(output, out_id, spec) {
       else                            sp$type <- "bar"
     }
 
-	norm_map <- function(v) if (is.character(v) && length(v) > 0 && nzchar(v[1])) v else NULL
+    norm_map <- function(v) {
+      if (is.null(v)) return(NULL)
+      vv <- as.character(v)
+      vv <- trimws(vv)
+      vv <- vv[nzchar(vv)]
+      if (!length(vv)) return(NULL)
+      vv[[1]]
+    }
     x <- norm_map(sp$mapping$x)
-    y <- norm_map(sp$mapping$y) # [MODIFIED] Allow vector
+    y <- norm_map(sp$mapping$y)
     g <- norm_map(sp$mapping$group)
 
     if (sp$type %in% c("scatter","line","area")) {
       if (is.null(x)) x <- first_or_null(num_cols)
       if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
       if (is.null(x) || is.null(y)) {
-        if (length(num_cols) >= 1) { sp$type <- "hist"; x <- first_or_null(num_cols) }
+        if (length(num_cols) >= 1) { sp$type <- "hist"; x <- first_or_null(num_cols); y <- NULL }
         else                        { sp$type <- "bar";  x <- first_or_null(cat_cols); y <- NULL }
       }
     } else if (sp$type == "hist") {
@@ -144,184 +151,202 @@ wire_chart_output <- function(output, out_id, spec) {
 
   # ---------- engines ----------
   if (requireNamespace("highcharter", quietly = TRUE)) {
-	output[[out_id]] <- highcharter::renderHighchart({
-      library(highcharter)
-      categorical_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
-      custom_theme <- highcharter::hc_theme(
-        chart = list(backgroundColor = "transparent"),
-        colors = categorical_colors,
-        xAxis = list(labels = list(style = list(color = "#999")), gridLineColor = "#333", lineColor = "#444"),
-        yAxis = list(labels = list(style = list(color = "#999")), gridLineColor = "#333", lineColor = "#444"),
-        legend = list(itemStyle = list(color = "#999")),
-        tooltip = list(backgroundColor = "#1a1a1a", borderColor = "#333", style = list(color = "#fff")),
-        plotOptions = list(series = list(borderWidth = 0), pie = list(borderWidth = 0, dataLabels = list(color = "#fff", style = list(textOutline = "none")))),
-        credits = list(enabled = FALSE)
-      )
-      hc <- highchart() %>% hc_exporting(enabled = TRUE) %>% hc_add_theme(custom_theme)
+    output[[out_id]] <- highcharter::renderHighchart({
+      tryCatch({
+        library(highcharter)
+        categorical_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
+        custom_theme <- highcharter::hc_theme(
+          chart = list(backgroundColor = "transparent"),
+          colors = categorical_colors,
+          xAxis = list(labels = list(style = list(color = "#999")), gridLineColor = "#333", lineColor = "#444"),
+          yAxis = list(labels = list(style = list(color = "#999")), gridLineColor = "#333", lineColor = "#444"),
+          legend = list(itemStyle = list(color = "#999")),
+          tooltip = list(backgroundColor = "#1a1a1a", borderColor = "#333", style = list(color = "#fff")),
+          plotOptions = list(series = list(borderWidth = 0), pie = list(borderWidth = 0, dataLabels = list(color = "#fff", style = list(textOutline = "none")))),
+          credits = list(enabled = FALSE)
+        )
+        hc <- highchart() %>% hc_exporting(enabled = TRUE) %>% hc_add_theme(custom_theme)
 
-      aggfun <- function(z, f) {
-        f <- tolower(f %||% "sum")
-        fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
-        fun(z, na.rm = TRUE)
-      }
+        aggfun <- function(z, f) {
+          f <- tolower(f %||% "sum")
+          fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
+          fun(z, na.rm = TRUE)
+        }
 
-	if (identical(type,"hist")) {
-        req(x)
-        h <- hist(df[[x]], breaks = if (isTRUE(!is.na(bins))) bins else "Sturges", plot = FALSE)
-        hchart(h) %>% hc_add_theme(custom_theme) %>% hc_subtitle(text = paste0("Otomatik: hist (x=", x, ")"))
+        # Validate mapping vs available columns; gracefully fall back instead of blank widgets
+        required_cols <- unique(stats::na.omit(c(x, y, grp)))
+        missing_cols <- setdiff(required_cols, names(df))
+        if (length(missing_cols)) {
+          stop(sprintf("Grafik için gereken sütun(lar) bulunamadı: %s", paste(missing_cols, collapse = ", ")))
+        }
 
-      } else if (identical(type,"bar")) {
-        if (!is.null(y)) {
+        if (identical(type,"hist")) {
           req(x)
-          if (is.null(grp)) {
-            dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg))
-            names(dd) <- c(x, "val")
-		hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val)) %>% hc_add_theme(custom_theme)
+          h <- hist(df[[x]], breaks = if (isTRUE(!is.na(bins))) bins else "Sturges", plot = FALSE)
+          hchart(h) %>% hc_add_theme(custom_theme) %>% hc_subtitle(text = paste0("Otomatik: hist (x=", x, ")"))
+
+        } else if (identical(type,"bar")) {
+          if (!is.null(y)) {
+            req(x)
+            if (is.null(grp)) {
+              dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg))
+              names(dd) <- c(x, "val")
+              hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val)) %>% hc_add_theme(custom_theme)
+            } else {
+              dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg))
+              names(dd) <- c(x, grp, "val")
+              hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val, group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+            }
           } else {
-            dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg))
-            names(dd) <- c(x, grp, "val")
-            hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = val, group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+            req(x)
+            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
+            names(dd) <- c(x, "n")
+            if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
+            hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = n)) %>% hc_add_theme(custom_theme)
           }
-        } else {
+
+        } else if (identical(type,"pie") || identical(type,"donut")) {
           req(x)
-          dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
-          names(dd) <- c(x, "n")
+          if (!is.null(y)) {
+            dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, params$agg))
+            names(dd) <- c(x, "val")
+          } else {
+            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
+            names(dd) <- c(x, "val")
+          }
           if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-		  hchart(dd, "column", hcaes(x = !!rlang::sym(x), y = n)) %>% hc_add_theme(custom_theme)
-        }
+          pie_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
+          pie_data <- lapply(seq_len(nrow(dd)), function(i) {
+            list(name = as.character(dd[[x]][i]), y = dd$val[i], color = pie_colors[((i - 1) %% length(pie_colors)) + 1])
+          })
+          inner <- if (identical(type,"donut") || isTRUE(params$donut)) "60%" else "0%"
+          highchart() %>%
+            hc_exporting(enabled = TRUE) %>% hc_add_theme(custom_theme) %>%
+            hc_add_series(type = "pie", data = pie_data, innerSize = inner, name = x) %>%
+            hc_plotOptions(pie = list(borderWidth = 0, dataLabels = list(enabled = TRUE, format = "<b>{point.name}</b>: {point.percentage:.1f}%", style = list(color = "#fff", textOutline = "none"))))
 
-      } else if (identical(type,"pie") || identical(type,"donut")) {
-        req(x)
-        if (!is.null(y)) {
-          dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, params$agg))
-          names(dd) <- c(x, "val")
+        } else if (identical(type, "pareto")) {
+          req(x)
+          if (!is.null(y)) {
+            dd <- aggregate(df[[y]], by = list(df[[x]]),
+                            FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
+            names(dd) <- c(x, "val")
+          } else {
+            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
+            names(dd) <- c(x, "val")
+          }
+          dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
+          if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
+          dd$cum <- cumsum(dd$val); tot <- sum(dd$val, na.rm = TRUE)
+          dd$cum_pct <- if (tot > 0) 100 * dd$cum / tot else 0
+          highchart() %>% hc_add_theme(custom_theme) %>% hc_exporting(enabled = TRUE) %>% hc_xAxis(categories = dd[[x]]) %>%
+            hc_yAxis_multiples(
+              list(title = list(text = "Değer")),
+              list(title = list(text = "Kümülatif %"), opposite = TRUE, max = 100,
+                   labels = list(format = "{value}%"))
+            ) %>%
+            hc_add_series(name = "Değer", type = "column", data = dd$val, yAxis = 0) %>%
+            hc_add_series(name = "Kümülatif %", type = "line", data = round(dd$cum_pct, 2), yAxis = 1,
+                          tooltip = list(valueSuffix = "%")) %>%
+            hc_tooltip(shared = TRUE)
+        } else if (identical(type,"line")) {
+          req(x, y)
+          if (is.null(grp)) hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
+          else              hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+        } else if (identical(type,"scatter")) {
+          req(x, y)
+          if (is.null(grp)) hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
+          else              hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+        } else if (identical(type,"area")) {
+          req(x, y)
+          if (is.null(grp)) hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
+          else              hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
         } else {
-          dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
-          names(dd) <- c(x, "val")
+          highchart() %>% hc_add_theme(custom_theme) %>% hc_title(text = "Bilinmeyen grafik türü")
         }
-        if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-		pie_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
-        pie_data <- lapply(seq_len(nrow(dd)), function(i) {
-          list(name = as.character(dd[[x]][i]), y = dd$val[i], color = pie_colors[((i - 1) %% length(pie_colors)) + 1])
-        })
-        inner <- if (identical(type,"donut") || isTRUE(params$donut)) "60%" else "0%"
-        highchart() %>%
-          hc_exporting(enabled = TRUE) %>% hc_add_theme(custom_theme) %>%
-          hc_add_series(type = "pie", data = pie_data, innerSize = inner, name = x) %>%
-          hc_plotOptions(pie = list(borderWidth = 0, dataLabels = list(enabled = TRUE, format = "<b>{point.name}</b>: {point.percentage:.1f}%", style = list(color = "#fff", textOutline = "none"))))
-
-      } else if (identical(type, "pareto")) {
-        req(x)
-        if (!is.null(y)) {
-          dd <- aggregate(df[[y]], by = list(df[[x]]),
-                          FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
-          names(dd) <- c(x, "val")
-        } else {
-          dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
-          names(dd) <- c(x, "val")
-        }
-        dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-        if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-        dd$cum <- cumsum(dd$val); tot <- sum(dd$val, na.rm = TRUE)
-        dd$cum_pct <- if (tot > 0) 100 * dd$cum / tot else 0
-        highchart() %>% hc_add_theme(custom_theme) %>% hc_exporting(enabled = TRUE) %>% hc_xAxis(categories = dd[[x]]) %>%
-          hc_yAxis_multiples(
-            list(title = list(text = "Değer")),
-            list(title = list(text = "Kümülatif %"), opposite = TRUE, max = 100,
-                 labels = list(format = "{value}%"))
-          ) %>%
-          hc_add_series(name = "Değer", type = "column", data = dd$val, yAxis = 0) %>%
-          hc_add_series(name = "Kümülatif %", type = "line", data = round(dd$cum_pct, 2), yAxis = 1,
-                        tooltip = list(valueSuffix = "%")) %>%
-          hc_tooltip(shared = TRUE)
-	  } else if (identical(type,"line")) {
-        req(x, y)
-        if (is.null(grp)) hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
-        else              hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
-	  } else if (identical(type,"scatter")) {
-        req(x, y)
-        if (is.null(grp)) hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
-        else              hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
-	  } else if (identical(type,"area")) {
-        req(x, y)
-        if (is.null(grp)) hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
-        else              hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
-	  } else {
-        highchart() %>% hc_add_theme(custom_theme) %>% hc_title(text = "Bilinmeyen grafik türü")
-      }
+      }, error = function(e) {
+        highcharter::highchart() %>%
+          highcharter::hc_title(text = "Grafik oluşturulamadı") %>%
+          highcharter::hc_subtitle(text = htmltools::htmlEscape(conditionMessage(e)))
+      })
     })
     return(invisible(TRUE))
   }
 
   if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)) {
     output[[out_id]] <- plotly::renderPlotly({
-      library(ggplot2); library(plotly)
-      aggfun <- function(z, f) {
-        f <- tolower(f %||% "sum")
-        fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
-        fun(z, na.rm = TRUE)
-      }
-      p <- NULL
-      if (identical(type,"hist")) {
-        req(x); p <- ggplot(df, aes(x = .data[[x]])) + geom_histogram(bins = ifelse(isTRUE(!is.na(bins)), bins, 30))
-      } else if (identical(type,"bar")) {
-        if (!is.null(y)) {
-          req(x)
-          if (is.null(grp)) {
-            dd <- aggregate(df[[y]], by=list(df[[x]]), FUN = function(z) aggfun(z, agg)); names(dd) <- c(x, "val")
-            p <- ggplot(dd, aes(x = .data[[x]], y = val)) + geom_col()
+      tryCatch({
+        library(ggplot2); library(plotly)
+        aggfun <- function(z, f) {
+          f <- tolower(f %||% "sum")
+          fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
+          fun(z, na.rm = TRUE)
+        }
+        p <- NULL
+        if (identical(type,"hist")) {
+          req(x); p <- ggplot(df, aes(x = .data[[x]])) + geom_histogram(bins = ifelse(isTRUE(!is.na(bins)), bins, 30))
+        } else if (identical(type,"bar")) {
+          if (!is.null(y)) {
+            req(x)
+            if (is.null(grp)) {
+              dd <- aggregate(df[[y]], by=list(df[[x]]), FUN = function(z) aggfun(z, agg)); names(dd) <- c(x, "val")
+              p <- ggplot(dd, aes(x = .data[[x]], y = val)) + geom_col()
+            } else {
+              dd <- stats::aggregate(df[[y]], by=list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg)); names(dd) <- c(x, grp, "val")
+              p <- ggplot(dd, aes(x = .data[[x]], y = val, fill = .data[[grp]])) + geom_col(position = "stack")
+            }
           } else {
-            dd <- stats::aggregate(df[[y]], by=list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg)); names(dd) <- c(x, grp, "val")
-            p <- ggplot(dd, aes(x = .data[[x]], y = val, fill = .data[[grp]])) + geom_col(position = "stack")
+            req(x)
+            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "n")
+            if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
+            p <- ggplot(dd, aes(x = .data[[x]], y = n)) + geom_col()
           }
-        } else {
+        } else if (identical(type,"pie") || identical(type,"donut")) {
           req(x)
-          dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "n")
+          if (!is.null(y)) {
+            dd <- aggregate(df[[y]], by = list(df[[x]]),
+                            FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
+            names(dd) <- c(x, "val")
+          } else {
+            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
+          }
           if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-          p <- ggplot(dd, aes(x = .data[[x]], y = n)) + geom_col()
-        }
-      } else if (identical(type,"pie") || identical(type,"donut")) {
-        req(x)
-        if (!is.null(y)) {
-          dd <- aggregate(df[[y]], by = list(df[[x]]),
-                          FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
-          names(dd) <- c(x, "val")
-        } else {
-          dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
-        }
-        if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-        return(plotly::plot_ly(dd, labels = ~ .data[[x]], values = ~ val, type = "pie",
-                               hole = if (identical(type,"donut") || isTRUE(params$donut)) 0.6 else 0))
-      } else if (identical(type, "pareto")) {
-        req(x)
-        if (!is.null(y)) {
-          dd <- aggregate(df[[y]], by = list(df[[x]]),
-                          FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
-          names(dd) <- c(x, "val")
-        } else {
-          dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
-        }
-        dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-        if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-        dd$cum <- cumsum(dd$val); tot <- sum(dd$val, na.rm = TRUE)
-        dd$cum_pct <- if (tot > 0) 100 * dd$cum / tot else 0
+          return(plotly::plot_ly(dd, labels = ~ .data[[x]], values = ~ val, type = "pie",
+                                 hole = if (identical(type,"donut") || isTRUE(params$donut)) 0.6 else 0))
+        } else if (identical(type, "pareto")) {
+          req(x)
+          if (!is.null(y)) {
+            dd <- aggregate(df[[y]], by = list(df[[x]]),
+                            FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
+            names(dd) <- c(x, "val")
+          } else {
+            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
+          }
+          dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
+          if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
+          dd$cum <- cumsum(dd$val); tot <- sum(dd$val, na.rm = TRUE)
+          dd$cum_pct <- if (tot > 0) 100 * dd$cum / tot else 0
 
-        return(
-          plotly::plot_ly() %>%
-            plotly::add_bars(x = dd[[x]], y = dd$val, name = "Değer", yaxis = "y1") %>%
-            plotly::add_lines(x = dd[[x]], y = dd$cum_pct, name = "Kümülatif %", yaxis = "y2") %>%
-            plotly::layout(yaxis2 = list(overlaying = "y", side = "right", range = c(0,100), ticksuffix = "%"))
-        )
-      } else if (identical(type,"line")) {
-        req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_line()
-      } else if (identical(type,"scatter")) {
-        req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_point(alpha = 0.8)
-      } else if (identical(type,"area")) {
-        req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], fill = .data[[grp]])) + geom_area(position = "stack")
-      } else {
-        p <- ggplot() + ggtitle("Bilinmeyen grafik türü")
-      }
-      plotly::ggplotly(p)
+          return(
+            plotly::plot_ly() %>%
+              plotly::add_bars(x = dd[[x]], y = dd$val, name = "Değer", yaxis = "y1") %>%
+              plotly::add_lines(x = dd[[x]], y = dd$cum_pct, name = "Kümülatif %", yaxis = "y2") %>%
+              plotly::layout(yaxis2 = list(overlaying = "y", side = "right", range = c(0,100), ticksuffix = "%"))
+          )
+        } else if (identical(type,"line")) {
+          req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_line()
+        } else if (identical(type,"scatter")) {
+          req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_point(alpha = 0.8)
+        } else if (identical(type,"area")) {
+          req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], fill = .data[[grp]])) + geom_area(position = "stack")
+        } else {
+          p <- ggplot() + ggtitle("Bilinmeyen grafik türü")
+        }
+        plotly::ggplotly(p)
+      }, error = function(e) {
+        plotly::plot_ly() %>%
+          plotly::layout(title = list(text = paste0("Grafik oluşturulamadı: ", htmltools::htmlEscape(conditionMessage(e)))))
+      })
     })
     return(invisible(TRUE))
   }
