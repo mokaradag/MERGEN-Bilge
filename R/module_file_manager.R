@@ -469,10 +469,21 @@ fileManagerServer <- function(
       files_in_context = list()
     )
 
-    # --- NEW: initial population from the user's persistent folder
+    # initial population from the user's persistent folder
 	observeEvent(TRUE, {
-	  refresh_from_user_folder("initial")
+		refresh_from_user_folder("initial")
 	}, once = TRUE, ignoreNULL = TRUE)
+
+    # Dosya listesini her 4 saniyede bir otomatik yenile (Gecikmeyi önlemek için)
+    auto_refresh <- reactiveTimer(4000)
+    
+    observe({
+      auto_refresh()
+      # Sadece kullanıcı kimliği belliyse yenileme yap
+      if (!is.null(module_user_id_chr) && module_user_id_chr != "unknown") {
+        refresh_from_user_folder("auto_timer")
+      }
+    })
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 

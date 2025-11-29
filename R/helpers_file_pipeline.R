@@ -2,11 +2,12 @@
 
 summarize_file_with_llm <- function(file_text, filename, settings) {
   snippet <- substr(file_text %||% "", 1, 60000)
-  chat <- list(
+chat <- list(
     list(type = "system",
-         content = "Türkçe yanıtla. Görevin: yüklenen dosyanın içeriğini ayrıntılı, kapsamlı ve bilgilendirici bir şekilde özetlemek. \
-Başlık, genel bakış ve ardından dosyadaki tüm kritik verileri, bulguları ve önemli noktaları detaylı maddeler halinde sun. \
-Yüzeysel geçme, mümkün olduğunca fazla detay ver."),
+         content = "Türkçe yanıtla. ÖNEMLİ: Bu bir 'özet' görevi DEĞİLDİR. Görevin, dosyanın içeriğini kapsamlı bir şekilde 'ÇIKARTMAK' ve raporlamaktır. \
+Asla yüzeysel geçme. Dosyadaki her ana başlığı, alt başlığı, istatistiksel veriyi, sayısal değerleri ve teknik detayları koruyarak uzun ve ayrıntılı bir içerik dökümü hazırla. \
+Kullanıcı 'özet' dese bile, sen 'Ayrıntılı İçerik Analizi' formatında yanıt ver. \
+Eksik bilgi bırakma. İçeriği maddeler halinde, hiyerarşik ve okunabilir şekilde sun."),
     list(type = "user",
          content = paste0("Dosya adı: ", filename,
                           "\nİçerik (kısaltılmış olabilir):\n", snippet))
