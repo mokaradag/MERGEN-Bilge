@@ -125,11 +125,16 @@ chartLabServer <- function(id) {
         else                            sp$type <- "bar"
       }
 
-      x <- sp$mapping$x; y <- sp$mapping$y; g <- sp$mapping$group
+	  x <- sp$mapping$x; y <- sp$mapping$y; g <- sp$mapping$group
 
-      if (sp$type %in% c("scatter","line","area")) {
+      # [MODIFIED] Allow y to be vector (do not pick first only)
+      if (sp$type %in% c("scatter","line","area","bar","column")) {
         if (is.null(x)) x <- first_or_null(num_cols)
-        if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+        # If y is missing, pick all remaining numerics or just one
+        if (is.null(y)) {
+           candidates <- setdiff(num_cols, x)
+           if (length(candidates) > 0) y <- candidates[1] 
+        }
         if (is.null(x) || is.null(y)) {
           if (length(num_cols) >= 1) { sp$type <- "hist"; x <- first_or_null(num_cols) }
           else                        { sp$type <- "bar";  x <- first_or_null(cat_cols); y <- NULL }
@@ -148,12 +153,14 @@ chartLabServer <- function(id) {
     }
 
     # renderer for one item ------------------------------------------
-    render_one <- function(out_id, spec, file_label) {
+	render_one <- function(out_id, spec, file_label) {
       # NEW: fill in missing type/mapping before we read variables
       spec   <- auto_guess_chart_spec(spec)
 
       type   <- spec$type %||% "scatter"
       map    <- spec$mapping %||% list()
+      # [MODIFIED] Ensure y is captured as vector if list
+      if (!is.null(map$y)) map$y <- unlist(map$y, use.names = FALSE)
       params <- spec$params  %||% list()
       df     <- tryCatch(as.data.frame(spec$data, stringsAsFactors = FALSE), error = function(e) NULL)
 
@@ -204,7 +211,10 @@ chartLabServer <- function(id) {
 				cat_cols <- names(df)[vapply(df, function(v) is.character(v) || is.factor(v), logical(1))]
 				if (length(cat_cols)) x <- cat_cols[1]
 			  }
-			  validate(need(!is.null(x) && nzchar(x), "Pie/Donut için kategorik bir 'x' sütunu gerekli."))
+              # [MODIFIED] Fallback: If no categorical, use the first column as X (force string)
+              if (is.null(x) && ncol(df) > 0) x <- names(df)[1]
+
+			  validate(need(!is.null(x) && nzchar(x), "Pie/Donut için veri sütunu eksik."))
 
 			  # y varsa x'e göre özet; yoksa x sayımları
 			  if (!is.null(y)) {

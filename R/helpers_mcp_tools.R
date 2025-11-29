@@ -1178,6 +1178,11 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
     "Aşağıdaki araçları kullanarak kullanıcının Excel dosyasıyla ilgili sorularını yanıtla. JSON ile **tek bir araç** çağır.",
     "",
+    "Grafik Kuralları (ÖNEMLİ):",
+    "- Birden fazla farklı grafik çizmen istenirse (örn: hem Pie hem Line), cevabında birden fazla ```chartlab ... ``` bloğu oluştur.",
+    "- Her grafik için ayrı bir ```chartlab``` JSON bloğu yaz.",
+    "- Tek grafikte çoklu seri için 'y' dizisi kullanabilirsin (['Gelir', 'Gider'] gibi) ama karmaşık durumlarda ayrı grafikler tercih et.",
+    "",
     "Araçlar:",
     "1) analyze_uploaded_file(file_name) — SADECE dosya ilk yüklendiğinde genel yapı (satır/sütun) öğrenmek için. Spesifik sorular (örn. 'ortalama kaç') için BUNU KULLANMA.",
     "2) get_column_statistics(file_name, column) — Sayısal bir sütunun ortalama, min, max değerleri veya kategorik dağılımı için.",

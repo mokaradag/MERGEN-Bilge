@@ -381,3 +381,24 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   }, once = TRUE)
   showToast(session, "Yeni söyleşi başlatıldı.", "success")
 }
+
+chat_rebind_all_charts <- function(session, output, messages) {
+  if (length(messages) == 0) return()
+  
+  lapply(messages, function(msg) {
+    # If the message has chart content (detected via chartlab tag)
+    if (is.character(msg$content) && grepl("```chartlab", msg$content, fixed = TRUE)) {
+      # Parse it again to find renderers
+      # Note: We reuse the message_id to match the HTML already in the UI
+      chart_info <- build_chartlab_message(msg$content, msg$id, session)
+      
+      if (isTRUE(chart_info$found) && length(chart_info$renderers) > 0) {
+        for (r in chart_info$renderers) {
+          # Re-wire the output slot
+          try(wire_chart_output(output, r$output_id, r$spec), silent = TRUE)
+        }
+      }
+    }
+  })
+  invisible(NULL)
+}

@@ -94,8 +94,10 @@ wire_chart_output <- function(output, out_id, spec) {
       else                            sp$type <- "bar"
     }
 
-    norm_map <- function(v) if (is.character(v) && length(v) > 0 && nzchar(v[1])) v[1] else NULL
-    x <- norm_map(sp$mapping$x); y <- norm_map(sp$mapping$y); g <- norm_map(sp$mapping$group)
+	norm_map <- function(v) if (is.character(v) && length(v) > 0 && nzchar(v[1])) v else NULL
+    x <- norm_map(sp$mapping$x)
+    y <- norm_map(sp$mapping$y) # [MODIFIED] Allow vector
+    g <- norm_map(sp$mapping$group)
 
     if (sp$type %in% c("scatter","line","area")) {
       if (is.null(x)) x <- first_or_null(num_cols)

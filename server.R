@@ -1984,9 +1984,13 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  }
 		}
 		shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 100);")
+		
+		# [MODIFICATION] Restore charts for the loaded messages
+		# Geçmiş sohbet yüklendiğinde grafikleri (output slotlarını) yeniden bağla
+		chat_rebind_all_charts(session, output, values$messages)
 	  }
 	  
 	  showToast(session, "Önceki sohbetiniz geri yüklendi.", "info")
 	}
   }, ignoreInit = TRUE)
-}	
+}
