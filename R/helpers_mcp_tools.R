@@ -911,9 +911,19 @@ helpers_mcp_tools$prepare_chart_data <- function(
     if (!inherits(filt, "error")) dt <- data.table::as.data.table(filt)
   }
 
-# 4) thin to only needed columns & Handle Multi-Y (Wide-to-Long)
-  # [MODIFICATION] Handle multiple Y columns (comma separated)
-  y_candidates <- if (!is.null(y)) trimws(strsplit(y, ",")[[1]]) else NULL
+  # 4) thin to only needed columns & Handle Multi-Y (Wide-to-Long)
+  # [MODIFICATION] Handle multiple Y columns (comma separated or vector)
+  if (is.null(y)) {
+    y_candidates <- NULL
+  } else if (is.character(y)) {
+    if (length(y) > 1) {
+      y_candidates <- trimws(y)
+    } else {
+      y_candidates <- trimws(strsplit(y, ",")[[1]])
+    }
+  } else {
+    y_candidates <- NULL
+  }
   
   if (length(y_candidates) > 1) {
     # Check if all exist
@@ -1176,12 +1186,12 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-    "Aşağıdaki araçları kullanarak kullanıcının Excel dosyasıyla ilgili sorularını yanıtla. JSON ile **tek bir araç** çağır.",
+	"Aşağıdaki araçları kullanarak kullanıcının Excel dosyasıyla ilgili sorularını yanıtla. Gerektiğinde birden fazla aracı arka arkaya çağırabilirsin; özellikle grafik isteklerinde birden fazla prepare_chart_data çağrısına izin ver.",
     "",
     "Grafik Kuralları (ÖNEMLİ):",
     "- Birden fazla farklı grafik çizmen istenirse (örn: hem Pie hem Line), cevabında birden fazla ```chartlab ... ``` bloğu oluştur.",
-    "- Her grafik için ayrı bir ```chartlab``` JSON bloğu yaz.",
-    "- Tek grafikte çoklu seri için 'y' dizisi kullanabilirsin (['Gelir', 'Gider'] gibi) ama karmaşık durumlarda ayrı grafikler tercih et.",
+    "- Her grafik için ayrı bir ```chartlab``` JSON bloğu yaz; istek çokluysa en az iki grafik üret.",
+    "- Tek grafikte çoklu seri için 'y' dizisi (örn. ['Gelir', 'Gider']) veya virgül ile ayrılmış değerler gönder; araç bunları aynı grafikte birleştirir.",
     "",
     "Araçlar:",
     "1) analyze_uploaded_file(file_name) — SADECE dosya ilk yüklendiğinde genel yapı (satır/sütun) öğrenmek için. Spesifik sorular (örn. 'ortalama kaç') için BUNU KULLANMA.",

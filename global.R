@@ -1835,34 +1835,52 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
 	# Türkçe yorum: Zorunlu yedek grafik bloğu ekleme yardımcı fonksiyonu
 	add_fallback_chart <- function(original_text) {
-	  # Türkçe yorum: Eğer MCP Excel aktif, grafik niyeti var ve henüz hiç grafik üretilmediyse bir tane üret
+	  # Türkçe yorum: Eğer MCP Excel aktif, grafik niyeti var ve henüz hiç grafik üretilmediyse otomatik birkaç grafik ekle
 	  try({
-		if (isTRUE(chart_intent_flag) &&
-			identical(tool_family, "mcp_excel") &&
-			is.list(settings$file_paths) && length(settings$file_paths) > 0 &&
-			length(charts_to_store) == 0) {
+			if (isTRUE(chart_intent_flag) &&
+					identical(tool_family, "mcp_excel") &&
+					is.list(settings$file_paths) && length(settings$file_paths) > 0 &&
+					length(charts_to_store) == 0) {
 
-		  first_path <- as.character(settings$file_paths[[1]])
-		  detected_type <- detect_chart_type_from_text(last_user_txt)
-		  fb <- helpers_mcp_tools$prepare_chart_data(
-			file_name  = first_path,
-			chart_type = detected_type,
-			limit      = 4000,
-			session    = NULL
-		  )
+			  first_path <- as.character(settings$file_paths[[1]])
+			  detected_type <- detect_chart_type_from_text(last_user_txt)
+			  fallback_types <- unique(c(
+				if (!identical(detected_type, "auto")) detected_type else NULL,
+				"hist", "bar", "line"
+			  ))
 
-		  if (is.list(fb) && isTRUE(fb$ok) && !is.null(fb$chart)) {
-			# Türkçe yorum: chart_store'a kaydet ve chartlab bloğu oluştur
-			ref_id <- paste0("cl_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sprintf("%04d", sample(0:9999, 1)))
-			charts_to_store[[ref_id]] <<- fb$chart
-			inline <- fb$chart
-			inline$ref <- ref_id
-			block <- paste0("\n\n```chartlab\n",
-							jsonlite::toJSON(inline, auto_unbox = TRUE, null = "null", digits = 12),
-							"\n```")
-			return(paste0(original_text %||% "", block))
-		  }
-		}
+			  blocks <- vapply(seq_len(min(3L, length(fallback_types))), function(idx) {
+				chart_type_now <- fallback_types[[idx]]
+				fb <- helpers_mcp_tools$prepare_chart_data(
+				  file_name  = first_path,
+				  chart_type = chart_type_now,
+				  limit      = 4000,
+				  session    = NULL
+				)
+
+				if (is.list(fb) && isTRUE(fb$ok) && !is.null(fb$chart)) {
+				  # Türkçe yorum: chart_store'a kaydet ve chartlab bloğu oluştur
+				  ref_id <- paste0("cl_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sprintf("%04d", sample(0:9999, 1)))
+				  charts_to_store[[ref_id]] <<- fb$chart
+				  inline <- fb$chart
+				  inline$ref <- ref_id
+				  paste0(
+					"\n\n**Otomatik Grafik (", toupper(chart_type_now), ")**",
+					" — Veri üzerinden hızlı önizleme.",
+					"\n```chartlab\n",
+					jsonlite::toJSON(inline, auto_unbox = TRUE, null = "null", digits = 12),
+					"\n```"
+				  )
+				} else {
+				  ""
+				}
+			  }, character(1))
+
+			  blocks <- blocks[nzchar(blocks)]
+			  if (length(blocks)) {
+				return(paste0(original_text %||% "", paste(blocks, collapse = "")))
+			  }
+			}
 	  }, silent = TRUE)
 	  return(original_text %||% "")
 	}
