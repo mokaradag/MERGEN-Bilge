@@ -362,7 +362,11 @@ fileManagerServer <- function(
   
 	refresh_from_user_folder <- function(trigger = "manual") {
 	  uid <- module_user_id_chr
-	  fm_debug("refresh_start", sprintf("trigger=%s", trigger))
+      
+      # Otomatik yenilemede konsolu kirletmemek için sessiz mod
+      quiet <- identical(trigger, "auto_timer")
+      
+	  if (!quiet) fm_debug("refresh_start", sprintf("trigger=%s", trigger))
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
 	  module_values$files <- empty_files_df()
@@ -374,26 +378,26 @@ fileManagerServer <- function(
 	  if (inherits(df, "try-error")) {
 			cond <- attr(df, "condition")
 			msg <- if (inherits(cond, "condition")) conditionMessage(cond) else as.character(df)
-			fm_debug("refresh_error", msg)
+			if (!quiet) fm_debug("refresh_error", msg)
 			return(invisible(NULL))
 	  }
 	  
       source_tag <- attr(df, "source") %||% "unknown"
 
 	  if (is.null(df) || nrow(df) == 0) {
-		fm_debug("refresh_done", sprintf("no persisted files found (source=%s)", source_tag))
+		if (!quiet) fm_debug("refresh_done", sprintf("no persisted files found (source=%s)", source_tag))
 		return(invisible(NULL))
 	  }
 
-	  fm_debug("refresh_found", sprintf("%d candidate file(s) (source=%s)", nrow(df), source_tag))
+	  if (!quiet) fm_debug("refresh_found", sprintf("%d candidate file(s) (source=%s)", nrow(df), source_tag))
 		  
 	  for (i in seq_len(nrow(df))) {
 			p <- df$path[i]
 			display_name <- df$name[i]
 			exists_now <- path_exists_relaxed(p)
-			fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
+			if (!quiet) fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
 			if (!exists_now) {
-			  fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
+			  if (!quiet) fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
 			  next
 			}
 			
@@ -440,13 +444,13 @@ fileManagerServer <- function(
 			if (!is.null(saved$id) && !is.null(module_values$file_contents[[saved$id]])) {
 			  module_values$file_contents[[saved$id]]$persisted_path <- p
 			  module_values$file_contents[[saved$id]]$datapath <- p
-			  fm_debug("refresh_file", sprintf("restored entry id=%s", saved$id))
+			  if (!quiet) fm_debug("refresh_file", sprintf("restored entry id=%s", saved$id))
 			} else {
-			  fm_debug("refresh_file", sprintf("process skipped for %s", display_name))
+			  if (!quiet) fm_debug("refresh_file", sprintf("process skipped for %s", display_name))
 			}
 	  }
 	  
-		fm_debug("refresh_done", sprintf("table rows=%d", nrow(module_values$files)))
+		if (!quiet) fm_debug("refresh_done", sprintf("table rows=%d", nrow(module_values$files)))
 	}
 
     # ---------- STATE ----------
@@ -474,12 +478,13 @@ fileManagerServer <- function(
 		refresh_from_user_folder("initial")
 	}, once = TRUE, ignoreNULL = TRUE)
 
-    # Dosya listesini her 4 saniyede bir otomatik yenile (Gecikmeyi önlemek için)
-    auto_refresh <- reactiveTimer(4000)
+	# Dosya listesini her 10 saniyede bir otomatik yenile (SESSİZ MODDA)
+    # Sonsuz döngü ve kilitlenmeyi önlemek için süre 10 saniyeye çıkarıldı.
+    auto_refresh <- reactiveTimer(10000)
     
     observe({
       auto_refresh()
-      # Sadece kullanıcı kimliği belliyse yenileme yap
+      # Kullanıcı ID'si geçerliyse ve "unknown" değilse yenile
       if (!is.null(module_user_id_chr) && module_user_id_chr != "unknown") {
         refresh_from_user_folder("auto_timer")
       }

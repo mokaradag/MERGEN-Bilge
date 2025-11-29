@@ -1967,6 +1967,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
       if (!is.null(detail)) {
         if (!is.null(detail$title)) chat_to_load$title <- detail$title
         chat_to_load$messages <- detail$messages
+        chat_to_load$message_count <- detail$message_count
         
         saved_copy <- values$saved_chats
         saved_copy[[chat_id]] <- chat_to_load
