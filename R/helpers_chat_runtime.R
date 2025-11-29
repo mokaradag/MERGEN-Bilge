@@ -350,8 +350,12 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   })
 })
 
-chat_start_new_chat <- function(session, values, saved_chats_data, session_files, filePreview, current_user_id) {
+chat_start_new_chat <- function(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data = NULL) {
   removeUI(selector = "#chat_content_container > *", multiple = TRUE)
+  
+  if (!is.null(file_manager_data) && is.function(file_manager_data$reset_attachment_state)) {
+    file_manager_data$reset_attachment_state()
+  }
 
   values$messages <- list()
   values$current_chat_id <- NULL

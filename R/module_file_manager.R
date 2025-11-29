@@ -1007,7 +1007,14 @@ fileManagerServer <- function(
 	  files_added_to_context   = reactive({ files_added_to_context() }),
 	  remove_file_from_manager = function(filename) { remove_file_by_name(filename, quiet = TRUE) },
 	  set_attachment_checked   = set_attachment_checked,
-	  sync_file_to_context     = sync_file_to_context
+	  sync_file_to_context     = sync_file_to_context,
+	  reset_attachment_state   = function() {
+		ids <- names(module_values$files_in_context)
+		if (length(ids) > 0) {
+		  session$sendCustomMessage(ns("setAttachState"), list(ids = ids, checked = FALSE))
+		  module_values$files_in_context <- list()
+		}
+	  }
 	)
   })
 }

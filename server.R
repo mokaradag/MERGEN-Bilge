@@ -1570,7 +1570,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	}
 
 	start_new_chat <- function() {
-	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id)
+	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)
 	}
 
 	# Çok temel bir perspektif düzeltici (fazla agresif olmasın)

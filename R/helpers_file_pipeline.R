@@ -1,11 +1,12 @@
 # R/helpers_file_pipeline.R
 
 summarize_file_with_llm <- function(file_text, filename, settings) {
-  snippet <- substr(file_text %||% "", 1, 12000)
+  snippet <- substr(file_text %||% "", 1, 60000)
   chat <- list(
     list(type = "system",
-         content = "Türkçe yanıtla. Görevin: yüklenen bir dosyayı kısa ama mantıklı şekilde özetlemek. \
-Başlık, kısa açıklama (2-3 cümle) ve en fazla 5 madde halinde ana noktaları ver."),
+         content = "Türkçe yanıtla. Görevin: yüklenen dosyanın içeriğini ayrıntılı, kapsamlı ve bilgilendirici bir şekilde özetlemek. \
+Başlık, genel bakış ve ardından dosyadaki tüm kritik verileri, bulguları ve önemli noktaları detaylı maddeler halinde sun. \
+Yüzeysel geçme, mümkün olduğunca fazla detay ver."),
     list(type = "user",
          content = paste0("Dosya adı: ", filename,
                           "\nİçerik (kısaltılmış olabilir):\n", snippet))
