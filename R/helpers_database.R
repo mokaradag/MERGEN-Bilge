@@ -287,8 +287,11 @@ format_chat_messages <- function(chat_df) {
       list(html = content_text, has_code = FALSE)
     }
 
-    timestamp_gmt3 <- row$MessageTimestamp
-    attr(timestamp_gmt3, "tzone") <- "Europe/Istanbul"
+    timestamp_val <- row$MessageTimestamp
+    ts_tz <- attr(timestamp_val, "tzone")
+    if (is.null(ts_tz) || !nzchar(ts_tz)) {
+      ts_tz <- "UTC"
+    }
 
     list(
       id = as.character(row$MessageID),
@@ -297,7 +300,7 @@ format_chat_messages <- function(chat_df) {
       html_content = processed$html,
       has_code = processed$has_code,
       type = row$MessageType,
-      timestamp = format(timestamp_gmt3, "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul")
+      timestamp = format(timestamp_val, "%d.%m.%Y - %H:%M", tz = ts_tz)
     )
   })
 }

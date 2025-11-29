@@ -540,7 +540,18 @@ fileManagerServer <- function(
     }
 
     # ---------- HELPERS ----------
-    format_timestamp <- function() format(Sys.time(), "%Y-%m-%d %H:%M")
+    format_timestamp <- function(path = NULL, fallback_time = Sys.time()) {
+      ts <- fallback_time
+
+      if (!is.null(path) && nzchar(path) && file.exists(path)) {
+        info <- tryCatch(file.info(path), error = function(e) NULL)
+        if (!is.null(info) && !is.na(info$mtime[1])) {
+          ts <- info$mtime[1]
+        }
+      }
+
+      format(ts, "%Y-%m-%d %H:%M")
+    }
 
     update_session_files <- function(update_fn) {
       if (is.null(session_files_reactive)) return(invisible())
@@ -691,7 +702,7 @@ fileManagerServer <- function(
 			Boyut           = paste(round((file_size %||% 0) / 1024, 2), "KB"),
 			# Tür sütunu: ikon + etiket
 			Tur             = ext_icon_html(ext),
-			Yuklenme_Tarihi = format_timestamp(),
+			Yuklenme_Tarihi = format_timestamp(file_info$datapath),
 			Islemler        = actions,
 			Model_Baglam    = attach_cell,
 			stringsAsFactors = FALSE
