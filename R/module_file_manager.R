@@ -474,6 +474,26 @@ fileManagerServer <- function(
 	  refresh_from_user_folder("initial")
 	}, once = TRUE, ignoreNULL = TRUE)
 
+	# Proactive warm-up: refresh a few extra times during the first seconds
+	initial_refresh_attempts <- reactiveVal(0)
+	observe({
+	  if (initial_refresh_attempts() >= 3) {
+		return()
+	  }
+
+	  invalidateLater(600, session)
+	  attempt <- initial_refresh_attempts() + 1
+	  initial_refresh_attempts(attempt)
+
+	  # Stop early if data is already present
+	  if (nrow(module_values$files) > 0) {
+		initial_refresh_attempts(3)
+		return()
+	  }
+
+	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
+	})
+
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
     bulk_files_to_process <- reactiveVal(NULL)

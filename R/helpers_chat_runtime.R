@@ -108,40 +108,7 @@ chat_add_message <- function(session, values, settings_data, output,
   values$messages <- append(values$messages, list(new_message))
   
   if (!is.null(values$current_chat_id)) {
-    chat_key <- as.character(values$current_chat_id)
-    saved_chats_copy <- values$saved_chats
-    if (is.null(saved_chats_copy) || !is.list(saved_chats_copy)) {
-      saved_chats_copy <- list()
-    }
-
-    entry <- saved_chats_copy[[chat_key]]
-    if (is.null(entry)) {
-      entry <- list(
-        title = NULL,
-        timestamp = Sys.time(),
-        messages = list(),
-        message_count = 0L
-      )
-    }
-
-    existing_messages <- entry$messages
-    if (is.null(existing_messages) || !is.list(existing_messages)) {
-      existing_messages <- list()
-    }
-
-    entry$messages <- append(existing_messages, list(new_message))
-    entry$message_count <- length(entry$messages)
-    entry$last_message_timestamp <- Sys.time()
-
-    if (is.null(entry$timestamp) || is.na(entry$timestamp)) {
-      entry$timestamp <- Sys.time()
-    }
-    if (is.null(entry$title) || is.na(entry$title)) {
-      entry$title <- "Yeni Söyleşi"
-    }
-
-    saved_chats_copy[[chat_key]] <- entry
-    values$saved_chats <- saved_chats_copy
+    chat_store_message_in_saved_chats(values, new_message)
   }
 
   is_last_user_msg <- (new_message$type == "user" && length(values$messages) > 0 &&
@@ -194,6 +161,47 @@ chat_add_message <- function(session, values, settings_data, output,
   }
 
   return(new_message)
+}
+
+chat_store_message_in_saved_chats <- function(values, message) {
+  if (is.null(values$current_chat_id)) return(invisible(NULL))
+
+  chat_key <- as.character(values$current_chat_id)
+  saved_chats_copy <- values$saved_chats
+  if (is.null(saved_chats_copy) || !is.list(saved_chats_copy)) {
+    saved_chats_copy <- list()
+  }
+
+  entry <- saved_chats_copy[[chat_key]]
+  if (is.null(entry)) {
+    entry <- list(
+      title = NULL,
+      timestamp = Sys.time(),
+      messages = list(),
+      message_count = 0L
+    )
+  }
+
+  existing_messages <- entry$messages
+  if (is.null(existing_messages) || !is.list(existing_messages)) {
+    existing_messages <- list()
+  }
+
+  entry$messages <- append(existing_messages, list(message))
+  entry$message_count <- length(entry$messages)
+  entry$last_message_timestamp <- Sys.time()
+
+  if (is.null(entry$timestamp) || is.na(entry$timestamp)) {
+    entry$timestamp <- Sys.time()
+  }
+  if (is.null(entry$title) || is.na(entry$title)) {
+    entry$title <- "Yeni Söyleşi"
+  }
+
+  saved_chats_copy[[chat_key]] <- entry
+  values$saved_chats <- saved_chats_copy
+
+  invisible(NULL)
 }
 
 chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
@@ -316,6 +324,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               new_db_id <- save_message_to_db(values$current_chat_id, values$messages[[msg_index]])
               values$messages[[msg_index]]$db_id <- new_db_id
             }
+            chat_store_message_in_saved_chats(values, values$messages[[msg_index]])
           }, error = function(e) {
             print(paste("Error saving message:", e$message))
           })

@@ -1781,26 +1781,37 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	load_chat_in_progress(TRUE)
 
 	chat_to_load <- values$saved_chats[[chat_id]]
-	if (!is.null(chat_to_load) && (is.null(chat_to_load$messages) || length(chat_to_load$messages) == 0)) {
+	needs_hydrate <- is.null(chat_to_load)
+
+	if (!needs_hydrate) {
+	  msgs <- chat_to_load$messages
+	  stored_len <- if (is.list(msgs)) length(msgs) else 0L
+	  expected_len <- as.integer(chat_to_load$message_count %||% stored_len)
+	  has_user <- stored_len > 0 && any(vapply(msgs, function(m) {
+		identical(m$type %||% "", "user")
+	  }, logical(1)))
+	  has_ai <- stored_len > 0 && any(vapply(msgs, function(m) {
+		m$type %||% "" %in% c("ai", "assistant")
+	  }, logical(1)))
+
+	  needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
+		(!is.na(expected_len) && expected_len > stored_len) ||
+		(has_user && !has_ai)
+	}
+
+	if (isTRUE(needs_hydrate)) {
 	  detail <- tryCatch(
-		load_chat_messages_from_db(chat_id),
-		error = function(e) {
-		  warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
-		  NULL
-		}
+			load_chat_messages_from_db(chat_id),
+			error = function(e) {
+			  warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
+			  NULL
+			}
 	  )
 	  if (!is.null(detail)) {
-		if (!is.null(detail$title) && !is.na(detail$title)) {
-		  chat_to_load$title <- detail$title
-		}
-		if (!is.null(detail$timestamp) && !is.na(detail$timestamp)) {
-		  chat_to_load$timestamp <- detail$timestamp
-		}
-		chat_to_load$messages <- detail$messages
-		chat_to_load$message_count <- detail$message_count
-		saved_copy <- values$saved_chats
-		saved_copy[[chat_id]] <- chat_to_load
-		values$saved_chats <- saved_copy
+			chat_to_load <- detail
+			saved_copy <- values$saved_chats
+			saved_copy[[chat_id]] <- chat_to_load
+			values$saved_chats <- saved_copy
 	  }
 	}
 

@@ -3018,12 +3018,15 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
   
     # Get temperature from settings if available
     temp_value <- if (!is.null(current_settings$temperature)) current_settings$temperature else 0.4
+	
+	max_tokens_val <- current_settings$max_output_tokens %||% 2048
     
     body <- list(
       model = selected_model,
       messages = messages_payload,
       stream = FALSE,
-      temperature = temp_value
+      temperature = temp_value,
+      max_tokens = max_tokens_val
     )
     
 	# Türkçe: Yerel uçlarda boş Authorization başlığını GÖNDERME
