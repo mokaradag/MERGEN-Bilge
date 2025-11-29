@@ -1739,6 +1739,41 @@
         globalMessageObserver.observe(chatContainer, { childList: true, subtree: true });
       }
     
+	  // Observer specifically for rendering Saved Charts (History)
+      // Watch for .chart-card elements appearing in the DOM
+      const chartHistoryObserver = new MutationObserver(muts => {
+        let needsRender = false;
+        muts.forEach(m => {
+          if (m.addedNodes) {
+            m.addedNodes.forEach(node => {
+              if (node.nodeType !== 1) return; // Skip text nodes
+              // Check if the node itself is a chart card or contains one
+              if (node.classList.contains('chart-card') || node.querySelector('.chart-card')) {
+                needsRender = true;
+              }
+            });
+          }
+        });
+        
+        if (needsRender) {
+          // Use a small debounce to batch renders if many charts load at once
+          if (window.renderChartTimeout) clearTimeout(window.renderChartTimeout);
+          window.renderChartTimeout = setTimeout(() => {
+             // Try to render any unrendered charts in the chat container
+             if (window.renderSavedCharts) {
+               // We pass the ID of the main container to search within
+               window.renderSavedCharts('chat_content_container'); 
+               window.renderSavedCharts('chat_content_wrapper'); // Fallback
+             }
+          }, 100);
+        }
+      });
+
+      const historyContainer = document.querySelector('#chat_content_container') || document.querySelector('.chat-container');
+      if (historyContainer) {
+        chartHistoryObserver.observe(historyContainer, { childList: true, subtree: true });
+      }
+	  
         // Auto-init CM whenever a .codemirror-textarea is inserted
         (function attachCMObserver(){
           const root = document.querySelector('#chat_content_container, #_content_container, .chat-container');
@@ -2640,55 +2675,105 @@ Shiny.addCustomMessageHandler('playCharacterVideo', function(data) {
 
 window.renderSavedCharts = function(wrapperId) {
   var wrapper = document.getElementById(wrapperId);
-  if (!wrapper) return;
+  // Try class lookup if ID fails (for robustness)
+  if (!wrapper) wrapper = document.querySelector('.' + wrapperId);
+  if (!wrapper) wrapper = document.body; // Fallback to body search if all else fails
+
+  // Find cards that have a spec but haven't been rendered yet (avoid double render)
+  var chartCards = wrapper.querySelectorAll('.chart-card[data-chartlab-spec]:not(.rendered)');
   
-  var chartCards = wrapper.querySelectorAll('.chart-card[data-chartlab-spec]');
   chartCards.forEach(function(card) {
     var specJson = card.getAttribute('data-chartlab-spec');
     var chartId = card.getAttribute('data-chart-id');
     if (!specJson || !chartId) return;
-    
+
+    // Mark as rendered immediately to prevent duplicate Highcharts init
+    card.classList.add('rendered');
+
     try {
       var spec = JSON.parse(specJson);
       var container = card.querySelector('.chartlab-placeholder');
       if (!container) return;
       
-      if (typeof Highcharts !== 'undefined' && spec.data) {
-        container.innerHTML = '';
+      // Ensure Highcharts is loaded
+      if (typeof Highcharts !== 'undefined') {
+        container.innerHTML = ''; // Clear "Loading..." text
+        
+        // [FIX] Ensure chart type defaults to something valid if missing in JSON
         var chartType = (spec.type || 'column').toLowerCase();
         var mapping = spec.mapping || {};
         var data = spec.data || [];
         
         var seriesData = [];
+        var categories = [];
+        
+        // Basic processing to match Highcharts format
         if (Array.isArray(data) && data.length > 0) {
           if (chartType === 'pie' || chartType === 'donut') {
-            seriesData = data.map(function(row) {
-              return { name: row[mapping.x] || '', y: parseFloat(row[mapping.y]) || row.count || 1 };
-            });
+             // For Pie/Donut: data is [{name, y}]
+             seriesData = data.map(function(row) {
+               return { 
+                 name: row[mapping.x] || row.name || 'Unknown', 
+                 y: parseFloat(row[mapping.y] || row.value || row.n || row.val) || 0 
+               };
+             });
           } else {
-            var categories = data.map(function(row) { return row[mapping.x] || ''; });
-            var values = data.map(function(row) { return parseFloat(row[mapping.y]) || 0; });
-            seriesData = [{ name: mapping.y || 'Değer', data: values }];
+             // For XY Charts
+             // Fix Categories (X axis)
+             categories = data.map(function(row) { return row[mapping.x] || ''; });
+             
+             // Check if grouped
+             if (mapping.group && row[mapping.group]) {
+               // Grouping logic (simplified for JS rendering)
+               // Note: Full complex grouping is hard in JS-only, 
+               // but we try to render at least the primary series
+               // If complex, we might fallback to single series for history
+             }
+             
+             // Simple single series fallback
+             var values = data.map(function(row) { return parseFloat(row[mapping.y] || row.n || row.val) || 0; });
+             seriesData = [{ name: mapping.y || 'Değer', data: values }];
           }
         }
         
         Highcharts.chart(container, {
-          chart: { type: chartType === 'donut' ? 'pie' : chartType, backgroundColor: 'transparent' },
-          title: { text: spec.title || null, style: { color: '#fff' } },
-          xAxis: chartType !== 'pie' && chartType !== 'donut' ? { categories: categories, labels: { style: { color: '#999' } } } : undefined,
-          yAxis: chartType !== 'pie' && chartType !== 'donut' ? { title: { text: mapping.y || '' }, labels: { style: { color: '#999' } }, gridLineColor: '#333' } : undefined,
-          plotOptions: {
-            pie: { innerSize: chartType === 'donut' ? '50%' : 0, dataLabels: { color: '#fff' } },
-            series: { borderWidth: 0 }
+          chart: { 
+            type: chartType === 'donut' ? 'pie' : chartType, 
+            backgroundColor: 'transparent',
+            style: { fontFamily: 'Inter, sans-serif' }
           },
-          series: chartType === 'pie' || chartType === 'donut' ? [{ name: 'Değer', data: seriesData }] : seriesData,
+          title: { text: spec.title || null, style: { color: '#fff' } },
+          xAxis: (chartType !== 'pie' && chartType !== 'donut') ? { 
+            categories: categories, 
+            labels: { style: { color: '#999' } },
+            lineColor: '#444'
+          } : undefined,
+          yAxis: (chartType !== 'pie' && chartType !== 'donut') ? { 
+            title: { text: mapping.y || '' }, 
+            labels: { style: { color: '#999' } }, 
+            gridLineColor: '#333' 
+          } : undefined,
+          plotOptions: {
+            pie: { 
+              innerSize: (chartType === 'donut' || spec.params?.donut) ? '60%' : '0%', 
+              borderWidth: 0,
+              dataLabels: { enabled: true, color: '#fff', style: { textOutline: 'none' } } 
+            },
+            series: { borderWidth: 0, borderRadius: 2 }
+          },
+          colors: ["#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee"],
+          series: (chartType === 'pie' || chartType === 'donut') ? [{ name: 'Değer', data: seriesData }] : seriesData,
           legend: { itemStyle: { color: '#999' } },
           tooltip: { backgroundColor: '#1a1a1a', style: { color: '#fff' } },
           credits: { enabled: false }
         });
+      } else {
+        container.innerHTML = '<div style="color:red">Highcharts kütüphanesi yüklenemedi.</div>';
       }
     } catch(e) {
       console.error('Chart render error:', e);
+      // Remove rendered class so we might try again if it was a temporary glitch
+      card.classList.remove('rendered'); 
     }
   });
 };

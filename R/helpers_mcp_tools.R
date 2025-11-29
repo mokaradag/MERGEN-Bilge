@@ -911,20 +911,51 @@ helpers_mcp_tools$prepare_chart_data <- function(
     if (!inherits(filt, "error")) dt <- data.table::as.data.table(filt)
   }
 
-  # 4) thin to only needed columns
-  cols <- unique(na.omit(c(x, y, group)))
-  if (!length(cols)) {
-    # let ChartLab decide mapping; send sample only
-    subset_dt <- dt
-  } else {
-    missing <- setdiff(cols, names(dt))
+# 4) thin to only needed columns & Handle Multi-Y (Wide-to-Long)
+  # [MODIFICATION] Handle multiple Y columns (comma separated)
+  y_candidates <- if (!is.null(y)) trimws(strsplit(y, ",")[[1]]) else NULL
+  
+  if (length(y_candidates) > 1) {
+    # Check if all exist
+    missing <- setdiff(c(x, y_candidates, group), names(dt))
     if (length(missing)) {
-      return(list(
-        error = sprintf("Sütun(lar) bulunamadı: %s. Mevcut: %s", paste(missing, collapse = ", "), paste(names(dt), collapse = ", ")),
-        ok = FALSE
-      ))
+      return(list(error = sprintf("Sütun(lar) bulunamadı: %s", paste(missing, collapse=", ")), ok=FALSE))
     }
-    subset_dt <- dt[, ..cols]
+    
+    # Reshape (Melt)
+    measure_vars <- y_candidates
+    id_vars <- c(x, group) # keep existing group if any
+    id_vars <- id_vars[!is.null(id_vars)]
+    
+    subset_dt <- data.table::melt(dt, id.vars = id_vars, measure.vars = measure_vars,
+                                  variable.name = "Variable", value.name = "Value")
+    
+    # Update mapping
+    y <- "Value"
+    # If there was a group, we might need a composite group, but usually multi-Y implies the variable IS the group
+    if (is.null(group)) {
+      group <- "Variable"
+    } else {
+      # If both group and multi-Y exist, usually we prioritize the multi-Y as the legend group
+      # or we'd need a faceted plot (not supported yet). Let's swap group to Variable.
+      group <- "Variable" 
+    }
+    
+  } else {
+    # Standard single Y logic
+    cols <- unique(na.omit(c(x, y, group)))
+    if (!length(cols)) {
+      subset_dt <- dt
+    } else {
+      missing <- setdiff(cols, names(dt))
+      if (length(missing)) {
+        return(list(
+          error = sprintf("Sütun(lar) bulunamadı: %s. Mevcut: %s", paste(missing, collapse = ", "), paste(names(dt), collapse = ", ")),
+          ok = FALSE
+        ))
+      }
+      subset_dt <- dt[, ..cols]
+    }
   }
 
   # 5) limit rows and coerce time cols (ChartLab will format)
@@ -1160,10 +1191,15 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
     "   - DOĞRU:  SELECT AVG(Salary) AS [Ortalama Maaş], MAX(Salary) AS [En Yüksek Maaş] FROM t",
     "",
     "2. **Tek Seferde Doğru Cevap:**",
-    "   - Kullanıcı 'Ortalama yaş kaç?' derse, ASLA sadece `analyze_uploaded_file` çağırıp durma. Doğrudan `get_column_statistics` veya `sql_query_uploaded_file` kullan.",
+	"   - Kullanıcı 'Ortalama yaş kaç?' derse, ASLA sadece `analyze_uploaded_file` çağırıp durma. Doğrudan `get_column_statistics` veya `sql_query_uploaded_file` kullan.",
     "   - Soru net bir sayı veya liste istiyorsa, özeti geç ve hesaplamayı yapan aracı seç.",
     "",
-    "3. **Yorum ve İçgörü (ÖNEMLİ):**",
+    "3. **Çoklu Grafik ve Analiz:**",
+    "   - Kullanıcı 'Veriyi görselleştir', 'Grafikleri çiz' veya 'Analiz et' gibi genel bir istekte bulunursa,",
+    "     TEK BİR CEVAPTA birden fazla `prepare_chart_data` aracı çağırabilirsin. Her grafik için ayrı bir araç çağrısı yap.",
+    "   - Örneğin: Önce histogram, sonra scatter, sonra bar chart için sırayla araç çağır.",
+    "",
+    "4. **Yorum ve İçgörü (ÖNEMLİ):**",
     "   - Aracı çalıştırdıktan sonra sadece tabloyu ekrana basıp bırakma.",
     "   - Sonuçların altına mutlaka **'Yorum ve İçgörü'** başlıklı bir paragraf ekle.",
     "   - Bir insan uzman gibi konuş: 'Bu sonuçlar beklentinin üzerinde...', 'Dikkat çeken nokta şudur...' gibi analizler yap.",
