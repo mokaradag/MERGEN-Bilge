@@ -178,14 +178,14 @@ settingsUI <- function(id) {
                     div(
                       class = "setting-column",
                       h4("Görünüm", class = "setting-subtitle"),
-						div(
-						  class = "toggle-group",
-						  div(class = "checkbox-item", checkboxInput(ns("enable_timestamps"), "Zaman Damgaları", value = TRUE)),
-						  div(class = "checkbox-item", checkboxInput(ns("enable_typing_indicator"), "Yazma Göstergesi", value = TRUE)),
-						  div(class = "checkbox-item", checkboxInput(ns("enable_animations"), "Animasyonlar", value = TRUE)),
-						  div(class = "checkbox-item", checkboxInput(ns("enable_widescreen"), "Geniş Ekran", value = TRUE)),
-						  div(class = "checkbox-item", checkboxInput(ns("enable_streaming"), "Akış Modu", value = TRUE))
-						)
+					  div(
+						class = "toggle-group",
+						div(class = "checkbox-item", checkboxInput(ns("enable_timestamps"), "Zaman Damgaları", value = TRUE)),
+						div(class = "checkbox-item", checkboxInput(ns("enable_typing_indicator"), "Yazma Göstergesi", value = TRUE)),
+						div(class = "checkbox-item", checkboxInput(ns("enable_animations"), "Animasyonlar", value = TRUE)),
+						div(class = "checkbox-item", checkboxInput(ns("enable_widescreen"), "Geniş Ekran", value = TRUE)),
+						div(class = "checkbox-item", checkboxInput(ns("enable_streaming"), "Akış Modu", value = TRUE))
+					  )
                     ),
                     div(
                       class = "setting-column",
@@ -200,6 +200,34 @@ settingsUI <- function(id) {
                           width = "100%"
                         ),
                         p("Mesajların yazı tipi boyutunu ayarlayın", class = "setting-description")
+                      )
+                    ),
+                    div(
+                      class = "setting-column",
+                      h4("Sesli Yanıt", class = "setting-subtitle"),
+                      div(
+                        class = "setting-item",
+                        checkboxInput(
+                          inputId = ns("enable_tts_audio"),
+                          label = tags$span("AI yanıtlarını seslendir"),
+                          value = TRUE
+                        ),
+                        p("Yanıt tamamlandıktan sonra metni yerel TTS motoru ile sese dönüştür.", class = "setting-description")
+                      ),
+                      div(
+                        class = "setting-item",
+                        style = "max-width: 260px;",
+                        selectInput(
+                          inputId = ns("tts_voice"),
+                          label = "Ses tipi:",
+                          choices = c(
+                            "Kadın Sesi (tr-female-1)" = "tr-female-1",
+                            "Erkek Sesi (tr-male-1)" = "tr-male-1"
+                          ),
+                          selected = tts_config$default_voice %||% "tr-female-1",
+                          width = "100%"
+                        ),
+                        p("Seslendirme için kullanılacak Türkçe ses profili.", class = "setting-description")
                       )
                     )
                   )
@@ -248,6 +276,8 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_typing_indicator = TRUE,
 	  enable_streaming        = TRUE,
 	  enable_widescreen       = TRUE,
+	  enable_tts_audio        = TRUE,
+	  tts_voice               = tts_config$default_voice %||% "tr-female-1",
 	  enable_rdata_tools      = FALSE,
 	  enable_mcp_tools        = FALSE,
 	  enable_followups        = TRUE,
@@ -455,6 +485,14 @@ settingsServer <- function(id, parent_session = NULL) {
         settings$enable_widescreen <- loaded$enable_widescreen
         updateCheckboxInput(session, "enable_widescreen", value = loaded$enable_widescreen)
       }
+      if (!is.null(loaded$enable_tts_audio)) {
+        settings$enable_tts_audio <- isTRUE(loaded$enable_tts_audio)
+        updateCheckboxInput(session, "enable_tts_audio", value = settings$enable_tts_audio)
+      }
+      if (!is.null(loaded$tts_voice)) {
+        settings$tts_voice <- loaded$tts_voice
+        updateSelectInput(session, "tts_voice", selected = loaded$tts_voice)
+      }
       if (!is.null(loaded$enable_followups)) {
         settings$enable_followups <- isTRUE(loaded$enable_followups)
         updateCheckboxInput(session, "enable_followups", value = settings$enable_followups)
@@ -499,6 +537,8 @@ settingsServer <- function(id, parent_session = NULL) {
     observeEvent(input$enable_typing_indicator, { settings$enable_typing_indicator <- input$enable_typing_indicator })
 	observeEvent(input$enable_streaming,  { settings$enable_streaming  <- input$enable_streaming })
 	observeEvent(input$enable_widescreen, { settings$enable_widescreen <- input$enable_widescreen })
+	observeEvent(input$enable_tts_audio,  { settings$enable_tts_audio  <- isTRUE(input$enable_tts_audio) })
+	observeEvent(input$tts_voice,         { settings$tts_voice         <- input$tts_voice })
 	observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
 
 	# Karşılıklı dışlama mantığı
@@ -526,10 +566,12 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$selected_character <- temp_selected_character()
       
       # ---- ADDED per instruction (save path) ----
-		to_save <- reactiveValuesToList(settings)
-		to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
-		to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
-		session$sendCustomMessage("saveSettings", to_save)
+	to_save <- reactiveValuesToList(settings)
+	to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
+	to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
+	to_save$enable_tts_audio   <- isTRUE(input$enable_tts_audio)
+	to_save$tts_voice          <- input$tts_voice
+	session$sendCustomMessage("saveSettings", to_save)
       # -------------------------------------------
       
       showToast(session, "Ayarlar kaydedildi!", "success")
@@ -545,6 +587,8 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$enable_typing_indicator <- TRUE
       settings$enable_streaming        <- TRUE
 	  settings$enable_widescreen       <- TRUE
+	  settings$enable_tts_audio        <- TRUE
+	  settings$tts_voice               <- tts_config$default_voice %||% "tr-female-1"
 	  settings$enable_rdata_tools      <- FALSE
 	  settings$enable_mcp_tools        <- FALSE
 	  settings$enable_followups        <- TRUE
@@ -558,9 +602,11 @@ settingsServer <- function(id, parent_session = NULL) {
       updateCheckboxInput(session, "enable_typing_indicator", value = settings$enable_typing_indicator)
       updateCheckboxInput(session, "enable_streaming",        value = settings$enable_streaming)
       updateCheckboxInput(session, "enable_widescreen",       value = settings$enable_widescreen)
-	    updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
+	  updateCheckboxInput(session, "enable_tts_audio",        value = settings$enable_tts_audio)
+      updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
       updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
       updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
+      updateSelectInput(session, "tts_voice", selected = settings$tts_voice)
       
       session$sendCustomMessage("clearSettings", list())
       showToast(session, "Ayarlar sıfırlandı!", "info")

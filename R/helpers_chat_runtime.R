@@ -55,7 +55,8 @@ push_followup_update <- function(session, message_id, followups, pending = FALSE
 chat_add_message <- function(session, values, settings_data, output,
                              content, type = "user", html = NULL,
                              current_user_id, filePreview = NULL,
-                             followups = NULL) {
+                             followups = NULL, audio_src = NULL,
+                             audio_voice = NULL) {
   if (isTRUE(values$show_welcome)) {
     removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
     values$show_welcome <- FALSE
@@ -81,7 +82,8 @@ chat_add_message <- function(session, values, settings_data, output,
   new_message <- list(
     id = message_id, db_id = NULL, content = content,
     html_content = processed$html, has_code = processed$has_code,
-    type = type, timestamp = timestamp
+    type = type, timestamp = timestamp,
+    audio_src = audio_src, audio_voice = audio_voice
   )
   
   if (!is.null(followups) && length(followups) > 0) {
@@ -205,7 +207,7 @@ chat_store_message_in_saved_chats <- function(values, message) {
 }
 
 chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
-                                   followups = NULL) {
+                                   followups = NULL, on_complete = NULL) {
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
 
   timestamp <- format_timestamp()
@@ -325,6 +327,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               values$messages[[msg_index]]$db_id <- new_db_id
             }
             chat_store_message_in_saved_chats(values, values$messages[[msg_index]])
+            if (is.function(on_complete)) {
+              try(on_complete(values$messages[[msg_index]]), silent = TRUE)
+            }
           }, error = function(e) {
             print(paste("Error saving message:", e$message))
           })

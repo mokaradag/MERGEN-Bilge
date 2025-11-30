@@ -279,6 +279,11 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
       )
 
     } else if (msg$type %in% c("ai", "assistant")) {
+      audio_block <- NULL
+      if (!is.null(msg$audio_src) && nzchar(msg$audio_src)) {
+        audio_block <- build_tts_audio_ui(msg$id, msg$audio_src, msg$audio_voice %||% NULL)
+      }
+	  
       div(
         class = "message-bubble animate-fadeIn",
         div(
@@ -349,6 +354,7 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
               id = msg$id,
               `data-streaming` = if(is_streaming) "true" else "false",
               HTML(msg$html_content)),
+          if (!is.null(audio_block)) audio_block,
           build_followup_container(
             msg$id,
             msg$followups %||% NULL,

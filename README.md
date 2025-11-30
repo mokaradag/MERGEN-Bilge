@@ -66,6 +66,7 @@ Türkçe dilinde tasarlanmış MERGEN-Bilge, etkileşimli bir sohbet deneyimi, s
 - **Geçici dizinler:** `options(mergen.duckdb.temp_directory = Sys.getenv("MERGEN_DUCKDB_TEMP_DIR", tempdir()))` üzerinden DuckDB geçici dizinini kontrol edin.
 - **Günlükler:** `logs/` klasörü başlangıçta oluşturulur; günlük adı `mergen_YYYYMMDD.log` formatındadır. Hata ve debug çıktıları sırasıyla `shiny.error` ve `dbg_dump()` ile kaydedilir.
 - **Yerel ayarlar:** UTF-8 karakter seti ve Türkçe yerelleştirme için `Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")` çağrısı yapılır.
+- **Sesli yanıt (TTS):** OpenAI uyumlu bir seslendirme servisi için `LOCAL_TTS_ENDPOINT` (örn. `https://<host>/v1`) ve gerekiyorsa `LOCAL_TTS_API_KEY` ortam değişkenlerini ayarlayın. Model/isim varsayılanları `LOCAL_TTS_MODEL` (varsayılan: `tts-1-hd`) ve `LOCAL_TTS_VOICE` (varsayılan: `tr-female-1`) ile özelleştirilebilir. Ayarlar sekmesinde seslendirmeyi açıp kapatabilir ve ses tipini seçebilirsiniz.
 
 ## Geliştirme Notları
 - Arayüz `shinydashboard` üzerinde sekmeli yapıda çalışır; yeni sekmeler eklemek için `ui.R` içindeki `sidebarMenu` ve `body` bölümlerini güncelleyin.

@@ -5855,3 +5855,27 @@ body.font-xlarge {
 .navbar-toggle {
   display: none !important;
 }
+
+/* TTS audio player styling */
+.tts-audio-wrapper {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #0b1220;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.tts-audio-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9ca3af;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.tts-audio-wrapper audio {
+  width: 100%;
+  outline: none;
+}

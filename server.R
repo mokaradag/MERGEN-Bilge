@@ -168,6 +168,9 @@ server <- function(input, output, session) {
   # Initialize AI processing module
   ai_processor <- aiProcessingServer("ai_proc")
   
+  # Initialize TTS processing module
+  tts_processor <- ttsProcessingServer("tts_proc")
+  
   # Initialize File Preview module (replaces preview outputs + modal helpers)
   filePreview <- filePreviewServer("file_preview")
   
@@ -712,14 +715,18 @@ observeEvent(input$source_file_clicked, {
 		  followup_questions <- build_followup_suggestions(last_user_text, result$content)
 
 		  tryCatch({
-				ai_msg <- add_message(result$content, "ai", followups = followup_questions)
+						ai_msg <- add_message(result$content, "ai", followups = followup_questions)
 		  }, error = function(e) {
-				cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
-				cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
-				showToast(session, "Render hatası: içerik boş/uygunsuz. Günlüğe yazıldı.", "error")
-				# Sohbet akışını bozmamak için placeholder
-				ai_msg <- add_message("⚠️ Model boş bir yanıt döndürdü (loglandı).", "ai")
+						cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
+						cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
+						showToast(session, "Render hatası: içerik boş/uygunsuz. Günlüğe yazıldı.", "error")
+						# Sohbet akışını bozmamak için placeholder
+						ai_msg <- add_message("⚠️ Model boş bir yanıt döndürdü (loglandı).", "ai")
 		  })
+
+		  if (!is.null(ai_msg) && !isTRUE(stop_generation())) {
+			trigger_tts_for_message(ai_msg$id, result$content)
+		  }
 
 		  tryCatch({
 			log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id, 
@@ -1330,7 +1337,15 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			}
 
 			followup_questions <- build_followup_suggestions(user_message_text, res$content)
-			simulate_streaming_stoppable(res$content, followups = followup_questions)
+			simulate_streaming_stoppable(
+			  res$content,
+			  followups = followup_questions,
+			  on_complete = function(msg) {
+				if (!is.null(msg$id) && !isTRUE(stop_generation())) {
+				  trigger_tts_for_message(msg$id, msg$content)
+				}
+			  }
+			)
 			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
 			values$typing <- FALSE
 			invisible(NULL)
@@ -1549,24 +1564,85 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  chat_generate_title_from_prompt(prompt, max_len)
 	}
 
-	simulate_streaming_stoppable <- function(full_response, followups = NULL) {
+	simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL) {
 	  chat_simulate_streaming(
-		full_response,
-		session,
-		values,
-		settings_data,
-		output,
-		stop_generation,
-		followups = followups
+			full_response,
+			session,
+			values,
+			settings_data,
+			output,
+			stop_generation,
+			followups = followups,
+			on_complete = on_complete
 	  )
 	}
 
-	add_message <- function(content, type = "user", html = NULL, followups = NULL) {
+	add_message <- function(content, type = "user", html = NULL, followups = NULL,
+							audio_src = NULL, audio_voice = NULL) {
 	  chat_add_message(
-		session, values, settings_data, output,
-		content, type, html, current_user_id,
-		followups = followups
+			session, values, settings_data, output,
+			content, type, html, current_user_id,
+			followups = followups,
+			audio_src = audio_src,
+			audio_voice = audio_voice
 	  )
+	}
+
+	tts_enabled <- function() {
+	  isTRUE(isolate(settings_data$enable_tts_audio)) &&
+		is.list(tts_processor) &&
+		is.function(tts_processor$tts_available) &&
+		isTRUE(tts_processor$tts_available())
+	}
+
+	resolve_tts_voice <- function() {
+	  val <- isolate(settings_data$tts_voice) %||% tts_config$default_voice %||% "tr-female-1"
+	  as.character(val)[1]
+	}
+
+	attach_tts_audio <- function(message_id, audio_src, voice_used = NULL) {
+	  if (is.null(message_id) || !nzchar(audio_src)) return(invisible(NULL))
+
+	  idx <- which(vapply(values$messages, function(m) m$id == message_id, logical(1)))
+	  if (length(idx) == 1) {
+		values$messages[[idx]]$audio_src <- audio_src
+		values$messages[[idx]]$audio_voice <- voice_used
+		if (!is.null(values$current_chat_id)) {
+		  chat_store_message_in_saved_chats(values, values$messages[[idx]])
+		}
+	  }
+
+	  try(removeUI(selector = sprintf("#tts_audio_%s", message_id), immediate = TRUE), silent = TRUE)
+	  audio_ui <- build_tts_audio_ui(message_id, audio_src, voice_used)
+	  if (!is.null(audio_ui)) {
+		insertUI(
+		  selector = sprintf("#message_wrapper_%s .ai-message", message_id),
+		  where = "beforeEnd",
+		  ui = audio_ui,
+		  immediate = TRUE
+		)
+		shinyjs::runjs("setTimeout(() => { window.smartScrollToBottom && window.smartScrollToBottom(); }, 80);")
+	  }
+	}
+
+	trigger_tts_for_message <- function(msg_id, content_text) {
+	  if (!tts_enabled() || isTRUE(stop_generation())) return(invisible(NULL))
+
+	  safe_text <- tts_processor$prepare_tts_text(content_text)
+	  if (!nzchar(safe_text)) return(invisible(NULL))
+
+	  voice_choice <- resolve_tts_voice()
+	  tts_processor$synthesize_speech(safe_text, voice = voice_choice) %...>% function(res) {
+		if (isTRUE(res$success) && nzchar(res$audio_src %||% "")) {
+		  attach_tts_audio(msg_id, res$audio_src, res$voice)
+		} else if (nzchar(res$error %||% "")) {
+		  dbg_dump("TTS_ERROR", list(message_id = msg_id, error = res$error))
+		}
+	  } %...!% {
+		function(e) {
+		  dbg_dump("TTS_EXCEPTION", list(message_id = msg_id, error = conditionMessage(e)))
+		}
+	  }
 	}
 
 	start_new_chat <- function() {
