@@ -1915,8 +1915,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			"\n1. prepare_chart_data aracını FARKLI chart_type ve sütun kombinasyonlarıyla EN AZ 3 KEZ çağır",
 			"\n2. Her grafik için ayrı bir yorum/analiz paragrafı yaz",
 			"\n3. Örnek: Histogram + Bar + Scatter veya Line + Pie + Bar kombinasyonları",
-			"\n4. Tek grafikte birden fazla seri gerekiyorsa y parametresini çoklu sütunlarla doldur (örn: ['Gelir','Gider']); grup boşsa araç otomatik olarak 'Variable' grubu ekler",
-			"\n5. Her grafikten sonra detaylı bir içgörü ekle (örn: 'Bu dağılım normal dağılıma yakın görünüyor')\n",
+			"\n4. Her grafikten sonra kısa bir içgörü ekle (örn: 'Bu dağılım normal dağılıma yakın görünüyor')\n",
 			"\nKarmaşık/nested mantık (filtrele + grupla + sırala + LIMIT, koşullu ortalama/toplam) için *tek* bir SQL sorgusu yaz ve 'sql_query_uploaded_file' aracını kullan. Tablo adı: t.\n"
 		  )
 
