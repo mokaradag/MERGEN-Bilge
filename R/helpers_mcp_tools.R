@@ -885,6 +885,18 @@ helpers_mcp_tools$prepare_chart_data <- function(
   if (inherits(dt, "error")) {
     return(list(error = sprintf("Dosya okunamadı: %s — %s", basename(res$path), dt$message), ok = FALSE))
   }
+  
+  # Normalize mapping inputs so tool calls that send arrays or scalars are handled uniformly
+  normalize_vec <- function(v) {
+    if (is.null(v)) return(NULL)
+    if (is.list(v)) v <- unlist(v, use.names = FALSE)
+    if (!length(v)) return(NULL)
+    as.character(v)
+  }
+
+  x <- normalize_vec(x)
+  y <- normalize_vec(y)
+  group <- normalize_vec(group)
 
   # --- ensure mappings for pie/donut: x must exist (categorical preferred) ---
   if (tolower(chart_type) %in% c("pie","donut") && (is.null(x) || !nzchar(x))) {
@@ -1191,7 +1203,8 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
     "Grafik Kuralları (ÖNEMLİ):",
     "- Birden fazla farklı grafik çizmen istenirse (örn: hem Pie hem Line), cevabında birden fazla ```chartlab ... ``` bloğu oluştur.",
     "- Her grafik için ayrı bir ```chartlab``` JSON bloğu yaz; istek çokluysa en az iki grafik üret.",
-    "- Tek grafikte çoklu seri için 'y' dizisi (örn. ['Gelir', 'Gider']) veya virgül ile ayrılmış değerler gönder; araç bunları aynı grafikte birleştirir.",
+    "- Tek grafikte çoklu seri için 'y' dizisi (örn. ['Gelir', 'Gider']) veya virgül ile ayrılmış değerler gönder; araç bunları aynı grafikte birleştirir (grup belirtilmezse otomatik 'Variable' oluşturulur).",
+    "- Genel/göreli isteklerde bile (örn: 'çeşitli grafikler çizer misin?') en az 2-3 farklı prepare_chart_data çağrısı yap ve her grafiğin altına yorum ekle.",
     "",
     "Araçlar:",
     "1) analyze_uploaded_file(file_name) — SADECE dosya ilk yüklendiğinde genel yapı (satır/sütun) öğrenmek için. Spesifik sorular (örn. 'ortalama kaç') için BUNU KULLANMA.",
