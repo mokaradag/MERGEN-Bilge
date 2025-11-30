@@ -1637,10 +1637,12 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  attach_tts_audio(msg_id, res$audio_src, res$voice)
 		} else if (nzchar(res$error %||% "")) {
 		  dbg_dump("TTS_ERROR", list(message_id = msg_id, error = res$error))
+		  showToast(session, paste("Ses oluşturulamadı:", res$error), "warning")
 		}
 	  } %...!% {
 		function(e) {
 		  dbg_dump("TTS_EXCEPTION", list(message_id = msg_id, error = conditionMessage(e)))
+		  showToast(session, paste("Ses oluşturulamadı:", conditionMessage(e)), "warning")
 		}
 	  }
 	}

@@ -108,7 +108,10 @@ ttsProcessingServer <- function(id) {
         start_time <- Sys.time()
         library(httr)
 
-        headers <- list(`Content-Type` = "application/json")
+        headers <- list(
+          `Content-Type` = "application/json",
+          Accept = "audio/mpeg"
+        )
         if (nzchar(api_key)) {
           headers$Authorization <- paste("Bearer", api_key)
         }
@@ -116,7 +119,8 @@ ttsProcessingServer <- function(id) {
         body <- list(
           model = tts_config$model %||% "tts-1-hd",
           voice = voice_to_use,
-          input = speech_text
+          input = speech_text,
+          response_format = "mp3"
         )
 
         resp <- httr::POST(
@@ -129,9 +133,33 @@ ttsProcessingServer <- function(id) {
 
         status <- httr::status_code(resp)
         if (status >= 200 && status < 300) {
-          audio_raw <- httr::content(resp, as = "raw")
-          audio_b64 <- base64enc::base64encode(audio_raw)
-          audio_src <- paste0("data:audio/mpeg;base64,", audio_b64)
+          content_type <- httr::headers(resp)[["content-type"]] %||% ""
+
+          audio_src <- NULL
+          if (grepl("json", content_type, ignore.case = TRUE)) {
+            parsed <- tryCatch(httr::content(resp, as = "parsed", encoding = "UTF-8"),
+                               error = function(e) NULL)
+            b64 <- NULL
+            if (is.list(parsed)) {
+              if (!is.null(parsed$audio)) b64 <- parsed$audio
+              else if (!is.null(parsed$data)) b64 <- parsed$data
+              else if (!is.null(parsed$content)) b64 <- parsed$content
+            }
+            if (!is.null(b64) && nzchar(as.character(b64)[1])) {
+              b64_str <- as.character(b64)[1]
+              if (startsWith(b64_str, "data:")) {
+                audio_src <- b64_str
+              } else {
+                audio_src <- paste0("data:audio/mpeg;base64,", b64_str)
+              }
+            }
+          }
+
+          if (is.null(audio_src)) {
+            audio_raw <- httr::content(resp, as = "raw")
+            audio_b64 <- base64enc::base64encode(audio_raw)
+            audio_src <- paste0("data:audio/mpeg;base64,", audio_b64)
+          }
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
 
           list(success = TRUE, audio_src = audio_src, voice = voice_to_use,
