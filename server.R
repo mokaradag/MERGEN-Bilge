@@ -1664,7 +1664,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  reason <- tts_unavailable_reason()
 	  if (!is.null(reason) || isTRUE(stop_generation())) {
 		if (!is.null(reason) && !isTRUE(tts_warning_shown())) {
-		  showToast(session, reason, "warning")
+		  # showToast(session, reason, "warning") # Opsiyonel: Uyarıyı her zaman gösterme
 		  tts_warning_shown(TRUE)
 		}
 		return(invisible(NULL))
@@ -1673,25 +1673,29 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  safe_text <- tts_processor$prepare_tts_text(content_text)
 	  if (!nzchar(safe_text)) {
 		dbg_dump("TTS_SKIP_EMPTY", list(message_id = msg_id))
-		if (!isTRUE(tts_warning_shown())) {
-		  showToast(session, "Seslendirilecek metin bulunamadı.", "warning")
-		  tts_warning_shown(TRUE)
-		}
 		return(invisible(NULL))
 	  }
 
 	  voice_choice <- resolve_tts_voice()
+      
+      # Türkçe: Konsol logu ekle (Debug için)
+      cat(sprintf("[TTS MANAGER] 🔊 TTS Triggered for MsgID: %s (Length: %d)\n", msg_id, nchar(safe_text)))
+      
 	  dbg_dump("TTS_REQUEST", list(message_id = msg_id, voice = voice_choice, text_len = nchar(safe_text)))
+	  
 	  tts_processor$synthesize_speech(safe_text, voice = voice_choice) %...>% function(res) {
 		if (isTRUE(res$success) && nzchar(res$audio_src %||% "")) {
+		  cat(sprintf("[TTS MANAGER] ✅ TTS Success for MsgID: %s\n", msg_id))
 		  dbg_dump("TTS_SUCCESS", list(message_id = msg_id, voice = res$voice, duration = res$duration))
 		  attach_tts_audio(msg_id, res$audio_src, res$voice)
 		} else if (nzchar(res$error %||% "")) {
+		  cat(sprintf("[TTS MANAGER] ❌ TTS Failed for MsgID: %s - Error: %s\n", msg_id, res$error))
 		  dbg_dump("TTS_ERROR", list(message_id = msg_id, error = res$error))
 		  showToast(session, paste("Ses oluşturulamadı:", res$error), "warning")
 		}
 	  } %...!% {
 		function(e) {
+		  cat(sprintf("[TTS MANAGER] ❌ TTS Exception for MsgID: %s - %s\n", msg_id, conditionMessage(e)))
 		  dbg_dump("TTS_EXCEPTION", list(message_id = msg_id, error = conditionMessage(e)))
 		  showToast(session, paste("Ses oluşturulamadı:", conditionMessage(e)), "warning")
 		}
