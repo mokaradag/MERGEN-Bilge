@@ -17,9 +17,6 @@ ttsProcessingServer <- function(id) {
     }
 
     #' Normalize text before sending to TTS
-    #'
-    #' Removes heavy markdown/code fences and collapses whitespace so the
-    #' synthesized speech stays natural and concise.
     prepare_tts_text <- function(text) {
       if (!is.character(text) || length(text) == 0) return("")
 
@@ -78,48 +75,67 @@ ttsProcessingServer <- function(id) {
         )))
       }
 
-      speech_url <- build_speech_url()
-      
-      # Türkçe: Parametreleri 'future' içine girmeden önce burada yakalıyoruz (Scope fix)
+      # --- MAIN PROCESS VARIABLES (Capture before future) ---
+      speech_url   <- build_speech_url()
       voice_to_use <- voice %||% tts_config$default_voice %||% "nova"
       api_key      <- resolve_tts_api_key()
       model_to_use <- tts_config$model %||% "tts-1-hd"
       timeout_val  <- as.numeric(tts_config$timeout_seconds %||% 30)
       if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 30
       
-      # Türkçe: SSL ayarını kesinleştiriyoruz. Config yoksa varsayılan FALSE olsun (On-premise rahatlığı için)
       verify_ssl_val <- tts_config$verify_ssl
       should_verify  <- if (is.null(verify_ssl_val)) FALSE else isTRUE(verify_ssl_val)
       
+      # Log file path (absolute to avoid working dir confusion in workers)
+      debug_log_file <- normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE)
+      if (!file.exists(dirname(debug_log_file))) dir.create(dirname(debug_log_file), recursive = TRUE)
+
+      # --- ASYNC WORKER START ---
       future_promise({
         start_time <- Sys.time()
-        library(httr)
+        
+        # -- Worker Side Logging Helper --
+        worker_log <- function(msg) {
+          try({
+            cat(sprintf("[%s] [Worker-%s] %s\n", 
+                        format(Sys.time(), "%H:%M:%S"), 
+                        Sys.getpid(), 
+                        msg), 
+                file = debug_log_file, append = TRUE)
+          }, silent = TRUE)
+        }
 
-        # Türkçe: Header'ları oluştur
+        worker_log(sprintf("INIT: URL=%s | Model=%s | Voice=%s", speech_url, model_to_use, voice_to_use))
+
+        # Explicitly load libraries in the worker process
+        library(httr)
+        library(jsonlite)
+        library(base64enc)
+
+        # Header Setup
         headers <- c(
           `Content-Type` = "application/json",
-          `Authorization` = paste("Bearer", api_key) # API key burada ekleniyor
+          `Authorization` = paste("Bearer", api_key)
         )
 
-        # Türkçe: Body oluştur
+        # Body Setup
         body_data <- list(
           model = model_to_use,
           voice = voice_to_use,
           input = speech_text,
-          response_format = "mp3" # MP3 formatında iste
+          response_format = "mp3"
         )
         
-        # Türkçe: SSL konfigürasyonunu worker içinde taze oluştur (Serialization sorununu önler)
-        # Çalışan scriptinizdeki gibi explicit config kullanıyoruz.
+        # Config Setup (SSL Bypass if needed)
         req_config <- if (isTRUE(should_verify)) {
            list() 
         } else {
            httr::config(ssl_verifypeer = 0L, ssl_verifyhost = 0L)
         }
         
-        cat(sprintf("[TTS WORKER] Requesting: %s (Model: %s, Voice: %s)\n", speech_url, model_to_use, voice_to_use))
+        worker_log("SENDING POST Request...")
         
-        # Türkçe: İsteği gönder (Senin çalışan kodunla birebir aynı yapı)
+        # Execute Request
         resp <- tryCatch({
           httr::POST(
             url = speech_url,
@@ -130,29 +146,28 @@ ttsProcessingServer <- function(id) {
             req_config 
           )
         }, error = function(e) {
+           worker_log(sprintf("FATAL ERROR in POST: %s", conditionMessage(e)))
            return(list(error_obj = e))
         })
         
-        # Hata yakalama (bağlantı hatası vb.)
+        # Handle Connection Errors
         if (is.list(resp) && !is.null(resp$error_obj)) {
            err_msg <- conditionMessage(resp$error_obj)
-           cat(sprintf("[TTS WORKER] ❌ Connection Failed: %s\n", err_msg))
            return(list(success = FALSE, audio_src = NULL, voice = voice_to_use, duration = 0, error = err_msg))
         }
 
         status <- httr::status_code(resp)
-        cat(sprintf("[TTS WORKER] Status Code: %d\n", status))
+        worker_log(sprintf("RESPONSE Status: %d", status))
 
         if (status >= 200 && status < 300) {
           content_type <- httr::headers(resp)[["content-type"]] %||% ""
           mime_type <- "audio/mpeg"
           if (nzchar(content_type)) {
-            # normalize mime without charset/params
             mime_type <- strsplit(content_type, ";", fixed = TRUE)[[1]][1]
           }
 
           audio_src <- NULL
-          # ... (JSON check logic remains same) ...
+          # Check for JSON wrapper (rare but possible)
           if (grepl("json", content_type, ignore.case = TRUE)) {
             parsed <- tryCatch(httr::content(resp, as = "parsed", encoding = "UTF-8"),
                                error = function(e) NULL)
@@ -172,38 +187,43 @@ ttsProcessingServer <- function(id) {
             }
           }
 
+          # Standard Binary Response
           if (is.null(audio_src)) {
-            # Türkçe: Binary (RAW) içeriği al ve base64'e çevir (Çalışan script mantığı)
             audio_raw <- httr::content(resp, as = "raw")
+            worker_log(sprintf("BINARY CONTENT: %d bytes received", length(audio_raw)))
             
             if (length(audio_raw) > 0) {
-                # Ensure base64enc is available (it is in global)
                 audio_b64 <- base64enc::base64encode(audio_raw)
                 audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
             }
           }
 
           if (!nzchar(audio_src)) {
-            cat("[TTS WORKER] ❌ Empty audio content received.\n")
+            worker_log("FAIL: Empty audio content.")
             return(list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                         duration = 0, error = "Ses yanıtı boş döndü."))
           }
           
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-          cat(sprintf("[TTS WORKER] ✅ Success! Audio generated in %.2fs\n", duration))
+          worker_log("SUCCESS: Audio encoded and ready.")
 
           list(success = TRUE, audio_src = audio_src, voice = voice_to_use,
                duration = duration, error = NULL)
         } else {
           err_msg <- tryCatch(httr::content(resp, as = "text", encoding = "UTF-8"),
                               error = function(e) "TTS request failed.")
-          cat(sprintf("[TTS WORKER] ❌ API Error: %s\n", substr(err_msg, 1, 200)))
+          worker_log(sprintf("API FAIL: %s", substr(err_msg, 1, 100)))
           list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                duration = 0, error = paste("TTS hata:", err_msg))
         }
       }) %...!% {
         function(e) {
-          cat(sprintf("[TTS WORKER] ❌ Exception: %s\n", conditionMessage(e)))
+          # Log unhandled exceptions in the future
+          try({
+             cat(sprintf("[%s] [Worker-ERR] %s\n", format(Sys.time(), "%H:%M:%S"), conditionMessage(e)), 
+                 file = normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE), append = TRUE)
+          }, silent = TRUE)
+          
           list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                duration = 0, error = conditionMessage(e))
         }
@@ -238,8 +258,8 @@ build_tts_audio_ui <- function(message_id, audio_src, voice = NULL) {
     ),
 	tags$audio(
       controls = "controls",
-      autoplay = "autoplay", # Türkçe: Otomatik oynatmayı aktif et
-      preload = "auto",      # Türkçe: Ön yüklemeyi aç
+      autoplay = "autoplay",
+      preload = "auto",
       src = audio_src
     )
   )
