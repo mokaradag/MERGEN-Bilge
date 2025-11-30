@@ -1614,7 +1614,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	})
 
 	resolve_tts_voice <- function() {
-	  val <- isolate(settings_data$tts_voice) %||% tts_config$default_voice %||% "tr-female-1"
+	  val <- isolate(settings_data$tts_voice) %||% tts_config$default_voice %||% "nova"
 	  as.character(val)[1]
 	}
 

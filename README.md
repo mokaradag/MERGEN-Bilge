@@ -70,7 +70,7 @@ Türkçe dilinde tasarlanmış MERGEN-Bilge, etkileşimli bir sohbet deneyimi, s
   - `LOCAL_TTS_ENDPOINT=https://<host>/v1` (zorunlu)
   - `LOCAL_TTS_MODEL=tts-1-hd` (isteğe bağlı, model adını burada belirleyin)
   - `LOCAL_TTS_API_KEY=<anahtar>` (istenirse; uygulama varsayılan olarak doğrulanmış birincil LLM anahtarınızı güvenli/şifreli kayıttan veya oturumdan paylaşır)
-  - `LOCAL_TTS_VOICE=tr-female-1` (isteğe bağlı; Ayarlar sekmesinden de seçebilirsiniz)
+  - `LOCAL_TTS_VOICE=nova` (isteğe bağlı; örneğin kadın için `nova`, erkek için `echo`; Ayarlar sekmesinden de seçebilirsiniz)
   Bu değişkenler uygulama başlamadan önce okunur. `LOCAL_TTS_API_KEY` tanımlanmazsa, anahtar yönetim modülünde şifrelenerek sakladığınız birincil API anahtarı otomatik olarak TTS isteğinde kullanılır. Ayarlar sekmesinde seslendirmeyi açıp kapatabilir ve ses tipini seçebilirsiniz.
 
 ## Geliştirme Notları

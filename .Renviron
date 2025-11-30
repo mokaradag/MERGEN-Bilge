@@ -25,6 +25,7 @@ MERGEN_RDATA_WEEKLY_PATH=//server/share/Rdata
 # Local text-to-speech settings
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint/v1
 LOCAL_TTS_MODEL=tts-1-hd
+LOCAL_TTS_VOICE=nova
 
 # Optional: override the TTS API key. If left blank, the encrypted primary API key
 # you already store for the main models will be reused automatically.

@@ -221,13 +221,17 @@ settingsUI <- function(id) {
                           inputId = ns("tts_voice"),
                           label = "Ses tipi:",
                           choices = c(
-                            "Kadın Sesi (tr-female-1)" = "tr-female-1",
-                            "Erkek Sesi (tr-male-1)" = "tr-male-1"
+                            "Kadın Sesi (nova - önerilen)" = "nova",
+                            "Kadın Sesi (alloy)" = "alloy",
+                            "Kadın Sesi (shimmer)" = "shimmer",
+                            "Erkek Sesi (echo)" = "echo",
+                            "Erkek Sesi (onyx)" = "onyx",
+                            "Erkek Sesi (fable)" = "fable"
                           ),
-                          selected = tts_config$default_voice %||% "tr-female-1",
+                          selected = tts_config$default_voice %||% "nova",
                           width = "100%"
                         ),
-                        p("Seslendirme için kullanılacak Türkçe ses profili.", class = "setting-description")
+                        p("Seslendirme için kullanılacak varsayılan ses profili (Türkçe uyumlu seçenekler önerilir).", class = "setting-description")
                       )
                     )
                   )
@@ -277,7 +281,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_streaming        = TRUE,
 	  enable_widescreen       = TRUE,
 	  enable_tts_audio        = TRUE,
-	  tts_voice               = tts_config$default_voice %||% "tr-female-1",
+	  tts_voice               = tts_config$default_voice %||% "nova",
 	  enable_rdata_tools      = FALSE,
 	  enable_mcp_tools        = FALSE,
 	  enable_followups        = TRUE,
@@ -588,7 +592,7 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$enable_streaming        <- TRUE
 	  settings$enable_widescreen       <- TRUE
 	  settings$enable_tts_audio        <- TRUE
-	  settings$tts_voice               <- tts_config$default_voice %||% "tr-female-1"
+	  settings$tts_voice               <- tts_config$default_voice %||% "nova"
 	  settings$enable_rdata_tools      <- FALSE
 	  settings$enable_mcp_tools        <- FALSE
 	  settings$enable_followups        <- TRUE
