@@ -28,8 +28,8 @@ ttsProcessingServer <- function(id) {
       cleaned <- gsub("`([^`]*)`", "\\1", cleaned)              # inline code
       cleaned <- gsub("\u3010[^\u3011]+\u3011", " ", cleaned)   # wipe bracketed refs
       cleaned <- gsub("\n+", " ", cleaned)
-      cleaned <- gsub("\s+", " ", cleaned)
-      cleaned <- gsub("\[(.*?)\]\((.*?)\)", "\\1", cleaned)  # links
+      cleaned <- gsub("[[:space:]]+", " ", cleaned)
+      cleaned <- gsub("[[]([^]]*)[]]\\(([^)]*)\\)", "\\1", cleaned, perl = TRUE)  # links
       cleaned <- gsub("[#>*_-]+", " ", cleaned)
       trimws(cleaned)
     }
