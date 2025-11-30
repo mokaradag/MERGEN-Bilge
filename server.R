@@ -1621,6 +1621,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	attach_tts_audio <- function(message_id, audio_src, voice_used = NULL) {
 	  if (is.null(message_id) || !nzchar(audio_src)) return(invisible(NULL))
 
+	  # ... (mesaj güncelleme kısmı aynı kalıyor) ...
 	  idx <- which(vapply(values$messages, function(m) m$id == message_id, logical(1)))
 	  if (length(idx) == 1) {
 		values$messages[[idx]]$audio_src <- audio_src
@@ -1639,7 +1640,23 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  ui = audio_ui,
 		  immediate = TRUE
 		)
-		shinyjs::runjs("setTimeout(() => { window.smartScrollToBottom && window.smartScrollToBottom(); }, 80);")
+		
+		# Türkçe: Sesi JS ile zorla oynat (Autoplay bazen browser tarafından engellenir, bu daha garantidir)
+		shinyjs::runjs(sprintf("
+		  setTimeout(() => {
+			var audio = document.querySelector('#tts_audio_%s audio');
+			if (audio) {
+			  audio.volume = 1.0;
+			  var playPromise = audio.play();
+			  if (playPromise !== undefined) {
+				playPromise.catch(error => {
+				  console.log('Otomatik oynatma tarayıcı tarafından engellendi:', error);
+				});
+			  }
+			}
+			window.smartScrollToBottom && window.smartScrollToBottom();
+		  }, 100);
+		", message_id))
 	  }
 	}
 

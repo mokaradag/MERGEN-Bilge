@@ -62,88 +62,69 @@ ttsProcessingServer <- function(id) {
       default_key
     }
 
-    #' Asynchronously synthesize speech
+	#' Asynchronously synthesize speech
     #' @return promise resolving to list(success, audio_src, voice, duration, error)
     synthesize_speech <- function(text, voice = NULL) {
       if (!tts_available()) {
         return(promises::promise_resolve(list(
-          success = FALSE,
-          audio_src = NULL,
-          voice = voice %||% NULL,
-          duration = 0,
-          error = "TTS endpoint is not configured."
+          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "TTS endpoint is not configured."
         )))
       }
 
       speech_text <- prepare_tts_text(text)
       if (!nzchar(speech_text)) {
         return(promises::promise_resolve(list(
-          success = FALSE,
-          audio_src = NULL,
-          voice = voice %||% NULL,
-          duration = 0,
-          error = "TTS text is empty."
+          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "TTS text is empty."
         )))
       }
 
       speech_url <- build_speech_url()
-      if (!nzchar(speech_url)) {
-        return(promises::promise_resolve(list(
-          success = FALSE,
-          audio_src = NULL,
-          voice = voice %||% NULL,
-          duration = 0,
-          error = "Invalid TTS endpoint URL."
-        )))
-      }
-
+      
+      # Türkçe: Parametreleri 'future' içine girmeden önce burada yakalıyoruz (Scope fix)
       voice_to_use <- voice %||% tts_config$default_voice %||% "nova"
-      api_key <- resolve_tts_api_key()
-      timeout_val <- as.numeric(tts_config$timeout_seconds %||% 30)
-      if (is.na(timeout_val) || timeout_val <= 0) {
-        timeout_val <- 30
-      }
-	  
-	  verify_ssl <- isTRUE(tts_config$verify_ssl %||% TRUE)
-      ssl_cfg <- if (isTRUE(verify_ssl)) NULL else httr::config(ssl_verifypeer = 0L, ssl_verifyhost = 0L)
-
+      api_key      <- resolve_tts_api_key()
+      model_to_use <- tts_config$model %||% "tts-1-hd"
+      timeout_val  <- as.numeric(tts_config$timeout_seconds %||% 30)
+      if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 30
+      
+      # Türkçe: SSL ayarını kesinleştiriyoruz. Config yoksa varsayılan FALSE olsun (On-premise rahatlığı için)
+      verify_ssl_val <- tts_config$verify_ssl
+      should_verify  <- if (is.null(verify_ssl_val)) FALSE else isTRUE(verify_ssl_val)
+      
       future_promise({
         start_time <- Sys.time()
         library(httr)
 
+        # Türkçe: Header'ları oluştur
         headers <- list(
           `Content-Type` = "application/json",
-          Accept = "audio/mpeg, audio/mp3, audio/wav, application/json"
+          `Authorization` = paste("Bearer", api_key) # API key burada ekleniyor
         )
-        if (nzchar(api_key)) {
-          headers$Authorization <- paste("Bearer", api_key)
-        }
 
-        body <- list(
-          model = tts_config$model %||% "tts-1-hd",
+        # Türkçe: Body oluştur
+        body_data <- list(
+          model = model_to_use,
           voice = voice_to_use,
           input = speech_text,
-          response_format = "mp3"
+          response_format = "mp3" # MP3 formatında iste
         )
-
-        resp <- if (is.null(ssl_cfg)) {
-          httr::POST(
-            url = speech_url,
-            httr::add_headers(.headers = headers),
-            body = body,
-            encode = "json",
-            timeout(timeout_val)
-          )
+        
+        # Türkçe: SSL konfigürasyonunu hazırla
+        req_config <- if (isTRUE(should_verify)) {
+           list() 
         } else {
-          httr::POST(
+           httr::config(ssl_verifypeer = 0L, ssl_verifyhost = 0L)
+        }
+        
+        # Türkçe: İsteği gönder (Senin çalışan kodunla aynı yapıda)
+        resp <- httr::POST(
             url = speech_url,
             httr::add_headers(.headers = headers),
-            body = body,
+            body = body_data,
             encode = "json",
             timeout(timeout_val),
-            ssl_cfg
-          )
-        }
+            req_config 
+        )
 
         status <- httr::status_code(resp)
         if (status >= 200 && status < 300) {
@@ -228,9 +209,10 @@ build_tts_audio_ui <- function(message_id, audio_src, voice = NULL) {
       tags$i(class = "fas fa-volume-up"),
       span(label)
     ),
-    tags$audio(
+	tags$audio(
       controls = "controls",
-      preload = "none",
+      autoplay = "autoplay", # Türkçe: Otomatik oynatmayı aktif et
+      preload = "auto",      # Türkçe: Ön yüklemeyi aç
       src = audio_src
     )
   )
