@@ -1660,47 +1660,52 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  }
 	}
 
-	trigger_tts_for_message <- function(msg_id, content_text) {
-	  reason <- tts_unavailable_reason()
-	  if (!is.null(reason) || isTRUE(stop_generation())) {
-		if (!is.null(reason) && !isTRUE(tts_warning_shown())) {
-		  # showToast(session, reason, "warning") # Opsiyonel: Uyarıyı her zaman gösterme
-		  tts_warning_shown(TRUE)
-		}
-		return(invisible(NULL))
-	  }
-
-	  safe_text <- tts_processor$prepare_tts_text(content_text)
-	  if (!nzchar(safe_text)) {
-		dbg_dump("TTS_SKIP_EMPTY", list(message_id = msg_id))
-		return(invisible(NULL))
-	  }
-
-	  voice_choice <- resolve_tts_voice()
-      
-      # Türkçe: Konsol logu ekle (Debug için)
-      cat(sprintf("[TTS MANAGER] 🔊 TTS Triggered for MsgID: %s (Length: %d)\n", msg_id, nchar(safe_text)))
-      
-	  dbg_dump("TTS_REQUEST", list(message_id = msg_id, voice = voice_choice, text_len = nchar(safe_text)))
-	  
-	  tts_processor$synthesize_speech(safe_text, voice = voice_choice) %...>% function(res) {
-		if (isTRUE(res$success) && nzchar(res$audio_src %||% "")) {
-		  cat(sprintf("[TTS MANAGER] ✅ TTS Success for MsgID: %s\n", msg_id))
-		  dbg_dump("TTS_SUCCESS", list(message_id = msg_id, voice = res$voice, duration = res$duration))
-		  attach_tts_audio(msg_id, res$audio_src, res$voice)
-		} else if (nzchar(res$error %||% "")) {
-		  cat(sprintf("[TTS MANAGER] ❌ TTS Failed for MsgID: %s - Error: %s\n", msg_id, res$error))
-		  dbg_dump("TTS_ERROR", list(message_id = msg_id, error = res$error))
-		  showToast(session, paste("Ses oluşturulamadı:", res$error), "warning")
-		}
-	  } %...!% {
-		function(e) {
-		  cat(sprintf("[TTS MANAGER] ❌ TTS Exception for MsgID: %s - %s\n", msg_id, conditionMessage(e)))
-		  dbg_dump("TTS_EXCEPTION", list(message_id = msg_id, error = conditionMessage(e)))
-		  showToast(session, paste("Ses oluşturulamadı:", conditionMessage(e)), "warning")
-		}
-	  }
-	}
+  # TTS Tetikleyici Fonksiyon
+  trigger_tts_for_message <- function(msg_id, content) {
+    # 1. Ayar kontrolü: Kullanıcı sesi açmış mı?
+    if (!isTRUE(settings_data$enable_tts_audio)) {
+      return(invisible(NULL))
+    }
+    
+    # 2. İçerik kontrolü
+    if (is.null(content) || !nzchar(as.character(content)[1])) {
+      return(invisible(NULL))
+    }
+    
+    cat(sprintf("[TTS MANAGER] 🔊 TTS Triggered for MsgID: %s (Length: %d)\n", 
+                msg_id, nchar(content)))
+    
+    # 3. Ses sentezleme (Asenkron)
+    # Hangi sesin kullanılacağını ayarlardan alıyoruz
+    voice_sel <- settings_data$tts_voice %||% "nova"
+    
+    tts_processor$synthesize_speech(content, voice = voice_sel) %...>% (function(res) {
+      # 4. Başarı kontrolü
+      if (isTRUE(res$success) && nzchar(res$audio_src)) {
+        cat(sprintf("[TTS MANAGER] ✅ Audio generated for %s (Duration: %.2fs)\n", msg_id, res$duration))
+        
+        # 5. İSTEMCİYE GÖNDERME (Client-side play)
+        session$sendCustomMessage("playAudioMessage", list(
+          id = msg_id,
+          src = res$audio_src,      # data:audio/mp3;base64,... formatında gelir
+          timestamp = as.numeric(Sys.time())
+        ))
+        
+      } else {
+        # Hata durumu
+        err_msg <- res$error %||% "Bilinmeyen hata"
+        cat(sprintf("[TTS MANAGER] ❌ TTS Failed for %s: %s\n", msg_id, err_msg))
+        showToast(session, paste("Ses üretilemedi:", err_msg), "warning")
+      }
+    }) %...!% (function(e) {
+      # 6. Beklenmedik hatalar (Promise exception)
+      cat(sprintf("[TTS MANAGER] 💥 TTS Exception for %s: %s\n", msg_id, conditionMessage(e)))
+      # Kullanıcıyı her küçük hatada rahatsız etmemek için sadece log basabilirsiniz
+      # showToast(session, "Ses sistemi hatası.", "error")
+    })
+    
+    invisible(NULL)
+  }
 
 	start_new_chat <- function() {
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)

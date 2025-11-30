@@ -492,10 +492,35 @@
         });
       }
     
-      // -------------------------------------------------
+	  // -------------------------------------------------
       // Message handlers
       // -------------------------------------------------
-    
+
+      // [YENİ] Ses Oynatma İşleyicisi (TTS)
+      Shiny.addCustomMessageHandler('playAudioMessage', function(message) {
+        if (!message || !message.src) return;
+        
+        try {
+          const audio = new Audio(message.src);
+          audio.volume = 1.0; // Ses seviyesi (0.0 - 1.0)
+          
+          const playPromise = audio.play();
+          
+          if (playPromise !== undefined) {
+            playPromise.then(_ => {
+              console.log("[MERGEN TTS] Ses çalınıyor:", message.id);
+            })
+            .catch(error => {
+              console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
+              // Kullanıcı etkileşimi olmadığı durumlarda tarayıcılar sesi engelleyebilir
+              if (window.showToast) window.showToast('Ses otomatik çalınamadı (Tarayıcı engeli).', 'warning');
+            });
+          }
+        } catch (e) {
+          console.error("[MERGEN TTS] Ses başlatma hatası:", e);
+        }
+      });
+
       // Like/dislike button color handlers
       Shiny.addCustomMessageHandler('updateFeedback', function(data) {
         const messageId = data.messageId;
