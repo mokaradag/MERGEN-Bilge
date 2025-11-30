@@ -103,6 +103,9 @@ ttsProcessingServer <- function(id) {
       if (is.na(timeout_val) || timeout_val <= 0) {
         timeout_val <- 30
       }
+	  
+	  verify_ssl <- isTRUE(tts_config$verify_ssl %||% TRUE)
+      ssl_cfg <- if (isTRUE(verify_ssl)) NULL else httr::config(ssl_verifypeer = 0L, ssl_verifyhost = 0L)
 
       future_promise({
         start_time <- Sys.time()
@@ -123,13 +126,24 @@ ttsProcessingServer <- function(id) {
           response_format = "mp3"
         )
 
-        resp <- httr::POST(
-          url = speech_url,
-          httr::add_headers(.headers = headers),
-          body = body,
-          encode = "json",
-          timeout(timeout_val)
-        )
+        resp <- if (is.null(ssl_cfg)) {
+          httr::POST(
+            url = speech_url,
+            httr::add_headers(.headers = headers),
+            body = body,
+            encode = "json",
+            timeout(timeout_val)
+          )
+        } else {
+          httr::POST(
+            url = speech_url,
+            httr::add_headers(.headers = headers),
+            body = body,
+            encode = "json",
+            timeout(timeout_val),
+            ssl_cfg
+          )
+        }
 
         status <- httr::status_code(resp)
         if (status >= 200 && status < 300) {
@@ -164,6 +178,11 @@ ttsProcessingServer <- function(id) {
             audio_raw <- httr::content(resp, as = "raw")
             audio_b64 <- base64enc::base64encode(audio_raw)
             audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
+          }
+
+          if (!nzchar(audio_src)) {
+            return(list(success = FALSE, audio_src = NULL, voice = voice_to_use,
+                        duration = 0, error = "Ses yanıtı boş döndü."))
           }
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
 

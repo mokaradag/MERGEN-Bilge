@@ -1064,7 +1064,8 @@ tts_config <- list(
   api_key = Sys.getenv("LOCAL_TTS_API_KEY", ""),
   model = Sys.getenv("LOCAL_TTS_MODEL", "tts-1-hd"),
   default_voice = Sys.getenv("LOCAL_TTS_VOICE", "nova"),
-  timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "30"))
+  timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "30")),
+  verify_ssl = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
 )
 
 # Başlangıçta indeksleri hazırla (ilk tıklama gecikmesini azaltır)
