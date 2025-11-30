@@ -1587,13 +1587,31 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			audio_voice = audio_voice
 	  )
 	}
+	
+	tts_warning_shown <- reactiveVal(FALSE)
+
+	tts_unavailable_reason <- function() {
+	  if (!isTRUE(isolate(settings_data$enable_tts_audio))) {
+		return("AI yanıtlarını seslendirme ayarı kapalı.")
+	  }
+	  if (!is.list(tts_processor) || !is.function(tts_processor$tts_available)) {
+		return("Seslendirme modülü yüklenemedi.")
+	  }
+	  avail <- FALSE
+	  try(avail <- isTRUE(tts_processor$tts_available()), silent = TRUE)
+	  if (!isTRUE(avail)) {
+		return("Seslendirme uç noktası yapılandırılmadı.")
+	  }
+	  NULL
+	}
 
 	tts_enabled <- function() {
-	  isTRUE(isolate(settings_data$enable_tts_audio)) &&
-		is.list(tts_processor) &&
-		is.function(tts_processor$tts_available) &&
-		isTRUE(tts_processor$tts_available())
+	  is.null(tts_unavailable_reason())
 	}
+	
+	observeEvent(settings_data$enable_tts_audio, {
+	  tts_warning_shown(FALSE)
+	})
 
 	resolve_tts_voice <- function() {
 	  val <- isolate(settings_data$tts_voice) %||% tts_config$default_voice %||% "tr-female-1"
@@ -1626,14 +1644,30 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	}
 
 	trigger_tts_for_message <- function(msg_id, content_text) {
-	  if (!tts_enabled() || isTRUE(stop_generation())) return(invisible(NULL))
+	  reason <- tts_unavailable_reason()
+	  if (!is.null(reason) || isTRUE(stop_generation())) {
+		if (!is.null(reason) && !isTRUE(tts_warning_shown())) {
+		  showToast(session, reason, "warning")
+		  tts_warning_shown(TRUE)
+		}
+		return(invisible(NULL))
+	  }
 
 	  safe_text <- tts_processor$prepare_tts_text(content_text)
-	  if (!nzchar(safe_text)) return(invisible(NULL))
+	  if (!nzchar(safe_text)) {
+		dbg_dump("TTS_SKIP_EMPTY", list(message_id = msg_id))
+		if (!isTRUE(tts_warning_shown())) {
+		  showToast(session, "Seslendirilecek metin bulunamadı.", "warning")
+		  tts_warning_shown(TRUE)
+		}
+		return(invisible(NULL))
+	  }
 
 	  voice_choice <- resolve_tts_voice()
+	  dbg_dump("TTS_REQUEST", list(message_id = msg_id, voice = voice_choice, text_len = nchar(safe_text)))
 	  tts_processor$synthesize_speech(safe_text, voice = voice_choice) %...>% function(res) {
 		if (isTRUE(res$success) && nzchar(res$audio_src %||% "")) {
+		  dbg_dump("TTS_SUCCESS", list(message_id = msg_id, voice = res$voice, duration = res$duration))
 		  attach_tts_audio(msg_id, res$audio_src, res$voice)
 		} else if (nzchar(res$error %||% "")) {
 		  dbg_dump("TTS_ERROR", list(message_id = msg_id, error = res$error))

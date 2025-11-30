@@ -110,7 +110,7 @@ ttsProcessingServer <- function(id) {
 
         headers <- list(
           `Content-Type` = "application/json",
-          Accept = "audio/mpeg"
+          Accept = "audio/mpeg, audio/mp3, audio/wav, application/json"
         )
         if (nzchar(api_key)) {
           headers$Authorization <- paste("Bearer", api_key)
@@ -134,6 +134,11 @@ ttsProcessingServer <- function(id) {
         status <- httr::status_code(resp)
         if (status >= 200 && status < 300) {
           content_type <- httr::headers(resp)[["content-type"]] %||% ""
+          mime_type <- "audio/mpeg"
+          if (nzchar(content_type)) {
+            # normalize mime without charset/params
+            mime_type <- strsplit(content_type, ";", fixed = TRUE)[[1]][1]
+          }
 
           audio_src <- NULL
           if (grepl("json", content_type, ignore.case = TRUE)) {
@@ -150,7 +155,7 @@ ttsProcessingServer <- function(id) {
               if (startsWith(b64_str, "data:")) {
                 audio_src <- b64_str
               } else {
-                audio_src <- paste0("data:audio/mpeg;base64,", b64_str)
+                audio_src <- paste0("data:", mime_type, ";base64,", b64_str)
               }
             }
           }
@@ -158,7 +163,7 @@ ttsProcessingServer <- function(id) {
           if (is.null(audio_src)) {
             audio_raw <- httr::content(resp, as = "raw")
             audio_b64 <- base64enc::base64encode(audio_raw)
-            audio_src <- paste0("data:audio/mpeg;base64,", audio_b64)
+            audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
           }
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
 
