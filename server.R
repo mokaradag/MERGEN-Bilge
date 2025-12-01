@@ -1665,55 +1665,69 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  }
 	}
 
-  # TTS Tetikleyici Fonksiyon
-  trigger_tts_for_message <- function(msg_id, content) {
-    # 1. Ayar kontrolü: Kullanıcı sesi açmış mı?
-    if (!isTRUE(settings_data$enable_tts_audio)) {
-      return(invisible(NULL))
-    }
-    
-    # 2. İçerik kontrolü
-    if (is.null(content) || !nzchar(as.character(content)[1])) {
-      return(invisible(NULL))
-    }
-    
-    cat(sprintf("[TTS MANAGER] 🔊 TTS Triggered for MsgID: %s (Length: %d)\n", 
-                msg_id, nchar(content)))
-    
-    # 3. Ses sentezleme (Asenkron)
-    # Hangi sesin kullanılacağını ayarlardan alıyoruz
-    voice_sel <- settings_data$tts_voice %||% "nova"
-    
-	tts_processor$synthesize_speech(content, voice = voice_sel) %...>% (function(res) {
-      # Kullanıcı durdur butonuna bastıysa sesi oynatma
-      if (isTRUE(stop_generation())) return(invisible(NULL))
-
-      # 4. Başarı kontrolü
-      if (isTRUE(res$success) && nzchar(res$audio_src)) {
-        cat(sprintf("[TTS MANAGER] ✅ Audio generated for %s (Duration: %.2fs)\n", msg_id, res$duration))
-        
-        # 5. İSTEMCİYE GÖNDERME (Client-side play)
-        session$sendCustomMessage("playAudioMessage", list(
-          id = msg_id,
-          src = res$audio_src,      # data:audio/mp3;base64,... formatında gelir
-          timestamp = as.numeric(Sys.time())
-        ))
-        
-      } else {
-        # Hata durumu
-        err_msg <- res$error %||% "Bilinmeyen hata"
-        cat(sprintf("[TTS MANAGER] ❌ TTS Failed for %s: %s\n", msg_id, err_msg))
-        showToast(session, paste("Ses üretilemedi:", err_msg), "warning")
-      }
-    }) %...!% (function(e) {
-      # 6. Beklenmedik hatalar (Promise exception)
-      cat(sprintf("[TTS MANAGER] 💥 TTS Exception for %s: %s\n", msg_id, conditionMessage(e)))
-      # Kullanıcıyı her küçük hatada rahatsız etmemek için sadece log basabilirsiniz
-      # showToast(session, "Ses sistemi hatası.", "error")
-    })
-    
-    invisible(NULL)
-  }
+	# TTS Tetikleyici Fonksiyon (Modified for Split/Low-Latency)
+	  trigger_tts_for_message <- function(msg_id, content) {
+		# 1. Ayar kontrolü
+		if (!isTRUE(settings_data$enable_tts_audio)) return(invisible(NULL))
+		
+		full_text <- as.character(content)[1]
+		if (!nzchar(full_text)) return(invisible(NULL))
+		
+		voice_sel <- settings_data$tts_voice %||% "nova"
+		
+		# Internal helper to send audio chunks to the client queue
+		send_chunk <- function(res, idx) {
+		  if (isTRUE(stop_generation())) return()
+		  
+		  if (isTRUE(res$success) && nzchar(res$audio_src)) {
+			cat(sprintf("[TTS] Sending chunk %d (Duration: %.2fs)\n", idx, res$duration))
+			session$sendCustomMessage("playAudioMessage", list(
+			  id = msg_id,
+			  src = res$audio_src,
+			  chunkIndex = idx,
+			  timestamp = as.numeric(Sys.time())
+			))
+		  }
+		}
+		
+		# 2. Split Logic: If text is long (>200 chars), split first sentence
+		if (nchar(full_text) > 200) {
+		  # Find first sentence ending (. ? !) followed by space or end of string
+		  split_match <- regexpr("[.?!](\\s|$)", full_text)
+		  
+		  if (split_match > 0) {
+			# Include the punctuation in the first chunk
+			end_pos <- split_match + attr(split_match, "match.length") - 1
+			
+			first_chunk <- substr(full_text, 1, end_pos)
+			remainder   <- trimws(substr(full_text, end_pos + 1, nchar(full_text)))
+			
+			if (nzchar(remainder)) {
+			  cat("[TTS] Splitting text for speed. Chunk 1:", nchar(first_chunk), "chars.\n")
+			  
+			  # Fire both requests in parallel (futures)
+			  # Chunk 0 (First sentence) will likely finish much faster
+			  p1 <- tts_processor$synthesize_speech(first_chunk, voice = voice_sel)
+			  p2 <- tts_processor$synthesize_speech(remainder, voice = voice_sel)
+			  
+			  # Send Chunk 0
+			  p1 %...>% (function(res) send_chunk(res, 0)) %...!% (function(e) cat("[TTS] C1 Err:", conditionMessage(e), "\n"))
+			  
+			  # Send Chunk 1 (Remainder)
+			  p2 %...>% (function(res) send_chunk(res, 1)) %...!% (function(e) cat("[TTS] C2 Err:", conditionMessage(e), "\n"))
+			  
+			  return(invisible(NULL))
+			}
+		  }
+		}
+		
+		# Fallback: Short text, just process as single chunk
+		tts_processor$synthesize_speech(full_text, voice = voice_sel) %...>% 
+		  (function(res) send_chunk(res, 0)) %...!% 
+		  (function(e) cat("[TTS] Error:", conditionMessage(e), "\n"))
+		
+		invisible(NULL)
+	  }
 
 	start_new_chat <- function() {
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)

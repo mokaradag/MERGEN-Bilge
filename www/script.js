@@ -496,30 +496,65 @@
       // Message handlers
       // -------------------------------------------------
 
-      // [YENİ] Ses Oynatma İşleyicisi (TTS)
+	  // [MODIFIED] TTS Queue System for Sequential Playback
+      window.mergenTTS = {
+        queue: [],
+        isPlaying: false
+      };
+
       Shiny.addCustomMessageHandler('playAudioMessage', function(message) {
         if (!message || !message.src) return;
         
+        // Add to queue with index
+        window.mergenTTS.queue.push({
+          id: message.id,
+          src: message.src,
+          index: message.chunkIndex || 0
+        });
+        
+        // Sort queue by index to ensure correct sentence order (0, 1, 2...)
+        window.mergenTTS.queue.sort((a, b) => a.index - b.index);
+        
+        processTTSQueue();
+      });
+
+      function processTTSQueue() {
+        if (window.mergenTTS.isPlaying || window.mergenTTS.queue.length === 0) return;
+        
+        const item = window.mergenTTS.queue.shift();
+        window.mergenTTS.isPlaying = true;
+        
         try {
-          const audio = new Audio(message.src);
-          audio.volume = 1.0; // Ses seviyesi (0.0 - 1.0)
+          const audio = new Audio(item.src);
+          audio.volume = 1.0;
+          
+          audio.onended = function() {
+            window.mergenTTS.isPlaying = false;
+            processTTSQueue();
+          };
+          
+          audio.onerror = function(e) {
+            console.warn("[MERGEN TTS] Audio error:", e);
+            window.mergenTTS.isPlaying = false;
+            processTTSQueue();
+          };
           
           const playPromise = audio.play();
-          
           if (playPromise !== undefined) {
-            playPromise.then(_ => {
-              console.log("[MERGEN TTS] Ses çalınıyor:", message.id);
-            })
-            .catch(error => {
-              console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
-              // Kullanıcı etkileşimi olmadığı durumlarda tarayıcılar sesi engelleyebilir
-              if (window.showToast) window.showToast('Ses otomatik çalınamadı (Tarayıcı engeli).', 'warning');
+            playPromise.then(() => {
+              console.log("[MERGEN TTS] Playing chunk", item.index);
+            }).catch(error => {
+              console.warn("[MERGEN TTS] Autoplay blocked:", error);
+              window.mergenTTS.isPlaying = false;
+              processTTSQueue();
             });
           }
         } catch (e) {
-          console.error("[MERGEN TTS] Ses başlatma hatası:", e);
+          console.error("[MERGEN TTS] Exception:", e);
+          window.mergenTTS.isPlaying = false;
+          processTTSQueue();
         }
-      });
+      }
 
       // Like/dislike button color handlers
       Shiny.addCustomMessageHandler('updateFeedback', function(data) {
