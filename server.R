@@ -1340,10 +1340,14 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			simulate_streaming_stoppable(
 			  res$content,
 			  followups = followup_questions,
-			  on_complete = function(msg) {
-				if (!is.null(msg$id) && !isTRUE(stop_generation())) {
-				  trigger_tts_for_message(msg$id, msg$content)
+			  on_start = function(msg_id) {
+				# Metin akışı başlar başlamaz sesi tetikle
+				if (!isTRUE(stop_generation())) {
+				  trigger_tts_for_message(msg_id, res$content)
 				}
+			  },
+			  on_complete = function(msg) {
+				# Buradaki ses tetikleyicisi kaldırıldı, yukarı taşındı
 			  }
 			)
 			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
@@ -1564,7 +1568,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  chat_generate_title_from_prompt(prompt, max_len)
 	}
 
-	simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL) {
+	simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL, on_start = NULL) {
 	  chat_simulate_streaming(
 			full_response,
 			session,
@@ -1573,7 +1577,8 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			output,
 			stop_generation,
 			followups = followups,
-			on_complete = on_complete
+			on_complete = on_complete,
+			on_start = on_start
 	  )
 	}
 
@@ -1679,7 +1684,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     # Hangi sesin kullanılacağını ayarlardan alıyoruz
     voice_sel <- settings_data$tts_voice %||% "nova"
     
-    tts_processor$synthesize_speech(content, voice = voice_sel) %...>% (function(res) {
+	tts_processor$synthesize_speech(content, voice = voice_sel) %...>% (function(res) {
+      # Kullanıcı durdur butonuna bastıysa sesi oynatma
+      if (isTRUE(stop_generation())) return(invisible(NULL))
+
       # 4. Başarı kontrolü
       if (isTRUE(res$success) && nzchar(res$audio_src)) {
         cat(sprintf("[TTS MANAGER] ✅ Audio generated for %s (Duration: %.2fs)\n", msg_id, res$duration))

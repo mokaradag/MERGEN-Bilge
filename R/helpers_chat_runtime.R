@@ -207,7 +207,7 @@ chat_store_message_in_saved_chats <- function(values, message) {
 }
 
 chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
-                                   followups = NULL, on_complete = NULL) {
+                                   followups = NULL, on_complete = NULL, on_start = NULL) {
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
 
   timestamp <- format_timestamp()
@@ -254,6 +254,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   ))
 
   push_followup_update(session, msg_id, followups, pending = TRUE)
+  
+  # TTS başlatma kancası (Gecikmeyi önlemek için)
+  if (is.function(on_start)) {
+    try(on_start(msg_id), silent = TRUE)
+  }
   
   words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
   if (length(words) == 0) words <- c(full_response)
