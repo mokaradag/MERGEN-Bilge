@@ -367,7 +367,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
     shiny::invalidateLater(25)
   })
-})
+}
 
 chat_start_new_chat <- function(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data = NULL) {
   removeUI(selector = "#chat_content_container > *", multiple = TRUE)

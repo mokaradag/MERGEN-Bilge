@@ -496,69 +496,28 @@
       // Message handlers
       // -------------------------------------------------
 
-// [YENİ] Gelişmiş Ses Sırası Yöneticisi
-      window.mergenAudioPlayer = {
-        queue: [],
-        isPlaying: false,
-        currentAudio: null,
-        
-        play: function(src, reset) {
-          if (reset) {
-            this.stop();
-          }
-          this.queue.push(src);
-          this.processQueue();
-        },
-        
-        stop: function() {
-          this.queue = [];
-          if (this.currentAudio) {
-            this.currentAudio.pause();
-            this.currentAudio.src = "";
-            this.currentAudio = null;
-          }
-          this.isPlaying = false;
-        },
-        
-        processQueue: function() {
-          if (this.isPlaying || this.queue.length === 0) return;
-          
-          this.isPlaying = true;
-          const src = this.queue.shift();
-          
-          this.currentAudio = new Audio(src);
-          this.currentAudio.volume = 1.0;
-          
-          this.currentAudio.onended = () => {
-            this.isPlaying = false;
-            this.currentAudio = null;
-            this.processQueue();
-          };
-          
-          this.currentAudio.onerror = (e) => {
-            console.warn("[MERGEN TTS] Ses hatası:", e);
-            this.isPlaying = false;
-            this.currentAudio = null;
-            this.processQueue();
-          };
-          
-          const playPromise = this.currentAudio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(error => {
-              console.warn("[MERGEN TTS] Oynatma engellendi:", error);
-              this.isPlaying = false;
-              this.processQueue();
-            });
-          }
-        }
-      };
-
+      // [YENİ] Ses Oynatma İşleyicisi (TTS)
       Shiny.addCustomMessageHandler('playAudioMessage', function(message) {
         if (!message || !message.src) return;
         
-        // Türkçe: Eğer reset bayrağı varsa kuyruğu temizle (yeni mesaj başlangıcı)
-        if (window.mergenAudioPlayer) {
-          window.mergenAudioPlayer.play(message.src, message.reset === true);
+        try {
+          const audio = new Audio(message.src);
+          audio.volume = 1.0; // Ses seviyesi (0.0 - 1.0)
+          
+          const playPromise = audio.play();
+          
+          if (playPromise !== undefined) {
+            playPromise.then(_ => {
+              console.log("[MERGEN TTS] Ses çalınıyor:", message.id);
+            })
+            .catch(error => {
+              console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
+              // Kullanıcı etkileşimi olmadığı durumlarda tarayıcılar sesi engelleyebilir
+              if (window.showToast) window.showToast('Ses otomatik çalınamadı (Tarayıcı engeli).', 'warning');
+            });
+          }
+        } catch (e) {
+          console.error("[MERGEN TTS] Ses başlatma hatası:", e);
         }
       });
 
@@ -1098,13 +1057,8 @@
             debouncedInputHandler(this);
         });
     
-	  // Send button handler with FIX #3 for character counter
+      // Send button handler with FIX #3 for character counter
       $(document).on('click', '#send_stop_btn', function(event) {
-        // Türkçe: Durdur butonuna basıldığında ses çalmayı da kes
-        if (window.mergenAudioPlayer) {
-          window.mergenAudioPlayer.stop();
-        }
-
         if ($(this).hasClass('stop-mode')) {
           return;
         }
