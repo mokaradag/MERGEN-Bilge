@@ -1689,29 +1689,34 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  }
 		}
 		
-		# 2. Optimized Split Logic:
-		# Split ONLY if text is long enough to warrant overhead (>60 chars).
-		# Otherwise send as single chunk for max speed.
-		if (nchar(full_text) > 60) {
-		  # Look at the first 120 characters to find a good pause point
-		  search_window <- substr(full_text, 1, 120)
+# 2. Optimized Split Logic:
+		# Türkçe: İlk sesin çok hızlı gelmesi için eşiği düşürdük (15 karakter).
+		# Virgül (,) dahil edilerek ilk nefes payında bölme yapılır.
+		if (nchar(full_text) > 15) {
+		  # İlk 50 karaktere bak (pencere küçültüldü)
+		  search_window <- substr(full_text, 1, 50)
 		  
-		  # Prioritize punctuation marks (. ? ! :)
+		  # Noktalama işaretlerini ara (Virgül eklendi!)
 		  split_pos <- -1
-		  punct_match <- regexpr("[.?!:;](?=\\s|$)", search_window, perl = TRUE)
+		  punct_match <- regexpr("[.,?!:;](?=\\s|$)", search_window, perl = TRUE)
 		  
 		  if (punct_match > 0) {
+            # İlk bulunan noktalama işaretinden böl
 			split_pos <- punct_match + attr(punct_match, "match.length") - 1
 		  } else {
-			# Fallback: Split at the last SPACE in the window to avoid cutting words
-			# (If no punctuation found, we just grab the first ~few words)
+			# Noktalama yoksa, 10. karakterden sonraki ilk boşluğu bul (Fallback)
 			spaces <- gregexpr("\\s", search_window)[[1]]
-			if (length(spaces) > 0 && spaces[1] > 0) {
-			  split_pos <- tail(spaces, 1)
-			}
+            valid_spaces <- spaces[spaces > 10]
+			if (length(valid_spaces) > 0) {
+              # İlk uygun boşluktan böl (erken yanıt için)
+			  split_pos <- valid_spaces[1]
+			} else if (length(spaces) > 0 && spaces[1] > 0) {
+              # Hiç uygun yoksa penceredeki son boşluğu al
+              split_pos <- tail(spaces, 1)
+            }
 		  }
 
-		  if (split_pos > 5) { # Ensure we have a meaningful first chunk
+		  if (split_pos > 2) { # En az 2 harflik anlamlı bir parça olsun
 			first_chunk <- substr(full_text, 1, split_pos)
 			remainder   <- trimws(substr(full_text, split_pos + 1, nchar(full_text)))
 			
