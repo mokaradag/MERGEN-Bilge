@@ -1569,17 +1569,17 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	}
 
 	simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL, on_start = NULL) {
-	  chat_simulate_streaming(
-			full_response,
-			session,
-			values,
-			settings_data,
-			output,
-			stop_generation,
-			followups = followups,
-			on_complete = on_complete,
-			on_start = on_start
-	  )
+		chat_simulate_streaming(
+		  full_response = ai_response_text,
+		  session = session,
+		  values = values,
+		  settings_data = settings_data(), # or just settings_data depending on your code
+		  output = output,
+		  stop_generation = stop_generation,
+		  followups = followups,
+		  tts_engine = tts$synthesize_speech,
+		  tts_voice = settings_data()$voice_selection # or your specific voice setting
+		)
 	}
 
 	add_message <- function(content, type = "user", html = NULL, followups = NULL,

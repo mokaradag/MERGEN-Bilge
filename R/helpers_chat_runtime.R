@@ -207,166 +207,215 @@ chat_store_message_in_saved_chats <- function(values, message) {
 }
 
 chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
-                                   followups = NULL, on_complete = NULL, on_start = NULL) {
-  msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
-
-  timestamp <- format_timestamp()
-  initial_msg <- list(
-    id = msg_id,
-    db_id = NULL,
-    content = "",
-    html_content = '<div class="streaming-content" data-streaming="true"></div>',
-    has_code = FALSE,
-    type = "ai",
-    timestamp = timestamp,
-    is_streaming = TRUE
-  )
+                                   followups = NULL, on_complete = NULL, on_start = NULL,
+                                   tts_engine = NULL, tts_voice = NULL) {
   
-  if (!is.null(followups) && length(followups) > 0) {
-    initial_msg$followups <- followups
-  }
-  values$messages <- append(values$messages, list(initial_msg))
-
-  selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+  # -- 1. SETUP PREPARATION (Capture reactive values early) --
+  msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
+  timestamp <- format_timestamp()
+  
+  # Character and settings resolution
+  selected_char_id <- settings_data$selected_character %||% "mergen"
   chars_data <- get_characters_data()
   character_data <- if (!is.null(chars_data)) {
     Find(function(x) x$id == selected_char_id, chars_data$styles)
   } else NULL
 
-  ui_to_insert <- render_message_bubble_ui(
-    initial_msg, settings_data,
-    is_last_user_message = FALSE,
-    character_data = character_data,
-    liked_ids = isolate(values$liked_messages),
-    disliked_ids = isolate(values$disliked_messages)
-  )
+  # -- 2. CORE EXECUTION CLOSURE --
+  start_streaming_execution <- function(audio_result = NULL) {
+    # Check if stopped during wait
+    if (stop_generation()) {
+        removeUI(selector = "#typing-animation-wrapper")
+        chat_reset_state(session, values)
+        return()
+    }
 
-  insertUI(
-    selector = "#chat_content_container",
-    where = "beforeEnd",
-    ui = ui_to_insert,
-    immediate = TRUE
-  )
+    # SENKRONİZASYON NOKTASI: Düşünüyor animasyonunu tam burada kaldırıyoruz
+    removeUI(selector = "#typing-animation-wrapper")
 
-  session$sendCustomMessage("initStreamingMessage", list(
-    id = msg_id,
-    content = ""
-  ))
+    # Initialize Message Object
+    initial_msg <- list(
+      id = msg_id,
+      db_id = NULL,
+      content = "",
+      html_content = '<div class="streaming-content" data-streaming="true"></div>',
+      has_code = FALSE,
+      type = "ai",
+      timestamp = timestamp,
+      is_streaming = TRUE
+    )
+    
+    if (!is.null(followups) && length(followups) > 0) {
+      initial_msg$followups <- followups
+    }
+    values$messages <- append(values$messages, list(initial_msg))
 
-  push_followup_update(session, msg_id, followups, pending = TRUE)
-  
-  # TTS başlatma kancası (Gecikmeyi önlemek için)
-  if (is.function(on_start)) {
-    try(on_start(msg_id), silent = TRUE)
-  }
-  
-  words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
-  if (length(words) == 0) words <- c(full_response)
+    # Render UI
+    ui_to_insert <- render_message_bubble_ui(
+      initial_msg, settings_data,
+      is_last_user_message = FALSE,
+      character_data = character_data,
+      liked_ids = isolate(values$liked_messages),
+      disliked_ids = isolate(values$disliked_messages)
+    )
 
-  total_words <- length(words)
-  chunk_size <- max(1, ceiling(total_words / 100))
+    insertUI(
+      selector = "#chat_content_container",
+      where = "beforeEnd",
+      ui = ui_to_insert,
+      immediate = TRUE
+    )
 
-  streaming_state <- shiny::reactiveValues(
-    accumulated = "",
-    current_index = 1,
-    msg_id = msg_id
-  )
+    session$sendCustomMessage("initStreamingMessage", list(
+      id = msg_id,
+      content = ""
+    ))
 
-  stream_observer <- shiny::observe({
-    isolate({
-      if (stop_generation() || streaming_state$current_index > total_words) {
-        msg_index <- which(sapply(values$messages, function(m) m$id == streaming_state$msg_id))
-        if (length(msg_index) > 0) {
-          final_text <- if (nchar(streaming_state$accumulated) > 0) streaming_state$accumulated else full_response
+    push_followup_update(session, msg_id, followups, pending = TRUE)
+    
+    # -- 3. AUDIO TRIGGER (Concurrent with Text) --
+    if (!is.null(audio_result) && isTRUE(audio_result$success) && !is.null(audio_result$audio_src)) {
+        # Audio hazır, oynat ve UI'ya iliştir
+        session$sendCustomMessage("playAudioMessage", list(
+            id = msg_id,
+            src = audio_result$audio_src,
+            chunkIndex = 0
+        ))
+        
+        # Orijinal mesaj objesine de ekle (kayıt için)
+        idx <- length(values$messages) # Last appended
+        values$messages[[idx]]$audio_src <- audio_result$audio_src
+        values$messages[[idx]]$audio_voice <- audio_result$voice
+    } else {
+        # Fallback mechanism for legacy on_start
+        if (is.function(on_start) && is.null(tts_engine)) {
+            try(on_start(msg_id), silent = TRUE)
+        }
+    }
+    
+    # -- 4. TEXT STREAMING LOOP --
+    words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
+    if (length(words) == 0) words <- c(full_response)
 
-          chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)
-          if (isTRUE(chart_info$found)) {
-            final_html <- chart_info$html
-            final_hascode <- FALSE
-          } else {
-            final_processed <- process_message_content(final_text, "ai")
-            final_html <- final_processed$html
-            final_hascode <- final_processed$has_code
+    total_words <- length(words)
+    chunk_size <- max(1, ceiling(total_words / 100))
+
+    streaming_state <- shiny::reactiveValues(
+      accumulated = "",
+      current_index = 1,
+      msg_id = msg_id
+    )
+
+    stream_observer <- shiny::observe({
+      isolate({
+        if (stop_generation() || streaming_state$current_index > total_words) {
+          msg_index <- which(sapply(values$messages, function(m) m$id == streaming_state$msg_id))
+          if (length(msg_index) > 0) {
+            final_text <- if (nchar(streaming_state$accumulated) > 0) streaming_state$accumulated else full_response
+
+            chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)
+            if (isTRUE(chart_info$found)) {
+              final_html <- chart_info$html
+              final_hascode <- FALSE
+            } else {
+              final_processed <- process_message_content(final_text, "ai")
+              final_html <- final_processed$html
+              final_hascode <- final_processed$has_code
+            }
+
+            values$messages[[msg_index]]$content <- final_text
+            values$messages[[msg_index]]$html_content <- final_html
+            values$messages[[msg_index]]$has_code <- final_hascode
+            values$messages[[msg_index]]$is_streaming <- FALSE
+            if (!is.null(followups) && length(followups) > 0) {
+              values$messages[[msg_index]]$followups <- followups
+            }
+
+            session$sendCustomMessage("finalizeStreamingMessage", list(
+              id = streaming_state$msg_id,
+              html = final_html,
+              hasCode = final_hascode,
+              enableActions = TRUE
+            ))
+            
+            push_followup_update(session, streaming_state$msg_id, followups, pending = FALSE)
+            try(
+              shinyjs::runjs(
+                sprintf(
+                  "(function(){var box=document.getElementById('followup_container_%s'); if(box){box.classList.remove('pending');}})();",
+                  streaming_state$msg_id
+                )
+              ),
+              silent = TRUE
+            )
+
+            if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
+              for (r in chart_info$renderers) {
+                try(wire_chart_output(output, r$output_id, r$spec), silent = TRUE)
+              }
+            }
+
+            tryCatch({
+              if (!is.null(values$current_chat_id)) {
+                new_db_id <- save_message_to_db(values$current_chat_id, values$messages[[msg_index]])
+                values$messages[[msg_index]]$db_id <- new_db_id
+              }
+              chat_store_message_in_saved_chats(values, values$messages[[msg_index]])
+              if (is.function(on_complete)) {
+                try(on_complete(values$messages[[msg_index]]), silent = TRUE)
+              }
+            }, error = function(e) {
+              print(paste("Error saving message:", e$message))
+            })
           }
 
-          values$messages[[msg_index]]$content <- final_text
-          values$messages[[msg_index]]$html_content <- final_html
-          values$messages[[msg_index]]$has_code <- final_hascode
-          values$messages[[msg_index]]$is_streaming <- FALSE
-          if (!is.null(followups) && length(followups) > 0) {
-            values$messages[[msg_index]]$followups <- followups
-          }
-
-          session$sendCustomMessage("finalizeStreamingMessage", list(
-            id = streaming_state$msg_id,
-            html = final_html,
-            hasCode = final_hascode,
-            enableActions = TRUE
-          ))
-		  
-		  push_followup_update(session, streaming_state$msg_id, followups, pending = FALSE)
-          try(
-            shinyjs::runjs(
-              sprintf(
-                "(function(){var box=document.getElementById('followup_container_%s'); if(box){box.classList.remove('pending');}})();",
-                streaming_state$msg_id
-              )
-            ),
-            silent = TRUE
-          )
-
-          if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
-            for (r in chart_info$renderers) {
-              try(wire_chart_output(output, r$output_id, r$spec), silent = TRUE)
-            }
-          }
-
-          dbg_dump("CHAT_RENDER_FINAL_STREAMING", list(
-            message_id = streaming_state$msg_id,
-            final_text_preview = substr(final_text, 1, 800)
-          ))
-
-          tryCatch({
-            if (!is.null(values$current_chat_id)) {
-              new_db_id <- save_message_to_db(values$current_chat_id, values$messages[[msg_index]])
-              values$messages[[msg_index]]$db_id <- new_db_id
-            }
-            chat_store_message_in_saved_chats(values, values$messages[[msg_index]])
-            if (is.function(on_complete)) {
-              try(on_complete(values$messages[[msg_index]]), silent = TRUE)
-            }
-          }, error = function(e) {
-            print(paste("Error saving message:", e$message))
-          })
+          chat_reset_state(session, values)
+          stream_observer$destroy()
+          return()
         }
 
-        chat_reset_state(session, values)
-        stream_observer$destroy()
-        return()
-      }
+        chunk_end <- min(streaming_state$current_index + chunk_size - 1, total_words)
+        chunk_words <- words[streaming_state$current_index:chunk_end]
+        chunk_text <- paste(chunk_words, collapse = "")
 
-      chunk_end <- min(streaming_state$current_index + chunk_size - 1, total_words)
-      chunk_words <- words[streaming_state$current_index:chunk_end]
-      chunk_text <- paste(chunk_words, collapse = "")
+        streaming_state$accumulated <- paste0(streaming_state$accumulated, chunk_text)
 
-      streaming_state$accumulated <- paste0(streaming_state$accumulated, chunk_text)
+        msg_index <- which(sapply(values$messages, `[[`, "id") == streaming_state$msg_id)
+        if (length(msg_index) > 0) {
+          values$messages[[msg_index]]$content <- streaming_state$accumulated
+        }
 
-      msg_index <- which(sapply(values$messages, `[[`, "id") == streaming_state$msg_id)
-      if (length(msg_index) > 0) {
-        values$messages[[msg_index]]$content <- streaming_state$accumulated
-      }
+        session$sendCustomMessage("streamingUpdate", list(
+          id = streaming_state$msg_id,
+          text = streaming_state$accumulated,
+          isPartial = TRUE
+        ))
 
-      session$sendCustomMessage("streamingUpdate", list(
-        id = streaming_state$msg_id,
-        text = streaming_state$accumulated,
-        isPartial = TRUE
-      ))
+        streaming_state$current_index <- chunk_end + 1
+      })
 
-      streaming_state$current_index <- chunk_end + 1
+      shiny::invalidateLater(25)
     })
+  }
 
-    shiny::invalidateLater(25)
-  })
+  # -- 5. DECISION LOGIC: TTS WAIT vs IMMEDIATE --
+  if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(full_response)) {
+      # TTS Motoru sağlandıysa, önce sesin hazırlanmasını bekle
+      # Bu sırada "Düşünüyor" animasyonu ekranda kalmaya devam eder
+      promises::then(
+          tts_engine(full_response, tts_voice),
+          onFulfilled = function(result) {
+              start_streaming_execution(result)
+          },
+          onRejected = function(err) {
+              # Hata durumunda sessizce devam et
+              start_streaming_execution(NULL)
+          }
+      )
+  } else {
+      # TTS yoksa hemen başla
+      start_streaming_execution(NULL)
+  }
 }
 
 chat_start_new_chat <- function(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data = NULL) {
