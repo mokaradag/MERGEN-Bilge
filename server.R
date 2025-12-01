@@ -1665,9 +1665,8 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  }
 	}
 
-	# TTS Tetikleyici Fonksiyon (Modified for Split/Low-Latency)
+# TTS Tetikleyici Fonksiyon (Modified for Low Latency)
 	  trigger_tts_for_message <- function(msg_id, content) {
-		# 1. Ayar kontrolü
 		if (!isTRUE(settings_data$enable_tts_audio)) return(invisible(NULL))
 		
 		full_text <- as.character(content)[1]
@@ -1675,7 +1674,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		
 		voice_sel <- settings_data$tts_voice %||% "nova"
 		
-		# Internal helper to send audio chunks to the client queue
+		# Helper: Send chunk to client
 		send_chunk <- function(res, idx) {
 		  if (isTRUE(stop_generation())) return()
 		  
@@ -1690,38 +1689,50 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  }
 		}
 		
-		# 2. Split Logic: If text is long (>200 chars), split first sentence
-		if (nchar(full_text) > 200) {
-		  # Find first sentence ending (. ? !) followed by space or end of string
-		  split_match <- regexpr("[.?!](\\s|$)", full_text)
+		# 2. Optimized Split Logic:
+		# Split ONLY if text is long enough to warrant overhead (>60 chars).
+		# Otherwise send as single chunk for max speed.
+		if (nchar(full_text) > 60) {
+		  # Look at the first 120 characters to find a good pause point
+		  search_window <- substr(full_text, 1, 120)
 		  
-		  if (split_match > 0) {
-			# Include the punctuation in the first chunk
-			end_pos <- split_match + attr(split_match, "match.length") - 1
-			
-			first_chunk <- substr(full_text, 1, end_pos)
-			remainder   <- trimws(substr(full_text, end_pos + 1, nchar(full_text)))
+		  # Prioritize punctuation marks (. ? ! :)
+		  split_pos <- -1
+		  punct_match <- regexpr("[.?!:;](?=\\s|$)", search_window, perl = TRUE)
+		  
+		  if (punct_match > 0) {
+			split_pos <- punct_match + attr(punct_match, "match.length") - 1
+		  } else {
+			# Fallback: Split at the last SPACE in the window to avoid cutting words
+			# (If no punctuation found, we just grab the first ~few words)
+			spaces <- gregexpr("\\s", search_window)[[1]]
+			if (length(spaces) > 0 && spaces[1] > 0) {
+			  split_pos <- tail(spaces, 1)
+			}
+		  }
+
+		  if (split_pos > 5) { # Ensure we have a meaningful first chunk
+			first_chunk <- substr(full_text, 1, split_pos)
+			remainder   <- trimws(substr(full_text, split_pos + 1, nchar(full_text)))
 			
 			if (nzchar(remainder)) {
-			  cat("[TTS] Splitting text for speed. Chunk 1:", nchar(first_chunk), "chars.\n")
+			  cat("[TTS] Fast split active. Chunk 1:", nchar(first_chunk), "chars.\n")
 			  
-			  # Fire both requests in parallel (futures)
-			  # Chunk 0 (First sentence) will likely finish much faster
+			  # Critical: Fire Chunk 1 immediately
 			  p1 <- tts_processor$synthesize_speech(first_chunk, voice = voice_sel)
+			  
+			  # Fire Chunk 2 (remainder) in parallel
 			  p2 <- tts_processor$synthesize_speech(remainder, voice = voice_sel)
 			  
-			  # Send Chunk 0
-			  p1 %...>% (function(res) send_chunk(res, 0)) %...!% (function(e) cat("[TTS] C1 Err:", conditionMessage(e), "\n"))
-			  
-			  # Send Chunk 1 (Remainder)
-			  p2 %...>% (function(res) send_chunk(res, 1)) %...!% (function(e) cat("[TTS] C2 Err:", conditionMessage(e), "\n"))
+			  p1 %...>% (function(res) send_chunk(res, 0)) %...!% (function(e) warning("TTS C1 fail"))
+			  p2 %...>% (function(res) send_chunk(res, 1)) %...!% (function(e) warning("TTS C2 fail"))
 			  
 			  return(invisible(NULL))
 			}
 		  }
 		}
 		
-		# Fallback: Short text, just process as single chunk
+		# Fallback: Single request (Short text or split failed)
 		tts_processor$synthesize_speech(full_text, voice = voice_sel) %...>% 
 		  (function(res) send_chunk(res, 0)) %...!% 
 		  (function(e) cat("[TTS] Error:", conditionMessage(e), "\n"))

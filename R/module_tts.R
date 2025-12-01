@@ -1,12 +1,12 @@
 # R/module_tts.R
 # Text-to-Speech (TTS) processing module (OpenAI-compatible)
+# Fully Optimized for Low Latency (Namespace usage, no library loading in workers)
 
 #' TTS Processing Server Module
 #'
 #' Provides an asynchronous helper for converting text into speech using
 #' an OpenAI-compatible `/audio/speech` endpoint. Returns base64-encoded
-#' audio URLs that can be injected into the chat UI without additional
-#' static hosting.
+#' audio URLs that can be injected into the chat UI.
 ttsProcessingServer <- function(id) {
   moduleServer(id, function(input, output, session) {
 
@@ -21,12 +21,19 @@ ttsProcessingServer <- function(id) {
       if (!is.character(text) || length(text) == 0) return("")
 
       cleaned <- as.character(text[1])
-      cleaned <- gsub("```[\\s\\S]*?```", " ", cleaned)       # remove code blocks
-      cleaned <- gsub("`([^`]*)`", "\\1", cleaned)              # inline code
-      cleaned <- gsub("\u3010[^\u3011]+\u3011", " ", cleaned)   # wipe bracketed refs
+      # Remove code blocks
+      cleaned <- gsub("```[\\s\\S]*?```", " ", cleaned)
+      # Remove inline code ticks
+      cleaned <- gsub("`([^`]*)`", "\\1", cleaned)
+      # Remove bracketed references like [DOC] or [1]
+      cleaned <- gsub("\u3010[^\u3011]+\u3011", " ", cleaned)
+      cleaned <- gsub("\\[.*?\\]", " ", cleaned)
+      # Normalize whitespace
       cleaned <- gsub("\n+", " ", cleaned)
       cleaned <- gsub("[[:space:]]+", " ", cleaned)
-      cleaned <- gsub("[[]([^]]*)[]]\\(([^)]*)\\)", "\\1", cleaned, perl = TRUE)  # links
+      # Extract link text: [text](url) -> text
+      cleaned <- gsub("[[]([^]]*)[]]\\(([^)]*)\\)", "\\1", cleaned, perl = TRUE)
+      # Remove markdown headers/formatting chars
       cleaned <- gsub("[#>*_-]+", " ", cleaned)
       trimws(cleaned)
     }
@@ -44,6 +51,7 @@ ttsProcessingServer <- function(id) {
 
     #' Resolve API key for the TTS endpoint
     resolve_tts_api_key <- function() {
+      # 1. Try session specific key
       user_key <- tryCatch({
         sess_key <- session$userData$ai_api_key %||% NULL
         if (is.null(sess_key) || !nzchar(sess_key)) return(NULL)
@@ -54,6 +62,7 @@ ttsProcessingServer <- function(id) {
         return(user_key)
       }
 
+      # 2. Try global config key
       default_key <- tts_config$api_key %||% ""
       if (is.null(default_key) || is.na(default_key)) default_key <- ""
       default_key
@@ -86,7 +95,7 @@ ttsProcessingServer <- function(id) {
       verify_ssl_val <- tts_config$verify_ssl
       should_verify  <- if (is.null(verify_ssl_val)) FALSE else isTRUE(verify_ssl_val)
       
-      # Log file path (absolute to avoid working dir confusion in workers)
+      # Log file path (absolute)
       debug_log_file <- normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE)
       if (!file.exists(dirname(debug_log_file))) dir.create(dirname(debug_log_file), recursive = TRUE)
 
@@ -107,10 +116,8 @@ ttsProcessingServer <- function(id) {
 
         worker_log(sprintf("INIT: URL=%s | Model=%s | Voice=%s", speech_url, model_to_use, voice_to_use))
 
-        # Explicitly load libraries in the worker process
-        library(httr)
-        library(jsonlite)
-        library(base64enc)
+        # IMPORTANT: NO library() calls here. Using explicit namespaces (httr::, base64enc::)
+        # to drastically reduce worker startup latency.
 
         # Header Setup
         headers <- c(
@@ -142,7 +149,7 @@ ttsProcessingServer <- function(id) {
             httr::add_headers(.headers = headers),
             body = body_data,
             encode = "json",
-            timeout(timeout_val),
+            httr::timeout(timeout_val),
             req_config 
           )
         }, error = function(e) {
@@ -167,7 +174,8 @@ ttsProcessingServer <- function(id) {
           }
 
           audio_src <- NULL
-          # Check for JSON wrapper (rare but possible)
+          
+          # Check for JSON wrapper (rare but possible in some proxies)
           if (grepl("json", content_type, ignore.case = TRUE)) {
             parsed <- tryCatch(httr::content(resp, as = "parsed", encoding = "UTF-8"),
                                error = function(e) NULL)
@@ -187,12 +195,13 @@ ttsProcessingServer <- function(id) {
             }
           }
 
-          # Standard Binary Response
+          # Standard Binary Response (Most common for OpenAI API)
           if (is.null(audio_src)) {
             audio_raw <- httr::content(resp, as = "raw")
             worker_log(sprintf("BINARY CONTENT: %d bytes received", length(audio_raw)))
             
             if (length(audio_raw) > 0) {
+                # Use base64enc explicitly
                 audio_b64 <- base64enc::base64encode(audio_raw)
                 audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
             }
@@ -205,7 +214,7 @@ ttsProcessingServer <- function(id) {
           }
           
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-          worker_log("SUCCESS: Audio encoded and ready.")
+          worker_log(sprintf("SUCCESS: Audio ready in %.2fs", duration))
 
           list(success = TRUE, audio_src = audio_src, voice = voice_to_use,
                duration = duration, error = NULL)
