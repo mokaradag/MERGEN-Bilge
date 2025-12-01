@@ -1665,55 +1665,82 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  }
 	}
 
-  # TTS Tetikleyici Fonksiyon
-  trigger_tts_for_message <- function(msg_id, content) {
-    # 1. Ayar kontrolü: Kullanıcı sesi açmış mı?
-    if (!isTRUE(settings_data$enable_tts_audio)) {
-      return(invisible(NULL))
-    }
-    
-    # 2. İçerik kontrolü
-    if (is.null(content) || !nzchar(as.character(content)[1])) {
-      return(invisible(NULL))
-    }
-    
-    cat(sprintf("[TTS MANAGER] 🔊 TTS Triggered for MsgID: %s (Length: %d)\n", 
-                msg_id, nchar(content)))
-    
-    # 3. Ses sentezleme (Asenkron)
-    # Hangi sesin kullanılacağını ayarlardan alıyoruz
-    voice_sel <- settings_data$tts_voice %||% "nova"
-    
-	tts_processor$synthesize_speech(content, voice = voice_sel) %...>% (function(res) {
-      # Kullanıcı durdur butonuna bastıysa sesi oynatma
-      if (isTRUE(stop_generation())) return(invisible(NULL))
-
-      # 4. Başarı kontrolü
-      if (isTRUE(res$success) && nzchar(res$audio_src)) {
-        cat(sprintf("[TTS MANAGER] ✅ Audio generated for %s (Duration: %.2fs)\n", msg_id, res$duration))
-        
-        # 5. İSTEMCİYE GÖNDERME (Client-side play)
-        session$sendCustomMessage("playAudioMessage", list(
-          id = msg_id,
-          src = res$audio_src,      # data:audio/mp3;base64,... formatında gelir
-          timestamp = as.numeric(Sys.time())
-        ))
-        
-      } else {
-        # Hata durumu
-        err_msg <- res$error %||% "Bilinmeyen hata"
-        cat(sprintf("[TTS MANAGER] ❌ TTS Failed for %s: %s\n", msg_id, err_msg))
-        showToast(session, paste("Ses üretilemedi:", err_msg), "warning")
-      }
-    }) %...!% (function(e) {
-      # 6. Beklenmedik hatalar (Promise exception)
-      cat(sprintf("[TTS MANAGER] 💥 TTS Exception for %s: %s\n", msg_id, conditionMessage(e)))
-      # Kullanıcıyı her küçük hatada rahatsız etmemek için sadece log basabilirsiniz
-      # showToast(session, "Ses sistemi hatası.", "error")
-    })
-    
-    invisible(NULL)
-  }
+	# TTS Tetikleyici Fonksiyon
+	  trigger_tts_for_message <- function(msg_id, content) {
+		# 1. Ayar kontrolü
+		if (!isTRUE(settings_data$enable_tts_audio)) return(invisible(NULL))
+		if (is.null(content) || !nzchar(as.character(content)[1])) return(invisible(NULL))
+		
+		# Türkçe: Metni temizle (Markdown temizliği)
+		clean_text <- if (is.function(tts_processor$prepare_tts_text)) {
+		  tts_processor$prepare_tts_text(content)
+		} else {
+		  content
+		}
+		
+		if (!nzchar(clean_text)) return(invisible(NULL))
+		
+		voice_sel <- settings_data$tts_voice %||% "nova"
+		
+		# Türkçe: Metni ilk cümle ve geri kalanı olarak böl (Gecikmeyi azaltmak için)
+		# İlk 200 karakter içinde cümle bitişi ara
+		split_point <- -1
+		limit <- min(nchar(clean_text), 200)
+		search_area <- substr(clean_text, 1, limit)
+		
+		matches <- gregexpr("[.?!](\\s|$)", search_area)
+		if (length(matches[[1]]) > 0 && matches[[1]][1] > 0) {
+		  split_point <- matches[[1]][1]
+		}
+		
+		part1 <- ""
+		part2 <- ""
+		
+		if (split_point > 0) {
+		  part1 <- substr(clean_text, 1, split_point)
+		  part2 <- trimws(substr(clean_text, split_point + 1, nchar(clean_text)))
+		} else {
+		  part1 <- clean_text
+		}
+		
+		cat(sprintf("[TTS MANAGER] Split: Part1 (%d chars), Part2 (%d chars)\n", nchar(part1), nchar(part2)))
+		
+		# Türkçe: İlk parçayı hemen işle
+		tts_processor$synthesize_speech(part1, voice = voice_sel) %...>% (function(res1) {
+		  if (isTRUE(stop_generation())) return(invisible(NULL))
+		  
+		  if (isTRUE(res1$success) && nzchar(res1$audio_src)) {
+			# Türkçe: İlk parça -> Reset = TRUE
+			session$sendCustomMessage("playAudioMessage", list(
+			  id = msg_id,
+			  src = res1$audio_src,
+			  reset = TRUE
+			))
+			
+			# Türkçe: İkinci parça varsa zincirleme olarak işle
+			if (nzchar(part2)) {
+			   tts_processor$synthesize_speech(part2, voice = voice_sel) %...>% (function(res2) {
+				 if (isTRUE(stop_generation())) return(invisible(NULL))
+				 if (isTRUE(res2$success) && nzchar(res2$audio_src)) {
+				   # Türkçe: İkinci parça -> Reset = FALSE (Kuyruğa ekle)
+				   session$sendCustomMessage("playAudioMessage", list(
+					 id = msg_id,
+					 src = res2$audio_src,
+					 reset = FALSE
+				   ))
+				 }
+			   })
+			}
+		  } else {
+			# Türkçe: İlk parça başarısızsa hata günlüğü
+			cat(sprintf("[TTS MANAGER] ❌ TTS Failed for part 1: %s\n", res1$error))
+		  }
+		}) %...!% (function(e) {
+		  cat(sprintf("[TTS MANAGER] 💥 TTS Exception: %s\n", conditionMessage(e)))
+		})
+		
+		invisible(NULL)
+	  }
 
 	start_new_chat <- function() {
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)
