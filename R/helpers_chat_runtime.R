@@ -207,7 +207,7 @@ chat_store_message_in_saved_chats <- function(values, message) {
 }
 
 chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
-                                   followups = NULL, on_complete = NULL, on_start = NULL) {
+                                   followups = NULL, on_complete = NULL, on_start = NULL, on_progress = NULL) {
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
 
   timestamp <- format_timestamp()
@@ -362,6 +362,10 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
         isPartial = TRUE
       ))
 
+      if (is.function(on_progress)) {
+        try(on_progress(streaming_state$msg_id, streaming_state$accumulated), silent = TRUE)
+      }
+	  
       streaming_state$current_index <- chunk_end + 1
     })
 
