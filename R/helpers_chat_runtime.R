@@ -224,15 +224,15 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
   # This function runs ONLY when we are ready to show text (after audio is ready)
   start_streaming_execution <- function(audio_result = NULL) {
-    # Check if stopped during wait
     if (stop_generation()) {
         removeUI(selector = "#typing-animation-wrapper")
+        values$typing <- FALSE # Update state
         chat_reset_state(session, values)
         return()
     }
 
-    # CRITICAL: Remove "Thinking" animation ONLY now
     removeUI(selector = "#typing-animation-wrapper")
+    values$typing <- FALSE # UI kalktığı an durumu güncelle
 
     # Initialize Message Object
     initial_msg <- list(

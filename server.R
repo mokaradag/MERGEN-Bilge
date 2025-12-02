@@ -1346,8 +1346,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			  on_complete = function(msg) {
 			  }
 			)
-			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-			values$typing <- FALSE
 			invisible(NULL)
 		  },
 		  onRejected = function(err) {
