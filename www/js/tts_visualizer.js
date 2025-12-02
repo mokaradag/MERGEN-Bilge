@@ -48,7 +48,7 @@ $(document).ready(function() {
         ttsTimer = setTimeout(function() {
           setState('idle');
         }, timeoutMs);
-      }
+}
     } else if (message.state === 'paused') {
       setState('paused');
     } else if (message.state === 'idle') {
@@ -59,4 +59,29 @@ $(document).ready(function() {
       window.ttsVisualizerState.stop();
     }
   });
+
+  // --- NEW: Global Audio Sync Listeners ---
+  // This detects REAL play/pause events from the audio player
+  // and syncs the visualizer perfectly.
+  
+  // Use capture phase (true) to catch events from audio elements inside shadow DOMs or containers
+  document.addEventListener('play', function(e) {
+    if(e.target && e.target.tagName === 'AUDIO') {
+      if (ttsTimer) clearTimeout(ttsTimer); // Cancel server timer
+      window.ttsVisualizerState.setTalking();
+    }
+  }, true);
+
+  document.addEventListener('pause', function(e) {
+    if(e.target && e.target.tagName === 'AUDIO') {
+      window.ttsVisualizerState.setIdle();
+    }
+  }, true);
+
+  document.addEventListener('ended', function(e) {
+    if(e.target && e.target.tagName === 'AUDIO') {
+      window.ttsVisualizerState.setIdle();
+    }
+  }, true);
+
 });

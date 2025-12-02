@@ -10,14 +10,11 @@ ttsVisualizerUI <- function(id) {
       class = "tts-visualizer",
       # Name Label
       tags$div(class = "tts-char-name", ""),
-      # Animated Bars
+	  # Animated Bars
       tags$div(
         class = "tts-bars",
-        tags$div(class = "tts-bar"),
-        tags$div(class = "tts-bar"),
-        tags$div(class = "tts-bar"),
-        tags$div(class = "tts-bar"),
-        tags$div(class = "tts-bar")
+        # Generate 30 bars for a high-resolution waveform
+        lapply(1:30, function(i) tags$div(class = "tts-bar"))
       )
     )
   )
