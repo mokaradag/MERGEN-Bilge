@@ -70,6 +70,7 @@ ui <- dashboardPage(
     # --- Local CSS Files ---
     tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/all.min.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -117,6 +118,7 @@ ui <- dashboardPage(
     # Your Custom Script
     tags$script(src = "script.js"),
     tags$script(src = "character_typing.js"),
+	tags$script(src = "js/tts_visualizer.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),
@@ -163,6 +165,10 @@ ui <- dashboardPage(
               )
             )
           ),
+		  
+		  # --- TTS Visualizer Module UI ---
+          ttsVisualizerUI("tts_viz"),
+		  
           div(
             class = "chat-header-right chat-actions",
             actionButton(

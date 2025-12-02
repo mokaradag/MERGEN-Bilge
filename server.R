@@ -171,6 +171,9 @@ server <- function(input, output, session) {
   # Initialize TTS processing module
   tts_processor <- ttsProcessingServer("tts_proc")
   
+  # Initialize TTS Visualizer
+  tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
+  
   # Initialize File Preview module (replaces preview outputs + modal helpers)
   filePreview <- filePreviewServer("file_preview")
   
@@ -1676,6 +1679,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  
 		  if (isTRUE(res$success) && nzchar(res$audio_src)) {
 			cat(sprintf("[TTS] Sending chunk %d (Duration: %.2fs)\n", idx, res$duration))
+			
+			# Trigger the header visualizer
+			tts_visualizer$trigger(duration = res$duration) # <--- ADDED
+			
 			session$sendCustomMessage("playAudioMessage", list(
 			  id = msg_id,
 			  src = res$audio_src,
