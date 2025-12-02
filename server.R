@@ -1340,14 +1340,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			simulate_streaming_stoppable(
 			  res$content,
 			  followups = followup_questions,
-			  on_start = function(msg_id) {
-				# Metin akışı başlar başlamaz sesi tetikle
-				if (!isTRUE(stop_generation())) {
-				  trigger_tts_for_message(msg_id, res$content)
-				}
-			  },
+			  tts_engine = tts_processor$synthesize_speech,
+			  tts_voice = settings_data$tts_voice,
+			  on_start = NULL,
 			  on_complete = function(msg) {
-				# Buradaki ses tetikleyicisi kaldırıldı, yukarı taşındı
 			  }
 			)
 			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
@@ -1568,18 +1564,20 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  chat_generate_title_from_prompt(prompt, max_len)
 	}
 
-	simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL, on_start = NULL) {
-		chat_simulate_streaming(
-		  full_response = ai_response_text,
-		  session = session,
-		  values = values,
-		  settings_data = settings_data,
-		  output = output,
-		  stop_generation = stop_generation,
-		  followups = followups,
-		  tts_engine = tts$synthesize_speech,
-		  tts_voice = settings_data$voice_selection
-		)
+	simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL, on_start = NULL, tts_engine = NULL, tts_voice = NULL) {
+	  chat_simulate_streaming(
+		full_response,
+		session,
+		values,
+		settings_data,
+		output,
+		stop_generation,
+		followups = followups,
+		on_complete = on_complete,
+		on_start = on_start,
+		tts_engine = tts_engine,
+		tts_voice = tts_voice
+	  )
 	}
 
 	add_message <- function(content, type = "user", html = NULL, followups = NULL,
