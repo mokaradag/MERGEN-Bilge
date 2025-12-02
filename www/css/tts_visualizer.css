@@ -1,34 +1,48 @@
 /* TTS Visualizer Container */
+
 .tts-visualizer {
-  display: flex;
+  --tts-accent: #7C4DFF;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  opacity: 0; /* Hidden when not talking */
+  opacity: 0;
   visibility: hidden;
-  transition: opacity 0.4s ease-in-out, visibility 0.4s;
-  
+  transition: opacity 0.45s ease, visibility 0.45s, transform 0.45s ease;
+
   /* Positioning and Style */
-  margin: 0 20px;
+  margin: 0 18px;
   padding: 6px 18px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(4px);
-  
-  /* Prevent layout shift */
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  pointer-events: none; /* Let clicks pass through */
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.07));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+
+  /* Keep inline within the header */
+  position: relative;
+  pointer-events: none;
 }
 
-/* Active State */
-.tts-visualizer.active {
-  opacity: 1;
+.tts-visualizer.is-ready {
   visibility: visible;
-  background: rgba(0, 0, 0, 0.2); /* Slightly darker bg when active */
+  opacity: 0.8;
+}
+
+.tts-visualizer.is-talking {
+  opacity: 1;
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.15));
+  box-shadow: 0 18px 36px color-mix(in srgb, var(--tts-accent) 18%, transparent);
+}
+
+.tts-visualizer.is-paused {
+  opacity: 0.9;
+}
+
+.tts-visualizer.is-idle {
+  opacity: 0.75;
+  filter: saturate(0.95);
 }
 
 /* Character Name */
@@ -36,7 +50,7 @@
   font-family: 'Segoe UI', sans-serif;
   font-weight: 700;
   font-size: 0.85rem;
-  color: #fff;
+  color: var(--tts-accent);
   text-transform: uppercase;
   letter-spacing: 1.5px;
   text-shadow: 0 1px 2px rgba(0,0,0,0.3);
@@ -55,11 +69,11 @@
 .tts-bar {
   width: 3px;
   height: 100%;
-  background-color: currentColor; /* Will be set dynamically via JS */
+  background-color: var(--tts-accent); /* Will be set dynamically via JS */
   border-radius: 2px;
   transform-origin: bottom;
   animation: none;
-  box-shadow: 0 0 8px currentColor;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--tts-accent) 70%, transparent);
 }
 
 /* Animation Keyframes */
@@ -70,8 +84,19 @@
 }
 
 /* Activate Animation */
-.tts-visualizer.active .tts-bar {
+.tts-visualizer.is-talking .tts-bar {
   animation: ttsWave 1s ease-in-out infinite;
+}
+
+.tts-visualizer.is-paused .tts-bar {
+  animation: ttsWave 1.2s ease-in-out infinite;
+  animation-play-state: paused;
+  opacity: 0.6;
+}
+
+.tts-visualizer.is-idle .tts-bar {
+  animation: ttsWave 1.8s ease-in-out infinite;
+  opacity: 0.4;
 }
 
 /* Staggered Delays for "Wave" Effect */

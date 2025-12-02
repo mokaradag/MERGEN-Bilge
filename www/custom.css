@@ -248,11 +248,18 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   box-shadow: var(--shadow-md);
 }
 
 .chat-header-left {
+  display: inline-flex;
   align-items: center;
+  gap: 12px;
+}
+
+#tts_viz_container {
+  flex: 0 0 auto;
 }
 
 /* Consistent header styles */

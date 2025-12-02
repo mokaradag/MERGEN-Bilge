@@ -1,48 +1,62 @@
 $(document).ready(function() {
   var ttsTimer = null;
+  var $viz = $('#tts_viz_container');
+  var $name = $viz.find('.tts-char-name');
+  var $barElements = $viz.find('.tts-bar');
+
+  function setState(state) {
+    $viz.removeClass('is-talking is-paused is-idle');
+
+    if (state === 'talking') {
+      $viz.addClass('is-talking is-ready');
+    } else if (state === 'paused') {
+      $viz.addClass('is-paused is-ready');
+    } else if (state === 'idle') {
+      $viz.addClass('is-idle is-ready');
+    }
+  }
+
+  // Expose a lightweight helper to manage state from other scripts
+  window.ttsVisualizerState = {
+    setTalking: function() { setState('talking'); },
+    setPaused: function() { setState('paused'); },
+    setIdle: function() { setState('idle'); },
+    stop: function() {
+      $viz.removeClass('is-talking is-paused is-idle is-ready');
+      if (ttsTimer) clearTimeout(ttsTimer);
+    }
+  };
 
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
-    // message: { state: 'play'|'stop', duration: float, name: string, color: string }
-    var $viz = $('#tts_viz_container');
-    var $name = $viz.find('.tts-char-name');
-    var $bars = $viz.find('.tts-bars');
-    var $barElements = $viz.find('.tts-bar');
-    
-    if (message.state === 'play') {
-      // 1. Update Content & Style
-      if (message.name) $name.text(message.name);
-      
-      if (message.color) {
-        $name.css('color', message.color);
-        // Apply color to bars and their shadow
-        $barElements.css({
-          'background-color': message.color,
-          'box-shadow': '0 0 6px ' + message.color
-        });
-        
-        $viz.css({
-          'border-color': message.color + '40', // 25% opacity
-          'box-shadow': '0 0 15px ' + message.color + '15' // soft glow
-        });
-      }
-      
-      // 2. Activate
-      $viz.addClass('active');
-      
-      // 3. Set Auto-Stop Timer based on audio duration
+    // message: { state: 'talking'|'stop'|'idle'|'paused', duration: float, name: string, color: string }
+    if (!$viz.length) return;
+
+    // Update content & style
+    if (message.name) $name.text(message.name);
+
+    if (message.color) {
+      $viz.css('--tts-accent', message.color);
+    }
+
+    // Set state classes
+    if (message.state === 'talking') {
+      setState('talking');
+
       if (ttsTimer) clearTimeout(ttsTimer);
       if (message.duration > 0) {
-        // Add a small buffer (e.g., 0.5s) to the duration
         var timeoutMs = (message.duration * 1000) + 500;
         ttsTimer = setTimeout(function() {
-          $viz.removeClass('active');
+          setState('idle');
         }, timeoutMs);
       }
-      
-    } else {
-      // Stop immediately
-      $viz.removeClass('active');
+    } else if (message.state === 'paused') {
+      setState('paused');
+    } else if (message.state === 'idle') {
+      setState('idle');
       if (ttsTimer) clearTimeout(ttsTimer);
+    } else {
+      // stop
+      window.ttsVisualizerState.stop();
     }
   });
 });

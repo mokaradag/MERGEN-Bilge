@@ -496,7 +496,7 @@
       // Message handlers
       // -------------------------------------------------
 
-	  // [MODIFIED] TTS Queue System for Sequential Playback
+      // [MODIFIED] TTS Queue System for Sequential Playback
       window.mergenTTS = {
         queue: [],
         isPlaying: false
@@ -523,19 +523,41 @@
         
         const item = window.mergenTTS.queue.shift();
         window.mergenTTS.isPlaying = true;
-        
+
+        if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
+          window.ttsVisualizerState.setTalking();
+        }
+
         try {
           const audio = new Audio(item.src);
           audio.volume = 1.0;
-          
+
+          audio.onplay = function() {
+            if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
+              window.ttsVisualizerState.setTalking();
+            }
+          };
+
+          audio.onpause = function() {
+            if (!audio.ended && window.ttsVisualizerState && window.ttsVisualizerState.setPaused) {
+              window.ttsVisualizerState.setPaused();
+            }
+          };
+
           audio.onended = function() {
             window.mergenTTS.isPlaying = false;
+            if (window.mergenTTS.queue.length === 0 && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+              window.ttsVisualizerState.setIdle();
+            }
             processTTSQueue();
           };
-          
+
           audio.onerror = function(e) {
             console.warn("[MERGEN TTS] Audio error:", e);
             window.mergenTTS.isPlaying = false;
+            if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+              window.ttsVisualizerState.setIdle();
+            }
             processTTSQueue();
           };
           
@@ -546,12 +568,18 @@
             }).catch(error => {
               console.warn("[MERGEN TTS] Autoplay blocked:", error);
               window.mergenTTS.isPlaying = false;
+              if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+                window.ttsVisualizerState.setIdle();
+              }
               processTTSQueue();
             });
           }
         } catch (e) {
           console.error("[MERGEN TTS] Exception:", e);
           window.mergenTTS.isPlaying = false;
+          if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+            window.ttsVisualizerState.setIdle();
+          }
           processTTSQueue();
         }
       }
