@@ -225,16 +225,16 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   # This function runs ONLY when we are ready to show text (after audio is ready)
   start_streaming_execution <- function(audio_result = NULL) {
     if (stop_generation()) {
-        removeUI(selector = "#typing-animation-wrapper")
-        values$typing <- FALSE # Update state
+        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+        values$typing <- FALSE
         chat_reset_state(session, values)
         return()
     }
 
-    removeUI(selector = "#typing-animation-wrapper")
-    values$typing <- FALSE # UI kalktığı an durumu güncelle
+    # SENKRONİZASYON NOKTASI: Düşünüyor animasyonunu tam burada kaldırıyoruz
+    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+    values$typing <- FALSE
 
-    # Initialize Message Object
     initial_msg <- list(
       id = msg_id,
       db_id = NULL,
@@ -251,7 +251,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     }
     values$messages <- append(values$messages, list(initial_msg))
 
-    # Render UI Bubble
+    # Render UI
     ui_to_insert <- render_message_bubble_ui(
       initial_msg, settings_data,
       is_last_user_message = FALSE,
