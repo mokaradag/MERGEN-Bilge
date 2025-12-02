@@ -1573,12 +1573,12 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  full_response = ai_response_text,
 		  session = session,
 		  values = values,
-		  settings_data = settings_data(), # or just settings_data depending on your code
+		  settings_data = settings_data,
 		  output = output,
 		  stop_generation = stop_generation,
 		  followups = followups,
 		  tts_engine = tts$synthesize_speech,
-		  tts_voice = settings_data()$voice_selection # or your specific voice setting
+		  tts_voice = settings_data$voice_selection
 		)
 	}
 

@@ -210,18 +210,19 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
                                    followups = NULL, on_complete = NULL, on_start = NULL,
                                    tts_engine = NULL, tts_voice = NULL) {
   
-  # -- 1. SETUP PREPARATION (Capture reactive values early) --
+  # -- 1. SETUP PREPARATION --
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
   timestamp <- format_timestamp()
   
   # Character and settings resolution
-  selected_char_id <- settings_data$selected_character %||% "mergen"
+  selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
   chars_data <- get_characters_data()
   character_data <- if (!is.null(chars_data)) {
     Find(function(x) x$id == selected_char_id, chars_data$styles)
   } else NULL
 
-  # -- 2. CORE EXECUTION CLOSURE --
+  # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
+  # This function runs ONLY when we are ready to show text (after audio is ready)
   start_streaming_execution <- function(audio_result = NULL) {
     # Check if stopped during wait
     if (stop_generation()) {
@@ -230,7 +231,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
         return()
     }
 
-    # SENKRONİZASYON NOKTASI: Düşünüyor animasyonunu tam burada kaldırıyoruz
+    # CRITICAL: Remove "Thinking" animation ONLY now
     removeUI(selector = "#typing-animation-wrapper")
 
     # Initialize Message Object
@@ -250,7 +251,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     }
     values$messages <- append(values$messages, list(initial_msg))
 
-    # Render UI
+    # Render UI Bubble
     ui_to_insert <- render_message_bubble_ui(
       initial_msg, settings_data,
       is_last_user_message = FALSE,
@@ -275,19 +276,19 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     
     # -- 3. AUDIO TRIGGER (Concurrent with Text) --
     if (!is.null(audio_result) && isTRUE(audio_result$success) && !is.null(audio_result$audio_src)) {
-        # Audio hazır, oynat ve UI'ya iliştir
+        # Play audio immediately as text starts
         session$sendCustomMessage("playAudioMessage", list(
             id = msg_id,
             src = audio_result$audio_src,
             chunkIndex = 0
         ))
         
-        # Orijinal mesaj objesine de ekle (kayıt için)
-        idx <- length(values$messages) # Last appended
+        # Attach to message for history
+        idx <- length(values$messages)
         values$messages[[idx]]$audio_src <- audio_result$audio_src
         values$messages[[idx]]$audio_voice <- audio_result$voice
     } else {
-        # Fallback mechanism for legacy on_start
+        # Fallback for legacy on_start if no TTS engine passed
         if (is.function(on_start) && is.null(tts_engine)) {
             try(on_start(msg_id), silent = TRUE)
         }
@@ -309,6 +310,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     stream_observer <- shiny::observe({
       isolate({
         if (stop_generation() || streaming_state$current_index > total_words) {
+          # ... Finalization Logic ...
           msg_index <- which(sapply(values$messages, function(m) m$id == streaming_state$msg_id))
           if (length(msg_index) > 0) {
             final_text <- if (nchar(streaming_state$accumulated) > 0) streaming_state$accumulated else full_response
@@ -339,15 +341,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
             ))
             
             push_followup_update(session, streaming_state$msg_id, followups, pending = FALSE)
-            try(
-              shinyjs::runjs(
-                sprintf(
-                  "(function(){var box=document.getElementById('followup_container_%s'); if(box){box.classList.remove('pending');}})();",
-                  streaming_state$msg_id
-                )
-              ),
-              silent = TRUE
-            )
+            try(shinyjs::runjs(sprintf("(function(){var box=document.getElementById('followup_container_%s'); if(box){box.classList.remove('pending');}})();", streaming_state$msg_id)), silent = TRUE)
 
             if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
               for (r in chart_info$renderers) {
@@ -364,9 +358,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               if (is.function(on_complete)) {
                 try(on_complete(values$messages[[msg_index]]), silent = TRUE)
               }
-            }, error = function(e) {
-              print(paste("Error saving message:", e$message))
-            })
+            }, error = function(e) print(paste("Error saving message:", e$message)))
           }
 
           chat_reset_state(session, values)
@@ -398,22 +390,22 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     })
   }
 
-  # -- 5. DECISION LOGIC: TTS WAIT vs IMMEDIATE --
+  # -- 5. DECISION: WAIT FOR TTS? --
   if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(full_response)) {
-      # TTS Motoru sağlandıysa, önce sesin hazırlanmasını bekle
-      # Bu sırada "Düşünüyor" animasyonu ekranda kalmaya devam eder
+      # "Thinking" animation stays visible here while we wait for TTS
       promises::then(
           tts_engine(full_response, tts_voice),
           onFulfilled = function(result) {
+              # TTS done -> Start Text Stream & Audio together
               start_streaming_execution(result)
           },
           onRejected = function(err) {
-              # Hata durumunda sessizce devam et
+              # TTS failed -> Start Text Stream anyway
               start_streaming_execution(NULL)
           }
       )
   } else {
-      # TTS yoksa hemen başla
+      # No TTS -> Start immediately
       start_streaming_execution(NULL)
   }
 }
