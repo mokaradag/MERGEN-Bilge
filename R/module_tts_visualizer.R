@@ -6,7 +6,7 @@ ttsVisualizerUI <- function(id) {
   ns <- NS(id)
   tagList(
     tags$div(
-      id = "tts_viz_container", 
+      id = ns("container"), 
       class = "tts-visualizer-container",
       style = "display: none;", # Hidden by default, toggled by settings
       
@@ -44,11 +44,11 @@ ttsVisualizerServer <- function(id, settings_data) {
     
     ns <- session$ns
 
-    # Toggle container visibility based on settings
+	# Toggle container visibility based on settings
     observe({
       # Assuming settings_data$enable_tts_audio is a reactive value
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
-      shinyjs::toggle(id = "tts_viz_container", condition = is_enabled, selector = "#tts_viz_container")
+      shinyjs::toggle(id = "container", condition = is_enabled)
     })
 
     # Stop Button Logic
