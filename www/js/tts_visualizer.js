@@ -200,11 +200,13 @@ $(document).ready(function() {
   }, 100);
 
   // --- Shiny Message Handler ---
-  Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
-    if (!visualizer) return;
+  Shiny.addCustomMessageHandler('resizeTTSVisualizer', function(message) {
+    if (visualizer) {
+      setTimeout(() => visualizer.resize(), 50);
+    }
+  });
 
-    // Update Metadata
-    if (message.name) visualizer.setText(message.name);
+  Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
     if (message.color) visualizer.setColor(message.color);
 
     // Update Mode & Stop Button Visibility

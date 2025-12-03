@@ -49,6 +49,10 @@ ttsVisualizerServer <- function(id, settings_data) {
       # Assuming settings_data$enable_tts_audio is a reactive value
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
       shinyjs::toggle(id = "container", condition = is_enabled)
+      
+      if (is_enabled) {
+        session$sendCustomMessage("resizeTTSVisualizer", list())
+      }
     })
 
     # Stop Button Logic

@@ -43,7 +43,7 @@
 /* Character Name */
 .tts-name-text {
   font-family: 'Segoe UI', sans-serif;
-  font-size: 1.15rem; /* Larger font size */
+  font-size: 1.5rem;
   font-weight: 700;
   color: #7C4DFF; /* Default, overridden by JS */
   text-shadow: 0 1px 2px rgba(0,0,0,0.8);
