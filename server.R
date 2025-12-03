@@ -1618,7 +1618,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	})
 
 	resolve_tts_voice <- function() {
-	  val <- isolate(settings_data$tts_voice) %||% tts_config$default_voice %||% "nova"
+	  val <- isolate(settings_data$tts_voice) %||% tts_config$default_voice %||% "tr-male-1"
 	  as.character(val)[1]
 	}
 
@@ -1671,7 +1671,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		full_text <- as.character(content)[1]
 		if (!nzchar(full_text)) return(invisible(NULL))
 		
-		voice_sel <- settings_data$tts_voice %||% "nova"
+		voice_sel <- settings_data$tts_voice %||% "tr-male-1"
 		
 		# Helper: Send chunk to client
 		send_chunk <- function(res, idx) {

@@ -86,9 +86,9 @@ ttsProcessingServer <- function(id) {
 
       # --- MAIN PROCESS VARIABLES (Capture before future) ---
       speech_url   <- build_speech_url()
-      voice_to_use <- voice %||% tts_config$default_voice %||% "nova"
+      voice_to_use <- voice %||% tts_config$default_voice %||% "tr-male-1"
       api_key      <- resolve_tts_api_key()
-      model_to_use <- tts_config$model %||% "tts-1"
+      model_to_use <- tts_config$model %||% "tts-1-hd"
       timeout_val  <- as.numeric(tts_config$timeout_seconds %||% 30)
       if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 30
       
