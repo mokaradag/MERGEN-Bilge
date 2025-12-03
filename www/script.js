@@ -496,10 +496,23 @@
       // Message handlers
       // -------------------------------------------------
 
-      // [MODIFIED] TTS Queue System for Sequential Playback
+	  // [MODIFIED] TTS Queue System for Sequential Playback
       window.mergenTTS = {
         queue: [],
-        isPlaying: false
+        isPlaying: false,
+        currentAudio: null,
+        stop: function() {
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio.currentTime = 0;
+                this.currentAudio = null;
+            }
+            this.queue = [];
+            this.isPlaying = false;
+            if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+                window.ttsVisualizerState.setIdle();
+            }
+        }
       };
 
       Shiny.addCustomMessageHandler('playAudioMessage', function(message) {
@@ -529,7 +542,8 @@
         }
 
         try {
-          const audio = new Audio(item.src);
+		  window.mergenTTS.currentAudio = new Audio(item.src);
+          const audio = window.mergenTTS.currentAudio;
           audio.volume = 1.0;
 
           audio.onplay = function() {

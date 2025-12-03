@@ -1,63 +1,102 @@
 /* www/css/tts_visualizer.css */
 
-/* TTS Visualizer Container */
+/* TTS Visualizer Container - Elongated */
 .tts-visualizer-container {
   position: relative;
-  width: 450px;  /* Elongated width */
-  height: 50px;  /* Increased height for larger avatar */
+  width: 500px;  /* Increased width */
+  height: 54px;  /* Slightly taller */
   margin-left: 15px;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 25px; /* More rounded */
+  border-radius: 27px;
   overflow: hidden;
   display: flex;
   align-items: center;
-  justify-content: flex-start; /* Align content to left */
-  box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
-  backdrop-filter: blur(4px);
-  padding-left: 6px; /* Space for avatar */
-  padding-right: 15px;
+  justify-content: flex-start;
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.3);
+  backdrop-filter: blur(8px);
+  padding-left: 8px;
+  padding-right: 8px;
+  transition: opacity 0.3s ease;
 }
 
-/* Container for Avatar and Name */
+/* Character Info Area */
 .tts-char-info {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
   margin-right: 15px;
-  z-index: 5; /* Ensure above canvas */
+  z-index: 5;
 }
 
 /* Avatar Image */
 .tts-avatar-img {
-  width: 40px;  /* Large avatar */
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid #7C4DFF; /* Default, overridden by JS */
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
 /* Character Name */
 .tts-name-text {
   font-family: 'Segoe UI', sans-serif;
-  font-size: 1.1rem; /* Large font size */
+  font-size: 1.15rem; /* Larger font size */
   font-weight: 700;
-  color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  color: #7C4DFF; /* Default, overridden by JS */
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
   white-space: nowrap;
+  letter-spacing: 0.5px;
 }
 
 /* Canvas Animation */
 .tts-canvas {
   display: block;
-  flex-grow: 1; /* Fill the rest of the space */
+  flex-grow: 1;
   height: 100%;
   z-index: 1;
-  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent); /* Soft edges for wave */
-  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+}
+
+/* Stop Button Wrapper */
+.tts-stop-wrapper {
+  z-index: 10;
+  margin-left: 10px;
+}
+
+/* Stylish Stop Button */
+.btn-tts-stop {
+  background: rgba(255, 59, 48, 0.15);
+  border: 1px solid rgba(255, 59, 48, 0.4);
+  color: #ff3b30;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.btn-tts-stop:hover {
+  background: rgba(255, 59, 48, 0.3);
+  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(255, 59, 48, 0.3);
+}
+
+.btn-tts-stop:active {
+  transform: scale(0.95);
+}
+
+.btn-tts-stop i {
+  font-size: 14px;
 }
 
 .tts-overlay-name {
-  display: none; /* Hide old overlay */
+  display: none;
 }

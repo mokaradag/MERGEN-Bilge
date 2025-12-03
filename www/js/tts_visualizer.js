@@ -207,20 +207,29 @@ $(document).ready(function() {
     if (message.name) visualizer.setText(message.name);
     if (message.color) visualizer.setColor(message.color);
 
-    // Update Mode
+    // Update Mode & Stop Button Visibility
     if (message.state === 'talking') {
       visualizer.setMode(MODES.TALKING);
       
-      // Auto-revert fallback handled by server timer usually, 
-      // but we add a local safety fallback if provided duration
+      // Show stop button if ID provided
+      if (message.stopBtnId) {
+        $('#' + message.stopBtnId).fadeIn(200);
+      }
+      
+      // Auto-revert fallback handled by server timer usually
       if (message.duration > 0) {
          if (window._ttsTimer) clearTimeout(window._ttsTimer);
          window._ttsTimer = setTimeout(() => {
            visualizer.setMode(MODES.IDLE);
+           if (message.stopBtnId) $('#' + message.stopBtnId).fadeOut(200);
          }, (message.duration * 1000) + 500);
       }
     } else {
       visualizer.setMode(MODES.IDLE);
+      // Hide stop button
+      if (message.stopBtnId) {
+        $('#' + message.stopBtnId).fadeOut(200);
+      }
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
     }
   });

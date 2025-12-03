@@ -8,16 +8,31 @@ ttsVisualizerUI <- function(id) {
     tags$div(
       id = "tts_viz_container", 
       class = "tts-visualizer-container",
-      # Added Avatar and Name elements
+      style = "display: none;", # Hidden by default, toggled by settings
+      
+      # Avatar and Name Area
       tags$div(
         class = "tts-char-info",
         tags$img(id = ns("char_avatar"), class = "tts-avatar-img", src = ""),
         tags$span(id = ns("char_name"), class = "tts-name-text", "")
       ),
-      # The canvas for the wave animation
+      
+      # Wave Animation Canvas
       tags$canvas(id = "tts_canvas", class = "tts-canvas"),
-      # Keep overlay hidden or remove text as we now have explicit name
-      tags$div(class = "tts-overlay-name", "", style = "display: none;")
+      
+      # Stop Button (Hidden by default, shown when talking)
+      tags$div(
+        id = ns("stop_btn_wrapper"),
+        class = "tts-stop-wrapper",
+        style = "display: none;", 
+        actionButton(
+          inputId = ns("stop_tts"),
+          label = NULL,
+          icon = icon("stop"),
+          class = "btn-tts-stop",
+          title = "Seslendirmeyi Durdur"
+        )
+      )
     )
   )
 }
@@ -27,8 +42,19 @@ ttsVisualizerUI <- function(id) {
 ttsVisualizerServer <- function(id, settings_data) {
   moduleServer(id, function(input, output, session) {
     
-    # Helper to resolve namespace for JS calls
     ns <- session$ns
+
+    # Toggle container visibility based on settings
+    observe({
+      # Assuming settings_data$enable_tts_audio is a reactive value
+      is_enabled <- isTRUE(settings_data$enable_tts_audio)
+      shinyjs::toggle(id = "tts_viz_container", condition = is_enabled, selector = "#tts_viz_container")
+    })
+
+    # Stop Button Logic
+    observeEvent(input$stop_tts, {
+      shinyjs::runjs("if(window.mergenTTS) window.mergenTTS.stop();")
+    })
 
     # Resolve the current character style and send it to the client
     send_state <- function(state = "idle", duration = NULL) {
@@ -38,21 +64,25 @@ ttsVisualizerServer <- function(id, settings_data) {
 
       display_name <- if (!is.null(char_info)) char_info$display_name else "MERGEN"
       accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
-      
-      # Default avatar if missing
       avatar_src <- if (!is.null(char_info) && !is.null(char_info$avatar)) char_info$avatar else "mergen_avatar.png"
 
-      # Update UI elements via JS (Avatar & Name)
+      # Apply content updates
       shinyjs::runjs(sprintf("$('#%s').attr('src', '%s');", ns("char_avatar"), avatar_src))
       shinyjs::runjs(sprintf("$('#%s').text('%s');", ns("char_name"), display_name))
+      
+      # Apply Color Updates (Border & Font)
+      shinyjs::runjs(sprintf("$('#%s').css('border-color', '%s');", ns("char_avatar"), accent_color))
+      shinyjs::runjs(sprintf("$('#%s').css('color', '%s');", ns("char_name"), accent_color))
 
+      # Send animation state
       session$sendCustomMessage(
         "updateTTSVisualizer",
         list(
           state = state,
           duration = duration,
           name = display_name,
-          color = accent_color
+          color = accent_color,
+          stopBtnId = ns("stop_btn_wrapper") # Pass ID to JS to toggle stop button
         )
       )
     }
