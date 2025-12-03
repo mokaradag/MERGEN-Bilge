@@ -1,133 +1,42 @@
 /* TTS Visualizer Container */
-.tts-visualizer {
-  --tts-accent: #7C4DFF;
-  display: inline-flex;
+.tts-visualizer-container {
+  position: relative;
+  width: 280px;  /* Compact header width */
+  height: 44px;  /* Fits inside header */
+  margin-left: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 15px;
-  
-  /* Initial Visibility State */
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(5px);
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* Glassmorphism & Sizing */
-  height: 50px; /* Taller for better impact */
-  padding: 0 25px;
-  border-radius: 40px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(8px);
-  
-  /* Layout */
-  margin-left: 20px;
-  position: relative;
-  pointer-events: none;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+  backdrop-filter: blur(4px);
 }
 
-/* --- STATES --- */
-.tts-visualizer.is-ready {
-  visibility: visible;
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.tts-visualizer.is-talking {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.2));
-  box-shadow: 0 8px 32px color-mix(in srgb, var(--tts-accent) 20%, transparent);
-  border-color: color-mix(in srgb, var(--tts-accent) 30%, transparent);
-}
-
-.tts-visualizer.is-idle {
-  opacity: 0.6;
-  filter: grayscale(0.5);
-}
-
-/* Character Name Styling */
-.tts-char-name {
-  font-family: 'Segoe UI', sans-serif;
-  font-weight: 800;
-  font-size: 0.9rem;
-  color: var(--tts-accent);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--tts-accent) 40%, transparent);
-  white-space: nowrap;
-}
-
-/* --- BARS CONTAINER --- */
-.tts-bars {
-  display: flex;
-  align-items: center; /* Center vertically */
-  justify-content: center;
+.tts-canvas {
+  display: block;
+  width: 100%;
   height: 100%;
-  gap: 3px; /* Tighter gap for high-res look */
+  z-index: 1;
 }
 
-/* --- INDIVIDUAL BAR --- */
-.tts-bar {
-  width: 4px;
-  height: 100%; /* Base height, scaled by transform */
-  background: var(--tts-accent);
-  border-radius: 4px;
-  
-  /* Default State (Idle Line) */
-  transform: scaleY(0.1); 
-  transform-origin: center; /* Scales from center out */
-  transition: transform 0.3s ease;
-  
-  box-shadow: 0 0 6px color-mix(in srgb, var(--tts-accent) 60%, transparent);
+.tts-overlay-name {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.8);
+  text-transform: uppercase;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+  pointer-events: none;
+  z-index: 2;
+  white-space: nowrap;
+  opacity: 0.9;
+  mix-blend-mode: overlay;
 }
-
-/* --- ANIMATION DEFINITION --- */
-@keyframes ttsEqualizer {
-  0% { transform: scaleY(0.15); }
-  50% { transform: scaleY(1.0); }
-  100% { transform: scaleY(0.15); }
-}
-
-@keyframes ttsPulseIdle {
-  0% { transform: scaleY(0.1); opacity: 0.5; }
-  50% { transform: scaleY(0.2); opacity: 0.8; }
-  100% { transform: scaleY(0.1); opacity: 0.5; }
-}
-
-/* --- ACTIVE ANIMATIONS --- */
-.tts-visualizer.is-talking .tts-bar {
-  animation: ttsEqualizer 1s ease-in-out infinite;
-}
-
-.tts-visualizer.is-idle .tts-bar {
-  animation: ttsPulseIdle 2s ease-in-out infinite;
-}
-
-.tts-visualizer.is-paused .tts-bar {
-  transform: scaleY(0.15);
-  opacity: 0.4;
-  animation: none;
-}
-
-/* --- PSEUDO-RANDOM DELAYS FOR FLUIDITY --- */
-/* Distribute delays to create a "wave" effect without JS */
-.tts-bar:nth-child(2n) { animation-duration: 0.6s; }
-.tts-bar:nth-child(3n) { animation-duration: 0.8s; }
-.tts-bar:nth-child(5n) { animation-duration: 0.5s; }
-.tts-bar:nth-child(7n) { animation-duration: 0.7s; }
-
-.tts-bar:nth-child(1) { animation-delay: 0.0s; }
-.tts-bar:nth-child(2) { animation-delay: 0.1s; }
-.tts-bar:nth-child(3) { animation-delay: 0.2s; }
-.tts-bar:nth-child(4) { animation-delay: 0.3s; }
-.tts-bar:nth-child(5) { animation-delay: 0.1s; }
-.tts-bar:nth-child(6) { animation-delay: 0.4s; }
-.tts-bar:nth-child(7) { animation-delay: 0.2s; }
-.tts-bar:nth-child(8) { animation-delay: 0.0s; }
-.tts-bar:nth-child(9) { animation-delay: 0.3s; }
-.tts-bar:nth-child(10) { animation-delay: 0.5s; }
-/* Repeat pattern for remaining bars roughly */
-.tts-bar:nth-child(n+11) { animation-delay: 0.15s; }
-.tts-bar:nth-child(n+15) { animation-delay: 0.35s; }
-.tts-bar:nth-child(n+20) { animation-delay: 0.05s; }
-.tts-bar:nth-child(n+25) { animation-delay: 0.25s; }

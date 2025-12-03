@@ -7,15 +7,9 @@ ttsVisualizerUI <- function(id) {
   tagList(
     tags$div(
       id = "tts_viz_container", 
-      class = "tts-visualizer",
-      # Name Label
-      tags$div(class = "tts-char-name", ""),
-	  # Animated Bars
-      tags$div(
-        class = "tts-bars",
-        # Generate 30 bars for a high-resolution waveform
-        lapply(1:30, function(i) tags$div(class = "tts-bar"))
-      )
+      class = "tts-visualizer-container",
+      tags$canvas(id = "tts_canvas", class = "tts-canvas"),
+      tags$div(class = "tts-overlay-name", "")
     )
   )
 }
