@@ -45,19 +45,23 @@ ttsVisualizerServer <- function(id, settings_data) {
     ns <- session$ns
 
 	# Toggle container visibility based on settings
-    observe({
+	observe({
       # Assuming settings_data$enable_tts_audio is a reactive value
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
       shinyjs::toggle(id = "container", condition = is_enabled)
       
       if (is_enabled) {
-        session$sendCustomMessage("resizeTTSVisualizer", list())
+        # MODIFIED: Add delay to ensure DOM is visible before resizing canvas
+        shinyjs::delay(200, {
+          session$sendCustomMessage("resizeTTSVisualizer", list())
+        })
       }
     })
 
     # Stop Button Logic
     observeEvent(input$stop_tts, {
-      shinyjs::runjs("if(window.mergenTTS) window.mergenTTS.stop();")
+      # MODIFIED: Use the correct JS object 'ttsVisualizerState'
+      shinyjs::runjs("if(window.ttsVisualizerState) window.ttsVisualizerState.stop();")
     })
 
     # Resolve the current character style and send it to the client

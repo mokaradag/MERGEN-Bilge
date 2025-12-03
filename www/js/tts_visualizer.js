@@ -187,7 +187,6 @@ $(document).ready(function() {
 
   // --- Initialization ---
   let visualizer = null;
-  // Initialize slightly delayed to ensure DOM is ready in Shiny
   setTimeout(() => {
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
     
@@ -195,14 +194,28 @@ $(document).ready(function() {
     window.ttsVisualizerState = {
       setTalking: function() { if(visualizer) visualizer.setMode(MODES.TALKING); },
       setIdle: function() { if(visualizer) visualizer.setMode(MODES.IDLE); },
-      stop: function() { if(visualizer) visualizer.setMode(MODES.IDLE); }
+      stop: function() { 
+        if(visualizer) visualizer.setMode(MODES.IDLE);
+        
+        // MODIFIED: Stop actual audio playback
+        var audios = document.querySelectorAll('audio');
+        audios.forEach(function(audio) {
+          try {
+            audio.pause();
+            audio.currentTime = 0;
+          } catch(e) { console.error(e); }
+        });
+      }
     };
   }, 100);
 
   // --- Shiny Message Handler ---
   Shiny.addCustomMessageHandler('resizeTTSVisualizer', function(message) {
     if (visualizer) {
-      setTimeout(() => visualizer.resize(), 50);
+      // MODIFIED: Robust resizing to fix visibility toggle bug
+      visualizer.resize();
+      setTimeout(() => visualizer.resize(), 100);
+      setTimeout(() => visualizer.resize(), 300);
     }
   });
 
