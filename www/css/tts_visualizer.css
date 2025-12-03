@@ -93,6 +93,17 @@
   transform: scale(0.95);
 }
 
+.btn-tts-stop.is-active {
+  box-shadow: 0 0 12px rgba(255, 59, 48, 0.4), inset 0 0 6px rgba(255, 59, 48, 0.2);
+}
+
+.btn-tts-stop:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .btn-tts-stop i {
   font-size: 14px;
 }

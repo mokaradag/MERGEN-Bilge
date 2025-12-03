@@ -50,14 +50,15 @@ $(document).ready(function() {
     }
 
     resize() {
-      if (!this.canvas) return;
+      if (!this.canvas || !this.ctx) return;
       const rect = this.canvas.parentElement.getBoundingClientRect();
-      this.width = rect.width;
-      this.height = rect.height;
-      
+      this.width = rect.width || this.canvas.offsetWidth || 0;
+      this.height = rect.height || this.canvas.offsetHeight || 0;
+
       const dpr = window.devicePixelRatio || 1;
-      this.canvas.width = this.width * dpr;
-      this.canvas.height = this.height * dpr;
+      this.canvas.width = Math.max(this.width, 1) * dpr;
+      this.canvas.height = Math.max(this.height, 1) * dpr;
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.scale(dpr, dpr);
     }
 
@@ -187,6 +188,21 @@ $(document).ready(function() {
 
   // --- Initialization ---
   let visualizer = null;
+  let stopBtnId = null;
+
+  const setStopButtonState = (isActive) => {
+    if (!stopBtnId) return;
+    const $wrapper = $('#' + stopBtnId);
+    const $btn = $wrapper.find('.btn-tts-stop');
+
+    if (isActive) {
+      $btn.prop('disabled', false).addClass('is-active');
+      $wrapper.stop(true, true).fadeIn(180);
+    } else {
+      $btn.prop('disabled', true).removeClass('is-active');
+      $wrapper.stop(true, true).fadeOut(180);
+    }
+  };
   setTimeout(() => {
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
     
@@ -194,9 +210,10 @@ $(document).ready(function() {
     window.ttsVisualizerState = {
       setTalking: function() { if(visualizer) visualizer.setMode(MODES.TALKING); },
       setIdle: function() { if(visualizer) visualizer.setMode(MODES.IDLE); },
-      stop: function() { 
+      stop: function() {
         if(visualizer) visualizer.setMode(MODES.IDLE);
-        
+        setStopButtonState(false);
+
         // MODIFIED: Stop actual audio playback
         var audios = document.querySelectorAll('audio');
         audios.forEach(function(audio) {
@@ -221,30 +238,24 @@ $(document).ready(function() {
 
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
     if (message.color) visualizer.setColor(message.color);
+    if (message.stopBtnId) stopBtnId = message.stopBtnId;
 
     // Update Mode & Stop Button Visibility
     if (message.state === 'talking') {
       visualizer.setMode(MODES.TALKING);
-      
-      // Show stop button if ID provided
-      if (message.stopBtnId) {
-        $('#' + message.stopBtnId).fadeIn(200);
-      }
-      
+      setStopButtonState(true);
+
       // Auto-revert fallback handled by server timer usually
       if (message.duration > 0) {
          if (window._ttsTimer) clearTimeout(window._ttsTimer);
          window._ttsTimer = setTimeout(() => {
            visualizer.setMode(MODES.IDLE);
-           if (message.stopBtnId) $('#' + message.stopBtnId).fadeOut(200);
+           setStopButtonState(false);
          }, (message.duration * 1000) + 500);
       }
     } else {
       visualizer.setMode(MODES.IDLE);
-      // Hide stop button
-      if (message.stopBtnId) {
-        $('#' + message.stopBtnId).fadeOut(200);
-      }
+      setStopButtonState(false);
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
     }
   });
@@ -254,18 +265,21 @@ $(document).ready(function() {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
       if (visualizer) visualizer.setMode(MODES.TALKING);
+      setStopButtonState(true);
     }
   }, true);
 
   document.addEventListener('pause', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (visualizer) visualizer.setMode(MODES.IDLE);
+      setStopButtonState(false);
     }
   }, true);
 
   document.addEventListener('ended', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (visualizer) visualizer.setMode(MODES.IDLE);
+      setStopButtonState(false);
     }
   }, true);
 

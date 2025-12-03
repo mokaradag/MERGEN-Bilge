@@ -43,21 +43,6 @@ ttsVisualizerServer <- function(id, settings_data) {
   moduleServer(id, function(input, output, session) {
     
     ns <- session$ns
-
-	# Toggle container visibility based on settings
-	observe({
-      # Assuming settings_data$enable_tts_audio is a reactive value
-      is_enabled <- isTRUE(settings_data$enable_tts_audio)
-      shinyjs::toggle(id = "container", condition = is_enabled)
-      
-      if (is_enabled) {
-        # MODIFIED: Add delay to ensure DOM is visible before resizing canvas
-        shinyjs::delay(200, {
-          session$sendCustomMessage("resizeTTSVisualizer", list())
-        })
-      }
-    })
-
     # Stop Button Logic
     observeEvent(input$stop_tts, {
       # MODIFIED: Use the correct JS object 'ttsVisualizerState'
@@ -103,6 +88,21 @@ ttsVisualizerServer <- function(id, settings_data) {
     stop_animation <- function() {
       send_state(state = "stop")
     }
+
+    # Toggle container visibility based on settings and refresh client state
+    observe({
+      is_enabled <- isTRUE(settings_data$enable_tts_audio)
+      shinyjs::toggle(id = "container", condition = is_enabled)
+
+      if (is_enabled) {
+        shinyjs::delay(200, {
+          session$sendCustomMessage("resizeTTSVisualizer", list())
+          send_state(state = "idle")
+        })
+      } else {
+        stop_animation()
+      }
+    })
 
     # Keep the header themed when the character selection changes
     observeEvent(settings_data$selected_character, {
