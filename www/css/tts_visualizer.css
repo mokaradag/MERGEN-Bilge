@@ -1,42 +1,63 @@
+/* www/css/tts_visualizer.css */
+
 /* TTS Visualizer Container */
 .tts-visualizer-container {
   position: relative;
-  width: 280px;  /* Compact header width */
-  height: 44px;  /* Fits inside header */
+  width: 450px;  /* Elongated width */
+  height: 50px;  /* Increased height for larger avatar */
   margin-left: 15px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 25px; /* More rounded */
   overflow: hidden;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start; /* Align content to left */
   box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
   backdrop-filter: blur(4px);
+  padding-left: 6px; /* Space for avatar */
+  padding-right: 15px;
 }
 
+/* Container for Avatar and Name */
+.tts-char-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-right: 15px;
+  z-index: 5; /* Ensure above canvas */
+}
+
+/* Avatar Image */
+.tts-avatar-img {
+  width: 40px;  /* Large avatar */
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Character Name */
+.tts-name-text {
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 1.1rem; /* Large font size */
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  white-space: nowrap;
+}
+
+/* Canvas Animation */
 .tts-canvas {
   display: block;
-  width: 100%;
+  flex-grow: 1; /* Fill the rest of the space */
   height: 100%;
   z-index: 1;
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent); /* Soft edges for wave */
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
 }
 
 .tts-overlay-name {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-family: 'Segoe UI', sans-serif;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.8);
-  text-transform: uppercase;
-  text-shadow: 0 0 4px rgba(0,0,0,0.8);
-  pointer-events: none;
-  z-index: 2;
-  white-space: nowrap;
-  opacity: 0.9;
-  mix-blend-mode: overlay;
+  display: none; /* Hide old overlay */
 }
