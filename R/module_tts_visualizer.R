@@ -21,22 +21,13 @@ ttsVisualizerUI <- function(id) {
       ),
       
       # Dalga Animasyonu Canvas
-      tags$canvas(id = "tts_canvas", class = "tts-canvas")
-    ),
-    
-    # 2. Durdurma Butonu Kapsayıcısı (Sağda ve Dışarıda)
-    tags$div(
-      id = ns("stop_btn_wrapper"),
-      class = "tts-stop-wrapper",
-      style = "display: none;", 
-      actionButton(
-        inputId = ns("stop_tts"),
-        label = NULL,
-        icon = icon("stop"),
-        class = "btn-tts-stop",
-        title = "Seslendirmeyi Durdur"
-      )
+      tags$canvas(id = "tts_canvas", class = "tts-canvas"),
+      
+      # Yeni: Tooltip (Sadece hover durumunda ve konuşurken görünür)
+      tags$span(class = "tts-tooltip", "Seslendirmeyi durdur")
     )
+    
+    # Eski durdurma butonu kaldırıldı
   )
 }
 
@@ -46,11 +37,9 @@ ttsVisualizerServer <- function(id, settings_data) {
   moduleServer(id, function(input, output, session) {
     
     ns <- session$ns
-    # Stop Button Logic
-    observeEvent(input$stop_tts, {
-      # MODIFIED: Use the correct JS object 'ttsVisualizerState'
-      shinyjs::runjs("if(window.ttsVisualizerState) window.ttsVisualizerState.stop();")
-    })
+    
+    # Eski 'input$stop_tts' dinleyicisi kaldırıldı.
+    # Durdurma işlemi artık JS tarafında container tıklamasıyla tetikleniyor.
 
     # Resolve the current character style and send it to the client
     send_state <- function(state = "idle", duration = NULL) {
@@ -77,8 +66,8 @@ ttsVisualizerServer <- function(id, settings_data) {
           state = state,
           duration = duration,
           name = display_name,
-          color = accent_color,
-          stopBtnId = ns("stop_btn_wrapper") # Pass ID to JS to toggle stop button
+          color = accent_color
+          # stopBtnId parametresi kaldırıldı
         )
       )
     }

@@ -21,6 +21,13 @@
   box-sizing: border-box;
 }
 
+/* Konuşma modundayken container stilleri */
+.tts-visualizer-container.talking-mode {
+  cursor: pointer;
+  border-color: rgba(124, 77, 255, 0.4);
+  box-shadow: 0 0 15px rgba(124, 77, 255, 0.15), inset 0 0 15px rgba(0,0,0,0.3);
+}
+
 /* Character Info Area */
 .tts-char-info {
   display: flex;
@@ -62,57 +69,34 @@
   -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
 }
 
-/* Stop Button Wrapper */
-.tts-stop-wrapper {
-  z-index: 9999;
-  position: relative;
-  margin-left: 15px;
-  display: flex;
-  align-items: center;
-  height: 54px;
-  flex-shrink: 0;
+/* Tooltip Stili (Yeni) */
+.tts-tooltip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.1);
 }
 
-/* Stylish Stop Button */
-.btn-tts-stop {
-  background: rgba(255, 59, 48, 0.15);
-  border: 1px solid rgba(255, 59, 48, 0.4);
-  color: #ff3b30;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  padding: 0;
+/* Tooltip sadece konuşma modunda ve hover durumunda görünür */
+.tts-visualizer-container.talking-mode:hover .tts-tooltip {
+  opacity: 1;
 }
 
-.btn-tts-stop:hover {
-  background: rgba(255, 59, 48, 0.3);
-  transform: scale(1.05);
-  box-shadow: 0 0 10px rgba(255, 59, 48, 0.3);
-}
-
-.btn-tts-stop:active {
-  transform: scale(0.95);
-}
-
-.btn-tts-stop.is-active {
-  box-shadow: 0 0 12px rgba(255, 59, 48, 0.4), inset 0 0 6px rgba(255, 59, 48, 0.2);
-}
-
-.btn-tts-stop:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.btn-tts-stop i {
-  font-size: 14px;
-}
+/* Eski stop button stilleri tamamen kaldırıldı */
 
 .tts-overlay-name {
   display: none;
@@ -123,7 +107,7 @@
   display: none !important;
 }
 
-/* Outer wrapper to keep visualizer and stop button aligned */
+/* Outer wrapper to keep visualizer aligned */
 .tts-outer-wrapper {
   display: flex;
   align-items: center;

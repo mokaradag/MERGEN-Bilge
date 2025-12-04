@@ -208,25 +208,9 @@ $(document).ready(function() {
 
   // --- Initialization ---
   let visualizer = null;
-  let stopBtnId = null;
+  // Eski stopBtnId değişkeni kaldırıldı
 
-  const setStopButtonState = (isActive) => {
-    if (!stopBtnId) return;
-    const $wrapper = $('#' + stopBtnId);
-    // Button is direct child of wrapper now
-    const $btn = $wrapper.find('.btn-tts-stop');
-
-    if (isActive) {
-      $btn.prop('disabled', false).addClass('is-active');
-      // Force display:flex to maintain vertical centering, animate opacity manually
-      $wrapper.stop(true, true).css({display: 'flex', opacity: 0}).animate({opacity: 1}, 180);
-    } else {
-      $btn.prop('disabled', true).removeClass('is-active');
-      $wrapper.stop(true, true).animate({opacity: 0}, 180, function() {
-        $(this).hide();
-      });
-    }
-  };
+  // setStopButtonState fonksiyonu kaldırıldı
 
   setTimeout(() => {
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
@@ -255,10 +239,12 @@ $(document).ready(function() {
     window.ttsVisualizerState = {
       setTalking: function() { if(visualizer) visualizer.setMode(MODES.TALKING); },
       setIdle: function() { if(visualizer) visualizer.setMode(MODES.IDLE); },
-      setPaused: function() { if(visualizer) visualizer.setMode(MODES.IDLE); }, // Added paused handler
+      setPaused: function() { if(visualizer) visualizer.setMode(MODES.IDLE); }, 
       stop: function() {
         if(visualizer) visualizer.setMode(MODES.IDLE);
-        setStopButtonState(false);
+        
+        // Konuşma modu sınıfını kaldır
+        $('.tts-visualizer-container').removeClass('talking-mode');
 
         // Stop actual audio playback
         var audios = document.querySelectorAll('audio');
@@ -278,6 +264,16 @@ $(document).ready(function() {
     };
   }, 100);
 
+  // --- Click Listener for Container (New) ---
+  $(document).on('click', '.tts-visualizer-container', function() {
+    // Sadece konuşma modundaysa durdur
+    if ($(this).hasClass('talking-mode')) {
+      if (window.ttsVisualizerState) {
+        window.ttsVisualizerState.stop();
+      }
+    }
+  });
+
   // --- Shiny Message Handler ---
   Shiny.addCustomMessageHandler('resizeTTSVisualizer', function(message) {
     if (visualizer) {
@@ -289,52 +285,52 @@ $(document).ready(function() {
     }
   });
 
-  // ... (updateTTSVisualizer and event listeners remain the same)
+  // ... (updateTTSVisualizer and event listeners)
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
     if (message.color) visualizer.setColor(message.color);
-    if (message.stopBtnId) stopBtnId = message.stopBtnId;
+    // stopBtnId handling removed
 
-    // Update Mode & Stop Button Visibility
+    // Update Mode & Class
     if (message.state === 'talking') {
       if (visualizer) visualizer.resize();
 
       visualizer.setMode(MODES.TALKING);
-      setStopButtonState(true);
+      $('.tts-visualizer-container').addClass('talking-mode');
 
       if (message.duration > 0) {
          if (window._ttsTimer) clearTimeout(window._ttsTimer);
          window._ttsTimer = setTimeout(() => {
            visualizer.setMode(MODES.IDLE);
-           setStopButtonState(false);
+           $('.tts-visualizer-container').removeClass('talking-mode');
          }, (message.duration * 1000) + 500);
       }
     } else {
       visualizer.setMode(MODES.IDLE);
-      setStopButtonState(false);
+      $('.tts-visualizer-container').removeClass('talking-mode');
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
     }
   });
   
-  // Audio Event Listeners... (Same as before)
+  // Audio Event Listeners... (Modified to toggle class instead of button)
   document.addEventListener('play', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
       if (visualizer) visualizer.setMode(MODES.TALKING);
-      setStopButtonState(true);
+      $('.tts-visualizer-container').addClass('talking-mode');
     }
   }, true);
 
   document.addEventListener('pause', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (visualizer) visualizer.setMode(MODES.IDLE);
-      setStopButtonState(false);
+      $('.tts-visualizer-container').removeClass('talking-mode');
     }
   }, true);
 
   document.addEventListener('ended', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (visualizer) visualizer.setMode(MODES.IDLE);
-      setStopButtonState(false);
+      $('.tts-visualizer-container').removeClass('talking-mode');
     }
   }, true);
 
