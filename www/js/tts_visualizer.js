@@ -218,10 +218,13 @@ $(document).ready(function() {
 
     if (isActive) {
       $btn.prop('disabled', false).addClass('is-active');
-      $wrapper.stop(true, true).fadeIn(180);
+      // Force display:flex to maintain vertical centering, animate opacity manually
+      $wrapper.stop(true, true).css({display: 'flex', opacity: 0}).animate({opacity: 1}, 180);
     } else {
       $btn.prop('disabled', true).removeClass('is-active');
-      $wrapper.stop(true, true).fadeOut(180);
+      $wrapper.stop(true, true).animate({opacity: 0}, 180, function() {
+        $(this).hide();
+      });
     }
   };
 

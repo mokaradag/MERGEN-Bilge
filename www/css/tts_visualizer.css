@@ -119,3 +119,9 @@
 .tts-visualizer-container.shiny-visual-hidden {
   display: none !important;
 }
+
+/* Outer wrapper to keep visualizer and stop button aligned */
+.tts-outer-wrapper {
+  display: flex;
+  align-items: center;
+}

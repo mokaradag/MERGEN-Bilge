@@ -4,7 +4,10 @@
 #' Creates the HTML structure for the header animation
 ttsVisualizerUI <- function(id) {
   ns <- NS(id)
-  tagList(
+  # Wrap in a parent div to keep visualizer and button aligned together
+  tags$div(
+    class = "tts-outer-wrapper",
+    
     tags$div(
       id = ns("container"), 
       class = "tts-visualizer-container shiny-visual-hidden", 
