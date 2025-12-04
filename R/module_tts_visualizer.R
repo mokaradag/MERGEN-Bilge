@@ -24,6 +24,7 @@ ttsVisualizerUI <- function(id) {
       tags$div(
         id = ns("stop_btn_wrapper"),
         class = "tts-stop-wrapper",
+        style = "display: none;", 
         actionButton(
           inputId = ns("stop_tts"),
           label = NULL,
@@ -91,23 +92,15 @@ ttsVisualizerServer <- function(id, settings_data) {
     # Toggle container visibility based on settings and refresh client state
     observe({
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
-      shinyjs::toggle(id = ns("container"), condition = is_enabled)
+      shinyjs::toggle(id = "container", condition = is_enabled)
 
       if (is_enabled) {
         shinyjs::delay(200, {
-          session$sendCustomMessage(
-            "resetTTSVisualizer",
-            list(stopBtnId = ns("stop_btn_wrapper"))
-          )
           session$sendCustomMessage("resizeTTSVisualizer", list())
           send_state(state = "idle")
         })
       } else {
         stop_animation()
-        session$sendCustomMessage(
-          "resetTTSVisualizer",
-          list(stopBtnId = ns("stop_btn_wrapper"))
-        )
       }
     })
 

@@ -35,13 +35,6 @@ $(document).ready(function() {
       this.animate();
     }
 
-    refresh() {
-      if (!this.ctx) return;
-      this.resize();
-      this.time = 0;
-      this.particles = [];
-    }
-
     generateStrands(count) {
       const strands = [];
       for (let i = 0; i < count; i++) {
@@ -204,30 +197,15 @@ $(document).ready(function() {
 
     if (isActive) {
       $btn.prop('disabled', false).addClass('is-active');
-      $wrapper.addClass('is-ready').removeClass('is-disabled');
+      $wrapper.stop(true, true).fadeIn(180);
     } else {
       $btn.prop('disabled', true).removeClass('is-active');
-      $wrapper.removeClass('is-ready').addClass('is-disabled');
+      $wrapper.stop(true, true).fadeOut(180);
     }
   };
   setTimeout(() => {
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
-
-    const containerEl = document.getElementById('tts_viz-container');
-    if (containerEl) {
-      const handleVisibility = () => {
-        const isVisible = $(containerEl).is(':visible');
-        if (visualizer && isVisible) {
-          visualizer.refresh();
-          setTimeout(() => visualizer.resize(), 80);
-        }
-      };
-
-      const observer = new MutationObserver(handleVisibility);
-      observer.observe(containerEl, { attributes: true, attributeFilter: ['style', 'class'] });
-      handleVisibility();
-    }
-
+    
     // Initial state setup helper
     window.ttsVisualizerState = {
       setTalking: function() { if(visualizer) visualizer.setMode(MODES.TALKING); },
@@ -255,23 +233,6 @@ $(document).ready(function() {
       visualizer.resize();
       setTimeout(() => visualizer.resize(), 100);
       setTimeout(() => visualizer.resize(), 300);
-    }
-  });
-
-  Shiny.addCustomMessageHandler('resetTTSVisualizer', function(message) {
-    if (message && message.stopBtnId) {
-      stopBtnId = message.stopBtnId;
-    }
-
-    if (visualizer) {
-      visualizer.refresh();
-      visualizer.setMode(MODES.IDLE);
-    }
-
-    setStopButtonState(false);
-
-    if (message && message.color && visualizer) {
-      visualizer.setColor(message.color);
     }
   });
 

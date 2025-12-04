@@ -65,21 +65,6 @@
 .tts-stop-wrapper {
   z-index: 10;
   margin-left: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.3;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.tts-stop-wrapper.is-ready {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.tts-stop-wrapper.is-disabled {
-  opacity: 0.4;
 }
 
 /* Stylish Stop Button */
