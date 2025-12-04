@@ -8,21 +8,23 @@ ttsVisualizerUI <- function(id) {
   tags$div(
     class = "tts-outer-wrapper",
     
+    # 1. Görselleştirici Kapsayıcısı (Solda)
     tags$div(
       id = ns("container"), 
       class = "tts-visualizer-container shiny-visual-hidden", 
       
-      # Avatar and Name Area
+      # Avatar ve İsim Alanı
       tags$div(
         class = "tts-char-info",
         tags$img(id = ns("char_avatar"), class = "tts-avatar-img", src = ""),
         tags$span(id = ns("char_name"), class = "tts-name-text", "")
       ),
       
-      # Wave Animation Canvas
+      # Dalga Animasyonu Canvas
       tags$canvas(id = "tts_canvas", class = "tts-canvas")
     ),
     
+    # 2. Durdurma Butonu Kapsayıcısı (Sağda ve Dışarıda)
     tags$div(
       id = ns("stop_btn_wrapper"),
       class = "tts-stop-wrapper",
