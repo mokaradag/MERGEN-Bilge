@@ -1,47 +1,40 @@
 # R/module_tts_visualizer.R
 
 #' TTS Visualizer UI
-#' Creates the HTML structure for the header animation
 ttsVisualizerUI <- function(id) {
   ns <- NS(id)
-  # Wrap in a parent div to keep visualizer and button aligned together
+  
   tags$div(
     class = "tts-outer-wrapper",
     
-    # 1. Görselleştirici Kapsayıcısı (Solda)
+    # 1. Main Container (Left)
     tags$div(
       id = ns("container"), 
       class = "tts-visualizer-container shiny-visual-hidden", 
       
-      # Avatar ve İsim Alanı
+      # Avatar and Name
       tags$div(
         class = "tts-char-info",
         tags$img(id = ns("char_avatar"), class = "tts-avatar-img", src = ""),
         tags$span(id = ns("char_name"), class = "tts-name-text", "")
       ),
       
-      # Dalga Animasyonu Canvas
+      # Canvas
       tags$canvas(id = "tts_canvas", class = "tts-canvas"),
-
-      # YENİ: Tooltip (Sadece hover durumunda görünür)
-      tags$span(class = "tts-tooltip", "Seslendirmeyi durdur")
+      
+      # Tooltip (Hidden by default, shown via CSS when 'talking-mode' + hover)
+      tags$div(class = "tts-tooltip", "Seslendirmeyi durdur")
     )
-    
-    # NOT: Durdurma butonu div'i tamamen kaldırıldı.
   )
 }
 
 #' TTS Visualizer Server
-#' Handles the logic for triggering the animation with correct character themes
 ttsVisualizerServer <- function(id, settings_data) {
   moduleServer(id, function(input, output, session) {
     
     ns <- session$ns
-    
-    # NOT: observeEvent(input$stop_tts) kaldırıldı.
-    # Tıklama ile durdurma işlemi artık JS tarafında (container click) yönetiliyor.
 
-    # Resolve the current character style and send it to the client
+    # Update visualizer state
     send_state <- function(state = "idle", duration = NULL) {
       char_id <- settings_data$selected_character %||% "mergen"
       chars_list <- get_characters_data()$styles
@@ -51,15 +44,21 @@ ttsVisualizerServer <- function(id, settings_data) {
       accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
       avatar_src <- if (!is.null(char_info) && !is.null(char_info$avatar)) char_info$avatar else "mergen_avatar.png"
 
-      # Apply content updates
+      # 1. Update Content (Image, Text, Colors)
       shinyjs::runjs(sprintf("$('#%s').attr('src', '%s');", ns("char_avatar"), avatar_src))
       shinyjs::runjs(sprintf("$('#%s').text('%s');", ns("char_name"), display_name))
-      
-      # Apply Color Updates (Border & Font)
       shinyjs::runjs(sprintf("$('#%s').css('border-color', '%s');", ns("char_avatar"), accent_color))
       shinyjs::runjs(sprintf("$('#%s').css('color', '%s');", ns("char_name"), accent_color))
 
-      # Send animation state
+      # 2. FORCE Class Toggling via ShinyJS (Guaranteed approach)
+      # If talking, add class to container immediately. If not, remove it.
+      if (state == "talking") {
+        shinyjs::addClass(id = "container", class = "talking-mode")
+      } else {
+        shinyjs::removeClass(id = "container", class = "talking-mode")
+      }
+
+      # 3. Send Animation Message to JS
       session$sendCustomMessage(
         "updateTTSVisualizer",
         list(
@@ -67,12 +66,11 @@ ttsVisualizerServer <- function(id, settings_data) {
           duration = duration,
           name = display_name,
           color = accent_color
-          # NOT: stopBtnId parametresi kaldırıldı
         )
       )
     }
 
-    # Helper to trigger animation
+    # Helpers
     trigger_animation <- function(duration = 5) {
       send_state(state = "talking", duration = duration)
     }
@@ -81,11 +79,9 @@ ttsVisualizerServer <- function(id, settings_data) {
       send_state(state = "stop")
     }
 
-    # Toggle container visibility based on settings and refresh client state
+    # Visibility Logic
     observe({
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
-      
-      # MODIFIED: Use toggleClass to preserve Flexbox layout (shinyjs::toggle forces display:block)
       shinyjs::toggleClass(id = "container", class = "shiny-visual-hidden", condition = !is_enabled)
 
       if (is_enabled) {
@@ -98,7 +94,7 @@ ttsVisualizerServer <- function(id, settings_data) {
       }
     })
 
-    # Keep the header themed when the character selection changes
+    # Theme update on character change
     observeEvent(settings_data$selected_character, {
       send_state(state = "idle")
     }, ignoreNULL = FALSE)
