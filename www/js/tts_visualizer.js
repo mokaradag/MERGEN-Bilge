@@ -169,22 +169,23 @@ $(document).ready(function() {
         if(visualizer) visualizer.setMode(MODES.IDLE); 
         $('.tts-visualizer-container').removeClass('talking-mode');
       },
-      stop: function() {
+	  stop: function() {
         // 1. Reset Visuals
         if(visualizer) visualizer.setMode(MODES.IDLE);
         $('.tts-visualizer-container').removeClass('talking-mode');
 
-        // 2. Brutal Stop Audio
-        $('audio').each(function() {
-            this.pause();
-            this.currentTime = 0;
-        });
-        
-        // 3. Clear Queue (if exists)
-        if(window.mergenTTS) {
-          window.mergenTTS.queue = [];
-          window.mergenTTS.isPlaying = false;
+        // 2. Stop Main TTS Engine (Critical Fix for floating Audio objects)
+        if (window.mergenTTS && typeof window.mergenTTS.stop === 'function') {
+            window.mergenTTS.stop();
         }
+
+        // 3. Brutal Stop Audio (Fallback for DOM elements)
+        $('audio').each(function() {
+            try {
+                this.pause();
+                this.currentTime = 0;
+            } catch(e) {}
+        });
       }
     };
   }, 100);
