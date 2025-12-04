@@ -111,3 +111,8 @@
 .tts-overlay-name {
   display: none;
 }
+
+/* Utility to handle visibility toggling without breaking flex display */
+.tts-visualizer-container.shiny-visual-hidden {
+  display: none !important;
+}

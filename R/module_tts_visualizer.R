@@ -7,8 +7,7 @@ ttsVisualizerUI <- function(id) {
   tagList(
     tags$div(
       id = ns("container"), 
-      class = "tts-visualizer-container",
-      style = "display: none;", # Hidden by default, toggled by settings
+      class = "tts-visualizer-container shiny-visual-hidden", # Modified: using class for hidden state
       
       # Avatar and Name Area
       tags$div(
@@ -92,7 +91,9 @@ ttsVisualizerServer <- function(id, settings_data) {
     # Toggle container visibility based on settings and refresh client state
     observe({
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
-      shinyjs::toggle(id = "container", condition = is_enabled)
+      
+      # MODIFIED: Use toggleClass to preserve Flexbox layout (shinyjs::toggle forces display:block)
+      shinyjs::toggleClass(id = "container", class = "shiny-visual-hidden", condition = !is_enabled)
 
       if (is_enabled) {
         shinyjs::delay(200, {

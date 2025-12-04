@@ -242,6 +242,9 @@ $(document).ready(function() {
 
     // Update Mode & Stop Button Visibility
     if (message.state === 'talking') {
+      // MODIFIED: Force resize check to prevent 0x0 canvas bug
+      if (visualizer) visualizer.resize();
+
       visualizer.setMode(MODES.TALKING);
       setStopButtonState(true);
 
