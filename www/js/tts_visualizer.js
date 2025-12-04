@@ -39,7 +39,6 @@ $(document).ready(function() {
     }
 
     generateStrands(count) {
-      // ... (Same as before)
       const strands = [];
       for (let i = 0; i < count; i++) {
         strands.push({
@@ -76,7 +75,6 @@ $(document).ready(function() {
       this.ctx.scale(dpr, dpr);
     }
 
-    // ... (setMode, setColor, setText, hexToRgb remain the same)
     setMode(mode) {
       this.mode = mode;
     }
@@ -208,21 +206,18 @@ $(document).ready(function() {
 
   // --- Initialization ---
   let visualizer = null;
-  // Eski stopBtnId değişkeni kaldırıldı
-
-  // setStopButtonState fonksiyonu kaldırıldı
+  // NOT: stopBtnId ve setStopButtonState kaldırıldı
 
   setTimeout(() => {
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
     
-    // NEW: MutationObserver to fix rendering when container visibility changes
+    // MutationObserver to fix rendering when container visibility changes
     const canvasEl = document.getElementById('tts_canvas');
     if (canvasEl) {
-      const container = canvasEl.parentElement; // The container div
+      const container = canvasEl.parentElement; 
       
       const resizeObserver = new MutationObserver(function(mutations) {
         if ($(container).is(':visible')) {
-           // Small delay to ensure CSS transition completes
            visualizer.resize();
            setTimeout(() => visualizer.resize(), 50);
            setTimeout(() => visualizer.resize(), 200);
@@ -239,11 +234,11 @@ $(document).ready(function() {
     window.ttsVisualizerState = {
       setTalking: function() { if(visualizer) visualizer.setMode(MODES.TALKING); },
       setIdle: function() { if(visualizer) visualizer.setMode(MODES.IDLE); },
-      setPaused: function() { if(visualizer) visualizer.setMode(MODES.IDLE); }, 
+      setPaused: function() { if(visualizer) visualizer.setMode(MODES.IDLE); },
       stop: function() {
         if(visualizer) visualizer.setMode(MODES.IDLE);
         
-        // Konuşma modu sınıfını kaldır
+        // YENİ: Sınıfı kaldır
         $('.tts-visualizer-container').removeClass('talking-mode');
 
         // Stop actual audio playback
@@ -264,9 +259,9 @@ $(document).ready(function() {
     };
   }, 100);
 
-  // --- Click Listener for Container (New) ---
+  // --- NEW: Click Listener for Container (Stop action) ---
   $(document).on('click', '.tts-visualizer-container', function() {
-    // Sadece konuşma modundaysa durdur
+    // Sadece 'talking-mode' sınıfı varsa (yani konuşuyorsa) durdur
     if ($(this).hasClass('talking-mode')) {
       if (window.ttsVisualizerState) {
         window.ttsVisualizerState.stop();
@@ -277,24 +272,22 @@ $(document).ready(function() {
   // --- Shiny Message Handler ---
   Shiny.addCustomMessageHandler('resizeTTSVisualizer', function(message) {
     if (visualizer) {
-      // Force display block logic handled by R, just resize here
       visualizer.resize();
-      // Additional safety resizes
       setTimeout(() => visualizer.resize(), 100);
       setTimeout(() => visualizer.resize(), 300);
     }
   });
 
-  // ... (updateTTSVisualizer and event listeners)
+  // Update Visualizer State
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
     if (message.color) visualizer.setColor(message.color);
-    // stopBtnId handling removed
 
-    // Update Mode & Class
+    // Update Mode & Class Logic
     if (message.state === 'talking') {
       if (visualizer) visualizer.resize();
 
       visualizer.setMode(MODES.TALKING);
+      // YENİ: Konuşma modu sınıfını ekle (CSS ve click için gerekli)
       $('.tts-visualizer-container').addClass('talking-mode');
 
       if (message.duration > 0) {
@@ -311,7 +304,7 @@ $(document).ready(function() {
     }
   });
   
-  // Audio Event Listeners... (Modified to toggle class instead of button)
+  // Audio Event Listeners (Sync visuals with raw audio events)
   document.addEventListener('play', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (window._ttsTimer) clearTimeout(window._ttsTimer);

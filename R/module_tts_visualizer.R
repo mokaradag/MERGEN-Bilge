@@ -22,12 +22,12 @@ ttsVisualizerUI <- function(id) {
       
       # Dalga Animasyonu Canvas
       tags$canvas(id = "tts_canvas", class = "tts-canvas"),
-      
-      # Yeni: Tooltip (Sadece hover durumunda ve konuşurken görünür)
+
+      # YENİ: Tooltip (Sadece hover durumunda görünür)
       tags$span(class = "tts-tooltip", "Seslendirmeyi durdur")
     )
     
-    # Eski durdurma butonu kaldırıldı
+    # NOT: Durdurma butonu div'i tamamen kaldırıldı.
   )
 }
 
@@ -38,8 +38,8 @@ ttsVisualizerServer <- function(id, settings_data) {
     
     ns <- session$ns
     
-    # Eski 'input$stop_tts' dinleyicisi kaldırıldı.
-    # Durdurma işlemi artık JS tarafında container tıklamasıyla tetikleniyor.
+    # NOT: observeEvent(input$stop_tts) kaldırıldı.
+    # Tıklama ile durdurma işlemi artık JS tarafında (container click) yönetiliyor.
 
     # Resolve the current character style and send it to the client
     send_state <- function(state = "idle", duration = NULL) {
@@ -67,7 +67,7 @@ ttsVisualizerServer <- function(id, settings_data) {
           duration = duration,
           name = display_name,
           color = accent_color
-          # stopBtnId parametresi kaldırıldı
+          # NOT: stopBtnId parametresi kaldırıldı
         )
       )
     }

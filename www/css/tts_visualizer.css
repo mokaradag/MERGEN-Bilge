@@ -21,9 +21,9 @@
   box-sizing: border-box;
 }
 
-/* Konuşma modundayken container stilleri */
+/* YENİ: Konuşma modundayken container etkileşimi */
 .tts-visualizer-container.talking-mode {
-  cursor: pointer;
+  cursor: pointer; /* Tıklanabilir olduğunu göster */
   border-color: rgba(124, 77, 255, 0.4);
   box-shadow: 0 0 15px rgba(124, 77, 255, 0.15), inset 0 0 15px rgba(0,0,0,0.3);
 }
@@ -69,34 +69,35 @@
   -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
 }
 
-/* Tooltip Stili (Yeni) */
+/* YENİ: Tooltip Stili */
 .tts-tooltip {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background-color: rgba(0, 0, 0, 0.75);
+  background-color: rgba(0, 0, 0, 0.85);
   color: #fff;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 20px;
   font-family: 'Segoe UI', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   white-space: nowrap;
-  pointer-events: none;
+  pointer-events: none; /* Mouse olaylarını engelleme, tıklama container'a gitsin */
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.2s ease;
   z-index: 10;
   backdrop-filter: blur(4px);
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
 }
 
-/* Tooltip sadece konuşma modunda ve hover durumunda görünür */
+/* YENİ: Tooltip sadece konuşma modu aktifse VE hover yapılırsa görünür */
 .tts-visualizer-container.talking-mode:hover .tts-tooltip {
   opacity: 1;
 }
 
-/* Eski stop button stilleri tamamen kaldırıldı */
+/* NOT: Eski buton stilleri (.tts-stop-wrapper, .btn-tts-stop) kaldırıldı. */
 
 .tts-overlay-name {
   display: none;
