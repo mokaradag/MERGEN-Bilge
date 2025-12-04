@@ -94,8 +94,7 @@ ttsVisualizerServer <- function(id, settings_data) {
     observe({
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
       
-      # MODIFIED: Use toggleClass to preserve Flexbox layout (shinyjs::toggle forces display:block)
-      shinyjs::toggleClass(id = "container", class = "shiny-visual-hidden", condition = !is_enabled)
+      shinyjs::toggleClass(id = ns("container"), class = "shiny-visual-hidden", condition = !is_enabled)
 
       if (is_enabled) {
         shinyjs::delay(200, {
