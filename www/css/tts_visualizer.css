@@ -75,24 +75,42 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background-color: rgba(0, 0, 0, 0.9);
+  
+  /* Button Appearance */
+  background-color: rgba(20, 20, 20, 0.95); /* Dark, solid background for contrast */
   color: #ffffff;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-family: 'Segoe UI', sans-serif;
-  font-size: 0.9rem;
+  border: 1px solid rgba(124, 77, 255, 0.6); /* Mergen purple accent border */
+  
+  /* Typography - Increased size for crispness */
+  font-family: 'Segoe UI', 'Inter', sans-serif;
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.5px;
   white-space: nowrap;
   
-  /* Critical for behavior */
-  pointer-events: none; /* Let clicks pass through to the container */
-  opacity: 0; /* Hidden by default */
-  transition: opacity 0.2s ease;
-  z-index: 999; /* Ensure it's on top */
+  /* Layout */
+  display: flex;
+  align-items: center;
+  gap: 10px; /* Space between icon and text */
+  padding: 10px 24px;
+  border-radius: 30px;
   
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+  /* Behavior */
+  pointer-events: none; /* Clicks pass through to the container */
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  z-index: 999;
+  
+  /* Shadow and Glow */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 10px rgba(124, 77, 255, 0.2);
   backdrop-filter: blur(4px);
+}
+
+/* Style for the new Icon */
+.tts-tooltip i {
+  color: #FF5252; /* bright red for the stop icon */
+  font-size: 16px;
+  filter: drop-shadow(0 0 5px rgba(255, 82, 82, 0.4));
 }
 
 /* SHOW TOOLTIP ON HOVER (Only when Talking) */

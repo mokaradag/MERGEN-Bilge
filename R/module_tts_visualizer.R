@@ -22,8 +22,12 @@ ttsVisualizerUI <- function(id) {
       # Canvas
       tags$canvas(id = "tts_canvas", class = "tts-canvas"),
       
-      # Tooltip (Hidden by default, shown via CSS when 'talking-mode' + hover)
-      tags$div(class = "tts-tooltip", "Seslendirmeyi durdur")
+	  # Tooltip (Hidden by default, shown via CSS when 'talking-mode' + hover)
+      tags$div(
+        class = "tts-tooltip", 
+        tags$i(class = "fa-solid fa-circle-stop"), 
+        tags$span("Seslendirmeyi durdur")
+      )
     )
   )
 }
