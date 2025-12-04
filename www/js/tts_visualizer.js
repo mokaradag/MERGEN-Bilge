@@ -210,26 +210,15 @@ $(document).ready(function() {
   let visualizer = null;
   let stopBtnId = null;
 
-  const resolveStopButtonId = () => {
-    if (stopBtnId) return stopBtnId;
-    const canvas = document.getElementById('tts_canvas');
-    if (!canvas) return null;
-    const outer = canvas.closest('.tts-outer-wrapper');
-    if (!outer) return null;
-    const stopWrapper = outer.querySelector('.tts-stop-wrapper');
-    if (!stopWrapper) return null;
-    stopBtnId = stopWrapper.id || null;
-    return stopBtnId;
-  };
-
   const setStopButtonState = (isActive) => {
-    const id = resolveStopButtonId();
-    if (!id) return;
-    const $wrapper = $('#' + id);
+    if (!stopBtnId) return;
+    const $wrapper = $('#' + stopBtnId);
+    // Button is direct child of wrapper now
     const $btn = $wrapper.find('.btn-tts-stop');
 
     if (isActive) {
       $btn.prop('disabled', false).addClass('is-active');
+      // Force display:flex to maintain vertical centering, animate opacity manually
       $wrapper.stop(true, true).css({display: 'flex', opacity: 0}).animate({opacity: 1}, 180);
     } else {
       $btn.prop('disabled', true).removeClass('is-active');
@@ -302,25 +291,25 @@ $(document).ready(function() {
 
   // ... (updateTTSVisualizer and event listeners remain the same)
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
-    if (visualizer && message.color) visualizer.setColor(message.color);
+    if (message.color) visualizer.setColor(message.color);
     if (message.stopBtnId) stopBtnId = message.stopBtnId;
 
+    // Update Mode & Stop Button Visibility
     if (message.state === 'talking') {
-      if (visualizer) {
-        visualizer.resize();
-        visualizer.setMode(MODES.TALKING);
-      }
+      if (visualizer) visualizer.resize();
+
+      visualizer.setMode(MODES.TALKING);
       setStopButtonState(true);
 
       if (message.duration > 0) {
-        if (window._ttsTimer) clearTimeout(window._ttsTimer);
-        window._ttsTimer = setTimeout(() => {
-          if (visualizer) visualizer.setMode(MODES.IDLE);
-          setStopButtonState(false);
-        }, (message.duration * 1000) + 500);
+         if (window._ttsTimer) clearTimeout(window._ttsTimer);
+         window._ttsTimer = setTimeout(() => {
+           visualizer.setMode(MODES.IDLE);
+           setStopButtonState(false);
+         }, (message.duration * 1000) + 500);
       }
     } else {
-      if (visualizer) visualizer.setMode(MODES.IDLE);
+      visualizer.setMode(MODES.IDLE);
       setStopButtonState(false);
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
     }
