@@ -1,3 +1,5 @@
+// www/js/tts_visualizer.js
+
 $(document).ready(function() {
   
   // --- Configuration ---
@@ -15,17 +17,18 @@ $(document).ready(function() {
       if (!this.canvas) return;
 
       this.ctx = this.canvas.getContext('2d');
-      this.width = this.canvas.offsetWidth;
-      this.height = this.canvas.offsetHeight;
+      // Initialize with 0, resize will handle it
+      this.width = 0;
+      this.height = 0;
       
       // State
       this.mode = MODES.IDLE;
-      this.baseColor = '#7C4DFF'; // Default accent
+      this.baseColor = '#7C4DFF'; 
       
       // Animation State
       this.time = 0;
       this.particles = [];
-      this.strands = this.generateStrands(12); // Fewer strands for small header
+      this.strands = this.generateStrands(12); 
       
       // Resize handling
       this.resize();
@@ -36,6 +39,7 @@ $(document).ready(function() {
     }
 
     generateStrands(count) {
+      // ... (Same as before)
       const strands = [];
       for (let i = 0; i < count; i++) {
         strands.push({
@@ -51,17 +55,28 @@ $(document).ready(function() {
 
     resize() {
       if (!this.canvas || !this.ctx) return;
-      const rect = this.canvas.parentElement.getBoundingClientRect();
-      this.width = rect.width || this.canvas.offsetWidth || 0;
-      this.height = rect.height || this.canvas.offsetHeight || 0;
+      const parent = this.canvas.parentElement;
+      
+      // Check if parent is visible/has dimensions
+      if (parent.clientWidth === 0 || parent.clientHeight === 0) {
+        return; 
+      }
+
+      const rect = parent.getBoundingClientRect();
+      this.width = rect.width || parent.offsetWidth || 0;
+      this.height = rect.height || parent.offsetHeight || 0;
 
       const dpr = window.devicePixelRatio || 1;
+      
+      // Force canvas internal dimensions
       this.canvas.width = Math.max(this.width, 1) * dpr;
       this.canvas.height = Math.max(this.height, 1) * dpr;
+      
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.scale(dpr, dpr);
     }
 
+    // ... (setMode, setColor, setText, hexToRgb remain the same)
     setMode(mode) {
       this.mode = mode;
     }
@@ -69,7 +84,7 @@ $(document).ready(function() {
     setColor(hex) {
       this.baseColor = hex;
       if (this.$overlay.length) {
-        this.$overlay.css('color', hex); // Optional: tint text
+        this.$overlay.css('color', hex);
       }
     }
 
@@ -80,7 +95,6 @@ $(document).ready(function() {
     }
 
     hexToRgb(hex) {
-      // Shorthand handling
       const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
       hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -95,6 +109,12 @@ $(document).ready(function() {
       if (!this.ctx) return;
 
       const render = () => {
+        // Safety check if canvas was removed or hidden
+        if (!this.canvas.offsetParent && this.mode === MODES.IDLE) {
+           requestAnimationFrame(render);
+           return;
+        }
+
         // Config based on mode
         const isTalking = (this.mode === MODES.TALKING);
         const speed = isTalking ? 2.5 : 0.5;
@@ -193,6 +213,7 @@ $(document).ready(function() {
   const setStopButtonState = (isActive) => {
     if (!stopBtnId) return;
     const $wrapper = $('#' + stopBtnId);
+    // Button is direct child of wrapper now
     const $btn = $wrapper.find('.btn-tts-stop');
 
     if (isActive) {
@@ -203,18 +224,40 @@ $(document).ready(function() {
       $wrapper.stop(true, true).fadeOut(180);
     }
   };
+
   setTimeout(() => {
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
     
+    // NEW: MutationObserver to fix rendering when container visibility changes
+    const canvasEl = document.getElementById('tts_canvas');
+    if (canvasEl) {
+      const container = canvasEl.parentElement; // The container div
+      
+      const resizeObserver = new MutationObserver(function(mutations) {
+        if ($(container).is(':visible')) {
+           // Small delay to ensure CSS transition completes
+           visualizer.resize();
+           setTimeout(() => visualizer.resize(), 50);
+           setTimeout(() => visualizer.resize(), 200);
+        }
+      });
+      
+      resizeObserver.observe(container, { 
+        attributes: true, 
+        attributeFilter: ['class', 'style'] 
+      });
+    }
+
     // Initial state setup helper
     window.ttsVisualizerState = {
       setTalking: function() { if(visualizer) visualizer.setMode(MODES.TALKING); },
       setIdle: function() { if(visualizer) visualizer.setMode(MODES.IDLE); },
+      setPaused: function() { if(visualizer) visualizer.setMode(MODES.IDLE); }, // Added paused handler
       stop: function() {
         if(visualizer) visualizer.setMode(MODES.IDLE);
         setStopButtonState(false);
 
-        // MODIFIED: Stop actual audio playback
+        // Stop actual audio playback
         var audios = document.querySelectorAll('audio');
         audios.forEach(function(audio) {
           try {
@@ -222,6 +265,12 @@ $(document).ready(function() {
             audio.currentTime = 0;
           } catch(e) { console.error(e); }
         });
+        
+        // Clear global queue
+        if(window.mergenTTS) {
+          window.mergenTTS.queue = [];
+          window.mergenTTS.isPlaying = false;
+        }
       }
     };
   }, 100);
@@ -229,26 +278,26 @@ $(document).ready(function() {
   // --- Shiny Message Handler ---
   Shiny.addCustomMessageHandler('resizeTTSVisualizer', function(message) {
     if (visualizer) {
-      // MODIFIED: Robust resizing to fix visibility toggle bug
+      // Force display block logic handled by R, just resize here
       visualizer.resize();
+      // Additional safety resizes
       setTimeout(() => visualizer.resize(), 100);
       setTimeout(() => visualizer.resize(), 300);
     }
   });
 
+  // ... (updateTTSVisualizer and event listeners remain the same)
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
     if (message.color) visualizer.setColor(message.color);
     if (message.stopBtnId) stopBtnId = message.stopBtnId;
 
     // Update Mode & Stop Button Visibility
     if (message.state === 'talking') {
-      // MODIFIED: Force resize check to prevent 0x0 canvas bug
       if (visualizer) visualizer.resize();
 
       visualizer.setMode(MODES.TALKING);
       setStopButtonState(true);
 
-      // Auto-revert fallback handled by server timer usually
       if (message.duration > 0) {
          if (window._ttsTimer) clearTimeout(window._ttsTimer);
          window._ttsTimer = setTimeout(() => {
@@ -262,8 +311,8 @@ $(document).ready(function() {
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
     }
   });
-
-  // --- Audio Event Listeners (Global Sync) ---
+  
+  // Audio Event Listeners... (Same as before)
   document.addEventListener('play', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (window._ttsTimer) clearTimeout(window._ttsTimer);

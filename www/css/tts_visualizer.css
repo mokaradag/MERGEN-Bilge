@@ -65,6 +65,9 @@
 .tts-stop-wrapper {
   z-index: 10;
   margin-left: 10px;
+  display: flex;
+  align-items: center;
+  height: 54px;
 }
 
 /* Stylish Stop Button */

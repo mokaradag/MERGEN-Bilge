@@ -7,7 +7,7 @@ ttsVisualizerUI <- function(id) {
   tagList(
     tags$div(
       id = ns("container"), 
-      class = "tts-visualizer-container shiny-visual-hidden", # Modified: using class for hidden state
+      class = "tts-visualizer-container shiny-visual-hidden", 
       
       # Avatar and Name Area
       tags$div(
@@ -17,20 +17,19 @@ ttsVisualizerUI <- function(id) {
       ),
       
       # Wave Animation Canvas
-      tags$canvas(id = "tts_canvas", class = "tts-canvas"),
-      
-      # Stop Button (Hidden by default, shown when talking)
-      tags$div(
-        id = ns("stop_btn_wrapper"),
-        class = "tts-stop-wrapper",
-        style = "display: none;", 
-        actionButton(
-          inputId = ns("stop_tts"),
-          label = NULL,
-          icon = icon("stop"),
-          class = "btn-tts-stop",
-          title = "Seslendirmeyi Durdur"
-        )
+      tags$canvas(id = "tts_canvas", class = "tts-canvas")
+    ),
+    
+    tags$div(
+      id = ns("stop_btn_wrapper"),
+      class = "tts-stop-wrapper",
+      style = "display: none;", 
+      actionButton(
+        inputId = ns("stop_tts"),
+        label = NULL,
+        icon = icon("stop"),
+        class = "btn-tts-stop",
+        title = "Seslendirmeyi Durdur"
       )
     )
   )
