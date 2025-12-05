@@ -10,10 +10,11 @@ window.STT_Client = (function() {
     let canvasElement = null;
     let animationId = null;
     let stream = null;
-    let chunkTimer = null;
     
     // Config
-    const CHUNK_INTERVAL_MS = 3000; // Send audio to server every 3s
+    const CHUNK_INTERVAL_MS = 3000; // 3 seconds
+    let isRecordingActive = false;
+    let chunkTimer = null;
     
     function init(config) {
         const { canvasId, nsPrefix } = config;
@@ -27,7 +28,10 @@ window.STT_Client = (function() {
             .then(audioStream => {
                 stream = audioStream;
                 startVisualizer(stream);
-                startRecordingProcess(stream, nsPrefix);
+                
+                // Initialize recording state
+                isRecordingActive = true;
+                startRecordingLoop(stream, nsPrefix);
             })
             .catch(err => {
                 console.error("Microphone access denied:", err);
@@ -40,7 +44,7 @@ window.STT_Client = (function() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048; // Higher resolution for smoother wave
+        analyser.fftSize = 2048; 
         
         source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
@@ -58,14 +62,16 @@ window.STT_Client = (function() {
         
         animationId = requestAnimationFrame(draw);
         
-        analyser.getByteTimeDomainData(dataArray);
+        if (analyser) {
+            analyser.getByteTimeDomainData(dataArray);
+        }
         
-        // Dark theme background clear
+        // Clear background (Dark Theme)
         canvasCtx.fillStyle = '#1e1e1e'; 
         canvasCtx.fillRect(0, 0, width, height);
         
         canvasCtx.lineWidth = 2;
-        // Gradient stroke for "classy" look
+        // Gradient stroke
         const gradient = canvasCtx.createLinearGradient(0, 0, width, 0);
         gradient.addColorStop(0, '#7C4DFF'); // Mergen Purple
         gradient.addColorStop(0.5, '#2F6DF6'); // Blue
@@ -93,23 +99,41 @@ window.STT_Client = (function() {
         canvasCtx.stroke();
     }
     
-    function startRecordingProcess(stream, nsPrefix) {
-        // Use standard MIME type
+    // --- RECORDING LOGIC FIX: Stop-and-Restart Pattern ---
+    // We must STOP the recorder to generate a valid WebM header for every chunk.
+    // streaming raw chunks without headers causes av_audio_convert to fail on R side.
+    
+    function startRecordingLoop(stream, nsPrefix) {
+        // Prepare new recorder
         const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
         mediaRecorder = new MediaRecorder(stream, { mimeType });
-        
+        let audioChunks = [];
+
         mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
-                sendChunkToShiny(event.data, nsPrefix);
+                audioChunks.push(event.data);
             }
         };
-        
+
+        mediaRecorder.onstop = () => {
+            // 1. Process gathered chunks into a blob
+            if (audioChunks.length > 0) {
+                const blob = new Blob(audioChunks, { type: mimeType });
+                sendChunkToShiny(blob, nsPrefix);
+            }
+            
+            // 2. Restart if still active
+            if (isRecordingActive) {
+                startRecordingLoop(stream, nsPrefix);
+            }
+        };
+
         mediaRecorder.start();
-        
-        // Start loop to slice chunks without stopping the stream
-        chunkTimer = setInterval(() => {
+
+        // Stop after N seconds to trigger onstop -> send -> restart
+        chunkTimer = setTimeout(() => {
             if (mediaRecorder && mediaRecorder.state === "recording") {
-                mediaRecorder.requestData(); // Triggers ondataavailable with current buffer
+                mediaRecorder.stop();
             }
         }, CHUNK_INTERVAL_MS);
     }
@@ -118,33 +142,31 @@ window.STT_Client = (function() {
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = function() {
-            // Remove "data:audio/webm;base64," prefix
             const base64data = reader.result.split(',')[1];
-            // Send to R module: nsPrefix + "-audio_chunk"
+            // Send to R module
             Shiny.setInputValue(nsPrefix + "-audio_chunk", base64data, { priority: "event" });
         };
     }
     
     function stopRecording(nsPrefix) {
-        if (chunkTimer) clearInterval(chunkTimer);
-        if (mediaRecorder && mediaRecorder.state !== "inactive") {
-            mediaRecorder.stop();
+        isRecordingActive = false; // Prevents loop from restarting
+        if (chunkTimer) clearTimeout(chunkTimer);
+        
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+            mediaRecorder.stop(); // This will trigger one last send
         }
     }
     
     function startRecording(nsPrefix) {
-        if (mediaRecorder && mediaRecorder.state === "inactive") {
-            mediaRecorder.start();
-            chunkTimer = setInterval(() => {
-                if (mediaRecorder && mediaRecorder.state === "recording") {
-                    mediaRecorder.requestData(); 
-                }
-            }, CHUNK_INTERVAL_MS);
+        if (!isRecordingActive && stream) {
+            isRecordingActive = true;
+            startRecordingLoop(stream, nsPrefix);
         }
     }
     
     function stopAndCleanup(nsPrefix) {
-        if (chunkTimer) clearInterval(chunkTimer);
+        isRecordingActive = false;
+        if (chunkTimer) clearTimeout(chunkTimer);
         if (animationId) cancelAnimationFrame(animationId);
         
         if (mediaRecorder && mediaRecorder.state !== "inactive") {

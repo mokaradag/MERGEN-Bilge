@@ -29,6 +29,9 @@ LOCAL_TTS_VOICE=tr-male-1
 # Set to FALSE to skip SSL verification for self-signed certs (on-prem only)
 LOCAL_TTS_VERIFY_SSL=TRUE
 
+LOCAL_STT_ENDPOINT=http://localhost:8080/v1/audio/transcriptions
+LOCAL_STT_MODEL=whisper-large-v3
+
 # Optional: override the TTS API key. If left blank, the encrypted primary API key
 # you already store for the main models will be reused automatically.
 LOCAL_TTS_API_KEY=

@@ -3,7 +3,7 @@
 sttUI <- function(id) {
   ns <- NS(id)
   tagList(
-    # Client-side dependency is loaded in ui.R via tags$script/link
+    # Client-side dependency is loaded in ui.R
     uiOutput(ns("stt_modal_container"))
   )
 }
@@ -35,11 +35,11 @@ sttServer <- function(id, parent_session) {
           tags$i(class = "fas fa-microphone-lines"),
           span("Sesli Giriş (Canlı Deşifre)", style = "margin-left: 10px;")
         ),
-        footer = NULL, # Custom footer defined in body
+        footer = NULL, 
         size = "l",
         easyClose = FALSE,
         fade = TRUE,
-        class = "stt-modal-dialog", # Custom class for CSS targeting
+        class = "stt-modal-dialog",
         
         div(
           class = "stt-modal-body",
@@ -85,7 +85,7 @@ sttServer <- function(id, parent_session) {
         )
       ))
       
-      # Initialize JS logic after modal is shown
+      # Initialize JS logic
       shinyjs::delay(500, {
         session$sendCustomMessage("initSTT", list(
           canvasId = ns("visualizer_canvas"),
@@ -94,18 +94,27 @@ sttServer <- function(id, parent_session) {
       })
     }
     
-    # Stop Recording/Start Recording Toggle
+    # Toggle Recording (Stop/Resume)
     observeEvent(input$toggle_record_btn, {
+      # CRITICAL FIX: Removed 'class' argument from updateActionButton to prevent crash
+      
       if (rv$is_recording) {
-        # Stop
+        # STOP ACTION
         rv$is_recording <- FALSE
-        updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"), class = "btn-stt-record paused")
+        updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"))
+        
+        # Manually update classes via JS
+        shinyjs::runjs(sprintf("$('#%s').removeClass('recording').addClass('paused');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.stopRecording('%s');", id))
         shinyjs::runjs(sprintf("$('#%s').text('Duraklatıldı').removeClass('recording').addClass('paused');", ns("stt_status")))
+        
       } else {
-        # Resume
+        # RESUME ACTION
         rv$is_recording <- TRUE
-        updateActionButton(session, "toggle_record_btn", label = "Durdur", icon = icon("stop"), class = "btn-stt-record recording")
+        updateActionButton(session, "toggle_record_btn", label = "Durdur", icon = icon("stop"))
+        
+        # Manually update classes via JS
+        shinyjs::runjs(sprintf("$('#%s').removeClass('paused').addClass('recording');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.startRecording('%s');", id))
         shinyjs::runjs(sprintf("$('#%s').text('Dinliyor...').removeClass('paused').addClass('recording');", ns("stt_status")))
       }
@@ -118,7 +127,10 @@ sttServer <- function(id, parent_session) {
       # 1. Decode Base64 to WebM
       audio_binary <- tryCatch(
         base64enc::base64decode(input$audio_chunk),
-        error = function(e) return(NULL)
+        error = function(e) {
+          cat("[STT] Base64 Decode Error:", e$message, "\n")
+          return(NULL)
+        }
       )
       req(audio_binary)
       
@@ -127,19 +139,21 @@ sttServer <- function(id, parent_session) {
       writeBin(audio_binary, input_file)
       
       tryCatch({
-        # 2. Convert to WAV (16kHz mono) for Whisper compatibility
+        # 2. Convert to WAV (16kHz mono)
+        # Note: This requires ffmpeg/av library installed on the system
         av::av_audio_convert(input_file, wav_file, format = "wav", sample_rate = 16000, channels = 1)
         
         # 3. Call Local Whisper API
-        # Using configuration from global.R
+        if (!exists("stt_config")) stop("stt_config not found in global env")
+        
         res <- httr::POST(
           url = stt_config$endpoint,
           httr::add_headers(Authorization = paste("Bearer", stt_config$api_key)),
           body = list(
             file = httr::upload_file(wav_file, type = "audio/wav"),
             model = stt_config$model,
-            language = "tr",       # Force Turkish context
-            temperature = 0.0      # Deterministic
+            language = "tr",       
+            temperature = 0.0      
           ),
           encode = "multipart",
           httr::timeout(10)
@@ -151,33 +165,32 @@ sttServer <- function(id, parent_session) {
           text_segment <- parsed$text
           
           if (!is.null(text_segment) && nzchar(text_segment)) {
-            # Ensure correct encoding
             Encoding(text_segment) <- "UTF-8"
             
-            # Append to history and update UI
-            # We add a space if history isn't empty
+            # Smart append (avoid double spaces)
             sep <- if (nzchar(rv$transcription_history)) " " else ""
             rv$transcription_history <- paste0(rv$transcription_history, sep, text_segment)
             
-            # Update the text area without resetting user's manual edits if possible.
-            # However, for live sync, we usually append. 
-            # Ideally, we read current input value and append.
+            # Update UI
+            # We append to whatever is currently in the box (in case user edited it)
             current_ui_val <- input$transcribed_text
             new_val <- if (nzchar(current_ui_val)) paste(current_ui_val, text_segment) else text_segment
             
             updateTextAreaInput(session, "transcribed_text", value = new_val)
           }
+        } else {
+          cat("[STT API Error] Status:", httr::status_code(res), "\n")
         }
         
       }, error = function(e) {
-        cat("[STT ERROR]", conditionMessage(e), "\n")
+        cat("[STT Processing Error]", conditionMessage(e), "\n")
       }, finally = {
         if (file.exists(input_file)) unlink(input_file)
         if (file.exists(wav_file)) unlink(wav_file)
       })
     })
     
-    # Accept
+    # Accept Button
     observeEvent(input$accept_btn, {
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       text_to_send <- trimws(input$transcribed_text)
@@ -187,7 +200,7 @@ sttServer <- function(id, parent_session) {
       }
     })
     
-    # Dismiss
+    # Dismiss Button
     observeEvent(input$dismiss_btn, {
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       removeModal()
