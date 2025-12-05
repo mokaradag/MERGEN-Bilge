@@ -174,6 +174,9 @@ server <- function(input, output, session) {
   # Initialize TTS Visualizer
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
   
+  # Initialize Speech-to-Text Module
+  stt_data <- sttServer("stt_module", parent_session = session)
+  
   # Initialize File Preview module (replaces preview outputs + modal helpers)
   filePreview <- filePreviewServer("file_preview")
   
@@ -1499,8 +1502,19 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	}, ignoreInit = TRUE)
   
   observeEvent(input$voice_btn, {
-	showToast(session, "Sesli giriş yakında eklenecek", "info")
+    stt_data$start_session()
   }, ignoreInit = TRUE)
+  
+  observeEvent(stt_data$final_text(), {
+    txt <- stt_data$final_text()
+    if (nzchar(txt)) {
+      # Populate the main chat input
+      updateTextAreaInput(session, "user_input", value = txt)
+      
+      # Optional: Focus the input (requires JS)
+      shinyjs::runjs("$('#user_input').focus();")
+    }
+  })
 
   observeEvent(settings_data$enable_animations, {
 	shinyjs::toggleClass(selector = "body", class = "animations-enabled", condition = settings_data$enable_animations)

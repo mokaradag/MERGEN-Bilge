@@ -50,6 +50,7 @@ ui <- dashboardPage(
   # --- Body ---
   dashboardBody(
     useShinyjs(), # Initialize shinyjs
+	sttUI("stt_module"),
 	
 	# --- Hidden widget dependency loaders (critical for string-injected outputs) ---
 	tags$div(
@@ -71,6 +72,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/all.min.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/stt.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -119,6 +121,7 @@ ui <- dashboardPage(
     tags$script(src = "script.js"),
     tags$script(src = "character_typing.js"),
 	tags$script(src = "js/tts_visualizer.js"),
+	tags$script(src = "js/stt_client.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),

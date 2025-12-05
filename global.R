@@ -125,6 +125,7 @@ library(tidyr)
 library(urltools)
 library(writexl)
 library(xml2)
+library(av)
 
 # Normalize Windows paths (turn unicode-heavy paths into short 8.3 variants)
 safe_windows_short_path <- function(path, must_exist = FALSE) {
@@ -971,6 +972,7 @@ source("R/module_character_video.R", encoding ="UTF-8")
 source("R/module_performance.R", encoding ="UTF-8")
 source("R/module_ai_processing.R", encoding ="UTF-8")
 source("R/module_tts.R", encoding ="UTF-8")
+source("R/module_stt.R", encoding = "UTF-8")
 source("R/module_session_timeout.R", encoding = "UTF-8")
 source("R/module_file_preview.R", encoding = "UTF-8")
 source("R/module_api_key.R", encoding = "UTF-8")
@@ -1064,9 +1066,16 @@ tts_config <- list(
   base_url = Sys.getenv("LOCAL_TTS_ENDPOINT", ""),
   api_key = Sys.getenv("LOCAL_TTS_API_KEY", ""),
   model = Sys.getenv("LOCAL_TTS_MODEL", "tts-1-hd"),
-  default_voice = Sys.getenv("LOCAL_TTS_VOICE", "nova"),
+  default_voice = Sys.getenv("LOCAL_TTS_VOICE", "tr-male-1"),
   timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "30")),
   verify_ssl = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
+)
+
+# --- Speech-to-text configuration ---
+stt_config <- list(
+  endpoint = Sys.getenv("LOCAL_STT_ENDPOINT", "http://localhost:8080/v1/audio/transcriptions"),
+  model    = Sys.getenv("LOCAL_STT_MODEL", "whisper-large-v3"),
+  api_key  = Sys.getenv("AI_KEYS_MASTER", "") 
 )
 
 # Başlangıçta indeksleri hazırla (ilk tıklama gecikmesini azaltır)

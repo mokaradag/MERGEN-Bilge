@@ -1,0 +1,120 @@
+/* www/css/stt.css */
+
+.stt-modal-dialog .modal-content {
+    background-color: #1e1e1e; /* Dark background matching app */
+    border: 1px solid #333;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    color: #e0e0e0;
+}
+
+.stt-modal-header {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+}
+
+.stt-modal-body {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.stt-visualizer-container {
+    width: 100%;
+    background: #111;
+    border-radius: 8px;
+    border: 1px solid #333;
+    overflow: hidden;
+    position: relative;
+    height: 150px;
+}
+
+#stt_status {
+    text-align: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+    padding: 5px;
+    border-radius: 4px;
+    transition: all 0.3s;
+}
+
+.stt-status.recording {
+    color: #ff4d4d;
+    text-shadow: 0 0 5px rgba(255, 77, 77, 0.5);
+}
+
+.stt-status.paused {
+    color: #ffa500;
+}
+
+.stt-editor-container textarea {
+    background-color: #252525 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    line-height: 1.5;
+}
+
+.stt-editor-container textarea:focus {
+    border-color: #7C4DFF !important;
+    box-shadow: 0 0 0 2px rgba(124, 77, 255, 0.2);
+}
+
+.stt-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid #333;
+}
+
+.stt-controls-right {
+    display: flex;
+    gap: 10px;
+}
+
+/* Button Styles */
+.btn-stt-primary {
+    background-color: #7C4DFF !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 600;
+    padding: 8px 20px;
+}
+
+.btn-stt-primary:hover {
+    background-color: #6A3BE6 !important;
+}
+
+.btn-stt-secondary {
+    background-color: #444 !important;
+    color: #ccc !important;
+    border: none !important;
+}
+
+.btn-stt-secondary:hover {
+    background-color: #555 !important;
+    color: #fff !important;
+}
+
+.btn-stt-record {
+    width: 120px;
+    font-weight: bold;
+    border: none !important;
+    transition: all 0.2s;
+}
+
+.btn-stt-record.recording {
+    background-color: #d9534f !important; /* Red for Stop */
+    color: #fff !important;
+}
+
+.btn-stt-record.paused {
+    background-color: #2F6DF6 !important; /* Blue for Resume */
+    color: #fff !important;
+}
