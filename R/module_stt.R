@@ -3,7 +3,6 @@
 sttUI <- function(id) {
   ns <- NS(id)
   tagList(
-    # Client-side dependency is loaded in ui.R
     uiOutput(ns("stt_modal_container"))
   )
 }
@@ -15,17 +14,14 @@ sttServer <- function(id, parent_session) {
     # Reactive values
     rv <- reactiveValues(
       transcription_history = "",
-      current_text = "",
       is_recording = FALSE
     )
     
-    # Return value for the main app
     final_text <- reactiveVal("")
     
     # Trigger to open modal
     start_session <- function() {
       rv$transcription_history <- ""
-      rv$current_text <- ""
       rv$is_recording <- TRUE
       
       showModal(modalDialog(
@@ -44,16 +40,16 @@ sttServer <- function(id, parent_session) {
         div(
           class = "stt-modal-body",
           
-          # Visualizer Container
+          # Visualizer
           div(
             class = "stt-visualizer-container",
             tags$canvas(id = ns("visualizer_canvas"), width = "600", height = "150")
           ),
           
-          # Status Indicator
+          # Status
           div(id = ns("stt_status"), class = "stt-status recording", "Dinliyor..."),
           
-          # Transcription Editor
+          # Editor
           div(
             class = "stt-editor-container",
             textAreaInput(
@@ -70,12 +66,10 @@ sttServer <- function(id, parent_session) {
           # Controls
           div(
             class = "stt-controls",
-            # Left: Stop/Record Toggle
             div(
               class = "stt-controls-left",
               actionButton(ns("toggle_record_btn"), "Durdur", icon = icon("stop"), class = "btn-stt-record recording")
             ),
-            # Right: Action Buttons
             div(
               class = "stt-controls-right",
               actionButton(ns("dismiss_btn"), "İptal", icon = icon("times"), class = "btn-stt-secondary"),
@@ -85,7 +79,7 @@ sttServer <- function(id, parent_session) {
         )
       ))
       
-      # Initialize JS logic
+      # Initialize JS
       shinyjs::delay(500, {
         session$sendCustomMessage("initSTT", list(
           canvasId = ns("visualizer_canvas"),
@@ -94,41 +88,35 @@ sttServer <- function(id, parent_session) {
       })
     }
     
-    # Toggle Recording (Stop/Resume)
+    # Toggle Recording
     observeEvent(input$toggle_record_btn, {
-      # CRITICAL FIX: Removed 'class' argument from updateActionButton to prevent crash
-      
+      # No 'class' argument in updateActionButton to avoid crash
       if (rv$is_recording) {
-        # STOP ACTION
+        # Stop
         rv$is_recording <- FALSE
         updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"))
-        
-        # Manually update classes via JS
         shinyjs::runjs(sprintf("$('#%s').removeClass('recording').addClass('paused');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.stopRecording('%s');", id))
         shinyjs::runjs(sprintf("$('#%s').text('Duraklatıldı').removeClass('recording').addClass('paused');", ns("stt_status")))
-        
       } else {
-        # RESUME ACTION
+        # Resume
         rv$is_recording <- TRUE
         updateActionButton(session, "toggle_record_btn", label = "Durdur", icon = icon("stop"))
-        
-        # Manually update classes via JS
         shinyjs::runjs(sprintf("$('#%s').removeClass('paused').addClass('recording');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.startRecording('%s');", id))
         shinyjs::runjs(sprintf("$('#%s').text('Dinliyor...').removeClass('paused').addClass('recording');", ns("stt_status")))
       }
     })
     
-    # Handle incoming Audio Chunks
+    # Process Audio Chunk
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
       
-      # 1. Decode Base64 to WebM
+      # 1. Decode Base64
       audio_binary <- tryCatch(
         base64enc::base64decode(input$audio_chunk),
         error = function(e) {
-          cat("[STT] Base64 Decode Error:", e$message, "\n")
+          cat("[STT] Base64 Decode Error\n")
           return(NULL)
         }
       )
@@ -140,21 +128,26 @@ sttServer <- function(id, parent_session) {
       
       tryCatch({
         # 2. Convert to WAV (16kHz mono)
-        # Note: This requires ffmpeg/av library installed on the system
         av::av_audio_convert(input_file, wav_file, format = "wav", sample_rate = 16000, channels = 1)
         
-        # 3. Call Local Whisper API
-        if (!exists("stt_config")) stop("stt_config not found in global env")
+        # Check file validity to prevent 500 errors
+        if (!file.exists(wav_file) || file.info(wav_file)$size < 100) {
+          # File too small (silence or error), skip API call
+          return(NULL)
+        }
+        
+        # 3. Call API
+        # CRITICAL FIX: Removed 'temperature' and other unsupported params
+        body_params <- list(
+          file = httr::upload_file(wav_file, type = "audio/wav"),
+          model = stt_config$model,
+          language = "tr" 
+        )
         
         res <- httr::POST(
           url = stt_config$endpoint,
           httr::add_headers(Authorization = paste("Bearer", stt_config$api_key)),
-          body = list(
-            file = httr::upload_file(wav_file, type = "audio/wav"),
-            model = stt_config$model,
-            language = "tr",       
-            temperature = 0.0      
-          ),
+          body = body_params,
           encode = "multipart",
           httr::timeout(10)
         )
@@ -167,19 +160,18 @@ sttServer <- function(id, parent_session) {
           if (!is.null(text_segment) && nzchar(text_segment)) {
             Encoding(text_segment) <- "UTF-8"
             
-            # Smart append (avoid double spaces)
-            sep <- if (nzchar(rv$transcription_history)) " " else ""
-            rv$transcription_history <- paste0(rv$transcription_history, sep, text_segment)
-            
-            # Update UI
-            # We append to whatever is currently in the box (in case user edited it)
+            # Append logic
             current_ui_val <- input$transcribed_text
-            new_val <- if (nzchar(current_ui_val)) paste(current_ui_val, text_segment) else text_segment
+            # Add space if needed
+            sep <- if (nzchar(current_ui_val) && !grepl("\\s$", current_ui_val)) " " else ""
+            new_val <- paste0(current_ui_val, sep, text_segment)
             
             updateTextAreaInput(session, "transcribed_text", value = new_val)
           }
         } else {
           cat("[STT API Error] Status:", httr::status_code(res), "\n")
+          # Optional: Print body for debug
+          # cat(httr::content(res, "text"), "\n")
         }
         
       }, error = function(e) {
@@ -190,7 +182,6 @@ sttServer <- function(id, parent_session) {
       })
     })
     
-    # Accept Button
     observeEvent(input$accept_btn, {
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       text_to_send <- trimws(input$transcribed_text)
@@ -200,7 +191,6 @@ sttServer <- function(id, parent_session) {
       }
     })
     
-    # Dismiss Button
     observeEvent(input$dismiss_btn, {
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       removeModal()
