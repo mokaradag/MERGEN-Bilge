@@ -90,16 +90,15 @@ sttServer <- function(id, parent_session) {
     
     # Toggle Recording
     observeEvent(input$toggle_record_btn, {
-      # No 'class' argument in updateActionButton to avoid crash
       if (rv$is_recording) {
-        # Stop
+        # STOP
         rv$is_recording <- FALSE
         updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('recording').addClass('paused');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.stopRecording('%s');", id))
         shinyjs::runjs(sprintf("$('#%s').text('Duraklatıldı').removeClass('recording').addClass('paused');", ns("stt_status")))
       } else {
-        # Resume
+        # RESUME
         rv$is_recording <- TRUE
         updateActionButton(session, "toggle_record_btn", label = "Durdur", icon = icon("stop"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('paused').addClass('recording');", ns("toggle_record_btn")))
@@ -111,6 +110,12 @@ sttServer <- function(id, parent_session) {
     # Process Audio Chunk
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
+      
+      # --- DEBUG: Config Check ---
+      # Use fallbacks if global config is missing or empty
+      api_url <- if(exists("stt_config") && nzchar(stt_config$endpoint)) stt_config$endpoint else "http://localhost:8080/v1/audio/transcriptions"
+      api_model <- if(exists("stt_config") && nzchar(stt_config$model)) stt_config$model else "whisper-large-v3"
+      api_key <- if(exists("stt_config")) stt_config$api_key else ""
       
       # 1. Decode Base64
       audio_binary <- tryCatch(
@@ -127,26 +132,28 @@ sttServer <- function(id, parent_session) {
       writeBin(audio_binary, input_file)
       
       tryCatch({
-        # 2. Convert to WAV (16kHz mono)
+        # 2. Convert to WAV (16kHz mono) - exactly as in your working code
         av::av_audio_convert(input_file, wav_file, format = "wav", sample_rate = 16000, channels = 1)
         
-        # Check file validity to prevent 500 errors
-        if (!file.exists(wav_file) || file.info(wav_file)$size < 100) {
-          # File too small (silence or error), skip API call
-          return(NULL)
+        # Check size to avoid sending silence/empty headers
+        if (file.size(wav_file) < 1000) { # < 1KB is likely empty
+           return(NULL)
         }
-        
-        # 3. Call API
-        # CRITICAL FIX: Removed 'temperature' and other unsupported params
+
+        # 3. Call API - EXACTLY MATCHING WORKING CODE
         body_params <- list(
           file = httr::upload_file(wav_file, type = "audio/wav"),
-          model = stt_config$model,
-          language = "tr" 
+          model = api_model,
+          language = "tr",
+          task = "transcribe" # Added this as it was in your working code
         )
         
+        # Debug Print
+        cat(sprintf("[STT] Sending to %s (Model: %s)\n", api_url, api_model))
+        
         res <- httr::POST(
-          url = stt_config$endpoint,
-          httr::add_headers(Authorization = paste("Bearer", stt_config$api_key)),
+          url = api_url,
+          httr::add_headers(Authorization = paste("Bearer", api_key)),
           body = body_params,
           encode = "multipart",
           httr::timeout(10)
@@ -159,10 +166,10 @@ sttServer <- function(id, parent_session) {
           
           if (!is.null(text_segment) && nzchar(text_segment)) {
             Encoding(text_segment) <- "UTF-8"
+            cat("[STT] Received:", text_segment, "\n")
             
             # Append logic
             current_ui_val <- input$transcribed_text
-            # Add space if needed
             sep <- if (nzchar(current_ui_val) && !grepl("\\s$", current_ui_val)) " " else ""
             new_val <- paste0(current_ui_val, sep, text_segment)
             
@@ -170,8 +177,7 @@ sttServer <- function(id, parent_session) {
           }
         } else {
           cat("[STT API Error] Status:", httr::status_code(res), "\n")
-          # Optional: Print body for debug
-          # cat(httr::content(res, "text"), "\n")
+          cat("Response:", httr::content(res, "text", encoding="UTF-8"), "\n")
         }
         
       }, error = function(e) {

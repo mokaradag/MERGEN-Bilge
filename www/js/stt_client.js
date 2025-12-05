@@ -14,6 +14,7 @@ window.STT_Client = (function() {
     const CHUNK_INTERVAL_MS = 3000;
     let isRecordingActive = false;
     let chunkTimer = null;
+    let audioChunks = [];
     
     function init(config) {
         const { canvasId, nsPrefix } = config;
@@ -83,27 +84,38 @@ window.STT_Client = (function() {
     }
     
     function startRecordingLoop(stream, nsPrefix) {
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-        let audioChunks = [];
+        // Use webm if possible, matching your working code's preference
+        const options = { mimeType: 'audio/webm' };
+        try {
+            mediaRecorder = new MediaRecorder(stream, options);
+        } catch (e) {
+            // Fallback for browsers not supporting webm (e.g., Safari)
+            mediaRecorder = new MediaRecorder(stream); 
+        }
 
-        mediaRecorder.ondataavailable = (event) => {
+        audioChunks = [];
+
+        mediaRecorder.addEventListener('dataavailable', event => {
             if (event.data.size > 0) audioChunks.push(event.data);
-        };
+        });
 
-        mediaRecorder.onstop = () => {
+        mediaRecorder.addEventListener('stop', () => {
+            // Process chunks
             if (audioChunks.length > 0) {
-                const blob = new Blob(audioChunks, { type: mimeType });
-                // Only send if there is data
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
                 if (blob.size > 0) {
                     sendChunkToShiny(blob, nsPrefix);
                 }
             }
+            
+            // Restart if still active
             if (isRecordingActive) {
-                // Immediate restart for continuous flow
-                startRecordingLoop(stream, nsPrefix);
+                // Small delay to ensure clean state
+                setTimeout(() => {
+                    startRecordingLoop(stream, nsPrefix);
+                }, 50);
             }
-        };
+        });
 
         mediaRecorder.start();
 
