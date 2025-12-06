@@ -1508,11 +1508,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   observeEvent(stt_data$final_text(), {
     txt <- stt_data$final_text()
     if (nzchar(txt)) {
-      # Populate the main chat input
+      # Populate the input for visual feedback
       updateTextAreaInput(session, "user_input", value = txt)
-      
-      # Optional: Focus the input (requires JS)
-      shinyjs::runjs("$('#user_input').focus();")
+      # Immediately trigger the send message logic
+      send_message(txt)
     }
   })
 

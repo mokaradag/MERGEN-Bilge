@@ -15,44 +15,78 @@ window.STT_Client = (function() {
     let dbElement = null;
     let startTime = 0;
     let timerInterval = null;
+    let accentColor = '#7C4DFF';
     
     // Config
     const CHUNK_INTERVAL_MS = 3000;
-    // SESSİZLİK EŞİĞİ (Gelişmiş Halüsinasyon Engelleyici)
-    // Eğer 3 saniyelik dilimdeki maksimum ses seviyesi bu değerin altındaysa sunucuya gönderilmez.
-    // 0.02 - 0.03 arası iyi bir değerdir. "Evet." gibi fısıltıları eler.
     const SILENCE_THRESHOLD = 0.025; 
     
     let isRecordingActive = false;
     let chunkTimer = null;
     let audioChunks = [];
-    let currentSegmentMaxRMS = 0; // Segment içindeki max ses
+    let currentSegmentMaxRMS = 0; 
     
-    // Visualizer Değişkenleri
+    // --- SONIC PULSE VISUALIZER STATE ---
+    const MODES = {
+        IDLE: 'IDLE',
+        LISTENING: 'LISTENING'
+    };
+    
+    // Modern colors (Blue/Purple/Pink gradients) independent of character theme
+    const VIS_CONFIGS = {
+        LISTENING:  { colors: ['#22d3ee', '#3b82f6', '#06b6d4'], speed: 1.2, ampMult: 1.0, tension: 0.8, glow: 15, particleRate: 0.2 },
+        IDLE:       { colors: ['#475569', '#64748b', '#94a3b8'], speed: 0.4, ampMult: 0.2, tension: 0.5, glow: 0, particleRate: 0 }
+    };
+
+    let currentMode = MODES.IDLE;
+    let width = 0;
+    let height = 0;
+    let time = 0;
     let strands = [];
-    let visTime = 0;
-    let baseColor = '#7C4DFF';
+    let particles = [];
+    let smoothedVolume = 0;
+    let smoothedFreqs = new Array(64).fill(0);
     
     function init(config) {
-        const { canvasId, timerId, dbId, nsPrefix, accentColor } = config;
+        const { canvasId, timerId, dbId, nsPrefix, color } = config;
         canvasElement = document.getElementById(canvasId);
         timerElement = document.getElementById(timerId);
         dbElement = document.getElementById(dbId);
-        baseColor = accentColor || '#7C4DFF';
+        accentColor = config.accentColor || '#7C4DFF';
+        
+        // 1. Set Avatar Border Color Dynamically
+        const avatarEl = document.querySelector('.stt-avatar');
+        if (avatarEl) {
+            avatarEl.style.borderColor = accentColor;
+        }
         
         if(!canvasElement) return;
         
         canvasCtx = canvasElement.getContext("2d");
         
+        // Resize Handler
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // Initialize Visualizer Elements
+        strands = generateStrands(40);
+        particles = [];
+        
+        // Start Microphone
         navigator.mediaDevices.getUserMedia({ audio: true })
             .then(audioStream => {
                 stream = audioStream;
                 startVisualizer(stream);
                 
                 isRecordingActive = true;
+                currentMode = MODES.LISTENING;
+                
                 startTime = Date.now();
                 startTimer();
                 startRecordingLoop(stream, nsPrefix);
+                
+                // Start Animation Loop
+                draw(); 
             })
             .catch(err => {
                 console.error("Microphone access denied:", err);
@@ -60,26 +94,26 @@ window.STT_Client = (function() {
             });
     }
     
-    // --- MODERN DALGA GÖRSELLEŞTİRİCİ ---
-    // TTS modülündeki SonicPulse stilinin mikrofona uyarlanmış hali
-    function generateStrands(count) {
-        const s = [];
-        for (let i = 0; i < count; i++) {
-            s.push({
-                phaseOffset: Math.random() * Math.PI * 2,
-                frequency: 1 + Math.random() * 2, // Sıklık
-                speed: 0.1 + Math.random() * 0.4, // Hareket hızı
-                amplitude: 0.5 + Math.random() * 0.5,
-                alpha: 0.3 + Math.random() * 0.5
-            });
-        }
-        return s;
+    function resizeCanvas() {
+        if (!canvasElement || !canvasElement.parentElement) return;
+        const rect = canvasElement.parentElement.getBoundingClientRect();
+        width = rect.width;
+        height = rect.height;
+        
+        const dpr = window.devicePixelRatio || 1;
+        canvasElement.width = width * dpr;
+        canvasElement.height = height * dpr;
+        canvasCtx.scale(dpr, dpr);
     }
     
-    function hexToRgb(hex) {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } 
-                      : { r: 124, g: 77, b: 255 };
+    function generateStrands(count) {
+        return Array.from({ length: count }).map((_, i) => ({
+            phaseOffset: Math.random() * Math.PI * 2,
+            frequency: 1 + Math.random() * 3,
+            speed: 0.5 + Math.random() * 1.5,
+            amplitude: 0.3 + Math.random() * 0.7,
+            colorOffset: i / count,
+        }));
     }
     
     function startVisualizer(stream) {
@@ -87,90 +121,147 @@ window.STT_Client = (function() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 1024; 
-        analyser.smoothingTimeConstant = 0.8;
+        analyser.fftSize = 256; 
+        analyser.smoothingTimeConstant = 0.85;
         
         const source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
         dataArray = new Uint8Array(analyser.frequencyBinCount);
-        
-        // 6 adet dalga çizgisi oluştur
-        strands = generateStrands(6); 
-        draw();
     }
     
     function draw() {
         if (!canvasElement) return;
         animationId = requestAnimationFrame(draw);
         
-        analyser.getByteTimeDomainData(dataArray);
-        
-        // 1. RMS (Ses Gücü) Hesapla
-        let sumSquares = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            const normalized = (dataArray[i] - 128) / 128.0;
-            sumSquares += normalized * normalized;
-        }
-        const rms = Math.sqrt(sumSquares / dataArray.length);
-        
-        // Kayıt mantığı için max RMS'i güncelle (Sessizlik filtresi için)
-        if (isRecordingActive) {
-            currentSegmentMaxRMS = Math.max(currentSegmentMaxRMS, rms);
-        }
-        
-        // dB Göstergesi
-        if (dbElement && rms > 0.001) {
-            const db = 20 * Math.log10(rms);
-            // -60dB alt limit
-            dbElement.innerText = Math.max(-60, Math.floor(db * 2)) + " dB";
-        } else if (dbElement) {
-             dbElement.innerText = "-Inf dB";
-        }
+        // --- DATA PROCESSING ---
+        let vol = 0;
+        if (analyser) {
+            analyser.getByteFrequencyData(dataArray);
+            
+            // Calculate RMS
+            let sum = 0;
+            for(let i=0; i<dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+            const rms = Math.sqrt(sum / dataArray.length);
+            
+            // Normalize volume (0.0 to 1.0)
+            vol = Math.min(rms / 128, 1.0);
+            
+            // Update recording logic
+            if (isRecordingActive) {
+                currentSegmentMaxRMS = Math.max(currentSegmentMaxRMS, (rms / 128.0));
+            }
 
-        // 2. Çizim
-        const width = canvasElement.width;
-        const height = canvasElement.height;
-        const centerY = height / 2;
+            // DB Display
+            if (dbElement && vol > 0.001) {
+                 const db = 20 * Math.log10(vol);
+                 dbElement.innerText = Math.max(-60, Math.floor(db * 2)) + " dB";
+            } else if (dbElement) {
+                 dbElement.innerText = "-Inf dB";
+            }
+        }
         
+        // --- ANIMATION STATE ---
+        const config = CONFIGS[currentMode] || CONFIGS.IDLE;
+        time += 0.01 * config.speed;
+        
+        smoothedVolume += (vol - smoothedVolume) * 0.1;
+        const renderVol = Math.max(0.01, smoothedVolume);
+
+        // Smooth Frequencies
+        for(let i=0; i<64; i++) {
+             const target = dataArray ? (dataArray[i] || 0) : 0;
+             smoothedFreqs[i] += (target - smoothedFreqs[i]) * 0.15;
+        }
+        
+        // --- DRAWING ---
         canvasCtx.clearRect(0, 0, width, height);
-        
-        // Sinyal genliğini görselleştirme için yükselt
-        // Konuşurken RMS genellikle 0.1 - 0.3 arasıdır, bunu ekranda büyütmek gerekir.
-        const globalAmp = rms * 5.0; 
-        visTime += 0.05;
-        
-        const rgb = hexToRgb(baseColor);
+        canvasCtx.globalCompositeOperation = 'lighter';
         canvasCtx.lineCap = 'round';
         canvasCtx.lineJoin = 'round';
         
-        strands.forEach((strand) => {
+        const centerY = height / 2;
+        
+        // 1. Draw Strands
+        strands.forEach((strand, idx) => {
+             const freqIndex = idx % 20;
+             const freqVal = (smoothedFreqs[freqIndex] || 0) / 255;
+
+             // Color Cycling
+             const colorTime = time * 0.2 + strand.colorOffset;
+             const colorCycle = Math.floor(colorTime) % config.colors.length;
+             const baseColor = config.colors[colorCycle];
+
              canvasCtx.beginPath();
-             const colorStr = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${strand.alpha})`;
+             
+             // Dynamic Amplitude
+             const effectiveAmp = (height * 0.4) * config.ampMult * (0.5 + renderVol + freqVal) * strand.amplitude;
              
              let isFirst = true;
-             // Çözünürlüğü düşürerek performansı artır (x += 8)
-             for (let x = 0; x <= width; x += 8) {
+             // Reduce resolution slightly for performance
+             for (let x = 0; x <= width; x += 5) {
                  const nx = (x / width) * 2 - 1; 
-                 // Kenarları yumuşat (pencereleme)
-                 const window = Math.pow(1 - Math.pow(nx, 2), 2); 
+                 const window = Math.pow(1 - Math.pow(nx, 2), 2); // Hanning window
                  
-                 // Dalga formülü
-                 const wave = Math.sin((x * 0.015 * strand.frequency) + (visTime * strand.speed) + strand.phaseOffset);
+                 const wave = Math.sin(
+                   (x * 0.01 * strand.frequency * config.tension) +
+                   (time * strand.speed) +
+                   strand.phaseOffset
+                 );
                  
-                 // Yüksek seslerde jitter (titreme) efekti ekle
-                 const jitter = (rms > 0.1) ? (Math.random() - 0.5) * 5 : 0;
+                 // Add harmonic detail
+                 const harmonic = Math.cos((x * 0.03) - (time * strand.speed * 1.5)) * 0.3;
                  
-                 const y = centerY + (wave * (height * 0.35) * strand.amplitude * globalAmp * window) + jitter;
+                 const y = centerY + (wave + harmonic) * effectiveAmp * window;
                  
                  if (isFirst) { canvasCtx.moveTo(x, y); isFirst = false; }
                  else { canvasCtx.lineTo(x, y); }
              }
-             canvasCtx.strokeStyle = colorStr;
-             canvasCtx.lineWidth = 2;
+             
+             const opacity = Math.min(1, (renderVol * 0.8 + 0.2) * (1 - Math.abs(idx/strands.length - 0.5)));
+             
+             canvasCtx.strokeStyle = baseColor;
+             canvasCtx.lineWidth = 1.5;
+             canvasCtx.globalAlpha = opacity;
+             canvasCtx.shadowBlur = config.glow;
+             canvasCtx.shadowColor = baseColor;
              canvasCtx.stroke();
+             canvasCtx.globalAlpha = 1.0;
+             canvasCtx.shadowBlur = 0;
         });
+        
+        // 2. Particles
+        if (Math.random() < config.particleRate * renderVol * 2) {
+            particles.push({
+               x: width / 2 + (Math.random() - 0.5) * width * 0.5,
+               y: centerY + (Math.random() - 0.5) * 50,
+               vx: (Math.random() - 0.5) * 2,
+               vy: (Math.random() - 0.5) * 2,
+               life: 1.0,
+               size: Math.random() * 2 + 1,
+               color: config.colors[Math.floor(Math.random() * config.colors.length)]
+            });
+        }
+        
+        particles.forEach((p, i) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            p.size *= 0.95;
+            
+            if(p.life <= 0) { particles.splice(i, 1); return; }
+            
+            canvasCtx.beginPath();
+            canvasCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+            canvasCtx.fillStyle = p.color;
+            canvasCtx.globalAlpha = p.life * renderVol;
+            canvasCtx.fill();
+        });
+        canvasCtx.globalAlpha = 1.0;
     }
     
+    // Config Alias
+    const CONFIGS = VIS_CONFIGS;
+
     function startTimer() {
         if (timerInterval) clearInterval(timerInterval);
         timerInterval = setInterval(() => {
@@ -191,27 +282,19 @@ window.STT_Client = (function() {
         }
 
         audioChunks = [];
-        currentSegmentMaxRMS = 0; // Yeni segment için sıfırla
+        currentSegmentMaxRMS = 0;
 
         mediaRecorder.addEventListener('dataavailable', event => {
             if (event.data.size > 0) audioChunks.push(event.data);
         });
 
         mediaRecorder.addEventListener('stop', () => {
-            // --- SESSİZLİK KAPISI (SILENCE GATE) ---
-            // Eğer segment boyunca tespit edilen en yüksek ses eşiğin altındaysa, 
-            // veri sessizdir ve sunucuya gönderilmez.
             if (currentSegmentMaxRMS >= SILENCE_THRESHOLD && audioChunks.length > 0) {
                 const blob = new Blob(audioChunks, { type: 'audio/webm' });
                 if (blob.size > 0) {
                     sendChunkToShiny(blob, nsPrefix);
                 }
-            } else {
-                // Sessizlik nedeniyle atlandı (Debug için konsola yazılabilir)
-                // console.log("Sessizlik filtresi: Paket atlandı.");
             }
-            
-            // Eğer kayıt hala aktifse döngüyü yeniden başlat
             if (isRecordingActive) {
                 setTimeout(() => {
                     startRecordingLoop(stream, nsPrefix);
@@ -239,8 +322,8 @@ window.STT_Client = (function() {
     
     function stopRecording(nsPrefix) {
         isRecordingActive = false;
+        currentMode = MODES.IDLE;
         if (chunkTimer) clearTimeout(chunkTimer);
-        // Eğer durdur butonuna basıldıysa mevcut kaydı durdur ama gönderme (kilit R tarafında da var)
         if (mediaRecorder && mediaRecorder.state === "recording") {
             mediaRecorder.stop();
         }
@@ -249,13 +332,14 @@ window.STT_Client = (function() {
     function startRecording(nsPrefix) {
         if (!isRecordingActive && stream) {
             isRecordingActive = true;
-            // Zamanlayıcıyı sıfırlama, devam et
+            currentMode = MODES.LISTENING;
             startRecordingLoop(stream, nsPrefix);
         }
     }
     
     function stopAndCleanup(nsPrefix) {
         isRecordingActive = false;
+        currentMode = MODES.IDLE;
         if (chunkTimer) clearTimeout(chunkTimer);
         if (timerInterval) clearInterval(timerInterval);
         if (animationId) cancelAnimationFrame(animationId);
@@ -270,6 +354,7 @@ window.STT_Client = (function() {
         mediaRecorder = null;
         stream = null;
         canvasElement = null;
+        window.removeEventListener('resize', resizeCanvas);
     }
     
     return {

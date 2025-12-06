@@ -79,10 +79,10 @@ sttServer <- function(id, parent_session, settings) {
           div(
             class = "stt-visualizer-wrapper",
             
-            # Sol: Modern Dalga Formu
+			# Sol: Modern Dalga Formu
             div(
               class = "stt-vis-canvas-container",
-              tags$canvas(id = ns("visualizer_canvas"), width = "500", height = "120")
+              tags$canvas(id = ns("visualizer_canvas"))
             ),
             
             # Sağ: Karakter Bilgi Paneli (Boşluğu doldurur)
