@@ -146,6 +146,13 @@ server <- function(input, output, session) {
   
   # Mount health module
   healthServer("health_module", perf_tracker = perf_tracker)
+
+  # --- Module Server Initialization (Yukarı Taşındı) ---
+  settings_data <- settingsServer("settings_module", parent_session = session)
+  
+  observeEvent(input$`settings_module-open_api_key_modal`, {
+    api_key$open("API Anahtarı Güncelleme")
+  }, ignoreInit = TRUE)
   
   output$show_admin_menu <- reactive({
     isTRUE(user_config$auth_level == "ADMIN")
@@ -175,7 +182,7 @@ server <- function(input, output, session) {
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
   
   # Initialize Speech-to-Text Module
-  stt_data <- sttServer("stt_module", parent_session = session, settings = settings)
+  stt_data <- sttServer("stt_module", parent_session = session, settings = settings_data)
   
   # Initialize File Preview module (replaces preview outputs + modal helpers)
   filePreview <- filePreviewServer("file_preview")
@@ -297,13 +304,6 @@ server <- function(input, output, session) {
 	  idle_minutes    = 30,
 	  activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
 	)
-  
-  # --- Module Server Initialization ---
-  settings_data <- settingsServer("settings_module", parent_session = session)
-  
-	observeEvent(input$`settings_module-open_api_key_modal`, {
-		api_key$open("API Anahtarı Güncelleme")
-	  }, ignoreInit = TRUE)
 	
   # Fix CodeMirror rendering when switching tabs
   observeEvent(input$tabs, {
