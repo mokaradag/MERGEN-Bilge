@@ -190,10 +190,10 @@ sttServer <- function(id, parent_session, settings) {
       # KİLİT KONTROLÜ: Eğer kullanıcı durdurduysa, asla işleme.
       # Bu, "Durdur"a basıldığı an kesilen yarım cümlelerin veya 
       # sessizlik anında modelin uydurduğu "Altyazı..." metinlerinin eklenmesini engeller.
-      if (!isTRUE(rv$accept_chunks)) return(NULL)
+	  if (!isTRUE(rv$accept_chunks)) return(NULL)
       
-      api_url <- Sys.getenv("LOCAL_STT_ENDPOINT", "http://localhost:8080/v1/audio/transcriptions")
-      api_model <- Sys.getenv("LOCAL_STT_MODEL", "whisper-large-v3")
+      api_url <- Sys.getenv("LOCAL_STT_ENDPOINT")
+      api_model <- Sys.getenv("LOCAL_STT_MODEL")
       api_key <- Sys.getenv("LOCAL_STT_API_KEY", "")
       
       if (!nzchar(api_key)) {

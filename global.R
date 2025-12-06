@@ -1078,8 +1078,8 @@ if (file.exists(".Renviron")) {
 
 # 2. Update the STT Configuration to be robust
 stt_config <- list(
-  endpoint = Sys.getenv("LOCAL_STT_ENDPOINT", "http://localhost:8080/v1/audio/transcriptions"),
-  model    = Sys.getenv("LOCAL_STT_MODEL", "whisper-large-v3"),
+  endpoint = Sys.getenv("LOCAL_STT_ENDPOINT"),
+  model    = Sys.getenv("LOCAL_STT_MODEL"),
   api_key  = Sys.getenv("AI_KEYS_MASTER", Sys.getenv("OPENAI_API_KEY", "")) 
 )
 
