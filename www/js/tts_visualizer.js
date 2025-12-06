@@ -216,10 +216,15 @@ $(document).ready(function() {
         const $container = $('.tts-visualizer-container');
         $container.addClass('talking-mode');
         
-        if (message.color) {
+		if (message.color) {
             $container.css({
                 'border-color': message.color,
                 'box-shadow': '0 0 20px ' + message.color + '40, inset 0 0 15px rgba(0,0,0,0.3)'
+            });
+            
+            $container.find('.tts-tooltip').css({
+                'border-color': message.color,
+                'box-shadow': '0 4px 20px rgba(0, 0, 0, 0.6), 0 0 10px ' + message.color + '33' 
             });
         }
 

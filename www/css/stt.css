@@ -47,8 +47,8 @@
 .stt-vis-canvas-container {
     flex-grow: 1;
     position: relative;
-    width: 100%; /* Ensure full width */
-    background: #09090b; /* Match SonicPulse background */
+    width: 100%; /* Tam genişlik */
+    background: #09090b; /* SonicPulse arka planıyla uyumlu */
     overflow: hidden;
 }
 
@@ -79,10 +79,10 @@
 }
 
 .stt-avatar {
-    width: 54px; /* Slightly larger */
+    width: 54px; /* Biraz daha büyük */
     height: 54px;
     border-radius: 50%;
-    /* Border color will be set by JS dynamically */
+    /* Kenarlık rengi JS ile dinamik ayarlanır */
     border: 3px solid #7C4DFF; 
     object-fit: cover;
     box-shadow: 0 4px 10px rgba(0,0,0,0.4);
@@ -96,15 +96,15 @@
 }
 
 .stt-char-name {
-    font-size: 22px;
+    font-size: 20px; /* 22px'den düşürüldü */
     font-weight: 700;
-    color: #fff;
+    /* Renk satır içi stil (inline style) ile R tarafından yönetiliyor */
     margin-bottom: 4px;
     font-family: 'Segoe UI', sans-serif;
 }
 
 .stt-char-status {
-    font-size: 16px;
+    font-size: 14px; /* 16px'den düşürüldü */
     color: #aaa;
     font-weight: 400;
 }
@@ -182,49 +182,65 @@
     gap: 12px;
 }
 
-/* BUTONLAR */
-/* Durdur / Devam Et */
-.btn-stt-record {
-    width: 130px;
+/* BUTONLAR - Düz (Flat) Stil Güncellemesi */
+
+/* Temel Buton Stili */
+.btn-stt-clear, .btn-stt-record, .btn-stt-cancel, .btn-stt-confirm {
+    border: 1px solid transparent !important;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 14px;
     font-weight: 600;
-    border: none !important;
-    color: #fff !important;
     transition: all 0.2s;
-}
-.btn-stt-record.recording { 
-    background-color: #d32f2f !important; /* Stop kırmızısı */
-} 
-.btn-stt-record.paused { 
-    background-color: #1976d2 !important; /* Resume mavisi */
+    box-shadow: none !important; /* Parlak gölgeleri kaldır */
+    color: #fff !important;
 }
 
-/* Temizle */
+/* Temizle - Gri */
 .btn-stt-clear {
-    background-color: #424242 !important;
-    color: #bbb !important;
-    border: 1px solid #555 !important;
-    font-weight: 500;
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
 }
-.btn-stt-clear:hover { background-color: #555 !important; color: white !important; }
+.btn-stt-clear:hover {
+    background-color: #5c636a !important;
+    border-color: #565e64 !important;
+}
 
-/* İptal (Kırmızı) */
+/* Durdur / Devam Et */
+.btn-stt-record { width: 130px; }
+
+/* Durdur - Turuncu (Kayıt sırası) */
+.btn-stt-record.recording { 
+    background-color: #fd7e14 !important; 
+    border-color: #fd7e14 !important;
+}
+.btn-stt-record.recording:hover {
+    background-color: #e37213 !important;
+}
+
+/* Devam Et - Mavi (Duraklatıldı) */
+.btn-stt-record.paused { 
+    background-color: #0d6efd !important; 
+    border-color: #0d6efd !important;
+}
+.btn-stt-record.paused:hover {
+    background-color: #0b5ed7 !important;
+}
+
+/* İptal - Kırmızı */
 .btn-stt-cancel {
-    background-color: #c62828 !important; /* Koyu Kırmızı */
-    color: #fff !important;
-    border: none !important;
-    font-weight: 600;
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
 }
-.btn-stt-cancel:hover { background-color: #b71c1c !important; }
+.btn-stt-cancel:hover {
+    background-color: #bb2d3b !important;
+}
 
-/* Onayla (Yeşil) */
+/* Onayla - Yeşil */
 .btn-stt-confirm {
-    background-color: #2e7d32 !important; /* Koyu Yeşil */
-    color: #fff !important;
-    border: none !important;
-    font-weight: 600;
-    box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
+    background-color: #198754 !important;
+    border-color: #198754 !important;
 }
 .btn-stt-confirm:hover { 
-    background-color: #1b5e20 !important; 
-    transform: translateY(-1px);
+    background-color: #157347 !important; 
 }
