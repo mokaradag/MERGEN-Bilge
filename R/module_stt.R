@@ -11,7 +11,6 @@ sttServer <- function(id, parent_session) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     
-    # Reactive values
     rv <- reactiveValues(
       transcription_history = "",
       is_recording = FALSE
@@ -19,7 +18,6 @@ sttServer <- function(id, parent_session) {
     
     final_text <- reactiveVal("")
     
-    # Trigger to open modal
     start_session <- function() {
       rv$transcription_history <- ""
       rv$is_recording <- TRUE
@@ -40,16 +38,13 @@ sttServer <- function(id, parent_session) {
         div(
           class = "stt-modal-body",
           
-          # Visualizer
           div(
             class = "stt-visualizer-container",
             tags$canvas(id = ns("visualizer_canvas"), width = "600", height = "150")
           ),
           
-          # Status
           div(id = ns("stt_status"), class = "stt-status recording", "Dinliyor..."),
           
-          # Editor
           div(
             class = "stt-editor-container",
             textAreaInput(
@@ -63,7 +58,6 @@ sttServer <- function(id, parent_session) {
             )
           ),
           
-          # Controls
           div(
             class = "stt-controls",
             div(
@@ -79,7 +73,6 @@ sttServer <- function(id, parent_session) {
         )
       ))
       
-      # Initialize JS
       shinyjs::delay(500, {
         session$sendCustomMessage("initSTT", list(
           canvasId = ns("visualizer_canvas"),
@@ -88,17 +81,14 @@ sttServer <- function(id, parent_session) {
       })
     }
     
-    # Toggle Recording
     observeEvent(input$toggle_record_btn, {
       if (rv$is_recording) {
-        # STOP
         rv$is_recording <- FALSE
         updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('recording').addClass('paused');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.stopRecording('%s');", id))
         shinyjs::runjs(sprintf("$('#%s').text('Duraklatıldı').removeClass('recording').addClass('paused');", ns("stt_status")))
       } else {
-        # RESUME
         rv$is_recording <- TRUE
         updateActionButton(session, "toggle_record_btn", label = "Durdur", icon = icon("stop"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('paused').addClass('recording');", ns("toggle_record_btn")))
@@ -107,23 +97,21 @@ sttServer <- function(id, parent_session) {
       }
     })
     
-    # Process Audio Chunk
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
       
-      # --- DEBUG: Config Check ---
-      # Use fallbacks if global config is missing or empty
+      # --- DEBUG: Config Resolution ---
       api_url <- if(exists("stt_config") && nzchar(stt_config$endpoint)) stt_config$endpoint else "http://localhost:8080/v1/audio/transcriptions"
       api_model <- if(exists("stt_config") && nzchar(stt_config$model)) stt_config$model else "whisper-large-v3"
-      api_key <- if(exists("stt_config")) stt_config$api_key else ""
       
-      # 1. Decode Base64
+      # Use the config key, but trim whitespace just in case
+      raw_key <- if(exists("stt_config")) stt_config$api_key else ""
+      api_key <- trimws(raw_key) 
+      
+      # 1. Decode
       audio_binary <- tryCatch(
         base64enc::base64decode(input$audio_chunk),
-        error = function(e) {
-          cat("[STT] Base64 Decode Error\n")
-          return(NULL)
-        }
+        error = function(e) { return(NULL) }
       )
       req(audio_binary)
       
@@ -132,24 +120,29 @@ sttServer <- function(id, parent_session) {
       writeBin(audio_binary, input_file)
       
       tryCatch({
-        # 2. Convert to WAV (16kHz mono) - exactly as in your working code
+        # 2. Convert
         av::av_audio_convert(input_file, wav_file, format = "wav", sample_rate = 16000, channels = 1)
         
-        # Check size to avoid sending silence/empty headers
-        if (file.size(wav_file) < 1000) { # < 1KB is likely empty
-           return(NULL)
-        }
+        # Check size (silence filtering)
+        if (file.size(wav_file) < 1000) return(NULL)
 
-        # 3. Call API - EXACTLY MATCHING WORKING CODE
+        # 3. Call API
+        # MATCHING WORKING TEST CODE EXACTLY
         body_params <- list(
           file = httr::upload_file(wav_file, type = "audio/wav"),
           model = api_model,
           language = "tr",
-          task = "transcribe" # Added this as it was in your working code
+          task = "transcribe"
         )
         
-        # Debug Print
-        cat(sprintf("[STT] Sending to %s (Model: %s)\n", api_url, api_model))
+        # --- CRITICAL DEBUG PRINT ---
+        cat("------------------------------------------------\n")
+        cat("[STT Request]\n")
+        cat("URL:", api_url, "\n")
+        cat("API Key Length:", nchar(api_key), "\n") # If this is 0, the request will fail
+        cat("Model:", api_model, "\n")
+        cat("File Size:", file.size(wav_file), "bytes\n")
+        cat("------------------------------------------------\n")
         
         res <- httr::POST(
           url = api_url,
@@ -166,9 +159,8 @@ sttServer <- function(id, parent_session) {
           
           if (!is.null(text_segment) && nzchar(text_segment)) {
             Encoding(text_segment) <- "UTF-8"
-            cat("[STT] Received:", text_segment, "\n")
+            cat("[STT] Success:", text_segment, "\n")
             
-            # Append logic
             current_ui_val <- input$transcribed_text
             sep <- if (nzchar(current_ui_val) && !grepl("\\s$", current_ui_val)) " " else ""
             new_val <- paste0(current_ui_val, sep, text_segment)
@@ -177,7 +169,7 @@ sttServer <- function(id, parent_session) {
           }
         } else {
           cat("[STT API Error] Status:", httr::status_code(res), "\n")
-          cat("Response:", httr::content(res, "text", encoding="UTF-8"), "\n")
+          cat("Response Body:", httr::content(res, "text", encoding="UTF-8"), "\n")
         }
         
       }, error = function(e) {

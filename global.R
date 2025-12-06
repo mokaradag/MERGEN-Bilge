@@ -1071,12 +1071,23 @@ tts_config <- list(
   verify_ssl = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
 )
 
-# --- Speech-to-text configuration ---
+# 1. FORCE LOAD .Renviron to ensure keys are available
+if (file.exists(".Renviron")) {
+  readRenviron(".Renviron")
+}
+
+# 2. Update the STT Configuration to be robust
 stt_config <- list(
   endpoint = Sys.getenv("LOCAL_STT_ENDPOINT", "http://localhost:8080/v1/audio/transcriptions"),
   model    = Sys.getenv("LOCAL_STT_MODEL", "whisper-large-v3"),
-  api_key  = Sys.getenv("AI_KEYS_MASTER", "") 
+  api_key  = Sys.getenv("AI_KEYS_MASTER", Sys.getenv("OPENAI_API_KEY", "")) 
 )
+
+# Debug Print (Check the console when app starts!)
+cat("--- STT CONFIG CHECK ---\n")
+cat("Endpoint:", stt_config$endpoint, "\n")
+cat("API Key Length:", nchar(stt_config$api_key), "(If 0, your .Renviron is not loading!)\n")
+cat("------------------------\n")
 
 # Başlangıçta indeksleri hazırla (ilk tıklama gecikmesini azaltır)
 try({
