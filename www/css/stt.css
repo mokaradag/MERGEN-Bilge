@@ -1,63 +1,152 @@
 /* www/css/stt.css */
 
 .stt-modal-dialog .modal-content {
-    background-color: #1e1e1e; /* Dark background matching app */
+    background-color: #1a1a1a; 
     border: 1px solid #333;
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    color: #e0e0e0;
+    border-radius: 16px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+    color: #f0f0f0;
+    /* Font ailesi düzeltildi: Segoe UI, sans-serif */
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
 .stt-modal-header {
-    font-size: 1.25rem;
+    font-size: 1.4rem;
     font-weight: 600;
     color: #fff;
     display: flex;
     align-items: center;
+    border-bottom: 1px solid #333;
+    padding-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .stt-modal-body {
-    padding: 10px;
+    padding: 5px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
 }
 
-.stt-visualizer-container {
-    width: 100%;
+/* --- YENİ GÖRSELLEŞTİRİCİ DÜZENİ --- */
+.stt-visualizer-wrapper {
+    display: flex;
+    height: 130px;
     background: #111;
-    border-radius: 8px;
     border: 1px solid #333;
+    border-radius: 12px;
     overflow: hidden;
-    position: relative;
-    height: 150px;
+    transition: border-color 0.3s;
 }
 
+.stt-visualizer-wrapper.paused-mode {
+    opacity: 0.7;
+    filter: grayscale(0.5);
+}
+
+.stt-vis-canvas-container {
+    flex-grow: 1;
+    position: relative;
+    /* Hafif gradyan arka plan */
+    background: linear-gradient(to right, #0f0f0f 0%, #161616 100%);
+}
+
+/* Sağdaki Panel (Karakter & Stats) */
+.stt-vis-info-panel {
+    width: 240px;
+    min-width: 240px;
+    background: #181818;
+    border-left: 1px solid #2a2a2a;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 15px;
+    box-shadow: -5px 0 15px rgba(0,0,0,0.2);
+}
+
+.stt-char-badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.stt-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid #7C4DFF;
+    object-fit: cover;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+
+.stt-char-text {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.stt-char-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.stt-char-status {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-top: 2px;
+    font-style: italic;
+}
+
+.stt-tech-stats {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.75rem;
+    color: #666;
+    background: #0f0f0f;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #252525;
+}
+
+.stt-stat-item i {
+    margin-right: 5px;
+    color: #444;
+}
+
+/* --- DURUM METNİ --- */
 #stt_status {
     text-align: center;
-    font-weight: bold;
+    font-weight: 600;
     font-size: 0.9rem;
-    padding: 5px;
-    border-radius: 4px;
-    transition: all 0.3s;
+    padding: 6px;
+    border-radius: 6px;
+    background: #222;
+    margin-top: -8px;
+    letter-spacing: 0.5px;
 }
 
-.stt-status.recording {
-    color: #ff4d4d;
-    text-shadow: 0 0 5px rgba(255, 77, 77, 0.5);
+.stt-status.recording { color: #ff4d4d; animation: pulse-red 2s infinite; }
+.stt-status.paused { color: #ffa500; }
+
+@keyframes pulse-red {
+    0% { text-shadow: 0 0 0 rgba(255, 77, 77, 0); }
+    50% { text-shadow: 0 0 8px rgba(255, 77, 77, 0.4); }
+    100% { text-shadow: 0 0 0 rgba(255, 77, 77, 0); }
 }
 
-.stt-status.paused {
-    color: #ffa500;
-}
-
+/* --- EDİTÖR --- */
 .stt-editor-container textarea {
     background-color: #252525 !important;
-    color: #fff !important;
+    color: #e0e0e0 !important;
     border: 1px solid #444 !important;
-    border-radius: 6px;
-    font-size: 1.1rem;
-    line-height: 1.5;
+    border-radius: 8px;
+    line-height: 1.6;
+    padding: 12px;
+    font-family: 'Segoe UI', sans-serif !important;
 }
 
 .stt-editor-container textarea:focus {
@@ -65,56 +154,69 @@
     box-shadow: 0 0 0 2px rgba(124, 77, 255, 0.2);
 }
 
+/* Font Boyutu Sınıfları (Ayarlardan gelen) */
+.stt-font-small textarea { font-size: 13px !important; }
+.stt-font-medium textarea { font-size: 15px !important; }
+.stt-font-large textarea { font-size: 17px !important; }
+.stt-font-xlarge textarea { font-size: 19px !important; }
+
+/* --- KONTROLLER --- */
 .stt-controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-top: 10px;
+    padding-top: 15px;
     border-top: 1px solid #333;
 }
 
-.stt-controls-right {
+.stt-controls-left, .stt-controls-right {
     display: flex;
-    gap: 10px;
+    gap: 12px;
 }
 
-/* Button Styles */
-.btn-stt-primary {
-    background-color: #7C4DFF !important;
+/* BUTONLAR */
+/* Durdur / Devam Et */
+.btn-stt-record {
+    width: 130px;
+    font-weight: 600;
+    border: none !important;
+    color: #fff !important;
+    transition: all 0.2s;
+}
+.btn-stt-record.recording { 
+    background-color: #d32f2f !important; /* Stop kırmızısı */
+} 
+.btn-stt-record.paused { 
+    background-color: #1976d2 !important; /* Resume mavisi */
+}
+
+/* Temizle */
+.btn-stt-clear {
+    background-color: #424242 !important;
+    color: #bbb !important;
+    border: 1px solid #555 !important;
+    font-weight: 500;
+}
+.btn-stt-clear:hover { background-color: #555 !important; color: white !important; }
+
+/* İptal (Kırmızı) */
+.btn-stt-cancel {
+    background-color: #c62828 !important; /* Koyu Kırmızı */
     color: #fff !important;
     border: none !important;
     font-weight: 600;
-    padding: 8px 20px;
 }
+.btn-stt-cancel:hover { background-color: #b71c1c !important; }
 
-.btn-stt-primary:hover {
-    background-color: #6A3BE6 !important;
-}
-
-.btn-stt-secondary {
-    background-color: #444 !important;
-    color: #ccc !important;
+/* Onayla (Yeşil) */
+.btn-stt-confirm {
+    background-color: #2e7d32 !important; /* Koyu Yeşil */
+    color: #fff !important;
     border: none !important;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
 }
-
-.btn-stt-secondary:hover {
-    background-color: #555 !important;
-    color: #fff !important;
-}
-
-.btn-stt-record {
-    width: 120px;
-    font-weight: bold;
-    border: none !important;
-    transition: all 0.2s;
-}
-
-.btn-stt-record.recording {
-    background-color: #d9534f !important; /* Red for Stop */
-    color: #fff !important;
-}
-
-.btn-stt-record.paused {
-    background-color: #2F6DF6 !important; /* Blue for Resume */
-    color: #fff !important;
+.btn-stt-confirm:hover { 
+    background-color: #1b5e20 !important; 
+    transform: translateY(-1px);
 }

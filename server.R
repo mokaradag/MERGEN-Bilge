@@ -175,7 +175,7 @@ server <- function(input, output, session) {
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
   
   # Initialize Speech-to-Text Module
-  stt_data <- sttServer("stt_module", parent_session = session)
+  stt_data <- sttServer("stt_module", parent_session = session, settings = settings)
   
   # Initialize File Preview module (replaces preview outputs + modal helpers)
   filePreview <- filePreviewServer("file_preview")
