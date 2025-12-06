@@ -207,24 +207,36 @@ $(document).ready(function() {
   });
 
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
-    if (message.color) visualizer.setColor(message.color);
+      if (message.color) visualizer.setColor(message.color);
+      
+      if (message.state === 'talking') {
+        if (visualizer) visualizer.resize();
+        visualizer.setMode(MODES.TALKING);
+        
+        const $container = $('.tts-visualizer-container');
+        $container.addClass('talking-mode');
+        
+        if (message.color) {
+            $container.css({
+                'border-color': message.color,
+                'box-shadow': '0 0 20px ' + message.color + '40, inset 0 0 15px rgba(0,0,0,0.3)'
+            });
+        }
 
-    if (message.state === 'talking') {
-      if (visualizer) visualizer.resize();
-      visualizer.setMode(MODES.TALKING);
-      $('.tts-visualizer-container').addClass('talking-mode'); // Force Class
-
-      if (message.duration > 0) {
-         if (window._ttsTimer) clearTimeout(window._ttsTimer);
-         window._ttsTimer = setTimeout(() => {
-           window.ttsVisualizerState.setIdle();
-         }, (message.duration * 1000) + 500);
+        if (message.duration > 0) {
+          if (window._ttsTimer) clearTimeout(window._ttsTimer);
+          window._ttsTimer = setTimeout(() => {
+             window.ttsVisualizerState.setIdle();
+             $('.tts-visualizer-container').css({'border-color': '', 'box-shadow': ''}); 
+          }, (message.duration * 1000) + 500);
+        }
+      } else {
+        window.ttsVisualizerState.setIdle();
+        $('.tts-visualizer-container').css({'border-color': '', 'box-shadow': ''});
+        
+        if (window._ttsTimer) clearTimeout(window._ttsTimer);
       }
-    } else {
-      window.ttsVisualizerState.setIdle();
-      if (window._ttsTimer) clearTimeout(window._ttsTimer);
-    }
-  });
+    });
   
   // --- Audio Event Listeners (Backup) ---
   document.addEventListener('play', function(e) {

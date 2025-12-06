@@ -1508,9 +1508,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   observeEvent(stt_data$final_text(), {
     txt <- stt_data$final_text()
     if (nzchar(txt)) {
-      # Populate the input for visual feedback
-      updateTextAreaInput(session, "user_input", value = txt)
-      # Immediately trigger the send message logic
       send_message(txt)
     }
   })

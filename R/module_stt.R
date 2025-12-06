@@ -125,21 +125,23 @@ sttServer <- function(id, parent_session, settings) {
           ),
           
           # --- KONTROLLER ---
-          div(
+		  div(
             class = "stt-controls",
             div(
               class = "stt-controls-left",
               # Temizle Butonu
-              actionButton(ns("clear_btn"), "Temizle", icon = icon("trash-can"), class = "btn-stt-clear"),
+              actionButton(ns("clear_btn"), "Temizle", icon = icon("trash-can"), class = "btn-modern btn-danger"),
+              
               # Durdur/Devam Et
-              actionButton(ns("toggle_record_btn"), "Durdur", icon = icon("stop"), class = "btn-stt-record recording")
+              actionButton(ns("toggle_record_btn"), "Durdur", icon = icon("stop"), class = "btn-modern btn-primary recording")
             ),
             div(
               class = "stt-controls-right",
               # İptal (Kırmızı)
-              actionButton(ns("dismiss_btn"), "İptal", icon = icon("xmark"), class = "btn-stt-cancel"),
-              # Onayla (Yeşil)
-              actionButton(ns("accept_btn"), "Onayla ve Gönder", icon = icon("paper-plane"), class = "btn-stt-confirm")
+              actionButton(ns("dismiss_btn"), "İptal", icon = icon("xmark"), class = "btn-modern btn-danger"),
+              
+              # Onayla (Yeşil/Primary)
+              actionButton(ns("accept_btn"), "Onayla ve Gönder", icon = icon("paper-plane"), class = "btn-modern btn-success")
             )
           )
         )

@@ -96,31 +96,28 @@
 }
 
 .stt-char-name {
-    font-size: 1.35rem; /* Increased font size */
+    font-size: 22px;
     font-weight: 700;
     color: #fff;
-    white-space: nowrap;
-    line-height: 1.2;
+    margin-bottom: 4px;
+    font-family: 'Segoe UI', sans-serif;
 }
 
 .stt-char-status {
-    font-size: 1.0rem; /* Increased font size */
+    font-size: 16px;
     color: #aaa;
-    margin-top: 2px;
-    font-style: italic;
+    font-weight: 400;
 }
 
 .stt-tech-stats {
     display: flex;
     justify-content: space-between;
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 0.95rem; /* Increased font size */
-    font-weight: 500;
-    color: #888;
-    background: #0f0f0f;
+    margin-top: auto;
+    background: rgba(0,0,0,0.3);
     padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid #252525;
+    border-radius: 8px;
+    font-size: 14px; 
+    color: #888;
 }
 
 .stt-stat-item i {
