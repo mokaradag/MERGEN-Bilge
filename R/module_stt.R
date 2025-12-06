@@ -91,9 +91,9 @@ sttServer <- function(id, parent_session, settings) {
               div(
                 class = "stt-char-badge",
                 tags$img(src = char_info$image, class = "stt-avatar"),
-                div(
+				div(
                   class = "stt-char-text",
-                  div(class = "stt-char-name", char_info$display_name),
+                  div(class = "stt-char-name", style = paste0("color: ", char_info$accent, ";"), char_info$display_name),
                   div(class = "stt-char-status", "Dinliyorum...")
                 )
               ),

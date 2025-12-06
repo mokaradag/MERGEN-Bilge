@@ -163,23 +163,49 @@ $(document).ready(function() {
     window.ttsVisualizerState = {
       setTalking: function() { 
         if(visualizer) visualizer.setMode(MODES.TALKING); 
-        $('.tts-visualizer-container').addClass('talking-mode');
+        
+        var $container = $('.tts-visualizer-container');
+        $container.addClass('talking-mode');
+
+        // FORCE DYNAMIC COLOR: Use the visualizer's current baseColor for borders/shadows
+        if (visualizer && visualizer.baseColor) {
+            var color = visualizer.baseColor;
+            
+            // Apply color to the main container border and glow
+            $container.css({
+                'border-color': color,
+                'box-shadow': '0 0 20px ' + color + '40, inset 0 0 15px rgba(0,0,0,0.3)'
+            });
+            
+            // Apply color to the "Stop" tooltip border and glow
+            $container.find('.tts-tooltip').css({
+                'border-color': color,
+                'box-shadow': '0 4px 20px rgba(0, 0, 0, 0.6), 0 0 10px ' + color + '33' 
+            });
+        }
       },
+      
       setIdle: function() { 
         if(visualizer) visualizer.setMode(MODES.IDLE); 
-        $('.tts-visualizer-container').removeClass('talking-mode');
+        
+        var $container = $('.tts-visualizer-container');
+        $container.removeClass('talking-mode');
+        
+        // RESET DYNAMIC COLORS (remove inline styles to fall back to CSS defaults)
+        $container.css({'border-color': '', 'box-shadow': ''});
+        $container.find('.tts-tooltip').css({'border-color': '', 'box-shadow': ''});
       },
-	  stop: function() {
-        // 1. Reset Visuals
-        if(visualizer) visualizer.setMode(MODES.IDLE);
-        $('.tts-visualizer-container').removeClass('talking-mode');
+
+      stop: function() {
+        // 1. Reset Visuals using setIdle (clears colors and classes)
+        this.setIdle();
 
         // 2. Stop Main TTS Engine (Critical Fix for floating Audio objects)
         if (window.mergenTTS && typeof window.mergenTTS.stop === 'function') {
             window.mergenTTS.stop();
         }
 
-        // 3. Brutal Stop Audio (Fallback for DOM elements)
+        // 3. Brutal Stop Audio (Fallback for any other DOM audio elements)
         $('audio').each(function() {
             try {
                 this.pause();
