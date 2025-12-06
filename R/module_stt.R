@@ -97,16 +97,21 @@ sttServer <- function(id, parent_session) {
       }
     })
     
-    observeEvent(input$audio_chunk, {
-      req(input$audio_chunk)
-      
-      # --- DEBUG: Config Resolution ---
-      api_url <- if(exists("stt_config") && nzchar(stt_config$endpoint)) stt_config$endpoint else "http://localhost:8080/v1/audio/transcriptions"
-      api_model <- if(exists("stt_config") && nzchar(stt_config$model)) stt_config$model else "whisper-large-v3"
-      
-      # Use the config key, but trim whitespace just in case
-      raw_key <- if(exists("stt_config")) stt_config$api_key else ""
-      api_key <- trimws(raw_key) 
+	observeEvent(input$audio_chunk, {
+	  req(input$audio_chunk)
+	  
+	  api_url <- Sys.getenv("LOCAL_STT_ENDPOINT", "http://localhost:8080/v1/audio/transcriptions")
+	  api_model <- Sys.getenv("LOCAL_STT_MODEL", "whisper-large-v3")
+	  api_key <- Sys.getenv("LOCAL_STT_API_KEY", "")
+	  
+	  if (!nzchar(api_key)) {
+		api_key <- session$userData$ai_api_key
+	  }
+	  if (!nzchar(api_key)) {
+		cat("[STT] HATA: API anahtarı bulunamadı!\n")
+		return(NULL)
+	  }
+	  api_key <- trimws(api_key)
       
       # 1. Decode
       audio_binary <- tryCatch(
@@ -146,10 +151,10 @@ sttServer <- function(id, parent_session) {
         
         res <- httr::POST(
           url = api_url,
-          httr::add_headers(Authorization = paste("Bearer", api_key)),
+          add_headers(Authorization = paste("Bearer", api_key)),
           body = body_params,
           encode = "multipart",
-          httr::timeout(10)
+          timeout(10)
         )
         
         if (httr::status_code(res) == 200) {
