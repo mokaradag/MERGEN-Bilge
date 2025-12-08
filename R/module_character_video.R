@@ -1,36 +1,59 @@
 # R/module_character_video.R
 # Karakter Video Modülü - Ayarlar sayfasında video oynatma işlevselliği
 
-#' Karakter video verilerini döndürür
-#' @return Karakter video bilgilerini içeren liste
+#' Karakter video verilerini döndürür (Gelişmiş Kategorili Yapı)
+#' @return Karakter video bilgilerini ve dosya listelerini içeren liste
 get_character_videos <- function() {
-  list(
-    mergen = list(
-      id = "mergen",
-      video = "characters/video/Mergen_video.mp4",
-      accent = "#7C4DFF"
-    ),
-    ulgen = list(
-      id = "ulgen",
-      video = "characters/video/Ulgen_video.mp4",
-      accent = "#2F6DF6"
-    ),
-    kayra = list(
-      id = "kayra",
-      video = "characters/video/Kayra_video.mp4",
-      accent = "#12A97B"
-    ),
-    erlik = list(
-      id = "erlik",
-      video = "characters/video/Erlik_video.mp4",
-      accent = "#B66A2C"
-    ),
-    umay = list(
-      id = "umay",
-      video = "characters/video/Umay_Ana_video.mp4",
-      accent = "#E98686"
-    )
+  # Karakterlerin listesi ve renkleri
+  chars <- list(
+    mergen = "#7C4DFF",
+    ulgen = "#2F6DF6",
+    kayra = "#12A97B",
+    erlik = "#B66A2C",
+    umay = "#E98686"
   )
+  
+  video_db <- list()
+  
+  for (char_id in names(chars)) {
+    # Klasör yolları (www/ olmadan relative path)
+    base_path_www <- file.path("www", "characters", "video", char_id)
+    
+    # Yardımcı fonksiyon: Klasördeki mp4'leri listele
+    get_files <- function(category) {
+      path <- file.path(base_path_www, category)
+      if (dir.exists(path)) {
+        files <- list.files(path, pattern = "\\.mp4$", full.names = FALSE)
+        if (length(files) > 0) {
+          # Browser için 'www' prefixini kaldırıp path oluştur
+          return(file.path("characters", "video", char_id, category, files))
+        }
+      }
+      return(character(0))
+    }
+    
+    # 3 Kategoriyi tara
+    intro_videos <- get_files("intro")
+    loop_videos <- get_files("loop")
+    select_videos <- get_files("select")
+    
+    # Eğer alt klasörler boşsa eski usül tek dosya fallback (Geriye uyumluluk)
+    legacy_video <- file.path("characters", "video", paste0(tools::toTitleCase(char_id), "_video.mp4"))
+    
+    # Veri yapısını oluştur
+    video_db[[char_id]] <- list(
+      id = char_id,
+      accent = chars[[char_id]],
+      # JS tarafına gönderilecek playlist
+      playlist = list(
+        intro = if(length(intro_videos) > 0) intro_videos else legacy_video,
+        loop = if(length(loop_videos) > 0) loop_videos else legacy_video,
+        select = if(length(select_videos) > 0) select_videos else legacy_video
+      )
+    )
+  }
+  
+  return(video_db)
 }
 
 #' Karakter video UI bileşeni
@@ -88,32 +111,42 @@ characterVideoServer <- function(id, character_selected) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     
-    # Video verilerini yükle
-    video_data <- get_character_videos()
+    # Video verilerini dinamik olarak yükle
+    video_data <- reactive({ get_character_videos() })
     
-    # Karakter değiştiğinde video tetikle
+    # 1. Karakter değiştiğinde (Intro -> Loop başlar)
     observeEvent(character_selected(), {
       char_id <- character_selected()
       req(char_id)
       
-      # Karakter ID'sini normalize et (umay -> umay)
+      # ID Normalizasyonu
       char_key <- gsub("_ana$", "", char_id, ignore.case = TRUE)
       if (char_key == "umay ana") char_key <- "umay"
       char_key <- tolower(gsub(" ", "", char_key))
       
-      char_video <- video_data[[char_key]]
+      char_info <- video_data()[[char_key]]
       
-      if (!is.null(char_video)) {
-        session$sendCustomMessage("playCharacterVideo", list(
+      if (!is.null(char_info)) {
+        session$sendCustomMessage("initCharacterVideoSystem", list(
           videoElementId = ns("character_video"),
           overlayId = ns("video_overlay"),
           muteButtonId = ns("mute_toggle"),
-          videoSrc = char_video$video,
-          accentColor = char_video$accent,
-          delay = 1000,
-          containerId = paste0(gsub("-character_video$", "", id), "-character_image_area")
+          playlist = char_info$playlist,     # Tüm listeleri gönder
+          accentColor = char_info$accent,
+          containerId = paste0(gsub("-character_video$", "", id), "-character_image_area"),
+          mode = "intro" # Başlangıç modu
         ))
       }
     }, ignoreInit = TRUE)
+    
+    # 2. Ayarlar Kaydedildiğinde (Selection videosu tetikle)
+    # Bu event dışarıdan (settings module) tetiklenecek bir input/reactive bekleyebilir
+    # Ancak modüler yapı gereği custom message listener ekleyebiliriz.
+    
+    observeEvent(input$trigger_selection_video, {
+       session$sendCustomMessage("triggerVideoSelection", list(
+         videoElementId = ns("character_video")
+       ))
+    })
   })
 }

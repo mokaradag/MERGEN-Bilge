@@ -566,3 +566,25 @@
       0 0 30px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 40%, transparent);
   }
 }
+
+/* Smooth opacity transition for the video element */
+.character-video {
+  transition: opacity 1.2s ease-in-out;
+  opacity: 1;
+}
+
+/* Class to hide video (fade out) to reveal the image behind it */
+.character-video.video-fade-out {
+  opacity: 0;
+}
+
+/* Ensure the background image container is always visible behind the overlay */
+.character-image-container .character-image {
+  /* Ensure image stays visible when video fades out */
+  opacity: 1 !important; 
+  visibility: visible !important;
+  transition: opacity 1.2s ease-in-out;
+}
+
+/* When video is fully active (playing), we might want to slightly dim the image if needed, 
+   but for crossfade, keeping it opaque is safer to avoid black gaps. */

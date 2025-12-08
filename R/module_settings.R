@@ -560,19 +560,22 @@ settingsServer <- function(id, parent_session = NULL) {
 	  }
 	}, ignoreInit = TRUE)
     
-    # Save settings button
+	# Save settings button
     observeEvent(input$save_settings, {
       # Save the temporary character selection
       settings$selected_character <- temp_selected_character()
       
-      # ---- ADDED per instruction (save path) ----
-	to_save <- reactiveValuesToList(settings)
-	to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
-	to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
-	to_save$enable_tts_audio   <- isTRUE(input$enable_tts_audio)
-	to_save$tts_voice          <- input$tts_voice
-	session$sendCustomMessage("saveSettings", to_save)
-      # -------------------------------------------
+      # Send message to JS to play the "Select" category video for the current character
+      session$sendCustomMessage("triggerVideoSelection", list(
+        timestamp = as.numeric(Sys.time())
+      ))
+      
+      to_save <- reactiveValuesToList(settings)
+      to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
+      to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
+      to_save$enable_tts_audio   <- isTRUE(input$enable_tts_audio)
+      to_save$tts_voice          <- input$tts_voice
+      session$sendCustomMessage("saveSettings", to_save)
       
       showToast(session, "Ayarlar kaydedildi!", "success")
     })
