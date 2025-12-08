@@ -7,9 +7,16 @@ const CinematicVideoManager = {
     elements: null,
     currentLoopIndex: 0,
     loopTimer: null,
+    observer: null,
     
     init: function(data) {
         this.clearTimers();
+        
+        // Clean up previous observer if exists
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
         
         this.elements = {
             video: document.getElementById(data.videoElementId),
@@ -18,7 +25,7 @@ const CinematicVideoManager = {
             container: document.getElementById(data.containerId)
         };
         
-        if (!this.elements.video) return;
+        if (!this.elements.video || !this.elements.overlay) return;
 
         this.playlist = data.playlist;
         
@@ -27,12 +34,40 @@ const CinematicVideoManager = {
             this.elements.overlay.style.setProperty('--video-accent-color', data.accentColor);
         }
         
-        // Reset UI
+        // FIX 1: Force visibility immediately to override inline 'display: none' from R
+        this.elements.overlay.style.display = 'flex';
+        
+        // Add active class for opacity transition (make it visible)
+        requestAnimationFrame(() => {
+             this.elements.overlay.classList.add('is-active');
+        });
+        
+        // Setup events and visibility tracking
         this.setupVideoEvents();
+        this.setupVisibilityObserver();
         
         // Start Sequence: Intro -> Loop
         if (data.mode === 'intro') {
             this.playCategory('intro');
+        }
+    },
+    
+    setupVisibilityObserver: function() {
+        // FIX 2: Stop looping if settings page is hidden (tab switch)
+        const self = this;
+        
+        // Use IntersectionObserver to detect if the video component is off-screen or hidden
+        this.observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) {
+                    // Page Hidden: clear any pending loop timers so no new video starts
+                    self.clearTimers();
+                }
+            });
+        }, { threshold: 0.1 });
+        
+        if (this.elements.video) {
+            this.observer.observe(this.elements.video);
         }
     },
     
@@ -44,6 +79,12 @@ const CinematicVideoManager = {
         vid.parentNode.replaceChild(newVid, vid);
         this.elements.video = newVid;
         
+        // Re-attach observer to new element
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer.observe(newVid);
+        }
+        
         const self = this;
         
         // Event: Video Ends
@@ -53,10 +94,13 @@ const CinematicVideoManager = {
         
         // Event: Can Play (Fade In)
         this.elements.video.addEventListener('canplay', function() {
-            // Video loaded, start playing and fade in
             self.elements.video.play().then(() => {
                 self.elements.overlay.classList.add('is-playing');
                 self.elements.overlay.classList.remove('is-ended');
+                
+                // Ensure visibility classes are enforced
+                self.elements.overlay.style.display = 'flex';
+                self.elements.overlay.classList.add('is-active');
                 
                 // Smooth Fade In
                 self.elements.video.classList.remove('video-fade-out');
@@ -72,6 +116,9 @@ const CinematicVideoManager = {
     
     playCategory: function(category) {
         if (!this.playlist || !this.playlist[category]) return;
+        
+        // Safety: If element is hidden (user left page), do not start new playback
+        if (!this.isElementVisible(this.elements.video)) return;
         
         this.state = 'playing_' + category;
         
@@ -94,13 +141,18 @@ const CinematicVideoManager = {
         
         // 2. Wait for fade out (matches CSS transition: 1.2s)
         setTimeout(() => {
-            // 3. Change Source
-            vid.src = src;
-            // 'canplay' event will automatically trigger play() and Fade In
+            // Check visibility again before loading new source
+            if (this.isElementVisible(vid)) {
+                vid.src = src;
+                // 'canplay' event will automatically trigger play() and Fade In
+            }
         }, 1200); 
     },
     
     handleVideoEnd: function() {
+        // FIX 2: Stop chain if hidden (tab switched)
+        if (!this.isElementVisible(this.elements.video)) return;
+        
         // Determine next step based on current state
         if (this.state === 'playing_intro') {
             // Intro done -> Go to Loop immediately
@@ -119,6 +171,12 @@ const CinematicVideoManager = {
                 this.playCategory('loop');
             }, waitTime);
         }
+    },
+    
+    isElementVisible: function(el) {
+        // Robust check: offsetParent returns null if element or any parent has display: none
+        if (!el) return false;
+        return (el.offsetParent !== null);
     },
     
     triggerSelection: function() {
