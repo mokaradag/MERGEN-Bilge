@@ -22,6 +22,7 @@
 }
 
 /* Video wrapper - kırpma için gerekli */
+/* DÜZELTME: Arkaplan şeffaf yapıldı ki video solduğunda arkadaki resim görünsün */
 .character-video-wrapper {
   position: relative;
   width: 383px;
@@ -29,19 +30,18 @@
   overflow: hidden;
   border-radius: 18px;
   z-index: 2;
+  background: transparent; /* ÖNEMLİ: Resmin görünmesi için şeffaf */
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 30%, transparent);
   transition: box-shadow 0.5s ease;
 }
 
-/* Video elementi - 720x1280 orijinal videodan 57px üst/alt kırpma ile */
+/* Video elementi */
 .character-video {
   /* Orijinal video 720x1280, 57px üst + 57px alt kırpılınca 720x1166 */
-  /* Video'yu scale et ve wrapper ile kırp */
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  /* 620px hedef yükseklik için: 620 * (1280/1166) = 680.6px video yüksekliği */
   height: calc(620px * (1280 / 1166));
   width: auto;
   min-width: 383px;
@@ -49,6 +49,14 @@
   border-radius: 0;
   background: transparent;
   display: block;
+  /* DÜZELTME: Sinematik geçiş için opacity transition */
+  transition: opacity 1.2s ease-in-out;
+  opacity: 1;
+}
+
+/* Videoyu gizle (fade out) - arkadaki resmi açığa çıkarır */
+.character-video.video-fade-out {
+  opacity: 0;
 }
 
 /* ============================================
@@ -397,48 +405,6 @@
 }
 
 /* ============================================
-   Ses Kontrol Butonu
-   ============================================ */
-
-.video-mute-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 15;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.3s ease, background 0.2s ease, transform 0.2s ease;
-  backdrop-filter: blur(4px);
-}
-
-.character-video-overlay.is-active .video-mute-btn {
-  opacity: 1;
-}
-
-.video-mute-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
-  transform: scale(1.1);
-}
-
-.video-mute-btn.is-unmuted {
-  background: var(--video-accent-color, #7C4DFF);
-}
-
-.video-mute-btn.is-unmuted:hover {
-  background: color-mix(in srgb, var(--video-accent-color, #7C4DFF) 80%, white);
-}
-
-/* ============================================
    Eski Tarayıcılar için Fallback
    ============================================ */
 
@@ -466,11 +432,6 @@
     50% {
       filter: drop-shadow(0 0 40px var(--video-accent-color, #7C4DFF)) brightness(1.08);
     }
-  }
-  
-  .video-mute-btn.is-unmuted:hover {
-    background: var(--video-accent-color, #7C4DFF);
-    filter: brightness(1.2);
   }
   
   @keyframes energyWavePulse {
@@ -506,14 +467,6 @@
   .character-video {
     height: calc(518px * (1280 / 1166));
     min-width: 320px;
-  }
-  
-  .video-mute-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 12px;
-    top: 8px;
-    right: 8px;
   }
   
   .light-beam {
@@ -566,25 +519,3 @@
       0 0 30px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 40%, transparent);
   }
 }
-
-/* Smooth opacity transition for the video element */
-.character-video {
-  transition: opacity 1.2s ease-in-out;
-  opacity: 1;
-}
-
-/* Class to hide video (fade out) to reveal the image behind it */
-.character-video.video-fade-out {
-  opacity: 0;
-}
-
-/* Ensure the background image container is always visible behind the overlay */
-.character-image-container .character-image {
-  /* Ensure image stays visible when video fades out */
-  opacity: 1 !important; 
-  visibility: visible !important;
-  transition: opacity 1.2s ease-in-out;
-}
-
-/* When video is fully active (playing), we might want to slightly dim the image if needed, 
-   but for crossfade, keeping it opaque is safer to avoid black gaps. */

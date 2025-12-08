@@ -268,100 +268,100 @@ settingsServer <- function(id, parent_session = NULL) {
     ns <- session$ns
     
     # Reactive values for settings
-	settings <- reactiveValues(
-	  model_selection         = api_config$local_models[1],
-	  selected_character      = "mergen",
-	  enable_animations       = TRUE,
-	  enable_timestamps       = TRUE,
-	  enable_typing_indicator = TRUE,
-	  enable_streaming        = TRUE,
-	  enable_widescreen       = TRUE,
-	  enable_tts_audio        = TRUE,
-	  tts_voice               = tts_config$default_voice %||% "tr-male-1",
-	  enable_rdata_tools      = FALSE,
-	  enable_mcp_tools        = FALSE,
-	  enable_followups        = TRUE,
-	  font_size               = "medium"
-	)
-	
-	observeEvent(input$update_api_key_btn, {
-	  showModal(modalDialog(
-		title = "API Anahtarı Güncelleme",
-		easyClose = TRUE, size = "m",
-		passwordInput(ns("api_key_plain_input"), label = "Yeni API Anahtarı", width = "100%"),
-		footer = tagList(
-		  tags$button("Kapat", class = "btn-modern btn-secondary", `data-dismiss` = "modal"),
-		  actionButton(ns("api_key_save_btn"), "Kaydet", class = "btn-modern btn-primary")
-		)
-	  ))
-	}, ignoreInit = TRUE)
+    settings <- reactiveValues(
+      model_selection         = api_config$local_models[1],
+      selected_character      = "mergen",
+      enable_animations       = TRUE,
+      enable_timestamps       = TRUE,
+      enable_typing_indicator = TRUE,
+      enable_streaming        = TRUE,
+      enable_widescreen       = TRUE,
+      enable_tts_audio        = TRUE,
+      tts_voice               = tts_config$default_voice %||% "tr-male-1",
+      enable_rdata_tools      = FALSE,
+      enable_mcp_tools        = FALSE,
+      enable_followups        = TRUE,
+      font_size               = "medium"
+    )
+    
+    observeEvent(input$update_api_key_btn, {
+      showModal(modalDialog(
+        title = "API Anahtarı Güncelleme",
+        easyClose = TRUE, size = "m",
+        passwordInput(ns("api_key_plain_input"), label = "Yeni API Anahtarı", width = "100%"),
+        footer = tagList(
+          tags$button("Kapat", class = "btn-modern btn-secondary", `data-dismiss` = "modal"),
+          actionButton(ns("api_key_save_btn"), "Kaydet", class = "btn-modern btn-primary")
+        )
+      ))
+    }, ignoreInit = TRUE)
 
-	observeEvent(input$api_key_save_btn, {
-	  req(input$api_key_plain_input)
-	  key_plain <- trimws(input$api_key_plain_input)
-	  if (!nzchar(key_plain)) {
-		showToast(session, "Anahtar boş olamaz.", "warning"); return()
-	  }
+    observeEvent(input$api_key_save_btn, {
+      req(input$api_key_plain_input)
+      key_plain <- trimws(input$api_key_plain_input)
+      if (!nzchar(key_plain)) {
+        showToast(session, "Anahtar boş olamaz.", "warning"); return()
+      }
 
-	  target <- determine_api_key_validation_target(isolate(settings$model_selection), api_config)
-	  if (!isTRUE(target$allow_user_key) || !nzchar(target$endpoint)) {
-			showToast(session, "Bu model için kullanıcı tarafından yönetilen bir API anahtarı yok.", "error")
-			return()
-	  }
+      target <- determine_api_key_validation_target(isolate(settings$model_selection), api_config)
+      if (!isTRUE(target$allow_user_key) || !nzchar(target$endpoint)) {
+            showToast(session, "Bu model için kullanıcı tarafından yönetilen bir API anahtarı yok.", "error")
+            return()
+      }
 
-	  if (isTRUE(target$fallback_used)) {
-			showToast(session, "Seçili model sabit anahtar kullanıyor; doğrulama birincil uç nokta ile yapılacak.", "info")
-	  }
+      if (isTRUE(target$fallback_used)) {
+            showToast(session, "Seçili model sabit anahtar kullanıyor; doğrulama birincil uç nokta ile yapılacak.", "info")
+      }
 
-	  vres <- try(
-			validate_api_key(
-			  key_plain,
-			  model_id = target$model_id,
-			  endpoint = target$endpoint,
-			  timeout_seconds = 6
-			),
-			silent = TRUE
-	  )
-	  if (inherits(vres, "try-error") || !is.list(vres)) {
-			err_msg <- tryCatch(conditionMessage(attr(vres, "condition")), error = function(e) "Bilinmeyen hata")
-			showToast(session, paste("Anahtar doğrulaması başarısız:", err_msg), "error")
-			return()
-	  }
-	  if (identical(vres$valid, FALSE)) {
-			showToast(session, paste("API anahtarı geçersiz:", vres$message %||% ""), "error")
-			return()  # kaydetme!
-	  }
-	  if (!isTRUE(vres$valid)) {
-			showToast(session, paste("Anahtar doğrulanamadı (kaydedilmedi):", vres$message %||% "Doğrulama başarısız."), "error")
-			return()
-	  }
+      vres <- try(
+            validate_api_key(
+              key_plain,
+              model_id = target$model_id,
+              endpoint = target$endpoint,
+              timeout_seconds = 6
+            ),
+            silent = TRUE
+      )
+      if (inherits(vres, "try-error") || !is.list(vres)) {
+            err_msg <- tryCatch(conditionMessage(attr(vres, "condition")), error = function(e) "Bilinmeyen hata")
+            showToast(session, paste("Anahtar doğrulaması başarısız:", err_msg), "error")
+            return()
+      }
+      if (identical(vres$valid, FALSE)) {
+            showToast(session, paste("API anahtarı geçersiz:", vres$message %||% ""), "error")
+            return()  # kaydetme!
+      }
+      if (!isTRUE(vres$valid)) {
+            showToast(session, paste("Anahtar doğrulanamadı (kaydedilmedi):", vres$message %||% "Doğrulama başarısız."), "error")
+            return()
+      }
 
-		# 2) Kaydet + oturuma yaz (hata güvenli)
-		tryCatch({
-		  system_username <- session$userData$system_username %||% Sys.info()[["user"]]
-		  save_user_api_key(system_username, key_plain)
-		  session$userData$ai_api_key <- key_plain
-		  removeModal()
-		  success_msg <- vres$message %||% "API anahtarı güncellendi."
-		  if (isTRUE(target$fallback_used)) {
-			success_msg <- paste(success_msg, "Not: Doğrulama birincil uç nokta ile tamamlandı.")
-		  }
-		  if (!nzchar(success_msg)) {
-			success_msg <- "API anahtarı güncellendi."
-		  } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
-			success_msg <- paste("API anahtarı güncellendi —", success_msg)
-		  }
-		  showToast(session, success_m	sg, "success")
-		}, error = function(e) {
-		  showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
-		})
-	}, ignoreInit = TRUE)
+        # 2) Kaydet + oturuma yaz (hata güvenli)
+        tryCatch({
+          system_username <- session$userData$system_username %||% Sys.info()[["user"]]
+          save_user_api_key(system_username, key_plain)
+          session$userData$ai_api_key <- key_plain
+          removeModal()
+          success_msg <- vres$message %||% "API anahtarı güncellendi."
+          if (isTRUE(target$fallback_used)) {
+            success_msg <- paste(success_msg, "Not: Doğrulama birincil uç nokta ile tamamlandı.")
+          }
+          if (!nzchar(success_msg)) {
+            success_msg <- "API anahtarı güncellendi."
+          } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
+            success_msg <- paste("API anahtarı güncellendi —", success_msg)
+          }
+          showToast(session, success_m  sg, "success")
+        }, error = function(e) {
+          showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
+        })
+    }, ignoreInit = TRUE)
 
     # Temporary character selection (not saved until user clicks save)
     temp_selected_character <- reactiveVal("mergen")
 
     # Load character data
-	characters_data <- reactive(get_characters_data())
+    characters_data <- reactive(get_characters_data())
     
     # Initialize character UI (run once)
     observeEvent(TRUE, {
@@ -408,12 +408,25 @@ settingsServer <- function(id, parent_session = NULL) {
           character = char_id,
           accent = char$accent,
           accent_active = char$accent_active,
-		  accent_hover  = char$accent_hover
+          accent_hover  = char$accent_hover
         ))
         
+        # DÜZELTME: Karakter resim dosya isimlerini manuel olarak belirle
+        # Çünkü video geçişlerinde resmin arkada görünmesi kritik
+        img_filename <- switch(char_id,
+           "mergen" = "Mergen_resim_original.png",
+           "ulgen" = "Ulgen_resim_original.png",
+           "kayra" = "Kayra_resim_original.png",
+           "erlik" = "Erlik_resim_original.png",
+           "umay" = "Umay_Ana_resim_original.png",
+           paste0(tools::toTitleCase(char_id), "_resim_original.png") # Fallback
+        )
+        
+        full_img_path <- file.path("characters", "resim", img_filename)
+
         # Smooth image transition with fade out/in
         session$sendCustomMessage("transitionCharacterImage", list(
-          imageUrl = char$image,
+          imageUrl = full_img_path,
           displayName = char$display_name,
           containerId = session$ns("character_image_area")
         ))
@@ -497,36 +510,34 @@ settingsServer <- function(id, parent_session = NULL) {
         settings$enable_followups <- isTRUE(loaded$enable_followups)
         updateCheckboxInput(session, "enable_followups", value = settings$enable_followups)
       }
-		if (!is.null(loaded$enable_rdata_tools)) {
-		  settings$enable_rdata_tools <- isTRUE(loaded$enable_rdata_tools)
-		  updateCheckboxInput(session, "enable_rdata_tools", value = settings$enable_rdata_tools)
-		} else {
-		  # Eski kayıtlar için varsayılanı koru
-		  settings$enable_rdata_tools <- FALSE
-		  updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
-		}
+        if (!is.null(loaded$enable_rdata_tools)) {
+          settings$enable_rdata_tools <- isTRUE(loaded$enable_rdata_tools)
+          updateCheckboxInput(session, "enable_rdata_tools", value = settings$enable_rdata_tools)
+        } else {
+          # Eski kayıtlar için varsayılanı koru
+          settings$enable_rdata_tools <- FALSE
+          updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
+        }
 
-		if (!is.null(loaded$enable_mcp_tools)) {
-		  settings$enable_mcp_tools <- isTRUE(loaded$enable_mcp_tools)
-		  updateCheckboxInput(session, "enable_mcp_tools", value = settings$enable_mcp_tools)
-		}
+        if (!is.null(loaded$enable_mcp_tools)) {
+          settings$enable_mcp_tools <- isTRUE(loaded$enable_mcp_tools)
+          updateCheckboxInput(session, "enable_mcp_tools", value = settings$enable_mcp_tools)
+        }
 
-		# Karşılıklı dışlama: ikisi aynı anda açık ise MCP'yi kapat
-		if (isTRUE(settings$enable_rdata_tools) && isTRUE(settings$enable_mcp_tools)) {
-		  settings$enable_mcp_tools <- FALSE
-		  updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
-		}
+        # Karşılıklı dışlama: ikisi aynı anda açık ise MCP'yi kapat
+        if (isTRUE(settings$enable_rdata_tools) && isTRUE(settings$enable_mcp_tools)) {
+          settings$enable_mcp_tools <- FALSE
+          updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
+        }
       if (!is.null(loaded$font_size)) {
         settings$font_size <- loaded$font_size
         updateSelectInput(session, "font_size", selected = loaded$font_size)
       }
-
-      # ---- ADDED per instruction (load path using `loaded_settings`) ----
+      
       loaded_settings <- loaded
       if (!is.null(loaded_settings$enable_mcp_tools)) {
         updateCheckboxInput(session, "enable_mcp_tools", value = loaded_settings$enable_mcp_tools)
       }
-      # -------------------------------------------------------------------
     }, ignoreInit = TRUE)
     
     # Update internal state when inputs change
@@ -535,32 +546,32 @@ settingsServer <- function(id, parent_session = NULL) {
     observeEvent(input$enable_animations,       { settings$enable_animations       <- input$enable_animations })
     observeEvent(input$enable_timestamps,       { settings$enable_timestamps       <- input$enable_timestamps })
     observeEvent(input$enable_typing_indicator, { settings$enable_typing_indicator <- input$enable_typing_indicator })
-	observeEvent(input$enable_streaming,  { settings$enable_streaming  <- input$enable_streaming })
-	observeEvent(input$enable_widescreen, { settings$enable_widescreen <- input$enable_widescreen })
-	observeEvent(input$enable_tts_audio,  { settings$enable_tts_audio  <- isTRUE(input$enable_tts_audio) })
-	observeEvent(input$tts_voice,         { settings$tts_voice         <- input$tts_voice })
-	observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
+    observeEvent(input$enable_streaming,  { settings$enable_streaming  <- input$enable_streaming })
+    observeEvent(input$enable_widescreen, { settings$enable_widescreen <- input$enable_widescreen })
+    observeEvent(input$enable_tts_audio,  { settings$enable_tts_audio  <- isTRUE(input$enable_tts_audio) })
+    observeEvent(input$tts_voice,         { settings$tts_voice         <- input$tts_voice })
+    observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
 
-	# Karşılıklı dışlama mantığı
-	observeEvent(input$enable_rdata_tools, {
-	  settings$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
-	  # Eğer rData açıldıysa MCP'yi kapat
-	  if (isTRUE(input$enable_rdata_tools) && isTRUE(input$enable_mcp_tools)) {
-		updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
-		settings$enable_mcp_tools <- FALSE
-	  }
-	}, ignoreInit = TRUE)
+    # Karşılıklı dışlama mantığı
+    observeEvent(input$enable_rdata_tools, {
+      settings$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
+      # Eğer rData açıldıysa MCP'yi kapat
+      if (isTRUE(input$enable_rdata_tools) && isTRUE(input$enable_mcp_tools)) {
+        updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
+        settings$enable_mcp_tools <- FALSE
+      }
+    }, ignoreInit = TRUE)
 
-	observeEvent(input$enable_mcp_tools, {
-	  settings$enable_mcp_tools <- isTRUE(input$enable_mcp_tools)
-	  # Eğer MCP açıldıysa rData'yı kapat
-	  if (isTRUE(input$enable_mcp_tools) && isTRUE(input$enable_rdata_tools)) {
-		updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
-		settings$enable_rdata_tools <- FALSE
-	  }
-	}, ignoreInit = TRUE)
+    observeEvent(input$enable_mcp_tools, {
+      settings$enable_mcp_tools <- isTRUE(input$enable_mcp_tools)
+      # Eğer MCP açıldıysa rData'yı kapat
+      if (isTRUE(input$enable_mcp_tools) && isTRUE(input$enable_rdata_tools)) {
+        updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
+        settings$enable_rdata_tools <- FALSE
+      }
+    }, ignoreInit = TRUE)
     
-	# Save settings button
+    # Save settings button
     observeEvent(input$save_settings, {
       # Save the temporary character selection
       settings$selected_character <- temp_selected_character()
@@ -589,12 +600,12 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$enable_timestamps       <- TRUE
       settings$enable_typing_indicator <- TRUE
       settings$enable_streaming        <- TRUE
-	  settings$enable_widescreen       <- TRUE
-	  settings$enable_tts_audio        <- TRUE
-	  settings$tts_voice               <- tts_config$default_voice %||% "tr-male-1"
-	  settings$enable_rdata_tools      <- FALSE
-	  settings$enable_mcp_tools        <- FALSE
-	  settings$enable_followups        <- TRUE
+      settings$enable_widescreen       <- TRUE
+      settings$enable_tts_audio        <- TRUE
+      settings$tts_voice               <- tts_config$default_voice %||% "tr-male-1"
+      settings$enable_rdata_tools      <- FALSE
+      settings$enable_mcp_tools        <- FALSE
+      settings$enable_followups        <- TRUE
       settings$font_size               <- "medium"
       
       updateSelectInput(session, "model_selection", selected = settings$model_selection)
@@ -605,7 +616,7 @@ settingsServer <- function(id, parent_session = NULL) {
       updateCheckboxInput(session, "enable_typing_indicator", value = settings$enable_typing_indicator)
       updateCheckboxInput(session, "enable_streaming",        value = settings$enable_streaming)
       updateCheckboxInput(session, "enable_widescreen",       value = settings$enable_widescreen)
-	  updateCheckboxInput(session, "enable_tts_audio",        value = settings$enable_tts_audio)
+      updateCheckboxInput(session, "enable_tts_audio",        value = settings$enable_tts_audio)
       updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
       updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
       updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
@@ -615,7 +626,7 @@ settingsServer <- function(id, parent_session = NULL) {
       showToast(session, "Ayarlar sıfırlandı!", "info")
     })
     
-	# Karakter video modülünü başlat
+    # Karakter video modülünü başlat
     characterVideoServer("character_video", temp_selected_character)
     
     # IMPORTANT: Return the settings reactive values directly

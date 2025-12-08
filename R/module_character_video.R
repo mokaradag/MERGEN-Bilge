@@ -88,18 +88,11 @@ characterVideoUI <- function(id) {
           id = ns("character_video"),
           class = "character-video",
           playsinline = TRUE,
-          preload = "auto"
+          preload = "auto",
+          muted = FALSE # Ses açık
         )
-      ),
-      
-      # Ses kontrol butonu - SES AÇIK ikonu ile başla
-      tags$button(
-        id = ns("mute_toggle"),
-        class = "video-mute-btn is-unmuted",
-        title = "Sesi Kapat",
-        onclick = sprintf("toggleVideoMute('%s')", ns("character_video")),
-        tags$i(class = "fa-solid fa-volume-high")
       )
+      # Mute butonu kaldırıldı
     )
   )
 }
@@ -130,23 +123,13 @@ characterVideoServer <- function(id, character_selected) {
         session$sendCustomMessage("initCharacterVideoSystem", list(
           videoElementId = ns("character_video"),
           overlayId = ns("video_overlay"),
-          muteButtonId = ns("mute_toggle"),
           playlist = char_info$playlist,     # Tüm listeleri gönder
           accentColor = char_info$accent,
           containerId = paste0(gsub("-character_video$", "", id), "-character_image_area"),
-          mode = "intro" # Başlangıç modu
+          mode = "intro" # Her seçimde Intro ile başla
         ))
       }
-    }, ignoreInit = TRUE)
+    }, ignoreInit = FALSE) # DÜZELTME: ignoreInit = FALSE yapıldı, böylece sayfa ilk açıldığında da çalışır.
     
-    # 2. Ayarlar Kaydedildiğinde (Selection videosu tetikle)
-    # Bu event dışarıdan (settings module) tetiklenecek bir input/reactive bekleyebilir
-    # Ancak modüler yapı gereği custom message listener ekleyebiliriz.
-    
-    observeEvent(input$trigger_selection_video, {
-       session$sendCustomMessage("triggerVideoSelection", list(
-         videoElementId = ns("character_video")
-       ))
-    })
   })
 }
