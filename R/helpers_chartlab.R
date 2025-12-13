@@ -71,8 +71,7 @@ build_chartlab_message <- function(raw_text, message_id, session) {
   list(found = (chart_counter > 0), html = paste(html_chunks, collapse = ""), renderers = renderers)
 }
 
-# Render one chart output id from a chart spec (Highcharter preferred, Plotly fallback)
-# NOTE: helper takes 'output' explicitly
+# Render one chart output id from a chart spec
 wire_chart_output <- function(output, out_id, spec) {
   is_num <- function(v) is.numeric(v) || inherits(v, c("Date","POSIXct","POSIXt"))
   first_or_null <- function(x) if (length(x)) x[[1]] else NULL
@@ -84,10 +83,22 @@ wire_chart_output <- function(output, out_id, spec) {
     df <- sp$data
     if (is.null(df) || !is.data.frame(df)) return(sp)
 
-    num_cols <- names(df)[vapply(df, is_num, logical(1))]
+    # Detect column types
+    num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
+    date_cols <- names(df)[vapply(df, function(x) inherits(x, c("Date", "POSIXt", "POSIXct")), logical(1))]
     cat_cols <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
+    
+    # If date columns are strings (common in CSV/Excel), try to detect by name if not parsed
+    if (length(date_cols) == 0 && length(cat_cols) > 0) {
+      date_candidates <- grep("date|tarih|zaman|time|year|yil|month|ay", tolower(cat_cols), value = TRUE)
+      if (length(date_candidates) > 0) {
+        # Treat these "categorical" columns as high-priority X candidates for lines
+        date_cols <- date_candidates
+        cat_cols <- setdiff(cat_cols, date_candidates)
+      }
+    }
 
-    # [FIX] Normalize mappings first to see if we have explicit ones
+    # Helper to normalize mapping input
     norm_map <- function(v) {
       if (is.null(v)) return(NULL)
       vv <- as.character(v)
@@ -101,32 +112,44 @@ wire_chart_output <- function(output, out_id, spec) {
     g_ex <- norm_map(sp$mapping$group)
 
     known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
+    
+    # If type is missing, infer from available columns
     if (!nzchar(sp$type) || !(sp$type %in% known)) {
-      if (length(num_cols) >= 2)      sp$type <- "scatter"
-      else if (length(num_cols) >= 1) sp$type <- "hist"
-      else                            sp$type <- "bar"
+      if (length(date_cols) > 0 && length(num_cols) > 0) {
+        sp$type <- "line"
+      } else if (length(num_cols) >= 2) {
+        sp$type <- "scatter"
+      } else if (length(num_cols) >= 1) {
+         # Single numeric: Histogram if many rows, Bar if aggregated? Default to hist for safety
+         sp$type <- "hist"
+      } else {
+        sp$type <- "bar"
+      }
     }
 
-    # Guess logic (only if missing)
     x <- x_ex; y <- y_ex; g <- g_ex
 
-    if (sp$type %in% c("scatter","line","area")) {
-      if (is.null(x)) x <- first_or_null(num_cols)
-      # Only guess Y if not provided
+    # Smart defaults based on chart type
+    if (sp$type %in% c("line", "area")) {
+      # For line, X should preferably be Date/Time
+      if (is.null(x)) x <- first_or_null(date_cols)
+      if (is.null(x)) x <- first_or_null(num_cols) # Fallback to numeric index
       if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
       
-      if (is.null(x) || is.null(y)) {
-        # Fallback only if we really can't find columns
-        if (length(num_cols) >= 1) { sp$type <- "hist"; x <- first_or_null(num_cols); y <- NULL }
-        else                        { sp$type <- "bar";  x <- first_or_null(cat_cols); y <- NULL }
-      }
+    } else if (sp$type %in% c("bar", "column", "pie", "donut", "pareto")) {
+      # For categorical charts, X is Category, Y is Numeric
+      if (is.null(x)) x <- first_or_null(cat_cols)
+      # If no categorical, maybe a date column used as category (e.g. Year)
+      if (is.null(x)) x <- first_or_null(date_cols)
+      
+      if (is.null(y)) y <- first_or_null(num_cols)
+      
+    } else if (sp$type == "scatter") {
+      if (is.null(x)) x <- first_or_null(num_cols)
+      if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+      
     } else if (sp$type == "hist") {
       if (is.null(x)) x <- first_or_null(num_cols)
-      if (is.null(x) && length(cat_cols)) { sp$type <- "bar"; x <- first_or_null(cat_cols) }
-    } else if (sp$type == "bar") {
-      if (is.null(x)) x <- if (length(cat_cols)) first_or_null(cat_cols) else first_or_null(num_cols)
-    } else if (sp$type %in% c("pie","donut")) {
-      if (is.null(x)) x <- if (length(cat_cols)) first_or_null(cat_cols) else first_or_null(num_cols)
     }
 
     sp$mapping$x <- x; sp$mapping$y <- y; sp$mapping$group <- g

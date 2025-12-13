@@ -1088,7 +1088,6 @@ helpers_mcp_tools$execute_parsed_tool <- function(tc, session = NULL) {
 helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
   list(
     tools = list(
-      # ... (analyze_uploaded_file, get_column_statistics, sql_query_uploaded_file, get_distinct_values remain same) ...
       list(
         type = "function",
         `function` = list(
@@ -1150,30 +1149,29 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
           )
         )
       ),
-      list(
+	  list(
         type = "function",
         `function` = list(
           name = "prepare_chart_data",
-          description = "Grafik için veriyi hazırlar ve bir 'chart spec' döndürür. Tablo adı: t.",
+          description = "Grafik verisi hazırlar. ZORUNLU: X ve Y eksenlerini veriye göre mantıklı seç. Multi-seri için y='Col1,Col2' yap. Pie/Bar için agg kullan.",
           parameters = list(
             type = "object",
             properties = list(
               file_name  = list(type = "string", description = "Dosya jetonu veya yolu/adı."),
-			  chart_type = list(type = "string",
-					description = "ZORUNLU. histogram/dağılım→'hist', çizgi/line/trend→'line', bar/çubuk/sütun→'bar', pasta/pie→'pie', donut/halka→'donut', alan/area→'area', pareto→'pareto', saçılım/scatter/nokta→'scatter'."),
-              x          = list(type = "string", description = "X ekseni sütunu (opsiyonel)"),
-              # [MODIFIED] Emphasize multi-series format
-              y          = list(type = "string", description = "Y ekseni sütunu. ÇOKLU SERİ için virgülle ayır (örn: 'Gelir,Gider')."),
-              group      = list(type = "string", description = "Renk/seri grubu (örn: Cinsiyet). Çoklu Y kullandıysan burayı boş bırak."),
-              agg        = list(type = "string", description = "sum|mean|median|min|max (opsiyonel)"),
-              bins       = list(type = "integer", description = "Histogram için kutu sayısı (opsiyonel)"),
-              top_n      = list(type = "integer", description = "Bar grafikte en çok görülen ilk N (opsiyonel)"),
-			  stack       = list(type = "string",  description = "Stacking mode for bar/area: none|normal|percent (optional)"),
-              donut       = list(type = "boolean", description = "If true with pie, renders a donut (optional)"),
-              orientation = list(type = "string",  description = "Bar/pareto orientation: v|vertical|h|horizontal (optional)"),
-              smooth      = list(type = "boolean", description = "If true, line→spline and area→areaspline (optional)"),
-              filter_sql = list(type = "string", description = "WHERE klozu (opsiyonel). Ör: Department='IT' AND Salary>1000"),
-              limit      = list(type = "integer", description = "Satır sınırı (varsayılan 5000)")
+              chart_type = list(type = "string",
+                                description = "Grafik türü: 'line' (zaman/trend), 'bar' (kategori/sıralama), 'pie' (parça/bütün), 'scatter' (korelasyon), 'hist' (dağılım)."),
+              x          = list(type = "string", description = "X ekseni. Zaman serisi için tarih, Bar/Pie için kategori sütunu seç."),
+              y          = list(type = "string", description = "Y ekseni (Sayısal). ÇOKLU SERİ için virgülle ayır (örn: 'Gelir,Gider'). Histogram için boş bırak."),
+              group      = list(type = "string", description = "Gruplama sütunu (örn: Region). Çoklu Y kullandıysan burayı BOŞ bırak."),
+              agg        = list(type = "string", description = "Pie/Donut ve Bar için ZORUNLU: 'sum', 'mean', 'count'. Ham veri çizme."),
+              bins       = list(type = "integer", description = "Histogram kutu sayısı (opsiyonel)."),
+              top_n      = list(type = "integer", description = "En yüksek N kaydı göster (Bar/Pie için)."),
+              stack      = list(type = "string", description = "Bar/Area için: 'normal' veya 'percent'."),
+              donut      = list(type = "boolean", description = "Pie grafiğini halka (donut) yapar."),
+              orientation = list(type = "string", description = "Bar grafiği için: 'v' (dikey) veya 'h' (yatay)."),
+              smooth     = list(type = "boolean", description = "Çizgileri yumuşatır (spline)."),
+              filter_sql = list(type = "string", description = "SQL WHERE filtresi (örn: Year > 2020)."),
+              limit      = list(type = "integer", description = "Maksimum satır sayısı.")
             ),
             required = list("file_name", "chart_type")
           )
@@ -1188,21 +1186,38 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-	"Aşağıdaki araçları kullanarak kullanıcının Excel dosyasıyla ilgili sorularını yanıtla. Gerektiğinde birden fazla aracı arka arkaya çağırabilirsin.",
+    "Sen uzman bir Veri Bilimci ve Görselleştirme Uzmanısın. Kullanıcı Excel dosyaları hakkında sorular sorar.",
+    "GÖREVİN: Kullanıcının niyetini anlamak, veriyi analiz etmek ve EN MANTIKLI grafikleri çizmektir.",
     "",
-    "Grafik Kuralları (ÖNEMLİ):",
-    "1. **Çeşitlilik ve Çoklu Grafik:** Kullanıcı 'genel bir analiz yap', 'çeşitli grafikler çiz' veya 'A ve B grafiği çiz' dediğinde, **TEK CEVAPTA BİRDEN FAZLA `prepare_chart_data`** aracı çağır. Her çağrı ayrı bir grafik üretir.",
-    "2. **Çoklu Seri (Multi-Series):** Tek bir grafikte birden fazla veri serisi (örn. hem Gelir hem Gider) göstermek için `y` parametresini virgülle ayırarak gönder: `y='Gelir, Gider'`. Bu durumda `group` parametresini boş bırak.",
-    "3. **Detaylı Yorum:** Sadece grafiği çizip bırakma. Her grafiğin altına veya tüm grafiklerin en altına **'Yorum ve İçgörü'** başlıklı detaylı bir analiz yaz. Verinin ne anlama geldiğini, trendleri ve aykırı değerleri bir veri bilimci gibi yorumla.",
+    "### 1. GRAFİK ÇİZME KURALLARI (Çok Önemli)",
+    "Kullanıcı genellikle 'satış grafiği çiz' gibi genel isteklerde bulunur. Aşağıdaki mantığı uygula:",
     "",
-    "Araç Stratejileri:",
-    "- 'Ortalama kaç?' -> `get_column_statistics` kullan.",
-    "- 'Hangi kategoriler var?' -> `get_distinct_values` kullan.",
-    "- 'En yüksek 10 satış hangisi?' -> `sql_query_uploaded_file` kullan.",
-    "- 'Satış trendini ve kategori dağılımını çiz' -> İKİ KEZ `prepare_chart_data` çağır (biri line, biri pie).",
+    "**A) Eksen Seçimi (Otomatik Algıla):**",
+    "   - **X Ekseni:** Veride Tarih/Zaman (Date, Year, Month) varsa MUTLAKA X ekseni yap. Yoksa kategorik (Product, City) sütunu seç.",
+    "   - **Y Ekseni:** Her zaman SAYISAL bir sütun (Sales, Profit, Quantity, Tutar) seç.",
+    "   - *Örnek:* 'Satış grafiği' -> Dosyada 'Tarih' ve 'Tutar' varsa -> `chart_type='line'`, `x='Tarih'`, `y='Tutar'` yap.",
     "",
-    "⚠️ SQL Hatalarını Önle:",
-    "- Sütun adlarını SELECT sorgularında MUTLAKA köşeli parantez içine al ve Türkçe alias ver: `SELECT AVG(Salary) AS [Ortalama Maaş] FROM t`.",
+    "**B) Grafik Türü Doğruluğu:**",
+    "   - **Zaman/Trend:** `chart_type='line'` (Eğer birden fazla kategori varsa `group` kullan).",
+    "   - **Karşılaştırma:** `chart_type='bar'` (Kategoriler çoksa `orientation='h'` yap).",
+    "   - **Oransal Dağılım:** `chart_type='pie'` veya `donut`.",
+    "   - **İlişki/Korelasyon:** `chart_type='scatter'`.",
+    "",
+    "**C) Çoklu Seri (Multi-Series) Çizimi:**",
+    "   - Eğer kullanıcı 'Gelir ve Gideri göster' derse (İki farklı sayısal sütun):",
+    "   - **YÖNTEM:** `y` parametresine sütunları virgülle yaz: `y='Gelir, Gider'`.",
+    "   - **DİKKAT:** Bu durumda `group` parametresini BOŞ bırak (sistem otomatik halleder).",
+    "",
+    "**D) Pasta ve Bar Grafikleri için Agregasyon (Kritik):**",
+    "   - Asla ham (satır bazlı) veriyi Pie chart yapma. Binlerce dilim oluşur.",
+    "   - MUTLAKA `agg='sum'`, `agg='mean'` veya `agg='count'` parametresini kullan.",
+    "   - *Örnek:* 'Şehirlere göre satış' -> `x='City'`, `y='Sales'`, `agg='sum'`, `chart_type='pie'`.",
+    "",
+    "### 2. GENEL STRATEJİ",
+    "- Önce `analyze_uploaded_file` ile sütun isimlerini öğren.",
+    "- Sütun isimlerinden en mantıklı X ve Y adaylarını seç.",
+    "- Kullanıcı 'detaylı analiz yap' derse, birden fazla `prepare_chart_data` aracını arka arkaya çağır (örn: bir Trend Line, bir Kategori Pie).",
+    "- Her grafikten sonra verinin ne anlama geldiğini, artış/azalışları yorumla.",
     "",
     "Format: Yanıtını Markdown formatında ver.",
     sep = "\n"
