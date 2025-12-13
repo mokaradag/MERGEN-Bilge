@@ -87,13 +87,7 @@ wire_chart_output <- function(output, out_id, spec) {
     num_cols <- names(df)[vapply(df, is_num, logical(1))]
     cat_cols <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
 
-    known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
-    if (!nzchar(sp$type) || !(sp$type %in% known)) {
-      if (length(num_cols) >= 2)      sp$type <- "scatter"
-      else if (length(num_cols) >= 1) sp$type <- "hist"
-      else                            sp$type <- "bar"
-    }
-
+    # [FIX] Normalize mappings first to see if we have explicit ones
     norm_map <- function(v) {
       if (is.null(v)) return(NULL)
       vv <- as.character(v)
@@ -102,14 +96,27 @@ wire_chart_output <- function(output, out_id, spec) {
       if (!length(vv)) return(NULL)
       vv[[1]]
     }
-    x <- norm_map(sp$mapping$x)
-    y <- norm_map(sp$mapping$y)
-    g <- norm_map(sp$mapping$group)
+    x_ex <- norm_map(sp$mapping$x)
+    y_ex <- norm_map(sp$mapping$y)
+    g_ex <- norm_map(sp$mapping$group)
+
+    known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
+    if (!nzchar(sp$type) || !(sp$type %in% known)) {
+      if (length(num_cols) >= 2)      sp$type <- "scatter"
+      else if (length(num_cols) >= 1) sp$type <- "hist"
+      else                            sp$type <- "bar"
+    }
+
+    # Guess logic (only if missing)
+    x <- x_ex; y <- y_ex; g <- g_ex
 
     if (sp$type %in% c("scatter","line","area")) {
       if (is.null(x)) x <- first_or_null(num_cols)
+      # Only guess Y if not provided
       if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+      
       if (is.null(x) || is.null(y)) {
+        # Fallback only if we really can't find columns
         if (length(num_cols) >= 1) { sp$type <- "hist"; x <- first_or_null(num_cols); y <- NULL }
         else                        { sp$type <- "bar";  x <- first_or_null(cat_cols); y <- NULL }
       }

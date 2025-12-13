@@ -139,14 +139,19 @@ chat_add_message <- function(session, values, settings_data, output,
     push_followup_update(session, new_message$id, followups, pending = FALSE)
   }
   
+  # [FIX START] Closure bug fix for multiple charts
   if (!is.null(chart_info) && isTRUE(chart_info$found) && length(chart_info$renderers)) {
     for (r in chart_info$renderers) {
-      local_r <- r
-      session$onFlushed(function() {
-        try(wire_chart_output(output, local_r$output_id, local_r$spec), silent = TRUE)
-      }, once = TRUE)
+      # Wrap in local to ensure 'r' is captured correctly for each iteration
+      local({
+        local_r <- r
+        session$onFlushed(function() {
+          try(wire_chart_output(output, local_r$output_id, local_r$spec), silent = TRUE)
+        }, once = TRUE)
+      })
     }
   }
+  # [FIX END]
 
   wrapper_id <- paste0("message_wrapper_", new_message$id)
   if (isTRUE(new_message$has_code)) {

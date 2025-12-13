@@ -1088,6 +1088,7 @@ helpers_mcp_tools$execute_parsed_tool <- function(tc, session = NULL) {
 helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
   list(
     tools = list(
+      # ... (analyze_uploaded_file, get_column_statistics, sql_query_uploaded_file, get_distinct_values remain same) ...
       list(
         type = "function",
         `function` = list(
@@ -1153,16 +1154,17 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
         type = "function",
         `function` = list(
           name = "prepare_chart_data",
-          description = "Grafik için veriyi hazırlar ve bir 'chart spec' döndürür. Tablo adı: t. Excel/CSV/RDS/RData desteklenir.",
+          description = "Grafik için veriyi hazırlar ve bir 'chart spec' döndürür. Tablo adı: t.",
           parameters = list(
             type = "object",
             properties = list(
               file_name  = list(type = "string", description = "Dosya jetonu veya yolu/adı."),
 			  chart_type = list(type = "string",
-					description = "ZORUNLU. histogram/dağılım→'hist', çizgi/line/trend→'line', bar/çubuk/sütun→'bar', pasta/pie→'pie', donut/halka→'donut', alan/area→'area', pareto→'pareto', saçılım/scatter/nokta→'scatter'. Kullanıcının isteğine göre DOĞRU TİPİ SEÇ."),
+					description = "ZORUNLU. histogram/dağılım→'hist', çizgi/line/trend→'line', bar/çubuk/sütun→'bar', pasta/pie→'pie', donut/halka→'donut', alan/area→'area', pareto→'pareto', saçılım/scatter/nokta→'scatter'."),
               x          = list(type = "string", description = "X ekseni sütunu (opsiyonel)"),
-              y          = list(type = "string", description = "Y ekseni sütunu (opsiyonel)"),
-              group      = list(type = "string", description = "Renk/seri grubu (opsiyonel)"),
+              # [MODIFIED] Emphasize multi-series format
+              y          = list(type = "string", description = "Y ekseni sütunu. ÇOKLU SERİ için virgülle ayır (örn: 'Gelir,Gider')."),
+              group      = list(type = "string", description = "Renk/seri grubu (örn: Cinsiyet). Çoklu Y kullandıysan burayı boş bırak."),
               agg        = list(type = "string", description = "sum|mean|median|min|max (opsiyonel)"),
               bins       = list(type = "integer", description = "Histogram için kutu sayısı (opsiyonel)"),
               top_n      = list(type = "integer", description = "Bar grafikte en çok görülen ilk N (opsiyonel)"),
@@ -1186,40 +1188,23 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-	"Aşağıdaki araçları kullanarak kullanıcının Excel dosyasıyla ilgili sorularını yanıtla. Gerektiğinde birden fazla aracı arka arkaya çağırabilirsin; özellikle grafik isteklerinde birden fazla prepare_chart_data çağrısına izin ver.",
+	"Aşağıdaki araçları kullanarak kullanıcının Excel dosyasıyla ilgili sorularını yanıtla. Gerektiğinde birden fazla aracı arka arkaya çağırabilirsin.",
     "",
     "Grafik Kuralları (ÖNEMLİ):",
-    "- Birden fazla farklı grafik çizmen istenirse (örn: hem Pie hem Line), cevabında birden fazla ```chartlab ... ``` bloğu oluştur.",
-    "- Her grafik için ayrı bir ```chartlab``` JSON bloğu yaz; istek çokluysa en az iki grafik üret.",
-    "- Tek grafikte çoklu seri için 'y' dizisi (örn. ['Gelir', 'Gider']) veya virgül ile ayrılmış değerler gönder; araç bunları aynı grafikte birleştirir.",
+    "1. **Çeşitlilik ve Çoklu Grafik:** Kullanıcı 'genel bir analiz yap', 'çeşitli grafikler çiz' veya 'A ve B grafiği çiz' dediğinde, **TEK CEVAPTA BİRDEN FAZLA `prepare_chart_data`** aracı çağır. Her çağrı ayrı bir grafik üretir.",
+    "2. **Çoklu Seri (Multi-Series):** Tek bir grafikte birden fazla veri serisi (örn. hem Gelir hem Gider) göstermek için `y` parametresini virgülle ayırarak gönder: `y='Gelir, Gider'`. Bu durumda `group` parametresini boş bırak.",
+    "3. **Detaylı Yorum:** Sadece grafiği çizip bırakma. Her grafiğin altına veya tüm grafiklerin en altına **'Yorum ve İçgörü'** başlıklı detaylı bir analiz yaz. Verinin ne anlama geldiğini, trendleri ve aykırı değerleri bir veri bilimci gibi yorumla.",
     "",
-    "Araçlar:",
-    "1) analyze_uploaded_file(file_name) — SADECE dosya ilk yüklendiğinde genel yapı (satır/sütun) öğrenmek için. Spesifik sorular (örn. 'ortalama kaç') için BUNU KULLANMA.",
-    "2) get_column_statistics(file_name, column) — Sayısal bir sütunun ortalama, min, max değerleri veya kategorik dağılımı için.",
-    "3) get_distinct_values(file_name, column, limit) — 'Hangi departmanlar var?', 'Proje isimleri neler?' gibi liste soruları için.",
-    "4) sql_query_uploaded_file(file_name, sql) — Karmaşık filtreleme, sıralama, gruplama ve 'En yüksek X' soruları için EN GÜÇLÜ araç. Tablo adı 't'.",
-    "5) prepare_chart_data(...) — Grafik çizimi istendiğinde kullan.",
+    "Araç Stratejileri:",
+    "- 'Ortalama kaç?' -> `get_column_statistics` kullan.",
+    "- 'Hangi kategoriler var?' -> `get_distinct_values` kullan.",
+    "- 'En yüksek 10 satış hangisi?' -> `sql_query_uploaded_file` kullan.",
+    "- 'Satış trendini ve kategori dağılımını çiz' -> İKİ KEZ `prepare_chart_data` çağır (biri line, biri pie).",
     "",
-    "⚠️ KRİTİK KURALLAR (HATA YAPMA):",
-    "1. **SQL Alias Zorunluluğu:** SELECT sorgularında sütun başlıklarını MUTLAKA köşeli parantez içinde Türkçe ve anlaşılır isimlendir.",
-    "   - YANLIŞ: SELECT AVG(Salary) FROM t",
-    "   - DOĞRU:  SELECT AVG(Salary) AS [Ortalama Maaş], MAX(Salary) AS [En Yüksek Maaş] FROM t",
+    "⚠️ SQL Hatalarını Önle:",
+    "- Sütun adlarını SELECT sorgularında MUTLAKA köşeli parantez içine al ve Türkçe alias ver: `SELECT AVG(Salary) AS [Ortalama Maaş] FROM t`.",
     "",
-    "2. **Tek Seferde Doğru Cevap:**",
-	"   - Kullanıcı 'Ortalama yaş kaç?' derse, ASLA sadece `analyze_uploaded_file` çağırıp durma. Doğrudan `get_column_statistics` veya `sql_query_uploaded_file` kullan.",
-    "   - Soru net bir sayı veya liste istiyorsa, özeti geç ve hesaplamayı yapan aracı seç.",
-    "",
-    "3. **Çoklu Grafik ve Analiz:**",
-    "   - Kullanıcı 'Veriyi görselleştir', 'Grafikleri çiz' veya 'Analiz et' gibi genel bir istekte bulunursa,",
-    "     TEK BİR CEVAPTA birden fazla `prepare_chart_data` aracı çağırabilirsin. Her grafik için ayrı bir araç çağrısı yap.",
-    "   - Örneğin: Önce histogram, sonra scatter, sonra bar chart için sırayla araç çağır.",
-    "",
-    "4. **Yorum ve İçgörü (ÖNEMLİ):**",
-    "   - Aracı çalıştırdıktan sonra sadece tabloyu ekrana basıp bırakma.",
-    "   - Sonuçların altına mutlaka **'Yorum ve İçgörü'** başlıklı bir paragraf ekle.",
-    "   - Bir insan uzman gibi konuş: 'Bu sonuçlar beklentinin üzerinde...', 'Dikkat çeken nokta şudur...' gibi analizler yap.",
-    "",
-    "4. **Format:** Yanıtını Markdown formatında ver.",
+    "Format: Yanıtını Markdown formatında ver.",
     sep = "\n"
   )
 }
