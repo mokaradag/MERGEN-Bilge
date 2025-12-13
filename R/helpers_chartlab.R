@@ -79,26 +79,33 @@ wire_chart_output <- function(output, out_id, spec) {
   # -------- auto guess missing mapping/type + sanitize mapping ----------
   auto_guess <- function(sp) {
     sp$type    <- tolower(sp$type %||% "")
+    # box/boxplot hard-fallback
+    if (sp$type %in% c("box","boxplot","box_plot","bx")) sp$type <- "hist"
     sp$mapping <- sp$mapping %||% list()
+    
     df <- sp$data
     if (is.null(df) || !is.data.frame(df)) return(sp)
 
-    # Detect column types
-    num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
-    date_cols <- names(df)[vapply(df, function(x) inherits(x, c("Date", "POSIXt", "POSIXct")), logical(1))]
-    cat_cols <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
-    
-    # If date columns are strings (common in CSV/Excel), try to detect by name if not parsed
+    # Helper functions
+    is_num <- function(v) is.numeric(v)
+    is_date <- function(v) inherits(v, c("Date","POSIXct","POSIXt"))
+    first_or_null <- function(x) if (length(x)) x[[1]] else NULL
+
+    # Sütun tiplerini daha hassas ayır
+    date_cols <- names(df)[vapply(df, is_date, logical(1))]
+    num_cols  <- names(df)[vapply(df, is_num, logical(1))]
+    cat_cols  <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
+
+    # String formatında tarih varsa yakala
     if (length(date_cols) == 0 && length(cat_cols) > 0) {
-      date_candidates <- grep("date|tarih|zaman|time|year|yil|month|ay", tolower(cat_cols), value = TRUE)
-      if (length(date_candidates) > 0) {
-        # Treat these "categorical" columns as high-priority X candidates for lines
-        date_cols <- date_candidates
-        cat_cols <- setdiff(cat_cols, date_candidates)
+      candidates <- grep("date|tarih|zaman|time|yil|year|month|ay", tolower(cat_cols), value = TRUE)
+      if (length(candidates) > 0) {
+        date_cols <- candidates
+        cat_cols <- setdiff(cat_cols, candidates)
       }
     }
 
-    # Helper to normalize mapping input
+    # Mapping normalizasyonu
     norm_map <- function(v) {
       if (is.null(v)) return(NULL)
       vv <- as.character(v)
@@ -113,15 +120,16 @@ wire_chart_output <- function(output, out_id, spec) {
 
     known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
     
-    # If type is missing, infer from available columns
+    # 1. Grafik Türü Tahmini
     if (!nzchar(sp$type) || !(sp$type %in% known)) {
       if (length(date_cols) > 0 && length(num_cols) > 0) {
         sp$type <- "line"
-      } else if (length(num_cols) >= 2) {
+      } else if (length(num_cols) >= 2 && length(cat_cols) == 0) {
         sp$type <- "scatter"
+      } else if (length(cat_cols) > 0 && length(num_cols) > 0) {
+        sp$type <- "bar"
       } else if (length(num_cols) >= 1) {
-         # Single numeric: Histogram if many rows, Bar if aggregated? Default to hist for safety
-         sp$type <- "hist"
+        sp$type <- "hist"
       } else {
         sp$type <- "bar"
       }
@@ -129,24 +137,22 @@ wire_chart_output <- function(output, out_id, spec) {
 
     x <- x_ex; y <- y_ex; g <- g_ex
 
-    # Smart defaults based on chart type
+    # 2. Eksen Tahmini
     if (sp$type %in% c("line", "area")) {
-      # For line, X should preferably be Date/Time
       if (is.null(x)) x <- first_or_null(date_cols)
-      if (is.null(x)) x <- first_or_null(num_cols) # Fallback to numeric index
+      if (is.null(x)) x <- first_or_null(num_cols)
       if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+      if (is.null(g)) g <- first_or_null(cat_cols)
       
     } else if (sp$type %in% c("bar", "column", "pie", "donut", "pareto")) {
-      # For categorical charts, X is Category, Y is Numeric
       if (is.null(x)) x <- first_or_null(cat_cols)
-      # If no categorical, maybe a date column used as category (e.g. Year)
       if (is.null(x)) x <- first_or_null(date_cols)
-      
       if (is.null(y)) y <- first_or_null(num_cols)
       
     } else if (sp$type == "scatter") {
       if (is.null(x)) x <- first_or_null(num_cols)
       if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+      if (is.null(g)) g <- first_or_null(cat_cols)
       
     } else if (sp$type == "hist") {
       if (is.null(x)) x <- first_or_null(num_cols)

@@ -103,49 +103,79 @@ chartLabServer <- function(id) {
 
     make_id <- function() paste0("cl_", as.integer(as.numeric(Sys.time())*1000), "_", sample(1000:9999,1))
 	
-    # === NEW: auto-guess mapping/type when tool spec lacks them ===
+	# === NEW: auto-guess mapping/type when tool spec lacks them ===
     auto_guess_chart_spec <- function(sp) {
-      is_num <- function(v) is.numeric(v) || inherits(v, c("Date","POSIXct","POSIXt"))
+      is_num <- function(v) is.numeric(v)
+      is_date <- function(v) inherits(v, c("Date","POSIXct","POSIXt"))
       first_or_null <- function(x) if (length(x)) x[[1]] else NULL
 
-		sp$type    <- tolower(sp$type %||% "")
-		# box/boxplot is no longer supported — hard-fallback to histogram to avoid runtime errors
-		if (sp$type %in% c("box","boxplot","box_plot","bx")) sp$type <- "hist"
-		sp$mapping <- sp$mapping %||% list()
+      sp$type    <- tolower(sp$type %||% "")
+      # box/boxplot is no longer supported — hard-fallback to histogram
+      if (sp$type %in% c("box","boxplot","box_plot","bx")) sp$type <- "hist"
+      sp$mapping <- sp$mapping %||% list()
+      
       df <- tryCatch(as.data.frame(sp$data, stringsAsFactors = FALSE), error = function(e) NULL)
       if (is.null(df) || !is.data.frame(df) || !ncol(df)) return(sp)
 
-      num_cols <- names(df)[vapply(df, is_num, logical(1))]
-      cat_cols <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
+      # Sütun tiplerini daha hassas ayır
+      date_cols <- names(df)[vapply(df, is_date, logical(1))]
+      num_cols  <- names(df)[vapply(df, is_num, logical(1))]
+      cat_cols  <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
 
-      known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
-      if (!nzchar(sp$type) || !(sp$type %in% known)) {
-        if (length(num_cols) >= 2)      sp$type <- "scatter"
-        else if (length(num_cols) >= 1) sp$type <- "hist"
-        else                            sp$type <- "bar"
+      # String formatında tarih varsa yakala (basit kontrol)
+      if (length(date_cols) == 0 && length(cat_cols) > 0) {
+         candidates <- grep("date|tarih|zaman|time|yil|year|month|ay", tolower(cat_cols), value=TRUE)
+         if (length(candidates) > 0) {
+             date_cols <- candidates
+             cat_cols <- setdiff(cat_cols, candidates)
+         }
       }
 
-	  x <- sp$mapping$x; y <- sp$mapping$y; g <- sp$mapping$group
+      known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
+      
+      # 1. Grafik Türü Tahmini (Eğer belirtilmemişse)
+      if (!nzchar(sp$type) || !(sp$type %in% known)) {
+        if (length(date_cols) > 0 && length(num_cols) > 0) {
+           sp$type <- "line" # Zaman serisi öncelikli
+        } else if (length(num_cols) >= 2 && length(cat_cols) == 0) {
+           sp$type <- "scatter"
+        } else if (length(cat_cols) > 0 && length(num_cols) > 0) {
+           sp$type <- "bar"
+        } else if (length(num_cols) >= 1) {
+           sp$type <- "hist"
+        } else {
+           sp$type <- "bar" # Fallback
+        }
+      }
 
-      # [MODIFIED] Allow y to be vector (do not pick first only)
-      if (sp$type %in% c("scatter","line","area","bar","column")) {
-        if (is.null(x)) x <- first_or_null(num_cols)
-        # If y is missing, pick all remaining numerics or just one
-        if (is.null(y)) {
-           candidates <- setdiff(num_cols, x)
-           if (length(candidates) > 0) y <- candidates[1] 
-        }
-        if (is.null(x) || is.null(y)) {
-          if (length(num_cols) >= 1) { sp$type <- "hist"; x <- first_or_null(num_cols) }
-          else                        { sp$type <- "bar";  x <- first_or_null(cat_cols); y <- NULL }
-        }
+      x <- sp$mapping$x
+      y <- sp$mapping$y
+      g <- sp$mapping$group
+
+      # 2. Eksen Tahmini (Grafik türüne göre)
+      if (sp$type %in% c("line", "area")) {
+         # X: Tarih > Sayısal (Index)
+         if (is.null(x)) x <- first_or_null(date_cols)
+         if (is.null(x)) x <- first_or_null(num_cols)
+         # Y: Sayısal (X olmayan)
+         if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+         # Group: Kategori
+         if (is.null(g)) g <- first_or_null(cat_cols)
+         
+      } else if (sp$type %in% c("bar", "column", "pie", "donut", "pareto")) {
+         # X: Kategori > Tarih
+         if (is.null(x)) x <- first_or_null(cat_cols)
+         if (is.null(x)) x <- first_or_null(date_cols)
+         # Y: Sayısal
+         if (is.null(y)) y <- first_or_null(num_cols)
+         
+      } else if (sp$type == "scatter") {
+         if (is.null(x)) x <- first_or_null(num_cols)
+         if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+         if (is.null(g)) g <- first_or_null(cat_cols)
+         
       } else if (sp$type == "hist") {
-        if (is.null(x)) x <- first_or_null(num_cols)
-        if (is.null(x) && length(cat_cols)) { sp$type <- "bar"; x <- first_or_null(cat_cols) }
-      } else if (sp$type == "bar") {
-        if (is.null(x)) x <- if (length(cat_cols)) first_or_null(cat_cols) else first_or_null(num_cols)
-      } else if (sp$type %in% c("pie","donut")) {
-        if (is.null(x)) x <- if (length(cat_cols)) first_or_null(cat_cols) else first_or_null(num_cols)
+         if (is.null(x)) x <- first_or_null(num_cols)
       }
 
       sp$mapping$x <- x; sp$mapping$y <- y; sp$mapping$group <- g

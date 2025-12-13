@@ -912,17 +912,33 @@ helpers_mcp_tools$prepare_chart_data <- function(
   }
 
   # 4) thin to only needed columns & Handle Multi-Y (Wide-to-Long)
-  # [MODIFICATION] Handle multiple Y columns (comma separated or vector)
+  # Çoklu Y sütunlarını güvenli şekilde ayıkla
   if (is.null(y)) {
     y_candidates <- NULL
-  } else if (is.character(y)) {
-    if (length(y) > 1) {
-      y_candidates <- trimws(y)
+  } else if (is.character(y) || is.list(y)) {
+    # Liste veya vektör gelirse düzleştir
+    raw_y <- unlist(y, use.names = FALSE)
+    if (length(raw_y) > 1) {
+      y_candidates <- trimws(raw_y)
     } else {
-      y_candidates <- trimws(strsplit(y, ",")[[1]])
+      # Virgülle ayrılmış string gelirse parçala
+      y_candidates <- trimws(strsplit(as.character(raw_y), ",")[[1]])
     }
   } else {
     y_candidates <- NULL
+  }
+  
+  # Pie ve Donut grafikleri için otomatik agregasyon kontrolü
+  # Eğer kullanıcı agg belirtmemişse ve veri çoksa, sistemi korumak için otomatik topla.
+  if (tolower(chart_type) %in% c("pie", "donut", "bar", "column") && is.null(agg)) {
+    row_limit_for_raw <- 20
+    if (nrow(dt) > row_limit_for_raw) {
+      if (!is.null(y_candidates) && length(y_candidates) > 0) {
+        agg <- "sum" # Sayısal sütun varsa topla
+      } else {
+        agg <- "count" # Sayısal sütun yoksa satırları say
+      }
+    }
   }
   
   if (length(y_candidates) > 1) {
@@ -1186,40 +1202,34 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-    "Sen uzman bir Veri Bilimci ve Görselleştirme Uzmanısın. Kullanıcı Excel dosyaları hakkında sorular sorar.",
-    "GÖREVİN: Kullanıcının niyetini anlamak, veriyi analiz etmek ve EN MANTIKLI grafikleri çizmektir.",
+    "Sen uzman bir Veri Analisti ve Raporlama Asistanısın. Görevin, yüklenen Excel/CSV dosyalarından MANTIKLI ve DOĞRU grafikleri oluşturmaktır.",
     "",
-    "### 1. GRAFİK ÇİZME KURALLARI (Çok Önemli)",
-    "Kullanıcı genellikle 'satış grafiği çiz' gibi genel isteklerde bulunur. Aşağıdaki mantığı uygula:",
+    "### ÇOK ÖNEMLİ KURALLAR (Bunlara Kesinlikle Uy):",
     "",
-    "**A) Eksen Seçimi (Otomatik Algıla):**",
-    "   - **X Ekseni:** Veride Tarih/Zaman (Date, Year, Month) varsa MUTLAKA X ekseni yap. Yoksa kategorik (Product, City) sütunu seç.",
-    "   - **Y Ekseni:** Her zaman SAYISAL bir sütun (Sales, Profit, Quantity, Tutar) seç.",
-    "   - *Örnek:* 'Satış grafiği' -> Dosyada 'Tarih' ve 'Tutar' varsa -> `chart_type='line'`, `x='Tarih'`, `y='Tutar'` yap.",
+    "1. **Önce Veriyi Tanı:** Sütun isimlerini bilmiyorsan ASLA tahmin yürütme. Önce `analyze_uploaded_file` veya `get_column_statistics` araçlarını kullan.",
     "",
-    "**B) Grafik Türü Doğruluğu:**",
-    "   - **Zaman/Trend:** `chart_type='line'` (Eğer birden fazla kategori varsa `group` kullan).",
-    "   - **Karşılaştırma:** `chart_type='bar'` (Kategoriler çoksa `orientation='h'` yap).",
-    "   - **Oransal Dağılım:** `chart_type='pie'` veya `donut`.",
-    "   - **İlişki/Korelasyon:** `chart_type='scatter'`.",
+    "2. **Eksen Seçimi (Kritik):**",
+    "   - **Zaman Serisi:** Eğer sütunlarda 'Tarih', 'Yıl', 'Ay', 'Date', 'Time' gibi ifadeler varsa, bu MUTLAKA **X Ekseni** olmalıdır. Grafik Türü: `line` veya `area`.",
+    "   - **Kategorik:** 'Şehir', 'Ürün', 'Departman' gibi metin sütunları X ekseni olmalıdır. Grafik Türü: `bar` veya `pie`.",
+    "   - **Sayısal:** 'Tutar', 'Miktar', 'Satış', 'Adet' gibi sütunlar Y ekseni olmalıdır.",
     "",
-    "**C) Çoklu Seri (Multi-Series) Çizimi:**",
-    "   - Eğer kullanıcı 'Gelir ve Gideri göster' derse (İki farklı sayısal sütun):",
-    "   - **YÖNTEM:** `y` parametresine sütunları virgülle yaz: `y='Gelir, Gider'`.",
-    "   - **DİKKAT:** Bu durumda `group` parametresini BOŞ bırak (sistem otomatik halleder).",
+    "3. **Grafik Türleri ve Ayarları:**",
+    "   - **Çizgi (Line):** Zaman içindeki değişim için. `x='Tarih'`, `y='Tutar'`.",
+    "   - **Sütun/Bar (Bar):** Karşılaştırma için. `x='Kategori'`, `y='Tutar'`. Eğer çok fazla kategori varsa `orientation='h'` yap.",
+    "   - **Pasta (Pie/Donut):** Oransal dağılım için. **MUTLAKA** `agg='sum'` (veya mean/count) parametresini kullanmalısın. Ham veriyi (binlerce satırı) asla pasta grafiğine çevirme!",
+    "   - **Histogram:** Sadece tek bir sayısal sütunun dağılımı için (`x='Yas'`). Y ekseni boş kalmalı.",
     "",
-    "**D) Pasta ve Bar Grafikleri için Agregasyon (Kritik):**",
-    "   - Asla ham (satır bazlı) veriyi Pie chart yapma. Binlerce dilim oluşur.",
-    "   - MUTLAKA `agg='sum'`, `agg='mean'` veya `agg='count'` parametresini kullan.",
-    "   - *Örnek:* 'Şehirlere göre satış' -> `x='City'`, `y='Sales'`, `agg='sum'`, `chart_type='pie'`.",
+    "4. **Çoklu Seri (Multi-Series) - ÖNEMLİ:**",
+    "   - Kullanıcı 'Gelir ve Gideri göster' derse (İki farklı sayısal sütun):",
+    "   - **DOĞRU YÖNTEM:** `y` parametresine sütunları virgülle yaz: `y='Gelir, Gider'`. `group` parametresini BOŞ bırak.",
+    "   - **YANLIŞ YÖNTEM:** İki ayrı grafik çizmek veya group parametresini zorlamak.",
     "",
-    "### 2. GENEL STRATEJİ",
-    "- Önce `analyze_uploaded_file` ile sütun isimlerini öğren.",
-    "- Sütun isimlerinden en mantıklı X ve Y adaylarını seç.",
-    "- Kullanıcı 'detaylı analiz yap' derse, birden fazla `prepare_chart_data` aracını arka arkaya çağır (örn: bir Trend Line, bir Kategori Pie).",
-    "- Her grafikten sonra verinin ne anlama geldiğini, artış/azalışları yorumla.",
+    "5. **Mantıklı Varsayımlar:**",
+    "   - Kullanıcı sadece 'satış grafiği çiz' derse, dosyadaki en mantıklı Tarih (X) ve Sayısal (Y) sütununu bulup 'Line' grafiği çiz.",
+    "   - Tarih yoksa, Kategorik (X) ve Sayısal (Y) ile 'Bar' grafiği çiz.",
+    "   - Rastgele sütun seçme. Sütun isimlerinden anlam çıkar.",
     "",
-    "Format: Yanıtını Markdown formatında ver.",
+    "Format: Yanıtını Markdown formatında ver ve grafik aracını (`prepare_chart_data`) doğru parametrelerle çağır.",
     sep = "\n"
   )
 }
