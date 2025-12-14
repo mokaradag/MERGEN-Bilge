@@ -19,9 +19,6 @@ MCP_FILES_BASE=//mainserver/share/mergen_uploads
 SERVICE_DESK_API_KEY_URL=https://<your-servicedesk>/api-key
 SERVICE_DESK_RATE_LIMIT_URL=https://<your-servicedesk>/rate-limit
 
-MERGEN_RDATA_DAILY_PATH=//server/share/RdataDaily
-MERGEN_RDATA_WEEKLY_PATH=//server/share/Rdata
-
 # Local text-to-speech settings
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint/v1
 LOCAL_TTS_MODEL=tts-1-hd

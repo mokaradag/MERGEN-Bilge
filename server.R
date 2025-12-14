@@ -1,40 +1,5 @@
 # server.R
 
-# ---- RData Lake sınırları (tam analiz için yüksek değerler) ----
-# Not: Bu sınırlar ilk yenilemede tüm metrikleri/varlıkları kapsayacak kadar büyük tutulur.
-options(
-  # Türkçe yorum: Inf veya <=0 ⇒ SINIRSIZ (tam analiz)
-  mergen.rdata.max_entity_aggs     = Inf,
-  mergen.rdata.max_metrics         = Inf,
-  mergen.rdata.max_metrics_profile = Inf,
-  mergen.rdata.profile_batch_size  = 50,   # profil için parti boyutu (çok yüksek tutmayın)
-  mergen.rdata.preview_metrics     = 3,    # sadece fallback listede gösterim
-  mergen.rdata.force_preview_limit = FALSE,# SELECT'e otomatik LIMIT ekleme (analizde kapalı)
-  mergen.duckdb.threads = parallel::detectCores(),
-  mergen.duckdb.memory_limit = "16GB"
-)
-
-## Hızlı test modunda:
-# options(
-#   mergen.rdata.max_entity_aggs     = 5,     # Testte az sayıda varlık
-#   mergen.rdata.max_metrics         = 100,   # Testte en çok 100 metrik
-#   mergen.rdata.max_metrics_profile = 50,    # Profil açılırsa 50 ile sınırla
-#   mergen.rdata.profile_batch_size  = 25,    # Küçük partiler → bellek/IO yükü azalır
-#   mergen.rdata.preview_metrics     = 3,
-#   mergen.rdata.force_preview_limit = TRUE,  # SELECT'lere otomatik LIMIT ekle (güvenli)
-#   mergen.duckdb.threads            = max(1L, parallel::detectCores() %/% 2L), # CPU'nun yarısı
-#   mergen.duckdb.memory_limit       = "8GB"  # RAM tavanını düşür
-# )
-
-# ---- Uygulama açılışında lake motoru ve ağır işler ----
-try({
-  helpers_rdata_lake$rdata_engine_init()   # Türkçe: Doğru isim alanından çağır
-  cat("[SERVER] RData engine initialized\n")
-  if (isTRUE(getOption("mergen.rdata.refresh_on_boot", FALSE))) {
-    helpers_rdata_lake$rdata_refresh_all() # Türkçe: Ağır yenilemeyi seçenek açıkken çalıştır
-  }
-}, silent = FALSE)
-
 server <- function(input, output, session) {
 
   # ==== FIX: copy uploads to MCP base immediately ====
@@ -169,9 +134,6 @@ server <- function(input, output, session) {
     adminAnalyticsServer("admin_analytics_module", pool = pool)
   }
   
-  # RData admin: JS ile input$rdata_admin-refresh_now tetiklenebilir
-  rdataAdminServer("rdata_admin")
-
   # Initialize AI processing module
   ai_processor <- aiProcessingServer("ai_proc")
   
@@ -836,15 +798,11 @@ observeEvent(input$source_file_clicked, {
 	  tool_family <- "rdata"
 	} else if (excel_allowed) {
 	  tool_family <- "mcp_excel"
-	} else if (rdata_allowed) {
-	  tool_family <- "rdata"
+	} else if (isTRUE(current_settings$rdata_enabled)) { 
+	  # Ayarlarda "Proje ve Kaynak Analizi" (eski adıyla RData) açıksa
+	  tool_family <- "sql_analysis"
 	} else {
 	  tool_family <- "none"
-	}
-	
-	# Türkçe yorum: rData kullanılacaksa her zaman durumu sıfırla
-	if (identical(tool_family, "rdata")) {
-	  try(helpers_rdata_lake$rdata_reset_state("new_rdata_request"), silent = TRUE)
 	}
 
 	if (is.null(values$current_chat_id)) {
@@ -1029,10 +987,33 @@ observeEvent(input$source_file_clicked, {
 	  messages_to_process <- c(list(system_msg), head(recent_messages, -1), list(final_context_prompt))
 
 	} else {
-	  # Türkçe yorum: rdata ise sade mesaj; aksi halde normal bağlam
-	  if (identical(tool_family, "rdata")) {
-		messages_to_process <- list(system_msg, list(type = "user", content = user_message_text))
+	  # --- Proje ve Kaynak Analizi (SQL) Modu ---
+	  if (identical(tool_family, "sql_analysis")) {
+	    
+	    # 1. Analiz Modülünü Çalıştır (Sorgu Seç -> Çalıştır -> RLS Uygula)
+	    analysis_result <- pk_analiz_process_request(user_message_text, recent_messages, session)
+	    
+	    if (is.list(analysis_result) && identical(analysis_result$type, "data_analysis")) {
+	      # 2. Başarılı Analiz: Veriyi LLM bağlamına ekle
+	      custom_system_msg <- list(type = "system", content = analysis_result$prompt_context)
+	      custom_user_msg <- list(type = "user", content = analysis_result$user_context)
+	      messages_to_process <- list(custom_system_msg, custom_user_msg)
+	      
+	    } else {
+	      # 3. Hata veya Bilgi Mesajı
+	      err_msg <- as.character(analysis_result)
+	      messages_to_process <- list(
+	        system_msg, 
+	        list(type = "user", content = paste0(
+	          "Kullanıcı sorusu: ", user_message_text, "\n\n",
+	          "Sistem Analiz Raporu: ", err_msg, "\n\n",
+	          "Bu durumu kullanıcıya açıkla."
+	        ))
+	      )
+	    }
+	    
 	  } else {
+	    # --- Standart Sohbet Modu ---
 		messages_to_process <- c(list(system_msg), recent_messages)
 	  }
 	}

@@ -8,23 +8,6 @@ try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
 # Limit suppression to only this locale call
 try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE)
 
-# Türkçe yorum: Başlangıç ağır işleri denetleme anahtarları
-# options(
-#   mergen.rdata.refresh_on_boot     = TRUE,   # engine_init tetikler (eksikse)
-#   mergen.rdata.enable_profiles     = TRUE,   # rd_metric_profiles üret
-#   mergen.rdata.enable_aggregates   = TRUE,   # agg_* tablolarını üret
-#   mergen.rdata.profile_sample_frac = 1.0,    # 0<frac<=1: profilde örnekleme uygula
-#   mergen.duckdb.temp_directory     = Sys.getenv("MERGEN_DUCKDB_TEMP_DIR", "") # DuckDB spill dizini
-# )
-
-options(
-  mergen.rdata.refresh_on_boot     = FALSE,  # Profil/agg ağır işler açılışta çalışmasın (testte kapalı)
-  mergen.rdata.enable_profiles     = FALSE,  # Profil üretimini geçici olarak kapat
-  mergen.rdata.enable_aggregates   = FALSE,  # Ağır özet tabloları kapat
-  mergen.rdata.profile_sample_frac = 0.005,   # Profil açılırsa bile %1 örnek (hafif)
-  mergen.duckdb.temp_directory     = Sys.getenv("MERGEN_DUCKDB_TEMP_DIR", tempdir()) # DuckDB geçici dizin
-)
-
 # Yorumlu yanıtlara izin ver (LLM'in ikinci yazım geçişi açık kalsın)
 options(mergen.ai.strict_data_only = FALSE)
 
@@ -75,12 +58,6 @@ dbg_dump <- function(label, payload) {
     )
   }, silent = TRUE)
 }
-
-# ---- RData klasör yolları (günlük/haftalık) ----
-options(mergen.rdata.paths = list(
-  RdataDaily = normalizePath("RdataDaily", mustWork = FALSE),
-  Rdata      = normalizePath("Rdata", mustWork = FALSE)
-))
 
 # ---- RData Lake altyapısı ----
 library(arrow)
@@ -950,15 +927,10 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
 # --- SOURCE MODULES AND HELPERS ---
 # Using standard relative paths is the most robust and conventional method for Shiny apps.
 source("welcome_screen.R",     encoding = "UTF-8")
-source("R/schema_registry.R",  encoding = "UTF-8")
 source("R/helpers_database.R", encoding ="UTF-8")
 source("R/helpers_language.R", encoding ="UTF-8")
 source("R/helpers_messaging.R", encoding ="UTF-8")
 source("R/helpers_mcp_tools.R", encoding ="UTF-8")
-source("R/helpers_mcp_rdata_tools.R", encoding = "UTF-8")
-source("R/helpers_rdata_metadata.R", encoding ="UTF-8")
-source("R/helpers_rdata_normalize.R", encoding ="UTF-8")
-source("R/helpers_rdata_lake.R", encoding ="UTF-8")
 source("R/helpers_chartlab.R",    encoding = "UTF-8")
 source("R/helpers_preview.R",     encoding = "UTF-8")
 source("R/helpers_file_pipeline.R", encoding = "UTF-8")
@@ -980,36 +952,10 @@ source("R/module_message_search.R", encoding = "UTF-8")
 source("R/module_followup_questions.R", encoding = "UTF-8")
 source("R/module_chat_actions.R",  encoding = "UTF-8")
 source("R/module_chat_export.R",   encoding = "UTF-8")
-source("R/module_rdata_admin.R", encoding = "UTF-8")
 source("R/module_admin_analytics.R", encoding = "UTF-8")
 source("R/module_admin_analytics.R", encoding = "UTF-8")
 
 # --- GLOBAL CONFIGURATION ---
-
-# RData Lake'i başlat ve gerekiyorsa hafif yenile yap
-# Türkçe: Ağır işler kapalıyken de fact_universe görünümü kurulsun.
-try({
-  helpers_rdata_lake$rdata_engine_init()
-
-  if (isTRUE(getOption("mergen.rdata.refresh_on_boot", FALSE))) {
-    # Türkçe: Açıkça istenmişse tam yenile (ağır kısımlar seçeneklere göre yine atlanabilir)
-    helpers_rdata_lake$rdata_refresh_all()
-  } else {
-    # Türkçe: Açılışta görünüm yoksa SADECE hafif yenile (ağır işler zaten seçenekle kapalı)
-    con_chk <- helpers_rdata_lake$db_connect(readonly = TRUE)
-    need_min <- FALSE
-    try({
-      need_min <- !DBI::dbExistsTable(con_chk, "fact_universe")
-    }, silent = TRUE)
-    try(DBI::dbDisconnect(con_chk, shutdown = TRUE), silent = TRUE)
-    if (isTRUE(need_min)) {
-      log_info("[BOOT] fact_universe eksik — hafif yenile çalıştırılıyor (profil/agg kapalı).")
-      helpers_rdata_lake$rdata_refresh_all()
-    } else {
-      log_info("[BOOT] fact_universe mevcut — yenileme yok.")
-    }
-  }
-}, silent = TRUE)
 
 # Word preview mode: "html" (client-side via mammoth.js) or "pdf" (server-side convert via LibreOffice)
 options(mergen.word_preview_mode = "html")
