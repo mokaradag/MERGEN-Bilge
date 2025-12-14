@@ -800,10 +800,9 @@ observeEvent(input$source_file_clicked, {
 	  tool_family <- "rdata"
 	} else if (excel_allowed) {
 	  tool_family <- "mcp_excel"
-	} else if (isTRUE(current_settings$rdata_enabled)) { 
-	  # Ayarlarda "Proje ve Kaynak Analizi" (eski adıyla RData) açıksa
-	  tool_family <- "sql_analysis"
-	} else {
+	} else if (isTRUE(current_settings$enable_rdata_tools)) { 
+      tool_family <- "sql_analysis"
+    } else {
 	  tool_family <- "none"
 	}
 
@@ -864,6 +863,49 @@ observeEvent(input$source_file_clicked, {
 				paste(uploaded_names, collapse = ", ")))
 	
 	messages_to_process <- recent_messages
+	
+	if (identical(tool_family, "sql_analysis")) {
+       cat("[SERVER] 'Proje ve Kaynak Analizi' secildi. Modul cagiriliyor...\n")
+       
+       # 1. Analiz fonksiyonunu çalıştır
+       # pk_analiz_process_request fonksiyonu module_proje_kaynak_analizi.R icindedir
+       analiz_result <- tryCatch({
+         pk_analiz_process_request(user_message_text, messages_to_process, session)
+       }, error = function(e) {
+         paste0("⚠️ Analiz modülü hatası: ", e$message)
+       })
+       
+       # 2. Sonucu kontrol et
+       if (is.character(analiz_result)) {
+         # Eger string donerse (Hata mesaji veya 'Sorgu bulunamadi'), akisi durdur ve kullaniciya goster
+         removeUI(selector = "#typing-animation-wrapper")
+         values$typing <- FALSE
+         
+         add_message(analiz_result, "ai")
+         # Log activity and exit
+         return()
+         
+       } else if (is.list(analiz_result)) {
+         # Basarili! LLM'e giden mesaji SQL verisi ile zenginlestir
+         cat("[SERVER] SQL Analizi basarili. Veriler LLM baglamina ekleniyor...\n")
+         
+         # A) Kullanicinin son mesajini (Soru + JSON Veri) ile degistir
+         # messages_to_process bir listedir, son elemani kullanicinin promptudur
+         last_idx <- length(messages_to_process)
+         if (last_idx > 0) {
+           messages_to_process[[last_idx]]$content <- analiz_result$user_context
+         }
+         
+         # B) Sistem Promptunu ekle (Sorgu aciklamasi vb.)
+         # Listenin en basina bir 'system' mesaji ekliyoruz
+         sys_msg <- list(
+           role = "system",
+           content = analiz_result$prompt_context,
+           type = "system"
+         )
+         messages_to_process <- append(list(sys_msg), messages_to_process)
+       }
+    }
 
 	# Get character data for system prompt
 	selected_char_id <- settings_data$selected_character %||% "mergen"
