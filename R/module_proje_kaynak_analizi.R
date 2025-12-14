@@ -169,12 +169,62 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   }
   
   # F. AI Analizi Hazırlığı
-  row_limit <- 100
-  data_preview <- head(secure_data, row_limit)
   
+  # 1. Akıllı Filtreleme: Kullanıcının sorusundaki anahtar kelimeleri veri setinde arayalım.
+  # Bu sayede 2000+ satırı LLM'e göndermek yerine, sadece alakalı satırları seçeriz.
+  
+  search_terms <- unlist(strsplit(user_prompt, "\\s+"))
+  # Temizlik: Noktalama işaretlerini kaldır, küçük harfe çevir
+  search_terms <- tolower(gsub("[[:punct:]]", "", search_terms))
+  # Çok kısa kelimeleri (ve, ile, vb.) filtrele, ancak sayıları (ID) koru
+  search_terms <- search_terms[nchar(search_terms) >= 2]
+  
+  # Filtreleme Mantığı
+  if (nrow(secure_data) > 0 && length(search_terms) > 0) {
+    # Performans için geçici bir text tablosu oluştur
+    data_txt <- as.data.frame(lapply(secure_data, function(x) tolower(as.character(x))), stringsAsFactors = FALSE)
+    
+    matched_indices <- c()
+    
+    # Her bir arama terimi için sütunları tara
+    for (term in search_terms) {
+      for (col in names(data_txt)) {
+        # 'fixed = TRUE' ile tam metin araması (Regex değil, hız için)
+        matches <- which(grepl(term, data_txt[[col]], fixed = TRUE))
+        matched_indices <- c(matched_indices, matches)
+      }
+    }
+    
+    # Tekrar edenleri temizle
+    matched_indices <- unique(matched_indices)
+    
+    # LLM'e gönderilecek satırları belirle:
+    # 1. İlk 5 satır (Tablo yapısını anlaması için her zaman gerekli)
+    # 2. Eşleşen satırlar (Sorunun cevabını içerenler)
+    rows_to_keep <- unique(c(1:min(5, nrow(secure_data)), matched_indices))
+    rows_to_keep <- sort(rows_to_keep)
+    
+    # Güvenlik Limiti: Eğer çok fazla eşleşme varsa LLM context'ini patlatma (Max 150 satır)
+    MAX_AI_ROWS <- 150
+    if (length(rows_to_keep) > MAX_AI_ROWS) {
+      rows_to_keep <- head(rows_to_keep, MAX_AI_ROWS)
+    }
+    
+    data_preview <- secure_data[rows_to_keep, , drop = FALSE]
+    
+  } else {
+    # Arama terimi yoksa veya veri boşsa varsayılan ilk 50 satırı al
+    data_preview <- head(secure_data, 50)
+  }
+  
+  # JSON'a çevir
   data_str <- jsonlite::toJSON(data_preview, auto_unbox = TRUE, pretty = TRUE)
-  if (nrow(secure_data) > row_limit) {
-    data_str <- paste0(data_str, "\n\n(Not: Toplam ", nrow(secure_data), " satır var, sadece ilk ", row_limit, " satır analiz için gönderildi.)")
+  
+  # LLM'e not ekle
+  if (nrow(secure_data) > nrow(data_preview)) {
+    msg <- sprintf("\n\n(Not: Veri seti toplam %d satırdır. Kullanıcı sorusuyla eşleşen satırlar ve örnek veri olmak üzere %d satır analiz için seçilmiştir.)", 
+                   nrow(secure_data), nrow(data_preview))
+    data_str <- paste0(data_str, msg)
   }
   
   system_prompt <- paste0(
