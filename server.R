@@ -773,6 +773,8 @@ observeEvent(input$source_file_clicked, {
 	  return()
 	}
 	
+	current_settings <- reactiveValuesToList(settings_data)
+	
 	# --- Bu istek için araç ailesini belirle (mcp_excel | rdata | none) ---
 	# Basit niyet bulucu: proje/kaynak/işçilik vb. rData konusudur
 	is_rdata_intent <- function(txt) {
@@ -1045,7 +1047,6 @@ observeEvent(input$source_file_clicked, {
 	}
 	
 	# === NEW: Read the model selection from settings_data via reactiveValuesToList ===
-	current_settings <- reactiveValuesToList(settings_data)
 	model_selected <- current_settings$model_selection
 	
 	# Ensure we have a snapshot handy before any per-request changes
