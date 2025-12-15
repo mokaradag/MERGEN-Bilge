@@ -133,7 +133,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return("⚠️ **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
   }
   
-  # C. Doğru Sorguyu Seç
+# C. Doğru Sorguyu Seç
   cat("[PK_ANALIZ] Akilli sorgu secimi yapiliyor (select_smart_query)...\n")
   selected_query <- select_smart_query(user_prompt, query_library, chat_history)
   
@@ -143,6 +143,38 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   }
   
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
+   
+  # 1. SQL İçeriğini Belirle (sql string veya sql_file dosyasından)
+  sql_query_text <- selected_query$sql
+  if (is.null(sql_query_text) || !nzchar(sql_query_text)) {
+    if (!is.null(selected_query$sql_file) && file.exists(selected_query$sql_file)) {
+      cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", selected_query$sql_file))
+      # Dosyayı UTF-8 olarak okuyup tek bir string haline getir
+      sql_query_text <- paste(readLines(selected_query$sql_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+    } else {
+      cat("[PK_ANALIZ] HATA: SQL icerigi veya dosyasi bulunamadi.\n")
+      return("⚠️ **Yapılandırma Hatası:** Seçilen analiz için geçerli bir SQL sorgusu veya dosyası bulunamadı.")
+    }
+  }
+
+  # 2. Hedef Veritabanı Kontrolü (DB Switching)
+  # Varsayılan bağlantı 'primary' olarak açılmıştı. Sorgu farklı bir hedef istiyorsa değiştir.
+  target_db <- selected_query$db_target
+  
+  # Eğer target_db belirtilmişse ve 'primary' değilse bağlantıyı yenile
+  if (!is.null(target_db) && target_db != "primary") {
+     cat(sprintf("[PK_ANALIZ] Hedef DB 'primary' degil (%s). Baglanti degistiriliyor...\n", target_db))
+     
+     # Mevcut primary bağlantısını serbest bırak
+     release_connection(conn_list)
+     
+     # Yeni hedefe bağlan
+     conn_list <- get_connection(target = target_db)
+     conn <- conn_list$conn
+     
+     # Not: on.exit(release_connection(conn_list)) fonksiyon sonunda çalışırken
+     # conn_list değişkeninin güncel halini kullanacaktır, bu yüzden temizlik güvenlidir.
+  }
   
   # D. Sorguyu Çalıştır
   cat("[PK_ANALIZ] SQL calistiriliyor...\n")

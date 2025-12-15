@@ -27,7 +27,6 @@ AI_KEYS_MASTER="change_this_to_a_long_random_secret_string"
 LOCAL_LLM_ENDPOINT=https://your-actual-api-endpoint.com/v1/chat/completions
 LOCAL_LLM_ENDPOINT_ALT=https://your-secondary-endpoint.com/v1/chat/completions
 LOCAL_LLM_ENDPOINT_ALT_API_KEY=secondary-endpoint-api-key
-DB_DSN=TestConnection
 
 # Persisted base folder for MCP-file uploads (UNC or local path)
 MCP_FILES_BASE=//mainserver/share/mergen_uploads
