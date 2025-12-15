@@ -8,6 +8,17 @@ try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
 # Limit suppression to only this locale call
 try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE)
 
+# ------------------------------------------------------------------------------
+# VERİTABANI HEDEF TANIMLARI (DATABASE TARGET CONSTANTS)
+# ------------------------------------------------------------------------------
+# Uygulama genelinde hangi veritabanına gidileceğini belirten standart etiketler.
+# 'library_queries.R' içindeki sorgularda bu etiketleri kullanacağız.
+DB_TARGETS <- list(
+  PRIMARY   = "primary",   # Ana veritabanı (Varsayılan) -> .Renviron: DB_DSN
+  SECONDARY = "secondary", # İkincil veritabanı          -> .Renviron: DB_DSN_2
+  TERTIARY  = "tertiary"   # Üçüncül veritabanı          -> .Renviron: DB_DSN_3
+)
+
 # Yorumlu yanıtlara izin ver (LLM'in ikinci yazım geçişi açık kalsın)
 options(mergen.ai.strict_data_only = FALSE)
 

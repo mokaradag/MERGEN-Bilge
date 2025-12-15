@@ -35,23 +35,40 @@ get_pool_info <- function() {
   ))
 }
 
-# Get connection - returns the pool or connection object directly
-# The pool library automatically handles checkout/return when you use it directly
-get_connection <- function() {
-  # Use pool directly if available - pool handles checkout/return automatically
-  if (exists("pool", envir = .GlobalEnv)) {
+get_connection <- function(target = "primary") {
+  
+  # 1. Hangi Veritabanı? (.Renviron içindeki değişkeni seçiyoruz)
+  dsn_var <- switch(target,
+    "primary"   = "DB_DSN",      # Varsayılan Ana Veritabanı
+    "secondary" = "DB_DSN_2",    # İkincil Veritabanı (Arşiv vb.)
+    "tertiary"  = "DB_DSN_3",    # Üçüncül Veritabanı
+    "DB_DSN"                     # Hata durumunda varsayılan
+  )
+  
+  # 2. Pooling Kontrolü (Sadece Ana Veritabanı için ve pool aktifse)
+  # Şu an kullanmıyor, ama performans için kapıyı açık bırakıldı.
+  if (target == "primary" && exists("pool", envir = .GlobalEnv)) {
     pool_obj <- get("pool", envir = .GlobalEnv)
     if (!is.null(pool_obj) && inherits(pool_obj, "Pool")) {
       return(list(conn = pool_obj, pooled = TRUE, pool = pool_obj))
     }
   }
 
-  # Fallback: create direct DBI connection for workers
+  # 3. Direct Connection (Fallback)
+  # Havuz yoksa veya ikincil veritabanı isteniyorsa doğrudan bağlan.
   if (!requireNamespace("odbc", quietly = TRUE) || !requireNamespace("DBI", quietly = TRUE)) {
     stop("Worker/process requires 'odbc' and 'DBI' packages installed.")
   }
   
-  conn <- DBI::dbConnect(odbc::odbc(), dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN))
+  # Seçilen hedefin DSN adını çevresel değişkenden al
+  dsn_name <- Sys.getenv(dsn_var, .DEFAULT_DSN)
+  
+  # Eğer DSN tanımlı değilse hata ver (Debugging kolaylığı için)
+  if (dsn_name == "") {
+    stop(sprintf("HATA: '%s' için .Renviron içinde DSN tanımı bulunamadı (Target: %s)", dsn_var, target))
+  }
+  
+  conn <- DBI::dbConnect(odbc::odbc(), dsn = dsn_name)
   return(list(conn = conn, pooled = FALSE, pool = NULL))
 }
 

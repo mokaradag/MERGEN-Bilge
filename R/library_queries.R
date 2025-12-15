@@ -43,44 +43,68 @@ FROM
 
 query_library <- list(
   
-  # ÖRNEK SORGU 1
+  # ----------------------------------------------------------------------------
+  # SORGU 1: Genel Proje KPI Listesi
+  # ----------------------------------------------------------------------------
   list(
     id = "q001",
     name = "Genel Proje KPI Listesi",
-    description = "Tüm projelerin anahtar performans göstergelerini (KPI) ve genel durumlarını listeler. Proje durumu, ilerleme yüzdesi gibi veriler içerir.",
-    sql = "
-      SELECT 
-        ProjeKodu,
-        ProjeAdi,
-        MasrafYeri,
-        ProgMdlKodu,
-        Durum,
-        TamamlanmaYuzdesi
-      FROM 
-        TB_Proje_Ozet_Tablosu
-    ",
-    # Bu sorgunun sonucundaki sütun isimleri RLS için şunlara karşılık gelir:
+    description = "Tüm projelerin anahtar performans göstergelerini listeler.",
+    
+    # YENİ: Bu sorgunun hangi veritabanında çalışacağını belirtiyoruz.
+    # Varsayılan olarak birincil veritabanı seçili.
+    db_target = DB_TARGETS$PRIMARY, 
+    
+    # Hibrit yapı (Dosya yolu)
+    sql_file = "sql_queries/q001_kpi.sql",
+    
     rls_columns = list(
-      masraf_yeri_col = "MasrafYeri",  # Tabloda departman kodu hangi sütunda?
-      proje_kodu_col = "ProjeKodu",    # Tabloda proje kodu hangi sütunda?
-      eps_kodu_col = "ProgMdlKodu"     # Tabloda EPS kodu hangi sütunda?
+      masraf_yeri_col = "MasrafYeri",
+      proje_kodu_col = "ProjeKodu",
+      eps_kodu_col = "ProgMdlKodu"
     )
   ),
 
-  # ÖRNEK SORGU 2 (Buraya kendi sorgularınızı ekleyin...)
+  # ----------------------------------------------------------------------------
+  # SORGU 2: Departman Bütçe Analizi
+  # ----------------------------------------------------------------------------
   list(
     id = "q002",
     name = "Departman Bütçe Analizi",
-    description = "Departman bazında bütçe gerçekleşme oranlarını getirir.",
-    sql = "
-      SELECT * FROM TB_Butce_Analiz_View
-    ",
+    description = "Departman bazında bütçe özetlerini getirir.",
+    
+    # YENİ: İleride bu sorguyu 'Arşiv' veritabanına (Secondary) taşımak isterseniz:
+    # db_target = DB_TARGETS$SECONDARY,
+    db_target = DB_TARGETS$PRIMARY,
+    
+    # Hibrit yapı (Dosya yolu)
+    sql_file = "sql_queries/q002_butce.sql",
+    
     rls_columns = list(
       masraf_yeri_col = "MasrafYeriKodu",
-      proje_kodu_col = NULL, # Bu sorguda proje detayı yok
+      proje_kodu_col = NULL,
+      eps_kodu_col = NULL
+    )
+  ),
+  
+  # ----------------------------------------------------------------------------
+  # SORGU 3: Basit Test Sorgusu (Örnek)
+  # ----------------------------------------------------------------------------
+  list(
+    id = "q003",
+    name = "Basit Test",
+    description = "Test amaçlı basit sorgu.",
+    
+    # YENİ: Hedef veritabanı
+    db_target = DB_TARGETS$PRIMARY,
+    
+    # Direkt SQL kullanımı
+    sql = "SELECT TOP 10 * FROM Tbl_Test",
+    
+    rls_columns = list(
+      masraf_yeri_col = NULL,
+      proje_kodu_col = NULL,
       eps_kodu_col = NULL
     )
   )
-  
-  # Yeni sorguları buraya virgül koyarak ekleyebilirsiniz...
 )

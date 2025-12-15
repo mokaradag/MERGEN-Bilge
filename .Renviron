@@ -2,8 +2,24 @@
 # It should be added to your .gitignore file to prevent it from being
 # committed to version control.
 
+# ------------------------------------------------------------------------------
+# VERİTABANI BAĞLANTILARI (MULTI-DB SETUP)
+# ------------------------------------------------------------------------------
+
 DB_SERVER="your_server_address"
-DB_DATABASE="your_database_name"
+
+# 1. VARSAYILAN (BİRİNCİ) VERİTABANI
+DB_DSN="MainConnection"
+
+# 2. İKİNCİ VERİTABANI 
+DB_DSN_2="SecondaryConnection_Placeholder"
+
+# 3. ÜÇÜNCÜ VERİTABANI
+DB_DSN_3="TertiaryConnection_Placeholder"
+
+# ------------------------------------------------------------------------------
+# DİĞER AYARLAR
+# ------------------------------------------------------------------------------
 
 # 32+ chars random secret for encrypting user API keys
 AI_KEYS_MASTER="change_this_to_a_long_random_secret_string"
