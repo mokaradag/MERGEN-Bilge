@@ -145,55 +145,58 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
    
   # 1. SQL İçeriğini Belirle (sql string veya sql_file dosyasından)
-  sql_query_text <- selected_query$sql
-  if (is.null(sql_query_text) || !nzchar(sql_query_text)) {
-    if (!is.null(selected_query$sql_file) && file.exists(selected_query$sql_file)) {
-      cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", selected_query$sql_file))
-      
-      # Dosyayı satır satır oku
-      lines <- readLines(selected_query$sql_file, warn = FALSE, encoding = "UTF-8")
-      
-      # Tek bir metin haline getir
-      sql_query_text <- paste(lines, collapse = "\n")
-      
-      # KRİTİK DÜZELTME: BOM (Byte Order Mark) temizliği
-      # Windows ile kaydedilen dosyalarda baştaki görünmez karakter SQL hatası (42000) yapar.
-      sql_query_text <- gsub("^\ufeff", "", sql_query_text)
-      
-      # DEBUG: Okunan SQL'in ilk 200 karakterini konsola bas (Doğrulama için)
-      cat(sprintf("[PK_ANALIZ] Okunan SQL (Ilk 200 karakter):\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
-      
-    } else {
-      cat(sprintf("[PK_ANALIZ] HATA: SQL dosyasi bulunamadi: %s\n", tryCatch(selected_query$sql_file, error=function(e) "Bilinmiyor")))
-      return("⚠️ **Yapılandırma Hatası:** Seçilen analiz için geçerli bir SQL sorgusu veya dosyası bulunamadı.")
-    }
-  }
+	sql_query_text <- selected_query$sql
 
-  # 2. Hedef Veritabanı Kontrolü (DB Switching)
-  # Varsayılan bağlantı 'primary' olarak açılmıştı. Sorgu farklı bir hedef istiyorsa değiştir.
-  target_db <- selected_query$db_target
-  
-  # Eğer target_db belirtilmişse ve 'primary' değilse bağlantıyı yenile
-  if (!is.null(target_db) && target_db != "primary") {
-     cat(sprintf("[PK_ANALIZ] Hedef DB 'primary' degil (%s). Baglanti degistiriliyor...\n", target_db))
-     
-     # Mevcut primary bağlantısını serbest bırak
-     release_connection(conn_list)
-     
-     # Yeni hedefe bağlan
-     conn_list <- get_connection(target = target_db)
-     conn <- conn_list$conn
-     
-     # Not: on.exit(release_connection(conn_list)) fonksiyon sonunda çalışırken
-     # conn_list değişkeninin güncel halini kullanacaktır, bu yüzden temizlik güvenlidir.
-  }
-  
-  # D. Sorguyu Çalıştır
-  # (Globalde temizlenmiş SQL kullanılıyor, ama son bir güvenlik trimi yapalım)
-  final_sql <- trimws(sql_query_text)
-  
-  # DEBUG: Konsola sorgunun başını bas (Doğrulama için)
-  cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
+	if (is.null(sql_query_text) || !nzchar(sql_query_text)) {
+	  if (!is.null(selected_query$sql_file)) {
+		fpath <- selected_query$sql_file
+		
+		if (!file.exists(fpath)) {
+		  cat(sprintf("[PK_ANALIZ] HATA: SQL dosyasi bulunamadi: %s\n", fpath))
+		  return(paste0("⚠️ **Yapılandırma Hatası:** SQL dosyası bulunamadı: ", fpath))
+		}
+		
+		cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", fpath))
+		
+		lines <- readLines(fpath, warn = FALSE, encoding = "UTF-8")
+		sql_query_text <- paste(lines, collapse = "\n")
+		sql_query_text <- gsub("^\ufeff", "", sql_query_text)
+		
+		cat(sprintf("[PK_ANALIZ] Okunan SQL uzunlugu: %d karakter\n", nchar(sql_query_text)))
+		cat(sprintf("[PK_ANALIZ] SQL baslangici:\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
+		
+	  } else {
+		cat("[PK_ANALIZ] HATA: Ne sql ne de sql_file tanimli!\n")
+		return("⚠️ **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
+	  }
+	}
+
+	if (grepl("^[a-zA-Z]:[\\\\/]|^[\\\\/]{2}|^\\./|^\\.\\./|^[^/\\\\]+[\\\\/]", sql_query_text)) {
+	  cat(sprintf("[PK_ANALIZ] KRITIK HATA: sql_query_text dosya yolu iceriyor!\n"))
+	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 300)))
+	  return("⚠️ **Sistem Hatası:** SQL sorgusu yüklenemedi (dosya yolu algılandı).")
+	}
+
+	if (nchar(sql_query_text) < 10 || !grepl("SELECT|INSERT|UPDATE|DELETE|EXEC", sql_query_text, ignore.case = TRUE)) {
+	  cat(sprintf("[PK_ANALIZ] HATA: Gecersiz SQL icerigi!\n"))
+	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 200)))
+	  return("⚠️ **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
+	}
+
+	target_db <- selected_query$db_target
+
+	if (!is.null(target_db) && target_db != "primary") {
+	   cat(sprintf("[PK_ANALIZ] Hedef DB 'primary' degil (%s). Baglanti degistiriliyor...\n", target_db))
+	   
+	   release_connection(conn_list)
+	   
+	   conn_list <- get_connection(target = target_db)
+	   conn <- conn_list$conn
+	}
+
+	final_sql <- trimws(sql_query_text)
+
+	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
 
   raw_data <- tryCatch({
     # Güvenlik Kontrolü

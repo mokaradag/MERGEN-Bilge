@@ -260,19 +260,28 @@ cat("\n[GLOBAL] --- SQL Dosyalari Yukleniyor ---\n")
 for (i in seq_along(query_library)) {
   q_item <- query_library[[i]]
   
-  # Eğer 'sql_file' tanımlı ama 'sql' içeriği boşsa dosyadan oku
   if (!is.null(q_item$sql_file) && (is.null(q_item$sql) || !nzchar(q_item$sql))) {
     
-    if (file.exists(q_item$sql_file)) {
-      # 1. Dosyayı UTF-8 olarak oku
-      lines <- readLines(q_item$sql_file, warn = FALSE, encoding = "UTF-8")
+    fpath <- q_item$sql_file
+    fpath_abs <- tryCatch(normalizePath(fpath, winslash = "/", mustWork = FALSE), error = function(e) fpath)
+    
+    file_found <- FALSE
+    path_to_use <- NULL
+    
+    if (file.exists(fpath)) {
+      file_found <- TRUE
+      path_to_use <- fpath
+    } else if (file.exists(fpath_abs)) {
+      file_found <- TRUE
+      path_to_use <- fpath_abs
+    }
+    
+    if (file_found) {
+      lines <- readLines(path_to_use, warn = FALSE, encoding = "UTF-8")
       full_sql <- paste(lines, collapse = "\n")
       
-      # 2. KRİTİK: BOM (Byte Order Mark) Temizliği
-      # Dosya başındaki görünmez \ufeff karakterini siler
       full_sql <- gsub("^\ufeff", "", full_sql)
       
-      # 3. Temizlenmiş SQL'i global listeye kaydet
       query_library[[i]]$sql <- full_sql
       
       cat(sprintf("[GLOBAL] OK: %s (%s) -> Yuklendi ve BOM temizlendi (%d karakter).\n", 
@@ -281,6 +290,8 @@ for (i in seq_along(query_library)) {
     } else {
       cat(sprintf("[GLOBAL] HATA: SQL dosyasi bulunamadi! ID: %s, Yol: %s\n", 
                   q_item$id, q_item$sql_file))
+      cat(sprintf("[GLOBAL] Calisma dizini: %s\n", getwd()))
+      cat(sprintf("[GLOBAL] Denenen yollar: '%s', '%s'\n", fpath, fpath_abs))
     }
   }
 }
