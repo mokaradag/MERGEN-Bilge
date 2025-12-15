@@ -133,13 +133,24 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return("⚠️ **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
   }
   
-# C. Doğru Sorguyu Seç
+  # C. Doğru Sorguyu Seç
   cat("[PK_ANALIZ] Akilli sorgu secimi yapiliyor (select_smart_query)...\n")
   selected_query <- select_smart_query(user_prompt, query_library, chat_history)
   
   if (is.null(selected_query)) {
     cat("[PK_ANALIZ] UYARI: Uygun bir sorgu ESLESMESI BULUNAMADI.\n")
     return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. (Sorgu kütüphanesinde eşleşen anahtar kelime yok).")
+  }
+
+  # Eğer sorgu bir dosya yolundaysa, içeriğini oku ve sql değişkenine ata
+  if (is.null(selected_query$sql) && !is.null(selected_query$sql_file)) {
+    if (file.exists(selected_query$sql_file)) {
+      cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", selected_query$sql_file))
+      selected_query$sql <- paste(readLines(selected_query$sql_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+    } else {
+      cat(sprintf("[PK_ANALIZ] HATA: Belirtilen SQL dosyasi bulunamadi: %s\n", selected_query$sql_file))
+      return(paste0("⚠️ **Konfigürasyon Hatası:** SQL dosyası bulunamadı: ", selected_query$sql_file))
+    }
   }
   
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
@@ -149,10 +160,22 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   if (is.null(sql_query_text) || !nzchar(sql_query_text)) {
     if (!is.null(selected_query$sql_file) && file.exists(selected_query$sql_file)) {
       cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", selected_query$sql_file))
-      # Dosyayı UTF-8 olarak okuyup tek bir string haline getir
-      sql_query_text <- paste(readLines(selected_query$sql_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+      
+      # Dosyayı satır satır oku
+      lines <- readLines(selected_query$sql_file, warn = FALSE, encoding = "UTF-8")
+      
+      # Tek bir metin haline getir
+      sql_query_text <- paste(lines, collapse = "\n")
+      
+      # KRİTİK DÜZELTME: BOM (Byte Order Mark) temizliği
+      # Windows ile kaydedilen dosyalarda baştaki görünmez karakter SQL hatası (42000) yapar.
+      sql_query_text <- gsub("^\ufeff", "", sql_query_text)
+      
+      # DEBUG: Okunan SQL'in ilk 200 karakterini konsola bas (Doğrulama için)
+      cat(sprintf("[PK_ANALIZ] Okunan SQL (Ilk 200 karakter):\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
+      
     } else {
-      cat("[PK_ANALIZ] HATA: SQL icerigi veya dosyasi bulunamadi.\n")
+      cat(sprintf("[PK_ANALIZ] HATA: SQL dosyasi bulunamadi: %s\n", tryCatch(selected_query$sql_file, error=function(e) "Bilinmiyor")))
       return("⚠️ **Yapılandırma Hatası:** Seçilen analiz için geçerli bir SQL sorgusu veya dosyası bulunamadı.")
     }
   }
