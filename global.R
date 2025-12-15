@@ -246,6 +246,46 @@ resolve_mcp_base_dir <- function() {
   normalize_mcp_path(base, must_exist = dir.exists(base))
 }
 
+# ==============================================================================
+# SQL DOSYALARINI ÖN YÜKLEME VE BOM TEMİZLİĞİ (PRE-LOADER)
+# ==============================================================================
+# library_queries.R dosyasının yüklü olduğundan emin olalım
+if (!exists("query_library")) {
+  source("R/library_queries.R")
+}
+
+cat("\n[GLOBAL] --- SQL Dosyalari Yukleniyor ---\n")
+
+# Listeyi dolaş ve dosyadan okuma yap
+for (i in seq_along(query_library)) {
+  q_item <- query_library[[i]]
+  
+  # Eğer 'sql_file' tanımlı ama 'sql' içeriği boşsa dosyadan oku
+  if (!is.null(q_item$sql_file) && (is.null(q_item$sql) || !nzchar(q_item$sql))) {
+    
+    if (file.exists(q_item$sql_file)) {
+      # 1. Dosyayı UTF-8 olarak oku
+      lines <- readLines(q_item$sql_file, warn = FALSE, encoding = "UTF-8")
+      full_sql <- paste(lines, collapse = "\n")
+      
+      # 2. KRİTİK: BOM (Byte Order Mark) Temizliği
+      # Dosya başındaki görünmez \ufeff karakterini siler
+      full_sql <- gsub("^\ufeff", "", full_sql)
+      
+      # 3. Temizlenmiş SQL'i global listeye kaydet
+      query_library[[i]]$sql <- full_sql
+      
+      cat(sprintf("[GLOBAL] OK: %s (%s) -> Yuklendi ve BOM temizlendi (%d karakter).\n", 
+                  q_item$id, q_item$sql_file, nchar(full_sql)))
+      
+    } else {
+      cat(sprintf("[GLOBAL] HATA: SQL dosyasi bulunamadi! ID: %s, Yol: %s\n", 
+                  q_item$id, q_item$sql_file))
+    }
+  }
+}
+cat("[GLOBAL] --- SQL Yukleme Tamamlandi ---\n\n")
+
 # Ortamda AES-GCM var mı? Eski openssl sürümlerinde bu fonksiyon yoktur.
 HAVE_AES_GCM <- isTRUE("aes_gcm_encrypt" %in% getNamespaceExports("openssl"))
 

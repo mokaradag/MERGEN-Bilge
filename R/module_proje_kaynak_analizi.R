@@ -200,12 +200,21 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   }
   
   # D. Sorguyu Çalıştır
-  cat("[PK_ANALIZ] SQL calistiriliyor...\n")
+  # (Globalde temizlenmiş SQL kullanılıyor, ama son bir güvenlik trimi yapalım)
+  final_sql <- trimws(selected_query$sql) 
+  
+  # DEBUG: Konsola sorgunun başını bas (Doğrulama için)
+  cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
+
   raw_data <- tryCatch({
-    if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(selected_query$sql))) {
+    # Güvenlik Kontrolü
+    if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(final_sql))) {
       stop("Guvenlik ihlali: Yasakli SQL komutu.")
     }
-    DBI::dbGetQuery(conn, selected_query$sql)
+    
+    # Sorguyu Çalıştır
+    DBI::dbGetQuery(conn, final_sql)
+    
   }, error = function(e) {
     cat(sprintf("[PK_ANALIZ] SQL HATASI: %s\n", e$message))
     return(paste0("⚠️ **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`", e$message, "`"))
