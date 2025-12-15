@@ -155,9 +155,22 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     if (file.exists(fpath)) {
       cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", fpath))
       
-      # Dosya icerigini UTF-8 olarak oku ve birlestir
-      lines <- readLines(fpath, warn = FALSE, encoding = "UTF-8")
+	# Dosya iceriğini UTF-8 olarak okumayı dene, hata verirse Türkçe karakter setini (CP1254) dene
+      lines <- tryCatch({
+        readLines(fpath, warn = TRUE, encoding = "UTF-8")
+      }, warning = function(w) {
+        cat(sprintf("[PK_ANALIZ] UYARI: UTF-8 okuma sorunu (Türkçe karakter). CP1254 deneniyor... (%s)\n", w$message))
+        readLines(fpath, warn = FALSE, encoding = "CP1254")
+      }, error = function(e) {
+        cat(sprintf("[PK_ANALIZ] HATA: Dosya okunamadı. CP1254 deneniyor... (%s)\n", e$message))
+        readLines(fpath, warn = FALSE, encoding = "CP1254")
+      })
+      
       sql_query_text <- paste(lines, collapse = "\n")
+      # Okunan veri CP1254 ise ve sistem UTF-8 bekliyorsa dönüşüm yap
+      if (!is.null(attr(lines, "encoding")) && attr(lines, "encoding") != "UTF-8") {
+         sql_query_text <- iconv(sql_query_text, from = "CP1254", to = "UTF-8")
+      }
       sql_query_text <- gsub("^\ufeff", "", sql_query_text) # BOM temizligi
       
       cat(sprintf("[PK_ANALIZ] Okunan SQL uzunlugu: %d karakter\n", nchar(sql_query_text)))
