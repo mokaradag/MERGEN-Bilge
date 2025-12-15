@@ -1742,10 +1742,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
   if (is.null(enable_tools)) {
     enable_tools <- settings$enable_mcp_tools %||% FALSE
   }
-  # rdata veya mcp_excel seçiliyse araçları her durumda etkinleştir
-  if (identical(settings$tool_family, "rdata") || identical(settings$tool_family, "mcp_excel")) {
-    enable_tools <- TRUE
-  }
+  
+	# mcp_excel seçiliyse araçları her durumda etkinleştir
+    if (identical(settings$tool_family, "mcp_excel")) {
+      enable_tools <- TRUE
+    }
+	
   cat("[LLM CALL] tool_family=", settings$tool_family %||% "NULL", " enable_tools=", enable_tools, "\n", sep="")
   
   tryCatch({
@@ -1960,108 +1962,6 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			"\n4. Her grafikten sonra kısa bir içgörü ekle (örn: 'Bu dağılım normal dağılıma yakın görünüyor')\n",
 			"\nKarmaşık/nested mantık (filtrele + grupla + sırala + LIMIT, koşullu ortalama/toplam) için *tek* bir SQL sorgusu yaz ve 'sql_query_uploaded_file' aracını kullan. Tablo adı: t.\n"
 		  )
-
-		} else if (identical(tool_family, "rdata")) {
-		  # === YENİ RDATA PROMPT ===
-		  tool_prompt <- "
-		📊 RDATA ANALİZ ARAÇLARI - BASİT VE SAĞLAM
-
-		Kullanılabilir Araçlar:
-
-		1️⃣ **rdata_column_search(query, limit=10)**
-		   - Hangi sütunlar var öğren
-		   - Metrik mi, boyut mu göster
-		   - Örnek değerler ver
-		   - MUTLAKA İLK KULLANAN ARAÇ BU OLMALI!
-
-		2️⃣ **rdata_smart_query(dimensions, metrics, filters, limit)**
-		   - Yaklaşık sütun adları ver (örn: 'iscilik', 'proje')
-		   - Sistem tam adı bulur
-		   - SQL otomatik oluşturulur
-		   - Basit sorgular için ideal
-
-		3️⃣ **rdata_sql(sql, preview_rows=50)**
-		   - Direkt SQL çalıştır
-		   - SÜTUN ADLARINI TAM OLARAK YAZ!
-		   - Karmaşık sorgular için
-
-		4️⃣ **rdata_metrics(proje_adi, proje_kodu)**
-		   - Projeye özel özet
-
-		📌 KULLANIM AKIŞI:
-		1. Önce MUTLAKA 'rdata_column_search' ile sütunları öğren
-		2. Basit sorgular için 'rdata_smart_query' kullan
-		3. Karmaşık analizler için 'rdata_sql' kullan
-
-		⚠️ KURALLAR:
-		- Asla sütun adı TAHMİN ETME!
-		- Her zaman 'rdata_column_search' ile başla
-		- Sütun adları Türkçe karakter içerebilir
-		- SQL'de sütun adlarını çift tırnak içinde yaz: \"ProjeAdi\"
-
-		📝 ÖRNEKLER:
-
-		Örnek 1 - Basit Soru: \"2024 yılında hangi projelerde iş yapıldı?\"
-		   Adım 1: rdata_column_search(\"proje\")  → ProjeAdi, ProjeKodu bulur
-		   Adım 2: rdata_column_search(\"yil\")    → Yil bulur
-		   Adım 3: rdata_smart_query(
-			 dimensions: [\"proje\", \"yil\"],
-			 metrics: [],
-			 filters: {\"yil\": 2024}
-		   )
-
-		Örnek 2 - Metrik Soru: \"Hangi projede en fazla işçilik harcandı?\"
-		   Adım 1: rdata_column_search(\"proje\")    → ProjeAdi bulur
-		   Adım 2: rdata_column_search(\"iscilik\")  → GerceklesenIscilik_sa bulur
-		   Adım 3: rdata_smart_query(
-			 dimensions: [\"proje\"],
-			 metrics: [\"iscilik\"],
-			 limit: 10
-		   )
-
-		Örnek 3 - Karmaşık Soru: \"2024'te X projesinde çalışan kişiler kimler?\"
-		   Adım 1: rdata_column_search(\"proje\")  → ProjeKodu bulur
-		   Adım 2: rdata_column_search(\"kaynak\") → KaynakAdi bulur
-		   Adım 3: rdata_sql(
-			 sql: \"SELECT DISTINCT \\\"KaynakAdi\\\" FROM fact_universe WHERE \\\"ProjeKodu\\\" = 'X' AND \\\"Yil\\\" = 2024\",
-			 preview_rows: 100
-		   )
-
-		🎯 ÖNEMLİ: Her soruda ÖNCE 'rdata_column_search' ile sütunları keşfet!
-
-		# ÇIKTI FORMAT KURALI (Ollama gibi tool şemasız uçlar için ZORUNLU)
-		- **Araç çağrıları düz metin tek satır** halinde yazılmalı; başka açıklama ekleme.
-		- **Sadece** şu biçimleri üret:
-		  • rdata_column_search(query=\"...\", limit=10)
-		  • rdata_smart_query(dimensions=[\"...\"], metrics=[\"...\"], filters={...}, limit=100)
-		  • rdata_sql(sql=\"SELECT ...\", preview_rows=200)
-		  • rdata_metrics(proje_adi=\"...\", proje_kodu=\"...\")
-		  • rdata_ask(question=\"...\", limit=100)
-		- Çift tırnak kullan; JSON benzeri alanlarda boşluklara takılma.
-		- Birden fazla çağrı gerekiyorsa **ayrı satırlarda** yaz.
-
-		# KISA ÖRNEKLER
-		rdata_column_search(query=\"proje\", limit=10)
-		rdata_smart_query(dimensions=[\"ProjeAdi\"], metrics=[\"GerceklesenIscilik_sa\"], filters={\"Yil\":2024}, limit=50)
-		rdata_sql(sql=\"SELECT \\\"ProjeAdi\\\", SUM(TRY_CAST(\\\"GerceklesenIscilik_sa\\\" AS DOUBLE)) AS \\\"GerceklesenIscilik_sa\\\" FROM fact_universe GROUP BY 1 ORDER BY 2 DESC LIMIT 25\", preview_rows=50)
-		"
-		  
-		  if (!is.null(tool_prompt)) {
-			# Türkçe: Bu sistem mesajı, modelin düz metin araç çağrıları üretmesini ZORUNLU kılar
-			system_msg <- list(
-			  role = "system",
-			  content = paste0(
-				tool_prompt,
-				"\n\nSEN BİR RData ANALİZ UZMANISIN.\n",
-				"1. MUTLAKA rdata_column_search ile başla\n",
-				"2. Doğru sütun adlarını kullan\n",
-				"3. Türkçe yanıt ver\n",
-				"4. Eğer araç şeması sağlandıysa structured tool calls üret; sağlanmadıysa düz metin araç çağrıları yaz."
-			  )
-			)
-			messages_payload <- c(list(system_msg), messages_payload)
-			cat("[TOOLS] Prompt injected for family: ", tool_family, "\n", sep = "")
-		  }
 		}
 	}
     
@@ -2235,28 +2135,15 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		  # Excel tarafı yürütücü
 		  exec_fun <- function(tc) {
 			cat("[MCP] Executing (Excel):", tc$function_name, "\n")
-			helpers_mcp_tools$execute_parsed_tool(tc, session = current_session)
-		  }
+				  helpers_mcp_tools$execute_parsed_tool(tc, session = current_session)
+				}
 
-		} else if (identical(tool_family, "rdata") &&
-				   exists("helpers_rdata_lake", inherits = TRUE) &&
-				   is.function(helpers_rdata_lake$execute_tool)) {
-
-		  # rData tarafı yürütücü
-		  exec_fun <- function(tc) {
-			nm   <- tolower(tc$function_name %||% tc$name %||% "")
-			args <- tc$arguments %||% list()
-			cat("[MCP] Executing (rData):", nm, "\n")
-			# rdata_search / rdata_sql / rdata_metrics adlarını helpers_rdata_lake$execute_tool bekler
-			helpers_rdata_lake$execute_tool(nm, args)
-		  }
-
-		} else {
-		  # Güvenli yedek: yürütücü yok
-		  exec_fun <- function(tc) {
-			list(error = "Uygun araç yürütücüsü bulunamadı (MCP/rData seçimi kontrol edin).")
-		  }
-		}
+			  } else {
+				# Güvenli yedek: yürütücü yok
+				exec_fun <- function(tc) {
+				  list(error = "Uygun araç yürütücüsü bulunamadı (MCP seçimi kontrol edin).")
+				}
+			  }
 
 		cat("[MCP] tool_calls parsed (names):", paste(vapply(tool_calls, function(t) t$function_name %||% "", ""), collapse = ", "), "\n")
 		tool_results_raw <- lapply(tool_calls, exec_fun)
