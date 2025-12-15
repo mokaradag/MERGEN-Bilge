@@ -155,7 +155,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     if (file.exists(fpath)) {
       cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", fpath))
       
-		# Dosya içeriğini Binary (Raw) olarak oku
+# Dosya içeriğini Binary (Raw) olarak oku
       f_con <- file(fpath, open = "rb")
       f_size <- file.info(fpath)$size
       if (is.na(f_size)) f_size <- 0
@@ -165,26 +165,42 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
       sql_query_text <- ""
       
       if (length(raw_content) > 0) {
-        # 1. UTF-8 Kontrolü: 'sub="byte"' parametresi, geçersiz byte'ları <fd> gibi metne çevirir.
-        # Bu sayede R string hatası vermez, biz de <xx> pattern'i var mı diye kontrol ederiz.
-        text_utf8 <- iconv(list(raw_content), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+        # BOM Kontrolü (UTF-16 LE/BE)
+        has_bom_le <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xff) && raw_content[2] == as.raw(0xfe)
+        has_bom_be <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xfe) && raw_content[2] == as.raw(0xff)
         
-        # Eğer string içinde <xx> formatında hex kodları varsa (örn: <fd>), dosya UTF-8 değildir.
-        if (grepl("<[0-9a-fA-F]{2}>", text_utf8)) {
-          cat("[PK_ANALIZ] Dosya UTF-8 değil (TR karakterler tespit edildi). WINDOWS-1254 olarak okunuyor...\n")
-          
-          # WINDOWS-1254 (Türkçe) -> UTF-8 Dönüşümü
-          # Bu işlem 'ı' (fd) baytını doğru şekilde UTF-8 karakterine çevirir.
-          converted <- iconv(list(raw_content), from = "WINDOWS-1254", to = "UTF-8")
-          sql_query_text <- if (length(converted) > 0 && !is.na(converted[[1]])) converted[[1]] else text_utf8
-          
+        # Null Byte Varlığı (UTF-16 tespiti için)
+        has_nulls <- any(raw_content == as.raw(0))
+        
+        if (has_bom_le) {
+           sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
+        } else if (has_bom_be) {
+           sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
+        } else if (has_nulls) {
+           # BOM yok ama NULL var -> UTF-16. LE mi BE mi tahmini:
+           # Eğer ilk byte NULL ise (ve ikincisi değilse) bu Big Endian (00 XX) yapısıdır.
+           if (length(raw_content) >= 2 && raw_content[1] == as.raw(0) && raw_content[2] != as.raw(0)) {
+              cat("[PK_ANALIZ] Dosya NULL byte içeriyor (BE tespiti), UTF-16BE deneniyor...\n")
+              sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
+           } else {
+              cat("[PK_ANALIZ] Dosya NULL byte içeriyor, UTF-16LE deneniyor...\n")
+              sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
+           }
         } else {
-          # Dosya zaten düzgün bir UTF-8 dosyası
-          sql_query_text <- text_utf8
+           # UTF-8 veya WINDOWS-1254 (Türkçe) Kontrolü
+           text_utf8 <- iconv(list(raw_content), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+           
+           if (grepl("<[0-9a-fA-F]{2}>", text_utf8)) {
+              cat("[PK_ANALIZ] Dosya UTF-8 değil (TR karakterler). WINDOWS-1254 kullanılıyor...\n")
+              converted <- iconv(list(raw_content), from = "WINDOWS-1254", to = "UTF-8")
+              sql_query_text <- if (length(converted) > 0 && !is.na(converted[[1]])) converted[[1]] else text_utf8
+           } else {
+              sql_query_text <- text_utf8
+           }
         }
       }
       
-      # BOM Temizliği
+      # Sadece UTF-8 BOM temizliği (Null temizliği kaldırıldı)
       sql_query_text <- gsub("^\ufeff", "", sql_query_text)
       
       cat(sprintf("[PK_ANALIZ] Okunan SQL uzunlugu: %d karakter\n", nchar(sql_query_text)))
