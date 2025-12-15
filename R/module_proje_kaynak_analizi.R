@@ -145,31 +145,40 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
    
   # 1. SQL İçeriğini Belirle (sql string veya sql_file dosyasından)
-	sql_query_text <- selected_query$sql
+  sql_query_text <- ""
 
-	if (is.null(sql_query_text) || !nzchar(sql_query_text)) {
-	  if (!is.null(selected_query$sql_file)) {
-		fpath <- selected_query$sql_file
-		
-		if (!file.exists(fpath)) {
-		  cat(sprintf("[PK_ANALIZ] HATA: SQL dosyasi bulunamadi: %s\n", fpath))
-		  return(paste0("⚠️ **Yapılandırma Hatası:** SQL dosyası bulunamadı: ", fpath))
-		}
-		
-		cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", fpath))
-		
-		lines <- readLines(fpath, warn = FALSE, encoding = "UTF-8")
-		sql_query_text <- paste(lines, collapse = "\n")
-		sql_query_text <- gsub("^\ufeff", "", sql_query_text)
-		
-		cat(sprintf("[PK_ANALIZ] Okunan SQL uzunlugu: %d karakter\n", nchar(sql_query_text)))
-		cat(sprintf("[PK_ANALIZ] SQL baslangici:\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
-		
-	  } else {
-		cat("[PK_ANALIZ] HATA: Ne sql ne de sql_file tanimli!\n")
-		return("⚠️ **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
-	  }
-	}
+  # Oncelik: sql_file (Dosyadan oku)
+  # Eger sql_file tanimliysa, sql metni yerine dosya icerigini kullanmayi zorla.
+  if (!is.null(selected_query$sql_file) && nzchar(selected_query$sql_file)) {
+    fpath <- selected_query$sql_file
+    
+    if (file.exists(fpath)) {
+      cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", fpath))
+      
+      # Dosya icerigini UTF-8 olarak oku ve birlestir
+      lines <- readLines(fpath, warn = FALSE, encoding = "UTF-8")
+      sql_query_text <- paste(lines, collapse = "\n")
+      sql_query_text <- gsub("^\ufeff", "", sql_query_text) # BOM temizligi
+      
+      cat(sprintf("[PK_ANALIZ] Okunan SQL uzunlugu: %d karakter\n", nchar(sql_query_text)))
+      cat(sprintf("[PK_ANALIZ] SQL baslangici:\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
+      
+    } else {
+      cat(sprintf("[PK_ANALIZ] HATA: Belirtilen SQL dosyasi bulunamadi: %s\n", fpath))
+      return(paste0("⚠️ **Yapılandırma Hatası:** SQL dosyası bulunamadı: ", fpath))
+    }
+  } 
+  
+  # Alternatif: sql (Direkt metin) - Sadece dosya tanimi yoksa ve metin bos ise buraya bak
+  if (!nzchar(sql_query_text) && !is.null(selected_query$sql)) {
+    sql_query_text <- selected_query$sql
+  }
+
+  # Hata Kontrolü: İçerik hala boş mu?
+  if (!nzchar(sql_query_text)) {
+    cat("[PK_ANALIZ] HATA: Ne sql_file ne de sql metni gecerli!\n")
+    return("⚠️ **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
+  }
 
 	if (grepl("^[a-zA-Z]:[\\\\/]|^[\\\\/]{2}|^\\./|^\\.\\./|^[^/\\\\]+[\\\\/]", sql_query_text)) {
 	  cat(sprintf("[PK_ANALIZ] KRITIK HATA: sql_query_text dosya yolu iceriyor!\n"))
