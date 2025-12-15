@@ -141,17 +141,6 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     cat("[PK_ANALIZ] UYARI: Uygun bir sorgu ESLESMESI BULUNAMADI.\n")
     return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. (Sorgu kütüphanesinde eşleşen anahtar kelime yok).")
   }
-
-  # Eğer sorgu bir dosya yolundaysa, içeriğini oku ve sql değişkenine ata
-  if (is.null(selected_query$sql) && !is.null(selected_query$sql_file)) {
-    if (file.exists(selected_query$sql_file)) {
-      cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", selected_query$sql_file))
-      selected_query$sql <- paste(readLines(selected_query$sql_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-    } else {
-      cat(sprintf("[PK_ANALIZ] HATA: Belirtilen SQL dosyasi bulunamadi: %s\n", selected_query$sql_file))
-      return(paste0("⚠️ **Konfigürasyon Hatası:** SQL dosyası bulunamadı: ", selected_query$sql_file))
-    }
-  }
   
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
    
@@ -201,7 +190,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   
   # D. Sorguyu Çalıştır
   # (Globalde temizlenmiş SQL kullanılıyor, ama son bir güvenlik trimi yapalım)
-  final_sql <- trimws(selected_query$sql) 
+  final_sql <- trimws(sql_query_text)
   
   # DEBUG: Konsola sorgunun başını bas (Doğrulama için)
   cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
