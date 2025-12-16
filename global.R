@@ -70,7 +70,6 @@ dbg_dump <- function(label, payload) {
   }, silent = TRUE)
 }
 
-# ---- RData Lake altyapısı ----
 library(arrow)
 library(base64enc)
 library(cellranger)
