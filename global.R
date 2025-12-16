@@ -1777,21 +1777,13 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       }
     }
 	
-	# --- ARAÇ AİLESİ SEÇİMİ: yalnızca tek aile (mcp_excel veya rdata) yüklenir ---
-	# Not: server tarafı her istek için settings$tool_family sağlar.
-	# Yoksa mantıklı varsayılan: enable_mcp_tools TRUE ise mcp_excel, aksi halde none.
 	tool_family <- settings$tool_family %||% if (isTRUE(settings$enable_mcp_tools)) "mcp_excel" else "none"
 
 	base_tools <- list(tools = list())
-	if (isTRUE(enable_tools)) {
-	  if (identical(tool_family, "mcp_excel") &&
-		  exists("helpers_mcp_tools", inherits = TRUE) &&
+	if (isTRUE(enable_tools) && identical(tool_family, "mcp_excel")) {
+	  if (exists("helpers_mcp_tools", inherits = TRUE) &&
 		  is.function(helpers_mcp_tools$get_openai_tools)) {
 		base_tools <- helpers_mcp_tools$get_openai_tools(session_obj)
-	  } else if (identical(tool_family, "rdata") &&
-				 exists("helpers_rdata_lake", inherits = TRUE) &&
-				 is.function(helpers_rdata_lake$get_openai_tools_extra)) {
-		base_tools <- helpers_rdata_lake$get_openai_tools_extra()
 	  }
 	}
 
@@ -2064,8 +2056,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     if (enable_tools) {
       tool_calls <- list()
     
-      # 1) Prefer structured tool_calls returned by the API
-      if (!is.null(tool_calls_struct) && length(tool_calls_struct) > 0) {
+	  if (!is.null(tool_calls_struct) && length(tool_calls_struct) > 0) {
         cat("[MCP] Structured tool_calls detected from API:", length(tool_calls_struct), "\n")
         tool_calls <- lapply(tool_calls_struct, function(tc) {
           fn <- try(tc$`function`$name, silent = TRUE)
@@ -2078,15 +2069,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           }
           list(function_name = fn %||% "", arguments = args %||% list())
         })
-      } else if (identical(tool_family, "rdata") &&
-                 exists("helpers_rdata_lake", inherits = TRUE) &&
-                 is.function(helpers_rdata_lake$parse_tool_calls_from_text)) {
-        # Türkçe: rData ailesinde ÖNCE rData metinsel ayrıştırıcıyı çalıştır
-        tool_calls <- helpers_rdata_lake$parse_tool_calls_from_text(ai_content %||% "")
       } else if (identical(tool_family, "mcp_excel") &&
                  exists("helpers_mcp_tools", inherits = TRUE) &&
                  is.function(helpers_mcp_tools$parse_tool_calls_from_text)) {
-        # Türkçe: Excel ailesinde metinsel ayrıştırıcıyı kullan
         tool_calls <- helpers_mcp_tools$parse_tool_calls_from_text(ai_content %||% "")
       }
 	  
@@ -2114,36 +2099,24 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         # Get session for resolvers
         current_session <- if (!is.null(settings$shiny_session)) settings$shiny_session else NULL
     
-		# Türkçe yorum: Her araç çağrısından önce durumu sıfırla
-		if (identical(tool_family, "rdata") &&
-			exists("helpers_rdata_lake", inherits = TRUE) &&
-			is.function(helpers_rdata_lake$rdata_reset_state)) {
-		  cat("[MCP] Resetting rData state before tool execution...\n")
-		  try(helpers_rdata_lake$rdata_reset_state("before_tool_execution"), silent = TRUE)
-		}
-
-		# Araç yürütücü seçimi: Excel MCP veya rData
 		cat("[MCP] Executing tools...\n")
 
-		# Not: tool_calls elemanları {function_name, arguments} tutuyor
 		exec_fun <- NULL
 
 		if (identical(tool_family, "mcp_excel") &&
 			exists("helpers_mcp_tools", inherits = TRUE) &&
 			is.function(helpers_mcp_tools$execute_parsed_tool)) {
 
-		  # Excel tarafı yürütücü
 		  exec_fun <- function(tc) {
 			cat("[MCP] Executing (Excel):", tc$function_name, "\n")
-				  helpers_mcp_tools$execute_parsed_tool(tc, session = current_session)
-				}
+			helpers_mcp_tools$execute_parsed_tool(tc, session = current_session)
+		  }
 
-			  } else {
-				# Güvenli yedek: yürütücü yok
-				exec_fun <- function(tc) {
-				  list(error = "Uygun araç yürütücüsü bulunamadı (MCP seçimi kontrol edin).")
-				}
-			  }
+		} else {
+		  exec_fun <- function(tc) {
+			list(error = "Uygun araç yürütücüsü bulunamadı (MCP seçimi kontrol edin).")
+		  }
+		}
 
 		cat("[MCP] tool_calls parsed (names):", paste(vapply(tool_calls, function(t) t$function_name %||% "", ""), collapse = ", "), "\n")
 		tool_results_raw <- lapply(tool_calls, exec_fun)
@@ -2697,179 +2670,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		  chart_store = charts_to_store
 		))
 
-      } else {
+	  } else {
 		cat("[MCP] No tool calls detected (structured or textual)\n")
-
-		# --- rData özel FALLBACK: Asistan metninden SQL kokusu al ve çalıştır ---
-		if (identical(tool_family, "rdata")) {
-		  # --- rData özel FALLBACK: Asistan metninden SQL kokusu al ve çalıştır ---
-		  sql_sniff <- NULL
-		  try({
-			txt <- ai_content %||% ""
-			# ```sql ... ``` veya ``` ... ``` içinde SELECT arayalım
-			m <- regexpr("```(?:sql)?\\s*(SELECT[\\s\\S]*?)```", txt, perl = TRUE, ignore.case = TRUE)
-			if (m[1] > 0) {
-			  sql_sniff <- regmatches(txt, m)
-			  sql_sniff <- sub("^```(?:sql)?\\s*", "", sql_sniff, perl = TRUE, ignore.case = TRUE)
-			  sql_sniff <- sub("```\\s*$", "", sql_sniff, perl = TRUE)
-			} else {
-			  # Kod bloğu yoksa düz metinde SELECT ara (son SELECT'i al)
-			  s <- gregexpr("\\bSELECT\\b[\\s\\S]+", txt, perl = TRUE, ignore.case = TRUE)[[1]]
-			  if (!is.na(s[1]) && s[1] > 0) {
-				start <- tail(s, 1)
-				sql_sniff <- substr(txt, start, nchar(txt))
-				# Bir sonraki cümle/kod sınırına kadar kısalt (savunmacı yaklaşım)
-				sql_sniff <- sub("(?s)(;\\s*)?[\\n\\r]{2,}.*$", "", sql_sniff, perl = TRUE)
-			  }
-			}
-		  }, silent = TRUE)
-
-		  # Varsa önce SQL sniff çalıştır
-		  if (is.character(sql_sniff) && length(sql_sniff) == 1 && nzchar(sql_sniff)) {
-			cat("[MCP][FALLBACK] SQL sniffed from assistant text; executing via rdata_sql...\n")
-			exec_res <- try(helpers_rdata_lake$rdata_sql(sql_sniff, preview_rows = 200), silent = TRUE)
-
-			if (!inherits(exec_res, "try-error") && is.data.frame(exec_res$preview) && nrow(exec_res$preview) > 0) {
-			  # Araç sonuçlarını formatla ve ikinci geçişi tetikle
-			  df <- exec_res$preview
-			  header <- paste0("| ", paste(colnames(df), collapse = " | "), " |")
-			  sep    <- paste0("|", paste(rep("---", ncol(df)), collapse = "|"), "|")
-			  rows   <- apply(head(df, 50), 1, function(r) paste0("| ", paste(r, collapse = " | "), " |"))
-			  table_md <- paste(c(header, sep, rows), collapse = "\n")
-
-			  results_text <- paste0(
-				"=== Araç: rdata_sql ===\n",
-				"SQL Sorgusu: ", exec_res$sql_effective %||% "N/A", "\n",
-				"Satır Sayısı: ", nrow(df), "\n",
-				"Sütun Sayısı: ", ncol(df), "\n\n",
-				"SONUÇLAR (Gerçek Veri):\n", table_md
-			  )
-
-			  chat_history <- append(chat_history, list(list(role = "assistant", content = "[Araçlar kullanıldı (fallback)]")))
-			  chat_history <- append(chat_history, list(list(
-				role   = "user",
-				content = paste0(
-				  "Araç sonuçları:\n\n", results_text,
-				  "\n\n===== KRİTİK TALİMAT =====\n",
-				  "1. SADECE yukarıdaki araç sonuçlarını kullan.\n",
-				  "2. 'Örnek Çıktı' veya simülasyon üretme.\n",
-				  "3. Yukarıdaki tablodaki gerçek değerleri aynen kullan.\n",
-				  "4. Veri yoksa 'sonuç bulunamadı' de.\n",
-				  "Türkçe yanıtla."
-				)
-			  )))
-
-			  messages_payload2 <- lapply(chat_history, function(msg) {
-				list(
-				  role    = tolower(msg$type %||% msg$role %||% "user"),
-				  content = msg$content %||% msg$message %||% as.character(msg)
-				)
-			  })
-
-			  body2 <- list(model = selected_model, messages = messages_payload2, stream = FALSE, temperature = temp_value)
-			  hdrs2 <- list(`Content-Type` = "application/json")
-			  if (!is.null(api_key) && nzchar(api_key)) hdrs2$Authorization <- paste("Bearer", api_key)
-
-			  response2 <- httr::POST(
-				api_endpoint,
-				do.call(httr::add_headers, hdrs2),
-				body   = jsonlite::toJSON(body2, auto_unbox = TRUE),
-				encode = "raw",
-				httr::timeout(60)
-			  )
-
-			  if (httr::status_code(response2) == 200) {
-				rc2 <- httr::content(response2, "parsed")
-				ai2 <- rc2$choices[[1]]$message$content %||% ""
-				ai2 <- strip_planner_text(ai2)
-				return(list(
-				  content     = ai2,
-				  duration    = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-				  chart_store = list()
-				))
-			  }
-			}
-		  }
-
-		  # === YENİ EK: SELECT bulunamadıysa veya sonuç yoksa rdata_ask ile dinamik fallback ===
-		  cat("[MCP][FALLBACK] No explicit SQL or rdata_sql returned no rows; invoking rdata_ask with last user message...\n")
-
-		  # Son kullanıcı mesajını (son 'user') yakala
-		  user_last <- ""
-		  try({
-			if (length(chat_history) > 0) {
-			  for (i in seq(length(chat_history), 1L, by = -1L)) {
-				msg <- chat_history[[i]]
-				rv  <- tolower(as.character(msg$type %||% msg$role %||% ""))
-				if (identical(rv, "user")) {
-				  user_last <- as.character(msg$content %||% msg$message %||% "")
-				  if (nzchar(user_last)) break
-				}
-			  }
-			}
-		  }, silent = TRUE)
-
-		  ask_res <- try(helpers_rdata_lake$execute_tool("rdata_ask", list(question = user_last, limit = 100)), silent = TRUE)
-		  if (!inherits(ask_res, "try-error") && is.data.frame(ask_res$preview) && nrow(ask_res$preview) > 0) {
-			df <- ask_res$preview
-			header <- paste0("| ", paste(colnames(df), collapse = " | "), " |")
-			sep    <- paste0("|", paste(rep("---", ncol(df)), collapse = "|"), "|")
-			rows   <- apply(head(df, 50), 1, function(r) paste0("| ", paste(r, collapse = " | "), " |"))
-			table_md <- paste(c(header, sep, rows), collapse = "\n")
-
-			results_text <- paste0(
-			  "=== Araç: rdata_ask ===\n",
-			  "SQL Sorgusu: ", ask_res$sql_effective %||% "N/A", "\n",
-			  "Satır Sayısı: ", nrow(df), "\n",
-			  "Sütun Sayısı: ", ncol(df), "\n\n",
-			  "SONUÇLAR (Gerçek Veri):\n", table_md
-			)
-
-			chat_history <- append(chat_history, list(list(role = "assistant", content = "[Araçlar kullanıldı (fallback:rdata_ask)]")))
-			chat_history <- append(chat_history, list(list(
-			  role   = "user",
-			  content = paste0(
-				"Araç sonuçları:\n\n", results_text,
-				"\n\n===== KRİTİK TALİMAT =====\n",
-				"1. SADECE yukarıdaki araç sonuçlarını kullan.\n",
-				"2. 'Örnek Çıktı' veya simülasyon üretme.\n",
-				"3. Yukarıdaki tablodaki gerçek değerleri aynen kullan.\n",
-				"4. Veri yoksa 'sonuç bulunamadı' de.\n",
-				"Türkçe yanıtla."
-			  )
-			)))
-
-			# İkinci geçiş (tools OFF) – mevcut akışla birebir aynı
-			messages_payload2 <- lapply(chat_history, function(msg) {
-			  list(
-				role    = tolower(msg$type %||% msg$role %||% "user"),
-				content = msg$content %||% msg$message %||% as.character(msg)
-			  )
-			})
-			body2 <- list(model = selected_model, messages = messages_payload2, stream = FALSE, temperature = temp_value)
-			hdrs2 <- list(`Content-Type` = "application/json")
-			if (!is.null(api_key) && nzchar(api_key)) hdrs2$Authorization <- paste("Bearer", api_key)
-
-			response2 <- httr::POST(
-			  api_endpoint,
-			  do.call(httr::add_headers, hdrs2),
-			  body   = jsonlite::toJSON(body2, auto_unbox = TRUE),
-			  encode = "raw",
-			  httr::timeout(60)
-			)
-
-			if (httr::status_code(response2) == 200) {
-			  rc2 <- httr::content(response2, "parsed")
-			  ai2 <- rc2$choices[[1]]$message$content %||% ""
-			  ai2 <- strip_planner_text(ai2)
-			  return(list(
-				content     = ai2,
-				duration    = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-				chart_store = list()
-			  ))
-			}
-		  }
-		}
       }
     }
     
