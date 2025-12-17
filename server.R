@@ -843,14 +843,15 @@ observeEvent(input$source_file_clicked, {
 	messages_to_process <- recent_messages
 	
 	if (identical(tool_family, "sql_analysis")) {
-	   cat("[SERVER] 'Proje ve Kaynak Analizi' secildi. Modul cagiriliyor...\n")
-	   
-	   analiz_result <- tryCatch({
-		 pk_analiz_process_request(user_message_text, messages_to_process, session)
-	   }, error = function(e) {
-		 cat(sprintf("[SERVER] Analiz hatasi: %s\n", e$message))
-		 paste0("⚠️ Analiz modülü hatası: ", e$message)
-	   })
+       cat("[SERVER] 'Proje ve Kaynak Analizi' secildi. Modul cagiriliyor...\n")
+       
+       # 1. Analiz fonksiyonunu çalıştır
+       # pk_analiz_process_request fonksiyonu module_proje_kaynak_analizi.R icindedir
+       analiz_result <- tryCatch({
+         pk_analiz_process_request(user_message_text, messages_to_process, session)
+       }, error = function(e) {
+         paste0("⚠️ Analiz modülü hatası: ", e$message)
+       })
        
        # 2. Sonucu kontrol et
        if (is.character(analiz_result)) {

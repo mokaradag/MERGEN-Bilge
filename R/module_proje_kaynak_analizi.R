@@ -7,39 +7,6 @@
 extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, conn) {
   cat(sprintf("[FILTER_AI] Prompt analiz ediliyor: '%s'\n", user_prompt))
   
-  fallback_filter <- tryCatch({
-    if (grepl("\\b([A-Z0-9]{4,})\\b", user_prompt, perl = TRUE)) {
-      code_match <- regmatches(user_prompt, regexpr("\\b([A-Z0-9]{4,})\\b", user_prompt, perl = TRUE))
-      if (length(code_match) > 0) {
-        code <- code_match[1]
-        
-        potential_cols <- c("ProjeKodu", "Proje_Kodu", "EPS_Kodu", "EPSKodu", "MasrafYeriKodu")
-        matched_col <- NULL
-        for (pc in potential_cols) {
-          if (pc %in% available_columns) {
-            matched_col <- pc
-            break
-          }
-        }
-        
-        if (!is.null(matched_col)) {
-          cat(sprintf("[FILTER_AI] Regex fallback: sütun=%s, değer=%s\n", matched_col, code))
-          return(list(
-            filter_column = matched_col,
-            filter_value = code,
-            operation = "exact_match",
-            aggregation = if (grepl("kaç|sayı|adet", user_prompt, ignore.case = TRUE)) "count" else "single_row"
-          ))
-        }
-      }
-    }
-    NULL
-  }, error = function(e) NULL)
-  
-  if (!is.null(fallback_filter)) {
-    return(fallback_filter)
-  }
-  
   cols_json <- jsonlite::toJSON(available_columns, auto_unbox = TRUE)
   
   system_instruction <- paste0(
@@ -58,8 +25,7 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     "2. Eğer soru belirli bir kod/ID içeriyorsa: operation='exact_match', filter_column=ilgili kod sütunu\n",
     "3. Eğer soru 'listele', 'göster' içeriyorsa: aggregation='list'\n",
     "4. Eğer soru 'en yüksek', 'en büyük' içeriyorsa: aggregation='top_n', top_n=5\n",
-    "5. Proje kodları genelde 'ProjeKodu', 'Proje_Kodu' gibi sütunlardadır\n",
-    "6. Eğer soruda 'özetle', 'detay', 'bilgi ver' varsa: aggregation='single_row'\n\n",
+    "5. Proje kodları genelde 'ProjeKodu', 'Proje_Kodu' gibi sütunlardadır\n\n",
     "Sadece JSON çıktı ver, başka yorum yapma."
   )
   
@@ -88,8 +54,8 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     )
     
     if (httr::status_code(response) != 200) {
-      cat("[FILTER_AI] API hatası, fallback kullanılacak\n")
-      return(fallback_filter %||% list(filter_column = NULL, aggregation = NULL))
+      cat("[FILTER_AI] API hatası, varsayılan dönülüyor\n")
+      return(list(filter_column = NULL, aggregation = NULL))
     }
     
     parsed <- httr::content(response, "parsed")
@@ -108,33 +74,9 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     return(result)
     
   }, error = function(e) {
-    cat(sprintf("[FILTER_AI] Hata: %s, fallback kullanılıyor\n", e$message))
-    return(fallback_filter %||% list(filter_column = NULL, aggregation = NULL))
+    cat(sprintf("[FILTER_AI] Hata: %s\n", e$message))
+    return(list(filter_column = NULL, aggregation = NULL))
   })
-}
-
-build_sql_where_clause <- function(filter_instructions) {
-  if (is.null(filter_instructions) || 
-      is.null(filter_instructions$filter_column) || 
-      is.null(filter_instructions$filter_value)) {
-    return("")
-  }
-  
-  col <- filter_instructions$filter_column
-  val <- filter_instructions$filter_value
-  op <- filter_instructions$operation %||% "exact_match"
-  
-  where_clause <- switch(
-    op,
-    "exact_match" = sprintf("WHERE [%s] = '%s'", col, val),
-    "contains" = sprintf("WHERE [%s] LIKE '%%%s%%'", col, val),
-    "greater_than" = sprintf("WHERE [%s] > %s", col, val),
-    "less_than" = sprintf("WHERE [%s] < %s", col, val),
-    sprintf("WHERE [%s] = '%s'", col, val)
-  )
-  
-  cat(sprintf("[SQL_FILTER] WHERE şartı oluşturuldu: %s\n", where_clause))
-  return(where_clause)
 }
 
 apply_smart_filters <- function(data, filter_instructions, user_prompt) {
@@ -144,36 +86,52 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     return(head(data, 100))
   }
   
+  dt <- data.table::as.data.table(data)
+  
+  filter_col <- filter_instructions$filter_column
+  filter_val <- filter_instructions$filter_value
+  operation <- filter_instructions$operation
   aggregation <- filter_instructions$aggregation
+  
+  if (!is.null(filter_col) && !is.null(filter_val) && filter_col %in% names(dt)) {
+    cat(sprintf("[SMART_FILTER] Sütun '%s' üzerinde '%s' işlemi uygulanıyor\n", filter_col, operation %||% "exact_match"))
+    
+    if (operation == "exact_match" || is.null(operation)) {
+      dt <- dt[get(filter_col) == filter_val]
+    } else if (operation == "contains") {
+      dt <- dt[grepl(filter_val, get(filter_col), ignore.case = TRUE)]
+    } else if (operation == "greater_than") {
+      dt <- dt[get(filter_col) > as.numeric(filter_val)]
+    } else if (operation == "less_than") {
+      dt <- dt[get(filter_col) < as.numeric(filter_val)]
+    }
+    
+    cat(sprintf("[SMART_FILTER] Filtreleme sonrası: %d satır\n", nrow(dt)))
+  }
   
   if (!is.null(aggregation)) {
     if (aggregation == "count") {
       result <- data.frame(
         Metrik = "Toplam Kayıt Sayısı",
-        Değer = nrow(data)
+        Değer = nrow(dt)
       )
-      cat(sprintf("[SMART_FILTER] COUNT agregasyonu: %d\n", nrow(data)))
+      cat(sprintf("[SMART_FILTER] COUNT agregasyonu: %d\n", nrow(dt)))
       return(result)
       
     } else if (aggregation == "top_n") {
       n <- filter_instructions$top_n %||% 10
-      result <- head(data, n)
+      result <- head(dt, n)
       cat(sprintf("[SMART_FILTER] TOP %d satır döndürülüyor\n", n))
       return(as.data.frame(result))
       
     } else if (aggregation == "list") {
-      result <- head(data, 50)
+      result <- head(dt, 50)
       cat(sprintf("[SMART_FILTER] LIST: İlk 50 satır döndürülüyor\n"))
-      return(as.data.frame(result))
-      
-    } else if (aggregation == "single_row") {
-      result <- head(data, 10)
-      cat(sprintf("[SMART_FILTER] SINGLE_ROW: İlk 10 satır döndürülüyor\n"))
       return(as.data.frame(result))
     }
   }
   
-  result <- head(data, 100)
+  result <- head(dt, 100)
   cat(sprintf("[SMART_FILTER] Varsayılan: İlk 100 satır döndürülüyor\n"))
   return(as.data.frame(result))
 }
@@ -293,6 +251,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   cat("\n[PK_ANALIZ] >>> pk_analiz_process_request BASLATILDI <<<\n")
   cat(sprintf("[PK_ANALIZ] Kullanici Prompt: '%s'\n", user_prompt))
   
+  # A. Bağlantı Kur
+  cat("[PK_ANALIZ] DB Baglantisi aliniyor...\n")
   conn_list <- get_connection()
   conn <- conn_list$conn
   on.exit({
@@ -302,30 +262,36 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   
   username <- session$userData$system_username %||% "Unknown"
   
+  # B. Kullanıcı RLS Bilgisini Çek
   rls_info <- get_user_rls_info(username, conn)
   if (!isTRUE(rls_info$authorized)) {
     cat("[PK_ANALIZ] Yetki Hatasi: Kullanici bulunamadi.\n")
     return("⚠️ **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
   }
   
+  # C. Doğru Sorguyu Seç
   cat("[PK_ANALIZ] Akilli sorgu secimi yapiliyor (select_smart_query)...\n")
   selected_query <- select_smart_query(user_prompt, query_library, chat_history)
   
   if (is.null(selected_query)) {
     cat("[PK_ANALIZ] UYARI: Uygun bir sorgu ESLESMESI BULUNAMADI.\n")
-    return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı.")
+    return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. (Sorgu kütüphanesinde eşleşen anahtar kelime yok).")
   }
   
-  cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s'\n", selected_query$name))
-  
+  cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
+   
+  # 1. SQL İçeriğini Belirle (sql string veya sql_file dosyasından)
   sql_query_text <- ""
-  
+
+  # Oncelik: sql_file (Dosyadan oku)
+  # Eger sql_file tanimliysa, sql metni yerine dosya icerigini kullanmayi zorla.
   if (!is.null(selected_query$sql_file) && nzchar(selected_query$sql_file)) {
     fpath <- selected_query$sql_file
     
     if (file.exists(fpath)) {
       cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", fpath))
       
+# Dosya içeriğini Binary (Raw) olarak oku
       f_con <- file(fpath, open = "rb")
       f_size <- file.info(fpath)$size
       if (is.na(f_size)) f_size <- 0
@@ -335,128 +301,110 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
       sql_query_text <- ""
       
       if (length(raw_content) > 0) {
+        # BOM Kontrolü (UTF-16 LE/BE)
         has_bom_le <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xff) && raw_content[2] == as.raw(0xfe)
         has_bom_be <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xfe) && raw_content[2] == as.raw(0xff)
+        
+        # Null Byte Varlığı (UTF-16 tespiti için)
         has_nulls <- any(raw_content == as.raw(0))
         
         if (has_bom_le) {
-          sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
+           sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
         } else if (has_bom_be) {
-          sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
+           sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
         } else if (has_nulls) {
-          if (length(raw_content) >= 2 && raw_content[1] == as.raw(0) && raw_content[2] != as.raw(0)) {
-            cat("[PK_ANALIZ] Dosya NULL byte içeriyor (BE tespiti), UTF-16BE deneniyor...\n")
-            sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
-          } else {
-            cat("[PK_ANALIZ] Dosya NULL byte içeriyor, UTF-16LE deneniyor...\n")
-            sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
-          }
+           # BOM yok ama NULL var -> UTF-16. LE mi BE mi tahmini:
+           # Eğer ilk byte NULL ise (ve ikincisi değilse) bu Big Endian (00 XX) yapısıdır.
+           if (length(raw_content) >= 2 && raw_content[1] == as.raw(0) && raw_content[2] != as.raw(0)) {
+              cat("[PK_ANALIZ] Dosya NULL byte içeriyor (BE tespiti), UTF-16BE deneniyor...\n")
+              sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
+           } else {
+              cat("[PK_ANALIZ] Dosya NULL byte içeriyor, UTF-16LE deneniyor...\n")
+              sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
+           }
         } else {
-          text_utf8 <- iconv(list(raw_content), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
-          
-          if (grepl("<[0-9a-fA-F]{2}>", text_utf8)) {
-            cat("[PK_ANALIZ] Dosya UTF-8 değil (TR karakterler). WINDOWS-1254 kullanılıyor...\n")
-            converted <- iconv(list(raw_content), from = "WINDOWS-1254", to = "UTF-8")
-            sql_query_text <- if (length(converted) > 0 && !is.na(converted[[1]])) converted[[1]] else text_utf8
-          } else {
-            sql_query_text <- text_utf8
-          }
+           # UTF-8 veya WINDOWS-1254 (Türkçe) Kontrolü
+           text_utf8 <- iconv(list(raw_content), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+           
+           if (grepl("<[0-9a-fA-F]{2}>", text_utf8)) {
+              cat("[PK_ANALIZ] Dosya UTF-8 değil (TR karakterler). WINDOWS-1254 kullanılıyor...\n")
+              converted <- iconv(list(raw_content), from = "WINDOWS-1254", to = "UTF-8")
+              sql_query_text <- if (length(converted) > 0 && !is.na(converted[[1]])) converted[[1]] else text_utf8
+           } else {
+              sql_query_text <- text_utf8
+           }
         }
       }
       
+      # Sadece UTF-8 BOM temizliği (Null temizliği kaldırıldı)
       sql_query_text <- gsub("^\ufeff", "", sql_query_text)
       
       cat(sprintf("[PK_ANALIZ] Okunan SQL uzunlugu: %d karakter\n", nchar(sql_query_text)))
+      cat(sprintf("[PK_ANALIZ] SQL baslangici:\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
       
     } else {
-      cat(sprintf("[PK_ANALIZ] HATA: SQL dosyasi bulunamadi: %s\n", fpath))
+      cat(sprintf("[PK_ANALIZ] HATA: Belirtilen SQL dosyasi bulunamadi: %s\n", fpath))
       return(paste0("⚠️ **Yapılandırma Hatası:** SQL dosyası bulunamadı: ", fpath))
     }
-  }
+  } 
   
+  # Alternatif: sql (Direkt metin) - Sadece dosya tanimi yoksa ve metin bos ise buraya bak
   if (!nzchar(sql_query_text) && !is.null(selected_query$sql)) {
     sql_query_text <- selected_query$sql
   }
-  
+
+  # Hata Kontrolü: İçerik hala boş mu?
   if (!nzchar(sql_query_text)) {
     cat("[PK_ANALIZ] HATA: Ne sql_file ne de sql metni gecerli!\n")
     return("⚠️ **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
   }
-  
-  if (grepl("^[a-zA-Z]:[\\\\/]|^[\\\\/]{2}|^\\./|^\\.\\./|^[^/\\\\]+[\\\\/]", sql_query_text)) {
-    cat(sprintf("[PK_ANALIZ] KRITIK HATA: sql_query_text dosya yolu iceriyor!\n"))
-    return("⚠️ **Sistem Hatası:** SQL sorgusu yüklenemedi.")
-  }
-  
-  if (nchar(sql_query_text) < 10 || !grepl("SELECT|INSERT|UPDATE|DELETE|EXEC", sql_query_text, ignore.case = TRUE)) {
-    cat(sprintf("[PK_ANALIZ] HATA: Gecersiz SQL icerigi!\n"))
-    return("⚠️ **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
-  }
-  
-  target_db <- selected_query$db_target
-  
-  if (!is.null(target_db) && target_db != "primary") {
-    cat(sprintf("[PK_ANALIZ] Hedef DB 'primary' degil (%s). Baglanti degistiriliyor...\n", target_db))
-    release_connection(conn_list)
-    conn_list <- get_connection(target = target_db)
-    conn <- conn_list$conn
-  }
-  
-  temp_query_result <- tryCatch({
-    if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(sql_query_text))) {
-      stop("Guvenlik ihlali: Yasakli SQL komutu.")
-    }
-    DBI::dbGetQuery(conn, sql_query_text)
-  }, error = function(e) {
-    cat(sprintf("[PK_ANALIZ] SQL HATASI: %s\n", e$message))
-    return(NULL)
-  })
-  
-  if (is.null(temp_query_result) || !is.data.frame(temp_query_result)) {
-    return("⚠️ **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.")
-  }
-  
-  available_columns <- names(temp_query_result)
-  cat(sprintf("[PK_ANALIZ] Sorgu sutunlari: %s\n", paste(available_columns, collapse = ", ")))
-  
-  cat("[PK_ANALIZ] Filtre kriterleri cikartiliyor...\n")
-  filter_criteria <- extract_filter_criteria_from_prompt(
-    user_prompt,
-    available_columns = available_columns,
-    conn = conn
-  )
-  
-  where_clause <- build_sql_where_clause(filter_criteria)
-  
-  if (nzchar(where_clause)) {
-    if (grepl("WHERE", toupper(sql_query_text))) {
-      final_sql <- gsub("WHERE", paste("WHERE", sub("^WHERE\\s+", "", where_clause), "AND"), sql_query_text, ignore.case = TRUE)
-    } else {
-      final_sql <- paste(sql_query_text, where_clause)
-    }
-  } else {
-    final_sql <- sql_query_text
-  }
-  
-  final_sql <- trimws(final_sql)
-  
-  cat(sprintf("[PK_ANALIZ] Filtrelenmis SQL calistiriliyor...\n"))
-  cat(sprintf("[PK_ANALIZ] SQL (ilk 200 kar.): %s...\n", substr(final_sql, 1, 200)))
-  
+
+	if (grepl("^[a-zA-Z]:[\\\\/]|^[\\\\/]{2}|^\\./|^\\.\\./|^[^/\\\\]+[\\\\/]", sql_query_text)) {
+	  cat(sprintf("[PK_ANALIZ] KRITIK HATA: sql_query_text dosya yolu iceriyor!\n"))
+	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 300)))
+	  return("⚠️ **Sistem Hatası:** SQL sorgusu yüklenemedi (dosya yolu algılandı).")
+	}
+
+	if (nchar(sql_query_text) < 10 || !grepl("SELECT|INSERT|UPDATE|DELETE|EXEC", sql_query_text, ignore.case = TRUE)) {
+	  cat(sprintf("[PK_ANALIZ] HATA: Gecersiz SQL icerigi!\n"))
+	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 200)))
+	  return("⚠️ **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
+	}
+
+	target_db <- selected_query$db_target
+
+	if (!is.null(target_db) && target_db != "primary") {
+	   cat(sprintf("[PK_ANALIZ] Hedef DB 'primary' degil (%s). Baglanti degistiriliyor...\n", target_db))
+	   
+	   release_connection(conn_list)
+	   
+	   conn_list <- get_connection(target = target_db)
+	   conn <- conn_list$conn
+	}
+
+	final_sql <- trimws(sql_query_text)
+
+	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
+
   raw_data <- tryCatch({
+    # Güvenlik Kontrolü
     if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(final_sql))) {
       stop("Guvenlik ihlali: Yasakli SQL komutu.")
     }
+    
+    # Sorguyu Çalıştır
     DBI::dbGetQuery(conn, final_sql)
+    
   }, error = function(e) {
-    cat(sprintf("[PK_ANALIZ] FILTRELI SQL HATASI: %s\n", e$message))
-    return(paste0("⚠️ **Veritabanı Hatası:** Filtrelenmiş sorgu çalıştırılırken hata oluştu.\n`", e$message, "`"))
+    cat(sprintf("[PK_ANALIZ] SQL HATASI: %s\n", e$message))
+    return(paste0("⚠️ **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`", e$message, "`"))
   })
   
   if (is.character(raw_data) && startsWith(raw_data, "⚠️")) return(raw_data)
   
-  cat(sprintf("[PK_ANALIZ] Filtreli SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
+  cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
   
+  # E. RLS Uygula
   secure_data <- apply_rls_to_data(raw_data, rls_info, selected_query$rls_columns)
   cat(sprintf("[PK_ANALIZ] RLS sonrasi güvenli satir sayisi: %d\n", nrow(secure_data)))
   
@@ -464,42 +412,54 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return(paste0("🔍 **Sonuç:** '", selected_query$name, "' sorgusu çalıştırıldı ancak yetkiniz dahilinde görüntülenecek veri bulunamadı."))
   }
   
+  # F. YENİ: AKıLLı FİLTRELEME (AI-Guided)
+  filter_criteria <- extract_filter_criteria_from_prompt(
+    user_prompt,
+    available_columns = names(secure_data),
+    conn = conn
+  )
+  
   filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
   
-  cat(sprintf("[PK_ANALIZ] Akıllı filtreleme sonrası: %d satır\n", nrow(filtered_data)))
+  cat(sprintf("[PK_ANALIZ] Akıllı filtreleme sonrası: %d satır (Orjinal: %d)\n", 
+              nrow(filtered_data), nrow(secure_data)))
   
   if (nrow(filtered_data) == 0) {
     return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı. Sorgunuz: '", user_prompt, "'"))
   }
   
+  # G. AI Analizi Hazırlığı
   data_preview <- filtered_data
   
   if (nrow(data_preview) > 200) {
     data_preview <- head(data_preview, 200)
-    cat("[PK_ANALIZ] UYARI: Sonuç 200 satıra kırpıldı\n")
+    cat("[PK_ANALIZ] UYARI: Sonuç 200 satıra kırpıldı (context koruma)\n")
   }
   
+  # JSON'a çevir
   data_str <- jsonlite::toJSON(data_preview, auto_unbox = TRUE, pretty = TRUE)
   
+  # LLM'e not ekle
   if (nrow(secure_data) > nrow(data_preview)) {
-    msg <- sprintf("\n\n(Not: Toplam %d satır var. Filtreleme sonucu %d satır gösteriliyor.)", 
+    msg <- sprintf("\n\n(Not: Veri seti toplam %d satırdır. Kullanıcı sorusuyla eşleşen satırlar ve örnek veri olmak üzere %d satır analiz için seçilmiştir.)", 
                    nrow(secure_data), nrow(data_preview))
     data_str <- paste0(data_str, msg)
   }
   
   system_prompt <- paste0(
-    "Sen MERGEN Bilge analiz asistanısın. Sağlanan veriyi analiz ederek kullanıcının sorusuna cevap ver.\n",
+    "Sen MERGEN Bilge analiz asistanısın. Kullanıcının sorusuna, sağlanan veriyi analiz ederek cevap ver.\n",
     "Kullanılan Sorgu: ", selected_query$name, "\n",
     "Sorgu Açıklaması: ", selected_query$description, "\n\n",
-    "ÖNEMLİ: Sana gönderilen veri ZATEN FİLTRELENMİŞTİR.\n",
-    "Bu veri kullanıcının sorusuna doğrudan yanıt verecek satırları içerir.\n\n",
+    "ÖNEMLİ: Sana GÖNDERİLEN VERİ ZATEN FİLTRELENMİŞTİR. Yani bu veri kullanıcının sorusuna tam olarak uygun satırları içerir.\n",
+    "Örnek: Eğer 'Kaç proje var?' diye sorulduysa, sana gönderilen veri toplam sayıyı içerir.\n",
+    "Örnek: Eğer 'P4578 projesinin adı ne?' diye sorulduysa, sana SADECE o proje satırı gelir.\n\n",
     "GÖREVLER:\n",
-    "1. JSON verisini incele.\n",
+    "1. Verilen JSON verisini incele.\n",
     "2. Kullanıcının sorusuna DOĞRUDAN, NET ve TÜRKÇE cevap ver.\n",
-    "3. Veri tek satırsa, o satırı kullan.\n",
-    "4. Veri agregasyonsa (count sonucu), o sayıyı kullan.\n",
+    "3. Eğer veri tek satırsa (örn: proje adı sorusu), o satırı kullan.\n",
+    "4. Eğer veri agregasyonsa (örn: count sonucu), o sayıyı kullan.\n",
     "5. Cevabını Markdown formatında ver.\n",
-    "6. VERİYE DAYANMAYAN BİLGİ UYDURMA.\n"
+    "6. VERİYE DAYANMAYAN BİLGİ UYDURMA. Sadece gördüğün veriyi kullan.\n"
   )
   
   user_msg <- paste0("Soru: ", user_prompt, "\n\nVeri Seti:\n", data_str)
