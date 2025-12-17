@@ -1085,13 +1085,6 @@ helpers_mcp_tools$execute_parsed_tool <- function(tc, session = NULL) {
 		limit      = args$limit %||% 5000,
 		session    = session
 	  ),
-	  # --- RData Lake tool'ları ---
-	  "rdata_search"  = if (exists("helpers_rdata_lake", inherits = TRUE))
-						  helpers_rdata_lake$execute_tool("rdata_search", args) else list(error="RData Lake modülü yok."),
-	  "rdata_sql"     = if (exists("helpers_rdata_lake", inherits = TRUE))
-						  helpers_rdata_lake$execute_tool("rdata_sql", args) else list(error="RData Lake modülü yok."),
-	  "rdata_metrics" = if (exists("helpers_rdata_lake", inherits = TRUE))
-						  helpers_rdata_lake$execute_tool("rdata_metrics", args) else list(error="RData Lake modülü yok."),
 	  {
 		list(error = sprintf("Bilinmeyen araç: %s", fn))
 	  }

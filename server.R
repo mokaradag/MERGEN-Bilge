@@ -331,29 +331,26 @@ server <- function(input, output, session) {
 	})
   
   # MCP modu göstergesi için reaktif çıktı (Ana Söyleşi başlığında kullanılır)
-  output$mcp_mode_indicator <- renderUI({
-    excel_active <- isTRUE(settings_data$enable_mcp_tools)
-    rdata_active <- isTRUE(settings_data$enable_rdata_tools)
-    
-    if (excel_active) {
-      # Excel MCP aktif - yeşil gösterge
-      div(
-        class = "mcp-indicator excel-active",
-        tags$i(class = "fas fa-file-excel"),
-        span("Excel MCP")
-      )
-    } else if (rdata_active) {
-      # RData aktif - mavi gösterge
-      div(
-        class = "mcp-indicator rdata-active",
-        tags$i(class = "fas fa-database"),
-        span("RData MCP")
-      )
-    } else {
-      # Hiçbiri aktif değil - gösterge yok
-      NULL
-    }
-  })
+	output$mcp_mode_indicator <- renderUI({
+	  excel_active <- isTRUE(settings_data$enable_mcp_tools)
+	  sql_analysis_active <- isTRUE(settings_data$enable_rdata_tools)
+	  
+	  if (excel_active) {
+		div(
+		  class = "mcp-indicator excel-active",
+		  tags$i(class = "fas fa-file-excel"),
+		  span("Excel MCP")
+		)
+	  } else if (sql_analysis_active) {
+		div(
+		  class = "mcp-indicator rdata-active",
+		  tags$i(class = "fas fa-database"),
+		  span("SQL Analiz")
+		)
+	  } else {
+		NULL
+	  }
+	})
 
   # Pass values reactive to file manager for temp_files access
 	file_manager_data <- fileManagerServer(
@@ -683,13 +680,7 @@ observeEvent(input$source_file_clicked, {
 		  }, error = function(e) {
 			print(paste("Logging error:", e$message))
 		  })
-		  
-			# Yanıt sonrası rData durumunu yalnızca bu istekte gerçekten rData kullanıldıysa temizle
-			tf <- current_settings$tool_family %||% "none"
-			if (identical(tf, "rdata")) {
-			  try(helpers_rdata_lake$rdata_reset_state("after_response"), silent = TRUE)
-			}
-		  
+		  		  
 		  reset_chat_state()
 		} else {
 		  # Track error
@@ -775,34 +766,21 @@ observeEvent(input$source_file_clicked, {
 	
 	current_settings <- reactiveValuesToList(settings_data)
 	
-	# --- Bu istek için araç ailesini belirle (mcp_excel | rdata | none) ---
-	# Basit niyet bulucu: proje/kaynak/işçilik vb. rData konusudur
-	is_rdata_intent <- function(txt) {
-	  grepl("(proje|kaynak|işçilik|iscilik|wbs|p6|direktörlük|müdürlük|aktivite)",
-			tolower(txt %||% ""), perl = TRUE)
-	}
+	cfg_excel_on <- isTRUE(settings_data$enable_mcp_tools)
+	cfg_sql_analysis_on <- isTRUE(settings_data$enable_rdata_tools)
 
-	# Kullanıcı ayarları: her iki kutu
-	cfg_excel_on  <- isTRUE(settings_data$enable_mcp_tools)
-	cfg_rdata_on  <- isTRUE(settings_data$enable_rdata_tools)
-
-	# Hızlı eylemden geliyorsa MCP'yi tek seferlik kapat
 	skip_mcp_once <- isTRUE(quick_action_skip_mcp())
 	if (skip_mcp_once) quick_action_skip_mcp(FALSE)
 
-	# Öncelikli kural: Hızlı eylem → araç yok
-	rdata_allowed <- isTRUE(cfg_rdata_on)
-	excel_allowed <- isTRUE(cfg_excel_on) && uploaded_count > 0
+	excel_allowed <- cfg_excel_on && uploaded_count > 0
 
 	if (skip_mcp_once) {
 	  tool_family <- "none"
-	} else if (rdata_allowed && is_rdata_intent(user_message_text)) {
-	  tool_family <- "rdata"
+	} else if (cfg_sql_analysis_on) {
+	  tool_family <- "sql_analysis"
 	} else if (excel_allowed) {
 	  tool_family <- "mcp_excel"
-	} else if (isTRUE(current_settings$enable_rdata_tools)) { 
-      tool_family <- "sql_analysis"
-    } else {
+	} else {
 	  tool_family <- "none"
 	}
 
@@ -1110,7 +1088,8 @@ observeEvent(input$source_file_clicked, {
 	
 	cat("\n========== ANALYSIS MODE ==========\n")
 	cat("[MODE] tool_family:", tool_family, "\n")
-	cat("[TOOLS] enabled:", current_settings$enable_mcp_tools, "\n")
+	cat("[SQL_ANALYSIS] enabled:", cfg_sql_analysis_on, "\n")
+	cat("[EXCEL_MCP] enabled:", cfg_excel_on, "\n")
 	cat("===================================\n\n")
 	
 	if (!is.null(session$userData$current_session_files) && length(session$userData$current_session_files) > 0) {
