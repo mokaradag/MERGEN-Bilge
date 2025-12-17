@@ -1027,6 +1027,8 @@ primary_llm_endpoint   <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
 secondary_llm_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT", primary_llm_endpoint)
 secondary_llm_api_key  <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT_API_KEY", "")
 
+options(mergen.filter_model = Sys.getenv("FILTER_MODEL", "mergen-local-model"))
+
 api_config <- list(
   # Backwards compatibility: keep the legacy single-endpoint field
   local_llm_endpoint = primary_llm_endpoint,

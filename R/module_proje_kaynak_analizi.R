@@ -1,6 +1,142 @@
 # R/module_proje_kaynak_analizi.R
 
 # ==============================================================================
+# 0. AKıLLı FİLTRELEME MOTORü (AI-Guided Filtering Engine)
+# ==============================================================================
+
+extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, conn) {
+  cat(sprintf("[FILTER_AI] Prompt analiz ediliyor: '%s'\n", user_prompt))
+  
+  cols_json <- jsonlite::toJSON(available_columns, auto_unbox = TRUE)
+  
+  system_instruction <- paste0(
+    "Sen bir SQL/Veri Filtreleme Asistanısın. Kullanıcının sorusundan hangi sütunun nasıl filtreleneceğini çıkar.\n\n",
+    "Mevcut Sütunlar: ", cols_json, "\n\n",
+    "ÇIKTI FORMATI (JSON):\n",
+    "{\n",
+    "  \"filter_column\": \"SütunAdı\" veya null,\n",
+    "  \"filter_value\": \"AranacakDeğer\" veya null,\n",
+    "  \"operation\": \"exact_match\" | \"contains\" | \"greater_than\" | \"less_than\" | \"between\" | null,\n",
+    "  \"aggregation\": \"count\" | \"sum\" | \"list\" | \"single_row\" | \"top_n\" | null,\n",
+    "  \"top_n\": sayı veya null\n",
+    "}\n\n",
+    "KURALLAR:\n",
+    "1. Eğer soru 'kaç', 'toplam sayı' içeriyorsa: aggregation='count'\n",
+    "2. Eğer soru belirli bir kod/ID içeriyorsa: operation='exact_match', filter_column=ilgili kod sütunu\n",
+    "3. Eğer soru 'listele', 'göster' içeriyorsa: aggregation='list'\n",
+    "4. Eğer soru 'en yüksek', 'en büyük' içeriyorsa: aggregation='top_n', top_n=5\n",
+    "5. Proje kodları genelde 'ProjeKodu', 'Proje_Kodu' gibi sütunlardadır\n\n",
+    "Sadece JSON çıktı ver, başka yorum yapma."
+  )
+  
+  messages <- list(
+    list(role = "system", content = system_instruction),
+    list(role = "user", content = user_prompt)
+  )
+  
+  api_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", "http://localhost:11434/api/generate")
+  selected_model <- getOption("mergen.filter_model", "mergen-local-model")
+  
+  body <- list(
+    model = selected_model,
+    messages = messages,
+    stream = FALSE,
+    temperature = 0.1
+  )
+  
+  tryCatch({
+    response <- httr::POST(
+      api_endpoint,
+      httr::add_headers(`Content-Type` = "application/json"),
+      body = jsonlite::toJSON(body, auto_unbox = TRUE),
+      encode = "raw",
+      httr::timeout(30)
+    )
+    
+    if (httr::status_code(response) != 200) {
+      cat("[FILTER_AI] API hatası, varsayılan dönülüyor\n")
+      return(list(filter_column = NULL, aggregation = NULL))
+    }
+    
+    parsed <- httr::content(response, "parsed")
+    ai_text <- parsed$choices[[1]]$message$content
+    
+    ai_text <- gsub("```json|```", "", ai_text)
+    ai_text <- trimws(ai_text)
+    
+    result <- jsonlite::fromJSON(ai_text, simplifyVector = FALSE)
+    
+    cat(sprintf("[FILTER_AI] Sonuç: filter_column=%s, operation=%s, aggregation=%s\n",
+                result$filter_column %||% "NULL",
+                result$operation %||% "NULL",
+                result$aggregation %||% "NULL"))
+    
+    return(result)
+    
+  }, error = function(e) {
+    cat(sprintf("[FILTER_AI] Hata: %s\n", e$message))
+    return(list(filter_column = NULL, aggregation = NULL))
+  })
+}
+
+apply_smart_filters <- function(data, filter_instructions, user_prompt) {
+  cat(sprintf("[SMART_FILTER] Filtreleme uygulanıyor. Ham satır: %d\n", nrow(data)))
+  
+  if (is.null(filter_instructions) || nrow(data) == 0) {
+    return(head(data, 100))
+  }
+  
+  dt <- data.table::as.data.table(data)
+  
+  filter_col <- filter_instructions$filter_column
+  filter_val <- filter_instructions$filter_value
+  operation <- filter_instructions$operation
+  aggregation <- filter_instructions$aggregation
+  
+  if (!is.null(filter_col) && !is.null(filter_val) && filter_col %in% names(dt)) {
+    cat(sprintf("[SMART_FILTER] Sütun '%s' üzerinde '%s' işlemi uygulanıyor\n", filter_col, operation %||% "exact_match"))
+    
+    if (operation == "exact_match" || is.null(operation)) {
+      dt <- dt[get(filter_col) == filter_val]
+    } else if (operation == "contains") {
+      dt <- dt[grepl(filter_val, get(filter_col), ignore.case = TRUE)]
+    } else if (operation == "greater_than") {
+      dt <- dt[get(filter_col) > as.numeric(filter_val)]
+    } else if (operation == "less_than") {
+      dt <- dt[get(filter_col) < as.numeric(filter_val)]
+    }
+    
+    cat(sprintf("[SMART_FILTER] Filtreleme sonrası: %d satır\n", nrow(dt)))
+  }
+  
+  if (!is.null(aggregation)) {
+    if (aggregation == "count") {
+      result <- data.frame(
+        Metrik = "Toplam Kayıt Sayısı",
+        Değer = nrow(dt)
+      )
+      cat(sprintf("[SMART_FILTER] COUNT agregasyonu: %d\n", nrow(dt)))
+      return(result)
+      
+    } else if (aggregation == "top_n") {
+      n <- filter_instructions$top_n %||% 10
+      result <- head(dt, n)
+      cat(sprintf("[SMART_FILTER] TOP %d satır döndürülüyor\n", n))
+      return(as.data.frame(result))
+      
+    } else if (aggregation == "list") {
+      result <- head(dt, 50)
+      cat(sprintf("[SMART_FILTER] LIST: İlk 50 satır döndürülüyor\n"))
+      return(as.data.frame(result))
+    }
+  }
+  
+  result <- head(dt, 100)
+  cat(sprintf("[SMART_FILTER] Varsayılan: İlk 100 satır döndürülüyor\n"))
+  return(as.data.frame(result))
+}
+
+# ==============================================================================
 # 1. RLS ve YETKİ YÖNETİMİ (SECURITY ENGINE)
 # ==============================================================================
 
@@ -276,53 +412,28 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return(paste0("🔍 **Sonuç:** '", selected_query$name, "' sorgusu çalıştırıldı ancak yetkiniz dahilinde görüntülenecek veri bulunamadı."))
   }
   
-  # F. AI Analizi Hazırlığı
+  # F. YENİ: AKıLLı FİLTRELEME (AI-Guided)
+  filter_criteria <- extract_filter_criteria_from_prompt(
+    user_prompt,
+    available_columns = names(secure_data),
+    conn = conn
+  )
   
-  # 1. Akıllı Filtreleme: Kullanıcının sorusundaki anahtar kelimeleri veri setinde arayalım.
-  # Bu sayede 2000+ satırı LLM'e göndermek yerine, sadece alakalı satırları seçeriz.
+  filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
   
-  search_terms <- unlist(strsplit(user_prompt, "\\s+"))
-  # Temizlik: Noktalama işaretlerini kaldır, küçük harfe çevir
-  search_terms <- tolower(gsub("[[:punct:]]", "", search_terms))
-  # Çok kısa kelimeleri (ve, ile, vb.) filtrele, ancak sayıları (ID) koru
-  search_terms <- search_terms[nchar(search_terms) >= 2]
+  cat(sprintf("[PK_ANALIZ] Akıllı filtreleme sonrası: %d satır (Orjinal: %d)\n", 
+              nrow(filtered_data), nrow(secure_data)))
   
-  # Filtreleme Mantığı
-  if (nrow(secure_data) > 0 && length(search_terms) > 0) {
-    # Performans için geçici bir text tablosu oluştur
-    data_txt <- as.data.frame(lapply(secure_data, function(x) tolower(as.character(x))), stringsAsFactors = FALSE)
-    
-    matched_indices <- c()
-    
-    # Her bir arama terimi için sütunları tara
-    for (term in search_terms) {
-      for (col in names(data_txt)) {
-        # 'fixed = TRUE' ile tam metin araması (Regex değil, hız için)
-        matches <- which(grepl(term, data_txt[[col]], fixed = TRUE))
-        matched_indices <- c(matched_indices, matches)
-      }
-    }
-    
-    # Tekrar edenleri temizle
-    matched_indices <- unique(matched_indices)
-    
-    # LLM'e gönderilecek satırları belirle:
-    # 1. İlk 5 satır (Tablo yapısını anlaması için her zaman gerekli)
-    # 2. Eşleşen satırlar (Sorunun cevabını içerenler)
-    rows_to_keep <- unique(c(1:min(5, nrow(secure_data)), matched_indices))
-    rows_to_keep <- sort(rows_to_keep)
-    
-    # Güvenlik Limiti: Eğer çok fazla eşleşme varsa LLM context'ini patlatma (Max 150 satır)
-    MAX_AI_ROWS <- 150
-    if (length(rows_to_keep) > MAX_AI_ROWS) {
-      rows_to_keep <- head(rows_to_keep, MAX_AI_ROWS)
-    }
-    
-    data_preview <- secure_data[rows_to_keep, , drop = FALSE]
-    
-  } else {
-    # Arama terimi yoksa veya veri boşsa varsayılan ilk 50 satırı al
-    data_preview <- head(secure_data, 50)
+  if (nrow(filtered_data) == 0) {
+    return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı. Sorgunuz: '", user_prompt, "'"))
+  }
+  
+  # G. AI Analizi Hazırlığı
+  data_preview <- filtered_data
+  
+  if (nrow(data_preview) > 200) {
+    data_preview <- head(data_preview, 200)
+    cat("[PK_ANALIZ] UYARI: Sonuç 200 satıra kırpıldı (context koruma)\n")
   }
   
   # JSON'a çevir
@@ -338,13 +449,17 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   system_prompt <- paste0(
     "Sen MERGEN Bilge analiz asistanısın. Kullanıcının sorusuna, sağlanan veriyi analiz ederek cevap ver.\n",
     "Kullanılan Sorgu: ", selected_query$name, "\n",
-    "Sorgu Açıklaması: ", selected_query$description, "\n",
+    "Sorgu Açıklaması: ", selected_query$description, "\n\n",
+    "ÖNEMLİ: Sana GÖNDERİLEN VERİ ZATEN FİLTRELENMİŞTİR. Yani bu veri kullanıcının sorusuna tam olarak uygun satırları içerir.\n",
+    "Örnek: Eğer 'Kaç proje var?' diye sorulduysa, sana gönderilen veri toplam sayıyı içerir.\n",
+    "Örnek: Eğer 'P4578 projesinin adı ne?' diye sorulduysa, sana SADECE o proje satırı gelir.\n\n",
     "GÖREVLER:\n",
     "1. Verilen JSON verisini incele.\n",
-    "2. Kullanıcının sorusuna doğrudan, net ve Türkçe cevap ver.\n",
-    "3. Veri üzerinden içgörüler (insight) çıkar.\n",
-    "4. Cevabını Markdown formatında ver. Tablo gerekiyorsa Markdown tablosu oluştur.\n",
-    "5. Veriye dayanmayan bilgi uydurma.\n"
+    "2. Kullanıcının sorusuna DOĞRUDAN, NET ve TÜRKÇE cevap ver.\n",
+    "3. Eğer veri tek satırsa (örn: proje adı sorusu), o satırı kullan.\n",
+    "4. Eğer veri agregasyonsa (örn: count sonucu), o sayıyı kullan.\n",
+    "5. Cevabını Markdown formatında ver.\n",
+    "6. VERİYE DAYANMAYAN BİLGİ UYDURMA. Sadece gördüğün veriyi kullan.\n"
   )
   
   user_msg <- paste0("Soru: ", user_prompt, "\n\nVeri Seti:\n", data_str)
