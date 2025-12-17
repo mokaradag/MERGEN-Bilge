@@ -48,3 +48,6 @@ LOCAL_STT_MODEL=whisper-large-v3
 # you already store for the main models will be reused automatically.
 LOCAL_TTS_API_KEY=
 LOCAL_STT_API_KEY=
+
+# Filtreleme için kullanılacak model (varsa özel bir model, yoksa primary kullanılır)
+FILTER_MODEL=technical name 1

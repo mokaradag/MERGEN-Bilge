@@ -7,26 +7,26 @@
 extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, conn) {
   cat(sprintf("[FILTER_AI] Prompt analiz ediliyor: '%s'\n", user_prompt))
   
-  cols_json <- jsonlite::toJSON(available_columns, auto_unbox = TRUE)
+  cols_str <- paste(available_columns, collapse = ", ")
   
   system_instruction <- paste0(
-    "Sen bir SQL/Veri Filtreleme Asistanısın. Kullanıcının sorusundan hangi sütunun nasıl filtreleneceğini çıkar.\n\n",
-    "Mevcut Sütunlar: ", cols_json, "\n\n",
+    "Sen veri filtreleme yönergeleri veren bir asistansın. Kullanıcının sorusunu analiz et.\n\n",
+    "MEVCUT SÜTUNLAR: ", cols_str, "\n\n",
     "ÇIKTI FORMATI (JSON):\n",
     "{\n",
-    "  \"filter_column\": \"SütunAdı\" veya null,\n",
-    "  \"filter_value\": \"AranacakDeğer\" veya null,\n",
-    "  \"operation\": \"exact_match\" | \"contains\" | \"greater_than\" | \"less_than\" | \"between\" | null,\n",
-    "  \"aggregation\": \"count\" | \"sum\" | \"list\" | \"single_row\" | \"top_n\" | null,\n",
-    "  \"top_n\": sayı veya null\n",
+    "  \"filter_column\": \"SütunAdı\",\n",
+    "  \"filter_value\": \"AranacakDeğer\",\n",
+    "  \"operation\": \"exact_match\" | \"contains\" | \"greater_than\" | \"less_than\",\n",
+    "  \"aggregation\": null | \"count\" | \"sum\" | \"list\" | \"group_by\",\n",
+    "  \"group_column\": null veya gruplamak için sütun adı\n",
     "}\n\n",
     "KURALLAR:\n",
-    "1. Eğer soru 'kaç', 'toplam sayı' içeriyorsa: aggregation='count'\n",
-    "2. Eğer soru belirli bir kod/ID içeriyorsa: operation='exact_match', filter_column=ilgili kod sütunu\n",
-    "3. Eğer soru 'listele', 'göster' içeriyorsa: aggregation='list'\n",
-    "4. Eğer soru 'en yüksek', 'en büyük' içeriyorsa: aggregation='top_n', top_n=5\n",
-    "5. Proje kodları genelde 'ProjeKodu', 'Proje_Kodu' gibi sütunlardadır\n\n",
-    "Sadece JSON çıktı ver, başka yorum yapma."
+    "1. 'kaç', 'toplam', 'sayı' → aggregation='count'\n",
+    "2. Kod/ID varsa (örn: P1111) → operation='exact_match', filter_column en uygun kod sütunu\n",
+    "3. 'listele', 'göster', 'özetle' → aggregation='list'\n",
+    "4. 'grupla', 'kırılımında' → aggregation='group_by', group_column belirt\n",
+    "5. Proje kodları genelde 'ProjeKodu', 'Proje_Kodu' sütunlarındadır\n",
+    "6. Sadece JSON döndür, yorum yapma."
   )
   
   messages <- list(
@@ -34,47 +34,34 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     list(role = "user", content = user_prompt)
   )
   
-  api_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", "http://localhost:11434/api/generate")
-  selected_model <- getOption("mergen.filter_model", "mergen-local-model")
-  
-  body <- list(
-    model = selected_model,
-    messages = messages,
-    stream = FALSE,
-    temperature = 0.1
-  )
-  
   tryCatch({
-    response <- httr::POST(
-      api_endpoint,
-      httr::add_headers(`Content-Type` = "application/json"),
-      body = jsonlite::toJSON(body, auto_unbox = TRUE),
-      encode = "raw",
-      httr::timeout(120)
-    )
+    result <- call_local_llm(messages, list(
+      model_selection = getOption("mergen.filter_model", api_config$local_models[1]),
+      temperature = 0.1,
+      enable_mcp_tools = FALSE,
+      shiny_session = NULL
+    ))
     
-    if (httr::status_code(response) != 200) {
-      cat(sprintf("[FILTER_AI] API hatası (Kod: %d), varsayılan dönülüyor\n", httr::status_code(response)))
+    if (is.null(result) || is.null(result$content)) {
+      cat("[FILTER_AI] AI yanıt vermedi, fallback kullanılacak\n")
       return(list(filter_column = NULL, aggregation = NULL))
     }
     
-    parsed <- httr::content(response, "parsed")
-    ai_text <- parsed$choices[[1]]$message$content
-    
+    ai_text <- result$content
     ai_text <- gsub("```json|```", "", ai_text)
     ai_text <- trimws(ai_text)
     
-    result <- jsonlite::fromJSON(ai_text, simplifyVector = FALSE)
+    parsed <- jsonlite::fromJSON(ai_text, simplifyVector = FALSE)
     
     cat(sprintf("[FILTER_AI] Sonuç: filter_column=%s, operation=%s, aggregation=%s\n",
-                result$filter_column %||% "NULL",
-                result$operation %||% "NULL",
-                result$aggregation %||% "NULL"))
+                parsed$filter_column %||% "NULL",
+                parsed$operation %||% "NULL",
+                parsed$aggregation %||% "NULL"))
     
-    return(result)
+    return(parsed)
     
   }, error = function(e) {
-    cat(sprintf("[FILTER_AI] Hata: %s\n", e$message))
+    cat(sprintf("[FILTER_AI] Hata: %s, fallback kullanılacak\n", e$message))
     return(list(filter_column = NULL, aggregation = NULL))
   })
 }
@@ -82,116 +69,116 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
 apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   cat(sprintf("[SMART_FILTER] Filtreleme uygulanıyor. Ham satır: %d\n", nrow(data)))
   
-  if (nrow(data) == 0) {
-    return(data.frame())
-  }
+  if (nrow(data) == 0) return(data.frame())
   
   dt <- data.table::as.data.table(data)
   
-  # AI tarafından dönen talimatları al
   filter_col <- filter_instructions$filter_column %||% NULL
   filter_val <- filter_instructions$filter_value
   operation <- filter_instructions$operation
   aggregation <- filter_instructions$aggregation
+  group_col <- filter_instructions$group_column
   
-  # ====================================================================
-  # 1. AKILLI FALLBACK: Eğer AI filtreleme talimatı veremediyse (filter_col NULL ise)
-  # ====================================================================
   if (is.null(filter_col)) {
-    cat("[SMART_FILTER] AI filtresi bulunamadı/hatalı. Akıllı metin bazlı arama (Fallback) devreye giriyor.\n")
+    cat("[SMART_FILTER] AI filtresi yok, keyword fallback aktif\n")
     
-    # En az 3 karakterli, harf ve rakam içeren, potansiyel kod/ID'leri çıkar.
-    # Bu dinamik yöntem, "P4578" gibi kodları yakalar, "özetle" gibi genel kelimeleri atlar.
     matches <- regmatches(user_prompt, gregexpr("\\b[A-Za-z0-9-]{3,}\\b", user_prompt))
     search_terms <- unique(unlist(matches))
     
     filtered_terms <- c()
     for (term in search_terms) {
-      # Proje koduna benzeyen (en az 1 harf ve en az 1 rakam) veya sadece harf/rakam/tire içeren 5+ uzunluktaki kelimeleri al.
-      if ((grepl("[A-Za-z]", term) && grepl("[0-9]", term)) || (nchar(term) >= 5 && grepl("^[A-Z0-9-]+$", toupper(term)))) {
+      if ((grepl("[A-Za-z]", term) && grepl("[0-9]", term)) || 
+          (nchar(term) >= 5 && grepl("^[A-Z0-9-]+$", toupper(term)))) {
         filtered_terms <- c(filtered_terms, term)
       }
     }
     
-    search_terms <- unique(filtered_terms)
-
-    if (length(search_terms) == 0) {
-      cat("[SMART_FILTER] Prompt'ta anlamlı anahtar kod bulunamadı. Varsayılan ilk 100 satır dönülüyor.\n")
-      return(head(data, 100))
+    if (!length(filtered_terms)) {
+      cat("[SMART_FILTER] Anahtar kelime bulunamadı, ilk 100 satır\n")
+      return(head(as.data.frame(data), 100))
     }
     
-    cat(sprintf("[SMART_FILTER] Aranan anahtar kodlar: %s\n", paste(search_terms, collapse=", ")))
+    cat(sprintf("[SMART_FILTER] Aranan: %s\n", paste(filtered_terms, collapse=", ")))
     
-    # Tüm satır ve sütunlarda ara
     match_rows <- apply(data, 1, function(row) {
-      # Satırın herhangi bir hücresinde aranan terimlerden biri geçiyor mu?
-      any(sapply(search_terms, function(term) {
+      any(sapply(filtered_terms, function(term) {
         any(grepl(term, row, ignore.case = TRUE))
       }))
     })
     
-    filtered_fallback <- data[match_rows, ]
+    filtered <- data[match_rows, ]
     
-    if (nrow(filtered_fallback) > 0) {
-      cat(sprintf("[SMART_FILTER] Fallback arama sonucu: %d satır bulundu.\n", nrow(filtered_fallback)))
-      # Context penceresini aşmamak için kırpma
-      return(head(filtered_fallback, 100))
-    } else {
-      cat("[SMART_FILTER] Fallback aramada eşleşme bulunamadı. Varsayılan ilk 100 satır dönülüyor.\n")
-      return(head(data, 100))
-    }
-  }
-  
-  # ====================================================================
-  # 2. AI FİLTRELEME (AI'dan gelen talimat başarılıysa)
-  # ====================================================================
-  
-  if (!is.null(filter_col) && !is.null(filter_val) && filter_col %in% names(dt)) {
-    cat(sprintf("[SMART_FILTER] Sütun '%s' üzerinde '%s' işlemi uygulanıyor\n", filter_col, operation %||% "exact_match"))
-    
-    if (operation == "exact_match" || is.null(operation)) {
-      dt <- dt[get(filter_col) == filter_val]
-    } else if (operation == "contains") {
-      dt <- dt[grepl(filter_val, get(filter_col), ignore.case = TRUE)]
-    } else if (operation == "greater_than") {
-      dt <- dt[get(filter_col) > as.numeric(filter_val)]
-    } else if (operation == "less_than") {
-      dt <- dt[get(filter_col) < as.numeric(filter_val)]
+    if (nrow(filtered) == 0) {
+      cat("[SMART_FILTER] Eşleşme yok, ilk 100 satır\n")
+      return(head(as.data.frame(data), 100))
     }
     
-    cat(sprintf("[SMART_FILTER] Filtreleme sonrası: %d satır\n", nrow(dt)))
+    cat(sprintf("[SMART_FILTER] Keyword sonuç: %d satır\n", nrow(filtered)))
+    return(as.data.frame(head(filtered, 500)))
   }
   
-  # ====================================================================
-  # 3. AGGREGASYON ve Kırpma
-  # ====================================================================
+  if (!filter_col %in% names(dt)) {
+    cat(sprintf("[SMART_FILTER] Sütun '%s' yok, fallback\n", filter_col))
+    return(as.data.frame(head(data, 100)))
+  }
+  
+  cat(sprintf("[SMART_FILTER] Sütun '%s' filtreleniyor, işlem: %s\n", 
+              filter_col, operation %||% "exact_match"))
+  
+  if (operation == "exact_match" || is.null(operation)) {
+    dt <- dt[get(filter_col) == filter_val]
+  } else if (operation == "contains") {
+    dt <- dt[grepl(filter_val, get(filter_col), ignore.case = TRUE)]
+  } else if (operation == "greater_than") {
+    dt <- dt[get(filter_col) > as.numeric(filter_val)]
+  } else if (operation == "less_than") {
+    dt <- dt[get(filter_col) < as.numeric(filter_val)]
+  }
+  
+  cat(sprintf("[SMART_FILTER] Filtreleme sonrası: %d satır\n", nrow(dt)))
+  
+  if (nrow(dt) == 0) {
+    cat("[SMART_FILTER] Sonuç boş\n")
+    return(data.frame())
+  }
   
   if (!is.null(aggregation)) {
     if (aggregation == "count") {
-      result <- data.frame(
-        Metrik = "Toplam Kayıt Sayısı",
-        Değer = nrow(dt)
-      )
-      cat(sprintf("[SMART_FILTER] COUNT agregasyonu: %d\n", nrow(dt)))
-      return(result)
-      
-    } else if (aggregation == "top_n") {
-      n <- filter_instructions$top_n %||% 10
-      # Siralama talimati yoksa ilk n satiri alir.
-      result <- head(dt, n) 
-      cat(sprintf("[SMART_FILTER] TOP %d satır döndürülüyor\n", n))
+      if (!is.null(group_col) && group_col %in% names(dt)) {
+        result <- dt[, .N, by = group_col]
+        setnames(result, "N", "Adet")
+      } else {
+        result <- data.frame(
+          Metrik = "Toplam Kayıt Sayısı",
+          Değer = nrow(dt)
+        )
+      }
+      cat(sprintf("[SMART_FILTER] COUNT sonuç: %d satır\n", nrow(result)))
       return(as.data.frame(result))
-      
+    } else if (aggregation == "group_by" && !is.null(group_col) && group_col %in% names(dt)) {
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      if (length(num_cols) > 0) {
+        agg_expr <- lapply(num_cols, function(col) {
+          list(sum(get(col), na.rm = TRUE))
+        })
+        names(agg_expr) <- paste0("Toplam_", num_cols)
+        result <- dt[, c(.N, agg_expr), by = group_col]
+        setnames(result, "N", "Kayıt_Sayısı")
+      } else {
+        result <- dt[, .N, by = group_col]
+        setnames(result, "N", "Kayıt_Sayısı")
+      }
+      cat(sprintf("[SMART_FILTER] GROUP_BY sonuç: %d grup\n", nrow(result)))
+      return(as.data.frame(result))
     } else if (aggregation == "list") {
-      result <- head(dt, 50)
-      cat(sprintf("[SMART_FILTER] LIST: İlk 50 satır döndürülüyor\n"))
+      result <- head(dt, 500)
+      cat(sprintf("[SMART_FILTER] LIST: %d satır\n", nrow(result)))
       return(as.data.frame(result))
     }
   }
   
-  # Varsayilan Fallback (AI filtreledi ama aggregation yok veya basarisiz)
-  result <- head(dt, 100)
-  cat(sprintf("[SMART_FILTER] Varsayılan: İlk 100 satır döndürülüyor\n"))
+  result <- head(dt, 500)
+  cat(sprintf("[SMART_FILTER] Varsayılan: %d satır\n", nrow(result)))
   return(as.data.frame(result))
 }
 

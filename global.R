@@ -2783,15 +2783,25 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	hds <- list(`Content-Type` = "application/json")
 	if (nzchar(api_key)) hds$Authorization <- paste("Bearer", api_key)
 
-	response <- httr::POST(
-	  url = api_url,
-	  body = body,                 # httr JSON'a çevirir
-	  encode = "json",
-	  do.call(httr::add_headers, hds),
-	  httr::timeout(300)
-	)
-    
-    httr::stop_for_status(response, "get local LLM response")
+	  response <- tryCatch({
+		httr::POST(
+		  url = api_url,
+		  body = body,
+		  encode = "json",
+		  do.call(httr::add_headers, hds),
+		  httr::timeout(300)
+		)
+	  }, error = function(e) {
+		stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
+	  })
+	  
+	  if (httr::status_code(response) >= 400) {
+		error_content <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)
+		stop(sprintf("API_HTTP_ERROR_%d: %s", 
+					 httr::status_code(response), 
+					 if(!inherits(error_content, "try-error")) substr(error_content, 1, 200) else ""))
+	  }
+	  
     response_content <- httr::content(response, "parsed")
     
     # Extract content and sources
