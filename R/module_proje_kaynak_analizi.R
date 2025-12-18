@@ -72,14 +72,20 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
   tryCatch({
     result <- call_local_llm(messages, list(
       model_selection = getOption("mergen.filter_model", api_config$local_models[1]),
-      temperature = 0.1,
+      temperature = 0.05,
+      max_output_tokens = 300,
       enable_mcp_tools = FALSE,
       shiny_session = NULL
     ))
     
     if (is.null(result)) {
-      cat("[FILTER_AI] result NULL, fallback\n")
-      return(list(filter_column = NULL, aggregation = NULL))
+      cat("[FILTER_AI] LLM call returned NULL\n")
+      return(list(filter_column = NULL, aggregation = NULL, error = "AI cagirimi basarisiz"))
+    }
+    
+    if (!is.list(result)) {
+      cat("[FILTER_AI] LLM result not a list, class:", class(result), "\n")
+      return(list(filter_column = NULL, aggregation = NULL, error = "Gecersiz AI yanitı"))
     }
     
     ai_content <- if (is.list(result)) result$content else result
@@ -100,17 +106,25 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     
     cat(sprintf("[FILTER_AI] AI yanıtı: %s\n", substr(ai_text, 1, 200)))
     
-    parsed <- tryCatch(
+	parsed <- tryCatch(
       jsonlite::fromJSON(ai_text, simplifyVector = FALSE),
       error = function(e) {
-        cat(sprintf("[FILTER_AI] JSON parse hatası: %s\n", e$message))
+        cat(sprintf("[FILTER_AI] JSON parse hatasi: %s\n", e$message))
+        cat(sprintf("[FILTER_AI] Problematic text: %s\n", substr(ai_text, 1, 500)))
         NULL
       }
     )
     
     if (is.null(parsed) || !is.list(parsed)) {
-      cat("[FILTER_AI] parsed NULL veya list degil, fallback\n")
-      return(list(filter_column = NULL, aggregation = NULL))
+      cat("[FILTER_AI] Parsed NULL veya liste degil\n")
+      cat("[FILTER_AI] AI TEXT:", substr(ai_text, 1, 300), "\n")
+      return(list(filter_column = NULL, aggregation = NULL, error = "JSON parse hatasi"))
+    }
+    
+    required_keys <- c("filter_column", "operation", "aggregation")
+    missing_keys <- setdiff(required_keys, names(parsed))
+    if (length(missing_keys) > 0) {
+      cat("[FILTER_AI] Eksik anahtarlar:", paste(missing_keys, collapse = ", "), "\n")
     }
     
     fc <- parsed$filter_column
@@ -266,7 +280,7 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     return(data.frame())
   }
   
-  if (!is.null(aggregation) && nzchar(as.character(aggregation)[1])) {
+if (!is.null(aggregation) && nzchar(as.character(aggregation)[1])) {
     agg_str <- as.character(aggregation)[1]
     
     if (agg_str == "count") {
@@ -275,14 +289,45 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
         gc_str <- as.character(group_col)[1]
         result <- dt[, .N, by = gc_str]
         setnames(result, "N", "Adet")
-        cat(sprintf("[SMART_FILTER] COUNT+GROUP: %d grup\n", nrow(result)))
+        result <- result[order(-Adet)]
+        cat(sprintf("[SMART_FILTER] COUNT+GROUP: %d grup (siralanmis)\n", nrow(result)))
         return(as.data.frame(result))
       } else {
         result <- data.frame(
-          Metrik = "Toplam Kayıt Sayısı",
-          Değer = nrow(dt)
+          Metrik = "Toplam Kayit Sayisi",
+          Deger = nrow(dt)
         )
-        cat(sprintf("[SMART_FILTER] COUNT: %d kayıt\n", nrow(dt)))
+        cat(sprintf("[SMART_FILTER] COUNT: %d kayit\n", nrow(dt)))
+        return(result)
+      }
+    } else if (agg_str == "sum" || agg_str == "mean" || agg_str == "avg") {
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      if (length(num_cols) == 0) {
+        cat("[SMART_FILTER] UYARI: Sayisal sutun yok, toplama/ortalama yapilamaz\n")
+        return(as.data.frame(head(dt, 100)))
+      }
+      
+      target_col <- num_cols[1]
+      
+      if (!is.null(group_col) && nzchar(as.character(group_col)[1]) && 
+          as.character(group_col)[1] %in% names(dt)) {
+        gc_str <- as.character(group_col)[1]
+        
+        if (agg_str %in% c("sum")) {
+          result <- dt[, .(Toplam = sum(get(target_col), na.rm = TRUE)), by = gc_str]
+        } else {
+          result <- dt[, .(Ortalama = mean(get(target_col), na.rm = TRUE)), by = gc_str]
+        }
+        result <- result[order(-get(names(result)[2]))]
+        cat(sprintf("[SMART_FILTER] %s+GROUP: %d grup\n", toupper(agg_str), nrow(result)))
+        return(as.data.frame(result))
+      } else {
+        val <- if (agg_str == "sum") sum(dt[[target_col]], na.rm = TRUE) else mean(dt[[target_col]], na.rm = TRUE)
+        result <- data.frame(
+          Metrik = paste0(ifelse(agg_str == "sum", "Toplam", "Ortalama"), " (", target_col, ")"),
+          Deger = val
+        )
+        cat(sprintf("[SMART_FILTER] %s: %.2f\n", toupper(agg_str), val))
         return(result)
       }
     } else if (agg_str == "group_by" && !is.null(group_col) && 
@@ -293,17 +338,19 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
       
       if (length(num_cols) > 0) {
         agg_expr <- lapply(num_cols, function(col) {
-          list(sum(get(col), na.rm = TRUE))
+          list(sum(get(col), na.rm = TRUE), mean(get(col), na.rm = TRUE))
         })
-        names(agg_expr) <- paste0("Toplam_", num_cols)
-        result <- dt[, c(.N, agg_expr), by = gc_str]
-        setnames(result, "N", "Kayıt_Sayısı")
+        agg_names <- unlist(lapply(num_cols, function(col) c(paste0("Toplam_", col), paste0("Ort_", col))))
+        names(agg_expr) <- agg_names
+        result <- dt[, c(.N, unlist(agg_expr, recursive = FALSE)), by = gc_str]
+        setnames(result, "N", "Kayit_Sayisi")
       } else {
         result <- dt[, .N, by = gc_str]
-        setnames(result, "N", "Kayıt_Sayısı")
+        setnames(result, "N", "Kayit_Sayisi")
       }
       
-      cat(sprintf("[SMART_FILTER] GROUP_BY: %d grup\n", nrow(result)))
+      result <- result[order(-Kayit_Sayisi)]
+      cat(sprintf("[SMART_FILTER] GROUP_BY: %d grup (siralanmis)\n", nrow(result)))
       return(as.data.frame(result))
     }
   }
@@ -418,6 +465,93 @@ apply_rls_to_data <- function(data, user_info, rls_cols) {
   }
   
   return(filtered_data)
+}
+
+generate_statistical_summary <- function(data, max_preview_rows = 20) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(list(
+      summary_text = "Veri yok.",
+      row_count = 0,
+      preview_data = NULL
+    ))
+  }
+  
+  total_rows <- nrow(data)
+  total_cols <- ncol(data)
+  col_names <- names(data)
+  
+  dt <- data.table::as.data.table(data)
+  
+  num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+  cat_cols <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
+  
+  summary_parts <- list()
+  summary_parts[[1]] <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
+  
+  if (length(num_cols) > 0) {
+    num_summary_list <- lapply(num_cols, function(col) {
+      vals <- dt[[col]]
+      vals <- vals[!is.na(vals)]
+      if (length(vals) == 0) return(NULL)
+      
+      data.frame(
+        Sutun = col,
+        Toplam = sum(vals, na.rm = TRUE),
+        Ortalama = mean(vals, na.rm = TRUE),
+        Medyan = median(vals, na.rm = TRUE),
+        Min = min(vals, na.rm = TRUE),
+        Max = max(vals, na.rm = TRUE),
+        StdSapma = sd(vals, na.rm = TRUE),
+        Kayit = length(vals),
+        stringsAsFactors = FALSE
+      )
+    })
+    
+    num_summary_df <- do.call(rbind, Filter(Negate(is.null), num_summary_list))
+    
+    if (!is.null(num_summary_df) && nrow(num_summary_df) > 0) {
+      summary_parts[[length(summary_parts) + 1]] <- "\n\nSAYISAL SUTUNLAR OZETI:"
+      summary_parts[[length(summary_parts) + 1]] <- paste(capture.output(print(num_summary_df, row.names = FALSE)), collapse = "\n")
+    }
+  }
+  
+  if (length(cat_cols) > 0) {
+    cat_summary_list <- lapply(head(cat_cols, 5), function(col) {
+      tbl <- sort(table(dt[[col]], useNA = "no"), decreasing = TRUE)
+      top5 <- head(tbl, 5)
+      
+      data.frame(
+        Sutun = col,
+        EnSikDeger = names(top5)[1],
+        Adet = as.integer(top5[1]),
+        BenzerSayi = length(unique(dt[[col]])),
+        stringsAsFactors = FALSE
+      )
+    })
+    
+    cat_summary_df <- do.call(rbind, cat_summary_list)
+    
+    if (!is.null(cat_summary_df) && nrow(cat_summary_df) > 0) {
+      summary_parts[[length(summary_parts) + 1]] <- "\n\nKATEGORIK SUTUNLAR OZETI:"
+      summary_parts[[length(summary_parts) + 1]] <- paste(capture.output(print(cat_summary_df, row.names = FALSE)), collapse = "\n")
+    }
+  }
+  
+  preview_data <- NULL
+  if (total_rows > max_preview_rows) {
+    preview_data <- head(data, max_preview_rows)
+    summary_parts[[length(summary_parts) + 1]] <- sprintf("\n\n(İlk %d satir gosteriliyor; toplam %d satir mevcut)", max_preview_rows, total_rows)
+  } else {
+    preview_data <- data
+  }
+  
+  summary_text <- paste(summary_parts, collapse = "\n")
+  
+  return(list(
+    summary_text = summary_text,
+    row_count = total_rows,
+    preview_data = preview_data
+  ))
 }
 
 # ==============================================================================
@@ -582,10 +716,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
   
   secure_data <- apply_rls_to_data(raw_data, rls_info, selected_query$rls_columns)
-  cat(sprintf("[PK_ANALIZ] RLS sonrası: %d satır\n", nrow(secure_data)))
+  cat(sprintf("[PK_ANALIZ] RLS sonrasi: %d satir\n", nrow(secure_data)))
   
   if (nrow(secure_data) == 0) {
-    return(paste0("🔍 **Sonuç:** Sorgu çalıştırıldı ancak yetkiniz dahilinde veri bulunamadı."))
+    return(paste0("🔍 **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
   }
   
   filter_criteria <- extract_filter_criteria_from_prompt(
@@ -593,6 +727,16 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     available_columns = names(secure_data),
     conn = conn
   )
+  
+  if (!is.null(filter_criteria$error)) {
+    cat(sprintf("[PK_ANALIZ] AI filtreleme hatasi: %s\n", filter_criteria$error))
+  }
+  
+  cat(sprintf("[PK_ANALIZ] AI Filter Sonucu -> column: %s, value: %s, operation: %s, aggregation: %s\n",
+              filter_criteria$filter_column %||% "NULL",
+              filter_criteria$filter_value %||% "NULL",
+              filter_criteria$operation %||% "NULL",
+              filter_criteria$aggregation %||% "NULL"))
   
   filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
   
@@ -603,104 +747,57 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı."))
   }
   
-  data_preview <- filtered_data
-  original_row_count <- nrow(filtered_data)
+  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 15)
   
-  if (nrow(data_preview) > 100) {
-    num_cols <- names(data_preview)[vapply(data_preview, is.numeric, logical(1))]
-    char_cols <- names(data_preview)[vapply(data_preview, function(x) is.character(x) || is.factor(x), logical(1))]
-    
-    stats_summary <- NULL
-    
-    if (length(num_cols) > 0) {
-      stats_list <- lapply(num_cols, function(col) {
-        vals <- data_preview[[col]]
-        data.frame(
-          Sütun = col,
-          Ortalama = mean(vals, na.rm = TRUE),
-          Medyan = median(vals, na.rm = TRUE),
-          Min = suppressWarnings(min(vals, na.rm = TRUE)),
-          Max = suppressWarnings(max(vals, na.rm = TRUE)),
-          Toplam = sum(vals, na.rm = TRUE),
-          Kayıt_Sayısı = sum(!is.na(vals)),
-          stringsAsFactors = FALSE
-        )
-      })
-      stats_summary <- do.call(rbind, stats_list)
-    }
-    
-    cat_summary <- NULL
-    if (length(char_cols) > 0) {
-      cat_list <- lapply(char_cols[1:min(3, length(char_cols))], function(col) {
-        tbl <- sort(table(data_preview[[col]]), decreasing = TRUE)
-        top5 <- head(tbl, 5)
-        data.frame(
-          Sütun = col,
-          En_Sık_Değer = names(top5)[1],
-          Adet = as.integer(top5[1]),
-          Benzersiz_Sayı = length(unique(data_preview[[col]])),
-          stringsAsFactors = FALSE
-        )
-      })
-      cat_summary <- do.call(rbind, cat_list)
-    }
-    
-    top_rows <- head(data_preview, 20)
-    
-    summary_text <- paste0(
-      "VERİ ÖZETİ (Toplam ", original_row_count, " satır):\n\n"
-    )
-    
-    if (!is.null(stats_summary)) {
-      summary_text <- paste0(summary_text, "SAYISAL SÜTUN İSTATİSTİKLERİ:\n",
-                             paste(capture.output(print(stats_summary, row.names = FALSE)), collapse = "\n"),
-                             "\n\n")
-    }
-    
-    if (!is.null(cat_summary)) {
-      summary_text <- paste0(summary_text, "KATEGORİK SÜTUN ÖZETİ:\n",
-                             paste(capture.output(print(cat_summary, row.names = FALSE)), collapse = "\n"),
-                             "\n\n")
-    }
-    
-    summary_text <- paste0(summary_text, "İLK 20 SATIR:\n",
-                           paste(capture.output(print(top_rows, row.names = FALSE)), collapse = "\n"))
-    
-    data_str <- summary_text
-    cat("[PK_ANALIZ] Veri çok büyük, istatistiksel özet gönderildi\n")
-    
+  cat(sprintf("[PK_ANALIZ] Istatistiksel ozet olusturuldu: %d satir, %d onizleme\n",
+              stat_summary$row_count,
+              if (!is.null(stat_summary$preview_data)) nrow(stat_summary$preview_data) else 0))
+  
+  preview_json <- if (!is.null(stat_summary$preview_data) && nrow(stat_summary$preview_data) > 0) {
+    jsonlite::toJSON(stat_summary$preview_data, auto_unbox = TRUE, pretty = FALSE)
   } else {
-    data_str <- jsonlite::toJSON(data_preview, auto_unbox = TRUE, pretty = TRUE)
-    cat(sprintf("[PK_ANALIZ] %d satır JSON olarak gönderiliyor\n", nrow(data_preview)))
+    "{}"
   }
   
-  # JSON'a çevir
-  data_str <- jsonlite::toJSON(data_preview, auto_unbox = TRUE, pretty = TRUE)
+  data_str <- paste0(
+    stat_summary$summary_text,
+    "\n\n--- ORNEK SATIRLAR (JSON) ---\n",
+    preview_json,
+    "\n\n(Not: Yukaridaki istatistikler ", stat_summary$row_count, " satirdan olusturulmustur)"
+  )
   
-  # LLM'e not ekle
-  if (nrow(secure_data) > nrow(data_preview)) {
-    msg <- sprintf("\n\n(Not: Veri seti toplam %d satırdır. Kullanıcı sorusuyla eşleşen satırlar ve örnek veri olmak üzere %d satır analiz için seçilmiştir.)", 
-                   nrow(secure_data), nrow(data_preview))
-    data_str <- paste0(data_str, msg)
+  if (nrow(secure_data) > nrow(filtered_data)) {
+    data_str <- paste0(
+      data_str,
+      sprintf("\n\n(RLS ve filtreleme oncesi toplam %d satir vardi)", nrow(secure_data))
+    )
   }
   
   system_prompt <- paste0(
-    "Sen MERGEN Bilge analiz asistanısın. Kullanıcının sorusuna, sağlanan veriyi analiz ederek cevap ver.\n",
-    "Kullanılan Sorgu: ", selected_query$name, "\n",
-    "Sorgu Açıklaması: ", selected_query$description, "\n\n",
-    "ÖNEMLİ: Sana GÖNDERİLEN VERİ ZATEN FİLTRELENMİŞTİR. Yani bu veri kullanıcının sorusuna tam olarak uygun satırları içerir.\n",
-    "Örnek: Eğer 'Kaç proje var?' diye sorulduysa, sana gönderilen veri toplam sayıyı içerir.\n",
-    "Örnek: Eğer 'P4578 projesinin adı ne?' diye sorulduysa, sana SADECE o proje satırı gelir.\n\n",
-    "GÖREVLER:\n",
-    "1. Verilen JSON verisini incele.\n",
-    "2. Kullanıcının sorusuna DOĞRUDAN, NET ve TÜRKÇE cevap ver.\n",
-    "3. Eğer veri tek satırsa (örn: proje adı sorusu), o satırı kullan.\n",
-    "4. Eğer veri agregasyonsa (örn: count sonucu), o sayıyı kullan.\n",
-    "5. Cevabını Markdown formatında ver.\n",
-    "6. VERİYE DAYANMAYAN BİLGİ UYDURMA. Sadece gördüğün veriyi kullan.\n"
+    "Sen MERGEN Bilge veri analiz asistanisin. Kullanicinin sorusuna, R tarafindan hazirlanan ISTATISTIKSEL OZET'e dayanarak cevap ver.\n\n",
+    "Kullanilan Sorgu: ", selected_query$name, "\n",
+    "Sorgu Aciklamasi: ", selected_query$description, "\n\n",
+    "KRITIK: Sana gonderilen veri R tarafindan ZATEN FILTRELENMIS ve ISTATISTIKSEL OLARAK OZETLENMISTIR.\n",
+    "Bu ozet SAYISAL SUTUNLAR icin toplam/ortalama/min/max, KATEGORIK SUTUNLAR icin en sik degerleri icerir.\n\n",
+    "GOREVLER:\n",
+    "1. Istatistiksel ozeti incele (sayisal istatistikler, kategorik dagilimlar)\n",
+    "2. Kullanicinin sorusuna DOGRUDAN, NET ve TURKCE cevap ver\n",
+    "3. Sayilari ozetten AYNEN kullan (yuvarlama, tahminde bulunma)\n",
+    "4. Trendleri ve onemlı bulgulari vurgula\n",
+    "5. Markdown formatinda yaz\n",
+    "6. SADECE OZETTEKI VERILERE DAYAN - baska bilgi uydurma\n",
+    "7. Eger ornek satirlar varsa, bunlari destekleyici olarak kullan\n"
   )
   
-  user_msg <- paste0("Soru: ", user_prompt, "\n\nVeri Seti:\n", data_str)
+  user_msg <- paste0(
+    "KULLANICI SORUSU:\n",
+    user_prompt,
+    "\n\n--- R TARAFINDAN HAZIRLANAN ISTATISTIKSEL OZET ---\n",
+    data_str,
+    "\n\n--- OZET SONU ---\n\n",
+    "Talımat: Yukaridaki istatistikleri kullanarak kullanicinin sorusuna DOGRUDAN cevap ver. ",
+    "Sayilari AYNEN kullan. Trendleri ve onemli bulgulari vurgula."
+  )
   
   cat("[PK_ANALIZ] AI baglami hazirlandi. List donduruluyor.\n")
   
