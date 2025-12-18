@@ -87,10 +87,10 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
       }
     }
     
-    result <- call_local_llm(messages, list(
+	result <- call_local_llm(messages, list(
       model_selection = filter_model,
       temperature = 0.0, 
-      max_output_tokens = 400,
+      max_output_tokens = 1500,
       enable_mcp_tools = FALSE,
       shiny_session = session,
       api_key_override = api_key_val
@@ -101,28 +101,58 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     ai_content <- if (is.list(result)) result$content else result
     if (is.null(ai_content) || length(ai_content) == 0) return(list(filters = list(), aggregation = NULL))
     
-    ai_text <- as.character(ai_content)[1]
+	ai_text <- as.character(ai_content)[1]
     ai_text <- gsub("```json|```", "", ai_text)
     ai_text <- trimws(ai_text)
     
-    parsed <- tryCatch(
-      jsonlite::fromJSON(ai_text, simplifyVector = FALSE),
-      error = function(e) NULL
-    )
+    if (nchar(ai_text) < 50) {
+      cat(sprintf("[FILTER_AI] Yanit cok kisa (%d karakter), iptal ediliyor.\n", nchar(ai_text)))
+      return(list(filters = list(), aggregation = NULL))
+    }
     
-    if (is.null(parsed)) return(list(filters = list(), aggregation = NULL))
+    if (!grepl("\\{.*\\}", ai_text)) {
+      cat("[FILTER_AI] JSON format algilanamadi.\n")
+      return(list(filters = list(), aggregation = NULL))
+    }
     
-    # Normalize output
+    parsed <- tryCatch({
+      temp_parse <- jsonlite::fromJSON(ai_text, simplifyVector = FALSE)
+      if (is.null(temp_parse)) {
+        ai_text_fixed <- paste0(ai_text, ']}')
+        jsonlite::fromJSON(ai_text_fixed, simplifyVector = FALSE)
+      } else {
+        temp_parse
+      }
+    }, error = function(e) {
+      cat(sprintf("[FILTER_AI] JSON parse hatasi: %s\n", e$message))
+      NULL
+    })
+    
+	if (is.null(parsed)) return(list(filters = list(), aggregation = NULL))
+    
     filters <- parsed$filters
     if (is.null(filters) || !is.list(filters)) filters <- list()
     
-    # Single filter fallback (for backward compatibility if AI hallucinates old format)
     if (!is.null(parsed$filter_column)) {
         filters <- list(list(
             column = parsed$filter_column,
             value = parsed$filter_value,
             operation = parsed$operation
         ))
+    }
+    
+    if (length(filters) > 0) {
+      valid_filters <- Filter(function(f) {
+        !is.null(f$column) && nzchar(f$column) && !is.null(f$value)
+      }, filters)
+      
+      if (length(valid_filters) == 0) {
+        cat("[FILTER_AI] Tum filtreler gecersiz, iptal ediliyor.\n")
+        return(list(filters = list(), aggregation = NULL))
+      }
+      
+      cat(sprintf("[FILTER_AI] %d gecerli filtre algilandi.\n", length(valid_filters)))
+      filters <- valid_filters
     }
 
     return(list(
@@ -138,7 +168,7 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
 }
 
 apply_smart_filters <- function(data, filter_instructions, user_prompt) {
-  cat(sprintf("[SMART_FILTER] Başlangıç satır: %d\n", nrow(data)))
+  cat(sprintf("[SMART_FILTER] Baslangic satir: %d\n", nrow(data)))
   
   if (nrow(data) == 0) return(data.frame())
   
@@ -147,6 +177,15 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   filters <- filter_instructions$filters
   aggregation <- filter_instructions$aggregation
   group_col <- filter_instructions$group_column
+  
+  cat(sprintf("[SMART_FILTER] Filtre sayisi: %d\n", length(filters %||% list())))
+  if (length(filters) > 0) {
+    for (i in seq_along(filters)) {
+      f <- filters[[i]]
+      cat(sprintf("[SMART_FILTER] Filtre #%d: sutun='%s', deger='%s', islem='%s'\n", 
+                  i, f$column %||% "NULL", f$value %||% "NULL", f$operation %||% "NULL"))
+    }
+  }
   
   # --- 1. Filtreleri Uygula (Multiple & Case Insensitive) ---
   if (!is.null(filters) && length(filters) > 0) {
