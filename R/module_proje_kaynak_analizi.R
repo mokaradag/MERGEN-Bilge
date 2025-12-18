@@ -4,7 +4,7 @@
 # 0. AKıLLı FİLTRELEME MOTORü (AI-Guided Filtering Engine)
 # ==============================================================================
 
-extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, conn) {
+extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, conn, session = NULL) {
   cat(sprintf("[FILTER_AI] Prompt analiz ediliyor: '%s'\n", user_prompt))
   
   cols_str <- paste(available_columns, collapse = ", ")
@@ -70,13 +70,29 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
   )
   
   tryCatch({
-    result <- call_local_llm(messages, list(
-      model_selection = getOption("mergen.filter_model", api_config$local_models[1]),
-      temperature = 0.05,
-      max_output_tokens = 300,
-      enable_mcp_tools = FALSE,
-      shiny_session = NULL
-    ))
+	filter_model <- getOption("mergen.filter_model", api_config$local_models[1])
+	creds <- resolve_local_llm_credentials(filter_model)
+
+	api_key_val <- NULL
+	if (!is.null(session) && !is.null(session$userData$ai_api_key)) {
+	  api_key_val <- as.character(session$userData$ai_api_key)[1]
+	}
+
+	if (is.null(api_key_val) || !nzchar(api_key_val)) {
+	  default_key <- creds$default_api_key %||% ""
+	  if (nzchar(default_key)) {
+		api_key_val <- as.character(default_key)[1]
+	  }
+	}
+
+	result <- call_local_llm(messages, list(
+	  model_selection = filter_model,
+	  temperature = 0.05,
+	  max_output_tokens = 300,
+	  enable_mcp_tools = FALSE,
+	  shiny_session = session,
+	  api_key_override = api_key_val
+	))
     
     if (is.null(result)) {
       cat("[FILTER_AI] LLM call returned NULL\n")
@@ -722,11 +738,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return(paste0("🔍 **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
   }
   
-  filter_criteria <- extract_filter_criteria_from_prompt(
-    user_prompt,
-    available_columns = names(secure_data),
-    conn = conn
-  )
+	filter_criteria <- extract_filter_criteria_from_prompt(
+	  user_prompt,
+	  available_columns = names(secure_data),
+	  conn = conn,
+	  session = session
+	)
   
   if (!is.null(filter_criteria$error)) {
     cat(sprintf("[PK_ANALIZ] AI filtreleme hatasi: %s\n", filter_criteria$error))
