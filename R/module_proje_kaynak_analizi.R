@@ -161,18 +161,22 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
         val_str <- as.character(val)[1]
         
         # Case Insensitive Handling
-        if (is.character(col_vals) || is.factor(col_vals)) {
-            col_vals_lower <- tolower(as.character(col_vals))
-            val_lower <- tolower(val_str)
-            
-            if (op == "exact_match") {
-                dt <- dt[col_vals_lower == val_lower, ]
-            } else if (op == "contains") {
-                dt <- dt[grepl(val_lower, col_vals_lower, fixed = TRUE), ]
-            } else {
-                dt <- dt[col_vals_lower == val_lower, ] # Fallback
-            }
-        } else if (is.numeric(col_vals)) {
+		if (is.character(col_vals) || is.factor(col_vals)) {
+			  # Escape special regex characters in the search value to treat it as a literal string
+			  val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
+			  col_vals_char <- as.character(col_vals)
+			  
+			  if (op == "exact_match") {
+				# Use anchors ^ and $ for exact match, with ignore.case = TRUE
+				dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+			  } else if (op == "contains") {
+				# Standard contains with ignore.case = TRUE
+				dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
+			  } else {
+				# Fallback to exact match
+				dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+			  }
+			} else if (is.numeric(col_vals)) {
             val_num <- suppressWarnings(as.numeric(val_str))
             if (!is.na(val_num)) {
                 if (op == "greater_than") dt <- dt[col_vals > val_num, ]
