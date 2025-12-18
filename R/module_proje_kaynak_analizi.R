@@ -10,58 +10,60 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
   cols_str <- paste(available_columns, collapse = ", ")
   
   system_instruction <- paste0(
-    "Sen Primavera P6 proje yönetim sisteminde veri filtreleme uzmanısın.\n\n",
-    "MEVCUT SÜTUNLAR: ", cols_str, "\n\n",
-    "ÇIKTI FORMATI (SADECE JSON, HİÇBİR EK AÇIKLAMA YOK):\n",
+    "Sen Primavera P6 (Project Management) verileri konusunda uzman, kıdemli bir veri analistisin. ",
+    "Kullanıcının Türkçe sorduğu doğal dil sorularını analiz ederek yapılandırılmış bir JSON filtreleme sorgusuna dönüştürmekle görevlisin.\n\n",
+    
+    "### ANALİZ EVRENİ VE TERMİNOLOJİ (PRIMAVERA P6)\n",
+    "Kullanıcı şu konularda sorular sorabilir, bunları mevcut sütunlarla eşleştirmen gerekir:\n",
+    "- **Projeler:** Proje Kodu (Project ID), Proje Adı, Durum (Active, Inactive, Planned), EPS.\n",
+    "- **Kaynaklar (Resources):** Kaynak Adı, Kaynak Kodu (Rsrc ID), Kaynak Tipi (Labor, Nonlabor, Material), Unvan, Birim/Departman.\n",
+    "- **Aktiviteler (Activities):** Aktivite Kodu, Adı, WBS (İş Kırılım Yapısı), Başlangıç/Bitiş Tarihleri.\n",
+    "- **Maliyet/Birimler:** Bütçelenen (Budgeted), Gerçekleşen (Actual), Kalan (Remaining) maliyet veya birimler.\n",
+    "- **Tarihler:** Planlanan (Planned), Erken (Early), Geç (Late), Gerçekleşen (Actual) tarihler.\n\n",
+    
+    "### MEVCUT SÜTUNLAR:\n",
+    cols_str, "\n\n",
+    
+    "### GÖREV KURALLARI:\n",
+    "1. **Çoklu Filtreleme:** Kullanıcı birden fazla koşul belirtirse (örn: 'M1 masraf yerinde unvanı mühendis olanlar'), bunların hepsini 'filters' listesine ekle.\n",
+    "2. **Esnek Eşleştirme:** Kullanıcının 'Mühendisler' dediği şeyi veride 'Mühendis' veya 'Engineer' olarak bulabilirsin. 'operation' alanını buna göre seç.\n",
+    "3. **Case Insensitive:** Filtre değerlerini olduğu gibi al, kod tarafında büyük/küçük harf duyarsız arama yapılacaktır.\n",
+    "4. **Aggregation:** Kullanıcı bir özet istiyorsa (sayı, toplam, ortalama), 'aggregation' alanını doldur.\n\n",
+    
+    "### ÇIKTI FORMATI (JSON):\n",
     "{\n",
-    "  \"filter_column\": \"SütunAdı\",\n",
-    "  \"filter_value\": \"AranacakDeğer\",\n",
-    "  \"operation\": \"exact_match\",\n",
+    "  \"filters\": [\n",
+    "    {\"column\": \"SütunAdı\", \"value\": \"Değer\", \"operation\": \"exact_match\"}\n",
+    "  ],\n",
     "  \"aggregation\": \"count\",\n",
     "  \"group_column\": null\n",
     "}\n\n",
-    "SÜTUN SEÇİMİ KURALLARI:\n",
-    "- Proje kodu (P1111, PRJ-001): ProjeKodu, Proje_Kodu, ProjectCode, project_id\n",
-    "- Proje adı: ProjeAdi, Proje_Adi, ProjeIsmi, ProjectName, project_name\n",
-    "- Kaynak kodu/adı: KaynakKodu, Kaynak_Kodu, KaynakAdi, ResourceCode, resource_name\n",
-    "- Faaliyet kodu/adı: FaaliyetKodu, Faaliyet_Kodu, ActivityCode, task_name\n",
-    "- Departman: Departman, Department, Birim\n",
-    "- Durum: Durum, Status, ProjectStatus, proje_durumu\n",
-    "- Bütçe: Butce, Budget, BütçeTutarı, budget_amount\n",
-    "- Tarih: BaslangicTarihi, BitisTarihi, StartDate, FinishDate\n",
-    "- Yönetici: ProjeYoneticisi, Yönetici, ProjectManager, manager_name\n",
-    "- WBS: WBSKodu, WBS_Kodu, WBSAdi\n",
-    "\n",
-    "OPERATION SEÇİMİ:\n",
-    "- Kod/ID eşleşmesi (P1111, RES-001): exact_match\n",
-    "- Ad/metin araması (içeren): contains\n",
-    "- Sayısal karşılaştırma (büyük/küçük): greater_than, less_than\n",
-    "\n",
-    "AGGREGATION SEÇİMİ:\n",
-    "- 'kaç', 'toplam sayı', 'adet': count\n",
-    "- 'listele', 'göster', 'özetle': list\n",
-    "- 'topla', 'sum', 'toplam tutar': sum\n",
-    "- 'grupla', 'kırılımında', 'dağılımı': group_by (group_column belirt)\n",
-    "- 'ortalama': mean\n",
-    "\n",
-    "GROUP_COLUMN SEÇİMİ (aggregation='group_by' ise):\n",
-    "- 'departman bazında': Departman\n",
-    "- 'durum bazında': Durum\n",
-    "- 'yönetici bazında': ProjeYoneticisi\n",
-    "- 'kaynak bazında': KaynakAdi\n",
-    "\n",
-    "ÖRNEKLER:\n",
+    
+    "### OPERATÖRLER ('operation'):\n",
+    "- 'exact_match': Kodlar ve ID'ler için (örn: P101, M1).\n",
+    "- 'contains': İsimler, açıklamalar ve metin aramaları için (örn: 'İnşaat içeren projeler').\n",
+    "- 'greater_than', 'less_than': Sayısal değerler ve tarihler için (örn: 'Bütçesi 1000'den büyük').\n\n",
+    
+    "### AGGREGATION TİPLERİ ('aggregation'):\n",
+    "- 'list': Kayıtları listele (Varsayılan).\n",
+    "- 'count': Kayıt sayısını ver (Kaç adet?).\n",
+    "- 'sum': Sayısal sütunu topla (Toplam bütçe).\n",
+    "- 'group_by': Gruplayarak özetle (Departman bazında dağılım).\n\n",
+    
+    "### ÖRNEKLER:\n",
     "Soru: 'P1111 proje kodlu projeyi özetle'\n",
-    "→ {\"filter_column\":\"ProjeKodu\",\"filter_value\":\"P1111\",\"operation\":\"exact_match\",\"aggregation\":\"list\",\"group_column\":null}\n\n",
-    "Soru: 'Kaç proje aktif durumda?'\n",
-    "→ {\"filter_column\":\"Durum\",\"filter_value\":\"Aktif\",\"operation\":\"exact_match\",\"aggregation\":\"count\",\"group_column\":null}\n\n",
-    "Soru: 'Ali Veli isimli kaynak hangi projelerde çalışıyor?'\n",
-    "→ {\"filter_column\":\"KaynakAdi\",\"filter_value\":\"Ali Veli\",\"operation\":\"contains\",\"aggregation\":\"list\",\"group_column\":null}\n\n",
-    "Soru: 'Departman bazında toplam bütçe nedir?'\n",
-    "→ {\"filter_column\":null,\"filter_value\":null,\"operation\":\"exact_match\",\"aggregation\":\"group_by\",\"group_column\":\"Departman\"}\n\n",
-    "Soru: 'İnşaat kelimesini içeren projeleri listele'\n",
-    "→ {\"filter_column\":\"ProjeAdi\",\"filter_value\":\"İnşaat\",\"operation\":\"contains\",\"aggregation\":\"list\",\"group_column\":null}\n\n",
-    "SADECE JSON DÖNDÜR, BAŞKA HİÇBİR ŞEY YAZMA."
+    "-> {\"filters\":[{\"column\":\"ProjeKodu\",\"value\":\"P1111\",\"operation\":\"exact_match\"}], \"aggregation\":\"list\", \"group_column\":null}\n\n",
+    
+    "Soru: 'M1 masraf yerinde unvanı mühendis olan çalışanları listele'\n",
+    "-> {\"filters\":[{\"column\":\"MasrafYeri\",\"value\":\"M1\",\"operation\":\"exact_match\"}, {\"column\":\"Unvan\",\"value\":\"Mühendis\",\"operation\":\"contains\"}], \"aggregation\":\"list\", \"group_column\":null}\n\n",
+    
+    "Soru: 'Hangi departmanlarda kaç proje var?'\n",
+    "-> {\"filters\":[], \"aggregation\":\"group_by\", \"group_column\":\"Departman\"}\n\n",
+    
+    "Soru: 'Ali Demir hangi projeleri yönetiyor?'\n",
+    "-> {\"filters\":[{\"column\":\"ProjeYoneticisi\",\"value\":\"Ali Demir\",\"operation\":\"contains\"}], \"aggregation\":\"list\", \"group_column\":null}\n\n",
+    
+    "SADECE GEÇERLİ JSON DÖNDÜR. YORUM EKLEME."
   )
   
   messages <- list(
@@ -70,133 +72,68 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
   )
   
   tryCatch({
-	filter_model <- getOption("mergen.filter_model", api_config$local_models[1])
-	creds <- resolve_local_llm_credentials(filter_model)
-
-	api_key_val <- NULL
-	if (!is.null(session) && !is.null(session$userData$ai_api_key)) {
-	  api_key_val <- as.character(session$userData$ai_api_key)[1]
-	}
-
-	if (is.null(api_key_val) || !nzchar(api_key_val)) {
-	  default_key <- creds$default_api_key %||% ""
-	  if (nzchar(default_key)) {
-		api_key_val <- as.character(default_key)[1]
-	  }
-	}
-
-	result <- call_local_llm(messages, list(
-	  model_selection = filter_model,
-	  temperature = 0.05,
-	  max_output_tokens = 300,
-	  enable_mcp_tools = FALSE,
-	  shiny_session = session,
-	  api_key_override = api_key_val
-	))
+    filter_model <- getOption("mergen.filter_model", api_config$local_models[1])
+    creds <- resolve_local_llm_credentials(filter_model)
     
-    if (is.null(result)) {
-      cat("[FILTER_AI] LLM call returned NULL\n")
-      return(list(filter_column = NULL, aggregation = NULL, error = "AI cagirimi basarisiz"))
+    api_key_val <- NULL
+    if (!is.null(session) && !is.null(session$userData$ai_api_key)) {
+      api_key_val <- as.character(session$userData$ai_api_key)[1]
     }
     
-    if (!is.list(result)) {
-      cat("[FILTER_AI] LLM result not a list, class:", class(result), "\n")
-      return(list(filter_column = NULL, aggregation = NULL, error = "Gecersiz AI yanitı"))
+    if (is.null(api_key_val) || !nzchar(api_key_val)) {
+      default_key <- creds$default_api_key %||% ""
+      if (nzchar(default_key)) {
+        api_key_val <- as.character(default_key)[1]
+      }
     }
+    
+    result <- call_local_llm(messages, list(
+      model_selection = filter_model,
+      temperature = 0.0, 
+      max_output_tokens = 400,
+      enable_mcp_tools = FALSE,
+      shiny_session = session,
+      api_key_override = api_key_val
+    ))
+    
+    if (is.null(result)) return(list(filters = list(), aggregation = NULL))
     
     ai_content <- if (is.list(result)) result$content else result
-    
-    if (is.null(ai_content) || !is.character(ai_content) || length(ai_content) == 0) {
-      cat("[FILTER_AI] content NULL veya invalid, fallback\n")
-      return(list(filter_column = NULL, aggregation = NULL))
-    }
+    if (is.null(ai_content) || length(ai_content) == 0) return(list(filters = list(), aggregation = NULL))
     
     ai_text <- as.character(ai_content)[1]
     ai_text <- gsub("```json|```", "", ai_text)
     ai_text <- trimws(ai_text)
     
-    if (!nzchar(ai_text)) {
-      cat("[FILTER_AI] AI boş yanıt verdi, fallback\n")
-      return(list(filter_column = NULL, aggregation = NULL))
-    }
-    
-    cat(sprintf("[FILTER_AI] AI yanıtı: %s\n", substr(ai_text, 1, 200)))
-    
-	parsed <- tryCatch(
+    parsed <- tryCatch(
       jsonlite::fromJSON(ai_text, simplifyVector = FALSE),
-      error = function(e) {
-        cat(sprintf("[FILTER_AI] JSON parse hatasi: %s\n", e$message))
-        cat(sprintf("[FILTER_AI] Problematic text: %s\n", substr(ai_text, 1, 500)))
-        NULL
-      }
+      error = function(e) NULL
     )
     
-    if (is.null(parsed) || !is.list(parsed)) {
-      cat("[FILTER_AI] Parsed NULL veya liste degil\n")
-      cat("[FILTER_AI] AI TEXT:", substr(ai_text, 1, 300), "\n")
-      return(list(filter_column = NULL, aggregation = NULL, error = "JSON parse hatasi"))
+    if (is.null(parsed)) return(list(filters = list(), aggregation = NULL))
+    
+    # Normalize output
+    filters <- parsed$filters
+    if (is.null(filters) || !is.list(filters)) filters <- list()
+    
+    # Single filter fallback (for backward compatibility if AI hallucinates old format)
+    if (!is.null(parsed$filter_column)) {
+        filters <- list(list(
+            column = parsed$filter_column,
+            value = parsed$filter_value,
+            operation = parsed$operation
+        ))
     }
-    
-    required_keys <- c("filter_column", "operation", "aggregation")
-    missing_keys <- setdiff(required_keys, names(parsed))
-    if (length(missing_keys) > 0) {
-      cat("[FILTER_AI] Eksik anahtarlar:", paste(missing_keys, collapse = ", "), "\n")
-    }
-    
-    fc <- parsed$filter_column
-    fv <- parsed$filter_value
-    op <- parsed$operation
-    ag <- parsed$aggregation
-    gc <- parsed$group_column
-    
-    if (!is.null(fc) && is.character(fc) && length(fc) > 0) {
-      fc <- as.character(fc)[1]
-    } else {
-      fc <- NULL
-    }
-    
-    if (!is.null(fv) && length(fv) > 0) {
-      fv <- as.character(fv)[1]
-    } else {
-      fv <- NULL
-    }
-    
-    if (!is.null(op) && is.character(op) && length(op) > 0) {
-      op <- as.character(op)[1]
-    } else {
-      op <- "exact_match"
-    }
-    
-    if (!is.null(ag) && is.character(ag) && length(ag) > 0) {
-      ag <- as.character(ag)[1]
-    } else {
-      ag <- NULL
-    }
-    
-    if (!is.null(gc) && is.character(gc) && length(gc) > 0) {
-      gc <- as.character(gc)[1]
-    } else {
-      gc <- NULL
-    }
-    
-    result_list <- list(
-      filter_column = fc,
-      filter_value = fv,
-      operation = op,
-      aggregation = ag,
-      group_column = gc
-    )
-    
-    cat(sprintf("[FILTER_AI] Başarılı: filter_column=%s, value=%s, op=%s, agg=%s\n",
-                fc %||% "NULL", fv %||% "NULL", op %||% "NULL", ag %||% "NULL"))
-    
-    return(result_list)
+
+    return(list(
+      filters = filters,
+      aggregation = parsed$aggregation,
+      group_column = parsed$group_column
+    ))
     
   }, error = function(e) {
-    cat(sprintf("[FILTER_AI] Genel hata: %s\n", e$message))
-    cat(sprintf("[FILTER_AI] Stack trace:\n"))
-    print(sys.calls())
-    return(list(filter_column = NULL, aggregation = NULL))
+    cat(sprintf("[FILTER_AI] Error: %s\n", e$message))
+    return(list(filters = list(), aggregation = NULL))
   })
 }
 
@@ -207,15 +144,47 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   
   dt <- data.table::as.data.table(data)
   
-  filter_col <- filter_instructions$filter_column
-  filter_val <- filter_instructions$filter_value
-  operation <- filter_instructions$operation %||% "exact_match"
+  filters <- filter_instructions$filters
   aggregation <- filter_instructions$aggregation
   group_col <- filter_instructions$group_column
   
-  if (is.null(filter_col) || !nzchar(as.character(filter_col)[1])) {
+  # --- 1. Filtreleri Uygula (Multiple & Case Insensitive) ---
+  if (!is.null(filters) && length(filters) > 0) {
+    for (f in filters) {
+      col <- f$column
+      val <- f$value
+      op <- f$operation %||% "exact_match"
+      
+      if (!is.null(col) && nzchar(as.character(col)[1]) && col %in% names(dt)) {
+        
+        col_vals <- dt[[col]]
+        val_str <- as.character(val)[1]
+        
+        # Case Insensitive Handling
+        if (is.character(col_vals) || is.factor(col_vals)) {
+            col_vals_lower <- tolower(as.character(col_vals))
+            val_lower <- tolower(val_str)
+            
+            if (op == "exact_match") {
+                dt <- dt[col_vals_lower == val_lower, ]
+            } else if (op == "contains") {
+                dt <- dt[grepl(val_lower, col_vals_lower, fixed = TRUE), ]
+            } else {
+                dt <- dt[col_vals_lower == val_lower, ] # Fallback
+            }
+        } else if (is.numeric(col_vals)) {
+            val_num <- suppressWarnings(as.numeric(val_str))
+            if (!is.na(val_num)) {
+                if (op == "greater_than") dt <- dt[col_vals > val_num, ]
+                else if (op == "less_than") dt <- dt[col_vals < val_num, ]
+                else dt <- dt[col_vals == val_num, ]
+            }
+        }
+      }
+    }
+  } else {
+    # --- Fallback: Keyword Search (Case Insensitive) ---
     cat("[SMART_FILTER] AI filtresi yok, keyword fallback\n")
-    
     matches <- regmatches(user_prompt, gregexpr("\\b[A-Za-z0-9-]{3,}\\b", user_prompt))
     search_terms <- unique(unlist(matches))
     
@@ -227,153 +196,37 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
       }
     }
     
-    if (!length(filtered_terms)) {
-      cat("[SMART_FILTER] Keyword bulunamadı, tüm veri döndürülüyor\n")
-      return(as.data.frame(head(dt, 500)))
-    }
-    
-    cat(sprintf("[SMART_FILTER] Aranan: %s\n", paste(filtered_terms, collapse = ", ")))
-    
-    match_rows <- apply(dt, 1, function(row) {
-      any(sapply(filtered_terms, function(term) {
-        any(grepl(term, row, ignore.case = TRUE))
-      }))
-    })
-    
-    filtered <- dt[match_rows, ]
-    
-    if (nrow(filtered) == 0) {
-      cat("[SMART_FILTER] Eşleşme yok, ilk 100 satır\n")
-      return(as.data.frame(head(dt, 100)))
-    }
-    
-    cat(sprintf("[SMART_FILTER] Keyword sonuç: %d satır\n", nrow(filtered)))
-    return(as.data.frame(head(filtered, 500)))
-  }
-  
-  filter_col_str <- as.character(filter_col)[1]
-  
-  if (!filter_col_str %in% names(dt)) {
-    cat(sprintf("[SMART_FILTER] '%s' sütunu yok, tüm sütunlarda ara\n", filter_col_str))
-    
-    if (!is.null(filter_val) && nzchar(as.character(filter_val)[1])) {
-      fv_str <- as.character(filter_val)[1]
-      match_rows <- apply(dt, 1, function(row) {
-        any(grepl(fv_str, row, ignore.case = TRUE))
-      })
-      dt <- dt[match_rows, ]
-      cat(sprintf("[SMART_FILTER] Tüm sütunlarda '%s' arandı: %d satır\n", fv_str, nrow(dt)))
-    }
-    
-    if (nrow(dt) == 0) {
-      return(data.frame())
-    }
-  } else {
-    if (!is.null(filter_val) && nzchar(as.character(filter_val)[1])) {
-      fv_str <- as.character(filter_val)[1]
-      
-      cat(sprintf("[SMART_FILTER] '%s' sütununda '%s' aranıyor (op: %s)\n", 
-                  filter_col_str, fv_str, operation))
-      
-      if (operation == "exact_match") {
-        dt <- dt[get(filter_col_str) == fv_str]
-      } else if (operation == "contains") {
-        dt <- dt[grepl(fv_str, get(filter_col_str), ignore.case = TRUE)]
-      } else if (operation == "greater_than") {
-        dt <- dt[get(filter_col_str) > as.numeric(fv_str)]
-      } else if (operation == "less_than") {
-        dt <- dt[get(filter_col_str) < as.numeric(fv_str)]
-      } else {
-        dt <- dt[grepl(fv_str, get(filter_col_str), ignore.case = TRUE)]
-      }
-      
-      cat(sprintf("[SMART_FILTER] Filtreleme sonrası: %d satır\n", nrow(dt)))
+    if (length(filtered_terms) > 0) {
+       match_rows <- apply(dt, 1, function(row) {
+         any(sapply(filtered_terms, function(term) {
+           any(grepl(tolower(term), tolower(as.character(row)), fixed = TRUE))
+         }))
+       })
+       dt <- dt[match_rows, ]
+    } else {
+       # If no filter and no keywords, limit default view
+       dt <- head(dt, 500)
     }
   }
   
-  if (nrow(dt) == 0) {
-    cat("[SMART_FILTER] Filtre sonucu boş\n")
-    return(data.frame())
-  }
-  
-if (!is.null(aggregation) && nzchar(as.character(aggregation)[1])) {
-    agg_str <- as.character(aggregation)[1]
+  # --- 2. Aggregation Logic ---
+  if (!is.null(aggregation)) {
+    agg_str <- tolower(aggregation)
     
     if (agg_str == "count") {
-      if (!is.null(group_col) && nzchar(as.character(group_col)[1]) && 
-          as.character(group_col)[1] %in% names(dt)) {
-        gc_str <- as.character(group_col)[1]
-        result <- dt[, .N, by = gc_str]
-        setnames(result, "N", "Adet")
-        result <- result[order(-Adet)]
-        cat(sprintf("[SMART_FILTER] COUNT+GROUP: %d grup (siralanmis)\n", nrow(result)))
-        return(as.data.frame(result))
-      } else {
-        result <- data.frame(
-          Metrik = "Toplam Kayit Sayisi",
-          Deger = nrow(dt)
-        )
-        cat(sprintf("[SMART_FILTER] COUNT: %d kayit\n", nrow(dt)))
-        return(result)
-      }
-    } else if (agg_str == "sum" || agg_str == "mean" || agg_str == "avg") {
-      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
-      if (length(num_cols) == 0) {
-        cat("[SMART_FILTER] UYARI: Sayisal sutun yok, toplama/ortalama yapilamaz\n")
-        return(as.data.frame(head(dt, 100)))
-      }
-      
-      target_col <- num_cols[1]
-      
-      if (!is.null(group_col) && nzchar(as.character(group_col)[1]) && 
-          as.character(group_col)[1] %in% names(dt)) {
-        gc_str <- as.character(group_col)[1]
-        
-        if (agg_str %in% c("sum")) {
-          result <- dt[, .(Toplam = sum(get(target_col), na.rm = TRUE)), by = gc_str]
-        } else {
-          result <- dt[, .(Ortalama = mean(get(target_col), na.rm = TRUE)), by = gc_str]
+      return(data.frame(Sonuc = "Toplam Kayit Sayisi", Adet = nrow(dt)))
+    } else if (agg_str == "sum") {
+        num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+        if (length(num_cols) > 0) {
+            sums <- lapply(num_cols, function(nc) sum(dt[[nc]], na.rm=TRUE))
+            return(as.data.frame(sums))
         }
-        result <- result[order(-get(names(result)[2]))]
-        cat(sprintf("[SMART_FILTER] %s+GROUP: %d grup\n", toupper(agg_str), nrow(result)))
-        return(as.data.frame(result))
-      } else {
-        val <- if (agg_str == "sum") sum(dt[[target_col]], na.rm = TRUE) else mean(dt[[target_col]], na.rm = TRUE)
-        result <- data.frame(
-          Metrik = paste0(ifelse(agg_str == "sum", "Toplam", "Ortalama"), " (", target_col, ")"),
-          Deger = val
-        )
-        cat(sprintf("[SMART_FILTER] %s: %.2f\n", toupper(agg_str), val))
-        return(result)
-      }
-    } else if (agg_str == "group_by" && !is.null(group_col) && 
-               nzchar(as.character(group_col)[1]) && 
-               as.character(group_col)[1] %in% names(dt)) {
-      gc_str <- as.character(group_col)[1]
-      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
-      
-      if (length(num_cols) > 0) {
-        agg_expr <- lapply(num_cols, function(col) {
-          list(sum(get(col), na.rm = TRUE), mean(get(col), na.rm = TRUE))
-        })
-        agg_names <- unlist(lapply(num_cols, function(col) c(paste0("Toplam_", col), paste0("Ort_", col))))
-        names(agg_expr) <- agg_names
-        result <- dt[, c(.N, unlist(agg_expr, recursive = FALSE)), by = gc_str]
-        setnames(result, "N", "Kayit_Sayisi")
-      } else {
-        result <- dt[, .N, by = gc_str]
-        setnames(result, "N", "Kayit_Sayisi")
-      }
-      
-      result <- result[order(-Kayit_Sayisi)]
-      cat(sprintf("[SMART_FILTER] GROUP_BY: %d grup (siralanmis)\n", nrow(result)))
-      return(as.data.frame(result))
+    } else if (agg_str == "group_by" && !is.null(group_col) && group_col %in% names(dt)) {
+        return(as.data.frame(dt[, .N, by = group_col]))
     }
   }
   
-  result <- head(dt, 500)
-  cat(sprintf("[SMART_FILTER] Sonuç: %d satır (limit: 500)\n", nrow(result)))
-  return(as.data.frame(result))
+  return(as.data.frame(dt))
 }
 
 # ==============================================================================
@@ -532,19 +385,30 @@ generate_statistical_summary <- function(data, max_preview_rows = 20) {
   }
   
   if (length(cat_cols) > 0) {
-    cat_summary_list <- lapply(head(cat_cols, 5), function(col) {
+	cat_summary_list <- lapply(head(cat_cols, 5), function(col) {
       tbl <- sort(table(dt[[col]], useNA = "no"), decreasing = TRUE)
       top5 <- head(tbl, 5)
       
+      # FIX: If top5 is empty, return NULL to skip this column
+      if (length(top5) == 0) {
+        return(NULL)
+      }
+      
+      # FIX: Handle potential NA in names explicitly
+      top_name <- names(top5)[1]
+      if (is.null(top_name) || is.na(top_name)) top_name <- "Yok"
+      
       data.frame(
         Sutun = col,
-        EnSikDeger = names(top5)[1],
+        EnSikDeger = top_name,
         Adet = as.integer(top5[1]),
         BenzerSayi = length(unique(dt[[col]])),
         stringsAsFactors = FALSE
       )
     })
     
+    # Remove NULL results before rbind (Prevents list of NULLs crashing rbind)
+    cat_summary_list <- Filter(Negate(is.null), cat_summary_list)
     cat_summary_df <- do.call(rbind, cat_summary_list)
     
     if (!is.null(cat_summary_df) && nrow(cat_summary_df) > 0) {
