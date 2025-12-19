@@ -34,7 +34,6 @@ summarize_columns_for_ai <- function(df) {
 }
 
 extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL) {
-  cat(sprintf("[FILTER_AI] Prompt analiz ediliyor: '%s'\n", user_prompt))
   
   # Veri baglamini olustur (AI'in dogru degerleri gormesi icin)
   cols_summary <- summarize_columns_for_ai(data_context)
