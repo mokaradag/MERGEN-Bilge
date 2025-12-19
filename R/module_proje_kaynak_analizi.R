@@ -287,30 +287,32 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
         }
       }
     }
-  } else {
-    # --- Fallback: Keyword Search (Case Insensitive) ---
-    cat("[SMART_FILTER] AI filtresi yok, keyword fallback\n")
-    matches <- regmatches(user_prompt, gregexpr("\\b[A-Za-z0-9-]{3,}\\b", user_prompt))
-    search_terms <- unique(unlist(matches))
-    
-    filtered_terms <- c()
-    for (term in search_terms) {
-      if ((grepl("[A-Za-z]", term) && grepl("[0-9]", term)) || 
-          (nchar(term) >= 4 && grepl("^[A-Z0-9-]+$", toupper(term)))) {
-        filtered_terms <- c(filtered_terms, term)
-      }
-    }
-    
-    if (length(filtered_terms) > 0) {
-       match_rows <- apply(dt, 1, function(row) {
-         any(sapply(filtered_terms, function(term) {
-           any(grepl(tolower(term), tolower(as.character(row)), fixed = TRUE))
-         }))
-       })
-       dt <- dt[match_rows, ]
+} else {
+    if (!is.null(aggregation) && tolower(aggregation) %in% c("count", "sum", "group_by")) {
+      cat("[SMART_FILTER] Toplama islemi var, filtresiz devam ediliyor\n")
     } else {
-       # If no filter and no keywords, limit default view
-       dt <- head(dt, 500)
+      cat("[SMART_FILTER] AI filtresi yok, keyword fallback\n")
+      matches <- regmatches(user_prompt, gregexpr("\\b[A-Za-z0-9-]{3,}\\b", user_prompt))
+      search_terms <- unique(unlist(matches))
+      
+      filtered_terms <- c()
+      for (term in search_terms) {
+        if ((grepl("[A-Za-z]", term) && grepl("[0-9]", term)) || 
+            (nchar(term) >= 4 && grepl("^[A-Z0-9-]+$", toupper(term)))) {
+          filtered_terms <- c(filtered_terms, term)
+        }
+      }
+      
+      if (length(filtered_terms) > 0) {
+         match_rows <- apply(dt, 1, function(row) {
+           any(sapply(filtered_terms, function(term) {
+             any(grepl(tolower(term), tolower(as.character(row)), fixed = TRUE))
+           }))
+         })
+         dt <- dt[match_rows, ]
+      } else {
+         dt <- head(dt, 500)
+      }
     }
   }
   
