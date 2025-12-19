@@ -4,10 +4,40 @@
 # 0. AKıLLı FİLTRELEME MOTORü (AI-Guided Filtering Engine)
 # ==============================================================================
 
-extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, conn, session = NULL) {
+# AI icin sutun ozetleri olusturan yardimci fonksiyon
+summarize_columns_for_ai <- function(df) {
+  if (is.null(df) || nrow(df) == 0) return("")
+  
+  summary_list <- lapply(names(df), function(col) {
+    vals <- df[[col]]
+    if (all(is.na(vals))) return(sprintf("- %s: (Hepsi NULL)", col))
+    
+    if (is.numeric(vals)) {
+      # Sayisal degeler icin aralik
+      return(sprintf("- %s: (Sayisal, Aralık: %s - %s)", col, min(vals, na.rm=TRUE), max(vals, na.rm=TRUE)))
+    } else if (inherits(vals, "Date") || inherits(vals, "POSIXt")) {
+      # Tarih degerleri icin aralik
+      return(sprintf("- %s: (Tarih, Aralık: %s - %s)", col, min(vals, na.rm=TRUE), max(vals, na.rm=TRUE)))
+    } else {
+      # Kategorik degerler icin unique listesi
+      u_vals <- unique(na.omit(as.character(vals)))
+      # Okunabilirlik icin sirala
+      u_vals <- sort(u_vals)
+      if (length(u_vals) <= 20) {
+        return(sprintf("- %s: [%s]", col, paste(u_vals, collapse = ", ")))
+      } else {
+        return(sprintf("- %s: [%s, ... (+%d deger daha)]", col, paste(head(u_vals, 15), collapse = ", "), length(u_vals) - 15))
+      }
+    }
+  })
+  paste(unlist(summary_list), collapse = "\n")
+}
+
+extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL) {
   cat(sprintf("[FILTER_AI] Prompt analiz ediliyor: '%s'\n", user_prompt))
   
-  cols_str <- paste(available_columns, collapse = ", ")
+  # Veri baglamini olustur (AI'in dogru degerleri gormesi icin)
+  cols_summary <- summarize_columns_for_ai(data_context)
   
   system_instruction <- paste0(
     "Sen Primavera P6 (Project Management) verileri konusunda uzman, kıdemli bir veri analistisin. ",
@@ -21,8 +51,8 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     "- **Maliyet/Birimler:** Bütçelenen (Budgeted), Gerçekleşen (Actual), Kalan (Remaining) maliyet veya birimler.\n",
     "- **Tarihler:** Planlanan (Planned), Erken (Early), Geç (Late), Gerçekleşen (Actual) tarihler.\n\n",
     
-    "### MEVCUT SÜTUNLAR:\n",
-    cols_str, "\n\n",
+    "### MEVCUT SÜTUNLAR VE DEĞER ÖZETLERİ (Filtre degerlerini buradaki gercek verilere gore sec):\n",
+    cols_summary, "\n\n",
     
     "### GÖREV KURALLARI:\n",
     "1. **Çoklu Filtreleme:** Kullanıcı birden fazla koşul belirtirse (örn: 'M1 masraf yerinde unvanı mühendis olanlar'), bunların hepsini 'filters' listesine ekle.\n",
@@ -38,6 +68,13 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     "  \"aggregation\": \"count\",\n",
     "  \"group_column\": null\n",
     "}\n\n",
+	
+	"### ALAN DEĞERLERİ (DOMAIN MAPPINGS):\n",
+    "Bazı alanlar sayısal veya kodlanmış değerler kullanır:\n",
+    "- **AktifKaynak, Durum, Status**: 1 (aktif/yes), 0 (pasif/no)\n",
+    "- **Onay, Approval**: 1 (onaylı), 0 (onaysız)\n",
+    "Kullanıcı 'aktif', 'Y', 'yes' derse → value: '1' kullan.\n",
+    "Kullanıcı 'pasif', 'N', 'no' derse → value: '0' kullan.\n\n",
     
     "### OPERATÖRLER ('operation'):\n",
     "- 'exact_match': Kodlar ve ID'ler için (örn: P101, M1).\n",
@@ -63,6 +100,12 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     "Soru: 'Ali Demir hangi projeleri yönetiyor?'\n",
     "-> {\"filters\":[{\"column\":\"ProjeYoneticisi\",\"value\":\"Ali Demir\",\"operation\":\"contains\"}], \"aggregation\":\"list\", \"group_column\":null}\n\n",
     
+	"Soru: 'Aktif kaynakları göster'\n",
+    "-> {\"filters\":[{\"column\":\"AktifKaynak\",\"value\":\"1\",\"operation\":\"exact_match\"}], \"aggregation\":\"list\", \"group_column\":null}\n\n",
+    
+    "Soru: 'Pasif projeleri listele'\n",
+    "-> {\"filters\":[{\"column\":\"Durum\",\"value\":\"0\",\"operation\":\"exact_match\"}], \"aggregation\":\"list\", \"group_column\":null}\n\n",
+	
     "SADECE GEÇERLİ JSON DÖNDÜR. YORUM EKLEME."
   )
   
@@ -132,6 +175,26 @@ extract_filter_criteria_from_prompt <- function(user_prompt, available_columns, 
     
     filters <- parsed$filters
     if (is.null(filters) || !is.list(filters)) filters <- list()
+	
+	if (length(filters) > 0) {
+      filters <- lapply(filters, function(f) {
+        col_lower <- tolower(f$column %||% "")
+        val_raw <- f$value %||% ""
+        
+        if (grepl("aktif|active|durum|status", col_lower, perl = TRUE)) {
+          val_lower <- tolower(as.character(val_raw))
+          if (val_lower %in% c("y", "yes", "evet", "aktif", "active", "1", "true")) {
+            f$value <- "1"
+            f$operation <- "exact_match"
+          } else if (val_lower %in% c("n", "no", "hayır", "pasif", "passive", "inactive", "0", "false")) {
+            f$value <- "0"
+            f$operation <- "exact_match"
+          }
+        }
+        
+        return(f)
+      })
+    }
     
     if (!is.null(parsed$filter_column)) {
         filters <- list(list(
@@ -642,15 +705,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   cat(sprintf("[PK_ANALIZ] RLS sonrasi: %d satir\n", nrow(secure_data)))
   
   if (nrow(secure_data) == 0) {
-    return(paste0("🔍 **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
+      return(paste0("🔍 **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
   }
-  
-	filter_criteria <- extract_filter_criteria_from_prompt(
-	  user_prompt,
-	  available_columns = names(secure_data),
-	  conn = conn,
-	  session = session
-	)
+    
+    # AI fonksiyonuna veriyi de gonderiyoruz ki degerleri gorebilsin
+    filter_criteria <- extract_filter_criteria_from_prompt(user_prompt, secure_data, available_columns, conn, session)
   
   if (!is.null(filter_criteria$error)) {
     cat(sprintf("[PK_ANALIZ] AI filtreleme hatasi: %s\n", filter_criteria$error))
