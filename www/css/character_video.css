@@ -24,39 +24,67 @@
 /* Video wrapper - kırpma için gerekli */
 /* DÜZELTME: Arkaplan şeffaf yapıldı ki video solduğunda arkadaki resim görünsün */
 .character-video-wrapper {
-  position: relative;
-  width: 383px;
-  height: 620px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   border-radius: 18px;
-  z-index: 2;
-  background: transparent; /* ÖNEMLİ: Resmin görünmesi için şeffaf */
+  z-index: 20;
+  background: transparent;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--video-accent-color, #7C4DFF) 30%, transparent);
   transition: box-shadow 0.5s ease;
+  pointer-events: none;
+}
+
+.character-video-wrapper.active {
+  pointer-events: auto;
 }
 
 /* Video elementi */
 .character-video {
-  /* Orijinal video 720x1280, 57px üst + 57px alt kırpılınca 720x1166 */
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  height: calc(620px * (1280 / 1166));
+  height: calc(100% * (1280 / 1166));
   width: auto;
-  min-width: 383px;
-  object-fit: contain;
-  border-radius: 0;
+  min-width: 100%;
+  object-fit: cover;
+  border-radius: 18px;
   background: transparent;
+  display: none;
+  transition: opacity 0.8s ease-in-out;
+  opacity: 0;
+  z-index: 25;
+}
+
+.character-video.active {
   display: block;
-  /* DÜZELTME: Sinematik geçiş için opacity transition */
-  transition: opacity 1.2s ease-in-out;
   opacity: 1;
 }
 
 /* Videoyu gizle (fade out) - arkadaki resmi açığa çıkarır */
 .character-video.video-fade-out {
   opacity: 0;
+}
+
+.character-static-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 18px;
+  z-index: 10;
+  display: block;
+  opacity: 1;
+  transition: opacity 0.6s ease-in-out;
+}
+
+.character-static-image.hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ============================================

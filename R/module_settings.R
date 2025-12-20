@@ -444,11 +444,18 @@ settingsServer <- function(id, parent_session = NULL) {
       }
     
     # Handle character selection (temporary, not saved)
-    observeEvent(input$character_clicked, {
-      req(input$character_clicked)
-      temp_selected_character(input$character_clicked)
-      update_character_display(input$character_clicked)
-    })
+	observeEvent(input$character_clicked, {
+	  req(input$character_clicked)
+	  char_id <- input$character_clicked
+	  
+	  cat(sprintf("[SETTINGS] Karakter tıklandı: %s\n", char_id))
+	  
+	  temp_selected_character(char_id)
+	  update_character_display(char_id)
+	  
+	  session$sendCustomMessage("updateCharacterVideo", 
+		get_character_video_data(char_id))
+	})
     
     # IMPORTANT: Add observer for external model changes
     observe({
@@ -572,16 +579,20 @@ settingsServer <- function(id, parent_session = NULL) {
     }, ignoreInit = TRUE)
     
     # Save settings button
-    observeEvent(input$save_settings, {
-      # Save the temporary character selection
-      settings$selected_character <- temp_selected_character()
-      
-      # Send message to JS to play the "Select" category video for the current character
-      session$sendCustomMessage("triggerVideoSelection", list(
-        timestamp = as.numeric(Sys.time())
-      ))
-      
-      to_save <- reactiveValuesToList(settings)
+	observeEvent(input$save_settings, {
+	  settings$selected_character <- temp_selected_character()
+	  
+	  cat(sprintf("[SETTINGS] Ayarlar kaydediliyor, seçili karakter: %s\n", 
+				  settings$selected_character))
+	  
+	  Sys.sleep(0.1)
+	  
+	  session$sendCustomMessage("triggerVideoSelection", list(
+		character = settings$selected_character,
+		timestamp = as.numeric(Sys.time())
+	  ))
+	  
+	  to_save <- reactiveValuesToList(settings)
       to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
       to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
       to_save$enable_tts_audio   <- isTRUE(input$enable_tts_audio)
@@ -627,9 +638,12 @@ settingsServer <- function(id, parent_session = NULL) {
     })
     
     # Karakter video modülünü başlat
-    characterVideoServer("character_video", temp_selected_character)
-    
-    # IMPORTANT: Return the settings reactive values directly
-    return(settings)
+	characterVideoServer("character_video", reactive({
+	  char <- temp_selected_character()
+	  cat(sprintf("[SETTINGS] Video modülüne gönderilen karakter: %s\n", char))
+	  char
+	}))
+	  
+	return(settings)
   })
 }

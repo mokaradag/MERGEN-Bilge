@@ -1,19 +1,17 @@
 # R/module_character_video.R
 
 get_character_video_data <- function(char_id) {
-  # Karakter klasör adlari ve resim dosya eslesmeleri
-  # Klasör isimleri kucuk harf varsayilmistir: mergen, ulgen, kayra, erlik, umay
-  
-  char_key <- tolower(char_id)
+  char_key <- tolower(trimws(char_id))
   if (char_key == "umay ana") char_key <- "umay"
   
-  # Resim dosya isimleri haritalamasi
+  cat(sprintf("[VIDEO R] get_character_video_data çağrıldı: '%s' -> '%s'\n", char_id, char_key))
+  
   image_map <- list(
-    "mergen" = "Mergen_resim.original.png",
-    "ulgen" = "Ulgen_resim.original.png",
-    "kayra" = "Kayra_resim.original.png",
-    "erlik" = "Erlik_resim.original.png",
-    "umay" = "Umay_Ana_resim.original.png"
+    "mergen" = "Mergen_resim_original.png",
+    "ulgen" = "Ulgen_resim_original.png",
+    "kayra" = "Kayra_resim_original.png",
+    "erlik" = "Erlik_resim_original.png",
+    "umay" = "Umay_Ana_resim_original.png"
   )
   
   # Resim yolu
@@ -26,21 +24,30 @@ get_character_video_data <- function(char_id) {
   }
   
   # Video dosyalari tarama fonksiyonu
-  scan_videos <- function(type) {
-    # www klasoru kok dizindir, list.files icin tam yol gerekir
-    # Ancak URL icin www kismi atilir
-    sys_dir <- file.path("www", "characters", "video", char_key, type)
-    
-    if (dir.exists(sys_dir)) {
-      files <- list.files(sys_dir, pattern = "\\.(mp4|webm)$", full.names = FALSE)
-      if (length(files) > 0) {
-        return(file.path("characters", "video", char_key, type, files))
-      }
-    }
-    return(character(0))
-  }
+	scan_videos <- function(type) {
+	  sys_dir <- file.path("www", "characters", "video", char_key, type)
+	  
+	  cat(sprintf("[VIDEO R] Taranıyor: %s (var mı: %s)\n", sys_dir, dir.exists(sys_dir)))
+	  
+	  if (!dir.exists(sys_dir)) {
+		return(character(0))
+	  }
+	  
+	  files <- list.files(sys_dir, pattern = "\\.(mp4|webm|MP4|WEBM)$", 
+						 full.names = FALSE, ignore.case = TRUE)
+	  
+	  cat(sprintf("[VIDEO R] Bulunan dosyalar (%s): %s\n", type, 
+				  if(length(files) > 0) paste(files, collapse = ", ") else "YOK"))
+	  
+	  if (length(files) == 0) {
+		return(character(0))
+	  }
+	  
+	  paths <- file.path("characters", "video", char_key, type, files)
+	  return(paths)
+	}
   
-  list(
+  result <- list(
     character = char_key,
     image = image_path,
     videos = list(
@@ -49,6 +56,15 @@ get_character_video_data <- function(char_id) {
       select = scan_videos("select")
     )
   )
+  
+  cat(sprintf("[VIDEO R] Sonuç: char=%s, resim=%s, intro=%d, loop=%d, select=%d\n",
+              result$character,
+              result$image,
+              length(result$videos$intro),
+              length(result$videos$loop),
+              length(result$videos$select)))
+  
+  return(result)
 }
 
 characterVideoUI <- function(id) {
