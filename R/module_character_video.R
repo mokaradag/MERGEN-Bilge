@@ -65,12 +65,13 @@ characterVideoUI <- function(id) {
       id = ns("video_container"),
       class = "cinematic-video-container",
       # Removed inline styles for display/z-index to let CSS handle states
-      tags$video(
+	  tags$video(
         id = ns("character_player"),
         class = "character-video-player",
-        autoplay = FALSE, # Controlled by JS
+        autoplay = FALSE,
         playsinline = TRUE,
-        muted = FALSE
+        muted = FALSE,
+        preload = "none"
       ),
       tags$img(
         id = ns("character_static_img"),

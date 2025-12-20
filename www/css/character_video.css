@@ -43,3 +43,11 @@
   opacity: 1;
   z-index: 20;
 }
+
+.character-video-player::-webkit-media-controls {
+  display: none !important;
+}
+
+.character-video-player {
+  pointer-events: none;
+}

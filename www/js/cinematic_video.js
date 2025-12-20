@@ -47,13 +47,11 @@ const CinematicVideoManager = {
 			const nowOnSettings = this.isSettingsTabActive();
 			
 			if (nowOnSettings) {
-				// Ayarlar'a giriliyor
-				if (this.state.data && !this.state.isPlaying && !this.state.timer) {
+				if (this.state.data) {
 					console.log('[VIDEO] Ayarlar sekmesine girildi, intro başlatılıyor');
 					this.playSequence('intro');
 				}
 			} else {
-				// Ayarlar'dan çıkılıyor - HER ŞEYİ DURDUR
 				console.log('[VIDEO] Ayarlar sekmesinden çıkıldı, tüm oynatma durduruluyor');
 				this.stopEverything();
 			}
@@ -106,28 +104,35 @@ const CinematicVideoManager = {
 		return selected;
 	},
 
-	loadCharacter: function(data) {
-		console.log('[VIDEO] Karakter yükleniyor:', data.character);
+	loadCharacter: function(message) {
+		const data = message.data || message;
+		const trigger = message.trigger || 'auto';
 		
-		// ÖNCE her şeyi durdur
+		console.log('[VIDEO] Karakter yükleniyor:', data.character, 'trigger:', trigger);
+		
 		this.stopEverything();
 		
-		// Durum güncelle
 		this.state.data = data;
 		this.state.currentChar = data.character;
 		
-		// Resmi güncelle
 		if (data.image) {
 			this.elements.image.src = data.image;
-			console.log('[VIDEO] Resim yüklendi:', data.image);
+			this.elements.video.poster = data.image;
+			console.log('[VIDEO] Resim ve poster yüklendi:', data.image);
 		}
 		
-		// Küçük gecikme ile intro başlat (DOM güncellemesi için)
-		setTimeout(() => {
+		const playIntro = () => {
 			if (this.isSettingsTabActive()) {
+				console.log('[VIDEO] Intro oynatılıyor, trigger:', trigger);
 				this.playSequence('intro');
 			}
-		}, 100);
+		};
+		
+		if (trigger === 'click') {
+			playIntro();
+		} else {
+			setTimeout(playIntro, 100);
+		}
 	},
 
     playSequence: function(type) {
@@ -151,13 +156,15 @@ const CinematicVideoManager = {
         this.showVideo(videoSrc);
     },
 
-    showVideo: function(src) {
+	showVideo: function(src) {
         if (!this.elements.video) return;
+        
+        console.log('[VIDEO] Video gösteriliyor:', src);
 
-        // Apply CSS class to container to handle transitions (Image fades out, Video fades in)
         this.elements.container.classList.add('video-playing');
         
         this.elements.video.src = src;
+        this.elements.video.load();
         this.state.isPlaying = true;
         
         const playPromise = this.elements.video.play();

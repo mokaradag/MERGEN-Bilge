@@ -453,8 +453,13 @@ settingsServer <- function(id, parent_session = NULL) {
 	  temp_selected_character(char_id)
 	  update_character_display(char_id)
 	  
-	  session$sendCustomMessage("updateCharacterVideo", 
-		get_character_video_data(char_id))
+	  Sys.sleep(0.05)
+	  
+	  session$sendCustomMessage("updateCharacterVideo", list(
+		data = get_character_video_data(char_id),
+		trigger = "click",
+		timestamp = as.numeric(Sys.time())
+	  ))
 	})
     
     # IMPORTANT: Add observer for external model changes
