@@ -114,15 +114,7 @@ server <- function(input, output, session) {
 
   # --- Module Server Initialization (Yukarı Taşındı) ---
   settings_data <- settingsServer("settings_module", parent_session = session)
-  
-	# Karakter değişimini izle
-	observeEvent(settings_data$selected_character, {
-	  char_id <- settings_data$selected_character
-	  cat(sprintf("[SERVER] Karakter değişti: %s\n", char_id))
-	  video_data <- get_character_video_data(char_id)
-	  session$sendCustomMessage("updateCharacterVideo", video_data)
-	}, ignoreInit = FALSE)
-  
+    
   observeEvent(input$`settings_module-open_api_key_modal`, {
     api_key$open("API Anahtarı Güncelleme")
   }, ignoreInit = TRUE)
