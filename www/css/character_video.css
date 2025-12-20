@@ -30,6 +30,9 @@
 .character-video-player {
   z-index: 10;
   opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.8s ease-in-out, visibility 0.8s linear; 
 }
 
 /* Active State: Video is playing */
@@ -41,6 +44,7 @@
 
 .cinematic-video-container.video-playing .character-video-player {
   opacity: 1;
+  visibility: visible;
   z-index: 20;
 }
 

@@ -29,6 +29,16 @@ const CinematicVideoManager = {
             console.error('[VIDEO] Critical elements missing in DOM.');
             return;
         }
+		
+        this.elements.image.onerror = () => {
+            console.warn('[VIDEO] Image failed to load. Hiding element to prevent broken icon.');
+            this.elements.image.style.opacity = '0';
+            this.elements.video.poster = "";
+        };
+        
+        this.elements.image.onload = () => {
+            this.elements.image.style.opacity = '1';
+        };
 
         this.elements.video.muted = false;
         this.elements.video.volume = 1.0;
