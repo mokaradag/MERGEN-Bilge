@@ -1,186 +1,173 @@
 /* www/js/cinematic_video.js */
 
-// Global State for Cinematic Video System
 const CinematicVideoManager = {
-    state: 'idle', // idle, playing_intro, playing_loop, playing_select
-    playlist: null,
-    elements: null,
-    currentLoopIndex: 0,
-    loopTimer: null,
-    observer: null,
-    
-    init: function(data) {
-        this.clearTimers();
-        
-        // Clean up previous observer if exists
-        if (this.observer) {
-            this.observer.disconnect();
-            this.observer = null;
-        }
-        
-        this.elements = {
-            video: document.getElementById(data.videoElementId),
-            overlay: document.getElementById(data.overlayId),
-            container: document.getElementById(data.containerId)
-        };
-        
-        if (!this.elements.video || !this.elements.overlay) return;
-
-        this.playlist = data.playlist;
-        
-        // Accent color setup
-        if (data.accentColor && this.elements.overlay) {
-            this.elements.overlay.style.setProperty('--video-accent-color', data.accentColor);
-        }
-        
-        // Ensure overlay is visible
-        this.elements.overlay.style.display = 'flex';
-        requestAnimationFrame(() => {
-             this.elements.overlay.classList.add('is-active');
-        });
-        
-        // Setup events
-        this.setupVideoEvents();
-        this.setupVisibilityObserver();
-        
-        // DÜZELTME: Mod 'intro' ise hemen oynatmaya başla
-        if (data.mode === 'intro') {
-            console.log("Playing intro for:", data.mode);
-            this.playCategory('intro');
-        }
+    state: {
+        currentChar: null,
+        data: null,
+        timer: null,
+        isPlaying: false
     },
-    
-    setupVisibilityObserver: function() {
-        const self = this;
-        this.observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (!entry.isIntersecting) {
-                    // Page Hidden: clear loop timers
-                    self.clearTimers();
-                } else {
-                    // Page Visible: if state was loop and no video is playing, restart loop
-                    if (self.state === 'playing_loop' && self.elements.video.paused) {
-                        self.playCategory('loop');
-                    }
-                }
-            });
-        }, { threshold: 0.1 });
-        
+    elements: {
+        video: null,
+        image: null
+    },
+    config: {
+        imageDisplayDuration: 3000 // Resim goruntulenme suresi (ms)
+    },
+
+    init: function(config) {
+        this.elements.video = document.getElementById(config.videoElementId);
+        this.elements.image = document.getElementById(config.imageElementId);
+
         if (this.elements.video) {
-            this.observer.observe(this.elements.video);
-        }
-    },
-    
-    setupVideoEvents: function() {
-        const vid = this.elements.video;
-        const newVid = vid.cloneNode(true);
-        vid.parentNode.replaceChild(newVid, vid);
-        this.elements.video = newVid;
-        
-        if (this.observer) {
-            this.observer.observe(newVid);
-        }
-        
-        const self = this;
-        
-        // Event: Video Ends
-        this.elements.video.addEventListener('ended', function() {
-            self.handleVideoEnd();
-        });
-        
-        // Event: Can Play (Cinematic Fade In)
-        this.elements.video.addEventListener('canplay', function() {
-            self.elements.video.play().then(() => {
-                // Video hazır, fade-in yap
-                self.elements.overlay.classList.add('is-playing');
-                self.elements.overlay.classList.remove('is-ended');
-                self.elements.video.classList.remove('video-fade-out');
-            }).catch(e => console.warn("Auto-play prevented", e));
-        });
-        
-        this.elements.video.addEventListener('error', function() {
-            console.error("Video load error, skipping...");
-            self.handleVideoEnd(); 
-        });
-    },
-    
-    playCategory: function(category) {
-        if (!this.playlist || !this.playlist[category]) return;
-        
-        // If element hidden, don't start
-        if (!this.isElementVisible(this.elements.video)) return;
-        
-        this.state = 'playing_' + category;
-        
-        const files = Array.isArray(this.playlist[category]) ? this.playlist[category] : [this.playlist[category]];
-        if (files.length === 0) return;
-        
-        // Random selection
-        const selectedSrc = files[Math.floor(Math.random() * files.length)];
-        
-        this.transitionToVideo(selectedSrc);
-    },
-    
-    transitionToVideo: function(src) {
-        const vid = this.elements.video;
-        if (!vid) return;
-
-        // 1. Cinematic Fade Out: Video opacity -> 0. 
-        // Arkadaki resim (Mergen_resim_original.png vb.) görünür hale gelir.
-        vid.classList.add('video-fade-out');
-        
-        // 2. Wait for transition (1.2s CSS transition matches)
-        setTimeout(() => {
-            if (this.isElementVisible(vid)) {
-                vid.src = src; 
-                // src değişince 'canplay' tetiklenecek -> play() -> fade-in
-            }
-        }, 1200); 
-    },
-    
-    handleVideoEnd: function() {
-        if (!this.isElementVisible(this.elements.video)) return;
-        
-        if (this.state === 'playing_intro') {
-            // Intro bitti -> Loop'a geç
-            this.playCategory('loop');
-        } 
-        else if (this.state === 'playing_select') {
-             // Selection bitti -> Loop'a dön veya dur (İsteğe bağlı, Loop daha canlı hissettirir)
-            this.playCategory('loop');
-        } 
-        else if (this.state === 'playing_loop') {
-            // Loop bitti -> Fade out yap, bekle, yeni loop
-            this.elements.video.classList.add('video-fade-out'); // Resim görünür
+            // Videolarin sesini ac
+            this.elements.video.muted = false;
             
-            const waitTime = Math.random() * 3000 + 2000; // 2-5 sn resim göster
-            this.loopTimer = setTimeout(() => {
-                this.playCategory('loop');
-            }, waitTime);
+            // Video bittiginde ne yapilacagini yonet
+            this.elements.video.onended = () => {
+                this.handleVideoEnd();
+            };
+        }
+        
+        // Tab degisikligini dinle (Ayarlar sayfasi kontrolu icin)
+        $(document).on('shown.bs.tab', 'a[data-toggle="tab"]', (e) => {
+            if (this.isSettingsTabActive()) {
+                // Eger Ayarlar sayfasina donulduyse ve video oynamiyorsa, donguyu baslat
+                // Ancak kullanici istegi: Ayarlar acildiginda intro oynamali
+                if (this.state.data) {
+                    this.playSequence('intro');
+                }
+            }
+        });
+    },
+
+    isSettingsTabActive: function() {
+        // Aktif tabin data-value degerini kontrol et
+        const activeTab = document.querySelector('.sidebar-menu li.active a');
+        return activeTab && (activeTab.getAttribute('data-value') === 'settings' || activeTab.getAttribute('data-value') === 'tab_settings');
+    },
+
+    // Rastgele video secimi
+    getRandomVideo: function(type) {
+        if (!this.state.data || !this.state.data.videos || !this.state.data.videos[type]) return null;
+        const videos = this.state.data.videos[type];
+        if (videos.length === 0) return null;
+        return videos[Math.floor(Math.random() * videos.length)];
+    },
+
+    // Yeni karakter verisi yuklendiginde
+    loadCharacter: function(data) {
+        // Eski islemleri durdur
+        this.stopEverything();
+        
+        this.state.data = data;
+        this.state.currentChar = data.character;
+        
+        // Intro ile basla
+        this.playSequence('intro');
+    },
+
+    // Belirli bir video turunu oynat
+    playSequence: function(type) {
+        this.clearTimer();
+        
+        const videoSrc = this.getRandomVideo(type);
+        
+        // Eger video yoksa sadece resmi goster
+        if (!videoSrc) {
+            this.showImage();
+            return;
+        }
+
+        // Simdi videoyu oynat
+        this.state.lastVideoType = type; // Hangi tur video oynadigini kaydet
+        this.showVideo(videoSrc);
+    },
+
+    showVideo: function(src) {
+        if (!this.elements.video) return;
+
+        this.elements.image.style.display = 'none';
+        this.elements.video.style.display = 'block';
+        this.elements.video.src = src;
+        this.elements.video.muted = false; // Ses acik
+        
+        const playPromise = this.elements.video.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.warn("Video oynatma hatasi:", error);
+                // Hata olursa resme don
+                this.showImage();
+            });
         }
     },
-    
-    isElementVisible: function(el) {
-        if (!el) return false;
-        return (el.offsetParent !== null);
+
+    showImage: function() {
+        if (!this.elements.image || !this.state.data) return;
+
+        this.elements.video.style.display = 'none';
+        this.elements.image.src = this.state.data.image;
+        this.elements.image.style.display = 'block';
+        
+        // Resmi gosterirken sesi kapat/videoyu durdur
+        this.elements.video.pause();
     },
-    
-    triggerSelection: function() {
-        this.clearTimers();
-        this.playCategory('select');
+
+    handleVideoEnd: function() {
+        // Video bitti, resmi goster
+        this.showImage();
+
+        // Son oynatilan video turune gore karar ver
+        if (this.state.lastVideoType === 'intro' || this.state.lastVideoType === 'select') {
+            // Intro veya Select bitti -> Resim goster -> Sonra Loop
+            this.scheduleNextLoop();
+        } else if (this.state.lastVideoType === 'loop') {
+            // Loop bitti -> Resim goster -> Sonra tekrar Loop (Eger hala ayarlar sayfasindaysa)
+            this.scheduleNextLoop();
+        }
     },
-    
-    clearTimers: function() {
-        if (this.loopTimer) clearTimeout(this.loopTimer);
+
+    scheduleNextLoop: function() {
+        // Eger baska sayfadaysak yeni video kuyruklama
+        if (!this.isSettingsTabActive()) return;
+
+        this.clearTimer();
+        
+        // Bir sure resmi goster, sonra loop videosuna gec
+        this.state.timer = setTimeout(() => {
+            // Sure doldugunda hala ayarlar sayfasinda miyiz kontrol et
+            if (this.isSettingsTabActive()) {
+                this.playSequence('loop');
+            }
+        }, this.config.imageDisplayDuration);
+    },
+
+    // Ayarlari Kaydet tetikleyicisi
+    playSelectSequence: function() {
+        this.playSequence('select');
+    },
+
+    stopEverything: function() {
+        this.clearTimer();
+        if (this.elements.video) {
+            this.elements.video.pause();
+            this.elements.video.currentTime = 0;
+        }
+    },
+
+    clearTimer: function() {
+        if (this.state.timer) {
+            clearTimeout(this.state.timer);
+            this.state.timer = null;
+        }
     }
 };
 
-$(document).ready(function() {
-    Shiny.addCustomMessageHandler('initCharacterVideoSystem', function(data) {
-        CinematicVideoManager.init(data);
-    });
+// Shiny mesaj dinleyicileri
+Shiny.addCustomMessageHandler('updateCharacterVideo', function(data) {
+    CinematicVideoManager.loadCharacter(data);
+});
 
-    Shiny.addCustomMessageHandler('triggerVideoSelection', function(data) {
-        CinematicVideoManager.triggerSelection();
-    });
+Shiny.addCustomMessageHandler('triggerVideoSelection', function(message) {
+    CinematicVideoManager.playSelectSequence();
 });

@@ -1,135 +1,99 @@
 # R/module_character_video.R
-# Karakter Video Modülü - Ayarlar sayfasında video oynatma işlevselliği
 
-#' Karakter video verilerini döndürür (Gelişmiş Kategorili Yapı)
-#' @return Karakter video bilgilerini ve dosya listelerini içeren liste
-get_character_videos <- function() {
-  # Karakterlerin listesi ve renkleri
-  chars <- list(
-    mergen = "#7C4DFF",
-    ulgen = "#2F6DF6",
-    kayra = "#12A97B",
-    erlik = "#B66A2C",
-    umay = "#E98686"
+get_character_video_data <- function(char_id) {
+  # Karakter klasör adlari ve resim dosya eslesmeleri
+  # Klasör isimleri kucuk harf varsayilmistir: mergen, ulgen, kayra, erlik, umay
+  
+  char_key <- tolower(char_id)
+  if (char_key == "umay ana") char_key <- "umay"
+  
+  # Resim dosya isimleri haritalamasi
+  image_map <- list(
+    "mergen" = "Mergen_resim.original.png",
+    "ulgen" = "Ulgen_resim.original.png",
+    "kayra" = "Kayra_resim.original.png",
+    "erlik" = "Erlik_resim.original.png",
+    "umay" = "Umay_Ana_resim.original.png"
   )
   
-  video_db <- list()
-  
-  for (char_id in names(chars)) {
-    # Klasör yolları (www/ olmadan relative path)
-    base_path_www <- file.path("www", "characters", "video", char_id)
-    
-    # Yardımcı fonksiyon: Klasördeki mp4'leri listele
-    get_files <- function(category) {
-      path <- file.path(base_path_www, category)
-      if (dir.exists(path)) {
-        files <- list.files(path, pattern = "\\.mp4$", full.names = FALSE)
-        if (length(files) > 0) {
-          # Browser için 'www' prefixini kaldırıp path oluştur
-          return(file.path("characters", "video", char_id, category, files))
-        }
-      }
-      return(character(0))
-    }
-    
-    # 3 Kategoriyi tara
-    intro_videos <- get_files("intro")
-    loop_videos <- get_files("loop")
-    select_videos <- get_files("select")
-    
-    # Eğer alt klasörler boşsa eski usül tek dosya fallback (Geriye uyumluluk)
-    legacy_video <- file.path("characters", "video", paste0(tools::toTitleCase(char_id), "_video.mp4"))
-    
-    # Veri yapısını oluştur
-    video_db[[char_id]] <- list(
-      id = char_id,
-      accent = chars[[char_id]],
-      # JS tarafına gönderilecek playlist
-      playlist = list(
-        intro = if(length(intro_videos) > 0) intro_videos else legacy_video,
-        loop = if(length(loop_videos) > 0) loop_videos else legacy_video,
-        select = if(length(select_videos) > 0) select_videos else legacy_video
-      )
-    )
+  # Resim yolu
+  img_filename <- image_map[[char_key]]
+  if (is.null(img_filename)) {
+    # Varsayilan veya hata durumu
+    image_path <- ""
+  } else {
+    image_path <- file.path("characters", "resim", img_filename)
   }
   
-  return(video_db)
-}
-
-#' Karakter video UI bileşeni
-#' @param id Namespace ID
-#' @return Video container UI
-characterVideoUI <- function(id) {
-  ns <- NS(id)
+  # Video dosyalari tarama fonksiyonu
+  scan_videos <- function(type) {
+    # www klasoru kok dizindir, list.files icin tam yol gerekir
+    # Ancak URL icin www kismi atilir
+    sys_dir <- file.path("www", "characters", "video", char_key, type)
+    
+    if (dir.exists(sys_dir)) {
+      files <- list.files(sys_dir, pattern = "\\.(mp4|webm)$", full.names = FALSE)
+      if (length(files) > 0) {
+        return(file.path("characters", "video", char_key, type, files))
+      }
+    }
+    return(character(0))
+  }
   
-  tagList(
-    # Video container - gelişmiş efektler ile
-    div(
-      id = ns("video_overlay"),
-      class = "character-video-overlay",
-      style = "display: none;",
-      
-      # Enerji dalgası efekti
-      div(class = "energy-wave"),
-      
-      # Işık hüzmeleri
-      div(class = "light-beam beam-1"),
-      div(class = "light-beam beam-2"),
-      div(class = "light-beam beam-3"),
-      div(class = "light-beam beam-4"),
-      
-      # Ateş parçacıkları JS tarafından eklenecek
-      
-      # Video wrapper - kırpma için
-      div(
-        class = "character-video-wrapper",
-        # Video elementi - varsayılan ses AÇIK
-        tags$video(
-          id = ns("character_video"),
-          class = "character-video",
-          playsinline = TRUE,
-          preload = "auto",
-          muted = FALSE # Ses açık
-        )
-      )
-      # Mute butonu kaldırıldı
+  list(
+    character = char_key,
+    image = image_path,
+    videos = list(
+      intro = scan_videos("intro"),
+      loop = scan_videos("loop"),
+      select = scan_videos("select")
     )
   )
 }
 
-#' Karakter video sunucu modülü
-#' @param id Namespace ID
-#' @param character_selected Seçili karakter reactive değeri
-characterVideoServer <- function(id, character_selected) {
+characterVideoUI <- function(id) {
+  ns <- NS(id)
+  tagList(
+    tags$div(
+      id = ns("video_container"),
+      class = "cinematic-video-container",
+      style = "position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 10px;",
+      tags$video(
+        id = ns("character_player"),
+        class = "character-video-player",
+        style = "width: 100%; height: 100%; object-fit: cover; display: none;",
+        autoplay = TRUE,
+        playsinline = TRUE
+      ),
+      tags$img(
+        id = ns("character_static_img"),
+        class = "character-static-image",
+        style = "width: 100%; height: 100%; object-fit: cover; display: block;",
+        src = "" 
+      )
+    ),
+    tags$script(sprintf("
+      $(document).ready(function() {
+        CinematicVideoManager.init({
+          videoElementId: '%s',
+          imageElementId: '%s'
+        });
+      });
+    ", ns("character_player"), ns("character_static_img")))
+  )
+}
+
+characterVideoServer <- function(id, selected_character_trigger) {
   moduleServer(id, function(input, output, session) {
-    ns <- session$ns
     
-    # Video verilerini dinamik olarak yükle
-    video_data <- reactive({ get_character_videos() })
+    # Karakter degistiginde verileri guncelle ve introyu baslat
+    observeEvent(selected_character_trigger(), {
+      char_id <- selected_character_trigger()
+      video_data <- get_character_video_data(char_id)
+      session$sendCustomMessage("updateCharacterVideo", video_data)
+    })
     
-    # 1. Karakter değiştiğinde (Intro -> Loop başlar)
-    observeEvent(character_selected(), {
-      char_id <- character_selected()
-      req(char_id)
-      
-      # ID Normalizasyonu
-      char_key <- gsub("_ana$", "", char_id, ignore.case = TRUE)
-      if (char_key == "umay ana") char_key <- "umay"
-      char_key <- tolower(gsub(" ", "", char_key))
-      
-      char_info <- video_data()[[char_key]]
-      
-      if (!is.null(char_info)) {
-        session$sendCustomMessage("initCharacterVideoSystem", list(
-          videoElementId = ns("character_video"),
-          overlayId = ns("video_overlay"),
-          playlist = char_info$playlist,     # Tüm listeleri gönder
-          accentColor = char_info$accent,
-          containerId = paste0(gsub("-character_video$", "", id), "-character_image_area"),
-          mode = "intro" # Her seçimde Intro ile başla
-        ))
-      }
-    }, ignoreInit = FALSE) # DÜZELTME: ignoreInit = FALSE yapıldı, böylece sayfa ilk açıldığında da çalışır.
-    
+    # Ayarlari Kaydet butonuna basildiginda
+    # Not: module_settings.R icindeki triggerVideoSelection mesaji JS tarafindan dinlenir
   })
 }
