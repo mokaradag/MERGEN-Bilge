@@ -24,25 +24,26 @@ get_character_video_data <- function(char_id) {
   }
   
   # Video dosyalari tarama fonksiyonu
-  scan_videos <- function(type) {
-    sys_dir <- file.path("www", "characters", "video", char_key, type)
-    
-    if (!dir.exists(sys_dir)) {
-      return(character(0))
-    }
-    
-    files <- list.files(sys_dir, pattern = "\\.(mp4|webm|MP4|WEBM)$", 
-                        full.names = FALSE, ignore.case = TRUE)
-    
-    cat(sprintf("[VIDEO R] %s - %s: %d dosya\n", char_key, type, length(files)))
-    
-    if (length(files) == 0) {
-      return(character(0))
-    }
-    
-    paths <- file.path("characters", "video", char_key, type, files)
-    return(paths)
-  }
+	scan_videos <- function(type) {
+	  sys_dir <- file.path("www", "characters", "video", char_key, type)
+	  
+	  if (!dir.exists(sys_dir)) {
+		return(list())  # Boş liste döndür (JSON'da [])
+	  }
+	  
+	  files <- list.files(sys_dir, pattern = "\\.(mp4|webm|MP4|WEBM)$", 
+						  full.names = FALSE, ignore.case = TRUE)
+	  
+	  cat(sprintf("[VIDEO R] %s - %s: %d dosya bulundu\n", char_key, type, length(files)))
+	  
+	  if (length(files) == 0) {
+		return(list())  # Boş liste
+	  }
+	  
+	  paths <- file.path("characters", "video", char_key, type, files)
+	  
+	  as.list(paths)
+	}
   
   result <- list(
     character = char_key,

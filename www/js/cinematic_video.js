@@ -42,19 +42,22 @@ const CinematicVideoManager = {
             if (document.hidden) this.pauseIfPlaying();
         });
 
-        // Tab switching handling (Stop if leaving Settings, Play if entering)
-        $(document).on('shown.bs.tab', 'a[data-toggle="tab"]', (e) => {
-            if (this.isSettingsTabActive()) {
-                if (this.state.data && !this.state.isPlaying) {
-                    // Resume cycle or play intro if just entering
-                     if (!this.state.timer && !this.state.isPlaying) {
-                        this.playSequence('intro');
-                     }
-                }
-            } else {
-                this.stopEverything();
-            }
-        });
+		// Sekme değişimini izle
+		$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', (e) => {
+			const nowOnSettings = this.isSettingsTabActive();
+			
+			if (nowOnSettings) {
+				// Ayarlar'a giriliyor
+				if (this.state.data && !this.state.isPlaying && !this.state.timer) {
+					console.log('[VIDEO] Ayarlar sekmesine girildi, intro başlatılıyor');
+					this.playSequence('intro');
+				}
+			} else {
+				// Ayarlar'dan çıkılıyor - HER ŞEYİ DURDUR
+				console.log('[VIDEO] Ayarlar sekmesinden çıkıldı, tüm oynatma durduruluyor');
+				this.stopEverything();
+			}
+		});
 
         console.log('[VIDEO] CinematicVideoManager initialized.');
     },
@@ -72,51 +75,60 @@ const CinematicVideoManager = {
                href === '#shiny-tab-settings';
     },
 
-    getRandomVideo: function(type) {
-        if (!this.state.data?.videos?.[type]) {
-            console.warn(`[VIDEO] No video category found for: ${type}`);
-            return null;
-        }
-        
-        let videos = this.state.data.videos[type];
-        
-        // FIX: Handle case where single file is returned as string instead of array
-        if (!Array.isArray(videos)) {
-            // If it's a string (path), wrap it in an array
-            if (typeof videos === 'string' && videos.length > 0) {
-                videos = [videos];
-            } else {
-                // Empty or invalid
-                console.warn(`[VIDEO] Video list for '${type}' is empty or invalid.`);
-                return null;
-            }
-        }
-        
-        if (videos.length === 0) return null;
-        
-        const selected = videos[Math.floor(Math.random() * videos.length)];
-        console.log(`[VIDEO] Selected '${type}' video:`, selected);
-        return selected;
-    },
+	getRandomVideo: function(type) {
+		if (!this.state.data?.videos?.[type]) {
+			console.warn(`[VIDEO] '${type}' kategorisi bulunamadı`);
+			return null;
+		}
+		
+		let videos = this.state.data.videos[type];
+		
+		// Boş veya geçersiz kontrolü
+		if (!videos || (Array.isArray(videos) && videos.length === 0)) {
+			console.warn(`[VIDEO] '${type}' için video listesi boş`);
+			return null;
+		}
+		
+		// Tek string ise diziye dönüştür
+		if (typeof videos === 'string' && videos.length > 0) {
+			videos = [videos];
+		}
+		
+		// Hâlâ array değilse hata
+		if (!Array.isArray(videos)) {
+			console.error(`[VIDEO] '${type}' geçersiz format:`, typeof videos);
+			return null;
+		}
+		
+		// Rastgele seç
+		const selected = videos[Math.floor(Math.random() * videos.length)];
+		console.log(`[VIDEO] '${type}' seçildi:`, selected);
+		return selected;
+	},
 
-    loadCharacter: function(data) {
-        console.log('[VIDEO] Loading Character:', data.character);
-        
-        // 1. Stop any current playback immediately
-        this.stopEverything();
-        
-        // 2. Update State
-        this.state.data = data;
-        this.state.currentChar = data.character;
-        
-        // 3. Update Image
-        if (data.image) {
-            this.elements.image.src = data.image;
-        }
-        
-        // 4. Start Intro immediately
-        this.playSequence('intro');
-    },
+	loadCharacter: function(data) {
+		console.log('[VIDEO] Karakter yükleniyor:', data.character);
+		
+		// ÖNCE her şeyi durdur
+		this.stopEverything();
+		
+		// Durum güncelle
+		this.state.data = data;
+		this.state.currentChar = data.character;
+		
+		// Resmi güncelle
+		if (data.image) {
+			this.elements.image.src = data.image;
+			console.log('[VIDEO] Resim yüklendi:', data.image);
+		}
+		
+		// Küçük gecikme ile intro başlat (DOM güncellemesi için)
+		setTimeout(() => {
+			if (this.isSettingsTabActive()) {
+				this.playSequence('intro');
+			}
+		}, 100);
+	},
 
     playSequence: function(type) {
         if (!this.isSettingsTabActive()) {
