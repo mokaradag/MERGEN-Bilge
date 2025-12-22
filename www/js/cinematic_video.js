@@ -249,16 +249,12 @@ const CinematicVideoManager = {
         this.playSequence('select');
     },
 
-	stopEverything: function() {
+    stopEverything: function() {
         this.clearTimer();
         this.pauseVideo();
         this.showImage();
         this.state.isPlaying = false;
         this.state.lastVideoType = null;
-        
-        if (typeof CharacterBorderEffects !== 'undefined') {
-            CharacterBorderEffects.destroy();
-        }
     },
 
     clearTimer: function() {
