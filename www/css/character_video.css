@@ -6,10 +6,9 @@
   height: 100%;
   overflow: hidden;
   border-radius: 10px;
-  background-color: #000; /* Prevents white flashes during transitions */
+  background-color: #000;
 }
 
-/* Both elements occupy the full container */
 .character-video-player,
 .character-static-image {
   position: absolute;
@@ -18,10 +17,9 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: opacity 0.8s ease-in-out; /* Cinematic fade duration */
+  transition: opacity 0.8s ease-in-out;
 }
 
-/* Default State: Image is visible on top */
 .character-static-image {
   z-index: 20;
   opacity: 1;
@@ -35,8 +33,6 @@
   transition: opacity 0.8s ease-in-out, visibility 0.8s linear; 
 }
 
-/* Active State: Video is playing */
-/* We add the 'video-playing' class to the container via JS */
 .cinematic-video-container.video-playing .character-static-image {
   opacity: 0;
   z-index: 10;
@@ -54,4 +50,70 @@
 
 .character-video-player {
   pointer-events: none;
+}
+
+.character-border-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 30;
+  pointer-events: none;
+  border-radius: 10px;
+}
+
+.cinematic-video-container::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, 
+    var(--char-accent, #7C4DFF) 0%, 
+    var(--char-hover, #8E66FF) 50%, 
+    var(--char-active, #6A3BE6) 100%);
+  border-radius: 12px;
+  z-index: 5;
+  opacity: 0;
+  animation: borderPulse 3s ease-in-out infinite;
+}
+
+.cinematic-video-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 10px;
+  box-shadow: 
+    0 0 20px var(--char-accent, #7C4DFF),
+    0 0 40px var(--char-accent, #7C4DFF),
+    inset 0 0 20px rgba(0,0,0,0.3);
+  z-index: 25;
+  pointer-events: none;
+  opacity: 0.6;
+  animation: glowPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes borderPulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.01);
+  }
+}
+
+@keyframes glowPulse {
+  0% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0.8;
+  }
 }

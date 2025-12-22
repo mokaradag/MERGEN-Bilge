@@ -64,8 +64,11 @@ characterVideoUI <- function(id) {
     tags$div(
       id = ns("video_container"),
       class = "cinematic-video-container",
-      # Removed inline styles for display/z-index to let CSS handle states
-	  tags$video(
+      tags$canvas(
+        id = "character-border-canvas",
+        class = "character-border-canvas"
+      ),
+      tags$video(
         id = ns("character_player"),
         class = "character-video-player",
         autoplay = FALSE,
@@ -93,13 +96,24 @@ characterVideoUI <- function(id) {
 characterVideoServer <- function(id, selected_character_trigger) {
   moduleServer(id, function(input, output, session) {
     
-    # Karakter degistiginde verileri guncelle ve introyu baslat
     observeEvent(selected_character_trigger(), {
       char_id <- selected_character_trigger()
       video_data <- get_character_video_data(char_id)
+      
+      chars_data <- get_characters_data()
+      character_data <- Find(function(x) x$id == char_id, chars_data$styles)
+      
+      if (!is.null(character_data)) {
+        color_data <- list(
+          accent = character_data$accent,
+          accent_hover = character_data$accent_hover,
+          accent_active = character_data$accent_active
+        )
+        session$sendCustomMessage("updateCharacterBorderColors", color_data)
+      }
+      
       session$sendCustomMessage("updateCharacterVideo", video_data)
     })
     
-    # Ayarlari Kaydet is handled via module_settings.R trigger
   })
 }
