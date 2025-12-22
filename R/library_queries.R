@@ -100,6 +100,12 @@ query_library <- list(
     
     # Direkt SQL kullanımı
     sql = "SELECT TOP 10 * FROM Tbl_Test",
+	
+	# Dosya için (www klasörü içindeki yol olmalı):
+    info_file = "dosyalar/butce_kilavuzu.pdf", 
+    
+    # Web URL için:
+    info_url = "https://wiki.sirket.com/prosedurler",
     
     rls_columns = list(
       masraf_yeri_col = NULL,
