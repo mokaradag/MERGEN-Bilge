@@ -106,5 +106,21 @@ query_library <- list(
       proje_kodu_col = NULL,
       eps_kodu_col = NULL
     )
-  )
+  ),
+  
+  # ... (Sorgu listesi içinde)
+  list(
+    id = "q_ornek_id",
+    name = "Örnek Sorgu Adı",
+    description = "...",
+    db_target = "primary", 
+    sql_file = "sql_queries/query.sql",
+    
+    disable_ai_filters = TRUE,
+
+    rls_columns = list(
+      masraf_yeri_col = "MasrafYeri",
+      proje_kodu_col = "ProjeKodu"
+    )
+  ),
 )

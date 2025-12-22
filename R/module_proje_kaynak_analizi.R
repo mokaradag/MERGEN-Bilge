@@ -709,20 +709,26 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
       return(paste0("🔍 **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
   }
     
-    # AI fonksiyonuna veriyi de gonderiyoruz ki degerleri gorebilsin
+  # AI fonksiyonuna veriyi de gonderiyoruz ki degerleri gorebilsin
+  if (isTRUE(selected_query$disable_ai_filters)) {
+    cat("[PK_ANALIZ] Ozel Sorgu Ayari: AI Filtreleme devre disi birakildi. Sadece RLS verisi kullaniliyor.\n")
+    filter_criteria <- list(filters = list(), aggregation = NULL)
+    filtered_data <- secure_data
+  } else {
     filter_criteria <- extract_filter_criteria_from_prompt(user_prompt, secure_data, available_columns, conn, session)
   
-  if (!is.null(filter_criteria$error)) {
-    cat(sprintf("[PK_ANALIZ] AI filtreleme hatasi: %s\n", filter_criteria$error))
+    if (!is.null(filter_criteria$error)) {
+      cat(sprintf("[PK_ANALIZ] AI filtreleme hatasi: %s\n", filter_criteria$error))
+    }
+  
+    cat(sprintf("[PK_ANALIZ] AI Filter Sonucu -> column: %s, value: %s, operation: %s, aggregation: %s\n",
+                filter_criteria$filter_column %||% "NULL",
+                filter_criteria$filter_value %||% "NULL",
+                filter_criteria$operation %||% "NULL",
+                filter_criteria$aggregation %||% "NULL"))
+  
+    filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
   }
-  
-  cat(sprintf("[PK_ANALIZ] AI Filter Sonucu -> column: %s, value: %s, operation: %s, aggregation: %s\n",
-              filter_criteria$filter_column %||% "NULL",
-              filter_criteria$filter_value %||% "NULL",
-              filter_criteria$operation %||% "NULL",
-              filter_criteria$aggregation %||% "NULL"))
-  
-  filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
   
   cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n", 
               nrow(filtered_data), nrow(secure_data)))
