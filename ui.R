@@ -120,7 +120,6 @@ ui <- dashboardPage(
     # Your Custom Script
 	tags$script(src = "script.js"),
     tags$script(src = "js/cinematic_video.js"),
-    tags$script(src = "js/character_border_effects.js"),
     tags$script(src = "character_typing.js"),
     tags$script(src = "js/tts_visualizer.js"),
     tags$script(src = "js/stt_client.js"),
