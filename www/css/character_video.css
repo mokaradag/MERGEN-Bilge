@@ -23,6 +23,9 @@
 .character-static-image {
   z-index: 20;
   opacity: 1;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .character-video-player {
@@ -31,6 +34,19 @@
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.8s ease-in-out, visibility 0.8s linear; 
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.character-border-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 30;
+  pointer-events: none;
 }
 
 .cinematic-video-container.video-playing .character-static-image {

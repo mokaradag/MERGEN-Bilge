@@ -82,12 +82,20 @@ characterVideoUI <- function(id) {
         src = "" 
       )
     ),
-    tags$script(sprintf("
+	tags$script(sprintf("
       $(document).ready(function() {
+        // Initialize Video Manager
         CinematicVideoManager.init({
           videoElementId: '%s',
           imageElementId: '%s'
         });
+        
+        // Initialize Border Effects
+        if (typeof CharacterBorderEffects !== 'undefined') {
+          CharacterBorderEffects.init({
+            canvasId: 'character-border-canvas'
+          });
+        }
       });
     ", ns("character_player"), ns("character_static_img")))
   )

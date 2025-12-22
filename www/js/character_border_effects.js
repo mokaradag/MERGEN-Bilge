@@ -3,197 +3,143 @@
 const CharacterBorderEffects = {
     canvas: null,
     ctx: null,
-    particles: [],
+    width: 0,
+    height: 0,
     animationFrame: null,
+    particles: [],
+    
+    // Default colors (will be updated by R)
+    colors: {
+        accent: '#7C4DFF',       // Default Purple
+        accent_hover: '#9965f4',
+        accent_active: '#6020ff'
+    },
+
     config: {
-        particleCount: 50,
-        particleSpeed: 0.3,
-        particleSize: 2,
-        glowIntensity: 0.8
-    },
-    currentColors: {
-        accent: '#7C4DFF',
-        accentHover: '#8E66FF',
-        accentActive: '#6A3BE6'
+        particleCount: 40,
+        borderWidth: 2,
+        glowBlur: 15
     },
 
-    init: function(canvasId, colors) {
-        this.canvas = document.getElementById(canvasId);
+    init: function(options) {
+        // 1. Setup Canvas
+        this.canvas = document.getElementById(options.canvasId || 'character-border-canvas');
         if (!this.canvas) return;
-
-        this.ctx = this.canvas.getContext('2d');
-        this.currentColors = colors || this.currentColors;
         
-        this.resizeCanvas();
+        this.ctx = this.canvas.getContext('2d');
+        
+        // 2. Setup Resize Observer to handle window changes
+        const container = this.canvas.parentElement;
+        this.resizeObserver = new ResizeObserver(() => this.resize());
+        this.resizeObserver.observe(container);
+        
+        // 3. Initial Resize & Start
+        this.resize();
         this.initParticles();
         this.startAnimation();
 
-        window.addEventListener('resize', () => this.resizeCanvas());
+        // 4. Listen for Shiny messages to update colors
+        if (window.Shiny) {
+            Shiny.addCustomMessageHandler('updateCharacterBorderColors', (data) => {
+                this.updateTheme(data);
+            });
+        }
     },
 
-    resizeCanvas: function() {
+    resize: function() {
         if (!this.canvas) return;
-        const container = this.canvas.parentElement;
-        this.canvas.width = container.offsetWidth;
-        this.canvas.height = container.offsetHeight;
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+        this.width = rect.width;
+        this.height = rect.height;
+    },
+
+    updateTheme: function(colorData) {
+        if (colorData && colorData.accent) {
+            this.colors.accent = colorData.accent;
+            this.colors.accent_hover = colorData.accent_hover || colorData.accent;
+            this.colors.accent_active = colorData.accent_active || colorData.accent;
+        }
     },
 
     initParticles: function() {
         this.particles = [];
-        const perimeter = (this.canvas.width + this.canvas.height) * 2;
-        const count = Math.floor(perimeter / 15);
-
-        for (let i = 0; i < count; i++) {
-            this.particles.push(this.createParticle());
+        for (let i = 0; i < this.config.particleCount; i++) {
+            this.particles.push({
+                x: Math.random() * this.width,
+                y: Math.random() * this.height,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: (Math.random() - 0.5) * 1.5,
+                size: Math.random() * 2 + 1,
+                life: Math.random(),
+                maxLife: 1 + Math.random()
+            });
         }
     },
 
-    createParticle: function() {
-        const side = Math.floor(Math.random() * 4);
-        let x, y, vx, vy;
+    draw: function() {
+        if (!this.ctx) return;
 
-        switch(side) {
-            case 0:
-                x = Math.random() * this.canvas.width;
-                y = 0;
-                vx = (Math.random() - 0.5) * this.config.particleSpeed;
-                vy = Math.random() * this.config.particleSpeed;
-                break;
-            case 1:
-                x = this.canvas.width;
-                y = Math.random() * this.canvas.height;
-                vx = -Math.random() * this.config.particleSpeed;
-                vy = (Math.random() - 0.5) * this.config.particleSpeed;
-                break;
-            case 2:
-                x = Math.random() * this.canvas.width;
-                y = this.canvas.height;
-                vx = (Math.random() - 0.5) * this.config.particleSpeed;
-                vy = -Math.random() * this.config.particleSpeed;
-                break;
-            default:
-                x = 0;
-                y = Math.random() * this.canvas.height;
-                vx = Math.random() * this.config.particleSpeed;
-                vy = (Math.random() - 0.5) * this.config.particleSpeed;
-        }
+        // Clear canvas
+        this.ctx.clearRect(0, 0, this.width, this.height);
 
-        return {
-            x: x,
-            y: y,
-            vx: vx,
-            vy: vy,
-            life: 1.0,
-            maxLife: 1.0,
-            size: this.config.particleSize + Math.random() * 2
-        };
-    },
-
-    updateParticles: function() {
-        const margin = 30;
+        // 1. Draw Glowing Border
+        this.ctx.save();
+        this.ctx.strokeStyle = this.colors.accent;
+        this.ctx.lineWidth = this.config.borderWidth;
+        this.ctx.lineJoin = "round";
+        this.ctx.shadowColor = this.colors.accent;
+        this.ctx.shadowBlur = this.config.glowBlur;
         
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-            const p = this.particles[i];
-            
+        // Draw rectangle path
+        this.ctx.strokeRect(0, 0, this.width, this.height);
+        
+        // Double stroke for extra intensity
+        this.ctx.globalAlpha = 0.5;
+        this.ctx.strokeRect(0, 0, this.width, this.height);
+        this.ctx.restore();
+
+        // 2. Update & Draw Particles
+        this.ctx.save();
+        this.ctx.fillStyle = this.colors.accent;
+        
+        this.particles.forEach(p => {
+            // Update position
             p.x += p.vx;
             p.y += p.vy;
-            p.life -= 0.005;
+            p.life -= 0.01;
 
-            if (p.x < -margin || p.x > this.canvas.width + margin ||
-                p.y < -margin || p.y > this.canvas.height + margin ||
-                p.life <= 0) {
-                this.particles.splice(i, 1);
-                this.particles.push(this.createParticle());
+            // Reset dead or out-of-bounds particles
+            if (p.life <= 0 || p.x < 0 || p.x > this.width || p.y < 0 || p.y > this.height) {
+                // Spawn near the border randomly
+                if (Math.random() > 0.5) {
+                    p.x = Math.random() > 0.5 ? 0 : this.width;
+                    p.y = Math.random() * this.height;
+                } else {
+                    p.x = Math.random() * this.width;
+                    p.y = Math.random() > 0.5 ? 0 : this.height;
+                }
+                p.vx = (this.width / 2 - p.x) * 0.002; // Drift towards center slightly
+                p.vy = (this.height / 2 - p.y) * 0.002;
+                p.life = p.maxLife;
             }
-        }
-    },
 
-    drawBorder: function() {
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        const borderWidth = 4;
-        const glowSize = 15;
-
-        this.ctx.shadowBlur = glowSize;
-        this.ctx.shadowColor = this.currentColors.accent;
-
-        const gradient = this.ctx.createLinearGradient(0, 0, w, h);
-        gradient.addColorStop(0, this.currentColors.accent);
-        gradient.addColorStop(0.5, this.currentColors.accentHover);
-        gradient.addColorStop(1, this.currentColors.accentActive);
-
-        this.ctx.strokeStyle = gradient;
-        this.ctx.lineWidth = borderWidth;
-        this.ctx.strokeRect(borderWidth / 2, borderWidth / 2, 
-                           w - borderWidth, h - borderWidth);
-
-        this.ctx.shadowBlur = 0;
-    },
-
-    drawParticles: function() {
-        this.particles.forEach(p => {
-            const gradient = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
-            gradient.addColorStop(0, this.hexToRGBA(this.currentColors.accentHover, p.life));
-            gradient.addColorStop(0.5, this.hexToRGBA(this.currentColors.accent, p.life * 0.5));
-            gradient.addColorStop(1, this.hexToRGBA(this.currentColors.accent, 0));
-
-            this.ctx.fillStyle = gradient;
+            // Draw particle
+            this.ctx.globalAlpha = Math.max(0, p.life / p.maxLife) * 0.8;
             this.ctx.beginPath();
             this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
             this.ctx.fill();
         });
-    },
-
-    hexToRGBA: function(hex, alpha) {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    },
-
-    animate: function() {
-        if (!this.ctx) return;
-
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        this.drawBorder();
-        this.updateParticles();
-        this.drawParticles();
+        this.ctx.restore();
 
-        this.animationFrame = requestAnimationFrame(() => this.animate());
+        this.animationFrame = requestAnimationFrame(() => this.draw());
     },
 
     startAnimation: function() {
-        this.animate();
-    },
-
-    stopAnimation: function() {
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
-        }
-    },
-
-    updateColors: function(colors) {
-        this.currentColors = colors;
-    },
-
-    destroy: function() {
-        this.stopAnimation();
-        this.particles = [];
-        if (this.canvas) {
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        if (!this.animationFrame) {
+            this.draw();
         }
     }
 };
-
-Shiny.addCustomMessageHandler('updateCharacterBorderColors', function(message) {
-    const colors = {
-        accent: message.accent,
-        accentHover: message.accent_hover,
-        accentActive: message.accent_active
-    };
-    
-    CharacterBorderEffects.destroy();
-    CharacterBorderEffects.init('character-border-canvas', colors);
-});
