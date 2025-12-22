@@ -2721,3 +2721,23 @@ window.renderSavedCharts = function(wrapperId) {
     }
   });
 };
+
+$(document).ready(function() {
+  if (!window.__analysisFileLinkBound) {
+    window.__analysisFileLinkBound = true;
+    
+    $(document).on('click', '.analysis-file-link', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      var filepath = $(this).attr('data-filepath');
+      
+      if (filepath) {
+        Shiny.setInputValue('analysis_file_clicked', {
+          filepath: filepath,
+          nonce: Math.random()
+        }, {priority: 'event'});
+      }
+    });
+  }
+});

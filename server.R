@@ -482,6 +482,45 @@ observeEvent(input$source_file_clicked, {
   # Tüm çözümleme/önizleme işini tek bir yerde topla
   handle_source_file_click(ev, settings_data, api_config, session, filePreview)
 }, ignoreInit = TRUE)
+
+observeEvent(input$analysis_file_clicked, {
+  req(input$analysis_file_clicked)
+  
+  filepath_raw <- input$analysis_file_clicked$filepath
+  if (is.null(filepath_raw) || !nzchar(filepath_raw)) {
+    showToast(session, "Geçersiz dosya yolu.", "error")
+    return(invisible(NULL))
+  }
+  
+  filepath_clean <- trimws(as.character(filepath_raw))
+  
+  full_path <- NULL
+  if (startsWith(filepath_clean, "www/")) {
+    full_path <- file.path(getwd(), filepath_clean)
+  } else if (startsWith(filepath_clean, "/") || grepl("^[A-Za-z]:", filepath_clean)) {
+    full_path <- filepath_clean
+  } else {
+    full_path <- file.path(getwd(), "www", filepath_clean)
+  }
+  
+  full_path <- normalize_mcp_path(full_path, must_exist = FALSE)
+  
+  if (!path_exists_relaxed(full_path)) {
+    showToast(session, paste("Dosya bulunamadı:", basename(filepath_clean)), "error")
+    log_error("[ANALYSIS_FILE] Dosya mevcut değil: {full_path}")
+    return(invisible(NULL))
+  }
+  
+  file_info <- list(
+    name = basename(full_path),
+    datapath = full_path,
+    size = suppressWarnings(file.info(full_path)$size)
+  )
+  
+  log_info("[ANALYSIS_FILE] Önizleme açılıyor: {full_path}")
+  openAnyPreview(file_info, session, filePreview)
+  
+}, ignoreInit = TRUE)
   
   # Connect file manager uploads/removals to AI context
   observeEvent(file_manager_data$file_removed(), {

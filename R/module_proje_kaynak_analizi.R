@@ -779,15 +779,16 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     "7. Eger ornek satirlar varsa, bunlari destekleyici olarak kullan\n"
   )
 
-  if (!is.null(selected_query$info_file) && nzchar(selected_query$info_file)) {
-    system_prompt <- paste0(system_prompt, 
-      "\n8. EK DOSYA: Kullaniciya su dosyayi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>👉 <a href='", selected_query$info_file, "' target='_blank'><b>İlgili Dosyayı Görüntüle</b></a>\n")
-  }
+	if (!is.null(selected_query$info_file) && nzchar(selected_query$info_file)) {
+	  file_path_normalized <- gsub("\\\\", "/", selected_query$info_file)
+	  system_prompt <- paste0(system_prompt, 
+		"\n8. EK DOSYA: Kullaniciya su dosyayi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>👉 <span class='analysis-file-link' data-filepath='", file_path_normalized, "' style='color:#007bff; cursor:pointer; text-decoration:underline; font-weight:bold;'>İlgili Dosyayı Görüntüle</span>\n")
+	}
 
-  if (!is.null(selected_query$info_url) && nzchar(selected_query$info_url)) {
-    system_prompt <- paste0(system_prompt, 
-      "\n9. EK LINK: Kullaniciya su adresi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>🌐 <a href='", selected_query$info_url, "' target='_blank'><b>Daha Fazla Bilgi</b></a>\n")
-  }
+	if (!is.null(selected_query$info_url) && nzchar(selected_query$info_url)) {
+	  system_prompt <- paste0(system_prompt, 
+		"\n9. EK LINK: Kullaniciya su adresi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>🌐 <a href='", selected_query$info_url, "' target='_blank' rel='noopener noreferrer'><b>Daha Fazla Bilgi</b></a>\n")
+	}
   
   user_msg <- paste0(
     "KULLANICI SORUSU:\n",
