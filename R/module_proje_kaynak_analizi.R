@@ -51,8 +51,23 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	  "Kullanıcının Türkçe sorduğu doğal dil sorularını analiz ederek yapılandırılmış bir JSON filtreleme sorgusuna dönüştürmekle görevlisin.\n\n",
 	  
 	  "### KRİTİK: GENEL SORULAR VS SPESİFİK FİLTRELER\n",
+	  "❗❗❗ ÇOĞU SORGU ZATEN BELİRLİ BİR KONUYA ÖZELDIR - GEREKSİZ FİLTRE EKLEME!\n",
+	  "Örnek: 'Rolden kaynağa çevrilmemiş aktiviteler' sorgusu zaten bu konuya özgüdür. 'çevrilmemiş' kelimesini filtre olarak kullanma!\n",
+	  "Örnek: 'Bütçesi aşan projeler' sorgusu zaten bütçe aşımı içerir. 'aşan' kelimesini filtre olarak kullanma!\n\n",
+	  
 	  "❗ Kullanıcı GENEL bir analiz istiyorsa (tüm projeler, tüm kaynaklar, özet istatistikler), FİLTRE KULLANMA!\n",
-	  "✅ Sadece kullanıcı BELİRLİ bir varlığı (proje kodu, çalışan adı, departman, vs.) AÇIKÇA belirtirse filtre ekle.\n\n",
+	  "✅ Sadece kullanıcı BELİRLİ bir VARLIK belirtirse filtre ekle:\n",
+	  "   - Proje kodu: 'P1234', 'PROJE-001'\n",
+	  "   - Proje adı: 'Malzeme Üretim Projesi', 'Elektronik Tasarım'\n",
+	  "   - Kişi adı: 'Ahmet Yılmaz', 'Mehmet'\n",
+	  "   - Departman: 'Elektronik Tasarım Müdürlüğü', 'PGRM'\n",
+	  "   - Masraf yeri kodu: '12345678'\n",
+	  "   - Tarih aralığı: '2024', 'Ocak', 'son 3 ay'\n\n",
+	  
+	  "❌ FİLTRE YAPILMAMASI GEREKEN DURUMLAR:\n",
+	  "- Kullanıcı sorgu konusunu tekrar ediyor: 'aktiviteler', 'kaynaklar', 'projeler' gibi genel terimler\n",
+	  "- Kullanıcı analiz türü belirtiyor: 'özetle', 'listele', 'kaç tane', 'var mı'\n",
+	  "- Kullanıcı sorgu kriterini tekrar ediyor: Sorgu zaten 'çevrilmemiş aktiviteler'i getiriyorsa, 'çevrilmemiş' filtresiz bırak\n\n",
 	  
 	  "**GENEL SORU ÖRNEKLERİ (FİLTRE YOK):**\n",
 	  "- 'Kaç proje var?', 'Toplam kaç kaynak?', 'Hangi departmanlarda çalışma var?'\n",
