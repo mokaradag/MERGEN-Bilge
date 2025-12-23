@@ -13,8 +13,16 @@ summarize_columns_for_ai <- function(df) {
     if (all(is.na(vals))) return(sprintf("- %s: (Hepsi NULL)", col))
     
     if (is.numeric(vals)) {
-      # Sayisal degeler icin aralik
-      return(sprintf("- %s: (Sayisal, Aralık: %s - %s)", col, min(vals, na.rm=TRUE), max(vals, na.rm=TRUE)))
+      # Sayisal degerler: istatistiksel özet
+      valid_vals <- vals[!is.na(vals)]
+      if (length(valid_vals) == 0) return(sprintf("- %s: (Sayısal, veri yok)", col))
+      
+      return(sprintf("- %s: (Sayısal, Min: %s, Maks: %s, Ort: %.2f, Kayıt: %d)", 
+                     col, 
+                     min(valid_vals), 
+                     max(valid_vals),
+                     mean(valid_vals),
+                     length(valid_vals)))
     } else if (inherits(vals, "Date") || inherits(vals, "POSIXt")) {
       # Tarih degerleri icin aralik
       return(sprintf("- %s: (Tarih, Aralık: %s - %s)", col, min(vals, na.rm=TRUE), max(vals, na.rm=TRUE)))
@@ -38,26 +46,57 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
   # Veri baglamini olustur (AI'in dogru degerleri gormesi icin)
   cols_summary <- summarize_columns_for_ai(data_context)
   
-  system_instruction <- paste0(
-    "Sen Primavera P6 (Project Management) verileri konusunda uzman, kıdemli bir veri analistisin. ",
-    "Kullanıcının Türkçe sorduğu doğal dil sorularını analiz ederek yapılandırılmış bir JSON filtreleme sorgusuna dönüştürmekle görevlisin.\n\n",
-    
-    "### ANALİZ EVRENİ VE TERMİNOLOJİ (PRIMAVERA P6)\n",
-    "Kullanıcı şu konularda sorular sorabilir, bunları mevcut sütunlarla eşleştirmen gerekir:\n",
-    "- **Projeler:** Proje Kodu (Project ID), Proje Adı, Durum (Active, Inactive, Planned), EPS.\n",
-    "- **Kaynaklar (Resources):** Kaynak Adı, Kaynak Kodu (Rsrc ID), Kaynak Tipi (Labor, Nonlabor, Material), Unvan, Birim/Departman.\n",
-    "- **Aktiviteler (Activities):** Aktivite Kodu, Adı, WBS (İş Kırılım Yapısı), Başlangıç/Bitiş Tarihleri.\n",
-    "- **Maliyet/Birimler:** Bütçelenen (Budgeted), Gerçekleşen (Actual), Kalan (Remaining) maliyet veya birimler.\n",
-    "- **Tarihler:** Planlanan (Planned), Erken (Early), Geç (Late), Gerçekleşen (Actual) tarihler.\n\n",
+	system_instruction <- paste0(
+	  "Sen Primavera P6 ve SAP Project System verileri konusunda uzman, kıdemli bir veri analistisin. ",
+	  "Kullanıcının Türkçe sorduğu doğal dil sorularını analiz ederek yapılandırılmış bir JSON filtreleme sorgusuna dönüştürmekle görevlisin.\n\n",
+	  
+	  "### KRİTİK: GENEL SORULAR VS SPESİFİK FİLTRELER\n",
+	  "❗ Kullanıcı GENEL bir analiz istiyorsa (tüm projeler, tüm kaynaklar, özet istatistikler), FİLTRE KULLANMA!\n",
+	  "✅ Sadece kullanıcı BELİRLİ bir varlığı (proje kodu, çalışan adı, departman, vs.) AÇIKÇA belirtirse filtre ekle.\n\n",
+	  
+	  "**GENEL SORU ÖRNEKLERİ (FİLTRE YOK):**\n",
+	  "- 'Kaç proje var?', 'Toplam kaç kaynak?', 'Hangi departmanlarda çalışma var?'\n",
+	  "- 'Projelerin dağılımı nedir?', 'En büyük projeler hangileri?', 'Aktif proje sayısı?'\n",
+	  "- 'Yıllara göre proje dağılımı', 'Departman bazında kaynak analizi'\n",
+	  "- 'Ortalama proje süresi', 'Toplam bütçe', 'Maliyet özeti'\n\n",
+	  
+	  "**SPESİFİK SORU ÖRNEKLERİ (FİLTRE EKLE):**\n",
+	  "- 'P1234 projesinin durumu nedir?' → filter: ProjeKodu='P1234'\n",
+  	  "- 'Malzeme Üretim projesinin durumu nedir?' → filter: ProjeAdi='Malzeme Üretim'\n",
+	  "- 'Ahmet Yılmaz hangi projelerde?' → filter: KaynakAdi contains 'Ahmet Yılmaz'\n",
+	  "- 'PGRM program müdürlüğündeki projeler' → filter: ProgMdlKodu='4_PGRM'\n",	  
+	  "- 'Elektronik Tasarım Müdürlüğündeki çalışanlar' → filter: MasrafYeri='Elektronik Tasarım Müdürlüğü'\n",	 	  
+	  "- '12345678 masraf yerindeki çalışanlar' → filter: MasrafYeriKodu='12345678'\n",
+	  "- 'Aktif durumdaki projeler' → filter: Durum='1'\n\n",
+	  
+	  "### ANALİZ EVRENİ VE TERMİNOLOJİ\n",
+	  "**Proje Yönetimi Terimleri:**\n",
+	  "- **Projeler:** Proje Kodu, Proje Adı, Durum, EPS, Program Müdürlüğü, Program Direktörlüğü, İDA, İş Dağılım Ağacı, WBS\n",
+	  "- **Kaynaklar:** Kaynak Adı, Kaynak Kodu, Çalışan, Personel, Rol, Unvan, Sicil Numarası, Sicil No\n",
+	  "- **Organizasyon:** Masraf Yeri, Masraf Yeri Kodu, Bölüm, Müdürlük, Direktörlük, Birim\n",
+	  "- **Finansal:** Bütçe, Gerçekleşen, Kalan, Maliyet Merkezi\n",
+	  "- **Zaman:** Başlangıç/Bitiş Tarihleri, Süre, Planlanan/Gerçekleşen\n",
+	  "- **Durum Kodları:** 1=Aktif, 0=Pasif\n\n",
     
     "### MEVCUT SÜTUNLAR VE DEĞER ÖZETLERİ (Filtre degerlerini buradaki gercek verilere gore sec):\n",
     cols_summary, "\n\n",
     
-    "### GÖREV KURALLARI:\n",
-    "1. **Çoklu Filtreleme:** Kullanıcı birden fazla koşul belirtirse (örn: 'M1 masraf yerinde unvanı mühendis olanlar'), bunların hepsini 'filters' listesine ekle.\n",
-    "2. **Esnek Eşleştirme:** Kullanıcının 'Mühendisler' dediği şeyi veride 'Mühendis' veya 'Engineer' olarak bulabilirsin. 'operation' alanını buna göre seç.\n",
-    "3. **Case Insensitive:** Filtre değerlerini olduğu gibi al, kod tarafında büyük/küçük harf duyarsız arama yapılacaktır.\n",
-    "4. **Aggregation:** Kullanıcı bir özet istiyorsa (sayı, toplam, ortalama), 'aggregation' alanını doldur.\n\n",
+	"### GÖREV KURALLARI:\n",
+	"1. **GENEL SORULARDA FİLTRE KULLANMA:** \n",
+	"   - Kullanıcı 'kaç proje var', 'toplam', 'tüm', 'hepsi', 'dağılım', 'liste' gibi kelimeler kullanıyorsa,\n",
+	"   - VE spesifik bir kod/isim BELİRTMİYORSA,\n",
+	"   - → filters: [] (BOŞ DİZİ döndür)\n",
+	"   - Aggregation olarak 'count' veya 'group_by' kullanabilirsin.\n\n",
+
+	"2. **SPESİFİK SORULARDA FİLTRE EKLE:**\n",
+	"   - Proje kodu (P123), masraf yeri (M1), kişi adı (Ahmet Yılmaz) gibi BELİRLİ varlıklar belirtilmişse,\n",
+	"   - → Bu varlıkları filters dizisine ekle.\n\n",
+
+	"3. **Çoklu Filtreleme:** Kullanıcı birden fazla koşul belirtirse (örn: 'M1 masraf yerinde unvanı mühendis olanlar'), bunların hepsini 'filters' listesine ekle.\n",
+
+	"4. **Esnek Eşleştirme:** Kullanıcının 'Mühendisler' dediği şeyi veride 'Mühendis' veya 'Engineer' olarak bulabilirsin. 'operation' alanını buna göre seç.\n",
+
+	"5. **Büyük/Küçük Harf Duyarsız:** Filtre değerlerini olduğu gibi al, kod tarafında case-insensitive arama yapılacaktır.\n",
     
     "### ÇIKTI FORMATI (JSON):\n",
     "{\n",
@@ -240,6 +279,31 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   aggregation <- filter_instructions$aggregation
   group_col <- filter_instructions$group_column
   
+  # Kullanıcı genel bir analiz/özet istiyor mu kontrol et
+  genel_soru_kaliplari <- c(
+    "kaç", "toplam", "sayı", "adet", "hangi", "dağılım", "özet", 
+    "analiz", "liste", "göster", "tüm", "hepsi", "en fazla", 
+    "en az", "ortalama", "maksimum", "minimum"
+  )
+  
+  prompt_lower <- tolower(user_prompt)
+  genel_soru_mu <- any(sapply(genel_soru_kaliplari, function(pattern) {
+    grepl(pattern, prompt_lower, fixed = TRUE)
+  }))
+  
+  # Spesifik varlık belirtilmiş mi? (kod, isim, departman)
+  spesifik_varlık_var <- grepl("\\b[A-Z][0-9]{3,}\\b|\\b[A-Z]{1,3}[0-9]{1,}\\b", user_prompt, perl = TRUE) || # P123, M1 gibi kodlar
+                          grepl("[A-ZÜĞIŞÖÇ][a-züğışöç]+ [A-ZÜĞIŞÖÇ][a-züğışöç]+", user_prompt, perl = TRUE) # İsim Soyisim
+  
+  # KARAR: Genel soruysa VE spesifik varlık yoksa, filtreleri GEÇERSİZ KIL
+  if (genel_soru_mu && !spesifik_varlık_var && (is.null(filters) || length(filters) == 0)) {
+    cat("[SMART_FILTER] GENEL SORU tespit edildi, filtre UYGULANMAYACAK.\n")
+    filters <- list() # Filtreleri temizle
+  }
+  
+  cat(sprintf("[SMART_FILTER] Filtre sayisi: %d (Genel soru: %s, Spesifik varlık: %s)\n", 
+              length(filters %||% list()), genel_soru_mu, spesifik_varlık_var))
+  
   cat(sprintf("[SMART_FILTER] Filtre sayisi: %d\n", length(filters %||% list())))
   if (length(filters) > 0) {
     for (i in seq_along(filters)) {
@@ -288,40 +352,27 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
       }
     }
 } else {
-    if (!is.null(aggregation) && tolower(aggregation) %in% c("count", "sum", "group_by")) {
-      cat("[SMART_FILTER] Toplama islemi var, filtresiz devam ediliyor\n")
-    } else {
-      cat("[SMART_FILTER] AI filtresi yok, keyword fallback\n")
-      matches <- regmatches(user_prompt, gregexpr("\\b[A-Za-z0-9-]{3,}\\b", user_prompt))
-      search_terms <- unique(unlist(matches))
-      
-      filtered_terms <- c()
-      for (term in search_terms) {
-        if ((grepl("[A-Za-z]", term) && grepl("[0-9]", term)) || 
-            (nchar(term) >= 4 && grepl("^[A-Z0-9-]+$", toupper(term)))) {
-          filtered_terms <- c(filtered_terms, term)
-        }
-      }
-      
-      if (length(filtered_terms) > 0) {
-         match_rows <- apply(dt, 1, function(row) {
-           any(sapply(filtered_terms, function(term) {
-             any(grepl(tolower(term), tolower(as.character(row)), fixed = TRUE))
-           }))
-         })
-         dt <- dt[match_rows, ]
-      } else {
-         dt <- head(dt, 500)
-      }
-    }
+  # Filtre yok ve aggregation da yok
+  if (is.null(aggregation) || !tolower(aggregation) %in% c("count", "sum", "group_by")) {
+    cat("[SMART_FILTER] Ne filtre ne aggregation var. GENEL SORU olarak işleniyor - tüm veri döndürülecek.\n")
+    # NOT: Gereksiz keyword fallback kaldırıldı - AI yeterince akıllı
+    # Eğer kullanıcı genel bir soru sorduysa, tüm veri dönmeli
+    # Max limit: 1000 satır (performans için)
+    dt <- head(dt, 1000)
+  } else {
+    cat("[SMART_FILTER] Aggregation mevcut, filtre yok - tüm veri üzerinde aggregation yapılacak\n")
   }
+}
   
-  # --- 2. Aggregation Logic ---
-  if (!is.null(aggregation)) {
-    agg_str <- tolower(aggregation)
-    
-    if (agg_str == "count") {
-      return(data.frame(Sonuc = "Toplam Kayit Sayisi", Adet = nrow(dt)))
+# --- 2. Aggregation Logic ---
+if (!is.null(aggregation)) {
+  agg_str <- tolower(aggregation)
+  
+  if (agg_str == "count") {
+    # GENEL SORULARDA: Tüm veriyi say
+    # SPESİFİK SORULARDA: Filtre sonrasını say
+    aciklama <- if (length(filters) > 0) "Filtrelenen Kayıt Sayısı" else "Toplam Kayıt Sayısı"
+    return(data.frame(Sonuc = aciklama, Adet = nrow(dt)))
     } else if (agg_str == "sum") {
         num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
         if (length(num_cols) > 0) {
@@ -732,6 +783,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   
   cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n", 
               nrow(filtered_data), nrow(secure_data)))
+			  
+	if (nrow(filtered_data) < nrow(secure_data) * 0.05 && nrow(secure_data) > 100) {
+	  cat("[PK_ANALIZ] UYARI: Filtreleme sonucu çok az veri kaldı (<%5). Kullanıcı gereksiz filtre uygulanmış olabilir.\n")
+	}
   
   if (nrow(filtered_data) == 0) {
     return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı."))
