@@ -842,30 +842,37 @@ observeEvent(input$analysis_file_clicked, {
 	user_prompt_msg <- add_message(display_text, "user")
 	
 	values$typing <- TRUE
-	if (isTRUE(settings_data$enable_typing_indicator)) {
-	  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	  if (isTRUE(settings_data$enable_typing_indicator)) {
+		removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+		
+		insertUI(
+		  selector = "#chat_content_container", 
+		  where = "beforeEnd",
+		  ui = div(
+			id = "typing-animation-wrapper", 
+			class = "message-bubble", 
+			style = "display: flex; justify-content: center; padding: 20px;",
+			div(class = "ring", "Düşünüyorum", span())
+		  ),
+		  immediate = TRUE
+		)
+		
+		shinyjs::runjs("
+		  setTimeout(() => { 
+			window.smartScrollToBottom();
+			$('#typing-animation-wrapper').show();
+		  }, 10);
+		")
+	  }
 	  
-	  insertUI(
-		selector = "#chat_content_container", 
-		where = "beforeEnd",
-		ui = div(
-		  id = "typing-animation-wrapper", 
-		  class = "message-bubble", 
-		  style = "display: flex; justify-content: center; padding: 20px;",
-		  div(class = "ring", "Düşünüyorum", span())
-		),
-		immediate = TRUE
-	  )
+	  shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-stop');")
+	  shinyjs::runjs("$('#send_stop_btn').addClass('stop-mode');")
+	  shinyjs::runjs("$('#send_stop_btn').attr('title', 'Durdur');")
 	  
-	  shinyjs::runjs("
-		setTimeout(() => { 
-		  window.smartScrollToBottom();
-		  $('#typing-animation-wrapper').show();
-		}, 10);
-	  ")
-	}
-	
-	recent_messages <- tail(isolate(values$messages), 5)
+	  values$is_sending <- TRUE
+	  stop_generation(FALSE)
+	  
+	  recent_messages <- tail(isolate(values$messages), 5)
 	recent_messages <- Filter(function(m) {
 	  is.null(m$content) || !grepl("\\[ Toplam Dosya Sayısı:", m$content, fixed = TRUE)
 	}, recent_messages)
@@ -1094,13 +1101,6 @@ observeEvent(input$analysis_file_clicked, {
 		return(invisible(NULL))
 	  }
 	}
-	
-	shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-stop');")
-	shinyjs::runjs("$('#send_stop_btn').addClass('stop-mode');")
-	shinyjs::runjs("$('#send_stop_btn').attr('title', 'Durdur');")
-	
-	values$is_sending <- TRUE
-	stop_generation(FALSE)
 	
 	chat_id_val <- isolate(values$current_chat_id)
 	
