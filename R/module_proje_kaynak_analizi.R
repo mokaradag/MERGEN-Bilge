@@ -113,14 +113,25 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 
 	"5. **Büyük/Küçük Harf Duyarsız:** Filtre değerlerini olduğu gibi al, kod tarafında case-insensitive arama yapılacaktır.\n",
     
-    "### ÇIKTI FORMATI (JSON):\n",
-    "{\n",
-    "  \"filters\": [\n",
-    "    {\"column\": \"SütunAdı\", \"value\": \"Değer\", \"operation\": \"exact_match\"}\n",
-    "  ],\n",
-    "  \"aggregation\": \"count\",\n",
-    "  \"group_column\": null\n",
-    "}\n\n",
+	"### MANTIKSAL OPERATÖRLER VE KOMPLEKS FİLTRELER:\n",
+	"Standart 'filters' listesi her zaman 'AND' (VE) ile birleştirilir. Eğer 'OR' (VEYA) mantığı gerekiyorsa veya karmaşık parantezli işlemler varsa (A ve (B veya C)):\n",
+	"- 'filter_expression' alanını doldur. Bu alan geçerli bir R data.table filtreleme stringi olmalıdır.\n",
+	"- Örnek: \"(Durum == 'In Progress') & (KalanIscilik_sa > 5000 | MasrafYeri == 'IT')\"\n",
+	"- String içinde sütun isimlerini aynen kullan.\n",
+	"- String operatörleri: ==, !=, >, <, >=, <=, &, |, %in%\n",
+	"- 'contains' benzeri işler için: grepl('değer', SutunAdi, ignore.case=TRUE)\n",
+	"⚠️ KRİTİK KURALLAR:\n",
+	"1. Parantezleri mutlaka dengele! Açılan her '(' kapatılmalıdır.\n",
+	"2. String içindeki değerler için TEK TIRNAK (') kullan. Çift tırnak (\") JSON yapısını bozar.\n",
+	"3. Örnek: \"(Durum == 'Completed') | (grepl('Analiz', Aciklama))\"\n\n",
+
+	"### ÇIKTI FORMATI (JSON):\n",
+	"{\n",
+	"  \"filters\": [ ... ], \n",
+	"  \"filter_expression\": null, // Karmaşık mantık (OR/AND) gerekiyorsa string ifade. Örn: \"(A==1 | B==2)\". Yoksa null.\n",
+	"  \"aggregation\": \"count\",\n",
+	"  \"group_column\": null\n",
+	"}\n\n",
 	
 	"### ALAN DEĞERLERİ (DOMAIN MAPPINGS):\n",
     "Bazı alanlar sayısal veya kodlanmış değerler kullanır:\n",
@@ -271,8 +282,9 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
       filters <- valid_filters
     }
 
-    return(list(
+	return(list(
       filters = filters,
+      filter_expression = parsed$filter_expression,
       aggregation = parsed$aggregation,
       group_column = parsed$group_column
     ))
@@ -328,56 +340,87 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     }
   }
   
-  # --- 1. Filtreleri Uygula (Multiple & Case Insensitive) ---
-  if (!is.null(filters) && length(filters) > 0) {
-    for (f in filters) {
-      col <- f$column
-      val <- f$value
-      op <- f$operation %||% "exact_match"
+  # --- 1. Filtreleri Uygula (Akıllı Mantık: Expression vs List) ---
+  
+  # Kompleks Mantık (OR/AND) Kontrolü
+  applied_expression_success <- FALSE
+  
+  # `filter_instructions` nesnesi AI çıktısından gelmektedir.
+  # Eğer AI 'filter_expression' üretmişse (örn: "(Durum=='A' | Durum=='B')"), önce bunu dene.
+  if (!is.null(filter_instructions$filter_expression) && nzchar(filter_instructions$filter_expression)) {
+    cat(sprintf("[SMART_FILTER] Kompleks İfade Tespit Edildi: %s\n", filter_instructions$filter_expression))
+    
+    tryCatch({
+      # İfadeyi güvenli bir scope içinde çalıştır (subset mantığı)
+      expr_str <- filter_instructions$filter_expression
       
-      if (!is.null(col) && nzchar(as.character(col)[1]) && col %in% names(dt)) {
+      # eval(parse()) ile data.table üzerinde filtreleme
+      dt <- subset(dt, eval(parse(text = expr_str)))
+      
+      cat(sprintf("[SMART_FILTER] İfade başarıyla uygulandı. Kalan satır: %d\n", nrow(dt)))
+      applied_expression_success <- TRUE
+      
+    }, error = function(e) {
+      cat(sprintf("[SMART_FILTER] HATA: İfade uygulanamadı (%s). Standart filtre listesine (AND) dönülüyor.\n", e$message))
+      applied_expression_success <- FALSE
+    })
+  }
+  
+  # Eğer kompleks ifade uygulanmadıysa (yoksa veya hata verdiyse), ESKİ USUL (AND) döngüsüne gir
+  if (!applied_expression_success) {
+  
+      if (!is.null(filters) && length(filters) > 0) {
+        cat("[SMART_FILTER] Standart filtre listesi uygulanıyor (AND mantığı)...\n")
         
-        col_vals <- dt[[col]]
-        val_str <- as.character(val)[1]
-        
-        # Case Insensitive Handling
-		if (is.character(col_vals) || is.factor(col_vals)) {
-			  # Escape special regex characters in the search value to treat it as a literal string
-			  val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
-			  col_vals_char <- as.character(col_vals)
-			  
-			  if (op == "exact_match") {
-				# Use anchors ^ and $ for exact match, with ignore.case = TRUE
-				dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
-			  } else if (op == "contains") {
-				# Standard contains with ignore.case = TRUE
-				dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
-			  } else {
-				# Fallback to exact match
-				dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
-			  }
-			} else if (is.numeric(col_vals)) {
-            val_num <- suppressWarnings(as.numeric(val_str))
-            if (!is.na(val_num)) {
-                if (op == "greater_than") dt <- dt[col_vals > val_num, ]
-                else if (op == "less_than") dt <- dt[col_vals < val_num, ]
-                else dt <- dt[col_vals == val_num, ]
+        for (f in filters) {
+          col <- f$column
+          val <- f$value
+          op <- f$operation %||% "exact_match"
+          
+          if (!is.null(col) && nzchar(as.character(col)[1]) && col %in% names(dt)) {
+            
+            col_vals <- dt[[col]]
+            val_str <- as.character(val)[1]
+            
+            # Case Insensitive Handling
+            if (is.character(col_vals) || is.factor(col_vals)) {
+              # Escape special regex characters in the search value to treat it as a literal string
+              val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
+              col_vals_char <- as.character(col_vals)
+              
+              if (op == "exact_match") {
+                # Use anchors ^ and $ for exact match, with ignore.case = TRUE
+                dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+              } else if (op == "contains") {
+                # Standard contains with ignore.case = TRUE
+                dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
+              } else {
+                # Fallback to exact match
+                dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+              }
+            } else if (is.numeric(col_vals)) {
+                val_num <- suppressWarnings(as.numeric(val_str))
+                if (!is.na(val_num)) {
+                    if (op == "greater_than") dt <- dt[col_vals > val_num, ]
+                    else if (op == "less_than") dt <- dt[col_vals < val_num, ]
+                    else dt <- dt[col_vals == val_num, ]
+                }
             }
+          }
         }
+    } else {
+      # Filtre yok ve aggregation da yok
+      if (is.null(aggregation) || !tolower(aggregation) %in% c("count", "sum", "group_by")) {
+        cat("[SMART_FILTER] Ne filtre ne aggregation var. GENEL SORU olarak işleniyor - tüm veri döndürülecek.\n")
+        # NOT: Gereksiz keyword fallback kaldırıldı - AI yeterince akıllı
+        # Eğer kullanıcı genel bir soru sorduysa, tüm veri dönmeli
+        # Max limit: 1000 satır (performans için)
+        dt <- head(dt, 1000)
+      } else {
+        cat("[SMART_FILTER] Aggregation mevcut, filtre yok - tüm veri üzerinde aggregation yapılacak\n")
       }
     }
-} else {
-  # Filtre yok ve aggregation da yok
-  if (is.null(aggregation) || !tolower(aggregation) %in% c("count", "sum", "group_by")) {
-    cat("[SMART_FILTER] Ne filtre ne aggregation var. GENEL SORU olarak işleniyor - tüm veri döndürülecek.\n")
-    # NOT: Gereksiz keyword fallback kaldırıldı - AI yeterince akıllı
-    # Eğer kullanıcı genel bir soru sorduysa, tüm veri dönmeli
-    # Max limit: 1000 satır (performans için)
-    dt <- head(dt, 1000)
-  } else {
-    cat("[SMART_FILTER] Aggregation mevcut, filtre yok - tüm veri üzerinde aggregation yapılacak\n")
   }
-}
   
 # --- 2. Aggregation Logic ---
 if (!is.null(aggregation)) {
@@ -882,36 +925,169 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
 }
 
 # ==============================================================================
-# 3. AKILLI SORGU SEÇİMİ (HEURISTIC)
+# 3. AKILLI SORGU SEÇİMİ (AI + HEURISTIC HYBRID ENGINE)
 # ==============================================================================
 
-select_smart_query <- function(prompt, library, history) {
-  cat("[PK_ANALIZ] Sorgu kütüphanesi taranıyor...\n")
+# AI Destekli Seçim Fonksiyonu
+find_best_query_with_ai <- function(user_prompt, library, session) {
+  cat("[PK_ANALIZ] AI tabanli sorgu secimi baslatiliyor...\n")
   
-  scores <- sapply(library, function(q) {
-    desc_words <- unlist(strsplit(tolower(q$description), "\\W+"))
-    prompt_words <- unlist(strsplit(tolower(prompt), "\\W+"))
-    name_words <- unlist(strsplit(tolower(q$name), "\\W+"))
+  # Kütüphane özetini hazırla
+  library_context <- vapply(seq_along(library), function(i) {
+    q <- library[[i]]
+    sprintf("ID: %d | ISIM: %s | ACIKLAMA: %s", i, q$name, q$description)
+  }, character(1))
+  
+  library_text <- paste(library_context, collapse = "\n")
+  
+  system_instruction <- paste0(
+    "Sen bir Veritabanı Sorgu Yönlendiricisisin (Query Router). Görevin, kullanıcının doğal dil sorusunu analiz etmek ve ",
+    "aşağıdaki listeden EN UYGUN SQL sorgusunu seçmektir.\n\n",
     
-    # Basit eşleşme skoru
-    match_count <- sum(prompt_words %in% c(desc_words, name_words))
-    return(match_count)
+    "### MEVCUT SORGULAR:\n",
+    library_text, "\n\n",
+    
+    "### KURALLAR:\n",
+    "1. Kullanıcının niyetiyle (intent) sorgu açıklamasını eşleştir. Sadece kelime eşleşmesi değil, ANLAM eşleşmesi yap.\n",
+    "2. Eğer kullanıcının sorusu listedeki hiçbir sorguyla alakalı değilse, 'match_id': null döndür.\n",
+    "3. Sadece en iyi eşleşen TEK BİR sorguyu seç.\n",
+    "4. Cevabı sadece JSON formatında ver.\n\n",
+    
+    "### JSON FORMATI:\n",
+    "{ \"match_id\": 1, \"reason\": \"Kullanıcı genel proje bilgilerini sordu, prj_01 genel proje detaylarını içeriyor.\" }"
+  )
+  
+  messages <- list(
+    list(role = "system", content = system_instruction),
+    list(role = "user", content = user_prompt)
+  )
+  
+  tryCatch({
+    # Model seçimi (Varsayılan model veya filter modeli kullanılabilir)
+    model_name <- getOption("mergen.filter_model", api_config$local_models[1])
+    creds <- resolve_local_llm_credentials(model_name)
+    
+    # API Key Yönetimi
+    api_key_val <- NULL
+    if (!is.null(session) && !is.null(session$userData$ai_api_key)) {
+      api_key_val <- as.character(session$userData$ai_api_key)[1]
+    }
+    if (is.null(api_key_val) || !nzchar(api_key_val)) {
+      api_key_val <- creds$default_api_key
+    }
+
+    # LLM Çağrısı
+    result <- call_local_llm(messages, list(
+      model_selection = model_name,
+      temperature = 0.0,
+      max_output_tokens = 200,
+      enable_mcp_tools = FALSE,
+      shiny_session = session,
+      api_key_override = api_key_val
+    ))
+    
+    if (is.null(result)) return(NULL)
+    
+    content <- if (is.list(result)) result$content else result
+    content <- gsub("```json|```", "", content)
+    content <- trimws(content)
+    
+    parsed <- jsonlite::fromJSON(content, simplifyVector = FALSE)
+    
+    if (!is.null(parsed$match_id)) {
+      idx <- as.integer(parsed$match_id)
+      if (idx > 0 && idx <= length(library)) {
+        cat(sprintf("[PK_ANALIZ] AI Secimi: ID=%d (%s) | Sebep: %s\n", 
+                    idx, library[[idx]]$name, parsed$reason %||% ""))
+        return(library[[idx]])
+      }
+    }
+    
+    return(NULL)
+    
+  }, error = function(e) {
+    cat(sprintf("[PK_ANALIZ] AI Secim Hatasi: %s\n", e$message))
+    return(NULL)
+  })
+}
+
+select_smart_query <- function(prompt, library, chat_history) {
+  cat("[PK_ANALIZ] Akilli Sorgu Secici (Smart Query Selector) calisiyor...\n")
+  
+  # --- ADIM 1: AI ile Anlamsal Eşleştirme (Birincil Yöntem) ---
+  # Session nesnesine erişim (Global environment veya parent frame'den)
+  # Not: Bu fonksiyon genellikle shiny session içinde çağrılır.
+  session_obj <- NULL
+  try({ session_obj <- shiny::getDefaultReactiveDomain() }, silent=TRUE)
+  
+  ai_selection <- find_best_query_with_ai(prompt, library, session_obj)
+  
+  if (!is.null(ai_selection)) {
+    cat(sprintf("[PK_ANALIZ] -> AI tarafindan kesin eslesme bulundu: %s\n", ai_selection$name))
+    return(ai_selection)
+  }
+  
+  cat("[PK_ANALIZ] AI eslesme bulamadi veya hata aldi. Guclendirilmis Heuristic yonteme geciliyor...\n")
+
+  # --- ADIM 2: Güçlendirilmiş Heuristic (Yedek Yöntem) ---
+  # Kelime çantasını hazırla
+  prompt_clean <- tolower(prompt)
+  prompt_words <- unlist(strsplit(prompt_clean, "\\W+"))
+  prompt_words <- prompt_words[nchar(prompt_words) > 2] # Çok kısa kelimeleri at
+  
+  scores <- sapply(seq_along(library), function(i) {
+    q <- library[[i]]
+    score <- 0
+    
+    desc_clean <- tolower(q$description)
+    name_clean <- tolower(q$name)
+    
+    desc_words <- unlist(strsplit(desc_clean, "\\W+"))
+    name_words <- unlist(strsplit(name_clean, "\\W+"))
+    
+    # 1. Tam İsim Eşleşmesi (Çok Yüksek Puan)
+    if (grepl(name_clean, prompt_clean, fixed = TRUE)) {
+      score <- score + 50
+    }
+    
+    # 2. İsimdeki Kelimelerin Eşleşmesi (Yüksek Puan)
+    name_matches <- sum(prompt_words %in% name_words)
+    score <- score + (name_matches * 10)
+    
+    # 3. Açıklamadaki Kelimelerin Eşleşmesi (Orta Puan)
+    desc_matches <- sum(prompt_words %in% desc_words)
+    score <- score + (desc_matches * 2)
+    
+    # 4. Keyword Bonusları (Domain Spesifik)
+    # Eğer sorgu açıklamasında prompt'taki kritik kelimeler geçiyorsa ekstra puan
+    if (grepl("bütçe|maliyet|harcama", prompt_clean) && grepl("bütçe|maliyet|cost|budget", desc_clean)) score <- score + 5
+    if (grepl("zaman|süre|tarih|gecikme", prompt_clean) && grepl("date|start|finish|tarih", desc_clean)) score <- score + 5
+    if (grepl("kaynak|adam|personel", prompt_clean) && grepl("resource|kaynak|personel", desc_clean)) score <- score + 5
+    
+    return(score)
   })
   
   # Skorları yazdır (Debugging)
-  for(i in seq_along(library)) {
-    if(scores[i] > 0) {
-      cat(sprintf("   - Aday: %s | Skor: %d\n", library[[i]]$name, scores[i]))
+  best_idx <- which.max(scores)
+  max_score <- if (length(best_idx) > 0) scores[best_idx] else 0
+  
+  cat("\n--- HEURISTIC SKOR TABLOSU ---\n")
+  top_indices <- order(scores, decreasing = TRUE)[1:min(3, length(scores))]
+  for(idx in top_indices) {
+    if (scores[idx] > 0) {
+      cat(sprintf("   [%d] %s -> Skor: %d\n", idx, library[[idx]]$name, scores[idx]))
     }
   }
   
-  best_idx <- which.max(scores)
+  # Eşik Değer Kontrolü (Threshold)
+  # Yanlış eşleşmeyi önlemek için minimum bir skor limiti koyuyoruz.
+  THRESHOLD <- 5 
   
-  if (length(best_idx) > 0 && scores[best_idx] > 0) {
-    cat(sprintf("[PK_ANALIZ] EN IYI ESLESME: %s (Skor: %d)\n", library[[best_idx]]$name, scores[best_idx]))
+  if (max_score >= THRESHOLD) {
+    cat(sprintf("[PK_ANALIZ] -> Heuristic EN IYI ESLESME: %s (Skor: %d)\n", library[[best_idx]]$name, max_score))
     return(library[[best_idx]])
   }
   
-  cat("[PK_ANALIZ] Hicbir sorgu ile eslesme saglanamadi.\n")
+  cat("[PK_ANALIZ] -> Hicbir sorgu yeterli skora ulasamadi (Threshold alti).\n")
   return(NULL)
 }
