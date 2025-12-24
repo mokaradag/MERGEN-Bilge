@@ -197,7 +197,7 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	result <- call_local_llm(messages, list(
       model_selection = filter_model,
       temperature = 0.0, 
-      max_output_tokens = 1500,
+      max_output_tokens = 4000,
       enable_mcp_tools = FALSE,
       shiny_session = session,
       api_key_override = api_key_val
@@ -850,7 +850,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı."))
   }
   
-  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 15)
+  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 50)
   
   cat(sprintf("[PK_ANALIZ] Istatistiksel ozet olusturuldu: %d satir, %d onizleme\n",
               stat_summary$row_count,
@@ -883,13 +883,23 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     "KRITIK: Sana gonderilen veri R tarafindan ZATEN FILTRELENMIS ve ISTATISTIKSEL OLARAK OZETLENMISTIR.\n",
     "Bu ozet SAYISAL SUTUNLAR icin toplam/ortalama/min/max, KATEGORIK SUTUNLAR icin en sik degerleri icerir.\n\n",
     "GOREVLER:\n",
-    "1. Istatistiksel ozeti incele (sayisal istatistikler, kategorik dagilimlar)\n",
-    "2. Kullanicinin sorusuna DOGRUDAN, NET ve TURKCE cevap ver\n",
+    "1. Istatistiksel ozeti detayli incele (sayisal istatistikler, kategorik dagilimlar, korelasyonlar)\n",
+    "2. Kullanicinin sorusuna DOGRUDAN, DETAYLI ve TURKCE cevap ver\n",
     "3. Sayilari ozetten AYNEN kullan (yuvarlama, tahminde bulunma)\n",
-    "4. Trendleri ve onemlı bulgulari vurgula\n",
-    "5. Markdown formatinda yaz\n",
-    "6. SADECE OZETTEKI VERILERE DAYAN - baska bilgi uydurma\n",
-    "7. Eger ornek satirlar varsa, bunlari destekleyici olarak kullan\n"
+    "4. Trendleri, anomalileri ve onemlı bulgulari detayli acikla\n",
+    "5. Her bulgu icin NEDEN onemli oldugunu ve NE ANLAMA geldigini yaz\n",
+    "6. Olcum birimlerini ve yuzdeleri dahil ederek karsilastirma yap\n",
+    "7. Is etkisi ve eylem onerileri sun\n",
+    "8. En az 3-4 paragraf halinde kapsamli analiz yaz\n",
+    "9. Markdown formatinda yaz\n",
+    "10. SADECE OZETTEKI VERILERE DAYAN - baska bilgi uydurma\n",
+    "11. Eger ornek satirlar varsa, bunlari detayli olarak incele ve analiz et\n\n",
+    "DETAYLANDIRMA KURALLARI:\n",
+    "- Tek cumle yerine 2-3 cumle ile acikla\n",
+    "- Sayisal karsilastirmalarda yuzde ve oran kullan\n",
+    "- Kategori dagilimlarinda en yuksek/dusuk degerler arasindaki farki vurgula\n",
+    "- Zaman serisi varsa trend yonunu acikla\n",
+    "- Olasi nedenler ve is etkileri hakkinda yorumda bulun\n"
   )
 
 	if (!is.null(selected_query$info_file) && nzchar(selected_query$info_file)) {
@@ -920,7 +930,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     data = secure_data,
     prompt_context = system_prompt,
     user_context = user_msg,
-    query_name = selected_query$name
+    query_name = selected_query$name,
+    max_tokens = 4096
   ))
 }
 

@@ -1989,9 +1989,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	  api_endpoint,
 	  do.call(httr::add_headers, hdrs),
 	  body = jsonlite::toJSON(body, auto_unbox = TRUE),
-	  encode = "raw",
-	  timeout(60)
-	)
+      encode = "raw",
+      timeout(120)
+    )
 
 	status <- httr::status_code(response)
 
@@ -2010,7 +2010,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		  do.call(httr::add_headers, hdrs),
 		  body = jsonlite::toJSON(body, auto_unbox = TRUE),
 		  encode = "raw",
-		  timeout(60)
+		  timeout(120)
 		)
 		status <- httr::status_code(response)
 		resp_txt_raw <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)
