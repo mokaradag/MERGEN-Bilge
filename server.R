@@ -1457,27 +1457,88 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	stop_generation      = stop_generation,
 	reset_chat_state     = reset_chat_state
   )
-  
-	observeEvent(input$quick_action_model_change, {
-	  req(input$quick_action_model_change)
-	  new_model <- input$quick_action_model_change
 
-	  # Hızlı eylem → bir sonraki istekte MCP kapalı
-	  quick_action_skip_mcp(TRUE)
-	  
-	  print(paste("Quick action model change requested:", new_model))
-	  
-	  # Update the settings module's dropdown
-	  updateSelectInput(session, "settings_module-model_selection", selected = new_model)
-	  
-	  # IMPORTANT: Directly update the settings_data reactive values
-	  isolate({
-		settings_data$model_selection <- new_model
-	  })
-		  
-	  print(paste("Model updated to:", new_model))
-	}, ignoreInit = TRUE)
-							 
+  observeEvent(input$quick_action_model_change, {
+    req(input$quick_action_model_change)
+    new_model_id <- input$quick_action_model_change
+
+    # Hızlı eylem → bir sonraki istekte MCP kapalı (Toolsiyonel)
+    quick_action_skip_mcp(TRUE)
+    
+    # Ayarlar modülündeki reaktif değeri güncelle (Ana Söyleşi'den yapılan değişiklik anında uygulanır)
+    # Not: Ayarlar sayfasından yapılan değişiklikler ise "Kaydet" ile uygulanır.
+    isolate({
+      settings_data$model_selection <- new_model_id
+    })
+    
+    # Ayarlar sayfasındaki dropdown'ı da senkronize et
+    updateSelectInput(session, "settings_module-model_selection", selected = new_model_id)
+
+    # Modelin Görünen Adını (Display Name) bul
+    # api_config$local_models listesinden ismini çekiyoruz
+    all_models <- api_config$local_models
+    display_name <- names(all_models)[match(new_model_id, all_models)]
+    
+    if (is.na(display_name) || is.null(display_name) || display_name == "") {
+      display_name <- new_model_id
+    }
+
+    # Kullanıcıya bilgi ver (Toast Mesajı)
+    showToast(session, paste("Model değiştirildi:", display_name), "info")
+    
+    log_info(paste("[MAIN_CHAT] Hızlı model değişimi:", new_model_id))
+  }, ignoreInit = TRUE)
+	
+  # 1. Model Seçici Dropdown (Ana Söyleşi Ekranı için)
+  output$chat_model_selector_ui <- renderUI({
+    # Mevcut seçili modeli al
+    current_val <- settings_data$model_selection
+    
+    # Model listesini hazırla
+    models <- api_config$local_models
+    if (is.null(names(models))) names(models) <- models
+    
+    # Dropdown içeriğini oluştur
+    menu_items <- lapply(seq_along(models), function(i) {
+      m_name <- names(models)[i]
+      m_id   <- models[[i]]
+      is_active <- identical(as.character(m_id), as.character(current_val))
+      
+      tags$li(
+        tags$a(
+          class = paste0("dropdown-item model-option", if(is_active) " active" else ""),
+          href = "#",
+          # Tıklandığında sunucuya sinyal gönder
+          onclick = sprintf("Shiny.setInputValue('quick_action_model_change', '%s', {priority: 'event'}); return false;", m_id),
+          div(
+            class = "model-item-content",
+            span(class = "model-name", m_name),
+            if(is_active) icon("check", class = "selected-icon") else NULL
+          )
+        )
+      )
+    })
+
+    div(
+      title = "Model Değiştir", 
+      shinyWidgets::dropdown(
+        inputId = "chat_model_dropdown_container",
+        style = "minimal",
+        icon = icon("microchip"), 
+        status = "default",  
+        right = TRUE,        
+        up = TRUE,           
+        width = "250px",     
+        
+        tags$ul(
+          class = "dropdown-menu-custom-list",
+          style = "list-style: none; padding: 0; margin: 0;",
+          menu_items
+        )
+      )
+    )
+  })
+  							 
   observeEvent(input$view_file_from_chat, {
 	req(input$view_file_from_chat)
 	file_id <- input$view_file_from_chat

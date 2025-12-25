@@ -69,10 +69,11 @@ ui <- dashboardPage(
     tags$link(rel = "icon", type = "image/png", href = "mergen_avatar.png"),
     
     # --- Local CSS Files ---
-    tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/all.min.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/stt.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/model_selector.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/stt.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -207,8 +208,11 @@ ui <- dashboardPage(
               class = "input-wrapper",
               div(id = "drop_zone", class = "drop-zone hidden", tags$i(class = "fas fa-cloud-upload-alt fa-3x"), p("Dosyaları buraya sürükleyin")),
               tags$textarea(id = "user_input", class = "chat-input", placeholder = "MERGEN'e bir mesaj yazın... (Dosya yüklemek için sürükleyip bırakın veya ataç simgesine tıklayın.)", rows = 1, autofocus = "autofocus"),
-              div(
+			  div(
                 class = "input-actions",
+                div(class = "model-selector-wrapper",
+                    uiOutput("chat_model_selector_ui", style = "display:inline-block;")
+                ),
                 div(id = "file_btn_container", class = "action-btn file-btn", title = "Dosya Ekle (Ctrl+U)", tags$label(`for` = "file_upload", tags$i(class = "fas fa-paperclip"))),
                 actionButton(inputId = "voice_btn", label = "", icon = icon("microphone"), class = "action-btn voice-btn", title = "Sesli Giriş"),
                 actionButton(

@@ -461,13 +461,23 @@ settingsServer <- function(id, parent_session = NULL) {
 		timestamp = as.numeric(Sys.time())
 	  ))
 	})
-    
-    # IMPORTANT: Add observer for external model changes
-    observe({
-      if (!is.null(input$model_selection)) {
-        if (input$model_selection != settings$model_selection) {
-          settings$model_selection <- input$model_selection
-        }
+       
+    # 1. Geçici Değişken: Kullanıcı Ayarlar sayfasında seçim yapınca bu değişir, sistem hemen etkilenmez.
+    temp_model_selection <- reactiveVal(api_config$local_models[1])
+
+    # 2. Ayarlar sayfasındaki dropdown değiştiğinde sadece geçici değişkeni güncelle
+    observeEvent(input$model_selection, {
+      temp_model_selection(input$model_selection)
+    }, ignoreInit = TRUE)
+
+    # 3. Eğer Ana Söyleşi sayfasından (Hızlı Eylem) model değiştirilirse,
+    # Ayarlar sayfasındaki seçimi de güncelle ki senkronize olsunlar.
+    observeEvent(settings$model_selection, {
+      req(settings$model_selection)
+      # Ana ayar değiştiyse, geçiciyi de eşle
+      if (settings$model_selection != temp_model_selection()) {
+        temp_model_selection(settings$model_selection)
+        updateSelectInput(session, "model_selection", selected = settings$model_selection)
       }
     })
     
@@ -553,7 +563,6 @@ settingsServer <- function(id, parent_session = NULL) {
     }, ignoreInit = TRUE)
     
     # Update internal state when inputs change
-    observeEvent(input$model_selection,         { settings$model_selection         <- input$model_selection })
     observeEvent(input$font_size,               { settings$font_size               <- input$font_size })
     observeEvent(input$enable_animations,       { settings$enable_animations       <- input$enable_animations })
     observeEvent(input$enable_timestamps,       { settings$enable_timestamps       <- input$enable_timestamps })
@@ -585,12 +594,15 @@ settingsServer <- function(id, parent_session = NULL) {
     
     # Save settings button
 	observeEvent(input$save_settings, {
-	  settings$selected_character <- temp_selected_character()
-	  
-	  cat(sprintf("[SETTINGS] Ayarlar kaydediliyor, seçili karakter: %s\n", 
-				  settings$selected_character))
-	  
-	  Sys.sleep(0.1)
+      # Karakteri kaydet
+      settings$selected_character <- temp_selected_character()
+      
+      settings$model_selection <- temp_model_selection()
+      
+      cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s\n", 
+                  settings$model_selection, settings$selected_character))
+      
+      Sys.sleep(0.1)
 	  
 	  session$sendCustomMessage("triggerVideoSelection", list(
 		character = settings$selected_character,
@@ -608,9 +620,14 @@ settingsServer <- function(id, parent_session = NULL) {
     })
     
     # Reset settings button
-    observeEvent(input$reset_settings, {
-      settings$model_selection         <- api_config$local_models[1]
-      settings$selected_character      <- "mergen"
+	observeEvent(input$reset_settings, {
+      default_model <- api_config$local_models[1]
+      
+      settings$model_selection          <- default_model
+      # Geçici değişkeni de sıfırla
+      temp_model_selection(default_model)
+      
+      settings$selected_character       <- "mergen"
       temp_selected_character("mergen")
       settings$enable_animations       <- TRUE
       settings$enable_timestamps       <- TRUE

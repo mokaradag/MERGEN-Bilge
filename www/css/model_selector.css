@@ -1,0 +1,113 @@
+/* www/css/model_selector.css */
+
+/* --- Model Seçici Buton Stili (İkon Ayarları) --- */
+
+/* Dropdown'ı açan ana butonu hedefle */
+#chat_model_dropdown_container .dropdown-toggle {
+    background: transparent !important;
+    border: none !important;
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s ease !important;
+    box-shadow: none !important;
+    margin-right: 4px !important;
+}
+
+#chat_model_dropdown_container .dropdown-toggle i,
+#chat_model_dropdown_container .dropdown-toggle .fa,
+#chat_model_dropdown_container .dropdown-toggle .fas,
+#chat_model_dropdown_container .dropdown-toggle .fa-microchip,
+#chat_model_dropdown_container .dropdown-toggle .fa-microchip::before {
+    color: #999999 !important;
+    font-size: 14px !important;
+    line-height: 1 !important;
+    background-color: transparent !important;
+}
+
+/* Üzerine gelme (Hover) durumu */
+#chat_model_dropdown_container .dropdown-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Hover durumunda ikonun renginin açılması */
+#chat_model_dropdown_container .dropdown-toggle:hover i,
+#chat_model_dropdown_container .dropdown-toggle:hover .fa-microchip::before {
+    color: #ececf1 !important;
+}
+
+/* Dropdown'ın varsayılan ok işaretini gizle */
+#chat_model_dropdown_container .dropdown-toggle::after {
+    display: none !important;
+}
+
+/* shinyWidgets'ın oluşturduğu ana dış kapsayıcı (ID ve Sınıf hedefli) */
+#sw-content-chat_model_dropdown_container,
+.sw-dropdown-content {
+    background-color: #202123 !important;
+    border: 1px solid #4d4d4f !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    border-radius: 8px !important;
+    padding: 6px !important;
+}
+
+/* İç kapsayıcı (Gerekirse) */
+.sw-dropdown-in {
+    background-color: transparent !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Özel liste sınıfı */
+.dropdown-menu-custom-list {
+    background-color: transparent !important;
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Liste elemanları (Linkler) */
+.dropdown-item.model-option {
+    color: #ececf1 !important;
+    background-color: transparent !important;
+    padding: 10px 12px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    display: block;
+    font-size: 14px !important;
+    transition: background-color 0.2s;
+}
+
+/* Liste elemanı üzerine gelme durumu */
+.dropdown-item.model-option:hover,
+.dropdown-item.model-option:focus {
+    background-color: #343541 !important;
+    color: #ffffff !important;
+    outline: none !important;
+}
+
+/* Aktif (seçili) eleman stili */
+.dropdown-item.model-option.active {
+    background-color: #40414f !important;
+    font-weight: 600 !important;
+    color: #ffffff !important;
+}
+
+/* Liste içeriği düzeni */
+.model-item-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+/* Seçili olduğunu gösteren ikon */
+.selected-icon {
+    color: #19c37d !important;
+    font-size: 14px;
+}
