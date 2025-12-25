@@ -654,8 +654,14 @@ generate_statistical_summary <- function(data, max_preview_rows = 20) {
 # 2. SORGULAMA MOTORU (EXECUTION ENGINE)
 # ==============================================================================
 
-pk_analiz_process_request <- function(user_prompt, chat_history, session) {
+pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_check = NULL) {
   cat("\n[PK_ANALIZ] >>> pk_analiz_process_request BASLATILDI <<<\n")
+  
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (baslangic)\n")
+    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+  }
+  
   cat(sprintf("[PK_ANALIZ] Kullanici Prompt: '%s'\n", user_prompt))
   
   # A. Bağlantı Kur
@@ -676,13 +682,22 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     return("⚠️ **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
   }
   
-  # C. Doğru Sorguyu Seç
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (RLS sonrasi)\n")
+    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+  }
+  
   cat("[PK_ANALIZ] Akilli sorgu secimi yapiliyor (select_smart_query)...\n")
   selected_query <- select_smart_query(user_prompt, query_library, chat_history)
   
   if (is.null(selected_query)) {
     cat("[PK_ANALIZ] UYARI: Uygun bir sorgu ESLESMESI BULUNAMADI.\n")
     return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. (Sorgu kütüphanesinde eşleşen anahtar kelime yok).")
+  }
+  
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (sorgu secimi sonrasi)\n")
+    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
@@ -809,16 +824,31 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   
   if (is.character(raw_data) && startsWith(raw_data, "⚠️")) return(raw_data)
   
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (SQL sonrasi)\n")
+    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+  }
+  
   cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
   
   secure_data <- apply_rls_to_data(raw_data, rls_info, selected_query$rls_columns)
   cat(sprintf("[PK_ANALIZ] RLS sonrasi: %d satir\n", nrow(secure_data)))
+  
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (RLS sonrasi)\n")
+    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+  }
   
   if (nrow(secure_data) == 0) {
       return(paste0("🔍 **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
   }
     
   # AI fonksiyonuna veriyi de gonderiyoruz ki degerleri gorebilsin
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme oncesi)\n")
+    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+  }
+  
   if (isTRUE(selected_query$disable_ai_filters)) {
     cat("[PK_ANALIZ] Ozel Sorgu Ayari: AI Filtreleme devre disi birakildi. Sadece RLS verisi kullaniliyor.\n")
     filter_criteria <- list(filters = list(), aggregation = NULL)
@@ -841,6 +871,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
   
   cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n", 
               nrow(filtered_data), nrow(secure_data)))
+  
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme sonrasi)\n")
+    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+  }
 			  
 	if (nrow(filtered_data) < nrow(secure_data) * 0.05 && nrow(secure_data) > 100) {
 	  cat("[PK_ANALIZ] UYARI: Filtreleme sonucu çok az veri kaldı (<%5). Kullanıcı gereksiz filtre uygulanmış olabilir.\n")
@@ -876,30 +911,31 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session) {
     )
   }
   
-  system_prompt <- paste0(
-    "Sen MERGEN Bilge veri analiz asistanisin. Kullanicinin sorusuna, R tarafindan hazirlanan ISTATISTIKSEL OZET'e dayanarak cevap ver.\n\n",
-    "Kullanilan Sorgu: ", selected_query$name, "\n",
-    "Sorgu Aciklamasi: ", selected_query$description, "\n\n",
-    "KRITIK: Sana gonderilen veri R tarafindan ZATEN FILTRELENMIS ve ISTATISTIKSEL OLARAK OZETLENMISTIR.\n",
-    "Bu ozet SAYISAL SUTUNLAR icin toplam/ortalama/min/max, KATEGORIK SUTUNLAR icin en sik degerleri icerir.\n\n",
+system_prompt <- paste0(
+    "Sen MERGEN Bilge veri analiz asistanisin. R'dan gelen ISTATISTIKSEL OZET'i kullanarak soruyu yanitla.\n\n",
+    "Sorgu: ", selected_query$name, "\n",
+    "Aciklama: ", selected_query$description, "\n\n",
+    "VERI KAYNAGI: Ozet R tarafindan hazirlanmistir (sayisal istatistikler + kategorik dagilimlar).\n\n",
     "GOREVLER:\n",
-    "1. Istatistiksel ozeti detayli incele (sayisal istatistikler, kategorik dagilimlar, korelasyonlar)\n",
-    "2. Kullanicinin sorusuna DOGRUDAN, DETAYLI ve TURKCE cevap ver\n",
-    "3. Sayilari ozetten AYNEN kullan (yuvarlama, tahminde bulunma)\n",
-    "4. Trendleri, anomalileri ve onemlı bulgulari detayli acikla\n",
-    "5. Her bulgu icin NEDEN onemli oldugunu ve NE ANLAMA geldigini yaz\n",
-    "6. Olcum birimlerini ve yuzdeleri dahil ederek karsilastirma yap\n",
-    "7. Is etkisi ve eylem onerileri sun\n",
-    "8. En az 3-4 paragraf halinde kapsamli analiz yaz\n",
-    "9. Markdown formatinda yaz\n",
-    "10. SADECE OZETTEKI VERILERE DAYAN - baska bilgi uydurma\n",
-    "11. Eger ornek satirlar varsa, bunlari detayli olarak incele ve analiz et\n\n",
-    "DETAYLANDIRMA KURALLARI:\n",
-    "- Tek cumle yerine 2-3 cumle ile acikla\n",
-    "- Sayisal karsilastirmalarda yuzde ve oran kullan\n",
-    "- Kategori dagilimlarinda en yuksek/dusuk degerler arasindaki farki vurgula\n",
-    "- Zaman serisi varsa trend yonunu acikla\n",
-    "- Olasi nedenler ve is etkileri hakkinda yorumda bulun\n"
+    "1. Ozeti detayli incele ve soruya TURKCE cevap ver\n",
+    "2. Sayilari AYNEN kullan (tahmin yapma)\n",
+    "3. Trendleri ve bulgulari acikla, is etkisi belirt\n",
+    "4. 3-4 paragraf kapsamli analiz yaz\n\n",
+    "FORMAT (ZORUNLU):\n",
+    "- **Bold** ile sayilari vurgula\n",
+    "- Bulgular icin madde isareti kullan\n",
+    "- Tablolarla karsilastir (Markdown | syntax)\n",
+    "- Basliklarla yapilandir (## ve ###)\n",
+    "- Oneriler icin numara kullan\n\n",
+    "ORNEK YAPI:\n",
+    "## Ozet\n",
+    "Paragraf...\n\n",
+    "## Bulgular\n",
+    "- **Metrik:** Aciklama\n\n",
+    "| Kategori | Deger |\n",
+    "| A | 150 |\n\n",
+    "## Oneriler\n",
+    "1. Oneri\n"
   )
 
 	if (!is.null(selected_query$info_file) && nzchar(selected_query$info_file)) {

@@ -900,10 +900,15 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	if (identical(tool_family, "sql_analysis")) {
        cat("[SERVER] 'Proje ve Kaynak Analizi' secildi. Modul cagiriliyor...\n")
        
-       # 1. Analiz fonksiyonunu çalıştır
-       # pk_analiz_process_request fonksiyonu module_proje_kaynak_analizi.R icindedir
+       if (isTRUE(stop_generation())) {
+         removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+         values$typing <- FALSE
+         reset_chat_state()
+         return(invisible(NULL))
+       }
+       
        analiz_result <- tryCatch({
-         pk_analiz_process_request(user_message_text, messages_to_process, session)
+         pk_analiz_process_request(user_message_text, messages_to_process, session, stop_check = stop_generation)
        }, error = function(e) {
          paste0("⚠️ Analiz modülü hatası: ", e$message)
        })
