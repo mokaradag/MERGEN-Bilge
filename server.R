@@ -1499,7 +1499,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     if (is.null(names(models))) names(models) <- models
     
     # Dropdown içeriğini oluştur
-    menu_items <- lapply(seq_along(models), function(i) {
+	menu_items <- lapply(seq_along(models), function(i) {
       m_name <- names(models)[i]
       m_id   <- models[[i]]
       is_active <- identical(as.character(m_id), as.character(current_val))
@@ -1508,7 +1508,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
         tags$a(
           class = paste0("dropdown-item model-option", if(is_active) " active" else ""),
           href = "#",
-          # Tıklandığında sunucuya sinyal gönder
           onclick = sprintf("Shiny.setInputValue('quick_action_model_change', '%s', {priority: 'event'}); return false;", m_id),
           div(
             class = "model-item-content",
@@ -1530,6 +1529,14 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
         up = TRUE,           
         width = "250px",     
         
+        div(
+          class = "dropdown-menu-header",
+          style = "padding: 8px 12px; border-bottom: 1px solid #4d4d4f; margin-bottom: 4px;",
+          tags$span(
+            style = "color: #ececf1; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;",
+            "Model Kataloğu"
+          )
+        ),
         tags$ul(
           class = "dropdown-menu-custom-list",
           style = "list-style: none; padding: 0; margin: 0;",

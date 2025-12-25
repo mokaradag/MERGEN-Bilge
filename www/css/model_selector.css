@@ -22,11 +22,15 @@
 #chat_model_dropdown_container .dropdown-toggle .fa,
 #chat_model_dropdown_container .dropdown-toggle .fas,
 #chat_model_dropdown_container .dropdown-toggle .fa-microchip,
-#chat_model_dropdown_container .dropdown-toggle .fa-microchip::before {
+#chat_model_dropdown_container .dropdown-toggle .fa-microchip::before,
+#chat_model_dropdown_container button i.fas.fa-microchip,
+#chat_model_dropdown_container button i.fas.fa-microchip::before {
     color: #999999 !important;
-    font-size: 14px !important;
+    font-size: 12px !important;
     line-height: 1 !important;
     background-color: transparent !important;
+    width: 12px !important;
+    height: 12px !important;
 }
 
 /* Üzerine gelme (Hover) durumu */
