@@ -600,20 +600,29 @@ observeEvent(input$analysis_file_clicked, {
   )
 	
 # Simplified - uses AI module
-  generate_non_streaming_stoppable <- function(chat_history, current_settings, user_prompt_msg,
-                                               chat_id_val, model_selected, last_user_text = NULL) {
+generate_non_streaming_stoppable <- function(chat_history, current_settings, user_prompt_msg,
+                                             chat_id_val, model_selected, last_user_text = NULL) {
 	
-	# DEBUG: snapshot request (non-streaming)
+	req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
+	active_request_id(req_id)
+	
 	safe_settings <- current_settings; safe_settings$shiny_session <- NULL
 	dbg_dump("LLM_REQUEST_NONSTREAM", list(model = model_selected, messages = chat_history, settings = safe_settings))
 	
-	# Call AI module
 	p <- ai_processor$call_llm_non_streaming(chat_history, current_settings, model_selected)
 	
 	# Chain onto the returned promise and use that going forward
 	p2 <- promises::then(
 	  p,
 	  onFulfilled = function(result) {
+		if (isTRUE(stop_generation()) || !identical(active_request_id(), req_id)) {
+		  perf_tracker$track_error()
+		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+		  values$typing <- FALSE
+		  reset_chat_state()
+		  return(invisible(NULL))
+		}
+		
 		dbg_dump("LLM_RESPONSE_NONSTREAM", list(
 		  success = result$success, duration = result$duration %||% NA_real_,
 		  content_preview = substr(result$content %||% "", 1, 800),
