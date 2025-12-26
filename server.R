@@ -1491,11 +1491,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	
   # 1. Model Seçici Dropdown (Ana Söyleşi Ekranı için)
   output$chat_model_selector_ui <- renderUI({
-    # Mevcut seçili modeli al
     current_val <- settings_data$model_selection
-    
-    # Model listesini hazırla
     models <- api_config$local_models
+    descriptions <- api_config$local_model_descriptions %||% list()
+    
     if (is.null(names(models))) names(models) <- models
     
     # Dropdown içeriğini oluştur
@@ -1503,11 +1502,13 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
       m_name <- names(models)[i]
       m_id   <- models[[i]]
       is_active <- identical(as.character(m_id), as.character(current_val))
+      desc <- descriptions[[m_id]] %||% m_name  # EKLENDI
       
       tags$li(
         tags$a(
           class = paste0("dropdown-item model-option", if(is_active) " active" else ""),
           href = "#",
+          title = desc, 
           onclick = sprintf("Shiny.setInputValue('quick_action_model_change', '%s', {priority: 'event'}); return false;", m_id),
           div(
             class = "model-item-content",
@@ -1529,11 +1530,12 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
         up = TRUE,           
         width = "250px",     
         
-        div(
+		div(
           class = "dropdown-menu-header",
           style = "padding: 8px 12px; border-bottom: 1px solid #4d4d4f; margin-bottom: 4px;",
+          icon("layer-group"),
           tags$span(
-            style = "color: #ececf1; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;",
+            style = "font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;",
             "Model Kataloğu"
           )
         ),

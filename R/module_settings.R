@@ -68,15 +68,18 @@ settingsUI <- function(id) {
 				  h4("Model Seçimi", class = "setting-subtitle"),
 				  p("Kullanmak istediğiniz modeli seçin.", class = "setting-description", style = "margin-top:4px;"),
 				  div(
-						class = "setting-item",
-						selectInput(
-						  inputId = ns("model_selection"),
-						  label   = NULL,
-						  choices = api_config$local_models,
-						  selected = api_config$local_models[1],
-						  width = "100%"
-						)
-				  ),
+                    class = "setting-item",
+                    style = "max-width: 250px;",
+                    selectInput(
+                      inputId = ns("model_selection"),
+                      label   = NULL,
+                      choices = api_config$local_models,
+                      selected = api_config$local_models[1],
+                      width = "100%"
+                    ),
+                    # Model açıklaması alt yazı olarak
+                    uiOutput(ns("model_description_text"))
+                  ),
 				  div(
 					class = "setting-item followup-toggle",
 					h4("Yanıt Sonrası Öneriler", class = "setting-subtitle"),
@@ -266,6 +269,22 @@ settingsUI <- function(id) {
 settingsServer <- function(id, parent_session = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+	
+	# Model açıklamasını dinamik göster
+    output$model_description_text <- renderUI({
+      req(input$model_selection)
+      descriptions <- api_config$local_model_descriptions %||% list()
+      desc <- descriptions[[input$model_selection]]
+      if (!is.null(desc) && nzchar(desc)) {
+        tags$p(
+          class = "setting-description",
+          style = "margin-top: 4px; font-size: 12px; color: #999; font-style: italic;",
+          desc
+        )
+      } else {
+        NULL
+      }
+    })
     
     # Reactive values for settings
     settings <- reactiveValues(

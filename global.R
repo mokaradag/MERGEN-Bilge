@@ -1055,6 +1055,15 @@ api_config <- list(
 	"Dropdown display model 5" = "technical name 5",
     "Dropdown display model 6" = "technical name 6"
   ),
+  # Model açıklamaları (tooltip'ler için)
+  local_model_descriptions = list(
+    "technical name 1" = "Genel amaçlı, dengeli performans",
+    "technical name 2" = "Hızlı yanıt, günlük kullanım",
+    "technical name 3" = "Gelişmiş akıl yürütme",
+    "technical name 4" = "Yüksek hassasiyet, detaylı analiz",
+    "technical name 5" = "İkincil endpoint modeli",
+    "technical name 6" = "Özel görevler için optimize"
+  ),
   # Map each technical id to an endpoint key (or direct URL if preferred)
   local_model_endpoint_map = c(
     "technical name 1" = "primary",
