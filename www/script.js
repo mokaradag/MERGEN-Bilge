@@ -738,47 +738,7 @@
       }
 
       Shiny.addCustomMessageHandler('updateFollowupSuggestions', renderFollowupSuggestions);
-
-      // Initialize streaming message (set data-streaming="true" for ISSUE 2)
-        Shiny.addCustomMessageHandler('initStreamingMessage', function(data) {
-          const messageDiv = document.getElementById(data.id);
-          if (messageDiv) {
-            messageDiv.innerHTML = '<div class="streaming-content" data-streaming="true"></div>';
-            messageDiv.dataset.streaming = 'true';
-            
-            // Hide action buttons
-            const wrapper = document.getElementById('message_wrapper_' + data.id);
-            if (wrapper) {
-              const actionButtons = wrapper.querySelectorAll('.streaming-hidden');
-              actionButtons.forEach(btn => {
-                btn.style.display = 'none';
-              });
-            }
-          }
-        });
-    
-      /* ==========================================================
-         Enhanced streaming update handler (replaces older one)
-         ========================================================== */
-        Shiny.addCustomMessageHandler('streamingUpdate', function(data) {
-          const messageDiv = document.getElementById(data.id);
-          if (!messageDiv) return;
-          
-          let contentDiv = messageDiv.querySelector('.streaming-content');
-          if (!contentDiv) {
-            contentDiv = messageDiv;
-          }
-          
-          if (data.isPartial) {
-            // Parse and apply rich text formatting with immediate code display
-            const formattedHtml = parseStreamingMarkdown(data.text);
-            contentDiv.innerHTML = formattedHtml;
-            
-            // Always scroll during streaming
-            window.smartScrollToBottom(false); // Use instant scroll for streaming
-          }
-        });
-    
+        
         // Single consolidated download handler  
         $(document).on('click', '.file-download, .js-download-btn', function(e) {
           e.preventDefault();
@@ -855,87 +815,7 @@
             }
           }, 100);
         }
-            
-      // Legacy streaming handler (for backward compatibility)
-      Shiny.addCustomMessageHandler('streamUpdate', function(message) {
-        try {
-          const message_div = $('#' + message.id);
-          if (message_div.length > 0) {
-            let content_area = message_div.find('.message-content-body');
-            if (content_area.length === 0) {
-                message_div.html('<div class="message-content-body"></div>');
-                content_area = message_div.find('.message-content-body');
-            }
-            content_area.text(content_area.text() + message.text);
-          }
-        } catch (e) {
-          console.error('streamUpdate handler error', e);
-        }
-      });
-    
-      /* ==========================================================
-         Enhanced finalize streaming message handler (ISSUE 2, 4, 6)
-         (replaces older finalize handler)
-         ========================================================== */
-        Shiny.addCustomMessageHandler('finalizeStreamingMessage', function(data) {
-          const messageDiv = document.getElementById(data.id);
-          if (!messageDiv) return;
-          
-          // Update streaming status
-          messageDiv.dataset.streaming = "false";
-          
-          // Remove streaming classes
-          const wrapper = document.getElementById('message_wrapper_' + data.id);
-          if (wrapper) {
-            const aiMessage = wrapper.querySelector('.ai-message');
-            if (aiMessage) {
-              aiMessage.classList.remove('streaming-message');
-            }
-            
-            // Show action buttons
-            const actionButtons = wrapper.querySelectorAll('.streaming-hidden');
-            actionButtons.forEach(btn => {
-              btn.classList.remove('streaming-hidden');
-              btn.style.display = 'inline-flex';
-              btn.disabled = false;
-            });
-          }
-          
-          // Replace with final formatted HTML
-          messageDiv.innerHTML = data.html;
-
-            // Initialize CodeMirror (do not rely on server `hasCode`)
-            if (window.initializeCodeMirrorInElement) {
-              setTimeout(() => window.initializeCodeMirrorInElement('message_wrapper_' + data.id), 0);
-            }
-
-          const followupBox = document.getElementById('followup_container_' + data.id);
-          if (followupBox) {
-            followupBox.classList.remove('pending');
-          }
-
-          // Final scroll adjustment
-          if (window.isNearBottom) {
-            window.smartScrollToBottom();
-          }
-        });
-    
-        Shiny.addCustomMessageHandler('streamEnd', function(message) {
-            try {
-                const message_div = $('#' + message.id);
-                if (message_div.length > 0) {
-                    if (window.initializeCodeMirror) {
-                      window.initializeCodeMirror();
-                    } else if (window.initializeCodeMirrorInElement) {
-                      // IMPORTANT: initializer expects the wrapper id
-                      window.initializeCodeMirrorInElement('message_wrapper_' + message.id);
-                    }
-                }
-            } catch(e) {
-                console.error("Error in streamEnd handler:", e);
-            }
-        });
-    
+                        
       $(window).on('focus', function() {
         if (document.title.startsWith('(1)')) {
           document.title = 'MERGEN Bilge';
@@ -977,42 +857,7 @@
         globalMessageObserver = messageObserver;
         globalMessageObserver.observe(chatContainer, { childList: true, subtree: true });
       }
-    
-	  // Observer specifically for rendering Saved Charts (History)
-      // Watch for .chart-card elements appearing in the DOM
-      const chartHistoryObserver = new MutationObserver(muts => {
-        let needsRender = false;
-        muts.forEach(m => {
-          if (m.addedNodes) {
-            m.addedNodes.forEach(node => {
-              if (node.nodeType !== 1) return; // Skip text nodes
-              // Check if the node itself is a chart card or contains one
-              if (node.classList.contains('chart-card') || node.querySelector('.chart-card')) {
-                needsRender = true;
-              }
-            });
-          }
-        });
-        
-        if (needsRender) {
-          // Use a small debounce to batch renders if many charts load at once
-          if (window.renderChartTimeout) clearTimeout(window.renderChartTimeout);
-          window.renderChartTimeout = setTimeout(() => {
-             // Try to render any unrendered charts in the chat container
-             if (window.renderSavedCharts) {
-               // We pass the ID of the main container to search within
-               window.renderSavedCharts('chat_content_container'); 
-               window.renderSavedCharts('chat_content_wrapper'); // Fallback
-             }
-          }, 100);
-        }
-      });
-
-      const historyContainer = document.querySelector('#chat_content_container') || document.querySelector('.chat-container');
-      if (historyContainer) {
-        chartHistoryObserver.observe(historyContainer, { childList: true, subtree: true });
-      }
-	  
+    	  
         // Auto-init CM whenever a .codemirror-textarea is inserted
         (function attachCMObserver(){
           const root = document.querySelector('#chat_content_container, #_content_container, .chat-container');
@@ -1210,111 +1055,6 @@ $(document).on('click', '.source-link', function() {
     nonce: Math.random()
   }, {priority: 'event'});
 });
-
-window.renderSavedCharts = function(wrapperId) {
-  var wrapper = document.getElementById(wrapperId);
-  // Try class lookup if ID fails (for robustness)
-  if (!wrapper) wrapper = document.querySelector('.' + wrapperId);
-  if (!wrapper) wrapper = document.body; // Fallback to body search if all else fails
-
-  // Find cards that have a spec but haven't been rendered yet (avoid double render)
-  var chartCards = wrapper.querySelectorAll('.chart-card[data-chartlab-spec]:not(.rendered)');
-  
-  chartCards.forEach(function(card) {
-    var specJson = card.getAttribute('data-chartlab-spec');
-    var chartId = card.getAttribute('data-chart-id');
-    if (!specJson || !chartId) return;
-
-    // Mark as rendered immediately to prevent duplicate Highcharts init
-    card.classList.add('rendered');
-
-    try {
-      var spec = JSON.parse(specJson);
-      var container = card.querySelector('.chartlab-placeholder');
-      if (!container) return;
-      
-      // Ensure Highcharts is loaded
-      if (typeof Highcharts !== 'undefined') {
-        container.innerHTML = ''; // Clear "Loading..." text
-        
-        // [FIX] Ensure chart type defaults to something valid if missing in JSON
-        var chartType = (spec.type || 'column').toLowerCase();
-        var mapping = spec.mapping || {};
-        var data = spec.data || [];
-        
-        var seriesData = [];
-        var categories = [];
-        
-        // Basic processing to match Highcharts format
-        if (Array.isArray(data) && data.length > 0) {
-          if (chartType === 'pie' || chartType === 'donut') {
-             // For Pie/Donut: data is [{name, y}]
-             seriesData = data.map(function(row) {
-               return { 
-                 name: row[mapping.x] || row.name || 'Unknown', 
-                 y: parseFloat(row[mapping.y] || row.value || row.n || row.val) || 0 
-               };
-             });
-          } else {
-             // For XY Charts
-             // Fix Categories (X axis)
-             categories = data.map(function(row) { return row[mapping.x] || ''; });
-             
-             // Check if grouped
-             if (mapping.group && row[mapping.group]) {
-               // Grouping logic (simplified for JS rendering)
-               // Note: Full complex grouping is hard in JS-only, 
-               // but we try to render at least the primary series
-               // If complex, we might fallback to single series for history
-             }
-             
-             // Simple single series fallback
-             var values = data.map(function(row) { return parseFloat(row[mapping.y] || row.n || row.val) || 0; });
-             seriesData = [{ name: mapping.y || 'Değer', data: values }];
-          }
-        }
-        
-        Highcharts.chart(container, {
-          chart: { 
-            type: chartType === 'donut' ? 'pie' : chartType, 
-            backgroundColor: 'transparent',
-            style: { fontFamily: 'Inter, sans-serif' }
-          },
-          title: { text: spec.title || null, style: { color: '#fff' } },
-          xAxis: (chartType !== 'pie' && chartType !== 'donut') ? { 
-            categories: categories, 
-            labels: { style: { color: '#999' } },
-            lineColor: '#444'
-          } : undefined,
-          yAxis: (chartType !== 'pie' && chartType !== 'donut') ? { 
-            title: { text: mapping.y || '' }, 
-            labels: { style: { color: '#999' } }, 
-            gridLineColor: '#333' 
-          } : undefined,
-          plotOptions: {
-            pie: { 
-              innerSize: (chartType === 'donut' || spec.params?.donut) ? '60%' : '0%', 
-              borderWidth: 0,
-              dataLabels: { enabled: true, color: '#fff', style: { textOutline: 'none' } } 
-            },
-            series: { borderWidth: 0, borderRadius: 2 }
-          },
-          colors: ["#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee"],
-          series: (chartType === 'pie' || chartType === 'donut') ? [{ name: 'Değer', data: seriesData }] : seriesData,
-          legend: { itemStyle: { color: '#999' } },
-          tooltip: { backgroundColor: '#1a1a1a', style: { color: '#fff' } },
-          credits: { enabled: false }
-        });
-      } else {
-        container.innerHTML = '<div style="color:red">Highcharts kütüphanesi yüklenemedi.</div>';
-      }
-    } catch(e) {
-      console.error('Chart render error:', e);
-      // Remove rendered class so we might try again if it was a temporary glitch
-      card.classList.remove('rendered'); 
-    }
-  });
-};
 
 $(document).ready(function() {
   if (!window.__analysisFileLinkBound) {

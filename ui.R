@@ -120,6 +120,8 @@ ui <- dashboardPage(
     
     # Your Custom Script
 	tags$script(src = "script.js"),
+	tags$script(src = "js/chart_renderer.js"),
+    tags$script(src = "js/streaming_manager.js"),
 	tags$script(src = "js/toast.js"),
 	tags$script(src = "js/markdown-parser.js"),
 	tags$script(src = "js/layout-manager.js"),
