@@ -131,6 +131,9 @@ ui <- dashboardPage(
 	tags$script(src = "js/intro_animation.js"),
     tags$script(src = "js/typing_animation.js"),
     tags$script(src = "js/neural_welcome.js"),
+	tags$script(src = "js/tts_manager.js"),
+    tags$script(src = "js/character_manager.js"),
+    tags$script(src = "js/shortcuts_manager.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),
