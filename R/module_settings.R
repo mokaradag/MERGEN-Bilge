@@ -216,21 +216,6 @@ settingsUI <- function(id) {
                           value = TRUE
                         ),
                         p("Yanıt tamamlandıktan sonra metni yerel TTS motoru ile sese dönüştür.", class = "setting-description")
-                      ),
-                      div(
-                        class = "setting-item",
-                        style = "max-width: 260px;",
-                        selectInput(
-                          inputId = ns("tts_voice"),
-                          label = "Ses tipi:",
-                          choices = c(
-                            "Aras" = "tr-male-1",
-                            "Defne" = "tr-female-1"
-                          ),
-                          selected = tts_config$default_voice %||% "tr-male-1",
-                          width = "100%"
-                        ),
-                        p("Seslendirme için kullanılacak varsayılan ses profili (Türkçe uyumlu seçenekler önerilir).", class = "setting-description")
                       )
                     )
                   )
@@ -296,7 +281,6 @@ settingsServer <- function(id, parent_session = NULL) {
       enable_streaming        = TRUE,
       enable_widescreen       = TRUE,
       enable_tts_audio        = TRUE,
-      tts_voice               = tts_config$default_voice %||% "tr-male-1",
       enable_rdata_tools      = FALSE,
       enable_mcp_tools        = FALSE,
       enable_followups        = TRUE,
@@ -543,10 +527,6 @@ settingsServer <- function(id, parent_session = NULL) {
         settings$enable_tts_audio <- isTRUE(loaded$enable_tts_audio)
         updateCheckboxInput(session, "enable_tts_audio", value = settings$enable_tts_audio)
       }
-      if (!is.null(loaded$tts_voice)) {
-        settings$tts_voice <- loaded$tts_voice
-        updateSelectInput(session, "tts_voice", selected = loaded$tts_voice)
-      }
       if (!is.null(loaded$enable_followups)) {
         settings$enable_followups <- isTRUE(loaded$enable_followups)
         updateCheckboxInput(session, "enable_followups", value = settings$enable_followups)
@@ -589,7 +569,6 @@ settingsServer <- function(id, parent_session = NULL) {
     observeEvent(input$enable_streaming,  { settings$enable_streaming  <- input$enable_streaming })
     observeEvent(input$enable_widescreen, { settings$enable_widescreen <- input$enable_widescreen })
     observeEvent(input$enable_tts_audio,  { settings$enable_tts_audio  <- isTRUE(input$enable_tts_audio) })
-    observeEvent(input$tts_voice,         { settings$tts_voice         <- input$tts_voice })
     observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
 
     # Karşılıklı dışlama mantığı
@@ -629,10 +608,9 @@ settingsServer <- function(id, parent_session = NULL) {
 	  ))
 	  
 	  to_save <- reactiveValuesToList(settings)
-      to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
+	  to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
       to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
       to_save$enable_tts_audio   <- isTRUE(input$enable_tts_audio)
-      to_save$tts_voice          <- input$tts_voice
       session$sendCustomMessage("saveSettings", to_save)
       
       showToast(session, "Ayarlar kaydedildi!", "success")
@@ -654,7 +632,6 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$enable_streaming        <- TRUE
       settings$enable_widescreen       <- TRUE
       settings$enable_tts_audio        <- TRUE
-      settings$tts_voice               <- tts_config$default_voice %||% "tr-male-1"
       settings$enable_rdata_tools      <- FALSE
       settings$enable_mcp_tools        <- FALSE
       settings$enable_followups        <- TRUE
@@ -672,7 +649,6 @@ settingsServer <- function(id, parent_session = NULL) {
       updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
       updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
       updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
-      updateSelectInput(session, "tts_voice", selected = settings$tts_voice)
       
       session$sendCustomMessage("clearSettings", list())
       showToast(session, "Ayarlar sıfırlandı!", "info")

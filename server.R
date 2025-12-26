@@ -1737,11 +1737,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  tts_warning_shown(FALSE)
 	})
 
-	resolve_tts_voice <- function() {
-	  val <- isolate(settings_data$tts_voice) %||% tts_config$default_voice %||% "tr-male-1"
-	  as.character(val)[1]
-	}
-
 	attach_tts_audio <- function(message_id, audio_src, voice_used = NULL) {
 	  if (is.null(message_id) || !nzchar(audio_src)) return(invisible(NULL))
 
@@ -1791,7 +1786,16 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		full_text <- as.character(content)[1]
 		if (!nzchar(full_text)) return(invisible(NULL))
 		
-		voice_sel <- settings_data$tts_voice %||% "tr-male-1"
+		selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+		chars_data <- get_characters_data()
+		character_data <- if (!is.null(chars_data)) {
+		  Find(function(x) x$id == selected_char_id, chars_data$styles)
+		} else NULL
+		voice_sel <- if (!is.null(character_data) && !is.null(character_data$tts_voice)) {
+		  character_data$tts_voice
+		} else {
+		  "tr-male-1"
+		}
 		
 		# Helper: Send chunk to client
 		send_chunk <- function(res, idx) {

@@ -3085,7 +3085,8 @@ get_characters_data <- function() {
           "Mini örnek veya çıktı ile pekiştirme"
         ),
         system_prompt_en = "Be a balanced, pragmatic assistant. First provide a 2–3 sentence executive summary, then a concise step-by-step plan, then a minimal example/output. Avoid rhetoric and hedging. Use precise, actionable language. Ask for missing constraints only if they block progress.",
-        parameters = list(temperature = 0.4)
+		parameters = list(temperature = 0.4),
+        tts_voice = "tr-male-1"
       ),
       list(
         id = "ulgen",
@@ -3112,7 +3113,8 @@ get_characters_data <- function() {
           "Pozitif tonla eylem listesi"
         ),
         system_prompt_en = "Act like a constructive expert: quickly frame the problem; propose 2–3 viable solution paths with trade-offs; recommend one path with rationale; end with a checklist of next actions and acceptance criteria. Keep the tone positive and professional.",
-        parameters = list(temperature = 0.5)
+		parameters = list(temperature = 0.5),
+        tts_voice = "tr-male-1"
       ),
       list(
         id = "kayra",
@@ -3139,7 +3141,8 @@ get_characters_data <- function() {
           "Fazlara ayrılmış yol haritası"
         ),
         system_prompt_en = "Operate as a strategist: state objectives and guiding principles; map alternatives with trade-offs; provide a decision matrix; outline a phased roadmap with milestones, owners, and risks; include governance/policy notes when relevant.",
-        parameters = list(temperature = 0.3, long_form = TRUE)
+		parameters = list(temperature = 0.3, long_form = TRUE),
+        tts_voice = "tr-male-1"
       ),
       list(
         id = "erlik",
@@ -3166,7 +3169,8 @@ get_characters_data <- function() {
           "Önleyici aksiyon listesi"
         ),
         system_prompt_en = "Be a respectful critical partner. Surface hidden assumptions; list risks and counterexamples; ask sharp but polite why/how questions; propose risk-mitigating alternatives; conclude with a concise pre-flight checklist. Keep language diplomatic, not scary.",
-        parameters = list(temperature = 0.4)
+		parameters = list(temperature = 0.4),
+        tts_voice = "tr-male-1"
       ),
       list(
         id = "umay",
@@ -3193,7 +3197,8 @@ get_characters_data <- function() {
           "Mini örnekle pekiştirme"
         ),
         system_prompt_en = "Be an empathetic teacher for beginners. Explain in simple language; break tasks into small numbered steps; include common pitfalls and tips; add a short safety/ethics note if relevant; provide a minimal working example.",
-        parameters = list(temperature = 0.6)
+		parameters = list(temperature = 0.6),
+        tts_voice = "tr-female-1"
       )
     )
   )
