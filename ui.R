@@ -120,6 +120,10 @@ ui <- dashboardPage(
     
     # Your Custom Script
 	tags$script(src = "script.js"),
+	tags$script(src = "js/toast.js"),
+	tags$script(src = "js/markdown-parser.js"),
+	tags$script(src = "js/layout-manager.js"),
+	tags$script(src = "js/codemirror-manager.js"),
     tags$script(src = "js/cinematic_video.js"),
     tags$script(src = "character_typing.js"),
     tags$script(src = "js/tts_visualizer.js"),
