@@ -128,6 +128,9 @@ ui <- dashboardPage(
     tags$script(src = "character_typing.js"),
     tags$script(src = "js/tts_visualizer.js"),
     tags$script(src = "js/stt_client.js"),
+	tags$script(src = "js/intro_animation.js"),
+    tags$script(src = "js/typing_animation.js"),
+    tags$script(src = "js/neural_welcome.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),
