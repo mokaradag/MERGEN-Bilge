@@ -1383,11 +1383,17 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			}
 
 			followup_questions <- build_followup_suggestions(user_message_text, res$content)
+			
+			local_char_id <- current_settings$selected_character %||% "mergen"
+			local_chars_data <- get_characters_data()
+			local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
+			resolved_voice <- if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"
+
 			simulate_streaming_stoppable(
 			  res$content,
 			  followups = followup_questions,
 			  tts_engine = tts_processor$synthesize_speech,
-			  tts_voice = settings_data$tts_voice,
+			  tts_voice = resolved_voice,
 			  on_start = NULL,
 			  on_complete = function(msg) {
 			  }
