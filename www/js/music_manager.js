@@ -34,38 +34,12 @@ const MusicManager = {
   },
 
   loadPlaylist: function(type, character) {
-    let path = this.config.musicBasePath;
-
-    if (type === 'karakter' && character) {
-      path += 'Karakter/' + character + '/';
-    } else {
-      path += 'Genel Tema/';
-      type = 'genel';
-    }
-
-    $.ajax({
-      url: path,
-      success: (data) => {
-        const files = $(data).find('a').filter(function() {
-          return $(this).attr('href').match(/\.mp3$/i);
-        }).map(function() {
-          return path + $(this).attr('href');
-        }).get();
-
-        if (files.length > 0) {
-          this.state.playlist = files;
-          this.state.playlistType = type;
-          console.log('[MUSIC] Playlist yüklendi:', type, files.length, 'şarkı');
-          
-          if (!this.state.currentAudio) {
-            this.playNext();
-          }
-        }
-      },
-      error: () => {
-        console.warn('[MUSIC] Playlist yüklenemedi:', path);
-      }
+    Shiny.setInputValue('get_music_playlist', {
+      type: type,
+      character: character,
+      nonce: Math.random()
     });
+    console.log('[MUSIC] Playlist sunucudan isteniyor:', type, character || '');
   },
 
   playNext: function() {
@@ -235,6 +209,20 @@ $(document).ready(function() {
 
   Shiny.addCustomMessageHandler('switchMusicContext', function(data) {
     MusicManager.switchContext(data.type, data.character);
+  });
+
+  Shiny.addCustomMessageHandler('setMusicPlaylist', function(data) {
+    if (data.files && data.files.length > 0) {
+      MusicManager.state.playlist = data.files;
+      MusicManager.state.playlistType = data.type;
+      console.log('[MUSIC] Playlist sunucudan alındı:', data.type, data.files.length, 'şarkı');
+      
+      if (!MusicManager.state.currentAudio && MusicManager.state.enabled) {
+        MusicManager.playNext();
+      }
+    } else {
+      console.warn('[MUSIC] Sunucudan boş playlist döndü.');
+    }
   });
 
   document.addEventListener('play', function(e) {

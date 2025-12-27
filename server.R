@@ -143,13 +143,60 @@ server <- function(input, output, session) {
   # Initialize TTS Visualizer
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
   
-  # Initialize music manager
-	session$onFlushed(function() {
-	  session$sendCustomMessage("initMusicManager", list(
-		enabled = isTRUE(settings_data$enable_background_music),
-		volume = settings_data$music_volume %||% 0.3
-	  ))
-	}, once = TRUE)
+  # Müzik yöneticisini başlat
+  session$onFlushed(function() {
+    session$sendCustomMessage("initMusicManager", list(
+      enabled = isTRUE(isolate(settings_data$enable_background_music)),
+      volume = isolate(settings_data$music_volume) %||% 0.3
+    ))
+  }, once = TRUE)
+
+# JS tarafından istenen müzik listesini hazırla ve geri gönder
+  observeEvent(input$get_music_playlist, {
+    req(input$get_music_playlist)
+    msg <- input$get_music_playlist
+    
+    # www klasörü altındaki temel müzik yolu
+    base_path <- file.path("www", "music")
+    
+    # Klasör yolunu belirle
+    target_sub <- "Genel Tema"
+    playlist_type <- "genel"
+    
+    if (identical(msg$type, "karakter") && !is.null(msg$character) && nzchar(msg$character)) {
+      # Karakter klasörü var mı kontrol et
+      check_path <- file.path(base_path, "Karakter", msg$character)
+      if (dir.exists(check_path)) {
+        target_sub <- file.path("Karakter", msg$character)
+        playlist_type <- "karakter"
+      }
+    }
+    
+    full_dir <- file.path(base_path, target_sub)
+    
+    # Dosyaları listele
+    if (dir.exists(full_dir)) {
+      files <- list.files(full_dir, pattern = "\\.mp3$", full.names = FALSE, ignore.case = TRUE)
+      
+      if (length(files) > 0) {
+        # Windows path ayraçlarını web formatına çevir
+        clean_sub <- gsub("\\\\", "/", target_sub)
+        
+        # URL'leri oluştur ve kodla (Boşluklar %20 olur)
+        file_urls <- vapply(files, function(f) {
+          # Tam yol: music/Genel Tema/Sarki.mp3
+          full_rel_path <- paste0("music/", clean_sub, "/", f)
+          utils::URLencode(full_rel_path)
+        }, character(1), USE.NAMES = FALSE)
+        
+        # I() kullanarak tek dosya olsa bile JSON Dizisi ([...]) olarak gitmesini zorla
+        session$sendCustomMessage("setMusicPlaylist", list(
+          files = I(file_urls),
+          type = playlist_type
+        ))
+      }
+    }
+  })
   
   # Initialize Speech-to-Text Module
   stt_data <- sttServer("stt_module", parent_session = session, settings = settings_data)
