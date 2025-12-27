@@ -74,6 +74,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/model_selector.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/stt.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/music_slider.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -136,6 +137,7 @@ ui <- dashboardPage(
 	tags$script(src = "js/tts_manager.js"),
     tags$script(src = "js/character_manager.js"),
     tags$script(src = "js/shortcuts_manager.js"),
+	tags$script(src = "js/music_manager.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),

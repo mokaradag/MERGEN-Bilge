@@ -143,6 +143,14 @@ server <- function(input, output, session) {
   # Initialize TTS Visualizer
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
   
+  # Initialize music manager
+	session$onFlushed(function() {
+	  session$sendCustomMessage("initMusicManager", list(
+		enabled = isTRUE(settings_data$enable_background_music),
+		volume = settings_data$music_volume %||% 0.3
+	  ))
+	}, once = TRUE)
+  
   # Initialize Speech-to-Text Module
   stt_data <- sttServer("stt_module", parent_session = session, settings = settings_data)
   
@@ -1657,6 +1665,26 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   observeEvent(settings_data$enable_animations, {
 	shinyjs::toggleClass(selector = "body", class = "animations-enabled", condition = settings_data$enable_animations)
   }, ignoreNULL = FALSE)
+  
+	# Karakter değiştiğinde müzik bağlamını güncelle
+	observeEvent(settings_data$selected_character, {
+	  if (isTRUE(settings_data$enable_background_music)) {
+		session$sendCustomMessage("switchMusicContext", list(
+		  type = "karakter",
+		  character = settings_data$selected_character
+		))
+	  }
+	}, ignoreInit = TRUE)
+
+	# Ana sohbette mesaj eklendiğinde müzik modunu güncelle
+	observeEvent(length(values$messages), {
+	  if (length(values$messages) > 0 && isTRUE(settings_data$enable_background_music)) {
+		session$sendCustomMessage("switchMusicContext", list(
+		  type = "karakter",
+		  character = settings_data$selected_character %||% "mergen"
+		))
+	  }
+	}, ignoreInit = TRUE)
 	  
   # This observer runs only once at startup to show the welcome screen
 	observeEvent(TRUE, {

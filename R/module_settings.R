@@ -204,19 +204,6 @@ settingsUI <- function(id) {
                         ),
                         p("Mesajların yazı tipi boyutunu ayarlayın", class = "setting-description")
                       )
-                    ),
-                    div(
-                      class = "setting-column",
-                      h4("Sesli Yanıt", class = "setting-subtitle"),
-                      div(
-                        class = "setting-item",
-                        checkboxInput(
-                          inputId = ns("enable_tts_audio"),
-                          label = tags$span("AI yanıtlarını seslendir"),
-                          value = TRUE
-                        ),
-                        p("Yanıt tamamlandıktan sonra metni yerel TTS motoru ile sese dönüştür.", class = "setting-description")
-                      )
                     )
                   )
                 )
@@ -238,7 +225,64 @@ settingsUI <- function(id) {
                   )
                 )
               )
-            )
+            ),
+			# Ses Ayarları Kartı
+			div(
+			  class = "settings-card",
+			  h3("Ses Ayarları", class = "settings-title"),
+			  fluidRow(
+				# Sesli Yanıt (1/3)
+				column(
+				  width = 4,
+				  h4("Sesli Yanıt", class = "setting-subtitle"),
+				  div(
+					class = "checkbox-item",
+					style = "margin-top: 8px;",
+					checkboxInput(
+					  inputId = ns("enable_tts_audio"),
+					  label = tags$span("Yanıtları Seslendir", style = "margin-left: 8px;"),
+					  value = TRUE
+					)
+				  ),
+				  p("AI yanıtlarını otomatik seslendir.", class = "setting-description", style = "margin-top: 4px;")
+				),
+				
+				# Müzik (1/3)
+				column(
+				  width = 4,
+				  h4("Müzik", class = "setting-subtitle"),
+				  div(
+					class = "checkbox-item",
+					style = "margin-top: 8px;",
+					checkboxInput(
+					  inputId = ns("enable_background_music"),
+					  label = tags$span("Arka Fon Müziği", style = "margin-left: 8px;"),
+					  value = FALSE
+					)
+				  ),
+				  p("Uygulama genelinde arka plan müziği çal.", class = "setting-description", style = "margin-top: 4px;")
+				),
+				
+				# Ses Seviyesi (1/3)
+				column(
+				  width = 4,
+				  h4("Ses Seviyesi", class = "setting-subtitle"),
+				  div(
+					style = "margin-top: 8px;",
+					sliderInput(
+					  inputId = ns("music_volume"),
+					  label = NULL,
+					  min = 0,
+					  max = 1,
+					  value = 0.3,
+					  step = 0.05,
+					  width = "100%"
+					)
+				  ),
+				  p("Müzik ses seviyesi (anlık uygulanır).", class = "setting-description", style = "margin-top: 4px;")
+				)
+			  )
+			)
           )
         )
       )
@@ -284,8 +328,10 @@ settingsServer <- function(id, parent_session = NULL) {
       enable_rdata_tools      = FALSE,
       enable_mcp_tools        = FALSE,
       enable_followups        = TRUE,
-      font_size               = "medium"
-    )
+      font_size               = "medium",
+	  enable_background_music = FALSE,
+	  music_volume = 0.3
+	)
     
     observeEvent(input$update_api_key_btn, {
       showModal(modalDialog(
@@ -359,6 +405,19 @@ settingsServer <- function(id, parent_session = NULL) {
           showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
         })
     }, ignoreInit = TRUE)
+	
+	# Müzik ayarları için observers
+	observeEvent(input$enable_background_music, {
+	  settings$enable_background_music <- input$enable_background_music
+	  
+	  session$sendCustomMessage("toggleMusic", input$enable_background_music)
+	}, ignoreInit = TRUE)
+
+	observeEvent(input$music_volume, {
+	  settings$music_volume <- input$music_volume
+	  
+	  session$sendCustomMessage("setMusicVolume", input$music_volume)
+	}, ignoreInit = TRUE)
 
     # Temporary character selection (not saved until user clicks save)
     temp_selected_character <- reactiveVal("mergen")
@@ -527,6 +586,14 @@ settingsServer <- function(id, parent_session = NULL) {
         settings$enable_tts_audio <- isTRUE(loaded$enable_tts_audio)
         updateCheckboxInput(session, "enable_tts_audio", value = settings$enable_tts_audio)
       }
+		if (!is.null(loaded$enable_background_music)) {
+		  settings$enable_background_music <- loaded$enable_background_music
+		  updateCheckboxInput(session, "enable_background_music", value = loaded$enable_background_music)
+		}
+		if (!is.null(loaded$music_volume)) {
+		  settings$music_volume <- loaded$music_volume
+		  updateSliderInput(session, "music_volume", value = loaded$music_volume)
+		}
       if (!is.null(loaded$enable_followups)) {
         settings$enable_followups <- isTRUE(loaded$enable_followups)
         updateCheckboxInput(session, "enable_followups", value = settings$enable_followups)
@@ -636,6 +703,8 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$enable_mcp_tools        <- FALSE
       settings$enable_followups        <- TRUE
       settings$font_size               <- "medium"
+	  settings$enable_background_music <- FALSE
+	  settings$music_volume <- 0.3
       
       updateSelectInput(session, "model_selection", selected = settings$model_selection)
       update_character_display(settings$selected_character)
@@ -649,6 +718,8 @@ settingsServer <- function(id, parent_session = NULL) {
       updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
       updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
       updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
+	  updateCheckboxInput(session, "enable_background_music", value = FALSE)
+	  updateSliderInput(session, "music_volume", value = 0.3)
       
       session$sendCustomMessage("clearSettings", list())
       showToast(session, "Ayarlar sıfırlandı!", "info")

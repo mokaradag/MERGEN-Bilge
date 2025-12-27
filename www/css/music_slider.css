@@ -1,0 +1,40 @@
+/* www/css/music_slider.css - Müzik Ses Seviyesi Slider Stilleri */
+
+.irs--shiny {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+}
+
+.irs--shiny .irs-bar {
+  background: linear-gradient(90deg, #7C4DFF, #B388FF);
+  border: none;
+  height: 6px;
+}
+
+.irs--shiny .irs-handle {
+  width: 18px;
+  height: 18px;
+  top: 21px;
+  background: #7C4DFF;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(124, 77, 255, 0.4);
+}
+
+.irs--shiny .irs-handle:hover {
+  background: #9575CD;
+}
+
+.irs--shiny .irs-line {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  height: 6px;
+}
+
+.irs--shiny .irs-from,
+.irs--shiny .irs-to,
+.irs--shiny .irs-single {
+  background: #7C4DFF;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
