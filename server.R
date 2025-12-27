@@ -1389,11 +1389,18 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 			local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
 			resolved_voice <- if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"
 
+			tts_engine_param <- NULL
+			tts_voice_param <- NULL
+			if (isTRUE(settings_data$enable_tts_audio)) {
+			  tts_engine_param <- tts_processor$synthesize_speech
+			  tts_voice_param <- resolved_voice
+			}
+
 			simulate_streaming_stoppable(
 			  res$content,
 			  followups = followup_questions,
-			  tts_engine = tts_processor$synthesize_speech,
-			  tts_voice = resolved_voice,
+			  tts_engine = tts_engine_param,
+			  tts_voice = tts_voice_param,
 			  on_start = NULL,
 			  on_complete = function(msg) {
 			  }
