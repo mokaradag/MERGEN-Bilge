@@ -173,9 +173,13 @@ const CinematicVideoManager = {
 
         this.elements.container.classList.add('video-playing');
         
-        this.elements.video.src = src;
-        this.elements.video.load();
-        this.state.isPlaying = true;
+		this.elements.video.src = src;
+		this.elements.video.load();
+		this.state.isPlaying = true;
+
+		if (window.MusicManager) {
+		  window.MusicManager.duck();
+		}
         
         const playPromise = this.elements.video.play();
         if (playPromise) {
@@ -211,10 +215,13 @@ const CinematicVideoManager = {
     },
 
     handleVideoEnd: function() {
-        console.log('[VIDEO] Video ended. Type:', this.state.lastVideoType);
-        
-        // 1. Show the static image
-        this.showImage();
+		console.log('[VIDEO] Video ended. Type:', this.state.lastVideoType);
+
+		this.showImage();
+
+		if (window.MusicManager) {
+		  window.MusicManager.unduck();
+		}
         
         // 2. Decide what to do next
         // Logic: Intro -> Loop, Select -> Loop, Loop -> Loop

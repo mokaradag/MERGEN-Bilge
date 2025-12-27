@@ -251,9 +251,10 @@ server <- function(input, output, session) {
 
 	  session$userData$welcome_screen_attached <- TRUE
 
-	  session$onFlushed(function() {
-		session$sendCustomMessage("showNeuralAnimation", list())
-	  }, once = TRUE)
+		session$onFlushed(function() {
+		  session$sendCustomMessage("showNeuralAnimation", list())
+		  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+		}, once = TRUE)
 	}
 
 	session$userData$initial_saved_chats_promise <- promises::then(
@@ -1725,11 +1726,15 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 
 	# Ana sohbette mesaj eklendiğinde müzik modunu güncelle
 	observeEvent(length(values$messages), {
-	  if (length(values$messages) > 0 && isTRUE(settings_data$enable_background_music)) {
-		session$sendCustomMessage("switchMusicContext", list(
-		  type = "karakter",
-		  character = settings_data$selected_character %||% "mergen"
-		))
+	  if (isTRUE(settings_data$enable_background_music)) {
+		if (length(values$messages) > 0) {
+		  session$sendCustomMessage("switchMusicContext", list(
+			type = "karakter",
+			character = settings_data$selected_character %||% "mergen"
+		  ))
+		} else {
+		  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+		}
 	  }
 	}, ignoreInit = TRUE)
 	  
@@ -2325,9 +2330,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   # Other event observers (like, dislike, regenerate, etc.) remain the same...
   # [Keep all these as they were]
 
-  observeEvent(input$new_chat_btn, {
-        start_new_chat()
-  }, ignoreInit = TRUE)
+	observeEvent(input$new_chat_btn, {
+	  start_new_chat()
+	  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+	}, ignoreInit = TRUE)
 
   observeEvent(input$followup_question_clicked, {
         req(is.list(input$followup_question_clicked))

@@ -33,14 +33,15 @@ const MusicManager = {
     console.log('[MUSIC] Manager başlatıldı:', this.state.enabled ? 'AÇIK' : 'KAPALI');
   },
 
-  loadPlaylist: function(type, character) {
-    Shiny.setInputValue('get_music_playlist', {
-      type: type,
-      character: character,
-      nonce: Math.random()
-    });
-    console.log('[MUSIC] Playlist sunucudan isteniyor:', type, character || '');
-  },
+	loadPlaylist: function(type, character) {
+	  this.state.playlistType = type;
+	  Shiny.setInputValue('get_music_playlist', {
+		type: type,
+		character: character,
+		nonce: Math.random()
+	  });
+	  console.log('[MUSIC] Playlist sunucudan isteniyor:', type, character || '');
+	},
 
   playNext: function() {
     if (!this.state.enabled || this.state.playlist.length === 0) return;
@@ -151,11 +152,21 @@ const MusicManager = {
     }
   },
 
-  unduck: function() {
-    if (this.state.currentAudio) {
-      this.fadeToVolume(this.state.currentAudio, this.state.normalVolume, 600);
-    }
-  },
+	unduck: function() {
+	  if (this.state.currentAudio) {
+		this.fadeToVolume(this.state.currentAudio, this.state.normalVolume, 600);
+	  }
+	},
+
+	reset: function() {
+	  if (this.state.currentAudio) {
+		this.state.currentAudio.pause();
+		this.state.currentAudio.src = '';
+		this.state.currentAudio = null;
+	  }
+	  this.state.currentTrack = null;
+	  this.state.playlist = [];
+	},
 
   toggle: function(enabled) {
     this.state.enabled = enabled;
@@ -174,24 +185,27 @@ const MusicManager = {
     }
   },
 
-  switchContext: function(type, character) {
-    if (!this.state.enabled) return;
+	switchContext: function(type, character) {
+	  if (!this.state.enabled) return;
 
-    const newType = type === 'karakter' ? 'karakter' : 'genel';
+	  const newType = type === 'karakter' ? 'karakter' : 'genel';
 
-    if (this.state.playlistType !== newType || (newType === 'karakter' && character)) {
-      console.log('[MUSIC] Bağlam değişimi:', newType, character || '');
-      this.loadPlaylist(newType, character);
-      
-      if (this.state.currentAudio) {
-        this.fadeOut(this.state.currentAudio, () => {
-          this.state.currentAudio.pause();
-          this.state.currentAudio = null;
-          this.playNext();
-        });
-      }
-    }
-  }
+	  if (this.state.playlistType !== newType || (newType === 'karakter' && character)) {
+		console.log('[MUSIC] Bağlam değişimi:', newType, character || '');
+		
+		if (this.state.currentAudio) {
+		  this.fadeOut(this.state.currentAudio, () => {
+			this.state.currentAudio.pause();
+			this.state.currentAudio.src = '';
+			this.state.currentAudio = null;
+			this.state.currentTrack = null;
+			this.loadPlaylist(newType, character);
+		  });
+		} else {
+		  this.loadPlaylist(newType, character);
+		}
+	  }
+	}
 };
 
 $(document).ready(function() {

@@ -116,18 +116,22 @@ window.STT_Client = (function() {
         }));
     }
     
-    function startVisualizer(stream) {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256; 
-        analyser.smoothingTimeConstant = 0.85;
-        
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-    }
+	function startVisualizer(stream) {
+	  if (!audioContext) {
+		audioContext = new (window.AudioContext || window.webkitAudioContext)();
+	  }
+	  analyser = audioContext.createAnalyser();
+	  analyser.fftSize = 256; 
+	  analyser.smoothingTimeConstant = 0.85;
+	  
+	  const source = audioContext.createMediaStreamSource(stream);
+	  source.connect(analyser);
+	  dataArray = new Uint8Array(analyser.frequencyBinCount);
+	  
+	  if (window.MusicManager) {
+		window.MusicManager.duck();
+	  }
+	}
     
     function draw() {
         if (!canvasElement) return;
@@ -351,10 +355,14 @@ window.STT_Client = (function() {
             audioContext = null;
         }
         
-        mediaRecorder = null;
-        stream = null;
-        canvasElement = null;
-        window.removeEventListener('resize', resizeCanvas);
+		mediaRecorder = null;
+		stream = null;
+		canvasElement = null;
+		window.removeEventListener('resize', resizeCanvas);
+
+		if (window.MusicManager) {
+		  window.MusicManager.unduck();
+		}
     }
     
     return {

@@ -53,11 +53,14 @@ $(document).ready(function() {
       const audio = window.mergenTTS.currentAudio;
       audio.volume = 1.0;
 
-      audio.onplay = function() {
-        if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
-          window.ttsVisualizerState.setTalking();
-        }
-      };
+		audio.onplay = function() {
+		  if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
+			window.ttsVisualizerState.setTalking();
+		  }
+		  if (window.MusicManager) {
+			window.MusicManager.duck();
+		  }
+		};
 
       audio.onpause = function() {
         if (!audio.ended && window.ttsVisualizerState && window.ttsVisualizerState.setPaused) {
@@ -65,13 +68,18 @@ $(document).ready(function() {
         }
       };
 
-      audio.onended = function() {
-        window.mergenTTS.isPlaying = false;
-        if (window.mergenTTS.queue.length === 0 && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-          window.ttsVisualizerState.setIdle();
-        }
-        processTTSQueue();
-      };
+		audio.onended = function() {
+		  window.mergenTTS.isPlaying = false;
+		  if (window.mergenTTS.queue.length === 0) {
+			if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+			  window.ttsVisualizerState.setIdle();
+			}
+			if (window.MusicManager) {
+			  window.MusicManager.unduck();
+			}
+		  }
+		  processTTSQueue();
+		};
 
       audio.onerror = function(e) {
         console.warn("[MERGEN TTS] Ses hatası:", e);
