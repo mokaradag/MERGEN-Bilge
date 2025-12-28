@@ -1727,12 +1727,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	# Ana sohbette mesaj eklendiğinde müzik modunu güncelle
 	observeEvent(length(values$messages), {
 	  if (isTRUE(settings_data$enable_background_music)) {
-		char <- settings_data$selected_character %||% "mergen"
-		
 		if (length(values$messages) > 0) {
 		  session$sendCustomMessage("switchMusicContext", list(
 			type = "karakter",
-			character = char
+			character = settings_data$selected_character %||% "mergen"
 		  ))
 		} else {
 		  session$sendCustomMessage("switchMusicContext", list(type = "genel"))

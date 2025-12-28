@@ -1,3 +1,4 @@
+
 // www/js/stt_client.js
 
 window.STT_Client = (function() {
@@ -129,8 +130,7 @@ window.STT_Client = (function() {
 	  dataArray = new Uint8Array(analyser.frequencyBinCount);
 	  
 	  if (window.MusicManager) {
-		window.MusicManager.state.mutedForSTT = true;
-		window.MusicManager.fadeToVolume(window.MusicManager.state.currentAudio, 0, 300);
+		window.MusicManager.duck();
 	  }
 	}
     
@@ -342,36 +342,29 @@ window.STT_Client = (function() {
         }
     }
     
-	function stopAndCleanup(nsPrefix) {
-	  isRecordingActive = false;
-	  currentMode = MODES.IDLE;
-	  if (chunkTimer) clearTimeout(chunkTimer);
-	  if (timerInterval) clearInterval(timerInterval);
-	  if (animationId) cancelAnimationFrame(animationId);
-	  
-	  if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
-	  if (stream) stream.getTracks().forEach(track => track.stop());
-	  if (audioContext) {
-		audioContext.close();
-		audioContext = null;
-	  }
-	  
-	  mediaRecorder = null;
-	  stream = null;
-	  canvasElement = null;
-	  window.removeEventListener('resize', resizeCanvas);
+    function stopAndCleanup(nsPrefix) {
+        isRecordingActive = false;
+        currentMode = MODES.IDLE;
+        if (chunkTimer) clearTimeout(chunkTimer);
+        if (timerInterval) clearInterval(timerInterval);
+        if (animationId) cancelAnimationFrame(animationId);
+        
+        if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+        }
+        
+		mediaRecorder = null;
+		stream = null;
+		canvasElement = null;
+		window.removeEventListener('resize', resizeCanvas);
 
-	  if (window.MusicManager && window.MusicManager.state.mutedForSTT) {
-		window.MusicManager.state.mutedForSTT = false;
-		if (window.MusicManager.state.currentAudio) {
-		  window.MusicManager.fadeToVolume(
-			window.MusicManager.state.currentAudio, 
-			window.MusicManager.state.normalVolume, 
-			600
-		  );
+		if (window.MusicManager) {
+		  window.MusicManager.unduck();
 		}
-	  }
-	}
+    }
     
     return {
         init: init,
