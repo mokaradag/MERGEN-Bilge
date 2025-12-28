@@ -48,10 +48,14 @@ window.STT_Client = (function() {
     let smoothedVolume = 0;
     let smoothedFreqs = new Array(64).fill(0);
     
-    function init(config) {
-        const { canvasId, timerId, dbId, nsPrefix, color } = config;
-        canvasElement = document.getElementById(canvasId);
-        timerElement = document.getElementById(timerId);
+	function init(config) {
+		if (window.MusicManager) {
+			window.MusicManager.duck();
+		}
+
+		const { canvasId, timerId, dbId, nsPrefix, color } = config;
+		canvasElement = document.getElementById(canvasId);
+		timerElement = document.getElementById(timerId);
         dbElement = document.getElementById(dbId);
         accentColor = config.accentColor || '#7C4DFF';
         

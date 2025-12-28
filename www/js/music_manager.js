@@ -21,12 +21,12 @@ const MusicManager = {
   },
 
   init: function(settings) {
-    this.state.enabled = settings.enabled || false;
-    this.state.volume = settings.volume || 0.3;
-    this.state.normalVolume = this.state.volume;
-    this.state.reducedVolume = this.state.volume * 0.25;
+	this.state.enabled = settings.enabled || false;
+	this.state.volume = settings.volume || 0.3;
+	this.state.normalVolume = this.state.volume;
+	this.state.reducedVolume = 0;
 
-    if (this.state.enabled) {
+	if (this.state.enabled) {
       this.loadPlaylist('genel');
     }
 
@@ -120,7 +120,7 @@ const MusicManager = {
 
   setVolume: function(volume) {
     this.state.normalVolume = volume;
-    this.state.reducedVolume = volume * 0.25;
+    this.state.reducedVolume = 0;
 
     if (this.state.currentAudio) {
       this.fadeToVolume(this.state.currentAudio, volume, 500);
@@ -190,9 +190,9 @@ const MusicManager = {
 
 	  const newType = type === 'karakter' ? 'karakter' : 'genel';
 
-	  if (this.state.playlistType !== newType || (newType === 'karakter' && character)) {
+	  if (this.state.playlistType !== newType || (newType === 'karakter' && character) || !this.state.currentAudio) {
 		console.log('[MUSIC] Bağlam değişimi:', newType, character || '');
-		
+
 		if (this.state.currentAudio) {
 		  this.fadeOut(this.state.currentAudio, () => {
 			this.state.currentAudio.pause();
