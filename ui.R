@@ -121,6 +121,8 @@ ui <- dashboardPage(
     # Your Custom Script
 	tags$script(src = "js/utils.js"),
 	tags$script(src = "js/shiny_message_handlers.js"),
+	tags$script(src = "js/ui_init.js"),
+	tags$script(src = "js/file_handlers.js"),
 	tags$script(src = "script.js"),
 	tags$script(src = "js/chart_renderer.js"),
     tags$script(src = "js/streaming_manager.js"),
