@@ -49,9 +49,8 @@ window.STT_Client = (function() {
     let smoothedFreqs = new Array(64).fill(0);
     
 	function init(config) {
-        // 3) Sesli Giriş açılınca müzik anında dursun
 		if (window.MusicManager) {
-			window.MusicManager.pauseImmediate();
+			window.MusicManager.duck();
 		}
 
 		const { canvasId, timerId, dbId, nsPrefix, color } = config;
@@ -134,9 +133,8 @@ window.STT_Client = (function() {
 	  source.connect(analyser);
 	  dataArray = new Uint8Array(analyser.frequencyBinCount);
 	  
-		if (window.MusicManager) {
-        // startVisualizer tekrar çağrıldığında da garanti olsun
-		window.MusicManager.pauseImmediate();
+	  if (window.MusicManager) {
+		window.MusicManager.duck();
 	  }
 	}
     
@@ -367,9 +365,8 @@ window.STT_Client = (function() {
 		canvasElement = null;
 		window.removeEventListener('resize', resizeCanvas);
 
-        // 3) Sesli Giriş kapanınca müzik geri gelsin
 		if (window.MusicManager) {
-		  window.MusicManager.resumeImmediate();
+		  window.MusicManager.unduck();
 		}
     }
     

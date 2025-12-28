@@ -158,33 +158,6 @@ const MusicManager = {
 	  }
 	},
 
-    // YENI: Anlık durdurma (Pause)
-    pauseImmediate: function() {
-      if (this.state.currentAudio && !this.state.currentAudio.paused) {
-        this.state.currentAudio.pause();
-        console.log('[MUSIC] Immediate pause triggered');
-      }
-    },
-
-    // YENI: Anlık devam ettirme (Resume)
-    resumeImmediate: function() {
-      if (!this.state.enabled) return;
-      
-      if (this.state.currentAudio) {
-        if (this.state.currentAudio.paused) {
-            this.state.currentAudio.volume = this.state.normalVolume;
-            this.state.currentAudio.play().catch(e => console.warn('[MUSIC] Resume failed:', e));
-            console.log('[MUSIC] Immediate resume triggered');
-        } else {
-            // Zaten çalıyorsa ses seviyesini düzelt
-            this.state.currentAudio.volume = this.state.normalVolume;
-        }
-      } else {
-        // Çalan yoksa yenisini başlat
-        this.playNext();
-      }
-    },
-
 	reset: function() {
 	  if (this.state.currentAudio) {
 		this.state.currentAudio.pause();
@@ -281,13 +254,6 @@ $(document).ready(function() {
   $(document).on('shown.bs.tab', function() {
     const activeTab = $('.sidebar-menu li.active a').attr('data-value');
     
-    // 4) Ayarlar sayfasında müzik tamamen durmalı
-    if (activeTab === 'settings' || activeTab === 'tab_settings') {
-       MusicManager.pauseImmediate();
-       return;
-    }
-
-    // Diğer sekmelerde müzik durumu kontrol edilir
     if (activeTab === 'chat' || activeTab === 'tab-chat') {
       const hasMessages = $('#chat_content_container .message-bubble').length > 0;
       if (hasMessages) {
@@ -298,11 +264,6 @@ $(document).ready(function() {
       }
     } else {
       MusicManager.switchContext('genel');
-    }
-    
-    // Eğer müzik etkinse ve duraklatılmışsa devam ettir
-    if (MusicManager.state.enabled) {
-        MusicManager.resumeImmediate();
     }
   });
 });
