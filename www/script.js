@@ -73,56 +73,7 @@
           this.style.height = Math.min(this.scrollHeight, 150) + 'px';
         });
       }
-    
-	  // -------------------------------------------------
-      // Message handlers
-      // -------------------------------------------------
-
-      // Like/dislike button color handlers
-      Shiny.addCustomMessageHandler('updateFeedback', function(data) {
-        const messageId = data.messageId;
-        const action = data.action;
-    
-        if (action === 'like') {
-          $(`#like_${messageId}`).addClass('active liked');
-          $(`#dislike_${messageId}`).removeClass('active disliked');
-        } else if (action === 'dislike') {
-          $(`#dislike_${messageId}`).addClass('active disliked');
-          $(`#like_${messageId}`).removeClass('active liked');
-        } else if (action === 'remove_like') {
-          $(`#like_${messageId}`).removeClass('active liked');
-        } else if (action === 'remove_dislike') {
-          $(`#dislike_${messageId}`).removeClass('active disliked');
-        }
-      });
-    
-      /* IMPROVED WIDESCREEN TOGGLE (client authoritative & retroactive) */
-      Shiny.addCustomMessageHandler('toggleWidescreen', function(data) {
-        applyWidescreen(!!data.enabled);
-        // Persist through your existing settings blob if present
-        try {
-          const raw = localStorage.getItem('mergen_settings');
-          const settings = raw ? JSON.parse(raw) : {};
-          settings.enable_widescreen = !!data.enabled;
-          localStorage.setItem('mergen_settings', JSON.stringify(settings));
-        } catch (e) { /* ignore */ }
-      });
-    
-      // FIX #11: Toggle all timestamps retroactively
-      Shiny.addCustomMessageHandler('toggleAllTimestamps', function(data) {
-        if (data.enabled) {
-          $('.message-time').removeClass('hidden');
-        } else {
-          $('.message-time').addClass('hidden');
-        }
-      });
-    
-      // FIX #15: Font size update only for chat messages
-      Shiny.addCustomMessageHandler('updateFontSize', function(data) {
-        $('.message-content').removeClass('font-small font-medium font-large font-xlarge');
-        $('.message-content').addClass('font-' + data.size);
-      });
-    
+            
       // Anti-dimming
       (function antiDim() {
         if (document.getElementById('anti-dim-style')) return;
@@ -170,54 +121,6 @@
           Shiny.setInputValue('performance_data', { action: action, duration: Math.round(duration) }, { priority: 'event' });
         }
       };
-            
-      // Utility functions
-      window.adjustTextareaHeight = function(textarea) {
-        if (!textarea) return;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-      }
-    
-      function scrollToBottom(smooth = true) {
-        const container = $('.chat-container');
-        if (container.length) {
-          container[0].scrollTo({
-            top: container[0].scrollHeight,
-            behavior: smooth ? 'smooth' : 'auto'
-          });
-        }
-      }
-    
-      function checkScrollPosition() {
-        const container = $('.chat-container');
-        if (container.length) {
-          const scrollHeight = container[0].scrollHeight;
-          const scrollTop = container.scrollTop();
-          const clientHeight = container.height();
-          isNearBottom = (scrollHeight - scrollTop - clientHeight) < 100;
-          $('#scroll_to_bottom_container').toggleClass('show', !isNearBottom);
-        }
-      }
-    
-        window.smartScrollToBottom = function(smooth = true) {
-          const chatWrapper = document.querySelector('.chat-content-wrapper');
-          const chatContainer = document.querySelector('.chat-container');
-          
-          if (chatWrapper) {
-            chatWrapper.scrollTo({
-              top: chatWrapper.scrollHeight,
-              behavior: smooth ? 'smooth' : 'auto'
-            });
-          } else if (chatContainer) {
-            chatContainer.scrollTo({
-              top: chatContainer.scrollHeight,
-              behavior: smooth ? 'smooth' : 'auto'
-            });
-          }
-          
-          // Update scroll position flag
-          window.isNearBottom = true;
-        };
     
         // Check if near bottom
         $(document).on('scroll', '.chat-content-wrapper', function() {
@@ -225,42 +128,7 @@
           const isNear = this.scrollHeight - this.scrollTop - this.clientHeight < threshold;
           window.isNearBottom = isNear;
         });
-    
-      function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-          const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-          };
-          clearTimeout(timeout);
-          timeout = setTimeout(later, wait);
-        };
-      }
-    
-        // FIX #3: Character counter
-      const charLimit = 20000;
-      window.updateCharCounter = function() {
-        const chatInputEl = document.getElementById('user_input') ||
-                           document.querySelector('.chat-input') ||
-                           document.querySelector('textarea[name="user_input"]');
-        const counterEl = document.getElementById('char_counter');
-        if (!counterEl) return;
-    
-        const currentLength = chatInputEl ? (chatInputEl.value || '').length : 0;
-        counterEl.textContent = `${currentLength} / ${charLimit}`;
-    
-        if (currentLength > charLimit) {
-          counterEl.style.color = 'var(--danger-color)';
-          counterEl.classList.remove('char-limit-exceeded');
-          void counterEl.offsetWidth;
-          counterEl.classList.add('char-limit-exceeded');
-        } else {
-          counterEl.style.color = 'var(--text-muted)';
-          counterEl.classList.remove('char-limit-exceeded');
-        }
-      };
-        
+                
         // Debounced input handler
         const debouncedInputHandler = debounce(function(element) {
             adjustTextareaHeight(element);
@@ -655,90 +523,7 @@
           e.preventDefault();
           e.stopPropagation();
         });
-    
-      // Shiny Custom Message Handlers
-      Shiny.addCustomMessageHandler('showToast', function(data) { showToast(data.message, data.type, data.duration); });
-      Shiny.addCustomMessageHandler('saveSettings', function(settings) { try { localStorage.setItem('mergen_settings', JSON.stringify(settings)); } catch (e) { console.error('Failed to save settings:', e); } });
-      Shiny.addCustomMessageHandler('loadSettings', function(data) { try { const s = localStorage.getItem('mergen_settings'); if (s) { Shiny.setInputValue("settings_module-loaded_settings", JSON.parse(s), { priority: 'event' }); } } catch (e) { console.error('Failed to load settings:', e); } });
-      Shiny.addCustomMessageHandler('clearSettings', function(data) { localStorage.removeItem('mergen_settings'); });
-    
-      Shiny.addCustomMessageHandler('toggleSendButton', function(message) { $('#send_stop_btn').prop('disabled', message.disable); });
-
-      function renderFollowupSuggestions(data) {
-        if (!data || !data.id) return;
-        const questions = (Array.isArray(data.followups) ? data.followups : [])
-          .map(q => (q ? String(q).trim() : ''))
-          .filter(q => q.length);
-
-        const wrapper = document.getElementById('message_wrapper_' + data.id);
-        if (!wrapper) return;
-        const host = wrapper.querySelector('.ai-message') || wrapper;
-        let box = document.getElementById('followup_container_' + data.id);
-
-        if (!questions.length) {
-          if (box && box.parentNode) {
-            box.parentNode.removeChild(box);
-          }
-          return;
-        }
-
-        if (!box) {
-          box = document.createElement('div');
-          box.id = 'followup_container_' + data.id;
-          host.appendChild(box);
-        }
-
-        box.className = 'followup-suggestions-box';
-        box.classList.toggle('pending', !!data.pending);
-        box.dataset.hasItems = 'true';
-        box.innerHTML = '';
-
-        const title = document.createElement('div');
-        title.className = 'followup-suggestions-title';
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-lightbulb';
-        const label = document.createElement('span');
-        label.textContent = 'Önerilen Takip Soruları';
-        title.appendChild(icon);
-        title.appendChild(label);
-
-        const list = document.createElement('div');
-        list.className = 'followup-suggestions-list';
-
-        questions.forEach(question => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'followup-option';
-          btn.dataset.question = question;
-
-          const textSpan = document.createElement('span');
-          textSpan.textContent = question;
-          const arrow = document.createElement('i');
-          arrow.className = 'fas fa-arrow-up-right-from-square';
-
-          btn.appendChild(textSpan);
-          btn.appendChild(arrow);
-          list.appendChild(btn);
-        });
-
-        box.appendChild(title);
-        box.appendChild(list);
-
-        const shouldAutoScroll = (typeof window === 'undefined') ? false :
-          (typeof window.isNearBottom === 'undefined' || window.isNearBottom === true);
-        if (shouldAutoScroll) {
-          setTimeout(() => {
-            if (typeof window.smartScrollToBottom === 'function') {
-              window.smartScrollToBottom(true);
-            } else if (typeof scrollToBottom === 'function') {
-              scrollToBottom(true);
-            }
-          }, 20);
-        }
-      }
-
-      Shiny.addCustomMessageHandler('updateFollowupSuggestions', renderFollowupSuggestions);
-        
+            
         // Single consolidated download handler  
         $(document).on('click', '.file-download, .js-download-btn', function(e) {
           e.preventDefault();
@@ -944,51 +729,7 @@
             document.getElementById('send_stop_btn').click();
           }
         };
-    
-        Shiny.addCustomMessageHandler('forceSettingsUpdate', function(data) {
-          // Force update the settings module's dropdown
-          const dropdown = document.querySelector('#settings_module-model_selection');
-          if (dropdown) {
-            dropdown.value = data.model;
-            // Trigger change event
-            dropdown.dispatchEvent(new Event('change'));
-          }
-        });
-    
-        Shiny.addCustomMessageHandler('updateModelDropdown', function(data) {
-          const modelDropdown = document.querySelector('#settings_module-model_selection');
-          if (modelDropdown) {
-            if (modelDropdown.selectize) {
-              modelDropdown.selectize.setValue(data.model, true);
-            } else {
-              modelDropdown.value = data.model;
-            }
-          }
-        });
-    
-        Shiny.addCustomMessageHandler('resetBulkUploadCaption', function () {
-          const $input = $('#file_manager_module-bulk_upload');
-          if (!$input.length) return;
-          // Clear the file element
-          $input.val('');
-          // Reset the visible text box caption
-          const $grp = $input.closest('.input-group');
-          $grp.find('.form-control').val('').attr('placeholder', 'Henüz dosya seçilmedi');
-          const $progress = $('#bulk_upload_div .shiny-file-input-progress');
-          $progress.hide();
-          $progress.find('.progress-bar').removeClass('upload-complete');
-        });
-        
-      window.copyMessageContent = function(btn, content) {
-        navigator.clipboard.writeText(content).then(() => {
-          showToast('İçerik panoya kopyalandı.', 'success');
-          const i = $(btn).find('i');
-          const c = i.attr('class');
-          i.removeClass().addClass('fas fa-check');
-          setTimeout(() => i.removeClass().addClass(c), 2000);
-        }).catch(err => showToast('Kopyalama başarısız oldu.', 'error'));
-      };
-    
+            
       // (Moved to global scope) window.initializeCodeMirrorInElement
     
       // (Moved to global scope) window.copyCodeFromCM
@@ -1003,44 +744,10 @@
       /* ==========================================================
          ISSUE 2 FIX: Copy functionality for AI messages during/after streaming
          ========================================================== */
-        // (Moved to global scope) window.copyAIMessageContent
-    
-        window.copyCodeBlock = function(button) {
-          const codeContainer = button.closest('.code-container');
-          const codeContent = codeContainer.querySelector('.code-content code');
-          
-          if (codeContent) {
-            const text = codeContent.textContent;
-            navigator.clipboard.writeText(text).then(() => {
-              const icon = button.querySelector('i');
-              icon.className = 'fas fa-check';
-              showToast('Kod kopyalandı!', 'success');
-              setTimeout(() => {
-                icon.className = 'fas fa-copy';
-              }, 2000);
-            }).catch(err => {
-              showToast('Kopyalama başarısız oldu.', 'error');
-            });
-          }
-        };
+        // (Moved to global scope) window.copyAIMessageContent  
     
     }); // end document.ready
-        
-    // Update health timestamp
-    Shiny.addCustomMessageHandler('updateHealthTimestamp', function(data) {
-      const elem = document.getElementById('last_update_time');
-      if (elem) {
-        elem.textContent = 'Son Güncelleme: ' + data.time;
-      }
-    });
-	
-	Shiny.addCustomMessageHandler('updateAdminTimestamp', function(data) {
-		var el = document.getElementById(data.id);
-		if (el) {
-		  el.textContent = 'Son Güncelleme: ' + data.time;
-		}
-	  });
-    
+        	    
 // Handle source link clicks
 $(document).on('click', '.source-link', function() {
   const filename = $(this).data('filename');

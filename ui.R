@@ -117,9 +117,10 @@ ui <- dashboardPage(
     tags$script(src = "codemirror/addon/fold/comment-fold.min.js"),
     tags$script(src = "codemirror/addon/fold/indent-fold.min.js"),
     tags$script(src = "codemirror/addon/fold/xml-fold.js"),
-    # Note: r-fold.js is intentionally removed as it does not exist.
     
     # Your Custom Script
+	tags$script(src = "js/utils.js"),
+	tags$script(src = "js/shiny_message_handlers.js"),
 	tags$script(src = "script.js"),
 	tags$script(src = "js/chart_renderer.js"),
     tags$script(src = "js/streaming_manager.js"),
