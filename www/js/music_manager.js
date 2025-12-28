@@ -2,17 +2,19 @@
 // Arka plan müzik yönetim sistemi
 
 const MusicManager = {
-  state: {
-    enabled: false,
-    volume: 0.3,
-    currentTrack: null,
-    currentAudio: null,
-    playlist: [],
-    playlistType: 'genel',
-    isTransitioning: false,
-    normalVolume: 0.3,
-    reducedVolume: 0.08
-  },
+	state: {
+	  enabled: false,
+	  volume: 0.3,
+	  currentTrack: null,
+	  currentAudio: null,
+	  playlist: [],
+	  playlistType: 'genel',
+	  isTransitioning: false,
+	  normalVolume: 0.3,
+	  reducedVolume: 0.08,
+	  mutedForSTT: false,
+	  currentContext: null
+	},
 
   config: {
     musicBasePath: 'music/',
@@ -52,41 +54,42 @@ const MusicManager = {
     this.playTrack(track);
   },
 
-  playTrack: function(src) {
-    if (this.state.isTransitioning) return;
+	playTrack: function(src) {
+	  if (this.state.isTransitioning) return;
 
-    const oldAudio = this.state.currentAudio;
-    const newAudio = new Audio(src);
-    
-    newAudio.volume = 0;
-    newAudio.preload = 'auto';
+	  const oldAudio = this.state.currentAudio;
+	  const newAudio = new Audio(src);
+	  
+	  newAudio.volume = this.state.mutedForSTT ? 0 : 0;
+	  newAudio.preload = 'auto';
 
-    newAudio.addEventListener('canplaythrough', () => {
-      this.state.isTransitioning = true;
+	  newAudio.addEventListener('canplaythrough', () => {
+		this.state.isTransitioning = true;
 
-      if (oldAudio) {
-        this.fadeOut(oldAudio, () => {
-          oldAudio.pause();
-          oldAudio.src = '';
-        });
-      }
+		if (oldAudio) {
+		  this.fadeOut(oldAudio, () => {
+			oldAudio.pause();
+			oldAudio.src = '';
+		  });
+		}
 
-      this.fadeIn(newAudio, this.state.normalVolume, () => {
-        this.state.isTransitioning = false;
-      });
+		const targetVol = this.state.mutedForSTT ? 0 : this.state.normalVolume;
+		this.fadeIn(newAudio, targetVol, () => {
+		  this.state.isTransitioning = false;
+		});
 
-      newAudio.play().catch(e => console.warn('[MUSIC] Oynatma hatası:', e));
+		newAudio.play().catch(e => console.warn('[MUSIC] Oynatma hatası:', e));
 
-      this.state.currentAudio = newAudio;
-      this.state.currentTrack = src;
+		this.state.currentAudio = newAudio;
+		this.state.currentTrack = src;
 
-      newAudio.addEventListener('ended', () => this.playNext());
-      
-      console.log('[MUSIC] Oynatılıyor:', src.split('/').pop());
-    }, { once: true });
+		newAudio.addEventListener('ended', () => this.playNext());
+		
+		console.log('[MUSIC] Oynatılıyor:', src.split('/').pop());
+	  }, { once: true });
 
-    newAudio.load();
-  },
+	  newAudio.load();
+	},
 
   fadeIn: function(audio, targetVolume, callback) {
     const step = targetVolume / 30;
@@ -146,13 +149,17 @@ const MusicManager = {
     }, stepTime);
   },
 
-  duck: function() {
-    if (this.state.currentAudio) {
-      this.fadeToVolume(this.state.currentAudio, this.state.reducedVolume, 400);
-    }
-  },
+	duck: function() {
+	  if (this.state.mutedForSTT) return;
+	  
+	  if (this.state.currentAudio) {
+		this.fadeToVolume(this.state.currentAudio, this.state.reducedVolume, 400);
+	  }
+	},
 
 	unduck: function() {
+	  if (this.state.mutedForSTT) return;
+	  
 	  if (this.state.currentAudio) {
 		this.fadeToVolume(this.state.currentAudio, this.state.normalVolume, 600);
 	  }
@@ -189,21 +196,26 @@ const MusicManager = {
 	  if (!this.state.enabled) return;
 
 	  const newType = type === 'karakter' ? 'karakter' : 'genel';
+	  const contextKey = newType === 'karakter' ? `${newType}_${character}` : newType;
+	  
+	  if (this.state.currentContext === contextKey) {
+		console.log('[MUSIC] Context zaten aynı, atlanıyor:', contextKey);
+		return;
+	  }
 
-	  if (this.state.playlistType !== newType || (newType === 'karakter' && character)) {
-		console.log('[MUSIC] Bağlam değişimi:', newType, character || '');
-		
-		if (this.state.currentAudio) {
-		  this.fadeOut(this.state.currentAudio, () => {
-			this.state.currentAudio.pause();
-			this.state.currentAudio.src = '';
-			this.state.currentAudio = null;
-			this.state.currentTrack = null;
-			this.loadPlaylist(newType, character);
-		  });
-		} else {
+	  console.log('[MUSIC] Bağlam değişimi:', contextKey);
+	  this.state.currentContext = contextKey;
+	  
+	  if (this.state.currentAudio) {
+		this.fadeOut(this.state.currentAudio, () => {
+		  this.state.currentAudio.pause();
+		  this.state.currentAudio.src = '';
+		  this.state.currentAudio = null;
+		  this.state.currentTrack = null;
 		  this.loadPlaylist(newType, character);
-		}
+		});
+	  } else {
+		this.loadPlaylist(newType, character);
 	  }
 	}
 };

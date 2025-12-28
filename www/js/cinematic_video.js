@@ -167,28 +167,30 @@ const CinematicVideoManager = {
     },
 
 	showVideo: function(src) {
-        if (!this.elements.video) return;
-        
-        console.log('[VIDEO] Video gösteriliyor:', src);
+	  if (!this.elements.video) return;
+	  
+	  console.log('[VIDEO] Video gösteriliyor:', src);
 
-        this.elements.container.classList.add('video-playing');
-        
-		this.elements.video.src = src;
-		this.elements.video.load();
-		this.state.isPlaying = true;
+	  this.elements.container.classList.add('video-playing');
+	  
+	  this.elements.video.src = src;
+	  this.elements.video.volume = 1.0;
+	  this.elements.video.muted = false;
+	  this.elements.video.load();
+	  this.state.isPlaying = true;
 
-		if (window.MusicManager) {
-		  window.MusicManager.duck();
-		}
-        
-        const playPromise = this.elements.video.play();
-        if (playPromise) {
-            playPromise.catch(error => {
-                console.error('[VIDEO] Playback failed:', error);
-                this.handleVideoError(error);
-            });
-        }
-    },
+	  if (window.MusicManager) {
+		window.MusicManager.duck();
+	  }
+	  
+	  const playPromise = this.elements.video.play();
+	  if (playPromise) {
+		playPromise.catch(error => {
+		  console.error('[VIDEO] Playback failed:', error);
+		  this.handleVideoError(error);
+		});
+	  }
+	},
 
     showImage: function() {
         if (!this.elements.container) return;
