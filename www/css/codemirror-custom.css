@@ -1,0 +1,91 @@
+/* www/css/codemirror-custom.css */
+
+/* CodeMirror ana konteyner */
+.CodeMirror {
+  height: auto !important;
+  min-height: 100px !important;
+  background: #1e1e1e !important;
+  font-family: var(--font-mono) !important;
+  border-radius: 8px;
+}
+
+.CodeMirror-scroll {
+  max-height: 450px !important;
+  overflow-y: auto !important;
+}
+
+.message-content .CodeMirror {
+  margin: 16px 0;
+  border: 1px solid #333;
+}
+
+/* Atom One Dark tema token renkleri */
+.CodeMirror .cm-keyword { color: #c678dd !important; }
+.CodeMirror .cm-def { color: #61aeee !important; }
+.CodeMirror .cm-variable { color: #abb2bf !important; }
+.CodeMirror .cm-variable-2 { color: #abb2bf !important; }
+.CodeMirror .cm-variable-3 { color: #abb2bf !important; }
+.CodeMirror .cm-type { color: #e6c07b !important; }
+.CodeMirror .cm-property { color: #abb2bf !important; }
+.CodeMirror .cm-operator { color: #abb2bf !important; }
+.CodeMirror .cm-string { color: #98c379 !important; }
+.CodeMirror .cm-string-2 { color: #98c379 !important; }
+.CodeMirror .cm-number { color: #d19a66 !important; }
+.CodeMirror .cm-atom { color: #d19a66 !important; }
+.CodeMirror .cm-comment { color: #5c6370 !important; font-style: italic; }
+.CodeMirror .cm-qualifier { color: #abb2bf !important; }
+.CodeMirror .cm-builtin { color: #e6c07b !important; }
+.CodeMirror .cm-bracket { color: #abb2bf !important; }
+.CodeMirror .cm-tag { color: #e06c75 !important; }
+.CodeMirror .cm-attribute { color: #d19a66 !important; }
+.CodeMirror .cm-meta { color: #abb2bf !important; }
+.CodeMirror .cm-punctuation { color: #abb2bf !important; }
+
+/* Kod katlama stilleri */
+.CodeMirror-foldgutter {
+  width: 1em !important;
+}
+
+.CodeMirror-foldgutter-open,
+.CodeMirror-foldgutter-folded {
+  color: #888 !important;
+  cursor: pointer !important;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.CodeMirror-foldgutter-open:after {
+  content: "▼" !important;
+  font-size: 10px;
+}
+
+.CodeMirror-foldgutter-folded:after {
+  content: "▶" !important;
+  font-size: 10px;
+}
+
+.CodeMirror-fold-range {
+  background-color: var(--background-medium) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 2px;
+  cursor: pointer;
+}
+
+/* Tarayıcı uyumluluk düzeltmesi */
+.CodeMirror-gutters {
+  background-color: #2d2d2d !important;
+  border-right: 1px solid #333;
+}
+
+.CodeMirror-linenumbers, 
+.CodeMirror-foldgutter, 
+.CodeMirror-gutter {
+  border-right: none !important;
+}
+
+.cm-s-material-darker.CodeMirror {
+  background: #1e1e1e !important;
+  font-family: var(--font-mono) !important;
+}

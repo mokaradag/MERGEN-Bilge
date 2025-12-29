@@ -1,0 +1,232 @@
+/* www/css/typing-indicator.css */
+
+#typing-animation-wrapper {
+  --ring-size: 220px;
+  --ring-border: 8px;
+  --snake-color: #00ff88;
+  --name-size: 1.1rem;
+  --in-shift: 40px;
+  --out-shift: -150%;
+  
+  display: flex !important;
+  justify-content: center !important;
+  padding: 20px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+#typing-animation-wrapper .stage {
+  position: relative;
+  width: var(--ring-size);
+  min-height: calc(var(--ring-size) + 46px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+#typing-animation-wrapper .animation-container {
+  width: var(--ring-size);
+  height: var(--ring-size);
+  position: relative;
+  animation: breathe 3s ease-in-out infinite;
+  transform-origin: center center;
+  z-index: 2;
+}
+
+#typing-animation-wrapper .ring {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+#typing-animation-wrapper .ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+#typing-animation-wrapper .rotator {
+  transform-origin: 50% 50%;
+  animation: continuousSpin 2s linear infinite;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+#typing-animation-wrapper circle.track {
+  fill: none;
+  stroke: #1f1f23;
+  stroke-width: calc(var(--ring-border));
+  stroke-linecap: round;
+}
+
+#typing-animation-wrapper circle.tail {
+  fill: none;
+  stroke: var(--snake-color);
+  stroke-width: calc(var(--ring-border));
+  stroke-linecap: round;
+  stroke-dasharray: 30 246;
+  animation: tailCycle 3s ease-in-out infinite, colorTransition 8s linear infinite;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+#typing-animation-wrapper .label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  pointer-events: none;
+  color: var(--snake-color);
+  font-weight: 600;
+  letter-spacing: .2px;
+  user-select: none;
+  animation: colorTransition 8s linear infinite, textPulse 2s ease-in-out infinite;
+  font-size: 1.05rem;
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+  transform-origin: center;
+}
+
+#typing-animation-wrapper .label span {
+  display: inline-block;
+}
+
+#typing-animation-wrapper .name-wrap {
+  position: relative;
+  z-index: 3;
+  display: inline-block;
+  margin-top: 0;
+}
+
+#typing-animation-wrapper .name-particles {
+  position: absolute;
+  left: -14px;
+  right: -14px;
+  top: -16px;
+  bottom: -16px;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+
+#typing-animation-wrapper .spark {
+  position: absolute;
+  left: var(--left, 0);
+  top: var(--top, 0);
+  width: var(--size, 3px);
+  height: var(--size, 3px);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  filter: drop-shadow(0 0 5px currentColor);
+  animation-name: sparkDrift, colorTransition;
+  animation-timing-function: linear, linear;
+  animation-iteration-count: infinite, infinite;
+}
+
+#typing-animation-wrapper .ai-name {
+  position: relative;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  animation: nameFloat 6s ease-in-out infinite;
+  color: #e7ffe7;
+}
+
+#typing-animation-wrapper .ai-name::after {
+  display: none !important;
+}
+
+#typing-animation-wrapper .ai-name .word {
+  display: inline-flex;
+  gap: 0;
+  font-size: var(--name-size);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.2;
+}
+
+#typing-animation-wrapper .ai-name .letter {
+  display: inline-block;
+  will-change: transform, opacity;
+  transform: translateX(var(--in-shift));
+  opacity: 0;
+  transition: transform 420ms cubic-bezier(.22,.61,.36,1), opacity 300ms ease;
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+  animation: colorTransition 8s linear infinite;
+  pointer-events: none;
+}
+
+.fade-out-animation {
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+.ring-large {
+  font-size: 14px !important;
+}
+
+.label-large {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+.ai-name-large {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+}
+
+.ai-name-large .letter {
+  font-size: 20px !important;
+}
+
+@media (max-width: 768px) {
+  #typing-animation-wrapper {
+    --ring-size: 180px;
+    --ring-border: 6px;
+    --name-size: 1rem;
+  }
+  #typing-animation-wrapper .label {
+    font-size: 0.95rem;
+  }
+  #typing-animation-wrapper .stage {
+    min-height: calc(var(--ring-size) + 44px);
+  }
+}
+
+@media (max-width: 480px) {
+  #typing-animation-wrapper {
+    --ring-size: 150px;
+    --ring-border: 5px;
+    --name-size: 0.95rem;
+  }
+  #typing-animation-wrapper .label {
+    font-size: 0.85rem;
+    letter-spacing: .1px;
+  }
+  #typing-animation-wrapper .stage {
+    min-height: calc(var(--ring-size) + 42px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #typing-animation-wrapper * {
+    animation: none !important;
+    transition: none !important;
+  }
+  #typing-animation-wrapper .letter {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
