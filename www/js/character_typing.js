@@ -1,16 +1,19 @@
-// Character typing effect - word by word
+// www/js/character_typing.js
+// Bu dosya karakter hikayesi ve genel metinler için yazma efektlerini içerir.
+
+// Karakter yazma efekti - kelime kelime
 window.typeCharacterLore = function(text, elementId, delay = 80, onComplete) {
   const element = document.getElementById(elementId);
   if (!element) return;
-  
-  // Clear existing content and make visible
+
+  // Mevcut içeriği temizle ve görünür yap
   element.textContent = '';
   element.style.opacity = '1';
-  
-  // Split by words (including spaces)
+
+  // Kelimelere ayır (boşluklar dahil)
   const words = text.match(/\S+\s*/g) || [];
   let index = 0;
-  
+
   function typeWord() {
     if (index < words.length) {
       element.textContent += words[index];
@@ -24,7 +27,7 @@ window.typeCharacterLore = function(text, elementId, delay = 80, onComplete) {
   typeWord();
 };
 
-// Generic typing helper (character by character)
+// Genel yazma yardımcısı (karakter karakter)
 window.typeCharacterText = function(target, text, delay = 35, onComplete) {
   const element = typeof target === 'string' ? document.getElementById(target) : target;
   if (!element) {
