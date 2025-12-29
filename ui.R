@@ -80,6 +80,8 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/music_slider.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/variables.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/animations.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/layout.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/components.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),

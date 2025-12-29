@@ -1,0 +1,306 @@
+/* www/css/components.css */
+
+/* Buton Stilleri */
+.btn-modern {
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 10px 20px !important;
+  font-weight: 500 !important;
+  transition: all var(--transition-fast) !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+  color: white !important;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 107, 53, 0.3) !important;
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, rgba(71, 85, 105, 0.25), rgba(51, 65, 85, 0.15)) !important;
+  color: #94a3b8 !important;
+  border: none !important;
+}
+
+.btn-secondary:hover {
+  background: linear-gradient(135deg, rgba(71, 85, 105, 0.35), rgba(51, 65, 85, 0.25)) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(71, 85, 105, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: white !important;
+}
+
+.btn-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3) !important;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ff416c, #ff4b2b) !important;
+  color: white !important;
+}
+
+.btn-danger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 65, 108, 0.3) !important;
+}
+
+.btn-info {
+  background: linear-gradient(135deg, #3b82f6, #6366f1) !important;
+  color: white !important;
+}
+
+.btn-info:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3) !important;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: white !important;
+  border: none !important;
+}
+
+.btn-warning:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3) !important;
+}
+
+.btn-rate {
+  background: linear-gradient(135deg, #6366f1, #4338ca) !important;
+  color: #f8fafc !important;
+  border: none !important;
+}
+
+.btn-rate:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+}
+
+.btn-large {
+  padding: 12px 32px !important;
+  font-size: 16px !important;
+}
+
+/* Modal Pencere Stilleri */
+.modal-content {
+  background-color: var(--background-medium) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.modal-header {
+  background-color: var(--background-light) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.modal-body {
+  background-color: var(--background-medium) !important;
+}
+
+.modal-footer {
+  background-color: var(--background-light) !important;
+  border-top: 1px solid var(--border-color) !important;
+}
+
+.close {
+  color: var(--text-secondary) !important;
+}
+
+/* Bildirim (Toast) Stilleri */
+.toast-container {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toast {
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px 20px;
+  min-width: 300px;
+  max-width: 400px;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: slideInRight 0.3s ease;
+}
+
+.toast.hiding {
+  animation: slideOutRight 0.3s ease;
+}
+
+.toast-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.toast-success .toast-icon {
+  color: var(--success-color);
+}
+
+.toast-error .toast-icon {
+  color: var(--danger-color);
+}
+
+.toast-warning .toast-icon {
+  color: var(--warning-color);
+}
+
+.toast-info .toast-icon {
+  color: var(--info-color);
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  transition: color var(--transition-fast);
+}
+
+.toast-close:hover {
+  color: var(--text-primary);
+}
+
+/* Kaydırma Çubuğu (Scrollbar) */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-dark);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  border-radius: 6px;
+  border: 2px solid var(--background-dark);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+  box-shadow: 0 0 4px rgba(255, 107, 53, 0.5);
+}
+
+/* Form Elemanları (Genel) */
+.form-control,
+select.form-control {
+  background-color: var(--background-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  border-radius: 6px !important;
+  padding: 8px 12px !important;
+}
+
+.form-control:focus,
+select.form-control:focus {
+  background-color: var(--background-dark) !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-control option,
+select.form-control option {
+  background-color: var(--background-dark) !important;
+  color: var(--text-secondary) !important;
+}
+
+textarea.form-control {
+  background-color: var(--background-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  min-height: 38px !important;
+}
+
+textarea.form-control:focus {
+  background-color: var(--background-dark) !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2) !important;
+}
+
+/* Selectize Dropdown (Koyu Tema) */
+.selectize-input,
+.selectize-dropdown {
+  background-color: var(--background-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+.selectize-dropdown-content {
+  background-color: var(--background-dark) !important;
+}
+
+.selectize-dropdown .option {
+  background-color: var(--background-dark) !important;
+  color: var(--text-secondary) !important;
+}
+
+.selectize-dropdown .option:hover,
+.selectize-dropdown .active {
+  background-color: var(--background-medium) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Onay Kutusu (Checkbox) Stilleri */
+input[type="checkbox"] {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-radius: 4px;
+  margin-right: 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+  vertical-align: middle;
+}
+
+input[type="checkbox"]:checked {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 14px;
+}
+
+/* Mobil için buton metin gizleme */
+@media (max-width: 576px) {
+  .btn-text {
+    display: none;
+  }
+}
