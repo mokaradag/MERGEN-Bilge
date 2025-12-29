@@ -1,0 +1,205 @@
+/* www/css/animations.css */
+/* Animasyon Tanımları ve Keyframe'ler */
+
+/* Nabız Animasyonu */
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Yazıyor Göstergesi Animasyonu */
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.3;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+/* Toast Bildirim Animasyonları */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOutRight {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+/* Genel Görünürlük Animasyonları */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Intro Animasyonları */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Karakter Sayacı Titreme Animasyonu */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+/* Neural Animasyon Keyframe'leri */
+@keyframes nameFloat {
+  0%, 100% { transform: translateY(0) }
+  50% { transform: translateY(-4px) }
+}
+
+@keyframes continuousSpin {
+  from { transform: rotate(0deg) }
+  to { transform: rotate(360deg) }
+}
+
+@keyframes tailCycle {
+  0%, 20% { stroke-dasharray: 30 246; stroke-dashoffset: 0; }
+  50% { stroke-dasharray: 150 126; stroke-dashoffset: -40; }
+  80%, 100% { stroke-dasharray: 30 246; stroke-dashoffset: -276; }
+}
+
+@keyframes colorTransition {
+  0% { stroke: #00ff88; color: #00ff88; }
+  25% { stroke: #00aaff; color: #00aaff; }
+  50% { stroke: #ffdd00; color: #ffdd00; }
+  75% { stroke: #ff6600; color: #ff6600; }
+  100% { stroke: #00ff88; color: #00ff88; }
+}
+
+@keyframes textPulse {
+  0%, 100% { transform: scale(1) }
+  50% { transform: scale(1.03) }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1) }
+  50% { transform: scale(1.03) }
+}
+
+@keyframes sparkDrift {
+  0% { transform: translate(0,0) scale(var(--scale,1)); opacity: 0; }
+  15% { opacity: .85; }
+  70% { opacity: .85; }
+  100% { transform: translate(var(--dx, 0), var(--dy, 0)) scale(var(--scale,1)); opacity: 0; }
+}
+
+/* Mesaj Eşleşme Animasyonu */
+@keyframes pulseCurrentMatch {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.1); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4); }
+}
+
+/* Streaming Kenarlık Animasyonu */
+@keyframes borderPulse {
+  0%, 100% { 
+    border-color: rgba(255, 107, 53, 0.3);
+    box-shadow: 0 0 5px rgba(255, 107, 53, 0.1);
+  }
+  50% { 
+    border-color: rgba(255, 107, 53, 0.5);
+    box-shadow: 0 0 10px rgba(255, 107, 53, 0.2);
+  }
+}
+
+/* Dönme Animasyonu */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Yanıp Sönme Animasyonu (İmleç için) */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Tamamlanma Parlaması */
+@keyframes completeFlash {
+  0% { background: transparent; }
+  50% { background: rgba(255, 107, 53, 0.05); }
+  100% { background: transparent; }
+}
+
+/* Görünürlük Geçişi */
+@keyframes fadeInOut {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* İlerleme Çubuğu Animasyonu */
+@keyframes slideProgress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Karakter Seçici Efektleri */
+@keyframes floatPulse {
+  0%, 100% { 
+    transform: translateY(0) scale(1);
+    filter: drop-shadow(0 5px 15px rgba(124, 77, 255, 0.3));
+  }
+  50% { 
+    transform: translateY(-8px) scale(1.015);
+    filter: drop-shadow(0 8px 25px rgba(124, 77, 255, 0.4));
+  }
+}
+
+@keyframes particleGlow {
+  0%, 100% { 
+    opacity: 0.4;
+    transform: scale(0.95);
+  }
+  50% { 
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes particleSpin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+/* Animasyon Yardımcı Sınıfları */
+.animate-fadeIn, .animate-slideUp {
+  animation: none;
+}
+
+.animations-enabled .animate-fadeIn {
+  animation: fadeIn 0.2s ease !important;
+}
+
+.animations-enabled .animate-slideUp {
+  animation: slideUp 0.4s ease !important;
+}
+
+.fade-out-animation {
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}

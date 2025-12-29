@@ -75,12 +75,14 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/stt.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/music_slider.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/variables.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/animations.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/theme/material-darker.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/addon/fold/foldgutter.min.css"),
-
+	
     tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/character_video.css"),
 

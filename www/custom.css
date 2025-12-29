@@ -1,30 +1,5 @@
 /* custom.css - Modern AI Chat Interface */
 
-/* CSS Variables for easy theming */
-:root {
-  --primary-color: #ff6b35;
-  --secondary-color: #f7931e;
-  --background-dark: #0f0f0f;
-  --background-medium: #1a1a1a;
-  --background-light: #2a2a2a;
-  --border-color: #333;
-  --text-primary: #ffffff;
-  --text-secondary: #e6e6e6;
-  --text-muted: #999;
-  --success-color: #4ade80;
-  --warning-color: #fbbf24;
-  --danger-color: #ff416c;
-  --info-color: #3b82f6;
-  --font-primary: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Arial', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
-  --transition-fast: 0.2s ease;
-  --transition-medium: 0.3s ease;
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
-  --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.3);
-}
-
 /* Comprehensive Turkish character support */
 * {
   -webkit-font-feature-settings: "locl" 1;
@@ -339,12 +314,6 @@ body {
 
 .welcome-title-container {
   text-align: center;
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
 }
 
 .welcome-title {
@@ -1219,20 +1188,6 @@ body {
   box-shadow: var(--shadow-xl) !important;
 }
 
-/* By default, no animations */
-.animate-fadeIn, .animate-slideUp {
-  animation: none;
-}
-
-/* When the body has the .animations-enabled class, THEN apply the animations */
-.animations-enabled .animate-fadeIn {
-  animation: fadeIn 0.2s ease !important;
-}
-
-.animations-enabled .animate-slideUp {
-  animation: slideUp 0.4s ease !important;
-}
-
 /* Scroll to bottom button is now part of the nav container */
 #scroll_to_bottom_container {
   opacity: 0;
@@ -1287,17 +1242,6 @@ body {
 
 .typing-dot:nth-child(3) {
   animation-delay: 0.4s;
-}
-
-@keyframes typing {
-  0%, 60%, 100% {
-    transform: translateY(0);
-    opacity: 0.3;
-  }
-  30% {
-    transform: translateY(-10px);
-    opacity: 1;
-  }
 }
 
 /* Settings card with relative positioning for buttons */
@@ -2064,28 +2008,6 @@ table.dataTable tbody tr.selected {
   animation: slideOutRight 0.3s ease;
 }
 
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slideOutRight {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-}
-
 .toast-icon {
   font-size: 20px;
   flex-shrink: 0;
@@ -2124,25 +2046,6 @@ table.dataTable tbody tr.selected {
 
 .toast-close:hover {
   color: var(--text-primary);
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animations-enabled .animate-fadeIn {
-  animation: fadeIn 0.6s ease;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-slideUp {
-  animation: slideUp 0.4s ease;
 }
 
 /* Scrollbar Styles */
@@ -2273,15 +2176,6 @@ table.dataTable tbody tr.selected {
   }
 }
 
-/* Dark Mode Support */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background-dark: #0a0a0a;
-    --background-medium: #141414;
-    --background-light: #1f1f1f;
-  }
-}
-
 /* Print Styles */
 @media print {
   .main-header,
@@ -2305,10 +2199,7 @@ table.dataTable tbody tr.selected {
 
 /* High Contrast Mode */
 @media (prefers-contrast: high) {
-  :root {
-    --border-color: #666;
-    --text-muted: #aaa;
-  }
+  /* :root variables moved to variables.css */
   
   .message-bubble {
     border-width: 2px;
@@ -2914,17 +2805,6 @@ table.dataTable thead th:first-child::after {
   color: #f7931e;
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Center file upload controls */
 #bulk_upload_div {
   text-align: center;
@@ -3295,48 +3175,6 @@ table.dataTable thead th:first-child::after {
   pointer-events: none;
 }
 
-/* Animation Keyframes */
-@keyframes nameFloat {
-  0%, 100% { transform: translateY(0) }
-  50% { transform: translateY(-4px) }
-}
-
-@keyframes continuousSpin {
-  from { transform: rotate(0deg) }
-  to { transform: rotate(360deg) }
-}
-
-@keyframes tailCycle {
-  0%, 20% { stroke-dasharray: 30 246; stroke-dashoffset: 0; }
-  50% { stroke-dasharray: 150 126; stroke-dashoffset: -40; }
-  80%, 100% { stroke-dasharray: 30 246; stroke-dashoffset: -276; }
-}
-
-@keyframes colorTransition {
-  0% { stroke: #00ff88; color: #00ff88; }
-  25% { stroke: #00aaff; color: #00aaff; }
-  50% { stroke: #ffdd00; color: #ffdd00; }
-  75% { stroke: #ff6600; color: #ff6600; }
-  100% { stroke: #00ff88; color: #00ff88; }
-}
-
-@keyframes textPulse {
-  0%, 100% { transform: scale(1) }
-  50% { transform: scale(1.03) }
-}
-
-@keyframes breathe {
-  0%, 100% { transform: scale(1) }
-  50% { transform: scale(1.03) }
-}
-
-@keyframes sparkDrift {
-  0% { transform: translate(0,0) scale(var(--scale,1)); opacity: 0; }
-  15% { opacity: .85; }
-  70% { opacity: .85; }
-  100% { transform: translate(var(--dx, 0), var(--dy, 0)) scale(var(--scale,1)); opacity: 0; }
-}
-
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   #typing-animation-wrapper {
@@ -3411,13 +3249,6 @@ table.dataTable thead th:first-child::after {
 /* 2. The animation rule (ensure it's this version) */
 #char_counter.char-limit-exceeded {
   animation: shake 0.5s ease-in-out;
-}
-
-/* 3. The keyframes (ensure they are present) */
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-  20%, 40%, 60%, 80% { transform: translateX(5px); }
 }
 
 /* --- Recent Chats Horizontal Layout --- */
@@ -4252,13 +4083,6 @@ body.font-xlarge {
   animation: dots 1.5s steps(4, end) infinite;
 }
 
-/* Animation for current match */
-@keyframes pulseCurrentMatch {
-  0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4); }
-  50% { box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.1); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4); }
-}
-
 .message-bubble.current-match {
   animation: pulseCurrentMatch 2s ease-in-out;
 }
@@ -4271,26 +4095,10 @@ body.font-xlarge {
   animation: pulse 2s ease-in-out infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.9; }
-}
-
 /* Streaming code block styles */
 .code-container.streaming-code {
   border: 1px solid rgba(255, 107, 53, 0.3);
   animation: borderPulse 2s ease-in-out infinite;
-}
-
-@keyframes borderPulse {
-  0%, 100% { 
-    border-color: rgba(255, 107, 53, 0.3);
-    box-shadow: 0 0 5px rgba(255, 107, 53, 0.1);
-  }
-  50% { 
-    border-color: rgba(255, 107, 53, 0.5);
-    box-shadow: 0 0 10px rgba(255, 107, 53, 0.2);
-  }
 }
 
 /* Streaming indicator in code header */
@@ -4307,11 +4115,6 @@ body.font-xlarge {
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 /* Streaming code content */
 .code-content.streaming {
   position: relative;
@@ -4322,11 +4125,6 @@ body.font-xlarge {
   animation: blink 1s steps(2, start) infinite;
   color: var(--primary-color);
   font-weight: bold;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
 }
 
 /* Inline code during streaming */
@@ -4379,12 +4177,6 @@ body.font-xlarge {
 /* Temporary highlighting for newly completed elements */
 .streaming-complete {
   animation: completeFlash 0.5s ease;
-}
-
-@keyframes completeFlash {
-  0% { background: transparent; }
-  50% { background: rgba(255, 107, 53, 0.05); }
-  100% { background: transparent; }
 }
 
 /* Enhanced streaming code block styles */
@@ -4495,18 +4287,8 @@ body.font-xlarge {
   min-height: 20px;
 }
 
-@keyframes fadeInOut {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
 .streaming-indicator i {
   animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* Streaming code content cursor */
@@ -4515,11 +4297,6 @@ body.font-xlarge {
   animation: blink 1s steps(2, start) infinite;
   color: var(--primary-color);
   font-weight: bold;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
 }
 
 /* Hide action buttons during streaming */
@@ -4603,12 +4380,6 @@ body.font-xlarge {
   animation: completeFlash 0.5s ease;
 }
 
-@keyframes completeFlash {
-  0% { background: transparent; }
-  50% { background: rgba(255, 107, 53, 0.05); }
-  100% { background: transparent; }
-}
-
 /* Fix for message bubble during streaming */
 .ai-message.streaming-message {
   position: relative;
@@ -4627,11 +4398,6 @@ body.font-xlarge {
     var(--primary-color) 80%, 
     transparent 100%);
   animation: slideProgress 2s ease-in-out infinite;
-}
-
-@keyframes slideProgress {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
 }
 
 /* Ensure proper layout during streaming */
@@ -4813,16 +4579,6 @@ body.font-xlarge {
 
 .neural-background {
   opacity: 0.6;
-}
-
-/* Keep the existing fadeIn if not already defined */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 /* Refined welcome layout */
@@ -5346,10 +5102,6 @@ body.font-xlarge {
   opacity: 0;
 }
 
-@keyframes fadeIn {
-  to { opacity: 1; }
-}
-
 /* ============================================
    MCP Mode Göstergesi Stilleri
    ============================================ */
@@ -5410,17 +5162,6 @@ body.font-xlarge {
 /* İkon animasyonu */
 .mcp-indicator i {
   animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.8;
-    transform: scale(1.05);
-  }
 }
 
 /* Responsive: Mobil ekranlarda sadece ikon göster */
