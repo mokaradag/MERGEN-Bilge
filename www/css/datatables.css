@@ -1,0 +1,105 @@
+/* www/css/datatables.css - Veri tabloları stilleri */
+
+.dataTables_wrapper {
+  color: var(--text-secondary) !important;
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  color: var(--text-secondary) !important;
+}
+
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select {
+  background: var(--background-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  background: transparent !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  border-radius: 6px !important;
+  margin: 0 2px !important;
+  padding: 4px 12px !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+  background: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  color: white !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  background: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  color: white !important;
+}
+
+table.dataTable {
+  border-collapse: collapse !important;
+  width: 100% !important;
+}
+
+table.dataTable thead {
+  background: var(--background-dark);
+}
+
+table.dataTable thead th {
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+  text-align: left !important;
+  padding: 12px !important;
+  border-bottom: 2px solid var(--border-color) !important;
+}
+
+table.dataTable tbody tr {
+  background: transparent !important;
+  transition: background var(--transition-fast);
+}
+
+table.dataTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+table.dataTable tbody td {
+  padding: 12px !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Satır seçimini engelle */
+table.dataTable tbody tr.selected {
+  background: transparent !important;
+}
+
+/* Tablo satır numaraları stili */
+table.dataTable tbody tr td:first-child {
+  color: var(--text-muted) !important;
+  font-weight: 500 !important;
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* # başlık metnini kaldır */
+table.dataTable thead th:first-child {
+  font-size: 0 !important;
+}
+
+table.dataTable thead th:first-child::after {
+  content: "" !important;
+}
+
+/* Tablo Kartları */
+.files-table-card,
+.history-table-card {
+  background: var(--background-light);
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+}

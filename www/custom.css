@@ -88,27 +88,6 @@
   border-bottom: 1px solid var(--border-color);
 }
 
-/* Welcome Screen */
-.welcome-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: stretch;
-  min-height: calc(100vh - 240px);
-  padding: 0 32px 24px;
-  width: 100%;
-  max-width: 1380px;
-  margin: 0 auto;
-  gap: 20px;
-  animation: fadeIn 0.6s ease;
-}
-
-/* --- Turkish Font Override for Welcome Screen Title --- */
-.welcome-container h4.welcome-subtitle {
-  font-family: 'Roboto', sans-serif;
-  margin: 6px 0 6px !important;
-}
-
 .welcome-header {
   display: flex;
   flex-direction: column;
@@ -195,29 +174,6 @@
   line-height: 1.2;
 }
 
-/* Capabilities Grid */
-.capabilities-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px;
-  max-width: 1100px;
-  width: 100%;
-  margin-bottom: 15px; /* Add bottom margin for spacing */
-}
-
-/* Remove or update these existing rules */
-.welcome-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  padding: 15px; /* Reduced from 20px */
-  animation: fadeIn 0.6s ease;
-  overflow: hidden;
-  position: relative;
-}
-
 /* Adjusted welcome header without logo */
 .welcome-header {
   display: flex;
@@ -240,46 +196,6 @@
   font-weight: 300;
   margin-bottom: 15px; /* Reduced spacing */
   text-align: center;
-}
-
-/* Modern capability cards for dark theme */
-.capability-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 18px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-align: center;
-  backdrop-filter: blur(10px);
-  position: relative;
-  overflow: hidden;
-}
-
-.capability-card:hover {
-  transform: translateY(-4px);
-  background: rgba(255, 107, 53, 0.08); /* Orange tint like recent chats */
-  border-color: var(--primary-color); /* Orange border on hover */
-  box-shadow: 0 8px 25px rgba(255, 107, 53, 0.15);
-}
-
-.capability-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, 
-    transparent, 
-    var(--primary-color), 
-    transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.capability-card:hover::before {
-  opacity: 1;
 }
 
 .capability-icon-wrapper {
@@ -322,21 +238,6 @@
   filter: blur(10px);
   opacity: 0.4;
   z-index: -1;
-}
-
-.capability-card h3 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-  font-family: var(--font-primary);
-}
-
-.capability-card p {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.4;
 }
 
 /* Message Bubbles */
@@ -546,183 +447,6 @@
   margin-bottom: 0;
 }
 
-/* Code block styling - ensure monolithic appearance */
-.code-container {
-  background: #1e1e1e;
-  border-radius: 8px;
-  overflow: hidden;
-  margin: 16px 0;
-  border: 1px solid #333;
-  font-family: var(--font-mono) !important;
-}
-
-.code-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 16px;
-  background: #2d2d2d;
-  border-bottom: 1px solid #333;
-}
-
-.code-language {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.code-copy-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: all var(--transition-fast);
-  font-size: 14px;
-}
-
-.code-copy-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.code-copy-btn.copied {
-  color: var(--success-color);
-}
-
-.code-body {
-  display: flex;
-  position: relative;
-  max-height: 450px; /* Set your desired max height for the entire block */
-}
-
-/* Make both children scrollable independently */
-.js-line-numbers,
-.js-code-content {
-  overflow-y: auto; /* This is all we need */
-}
-
-/* Hide the scrollbar on the line numbers div */
-.js-line-numbers {
-  scrollbar-width: none; /* For Firefox */
-  -ms-overflow-style: none; /* For Internet Explorer and Edge */
-}
-.js-line-numbers::-webkit-scrollbar {
-  display: none; /* For Chrome, Safari, and Opera */
-}
-
-/* Ensure code content still scrolls horizontally */
-.js-code-content {
-  flex-grow: 1;
-  overflow-x: auto;
-}
-
-.line-numbers {
-  background: #2d2d2d;
-  color: #6e7681;
-  padding: 16px 12px;
-  text-align: right;
-  user-select: none;
-  border-right: 1px solid #333;
-  line-height: 1.5;
-  font-size: 14px;
-  font-family: var(--font-mono) !important;
-  white-space: pre;
-}
-
-.code-content {
-  flex-grow: 1;          /* Allow the code content to take up remaining space */
-  padding: 0 0 0 15px;
-  background-color: #1e1e1e;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 14px;
-  line-height: 21px;
-}
-
-.code-content pre {
-  margin: 0;
-  padding: 16px;
-  background: transparent;
-  border: none;
-  font-family: var(--font-mono) !important;
-}
-
-.code-content code {
-  font-family: var(--font-mono) !important;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #d4d4d4;
-  white-space: pre;
-  display: block;
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-}
-
-/* Syntax Highlighting - Atom One Dark Theme */
-.hljs {
-  color: #abb2bf;
-  background: transparent;
-}
-
-.hljs-comment,
-.hljs-quote {
-  color: #5c6370;
-  font-style: italic;
-}
-
-.hljs-doctag,
-.hljs-keyword,
-.hljs-formula {
-  color: #c678dd;
-}
-
-.hljs-section,
-.hljs-name,
-.hljs-selector-tag,
-.hljs-deletion,
-.hljs-subst {
-  color: #abb2bf;
-}
-
-.hljs-literal {
-  color: #56b6c2;
-}
-
-.hljs-string,
-.hljs-regexp,
-.hljs-addition,
-.hljs-attribute,
-.hljs-meta-string {
-  color: #98c379;
-}
-
-.hljs-built_in,
-.hljs-class .hljs-title {
-  color: #e6c07b;
-}
-
-.hljs-attr,
-.hljs-variable,
-.hljs-template-variable,
-.hljs-type,
-.hljs-selector-class,
-.hljs-selector-attr,
-.hljs-selector-pseudo,
-.hljs-number {
-  color: #d19a66;
-}
-
-.hljs-symbol,
-.hljs-bullet,
-.hljs-link,
-.hljs-meta,
-.hljs-selector-id,
-.hljs-title {
-  color: #61aeee;
-}
-
 /* --- Button Style for "Copy" --- */
 .btn-info {
   background: linear-gradient(135deg, #3b82f6, #6366f1) !important; /* Blue to Indigo */
@@ -758,15 +482,6 @@
 /* When sidebar is collapsed */
 .sidebar-collapse .input-container {
   left: 50px;
-}
-
-/* Quick Templates Bar */
-.quick-templates-bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-  overflow-x: auto;
-  padding-bottom: 8px;
 }
 
 .template-btn {
@@ -1302,13 +1017,6 @@ kbd {
   line-height: 1.6;
 }
 
-.files-table-card {
-  background: var(--background-light);
-  border-radius: 16px;
-  padding: 24px;
-  border: 1px solid var(--border-color);
-}
-
 .table-actions {
   display: flex;
   justify-content: space-between;
@@ -1351,86 +1059,6 @@ kbd {
   color: #ff416c !important;
 }
 
-/* DataTables Customization */
-.dataTables_wrapper {
-  color: var(--text-secondary) !important;
-}
-
-.dataTables_wrapper .dataTables_length,
-.dataTables_wrapper .dataTables_filter,
-.dataTables_wrapper .dataTables_info,
-.dataTables_wrapper .dataTables_paginate {
-  color: var(--text-secondary) !important;
-}
-
-.dataTables_wrapper .dataTables_filter input,
-.dataTables_wrapper .dataTables_length select {
-  background: var(--background-dark) !important;
-  border: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-  border-radius: 6px !important;
-  padding: 4px 8px !important;
-}
-
-.dataTables_wrapper .dataTables_paginate .paginate_button {
-  background: transparent !important;
-  border: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-  border-radius: 6px !important;
-  margin: 0 2px !important;
-  padding: 4px 12px !important;
-  transition: all var(--transition-fast) !important;
-}
-
-.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
-  background: var(--primary-color) !important;
-  border-color: var(--primary-color) !important;
-  color: white !important;
-}
-
-.dataTables_wrapper .dataTables_paginate .paginate_button.current {
-  background: var(--primary-color) !important;
-  border-color: var(--primary-color) !important;
-  color: white !important;
-}
-
-table.dataTable {
-  border-collapse: collapse !important;
-  width: 100% !important;
-}
-
-table.dataTable thead {
-  background: var(--background-dark);
-}
-
-table.dataTable thead th {
-  color: var(--text-primary) !important;
-  font-weight: 600 !important;
-  text-align: left !important;
-  padding: 12px !important;
-  border-bottom: 2px solid var(--border-color) !important;
-}
-
-table.dataTable tbody tr {
-  background: transparent !important;
-  transition: background var(--transition-fast);
-}
-
-table.dataTable tbody tr:hover {
-  background: rgba(255, 255, 255, 0.05) !important;
-}
-
-table.dataTable tbody td {
-  padding: 12px !important;
-  border-bottom: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-}
-
-/* Prevent row selection */
-table.dataTable tbody tr.selected {
-  background: transparent !important;
-}
-
 /* History Page */
 .history-header {
   margin-bottom: 32px;
@@ -1453,13 +1081,6 @@ table.dataTable tbody tr.selected {
 .history-actions {
   display: flex;
   gap: 12px;
-}
-
-.history-table-card {
-  background: var(--background-light);
-  border-radius: 16px;
-  padding: 24px;
-  border: 1px solid var(--border-color);
 }
 
 /* Saved Chats Page */
@@ -1718,11 +1339,7 @@ table.dataTable tbody tr.selected {
   .input-container {
     padding: 12px;
   }
-  
-  .welcome-container {
-    padding: 20px 12px;
-  }
-  
+    
   .page-title {
     font-size: 24px;
   }
@@ -2085,22 +1702,6 @@ textarea.form-control:focus {
   max-width: 200px !important;
   font-family: var(--font-primary) !important;
   font-size: 12px !important;
-}
-
-/* DataTable row numbers styling */
-table.dataTable tbody tr td:first-child {
-  color: var(--text-muted) !important;
-  font-weight: 500 !important;
-  background-color: rgba(255, 255, 255, 0.02) !important;
-}
-
-/* Remove the # header text */
-table.dataTable thead th:first-child {
-  font-size: 0 !important;
-}
-
-table.dataTable thead th:first-child::after {
-  content: "" !important;
 }
 
 /* Narrower dropdown widths */
@@ -2789,31 +2390,6 @@ table.dataTable thead th:first-child::after {
   padding: 2px !important;
 }
 
-.welcome-container .capabilities-grid {
-  gap: 12px; /* Reduced gap */
-  margin-bottom: 0; /* Remove bottom margin */
-  margin-top: 4px;
-}
-
-.welcome-container .capability-card {
-  padding: 15px; /* Reduced padding */
-}
-
-.welcome-container .capability-icon-wrapper {
-  width: 40px; /* Smaller icon wrapper */
-  height: 40px;
-  font-size: 18px;
-}
-
-.welcome-container .capability-card h3 {
-  font-size: 14px; /* Smaller heading */
-  margin-bottom: 6px;
-}
-
-.welcome-container .capability-card p {
-  font-size: 12px; /* Smaller text */
-}
-
 @keyframes pulseHighlight {
   0% { transform: scale(1); opacity: 0.8; }
   50% { transform: scale(1.01); opacity: 1; }
@@ -3005,20 +2581,6 @@ body.font-xlarge .message-content {
   color: var(--text-muted);
 }
 
-/* Remove extra bottom margin from welcome screen */
-.welcome-container .recent-chats-container {
-  margin-bottom: 0;
-}
-
-/* Ensure no vertical scroll in welcome screen */
-.chat-container:has(.welcome-container) {
-  overflow: hidden;
-  justify-content: center;
-  align-items: stretch;
-  padding-bottom: 0;
-  min-height: calc(100vh - 200px);
-}
-
 /* When messages are present, allow scroll */
 .chat-container:has(.message-bubble) {
   overflow-y: auto;
@@ -3208,54 +2770,9 @@ body.font-xlarge {
   animation: pulseCurrentMatch 2s ease-in-out;
 }
 
-/* Add these styles to your custom.css file: */
-
 /* Streaming message styles */
 .streaming-content {
   min-height: 20px;
-}
-
-/* Streaming code block styles */
-.code-container.streaming-code {
-  border: 1px solid rgba(255, 107, 53, 0.3);
-  animation: borderPulse 2s ease-in-out infinite;
-}
-
-/* Streaming indicator in code header */
-.streaming-indicator {
-  font-size: 12px;
-  color: var(--primary-color);
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.streaming-indicator i {
-  animation: spin 1s linear infinite;
-}
-
-/* Streaming code content */
-.code-content.streaming {
-  position: relative;
-}
-
-.code-content.streaming::after {
-  content: '▊';
-  animation: blink 1s steps(2, start) infinite;
-  color: var(--primary-color);
-  font-weight: bold;
-}
-
-/* Inline code during streaming */
-.streaming-content code.inline-code {
-  background: rgba(255, 107, 53, 0.1);
-  color: var(--text-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  border: 1px solid rgba(255, 107, 53, 0.2);
 }
 
 /* Enhanced text formatting during streaming */
@@ -3299,124 +2816,11 @@ body.font-xlarge {
   animation: completeFlash 0.5s ease;
 }
 
-/* Enhanced streaming code block styles */
-.code-container.streaming-code {
-  border: 1px solid rgba(255, 107, 53, 0.3);
-  animation: borderPulse 2s ease-in-out infinite;
-}
-
-.code-container .code-body {
-  display: flex;
-  position: relative;
-  max-height: 450px;
-}
-
-.code-container .line-numbers {
-  background: #2d2d2d;
-  color: #6e7681;
-  padding: 16px 12px;
-  text-align: right;
-  user-select: none;
-  border-right: 1px solid #333;
-  line-height: 1.5;
-  font-size: 14px;
-  font-family: var(--font-mono) !important;
-  white-space: pre;
-  overflow-y: auto;
-  scrollbar-width: none;
-  min-width: 40px;
-}
-
-.code-container .line-numbers::-webkit-scrollbar {
-  display: none;
-}
-
-.code-container .code-content {
-  flex-grow: 1;
-  padding: 0;
-  background-color: #1e1e1e;
-  overflow-x: auto;
-  overflow-y: auto;
-  width: 100%;
-}
-
-.code-container .code-content pre {
-  margin: 0;
-  padding: 16px;
-  background: transparent;
-  border: none;
-  font-family: var(--font-mono) !important;
-  min-height: 100%;
-  white-space: pre;
-  word-wrap: normal;
-}
-
-.code-container .code-content code {
-  font-family: var(--font-mono) !important;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #d4d4d4;
-  white-space: pre;
-  display: block;
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-}
-
-/* Sync scroll for line numbers and code */
-.code-container .code-body {
-  display: flex;
-  position: relative;
-  max-height: 450px;
-  width: 100%;
-}
-
-.code-container .code-content::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
-}
-
-.code-container .code-content::-webkit-scrollbar-track {
-  background: #1e1e1e;
-}
-
-.code-container .code-content::-webkit-scrollbar-thumb {
-  background: #4a4a4a;
-  border-radius: 4px;
-}
-
-.code-container .code-content::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
-}
-
-/* Streaming indicator in code header */
-.streaming-indicator {
-  font-size: 12px;
-  color: var(--primary-color);
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  animation: fadeInOut 2s ease-in-out infinite;
-}
-
 /* Message content visibility during streaming */
 .message-content[data-streaming="true"] {
   display: block !important;
   visibility: visible !important;
   min-height: 20px;
-}
-
-.streaming-indicator i {
-  animation: spin 1s linear infinite;
-}
-
-/* Streaming code content cursor */
-.code-content.streaming pre::after {
-  content: '▊';
-  animation: blink 1s steps(2, start) infinite;
-  color: var(--primary-color);
-  font-weight: bold;
 }
 
 /* Hide action buttons during streaming */
@@ -3433,17 +2837,6 @@ body.font-xlarge {
 
 .streaming-message .message-action-btn {
   display: none !important;
-}
-
-/* Inline code during streaming */
-.streaming-content code.inline-code {
-  background: rgba(255, 107, 53, 0.1);
-  color: var(--text-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  border: 1px solid rgba(255, 107, 53, 0.2);
 }
 
 /* Enhanced text formatting during streaming */
@@ -3628,142 +3021,6 @@ body.font-xlarge {
 /* Fallback style when image fails to load */
 .user-avatar img[src*="data:image/svg"] {
   background: linear-gradient(135deg, #667eea, #764ba2);
-}
-
-/* Fix welcome container to prevent scroll */
-.welcome-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  min-height: calc(100vh - 260px);
-  padding: 48px 32px 32px;
-  animation: fadeIn 0.6s ease;
-  overflow: visible;
-  position: relative;
-}
-
-/* Neural Network Background for Welcome Screen */
-.neural-background {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.6;
-}
-
-/* Make the welcome animation narrower & centered */
-.welcome-container .neural-background {
-  opacity: 1;
-  width: 20%;
-  left: 50%;
-  transform: translateX(-250%);
-}
-
-/* Full width on small screens */
-@media (max-width: 992px) {
-  .welcome-container .neural-background { width: 100%; left: 0; transform: none; }
-}
-
-.neural-canvas-welcome {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/* Ensure welcome content is above neural animation */
-.welcome-container {
-  position: relative;
-  z-index: 1;
-  background: transparent;
-}
-
-.welcome-container > * {
-  position: relative;
-  z-index: 2;
-}
-
-/* Fade out neural animation when chat starts */
-.neural-background.fade-out {
-  opacity: 0;
-  transition: opacity 0.5s ease;
-}
-
-/* Simple fade-in without delays */
-.welcome-container {
-  animation: fadeIn 0.3s ease;
-}
-
-.neural-background {
-  opacity: 0.6;
-}
-
-/* Refined welcome layout */
-.chat-container:has(.welcome-container) {
-  overflow: visible !important;
-  justify-content: center;
-  align-items: stretch;
-}
-
-.welcome-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  min-height: calc(100vh - 260px);
-  width: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 48px 32px 32px;
-  gap: 28px;
-  overflow: visible;
-}
-
-.welcome-container .welcome-subtitle {
-  margin-top: 40px !important;
-  margin-bottom: 0px !important;
-}
-
-.welcome-container .neural-background {
-  width: 100%;
-  height: 100%;
-  left: 0;
-  transform: none;
-  opacity: 0.75;
-}
-
-.welcome-container .recent-chats-container {
-  margin-bottom: 8px;
-}
-
-/* Restore original welcome spacing and animation footprint */
-.chat-container:has(.welcome-container) {
-  justify-content: center;
-  align-items: center;
-  overflow: visible;
-}
-
-.welcome-container {
-  min-height: 60vh;
-  max-width: 960px;
-  padding: 40px 20px;
-  gap: 24px;
-}
-
-.welcome-container .recent-chats-container {
-  margin-bottom: 24px;
-}
-
-.welcome-container .neural-background {
-  width: 80%;
-  max-width: 760px;
-  height: 360px;
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0.7;
 }
 
 /* Cancel FA's default vertical offset inside the buttons */
@@ -3977,89 +3234,6 @@ body.font-xlarge {
   
   .files-header .btn-modern {
     padding: 6px 10px !important;
-  }
-}
-
-/* ============================================
-   Ana Söyleşi Welcome Screen Overrides
-   ============================================ */
-.chat-container:has(.welcome-container) {
-  width: 100%;
-  max-width: 1440px;
-  min-height: calc(100vh - 220px);
-  height: auto;
-  max-height: none;
-  margin: 0 auto;
-  padding: 0 32px 100px;
-  overflow: visible;
-}
-
-.welcome-container {
-  max-width: 1380px;
-  width: 100%;
-  padding: 0 32px 24px;
-  gap: 20px;
-}
-
-.welcome-container .capabilities-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  max-width: none;
-  width: 100%;
-  gap: 12px;
-}
-
-.welcome-container .recent-chats-container {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.welcome-container .recent-chats-container .template-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.welcome-container .neural-background {
-  opacity: 1;
-  width: 20%;
-  left: 50%;
-  transform: translateX(-250%);
-}
-
-@media (max-width: 1200px) {
-  .chat-container:has(.welcome-container) {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .welcome-container {
-    padding: 12px 20px 20px;
-  }
-
-  .welcome-container .capabilities-grid {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  }
-
-  .welcome-container .recent-chats-container {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .chat-container:has(.welcome-container) {
-    padding: 0 16px 80px;
-  }
-
-  .welcome-container {
-    padding: 12px 16px 20px;
-    min-height: calc(100vh - 180px);
-  }
-
-  .welcome-container .capabilities-grid,
-  .welcome-container .recent-chats-container {
-    grid-template-columns: 1fr;
   }
 }
 

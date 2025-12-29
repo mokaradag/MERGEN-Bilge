@@ -1,0 +1,248 @@
+/* www/css/code_highlighting.css - Kod blokları ve sözdizimi vurgulama stilleri */
+
+/* Kod Konteyneri */
+.code-container {
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 16px 0;
+  border: 1px solid #333;
+  font-family: var(--font-mono) !important;
+}
+
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #333;
+}
+
+.code-language {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.code-copy-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+  font-size: 14px;
+}
+
+.code-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.code-copy-btn.copied {
+  color: var(--success-color);
+}
+
+.code-body {
+  display: flex;
+  position: relative;
+  max-height: 450px;
+  width: 100%;
+}
+
+/* Satır Numaraları */
+.js-line-numbers {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.js-line-numbers::-webkit-scrollbar {
+  display: none;
+}
+
+.js-code-content {
+  flex-grow: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.line-numbers {
+  background: #2d2d2d;
+  color: #6e7681;
+  padding: 16px 12px;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid #333;
+  line-height: 1.5;
+  font-size: 14px;
+  font-family: var(--font-mono) !important;
+  white-space: pre;
+  min-width: 40px;
+}
+
+/* Kod İçeriği */
+.code-content {
+  flex-grow: 1;
+  padding: 0 0 0 15px;
+  background-color: #1e1e1e;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 21px;
+  width: 100%;
+}
+
+.code-content pre {
+  margin: 0;
+  padding: 16px;
+  background: transparent;
+  border: none;
+  font-family: var(--font-mono) !important;
+  min-height: 100%;
+  white-space: pre;
+  word-wrap: normal;
+}
+
+.code-content code {
+  font-family: var(--font-mono) !important;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #d4d4d4;
+  white-space: pre;
+  display: block;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* Kaydırma Çubukları */
+.code-content::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.code-content::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.code-content::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 4px;
+}
+
+.code-content::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
+}
+
+/* Sözdizimi Vurgulama - Atom One Dark Teması */
+.hljs {
+  color: #abb2bf;
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #5c6370;
+  font-style: italic;
+}
+
+.hljs-doctag,
+.hljs-keyword,
+.hljs-formula {
+  color: #c678dd;
+}
+
+.hljs-section,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-deletion,
+.hljs-subst {
+  color: #abb2bf;
+}
+
+.hljs-literal {
+  color: #56b6c2;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta-string {
+  color: #98c379;
+}
+
+.hljs-built_in,
+.hljs-class .hljs-title {
+  color: #e6c07b;
+}
+
+.hljs-attr,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-number {
+  color: #d19a66;
+}
+
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-meta,
+.hljs-selector-id,
+.hljs-title {
+  color: #61aeee;
+}
+
+/* Akış Halindeki Kod Animasyonları */
+.code-container.streaming-code {
+  border: 1px solid rgba(255, 107, 53, 0.3);
+  animation: borderPulse 2s ease-in-out infinite;
+}
+
+.streaming-indicator {
+  font-size: 12px;
+  color: var(--primary-color);
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  animation: fadeInOut 2s ease-in-out infinite;
+}
+
+.streaming-indicator i {
+  animation: spin 1s linear infinite;
+}
+
+.code-content.streaming {
+  position: relative;
+}
+
+.code-content.streaming pre::after {
+  content: '▊';
+  animation: blink 1s steps(2, start) infinite;
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+.code-content.streaming::after {
+  content: '▊';
+  animation: blink 1s steps(2, start) infinite;
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+.streaming-content code.inline-code {
+  background: rgba(255, 107, 53, 0.1);
+  color: var(--text-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  border: 1px solid rgba(255, 107, 53, 0.2);
+}

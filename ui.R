@@ -82,6 +82,9 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/animations.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/layout.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/components.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/code_highlighting.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_screen.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/datatables.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
