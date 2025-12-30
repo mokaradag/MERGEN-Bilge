@@ -87,6 +87,9 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/datatables.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_messages.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_input.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/date_picker.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/cinematic_intro.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/mcp_indicator.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),

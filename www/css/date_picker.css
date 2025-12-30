@@ -1,0 +1,134 @@
+/* www/css/date_picker.css */
+/* Tarih Seçici (Date Picker) Stilleri */
+
+/* İki tarih alanı arasındaki ayırıcı */
+.dark-date-picker .input-group-addon,
+.dark-date-picker .input-group-prepend > .input-group-text,
+.dark-date-picker .input-group-append > .input-group-text {
+  background-color: transparent !important;
+  border: none !important;
+  color: var(--text-muted) !important;
+  font-size: 20px !important;
+  font-weight: 500 !important;
+  padding: 0 8px !important;
+}
+
+/* Koyu tema tarih seçiciler */
+.dark-date-picker .input-group-addon {
+  background-color: var(--background-light) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-muted) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Tarih seçici açılır pencere */
+.datepicker {
+  background-color: var(--background-light) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.datepicker td, .datepicker th {
+  color: var(--text-secondary) !important;
+}
+
+.datepicker td.active {
+  background-color: var(--primary-color) !important;
+  color: white !important;
+}
+
+.datepicker td:hover {
+  background-color: rgba(255, 107, 53, 0.2) !important;
+}
+
+/* Tam koyu tema tarih seçiciler */
+.date-filter .form-control {
+  background-color: var(--background-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  border-radius: 6px !important;
+}
+
+.date-filter .input-group-addon {
+  background-color: var(--background-light) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Tarih seçici açılır pencere (Detaylı) */
+.datepicker {
+  background-color: var(--background-light) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+.datepicker table {
+  background-color: transparent !important;
+}
+
+.datepicker td, .datepicker th {
+  color: var(--text-secondary) !important;
+  border: none !important;
+}
+
+.datepicker .datepicker-switch {
+  background-color: var(--background-dark) !important;
+  color: var(--text-primary) !important;
+}
+
+.datepicker .prev, .datepicker .next {
+  color: var(--text-secondary) !important;
+}
+
+.datepicker .prev:hover, .datepicker .next:hover {
+  background-color: var(--background-dark) !important;
+}
+
+.datepicker td.active {
+  background-color: var(--primary-color) !important;
+  color: white !important;
+}
+
+.datepicker td:hover {
+  background-color: rgba(255, 107, 53, 0.2) !important;
+}
+
+.datepicker td.today {
+  background-color: rgba(255, 107, 53, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Tarih aralığı ayırıcı (Tekrar) */
+.date-filter .input-group-addon {
+  background-color: transparent !important;
+  border: none !important;
+  color: var(--text-secondary) !important;
+  font-size: 20px !important;
+  padding: 0 2px !important;
+}
+
+/* Tarih seçici "Bugün" butonu stili */
+.datepicker-dropdown .datepicker-footer {
+  text-align: center;
+  padding: 8px;
+  border-top: 1px solid var(--border-color);
+  background: var(--background-dark);
+}
+
+.datepicker-dropdown .datepicker-footer .today-btn {
+  background: var(--primary-color) !important;
+  color: white !important;
+  border: none !important;
+  padding: 6px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all var(--transition-fast);
+}
+
+.datepicker-dropdown .datepicker-footer .today-btn:hover {
+  background: var(--secondary-color) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}

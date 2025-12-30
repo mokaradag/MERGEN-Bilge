@@ -1,0 +1,72 @@
+/* www/css/mcp_indicator.css */
+/* MCP Modu Göstergesi Stilleri */
+
+/* MCP gösterge temel stil */
+.mcp-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 12px;
+  margin-right: 12px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  border: 1px solid transparent;
+  cursor: default;
+  opacity: 0.85;
+  height: 28px;
+}
+
+/* Excel MCP aktif - ince yeşil rozet */
+.mcp-indicator.excel-active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.mcp-indicator.excel-active i {
+  color: #4ade80;
+  font-size: 12px;
+}
+
+.mcp-indicator.excel-active:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(34, 197, 94, 0.4);
+}
+
+/* RData MCP aktif - ince mavi rozet */
+.mcp-indicator.rdata-active {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.mcp-indicator.rdata-active i {
+  color: #60a5fa;
+  font-size: 12px;
+}
+
+.mcp-indicator.rdata-active:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.4);
+}
+
+/* İkon animasyonu */
+.mcp-indicator i {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Responsive: Mobil ekranlarda sadece ikon göster */
+@media (max-width: 768px) {
+  .mcp-indicator span {
+    display: none;
+  }
+  
+  .mcp-indicator {
+    padding: 6px 10px;
+    margin-right: 8px;
+  }
+}

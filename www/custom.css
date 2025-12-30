@@ -336,18 +336,6 @@
   margin-right: 8px;
 }
 
-/* This targets the separator between the two date fields */
-.dark-date-picker .input-group-addon,
-.dark-date-picker .input-group-prepend > .input-group-text,
-.dark-date-picker .input-group-append > .input-group-text {
-  background-color: transparent !important;
-  border: none !important;
-  color: var(--text-muted) !important;
-  font-size: 20px !important;
-  font-weight: 500 !important;
-  padding: 0 8px !important;
-}
-
 /* Font size and response style dropdowns */
 #font_size, #response_style {
   background-color: var(--background-dark) !important;
@@ -1033,92 +1021,6 @@ kbd {
   color: var(--text-secondary) !important;
 }
 
-/* Dark theme date pickers */
-.dark-date-picker .input-group-addon {
-  background-color: var(--background-light) !important;
-  border-color: var(--border-color) !important;
-  color: var(--text-muted) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
-/* Date picker dropdown */
-.datepicker {
-  background-color: var(--background-light) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-.datepicker td, .datepicker th {
-  color: var(--text-secondary) !important;
-}
-
-.datepicker td.active {
-  background-color: var(--primary-color) !important;
-  color: white !important;
-}
-
-.datepicker td:hover {
-  background-color: rgba(255, 107, 53, 0.2) !important;
-}
-
-/* Complete dark theme date pickers */
-.date-filter .form-control {
-  background-color: var(--background-dark) !important;
-  border: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-  border-radius: 6px !important;
-}
-
-.date-filter .input-group-addon {
-  background-color: var(--background-light) !important;
-  border: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-}
-
-/* Date picker dropdown */
-.datepicker {
-  background-color: var(--background-light) !important;
-  border: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-}
-
-.datepicker table {
-  background-color: transparent !important;
-}
-
-.datepicker td, .datepicker th {
-  color: var(--text-secondary) !important;
-  border: none !important;
-}
-
-.datepicker .datepicker-switch {
-  background-color: var(--background-dark) !important;
-  color: var(--text-primary) !important;
-}
-
-.datepicker .prev, .datepicker .next {
-  color: var(--text-secondary) !important;
-}
-
-.datepicker .prev:hover, .datepicker .next:hover {
-  background-color: var(--background-dark) !important;
-}
-
-.datepicker td.active {
-  background-color: var(--primary-color) !important;
-  color: white !important;
-}
-
-.datepicker td:hover {
-  background-color: rgba(255, 107, 53, 0.2) !important;
-}
-
-.datepicker td.today {
-  background-color: rgba(255, 107, 53, 0.3) !important;
-  color: var(--text-primary) !important;
-}
-
 /* Date range separator */
 .date-filter .input-group-addon {
   background-color: transparent !important;
@@ -1362,52 +1264,6 @@ textarea.form-control:focus {
   color: white !important;
   font-weight: 600 !important;
   text-align: center !important;
-}
-
-/* Cinematic Intro */
-.intro-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: #000;
-  z-index: 9999;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  transition: opacity 1s ease-out;
-}
-
-.intro-container.fade-out {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.neural-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.intro-logo {
-  position: absolute;
-  bottom: 40px;
-  right: 40px;
-  font-size: 36px;
-  font-weight: 700;
-  opacity: 0;
-  animation: fadeInUp 1.5s ease-out 1s forwards;
-}
-
-.intro-text-primary {
-  color: #ff6b35;
-}
-
-.intro-text-secondary {
-  color: #f7931e;
 }
 
 /* Center file upload controls */
@@ -1815,31 +1671,6 @@ body.font-xlarge .message-content {
   font-size: 14px !important;
 }
 
-/* Date picker "Bugün" button styling (FIX #5) */
-.datepicker-dropdown .datepicker-footer {
-  text-align: center;
-  padding: 8px;
-  border-top: 1px solid var(--border-color);
-  background: var(--background-dark);
-}
-
-.datepicker-dropdown .datepicker-footer .today-btn {
-  background: var(--primary-color) !important;
-  color: white !important;
-  border: none !important;
-  padding: 6px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all var(--transition-fast);
-}
-
-.datepicker-dropdown .datepicker-footer .today-btn:hover {
-  background: var(--secondary-color) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
-}
-
 /* File download button fix for proper icon display */
 .file-download.js-file-action {
   cursor: pointer;
@@ -2138,80 +1969,6 @@ body.font-xlarge {
 @keyframes particleSpin {
   from { transform: translate(-50%, -50%) rotate(0deg); }
   to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
-/* ============================================
-   MCP Mode Göstergesi Stilleri
-   ============================================ */
-
-/* MCP gösterge temel stil - header-stat-item ile aynı yükseklikte */
-.mcp-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  margin-left: 12px;
-  margin-right: 12px;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  border: 1px solid transparent;
-  cursor: default;
-  opacity: 0.85;
-  height: 28px;
-}
-
-/* Excel MCP aktif - subtle green badge */
-.mcp-indicator.excel-active {
-  background: rgba(34, 197, 94, 0.15);
-  color: #86efac;
-  border-color: rgba(34, 197, 94, 0.25);
-}
-
-.mcp-indicator.excel-active i {
-  color: #4ade80;
-  font-size: 12px;
-}
-
-.mcp-indicator.excel-active:hover {
-  opacity: 1;
-  box-shadow: 0 1px 4px rgba(34, 197, 94, 0.4);
-}
-
-/* RData MCP aktif - subtle blue badge */
-.mcp-indicator.rdata-active {
-  background: rgba(59, 130, 246, 0.15);
-  color: #93c5fd;
-  border-color: rgba(59, 130, 246, 0.25);
-}
-
-.mcp-indicator.rdata-active i {
-  color: #60a5fa;
-  font-size: 12px;
-}
-
-.mcp-indicator.rdata-active:hover {
-  opacity: 1;
-  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.4);
-}
-
-/* İkon animasyonu */
-.mcp-indicator i {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-/* Responsive: Mobil ekranlarda sadece ikon göster */
-@media (max-width: 768px) {
-  .mcp-indicator span {
-    display: none;
-  }
-  
-  .mcp-indicator {
-    padding: 6px 10px;
-    margin-right: 8px;
-  }
 }
 
 /* ============================================
