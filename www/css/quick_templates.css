@@ -1,0 +1,61 @@
+/* www/css/quick_templates.css - Hızlı Şablonlar ve Karşılama Ekranı Kartları */
+
+/* Hızlı Şablonlar Bölümü */
+.quick-templates-section {
+  width: 100%;
+  max-width: 1200px;
+  margin-bottom: 48px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.quick-templates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.template-card {
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.template-card:hover {
+  background: rgba(255, 107, 53, 0.1);
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.template-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Son Söyleşiler kartlarındaki meta veriler */
+.recent-chat-meta {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+/* Mobil görünüm uyarlaması */
+@media (max-width: 768px) {
+  .quick-templates-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -98,58 +98,6 @@
   margin-top: 0 !important;
 }
 
-/* Quick Templates */
-.quick-templates-section {
-  width: 100%;
-  max-width: 1200px;
-  margin-bottom: 48px;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-  text-align: center;
-}
-
-.quick-templates-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.template-card {
-  background: var(--background-light);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.template-card:hover {
-  background: rgba(255, 107, 53, 0.1);
-  border-color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.template-text {
-  margin: 0;
-  font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.recent-chat-meta {
-  display: block;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-  line-height: 1.2;
-}
-
 /* Adjusted welcome header without logo */
 .welcome-header {
   display: flex;
@@ -174,75 +122,11 @@
   text-align: center;
 }
 
-.capability-icon-wrapper {
-  width: 45px;
-  height: 45px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 10px;
-  font-size: 20px;
-  color: white;
-  position: relative;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
-
-.gradient-pink {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.gradient-blue {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.gradient-green {
-  background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%);
-}
-
-.gradient-purple {
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-  color: #333 !important; /* Dark text for light background */
-}
-
-.capability-icon-wrapper::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  background: inherit;
-  filter: blur(10px);
-  opacity: 0.4;
-  z-index: -1;
-}
-
-/* --- Button Style for "Copy" --- */
-.btn-info {
-  background: linear-gradient(135deg, #3b82f6, #6366f1) !important; /* Blue to Indigo */
-  color: white !important;
-}
-
-.btn-info:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3) !important;
-}
-
-/* Responsive Design */
-@media (max-width: 1200px) {
-  .capabilities-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 @media (max-width: 768px) {
   .content-wrapper {
     margin-left: 0 !important;
   }
-  
-  .capabilities-grid {
-    grid-template-columns: 1fr;
-  }
-  
+    
   .welcome-title {
     font-size: 36px;
   }
@@ -253,10 +137,6 @@
   
   .user-message {
     max-width: 85% !important;
-  }
-  
-  .quick-templates-grid {
-    grid-template-columns: 1fr;
   }
   
   .settings-grid {
@@ -706,51 +586,6 @@ body.font-medium,
 body.font-large,
 body.font-xlarge {
   font-size: inherit !important;
-}
-
-/* Button style for warning (clear files) */
-.btn-warning {
-  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
-  color: white !important;
-  border: none !important;
-}
-
-.btn-warning:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3) !important;
-}
-
-/* Accent button for rate limit increase */
-.btn-rate {
-  background: linear-gradient(135deg, #6366f1, #4338ca) !important;
-  color: #f8fafc !important;
-  border: none !important;
-}
-
-.btn-rate:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
-}
-
-/* Fix for download button styling */
-.file-action-btn.file-download {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border: none !important;
-  color: var(--text-secondary) !important;
-  width: 32px !important;
-  height: 32px !important;
-  border-radius: 6px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  transition: all var(--transition-fast) !important;
-  cursor: pointer !important;
-  position: relative !important;
-}
-
-.file-action-btn.file-download:hover {
-  background: rgba(42, 157, 143, 0.2) !important;
-  color: #2a9d8f !important;
 }
 
 /* Hidden download handler container */

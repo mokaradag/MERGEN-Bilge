@@ -97,6 +97,9 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/health_check.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/disconnect_overlay.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_header.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/quick_templates.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/capabilities.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/custom_buttons.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
