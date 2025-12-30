@@ -154,25 +154,39 @@
   margin-right: 8px;
 }
 
-/* Onay kutusu sarmalayıcı */
-.checkbox-wrapper {
+.checkbox-item {
+  margin-bottom: 16px !important;
+  width: 100%;
+}
+
+.checkbox-item .form-group,
+.checkbox-item .shiny-input-container,
+.checkbox-item .checkbox {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+}
+
+.checkbox-item .checkbox label {
   display: flex !important;
   align-items: center !important;
-  margin-bottom: 10px !important;
-  cursor: pointer !important;
+  padding-left: 0 !important;
+  width: 100%;
+  cursor: pointer;
 }
 
-.checkbox-wrapper .checkbox {
-  margin: 0 !important;
-  display: inline-flex !important;
+.checkbox-item input[type="checkbox"] {
+  margin: 0 14px 0 0 !important;
+  margin-top: 0 !important;
+  position: relative !important;
+  top: 0 !important;
+  flex-shrink: 0 !important;
 }
 
-.checkbox-wrapper .checkbox input {
-  margin: 0 6px 0 0 !important;
-}
-
-.checkbox-wrapper .checkbox label {
-  display: none !important;
+.checkbox-item .checkbox label span {
+  line-height: 1.4 !important;
+  display: inline-block;
+  color: var(--text-secondary);
 }
 
 /* API Anahtarı girişi */

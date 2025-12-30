@@ -125,8 +125,14 @@
 .chat-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 12px;
+}
+
+.saved-chat-card .chat-title {
+  font-size: 18px !important;
+  margin-bottom: 0 !important;
+  line-height: 1.4 !important;
 }
 
 .btn-icon-only {

@@ -240,7 +240,7 @@ settingsUI <- function(id) {
 					style = "margin-top: 8px;",
 					checkboxInput(
 					  inputId = ns("enable_tts_audio"),
-					  label = tags$span("Yanıtları Seslendir", style = "margin-left: 8px;"),
+					  label = tags$span("Yanıtları Seslendir"),
 					  value = TRUE
 					)
 				  ),
@@ -256,7 +256,7 @@ settingsUI <- function(id) {
 					style = "margin-top: 8px;",
 					checkboxInput(
 					  inputId = ns("enable_background_music"),
-					  label = tags$span("Arka Fon Müziği", style = "margin-left: 8px;"),
+					  label = tags$span("Arka Fon Müziği"),
 					  value = FALSE
 					)
 				  ),
