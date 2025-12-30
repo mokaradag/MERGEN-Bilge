@@ -47,31 +47,6 @@
   margin-right: 0 !important;
 }
 
-/* Chat Header */
-.chat-header {
-  background: var(--background-light);
-  border-radius: 0;
-  padding: 0 16px;
-  height: 50px;
-  min-height: 50px;
-  margin-bottom: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  box-shadow: var(--shadow-md);
-}
-
-.chat-header-left {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-}
-
-#tts_viz_container {
-  flex: 0 0 auto;
-}
-
 /* Consistent header styles */
 .settings-title,
 .page-title,
@@ -81,23 +56,6 @@
   font-weight: 600 !important;
   color: var(--text-primary) !important;
   margin-bottom: 8px !important;
-}
-
-.chat-stats {
-  display: flex;
-  gap: 16px;
-}
-
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.stat-item i {
-  color: var(--primary-color);
 }
 
 .setting-item .form-control,
@@ -273,12 +231,6 @@
 @media (max-width: 1200px) {
   .capabilities-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .chat-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
   }
 }
 
@@ -509,74 +461,6 @@ textarea.form-control:focus {
   box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2) !important;
 }
 
-/* Health Check Page Dark Theme */
-.health-content {
-  background-color: var(--background-dark);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 24px;
-  font-family: var(--font-mono);
-  font-size: 16px;
-  line-height: 2;
-  color: var(--text-secondary);
-  min-height: 240px;
-  max-height: 400px;
-  overflow-y: auto;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.health-container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.health-cards-row {
-  display: flex;
-  flex-wrap: wrap;
-  margin-left: -10px;
-  margin-right: -10px;
-}
-
-.health-column {
-  display: flex;
-  flex-direction: column;
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
-.health-card {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  margin-bottom: 20px;
-}
-
-.health-card .health-content {
-  flex: 1;
-}
-
-/* Kartların yüksekliklerini eşitle ve kaydırma çubuğunu önle */
-.health-column > .health-card:first-child {
-  min-height: 430px;
-}
-
-.health-column > .health-card:last-child {
-  min-height: 430px;
-}
-
-.health-content pre {
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
 .settings-title i {
   margin-right: 8px;
   color: var(--primary-color);
@@ -613,76 +497,6 @@ textarea.form-control:focus {
   width: 100%;
   flex-wrap: wrap;
   margin-top: 0; /* Remove top margin since title handles spacing */
-}
-
-/* --- Disconnect Overlay --- */
-.disconnect-overlay {
-  display: none; /* Hidden by default */
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(15, 15, 15, 0.9);
-  z-index: 10000;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  color: white;
-}
-
-.disconnect-message {
-  padding: 40px;
-  border-radius: 16px;
-  background: var(--background-light);
-}
-
-.disconnect-message h3 {
-  margin-bottom: 20px;
-}
-
-/* --- Karakter ve Model Adı Göstergesi (Ana Söyleşi Başlığı) --- */
-.header-stat-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s ease;
-  cursor: default;
-  opacity: 0.85;
-  margin-left: 12px;
-  margin-right: 12px;
-  color: #e5e5e5 !important;
-  height: 28px;
-}
-
-.header-stat-item:hover {
-  opacity: 1;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-}
-
-/* Avatar resmi için özel stil */
-.header-stat-item img {
-  flex-shrink: 0;
-}
-
-/* Responsive: Mobil ekranlarda */
-@media (max-width: 768px) {
-  .header-stat-item {
-    padding: 6px 10px;
-    margin-right: 8px;
-    font-size: 10px;
-  }
-  
-  .header-stat-item img {
-    width: 16px !important;
-    height: 16px !important;
-  }
 }
 
 /* FIX #2: Like/Dislike button colors */
@@ -811,19 +625,6 @@ body.font-xlarge .message-content {
   color: var(--text-primary);
   display: inline-block;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-
-/* Ensure proper vertical alignment in chat header */
-.chat-header-left {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.chat-header-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 /* Reduced margin for recent chats in welcome screen */
@@ -998,63 +799,4 @@ body.font-xlarge {
 @keyframes particleSpin {
   from { transform: translate(-50%, -50%) rotate(0deg); }
   to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
-/* ============================================
-   Ana Söyleşi Header Button Stilleri (Kompakt & Gradient)
-   ============================================ */
-
-/* Başlıktaki 3 buton için özel stil - MCP göstergesiyle uyumlu */
-.chat-header-right .btn-modern {
-  padding: 6px 12px !important;  /* Daha küçük padding */
-  font-size: 13px !important;     /* Daha küçük font */
-  font-weight: 600 !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-}
-
-/* Yeni Söyleşi butonu - Turuncu tema (daha yumuşak) */
-.chat-header-right .btn-primary {
-  background: linear-gradient(135deg, rgba(255, 107, 53, 0.25), rgba(247, 147, 30, 0.15)) !important;
-  color: #ff9966 !important;
-  border-color: rgba(255, 107, 53, 0.3) !important;
-}
-
-.chat-header-right .btn-primary:hover {
-  background: linear-gradient(135deg, rgba(255, 107, 53, 0.35), rgba(247, 147, 30, 0.25)) !important;
-  border-color: rgba(255, 107, 53, 0.5) !important;
-  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3) !important;
-  transform: translateY(-1px) !important;
-}
-
-/* Sohbeti Kopyala butonu - Mavi tema (daha yumuşak) */
-.chat-header-right .btn-info {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(99, 102, 241, 0.15)) !important;
-  color: #60a5fa !important;
-  border-color: rgba(59, 130, 246, 0.3) !important;
-}
-
-.chat-header-right .btn-info:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(99, 102, 241, 0.25)) !important;
-  border-color: rgba(59, 130, 246, 0.5) !important;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
-  transform: translateY(-1px) !important;
-}
-
-/* Sohbeti Dışa Aktar butonu - Yeşil tema (daha yumuşak) */
-.chat-header-right .btn-success {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.15)) !important;
-  color: #4ade80 !important;
-  border-color: rgba(16, 185, 129, 0.3) !important;
-}
-
-.chat-header-right .btn-success:hover {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.25)) !important;
-  border-color: rgba(16, 185, 129, 0.5) !important;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
-  transform: translateY(-1px) !important;
-}
-
-/* İkonlar için stil */
-.chat-header-right .btn-modern i {
-  font-size: 13px;
 }

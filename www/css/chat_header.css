@@ -1,0 +1,155 @@
+/* www/css/chat_header.css - Söyleşi Başlığı ve Buton Stilleri */
+
+/* Ana Başlık Kapsayıcısı */
+.chat-header {
+  background: var(--background-light);
+  border-radius: 0;
+  padding: 0 16px;
+  height: 50px;
+  min-height: 50px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#tts_viz_container {
+  flex: 0 0 auto;
+}
+
+/* İstatistik ve Sayaçlar */
+.chat-stats {
+  display: flex;
+  gap: 16px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.stat-item i {
+  color: var(--primary-color);
+}
+
+/* Karakter ve Model Adı Göstergesi */
+.header-stat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  cursor: default;
+  opacity: 0.85;
+  margin-left: 12px;
+  margin-right: 12px;
+  color: #e5e5e5 !important;
+  height: 28px;
+}
+
+.header-stat-item:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.header-stat-item img {
+  flex-shrink: 0;
+}
+
+/* Buton Stilleri (Kompakt & Gradient) */
+.chat-header-right .btn-modern {
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.chat-header-right .btn-modern i {
+  font-size: 13px;
+}
+
+/* Yeni Söyleşi Butonu */
+.chat-header-right .btn-primary {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.25), rgba(247, 147, 30, 0.15)) !important;
+  color: #ff9966 !important;
+  border-color: rgba(255, 107, 53, 0.3) !important;
+}
+
+.chat-header-right .btn-primary:hover {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.35), rgba(247, 147, 30, 0.25)) !important;
+  border-color: rgba(255, 107, 53, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Sohbeti Kopyala Butonu */
+.chat-header-right .btn-info {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(99, 102, 241, 0.15)) !important;
+  color: #60a5fa !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+.chat-header-right .btn-info:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(99, 102, 241, 0.25)) !important;
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Sohbeti Dışa Aktar Butonu */
+.chat-header-right .btn-success {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.15)) !important;
+  color: #4ade80 !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.chat-header-right .btn-success:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.25)) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Mobil Uyumluluk */
+@media (max-width: 1200px) {
+  .chat-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-stat-item {
+    padding: 6px 10px;
+    margin-right: 8px;
+    font-size: 10px;
+  }
+  
+  .header-stat-item img {
+    width: 16px !important;
+    height: 16px !important;
+  }
+}

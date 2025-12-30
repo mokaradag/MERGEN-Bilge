@@ -94,12 +94,15 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/file_manager.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/history_saved_chats.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/settings_page.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/health_check.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/disconnect_overlay.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_header.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/theme/material-darker.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/addon/fold/foldgutter.min.css"),
-	
+
     tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
 
     # --- Local JavaScript Files ---
