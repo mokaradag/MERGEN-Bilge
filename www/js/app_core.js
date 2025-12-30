@@ -40,21 +40,29 @@ $(document).ready(function() {
   };
 
   // Shiny bağlandığında: son sekmeyi geri yükle ve geniş ekran ayarını uygula
-  $(document).on('shiny:connected', function(event) {
-    try {
-      const raw = localStorage.getItem('mergen_settings');
-      if (raw) {
-        const settings = JSON.parse(raw);
-        if (typeof settings.enable_widescreen === 'boolean') {
-          applyWidescreen(!!settings.enable_widescreen);
-        }
-      }
-    } catch (e) {}
-
-    setTimeout(() => {
-      if (window.updateCharCounter) window.updateCharCounter();
-    }, 100);
-  });
+	$(document).on('shiny:connected', function(event) {
+	  setTimeout(() => {
+		try {
+		  const raw = localStorage.getItem('mergen_settings');
+		  let widescreenEnabled = true;
+		  if (raw) {
+			const settings = JSON.parse(raw);
+			if (typeof settings.enable_widescreen === 'boolean') {
+			  widescreenEnabled = settings.enable_widescreen;
+			}
+		  }
+		  if (typeof applyWidescreen === 'function') {
+			applyWidescreen(widescreenEnabled);
+		  }
+		} catch (e) {
+		  if (typeof applyWidescreen === 'function') {
+			applyWidescreen(true);
+		  }
+		}
+		
+		if (window.updateCharCounter) window.updateCharCounter();
+	  }, 200);
+	});
 
   // Mesaj gözlemcisi
   const messageObserver = new MutationObserver(muts => {

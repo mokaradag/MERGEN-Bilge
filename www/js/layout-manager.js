@@ -29,16 +29,9 @@
     updateMessageWrappersForWidescreen($scope);
   }
   
-  function updateMessageWrappersForWidescreen(scopeEl) {
-    const $scope = scopeEl ? $(scopeEl) : $(document);
-    const $wrappers = $scope.find('[id^="message_wrapper_"]');
-  
-    if (isWidescreenMode) {
-      $wrappers.removeClass('narrow-wrapper');
-    } else {
-      $wrappers.addClass('narrow-wrapper');
-    }
-  }
+	function updateMessageWrappersForWidescreen(scopeEl) {
+	  // Artık gerekli değil, CSS .chat-container sınıfına göre çalışıyor
+	}
 
   // Export
   window.applyWidescreen = applyWidescreen;

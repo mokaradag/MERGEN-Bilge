@@ -641,9 +641,10 @@ observeEvent(input$analysis_file_clicked, {
 	session$sendCustomMessage("updateFontSize", list(size = settings_data$font_size))
   })
   
-  observeEvent(settings_data$enable_widescreen, {
-	session$sendCustomMessage("toggleWidescreen", list(enabled = settings_data$enable_widescreen))
-  })
+	observeEvent(settings_data$enable_widescreen, {
+	  enabled_val <- isTRUE(settings_data$enable_widescreen)
+	  session$sendCustomMessage("toggleWidescreen", list(enabled = enabled_val))
+	}, ignoreNULL = FALSE, ignoreInit = FALSE)
 	
   output$download_logs <- downloadHandler(
 	filename = function() {

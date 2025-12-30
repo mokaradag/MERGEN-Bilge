@@ -233,8 +233,7 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
 
   is_streaming <- isTRUE(msg$is_streaming)
 
-	div(id = paste0("message_wrapper_", msg$id),
-		  class = if (!isTRUE(settings$enable_widescreen)) "narrow-wrapper" else NULL, {
+  div(id = paste0("message_wrapper_", msg$id), {
 
     if (msg$type == "user") {
       div(

@@ -95,17 +95,24 @@ $(document).ready(function() {
     });
 
     // Geniş ekran geçişi (Widescreen Toggle)
-    Shiny.addCustomMessageHandler('toggleWidescreen', function(data) {
-        if (typeof applyWidescreen === 'function') {
-            applyWidescreen(!!data.enabled);
-        }
-        try {
-          const raw = localStorage.getItem('mergen_settings');
-          const settings = raw ? JSON.parse(raw) : {};
-          settings.enable_widescreen = !!data.enabled;
-          localStorage.setItem('mergen_settings', JSON.stringify(settings));
-        } catch (e) { /* yoksay */ }
-    });
+	Shiny.addCustomMessageHandler('toggleWidescreen', function(data) {
+		const enabled = !!data.enabled;
+		if (typeof applyWidescreen === 'function') {
+			applyWidescreen(enabled);
+		}
+		try {
+		  const raw = localStorage.getItem('mergen_settings');
+		  const settings = raw ? JSON.parse(raw) : {};
+		  settings.enable_widescreen = enabled;
+		  localStorage.setItem('mergen_settings', JSON.stringify(settings));
+		} catch (e) {}
+		
+		setTimeout(function() {
+			if (typeof applyWidescreen === 'function') {
+				applyWidescreen(enabled);
+			}
+		}, 100);
+	});
 
     // Tüm zaman damgalarını görünür yap/gizle
     Shiny.addCustomMessageHandler('toggleAllTimestamps', function(data) {
@@ -194,12 +201,7 @@ $(document).ready(function() {
         $progress.find('.progress-bar').removeClass('upload-complete');
     });
 
-});
-
-// --- Zaman Damgası İşleyicileri (Orijinal yapıya uygun olarak document.ready dışına alındı) ---
-
-// Sağlık zaman damgasını güncelle
-if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
+    // Sağlık zaman damgasını güncelle
     Shiny.addCustomMessageHandler('updateHealthTimestamp', function(data) {
       const elem = document.getElementById('last_update_time');
       if (elem) {
@@ -214,20 +216,4 @@ if (typeof Shiny !== 'undefined' && Shiny.addCustomMessageHandler) {
           el.textContent = 'Son Güncelleme: ' + data.time;
         }
     });
-} else {
-    // Eğer Shiny henüz yüklenmediyse, bağlandığında çalıştır
-    $(document).on('shiny:connected', function() {
-        Shiny.addCustomMessageHandler('updateHealthTimestamp', function(data) {
-          const elem = document.getElementById('last_update_time');
-          if (elem) {
-            elem.textContent = 'Son Güncelleme: ' + data.time;
-          }
-        });
-        Shiny.addCustomMessageHandler('updateAdminTimestamp', function(data) {
-            var el = document.getElementById(data.id);
-            if (el) {
-              el.textContent = 'Son Güncelleme: ' + data.time;
-            }
-        });
-    });
-}
+});
