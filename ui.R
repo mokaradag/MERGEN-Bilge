@@ -74,6 +74,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/model_selector.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/codemirror-custom.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/character-selector.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/character_video.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/typing-indicator.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/stt.css"),
@@ -90,6 +91,9 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/date_picker.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/cinematic_intro.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/mcp_indicator.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/file_manager.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/history_saved_chats.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/settings_page.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -97,7 +101,6 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", href = "codemirror/addon/fold/foldgutter.min.css"),
 	
     tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/character_video.css"),
 
     # --- Local JavaScript Files ---
     # Core CodeMirror
