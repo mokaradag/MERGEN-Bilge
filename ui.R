@@ -100,6 +100,9 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/quick_templates.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/capabilities.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/custom_buttons.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/utilities.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/responsive.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/accessibility.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),

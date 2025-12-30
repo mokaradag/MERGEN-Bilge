@@ -1,0 +1,122 @@
+/* www/css/utilities.css - Yardımcı Sınıflar ve Araçlar */
+
+/* Yazı boyutu ayarlamaları */
+.font-small {
+  font-size: 14px !important;
+}
+
+.font-small .message-content {
+  font-size: 14px !important;
+}
+
+.font-medium {
+  font-size: 16px !important;
+}
+
+.font-medium .message-content {
+  font-size: 16px !important;
+}
+
+.font-large {
+  font-size: 18px !important;
+}
+
+.font-large .message-content {
+  font-size: 18px !important;
+}
+
+.font-xlarge {
+  font-size: 20px !important;
+}
+
+.font-xlarge .message-content {
+  font-size: 20px !important;
+}
+
+/* Geniş ekran modu yardımcıları */
+.chat-content-wrapper.widescreen {
+  max-width: 100%;
+  padding: 0 40px;
+}
+
+.chat-content-wrapper.normal-screen {
+  max-width: 100% !important;
+  margin: 0;
+  padding: 0;
+}
+
+/* Genel yardımcı sınıflar */
+.hidden {
+  display: none !important;
+}
+
+.disabled {
+  opacity: 0.5 !important;
+  pointer-events: none !important;
+}
+
+.text-center {
+  text-align: center !important;
+}
+
+.text-right {
+  text-align: right !important;
+}
+
+/* Boşluk (Margin) yardımcıları */
+.mt-1 { margin-top: 8px !important; }
+.mt-2 { margin-top: 16px !important; }
+.mt-3 { margin-top: 24px !important; }
+.mt-4 { margin-top: 32px !important; }
+
+.mb-1 { margin-bottom: 8px !important; }
+.mb-2 { margin-bottom: 16px !important; }
+.mb-3 { margin-bottom: 24px !important; }
+.mb-4 { margin-bottom: 32px !important; }
+
+/* Dolgu (Padding) yardımcıları */
+.p-1 { padding: 8px !important; }
+.p-2 { padding: 16px !important; }
+.p-3 { padding: 24px !important; }
+.p-4 { padding: 32px !important; }
+
+/* Gövde yazı boyutu sınıfları (body font size classes) */
+body.font-small {
+  font-size: 14px !important;
+}
+
+body.font-small .message-content {
+  font-size: 13px !important;
+}
+
+body.font-medium {
+  font-size: 16px !important;
+}
+
+body.font-medium .message-content {
+  font-size: 15px !important;
+}
+
+body.font-large {
+  font-size: 18px !important;
+}
+
+body.font-large .message-content {
+  font-size: 17px !important;
+}
+
+body.font-xlarge {
+  font-size: 20px !important;
+}
+
+body.font-xlarge .message-content {
+  font-size: 19px !important;
+}
+
+/* Body font sınıfı sıfırlama */
+body.font-small,
+body.font-medium,
+body.font-large,
+body.font-xlarge {
+  font-size: inherit !important;
+}

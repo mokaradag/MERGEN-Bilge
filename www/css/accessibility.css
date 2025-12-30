@@ -1,0 +1,40 @@
+/* www/css/accessibility.css - Erişilebilirlik ve Yazdırma Ayarları */
+
+/* Yazdırma Stilleri */
+@media print {
+  .main-header,
+  .main-sidebar,
+  .input-container,
+  .floating-actions,
+  .message-actions {
+    display: none !important;
+  }
+  
+  .content-wrapper {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .message-bubble {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* Yüksek Kontrast Modu */
+@media (prefers-contrast: high) {
+  /* :root değişkenleri variables.css dosyasına taşındı */
+  
+  .message-bubble {
+    border-width: 2px;
+  }
+}
+
+/* Azaltılmış Hareket Modu */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
