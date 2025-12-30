@@ -19,13 +19,6 @@
   max-width: 100%;
 }
 
-.welcome-container {
-  max-width: 100% !important;
-  width: 100% !important;
-  padding-left: 32px !important;
-  padding-right: 32px !important;
-}
-
 .chat-container:not(.widescreen-mode) .message-bubble {
   max-width: 900px;
 }
@@ -38,13 +31,6 @@
 .chat-container:not(.widescreen-mode) .message-bubble[class*="user-message"] {
   margin-right: max(32px, calc(50% - 450px)) !important;
   margin-left: auto !important;
-}
-
-.chat-container .welcome-container {
-  max-width: 100% !important;
-  width: 100% !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
 }
 
 /* Consistent header styles */
@@ -62,64 +48,6 @@
 .setting-item select {
   max-width: 200px !important;
   width: 200px !important;
-}
-
-.welcome-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  align-self: center;
-  margin-bottom: 6px; /* Reduced for tighter layout */
-}
-
-.welcome-title-container {
-  text-align: center;
-}
-
-.welcome-title {
-  font-size: 48px;
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.03em;
-  font-family: var(--font-primary) !important;
-}
-
-.welcome-subtitle {
-  font-size: 20px;
-  color: var(--text-muted);
-  font-weight: 300;
-  margin: 4px 0 12px !important;
-  text-align: center;
-  line-height: 1.4;
-}
-
-.welcome-intro-subtitle {
-  margin-bottom: 2px !important;
-  margin-top: 0 !important;
-}
-
-/* Adjusted welcome header without logo */
-.welcome-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 15px; /* Reduced from 24px */
-}
-
-.welcome-title {
-  font-size: 42px; /* Reduced from 48px */
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.03em;
-  font-family: var(--font-primary) !important;
-}
-
-.welcome-subtitle {
-  font-size: 18px; /* Reduced from 20px */
-  color: var(--text-muted);
-  font-weight: 300;
-  margin-bottom: 15px; /* Reduced spacing */
-  text-align: center;
 }
 
 /* Adjust content for navbar */
@@ -170,17 +98,6 @@ textarea.form-control:focus {
   transition: opacity 0.3s ease-out;
 }
 
-/* --- Recent Chats Horizontal Layout --- */
-.recent-chats-container {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-  flex-wrap: wrap;
-  margin-top: 0; /* Remove top margin since title handles spacing */
-}
-
 /* FIX #2: Like/Dislike button colors */
 .message-action-btn.like-btn.active.liked {
   background: #0d7a0d !important; /* Dark green for dark theme */
@@ -203,26 +120,6 @@ textarea.form-control:focus {
 /* File download button fix for proper icon display */
 .file-download.js-file-action {
   cursor: pointer;
-}
-
-/* Reduced margin for recent chats in welcome screen */
-.recent-chats-container {
-  margin-top: 15px;
-}
-
-/* Fix for empty state styling */
-.empty-state {
-  padding: 40px 20px;
-}
-
-.empty-state h4 {
-  font-size: 18px;
-  margin-bottom: 10px;
-}
-
-.empty-state p {
-  font-size: 14px;
-  color: var(--text-muted);
 }
 
 /* When messages are present, allow scroll */
@@ -250,14 +147,6 @@ textarea.form-control:focus {
   font-size: 20px !important;
 }
 
-.welcome-header {
-  margin-bottom: 10px !important;
-}
-
-.welcome-subtitle {
-  margin-bottom: 20px !important;
-}
-
 .input-container.widescreen-mode {
   left: 250px !important;
   right: 0 !important;
@@ -281,18 +170,6 @@ textarea.form-control:focus {
 /* Hidden download handler container */
 .download-handler-container .btn {
   pointer-events: auto !important;
-}
-
-/* Loading state for recent chat cards */
-.recent-chat-card.loading {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: rgba(255, 107, 53, 0.1);
-}
-
-.recent-chat-card.loading::after {
-  content: " ...";
-  animation: dots 1.5s steps(4, end) infinite;
 }
 
 .message-bubble.current-match {

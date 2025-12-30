@@ -1,0 +1,16 @@
+/* www/css/empty_state.css - Boş Durum (Veri Yok) Stilleri */
+
+/* Boş durum stili düzeltmesi */
+.empty-state {
+  padding: 40px 20px;
+}
+
+.empty-state h4 {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.empty-state p {
+  font-size: 14px;
+  color: var(--text-muted);
+}
