@@ -200,75 +200,9 @@ textarea.form-control:focus {
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* Pagination controls styling */
-.pagination-controls {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 15px;
-  margin-top: 20px;
-  padding: 15px;
-  background: var(--background-light);
-  border-radius: 12px;
-}
-
-.pagination-controls .btn-secondary {
-  padding: 8px 16px !important;
-  font-size: 14px !important;
-}
-
 /* File download button fix for proper icon display */
 .file-download.js-file-action {
   cursor: pointer;
-}
-
-/* Improved modal sizing for file preview (FIX #4) */
-.modal-dialog.modal-l {
-  max-height: 80vh;
-  overflow: hidden;
-}
-
-.modal-body {
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-/* Excel preview specific styling */
-#preview_excel_table_wrapper {
-  max-height: 400px !important;
-  overflow: auto !important;
-}
-
-/* Keyboard shortcuts modal styling */
-.shortcuts-modal {
-  backdrop-filter: blur(4px);
-}
-
-.shortcuts-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.shortcuts-table td {
-  padding: 10px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-secondary);
-}
-
-.shortcuts-table td:first-child {
-  width: 40%;
-}
-
-.shortcuts-table kbd {
-  background: var(--background-dark);
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-primary);
-  display: inline-block;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
 /* Reduced margin for recent chats in welcome screen */

@@ -1,0 +1,18 @@
+/* www/css/pagination_custom.css */
+
+/* Sayfalama kontrolleri stili */
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  margin-top: 20px;
+  padding: 15px;
+  background: var(--background-light);
+  border-radius: 12px;
+}
+
+.pagination-controls .btn-secondary {
+  padding: 8px 16px !important;
+  font-size: 14px !important;
+}

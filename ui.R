@@ -103,6 +103,8 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/utilities.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/responsive.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/accessibility.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/pagination_custom.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/modals_custom.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
