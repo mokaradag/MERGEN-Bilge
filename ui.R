@@ -108,6 +108,8 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_styles.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/recent_chats_custom.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/empty_state.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/animations_extra.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/message_actions.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),

@@ -76,52 +76,6 @@ textarea.form-control:focus {
   color: var(--primary-color);
 }
 
-/* Restored non-sticky history/saved chat layout */
-/* --- Style for clickable file link in system messages --- */
-.system-message .file-link {
-  color: var(--primary-color);
-  font-weight: 600;
-  text-decoration: none;
-  border-bottom: 1px dashed var(--primary-color);
-  transition: all 0.2s ease;
-}
-
-.system-message .file-link:hover {
-  color: #ffffff;
-  background-color: var(--primary-color);
-  border-bottom: 1px dashed #ffffff;
-}
-
-/* --- FADE-OUT TRANSITION --- */
-.fade-out-animation {
-  opacity: 0;
-  transition: opacity 0.3s ease-out;
-}
-
-/* FIX #2: Like/Dislike button colors */
-.message-action-btn.like-btn.active.liked {
-  background: #0d7a0d !important; /* Dark green for dark theme */
-  color: white !important;
-  box-shadow: 0 2px 4px rgba(13, 122, 13, 0.3) !important;
-}
-
-.message-action-btn.dislike-btn.active.disliked {
-  background: #a41e3c !important; /* Dark red compatible with dark theme */
-  color: white !important;
-  box-shadow: 0 2px 4px rgba(164, 30, 60, 0.3) !important;
-}
-
-@keyframes pulseHighlight {
-  0% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.01); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-/* File download button fix for proper icon display */
-.file-download.js-file-action {
-  cursor: pointer;
-}
-
 /* When messages are present, allow scroll */
 .chat-container:has(.message-bubble) {
   overflow-y: auto;
@@ -165,40 +119,4 @@ textarea.form-control:focus {
 
 .sidebar-menu .treeview-menu > li > a {
   font-size: 13px !important;
-}
-
-/* Hidden download handler container */
-.download-handler-container .btn {
-  pointer-events: auto !important;
-}
-
-.message-bubble.current-match {
-  animation: pulseCurrentMatch 2s ease-in-out;
-}
-
-@keyframes floatPulse {
-  0%, 100% { 
-    transform: translateY(0) scale(1);
-    filter: drop-shadow(0 5px 15px rgba(124, 77, 255, 0.3));
-  }
-  50% { 
-    transform: translateY(-8px) scale(1.015);
-    filter: drop-shadow(0 8px 25px rgba(124, 77, 255, 0.4));
-  }
-}
-
-@keyframes particleGlow {
-  0%, 100% { 
-    opacity: 0.4;
-    transform: scale(0.95);
-  }
-  50% { 
-    opacity: 0.8;
-    transform: scale(1.05);
-  }
-}
-
-@keyframes particleSpin {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to { transform: translate(-50%, -50%) rotate(360deg); }
 }

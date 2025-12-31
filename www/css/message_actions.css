@@ -1,0 +1,45 @@
+/* www/css/message_actions.css */
+
+/* Sistem mesajlarındaki dosya linkleri */
+.system-message .file-link {
+  color: var(--primary-color);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--primary-color);
+  transition: all 0.2s ease;
+}
+
+.system-message .file-link:hover {
+  color: #ffffff;
+  background-color: var(--primary-color);
+  border-bottom: 1px dashed #ffffff;
+}
+
+/* Beğeni butonu aktif durumu */
+.message-action-btn.like-btn.active.liked {
+  background: #0d7a0d !important;
+  color: white !important;
+  box-shadow: 0 2px 4px rgba(13, 122, 13, 0.3) !important;
+}
+
+/* Beğenmeme butonu aktif durumu */
+.message-action-btn.dislike-btn.active.disliked {
+  background: #a41e3c !important;
+  color: white !important;
+  box-shadow: 0 2px 4px rgba(164, 30, 60, 0.3) !important;
+}
+
+/* Dosya indirme butonu */
+.file-download.js-file-action {
+  cursor: pointer;
+}
+
+/* Mesaj mevcut eşleşme vurgusu */
+.message-bubble.current-match {
+  animation: pulseCurrentMatch 2s ease-in-out;
+}
+
+/* İndirme işleyici konteyneri */
+.download-handler-container .btn {
+  pointer-events: auto !important;
+}
