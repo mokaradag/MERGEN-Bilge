@@ -103,6 +103,7 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/utilities.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/responsive.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/accessibility.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/layout_overrides.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/pagination_custom.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/modals_custom.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_styles.css"),
@@ -115,8 +116,6 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/theme/material-darker.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/addon/fold/foldgutter.min.css"),
-
-    tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
 
     # --- Local JavaScript Files ---
     # Core CodeMirror

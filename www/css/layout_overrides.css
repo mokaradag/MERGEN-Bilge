@@ -1,0 +1,53 @@
+/* www/css/layout_overrides.css - Düzen Geçersiz Kılmaları ve Son Ayarlamalar */
+
+/* Sohbet Konteyneri - Özel Kurallar */
+.chat-container {
+  height: calc(100vh - 250px);
+  min-height: calc(100vh - 250px);
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+  overflow-x: visible;
+  padding: 16px 32px 180px;
+  scroll-behavior: smooth;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 16px;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Mesajlar mevcut olduğunda kaydırmaya izin ver */
+.chat-container:has(.message-bubble) {
+  overflow-y: auto;
+  justify-content: flex-start;
+}
+
+/* Dar Mod - Mesaj Genişlik Sınırlamaları */
+.chat-container:not(.widescreen-mode) .message-bubble {
+  max-width: 900px;
+}
+
+.chat-container:not(.widescreen-mode) .message-bubble:not([class*="user-message"]) {
+  margin-left: max(32px, calc(50% - 450px)) !important;
+  margin-right: auto !important;
+}
+
+.chat-container:not(.widescreen-mode) .message-bubble[class*="user-message"] {
+  margin-right: max(32px, calc(50% - 450px)) !important;
+  margin-left: auto !important;
+}
+
+/* Geniş Ekran Modu - Giriş Konteyneri */
+.input-container.widescreen-mode {
+  left: 250px !important;
+  right: 0 !important;
+  max-width: calc(100% - 250px) !important;
+}
+
+.sidebar-collapse .input-container.widescreen-mode {
+  left: 50px !important;
+  max-width: calc(100% - 50px) !important;
+}
