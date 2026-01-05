@@ -41,9 +41,13 @@ summarize_columns_for_ai <- function(df) {
   paste(unlist(summary_list), collapse = "\n")
 }
 
-extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL) {
+extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL, stop_check = NULL) {
   
-  # Veri baglamini olustur (AI'in dogru degerleri gormesi icin)
+  if (is.function(stop_check) && isTRUE(stop_check())) {
+    cat("[FILTER_AI] Durdurma talebi alindi (AI filtreleme oncesi)\n")
+    return(list(filters = list(), aggregation = NULL))
+  }
+  
   cols_summary <- summarize_columns_for_ai(data_context)
   
 	system_instruction <- paste0(
@@ -179,6 +183,11 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
   )
   
   tryCatch({
+    if (is.function(stop_check) && isTRUE(stop_check())) {
+      cat("[FILTER_AI] Durdurma talebi alindi (LLM cagrisinin hemen oncesi)\n")
+      return(list(filters = list(), aggregation = NULL))
+    }
+    
     filter_model <- getOption("mergen.filter_model", api_config$local_models[1])
     creds <- resolve_local_llm_credentials(filter_model)
     
@@ -194,14 +203,22 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
       }
     }
     
-	result <- call_local_llm(messages, list(
-      model_selection = filter_model,
-      temperature = 0.0, 
-      max_output_tokens = 4000,
-      enable_mcp_tools = FALSE,
-      shiny_session = session,
-      api_key_override = api_key_val
-    ))
+    filter_timeout <- 8
+    result <- tryCatch({
+      R.utils::withTimeout({
+        call_local_llm(messages, list(
+          model_selection = filter_model,
+          temperature = 0.0, 
+          max_output_tokens = 4000,
+          enable_mcp_tools = FALSE,
+          shiny_session = session,
+          api_key_override = api_key_val
+        ))
+      }, timeout = filter_timeout, onTimeout = "silent")
+    }, error = function(e) {
+      cat("[FILTER_AI] Timeout veya hata, AI filtreleme atlanıyor\n")
+      NULL
+    })
     
     if (is.null(result)) return(list(filters = list(), aggregation = NULL))
     
@@ -690,9 +707,25 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   cat("[PK_ANALIZ] Akilli sorgu secimi yapiliyor (select_smart_query)...\n")
   selected_query <- select_smart_query(user_prompt, query_library, chat_history)
   
-  if (is.null(selected_query)) {
+  if (is.null(selected_query) || (!is.null(selected_query$all_scores) && is.null(selected_query$id))) {
     cat("[PK_ANALIZ] UYARI: Uygun bir sorgu ESLESMESI BULUNAMADI.\n")
+    
+    if (!is.null(selected_query$all_scores)) {
+      best_score <- max(selected_query$all_scores$final_score, na.rm = TRUE)
+      cat(sprintf("[PK_ANALIZ] En yuksek skor: %.1f%% (Esik altinda)\n", best_score))
+    }
+    
     return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. (Sorgu kütüphanesinde eşleşen anahtar kelime yok).")
+  }
+  
+  relevance_pct <- selected_query$relevance_score %||% 0
+  method <- selected_query$selection_method %||% "unknown"
+  reason <- selected_query$selection_reason %||% ""
+  
+  cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' | İlgililik: %.1f%% | Yontem: %s\n", 
+              selected_query$name, relevance_pct, method))
+  if (nchar(reason) > 0) {
+    cat(sprintf("[PK_ANALIZ] Secim Nedeni: %s\n", reason))
   }
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -853,8 +886,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     cat("[PK_ANALIZ] Ozel Sorgu Ayari: AI Filtreleme devre disi birakildi. Sadece RLS verisi kullaniliyor.\n")
     filter_criteria <- list(filters = list(), aggregation = NULL)
     filtered_data <- secure_data
-  } else {
-    filter_criteria <- extract_filter_criteria_from_prompt(user_prompt, secure_data, available_columns, conn, session)
+	} else {
+    filter_criteria <- extract_filter_criteria_from_prompt(user_prompt, secure_data, available_columns, conn, session, stop_check = stop_check)
   
     if (!is.null(filter_criteria$error)) {
       cat(sprintf("[PK_ANALIZ] AI filtreleme hatasi: %s\n", filter_criteria$error))
@@ -1000,8 +1033,9 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
     "3. Sadece en iyi eşleşen TEK BİR sorguyu seç.\n",
     "4. Cevabı sadece JSON formatında ver.\n\n",
     
-    "### JSON FORMATI:\n",
-    "{ \"match_id\": 1, \"reason\": \"Kullanıcı genel proje bilgilerini sordu, prj_01 genel proje detaylarını içeriyor.\" }"
+	"### JSON FORMATI:\n",
+    "{ \"match_id\": 1, \"confidence\": 85, \"reason\": \"Kullanıcı genel proje bilgilerini sordu, prj_01 genel proje detaylarını içeriyor.\" }\n\n",
+    "confidence: 0-100 arası ilgililik skoru (100 = mükemmel eşleşme, 0 = hiç ilgili değil)"
   )
   
   messages <- list(
@@ -1041,12 +1075,18 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
     
     parsed <- jsonlite::fromJSON(content, simplifyVector = FALSE)
     
-    if (!is.null(parsed$match_id)) {
+	if (!is.null(parsed$match_id)) {
       idx <- as.integer(parsed$match_id)
       if (idx > 0 && idx <= length(library)) {
-        cat(sprintf("[PK_ANALIZ] AI Secimi: ID=%d (%s) | Sebep: %s\n", 
-                    idx, library[[idx]]$name, parsed$reason %||% ""))
-        return(library[[idx]])
+        confidence <- as.numeric(parsed$confidence %||% 0)
+        cat(sprintf("[PK_ANALIZ] AI Secimi: ID=%d (%s) | Guven: %.1f%% | Sebep: %s\n", 
+                    idx, library[[idx]]$name, confidence, parsed$reason %||% ""))
+        
+        result <- library[[idx]]
+        result$relevance_score <- confidence
+        result$selection_method <- "ai"
+        result$selection_reason <- parsed$reason %||% ""
+        return(result)
       }
     }
     
@@ -1061,26 +1101,52 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
 select_smart_query <- function(prompt, library, chat_history) {
   cat("[PK_ANALIZ] Akilli Sorgu Secici (Smart Query Selector) calisiyor...\n")
   
-  # --- ADIM 1: AI ile Anlamsal Eşleştirme (Birincil Yöntem) ---
-  # Session nesnesine erişim (Global environment veya parent frame'den)
-  # Not: Bu fonksiyon genellikle shiny session içinde çağrılır.
+  all_scores <- data.frame(
+    query_id = character(length(library)),
+    query_name = character(length(library)),
+    ai_score = numeric(length(library)),
+    heuristic_score = numeric(length(library)),
+    final_score = numeric(length(library)),
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(library)) {
+    all_scores$query_id[i] <- library[[i]]$id %||% as.character(i)
+    all_scores$query_name[i] <- library[[i]]$name %||% ""
+    all_scores$ai_score[i] <- 0
+    all_scores$heuristic_score[i] <- 0
+    all_scores$final_score[i] <- 0
+  }
+  
   session_obj <- NULL
   try({ session_obj <- shiny::getDefaultReactiveDomain() }, silent=TRUE)
   
   ai_selection <- find_best_query_with_ai(prompt, library, session_obj)
   
   if (!is.null(ai_selection)) {
-    cat(sprintf("[PK_ANALIZ] -> AI tarafindan kesin eslesme bulundu: %s\n", ai_selection$name))
-    return(ai_selection)
+    matched_idx <- which(vapply(library, function(q) {
+      identical(q$id, ai_selection$id) || identical(q$name, ai_selection$name)
+    }, logical(1)))
+    
+    if (length(matched_idx) == 1) {
+      all_scores$ai_score[matched_idx] <- ai_selection$relevance_score %||% 0
+      all_scores$final_score[matched_idx] <- ai_selection$relevance_score %||% 0
+      
+      cat(sprintf("[PK_ANALIZ] -> AI tarafindan kesin eslesme bulundu: %s (Skor: %.1f%%)\n", 
+                  ai_selection$name, ai_selection$relevance_score %||% 0))
+      
+      print_score_table(all_scores)
+      
+      ai_selection$all_scores <- all_scores
+      return(ai_selection)
+    }
   }
   
   cat("[PK_ANALIZ] AI eslesme bulamadi veya hata aldi. Guclendirilmis Heuristic yonteme geciliyor...\n")
-
-  # --- ADIM 2: Güçlendirilmiş Heuristic (Yedek Yöntem) ---
-  # Kelime çantasını hazırla
+  
   prompt_clean <- tolower(prompt)
   prompt_words <- unlist(strsplit(prompt_clean, "\\W+"))
-  prompt_words <- prompt_words[nchar(prompt_words) > 2] # Çok kısa kelimeleri at
+  prompt_words <- prompt_words[nchar(prompt_words) > 2]
   
   scores <- sapply(seq_along(library), function(i) {
     q <- library[[i]]
@@ -1092,21 +1158,16 @@ select_smart_query <- function(prompt, library, chat_history) {
     desc_words <- unlist(strsplit(desc_clean, "\\W+"))
     name_words <- unlist(strsplit(name_clean, "\\W+"))
     
-    # 1. Tam İsim Eşleşmesi (Çok Yüksek Puan)
     if (grepl(name_clean, prompt_clean, fixed = TRUE)) {
       score <- score + 50
     }
     
-    # 2. İsimdeki Kelimelerin Eşleşmesi (Yüksek Puan)
     name_matches <- sum(prompt_words %in% name_words)
     score <- score + (name_matches * 10)
     
-    # 3. Açıklamadaki Kelimelerin Eşleşmesi (Orta Puan)
     desc_matches <- sum(prompt_words %in% desc_words)
     score <- score + (desc_matches * 2)
     
-    # 4. Keyword Bonusları (Domain Spesifik)
-    # Eğer sorgu açıklamasında prompt'taki kritik kelimeler geçiyorsa ekstra puan
     if (grepl("bütçe|maliyet|harcama", prompt_clean) && grepl("bütçe|maliyet|cost|budget", desc_clean)) score <- score + 5
     if (grepl("zaman|süre|tarih|gecikme", prompt_clean) && grepl("date|start|finish|tarih", desc_clean)) score <- score + 5
     if (grepl("kaynak|adam|personel", prompt_clean) && grepl("resource|kaynak|personel", desc_clean)) score <- score + 5
@@ -1114,27 +1175,72 @@ select_smart_query <- function(prompt, library, chat_history) {
     return(score)
   })
   
-  # Skorları yazdır (Debugging)
-  best_idx <- which.max(scores)
-  max_score <- if (length(best_idx) > 0) scores[best_idx] else 0
-  
-  cat("\n--- HEURISTIC SKOR TABLOSU ---\n")
-  top_indices <- order(scores, decreasing = TRUE)[1:min(3, length(scores))]
-  for(idx in top_indices) {
-    if (scores[idx] > 0) {
-      cat(sprintf("   [%d] %s -> Skor: %d\n", idx, library[[idx]]$name, scores[idx]))
-    }
+  max_heuristic <- max(scores, na.rm = TRUE)
+  if (max_heuristic > 0) {
+    scores_normalized <- (scores / max_heuristic) * 100
+  } else {
+    scores_normalized <- scores
   }
   
-  # Eşik Değer Kontrolü (Threshold)
-  # Yanlış eşleşmeyi önlemek için minimum bir skor limiti koyuyoruz.
-  THRESHOLD <- 5 
+  all_scores$heuristic_score <- round(scores_normalized, 1)
+  all_scores$final_score <- all_scores$heuristic_score
+  
+  best_idx <- which.max(scores)
+  max_score <- if (length(best_idx) > 0) scores[best_idx] else 0
+  max_score_pct <- if (length(best_idx) > 0) scores_normalized[best_idx] else 0
+  
+  print_score_table(all_scores)
+  
+  THRESHOLD <- 5
   
   if (max_score >= THRESHOLD) {
-    cat(sprintf("[PK_ANALIZ] -> Heuristic EN IYI ESLESME: %s (Skor: %d)\n", library[[best_idx]]$name, max_score))
-    return(library[[best_idx]])
+    result <- library[[best_idx]]
+    result$relevance_score <- max_score_pct
+    result$selection_method <- "heuristic"
+    result$selection_reason <- sprintf("Anahtar kelime eslesmesi (ham skor: %d)", max_score)
+    result$all_scores <- all_scores
+    
+    cat(sprintf("[PK_ANALIZ] -> Heuristic EN IYI ESLESME: %s (Skor: %.1f%%)\n", 
+                result$name, max_score_pct))
+    return(result)
   }
   
   cat("[PK_ANALIZ] -> Hicbir sorgu yeterli skora ulasamadi (Threshold alti).\n")
-  return(NULL)
+  result <- list(all_scores = all_scores)
+  return(result)
+}
+
+print_score_table <- function(scores_df) {
+  scores_df <- scores_df[order(-scores_df$final_score), ]
+  
+  cat("\n")
+  cat("╔══════════════════════════════════════════════════════════════════════════════╗\n")
+  cat("║                        SORGU İLGİLİLİK SKORLARI                             ║\n")
+  cat("╚══════════════════════════════════════════════════════════════════════════════╝\n")
+  cat("\n")
+  
+  max_name_len <- max(nchar(scores_df$query_name), na.rm = TRUE)
+  max_name_len <- min(max_name_len, 40)
+  
+  cat(sprintf("%-6s %-*s %10s %12s %11s\n", 
+              "ID", max_name_len, "Sorgu Adı", "AI Skor", "Heur. Skor", "Final Skor"))
+  cat(strrep("─", 6 + max_name_len + 10 + 12 + 11 + 5), "\n")
+  
+  for (i in seq_len(nrow(scores_df))) {
+    row <- scores_df[i, ]
+    name_display <- substr(row$query_name, 1, max_name_len)
+    if (nchar(row$query_name) > max_name_len) {
+      name_display <- paste0(substr(name_display, 1, max_name_len - 3), "...")
+    }
+    
+    ai_str <- if (row$ai_score > 0) sprintf("%.1f%%", row$ai_score) else "-"
+    heur_str <- sprintf("%.1f%%", row$heuristic_score)
+    final_str <- sprintf("%.1f%%", row$final_score)
+    
+    cat(sprintf("%-6s %-*s %10s %12s %11s\n", 
+                row$query_id, max_name_len, name_display, ai_str, heur_str, final_str))
+  }
+  
+  cat(strrep("─", 6 + max_name_len + 10 + 12 + 11 + 5), "\n")
+  cat("\n")
 }
