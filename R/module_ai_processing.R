@@ -149,8 +149,9 @@ aiProcessingServer <- function(id) {
 			display_msg <- "AI servisi geçici olarak kullanılamıyor. Lütfen daha sonra tekrar deneyin."
 		  } else if (grepl("CONNECTION_ERROR", error_msg)) {
 			display_msg <- "AI servisine bağlanılamadı. İnternet bağlantınızı kontrol edin."
-		  } else if (grepl("TIMEOUT", error_msg)) {
-			display_msg <- "İstek zaman aşımına uğradı. Lütfen daha kısa bir mesaj deneyin."
+		  } else if (grepl("TIMEOUT|408", error_msg)) {
+			# 408 = sunucu timeout'u, client timeout değil
+			display_msg <- "İstek zaman aşımına uğradı. Veri çok büyük olabilir. Lütfen daha spesifik bir soru sorun veya filtre ekleyin."
 		  } else {
 			display_msg <- "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin."
 		  }

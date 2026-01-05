@@ -2615,7 +2615,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           do.call(httr::add_headers, hdrs2),
           body = jsonlite::toJSON(body2, auto_unbox = TRUE),
           encode = "raw",
-          timeout(60)
+          timeout(300)
         )
         
 		status2 <- httr::status_code(response2)

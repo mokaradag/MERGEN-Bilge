@@ -881,8 +881,9 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 
 	if (skip_mcp_once) {
 	  tool_family <- "none"
-	} else if (cfg_sql_analysis_on) {
-	  tool_family <- "sql_analysis"
+    } else if (cfg_sql_analysis_on) {
+      tool_family <- "sql_analysis"
+      current_settings$max_output_tokens <- 4096
 	} else if (excel_allowed) {
 	  tool_family <- "mcp_excel"
 	} else {

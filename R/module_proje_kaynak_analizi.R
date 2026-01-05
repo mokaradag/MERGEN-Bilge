@@ -1,5 +1,8 @@
 # R/module_proje_kaynak_analizi.R
 
+# SQL analizi için maksimum prompt boyutu (karakter)
+MAX_ANALYSIS_PROMPT_CHARS <- 150000  # ~37K token, güvenli sınır
+
 # ==============================================================================
 # 0. AKıLLı FİLTRELEME MOTORü (AI-Guided Filtering Engine)
 # ==============================================================================
@@ -569,7 +572,7 @@ apply_rls_to_data <- function(data, user_info, rls_cols) {
   return(filtered_data)
 }
 
-generate_statistical_summary <- function(data, max_preview_rows = 20) {
+generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS) {
   if (is.null(data) || nrow(data) == 0) {
     return(list(
       summary_text = "Veri yok.",
@@ -656,6 +659,23 @@ generate_statistical_summary <- function(data, max_preview_rows = 20) {
     summary_parts[[length(summary_parts) + 1]] <- sprintf("\n\n(İlk %d satir gosteriliyor; toplam %d satir mevcut)", max_preview_rows, total_rows)
   } else {
     preview_data <- data
+  }
+  
+  # Prompt boyutunu kontrol et ve gerektiğinde kırp
+  current_text <- paste(summary_parts, collapse = "\n")
+  if (nchar(current_text) > max_total_chars) {
+    cat(sprintf("[PK_ANALIZ] UYARI: Prompt çok büyük (%d karakter), kırpılıyor.\n", nchar(current_text)))
+    # Önce preview satır sayısını yarıya indir
+    if (max_preview_rows > 5) {
+      return(generate_statistical_summary(data, max_preview_rows = floor(max_preview_rows / 2), max_total_chars = max_total_chars))
+    }
+    # Eğer hala büyükse, sadece temel özet gönder
+    basic_summary <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
+    return(list(
+      summary_text = basic_summary,
+      row_count = total_rows,
+      preview_data = head(data, 5)
+    ))
   }
   
   summary_text <- paste(summary_parts, collapse = "\n")
@@ -918,7 +938,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı."))
   }
   
-  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 50)
+  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 15)
   
   cat(sprintf("[PK_ANALIZ] Istatistiksel ozet olusturuldu: %d satir, %d onizleme\n",
               stat_summary$row_count,
