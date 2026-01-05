@@ -572,7 +572,7 @@ apply_rls_to_data <- function(data, user_info, rls_cols) {
   return(filtered_data)
 }
 
-generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS) {
+generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary") {
   if (is.null(data) || nrow(data) == 0) {
     return(list(
       summary_text = "Veri yok.",
@@ -654,11 +654,35 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   }
   
   preview_data <- NULL
-  if (total_rows > max_preview_rows) {
-    preview_data <- head(data, max_preview_rows)
-    summary_parts[[length(summary_parts) + 1]] <- sprintf("\n\n(İlk %d satir gosteriliyor; toplam %d satir mevcut)", max_preview_rows, total_rows)
-  } else {
+  if (mode == "full") {
+    full_table_md <- paste0(
+      "╔═══════════════════════════════════════════════════════════════╗\n",
+      "║           TÜM VERİ SETİ - DETAYLI ANALİZ MODU                 ║\n",
+      "╚═══════════════════════════════════════════════════════════════╝\n\n",
+      "AŞAĞIDAKİ TÜM SATIRLARI VE SÜTUNLARI DETAYLI ANALİZ ET!\n\n"
+    )
+    
+    if (total_rows > 0) {
+      header <- paste0("| ", paste(colnames(data), collapse = " | "), " |")
+      separator <- paste0("|", paste(rep("---", ncol(data)), collapse = "|"), "|")
+      rows <- apply(data, 1, function(row) {
+        paste0("| ", paste(as.character(row), collapse = " | "), " |")
+      })
+      table_body <- paste(c(header, separator, rows), collapse = "\n")
+      
+      full_table_md <- paste0(full_table_md, table_body, "\n\n")
+      full_table_md <- paste0(full_table_md, sprintf("**Toplam Satır Sayısı:** %d | **Toplam Sütun Sayısı:** %d\n", total_rows, total_cols))
+      
+      summary_parts[[1]] <- full_table_md
+    }
     preview_data <- data
+  } else {
+    if (total_rows > max_preview_rows) {
+      preview_data <- head(data, max_preview_rows)
+      summary_parts[[length(summary_parts) + 1]] <- sprintf("\n\n(İlk %d satir gosteriliyor; toplam %d satir mevcut)", max_preview_rows, total_rows)
+    } else {
+      preview_data <- data
+    }
   }
   
   # Prompt boyutunu kontrol et ve gerektiğinde kırp
@@ -938,7 +962,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı."))
   }
   
-  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 15)
+  analysis_mode <- selected_query$analysis_mode %||% "summary"
+  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 15, mode = analysis_mode)
   
   cat(sprintf("[PK_ANALIZ] Istatistiksel ozet olusturuldu: %d satir, %d onizleme\n",
               stat_summary$row_count,
@@ -964,32 +989,58 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     )
   }
   
-system_prompt <- paste0(
-    "Sen MERGEN Bilge veri analiz asistanisin. R'dan gelen ISTATISTIKSEL OZET'i kullanarak soruyu yanitla.\n\n",
-    "Sorgu: ", selected_query$name, "\n",
-    "Aciklama: ", selected_query$description, "\n\n",
-    "VERI KAYNAGI: Ozet R tarafindan hazirlanmistir (sayisal istatistikler + kategorik dagilimlar).\n\n",
-    "GOREVLER:\n",
-    "1. Ozeti detayli incele ve soruya TURKCE cevap ver\n",
-    "2. Sayilari AYNEN kullan (tahmin yapma)\n",
-    "3. Trendleri ve bulgulari acikla, is etkisi belirt\n",
-    "4. 3-4 paragraf kapsamli analiz yaz\n\n",
-    "FORMAT (ZORUNLU):\n",
-    "- **Bold** ile sayilari vurgula\n",
-    "- Bulgular icin madde isareti kullan\n",
-    "- Tablolarla karsilastir (Markdown | syntax)\n",
-    "- Basliklarla yapilandir (## ve ###)\n",
-    "- Oneriler icin numara kullan\n\n",
-    "ORNEK YAPI:\n",
-    "## Ozet\n",
-    "Paragraf...\n\n",
-    "## Bulgular\n",
-    "- **Metrik:** Aciklama\n\n",
-    "| Kategori | Deger |\n",
-    "| A | 150 |\n\n",
-    "## Oneriler\n",
-    "1. Oneri\n"
-  )
+  if (analysis_mode == "full") {
+    system_prompt <- paste0(
+      "SEN BİR DETAYLI VERİ ANALİZ ROBOTUSUN. KULLANICIYA AİTMİŞ GİBİ DAVRANMA!\n\n",
+      "Sorgu: ", selected_query$name, "\n",
+      "Aciklama: ", selected_query$description, "\n\n",
+      "KRİTİK GÖREVLER:\n",
+      "1. Aşağıdaki TÜM veri satırlarını ve TÜM sütunları eksiksiz analiz et\n",
+      "2. HİÇBİR satırı veya sütunu ATLAMA, el ile seçme (handpick) YAPMA\n",
+      "3. Her bir sütunun dağılımını, eşsiz değerlerini ve istatistiklerini hesapla\n",
+      "4. Tüm satırlardaki desenleri, anormallikleri ve trendleri bul\n",
+      "5. Sayıları AYNEN kullan, yuvarlama veya tahmin YAPMA\n",
+      "6. En az 5-6 paragraf derinlemesine analiz yaz\n",
+      "7. Her sütun için ayrı ayrı yorum ve içgörü ekle\n\n",
+      "FORMAT (MUTLAKA UYGULA):\n",
+      "- ## Tum Sutunlarin Detayli Analizi başlığı altında her sütunu ayrı analiz et\n",
+      "- Tablolarda TÜM satırları göster, seçme yapma\n",
+      "- **Bold** ile kritik sayıları vurgula\n",
+      "- Uç değerleri (outlier) açıkça belirt\n",
+      "- Eksik veri (NULL) durumlarını analiz et\n\n",
+      "MUTLAK YASAKLAR:\n",
+      "- 'Örnek olarak' ifadesi kullanma\n",
+      "- Rastgele satırlar seçme\n",
+      "- Genelleme yapma, HER ŞEYİ sayısal olarak ver\n"
+    )
+  } else {
+    system_prompt <- paste0(
+      "Sen MERGEN Bilge veri analiz asistanisin. R'dan gelen ISTATISTIKSEL OZET'i kullanarak soruyu yanitla.\n\n",
+      "Sorgu: ", selected_query$name, "\n",
+      "Aciklama: ", selected_query$description, "\n\n",
+      "VERI KAYNAGI: Ozet R tarafindan hazirlanmistir (sayisal istatistikler + kategorik dagilimlar).\n\n",
+      "GOREVLER:\n",
+      "1. Ozeti detayli incele ve soruya TURKCE cevap ver\n",
+      "2. Sayilari AYNEN kullan (tahmin yapma)\n",
+      "3. Trendleri ve bulgulari acikla, is etkisi belirt\n",
+      "4. 3-4 paragraf kapsamli analiz yaz\n\n",
+      "FORMAT (ZORUNLU):\n",
+      "- **Bold** ile sayilari vurgula\n",
+      "- Bulgular icin madde isareti kullan\n",
+      "- Tablolarla karsilastir (Markdown | syntax)\n",
+      "- Basliklarla yapilandir (## ve ###)\n",
+      "- Oneriler icin numara kullan\n\n",
+      "ORNEK YAPI:\n",
+      "## Ozet\n",
+      "Paragraf...\n\n",
+      "## Bulgular\n",
+      "- **Metrik:** Aciklama\n\n",
+      "| Kategori | Deger |\n",
+      "| A | 150 |\n\n",
+      "## Oneriler\n",
+      "1. Oneri\n"
+    )
+  }
 
 	if (!is.null(selected_query$info_file) && nzchar(selected_query$info_file)) {
 	  file_path_normalized <- gsub("\\\\", "/", selected_query$info_file)
