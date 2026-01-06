@@ -1129,32 +1129,7 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	} else {
 	  # --- Proje ve Kaynak Analizi (SQL) Modu ---
 	  if (identical(tool_family, "sql_analysis")) {
-	    
-	    # 1. Analiz Modülünü Çalıştır (Sorgu Seç -> Çalıştır -> RLS Uygula)
-	    analysis_result <- pk_analiz_process_request(user_message_text, recent_messages, session)
-	    
-		if (is.list(analysis_result) && identical(analysis_result$type, "data_analysis")) {
-			  custom_system_msg <- list(type = "system", content = analysis_result$prompt_context)
-			  custom_user_msg <- list(type = "user", content = analysis_result$user_context)
-			  messages_to_process <- list(custom_system_msg, custom_user_msg)
-			  
-			  if (!is.null(analysis_result$max_tokens)) {
-				current_settings$max_output_tokens <- analysis_result$max_tokens
-			  }
-	      
-	    } else {
-	      # 3. Hata veya Bilgi Mesajı
-	      err_msg <- as.character(analysis_result)
-	      messages_to_process <- list(
-	        system_msg, 
-	        list(type = "user", content = paste0(
-	          "Kullanıcı sorusu: ", user_message_text, "\n\n",
-	          "Sistem Analiz Raporu: ", err_msg, "\n\n",
-	          "Bu durumu kullanıcıya açıkla."
-	        ))
-	      )
-	    }
-	    
+	     # messages_to_process hazir oldugu icin burasi bos birakiliyor.
 	  } else {
 	    # --- Standart Sohbet Modu ---
 		messages_to_process <- c(list(system_msg), recent_messages)
