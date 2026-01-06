@@ -657,25 +657,25 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   if (mode == "full") {
     full_table_md <- paste0(
       "╔═══════════════════════════════════════════════════════════════╗\n",
-      "║           TÜM VERİ SETİ - DETAYLI ANALİZ MODU                 ║\n",
+      "║           DETAYLI İSTATİSTİKSEL ANALİZ MODU                 ║\n",
       "╚═══════════════════════════════════════════════════════════════╝\n\n",
-      "AŞAĞIDAKİ TÜM SATIRLARI VE SÜTUNLARI DETAYLI ANALİZ ET!\n\n"
+      "AŞAĞIDAKİ TÜM SÜTUNLARI DETAYLI ANALİZ ET!\n\n"
     )
     
+    full_table_md <- paste0(full_table_md, sprintf("**Toplam Satır Sayısı:** %d | **Toplam Sütun Sayısı:** %d\n", total_rows, total_cols))
+    
     if (total_rows > 0) {
-      header <- paste0("| ", paste(colnames(data), collapse = " | "), " |")
-      separator <- paste0("|", paste(rep("---", ncol(data)), collapse = "|"), "|")
-      rows <- apply(data, 1, function(row) {
-        paste0("| ", paste(as.character(row), collapse = " | "), " |")
-      })
-      table_body <- paste(c(header, separator, rows), collapse = "\n")
-      
-      full_table_md <- paste0(full_table_md, table_body, "\n\n")
-      full_table_md <- paste0(full_table_md, sprintf("**Toplam Satır Sayısı:** %d | **Toplam Sütun Sayısı:** %d\n", total_rows, total_cols))
-      
-      summary_parts[[1]] <- full_table_md
+      cat_summary <- paste0("\n**Örnek Veri Yapısı (İlk 3 Satır):**\n")
+      preview_rows <- head(data, min(3, nrow(data)))
+      for (i in seq_len(nrow(preview_rows))) {
+        row_data <- paste0(names(preview_rows), ": ", sapply(preview_rows[i, ], as.character), collapse = " | ")
+        cat_summary <- paste0(cat_summary, sprintf("Satır %d: %s\n", i, row_data))
+      }
+      full_table_md <- paste0(full_table_md, cat_summary)
     }
-    preview_data <- data
+    
+    summary_parts[[1]] <- full_table_md
+    preview_data <- head(data, min(5, nrow(data)))
   } else {
     if (total_rows > max_preview_rows) {
       preview_data <- head(data, max_preview_rows)
@@ -991,54 +991,51 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (analysis_mode == "full") {
     system_prompt <- paste0(
-      "SEN BİR DETAYLI VERİ ANALİZ ROBOTUSUN. KULLANICIYA AİTMİŞ GİBİ DAVRANMA!\n\n",
+      "SEN PRIMAVERA P6 ve SAP PS alanında 15+ yıl deneyimli, sektörde saygın bir veri analistisin. Fortune 500 şirketlerine danışmanlık yapan bir uzman gibi konuş - profesyonel, net ve eyleme dönük.\n\n",
       "Sorgu: ", selected_query$name, "\n",
-      "Aciklama: ", selected_query$description, "\n\n",
-      "KRİTİK GÖREVLER:\n",
-      "1. Aşağıdaki TÜM veri satırlarını ve TÜM sütunları eksiksiz analiz et\n",
-      "2. HİÇBİR satırı veya sütunu ATLAMA, el ile seçme (handpick) YAPMA\n",
-      "3. Her bir sütunun dağılımını, eşsiz değerlerini ve istatistiklerini hesapla\n",
-      "4. Tüm satırlardaki desenleri, anormallikleri ve trendleri bul\n",
-      "5. Sayıları AYNEN kullan, yuvarlama veya tahmin YAPMA\n",
-      "6. En az 5-6 paragraf derinlemesine analiz yaz\n",
-      "7. Her sütun için ayrı ayrı yorum ve içgörü ekle\n\n",
-      "FORMAT (MUTLAKA UYGULA):\n",
-      "- ## Tum Sutunlarin Detayli Analizi başlığı altında her sütunu ayrı analiz et\n",
-      "- Tablolarda TÜM satırları göster, seçme yapma\n",
-      "- **Bold** ile kritik sayıları vurgula\n",
-      "- Uç değerleri (outlier) açıkça belirt\n",
-      "- Eksik veri (NULL) durumlarını analiz et\n\n",
-      "MUTLAK YASAKLAR:\n",
-      "- 'Örnek olarak' ifadesi kullanma\n",
-      "- Rastgele satırlar seçme\n",
-      "- Genelleme yapma, HER ŞEYİ sayısal olarak ver\n"
+      "Amaç: ", selected_query$description, "\n\n",
+      "ANALİZ KRİTERLERİ:\n",
+      "1. DERİNLİK: Her sütunun hikayesini anlat - dağılım, anormallikler, eğilimler, sektör benchmarks'leri\n",
+      "2. KÖK SEBEP: Gözlemlenen desenlerin ALTINDA YATAN operasyonel/finansal sebepleri veriyle destekle\n",
+      "3. EYLEME DÖNÜK: Her bulgu için spesifik, uygulanabilir öneriler sun ve bu önerilerin iş etkisini sayısal olarak göster\n",
+      "4. YERSELLEŞTİRME: Verileri şirketin gerçek operasyonel kontekstine bağla - teorik değil pratik yorumla\n",
+      "5. TEMELLENDİRME: Sadece sağlanan verilerle konuş; varsayım, spekülasyon veya komik yorumlardan uzak dur\n",
+      "6. TON: Doğal, akıcı Türkçe; robotik olmayan, güven veren uzman dili\n\n",
+      "ZORUNLU YAPI:\n",
+      "- **Yürütme Özeti**: 2-3 cümlede kritik bulgular ve iş etkisi\n",
+      "- **Detaylı Sütun Analizi**: Her kritik sütun için ayrı bölüm (##)\n",
+      "- **Kök Sebep Değerlendirmesi**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
+      "- **Eylem Planı**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
+      "- **Risk & Uyarılar**: Veride görünen potansiyel sorunları belirt\n\n",
+      "KESİN KURALLAR:\n",
+      "- Sayıları doğrudan kullan, yuvarlama veya tahmin YAPMA\n",
+      "- Her yorum mutlaka veriye dayalı olmalı - hayal ürünü yorum yasak\n",
+      "- Genel, yüzeysel yorumlardan kaçın\n",
+      "- \"Görünüşe göre\", \"muhtemelen\", \"belki\" gibi belirsiz ifadeler KULLANMA\n",
+      "- Kullanıcıya ait olmayan ifadelerden (biz, sizin) uzak dur\n"
     )
   } else {
     system_prompt <- paste0(
-      "Sen MERGEN Bilge veri analiz asistanisin. R'dan gelen ISTATISTIKSEL OZET'i kullanarak soruyu yanitla.\n\n",
-      "Sorgu: ", selected_query$name, "\n",
-      "Aciklama: ", selected_query$description, "\n\n",
-      "VERI KAYNAGI: Ozet R tarafindan hazirlanmistir (sayisal istatistikler + kategorik dagilimlar).\n\n",
-      "GOREVLER:\n",
-      "1. Ozeti detayli incele ve soruya TURKCE cevap ver\n",
-      "2. Sayilari AYNEN kullan (tahmin yapma)\n",
-      "3. Trendleri ve bulgulari acikla, is etkisi belirt\n",
-      "4. 3-4 paragraf kapsamli analiz yaz\n\n",
-      "FORMAT (ZORUNLU):\n",
-      "- **Bold** ile sayilari vurgula\n",
-      "- Bulgular icin madde isareti kullan\n",
-      "- Tablolarla karsilastir (Markdown | syntax)\n",
-      "- Basliklarla yapilandir (## ve ###)\n",
-      "- Oneriler icin numara kullan\n\n",
-      "ORNEK YAPI:\n",
-      "## Ozet\n",
-      "Paragraf...\n\n",
-      "## Bulgular\n",
-      "- **Metrik:** Aciklama\n\n",
-      "| Kategori | Deger |\n",
-      "| A | 150 |\n\n",
-      "## Oneriler\n",
-      "1. Oneri\n"
+      "Sen MERGEN'in kıdemli veri analisti asistansın. R tarafından hazırlanan istatistiksel özet, senin tek gerçeğindir. Kullanıcıya değer üretmek için bu verileri derinlemesine yorumla.\n\n",
+      "SORGU: ", selected_query$name, "\n",
+      "AMACI: ", selected_query$description, "\n\n",
+      "GÖREV:\n",
+      "1. Özeti sadece tekrar etme - anlamını, içgörüsünü ve iş etkisini çıkar\n",
+      "2. Her sayısal bulguyu KÖK SEBEP'e bağla: \"Neden bu sayı bu? Ne anlama geliyor?\"\n",
+      "3. EYLEME DÖNÜK ÖNERİLER: \"Ne yapılmalı?\" sorusuna veriyle yanıt ver\n",
+      "4. TEMELLENDİRME: Sadece sağlanan özetle konuş; varsayım, komik yorum veya spekülasyondan kaçın\n",
+      "5. PROFESYONEL TON: Güvenilir, bilge, robotik olmayan dil\n\n",
+      "ZORUNLU YAPI:\n",
+      "- **Yürütme Özeti**: 2-3 cümlede kritik bulgular ve etki\n",
+      "- **Kapsamlı Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
+      "- **Öneriler**: Somut, önceliklendirilmiş eylemler\n",
+      "- **Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
+      "KURALLAR:\n",
+      "- Sayıları doğru kullan, tahmin veya varsayım yapma\n",
+      "- Her yorumu veriye bağla - hayal ürünü yorum yasak\n",
+      "- Yapıcı, çözüm odaklı ol\n",
+      "- Kullanıcıya değer katan net ifadeler kullan\n",
+      "- \"Muhtemelen\", \"sanırım\" gibi belirsizliklerden kaçın\n"
     )
   }
 
