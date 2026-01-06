@@ -1345,4 +1345,83 @@ environment(helpers_mcp_tools$normalize_excel_path)    <- helpers_mcp_tools
 environment(helpers_mcp_tools$safe_read_excel_table)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$safe_read_table_generic) <- helpers_mcp_tools
 environment(helpers_mcp_tools$get_default_file_name)   <- helpers_mcp_tools
-environment(helpers_mcp_tools$auto_file_name)          <- helpers_mcp_tools
+environment(helpers_mcp_tools$auto_file_name)          <- helpers_mcp_tools# ============================
+# Build Data Summary
+# ============================
+helpers_mcp_tools$build_data_summary <- function(df) {
+  if (!is.data.frame(df)) {
+    return("Input is not a data frame.")
+  }
+
+  # Basic information
+  num_rows <- nrow(df)
+  num_cols <- ncol(df)
+  col_names <- names(df)
+
+  # Column statistics
+  numeric_cols <- sapply(df, is.numeric)
+  numeric_summary <- NULL
+  if (any(numeric_cols)) {
+    numeric_df <- df[, numeric_cols, drop = FALSE]
+    numeric_summary <- sapply(numeric_df, function(col) {
+      c(
+        mean = mean(col, na.rm = TRUE),
+        median = median(col, na.rm = TRUE),
+        min = min(col, na.rm = TRUE),
+        max = max(col, na.rm = TRUE)
+      )
+    })
+  }
+
+  categorical_cols <- sapply(df, function(col) is.character(col) || is.factor(col))
+  categorical_summary <- NULL
+  if (any(categorical_cols)) {
+    categorical_df <- df[, categorical_cols, drop = FALSE]
+    categorical_summary <- sapply(categorical_df, function(col) {
+      head(names(sort(table(col), decreasing = TRUE)), 5)
+    })
+  }
+
+  # Data preview
+  preview <- head(df, 5)
+
+  # Construct the summary string
+  summary_string <- paste(
+    "Data Summary:",
+    paste("  - Rows:", num_rows),
+    paste("  - Columns:", num_cols),
+    "Column Names:",
+    paste("  -", col_names, collapse = "\n"),
+    "",
+    sep = "\n"
+  )
+
+  if (!is.null(numeric_summary)) {
+    summary_string <- paste(
+      summary_string,
+      "Numeric Column Statistics:",
+      utils::capture.output(print(numeric_summary)),
+      "",
+      sep = "\n"
+    )
+  }
+
+  if (!is.null(categorical_summary)) {
+    summary_string <- paste(
+      summary_string,
+      "Categorical Column Top 5 Values:",
+      utils::capture.output(print(categorical_summary)),
+      "",
+      sep = "\n"
+    )
+  }
+
+  summary_string <- paste(
+    summary_string,
+    "Data Preview (First 5 Rows):",
+    utils::capture.output(print(preview)),
+    sep = "\n"
+  )
+
+  return(summary_string)
+}

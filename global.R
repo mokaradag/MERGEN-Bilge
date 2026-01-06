@@ -2598,6 +2598,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           list(role = role_val, content = content_val)
         })
         
+        if (isTRUE(settings$analysis_mode == "full")) {
+            df <- chat_history[[length(chat_history)]]$content
+            summary_text <- helpers_mcp_tools$build_data_summary(df)
+            messages_payload2[[length(messages_payload2)]]$content <- summary_text
+        }
+
         body2 <- list(
           model = selected_model,
           messages = messages_payload2,
