@@ -572,7 +572,7 @@ apply_rls_to_data <- function(data, user_info, rls_cols) {
   return(filtered_data)
 }
 
-generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary") {
+generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary", rls_total_rows = NULL, user_filter_applied = FALSE) {
   # Kolon adlarını okunabilir hale getirme fonksiyonu
   prettify_col_name <- function(col) {
     # CamelCase ayırma
@@ -603,6 +603,13 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   
   summary_parts <- list()
   summary_parts[[1]] <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
+  
+  if (isTRUE(user_filter_applied) && !is.null(rls_total_rows) && rls_total_rows > total_rows) {
+    summary_parts[[length(summary_parts) + 1]] <- sprintf(
+      "\n\n⚠️ FİLTRELEME UYARISI:\n- Yetki dahilinde toplam satır: %d\n- Kullanıcı filtreleme sonrası satır: %d\n- BU %d SATIR SPESİFİK FİLTRELEME KRİTERİNE AİTTİR (tüm veri için değil!)\n- Oran/yüzde hesaplarken SADECE filtreleme sonrası %d satırı referans al",
+      rls_total_rows, total_rows, total_rows, total_rows
+    )
+  }
   
 	if (length(num_cols) > 0) {
 	  num_summary_list <- lapply(num_cols, function(col) {
@@ -974,7 +981,14 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
   
   analysis_mode <- selected_query$analysis_mode %||% "summary"
-  stat_summary <- generate_statistical_summary(filtered_data, max_preview_rows = 15, mode = analysis_mode)
+  user_filter_was_applied <- (nrow(filtered_data) < nrow(secure_data))
+  stat_summary <- generate_statistical_summary(
+    filtered_data, 
+    max_preview_rows = 15, 
+    mode = analysis_mode,
+    rls_total_rows = nrow(secure_data),
+    user_filter_applied = user_filter_was_applied
+  )
   
   cat(sprintf("[PK_ANALIZ] Istatistiksel ozet olusturuldu: %d satir, %d onizleme\n",
               stat_summary$row_count,
@@ -1001,10 +1015,17 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
   
   if (analysis_mode == "full") {
-    system_prompt <- paste0(
+	system_prompt <- paste0(
       "Sen Primavera P6 ve SAP PS alanında 15+ yıl deneyimli, sektörde saygın bir veri analistisin. Fortune 500 şirketlerine danışmanlık yapan bir uzman gibi konuş - profesyonel, net ve eyleme dönük.\n\n",
       "Sorgu: ", selected_query$name, "\n",
       "Amaç: ", selected_query$description, "\n\n",
+      "⚠️ KRİTİK FİLTRELEME KURALI:\n",
+      "Eğer veri setinde 'FİLTRELEME UYARISI' görüyorsan:\n",
+      "- Verilen satır sayısı YALNIZCA kullanıcının spesifik filtreleme kriterine aittir\n",
+      "- Bu, TÜM projelerin/TÜM veritabanının satır sayısı DEĞİLDİR\n",
+      "- ASLA 'X/Y' formatında oran belirtme (örn: '5/4000 aktivite')\n",
+      "- Bunun yerine: 'Bu proje/filtre için X kayıt bulundu' şeklinde ifade et\n",
+      "- Yüzde hesaplarken payda olarak SADECE 'filtreleme sonrası satır' sayısını kullan\n\n",
       "ANALİZ KRİTERLERİ:\n",
       "1. DERİNLİK: Her sütunun hikayesini anlat - dağılım, anormallikler, eğilimler, sektör benchmarks'leri\n",
       "2. KÖK SEBEP: Gözlemlenen desenlerin ALTINDA YATAN operasyonel/finansal sebepleri veriyle destekle\n",
@@ -1026,10 +1047,16 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "- Kullanıcıya ait olmayan ifadelerden (biz, sizin) uzak dur\n"
     )
   } else {
-    system_prompt <- paste0(
+	system_prompt <- paste0(
       "Sen MERGEN'in kıdemli veri analisti asistansın. R tarafından hazırlanan istatistiksel özet, senin tek gerçeğindir. Kullanıcıya değer üretmek için bu verileri derinlemesine yorumla.\n\n",
       "SORGU: ", selected_query$name, "\n",
       "AMACI: ", selected_query$description, "\n\n",
+      "⚠️ KRİTİK FİLTRELEME KURALI:\n",
+      "Eğer istatistiksel özette 'FİLTRELEME UYARISI' görüyorsan:\n",
+      "- Satır sayısı YALNIZCA kullanıcının spesifik filtreleme için geçerlidir\n",
+      "- Tüm veri seti için geçerli değildir\n",
+      "- ASLA 'X/Y oranında' veya 'toplam Y kayıttan X tanesi' gibi ifadeler kullanma\n",
+      "- Bunun yerine: 'Bu filtre kriteri için X kayıt tespit edildi' de\n\n",
       "GÖREV:\n",
       "1. Özeti sadece tekrar etme - anlamını, içgörüsünü ve iş etkisini çıkar\n",
       "2. Her sayısal bulguyu KÖK SEBEP'e bağla: \"Neden bu sayı bu? Ne anlama geliyor?\"\n",
