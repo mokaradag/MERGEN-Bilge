@@ -1023,15 +1023,15 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 		"\n\nMANDATORY CITATION RULE: ",
 		"Your response MUST end with a 'Kaynakça:' section listing the source filenames. ",
 		"This is REQUIRED and NON-NEGOTIABLE. ",
+		"Do NOT add any other 'Sources' sections. ",
+		"Do NOT use inline [Source: ...] citations. ",
 		"Example:\nKaynakça:\n1) document.docx\n2) file.pdf"
 	  )
 	} else {
 	  paste0(
 		"\n\nCRITICAL CITATION REQUIREMENT: ",
-		"You MUST cite sources explicitly for every claim. ",
-		"Use inline format: [Source: Name] or [Source: Name, URL]. ",
-		"At the end of your response, always include a 'Sources' section listing all references with full details (name, URL, date if available). ",
-		"Never provide factual information without explicit attribution."
+		"If you reference any sources, include a 'Kaynakça:' section at the end. ",
+		"Do NOT use inline [Source: ...] citations. "
 	  )
 	}
 	

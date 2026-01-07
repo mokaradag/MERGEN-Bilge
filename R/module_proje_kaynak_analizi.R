@@ -573,6 +573,17 @@ apply_rls_to_data <- function(data, user_info, rls_cols) {
 }
 
 generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary") {
+  # Kolon adlarını okunabilir hale getirme fonksiyonu
+  prettify_col_name <- function(col) {
+    # CamelCase ayırma
+    col <- gsub("([a-z])([A-Z])", "\\1 \\2", col)
+    # Alt çizgi ve noktaları boşluk yap
+    col <- gsub("_|\\.", " ", col)
+    # Baş harfleri büyük yap
+    col <- gsub("\\b([a-z])", "\\U\\1", col, perl = TRUE)
+    return(col)
+  }
+  
   if (is.null(data) || nrow(data) == 0) {
     return(list(
       summary_text = "Veri yok.",
@@ -593,24 +604,24 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   summary_parts <- list()
   summary_parts[[1]] <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
   
-  if (length(num_cols) > 0) {
-    num_summary_list <- lapply(num_cols, function(col) {
-      vals <- dt[[col]]
-      vals <- vals[!is.na(vals)]
-      if (length(vals) == 0) return(NULL)
-      
-      data.frame(
-        Sutun = col,
-        Toplam = sum(vals, na.rm = TRUE),
-        Ortalama = mean(vals, na.rm = TRUE),
-        Medyan = median(vals, na.rm = TRUE),
-        Min = min(vals, na.rm = TRUE),
-        Max = max(vals, na.rm = TRUE),
-        StdSapma = sd(vals, na.rm = TRUE),
-        Kayit = length(vals),
-        stringsAsFactors = FALSE
-      )
-    })
+	if (length(num_cols) > 0) {
+	  num_summary_list <- lapply(num_cols, function(col) {
+		vals <- dt[[col]]
+		vals <- vals[!is.na(vals)]
+		if (length(vals) == 0) return(NULL)
+		
+		data.frame(
+		  Sutun = prettify_col_name(col),
+		  Toplam = sum(vals, na.rm = TRUE),
+		  Ortalama = mean(vals, na.rm = TRUE),
+		  Medyan = median(vals, na.rm = TRUE),
+		  Min = min(vals, na.rm = TRUE),
+		  Max = max(vals, na.rm = TRUE),
+		  StdSapma = sd(vals, na.rm = TRUE),
+		  Kayit = length(vals),
+		  stringsAsFactors = FALSE
+		)
+	  })
     
     num_summary_df <- do.call(rbind, Filter(Negate(is.null), num_summary_list))
     
@@ -620,28 +631,28 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     }
   }
   
-  if (length(cat_cols) > 0) {
-	cat_summary_list <- lapply(head(cat_cols, 5), function(col) {
-      tbl <- sort(table(dt[[col]], useNA = "no"), decreasing = TRUE)
-      top5 <- head(tbl, 5)
-      
-      # FIX: If top5 is empty, return NULL to skip this column
-      if (length(top5) == 0) {
-        return(NULL)
-      }
-      
-      # FIX: Handle potential NA in names explicitly
-      top_name <- names(top5)[1]
-      if (is.null(top_name) || is.na(top_name)) top_name <- "Yok"
-      
-      data.frame(
-        Sutun = col,
-        EnSikDeger = top_name,
-        Adet = as.integer(top5[1]),
-        BenzerSayi = length(unique(dt[[col]])),
-        stringsAsFactors = FALSE
-      )
-    })
+	if (length(cat_cols) > 0) {
+	  cat_summary_list <- lapply(head(cat_cols, 5), function(col) {
+		tbl <- sort(table(dt[[col]], useNA = "no"), decreasing = TRUE)
+		top5 <- head(tbl, 5)
+		
+		# FIX: If top5 is empty, return NULL to skip this column
+		if (length(top5) == 0) {
+		  return(NULL)
+		}
+		
+		# FIX: Handle potential NA in names explicitly
+		top_name <- names(top5)[1]
+		if (is.null(top_name) || is.na(top_name)) top_name <- "Yok"
+		
+		data.frame(
+		  Sutun = prettify_col_name(col),
+		  EnSikDeger = top_name,
+		  Adet = as.integer(top5[1]),
+		  BenzerSayi = length(unique(dt[[col]])),
+		  stringsAsFactors = FALSE
+		)
+	  })
     
     # Remove NULL results before rbind (Prevents list of NULLs crashing rbind)
     cat_summary_list <- Filter(Negate(is.null), cat_summary_list)
@@ -991,7 +1002,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (analysis_mode == "full") {
     system_prompt <- paste0(
-      "SEN PRIMAVERA P6 ve SAP PS alanında 15+ yıl deneyimli, sektörde saygın bir veri analistisin. Fortune 500 şirketlerine danışmanlık yapan bir uzman gibi konuş - profesyonel, net ve eyleme dönük.\n\n",
+      "Sen Primavera P6 ve SAP PS alanında 15+ yıl deneyimli, sektörde saygın bir veri analistisin. Fortune 500 şirketlerine danışmanlık yapan bir uzman gibi konuş - profesyonel, net ve eyleme dönük.\n\n",
       "Sorgu: ", selected_query$name, "\n",
       "Amaç: ", selected_query$description, "\n\n",
       "ANALİZ KRİTERLERİ:\n",
@@ -1002,11 +1013,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "5. TEMELLENDİRME: Sadece sağlanan verilerle konuş; varsayım, spekülasyon veya komik yorumlardan uzak dur\n",
       "6. TON: Doğal, akıcı Türkçe; robotik olmayan, güven veren uzman dili\n\n",
       "ZORUNLU YAPI:\n",
-      "- **Yürütme Özeti**: 2-3 cümlede kritik bulgular ve iş etkisi\n",
-      "- **Detaylı Sütun Analizi**: Her kritik sütun için ayrı bölüm (##)\n",
-      "- **Kök Sebep Değerlendirmesi**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
-      "- **Eylem Planı**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
-      "- **Risk & Uyarılar**: Veride görünen potansiyel sorunları belirt\n\n",
+      "- **📋 Özet**: 2-3 cümlede kritik bulgular ve iş etkisi\n",
+      "- **🔍 Detaylı İnceleme**: Her kritik sütun için ayrı bölüm (##)\n",
+      "- **🎯 Kök Nedenler**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
+      "- **💡 Öneriler**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
+      "- **⚠️ Dikkat Edilmesi Gerekenler**: Veride görünen potansiyel sorunları belirt\n\n",
       "KESİN KURALLAR:\n",
       "- Sayıları doğrudan kullan, yuvarlama veya tahmin YAPMA\n",
       "- Her yorum mutlaka veriye dayalı olmalı - hayal ürünü yorum yasak\n",
@@ -1026,10 +1037,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "4. TEMELLENDİRME: Sadece sağlanan özetle konuş; varsayım, komik yorum veya spekülasyondan kaçın\n",
       "5. PROFESYONEL TON: Güvenilir, bilge, robotik olmayan dil\n\n",
       "ZORUNLU YAPI:\n",
-      "- **Yürütme Özeti**: 2-3 cümlede kritik bulgular ve etki\n",
-      "- **Kapsamlı Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
-      "- **Öneriler**: Somut, önceliklendirilmiş eylemler\n",
-      "- **Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
+      "- **📋 Özet**: 2-3 cümlede kritik bulgular ve etki\n",
+      "- **📊 Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
+      "- **💡 Öneriler**: Somut, önceliklendirilmiş eylemler\n",
+      "- **⚠️ Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
       "KURALLAR:\n",
       "- Sayıları doğru kullan, tahmin veya varsayım yapma\n",
       "- Her yorumu veriye bağla - hayal ürünü yorum yasak\n",
