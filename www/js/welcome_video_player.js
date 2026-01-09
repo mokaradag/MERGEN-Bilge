@@ -112,19 +112,27 @@ window.WelcomeVideoPlayer = (function() {
     }, 1500);
   }
 
-  function destroy() {
-    if (videoElements[0]) {
-      videoElements[0].pause();
-      videoElements[0].src = '';
-    }
-    if (videoElements[1]) {
-      videoElements[1].pause();
-      videoElements[1].src = '';
-    }
-    videoElements = [null, null];
-    container = null;
-    isInitialized = false;
-  }
+	function destroy() {
+	  if (videoElements[0]) {
+		videoElements[0].pause();
+		videoElements[0].removeEventListener('ended', () => handleVideoEnd(0));
+		videoElements[0].removeEventListener('error', () => handleVideoEnd(0));
+		videoElements[0].src = '';
+		videoElements[0].load();
+	  }
+	  if (videoElements[1]) {
+		videoElements[1].pause();
+		videoElements[1].removeEventListener('ended', () => handleVideoEnd(1));
+		videoElements[1].removeEventListener('error', () => handleVideoEnd(1));
+		videoElements[1].src = '';
+		videoElements[1].load();
+	  }
+	  videoElements = [null, null];
+	  container = null;
+	  isInitialized = false;
+	  activeIndex = 0;
+	  currentSources = ["", ""];
+	}
 
   return {
     init: init,

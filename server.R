@@ -2310,6 +2310,10 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	observeEvent(input$new_chat_btn, {
 	  start_new_chat()
 	  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+	  
+	  shinyjs::delay(300, {
+		session$sendCustomMessage("initModernWelcome", list())
+	  })
 	}, ignoreInit = TRUE)
 
   observeEvent(input$followup_question_clicked, {
