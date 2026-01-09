@@ -17,14 +17,14 @@ create_modern_welcome_action <- function(action_data) {
           class = "absolute inset-0 w-full h-full",
           viewBox = "0 0 530.16 80",
           preserveAspectRatio = "none",
-          tags$rect(
-            x = "5", y = "5", width = "520.16", height = "70",
-            rx = "16", ry = "16", fill = "none",
-            stroke = theme_color, `stroke-width` = "6",
-            `stroke-linecap` = "round", pathLength = "100",
-            `stroke-dasharray` = "30 70",
-            style = "animation: borderTrail 3.5s linear infinite; filter: drop-shadow(0 0 4px var(--theme-color));"
-          )
+			tags$rect(
+			  x = "5", y = "5", width = "520.16", height = "70",
+			  rx = "16", ry = "16", fill = "none",
+			  stroke = theme_color, `stroke-width` = "6",
+			  `stroke-linecap` = "round", pathLength = "100",
+			  `stroke-dasharray` = "30 70",
+			  style = sprintf("animation: borderTrail 3.5s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
+			)
         )
     ),
     
@@ -73,6 +73,32 @@ create_modern_preview_button <- function(chat_data) {
 }
 
 createModernWelcomeScreen <- function(saved_chats, main_actions) {
+  tags$style(HTML("
+    .welcome-fullscreen-wrapper {
+      position: fixed !important;
+      top: 50px !important;
+      left: 250px !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      z-index: 100 !important;
+      background: #050505 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    .welcome-fullscreen-wrapper .modern-welcome-root {
+      min-height: 100% !important;
+      height: 100% !important;
+    }
+    .welcome-fullscreen-wrapper .modern-welcome-content {
+      padding: 0 !important;
+    }
+    .welcome-fullscreen-wrapper .modern-welcome-card {
+      border-radius: 0 !important;
+      border: none !important;
+      min-height: 100% !important;
+    }
+  "))
+  
   recent_chats <- if (length(saved_chats) > 0) {
     sorted_chats <- Filter(Negate(is.null), saved_chats)
     if (length(sorted_chats) > 0) {

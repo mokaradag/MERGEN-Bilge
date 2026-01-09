@@ -251,8 +251,8 @@ ui <- dashboardPage(
             )
           )
         ),
-        # This is now a static container for all message bubbles
-        div(id = "chat_content_container", class = "chat-container"),
+		  div(id = "welcome_fullscreen_container", class = "welcome-fullscreen-wrapper"),
+		  div(id = "chat_content_container", class = "chat-container"),
         div(class = "floating-actions", div(id = "scroll_to_bottom_container", actionButton(inputId = "scroll_to_bottom", label = "", icon = icon("angles-down"), class = "fab-button scroll-btn"))),
         div(
           class = "input-container",

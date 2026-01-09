@@ -234,16 +234,16 @@ server <- function(input, output, session) {
 	session$userData$welcome_screen_attached <- FALSE
 
 	render_welcome_screen <- function(saved_chats, replace_existing = FALSE) {
-		if (!isTRUE(shiny::isolate(values$show_welcome))) {
-		  return(invisible(NULL))
-		}
+	  if (!isTRUE(shiny::isolate(values$show_welcome))) {
+		return(invisible(NULL))
+	  }
 
-		if (isTRUE(replace_existing) && isTRUE(session$userData$welcome_screen_attached)) {
-		  shinyjs::runjs("$('#chat_content_container .modern-welcome-root, #chat_content_container .welcome-container').remove();")
-		}
+	  if (isTRUE(replace_existing) && isTRUE(session$userData$welcome_screen_attached)) {
+		shinyjs::runjs("$('#welcome_fullscreen_container').empty();")
+	  }
 
 	  insertUI(
-		selector = "#chat_content_container",
+		selector = "#welcome_fullscreen_container",
 		where = "beforeEnd",
 		ui = createWelcomeScreen(saved_chats),
 		immediate = TRUE
@@ -1944,6 +1944,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 
 	start_new_chat <- function() {
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)
+	  shinyjs::runjs("$('#welcome_fullscreen_container').hide();")
 	}
 
 	# Çok temel bir perspektif düzeltici (fazla agresif olmasın)
