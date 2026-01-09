@@ -1,219 +1,330 @@
 // www/js/shiny_message_handlers.js
-// Bu dosya Shiny sunucusundan gelen özel mesajları işleyen fonksiyonları içerir.
+// Shiny sunucusundan gelen özel mesajları işleyen handler'lar
 
 $(document).ready(function() {
-    // Takip sorularını oluştur ve göster
-    function renderFollowupSuggestions(data) {
-        if (!data || !data.id) return;
-        const questions = (Array.isArray(data.followups) ? data.followups : [])
-          .map(q => (q ? String(q).trim() : ''))
-          .filter(q => q.length);
 
-        const wrapper = document.getElementById('message_wrapper_' + data.id);
-        if (!wrapper) return;
-        const host = wrapper.querySelector('.ai-message') || wrapper;
-        let box = document.getElementById('followup_container_' + data.id);
-
-        if (!questions.length) {
-          if (box && box.parentNode) {
-            box.parentNode.removeChild(box);
-          }
-          return;
-        }
-
-        if (!box) {
-          box = document.createElement('div');
-          box.id = 'followup_container_' + data.id;
-          host.appendChild(box);
-        }
-
-        box.className = 'followup-suggestions-box';
-        box.classList.toggle('pending', !!data.pending);
-        box.dataset.hasItems = 'true';
-        box.innerHTML = '';
-
-        const title = document.createElement('div');
-        title.className = 'followup-suggestions-title';
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-lightbulb';
-        const label = document.createElement('span');
-        label.textContent = 'Önerilen Takip Soruları';
-        title.appendChild(icon);
-        title.appendChild(label);
-
-        const list = document.createElement('div');
-        list.className = 'followup-suggestions-list';
-
-        questions.forEach(question => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'followup-option';
-          btn.dataset.question = question;
-
-          const textSpan = document.createElement('span');
-          textSpan.textContent = question;
-          const arrow = document.createElement('i');
-          arrow.className = 'fas fa-arrow-up-right-from-square';
-
-          btn.appendChild(textSpan);
-          btn.appendChild(arrow);
-          list.appendChild(btn);
-        });
-
-        box.appendChild(title);
-        box.appendChild(list);
-
-        const shouldAutoScroll = (typeof window === 'undefined') ? false :
-          (typeof window.isNearBottom === 'undefined' || window.isNearBottom === true);
-        if (shouldAutoScroll) {
-          setTimeout(() => {
-            if (typeof window.smartScrollToBottom === 'function') {
-              window.smartScrollToBottom(true);
-            } else if (typeof window.scrollToBottom === 'function') {
-              window.scrollToBottom(true);
-            }
-          }, 20);
-        }
+  Shiny.addCustomMessageHandler('showToast', function(data) {
+    if (typeof window.showToast === 'function') {
+      window.showToast(data.message, data.type || 'info');
     }
+  });
 
-    // Beğen/Beğenme butonu renk işleyicileri
-    Shiny.addCustomMessageHandler('updateFeedback', function(data) {
-        const messageId = data.messageId;
-        const action = data.action;
+  Shiny.addCustomMessageHandler('scrollToBottom', function(data) {
+    if (typeof window.scrollToBottom === 'function') {
+      window.scrollToBottom(data.smooth !== false);
+    }
+  });
+
+  Shiny.addCustomMessageHandler('smartScrollToBottom', function(data) {
+    if (typeof window.smartScrollToBottom === 'function') {
+      window.smartScrollToBottom();
+    }
+  });
+
+  Shiny.addCustomMessageHandler('initializeCodeMirror', function(data) {
+    setTimeout(function() {
+      if (typeof window.initializeCodeMirror === 'function') {
+        window.initializeCodeMirror();
+      }
+    }, 100);
+  });
+
+  Shiny.addCustomMessageHandler('initializeCodeMirrorInElement', function(data) {
+    if (data && data.elementId && typeof window.initializeCodeMirrorInElement === 'function') {
+      setTimeout(function() {
+        window.initializeCodeMirrorInElement(data.elementId);
+      }, 100);
+    }
+  });
+
+  Shiny.addCustomMessageHandler('updateFontSize', function(data) {
+    const container = document.querySelector('.chat-container');
+    if (!container) return;
     
-        if (action === 'like') {
-          $(`#like_${messageId}`).addClass('active liked');
-          $(`#dislike_${messageId}`).removeClass('active disliked');
-        } else if (action === 'dislike') {
-          $(`#dislike_${messageId}`).addClass('active disliked');
-          $(`#like_${messageId}`).removeClass('active liked');
-        } else if (action === 'remove_like') {
-          $(`#like_${messageId}`).removeClass('active liked');
-        } else if (action === 'remove_dislike') {
-          $(`#dislike_${messageId}`).removeClass('active disliked');
-        }
-    });
+    container.classList.remove('font-small', 'font-medium', 'font-large');
+    
+    if (data.size === 'small') {
+      container.classList.add('font-small');
+    } else if (data.size === 'large') {
+      container.classList.add('font-large');
+    } else {
+      container.classList.add('font-medium');
+    }
+    
+    setTimeout(function() {
+      if (typeof window.smartScrollToBottom === 'function') {
+        window.smartScrollToBottom();
+      }
+    }, 100);
+  });
 
-    // Geniş ekran geçişi (Widescreen Toggle)
-	Shiny.addCustomMessageHandler('toggleWidescreen', function(data) {
-		const enabled = !!data.enabled;
-		if (typeof applyWidescreen === 'function') {
-			applyWidescreen(enabled);
-		}
-		try {
-		  const raw = localStorage.getItem('mergen_settings');
-		  const settings = raw ? JSON.parse(raw) : {};
-		  settings.enable_widescreen = enabled;
-		  localStorage.setItem('mergen_settings', JSON.stringify(settings));
-		} catch (e) {}
-		
-		setTimeout(function() {
-			if (typeof applyWidescreen === 'function') {
-				applyWidescreen(enabled);
-			}
-		}, 100);
-	});
-
-    // Tüm zaman damgalarını görünür yap/gizle
-    Shiny.addCustomMessageHandler('toggleAllTimestamps', function(data) {
-        if (data.enabled) {
-          $('.message-time').removeClass('hidden');
-        } else {
-          $('.message-time').addClass('hidden');
-        }
-    });
-
-    // Yazı boyutunu güncelle
-    Shiny.addCustomMessageHandler('updateFontSize', function(data) {
-        $('.message-content').removeClass('font-small font-medium font-large font-xlarge');
-        $('.message-content').addClass('font-' + data.size);
-    });
-
-    // Bildirim (Toast) göster
-    Shiny.addCustomMessageHandler('showToast', function(data) { 
-        if (window.showToast) showToast(data.message, data.type, data.duration); 
-    });
-
-    // Ayarları tarayıcı hafızasına kaydet
-    Shiny.addCustomMessageHandler('saveSettings', function(settings) { 
-        try { 
-            localStorage.setItem('mergen_settings', JSON.stringify(settings)); 
-        } catch (e) { 
-            console.error('Ayarlar kaydedilemedi:', e); 
-        } 
-    });
-
-    // Ayarları tarayıcı hafızasından yükle
-    Shiny.addCustomMessageHandler('loadSettings', function(data) { 
-        try { 
-            const s = localStorage.getItem('mergen_settings'); 
-            if (s) { 
-                Shiny.setInputValue("settings_module-loaded_settings", JSON.parse(s), { priority: 'event' }); 
-            } 
-        } catch (e) { 
-            console.error('Ayarlar yüklenemedi:', e); 
-        } 
-    });
-
-    // Ayarları temizle
-    Shiny.addCustomMessageHandler('clearSettings', function(data) { 
-        localStorage.removeItem('mergen_settings'); 
-    });
-
-    // Gönder butonunu aktif/pasif yap
-    Shiny.addCustomMessageHandler('toggleSendButton', function(message) { 
-        $('#send_stop_btn').prop('disabled', message.disable); 
-    });
-
-    // Takip önerilerini güncelle
-    Shiny.addCustomMessageHandler('updateFollowupSuggestions', renderFollowupSuggestions);
-
-    // Ayarları güncellemeye zorla
-    Shiny.addCustomMessageHandler('forceSettingsUpdate', function(data) {
-        const dropdown = document.querySelector('#settings_module-model_selection');
-        if (dropdown) {
-          dropdown.value = data.model;
-          dropdown.dispatchEvent(new Event('change'));
-        }
-    });
-
-    // Model seçim kutusunu güncelle
-    Shiny.addCustomMessageHandler('updateModelDropdown', function(data) {
-        const modelDropdown = document.querySelector('#settings_module-model_selection');
-        if (modelDropdown) {
-          if (modelDropdown.selectize) {
-            modelDropdown.selectize.setValue(data.model, true);
-          } else {
-            modelDropdown.value = data.model;
-          }
-        }
-    });
-
-    // Toplu yükleme başlığını sıfırla
-    Shiny.addCustomMessageHandler('resetBulkUploadCaption', function () {
-        const $input = $('#file_manager_module-bulk_upload');
-        if (!$input.length) return;
-        $input.val('');
-        const $grp = $input.closest('.input-group');
-        $grp.find('.form-control').val('').attr('placeholder', 'Henüz dosya seçilmedi');
-        const $progress = $('#bulk_upload_div .shiny-file-input-progress');
-        $progress.hide();
-        $progress.find('.progress-bar').removeClass('upload-complete');
-    });
-
-    // Sağlık zaman damgasını güncelle
-    Shiny.addCustomMessageHandler('updateHealthTimestamp', function(data) {
-      const elem = document.getElementById('last_update_time');
-      if (elem) {
-        elem.textContent = 'Son Güncelleme: ' + data.time;
+  Shiny.addCustomMessageHandler('toggleAllTimestamps', function(data) {
+    const timestamps = document.querySelectorAll('.message-timestamp');
+    const enabled = data.enabled === true;
+    
+    timestamps.forEach(function(ts) {
+      if (enabled) {
+        ts.style.display = 'block';
+      } else {
+        ts.style.display = 'none';
       }
     });
+  });
 
-    // Yönetici zaman damgasını güncelle
-    Shiny.addCustomMessageHandler('updateAdminTimestamp', function(data) {
-        var el = document.getElementById(data.id);
-        if (el) {
-          el.textContent = 'Son Güncelleme: ' + data.time;
-        }
+  Shiny.addCustomMessageHandler('toggleWidescreen', function(data) {
+    const container = document.querySelector('.chat-container');
+    if (!container) return;
+    
+    if (data.enabled === true) {
+      container.classList.add('widescreen-mode');
+    } else {
+      container.classList.remove('widescreen-mode');
+    }
+  });
+
+  Shiny.addCustomMessageHandler('initStreamingMessage', function(data) {
+    if (!data || !data.id) return;
+    
+    const wrapper = document.getElementById('message_wrapper_' + data.id);
+    if (!wrapper) return;
+    
+    const streamingDiv = wrapper.querySelector('[data-streaming="true"]');
+    if (!streamingDiv) return;
+    
+    streamingDiv.setAttribute('data-message-id', data.id);
+    streamingDiv.textContent = data.content || '';
+  });
+
+  Shiny.addCustomMessageHandler('streamingUpdate', function(data) {
+    if (!data || !data.id) return;
+    
+    const streamingDiv = document.querySelector('[data-message-id="' + data.id + '"]');
+    if (!streamingDiv) return;
+    
+    if (typeof window.renderMarkdownToHTML === 'function') {
+      streamingDiv.innerHTML = window.renderMarkdownToHTML(data.text);
+    } else {
+      streamingDiv.textContent = data.text;
+    }
+    
+    if (typeof window.smartScrollToBottom === 'function') {
+      window.smartScrollToBottom();
+    }
+  });
+
+  Shiny.addCustomMessageHandler('finalizeStreamingMessage', function(data) {
+    if (!data || !data.id) return;
+    
+    const wrapper = document.getElementById('message_wrapper_' + data.id);
+    if (!wrapper) return;
+    
+    const messageDiv = wrapper.querySelector('.ai-message');
+    if (!messageDiv) return;
+    
+    messageDiv.innerHTML = data.html || data.content || '';
+    messageDiv.removeAttribute('data-streaming');
+    
+    if (data.hasCode && typeof window.initializeCodeMirrorInElement === 'function') {
+      setTimeout(function() {
+        window.initializeCodeMirrorInElement('message_wrapper_' + data.id);
+      }, 100);
+    }
+    
+    if (data.enableActions) {
+      const actionsDiv = wrapper.querySelector('.message-actions');
+      if (actionsDiv) {
+        actionsDiv.style.display = 'flex';
+      }
+    }
+    
+    if (typeof window.smartScrollToBottom === 'function') {
+      window.smartScrollToBottom();
+    }
+  });
+
+  Shiny.addCustomMessageHandler('updateFollowupSuggestions', function(data) {
+    if (!data || !data.id || !data.followups) return;
+    
+    const container = document.getElementById('followup_container_' + data.id);
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (data.pending) {
+      container.classList.add('pending');
+    } else {
+      container.classList.remove('pending');
+    }
+    
+    data.followups.forEach(function(question) {
+      const btn = document.createElement('button');
+      btn.className = 'followup-question-btn';
+      btn.textContent = question;
+      btn.onclick = function() {
+        Shiny.setInputValue('followup_question_clicked', {
+          text: question,
+          nonce: Math.random()
+        }, { priority: 'event' });
+      };
+      container.appendChild(btn);
     });
+  });
+
+  Shiny.addCustomMessageHandler('playAudioMessage', function(data) {
+    if (!data || !data.id || !data.src) return;
+    
+    const wrapper = document.getElementById('message_wrapper_' + data.id);
+    if (!wrapper) return;
+    
+    let audioContainer = wrapper.querySelector('.tts-audio-container');
+    
+    if (!audioContainer) {
+      audioContainer = document.createElement('div');
+      audioContainer.className = 'tts-audio-container';
+      audioContainer.id = 'tts_audio_' + data.id;
+      
+      const audioElement = document.createElement('audio');
+      audioElement.controls = true;
+      audioElement.autoplay = true;
+      audioElement.src = data.src;
+      audioElement.style.width = '100%';
+      audioElement.style.maxWidth = '400px';
+      audioElement.style.marginTop = '10px';
+      
+      audioContainer.appendChild(audioElement);
+      
+      const messageContent = wrapper.querySelector('.ai-message');
+      if (messageContent) {
+        messageContent.appendChild(audioContainer);
+      }
+    } else {
+      const audioElement = audioContainer.querySelector('audio');
+      if (audioElement) {
+        audioElement.src = data.src;
+        audioElement.play().catch(function(err) {
+          console.warn('Audio oynatma hatası:', err);
+        });
+      }
+    }
+  });
+
+  Shiny.addCustomMessageHandler('showNeuralAnimation', function(message) {
+    setTimeout(function() {
+      if (window.NeuralWelcomeAnimation && typeof window.NeuralWelcomeAnimation.init === 'function') {
+        window.NeuralWelcomeAnimation.init();
+      }
+    }, 120);
+  });
+
+  Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
+    setTimeout(function() {
+      const videoContainer = document.querySelector('.modern-welcome-video-container');
+      if (videoContainer && window.WelcomeVideoPlayer) {
+        window.WelcomeVideoPlayer.init(videoContainer);
+      }
+      
+      const neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
+      if (neuralCanvas && window.WelcomeNeuralNetwork) {
+        window.WelcomeNeuralNetwork.init(neuralCanvas);
+      }
+      
+      const greetingText = document.getElementById('dynamic-greeting-text');
+      if (greetingText && window.WelcomeGreeting) {
+        window.WelcomeGreeting.init(greetingText);
+      }
+    }, 200);
+  });
+
+  Shiny.addCustomMessageHandler('switchMusicContext', function(data) {
+    if (typeof window.MusicManager !== 'undefined' && window.MusicManager.switchContext) {
+      window.MusicManager.switchContext(data);
+    }
+  });
+
+  Shiny.addCustomMessageHandler('initMusicManager', function(data) {
+    if (typeof window.MusicManager !== 'undefined' && window.MusicManager.init) {
+      window.MusicManager.init(data);
+    }
+  });
+
+  Shiny.addCustomMessageHandler('setMusicPlaylist', function(data) {
+    if (typeof window.MusicManager !== 'undefined' && window.MusicManager.setPlaylist) {
+      window.MusicManager.setPlaylist(data);
+    }
+  });
+
+  Shiny.addCustomMessageHandler('saveCurrentChat', function(messages) {
+    try {
+      if (messages && messages.length > 0) {
+        localStorage.setItem('mergen_current_chat', JSON.stringify(messages));
+      }
+    } catch (e) {
+      console.warn('Chat kaydedilemedi:', e);
+    }
+  });
+
+  Shiny.addCustomMessageHandler('highlightSearchMatch', function(data) {
+    if (!data || !data.messageId) return;
+    
+    const wrapper = document.getElementById('message_wrapper_' + data.messageId);
+    if (!wrapper) return;
+    
+    wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    wrapper.classList.add('search-match-highlight');
+    
+    setTimeout(function() {
+      wrapper.classList.remove('search-match-highlight');
+    }, 3000);
+  });
+
+  Shiny.addCustomMessageHandler('clearSearchHighlights', function(data) {
+    const highlighted = document.querySelectorAll('.search-match-highlight');
+    highlighted.forEach(function(el) {
+      el.classList.remove('search-match-highlight');
+    });
+  });
+
+  window.addEventListener('beforeunload', function() {
+    const chatContainer = document.getElementById('chat_content_container');
+    if (chatContainer) {
+      const messages = chatContainer.querySelectorAll('.message-bubble');
+      if (messages.length > 0) {
+        const messageData = [];
+        messages.forEach(function(msg) {
+          const wrapper = msg.closest('[id^="message_wrapper_"]');
+          if (wrapper) {
+            const id = wrapper.id.replace('message_wrapper_', '');
+            const type = msg.classList.contains('user-message') ? 'user' : 'ai';
+            const content = msg.textContent || '';
+            
+            messageData.push({ id: id, type: type, content: content });
+          }
+        });
+        
+        if (messageData.length > 0) {
+          try {
+            localStorage.setItem('mergen_current_chat', JSON.stringify(messageData));
+          } catch (e) {
+            console.warn('Chat kaydedilemedi:', e);
+          }
+        }
+      }
+    }
+  });
+
+  setTimeout(function() {
+    try {
+      const savedChat = localStorage.getItem('mergen_current_chat');
+      if (savedChat) {
+        const messages = JSON.parse(savedChat);
+        if (messages && messages.length > 0) {
+          Shiny.setInputValue('load_chat_from_storage', messages, { priority: 'event' });
+        }
+      }
+    } catch (e) {
+      console.warn('Chat yüklenemedi:', e);
+    }
+  }, 1000);
+
 });

@@ -1,0 +1,127 @@
+// www/js/welcome_neural_modern.js
+// Modern karşılama ekranı için neural network canvas animasyonu
+
+window.WelcomeNeuralNetwork = (function() {
+  let canvas = null;
+  let ctx = null;
+  let particles = [];
+  let animationId = null;
+  let width = 0;
+  let height = 0;
+  const particleCount = 80;
+  const connectionDistance = 140;
+  const mouse = { x: -1000, y: -1000 };
+
+  function init(canvasElement) {
+    if (!canvasElement) return;
+    
+    canvas = canvasElement;
+    ctx = canvas.getContext('2d');
+    
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', handleMouseMove);
+    
+    createParticles();
+    animate();
+  }
+
+  function resize() {
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    
+    width = parent.clientWidth;
+    height = parent.clientHeight;
+    canvas.width = width;
+    canvas.height = height;
+  }
+
+  function handleMouseMove(e) {
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+  }
+
+  function createParticles() {
+    particles = [];
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        size: Math.random() * 1.5 + 1.0
+      });
+    }
+  }
+
+  function animate() {
+    if (!ctx || !canvas) return;
+    
+    ctx.clearRect(0, 0, width, height);
+    
+    particles.forEach((p, i) => {
+      p.x += p.vx;
+      p.y += p.vy;
+
+      if (p.x < 0 || p.x > width) p.vx *= -1;
+      if (p.y < 0 || p.y > height) p.vy *= -1;
+
+      const dx = mouse.x - p.x;
+      const dy = mouse.y - p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 200) {
+        p.x += dx * 0.005;
+        p.y += dy * 0.005;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgb(255, 86, 32)';
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(255, 86, 32, 0.8)';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      for (let j = i + 1; j < particles.length; j++) {
+        const p2 = particles[j];
+        const dx2 = p.x - p2.x;
+        const dy2 = p.y - p2.y;
+        const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+        if (dist2 < connectionDistance) {
+          ctx.beginPath();
+          const opacity = 1 - dist2 / connectionDistance;
+          ctx.strokeStyle = `rgba(255, 86, 32, ${opacity * 0.8})`;
+          ctx.lineWidth = 0.6;
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+      }
+    });
+
+    animationId = requestAnimationFrame(animate);
+  }
+
+  function destroy() {
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    
+    window.removeEventListener('resize', resize);
+    window.removeEventListener('mousemove', handleMouseMove);
+    
+    canvas = null;
+    ctx = null;
+    particles = [];
+  }
+
+  return {
+    init: init,
+    destroy: destroy
+  };
+})();

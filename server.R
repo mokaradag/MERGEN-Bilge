@@ -234,13 +234,13 @@ server <- function(input, output, session) {
 	session$userData$welcome_screen_attached <- FALSE
 
 	render_welcome_screen <- function(saved_chats, replace_existing = FALSE) {
-	  if (!isTRUE(shiny::isolate(values$show_welcome))) {
-		return(invisible(NULL))
-	  }
+		if (!isTRUE(shiny::isolate(values$show_welcome))) {
+		  return(invisible(NULL))
+		}
 
-	  if (isTRUE(replace_existing) && isTRUE(session$userData$welcome_screen_attached)) {
-		shinyjs::runjs("$('#chat_content_container .welcome-container').remove();")
-	  }
+		if (isTRUE(replace_existing) && isTRUE(session$userData$welcome_screen_attached)) {
+		  shinyjs::runjs("$('#chat_content_container .modern-welcome-root, #chat_content_container .welcome-container').remove();")
+		}
 
 	  insertUI(
 		selector = "#chat_content_container",
@@ -252,9 +252,9 @@ server <- function(input, output, session) {
 	  session$userData$welcome_screen_attached <- TRUE
 
 		session$onFlushed(function() {
-		  session$sendCustomMessage("showNeuralAnimation", list())
-		  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-		}, once = TRUE)
+			  session$sendCustomMessage("initModernWelcome", list())
+			  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+			}, once = TRUE)
 	}
 
 	session$userData$initial_saved_chats_promise <- promises::then(

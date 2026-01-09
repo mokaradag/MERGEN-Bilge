@@ -196,8 +196,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   };
 
-  mutationHandler();
-  const observer = new MutationObserver(mutationHandler);
+	const observer = new MutationObserver(function() {
+    mutationHandler();
+    
+    const hasMessages = chatContainer.querySelector('.message-bubble');
+    if (hasMessages) {
+      if (window.WelcomeVideoPlayer) window.WelcomeVideoPlayer.destroy();
+      if (window.WelcomeNeuralNetwork) window.WelcomeNeuralNetwork.destroy();
+      if (window.WelcomeGreeting) window.WelcomeGreeting.destroy();
+    }
+  });
+  
   observer.observe(chatContainer, {
     childList: true,
     subtree: true

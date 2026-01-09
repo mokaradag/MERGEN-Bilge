@@ -69,7 +69,8 @@ ui <- dashboardPage(
     tags$link(rel = "icon", type = "image/png", href = "mergen_avatar.png"),
     
     # --- Local CSS Files ---
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_modern.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/model_selector.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/codemirror-custom.css"),
@@ -171,11 +172,14 @@ ui <- dashboardPage(
     tags$script(src = "js/stt_client.js"),
 	tags$script(src = "js/intro_animation.js"),
     tags$script(src = "js/typing_animation.js"),
-    tags$script(src = "js/neural_welcome.js"),
-	tags$script(src = "js/tts_manager.js"),
+	tags$script(src = "js/neural_welcome.js"),
+    tags$script(src = "js/welcome_video_player.js"),
+    tags$script(src = "js/welcome_neural_modern.js"),
+    tags$script(src = "js/welcome_greeting.js"),
+    tags$script(src = "js/tts_manager.js"),
     tags$script(src = "js/character_manager.js"),
     tags$script(src = "js/shortcuts_manager.js"),
-	tags$script(src = "js/music_manager.js"),
+    tags$script(src = "js/music_manager.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),
