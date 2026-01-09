@@ -1654,8 +1654,9 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   }, ignoreInit = TRUE)
   
 	observeEvent(input$quick_template, {
-	  # Hızlı eylem mesajı → MCP devre dışı (tek seferlik)
 	  quick_action_skip_mcp(TRUE)
+	  values$show_welcome <- FALSE
+	  shinyjs::runjs("$('#welcome_fullscreen_container').addClass('hidden');")
 	  if (is.list(input$quick_template)) {
 		send_message(input$quick_template$text)
 	  } else {
@@ -1944,7 +1945,9 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 
 	start_new_chat <- function() {
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)
-	  shinyjs::runjs("$('#welcome_fullscreen_container').hide();")
+	  values$show_welcome <- TRUE
+	  shinyjs::runjs("$('#welcome_fullscreen_container').removeClass('hidden').show();")
+	  render_welcome_screen(values$saved_chats, replace_existing = TRUE)
 	}
 
 	# Çok temel bir perspektif düzeltici (fazla agresif olmasın)
@@ -2337,9 +2340,11 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	}
   }, ignoreNULL = FALSE, ignoreInit = TRUE)
   
-  observeEvent(input$load_chat_from_storage, {
-	req(input$load_chat_from_storage)
-	if (length(values$messages) == 0 && !is.null(input$load_chat_from_storage)) {
+	observeEvent(input$load_chat_from_storage, {
+	  loaded_data <- input$load_chat_from_storage
+	  req(loaded_data)
+	  if (!is.list(loaded_data) || length(loaded_data) == 0) return(invisible(NULL))
+	  if (length(values$messages) == 0) {
 	  
 	  removeUI(selector = "#chat_content_container > *", multiple = TRUE)
 	  

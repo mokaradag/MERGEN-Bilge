@@ -5,10 +5,11 @@ create_modern_welcome_action <- function(action_data) {
   theme_color <- action_data$themeColor
   rgb <- col2rgb(theme_color)
   
-  tags$button(
-    class = "modern-welcome-action-btn",
-    style = sprintf("--theme-r: %d; --theme-g: %d; --theme-b: %d;", rgb[1], rgb[2], rgb[3]),
-    onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); return false;",
+tags$button(
+  class = "modern-welcome-action-btn",
+  title = action_data$title,
+  style = sprintf("--theme-r: %d; --theme-g: %d; --theme-b: %d;", rgb[1], rgb[2], rgb[3]),
+  onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); $('#welcome_fullscreen_container').fadeOut(300); return false;",
                       gsub("'", "\\\\'", action_data$message),
                       action_data$model_value),
     
@@ -32,7 +33,7 @@ create_modern_welcome_action <- function(action_data) {
     
     div(class = "modern-welcome-action-inner",
         div(class = "modern-welcome-action-icon-area",
-            icon(action_data$icon_name, class = "modern-welcome-action-icon")
+			tags$i(class = sprintf("fas %s modern-welcome-action-icon", action_data$icon_class))
         ),
         div(class = "modern-welcome-action-text-area",
             span(class = "modern-welcome-action-label", "Hızlı İşlem"),
@@ -62,7 +63,7 @@ create_modern_preview_button <- function(chat_data) {
     }", chat_data$id),
     
     div(class = "modern-welcome-preview-icon-box",
-        icon("message-square", class = "modern-welcome-preview-icon")
+		tags$i(class = "fas fa-comment modern-welcome-preview-icon")
     ),
     div(class = "modern-welcome-preview-content",
         span(class = "modern-welcome-preview-title", chat_data$title),
@@ -74,24 +75,36 @@ create_modern_preview_button <- function(chat_data) {
 
 createModernWelcomeScreen <- function(saved_chats, main_actions) {
   tags$style(HTML("
-    .welcome-fullscreen-wrapper {
-      position: fixed !important;
-      top: 50px !important;
-      left: 250px !important;
-      right: 0 !important;
-      bottom: 0 !important;
-      z-index: 100 !important;
-      background: #050505 !important;
-      padding: 0 !important;
-      margin: 0 !important;
-    }
+	.welcome-fullscreen-wrapper {
+	  position: fixed !important;
+	  top: 50px !important;
+	  left: 250px !important;
+	  right: 0 !important;
+	  bottom: 0 !important;
+	  z-index: 1000 !important;
+	  background: #050505 !important;
+	  padding: 0 !important;
+	  margin: 0 !important;
+	  pointer-events: auto !important;
+	}
+
+	.welcome-fullscreen-wrapper.hidden {
+	  display: none !important;
+	}
+
+	body:has(.welcome-fullscreen-wrapper:not(.hidden)) .chat-header {
+	  margin-bottom: 0 !important;
+	}
+	
     .welcome-fullscreen-wrapper .modern-welcome-root {
       min-height: 100% !important;
       height: 100% !important;
     }
+	
     .welcome-fullscreen-wrapper .modern-welcome-content {
       padding: 0 !important;
     }
+	
     .welcome-fullscreen-wrapper .modern-welcome-card {
       border-radius: 0 !important;
       border: none !important;
@@ -182,7 +195,7 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
                 div(class = "modern-welcome-header-section",
                     div(class = "modern-welcome-branding",
                         div(class = "modern-welcome-icon-box",
-                            icon("cpu", class = "modern-welcome-icon")
+							tags$i(class = "fas fa-microchip modern-welcome-icon")
                         ),
                         div(class = "modern-welcome-title-group",
                             tags$h1(
@@ -204,7 +217,7 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
                 
                 div(class = "modern-welcome-footer-section",
                     div(class = "modern-welcome-recent-header",
-                        icon("history", class = "modern-welcome-recent-icon"),
+                        tags$i(class = "fas fa-history modern-welcome-recent-icon"),
                         tags$h3(class = "modern-welcome-recent-title", "Son Konuşmalar")
                     ),
                     div(class = "modern-welcome-recent-list",
@@ -219,7 +232,7 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
                 div(class = "modern-welcome-actions-header",
                     div(class = "modern-welcome-actions-title-row",
                         div(class = "modern-welcome-actions-title-left",
-                            icon("zap", class = "modern-welcome-zap-icon"),
+                            tags$i(class = "fas fa-bolt modern-welcome-zap-icon"),
                             tags$h2(class = "modern-welcome-actions-title", "Hızlı Başlangıç")
                         )
                     )
