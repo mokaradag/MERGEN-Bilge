@@ -29,6 +29,7 @@ window.WelcomeGreeting = (function() {
   let intervalId = null;
   let indicesQueue = [];
   let pointer = 0;
+  let tickActive = false;
 
   function shuffleIndices() {
     const arr = Array.from({ length: AI_MESSAGES.length }, (_, i) => i);
@@ -52,6 +53,9 @@ window.WelcomeGreeting = (function() {
   }
 
   function tick() {
+    if (tickActive) return;
+    tickActive = true;
+    
     const fullText = AI_MESSAGES[currentIndex];
     let updatedText = isDeleting
       ? fullText.substring(0, currentText.length - 1)
@@ -92,6 +96,8 @@ window.WelcomeGreeting = (function() {
       delta = 40 + Math.random() * 40;
     }
 
+    tickActive = false;
+    
     if (intervalId) {
       clearInterval(intervalId);
       intervalId = setInterval(tick, delta);

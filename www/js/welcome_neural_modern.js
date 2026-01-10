@@ -8,6 +8,9 @@ window.WelcomeNeuralNetwork = (function() {
   let animationId = null;
   let width = 0;
   let height = 0;
+  let lastFrameTime = 0;
+  const targetFPS = 60;
+  const frameDuration = 1000 / targetFPS;
   const particleCount = 80;
   const connectionDistance = 140;
   const mouse = { x: -1000, y: -1000 };
@@ -57,8 +60,18 @@ window.WelcomeNeuralNetwork = (function() {
     }
   }
 
-  function animate() {
+  function animate(currentTime) {
     if (!ctx || !canvas) return;
+    
+    if (!lastFrameTime) lastFrameTime = currentTime;
+    const elapsed = currentTime - lastFrameTime;
+    
+    if (elapsed < frameDuration) {
+      animationId = requestAnimationFrame(animate);
+      return;
+    }
+    
+    lastFrameTime = currentTime - (elapsed % frameDuration);
     
     ctx.clearRect(0, 0, width, height);
     
@@ -118,6 +131,7 @@ window.WelcomeNeuralNetwork = (function() {
     canvas = null;
     ctx = null;
     particles = [];
+    lastFrameTime = 0;
   }
 
   return {

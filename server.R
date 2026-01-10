@@ -238,9 +238,7 @@ server <- function(input, output, session) {
 		return(invisible(NULL))
 	  }
 
-	  if (isTRUE(replace_existing) && isTRUE(session$userData$welcome_screen_attached)) {
-		shinyjs::runjs("$('#welcome_fullscreen_container').empty();")
-	  }
+	  shinyjs::runjs("$('#welcome_fullscreen_container').empty().removeClass('hidden').show();")
 
 	  insertUI(
 		selector = "#welcome_fullscreen_container",
@@ -1656,7 +1654,8 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	observeEvent(input$quick_template, {
 	  quick_action_skip_mcp(TRUE)
 	  values$show_welcome <- FALSE
-	  shinyjs::runjs("$('#welcome_fullscreen_container').addClass('hidden');")
+	  shinyjs::runjs("$('#welcome_fullscreen_container').addClass('hidden').hide();")
+	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
 	  if (is.list(input$quick_template)) {
 		send_message(input$quick_template$text)
 	  } else {
@@ -1946,7 +1945,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	start_new_chat <- function() {
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)
 	  values$show_welcome <- TRUE
-	  shinyjs::runjs("$('#welcome_fullscreen_container').removeClass('hidden').show();")
+	  shinyjs::runjs("$('#welcome_fullscreen_container').empty();")
 	  render_welcome_screen(values$saved_chats, replace_existing = TRUE)
 	}
 

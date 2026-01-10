@@ -1,9 +1,49 @@
 # R/welcome_screen_modern.R
 # Modern karşılama ekranı bileşenleri
 
+create_modern_tooltip <- function(description) {
+  tags$div(
+    class = "modern-tooltip",
+    style = "position: fixed; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.2s ease;",
+    tags$div(
+      class = "modern-tooltip-content",
+      style = paste(
+        "background: rgba(0, 0, 0, 0.95);",
+        "border: 1px solid rgba(255, 255, 255, 0.1);",
+        "border-radius: 12px;",
+        "padding: 12px 16px;",
+        "max-width: 280px;",
+        "font-size: 14px;",
+        "color: #e5e7eb;",
+        "line-height: 1.5;",
+        "backdrop-filter: blur(24px);",
+        "box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);"
+      ),
+      description
+    ),
+    tags$div(
+      class = "modern-tooltip-arrow",
+      style = paste(
+        "position: absolute;",
+        "top: -8px;",
+        "left: 50%;",
+        "transform: translateX(-50%);",
+        "width: 16px;",
+        "height: 16px;",
+        "background: rgba(0, 0, 0, 0.95);",
+        "border-left: 1px solid rgba(255, 255, 255, 0.1);",
+        "border-top: 1px solid rgba(255, 255, 255, 0.1);",
+        "transform: translateX(-50%) rotate(45deg);"
+      )
+    )
+  )
+}
+
 create_modern_welcome_action <- function(action_data) {
   theme_color <- action_data$themeColor
   rgb <- col2rgb(theme_color)
+  
+  tooltip_id <- paste0("tooltip_", action_data$id)
   
 tags$button(
   class = "modern-welcome-action-btn",
@@ -12,6 +52,8 @@ tags$button(
   onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); $('#welcome_fullscreen_container').fadeOut(300); return false;",
                       gsub("'", "\\\\'", action_data$message),
                       action_data$model_value),
+  onmouseenter = sprintf("showModernTooltip('%s', this, '%s');", tooltip_id, gsub("'", "\\\\'", action_data$description)),
+  onmouseleave = sprintf("hideModernTooltip('%s');", tooltip_id),
     
     div(class = "modern-welcome-action-border-trail",
         tags$svg(
@@ -33,7 +75,7 @@ tags$button(
     
     div(class = "modern-welcome-action-inner",
         div(class = "modern-welcome-action-icon-area",
-			tags$i(class = sprintf("fas %s modern-welcome-action-icon", action_data$icon_class))
+			tags$i(class = sprintf("fas fa-%s modern-welcome-action-icon", action_data$icon_name))
         ),
         div(class = "modern-welcome-action-text-area",
             span(class = "modern-welcome-action-label", "Hızlı İşlem"),
@@ -48,6 +90,12 @@ tags$button(
               tags$path(d = "m12 5 7 7-7 7")
             )
         )
+    ),
+    
+    tags$div(
+      id = tooltip_id,
+      class = "modern-tooltip",
+      style = "position: fixed; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; display: none;"
     )
   )
 }
