@@ -199,37 +199,26 @@ $(document).ready(function() {
   };
   
 	window.showModernTooltip = function(tooltipId, buttonElement, description) {
-	  let tooltip = document.getElementById(tooltipId);
-	  if (!tooltip) {
-		tooltip = document.createElement('div');
-		tooltip.id = tooltipId;
-		tooltip.className = 'modern-tooltip';
-		tooltip.style.position = 'fixed';
-		tooltip.style.zIndex = '9999';
-		tooltip.style.pointerEvents = 'none';
-		tooltip.style.opacity = '0';
-		tooltip.style.transition = 'opacity 0.2s ease';
-		tooltip.style.display = 'none';
-		document.body.appendChild(tooltip);
-	  }
-	  
-	  const rect = buttonElement.getBoundingClientRect();
-	  tooltip.innerHTML = `
-		<div style="background: rgba(0, 0, 0, 0.95); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px; max-width: 280px; font-size: 14px; color: #e5e7eb; line-height: 1.5; backdrop-filter: blur(24px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); position: relative;">
-		  ${description}
-		  <div style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%) rotate(45deg); width: 16px; height: 16px; background: rgba(0, 0, 0, 0.95); border-left: 1px solid rgba(255, 255, 255, 0.1); border-top: 1px solid rgba(255, 255, 255, 0.1);"></div>
-		</div>
-	  `;
-	  
-	  tooltip.style.display = 'block';
-	  tooltip.style.left = (rect.left + rect.width / 2) + 'px';
-	  tooltip.style.top = (rect.bottom + 12) + 'px';
-	  tooltip.style.transform = 'translateX(-50%)';
-	  
-	  setTimeout(() => {
-		tooltip.style.opacity = '1';
-	  }, 10);
-	};
+		let tooltip = document.getElementById(tooltipId);
+		if (!tooltip) {
+		  tooltip = document.createElement('div');
+		  tooltip.id = tooltipId;
+		  tooltip.className = 'modern-tooltip';
+		  tooltip.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.2s ease;display:none;';
+		  document.body.appendChild(tooltip);
+		}
+		
+		const rect = buttonElement.getBoundingClientRect();
+		const escaped = String(description).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		tooltip.innerHTML = '<div style="background:rgba(0,0,0,0.95);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;max-width:280px;font-size:14px;color:#e5e7eb;line-height:1.5;backdrop-filter:blur(24px);box-shadow:0 8px 24px rgba(0,0,0,0.4);position:relative;">' + escaped + '<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%) rotate(45deg);width:16px;height:16px;background:rgba(0,0,0,0.95);border-left:1px solid rgba(255,255,255,0.1);border-top:1px solid rgba(255,255,255,0.1);"></div></div>';
+		
+		tooltip.style.display = 'block';
+		tooltip.style.left = (rect.left + rect.width / 2) + 'px';
+		tooltip.style.top = (rect.bottom + 12) + 'px';
+		tooltip.style.transform = 'translateX(-50%)';
+		
+		setTimeout(() => tooltip.style.opacity = '1', 10);
+	  };
 
 	window.hideModernTooltip = function(tooltipId) {
 	  const tooltip = document.getElementById(tooltipId);

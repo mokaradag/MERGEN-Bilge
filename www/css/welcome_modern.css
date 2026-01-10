@@ -136,6 +136,10 @@
   display: flex !important;
 }
 
+.welcome-fullscreen-wrapper:not(.hidden) ~ .input-container {
+  display: flex !important;
+}
+
 .welcome-fullscreen-wrapper.hidden ~ .chat-container {
   display: block !important;
 }

@@ -1687,21 +1687,22 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   }, ignoreInit = TRUE)
   
 	observeEvent(input$quick_template, {
-	  quick_action_skip_mcp(TRUE)
-	  values$show_welcome <- FALSE
-	  
-	  shinyjs::runjs("
-		$('#welcome_fullscreen_container').addClass('hidden');
-		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-		  window.WelcomeVideoPlayer.destroy();
-		}
-		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-		  window.WelcomeNeuralNetwork.destroy();
-		}
-		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-		  window.WelcomeGreeting.destroy();
-		}
-	  ")
+		quick_action_skip_mcp(TRUE)
+		values$show_welcome <- FALSE
+		
+		shinyjs::runjs("$('#welcome_fullscreen_container').addClass('hidden').empty();")
+		shinyjs::runjs("
+		  $('#welcome_fullscreen_container').addClass('hidden');
+		  if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+			window.WelcomeVideoPlayer.destroy();
+		  }
+		  if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+			window.WelcomeNeuralNetwork.destroy();
+		  }
+		  if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+			window.WelcomeGreeting.destroy();
+		  }
+		")
 	  
 	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
 	  

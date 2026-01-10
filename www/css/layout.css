@@ -251,6 +251,14 @@ body {
   padding-top: 45px !important;
 }
 
+#chat_content_container {
+  display: none;
+}
+
+.welcome-fullscreen-wrapper.hidden ~ #chat_main_wrapper #chat_content_container {
+  display: flex;
+}
+
 /* Yazdırma Stilleri */
 @media print {
   .main-header,
