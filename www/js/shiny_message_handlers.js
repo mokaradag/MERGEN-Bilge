@@ -217,6 +217,12 @@ $(document).ready(function() {
   });
 
 	Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
+	  // Sadece welcome ekranı görünürken başlat
+	  const welcomeContainer = document.querySelector('.modern-welcome-root');
+	  if (!welcomeContainer || welcomeContainer.offsetParent === null) {
+		return;
+	  }
+	  
 	  if (window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
 		window.WelcomeVideoPlayer.destroy();
 	  }

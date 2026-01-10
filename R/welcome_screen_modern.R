@@ -52,23 +52,24 @@ tags$button(
   onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); $('#welcome_fullscreen_container').fadeOut(300); return false;",
                       gsub("'", "\\\\'", action_data$message),
                       action_data$model_value),
-  onmouseenter = sprintf("showModernTooltip('%s', this, '%s');", tooltip_id, gsub("'", "\\\\'", action_data$description)),
-  onmouseleave = sprintf("hideModernTooltip('%s');", tooltip_id),
+  onmouseenter = sprintf("if(window.showModernTooltip) window.showModernTooltip('%s', this, `%s`);", tooltip_id, gsub("'", "\\\\'", action_data$description %||% action_data$title)),
+  onmouseleave = sprintf("if(window.hideModernTooltip) window.hideModernTooltip('%s');", tooltip_id),
     
     div(class = "modern-welcome-action-border-trail",
-        tags$svg(
-          class = "absolute inset-0 w-full h-full",
-          viewBox = "0 0 530.16 80",
-          preserveAspectRatio = "none",
+		tags$svg(
+		  class = "absolute inset-0 w-full h-full",
+		  viewBox = "0 0 530.16 80",
+		  preserveAspectRatio = "none",
+		  style = "overflow: visible;",
 			tags$rect(
-			  x = "5", y = "5", width = "520.16", height = "70",
-			  rx = "16", ry = "16", fill = "none",
-			  stroke = theme_color, `stroke-width` = "6",
+			  x = "1", y = "1", width = "528.16", height = "78",
+			  rx = "15", ry = "15", fill = "none",
+			  stroke = theme_color, `stroke-width` = "4",
 			  `stroke-linecap` = "round", pathLength = "100",
-			  `stroke-dasharray` = "30 70",
-			  style = sprintf("animation: borderTrail 3.5s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
+			  `stroke-dasharray` = "40 60",
+			  style = sprintf("animation: borderTrail 6s linear infinite; filter: drop-shadow(0 0 6px %s);", theme_color)
 			)
-        )
+		)
     ),
     
     div(class = "modern-welcome-action-bg"),

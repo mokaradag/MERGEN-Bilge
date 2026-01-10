@@ -238,6 +238,23 @@ server <- function(input, output, session) {
 		return(invisible(NULL))
 	  }
 
+	  # Remove any existing welcome screen
+	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
+	  
+	  # Clean up animations first
+	  shinyjs::runjs("
+		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+		  window.WelcomeVideoPlayer.destroy();
+		}
+		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+		  window.WelcomeNeuralNetwork.destroy();
+		}
+		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		  window.WelcomeGreeting.destroy();
+		}
+	  ")
+	  
+	  # Show container and insert UI
 	  shinyjs::runjs("$('#welcome_fullscreen_container').empty().removeClass('hidden').show();")
 
 	  insertUI(
@@ -249,10 +266,10 @@ server <- function(input, output, session) {
 
 	  session$userData$welcome_screen_attached <- TRUE
 
-		session$onFlushed(function() {
-			  session$sendCustomMessage("initModernWelcome", list())
-			  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-			}, once = TRUE)
+	  session$onFlushed(function() {
+		session$sendCustomMessage("initModernWelcome", list())
+		session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+	  }, once = TRUE)
 	}
 
 	session$userData$initial_saved_chats_promise <- promises::then(
@@ -831,10 +848,28 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
   }
   
   # send_message: main entrypoint
-  send_message <- function(prompt_text) {
-	
-	# Track request start time for performance monitoring
-	request_start_time <- Sys.time()
+	send_message <- function(prompt_text) {
+	  
+	  # Welcome ekranını temizle
+	  if (isTRUE(values$show_welcome)) {
+		values$show_welcome <- FALSE
+		shinyjs::runjs("
+		  $('#welcome_fullscreen_container').addClass('hidden');
+		  if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+			window.WelcomeVideoPlayer.destroy();
+		  }
+		  if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+			window.WelcomeNeuralNetwork.destroy();
+		  }
+		  if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+			window.WelcomeGreeting.destroy();
+		  }
+		")
+		removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
+	  }
+	  
+	  # Track request start time for performance monitoring
+	  request_start_time <- Sys.time()
   
 	# Debounce rapid requests
 	if (values$is_sending) {
@@ -1654,8 +1689,22 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	observeEvent(input$quick_template, {
 	  quick_action_skip_mcp(TRUE)
 	  values$show_welcome <- FALSE
-	  shinyjs::runjs("$('#welcome_fullscreen_container').addClass('hidden').hide();")
+	  
+	  shinyjs::runjs("
+		$('#welcome_fullscreen_container').addClass('hidden');
+		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+		  window.WelcomeVideoPlayer.destroy();
+		}
+		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+		  window.WelcomeNeuralNetwork.destroy();
+		}
+		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		  window.WelcomeGreeting.destroy();
+		}
+	  ")
+	  
 	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
+	  
 	  if (is.list(input$quick_template)) {
 		send_message(input$quick_template$text)
 	  } else {
@@ -2201,6 +2250,20 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  values$current_chat_id <- chat_id
 	  values$show_welcome <- FALSE
 	  
+	# Hide welcome screen when loading a saved chat
+	shinyjs::runjs("
+	  $('#welcome_fullscreen_container').addClass('hidden');
+	  if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+		window.WelcomeVideoPlayer.destroy();
+	  }
+	  if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+		window.WelcomeNeuralNetwork.destroy();
+	  }
+	  if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		window.WelcomeGreeting.destroy();
+	  }
+	")
+	  
 	if (length(values$messages) > 0) {
 	  for (i in seq_along(values$messages)) {
 		msg <- values$messages[[i]]
@@ -2311,11 +2374,25 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   # [Keep all these as they were]
 
 	observeEvent(input$new_chat_btn, {
+	  # Önce mevcut animasyonları tamamen temizle
+	  shinyjs::runjs("
+		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+		  window.WelcomeVideoPlayer.destroy();
+		}
+		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+		  window.WelcomeNeuralNetwork.destroy();
+		}
+		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		  window.WelcomeGreeting.destroy();
+		}
+	  ")
+	  
 	  start_new_chat()
 	  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
 	  
+	  # Yeni welcome ekranı başlat
 	  shinyjs::delay(300, {
-		session$sendCustomMessage("initModernWelcome", list())
+		render_welcome_screen(values$saved_chats, replace_existing = TRUE)
 	  })
 	}, ignoreInit = TRUE)
 

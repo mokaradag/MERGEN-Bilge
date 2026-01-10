@@ -15,19 +15,25 @@ window.WelcomeNeuralNetwork = (function() {
   const connectionDistance = 140;
   const mouse = { x: -1000, y: -1000 };
 
-  function init(canvasElement) {
-    if (!canvasElement) return;
-    
-    canvas = canvasElement;
-    ctx = canvas.getContext('2d');
-    
-    resize();
-    window.addEventListener('resize', resize);
-    window.addEventListener('mousemove', handleMouseMove);
-    
-    createParticles();
-    animate();
-  }
+	function init(canvasElement) {
+	  if (!canvasElement) return;
+	  
+	  // Önceki animasyonları temizle
+	  if (animationId) {
+		cancelAnimationFrame(animationId);
+		animationId = null;
+	  }
+	  
+	  canvas = canvasElement;
+	  ctx = canvas.getContext('2d');
+	  
+	  resize();
+	  window.addEventListener('resize', resize);
+	  window.addEventListener('mousemove', handleMouseMove);
+	  
+	  createParticles();
+	  animate();
+	}
 
   function resize() {
     if (!canvas) return;

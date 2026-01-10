@@ -198,93 +198,96 @@ ui <- dashboardPage(
     
     # --- Tab Content ---
     # The content for each tab defined in the sidebar.
-    tabItems(
+	tabItems(
       # Main Chat Tab (Core UI, not a module)
       tabItem(
         tabName = "chat",
-		div(id = "welcome_fullscreen_container", class = "welcome-fullscreen-wrapper"),
         div(
-          class = "chat-header",
+          id = "chat_main_wrapper",
+          div(id = "welcome_fullscreen_container", class = "welcome-fullscreen-wrapper"),
           div(
-            class = "chat-header-left",
-            h4("Söyleşi", class = "page-title"),
-            # MCP modu göstergesi (Excel veya RData aktifse gösterilir) - moved to left
-            uiOutput("mcp_mode_indicator"),
-            conditionalPanel(
-              condition = "!output.show_welcome_screen",
-              # Karakter avatarı, karakter adı ve model adını göster
-              uiOutput("current_model_display")
-            ),
-            conditionalPanel(
-              condition = "!output.show_welcome_screen",
-              div(
-                class = "chat-stats",
-                tags$span(
-                  class = "stat-item",
-                  tags$i(class = "fas fa-comment-dots"),
-                  textOutput("message_count", inline = TRUE)
+            class = "chat-header",
+            div(
+              class = "chat-header-left",
+              h4("Söyleşi", class = "page-title"),
+              # MCP modu göstergesi (Excel veya RData aktifse gösterilir) - moved to left
+              uiOutput("mcp_mode_indicator"),
+              conditionalPanel(
+                condition = "!output.show_welcome_screen",
+                # Karakter avatarı, karakter adı ve model adını göster
+                uiOutput("current_model_display")
+              ),
+              conditionalPanel(
+                condition = "!output.show_welcome_screen",
+                div(
+                  class = "chat-stats",
+                  tags$span(
+                    class = "stat-item",
+                    tags$i(class = "fas fa-comment-dots"),
+                    textOutput("message_count", inline = TRUE)
+                  )
                 )
               )
-            )
-          ),
-		  
-		  # --- TTS Visualizer Module UI ---
-          ttsVisualizerUI("tts_viz"),
-		  
-          div(
-            class = "chat-header-right chat-actions",
-            actionButton(
-              "new_chat_btn",
-              label = tagList(icon("plus"), span("Yeni Söyleşi", class = "btn-text")),
-              class = "btn-modern btn-primary"
             ),
-            conditionalPanel(
-              condition = "!output.show_welcome_screen",
-              actionButton(
-                "copy_chat_btn",
-                label = tagList(icon("clipboard"), span("Sohbeti Kopyala", class = "btn-text")),
-                class = "btn-modern btn-info"
-              )
-            ),
-            conditionalPanel(
-              condition = "!output.show_welcome_screen",
-              downloadButton("export_current_chat_txt", "Sohbeti Dışa Aktar", class = "btn-modern btn-success")
-            )
-          )
-        ),
-		div(id = "chat_content_container", class = "chat-container"),
-        div(class = "floating-actions", div(id = "scroll_to_bottom_container", actionButton(inputId = "scroll_to_bottom", label = "", icon = icon("angles-down"), class = "fab-button scroll-btn"))),
-        div(
-          class = "input-container",
-          uiOutput("file_prompt_indicator_ui"),
-          div(
-            class = "input-area",
+            
+            # --- TTS Visualizer Module UI ---
+            ttsVisualizerUI("tts_viz"),
+            
             div(
-              id = "chat_input_wrapper",
-              class = "input-wrapper",
-              div(id = "drop_zone", class = "drop-zone hidden", tags$i(class = "fas fa-cloud-upload-alt fa-3x"), p("Dosyaları buraya sürükleyin")),
-              tags$textarea(id = "user_input", class = "chat-input", placeholder = "MERGEN'e bir mesaj yazın... (Dosya yüklemek için sürükleyip bırakın veya ataç simgesine tıklayın.)", rows = 1, autofocus = "autofocus"),
-			  div(
-                class = "input-actions",
-                div(class = "model-selector-wrapper",
-                    uiOutput("chat_model_selector_ui", style = "display:inline-block;")
-                ),
-                div(id = "file_btn_container", class = "action-btn file-btn", title = "Dosya Ekle (Ctrl+U)", tags$label(`for` = "file_upload", tags$i(class = "fas fa-paperclip"))),
-                actionButton(inputId = "voice_btn", label = "", icon = icon("microphone"), class = "action-btn voice-btn", title = "Sesli Giriş"),
+              class = "chat-header-right chat-actions",
+              actionButton(
+                "new_chat_btn",
+                label = tagList(icon("plus"), span("Yeni Söyleşi", class = "btn-text")),
+                class = "btn-modern btn-primary"
+              ),
+              conditionalPanel(
+                condition = "!output.show_welcome_screen",
                 actionButton(
-                  inputId = "send_stop_btn",
-                  label = "", 
-                  icon = icon("paper-plane"), 
-                  class = "send-button", 
-                  title = "Gönder (Enter)"
+                  "copy_chat_btn",
+                  label = tagList(icon("clipboard"), span("Sohbeti Kopyala", class = "btn-text")),
+                  class = "btn-modern btn-info"
                 )
               ),
-              div(style = "display: none;", fileInput("file_upload", label = NULL, multiple = FALSE)) # Single file upload for chat context
+              conditionalPanel(
+                condition = "!output.show_welcome_screen",
+                downloadButton("export_current_chat_txt", "Sohbeti Dışa Aktar", class = "btn-modern btn-success")
+              )
             )
           ),
+          div(id = "chat_content_container", class = "chat-container"),
+          div(class = "floating-actions", div(id = "scroll_to_bottom_container", actionButton(inputId = "scroll_to_bottom", label = "", icon = icon("angles-down"), class = "fab-button scroll-btn"))),
           div(
-            class = "char-counter-wrapper",
-            tags$span(id = "char_counter", "0 / 10000")
+            class = "input-container",
+            uiOutput("file_prompt_indicator_ui"),
+            div(
+              class = "input-area",
+              div(
+                id = "chat_input_wrapper",
+                class = "input-wrapper",
+                div(id = "drop_zone", class = "drop-zone hidden", tags$i(class = "fas fa-cloud-upload-alt fa-3x"), p("Dosyaları buraya sürükleyin")),
+                tags$textarea(id = "user_input", class = "chat-input", placeholder = "MERGEN'e bir mesaj yazın... (Dosya yüklemek için sürükleyip bırakın veya ataç simgesine tıklayın.)", rows = 1, autofocus = "autofocus"),
+                div(
+                  class = "input-actions",
+                  div(class = "model-selector-wrapper",
+                      uiOutput("chat_model_selector_ui", style = "display:inline-block;")
+                  ),
+                  div(id = "file_btn_container", class = "action-btn file-btn", title = "Dosya Ekle (Ctrl+U)", tags$label(`for` = "file_upload", tags$i(class = "fas fa-paperclip"))),
+                  actionButton(inputId = "voice_btn", label = "", icon = icon("microphone"), class = "action-btn voice-btn", title = "Sesli Giriş"),
+                  actionButton(
+                    inputId = "send_stop_btn",
+                    label = "",
+                    icon = icon("paper-plane"),
+                    class = "send-button",
+                    title = "Gönder (Enter)"
+                  )
+                ),
+                div(style = "display: none;", fileInput("file_upload", label = NULL, multiple = FALSE)) # Single file upload for chat context
+              )
+            ),
+            div(
+              class = "char-counter-wrapper",
+              tags$span(id = "char_counter", "0 / 10000")
+            )
           )
         )
       ),
@@ -305,7 +308,7 @@ ui <- dashboardPage(
       # Settings Tab
       tabItem(tabName = "settings", settingsUI("settings_module")),
 
-	  # Admin Analytics Tab (ADMIN only)
+      # Admin Analytics Tab (ADMIN only)
       tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),
 
       # Health Check Tab (modularized)

@@ -40,13 +40,26 @@ window.WelcomeGreeting = (function() {
     return arr;
   }
 
-  function init(element) {
-    textElement = element;
-    if (!textElement) return;
-    
-    indicesQueue = shuffleIndices();
-    pointer = 0;
-    currentIndex = indicesQueue[0];
+	function init(element) {
+	  // Önceki interval'i temizle
+	  if (intervalId) {
+		clearInterval(intervalId);
+		intervalId = null;
+	  }
+	  
+	  textElement = element;
+	  if (!textElement) return;
+	  
+	  // Değişkenleri sıfırla
+	  currentText = '';
+	  currentIndex = 0;
+	  isDeleting = false;
+	  delta = 50;
+	  tickActive = false;
+	  
+	  indicesQueue = shuffleIndices();
+	  pointer = 0;
+	  currentIndex = indicesQueue[0];
     
     tick();
     intervalId = setInterval(tick, delta);

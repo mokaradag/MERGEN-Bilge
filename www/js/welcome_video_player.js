@@ -26,14 +26,19 @@ window.WelcomeVideoPlayer = (function() {
     return arr;
   }
 
-  function init(containerElement) {
-    if (isInitialized) return;
-    
-    container = containerElement;
-    if (!container) return;
+	function init(containerElement) {
+	  if (isInitialized) return;
+	  
+	  // Önceki instance'ları temizle
+	  if (videoElements[0] || videoElements[1]) {
+		destroy();
+	  }
+	  
+	  container = containerElement;
+	  if (!container) return;
 
-    const shuffled = shuffleArray(VIDEO_URLS);
-    currentSources = [shuffled[0], shuffled[1]];
+	  const shuffled = shuffleArray(VIDEO_URLS);
+	  currentSources = [shuffled[0], shuffled[1]];
 
     videoElements[0] = container.querySelector('.modern-welcome-video[data-index="0"]');
     videoElements[1] = container.querySelector('.modern-welcome-video[data-index="1"]');

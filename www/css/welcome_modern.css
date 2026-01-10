@@ -73,20 +73,19 @@
 .modern-welcome-video-overlay {
   position: absolute;
   inset: 0;
-  background: #050505;
-  opacity: 0.15;
+  background: transparent; /* Karartıyı kaldır */
+  opacity: 0;
   z-index: 20;
   pointer-events: none;
-  mix-blend-mode: multiply;
 }
 
 .modern-welcome-video-vignette {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, #050505 0%, transparent 50%, transparent 100%);
+  background: linear-gradient(to top, #050505 0%, transparent 30%, transparent 100%);
   z-index: 20;
   pointer-events: none;
-  opacity: 0.5;
+  opacity: 0.3; /* Opacity'i azalt */
 }
 
 .modern-welcome-neural-side {
@@ -111,8 +110,34 @@
 .modern-welcome-neural-vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle, transparent 0%, rgba(5, 5, 5, 0.6) 100%);
+  background: radial-gradient(circle, transparent 0%, rgba(5, 5, 5, 0.3) 100%);
   pointer-events: none;
+}
+
+.welcome-fullscreen-wrapper {
+  position: fixed !important;
+  top: 70px !important; /* Increased from 50px */
+  left: 250px !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 1000 !important;
+  background: #050505 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  pointer-events: auto !important;
+}
+
+#chat_main_wrapper {
+  position: relative;
+  height: 100%;
+}
+
+.welcome-fullscreen-wrapper.hidden ~ .input-container {
+  display: flex !important;
+}
+
+.welcome-fullscreen-wrapper.hidden ~ .chat-container {
+  display: block !important;
 }
 
 .modern-welcome-content {
@@ -145,6 +170,7 @@
     flex-direction: row;
     min-height: calc(100vh - 260px);
     height: auto;
+    max-width: 1200px; /* Konteyner genişliğini sınırla */
   }
 }
 
@@ -165,15 +191,17 @@
   flex-direction: column;
   justify-content: space-between;
   padding: 2rem;
+  padding-top: 3rem; /* Üstten ekstra boşluk */
   background: rgba(5, 5, 5, 0.4);
   backdrop-filter: blur(24px);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 10px; /* Ana panele üst boşluk */
 }
 
 @media (min-width: 768px) {
   .modern-welcome-left-panel {
-    width: 41.666667%;
-    padding: 3rem;
+    width: 40%; /* Reduced from 45% */
+    padding: 2rem; /* Reduced padding */
   }
 }
 
@@ -193,6 +221,14 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.modern-welcome-recent-title {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .modern-welcome-icon-box {
@@ -215,9 +251,9 @@
 }
 
 .modern-welcome-title-group h1 {
-  font-size: 48px;
+  font-size: 36px; /* Font boyutunu 36px yap */
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.015em; /* Harf aralığını azalt */
   color: white;
   font-family: 'Inter', 'Roboto', -apple-system, system-ui, sans-serif;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
@@ -234,7 +270,7 @@
 }
 
 .modern-welcome-greeting-box {
-  margin-top: 2rem;
+  margin-top: 1rem; /* Reduced from 2rem */
   border-left: 2px solid rgba(0, 242, 255, 0.5);
   padding: 0.5rem 0 0.5rem 1.5rem;
   background: linear-gradient(90deg, rgba(0, 242, 255, 0.05) 0%, transparent 100%);
@@ -283,8 +319,8 @@
 .modern-welcome-footer-section {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 0.5rem; /* Reduced from 1rem */
+  margin-top: 1rem; /* Reduced from 1.5rem */
 }
 
 .modern-welcome-recent-header {
@@ -385,9 +421,10 @@
 }
 
 .modern-welcome-preview-time {
-  font-size: 0.75rem;
-  color: #4b5563;
+  font-size: 13px; /* Font boyutunu büyüt */
+  color: #9ca3af;
   font-family: monospace;
+  letter-spacing: 0.02em; /* Okunabilirliği artır */
 }
 
 .modern-welcome-right-panel {
@@ -396,11 +433,12 @@
   flex-direction: column;
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(32px);
+  margin-top: 10px; /* Ana panele üst boşluk */
 }
 
 @media (min-width: 768px) {
   .modern-welcome-right-panel {
-    width: 58.333333%;
+    width: 60%; /* Adjust to balance width */
   }
 }
 
@@ -455,21 +493,29 @@
 }
 
 .modern-welcome-actions-title {
-  font-size: 28px;
-  font-weight: 300;
+  font-size: 26px; /* Hafif küçült */
+  font-weight: 500; /* Daha kalın yap */
   color: #00f2ff;
-  letter-spacing: 0.025em;
+  letter-spacing: 0.01em; /* Harf aralığını azalt */
+  font-family: 'Inter', 'Roboto', -apple-system, system-ui, sans-serif; /* Font belirt */
 }
 
 .modern-welcome-actions-scroll {
   flex: 1;
   overflow-y: hidden;
+  overflow-x: hidden;
   padding: 1.5rem;
   padding-top: 1rem;
   z-index: 10;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  width: 100%;
+}
+
+.modern-welcome-actions-scroll:hover {
+  overflow-y: hidden;
+  overflow-x: hidden;
 }
 
 @media (min-width: 768px) {
@@ -509,20 +555,22 @@
   grid-template-columns: 1fr;
   gap: 0.75rem;
   padding-bottom: 0;
-  max-width: 550px;
+  max-width: 100%; /* Changed from 550px */
   margin: 0 auto;
+  width: 100%;
 }
 
 .modern-welcome-action-btn {
   all: unset;
   position: relative;
   width: 100%;
-  max-width: 530.16px;
   height: 80px;
-  padding: 5px;
+  padding: 0;
   cursor: pointer;
   transition: all 200ms;
   outline: none;
+  display: block;
+  margin: 0 auto;
 }
 
 .modern-welcome-action-btn:hover {
@@ -558,13 +606,17 @@
 
 .modern-welcome-action-inner {
   position: absolute;
-  inset: 5px;
+  inset: 0;
   display: flex;
   align-items: center;
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(24px);
   transition: all 300ms;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0;
 }
 
 .modern-welcome-action-btn:hover .modern-welcome-action-inner {
@@ -578,7 +630,7 @@
   justify-content: center;
   flex-shrink: 0;
   height: 100%;
-  width: 6rem;
+  width: 80px; /* Fixed width */
   border-right: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 1rem 0 0 1rem;
   background: rgba(255, 255, 255, 0.05);
@@ -610,6 +662,8 @@
   height: 100%;
   padding: 0 1.5rem;
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .modern-welcome-action-label {
@@ -640,9 +694,12 @@
 .modern-welcome-action-arrow {
   display: flex;
   align-items: center;
-  margin-right: 1.5rem;
+  justify-content: center;
+  width: 60px; /* Fixed width */
+  height: 100%;
   color: #4b5563;
   transition: all 300ms;
+  flex-shrink: 0;
 }
 
 .modern-welcome-action-btn:hover .modern-welcome-action-arrow {
@@ -676,6 +733,6 @@
     stroke-dashoffset: 100;
   }
   100% {
-    stroke-dashoffset: 0;
+    stroke-dashoffset: -100;
   }
 }
