@@ -6,7 +6,7 @@
   bottom: 0;
   left: 250px;
   right: 0;
-  padding: 20px;
+  padding: 20px 20px 5px 20px; /* Sadece alt padding 5px oldu */
   z-index: 1001;
   transition: left 0.3s ease-in-out;
   display: flex;

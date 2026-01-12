@@ -238,8 +238,9 @@ server <- function(input, output, session) {
 		return(invisible(NULL))
 	  }
 
-	  # Remove any existing welcome screen
+	  # Mevcut welcome içeriğini ve chat içeriğini tamamen temizle
 	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
+	  removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
 	  
 	  # Clean up animations first
 	  shinyjs::runjs("
@@ -255,7 +256,10 @@ server <- function(input, output, session) {
 	  ")
 	  
 	  # Show container and insert UI
-	  shinyjs::runjs("$('#welcome_fullscreen_container').empty().removeClass('hidden').show();")
+	  shinyjs::runjs("
+		$('#welcome_fullscreen_container').empty().removeClass('hidden').show();
+		$('#chat_content_container').empty().hide(); // Chat içeriğini gizle
+	  ")
 
 	  insertUI(
 		selector = "#welcome_fullscreen_container",
@@ -850,11 +854,12 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
   # send_message: main entrypoint
 	send_message <- function(prompt_text) {
 	  
-	  # Welcome ekranını temizle
+	  # Welcome ekranını tamamen temizle ve chat içeriğini göster
 	  if (isTRUE(values$show_welcome)) {
 		values$show_welcome <- FALSE
 		shinyjs::runjs("
-		  $('#welcome_fullscreen_container').addClass('hidden');
+		  $('#welcome_fullscreen_container').addClass('hidden').empty();
+		  $('#chat_content_container').show();
 		  if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
 			window.WelcomeVideoPlayer.destroy();
 		  }
@@ -1993,10 +1998,37 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  }
 
 	start_new_chat <- function() {
+	  # Önce mevcut animasyonları tamamen temizle
+	  shinyjs::runjs("
+		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+		  window.WelcomeVideoPlayer.destroy();
+		}
+		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+		  window.WelcomeNeuralNetwork.destroy();
+		}
+		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		  window.WelcomeGreeting.destroy();
+		}
+	  ")
+	  
+	  # Chat durumunu sıfırla
 	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)
+	  
+	  # Welcome ekranını aktif et
 	  values$show_welcome <- TRUE
-	  shinyjs::runjs("$('#welcome_fullscreen_container').empty();")
+	  values$messages <- list() # Mesajları temizle
+	  
+	  # Tamamen temizle ve yeniden render et
+	  shinyjs::runjs("
+		$('#welcome_fullscreen_container').empty().removeClass('hidden').show();
+		$('#chat_content_container').empty().hide();
+	  ")
+	  
+	  # Yeni welcome ekranını render et
 	  render_welcome_screen(values$saved_chats, replace_existing = TRUE)
+	  
+	  # Müzik bağlamını genel moda döndür
+	  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
 	}
 
 	# Çok temel bir perspektif düzeltici (fazla agresif olmasın)

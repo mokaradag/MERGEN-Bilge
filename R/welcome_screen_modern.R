@@ -4,7 +4,8 @@
 create_modern_tooltip <- function(description) {
   tags$div(
     class = "modern-tooltip",
-    style = "position: fixed; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.2s ease;",
+    style = "position: fixed; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; display: none;",
+    `data-tooltip-text` = description,
     tags$div(
       class = "modern-tooltip-content",
       style = paste(
@@ -18,8 +19,7 @@ create_modern_tooltip <- function(description) {
         "line-height: 1.5;",
         "backdrop-filter: blur(24px);",
         "box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);"
-      ),
-      description
+      )
     ),
     tags$div(
       class = "modern-tooltip-arrow",
@@ -61,14 +61,14 @@ tags$button(
 		  viewBox = "0 0 530.16 80",
 		  preserveAspectRatio = "none",
 		  style = "overflow: visible;",
-			tags$rect(
-			  x = "5", y = "5", width = "520.16", height = "70",
-			  rx = "16", ry = "16", fill = "none",
-			  stroke = theme_color, `stroke-width` = "6",
-			  `stroke-linecap` = "round", pathLength = "100",
-			  `stroke-dasharray` = "30 70",
-			  style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
-			)
+		  tags$rect(
+			x = "0", y = "0", width = "530.16", height = "80",
+			rx = "16", ry = "16", fill = "none",
+			stroke = theme_color, `stroke-width` = "6",
+			`stroke-linecap` = "round", pathLength = "100",
+			`stroke-dasharray` = "30 70",
+			style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
+		  )
 		)
     ),
     
