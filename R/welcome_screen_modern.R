@@ -52,17 +52,17 @@ tags$button(
   onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); $('#welcome_fullscreen_container').fadeOut(300); return false;",
                       gsub("'", "\\\\'", action_data$message),
                       action_data$model_value),
-  onmouseenter = sprintf("if(window.showModernTooltip) window.showModernTooltip('%s', this, '%s');", tooltip_id, gsub("'", "\\\\'", gsub("`", "\\\\`", action_data$description %||% action_data$title))),
+  onmouseenter = sprintf("if(window.showModernTooltip) window.showModernTooltip('%s', this);", tooltip_id),
   onmouseleave = sprintf("if(window.hideModernTooltip) window.hideModernTooltip('%s');", tooltip_id),
     
-    div(class = "modern-welcome-action-border-trail",
+	div(class = "modern-welcome-action-border-trail",
 		tags$svg(
 		  class = "absolute inset-0 w-full h-full",
-		  viewBox = "0 0 530.16 80",
+		  viewBox = "0 0 530.16 78",
 		  preserveAspectRatio = "none",
 		  style = "overflow: visible;",
 		  tags$rect(
-			x = "0", y = "0", width = "530.16", height = "80",
+			x = "0", y = "1", width = "530.16", height = "78",
 			rx = "16", ry = "16", fill = "none",
 			stroke = theme_color, `stroke-width` = "6",
 			`stroke-linecap` = "round", pathLength = "100",
@@ -70,7 +70,7 @@ tags$button(
 			style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
 		  )
 		)
-    ),
+	),
     
     div(class = "modern-welcome-action-bg"),
     
