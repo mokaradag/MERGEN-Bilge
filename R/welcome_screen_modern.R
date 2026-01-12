@@ -47,7 +47,7 @@ create_modern_welcome_action <- function(action_data) {
   
 tags$button(
   class = "modern-welcome-action-btn",
-  title = action_data$title,
+  title = "",
   style = sprintf("--theme-r: %d; --theme-g: %d; --theme-b: %d;", rgb[1], rgb[2], rgb[3]),
   onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); $('#welcome_fullscreen_container').fadeOut(300); return false;",
                       gsub("'", "\\\\'", action_data$message),
@@ -62,12 +62,12 @@ tags$button(
 		  preserveAspectRatio = "none",
 		  style = "overflow: visible;",
 			tags$rect(
-			  x = "0", y = "0", width = "530.16", height = "80",
-			  rx = "14", ry = "14", fill = "none",
-			  stroke = theme_color, `stroke-width` = "2",
+			  x = "5", y = "5", width = "520.16", height = "70",
+			  rx = "16", ry = "16", fill = "none",
+			  stroke = theme_color, `stroke-width` = "6",
 			  `stroke-linecap` = "round", pathLength = "100",
-			  `stroke-dasharray` = "40 60",
-			  style = sprintf("animation: borderTrail 10s linear infinite; filter: drop-shadow(0 0 6px %s);", theme_color)
+			  `stroke-dasharray` = "30 70",
+			  style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
 			)
 		)
     ),
@@ -122,45 +122,7 @@ create_modern_preview_button <- function(chat_data) {
   )
 }
 
-createModernWelcomeScreen <- function(saved_chats, main_actions) {
-  tags$style(HTML("
-	.welcome-fullscreen-wrapper {
-	  position: fixed !important;
-	  top: 50px !important;
-	  left: 250px !important;
-	  right: 0 !important;
-	  bottom: 0 !important;
-	  z-index: 1000 !important;
-	  background: #050505 !important;
-	  padding: 0 !important;
-	  margin: 0 !important;
-	  pointer-events: auto !important;
-	}
-
-	.welcome-fullscreen-wrapper.hidden {
-	  display: none !important;
-	}
-
-	body:has(.welcome-fullscreen-wrapper:not(.hidden)) .chat-header {
-	  margin-bottom: 0 !important;
-	}
-	
-    .welcome-fullscreen-wrapper .modern-welcome-root {
-      min-height: 100% !important;
-      height: 100% !important;
-    }
-	
-    .welcome-fullscreen-wrapper .modern-welcome-content {
-      padding: 0 !important;
-    }
-	
-    .welcome-fullscreen-wrapper .modern-welcome-card {
-      border-radius: 0 !important;
-      border: none !important;
-      min-height: 100% !important;
-    }
-  "))
-  
+createModernWelcomeScreen <- function(saved_chats, main_actions) { 
   recent_chats <- if (length(saved_chats) > 0) {
     sorted_chats <- Filter(Negate(is.null), saved_chats)
     if (length(sorted_chats) > 0) {

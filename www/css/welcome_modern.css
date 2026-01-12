@@ -144,6 +144,10 @@
   display: block !important;
 }
 
+.welcome-fullscreen-wrapper:not(.hidden) ~ .chat-container {
+  display: none !important;
+}
+
 .modern-welcome-content {
   position: absolute;
   inset: 0;
