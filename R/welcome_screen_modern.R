@@ -45,15 +45,22 @@ create_modern_welcome_action <- function(action_data) {
   
   tooltip_id <- paste0("tooltip_", action_data$id)
   
-tags$button(
-  class = "modern-welcome-action-btn",
-  title = "",
-  style = sprintf("--theme-r: %d; --theme-g: %d; --theme-b: %d;", rgb[1], rgb[2], rgb[3]),
-  onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); $('#welcome_fullscreen_container').fadeOut(300); return false;",
+  # Tooltip HTML'ini doğrudan butonun title attribute'üne ekle
+  # Bu, tarayıcıların yerleşik tooltip mekanizmasını kullanır
+  tooltip_title <- sprintf("%s\n\n%s", action_data$title, action_data$description)
+  
+  tags$button(
+    class = "modern-welcome-action-btn",
+    title = tooltip_title, # Tooltip'i title attribute'üne ekle
+    style = sprintf("--theme-r: %d; --theme-g: %d; --theme-b: %d;", rgb[1], rgb[2], rgb[3]),
+    onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s'}, {priority: 'event'}); $('#welcome_fullscreen_container').fadeOut(300); return false;",
                       gsub("'", "\\\\'", action_data$message),
                       action_data$model_value),
-  onmouseenter = sprintf("if(window.showModernTooltip) window.showModernTooltip('%s', this);", tooltip_id),
-  onmouseleave = sprintf("if(window.hideModernTooltip) window.hideModernTooltip('%s');", tooltip_id),
+    
+    # Tooltip için özel CSS sınıfı ekle
+    `data-toggle` = "tooltip",
+    `data-placement` = "top",
+    `data-html` = "true",
     
 	div(class = "modern-welcome-action-border-trail",
 		tags$svg(
@@ -61,14 +68,14 @@ tags$button(
 		  viewBox = "0 0 530.16 78",
 		  preserveAspectRatio = "none",
 		  style = "overflow: visible;",
-		  tags$rect(
-			x = "0", y = "1", width = "530.16", height = "78",
-			rx = "16", ry = "16", fill = "none",
-			stroke = theme_color, `stroke-width` = "6",
-			`stroke-linecap` = "round", pathLength = "100",
-			`stroke-dasharray` = "30 70",
-			style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
-		  )
+			tags$rect(
+			  x = "3", y = "4", width = "524.16", height = "72",
+			  rx = "14", ry = "14", fill = "none",
+			  stroke = theme_color, `stroke-width` = "2",
+			  `stroke-linecap` = "round", pathLength = "100",
+			  `stroke-dasharray` = "30 70",
+			  style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
+			)
 		)
 	),
     
@@ -91,12 +98,6 @@ tags$button(
               tags$path(d = "m12 5 7 7-7 7")
             )
         )
-    ),
-    
-    tags$div(
-      id = tooltip_id,
-      class = "modern-tooltip",
-      style = "position: fixed; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; display: none;"
     )
   )
 }

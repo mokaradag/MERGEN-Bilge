@@ -205,8 +205,8 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 2rem;
-  padding-top: 0.5rem;
+  padding: 1.5rem; /* Azaltıldı: 2rem → 1.5rem */
+  padding-top: 0.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
   background: rgba(5, 5, 5, 0.4);
   backdrop-filter: blur(24px);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
@@ -215,21 +215,21 @@
 
 @media (min-width: 768px) {
   .modern-welcome-left-panel {
-    width: 40%; /* Reduced from 45% */
-    padding: 2rem; /* Reduced padding */
+    width: 40%;
+    padding: 1.5rem; /* Azaltıldı: 2rem → 1.5rem */
   }
 }
 
 @media (min-width: 1024px) {
   .modern-welcome-left-panel {
-    padding: 4rem;
+    padding: 2rem; /* Azaltıldı: 4rem → 2rem */
   }
 }
 
 .modern-welcome-header-section {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 0.75rem; /* Azaltıldı: 2rem → 0.75rem */
 }
 
 .modern-welcome-branding {
@@ -285,9 +285,9 @@
 }
 
 .modern-welcome-greeting-box {
-  margin-top: 0.25rem;
+  margin-top: 0; /* Kaldırıldı: 0.25rem → 0 */
   border-left: 2px solid rgba(0, 242, 255, 0.5);
-  padding: 0.5rem 0 0.5rem 1.5rem;
+  padding: 0.25rem 0 0.25rem 1.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
   background: linear-gradient(90deg, rgba(0, 242, 255, 0.05) 0%, transparent 100%);
   border-radius: 0 0.5rem 0.5rem 0;
 }
@@ -295,7 +295,7 @@
 .modern-welcome-greeting-container {
   display: flex;
   align-items: center;
-  height: 6rem;
+  height: 4rem; /* Azaltıldı: 6rem → 4rem */
 }
 
 .modern-welcome-greeting-text {
@@ -334,8 +334,8 @@
 .modern-welcome-footer-section {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  gap: 0.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
+  margin-top: 0.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
 }
 
 .modern-welcome-recent-header {
@@ -467,22 +467,22 @@
 
 .modern-welcome-actions-header {
   flex: none;
-  padding: 1.5rem;
-  padding-bottom: 0.5rem;
+  padding: 0.75rem; /* Azaltıldı: 1.5rem → 0.75rem */
+  padding-bottom: 0.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
   z-index: 10;
 }
 
 @media (min-width: 768px) {
   .modern-welcome-actions-header {
-    padding: 3rem;
-    padding-bottom: 0.5rem;
+    padding: 1.5rem; /* Azaltıldı: 3rem → 1.5rem */
+    padding-bottom: 0.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
   }
 }
 
 @media (min-width: 1024px) {
   .modern-welcome-actions-header {
-    padding: 4rem;
-    padding-bottom: 0.5rem;
+    padding: 2rem; /* Azaltıldı: 4rem → 2rem */
+    padding-bottom: 0.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
   }
 }
 
@@ -518,12 +518,12 @@
   flex: 1;
   overflow-y: hidden;
   overflow-x: hidden;
-  padding: 1.5rem;
-  padding-top: 0.5rem;
+  padding: 0.75rem; /* Azaltıldı: 1.5rem → 0.75rem */
+  padding-top: 0.25rem; /* Azaltıldı: 0.5rem → 0.25rem */
   z-index: 10;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start; /* Değiştirildi: center → flex-start */
   width: 100%;
 }
 
@@ -534,15 +534,15 @@
 
 @media (min-width: 768px) {
   .modern-welcome-actions-scroll {
-    padding: 3rem;
-    padding-top: 1rem;
+    padding: 1.5rem; /* Azaltıldı: 3rem → 1.5rem */
+    padding-top: 0.5rem; /* Azaltıldı: 1rem → 0.5rem */
   }
 }
 
 @media (min-width: 1024px) {
   .modern-welcome-actions-scroll {
-    padding: 4rem;
-    padding-top: 1rem;
+    padding: 2rem; /* Azaltıldı: 4rem → 2rem */
+    padding-top: 0.5rem; /* Azaltıldı: 1rem → 0.5rem */
   }
 }
 
@@ -749,4 +749,26 @@
   100% {
     stroke-dashoffset: -100;
   }
+}
+
+/* Snake trail için ek stil düzeltmeleri */
+.modern-welcome-action-border-trail {
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  opacity: 0;
+  transition: opacity 300ms;
+  pointer-events: none;
+  overflow: hidden; /* Değiştirildi: visible → hidden (taşmayı önlemek için) */
+  z-index: 5;
+}
+
+.modern-welcome-action-border-trail svg {
+  position: absolute;
+  top: -2px; /* Düzeltme: Üst boşluğu kapat */
+  left: -2px; /* Düzeltme: Sol boşluğu kapat */
+  right: -2px; /* Düzeltme: Sağ boşluğu kapat */
+  bottom: -2px; /* Düzeltme: Alt boşluğu kapat */
+  width: calc(100% + 4px); /* Düzeltme: Tam kapsama */
+  height: calc(100% + 4px); /* Düzeltme: Tam kapsama */
 }
