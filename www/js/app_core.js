@@ -287,6 +287,8 @@ $(document).ready(function() {
 		tooltip.remove();
 		$(this).removeData('custom-tooltip');
 	  }
+	  // Tüm custom tooltip'leri temizle
+	  $('.custom-tooltip').remove();
 	});
 
 	$(document).on('shiny:inputchanged', function(event) {
