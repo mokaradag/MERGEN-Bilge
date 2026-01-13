@@ -239,64 +239,68 @@ $(document).ready(function() {
   // Bootstrap tooltip'leri başlat
   $(document).ready(function() {
     // Modern welcome ekranındaki butonlar için tooltip'leri başlat
-    $(document).on('mouseenter', '.modern-welcome-action-btn', function() {
-      // Bootstrap tooltip'ini manuel olarak tetikle
-      const title = $(this).attr('title');
-      if (title && title.trim() !== '') {
-        // Geçici tooltip oluştur
-        const tooltip = $('<div class="custom-tooltip"></div>')
-          .text(title)
-          .css({
-            position: 'fixed',
-            'z-index': '9999',
-            'background-color': 'rgba(0, 0, 0, 0.9)',
-            color: '#fff',
-            padding: '8px 12px',
-            'border-radius': '4px',
-            'font-size': '14px',
-            'max-width': '300px',
-            'white-space': 'pre-wrap',
-            'word-wrap': 'break-word'
-          })
-          .appendTo('body');
-        
-        // Pozisyonu ayarla
-        const btnRect = this.getBoundingClientRect();
-        tooltip.css({
-          top: (btnRect.top - tooltip.outerHeight() - 10) + 'px',
-          left: (btnRect.left + (btnRect.width / 2) - (tooltip.outerWidth() / 2)) + 'px'
-        });
-        
-        // Referansı sakla
-        $(this).data('custom-tooltip', tooltip);
-        
-        // Orijinal title'ı temizle (çift tooltip'i önlemek için)
-        $(this).removeAttr('title');
-      }
-    });
+	$(document).on('mouseenter', '.modern-welcome-action-btn', function() {
+	  const title = $(this).data('original-title');
+	  if (title && title.trim() !== '') {
+		const tooltip = $('<div class="custom-tooltip"></div>')
+		  .text(title)
+		  .css({
+			position: 'fixed',
+			'z-index': '9999',
+			'background-color': 'rgba(0, 0, 0, 0.95)',
+			color: '#fff',
+			padding: '10px 14px',
+			'border-radius': '8px',
+			'font-size': '13px',
+			'max-width': '280px',
+			'white-space': 'pre-wrap',
+			'word-wrap': 'break-word',
+			'border': '1px solid rgba(255, 255, 255, 0.1)',
+			'backdrop-filter': 'blur(10px)',
+			'box-shadow': '0 8px 24px rgba(0, 0, 0, 0.4)',
+			'pointer-events': 'none'
+		  })
+		  .appendTo('body');
+		
+		const btnRect = this.getBoundingClientRect();
+		tooltip.css({
+		  top: (btnRect.top - tooltip.outerHeight() - 12) + 'px',
+		  left: (btnRect.left + (btnRect.width / 2) - (tooltip.outerWidth() / 2)) + 'px'
+		});
+		
+		$(this).data('custom-tooltip', tooltip);
+	  }
+	});
     
-    $(document).on('mouseleave', '.modern-welcome-action-btn', function() {
-      // Tooltip'i kaldır
-      const tooltip = $(this).data('custom-tooltip');
-      if (tooltip) {
-        tooltip.remove();
-        $(this).removeData('custom-tooltip');
-        
-        // Orijinal title'ı geri yükle
-        const originalTitle = $(this).data('original-title');
-        if (originalTitle) {
-          $(this).attr('title', originalTitle);
-        }
-      }
-    });
+	$(document).on('mouseleave', '.modern-welcome-action-btn', function() {
+	  const tooltip = $(this).data('custom-tooltip');
+	  if (tooltip) {
+		tooltip.remove();
+		$(this).removeData('custom-tooltip');
+	  }
+	});
     
     // Sayfa yüklendiğinde orijinal title'ları sakla
-    $('.modern-welcome-action-btn').each(function() {
-      const title = $(this).attr('title');
-      if (title) {
-        $(this).data('original-title', title);
-      }
-    });
-  });
+	$(document).on('click', '.modern-welcome-action-btn', function() {
+	  const tooltip = $(this).data('custom-tooltip');
+	  if (tooltip) {
+		tooltip.remove();
+		$(this).removeData('custom-tooltip');
+	  }
+	});
 
+	$(document).on('shiny:inputchanged', function(event) {
+	  if (event.name === 'quick_template') {
+		$('.custom-tooltip').remove();
+	  }
+	});
+
+	$('.modern-welcome-action-btn').each(function() {
+	  const title = $(this).attr('title');
+	  if (title) {
+		$(this).data('original-title', title);
+		$(this).removeAttr('title');
+	  }
+	});
+  });
 });

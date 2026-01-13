@@ -69,12 +69,12 @@ create_modern_welcome_action <- function(action_data) {
 		  preserveAspectRatio = "none",
 		  style = "overflow: visible;",
 			tags$rect(
-			  x = "3", y = "4", width = "524.16", height = "72",
-			  rx = "14", ry = "14", fill = "none",
-			  stroke = theme_color, `stroke-width` = "2",
+			  x = "2.5", y = "2.5", width = "525.16", height = "73",
+			  rx = "15.5", ry = "15.5", fill = "none",
+			  stroke = theme_color, `stroke-width` = "4.5",
 			  `stroke-linecap` = "round", pathLength = "100",
 			  `stroke-dasharray` = "30 70",
-			  style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 4px %s);", theme_color)
+			  style = sprintf("animation: borderTrail 12s linear infinite; filter: drop-shadow(0 0 6px %s);", theme_color)
 			)
 		)
 	),
