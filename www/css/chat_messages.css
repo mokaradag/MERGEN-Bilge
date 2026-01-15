@@ -192,20 +192,6 @@
   color: white !important;
 }
 
-/* DÜZELTME #2: Beğen/Beğenme butonu renkleri */
-.message-action-btn.active[id^="like_"],
-.message-action-btn.like-btn.active.liked {
-  background: #0d7a0d !important;
-  color: white !important;
-  box-shadow: 0 2px 4px rgba(13, 122, 13, 0.3) !important;
-}
-
-.message-action-btn.dislike-btn.active.disliked {
-  background: #a41e3c !important;
-  color: white !important;
-  box-shadow: 0 2px 4px rgba(164, 30, 60, 0.3) !important;
-}
-
 /* Mesaj İçeriği */
 .message-content {
   padding: 20px;

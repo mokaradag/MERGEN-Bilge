@@ -16,14 +16,16 @@
 }
 
 /* Beğeni butonu aktif durumu */
-.message-action-btn.like-btn.active.liked {
+.message-action-btn.like-btn.active,
+.message-action-btn.like-btn.liked {
   background: #0d7a0d !important;
   color: white !important;
   box-shadow: 0 2px 4px rgba(13, 122, 13, 0.3) !important;
 }
 
 /* Beğenmeme butonu aktif durumu */
-.message-action-btn.dislike-btn.active.disliked {
+.message-action-btn.dislike-btn.active,
+.message-action-btn.dislike-btn.disliked {
   background: #a41e3c !important;
   color: white !important;
   box-shadow: 0 2px 4px rgba(164, 30, 60, 0.3) !important;

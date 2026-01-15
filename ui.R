@@ -112,6 +112,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/empty_state.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/animations_extra.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/message_actions.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/feedback_modal.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -179,6 +180,7 @@ ui <- dashboardPage(
     tags$script(src = "js/tts_manager.js"),
     tags$script(src = "js/character_manager.js"),
     tags$script(src = "js/shortcuts_manager.js"),
+	tags$script(src = "js/feedback_modal.js"),
     tags$script(src = "js/music_manager.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
@@ -195,6 +197,9 @@ ui <- dashboardPage(
         tags$span("Bilge", class = "intro-text-secondary")
       )
     ),
+	
+	# Geri bildirim modalı
+	feedbackUI("feedback_module"),
     
     # --- Tab Content ---
     # The content for each tab defined in the sidebar.

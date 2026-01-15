@@ -4,8 +4,9 @@
 chatActionsInit <- function(input, session, values,
                             current_user_id,
                             send_message_fn,
-                            stop_generation,          # reactiveVal from server
-                            reset_chat_state) {       # function from server
+                            stop_generation,
+                            reset_chat_state,
+                            feedback_modal = NULL) {
   message_to_edit_id <- shiny::reactiveVal(NULL)
 
   # Optional: prevent accidental double-handling of the same click within 250ms
@@ -37,9 +38,13 @@ chatActionsInit <- function(input, session, values,
       } else {
         values$liked_messages    <- union(values$liked_messages,    as.character(db_id))
         values$disliked_messages <- setdiff(values$disliked_messages, as.character(db_id))
-        save_feedback_to_db(current_user_id, db_id, "like")
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "like"))
-        showToast(session, "Geri bildiriminiz için teşekkür ederiz.", "success")
+		if (!is.null(feedback_modal) && is.function(feedback_modal$open)) {
+          feedback_modal$open(db_id, "like", on_cancel = function() {
+            values$liked_messages <- setdiff(values$liked_messages, as.character(db_id))
+            session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_like"))
+          })
+        }
       }
     } else {
       showToast(session, "Lütfen yanıt tamamlandıktan sonra beğenin.", "warning")
@@ -65,9 +70,13 @@ chatActionsInit <- function(input, session, values,
       } else {
         values$disliked_messages <- union(values$disliked_messages, as.character(db_id))
         values$liked_messages    <- setdiff(values$liked_messages,    as.character(db_id))
-        save_feedback_to_db(current_user_id, db_id, "dislike")
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "dislike"))
-        showToast(session, "Geri bildiriminiz için teşekkür ederiz.", "success")
+		if (!is.null(feedback_modal) && is.function(feedback_modal$open)) {
+          feedback_modal$open(db_id, "dislike", on_cancel = function() {
+            values$disliked_messages <- setdiff(values$disliked_messages, as.character(db_id))
+            session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_dislike"))
+          })
+        }
       }
     } else {
       showToast(session, "Lütfen yanıt tamamlandıktan sonra beğenmeyin.", "warning")

@@ -114,6 +114,9 @@ server <- function(input, output, session) {
 
   # --- Module Server Initialization (Yukarı Taşındı) ---
   settings_data <- settingsServer("settings_module", parent_session = session)
+  
+  # Geri bildirim modülü
+  feedback_modal <- feedbackServer("feedback_module", current_user_id)
     
   observeEvent(input$`settings_module-open_api_key_modal`, {
     api_key$open("API Anahtarı Güncelleme")
@@ -1539,8 +1542,55 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	current_user_id      = current_user_id,
 	send_message_fn      = send_message,
 	stop_generation      = stop_generation,
-	reset_chat_state     = reset_chat_state
+	reset_chat_state     = reset_chat_state,
+	feedback_modal       = feedback_modal
   )
+
+  # UI Button Synchronization Observer
+  # Geri bildirim verisi degistiginde buton renklerini JS ile guncelle
+  observe({
+    liked_db_ids <- as.character(values$liked_messages %||% character(0))
+    disliked_db_ids <- as.character(values$disliked_messages %||% character(0))
+    
+    current_msgs <- values$messages
+    dom_liked <- character(0)
+    dom_disliked <- character(0)
+    
+    if (length(current_msgs) > 0) {
+      for (m in current_msgs) {
+        if (!is.null(m$db_id) && !is.na(m$db_id)) {
+          mid_str <- as.character(m$db_id)
+          if (mid_str %in% liked_db_ids) {
+            dom_liked <- c(dom_liked, m$id)
+          } else if (mid_str %in% disliked_db_ids) {
+            dom_disliked <- c(dom_disliked, m$id)
+          }
+        }
+      }
+    }
+    
+    shinyjs::runjs(sprintf("
+      $('.message-action-btn.like-btn').removeClass('active liked');
+      $('.message-action-btn.dislike-btn').removeClass('active disliked');
+      
+      var liked = %s;
+      if (liked && liked.length) {
+        liked.forEach(function(id) {
+           $('#like_' + id).addClass('active liked');
+        });
+      }
+      
+      var disliked = %s;
+      if (disliked && disliked.length) {
+        disliked.forEach(function(id) {
+           $('#dislike_' + id).addClass('active disliked');
+        });
+      }
+    ", 
+    jsonlite::toJSON(dom_liked, auto_unbox = FALSE),
+    jsonlite::toJSON(dom_disliked, auto_unbox = FALSE)
+    ))
+  })
 
   observeEvent(input$quick_action_model_change, {
     req(input$quick_action_model_change)

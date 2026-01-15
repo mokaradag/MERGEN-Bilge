@@ -1,0 +1,57 @@
+/* www/css/custom_buttons.css - Özel Buton Stilleri */
+
+/* Kopyalama butonu stili (Mavi-İndigo) */
+.btn-info {
+  background: linear-gradient(135deg, #3b82f6, #6366f1) !important;
+  color: white !important;
+}
+
+.btn-info:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Uyarı/Temizleme butonu stili (Turuncu) */
+.btn-warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: white !important;
+  border: none !important;
+}
+
+.btn-warning:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3) !important;
+}
+
+/* Limit artırımı vb. için aksan butonu */
+.btn-rate {
+  background: linear-gradient(135deg, #6366f1, #4338ca) !important;
+  color: #f8fafc !important;
+  border: none !important;
+}
+
+.btn-rate:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+}
+
+/* Dosya indirme butonu */
+.file-action-btn.file-download {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: none !important;
+  color: var(--text-secondary) !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all var(--transition-fast) !important;
+  cursor: pointer !important;
+  position: relative !important;
+}
+
+.file-action-btn.file-download:hover {
+  background: rgba(42, 157, 143, 0.2) !important;
+  color: #2a9d8f !important;
+}
