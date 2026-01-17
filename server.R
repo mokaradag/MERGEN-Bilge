@@ -412,8 +412,16 @@ server <- function(input, output, session) {
 	output$mcp_mode_indicator <- renderUI({
 	  excel_active <- isTRUE(settings_data$enable_mcp_tools)
 	  sql_analysis_active <- isTRUE(settings_data$enable_rdata_tools)
+	  summarization_active <- isTRUE(settings_data$enable_summarization_tools)
 	  
-	  if (excel_active) {
+	  # Summarization aktifse ve dosya varsa göster
+	  if (summarization_active && length(isolate(session_files())) > 0) {
+		div(
+		  class = "mcp-indicator summarization-active",
+		  tags$i(class = "fas fa-file-alt"),
+		  span("Dosya Özetleme")
+		)
+	  } else if (excel_active) {
 		div(
 		  class = "mcp-indicator excel-active",
 		  tags$i(class = "fas fa-file-excel"),
@@ -881,12 +889,31 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	  
 	  # Track request start time for performance monitoring
 	  request_start_time <- Sys.time()
-  
-	# Debounce rapid requests
-	if (values$is_sending) {
-	  showToast(session, "Lütfen önceki isteğin tamamlanmasını bekleyin.", "warning")
-	  return()
-	}
+
+	  # Debounce rapid requests
+	  if (values$is_sending) {
+		showToast(session, "Lütfen önceki isteğin tamamlanmasını bekleyin.", "warning")
+		return()
+	  }
+	  
+	  # EĞER DOSYA ÖZETLEME MODU AKTİFSE VE KULLANICI MESAJI VARSA, 
+	  # MESAJI DOSYA ÖZETLEME BAĞLAMINDA İŞLE
+	  if (isTRUE(settings_data$enable_summarization_tools) && 
+		  length(isolate(session_files())) > 0 &&
+		  !is.null(prompt_text) && nzchar(trimws(as.character(prompt_text)))) {
+		
+		# Summarization modunda olduğumuzu belirle
+		skip_mcp_once <<- FALSE
+		current_settings <- reactiveValuesToList(settings_data)
+		current_settings$enable_summarization_tools <- TRUE
+		current_settings$enable_rdata_tools <- FALSE
+		current_settings$enable_mcp_tools <- FALSE
+		
+		# Summarization modunda işle
+		handle_summarization_mode <- TRUE
+	  } else {
+		handle_summarization_mode <- FALSE
+	  }
 	
 	# Check last request time (prevent rapid fire)
 	if (!is.null(values$last_request_time)) {
@@ -918,119 +945,21 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	cfg_excel_on <- isTRUE(settings_data$enable_mcp_tools)
 	cfg_sql_analysis_on <- isTRUE(settings_data$enable_rdata_tools)
 
-  if (isTRUE(is_summarization_request)) {
-    
-    values$typing <- TRUE
-    if (isTRUE(settings_data$enable_typing_indicator)) {
-      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-      insertUI(
-        selector = "#chat_content_container", 
-        where = "beforeEnd",
-        ui = div(
-          id = "typing-animation-wrapper", 
-          class = "message-bubble", 
-          style = "display: flex; justify-content: center; padding: 20px;",
-          div(class = "ring", "Belgeleriniz özetleniyor", span())
-        ),
-        immediate = TRUE
-      )
-    }
-    
-    # Get files with "Model Bağlamı" selected from file manager
-    current_session_files <- isolate(session_files())
-    
-    # Also try to get files directly from file manager if session_files is empty
-    if (length(current_session_files) == 0 && !is.null(file_manager_data)) {
-      tryCatch({
-        fm_files <- file_manager_data$file_contents()
-        if (length(fm_files) > 0) {
-          # Filter files that have "Model Bağlamı" selected
-          model_context_files <- list()
-          for (fname in names(fm_files)) {
-            fobj <- fm_files[[fname]]
-            # Check if this file is marked for model context
-            # Assuming file_manager_data has a way to check this
-            # If not, we'll use all files in the manager
-            model_context_files[[fname]] <- fobj
-          }
-          current_session_files <- model_context_files
-        }
-      }, error = function(e) {
-        log_error("[SUMMARIZATION] Error getting files from file manager: {conditionMessage(e)}")
-      })
-    }
-    
-    if (length(current_session_files) == 0) {
-      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-      values$typing <- FALSE
-      showToast(session, "Özetlenecek dosya bulunamadı. Lütfen Dosya Yönetimi sayfasına gidin, dosya yükleyin ve 'Model Bağlamı' seçeneğini işaretleyin.", "warning")
-      return(invisible(NULL))
-    }
-    
-    log_info("[SUMMARIZATION] Starting summarization for {length(current_session_files)} files")
-    
-    source("R/module_summarization.R", encoding = "UTF-8")
-    
-    # For 256k models, we can increase the character limit
-    max_chars <- if (grepl("256k|256K", settings_data$model_selection %||% "")) {
-      200000  # Increased limit for 256k models
-    } else {
-      120000  # Default limit
-    }
-    
-    p <- process_summarization_request(
-      file_list = current_session_files,
-      session = session,
-      settings = settings_data,
-      ai_processor = ai_processor,
-      max_chars_per_file = max_chars
-    )
-	  
-	  promises::then(
-		p,
-		onFulfilled = function(result) {
-		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-		  values$typing <- FALSE
-		  
-		  if (!result$success) {
-			showToast(session, result$message, "error")
-			add_message(result$message, "ai")
-			return(invisible(NULL))
-		  }
-		  
-		  user_msg <- if (nchar(user_message_text) > 0) {
-			user_message_text
-		  } else {
-			paste(result$file_count, "dosya için özet istendi")
-		  }
-		  
-		  add_message(user_msg, "user")
-		  add_message(result$summary, "ai")
-		  
-		  showToast(session, paste(result$file_count, "dosya başarıyla özetlendi."), "success")
-		},
-		onRejected = function(err) {
-		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-		  values$typing <- FALSE
-		  showToast(session, paste("Özetleme hatası:", conditionMessage(err)), "error")
-		}
-	  )
-	  
-	  return(invisible(NULL))
-	}
-
 	skip_mcp_once <- isTRUE(quick_action_skip_mcp())
 	if (skip_mcp_once) quick_action_skip_mcp(FALSE)
 
 	excel_allowed <- cfg_excel_on && uploaded_count > 0
+	cfg_summarization_on <- isTRUE(settings_data$enable_summarization_tools)
 
 	if (skip_mcp_once) {
 	  tool_family <- "none"
-    } else if (cfg_sql_analysis_on) {
-      tool_family <- "sql_analysis"
-      current_settings$max_output_tokens <- 4096
+	} else if (cfg_sql_analysis_on) {
+	  tool_family <- "sql_analysis"
+	  current_settings$max_output_tokens <- 4096
 	} else if (excel_allowed) {
 	  tool_family <- "mcp_excel"
+	} else if (cfg_summarization_on && uploaded_count > 0) {  # DEĞİŞİKLİK: Dosya kontrolü eklendi
+	  tool_family <- "summarization"
 	} else {
 	  tool_family <- "none"
 	}
@@ -1154,7 +1083,7 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	character_data <- if (!is.null(chars_data)) {
 	  Find(function(x) x$id == selected_char_id, chars_data$styles)
 	} else NULL
-	
+
 	# Use character's system prompt or fallback
 	base_instruction <- if (!is.null(character_data)) {
 	  character_data$system_prompt_en
@@ -1179,8 +1108,18 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 		"Do NOT use inline [Source: ...] citations. "
 	  )
 	}
-	
-	style_instruction <- paste0(base_instruction, citation_instruction)
+
+	# SUMMARIZATION MODE: Use existing summarization prompts from helpers_summarization_prompts.R
+	if (identical(tool_family, "summarization") && uploaded_count > 0) {
+	  # Use the existing summarization system prompt
+	  style_instruction <- build_summarization_system_prompt(
+		file_count = uploaded_count,
+		total_chars = 0  # Will be calculated when needed
+	  )
+	} else {
+	  # Normal system prompt for other modes
+	  style_instruction <- paste0(base_instruction, citation_instruction)
+	}
 	
 	# Get temperature from character
 	temperature_value <- if (!is.null(character_data) && !is.null(character_data$parameters$temperature)) {
@@ -1195,8 +1134,112 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	
 	cat(sprintf("[STYLE] Using character: %s (temp: %.2f)\n", selected_char_id, temperature_value))
 	
-	# Türkçe yorum: MCP Excel'de araçları kullan; MCP kapalıyken özet/alıntı metinlerini enjekte et
-	if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
+	# DOSYA ÖZETLEME MODU: Mevcut özetleme altyapısını kullan
+	if (identical(tool_family, "summarization") && uploaded_count > 0) {
+	  
+	  # HATAYI ÖNLE: summarization modunda özel system prompt kullan
+	  style_instruction <- build_summarization_system_prompt(
+		file_count = uploaded_count,
+		total_chars = 0
+	  )
+	  
+	  # System mesajını güncelle
+	  system_msg <- list(type = "system", content = style_instruction)
+	  
+	  # Dosya içeriklerini al
+	  current_session_files <- isolate(session_files())
+	  
+	  # Eğer boşsa, file_manager'dan almayı dene
+	  if (length(current_session_files) == 0) {
+		fm_files <- isolate(file_manager_data$file_contents())
+		if (length(fm_files) > 0) {
+		  current_session_files <- list()
+		  for (fid in names(fm_files)) {
+			fobj <- fm_files[[fid]]
+			current_session_files[[fobj$name]] <- fobj
+		  }
+		}
+	  }
+	  
+	  # HATA KONTROLÜ: Dosyalar yoksa normal moda geç
+	  if (length(current_session_files) == 0) {
+		showToast(session, "Özetleme modunda ancak özetlenecek dosya bulunamadı.", "warning")
+		messages_to_process <- c(list(system_msg), recent_messages)
+	  } else {
+		# Mevcut module_summarization.R fonksiyonunu kullan
+		source("R/module_summarization.R", encoding = "UTF-8", local = TRUE)
+		
+		# summarization modunda özel AI çağrısı yap
+		max_chars <- if (grepl("256k|256K", settings_data$model_selection %||% "")) {
+		  200000
+		} else {
+		  120000
+		}
+		
+		# Özetleme işlemini başlat
+		values$typing <- TRUE
+		if (isTRUE(settings_data$enable_typing_indicator)) {
+		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+		  insertUI(
+			selector = "#chat_content_container", 
+			where = "beforeEnd",
+			ui = div(
+			  id = "typing-animation-wrapper", 
+			  class = "message-bubble", 
+			  style = "display: flex; justify-content: center; padding: 20px;",
+			  div(class = "ring", "Belgeleriniz özetleniyor", span())
+			),
+			immediate = TRUE
+		  )
+		}
+		
+		# Promise ile özetleme
+		p <- process_summarization_request(
+		  file_list = current_session_files,
+		  session = session,
+		  settings = settings_data,
+		  ai_processor = ai_processor,
+		  max_chars_per_file = max_chars
+		)
+		
+		promises::then(
+		  p,
+		  onFulfilled = function(result) {
+			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+			values$typing <- FALSE
+			
+			if (!result$success) {
+			  showToast(session, result$message, "error")
+			  add_message(result$message, "ai")
+			  return(invisible(NULL))
+			}
+			
+			user_msg <- if (nchar(user_message_text) > 0) {
+			  user_message_text
+			} else {
+			  paste(result$file_count, "dosya için özet istendi")
+			}
+			
+			add_message(user_msg, "user")
+			add_message(result$summary, "ai")
+			
+			showToast(session, paste(result$file_count, "dosya başarıyla özetlendi."), "success")
+			
+			# Summarization modunu sürdür (tool_family değişmez)
+			reset_chat_state()
+		  },
+		  onRejected = function(err) {
+			removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+			values$typing <- FALSE
+			showToast(session, paste("Özetleme hatası:", conditionMessage(err)), "error")
+			reset_chat_state()
+		  }
+		)
+		
+		# Fonksiyonu burada sonlandır (promise işlenecek)
+		return(invisible(NULL))
+	  }
+	} else if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
 	  file_list_text <- paste0(
 		"\n\nDOSYA BİLGİSİ:\n",
 		"Toplam ", uploaded_count, " dosya yüklü:\n",
@@ -1726,6 +1769,47 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     
     log_info(paste("[MAIN_CHAT] Hızlı model değişimi:", new_model_id))
   }, ignoreInit = TRUE)
+  
+	# Özetleme Desteği quick action butonu için
+	observeEvent(input$quick_action_summarization, {
+	  req(input$quick_action_summarization)
+	  
+	  # Dosya Özetleme modunu aktif et
+	  isolate({
+		settings_data$enable_summarization_tools <- TRUE
+		settings_data$enable_rdata_tools <- FALSE
+		settings_data$enable_mcp_tools <- FALSE
+	  })
+	  
+	  # Settings modülündeki checkbox'ları güncelle
+	  updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = TRUE)
+	  updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
+	  updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+	  
+	  # Toast mesajı göster
+	  showToast(session, "Dosya Özetleme modu aktif edildi. Şimdi dosyaları özetleyebilirsiniz.", "success")
+	  
+	  # Welcome ekranını kapat ve chat'e geç
+	  if (isTRUE(values$show_welcome)) {
+		values$show_welcome <- FALSE
+		shinyjs::runjs("
+		  $('#welcome_fullscreen_container').addClass('hidden').empty();
+		  $('#chat_content_container').show();
+		")
+	  }
+	  
+	  # Eğer dosyalar varsa, hemen özetleme başlat
+	  current_files <- isolate(session_files())
+	  if (length(current_files) > 0) {
+		# Send empty message to trigger summarization
+		shinyjs::delay(500, {
+		  send_message("")
+		})
+	  } else {
+		# Dosya yoksa bilgilendir
+		showToast(session, "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
+	  }
+	}, ignoreInit = TRUE)
 	
   # 1. Model Seçici Dropdown (Ana Söyleşi Ekranı için)
   output$chat_model_selector_ui <- renderUI({
@@ -1871,11 +1955,39 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		input$quick_template
 	  }
 	  
-	  is_summarization <- identical(template_text, "__SUMMARIZATION_REQUEST__")
-	  
-	  if (is_summarization) {
-		send_message("", is_summarization_request = TRUE)
+	  # Check if this is the summarization quick action
+	  if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
+		# Dosya Özetleme modunu aktif et
+		isolate({
+		  settings_data$enable_summarization_tools <- TRUE
+		  settings_data$enable_rdata_tools <- FALSE
+		  settings_data$enable_mcp_tools <- FALSE
+		})
+		
+		# Settings modülündeki checkbox'ları güncelle
+		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = TRUE)
+		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+		
+		# Toast mesajı göster
+		showToast(session, "Dosya Özetleme modu aktif edildi. Şimdi dosyaları özetleyebilirsiniz.", "success")
+		
+		# Welcome ekranını kapat ve chat'e geç
+		shinyjs::runjs("$('#chat_content_container').show();")
+		
+		# Eğer dosyalar varsa, hemen özetleme başlat
+		current_files <- isolate(session_files())
+		if (length(current_files) > 0) {
+		  # Send empty message to trigger summarization mode
+		  shinyjs::delay(500, {
+			send_message("")
+		  })
+		} else {
+		  # Dosya yoksa bilgilendir
+		  showToast(session, "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
+		}
 	  } else {
+		# Normal template
 		send_message(template_text)
 	  }
 	}, ignoreInit = TRUE)

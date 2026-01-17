@@ -17,6 +17,12 @@ build_summarization_system_prompt <- function(file_count = 1, total_chars = 0) {
     "- Tablo verilerini düzenli şekilde sun",
     "- Bölümler arası geçişleri açık ve net yap",
     "- Her bölüm sonunda kısa bir değerlendirme ekle",
+    "\n\nKATI KURALLAR (ASLA İHLAL ETME):",
+    "- YALNIZCA sağlanan belge içeriğini kullan, ASLA ek bilgi uydurma",
+    "- Eğer belgede bir bilgi yoksa, onu ASLA ekleme veya tahmin etme",
+    "- Dosya adından içerik tahmini YAPMA, yalnızca sağlanan metni kullan",
+    "- Belgede olmayan hiçbir konuyu, veriyi veya detayı ekleme",
+    "- Eksik bilgi varsa, bunu 'belgede bulunamadı' şeklinde belirt",
     "\n\nÖZEL TALİMATLAR (256K BAĞLAM İÇİN):",
     "- Bağlam penceren çok geniş (256K), bu nedenle hiçbir detayı atlama",
     "- Uzun belgelerde bile tüm bölümleri eksiksiz işle",
@@ -27,7 +33,9 @@ build_summarization_system_prompt <- function(file_count = 1, total_chars = 0) {
     "- 'Belge şu konuyu içeriyor' gibi genel ve yüzeysel ifadeler",
     "- Bilgi kaybı veya eksik aktarım",
     "- Önemli detayları göz ardı etme",
-    "- Formatı bozma veya düzensiz sunum"
+    "- Formatı bozma veya düzensiz sunum",
+    "- Belgede olmayan bilgi uydurma veya tahmin etme",
+    "- Dosya adından içerik çıkarmaya çalışma"
   )
   
   if (file_count > 1) {

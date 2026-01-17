@@ -117,9 +117,9 @@ settingsUI <- function(id) {
 					div(
 					  class = "checkbox-item",
 					  checkboxInput(
-							inputId = ns("enable_rdata_tools"),
-							label = tags$span("Proje ve Kaynak Analizi", style = "white-space: nowrap;"),
-							value = FALSE
+						inputId = ns("enable_rdata_tools"),
+						label = tags$span("Proje ve Kaynak Analizi", style = "white-space: nowrap;"),
+						value = FALSE
 					  )
 					),
 					# Mevcut: MCP Excel analizi
@@ -128,6 +128,15 @@ settingsUI <- function(id) {
 					  checkboxInput(
 						inputId = ns("enable_mcp_tools"),
 						label = tags$span("Model Context Protocol (MCP): Excel", style = "white-space: nowrap;"),
+						value = FALSE
+					  )
+					),
+					# YENİ: Dosya Özetleme modu
+					div(
+					  class = "checkbox-item",
+					  checkboxInput(
+						inputId = ns("enable_summarization_tools"),
+						label = tags$span("Dosya Özetleme", style = "white-space: nowrap;"),
 						value = FALSE
 					  )
 					)
@@ -316,19 +325,20 @@ settingsServer <- function(id, parent_session = NULL) {
     })
     
     # Reactive values for settings
-    settings <- reactiveValues(
-      model_selection         = api_config$local_models[1],
-      selected_character      = "mergen",
-      enable_animations       = TRUE,
-      enable_timestamps       = TRUE,
-      enable_typing_indicator = TRUE,
-      enable_streaming        = TRUE,
-      enable_widescreen       = TRUE,
-      enable_tts_audio        = TRUE,
-      enable_rdata_tools      = FALSE,
-      enable_mcp_tools        = FALSE,
-      enable_followups        = TRUE,
-      font_size               = "medium",
+	settings <- reactiveValues(
+	  model_selection         = api_config$local_models[1],
+	  selected_character      = "mergen",
+	  enable_animations       = TRUE,
+	  enable_timestamps       = TRUE,
+	  enable_typing_indicator = TRUE,
+	  enable_streaming        = TRUE,
+	  enable_widescreen       = TRUE,
+	  enable_tts_audio        = TRUE,
+	  enable_rdata_tools      = FALSE,
+	  enable_mcp_tools        = FALSE,
+	  enable_summarization_tools = FALSE,
+	  enable_followups        = TRUE,
+	  font_size               = "medium",
 	  enable_background_music = FALSE,
 	  music_volume = 0.3
 	)
@@ -606,6 +616,11 @@ settingsServer <- function(id, parent_session = NULL) {
           settings$enable_rdata_tools <- FALSE
           updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
         }
+		
+		if (!is.null(loaded$enable_summarization_tools)) {
+		  settings$enable_summarization_tools <- isTRUE(loaded$enable_summarization_tools)
+		  updateCheckboxInput(session, "enable_summarization_tools", value = settings$enable_summarization_tools)
+		}
 
         if (!is.null(loaded$enable_mcp_tools)) {
           settings$enable_mcp_tools <- isTRUE(loaded$enable_mcp_tools)
@@ -638,24 +653,52 @@ settingsServer <- function(id, parent_session = NULL) {
     observeEvent(input$enable_tts_audio,  { settings$enable_tts_audio  <- isTRUE(input$enable_tts_audio) })
     observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
 
-    # Karşılıklı dışlama mantığı
-    observeEvent(input$enable_rdata_tools, {
-      settings$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
-      # Eğer rData açıldıysa MCP'yi kapat
-      if (isTRUE(input$enable_rdata_tools) && isTRUE(input$enable_mcp_tools)) {
-        updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
-        settings$enable_mcp_tools <- FALSE
-      }
-    }, ignoreInit = TRUE)
+	# Karşılıklı dışlama mantığı - 3 checkbox için
+	observeEvent(input$enable_rdata_tools, {
+	  settings$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
+	  # Eğer rData açıldıysa diğerlerini kapat
+	  if (isTRUE(input$enable_rdata_tools)) {
+		if (isTRUE(input$enable_mcp_tools)) {
+		  updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
+		  settings$enable_mcp_tools <- FALSE
+		}
+		if (isTRUE(input$enable_summarization_tools)) {
+		  updateCheckboxInput(session, "enable_summarization_tools", value = FALSE)
+		  settings$enable_summarization_tools <- FALSE
+		}
+	  }
+	}, ignoreInit = TRUE)
 
-    observeEvent(input$enable_mcp_tools, {
-      settings$enable_mcp_tools <- isTRUE(input$enable_mcp_tools)
-      # Eğer MCP açıldıysa rData'yı kapat
-      if (isTRUE(input$enable_mcp_tools) && isTRUE(input$enable_rdata_tools)) {
-        updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
-        settings$enable_rdata_tools <- FALSE
-      }
-    }, ignoreInit = TRUE)
+	observeEvent(input$enable_mcp_tools, {
+	  settings$enable_mcp_tools <- isTRUE(input$enable_mcp_tools)
+	  # Eğer MCP açıldıysa diğerlerini kapat
+	  if (isTRUE(input$enable_mcp_tools)) {
+		if (isTRUE(input$enable_rdata_tools)) {
+		  updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
+		  settings$enable_rdata_tools <- FALSE
+		}
+		if (isTRUE(input$enable_summarization_tools)) {
+		  updateCheckboxInput(session, "enable_summarization_tools", value = FALSE)
+		  settings$enable_summarization_tools <- FALSE
+		}
+	  }
+	}, ignoreInit = TRUE)
+
+	# YENİ: Dosya Özetleme için karşılıklı dışlama
+	observeEvent(input$enable_summarization_tools, {
+	  settings$enable_summarization_tools <- isTRUE(input$enable_summarization_tools)
+	  # Eğer Özetleme açıldıysa diğerlerini kapat
+	  if (isTRUE(input$enable_summarization_tools)) {
+		if (isTRUE(input$enable_rdata_tools)) {
+		  updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
+		  settings$enable_rdata_tools <- FALSE
+		}
+		if (isTRUE(input$enable_mcp_tools)) {
+		  updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
+		  settings$enable_mcp_tools <- FALSE
+		}
+	  }
+	}, ignoreInit = TRUE)
     
     # Save settings button
 	observeEvent(input$save_settings, {
@@ -683,47 +726,49 @@ settingsServer <- function(id, parent_session = NULL) {
       showToast(session, "Ayarlar kaydedildi!", "success")
     })
     
-    # Reset settings button
+	# Reset settings button
 	observeEvent(input$reset_settings, {
-      default_model <- api_config$local_models[1]
-      
-      settings$model_selection          <- default_model
-      # Geçici değişkeni de sıfırla
-      temp_model_selection(default_model)
-      
-      settings$selected_character       <- "mergen"
-      temp_selected_character("mergen")
-      settings$enable_animations       <- TRUE
-      settings$enable_timestamps       <- TRUE
-      settings$enable_typing_indicator <- TRUE
-      settings$enable_streaming        <- TRUE
-      settings$enable_widescreen       <- TRUE
-      settings$enable_tts_audio        <- TRUE
-      settings$enable_rdata_tools      <- FALSE
-      settings$enable_mcp_tools        <- FALSE
-      settings$enable_followups        <- TRUE
-      settings$font_size               <- "medium"
+	  default_model <- api_config$local_models[1]
+	  
+	  settings$model_selection          <- default_model
+	  # Geçici değişkeni de sıfırla
+	  temp_model_selection(default_model)
+	  
+	  settings$selected_character       <- "mergen"
+	  temp_selected_character("mergen")
+	  settings$enable_animations       <- TRUE
+	  settings$enable_timestamps       <- TRUE
+	  settings$enable_typing_indicator <- TRUE
+	  settings$enable_streaming        <- TRUE
+	  settings$enable_widescreen       <- TRUE
+	  settings$enable_tts_audio        <- TRUE
+	  settings$enable_rdata_tools      <- FALSE
+	  settings$enable_mcp_tools        <- FALSE
+	  settings$enable_summarization_tools <- FALSE # YENİ
+	  settings$enable_followups        <- TRUE
+	  settings$font_size               <- "medium"
 	  settings$enable_background_music <- FALSE
 	  settings$music_volume <- 0.3
-      
-      updateSelectInput(session, "model_selection", selected = settings$model_selection)
-      update_character_display(settings$selected_character)
-      updateSelectInput(session, "font_size", selected = settings$font_size)
-      updateCheckboxInput(session, "enable_animations",       value = settings$enable_animations)
-      updateCheckboxInput(session, "enable_timestamps",       value = settings$enable_timestamps)
-      updateCheckboxInput(session, "enable_typing_indicator", value = settings$enable_typing_indicator)
-      updateCheckboxInput(session, "enable_streaming",        value = settings$enable_streaming)
-      updateCheckboxInput(session, "enable_widescreen",       value = settings$enable_widescreen)
-      updateCheckboxInput(session, "enable_tts_audio",        value = settings$enable_tts_audio)
-      updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
-      updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
-      updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
+	  
+	  updateSelectInput(session, "model_selection", selected = settings$model_selection)
+	  update_character_display(settings$selected_character)
+	  updateSelectInput(session, "font_size", selected = settings$font_size)
+	  updateCheckboxInput(session, "enable_animations",       value = settings$enable_animations)
+	  updateCheckboxInput(session, "enable_timestamps",       value = settings$enable_timestamps)
+	  updateCheckboxInput(session, "enable_typing_indicator", value = settings$enable_typing_indicator)
+	  updateCheckboxInput(session, "enable_streaming",        value = settings$enable_streaming)
+	  updateCheckboxInput(session, "enable_widescreen",       value = settings$enable_widescreen)
+	  updateCheckboxInput(session, "enable_tts_audio",        value = settings$enable_tts_audio)
+	  updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
+	  updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
+	  updateCheckboxInput(session, "enable_summarization_tools", value = FALSE) # YENİ
+	  updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
 	  updateCheckboxInput(session, "enable_background_music", value = FALSE)
 	  updateSliderInput(session, "music_volume", value = 0.3)
-      
-      session$sendCustomMessage("clearSettings", list())
-      showToast(session, "Ayarlar sıfırlandı!", "info")
-    })
+	  
+	  session$sendCustomMessage("clearSettings", list())
+	  showToast(session, "Ayarlar sıfırlandı!", "info")
+	})
     
     # Karakter video modülünü başlat
 	characterVideoServer("character_video", reactive({

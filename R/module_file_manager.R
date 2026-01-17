@@ -274,19 +274,44 @@ fileManagerServer <- function(
 	  checked <- isTRUE(input$attach_toggled$checked)
 	  info <- get_file_by_id(fid)
 	  req(info)
-
-	if (checked) {
+	  
+	  # Summarization modu için dosya formatı kontrolü
+	  if (checked) {
+		# Settings_data'ya erişim için
+		summarization_mode <- FALSE
+		try({
+		  if (exists("settings_data", envir = globalenv())) {
+			summarization_mode <- isTRUE(get("settings_data", envir = globalenv())$enable_summarization_tools)
+		  }
+		}, silent = TRUE)
+		
+		if (summarization_mode) {
+		  # Summarization modunda sadece belirli formatlara izin ver
+		  ext <- tolower(tools::file_ext(fname))
+		  summarization_allowed <- c("doc", "docx", "pdf", "txt")
+		  
+		  if (!ext %in% summarization_allowed) {
+			showToast(session, 
+					  sprintf("Dosya Özetleme modunda sadece şu formatlar desteklenir: %s.",
+							  paste(toupper(summarization_allowed), collapse = ", ")),
+					  "warning")
+			# Tiki hemen geri al
+			session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+			return()
+		  }
+		}
+		
 		# MCP ON? allow only one AND check extension
 		if (isTRUE(mcp_enabled_reactive())) {
 		  
-          # Türkçe: Uzantı kontrolü - Sadece Excel
-          ext <- tolower(tools::file_ext(fname))
-          if (!ext %in% c("xls", "xlsx")) {
-             showToast(session, "MCP: Excel modunda sadece Excel dosyaları (.xls, .xlsx) seçilebilir.", "warning")
-             # Tiki hemen geri al
-             session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
-             return()
-          }
+		  # Türkçe: Uzantı kontrolü - Sadece Excel
+		  ext <- tolower(tools::file_ext(fname))
+		  if (!ext %in% c("xls", "xlsx")) {
+			showToast(session, "MCP: Excel modunda sadece Excel dosyaları (.xls, .xlsx) seçilebilir.", "warning")
+			# Tiki hemen geri al
+			session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+			return()
+		  }
 		  
 		  # Uncheck all other selected ones
 		  others <- names(module_values$files_in_context)
@@ -305,22 +330,24 @@ fileManagerServer <- function(
 		}
 		
 		# Mark this one selected
-			module_values$files_in_context[[fid]] <- TRUE
-			attach_in_parent(info)
-			fm_debug("checkbox", sprintf("%s (id=%s) checked", fname, fid))
-
+		module_values$files_in_context[[fid]] <- TRUE
+		attach_in_parent(info)
+		fm_debug("checkbox", sprintf("%s (id=%s) checked", fname, fid))
+		
 	  } else {
-			# Unselect
-			module_values$files_in_context[[fid]] <- NULL
-			detach_in_parent(fname)
-			fm_debug("checkbox", sprintf("%s (id=%s) unchecked", fname, fid))
+		# Unselect
+		module_values$files_in_context[[fid]] <- NULL
+		detach_in_parent(fname)
+		fm_debug("checkbox", sprintf("%s (id=%s) unchecked", fname, fid))
 	  }
-
+	  
 	  # Update the hint text dynamically
 	  txt <- if (isTRUE(mcp_enabled_reactive())) {
-			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
+		"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
+	  } else if (summarization_mode) {
+		"Seçim kuralı: Dosya Özetleme modunda birden fazla dosya seçebilirsiniz."
 	  } else {
-			"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
+		"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
 	  }
 	  shinyjs::html(id = "attach_rule_hint", html = txt, add = FALSE)
 	}, ignoreInit = TRUE)
@@ -600,32 +627,64 @@ fileManagerServer <- function(
     }
 
     # Persist a stable copy + add to table
-    process_uploaded_file <- function(file_info, generate_message = TRUE) {
-      # Normalize incoming structure (Shiny df row OR list)
-      file_name <- as.character(file_info$name %||% "")
-      file_size <- as.numeric(file_info$size %||% NA_real_)
-      in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
-      fm_debug("process_start", sprintf("name=%s path=%s msg=%s", file_name, in_path, generate_message))
+	process_uploaded_file <- function(file_info, generate_message = TRUE) {
+	  # Normalize incoming structure (Shiny df row OR list)
+	  file_name <- as.character(file_info$name %||% "")
+	  file_size <- as.numeric(file_info$size %||% NA_real_)
+	  in_path   <- as.character(file_info$datapath %||% file_info$path %||% "")
+	  fm_debug("process_start", sprintf("name=%s path=%s msg=%s", file_name, in_path, generate_message))
 	  
-      # CHANGE: Use path_exists_relaxed instead of file.exists to handle long paths/UNC/spaces
-      if (!nzchar(file_name) || !nzchar(in_path) || !path_exists_relaxed(in_path)) {
-        showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
-        fm_debug("process_abort", sprintf("invalid path for %s", file_name))
-		    return(NULL)
-      }
-    
-      # Validate type
-      allowed_extensions <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
-      file_ext <- tolower(tools::file_ext(file_name))
-      if (!file_ext %in% allowed_extensions) {
-        showToast(
-          session,
-          sprintf(
-            "'%s' uzantılı dosya desteklenmiyor. Desteklenen türler: TXT, PDF, DOCX, XLSX, XLS, CSV, JSON, R, PY, MD, LOG, XML, HTML.",
-            toupper(file_ext)
-          ),
-          "warning"
-        )
+	  # CHANGE: Use path_exists_relaxed instead of file.exists to handle long paths/UNC/spaces
+	  if (!nzchar(file_name) || !nzchar(in_path) || !path_exists_relaxed(in_path)) {
+		showToast(session, "Yüklenen dosya yolu okunamadı.", "error")
+		fm_debug("process_abort", sprintf("invalid path for %s", file_name))
+		return(NULL)
+	  }
+	  
+	  # Validate type - ÖZEL: Eğer Dosya Özetleme modu açıksa sadece belirli formatları kabul et
+	  file_ext <- tolower(tools::file_ext(file_name))
+	  
+	  # Summarization modu için izin verilen formatlar
+	  summarization_allowed <- c("doc", "docx", "pdf", "txt")
+	  
+	  # Normal mod için izin verilen formatlar
+	  normal_allowed <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
+	  
+	  # Settings_data'ya erişim için
+	  summarization_mode <- FALSE
+	  try({
+		# Ana uygulamadan settings_data'ya erişim
+		if (exists("settings_data", envir = globalenv())) {
+		  summarization_mode <- isTRUE(get("settings_data", envir = globalenv())$enable_summarization_tools)
+		}
+	  }, silent = TRUE)
+	  
+	  # Uygun format listesini seç
+	  allowed_extensions <- if (summarization_mode) {
+		summarization_allowed
+	  } else {
+		normal_allowed
+	  }
+	  
+	  if (!file_ext %in% allowed_extensions) {
+		if (summarization_mode) {
+		  showToast(
+			session,
+			sprintf("Dosya Özetleme modunda sadece şu formatlar desteklenir: %s.",
+					paste(toupper(summarization_allowed), collapse = ", ")),
+			"warning"
+		  )
+		} else {
+		  showToast(
+			session,
+			sprintf(
+			  "'%s' uzantılı dosya desteklenmiyor. Desteklenen türler: %s.",
+			  toupper(file_ext),
+			  paste(toupper(normal_allowed), collapse = ", ")
+			),
+			"warning"
+		  )
+		}
         fm_debug("process_abort", sprintf("unsupported extension: %s", file_ext))
 		return(NULL)
       }

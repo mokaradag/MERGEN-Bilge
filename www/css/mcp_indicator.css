@@ -59,6 +59,23 @@
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+/* Dosya Özetleme aktif - ince mor/turuncu rozet */
+.mcp-indicator.summarization-active {
+  background: rgba(168, 85, 247, 0.15);
+  color: #d8b4fe;
+  border-color: rgba(168, 85, 247, 0.25);
+}
+
+.mcp-indicator.summarization-active i {
+  color: #c084fc;
+  font-size: 12px;
+}
+
+.mcp-indicator.summarization-active:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(168, 85, 247, 0.4);
+}
+
 /* Responsive: Mobil ekranlarda sadece ikon göster */
 @media (max-width: 768px) {
   .mcp-indicator span {
