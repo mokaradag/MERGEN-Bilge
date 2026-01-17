@@ -15,7 +15,7 @@ feedbackUI <- function(id) {
       # Başlık
 	  div(
         class = "feedback-modal-header",
-        tags$h3(id = ns("modal_title"), icon("comment-dots"), " Geri Bildirim"),
+        tags$h3(id = ns("modal_title"), HTML('<i class="fas fa-comment-dots"></i> Geri Bildirim')),
         actionButton(ns("close_modal"), "", icon = icon("times"), class = "feedback-close-btn")
       ),
       
@@ -77,11 +77,15 @@ feedbackServer <- function(id, current_user_id) {
       
       session$userData$feedback_cancel_callback <- on_cancel
       
-      # Modal başlığını güncelle
+	  # Modal başlığını güncelle
+      icon_class <- if (feedback_type == "like") "fas fa-thumbs-up" else "fas fa-comment-dots"
       title_text <- if (feedback_type == "like") "Bu Yanıtı Beğendiniz" else "Bu Yanıt Hakkında Geri Bildirim"
+      
+      full_html <- sprintf('<i class="%s"></i> %s', icon_class, title_text)
+      
       session$sendCustomMessage("updateFeedbackTitle", list(
         ns = ns("modal_title"),
-        text = title_text
+        html = full_html
       ))
       
       # Etiket butonlarını oluştur

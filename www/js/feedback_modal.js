@@ -4,7 +4,7 @@
 Shiny.addCustomMessageHandler('updateFeedbackTitle', function(data) {
   const titleEl = document.getElementById(data.ns);
   if (titleEl) {
-    titleEl.textContent = data.text;
+    titleEl.innerHTML = data.html;
   }
 });
 

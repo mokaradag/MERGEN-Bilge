@@ -430,7 +430,7 @@ server <- function(input, output, session) {
 	  }
 	})
 
-  # Pass values reactive to file manager for temp_files access
+	# Pass values reactive to file manager for temp_files access
 	file_manager_data <- fileManagerServer(
 	  "file_manager_module",
 	  new_file_trigger = reactive({ file_to_add() }),
@@ -438,6 +438,9 @@ server <- function(input, output, session) {
 	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
 	  user_id = current_user_id
 	)
+	
+	# Store file manager data in session for summarization module access
+	session$userData$file_manager_data <- file_manager_data
 	
 	observeEvent(settings_data$enable_mcp_tools, {
 	  if (isTRUE(settings_data$enable_mcp_tools)) {
@@ -855,7 +858,7 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
   }
   
   # send_message: main entrypoint
-	send_message <- function(prompt_text) {
+	send_message <- function(prompt_text, is_summarization_request = FALSE) {
 	  
 	  # Welcome ekranını tamamen temizle ve chat içeriğini göster
 	  if (isTRUE(values$show_welcome)) {
@@ -914,6 +917,107 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	
 	cfg_excel_on <- isTRUE(settings_data$enable_mcp_tools)
 	cfg_sql_analysis_on <- isTRUE(settings_data$enable_rdata_tools)
+
+  if (isTRUE(is_summarization_request)) {
+    
+    values$typing <- TRUE
+    if (isTRUE(settings_data$enable_typing_indicator)) {
+      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+      insertUI(
+        selector = "#chat_content_container", 
+        where = "beforeEnd",
+        ui = div(
+          id = "typing-animation-wrapper", 
+          class = "message-bubble", 
+          style = "display: flex; justify-content: center; padding: 20px;",
+          div(class = "ring", "Belgeleriniz özetleniyor", span())
+        ),
+        immediate = TRUE
+      )
+    }
+    
+    # Get files with "Model Bağlamı" selected from file manager
+    current_session_files <- isolate(session_files())
+    
+    # Also try to get files directly from file manager if session_files is empty
+    if (length(current_session_files) == 0 && !is.null(file_manager_data)) {
+      tryCatch({
+        fm_files <- file_manager_data$file_contents()
+        if (length(fm_files) > 0) {
+          # Filter files that have "Model Bağlamı" selected
+          model_context_files <- list()
+          for (fname in names(fm_files)) {
+            fobj <- fm_files[[fname]]
+            # Check if this file is marked for model context
+            # Assuming file_manager_data has a way to check this
+            # If not, we'll use all files in the manager
+            model_context_files[[fname]] <- fobj
+          }
+          current_session_files <- model_context_files
+        }
+      }, error = function(e) {
+        log_error("[SUMMARIZATION] Error getting files from file manager: {conditionMessage(e)}")
+      })
+    }
+    
+    if (length(current_session_files) == 0) {
+      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+      values$typing <- FALSE
+      showToast(session, "Özetlenecek dosya bulunamadı. Lütfen Dosya Yönetimi sayfasına gidin, dosya yükleyin ve 'Model Bağlamı' seçeneğini işaretleyin.", "warning")
+      return(invisible(NULL))
+    }
+    
+    log_info("[SUMMARIZATION] Starting summarization for {length(current_session_files)} files")
+    
+    source("R/module_summarization.R", encoding = "UTF-8")
+    
+    # For 256k models, we can increase the character limit
+    max_chars <- if (grepl("256k|256K", settings_data$model_selection %||% "")) {
+      200000  # Increased limit for 256k models
+    } else {
+      120000  # Default limit
+    }
+    
+    p <- process_summarization_request(
+      file_list = current_session_files,
+      session = session,
+      settings = settings_data,
+      ai_processor = ai_processor,
+      max_chars_per_file = max_chars
+    )
+	  
+	  promises::then(
+		p,
+		onFulfilled = function(result) {
+		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+		  values$typing <- FALSE
+		  
+		  if (!result$success) {
+			showToast(session, result$message, "error")
+			add_message(result$message, "ai")
+			return(invisible(NULL))
+		  }
+		  
+		  user_msg <- if (nchar(user_message_text) > 0) {
+			user_message_text
+		  } else {
+			paste(result$file_count, "dosya için özet istendi")
+		  }
+		  
+		  add_message(user_msg, "user")
+		  add_message(result$summary, "ai")
+		  
+		  showToast(session, paste(result$file_count, "dosya başarıyla özetlendi."), "success")
+		},
+		onRejected = function(err) {
+		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+		  values$typing <- FALSE
+		  showToast(session, paste("Özetleme hatası:", conditionMessage(err)), "error")
+		}
+	  )
+	  
+	  return(invisible(NULL))
+	}
 
 	skip_mcp_once <- isTRUE(quick_action_skip_mcp())
 	if (skip_mcp_once) quick_action_skip_mcp(FALSE)
@@ -1761,10 +1865,18 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  
 	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
 	  
-	  if (is.list(input$quick_template)) {
-		send_message(input$quick_template$text)
+	  template_text <- if (is.list(input$quick_template)) {
+		input$quick_template$text
 	  } else {
-		send_message(input$quick_template)
+		input$quick_template
+	  }
+	  
+	  is_summarization <- identical(template_text, "__SUMMARIZATION_REQUEST__")
+	  
+	  if (is_summarization) {
+		send_message("", is_summarization_request = TRUE)
+	  } else {
+		send_message(template_text)
 	  }
 	}, ignoreInit = TRUE)
 							   
