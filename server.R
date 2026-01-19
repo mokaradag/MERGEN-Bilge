@@ -1137,44 +1137,15 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	# DOSYA ÖZETLEME MODU: Mevcut özetleme altyapısını kullan
 	if (identical(tool_family, "summarization") && uploaded_count > 0) {
 	  
-	  # HATAYI ÖNLE: summarization modunda özel system prompt kullan
-	  style_instruction <- build_summarization_system_prompt(
-		file_count = uploaded_count,
-		total_chars = 0
-	  )
-	  
-	  # System mesajını güncelle
-	  system_msg <- list(type = "system", content = style_instruction)
-	  
-	  # Dosya içeriklerini al
-	  current_session_files <- isolate(session_files())
-	  
-	  # Eğer boşsa, file_manager'dan almayı dene
-	  if (length(current_session_files) == 0) {
-		fm_files <- isolate(file_manager_data$file_contents())
-		if (length(fm_files) > 0) {
-		  current_session_files <- list()
-		  for (fid in names(fm_files)) {
-			fobj <- fm_files[[fid]]
-			current_session_files[[fobj$name]] <- fobj
-		  }
-		}
-	  }
-	  
-	  # HATA KONTROLÜ: Dosyalar yoksa normal moda geç
-	  if (length(current_session_files) == 0) {
-		showToast(session, "Özetleme modunda ancak özetlenecek dosya bulunamadı.", "warning")
-		messages_to_process <- c(list(system_msg), recent_messages)
-	  } else {
+	  # ÖZEL DURUM: Kullanıcı mesajı boşsa veya "Dosya(lar) hakkında soru soruldu." ise
+	  # doğrudan özetleme işlemini başlat. Bu, hızlı eylem butonu için gereklidir.
+	  if (nchar(user_message_text) == 0 || 
+		  identical(trimws(user_message_text), "Dosya(lar) hakkında soru soruldu.")) {
+		
+		cat("[SUMMARIZATION] Özetleme modunda boş mesaj, doğrudan özetleme başlatılıyor\n")
+		
 		# Mevcut module_summarization.R fonksiyonunu kullan
 		source("R/module_summarization.R", encoding = "UTF-8", local = TRUE)
-		
-		# summarization modunda özel AI çağrısı yap
-		max_chars <- if (grepl("256k|256K", settings_data$model_selection %||% "")) {
-		  200000
-		} else {
-		  120000
-		}
 		
 		# Özetleme işlemini başlat
 		values$typing <- TRUE
@@ -1199,7 +1170,11 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 		  session = session,
 		  settings = settings_data,
 		  ai_processor = ai_processor,
-		  max_chars_per_file = max_chars
+		  max_chars_per_file = if (grepl("256k|256K", settings_data$model_selection %||% "")) {
+			200000
+		  } else {
+			120000
+		  }
 		)
 		
 		promises::then(
@@ -1210,22 +1185,14 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 			
 			if (!result$success) {
 			  showToast(session, result$message, "error")
-			  add_message(result$message, "ai")
 			  return(invisible(NULL))
 			}
 			
-			user_msg <- if (nchar(user_message_text) > 0) {
-			  user_message_text
-			} else {
-			  paste(result$file_count, "dosya için özet istendi")
-			}
-			
-			add_message(user_msg, "user")
+			# AI yanıtını ekle
 			add_message(result$summary, "ai")
 			
 			showToast(session, paste(result$file_count, "dosya başarıyla özetlendi."), "success")
 			
-			# Summarization modunu sürdür (tool_family değişmez)
 			reset_chat_state()
 		  },
 		  onRejected = function(err) {
@@ -1774,6 +1741,9 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	observeEvent(input$quick_action_summarization, {
 	  req(input$quick_action_summarization)
 	  
+	  # Hata ayıklama için log
+	  cat("[QUICK_ACTION_SUMMARIZATION] Tetiklendi (alternatif yol)\n")
+	  
 	  # Dosya Özetleme modunu aktif et
 	  isolate({
 		settings_data$enable_summarization_tools <- TRUE
@@ -1786,27 +1756,15 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
 	  updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
 	  
-	  # Toast mesajı göster
-	  showToast(session, "Dosya Özetleme modu aktif edildi. Şimdi dosyaları özetleyebilirsiniz.", "success")
-	  
-	  # Welcome ekranını kapat ve chat'e geç
-	  if (isTRUE(values$show_welcome)) {
-		values$show_welcome <- FALSE
-		shinyjs::runjs("
-		  $('#welcome_fullscreen_container').addClass('hidden').empty();
-		  $('#chat_content_container').show();
-		")
-	  }
+	  showToast(session, "Dosya Özetleme modu aktif edildi.", "success")
 	  
 	  # Eğer dosyalar varsa, hemen özetleme başlat
 	  current_files <- isolate(session_files())
 	  if (length(current_files) > 0) {
-		# Send empty message to trigger summarization
 		shinyjs::delay(500, {
 		  send_message("")
 		})
 	  } else {
-		# Dosya yoksa bilgilendir
 		showToast(session, "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
 	  }
 	}, ignoreInit = TRUE)
@@ -1930,34 +1888,49 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   }, ignoreInit = TRUE)
   
 	observeEvent(input$quick_template, {
-	  quick_action_skip_mcp(TRUE)
+	  # Welcome ekranını kapat
 	  values$show_welcome <- FALSE
-	  
-	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
 	  shinyjs::runjs("
-		$('#welcome_fullscreen_container').addClass('hidden');
-		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-		  window.WelcomeVideoPlayer.destroy();
-		}
-		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-		  window.WelcomeNeuralNetwork.destroy();
-		}
-		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-		  window.WelcomeGreeting.destroy();
-		}
+		$('#welcome_fullscreen_container').addClass('hidden').empty();
+		$('#chat_content_container').show();
 	  ")
 	  
 	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
 	  
-	  template_text <- if (is.list(input$quick_template)) {
-		input$quick_template$text
+	  # Gelen veriyi işle
+	  if (is.list(input$quick_template)) {
+		template_text <- input$quick_template$text %||% ""
+		template_model <- input$quick_template$model %||% NULL
 	  } else {
-		input$quick_template
+		template_text <- as.character(input$quick_template)
+		template_model <- NULL
 	  }
 	  
-	  # Check if this is the summarization quick action
+	  cat("[QUICK_TEMPLATE] Gelen veri: text='", template_text, "', model='", template_model, "'\n", sep = "")
+	  
+	  # Özetleme isteği kontrolü
 	  if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
-		# Dosya Özetleme modunu aktif et
+		cat("[QUICK_TEMPLATE] Özetleme isteği tespit edildi\n")
+		
+		# 1) Modeli değiştir (eğer model bilgisi varsa)
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
+		  
+		  isolate({
+			settings_data$model_selection <- template_model
+		  })
+		  
+		  # Ayarlar sayfasındaki dropdown'ı güncelle
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  
+		  # Model değişikliğini kaydet
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  
+		  # Toast mesajı göster
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		}
+		
+		# 2) Dosya Özetleme modunu aktif et
 		isolate({
 		  settings_data$enable_summarization_tools <- TRUE
 		  settings_data$enable_rdata_tools <- FALSE
@@ -1969,26 +1942,50 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
 		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
 		
-		# Toast mesajı göster
-		showToast(session, "Dosya Özetleme modu aktif edildi. Şimdi dosyaları özetleyebilirsiniz.", "success")
+		# Ayarları kaydet
+		session$sendCustomMessage("saveSettings", list(
+		  enable_summarization_tools = TRUE,
+		  enable_rdata_tools = FALSE,
+		  enable_mcp_tools = FALSE
+		))
 		
-		# Welcome ekranını kapat ve chat'e geç
-		shinyjs::runjs("$('#chat_content_container').show();")
+		cat("[QUICK_TEMPLATE] Özetleme modu aktif edildi\n")
 		
 		# Eğer dosyalar varsa, hemen özetleme başlat
 		current_files <- isolate(session_files())
 		if (length(current_files) > 0) {
-		  # Send empty message to trigger summarization mode
-		  shinyjs::delay(500, {
+		  cat("[QUICK_TEMPLATE] Dosyalar mevcut (", length(current_files), " adet), özetleme başlatılıyor...\n", sep = "")
+		  
+		  # Kısa gecikme sonrası özetleme başlat
+		  shinyjs::delay(300, {
 			send_message("")
 		  })
 		} else {
-		  # Dosya yoksa bilgilendir
+		  cat("[QUICK_TEMPLATE] Dosya yok, bilgilendirme gösteriliyor\n")
 		  showToast(session, "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
 		}
-	  } else {
-		# Normal template
-		send_message(template_text)
+	  } else if (nzchar(template_text)) {
+		# Normal template - model bilgisi varsa önce modeli değiştir
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Normal template için model değiştiriliyor:", template_model, "\n")
+		  
+		  isolate({
+			settings_data$model_selection <- template_model
+		  })
+		  
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		  
+		  # Model değişikliğinden sonra mesajı gönder
+		  shinyjs::delay(200, {
+			send_message(template_text)
+		  })
+		} else {
+		  # Model değişikliği yoksa direkt mesajı gönder
+		  send_message(template_text)
+		}
 	  }
 	}, ignoreInit = TRUE)
 							   

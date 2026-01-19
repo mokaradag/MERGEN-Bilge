@@ -175,28 +175,41 @@ $(document).ready(function() {
   });
 
   // Diğer fonksiyonlar
-  window.sendCapabilityMessage = function(message, model) {
-    if (model) {
-      console.log('Setting model to:', model);
+	window.sendCapabilityMessage = function(message, model) {
+	  if (model) {
+		console.log('Setting model to:', model);
 
-      Shiny.setInputValue('quick_action_model_change', model, {
-        priority: 'event'
-      });
+		// Use Shiny.setInputValue if available, otherwise set input directly
+		if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+		  Shiny.setInputValue('quick_action_model_change', model, {
+			priority: 'event'	
+		  });
 
-      setTimeout(function() {
-        document.getElementById('user_input').value = message;
-        document.getElementById('user_input').dispatchEvent(new Event('input'));
+		  setTimeout(function() {
+			if (document.getElementById('user_input')) {
+			  document.getElementById('user_input').value = message;
+			  document.getElementById('user_input').dispatchEvent(new Event('input'));
 
-        setTimeout(function() {
-          document.getElementById('send_stop_btn').click();
-        }, 100);
-      }, 200);
-    } else {
-      document.getElementById('user_input').value = message;
-      document.getElementById('user_input').dispatchEvent(new Event('input'));
-      document.getElementById('send_stop_btn').click();
-    }
-  };
+			  setTimeout(function() {
+				if (document.getElementById('send_stop_btn')) {
+				  document.getElementById('send_stop_btn').click();
+				}
+			  }, 100);
+			}
+		  }, 200);
+		} else {
+		  console.warn('Shiny is not available yet');
+		}
+	  } else {
+		if (document.getElementById('user_input')) {
+		  document.getElementById('user_input').value = message;
+		  document.getElementById('user_input').dispatchEvent(new Event('input'));
+		  if (document.getElementById('send_stop_btn')) {
+			document.getElementById('send_stop_btn').click();
+		  }
+		}
+	  }
+	};
   
 	window.showModernTooltip = function(tooltipId, buttonElement) {
 	  let tooltip = document.getElementById(tooltipId);
