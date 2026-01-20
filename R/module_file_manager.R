@@ -292,13 +292,13 @@ fileManagerServer <- function(
 	  info <- get_file_by_id(fid)
 	  req(info)
 	  
+	  # Define summarization_mode BEFORE the conditional block
+	  summarization_mode <- FALSE
+	  summarization_allowed <- c("doc", "docx", "pdf", "txt")
+	  
 	  # Summarization modu için dosya formatı kontrolü
 	  if (checked) {
 		# Summarization modunu güvenli şekilde kontrol et
-		summarization_mode <- FALSE
-		summarization_allowed <- c("doc", "docx", "pdf", "txt")
-		
-		# safe_settings_data kullan
 		settings_obj <- safe_settings_data()
 		if (!is.null(settings_obj)) {
 		  if (is.reactivevalues(settings_obj)) {
