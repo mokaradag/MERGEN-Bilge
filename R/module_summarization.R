@@ -15,6 +15,14 @@ process_summarization_request <- function(
   log_info("[SUMMARIZATION] process_summarization_request called with {length(file_list)} files")
   log_info("[SUMMARIZATION] File names: {paste(names(file_list), collapse=', ')}")
   
+  # Kullanıcı sorgusunu çıkar (eğer varsa)
+  user_query <- NULL
+  if (!is.null(file_list$user_query)) {
+    user_query <- file_list$user_query
+    file_list$user_query <- NULL  # Gerçek dosya listesinden çıkar
+    log_info("[SUMMARIZATION] Kullanıcı sorgusu alındı: {user_query}")
+  }
+  
   if (length(file_list) == 0) {
     return(promises::promise_resolve(list(
       success = FALSE,
@@ -165,7 +173,16 @@ process_summarization_request <- function(
     total_chars = total_chars
   )
   
-  user_prompt <- build_summarization_user_prompt(file_contents)
+  # Kullanıcı promptunu oluştur (user_query varsa ona göre özelleştir)
+  if (!is.null(user_query) && nchar(user_query) > 0) {
+    # Kullanıcı özel bir sorgu gönderdiyse, bunu prompta ekle
+    user_prompt <- paste0(
+      "Kullanıcı Sorgusu: ", user_query, "\n\n",
+      build_summarization_user_prompt(file_contents)
+    )
+  } else {
+    user_prompt <- build_summarization_user_prompt(file_contents)
+  }
   
   messages <- list(
     list(type = "system", content = sys_prompt),

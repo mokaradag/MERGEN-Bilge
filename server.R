@@ -414,8 +414,8 @@ server <- function(input, output, session) {
 	  sql_analysis_active <- isTRUE(settings_data$enable_rdata_tools)
 	  summarization_active <- isTRUE(settings_data$enable_summarization_tools)
 	  
-	  # Summarization aktifse ve dosya varsa göster
-	  if (summarization_active && length(isolate(session_files())) > 0) {
+	  # Summarization aktifse göster (dosya kontrolü yapma)
+	  if (summarization_active) {
 		div(
 		  class = "mcp-indicator summarization-active",
 		  tags$i(class = "fas fa-file-alt"),
@@ -444,7 +444,8 @@ server <- function(input, output, session) {
 	  new_file_trigger = reactive({ file_to_add() }),
 	  session_files_reactive = session_files,
 	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
-	  user_id = current_user_id
+	  user_id = current_user_id,
+	  settings_data = settings_data  # YENİ: Settings modülünü ilet
 	)
 	
 	# Store file manager data in session for summarization module access
@@ -951,18 +952,18 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	excel_allowed <- cfg_excel_on && uploaded_count > 0
 	cfg_summarization_on <- isTRUE(settings_data$enable_summarization_tools)
 
-	if (skip_mcp_once) {
-	  tool_family <- "none"
-	} else if (cfg_sql_analysis_on) {
-	  tool_family <- "sql_analysis"
-	  current_settings$max_output_tokens <- 4096
-	} else if (excel_allowed) {
-	  tool_family <- "mcp_excel"
-	} else if (cfg_summarization_on && uploaded_count > 0) {  # DEĞİŞİKLİK: Dosya kontrolü eklendi
-	  tool_family <- "summarization"
-	} else {
-	  tool_family <- "none"
-	}
+	  if (skip_mcp_once) {
+		tool_family <- "none"
+	  } else if (cfg_sql_analysis_on) {
+		tool_family <- "sql_analysis"
+		current_settings$max_output_tokens <- 4096
+	  } else if (excel_allowed) {
+		tool_family <- "mcp_excel"
+	  } else if (cfg_summarization_on) {  # DEĞİŞİKLİK: Sadece cfg_summarization_on kontrolü yeterli
+		tool_family <- "summarization"
+	  } else {
+		tool_family <- "none"
+	  }
 
 	if (is.null(values$current_chat_id)) {
 	  title_prompt <- if (nchar(user_message_text) > 0) user_message_text else "Dosya Analizi"
@@ -979,10 +980,10 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	}
 	
 	# Don't append style to user message - just use it for display
-	display_text <- if (nchar(user_message_text) > 0) user_message_text else "Dosya(lar) hakkında soru soruldu."
-	user_prompt_msg <- add_message(display_text, "user")
-	
-	values$typing <- TRUE
+    display_text <- if (nchar(user_message_text) > 0) user_message_text else "Seçili dosyaların özeti istendi."
+    user_prompt_msg <- add_message(display_text, "user")
+    
+    values$typing <- TRUE
 	  if (isTRUE(settings_data$enable_typing_indicator)) {
 		removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
 		
@@ -1134,15 +1135,20 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 	
 	cat(sprintf("[STYLE] Using character: %s (temp: %.2f)\n", selected_char_id, temperature_value))
 	
-	# DOSYA ÖZETLEME MODU: Mevcut özetleme altyapısını kullan
-	if (identical(tool_family, "summarization") && uploaded_count > 0) {
-	  
-	  # ÖZEL DURUM: Kullanıcı mesajı boşsa veya "Dosya(lar) hakkında soru soruldu." ise
-	  # doğrudan özetleme işlemini başlat. Bu, hızlı eylem butonu için gereklidir.
-	  if (nchar(user_message_text) == 0 || 
-		  identical(trimws(user_message_text), "Dosya(lar) hakkında soru soruldu.")) {
+	  # DOSYA ÖZETLEME MODU: Mevcut özetleme altyapısını kullan
+	  if (identical(tool_family, "summarization")) {
 		
-		cat("[SUMMARIZATION] Özetleme modunda boş mesaj, doğrudan özetleme başlatılıyor\n")
+		# Eğer dosya yoksa kullanıcıya bilgi ver
+		if (uploaded_count == 0) {
+		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+		  values$typing <- FALSE
+		  values$is_sending <- FALSE
+		  showToast(session, "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
+		  return(invisible(NULL))
+		}
+		
+		# DOSYA ÖZETLEME MODU AKTİFSE, HER ZAMAN process_summarization_request ÇAĞIR
+		cat("[SUMMARIZATION] Dosya Özetleme modu aktif, özetleme başlatılıyor. Dosya sayısı:", uploaded_count, "\n")
 		
 		# Mevcut module_summarization.R fonksiyonunu kullan
 		source("R/module_summarization.R", encoding = "UTF-8", local = TRUE)
@@ -1162,6 +1168,13 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 			),
 			immediate = TRUE
 		  )
+		}
+		
+		# Kullanıcının orijinal mesajını kaydet (eğer varsa)
+		if (nchar(user_message_text) > 0) {
+		  # Kullanıcı mesajını içeriğe ekleyelim
+		  current_session_files$user_query <- user_message_text
+		  cat("[SUMMARIZATION] Kullanıcı sorgusu özetlemeye eklendi:", user_message_text, "\n")
 		}
 		
 		# Promise ile özetleme
@@ -1185,6 +1198,7 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 			
 			if (!result$success) {
 			  showToast(session, result$message, "error")
+			  values$is_sending <- FALSE
 			  return(invisible(NULL))
 			}
 			
@@ -1205,8 +1219,7 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 		
 		# Fonksiyonu burada sonlandır (promise işlenecek)
 		return(invisible(NULL))
-	  }
-	} else if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
+	  } else if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
 	  file_list_text <- paste0(
 		"\n\nDOSYA BİLGİSİ:\n",
 		"Toplam ", uploaded_count, " dosya yüklü:\n",
@@ -1756,7 +1769,14 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
 	  updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
 	  
-	  showToast(session, "Dosya Özetleme modu aktif edildi.", "success")
+	  # Ayarları kaydet (yeni eklendi)
+	  session$sendCustomMessage("saveSettings", list(
+		enable_summarization_tools = TRUE,
+		enable_rdata_tools = FALSE,
+		enable_mcp_tools = FALSE
+	  ))
+	  
+	  showToast(session, "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "success")
 	  
 	  # Eğer dosyalar varsa, hemen özetleme başlat
 	  current_files <- isolate(session_files())
@@ -1765,7 +1785,8 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  send_message("")
 		})
 	  } else {
-		showToast(session, "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
+		# Dosya yoksa, sadece bilgilendirme göster ve modu aktif bırak
+		showToast(session, "Dosya Özetleme modu aktif edildi. Lütfen Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
 	  }
 	}, ignoreInit = TRUE)
 	
