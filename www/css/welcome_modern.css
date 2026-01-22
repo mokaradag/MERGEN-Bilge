@@ -513,23 +513,19 @@
 }
 
 .modern-welcome-actions-title-left {
-  display: flex;
-  align-items: center;
+  display: inline-flex;
+  align-items: baseline;
   gap: 0.75rem;
-  line-height: 1;
 }
 
 .modern-welcome-zap-icon {
   color: #00f2ff;
   font-size: 1.5rem;
   filter: drop-shadow(0 0 5px rgba(0, 242, 255, 0.5));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
   line-height: 1;
   flex-shrink: 0;
+  position: relative;
+  top: 0.15em;
 }
 
 .modern-welcome-actions-title {

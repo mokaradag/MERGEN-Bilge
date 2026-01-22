@@ -294,20 +294,28 @@ $(document).ready(function() {
 	});
     
     // Sayfa yüklendiğinde orijinal title'ları sakla
-	$(document).on('click', '.modern-welcome-action-btn', function() {
-	  const tooltip = $(this).data('custom-tooltip');
+	$(document).on('mousedown', '.modern-welcome-action-btn', function() {
+	  var $btn = $(this);
+	  var tooltip = $btn.data('custom-tooltip');
 	  if (tooltip) {
 		tooltip.remove();
-		$(this).removeData('custom-tooltip');
+		$btn.removeData('custom-tooltip');
 	  }
 	  $('.custom-tooltip').remove();
-	  $('.modern-welcome-action-btn').removeData('custom-tooltip');
-	  setTimeout(function() {
-		$('.custom-tooltip').remove();
-	  }, 50);
-	  setTimeout(function() {
-		$('.custom-tooltip').remove();
-	  }, 350);
+	  $('.modern-welcome-action-btn').each(function() {
+		var t = $(this).data('custom-tooltip');
+		if (t) t.remove();
+		$(this).removeData('custom-tooltip');
+		$(this).tooltip('dispose');
+	  });
+	});
+
+	$(document).on('click', '.modern-welcome-action-btn', function() {
+	  $('.custom-tooltip').remove();
+	  $('.tooltip').remove();
+	  $('.modern-welcome-action-btn').each(function() {
+		$(this).removeData('custom-tooltip');
+	  });
 	});
 
 	$(document).on('shiny:inputchanged', function(event) {
@@ -343,5 +351,24 @@ $(document).ready(function() {
 		$(this).removeAttr('title');
 	  }
 	});
+
+	window.clearAllTooltips = function() {
+	  $('.custom-tooltip').remove();
+	  $('.tooltip').remove();
+	  $('.modern-welcome-action-btn').each(function() {
+		var t = $(this).data('custom-tooltip');
+		if (t) t.remove();
+		$(this).removeData('custom-tooltip');
+	  });
+	};
+
+	setInterval(function() {
+	  var welcomeHidden = $('#welcome_fullscreen_container').hasClass('hidden') || 
+	                      $('#welcome_fullscreen_container').css('display') === 'none' ||
+	                      $('#welcome_fullscreen_container').children().length === 0;
+	  if (welcomeHidden && $('.custom-tooltip').length > 0) {
+		window.clearAllTooltips();
+	  }
+	}, 500);
   });
 });
