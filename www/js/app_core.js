@@ -310,6 +310,26 @@ $(document).ready(function() {
 	  }
 	});
 
+	$(document).on('click', '.sidebar-menu a, .nav-tabs a, [data-toggle="tab"]', function() {
+	  $('.custom-tooltip').remove();
+	});
+
+	$(document).on('shiny:visualchange', function() {
+	  $('.custom-tooltip').remove();
+	});
+
+	var welcomeObserver = new MutationObserver(function(mutations) {
+	  mutations.forEach(function(mutation) {
+		if (mutation.target.classList && mutation.target.classList.contains('hidden')) {
+		  $('.custom-tooltip').remove();
+		}
+	  });
+	});
+	var welcomeWrapper = document.getElementById('welcome_fullscreen_container');
+	if (welcomeWrapper) {
+	  welcomeObserver.observe(welcomeWrapper, { attributes: true, attributeFilter: ['class'] });
+	}
+
 	$('.modern-welcome-action-btn').each(function() {
 	  const title = $(this).attr('title');
 	  if (title) {
