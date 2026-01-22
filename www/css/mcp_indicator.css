@@ -76,6 +76,22 @@
   box-shadow: 0 1px 4px rgba(168, 85, 247, 0.4);
 }
 
+.mcp-indicator.coding-active {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.mcp-indicator.coding-active i {
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+.mcp-indicator.coding-active:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.4);
+}
+
 /* Responsive: Mobil ekranlarda sadece ikon göster */
 @media (max-width: 768px) {
   .mcp-indicator span {

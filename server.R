@@ -413,9 +413,15 @@ server <- function(input, output, session) {
 	  excel_active <- isTRUE(settings_data$enable_mcp_tools)
 	  sql_analysis_active <- isTRUE(settings_data$enable_rdata_tools)
 	  summarization_active <- isTRUE(settings_data$enable_summarization_tools)
+	  coding_active <- isTRUE(settings_data$enable_coding_tools)
 	  
-	  # Summarization aktifse göster (dosya kontrolü yapma)
-	  if (summarization_active) {
+	  if (coding_active) {
+		div(
+		  class = "mcp-indicator coding-active",
+		  tags$i(class = "fas fa-code"),
+		  span("Kod Uzmanı")
+		)
+	  } else if (summarization_active) {
 		div(
 		  class = "mcp-indicator summarization-active",
 		  tags$i(class = "fas fa-file-alt"),
@@ -959,8 +965,10 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 		current_settings$max_output_tokens <- 4096
 	  } else if (excel_allowed) {
 		tool_family <- "mcp_excel"
-	  } else if (cfg_summarization_on) {  # DEĞİŞİKLİK: Sadece cfg_summarization_on kontrolü yeterli
+	  } else if (cfg_summarization_on) {
 		tool_family <- "summarization"
+	  } else if (isTRUE(settings_data$enable_coding_tools)) {
+		tool_family <- "coding"
 	  } else {
 		tool_family <- "none"
 	  }
@@ -1112,13 +1120,40 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 
 	# SUMMARIZATION MODE: Use existing summarization prompts from helpers_summarization_prompts.R
 	if (identical(tool_family, "summarization") && uploaded_count > 0) {
-	  # Use the existing summarization system prompt
 	  style_instruction <- build_summarization_system_prompt(
 		file_count = uploaded_count,
-		total_chars = 0  # Will be calculated when needed
+		total_chars = 0
 	  )
+	} else if (isTRUE(settings_data$enable_coding_tools)) {
+	  coding_system_prompt <- paste0(
+		base_instruction,
+		"\n\nKODLAMA UZMANI MODU AKTİF:\n",
+		"You are an expert software development assistant specializing in code optimization, debugging, and best practices.\n\n",
+		"YOUR CAPABILITIES:\n",
+		"- Code review and optimization across multiple languages (Python, R, JavaScript, Java, C++, Go, etc.)\n",
+		"- Algorithm design and complexity analysis\n",
+		"- Debugging and error resolution\n",
+		"- Performance optimization and refactoring\n",
+		"- Best practices and design patterns\n",
+		"- Unit testing and test-driven development\n",
+		"- Code documentation and maintainability\n\n",
+		"YOUR APPROACH:\n",
+		"- Provide clean, efficient, production-ready code\n",
+		"- Explain your reasoning and trade-offs\n",
+		"- Suggest multiple solutions when applicable\n",
+		"- Follow language-specific conventions and style guides\n",
+		"- Prioritize readability, maintainability, and performance\n",
+		"- Include inline comments for complex logic\n",
+		"- Consider edge cases and error handling\n\n",
+		"RESPONSE FORMAT:\n",
+		"- Use proper markdown code blocks with language specification\n",
+		"- Provide clear explanations before and after code\n",
+		"- Highlight key improvements or changes\n",
+		"- Suggest testing strategies when relevant",
+		citation_instruction
+	  )
+	  style_instruction <- coding_system_prompt
 	} else {
-	  # Normal system prompt for other modes
 	  style_instruction <- paste0(base_instruction, citation_instruction)
 	}
 	
@@ -1929,8 +1964,49 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  
 	  cat("[QUICK_TEMPLATE] Gelen veri: text='", template_text, "', model='", template_model, "'\n", sep = "")
 	  
-	  # Özetleme isteği kontrolü
-	  if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
+	  template_action_id <- input$quick_template$action_id %||% ""
+	  
+	  if (identical(template_action_id, "coding-support")) {
+		cat("[QUICK_TEMPLATE] Kodlama Desteği isteği tespit edildi\n")
+		
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
+		  
+		  isolate({
+			settings_data$model_selection <- template_model
+		  })
+		  
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		}
+		
+		isolate({
+		  settings_data$enable_coding_tools <- TRUE
+		  settings_data$enable_summarization_tools <- FALSE
+		  settings_data$enable_rdata_tools <- FALSE
+		  settings_data$enable_mcp_tools <- FALSE
+		})
+		
+		updateCheckboxInput(session, "settings_module-enable_coding_tools", value = TRUE)
+		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+		
+		session$sendCustomMessage("saveSettings", list(
+		  enable_coding_tools = TRUE,
+		  enable_summarization_tools = FALSE,
+		  enable_rdata_tools = FALSE,
+		  enable_mcp_tools = FALSE
+		))
+		
+		showToast(session, "Kod Uzmanı modu aktif edildi. Kodlama konusunda size yardımcı olmaya hazırım!", "success")
+		
+		if (nzchar(template_text)) {
+		  shinyjs::delay(300, { send_message(template_text) })
+		}
+		
+	  } else if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
 		cat("[QUICK_TEMPLATE] Özetleme isteği tespit edildi\n")
 		
 		# 1) Modeli değiştir (eğer model bilgisi varsa)

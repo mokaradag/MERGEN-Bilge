@@ -139,6 +139,14 @@ settingsUI <- function(id) {
 						label = tags$span("Dosya Özetleme", style = "white-space: nowrap;"),
 						value = FALSE
 					  )
+					),
+					div(
+					  class = "checkbox-item",
+					  checkboxInput(
+						inputId = ns("enable_coding_tools"),
+						label = tags$span("Kod Uzmanı", style = "white-space: nowrap;"),
+						value = FALSE
+					  )
 					)
 				  )
 				),
@@ -337,6 +345,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_rdata_tools      = FALSE,
 	  enable_mcp_tools        = FALSE,
 	  enable_summarization_tools = FALSE,
+	  enable_coding_tools = FALSE,
 	  enable_followups        = TRUE,
 	  font_size               = "medium",
 	  enable_background_music = FALSE,
@@ -621,17 +630,25 @@ settingsServer <- function(id, parent_session = NULL) {
 		  settings$enable_summarization_tools <- isTRUE(loaded$enable_summarization_tools)
 		  updateCheckboxInput(session, "enable_summarization_tools", value = settings$enable_summarization_tools)
 		}
+		
+		if (!is.null(loaded$enable_coding_tools)) {
+		  settings$enable_coding_tools <- isTRUE(loaded$enable_coding_tools)
+		  updateCheckboxInput(session, "enable_coding_tools", value = settings$enable_coding_tools)
+		}
 
         if (!is.null(loaded$enable_mcp_tools)) {
           settings$enable_mcp_tools <- isTRUE(loaded$enable_mcp_tools)
           updateCheckboxInput(session, "enable_mcp_tools", value = settings$enable_mcp_tools)
         }
 
-        # Karşılıklı dışlama: ikisi aynı anda açık ise MCP'yi kapat
-        if (isTRUE(settings$enable_rdata_tools) && isTRUE(settings$enable_mcp_tools)) {
-          settings$enable_mcp_tools <- FALSE
-          updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
-        }
+		active_tools <- Filter(function(t) isTRUE(settings[[t]]), ANALYSIS_TOOLS)
+		if (length(active_tools) > 1) {
+		  for (tool in active_tools[-1]) {
+			settings[[tool]] <- FALSE
+			updateCheckboxInput(session, tool, value = FALSE)
+		  }
+		}
+
       if (!is.null(loaded$font_size)) {
         settings$font_size <- loaded$font_size
         updateSelectInput(session, "font_size", selected = loaded$font_size)
@@ -653,52 +670,23 @@ settingsServer <- function(id, parent_session = NULL) {
     observeEvent(input$enable_tts_audio,  { settings$enable_tts_audio  <- isTRUE(input$enable_tts_audio) })
     observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
 
-	# Karşılıklı dışlama mantığı - 3 checkbox için
-	observeEvent(input$enable_rdata_tools, {
-	  settings$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
-	  # Eğer rData açıldıysa diğerlerini kapat
-	  if (isTRUE(input$enable_rdata_tools)) {
-		if (isTRUE(input$enable_mcp_tools)) {
-		  updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
-		  settings$enable_mcp_tools <- FALSE
+	ANALYSIS_TOOLS <- c("enable_rdata_tools", "enable_mcp_tools", "enable_summarization_tools", "enable_coding_tools")
+	
+	lapply(ANALYSIS_TOOLS, function(tool_name) {
+	  observeEvent(input[[tool_name]], {
+		settings[[tool_name]] <- isTRUE(input[[tool_name]])
+		
+		if (isTRUE(input[[tool_name]])) {
+		  other_tools <- setdiff(ANALYSIS_TOOLS, tool_name)
+		  for (other in other_tools) {
+			if (isTRUE(input[[other]])) {
+			  updateCheckboxInput(session, other, value = FALSE)
+			  settings[[other]] <- FALSE
+			}
+		  }
 		}
-		if (isTRUE(input$enable_summarization_tools)) {
-		  updateCheckboxInput(session, "enable_summarization_tools", value = FALSE)
-		  settings$enable_summarization_tools <- FALSE
-		}
-	  }
-	}, ignoreInit = TRUE)
-
-	observeEvent(input$enable_mcp_tools, {
-	  settings$enable_mcp_tools <- isTRUE(input$enable_mcp_tools)
-	  # Eğer MCP açıldıysa diğerlerini kapat
-	  if (isTRUE(input$enable_mcp_tools)) {
-		if (isTRUE(input$enable_rdata_tools)) {
-		  updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
-		  settings$enable_rdata_tools <- FALSE
-		}
-		if (isTRUE(input$enable_summarization_tools)) {
-		  updateCheckboxInput(session, "enable_summarization_tools", value = FALSE)
-		  settings$enable_summarization_tools <- FALSE
-		}
-	  }
-	}, ignoreInit = TRUE)
-
-	# YENİ: Dosya Özetleme için karşılıklı dışlama
-	observeEvent(input$enable_summarization_tools, {
-	  settings$enable_summarization_tools <- isTRUE(input$enable_summarization_tools)
-	  # Eğer Özetleme açıldıysa diğerlerini kapat
-	  if (isTRUE(input$enable_summarization_tools)) {
-		if (isTRUE(input$enable_rdata_tools)) {
-		  updateCheckboxInput(session, "enable_rdata_tools", value = FALSE)
-		  settings$enable_rdata_tools <- FALSE
-		}
-		if (isTRUE(input$enable_mcp_tools)) {
-		  updateCheckboxInput(session, "enable_mcp_tools", value = FALSE)
-		  settings$enable_mcp_tools <- FALSE
-		}
-	  }
-	}, ignoreInit = TRUE)
+	  }, ignoreInit = TRUE)
+	})
     
     # Save settings button
 	observeEvent(input$save_settings, {
@@ -744,7 +732,8 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$enable_tts_audio        <- TRUE
 	  settings$enable_rdata_tools      <- FALSE
 	  settings$enable_mcp_tools        <- FALSE
-	  settings$enable_summarization_tools <- FALSE # YENİ
+	  settings$enable_summarization_tools <- FALSE
+	  settings$enable_coding_tools <- FALSE
 	  settings$enable_followups        <- TRUE
 	  settings$font_size               <- "medium"
 	  settings$enable_background_music <- FALSE
@@ -761,7 +750,8 @@ settingsServer <- function(id, parent_session = NULL) {
 	  updateCheckboxInput(session, "enable_tts_audio",        value = settings$enable_tts_audio)
 	  updateCheckboxInput(session, "enable_rdata_tools",      value = settings$enable_rdata_tools)
 	  updateCheckboxInput(session, "enable_mcp_tools",        value = settings$enable_mcp_tools)
-	  updateCheckboxInput(session, "enable_summarization_tools", value = FALSE) # YENİ
+	  updateCheckboxInput(session, "enable_summarization_tools", value = FALSE)
+	  updateCheckboxInput(session, "enable_coding_tools", value = FALSE)
 	  updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
 	  updateCheckboxInput(session, "enable_background_music", value = FALSE)
 	  updateSliderInput(session, "music_volume", value = 0.3)
