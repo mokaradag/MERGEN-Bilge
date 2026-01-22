@@ -300,8 +300,14 @@ $(document).ready(function() {
 		tooltip.remove();
 		$(this).removeData('custom-tooltip');
 	  }
-	  // Tüm custom tooltip'leri temizle
 	  $('.custom-tooltip').remove();
+	  $('.modern-welcome-action-btn').removeData('custom-tooltip');
+	  setTimeout(function() {
+		$('.custom-tooltip').remove();
+	  }, 50);
+	  setTimeout(function() {
+		$('.custom-tooltip').remove();
+	  }, 350);
 	});
 
 	$(document).on('shiny:inputchanged', function(event) {
