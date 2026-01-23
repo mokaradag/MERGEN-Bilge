@@ -125,6 +125,12 @@ server <- function(input, output, session) {
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
   
+  # Sohbet header çıktılarını başlat (modüler)
+  chatOutputsInit(output, settings_data)
+  
+  # Dosya gözlemcilerini başlat (modüler)
+  fileObserversInit(input, session, settings_data, session_files, file_manager_data, current_user_id)
+  
   # Geri bildirim modülü
   feedback_modal <- feedbackServer("feedback_module", current_user_id)
     
@@ -391,90 +397,7 @@ server <- function(input, output, session) {
 		}
 	  ");
 	}, once = TRUE)
-		
-	# Sadece Model adını Ana Söyleşi başlığında göster (Avatar ve Karakter Adı kaldırıldı)
-	output$current_model_display <- renderUI({
-	  # Model bilgisini al
-	  selected_model_id <- settings_data$model_selection %||% api_config$local_models[1]
-	  display_name <- names(api_config$local_models)[api_config$local_models == selected_model_id]
-	  if (length(display_name) == 0) display_name <- selected_model_id
-	  
-      # Varsayılan stil renkleri
-	  bg_color <- "rgba(255, 255, 255, 0.05)"
-	  border_color <- "rgba(255, 255, 255, 0.1)"
-	  
-	  div(
-		class = "header-stat-item",
-		title = paste0("Model: ", display_name),
-		style = paste0(
-		  "background: ", bg_color, "; ",
-		  "border-color: ", border_color, ";"
-		),
-        # Avatar ve Karakter adı kaldırıldı, sadece Model adı
-		span(
-		  style = "font-weight: 500; color: #b0b0b0;",
-		  paste0("Model: ", display_name)
-		)
-	  )
-	})
-  
-  # MCP modu göstergesi için reaktif çıktı (Ana Söyleşi başlığında kullanılır)
-	output$mcp_mode_indicator <- renderUI({
-	  coding_active <- isTRUE(settings_data$enable_coding_tools)
-	  process_active <- isTRUE(settings_data$enable_process_tools)
-	  app_expert_active <- isTRUE(settings_data$enable_app_expert_tools)
-	  image_active <- isTRUE(settings_data$enable_image_tools)
-	  excel_active <- isTRUE(settings_data$enable_mcp_tools)
-	  rdata_active <- isTRUE(settings_data$enable_rdata_tools)
-	  summarization_active <- isTRUE(settings_data$enable_summarization_tools)
-	  
-	  if (coding_active) {
-		div(
-		  class = "mcp-indicator coding-active",
-		  tags$i(class = "fas fa-code"),
-		  span("Kod Uzmanı")
-		)
-	  } else if (process_active) {
-		div(
-		  class = "mcp-indicator process-active",
-		  tags$i(class = "fas fa-briefcase"),
-		  span("Süreç Yönetimi")
-		)
-	  } else if (app_expert_active) {
-		div(
-		  class = "mcp-indicator app-expert-active",
-		  tags$i(class = "fas fa-window-maximize"),
-		  span("Uygulama Uzmanı")
-		)
-	  } else if (image_active) {
-		div(
-		  class = "mcp-indicator image-active",
-		  tags$i(class = "fas fa-image"),
-		  span("Görsel Uzmanı")
-		)
-	  } else if (summarization_active) {
-		div(
-		  class = "mcp-indicator summarization-active",
-		  tags$i(class = "fas fa-file-alt"),
-		  span("Dosya Özetleme")
-		)
-	  } else if (excel_active) {
-		div(
-		  class = "mcp-indicator excel-active",
-		  tags$i(class = "fas fa-file-excel"),
-		  span("Excel Analizi")
-		)
-	  } else if (rdata_active) {
-		div(
-		  class = "mcp-indicator rdata-active",
-		  tags$i(class = "fas fa-chart-bar"),
-		  span("Proje ve Kaynak Analizi")
-		)
-	  } else {
-		NULL
-	  }
-	})
-
+		  
 	# Pass values reactive to file manager for temp_files access
 	file_manager_data <- fileManagerServer(
 	  "file_manager_module",
@@ -488,25 +411,6 @@ server <- function(input, output, session) {
 	# Store file manager data in session for summarization module access
 	session$userData$file_manager_data <- file_manager_data
 	
-	observeEvent(settings_data$enable_mcp_tools, {
-	  if (isTRUE(settings_data$enable_mcp_tools)) {
-		# If multiple are attached already, keep the first, uncheck the rest
-		cur <- names(session_files())
-		if (length(cur) > 1) {
-		  keep <- cur[1]
-		  to_uncheck <- cur[-1]
-		  sf <- session_files()
-		  for (nm in to_uncheck) sf[[nm]] <- NULL
-		  session_files(sf)
-		  # Reflect on the File Manager checkboxes
-		  if (!is.null(file_manager_data$set_attachment_checked)) {
-			lapply(to_uncheck, function(nm) file_manager_data$set_attachment_checked(nm, FALSE))
-		  }
-		  showToast(session, "MCP açıkken yalnızca 1 dosya eklenebilir. Fazla seçimler kaldırıldı.", "warning")
-		}
-	  }
-	})
-
   # One place to store app-visible files (+ summaries)
   if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
   rv_session_files <- reactiveVal(list())
@@ -560,25 +464,7 @@ server <- function(input, output, session) {
   
   # message search wiring
 messageSearchInit(input, session, values, reactive(values$messages))
-  
-  # Remove a SPECIFIC file from the prompt context
-	observeEvent(input$remove_file_from_prompt, {
-	  filename_to_remove <- input$remove_file_from_prompt$name
-	  req(filename_to_remove)
-
-	  # 1) Remove from AI context
-	  current_files <- session_files()
-	  current_files[[filename_to_remove]] <- NULL
-	  session_files(current_files)
-
-	  # 2) Just UNCHECK in file manager (do NOT delete row)
-	  if (!is.null(file_manager_data$set_attachment_checked)) {
-		file_manager_data$set_attachment_checked(filename_to_remove, FALSE)
-	  }
-
-	  showToast(session, paste("Dosya AI bağlamından kaldırıldı:", filename_to_remove), "info")
-})
-  
+    
 # Handle source file clicks from Kaynakça
 observeEvent(input$source_file_clicked, {
   req(input$source_file_clicked)
@@ -673,35 +559,7 @@ observeEvent(input$analysis_file_clicked, {
 	  showToast(session, "Tüm dosyalar AI bağlamından temizlendi.", "warning")
 	}
   }, ignoreInit = TRUE)
-	
-  # Process files added through file manager
-  observeEvent(file_manager_data$files_added_to_context(), {
-	files_to_add <- file_manager_data$files_added_to_context()
-	req(files_to_add)
-  
-	processed_count <- 0
-	for (file_info in files_to_add) {
-	  if (!(file_info$name %in% names(session_files()))) {
-		processAndSummarizeFile(
-		  file_info,
-		  current_user_id = current_user_id,
-		  session = session,
-		  settings = settings_data,
-		  file_manager_data = file_manager_data,
-		  session_files_reactive = session_files,
-		  update_manager_ui = FALSE,
-		  show_toast = FALSE,
-		  auto_attach = FALSE
-		)
-		processed_count <- processed_count + 1
-	  }
-	}
-  
-	if (processed_count > 0) {
-	  showToast(session, paste(processed_count, "dosya AI bağlamına eklendi."), "success")
-	}
-  }, ignoreInit = TRUE)
-    	
+	    	
   output$download_logs <- downloadHandler(
 	filename = function() {
 	  paste0("chat_logs_", format(Sys.Date(), "%Y%m%d"), ".csv")
@@ -1809,66 +1667,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     jsonlite::toJSON(dom_disliked, auto_unbox = FALSE)
     ))
   })
-  	
-  # 1. Model Seçici Dropdown (Ana Söyleşi Ekranı için)
-  output$chat_model_selector_ui <- renderUI({
-    current_val <- settings_data$model_selection
-    models <- api_config$local_models
-    descriptions <- api_config$local_model_descriptions %||% list()
-    
-    if (is.null(names(models))) names(models) <- models
-    
-    # Dropdown içeriğini oluştur
-	menu_items <- lapply(seq_along(models), function(i) {
-      m_name <- names(models)[i]
-      m_id   <- models[[i]]
-      is_active <- identical(as.character(m_id), as.character(current_val))
-      desc <- descriptions[[m_id]] %||% m_name  # EKLENDI
-      
-      tags$li(
-        tags$a(
-          class = paste0("dropdown-item model-option", if(is_active) " active" else ""),
-          href = "#",
-          title = desc, 
-          onclick = sprintf("Shiny.setInputValue('quick_action_model_change', '%s', {priority: 'event'}); return false;", m_id),
-          div(
-            class = "model-item-content",
-            span(class = "model-name", m_name),
-            if(is_active) icon("check", class = "selected-icon") else NULL
-          )
-        )
-      )
-    })
-
-    div(
-      title = "Model Değiştir", 
-      shinyWidgets::dropdown(
-        inputId = "chat_model_dropdown_container",
-        style = "minimal",
-        icon = icon("microchip"), 
-        status = "default",  
-        right = TRUE,        
-        up = TRUE,           
-        width = "250px",     
-        
-		div(
-          class = "dropdown-menu-header",
-          style = "padding: 8px 12px; border-bottom: 1px solid #4d4d4f; margin-bottom: 4px;",
-          icon("layer-group"),
-          tags$span(
-            style = "font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;",
-            "Model Kataloğu"
-          )
-        ),
-        tags$ul(
-          class = "dropdown-menu-custom-list",
-          style = "list-style: none; padding: 0; margin: 0;",
-          menu_items
-        )
-      )
-    )
-  })
-  							 
+  	  							 
   observeEvent(input$view_file_from_chat, {
 	req(input$view_file_from_chat)
 	file_id <- input$view_file_from_chat

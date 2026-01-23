@@ -355,12 +355,14 @@ fileManagerServer <- function(
 		module_values$files_in_context[[fid]] <- TRUE
 		attach_in_parent(info)
 		fm_debug("checkbox", sprintf("%s (id=%s) checked", fname, fid))
+		showToast(session, paste0("'", fname, "' model bağlamına eklendi."), "success")
 		
 	  } else {
 		# Unselect
 		module_values$files_in_context[[fid]] <- NULL
 		detach_in_parent(fname)
 		fm_debug("checkbox", sprintf("%s (id=%s) unchecked", fname, fid))
+		showToast(session, paste0("'", fname, "' model bağlamından çıkarıldı."), "info")
 	  }
 	  
 	  # Update the hint text dynamically
