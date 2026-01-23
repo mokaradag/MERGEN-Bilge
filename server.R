@@ -2,56 +2,11 @@
 
 server <- function(input, output, session) {
 
-  # ==== FIX: copy uploads to MCP base immediately ====
+  # ==== MCP Önbellek Başlatma (Modülerleştirildi) ====
   mcp_saved_path <- reactiveVal(NULL)
   
-  # per-session MCP cache (stores read-ready copies on the local disk)
-  cache_root <- getOption(
-    "mergen.session_cache_dir",
-    normalizePath(file.path(tempdir(), "mergen_session_cache"), winslash = "/", mustWork = FALSE)
-  )
-  dir.create(cache_root, recursive = TRUE, showWarnings = FALSE)
-  cache_root <- safe_windows_short_path(cache_root, must_exist = dir.exists(cache_root))
-
-  cache_session_token <- function(tok) {
-    if (is.null(tok) || !nzchar(tok)) {
-      return(sprintf("sess_%s", format(Sys.time(), "%Y%m%d%H%M%S")))
-    }
-    gsub("[^A-Za-z0-9_-]", "_", tok)
-  }
-
-  cache_dir <- file.path(cache_root, cache_session_token(session$token %||% "anon"))
-  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-  cache_dir <- safe_windows_short_path(cache_dir, must_exist = dir.exists(cache_dir))
-
-  cache_mcp_file_locally <- function(src_path) {
-    src_path_chr <- as.character(src_path %||% "")
-    if (!nzchar(src_path_chr) || !path_exists_relaxed(src_path_chr)) {
-      return(NULL)
-    }
-    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    dest <- file.path(cache_dir, basename(src_path_chr))
-    src_for_copy <- try(normalize_excel_path(src_path_chr), silent = TRUE)
-    if (inherits(src_for_copy, "try-error") || is.null(src_for_copy) || !nzchar(src_for_copy)) {
-      src_for_copy <- src_path_chr
-    }
-    copied <- FALSE
-    try({
-      copied <- isTRUE(file.copy(src_for_copy, dest, overwrite = TRUE))
-    }, silent = TRUE)
-    if (!copied && !path_exists_relaxed(dest)) {
-      return(NULL)
-    }
-    dest_norm <- tryCatch(normalizePath(dest, winslash = "/", mustWork = FALSE), error = function(e) dest)
-    if (path_exists_relaxed(dest_norm)) {
-      dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
-    }
-    dest_norm
-  }
-
-  session$onSessionEnded(function() {
-    try(unlink(cache_dir, recursive = TRUE, force = TRUE), silent = TRUE)
-  })
+  # Session için önbellek dizinini başlat (helpers_mcp_cache.R'den)
+  cache_dir <- initialize_mcp_cache_dir(session, current_user_id)
   
   # One-time widget deps (enables charts rendered into string-inserted containers)
   if (requireNamespace("highcharter", quietly = TRUE)) {
@@ -79,6 +34,11 @@ server <- function(input, output, session) {
 
 	# Get their permanent UserID from our database
 	current_user_id <- get_or_create_user(system_username)
+	
+  # MCP cache wrapper (modül fonksiyonunu cache_dir ile çağırır)
+  cache_mcp_file_locally <- function(src_path) {
+    helpers_mcp_cache$cache_mcp_file_locally(src_path, cache_dir)
+  }
 
     cache_dir <- file.path(cache_root, paste0("user_", current_user_id), cache_session_token(session$token %||% "anon"))
 	dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -476,26 +436,7 @@ server <- function(input, output, session) {
 	)
 	
 	# Store file manager data in session for summarization module access
-	session$userData$file_manager_data <- file_manager_data
-	
-	observeEvent(settings_data$enable_mcp_tools, {
-	  if (isTRUE(settings_data$enable_mcp_tools)) {
-		# If multiple are attached already, keep the first, uncheck the rest
-		cur <- names(session_files())
-		if (length(cur) > 1) {
-		  keep <- cur[1]
-		  to_uncheck <- cur[-1]
-		  sf <- session_files()
-		  for (nm in to_uncheck) sf[[nm]] <- NULL
-		  session_files(sf)
-		  # Reflect on the File Manager checkboxes
-		  if (!is.null(file_manager_data$set_attachment_checked)) {
-			lapply(to_uncheck, function(nm) file_manager_data$set_attachment_checked(nm, FALSE))
-		  }
-		  showToast(session, "MCP açıkken yalnızca 1 dosya eklenebilir. Fazla seçimler kaldırıldı.", "warning")
-		}
-	  }
-	})
+	session$userData$file_manager_data <- file_manager_data	
 
   # One place to store app-visible files (+ summaries)
   if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
@@ -549,163 +490,27 @@ server <- function(input, output, session) {
   })
   
   # message search wiring
-messageSearchInit(input, session, values, reactive(values$messages))
+  messageSearchInit(input, session, values, reactive(values$messages))
   
-  # Remove a SPECIFIC file from the prompt context
-	observeEvent(input$remove_file_from_prompt, {
-	  filename_to_remove <- input$remove_file_from_prompt$name
-	  req(filename_to_remove)
-
-	  # 1) Remove from AI context
-	  current_files <- session_files()
-	  current_files[[filename_to_remove]] <- NULL
-	  session_files(current_files)
-
-	  # 2) Just UNCHECK in file manager (do NOT delete row)
-	  if (!is.null(file_manager_data$set_attachment_checked)) {
-		file_manager_data$set_attachment_checked(filename_to_remove, FALSE)
-	  }
-
-	  showToast(session, paste("Dosya AI bağlamından kaldırıldı:", filename_to_remove), "info")
-})
-  
-# Handle source file clicks from Kaynakça
-observeEvent(input$source_file_clicked, {
-  req(input$source_file_clicked)
-
-  # --- Normalize + debounce ---
-  ev <- input$source_file_clicked
-  raw_name <- if (is.character(ev)) ev[1] else (ev$filename %||% ev$name %||% "")
-  raw_name <- as.character(raw_name %||% "")
-  raw_name <- sub("^\\s*\\d+\\)\\s*", "", raw_name)  # numaralı önekleri temizle
-
-  # Çift tıklama yutma (500ms) — tam ipucu bazlı
-  now  <- as.numeric(Sys.time())
-  last <- last_source_click()
-  if (is.list(last) && identical(last$name, raw_name) && (now - (last$t %||% 0)) < 0.5) {
-	return(invisible(NULL))
-  }
-  last_source_click(list(name = raw_name, t = now))
-
-  # not: 'raw_name' tıklanan TAM ipucu değeridir; 'fname' artık kullanılmıyor
-  if (!nzchar(raw_name)) {
-	showToast(session, "Geçersiz kaynak bağlantısı: dosya adı yok.", "error")
-	return(invisible(NULL))
-  }
-
-  # Günlük: tıklanan kaynak
-  log_info("[SRC_CLICK] tıklanan kaynak: '{raw_name}'")
-
-  # Tüm çözümleme/önizleme işini tek bir yerde topla
-  handle_source_file_click(ev, settings_data, api_config, session, filePreview)
-}, ignoreInit = TRUE)
-
-observeEvent(input$analysis_file_clicked, {
-  req(input$analysis_file_clicked)
-  
-  filepath_raw <- input$analysis_file_clicked$filepath
-  if (is.null(filepath_raw) || !nzchar(filepath_raw)) {
-    showToast(session, "Geçersiz dosya yolu.", "error")
-    return(invisible(NULL))
-  }
-  
-  filepath_clean <- trimws(as.character(filepath_raw))
-  
-  full_path <- NULL
-  if (startsWith(filepath_clean, "www/")) {
-    full_path <- file.path(getwd(), filepath_clean)
-  } else if (startsWith(filepath_clean, "/") || grepl("^[A-Za-z]:", filepath_clean)) {
-    full_path <- filepath_clean
-  } else {
-    full_path <- file.path(getwd(), "www", filepath_clean)
-  }
-  
-  full_path <- normalize_mcp_path(full_path, must_exist = FALSE)
-  
-  if (!path_exists_relaxed(full_path)) {
-    showToast(session, paste("Dosya bulunamadı:", basename(filepath_clean)), "error")
-    log_error("[ANALYSIS_FILE] Dosya mevcut değil: {full_path}")
-    return(invisible(NULL))
-  }
-  
-  file_info <- list(
-    name = basename(full_path),
-    datapath = full_path,
-    size = suppressWarnings(file.info(full_path)$size)
+  # File context event handlers (modularized)
+  fileContextHandlersServer(
+    id = "file_context_handlers",
+    input = input,
+    session = session,
+    settings_data = settings_data,
+    session_files = session_files,
+    file_manager_data = file_manager_data,
+    current_user_id = current_user_id,
+    filePreview = filePreview,
+    api_config = api_config,
+    last_source_click = last_source_click
   )
-  
-  log_info("[ANALYSIS_FILE] Önizleme açılıyor: {full_path}")
-  openAnyPreview(file_info, session, filePreview)
-  
-}, ignoreInit = TRUE)
-  
-  # Connect file manager uploads/removals to AI context
-  observeEvent(file_manager_data$file_removed(), {
-	removed_file <- file_manager_data$file_removed()
-	if (!is.null(removed_file)) {
-	  current_files <- session_files()
-	  if (!is.null(removed_file$name) && removed_file$name %in% names(current_files)) {
-		current_files[[removed_file$name]] <- NULL
-		session_files(current_files)
-		showToast(session, paste("Dosya AI bağlamından kaldırıldı:", removed_file$name), "info")
-  
-		session$userData$file_summaries[[removed_file$name]] <- NULL
-	  }
-	}
-  }, ignoreInit = TRUE)
 
-  # 3. Add this new observer for clear all files:
-  observeEvent(file_manager_data$all_files_cleared(), {
-	if (isTRUE(file_manager_data$all_files_cleared())) {
-	  # Clear all files from session
-	  session_files(list())
-	  session$userData$file_summaries <- list()
-	  showToast(session, "Tüm dosyalar AI bağlamından temizlendi.", "warning")
-	}
-  }, ignoreInit = TRUE)
-	
-  # Process files added through file manager
-  observeEvent(file_manager_data$files_added_to_context(), {
-	files_to_add <- file_manager_data$files_added_to_context()
-	req(files_to_add)
-  
-	processed_count <- 0
-	for (file_info in files_to_add) {
-	  if (!(file_info$name %in% names(session_files()))) {
-		processAndSummarizeFile(
-		  file_info,
-		  current_user_id = current_user_id,
-		  session = session,
-		  settings = settings_data,
-		  file_manager_data = file_manager_data,
-		  session_files_reactive = session_files,
-		  update_manager_ui = FALSE,
-		  show_toast = FALSE,
-		  auto_attach = FALSE
-		)
-		processed_count <- processed_count + 1
-	  }
-	}
-  
-	if (processed_count > 0) {
-	  showToast(session, paste(processed_count, "dosya AI bağlamına eklendi."), "success")
-	}
-  }, ignoreInit = TRUE)
-
-  # Settings observers
-  observeEvent(settings_data$enable_timestamps, {
-	session$sendCustomMessage("toggleAllTimestamps", list(enabled = settings_data$enable_timestamps))
-  }, ignoreNULL = FALSE)
-  
-  observeEvent(settings_data$font_size, {
-	values$current_font_size <- settings_data$font_size
-	session$sendCustomMessage("updateFontSize", list(size = settings_data$font_size))
-  })
-  
-	observeEvent(settings_data$enable_widescreen, {
-	  enabled_val <- isTRUE(settings_data$enable_widescreen)
-	  session$sendCustomMessage("toggleWidescreen", list(enabled = enabled_val))
-	}, ignoreNULL = FALSE, ignoreInit = FALSE)
+  # Settings change handlers (modularized)
+  settingsHandlersServer("settings_handlers", 
+                          settings_data = settings_data,
+                          values = values, 
+                          session = session)
 	
   output$download_logs <- downloadHandler(
 	filename = function() {
