@@ -119,6 +119,12 @@ server <- function(input, output, session) {
   quickActionsInit(input, session, values, settings_data,
                    session_files, send_message, quick_action_skip_mcp)
   
+  # Ayar gözlemcilerini başlat (modüler)
+  settingsObserversInit(input, session, values, settings_data)
+  
+  # Depolama/localStorage gözlemcilerini başlat (modüler)
+  storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
+  
   # Geri bildirim modülü
   feedback_modal <- feedbackServer("feedback_module", current_user_id)
     
@@ -695,22 +701,7 @@ observeEvent(input$analysis_file_clicked, {
 	  showToast(session, paste(processed_count, "dosya AI bağlamına eklendi."), "success")
 	}
   }, ignoreInit = TRUE)
-
-  # Settings observers
-  observeEvent(settings_data$enable_timestamps, {
-	session$sendCustomMessage("toggleAllTimestamps", list(enabled = settings_data$enable_timestamps))
-  }, ignoreNULL = FALSE)
-  
-  observeEvent(settings_data$font_size, {
-	values$current_font_size <- settings_data$font_size
-	session$sendCustomMessage("updateFontSize", list(size = settings_data$font_size))
-  })
-  
-	observeEvent(settings_data$enable_widescreen, {
-	  enabled_val <- isTRUE(settings_data$enable_widescreen)
-	  session$sendCustomMessage("toggleWidescreen", list(enabled = enabled_val))
-	}, ignoreNULL = FALSE, ignoreInit = FALSE)
-	
+    	
   output$download_logs <- downloadHandler(
 	filename = function() {
 	  paste0("chat_logs_", format(Sys.Date(), "%Y%m%d"), ".csv")
@@ -1960,35 +1951,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
       send_message(txt)
     }
   })
-
-  observeEvent(settings_data$enable_animations, {
-	shinyjs::toggleClass(selector = "body", class = "animations-enabled", condition = settings_data$enable_animations)
-  }, ignoreNULL = FALSE)
-  
-	# Karakter değiştiğinde müzik bağlamını güncelle
-	observeEvent(settings_data$selected_character, {
-	  if (isTRUE(settings_data$enable_background_music)) {
-		session$sendCustomMessage("switchMusicContext", list(
-		  type = "karakter",
-		  character = settings_data$selected_character
-		))
-	  }
-	}, ignoreInit = TRUE)
-
-	# Ana sohbette mesaj eklendiğinde müzik modunu güncelle
-	observeEvent(length(values$messages), {
-	  if (isTRUE(settings_data$enable_background_music)) {
-		if (length(values$messages) > 0) {
-		  session$sendCustomMessage("switchMusicContext", list(
-			type = "karakter",
-			character = settings_data$selected_character %||% "mergen"
-		  ))
-		} else {
-		  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-		}
-	  }
-	}, ignoreInit = TRUE)
-	  
+  	  
   # This observer runs only once at startup to show the welcome screen
 	observeEvent(TRUE, {
 	  if (isTRUE(values$show_welcome)) {
@@ -2657,63 +2620,5 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
   output$message_count <- renderText({ length(values$messages) })
   output$show_welcome_screen <- reactive({ values$show_welcome })
   outputOptions(output, "show_welcome_screen", suspendWhenHidden = FALSE)
-																							  
-  observeEvent(input$last_active_tab, {
-	updateTabItems(session, "tabs", selected = input$last_active_tab)
-  })
-		  
-  observeEvent(values$messages, {
-	if (length(values$messages) > 0) {
-	  session$sendCustomMessage("saveCurrentChat", values$messages)
-	}
-  }, ignoreNULL = FALSE, ignoreInit = TRUE)
-  
-	observeEvent(input$load_chat_from_storage, {
-	  loaded_data <- input$load_chat_from_storage
-	  req(loaded_data)
-	  if (!is.list(loaded_data) || length(loaded_data) == 0) return(invisible(NULL))
-	  if (length(values$messages) == 0) {
-	  
-	  removeUI(selector = "#chat_content_container > *", multiple = TRUE)
-	  
-	  values$messages <- input$load_chat_from_storage
-	  values$show_welcome <- FALSE
-	  
-	  if (length(values$messages) > 0) {
-		for (i in seq_along(values$messages)) {
-		  msg <- values$messages[[i]]
-		  is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
-		  
-		  # Get character data
-		  selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-		  chars_data <- get_characters_data()
-		  character_data <- if (!is.null(chars_data)) {
-			Find(function(x) x$id == selected_char_id, chars_data$styles)
-		  } else NULL
-		  
-		  ui_to_insert <- render_message_bubble_ui(
-			msg, settings_data,
-			is_last_user_message = is_last_user_msg,
-			character_data = character_data,
-			liked_ids = values$liked_messages,
-			disliked_ids = values$disliked_messages
-		  )
-
-		  insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
-		  
-		  if(isTRUE(msg$has_code)) {
-			 wrapper_id <- paste0("message_wrapper_", msg$id)
-			 shinyjs::runjs(sprintf("setTimeout(() => { window.initializeCodeMirrorInElement('%s'); }, 200);", wrapper_id))
-		  }
-		}
-		shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 100);")
-		
-		# [MODIFICATION] Restore charts for the loaded messages
-		# Geçmiş sohbet yüklendiğinde grafikleri (output slotlarını) yeniden bağla
-		chat_rebind_all_charts(session, output, values$messages)
-	  }
-	  
-	  showToast(session, "Önceki sohbetiniz geri yüklendi.", "info")
-	}
-  }, ignoreInit = TRUE)
+ 
 }

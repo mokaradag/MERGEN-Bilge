@@ -41,12 +41,14 @@ $(document).ready(function() {
     const container = document.querySelector('.chat-container');
     if (!container) return;
     
-    container.classList.remove('font-small', 'font-medium', 'font-large');
+    container.classList.remove('font-small', 'font-medium', 'font-large', 'font-xlarge');
     
     if (data.size === 'small') {
       container.classList.add('font-small');
     } else if (data.size === 'large') {
       container.classList.add('font-large');
+    } else if (data.size === 'xlarge') {
+      container.classList.add('font-xlarge');
     } else {
       container.classList.add('font-medium');
     }
@@ -59,13 +61,15 @@ $(document).ready(function() {
   });
 
   Shiny.addCustomMessageHandler('toggleAllTimestamps', function(data) {
-    const timestamps = document.querySelectorAll('.message-timestamp');
+    const timestamps = document.querySelectorAll('.message-time');
     const enabled = data.enabled === true;
     
     timestamps.forEach(function(ts) {
       if (enabled) {
-        ts.style.display = 'block';
+        ts.classList.remove('hidden');
+        ts.style.display = '';
       } else {
+        ts.classList.add('hidden');
         ts.style.display = 'none';
       }
     });

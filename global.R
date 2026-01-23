@@ -1020,6 +1020,8 @@ source("R/module_chat_export.R",   encoding = "UTF-8")
 source("R/module_admin_analytics.R", encoding = "UTF-8")
 source("R/module_feedback.R", encoding = "UTF-8")
 source("R/module_quick_actions.R", encoding = "UTF-8")
+source("R/server_observers_settings.R", encoding = "UTF-8")
+source("R/server_observers_storage.R", encoding = "UTF-8")
 
 # --- GLOBAL CONFIGURATION ---
 
