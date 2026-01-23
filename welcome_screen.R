@@ -6,9 +6,9 @@ source("R/welcome_screen_modern.R", encoding = "UTF-8")
 MAIN_ACTIONS_DATA <- list(
   list(
     id = "project-process",
-    title = "Proje ve Süreç Yönetimi",
-    message = "Proje yönetimi konusunda bana rehberlik edebilir misin?",
-    description = "Proje planlama, görev atama, zaman çizelgesi oluşturma ve takip süreçlerinde uzman rehberlik alın. Agile, Scrum veya Waterfall metodolojileri hakkında detaylı bilgi ve öneriler.",
+    title = "Süreç Yönetimi Sistemi",
+    message = "Kurumsal süreç ve dokümantasyon konusunda yardıma ihtiyacım var.",
+    description = "Şirket içi süreç, izleç, rehber ve şablon dokümanları hakkında detaylı bilgi edinin. Kurumsal prosedürler, iş akışları, standart operasyon talimatları ve şirket politikaları konusunda uzman rehberlik.",
     icon_name = "briefcase",
     themeColor = "#3b82f6",
     model_value = "mergen-local-model"

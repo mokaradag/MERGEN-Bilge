@@ -76,6 +76,7 @@
   box-shadow: 0 1px 4px rgba(168, 85, 247, 0.4);
 }
 
+
 .mcp-indicator.coding-active {
   background: rgba(245, 158, 11, 0.15);
   color: #fcd34d;
@@ -90,6 +91,54 @@
 .mcp-indicator.coding-active:hover {
   opacity: 1;
   box-shadow: 0 1px 4px rgba(245, 158, 11, 0.4);
+}
+
+.mcp-indicator.process-active {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.mcp-indicator.process-active i {
+  color: #60a5fa;
+  font-size: 12px;
+}
+
+.mcp-indicator.process-active:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.4);
+}
+
+.mcp-indicator.app-expert-active {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
+.mcp-indicator.app-expert-active i {
+  color: #a78bfa;
+  font-size: 12px;
+}
+
+.mcp-indicator.app-expert-active:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(139, 92, 246, 0.4);
+}
+
+.mcp-indicator.image-active {
+  background: rgba(236, 72, 153, 0.15);
+  color: #f9a8d4;
+  border-color: rgba(236, 72, 153, 0.25);
+}
+
+.mcp-indicator.image-active i {
+  color: #f472b6;
+  font-size: 12px;
+}
+
+.mcp-indicator.image-active:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(236, 72, 153, 0.4);
 }
 
 /* Responsive: Mobil ekranlarda sadece ikon göster */

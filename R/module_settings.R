@@ -147,6 +147,30 @@ settingsUI <- function(id) {
 						label = tags$span("Kod Uzmanı", style = "white-space: nowrap;"),
 						value = FALSE
 					  )
+					),
+					div(
+					  class = "checkbox-item",
+					  checkboxInput(
+						inputId = ns("enable_process_tools"),
+						label = tags$span("Süreç Yönetimi", style = "white-space: nowrap;"),
+						value = FALSE
+					  )
+					),
+					div(
+					  class = "checkbox-item",
+					  checkboxInput(
+						inputId = ns("enable_app_expert_tools"),
+						label = tags$span("Uygulama Uzmanı", style = "white-space: nowrap;"),
+						value = FALSE
+					  )
+					),
+					div(
+					  class = "checkbox-item",
+					  checkboxInput(
+						inputId = ns("enable_image_tools"),
+						label = tags$span("Görsel Uzmanı", style = "white-space: nowrap;"),
+						value = FALSE
+					  )
 					)
 				  )
 				),
@@ -346,6 +370,9 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_mcp_tools        = FALSE,
 	  enable_summarization_tools = FALSE,
 	  enable_coding_tools = FALSE,
+	  enable_process_tools = FALSE,
+	  enable_app_expert_tools = FALSE,
+	  enable_image_tools = FALSE,
 	  enable_followups        = TRUE,
 	  font_size               = "medium",
 	  enable_background_music = FALSE,
@@ -635,6 +662,21 @@ settingsServer <- function(id, parent_session = NULL) {
 		  settings$enable_coding_tools <- isTRUE(loaded$enable_coding_tools)
 		  updateCheckboxInput(session, "enable_coding_tools", value = settings$enable_coding_tools)
 		}
+		
+		if (!is.null(loaded$enable_process_tools)) {
+		  settings$enable_process_tools <- isTRUE(loaded$enable_process_tools)
+		  updateCheckboxInput(session, "enable_process_tools", value = settings$enable_process_tools)
+		}
+		
+		if (!is.null(loaded$enable_app_expert_tools)) {
+		  settings$enable_app_expert_tools <- isTRUE(loaded$enable_app_expert_tools)
+		  updateCheckboxInput(session, "enable_app_expert_tools", value = settings$enable_app_expert_tools)
+		}
+		
+		if (!is.null(loaded$enable_image_tools)) {
+		  settings$enable_image_tools <- isTRUE(loaded$enable_image_tools)
+		  updateCheckboxInput(session, "enable_image_tools", value = settings$enable_image_tools)
+		}
 
         if (!is.null(loaded$enable_mcp_tools)) {
           settings$enable_mcp_tools <- isTRUE(loaded$enable_mcp_tools)
@@ -670,7 +712,15 @@ settingsServer <- function(id, parent_session = NULL) {
     observeEvent(input$enable_tts_audio,  { settings$enable_tts_audio  <- isTRUE(input$enable_tts_audio) })
     observeEvent(input$enable_followups,  { settings$enable_followups  <- isTRUE(input$enable_followups) })
 
-	ANALYSIS_TOOLS <- c("enable_rdata_tools", "enable_mcp_tools", "enable_summarization_tools", "enable_coding_tools")
+	ANALYSIS_TOOLS <- c(
+	  "enable_rdata_tools",
+	  "enable_mcp_tools",
+	  "enable_summarization_tools",
+	  "enable_coding_tools",
+	  "enable_process_tools",
+	  "enable_app_expert_tools",
+	  "enable_image_tools"
+	)
 	
 	lapply(ANALYSIS_TOOLS, function(tool_name) {
 	  observeEvent(input[[tool_name]], {
@@ -734,6 +784,9 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$enable_mcp_tools        <- FALSE
 	  settings$enable_summarization_tools <- FALSE
 	  settings$enable_coding_tools <- FALSE
+	  settings$enable_process_tools <- FALSE
+	  settings$enable_app_expert_tools <- FALSE
+	  settings$enable_image_tools <- FALSE
 	  settings$enable_followups        <- TRUE
 	  settings$font_size               <- "medium"
 	  settings$enable_background_music <- FALSE

@@ -410,16 +410,37 @@ server <- function(input, output, session) {
   
   # MCP modu göstergesi için reaktif çıktı (Ana Söyleşi başlığında kullanılır)
 	output$mcp_mode_indicator <- renderUI({
-	  excel_active <- isTRUE(settings_data$enable_mcp_tools)
-	  sql_analysis_active <- isTRUE(settings_data$enable_rdata_tools)
-	  summarization_active <- isTRUE(settings_data$enable_summarization_tools)
 	  coding_active <- isTRUE(settings_data$enable_coding_tools)
+	  process_active <- isTRUE(settings_data$enable_process_tools)
+	  app_expert_active <- isTRUE(settings_data$enable_app_expert_tools)
+	  image_active <- isTRUE(settings_data$enable_image_tools)
+	  excel_active <- isTRUE(settings_data$enable_mcp_tools)
+	  rdata_active <- isTRUE(settings_data$enable_rdata_tools)
+	  summarization_active <- isTRUE(settings_data$enable_summarization_tools)
 	  
 	  if (coding_active) {
 		div(
 		  class = "mcp-indicator coding-active",
 		  tags$i(class = "fas fa-code"),
 		  span("Kod Uzmanı")
+		)
+	  } else if (process_active) {
+		div(
+		  class = "mcp-indicator process-active",
+		  tags$i(class = "fas fa-briefcase"),
+		  span("Süreç Yönetimi")
+		)
+	  } else if (app_expert_active) {
+		div(
+		  class = "mcp-indicator app-expert-active",
+		  tags$i(class = "fas fa-window-maximize"),
+		  span("Uygulama Uzmanı")
+		)
+	  } else if (image_active) {
+		div(
+		  class = "mcp-indicator image-active",
+		  tags$i(class = "fas fa-image"),
+		  span("Görsel Uzmanı")
 		)
 	  } else if (summarization_active) {
 		div(
@@ -431,13 +452,13 @@ server <- function(input, output, session) {
 		div(
 		  class = "mcp-indicator excel-active",
 		  tags$i(class = "fas fa-file-excel"),
-		  span("Excel MCP")
+		  span("Excel Analizi")
 		)
-	  } else if (sql_analysis_active) {
+	  } else if (rdata_active) {
 		div(
 		  class = "mcp-indicator rdata-active",
-		  tags$i(class = "fas fa-database"),
-		  span("SQL Analiz")
+		  tags$i(class = "fas fa-chart-bar"),
+		  span("Proje ve Kaynak Analizi")
 		)
 	  } else {
 		NULL
@@ -969,6 +990,12 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 		tool_family <- "summarization"
 	  } else if (isTRUE(settings_data$enable_coding_tools)) {
 		tool_family <- "coding"
+	  } else if (isTRUE(settings_data$enable_process_tools)) {
+		tool_family <- "process"
+	  } else if (isTRUE(settings_data$enable_app_expert_tools)) {
+		tool_family <- "app_expert"
+	  } else if (isTRUE(settings_data$enable_image_tools)) {
+		tool_family <- "image"
 	  } else {
 		tool_family <- "none"
 	  }
@@ -1153,6 +1180,40 @@ generate_non_streaming_stoppable <- function(chat_history, current_settings, use
 		citation_instruction
 	  )
 	  style_instruction <- coding_system_prompt
+	} else if (isTRUE(settings_data$enable_image_tools)) {
+	  image_system_prompt <- paste0(
+		base_instruction,
+		"\n\nGÖRSEL UZMANI MODU AKTİF:\n",
+		"You are an expert AI image generation assistant specializing in creating detailed, effective prompts for image generation models.\n\n",
+		"YOUR CAPABILITIES:\n",
+		"- Crafting detailed prompts for AI image generation (DALL-E, Midjourney, Stable Diffusion, etc.)\n",
+		"- Understanding visual composition, lighting, style, and artistic techniques\n",
+		"- Translating user ideas into precise visual descriptions\n",
+		"- Optimizing prompts for best results across different image generation models\n",
+		"- Suggesting artistic styles, mediums, and techniques\n",
+		"- Providing guidance on image parameters (aspect ratio, resolution, etc.)\n\n",
+		"YOUR APPROACH:\n",
+		"- Ask clarifying questions about desired style, mood, and composition\n",
+		"- Provide multiple prompt variations for different artistic approaches\n",
+		"- Explain prompt structure and keyword importance\n",
+		"- Suggest negative prompts to avoid unwanted elements\n",
+		"- Recommend specific artists, styles, or techniques when relevant\n",
+		"- Consider technical aspects (lighting, camera angles, depth of field)\n\n",
+		"PROMPT STRUCTURE GUIDANCE:\n",
+		"- Subject: What is the main focus of the image?\n",
+		"- Style: What artistic style or medium? (photorealistic, oil painting, digital art, etc.)\n",
+		"- Composition: How should elements be arranged? (close-up, wide shot, perspective)\n",
+		"- Lighting: What kind of lighting? (natural, dramatic, soft, golden hour)\n",
+		"- Details: Specific details that enhance the image (textures, colors, atmosphere)\n",
+		"- Quality modifiers: Professional, highly detailed, 8k, masterpiece, etc.\n\n",
+		"RESPONSE FORMAT:\n",
+		"- Provide ready-to-use prompts in code blocks\n",
+		"- Explain reasoning behind prompt choices\n",
+		"- Offer variations for different moods or styles\n",
+		"- Include negative prompt suggestions when relevant",
+		citation_instruction
+	  )
+	  style_instruction <- image_system_prompt
 	} else {
 	  style_instruction <- paste0(base_instruction, citation_instruction)
 	}
@@ -1971,11 +2032,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		
 		if (!is.null(template_model) && nzchar(template_model)) {
 		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
-		  
-		  isolate({
-			settings_data$model_selection <- template_model
-		  })
-		  
+		  isolate({ settings_data$model_selection <- template_model })
 		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
 		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
 		  showToast(session, paste("Model değiştirildi:", template_model), "info")
@@ -1986,18 +2043,27 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		  settings_data$enable_summarization_tools <- FALSE
 		  settings_data$enable_rdata_tools <- FALSE
 		  settings_data$enable_mcp_tools <- FALSE
+		  settings_data$enable_process_tools <- FALSE
+		  settings_data$enable_app_expert_tools <- FALSE
+		  settings_data$enable_image_tools <- FALSE
 		})
 		
 		updateCheckboxInput(session, "settings_module-enable_coding_tools", value = TRUE)
 		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = FALSE)
 		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
 		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_process_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_app_expert_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_image_tools", value = FALSE)
 		
 		session$sendCustomMessage("saveSettings", list(
 		  enable_coding_tools = TRUE,
 		  enable_summarization_tools = FALSE,
 		  enable_rdata_tools = FALSE,
-		  enable_mcp_tools = FALSE
+		  enable_mcp_tools = FALSE,
+		  enable_process_tools = FALSE,
+		  enable_app_expert_tools = FALSE,
+		  enable_image_tools = FALSE
 		))
 		
 		showToast(session, "Kod Uzmanı modu aktif edildi. Kodlama konusunda size yardımcı olmaya hazırım!", "success")
@@ -2005,8 +2071,243 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 		if (nzchar(template_text)) {
 		  shinyjs::delay(300, { send_message(template_text) })
 		}
+		return()
+	  }
+	  
+	  if (identical(template_action_id, "project-process")) {
+		cat("[QUICK_TEMPLATE] Süreç Yönetimi Sistemi isteği tespit edildi\n")
 		
-	  } else if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
+		  isolate({ settings_data$model_selection <- template_model })
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		}
+		
+		isolate({
+		  settings_data$enable_process_tools <- TRUE
+		  settings_data$enable_coding_tools <- FALSE
+		  settings_data$enable_summarization_tools <- FALSE
+		  settings_data$enable_rdata_tools <- FALSE
+		  settings_data$enable_mcp_tools <- FALSE
+		  settings_data$enable_app_expert_tools <- FALSE
+		  settings_data$enable_image_tools <- FALSE
+		})
+		
+		updateCheckboxInput(session, "settings_module-enable_process_tools", value = TRUE)
+		updateCheckboxInput(session, "settings_module-enable_coding_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_app_expert_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_image_tools", value = FALSE)
+		
+		session$sendCustomMessage("saveSettings", list(
+		  enable_process_tools = TRUE,
+		  enable_coding_tools = FALSE,
+		  enable_summarization_tools = FALSE,
+		  enable_rdata_tools = FALSE,
+		  enable_mcp_tools = FALSE,
+		  enable_app_expert_tools = FALSE,
+		  enable_image_tools = FALSE
+		))
+		
+		showToast(session, "Süreç Yönetimi modu aktif edildi. Kurumsal süreç ve dokümanlar hakkında size yardımcı olmaya hazırım!", "success")
+		
+		if (nzchar(template_text)) {
+		  shinyjs::delay(300, { send_message(template_text) })
+		}
+		return()
+	  }
+	  
+	  if (identical(template_action_id, "app-expert")) {
+		cat("[QUICK_TEMPLATE] Uygulama Uzmanı isteği tespit edildi\n")
+		
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
+		  isolate({ settings_data$model_selection <- template_model })
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		}
+		
+		isolate({
+		  settings_data$enable_app_expert_tools <- TRUE
+		  settings_data$enable_process_tools <- FALSE
+		  settings_data$enable_coding_tools <- FALSE
+		  settings_data$enable_summarization_tools <- FALSE
+		  settings_data$enable_rdata_tools <- FALSE
+		  settings_data$enable_mcp_tools <- FALSE
+		  settings_data$enable_image_tools <- FALSE
+		})
+		
+		updateCheckboxInput(session, "settings_module-enable_app_expert_tools", value = TRUE)
+		updateCheckboxInput(session, "settings_module-enable_process_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_coding_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_image_tools", value = FALSE)
+		
+		session$sendCustomMessage("saveSettings", list(
+		  enable_app_expert_tools = TRUE,
+		  enable_process_tools = FALSE,
+		  enable_coding_tools = FALSE,
+		  enable_summarization_tools = FALSE,
+		  enable_rdata_tools = FALSE,
+		  enable_mcp_tools = FALSE,
+		  enable_image_tools = FALSE
+		))
+		
+		showToast(session, "Uygulama Uzmanı modu aktif edildi. Uygulama mimarisi konusunda size yardımcı olmaya hazırım!", "success")
+		
+		if (nzchar(template_text)) {
+		  shinyjs::delay(300, { send_message(template_text) })
+		}
+		return()
+	  }
+	  
+	  if (identical(template_action_id, "resource-analysis")) {
+		cat("[QUICK_TEMPLATE] Proje ve Kaynak Analizi isteği tespit edildi\n")
+		
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
+		  isolate({ settings_data$model_selection <- template_model })
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		}
+		
+		isolate({
+		  settings_data$enable_rdata_tools <- TRUE
+		  settings_data$enable_app_expert_tools <- FALSE
+		  settings_data$enable_process_tools <- FALSE
+		  settings_data$enable_coding_tools <- FALSE
+		  settings_data$enable_summarization_tools <- FALSE
+		  settings_data$enable_mcp_tools <- FALSE
+		  settings_data$enable_image_tools <- FALSE
+		})
+		
+		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = TRUE)
+		updateCheckboxInput(session, "settings_module-enable_app_expert_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_process_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_coding_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_image_tools", value = FALSE)
+		
+		session$sendCustomMessage("saveSettings", list(
+		  enable_rdata_tools = TRUE,
+		  enable_app_expert_tools = FALSE,
+		  enable_process_tools = FALSE,
+		  enable_coding_tools = FALSE,
+		  enable_summarization_tools = FALSE,
+		  enable_mcp_tools = FALSE,
+		  enable_image_tools = FALSE
+		))
+		
+		showToast(session, "Proje ve Kaynak Analizi modu aktif edildi. Veri analizi konusunda size yardımcı olmaya hazırım!", "success")
+		
+		if (nzchar(template_text)) {
+		  shinyjs::delay(300, { send_message(template_text) })
+		}
+		return()
+	  }
+	  
+	  if (identical(template_action_id, "excel-analysis")) {
+		cat("[QUICK_TEMPLATE] Excel Analizi isteği tespit edildi\n")
+		
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
+		  isolate({ settings_data$model_selection <- template_model })
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		}
+		
+		isolate({
+		  settings_data$enable_mcp_tools <- TRUE
+		  settings_data$enable_rdata_tools <- FALSE
+		  settings_data$enable_app_expert_tools <- FALSE
+		  settings_data$enable_process_tools <- FALSE
+		  settings_data$enable_coding_tools <- FALSE
+		  settings_data$enable_summarization_tools <- FALSE
+		  settings_data$enable_image_tools <- FALSE
+		})
+		
+		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = TRUE)
+		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_app_expert_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_process_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_coding_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_image_tools", value = FALSE)
+		
+		session$sendCustomMessage("saveSettings", list(
+		  enable_mcp_tools = TRUE,
+		  enable_rdata_tools = FALSE,
+		  enable_app_expert_tools = FALSE,
+		  enable_process_tools = FALSE,
+		  enable_coding_tools = FALSE,
+		  enable_summarization_tools = FALSE,
+		  enable_image_tools = FALSE
+		))
+		
+		showToast(session, "Excel Analizi modu aktif edildi. Excel dosyalarınızı analiz etmeye hazırım!", "success")
+		
+		if (nzchar(template_text)) {
+		  shinyjs::delay(300, { send_message(template_text) })
+		}
+		return()
+	  }
+	  
+	  if (identical(template_action_id, "image-creation")) {
+		cat("[QUICK_TEMPLATE] Görsel Oluşturma isteği tespit edildi\n")
+		
+		if (!is.null(template_model) && nzchar(template_model)) {
+		  cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
+		  isolate({ settings_data$model_selection <- template_model })
+		  updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+		  session$sendCustomMessage("saveSettings", list(model_selection = template_model))
+		  showToast(session, paste("Model değiştirildi:", template_model), "info")
+		}
+		
+		isolate({
+		  settings_data$enable_image_tools <- TRUE
+		  settings_data$enable_mcp_tools <- FALSE
+		  settings_data$enable_rdata_tools <- FALSE
+		  settings_data$enable_app_expert_tools <- FALSE
+		  settings_data$enable_process_tools <- FALSE
+		  settings_data$enable_coding_tools <- FALSE
+		  settings_data$enable_summarization_tools <- FALSE
+		})
+		
+		updateCheckboxInput(session, "settings_module-enable_image_tools", value = TRUE)
+		updateCheckboxInput(session, "settings_module-enable_mcp_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_rdata_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_app_expert_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_process_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_coding_tools", value = FALSE)
+		updateCheckboxInput(session, "settings_module-enable_summarization_tools", value = FALSE)
+		
+		session$sendCustomMessage("saveSettings", list(
+		  enable_image_tools = TRUE,
+		  enable_mcp_tools = FALSE,
+		  enable_rdata_tools = FALSE,
+		  enable_app_expert_tools = FALSE,
+		  enable_process_tools = FALSE,
+		  enable_coding_tools = FALSE,
+		  enable_summarization_tools = FALSE
+		))
+		
+		showToast(session, "Görsel Uzmanı modu aktif edildi. Görsel oluşturma konusunda size yardımcı olmaya hazırım!", "success")
+		
+		if (nzchar(template_text)) {
+		  shinyjs::delay(300, { send_message(template_text) })
+		}
+		return()
+	  }	else if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
 		cat("[QUICK_TEMPLATE] Özetleme isteği tespit edildi\n")
 		
 		# 1) Modeli değiştir (eğer model bilgisi varsa)
