@@ -370,23 +370,29 @@ server <- function(input, output, session) {
 	  activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
 	)
 	
-  # Fix CodeMirror rendering when switching tabs
+  # Sekme değişikliğinde ilgili modülleri güncelle
   observeEvent(input$tabs, {
-	if (input$tabs == "chat") {
-	  shinyjs::delay(200, {
-		shinyjs::runjs("
-		  if (typeof window.initializeCodeMirror === 'function') {
-			window.initializeCodeMirror();
-		  }
-		  // Force refresh all CodeMirror instances
-		  document.querySelectorAll('.CodeMirror').forEach(function(cm) {
-			if (cm.CodeMirror) {
-			  cm.CodeMirror.refresh();
-			}
-		  });
-		")
-	  })
-	}
+    # CodeMirror rendering düzeltmesi
+    if (input$tabs == "chat") {
+      shinyjs::delay(200, {
+        shinyjs::runjs("
+          if (typeof window.initializeCodeMirror === 'function') {
+            window.initializeCodeMirror();
+          }
+          // Force refresh all CodeMirror instances
+          document.querySelectorAll('.CodeMirror').forEach(function(cm) {
+            if (cm.CodeMirror) {
+              cm.CodeMirror.refresh();
+            }
+          });
+        ")
+      })
+    }
+    
+    # Söyleşi Geçmişi sekmesine geçildiğinde tabloyu yenile
+    if (input$tabs == "history") {
+      session$sendCustomMessage("refreshHistoryTable", list(timestamp = as.numeric(Sys.time())))
+    }
   })
   
 	# Kaynakça tıklamalarını Shiny input'a köprüle (her sayfada bir kere kur)

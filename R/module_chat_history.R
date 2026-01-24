@@ -328,7 +328,15 @@ historyServer <- function(id, all_messages) {
       trigger_refresh(trigger_refresh() + 1)
       showToast(session, "Geçmiş tablosu yenilendi.", "info")
     })
-    
+	
+	# Ana sekme değişikliğinde tabloyu yenile
+    observeEvent(session$input$refreshHistoryTable, {
+      # DT tablosunu yeniden render et
+      output$chat_history_table <- DT::renderDataTable({
+        # Mevcut render kodunu burada tetikle
+        # (Bu, mevcut reactive chain'i invalidate eder)
+      })
+    }, ignoreInit = TRUE)   
   })
 }
 

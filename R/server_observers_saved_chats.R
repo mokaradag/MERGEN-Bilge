@@ -17,9 +17,24 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
                                      saved_chats_data, current_user_id, 
                                      load_chat_in_progress) {
   
+  # Son silinen sohbet ID'sini takip et (silme sonrası yanlış yüklemeyi engellemek için)
+  last_deleted_chat_id <- reactiveVal(NULL)
+  
   # Kayıtlı sohbet yükleme observer'ı (debouncing ile)
   observeEvent(saved_chats_data$load_chat_id(), {
     chat_id <- saved_chats_data$load_chat_id()
+    
+    # Boş veya NULL chat_id'yi yoksay
+    if (is.null(chat_id) || !nzchar(chat_id)) {
+      return()
+    }
+    
+    # Son silinen sohbeti yüklemeye çalışıyorsa engelle
+    if (identical(chat_id, last_deleted_chat_id())) {
+      cat(sprintf("[SAVED_CHATS] Silinen sohbet yüklenmeye çalışıldı, engellendi: %s\n", chat_id))
+      last_deleted_chat_id(NULL)  # Bayrağı sıfırla
+      return()
+    }
     
     # Çift yüklemeyi engelle
     if (load_chat_in_progress()) {
@@ -63,73 +78,94 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       }
     }
     
-    if (!is.null(chat_to_load)) {
-      removeUI(selector = "#chat_content_container > *", multiple = TRUE)
-      
-      values$messages <- chat_to_load$messages %||% list()
-      all_feedback <- load_feedback_from_db(current_user_id)
-      values$liked_messages <- all_feedback$liked
-      values$disliked_messages <- all_feedback$disliked
-      values$current_chat_id <- chat_id
-      values$show_welcome <- FALSE
-      
-      # Karakter verisini al
-      selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-      chars_data <- get_characters_data()
-      character_data <- if (!is.null(chars_data)) {
-        Find(function(x) x$id == selected_char_id, chars_data$styles)
-      } else NULL
-      
-      # Mesajları UI'ya ekle
-      for (i in seq_along(values$messages)) {
-        msg <- values$messages[[i]]
-        is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
-        
-        ui_to_insert <- render_message_bubble_ui(
-          msg, settings_data,
-          is_last_user_message = is_last_user_msg,
-          character_data = character_data,
-          liked_ids = values$liked_messages,
-          disliked_ids = values$disliked_messages
-        )
-        
-        insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
-        
-        # Kod bloklarını initialize et
-        wrapper_id <- paste0("message_wrapper_", msg$id)
-        if (isTRUE(msg$has_code)) {
-          shinyjs::runjs(sprintf("
-            setTimeout(function() {
-              var wrapper = document.getElementById('%s');
-              if (wrapper) {
-                var editors = wrapper.querySelectorAll('.CodeMirror');
-                editors.forEach(function(cm) {
-                  if (cm.CodeMirror) cm.CodeMirror.refresh();
-                });
-              }
-            }, 200);
-          ", wrapper_id, wrapper_id))
-        }
-        
-        # ChartLab grafiklerini render et
-        if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
-          shinyjs::delay(300, {
-            shinyjs::runjs(sprintf(
-              "window.renderSavedCharts && window.renderSavedCharts('%s');",
-              wrapper_id
-            ))
-          })
-        }
-      }
-      
-      shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
-      
-      updateTabItems(session, "tabs", "chat")
-      showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")
+    # Sohbet bulunamazsa çık
+    if (is.null(chat_to_load)) {
+      cat(sprintf("[SAVED_CHATS] Sohbet bulunamadı: %s\n", chat_id))
+      load_chat_in_progress(FALSE)
+      return()
     }
     
+    # Welcome ekranını temizle
+    shinyjs::runjs("
+      if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+        window.WelcomeVideoPlayer.destroy();
+      }
+      if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+        window.WelcomeNeuralNetwork.destroy();
+      }
+      if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+        window.WelcomeGreeting.destroy();
+      }
+      $('#welcome_fullscreen_container').addClass('hidden').empty();
+      $('#chat_content_container').show().empty();
+    ")
+    
+    removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
+    removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
+    
+    values$messages <- chat_to_load$messages %||% list()
+    all_feedback <- load_feedback_from_db(current_user_id)
+    values$liked_messages <- all_feedback$liked
+    values$disliked_messages <- all_feedback$disliked
+    values$current_chat_id <- chat_id
+    values$show_welcome <- FALSE
+    
+    # Karakter verisini al
+    selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+    chars_data <- get_characters_data()
+    character_data <- if (!is.null(chars_data)) {
+      Find(function(x) x$id == selected_char_id, chars_data$styles)
+    } else NULL
+    
+    # Mesajları UI'ya ekle
+    for (i in seq_along(values$messages)) {
+      msg <- values$messages[[i]]
+      is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
+      
+      ui_to_insert <- render_message_bubble_ui(
+        msg, settings_data,
+        is_last_user_message = is_last_user_msg,
+        character_data = character_data,
+        liked_ids = values$liked_messages,
+        disliked_ids = values$disliked_messages
+      )
+      
+      insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
+      
+      # Kod bloklarını initialize et
+      wrapper_id <- paste0("message_wrapper_", msg$id)
+      if (isTRUE(msg$has_code)) {
+        shinyjs::runjs(sprintf("
+          setTimeout(function() {
+            var wrapper = document.getElementById('%s');
+            if (wrapper) {
+              var editors = wrapper.querySelectorAll('.CodeMirror');
+              editors.forEach(function(cm) {
+                if (cm.CodeMirror) cm.CodeMirror.refresh();
+              });
+            }
+          }, 200);
+        ", wrapper_id))
+      }
+      
+      # ChartLab grafiklerini render et
+      if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
+        shinyjs::delay(300, {
+          shinyjs::runjs(sprintf(
+            "window.renderSavedCharts && window.renderSavedCharts('%s');",
+            wrapper_id
+          ))
+        })
+      }
+    }
+    
+    shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
+    
+    updateTabItems(session, "tabs", "chat")
+    showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")
+    
     # Kilidi kısa bir gecikmeyle serbest bırak
-    shinyjs::delay(1000, {
+    shinyjs::delay(500, {
       load_chat_in_progress(FALSE)
     })
   }, ignoreInit = TRUE)
@@ -138,6 +174,12 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   observeEvent(saved_chats_data$delete_chat_id(), {
     chat_id <- saved_chats_data$delete_chat_id()
     req(chat_id)
+    
+    # Silinen sohbeti işaretle (yanlış yüklemeyi engellemek için)
+    last_deleted_chat_id(chat_id)
+    
+    cat(sprintf("[SAVED_CHATS] Sohbet siliniyor: %s\n", chat_id))
+    
     delete_chat_from_db(chat_id, current_user_id)
     
     values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)

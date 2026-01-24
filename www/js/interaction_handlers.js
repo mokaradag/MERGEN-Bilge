@@ -23,19 +23,6 @@ $(document).ready(function() {
     }
   });
 
-  // Kayıtlı sohbet yükleme tıklaması
-  $(document).on('click', '[data-chat-id]', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const $elem = $(this);
-    const chatId = $elem.attr('data-chat-id');
-    
-    Shiny.setInputValue("saved_chats_module-load_chat_id", chatId, {priority: "event"});
-    
-    return false;
-  });
-
   // Pencere odaklanması (Başlık güncelleme)
   $(window).on('focus', function() {
     if (document.title.startsWith('(1)')) {
