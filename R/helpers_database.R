@@ -233,6 +233,9 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     summary_data <- dbGetQuery(conn, query, params = list(user_id))
     if (nrow(summary_data) == 0) return(list())
 
+    # Preserve the CreateTimestamp DESC order from the SQL query
+    unique_chat_ids <- as.character(summary_data$ChatID)
+
     formatted <- lapply(seq_len(nrow(summary_data)), function(i) {
       row <- summary_data[i, ]
       msg_count <- ifelse(is.na(row$MessageCount), 0L, row$MessageCount)
@@ -244,7 +247,10 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
         message_count = as.integer(msg_count)
       )
     })
-    names(formatted) <- as.character(summary_data$ChatID)
+    names(formatted) <- unique_chat_ids
+
+    # Ensure the list is in the correct order matching the SQL query
+    formatted <- formatted[unique_chat_ids]
     return(formatted)
   }
 
@@ -259,6 +265,9 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
   all_data <- dbGetQuery(conn, query, params = list(user_id))
   if (nrow(all_data) == 0) return(list())
 
+  # Preserve the CreateTimestamp DESC order from the SQL query
+  unique_chat_ids <- unique(all_data$ChatID)
+  
   chat_list <- split(all_data, all_data$ChatID)
 
   formatted_chats <- lapply(chat_list, function(chat_df) {
@@ -279,7 +288,9 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
       message_count = length(messages)
     )
   })
-  names(formatted_chats) <- names(chat_list)
+  
+  # Reorder the list to match the original CreateTimestamp DESC order
+  formatted_chats <- formatted_chats[as.character(unique_chat_ids)]
   return(formatted_chats)
 }
 
