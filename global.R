@@ -1024,6 +1024,8 @@ source("R/server_observers_settings.R", encoding = "UTF-8")
 source("R/server_observers_storage.R", encoding = "UTF-8")
 source("R/server_outputs_chat.R", encoding = "UTF-8")
 source("R/server_observers_files.R", encoding = "UTF-8")
+source("R/server_observers_saved_chats.R", encoding = "UTF-8")
+source("R/server_observers_chat_ui.R", encoding = "UTF-8")
 
 # --- GLOBAL CONFIGURATION ---
 

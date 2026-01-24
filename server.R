@@ -122,6 +122,15 @@ server <- function(input, output, session) {
   # Ayar gözlemcilerini başlat (modüler)
   settingsObserversInit(input, session, values, settings_data)
   
+  # Kayıtlı sohbet gözlemcilerini başlat
+  load_chat_in_progress <- reactiveVal(FALSE)
+  savedChatsObserversInit(input, output, session, values, settings_data,
+                           saved_chats_data, current_user_id, load_chat_in_progress)
+  
+  # Sohbet UI gözlemcilerini başlat
+  chatUIObserversInit(input, session, values, start_new_chat, 
+                       send_message, render_welcome_screen)
+  
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
   
@@ -2205,146 +2214,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 
 	  head(suggestions, 3L)
 	}
-
-  # Load saved chat observer with debouncing
-  load_chat_in_progress <- reactiveVal(FALSE)
-  
-  observeEvent(saved_chats_data$load_chat_id(), {
-	chat_id <- saved_chats_data$load_chat_id()
-
-	# Prevent duplicate loads
-	if (load_chat_in_progress()) {
-	  return()
-	}
-
-	load_chat_in_progress(TRUE)
-
-	chat_to_load <- values$saved_chats[[chat_id]]
-	needs_hydrate <- is.null(chat_to_load)
-
-	if (!needs_hydrate) {
-	  msgs <- chat_to_load$messages
-	  stored_len <- if (is.list(msgs)) length(msgs) else 0L
-	  expected_len <- as.integer(chat_to_load$message_count %||% stored_len)
-	  has_user <- stored_len > 0 && any(vapply(msgs, function(m) {
-		identical(m$type %||% "", "user")
-	  }, logical(1)))
-	  has_ai <- stored_len > 0 && any(vapply(msgs, function(m) {
-		m$type %||% "" %in% c("ai", "assistant")
-	  }, logical(1)))
-
-	  needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
-		(!is.na(expected_len) && expected_len > stored_len) ||
-		(has_user && !has_ai)
-	}
-
-	if (isTRUE(needs_hydrate)) {
-	  detail <- tryCatch(
-			load_chat_messages_from_db(chat_id),
-			error = function(e) {
-			  warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
-			  NULL
-			}
-	  )
-	  if (!is.null(detail)) {
-			chat_to_load <- detail
-			saved_copy <- values$saved_chats
-			saved_copy[[chat_id]] <- chat_to_load
-			values$saved_chats <- saved_copy
-	  }
-	}
-
-	if (!is.null(chat_to_load)) {
-	  removeUI(selector = "#chat_content_container > *", multiple = TRUE)
-
-	  values$messages <- chat_to_load$messages %||% list()
-	  all_feedback <- load_feedback_from_db(current_user_id)
-	  values$liked_messages <- all_feedback$liked
-	  values$disliked_messages <- all_feedback$disliked
-	  values$current_chat_id <- chat_id
-	  values$show_welcome <- FALSE
-	  
-	# Hide welcome screen when loading a saved chat
-	shinyjs::runjs("
-	  $('#welcome_fullscreen_container').addClass('hidden');
-	  if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-		window.WelcomeVideoPlayer.destroy();
-	  }
-	  if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-		window.WelcomeNeuralNetwork.destroy();
-	  }
-	  if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-		window.WelcomeGreeting.destroy();
-	  }
-	")
-	  
-	if (length(values$messages) > 0) {
-	  for (i in seq_along(values$messages)) {
-		msg <- values$messages[[i]]
-		is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
-		
-		# Get character data for this message
-		selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-		chars_data <- get_characters_data()
-		character_data <- if (!is.null(chars_data)) {
-		  Find(function(x) x$id == selected_char_id, chars_data$styles)
-		} else NULL
-		
-		ui_to_insert <- render_message_bubble_ui(
-		  msg, settings_data,
-		  is_last_user_message = is_last_user_msg,
-		  character_data = character_data,
-		  liked_ids = values$liked_messages,
-		  disliked_ids = values$disliked_messages
-		)
-		
-		insertUI(
-		  selector = "#chat_content_container",
-		  where = "beforeEnd",
-		  ui = ui_to_insert
-		)
-		
-		wrapper_id <- paste0("message_wrapper_", msg$id)
-		
-		if (isTRUE(msg$has_code)) {
-		  shinyjs::runjs(sprintf("
-			setTimeout(() => { 
-			  if (window.initializeCodeMirrorInElement) {
-				window.initializeCodeMirrorInElement('%s');
-			  }
-			  const wrapper = document.getElementById('%s');
-			  if (wrapper) {
-				const cmInstances = wrapper.querySelectorAll('.CodeMirror');
-				cmInstances.forEach(cm => {
-				  if (cm.CodeMirror) cm.CodeMirror.refresh();
-				});
-			  }
-			}, 200);
-		  ", wrapper_id, wrapper_id))
-		}
-		
-		if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
-		  shinyjs::delay(300, {
-			shinyjs::runjs(sprintf(
-			  "window.renderSavedCharts && window.renderSavedCharts('%s');",
-			  wrapper_id
-			))
-		  })
-		}
-	  }
-	  
-	  shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
-	}
-	  
-	  updateTabItems(session, "tabs", "chat")
-	  showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")
-	}
-	
-	# Reset flag after a delay
-	shinyjs::delay(1000, {
-	  load_chat_in_progress(FALSE)
-	})
-  }, ignoreInit = TRUE)
   
   # Rest of observers...
   observeEvent(file_manager_data$message_trigger(), {
@@ -2364,52 +2233,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  }
 	}
   }, ignoreInit = TRUE)
-	
-  observeEvent(saved_chats_data$delete_chat_id(), {
-	chat_id <- saved_chats_data$delete_chat_id()
-	req(chat_id)
-	delete_chat_from_db(chat_id, current_user_id)
-
-	values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
-	saved_chats_data$refresh()
-  
-  }, ignoreInit = TRUE)
-  
-  observeEvent(saved_chats_data$clear_all_chats_trigger(), {
-	if(saved_chats_data$clear_all_chats_trigger() > 0) {
-	  clear_all_chats_from_db(current_user_id)
-	  values$saved_chats <- list()
-	  saved_chats_data$refresh()
-	  showToast(session, "Tüm söyleşiler temizlendi.", "warning")
-	}
-  }, ignoreInit = TRUE)
-  
-  # Other event observers (like, dislike, regenerate, etc.) remain the same...
-  # [Keep all these as they were]
-
-	observeEvent(input$new_chat_btn, {
-	  # Önce mevcut animasyonları tamamen temizle
-	  shinyjs::runjs("
-		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-		  window.WelcomeVideoPlayer.destroy();
-		}
-		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-		  window.WelcomeNeuralNetwork.destroy();
-		}
-		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-		  window.WelcomeGreeting.destroy();
-		}
-	  ")
 	  
-	  start_new_chat()
-	  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-	  
-	  # Yeni welcome ekranı başlat
-	  shinyjs::delay(300, {
-		render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-	  })
-	}, ignoreInit = TRUE)
-
   observeEvent(input$followup_question_clicked, {
         req(is.list(input$followup_question_clicked))
         req(nzchar(input$followup_question_clicked$text %||% ""))
