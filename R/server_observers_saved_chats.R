@@ -180,10 +180,43 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     
     cat(sprintf("[SAVED_CHATS] Sohbet siliniyor: %s\n", chat_id))
     
+    # Mevcut sohbet mi siliniyor kontrol et
+    current_chat_deleted <- identical(as.character(values$current_chat_id), as.character(chat_id))
+    
     delete_chat_from_db(chat_id, current_user_id)
     
     values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
     saved_chats_data$refresh()
+    
+    # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
+    if (current_chat_deleted) {
+      cat("[SAVED_CHATS] Mevcut sohbet silindi, welcome ekranına dönülüyor\n")
+      
+      # Sohbet durumunu sıfırla
+      values$messages <- list()
+      values$current_chat_id <- NULL
+      values$show_welcome <- TRUE
+      
+      # UI'ı temizle ve welcome ekranını göster
+      shinyjs::runjs("
+        // Mevcut sohbet içeriğini temizle
+        $('#chat_content_container').empty().hide();
+        
+        // Welcome container'ı hazırla
+        $('#welcome_fullscreen_container').empty().removeClass('hidden').show();
+      ")
+      
+      removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
+      
+      # Welcome ekranını yeniden render et
+      shinyjs::delay(100, {
+        # render_welcome_screen fonksiyonu session scope'unda değilse
+        # doğrudan UI ekleme yapılabilir
+        session$sendCustomMessage("reloadWelcomeScreen", list(
+          timestamp = as.numeric(Sys.time())
+        ))
+      })
+    }
   }, ignoreInit = TRUE)
   
   # Tüm sohbetleri temizleme observer'ı

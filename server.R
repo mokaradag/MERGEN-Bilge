@@ -303,6 +303,13 @@ server <- function(input, output, session) {
 		session$sendCustomMessage("switchMusicContext", list(type = "genel"))
 	  }, once = TRUE)
 	}
+	
+	# Welcome ekranını yeniden yükleme mesaj handler'ı
+	  observeEvent(input$reloadWelcomeScreenTrigger, {
+		if (isTRUE(values$show_welcome)) {
+		  render_welcome_screen(values$saved_chats, replace_existing = TRUE)
+		}
+	  }, ignoreInit = TRUE)
 
 	session$userData$initial_saved_chats_promise <- promises::then(
 	  promises::future_promise({
@@ -391,9 +398,21 @@ server <- function(input, output, session) {
     
     # Söyleşi Geçmişi sekmesine geçildiğinde tabloyu yenile
     if (input$tabs == "history") {
-      session$sendCustomMessage("refreshHistoryTable", list(timestamp = as.numeric(Sys.time())))
+      # History modülüne refresh sinyali gönder
+      session$sendInputMessage("history_module-refreshHistoryTable", list(
+        timestamp = as.numeric(Sys.time())
+      ))
     }
   })
+  
+  # Welcome ekranı yeniden yükleme için custom message handler
+  session$onFlushed(function() {
+    shinyjs::runjs("
+      Shiny.addCustomMessageHandler('reloadWelcomeScreen', function(data) {
+        Shiny.setInputValue('reloadWelcomeScreenTrigger', data.timestamp, {priority: 'event'});
+      });
+    ")
+  }, once = TRUE)
   
 	# Kaynakça tıklamalarını Shiny input'a köprüle (her sayfada bir kere kur)
 	session$onFlushed(function(){

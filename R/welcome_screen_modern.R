@@ -140,35 +140,46 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
     list()
   }
   
-  preview_chats <- list(
-    list(
-      id = if (length(recent_chats) > 0) names(recent_chats)[1] else "prev-1",
-      title = if (length(recent_chats) > 0) recent_chats[[1]]$title else "React Performans Optimizasyonu",
-      snippet = if (length(recent_chats) > 0) {
-        msgs <- recent_chats[[1]]$messages
-        if (length(msgs) > 0) substr(msgs[[1]]$content, 1, 50) else "..."
-      } else "Render döngülerini azaltmak için useMemo...",
-      time = if (length(recent_chats) > 0) format(recent_chats[[1]]$timestamp, "%d.%m.%Y") else "2s önce"
-    ),
-    list(
-      id = if (length(recent_chats) > 1) names(recent_chats)[2] else "prev-2",
-      title = if (length(recent_chats) > 1) recent_chats[[2]]$title else "Q3 Pazarlama Stratejisi",
-      snippet = if (length(recent_chats) > 1) {
-        msgs <- recent_chats[[2]]$messages
-        if (length(msgs) > 0) substr(msgs[[1]]$content, 1, 50) else "..."
-      } else "Hedef kitle analizi tamamlandı, rapor...",
-      time = if (length(recent_chats) > 1) format(recent_chats[[2]]$timestamp, "%d.%m.%Y") else "14dk önce"
-    ),
-    list(
-      id = if (length(recent_chats) > 2) names(recent_chats)[3] else "prev-3",
-      title = if (length(recent_chats) > 2) recent_chats[[3]]$title else "Python Veri Görselleştirme",
-      snippet = if (length(recent_chats) > 2) {
-        msgs <- recent_chats[[3]]$messages
-        if (length(msgs) > 0) substr(msgs[[1]]$content, 1, 50) else "..."
-      } else "Matplotlib ile oluşturulan grafikler...",
-      time = if (length(recent_chats) > 2) format(recent_chats[[3]]$timestamp, "%d.%m.%Y") else "2sa önce"
-    )
-  )
+  # Son konuşmaları dinamik olarak oluştur - sadece gerçek sohbetleri göster
+  preview_chats <- list()
+  
+  if (length(recent_chats) > 0) {
+    # En fazla 3 sohbet göster
+    max_preview <- min(3, length(recent_chats))
+    
+    for (i in seq_len(max_preview)) {
+      chat <- recent_chats[[i]]
+      chat_id <- names(recent_chats)[i]
+      
+      # Sohbet içeriğinden snippet oluştur
+      snippet_text <- "..."
+      if (!is.null(chat$messages) && length(chat$messages) > 0) {
+        first_content <- chat$messages[[1]]$content %||% ""
+        if (nzchar(first_content)) {
+          snippet_text <- substr(first_content, 1, 50)
+          if (nchar(first_content) > 50) {
+            snippet_text <- paste0(snippet_text, "...")
+          }
+        }
+      }
+      
+      # Zaman damgası formatla
+      time_text <- tryCatch({
+        if (inherits(chat$timestamp, "POSIXct")) {
+          format(chat$timestamp, "%d.%m.%Y")
+        } else {
+          "..."
+        }
+      }, error = function(e) "...")
+      
+      preview_chats[[i]] <- list(
+        id = chat_id,
+        title = chat$title %||% "Başlıksız Söyleşi",
+        snippet = snippet_text,
+        time = time_text
+      )
+    }
+  }
   
   div(
     class = "modern-welcome-root",
@@ -229,15 +240,21 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
                     )
                 ),
                 
-                div(class = "modern-welcome-footer-section",
-                    div(class = "modern-welcome-recent-header",
-                        tags$i(class = "fas fa-history modern-welcome-recent-icon"),
-                        tags$h3(class = "modern-welcome-recent-title", "Son Konuşmalar")
-                    ),
-                    div(class = "modern-welcome-recent-list",
-                        lapply(preview_chats, create_modern_preview_button)
-                    )
-                )
+				# Son Konuşmalar bölümü - sadece sohbet varsa göster
+                if (length(preview_chats) > 0) {
+                  div(class = "modern-welcome-footer-section",
+                      div(class = "modern-welcome-recent-header",
+                          tags$i(class = "fas fa-history modern-welcome-recent-icon"),
+                          tags$h3(class = "modern-welcome-recent-title", "Son Konuşmalar")
+                      ),
+                      div(class = "modern-welcome-recent-list",
+                          lapply(preview_chats, create_modern_preview_button)
+                      )
+                  )
+                } else {
+                  # Sohbet yoksa boş div
+                  div(class = "modern-welcome-footer-section", style = "display: none;")
+                }
             ),
             
             div(class = "modern-welcome-right-panel",

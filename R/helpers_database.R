@@ -262,11 +262,20 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
   chat_list <- split(all_data, all_data$ChatID)
 
   formatted_chats <- lapply(chat_list, function(chat_df) {
-	messages <- format_chat_messages(chat_df)
+    messages <- format_chat_messages(chat_df)
+    
+    # Son mesaj zamanını hesapla
+    last_msg_time <- if (nrow(chat_df) > 0 && "MessageTimestamp" %in% names(chat_df)) {
+      max(chat_df$MessageTimestamp, na.rm = TRUE)
+    } else {
+      chat_df$CreateTimestamp[1]
+    }
+    
     list(
       title = chat_df$ChatTitle[1],
       messages = messages,
       timestamp = chat_df$CreateTimestamp[1],
+      last_message_timestamp = last_msg_time,
       message_count = length(messages)
     )
   })

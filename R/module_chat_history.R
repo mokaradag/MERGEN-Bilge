@@ -331,11 +331,8 @@ historyServer <- function(id, all_messages) {
 	
 	# Ana sekme değişikliğinde tabloyu yenile
     observeEvent(session$input$refreshHistoryTable, {
-      # DT tablosunu yeniden render et
-      output$chat_history_table <- DT::renderDataTable({
-        # Mevcut render kodunu burada tetikle
-        # (Bu, mevcut reactive chain'i invalidate eder)
-      })
+      # Refresh trigger'ı artırarak reactive chain'i invalidate et
+      trigger_refresh(trigger_refresh() + 1)
     }, ignoreInit = TRUE)   
   })
 }
