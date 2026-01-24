@@ -433,15 +433,28 @@ load_chat_messages_batch <- function(chat_ids) {
     list(
       title = chat_df$ChatTitle[1],
       timestamp = chat_df$CreateTimestamp[1],
-      messages = messages,
+	  messages = messages,
       message_count = length(messages),
       last_message_timestamp = last_ts
     )
   })
   names(formatted) <- as.character(names(formatted))
 
-  # Ensure all requested chats are represented, even if the query missed some
-  formatted <- formatted[order(match(names(formatted), ids))]
+  # Zaman damgasına göre sırala (en yeni önce)
+  if (length(formatted) > 1) {
+    timestamps <- vapply(formatted, function(chat) {
+      ts <- chat$timestamp
+      if (inherits(ts, "POSIXct")) {
+        as.numeric(ts)
+      } else {
+        0
+      }
+    }, numeric(1))
+    
+    sorted_order <- order(timestamps, decreasing = TRUE)
+    formatted <- formatted[sorted_order]
+  }
+  
   missing_ids <- setdiff(ids, names(formatted))
   if (length(missing_ids) > 0) {
     for (mid in missing_ids) {

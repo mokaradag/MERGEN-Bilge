@@ -245,6 +245,54 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       values$saved_chats <- list()
       saved_chats_data$refresh()
       showToast(session, "Tüm söyleşiler temizlendi.", "warning")
+      
+      # Mevcut sohbet varsa, Ana Söyleşi sayfasını sıfırla (tek silme ile aynı akış)
+      if (!is.null(values$current_chat_id) || length(values$messages) > 0) {
+        cat("[SAVED_CHATS] Tüm söyleşiler silindi, welcome ekranına dönülüyor\n")
+        
+        # Sohbet durumunu sıfırla
+        values$messages <- list()
+        values$current_chat_id <- NULL
+        values$show_welcome <- TRUE
+        
+        # Eski animasyonları temizle
+        shinyjs::runjs("
+          if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+            window.WelcomeVideoPlayer.destroy();
+          }
+          if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+            window.WelcomeNeuralNetwork.destroy();
+          }
+          if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+            window.WelcomeGreeting.destroy();
+          }
+          
+          // Mevcut sohbet içeriğini temizle
+          $('#chat_content_container').empty().hide();
+          
+          // Welcome container'ı hazırla
+          $('#welcome_fullscreen_container').empty().removeClass('hidden').show();
+        ")
+        
+        removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
+        removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
+        
+        # Welcome ekranını yeniden render et ve animasyonları başlat (boş liste ile)
+        shinyjs::delay(150, {
+          insertUI(
+            selector = "#welcome_fullscreen_container",
+            where = "beforeEnd",
+            ui = createWelcomeScreen(list()),  # Boş liste - tüm sohbetler silindi
+            immediate = TRUE
+          )
+          
+          # Animasyonları başlat
+          shinyjs::delay(100, {
+            session$sendCustomMessage("initModernWelcome", list())
+            session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+          })
+        })
+      }
     }
   }, ignoreInit = TRUE)
   
