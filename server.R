@@ -298,18 +298,32 @@ server <- function(input, output, session) {
 
 	  session$userData$welcome_screen_attached <- TRUE
 
-	  session$onFlushed(function() {
-		session$sendCustomMessage("initModernWelcome", list())
-		session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-	  }, once = TRUE)
+	  # Animasyonları başlat (her render'da çağrılmalı)
+      shinyjs::delay(200, {
+        session$sendCustomMessage("initModernWelcome", list())
+        session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+      })
 	}
 	
-	# Welcome ekranını yeniden yükleme mesaj handler'ı
-	  observeEvent(input$reloadWelcomeScreenTrigger, {
-		if (isTRUE(values$show_welcome)) {
-		  render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-		}
-	  }, ignoreInit = TRUE)
+  # Welcome ekranını yeniden yükleme mesaj handler'ı
+  observeEvent(input$reloadWelcomeScreenTrigger, {
+    if (isTRUE(values$show_welcome)) {
+      # Eski animasyonları temizle
+      shinyjs::runjs("
+        if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+          window.WelcomeVideoPlayer.destroy();
+        }
+        if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+          window.WelcomeNeuralNetwork.destroy();
+        }
+        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+          window.WelcomeGreeting.destroy();
+        }
+      ")
+      
+      render_welcome_screen(values$saved_chats, replace_existing = TRUE)
+    }
+  }, ignoreInit = TRUE)
 
 	session$userData$initial_saved_chats_promise <- promises::then(
 	  promises::future_promise({
@@ -396,12 +410,21 @@ server <- function(input, output, session) {
       })
     }
     
-    # Söyleşi Geçmişi sekmesine geçildiğinde tabloyu yenile
+	# Söyleşi Geçmişi sekmesine geçildiğinde tabloyu yenile
     if (input$tabs == "history") {
-      # History modülüne refresh sinyali gönder
-      session$sendInputMessage("history_module-refreshHistoryTable", list(
-        timestamp = as.numeric(Sys.time())
+      # History modülüne refresh sinyali gönder (doğrudan Shiny input üzerinden)
+      shinyjs::runjs(sprintf(
+        "Shiny.setInputValue('history_module-external_refresh_trigger', %s, {priority: 'event'});",
+        as.numeric(Sys.time())
       ))
+    }
+    
+    # Ana Söyleşi sekmesine geçildiğinde welcome ekranını güncelle
+    if (input$tabs == "chat" && isTRUE(values$show_welcome)) {
+      # Welcome ekranını güncel sohbet listesiyle yeniden render et
+      shinyjs::delay(100, {
+        render_welcome_screen(values$saved_chats, replace_existing = TRUE)
+      })
     }
   })
   

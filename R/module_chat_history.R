@@ -329,11 +329,12 @@ historyServer <- function(id, all_messages) {
       showToast(session, "Geçmiş tablosu yenilendi.", "info")
     })
 	
-	# Ana sekme değişikliğinde tabloyu yenile
-    observeEvent(session$input$refreshHistoryTable, {
-      # Refresh trigger'ı artırarak reactive chain'i invalidate et
+	# Ana sekme değişikliğinde tabloyu yenile (parent session'dan gelen sinyal)
+    # NOT: Bu input, parent session tarafından doğrudan set edilir
+    observeEvent(input$external_refresh_trigger, {
+      cat("[HISTORY] Dış tetikleyici ile yenileme başlatıldı\n")
       trigger_refresh(trigger_refresh() + 1)
-    }, ignoreInit = TRUE)   
+    }, ignoreInit = TRUE)
   })
 }
 

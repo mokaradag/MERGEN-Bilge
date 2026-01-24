@@ -162,8 +162,7 @@ savedChatsServer <- function(id, saved_chats) {
     }
     
     # FIX #2: Search from entire list, not just paginated
-    filtered_saved_chats <- shiny::bindCache(
-      reactive({
+	filtered_saved_chats <- reactive({
         meta <- cached_meta()
         refresh_trigger()
         search_term <- input$search_chats
@@ -188,15 +187,10 @@ savedChatsServer <- function(id, saved_chats) {
         }
 
         meta
-      }),
-      cached_meta(),
-      input$search_chats,
-      refresh_trigger()
-    )
+	})
 
     # Paginated chats
-    paginated_chats <- shiny::bindCache(
-      reactive({
+	paginated_chats <- reactive({
         meta <- filtered_saved_chats()
         if (nrow(meta) == 0) return(meta)
 
@@ -205,10 +199,7 @@ savedChatsServer <- function(id, saved_chats) {
         end_idx <- min(start_idx + chats_per_page - 1, nrow(meta))
 
         meta[start_idx:end_idx, , drop = FALSE]
-      }),
-      filtered_saved_chats(),
-      current_page()
-    )
+	})
     
     total_pages <- reactive({
       meta <- filtered_saved_chats()
@@ -260,8 +251,8 @@ savedChatsServer <- function(id, saved_chats) {
     })
     outputOptions(output, "page_info", suspendWhenHidden = FALSE)
 	
-    # Render the list of saved chat cards
-    output$saved_chats_list <- shiny::bindCache(renderUI({
+	# Render the list of saved chat cards
+    output$saved_chats_list <- renderUI({
       chats_meta <- paginated_chats()
       filtered_meta <- filtered_saved_chats()
       
@@ -353,10 +344,7 @@ savedChatsServer <- function(id, saved_chats) {
           )
         })
       )
-    }),
-    paginated_chats(),
-    filtered_saved_chats()
-    )
+	})
 
     outputOptions(output, "saved_chats_list", suspendWhenHidden = FALSE)
     
@@ -430,6 +418,6 @@ savedChatsServer <- function(id, saved_chats) {
         refresh = refresh
       )
     )
-    
+
   })
 }

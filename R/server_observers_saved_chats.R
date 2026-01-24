@@ -188,7 +188,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
     saved_chats_data$refresh()
     
-    # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
+	# Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
     if (current_chat_deleted) {
       cat("[SAVED_CHATS] Mevcut sohbet silindi, welcome ekranına dönülüyor\n")
       
@@ -197,8 +197,18 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       values$current_chat_id <- NULL
       values$show_welcome <- TRUE
       
-      # UI'ı temizle ve welcome ekranını göster
+      # Eski animasyonları temizle
       shinyjs::runjs("
+        if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+          window.WelcomeVideoPlayer.destroy();
+        }
+        if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+          window.WelcomeNeuralNetwork.destroy();
+        }
+        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+          window.WelcomeGreeting.destroy();
+        }
+        
         // Mevcut sohbet içeriğini temizle
         $('#chat_content_container').empty().hide();
         
@@ -207,14 +217,23 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       ")
       
       removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
+      removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
       
-      # Welcome ekranını yeniden render et
-      shinyjs::delay(100, {
-        # render_welcome_screen fonksiyonu session scope'unda değilse
-        # doğrudan UI ekleme yapılabilir
-        session$sendCustomMessage("reloadWelcomeScreen", list(
-          timestamp = as.numeric(Sys.time())
-        ))
+      # Welcome ekranını yeniden render et ve animasyonları başlat
+      shinyjs::delay(150, {
+        # Welcome ekranı UI'ını ekle
+        insertUI(
+          selector = "#welcome_fullscreen_container",
+          where = "beforeEnd",
+          ui = createWelcomeScreen(values$saved_chats),
+          immediate = TRUE
+        )
+        
+        # Animasyonları başlat
+        shinyjs::delay(100, {
+          session$sendCustomMessage("initModernWelcome", list())
+          session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+        })
       })
     }
   }, ignoreInit = TRUE)
