@@ -2094,13 +2094,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  }
 	}
   }, ignoreInit = TRUE)
-	  
-  observeEvent(input$followup_question_clicked, {
-        req(is.list(input$followup_question_clicked))
-        req(nzchar(input$followup_question_clicked$text %||% ""))
-        send_message(input$followup_question_clicked)
-  }, ignoreInit = TRUE)
-						  
+	  						  
   output$message_count <- renderText({ length(values$messages) })
   output$show_welcome_screen <- reactive({ values$show_welcome })
   outputOptions(output, "show_welcome_screen", suspendWhenHidden = FALSE)

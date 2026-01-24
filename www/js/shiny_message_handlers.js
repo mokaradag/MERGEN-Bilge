@@ -160,18 +160,32 @@ $(document).ready(function() {
       container.classList.remove('pending');
     }
     
+    var titleDiv = document.createElement('div');
+    titleDiv.className = 'followup-suggestions-title';
+    titleDiv.innerHTML = '<i class="fas fa-lightbulb"></i><span>Önerilen Takip Soruları</span>';
+    container.appendChild(titleDiv);
+    
+    var listDiv = document.createElement('div');
+    listDiv.className = 'followup-suggestions-list';
+    
     data.followups.forEach(function(question) {
-      const btn = document.createElement('button');
-      btn.className = 'followup-question-btn';
-      btn.textContent = question;
-      btn.onclick = function() {
-        Shiny.setInputValue('followup_question_clicked', {
-          text: question,
-          nonce: Math.random()
-        }, { priority: 'event' });
-      };
-      container.appendChild(btn);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'followup-option';
+      btn.setAttribute('data-question', question);
+      
+      var textSpan = document.createElement('span');
+      textSpan.textContent = question;
+      btn.appendChild(textSpan);
+      
+      var icon = document.createElement('i');
+      icon.className = 'fas fa-arrow-up-right-from-square';
+      btn.appendChild(icon);
+      
+      listDiv.appendChild(btn);
     });
+    
+    container.appendChild(listDiv);
   });
 
   Shiny.addCustomMessageHandler('playAudioMessage', function(data) {
