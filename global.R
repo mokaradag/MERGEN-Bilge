@@ -1029,6 +1029,7 @@ source("R/server_observers_saved_chats.R", encoding = "UTF-8")
 source("R/server_observers_chat_ui.R", encoding = "UTF-8")
 source("R/server_observers_navigation.R", encoding = "UTF-8")
 source("R/server_observers_file_clicks.R", encoding = "UTF-8")
+source("R/server_observers_startup.R", encoding = "UTF-8")
 source("R/server_tts_handlers.R", encoding = "UTF-8")
 source("R/server_music_handlers.R", encoding = "UTF-8")
 

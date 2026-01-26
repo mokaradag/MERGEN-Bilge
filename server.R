@@ -134,6 +134,9 @@ server <- function(input, output, session) {
   # Navigasyon/sekme değişikliği gözlemcilerini başlat (modüler)
   navigationObserversInit(input, session, values, render_welcome_screen)
   
+  # Başlangıç ve oturum ilk yükleme gözlemcilerini başlat (modüler)
+  startupObserversInit(input, session, values, render_welcome_screen, current_user_id)
+  
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
   
@@ -258,46 +261,7 @@ server <- function(input, output, session) {
         session$sendCustomMessage("switchMusicContext", list(type = "genel"))
       })
 	}
-	
-  # Welcome ekranını yeniden yükleme mesaj handler'ı
-  observeEvent(input$reloadWelcomeScreenTrigger, {
-    if (isTRUE(values$show_welcome)) {
-      # Eski animasyonları temizle
-      shinyjs::runjs("
-        if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-          window.WelcomeVideoPlayer.destroy();
-        }
-        if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-          window.WelcomeNeuralNetwork.destroy();
-        }
-        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-          window.WelcomeGreeting.destroy();
-        }
-      ")
-      
-      render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-    }
-  }, ignoreInit = TRUE)
-
-	session$userData$initial_saved_chats_promise <- promises::then(
-	  promises::future_promise({
-		load_chats_from_db(current_user_id, include_messages = FALSE)
-	  }),
-	  onFulfilled = function(chats) {
-		chats <- chats %||% list()
-		values$saved_chats <- chats
-
-		if (length(chats) > 0) {
-		  render_welcome_screen(chats, replace_existing = TRUE)
-		}
-		NULL
-	  },
-	  onRejected = function(err) {
-		warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
-		NULL
-	  }
-	)
-	
+		
 	# chat export wiring (copy & export)
 	chatExportInit(input, output, session, values, user_display_name = user_config$name)
 
@@ -341,34 +305,7 @@ server <- function(input, output, session) {
 	  idle_minutes    = 30,
 	  activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
 	)
-	  
-  # Welcome ekranı yeniden yükleme için custom message handler
-  session$onFlushed(function() {
-    shinyjs::runjs("
-      Shiny.addCustomMessageHandler('reloadWelcomeScreen', function(data) {
-        Shiny.setInputValue('reloadWelcomeScreenTrigger', data.timestamp, {priority: 'event'});
-      });
-    ")
-  }, once = TRUE)
-  
-	# Kaynakça tıklamalarını Shiny input'a köprüle (her sayfada bir kere kur)
-	session$onFlushed(function(){
-	  shinyjs::runjs("
-		if (!window.__srcLinkBound) {
-		  window.__srcLinkBound = true;
-			document.addEventListener('click', function(e){
-			  var t = e.target;
-			  if (t && t.classList && t.classList.contains('source-link')) {
-				e.preventDefault();
-				e.stopPropagation(); // çift tetiklemeyi önle
-				var fn = t.getAttribute('data-filename') || (t.textContent || '').trim();
-				Shiny.setInputValue('source_file_clicked', { filename: fn, nonce: Math.random() }, { priority: 'event' });
-			  }
-			}, true);
-		}
-	  ");
-	}, once = TRUE)
-		  
+	    		  
 	# Pass values reactive to file manager for temp_files access
 	file_manager_data <- fileManagerServer(
 	  "file_manager_module",
@@ -1622,39 +1559,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     }
   })
   	  
-  # This observer runs only once at startup to show the welcome screen
-	observeEvent(TRUE, {
-	  if (isTRUE(values$show_welcome)) {
-					render_welcome_screen(values$saved_chats)
-	  }
-
-	  # ✅ Preload htmlwidget dependencies once (hidden)
-	  if (requireNamespace("highcharter", quietly = TRUE)) {
-		insertUI(
-		  selector = "body", where = "beforeEnd",
-		  ui = tags$div(
-			style = "width:1px;height:1px;overflow:hidden;position:absolute;left:-9999px;top:-9999px;",
-			highcharter::highchartOutput("deps_hc", width = "1px", height = "1px")
-		  ),
-		  immediate = TRUE
-		)
-	  }
-	  if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)) {
-		insertUI(
-		  selector = "body", where = "beforeEnd",
-		  ui = tags$div(
-			style = "width:1px;height:1px;overflow:hidden;position:absolute;left:-9999px;top:-9999px;",
-			tagList(
-			  plotly::plotlyOutput("deps_pl", width = "1px", height = "1px"),
-			  # Bazı bileşenler 'plotly_html' isminde çıktıyı bekleyebiliyor
-			  plotly::plotlyOutput("plotly_html", width = "1px", height = "1px")
-			)
-		  ),
-		  immediate = TRUE
-		)
-	  }
-	}, once = TRUE)
-
 	# --- Core Chat Functions (wrapped to helpers) ---
 	reset_chat_state <- function() chat_reset_state(session, values)
 

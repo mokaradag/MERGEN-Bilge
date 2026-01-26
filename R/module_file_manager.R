@@ -688,9 +688,17 @@ fileManagerServer <- function(
 	  }
 	  
 	  # Uygun format listesini seç
-	  allowed_extensions <- if (summarization_mode) {
+	  # NOT: generate_message = FALSE ise mevcut dosyalar yenileniyor demektir (refresh).
+	  # Bu durumda summarization_mode'dan bağımsız olarak tüm normal formatlar kabul edilmeli,
+	  # çünkü bu dosyalar daha önce başarıyla yüklenmiş dosyalardır.
+	  allowed_extensions <- if (!generate_message) {
+		# Mevcut dosyaları yenilerken tüm formatları kabul et
+		normal_allowed
+	  } else if (summarization_mode) {
+		# Yeni yükleme + summarization modu aktif: sadece özetlenebilir formatlar
 		summarization_allowed
 	  } else {
+		# Yeni yükleme + normal mod: tüm desteklenen formatlar
 		normal_allowed
 	  }
 	  
