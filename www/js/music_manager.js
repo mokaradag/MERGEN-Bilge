@@ -193,17 +193,19 @@ const MusicManager = {
 	  if (this.state.playlistType !== newType || (newType === 'karakter' && character) || !this.state.currentAudio) {
 		console.log('[MUSIC] Bağlam değişimi:', newType, character || '');
 
-		if (this.state.currentAudio) {
-		  this.fadeOut(this.state.currentAudio, () => {
-			this.state.currentAudio.pause();
-			this.state.currentAudio.src = '';
-			this.state.currentAudio = null;
-			this.state.currentTrack = null;
-			this.loadPlaylist(newType, character);
+		var audioToFade = this.state.currentAudio;
+		this.state.currentAudio = null;
+		this.state.currentTrack = null;
+		this.state.playlist = [];
+
+		if (audioToFade) {
+		  this.fadeOut(audioToFade, function() {
+			audioToFade.pause();
+			audioToFade.src = '';
 		  });
-		} else {
-		  this.loadPlaylist(newType, character);
 		}
+
+		this.loadPlaylist(newType, character);
 	  }
 	}
 };

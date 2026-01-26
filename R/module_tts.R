@@ -267,7 +267,6 @@ build_tts_audio_ui <- function(message_id, audio_src, voice = NULL) {
     ),
 	tags$audio(
       controls = "controls",
-      autoplay = "autoplay",
       preload = "auto",
       src = audio_src
     )
