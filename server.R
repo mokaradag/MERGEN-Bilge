@@ -1432,6 +1432,15 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	invisible(NULL)
   }
   
+  # Sohbet giriş observer'larını başlat (modüler)
+  chatInputObserversInit(
+    input, session, values, settings_data,
+    stop_generation, active_request_id,
+    reset_chat_state, send_message,
+    current_user_id, file_manager_data,
+    session_files, file_to_add, stt_data
+  )
+  
   # chat action wiring (like/dislike/regenerate/edit)
   chatActionsInit(
 	input, session, values,
@@ -1487,78 +1496,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     jsonlite::toJSON(dom_disliked, auto_unbox = FALSE)
     ))
   })
-  	  							   
-  # --- Observers for Main Chat UI ---
-  observeEvent(input$send_stop_btn, {
-	if (values$is_sending == TRUE) {
-	  stop_generation(TRUE)
-	  # Invalidate the active request (so any late future results are ignored)
-	  active_request_id(paste0("cancelled_", as.integer(Sys.time())))
-	  reset_chat_state()
-	}
-  }, ignoreInit = TRUE)
-
-  observeEvent(input$send_prompt_from_js, {
-	req(input$send_prompt_from_js)
-
-	# Track request start time
-	request_start <- Sys.time()
-	
-	# Per-user rate limiting check
-	if (!check_rate_limit(current_user_id)) {
-	  showToast(session, "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.", "warning")
-	  return()
-	}
-	
-	# Global rate limiting check (NEW)
-	global_check <- check_global_rate_limit()
-	if (!global_check$allowed) {
-	  showToast(session, global_check$message, "warning")
-	  return()
-	}
-	
-	# Input validation
-	user_text <- trimws(input$send_prompt_from_js$text)
-	if (nchar(user_text) > 20000) {  # Max message length
-	  showToast(session, "Mesaj çok uzun. Lütfen 20.000 karakterle sınırlayın.", "warning")
-	  return()
-	}
-	
-	# Continue with existing code
-	send_message(input$send_prompt_from_js$text)
-  })
-
-  observeEvent(stop_generation(), {
-	if (stop_generation() == TRUE) {
-	  reset_chat_state()
-	  showToast(session, "Yanıt oluşturma durduruldu.", "warning")
-	}
-  }, ignoreInit = TRUE)
-  							   
-	observeEvent(input$file_upload, {
-	  req(input$file_upload)
-	  handle_file_upload_batch(
-		uploads_df           = input$file_upload,
-		current_user_id      = current_user_id,
-		session              = session,
-		settings_data        = settings_data,
-		file_manager_data    = file_manager_data,
-		session_files_reactive = session_files,
-		file_to_add_reactive = file_to_add
-	  )
-	}, ignoreInit = TRUE)
-  
-  observeEvent(input$voice_btn, {
-    stt_data$start_session()
-  }, ignoreInit = TRUE)
-  
-  observeEvent(stt_data$final_text(), {
-    txt <- stt_data$final_text()
-    if (nzchar(txt)) {
-      send_message(txt)
-    }
-  })
-  	  
+  	  							     							         	  
 	# --- Core Chat Functions (wrapped to helpers) ---
 	reset_chat_state <- function() chat_reset_state(session, values)
 
