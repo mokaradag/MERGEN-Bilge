@@ -131,6 +131,9 @@ server <- function(input, output, session) {
   chatUIObserversInit(input, session, values, start_new_chat, 
                        send_message, render_welcome_screen)
   
+  # Navigasyon/sekme değişikliği gözlemcilerini başlat (modüler)
+  navigationObserversInit(input, session, values, render_welcome_screen)
+  
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
   
@@ -139,6 +142,9 @@ server <- function(input, output, session) {
   
   # Dosya gözlemcilerini başlat (modüler)
   fileObserversInit(input, session, settings_data, session_files, file_manager_data, current_user_id)
+  
+  # Dosya tıklama gözlemcilerini başlat (kaynak, analiz, önizleme)
+  fileClickObserversInit(input, session, settings_data, api_config, filePreview, file_manager_data, session_files)
   
   # Geri bildirim modülü
   feedback_modal <- feedbackServer("feedback_module", current_user_id)
@@ -309,9 +315,6 @@ server <- function(input, output, session) {
   active_request_id <- reactiveVal(NULL)
   quick_action_skip_mcp <- reactiveVal(FALSE)
   
-  # Aynı dosya adına ilişkin art arda iki tıklamayı (çok kısa süre içinde) yutmak için
-	last_source_click <- reactiveVal(list(name = NULL, t = 0))  # yeni
-
   process_queue <- function() {
 	if (processing_request() || length(request_queue()) == 0) {
 	  return()
@@ -338,44 +341,7 @@ server <- function(input, output, session) {
 	  idle_minutes    = 30,
 	  activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
 	)
-	
-  # Sekme değişikliğinde ilgili modülleri güncelle
-  observeEvent(input$tabs, {
-    # CodeMirror rendering düzeltmesi
-    if (input$tabs == "chat") {
-      shinyjs::delay(200, {
-        shinyjs::runjs("
-          if (typeof window.initializeCodeMirror === 'function') {
-            window.initializeCodeMirror();
-          }
-          // Force refresh all CodeMirror instances
-          document.querySelectorAll('.CodeMirror').forEach(function(cm) {
-            if (cm.CodeMirror) {
-              cm.CodeMirror.refresh();
-            }
-          });
-        ")
-      })
-    }
-    
-	# Söyleşi Geçmişi sekmesine geçildiğinde tabloyu yenile
-    if (input$tabs == "history") {
-      # History modülüne refresh sinyali gönder (doğrudan Shiny input üzerinden)
-      shinyjs::runjs(sprintf(
-        "Shiny.setInputValue('history_module-external_refresh_trigger', %s, {priority: 'event'});",
-        as.numeric(Sys.time())
-      ))
-    }
-    
-    # Ana Söyleşi sekmesine geçildiğinde welcome ekranını güncelle
-    if (input$tabs == "chat" && isTRUE(values$show_welcome)) {
-      # Welcome ekranını güncel sohbet listesiyle yeniden render et
-      shinyjs::delay(100, {
-        render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-      })
-    }
-  })
-  
+	  
   # Welcome ekranı yeniden yükleme için custom message handler
   session$onFlushed(function() {
     shinyjs::runjs("
@@ -468,102 +434,7 @@ server <- function(input, output, session) {
   })
   
   # message search wiring
-messageSearchInit(input, session, values, reactive(values$messages))
-    
-# Handle source file clicks from Kaynakça
-observeEvent(input$source_file_clicked, {
-  req(input$source_file_clicked)
-
-  # --- Normalize + debounce ---
-  ev <- input$source_file_clicked
-  raw_name <- if (is.character(ev)) ev[1] else (ev$filename %||% ev$name %||% "")
-  raw_name <- as.character(raw_name %||% "")
-  raw_name <- sub("^\\s*\\d+\\)\\s*", "", raw_name)  # numaralı önekleri temizle
-
-  # Çift tıklama yutma (500ms) — tam ipucu bazlı
-  now  <- as.numeric(Sys.time())
-  last <- last_source_click()
-  if (is.list(last) && identical(last$name, raw_name) && (now - (last$t %||% 0)) < 0.5) {
-	return(invisible(NULL))
-  }
-  last_source_click(list(name = raw_name, t = now))
-
-  # not: 'raw_name' tıklanan TAM ipucu değeridir; 'fname' artık kullanılmıyor
-  if (!nzchar(raw_name)) {
-	showToast(session, "Geçersiz kaynak bağlantısı: dosya adı yok.", "error")
-	return(invisible(NULL))
-  }
-
-  # Günlük: tıklanan kaynak
-  log_info("[SRC_CLICK] tıklanan kaynak: '{raw_name}'")
-
-  # Tüm çözümleme/önizleme işini tek bir yerde topla
-  handle_source_file_click(ev, settings_data, api_config, session, filePreview)
-}, ignoreInit = TRUE)
-
-observeEvent(input$analysis_file_clicked, {
-  req(input$analysis_file_clicked)
-  
-  filepath_raw <- input$analysis_file_clicked$filepath
-  if (is.null(filepath_raw) || !nzchar(filepath_raw)) {
-    showToast(session, "Geçersiz dosya yolu.", "error")
-    return(invisible(NULL))
-  }
-  
-  filepath_clean <- trimws(as.character(filepath_raw))
-  
-  full_path <- NULL
-  if (startsWith(filepath_clean, "www/")) {
-    full_path <- file.path(getwd(), filepath_clean)
-  } else if (startsWith(filepath_clean, "/") || grepl("^[A-Za-z]:", filepath_clean)) {
-    full_path <- filepath_clean
-  } else {
-    full_path <- file.path(getwd(), "www", filepath_clean)
-  }
-  
-  full_path <- normalize_mcp_path(full_path, must_exist = FALSE)
-  
-  if (!path_exists_relaxed(full_path)) {
-    showToast(session, paste("Dosya bulunamadı:", basename(filepath_clean)), "error")
-    log_error("[ANALYSIS_FILE] Dosya mevcut değil: {full_path}")
-    return(invisible(NULL))
-  }
-  
-  file_info <- list(
-    name = basename(full_path),
-    datapath = full_path,
-    size = suppressWarnings(file.info(full_path)$size)
-  )
-  
-  log_info("[ANALYSIS_FILE] Önizleme açılıyor: {full_path}")
-  openAnyPreview(file_info, session, filePreview)
-  
-}, ignoreInit = TRUE)
-  
-  # Connect file manager uploads/removals to AI context
-  observeEvent(file_manager_data$file_removed(), {
-	removed_file <- file_manager_data$file_removed()
-	if (!is.null(removed_file)) {
-	  current_files <- session_files()
-	  if (!is.null(removed_file$name) && removed_file$name %in% names(current_files)) {
-		current_files[[removed_file$name]] <- NULL
-		session_files(current_files)
-		showToast(session, paste("Dosya AI bağlamından kaldırıldı:", removed_file$name), "info")
-  
-		session$userData$file_summaries[[removed_file$name]] <- NULL
-	  }
-	}
-  }, ignoreInit = TRUE)
-
-  # 3. Add this new observer for clear all files:
-  observeEvent(file_manager_data$all_files_cleared(), {
-	if (isTRUE(file_manager_data$all_files_cleared())) {
-	  # Clear all files from session
-	  session_files(list())
-	  session$userData$file_summaries <- list()
-	  showToast(session, "Tüm dosyalar AI bağlamından temizlendi.", "warning")
-	}
-  }, ignoreInit = TRUE)
+  messageSearchInit(input, session, values, reactive(values$messages))
 	    	
   output$download_logs <- downloadHandler(
 	filename = function() {
@@ -1679,19 +1550,7 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     jsonlite::toJSON(dom_disliked, auto_unbox = FALSE)
     ))
   })
-  	  							 
-  observeEvent(input$view_file_from_chat, {
-	req(input$view_file_from_chat)
-	file_id <- input$view_file_from_chat
-	
-	if (exists("file_store") && !is.null(file_store[[file_id]])) {
-	  file_info <- file_store[[file_id]]
-	  filePreview$open(file_info)
-	} else {
-	  showToast(session, "Dosya bulunamadı.", "error")
-	}
-  })
-  
+  	  							   
   # --- Observers for Main Chat UI ---
   observeEvent(input$send_stop_btn, {
 	if (values$is_sending == TRUE) {
