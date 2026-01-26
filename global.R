@@ -1032,6 +1032,7 @@ source("R/server_observers_file_clicks.R", encoding = "UTF-8")
 source("R/server_observers_startup.R", encoding = "UTF-8")
 source("R/server_observers_chat_input.R", encoding = "UTF-8")
 source("R/server_observers_misc.R", encoding = "UTF-8")
+source("R/server_outputs_downloads.R", encoding = "UTF-8")
 source("R/server_tts_handlers.R", encoding = "UTF-8")
 source("R/server_music_handlers.R", encoding = "UTF-8")
 

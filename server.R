@@ -53,25 +53,9 @@ server <- function(input, output, session) {
     try(unlink(cache_dir, recursive = TRUE, force = TRUE), silent = TRUE)
   })
   
-  # One-time widget deps (enables charts rendered into string-inserted containers)
-  if (requireNamespace("highcharter", quietly = TRUE)) {
-	output$deps_hc <- highcharter::renderHighchart({ highcharter::highchart() })
-  }
-  if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)) {
-	# preload with an explicit trace to suppress startup warnings
-	output$deps_pl <- plotly::renderPlotly({
-	  plotly::plotly_empty(type = "scatter", mode = "markers")
-	})
-	# Eski kodların başvurduğu 'plotly_html' çıktısı için gizli yer tutucu
-	output$plotly_html <- plotly::renderPlotly({
-	  plotly::plotly_empty(type = "scatter", mode = "markers")
-	})
-  } else {
-	# Plotly yoksa bile bu çıktıları tanımla (hata/uyarı önleme)
-	output$deps_pl <- renderUI(NULL)
-	output$plotly_html <- renderUI(NULL)
-  }
-
+  # Widget bağımlılık çıktılarını başlat (modüler)
+  widgetDependencyOutputsInit(output)
+  
   # ---- small helpers ---------------------------------------------------------
 
 	# Get the current user's system username
@@ -305,6 +289,10 @@ server <- function(input, output, session) {
   rv_session_files <- reactiveVal(list())
   
   saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
+  
+  # İndirme ve dosya gösterge çıktılarını başlat (modüler)
+  downloadOutputsInit(output, session, session_files, current_user_id)
+  
   historyServer("history_module", all_messages = reactive({
 	all <- values$saved_chats
 	if (length(values$messages) > 0) {
@@ -317,52 +305,12 @@ server <- function(input, output, session) {
 	}
 	return(all)
   }))
-  
-  # --- Top-Level Outputs for Modals ---
-  # Renders the file indicator badge UI for ALL attached files
-  output$file_prompt_indicator_ui <- renderUI({
-	files_list <- names(session_files())
-	req(length(files_list) > 0)
-
-	div(class = "file-indicator-wrapper",
-	  tags$p(
-		class = "file-indicator-title",
-		sprintf("Ekli Dosyalar (%d):", length(files_list))
-	  ),
-	  div(
-		class = "file-indicator-scroll-container",
-		lapply(files_list, function(filename) {
-		  div(class = "file-indicator",
-			  tagList(
-				icon("paperclip"),
-				span(class = "file-indicator-name", filename),
-				tags$button(
-				  icon("times"),
-				  class = "file-indicator-close action-button",
-				  onclick = sprintf("Shiny.setInputValue('remove_file_from_prompt', { name: '%s', nonce: Math.random() }, {priority: 'event'})", filename)
-				)
-			  )
-		  )
-		})
-	  )
-	)
-  })
-  
+    
   # message search wiring
   messageSearchInit(input, session, values, reactive(values$messages))
-	    	
-  output$download_logs <- downloadHandler(
-	filename = function() {
-	  paste0("chat_logs_", format(Sys.Date(), "%Y%m%d"), ".csv")
-	},
-	content = function(file) {
-	  logs_df <- fetch_user_activity_logs(current_user_id)
-	  write.csv(logs_df, file, row.names = FALSE, fileEncoding = "UTF-8")
-	}
-  )
-	
-# Simplified - uses AI module
-generate_non_streaming_stoppable <- function(chat_history, current_settings, user_prompt_msg,
+	    		
+  # Simplified - uses AI module
+  generate_non_streaming_stoppable <- function(chat_history, current_settings, user_prompt_msg,
                                              chat_id_val, model_selected, last_user_text = NULL) {
 	
 	req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
