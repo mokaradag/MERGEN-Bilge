@@ -151,26 +151,7 @@ server <- function(input, output, session) {
   
   # Geri bildirim modülü
   feedback_modal <- feedbackServer("feedback_module", current_user_id)
-    
-  observeEvent(input$`settings_module-open_api_key_modal`, {
-    api_key$open("API Anahtarı Güncelleme")
-  }, ignoreInit = TRUE)
-  
-  output$show_admin_menu <- reactive({
-    isTRUE(user_config$auth_level == "ADMIN")
-  })
-  outputOptions(output, "show_admin_menu", suspendWhenHidden = FALSE)
-  
-  output$admin_menu_item <- renderMenu({
-    if (isTRUE(user_config$auth_level == "ADMIN")) {
-      menuItem("Yönetici Paneli", tabName = "admin_analytics", icon = icon("chart-bar"))
-    }
-  })
-  
-  if (isTRUE(user_config$auth_level == "ADMIN")) {
-    adminAnalyticsServer("admin_analytics_module", pool = pool)
-  }
-  
+        
   # Initialize AI processing module
   ai_processor <- aiProcessingServer("ai_proc")
   
@@ -323,9 +304,6 @@ server <- function(input, output, session) {
   if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
   rv_session_files <- reactiveVal(list())
   
-  # ⛔️ Removed duplicate module initialization & its observers (Problem 1)
-  # (fm <- fileManagerServer(...) + BULK ADD observer block was here)
-
   saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
   historyServer("history_module", all_messages = reactive({
 	all <- values$saved_chats
@@ -1441,6 +1419,13 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
     session_files, file_to_add, stt_data
   )
   
+  # Çeşitli UI observer'larını başlat (modüler)
+  miscObserversInit(
+    input, output, session, values,
+    file_manager_data, filePreview, add_message,
+    api_key, user_config, pool
+  )
+  
   # chat action wiring (like/dislike/regenerate/edit)
   chatActionsInit(
 	input, session, values,
@@ -1450,52 +1435,6 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	reset_chat_state     = reset_chat_state,
 	feedback_modal       = feedback_modal
   )
-
-  # UI Button Synchronization Observer
-  # Geri bildirim verisi degistiginde buton renklerini JS ile guncelle
-  observe({
-    liked_db_ids <- as.character(values$liked_messages %||% character(0))
-    disliked_db_ids <- as.character(values$disliked_messages %||% character(0))
-    
-    current_msgs <- values$messages
-    dom_liked <- character(0)
-    dom_disliked <- character(0)
-    
-    if (length(current_msgs) > 0) {
-      for (m in current_msgs) {
-        if (!is.null(m$db_id) && !is.na(m$db_id)) {
-          mid_str <- as.character(m$db_id)
-          if (mid_str %in% liked_db_ids) {
-            dom_liked <- c(dom_liked, m$id)
-          } else if (mid_str %in% disliked_db_ids) {
-            dom_disliked <- c(dom_disliked, m$id)
-          }
-        }
-      }
-    }
-    
-    shinyjs::runjs(sprintf("
-      $('.message-action-btn.like-btn').removeClass('active liked');
-      $('.message-action-btn.dislike-btn').removeClass('active disliked');
-      
-      var liked = %s;
-      if (liked && liked.length) {
-        liked.forEach(function(id) {
-           $('#like_' + id).addClass('active liked');
-        });
-      }
-      
-      var disliked = %s;
-      if (disliked && disliked.length) {
-        disliked.forEach(function(id) {
-           $('#dislike_' + id).addClass('active disliked');
-        });
-      }
-    ", 
-    jsonlite::toJSON(dom_liked, auto_unbox = FALSE),
-    jsonlite::toJSON(dom_disliked, auto_unbox = FALSE)
-    ))
-  })
   	  							     							         	  
 	# --- Core Chat Functions (wrapped to helpers) ---
 	reset_chat_state <- function() chat_reset_state(session, values)
@@ -1568,29 +1507,5 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	  
 	  # Müzik bağlamını genel moda döndür
 	  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-	}
-  
-  # Rest of observers...
-  observeEvent(file_manager_data$message_trigger(), {
-	req(file_manager_data$message_trigger() > 0)
-
-	msg <- file_manager_data$get_message()
-
-	if (!is.null(msg)) {
-	  if (identical(msg$type, "view_file")) {
-			file_id <- msg$content
-			file_info <- file_manager_data$file_contents()[[file_id]]
-			if (!is.null(file_info)) {
-			  openAnyPreview(file_info, session, filePreview)
-			}
-	  } else {
-			add_message(msg$content, type = "system", html = msg$html)
-	  }
-	}
-  }, ignoreInit = TRUE)
-	  						  
-  output$message_count <- renderText({ length(values$messages) })
-  output$show_welcome_screen <- reactive({ values$show_welcome })
-  outputOptions(output, "show_welcome_screen", suspendWhenHidden = FALSE)
- 
+	} 
 }
