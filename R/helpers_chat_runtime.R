@@ -350,7 +350,12 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
             if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
               for (r in chart_info$renderers) {
-                try(wire_chart_output(output, r$output_id, r$spec), silent = TRUE)
+                local({
+                  local_r <- r
+                  session$onFlushed(function() {
+                    try(wire_chart_output(output, local_r$output_id, local_r$spec), silent = TRUE)
+                  }, once = TRUE)
+                })
               }
             }
 
