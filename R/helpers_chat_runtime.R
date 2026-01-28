@@ -139,8 +139,10 @@ chat_add_message <- function(session, values, settings_data, output,
     push_followup_update(session, new_message$id, followups, pending = FALSE)
   }
   
+  # [FIX START] Closure bug fix for multiple charts
   if (!is.null(chart_info) && isTRUE(chart_info$found) && length(chart_info$renderers)) {
     for (r in chart_info$renderers) {
+      # Wrap in local to ensure 'r' is captured correctly for each iteration
       local({
         local_r <- r
         session$onFlushed(function() {
@@ -148,15 +150,8 @@ chat_add_message <- function(session, values, settings_data, output,
         }, once = TRUE)
       })
     }
-	shinyjs::runjs(sprintf("
-      setTimeout(function() {
-        var el = document.getElementById('message_wrapper_%s');
-        if (el && typeof Shiny !== 'undefined' && Shiny.bindAll) {
-          Shiny.bindAll(el);
-        }
-      }, 150);
-    ", new_message$id))
   }
+  # [FIX END]
 
   wrapper_id <- paste0("message_wrapper_", new_message$id)
   if (isTRUE(new_message$has_code)) {
@@ -353,24 +348,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
             push_followup_update(session, streaming_state$msg_id, followups, pending = FALSE)
             try(shinyjs::runjs(sprintf("(function(){var box=document.getElementById('followup_container_%s'); if(box){box.classList.remove('pending');}})();", streaming_state$msg_id)), silent = TRUE)
 
-			if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
-			  for (r in chart_info$renderers) {
-				local({
-				  local_r <- r
-				  session$onFlushed(function() {
-					try(wire_chart_output(output, local_r$output_id, local_r$spec), silent = TRUE)
-				  }, once = TRUE)
-				})
-			  }
-			  shinyjs::runjs(sprintf("
-				setTimeout(function() {
-				  var el = document.getElementById('message_wrapper_%s');
-				  if (el && typeof Shiny !== 'undefined' && Shiny.bindAll) {
-					Shiny.bindAll(el);
-				  }
-				}, 200);
-			  ", streaming_state$msg_id))
-			}
+            if (isTRUE(chart_info$found) && length(chart_info$renderers)) {
+              for (r in chart_info$renderers) {
+                try(wire_chart_output(output, r$output_id, r$spec), silent = TRUE)
+              }
+            }
 
             tryCatch({
               if (!is.null(values$current_chat_id)) {

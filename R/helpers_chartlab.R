@@ -243,16 +243,14 @@ wire_chart_output <- function(output, out_id, spec) {
 
         } else if (identical(type,"pie") || identical(type,"donut")) {
           req(x)
-          if (!is.null(y) && y %in% names(df)) {
+          if (!is.null(y)) {
             dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, params$agg))
             names(dd) <- c(x, "val")
           } else {
             dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
             names(dd) <- c(x, "val")
           }
-          dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-          effective_topn <- if (isTRUE(!is.na(topn)) && is.finite(topn)) topn else 10
-          dd <- head(dd, effective_topn)
+          if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
           pie_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
           pie_data <- lapply(seq_len(nrow(dd)), function(i) {
             list(name = as.character(dd[[x]][i]), y = dd$val[i], color = pie_colors[((i - 1) %% length(pie_colors)) + 1])
@@ -341,16 +339,14 @@ wire_chart_output <- function(output, out_id, spec) {
           }
         } else if (identical(type,"pie") || identical(type,"donut")) {
           req(x)
-          if (!is.null(y) && y %in% names(df)) {
+          if (!is.null(y)) {
             dd <- aggregate(df[[y]], by = list(df[[x]]),
                             FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
             names(dd) <- c(x, "val")
           } else {
             dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
           }
-          dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-          effective_topn <- if (isTRUE(!is.na(topn)) && is.finite(topn)) topn else 10
-          dd <- head(dd, effective_topn)
+          if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
           return(plotly::plot_ly(dd, labels = ~ .data[[x]], values = ~ val, type = "pie",
                                  hole = if (identical(type,"donut") || isTRUE(params$donut)) 0.6 else 0))
         } else if (identical(type, "pareto")) {

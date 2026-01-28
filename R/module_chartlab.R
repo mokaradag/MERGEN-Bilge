@@ -103,37 +103,40 @@ chartLabServer <- function(id) {
 
     make_id <- function() paste0("cl_", as.integer(as.numeric(Sys.time())*1000), "_", sample(1000:9999,1))
 	
-	auto_guess_chart_spec <- function(sp) {
-      is_num <- function(v) is.numeric(v) && !inherits(v, c("Date","POSIXct","POSIXt"))
+	# === NEW: auto-guess mapping/type when tool spec lacks them ===
+    auto_guess_chart_spec <- function(sp) {
+      is_num <- function(v) is.numeric(v)
       is_date <- function(v) inherits(v, c("Date","POSIXct","POSIXt"))
       first_or_null <- function(x) if (length(x)) x[[1]] else NULL
- 
+
       sp$type    <- tolower(sp$type %||% "")
+      # box/boxplot is no longer supported — hard-fallback to histogram
       if (sp$type %in% c("box","boxplot","box_plot","bx")) sp$type <- "hist"
       sp$mapping <- sp$mapping %||% list()
-      sp$params <- sp$params %||% list()
- 
+      
       df <- tryCatch(as.data.frame(sp$data, stringsAsFactors = FALSE), error = function(e) NULL)
       if (is.null(df) || !is.data.frame(df) || !ncol(df)) return(sp)
- 
+
+      # Sütun tiplerini daha hassas ayır
       date_cols <- names(df)[vapply(df, is_date, logical(1))]
       num_cols  <- names(df)[vapply(df, is_num, logical(1))]
       cat_cols  <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
- 
-      date_patterns <- "date|tarih|zaman|time|yil|year|month|ay|period|donem"
+
+      # String formatında tarih varsa yakala (basit kontrol)
       if (length(date_cols) == 0 && length(cat_cols) > 0) {
-         candidates <- cat_cols[grepl(date_patterns, tolower(cat_cols))]
+         candidates <- grep("date|tarih|zaman|time|yil|year|month|ay", tolower(cat_cols), value=TRUE)
          if (length(candidates) > 0) {
              date_cols <- candidates
              cat_cols <- setdiff(cat_cols, candidates)
          }
       }
- 
+
       known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
- 
+      
+      # 1. Grafik Türü Tahmini (Eğer belirtilmemişse)
       if (!nzchar(sp$type) || !(sp$type %in% known)) {
         if (length(date_cols) > 0 && length(num_cols) > 0) {
-           sp$type <- "line"
+           sp$type <- "line" # Zaman serisi öncelikli
         } else if (length(num_cols) >= 2 && length(cat_cols) == 0) {
            sp$type <- "scatter"
         } else if (length(cat_cols) > 0 && length(num_cols) > 0) {
@@ -141,45 +144,41 @@ chartLabServer <- function(id) {
         } else if (length(num_cols) >= 1) {
            sp$type <- "hist"
         } else {
-           sp$type <- "bar"
+           sp$type <- "bar" # Fallback
         }
       }
- 
+
       x <- sp$mapping$x
       y <- sp$mapping$y
       g <- sp$mapping$group
- 
+
+      # 2. Eksen Tahmini (Grafik türüne göre)
       if (sp$type %in% c("line", "area")) {
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(date_cols)
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(num_cols)
-         if (is.null(y) || !nzchar(y)) y <- first_or_null(setdiff(num_cols, x))
-         if (is.null(g) && length(cat_cols) > 0) g <- first_or_null(cat_cols)
- 
-      } else if (sp$type %in% c("bar", "column", "pareto")) {
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(cat_cols)
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(date_cols)
-         if (is.null(y) || !nzchar(y)) y <- first_or_null(num_cols)
- 
-	  } else if (sp$type %in% c("pie", "donut")) {
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(cat_cols)
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(names(df))
-         if (is.null(y) || !nzchar(y)) y <- first_or_null(num_cols)
-         if (is.null(sp$params$agg)) sp$params$agg <- "sum"
-         if (is.null(sp$params$top_n) || !is.finite(sp$params$top_n) || sp$params$top_n > 10) sp$params$top_n <- 8
- 
+         # X: Tarih > Sayısal (Index)
+         if (is.null(x)) x <- first_or_null(date_cols)
+         if (is.null(x)) x <- first_or_null(num_cols)
+         # Y: Sayısal (X olmayan)
+         if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+         # Group: Kategori
+         if (is.null(g)) g <- first_or_null(cat_cols)
+         
+      } else if (sp$type %in% c("bar", "column", "pie", "donut", "pareto")) {
+         # X: Kategori > Tarih
+         if (is.null(x)) x <- first_or_null(cat_cols)
+         if (is.null(x)) x <- first_or_null(date_cols)
+         # Y: Sayısal
+         if (is.null(y)) y <- first_or_null(num_cols)
+         
       } else if (sp$type == "scatter") {
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(num_cols)
-         if (is.null(y) || !nzchar(y)) y <- first_or_null(setdiff(num_cols, x))
-         if (is.null(g) && length(cat_cols) > 0) g <- first_or_null(cat_cols)
- 
+         if (is.null(x)) x <- first_or_null(num_cols)
+         if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
+         if (is.null(g)) g <- first_or_null(cat_cols)
+         
       } else if (sp$type == "hist") {
-         if (is.null(x) || !nzchar(x)) x <- first_or_null(num_cols)
-         y <- NULL
+         if (is.null(x)) x <- first_or_null(num_cols)
       }
- 
-      sp$mapping$x <- x
-      sp$mapping$y <- y
-      sp$mapping$group <- g
+
+      sp$mapping$x <- x; sp$mapping$y <- y; sp$mapping$group <- g
       sp
     }
 
@@ -237,15 +236,18 @@ chartLabServer <- function(id) {
             h <- hist(df[[x]], breaks = if (isTRUE(!is.na(bins))) bins else "Sturges", plot = FALSE)
             hc <- hc %>% hchart(h)
 			} else if (identical(type, "pie") || identical(type, "donut")) {
+			  # Pie/Donut: prefer a categorical x; auto-pick if missing
 			  if (is.null(x) || !nzchar(x)) {
 				cat_cols <- names(df)[vapply(df, function(v) is.character(v) || is.factor(v), logical(1))]
 				if (length(cat_cols)) x <- cat_cols[1]
 			  }
+              # [MODIFIED] Fallback: If no categorical, use the first column as X (force string)
               if (is.null(x) && ncol(df) > 0) x <- names(df)[1]
- 
+
 			  validate(need(!is.null(x) && nzchar(x), "Pie/Donut için veri sütunu eksik."))
- 
-			  if (!is.null(y) && y %in% names(df)) {
+
+			  # y varsa x'e göre özet; yoksa x sayımları
+			  if (!is.null(y)) {
 				f  <- if (is.null(agg)) "sum" else tolower(agg)
 				fn <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
 				dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) fn(z, na.rm = TRUE))
@@ -254,12 +256,10 @@ chartLabServer <- function(id) {
 				dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
 				names(dd) <- c(x, "val")
 			  }
- 
-			  dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-			  effective_top_n <- if (isTRUE(!is.na(top_n)) && is.finite(top_n)) top_n else 10
-			  dd <- head(dd, effective_top_n)
- 
-			  pie_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
+			  if (isTRUE(!is.na(top_n))) dd <- head(dd, top_n)
+
+			  # Consistently build on the same 'hc' to avoid flicker
+			pie_colors <- c("#60a5fa", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#22d3ee", "#c084fc", "#f97316", "#10b981", "#6366f1")
 			  pie_data <- lapply(seq_len(nrow(dd)), function(i) {
 			    list(name = as.character(dd[[x]][i]), y = dd$val[i], color = pie_colors[((i - 1) %% length(pie_colors)) + 1])
 			  })
@@ -393,7 +393,7 @@ chartLabServer <- function(id) {
 
           } else if (identical(type, "pie") || identical(type, "donut")) {
             req(x)
-            if (!is.null(y) && y %in% names(df)) {
+            if (!is.null(y)) {
               f <- if (is.null(agg)) "sum" else tolower(agg)
               fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
               dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) fun(z, na.rm = TRUE))
@@ -402,9 +402,7 @@ chartLabServer <- function(id) {
               dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
               names(dd) <- c(x, "val")
             }
-            dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-            effective_top_n <- if (isTRUE(!is.na(top_n)) && is.finite(top_n)) top_n else 10
-            dd <- head(dd, effective_top_n)
+            if (isTRUE(!is.na(top_n))) dd <- head(dd, top_n)
             return(plotly::plot_ly(dd, labels = ~ .data[[x]], values = ~ val, type = "pie",
                                    hole = if (identical(type,"donut") || donut) 0.6 else 0))
 

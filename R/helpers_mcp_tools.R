@@ -859,142 +859,85 @@ helpers_mcp_tools$prepare_chart_data <- function(
   agg = NULL,
   bins = NULL,
   top_n = NULL,
+  # --- new rendering options ---
   stack = NULL,
   donut = NULL,
   orientation = NULL,
   smooth = NULL,
+  # ---------------------------------------------------
   filter_sql = NULL,
   limit = 5000,
   session = NULL
 ) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
+  # Normalize and hard-block box/boxplot (no longer supported)
   chart_type <- tolower(chart_type %||% "")
   if (chart_type %in% c("box","boxplot","box_plot","bx")) chart_type <- "hist"
- 
+
+  # 1) resolve file
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
   if (!isTRUE(res$ok)) return(list(error = res$error, ok = FALSE))
- 
+
+  # 2) read
   dt <- tryCatch({
     helpers_mcp_tools$safe_read_table_generic(res$path)
   }, error = function(e) e)
   if (inherits(dt, "error")) {
     return(list(error = sprintf("Dosya okunamadı: %s — %s", basename(res$path), dt$message), ok = FALSE))
   }
- 
-  is_date_col <- function(v) {
-    if (inherits(v, c("Date","POSIXct","POSIXt"))) return(TRUE)
-    FALSE
-  }
-  is_num_col <- function(v) is.numeric(v) && !inherits(v, c("Date","POSIXct","POSIXt"))
-  is_cat_col <- function(v) is.character(v) || is.factor(v)
- 
-  date_cols <- names(dt)[vapply(dt, is_date_col, logical(1))]
-  num_cols <- names(dt)[vapply(dt, is_num_col, logical(1))]
-  cat_cols <- names(dt)[vapply(dt, is_cat_col, logical(1))]
- 
-  date_like_patterns <- c("date", "tarih", "zaman", "time", "yil", "year", "month", "ay", "period", "donem")
-  if (length(date_cols) == 0 && length(cat_cols) > 0) {
-    potential_date <- cat_cols[grepl(paste(date_like_patterns, collapse = "|"), tolower(cat_cols))]
-    if (length(potential_date) > 0) {
-      date_cols <- potential_date
-      cat_cols <- setdiff(cat_cols, potential_date)
+
+  # --- ensure mappings for pie/donut: x must exist (categorical preferred) ---
+  if (tolower(chart_type) %in% c("pie","donut") && (is.null(x) || !nzchar(x))) {
+    cat_cols <- names(dt)[vapply(dt, function(v) is.character(v) || is.factor(v), logical(1))]
+    if (length(cat_cols)) {
+      x <- cat_cols[1]
+    } else {
+      # fallback: use first column
+      x <- names(dt)[1]
     }
   }
- 
-  first_or_null <- function(x) if (length(x) > 0) x[1] else NULL
- 
-  if (tolower(chart_type) %in% c("pie","donut")) {
-    if (is.null(x) || !nzchar(x)) {
-      x <- first_or_null(cat_cols)
-      if (is.null(x)) x <- first_or_null(names(dt))
-    }
-    if (is.null(agg)) agg <- "sum"
-    if (is.null(top_n)) top_n <- 10
-  }
- 
-  if (tolower(chart_type) %in% c("bar","column")) {
-    if (is.null(x) || !nzchar(x)) {
-      x <- first_or_null(cat_cols)
-      if (is.null(x)) x <- first_or_null(date_cols)
-    }
-    if (is.null(y) || !nzchar(y)) {
-      y <- first_or_null(num_cols)
-    }
-    if (is.null(agg) && nrow(dt) > 30) agg <- "sum"
-    if (is.null(top_n) && length(unique(dt[[x]])) > 20) top_n <- 15
-  }
- 
-  if (tolower(chart_type) %in% c("line","area")) {
-    if (is.null(x) || !nzchar(x)) {
-      x <- first_or_null(date_cols)
-      if (is.null(x)) x <- first_or_null(num_cols)
-    }
-    if (is.null(y) || !nzchar(y)) {
-      remaining_num <- setdiff(num_cols, x)
-      y <- first_or_null(remaining_num)
-    }
-  }
- 
-  if (tolower(chart_type) == "scatter") {
-    if (is.null(x) || !nzchar(x)) x <- first_or_null(num_cols)
-    if (is.null(y) || !nzchar(y)) {
-      remaining_num <- setdiff(num_cols, x)
-      y <- first_or_null(remaining_num)
-    }
-  }
- 
-  if (tolower(chart_type) == "hist") {
-    if (is.null(x) || !nzchar(x)) x <- first_or_null(num_cols)
-    y <- NULL
-  }
- 
+
+  # 3) optional filter with DuckDB WHERE
   if (!is.null(filter_sql) && nzchar(filter_sql) && helpers_mcp_tools$safe_has_duckdb()) {
     con <- DBI::dbConnect(duckdb::duckdb(), dbdir=":memory:")
     on.exit(try(DBI::dbDisconnect(con, shutdown=TRUE), silent=TRUE), add=TRUE)
     DBI::dbWriteTable(con, "t", as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
- 
+
     q <- sprintf('SELECT * FROM t WHERE %s', filter_sql)
     q <- gsub("`", "\"", q, fixed = TRUE)
     q <- gsub("\\[", "\"", q); q <- gsub("\\]", "\"", q)
- 
+
     filt <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) e)
     if (!inherits(filt, "error")) dt <- data.table::as.data.table(filt)
   }
- 
-  # Türkçe: Histogram için y parametresi yoksayılmalı
-  if (tolower(chart_type) == "hist") {
-    y <- NULL
-  }
 
+  # 4) thin to only needed columns & Handle Multi-Y (Wide-to-Long)
+  # Çoklu Y sütunlarını güvenli şekilde ayıkla
   if (is.null(y)) {
     y_candidates <- NULL
   } else if (is.character(y) || is.list(y)) {
+    # Liste veya vektör gelirse düzleştir
     raw_y <- unlist(y, use.names = FALSE)
     if (length(raw_y) > 1) {
       y_candidates <- trimws(raw_y)
     } else {
+      # Virgülle ayrılmış string gelirse parçala
       y_candidates <- trimws(strsplit(as.character(raw_y), ",")[[1]])
     }
   } else {
     y_candidates <- NULL
   }
- 
-  # Türkçe: Pie/Donut için zorunlu agg ve top_n kontrolü
-  if (tolower(chart_type) %in% c("pie", "donut")) {
-    if (is.null(agg) || !nzchar(agg)) {
-      agg <- if (!is.null(y_candidates) && length(y_candidates) > 0) "sum" else "count"
-    }
-    if (is.null(top_n) || !is.finite(top_n) || top_n > 10) {
-      top_n <- 8
-    }
-    if (top_n < 3) top_n <- 3
-  }
   
-  # Türkçe: Bar grafikleri için çok kategori varsa otomatik top_n
-  if (tolower(chart_type) == "bar" && !is.null(x) && x %in% names(dt)) {
-    unique_cats <- length(unique(dt[[x]]))
-    if (unique_cats > 20 && (is.null(top_n) || !is.finite(top_n))) {
-      top_n <- 15
+  # Pie ve Donut grafikleri için otomatik agregasyon kontrolü
+  # Eğer kullanıcı agg belirtmemişse ve veri çoksa, sistemi korumak için otomatik topla.
+  if (tolower(chart_type) %in% c("pie", "donut", "bar", "column") && is.null(agg)) {
+    row_limit_for_raw <- 20
+    if (nrow(dt) > row_limit_for_raw) {
+      if (!is.null(y_candidates) && length(y_candidates) > 0) {
+        agg <- "sum" # Sayısal sütun varsa topla
+      } else {
+        agg <- "count" # Sayısal sütun yoksa satırları say
+      }
     }
   }
   
@@ -1218,26 +1161,26 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 	  list(
         type = "function",
         `function` = list(
-		  name = "prepare_chart_data",
-          description = "Grafik verisi hazırlar. KURAL: Kullanıcı kaç grafik istediyse o kadar çağır! 1 grafik istendi=1 çağrı. Pie/Donut: agg ve top_n ZORUNLU (top_n<=10). Histogram: y parametresi VERME. Çoklu seri: y='Col1,Col2' şeklinde virgülle ayır.",
+          name = "prepare_chart_data",
+          description = "Grafik verisi hazırlar. ZORUNLU: X ve Y eksenlerini veriye göre mantıklı seç. Multi-seri için y='Col1,Col2' yap. Pie/Bar için agg kullan.",
           parameters = list(
             type = "object",
             properties = list(
               file_name  = list(type = "string", description = "Dosya jetonu veya yolu/adı."),
               chart_type = list(type = "string",
-                                description = "Grafik türü: 'line' (zaman trendi), 'bar' (kategori karşılaştırma), 'pie' (oransal dağılım), 'donut' (halka), 'scatter' (korelasyon), 'hist' (dağılım), 'area' (alan)."),
-              x          = list(type = "string", description = "X ekseni sütunu. Line/Area: tarih sütunu. Bar/Pie: kategori sütunu. Scatter: sayısal sütun. Hist: dağılımı görülecek sayısal sütun."),
-              y          = list(type = "string", description = "Y ekseni (Sayısal sütun). ÇOKLU SERİ için virgülle ayır: 'Gelir,Gider'. HISTOGRAM için BOŞ BIRAK!"),
-              group      = list(type = "string", description = "Gruplama/renklendirme sütunu. Çoklu Y kullandıysan BOŞ bırak."),
-              agg        = list(type = "string", description = "Pie/Donut için ZORUNLU! Agregasyon: 'sum', 'mean', 'count', 'min', 'max'."),
-              bins       = list(type = "integer", description = "Histogram kutu sayısı (varsayılan: otomatik)."),
-              top_n      = list(type = "integer", description = "Pie/Donut için ZORUNLU (maks 10)! Bar için çok kategori varsa kullan."),
-              stack      = list(type = "string", description = "Bar/Area yığınlama: 'normal' veya 'percent'."),
-              donut      = list(type = "boolean", description = "Pie yerine halka (donut) grafiği."),
-              orientation = list(type = "string", description = "Bar yönü: 'v' (dikey) veya 'h' (yatay, çok kategori için)."),
-              smooth     = list(type = "boolean", description = "Line/Area çizgilerini yumuşat (spline)."),
+                                description = "Grafik türü: 'line' (zaman/trend), 'bar' (kategori/sıralama), 'pie' (parça/bütün), 'scatter' (korelasyon), 'hist' (dağılım)."),
+              x          = list(type = "string", description = "X ekseni. Zaman serisi için tarih, Bar/Pie için kategori sütunu seç."),
+              y          = list(type = "string", description = "Y ekseni (Sayısal). ÇOKLU SERİ için virgülle ayır (örn: 'Gelir,Gider'). Histogram için boş bırak."),
+              group      = list(type = "string", description = "Gruplama sütunu (örn: Region). Çoklu Y kullandıysan burayı BOŞ bırak."),
+              agg        = list(type = "string", description = "Pie/Donut ve Bar için ZORUNLU: 'sum', 'mean', 'count'. Ham veri çizme."),
+              bins       = list(type = "integer", description = "Histogram kutu sayısı (opsiyonel)."),
+              top_n      = list(type = "integer", description = "En yüksek N kaydı göster (Bar/Pie için)."),
+              stack      = list(type = "string", description = "Bar/Area için: 'normal' veya 'percent'."),
+              donut      = list(type = "boolean", description = "Pie grafiğini halka (donut) yapar."),
+              orientation = list(type = "string", description = "Bar grafiği için: 'v' (dikey) veya 'h' (yatay)."),
+              smooth     = list(type = "boolean", description = "Çizgileri yumuşatır (spline)."),
               filter_sql = list(type = "string", description = "SQL WHERE filtresi (örn: Year > 2020)."),
-              limit      = list(type = "integer", description = "Maksimum satır sayısı (varsayılan: 5000).")
+              limit      = list(type = "integer", description = "Maksimum satır sayısı.")
             ),
             required = list("file_name", "chart_type")
           )
@@ -1252,81 +1195,34 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-    "Sen uzman bir Veri Analisti ve Grafik Uzmanısın.",
+    "Sen uzman bir Veri Analisti ve Raporlama Asistanısın. Görevin, yüklenen Excel/CSV dosyalarından MANTIKLI ve DOĞRU grafikleri oluşturmaktır.",
     "",
-    "╔══════════════════════════════════════════════════════════════════════╗",
-    "║  EN ÖNEMLİ KURAL: GRAFİK SAYISI = KULLANICININ İSTEDİĞİ SAYI        ║",
-    "╚══════════════════════════════════════════════════════════════════════╝",
+    "### ÇOK ÖNEMLİ KURALLAR (Bunlara Kesinlikle Uy):",
     "",
-    "• 'Bir grafik çiz' → TAM 1 prepare_chart_data çağrısı",
-    "• 'İki grafik çiz' → TAM 2 prepare_chart_data çağrısı", 
-    "• 'Histogram ve scatter çiz' → TAM 2 prepare_chart_data çağrısı",
-    "• ASLA istenenden fazla grafik üretme!",
+    "1. **Önce Veriyi Tanı:** Sütun isimlerini bilmiyorsan ASLA tahmin yürütme. Önce `analyze_uploaded_file` veya `get_column_statistics` araçlarını kullan.",
     "",
-    "═══════════════════════════════════════════════════════════════════════",
-    "ADIM 1: ÖNCE VERİYİ TANI",
-    "═══════════════════════════════════════════════════════════════════════",
-    "Sütun isimlerini bilmiyorsan → analyze_uploaded_file çağır",
+    "2. **Eksen Seçimi (Kritik):**",
+    "   - **Zaman Serisi:** Eğer sütunlarda 'Tarih', 'Yıl', 'Ay', 'Date', 'Time' gibi ifadeler varsa, bu MUTLAKA **X Ekseni** olmalıdır. Grafik Türü: `line` veya `area`.",
+    "   - **Kategorik:** 'Şehir', 'Ürün', 'Departman' gibi metin sütunları X ekseni olmalıdır. Grafik Türü: `bar` veya `pie`.",
+    "   - **Sayısal:** 'Tutar', 'Miktar', 'Satış', 'Adet' gibi sütunlar Y ekseni olmalıdır.",
     "",
-    "═══════════════════════════════════════════════════════════════════════",
-    "ADIM 2: GRAFİK TİPİNE GÖRE PARAMETRE SEÇİMİ",
-    "═══════════════════════════════════════════════════════════════════════",
+    "3. **Grafik Türleri ve Ayarları:**",
+    "   - **Çizgi (Line):** Zaman içindeki değişim için. `x='Tarih'`, `y='Tutar'`.",
+    "   - **Sütun/Bar (Bar):** Karşılaştırma için. `x='Kategori'`, `y='Tutar'`. Eğer çok fazla kategori varsa `orientation='h'` yap.",
+    "   - **Pasta (Pie/Donut):** Oransal dağılım için. **MUTLAKA** `agg='sum'` (veya mean/count) parametresini kullanmalısın. Ham veriyi (binlerce satırı) asla pasta grafiğine çevirme!",
+    "   - **Histogram:** Sadece tek bir sayısal sütunun dağılımı için (`x='Yas'`). Y ekseni boş kalmalı.",
     "",
-    "┌─────────────┬───────────────────────────────────────────────────────┐",
-    "│ HISTOGRAM   │ x=Sayısal sütun, y=BOŞ BIRAK, bins=15-30              │",
-    "├─────────────┼───────────────────────────────────────────────────────┤",
-    "│ LINE/AREA   │ x=Tarih/Zaman sütunu, y=Sayısal sütun                 │",
-    "│             │ Çoklu seri için: y='Sütun1,Sütun2,Sütun3'             │",
-    "├─────────────┼───────────────────────────────────────────────────────┤",
-    "│ BAR         │ x=Kategori sütunu, y=Sayısal sütun                    │",
-    "│             │ Çok kategori varsa: top_n=15, orientation='h'         │",
-    "├─────────────┼───────────────────────────────────────────────────────┤",
-    "│ SCATTER     │ x=Sayısal1, y=Sayısal2                                │",
-    "│             │ Renklendirme için: group=Kategori sütunu              │",
-    "├─────────────┼───────────────────────────────────────────────────────┤",
-    "│ PIE/DONUT   │ x=Kategori, y=Sayısal, agg='sum', top_n=8             │",
-    "│             │ agg ve top_n ZORUNLU! Maksimum 10 dilim!              │",
-    "└─────────────┴───────────────────────────────────────────────────────┘",
+    "4. **Çoklu Seri (Multi-Series) - ÖNEMLİ:**",
+    "   - Kullanıcı 'Gelir ve Gideri göster' derse (İki farklı sayısal sütun):",
+    "   - **DOĞRU YÖNTEM:** `y` parametresine sütunları virgülle yaz: `y='Gelir, Gider'`. `group` parametresini BOŞ bırak.",
+    "   - **YANLIŞ YÖNTEM:** İki ayrı grafik çizmek veya group parametresini zorlamak.",
     "",
-    "═══════════════════════════════════════════════════════════════════════",
-    "ÇOKLU SERİ (Aynı grafikte birden fazla çizgi/bar)",
-    "═══════════════════════════════════════════════════════════════════════",
-    "Kullanıcı 'Gelir ve Gider trendini göster' derse:",
-    "  → y='Gelir,Gider' (virgülle ayır)",
-    "  → group parametresini BOŞ bırak",
-    "  → Tek prepare_chart_data çağrısı yap",
+    "5. **Mantıklı Varsayımlar:**",
+    "   - Kullanıcı sadece 'satış grafiği çiz' derse, dosyadaki en mantıklı Tarih (X) ve Sayısal (Y) sütununu bulup 'Line' grafiği çiz.",
+    "   - Tarih yoksa, Kategorik (X) ve Sayısal (Y) ile 'Bar' grafiği çiz.",
+    "   - Rastgele sütun seçme. Sütun isimlerinden anlam çıkar.",
     "",
-    "YANLIŞ: Her sütun için ayrı grafik çizmek",
-    "DOĞRU:  y parametresine virgülle yazarak tek grafikte göstermek",
-    "",
-    "═══════════════════════════════════════════════════════════════════════",
-    "PIE/DONUT İÇİN ZORUNLU KURALLAR",
-    "═══════════════════════════════════════════════════════════════════════",
-    "1. agg='sum' veya agg='count' ZORUNLU",
-    "2. top_n=8 ZORUNLU (maksimum 10)",
-    "3. Ham satırları pasta grafiğine dönüştürme!",
-    "",
-    "Örnek: prepare_chart_data(file_name='x.xlsx', chart_type='pie',",
-    "       x='Kategori', y='Tutar', agg='sum', top_n=8)",
-    "",
-    "═══════════════════════════════════════════════════════════════════════",
-    "KULLANICI EKSEN BELİRTMEDİYSE AKILLI SEÇİM YAP",
-    "═══════════════════════════════════════════════════════════════════════",
-    "1. Tarih sütunu varsa → X=Tarih",
-    "2. Kategori sütunu varsa → X=Kategori",
-    "3. Histogram için → X=En anlamlı sayısal sütun",
-    "4. Y her zaman sayısal sütun olmalı",
-    "",
-    "Öncelik sırası: Tarih > Kategori > İlk sayısal",
-    "",
-    "═══════════════════════════════════════════════════════════════════════",
-    "YASAKLAR",
-    "═══════════════════════════════════════════════════════════════════════",
-    "• İstenenden fazla grafik üretme",
-    "• Histogram için y parametresi verme",
-    "• Pie/Donut için agg veya top_n olmadan çağrı yapma",
-    "• 10'dan fazla pasta dilimi oluşturma",
-    "• Aynı veriyi farklı grafik tiplerinde tekrar tekrar gösterme",
+    "Format: Yanıtını Markdown formatında ver ve grafik aracını (`prepare_chart_data`) doğru parametrelerle çağır.",
     sep = "\n"
   )
 }

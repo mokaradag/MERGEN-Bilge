@@ -356,6 +356,65 @@ server <- function(input, output, session) {
 			session$userData$chart_store <- utils::modifyList(session$userData$chart_store, result$chart_store)
 		  }
 		  
+		    # --- ChartLab fallback: model metin döndürdüyse zorla en az 1 grafik ekle ---
+			  # Türkçe yorum: Yalnızca MCP Excel modunda ve kullanıcı grafik istediğinde çalıştır
+			  if (identical(current_settings$tool_family, "mcp_excel")) {
+				# Türkçe yorum: Yanıtta zaten chartlab bloğu var mı?
+				has_chart_block <- is.character(result$content) && length(result$content) > 0 &&
+								   grepl("```chartlab", result$content, fixed = TRUE)
+
+				# Türkçe yorum: Kullanıcı isteğinde grafik niyeti var mı?
+				# Not: user_prompt_msg$content son kullanıcı mesajını içerir (bağlam ekleriyle birlikte)
+				wants_chart <- is.character(user_prompt_msg$content) && length(user_prompt_msg$content) > 0 &&
+							   grepl("(?i)\\b(grafik|grafikleri|grafiğini|görselleştir|gorsellestir|görselleştirme|gorsellestirme|plot|chart|chartlab|figure|graph|viz|visualize|visualise|çiz|çizelge|histogram|bar|çubuk|line|çizgi|trend|dağılım|scatter|pie|pasta|donut|pareto|area|spline|boxplot)\\b",
+									 user_prompt_msg$content[1], perl = TRUE)
+
+				if (!has_chart_block && wants_chart) {
+				  # Türkçe yorum: İlk dosya yolunu seç
+				  fp <- NULL
+				  if (is.list(current_settings$file_paths) && length(current_settings$file_paths) > 0) {
+					fp <- as.character(current_settings$file_paths[[1]])
+				  }
+
+				  # Türkçe yorum: prepare_chart_data ile otomatik grafik üret ve yanıta ekle
+				  if (!is.null(fp) && nzchar(fp) && path_exists_relaxed(fp) &&
+						  exists("helpers_mcp_tools", inherits = TRUE) &&
+						  is.function(helpers_mcp_tools$prepare_chart_data)) {
+
+					  detected_type <- if (exists("detect_chart_type_from_text", mode = "function")) {
+					  detect_chart_type_from_text(user_prompt_msg$content[1])
+					} else { "auto" }
+					fb <- try(helpers_mcp_tools$prepare_chart_data(
+					  file_name  = fp,
+					  chart_type = detected_type,
+					  limit      = 4000,
+					  session    = session
+					), silent = TRUE)
+
+					if (!inherits(fb, "try-error") && is.list(fb) && isTRUE(fb$ok) && !is.null(fb$chart)) {
+					  # Türkçe yorum: Referans üret ve store'a kaydet
+					  ref_id <- paste0("cl_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_",
+									   sprintf("%04d", sample(0:9999, 1)))
+					  if (is.null(session$userData$chart_store) || !is.list(session$userData$chart_store)) {
+						session$userData$chart_store <- list()
+					  }
+					  session$userData$chart_store[[ref_id]] <- fb$chart
+
+					  # Türkçe yorum: Veriyle birlikte inline chartlab bloğunu göm
+					  inline <- fb$chart
+					  inline$ref <- ref_id
+					  block <- paste0(
+						"\n\n```chartlab\n",
+						jsonlite::toJSON(inline, auto_unbox = TRUE, null = "null", digits = 12),
+						"\n```"
+					  )
+					  result$content <- paste0(if (is.character(result$content)) result$content[1] else "", block)
+					}
+				  }
+				}
+			  }
+			  # --- /ChartLab fallback ---
+
 		  # Takip soruları oluştur (helpers_followup_questions.R)
 		  followup_questions <- build_followup_suggestions(
 		    last_user_text, result$content, settings_data, session,
@@ -450,8 +509,6 @@ server <- function(input, output, session) {
 		")
 		removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
 	  }
-	  
-	  session$userData$chart_store <- list()
 	  
 	  # Track request start time for performance monitoring
 	  request_start_time <- Sys.time()

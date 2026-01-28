@@ -128,12 +128,6 @@ $(document).ready(function() {
     messageDiv.innerHTML = data.html || data.content || '';
     messageDiv.removeAttribute('data-streaming');
     
-    setTimeout(function() {
-      if (typeof Shiny !== 'undefined' && Shiny.bindAll) {
-        Shiny.bindAll(wrapper);
-      }
-    }, 50);
-    
     if (data.hasCode && typeof window.initializeCodeMirrorInElement === 'function') {
       setTimeout(function() {
         window.initializeCodeMirrorInElement('message_wrapper_' + data.id);
