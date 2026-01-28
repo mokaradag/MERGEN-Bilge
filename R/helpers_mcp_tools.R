@@ -961,6 +961,11 @@ helpers_mcp_tools$prepare_chart_data <- function(
     if (!inherits(filt, "error")) dt <- data.table::as.data.table(filt)
   }
  
+  # Türkçe: Histogram için y parametresi yoksayılmalı
+  if (tolower(chart_type) == "hist") {
+    y <- NULL
+  }
+
   if (is.null(y)) {
     y_candidates <- NULL
   } else if (is.character(y) || is.list(y)) {
@@ -974,14 +979,23 @@ helpers_mcp_tools$prepare_chart_data <- function(
     y_candidates <- NULL
   }
  
-  if (tolower(chart_type) %in% c("pie", "donut") && is.null(agg)) {
-    if (nrow(dt) > 20) {
+  # Türkçe: Pie/Donut için zorunlu agg ve top_n kontrolü
+  if (tolower(chart_type) %in% c("pie", "donut")) {
+    if (is.null(agg) || !nzchar(agg)) {
       agg <- if (!is.null(y_candidates) && length(y_candidates) > 0) "sum" else "count"
     }
+    if (is.null(top_n) || !is.finite(top_n) || top_n > 10) {
+      top_n <- 8
+    }
+    if (top_n < 3) top_n <- 3
   }
- 
-  if (tolower(chart_type) %in% c("pie", "donut") && (is.null(top_n) || !is.finite(top_n))) {
-    top_n <- 10
+  
+  # Türkçe: Bar grafikleri için çok kategori varsa otomatik top_n
+  if (tolower(chart_type) == "bar" && !is.null(x) && x %in% names(dt)) {
+    unique_cats <- length(unique(dt[[x]]))
+    if (unique_cats > 20 && (is.null(top_n) || !is.finite(top_n))) {
+      top_n <- 15
+    }
   }
   
   if (length(y_candidates) > 1) {
@@ -1204,8 +1218,8 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 	  list(
         type = "function",
         `function` = list(
-          name = "prepare_chart_data",
-          description = "Grafik verisi hazırlar. TEK GRAFİK İSTENDİĞİNDE TEK ÇAĞRI YAP! Pie/Donut için agg ve top_n ZORUNLU. Histogram için y BOŞ BIRAK.",
+		  name = "prepare_chart_data",
+          description = "Grafik verisi hazırlar. KURAL: Kullanıcı kaç grafik istediyse o kadar çağır! 1 grafik istendi=1 çağrı. Pie/Donut: agg ve top_n ZORUNLU (top_n<=10). Histogram: y parametresi VERME. Çoklu seri: y='Col1,Col2' şeklinde virgülle ayır.",
           parameters = list(
             type = "object",
             properties = list(
@@ -1238,119 +1252,81 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-    "Sen uzman bir Veri Analisti ve Grafik Uzmanısın. Excel/CSV dosyalarından %100 DOĞRU ve MANTIKLI grafikler oluşturmalısın.",
+    "Sen uzman bir Veri Analisti ve Grafik Uzmanısın.",
     "",
-    "=======================================================================",
-    "KRİTİK KURAL: TEK GRAFİK İSTENDİĞİNDE TEK GRAFİK ÜRETMELİSİN!",
-    "=======================================================================",
-    "- Kullanıcı 'bir grafik çiz', 'şu grafiği göster' derse: TAM OLARAK 1 ADET prepare_chart_data çağrısı yap.",
-    "- Kullanıcı 'iki grafik', 'histogram ve scatter' derse: İSTENEN SAYIDA prepare_chart_data çağrısı yap.",
-    "- ASLA istenenden fazla grafik üretme!",
+    "╔══════════════════════════════════════════════════════════════════════╗",
+    "║  EN ÖNEMLİ KURAL: GRAFİK SAYISI = KULLANICININ İSTEDİĞİ SAYI        ║",
+    "╚══════════════════════════════════════════════════════════════════════╝",
     "",
-    "=======================================================================",
-    "ADIM 1: VERİYİ TANI (ZORUNLU)",
-    "=======================================================================",
-    "- Sütun isimlerini BİLMİYORSAN, önce `analyze_uploaded_file` çağır.",
-    "- Sütun tiplerini anla: Tarih mi? Kategori mi? Sayısal mı?",
+    "• 'Bir grafik çiz' → TAM 1 prepare_chart_data çağrısı",
+    "• 'İki grafik çiz' → TAM 2 prepare_chart_data çağrısı", 
+    "• 'Histogram ve scatter çiz' → TAM 2 prepare_chart_data çağrısı",
+    "• ASLA istenenden fazla grafik üretme!",
     "",
-    "=======================================================================",
-    "ADIM 2: GRAFİK TÜRÜNÜ DOĞRU SEÇ",
-    "=======================================================================",
+    "═══════════════════════════════════════════════════════════════════════",
+    "ADIM 1: ÖNCE VERİYİ TANI",
+    "═══════════════════════════════════════════════════════════════════════",
+    "Sütun isimlerini bilmiyorsan → analyze_uploaded_file çağır",
     "",
-    "| Kullanıcı Ne İstedi? | Grafik Türü | X Ekseni | Y Ekseni |",
-    "|----------------------|-------------|----------|----------|",
-    "| Zaman trendi, trend analizi | line | Tarih/Zaman | Sayısal |",
-    "| Karşılaştırma, sıralama | bar | Kategori | Sayısal |",
-    "| Oransal dağılım, pay | pie veya donut | Kategori | Sayısal (agg zorunlu) |",
-    "| Dağılım, frekans | hist | Sayısal | BOŞ BIRAK |",
-    "| İki sayısal ilişki | scatter | Sayısal1 | Sayısal2 |",
-    "| Alan grafiği | area | Tarih/Zaman | Sayısal |",
+    "═══════════════════════════════════════════════════════════════════════",
+    "ADIM 2: GRAFİK TİPİNE GÖRE PARAMETRE SEÇİMİ",
+    "═══════════════════════════════════════════════════════════════════════",
     "",
-    "=======================================================================",
-    "ADIM 3: EKSEN SEÇİMİ (ÇOK KRİTİK)",
-    "=======================================================================",
+    "┌─────────────┬───────────────────────────────────────────────────────┐",
+    "│ HISTOGRAM   │ x=Sayısal sütun, y=BOŞ BIRAK, bins=15-30              │",
+    "├─────────────┼───────────────────────────────────────────────────────┤",
+    "│ LINE/AREA   │ x=Tarih/Zaman sütunu, y=Sayısal sütun                 │",
+    "│             │ Çoklu seri için: y='Sütun1,Sütun2,Sütun3'             │",
+    "├─────────────┼───────────────────────────────────────────────────────┤",
+    "│ BAR         │ x=Kategori sütunu, y=Sayısal sütun                    │",
+    "│             │ Çok kategori varsa: top_n=15, orientation='h'         │",
+    "├─────────────┼───────────────────────────────────────────────────────┤",
+    "│ SCATTER     │ x=Sayısal1, y=Sayısal2                                │",
+    "│             │ Renklendirme için: group=Kategori sütunu              │",
+    "├─────────────┼───────────────────────────────────────────────────────┤",
+    "│ PIE/DONUT   │ x=Kategori, y=Sayısal, agg='sum', top_n=8             │",
+    "│             │ agg ve top_n ZORUNLU! Maksimum 10 dilim!              │",
+    "└─────────────┴───────────────────────────────────────────────────────┘",
     "",
-    "**X EKSENİ SEÇİMİ:**",
-    "- Tarih/Zaman içeren sütun varsa (Date, Tarih, Yıl, Ay, Time, Period): X = Bu sütun",
-    "- Kategori sütunu varsa (Şehir, Ürün, Departman, İsim, Tip): X = Bu sütun",
-    "- Histogram için: X = Dağılımını görmek istediğin SAYISAL sütun",
+    "═══════════════════════════════════════════════════════════════════════",
+    "ÇOKLU SERİ (Aynı grafikte birden fazla çizgi/bar)",
+    "═══════════════════════════════════════════════════════════════════════",
+    "Kullanıcı 'Gelir ve Gider trendini göster' derse:",
+    "  → y='Gelir,Gider' (virgülle ayır)",
+    "  → group parametresini BOŞ bırak",
+    "  → Tek prepare_chart_data çağrısı yap",
     "",
-    "**Y EKSENİ SEÇİMİ:**",
-    "- Her zaman SAYISAL bir sütun olmalı (Tutar, Miktar, Satış, Adet, Fiyat, Değer)",
-    "- Histogram için: Y = BOŞ BIRAK (y parametresi verme!)",
+    "YANLIŞ: Her sütun için ayrı grafik çizmek",
+    "DOĞRU:  y parametresine virgülle yazarak tek grafikte göstermek",
     "",
-    "=======================================================================",
-    "PIE/DONUT GRAFİKLERİ İÇİN ZORUNLU KURALLAR",
-    "=======================================================================",
-    "1. **agg parametresi ZORUNLU**: agg='sum' veya agg='count' veya agg='mean' kullan",
-    "2. **top_n parametresi ZORUNLU**: top_n=10 (maksimum 10 dilim göster)",
-    "3. Ham veriyi (yüzlerce satırı) asla pasta grafiğine dönüştürme!",
+    "═══════════════════════════════════════════════════════════════════════",
+    "PIE/DONUT İÇİN ZORUNLU KURALLAR",
+    "═══════════════════════════════════════════════════════════════════════",
+    "1. agg='sum' veya agg='count' ZORUNLU",
+    "2. top_n=8 ZORUNLU (maksimum 10)",
+    "3. Ham satırları pasta grafiğine dönüştürme!",
     "",
-    "DOĞRU Pie Örneği:",
-    "```",
-    "prepare_chart_data(file_name='data.xlsx', chart_type='pie', x='Kategori', y='Tutar', agg='sum', top_n=10)",
-    "```",
+    "Örnek: prepare_chart_data(file_name='x.xlsx', chart_type='pie',",
+    "       x='Kategori', y='Tutar', agg='sum', top_n=8)",
     "",
-    "=======================================================================",
-    "BAR GRAFİKLERİ İÇİN KURALLAR", 
-    "=======================================================================",
-    "- Çok fazla kategori varsa (>15): top_n=15 kullan",
-    "- Yatay gösterim için: orientation='h'",
-    "- Gruplu bar için: group='GrupSütunu' ekle",
+    "═══════════════════════════════════════════════════════════════════════",
+    "KULLANICI EKSEN BELİRTMEDİYSE AKILLI SEÇİM YAP",
+    "═══════════════════════════════════════════════════════════════════════",
+    "1. Tarih sütunu varsa → X=Tarih",
+    "2. Kategori sütunu varsa → X=Kategori",
+    "3. Histogram için → X=En anlamlı sayısal sütun",
+    "4. Y her zaman sayısal sütun olmalı",
     "",
-    "=======================================================================",
-    "ÇOKLU SERİ (Multi-Series) - ÖNEMLİ",
-    "=======================================================================",
-    "Kullanıcı birden fazla sayısal sütunu AYNI grafikte görmek istiyorsa:",
+    "Öncelik sırası: Tarih > Kategori > İlk sayısal",
     "",
-    "**DOĞRU YÖNTEM:**",
-    "- y parametresine virgülle ayırarak yaz: y='Gelir,Gider,Kar'",
-    "- group parametresini BOŞ bırak",
-    "",
-    "**YANLIŞ YÖNTEMLER (YAPMA!):**",
-    "- Her sütun için ayrı grafik çizmek",
-    "- group parametresine sayısal sütun adı yazmak",
-    "",
-    "Örnek - Gelir ve Gider Trendi:",
-    "```",
-    "prepare_chart_data(file_name='data.xlsx', chart_type='line', x='Ay', y='Gelir,Gider')",
-    "```",
-    "",
-    "=======================================================================",
-    "HİSTOGRAM İÇİN KURALLAR",
-    "=======================================================================",
-    "- chart_type='hist'",
-    "- x = Dağılımını görmek istediğin SAYISAL sütun (örn: x='Yaş')",
-    "- y = ASLA VERME (boş bırak)",
-    "- bins = İsteğe bağlı kutu sayısı (örn: bins=20)",
-    "",
-    "DOĞRU Histogram:",
-    "```",
-    "prepare_chart_data(file_name='data.xlsx', chart_type='hist', x='Maaş', bins=15)",
-    "```",
-    "",
-    "=======================================================================",
-    "SCATTER (Saçılım) İÇİN KURALLAR",
-    "=======================================================================",
-    "- x = İlk sayısal sütun",
-    "- y = İkinci sayısal sütun",
-    "- group = Renklendirme için kategori sütunu (opsiyonel)",
-    "",
-    "=======================================================================",
-    "KULLANICI BELİRTMEDİYSE NE YAPMALIYIM?",
-    "=======================================================================",
-    "1. Tarih sütunu varsa → line grafiği, X=Tarih, Y=İlk sayısal sütun",
-    "2. Tarih yoksa, Kategori varsa → bar grafiği, X=Kategori, Y=İlk sayısal sütun",
-    "3. Sadece sayısal sütunlar varsa → scatter veya hist",
-    "",
-    "ASLA rastgele sütun seçme. Sütun isimlerinden MANTIKLI çıkarım yap.",
-    "",
-    "=======================================================================",
-    "YANIT FORMATI",
-    "=======================================================================",
-    "1. Kısa açıklama yaz (1-2 cümle)",
-    "2. prepare_chart_data aracını DOĞRU parametrelerle çağır",
-    "3. Kullanıcıya ne yaptığını açıkla",
+    "═══════════════════════════════════════════════════════════════════════",
+    "YASAKLAR",
+    "═══════════════════════════════════════════════════════════════════════",
+    "• İstenenden fazla grafik üretme",
+    "• Histogram için y parametresi verme",
+    "• Pie/Donut için agg veya top_n olmadan çağrı yapma",
+    "• 10'dan fazla pasta dilimi oluşturma",
+    "• Aynı veriyi farklı grafik tiplerinde tekrar tekrar gösterme",
     sep = "\n"
   )
 }

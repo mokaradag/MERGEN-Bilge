@@ -160,12 +160,12 @@ chartLabServer <- function(id) {
          if (is.null(x) || !nzchar(x)) x <- first_or_null(date_cols)
          if (is.null(y) || !nzchar(y)) y <- first_or_null(num_cols)
  
-      } else if (sp$type %in% c("pie", "donut")) {
+	  } else if (sp$type %in% c("pie", "donut")) {
          if (is.null(x) || !nzchar(x)) x <- first_or_null(cat_cols)
          if (is.null(x) || !nzchar(x)) x <- first_or_null(names(df))
          if (is.null(y) || !nzchar(y)) y <- first_or_null(num_cols)
          if (is.null(sp$params$agg)) sp$params$agg <- "sum"
-         if (is.null(sp$params$top_n) || !is.finite(sp$params$top_n)) sp$params$top_n <- 10
+         if (is.null(sp$params$top_n) || !is.finite(sp$params$top_n) || sp$params$top_n > 10) sp$params$top_n <- 8
  
       } else if (sp$type == "scatter") {
          if (is.null(x) || !nzchar(x)) x <- first_or_null(num_cols)
