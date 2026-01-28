@@ -774,10 +774,24 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     
     if (!is.null(selected_query$all_scores)) {
       best_score <- max(selected_query$all_scores$final_score, na.rm = TRUE)
-      cat(sprintf("[PK_ANALIZ] En yuksek skor: %.1f%% (Esik altinda)\n", best_score))
+      best_idx <- which.max(selected_query$all_scores$final_score)
+      best_name <- if (length(best_idx) > 0) selected_query$all_scores$query_name[best_idx] else "?"
+      cat(sprintf("[PK_ANALIZ] En yuksek skor: %.1f%% - '%s' (Esik altinda kaldi)\n", best_score, best_name))
+      
+      if (best_score >= 20) {
+        cat("[PK_ANALIZ] Dusuk guvenle en yakin sorgu seciliyor (fallback)...\n")
+        fallback_query <- query_library[[best_idx]]
+        fallback_query$relevance_score <- best_score
+        fallback_query$selection_method <- "fallback"
+        fallback_query$selection_reason <- "Dusuk esik skoru - en yakin eslesme"
+        fallback_query$all_scores <- selected_query$all_scores
+        selected_query <- fallback_query
+      }
     }
     
-    return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. (Sorgu kütüphanesinde eşleşen anahtar kelime yok).")
+    if (is.null(selected_query$id)) {
+      return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. Lütfen sorunuzu farklı kelimelerle tekrar deneyin veya mevcut analiz kategorilerini inceleyin.")
+    }
   }
   
   relevance_pct <- selected_query$relevance_score %||% 0
@@ -977,7 +991,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	}
   
   if (nrow(filtered_data) == 0) {
-    return(paste0("🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı."))
+    cat("[PK_ANALIZ] Filtreleme sonrasi veri yok, islem tamamlandi.\n")
+    return(list(
+      type = "error_message",
+      content = "🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı. Lütfen farklı kriterlerle tekrar deneyin."
+    ))
   }
   
   analysis_mode <- selected_query$analysis_mode %||% "summary"
@@ -1127,21 +1145,23 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
   library_text <- paste(library_context, collapse = "\n")
   
   system_instruction <- paste0(
-    "Sen bir Veritabanı Sorgu Yönlendiricisisin (Query Router). Görevin, kullanıcının doğal dil sorusunu analiz etmek ve ",
-    "aşağıdaki listeden EN UYGUN SQL sorgusunu seçmektir.\n\n",
+    "Sen bir Veritabani Sorgu Yonlendiricisisin. Kullanicinin Turkce sorusunu analiz edip EN UYGUN SQL sorgusunu sec.\n\n",
     
     "### MEVCUT SORGULAR:\n",
     library_text, "\n\n",
     
-    "### KURALLAR:\n",
-    "1. Kullanıcının niyetiyle (intent) sorgu açıklamasını eşleştir. Sadece kelime eşleşmesi değil, ANLAM eşleşmesi yap.\n",
-    "2. Eğer kullanıcının sorusu listedeki hiçbir sorguyla alakalı değilse, 'match_id': null döndür.\n",
-    "3. Sadece en iyi eşleşen TEK BİR sorguyu seç.\n",
-    "4. Cevabı sadece JSON formatında ver.\n\n",
+    "### ESLESTIRME KURALLARI:\n",
+    "1. ANLAM ESLESMESI: Kelimelerin birebir eslesip eslesmedigine degil, kullanicinin NIYETINE bak.\n",
+    "2. YAKIN KAVRAMLAR: 'butce', 'maliyet', 'harcama' gibi kavramlar birbirine yakindir.\n",
+    "3. KISMI ESLESME: Sorgu tam olarak cevap vermese bile, KISMI olarak ilgiliyse sec ve confidence'i dusur.\n",
+    "4. Hic alakali sorgu yoksa: match_id: null dondur.\n\n",
     
-	"### JSON FORMATI:\n",
-    "{ \"match_id\": 1, \"confidence\": 85, \"reason\": \"Kullanıcı genel proje bilgilerini sordu, prj_01 genel proje detaylarını içeriyor.\" }\n\n",
-    "confidence: 0-100 arası ilgililik skoru (100 = mükemmel eşleşme, 0 = hiç ilgili değil)"
+    "### ZORUNLU JSON CIKTISI:\n",
+    "{\"match_id\": 1, \"confidence\": 85, \"reason\": \"Kisa aciklama\"}\n\n",
+    "- match_id: Sorgu ID numarasi (1'den baslar) veya null\n",
+    "- confidence: 0-100 arasi (100=mukemmel, 50=kismi, 0=alakasiz)\n",
+    "- reason: Neden bu sorguyu sectin (tek cumle)\n\n",
+    "ONEMLI: Sadece JSON dondur, baska hicbir sey yazma."
   )
   
   messages <- list(
@@ -1183,7 +1203,7 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
     
 	if (!is.null(parsed$match_id)) {
       idx <- as.integer(parsed$match_id)
-      if (idx > 0 && idx <= length(library)) {
+	  if (idx > 0 && idx <= length(library)) {
         confidence <- as.numeric(parsed$confidence %||% 0)
         cat(sprintf("[PK_ANALIZ] AI Secimi: ID=%d (%s) | Guven: %.1f%% | Sebep: %s\n", 
                     idx, library[[idx]]$name, confidence, parsed$reason %||% ""))
@@ -1192,6 +1212,7 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
         result$relevance_score <- confidence
         result$selection_method <- "ai"
         result$selection_reason <- parsed$reason %||% ""
+        result$.matched_idx <- idx
         return(result)
       }
     }
@@ -1227,14 +1248,20 @@ select_smart_query <- function(prompt, library, chat_history) {
   session_obj <- NULL
   try({ session_obj <- shiny::getDefaultReactiveDomain() }, silent=TRUE)
   
-  ai_selection <- find_best_query_with_ai(prompt, library, session_obj)
+  ai_selection <- NULL
+  ai_attempt <- 1
+  max_ai_attempts <- 2
+  
+  while (is.null(ai_selection) && ai_attempt <= max_ai_attempts) {
+    cat(sprintf("[PK_ANALIZ] AI secim denemesi: %d/%d\n", ai_attempt, max_ai_attempts))
+    ai_selection <- find_best_query_with_ai(prompt, library, session_obj)
+    ai_attempt <- ai_attempt + 1
+  }
   
   if (!is.null(ai_selection)) {
-    matched_idx <- which(vapply(library, function(q) {
-      identical(q$id, ai_selection$id) || identical(q$name, ai_selection$name)
-    }, logical(1)))
+    matched_idx <- ai_selection$.matched_idx
     
-    if (length(matched_idx) == 1) {
+    if (!is.null(matched_idx) && length(matched_idx) == 1 && matched_idx > 0) {
       all_scores$ai_score[matched_idx] <- ai_selection$relevance_score %||% 0
       all_scores$final_score[matched_idx] <- ai_selection$relevance_score %||% 0
       
@@ -1274,9 +1301,13 @@ select_smart_query <- function(prompt, library, chat_history) {
     desc_matches <- sum(prompt_words %in% desc_words)
     score <- score + (desc_matches * 2)
     
-    if (grepl("bütçe|maliyet|harcama", prompt_clean) && grepl("bütçe|maliyet|cost|budget", desc_clean)) score <- score + 5
-    if (grepl("zaman|süre|tarih|gecikme", prompt_clean) && grepl("date|start|finish|tarih", desc_clean)) score <- score + 5
-    if (grepl("kaynak|adam|personel", prompt_clean) && grepl("resource|kaynak|personel", desc_clean)) score <- score + 5
+	if (grepl("bütçe|maliyet|harcama|fiyat|tutar", prompt_clean) && grepl("bütçe|maliyet|cost|budget|tutar|fiyat", desc_clean)) score <- score + 8
+    if (grepl("zaman|süre|tarih|gecikme|başlangıç|bitiş", prompt_clean) && grepl("date|start|finish|tarih|süre|gecikme", desc_clean)) score <- score + 8
+    if (grepl("kaynak|adam|personel|çalışan|ekip", prompt_clean) && grepl("resource|kaynak|personel|ekip", desc_clean)) score <- score + 8
+    if (grepl("aktivite|faaliyet|iş|görev", prompt_clean) && grepl("aktivite|activity|task|iş|görev", desc_clean)) score <- score + 8
+    if (grepl("proje|program|portföy", prompt_clean) && grepl("proje|project|program|portföy", desc_clean)) score <- score + 8
+    if (grepl("wbs|iş kırılım|kırılım", prompt_clean) && grepl("wbs|kırılım|work breakdown", desc_clean)) score <- score + 8
+    if (grepl("rol|atama|görevlendirme", prompt_clean) && grepl("rol|role|atama|assignment", desc_clean)) score <- score + 8
     
     return(score)
   })
@@ -1297,13 +1328,16 @@ select_smart_query <- function(prompt, library, chat_history) {
   
   print_score_table(all_scores)
   
-  THRESHOLD <- 5
+  THRESHOLD_RAW <- 2
+  THRESHOLD_PCT <- 30
   
-  if (max_score >= THRESHOLD) {
+  passes_threshold <- (max_score >= THRESHOLD_RAW) || (max_score_pct >= THRESHOLD_PCT)
+  
+  if (passes_threshold) {
     result <- library[[best_idx]]
     result$relevance_score <- max_score_pct
     result$selection_method <- "heuristic"
-    result$selection_reason <- sprintf("Anahtar kelime eslesmesi (ham skor: %d)", max_score)
+    result$selection_reason <- sprintf("Anahtar kelime eslesmesi (ham skor: %d, yuzde: %.1f%%)", max_score, max_score_pct)
     result$all_scores <- all_scores
     
     cat(sprintf("[PK_ANALIZ] -> Heuristic EN IYI ESLESME: %s (Skor: %.1f%%)\n", 
@@ -1311,7 +1345,7 @@ select_smart_query <- function(prompt, library, chat_history) {
     return(result)
   }
   
-  cat("[PK_ANALIZ] -> Hicbir sorgu yeterli skora ulasamadi (Threshold alti).\n")
+  cat(sprintf("[PK_ANALIZ] -> Hicbir sorgu yeterli skora ulasamadi. Ham: %d (esik: %d), Yuzde: %.1f%% (esik: %d%%)\n", max_score, THRESHOLD_RAW, max_score_pct, THRESHOLD_PCT))
   result <- list(all_scores = all_scores)
   return(result)
 }
