@@ -2,12 +2,12 @@
 
 /* Sohbet Konteyneri - Özel Kurallar */
 .chat-container {
-  height: calc(100vh - 250px);
-  min-height: calc(100vh - 250px);
-  max-height: calc(100vh - 250px);
+  height: calc(100vh - 170px);
+  min-height: calc(100vh - 170px);
+  max-height: calc(100vh - 170px);
   overflow-y: auto;
   overflow-x: visible;
-  padding: 16px 32px 180px;
+  padding: 16px 32px 100px;
   scroll-behavior: smooth;
   position: relative;
   display: flex;

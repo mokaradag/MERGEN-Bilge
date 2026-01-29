@@ -5,7 +5,7 @@
 
 .modern-welcome-root {
   position: relative;
-  min-height: calc(100vh - 50px);
+  min-height: 100%;
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -116,7 +116,7 @@
 
 .welcome-fullscreen-wrapper {
   position: fixed !important;
-  top: 50px !important;
+  top: 0 !important;
   left: 250px !important;
   right: 0 !important;
   bottom: 0 !important;
@@ -125,6 +125,10 @@
   padding: 0 !important;
   margin: 0 !important;
   pointer-events: auto !important;
+}
+
+.sidebar-collapse .welcome-fullscreen-wrapper {
+  left: 50px !important;
 }
 
 #chat_main_wrapper {
@@ -148,6 +152,14 @@
   display: none !important;
 }
 
+.welcome-fullscreen-wrapper:not(.hidden) ~ .chat-header {
+  display: none !important;
+}
+
+.welcome-fullscreen-wrapper.hidden ~ .chat-header {
+  display: flex !important;
+}
+
 .modern-welcome-content {
   position: absolute;
   top: 0;
@@ -163,10 +175,10 @@
 
 .modern-welcome-card {
   position: absolute;
-  top: 12px;
+  top: 62px;
   left: 0;
   right: 0;
-  bottom: 140px;
+  bottom: 190px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -184,7 +196,7 @@
   .modern-welcome-card {
     flex-direction: row;
     min-height: auto;
-    height: calc(100% - 152px);
+    height: calc(100% - 252px);
     max-width: 1200px;
   }
 }
@@ -767,6 +779,14 @@
 @keyframes blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+
+.welcome-fullscreen-wrapper:not(.hidden) ~ #chat_main_wrapper .chat-header {
+  display: none !important;
+}
+
+.welcome-fullscreen-wrapper.hidden ~ #chat_main_wrapper .chat-header {
+  display: flex !important;
 }
 
 @media (max-width: 768px) {

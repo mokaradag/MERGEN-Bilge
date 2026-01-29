@@ -14,47 +14,16 @@
   margin-right: 0 !important;
 }
 
-/* Karşılama başlığı hizalaması */
 .welcome-header {
   display: flex;
   flex-direction: column;
   align-items: center;
   align-self: center;
-  margin-bottom: 6px;
+  margin-bottom: 10px !important;
 }
 
 .welcome-title-container {
   text-align: center;
-}
-
-.welcome-title {
-  font-size: 48px;
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.03em;
-  font-family: var(--font-primary) !important;
-}
-
-.welcome-subtitle {
-  font-size: 20px;
-  color: var(--text-muted);
-  font-weight: 300;
-  margin: 4px 0 12px !important;
-  text-align: center;
-  line-height: 1.4;
-}
-
-.welcome-intro-subtitle {
-  margin-bottom: 2px !important;
-  margin-top: 0 !important;
-}
-
-/* Logo olmadan ayarlanan alternatif karşılama başlığı stilleri */
-.welcome-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 15px;
 }
 
 .welcome-title {
@@ -69,15 +38,12 @@
   font-size: 18px;
   color: var(--text-muted);
   font-weight: 300;
-  margin-bottom: 15px;
+  margin: 4px 0 20px !important;
   text-align: center;
+  line-height: 1.4;
 }
 
-/* Öncelikli boşluk ayarları */
-.welcome-header {
-  margin-bottom: 10px !important;
-}
-
-.welcome-subtitle {
-  margin-bottom: 20px !important;
+.welcome-intro-subtitle {
+  margin-bottom: 2px !important;
+  margin-top: 0 !important;
 }
