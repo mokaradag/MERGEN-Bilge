@@ -44,6 +44,48 @@ summarize_columns_for_ai <- function(df) {
   paste(unlist(summary_list), collapse = "\n")
 }
 
+convert_date_columns <- function(data, date_col_names) {
+  if (is.null(date_col_names) || length(date_col_names) == 0) return(data)
+  if (is.null(data) || nrow(data) == 0) return(data)
+  
+  for (col in date_col_names) {
+    if (col %in% names(data)) {
+      vals <- data[[col]]
+      
+      if (inherits(vals, "Date") || inherits(vals, "POSIXt")) {
+        next
+      }
+      
+      if (is.character(vals) || is.factor(vals)) {
+        vals_char <- as.character(vals)
+        
+        converted <- as.Date(vals_char, format = "%d.%m.%Y")
+        
+        if (all(is.na(converted[!is.na(vals_char) & nzchar(vals_char)]))) {
+          converted <- as.Date(vals_char, format = "%Y-%m-%d")
+        }
+        
+        if (all(is.na(converted[!is.na(vals_char) & nzchar(vals_char)]))) {
+          converted <- as.Date(vals_char, format = "%d/%m/%Y")
+        }
+        
+        success_count <- sum(!is.na(converted) & !is.na(vals_char) & nzchar(vals_char))
+        total_count <- sum(!is.na(vals_char) & nzchar(vals_char))
+        
+        if (total_count > 0 && (success_count / total_count) >= 0.5) {
+          data[[col]] <- converted
+          cat(sprintf("[PK_ANALIZ] Tarih donusumu: '%s' sutunu Date tipine cevrildi (%d/%d basarili)\n", 
+                      col, success_count, total_count))
+        } else {
+          cat(sprintf("[PK_ANALIZ] UYARI: '%s' sutunu Date'e cevrilemedi (basari orani dusuk)\n", col))
+        }
+      }
+    }
+  }
+  
+  return(data)
+}
+
 extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL, stop_check = NULL) {
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -939,6 +981,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
   
   cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
+  
+  if (!is.null(selected_query$date_columns)) {
+    raw_data <- convert_date_columns(raw_data, selected_query$date_columns)
+  }
   
   secure_data <- apply_rls_to_data(raw_data, rls_info, selected_query$rls_columns)
   cat(sprintf("[PK_ANALIZ] RLS sonrasi: %d satir\n", nrow(secure_data)))

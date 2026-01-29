@@ -50,13 +50,10 @@ query_library <- list(
     id = "q001",
     name = "Genel Proje KPI Listesi",
     description = "Tüm projelerin anahtar performans göstergelerini listeler.",
-    
-    # YENİ: Bu sorgunun hangi veritabanında çalışacağını belirtiyoruz.
-    # Varsayılan olarak birincil veritabanı seçili.
     db_target = DB_TARGETS$PRIMARY, 
-    
-    # Hibrit yapı (Dosya yolu)
     sql_file = "sql_queries/q001_kpi.sql",
+    
+    date_columns = c("GuncellemeTarihi", "BaslangicTarihi", "BitisTarihi"),
     
     rls_columns = list(
       masraf_yeri_col = "MasrafYeri",
