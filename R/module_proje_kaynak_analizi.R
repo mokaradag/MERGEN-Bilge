@@ -680,6 +680,30 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     }
   }
   
+  date_cols <- names(dt)[vapply(dt, function(x) inherits(x, "Date") || inherits(x, "POSIXt"), logical(1))]
+  if (length(date_cols) > 0) {
+    date_summary_list <- lapply(date_cols, function(col) {
+      vals <- dt[[col]]
+      vals <- vals[!is.na(vals)]
+      if (length(vals) == 0) return(NULL)
+      
+      data.frame(
+        Sutun = prettify_col_name(col),
+        EnEskiTarih = as.character(min(vals)),
+        EnYeniTarih = as.character(max(vals)),
+        KayitSayisi = length(vals),
+        stringsAsFactors = FALSE
+      )
+    })
+    
+    date_summary_df <- do.call(rbind, Filter(Negate(is.null), date_summary_list))
+    
+    if (!is.null(date_summary_df) && nrow(date_summary_df) > 0) {
+      summary_parts[[length(summary_parts) + 1]] <- "\n\nTARIH SUTUNLARI OZETI (TUM VERİ UZERINDEN):"
+      summary_parts[[length(summary_parts) + 1]] <- paste(capture.output(print(date_summary_df, row.names = FALSE)), collapse = "\n")
+    }
+  }
+  
 	if (length(cat_cols) > 0) {
 	  cat_summary_list <- lapply(head(cat_cols, 5), function(col) {
 		tbl <- sort(table(dt[[col]], useNA = "no"), decreasing = TRUE)
@@ -1046,9 +1070,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   analysis_mode <- selected_query$analysis_mode %||% "summary"
   user_filter_was_applied <- (nrow(filtered_data) < nrow(secure_data))
+  
+  dynamic_preview_rows <- if (nrow(filtered_data) <= 500) nrow(filtered_data) else 500
+  
   stat_summary <- generate_statistical_summary(
     filtered_data, 
-    max_preview_rows = 15, 
+    max_preview_rows = dynamic_preview_rows, 
     mode = analysis_mode,
     rls_total_rows = nrow(secure_data),
     user_filter_applied = user_filter_was_applied
