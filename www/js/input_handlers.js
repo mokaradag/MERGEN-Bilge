@@ -12,11 +12,17 @@ $(document).ready(function() {
   }
 
   // Sohbet içeriği kaydırıldığında "aşağıda mı" kontrolü
-  $(document).on('scroll', '.chat-content-wrapper', function() {
-    const threshold = 100;
-    const isNear = this.scrollHeight - this.scrollTop - this.clientHeight < threshold;
-    if (typeof window !== 'undefined') {
-      window.isNearBottom = isNear;
+  $(document).on('scroll', '.chat-container', function() {
+    var threshold = 20;
+    var distanceFromBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
+    var isNear = distanceFromBottom < threshold;
+    
+    window.isNearBottom = isNear;
+    
+    if (isNear) {
+      $('#scroll_to_bottom_container').removeClass('show');
+    } else {
+      $('#scroll_to_bottom_container').addClass('show');
     }
   });
 
@@ -120,9 +126,15 @@ $(document).ready(function() {
   });
 
   // Scroll olayını dinle (checkScrollPosition utils.js içinde tanımlı)
-  if (typeof window.checkScrollPosition === 'function') {
-      $('.chat-container').on('scroll', window.checkScrollPosition);
-  }
+  setTimeout(function() {
+    var container = document.querySelector('.chat-container');
+    if (container) {
+      var distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distanceFromBottom < 20) {
+        $('#scroll_to_bottom_container').removeClass('show');
+      }
+    }
+  }, 500);
 
   // Pasif dinleyiciler (DevTools uyarılarını engellemek için)
   const _chatEl = document.querySelector('.chat-container');

@@ -262,7 +262,21 @@ quickActionsInit <- function(input, session, values, settings_data,
         }
         
         if (length(excel_files) > 0) {
-          session$sendCustomMessage("removeExcelFromContext", list(filenames = excel_files))
+          fm_data <- session$userData$file_manager_data
+          if (!is.null(fm_data) && !is.null(fm_data$set_attachment_checked)) {
+            for (fname in excel_files) {
+              fm_data$set_attachment_checked(fname, FALSE)
+            }
+          }
+          
+          updated_files <- isolate(session_files())
+          for (fname in excel_files) {
+            if (fname %in% names(updated_files)) {
+              updated_files[[fname]] <- NULL
+            }
+          }
+          session_files(updated_files)
+          
           showToast(session, 
             paste0("Dosya Özetleme modu Excel dosyalarını desteklemez. Kaldırılan dosyalar: ", 
                    paste(excel_files, collapse = ", ")), 

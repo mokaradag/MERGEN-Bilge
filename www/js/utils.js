@@ -26,8 +26,9 @@ window.adjustTextareaHeight = function(textarea) {
 };
 
 // Sohbet penceresini en alta kaydır
-window.scrollToBottom = function(smooth = true) {
-  const container = $('.chat-container');
+window.scrollToBottom = function(smooth) {
+  if (smooth === undefined) smooth = true;
+  var container = $('.chat-container');
   if (container.length) {
     container[0].scrollTo({
       top: container[0].scrollHeight,
@@ -62,14 +63,14 @@ window.smartScrollToBottom = function(smooth = true) {
 
 // Kaydırma pozisyonunu kontrol et (Kullanıcı yukarıda mı?)
 window.checkScrollPosition = function() {
-  const container = $('.chat-container');
+  var container = $('.chat-container');
   if (container.length) {
-    const scrollHeight = container[0].scrollHeight;
-    const scrollTop = container.scrollTop();
-    const clientHeight = container.height();
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    var scrollHeight = container[0].scrollHeight;
+    var scrollTop = container.scrollTop();
+    var clientHeight = container.height();
+    var distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     
-    window.isNearBottom = distanceFromBottom < 10;
+    window.isNearBottom = distanceFromBottom < 20;
     
     if (window.isNearBottom) {
       $('#scroll_to_bottom_container').removeClass('show');
