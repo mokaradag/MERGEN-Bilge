@@ -175,10 +175,10 @@
 
 .modern-welcome-card {
   position: absolute;
-  top: 62px;
+  top: 82px;
   left: 0;
   right: 0;
-  bottom: 190px;
+  bottom: 170px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;

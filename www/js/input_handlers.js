@@ -134,6 +134,11 @@ $(document).ready(function() {
 
   // Aşağı kaydırma butonu tıklaması
   $(document).on('click', '#scroll_to_bottom', function() { 
-      if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
+      if (typeof window.scrollToBottom === 'function') {
+        window.scrollToBottom(true);
+        setTimeout(function() {
+          $('#scroll_to_bottom_container').removeClass('show');
+        }, 100);
+      }
   });
 });

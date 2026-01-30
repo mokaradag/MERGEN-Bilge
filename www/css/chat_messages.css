@@ -208,21 +208,6 @@
   margin-bottom: 0;
 }
 
-/* "Kopyala" için sistem mesajlarındaki dosya bağlantı stili */
-.system-message .file-link {
-  color: var(--primary-color);
-  font-weight: 600;
-  text-decoration: none;
-  border-bottom: 1px dashed var(--primary-color);
-  transition: all 0.2s ease;
-}
-
-.system-message .file-link:hover {
-  color: #ffffff;
-  background-color: var(--primary-color);
-  border-bottom: 1px dashed #ffffff;
-}
-
 /* Zengin Metin Biçimlendirme Stilleri */
 
 /* Kalın metin stili */

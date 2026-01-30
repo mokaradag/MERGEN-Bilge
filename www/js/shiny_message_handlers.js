@@ -361,4 +361,23 @@ $(document).ready(function() {
     }
   }, 1000);
 
+  Shiny.addCustomMessageHandler('removeExcelFromContext', function(msg) {
+    var filenames = msg.filenames || [];
+    filenames.forEach(function(fname) {
+      var checkboxes = document.querySelectorAll('input.attach-checkbox[data-filename="' + fname + '"]');
+      checkboxes.forEach(function(cb) {
+        if (cb.checked) {
+          cb.checked = false;
+          var fid = cb.getAttribute('data-file-id');
+          Shiny.setInputValue('file_manager_module-attach_toggled', {
+            id: fid,
+            filename: fname,
+            checked: false,
+            nonce: Math.random()
+          }, {priority: 'event'});
+        }
+      });
+    });
+  });
+
 });

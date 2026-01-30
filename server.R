@@ -112,8 +112,7 @@ server <- function(input, output, session) {
                            saved_chats_data, current_user_id, load_chat_in_progress)
   
   # Sohbet UI gözlemcilerini başlat
-  chatUIObserversInit(input, session, values, start_new_chat, 
-                       send_message, render_welcome_screen)
+  chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
   
   # Navigasyon/sekme değişikliği gözlemcilerini başlat (modüler)
   navigationObserversInit(input, session, values, render_welcome_screen)

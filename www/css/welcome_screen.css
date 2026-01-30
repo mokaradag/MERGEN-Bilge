@@ -196,12 +196,6 @@
   line-height: 1.4;
 }
 
-/* Renk Gradyanları */
-.gradient-pink { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-.gradient-blue { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.gradient-green { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
-.gradient-purple { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #333 !important; }
-
 /* Sinir Ağı Arka Planı */
 .neural-background {
   position: absolute;

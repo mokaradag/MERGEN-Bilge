@@ -239,10 +239,8 @@ quickActionsInit <- function(input, session, values, settings_data,
     if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
       cat("[QUICK_TEMPLATE] Özetleme isteği tespit edildi\n")
       
-      # Model değiştir
       change_model_if_provided(template_model)
       
-      # Özetleme modunu aktif et
       disable_all_tools()
       isolate({ settings_data$enable_summarization_tools <- TRUE })
       update_tool_checkboxes("enable_summarization_tools")
@@ -250,12 +248,38 @@ quickActionsInit <- function(input, session, values, settings_data,
       
       cat("[QUICK_TEMPLATE] Özetleme modu aktif edildi\n")
       
-      # Dosyalar varsa özetlemeyi başlat, yoksa bilgi göster
       current_files <- isolate(session_files())
+      
       if (length(current_files) > 0) {
-        cat("[QUICK_TEMPLATE] Dosyalar mevcut (", length(current_files), 
-            " adet), özetleme başlatılıyor...\n", sep = "")
-        shinyjs::delay(300, { send_message_fn("") })
+        excel_extensions <- c("xls", "xlsx")
+        excel_files <- c()
+        
+        for (fname in names(current_files)) {
+          ext <- tolower(tools::file_ext(fname))
+          if (ext %in% excel_extensions) {
+            excel_files <- c(excel_files, fname)
+          }
+        }
+        
+        if (length(excel_files) > 0) {
+          session$sendCustomMessage("removeExcelFromContext", list(filenames = excel_files))
+          showToast(session, 
+            paste0("Dosya Özetleme modu Excel dosyalarını desteklemez. Kaldırılan dosyalar: ", 
+                   paste(excel_files, collapse = ", ")), 
+            "warning")
+          cat("[QUICK_TEMPLATE] Excel dosyaları bağlamdan kaldırıldı:", paste(excel_files, collapse = ", "), "\n")
+        }
+        
+        remaining_files <- setdiff(names(current_files), excel_files)
+        if (length(remaining_files) > 0) {
+          cat("[QUICK_TEMPLATE] Kalan dosyalar (", length(remaining_files), 
+              " adet), özetleme başlatılıyor...\n", sep = "")
+          shinyjs::delay(300, { send_message_fn("") })
+        } else {
+          showToast(session, 
+            "Tüm seçili dosyalar Excel formatındaydı ve kaldırıldı. Lütfen desteklenen formatta dosya seçin (DOC, DOCX, PDF, TXT).", 
+            "info")
+        }
       } else {
         cat("[QUICK_TEMPLATE] Dosya yok, bilgilendirme gösteriliyor\n")
         showToast(session, 

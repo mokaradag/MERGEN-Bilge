@@ -33,6 +33,9 @@ window.scrollToBottom = function(smooth = true) {
       top: container[0].scrollHeight,
       behavior: smooth ? 'smooth' : 'auto'
     });
+    
+    window.isNearBottom = true;
+    $('#scroll_to_bottom_container').removeClass('show');
   }
 };
 
@@ -53,8 +56,8 @@ window.smartScrollToBottom = function(smooth = true) {
     });
   }
   
-  // Kaydırma pozisyonu bayrağını güncelle
   window.isNearBottom = true;
+  $('#scroll_to_bottom_container').removeClass('show');
 };
 
 // Kaydırma pozisyonunu kontrol et (Kullanıcı yukarıda mı?)
@@ -64,8 +67,15 @@ window.checkScrollPosition = function() {
     const scrollHeight = container[0].scrollHeight;
     const scrollTop = container.scrollTop();
     const clientHeight = container.height();
-    window.isNearBottom = (scrollHeight - scrollTop - clientHeight) < 100;
-    $('#scroll_to_bottom_container').toggleClass('show', !window.isNearBottom);
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    
+    window.isNearBottom = distanceFromBottom < 10;
+    
+    if (window.isNearBottom) {
+      $('#scroll_to_bottom_container').removeClass('show');
+    } else {
+      $('#scroll_to_bottom_container').addClass('show');
+    }
   }
 };
 
