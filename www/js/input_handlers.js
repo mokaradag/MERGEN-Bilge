@@ -11,21 +11,6 @@ $(document).ready(function() {
     });
   }
 
-  // Sohbet içeriği kaydırıldığında "aşağıda mı" kontrolü
-  $(document).on('scroll', '.chat-container', function() {
-    var threshold = 20;
-    var distanceFromBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
-    var isNear = distanceFromBottom < threshold;
-    
-    window.isNearBottom = isNear;
-    
-    if (isNear) {
-      $('#scroll_to_bottom_container').removeClass('show');
-    } else {
-      $('#scroll_to_bottom_container').addClass('show');
-    }
-  });
-
   // Gecikmeli (Debounced) giriş işleyicisi
   const debouncedInputHandler = (typeof debounce === 'function') ? debounce(function(element) {
       if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(element);
@@ -126,15 +111,33 @@ $(document).ready(function() {
   });
 
   // Scroll olayını dinle (checkScrollPosition utils.js içinde tanımlı)
-  setTimeout(function() {
+  function initScrollListener() {
     var container = document.querySelector('.chat-container');
-    if (container) {
-      var distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceFromBottom < 20) {
-        $('#scroll_to_bottom_container').removeClass('show');
-      }
+    if (!container) {
+      setTimeout(initScrollListener, 500);
+      return;
     }
-  }, 500);
+    
+    container.addEventListener('scroll', function() {
+      var distanceFromBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
+      var isNearBottom = distanceFromBottom < 20;
+      
+      window.isNearBottom = isNearBottom;
+      
+      if (isNearBottom) {
+        $('#scroll_to_bottom_container').removeClass('show');
+      } else {
+        $('#scroll_to_bottom_container').addClass('show');
+      }
+    });
+    
+    var distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom > 20) {
+      $('#scroll_to_bottom_container').addClass('show');
+    }
+  }
+  
+  setTimeout(initScrollListener, 500);
 
   // Pasif dinleyiciler (DevTools uyarılarını engellemek için)
   const _chatEl = document.querySelector('.chat-container');
