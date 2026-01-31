@@ -775,85 +775,14 @@ server <- function(input, output, session) {
 	  )
 	  style_instruction <- coding_system_prompt
 	} else if (isTRUE(settings_data$enable_image_tools)) {
-	  # Görsel oluşturma modu - tool_family == "image" bloğunda işlenecek
-	  # Bu blokta sadece style_instruction ayarla, gerçek görsel oluşturma aşağıda
+	  # Görsel oluşturma modu - sadece style_instruction ayarla
+	  # Gerçek görsel oluşturma tool_family == "image" bloğunda yapılacak
 	  style_instruction <- paste0(
 	    base_instruction,
 	    "\n\nGÖRSEL OLUŞTURMA MODU:\n",
 	    "Kullanıcının isteğine göre görsel oluşturulacak.",
 	    citation_instruction
 	  )
-	  
-	  # Yükleme göstergesi güncelle
-	  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-	  insertUI(
-	    selector = "#chat_content_container",
-	    where = "beforeEnd",
-	    ui = div(
-	      id = "typing-animation-wrapper",
-	      class = "message-bubble",
-	      style = "display: flex; justify-content: center; padding: 20px;",
-	      div(class = "image-generating",
-	        div(class = "image-generating-spinner"),
-	        div(class = "image-generating-text", "Görsel oluşturuluyor... Bu işlem 30 saniye ile 2 dakika arasında sürebilir.")
-	      )
-	    ),
-	    immediate = TRUE
-	  )
-	  shinyjs::runjs("window.smartScrollToBottom();")
-	  
-	  # Asenkron görsel oluşturma
-	  current_user_id_local <- current_user_id
-	  current_chat_id_local <- values$current_chat_id
-	  
-	  future_promise({
-	    generate_image(
-	      prompt = user_message_text,
-	      api_key = api_key,
-	      size = image_size,
-	      quality = image_quality,
-	      user_id = current_user_id_local,
-	      chat_id = current_chat_id_local
-	    )
-	  }) %...>% (function(result) {
-	    # Typing animasyonunu kaldır
-	    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-	    values$typing <- FALSE
-	    
-	    # Sonucu işle
-	    if (isTRUE(result$success)) {
-	      # Başarılı - görseli göster
-	      image_html <- render_generated_image_html(result, paste0("img_", floor(as.numeric(Sys.time()) * 1000)))
-	      
-	      # Yanıt metnini oluştur
-	      response_text <- paste0(
-	        "🎨 **Görsel başarıyla oluşturuldu!**\n\n",
-	        if (!is.null(result$translated_prompt) && result$translated_prompt != result$original_prompt) {
-	          paste0("**Çevrilen Prompt:** ", result$translated_prompt, "\n\n")
-	        } else "",
-	        image_html
-	      )
-	      
-	      add_message(response_text, "ai", html = response_text)
-	      showToast(session, "Görsel başarıyla oluşturuldu!", "success")
-	    } else {
-	      # Hata - mesaj göster
-	      error_html <- render_generated_image_html(result, "error")
-	      add_message(paste0("❌ ", result$error %||% "Görsel oluşturulamadı"), "ai", html = error_html)
-	      showToast(session, result$error %||% "Görsel oluşturulamadı", "error")
-	    }
-	    
-	    reset_chat_state()
-	  }) %...!% (function(err) {
-	    # Promise hatası
-	    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-	    values$typing <- FALSE
-	    add_message(paste0("❌ Görsel oluşturma hatası: ", err$message), "ai")
-	    showToast(session, paste("Hata:", err$message), "error")
-	    reset_chat_state()
-	  })
-	  
-	  return(invisible(NULL))  # Promise devam edecek, burada çık
 	} else {
 	  style_instruction <- paste0(base_instruction, citation_instruction)
 	}
@@ -994,17 +923,20 @@ server <- function(input, output, session) {
 	    )
 	    shinyjs::runjs("window.smartScrollToBottom();")
 	    
-	    # Asenkron görsel oluşturma için değişkenleri yakala
+		# Asenkron görsel oluşturma için değişkenleri yakala
 	    current_user_id_local <- current_user_id
 	    current_chat_id_local <- values$current_chat_id
 	    user_prompt_local <- user_message_text
+	    image_size_local <- image_size
+	    image_quality_local <- image_quality
+	    api_key_local <- api_key_for_image
 	    
 	    future_promise({
 	      generate_image(
 	        prompt = user_prompt_local,
-	        api_key = api_key_for_image,
-	        size = image_size,
-	        quality = image_quality,
+	        api_key = api_key_local,
+	        size = image_size_local,
+	        quality = image_quality_local,
 	        user_id = current_user_id_local,
 	        chat_id = current_chat_id_local
 	      )
