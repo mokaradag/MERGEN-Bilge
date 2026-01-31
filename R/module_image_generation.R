@@ -133,6 +133,70 @@ translate_prompt_to_english <- function(turkish_prompt, api_key) {
 }
 
 # ------------------------------------------------------------------------------
+# İNGİLİZCE → TÜRKÇE ÇEVİRİ (DALL-E YORUMU İÇİN)
+# ------------------------------------------------------------------------------
+
+#' DALL-E yorumunu Türkçeye çevir
+#' @param english_text İngilizce metin
+#' @param api_key API anahtarı
+#' @return Türkçe çeviri veya orijinal metin (hata durumunda)
+translate_revised_prompt_to_turkish <- function(english_text, api_key) {
+  # Çeviri modeli yapılandırılmamışsa orijinal metni döndür
+  translation_model <- image_gen_config$translation_model
+  if (!nzchar(translation_model)) {
+    return(english_text)
+  }
+  
+  translation_endpoint <- resolve_local_llm_endpoint(translation_model)
+  
+  tryCatch({
+    translation_messages <- list(
+      list(
+        role = "system",
+        content = paste0(
+          "Sen bir çevirmensin. Aşağıdaki İngilizce metni Türkçeye çevir. ",
+          "Bu metin bir AI görsel oluşturma modelinin açıklamasıdır. ",
+          "Çeviriyi doğal ve akıcı yap. ",
+          "Sadece Türkçe çeviriyi döndür, başka bir şey yazma."
+        )
+      ),
+      list(
+        role = "user",
+        content = english_text
+      )
+    )
+    
+    body <- list(
+      model = translation_model,
+      messages = translation_messages,
+      temperature = 0.3,
+      max_tokens = 500
+    )
+    
+    response <- httr::POST(
+      url = translation_endpoint,
+      httr::add_headers(
+        "Authorization" = paste("Bearer", api_key),
+        "Content-Type" = "application/json"
+      ),
+      body = jsonlite::toJSON(body, auto_unbox = TRUE),
+      encode = "raw",
+      httr::timeout(30)
+    )
+    
+    if (httr::status_code(response) == 200) {
+      result <- httr::content(response, "parsed")
+      translated <- result$choices[[1]]$message$content
+      return(trimws(translated))
+    } else {
+      return(english_text)
+    }
+  }, error = function(e) {
+    return(english_text)
+  })
+}
+
+# ------------------------------------------------------------------------------
 # GÖRSEL OLUŞTURMA
 # ------------------------------------------------------------------------------
 
@@ -165,11 +229,8 @@ generate_image <- function(prompt, api_key, size = "1024x1024", quality = "stand
  # Türkçe promptu İngilizceye çevir
  english_prompt <- translate_prompt_to_english(prompt, api_key)
  
- # MERGEN Bilge imzası ekle
- final_prompt <- paste0(
-   english_prompt,
-   ". Include a subtle watermark text 'MERGEN Bilge' in the bottom right corner of the image."
- )
+ # Çevrilen prompt'u direkt kullan (görsel içine imza ekleme - HTML watermark kullanılacak)
+ final_prompt <- english_prompt
  
  cat(sprintf("[IMAGE_GEN] Görsel oluşturuluyor: size=%s, quality=%s\n", size, quality))
  cat(sprintf("[IMAGE_GEN] Final prompt: %s\n", substr(final_prompt, 1, 200)))
@@ -219,16 +280,32 @@ generate_image <- function(prompt, api_key, size = "1024x1024", quality = "stand
        local_path <- save_image_locally(image_url, user_id, chat_id)
      }
      
-     cat("[IMAGE_GEN] Görsel başarıyla oluşturuldu\n")
-     
-     return(list(
-       success = TRUE,
-       image_url = image_url,
-       local_path = local_path,
-       revised_prompt = revised_prompt,
-       original_prompt = prompt,
-       translated_prompt = english_prompt
-     ))
+	cat("[IMAGE_GEN] Görsel başarıyla oluşturuldu\n")
+    
+    # DALL-E yorumunu kullanıcının diline çevir (Türkçe prompt ise Türkçeye çevir)
+    translated_revised_prompt <- NULL
+    if (!is.null(revised_prompt) && nzchar(revised_prompt)) {
+      # Orijinal prompt Türkçe mi kontrol et
+      turkish_chars <- grepl("[ğüşıöçĞÜŞİÖÇ]", prompt)
+      turkish_words <- grepl("\\b(ve|ile|için|bir|bu|olan|gibi|kadar|daha|çok|nasıl|neden|ama|fakat|ancak)\\b", 
+                             prompt, ignore.case = TRUE)
+      
+      if (turkish_chars || turkish_words) {
+        # DALL-E yorumunu Türkçeye çevir
+        translated_revised_prompt <- translate_revised_prompt_to_turkish(revised_prompt, api_key)
+      } else {
+        translated_revised_prompt <- revised_prompt
+      }
+    }
+    
+    return(list(
+      success = TRUE,
+      image_url = image_url,
+      local_path = local_path,
+      revised_prompt = translated_revised_prompt,
+      original_prompt = prompt,
+      translated_prompt = english_prompt
+    ))
    } else {
      return(list(
        success = FALSE,
@@ -255,35 +332,68 @@ generate_image <- function(prompt, api_key, size = "1024x1024", quality = "stand
 #' @param chat_id Sohbet ID
 #' @return Yerel dosya yolu veya NULL
 save_image_locally <- function(image_url, user_id, chat_id = NULL) {
- tryCatch({
-   # Dizini oluştur
-   save_dir <- get_user_image_dir(user_id, chat_id)
-   
-   # Benzersiz dosya adı oluştur
-   timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-   random_suffix <- paste0(sample(letters, 4), collapse = "")
-   filename <- sprintf("dalle_%s_%s.png", timestamp, random_suffix)
-   local_path <- file.path(save_dir, filename)
-   
-   # Görseli indir
-   response <- httr::GET(
-     image_url,
-     httr::write_disk(local_path, overwrite = TRUE),
-     httr::timeout(60)
-   )
-   
-   if (httr::status_code(response) == 200 && file.exists(local_path)) {
-     cat("[IMAGE_GEN] Görsel kaydedildi:", local_path, "\n")
-     return(local_path)
-   } else {
-     cat("[IMAGE_GEN] Görsel indirilemedi\n")
-     return(NULL)
-   }
-   
- }, error = function(e) {
-   cat("[IMAGE_GEN] Görsel kaydetme hatası:", e$message, "\n")
-   return(NULL)
- })
+  tryCatch({
+    # Dizini oluştur
+    save_dir <- get_user_image_dir(user_id, chat_id)
+    
+    # Dizin oluşturulabildi mi kontrol et
+    if (!dir.exists(save_dir)) {
+      cat("[IMAGE_GEN] Dizin oluşturulamadı:", save_dir, "\n")
+      return(NULL)
+    }
+    
+    # Benzersiz dosya adı oluştur
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    random_suffix <- paste0(sample(letters, 4), collapse = "")
+    filename <- sprintf("dalle_%s_%s.png", timestamp, random_suffix)
+    local_path <- file.path(save_dir, filename)
+    
+    # Yolu normalize et (UNC path sorunlarını çöz)
+    local_path <- normalizePath(local_path, mustWork = FALSE)
+    
+    cat("[IMAGE_GEN] Görsel kaydedilmeye çalışılıyor:", local_path, "\n")
+    
+    # Önce görseli binary olarak indir
+    response <- httr::GET(
+      image_url,
+      httr::timeout(60)
+    )
+    
+    if (httr::status_code(response) != 200) {
+      cat("[IMAGE_GEN] Görsel URL'den indirilemedi, HTTP status:", httr::status_code(response), "\n")
+      return(NULL)
+    }
+    
+    # İçeriği al
+    img_content <- httr::content(response, "raw")
+    
+    if (length(img_content) == 0) {
+      cat("[IMAGE_GEN] Görsel içeriği boş\n")
+      return(NULL)
+    }
+    
+    # Binary olarak dosyaya yaz
+    tryCatch({
+      con <- file(local_path, "wb")
+      writeBin(img_content, con)
+      close(con)
+      
+      if (file.exists(local_path) && file.info(local_path)$size > 0) {
+        cat("[IMAGE_GEN] Görsel başarıyla kaydedildi:", local_path, "\n")
+        return(local_path)
+      } else {
+        cat("[IMAGE_GEN] Dosya oluşturuldu ama boş veya mevcut değil\n")
+        return(NULL)
+      }
+    }, error = function(write_err) {
+      cat("[IMAGE_GEN] Dosya yazma hatası:", write_err$message, "\n")
+      return(NULL)
+    })
+    
+  }, error = function(e) {
+    cat("[IMAGE_GEN] Görsel kaydetme genel hatası:", e$message, "\n")
+    return(NULL)
+  })
 }
 
 #' Kaydedilmiş görseli web erişilebilir URL'ye dönüştür
@@ -430,32 +540,30 @@ render_generated_image_html <- function(image_result, message_id) {
    image_result$image_url
  }
  
- sprintf(
-   '<div class="generated-image-container" data-message-id="%s">
-      <div class="image-wrapper">
-        <img src="%s" alt="DALL-E tarafından oluşturulan görsel" class="generated-image" loading="lazy" />
-        <div class="image-watermark">MERGEN Bilge</div>
-      </div>
-      <div class="image-actions">
-        <button class="image-action-btn" onclick="window.downloadGeneratedImage(this)" title="İndir">
-          <i class="fas fa-download"></i>
-        </button>
-        <button class="image-action-btn" onclick="window.copyGeneratedImage(this)" title="Kopyala">
-          <i class="fas fa-copy"></i>
-        </button>
-        <button class="image-action-btn" onclick="window.printGeneratedImage(this)" title="Yazdır">
-          <i class="fas fa-print"></i>
-        </button>
-      </div>
-      <div class="image-info">
-        %s
-      </div>
-    </div>',
-   message_id,
-   img_src,
-   if (!is.null(image_result$revised_prompt)) {
-     sprintf('<p class="revised-prompt"><strong>DALL-E Yorumu:</strong> %s</p>',
-             htmltools::htmlEscape(image_result$revised_prompt))
-   } else ""
- )
+  sprintf(
+    '<div class="generated-image-container" data-message-id="%s">
+       <div class="image-wrapper">
+         <img src="%s" alt="Oluşturulan görsel" class="generated-image" loading="lazy" />
+         <div class="image-watermark">MERGEN Bilge</div>
+       </div>
+       <div class="image-actions">
+         <button class="image-action-btn-modern" onclick="window.downloadGeneratedImage(this)" title="İndir">
+           <i class="fas fa-download"></i>
+         </button>
+         <button class="image-action-btn-modern" onclick="window.copyGeneratedImage(this)" title="Kopyala">
+           <i class="fas fa-copy"></i>
+         </button>
+         <button class="image-action-btn-modern" onclick="window.printGeneratedImage(this)" title="Yazdır">
+           <i class="fas fa-print"></i>
+         </button>
+       </div>
+       %s
+     </div>',
+    message_id,
+    img_src,
+    if (!is.null(image_result$revised_prompt) && nzchar(image_result$revised_prompt)) {
+      sprintf('<div class="image-description"><p>%s</p></div>',
+              htmltools::htmlEscape(image_result$revised_prompt))
+    } else ""
+  )
 }

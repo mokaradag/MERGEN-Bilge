@@ -102,6 +102,25 @@ server <- function(input, output, session) {
   # Hızlı eylem şablonları modülünü başlat
   quickActionsInit(input, session, values, settings_data,
                    session_files, send_message, quick_action_skip_mcp)
+				   
+  # ==========================================================================
+  # GÖRSEL AYARLARI SENKRONİZASYONU (Sohbet → Ayarlar)
+  # ==========================================================================
+  observeEvent(input$chat_image_size, {
+    if (!is.null(input$chat_image_size)) {
+      settings_data$image_size <- input$chat_image_size
+      session$sendCustomMessage("syncChatImageSettingsToSettings", list(
+        size = input$chat_image_size
+      ))
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$chat_image_quality_hd, {
+    settings_data$image_quality_hd <- isTRUE(input$chat_image_quality_hd)
+    session$sendCustomMessage("syncChatImageSettingsToSettings", list(
+      quality_hd = isTRUE(input$chat_image_quality_hd)
+    ))
+  }, ignoreInit = TRUE)
   
   # Ayar gözlemcilerini başlat (modüler)
   settingsObserversInit(input, session, values, settings_data)
@@ -890,9 +909,19 @@ server <- function(input, output, session) {
 	    # ========================================================================
 	    cat("[IMAGE_MODE] Görsel Uzmanı modu aktif - görsel oluşturma başlatılıyor\n")
 	    
-	    # Görsel ayarlarını al
-	    image_size <- settings_data$image_size %||% "1024x1024"
-	    image_quality <- if (isTRUE(settings_data$image_quality_hd)) "hd" else "standard"
+		# Görsel ayarlarını al (sohbet kontrollerinden öncelikli)
+	    chat_size <- input$chat_image_size
+	    chat_quality_hd <- isTRUE(input$chat_image_quality_hd)
+	    
+	    image_size <- if (!is.null(chat_size) && nzchar(chat_size)) {
+	      chat_size
+	    } else {
+	      settings_data$image_size %||% "1024x1024"
+	    }
+	    
+	    image_quality <- if (chat_quality_hd) "hd" else {
+	      if (isTRUE(settings_data$image_quality_hd)) "hd" else "standard"
+	    }
 	    
 	    # Kullanıcının API anahtarını al
 	    api_key_for_image <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
@@ -946,21 +975,12 @@ server <- function(input, output, session) {
 	      values$typing <- FALSE
 	      
 	      # Sonucu işle
-	      if (isTRUE(result$success)) {
-	        # Başarılı - görseli göster
-	        image_html <- render_generated_image_html(result, paste0("img_", floor(as.numeric(Sys.time()) * 1000)))
-	        
-	        # Yanıt metnini oluştur
-	        response_parts <- c("🎨 **Görsel başarıyla oluşturuldu!**\n\n")
-	        
-	        if (!is.null(result$translated_prompt) && result$translated_prompt != result$original_prompt) {
-	          response_parts <- c(response_parts, paste0("**Çevrilen Prompt:** ", result$translated_prompt, "\n\n"))
-	        }
-	        
-	        response_text <- paste0(paste(response_parts, collapse = ""), image_html)
-	        
-	        add_message(response_text, "ai", html = response_text)
-	        showToast(session, "Görsel başarıyla oluşturuldu!", "success")
+		if (isTRUE(result$success)) {
+			# Başarılı - sadece görseli göster (gereksiz metin yok)
+			image_html <- render_generated_image_html(result, paste0("img_", floor(as.numeric(Sys.time()) * 1000)))
+			
+			add_message(image_html, "ai", html = image_html)
+			showToast(session, "Görsel oluşturuldu!", "success")
 	      } else {
 	        # Hata - mesaj göster
 	        error_msg <- result$error %||% "Görsel oluşturulamadı"

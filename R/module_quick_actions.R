@@ -105,8 +105,18 @@ quickActionsInit <- function(input, session, values, settings_data,
                                   template_model, template_text) {
     cat("[QUICK_TEMPLATE]", action_id, "isteği tespit edildi\n")
     
-    # 1. Model değiştir
-    change_model_if_provided(template_model)
+    # 1. Görsel modu için özel model işleme
+    if (tool_name == "enable_image_tools") {
+      # Görsel modu için dall-e-3 modeli zorunlu
+      image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+      isolate({ settings_data$model_selection <- image_model })
+      session$sendCustomMessage("saveSettings", list(model_selection = image_model))
+      session$sendCustomMessage("toggleImageMode", list(active = TRUE))
+    } else {
+      # Normal model değiştirme
+      change_model_if_provided(template_model)
+      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+    }
     
     # 2. Araçları kapat, sadece istenen aracı aç
     disable_all_tools()

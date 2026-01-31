@@ -10,9 +10,14 @@
 chatOutputsInit <- function(output, settings_data) {
   
   output$current_model_display <- renderUI({
-    selected_model_id <- settings_data$model_selection %||% api_config$local_models[1]
-    display_name <- names(api_config$local_models)[api_config$local_models == selected_model_id]
-    if (length(display_name) == 0) display_name <- selected_model_id
+    # Görsel modu aktifse dall-e-3 göster
+    if (isTRUE(settings_data$enable_image_tools)) {
+      display_name <- "dall-e-3"
+    } else {
+      selected_model_id <- settings_data$model_selection %||% api_config$local_models[1]
+      display_name <- names(api_config$local_models)[api_config$local_models == selected_model_id]
+      if (length(display_name) == 0) display_name <- selected_model_id
+    }
     
     bg_color <- "rgba(255, 255, 255, 0.05)"
     border_color <- "rgba(255, 255, 255, 0.1)"

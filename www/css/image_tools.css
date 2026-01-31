@@ -278,27 +278,50 @@
   box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
 }
 
-.image-action-btn:active {
+/* Görsel İşlem Butonları - Modern Tema (Uygulama Geneli ile Uyumlu) */
+.image-action-btn-modern {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.image-action-btn-modern:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+.image-action-btn-modern:active {
   transform: translateY(0);
 }
 
-/* Görsel Bilgi */
-.image-info {
+/* Görsel Açıklaması (DALL-E Yorumu yerine) */
+.image-description {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color, #334155);
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border-left: 3px solid var(--primary-color, #ff6b35);
 }
 
-.revised-prompt {
-  font-size: 13px;
-  color: #94a3b8;
+.image-description p {
   margin: 0;
-  font-style: italic;
+  font-size: 13px;
+  color: #b0b0b0;
+  line-height: 1.5;
+  font-style: normal;
 }
 
-.revised-prompt strong {
-  color: #ec4899;
-  font-style: normal;
+.image-action-btn:active {
+  transform: translateY(0);
 }
 
 /* Hata Container */

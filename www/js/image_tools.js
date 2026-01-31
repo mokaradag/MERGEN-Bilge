@@ -303,6 +303,35 @@ if (window.Shiny) {
   // Görsel modu aktif/pasif mesajı
   Shiny.addCustomMessageHandler('toggleImageMode', function(data) {
     window.toggleImageControls(data.active);
+    
+    // Model dropdown'ını da ayarla
+    const modelWrapper = document.querySelector('.model-selector-wrapper');
+    if (modelWrapper) {
+      if (data.active) {
+        modelWrapper.style.opacity = '0.5';
+        modelWrapper.style.pointerEvents = 'none';
+        modelWrapper.title = 'Görsel modunda model seçimi devre dışı';
+      } else {
+        modelWrapper.style.opacity = '1';
+        modelWrapper.style.pointerEvents = 'auto';
+        modelWrapper.title = 'Model Değiştir';
+      }
+    }
+  });
+  
+  // Sohbet kontrollerinden Ayarlara senkronizasyon
+  Shiny.addCustomMessageHandler('syncChatImageSettingsToSettings', function(data) {
+    const settingsSize = document.getElementById('settings_module-image_size');
+    const settingsQuality = document.getElementById('settings_module-image_quality_hd');
+    
+    if (settingsSize && data.size) {
+      settingsSize.value = data.size;
+      $(settingsSize).trigger('change');
+    }
+    if (settingsQuality && typeof data.quality_hd !== 'undefined') {
+      settingsQuality.checked = data.quality_hd;
+      $(settingsQuality).trigger('change');
+    }
   });
 }
 

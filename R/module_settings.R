@@ -373,22 +373,6 @@ settingsUI <- function(id) {
                     )
                   )
                 )
-              ),
-              
-              # Yapılandırma durumu
-              div(
-                class = "image-config-status",
-                if (nzchar(Sys.getenv("IMAGE_GEN_ENDPOINT", ""))) {
-                  tagList(
-                    tags$i(class = "fas fa-check-circle", style = "color: #10b981; margin-right: 8px;"),
-                    "Görsel oluşturma API'si yapılandırılmış"
-                  )
-                } else {
-                  tagList(
-                    tags$i(class = "fas fa-exclamation-triangle", style = "color: #f59e0b; margin-right: 8px;"),
-                    "Görsel oluşturma API'si yapılandırılmamış. .Renviron dosyasını kontrol edin."
-                  )
-                }
               )
             )
           )
@@ -820,6 +804,25 @@ settingsServer <- function(id, parent_session = NULL) {
 			  updateCheckboxInput(session, other, value = FALSE)
 			  settings[[other]] <- FALSE
 			}
+		  }
+		  
+		  # Görsel Uzmanı aktifleştirildiğinde otomatik model ayarla
+		  if (tool_name == "enable_image_tools") {
+		    image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+		    settings$model_selection <- image_model
+		    temp_model_selection(image_model)
+		    # Dropdown güncelleme - görsel modu açıkken dropdown gizlenecek
+		    session$sendCustomMessage("toggleImageMode", list(active = TRUE))
+		  }
+		} else {
+		  # Görsel Uzmanı devre dışı bırakıldığında varsayılan modele dön
+		  if (tool_name == "enable_image_tools") {
+		    default_model <- api_config$local_models[1]
+		    settings$model_selection <- default_model
+		    temp_model_selection(default_model)
+		    updateSelectInput(session, "model_selection", selected = default_model)
+		    session$sendCustomMessage("saveSettings", list(model_selection = default_model))
+		    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
 		  }
 		}
 	  }, ignoreInit = TRUE)
