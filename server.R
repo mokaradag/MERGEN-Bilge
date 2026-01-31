@@ -106,20 +106,21 @@ server <- function(input, output, session) {
   # ==========================================================================
   # GÖRSEL AYARLARI SENKRONİZASYONU (Sohbet → Ayarlar)
   # ==========================================================================
+  # NOT: Ana Söyleşi'deki değişiklikler settings reaktif değerlerini günceller,
+  # ancak Ayarlar sayfası UI'ını doğrudan güncellemez. Ayarlar sayfası kendi
+  # geçici değişkenlerini kullanır ve bunlar yalnızca "Ayarları Kaydet"
+  # butonuna basıldığında uygulanır.
   observeEvent(input$chat_image_size, {
     if (!is.null(input$chat_image_size)) {
       settings_data$image_size <- input$chat_image_size
-      session$sendCustomMessage("syncChatImageSettingsToSettings", list(
-        size = input$chat_image_size
-      ))
+      # Ayarlar sayfasına senkronize ETME - ayarlar sayfası kendi temp değişkenlerini kullanır
+      # ve sadece kaydet butonunda uygulanır
     }
   }, ignoreInit = TRUE)
-  
+ 
   observeEvent(input$chat_image_quality_hd, {
     settings_data$image_quality_hd <- isTRUE(input$chat_image_quality_hd)
-    session$sendCustomMessage("syncChatImageSettingsToSettings", list(
-      quality_hd = isTRUE(input$chat_image_quality_hd)
-    ))
+    # Ayarlar sayfasına senkronize ETME
   }, ignoreInit = TRUE)
   
   # Ayar gözlemcilerini başlat (modüler)
@@ -978,8 +979,14 @@ server <- function(input, output, session) {
 		if (isTRUE(result$success)) {
 			# Başarılı - sadece görseli göster (gereksiz metin yok)
 			image_html <- render_generated_image_html(result, paste0("img_", floor(as.numeric(Sys.time()) * 1000)))
-			
-			add_message(image_html, "ai", html = image_html)
+ 
+			# ÖNEMLİ: Base64 veriyi LLM bağlamına göndermemek için içerik olarak
+			# sadece metin açıklama kullan, HTML'i ayrı tut
+			# Bu sayede görsel araçları kapatıldığında context patlaması olmaz
+			image_description <- result$revised_prompt %||% "[Görsel oluşturuldu]"
+			content_text <- paste0("[GÖRSEL] ", image_description)
+ 
+			add_message(content_text, "ai", html = image_html)
 			showToast(session, "Görsel oluşturuldu!", "success")
 	      } else {
 	        # Hata - mesaj göster

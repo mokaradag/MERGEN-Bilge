@@ -730,6 +730,20 @@ settingsServer <- function(id, parent_session = NULL) {
 		  settings$enable_image_tools <- isTRUE(loaded$enable_image_tools)
 		  updateCheckboxInput(session, "enable_image_tools", value = settings$enable_image_tools)
 		}
+		
+		# Görsel ayarlarını yükle
+		if (!is.null(loaded$image_size) && loaded$image_size %in% c("1024x1024", "1792x1024", "1024x1792")) {
+		  settings$image_size <- loaded$image_size
+		  temp_image_size(loaded$image_size)
+		  updateSelectInput(session, "image_size", selected = loaded$image_size)
+		}
+		if (!is.null(loaded$image_quality_hd)) {
+		  settings$image_quality_hd <- isTRUE(loaded$image_quality_hd)
+		  temp_image_quality_hd(isTRUE(loaded$image_quality_hd))
+		  if (isTRUE(loaded$image_quality_hd)) {
+		    shinyjs::runjs(sprintf("$('#%s').prop('checked', true);", ns("image_quality_hd")))
+		  }
+		}
 
         if (!is.null(loaded$enable_mcp_tools)) {
           settings$enable_mcp_tools <- isTRUE(loaded$enable_mcp_tools)
@@ -755,22 +769,44 @@ settingsServer <- function(id, parent_session = NULL) {
       }
     }, ignoreInit = TRUE)
 	
-  # Görsel ayarları değişiklik observer'ı
+  # Görsel ayarları için geçici değişkenler (kaydet butonuna basılana kadar uygulanmaz)
+  temp_image_size <- reactiveVal("1024x1024")
+  temp_image_quality_hd <- reactiveVal(FALSE)
+ 
+  # Görsel ayarları değişiklik observer'ı - sadece geçici değişkeni güncelle
+  # NOT: Ayarlar sayfasındaki değişiklikler SADECE "Ayarları Kaydet" butonuna
+  # basıldığında Ana Söyleşi sayfasına yansıtılır
   observeEvent(input$image_size, {
-    settings$image_size <- input$image_size
-    # Sohbet kontrollerine senkronize et
-    session$sendCustomMessage("syncImageSettingsToChat", list(
-      size = input$image_size,
-      quality_hd = isTRUE(input$image_quality_hd)
-    ))
+    temp_image_size(input$image_size)
+    # Hemen senkronize ETME - kaydet butonunda yapılacak
   }, ignoreInit = TRUE)
-  
+ 
   observeEvent(input$image_quality_hd, {
-    settings$image_quality_hd <- isTRUE(input$image_quality_hd)
-    session$sendCustomMessage("syncImageSettingsToChat", list(
-      size = input$image_size,
-      quality_hd = isTRUE(input$image_quality_hd)
-    ))
+    temp_image_quality_hd(isTRUE(input$image_quality_hd))
+    # Hemen senkronize ETME - kaydet butonunda yapılacak
+  }, ignoreInit = TRUE)
+ 
+  # Ana Söyleşi'den gelen değişiklikleri Ayarlar sayfasına yansıt
+  # (Sadece settings reaktif değerleri değişirse UI'ı güncelle)
+  observeEvent(settings$image_size, {
+    current_temp <- temp_image_size()
+    if (!identical(settings$image_size, current_temp)) {
+      temp_image_size(settings$image_size)
+      updateSelectInput(session, "image_size", selected = settings$image_size)
+    }
+  }, ignoreInit = TRUE)
+ 
+  observeEvent(settings$image_quality_hd, {
+    current_temp <- temp_image_quality_hd()
+    if (!identical(settings$image_quality_hd, current_temp)) {
+      temp_image_quality_hd(settings$image_quality_hd)
+      # Checkbox için JavaScript ile güncelle
+      if (isTRUE(settings$image_quality_hd)) {
+        shinyjs::runjs(sprintf("$('#%s').prop('checked', true);", ns("image_quality_hd")))
+      } else {
+        shinyjs::runjs(sprintf("$('#%s').prop('checked', false);", ns("image_quality_hd")))
+      }
+    }
   }, ignoreInit = TRUE)
     
     # Update internal state when inputs change
@@ -834,21 +870,34 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$selected_character <- temp_selected_character()
       
       settings$model_selection <- temp_model_selection()
-      
-      cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s\n", 
-                  settings$model_selection, settings$selected_character))
-      
+ 
+      # Görsel ayarlarını geçici değişkenlerden uygula ve senkronize et
+      settings$image_size <- temp_image_size()
+      settings$image_quality_hd <- temp_image_quality_hd()
+ 
+      cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s, Görsel Boyutu: %s, HD: %s\n",
+                  settings$model_selection, settings$selected_character,
+                  settings$image_size, settings$image_quality_hd))
+ 
       Sys.sleep(0.1)
-	  
+ 
 	  session$sendCustomMessage("triggerVideoSelection", list(
 		character = settings$selected_character,
 		timestamp = as.numeric(Sys.time())
 	  ))
-	  
+ 
+	  # Görsel ayarlarını Ana Söyleşi sayfasına senkronize et
+	  session$sendCustomMessage("syncImageSettingsToChat", list(
+	    size = settings$image_size,
+	    quality_hd = isTRUE(settings$image_quality_hd)
+	  ))
+ 
 	  to_save <- reactiveValuesToList(settings)
 	  to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
       to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
       to_save$enable_tts_audio   <- isTRUE(input$enable_tts_audio)
+      to_save$image_size         <- settings$image_size
+      to_save$image_quality_hd   <- settings$image_quality_hd
       session$sendCustomMessage("saveSettings", to_save)
       
       showToast(session, "Ayarlar kaydedildi!", "success")
@@ -861,7 +910,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$model_selection          <- default_model
 	  # Geçici değişkeni de sıfırla
 	  temp_model_selection(default_model)
-	  
+ 
 	  settings$selected_character       <- "mergen"
 	  temp_selected_character("mergen")
 	  settings$enable_animations       <- TRUE
@@ -881,6 +930,12 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$font_size               <- "medium"
 	  settings$enable_background_music <- FALSE
 	  settings$music_volume <- 0.3
+ 
+	  # Görsel ayarlarını sıfırla
+	  settings$image_size <- "1024x1024"
+	  settings$image_quality_hd <- FALSE
+	  temp_image_size("1024x1024")
+	  temp_image_quality_hd(FALSE)
 	  
 	  updateSelectInput(session, "model_selection", selected = settings$model_selection)
 	  update_character_display(settings$selected_character)
@@ -898,6 +953,16 @@ settingsServer <- function(id, parent_session = NULL) {
 	  updateCheckboxInput(session, "enable_followups",        value = settings$enable_followups)
 	  updateCheckboxInput(session, "enable_background_music", value = FALSE)
 	  updateSliderInput(session, "music_volume", value = 0.3)
+	  
+	  # Görsel ayarları UI'ını güncelle
+	  updateSelectInput(session, "image_size", selected = "1024x1024")
+	  shinyjs::runjs(sprintf("$('#%s').prop('checked', false);", ns("image_quality_hd")))
+ 
+	  # Ana Söyleşi'deki görsel kontrollerini de sıfırla
+	  session$sendCustomMessage("syncImageSettingsToChat", list(
+	    size = "1024x1024",
+	    quality_hd = FALSE
+	  ))
 	  
 	  session$sendCustomMessage("clearSettings", list())
 	  showToast(session, "Ayarlar sıfırlandı!", "info")
