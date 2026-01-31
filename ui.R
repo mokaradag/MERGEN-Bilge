@@ -112,7 +112,8 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/empty_state.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/animations_extra.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/message_actions.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/feedback_modal.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/feedback_modal.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/image_tools.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -182,6 +183,7 @@ ui <- dashboardPage(
     tags$script(src = "js/shortcuts_manager.js"),
 	tags$script(src = "js/feedback_modal.js"),
     tags$script(src = "js/music_manager.js"),
+    tags$script(src = "js/image_tools.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),
@@ -273,6 +275,36 @@ ui <- dashboardPage(
                 tags$textarea(id = "user_input", class = "chat-input", placeholder = "MERGEN'e bir mesaj yazın... (Dosya yüklemek için sürükleyip bırakın veya ataç simgesine tıklayın.)", rows = 1, autofocus = "autofocus"),
                 div(
                   class = "input-actions",
+                  # Görsel oluşturma kontrolleri (Görsel Uzmanı aktifken görünür)
+                  div(
+                    id = "image_chat_controls",
+                    class = "image-chat-controls hidden",
+                    div(
+                      class = "image-control-item",
+                      tags$select(
+                        id = "chat_image_size",
+                        class = "image-size-select",
+                        title = "Görsel Boyutu",
+                        tags$option(value = "1024x1024", "Kare"),
+                        tags$option(value = "1792x1024", "Yatay"),
+                        tags$option(value = "1024x1792", "Dikey")
+                      )
+                    ),
+                    div(
+                      class = "image-control-item",
+                      tags$label(
+                        class = "quality-mini-switch",
+                        title = "HD Kalite",
+                        tags$input(
+                          type = "checkbox",
+                          id = "chat_image_quality_hd",
+                          class = "quality-mini-input"
+                        ),
+                        tags$span(class = "quality-mini-slider"),
+                        tags$span(class = "quality-mini-label", "HD")
+                      )
+                    )
+                  ),
                   div(class = "model-selector-wrapper",
                       uiOutput("chat_model_selector_ui", style = "display:inline-block;")
                   ),

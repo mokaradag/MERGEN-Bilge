@@ -1,0 +1,380 @@
+/* ==============================================================================
+ * www/css/image_tools.css
+ * Görsel oluşturma araçları için stiller
+ * Kalite switch, boyut dropdown ve oluşturulan görsel stilleri
+ * ============================================================================== */
+
+/* ------------------------------------------------------------------------------
+ * SOHBET İÇİ GÖRSEL KONTROLLERİ
+ * ------------------------------------------------------------------------------ */
+
+.image-chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(236, 72, 153, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  margin-right: 8px;
+  transition: all 0.3s ease;
+}
+
+.image-chat-controls.hidden {
+  display: none !important;
+}
+
+.image-control-item {
+  display: flex;
+  align-items: center;
+}
+
+/* Boyut Dropdown */
+.image-size-select {
+  background: var(--bg-tertiary, #1e293b);
+  color: var(--text-primary, #f1f5f9);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  min-width: 80px;
+}
+
+.image-size-select:hover {
+  border-color: #ec4899;
+}
+
+.image-size-select:focus {
+  border-color: #ec4899;
+  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.2);
+}
+
+/* Mini Kalite Switch */
+.quality-mini-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.quality-mini-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.quality-mini-slider {
+  width: 32px;
+  height: 18px;
+  background: var(--bg-tertiary, #1e293b);
+  border-radius: 9px;
+  position: relative;
+  transition: background 0.3s ease;
+  border: 1px solid var(--border-color, #334155);
+}
+
+.quality-mini-slider::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #94a3b8;
+  border-radius: 50%;
+  top: 1px;
+  left: 1px;
+  transition: all 0.3s ease;
+}
+
+.quality-mini-input:checked + .quality-mini-slider {
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  border-color: #ec4899;
+}
+
+.quality-mini-input:checked + .quality-mini-slider::after {
+  transform: translateX(14px);
+  background: white;
+}
+
+.quality-mini-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  transition: color 0.3s ease;
+}
+
+.quality-mini-input:checked ~ .quality-mini-label {
+  color: #ec4899;
+}
+
+/* ------------------------------------------------------------------------------
+ * AYARLAR SAYFASI GÖRSEL KARTI
+ * ------------------------------------------------------------------------------ */
+
+.image-settings-card {
+  border-left: 4px solid #ec4899;
+}
+
+.quality-switch-container {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.quality-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.quality-switch-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.quality-switch-slider {
+  width: 50px;
+  height: 26px;
+  background: var(--bg-tertiary, #1e293b);
+  border-radius: 13px;
+  position: relative;
+  transition: background 0.3s ease;
+  border: 2px solid var(--border-color, #334155);
+}
+
+.quality-switch-slider::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: #94a3b8;
+  border-radius: 50%;
+  top: 1px;
+  left: 2px;
+  transition: all 0.3s ease;
+}
+
+.quality-switch-input:checked + .quality-switch-slider {
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  border-color: #ec4899;
+}
+
+.quality-switch-input:checked + .quality-switch-slider::after {
+  transform: translateX(24px);
+  background: white;
+}
+
+.quality-label-sd,
+.quality-label-hd {
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.quality-label-sd {
+  color: #10b981;
+}
+
+.quality-label-hd {
+  color: #64748b;
+}
+
+.quality-switch-input:checked ~ .quality-label-sd {
+  color: #64748b;
+}
+
+.quality-switch-input:checked ~ .quality-label-hd {
+  color: #ec4899;
+}
+
+.image-config-status {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.image-config-status.error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ------------------------------------------------------------------------------
+ * OLUŞTURULAN GÖRSEL CONTAINER
+ * ------------------------------------------------------------------------------ */
+
+.generated-image-container {
+  background: var(--bg-secondary, #1e293b);
+  border-radius: 16px;
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid var(--border-color, #334155);
+}
+
+.image-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.generated-image {
+  max-width: 100%;
+  max-height: 600px;
+  display: block;
+  border-radius: 12px;
+}
+
+.image-watermark {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+/* Görsel İşlem Butonları */
+.image-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-start;
+}
+
+.image-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #334155);
+  background: var(--bg-tertiary, #0f172a);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.image-action-btn:hover {
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
+}
+
+.image-action-btn:active {
+  transform: translateY(0);
+}
+
+/* Görsel Bilgi */
+.image-info {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #334155);
+}
+
+.revised-prompt {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
+  font-style: italic;
+}
+
+.revised-prompt strong {
+  color: #ec4899;
+  font-style: normal;
+}
+
+/* Hata Container */
+.image-error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  color: #fca5a5;
+}
+
+.image-error-container i {
+  font-size: 32px;
+  margin-bottom: 12px;
+  color: #ef4444;
+}
+
+.image-error-container p {
+  margin: 0;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------------------
+ * GÖRSEL YÜKLEME ANİMASYONU
+ * ------------------------------------------------------------------------------ */
+
+.image-generating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(139, 92, 246, 0.1));
+  border-radius: 16px;
+  border: 1px solid rgba(236, 72, 153, 0.3);
+}
+
+.image-generating-spinner {
+  width: 60px;
+  height: 60px;
+  border: 3px solid rgba(236, 72, 153, 0.2);
+  border-top-color: #ec4899;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.image-generating-text {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #ec4899;
+  font-weight: 500;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------------------------------
+ * RESPONSIVE DÜZENLEMELER
+ * ------------------------------------------------------------------------------ */
+
+@media (max-width: 768px) {
+  .image-chat-controls {
+    flex-wrap: wrap;
+    padding: 6px;
+  }
+  
+  .generated-image {
+    max-height: 400px;
+  }
+  
+  .image-actions {
+    flex-wrap: wrap;
+  }
+}

@@ -323,7 +323,74 @@ settingsUI <- function(id) {
 				  p("Müzik ses seviyesi (anlık uygulanır).", class = "setting-description", style = "margin-top: 4px;")
 				)
 			  )
-			)
+            ),
+            
+            # Görsel Oluşturma Ayarları Kartı
+            div(
+              class = "settings-card image-settings-card",
+              id = ns("image_settings_card"),
+              h3("Görsel Oluşturma Ayarları", class = "settings-title"),
+              p("DALL-E-3 ile görsel oluşturma ayarlarını yapılandırın. Bu ayarlar yalnızca 'Görsel Uzmanı' modu aktifken geçerlidir.", 
+                class = "setting-description"),
+              
+              fluidRow(
+                column(
+                  width = 6,
+                  div(
+                    class = "setting-item",
+                    h4("Görsel Boyutu", class = "setting-subtitle"),
+                    selectInput(
+                      inputId = ns("image_size"),
+                      label = NULL,
+                      choices = c(
+                        "Kare (1024x1024)" = "1024x1024",
+                        "Yatay (1792x1024)" = "1792x1024",
+                        "Dikey (1024x1792)" = "1024x1792"
+                      ),
+                      selected = "1024x1024",
+                      width = "100%"
+                    )
+                  )
+                ),
+                column(
+                  width = 6,
+                  div(
+                    class = "setting-item",
+                    h4("Görsel Kalitesi", class = "setting-subtitle"),
+                    div(
+                      class = "quality-switch-container",
+                      tags$label(
+                        class = "quality-switch",
+                        tags$input(
+                          type = "checkbox",
+                          id = ns("image_quality_hd"),
+                          class = "quality-switch-input"
+                        ),
+                        tags$span(class = "quality-switch-slider"),
+                        tags$span(class = "quality-label-sd", "Standart"),
+                        tags$span(class = "quality-label-hd", "HD")
+                      )
+                    )
+                  )
+                )
+              ),
+              
+              # Yapılandırma durumu
+              div(
+                class = "image-config-status",
+                if (nzchar(Sys.getenv("IMAGE_GEN_ENDPOINT", ""))) {
+                  tagList(
+                    tags$i(class = "fas fa-check-circle", style = "color: #10b981; margin-right: 8px;"),
+                    "Görsel oluşturma API'si yapılandırılmış"
+                  )
+                } else {
+                  tagList(
+                    tags$i(class = "fas fa-exclamation-triangle", style = "color: #f59e0b; margin-right: 8px;"),
+                    "Görsel oluşturma API'si yapılandırılmamış. .Renviron dosyasını kontrol edin."
+                  )
+                }
+              )
+            )
           )
         )
       )
@@ -372,7 +439,9 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_coding_tools = FALSE,
 	  enable_process_tools = FALSE,
 	  enable_app_expert_tools = FALSE,
-	  enable_image_tools = FALSE,
+      enable_image_tools = FALSE,
+      image_size = "1024x1024",
+      image_quality_hd = FALSE,
 	  enable_followups        = TRUE,
 	  font_size               = "medium",
 	  enable_background_music = FALSE,
@@ -701,6 +770,24 @@ settingsServer <- function(id, parent_session = NULL) {
         updateCheckboxInput(session, "enable_mcp_tools", value = loaded_settings$enable_mcp_tools)
       }
     }, ignoreInit = TRUE)
+	
+  # Görsel ayarları değişiklik observer'ı
+  observeEvent(input$image_size, {
+    settings$image_size <- input$image_size
+    # Sohbet kontrollerine senkronize et
+    session$sendCustomMessage("syncImageSettingsToChat", list(
+      size = input$image_size,
+      quality_hd = isTRUE(input$image_quality_hd)
+    ))
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$image_quality_hd, {
+    settings$image_quality_hd <- isTRUE(input$image_quality_hd)
+    session$sendCustomMessage("syncImageSettingsToChat", list(
+      size = input$image_size,
+      quality_hd = isTRUE(input$image_quality_hd)
+    ))
+  }, ignoreInit = TRUE)
     
     # Update internal state when inputs change
     observeEvent(input$font_size,               { settings$font_size               <- input$font_size })

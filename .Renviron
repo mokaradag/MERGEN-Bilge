@@ -51,3 +51,19 @@ LOCAL_STT_API_KEY=
 
 # Filtreleme için kullanılacak model (varsa özel bir model, yoksa primary kullanılır)
 FILTER_MODEL=technical name 1
+
+# ------------------------------------------------------------------------------
+# GÖRSEL OLUŞTURMA AYARLARI (IMAGE GENERATION)
+# ------------------------------------------------------------------------------
+
+# DALL-E-3 API Endpoint URL
+IMAGE_GEN_ENDPOINT=https://your-image-api-endpoint.com/v1/images/generations
+
+# Görsel oluşturma modeli
+IMAGE_GEN_MODEL=dall-e-3
+
+# Türkçe → İngilizce çeviri modeli (prompt çevirisi için)
+TRANSLATION_MODEL=technical name 1
+
+# Görsel oluşturma zaman aşımı (saniye) - HD görseller için uzun süre gerekli
+IMAGE_GEN_TIMEOUT=180

@@ -47,7 +47,7 @@ MAIN_ACTIONS_DATA <- list(
     description = "Metin tabanlı açıklamalarla AI görüntü oluşturma modellerini kullanarak özel görseller tasarlayın.",
     icon_name = "image",
     themeColor = "#ec4899",
-    model_value = "mergen-local-model"
+    model_value = Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
   ),
   list(
     id = "coding-support",

@@ -775,39 +775,94 @@ server <- function(input, output, session) {
 	  )
 	  style_instruction <- coding_system_prompt
 	} else if (isTRUE(settings_data$enable_image_tools)) {
-	  image_system_prompt <- paste0(
-		base_instruction,
-		"\n\nGÖRSEL UZMANI MODU AKTİF:\n",
-		"You are an expert AI image generation assistant specializing in creating detailed, effective prompts for image generation models.\n\n",
-		"YOUR CAPABILITIES:\n",
-		"- Crafting detailed prompts for AI image generation (DALL-E, Midjourney, Stable Diffusion, etc.)\n",
-		"- Understanding visual composition, lighting, style, and artistic techniques\n",
-		"- Translating user ideas into precise visual descriptions\n",
-		"- Optimizing prompts for best results across different image generation models\n",
-		"- Suggesting artistic styles, mediums, and techniques\n",
-		"- Providing guidance on image parameters (aspect ratio, resolution, etc.)\n\n",
-		"YOUR APPROACH:\n",
-		"- Ask clarifying questions about desired style, mood, and composition\n",
-		"- Provide multiple prompt variations for different artistic approaches\n",
-		"- Explain prompt structure and keyword importance\n",
-		"- Suggest negative prompts to avoid unwanted elements\n",
-		"- Recommend specific artists, styles, or techniques when relevant\n",
-		"- Consider technical aspects (lighting, camera angles, depth of field)\n\n",
-		"PROMPT STRUCTURE GUIDANCE:\n",
-		"- Subject: What is the main focus of the image?\n",
-		"- Style: What artistic style or medium? (photorealistic, oil painting, digital art, etc.)\n",
-		"- Composition: How should elements be arranged? (close-up, wide shot, perspective)\n",
-		"- Lighting: What kind of lighting? (natural, dramatic, soft, golden hour)\n",
-		"- Details: Specific details that enhance the image (textures, colors, atmosphere)\n",
-		"- Quality modifiers: Professional, highly detailed, 8k, masterpiece, etc.\n\n",
-		"RESPONSE FORMAT:\n",
-		"- Provide ready-to-use prompts in code blocks\n",
-		"- Explain reasoning behind prompt choices\n",
-		"- Offer variations for different moods or styles\n",
-		"- Include negative prompt suggestions when relevant",
-		citation_instruction
+	  # Görsel oluşturma modu - gerçek DALL-E API çağrısı yapılacak
+	  cat("[IMAGE_MODE] Görsel Uzmanı modu aktif - görsel oluşturma başlatılıyor\n")
+	  
+	  # Görsel ayarlarını al
+	  image_size <- settings_data$image_size %||% "1024x1024"
+	  image_quality <- if (isTRUE(settings_data$image_quality_hd)) "hd" else "standard"
+	  
+	  # Kullanıcının API anahtarını al
+	  api_key <- get_user_api_key_decrypted(system_username)
+	  
+	  if (!nzchar(api_key %||% "")) {
+	    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	    values$typing <- FALSE
+	    add_message("⚠️ Görsel oluşturmak için API anahtarı gerekli. Lütfen Ayarlar sayfasından API anahtarınızı girin.", "ai")
+	    reset_chat_state()
+	    return(invisible(NULL))
+	  }
+	  
+	  # Yükleme göstergesi güncelle
+	  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	  insertUI(
+	    selector = "#chat_content_container",
+	    where = "beforeEnd",
+	    ui = div(
+	      id = "typing-animation-wrapper",
+	      class = "message-bubble",
+	      style = "display: flex; justify-content: center; padding: 20px;",
+	      div(class = "image-generating",
+	        div(class = "image-generating-spinner"),
+	        div(class = "image-generating-text", "Görsel oluşturuluyor... Bu işlem 30 saniye ile 2 dakika arasında sürebilir.")
+	      )
+	    ),
+	    immediate = TRUE
 	  )
-	  style_instruction <- image_system_prompt
+	  shinyjs::runjs("window.smartScrollToBottom();")
+	  
+	  # Asenkron görsel oluşturma
+	  current_user_id_local <- current_user_id
+	  current_chat_id_local <- values$current_chat_id
+	  
+	  future_promise({
+	    generate_image(
+	      prompt = user_message_text,
+	      api_key = api_key,
+	      size = image_size,
+	      quality = image_quality,
+	      user_id = current_user_id_local,
+	      chat_id = current_chat_id_local
+	    )
+	  }) %...>% (function(result) {
+	    # Typing animasyonunu kaldır
+	    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	    values$typing <- FALSE
+	    
+	    # Sonucu işle
+	    if (isTRUE(result$success)) {
+	      # Başarılı - görseli göster
+	      image_html <- render_generated_image_html(result, paste0("img_", floor(as.numeric(Sys.time()) * 1000)))
+	      
+	      # Yanıt metnini oluştur
+	      response_text <- paste0(
+	        "🎨 **Görsel başarıyla oluşturuldu!**\n\n",
+	        if (!is.null(result$translated_prompt) && result$translated_prompt != result$original_prompt) {
+	          paste0("**Çevrilen Prompt:** ", result$translated_prompt, "\n\n")
+	        } else "",
+	        image_html
+	      )
+	      
+	      add_message(response_text, "ai", html = response_text)
+	      showToast(session, "Görsel başarıyla oluşturuldu!", "success")
+	    } else {
+	      # Hata - mesaj göster
+	      error_html <- render_generated_image_html(result, "error")
+	      add_message(paste0("❌ ", result$error %||% "Görsel oluşturulamadı"), "ai", html = error_html)
+	      showToast(session, result$error %||% "Görsel oluşturulamadı", "error")
+	    }
+	    
+	    reset_chat_state()
+	  }) %...!% (function(err) {
+	    # Promise hatası
+	    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	    values$typing <- FALSE
+	    add_message(paste0("❌ Görsel oluşturma hatası: ", err$message), "ai")
+	    showToast(session, paste("Hata:", err$message), "error")
+	    reset_chat_state()
+	  })
+	  
+	  return(invisible(NULL))  # Promise devam edecek, burada çık
 	} else {
 	  style_instruction <- paste0(base_instruction, citation_instruction)
 	}
@@ -909,6 +964,101 @@ server <- function(input, output, session) {
 		
 		# Fonksiyonu burada sonlandır (promise işlenecek)
 		return(invisible(NULL))
+	  } else if (identical(tool_family, "image")) {
+	    # ========================================================================
+	    # GÖRSEL OLUŞTURMA MODU - DALL-E-3 API
+	    # ========================================================================
+	    cat("[IMAGE_MODE] Görsel Uzmanı modu aktif - görsel oluşturma başlatılıyor\n")
+	    
+	    # Görsel ayarlarını al
+	    image_size <- settings_data$image_size %||% "1024x1024"
+	    image_quality <- if (isTRUE(settings_data$image_quality_hd)) "hd" else "standard"
+	    
+	    # Kullanıcının API anahtarını al
+	    api_key_for_image <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
+	    
+	    if (!nzchar(api_key_for_image)) {
+	      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	      values$typing <- FALSE
+	      add_message("⚠️ Görsel oluşturmak için API anahtarı gerekli. Lütfen Ayarlar sayfasından API anahtarınızı girin.", "ai")
+	      reset_chat_state()
+	      return(invisible(NULL))
+	    }
+	    
+	    # Yükleme göstergesi güncelle
+	    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	    insertUI(
+	      selector = "#chat_content_container",
+	      where = "beforeEnd",
+	      ui = div(
+	        id = "typing-animation-wrapper",
+	        class = "message-bubble",
+	        style = "display: flex; justify-content: center; padding: 20px;",
+	        div(class = "image-generating",
+	          div(class = "image-generating-spinner"),
+	          div(class = "image-generating-text", "Görsel oluşturuluyor... Bu işlem 30 saniye ile 2 dakika arasında sürebilir.")
+	        )
+	      ),
+	      immediate = TRUE
+	    )
+	    shinyjs::runjs("window.smartScrollToBottom();")
+	    
+	    # Asenkron görsel oluşturma için değişkenleri yakala
+	    current_user_id_local <- current_user_id
+	    current_chat_id_local <- values$current_chat_id
+	    user_prompt_local <- user_message_text
+	    
+	    future_promise({
+	      generate_image(
+	        prompt = user_prompt_local,
+	        api_key = api_key_for_image,
+	        size = image_size,
+	        quality = image_quality,
+	        user_id = current_user_id_local,
+	        chat_id = current_chat_id_local
+	      )
+	    }) %...>% (function(result) {
+	      # Typing animasyonunu kaldır
+	      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	      values$typing <- FALSE
+	      
+	      # Sonucu işle
+	      if (isTRUE(result$success)) {
+	        # Başarılı - görseli göster
+	        image_html <- render_generated_image_html(result, paste0("img_", floor(as.numeric(Sys.time()) * 1000)))
+	        
+	        # Yanıt metnini oluştur
+	        response_parts <- c("🎨 **Görsel başarıyla oluşturuldu!**\n\n")
+	        
+	        if (!is.null(result$translated_prompt) && result$translated_prompt != result$original_prompt) {
+	          response_parts <- c(response_parts, paste0("**Çevrilen Prompt:** ", result$translated_prompt, "\n\n"))
+	        }
+	        
+	        response_text <- paste0(paste(response_parts, collapse = ""), image_html)
+	        
+	        add_message(response_text, "ai", html = response_text)
+	        showToast(session, "Görsel başarıyla oluşturuldu!", "success")
+	      } else {
+	        # Hata - mesaj göster
+	        error_msg <- result$error %||% "Görsel oluşturulamadı"
+	        error_html <- render_generated_image_html(result, "error")
+	        add_message(paste0("❌ ", error_msg), "ai", html = error_html)
+	        showToast(session, error_msg, "error")
+	      }
+	      
+	      reset_chat_state()
+	    }) %...!% (function(err) {
+	      # Promise hatası
+	      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+	      values$typing <- FALSE
+	      add_message(paste0("❌ Görsel oluşturma hatası: ", err$message), "ai")
+	      showToast(session, paste("Hata:", err$message), "error")
+	      reset_chat_state()
+	    })
+	    
+	    # Fonksiyonu burada sonlandır (promise işlenecek)
+	    return(invisible(NULL))
+	    
 	  } else if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
 	  file_list_text <- paste0(
 		"\n\nDOSYA BİLGİSİ:\n",
