@@ -775,23 +775,14 @@ server <- function(input, output, session) {
 	  )
 	  style_instruction <- coding_system_prompt
 	} else if (isTRUE(settings_data$enable_image_tools)) {
-	  # Görsel oluşturma modu - gerçek DALL-E API çağrısı yapılacak
-	  cat("[IMAGE_MODE] Görsel Uzmanı modu aktif - görsel oluşturma başlatılıyor\n")
-	  
-	  # Görsel ayarlarını al
-	  image_size <- settings_data$image_size %||% "1024x1024"
-	  image_quality <- if (isTRUE(settings_data$image_quality_hd)) "hd" else "standard"
-	  
-	  # Kullanıcının API anahtarını al
-	  api_key <- get_user_api_key_decrypted(system_username)
-	  
-	  if (!nzchar(api_key %||% "")) {
-	    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-	    values$typing <- FALSE
-	    add_message("⚠️ Görsel oluşturmak için API anahtarı gerekli. Lütfen Ayarlar sayfasından API anahtarınızı girin.", "ai")
-	    reset_chat_state()
-	    return(invisible(NULL))
-	  }
+	  # Görsel oluşturma modu - tool_family == "image" bloğunda işlenecek
+	  # Bu blokta sadece style_instruction ayarla, gerçek görsel oluşturma aşağıda
+	  style_instruction <- paste0(
+	    base_instruction,
+	    "\n\nGÖRSEL OLUŞTURMA MODU:\n",
+	    "Kullanıcının isteğine göre görsel oluşturulacak.",
+	    citation_instruction
+	  )
 	  
 	  # Yükleme göstergesi güncelle
 	  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
