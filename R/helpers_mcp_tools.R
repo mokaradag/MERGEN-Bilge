@@ -886,14 +886,131 @@ helpers_mcp_tools$prepare_chart_data <- function(
     return(list(error = sprintf("Dosya okunamadı: %s — %s", basename(res$path), dt$message), ok = FALSE))
   }
 
-  # --- ensure mappings for pie/donut: x must exist (categorical preferred) ---
-  if (tolower(chart_type) %in% c("pie","donut") && (is.null(x) || !nzchar(x))) {
-    cat_cols <- names(dt)[vapply(dt, function(v) is.character(v) || is.factor(v), logical(1))]
-    if (length(cat_cols)) {
-      x <- cat_cols[1]
-    } else {
-      # fallback: use first column
-      x <- names(dt)[1]
+  # --- Türkçe yorum: Pie/Donut için zorunlu ayarlamalar ---
+  # X ekseni, agg ve top_n parametreleri otomatik olarak ayarlanır
+  if (tolower(chart_type) %in% c("pie","donut")) {
+    # Türkçe yorum: X ekseni yoksa kategorik sütun seç
+    if (is.null(x) || !nzchar(x)) {
+      cat_cols <- names(dt)[vapply(dt, function(v) is.character(v) || is.factor(v), logical(1))]
+      if (length(cat_cols)) {
+        x <- cat_cols[1]
+      } else {
+        # Türkçe yorum: Kategorik sütun yoksa ilk sütunu kullan
+        x <- names(dt)[1]
+      }
+    }
+ 
+    # Türkçe yorum: Y ekseni yoksa ilk sayısal sütunu seç
+    if (is.null(y) || !nzchar(y)) {
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      num_cols <- setdiff(num_cols, x)  # X'den farklı olmalı
+      if (length(num_cols)) {
+        y <- num_cols[1]
+      }
+    }
+ 
+    # Türkçe yorum: Pie/Donut için agg parametresi ZORUNLU — yoksa otomatik ekle
+    if (is.null(agg) || !nzchar(agg)) {
+      agg <- "sum"  # Varsayılan olarak toplam kullan
+    }
+ 
+    # Türkçe yorum: Pie/Donut için top_n parametresi ZORUNLU — yoksa otomatik ekle
+    # Bu, sonsuz dilim oluşturulmasını engeller
+    if (is.null(top_n) || is.na(top_n) || !is.numeric(top_n)) {
+      top_n <- 10  # Maksimum 10 dilim göster
+    } else if (top_n > 20) {
+      top_n <- 20  # 20'den fazla dilim mantıksız, sınırla
+    }
+  }
+  
+  # --- Türkçe yorum: Diğer grafik türleri için akıllı eksen seçimi ---
+  # Kullanıcı veya model x/y belirtmemişse, veri yapısına göre otomatik seç
+ 
+  # Türkçe yorum: Yardımcı fonksiyonlar
+  is_date_col <- function(v) inherits(v, c("Date", "POSIXct", "POSIXt"))
+  is_numeric_col <- function(v) is.numeric(v)
+  is_cat_col <- function(v) is.character(v) || is.factor(v)
+ 
+  # Türkçe yorum: Sütun kategorilerini belirle
+  date_cols <- names(dt)[vapply(dt, is_date_col, logical(1))]
+  num_cols <- names(dt)[vapply(dt, is_numeric_col, logical(1))]
+  cat_cols <- names(dt)[vapply(dt, is_cat_col, logical(1))]
+ 
+  # Türkçe yorum: String formatındaki tarih sütunlarını yakala
+  if (length(date_cols) == 0 && length(cat_cols) > 0) {
+    date_pattern <- "date|tarih|zaman|time|yil|year|month|ay|period|donem"
+    date_candidates <- grep(date_pattern, tolower(cat_cols), value = TRUE)
+    if (length(date_candidates) > 0) {
+      date_cols <- date_candidates
+      cat_cols <- setdiff(cat_cols, date_candidates)
+    }
+  }
+ 
+  first_or_null <- function(vec) if (length(vec)) vec[1] else NULL
+ 
+  # Türkçe yorum: Line/Area grafikleri için akıllı eksen seçimi
+  if (tolower(chart_type) %in% c("line", "area")) {
+    if (is.null(x) || !nzchar(x)) {
+      # Türkçe yorum: Önce tarih sütunu, yoksa ilk sayısal sütun
+      x <- first_or_null(date_cols)
+      if (is.null(x)) x <- first_or_null(num_cols)
+    }
+    if (is.null(y) || !nzchar(y)) {
+      # Türkçe yorum: X'den farklı ilk sayısal sütun
+      y <- first_or_null(setdiff(num_cols, x))
+    }
+    if (is.null(group) && length(cat_cols) > 0) {
+      # Türkçe yorum: Kategorik sütun varsa gruplama için kullan
+      group <- first_or_null(cat_cols)
+    }
+  }
+ 
+  # Türkçe yorum: Bar/Column grafikleri için akıllı eksen seçimi
+  if (tolower(chart_type) %in% c("bar", "column")) {
+    if (is.null(x) || !nzchar(x)) {
+      # Türkçe yorum: Önce kategorik sütun, yoksa tarih sütunu
+      x <- first_or_null(cat_cols)
+      if (is.null(x)) x <- first_or_null(date_cols)
+    }
+    if (is.null(y) || !nzchar(y)) {
+      # Türkçe yorum: İlk sayısal sütun
+      y <- first_or_null(num_cols)
+    }
+  }
+ 
+  # Türkçe yorum: Scatter grafikleri için akıllı eksen seçimi
+  if (tolower(chart_type) == "scatter") {
+    if (is.null(x) || !nzchar(x)) {
+      x <- first_or_null(num_cols)
+    }
+    if (is.null(y) || !nzchar(y)) {
+      y <- first_or_null(setdiff(num_cols, x))
+    }
+    if (is.null(group) && length(cat_cols) > 0) {
+      group <- first_or_null(cat_cols)
+    }
+  }
+ 
+  # Türkçe yorum: Histogram için akıllı eksen seçimi
+  if (tolower(chart_type) == "hist") {
+    if (is.null(x) || !nzchar(x)) {
+      x <- first_or_null(num_cols)
+    }
+    # Türkçe yorum: Histogram için y ekseni her zaman NULL olmalı
+    y <- NULL
+  }
+ 
+  # Türkçe yorum: Pareto grafikleri için akıllı eksen seçimi
+  if (tolower(chart_type) == "pareto") {
+    if (is.null(x) || !nzchar(x)) {
+      x <- first_or_null(cat_cols)
+    }
+    if (is.null(y) || !nzchar(y)) {
+      y <- first_or_null(num_cols)
+    }
+    # Türkçe yorum: Pareto için agregasyon gerekli
+    if (is.null(agg) || !nzchar(agg)) {
+      agg <- "sum"
     }
   }
 
@@ -1073,17 +1190,21 @@ helpers_mcp_tools$execute_parsed_tool <- function(tc, session = NULL) {
 	  "get_column_stats"        = helpers_mcp_tools$get_column_statistics(args$file_name, args$column, session),
 	  "sql_query_uploaded_file" = helpers_mcp_tools$sql_query_uploaded_file(args$file_name, args$sql, session),
 	  "prepare_chart_data"      = helpers_mcp_tools$prepare_chart_data(
-		file_name  = args$file_name,
-		chart_type = args$chart_type,
-		x          = args$x %||% args$xlabel %||% args$x_col,
-		y          = args$y %||% args$ylabel %||% args$y_col,
-		group      = args$group %||% args$color %||% args$hue,
-		agg        = args$agg,
-		bins       = args$bins,
-		top_n      = args$top_n,
-		filter_sql = args$filter_sql,
-		limit      = args$limit %||% 5000,
-		session    = session
+		file_name   = args$file_name,
+		chart_type  = args$chart_type,
+		x           = args$x %||% args$xlabel %||% args$x_col,
+		y           = args$y %||% args$ylabel %||% args$y_col,
+		group       = args$group %||% args$color %||% args$hue,
+		agg         = args$agg,
+		bins        = args$bins,
+		top_n       = args$top_n,
+		stack       = args$stack,        # Türkçe yorum: Yığınlama modu (normal/percent)
+		donut       = args$donut,        # Türkçe yorum: Pasta grafiğini halka yap
+		orientation = args$orientation,  # Türkçe yorum: Bar grafiği yönü (v/h)
+		smooth      = args$smooth,       # Türkçe yorum: Çizgi yumuşatma
+		filter_sql  = args$filter_sql,
+		limit       = args$limit %||% 5000,
+		session     = session
 	  ),
 	  {
 		list(error = sprintf("Bilinmeyen araç: %s", fn))
@@ -1197,32 +1318,68 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
     "Sen uzman bir Veri Analisti ve Raporlama Asistanısın. Görevin, yüklenen Excel/CSV dosyalarından MANTIKLI ve DOĞRU grafikleri oluşturmaktır.",
     "",
-    "### ÇOK ÖNEMLİ KURALLAR (Bunlara Kesinlikle Uy):",
+    "=== KESİNLİKLE UYULMASI GEREKEN KURALLAR ===",
     "",
-    "1. **Önce Veriyi Tanı:** Sütun isimlerini bilmiyorsan ASLA tahmin yürütme. Önce `analyze_uploaded_file` veya `get_column_statistics` araçlarını kullan.",
+    "### KURAL 1: GRAFİK SAYISI KONTROLÜ",
+    "- Kullanıcı '1 grafik çiz' derse → prepare_chart_data'yı YALNIZCA 1 KEZ çağır",
+    "- Kullanıcı '2 grafik çiz' derse → prepare_chart_data'yı YALNIZCA 2 KEZ çağır",
+    "- Kullanıcı 'grafik çiz' derse (sayı belirtmezse) → YALNIZCA 1 grafik çiz",
+    "- Kullanıcı 'birden fazla grafik' veya 'çeşitli grafikler' derse → 2-3 grafik çiz",
+    "- ASLA talep edilenden fazla grafik üretme!",
     "",
-    "2. **Eksen Seçimi (Kritik):**",
-    "   - **Zaman Serisi:** Eğer sütunlarda 'Tarih', 'Yıl', 'Ay', 'Date', 'Time' gibi ifadeler varsa, bu MUTLAKA **X Ekseni** olmalıdır. Grafik Türü: `line` veya `area`.",
-    "   - **Kategorik:** 'Şehir', 'Ürün', 'Departman' gibi metin sütunları X ekseni olmalıdır. Grafik Türü: `bar` veya `pie`.",
-    "   - **Sayısal:** 'Tutar', 'Miktar', 'Satış', 'Adet' gibi sütunlar Y ekseni olmalıdır.",
+    "### KURAL 2: ÖNCE ANALİZ YAP",
+    "- Sütun isimlerini BİLMİYORSAN, önce `analyze_uploaded_file` çağır",
+    "- Sütun adlarını ASLA tahmin etme, uydurma veya varsayma",
+    "- Dosyada hangi sütunların olduğunu öğrenmeden grafik çizme",
     "",
-    "3. **Grafik Türleri ve Ayarları:**",
-    "   - **Çizgi (Line):** Zaman içindeki değişim için. `x='Tarih'`, `y='Tutar'`.",
-    "   - **Sütun/Bar (Bar):** Karşılaştırma için. `x='Kategori'`, `y='Tutar'`. Eğer çok fazla kategori varsa `orientation='h'` yap.",
-    "   - **Pasta (Pie/Donut):** Oransal dağılım için. **MUTLAKA** `agg='sum'` (veya mean/count) parametresini kullanmalısın. Ham veriyi (binlerce satırı) asla pasta grafiğine çevirme!",
-    "   - **Histogram:** Sadece tek bir sayısal sütunun dağılımı için (`x='Yas'`). Y ekseni boş kalmalı.",
+    "### KURAL 3: EKSEN SEÇİMİ (ÇOK KRİTİK)",
     "",
-    "4. **Çoklu Seri (Multi-Series) - ÖNEMLİ:**",
-    "   - Kullanıcı 'Gelir ve Gideri göster' derse (İki farklı sayısal sütun):",
-    "   - **DOĞRU YÖNTEM:** `y` parametresine sütunları virgülle yaz: `y='Gelir, Gider'`. `group` parametresini BOŞ bırak.",
-    "   - **YANLIŞ YÖNTEM:** İki ayrı grafik çizmek veya group parametresini zorlamak.",
+    "**A) X EKSENİ KURALLARI:**",
+    "- Tarih/Zaman sütunları (Date, Tarih, Yıl, Ay, Time, Period) → X eksenine koy",
+    "- Kategorik sütunlar (Şehir, Ürün, Departman, Kategori, İsim) → X eksenine koy",
+    "- Sayısal sütunlar SADECE Scatter ve Histogram için X ekseninde olabilir",
     "",
-    "5. **Mantıklı Varsayımlar:**",
-    "   - Kullanıcı sadece 'satış grafiği çiz' derse, dosyadaki en mantıklı Tarih (X) ve Sayısal (Y) sütununu bulup 'Line' grafiği çiz.",
-    "   - Tarih yoksa, Kategorik (X) ve Sayısal (Y) ile 'Bar' grafiği çiz.",
-    "   - Rastgele sütun seçme. Sütun isimlerinden anlam çıkar.",
+    "**B) Y EKSENİ KURALLARI:**",
+    "- Sayısal sütunlar (Tutar, Miktar, Satış, Adet, Fiyat, Toplam, Değer) → Y eksenine koy",
+    "- Histogram için Y ekseni BOŞ bırak (sadece x parametresi olmalı)",
+    "- Kategorik sütunlar ASLA Y ekseninde olmaz",
     "",
-    "Format: Yanıtını Markdown formatında ver ve grafik aracını (`prepare_chart_data`) doğru parametrelerle çağır.",
+    "**C) GRAFİK TÜRÜNE GÖRE EKSEN SEÇİMİ:**",
+    "| Grafik Türü | X Ekseni | Y Ekseni | Örnek |",
+    "|-------------|----------|----------|-------|",
+    "| line/area | Tarih/Zaman | Sayısal | x='Tarih', y='Satış' |",
+    "| bar | Kategori | Sayısal | x='Şehir', y='Gelir' |",
+    "| pie/donut | Kategori | Sayısal | x='Ürün', y='Miktar', agg='sum', top_n=10 |",
+    "| scatter | Sayısal1 | Sayısal2 | x='Yaş', y='Gelir' |",
+    "| hist | Sayısal | BOŞ | x='Fiyat' (y parametresi verilmez) |",
+    "",
+    "### KURAL 4: PIE/DONUT GRAFİKLERİ İÇİN ZORUNLU PARAMETRELER",
+    "- MUTLAKA `agg` parametresi kullan: 'sum', 'mean' veya 'count'",
+    "- MUTLAKA `top_n` parametresi kullan: maksimum 10-15 dilim",
+    "- Ham veriyi (yüzlerce satırı) ASLA doğrudan pie grafiğine çevirme!",
+    "- DOĞRU: prepare_chart_data(file_name='x.xlsx', chart_type='pie', x='Kategori', y='Tutar', agg='sum', top_n=10)",
+    "- YANLIŞ: prepare_chart_data(file_name='x.xlsx', chart_type='pie', x='Kategori') ← top_n ve agg yok!",
+    "",
+    "### KURAL 5: ÇOKLU SERİ (AYNI GRAFİKTE BİRDEN FAZLA ÇİZGİ/BAR)",
+    "- İki sayısal sütunu AYNI grafikte göstermek için y parametresine VİRGÜLLE yaz",
+    "- DOĞRU YÖNTEM: y='Gelir, Gider' veya y='Satış, Maliyet'",
+    "- Bu durumda group parametresini BOŞ bırak (sistem otomatik gruplar)",
+    "- YANLIŞ YÖNTEM: İki ayrı grafik çizmek",
+    "",
+    "### KURAL 6: AKILLI VARSAYIMLAR",
+    "- Kullanıcı tür belirtmezse:",
+    "  - Tarih sütunu varsa → 'line' grafiği çiz",
+    "  - Tarih yoksa, kategorik varsa → 'bar' grafiği çiz",
+    "  - Sadece sayısal sütunlar varsa → 'scatter' veya 'hist' çiz",
+    "- Sütun isimlerinden anlam çıkar:",
+    "  - 'Tarih', 'Date', 'Yıl', 'Ay' → X ekseni (zaman)",
+    "  - 'Şehir', 'İl', 'Bölge', 'Kategori', 'Ürün' → X ekseni (kategori)",
+    "  - 'Tutar', 'Satış', 'Gelir', 'Miktar', 'Adet' → Y ekseni (sayısal)",
+    "",
+    "### KURAL 7: HATA KONTROLÜ",
+    "- Grafik çizmeden ÖNCE dosyanın sütun isimlerini kontrol et",
+    "- Kullanıcının istediği sütun adı dosyada YOKSA, hatayı bildir ve alternatif öner",
+    "- Mantıksız eksen seçimi yapma (örn: Y eksenine 'Şehir' koyma)",
     sep = "\n"
   )
 }

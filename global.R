@@ -1898,55 +1898,14 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	# Türkçe yorum: Grafiklerin toplanacağı depo (erken başlat)
 	charts_to_store <- list()
 
-	# Türkçe yorum: Zorunlu yedek grafik bloğu ekleme yardımcı fonksiyonu
+	# Türkçe yorum: Fallback grafik mekanizması KALDIRILDI.
+	# Model, talep edilen grafik sayısını tam olarak üretmelidir.
+	# Otomatik ekleme mekanizması kaldırıldı çünkü:
+	# 1) Kullanıcı 1 grafik istediğinde 3 grafik üretiliyordu
+	# 2) Model yanlış eksen seçimi yapıyordu
+	# 3) İstenmeyen histogram/bar/line kombinasyonları oluşuyordu
 	add_fallback_chart <- function(original_text) {
-	  # Türkçe yorum: Eğer MCP Excel aktif, grafik niyeti var ve henüz hiç grafik üretilmediyse otomatik birkaç grafik ekle
-	  try({
-			if (isTRUE(chart_intent_flag) &&
-					identical(tool_family, "mcp_excel") &&
-					is.list(settings$file_paths) && length(settings$file_paths) > 0 &&
-					length(charts_to_store) == 0) {
-
-			  first_path <- as.character(settings$file_paths[[1]])
-			  detected_type <- detect_chart_type_from_text(last_user_txt)
-			  fallback_types <- unique(c(
-				if (!identical(detected_type, "auto")) detected_type else NULL,
-				"hist", "bar", "line"
-			  ))
-
-			  blocks <- vapply(seq_len(min(3L, length(fallback_types))), function(idx) {
-				chart_type_now <- fallback_types[[idx]]
-				fb <- helpers_mcp_tools$prepare_chart_data(
-				  file_name  = first_path,
-				  chart_type = chart_type_now,
-				  limit      = 4000,
-				  session    = NULL
-				)
-
-				if (is.list(fb) && isTRUE(fb$ok) && !is.null(fb$chart)) {
-				  # Türkçe yorum: chart_store'a kaydet ve chartlab bloğu oluştur
-				  ref_id <- paste0("cl_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sprintf("%04d", sample(0:9999, 1)))
-				  charts_to_store[[ref_id]] <<- fb$chart
-				  inline <- fb$chart
-				  inline$ref <- ref_id
-				  paste0(
-					"\n\n**Otomatik Grafik (", toupper(chart_type_now), ")**",
-					" — Veri üzerinden hızlı önizleme.",
-					"\n```chartlab\n",
-					jsonlite::toJSON(inline, auto_unbox = TRUE, null = "null", digits = 12),
-					"\n```"
-				  )
-				} else {
-				  ""
-				}
-			  }, character(1))
-
-			  blocks <- blocks[nzchar(blocks)]
-			  if (length(blocks)) {
-				return(paste0(original_text %||% "", paste(blocks, collapse = "")))
-			  }
-			}
-	  }, silent = TRUE)
+	  # Türkçe yorum: Fallback devre dışı — orijinal metni olduğu gibi döndür
 	  return(original_text %||% "")
 	}
     
@@ -1958,30 +1917,52 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			exists("helpers_mcp_tools", inherits = TRUE) &&
 			is.function(helpers_mcp_tools$get_mcp_tools_prompt)) {
 
-		  # Görselleştirme isteklerinde mutlaka prepare_chart_data çağrılmalı
-		  # Metin analizi/karma sorgular için sql_query_uploaded_file kullanılmalı
+		  # Türkçe yorum: Görselleştirme isteklerinde prepare_chart_data çağrılmalı
+		  # Türkçe yorum: Metin analizi/karma sorgular için sql_query_uploaded_file kullanılmalı
 		  tool_prompt <- paste0(
 			helpers_mcp_tools$get_mcp_tools_prompt(),
-			"\n\n### GRAFİK TİPİ EŞLEŞTİRME TABLOSU (KESİNLİKLE UYGULA):",
-			"\n- histogram, histogramı, dağılım grafiği → chart_type='hist'",
-			"\n- çizgi, çizgi grafiği, line, trend, zaman serisi, eğilim → chart_type='line'",
-			"\n- bar, çubuk, sütun, karşılaştırma grafiği → chart_type='bar'",
-			"\n- pasta, pie, dilim, pay grafiği → chart_type='pie'",
-			"\n- donut, halka → chart_type='donut'",
-			"\n- alan, area → chart_type='area'",
-			"\n- pareto → chart_type='pareto'",
-			"\n- scatter, saçılım, nokta grafiği, serpilme → chart_type='scatter'",
-			"\n\nGÖRSELLEŞTİRME KURALI: Kullanıcı 'grafik', 'grafiğini çiz', 'plot', 'çiz', 'chart', 'histogram', 'bar', 'line', 'trend', 'dağılım', 'scatter', 'pie', 'donut', 'pareto' vb.",
-			"• file_name: ekli Excel dosyasının adı\n",
-			"• chart_type: kullanıcı açıkça belirtmişse onu kullan; yoksa 'auto' ver\n",
-			"• x / y / group: kullanıcı belirtmemişse NULL bırak (ChartLab otomatik seçecektir)\n",
-			"\n\n### ÇOKLU GRAFİK KURALI:",
-			"\nKullanıcı 'çeşitli grafikler', 'farklı görselleştirmeler', 'birden fazla grafik' istediğinde:",
-			"\n1. prepare_chart_data aracını FARKLI chart_type ve sütun kombinasyonlarıyla EN AZ 3 KEZ çağır",
-			"\n2. Her grafik için ayrı bir yorum/analiz paragrafı yaz",
-			"\n3. Örnek: Histogram + Bar + Scatter veya Line + Pie + Bar kombinasyonları",
-			"\n4. Her grafikten sonra kısa bir içgörü ekle (örn: 'Bu dağılım normal dağılıma yakın görünüyor')\n",
-			"\nKarmaşık/nested mantık (filtrele + grupla + sırala + LIMIT, koşullu ortalama/toplam) için *tek* bir SQL sorgusu yaz ve 'sql_query_uploaded_file' aracını kullan. Tablo adı: t.\n"
+			"\n\n### ÖNEMLİ GRAFİK KURALLARI (KESİNLİKLE UYGULA):",
+			"\n",
+			"\n**KURAL 1 - GRAFİK SAYISI:** Kullanıcı kaç grafik istediyse TAM O KADAR grafik üret.",
+			"\n   - '1 grafik çiz' = prepare_chart_data'yı 1 kez çağır",
+			"\n   - '2 grafik çiz' = prepare_chart_data'yı 2 kez çağır",
+			"\n   - 'çeşitli grafikler' = 2-3 farklı grafik türü çağır",
+			"\n   - ASLA istenenden fazla grafik üretme!",
+			"\n",
+			"\n**KURAL 2 - GRAFİK TİPİ SEÇİMİ (Türkçe → chart_type eşlemesi):**",
+			"\n   - histogram, histogramı, dağılım grafiği → chart_type='hist'",
+			"\n   - çizgi, line, trend, zaman serisi, eğilim → chart_type='line'",
+			"\n   - bar, çubuk, sütun, karşılaştırma → chart_type='bar'",
+			"\n   - pasta, pie, dilim, pay → chart_type='pie'",
+			"\n   - donut, halka → chart_type='donut'",
+			"\n   - alan, area → chart_type='area'",
+			"\n   - pareto → chart_type='pareto'",
+			"\n   - scatter, saçılım, nokta grafiği → chart_type='scatter'",
+			"\n   - Kullanıcı tür belirtmezse: veri içeriğine göre akıllıca seç (tarih varsa 'line', kategorik varsa 'bar')",
+			"\n",
+			"\n**KURAL 3 - EKSEN SEÇİMİ (ÇOK ÖNEMLİ):**",
+			"\n   - ÖNCE analyze_uploaded_file ile sütun isimlerini öğren",
+			"\n   - X EKSENİ: Zaman/Tarih sütunu VEYA Kategorik sütun (Şehir, Ürün, Departman vb.)",
+			"\n   - Y EKSENİ: Sayısal sütun (Tutar, Miktar, Satış, Adet vb.)",
+			"\n   - Line/Area grafikleri: x=tarih/zaman, y=sayısal",
+			"\n   - Bar/Pie grafikleri: x=kategori, y=sayısal",
+			"\n   - Scatter grafikleri: x=sayısal1, y=sayısal2",
+			"\n   - Histogram: x=sayısal (y BOŞ bırak)",
+			"\n",
+			"\n**KURAL 4 - PIE/DONUT GRAFİKLERİ (ZORUNLU):**",
+			"\n   - MUTLAKA agg='sum' veya agg='count' kullan",
+			"\n   - MUTLAKA top_n=10 (veya daha az) kullan — sonsuz dilim çizme!",
+			"\n   - Örnek: prepare_chart_data(file_name='veri.xlsx', chart_type='pie', x='Kategori', y='Tutar', agg='sum', top_n=10)",
+			"\n",
+			"\n**KURAL 5 - ÇOKLU SERİ (BİRDEN FAZLA ÇİZGİ/BAR):**",
+			"\n   - İki sayısal sütunu aynı grafikte göstermek için y parametresine virgülle yaz",
+			"\n   - Örnek: y='Gelir, Gider' veya y='Satış, Maliyet'",
+			"\n   - group parametresini BOŞ bırak (çoklu Y kullanınca otomatik gruplar)",
+			"\n",
+			"\n**KURAL 6 - SQL SORGUSU:**",
+			"\n   - Filtreleme, sıralama, gruplama, Top N listeleme için sql_query_uploaded_file kullan",
+			"\n   - Tablo adı: t",
+			"\n   - Örnek: SELECT Category, SUM(Amount) as Total FROM t GROUP BY Category ORDER BY Total DESC LIMIT 10\n"
 		  )
 		}
 	}
