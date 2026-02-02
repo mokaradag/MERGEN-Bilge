@@ -304,7 +304,8 @@ format_chat_messages <- function(chat_df) {
     # Görsel mesajı kontrolü: [GÖRSEL:path] veya [GÖRSEL] ile başlıyor mu?
     is_image_message <- grepl("^\\[GÖRSEL", content_text)
  
-    processed <- if (is_image_message && identical(msg_type, "ai")) {
+    # Görsel mesajı işleme: "ai" veya "assistant" tipi kabul edilir
+    processed <- if (is_image_message && msg_type %in% c("ai", "assistant")) {
       # Görsel yolunu ve açıklamasını ayıkla
       # Format: [GÖRSEL:/path/to/image.png] açıklama metni
       # veya eski format: [GÖRSEL] açıklama metni
@@ -313,8 +314,8 @@ format_chat_messages <- function(chat_df) {
       if (length(image_match) == 3) {
         # Yeni format: [GÖRSEL:path] description
         image_path <- image_match[2]
-        image_description <- image_match[3]
  
+        image_description <- image_match[3]
         # Görsel HTML'ini oluştur
         if (exists("render_image_from_saved_path", mode = "function")) {
           image_html <- render_image_from_saved_path(

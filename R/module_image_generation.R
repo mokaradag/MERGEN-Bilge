@@ -695,15 +695,41 @@ render_generated_image_html <- function(image_result, message_id) {
 #' @param message_id Mesaj ID
 #' @return HTML string veya NULL (dosya bulunamazsa)
 render_image_from_saved_path <- function(image_path, description, message_id) {
-  # Dosya kontrolü
-  if (is.null(image_path) || !nzchar(image_path) || !file.exists(image_path)) {
+  # Boş yol kontrolü
+  if (is.null(image_path) || !nzchar(image_path)) {
+    cat("[IMAGE_GEN] Görsel yolu boş veya NULL\n")
+    return(NULL)
+  }
+
+  # Dosya yolu çözümleme: önce doğrudan, sonra user_images göreli yol dene
+  resolved_path <- image_path
+
+  if (!file.exists(resolved_path)) {
+    # user_images/ klasörünü içeren göreli yolu çıkarmayı dene
+    # Örn: /eski/yol/user_images/1/123/resim.png -> user_images/1/123/resim.png
+    user_images_match <- regmatches(image_path, regexec("(user_images/.+)$", image_path))[[1]]
+
+    if (length(user_images_match) >= 2) {
+      relative_path <- user_images_match[2]
+      candidate_path <- file.path(getwd(), relative_path)
+
+      if (file.exists(candidate_path)) {
+        cat("[IMAGE_GEN] Görsel göreli yol ile bulundu:", candidate_path, "\n")
+        resolved_path <- candidate_path
+      }
+    }
+  }
+
+  # Son kontrol: dosya hala bulunamadıysa NULL döndür
+  if (!file.exists(resolved_path)) {
     cat("[IMAGE_GEN] Kaydedilmiş görsel bulunamadı:", image_path, "\n")
+    cat("[IMAGE_GEN] Denenen çözümlenmiş yol:", resolved_path, "\n")
     return(NULL)
   }
 
   tryCatch({
-    # Görseli base64'e çevir
-    img_src <- get_image_web_url(image_path)
+    # Görseli base64'e çevir (çözümlenmiş yolu kullan)
+    img_src <- get_image_web_url(resolved_path)
 
     # HTML oluştur
     sprintf(
