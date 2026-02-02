@@ -295,58 +295,152 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
 }
 
 format_chat_messages <- function(chat_df) {
+  
+  # Yardımcı fonksiyon: Görseli base64'e çevir (inline - dış bağımlılık yok)
+  inline_get_image_base64 <- function(file_path) {
+    if (!file.exists(file_path)) return(NULL)
+    tryCatch({
+      raw_data <- readBin(file_path, "raw", file.info(file_path)$size)
+      base64_str <- base64enc::base64encode(raw_data)
+      paste0("data:image/png;base64,", base64_str)
+    }, error = function(e) NULL)
+  }
+  
+  # Yardımcı fonksiyon: Görsel yolunu çözümle (inline)
+  inline_resolve_image_path <- function(image_path) {
+    if (is.null(image_path) || !nzchar(image_path)) return(NULL)
+    
+    # 1. Doğrudan yolu dene
+    if (file.exists(image_path)) {
+      return(image_path)
+    }
+    
+    # 2. user_images/ içeren göreli yolu çıkarmayı dene
+    user_images_match <- regmatches(image_path, regexec("(user_images/.+)$", image_path))[[1]]
+    if (length(user_images_match) >= 2) {
+      relative_path <- user_images_match[2]
+      candidate_path <- file.path(getwd(), relative_path)
+      if (file.exists(candidate_path)) {
+        return(candidate_path)
+      }
+    }
+    
+    # 3. Sadece dosya adını al ve user_images altında ara
+    filename <- basename(image_path)
+    search_pattern <- file.path(getwd(), "user_images", "*", "*", filename)
+    found_files <- Sys.glob(search_pattern)
+    if (length(found_files) > 0) {
+      return(found_files[1])
+    }
+    
+    return(NULL)
+  }
+  
+  # Yardımcı fonksiyon: Görsel HTML'i oluştur (inline)
+  inline_render_image_html <- function(image_path, description, message_id) {
+    resolved_path <- inline_resolve_image_path(image_path)
+    
+    if (is.null(resolved_path)) {
+      # Dosya bulunamadı - yer tutucu göster
+      placeholder_html <- sprintf(
+        '<div class="generated-image-container">
+           <div class="image-placeholder" style="padding: 20px; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); border-radius: 12px; text-align: center; color: white;">
+             <i class="fas fa-image" style="font-size: 48px; margin-bottom: 10px; opacity: 0.8;"></i>
+             <p style="margin: 10px 0; font-weight: 500;">Görsel dosyası bulunamadı</p>
+           </div>
+           %s
+         </div>',
+        if (!is.null(description) && nzchar(description)) {
+          sprintf('<div class="image-description"><p>%s</p></div>', htmltools::htmlEscape(description))
+        } else ""
+      )
+      return(placeholder_html)
+    }
+    
+    # Görseli base64'e çevir
+    img_src <- inline_get_image_base64(resolved_path)
+    if (is.null(img_src)) {
+      # Base64 dönüşümü başarısız
+      return(sprintf(
+        '<div class="generated-image-container">
+           <div class="image-placeholder" style="padding: 20px; background: #f0f0f0; border-radius: 12px; text-align: center;">
+             <p>Görsel yüklenemedi</p>
+           </div>
+           %s
+         </div>',
+        if (!is.null(description) && nzchar(description)) {
+          sprintf('<div class="image-description"><p>%s</p></div>', htmltools::htmlEscape(description))
+        } else ""
+      ))
+    }
+    
+    # Başarılı - tam görsel HTML'i oluştur
+    sprintf(
+      '<div class="generated-image-container" data-message-id="%s">
+         <div class="image-wrapper">
+           <img src="%s" alt="Oluşturulan görsel" class="generated-image" loading="lazy" />
+           <div class="image-watermark">MERGEN Bilge</div>
+         </div>
+         <div class="image-actions">
+           <button class="image-action-btn-modern" onclick="window.downloadGeneratedImage(this)" title="İndir">
+             <i class="fas fa-download"></i>
+           </button>
+           <button class="image-action-btn-modern" onclick="window.copyGeneratedImage(this)" title="Kopyala">
+             <i class="fas fa-copy"></i>
+           </button>
+           <button class="image-action-btn-modern" onclick="window.printGeneratedImage(this)" title="Yazdır">
+             <i class="fas fa-print"></i>
+           </button>
+         </div>
+         %s
+       </div>',
+      message_id,
+      img_src,
+      if (!is.null(description) && nzchar(description)) {
+        sprintf('<div class="image-description"><p>%s</p></div>', htmltools::htmlEscape(description))
+      } else ""
+    )
+  }
+  
+  # Ana işleme döngüsü
   lapply(seq_len(nrow(chat_df)), function(i) {
     row <- chat_df[i, ]
     
     content_text <- row$MessageContent %||% ""
     msg_type <- row$MessageType %||% "user"
+    
+    # Boşlukları temizle (BOM veya görünmez karakterler için)
+    content_text <- trimws(content_text)
  
     # Görsel mesajı kontrolü: [GÖRSEL:path] veya [GÖRSEL] ile başlıyor mu?
-    is_image_message <- grepl("^\\[GÖRSEL", content_text)
+    is_image_message <- grepl("^\\[GÖRSEL", content_text, perl = TRUE)
  
     # Görsel mesajı işleme: "ai" veya "assistant" tipi kabul edilir
     processed <- if (is_image_message && msg_type %in% c("ai", "assistant")) {
+      
       # Görsel yolunu ve açıklamasını ayıkla
       # Format: [GÖRSEL:/path/to/image.png] açıklama metni
-      # veya eski format: [GÖRSEL] açıklama metni
-      image_match <- regmatches(content_text, regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content_text))[[1]]
+      image_match <- regmatches(content_text, regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content_text, perl = TRUE))[[1]]
  
       if (length(image_match) == 3) {
         # Yeni format: [GÖRSEL:path] description
         image_path <- image_match[2]
- 
         image_description <- image_match[3]
-        # Görsel HTML'ini oluştur
-        if (exists("render_image_from_saved_path", mode = "function")) {
-          image_html <- render_image_from_saved_path(
-            image_path,
-            image_description,
-            as.character(row$MessageID)
-          )
-          if (!is.null(image_html)) {
-            list(html = image_html, has_code = FALSE)
-          } else {
-            # Dosya bulunamadıysa sadece açıklamayı göster
-            if (exists("process_message_content", mode = "function")) {
-              process_message_content(paste0("[Görsel dosyası bulunamadı]\n\n", image_description), msg_type)
-            } else {
-              list(html = paste0("<p>[Görsel dosyası bulunamadı]</p><p>", htmltools::htmlEscape(image_description), "</p>"), has_code = FALSE)
-            }
-          }
-        } else {
-          # Fonksiyon mevcut değilse normal işle
-          if (exists("process_message_content", mode = "function")) {
-            process_message_content(content_text, msg_type)
-          } else {
-            list(html = content_text, has_code = FALSE)
-          }
-        }
+        
+        # Inline görsel HTML oluştur
+        image_html <- inline_render_image_html(
+          image_path,
+          image_description,
+          as.character(row$MessageID)
+        )
+        list(html = image_html, has_code = FALSE)
+        
       } else {
         # Eski format: [GÖRSEL] description (path yok)
-        old_match <- regmatches(content_text, regexec("^\\[GÖRSEL\\]\\s*(.*)", content_text))[[1]]
+        old_match <- regmatches(content_text, regexec("^\\[GÖRSEL\\]\\s*(.*)", content_text, perl = TRUE))[[1]]
         image_description <- if (length(old_match) == 2) old_match[2] else content_text
  
-        # Sadece açıklamayı stilize göster (görsel yolu olmadığı için görsel gösterilemez)
+        # Sadece açıklamayı stilize göster
         styled_html <- sprintf(
           '<div class="generated-image-container">
              <div class="image-description"><p>%s</p></div>
@@ -360,24 +454,53 @@ format_chat_messages <- function(chat_df) {
       has_chartlab <- grepl("```chartlab", content_text, fixed = TRUE)
  
       if (has_chartlab && identical(msg_type, "ai")) {
-        if (exists("build_chartlab_message_static", mode = "function")) {
-          chart_result <- build_chartlab_message_static(content_text, as.character(row$MessageID))
+        # Chartlab işleme - globalenv'den fonksiyonu almaya çalış
+        chart_fn <- tryCatch(
+          get("build_chartlab_message_static", envir = globalenv(), mode = "function"),
+          error = function(e) NULL
+        )
+        if (!is.null(chart_fn)) {
+          chart_result <- tryCatch(
+            chart_fn(content_text, as.character(row$MessageID)),
+            error = function(e) list(found = FALSE)
+          )
           if (isTRUE(chart_result$found)) {
             list(html = chart_result$html, has_code = FALSE)
-          } else if (exists("process_message_content", mode = "function")) {
-            process_message_content(content_text, msg_type)
           } else {
-            list(html = content_text, has_code = FALSE)
+            # Chartlab bulunamadı, normal işle
+            process_fn <- tryCatch(
+              get("process_message_content", envir = globalenv(), mode = "function"),
+              error = function(e) NULL
+            )
+            if (!is.null(process_fn)) {
+              process_fn(content_text, msg_type)
+            } else {
+              list(html = commonmark::markdown_html(content_text, hardbreaks = TRUE), has_code = FALSE)
+            }
           }
-        } else if (exists("process_message_content", mode = "function")) {
-          process_message_content(content_text, msg_type)
         } else {
-          list(html = content_text, has_code = FALSE)
+          # chart fonksiyonu yok, normal işle
+          process_fn <- tryCatch(
+            get("process_message_content", envir = globalenv(), mode = "function"),
+            error = function(e) NULL
+          )
+          if (!is.null(process_fn)) {
+            process_fn(content_text, msg_type)
+          } else {
+            list(html = commonmark::markdown_html(content_text, hardbreaks = TRUE), has_code = FALSE)
+          }
         }
-	  } else if (exists("process_message_content", mode = "function")) {
-        process_message_content(content_text, msg_type)
       } else {
-        list(html = content_text, has_code = FALSE)
+        # Normal mesaj
+        process_fn <- tryCatch(
+          get("process_message_content", envir = globalenv(), mode = "function"),
+          error = function(e) NULL
+        )
+        if (!is.null(process_fn)) {
+          process_fn(content_text, msg_type)
+        } else {
+          list(html = commonmark::markdown_html(content_text, hardbreaks = TRUE), has_code = FALSE)
+        }
       }
     }
 
