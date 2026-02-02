@@ -300,28 +300,84 @@ format_chat_messages <- function(chat_df) {
     
     content_text <- row$MessageContent %||% ""
     msg_type <- row$MessageType %||% "user"
-    
-    has_chartlab <- grepl("```chartlab", content_text, fixed = TRUE)
-    
-    processed <- if (has_chartlab && identical(msg_type, "ai")) {
-      if (exists("build_chartlab_message_static", mode = "function")) {
-        chart_result <- build_chartlab_message_static(content_text, as.character(row$MessageID))
-        if (isTRUE(chart_result$found)) {
-          list(html = chart_result$html, has_code = FALSE)
+ 
+    # Görsel mesajı kontrolü: [GÖRSEL:path] veya [GÖRSEL] ile başlıyor mu?
+    is_image_message <- grepl("^\\[GÖRSEL", content_text)
+ 
+    processed <- if (is_image_message && identical(msg_type, "ai")) {
+      # Görsel yolunu ve açıklamasını ayıkla
+      # Format: [GÖRSEL:/path/to/image.png] açıklama metni
+      # veya eski format: [GÖRSEL] açıklama metni
+      image_match <- regmatches(content_text, regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content_text))[[1]]
+ 
+      if (length(image_match) == 3) {
+        # Yeni format: [GÖRSEL:path] description
+        image_path <- image_match[2]
+        image_description <- image_match[3]
+ 
+        # Görsel HTML'ini oluştur
+        if (exists("render_image_from_saved_path", mode = "function")) {
+          image_html <- render_image_from_saved_path(
+            image_path,
+            image_description,
+            as.character(row$MessageID)
+          )
+          if (!is.null(image_html)) {
+            list(html = image_html, has_code = FALSE)
+          } else {
+            # Dosya bulunamadıysa sadece açıklamayı göster
+            if (exists("process_message_content", mode = "function")) {
+              process_message_content(paste0("[Görsel dosyası bulunamadı]\n\n", image_description), msg_type)
+            } else {
+              list(html = paste0("<p>[Görsel dosyası bulunamadı]</p><p>", htmltools::htmlEscape(image_description), "</p>"), has_code = FALSE)
+            }
+          }
+        } else {
+          # Fonksiyon mevcut değilse normal işle
+          if (exists("process_message_content", mode = "function")) {
+            process_message_content(content_text, msg_type)
+          } else {
+            list(html = content_text, has_code = FALSE)
+          }
+        }
+      } else {
+        # Eski format: [GÖRSEL] description (path yok)
+        old_match <- regmatches(content_text, regexec("^\\[GÖRSEL\\]\\s*(.*)", content_text))[[1]]
+        image_description <- if (length(old_match) == 2) old_match[2] else content_text
+ 
+        # Sadece açıklamayı stilize göster (görsel yolu olmadığı için görsel gösterilemez)
+        styled_html <- sprintf(
+          '<div class="generated-image-container">
+             <div class="image-description"><p>%s</p></div>
+           </div>',
+          htmltools::htmlEscape(image_description)
+        )
+        list(html = styled_html, has_code = FALSE)
+      }
+    } else {
+      # Normal mesaj işleme (chartlab veya diğer)
+      has_chartlab <- grepl("```chartlab", content_text, fixed = TRUE)
+ 
+      if (has_chartlab && identical(msg_type, "ai")) {
+        if (exists("build_chartlab_message_static", mode = "function")) {
+          chart_result <- build_chartlab_message_static(content_text, as.character(row$MessageID))
+          if (isTRUE(chart_result$found)) {
+            list(html = chart_result$html, has_code = FALSE)
+          } else if (exists("process_message_content", mode = "function")) {
+            process_message_content(content_text, msg_type)
+          } else {
+            list(html = content_text, has_code = FALSE)
+          }
         } else if (exists("process_message_content", mode = "function")) {
           process_message_content(content_text, msg_type)
         } else {
           list(html = content_text, has_code = FALSE)
         }
-      } else if (exists("process_message_content", mode = "function")) {
+	  } else if (exists("process_message_content", mode = "function")) {
         process_message_content(content_text, msg_type)
       } else {
         list(html = content_text, has_code = FALSE)
       }
-    } else if (exists("process_message_content", mode = "function")) {
-      process_message_content(content_text, msg_type)
-    } else {
-      list(html = content_text, has_code = FALSE)
     }
 
     timestamp_val <- row$MessageTimestamp
@@ -717,6 +773,19 @@ delete_chat_from_db <- function(chat_id, user_id) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
+  # Önce sohbetin görsel klasörünü sil (varsa)
+  tryCatch({
+    image_dir <- file.path("user_images", as.character(user_id), as.character(chat_id))
+    if (dir.exists(image_dir)) {
+      # Klasördeki tüm dosyaları ve klasörün kendisini sil
+      unlink(image_dir, recursive = TRUE)
+      cat("[DATABASE] Görsel klasörü silindi:", image_dir, "\n")
+    }
+  }, error = function(e) {
+    cat("[DATABASE] Görsel klasörü silinirken hata:", e$message, "\n")
+  })
+
+  # Sohbeti silinmiş olarak işaretle
   query <- "UPDATE MB_Chats SET IsDeleted = 1 WHERE ChatID = ? AND UserID = ?"
   dbExecute(conn, query, params = list(chat_id, user_id))
 }
@@ -726,6 +795,19 @@ clear_all_chats_from_db <- function(user_id) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
+  # Önce kullanıcının tüm görsel klasörlerini sil
+  tryCatch({
+    user_image_dir <- file.path("user_images", as.character(user_id))
+    if (dir.exists(user_image_dir)) {
+      # Kullanıcının tüm görsel klasörlerini sil
+      unlink(user_image_dir, recursive = TRUE)
+      cat("[DATABASE] Kullanıcının tüm görsel klasörleri silindi:", user_image_dir, "\n")
+    }
+  }, error = function(e) {
+    cat("[DATABASE] Görsel klasörleri silinirken hata:", e$message, "\n")
+  })
+
+  # Tüm sohbetleri silinmiş olarak işaretle
   query <- "UPDATE MB_Chats SET IsDeleted = 1 WHERE UserID = ?"
   dbExecute(conn, query, params = list(user_id))
 }

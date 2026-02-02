@@ -983,8 +983,15 @@ server <- function(input, output, session) {
 			# ÖNEMLİ: Base64 veriyi LLM bağlamına göndermemek için içerik olarak
 			# sadece metin açıklama kullan, HTML'i ayrı tut
 			# Bu sayede görsel araçları kapatıldığında context patlaması olmaz
+			# NOT: Görsel yolunu da kaydet ki önceki sohbetler yüklendiğinde görsel tekrar gösterilebilsin
 			image_description <- result$revised_prompt %||% "[Görsel oluşturuldu]"
-			content_text <- paste0("[GÖRSEL] ", image_description)
+			# Format: [GÖRSEL:path] description - path önceki sohbetlerde görseli bulmak için gerekli
+			image_path_marker <- if (!is.null(result$local_path) && nzchar(result$local_path)) {
+			  paste0("[GÖRSEL:", result$local_path, "]")
+			} else {
+			  "[GÖRSEL]"
+			}
+			content_text <- paste0(image_path_marker, " ", image_description)
  
 			add_message(content_text, "ai", html = image_html)
 			showToast(session, "Görsel oluşturuldu!", "success")

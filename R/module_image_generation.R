@@ -688,3 +688,52 @@ render_generated_image_html <- function(image_result, message_id) {
     } else ""
   )
 }
+
+#' Kaydedilmiş görsel yolundan HTML oluştur (önceki sohbetleri yüklerken kullanılır)
+#' @param image_path Yerel görsel dosyasının tam yolu
+#' @param description Görsel açıklaması
+#' @param message_id Mesaj ID
+#' @return HTML string veya NULL (dosya bulunamazsa)
+render_image_from_saved_path <- function(image_path, description, message_id) {
+  # Dosya kontrolü
+  if (is.null(image_path) || !nzchar(image_path) || !file.exists(image_path)) {
+    cat("[IMAGE_GEN] Kaydedilmiş görsel bulunamadı:", image_path, "\n")
+    return(NULL)
+  }
+
+  tryCatch({
+    # Görseli base64'e çevir
+    img_src <- get_image_web_url(image_path)
+
+    # HTML oluştur
+    sprintf(
+      '<div class="generated-image-container" data-message-id="%s">
+         <div class="image-wrapper">
+           <img src="%s" alt="Oluşturulan görsel" class="generated-image" loading="lazy" />
+           <div class="image-watermark">MERGEN Bilge</div>
+         </div>
+         <div class="image-actions">
+           <button class="image-action-btn-modern" onclick="window.downloadGeneratedImage(this)" title="İndir">
+             <i class="fas fa-download"></i>
+           </button>
+           <button class="image-action-btn-modern" onclick="window.copyGeneratedImage(this)" title="Kopyala">
+             <i class="fas fa-copy"></i>
+           </button>
+           <button class="image-action-btn-modern" onclick="window.printGeneratedImage(this)" title="Yazdır">
+             <i class="fas fa-print"></i>
+           </button>
+         </div>
+         %s
+       </div>',
+      message_id,
+      img_src,
+      if (!is.null(description) && nzchar(description)) {
+        sprintf('<div class="image-description"><p>%s</p></div>',
+                htmltools::htmlEscape(description))
+      } else ""
+    )
+  }, error = function(e) {
+    cat("[IMAGE_GEN] Görsel HTML oluşturma hatası:", e$message, "\n")
+    NULL
+  })
+}
