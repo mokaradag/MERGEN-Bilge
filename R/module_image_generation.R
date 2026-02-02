@@ -367,46 +367,81 @@ save_image_locally <- function(image_url, user_id, chat_id = NULL) {
       cat("[IMAGE_GEN] Görsel URL'si boş veya geçersiz\n")
       return(NULL)
     }
- 
+
     cat("[IMAGE_GEN] İndirilecek görsel URL'si:", substr(image_url, 1, 100), "...\n")
- 
+
     # Dizini oluştur
     save_dir <- get_user_image_dir(user_id, chat_id)
- 
+
     # Dizin oluşturulabildi mi kontrol et
     if (!dir.exists(save_dir)) {
       cat("[IMAGE_GEN] Dizin oluşturulamadı:", save_dir, "\n")
       return(NULL)
     }
- 
+
     # Benzersiz dosya adı oluştur
     timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
     random_suffix <- paste0(sample(letters, 4), collapse = "")
     filename <- sprintf("dalle_%s_%s.png", timestamp, random_suffix)
- 
+
     # Windows için forward slash kullan ve normalize et
     local_path <- file.path(save_dir, filename)
-    local_path <- gsub("\\\\", "/", local_path)  # Backslash'leri forward slash'e çevir
- 
+    local_path <- gsub("\\\\", "/", local_path)
+
     cat("[IMAGE_GEN] Görsel kaydedilmeye çalışılıyor:", local_path, "\n")
- 
-    # Proxy ayarlarını bypass et ve görseli indir
-    # Windows'ta proxy/curl sorunlarını önlemek için config ayarları
+
+    # Base64 data URL kontrolü - download.file ve httr::GET bu formatı desteklemez
+    if (grepl("^data:image/", image_url)) {
+      cat("[IMAGE_GEN] Base64 data URL tespit edildi, doğrudan decode ediliyor...\n")
+      
+      tryCatch({
+        # data:image/png;base64,... formatından base64 kısmını çıkar
+        base64_data <- sub("^data:image/[^;]+;base64,", "", image_url)
+        
+        # Base64 decode et
+        img_raw <- base64enc::base64decode(base64_data)
+        
+        if (length(img_raw) == 0) {
+          cat("[IMAGE_GEN] Base64 decode sonucu boş\n")
+          return(NULL)
+        }
+        
+        cat("[IMAGE_GEN] Base64 decode başarılı, boyut:", length(img_raw), "byte\n")
+        
+        # Binary olarak dosyaya yaz
+        con <- file(local_path, "wb")
+        writeBin(img_raw, con)
+        close(con)
+        
+        if (file.exists(local_path) && file.info(local_path)$size > 0) {
+          cat("[IMAGE_GEN] Görsel başarıyla kaydedildi (base64):", local_path, "\n")
+          return(local_path)
+        } else {
+          cat("[IMAGE_GEN] Base64 dosya oluşturuldu ama boş\n")
+          return(NULL)
+        }
+      }, error = function(e) {
+        cat("[IMAGE_GEN] Base64 kaydetme hatası:", e$message, "\n")
+        return(NULL)
+      })
+    }
+
+    # HTTP/HTTPS URL için normal indirme işlemi
+    cat("[IMAGE_GEN] HTTP yanıtı alınıyor...\n")
+    
     response <- tryCatch({
       httr::GET(
         image_url,
-        httr::timeout(120),  # 2 dakika timeout
+        httr::timeout(120),
         httr::config(
           ssl_verifypeer = TRUE,
           followlocation = TRUE,
-          # Proxy sorunlarını önlemek için direkt bağlantı
           proxy = ""
         ),
         httr::user_agent("MERGEN-Bilge/1.0")
       )
     }, error = function(e) {
       cat("[IMAGE_GEN] HTTP GET hatası:", e$message, "\n")
-      # Alternatif: download.file kullan
       cat("[IMAGE_GEN] Alternatif indirme yöntemi deneniyor...\n")
       tryCatch({
         temp_file <- tempfile(fileext = ".png")
@@ -420,14 +455,14 @@ save_image_locally <- function(image_url, user_id, chat_id = NULL) {
         return(NULL)
       })
     })
- 
+
     # Alternatif yöntem kullanıldıysa
     if (is.list(response) && !is.null(response$temp_file)) {
       tryCatch({
         file.copy(response$temp_file, local_path, overwrite = TRUE)
         unlink(response$temp_file)
         if (file.exists(local_path) && file.info(local_path)$size > 0) {
-          cat("[IMAGE_GEN] Görsel başarıyla kaydedildi (alternatif yöntem):", local_path, "\n")
+          cat("[IMAGE_GEN] Görsel başarıyla kaydedildi (alternatif):", local_path, "\n")
           return(local_path)
         }
       }, error = function(e) {
@@ -435,46 +470,49 @@ save_image_locally <- function(image_url, user_id, chat_id = NULL) {
       })
       return(NULL)
     }
- 
+
     # Normal httr response kontrolü
     if (is.null(response) || !inherits(response, "response")) {
       cat("[IMAGE_GEN] HTTP yanıtı alınamadı\n")
       return(NULL)
     }
- 
+
     if (httr::status_code(response) != 200) {
-      cat("[IMAGE_GEN] Görsel URL'den indirilemedi, HTTP status:", httr::status_code(response), "\n")
+      cat("[IMAGE_GEN] HTTP status:", httr::status_code(response), "\n")
       return(NULL)
     }
- 
+
     # İçeriği al
     img_content <- httr::content(response, "raw")
- 
+
     if (length(img_content) == 0) {
       cat("[IMAGE_GEN] Görsel içeriği boş\n")
       return(NULL)
     }
- 
+
     cat("[IMAGE_GEN] Görsel içeriği alındı, boyut:", length(img_content), "byte\n")
- 
+
     # Binary olarak dosyaya yaz
     tryCatch({
       con <- file(local_path, "wb")
       writeBin(img_content, con)
       close(con)
- 
+
       if (file.exists(local_path) && file.info(local_path)$size > 0) {
         cat("[IMAGE_GEN] Görsel başarıyla kaydedildi:", local_path, "\n")
         return(local_path)
       } else {
-        cat("[IMAGE_GEN] Dosya oluşturuldu ama boş veya mevcut değil\n")
+        cat("[IMAGE_GEN] Dosya oluşturuldu ama boş\n")
         return(NULL)
       }
     }, error = function(write_err) {
       cat("[IMAGE_GEN] Dosya yazma hatası:", write_err$message, "\n")
       return(NULL)
     })
-	
+
+    return(NULL)
+  }, error = function(e) {
+    cat("[IMAGE_GEN] Genel hata:", e$message, "\n")
     return(NULL)
   })
 }
