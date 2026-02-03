@@ -1917,52 +1917,13 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			exists("helpers_mcp_tools", inherits = TRUE) &&
 			is.function(helpers_mcp_tools$get_mcp_tools_prompt)) {
 
-		  # Türkçe yorum: Görselleştirme isteklerinde prepare_chart_data çağrılmalı
-		  # Türkçe yorum: Metin analizi/karma sorgular için sql_query_uploaded_file kullanılmalı
+		  # Türkçe yorum: Grafik isteğinde doğrudan prepare_chart_data çağrılmalı
 		  tool_prompt <- paste0(
 			helpers_mcp_tools$get_mcp_tools_prompt(),
-			"\n\n### ÖNEMLİ GRAFİK KURALLARI (KESİNLİKLE UYGULA):",
-			"\n",
-			"\n**KURAL 1 - GRAFİK SAYISI:** Kullanıcı kaç grafik istediyse TAM O KADAR grafik üret.",
-			"\n   - '1 grafik çiz' = prepare_chart_data'yı 1 kez çağır",
-			"\n   - '2 grafik çiz' = prepare_chart_data'yı 2 kez çağır",
-			"\n   - 'çeşitli grafikler' = 2-3 farklı grafik türü çağır",
-			"\n   - ASLA istenenden fazla grafik üretme!",
-			"\n",
-			"\n**KURAL 2 - GRAFİK TİPİ SEÇİMİ (Türkçe → chart_type eşlemesi):**",
-			"\n   - histogram, histogramı, dağılım grafiği → chart_type='hist'",
-			"\n   - çizgi, line, trend, zaman serisi, eğilim → chart_type='line'",
-			"\n   - bar, çubuk, sütun, karşılaştırma → chart_type='bar'",
-			"\n   - pasta, pie, dilim, pay → chart_type='pie'",
-			"\n   - donut, halka → chart_type='donut'",
-			"\n   - alan, area → chart_type='area'",
-			"\n   - pareto → chart_type='pareto'",
-			"\n   - scatter, saçılım, nokta grafiği → chart_type='scatter'",
-			"\n   - Kullanıcı tür belirtmezse: veri içeriğine göre akıllıca seç (tarih varsa 'line', kategorik varsa 'bar')",
-			"\n",
-			"\n**KURAL 3 - EKSEN SEÇİMİ (ÇOK ÖNEMLİ):**",
-			"\n   - ÖNCE analyze_uploaded_file ile sütun isimlerini öğren",
-			"\n   - X EKSENİ: Zaman/Tarih sütunu VEYA Kategorik sütun (Şehir, Ürün, Departman vb.)",
-			"\n   - Y EKSENİ: Sayısal sütun (Tutar, Miktar, Satış, Adet vb.)",
-			"\n   - Line/Area grafikleri: x=tarih/zaman, y=sayısal",
-			"\n   - Bar/Pie grafikleri: x=kategori, y=sayısal",
-			"\n   - Scatter grafikleri: x=sayısal1, y=sayısal2",
-			"\n   - Histogram: x=sayısal (y BOŞ bırak)",
-			"\n",
-			"\n**KURAL 4 - PIE/DONUT GRAFİKLERİ (ZORUNLU):**",
-			"\n   - MUTLAKA agg='sum' veya agg='count' kullan",
-			"\n   - MUTLAKA top_n=10 (veya daha az) kullan — sonsuz dilim çizme!",
-			"\n   - Örnek: prepare_chart_data(file_name='veri.xlsx', chart_type='pie', x='Kategori', y='Tutar', agg='sum', top_n=10)",
-			"\n",
-			"\n**KURAL 5 - ÇOKLU SERİ (BİRDEN FAZLA ÇİZGİ/BAR):**",
-			"\n   - İki sayısal sütunu aynı grafikte göstermek için y parametresine virgülle yaz",
-			"\n   - Örnek: y='Gelir, Gider' veya y='Satış, Maliyet'",
-			"\n   - group parametresini BOŞ bırak (çoklu Y kullanınca otomatik gruplar)",
-			"\n",
-			"\n**KURAL 6 - SQL SORGUSU:**",
-			"\n   - Filtreleme, sıralama, gruplama, Top N listeleme için sql_query_uploaded_file kullan",
-			"\n   - Tablo adı: t",
-			"\n   - Örnek: SELECT Category, SUM(Amount) as Total FROM t GROUP BY Category ORDER BY Total DESC LIMIT 10\n"
+			"\n\n### EK BİLGİ:",
+			"\n- SQL sorguları için: sql_query_uploaded_file (tablo adı: t)",
+			"\n- Dosya özeti için: analyze_uploaded_file (opsiyonel)",
+			"\n"
 		  )
 		}
 	}

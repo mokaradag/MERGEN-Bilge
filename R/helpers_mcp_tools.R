@@ -885,6 +885,38 @@ helpers_mcp_tools$prepare_chart_data <- function(
   if (inherits(dt, "error")) {
     return(list(error = sprintf("Dosya okunamadı: %s — %s", basename(res$path), dt$message), ok = FALSE))
   }
+  
+  # --- Türkçe yorum: Sütun doğrulama ---
+  # Model geçersiz sütun adı verdiyse, temizle ve otomatik seçime bırak
+  available_cols <- names(dt)
+ 
+  # Türkçe yorum: x parametresi geçersizse temizle
+  if (!is.null(x) && nzchar(x) && !(x %in% available_cols)) {
+    cat("[CHART] x='", x, "' sütunu bulunamadı, otomatik seçilecek\n", sep = "")
+    x <- NULL
+  }
+ 
+  # Türkçe yorum: y parametresi geçersizse temizle (virgüllü çoklu y'yi de kontrol et)
+  if (!is.null(y) && nzchar(y)) {
+    y_parts <- trimws(strsplit(as.character(y), ",")[[1]])
+    invalid_y <- setdiff(y_parts, available_cols)
+    if (length(invalid_y) > 0) {
+      cat("[CHART] y sütunları bulunamadı: ", paste(invalid_y, collapse = ", "), ", otomatik seçilecek\n", sep = "")
+      # Türkçe yorum: Geçerli olanları tut, hiçbiri geçerli değilse NULL yap
+      valid_y <- intersect(y_parts, available_cols)
+      if (length(valid_y) > 0) {
+        y <- paste(valid_y, collapse = ", ")
+      } else {
+        y <- NULL
+      }
+    }
+  }
+ 
+  # Türkçe yorum: group parametresi geçersizse temizle
+  if (!is.null(group) && nzchar(group) && !(group %in% available_cols)) {
+    cat("[CHART] group='", group, "' sütunu bulunamadı, otomatik seçilecek\n", sep = "")
+    group <- NULL
+  }
 
   # --- Türkçe yorum: Pie/Donut için zorunlu ayarlamalar ---
   # X ekseni, agg ve top_n parametreleri otomatik olarak ayarlanır
@@ -1283,25 +1315,24 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
         type = "function",
         `function` = list(
           name = "prepare_chart_data",
-          description = "Grafik verisi hazırlar. ZORUNLU: X ve Y eksenlerini veriye göre mantıklı seç. Multi-seri için y='Col1,Col2' yap. Pie/Bar için agg kullan.",
+          description = "GRAFİK ÇİZER. Dosyayı okur, eksenleri OTOMATİK seçer. Sadece file_name ve chart_type ver, geri kalanı otomatik. Sütun isimlerini bilmene gerek yok!",
           parameters = list(
             type = "object",
             properties = list(
-              file_name  = list(type = "string", description = "Dosya jetonu veya yolu/adı."),
-              chart_type = list(type = "string",
-                                description = "Grafik türü: 'line' (zaman/trend), 'bar' (kategori/sıralama), 'pie' (parça/bütün), 'scatter' (korelasyon), 'hist' (dağılım)."),
-              x          = list(type = "string", description = "X ekseni. Zaman serisi için tarih, Bar/Pie için kategori sütunu seç."),
-              y          = list(type = "string", description = "Y ekseni (Sayısal). ÇOKLU SERİ için virgülle ayır (örn: 'Gelir,Gider'). Histogram için boş bırak."),
-              group      = list(type = "string", description = "Gruplama sütunu (örn: Region). Çoklu Y kullandıysan burayı BOŞ bırak."),
-              agg        = list(type = "string", description = "Pie/Donut ve Bar için ZORUNLU: 'sum', 'mean', 'count'. Ham veri çizme."),
-              bins       = list(type = "integer", description = "Histogram kutu sayısı (opsiyonel)."),
-              top_n      = list(type = "integer", description = "En yüksek N kaydı göster (Bar/Pie için)."),
-              stack      = list(type = "string", description = "Bar/Area için: 'normal' veya 'percent'."),
-              donut      = list(type = "boolean", description = "Pie grafiğini halka (donut) yapar."),
-              orientation = list(type = "string", description = "Bar grafiği için: 'v' (dikey) veya 'h' (yatay)."),
-              smooth     = list(type = "boolean", description = "Çizgileri yumuşatır (spline)."),
-              filter_sql = list(type = "string", description = "SQL WHERE filtresi (örn: Year > 2020)."),
-              limit      = list(type = "integer", description = "Maksimum satır sayısı.")
+              file_name  = list(type = "string", description = "Dosya adı (örn: 'veri.xlsx')"),
+              chart_type = list(type = "string", description = "Grafik türü: 'hist', 'bar', 'pie', 'donut', 'line', 'area', 'scatter', 'pareto'"),
+              x          = list(type = "string", description = "X ekseni sütunu (OPSİYONEL - boş bırakırsan otomatik seçilir)"),
+              y          = list(type = "string", description = "Y ekseni sütunu (OPSİYONEL). Çoklu seri için: 'Col1,Col2'"),
+              group      = list(type = "string", description = "Gruplama sütunu (OPSİYONEL)"),
+              agg        = list(type = "string", description = "Agregasyon: 'sum', 'mean', 'count' (OPSİYONEL - pie/bar için otomatik eklenir)"),
+              bins       = list(type = "integer", description = "Histogram kutu sayısı (OPSİYONEL)"),
+              top_n      = list(type = "integer", description = "En yüksek N kayıt (OPSİYONEL - pie için otomatik 10)"),
+              stack      = list(type = "string", description = "Yığınlama: 'normal' veya 'percent' (OPSİYONEL)"),
+              donut      = list(type = "boolean", description = "Pasta yerine halka (OPSİYONEL)"),
+              orientation = list(type = "string", description = "Bar yönü: 'v' veya 'h' (OPSİYONEL)"),
+              smooth     = list(type = "boolean", description = "Çizgi yumuşatma (OPSİYONEL)"),
+              filter_sql = list(type = "string", description = "SQL WHERE filtresi (OPSİYONEL)"),
+              limit      = list(type = "integer", description = "Maksimum satır (OPSİYONEL)")
             ),
             required = list("file_name", "chart_type")
           )
@@ -1316,70 +1347,59 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
   paste(
-    "Sen uzman bir Veri Analisti ve Raporlama Asistanısın. Görevin, yüklenen Excel/CSV dosyalarından MANTIKLI ve DOĞRU grafikleri oluşturmaktır.",
+    "Sen bir Veri Analisti asistanısın. Excel/CSV dosyalarından grafik çiziyorsun.",
     "",
-    "=== KESİNLİKLE UYULMASI GEREKEN KURALLAR ===",
+    "## GRAFİK ÇİZME TALİMATI",
     "",
-    "### KURAL 1: GRAFİK SAYISI KONTROLÜ",
-    "- Kullanıcı '1 grafik çiz' derse → prepare_chart_data'yı YALNIZCA 1 KEZ çağır",
-    "- Kullanıcı '2 grafik çiz' derse → prepare_chart_data'yı YALNIZCA 2 KEZ çağır",
-    "- Kullanıcı 'grafik çiz' derse (sayı belirtmezse) → YALNIZCA 1 grafik çiz",
-    "- Kullanıcı 'birden fazla grafik' veya 'çeşitli grafikler' derse → 2-3 grafik çiz",
-    "- ASLA talep edilenden fazla grafik üretme!",
+    "Kullanıcı grafik istediğinde HEMEN `prepare_chart_data` aracını çağır.",
+    "Bu araç dosyayı okur ve eksenleri OTOMATİK seçer. Sütun isimlerini bilmene GEREK YOK.",
     "",
-    "### KURAL 2: ÖNCE ANALİZ YAP",
-    "- Sütun isimlerini BİLMİYORSAN, önce `analyze_uploaded_file` çağır",
-    "- Sütun adlarını ASLA tahmin etme, uydurma veya varsayma",
-    "- Dosyada hangi sütunların olduğunu öğrenmeden grafik çizme",
+    "### DOĞRUDAN ÇİZ - ÖRNEKler:",
     "",
-    "### KURAL 3: EKSEN SEÇİMİ (ÇOK KRİTİK)",
+    "```",
+    "Kullanıcı: 'histogram çiz'",
+    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='hist')",
     "",
-    "**A) X EKSENİ KURALLARI:**",
-    "- Tarih/Zaman sütunları (Date, Tarih, Yıl, Ay, Time, Period) → X eksenine koy",
-    "- Kategorik sütunlar (Şehir, Ürün, Departman, Kategori, İsim) → X eksenine koy",
-    "- Sayısal sütunlar SADECE Scatter ve Histogram için X ekseninde olabilir",
+    "Kullanıcı: 'bar grafiği çiz'",
+    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='bar')",
     "",
-    "**B) Y EKSENİ KURALLARI:**",
-    "- Sayısal sütunlar (Tutar, Miktar, Satış, Adet, Fiyat, Toplam, Değer) → Y eksenine koy",
-    "- Histogram için Y ekseni BOŞ bırak (sadece x parametresi olmalı)",
-    "- Kategorik sütunlar ASLA Y ekseninde olmaz",
+    "Kullanıcı: 'pasta grafiği çiz'",
+    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='pie')",
     "",
-    "**C) GRAFİK TÜRÜNE GÖRE EKSEN SEÇİMİ:**",
-    "| Grafik Türü | X Ekseni | Y Ekseni | Örnek |",
-    "|-------------|----------|----------|-------|",
-    "| line/area | Tarih/Zaman | Sayısal | x='Tarih', y='Satış' |",
-    "| bar | Kategori | Sayısal | x='Şehir', y='Gelir' |",
-    "| pie/donut | Kategori | Sayısal | x='Ürün', y='Miktar', agg='sum', top_n=10 |",
-    "| scatter | Sayısal1 | Sayısal2 | x='Yaş', y='Gelir' |",
-    "| hist | Sayısal | BOŞ | x='Fiyat' (y parametresi verilmez) |",
+    "Kullanıcı: 'çizgi grafiği çiz'",
+    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='line')",
     "",
-    "### KURAL 4: PIE/DONUT GRAFİKLERİ İÇİN ZORUNLU PARAMETRELER",
-    "- MUTLAKA `agg` parametresi kullan: 'sum', 'mean' veya 'count'",
-    "- MUTLAKA `top_n` parametresi kullan: maksimum 10-15 dilim",
-    "- Ham veriyi (yüzlerce satırı) ASLA doğrudan pie grafiğine çevirme!",
-    "- DOĞRU: prepare_chart_data(file_name='x.xlsx', chart_type='pie', x='Kategori', y='Tutar', agg='sum', top_n=10)",
-    "- YANLIŞ: prepare_chart_data(file_name='x.xlsx', chart_type='pie', x='Kategori') ← top_n ve agg yok!",
+    "Kullanıcı: 'scatter plot çiz'",
+    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='scatter')",
     "",
-    "### KURAL 5: ÇOKLU SERİ (AYNI GRAFİKTE BİRDEN FAZLA ÇİZGİ/BAR)",
-    "- İki sayısal sütunu AYNI grafikte göstermek için y parametresine VİRGÜLLE yaz",
-    "- DOĞRU YÖNTEM: y='Gelir, Gider' veya y='Satış, Maliyet'",
-    "- Bu durumda group parametresini BOŞ bırak (sistem otomatik gruplar)",
-    "- YANLIŞ YÖNTEM: İki ayrı grafik çizmek",
+    "Kullanıcı: 'pareto grafiği çiz'",
+    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='pareto')",
+    "```",
     "",
-    "### KURAL 6: AKILLI VARSAYIMLAR",
-    "- Kullanıcı tür belirtmezse:",
-    "  - Tarih sütunu varsa → 'line' grafiği çiz",
-    "  - Tarih yoksa, kategorik varsa → 'bar' grafiği çiz",
-    "  - Sadece sayısal sütunlar varsa → 'scatter' veya 'hist' çiz",
-    "- Sütun isimlerinden anlam çıkar:",
-    "  - 'Tarih', 'Date', 'Yıl', 'Ay' → X ekseni (zaman)",
-    "  - 'Şehir', 'İl', 'Bölge', 'Kategori', 'Ürün' → X ekseni (kategori)",
-    "  - 'Tutar', 'Satış', 'Gelir', 'Miktar', 'Adet' → Y ekseni (sayısal)",
+    "### GRAFİK TÜRLERİ:",
+    "- histogram/dağılım → chart_type='hist'",
+    "- bar/çubuk/sütun → chart_type='bar'",
+    "- pasta/pie → chart_type='pie'",
+    "- donut/halka → chart_type='donut'",
+    "- çizgi/line/trend → chart_type='line'",
+    "- alan/area → chart_type='area'",
+    "- scatter/saçılım → chart_type='scatter'",
+    "- pareto → chart_type='pareto'",
     "",
-    "### KURAL 7: HATA KONTROLÜ",
-    "- Grafik çizmeden ÖNCE dosyanın sütun isimlerini kontrol et",
-    "- Kullanıcının istediği sütun adı dosyada YOKSA, hatayı bildir ve alternatif öner",
-    "- Mantıksız eksen seçimi yapma (örn: Y eksenine 'Şehir' koyma)",
+    "### GRAFİK SAYISI:",
+    "- '1 grafik' veya 'grafik çiz' → 1 kez çağır",
+    "- '2 grafik' → 2 kez çağır",
+    "- 'çeşitli grafikler' → 2-3 kez çağır",
+    "",
+    "### ÇOKLU SERİ (aynı grafikte 2 çizgi):",
+    "→ y='Gelir, Gider' (virgülle ayır)",
+    "",
+    "### ÖNEMLİ:",
+    "- x ve y parametrelerini BOŞ bırakabilirsin, sistem otomatik seçer",
+    "- Sütun isimlerini bilmiyorsan endişelenme, araç otomatik bulur",
+    "- Sadece file_name ve chart_type ZORUNLU, diğerleri opsiyonel",
+    "",
+    "HEMEN prepare_chart_data çağır, analiz yapmana gerek yok!",
     sep = "\n"
   )
 }
