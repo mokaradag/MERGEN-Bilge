@@ -1164,7 +1164,275 @@ helpers_mcp_tools$prepare_chart_data <- function(
 }
 
 # ==================================
-# Tool 5: get_distinct_values (NEW)
+# Tool 5: analyze_and_visualize (YENİ - R-First Yaklaşımı)
+# ==================================
+# Türkçe: Bu araç, filtrelenmiş/gruplandırılmış sorguları GERÇEK veriyle yanıtlar.
+# AI değer uyduramaz çünkü R hesaplama yapar, AI sadece sonucu gösterir.
+helpers_mcp_tools$analyze_and_visualize <- function(
+  file_name,
+  analysis_type = "summary",  # summary, filtered_stats, grouped_stats, chart
+  filter_column = NULL,
+  filter_value = NULL,
+  group_column = NULL,
+  stat_column = NULL,
+  stat_function = "mean",  # mean, sum, count, median, min, max
+  chart_type = NULL,  # Türkçe: Grafik istenirse: bar, pie, line, hist, scatter
+  session = NULL
+) {
+  file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
+  res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
+  if (!isTRUE(res$ok)) return(list(error = res$error, ok = FALSE))
+ 
+  # Türkçe: Dosyayı oku
+  dt <- tryCatch({
+    helpers_mcp_tools$safe_read_table_generic(res$path)
+  }, error = function(e) e)
+ 
+  if (inherits(dt, "error")) {
+    return(list(error = sprintf("Dosya okunamadı: %s", dt$message), ok = FALSE))
+  }
+ 
+  display_name <- res$display %||% basename(res$path)
+  result_text <- ""
+  chart_data <- NULL
+ 
+  # Türkçe: Sütun doğrulama
+  available_cols <- names(dt)
+ 
+  # --- 1. FİLTRELEME (filter_column ve filter_value varsa) ---
+  if (!is.null(filter_column) && nzchar(filter_column) &&
+      !is.null(filter_value) && nzchar(filter_value)) {
+ 
+    if (!(filter_column %in% available_cols)) {
+      return(list(
+        error = sprintf("Filtre sütunu '%s' bulunamadı. Mevcut sütunlar: %s",
+                        filter_column, paste(available_cols, collapse = ", ")),
+        ok = FALSE
+      ))
+    }
+ 
+    # Türkçe: Büyük/küçük harf duyarsız filtreleme
+    col_vals <- dt[[filter_column]]
+    if (is.character(col_vals) || is.factor(col_vals)) {
+      filter_mask <- grepl(filter_value, as.character(col_vals), ignore.case = TRUE)
+    } else {
+      # Türkçe: Sayısal sütun için tam eşleşme
+      filter_val_num <- suppressWarnings(as.numeric(filter_value))
+      if (!is.na(filter_val_num)) {
+        filter_mask <- col_vals == filter_val_num
+      } else {
+        filter_mask <- rep(FALSE, nrow(dt))
+      }
+    }
+ 
+    dt <- dt[filter_mask, ]
+ 
+    if (nrow(dt) == 0) {
+      return(list(
+        result = sprintf("### Sonuç Yok\n'%s' sütununda '%s' değeri bulunamadı.",
+                         filter_column, filter_value),
+        ok = TRUE
+      ))
+    }
+ 
+    result_text <- sprintf("**Filtre:** %s = '%s' (%d kayıt)\n\n",
+                           filter_column, filter_value, nrow(dt))
+  }
+ 
+  # --- 2. İSTATİSTİK HESAPLAMA (R yapıyor, AI değil!) ---
+  stat_fun <- switch(tolower(stat_function %||% "mean"),
+    "mean" = function(x) mean(x, na.rm = TRUE),
+    "sum" = function(x) sum(x, na.rm = TRUE),
+    "count" = function(x) sum(!is.na(x)),
+    "median" = function(x) median(x, na.rm = TRUE),
+    "min" = function(x) min(x, na.rm = TRUE),
+    "max" = function(x) max(x, na.rm = TRUE),
+    function(x) mean(x, na.rm = TRUE)
+  )
+ 
+  stat_label <- switch(tolower(stat_function %||% "mean"),
+    "mean" = "Ortalama",
+    "sum" = "Toplam",
+    "count" = "Adet",
+    "median" = "Medyan",
+    "min" = "Minimum",
+    "max" = "Maksimum",
+    "Ortalama"
+  )
+ 
+  # --- 3. ANALİZ TİPİNE GÖRE İŞLEM ---
+  analysis_type <- tolower(analysis_type %||% "summary")
+ 
+  if (analysis_type == "summary") {
+    # Türkçe: Genel özet
+    num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+ 
+    if (length(num_cols) > 0) {
+      summary_rows <- lapply(num_cols, function(cn) {
+        vals <- dt[[cn]]
+        data.frame(
+          Sütun = cn,
+          Ortalama = round(mean(vals, na.rm = TRUE), 2),
+          Medyan = round(median(vals, na.rm = TRUE), 2),
+          Min = round(min(vals, na.rm = TRUE), 2),
+          Max = round(max(vals, na.rm = TRUE), 2),
+          Toplam = round(sum(vals, na.rm = TRUE), 2),
+          stringsAsFactors = FALSE
+        )
+      })
+      summary_df <- do.call(rbind, summary_rows)
+      result_text <- paste0(result_text,
+        sprintf("### Dosya Özeti: %s\n", display_name),
+        sprintf("- **Toplam Satır:** %d\n", nrow(dt)),
+        sprintf("- **Toplam Sütun:** %d\n\n", ncol(dt)),
+        "#### Sayısal Sütun İstatistikleri (R tarafından hesaplandı)\n",
+        helpers_mcp_tools$create_md_table(summary_df)
+      )
+      chart_data <- summary_df
+    } else {
+      result_text <- paste0(result_text,
+        sprintf("### Dosya Özeti: %s\n", display_name),
+        sprintf("- **Toplam Satır:** %d\n", nrow(dt)),
+        sprintf("- **Toplam Sütun:** %d\n", ncol(dt)),
+        sprintf("- **Sütunlar:** %s\n", paste(available_cols, collapse = ", "))
+      )
+    }
+ 
+  } else if (analysis_type == "filtered_stats") {
+    # Türkçe: Filtrelenmiş veri üzerinde istatistik
+    if (is.null(stat_column) || !nzchar(stat_column)) {
+      # Türkçe: stat_column belirtilmemişse ilk sayısal sütunu kullan
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      if (length(num_cols) > 0) {
+        stat_column <- num_cols[1]
+      } else {
+        return(list(error = "Sayısal sütun bulunamadı.", ok = FALSE))
+      }
+    }
+ 
+    if (!(stat_column %in% available_cols)) {
+      return(list(
+        error = sprintf("İstatistik sütunu '%s' bulunamadı.", stat_column),
+        ok = FALSE
+      ))
+    }
+ 
+    vals <- dt[[stat_column]]
+    if (!is.numeric(vals)) {
+      return(list(error = sprintf("'%s' sütunu sayısal değil.", stat_column), ok = FALSE))
+    }
+ 
+    stat_value <- stat_fun(vals)
+ 
+    result_text <- paste0(result_text,
+      sprintf("### %s: %s\n\n", stat_label, stat_column),
+      sprintf("**Sonuç:** %.2f\n\n", stat_value),
+      sprintf("_(Bu değer R tarafından %d kayıt üzerinden hesaplandı)_", nrow(dt))
+    )
+ 
+    chart_data <- data.frame(
+      Metrik = stat_label,
+      Değer = stat_value,
+      stringsAsFactors = FALSE
+    )
+ 
+  } else if (analysis_type == "grouped_stats") {
+    # Türkçe: Gruplandırılmış istatistik (örn: departman bazında ortalama)
+    if (is.null(group_column) || !nzchar(group_column)) {
+      return(list(error = "group_column parametresi gerekli.", ok = FALSE))
+    }
+ 
+    if (!(group_column %in% available_cols)) {
+      return(list(
+        error = sprintf("Gruplama sütunu '%s' bulunamadı.", group_column),
+        ok = FALSE
+      ))
+    }
+ 
+    if (is.null(stat_column) || !nzchar(stat_column)) {
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      if (length(num_cols) > 0) {
+        stat_column <- num_cols[1]
+      } else {
+        return(list(error = "Sayısal sütun bulunamadı.", ok = FALSE))
+      }
+    }
+ 
+    if (!(stat_column %in% available_cols)) {
+      return(list(error = sprintf("İstatistik sütunu '%s' bulunamadı.", stat_column), ok = FALSE))
+    }
+ 
+    # Türkçe: R ile gruplandırılmış hesaplama
+    grouped_result <- aggregate(
+      dt[[stat_column]],
+      by = list(Grup = dt[[group_column]]),
+      FUN = stat_fun
+    )
+    names(grouped_result) <- c(group_column, paste0(stat_label, "_", stat_column))
+ 
+    # Türkçe: Sırala (büyükten küçüğe)
+    grouped_result <- grouped_result[order(grouped_result[[2]], decreasing = TRUE), ]
+ 
+    result_text <- paste0(result_text,
+      sprintf("### %s Bazında %s: %s\n\n", group_column, stat_label, stat_column),
+      helpers_mcp_tools$create_md_table(grouped_result),
+      sprintf("\n\n_(Bu değerler R tarafından %d kayıt üzerinden hesaplandı)_", nrow(dt))
+    )
+ 
+    chart_data <- grouped_result
+ 
+  } else if (analysis_type == "chart") {
+    # Türkçe: Sadece grafik isteniyor
+    # prepare_chart_data'ya yönlendir
+    return(helpers_mcp_tools$prepare_chart_data(
+      file_name = file_name,
+      chart_type = chart_type %||% "bar",
+      x = group_column,
+      y = stat_column,
+      filter_sql = if (!is.null(filter_column) && !is.null(filter_value)) {
+        sprintf("\"%s\" = '%s'", filter_column, filter_value)
+      } else NULL,
+      agg = stat_function,
+      session = session
+    ))
+  }
+ 
+  # --- 4. GRAFİK EKLENSİN Mİ? ---
+  chart_spec <- NULL
+  if (!is.null(chart_type) && nzchar(chart_type) && !is.null(chart_data) && nrow(chart_data) > 0) {
+    # Türkçe: Grafik oluştur
+    chart_spec <- list(
+      type = tolower(chart_type),
+      mapping = list(
+        x = names(chart_data)[1],
+        y = names(chart_data)[2]
+      ),
+      params = list(agg = NULL),  # Türkçe: Zaten agregasyon yapıldı
+      data = as.data.frame(chart_data),
+      schema = as.list(vapply(chart_data, function(z) class(z)[1], character(1))),
+      n = nrow(chart_data)
+    )
+  }
+ 
+  # --- 5. SONUÇ ---
+  if (!is.null(chart_spec)) {
+    return(list(
+      ok = TRUE,
+      `__mcp_plot` = TRUE,
+      result = result_text,
+      chart = chart_spec,
+      message = "Analiz ve grafik hazırlandı."
+    ))
+  } else {
+    return(list(
+      ok = TRUE,
+      result = result_text
+    ))
+  }
+}
+ 
+# ==================================
+# Tool 6: get_distinct_values
 # ==================================
 helpers_mcp_tools$get_distinct_values <- function(file_name, column, limit = 50, session = NULL) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
@@ -1221,6 +1489,17 @@ helpers_mcp_tools$execute_parsed_tool <- function(tc, session = NULL) {
 	  "get_distinct_values"     = helpers_mcp_tools$get_distinct_values(args$file_name, args$column, args$limit %||% 50, session),
 	  "get_column_stats"        = helpers_mcp_tools$get_column_statistics(args$file_name, args$column, session),
 	  "sql_query_uploaded_file" = helpers_mcp_tools$sql_query_uploaded_file(args$file_name, args$sql, session),
+	  "analyze_and_visualize"   = helpers_mcp_tools$analyze_and_visualize(
+		file_name      = args$file_name,
+		analysis_type  = args$analysis_type %||% "summary",
+		filter_column  = args$filter_column,
+		filter_value   = args$filter_value,
+		group_column   = args$group_column,
+		stat_column    = args$stat_column,
+		stat_function  = args$stat_function %||% "mean",
+		chart_type     = args$chart_type,
+		session        = session
+	  ),
 	  "prepare_chart_data"      = helpers_mcp_tools$prepare_chart_data(
 		file_name   = args$file_name,
 		chart_type  = args$chart_type,
@@ -1311,11 +1590,51 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
           )
         )
       ),
+      # Türkçe: YENİ - R-First yaklaşımı ile filtrelenmiş analiz ve grafik
+      list(
+        type = "function",
+        `function` = list(
+          name = "analyze_and_visualize",
+          description = paste0(
+            "FİLTRELENMİŞ İSTATİSTİK VE GRAFİK için bu aracı kullan! ",
+            "Kullanıcı belirli bir gruba/kategoriye göre ortalama, toplam vb. istiyorsa bu araç ZORUNLU. ",
+            "Örnek: 'IT departmanının ortalama maaşı', 'Erkeklerin çalışma saati toplamı'. ",
+            "R tarafından GERÇEK hesaplama yapılır, AI değer UYDURAMAZ!"
+          ),
+          parameters = list(
+            type = "object",
+            properties = list(
+              file_name = list(type = "string", description = "Dosya adı"),
+              analysis_type = list(
+                type = "string",
+                description = paste0(
+                  "Analiz tipi: ",
+                  "'summary' (genel özet), ",
+                  "'filtered_stats' (filtrelenmiş tek istatistik), ",
+                  "'grouped_stats' (gruplandırılmış istatistik), ",
+                  "'chart' (sadece grafik)"
+                )
+              ),
+              filter_column = list(type = "string", description = "Filtreleme yapılacak sütun (örn: 'Departman', 'Cinsiyet')"),
+              filter_value = list(type = "string", description = "Filtreleme değeri (örn: 'IT', 'Erkek')"),
+              group_column = list(type = "string", description = "Gruplama sütunu (grouped_stats için). Örn: 'Departman'"),
+              stat_column = list(type = "string", description = "İstatistik hesaplanacak sayısal sütun (örn: 'Maas', 'CalismaSaati')"),
+              stat_function = list(type = "string", description = "İstatistik fonksiyonu: 'mean', 'sum', 'count', 'median', 'min', 'max'"),
+              chart_type = list(type = "string", description = "Grafik eklensin mi? 'bar', 'pie', 'line', 'hist'. Boş bırakırsan grafik çizilmez.")
+            ),
+            required = list("file_name", "analysis_type")
+          )
+        )
+      ),
 	  list(
         type = "function",
         `function` = list(
           name = "prepare_chart_data",
-          description = "GRAFİK ÇİZER. Dosyayı okur, eksenleri OTOMATİK seçer. Sadece file_name ve chart_type ver, geri kalanı otomatik. Sütun isimlerini bilmene gerek yok!",
+          description = paste0(
+            "GENEL GRAFİK ÇİZER (filtresiz). Dosyanın TAMAMINI görselleştirir. ",
+            "Eksenleri OTOMATİK seçer. Sadece file_name ve chart_type ver. ",
+            "NOT: Filtrelenmiş grafik istiyorsan analyze_and_visualize kullan!"
+          ),
           parameters = list(
             type = "object",
             properties = list(
@@ -1331,7 +1650,7 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
               donut      = list(type = "boolean", description = "Pasta yerine halka (OPSİYONEL)"),
               orientation = list(type = "string", description = "Bar yönü: 'v' veya 'h' (OPSİYONEL)"),
               smooth     = list(type = "boolean", description = "Çizgi yumuşatma (OPSİYONEL)"),
-              filter_sql = list(type = "string", description = "SQL WHERE filtresi (OPSİYONEL)"),
+              filter_sql = list(type = "string", description = "SQL WHERE filtresi (OPSİYONEL, tercih: analyze_and_visualize kullan)"),
               limit      = list(type = "integer", description = "Maksimum satır (OPSİYONEL)")
             ),
             required = list("file_name", "chart_type")
@@ -1345,62 +1664,72 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # ============================
 # Tool-use instruction prompt
 # ============================
+# Türkçe: Bu prompt TÜM modellere gönderilir. Açık ve model-agnostik olmalı.
 helpers_mcp_tools$get_mcp_tools_prompt <- function() {
-  paste(
-    "Sen bir Veri Analisti asistanısın. Excel/CSV dosyalarından grafik çiziyorsun.",
-    "",
-    "## GRAFİK ÇİZME TALİMATI",
-    "",
-    "Kullanıcı grafik istediğinde HEMEN `prepare_chart_data` aracını çağır.",
-    "Bu araç dosyayı okur ve eksenleri OTOMATİK seçer. Sütun isimlerini bilmene GEREK YOK.",
-    "",
-    "### DOĞRUDAN ÇİZ - ÖRNEKler:",
-    "",
-    "```",
-    "Kullanıcı: 'histogram çiz'",
-    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='hist')",
-    "",
-    "Kullanıcı: 'bar grafiği çiz'",
-    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='bar')",
-    "",
-    "Kullanıcı: 'pasta grafiği çiz'",
-    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='pie')",
-    "",
-    "Kullanıcı: 'çizgi grafiği çiz'",
-    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='line')",
-    "",
-    "Kullanıcı: 'scatter plot çiz'",
-    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='scatter')",
-    "",
-    "Kullanıcı: 'pareto grafiği çiz'",
-    "→ prepare_chart_data(file_name='dosya.xlsx', chart_type='pareto')",
-    "```",
-    "",
-    "### GRAFİK TÜRLERİ:",
-    "- histogram/dağılım → chart_type='hist'",
-    "- bar/çubuk/sütun → chart_type='bar'",
-    "- pasta/pie → chart_type='pie'",
-    "- donut/halka → chart_type='donut'",
-    "- çizgi/line/trend → chart_type='line'",
-    "- alan/area → chart_type='area'",
-    "- scatter/saçılım → chart_type='scatter'",
-    "- pareto → chart_type='pareto'",
-    "",
-    "### GRAFİK SAYISI:",
-    "- '1 grafik' veya 'grafik çiz' → 1 kez çağır",
-    "- '2 grafik' → 2 kez çağır",
-    "- 'çeşitli grafikler' → 2-3 kez çağır",
-    "",
-    "### ÇOKLU SERİ (aynı grafikte 2 çizgi):",
-    "→ y='Gelir, Gider' (virgülle ayır)",
-    "",
-    "### ÖNEMLİ:",
-    "- x ve y parametrelerini BOŞ bırakabilirsin, sistem otomatik seçer",
-    "- Sütun isimlerini bilmiyorsan endişelenme, araç otomatik bulur",
-    "- Sadece file_name ve chart_type ZORUNLU, diğerleri opsiyonel",
-    "",
-    "HEMEN prepare_chart_data çağır, analiz yapmana gerek yok!",
-    sep = "\n"
+  paste0(
+    "# VERİ ANALİZİ VE GRAFİK ARAÇLARI KULLANIM KILAVUZU\n\n",
+ 
+    "Sen bir Excel/CSV veri analisti asistanısın. Araçları ZORUNLU olarak kullanmalısın.\n",
+    "ASLA kendi başına istatistik HESAPLAMA veya değer UYDURMA! Tüm hesaplamalar R tarafından yapılır.\n\n",
+ 
+    "## KRİTİK KURAL: HANGİ ARACI NE ZAMAN KULLAN?\n\n",
+ 
+    "### 1️⃣ FİLTRELENMİŞ İSTATİSTİK İSTENİYORSA → `analyze_and_visualize`\n",
+    "Kullanıcı belirli bir kategoriye göre ortalama, toplam, sayı istiyorsa BU ARACI KULLAN!\n\n",
+ 
+    "**Örnekler:**\n",
+    "- 'IT departmanının ortalama maaşı' → analyze_and_visualize(filter_column='Departman', filter_value='IT', stat_function='mean')\n",
+    "- 'Erkeklerin toplam çalışma saati' → analyze_and_visualize(filter_column='Cinsiyet', filter_value='Erkek', stat_function='sum')\n",
+    "- 'Departman bazında ortalama maaş' → analyze_and_visualize(analysis_type='grouped_stats', group_column='Departman', stat_function='mean')\n",
+    "- 'Satış ekibinin performans grafiği' → analyze_and_visualize(filter_column='Departman', filter_value='Satış', chart_type='bar')\n\n",
+ 
+    "### 2️⃣ GENEL GRAFİK İSTENİYORSA (filtresiz) → `prepare_chart_data`\n",
+    "Tüm veriyi görselleştirmek için bu aracı kullan. Eksenler OTOMATİK seçilir.\n\n",
+ 
+    "**Örnekler:**\n",
+    "- 'histogram çiz' → prepare_chart_data(chart_type='hist')\n",
+    "- 'bar grafiği' → prepare_chart_data(chart_type='bar')\n",
+    "- 'pasta grafiği' → prepare_chart_data(chart_type='pie')\n",
+    "- 'çizgi grafiği' → prepare_chart_data(chart_type='line')\n",
+    "- 'scatter plot' → prepare_chart_data(chart_type='scatter')\n\n",
+ 
+    "### 3️⃣ SQL SORGUSU GEREKİYORSA → `sql_query_uploaded_file`\n",
+    "Karmaşık filtreleme, sıralama, gruplama için SQL kullan. Tablo adı: 't'\n\n",
+ 
+    "**Örnekler:**\n",
+    "- 'En yüksek maaşlı 10 kişi' → sql_query_uploaded_file(sql='SELECT * FROM t ORDER BY Maas DESC LIMIT 10')\n",
+    "- '2023 yılı kayıtları' → sql_query_uploaded_file(sql=\"SELECT * FROM t WHERE Yil = 2023\")\n\n",
+ 
+    "### 4️⃣ SÜTUN DEĞERLERİNİ ÖĞRENMEK İÇİN → `get_distinct_values`\n",
+    "Hangi kategoriler var bilmiyorsan önce bu aracı çağır.\n\n",
+ 
+    "## GRAFİK TÜRLERİ SÖZLÜĞÜ:\n",
+    "| Kullanıcı Terimi | chart_type |\n",
+    "|------------------|------------|\n",
+    "| histogram, dağılım | 'hist' |\n",
+    "| bar, çubuk, sütun | 'bar' |\n",
+    "| pasta, pie | 'pie' |\n",
+    "| halka, donut | 'donut' |\n",
+    "| çizgi, line, trend | 'line' |\n",
+    "| alan, area | 'area' |\n",
+    "| scatter, saçılım | 'scatter' |\n",
+    "| pareto | 'pareto' |\n\n",
+ 
+    "## ZORUNLU KURALLAR:\n",
+    "1. ❌ ASLA kendi başına değer UYDURMA! Araç kullan.\n",
+    "2. ❌ ASLA sütun adı TAHMIN ETME! Araç otomatik seçer veya get_distinct_values ile öğren.\n",
+    "3. ✅ Filtrelenmiş istatistik = analyze_and_visualize\n",
+    "4. ✅ Genel grafik = prepare_chart_data\n",
+    "5. ✅ Her grafik isteği için EN AZ BİR araç çağır\n",
+    "6. ✅ Birden fazla grafik istenirse birden fazla araç çağır\n\n",
+ 
+    "## ARAÇ ÇAĞIRMA FORMATI:\n",
+    "Her araç çağrısı şu formatta olmalı:\n",
+    "```json\n",
+    "{\"name\": \"araç_adı\", \"arguments\": {\"param1\": \"değer1\", \"param2\": \"değer2\"}}\n",
+    "```\n\n",
+ 
+    "ŞİMDİ kullanıcının talebine göre UYGUN ARACI ÇAĞıR!"
   )
 }
 
@@ -1517,6 +1846,7 @@ environment(helpers_mcp_tools$analyze_uploaded_file)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$get_column_statistics)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$sql_query_uploaded_file) <- helpers_mcp_tools
 environment(helpers_mcp_tools$prepare_chart_data)      <- helpers_mcp_tools
+environment(helpers_mcp_tools$analyze_and_visualize)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$resolve_file_argument)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$normalize_excel_path)    <- helpers_mcp_tools
 environment(helpers_mcp_tools$safe_read_excel_table)   <- helpers_mcp_tools

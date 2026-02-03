@@ -77,35 +77,37 @@ wire_chart_output <- function(output, out_id, spec) {
   first_or_null <- function(x) if (length(x)) x[[1]] else NULL
 
   # -------- auto guess missing mapping/type + sanitize mapping ----------
+  # Türkçe: Geliştirilmiş eksen tahmini ve hata kontrolü
   auto_guess <- function(sp) {
     sp$type    <- tolower(sp$type %||% "")
     # box/boxplot hard-fallback
     if (sp$type %in% c("box","boxplot","box_plot","bx")) sp$type <- "hist"
     sp$mapping <- sp$mapping %||% list()
-    
+ 
     df <- sp$data
     if (is.null(df) || !is.data.frame(df)) return(sp)
-
-    # Helper functions
+ 
+    # Türkçe: Yardımcı fonksiyonlar
     is_num <- function(v) is.numeric(v)
     is_date <- function(v) inherits(v, c("Date","POSIXct","POSIXt"))
     first_or_null <- function(x) if (length(x)) x[[1]] else NULL
-
-    # Sütun tiplerini daha hassas ayır
+ 
+    # Türkçe: Sütun tiplerini daha hassas ayır
     date_cols <- names(df)[vapply(df, is_date, logical(1))]
     num_cols  <- names(df)[vapply(df, is_num, logical(1))]
     cat_cols  <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
-
-    # String formatında tarih varsa yakala
+ 
+    # Türkçe: String formatında tarih varsa yakala (genişletilmiş kalıp)
     if (length(date_cols) == 0 && length(cat_cols) > 0) {
-      candidates <- grep("date|tarih|zaman|time|yil|year|month|ay", tolower(cat_cols), value = TRUE)
+      date_pattern <- "date|tarih|zaman|time|yil|year|month|ay|period|donem|gun|day|hafta|week"
+      candidates <- grep(date_pattern, tolower(cat_cols), value = TRUE)
       if (length(candidates) > 0) {
         date_cols <- candidates
         cat_cols <- setdiff(cat_cols, candidates)
       }
     }
-
-    # Mapping normalizasyonu
+ 
+    # Türkçe: Mapping normalizasyonu (geçersiz sütunları temizle)
     norm_map <- function(v) {
       if (is.null(v)) return(NULL)
       vv <- as.character(v)
@@ -114,12 +116,28 @@ wire_chart_output <- function(output, out_id, spec) {
       if (!length(vv)) return(NULL)
       vv[[1]]
     }
+ 
     x_ex <- norm_map(sp$mapping$x)
     y_ex <- norm_map(sp$mapping$y)
     g_ex <- norm_map(sp$mapping$group)
-
+ 
+    # Türkçe: KRİTİK - Belirtilen sütunlar gerçekten var mı kontrol et
+    all_cols <- names(df)
+    if (!is.null(x_ex) && !(x_ex %in% all_cols)) {
+      cat("[CHARTLAB] UYARI: x='", x_ex, "' sütunu yok, otomatik seçilecek\n", sep = "")
+      x_ex <- NULL
+    }
+    if (!is.null(y_ex) && !(y_ex %in% all_cols)) {
+      cat("[CHARTLAB] UYARI: y='", y_ex, "' sütunu yok, otomatik seçilecek\n", sep = "")
+      y_ex <- NULL
+    }
+    if (!is.null(g_ex) && !(g_ex %in% all_cols)) {
+      cat("[CHARTLAB] UYARI: group='", g_ex, "' sütunu yok, görmezden geliniyor\n", sep = "")
+      g_ex <- NULL
+    }
+ 
     known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
-    
+ 
     # 1. Grafik Türü Tahmini
     if (!nzchar(sp$type) || !(sp$type %in% known)) {
       if (length(date_cols) > 0 && length(num_cols) > 0) {
@@ -133,32 +151,54 @@ wire_chart_output <- function(output, out_id, spec) {
       } else {
         sp$type <- "bar"
       }
+      cat("[CHARTLAB] Grafik türü otomatik seçildi: ", sp$type, "\n", sep = "")
     }
-
+ 
     x <- x_ex; y <- y_ex; g <- g_ex
-
-    # 2. Eksen Tahmini
+ 
+    # 2. Eksen Tahmini (geliştirilmiş)
     if (sp$type %in% c("line", "area")) {
       if (is.null(x)) x <- first_or_null(date_cols)
       if (is.null(x)) x <- first_or_null(num_cols)
       if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
-      if (is.null(g)) g <- first_or_null(cat_cols)
-      
-    } else if (sp$type %in% c("bar", "column", "pie", "donut", "pareto")) {
+      if (is.null(g) && length(cat_cols) > 0) g <- first_or_null(cat_cols)
+ 
+    } else if (sp$type %in% c("bar", "column")) {
       if (is.null(x)) x <- first_or_null(cat_cols)
       if (is.null(x)) x <- first_or_null(date_cols)
+      if (is.null(x)) x <- names(df)[1]  # Türkçe: Son çare - ilk sütun
       if (is.null(y)) y <- first_or_null(num_cols)
-      
+ 
+    } else if (sp$type %in% c("pie", "donut")) {
+      if (is.null(x)) x <- first_or_null(cat_cols)
+      if (is.null(x)) x <- names(df)[1]  # Türkçe: Son çare
+      if (is.null(y)) y <- first_or_null(num_cols)
+ 
+    } else if (sp$type == "pareto") {
+      if (is.null(x)) x <- first_or_null(cat_cols)
+      if (is.null(y)) y <- first_or_null(num_cols)
+ 
     } else if (sp$type == "scatter") {
       if (is.null(x)) x <- first_or_null(num_cols)
       if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
-      if (is.null(g)) g <- first_or_null(cat_cols)
-      
+      if (is.null(g) && length(cat_cols) > 0) g <- first_or_null(cat_cols)
+ 
     } else if (sp$type == "hist") {
       if (is.null(x)) x <- first_or_null(num_cols)
+      y <- NULL  # Türkçe: Histogram için y ekseni olmamalı
     }
-
-    sp$mapping$x <- x; sp$mapping$y <- y; sp$mapping$group <- g
+ 
+    # Türkçe: Final kontrol - hâlâ eksik mi?
+    if (is.null(x) && sp$type != "hist") {
+      cat("[CHARTLAB] UYARI: x ekseni bulunamadı, ilk sütun kullanılıyor\n")
+      x <- names(df)[1]
+    }
+ 
+    sp$mapping$x <- x
+    sp$mapping$y <- y
+    sp$mapping$group <- g
+ 
+    cat("[CHARTLAB] Final mapping: x=", x %||% "NULL", ", y=", y %||% "NULL", ", group=", g %||% "NULL", "\n", sep = "")
     sp
   }
 
