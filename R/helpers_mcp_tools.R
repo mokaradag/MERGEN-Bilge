@@ -599,6 +599,175 @@ helpers_mcp_tools$safe_has_duckdb <- function() {
 }
 
 # ============================
+# Akıllı Sütun Eşleştirme ve Dosya Şeması
+# ============================
+
+# Dosya şemasını AI için okunabilir formatta çıkar
+helpers_mcp_tools$extract_mcp_file_schema <- function(file_name, session = NULL) {
+  file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
+  res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
+  if (!isTRUE(res$ok)) return(NULL)
+
+  path <- res$path
+  dt <- tryCatch({
+    helpers_mcp_tools$safe_read_table_generic(path)
+  }, error = function(e) NULL)
+
+  if (is.null(dt) || nrow(dt) == 0) return(NULL)
+
+  col_names <- names(dt)
+  col_types <- vapply(dt, function(x) class(x)[1], character(1))
+
+  # Her sütun için detaylı bilgi oluştur
+  schema_lines <- vapply(seq_along(col_names), function(i) {
+    cn <- col_names[i]
+    ct <- col_types[i]
+    vals <- dt[[cn]]
+
+    type_tr <- switch(ct,
+      "numeric" = "Sayısal",
+      "integer" = "Tam Sayı",
+      "character" = "Metin",
+      "factor" = "Kategori",
+      "Date" = "Tarih",
+      "POSIXct" = "Tarih/Saat",
+      "POSIXt" = "Tarih/Saat",
+      "logical" = "Mantıksal",
+      ct
+    )
+
+    if (ct %in% c("character", "factor")) {
+      # Kategorik sütun: benzersiz değerleri göster
+      unique_vals <- unique(as.character(vals))
+      unique_vals <- unique_vals[!is.na(unique_vals)]
+      unique_count <- length(unique_vals)
+
+      if (unique_count <= 15) {
+        sample_text <- paste(unique_vals, collapse = ", ")
+      } else {
+        sample_text <- paste0(paste(head(unique_vals, 10), collapse = ", "), " ... (toplam ", unique_count, " farklı değer)")
+      }
+      sprintf("  - **%s** (%s): Değerler = [%s]", cn, type_tr, sample_text)
+    } else if (ct %in% c("numeric", "integer")) {
+      # Sayısal sütun: istatistikler
+      vals_num <- suppressWarnings(as.numeric(vals))
+      vals_num <- vals_num[!is.na(vals_num)]
+      if (length(vals_num) > 0) {
+        mn <- round(min(vals_num), 2)
+        mx <- round(max(vals_num), 2)
+        avg <- round(mean(vals_num), 2)
+        sprintf("  - **%s** (%s): Min=%s, Max=%s, Ort=%s", cn, type_tr, mn, mx, avg)
+      } else {
+        sprintf("  - **%s** (%s): Boş veya geçersiz", cn, type_tr)
+      }
+    } else {
+      sprintf("  - **%s** (%s)", cn, type_tr)
+    }
+  }, character(1))
+
+  display_name <- res$display %||% basename(path)
+
+  paste0(
+    "## DOSYA ŞEMASI: ", display_name, "\n",
+    "**Toplam Satır:** ", nrow(dt), " | **Toplam Sütun:** ", ncol(dt), "\n\n",
+    "### SÜTUNLAR (GERÇEK İSİMLER):\n",
+    paste(schema_lines, collapse = "\n"),
+    "\n\n**ÖNEMLİ:** Araç çağrılarında yukarıdaki GERÇEK sütun isimlerini kullan!"
+  )
+}
+
+# Akıllı sütun eşleştirme: Türkçe prompt'tan İngilizce sütun adı bul
+helpers_mcp_tools$find_matching_column <- function(search_term, available_columns, context = NULL) {
+  if (is.null(search_term) || !nzchar(search_term)) return(NULL)
+  if (is.null(available_columns) || length(available_columns) == 0) return(NULL)
+
+  search_lower <- tolower(trimws(search_term))
+  cols_lower <- tolower(available_columns)
+
+  # 1. Tam eşleşme kontrolü
+  exact_match <- which(cols_lower == search_lower)
+  if (length(exact_match) > 0) return(available_columns[exact_match[1]])
+
+  # 2. Kısmi eşleşme (sütun adı arama terimini içeriyor)
+  partial_match <- which(grepl(search_lower, cols_lower, fixed = TRUE))
+  if (length(partial_match) > 0) return(available_columns[partial_match[1]])
+
+  # 3. Ters kısmi eşleşme (arama terimi sütun adını içeriyor)
+  reverse_match <- which(vapply(cols_lower, function(c) grepl(c, search_lower, fixed = TRUE), logical(1)))
+  if (length(reverse_match) > 0) return(available_columns[reverse_match[1]])
+
+  # 4. Normalize edilmiş eşleşme (alt çizgi, tire, boşluk yok say)
+  normalize <- function(s) {
+    s <- tolower(s)
+    s <- gsub("[_\\-\\s]+", "", s)
+    s <- gsub("ı", "i", s)
+    s <- gsub("ğ", "g", s)
+    s <- gsub("ü", "u", s)
+    s <- gsub("ş", "s", s)
+    s <- gsub("ö", "o", s)
+    s <- gsub("ç", "c", s)
+    s
+  }
+
+  search_norm <- normalize(search_lower)
+  cols_norm <- vapply(cols_lower, normalize, character(1))
+
+  norm_match <- which(cols_norm == search_norm)
+  if (length(norm_match) > 0) return(available_columns[norm_match[1]])
+
+  # 5. Kelime kökü eşleştirme
+  norm_partial <- which(grepl(search_norm, cols_norm, fixed = TRUE) |
+                        vapply(cols_norm, function(c) grepl(c, search_norm, fixed = TRUE), logical(1)))
+  if (length(norm_partial) > 0) return(available_columns[norm_partial[1]])
+
+  # 6. Yaygın Türkçe-İngilizce eşleştirmeler (dinamik, hardcode değil)
+  # AI'ın semantik anlayışına bırakıyoruz, burada sadece yaygın kısaltmalar
+  common_patterns <- list(
+    "dept|bolum|birim" = "department|dept|bolum|birim|unit",
+    "maas|ucret|gelir|salary" = "salary|wage|income|pay|maas|ucret|gelir",
+    "performans|perf|basari" = "performance|perf|score|rating|basari",
+    "yas|age|yasi" = "age|yas|yasi|year",
+    "isim|ad|name" = "name|isim|ad|adi",
+    "tarih|date|gun" = "date|tarih|gun|day|time",
+    "miktar|adet|sayi" = "count|amount|quantity|miktar|adet|sayi|number",
+    "cinsiyet|gender" = "gender|sex|cinsiyet",
+    "sure|saat|zaman|hour" = "hour|time|duration|sure|saat|zaman",
+    "toplam|total|sum" = "total|sum|toplam"
+  )
+
+  for (pattern_group in names(common_patterns)) {
+    if (grepl(pattern_group, search_norm, perl = TRUE)) {
+      target_patterns <- unlist(strsplit(common_patterns[[pattern_group]], "\\|"))
+      for (tp in target_patterns) {
+        match_idx <- which(grepl(tp, cols_norm, fixed = TRUE))
+        if (length(match_idx) > 0) return(available_columns[match_idx[1]])
+      }
+    }
+  }
+
+  # Eşleşme bulunamadı
+  NULL
+}
+
+# Birden fazla sütun için akıllı eşleştirme
+helpers_mcp_tools$find_columns_by_context <- function(dt, search_terms) {
+  if (is.null(dt) || !is.data.frame(dt)) return(list())
+  if (is.null(search_terms) || length(search_terms) == 0) return(list())
+
+  available_columns <- names(dt)
+  results <- list()
+
+  for (term in search_terms) {
+    found <- helpers_mcp_tools$find_matching_column(term, available_columns)
+    if (!is.null(found)) {
+      results[[term]] <- found
+    }
+  }
+
+  results
+}
+
+# ============================
 # Argument normalizer
 # ============================
 helpers_mcp_tools$normalize_args <- function(args) {
@@ -886,36 +1055,63 @@ helpers_mcp_tools$prepare_chart_data <- function(
     return(list(error = sprintf("Dosya okunamadı: %s — %s", basename(res$path), dt$message), ok = FALSE))
   }
   
-  # --- Türkçe yorum: Sütun doğrulama ---
-  # Model geçersiz sütun adı verdiyse, temizle ve otomatik seçime bırak
+  # --- Türkçe yorum: Sütun doğrulama ve akıllı eşleştirme ---
+  # Model geçersiz sütun adı verdiyse, önce akıllı eşleştirme dene, bulamazsa otomatik seçime bırak
   available_cols <- names(dt)
- 
-  # Türkçe yorum: x parametresi geçersizse temizle
-  if (!is.null(x) && nzchar(x) && !(x %in% available_cols)) {
-    cat("[CHART] x='", x, "' sütunu bulunamadı, otomatik seçilecek\n", sep = "")
-    x <- NULL
+
+  # Türkçe: Akıllı sütun eşleştirme fonksiyonu
+  smart_match_column <- function(col_name, col_type = "any") {
+    if (is.null(col_name) || !nzchar(col_name)) return(NULL)
+    if (col_name %in% available_cols) return(col_name)
+
+    # Akıllı eşleştirme dene
+    matched <- helpers_mcp_tools$find_matching_column(col_name, available_cols)
+    if (!is.null(matched)) {
+      cat("[CHART_SMART_MATCH] '", col_name, "' -> '", matched, "'\n", sep = "")
+      return(matched)
+    }
+    NULL
   }
- 
-  # Türkçe yorum: y parametresi geçersizse temizle (virgüllü çoklu y'yi de kontrol et)
-  if (!is.null(y) && nzchar(y)) {
-    y_parts <- trimws(strsplit(as.character(y), ",")[[1]])
-    invalid_y <- setdiff(y_parts, available_cols)
-    if (length(invalid_y) > 0) {
-      cat("[CHART] y sütunları bulunamadı: ", paste(invalid_y, collapse = ", "), ", otomatik seçilecek\n", sep = "")
-      # Türkçe yorum: Geçerli olanları tut, hiçbiri geçerli değilse NULL yap
-      valid_y <- intersect(y_parts, available_cols)
-      if (length(valid_y) > 0) {
-        y <- paste(valid_y, collapse = ", ")
-      } else {
-        y <- NULL
-      }
+
+  # Türkçe yorum: x parametresini akıllı eşleştir
+  if (!is.null(x) && nzchar(x) && !(x %in% available_cols)) {
+    matched_x <- smart_match_column(x)
+    if (!is.null(matched_x)) {
+      x <- matched_x
+    } else {
+      cat("[CHART] x='", x, "' sütunu bulunamadı, otomatik seçilecek\n", sep = "")
+      x <- NULL
     }
   }
- 
-  # Türkçe yorum: group parametresi geçersizse temizle
+
+  # Türkçe yorum: y parametresini akıllı eşleştir (virgüllü çoklu y'yi de kontrol et)
+  if (!is.null(y) && nzchar(y)) {
+    y_parts <- trimws(strsplit(as.character(y), ",")[[1]])
+    resolved_y <- vapply(y_parts, function(yp) {
+      if (yp %in% available_cols) return(yp)
+      matched <- smart_match_column(yp)
+      if (!is.null(matched)) return(matched)
+      return("")
+    }, character(1))
+    resolved_y <- resolved_y[nzchar(resolved_y)]
+
+    if (length(resolved_y) > 0) {
+      y <- paste(resolved_y, collapse = ", ")
+    } else {
+      cat("[CHART] y sütunları bulunamadı: ", paste(y_parts, collapse = ", "), ", otomatik seçilecek\n", sep = "")
+      y <- NULL
+    }
+  }
+
+  # Türkçe yorum: group parametresini akıllı eşleştir
   if (!is.null(group) && nzchar(group) && !(group %in% available_cols)) {
-    cat("[CHART] group='", group, "' sütunu bulunamadı, otomatik seçilecek\n", sep = "")
-    group <- NULL
+    matched_group <- smart_match_column(group)
+    if (!is.null(matched_group)) {
+      group <- matched_group
+    } else {
+      cat("[CHART] group='", group, "' sütunu bulunamadı, otomatik seçilecek\n", sep = "")
+      group <- NULL
+    }
   }
 
   # --- Türkçe yorum: Pie/Donut için zorunlu ayarlamalar ---
@@ -1195,21 +1391,83 @@ helpers_mcp_tools$analyze_and_visualize <- function(
   display_name <- res$display %||% basename(res$path)
   result_text <- ""
   chart_data <- NULL
- 
+
   # Türkçe: Sütun doğrulama
   available_cols <- names(dt)
- 
+
+  # --- AKILLI SÜTUN EŞLEŞTİRME ---
+  # Türkçe: AI yanlış/eksik sütun adı verdiyse, akıllı eşleştirme ile düzelt
+  smart_resolve_column <- function(col_name, col_type_hint = "any") {
+    if (is.null(col_name) || !nzchar(col_name)) return(NULL)
+
+    # Direkt eşleşme varsa kullan
+    if (col_name %in% available_cols) return(col_name)
+
+    # Akıllı eşleştirme dene
+    matched <- helpers_mcp_tools$find_matching_column(col_name, available_cols)
+    if (!is.null(matched)) {
+      cat("[SMART_MATCH] '", col_name, "' -> '", matched, "'\n", sep = "")
+      return(matched)
+    }
+
+    # Tip ipucu ile eşleştirme (örn: sayısal sütun gerekiyorsa)
+    if (col_type_hint == "numeric") {
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      if (length(num_cols) > 0) {
+        # Sütun adında arama terimi var mı kontrol et
+        for (nc in num_cols) {
+          if (grepl(tolower(col_name), tolower(nc), fixed = TRUE) ||
+              grepl(tolower(nc), tolower(col_name), fixed = TRUE)) {
+            cat("[SMART_MATCH] Sayısal tip eşleşmesi: '", col_name, "' -> '", nc, "'\n", sep = "")
+            return(nc)
+          }
+        }
+      }
+    } else if (col_type_hint == "categorical") {
+      cat_cols <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
+      if (length(cat_cols) > 0) {
+        for (cc in cat_cols) {
+          if (grepl(tolower(col_name), tolower(cc), fixed = TRUE) ||
+              grepl(tolower(cc), tolower(col_name), fixed = TRUE)) {
+            cat("[SMART_MATCH] Kategorik tip eşleşmesi: '", col_name, "' -> '", cc, "'\n", sep = "")
+            return(cc)
+          }
+        }
+      }
+    }
+
+    NULL
+  }
+
   # --- 1. FİLTRELEME (filter_column ve filter_value varsa) ---
   if (!is.null(filter_column) && nzchar(filter_column) &&
       !is.null(filter_value) && nzchar(filter_value)) {
- 
-    if (!(filter_column %in% available_cols)) {
+
+    # Akıllı sütun eşleştirme
+    resolved_filter_column <- smart_resolve_column(filter_column, "categorical")
+
+    if (is.null(resolved_filter_column)) {
+      # Sütun bulunamadı - mevcut sütunları ve değerlerini göster
+      col_info <- vapply(available_cols, function(cn) {
+        if (is.character(dt[[cn]]) || is.factor(dt[[cn]])) {
+          unique_vals <- head(unique(as.character(dt[[cn]])), 5)
+          sprintf("'%s' (değerler: %s)", cn, paste(unique_vals, collapse = ", "))
+        } else {
+          sprintf("'%s' (sayısal)", cn)
+        }
+      }, character(1))
+
       return(list(
-        error = sprintf("Filtre sütunu '%s' bulunamadı. Mevcut sütunlar: %s",
-                        filter_column, paste(available_cols, collapse = ", ")),
+        error = sprintf(
+          "Filtre sütunu '%s' bulunamadı.\n\nMevcut sütunlar ve örnek değerler:\n%s\n\nLütfen yukarıdaki GERÇEK sütun isimlerinden birini kullanın.",
+          filter_column, paste(col_info, collapse = "\n")
+        ),
         ok = FALSE
       ))
     }
+
+    # Çözülen sütun adını kullan
+    filter_column <- resolved_filter_column
  
     # Türkçe: Büyük/küçük harf duyarsız filtreleme
     col_vals <- dt[[filter_column]]
@@ -1308,47 +1566,72 @@ helpers_mcp_tools$analyze_and_visualize <- function(
       } else {
         return(list(error = "Sayısal sütun bulunamadı.", ok = FALSE))
       }
+    } else {
+      # Akıllı sütun eşleştirme
+      resolved_stat_column <- smart_resolve_column(stat_column, "numeric")
+      if (!is.null(resolved_stat_column)) {
+        stat_column <- resolved_stat_column
+      }
     }
- 
+
     if (!(stat_column %in% available_cols)) {
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
       return(list(
-        error = sprintf("İstatistik sütunu '%s' bulunamadı.", stat_column),
+        error = sprintf("İstatistik sütunu '%s' bulunamadı.\nMevcut sayısal sütunlar: %s",
+                        stat_column, paste(num_cols, collapse = ", ")),
         ok = FALSE
       ))
     }
- 
+
     vals <- dt[[stat_column]]
     if (!is.numeric(vals)) {
       return(list(error = sprintf("'%s' sütunu sayısal değil.", stat_column), ok = FALSE))
     }
- 
+
     stat_value <- stat_fun(vals)
- 
+
     result_text <- paste0(result_text,
       sprintf("### %s: %s\n\n", stat_label, stat_column),
       sprintf("**Sonuç:** %.2f\n\n", stat_value),
       sprintf("_(Bu değer R tarafından %d kayıt üzerinden hesaplandı)_", nrow(dt))
     )
- 
+
     chart_data <- data.frame(
       Metrik = stat_label,
       Değer = stat_value,
       stringsAsFactors = FALSE
     )
- 
+
   } else if (analysis_type == "grouped_stats") {
     # Türkçe: Gruplandırılmış istatistik (örn: departman bazında ortalama)
     if (is.null(group_column) || !nzchar(group_column)) {
-      return(list(error = "group_column parametresi gerekli.", ok = FALSE))
+      # Kategorik sütun yoksa hata ver
+      cat_cols <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
+      if (length(cat_cols) > 0) {
+        return(list(
+          error = sprintf("group_column parametresi gerekli.\nMevcut kategorik sütunlar: %s", paste(cat_cols, collapse = ", ")),
+          ok = FALSE
+        ))
+      } else {
+        return(list(error = "group_column parametresi gerekli ve kategorik sütun bulunamadı.", ok = FALSE))
+      }
     }
- 
+
+    # Akıllı sütun eşleştirme - group_column
+    resolved_group_column <- smart_resolve_column(group_column, "categorical")
+    if (!is.null(resolved_group_column)) {
+      group_column <- resolved_group_column
+    }
+
     if (!(group_column %in% available_cols)) {
+      cat_cols <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
       return(list(
-        error = sprintf("Gruplama sütunu '%s' bulunamadı.", group_column),
+        error = sprintf("Gruplama sütunu '%s' bulunamadı.\nMevcut kategorik sütunlar: %s",
+                        group_column, paste(cat_cols, collapse = ", ")),
         ok = FALSE
       ))
     }
- 
+
     if (is.null(stat_column) || !nzchar(stat_column)) {
       num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
       if (length(num_cols) > 0) {
@@ -1356,10 +1639,21 @@ helpers_mcp_tools$analyze_and_visualize <- function(
       } else {
         return(list(error = "Sayısal sütun bulunamadı.", ok = FALSE))
       }
+    } else {
+      # Akıllı sütun eşleştirme - stat_column
+      resolved_stat_column <- smart_resolve_column(stat_column, "numeric")
+      if (!is.null(resolved_stat_column)) {
+        stat_column <- resolved_stat_column
+      }
     }
- 
+
     if (!(stat_column %in% available_cols)) {
-      return(list(error = sprintf("İstatistik sütunu '%s' bulunamadı.", stat_column), ok = FALSE))
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      return(list(
+        error = sprintf("İstatistik sütunu '%s' bulunamadı.\nMevcut sayısal sütunlar: %s",
+                        stat_column, paste(num_cols, collapse = ", ")),
+        ok = FALSE
+      ))
     }
  
     # Türkçe: R ile gruplandırılmış hesaplama
@@ -1665,21 +1959,43 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
 # Tool-use instruction prompt
 # ============================
 # Türkçe: Bu prompt TÜM modellere gönderilir. Açık ve model-agnostik olmalı.
-helpers_mcp_tools$get_mcp_tools_prompt <- function() {
+# file_schema parametresi ile dosya şeması da eklenebilir.
+helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
+  # Dosya şeması varsa başta ekle
+  schema_section <- ""
+  if (!is.null(file_schema) && nzchar(file_schema)) {
+    schema_section <- paste0(
+      "# 📊 YÜKLÜ DOSYA BİLGİSİ\n\n",
+      file_schema, "\n\n",
+      "---\n\n",
+      "**ÖNEMLİ:** Yukarıdaki şemada gördüğün GERÇEK sütun isimlerini kullan!\n",
+      "Kullanıcı Türkçe terim kullanırsa, şemadaki İngilizce karşılığını bul.\n",
+      "Örnek: Kullanıcı 'departman' derse → şemada 'Department' sütununu kullan.\n\n",
+      "---\n\n"
+    )
+  }
+
   paste0(
+    schema_section,
     "# VERİ ANALİZİ VE GRAFİK ARAÇLARI KULLANIM KILAVUZU\n\n",
- 
+
     "Sen bir Excel/CSV veri analisti asistanısın. Araçları ZORUNLU olarak kullanmalısın.\n",
     "ASLA kendi başına istatistik HESAPLAMA veya değer UYDURMA! Tüm hesaplamalar R tarafından yapılır.\n\n",
- 
+
+    "## ⚠️ SÜTUN İSİMLERİ İÇİN KRİTİK KURAL:\n",
+    "1. Yukarıdaki dosya şemasında GERÇEK sütun isimlerini gör\n",
+    "2. Kullanıcının Türkçe terimi ile şemadaki İngilizce sütunu eşleştir\n",
+    "3. Araç çağrılarında SADECE şemadaki gerçek sütun isimlerini kullan\n",
+    "4. Şemada olmayan sütun ismi KULLANMA - hata alırsın!\n\n",
+
     "## KRİTİK KURAL: HANGİ ARACI NE ZAMAN KULLAN?\n\n",
- 
+
     "### 1️⃣ FİLTRELENMİŞ İSTATİSTİK İSTENİYORSA → `analyze_and_visualize`\n",
     "Kullanıcı belirli bir kategoriye göre ortalama, toplam, sayı istiyorsa BU ARACI KULLAN!\n\n",
- 
+
     "**Örnekler:**\n",
-    "- 'IT departmanının ortalama maaşı' → analyze_and_visualize(filter_column='Departman', filter_value='IT', stat_function='mean')\n",
-    "- 'Erkeklerin toplam çalışma saati' → analyze_and_visualize(filter_column='Cinsiyet', filter_value='Erkek', stat_function='sum')\n",
+    "- 'IT departmanının ortalama maaşı' → analyze_and_visualize(filter_column='Department', filter_value='IT', stat_function='mean')\n",
+    "- 'Erkeklerin toplam çalışma saati' → analyze_and_visualize(filter_column='Gender', filter_value='Male', stat_function='sum')\n",
     "- 'Departman bazında ortalama maaş' → analyze_and_visualize(analysis_type='grouped_stats', group_column='Departman', stat_function='mean')\n",
     "- 'Satış ekibinin performans grafiği' → analyze_and_visualize(filter_column='Departman', filter_value='Satış', chart_type='bar')\n\n",
  
@@ -1837,7 +2153,9 @@ helpers_mcp_tools$parse_tool_calls_from_text <- function(text) {
 # Public wrappers (used by global.R)
 # ============================
 get_openai_tools              <- function(session = NULL) helpers_mcp_tools$get_openai_tools(session)
-get_mcp_tools_prompt          <- function()               helpers_mcp_tools$get_mcp_tools_prompt()
+get_mcp_tools_prompt          <- function(file_schema = NULL) helpers_mcp_tools$get_mcp_tools_prompt(file_schema)
+extract_mcp_file_schema       <- function(file_name, session = NULL) helpers_mcp_tools$extract_mcp_file_schema(file_name, session)
+find_matching_column          <- function(search_term, available_columns, context = NULL) helpers_mcp_tools$find_matching_column(search_term, available_columns, context)
 parse_tool_calls_from_text    <- function(x)              helpers_mcp_tools$parse_tool_calls_from_text(x)
 execute_parsed_tool           <- function(tc, session=NULL) helpers_mcp_tools$execute_parsed_tool(tc, session)
 register_session_file         <- function(session, token, path, nm=NULL) helpers_mcp_tools$register_uploaded_file(session, token, path, nm)
@@ -1853,3 +2171,5 @@ environment(helpers_mcp_tools$safe_read_excel_table)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$safe_read_table_generic) <- helpers_mcp_tools
 environment(helpers_mcp_tools$get_default_file_name)   <- helpers_mcp_tools
 environment(helpers_mcp_tools$auto_file_name)          <- helpers_mcp_tools
+environment(helpers_mcp_tools$extract_mcp_file_schema) <- helpers_mcp_tools
+environment(helpers_mcp_tools$find_matching_column)    <- helpers_mcp_tools
