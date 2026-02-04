@@ -2,81 +2,27 @@
 
 server <- function(input, output, session) {
 
-  # ==== FIX: copy uploads to MCP base immediately ====
-  mcp_saved_path <- reactiveVal(NULL)
-  
-  # per-session MCP cache (stores read-ready copies on the local disk)
-  cache_root <- getOption(
-    "mergen.session_cache_dir",
-    normalizePath(file.path(tempdir(), "mergen_session_cache"), winslash = "/", mustWork = FALSE)
-  )
-  dir.create(cache_root, recursive = TRUE, showWarnings = FALSE)
-  cache_root <- safe_windows_short_path(cache_root, must_exist = dir.exists(cache_root))
-
-  cache_session_token <- function(tok) {
-    if (is.null(tok) || !nzchar(tok)) {
-      return(sprintf("sess_%s", format(Sys.time(), "%Y%m%d%H%M%S")))
-    }
-    gsub("[^A-Za-z0-9_-]", "_", tok)
-  }
-
-  cache_mcp_file_locally <- function(src_path) {
-    src_path_chr <- as.character(src_path %||% "")
-    if (!nzchar(src_path_chr) || !path_exists_relaxed(src_path_chr)) {
-      return(NULL)
-    }
-    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    dest <- file.path(cache_dir, basename(src_path_chr))
-    src_for_copy <- try(normalize_excel_path(src_path_chr), silent = TRUE)
-    if (inherits(src_for_copy, "try-error") || is.null(src_for_copy) || !nzchar(src_for_copy)) {
-      src_for_copy <- src_path_chr
-    }
-    copied <- FALSE
-    try({
-      copied <- isTRUE(file.copy(src_for_copy, dest, overwrite = TRUE))
-    }, silent = TRUE)
-    if (!copied && !path_exists_relaxed(dest)) {
-      return(NULL)
-    }
-    dest_norm <- tryCatch(normalizePath(dest, winslash = "/", mustWork = FALSE), error = function(e) dest)
-    if (path_exists_relaxed(dest_norm)) {
-      dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
-    }
-    dest_norm
-  }
+  # ==========================================================================
+  # OTURUM ÖNBELLEK VE MCP KAYIT DEFTERİ MODÜLÜNÜ BAŞLAT (R/server_session_cache.R)
+  # ==========================================================================
+  session_cache <- sessionCacheInit(session)
+  mcp_saved_path <- session_cache$mcp_saved_path
+  cache_mcp_file_locally <- session_cache$cache_mcp_file_locally
+  update_mcp_registry_snapshot <- session_cache$update_mcp_registry_snapshot
   
   # Widget bağımlılık çıktılarını başlat (modüler)
   widgetDependencyOutputsInit(output)
   
-  # ---- small helpers ---------------------------------------------------------
+  # ---- Kullanıcı ve oturum başlatma ------------------------------------------
 
-	# Get the current user's system username
+	# Sistemdeki kullanıcı adını al
 	system_username <- Sys.info()["user"]
 
-	# Get their permanent UserID from our database
+	# Veritabanından kalıcı kullanıcı kimliğini al veya oluştur
 	current_user_id <- get_or_create_user(system_username)
 
-    cache_dir <- file.path(cache_root, paste0("user_", current_user_id), cache_session_token(session$token %||% "anon"))
-	dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-	
-	# Oturum sonlandığında cache dizinini temizle
-	session$onSessionEnded(function() {
-	  try(unlink(cache_dir, recursive = TRUE, force = TRUE), silent = TRUE)
-	})
-	
-  # Minimal snapshot that can be serialized and shipped to AI workers
-  update_mcp_registry_snapshot <- function(files_snapshot = NULL) {
-    if (is.null(files_snapshot)) {
-      files_snapshot <- session$userData$current_session_files %||% list()
-    }
-    session$userData$mcp_registry_snapshot <- files_snapshot %||% list()
-    session$userData$mcp_registry_snapshot
-  }
-  
-  # Make sure we always have a snapshot object on session start
-  if (is.null(session$userData$mcp_registry_snapshot)) {
-    session$userData$mcp_registry_snapshot <- session$userData$current_session_files %||% list()
-  }
+	# Kullanıcı oturumu için önbellek dizinini yapılandır
+	cache_dir <- session_cache$setup_user_session(current_user_id)
 
 	# Expose username & (later) api key to this session
 	session$userData$system_username <- system_username
