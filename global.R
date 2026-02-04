@@ -1917,19 +1917,46 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			exists("helpers_mcp_tools", inherits = TRUE) &&
 			is.function(helpers_mcp_tools$get_mcp_tools_prompt)) {
 
-		  # Türkçe yorum: Grafik isteğinde doğrudan prepare_chart_data çağrılmalı
+		  # Türkçe: Dosya şemasını çıkar ve prompt'a ekle
+		  file_schema <- NULL
+		  try({
+			if (!is.null(session_obj) && !is.null(session_obj$userData$current_session_files)) {
+			  # Session'daki ilk dosyanın şemasını al
+			  files <- session_obj$userData$current_session_files
+			  if (length(files) > 0) {
+				first_file <- files[[1]]
+				file_name <- first_file$name %||% names(files)[1]
+				if (!is.null(file_name) && nzchar(file_name)) {
+				  cat("[MCP_SCHEMA] Dosya şeması çıkarılıyor: ", file_name, "\n")
+				  file_schema <- helpers_mcp_tools$extract_mcp_file_schema(file_name, session_obj)
+				  if (!is.null(file_schema)) {
+					cat("[MCP_SCHEMA] Şema başarıyla çıkarıldı (", nchar(file_schema), " karakter)\n")
+				  }
+				}
+			  }
+			}
+		  }, silent = TRUE)
+
+		  # Türkçe: Dosya şemasını prompt'a dahil et
 		  tool_prompt <- paste0(
-			helpers_mcp_tools$get_mcp_tools_prompt(),
+			helpers_mcp_tools$get_mcp_tools_prompt(file_schema),
 			"\n\n### EK BİLGİ:",
 			"\n- SQL sorguları için: sql_query_uploaded_file (tablo adı: t)",
 			"\n- Dosya özeti için: analyze_uploaded_file (opsiyonel)",
 			"\n"
 		  )
+
+		  # Türkçe: Tool prompt'u mesajların başına sistem mesajı olarak ekle
+		  if (!is.null(tool_prompt) && nzchar(tool_prompt)) {
+			cat("[MCP] Tool prompt ekleniyor (", nchar(tool_prompt), " karakter)\n", sep = "")
+			tool_system_msg <- list(role = "system", content = tool_prompt)
+			messages_payload <- c(list(tool_system_msg), messages_payload)
+		  }
 		}
 	}
-    
+
     temp_value <- if (!is.null(settings$temperature)) settings$temperature else 0.4
-    
+
     body <- list(
       model = selected_model, 
       messages = messages_payload, 
