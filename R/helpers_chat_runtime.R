@@ -316,7 +316,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       isolate({
         if (stop_generation() || streaming_state$current_index > total_words) {
           # ... Finalization Logic ...
-          msg_index <- which(sapply(values$messages, function(m) m$id == streaming_state$msg_id))
+		  # vapply kullanarak tip güvenliği sağla ve performansı artır
+		  msg_index <- which(vapply(values$messages, function(m) identical(m$id, streaming_state$msg_id), logical(1)))
           if (length(msg_index) > 0) {
             final_text <- if (nchar(streaming_state$accumulated) > 0) streaming_state$accumulated else full_response
 
@@ -377,7 +378,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
         streaming_state$accumulated <- paste0(streaming_state$accumulated, chunk_text)
 
-        msg_index <- which(sapply(values$messages, `[[`, "id") == streaming_state$msg_id)
+		# vapply kullanarak tip güvenliği sağla
+		msg_index <- which(vapply(values$messages, function(m) m$id %||% "", character(1)) == streaming_state$msg_id)
         if (length(msg_index) > 0) {
           values$messages[[msg_index]]$content <- streaming_state$accumulated
         }

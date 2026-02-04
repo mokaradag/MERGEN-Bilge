@@ -19,7 +19,6 @@ $(document).ready(function() {
   }
 
   // Global değişkenler
-  window.isNearBottom = true;
   let sessionTimeout;
   let warningShown = false;
 
@@ -102,8 +101,9 @@ $(document).ready(function() {
     });
   }
 
-  // .codemirror-textarea eklendiğinde CM'yi otomatik başlat
-  (function attachCMObserver() {
+  // CodeMirror observer fonksiyonunu tanımla (tekrar kullanılabilir)
+  // NOT: Önceden iki ayrı yerde aynı kod vardı, şimdi tek fonksiyona çıkarıldı
+  function attachCMObserver(isReconnection = false) {
     const root = document.querySelector('#chat_content_container, #_content_container, .chat-container');
     if (!root) {
       console.warn('[MERGEN] CM observer: root not found');
@@ -128,8 +128,14 @@ $(document).ready(function() {
       childList: true,
       subtree: true
     });
-  })();
-
+    if (isReconnection) {
+      console.log('[MERGEN] CodeMirror observer reinitialized after reconnection');
+    }
+  }
+ 
+  // .codemirror-textarea eklendiğinde CM'yi otomatik başlat
+  attachCMObserver(false);
+ 
   // Bağlantı kesildiğinde temizlik yap
   $(document).on('shiny:disconnected', function(event) {
     if (globalMessageObserver) {
@@ -142,36 +148,10 @@ $(document).ready(function() {
     }
     $('.disconnect-overlay').css('display', 'flex');
   });
-
+ 
   // Shiny yeniden bağlandığında tekrar başlat
   $(document).on('shiny:connected', function(event) {
-    (function attachCMObserver() {
-      const root = document.querySelector('#chat_content_container, #_content_container, .chat-container');
-      if (!root) {
-        console.warn('[MERGEN] CM observer: root not found');
-        return;
-      }
-      const initFor = (ta) => {
-        const wrapper = ta.closest('[id^="message_wrapper_"]');
-        if (wrapper && window.initializeCodeMirrorInElement) {
-          window.initializeCodeMirrorInElement(wrapper.id);
-        }
-      };
-      const obs = new MutationObserver(muts => {
-        muts.forEach(m => {
-          m.addedNodes && m.addedNodes.forEach(node => {
-            if (!(node instanceof HTMLElement)) return;
-            if (node.matches && node.matches('.codemirror-textarea')) initFor(node);
-            node.querySelectorAll && node.querySelectorAll('.codemirror-textarea').forEach(initFor);
-          });
-        });
-      });
-      obs.observe(root, {
-        childList: true,
-        subtree: true
-      });
-      console.log('[MERGEN] CodeMirror observer reinitialized after reconnection');
-    })();
+    attachCMObserver(true);
   });
 
   // Diğer fonksiyonlar

@@ -20,10 +20,6 @@ server <- function(input, output, session) {
     gsub("[^A-Za-z0-9_-]", "_", tok)
   }
 
-  cache_dir <- file.path(cache_root, cache_session_token(session$token %||% "anon"))
-  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-  cache_dir <- safe_windows_short_path(cache_dir, must_exist = dir.exists(cache_dir))
-
   cache_mcp_file_locally <- function(src_path) {
     src_path_chr <- as.character(src_path %||% "")
     if (!nzchar(src_path_chr) || !path_exists_relaxed(src_path_chr)) {
@@ -48,10 +44,6 @@ server <- function(input, output, session) {
     }
     dest_norm
   }
-
-  session$onSessionEnded(function() {
-    try(unlink(cache_dir, recursive = TRUE, force = TRUE), silent = TRUE)
-  })
   
   # Widget bağımlılık çıktılarını başlat (modüler)
   widgetDependencyOutputsInit(output)
@@ -66,6 +58,11 @@ server <- function(input, output, session) {
 
     cache_dir <- file.path(cache_root, paste0("user_", current_user_id), cache_session_token(session$token %||% "anon"))
 	dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+	
+	# Oturum sonlandığında cache dizinini temizle
+	session$onSessionEnded(function() {
+	  try(unlink(cache_dir, recursive = TRUE, force = TRUE), silent = TRUE)
+	})
 	
   # Minimal snapshot that can be serialized and shipped to AI workers
   update_mcp_registry_snapshot <- function(files_snapshot = NULL) {
@@ -545,7 +542,7 @@ server <- function(input, output, session) {
 		  !is.null(prompt_text) && nzchar(trimws(as.character(prompt_text)))) {
 		
 		# Summarization modunda olduğumuzu belirle
-		skip_mcp_once <<- FALSE
+		skip_mcp_once <- FALSE
 		current_settings <- reactiveValuesToList(settings_data)
 		current_settings$enable_summarization_tools <- TRUE
 		current_settings$enable_rdata_tools <- FALSE
@@ -665,7 +662,7 @@ server <- function(input, output, session) {
 	  
 	  recent_messages <- tail(isolate(values$messages), 5)
 	recent_messages <- Filter(function(m) {
-	  is.null(m$content) || !grepl("\\[ Toplam Dosya Sayısı:", m$content, fixed = TRUE)
+	  is.null(m$content) || !grepl("[ Toplam Dosya Sayısı:", m$content, fixed = TRUE)
 	}, recent_messages)
 	
 	# Get CURRENT file state
@@ -835,8 +832,10 @@ server <- function(input, output, session) {
 		# DOSYA ÖZETLEME MODU AKTİFSE, HER ZAMAN process_summarization_request ÇAĞIR
 		cat("[SUMMARIZATION] Dosya Özetleme modu aktif, özetleme başlatılıyor. Dosya sayısı:", uploaded_count, "\n")
 		
-		# Mevcut module_summarization.R fonksiyonunu kullan
-		source("R/module_summarization.R", encoding = "UTF-8", local = TRUE)
+		# Modülü sadece ilk kez yükle (her istekte yeniden okumayı önle)
+		if (!exists("process_summarization_request", mode = "function")) {
+		  source("R/module_summarization.R", encoding = "UTF-8", local = TRUE)
+		}
 		
 		# Özetleme işlemini başlat
 		values$typing <- TRUE

@@ -730,27 +730,38 @@ rate_limiter <- list(
 )
 
 # Global rate limiter (across all users)
-global_rate_limiter <- list(
-  max_total_requests = 100,  # Total requests per minute across all users
-  window_size = 60,
-  requests = list()
-)
+# Environment kullanarak daha verimli bellek yönetimi
+global_rate_limiter <- new.env(parent = emptyenv())
+global_rate_limiter$max_total_requests <- 100  # Total requests per minute across all users
+global_rate_limiter$window_size <- 60
+global_rate_limiter$max_buffer_size <- 200  # Bellek taşmasını önlemek için maksimum buffer boyutu
+global_rate_limiter$requests <- list()
+global_rate_limiter$last_cleanup <- Sys.time()
 
 check_global_rate_limit <- function() {
   current_time <- Sys.time()
   
-  # Clean old requests
-  global_rate_limiter$requests <<- Filter(function(t) {
+  # Eski istekleri temizle
+  global_rate_limiter$requests <- Filter(function(t) {
     difftime(current_time, t, units = "secs") < global_rate_limiter$window_size
   }, global_rate_limiter$requests)
   
-  # Check if global limit exceeded
+  # Bellek taşması koruması: buffer çok büyükse agresif temizlik yap
+  if (length(global_rate_limiter$requests) > global_rate_limiter$max_buffer_size) {
+    # Sadece son window_size/2 saniyelik istekleri tut
+    half_window <- global_rate_limiter$window_size / 2
+    global_rate_limiter$requests <- Filter(function(t) {
+      difftime(current_time, t, units = "secs") < half_window
+    }, global_rate_limiter$requests)
+  }
+  
+  # Global limit aşıldı mı kontrol et
   if (length(global_rate_limiter$requests) >= global_rate_limiter$max_total_requests) {
     return(list(allowed = FALSE, message = "Sistem yoğunluğu nedeniyle geçici olarak hizmet verilemiyor. Lütfen birkaç saniye sonra tekrar deneyin."))
   }
   
-  # Add current request
-  global_rate_limiter$requests <<- c(global_rate_limiter$requests, list(current_time))
+  # Mevcut isteği ekle
+  global_rate_limiter$requests <- c(global_rate_limiter$requests, list(current_time))
   
   return(list(allowed = TRUE, message = NULL))
 }
