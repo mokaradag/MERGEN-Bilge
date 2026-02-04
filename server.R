@@ -95,6 +95,12 @@ server <- function(input, output, session) {
 
   # --- Module Server Initialization (Yukarı Taşındı) ---
   settings_data <- settingsServer("settings_module", parent_session = session)
+
+  # İleri referanslar: Bu fonksiyonlar daha sonra tanımlanacak ama şimdiden observer'lara geçirilmeli
+  # Sarmalayıcılar kullanarak gecikmeli bağlama sağlanır
+  welcome_fns <- new.env(parent = emptyenv())
+  render_welcome_screen <- function(...) welcome_fns$render_welcome_screen(...)
+  start_new_chat <- function(...) welcome_fns$start_new_chat(...)
   
   # Hızlı eylem şablonları modülünü başlat
   quickActionsInit(input, session, values, settings_data,
@@ -198,50 +204,6 @@ server <- function(input, output, session) {
 	)
 
 	session$userData$welcome_screen_attached <- FALSE
-
-	render_welcome_screen <- function(saved_chats, replace_existing = FALSE) {
-	  if (!isTRUE(shiny::isolate(values$show_welcome))) {
-		return(invisible(NULL))
-	  }
-
-	  # Mevcut welcome içeriğini ve chat içeriğini tamamen temizle
-	  removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
-	  removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
-	  
-	  # Clean up animations first
-	  shinyjs::runjs("
-		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-		  window.WelcomeVideoPlayer.destroy();
-		}
-		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-		  window.WelcomeNeuralNetwork.destroy();
-		}
-		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-		  window.WelcomeGreeting.destroy();
-		}
-	  ")
-	  
-	  # Show container and insert UI
-	  shinyjs::runjs("
-		$('#welcome_fullscreen_container').empty().removeClass('hidden').show();
-		$('#chat_content_container').empty().hide(); // Chat içeriğini gizle
-	  ")
-
-	  insertUI(
-		selector = "#welcome_fullscreen_container",
-		where = "beforeEnd",
-		ui = createWelcomeScreen(saved_chats),
-		immediate = TRUE
-	  )
-
-	  session$userData$welcome_screen_attached <- TRUE
-
-	  # Animasyonları başlat (her render'da çağrılmalı)
-      shinyjs::delay(200, {
-        session$sendCustomMessage("initModernWelcome", list())
-        session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-      })
-	}
 		
 	# chat export wiring (copy & export)
 	chatExportInit(input, output, session, values, user_display_name = user_config$name)
@@ -305,7 +267,16 @@ server <- function(input, output, session) {
   rv_session_files <- reactiveVal(list())
   
   saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
-  
+
+  # Hoş geldin ekranı işleyicilerini başlat (modüler)
+  # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır
+  welcome_handlers <- welcomeHandlersInit(
+    session, values, saved_chats_data, session_files,
+    filePreview, current_user_id, file_manager_data
+  )
+  welcome_fns$render_welcome_screen <- welcome_handlers$render_welcome_screen
+  welcome_fns$start_new_chat <- welcome_handlers$start_new_chat
+
   # İndirme ve dosya gösterge çıktılarını başlat (modüler)
   downloadOutputsInit(output, session, session_files, current_user_id)
   
@@ -1527,38 +1498,4 @@ if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable
 	tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
 	trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
 	attach_tts_audio <- tts_handlers$attach_tts_audio
-
-	start_new_chat <- function() {
-	  # Önce mevcut animasyonları tamamen temizle
-	  shinyjs::runjs("
-		if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-		  window.WelcomeVideoPlayer.destroy();
-		}
-		if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-		  window.WelcomeNeuralNetwork.destroy();
-		}
-		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-		  window.WelcomeGreeting.destroy();
-		}
-	  ")
-	  
-	  # Chat durumunu sıfırla
-	  chat_start_new_chat(session, values, saved_chats_data, session_files, filePreview, current_user_id, file_manager_data)
-	  
-	  # Welcome ekranını aktif et
-	  values$show_welcome <- TRUE
-	  values$messages <- list() # Mesajları temizle
-	  
-	  # Tamamen temizle ve yeniden render et
-	  shinyjs::runjs("
-		$('#welcome_fullscreen_container').empty().removeClass('hidden').show();
-		$('#chat_content_container').empty().hide();
-	  ")
-	  
-	  # Yeni welcome ekranını render et
-	  render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-	  
-	  # Müzik bağlamını genel moda döndür
-	  session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-	} 
 }
