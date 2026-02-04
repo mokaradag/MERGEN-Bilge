@@ -110,28 +110,11 @@ server <- function(input, output, session) {
   quickActionsInit(input, session, values, settings_data,
                    session_files, send_message, quick_action_skip_mcp)
 				   
-  # ==========================================================================
-  # GÖRSEL AYARLARI SENKRONİZASYONU (Sohbet → Ayarlar)
-  # ==========================================================================
-  # NOT: Ana Söyleşi'deki değişiklikler settings reaktif değerlerini günceller,
-  # ancak Ayarlar sayfası UI'ını doğrudan güncellemez. Ayarlar sayfası kendi
-  # geçici değişkenlerini kullanır ve bunlar yalnızca "Ayarları Kaydet"
-  # butonuna basıldığında uygulanır.
-  observeEvent(input$chat_image_size, {
-    if (!is.null(input$chat_image_size)) {
-      settings_data$image_size <- input$chat_image_size
-      # Ayarlar sayfasına senkronize ETME - ayarlar sayfası kendi temp değişkenlerini kullanır
-      # ve sadece kaydet butonunda uygulanır
-    }
-  }, ignoreInit = TRUE)
- 
-  observeEvent(input$chat_image_quality_hd, {
-    settings_data$image_quality_hd <- isTRUE(input$chat_image_quality_hd)
-    # Ayarlar sayfasına senkronize ETME
-  }, ignoreInit = TRUE)
-  
   # Ayar gözlemcilerini başlat (modüler)
   settingsObserversInit(input, session, values, settings_data)
+  
+  # Görsel ayarları senkronizasyonunu başlat (Sohbet → Ayarlar, modüler)
+  visualSettingsSyncInit(input, settings_data)
   
   # Kayıtlı sohbet gözlemcilerini başlat
   load_chat_in_progress <- reactiveVal(FALSE)

@@ -64,3 +64,22 @@ settingsObserversInit <- function(input, session, values, settings_data) {
   
   invisible(NULL)
 }
+
+#' Görsel Ayarları Senkronizasyonu Başlat (Sohbet → Ayarlar)
+#' @description Ana sohbet arayüzündeki görsel ayar değişikliklerini ayarlar modülüne senkronize eder
+#' @param input Shiny input nesnesi
+#' @param settings_data Ayarlar modülünden dönen reaktif ayarlar
+visualSettingsSyncInit <- function(input, settings_data) {
+  
+  observeEvent(input$chat_image_size, {
+    if (!is.null(input$chat_image_size)) {
+      settings_data$image_size <- input$chat_image_size
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$chat_image_quality_hd, {
+    settings_data$image_quality_hd <- isTRUE(input$chat_image_quality_hd)
+  }, ignoreInit = TRUE)
+  
+  invisible(NULL)
+}
