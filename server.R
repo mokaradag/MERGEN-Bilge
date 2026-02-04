@@ -296,184 +296,24 @@ server <- function(input, output, session) {
   # message search wiring
   messageSearchInit(input, session, values, reactive(values$messages))
 	    		
-  # Simplified - uses AI module
-  generate_non_streaming_stoppable <- function(chat_history, current_settings, user_prompt_msg,
-                                             chat_id_val, model_selected, last_user_text = NULL) {
-	
-	req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
-	active_request_id(req_id)
-	
-	safe_settings <- current_settings; safe_settings$shiny_session <- NULL
-	dbg_dump("LLM_REQUEST_NONSTREAM", list(model = model_selected, messages = chat_history, settings = safe_settings))
-	
-	p <- ai_processor$call_llm_non_streaming(chat_history, current_settings, model_selected)
-	
-	# Chain onto the returned promise and use that going forward
-	p2 <- promises::then(
-	  p,
-	  onFulfilled = function(result) {
-		if (isTRUE(stop_generation()) || !identical(active_request_id(), req_id)) {
-		  perf_tracker$track_error()
-		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-		  values$typing <- FALSE
-		  reset_chat_state()
-		  return(invisible(NULL))
-		}
-		
-		dbg_dump("LLM_RESPONSE_NONSTREAM", list(
-		  success = result$success, duration = result$duration %||% NA_real_,
-		  content_preview = substr(result$content %||% "", 1, 800),
-		  error = result$error %||% NULL
-		))
-		if (result$success) {
-		  # DEBUG: cevabın tipi/uzunluğu
-		  cat("[AI_RESP] success=TRUE; class=", paste(class(result$content), collapse=","), 
-			  " length=", if (is.null(result$content)) NA_integer_ else length(result$content),
-			  ' preview="', substr(as.character(result$content)[1], 1, 120), '"\n', sep="")
-
-		  perf_tracker$track_request(result$duration)
-		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-		  values$typing <- FALSE
-
-		  # NEW: make chart specs available to the message renderer
-		  if (is.list(result$chart_store) && length(result$chart_store) > 0) {
-			if (is.null(session$userData$chart_store) || !is.list(session$userData$chart_store)) {
-			  session$userData$chart_store <- list()
-			}
-			session$userData$chart_store <- utils::modifyList(session$userData$chart_store, result$chart_store)
-		  }
-		  
-		    # --- ChartLab fallback: model metin döndürdüyse zorla en az 1 grafik ekle ---
-			  # Türkçe yorum: Yalnızca MCP Excel modunda ve kullanıcı grafik istediğinde çalıştır
-			  if (identical(current_settings$tool_family, "mcp_excel")) {
-				# Türkçe yorum: Yanıtta zaten chartlab bloğu var mı?
-				has_chart_block <- is.character(result$content) && length(result$content) > 0 &&
-								   grepl("```chartlab", result$content, fixed = TRUE)
-
-				# Türkçe yorum: Kullanıcı isteğinde grafik niyeti var mı?
-				# Not: user_prompt_msg$content son kullanıcı mesajını içerir (bağlam ekleriyle birlikte)
-				wants_chart <- is.character(user_prompt_msg$content) && length(user_prompt_msg$content) > 0 &&
-							   grepl("(?i)\\b(grafik|grafikleri|grafiğini|görselleştir|gorsellestir|görselleştirme|gorsellestirme|plot|chart|chartlab|figure|graph|viz|visualize|visualise|çiz|çizelge|histogram|bar|çubuk|line|çizgi|trend|dağılım|scatter|pie|pasta|donut|pareto|area|spline|boxplot)\\b",
-									 user_prompt_msg$content[1], perl = TRUE)
-
-				if (!has_chart_block && wants_chart) {
-				  # Türkçe yorum: İlk dosya yolunu seç
-				  fp <- NULL
-				  if (is.list(current_settings$file_paths) && length(current_settings$file_paths) > 0) {
-					fp <- as.character(current_settings$file_paths[[1]])
-				  }
-
-				  # Türkçe yorum: prepare_chart_data ile otomatik grafik üret ve yanıta ekle
-				  if (!is.null(fp) && nzchar(fp) && path_exists_relaxed(fp) &&
-						  exists("helpers_mcp_tools", inherits = TRUE) &&
-						  is.function(helpers_mcp_tools$prepare_chart_data)) {
-
-					  detected_type <- if (exists("detect_chart_type_from_text", mode = "function")) {
-					  detect_chart_type_from_text(user_prompt_msg$content[1])
-					} else { "auto" }
-					fb <- try(helpers_mcp_tools$prepare_chart_data(
-					  file_name  = fp,
-					  chart_type = detected_type,
-					  limit      = 4000,
-					  session    = session
-					), silent = TRUE)
-
-					if (!inherits(fb, "try-error") && is.list(fb) && isTRUE(fb$ok) && !is.null(fb$chart)) {
-					  # Türkçe yorum: Referans üret ve store'a kaydet
-					  ref_id <- paste0("cl_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_",
-									   sprintf("%04d", sample(0:9999, 1)))
-					  if (is.null(session$userData$chart_store) || !is.list(session$userData$chart_store)) {
-						session$userData$chart_store <- list()
-					  }
-					  session$userData$chart_store[[ref_id]] <- fb$chart
-
-					  # Türkçe yorum: Veriyle birlikte inline chartlab bloğunu göm
-					  inline <- fb$chart
-					  inline$ref <- ref_id
-					  block <- paste0(
-						"\n\n```chartlab\n",
-						jsonlite::toJSON(inline, auto_unbox = TRUE, null = "null", digits = 12),
-						"\n```"
-					  )
-					  result$content <- paste0(if (is.character(result$content)) result$content[1] else "", block)
-					}
-				  }
-				}
-			  }
-			  # --- /ChartLab fallback ---
-
-		  # Takip soruları oluştur (helpers_followup_questions.R)
-		  followup_questions <- build_followup_suggestions(
-		    last_user_text, result$content, settings_data, session,
-		    api_config, followup_tools, fallback_followup_tool
-		  )
-
-		  tryCatch({
-						ai_msg <- add_message(result$content, "ai", followups = followup_questions)
-		  }, error = function(e) {
-						cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
-						cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
-						showToast(session, "Render hatası: içerik boş/uygunsuz. Günlüğe yazıldı.", "error")
-						# Sohbet akışını bozmamak için placeholder
-						ai_msg <- add_message("⚠️ Model boş bir yanıt döndürdü (loglandı).", "ai")
-		  })
-
-		  if (!is.null(ai_msg) && !isTRUE(stop_generation())) {
-			trigger_tts_for_message(ai_msg$id, result$content)
-		  }
-
-		  tryCatch({
-			log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id, 
-						 model_selected, result$duration, TRUE)
-		  }, error = function(e) {
-			print(paste("Logging error:", e$message))
-		  })
-		  		  
-		  reset_chat_state()
-		} else {
-		  # Track error
-		  perf_tracker$track_error()
-		  
-		  # Remove typing indicator
-		  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-		  values$typing <- FALSE
-		  
-		  # Log failure
-		  tryCatch({
-			log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id,
-						 model_selected, result$duration, FALSE)
-		  }, error = function(e) {
-			print(paste("Logging error:", e$message))
-		  })
-		  
-		  # Show error
-		  showToast(session, result$error, "error")
-		  reset_chat_state()
-		}
-	},
-	  onRejected = function(err) {
-		# Always handle rejections so they don't become "Unhandled promise error"
-		perf_tracker$track_error()
-		removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-		values$typing <- FALSE
-
-		# Show a friendly message
-		msg <- as.character(conditionMessage(err))
-		msg <- sub("^[A-Z_]+:\\s*", "", msg)  # strip any error code prefix
-		if (!nzchar(msg)) msg <- "Beklenmeyen bir hata oluştu."
-		showToast(session, msg, "error")
-
-		reset_chat_state()
-		invisible(NULL)
-	  }
+	# LLM yanıt işleyicilerini başlat (modüler)
+	# Bu modül non-streaming AI yanıtlarını işler
+	llm_handlers <- llmResponseHandlersInit(
+	  session = session,
+	  values = values,
+	  settings_data = settings_data,
+	  ai_processor = ai_processor,
+	  perf_tracker = perf_tracker,
+	  active_request_id = active_request_id,
+	  stop_generation = stop_generation,
+	  reset_chat_state_fn = reset_chat_state,
+	  add_message_fn = add_message,
+	  trigger_tts_fn = trigger_tts_for_message,
+	  followup_tools = followup_tools,
+	  fallback_followup_tool = fallback_followup_tool,
+	  api_config = api_config
 	)
-	
-	promises::finally(p2, onFinally = function() {
-	  reset_chat_state()
-	})
-	
-	return(p2)
-  }
+	generate_non_streaming_stoppable <- llm_handlers$generate_non_streaming_stoppable
   
   # send_message: main entrypoint
 	send_message <- function(prompt_text, is_summarization_request = FALSE) {

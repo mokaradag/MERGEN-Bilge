@@ -1048,6 +1048,7 @@ source("R/server_outputs_downloads.R", encoding = "UTF-8")
 source("R/server_tts_handlers.R", encoding = "UTF-8")
 source("R/server_music_handlers.R", encoding = "UTF-8")
 source("R/server_welcome_handlers.R", encoding = "UTF-8")
+source("R/server_llm_response_handlers.R", encoding = "UTF-8")
 
 # --- GLOBAL CONFIGURATION ---
 
