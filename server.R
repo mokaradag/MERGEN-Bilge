@@ -410,7 +410,8 @@ server <- function(input, output, session) {
 	  simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
 	  cache_mcp_file_locally_fn = cache_mcp_file_locally,
 	  update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
-	  saved_chats_data = saved_chats_data
+	  saved_chats_data = saved_chats_data,
+	  generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
 	)
  
 	# send_message fonksiyonunu modülden al ve ortama ata

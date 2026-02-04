@@ -29,7 +29,8 @@ sendMessageInit <- function(
   simulate_streaming_stoppable_fn,
   cache_mcp_file_locally_fn,
   update_mcp_registry_snapshot_fn,
-  saved_chats_data
+  saved_chats_data,
+  generate_non_streaming_stoppable_fn
 ) {
  
   # Ana mesaj gönderme fonksiyonu
@@ -933,7 +934,7 @@ sendMessageInit <- function(
     } else {
       # NON-STREAMING modu
       cat("[MONITORING] Starting AI request (NON-STREAMING mode)\n")
-      generate_non_streaming_stoppable(
+      generate_non_streaming_stoppable_fn(
         messages_to_process,
         current_settings,
         user_prompt_msg,
