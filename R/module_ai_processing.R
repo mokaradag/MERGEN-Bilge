@@ -83,12 +83,6 @@ aiProcessingServer <- function(id) {
       # Transform promise to standardized format
       promises::then(p,
 		onFulfilled = function(result) {
-		  cat("[AI MODULE] Non-streaming request completed\n")
-
-		  # DEBUG: ham yapı
-		  cat("[AI MODULE] raw ai_text class=", paste(class(result$ai_text), collapse=","),
-			  " is_list=", is.list(result$ai_text), "\n", sep="")
-
           # Extract content (list or character) and normalize to scalar string
           ai_content <- if (is.list(result$ai_text)) {
             result$ai_text$content
@@ -102,11 +96,6 @@ aiProcessingServer <- function(id) {
           } else {
             ai_content <- as.character(ai_content)[1]
           }
-
-			# DEBUG: çıkarılmış içerik (artık scalar)
-			cat("[AI MODULE] extracted content_nchar=", nchar(ai_content),
-				" class=", paste(class(ai_content), collapse=","),
-				' preview="', substr(ai_content, 1, 100), '"\n', sep="")
 
 			# NEW: take chart_store from worker and stash into main session
 			charts_from_worker <- if (is.list(result$ai_text)) result$ai_text$chart_store else NULL

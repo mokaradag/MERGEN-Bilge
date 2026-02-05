@@ -679,10 +679,15 @@ options(
   future.globals.maxSize = 200*1024^2  # 200MB for future operations
 )
 
-# Garbage collection scheduler
+# Garbage collection scheduler - hata korumalı
 gc_scheduler <- function() {
-  gc(verbose = FALSE)
-  later::later(gc_scheduler, delay = 300)  # Run every 5 minutes
+  tryCatch({
+    gc(verbose = FALSE)
+    later::later(gc_scheduler, delay = 300)  # Her 5 dakikada bir çalıştır
+  }, error = function(e) {
+    # Hata durumunda bile tekrar planla
+    later::later(gc_scheduler, delay = 600)  # Hata sonrası 10 dakika bekle
+  })
 }
 gc_scheduler()
 

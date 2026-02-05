@@ -2,9 +2,6 @@
 
 server <- function(input, output, session) {
 
-  # ==========================================================================
-  # OTURUM ÖNBELLEK VE MCP KAYIT DEFTERİ MODÜLÜNÜ BAŞLAT (R/server_session_cache.R)
-  # ==========================================================================
   session_cache <- sessionCacheInit(session)
   mcp_saved_path <- session_cache$mcp_saved_path
   cache_mcp_file_locally <- session_cache$cache_mcp_file_locally
@@ -51,38 +48,15 @@ server <- function(input, output, session) {
   # send_message için ileri referans (R/server_send_message.R modülünden atanacak)
   send_message_fns <- new.env(parent = emptyenv())
   send_message <- function(...) send_message_fns$send_message(...)
-  
-  # NOT: quickActionsInit, settingsObserversInit, visualSettingsSyncInit, 
-  # ve savedChatsObserversInit çağrıları values, session_files ve saved_chats_data
-  # tanımlandıktan SONRA yapılmalıdır. Bu satırlar aşağıda uygun yere taşınmıştır.
-  
+    
   # Görsel ayarları senkronizasyonunu başlat (Sohbet → Ayarlar, modüler)
-  # Bu, settings_data'ya bağımlı, values'a değil - burada kalabilir
   visualSettingsSyncInit(input, settings_data)
   
   # load_chat_in_progress tanımı burada kalabilir
   load_chat_in_progress <- reactiveVal(FALSE)
   
-  # Sohbet UI gözlemcilerini başlat
-  chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
-  
-  # Navigasyon/sekme değişikliği gözlemcilerini başlat (modüler)
-  navigationObserversInit(input, session, values, render_welcome_screen)
-  
-  # Başlangıç ve oturum ilk yükleme gözlemcilerini başlat (modüler)
-  startupObserversInit(input, session, values, render_welcome_screen, current_user_id)
-  
-  # Depolama/localStorage gözlemcilerini başlat (modüler)
-  storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
-  
-  # Sohbet header çıktılarını başlat (modüler)
+  # Sohbet header çıktılarını başlat (modüler) - sadece settings_data kullanıyor
   chatOutputsInit(output, settings_data)
-  
-  # Dosya gözlemcilerini başlat (modüler)
-  fileObserversInit(input, session, settings_data, session_files, file_manager_data, current_user_id)
-  
-  # Dosya tıklama gözlemcilerini başlat (kaynak, analiz, önizleme)
-  fileClickObserversInit(input, session, settings_data, api_config, filePreview, file_manager_data, session_files)
   
   # Geri bildirim modülü
   feedback_modal <- feedbackServer("feedback_module", current_user_id)
@@ -150,11 +124,6 @@ server <- function(input, output, session) {
   active_request_id <- reactiveVal(NULL)
   quick_action_skip_mcp <- reactiveVal(FALSE)
   
-  # ========================================================================
-  # DEĞİŞKENLER TANIMLANDI - ŞİMDİ OBSERVER'LARI BAŞLATABİLİRİZ
-
-  # ========================================================================
-  
   # Hızlı eylem şablonları modülünü başlat (values ve session_files artık mevcut)
   quickActionsInit(input, session, values, settings_data,
                    session_files, send_message, quick_action_skip_mcp)
@@ -179,8 +148,26 @@ server <- function(input, output, session) {
 	  settings_data = settings_data  # YENİ: Settings modülünü ilet
 	)
 	
-	# Store file manager data in session for summarization module access
-	session$userData$file_manager_data <- file_manager_data
+  # Store file manager data in session for summarization module access
+  session$userData$file_manager_data <- file_manager_data
+  
+  # Sohbet UI gözlemcilerini başlat (values artık mevcut)
+  chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
+  
+  # Navigasyon/sekme değişikliği gözlemcilerini başlat (modüler)
+  navigationObserversInit(input, session, values, render_welcome_screen)
+  
+  # Başlangıç ve oturum ilk yükleme gözlemcilerini başlat (modüler)
+  startupObserversInit(input, session, values, render_welcome_screen, current_user_id)
+  
+  # Depolama/localStorage gözlemcilerini başlat (modüler)
+  storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
+  
+  # Dosya gözlemcilerini başlat (modüler) - session_files ve file_manager_data artık mevcut
+  fileObserversInit(input, session, settings_data, session_files, file_manager_data, current_user_id)
+  
+  # Dosya tıklama gözlemcilerini başlat (kaynak, analiz, önizleme)
+  fileClickObserversInit(input, session, settings_data, api_config, filePreview, file_manager_data, session_files)
 	
   # One place to store app-visible files (+ summaries)
   if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
@@ -219,8 +206,21 @@ server <- function(input, output, session) {
   # message search wiring
   messageSearchInit(input, session, values, reactive(values$messages))
 	    		
+	# --- Temel Sohbet Fonksiyonları (LLM handlers'dan önce tanımlanmalı) ---
+	reset_chat_state <- function() chat_reset_state(session, values)
+ 
+	add_message <- function(content, type = "user", html = NULL, followups = NULL,
+							audio_src = NULL, audio_voice = NULL) {
+	  chat_add_message(
+			session, values, settings_data, output,
+			content, type, html, current_user_id,
+			followups = followups,
+			audio_src = audio_src,
+			audio_voice = audio_voice
+	  )
+	}
+	
 	# LLM yanıt işleyicilerini başlat (modüler)
-	# Bu modül non-streaming AI yanıtlarını işler
 	llm_handlers <- llmResponseHandlersInit(
 	  session = session,
 	  values = values,
@@ -263,10 +263,7 @@ server <- function(input, output, session) {
 	reset_chat_state     = reset_chat_state,
 	feedback_modal       = feedback_modal
   )
-  	  							     							         	  
-	# --- Temel Sohbet Fonksiyonları (yardımcı fonksiyonlara sarmalanmış) ---
-	reset_chat_state <- function() chat_reset_state(session, values)
- 
+  	  							     							         	   
 	generate_title_from_prompt <- function(prompt, max_len = 60) {
 	  chat_generate_title_from_prompt(prompt, max_len)
 	}
@@ -287,26 +284,11 @@ server <- function(input, output, session) {
 	  )
 	}
  
-	add_message <- function(content, type = "user", html = NULL, followups = NULL,
-							audio_src = NULL, audio_voice = NULL) {
-	  chat_add_message(
-			session, values, settings_data, output,
-			content, type, html, current_user_id,
-			followups = followups,
-			audio_src = audio_src,
-			audio_voice = audio_voice
-	  )
-	}
- 
 	# TTS işleyicilerini başlat (modüler)
 	tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
 	trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
 	attach_tts_audio <- tts_handlers$attach_tts_audio
  
-	# ==========================================================================
-	# MESAJ GÖNDERME MODÜLÜNÜ BAŞLAT (R/server_send_message.R)
-	# Tüm bağımlılıklar tanımlandıktan sonra çağrılır
-	# ==========================================================================
 	send_message_handlers <- sendMessageInit(
 	  session = session,
 	  input = input,
