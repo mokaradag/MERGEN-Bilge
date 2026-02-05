@@ -57,6 +57,20 @@ processAndSummarizeFile <- function(file_info,
     dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), current_user_id)
   }
 
+  # ============================================================================
+  # KRİTİK: Dosyayı HEMEN indekse kaydet (özetleme başarısız olsa bile kalıcı olmalı)
+  # ============================================================================
+  tryCatch({
+    global_register_file(
+      dest, file_info$name,
+      user_id = current_user_id,
+      persist_under_mcp_base = TRUE
+    )
+    cat("[FILE PIPELINE] Dosya indekse kaydedildi:", file_info$name, "\n")
+  }, error = function(e) {
+    cat("[FILE PIPELINE] İndeks kaydı başarısız:", conditionMessage(e), "\n")
+  })
+
   # Keep in session for MCP tools
   if (is.null(session$userData$current_session_files)) session$userData$current_session_files <- list()
   session$userData$current_session_files[[file_info$name]] <- list(
@@ -67,17 +81,33 @@ processAndSummarizeFile <- function(file_info,
   settings_snapshot <- tryCatch(reactiveValuesToList(settings), error = function(e) list())
   settings_snapshot$shiny_session <- NULL
 
+  # Encoding-safe path for worker (UTF-8 dönüşümü)
+  dest_safe <- tryCatch(enc2utf8(as.character(dest)), error = function(e) as.character(dest))
+  file_name_safe <- tryCatch(enc2utf8(as.character(file_info$name)), error = function(e) as.character(file_info$name))
+
   promises::future_promise({
-    file_ext <- tolower(tools::file_ext(file_info$name))
-    digest <- switch(file_ext,
-      "xlsx" = , "xls" = build_excel_digest_json(dest, top_levels = 12),
-      {
-        txt <- readFileContentToString(list(name = file_info$name, datapath = dest, size = file.info(dest)$size))
-        substr(txt, 1, 50000)
-      }
-    )
-    summary_text <- summarize_file_with_llm(digest, file_info$name, settings_snapshot)
-    list(summary = summary_text, dest = dest, ext = file_ext)
+    file_ext <- tolower(tools::file_ext(file_name_safe))
+
+    # Özet çıkarma - hata durumunda basit bilgi döndür
+    digest <- tryCatch({
+      switch(file_ext,
+        "xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
+        {
+          txt <- readFileContentToString(list(name = file_name_safe, datapath = dest_safe, size = file.info(dest_safe)$size))
+          substr(txt, 1, 50000)
+        }
+      )
+    }, error = function(e) {
+      # Özet çıkarılamadı - basit bir açıklama döndür
+      sprintf("Dosya: %s\nBoyut: %s bayt\nTip: %s\n(Detaylı içerik okunamadı: %s)",
+              file_name_safe,
+              file.info(dest_safe)$size %||% "bilinmiyor",
+              file_ext,
+              conditionMessage(e))
+    })
+
+    summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
+    list(summary = summary_text, dest = dest_safe, ext = file_ext)
   }) %...>%
     (function(res) {
       if (isTRUE(auto_attach)) {
@@ -102,21 +132,17 @@ processAndSummarizeFile <- function(file_info,
         )
       }
 
-      try(global_register_file(
-            res$dest, file_info$name,
-            user_id = current_user_id,
-            persist_under_mcp_base = TRUE
-          ),
-          silent = TRUE
-      )
+      # NOT: global_register_file artık promise'dan önce çağrılıyor (satır 63-72)
 
       removeNotification(note_id)
       if (isTRUE(show_toast)) showToast(session, paste(file_info$name, "özetlendi."), "success")
     }) %...!%
     (function(e) {
       removeNotification(note_id)
+      # Dosya zaten indekse kaydedildi, sadece özetleme başarısız oldu
       msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
-      showToast(session, paste("Dosya işlenemedi:", msg), "error")
+      cat("[FILE PIPELINE] Özetleme hatası:", msg, "\n")
+      showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
     })
 
   invisible(NULL)
@@ -183,10 +209,22 @@ handle_file_upload_batch <- function(uploads_df,
     note_id <<- showNotification(sprintf("[%d/%d] İşleniyor: %s", i, total, uf$name),
                                  duration = NULL, type = "message")
 
-    try({
+    # Dosyayı kalıcı dizine kopyala ve hemen indekse kaydet
+    tryCatch({
       dest <- copy_to_mcp_base(uf, current_user_id)
       uf$datapath <- dest
-    }, silent = TRUE)
+      cat("[UPLOAD BATCH] Dosya kopyalandı:", uf$name, "->", dest, "\n")
+
+      # Hemen indekse kaydet (özetleme başarısız olsa bile dosya kalıcı olacak)
+      tryCatch({
+        global_register_file(dest, uf$name, user_id = current_user_id, persist_under_mcp_base = TRUE)
+        cat("[UPLOAD BATCH] Dosya indekse kaydedildi:", uf$name, "\n")
+      }, error = function(reg_err) {
+        cat("[UPLOAD BATCH] İndeks kaydı başarısız:", conditionMessage(reg_err), "\n")
+      })
+    }, error = function(e) {
+      cat("[UPLOAD BATCH] Dosya kopyalama hatası:", conditionMessage(e), "\n")
+    })
 
     file_to_add_reactive(uf)
 
