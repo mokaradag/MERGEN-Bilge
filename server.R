@@ -52,20 +52,16 @@ server <- function(input, output, session) {
   send_message_fns <- new.env(parent = emptyenv())
   send_message <- function(...) send_message_fns$send_message(...)
   
-  # Hızlı eylem şablonları modülünü başlat
-  quickActionsInit(input, session, values, settings_data,
-                   session_files, send_message, quick_action_skip_mcp)
-				   
-  # Ayar gözlemcilerini başlat (modüler)
-  settingsObserversInit(input, session, values, settings_data)
+  # NOT: quickActionsInit, settingsObserversInit, visualSettingsSyncInit, 
+  # ve savedChatsObserversInit çağrıları values, session_files ve saved_chats_data
+  # tanımlandıktan SONRA yapılmalıdır. Bu satırlar aşağıda uygun yere taşınmıştır.
   
   # Görsel ayarları senkronizasyonunu başlat (Sohbet → Ayarlar, modüler)
+  # Bu, settings_data'ya bağımlı, values'a değil - burada kalabilir
   visualSettingsSyncInit(input, settings_data)
   
-  # Kayıtlı sohbet gözlemcilerini başlat
+  # load_chat_in_progress tanımı burada kalabilir
   load_chat_in_progress <- reactiveVal(FALSE)
-  savedChatsObserversInit(input, output, session, values, settings_data,
-                           saved_chats_data, current_user_id, load_chat_in_progress)
   
   # Sohbet UI gözlemcilerini başlat
   chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
@@ -150,31 +146,22 @@ server <- function(input, output, session) {
   session_files <- reactiveVal(list())
   last_activity <- reactiveVal(Sys.time())
   session_active <- reactiveVal(TRUE)
-  request_queue <- reactiveVal(list())
   processing_request <- reactiveVal(FALSE)
   active_request_id <- reactiveVal(NULL)
   quick_action_skip_mcp <- reactiveVal(FALSE)
   
-  process_queue <- function() {
-	if (processing_request() || length(request_queue()) == 0) {
-	  return()
-	}
-	
-	processing_request(TRUE)
-	current_request <- request_queue()[[1]]
-	request_queue(request_queue()[-1])
-	
-	# Process the request
-	tryCatch({
-	  current_request$handler()
-	}, finally = {
-	  processing_request(FALSE)
-	  # Process next in queue
-	  invalidateLater(100)
-	  process_queue()
-	})
-  }
+  # ========================================================================
+  # DEĞİŞKENLER TANIMLANDI - ŞİMDİ OBSERVER'LARI BAŞLATABİLİRİZ
 
+  # ========================================================================
+  
+  # Hızlı eylem şablonları modülünü başlat (values ve session_files artık mevcut)
+  quickActionsInit(input, session, values, settings_data,
+                   session_files, send_message, quick_action_skip_mcp)
+  
+  # Ayar gözlemcilerini başlat (modüler)
+  settingsObserversInit(input, session, values, settings_data)
+  
 	# Session timeout management (modulerized)
 	sessionTimeoutServer(
 	  "session_timeout",
@@ -197,9 +184,12 @@ server <- function(input, output, session) {
 	
   # One place to store app-visible files (+ summaries)
   if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
-  rv_session_files <- reactiveVal(list())
   
   saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
+
+  # Kayıtlı sohbet gözlemcilerini başlat (saved_chats_data artık mevcut)
+  savedChatsObserversInit(input, output, session, values, settings_data,
+                           saved_chats_data, current_user_id, load_chat_in_progress)
 
   # Hoş geldin ekranı işleyicilerini başlat (modüler)
   # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır

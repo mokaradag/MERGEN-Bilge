@@ -158,15 +158,13 @@ aiProcessingServer <- function(id) {
 
 		  return(list(content = NULL, duration = duration, success = FALSE, error = display_msg))
 		}
-      ) %...!% {
-        function(e) {
-          # Catch errors that occur inside onFulfilled/onRejected
+      ) %...!% (function(e) {
+          # onFulfilled/onRejected içinde oluşan hataları yakala
           log_error_with_context(e, "AI_MODULE_NON_STREAM_THEN")
           try(showNotification(paste("AI hatası:", conditionMessage(e)), type = "error"), silent = TRUE)
           list(content = NULL, duration = as.numeric(difftime(Sys.time(), start_time_main, units = "secs")),
                success = FALSE, error = "İşleme sırasında bir hata oluştu.")
-        }
-      }
+      })
     }
     
     #' Make a streaming LLM API call (returns full text, caller handles streaming UI)
@@ -314,14 +312,12 @@ aiProcessingServer <- function(id) {
 			error = display_msg
 		  ))
 		}
-      ) %...!% {
-        function(e) {
+      ) %...!% (function(e) {
           log_error_with_context(e, "AI_MODULE_STREAM_THEN")
           try(showNotification(paste("AI hatası:", conditionMessage(e)), type = "error"), silent = TRUE)
           list(content = NULL, duration = NULL, success = FALSE,
                error = "İşleme sırasında bir hata oluştu.")
-        }
-      }
+      })
     }
     
     # Return public interface

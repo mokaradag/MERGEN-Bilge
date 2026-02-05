@@ -211,9 +211,9 @@ llmResponseHandlersInit <- function(
           }, error = function(e) {
             print(paste("Logging error:", e$message))
           })
- 
-          reset_chat_state_fn()
- 
+
+          # NOT: reset_chat_state_fn() burada kaldırıldı, finally bloğunda çağrılacak
+
         } else {
           # Hata durumunu takip et
           perf_tracker$track_error()
@@ -246,14 +246,14 @@ llmResponseHandlersInit <- function(
         perf_tracker$track_error()
         shiny::removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
         values$typing <- FALSE
- 
+
         # Kullanıcı dostu mesaj göster
         msg <- as.character(conditionMessage(err))
         msg <- sub("^[A-Z_]+:\\s*", "", msg)
         if (!nzchar(msg)) msg <- "Beklenmeyen bir hata oluştu."
         showToast(session, msg, "error")
- 
-        reset_chat_state_fn()
+
+        # NOT: reset_chat_state_fn() burada kaldırıldı, finally bloğunda çağrılacak
         invisible(NULL)
       }
     )

@@ -7,9 +7,6 @@ suppressWarnings({
   library(DBI)
 })
 
-# Null-coalescing helper
-`%||%` <- function(a, b) if (is.null(a)) b else a
-
 # Create a private env to avoid scoping problems (e.g., futures)
 helpers_mcp_tools <- new.env(parent = globalenv())
 

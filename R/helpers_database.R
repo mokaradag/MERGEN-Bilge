@@ -23,9 +23,6 @@ library(pool)
 # --- Configuration ---
 .DEFAULT_DSN <- Sys.getenv("DB_DSN", "TestConnection")
 
-# Global pool (created by init_db_pool). May be NULL if not created.
-pool <- NULL
-
 # Get pool statistics
 get_pool_info <- function() {
   return(list(
