@@ -48,13 +48,20 @@ shiny_error_handler <- function(e = NULL) {
   } else {
     geterrmessage()
   }
-  cat("[ERROR]", msg, "\n")
-  stack <- sys.calls()
-  if (length(stack) > 0) {
-    stack_str <- paste(sapply(stack, function(x) paste(deparse(x), collapse = " ")), collapse = " -> ")
-    cat("[TRACE]", stack_str, "\n")
+  
+  # Log dosyasına yaz
+  log_error("[ERROR] {msg}")
+  
+  # Debug modunda stack trace göster
+  if (isTRUE(as.logical(Sys.getenv("MERGEN_DEBUG", "FALSE")))) {
+    stack <- sys.calls()
+    if (length(stack) > 0) {
+      stack_str <- paste(sapply(stack, function(x) paste(deparse(x), collapse = " ")), collapse = " -> ")
+      log_debug("[TRACE] {stack_str}")
+    }
   }
 }
+
 options(shiny.error = shiny_error_handler)
 
 # --- DEBUG DUMPER (adds logs/ai_debug_YYYYMMDD.log) ---
@@ -729,9 +736,10 @@ log_user_action <- function(user_id, action, details = "") {
 }
 
 rate_limiter <- list(
-  max_requests_per_user = 10,  # Max requests per minute per user
-  window_size = 60,             # Time window in seconds
-  requests = new.env()          # Store request timestamps
+  max_requests_per_user = 10,
+  window_size = 60,
+  requests = new.env(),
+  max_users_cache = 1000
 )
 
 # Global rate limiter (across all users)
@@ -774,6 +782,11 @@ check_global_rate_limit <- function() {
 check_rate_limit <- function(user_id) {
   current_time <- Sys.time()
   user_key <- as.character(user_id)
+  
+  # Önbellek boyutu kontrolü - çok büyürse eski kullanıcıları temizle
+  if (length(ls(envir = rate_limiter$requests)) > rate_limiter$max_users_cache) {
+    rm(list = ls(envir = rate_limiter$requests), envir = rate_limiter$requests)
+  }
   
   if (!exists(user_key, envir = rate_limiter$requests)) {
     rate_limiter$requests[[user_key]] <- list()

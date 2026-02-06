@@ -42,8 +42,8 @@ ui <- dashboardPage(
     # A static footer at the bottom of the sidebar.
     div(
       class = "sidebar-footer",
-      p("MERGEN AI v2.0", class = "sidebar-version"),
-      p("© 2025 Tüm hakları saklıdır", class = "sidebar-copyright")
+      p("MERGEN AI v0.9", class = "sidebar-version"),
+      p(sprintf("© %s Tüm hakları saklıdır", format(Sys.Date(), "%Y")), class = "sidebar-copyright")
     )
   ),
   

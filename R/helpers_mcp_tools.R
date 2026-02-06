@@ -1,12 +1,5 @@
 # R/helpers_mcp_tools.R
 
-suppressWarnings({
-  library(jsonlite)
-  library(readxl)
-  library(data.table)
-  library(DBI)
-})
-
 # Create a private env to avoid scoping problems (e.g., futures)
 helpers_mcp_tools <- new.env(parent = globalenv())
 
@@ -19,12 +12,15 @@ if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
   )
 }
 
+# helpers_files.R'deki tanımı kullan (daha kapsamlı)
 if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
-  helpers_mcp_tools$path_exists_relaxed <- function(path) {
-    if (is.null(path) || !length(path)) return(FALSE)
-    candidate <- as.character(path[1])
-    if (!nzchar(candidate)) return(FALSE)
-    isTRUE(file.exists(candidate))
+  # Global ortamdaki fonksiyonu kullan
+  if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
+    assign(
+      "path_exists_relaxed",
+      get("path_exists_relaxed", envir = globalenv(), inherits = TRUE),
+      envir = helpers_mcp_tools
+    )
   }
 }
 
@@ -35,88 +31,6 @@ if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
     get("normalize_excel_path", envir = globalenv(), inherits = TRUE),
     envir = helpers_mcp_tools
   )
-}
-
-if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
-  helpers_mcp_tools$normalize_excel_path <- function(path) {
-    if (is.null(path) || !nzchar(path)) return(path)
-
-    # [DEĞİŞİKLİK] Step 0 kaldırıldı. 
-    # "Absolute Trust" bloğu, Türkçe karakterli yollarda readxl'in çökmesine neden oluyordu.
-    # Dosya var olsa bile aşağıda ShortPath (8.3) formatına çevrilmesini istiyoruz.
-
-    # Let the shared MCP normalizer clean early if available
-    if (exists("normalize_mcp_path", envir = globalenv(), inherits = TRUE)) {
-      try_norm <- try(get("normalize_mcp_path", envir = globalenv(), inherits = TRUE)(path, must_exist = FALSE), silent = TRUE)
-      if (!inherits(try_norm, "try-error") && !is.null(try_norm) && nzchar(try_norm)) {
-        path <- try_norm
-      }
-    }
-
-    p_fixed <- gsub("\\\\", "/", path)
-
-    # Helper: remove accidental leading duplication (e.g., /srv/share/srv/share/...) which
-    # breaks existence checks for network paths.
-    dedupe_leading_repeat <- function(p) {
-      if (!nzchar(p)) return(p)
-      slashes <- sub("^(/*).*", "\\1", p)
-      parts <- strsplit(sub("^/+", "", p), "/", fixed = TRUE)[[1]]
-      if (length(parts) < 4) return(p)
-      if (identical(parts[1:2], parts[3:4])) {
-        rebuilt <- paste(c(slashes, parts[1:2], parts[-(1:4)]), collapse = "/")
-        return(gsub("/{2,}", "/", rebuilt))
-      }
-      p
-    }
-
-    p_fixed <- dedupe_leading_repeat(p_fixed)
-	
-    # Ensure UTF-8 on non-Windows hosts so readxl doesn't choke on Turkish chars
-    if (.Platform$OS.type != "windows") {
-      p_fixed <- tryCatch(enc2utf8(p_fixed), error = function(e) p_fixed)
-    }
-
-    # 1. Aggressive UNC Repair
-    # If it starts with / but not //, convert to // immediately (keeps network roots intact)
-    if (grepl("^/[^/]", p_fixed)) {
-      p_fixed <- paste0("/", p_fixed)
-    }
-
-    # If already UNC (//server/share), skip normalizePath entirely to avoid path doubling
-    if (grepl("^//", p_fixed)) {
-      # Do NOT enc2utf8 here, it breaks readxl on Windows
-      return(gsub("/{3,}", "//", p_fixed))
-    }
-
-    path_exists_check <- function(p) {
-      if (is.null(p) || !nzchar(p)) return(FALSE)
-      tryCatch({
-        if (file.exists(p)) return(TRUE)
-        if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(p)) return(TRUE)
-        FALSE
-      }, error = function(e) FALSE)
-    }
-
-	# 2. Try to resolve existence on Windows without forcing ShortPath (keep native extension)
-    if (.Platform$OS.type == "windows") {
-      # Try candidates as-is first (System encoding), then UTF8
-      candidates <- unique(c(p_fixed, tryCatch(enc2utf8(p_fixed), error = function(e) NULL)))
-
-      for (cand in candidates) {
-        if (!is.null(cand) && path_exists_check(cand)) {
-          # Return the working candidate as-is to preserve the real extension (avoids .XLS coercion)
-          return(cand)
-        }
-      }
-    } else {
-      if (path_exists_check(p_fixed)) return(enc2utf8(p_fixed))
-    }
-
-    # 3. Last resort: lightweight normalization without altering UNC-style roots
-    normalized <- tryCatch(normalizePath(p_fixed, winslash = "/", mustWork = FALSE), error = function(e) p_fixed)
-    # Remove enc2utf8 to prevent readxl errors on Windows
-    dedupe_leading_repeat(normalized)
-  }
 }
 
 # Try to copy the global function into our tools env

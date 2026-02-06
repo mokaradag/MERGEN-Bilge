@@ -530,6 +530,3 @@ chartLabServer <- function(id) {
     )
   })
 }
-
-# helper: null-coalescing
-`%||%` <- function(a, b) if (is.null(a)) b else a
