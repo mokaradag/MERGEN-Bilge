@@ -552,7 +552,7 @@ settingsServer <- function(id, parent_session = NULL) {
           } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
             success_msg <- paste("API anahtarı güncellendi —", success_msg)
           }
-          showToast(session, success_m  sg, "success")
+          showToast(session, success_msg, "success")
         }, error = function(e) {
           showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
         })
