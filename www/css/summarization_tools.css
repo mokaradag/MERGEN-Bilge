@@ -1,0 +1,125 @@
+/* ==============================================================================
+ * www/css/summarization_tools.css
+ * Dosya Yolu: www/css/summarization_tools.css
+ * Açıklama: Özetleme modu sohbet içi kontrolleri ve Ayarlar sayfası kartı stilleri
+ * ============================================================================== */
+
+/* ------------------------------------------------------------------------------
+ * SOHBET İÇİ ÖZETLEME KONTROLLERİ
+ * ------------------------------------------------------------------------------ */
+
+.summary-chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  margin-right: 8px;
+  transition: all 0.3s ease;
+}
+
+.summary-chat-controls.hidden {
+  display: none !important;
+}
+
+.summary-control-item {
+  display: flex;
+  align-items: center;
+}
+
+/* Detay Seviyesi Dropdown */
+.summary-detail-select {
+  background: var(--bg-tertiary, #1e293b);
+  color: var(--text-primary, #f1f5f9);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  min-width: 90px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%2394a3b8' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+}
+
+.summary-detail-select:hover {
+  border-color: #3b82f6;
+}
+
+.summary-detail-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Özel Odak Dropdown */
+.summary-focus-select {
+  background: var(--bg-tertiary, #1e293b);
+  color: var(--text-primary, #f1f5f9);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  min-width: 100px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%2394a3b8' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+}
+
+.summary-focus-select:hover {
+  border-color: #3b82f6;
+}
+
+.summary-focus-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Kontrol Ayırıcı */
+.summary-control-separator {
+  width: 1px;
+  height: 16px;
+  background: rgba(59, 130, 246, 0.3);
+  margin: 0 2px;
+}
+
+/* ------------------------------------------------------------------------------
+ * AYARLAR SAYFASI ÖZETLEME KARTI
+ * ------------------------------------------------------------------------------ */
+
+.summarization-settings-card {
+  border-left: 4px solid #3b82f6;
+}
+
+/* ------------------------------------------------------------------------------
+ * RESPONSIVE DÜZENLEMELER
+ * ------------------------------------------------------------------------------ */
+
+@media (max-width: 768px) {
+  .summary-chat-controls {
+    flex-wrap: wrap;
+    padding: 6px;
+  }
+
+  .summary-detail-select,
+  .summary-focus-select {
+    min-width: 80px;
+    font-size: 11px;
+  }
+
+  .summary-control-separator {
+    display: none;
+  }
+}

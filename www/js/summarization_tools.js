@@ -1,0 +1,137 @@
+/* ==============================================================================
+ * www/js/summarization_tools.js
+ * Dosya Yolu: www/js/summarization_tools.js
+ * Açıklama: Özetleme modu kontrol paneli yönetimi ve Ayarlar senkronizasyonu
+ * ============================================================================== */
+
+// ------------------------------------------------------------------------------
+// ÖZETLEME KONTROL PANELİ YÖNETİMİ
+// ------------------------------------------------------------------------------
+
+window.toggleSummaryControls = function(show) {
+  var controls = document.getElementById('summary_chat_controls');
+  if (controls) {
+    if (show) {
+      controls.classList.remove('hidden');
+    } else {
+      controls.classList.add('hidden');
+    }
+  }
+};
+
+window.getSummarySettings = function() {
+  var detailSelect = document.getElementById('chat_summary_detail');
+  var focusSelect = document.getElementById('chat_summary_focus');
+
+  return {
+    detail_level: detailSelect ? detailSelect.value : 'standard',
+    focus_mode: focusSelect ? focusSelect.value : 'general'
+  };
+};
+
+// ------------------------------------------------------------------------------
+// AYARLAR SENKRONİZASYONU
+// ------------------------------------------------------------------------------
+
+window.syncSummarySettings = function(source) {
+  var chatDetail = document.getElementById('chat_summary_detail');
+  var chatFocus = document.getElementById('chat_summary_focus');
+  var settingsDetail = document.getElementById('settings_module-summary_detail_level');
+  var settingsFocus = document.getElementById('settings_module-summary_focus_mode');
+
+  if (source === 'chat') {
+    if (settingsDetail && chatDetail) {
+      settingsDetail.value = chatDetail.value;
+      $(settingsDetail).trigger('change');
+    }
+    if (settingsFocus && chatFocus) {
+      settingsFocus.value = chatFocus.value;
+      $(settingsFocus).trigger('change');
+    }
+  } else if (source === 'settings') {
+    if (chatDetail && settingsDetail) {
+      chatDetail.value = settingsDetail.value;
+    }
+    if (chatFocus && settingsFocus) {
+      chatFocus.value = settingsFocus.value;
+    }
+  }
+};
+
+// ------------------------------------------------------------------------------
+// OLAY DİNLEYİCİLERİ
+// ------------------------------------------------------------------------------
+
+document.addEventListener('DOMContentLoaded', function() {
+  var chatDetail = document.getElementById('chat_summary_detail');
+  var chatFocus = document.getElementById('chat_summary_focus');
+
+  if (chatDetail) {
+    chatDetail.addEventListener('change', function() {
+      window.syncSummarySettings('chat');
+      if (window.Shiny) {
+        Shiny.setInputValue('chat_summary_detail', this.value, {priority: 'event'});
+      }
+    });
+  }
+
+  if (chatFocus) {
+    chatFocus.addEventListener('change', function() {
+      window.syncSummarySettings('chat');
+      if (window.Shiny) {
+        Shiny.setInputValue('chat_summary_focus', this.value, {priority: 'event'});
+      }
+    });
+  }
+});
+
+// ------------------------------------------------------------------------------
+// SHINY MESAJ İŞLEYİCİLERİ
+// ------------------------------------------------------------------------------
+
+if (window.Shiny) {
+  Shiny.addCustomMessageHandler('syncSummarySettingsToChat', function(data) {
+    var chatDetail = document.getElementById('chat_summary_detail');
+    var chatFocus = document.getElementById('chat_summary_focus');
+
+    if (chatDetail && data.detail_level) {
+      chatDetail.value = data.detail_level;
+    }
+    if (chatFocus && data.focus_mode) {
+      chatFocus.value = data.focus_mode;
+    }
+  });
+
+  Shiny.addCustomMessageHandler('toggleSummaryMode', function(data) {
+    window.toggleSummaryControls(data.active);
+
+    var modelWrapper = document.querySelector('.model-selector-wrapper');
+    if (modelWrapper) {
+      if (data.active) {
+        modelWrapper.style.opacity = '0.5';
+        modelWrapper.style.pointerEvents = 'none';
+        modelWrapper.title = 'Özetleme modunda model seçimi devre dışı';
+      } else {
+        modelWrapper.style.opacity = '1';
+        modelWrapper.style.pointerEvents = 'auto';
+        modelWrapper.title = 'Model Değiştir';
+      }
+    }
+  });
+
+  Shiny.addCustomMessageHandler('syncChatSummarySettingsToSettings', function(data) {
+    var settingsDetail = document.getElementById('settings_module-summary_detail_level');
+    var settingsFocus = document.getElementById('settings_module-summary_focus_mode');
+
+    if (settingsDetail && data.detail_level) {
+      settingsDetail.value = data.detail_level;
+      $(settingsDetail).trigger('change');
+    }
+    if (settingsFocus && data.focus_mode) {
+      settingsFocus.value = data.focus_mode;
+      $(settingsFocus).trigger('change');
+    }
+  });
+}
+
+console.log('[SUMMARIZATION_TOOLS] Özetleme araçları yüklendi');

@@ -80,6 +80,19 @@ visualSettingsSyncInit <- function(input, settings_data) {
   observeEvent(input$chat_image_quality_hd, {
     settings_data$image_quality_hd <- isTRUE(input$chat_image_quality_hd)
   }, ignoreInit = TRUE)
-  
+
+  # Özetleme ayarları senkronizasyonu (Sohbet → Ayarlar, anlık)
+  observeEvent(input$chat_summary_detail, {
+    if (!is.null(input$chat_summary_detail)) {
+      settings_data$summary_detail_level <- input$chat_summary_detail
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$chat_summary_focus, {
+    if (!is.null(input$chat_summary_focus)) {
+      settings_data$summary_focus_mode <- input$chat_summary_focus
+    }
+  }, ignoreInit = TRUE)
+
   invisible(NULL)
 }

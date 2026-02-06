@@ -1,7 +1,12 @@
-# R/helpers_summarization_prompts.R
-# Türkçe belge özetleme için optimize edilmiş sistem promptları ve yardımcı fonksiyonlar
+# ==============================================================================
+# Dosya Yolu: R/helpers_summarization_prompts.R
+# Açıklama: Türkçe belge özetleme için sistem promptları ve yardımcı fonksiyonlar.
+#           Mod parametrelerine göre (detay seviyesi, odak modu) prompt oluşturur.
+# ==============================================================================
 
-build_summarization_system_prompt <- function(file_count = 1, total_chars = 0) {
+build_summarization_system_prompt <- function(file_count = 1, total_chars = 0,
+                                               detail_level = "standard",
+                                               focus_mode = "general") {
   base <- paste(
     "Sen MERGEN Bilge'nin özetleme uzmanısın. 256K bağlam pencereli gelişmiş bir modelsin ve Türkçe belgeleri en kapsamlı ve yapılandırılmış şekilde özetleme kapasitesine sahipsin.",
     "\n\nTEMEL GÖREVİN:",
@@ -37,9 +42,9 @@ build_summarization_system_prompt <- function(file_count = 1, total_chars = 0) {
     "- Belgede olmayan bilgi uydurma veya tahmin etme",
     "- Dosya adından içerik çıkarmaya çalışma"
   )
-  
+
   if (file_count > 1) {
-    base <- paste0(base, 
+    base <- paste0(base,
       "\n\nÇOKLU DOSYA (" , file_count, " DOSYA) İÇİN ÖZEL TALİMATLAR:",
       "\n1. Her dosyayı AYRI BİR BÖLÜM olarak işle",
       "\n2. Her bölüm başlığında ### DOSYA [sayı]: [DOSYA ADI] formatını kullan",
@@ -49,9 +54,9 @@ build_summarization_system_prompt <- function(file_count = 1, total_chars = 0) {
       "\n6. Sonunda tüm dosyaları birleştiren 'GENEL DEĞERLENDİRME' bölümü ekle"
     )
   }
-  
+
   if (total_chars > 100000) {
-    base <- paste0(base, 
+    base <- paste0(base,
       "\n\nUZUN BELGE/ÇOKLU BELGE DURUMU (" , format(total_chars, big.mark = ".", decimal.mark = ","), " karakter):",
       "\n- Bağlam penceren 256K olduğu için tüm içeriği işleyebilirsin",
       "\n- Belgeyi bölüm bölüm, titizlikle işle",
@@ -60,9 +65,9 @@ build_summarization_system_prompt <- function(file_count = 1, total_chars = 0) {
       "\n- Önemli alıntıları tam metin olarak koru"
     )
   }
-  
+
   if (total_chars > 200000) {
-    base <- paste0(base, 
+    base <- paste0(base,
       "\n\nÇOK UZUN BELGE ÖZEL STRATEJİSİ:",
       "\n- Bölümlere ayırarak derinlemesine işle",
       "\n- Her alt bölüm için mini özetler ekle",
@@ -70,7 +75,11 @@ build_summarization_system_prompt <- function(file_count = 1, total_chars = 0) {
       "\n- En kritik %20 içeriğe özel vurgu yap"
     )
   }
-  
+
+  # Mod talimatlarını ekle
+  mode_instructions <- build_mode_instructions(detail_level, focus_mode)
+  base <- paste0(base, "\n", mode_instructions)
+
   base
 }
 
@@ -104,7 +113,7 @@ build_summarization_user_prompt <- function(file_contents_list) {
         fc$content
       )
     }, character(1))
-    
+
     return(paste0(
       paste(blocks, collapse = "\n\n--- DOSYA SONU ---\n\n"),
       "\n\n--- TÜM DOSYALAR BİTTİ ---\n\n",

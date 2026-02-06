@@ -8,7 +8,9 @@ process_summarization_request <- function(
   session,
   settings,
   ai_processor,
-  max_chars_per_file = 120000
+  max_chars_per_file = 120000,
+  detail_level = "standard",
+  focus_mode = "general"
 ) {
   
   # DEBUG: Log what files we received
@@ -170,7 +172,9 @@ process_summarization_request <- function(
   
   sys_prompt <- build_summarization_system_prompt(
     file_count = length(file_contents),
-    total_chars = total_chars
+    total_chars = total_chars,
+    detail_level = detail_level,
+    focus_mode = focus_mode
   )
   
   # Kullanıcı promptunu oluştur (user_query varsa ona göre özelleştir)

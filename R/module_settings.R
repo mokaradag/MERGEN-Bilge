@@ -330,9 +330,9 @@ settingsUI <- function(id) {
               class = "settings-card image-settings-card",
               id = ns("image_settings_card"),
               h3("Görsel Oluşturma Ayarları", class = "settings-title"),
-              p("DALL-E-3 ile görsel oluşturma ayarlarını yapılandırın. Bu ayarlar yalnızca 'Görsel Uzmanı' modu aktifken geçerlidir.", 
+              p("DALL-E-3 ile görsel oluşturma ayarlarını yapılandırın. Bu ayarlar yalnızca 'Görsel Uzmanı' modu aktifken geçerlidir.",
                 class = "setting-description"),
-              
+
               fluidRow(
                 column(
                   width = 6,
@@ -370,6 +370,57 @@ settingsUI <- function(id) {
                         tags$span(class = "quality-label-sd", "Standart"),
                         tags$span(class = "quality-label-hd", "HD")
                       )
+                    )
+                  )
+                )
+              )
+            ),
+
+            # Özetleme Ayarları Kartı
+            div(
+              class = "settings-card summarization-settings-card",
+              id = ns("summarization_settings_card"),
+              h3("Özetleme Ayarları", class = "settings-title"),
+              p("Dosya özetleme modunun davranışını yapılandırın. Bu ayarlar 'Dosya Özetleme' modu aktifken geçerlidir.",
+                class = "setting-description"),
+
+              fluidRow(
+                column(
+                  width = 6,
+                  div(
+                    class = "setting-item",
+                    h4("Detay Seviyesi", class = "setting-subtitle"),
+                    p("Özetin ne kadar ayrıntılı olacağını belirler.", class = "setting-description", style = "margin-top:4px;"),
+                    selectInput(
+                      inputId = ns("summary_detail_level"),
+                      label = NULL,
+                      choices = c(
+                        "Kısa Özet" = "brief",
+                        "Standart" = "standard",
+                        "Detaylı" = "detailed"
+                      ),
+                      selected = "standard",
+                      width = "100%"
+                    )
+                  )
+                ),
+                column(
+                  width = 6,
+                  div(
+                    class = "setting-item",
+                    h4("Odak Modu", class = "setting-subtitle"),
+                    p("Özetin hangi konulara ağırlık vereceğini belirler.", class = "setting-description", style = "margin-top:4px;"),
+                    selectInput(
+                      inputId = ns("summary_focus_mode"),
+                      label = NULL,
+                      choices = c(
+                        "Genel" = "general",
+                        "Sayısal Veri" = "numerical",
+                        "Karar & Öneri" = "decisions",
+                        "Karşılaştırma" = "comparison"
+                      ),
+                      selected = "general",
+                      width = "100%"
                     )
                   )
                 )
@@ -426,6 +477,8 @@ settingsServer <- function(id, parent_session = NULL) {
       enable_image_tools = FALSE,
       image_size = "1024x1024",
       image_quality_hd = FALSE,
+      summary_detail_level = "standard",
+      summary_focus_mode = "general",
 	  enable_followups        = TRUE,
 	  font_size               = "medium",
 	  enable_background_music = FALSE,
@@ -762,7 +815,19 @@ settingsServer <- function(id, parent_session = NULL) {
         settings$font_size <- loaded$font_size
         updateSelectInput(session, "font_size", selected = loaded$font_size)
       }
-      
+
+      # Özetleme ayarlarını yükle
+      if (!is.null(loaded$summary_detail_level) && loaded$summary_detail_level %in% c("brief", "standard", "detailed")) {
+        settings$summary_detail_level <- loaded$summary_detail_level
+        temp_summary_detail_level(loaded$summary_detail_level)
+        updateSelectInput(session, "summary_detail_level", selected = loaded$summary_detail_level)
+      }
+      if (!is.null(loaded$summary_focus_mode) && loaded$summary_focus_mode %in% c("general", "numerical", "decisions", "comparison")) {
+        settings$summary_focus_mode <- loaded$summary_focus_mode
+        temp_summary_focus_mode(loaded$summary_focus_mode)
+        updateSelectInput(session, "summary_focus_mode", selected = loaded$summary_focus_mode)
+      }
+
       loaded_settings <- loaded
       if (!is.null(loaded_settings$enable_mcp_tools)) {
         updateCheckboxInput(session, "enable_mcp_tools", value = loaded_settings$enable_mcp_tools)
@@ -772,6 +837,10 @@ settingsServer <- function(id, parent_session = NULL) {
   # Görsel ayarları için geçici değişkenler (kaydet butonuna basılana kadar uygulanmaz)
   temp_image_size <- reactiveVal("1024x1024")
   temp_image_quality_hd <- reactiveVal(FALSE)
+
+  # Özetleme ayarları için geçici değişkenler (kaydet butonuna basılana kadar uygulanmaz)
+  temp_summary_detail_level <- reactiveVal("standard")
+  temp_summary_focus_mode <- reactiveVal("general")
  
   # Görsel ayarları değişiklik observer'ı - sadece geçici değişkeni güncelle
   # NOT: Ayarlar sayfasındaki değişiklikler SADECE "Ayarları Kaydet" butonuna
@@ -784,6 +853,15 @@ settingsServer <- function(id, parent_session = NULL) {
   observeEvent(input$image_quality_hd, {
     temp_image_quality_hd(isTRUE(input$image_quality_hd))
     # Hemen senkronize ETME - kaydet butonunda yapılacak
+  }, ignoreInit = TRUE)
+
+  # Özetleme ayarları değişiklik observer'ları - sadece geçici değişkenleri güncelle
+  observeEvent(input$summary_detail_level, {
+    temp_summary_detail_level(input$summary_detail_level)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$summary_focus_mode, {
+    temp_summary_focus_mode(input$summary_focus_mode)
   }, ignoreInit = TRUE)
  
   # Ana Söyleşi'den gelen değişiklikleri Ayarlar sayfasına yansıt
@@ -806,6 +884,23 @@ settingsServer <- function(id, parent_session = NULL) {
       } else {
         shinyjs::runjs(sprintf("$('#%s').prop('checked', false);", ns("image_quality_hd")))
       }
+    }
+  }, ignoreInit = TRUE)
+
+  # Ana Söyleşi'den gelen özetleme ayarı değişikliklerini Ayarlar sayfasına yansıt
+  observeEvent(settings$summary_detail_level, {
+    current_temp <- temp_summary_detail_level()
+    if (!identical(settings$summary_detail_level, current_temp)) {
+      temp_summary_detail_level(settings$summary_detail_level)
+      updateSelectInput(session, "summary_detail_level", selected = settings$summary_detail_level)
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(settings$summary_focus_mode, {
+    current_temp <- temp_summary_focus_mode()
+    if (!identical(settings$summary_focus_mode, current_temp)) {
+      temp_summary_focus_mode(settings$summary_focus_mode)
+      updateSelectInput(session, "summary_focus_mode", selected = settings$summary_focus_mode)
     }
   }, ignoreInit = TRUE)
     
@@ -847,8 +942,14 @@ settingsServer <- function(id, parent_session = NULL) {
 		    image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
 		    settings$model_selection <- image_model
 		    temp_model_selection(image_model)
-		    # Dropdown güncelleme - görsel modu açıkken dropdown gizlenecek
 		    session$sendCustomMessage("toggleImageMode", list(active = TRUE))
+		    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+		  }
+
+		  # Dosya Özetleme aktifleştirildiğinde kontrolleri göster
+		  if (tool_name == "enable_summarization_tools") {
+		    session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
+		    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
 		  }
 		} else {
 		  # Görsel Uzmanı devre dışı bırakıldığında varsayılan modele dön
@@ -859,6 +960,11 @@ settingsServer <- function(id, parent_session = NULL) {
 		    updateSelectInput(session, "model_selection", selected = default_model)
 		    session$sendCustomMessage("saveSettings", list(model_selection = default_model))
 		    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+		  }
+
+		  # Dosya Özetleme devre dışı bırakıldığında kontrolleri gizle
+		  if (tool_name == "enable_summarization_tools") {
+		    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
 		  }
 		}
 	  }, ignoreInit = TRUE)
@@ -874,10 +980,15 @@ settingsServer <- function(id, parent_session = NULL) {
       # Görsel ayarlarını geçici değişkenlerden uygula ve senkronize et
       settings$image_size <- temp_image_size()
       settings$image_quality_hd <- temp_image_quality_hd()
- 
-      cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s, Görsel Boyutu: %s, HD: %s\n",
+
+      # Özetleme ayarlarını geçici değişkenlerden uygula ve senkronize et
+      settings$summary_detail_level <- temp_summary_detail_level()
+      settings$summary_focus_mode <- temp_summary_focus_mode()
+
+      cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s, Görsel Boyutu: %s, HD: %s, Özet Detay: %s, Özet Odak: %s\n",
                   settings$model_selection, settings$selected_character,
-                  settings$image_size, settings$image_quality_hd))
+                  settings$image_size, settings$image_quality_hd,
+                  settings$summary_detail_level, settings$summary_focus_mode))
  
       Sys.sleep(0.1)
  
@@ -891,13 +1002,21 @@ settingsServer <- function(id, parent_session = NULL) {
 	    size = settings$image_size,
 	    quality_hd = isTRUE(settings$image_quality_hd)
 	  ))
- 
+
+	  # Özetleme ayarlarını Ana Söyleşi sayfasına senkronize et
+	  session$sendCustomMessage("syncSummarySettingsToChat", list(
+	    detail_level = settings$summary_detail_level,
+	    focus_mode = settings$summary_focus_mode
+	  ))
+
 	  to_save <- reactiveValuesToList(settings)
 	  to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
       to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
       to_save$enable_tts_audio   <- isTRUE(input$enable_tts_audio)
-      to_save$image_size         <- settings$image_size
-      to_save$image_quality_hd   <- settings$image_quality_hd
+      to_save$image_size             <- settings$image_size
+      to_save$image_quality_hd       <- settings$image_quality_hd
+      to_save$summary_detail_level   <- settings$summary_detail_level
+      to_save$summary_focus_mode     <- settings$summary_focus_mode
       session$sendCustomMessage("saveSettings", to_save)
       
       showToast(session, "Ayarlar kaydedildi!", "success")
@@ -936,6 +1055,12 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$image_quality_hd <- FALSE
 	  temp_image_size("1024x1024")
 	  temp_image_quality_hd(FALSE)
+
+	  # Özetleme ayarlarını sıfırla
+	  settings$summary_detail_level <- "standard"
+	  settings$summary_focus_mode <- "general"
+	  temp_summary_detail_level("standard")
+	  temp_summary_focus_mode("general")
 	  
 	  updateSelectInput(session, "model_selection", selected = settings$model_selection)
 	  update_character_display(settings$selected_character)
@@ -963,7 +1088,17 @@ settingsServer <- function(id, parent_session = NULL) {
 	    size = "1024x1024",
 	    quality_hd = FALSE
 	  ))
-	  
+
+	  # Özetleme ayarları UI'ını güncelle
+	  updateSelectInput(session, "summary_detail_level", selected = "standard")
+	  updateSelectInput(session, "summary_focus_mode", selected = "general")
+
+	  # Ana Söyleşi'deki özetleme kontrollerini de sıfırla
+	  session$sendCustomMessage("syncSummarySettingsToChat", list(
+	    detail_level = "standard",
+	    focus_mode = "general"
+	  ))
+
 	  session$sendCustomMessage("clearSettings", list())
 	  showToast(session, "Ayarlar sıfırlandı!", "info")
 	})

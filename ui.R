@@ -114,6 +114,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/message_actions.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/feedback_modal.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/image_tools.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/summarization_tools.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -184,6 +185,7 @@ ui <- dashboardPage(
 	tags$script(src = "js/feedback_modal.js"),
     tags$script(src = "js/music_manager.js"),
     tags$script(src = "js/image_tools.js"),
+    tags$script(src = "js/summarization_tools.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),
@@ -302,6 +304,35 @@ ui <- dashboardPage(
                         ),
                         tags$span(class = "quality-mini-slider"),
                         tags$span(class = "quality-mini-label", "HD")
+                      )
+                    )
+                  ),
+                  # Özetleme kontrolleri (Dosya Özetleme aktifken görünür)
+                  div(
+                    id = "summary_chat_controls",
+                    class = "summary-chat-controls hidden",
+                    div(
+                      class = "summary-control-item",
+                      tags$select(
+                        id = "chat_summary_detail",
+                        class = "summary-detail-select",
+                        title = "Detay Seviyesi: Özetin ne kadar ayrıntılı olacağını belirler",
+                        tags$option(value = "brief", "Kısa Özet"),
+                        tags$option(value = "standard", selected = "selected", "Standart"),
+                        tags$option(value = "detailed", "Detaylı")
+                      )
+                    ),
+                    div(class = "summary-control-separator"),
+                    div(
+                      class = "summary-control-item",
+                      tags$select(
+                        id = "chat_summary_focus",
+                        class = "summary-focus-select",
+                        title = "Odak Modu: Özetin hangi konulara ağırlık vereceğini belirler",
+                        tags$option(value = "general", selected = "selected", "Genel"),
+                        tags$option(value = "numerical", "Sayısal Veri"),
+                        tags$option(value = "decisions", "Karar & Öneri"),
+                        tags$option(value = "comparison", "Karşılaştırma")
                       )
                     )
                   ),
