@@ -375,9 +375,14 @@ sendMessageInit <- function(
         cat("[SUMMARIZATION] Kullanıcı sorgusu özetlemeye eklendi:", user_message_text, "\n")
       }
  
-      # Özetleme mod parametrelerini al (sohbet kontrolleri veya ayarlar sayfasından)
       summary_detail <- input$chat_summary_detail %||% settings_data$summary_detail_level %||% "standard"
       summary_focus <- input$chat_summary_focus %||% settings_data$summary_focus_mode %||% "general"
+
+      if (identical(summary_focus, "comparison") && uploaded_count == 1) {
+        summary_focus <- "general"
+        showToast(session, "Karşılaştırma modu için birden fazla dosya gereklidir. Genel moda geçildi.", "warning")
+        cat("[SUMMARIZATION] Tek dosya ile karşılaştırma modu seçildi, genel moda geçildi\n")
+      }
 
       cat("[SUMMARIZATION] Mod parametreleri - Detay:", summary_detail, "Odak:", summary_focus, "\n")
 

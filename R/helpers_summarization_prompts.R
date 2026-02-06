@@ -1,110 +1,170 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_summarization_prompts.R
-# Açıklama: Türkçe belge özetleme için sistem promptları ve yardımcı fonksiyonlar.
-#           Mod parametrelerine göre (detay seviyesi, odak modu) prompt oluşturur.
+# Türkçe belge özetleme için sistem ve kullanıcı promptları.
+# Detay seviyesi ve odak moduna göre farklılaştırılmış prompt üretir.
 # ==============================================================================
 
 build_summarization_system_prompt <- function(file_count = 1, total_chars = 0,
                                                detail_level = "standard",
                                                focus_mode = "general") {
-  base <- paste(
-    "Sen MERGEN Bilge'nin özetleme uzmanısın. 256K bağlam pencereli gelişmiş bir modelsin ve Türkçe belgeleri en kapsamlı ve yapılandırılmış şekilde özetleme kapasitesine sahipsin.",
-    "\n\nTEMEL GÖREVİN:",
-    "- Belgelerdeki TÜM önemli konuları, başlıkları, alt başlıkları ve detayları koru",
-    "- Sayısal verileri, istatistikleri, tarihleri, rakamları ve somut bilgileri AYNEN ve tam olarak belirt",
-    "- Mantıksal akışı, hiyerarşiyi ve belge yapısını birebir koru",
-    "- Sadece özet DEĞİL, KAPSAMLI İÇERİK DÖKÜMÜ ve AYRINTILI ANALİZ hazırla",
-    "\n\nYAPILANDIRILMIŞ FORMAT:",
-    "- Her dosya için ### DOSYA ADI şeklinde ana başlık kullan",
-    "- Ana başlıkları **kalın ve vurgulu** yap",
-    "- Alt konuları maddeler halinde (• veya -) sun",
-    "- Sayısal verileri **>sayı<** şeklinde vurgula",
-    "- Tablo verilerini düzenli şekilde sun",
-    "- Bölümler arası geçişleri açık ve net yap",
-    "- Her bölüm sonunda kısa bir değerlendirme ekle",
-    "\n\nKATI KURALLAR (ASLA İHLAL ETME):",
-    "- YALNIZCA sağlanan belge içeriğini kullan, ASLA ek bilgi uydurma",
-    "- Eğer belgede bir bilgi yoksa, onu ASLA ekleme veya tahmin etme",
-    "- Dosya adından içerik tahmini YAPMA, yalnızca sağlanan metni kullan",
-    "- Belgede olmayan hiçbir konuyu, veriyi veya detayı ekleme",
-    "- Eksik bilgi varsa, bunu 'belgede bulunamadı' şeklinde belirt",
-    "\n\nÖZEL TALİMATLAR (256K BAĞLAM İÇİN):",
-    "- Bağlam penceren çok geniş (256K), bu nedenle hiçbir detayı atlama",
-    "- Uzun belgelerde bile tüm bölümleri eksiksiz işle",
-    "- Tek dosyada bile olsa, belgeyi bölüm bölüm işleyerek tam kapsam sağla",
-    "- Çoklu dosyalarda, dosyalar arası bağlantıları ve ortak temaları vurgula",
-    "\n\nYAPILMAMALI:",
-    "- Hiçbir şekilde yüzeysel geçme veya atlama",
-    "- 'Belge şu konuyu içeriyor' gibi genel ve yüzeysel ifadeler",
-    "- Bilgi kaybı veya eksik aktarım",
-    "- Önemli detayları göz ardı etme",
-    "- Formatı bozma veya düzensiz sunum",
-    "- Belgede olmayan bilgi uydurma veya tahmin etme",
-    "- Dosya adından içerik çıkarmaya çalışma"
+
+  # Temel rol tanımı (tüm modlar için ortak)
+  role <- paste(
+    "Sen MERGEN Bilge'nin özetleme uzmanısın.",
+    "Türkçe belgeleri kullanıcının istediği detay seviyesinde özetleme kapasitesine sahipsin."
   )
 
+  # Kati kurallar (tüm modlar için ortak)
+  strict_rules <- paste(
+    "\n\nKATI KURALLAR:",
+    "\n- YALNIZCA sağlanan belge içeriğini kullan, ASLA ek bilgi uydurma",
+    "\n- Belgede olmayan hiçbir konuyu, veriyi veya detayı ekleme",
+    "\n- Dosya adından içerik tahmini YAPMA",
+    "\n- Belgede olmayan bilgi uydurma veya tahmin etme"
+  )
+
+  # Detay seviyesine göre farklılaştırılmış ana talimatlar
+  detail_instructions <- switch(detail_level,
+    "brief" = paste(
+      "\n\nGÖREV: KISA VE ÖZ ÖZET",
+      "\nKullanıcı kısa bir özet istiyor. Aşağıdaki kurallara KESİNLİKLE uy:",
+      "\n- Her dosya için TOPLAMDA EN FAZLA 3-5 CÜMLE yaz",
+      "\n- Sadece belgenin ANA FİKRİNİ ve EN KRİTİK 3-5 noktayı belirt",
+      "\n- Detaylara, alt başlıklara, bölüm bölüm analize GİRME",
+      "\n- Tablo, liste veya ayrıntılı döküm OLUŞTURMA",
+      "\n- Uzun paragraflar YAZMA, kısa ve yoğun ol",
+      "\n- Sayısal veri listesi YAPMA, sadece en kritik 1-2 rakamı belirt",
+      "\n- 'Detaylı İçerik Dökümü', 'Ana Bölümler' gibi uzun bölümler AÇMA",
+      "\n- Çıktın KISA olmalı: tek dosya için en fazla bir paragraf"
+    ),
+    "detailed" = paste(
+      "\n\nGÖREV: DETAYLI VE KAPSAMLI ANALİZ",
+      "\nKullanıcı detaylı bir analiz istiyor. Aşağıdaki kurallara uy:",
+      "\n- Belgedeki TÜM bölümleri, başlıkları ve alt başlıkları eksiksiz işle",
+      "\n- Sayısal verileri, istatistikleri, tarihleri ve rakamları AYNEN belirt",
+      "\n- Mantıksal akışı ve belge yapısını birebir koru",
+      "\n- KAPSAMLI İÇERİK DÖKÜMÜ ve AYRINTILI ANALİZ hazırla",
+      "\n- Her bölümü maddeler halinde detaylandır",
+      "\n- Tablo verilerini düzenli şekilde sun",
+      "\n- Her bölüm sonunda değerlendirme ekle",
+      "\n- 256K bağlam pencereni tam olarak kullanarak hiçbir detayı atlama",
+      "\n- Bölümler arası geçişleri açık ve net yap"
+    ),
+    paste(
+      "\n\nGÖREV: STANDART ÖZET",
+      "\nKullanıcı dengeli bir özet istiyor:",
+      "\n- Ana başlıkları ve kilit konuları koru",
+      "\n- Önemli sayısal verileri ve tarihleri belirt",
+      "\n- Her bölüm için yeterli detay ver ama gereksiz tekrardan kaçın",
+      "\n- Makul uzunlukta, dengeli bir özet oluştur",
+      "\n- Sonunda genel bir değerlendirme bölümü ekle"
+    )
+  )
+
+  # Yapılandırılmış format (sadece standard ve detailed için)
+  format_instructions <- ""
+  if (detail_level != "brief") {
+    format_instructions <- paste(
+      "\n\nFORMAT:",
+      "\n- Her dosya için ### DOSYA ADI şeklinde başlık kullan",
+      "\n- Ana başlıkları **kalın** yap",
+      "\n- Alt konuları maddeler halinde sun",
+      "\n- Sayısal verileri **>sayı<** şeklinde vurgula"
+    )
+  }
+
+  base <- paste0(role, strict_rules, detail_instructions, format_instructions)
+
+  # Çoklu dosya talimatları
   if (file_count > 1) {
-    base <- paste0(base,
-      "\n\nÇOKLU DOSYA (" , file_count, " DOSYA) İÇİN ÖZEL TALİMATLAR:",
-      "\n1. Her dosyayı AYRI BİR BÖLÜM olarak işle",
-      "\n2. Her bölüm başlığında ### DOSYA [sayı]: [DOSYA ADI] formatını kullan",
-      "\n3. Dosyalar arasındaki BENZERLİKLERİ ve FARKLILIKLARI belirt",
-      "\n4. Ortak temaları özel bir 'ORTAK TEMALAR' bölümünde özetle",
-      "\n5. Her dosyanın kendine özgü katkısını vurgula",
-      "\n6. Sonunda tüm dosyaları birleştiren 'GENEL DEĞERLENDİRME' bölümü ekle"
-    )
+    if (detail_level == "brief") {
+      base <- paste0(base,
+        "\n\nÇOKLU DOSYA (", file_count, " DOSYA):",
+        "\n- Her dosya için AYRI kısa özet yaz (her biri 3-5 cümle)",
+        "\n- Sonunda 1-2 cümlelik genel değerlendirme ekle"
+      )
+    } else {
+      base <- paste0(base,
+        "\n\nÇOKLU DOSYA (", file_count, " DOSYA) İÇİN TALİMATLAR:",
+        "\n1. Her dosyayı AYRI BİR BÖLÜM olarak işle",
+        "\n2. Her bölüm başlığında ### DOSYA [sayı]: [DOSYA ADI] formatını kullan",
+        "\n3. Dosyalar arasındaki benzerlikleri ve farklılıkları belirt",
+        "\n4. Sonunda genel değerlendirme bölümü ekle"
+      )
+    }
   }
 
-  if (total_chars > 100000) {
+  # Uzun belge talimatları (sadece standard ve detailed için)
+  if (detail_level != "brief" && total_chars > 100000) {
     base <- paste0(base,
-      "\n\nUZUN BELGE/ÇOKLU BELGE DURUMU (" , format(total_chars, big.mark = ".", decimal.mark = ","), " karakter):",
+      "\n\nUZUN BELGE (", format(total_chars, big.mark = ".", decimal.mark = ","), " karakter):",
       "\n- Bağlam penceren 256K olduğu için tüm içeriği işleyebilirsin",
-      "\n- Belgeyi bölüm bölüm, titizlikle işle",
-      "\n- Her bölümdeki kritik bilgileri koru",
-      "\n- Sayfa numaraları, bölüm referansları gibi yapısal bilgileri belirt",
-      "\n- Önemli alıntıları tam metin olarak koru"
+      "\n- Belgeyi bölüm bölüm titizlikle işle"
     )
   }
 
-  if (total_chars > 200000) {
-    base <- paste0(base,
-      "\n\nÇOK UZUN BELGE ÖZEL STRATEJİSİ:",
-      "\n- Bölümlere ayırarak derinlemesine işle",
-      "\n- Her alt bölüm için mini özetler ekle",
-      "\n- İçindekiler benzeri yapısal bir harita oluştur",
-      "\n- En kritik %20 içeriğe özel vurgu yap"
-    )
-  }
-
-  # Mod talimatlarını ekle
+  # Odak modu talimatlarını ekle
   mode_instructions <- build_mode_instructions(detail_level, focus_mode)
   base <- paste0(base, "\n", mode_instructions)
 
   base
 }
 
-build_summarization_user_prompt <- function(file_contents_list) {
+build_summarization_user_prompt <- function(file_contents_list,
+                                             detail_level = "standard",
+                                             focus_mode = "general") {
   if (length(file_contents_list) == 1) {
-    return(paste0(
-      "BELGE İÇERİĞİ:\n\n",
-      file_contents_list[[1]]$content,
-      "\n\n---\n\n",
-      "Yukarıdaki belgeyi 256K bağlam pencereni TAM olarak kullanarak KAPSAMLI şekilde özetle. ",
-      "Lütfen şu formatı kullan:\n\n",
-      "### ", file_contents_list[[1]]$name, "\n",
-      "**Belge Tipi:** [DOC/PDF/Word vb.]\n",
-      "**Toplam Uzunluk:** ", format(nchar(file_contents_list[[1]]$content), big.mark = ".", decimal.mark = ","), " karakter\n\n",
-      "**ANA BÖLÜMLER:**\n",
-      "[Belgenin ana bölümlerini başlık başlık listele]\n\n",
-      "**DETAYLI İÇERİK DÖKÜMÜ:**\n",
-      "[Her bölümü maddeler halinde detaylandır]\n\n",
-      "**KRİTİK SAYISAL VERİLER:**\n",
-      "[Tüm sayısal verileri listele]\n\n",
-      "**TEMEL ÇIKARIMLAR:**\n",
-      "[Belgeden çıkarılabilecek temel sonuçlar]\n\n",
-      "**ÖNERİLER/DEĞERLENDİRMELER:**\n",
-      "[Belge içeriğine dayalı değerlendirmeler]"
-    ))
+    fname <- file_contents_list[[1]]$name
+    fcontent <- file_contents_list[[1]]$content
+    fchars <- format(nchar(fcontent), big.mark = ".", decimal.mark = ",")
+
+    content_block <- paste0("BELGE İÇERİĞİ:\n\n", fcontent, "\n\n---\n\n")
+
+    format_block <- switch(detail_level,
+      "brief" = paste0(
+        "Yukarıdaki belgeyi KISA VE ÖZ şekilde özetle.\n",
+        "### ", fname, "\n",
+        "Belgenin ana fikri ve en kritik 3-5 noktayı birkaç cümleyle belirt. ",
+        "Detaylara girme, uzun listeler yapma, bölüm bölüm analiz yapma."
+      ),
+      "detailed" = paste0(
+        "Yukarıdaki belgeyi KAPSAMLI ve DETAYLI şekilde özetle.\n\n",
+        "### ", fname, "\n",
+        "**Belge Tipi:** [DOC/PDF/Word vb.]\n",
+        "**Toplam Uzunluk:** ", fchars, " karakter\n\n",
+        "**ANA BÖLÜMLER:**\n",
+        "[Belgenin ana bölümlerini başlık başlık listele]\n\n",
+        "**DETAYLI İÇERİK DÖKÜMÜ:**\n",
+        "[Her bölümü maddeler halinde detaylandır]\n\n",
+        "**KRİTİK SAYISAL VERİLER:**\n",
+        "[Tüm sayısal verileri listele]\n\n",
+        "**TEMEL ÇIKARIMLAR:**\n",
+        "[Belgeden çıkarılabilecek temel sonuçlar]\n\n",
+        "**ÖNERİLER/DEĞERLENDİRMELER:**\n",
+        "[Belge içeriğine dayalı değerlendirmeler]"
+      ),
+      paste0(
+        "Yukarıdaki belgeyi dengeli detayda özetle.\n\n",
+        "### ", fname, "\n",
+        "**Ana Konular:**\n",
+        "[Belgenin ana konularını özetle]\n\n",
+        "**Önemli Noktalar:**\n",
+        "[Kilit bilgileri maddeler halinde sun]\n\n",
+        "**Değerlendirme:**\n",
+        "[Belge hakkında genel değerlendirme]"
+      )
+    )
+
+    # Odak moduna göre ek yönlendirme
+    focus_instruction <- switch(focus_mode,
+      "numerical" = "\n\nÖZELLİKLE sayısal verilere, istatistiklere ve rakamlara odaklan.",
+      "decisions" = "\n\nÖZELLİKLE karar noktalarına, önerilere ve aksiyon maddelerine odaklan.",
+      "comparison" = "\n\nBelge içindeki farklı bölümleri veya konuları birbirleriyle karşılaştır.",
+      ""
+    )
+
+    return(paste0(content_block, format_block, focus_instruction))
+
   } else {
     blocks <- vapply(seq_along(file_contents_list), function(i) {
       fc <- file_contents_list[[i]]
@@ -114,22 +174,50 @@ build_summarization_user_prompt <- function(file_contents_list) {
       )
     }, character(1))
 
-    return(paste0(
+    content_block <- paste0(
       paste(blocks, collapse = "\n\n--- DOSYA SONU ---\n\n"),
-      "\n\n--- TÜM DOSYALAR BİTTİ ---\n\n",
-      "Yukarıdaki ", length(file_contents_list), " dosyayı 256K bağlam pencereni TAM olarak kullanarak AYRI AYRI ve KAPSAMLI özetle. ",
-      "Her dosya için ayrı başlık aç ve şu formatı kullan:\n\n",
-      "## TÜM DOSYALARIN ÖZETİ\n\n",
-      "**Toplam Dosya Sayısı:** ", length(file_contents_list), "\n",
-      "**Toplam Karakter:** ", format(sum(vapply(file_contents_list, function(x) nchar(x$content), numeric(1))), big.mark = ".", decimal.mark = ","), "\n\n",
-      "### HER DOSYA İÇİN AYRINTILI ÖZET\n",
-      "[Her dosyayı ayrı ayrı özetle]\n\n",
-      "### DOSYALAR ARASI KARŞILAŞTIRMA\n",
-      "[Benzerlikler, farklılıklar, ortak temalar]\n\n",
-      "### BİRLEŞİK DEĞERLENDİRME\n",
-      "[Tüm belgelerden çıkarılan genel sonuçlar]\n\n",
-      "### ÖNERİLER VE SONRAKİ ADIMLAR\n",
-      "[Belgelere dayalı öneriler]"
-    ))
+      "\n\n--- TÜM DOSYALAR BİTTİ ---\n\n"
+    )
+
+    format_block <- switch(detail_level,
+      "brief" = paste0(
+        "Yukarıdaki ", length(file_contents_list), " dosyayı KISA VE ÖZ şekilde özetle.\n",
+        "Her dosya için 3-5 cümlelik kısa özet yaz.\n",
+        "Sonunda 1-2 cümle genel değerlendirme ekle.\n",
+        "Detaylara girme, uzun listeler yapma."
+      ),
+      "detailed" = paste0(
+        "Yukarıdaki ", length(file_contents_list), " dosyayı KAPSAMLI ve DETAYLI özetle.\n\n",
+        "## TÜM DOSYALARIN ÖZETİ\n\n",
+        "**Toplam Dosya Sayısı:** ", length(file_contents_list), "\n",
+        "**Toplam Karakter:** ", format(sum(vapply(file_contents_list, function(x) nchar(x$content), numeric(1))), big.mark = ".", decimal.mark = ","), "\n\n",
+        "### HER DOSYA İÇİN AYRINTILI ÖZET\n",
+        "[Her dosyayı ayrı ayrı detaylı özetle]\n\n",
+        "### DOSYALAR ARASI KARŞILAŞTIRMA\n",
+        "[Benzerlikler, farklılıklar, ortak temalar]\n\n",
+        "### BİRLEŞİK DEĞERLENDİRME\n",
+        "[Tüm belgelerden çıkarılan genel sonuçlar]\n\n",
+        "### ÖNERİLER VE SONRAKİ ADIMLAR\n",
+        "[Belgelere dayalı öneriler]"
+      ),
+      paste0(
+        "Yukarıdaki ", length(file_contents_list), " dosyayı dengeli detayda özetle.\n\n",
+        "## TÜM DOSYALARIN ÖZETİ\n\n",
+        "**Toplam Dosya Sayısı:** ", length(file_contents_list), "\n\n",
+        "### HER DOSYA İÇİN ÖZET\n",
+        "[Her dosyayı ayrı ayrı özetle]\n\n",
+        "### GENEL DEĞERLENDİRME\n",
+        "[Tüm belgelerden çıkarılan sonuçlar]"
+      )
+    )
+
+    focus_instruction <- switch(focus_mode,
+      "numerical" = "\n\nÖZELLİKLE sayısal verilere, istatistiklere ve rakamlara odaklan.",
+      "decisions" = "\n\nÖZELLİKLE karar noktalarına, önerilere ve aksiyon maddelerine odaklan.",
+      "comparison" = "\n\nÖZELLİKLE dosyalar arasındaki benzerlikleri ve farklılıkları karşılaştır.",
+      ""
+    )
+
+    return(paste0(content_block, format_block, focus_instruction))
   }
 }
