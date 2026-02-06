@@ -1,9 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_summarization_modes.R
-# Açıklama: Özetleme modları tanımları ve moda göre sistem promptu oluşturucu
+# Açıklama: Özetleme modları tanımları ve moda göre sistem promptu oluşturucu.
+#           Detay seviyesine göre tamamen farklı temel talimatlar üretir.
 # ==============================================================================
 
-# Detay seviyesi tanımları
 SUMMARY_DETAIL_LEVELS <- list(
   brief = list(
     id = "brief",
@@ -22,7 +22,6 @@ SUMMARY_DETAIL_LEVELS <- list(
   )
 )
 
-# Odak modu tanımları
 SUMMARY_FOCUS_MODES <- list(
   general = list(
     id = "general",
@@ -42,86 +41,108 @@ SUMMARY_FOCUS_MODES <- list(
   comparison = list(
     id = "comparison",
     label = "Karşılaştırma",
-    description = "Çoklu dosyalarda benzerlik/farklılık analizine odaklanır."
+    description = "Çoklu dosyalarda veya belge bölümleri arasında benzerlik/farklılık analizine odaklanır."
   )
 )
 
-# Detay seviyesine göre prompt talimatları
-get_detail_level_instructions <- function(detail_level = "standard") {
+get_base_system_prompt_by_detail <- function(detail_level = "standard") {
   switch(detail_level,
-    "brief" = paste(
-      "\nDETAY SEVİYESİ: KISA ÖZET",
-      "\n- Belgenin ana fikrini 2-3 cümleyle özetle",
-      "\n- En kritik 3-5 maddeyi listele",
-      "\n- Detaylara girme, sadece üst düzey bilgi ver",
-      "\n- Toplam çıktı kısa ve yoğun olsun",
-      "\n- Her dosya için en fazla birkaç paragraf yaz"
+    "brief" = paste0(
+      "Sen MERGEN Bilge'nin özetleme uzmanısın.",
+      "\n\nGÖREVİN: Belgelerin KISA ve ÖZ bir özetini hazırlamak.",
+      "\n\nKESİN KURALLAR:",
+      "\n- Her dosya için TOPLAM EN FAZLA 8-10 CÜMLE yaz. Bu sınırı ASLA aşma.",
+      "\n- Sadece belgenin ANA FİKRİNİ ve EN KRİTİK 3-5 noktasını belirt.",
+      "\n- Alt başlıklara, detaylara, tablo içeriklerine GİRME.",
+      "\n- Sayısal veri sadece en kritik 1-2 rakamla sınırlı olsun.",
+      "\n- Uzun açıklamalar, bölüm bölüm döküm, madde listeleri YAPMA.",
+      "\n- Kısa, yoğun, doğrudan konuya giren bir metin üret.",
+      "\n- 'Belge şunu anlatıyor:' gibi girişlerden sonra doğrudan özü ver."
     ),
-    "detailed" = paste(
-      "\nDETAY SEVİYESİ: DETAYLI ANALİZ",
-      "\n- Belgedeki TÜM bölümleri eksiksiz işle",
-      "\n- Her alt başlığı ve paragrafı detaylandır",
-      "\n- Sayısal verileri, tarihleri, isimleri tam olarak belirt",
-      "\n- Tablo verilerini düzenli şekilde sun",
-      "\n- Bölümler arası mantıksal bağlantıları açıkla",
-      "\n- Her bölüm sonunda detaylı değerlendirme ekle",
-      "\n- Bağlam pencereni tam olarak kullanarak hiçbir detayı atlama"
+    "detailed" = paste0(
+      "Sen MERGEN Bilge'nin özetleme uzmanısın. 256K bağlam pencereli gelişmiş bir modelsin.",
+      "\n\nGÖREVİN: Belgelerin KAPSAMLI İÇERİK DÖKÜMÜ ve AYRINTILI ANALİZİNİ hazırlamak.",
+      "\n\nKESİN KURALLAR:",
+      "\n- Belgedeki TÜM bölümleri, alt başlıkları ve paragrafları eksiksiz işle.",
+      "\n- Sayısal verileri, istatistikleri, tarihleri, rakamları AYNEN ve tam belirt.",
+      "\n- Mantıksal akışı, hiyerarşiyi ve belge yapısını birebir koru.",
+      "\n- Tablo verilerini düzenli şekilde sun.",
+      "\n- Bölümler arası mantıksal bağlantıları açıkla.",
+      "\n- Her bölüm sonunda detaylı değerlendirme ekle.",
+      "\n- Hiçbir detayı atlama, 256K bağlam pencereni tam kullan.",
+      "\n- Uzun belgelerde bile tüm bölümleri eksiksiz işle."
     ),
-    paste(
-      "\nDETAY SEVİYESİ: STANDART",
-      "\n- Belgenin tüm önemli konularını dengeli detayda özetle",
-      "\n- Ana başlıkları ve kilit alt başlıkları koru",
-      "\n- Önemli sayısal verileri ve tarihleri belirt",
-      "\n- Her bölüm için yeterli detay ver ama gereksiz tekrardan kaçın",
-      "\n- Sonunda genel bir değerlendirme bölümü ekle"
+    paste0(
+      "Sen MERGEN Bilge'nin özetleme uzmanısın.",
+      "\n\nGÖREVİN: Belgelerin DENGELİ ve YAPILANDIRILMIŞ bir özetini hazırlamak.",
+      "\n\nKESİN KURALLAR:",
+      "\n- Ana başlıkları ve kilit alt başlıkları koru.",
+      "\n- Önemli sayısal verileri ve tarihleri belirt ama tüm rakamları listeleme.",
+      "\n- Her bölüm için yeterli detay ver ama gereksiz tekrardan kaçın.",
+      "\n- Ne çok kısa ne çok uzun ol. Orta düzey bir kapsam hedefle.",
+      "\n- Sonunda genel bir değerlendirme bölümü ekle."
     )
   )
 }
 
-# Odak moduna göre prompt talimatları
-get_focus_mode_instructions <- function(focus_mode = "general") {
+get_focus_mode_instructions <- function(focus_mode = "general", file_count = 1) {
+  if (focus_mode == "comparison" && file_count <= 1) {
+    return(paste0(
+      "\n\nÖZEL ODAK: BELGE İÇİ KARŞILAŞTIRMA ANALİZİ",
+      "\nTek dosya seçildiği için belgenin KENDİ İÇİNDEKİ farklı bölümlerini karşılaştır:",
+      "\n- Belgedeki farklı bölümler arasındaki benzerlikleri ve farklılıkları tespit et.",
+      "\n- Belge içindeki tutarsızlıkları veya çelişen ifadeleri vurgula.",
+      "\n- Farklı bölümlerdeki verileri karşılaştırmalı şekilde sun.",
+      "\n- Belgenin başında ve sonundaki tonlama veya yaklaşım farklılıklarını belirt."
+    ))
+  }
+
   switch(focus_mode,
-    "numerical" = paste(
-      "\nÖZEL ODAK: SAYISAL VERİ ANALİZİ",
-      "\n- Tüm sayısal verileri, istatistikleri ve rakamları öne çıkar",
-      "\n- Tablo ve grafik verilerini düzenli listele",
-      "\n- Yüzdeleri, büyüme oranlarını, bütçe kalemlerini vurgula",
-      "\n- Sayısal verileri **>değer<** formatıyla işaretle",
-      "\n- Karşılaştırmalı verileri yan yana sun",
-      "\n- Eğilim ve değişim oranlarını belirt"
+    "numerical" = paste0(
+      "\n\nÖZEL ODAK: SAYISAL VERİ ANALİZİ",
+      "\nAşağıdaki yönergelere MUTLAKA uy:",
+      "\n- Çıktının ANA GÖVDESİ sayısal verilerden oluşmalı.",
+      "\n- Tüm rakamları, yüzdeleri, bütçe kalemlerini, tarihleri ve istatistikleri çıkar ve listele.",
+      "\n- Anlatım metni EN AZ düzeyde olsun; odak tamamen sayılarda.",
+      "\n- Sayısal verileri **>değer<** formatıyla vurgula.",
+      "\n- Varsa tablo/grafik verilerini düzenli tablo formatında sun.",
+      "\n- Eğilim ve değişim oranlarını hesapla ve belirt.",
+      "\n- Metin açıklamaları SADECE sayısal verilere bağlam sağlamak için kullan."
     ),
-    "decisions" = paste(
-      "\nÖZEL ODAK: KARAR & ÖNERİ ANALİZİ",
-      "\n- Karar noktalarını ve alınan kararları öne çıkar",
-      "\n- Önerileri ve aksiyon maddelerini listele",
-      "\n- Sorumluluk atamalarını ve zaman çizelgelerini belirt",
-      "\n- Risk ve fırsatları vurgula",
-      "\n- Her karar için bağlam ve gerekçeyi kısaca açıkla",
-      "\n- Sonraki adımları ve takip gerektiren maddeleri listele"
+    "decisions" = paste0(
+      "\n\nÖZEL ODAK: KARAR & ÖNERİ ANALİZİ",
+      "\nAşağıdaki yönergelere MUTLAKA uy:",
+      "\n- Çıktının ANA GÖVDESİ karar noktaları ve önerilerden oluşmalı.",
+      "\n- Her karar maddesi için: ne kararlaştırıldı, kim sorumlu, ne zaman uygulanacak.",
+      "\n- Önerileri ve aksiyon maddelerini numaralı liste halinde sun.",
+      "\n- Risk ve fırsatları ayrı bir bölümde vurgula.",
+      "\n- Genel anlatımı EN AZ düzeyde tut; odak tamamen karar ve aksiyonlarda.",
+      "\n- Sonraki adımları ve takip gerektiren maddeleri net şekilde listele.",
+      "\n- Kararların bağlamını SADECE kısaca belirt, ana metin kararların kendisi olsun."
     ),
-    "comparison" = paste(
-      "\nÖZEL ODAK: KARŞILAŞTIRMA ANALİZİ",
-      "\n- Dosyalar/bölümler arası benzerlikleri tespit et",
-      "\n- Farklılıkları net şekilde karşılaştır",
-      "\n- Ortak temaları ve çelişen noktaları vurgula",
-      "\n- Karşılaştırma tabloları oluştur",
-      "\n- Tutarsızlıkları veya çelişkileri belirt",
-      "\n- Sentez ve bütünleşik değerlendirme sun"
+    "comparison" = paste0(
+      "\n\nÖZEL ODAK: ÇOKLU DOSYA KARŞILAŞTIRMA ANALİZİ",
+      "\nAşağıdaki yönergelere MUTLAKA uy:",
+      "\n- Çıktının ANA GÖVDESİ dosyalar arası karşılaştırmadan oluşmalı.",
+      "\n- Her dosyanın bireysel özetini KISA tut, asıl odak KARŞILAŞTIRMA olsun.",
+      "\n- Benzerlikleri ve farklılıkları madde madde listele.",
+      "\n- Ortak temaları ve çelişen noktaları vurgula.",
+      "\n- Mümkünse karşılaştırma tablosu oluştur.",
+      "\n- Tutarsızlıkları veya çelişkileri belirt.",
+      "\n- Sentez ve bütünleşik değerlendirme sun."
     ),
-    paste(
-      "\nÖZEL ODAK: GENEL ÖZET",
-      "\n- Belgenin tamamına dengeli yaklaş",
-      "\n- Tüm konuları ve temaları eşit derinlikte işle",
-      "\n- Hem nitel hem nicel bilgileri koru"
+    paste0(
+      "\n\nÖZEL ODAK: GENEL ÖZET",
+      "\n- Belgenin tamamına dengeli yaklaş.",
+      "\n- Tüm konuları ve temaları eşit derinlikte işle."
     )
   )
 }
 
-# Mod bilgilerini birleştirerek ek prompt talimatı oluştur
-build_mode_instructions <- function(detail_level = "standard", focus_mode = "general") {
+build_mode_instructions <- function(detail_level = "standard", focus_mode = "general",
+                                     file_count = 1) {
   paste0(
-    get_detail_level_instructions(detail_level),
-    "\n",
-    get_focus_mode_instructions(focus_mode)
+    get_base_system_prompt_by_detail(detail_level),
+    get_focus_mode_instructions(focus_mode, file_count)
   )
 }

@@ -112,9 +112,14 @@ if (window.Shiny) {
         modelWrapper.style.pointerEvents = 'none';
         modelWrapper.title = 'Özetleme modunda model seçimi devre dışı';
       } else {
-        modelWrapper.style.opacity = '1';
-        modelWrapper.style.pointerEvents = 'auto';
-        modelWrapper.title = 'Model Değiştir';
+        // Görsel modu aktifse model seçiciyi tekrar aktif etme
+        var imageControls = document.getElementById('image_chat_controls');
+        var imageActive = imageControls && !imageControls.classList.contains('hidden');
+        if (!imageActive) {
+          modelWrapper.style.opacity = '1';
+          modelWrapper.style.pointerEvents = 'auto';
+          modelWrapper.title = 'Model Değiştir';
+        }
       }
     }
   });

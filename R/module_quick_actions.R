@@ -263,9 +263,9 @@ quickActionsInit <- function(input, session, values, settings_data,
       update_tool_checkboxes("enable_summarization_tools")
       save_tool_settings("enable_summarization_tools")
 
-      # Özetleme kontrollerini göster, görsel kontrollerini gizle, model seçicisini devre dışı bırak
-      session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
+      # Önce görsel kontrollerini gizle, sonra özetleme kontrollerini göster (sıra önemli)
       session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+      session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
 
       cat("[QUICK_TEMPLATE] Özetleme modu aktif edildi\n")
       
@@ -383,9 +383,9 @@ quickActionsInit <- function(input, session, values, settings_data,
     update_tool_checkboxes("enable_summarization_tools")
     save_tool_settings("enable_summarization_tools")
 
-    # Özetleme kontrollerini göster, görsel kontrollerini gizle
-    session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
+    # Önce görsel kontrollerini gizle, sonra özetleme kontrollerini göster (sıra önemli)
     session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+    session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
 
     showToast(session,
       "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",

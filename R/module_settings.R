@@ -946,10 +946,10 @@ settingsServer <- function(id, parent_session = NULL) {
 		    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
 		  }
 
-		  # Dosya Özetleme aktifleştirildiğinde kontrolleri göster
+		  # Dosya Özetleme aktifleştirildiğinde kontrolleri göster (sıra önemli)
 		  if (tool_name == "enable_summarization_tools") {
-		    session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
 		    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+		    session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
 		  }
 		} else {
 		  # Görsel Uzmanı devre dışı bırakıldığında varsayılan modele dön
