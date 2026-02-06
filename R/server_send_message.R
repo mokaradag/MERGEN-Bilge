@@ -375,6 +375,12 @@ sendMessageInit <- function(
         cat("[SUMMARIZATION] Kullanıcı sorgusu özetlemeye eklendi:", user_message_text, "\n")
       }
  
+      # Özetleme mod parametrelerini al (sohbet kontrolleri veya ayarlar sayfasından)
+      summary_detail <- input$chat_summary_detail %||% settings_data$summary_detail_level %||% "standard"
+      summary_focus <- input$chat_summary_focus %||% settings_data$summary_focus_mode %||% "general"
+
+      cat("[SUMMARIZATION] Mod parametreleri - Detay:", summary_detail, "Odak:", summary_focus, "\n")
+
       # Promise ile özetleme
       p <- process_summarization_request(
         file_list = current_session_files,
@@ -385,7 +391,9 @@ sendMessageInit <- function(
           200000
         } else {
           120000
-        }
+        },
+        detail_level = summary_detail,
+        focus_mode = summary_focus
       )
  
       promises::then(

@@ -112,10 +112,17 @@ quickActionsInit <- function(input, session, values, settings_data,
       isolate({ settings_data$model_selection <- image_model })
       session$sendCustomMessage("saveSettings", list(model_selection = image_model))
       session$sendCustomMessage("toggleImageMode", list(active = TRUE))
+      session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+    } else if (tool_name == "enable_summarization_tools") {
+      # Özetleme modu: model değiştir, kontrolleri göster
+      change_model_if_provided(template_model)
+      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+      session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
     } else {
       # Normal model değiştirme
       change_model_if_provided(template_model)
       session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+      session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
     }
     
     # 2. Araçları kapat, sadece istenen aracı aç
@@ -248,14 +255,18 @@ quickActionsInit <- function(input, session, values, settings_data,
     # -------------------------------------------------------------------------
     if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
       cat("[QUICK_TEMPLATE] Özetleme isteği tespit edildi\n")
-      
+
       change_model_if_provided(template_model)
-      
+
       disable_all_tools()
       isolate({ settings_data$enable_summarization_tools <- TRUE })
       update_tool_checkboxes("enable_summarization_tools")
       save_tool_settings("enable_summarization_tools")
-      
+
+      # Özetleme kontrollerini göster, görsel kontrollerini gizle, model seçicisini devre dışı bırak
+      session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
+      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+
       cat("[QUICK_TEMPLATE] Özetleme modu aktif edildi\n")
       
       current_files <- isolate(session_files())
@@ -371,9 +382,13 @@ quickActionsInit <- function(input, session, values, settings_data,
     isolate({ settings_data$enable_summarization_tools <- TRUE })
     update_tool_checkboxes("enable_summarization_tools")
     save_tool_settings("enable_summarization_tools")
-    
-    showToast(session, 
-      "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", 
+
+    # Özetleme kontrollerini göster, görsel kontrollerini gizle
+    session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
+    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+
+    showToast(session,
+      "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",
       "success")
     
     # Dosyalar varsa özetlemeyi başlat
