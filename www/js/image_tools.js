@@ -300,21 +300,25 @@ if (window.Shiny) {
     }
   });
   
-  // Görsel modu aktif/pasif mesajı
   Shiny.addCustomMessageHandler('toggleImageMode', function(data) {
     window.toggleImageControls(data.active);
-    
-    // Model dropdown'ını da ayarla
-    const modelWrapper = document.querySelector('.model-selector-wrapper');
+
+    var modelWrapper = document.querySelector('.model-selector-wrapper');
     if (modelWrapper) {
       if (data.active) {
+        modelWrapper.classList.add('model-selector-locked');
         modelWrapper.style.opacity = '0.5';
         modelWrapper.style.pointerEvents = 'none';
         modelWrapper.title = 'Görsel modunda model seçimi devre dışı';
       } else {
-        modelWrapper.style.opacity = '1';
-        modelWrapper.style.pointerEvents = 'auto';
-        modelWrapper.title = 'Model Değiştir';
+        modelWrapper.classList.remove('model-selector-locked');
+        var summaryControls = document.getElementById('summary_chat_controls');
+        var summaryActive = summaryControls && !summaryControls.classList.contains('hidden');
+        if (!summaryActive) {
+          modelWrapper.style.opacity = '1';
+          modelWrapper.style.pointerEvents = 'auto';
+          modelWrapper.title = 'Model Değiştir';
+        }
       }
     }
   });

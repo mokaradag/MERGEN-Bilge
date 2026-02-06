@@ -1,12 +1,7 @@
 /* ==============================================================================
  * www/js/summarization_tools.js
- * Dosya Yolu: www/js/summarization_tools.js
- * Açıklama: Özetleme modu kontrol paneli yönetimi ve Ayarlar senkronizasyonu
+ * Özetleme modu kontrol paneli yönetimi ve Ayarlar senkronizasyonu
  * ============================================================================== */
-
-// ------------------------------------------------------------------------------
-// ÖZETLEME KONTROL PANELİ YÖNETİMİ
-// ------------------------------------------------------------------------------
 
 window.toggleSummaryControls = function(show) {
   var controls = document.getElementById('summary_chat_controls');
@@ -28,10 +23,6 @@ window.getSummarySettings = function() {
     focus_mode: focusSelect ? focusSelect.value : 'general'
   };
 };
-
-// ------------------------------------------------------------------------------
-// AYARLAR SENKRONİZASYONU
-// ------------------------------------------------------------------------------
 
 window.syncSummarySettings = function(source) {
   var chatDetail = document.getElementById('chat_summary_detail');
@@ -58,10 +49,6 @@ window.syncSummarySettings = function(source) {
   }
 };
 
-// ------------------------------------------------------------------------------
-// OLAY DİNLEYİCİLERİ
-// ------------------------------------------------------------------------------
-
 document.addEventListener('DOMContentLoaded', function() {
   var chatDetail = document.getElementById('chat_summary_detail');
   var chatFocus = document.getElementById('chat_summary_focus');
@@ -85,10 +72,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// ------------------------------------------------------------------------------
-// SHINY MESAJ İŞLEYİCİLERİ
-// ------------------------------------------------------------------------------
-
 if (window.Shiny) {
   Shiny.addCustomMessageHandler('syncSummarySettingsToChat', function(data) {
     var chatDetail = document.getElementById('chat_summary_detail');
@@ -108,13 +91,19 @@ if (window.Shiny) {
     var modelWrapper = document.querySelector('.model-selector-wrapper');
     if (modelWrapper) {
       if (data.active) {
+        modelWrapper.classList.add('model-selector-locked');
         modelWrapper.style.opacity = '0.5';
         modelWrapper.style.pointerEvents = 'none';
         modelWrapper.title = 'Özetleme modunda model seçimi devre dışı';
       } else {
-        modelWrapper.style.opacity = '1';
-        modelWrapper.style.pointerEvents = 'auto';
-        modelWrapper.title = 'Model Değiştir';
+        modelWrapper.classList.remove('model-selector-locked');
+        var imageControls = document.getElementById('image_chat_controls');
+        var imageActive = imageControls && !imageControls.classList.contains('hidden');
+        if (!imageActive) {
+          modelWrapper.style.opacity = '1';
+          modelWrapper.style.pointerEvents = 'auto';
+          modelWrapper.title = 'Model Değiştir';
+        }
       }
     }
   });

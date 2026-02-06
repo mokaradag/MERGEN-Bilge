@@ -177,15 +177,13 @@ process_summarization_request <- function(
     focus_mode = focus_mode
   )
   
-  # Kullanıcı promptunu oluştur (user_query varsa ona göre özelleştir)
   if (!is.null(user_query) && nchar(user_query) > 0) {
-    # Kullanıcı özel bir sorgu gönderdiyse, bunu prompta ekle
     user_prompt <- paste0(
       "Kullanıcı Sorgusu: ", user_query, "\n\n",
-      build_summarization_user_prompt(file_contents)
+      build_summarization_user_prompt(file_contents, detail_level, focus_mode)
     )
   } else {
-    user_prompt <- build_summarization_user_prompt(file_contents)
+    user_prompt <- build_summarization_user_prompt(file_contents, detail_level, focus_mode)
   }
   
   messages <- list(
