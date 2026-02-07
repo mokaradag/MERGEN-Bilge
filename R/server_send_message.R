@@ -381,6 +381,14 @@ sendMessageInit <- function(
       if (identical(summary_focus, "comparison") && uploaded_count == 1) {
         summary_focus <- "general"
         showToast(session, "Karşılaştırma modu için birden fazla dosya gereklidir. Genel moda geçildi.", "warning")
+        session$sendCustomMessage("syncSummarySettingsToChat", list(
+          detail_level = summary_detail,
+          focus_mode = "general"
+        ))
+        session$sendCustomMessage("syncChatSummarySettingsToSettings", list(
+          detail_level = summary_detail,
+          focus_mode = "general"
+        ))
         cat("[SUMMARIZATION] Tek dosya ile karşılaştırma modu seçildi, genel moda geçildi\n")
       }
 

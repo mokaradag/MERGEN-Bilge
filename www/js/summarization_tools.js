@@ -79,9 +79,11 @@ if (window.Shiny) {
 
     if (chatDetail && data.detail_level) {
       chatDetail.value = data.detail_level;
+      Shiny.setInputValue('chat_summary_detail', data.detail_level, {priority: 'event'});
     }
     if (chatFocus && data.focus_mode) {
       chatFocus.value = data.focus_mode;
+      Shiny.setInputValue('chat_summary_focus', data.focus_mode, {priority: 'event'});
     }
   });
 
