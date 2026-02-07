@@ -1,5 +1,5 @@
 // Dosya Yolu: www/js/image_gallery.js
-// Gorsel galerisi JavaScript islevleri - tooltip, animasyon ve etkilesim yonetimi
+// Görsel galerisi JavaScript işlevleri - animasyon ve etkileşim yönetimi
 
 (function() {
   'use strict';
@@ -10,6 +10,7 @@
     },
 
     bindEvents: function() {
+      // Kart hover sınıfı ekle/kaldır
       $(document).on('mouseenter', '.gallery-card', function() {
         $(this).addClass('gallery-card-hovered');
       });
@@ -18,6 +19,7 @@
         $(this).removeClass('gallery-card-hovered');
       });
 
+      // Tıklama animasyonu
       $(document).on('click', '.gallery-card-image-wrapper', function() {
         var card = $(this).closest('.gallery-card');
         card.addClass('gallery-card-clicked');

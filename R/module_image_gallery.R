@@ -1,8 +1,8 @@
 # Dosya Yolu: R/module_image_gallery.R
-# Gorsel Galerisi modulu - kullanicinin olusturdugu gorselleri goruntulemek, yonetmek ve silmek icin
+# Görsel Galerisi modülü - kullanıcının oluşturduğu görselleri görüntülemek, yönetmek ve silmek için
 
-#' Gorsel Galerisi UI
-#' @param id Modul ID
+#' Görsel Galerisi UI
+#' @param id Modül ID
 #' @return Shiny UI tagList
 imageGalleryUI <- function(id) {
   ns <- NS(id)
@@ -12,27 +12,27 @@ imageGalleryUI <- function(id) {
       class = "content-container",
       div(
         class = "files-header",
-        h3("G\u00f6rsel Galerisi", class = "page-title"),
+        h3("Görsel Galerisi", class = "page-title"),
         div(
           class = "gallery-actions",
           actionButton(ns("refresh_gallery"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-primary"),
-          actionButton(ns("clear_all_images"), label = tagList(icon("trash-alt"), "T\u00fcm\u00fcn\u00fc Temizle"), class = "btn-modern btn-danger")
+          actionButton(ns("clear_all_images"), label = tagList(icon("trash-alt"), "Tümünü Temizle"), class = "btn-modern btn-danger")
         )
       ),
       div(
         class = "scrollable-content",
         div(
           class = "gallery-controls",
-          textInput(ns("search_images"), label = NULL, placeholder = "G\u00f6rsellerde ara...", width = "300px")
+          textInput(ns("search_images"), label = NULL, placeholder = "Görsellerde ara (açıklama, tarih, söyleşi)...", width = "400px")
         ),
         div(
           class = "pagination-controls",
           style = "text-align: center; margin: 6px 0 14px; padding: 10px 0;",
-          actionButton(ns("first_page"), "\u00ab \u0130lk", class = "btn-modern btn-secondary"),
-          actionButton(ns("prev_page"), "\u2039 \u00d6nceki", class = "btn-modern btn-secondary"),
+          actionButton(ns("first_page"), "« İlk", class = "btn-modern btn-secondary"),
+          actionButton(ns("prev_page"), "‹ Önceki", class = "btn-modern btn-secondary"),
           span(textOutput(ns("page_info"), inline = TRUE), style = "margin: 0 20px;"),
-          actionButton(ns("next_page"), "Sonraki \u203a", class = "btn-modern btn-secondary"),
-          actionButton(ns("last_page"), "Son \u00bb", class = "btn-modern btn-secondary")
+          actionButton(ns("next_page"), "Sonraki ›", class = "btn-modern btn-secondary"),
+          actionButton(ns("last_page"), "Son »", class = "btn-modern btn-secondary")
         ),
         uiOutput(ns("gallery_content"))
       )
@@ -40,10 +40,10 @@ imageGalleryUI <- function(id) {
   )
 }
 
-#' Gorsel Galerisi Server
-#' @param id Modul ID
-#' @param current_user_id Mevcut kullanici ID
-#' @return Reaktif degerler listesi
+#' Görsel Galerisi Server
+#' @param id Modül ID
+#' @param current_user_id Mevcut kullanıcı ID
+#' @return Reaktif değerler listesi
 imageGalleryServer <- function(id, current_user_id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -55,6 +55,7 @@ imageGalleryServer <- function(id, current_user_id) {
       file_path = character(), chat_id = character(), filename = character(),
       created_at = as.POSIXct(character()), file_size = numeric(),
       month_key = character(), month_label = character(),
+      description = character(),
       stringsAsFactors = FALSE
     ))
 
@@ -80,6 +81,7 @@ imageGalleryServer <- function(id, current_user_id) {
       search_term_debounced(input$search_images %||% "")
     })
 
+    # Arama: açıklama, dosya adı, ay etiketi ve sohbet başlığı üzerinden filtrele
     filtered_images <- reactive({
       imgs <- cached_images()
       refresh_trigger()
@@ -91,7 +93,7 @@ imageGalleryServer <- function(id, current_user_id) {
         term_lower <- tolower(term)
         matches <- grepl(term_lower, tolower(imgs$filename), fixed = TRUE) |
                    grepl(term_lower, tolower(imgs$month_label), fixed = TRUE) |
-                   grepl(term_lower, tolower(imgs$chat_id), fixed = TRUE)
+                   grepl(term_lower, tolower(imgs$description), fixed = TRUE)
         imgs <- imgs[matches, , drop = FALSE]
       }
 
@@ -134,7 +136,7 @@ imageGalleryServer <- function(id, current_user_id) {
         ""
       } else {
         total_imgs <- nrow(filtered_images())
-        sprintf("Sayfa %d / %d (%d g\u00f6rsel)", current_page(), total_pages(), total_imgs)
+        sprintf("Sayfa %d / %d (%d görsel)", current_page(), total_pages(), total_imgs)
       }
     })
     outputOptions(output, "page_info", suspendWhenHidden = FALSE)
@@ -148,15 +150,15 @@ imageGalleryServer <- function(id, current_user_id) {
           return(div(
             class = "empty-state",
             tags$i(class = "fas fa-search fa-3x"),
-            h4("Sonu\u00e7 Bulunamad\u0131"),
-            p("Araman\u0131zla e\u015fle\u015fen g\u00f6rsel bulunamad\u0131.")
+            h4("Sonuç Bulunamadı"),
+            p("Aramanızla eşleşen görsel bulunamadı.")
           ))
         }
         return(div(
           class = "empty-state",
           tags$i(class = "fas fa-images fa-3x"),
-          h4("Hen\u00fcz g\u00f6rsel yok"),
-          p("G\u00f6rsel Uzman\u0131 arac\u0131 ile g\u00f6rsel olu\u015fturdu\u011funuzda burada g\u00f6r\u00fcnecektir.")
+          h4("Henüz görsel yok"),
+          p("Görsel Uzmanı aracı ile görsel oluşturduğunuzda burada görünecektir.")
         ))
       }
 
@@ -174,7 +176,7 @@ imageGalleryServer <- function(id, current_user_id) {
               month_rows$month_label[1],
               tags$span(
                 class = "gallery-month-count",
-                sprintf("(%d g\u00f6rsel)", nrow(month_rows))
+                sprintf("(%d görsel)", nrow(month_rows))
               ),
               style = "color: #ff8a00; margin-bottom: 20px; font-size: 20px; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255, 138, 0, 0.3); text-underline-offset: 5px;"
             ),
@@ -186,28 +188,43 @@ imageGalleryServer <- function(id, current_user_id) {
 
                 file_size_kb <- round(row$file_size / 1024, 1)
                 created_str <- format(row$created_at, "%d.%m.%Y %H:%M")
-                chat_title <- get_chat_title_for_image(row$chat_id, current_user_id) %||% "Bilinmeyen S\u00f6yle\u015fi"
-                tooltip_text <- sprintf("Tarih: %s | Boyut: %s KB | S\u00f6yle\u015fi: %s",
-                                        created_str, file_size_kb, chat_title)
+                chat_title <- get_chat_title_for_image(row$chat_id, current_user_id) %||% "Bilinmeyen Söyleşi"
+
+                # Açıklama metnini tooltip olarak göster
+                desc_text <- if (nzchar(row$description)) row$description else ""
+                # Tooltip: açıklama + tarih + boyut + söyleşi
+                tooltip_parts <- c()
+                if (nzchar(desc_text)) tooltip_parts <- c(tooltip_parts, desc_text)
+                tooltip_parts <- c(tooltip_parts,
+                  paste0("Tarih: ", created_str),
+                  paste0("Boyut: ", file_size_kb, " KB"),
+                  paste0("Söyleşi: ", chat_title)
+                )
+                tooltip_text <- paste(tooltip_parts, collapse = " | ")
 
                 card_id <- paste0("img_card_", gsub("[^a-zA-Z0-9]", "_", row$filename))
+
+                # chat_id'nin geçerli bir sayı olup olmadığını kontrol et
+                chat_id_valid <- !is.na(row$chat_id) && !is.na(suppressWarnings(as.integer(row$chat_id)))
 
                 div(
                   class = "gallery-card animate-fadeIn",
                   id = card_id,
-                  `data-file-path` = row$file_path,
-                  `data-chat-id` = row$chat_id,
-                  `data-tooltip` = tooltip_text,
+                  title = tooltip_text,
                   div(
                     class = "gallery-card-image-wrapper",
-                    onclick = sprintf(
-                      "Shiny.setInputValue('%s', {chat_id: '%s', file_path: '%s'}, {priority: 'event'});",
-                      ns("navigate_to_chat"), row$chat_id, gsub("'", "\\\\'", row$file_path)
-                    ),
+                    onclick = if (chat_id_valid) {
+                      sprintf(
+                        "Shiny.setInputValue('%s', {chat_id: '%s', file_path: '%s'}, {priority: 'event'});",
+                        ns("navigate_to_chat"), row$chat_id, gsub("'", "\\\\'", row$file_path)
+                      )
+                    } else {
+                      sprintf("showToast('Bu görselin ait olduğu söyleşi bilgisi bulunamadı.', 'warning');")
+                    },
                     if (!is.null(img_b64)) {
                       tags$img(
                         src = img_b64,
-                        alt = row$filename,
+                        alt = if (nzchar(desc_text)) desc_text else row$filename,
                         class = "gallery-card-image",
                         loading = "lazy"
                       )
@@ -219,9 +236,17 @@ imageGalleryServer <- function(id, current_user_id) {
                     },
                     div(class = "gallery-card-overlay",
                       tags$i(class = "fas fa-expand-alt"),
-                      tags$span("S\u00f6yle\u015fiye Git")
+                      tags$span("Söyleşiye Git")
                     )
                   ),
+                  # Açıklama metni (kart altında kısa özet)
+                  if (nzchar(desc_text)) {
+                    div(class = "gallery-card-description",
+                      tags$p(
+                        if (nchar(desc_text) > 80) paste0(substring(desc_text, 1, 80), "...") else desc_text
+                      )
+                    )
+                  },
                   div(
                     class = "gallery-card-footer",
                     div(
@@ -231,7 +256,7 @@ imageGalleryServer <- function(id, current_user_id) {
                     ),
                     tags$button(
                       class = "gallery-delete-btn",
-                      title = "G\u00f6rseli Sil",
+                      title = "Görseli Sil",
                       onclick = sprintf(
                         "event.stopPropagation(); Shiny.setInputValue('%s', {file_path: '%s', chat_id: '%s', filename: '%s'}, {priority: 'event'});",
                         ns("delete_image_request"),
@@ -255,14 +280,14 @@ imageGalleryServer <- function(id, current_user_id) {
     observeEvent(input$delete_image_request, {
       req(input$delete_image_request)
       info <- input$delete_image_request
-      fname <- info$filename %||% "Bu g\u00f6rsel"
+      fname <- info$filename %||% "Bu görsel"
 
       showModal(modalDialog(
-        title = "G\u00f6rseli Sil",
-        paste0("'", fname, "' g\u00f6rselini silmek istedi\u011finizden emin misiniz? \u0130lgili s\u00f6yle\u015fideki mesajda g\u00f6rselin silindi\u011fi belirtilecektir."),
+        title = "Görseli Sil",
+        paste0("'", fname, "' görselini silmek istediğinizden emin misiniz? İlgili söyleşideki mesajda görselin silindiği belirtilecektir."),
         footer = tagList(
           actionButton(ns("confirm_delete_image"), "Evet, Sil", class = "btn-modern btn-danger"),
-          tags$button("\u0130ptal", class = "btn-modern btn-success", `data-dismiss` = "modal")
+          tags$button("İptal", class = "btn-modern btn-success", `data-dismiss` = "modal")
         ),
         easyClose = TRUE
       ))
@@ -275,11 +300,11 @@ imageGalleryServer <- function(id, current_user_id) {
 
       success <- delete_single_image(info$file_path, current_user_id, info$chat_id)
       if (success) {
-        showToast(session, "G\u00f6rsel silindi.", "warning")
+        showToast(session, "Görsel silindi.", "warning")
         delete_image_trigger(list(file_path = info$file_path, chat_id = info$chat_id))
         refresh_trigger(refresh_trigger() + 1)
       } else {
-        showToast(session, "G\u00f6rsel silinemedi.", "error")
+        showToast(session, "Görsel silinemedi.", "error")
       }
     })
 
@@ -287,16 +312,16 @@ imageGalleryServer <- function(id, current_user_id) {
       imgs <- filtered_images()
       if (nrow(imgs) > 0) {
         showModal(modalDialog(
-          title = "T\u00fcm G\u00f6rselleri Sil",
-          sprintf("Toplam %d g\u00f6rselinizi silmek istedi\u011finizden emin misiniz? Bu i\u015flem geri al\u0131namaz. \u0130lgili s\u00f6yle\u015filerdeki mesajlarda g\u00f6rsellerin silindi\u011fi belirtilecektir.", nrow(cached_images())),
+          title = "Tüm Görselleri Sil",
+          sprintf("Toplam %d görselinizi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz. İlgili söyleşilerdeki mesajlarda görsellerin silindiği belirtilecektir.", nrow(cached_images())),
           footer = tagList(
-            actionButton(ns("confirm_clear_all_images"), "Evet, T\u00fcm\u00fcn\u00fc Sil", class = "btn-modern btn-danger"),
-            tags$button("\u0130ptal", class = "btn-modern btn-success", `data-dismiss` = "modal")
+            actionButton(ns("confirm_clear_all_images"), "Evet, Tümünü Sil", class = "btn-modern btn-danger"),
+            tags$button("İptal", class = "btn-modern btn-success", `data-dismiss` = "modal")
           ),
           easyClose = TRUE
         ))
       } else {
-        showToast(session, "Silinecek g\u00f6rsel yok.", "info")
+        showToast(session, "Silinecek görsel yok.", "info")
       }
     })
 
@@ -306,7 +331,7 @@ imageGalleryServer <- function(id, current_user_id) {
       clear_all_trigger(clear_all_trigger() + 1)
       refresh_trigger(refresh_trigger() + 1)
       current_page(1)
-      showToast(session, sprintf("%d g\u00f6rsel silindi.", deleted_count), "warning")
+      showToast(session, sprintf("%d görsel silindi.", deleted_count), "warning")
     })
 
     observeEvent(input$navigate_to_chat, {

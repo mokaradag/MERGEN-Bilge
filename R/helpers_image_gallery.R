@@ -1,23 +1,26 @@
 # Dosya Yolu: R/helpers_image_gallery.R
-# Gorsel galerisi icin yardimci fonksiyonlar - kullanici gorsellerini tarama, metadata toplama ve silme islemleri
+# Görsel galerisi için yardımcı fonksiyonlar - kullanıcı görsellerini tarama, metadata toplama ve silme işlemleri
 
-#' Kullanicinin tum gorsellerini tara ve metadata topla
-#' @param user_id Kullanici ID
-#' @return data.frame: file_path, chat_id, filename, created_at, file_size, month_key, month_label
+#' Kullanıcının tüm görsellerini tara ve metadata topla
+#' @param user_id Kullanıcı ID
+#' @return data.frame: file_path, chat_id, filename, created_at, file_size, month_key, month_label, description
 scan_user_images <- function(user_id) {
   base_dir <- file.path(getwd(), "user_images", as.character(user_id))
 
+  empty_df <- data.frame(
+    file_path = character(),
+    chat_id = character(),
+    filename = character(),
+    created_at = as.POSIXct(character()),
+    file_size = numeric(),
+    month_key = character(),
+    month_label = character(),
+    description = character(),
+    stringsAsFactors = FALSE
+  )
+
   if (!dir.exists(base_dir)) {
-    return(data.frame(
-      file_path = character(),
-      chat_id = character(),
-      filename = character(),
-      created_at = as.POSIXct(character()),
-      file_size = numeric(),
-      month_key = character(),
-      month_label = character(),
-      stringsAsFactors = FALSE
-    ))
+    return(empty_df)
   }
 
   image_files <- list.files(
@@ -29,30 +32,26 @@ scan_user_images <- function(user_id) {
   )
 
   if (length(image_files) == 0) {
-    return(data.frame(
-      file_path = character(),
-      chat_id = character(),
-      filename = character(),
-      created_at = as.POSIXct(character()),
-      file_size = numeric(),
-      month_key = character(),
-      month_label = character(),
-      stringsAsFactors = FALSE
-    ))
+    return(empty_df)
   }
 
   month_map <- c(
-    "January" = "Ocak", "February" = "\u015eubat", "March" = "Mart",
-    "April" = "Nisan", "May" = "May\u0131s", "June" = "Haziran",
-    "July" = "Temmuz", "August" = "A\u011fustos", "September" = "Eyl\u00fcl",
-    "October" = "Ekim", "November" = "Kas\u0131m", "December" = "Aral\u0131k"
+    "January" = "Ocak", "February" = "Şubat", "March" = "Mart",
+    "April" = "Nisan", "May" = "Mayıs", "June" = "Haziran",
+    "July" = "Temmuz", "August" = "Ağustos", "September" = "Eylül",
+    "October" = "Ekim", "November" = "Kasım", "December" = "Aralık"
   )
+
+  # Veritabanından görsel açıklamalarını toplu olarak al
+  descriptions_map <- load_image_descriptions_for_user(user_id)
 
   records <- lapply(image_files, function(fp) {
     fi <- file.info(fp)
     fname <- basename(fp)
 
-    parts <- strsplit(gsub(paste0("^", gsub("([\\[\\]\\{\\}\\(\\)\\*\\+\\?\\.\\^\\$\\|\\\\])", "\\\\\\1", base_dir), "/"), "", fp), "/")[[1]]
+    # Dosya yolundan chat_id çıkar: base_dir/chat_id/dosya.png
+    relative <- substring(fp, nchar(base_dir) + 2)
+    parts <- strsplit(relative, "/", fixed = TRUE)[[1]]
     cid <- if (length(parts) >= 2) parts[1] else NA_character_
 
     created <- fi$mtime
@@ -63,6 +62,9 @@ scan_user_images <- function(user_id) {
     if (is.na(tr_month)) tr_month <- eng_month
     ml <- paste0(tr_month, " ", format(created, "%Y"))
 
+    # Açıklamayı dosya adına göre bul
+    desc <- descriptions_map[[fname]] %||% ""
+
     data.frame(
       file_path = fp,
       chat_id = cid,
@@ -71,6 +73,7 @@ scan_user_images <- function(user_id) {
       file_size = fi$size,
       month_key = mk,
       month_label = ml,
+      description = desc,
       stringsAsFactors = FALSE
     )
   })
@@ -81,11 +84,50 @@ scan_user_images <- function(user_id) {
   return(result)
 }
 
-#' Gorsel dosyasini base64 thumbnail olarak yukle
-#' @param file_path Gorsel dosya yolu
-#' @param max_size Maksimum thumbnail boyutu (piksel)
+#' Kullanıcının tüm görsel mesajlarından açıklamaları toplu yükle
+#' @param user_id Kullanıcı ID
+#' @return İsimli liste: dosya_adı -> açıklama
+load_image_descriptions_for_user <- function(user_id) {
+  result_map <- list()
+  tryCatch({
+    conn_info <- get_connection()
+    conn <- conn_info$conn
+    on.exit(release_connection(conn_info))
+
+    # Kullanıcının tüm görsel mesajlarını tek sorguda al
+    query <- "
+      SELECT m.MessageContent
+      FROM MB_Messages m
+      INNER JOIN MB_Chats c ON m.ChatID = c.ChatID
+      WHERE c.UserID = ? AND c.IsDeleted = 0
+        AND m.MessageContent LIKE '[GÖRSEL:%'
+    "
+    rows <- DBI::dbGetQuery(conn, query, params = list(user_id))
+
+    if (nrow(rows) > 0) {
+      for (i in seq_len(nrow(rows))) {
+        content <- rows$MessageContent[i]
+        # [GÖRSEL:/yol/dosya.png] açıklama metni
+        m <- regmatches(content, regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content, perl = TRUE))[[1]]
+        if (length(m) >= 3) {
+          fname <- basename(m[2])
+          desc <- trimws(m[3])
+          if (nzchar(desc)) {
+            result_map[[fname]] <- desc
+          }
+        }
+      }
+    }
+  }, error = function(e) {
+    cat("[IMAGE_GALLERY] Açıklama yükleme hatası:", e$message, "\n")
+  })
+  return(result_map)
+}
+
+#' Görsel dosyasını base64 thumbnail olarak yükle
+#' @param file_path Görsel dosya yolu
 #' @return Base64 data URL veya NULL
-get_image_thumbnail_base64 <- function(file_path, max_size = 300) {
+get_image_thumbnail_base64 <- function(file_path) {
   if (is.null(file_path) || !file.exists(file_path)) return(NULL)
   tryCatch({
     img_data <- base64enc::base64encode(file_path)
@@ -95,66 +137,76 @@ get_image_thumbnail_base64 <- function(file_path, max_size = 300) {
   })
 }
 
-#' Tek bir gorseli sil ve ilgili mesaji guncelle
-#' @param file_path Silinecek gorsel dosya yolu
-#' @param user_id Kullanici ID
+#' Tek bir görseli sil ve ilgili mesajı güncelle
+#' @param file_path Silinecek görsel dosya yolu
+#' @param user_id Kullanıcı ID
 #' @param chat_id Sohbet ID
 #' @return TRUE/FALSE
 delete_single_image <- function(file_path, user_id, chat_id) {
   tryCatch({
     if (!file.exists(file_path)) {
-      cat("[IMAGE_GALLERY] Gorsel zaten mevcut degil:", file_path, "\n")
+      cat("[IMAGE_GALLERY] Görsel zaten mevcut değil:", file_path, "\n")
       return(TRUE)
     }
 
-    file.remove(file_path)
-    cat("[IMAGE_GALLERY] Gorsel silindi:", file_path, "\n")
+    # Dosyayı sil ve sonucu kontrol et
+    removed <- file.remove(file_path)
+    if (!isTRUE(removed)) {
+      cat("[IMAGE_GALLERY] Görsel silinemedi (file.remove FALSE döndü):", file_path, "\n")
+      return(FALSE)
+    }
+    cat("[IMAGE_GALLERY] Görsel silindi:", file_path, "\n")
 
+    # Veritabanındaki ilgili mesajı güncelle
     update_message_after_image_deletion(file_path, chat_id)
 
+    # Boş kalan klasörü temizle
     chat_dir <- file.path(getwd(), "user_images", as.character(user_id), as.character(chat_id))
     if (dir.exists(chat_dir)) {
       remaining <- list.files(chat_dir, recursive = FALSE)
       if (length(remaining) == 0) {
         unlink(chat_dir, recursive = TRUE)
-        cat("[IMAGE_GALLERY] Bos klasor silindi:", chat_dir, "\n")
+        cat("[IMAGE_GALLERY] Boş klasör silindi:", chat_dir, "\n")
       }
     }
 
     return(TRUE)
   }, error = function(e) {
-    cat("[IMAGE_GALLERY] Gorsel silme hatasi:", e$message, "\n")
+    cat("[IMAGE_GALLERY] Görsel silme hatası:", e$message, "\n")
     return(FALSE)
   })
 }
 
-#' Kullanicinin tum gorsellerini sil
-#' @param user_id Kullanici ID
-#' @return Silinen gorsel sayisi
+#' Kullanıcının tüm görsellerini sil
+#' @param user_id Kullanıcı ID
+#' @return Silinen görsel sayısı
 delete_all_user_images <- function(user_id) {
   images <- scan_user_images(user_id)
   if (nrow(images) == 0) return(0L)
 
   deleted_count <- 0L
-
   unique_chats <- unique(images$chat_id[!is.na(images$chat_id)])
 
   for (i in seq_len(nrow(images))) {
     row <- images[i, ]
     tryCatch({
       if (file.exists(row$file_path)) {
-        file.remove(row$file_path)
-        deleted_count <- deleted_count + 1L
+        removed <- file.remove(row$file_path)
+        if (isTRUE(removed)) {
+          deleted_count <- deleted_count + 1L
+        }
       }
     }, error = function(e) {
-      cat("[IMAGE_GALLERY] Toplu silme hatasi:", e$message, "\n")
+      cat("[IMAGE_GALLERY] Toplu silme hatası:", e$message, "\n")
     })
   }
 
+  # Silinen görsellerin mesajlarını güncelle
   for (cid in unique_chats) {
     update_messages_after_bulk_deletion(cid)
   }
 
+  # Boş klasörleri temizle
   user_dir <- file.path(getwd(), "user_images", as.character(user_id))
   if (dir.exists(user_dir)) {
     chat_dirs <- list.dirs(user_dir, recursive = FALSE, full.names = TRUE)
@@ -173,15 +225,19 @@ delete_all_user_images <- function(user_id) {
     }
   }
 
-  cat(sprintf("[IMAGE_GALLERY] Toplam %d gorsel silindi (kullanici: %s)\n", deleted_count, user_id))
+  cat(sprintf("[IMAGE_GALLERY] Toplam %d görsel silindi (kullanıcı: %s)\n", deleted_count, user_id))
   return(deleted_count)
 }
 
-#' Gorsel silindikten sonra ilgili mesaji guncelle
-#' @param image_path Silinen gorselin dosya yolu
+#' Görsel silindikten sonra ilgili mesajı güncelle
+#' @param image_path Silinen görselin dosya yolu
 #' @param chat_id Sohbet ID
 update_message_after_image_deletion <- function(image_path, chat_id) {
   if (is.na(chat_id) || is.null(chat_id)) return(invisible(NULL))
+
+  # chat_id'yi integer'a çevir (DB için)
+  chat_id_int <- suppressWarnings(as.integer(chat_id))
+  if (is.na(chat_id_int)) return(invisible(NULL))
 
   tryCatch({
     conn_info <- get_connection()
@@ -192,49 +248,53 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
 
     query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE ?"
     search_pattern <- paste0("%", filename, "%")
-    rows <- DBI::dbGetQuery(conn, query, params = list(chat_id, search_pattern))
+    rows <- DBI::dbGetQuery(conn, query, params = list(chat_id_int, search_pattern))
 
     if (nrow(rows) > 0) {
       for (j in seq_len(nrow(rows))) {
         old_content <- rows$MessageContent[j]
         new_content <- gsub(
-          "^\\[G\u00d6RSEL:[^\\]]*\\]",
-          "[\u0130lgili g\u00f6rsel kullan\u0131c\u0131 taraf\u0131ndan silinmi\u015ftir]",
+          "^\\[GÖRSEL:[^\\]]*\\]",
+          "[İlgili görsel kullanıcı tarafından silinmiştir]",
           old_content, perl = TRUE
         )
         if (new_content != old_content) {
           update_q <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
           DBI::dbExecute(conn, update_q, params = list(new_content, rows$MessageID[j]))
-          cat(sprintf("[IMAGE_GALLERY] Mesaj guncellendi (MessageID: %s)\n", rows$MessageID[j]))
+          cat(sprintf("[IMAGE_GALLERY] Mesaj güncellendi (MessageID: %s)\n", rows$MessageID[j]))
         }
       }
     }
   }, error = function(e) {
-    cat("[IMAGE_GALLERY] Mesaj guncelleme hatasi:", e$message, "\n")
+    cat("[IMAGE_GALLERY] Mesaj güncelleme hatası:", e$message, "\n")
   })
 
   invisible(NULL)
 }
 
-#' Toplu silme sonrasi sohbetteki tum gorsel mesajlarini guncelle
+#' Toplu silme sonrası sohbetteki tüm görsel mesajlarını güncelle
 #' @param chat_id Sohbet ID
 update_messages_after_bulk_deletion <- function(chat_id) {
   if (is.na(chat_id) || is.null(chat_id)) return(invisible(NULL))
+
+  chat_id_int <- suppressWarnings(as.integer(chat_id))
+  if (is.na(chat_id_int)) return(invisible(NULL))
 
   tryCatch({
     conn_info <- get_connection()
     conn <- conn_info$conn
     on.exit(release_connection(conn_info))
 
-    query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '[G\u00d6RSEL:%'"
-    rows <- DBI::dbGetQuery(conn, query, params = list(chat_id))
+    query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '[GÖRSEL:%'"
+    rows <- DBI::dbGetQuery(conn, query, params = list(chat_id_int))
 
     if (nrow(rows) > 0) {
       for (j in seq_len(nrow(rows))) {
         old_content <- rows$MessageContent[j]
-        image_match <- regmatches(old_content, regexec("\\[G\u00d6RSEL:([^\\]]+)\\]", old_content, perl = TRUE))[[1]]
+        image_match <- regmatches(old_content, regexec("\\[GÖRSEL:([^\\]]+)\\]", old_content, perl = TRUE))[[1]]
         if (length(image_match) >= 2) {
           img_path <- image_match[2]
+          # Görselin hâlâ var olup olmadığını kontrol et
           resolved <- NULL
           if (file.exists(img_path)) {
             resolved <- img_path
@@ -246,10 +306,11 @@ update_messages_after_bulk_deletion <- function(chat_id) {
             }
           }
 
+          # Dosya artık yoksa mesajı güncelle
           if (is.null(resolved)) {
             new_content <- gsub(
-              "^\\[G\u00d6RSEL:[^\\]]*\\]",
-              "[\u0130lgili g\u00f6rsel kullan\u0131c\u0131 taraf\u0131ndan silinmi\u015ftir]",
+              "^\\[GÖRSEL:[^\\]]*\\]",
+              "[İlgili görsel kullanıcı tarafından silinmiştir]",
               old_content, perl = TRUE
             )
             if (new_content != old_content) {
@@ -261,25 +322,29 @@ update_messages_after_bulk_deletion <- function(chat_id) {
       }
     }
   }, error = function(e) {
-    cat("[IMAGE_GALLERY] Toplu mesaj guncelleme hatasi:", e$message, "\n")
+    cat("[IMAGE_GALLERY] Toplu mesaj güncelleme hatası:", e$message, "\n")
   })
 
   invisible(NULL)
 }
 
-#' Gorsel dosya yolundan sohbet basligini bul
+#' Görsel dosya yolundan sohbet başlığını bul
 #' @param chat_id Sohbet ID
-#' @param user_id Kullanici ID
-#' @return Sohbet basligi veya NULL
+#' @param user_id Kullanıcı ID
+#' @return Sohbet başlığı veya NULL
 get_chat_title_for_image <- function(chat_id, user_id) {
   if (is.na(chat_id) || is.null(chat_id)) return(NULL)
+
+  chat_id_int <- suppressWarnings(as.integer(chat_id))
+  if (is.na(chat_id_int)) return(NULL)
+
   tryCatch({
     conn_info <- get_connection()
     conn <- conn_info$conn
     on.exit(release_connection(conn_info))
 
     query <- "SELECT ChatTitle FROM MB_Chats WHERE ChatID = ? AND UserID = ? AND IsDeleted = 0"
-    result <- DBI::dbGetQuery(conn, query, params = list(chat_id, user_id))
+    result <- DBI::dbGetQuery(conn, query, params = list(chat_id_int, user_id))
     if (nrow(result) > 0) result$ChatTitle[1] else NULL
   }, error = function(e) {
     NULL
