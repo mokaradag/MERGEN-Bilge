@@ -108,6 +108,39 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       Find(function(x) x$id == selected_char_id, chars_data$styles)
     } else NULL
 
+    # Görsel Uzmanı modunu aktifleştir (galeriden yönlendirildiği için görsel söyleşisi)
+    analysis_tools <- c(
+      "enable_rdata_tools", "enable_mcp_tools", "enable_summarization_tools",
+      "enable_coding_tools", "enable_process_tools", "enable_app_expert_tools",
+      "enable_image_tools"
+    )
+    # Önce diğer tüm araçları devre dışı bırak
+    for (tool in analysis_tools) {
+      if (tool != "enable_image_tools") {
+        settings_data[[tool]] <- FALSE
+        updateCheckboxInput(session, paste0("settings_module-", tool), value = FALSE)
+      }
+    }
+    # Görsel Uzmanı aracını aktifleştir
+    settings_data$enable_image_tools <- TRUE
+    updateCheckboxInput(session, "settings_module-enable_image_tools", value = TRUE)
+
+    # Görsel modu için model ayarla ve UI kontrollerini güncelle
+    image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+    settings_data$model_selection <- image_model
+    session$sendCustomMessage("toggleImageMode", list(active = TRUE))
+    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+    session$sendCustomMessage("saveSettings", list(
+      enable_image_tools = TRUE,
+      enable_rdata_tools = FALSE,
+      enable_mcp_tools = FALSE,
+      enable_summarization_tools = FALSE,
+      enable_coding_tools = FALSE,
+      enable_process_tools = FALSE,
+      enable_app_expert_tools = FALSE,
+      model_selection = image_model
+    ))
+
     # Tıklanan görselin hangi mesajda olduğunu bul (kaydırma hedefi için)
     target_message_id <- NULL
     if (!is.null(info$file_path) && nzchar(info$file_path)) {
