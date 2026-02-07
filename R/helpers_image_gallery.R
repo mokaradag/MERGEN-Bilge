@@ -16,6 +16,7 @@ scan_user_images <- function(user_id) {
     month_key = character(),
     month_label = character(),
     description = character(),
+    chat_title = character(),
     stringsAsFactors = FALSE
   )
 
@@ -65,6 +66,11 @@ scan_user_images <- function(user_id) {
     # Açıklamayı dosya adına göre bul
     desc <- descriptions_map[[fname]] %||% ""
 
+	# Söyleşi başlığını bul
+    chat_title <- if (!is.na(cid)) {
+      get_chat_title_for_image(cid, user_id) %||% ""
+    } else ""
+
     data.frame(
       file_path = fp,
       chat_id = cid,
@@ -74,6 +80,7 @@ scan_user_images <- function(user_id) {
       month_key = mk,
       month_label = ml,
       description = desc,
+      chat_title = chat_title,
       stringsAsFactors = FALSE
     )
   })
@@ -94,26 +101,47 @@ load_image_descriptions_for_user <- function(user_id) {
     conn <- conn_info$conn
     on.exit(release_connection(conn_info))
 
-    # Kullanıcının tüm görsel mesajlarını tek sorguda al
+    # Görsel mesajını ve hemen sonrasındaki AI yanıtını birlikte al
+    # LIKE kalıbında köşeli parantezi escape et (SQL Server uyumluluğu)
     query <- "
-      SELECT m.MessageContent
+      SELECT m.MessageContent, m.ChatID, m.MessageOrder
       FROM MB_Messages m
       INNER JOIN MB_Chats c ON m.ChatID = c.ChatID
       WHERE c.UserID = ? AND c.IsDeleted = 0
-        AND m.MessageContent LIKE '[GÖRSEL:%'
+        AND m.MessageContent LIKE '\\[GÖRSEL:%' ESCAPE '\\'
     "
     rows <- DBI::dbGetQuery(conn, query, params = list(user_id))
 
     if (nrow(rows) > 0) {
       for (i in seq_len(nrow(rows))) {
         content <- rows$MessageContent[i]
-        # [GÖRSEL:/yol/dosya.png] açıklama metni
+        chat_id <- rows$ChatID[i]
+        msg_order <- rows$MessageOrder[i]
+
+        # Dosya adını çıkar
         m <- regmatches(content, regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content, perl = TRUE))[[1]]
         if (length(m) >= 3) {
           fname <- basename(m[2])
-          desc <- trimws(m[3])
-          if (nzchar(desc)) {
-            result_map[[fname]] <- desc
+          inline_desc <- trimws(m[3])
+
+          # Görselden sonraki AI yanıt mesajını ara (aynı söyleşide bir sonraki mesaj)
+          next_msg_query <- "
+            SELECT TOP 1 MessageContent
+            FROM MB_Messages
+            WHERE ChatID = ? AND MessageOrder > ? AND MessageType IN ('ai', 'assistant')
+              AND MessageContent NOT LIKE '\\[GÖRSEL:%' ESCAPE '\\'
+            ORDER BY MessageOrder ASC
+          "
+          next_row <- tryCatch(
+            DBI::dbGetQuery(conn, next_msg_query, params = list(chat_id, msg_order)),
+            error = function(e) data.frame()
+          )
+
+          # Öncelik: sonraki AI yanıtı > inline açıklama
+          if (nrow(next_row) > 0 && nzchar(trimws(next_row$MessageContent[1]))) {
+            result_map[[fname]] <- trimws(next_row$MessageContent[1])
+          } else if (nzchar(inline_desc)) {
+            result_map[[fname]] <- inline_desc
           }
         }
       }
@@ -144,6 +172,9 @@ get_image_thumbnail_base64 <- function(file_path) {
 #' @return TRUE/FALSE
 delete_single_image <- function(file_path, user_id, chat_id) {
   tryCatch({
+    # Dosya yolunu normalize et (URL encoding ve çift slash sorunlarını düzelt)
+    file_path <- normalizePath(file_path, mustWork = FALSE)
+
     if (!file.exists(file_path)) {
       cat("[IMAGE_GALLERY] Görsel zaten mevcut değil:", file_path, "\n")
       return(TRUE)
@@ -155,6 +186,20 @@ delete_single_image <- function(file_path, user_id, chat_id) {
       cat("[IMAGE_GALLERY] Görsel silinemedi (file.remove FALSE döndü):", file_path, "\n")
       return(FALSE)
     }
+
+    # Silme sonrası doğrulama
+    if (file.exists(file_path)) {
+      cat("[IMAGE_GALLERY] Dosya hâlâ mevcut, Sys.sleep sonrası tekrar deneniyor:", file_path, "\n")
+      Sys.sleep(0.2)
+      if (file.exists(file_path)) {
+        unlink(file_path, force = TRUE)
+      }
+      if (file.exists(file_path)) {
+        cat("[IMAGE_GALLERY] Dosya silinemedi (ikinci deneme):", file_path, "\n")
+        return(FALSE)
+      }
+    }
+
     cat("[IMAGE_GALLERY] Görsel silindi:", file_path, "\n")
 
     # Veritabanındaki ilgili mesajı güncelle

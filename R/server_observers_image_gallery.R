@@ -84,10 +84,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       $('#chat_content_container').show().empty();
     ")
 
-    removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
-    removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
-
-    # Mesajları ve durum bilgisini yükle
+	# Mesajları ve durum bilgisini yükle
     values$messages <- chat_to_load$messages %||% list()
     all_feedback <- load_feedback_from_db(current_user_id)
     values$liked_messages <- all_feedback$liked
@@ -101,58 +98,68 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       Find(function(x) x$id == selected_char_id, chars_data$styles)
     } else NULL
 
-    # Mesaj balonlarını sırayla ekle
-    for (i in seq_along(values$messages)) {
-      msg <- values$messages[[i]]
-      is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
-
-      ui_to_insert <- render_message_bubble_ui(
-        msg, settings_data,
-        is_last_user_message = is_last_user_msg,
-        character_data = character_data,
-        liked_ids = values$liked_messages,
-        disliked_ids = values$disliked_messages
-      )
-
-      insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
-
-      wrapper_id <- paste0("message_wrapper_", msg$id)
-      if (isTRUE(msg$has_code)) {
-        shinyjs::runjs(sprintf("
-          setTimeout(function() {
-            var wrapper = document.getElementById('%s');
-            if (wrapper) {
-              var editors = wrapper.querySelectorAll('.CodeMirror');
-              editors.forEach(function(cm) {
-                if (cm.CodeMirror) cm.CodeMirror.refresh();
-              });
-            }
-          }, 200);
-        ", wrapper_id))
-      }
-
-      if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
-        shinyjs::delay(300, {
-          shinyjs::runjs(sprintf(
-            "window.renderSavedCharts && window.renderSavedCharts('%s');",
-            wrapper_id
-          ))
-        })
-      }
-    }
-
-    shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
-
+    # Önce sekmeyi değiştir, sonra mesajları ekle (görünürlük sorunu önlenir)
     updateTabItems(session, "tabs", "chat")
     chat_title <- chat_to_load$title %||% "Söyleşi"
-    showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
 
-    shinyjs::delay(500, {
-      load_chat_in_progress(FALSE)
+    # Sekme geçişi sonrası mesajları ekle
+    shinyjs::delay(150, {
+      # Konteynerin görünür ve boş olduğundan emin ol
+      shinyjs::runjs("
+        $('#welcome_fullscreen_container').addClass('hidden').empty();
+        $('#chat_content_container').show().css('display','block').empty();
+      ")
+
+      # Mesaj balonlarını sırayla ekle
+      for (i in seq_along(values$messages)) {
+        msg <- values$messages[[i]]
+        is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
+
+        ui_to_insert <- render_message_bubble_ui(
+          msg, settings_data,
+          is_last_user_message = is_last_user_msg,
+          character_data = character_data,
+          liked_ids = values$liked_messages,
+          disliked_ids = values$disliked_messages
+        )
+
+        insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
+
+        wrapper_id <- paste0("message_wrapper_", msg$id)
+        if (isTRUE(msg$has_code)) {
+          shinyjs::runjs(sprintf("
+            setTimeout(function() {
+              var wrapper = document.getElementById('%s');
+              if (wrapper) {
+                var editors = wrapper.querySelectorAll('.CodeMirror');
+                editors.forEach(function(cm) {
+                  if (cm.CodeMirror) cm.CodeMirror.refresh();
+                });
+              }
+            }, 200);
+          ", wrapper_id))
+        }
+
+        if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
+          shinyjs::delay(300, {
+            shinyjs::runjs(sprintf(
+              "window.renderSavedCharts && window.renderSavedCharts('%s');",
+              wrapper_id
+            ))
+          })
+        }
+      }
+
+      shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
+      showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
+
+      shinyjs::delay(500, {
+        load_chat_in_progress(FALSE)
+      })
     })
-  }, ignoreInit = TRUE)
+  })
 
-  # Tekil görsel silindikten sonra ilgili söyleşinin önbelleğini temizle
+  # Tekil görsel silindikten sonra ilgili söyleşinin önbelleğini yenile
   observeEvent(gallery_data$delete_image(), {
     info <- gallery_data$delete_image()
     req(info)
@@ -160,33 +167,90 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     chat_id <- info$chat_id
     if (!is.null(chat_id) && !is.na(chat_id)) {
       chat_key <- as.character(chat_id)
+      chat_id_int <- suppressWarnings(as.integer(chat_id))
 
-      # Önbellekteki söyleşi verisini temizle (eski base64 görseller kalmaz)
-      saved_copy <- values$saved_chats
-      if (!is.null(saved_copy[[chat_key]])) {
-        saved_copy[[chat_key]] <- NULL
-        values$saved_chats <- saved_copy
-        cat(sprintf("[IMAGE_GALLERY] Söyleşi önbelleği temizlendi (ChatID: %s)\n", chat_key))
+      # Önbellekteki söyleşiyi silmek yerine veritabanından yeniden yükle
+      if (!is.na(chat_id_int)) {
+        refreshed <- tryCatch(
+          load_chat_messages_from_db(chat_id_int),
+          error = function(e) NULL
+        )
+        if (!is.null(refreshed)) {
+          saved_copy <- values$saved_chats
+          saved_copy[[chat_key]] <- refreshed
+          values$saved_chats <- saved_copy
+          cat(sprintf("[IMAGE_GALLERY] Söyleşi önbelleği yenilendi (ChatID: %s)\n", chat_key))
+        }
       }
 
-      # Eğer şu an o söyleşi aktifse, mesajları yeniden yükle
+      # Eğer şu an o söyleşi aktifse, mesajları da yeniden yükle
       if (identical(as.character(values$current_chat_id), chat_key)) {
         detail <- tryCatch(
-          load_chat_messages_from_db(suppressWarnings(as.integer(chat_id))),
+          load_chat_messages_from_db(chat_id_int),
           error = function(e) NULL
         )
         if (!is.null(detail)) {
           values$messages <- detail$messages %||% list()
+		  
+		  # Aktif söyleşinin DOM'unu yeniden oluştur
+			shinyjs::runjs("$('#chat_content_container').empty();")
+			selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+			chars_data <- get_characters_data()
+			character_data <- if (!is.null(chars_data)) {
+			  Find(function(x) x$id == selected_char_id, chars_data$styles)
+			} else NULL
+
+			for (mi in seq_along(values$messages)) {
+			  msg <- values$messages[[mi]]
+			  is_last_user_msg <- (msg$type == "user" && mi == length(values$messages))
+			  ui_to_insert <- render_message_bubble_ui(
+				msg, settings_data,
+				is_last_user_message = is_last_user_msg,
+				character_data = character_data,
+				liked_ids = values$liked_messages,
+				disliked_ids = values$disliked_messages
+			  )
+			  insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
+			}
         }
       }
     }
   }, ignoreInit = TRUE)
 
-  # Tüm görseller silindikten sonra tüm önbelleği temizle
+  # Tüm görseller silindikten sonra etkilenen söyleşilerin önbelleğini yenile
   observeEvent(gallery_data$clear_all_images(), {
-    # Tüm söyleşi önbelleğini temizle
-    values$saved_chats <- list()
-    cat("[IMAGE_GALLERY] Tüm söyleşi önbelleği temizlendi\n")
+    # Etkilenen söyleşilerin önbelleğini veritabanından yeniden yükle (tümünü silmek yerine)
+    saved_copy <- values$saved_chats
+    needs_update <- FALSE
+
+    for (chat_key in names(saved_copy)) {
+      chat_data <- saved_copy[[chat_key]]
+      if (!is.null(chat_data$messages)) {
+        # Görsel mesajı içeren söyleşileri tespit et
+        has_image <- any(sapply(chat_data$messages, function(msg) {
+          grepl("^\\[GÖRSEL", msg$content %||% "", perl = TRUE)
+        }))
+        if (has_image) {
+          # Sadece bu söyleşiyi veritabanından yeniden yükle
+          chat_id_int <- suppressWarnings(as.integer(chat_key))
+          if (!is.na(chat_id_int)) {
+            refreshed <- tryCatch(
+              load_chat_messages_from_db(chat_id_int),
+              error = function(e) NULL
+            )
+            if (!is.null(refreshed)) {
+              saved_copy[[chat_key]] <- refreshed
+              needs_update <- TRUE
+            }
+          }
+        }
+      }
+    }
+
+    if (needs_update) {
+      values$saved_chats <- saved_copy
+    }
+    cat("[IMAGE_GALLERY] Etkilenen söyleşi önbellekleri yenilendi\n")
 
     # Aktif söyleşi varsa mesajları veritabanından yeniden yükle
     if (!is.null(values$current_chat_id)) {

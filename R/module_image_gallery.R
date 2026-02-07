@@ -51,11 +51,11 @@ imageGalleryServer <- function(id, current_user_id) {
     images_per_page <- 24
     current_page <- reactiveVal(1)
     refresh_trigger <- reactiveVal(0)
-    cached_images <- reactiveVal(data.frame(
+	cached_images <- reactiveVal(data.frame(
       file_path = character(), chat_id = character(), filename = character(),
       created_at = as.POSIXct(character()), file_size = numeric(),
       month_key = character(), month_label = character(),
-      description = character(),
+      description = character(), chat_title = character(),
       stringsAsFactors = FALSE
     ))
 
@@ -89,11 +89,13 @@ imageGalleryServer <- function(id, current_user_id) {
 
       if (nrow(imgs) == 0) return(imgs)
 
-      if (nzchar(term)) {
+	  if (nzchar(term)) {
         term_lower <- tolower(term)
+        # Dosya adı, ay etiketi, açıklama ve söyleşi başlığı üzerinden ara
         matches <- grepl(term_lower, tolower(imgs$filename), fixed = TRUE) |
                    grepl(term_lower, tolower(imgs$month_label), fixed = TRUE) |
-                   grepl(term_lower, tolower(imgs$description), fixed = TRUE)
+                   grepl(term_lower, tolower(imgs$description), fixed = TRUE) |
+                   grepl(term_lower, tolower(imgs$chat_title), fixed = TRUE)
         imgs <- imgs[matches, , drop = FALSE]
       }
 
@@ -254,15 +256,15 @@ imageGalleryServer <- function(id, current_user_id) {
                       tags$span(class = "gallery-card-date", created_str),
                       tags$span(class = "gallery-card-size", paste0(file_size_kb, " KB"))
                     ),
-                    tags$button(
+					tags$button(
                       class = "gallery-delete-btn",
                       title = "Görseli Sil",
                       onclick = sprintf(
-                        "event.stopPropagation(); Shiny.setInputValue('%s', {file_path: '%s', chat_id: '%s', filename: '%s'}, {priority: 'event'});",
+                        "event.stopPropagation(); Shiny.setInputValue('%s', {file_path: decodeURIComponent('%s'), chat_id: '%s', filename: '%s'}, {priority: 'event'});",
                         ns("delete_image_request"),
-                        gsub("'", "\\\\'", row$file_path),
+                        URLencode(row$file_path, reserved = TRUE),
                         row$chat_id,
-                        row$filename
+                        gsub("'", "\\\\'", row$filename)
                       ),
                       tags$i(class = "fas fa-trash-alt")
                     )
