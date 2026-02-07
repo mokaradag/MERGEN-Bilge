@@ -32,7 +32,8 @@ ui <- dashboardPage(
       menuItem("Ana Söyleşi", tabName = "chat", icon = icon("comments")),
       menuItem("Söyleşi Yönetimi", icon = icon("folder-open"), startExpanded = FALSE,
         menuSubItem("Söyleşi Geçmişi", tabName = "history", icon = icon("history")),
-        menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark"))
+        menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark")),
+        menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
 	  menuItem("Ayarlar", tabName = "settings", icon = icon("cog")),
@@ -114,6 +115,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/message_actions.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/feedback_modal.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/image_tools.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/image_gallery.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/summarization_tools.css"),
     
     # --- Local CodeMirror CSS ---
@@ -185,6 +187,7 @@ ui <- dashboardPage(
 	tags$script(src = "js/feedback_modal.js"),
     tags$script(src = "js/music_manager.js"),
     tags$script(src = "js/image_tools.js"),
+    tags$script(src = "js/image_gallery.js"),
     tags$script(src = "js/summarization_tools.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
@@ -369,6 +372,9 @@ ui <- dashboardPage(
       
       # Saved Chats Tab
       tabItem(tabName = "saved_chats", savedChatsUI("saved_chats_module")),
+
+      # Image Gallery Tab
+      tabItem(tabName = "image_gallery", imageGalleryUI("image_gallery_module")),
       
       # Files Tab
       tabItem(tabName = "files", fileManagerUI("file_manager_module")),

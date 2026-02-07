@@ -32,6 +32,13 @@ navigationObserversInit <- function(input, session, values, render_welcome_scree
       ))
     }
     
+    if (input$tabs == "image_gallery") {
+      shinyjs::runjs(sprintf(
+        "Shiny.setInputValue('image_gallery_module-refresh_gallery', %s, {priority: 'event'});",
+        as.numeric(Sys.time())
+      ))
+    }
+
     if (input$tabs == "chat" && isTRUE(values$show_welcome)) {
       shinyjs::delay(100, {
         render_welcome_screen(values$saved_chats, replace_existing = TRUE)
