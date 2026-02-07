@@ -1,0 +1,319 @@
+/* Dosya Yolu: www/css/image_gallery.css */
+/* Gorsel Galerisi sayfa stilleri - karanlik tema, modern thumbnail karti tasarimi */
+
+/* Galeri header buton stilleri */
+.gallery-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.gallery-actions .btn-modern {
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.gallery-actions .btn-primary {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.25), rgba(247, 147, 30, 0.15)) !important;
+  color: #ff9966 !important;
+  border-color: rgba(255, 107, 53, 0.3) !important;
+}
+
+.gallery-actions .btn-primary:hover {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.35), rgba(247, 147, 30, 0.25)) !important;
+  border-color: rgba(255, 107, 53, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.gallery-actions .btn-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(220, 38, 38, 0.15)) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.gallery-actions .btn-danger:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(220, 38, 38, 0.25)) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.gallery-actions .btn-modern i {
+  font-size: 13px;
+}
+
+/* Galeri arama kutusu */
+.gallery-controls {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* Ay basligindaki gorsel sayisi */
+.gallery-month-count {
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255, 138, 0, 0.6);
+  margin-left: 8px;
+}
+
+/* Galeri izgara duzeni */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+/* Gorsel karti */
+.gallery-card {
+  background: var(--background-light);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative;
+}
+
+.gallery-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 8px 32px rgba(255, 107, 53, 0.15), 0 0 0 1px rgba(255, 107, 53, 0.1);
+  transform: translateY(-4px) scale(1.02);
+}
+
+/* Gorsel alani */
+.gallery-card-image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-top: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--background-dark);
+}
+
+.gallery-card-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.3s ease;
+}
+
+.gallery-card:hover .gallery-card-image {
+  transform: scale(1.08);
+  filter: brightness(0.7);
+}
+
+/* Gorsel yer tutucu */
+.gallery-card-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--background-dark);
+}
+
+/* Hover overlay */
+.gallery-card-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.gallery-card-overlay i {
+  font-size: 24px;
+  color: var(--primary-color);
+}
+
+.gallery-card:hover .gallery-card-overlay {
+  opacity: 1;
+}
+
+/* Kart alt bilgi alani */
+.gallery-card-footer {
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--background-light);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.gallery-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.gallery-card-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gallery-card-size {
+  font-size: 10px;
+  color: rgba(153, 153, 153, 0.6);
+}
+
+/* Silme butonu */
+.gallery-delete-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.gallery-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.gallery-delete-btn:active {
+  transform: scale(0.9);
+}
+
+.gallery-delete-btn i {
+  font-size: 12px;
+}
+
+/* Tooltip stilleri */
+.gallery-card[data-tooltip] {
+  position: relative;
+}
+
+.gallery-card[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 15, 15, 0.95);
+  color: #e6e6e6;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1000;
+  border: 1px solid rgba(255, 138, 0, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.gallery-card[data-tooltip]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* Responsive tasarim */
+@media (max-width: 1200px) {
+  .gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .gallery-card-footer {
+    padding: 8px 10px;
+  }
+
+  .gallery-card-date {
+    font-size: 10px;
+  }
+
+  .gallery-actions .btn-modern .btn-text {
+    display: none;
+  }
+
+  .gallery-actions .btn-modern {
+    padding: 6px 10px !important;
+  }
+
+  .gallery-card[data-tooltip]::after {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .gallery-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+}
+
+/* Giris animasyonu */
+.gallery-card.animate-fadeIn {
+  animation: galleryFadeIn 0.4s ease forwards;
+}
+
+@keyframes galleryFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Animasyon gecikmesi */
+.gallery-card:nth-child(1) { animation-delay: 0.02s; }
+.gallery-card:nth-child(2) { animation-delay: 0.04s; }
+.gallery-card:nth-child(3) { animation-delay: 0.06s; }
+.gallery-card:nth-child(4) { animation-delay: 0.08s; }
+.gallery-card:nth-child(5) { animation-delay: 0.10s; }
+.gallery-card:nth-child(6) { animation-delay: 0.12s; }
+.gallery-card:nth-child(7) { animation-delay: 0.14s; }
+.gallery-card:nth-child(8) { animation-delay: 0.16s; }

@@ -178,6 +178,14 @@ server <- function(input, output, session) {
   savedChatsObserversInit(input, output, session, values, settings_data,
                            saved_chats_data, current_user_id, load_chat_in_progress)
 
+  # Görsel galerisi modülünü başlat
+  gallery_data <- imageGalleryServer("image_gallery_module", current_user_id)
+
+  # Görsel galerisi gözlemcilerini başlat
+  imageGalleryObserversInit(input, session, values, settings_data,
+                             gallery_data, saved_chats_data,
+                             current_user_id, load_chat_in_progress)
+
   # Hoş geldin ekranı işleyicilerini başlat (modüler)
   # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır
   welcome_handlers <- welcomeHandlersInit(
