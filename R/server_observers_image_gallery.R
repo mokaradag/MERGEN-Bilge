@@ -46,8 +46,18 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     # Önce mevcut önbelleğe bak
     chat_to_load <- values$saved_chats[[chat_id]]
 
-    # Önbellekte yoksa veritabanından yükle
-    if (is.null(chat_to_load)) {
+    # Mesajların gerçekten yüklenip yüklenmediğini kontrol et (hidrasyon kontrolü)
+    needs_hydrate <- is.null(chat_to_load)
+    if (!needs_hydrate) {
+      msgs <- chat_to_load$messages
+      stored_len <- if (is.list(msgs)) length(msgs) else 0L
+      expected_len <- as.integer(chat_to_load$message_count %||% stored_len)
+      needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
+        (!is.na(expected_len) && expected_len > stored_len)
+    }
+
+    # Önbellekte yoksa veya mesajlar yüklenmemişse veritabanından yükle
+    if (isTRUE(needs_hydrate)) {
       detail <- tryCatch(
         load_chat_messages_from_db(chat_id_int),
         error = function(e) {
@@ -97,6 +107,18 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     character_data <- if (!is.null(chars_data)) {
       Find(function(x) x$id == selected_char_id, chars_data$styles)
     } else NULL
+
+    # Tıklanan görselin hangi mesajda olduğunu bul (kaydırma hedefi için)
+    target_message_id <- NULL
+    if (!is.null(info$file_path) && nzchar(info$file_path)) {
+      target_filename <- basename(info$file_path)
+      for (msg in values$messages) {
+        if (grepl(target_filename, msg$content %||% "", fixed = TRUE)) {
+          target_message_id <- msg$id
+          break
+        }
+      }
+    }
 
     # Önce sekmeyi değiştir, sonra mesajları ekle (görünürlük sorunu önlenir)
     updateTabItems(session, "tabs", "chat")
@@ -150,7 +172,25 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
         }
       }
 
-      shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
+      # Hedef görsele veya sohbet sonuna kaydır
+      if (!is.null(target_message_id)) {
+        shinyjs::runjs(sprintf("
+          setTimeout(function() {
+            var targetEl = document.getElementById('message_wrapper_%s');
+            if (targetEl) {
+              targetEl.scrollIntoView({behavior: 'auto', block: 'center'});
+              // Görseli kısa süreliğine vurgula
+              targetEl.style.transition = 'box-shadow 0.5s ease';
+              targetEl.style.boxShadow = '0 0 0 3px rgba(255, 138, 0, 0.5)';
+              setTimeout(function() { targetEl.style.boxShadow = ''; }, 2500);
+            } else {
+              scrollToBottom(false);
+            }
+          }, 400);
+        ", target_message_id))
+      } else {
+        shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 300);")
+      }
       showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
 
       shinyjs::delay(500, {
