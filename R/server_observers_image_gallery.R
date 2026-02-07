@@ -1,48 +1,61 @@
 # Dosya Yolu: R/server_observers_image_gallery.R
-# Gorsel galerisi observer fonksiyonlari - sohbete yonlendirme ve gorsel silme sonrasi reaktif guncellemeler
+# Görsel galerisi observer fonksiyonları - söyleşiye yönlendirme ve görsel silme sonrası reaktif güncellemeler
 
-#' Gorsel Galerisi Gozlemcilerini Baslat
+#' Görsel Galerisi Gözlemcilerini Başlat
 #' @param input Shiny input nesnesi
 #' @param session Shiny session nesnesi
-#' @param values Ana reaktif degerler
-#' @param settings_data Ayarlar modulu reaktif verileri
-#' @param gallery_data Galeri modulu reaktif verileri
-#' @param saved_chats_data Kayitli sohbet modulu reaktif verileri
-#' @param current_user_id Mevcut kullanici ID
-#' @param load_chat_in_progress Sohbet yukleme kilidi
+#' @param values Ana reaktif değerler
+#' @param settings_data Ayarlar modülü reaktif verileri
+#' @param gallery_data Galeri modülü reaktif verileri
+#' @param saved_chats_data Kayıtlı söyleşi modülü reaktif verileri
+#' @param current_user_id Mevcut kullanıcı ID
+#' @param load_chat_in_progress Söyleşi yükleme kilidi
 imageGalleryObserversInit <- function(input, session, values, settings_data,
                                       gallery_data, saved_chats_data,
                                       current_user_id, load_chat_in_progress) {
 
+  # Görsele tıklandığında ilgili söyleşiye yönlendir
   observeEvent(gallery_data$navigate_to_chat(), {
     info <- gallery_data$navigate_to_chat()
     req(info)
 
-    chat_id <- info$chat_id
+    chat_id_raw <- info$chat_id
 
-    if (is.null(chat_id) || is.na(chat_id) || !nzchar(chat_id)) {
-      showToast(session, "Bu g\u00f6rselin ait oldu\u011fu s\u00f6yle\u015fi bulunamad\u0131.", "error")
+    if (is.null(chat_id_raw) || is.na(chat_id_raw) || !nzchar(chat_id_raw)) {
+      showToast(session, "Bu görselin ait olduğu söyleşi bulunamadı.", "error")
       return()
     }
 
+    # chat_id'nin geçerli bir sayısal değer olduğunu doğrula
+    chat_id_int <- suppressWarnings(as.integer(chat_id_raw))
+    if (is.na(chat_id_int)) {
+      showToast(session, "Geçersiz söyleşi kimliği.", "error")
+      return()
+    }
+
+    # String olarak kullanılacak chat_id (values$saved_chats anahtarı için)
+    chat_id <- as.character(chat_id_int)
+
     if (load_chat_in_progress()) {
-      showToast(session, "Bir s\u00f6yle\u015fi y\u00fckleniyor, l\u00fctfen bekleyin.", "info")
+      showToast(session, "Bir söyleşi yükleniyor, lütfen bekleyin.", "info")
       return()
     }
 
     load_chat_in_progress(TRUE)
 
+    # Önce mevcut önbelleğe bak
     chat_to_load <- values$saved_chats[[chat_id]]
 
+    # Önbellekte yoksa veritabanından yükle
     if (is.null(chat_to_load)) {
       detail <- tryCatch(
-        load_chat_messages_from_db(chat_id),
+        load_chat_messages_from_db(chat_id_int),
         error = function(e) {
-          warning(sprintf("[IMAGE_GALLERY] Sohbet yuklenemedi %s: %s", chat_id, e$message))
+          warning(sprintf("[IMAGE_GALLERY] Söyleşi yüklenemedi (ChatID: %s): %s", chat_id, e$message))
           NULL
         }
       )
-      if (!is.null(detail)) {
+      if (!is.null(detail) && detail$message_count > 0) {
         chat_to_load <- detail
         saved_copy <- values$saved_chats
         saved_copy[[chat_id]] <- chat_to_load
@@ -51,11 +64,12 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     }
 
     if (is.null(chat_to_load)) {
-      showToast(session, "Bu s\u00f6yle\u015fi art\u0131k mevcut de\u011fil veya silinmi\u015f.", "error")
+      showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "error")
       load_chat_in_progress(FALSE)
       return()
     }
 
+    # Karşılama ekranını temizle
     shinyjs::runjs("
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
@@ -73,11 +87,12 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
     removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
 
+    # Mesajları ve durum bilgisini yükle
     values$messages <- chat_to_load$messages %||% list()
     all_feedback <- load_feedback_from_db(current_user_id)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
-    values$current_chat_id <- chat_id
+    values$current_chat_id <- chat_id_int
     values$show_welcome <- FALSE
 
     selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
@@ -86,6 +101,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       Find(function(x) x$id == selected_char_id, chars_data$styles)
     } else NULL
 
+    # Mesaj balonlarını sırayla ekle
     for (i in seq_along(values$messages)) {
       msg <- values$messages[[i]]
       is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
@@ -128,21 +144,59 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
 
     updateTabItems(session, "tabs", "chat")
-    chat_title <- chat_to_load$title %||% "S\u00f6yle\u015fi"
-    showToast(session, paste("S\u00f6yle\u015fi y\u00fcklendi:", chat_title), "info")
+    chat_title <- chat_to_load$title %||% "Söyleşi"
+    showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
 
     shinyjs::delay(500, {
       load_chat_in_progress(FALSE)
     })
   }, ignoreInit = TRUE)
 
+  # Tekil görsel silindikten sonra ilgili söyleşinin önbelleğini temizle
   observeEvent(gallery_data$delete_image(), {
     info <- gallery_data$delete_image()
     req(info)
 
     chat_id <- info$chat_id
-    if (!is.null(chat_id) && identical(as.character(values$current_chat_id), as.character(chat_id))) {
-      cat("[IMAGE_GALLERY] Mevcut sohbetteki gorsel silindi, mesajlar yeniden yukleniyor\n")
+    if (!is.null(chat_id) && !is.na(chat_id)) {
+      chat_key <- as.character(chat_id)
+
+      # Önbellekteki söyleşi verisini temizle (eski base64 görseller kalmaz)
+      saved_copy <- values$saved_chats
+      if (!is.null(saved_copy[[chat_key]])) {
+        saved_copy[[chat_key]] <- NULL
+        values$saved_chats <- saved_copy
+        cat(sprintf("[IMAGE_GALLERY] Söyleşi önbelleği temizlendi (ChatID: %s)\n", chat_key))
+      }
+
+      # Eğer şu an o söyleşi aktifse, mesajları yeniden yükle
+      if (identical(as.character(values$current_chat_id), chat_key)) {
+        detail <- tryCatch(
+          load_chat_messages_from_db(suppressWarnings(as.integer(chat_id))),
+          error = function(e) NULL
+        )
+        if (!is.null(detail)) {
+          values$messages <- detail$messages %||% list()
+        }
+      }
+    }
+  }, ignoreInit = TRUE)
+
+  # Tüm görseller silindikten sonra tüm önbelleği temizle
+  observeEvent(gallery_data$clear_all_images(), {
+    # Tüm söyleşi önbelleğini temizle
+    values$saved_chats <- list()
+    cat("[IMAGE_GALLERY] Tüm söyleşi önbelleği temizlendi\n")
+
+    # Aktif söyleşi varsa mesajları veritabanından yeniden yükle
+    if (!is.null(values$current_chat_id)) {
+      detail <- tryCatch(
+        load_chat_messages_from_db(values$current_chat_id),
+        error = function(e) NULL
+      )
+      if (!is.null(detail)) {
+        values$messages <- detail$messages %||% list()
+      }
     }
   }, ignoreInit = TRUE)
 
