@@ -197,7 +197,7 @@
     flex-direction: row;
     min-height: auto;
     height: calc(100% - 252px);
-    max-width: 1200px;
+    max-width: 1000px; /* Daraltıldı: butonlar küçüldüğü için kart da küçültüldü */
   }
 }
 
@@ -227,8 +227,8 @@
 
 @media (min-width: 768px) {
   .modern-welcome-left-panel {
-    width: 40%;
-    padding: 1.5rem; /* Azaltıldı: 2rem → 1.5rem */
+    width: 45%; /* Dengelendi: 40% → 45% */
+    padding: 1.5rem;
   }
 }
 
@@ -246,7 +246,7 @@
 
 .modern-welcome-branding {
   display: flex;
-  align-items: flex-end;
+  align-items: center; /* Düzeltildi: flex-end → center (ikon dikey ortalansın) */
   gap: 1rem;
   margin-bottom: 0.75rem;
   height: 48px;
@@ -405,6 +405,7 @@
   text-align: left;
   cursor: pointer;
   transition: all 200ms;
+  box-sizing: border-box; /* Eklendi: padding dahil genişlik hesaplansın, sağ taşma düzeltildi */
 }
 
 .modern-welcome-preview-btn:hover {
@@ -481,7 +482,7 @@
 
 @media (min-width: 768px) {
   .modern-welcome-right-panel {
-    width: 60%; /* Adjust to balance width */
+    width: 55%; /* Dengelendi: 60% → 55% */
   }
 }
 
@@ -526,7 +527,7 @@
 
 .modern-welcome-actions-title-left {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center; /* Düzeltildi: baseline → center (ikon dikey ortalansın) */
   gap: 0.75rem;
 }
 
@@ -536,8 +537,6 @@
   filter: drop-shadow(0 0 5px rgba(0, 242, 255, 0.5));
   line-height: 1;
   flex-shrink: 0;
-  position: relative;
-  top: 0.15em;
 }
 
 .modern-welcome-actions-title {
@@ -606,8 +605,10 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  align-items: center; /* Eklendi: yarı genişlikteki butonları yatayda ortala */
   gap: 1.25rem;
   padding-bottom: 1.5rem;
+  padding-top: 8px; /* Eklendi: ilk butonun hover + snake trail üst kırpılmasını önle */
   max-width: 100%;
   margin: 0 auto;
   width: 100%;
@@ -617,7 +618,7 @@
 .modern-welcome-action-btn {
   all: unset;
   position: relative;
-  width: 100%;
+  width: 100%; /* Grid genişliğiyle eşit - kenar boşlukları grid padding'den gelir */
   height: 72px;
   padding: 0;
   cursor: pointer;
@@ -625,6 +626,7 @@
   outline: none;
   display: block;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .modern-welcome-action-btn:hover {

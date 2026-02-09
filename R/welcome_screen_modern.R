@@ -64,6 +64,7 @@ create_modern_welcome_action <- function(action_data) {
     `data-placement` = "top",
     `data-html` = "true",
     
+	# Snake trail SVG - yarı genişlik buton oranına uyarlandı
 	div(class = "modern-welcome-action-border-trail",
 		tags$svg(
 		  class = "absolute inset-0 w-full h-full",
