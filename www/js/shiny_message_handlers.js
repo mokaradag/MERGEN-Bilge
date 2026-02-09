@@ -3,6 +3,14 @@
 
 $(document).ready(function() {
 
+  // Sistem Durumu sayfasındaki "Son Güncelleme" zamanını güncelle
+  Shiny.addCustomMessageHandler('updateHealthTimestamp', function(data) {
+    var el = document.getElementById('last_update_time');
+    if (el && data && data.time) {
+      el.textContent = 'Son Güncelleme: ' + data.time;
+    }
+  });
+
   Shiny.addCustomMessageHandler('showToast', function(data) {
     if (typeof window.showToast === 'function') {
       window.showToast(data.message, data.type || 'info');

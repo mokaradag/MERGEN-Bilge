@@ -102,6 +102,7 @@ sendMessageInit <- function(
     uploaded_count <- length(uploaded_names)
  
     if (nchar(user_message_text) == 0 && uploaded_count == 0) {
+      showToast(session, "Lütfen bir mesaj yazın.", "warning")
       return()
     }
  
