@@ -3,11 +3,21 @@
 
 $(document).ready(function() {
 
-  // Sistem Durumu sayfasındaki "Son Güncelleme" zamanını güncelle
+// Sistem Durumu sayfasındaki "Son Güncelleme" zamanını güncelle
   Shiny.addCustomMessageHandler('updateHealthTimestamp', function(data) {
     var el = document.getElementById('last_update_time');
     if (el && data && data.time) {
       el.textContent = 'Son Güncelleme: ' + data.time;
+    }
+  });
+
+  // Yönetici Paneli sayfasındaki "Son Güncelleme" zamanını güncelle
+  Shiny.addCustomMessageHandler('updateAdminTimestamp', function(data) {
+    if (data && data.id && data.time) {
+      var el = document.getElementById(data.id);
+      if (el) {
+        el.textContent = 'Son Güncelleme: ' + data.time;
+      }
     }
   });
 

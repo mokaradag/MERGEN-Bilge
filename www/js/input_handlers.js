@@ -32,6 +32,9 @@ $(document).ready(function() {
     const promptText = textarea.val() || '';
 
     if (promptText.trim().length === 0 && $('#file_prompt_indicator_ui').children().length === 0) {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Lütfen bir mesaj yazın.', 'warning');
+      }
       return;
     }
 
@@ -59,6 +62,9 @@ $(document).ready(function() {
         const promptText = chatInput.val() || '';
 
         if (promptText.trim().length === 0 && $('#file_prompt_indicator_ui').children().length === 0) {
+          if (typeof window.showToast === 'function') {
+            window.showToast('Lütfen bir mesaj yazın.', 'warning');
+          }
           return;
         }
 
