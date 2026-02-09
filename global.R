@@ -1054,6 +1054,7 @@ source("R/module_feedback.R", encoding = "UTF-8")
 source("R/module_quick_actions.R", encoding = "UTF-8")
 source("R/module_image_generation.R", encoding = "UTF-8")
 source("R/module_image_gallery.R", encoding = "UTF-8")
+source("R/module_user_identity.R", encoding = "UTF-8")
 source("R/server_session_cache.R", encoding = "UTF-8")
 source("R/server_observers_settings.R", encoding = "UTF-8")
 source("R/server_observers_storage.R", encoding = "UTF-8")
@@ -1073,7 +1074,6 @@ source("R/server_music_handlers.R", encoding = "UTF-8")
 source("R/server_welcome_handlers.R", encoding = "UTF-8")
 source("R/server_llm_response_handlers.R", encoding = "UTF-8")
 source("R/server_send_message.R", encoding = "UTF-8")
-source("R/mod_user_identity.R", encoding = "UTF-8")
 
 # --- GLOBAL CONFIGURATION ---
 
@@ -1323,11 +1323,13 @@ SERVICE_DESK <- list(
 )                    
 
 # Kullanıcı yapılandırması
-# Not: name, userId gibi alanlar artık mod_user_identity.R ile dinamik olarak çözümlenir.
+# Not: name ve userId oturum başında server.R tarafından DB'den güncellenir.
 # Keycloak entegrasyonu sonrası bu değerler otomatik doldurulacak.
 # auth_level şimdilik statik kalıyor; Keycloak sonrası rol tabanlı olacak.
 user_config <- list(
+  name = "",
   icon = "user-circle",
+  userId = "",
   auth_level = Sys.getenv("MERGEN_AUTH_LEVEL", "ADMIN")
 )
 

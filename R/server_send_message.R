@@ -48,8 +48,11 @@ sendMessageInit <- function(
         if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
           window.WelcomeNeuralNetwork.destroy();
         }
-        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
           window.WelcomeGreeting.destroy();
+        }
+        if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
+          window.WelcomePersonalGreeting.destroy();
         }
       ")
       removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)

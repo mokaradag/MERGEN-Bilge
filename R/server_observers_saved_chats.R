@@ -224,8 +224,11 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
           window.WelcomeNeuralNetwork.destroy();
         }
-        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
           window.WelcomeGreeting.destroy();
+        }
+        if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
+          window.WelcomePersonalGreeting.destroy();
         }
         
         // Mevcut sohbet içeriğini temizle
@@ -252,6 +255,13 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         shinyjs::delay(100, {
           session$sendCustomMessage("initModernWelcome", list())
           session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+          
+          # Kişiselleştirilmiş karşılama animasyonunu başlat
+          shinyjs::delay(400, {
+            session$sendCustomMessage("initPersonalGreeting", list(
+              first_name = session$userData$user_first_name %||% ""
+            ))
+          })
         })
       })
     }
@@ -282,8 +292,11 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
           if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
             window.WelcomeNeuralNetwork.destroy();
           }
-          if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		  if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
             window.WelcomeGreeting.destroy();
+          }
+          if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
+            window.WelcomePersonalGreeting.destroy();
           }
           
           // Mevcut sohbet içeriğini temizle
@@ -309,6 +322,13 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
           shinyjs::delay(100, {
             session$sendCustomMessage("initModernWelcome", list())
             session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+            
+            # Kişiselleştirilmiş karşılama animasyonunu başlat
+            shinyjs::delay(400, {
+              session$sendCustomMessage("initPersonalGreeting", list(
+                first_name = session$userData$user_first_name %||% ""
+              ))
+            })
           })
         })
       }

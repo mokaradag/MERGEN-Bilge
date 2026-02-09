@@ -115,8 +115,8 @@
 /*  KİŞİSEL SELAMLAMA BAŞLIĞI                                               */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
-.personal-greeting-title {
-  font-size: 22px;
+.modern-welcome-title-group h1.personal-greeting-title {
+  font-size: 22px !important;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: white;
@@ -132,36 +132,37 @@
 }
 
 /* Saat dilimi selamlama metni + virgül (gradient renginde) */
-.greeting-time-text {
+.modern-welcome-title-group .greeting-time-text {
   display: inline;
-  background: linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  background: linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  color: transparent !important;
 }
 
 /* Kullanıcı adı metni (beyaz) */
-.greeting-name-text {
+.modern-welcome-title-group .greeting-name-text {
   display: inline;
-  color: white;
-  -webkit-text-fill-color: white;
+  color: white !important;
+  -webkit-text-fill-color: white !important;
 }
 
 /* Responsive ayarlar */
 @media (max-width: 767px) {
-  .personal-greeting-title {
-    font-size: 18px;
+  .modern-welcome-title-group h1.personal-greeting-title {
+    font-size: 18px !important;
   }
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
-  .personal-greeting-title {
-    font-size: 20px;
+  .modern-welcome-title-group h1.personal-greeting-title {
+    font-size: 20px !important;
   }
 }
 
 @media (min-width: 1024px) {
-  .personal-greeting-title {
-    font-size: 22px;
+  .modern-welcome-title-group h1.personal-greeting-title {
+    font-size: 22px !important;
   }
 }

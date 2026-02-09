@@ -23,6 +23,10 @@ server <- function(input, output, session) {
 	session$userData$user_identity <- user_identity
 	session$userData$user_first_name <- user_identity$first_name
 
+	# Sohbet baloncuklarında kullanıcı adı ve avatar için user_config güncelle
+	user_config$name   <<- user_identity$full_name
+	user_config$userId <<- user_identity$sicil %||% as.character(current_user_id)
+
 	# Kullanıcı oturumu için önbellek dizinini yapılandır
 	cache_dir <- session_cache$setup_user_session(current_user_id)
 
