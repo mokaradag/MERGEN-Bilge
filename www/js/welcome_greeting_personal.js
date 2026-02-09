@@ -14,6 +14,7 @@ window.WelcomePersonalGreeting = (function() {
   var _phase = 'idle';  // 'idle' | 'greeting' | 'time-icon' | 'intro' | 'cycling'
   var _timeouts = [];
   var _destroyed = false;
+  var _isFirstTransition = true; // İlk geçişte küçülme animasyonunu atla
 
   // --- Saate göre selamlama mesajları ve FontAwesome ikon eşlemeleri ---
   function getTimeBasedGreeting() {
@@ -61,7 +62,32 @@ window.WelcomePersonalGreeting = (function() {
     var icon = _iconBox.querySelector('.modern-welcome-icon');
     if (!icon) return;
 
-    // Mevcut ikonu küçült
+    // İlk geçişte küçülme gecikmesini atla — doğrudan ikonu değiştir
+    if (_isFirstTransition) {
+      _isFirstTransition = false;
+
+      icon.className = 'modern-welcome-icon fas ' + iconClass;
+      if (extraClass) {
+        icon.classList.add(extraClass);
+      }
+      if (customColor) {
+        icon.style.color = customColor;
+        icon.style.filter = 'drop-shadow(0 0 10px ' + (customGlow || customColor) + ')';
+      } else {
+        icon.style.color = '';
+        icon.style.filter = '';
+      }
+
+      _iconBox.classList.add('icon-transition-in');
+      _setTimeout(function() {
+        if (!_destroyed && _iconBox) {
+          _iconBox.classList.remove('icon-transition-in');
+        }
+      }, 500);
+      return;
+    }
+
+    // Sonraki geçişlerde: mevcut ikonu küçült, sonra değiştir
     _iconBox.classList.add('icon-transition-out');
 
     _setTimeout(function() {
@@ -280,7 +306,8 @@ window.WelcomePersonalGreeting = (function() {
     _iconBox = null;
     _titleGroup = null;
     _greetingText = null;
-    _firstName = '';
+	_firstName = '';
+    _isFirstTransition = true;
   }
 
   // --- Başlatma ---
