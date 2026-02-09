@@ -221,11 +221,11 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
             
             div(class = "modern-welcome-left-panel",
                 div(class = "modern-welcome-header-section",
-                    div(class = "modern-welcome-branding",
-                        div(class = "modern-welcome-icon-box",
-							tags$i(class = "fas fa-microchip modern-welcome-icon")
+					div(class = "modern-welcome-branding",
+                        div(class = "modern-welcome-icon-box personal-icon-animated",
+                            tags$i(class = "fas fa-microchip modern-welcome-icon")
                         ),
-                        div(class = "modern-welcome-title-group",
+                        div(class = "modern-welcome-title-group personal-title-animated",
                             tags$h1(
                               "MERGEN ",
                               span("Bilge", class = "modern-welcome-title-accent")

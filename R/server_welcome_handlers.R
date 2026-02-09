@@ -14,7 +14,8 @@
 #' @param file_manager_data Dosya yöneticisi modülü
 #' @return Hoş geldin ekranı fonksiyonlarını içeren liste
 welcomeHandlersInit <- function(session, values, saved_chats_data, session_files,
-                                 filePreview, current_user_id, file_manager_data) {
+                                 filePreview, current_user_id, file_manager_data,
+                                 user_first_name = NULL) {
  
   # Hoş geldin ekranını render et
   # Bu fonksiyon welcome ekranını oluşturur ve animasyonları başlatır
@@ -28,7 +29,7 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
     shiny::removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
  
     # Animasyonları önce temizle
-    shinyjs::runjs("
+	shinyjs::runjs("
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
       }
@@ -37,6 +38,9 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
       }
       if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
         window.WelcomeGreeting.destroy();
+      }
+      if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
+        window.WelcomePersonalGreeting.destroy();
       }
     ")
  
@@ -55,10 +59,17 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
  
     session$userData$welcome_screen_attached <- TRUE
  
-    # Animasyonları başlat (her render'da çağrılmalı)
+	# Animasyonları başlat (her render'da çağrılmalı)
     shinyjs::delay(200, {
       session$sendCustomMessage("initModernWelcome", list())
       session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+      
+      # Kişiselleştirilmiş karşılama animasyonunu başlat
+      shinyjs::delay(400, {
+        session$sendCustomMessage("initPersonalGreeting", list(
+          first_name = user_first_name %||% ""
+        ))
+      })
     })
   }
  
@@ -66,7 +77,7 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
   # Bu fonksiyon mevcut sohbeti temizler ve hoş geldin ekranını gösterir
   start_new_chat <- function() {
     # Önce mevcut animasyonları tamamen temizle
-    shinyjs::runjs("
+	shinyjs::runjs("
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
       }
@@ -75,6 +86,9 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
       }
       if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
         window.WelcomeGreeting.destroy();
+      }
+      if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
+        window.WelcomePersonalGreeting.destroy();
       }
     ")
  

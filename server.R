@@ -12,11 +12,16 @@ server <- function(input, output, session) {
   
   # ---- Kullanıcı ve oturum başlatma ------------------------------------------
 
-	# Sistemdeki kullanıcı adını al
-	system_username <- Sys.info()["user"]
+	# Kullanıcı kimlik bilgilerini çözümle (Keycloak'a hazır)
+	user_identity <- resolveUserIdentity()
+	system_username <- user_identity$username
 
 	# Veritabanından kalıcı kullanıcı kimliğini al veya oluştur
 	current_user_id <- get_or_create_user(system_username)
+	
+	# Kimlik bilgilerini session'a kaydet (welcome ekranı ve diğer modüller için)
+	session$userData$user_identity <- user_identity
+	session$userData$user_first_name <- user_identity$first_name
 
 	# Kullanıcı oturumu için önbellek dizinini yapılandır
 	cache_dir <- session_cache$setup_user_session(current_user_id)
@@ -190,7 +195,8 @@ server <- function(input, output, session) {
   # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır
   welcome_handlers <- welcomeHandlersInit(
     session, values, saved_chats_data, session_files,
-    filePreview, current_user_id, file_manager_data
+    filePreview, current_user_id, file_manager_data,
+    user_first_name = session$userData$user_first_name
   )
   welcome_fns$render_welcome_screen <- welcome_handlers$render_welcome_screen
   welcome_fns$start_new_chat <- welcome_handlers$start_new_chat

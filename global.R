@@ -1073,6 +1073,7 @@ source("R/server_music_handlers.R", encoding = "UTF-8")
 source("R/server_welcome_handlers.R", encoding = "UTF-8")
 source("R/server_llm_response_handlers.R", encoding = "UTF-8")
 source("R/server_send_message.R", encoding = "UTF-8")
+source("R/mod_user_identity.R", encoding = "UTF-8")
 
 # --- GLOBAL CONFIGURATION ---
 
@@ -1321,12 +1322,13 @@ SERVICE_DESK <- list(
   rate_limit_url      = Sys.getenv("SERVICE_DESK_RATE_LIMIT_URL", "https://servicedesk.example.com/rate-limit")
 )                    
 
-# Static user configuration (remains the same)
+# Kullanıcı yapılandırması
+# Not: name, userId gibi alanlar artık mod_user_identity.R ile dinamik olarak çözümlenir.
+# Keycloak entegrasyonu sonrası bu değerler otomatik doldurulacak.
+# auth_level şimdilik statik kalıyor; Keycloak sonrası rol tabanlı olacak.
 user_config <- list(
-  name = "Ahmet Yılmaz", 
   icon = "user-circle",
-  userId = "12345",
-  auth_level = "ADMIN"
+  auth_level = Sys.getenv("MERGEN_AUTH_LEVEL", "ADMIN")
 )
 
 # --- GLOBAL HELPER FUNCTIONS ---

@@ -72,6 +72,7 @@ ui <- dashboardPage(
     # --- Local CSS Files ---
     tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_modern.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_greeting_personal.css"),	
     tags$link(rel = "stylesheet", type = "text/css", href = "css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/model_selector.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/codemirror-custom.css"),
@@ -181,6 +182,7 @@ ui <- dashboardPage(
     tags$script(src = "js/welcome_video_player.js"),
     tags$script(src = "js/welcome_neural_modern.js"),
     tags$script(src = "js/welcome_greeting.js"),
+	tags$script(src = "js/welcome_greeting_personal.js"),
     tags$script(src = "js/tts_manager.js"),
     tags$script(src = "js/character_manager.js"),
     tags$script(src = "js/shortcuts_manager.js"),

@@ -1,0 +1,167 @@
+/* Dosya Yolu: www/css/welcome_greeting_personal.css */
+/* Açıklama: Kullanıcıya özel karşılama animasyonları için stiller.         */
+/* İkon geçişleri, başlık animasyonları ve kişisel selamlama tasarımı.       */
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/*  İKON GEÇİŞ ANİMASYONLARI                                                */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+.personal-icon-animated {
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.35s ease;
+}
+
+/* İkon küçülme (çıkış) */
+.icon-transition-out {
+  transform: scale(0.3) rotate(-15deg);
+  opacity: 0.2;
+}
+
+/* İkon büyüme (giriş) */
+.icon-transition-in {
+  animation: iconBounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes iconBounceIn {
+  0% {
+    transform: scale(0.3) rotate(15deg);
+    opacity: 0.2;
+  }
+  50% {
+    transform: scale(1.15) rotate(-3deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* El sallama animasyonu */
+.icon-wave-anim {
+  animation: iconWave 1.8s ease-in-out !important;
+  color: #fbbf24 !important;
+  filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.6)) !important;
+}
+
+@keyframes iconWave {
+  0%   { transform: rotate(0deg); }
+  10%  { transform: rotate(16deg); }
+  20%  { transform: rotate(-8deg); }
+  30%  { transform: rotate(16deg); }
+  40%  { transform: rotate(-4deg); }
+  50%  { transform: rotate(12deg); }
+  60%  { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* Mikroçip nabız animasyonu */
+.icon-pulse-glow {
+  animation: pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+  color: #00f2ff !important;
+  filter: drop-shadow(0 0 8px rgba(0, 242, 255, 0.5)) !important;
+}
+
+/* Zaman ikonu parıltı animasyonu (güneş, ay vb.) */
+.icon-time-glow {
+  animation: timeIconGlow 2.5s ease-in-out infinite !important;
+}
+
+@keyframes timeIconGlow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.85;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/*  BAŞLIK GEÇİŞ ANİMASYONLARI                                              */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+.personal-title-animated {
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  will-change: opacity, transform;
+}
+
+/* Başlık kaybolma */
+.title-fade-out {
+  opacity: 0 !important;
+  transform: translateY(-8px) !important;
+}
+
+/* Başlık belirme */
+.title-fade-in {
+  animation: titleSlideIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes titleSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/*  KİŞİSEL SELAMLAMA BAŞLIĞI                                               */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+.personal-greeting-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: white;
+  font-family: 'Inter', 'Roboto', -apple-system, system-ui, sans-serif;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  margin: 0;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Saat dilimi selamlama metni + virgül (gradient renginde) */
+.greeting-time-text {
+  display: inline;
+  background: linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Kullanıcı adı metni (beyaz) */
+.greeting-name-text {
+  display: inline;
+  color: white;
+  -webkit-text-fill-color: white;
+}
+
+/* Responsive ayarlar */
+@media (max-width: 767px) {
+  .personal-greeting-title {
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .personal-greeting-title {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .personal-greeting-title {
+    font-size: 22px;
+  }
+}

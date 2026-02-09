@@ -17,7 +17,7 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
                                  settings_data = NULL) {
   
   observeEvent(input$new_chat_btn, {
-    shinyjs::runjs("
+	shinyjs::runjs("
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
       }
@@ -26,6 +26,9 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
       }
       if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
         window.WelcomeGreeting.destroy();
+      }
+      if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
+        window.WelcomePersonalGreeting.destroy();
       }
     ")
     
