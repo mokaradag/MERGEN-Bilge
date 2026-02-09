@@ -109,9 +109,11 @@ create_modern_preview_button <- function(chat_data) {
   tags$button(
     class = "modern-welcome-preview-btn",
     `data-chat-id` = chat_data$id,
+	# Karşılama ekranından doğrudan ana session'a sohbet yükleme isteği gönder
+    # (modül eventReactive zincirini atlayarak ilk tıklama sorununu önler)
     onclick = sprintf("if (!this.dataset.loading) {
       this.dataset.loading = 'true';
-      Shiny.setInputValue('saved_chats_module-load_chat_id', '%s', {priority: 'event'});
+      Shiny.setInputValue('welcome_load_chat_id', '%s', {priority: 'event'});
       setTimeout(() => delete this.dataset.loading, 1000);
     }", chat_data$id),
     

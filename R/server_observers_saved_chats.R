@@ -14,16 +14,16 @@
 #' @param current_user_id Mevcut kullanıcı ID'si
 #' @param load_chat_in_progress Sohbet yükleme kilit reaktif değeri
 savedChatsObserversInit <- function(input, output, session, values, settings_data,
-                                     saved_chats_data, current_user_id, 
-                                     load_chat_in_progress) {
+                                    saved_chats_data, current_user_id, 
+                                    load_chat_in_progress) {
   
   # Son silinen sohbet ID'sini takip et (silme sonrası yanlış yüklemeyi engellemek için)
   last_deleted_chat_id <- reactiveVal(NULL)
   
-  # Kayıtlı sohbet yükleme observer'ı (debouncing ile)
-  observeEvent(saved_chats_data$load_chat_id(), {
-    chat_id <- saved_chats_data$load_chat_id()
-    
+  # -------------------------------------------------------------------------
+  # Ortak Sohbet Yükleme Fonksiyonu
+  # -------------------------------------------------------------------------
+  do_load_chat <- function(chat_id) {
     # Boş veya NULL chat_id'yi yoksay
     if (is.null(chat_id) || !nzchar(chat_id)) {
       return()
@@ -168,7 +168,26 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     shinyjs::delay(500, {
       load_chat_in_progress(FALSE)
     })
+  }
+  
+  # -------------------------------------------------------------------------
+  # Sohbet Yükleme Observer'ları
+  # -------------------------------------------------------------------------
+  
+  # Karşılama ekranından doğrudan gelen sohbet yükleme isteği
+  # (eventReactive zincirini atlayarak ilk tıklama sorununu önler)
+  observeEvent(input$welcome_load_chat_id, {
+    do_load_chat(input$welcome_load_chat_id)
   }, ignoreInit = TRUE)
+  
+  # Kayıtlı Söyleşiler sayfasından gelen sohbet yükleme isteği (mevcut modül zinciri)
+  observeEvent(saved_chats_data$load_chat_id(), {
+    do_load_chat(saved_chats_data$load_chat_id())
+  }, ignoreInit = TRUE)
+  
+  # -------------------------------------------------------------------------
+  # Sohbet Silme ve Temizleme
+  # -------------------------------------------------------------------------
   
   # Sohbet silme observer'ı
   observeEvent(saved_chats_data$delete_chat_id(), {
@@ -188,7 +207,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
     saved_chats_data$refresh()
     
-	# Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
+    # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
     if (current_chat_deleted) {
       cat("[SAVED_CHATS] Mevcut sohbet silindi, welcome ekranına dönülüyor\n")
       
