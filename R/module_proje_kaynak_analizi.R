@@ -473,11 +473,8 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     } else {
       # Filtre yok ve aggregation da yok
       if (is.null(aggregation) || !tolower(aggregation) %in% c("count", "sum", "group_by")) {
-        cat("[SMART_FILTER] Ne filtre ne aggregation var. GENEL SORU olarak işleniyor - tüm veri döndürülecek.\n")
-        # NOT: Gereksiz keyword fallback kaldırıldı - AI yeterince akıllı
-        # Eğer kullanıcı genel bir soru sorduysa, tüm veri dönmeli
-        # Max limit: 1000 satır (performans için)
-        dt <- head(dt, 1000)
+        cat(sprintf("[SMART_FILTER] Ne filtre ne aggregation var. GENEL SORU olarak işleniyor - tüm veri döndürülecek (%d satır).\n", nrow(dt)))
+        # Tüm veri istatistik hesabına gönderilecek, önizleme satır limiti generate_statistical_summary içinde uygulanacak
       } else {
         cat("[SMART_FILTER] Aggregation mevcut, filtre yok - tüm veri üzerinde aggregation yapılacak\n")
       }
@@ -1130,6 +1127,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "- **🎯 Kök Nedenler**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
       "- **💡 Öneriler**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
       "- **⚠️ Dikkat Edilmesi Gerekenler**: Veride görünen potansiyel sorunları belirt\n\n",
+      "TABLO FORMATI KURALI:\n",
+      "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
+      "- Tablo formatı: | Sütun1 | Sütun2 | ... | şeklinde, başlık satırı ve ayırıcı ile\n",
+      "- Tablolarda en önemli sütunları seç, gereksiz sütunları dahil etme\n\n",
       "KESİN KURALLAR:\n",
       "- Sayıları doğrudan kullan, yuvarlama veya tahmin YAPMA\n",
       "- Her yorum mutlaka veriye dayalı olmalı - hayal ürünü yorum yasak\n",
@@ -1159,6 +1160,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "- **📊 Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
       "- **💡 Öneriler**: Somut, önceliklendirilmiş eylemler\n",
       "- **⚠️ Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
+      "TABLO FORMATI KURALI:\n",
+      "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
+      "- Tablo formatı: | Sütun1 | Sütun2 | ... | şeklinde, başlık satırı ve ayırıcı ile\n",
+      "- Tablolarda en önemli sütunları seç, gereksiz sütunları dahil etme\n\n",
       "KURALLAR:\n",
       "- Sayıları doğru kullan, tahmin veya varsayım yapma\n",
       "- Her yorumu veriye bağla - hayal ürünü yorum yasak\n",
