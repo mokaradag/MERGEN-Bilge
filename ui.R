@@ -118,6 +118,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/image_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/image_gallery.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/summarization_tools.css"),
+	tags$link(rel = "stylesheet", type = "text/css", href = "css/code_collapse.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -159,6 +160,7 @@ ui <- dashboardPage(
     tags$script(src = "codemirror/addon/fold/xml-fold.js"),
     
     # Your Custom Script
+	tags$script(src = "js/code-collapse.js"),
 	tags$script(src = "js/utils.js"),
 	tags$script(src = "js/shiny_message_handlers.js"),
 	tags$script(src = "js/ui_init.js"),

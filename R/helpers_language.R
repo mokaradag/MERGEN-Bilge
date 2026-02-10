@@ -239,3 +239,114 @@ detect_language <- function(code) {
   # Default to "text" if no patterns were matched
   return("text")
 }
+
+#' Kullanıcı Mesajındaki Metin ve Kod Kısımlarını Ayır
+#'
+#' Backtick kullanmadan yapıştırılan kod içeren kullanıcı mesajlarını analiz eder.
+#' Metin kısmını ve kod kısmını ayrı ayrı döndürür.
+#'
+#' @param text Analiz edilecek karakter dizisi.
+#' @return Eğer ayrım yapılabiliyorsa list(text_before, code, text_after), aksi halde NULL.
+split_text_and_code <- function(text) {
+  # Backtick varsa normal ayrıştırıcıya bırak
+  if (grepl("```", text, fixed = TRUE)) return(NULL)
+
+  lines <- strsplit(text, "\n")[[1]]
+  if (length(lines) <= 2) return(NULL)
+
+  # Her satırı puanla: kod satırı mı değil mi?
+  line_is_code <- vapply(lines, function(line) {
+    trimmed <- trimws(line)
+    if (nchar(trimmed) == 0) return(NA) # Boş satır = nötr
+
+    # --- Güçlü kod göstergeleri (satır bazında) ---
+    code_pats <- c(
+      # SQL anahtar kelimeleri
+      "^\\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|EXEC|DECLARE|MERGE|TRUNCATE)\\b",
+      "^\\s*(FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|GROUP|ORDER|HAVING|UNION|LIMIT|OFFSET)\\b",
+      "^\\s*(SET|VALUES|INTO|ON|AND|OR|CASE|WHEN|THEN|ELSE|END|BEGIN|COMMIT|ROLLBACK|AS)\\b",
+      "^\\s*(OVER\\s*\\(|PARTITION\\s+BY)",
+      # Python
+      "^\\s*(def |class |import |from .+ import|if .+:|elif .+:|else:|for .+:|while .+:|try:|except|finally:)",
+      # R
+      "^\\s*(function\\s*\\(|library\\(|require\\(|source\\()",
+      "^\\s*\\w+\\s*<-\\s*",
+      # Java/C#/JS/TS
+      "^\\s*(public |private |protected |static |void |int |string |bool )",
+      "^\\s*(var |let |const |console\\.|document\\.|window\\.)",
+      # C/C++
+      "^\\s*(#include|using\\s+namespace|using\\s+System)",
+      # Genel kod yapıları
+      "\\{\\s*$",                        # Satır sonunda {
+      "^\\s*\\}\\s*;?\\s*$",             # Satır başında }
+      "\\);\\s*$",                        # Satır sonunda );
+      "^\\s*(--|//|#!)\\s*",             # Yorum satırları
+      "^\\s*@(app|router|property|Override|staticmethod)"
+    )
+
+    # --- Güçlü doğal dil göstergeleri ---
+    text_pats <- c(
+      # Türkçe doğal dil kalıpları
+      "^\\s*(merhaba|selam|lütfen|rica|teşekkür|bu |şu |nasıl|neden|nerede|bana|benim|bir |ve |ile |için|hakkında|aşağıda|yukarıda|optimize|düzelt|yaz|yap|kontrol|analiz|bakar)",
+      # İngilizce doğal dil kalıpları
+      "^\\s*(hi |hey |hello|please|can you|could you|how |what |why |where|help|i need|i want|this |here |below|above|fix|write|check|create)",
+      # Soru işareti ile biten satır
+      "\\?\\s*$",
+      # Uzun cümle: büyük harfle başlayıp noktalama ile biten 15+ karakter
+      "^[A-ZÀ-ÿĞÜŞİÖÇ][a-zà-ÿğüşıöç].{15,}[.?!:;,]\\s*$"
+    )
+
+    is_code <- any(vapply(code_pats, grepl, logical(1), x = trimmed, ignore.case = TRUE, perl = TRUE))
+    is_text <- any(vapply(text_pats, grepl, logical(1), x = trimmed, ignore.case = TRUE, perl = TRUE))
+
+    if (is_code && !is_text) return(TRUE)
+    if (is_text && !is_code) return(FALSE)
+
+    # Belirsiz - kod karakter yoğunluğuna bak
+    code_chars <- nchar(gsub("[^\\{\\}\\(\\)<>;=\\[\\]\\|]", "", trimmed))
+    if (code_chars / max(nchar(trimmed), 1) > 0.08) return(TRUE)
+    return(FALSE)
+  }, logical(1), USE.NAMES = FALSE)
+
+  # Anlamlı (NA olmayan) satırları kontrol et
+  non_na_idx <- which(!is.na(line_is_code))
+  if (length(non_na_idx) < 2) return(NULL)
+  if (all(line_is_code[non_na_idx]))  return(NULL) # Tamamı kod
+  if (all(!line_is_code[non_na_idx])) return(NULL) # Tamamı metin
+
+  # İlk kod satırını bul
+  first_code_idx <- min(which(!is.na(line_is_code) & line_is_code == TRUE))
+
+  # Eğer ilk satır zaten kod ise ayırma yapma (tamamı kod muamelesi)
+  first_non_na <- min(non_na_idx)
+  if (first_code_idx == first_non_na) return(NULL)
+
+  # Sınırı belirle: ilk kod satırından geriye doğru bitişik kod satırlarını dahil et
+  boundary <- first_code_idx
+  if (boundary > 1) {
+    for (j in seq(boundary - 1, 1, by = -1)) {
+      if (is.na(line_is_code[j])) next            # Boş satır, atla
+      if (isTRUE(line_is_code[j])) {
+        boundary <- j                               # Bitişik kod satırı
+      } else {
+        break                                        # Metin satırına ulaştık, dur
+      }
+    }
+  }
+
+  # Sınır çok erken ise ayıramayız
+  if (boundary <= 1) return(NULL)
+
+  # Metin ve kod parçalarını oluştur
+  text_before <- trimws(paste(lines[1:(boundary - 1)], collapse = "\n"))
+  code_part   <- trimws(paste(lines[boundary:length(lines)], collapse = "\n"))
+
+  # Parçaların anlamlı uzunlukta olduğunu doğrula
+  if (nchar(text_before) < 3 || nchar(code_part) < 10) return(NULL)
+
+  list(
+    text_before = text_before,
+    code        = code_part,
+    text_after  = ""
+  )
+}

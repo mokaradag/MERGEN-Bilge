@@ -35,16 +35,25 @@ create_code_block_html <- function(code, language = "auto") {
     '<div class="code-container" id="%s">
        <div class="code-header">
          <span class="code-language">%s</span>
-         <button class="code-copy-btn" onclick="copyCodeFromCM(this)" title="Copy Code">
-           <i class="fas fa-copy"></i>
-         </button>
+         <div class="code-header-actions">
+           <button class="code-collapse-btn" onclick="toggleCodeCollapse(this)" title="Kodu Daralt/Genişlet">
+             <i class="fas fa-chevron-up"></i>
+           </button>
+           <button class="code-copy-btn" onclick="copyCodeFromCM(this)" title="Kodu Kopyala">
+             <i class="fas fa-copy"></i>
+           </button>
+         </div>
+       </div>
+       <div class="code-collapse-info" onclick="expandCodeFromInfo(this)" style="display:none;">
+         <span class="code-collapse-line-count"></span>
+         <i class="code-collapse-icon fas fa-chevron-down"></i>
        </div>
        <textarea class="codemirror-textarea" data-lang="%s">%s</textarea>
      </div>',
     block_id,
     display_language,
     detected_lang,
-    htmltools::htmlEscape(code) # Just escape the raw code
+    htmltools::htmlEscape(code) # Sadece ham kodu escape et
   ))
 }
 
@@ -135,6 +144,23 @@ process_message_content <- function(content, type = "user") {
 	  }
 	}
 	if (has_user_code) {
+	  # Metin ve kod kısımlarını ayırmayı dene (karma mesajlar için)
+	  split_result <- tryCatch(split_text_and_code(content), error = function(e) NULL)
+	  if (!is.null(split_result)) {
+	    html_parts <- list()
+	    if (nchar(trimws(split_result$text_before)) > 0) {
+	      html_parts <- append(html_parts,
+	        commonmark::markdown_html(split_result$text_before, hardbreaks = TRUE))
+	    }
+	    html_parts <- append(html_parts,
+	      as.character(create_code_block_html(split_result$code)))
+	    if (nchar(trimws(split_result$text_after)) > 0) {
+	      html_parts <- append(html_parts,
+	        commonmark::markdown_html(split_result$text_after, hardbreaks = TRUE))
+	    }
+	    return(list(html = paste(html_parts, collapse = ""), has_code = TRUE))
+	  }
+	  # Tamamen kod ise mevcut davranışı koru
 	  return(list(html = as.character(create_code_block_html(content)), has_code = TRUE))
 	}
   
