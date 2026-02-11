@@ -170,6 +170,7 @@ ui <- dashboardPage(
 	tags$script(src = "js/app_core.js"),
 	tags$script(src = "js/chart_renderer.js"),
     tags$script(src = "js/streaming_manager.js"),
+	tags$script(src = "js/table_scroll_handler.js"),
 	tags$script(src = "js/toast.js"),
 	tags$script(src = "js/markdown-parser.js"),
 	tags$script(src = "js/layout-manager.js"),

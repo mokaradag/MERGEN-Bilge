@@ -159,6 +159,11 @@ $(document).ready(function() {
       }
     }
     
+	// Mesajdaki tabloları kaydırılabilir sarmalayıcıya yerleştir
+    if (typeof window.wrapMessageTables === 'function') {
+      window.wrapMessageTables(wrapper);
+    }
+
     if (typeof window.smartScrollToBottom === 'function') {
       window.smartScrollToBottom();
     }

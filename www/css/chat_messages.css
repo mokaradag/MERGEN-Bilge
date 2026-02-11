@@ -265,13 +265,56 @@
   font-weight: 600;
 }
 
-.message-content table {
-  width: 100%;
-  border-collapse: collapse;
+/* Tablo sarmalayıcı - yatay ve dikey kaydırma desteği */
+.message-table-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 500px;
   margin: 16px 0;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  overflow: hidden;
+  position: relative;
+}
+
+/* Tablo sarmalayıcı özel kaydırma çubuğu */
+.message-table-wrapper::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.message-table-wrapper::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.message-table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.message-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.message-content table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+/* Sabit tablo başlığı (sticky header) - dikey kaydırmada başlık sabit kalır */
+.message-table-wrapper thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: #1a2744 !important;
+  color: #e2e8f0 !important;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(99, 140, 255, 0.25);
 }
 
 .message-content th,
