@@ -399,18 +399,27 @@ sendMessageInit <- function(
       cat("[SUMMARIZATION] Mod parametreleri - Detay:", summary_detail, "Odak:", summary_focus, "\n")
 
       # Promise ile özetleme
-      p <- process_summarization_request(
-        file_list = current_session_files,
-        session = session,
-        settings = settings_data,
-        ai_processor = ai_processor,
-        max_chars_per_file = if (grepl("256k|256K", settings_data$model_selection %||% "")) {
-          200000
-        } else {
-          120000
-        },
-        detail_level = summary_detail,
-        focus_mode = summary_focus
+	  p <- tryCatch(
+        process_summarization_request(
+          file_list = current_session_files,
+          session = session,
+          settings = settings_data,
+          ai_processor = ai_processor,
+          max_chars_per_file = if (grepl("256k|256K", settings_data$model_selection %||% "")) {
+            200000
+          } else {
+            120000
+          },
+          detail_level = summary_detail,
+          focus_mode = summary_focus
+        ),
+        error = function(e) {
+          # Senkron hata durumunda promise olarak sar
+          promises::promise_resolve(list(
+            success = FALSE,
+            message = paste("Özetleme başlatılamadı:", conditionMessage(e))
+          ))
+        }
       )
  
       promises::then(
@@ -421,7 +430,7 @@ sendMessageInit <- function(
  
           if (!result$success) {
             showToast(session, result$message, "error")
-            values$is_sending <- FALSE
+            reset_chat_state_fn()
             return(invisible(NULL))
           }
  

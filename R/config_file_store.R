@@ -407,15 +407,35 @@ mergen_remove_from_index <- function(user_id, filename) {
 
 # Kullanıcının tüm dosyalarını ve indeks kovasını temizler
 mergen_clear_user_bucket <- function(user_id) {
-  # Fiziksel dosyaları sil
-  dir <- tryCatch(mergen_user_upload_dir(user_id), error = function(e) NULL)
-  if (!is.null(dir) && dir.exists(dir)) {
-    files <- list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
-    for (f in files) try(unlink(f, force = TRUE), silent = TRUE)
+  uid <- as.character(user_id)
+  user_folder_name <- sprintf("user_%s", uid)
+
+  # Olası tüm dizin adaylarını topla (UNC, yerel, MCP)
+  candidate_dirs <- unique(c(
+    tryCatch(mergen_user_upload_dir(user_id), error = function(e) NULL),
+    file.path(MERGEN_UPLOADS_DIR, user_folder_name),
+    file.path(MERGEN_MCP_BASE_DIR, user_folder_name)
+  ))
+  candidate_dirs <- candidate_dirs[!vapply(candidate_dirs, is.null, logical(1))]
+
+  # Her aday dizinde fiziksel dosyaları sil
+  for (dir in candidate_dirs) {
+    dir_ok <- tryCatch(dir.exists(dir), error = function(e) FALSE)
+    if (!dir_ok) {
+      # path_exists_relaxed ile de dene (UNC yolları için)
+      dir_ok <- tryCatch(path_exists_relaxed(dir), error = function(e) FALSE)
+    }
+    if (isTRUE(dir_ok)) {
+      files <- tryCatch(
+        list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+        error = function(e) character(0)
+      )
+      for (f in files) try(unlink(f, force = TRUE), silent = TRUE)
+    }
   }
+
   # İndeks kovasını temizle
   idx <- .load_index()
-  uid <- as.character(user_id)
   if (!is.null(idx[[uid]])) {
     idx[[uid]] <- NULL
     .save_index(idx)

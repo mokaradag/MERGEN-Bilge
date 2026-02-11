@@ -942,13 +942,41 @@ fileManagerServer <- function(
       removeModal()
       req(info)
     
-      # 1) Try to delete the persisted copy under mergen_uploads/user_<id>
+	  # 1) Fiziksel dosyayı sil (birden fazla yol adayını dene)
       uid <- isolate(module_user_id_chr)
-      persisted <- try(resolve_uploaded_file(info$name, uid), silent = TRUE)
-      if (!inherits(persisted, "try-error") && !is.null(persisted) && file.exists(persisted)) {
-        try(unlink(persisted, force = TRUE), silent = TRUE)
+      deleted_physical <- FALSE
+
+      # Önce doğrudan bilinen yolları dene (en güvenilir)
+      direct_candidates <- c(info$persisted_path, info$datapath, info$path)
+      for (cand in direct_candidates) {
+        if (!is.null(cand) && nzchar(cand) && path_exists_relaxed(cand)) {
+          try(unlink(cand, force = TRUE), silent = TRUE)
+          deleted_physical <- TRUE
+          fm_debug("delete_physical", sprintf("silindi: %s", cand))
+          break
+        }
       }
-      # Remove from index
+
+      # Doğrudan yol bulunamazsa resolve ile dene
+      if (!deleted_physical) {
+        persisted <- try(resolve_uploaded_file(info$name, uid), silent = TRUE)
+        if (!inherits(persisted, "try-error") && !is.null(persisted) && path_exists_relaxed(persisted)) {
+          try(unlink(persisted, force = TRUE), silent = TRUE)
+          deleted_physical <- TRUE
+          fm_debug("delete_physical", sprintf("resolve ile silindi: %s", persisted))
+        }
+      }
+
+      # Son çare: kullanıcı klasöründe basename ile ara
+      if (!deleted_physical && !is.null(uid)) {
+        fallback_path <- file.path(get_user_upload_dir(), basename(info$name))
+        if (path_exists_relaxed(fallback_path)) {
+          try(unlink(fallback_path, force = TRUE), silent = TRUE)
+          fm_debug("delete_physical", sprintf("fallback ile silindi: %s", fallback_path))
+        }
+      }
+
+      # İndeksten kaldır
       if (!is.null(uid)) try(mergen_remove_from_index(uid, info$name), silent = TRUE)
     
       # 2) Also drop any local temp we might have created (we no longer create one, but keep for safety)

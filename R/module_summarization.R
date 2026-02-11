@@ -39,30 +39,53 @@ process_summarization_request <- function(
   for (fname in names(file_list)) {
     fobj <- file_list[[fname]]
     
-    # Try multiple path locations
+    # Birden fazla yol kaynağını dene
     fpath <- NULL
     
-    # Try different possible path locations in order
+    # 1) Doğrudan dosya bilgisindeki yolları dene (path_exists_relaxed ile UNC desteği)
     possible_paths <- c(
+      fobj$persisted_path,
       fobj$datapath,
       fobj$path,
-      fobj$source_path,
-      fobj$persisted_path
+      fobj$source_path
     )
     
     for (path_candidate in possible_paths) {
-      if (!is.null(path_candidate) && nzchar(path_candidate) && file.exists(path_candidate)) {
-        fpath <- path_candidate
-        break
+      if (!is.null(path_candidate) && nzchar(path_candidate)) {
+        # Önce path_exists_relaxed, sonra file.exists (UNC yolları için gerekli)
+        exists_ok <- tryCatch(path_exists_relaxed(path_candidate), error = function(e) FALSE)
+        if (!isTRUE(exists_ok)) exists_ok <- file.exists(path_candidate)
+        if (isTRUE(exists_ok)) {
+          fpath <- path_candidate
+          break
+        }
       }
     }
     
-    # If still no path, try to resolve from file manager
+    # 2) session$userData$current_session_files'dan dene (register_session_file yolları)
     if (is.null(fpath)) {
-      # Get file manager data from session
+      csf <- session$userData$current_session_files
+      if (!is.null(csf) && !is.null(csf[[fname]])) {
+        csf_obj <- csf[[fname]]
+        csf_paths <- c(csf_obj$persisted_path, csf_obj$datapath, csf_obj$path)
+        for (cp in csf_paths) {
+          if (!is.null(cp) && nzchar(cp)) {
+            exists_ok <- tryCatch(path_exists_relaxed(cp), error = function(e) FALSE)
+            if (!isTRUE(exists_ok)) exists_ok <- file.exists(cp)
+            if (isTRUE(exists_ok)) {
+              fpath <- cp
+              log_info("[SUMMARIZATION] session registry'den yol bulundu: {cp}")
+              break
+            }
+          }
+        }
+      }
+    }
+    
+    # 3) Dosya yöneticisi modülünden dene (dosya ID'si ile anahtarlanmış - isim eşleme gerekli)
+    if (is.null(fpath)) {
       file_manager_data <- session$userData$file_manager_data
       if (!is.null(file_manager_data)) {
-        # Try to get file from file manager
         fm_files <- tryCatch({
           if (is.function(file_manager_data$file_contents)) {
             file_manager_data$file_contents()
@@ -71,21 +94,43 @@ process_summarization_request <- function(
           }
         }, error = function(e) NULL)
         
-        if (!is.null(fm_files) && fname %in% names(fm_files)) {
-          fm_obj <- fm_files[[fname]]
-          fpath <- fm_obj$datapath %||% fm_obj$path %||% fm_obj$persisted_path
+        # fm_files dosya ID ile anahtarlanmış; isim ile eşleştir
+        if (!is.null(fm_files) && length(fm_files) > 0) {
+          for (fid in names(fm_files)) {
+            fm_obj <- fm_files[[fid]]
+            if (identical(fm_obj$name, fname)) {
+              fm_paths <- c(fm_obj$persisted_path, fm_obj$datapath, fm_obj$path)
+              for (fp in fm_paths) {
+                if (!is.null(fp) && nzchar(fp)) {
+                  exists_ok <- tryCatch(path_exists_relaxed(fp), error = function(e) FALSE)
+                  if (!isTRUE(exists_ok)) exists_ok <- file.exists(fp)
+                  if (isTRUE(exists_ok)) {
+                    fpath <- fp
+                    log_info("[SUMMARIZATION] file_manager'dan yol bulundu: {fp}")
+                    break
+                  }
+                }
+              }
+              if (!is.null(fpath)) break
+            }
+          }
         }
       }
     }
     
-    # If still no path, try to resolve using global resolve function
+    # 4) Son çare: resolve_uploaded_file ile dene
     if (is.null(fpath)) {
-      resolved_path <- tryCatch({
-        resolve_uploaded_file(fname, session$userData$user_id %||% NULL)
-      }, error = function(e) NULL)
-      
-      if (!is.null(resolved_path) && file.exists(resolved_path)) {
-        fpath <- resolved_path
+      user_id <- session$userData$user_id %||% session$userData$system_username %||% NULL
+      if (!is.null(user_id)) {
+        resolved <- tryCatch(resolve_uploaded_file(fname, user_id), silent = TRUE)
+        if (!inherits(resolved, "try-error") && !is.null(resolved) && nzchar(resolved)) {
+          exists_ok <- tryCatch(path_exists_relaxed(resolved), error = function(e) FALSE)
+          if (!isTRUE(exists_ok)) exists_ok <- file.exists(resolved)
+          if (isTRUE(exists_ok)) {
+            fpath <- resolved
+            log_info("[SUMMARIZATION] resolve_uploaded_file ile yol bulundu: {resolved}")
+          }
+        }
       }
     }
     
