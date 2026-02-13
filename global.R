@@ -26,65 +26,16 @@ options(mergen.ai.strict_data_only = FALSE)
 # MODÜLERLEŞTİRİLMİŞ YAPILANDIRMA DOSYALARI
 # ==============================================================================
 source("R/config_packages.R",    encoding = "UTF-8")  # Paket yüklemeleri
+source("R/utils_common.R",       encoding = "UTF-8")  # Ortak yardımcı fonksiyonlar (%||%, safe_nzchar, vb.)
 source("R/config_logging.R",     encoding = "UTF-8")  # Loglama altyapısı
 source("R/utils_rate_limiter.R", encoding = "UTF-8")  # Hız sınırlama + işçi havuzu
 source("R/utils_path_helpers.R", encoding = "UTF-8")  # Yol normalizasyon yardımcıları
 source("R/config_file_store.R",  encoding = "UTF-8")  # Dosya deposu altyapısı
 source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yardımcıları
 
-# ==============================================================================
-# SQL DOSYALARINI ÖN YÜKLEME VE BOM TEMİZLİĞİ (PRE-LOADER)
-# ==============================================================================
-# library_queries.R dosyasının yüklü olduğundan emin olalım
-if (!exists("query_library")) {
-  source("R/library_queries.R")
-}
-
-cat("\n[GLOBAL] --- SQL Dosyalari Yukleniyor ---\n")
-
-# Listeyi dolaş ve dosyadan okuma yap
-for (i in seq_along(query_library)) {
-  q_item <- query_library[[i]]
-  
-  if (!is.null(q_item$sql_file) && (is.null(q_item$sql) || !nzchar(q_item$sql))) {
-    
-    fpath <- q_item$sql_file
-    fpath_abs <- tryCatch(normalizePath(fpath, winslash = "/", mustWork = FALSE), error = function(e) fpath)
-    
-    file_found <- FALSE
-    path_to_use <- NULL
-    
-    if (file.exists(fpath)) {
-      file_found <- TRUE
-      path_to_use <- fpath
-    } else if (file.exists(fpath_abs)) {
-      file_found <- TRUE
-      path_to_use <- fpath_abs
-    }
-    
-    if (file_found) {
-      lines <- readLines(path_to_use, warn = FALSE, encoding = "UTF-8")
-      full_sql <- paste(lines, collapse = "\n")
-      
-      full_sql <- gsub("^\ufeff", "", full_sql)
-      
-      query_library[[i]]$sql <- full_sql
-      
-      cat(sprintf("[GLOBAL] OK: %s (%s) -> Yuklendi ve BOM temizlendi (%d karakter).\n", 
-                  q_item$id, q_item$sql_file, nchar(full_sql)))
-      
-    } else {
-      cat(sprintf("[GLOBAL] HATA: SQL dosyasi bulunamadi! ID: %s, Yol: %s\n", 
-                  q_item$id, q_item$sql_file))
-      cat(sprintf("[GLOBAL] Calisma dizini: %s\n", getwd()))
-      cat(sprintf("[GLOBAL] Denenen yollar: '%s', '%s'\n", fpath, fpath_abs))
-    }
-  }
-}
-cat("[GLOBAL] --- SQL Yukleme Tamamlandi ---\n\n")
-
 # --- SOURCE MODULES AND HELPERS ---
 # Using standard relative paths is the most robust and conventional method for Shiny apps.
+source("R/config_characters.R", encoding = "UTF-8")
 source("welcome_screen.R",     encoding = "UTF-8")
 source("R/helpers_database.R", encoding ="UTF-8")
 source("R/helpers_language.R", encoding ="UTF-8")
@@ -100,6 +51,7 @@ source("R/helpers_summarization_modes.R", encoding = "UTF-8")
 source("R/helpers_summarization_prompts.R", encoding = "UTF-8")
 source("R/helpers_followup_questions.R", encoding = "UTF-8")
 source("R/library_queries.R", encoding = "UTF-8")
+source("R/config_sql_loader.R",  encoding = "UTF-8")
 source("R/module_summarization.R", encoding = "UTF-8")
 source("R/module_proje_kaynak_analizi.R", encoding = "UTF-8")
 source("R/module_chat_history.R", encoding ="UTF-8")
@@ -144,39 +96,6 @@ source("R/server_welcome_handlers.R", encoding = "UTF-8")
 source("R/server_llm_response_handlers.R", encoding = "UTF-8")
 source("R/server_send_message.R", encoding = "UTF-8")
 source("R/config_api.R",         encoding = "UTF-8")
-
-# ---------------------------------------------------------------------------
-
-`%||%` <- function(a, b) {
-  if (is.null(a)) b else a
-}
-
-safe_nzchar <- function(x) {
-  is.character(x) && length(x) > 0 && !is.na(x[1]) && nzchar(x[1])
-}
-
-format_timestamp <- function() {
-  format(Sys.time(), "%d.%m.%Y - %H:%M")
-}
-
-# --- Helper to strip planner/agent meta anywhere in text ---
-strip_planner_text <- function(x) {
-  # tolerate NULL/character(0) safely
-  if (is.null(x)) return(x)
-  if (!is.character(x) || length(x) == 0) return("")   # <-- key guard
-  s <- x[1]
-  if (!nzchar(s)) return(s)
-
-  s <- gsub("\\{\\s*\"(tool|name)\"\\s*:\\s*\"[^\"]+\"[^{}]*\"arguments\"\\s*:\\s*\\{[^{}]*\\}\\s*\\}", "", s, perl = TRUE)
-  s <- gsub("\\{\\s*\"action\"\\s*:\\s*\"[^\"]+\"[^{}]*\"parameters\"\\s*:\\s*\\{[^{}]*\\}\\s*\\}", "", s, perl = TRUE)
-  s <- gsub("\\s*<tool_call>.*?</tool_call>\\s*", "", s, perl = TRUE)
-
-  s <- gsub("(?im)^(we need to .*|let'?s try.*|probably .*|i'?ll try.*|we will call.*|we will invoke.*|now produce the tool call\\.?|we need to produce a tool call.*)$", "", s, perl = TRUE)
-  s <- gsub("(?i)(we need to call|we need to invoke|we will call|we will invoke|let'?s call|let'?s invoke|now produce the tool call|we need to produce a tool call)[^\\n]*", "", s, perl = TRUE)
-
-  s <- gsub("\n{3,}", "\n\n", trimws(s))
-  s
-}
 
 # Optional DOCX -> PDF conversion with LibreOffice (used only if options(mergen.word_preview_mode) == "pdf")
 convert_docx_to_pdf <- function(docx_path) {
@@ -1649,156 +1568,6 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       })
     }
   }
-
-# Character data
-get_characters_data <- function() {
-  list(
-    title = "Yanıt Stili — Karakter Seçimi",
-    default_style = "mergen",
-    styles = list(
-      list(
-        id = "mergen",
-        label = "Mergen",
-        display_name = "MERGEN",
-        subtitle = "Standart",
-        avatar = "characters/avatar/Mergen_avatar_original.png",
-        image = "characters/resim/Mergen_resim_original.png",
-        accent = "#7C4DFF",
-        accent_hover = "#8E66FF",
-        accent_active = "#6A3BE6",
-        selection_card_tr = "\"Zihin Yayından Çıkan Ok\" — hızlı, net, uygulanabilir",
-        lore_tr = "Mergen, Türk ve Altay anlatılarında bilgeliğin ve keskin zekânın sembolüdür. Bazı kaynaklarda Kayra'nın oğlu olarak geçer. Oku ve yayı, isabetli düşünceyi ve doğru soruyu bulmayı temsil eder. Gök katlarının sessizliğinde düşünür, karmaşığı özüne indirir. Şaman inançlarında 'akıl veren' olarak bilinir; günümüz yorumunda ise veriyi süzer, gürültüyü susturur. Mergen'i seçtiğinizde fazla söze gerek kalmaz: hedef, nişan ve net sonuç.",
-        style_tr = "Önce kısa özet, ardından adım adım plan ve küçük örnek",
-        profile_metrics = list(
-          list(label = "Analitik Keskinlik", value = 88L),
-          list(label = "Planlama Disiplini", value = 84L),
-          list(label = "Empatik Ton", value = 52L),
-          list(label = "Risk Uyarısı", value = 47L)
-        ),
-        signature_moves = list(
-          "2-3 cümlelik yönetici özeti",
-          "Net yapılacaklar listesi",
-          "Mini örnek veya çıktı ile pekiştirme"
-        ),
-        system_prompt_en = "Be a balanced, pragmatic assistant. First provide a 2–3 sentence executive summary, then a concise step-by-step plan, then a minimal example/output. Avoid rhetoric and hedging. Use precise, actionable language. Ask for missing constraints only if they block progress.",
-		parameters = list(temperature = 0.4),
-        tts_voice = "tr-male-1"
-      ),
-      list(
-        id = "ulgen",
-        label = "Ülgen",
-        display_name = "ÜLGEN",
-        subtitle = "Yapıcı Uzman",
-        avatar = "characters/avatar/Ulgen_avatar_original.png",
-        image = "characters/resim/Ulgen_resim_original.png",
-        accent = "#2F6DF6",
-        accent_hover = "#4C80F7",
-        accent_active = "#1E59E0",
-        selection_card_tr = "\"Göğün Işığı\" — moral yükseltir, yolu aydınlatır",
-        lore_tr = "Ülgen, göğün aydınlık yüzüdür; iyilik, düzen ve üretkenliğin tanrısı olarak tanınır. Üst gök katlarında yaşadığına inanılır; insanlara ateşi, zanaatı ve doğru yolu öğreten bir rehberdir. Kozmik dengede karşıtı Erlik olsa da amacı çatışma değil, düzen kurmaktır. Eski törenlerde beyaz renklerle anılır; umut ve yeniden başlama duygusunu simgeler. Ülgen'i seçtiğinizde sis dağılır, seçenekler berraklaşır ve eylem planı ortaya çıkar.",
-        style_tr = "Sorunu çerçevele; çözüm seçenekleri + artı/eksi; gerekçeli öneri; eylem listesi",
-        profile_metrics = list(
-          list(label = "İlham Verici Ton", value = 82L),
-          list(label = "Seçenek Üretimi", value = 90L),
-          list(label = "Empati", value = 64L),
-          list(label = "Uygulama Netliği", value = 74L)
-        ),
-        signature_moves = list(
-          "Sorunu berrak çerçeveleme",
-          "2-3 alternatif yol ve kıyas",
-          "Pozitif tonla eylem listesi"
-        ),
-        system_prompt_en = "Act like a constructive expert: quickly frame the problem; propose 2–3 viable solution paths with trade-offs; recommend one path with rationale; end with a checklist of next actions and acceptance criteria. Keep the tone positive and professional.",
-		parameters = list(temperature = 0.5),
-        tts_voice = "tr-male-1"
-      ),
-      list(
-        id = "kayra",
-        label = "Kayra",
-        display_name = "KAYRA",
-        subtitle = "Stratejist",
-        avatar = "characters/avatar/Kayra_avatar_original.png",
-        image = "characters/resim/Kayra_resim_original.png",
-        accent = "#12A97B",
-        accent_hover = "#26B790",
-        accent_active = "#0C8C63",
-        selection_card_tr = "\"Evrenin Haritacısı\" — büyük resmi kurar, yolu fazlara böler",
-        lore_tr = "Kayra Han, bazı Sibirya ve Türk anlatılarında yaratıcı ve en yüce ilke olarak yer alır; kaosu ayırıp göğü, yeri ve suları düzene sokan güç olarak bilinir. Bazı varyantlarda Ülgen ve Erlik'in babası kabul edilir; kararları denge ve ilkelere dayanır. Onun sesi acele etmez; uzun vadeli görüş, sağlam kilometre taşları ve sorumluluk paylaşımı ister. Kayra'yı seçtiğinizde vizyon haritaya, harita da uygulanabilir bir yol planına dönüşür.",
-        style_tr = "Amaçlar ve ilkeler → seçenekler/trade-off → karar matrisi → fazlı roadmap",
-        profile_metrics = list(
-          list(label = "Vizyoner Bakış", value = 91L),
-          list(label = "Risk Yönetimi", value = 86L),
-          list(label = "Uzun Vadeli Plan", value = 95L),
-          list(label = "Ekip Koordinasyonu", value = 78L)
-        ),
-        signature_moves = list(
-          "İlkelerden başlayan strateji çerçevesi",
-          "Karar matrisi ile seçenek kıyası",
-          "Fazlara ayrılmış yol haritası"
-        ),
-        system_prompt_en = "Operate as a strategist: state objectives and guiding principles; map alternatives with trade-offs; provide a decision matrix; outline a phased roadmap with milestones, owners, and risks; include governance/policy notes when relevant.",
-		parameters = list(temperature = 0.3, long_form = TRUE),
-        tts_voice = "tr-male-1"
-      ),
-      list(
-        id = "erlik",
-        label = "Erlik",
-        display_name = "ERLİK",
-        subtitle = "Eleştirel Eş",
-        avatar = "characters/avatar/Erlik_avatar_original.png",
-        image = "characters/resim/Erlik_resim_original.png",
-        accent = "#B66A2C",
-        accent_hover = "#C27A3D",
-        accent_active = "#8F5321",
-        selection_card_tr = "\"Varsayım Avcısı\" — kör noktayı görür, nazikçe dürtükler",
-        lore_tr = "Erlik Han, yeraltı âleminin hükümdarı olarak tanınır; kozmik dengede eksikleri, kusurları ve sınavları görünür kılan karşıt güçtür. Amacı korkutmak değil, yanlışı düzeltmek için perdeyi aralamaktır; demir ve toprakla özdeşleşir. Anlatılarda hastalık ve kıtlık gibi riskleri hatırlatır; böylece tedbiri doğurur. Erlik'i seçtiğinizde keskin sorular gelir: 'Neye dayanıyor? Ne ters gidebilir?' ve planın zayıf halkaları güçlenir.",
-        style_tr = "Varsayımlar → riskler & karşı örnekler → nazik sorgu → risk azaltma → kontrol listesi",
-        profile_metrics = list(
-          list(label = "Risk Uyarısı", value = 94L),
-          list(label = "Varsayım Avcılığı", value = 92L),
-          list(label = "Diplomatik Ton", value = 68L),
-          list(label = "Kanıt Talebi", value = 88L)
-        ),
-        signature_moves = list(
-          "Sessiz varsayımları çıkarma",
-          "Nazik ama keskin sorgular",
-          "Önleyici aksiyon listesi"
-        ),
-        system_prompt_en = "Be a respectful critical partner. Surface hidden assumptions; list risks and counterexamples; ask sharp but polite why/how questions; propose risk-mitigating alternatives; conclude with a concise pre-flight checklist. Keep language diplomatic, not scary.",
-		parameters = list(temperature = 0.4),
-        tts_voice = "tr-male-1"
-      ),
-      list(
-        id = "umay",
-        label = "Umay Ana",
-        display_name = "UMAY ANA",
-        subtitle = "Rehber",
-        avatar = "characters/avatar/Umay_Ana_avatar_original.png",
-        image = "characters/resim/Umay_Ana_resim_original.png",
-        accent = "#E98686",
-        accent_hover = "#EE9B9B",
-        accent_active = "#D96F6F",
-        selection_card_tr = "\"Nazik Öğretici\" — yeni başlayanların korkusunu alır",
-        lore_tr = "Umay Ana, Türk dünyasında bereketin ve çocukların koruyucu ruhu olarak sevilir; turna kuşuyla, sıcaklık ve şefkatle anılır. Halk inançlarında annenin ve yuvanın hamisi kabul edilir; adı eski metinlerde de yaşar. Karmaşayı küçük lokmalara böler; telaşı sakinliğe, belirsizliği güvene çevirir. Umay'ı seçtiğinizde dil yumuşar; adımlar küçülür, ipuçları belirir ve yeni başlayanlar için kapı aralanır.",
-        style_tr = "Basit dil; küçük numaralı adımlar; sık hata/ipuçları; kısa güvenlik notu; mini örnek",
-        profile_metrics = list(
-          list(label = "Empatik Rehberlik", value = 95L),
-          list(label = "Adım Adım Açıklama", value = 88L),
-          list(label = "Sabır Düzeyi", value = 92L),
-          list(label = "Güvenlik Hatırlatması", value = 76L)
-        ),
-        signature_moves = list(
-          "Sade dil ve benzetmeler",
-          "Hata noktalarına dair ipuçları",
-          "Mini örnekle pekiştirme"
-        ),
-        system_prompt_en = "Be an empathetic teacher for beginners. Explain in simple language; break tasks into small numbered steps; include common pitfalls and tips; add a short safety/ethics note if relevant; provide a minimal working example.",
-		parameters = list(temperature = 0.6),
-        tts_voice = "tr-female-1"
-      )
-    )
-  )
-}
 
 # --- HIZLI DOSYA İNDEKSİ (önbellekli) ---
 .FILE_INDEX_CACHE <- new.env(parent = emptyenv())
