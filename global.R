@@ -581,16 +581,25 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	if (!has_content && !is.null(tool_calls_struct) && length(tool_calls_struct) > 0 && !mcp_enabled_now) {
 	  tc_names <- paste(sapply(tool_calls_struct, function(tc) tc$`function`$name %||% "?"), collapse = ", ")
 	  cat("[RETRY] Model tool_calls döndürdü (", tc_names, ") ama MCP kapalı — tool_choice='none' ile tekrar deneniyor\n")
-	  
-	  # Türkçe: Aynı isteği tool_choice="none" ile tekrar gönder
+
+	  # Türkçe: Mesaj listesinin sonuna araç kullanmama talimatı ekle.
+	  # Qwen/RAG modelleri tool_choice='none' olsa bile metin olarak araç çağrısı yazabiliyor.
+	  retry_messages <- c(messages_payload, list(
+	    list(role = "system", content = paste0(
+	      "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
+	      "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
+	      "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
+	    ))
+	  ))
+
 	  retry_body <- list(
 	    model = selected_model,
-	    messages = messages_payload,
+	    messages = retry_messages,
 	    stream = FALSE,
 	    temperature = temp_value,
 	    tool_choice = "none"
 	  )
-	  
+
 	  retry_response <- tryCatch({
 	    httr::POST(
 	      api_endpoint,
@@ -603,27 +612,36 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	    cat("[RETRY] Tekrar istek hatası:", e$message, "\n")
 	    NULL
 	  })
-	  
+
 	  if (!is.null(retry_response) && httr::status_code(retry_response) == 200) {
 	    retry_content <- safe_parse_llm_response(retry_response)
-	    
+
 	    if (is.list(retry_content) && !is.null(retry_content$choices) && length(retry_content$choices) > 0) {
 	      retry_msg <- retry_content$choices[[1]]$message
 	      retry_text <- retry_msg$content %||% ""
 	      if (is.character(retry_text) && nzchar(retry_text)) {
-	        cat("[RETRY] Başarılı: content_nchar=", nchar(retry_text), "\n")
-	        ai_content <- retry_text
-	        tool_calls_struct <- NULL
-	        has_content <- TRUE
-	        # Türkçe: Retry yanıtından kaynakları da al
-	        if (!is.null(retry_msg$sources)) {
-	          sources_list <- retry_msg$sources
-	        } else if (!is.null(retry_content$sources)) {
-	          sources_list <- retry_content$sources
+	        # Türkçe: Yanıttaki metin-tabanlı araç çağrılarını temizle
+	        retry_text <- strip_planner_text(retry_text)
+	        cat("[RETRY] Temizlenmiş içerik: content_nchar=", nchar(retry_text), "\n")
+
+	        # Türkçe: Temizleme sonrası anlamlı içerik kaldı mı kontrol et
+	        if (nzchar(retry_text) && nchar(retry_text) >= 10) {
+	          ai_content <- retry_text
+	          tool_calls_struct <- NULL
+	          has_content <- TRUE
+	          cat("[RETRY] Başarılı: content_nchar=", nchar(ai_content), "\n")
+	          # Türkçe: Retry yanıtından kaynakları da al
+	          if (!is.null(retry_msg$sources)) {
+	            sources_list <- retry_msg$sources
+	          } else if (!is.null(retry_content$sources)) {
+	            sources_list <- retry_content$sources
+	          }
+	        } else {
+	          cat("[RETRY] Temizleme sonrası anlamlı içerik kalmadı (nchar=", nchar(retry_text), ")\n")
 	        }
 	      }
 	    }
-	    
+
 	    # Türkçe: Retry de başarısızsa hata ver
 	    if (!has_content) {
 	      cat("[RETRY] tool_choice='none' ile de içerik alınamadı\n")
