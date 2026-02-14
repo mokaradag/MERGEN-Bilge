@@ -191,93 +191,95 @@ strip_planner_text <- function(x) {
 }
 
 # ==============================================================================
-# YEREL BELGE DEPOSUNDAN KAYNAK EŞLEŞTİRME
-# API kaynak (sources/citations) döndürmediğinde, kullanıcı sorusu ve AI yanıtı
-# üzerinden anahtar kelime çıkararak local_model_paths altındaki belgeleri tarar
-# ve eşleşen dosyalardan tıklanabilir Kaynakça HTML'i üretir.
+# RAG MODEL KAYNAK DOSYA EŞLEŞTİRME
+# AI'ya sistem talimatıyla [KAYNAKLAR]...[/KAYNAKLAR] bloğunda kaynak dosya
+# adlarını yazdırır; yanıttan bu bloğu çıkarır, dosya adlarını
+# local_model_paths altındaki belge deposuyla eşleştirir ve tıklanabilir
+# Kaynakça HTML'i üretir.
 # ==============================================================================
 
-# --- TÜRKÇE KARAKTER NORMALİZASYONU ---
-# Dosya adlarındaki ASCII Türkçe ile sorgu metnindeki Unicode Türkçe arasında
-# eşleşme sağlamak için her iki tarafı da ASCII'ye dönüştürür.
-.normalize_turkish <- function(text) {
-  text <- tolower(text)
-  text <- gsub("\u00e7", "c", text)   # ç -> c
-  text <- gsub("\u011f", "g", text)   # ğ -> g
-  text <- gsub("\u0131", "i", text)   # ı -> i
-  text <- gsub("\u00f6", "o", text)   # ö -> o
-  text <- gsub("\u015f", "s", text)   # ş -> s
-  text <- gsub("\u00fc", "u", text)   # ü -> u
-  text <- gsub("\u00e2", "a", text)   # â -> a
-  text <- gsub("\u00ee", "i", text)   # î -> i
-  text <- gsub("\u00fb", "u", text)   # û -> u
-  text
+# --- AI YANITINDAN [KAYNAKLAR] BLOĞUNU ÇIKAR VE TEMİZLE ---
+# Yanıt metnindeki [KAYNAKLAR]...[/KAYNAKLAR] bloğundan dosya adlarını okur,
+# bu bloğu görünür metinden siler, temizlenmiş metin + dosya adları döndürür.
+extract_and_strip_kaynaklar <- function(text) {
+  if (is.null(text) || !is.character(text) || !nzchar(text[1])) {
+    return(list(clean_text = text %||% "", filenames = character(0)))
+  }
+
+  # [KAYNAKLAR]...[/KAYNAKLAR] bloğunu yakala (çok satırlı)
+  pattern <- "\\[KAYNAKLAR\\]\\s*(.*?)\\s*\\[/KAYNAKLAR\\]"
+  m <- regmatches(text, regexpr(pattern, text, perl = TRUE))
+
+  if (length(m) == 0 || !nzchar(m)) {
+    return(list(clean_text = text, filenames = character(0)))
+  }
+
+  # Blok içindeki dosya adlarını satır satır al
+  inner <- sub("^\\[KAYNAKLAR\\]\\s*", "", m, perl = TRUE)
+  inner <- sub("\\s*\\[/KAYNAKLAR\\]$", "", inner, perl = TRUE)
+  filenames <- trimws(strsplit(inner, "\n")[[1]])
+  filenames <- filenames[nzchar(filenames)]
+  # Numaralı liste formatını temizle (ör. "1) dosya.docx" veya "- dosya.docx")
+  filenames <- sub("^[0-9]+[.)\\-]\\s*", "", filenames)
+  filenames <- trimws(filenames)
+  filenames <- filenames[nzchar(filenames)]
+
+  # Bloğu görünür metinden sil
+  clean_text <- sub("\\s*\\[KAYNAKLAR\\].*?\\[/KAYNAKLAR\\]\\s*", "", text, perl = TRUE)
+  clean_text <- trimws(clean_text)
+
+  cat("[KAYNAKLAR] ", length(filenames), " dosya adı çıkarıldı\n")
+  list(clean_text = clean_text, filenames = filenames)
 }
 
-# --- SOHBET GEÇMİŞİNDEN SON KULLANICI SORUSUNU ÇIKAR ---
-.extract_last_user_query <- function(chat_history) {
-  if (!is.list(chat_history) || length(chat_history) == 0) return("")
-  for (i in rev(seq_along(chat_history))) {
-    msg <- chat_history[[i]]
-    role <- msg$type %||% msg$role %||% ""
-    if (identical(role, "user") && is.character(msg$content) && length(msg$content) > 0 && nzchar(msg$content[1])) {
-      return(msg$content[1])
+# --- DOSYA ADLARINI YEREL BELGE DEPOSUYLA EŞLEŞTİR ---
+# AI'nın bildirdiği dosya adlarını local_model_paths altındaki indeksle karşılaştırır.
+# Eşleşen dosyaların tam yollarını döndürür.
+match_filenames_to_local_docs <- function(filenames, model_id) {
+  if (length(filenames) == 0) return(list())
+
+  doc_path <- tryCatch(
+    api_config$local_model_paths[[as.character(model_id)[1]]],
+    error = function(e) NULL
+  )
+  if (is.null(doc_path) || !nzchar(doc_path)) {
+    cat("[KAYNAKÇA] Model için belge yolu bulunamadı:", model_id, "\n")
+    return(list())
+  }
+
+  cat("[KAYNAKÇA] Belge deposu:", doc_path, "\n")
+
+  matched <- list()
+  for (fn in filenames) {
+    # Mevcut search_file_in_folder fonksiyonunu kullan (indeksli arama + && desteği)
+    result <- tryCatch(search_file_in_folder(doc_path, fn), error = function(e) NULL)
+    if (!is.null(result)) {
+      matched[[length(matched) + 1]] <- list(
+        original_name = fn,
+        full_path = result,
+        basename = basename(result)
+      )
+      cat("[KAYNAKÇA] Eşleşti: '", fn, "' -> '", result, "'\n", sep = "")
+    } else {
+      cat("[KAYNAKÇA] Eşleşmedi: '", fn, "'\n", sep = "")
     }
   }
-  ""
+
+  cat("[KAYNAKÇA] Toplam eşleşme: ", length(matched), "/", length(filenames), "\n")
+  matched
 }
 
-# --- ANAHTAR KELİME ÇIKARICI ---
-# Kullanıcı sorusu ve (opsiyonel) AI yanıtından arama anahtar kelimeleri üretir.
-# Türkçe durak kelimelerini filtreler ve ASCII normalleştirme uygular.
-extract_search_keywords <- function(user_query, ai_text = NULL) {
-  # Sorgu metni zorunlu
-  if (is.null(user_query) || !nzchar(user_query)) return(character(0))
-
-  # AI yanıtından sadece ilk 500 karakteri kullan (gürültüyü azalt)
-  ai_snippet <- if (!is.null(ai_text) && is.character(ai_text) && nzchar(ai_text[1])) {
-    substr(ai_text[1], 1, 500)
-  } else {
-    ""
-  }
-
-  combined <- paste(user_query, ai_snippet)
-  combined <- .normalize_turkish(combined)
-
-  # Harf ve rakam dışı karakterlerden böl
-  tokens <- unlist(strsplit(combined, "[^a-z0-9]+"))
-  tokens <- tokens[nzchar(tokens)]
-
-  # Türkçe ve İngilizce durak kelimeleri
-  stop_words <- c(
-    "ve", "ile", "bir", "bu", "su", "ne", "nedir", "nelerdir",
-    "nasil", "hangi", "gibi", "kadar", "icin", "olan", "olarak",
-    "da", "de", "mi", "mu", "den", "dan", "ten", "tan",
-    "dir", "ler", "lar", "daki", "deki", "nin", "nun",
-    "the", "is", "are", "what", "how", "which", "and", "or",
-    "var", "yok", "degil", "hem", "ise", "veya", "ya", "ki",
-    "hakkinda", "aciklayiniz", "acikla", "anlat", "anlatir",
-    "merhaba", "selam", "bana", "benim", "bizim", "onun",
-    "lutfen", "tesekkur", "ederim", "sonra", "once"
-  )
-
-  tokens <- tokens[!tokens %in% stop_words]
-  tokens <- tokens[nchar(tokens) >= 3]  # 3 karakterden kısa kelimeleri filtrele
-  unique(tokens)
-}
-
-# --- YEREL DOSYA LİSTESİNDEN TIKLANABIIR KAYNAKÇA HTML'İ ---
-# Dosya indeksinden seçilen dosyalar için tıklanabilir Kaynakça oluşturur.
-# Mevcut source-link CSS sınıfını kullanarak JS tıklama işleyicisiyle uyumlu çalışır.
-build_kaynakca_from_local_files <- function(matched_files, index_map) {
-  if (length(matched_files) == 0) return("")
+# --- EŞLEŞMİŞ BELGELERDEN TIKLANABIIR KAYNAKÇA HTML'İ ---
+# match_filenames_to_local_docs sonucundan tıklanabilir Kaynakça oluşturur.
+# Mevcut source-link CSS sınıfı ve JS tıklama işleyicisiyle uyumlu çalışır.
+build_kaynakca_from_matched_docs <- function(matched_docs) {
+  if (length(matched_docs) == 0) return("")
 
   sources_text <- "\n\nKaynakça:\n"
 
-  for (i in seq_along(matched_files)) {
-    bn <- matched_files[i]
-    full_paths <- index_map[[bn]]
-    original_filename <- if (length(full_paths) > 0) basename(full_paths[1]) else bn
+  for (i in seq_along(matched_docs)) {
+    doc <- matched_docs[[i]]
+    original_filename <- doc$basename
 
     # Süreç ön-ekini ayır (ör. proc_001_002_)
     process_match <- regexpr("^[a-z]+_[0-9]+_[0-9]+_", original_filename, ignore.case = TRUE)
@@ -330,83 +332,28 @@ build_kaynakca_from_local_files <- function(matched_files, index_map) {
   sources_text
 }
 
-# --- ANA KAYNAK EŞLEŞTİRME FONKSİYONU ---
-# API kaynak döndürmediğinde çağrılır. Kullanıcı sorusu + AI yanıtından
-# anahtar kelimeler çıkararak local_model_paths altındaki belge deposunu tarar.
-# En çok eşleşen dosyalardan tıklanabilir Kaynakça HTML'i döndürür.
-match_local_documents_for_kaynakca <- function(chat_history, ai_content, model_id, max_results = 5) {
-  # model_id'ye karşılık gelen belge yolunu bul
+# --- RAG MODELLERİ İÇİN KAYNAK TALİMATI SİSTEM MESAJI ---
+# local_model_paths'te karşılığı olan modellere, yanıtın sonuna kaynak dosya
+# adlarını [KAYNAKLAR]...[/KAYNAKLAR] bloğunda eklemesini söyleyen sistem mesajı.
+build_rag_source_system_message <- function(model_id) {
   doc_path <- tryCatch(
     api_config$local_model_paths[[as.character(model_id)[1]]],
     error = function(e) NULL
   )
-  if (is.null(doc_path) || !nzchar(doc_path)) {
-    cat("[KAYNAKÇA-LOCAL] Model için belge yolu bulunamadı:", model_id, "\n")
-    return("")
-  }
+  if (is.null(doc_path) || !nzchar(doc_path)) return(NULL)
 
-  cat("[KAYNAKÇA-LOCAL] Belge deposu:", doc_path, "\n")
-
-  # Belge indeksini al (önbellek TTL ile yönetilir)
-  idx <- tryCatch(.build_basename_index(doc_path), error = function(e) {
-    cat("[KAYNAKÇA-LOCAL] İndeks oluşturma hatası:", e$message, "\n")
-    list(map = list())
-  })
-  if (is.null(idx$map) || length(idx$map) == 0) {
-    cat("[KAYNAKÇA-LOCAL] İndeks boş veya oluşturulamadı\n")
-    return("")
-  }
-
-  cat("[KAYNAKÇA-LOCAL] İndekste", length(idx$map), "benzersiz dosya adı var\n")
-
-  # Son kullanıcı sorusunu çıkar
-  user_query <- .extract_last_user_query(chat_history)
-  if (!nzchar(user_query)) {
-    cat("[KAYNAKÇA-LOCAL] Kullanıcı sorusu bulunamadı\n")
-    return("")
-  }
-
-  # Anahtar kelimeleri çıkar
-  keywords <- extract_search_keywords(user_query, ai_content)
-  if (length(keywords) == 0) {
-    cat("[KAYNAKÇA-LOCAL] Anahtar kelime çıkarılamadı\n")
-    return("")
-  }
-  cat("[KAYNAKÇA-LOCAL] Anahtar kelimeler:", paste(keywords, collapse = ", "), "\n")
-
-  # Her dosya adını anahtar kelimelerle puanla
-  all_basenames <- names(idx$map)
-  scores <- vapply(all_basenames, function(bn) {
-    # Dosya adını normalize et (alt çizgi, tire → boşluk, Türkçe → ASCII)
-    normalized <- .normalize_turkish(bn)
-    normalized <- gsub("[_\\-\\.]", " ", normalized)
-    # Her anahtar kelimenin dosya adında geçip geçmediğini say
-    sum(vapply(keywords, function(kw) {
-      if (grepl(kw, normalized, fixed = TRUE)) 1L else 0L
-    }, integer(1)))
-  }, integer(1))
-
-  # Sıfır puanlıları filtrele
-  nonzero_mask <- scores > 0
-  if (!any(nonzero_mask)) {
-    cat("[KAYNAKÇA-LOCAL] Hiçbir dosya eşleşmedi\n")
-    return("")
-  }
-
-  # Puana göre azalan sırada sırala ve ilk max_results kadarını al
-  filtered_basenames <- all_basenames[nonzero_mask]
-  filtered_scores <- scores[nonzero_mask]
-  top_order <- order(filtered_scores, decreasing = TRUE)
-  top_basenames <- head(filtered_basenames[top_order], max_results)
-  top_scores <- head(filtered_scores[top_order], max_results)
-
-  cat("[KAYNAKÇA-LOCAL] Eşleşen dosyalar:\n")
-  for (j in seq_along(top_basenames)) {
-    cat("  ", j, ") ", top_basenames[j], " (puan: ", top_scores[j], ")\n", sep = "")
-  }
-
-  # Tıklanabilir Kaynakça HTML'i oluştur
-  kaynakca_html <- build_kaynakca_from_local_files(top_basenames, idx$map)
-  cat("[KAYNAKÇA-LOCAL] Kaynakça oluşturuldu:", length(top_basenames), "dosya\n")
-  kaynakca_html
+  list(role = "system", content = paste0(
+    "ÖNEMLİ KAYNAK KURALI: Yanıtının en sonuna, bilgi aldığın kaynak belgelerin ",
+    "tam dosya adlarını aşağıdaki formatta listele. Bu blok kullanıcıya gösterilmeyecek, ",
+    "arka planda otomatik olarak ayrıştırılıp tıklanabilir bağlantılara dönüştürülecektir.\n\n",
+    "[KAYNAKLAR]\n",
+    "dosya_adi_1.docx\n",
+    "dosya_adi_2.pdf\n",
+    "[/KAYNAKLAR]\n\n",
+    "Kurallar:\n",
+    "- Sadece gerçekten referans aldığın belgelerin dosya adlarını yaz.\n",
+    "- Dosya adlarını orijinal halleriyle, değiştirmeden yaz.\n",
+    "- Her dosya adını ayrı bir satıra yaz.\n",
+    "- Dosya adı bulamıyorsan [KAYNAKLAR] bloğunu hiç yazma."
+  ))
 }
