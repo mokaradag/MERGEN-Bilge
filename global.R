@@ -483,11 +483,19 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		}
 	}
 
+    # Türkçe: RAG modeli için kaynak dosya adlarını yanıta ekleme sistem talimatı.
+    # local_model_paths'te karşılığı varsa [KAYNAKLAR] bloğu talimatı eklenir.
+    rag_source_msg <- build_rag_source_system_message(selected_model)
+    if (!is.null(rag_source_msg)) {
+      messages_payload <- c(list(rag_source_msg), messages_payload)
+      cat("[RAG-SOURCES] Kaynak talimatı sistem mesajı eklendi (model:", selected_model, ")\n")
+    }
+
     temp_value <- if (!is.null(settings$temperature)) settings$temperature else 0.4
 
     body <- list(
-      model = selected_model, 
-      messages = messages_payload, 
+      model = selected_model,
+      messages = messages_payload,
       stream = FALSE,
       temperature = temp_value
     )
@@ -601,14 +609,19 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	  tc_names <- paste(sapply(tool_calls_struct, function(tc) tc$`function`$name %||% "?"), collapse = ", ")
 	  cat("[RETRY] Model tool_calls döndürdü (", tc_names, ") ama MCP kapalı — tool_choice='none' ile tekrar deneniyor\n")
 
-	  # Türkçe: Mesaj listesinin sonuna araç kullanmama talimatı ekle.
+	  # Türkçe: Mesaj listesinin sonuna araç kullanmama + kaynak bildirme talimatı ekle.
 	  # Qwen/RAG modelleri tool_choice='none' olsa bile metin olarak araç çağrısı yazabiliyor.
+	  retry_system_content <- paste0(
+	    "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
+	    "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
+	    "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
+	  )
+	  # RAG modeli ise kaynak talimatını da ekle
+	  if (!is.null(rag_source_msg)) {
+	    retry_system_content <- paste0(retry_system_content, "\n\n", rag_source_msg$content)
+	  }
 	  retry_messages <- c(messages_payload, list(
-	    list(role = "system", content = paste0(
-	      "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
-	      "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
-	      "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
-	    ))
+	    list(role = "system", content = retry_system_content)
 	  ))
 
 	  retry_body <- list(
@@ -1312,15 +1325,44 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
 	ai_content <- strip_planner_text(ai_content)
 
-	# Türkçe: Yapısal kaynaklar varsa tıklanabilir Kaynakça HTML'i ekle
-	if (!is.null(sources_list) && length(sources_list) > 0) {
+	# Türkçe: AI yanıtından [KAYNAKLAR]...[/KAYNAKLAR] bloğunu çıkar ve dosya adlarını al.
+	# Bu blok kullanıcıya gösterilmez; arka planda dosya eşleştirmesi için kullanılır.
+	kaynaklar_result <- tryCatch(
+	  extract_and_strip_kaynaklar(ai_content),
+	  error = function(e) {
+	    cat("[KAYNAKLAR] Ayrıştırma hatası:", e$message, "\n")
+	    list(clean_text = ai_content, filenames = character(0))
+	  }
+	)
+	ai_content <- kaynaklar_result$clean_text
+
+	# Türkçe: [KAYNAKLAR] bloğundan çıkan dosya adlarını yerel depoyla eşleştir
+	if (length(kaynaklar_result$filenames) > 0) {
+	  matched_docs <- tryCatch(
+	    match_filenames_to_local_docs(kaynaklar_result$filenames, selected_model),
+	    error = function(e) {
+	      cat("[KAYNAKÇA] Eşleştirme hatası:", e$message, "\n")
+	      list()
+	    }
+	  )
+	  if (length(matched_docs) > 0) {
+	    kaynakca_html <- build_kaynakca_from_matched_docs(matched_docs)
+	    if (nzchar(kaynakca_html)) {
+	      ai_content <- paste0(ai_content, kaynakca_html)
+	      cat("[KAYNAKÇA] ", length(matched_docs), " eşleşen belge tıklanabilir Kaynakça olarak eklendi\n")
+	    }
+	  }
+	}
+
+	# Türkçe: Yapısal API kaynakları varsa (sources/citations) tıklanabilir Kaynakça ekle
+	if (!is.null(sources_list) && length(sources_list) > 0 && !grepl("Kaynakça:", ai_content, fixed = TRUE)) {
 	  kaynakca_html <- build_kaynakca_from_sources(sources_list)
 	  if (nzchar(kaynakca_html)) {
 	    ai_content <- paste0(ai_content, kaynakca_html)
 	  }
 	}
 
-	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
+	# Türkçe: Düz metin Kaynakça varsa tıklanabilir yap
 	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
 
 	# Türkçe yorum: Model araç çağırmadıysa ve grafik niyeti varsa yedek grafik bloğu ekle
@@ -1669,9 +1711,16 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
   
     # Get temperature from settings if available
     temp_value <- if (!is.null(current_settings$temperature)) current_settings$temperature else 0.4
-	
+
 	max_tokens_val <- current_settings$max_output_tokens %||% 2048
-    
+
+    # Türkçe: RAG modeli için kaynak dosya adlarını yanıta ekleme sistem talimatı
+    rag_source_msg <- build_rag_source_system_message(selected_model)
+    if (!is.null(rag_source_msg)) {
+      messages_payload <- c(list(rag_source_msg), messages_payload)
+      cat("[RAG-SOURCES] Kaynak talimatı sistem mesajı eklendi (model:", selected_model, ")\n")
+    }
+
     body <- list(
       model = selected_model,
       messages = messages_payload,
@@ -1679,7 +1728,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       temperature = temp_value,
       max_tokens = max_tokens_val
     )
-    
+
 	# Türkçe: Yerel uçlarda boş Authorization başlığını GÖNDERME
 	hds <- list(`Content-Type` = "application/json")
 	if (nzchar(api_key)) hds$Authorization <- paste("Bearer", api_key)
@@ -1762,7 +1811,35 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
 	ai_content <- strip_planner_text(ai_content)
 
-	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
+	# Türkçe: AI yanıtından [KAYNAKLAR]...[/KAYNAKLAR] bloğunu çıkar ve dosya adlarını al
+	kaynaklar_result <- tryCatch(
+	  extract_and_strip_kaynaklar(ai_content),
+	  error = function(e) {
+	    cat("[KAYNAKLAR] Ayrıştırma hatası:", e$message, "\n")
+	    list(clean_text = ai_content, filenames = character(0))
+	  }
+	)
+	ai_content <- kaynaklar_result$clean_text
+
+	# Türkçe: [KAYNAKLAR] bloğundan çıkan dosya adlarını yerel depoyla eşleştir
+	if (length(kaynaklar_result$filenames) > 0) {
+	  matched_docs <- tryCatch(
+	    match_filenames_to_local_docs(kaynaklar_result$filenames, selected_model),
+	    error = function(e) {
+	      cat("[KAYNAKÇA] Eşleştirme hatası:", e$message, "\n")
+	      list()
+	    }
+	  )
+	  if (length(matched_docs) > 0) {
+	    kaynakca_html <- build_kaynakca_from_matched_docs(matched_docs)
+	    if (nzchar(kaynakca_html)) {
+	      ai_content <- paste0(ai_content, kaynakca_html)
+	      cat("[KAYNAKÇA] ", length(matched_docs), " eşleşen belge tıklanabilir Kaynakça olarak eklendi\n")
+	    }
+	  }
+	}
+
+	# Türkçe: Düz metin Kaynakça varsa tıklanabilir yap
 	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
 
 	# --- SAĞLAMLAŞTIRMA: her zaman scalar string döndür ---
