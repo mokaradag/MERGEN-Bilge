@@ -483,19 +483,11 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		}
 	}
 
-    # Türkçe: RAG modeli için kaynak dosya adlarını yanıta ekleme sistem talimatı.
-    # local_model_paths'te karşılığı varsa [KAYNAKLAR] bloğu talimatı eklenir.
-    rag_source_msg <- build_rag_source_system_message(selected_model)
-    if (!is.null(rag_source_msg)) {
-      messages_payload <- c(list(rag_source_msg), messages_payload)
-      cat("[RAG-SOURCES] Kaynak talimatı sistem mesajı eklendi (model:", selected_model, ")\n")
-    }
-
     temp_value <- if (!is.null(settings$temperature)) settings$temperature else 0.4
 
     body <- list(
-      model = selected_model,
-      messages = messages_payload,
+      model = selected_model, 
+      messages = messages_payload, 
       stream = FALSE,
       temperature = temp_value
     )
@@ -564,8 +556,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     
     ai_content <- NULL
     tool_calls_struct <- NULL
-    sources_list <- NULL
-
+    
     if (is.list(response_content) &&
         !is.null(response_content$choices) &&
         length(response_content$choices) > 0) {
@@ -576,25 +567,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         if (!is.null(first_choice$message$tool_calls) && length(first_choice$message$tool_calls) > 0) {
           tool_calls_struct <- first_choice$message$tool_calls
         }
-        # Türkçe: RAG sunucusundan yapısal kaynakları yakala (sources veya citations)
-        if (!is.null(first_choice$message$sources)) {
-          sources_list <- first_choice$message$sources
-        } else if (!is.null(first_choice$message$citations)) {
-          sources_list <- first_choice$message$citations
-        }
       }
-    }
-    # Türkçe: Üst düzey kaynakları da kontrol et (Open WebUI sources veya citations döndürebilir)
-    if (is.null(sources_list) && is.list(response_content)) {
-      sources_list <- response_content$sources %||% response_content$citations %||%
-                      response_content$message$sources %||% response_content$message$citations
-    }
-
-    # Türkçe: Tanılama — kaynak tespiti sonucu
-    if (!is.null(sources_list) && length(sources_list) > 0) {
-      cat("[SOURCES] İlk yanıttan", length(sources_list), "kaynak grubu bulundu\n")
-    } else {
-      cat("[SOURCES] İlk yanıtta kaynak bulunamadı (response alanları:", paste(names(response_content), collapse = ", "), ")\n")
     }
     
 	# Only error if neither content nor structured tool calls exist (length-safe)
@@ -609,19 +582,14 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	  tc_names <- paste(sapply(tool_calls_struct, function(tc) tc$`function`$name %||% "?"), collapse = ", ")
 	  cat("[RETRY] Model tool_calls döndürdü (", tc_names, ") ama MCP kapalı — tool_choice='none' ile tekrar deneniyor\n")
 
-	  # Türkçe: Mesaj listesinin sonuna araç kullanmama + kaynak bildirme talimatı ekle.
+	  # Türkçe: Mesaj listesinin sonuna araç kullanmama talimatı ekle.
 	  # Qwen/RAG modelleri tool_choice='none' olsa bile metin olarak araç çağrısı yazabiliyor.
-	  retry_system_content <- paste0(
-	    "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
-	    "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
-	    "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
-	  )
-	  # RAG modeli ise kaynak talimatını da ekle
-	  if (!is.null(rag_source_msg)) {
-	    retry_system_content <- paste0(retry_system_content, "\n\n", rag_source_msg$content)
-	  }
 	  retry_messages <- c(messages_payload, list(
-	    list(role = "system", content = retry_system_content)
+	    list(role = "system", content = paste0(
+	      "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
+	      "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
+	      "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
+	    ))
 	  ))
 
 	  retry_body <- list(
@@ -662,18 +630,11 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	          tool_calls_struct <- NULL
 	          has_content <- TRUE
 	          cat("[RETRY] Başarılı: content_nchar=", nchar(ai_content), "\n")
-	          # Türkçe: Retry yanıtından kaynakları da al (sources veya citations)
+	          # Türkçe: Retry yanıtından kaynakları da al
 	          if (!is.null(retry_msg$sources)) {
 	            sources_list <- retry_msg$sources
-	          } else if (!is.null(retry_msg$citations)) {
-	            sources_list <- retry_msg$citations
 	          } else if (!is.null(retry_content$sources)) {
 	            sources_list <- retry_content$sources
-	          } else if (!is.null(retry_content$citations)) {
-	            sources_list <- retry_content$citations
-	          }
-	          if (!is.null(sources_list)) {
-	            cat("[RETRY] Kaynak bulundu:", length(sources_list), "kaynak grubu\n")
 	          }
 	        } else {
 	          cat("[RETRY] Temizleme sonrası anlamlı içerik kalmadı (nchar=", nchar(retry_text), ")\n")
@@ -1325,44 +1286,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
 	ai_content <- strip_planner_text(ai_content)
 
-	# Türkçe: AI yanıtından [KAYNAKLAR]...[/KAYNAKLAR] bloğunu çıkar ve dosya adlarını al.
-	# Bu blok kullanıcıya gösterilmez; arka planda dosya eşleştirmesi için kullanılır.
-	kaynaklar_result <- tryCatch(
-	  extract_and_strip_kaynaklar(ai_content),
-	  error = function(e) {
-	    cat("[KAYNAKLAR] Ayrıştırma hatası:", e$message, "\n")
-	    list(clean_text = ai_content, filenames = character(0))
-	  }
-	)
-	ai_content <- kaynaklar_result$clean_text
-
-	# Türkçe: [KAYNAKLAR] bloğundan çıkan dosya adlarını yerel depoyla eşleştir
-	if (length(kaynaklar_result$filenames) > 0) {
-	  matched_docs <- tryCatch(
-	    match_filenames_to_local_docs(kaynaklar_result$filenames, selected_model),
-	    error = function(e) {
-	      cat("[KAYNAKÇA] Eşleştirme hatası:", e$message, "\n")
-	      list()
-	    }
-	  )
-	  if (length(matched_docs) > 0) {
-	    kaynakca_html <- build_kaynakca_from_matched_docs(matched_docs)
-	    if (nzchar(kaynakca_html)) {
-	      ai_content <- paste0(ai_content, kaynakca_html)
-	      cat("[KAYNAKÇA] ", length(matched_docs), " eşleşen belge tıklanabilir Kaynakça olarak eklendi\n")
-	    }
-	  }
-	}
-
-	# Türkçe: Yapısal API kaynakları varsa (sources/citations) tıklanabilir Kaynakça ekle
-	if (!is.null(sources_list) && length(sources_list) > 0 && !grepl("Kaynakça:", ai_content, fixed = TRUE)) {
-	  kaynakca_html <- build_kaynakca_from_sources(sources_list)
-	  if (nzchar(kaynakca_html)) {
-	    ai_content <- paste0(ai_content, kaynakca_html)
-	  }
-	}
-
-	# Türkçe: Düz metin Kaynakça varsa tıklanabilir yap
+	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
 	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
 
 	# Türkçe yorum: Model araç çağırmadıysa ve grafik niyeti varsa yedek grafik bloğu ekle
@@ -1412,12 +1336,6 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         # Türkçe: Geçerli OpenAI uyumlu yapı mı kontrol et
         if (is.list(parsed) && !is.null(parsed$choices) && length(parsed$choices) > 0) {
           cat("[PARSE] Düz JSON olarak başarıyla ayrıştırıldı (choices mevcut)\n")
-          # Türkçe: Open WebUI citations alanını sources olarak normalize et
-          if (is.null(parsed$sources) && !is.null(parsed$citations)) {
-            parsed$sources <- parsed$citations
-          }
-          src_keys <- intersect(names(parsed), c("sources", "citations"))
-          if (length(src_keys) > 0) cat("[PARSE] Düz JSON kaynaklar bulundu:", paste(src_keys, collapse = ", "), "\n")
           return(parsed)
         }
         NULL
@@ -1457,29 +1375,22 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             NULL
           })
           if (is.null(parsed)) next
-
-          # Türkçe: Tanılama — her SSE chunk'ının üst düzey alanlarını logla (kaynak tespiti için)
-          chunk_keys <- names(parsed)
-          has_src <- any(c("sources", "citations") %in% chunk_keys)
-          if (has_src) {
-            cat("[PARSE] SSE chunk kaynaklar içeriyor! Alanlar:", paste(chunk_keys, collapse = ", "), "\n")
-          }
-
+          
           if (!is.null(parsed$choices) && length(parsed$choices) > 0) {
             ch <- parsed$choices[[1]]
-
+            
             # Streaming format: delta.content
             dc <- ch$delta$content
             if (is.character(dc) && nzchar(dc)) {
               full_content <- paste0(full_content, dc)
             }
-
+            
             # Non-streaming format: message.content (tam yanıt tek parçada)
             mc <- ch$message$content
             if (is.character(mc) && nzchar(mc)) {
               full_content <- mc
             }
-
+            
             # Türkçe: Streaming tool_calls delta parçalarını birleştir
             tc_list <- ch$delta$tool_calls %||% ch$message$tool_calls
             if (is.list(tc_list) && length(tc_list) > 0) {
@@ -1499,15 +1410,13 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
                 }
               }
             }
-
-            # Türkçe: Kaynakları topla (sources veya citations — Open WebUI her ikisini de kullanır)
-            sc <- ch$message$sources %||% ch$delta$sources %||%
-                  ch$message$citations %||% ch$delta$citations
+            
+            # Kaynakları topla
+            sc <- ch$message$sources %||% ch$delta$sources
             if (!is.null(sc)) sources_collected <- sc
           }
-          # Türkçe: Üst düzey kaynaklar (Open WebUI sources veya citations olarak döndürebilir)
+          # Üst düzey kaynaklar
           if (!is.null(parsed$sources)) sources_collected <- parsed$sources
-          if (is.null(sources_collected) && !is.null(parsed$citations)) sources_collected <- parsed$citations
         }
         
 		# Türkçe: Tool call'ları yapısal olarak koru, argümanları içerik olarak ÇIKARMA.
@@ -1711,16 +1620,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
   
     # Get temperature from settings if available
     temp_value <- if (!is.null(current_settings$temperature)) current_settings$temperature else 0.4
-
+	
 	max_tokens_val <- current_settings$max_output_tokens %||% 2048
-
-    # Türkçe: RAG modeli için kaynak dosya adlarını yanıta ekleme sistem talimatı
-    rag_source_msg <- build_rag_source_system_message(selected_model)
-    if (!is.null(rag_source_msg)) {
-      messages_payload <- c(list(rag_source_msg), messages_payload)
-      cat("[RAG-SOURCES] Kaynak talimatı sistem mesajı eklendi (model:", selected_model, ")\n")
-    }
-
+    
     body <- list(
       model = selected_model,
       messages = messages_payload,
@@ -1728,7 +1630,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       temperature = temp_value,
       max_tokens = max_tokens_val
     )
-
+    
 	# Türkçe: Yerel uçlarda boş Authorization başlığını GÖNDERME
 	hds <- list(`Content-Type` = "application/json")
 	if (nzchar(api_key)) hds$Authorization <- paste("Bearer", api_key)
@@ -1797,12 +1699,159 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       sources_list <- response_content$message$sources
     }
     
-    # Türkçe: Yapısal kaynaklar varsa tıklanabilir Kaynakça HTML'i ekle (ortak yardımcı fonksiyon)
+    # If sources found, extract filenames from metadata
     if (!is.null(sources_list) && length(sources_list) > 0) {
-      kaynakca_html <- build_kaynakca_from_sources(sources_list)
-      if (nzchar(kaynakca_html)) {
-        ai_content <- paste0(ai_content, kaynakca_html)
+      cat("\n========== SOURCES PROCESSING ==========\n")
+      
+      extracted_sources <- list()
+      seen_filenames <- character(0)
+      
+      for (i in seq_along(sources_list)) {
+        src <- sources_list[[i]]
+        
+        if (is.list(src) && !is.null(src[["metadata"]])) {
+          metadata_array <- src[["metadata"]]
+          
+          for (j in seq_along(metadata_array)) {
+            doc <- metadata_array[[j]]
+            
+            # Extract filename from "name" or "source"
+            filename <- doc[["name"]] %||% doc[["source"]]
+            
+            if (!is.null(filename) && is.character(filename)) {
+              filename <- as.character(filename)[1]
+              
+              # Check for duplicate
+              if (filename %in% seen_filenames) {
+                cat("[DOCUMENT ", j, "] DUPLICATE - skipping: <", filename, ">\n\n", sep = "")
+                next
+              }
+              
+              cat("[DOCUMENT ", j, "] Extracted: <", filename, ">\n", sep = "")
+              seen_filenames <- c(seen_filenames, filename)
+              
+              # Parse filename: extract process number and actual filename
+              process_match <- regexpr("^[a-z]+_[0-9]+_[0-9]+_", filename, ignore.case = TRUE)
+              
+              process_num <- ""
+              actual_filename <- filename
+              
+              if (process_match > 0) {
+                match_length <- attr(process_match, "match.length")
+                process_part <- substr(filename, 1, match_length - 1)
+                actual_filename <- substr(filename, match_length + 1, nchar(filename))
+                
+                # Format process number: replace underscores AND dashes with spaces, uppercase
+                process_num <- toupper(process_part)
+                process_num <- gsub("_", " ", process_num)
+                process_num <- gsub("-", " ", process_num)
+                
+                cat("[DOCUMENT ", j, "] Process: <", process_num, ">\n", sep = "")
+                cat("[DOCUMENT ", j, "] Filename: <", actual_filename, ">\n", sep = "")
+              }
+              
+              # Format actual filename
+              file_ext <- tools::file_ext(actual_filename)
+              file_base <- tools::file_path_sans_ext(actual_filename)
+              file_base <- gsub("_", " ", file_base)
+              file_base <- gsub("-", " ", file_base)
+              file_base <- tools::toTitleCase(file_base)
+              formatted_filename <- paste0(file_base, ".", file_ext)
+              
+              extracted_sources[[length(extracted_sources) + 1]] <- list(
+                process = process_num,
+                filename = formatted_filename,
+                original_filename = filename
+              )
+              
+              cat("[DOCUMENT ", j, "] Final: ", process_num, ": ", formatted_filename, "\n\n", sep = "")
+            }
+          }
+        }
       }
+      
+      cat("[SUMMARY] Total unique sources:", length(extracted_sources), "\n")
+      
+		# Append Kaynakça section with clickable links
+		if (length(extracted_sources) > 0) {
+		  sources_text <- "\n\nKaynakça:\n"
+		  
+		  for (i in seq_along(extracted_sources)) {
+			src_info <- extracted_sources[[i]]
+			
+			# Unique id for this source
+			source_id <- paste0("source_", i, "_", gsub("[^a-z0-9]", "", tolower(src_info$filename)))
+			
+			# Always use the ORIGINAL filename as-is for opening
+			original_filename <- src_info$original_filename
+			file_ext <- tolower(tools::file_ext(original_filename))
+			
+			# Pick an icon by extension (Word/PDF, fallback generic)
+			icon_html <- if (file_ext %in% c("doc","docx")) {
+			  "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>"
+			} else if (identical(file_ext, "pdf")) {
+			  "<i class='fa-regular fa-file-pdf' style='margin-right:6px;color:#c00'></i>"
+			} else {
+			  "<i class='fa-regular fa-file' style='margin-right:6px;'></i>"
+			}
+			
+			# Görüntüde sadece son parçayı göster; ancak tıklama için TAM dosya adını taşı
+			parts_raw <- strsplit(original_filename, "&&", fixed = TRUE)[[1]]
+			
+			# Label prefix (process info if present)
+			label_prefix <- if (nchar(src_info$process) > 0) paste0(src_info$process, ": ") else ""
+			
+			if (length(parts_raw) > 1) {
+			  parts <- trimws(parts_raw)
+			  left_parts <- if (length(parts) > 1) parts[seq_len(length(parts) - 1)] else character(0)
+			  right_part <- parts[length(parts)]
+			  
+			  left_html <- if (length(left_parts)) {
+				paste(
+				  vapply(left_parts, function(p) {
+					paste0("<span class='source-chunk'>", htmltools::htmlEscape(p), "</span>")
+				  }, character(1)),
+				  collapse = " - "
+				)
+			  } else ""
+			  
+				clickable_html <- paste0(
+				  "<span class='source-link' data-source-id='", source_id,
+				  # tıklama için tam dosya adını (&& dahil) gönder
+				  "' data-filename='", htmltools::htmlEscape(original_filename, attribute = TRUE),  # düzeltme: tam ad
+				  "' style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
+				  htmltools::htmlEscape(trimws(right_part)),
+				  "</span>"
+				)
+			  
+			  # Compose the line:
+			  #   i) [process:] [icon] [left - chunks] - [CLICKABLE last chunk]
+			  line <- paste0(
+				i, ") ", label_prefix, icon_html,
+				if (nzchar(left_html)) paste0(left_html, " - ") else "",
+				clickable_html, "\n"
+			  )
+			  
+			} else {
+			  # No "&&" — keep whole display clickable (as before), but keep the icon
+			  clickable_html <- paste0(
+				"<span class='source-link' data-source-id='", source_id,
+				"' data-filename='", htmltools::htmlEscape(original_filename, attribute = TRUE),
+				"' style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
+				htmltools::htmlEscape(src_info$filename),
+				"</span>"
+			  )
+			  line <- paste0(i, ") ", label_prefix, icon_html, clickable_html, "\n")
+			}
+			
+			sources_text <- paste0(sources_text, line)
+		  }
+		  
+		  ai_content <- paste0(ai_content, sources_text)
+		  cat("[SUCCESS] Kaynakça appended with", length(extracted_sources), "unique sources\n")
+		}
+      
+      cat("========================================\n\n")
     }
     
 	if (!(is.character(ai_content) && length(ai_content) > 0 && nzchar(ai_content[1]))) {
@@ -1811,35 +1860,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
 	ai_content <- strip_planner_text(ai_content)
 
-	# Türkçe: AI yanıtından [KAYNAKLAR]...[/KAYNAKLAR] bloğunu çıkar ve dosya adlarını al
-	kaynaklar_result <- tryCatch(
-	  extract_and_strip_kaynaklar(ai_content),
-	  error = function(e) {
-	    cat("[KAYNAKLAR] Ayrıştırma hatası:", e$message, "\n")
-	    list(clean_text = ai_content, filenames = character(0))
-	  }
-	)
-	ai_content <- kaynaklar_result$clean_text
-
-	# Türkçe: [KAYNAKLAR] bloğundan çıkan dosya adlarını yerel depoyla eşleştir
-	if (length(kaynaklar_result$filenames) > 0) {
-	  matched_docs <- tryCatch(
-	    match_filenames_to_local_docs(kaynaklar_result$filenames, selected_model),
-	    error = function(e) {
-	      cat("[KAYNAKÇA] Eşleştirme hatası:", e$message, "\n")
-	      list()
-	    }
-	  )
-	  if (length(matched_docs) > 0) {
-	    kaynakca_html <- build_kaynakca_from_matched_docs(matched_docs)
-	    if (nzchar(kaynakca_html)) {
-	      ai_content <- paste0(ai_content, kaynakca_html)
-	      cat("[KAYNAKÇA] ", length(matched_docs), " eşleşen belge tıklanabilir Kaynakça olarak eklendi\n")
-	    }
-	  }
-	}
-
-	# Türkçe: Düz metin Kaynakça varsa tıklanabilir yap
+	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
 	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
 
 	# --- SAĞLAMLAŞTIRMA: her zaman scalar string döndür ---
