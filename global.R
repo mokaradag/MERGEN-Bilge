@@ -576,81 +576,193 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	  stop("EMPTY_RESPONSE: AI'dan geçerli bir yanıt alınamadı.")
 	}
 
-	# Türkçe: Model tool_calls döndürdü ama MCP kapalıysa, araç kullanmadan tekrar iste.
+	# Türkçe: Model tool_calls döndürdü ama MCP kapalıysa işle.
 	# Bu durum RAG modellerin arama sorgusu döndürmesinde oluşur (ör. query_knowledge_files).
+	# Strateji: Önce sunucu taraflı RAG araç çağrılarını standart OpenAI çok-turlu
+	# protokolüyle relay et. Bu sayede sunucunun RAG pipeline'ı çalışabilir.
+	# Relay başarısız olursa, tool_choice='none' ile tekrar dene (fallback).
 	if (!has_content && !is.null(tool_calls_struct) && length(tool_calls_struct) > 0 && !mcp_enabled_now) {
 	  tc_names <- paste(sapply(tool_calls_struct, function(tc) tc$`function`$name %||% "?"), collapse = ", ")
-	  cat("[RETRY] Model tool_calls döndürdü (", tc_names, ") ama MCP kapalı — tool_choice='none' ile tekrar deneniyor\n")
 
-	  # Türkçe: Mesaj listesinin sonuna araç kullanmama talimatı ekle.
-	  # Qwen/RAG modelleri tool_choice='none' olsa bile metin olarak araç çağrısı yazabiliyor.
-	  retry_messages <- c(messages_payload, list(
-	    list(role = "system", content = paste0(
-	      "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
-	      "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
-	      "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
-	    ))
-	  ))
+	  # Türkçe: Sunucu taraflı RAG araç çağrılarını tespit et
+	  rag_tool_patterns <- c("query_knowledge_files", "search_knowledge_base",
+	                         "knowledge_search", "rag_search", "retrieval_search")
+	  is_server_rag <- any(sapply(tool_calls_struct, function(tc) {
+	    tc_name <- tc$`function`$name %||% ""
+	    tc_name %in% rag_tool_patterns || grepl("^query_knowledge", tc_name, ignore.case = TRUE)
+	  }))
 
-	  retry_body <- list(
-	    model = selected_model,
-	    messages = retry_messages,
-	    stream = FALSE,
-	    temperature = temp_value,
-	    tool_choice = "none"
-	  )
+	  relay_succeeded <- FALSE
 
-	  retry_response <- tryCatch({
-	    httr::POST(
-	      api_endpoint,
-	      do.call(httr::add_headers, hdrs),
-	      body = jsonlite::toJSON(retry_body, auto_unbox = TRUE),
-	      encode = "raw",
-	      httr::timeout(300)
+	  # --- ADIM 1: Sunucu taraflı RAG araçları için multi-turn relay ---
+	  if (is_server_rag) {
+	    cat("[RAG-RELAY] Sunucu taraflı RAG tool call tespit edildi (",
+	        tc_names, "), standart OpenAI protokolüyle relay ediliyor\n")
+
+	    # Türkçe: Asistan mesajını tool_calls ile oluştur
+	    # NOT: content="" kullanıyoruz çünkü bazı API sunucuları null content kabul etmiyor
+	    assistant_tc_msg <- list(
+	      role = "assistant",
+	      content = "",
+	      tool_calls = tool_calls_struct
 	    )
-	  }, error = function(e) {
-	    cat("[RETRY] Tekrar istek hatası:", e$message, "\n")
-	    NULL
-	  })
 
-	  if (!is.null(retry_response) && httr::status_code(retry_response) == 200) {
-	    retry_content <- safe_parse_llm_response(retry_response)
+	    # Türkçe: Her tool call için tool result mesajı oluştur
+	    tool_result_msgs <- lapply(tool_calls_struct, function(tc) {
+	      tc_id <- tc$id %||% paste0("call_", sample.int(1e6, 1))
+	      # Türkçe: Sunucuya aramanın sonucunu bekle sinyali gönder
+	      list(
+	        role = "tool",
+	        tool_call_id = tc_id,
+	        content = paste0("Lütfen bilgi tabanında arama yap ve sonuçlarına göre yanıtla. ",
+	                         "Arama sorgusu: ", tc$`function`$arguments %||% "{}")
+	      )
+	    })
 
-	    if (is.list(retry_content) && !is.null(retry_content$choices) && length(retry_content$choices) > 0) {
-	      retry_msg <- retry_content$choices[[1]]$message
-	      retry_text <- retry_msg$content %||% ""
-	      if (is.character(retry_text) && nzchar(retry_text)) {
-	        # Türkçe: Yanıttaki metin-tabanlı araç çağrılarını temizle
-	        retry_text <- strip_planner_text(retry_text)
-	        cat("[RETRY] Temizlenmiş içerik: content_nchar=", nchar(retry_text), "\n")
+	    relay_messages <- c(messages_payload, list(assistant_tc_msg), tool_result_msgs)
 
-	        # Türkçe: Temizleme sonrası anlamlı içerik kaldı mı kontrol et
-	        if (nzchar(retry_text) && nchar(retry_text) >= 10) {
-	          ai_content <- retry_text
-	          tool_calls_struct <- NULL
-	          has_content <- TRUE
-	          cat("[RETRY] Başarılı: content_nchar=", nchar(ai_content), "\n")
-	          # Türkçe: Retry yanıtından kaynakları da al
-	          if (!is.null(retry_msg$sources)) {
-	            sources_list <- retry_msg$sources
-	          } else if (!is.null(retry_content$sources)) {
-	            sources_list <- retry_content$sources
+	    relay_body <- list(
+	      model = selected_model,
+	      messages = relay_messages,
+	      stream = FALSE,
+	      temperature = temp_value
+	    )
+
+	    relay_response <- tryCatch({
+	      cat("[RAG-RELAY] Relay isteği gönderiliyor...\n")
+	      httr::POST(
+	        api_endpoint,
+	        do.call(httr::add_headers, hdrs),
+	        body = jsonlite::toJSON(relay_body, auto_unbox = TRUE),
+	        encode = "raw",
+	        httr::timeout(300)
+	      )
+	    }, error = function(e) {
+	      cat("[RAG-RELAY] İstek hatası:", e$message, "\n")
+	      NULL
+	    })
+
+	    if (!is.null(relay_response) && httr::status_code(relay_response) == 200) {
+	      relay_content <- safe_parse_llm_response(relay_response)
+
+	      if (is.list(relay_content) && !is.null(relay_content$choices) &&
+	          length(relay_content$choices) > 0) {
+	        relay_msg <- relay_content$choices[[1]]$message
+	        relay_text <- relay_msg$content %||% ""
+	        if (is.character(relay_text) && nzchar(relay_text)) {
+	          relay_text <- strip_planner_text(relay_text)
+	          cat("[RAG-RELAY] Yanıt içeriği: content_nchar=", nchar(relay_text), "\n")
+
+	          if (nzchar(relay_text) && nchar(relay_text) >= 10) {
+	            ai_content <- relay_text
+	            tool_calls_struct <- NULL
+	            has_content <- TRUE
+	            relay_succeeded <- TRUE
+	            cat("[RAG-RELAY] Başarılı: content_nchar=", nchar(ai_content), "\n")
+
+	            # Türkçe: Relay yanıtından kaynakları al
+	            if (!is.null(relay_msg$sources)) {
+	              sources_list <- relay_msg$sources
+	            } else if (!is.null(relay_content$sources)) {
+	              sources_list <- relay_content$sources
+	            }
+	          } else {
+	            cat("[RAG-RELAY] Relay yanıtında yeterli içerik yok (nchar=",
+	                nchar(relay_text), "), fallback'e geçiliyor\n")
 	          }
-	        } else {
-	          cat("[RETRY] Temizleme sonrası anlamlı içerik kalmadı (nchar=", nchar(retry_text), ")\n")
 	        }
 	      }
-	    }
 
-	    # Türkçe: Retry de başarısızsa hata ver
-	    if (!has_content) {
-	      cat("[RETRY] tool_choice='none' ile de içerik alınamadı\n")
-	      stop("EMPTY_RESPONSE: Model araç çağrısı döndürdü ancak doğrudan yanıt alınamadı.")
+	      # Türkçe: Relay yanıtında yeni tool_calls varsa (sunucu tekrar arama istemiş olabilir)
+	      # ikinci bir relay denemesi yapmıyoruz, fallback'e geçiyoruz.
+	      if (!relay_succeeded) {
+	        cat("[RAG-RELAY] Relay yanıtı yetersiz, tool_choice='none' fallback'ine geçiliyor\n")
+	      }
+	    } else {
+	      relay_status <- if (!is.null(relay_response)) httr::status_code(relay_response) else "NULL"
+	      cat("[RAG-RELAY] Relay başarısız, HTTP:", relay_status,
+	          "— tool_choice='none' fallback'ine geçiliyor\n")
 	    }
-	  } else {
-	    status_code <- if (!is.null(retry_response)) httr::status_code(retry_response) else "NULL"
-	    cat("[RETRY] Tekrar istek başarısız, HTTP:", status_code, "\n")
-	    stop("EMPTY_RESPONSE: Model araç çağrısı döndürdü, tekrar istek başarısız.")
+	  }
+
+	  # --- ADIM 2: Relay başarısız olduysa veya RAG aracı değilse, fallback ---
+	  if (!relay_succeeded) {
+	    cat("[RETRY] Model tool_calls döndürdü (", tc_names,
+	        ") — tool_choice='none' ile tekrar deneniyor\n")
+
+	    # Türkçe: Mesaj listesinin sonuna araç kullanmama talimatı ekle.
+	    # NOT: "kendi bilginle" ifadesini kullanmıyoruz çünkü bu ifade modelin
+	    # bağlamdaki RAG içeriğini de yok saymasına neden olabilir.
+	    retry_messages <- c(messages_payload, list(
+	      list(role = "system", content = paste0(
+	        "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
+	        "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
+	        "Soruyu, sana verilen bağlam ve bilgilere dayanarak doğrudan düz metin olarak yanıtla."
+	      ))
+	    ))
+
+	    retry_body <- list(
+	      model = selected_model,
+	      messages = retry_messages,
+	      stream = FALSE,
+	      temperature = temp_value,
+	      tool_choice = "none"
+	    )
+
+	    retry_response <- tryCatch({
+	      httr::POST(
+	        api_endpoint,
+	        do.call(httr::add_headers, hdrs),
+	        body = jsonlite::toJSON(retry_body, auto_unbox = TRUE),
+	        encode = "raw",
+	        httr::timeout(300)
+	      )
+	    }, error = function(e) {
+	      cat("[RETRY] Tekrar istek hatası:", e$message, "\n")
+	      NULL
+	    })
+
+	    if (!is.null(retry_response) && httr::status_code(retry_response) == 200) {
+	      retry_content <- safe_parse_llm_response(retry_response)
+
+	      if (is.list(retry_content) && !is.null(retry_content$choices) &&
+	          length(retry_content$choices) > 0) {
+	        retry_msg <- retry_content$choices[[1]]$message
+	        retry_text <- retry_msg$content %||% ""
+	        if (is.character(retry_text) && nzchar(retry_text)) {
+	          # Türkçe: Yanıttaki metin-tabanlı araç çağrılarını temizle
+	          retry_text <- strip_planner_text(retry_text)
+	          cat("[RETRY] Temizlenmiş içerik: content_nchar=", nchar(retry_text), "\n")
+
+	          # Türkçe: Temizleme sonrası anlamlı içerik kaldı mı kontrol et
+	          if (nzchar(retry_text) && nchar(retry_text) >= 10) {
+	            ai_content <- retry_text
+	            tool_calls_struct <- NULL
+	            has_content <- TRUE
+	            cat("[RETRY] Başarılı: content_nchar=", nchar(ai_content), "\n")
+	            # Türkçe: Retry yanıtından kaynakları da al
+	            if (!is.null(retry_msg$sources)) {
+	              sources_list <- retry_msg$sources
+	            } else if (!is.null(retry_content$sources)) {
+	              sources_list <- retry_content$sources
+	            }
+	          } else {
+	            cat("[RETRY] Temizleme sonrası anlamlı içerik kalmadı (nchar=",
+	                nchar(retry_text), ")\n")
+	          }
+	        }
+	      }
+
+	      # Türkçe: Retry de başarısızsa hata ver
+	      if (!has_content) {
+	        cat("[RETRY] tool_choice='none' ile de içerik alınamadı\n")
+	        stop("EMPTY_RESPONSE: Model araç çağrısı döndürdü ancak doğrudan yanıt alınamadı.")
+	      }
+	    } else {
+	      status_code <- if (!is.null(retry_response)) httr::status_code(retry_response) else "NULL"
+	      cat("[RETRY] Tekrar istek başarısız, HTTP:", status_code, "\n")
+	      stop("EMPTY_RESPONSE: Model araç çağrısı döndürdü, tekrar istek başarısız.")
+	    }
 	  }
 	}
     
