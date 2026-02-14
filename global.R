@@ -551,7 +551,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	  }
 	}
     
-    response_content <- httr::content(response, "parsed")
+	# Türkçe: text/event-stream dahil tüm yanıt formatlarını güvenli ayrıştır
+    response_content <- safe_parse_llm_response(response)
     
     ai_content <- NULL
     tool_calls_struct <- NULL
@@ -1153,7 +1154,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		  ))
 		}
 
-		rc2 <- httr::content(response2, "parsed")
+		# Türkçe: İkinci geçiş yanıtını da güvenli ayrıştır
+		rc2 <- safe_parse_llm_response(response2)
         ai2 <- NULL
         if (is.list(rc2) && !is.null(rc2$choices) && length(rc2$choices) > 0) {
           first_choice2 <- rc2$choices[[1]]
@@ -1206,6 +1208,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
 	ai_content <- strip_planner_text(ai_content)
 
+	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
+	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
+
 	# Türkçe yorum: Model araç çağırmadıysa ve grafik niyeti varsa yedek grafik bloğu ekle
 	ai_content <- add_fallback_chart(ai_content)
 
@@ -1228,6 +1233,165 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     }
   })
 }
+
+  # =============================================================================
+  # Türkçe: API yanıtını güvenli şekilde ayrıştır.
+  # text/event-stream gibi beklenmeyen Content-Type durumlarını yönetir.
+  # =============================================================================
+  safe_parse_llm_response <- function(response) {
+    ct <- httr::headers(response)[["content-type"]] %||% ""
+    
+    # Türkçe: Eğer content-type text/event-stream ise, httr::content("parsed") çöker.
+    # Bu durumda ham metin olarak oku ve SSE veya JSON olarak ayrıştır.
+    if (grepl("text/event-stream", ct, fixed = TRUE)) {
+      cat("[PARSE] Content-Type text/event-stream algılandı, manuel ayrıştırma yapılıyor\n")
+      raw_text <- httr::content(response, "text", encoding = "UTF-8")
+      
+      # SSE formatını kontrol et (data: {...} satırları)
+      lines <- strsplit(raw_text, "\n")[[1]]
+      data_lines <- grep("^data:\\s*", lines, value = TRUE)
+      
+      if (length(data_lines) > 0) {
+        # Türkçe: SSE satırlarından JSON kısmını çıkar
+        data_lines <- sub("^data:\\s*", "", data_lines)
+        data_lines <- data_lines[!grepl("^\\[DONE\\]", trimws(data_lines))]
+        data_lines <- data_lines[nzchar(trimws(data_lines))]
+        
+        if (length(data_lines) == 0) {
+          stop("EMPTY_RESPONSE: SSE yanıtında geçerli veri satırı bulunamadı.")
+        }
+        
+        # Türkçe: Streaming delta'ları birleştir
+        full_content <- ""
+        sources_collected <- NULL
+        for (dl in data_lines) {
+          parsed <- tryCatch(jsonlite::fromJSON(dl, simplifyVector = FALSE), error = function(e) NULL)
+          if (is.null(parsed)) next
+          if (!is.null(parsed$choices) && length(parsed$choices) > 0) {
+            ch <- parsed$choices[[1]]
+            # Streaming format: delta.content
+            dc <- ch$delta$content
+            if (!is.null(dc)) full_content <- paste0(full_content, dc)
+            # Non-streaming format: message.content (tam yanıt)
+            mc <- ch$message$content
+            if (!is.null(mc)) full_content <- mc
+            # Kaynakları topla
+            sc <- ch$message$sources %||% ch$delta$sources
+            if (!is.null(sc)) sources_collected <- sc
+          }
+          # Üst düzey kaynaklar
+          if (!is.null(parsed$sources)) sources_collected <- parsed$sources
+        }
+        
+        # Türkçe: Standart OpenAI uyumlu yapı oluştur
+        result <- list(
+          choices = list(list(
+            message = list(content = full_content, role = "assistant")
+          ))
+        )
+        if (!is.null(sources_collected)) {
+          result$choices[[1]]$message$sources <- sources_collected
+        }
+        return(result)
+        
+      } else {
+        # Türkçe: SSE değilse düz JSON olarak ayrıştırmayı dene
+        return(tryCatch(
+          jsonlite::fromJSON(raw_text, simplifyVector = FALSE),
+          error = function(e) {
+            stop(paste0("PARSE_ERROR: text/event-stream yanıtı ayrıştırılamadı: ", e$message))
+          }
+        ))
+      }
+      
+    } else {
+      # Türkçe: Normal content-type — httr'nin kendi ayrıştırıcısını kullan,
+      # hata alırsa ham metin + jsonlite'a düş
+      tryCatch(
+        httr::content(response, "parsed"),
+        error = function(e) {
+          cat("[PARSE] httr::content('parsed') başarısız, ham metin deneniyor:", e$message, "\n")
+          raw_text <- httr::content(response, "text", encoding = "UTF-8")
+          tryCatch(
+            jsonlite::fromJSON(raw_text, simplifyVector = FALSE),
+            error = function(e2) {
+              stop(paste0("PARSE_ERROR: Yanıt ayrıştırılamadı: ", e2$message))
+            }
+          )
+        }
+      )
+    }
+  }
+  
+  # =============================================================================
+  # Türkçe: Düz metin Kaynakça satırlarını tıklanabilir HTML span'lara dönüştür.
+  # Yapısal sources verisi olmadığında yedek olarak çalışır.
+  # =============================================================================
+  convert_plain_kaynakca_to_clickable <- function(content_text) {
+    if (!is.character(content_text) || !nzchar(content_text)) return(content_text)
+    
+    # Türkçe: Zaten tıklanabilir source-link span'ları varsa dokunma
+    if (grepl("class='source-link'", content_text, fixed = TRUE) ||
+        grepl('class="source-link"', content_text, fixed = TRUE)) {
+      return(content_text)
+    }
+    
+    # Türkçe: Kaynakça bölümü var mı kontrol et
+    kaynakca_pos <- regexpr("Kaynak[çc]a\\s*:", content_text, perl = TRUE)
+    if (kaynakca_pos < 0) return(content_text)
+    
+    # Türkçe: Kaynakça bölümünü ve öncesini ayır
+    before_part <- substr(content_text, 1, kaynakca_pos - 1)
+    kaynakca_part <- substr(content_text, kaynakca_pos, nchar(content_text))
+    
+    # Türkçe: Numaralı satırları bul (ör: "1) dosya.docx", "2. rapor.pdf")
+    # Ayrıca "- dosya.docx" formatını da yakala
+    lines <- strsplit(kaynakca_part, "\n")[[1]]
+    
+    converted_lines <- vapply(lines, function(line) {
+      # Türkçe: Numaralı kaynak satırını tespit et
+      m <- regmatches(line, regexec("^\\s*(\\d+)[)\\.]\\s*(.+)$", line))[[1]]
+      if (length(m) < 3) return(line)
+      
+      num <- m[2]
+      raw_filename <- trimws(m[3])
+      
+      # Türkçe: Markdown kalıntılarını temizle
+      raw_filename <- gsub("\\*\\*", "", raw_filename)
+      raw_filename <- trimws(raw_filename)
+      
+      if (!nzchar(raw_filename)) return(line)
+      
+      # Türkçe: Benzersiz source id oluştur
+      source_id <- paste0("source_", num, "_", gsub("[^a-z0-9]", "", tolower(raw_filename)))
+      
+      # Türkçe: Dosya uzantısına göre ikon seç
+      file_ext <- tolower(tools::file_ext(raw_filename))
+      icon_html <- if (file_ext %in% c("doc", "docx")) {
+        "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>"
+      } else if (identical(file_ext, "pdf")) {
+        "<i class='fa-regular fa-file-pdf' style='margin-right:6px;color:#c00'></i>"
+      } else if (file_ext %in% c("xls", "xlsx")) {
+        "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#1d6f42'></i>"
+      } else {
+        "<i class='fa-regular fa-file' style='margin-right:6px;'></i>"
+      }
+      
+      # Türkçe: Tıklanabilir HTML span oluştur
+      clickable_html <- paste0(
+        "<span class='source-link' data-source-id='", source_id,
+        "' data-filename='", htmltools::htmlEscape(raw_filename, attribute = TRUE),
+        "' style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
+        htmltools::htmlEscape(raw_filename),
+        "</span>"
+      )
+      
+      paste0(num, ") ", icon_html, clickable_html)
+    }, character(1), USE.NAMES = FALSE)
+    
+    new_kaynakca <- paste(converted_lines, collapse = "\n")
+    paste0(before_part, new_kaynakca)
+  }
 
   # Worker-safe LLM call - RESTORED FROM ORIGINAL WORKING VERSION
   call_local_llm <- function(chat_history, current_settings) {
@@ -1327,7 +1491,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 					 if(!inherits(error_content, "try-error")) substr(error_content, 1, 200) else ""))
 	  }
 	  
-    response_content <- httr::content(response, "parsed")
+	# Türkçe: text/event-stream dahil tüm yanıt formatlarını güvenli ayrıştır
+    response_content <- safe_parse_llm_response(response)
     
     # Extract content and sources
     ai_content <- NULL
@@ -1531,6 +1696,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	}
 
 	ai_content <- strip_planner_text(ai_content)
+
+	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
+	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
 
 	# --- SAĞLAMLAŞTIRMA: her zaman scalar string döndür ---
 	if (!is.character(ai_content) || length(ai_content) == 0 || is.na(ai_content[1])) {
