@@ -556,7 +556,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     
     ai_content <- NULL
     tool_calls_struct <- NULL
-    
+    sources_list <- NULL
+
     if (is.list(response_content) &&
         !is.null(response_content$choices) &&
         length(response_content$choices) > 0) {
@@ -567,7 +568,15 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         if (!is.null(first_choice$message$tool_calls) && length(first_choice$message$tool_calls) > 0) {
           tool_calls_struct <- first_choice$message$tool_calls
         }
+        # Türkçe: RAG sunucusundan yapısal kaynakları yakala
+        if (!is.null(first_choice$message$sources)) {
+          sources_list <- first_choice$message$sources
+        }
       }
+    }
+    # Türkçe: Üst düzey kaynakları da kontrol et (bazı API'ler burada döndürür)
+    if (is.null(sources_list) && is.list(response_content)) {
+      sources_list <- response_content$sources %||% response_content$message$sources
     }
     
 	# Only error if neither content nor structured tool calls exist (length-safe)
@@ -1286,6 +1295,14 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
 	ai_content <- strip_planner_text(ai_content)
 
+	# Türkçe: Yapısal kaynaklar varsa tıklanabilir Kaynakça HTML'i ekle
+	if (!is.null(sources_list) && length(sources_list) > 0) {
+	  kaynakca_html <- build_kaynakca_from_sources(sources_list)
+	  if (nzchar(kaynakca_html)) {
+	    ai_content <- paste0(ai_content, kaynakca_html)
+	  }
+	}
+
 	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
 	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
 
@@ -1699,159 +1716,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       sources_list <- response_content$message$sources
     }
     
-    # If sources found, extract filenames from metadata
+    # Türkçe: Yapısal kaynaklar varsa tıklanabilir Kaynakça HTML'i ekle (ortak yardımcı fonksiyon)
     if (!is.null(sources_list) && length(sources_list) > 0) {
-      cat("\n========== SOURCES PROCESSING ==========\n")
-      
-      extracted_sources <- list()
-      seen_filenames <- character(0)
-      
-      for (i in seq_along(sources_list)) {
-        src <- sources_list[[i]]
-        
-        if (is.list(src) && !is.null(src[["metadata"]])) {
-          metadata_array <- src[["metadata"]]
-          
-          for (j in seq_along(metadata_array)) {
-            doc <- metadata_array[[j]]
-            
-            # Extract filename from "name" or "source"
-            filename <- doc[["name"]] %||% doc[["source"]]
-            
-            if (!is.null(filename) && is.character(filename)) {
-              filename <- as.character(filename)[1]
-              
-              # Check for duplicate
-              if (filename %in% seen_filenames) {
-                cat("[DOCUMENT ", j, "] DUPLICATE - skipping: <", filename, ">\n\n", sep = "")
-                next
-              }
-              
-              cat("[DOCUMENT ", j, "] Extracted: <", filename, ">\n", sep = "")
-              seen_filenames <- c(seen_filenames, filename)
-              
-              # Parse filename: extract process number and actual filename
-              process_match <- regexpr("^[a-z]+_[0-9]+_[0-9]+_", filename, ignore.case = TRUE)
-              
-              process_num <- ""
-              actual_filename <- filename
-              
-              if (process_match > 0) {
-                match_length <- attr(process_match, "match.length")
-                process_part <- substr(filename, 1, match_length - 1)
-                actual_filename <- substr(filename, match_length + 1, nchar(filename))
-                
-                # Format process number: replace underscores AND dashes with spaces, uppercase
-                process_num <- toupper(process_part)
-                process_num <- gsub("_", " ", process_num)
-                process_num <- gsub("-", " ", process_num)
-                
-                cat("[DOCUMENT ", j, "] Process: <", process_num, ">\n", sep = "")
-                cat("[DOCUMENT ", j, "] Filename: <", actual_filename, ">\n", sep = "")
-              }
-              
-              # Format actual filename
-              file_ext <- tools::file_ext(actual_filename)
-              file_base <- tools::file_path_sans_ext(actual_filename)
-              file_base <- gsub("_", " ", file_base)
-              file_base <- gsub("-", " ", file_base)
-              file_base <- tools::toTitleCase(file_base)
-              formatted_filename <- paste0(file_base, ".", file_ext)
-              
-              extracted_sources[[length(extracted_sources) + 1]] <- list(
-                process = process_num,
-                filename = formatted_filename,
-                original_filename = filename
-              )
-              
-              cat("[DOCUMENT ", j, "] Final: ", process_num, ": ", formatted_filename, "\n\n", sep = "")
-            }
-          }
-        }
+      kaynakca_html <- build_kaynakca_from_sources(sources_list)
+      if (nzchar(kaynakca_html)) {
+        ai_content <- paste0(ai_content, kaynakca_html)
       }
-      
-      cat("[SUMMARY] Total unique sources:", length(extracted_sources), "\n")
-      
-		# Append Kaynakça section with clickable links
-		if (length(extracted_sources) > 0) {
-		  sources_text <- "\n\nKaynakça:\n"
-		  
-		  for (i in seq_along(extracted_sources)) {
-			src_info <- extracted_sources[[i]]
-			
-			# Unique id for this source
-			source_id <- paste0("source_", i, "_", gsub("[^a-z0-9]", "", tolower(src_info$filename)))
-			
-			# Always use the ORIGINAL filename as-is for opening
-			original_filename <- src_info$original_filename
-			file_ext <- tolower(tools::file_ext(original_filename))
-			
-			# Pick an icon by extension (Word/PDF, fallback generic)
-			icon_html <- if (file_ext %in% c("doc","docx")) {
-			  "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>"
-			} else if (identical(file_ext, "pdf")) {
-			  "<i class='fa-regular fa-file-pdf' style='margin-right:6px;color:#c00'></i>"
-			} else {
-			  "<i class='fa-regular fa-file' style='margin-right:6px;'></i>"
-			}
-			
-			# Görüntüde sadece son parçayı göster; ancak tıklama için TAM dosya adını taşı
-			parts_raw <- strsplit(original_filename, "&&", fixed = TRUE)[[1]]
-			
-			# Label prefix (process info if present)
-			label_prefix <- if (nchar(src_info$process) > 0) paste0(src_info$process, ": ") else ""
-			
-			if (length(parts_raw) > 1) {
-			  parts <- trimws(parts_raw)
-			  left_parts <- if (length(parts) > 1) parts[seq_len(length(parts) - 1)] else character(0)
-			  right_part <- parts[length(parts)]
-			  
-			  left_html <- if (length(left_parts)) {
-				paste(
-				  vapply(left_parts, function(p) {
-					paste0("<span class='source-chunk'>", htmltools::htmlEscape(p), "</span>")
-				  }, character(1)),
-				  collapse = " - "
-				)
-			  } else ""
-			  
-				clickable_html <- paste0(
-				  "<span class='source-link' data-source-id='", source_id,
-				  # tıklama için tam dosya adını (&& dahil) gönder
-				  "' data-filename='", htmltools::htmlEscape(original_filename, attribute = TRUE),  # düzeltme: tam ad
-				  "' style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
-				  htmltools::htmlEscape(trimws(right_part)),
-				  "</span>"
-				)
-			  
-			  # Compose the line:
-			  #   i) [process:] [icon] [left - chunks] - [CLICKABLE last chunk]
-			  line <- paste0(
-				i, ") ", label_prefix, icon_html,
-				if (nzchar(left_html)) paste0(left_html, " - ") else "",
-				clickable_html, "\n"
-			  )
-			  
-			} else {
-			  # No "&&" — keep whole display clickable (as before), but keep the icon
-			  clickable_html <- paste0(
-				"<span class='source-link' data-source-id='", source_id,
-				"' data-filename='", htmltools::htmlEscape(original_filename, attribute = TRUE),
-				"' style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
-				htmltools::htmlEscape(src_info$filename),
-				"</span>"
-			  )
-			  line <- paste0(i, ") ", label_prefix, icon_html, clickable_html, "\n")
-			}
-			
-			sources_text <- paste0(sources_text, line)
-		  }
-		  
-		  ai_content <- paste0(ai_content, sources_text)
-		  cat("[SUCCESS] Kaynakça appended with", length(extracted_sources), "unique sources\n")
-		}
-      
-      cat("========================================\n\n")
     }
     
 	if (!(is.character(ai_content) && length(ai_content) > 0 && nzchar(ai_content[1]))) {
