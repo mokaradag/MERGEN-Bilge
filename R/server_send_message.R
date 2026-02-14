@@ -264,7 +264,7 @@ sendMessageInit <- function(
       "Be a balanced, pragmatic assistant. Provide clear, actionable responses."
     }
  
-    # Kaynak gösterimi zorunluluğu — sadece dosya yüklüyken aktif
+    # Kaynak gösterimi zorunluluğu
     citation_instruction <- if (uploaded_count > 0) {
       paste0(
         "\n\nMANDATORY CITATION RULE: ",
@@ -275,7 +275,11 @@ sendMessageInit <- function(
         "Example:\nKaynakça:\n1) document.docx\n2) file.pdf"
       )
     } else {
-      ""
+      paste0(
+        "\n\nCRITICAL CITATION REQUIREMENT: ",
+        "If you reference any sources, include a 'Kaynakça:' section at the end. ",
+        "Do NOT use inline [Source: ...] citations. "
+      )
     }
  
     # Mod bazlı sistem promptu oluştur
