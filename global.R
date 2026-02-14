@@ -1320,6 +1320,24 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	  }
 	}
 
+	# Türkçe: API kaynak döndürmediyse, yerel belge deposundan anahtar kelime eşleştirmesi yap.
+	# local_model_paths haritasında modelin belge klasörü tanımlıysa çalışır.
+	if (is.null(sources_list) || length(sources_list) == 0) {
+	  if (!grepl("Kaynakça:", ai_content, fixed = TRUE)) {
+	    local_kaynakca <- tryCatch(
+	      match_local_documents_for_kaynakca(chat_history, ai_content, selected_model, max_results = 5),
+	      error = function(e) {
+	        cat("[KAYNAKÇA-LOCAL] Hata:", e$message, "\n")
+	        ""
+	      }
+	    )
+	    if (is.character(local_kaynakca) && nzchar(local_kaynakca)) {
+	      ai_content <- paste0(ai_content, local_kaynakca)
+	      cat("[KAYNAKÇA-LOCAL] Yerel kaynak eşleştirmesi yanıta eklendi\n")
+	    }
+	  }
+	}
+
 	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
 	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
 
@@ -1761,6 +1779,23 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	}
 
 	ai_content <- strip_planner_text(ai_content)
+
+	# Türkçe: API kaynak döndürmediyse, yerel belge deposundan anahtar kelime eşleştirmesi yap
+	if (is.null(sources_list) || length(sources_list) == 0) {
+	  if (!grepl("Kaynakça:", ai_content, fixed = TRUE)) {
+	    local_kaynakca <- tryCatch(
+	      match_local_documents_for_kaynakca(chat_history, ai_content, selected_model, max_results = 5),
+	      error = function(e) {
+	        cat("[KAYNAKÇA-LOCAL] Hata:", e$message, "\n")
+	        ""
+	      }
+	    )
+	    if (is.character(local_kaynakca) && nzchar(local_kaynakca)) {
+	      ai_content <- paste0(ai_content, local_kaynakca)
+	      cat("[KAYNAKÇA-LOCAL] Yerel kaynak eşleştirmesi yanıta eklendi\n")
+	    }
+	  }
+	}
 
 	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
 	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)

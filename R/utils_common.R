@@ -189,3 +189,224 @@ strip_planner_text <- function(x) {
   s <- gsub("\n{3,}", "\n\n", s, perl = TRUE)
   trimws(s)
 }
+
+# ==============================================================================
+# YEREL BELGE DEPOSUNDAN KAYNAK EŞLEŞTİRME
+# API kaynak (sources/citations) döndürmediğinde, kullanıcı sorusu ve AI yanıtı
+# üzerinden anahtar kelime çıkararak local_model_paths altındaki belgeleri tarar
+# ve eşleşen dosyalardan tıklanabilir Kaynakça HTML'i üretir.
+# ==============================================================================
+
+# --- TÜRKÇE KARAKTER NORMALİZASYONU ---
+# Dosya adlarındaki ASCII Türkçe ile sorgu metnindeki Unicode Türkçe arasında
+# eşleşme sağlamak için her iki tarafı da ASCII'ye dönüştürür.
+.normalize_turkish <- function(text) {
+  text <- tolower(text)
+  text <- gsub("\u00e7", "c", text)   # ç -> c
+  text <- gsub("\u011f", "g", text)   # ğ -> g
+  text <- gsub("\u0131", "i", text)   # ı -> i
+  text <- gsub("\u00f6", "o", text)   # ö -> o
+  text <- gsub("\u015f", "s", text)   # ş -> s
+  text <- gsub("\u00fc", "u", text)   # ü -> u
+  text <- gsub("\u00e2", "a", text)   # â -> a
+  text <- gsub("\u00ee", "i", text)   # î -> i
+  text <- gsub("\u00fb", "u", text)   # û -> u
+  text
+}
+
+# --- SOHBET GEÇMİŞİNDEN SON KULLANICI SORUSUNU ÇIKAR ---
+.extract_last_user_query <- function(chat_history) {
+  if (!is.list(chat_history) || length(chat_history) == 0) return("")
+  for (i in rev(seq_along(chat_history))) {
+    msg <- chat_history[[i]]
+    role <- msg$type %||% msg$role %||% ""
+    if (identical(role, "user") && is.character(msg$content) && length(msg$content) > 0 && nzchar(msg$content[1])) {
+      return(msg$content[1])
+    }
+  }
+  ""
+}
+
+# --- ANAHTAR KELİME ÇIKARICI ---
+# Kullanıcı sorusu ve (opsiyonel) AI yanıtından arama anahtar kelimeleri üretir.
+# Türkçe durak kelimelerini filtreler ve ASCII normalleştirme uygular.
+extract_search_keywords <- function(user_query, ai_text = NULL) {
+  # Sorgu metni zorunlu
+  if (is.null(user_query) || !nzchar(user_query)) return(character(0))
+
+  # AI yanıtından sadece ilk 500 karakteri kullan (gürültüyü azalt)
+  ai_snippet <- if (!is.null(ai_text) && is.character(ai_text) && nzchar(ai_text[1])) {
+    substr(ai_text[1], 1, 500)
+  } else {
+    ""
+  }
+
+  combined <- paste(user_query, ai_snippet)
+  combined <- .normalize_turkish(combined)
+
+  # Harf ve rakam dışı karakterlerden böl
+  tokens <- unlist(strsplit(combined, "[^a-z0-9]+"))
+  tokens <- tokens[nzchar(tokens)]
+
+  # Türkçe ve İngilizce durak kelimeleri
+  stop_words <- c(
+    "ve", "ile", "bir", "bu", "su", "ne", "nedir", "nelerdir",
+    "nasil", "hangi", "gibi", "kadar", "icin", "olan", "olarak",
+    "da", "de", "mi", "mu", "den", "dan", "ten", "tan",
+    "dir", "ler", "lar", "daki", "deki", "nin", "nun",
+    "the", "is", "are", "what", "how", "which", "and", "or",
+    "var", "yok", "degil", "hem", "ise", "veya", "ya", "ki",
+    "hakkinda", "aciklayiniz", "acikla", "anlat", "anlatir",
+    "merhaba", "selam", "bana", "benim", "bizim", "onun",
+    "lutfen", "tesekkur", "ederim", "sonra", "once"
+  )
+
+  tokens <- tokens[!tokens %in% stop_words]
+  tokens <- tokens[nchar(tokens) >= 3]  # 3 karakterden kısa kelimeleri filtrele
+  unique(tokens)
+}
+
+# --- YEREL DOSYA LİSTESİNDEN TIKLANABIIR KAYNAKÇA HTML'İ ---
+# Dosya indeksinden seçilen dosyalar için tıklanabilir Kaynakça oluşturur.
+# Mevcut source-link CSS sınıfını kullanarak JS tıklama işleyicisiyle uyumlu çalışır.
+build_kaynakca_from_local_files <- function(matched_files, index_map) {
+  if (length(matched_files) == 0) return("")
+
+  sources_text <- "\n\nKaynakça:\n"
+
+  for (i in seq_along(matched_files)) {
+    bn <- matched_files[i]
+    full_paths <- index_map[[bn]]
+    original_filename <- if (length(full_paths) > 0) basename(full_paths[1]) else bn
+
+    # Süreç ön-ekini ayır (ör. proc_001_002_)
+    process_match <- regexpr("^[a-z]+_[0-9]+_[0-9]+_", original_filename, ignore.case = TRUE)
+    process_num <- ""
+    actual_filename <- original_filename
+
+    if (process_match > 0) {
+      match_length <- attr(process_match, "match.length")
+      process_part <- substr(original_filename, 1, match_length - 1)
+      actual_filename <- substr(original_filename, match_length + 1, nchar(original_filename))
+      process_num <- toupper(process_part)
+      process_num <- gsub("_", " ", process_num)
+      process_num <- gsub("-", " ", process_num)
+    }
+
+    # Dosya adını okunabilir biçime getir
+    file_ext <- tolower(tools::file_ext(actual_filename))
+    file_base <- tools::file_path_sans_ext(actual_filename)
+    file_base <- gsub("_", " ", file_base)
+    file_base <- gsub("-", " ", file_base)
+    file_base <- tools::toTitleCase(file_base)
+    formatted_filename <- paste0(file_base, ".", file_ext)
+
+    # Dosya türüne göre ikon belirle
+    icon_html <- if (file_ext %in% c("doc", "docx")) {
+      "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>"
+    } else if (identical(file_ext, "pdf")) {
+      "<i class='fa-regular fa-file-pdf' style='margin-right:6px;color:#c00'></i>"
+    } else if (file_ext %in% c("xls", "xlsx")) {
+      "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#1d6f42'></i>"
+    } else {
+      "<i class='fa-regular fa-file' style='margin-right:6px;'></i>"
+    }
+
+    source_id <- paste0("source_", i, "_", gsub("[^a-z0-9]", "", tolower(formatted_filename)))
+    label_prefix <- if (nchar(process_num) > 0) paste0(process_num, ": ") else ""
+
+    clickable_html <- paste0(
+      "<span class='source-link' data-source-id='", source_id,
+      "' data-filename='", htmltools::htmlEscape(original_filename, attribute = TRUE),
+      "' style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
+      htmltools::htmlEscape(formatted_filename),
+      "</span>"
+    )
+
+    line <- paste0(i, ") ", label_prefix, icon_html, clickable_html, "\n")
+    sources_text <- paste0(sources_text, line)
+  }
+
+  sources_text
+}
+
+# --- ANA KAYNAK EŞLEŞTİRME FONKSİYONU ---
+# API kaynak döndürmediğinde çağrılır. Kullanıcı sorusu + AI yanıtından
+# anahtar kelimeler çıkararak local_model_paths altındaki belge deposunu tarar.
+# En çok eşleşen dosyalardan tıklanabilir Kaynakça HTML'i döndürür.
+match_local_documents_for_kaynakca <- function(chat_history, ai_content, model_id, max_results = 5) {
+  # model_id'ye karşılık gelen belge yolunu bul
+  doc_path <- tryCatch(
+    api_config$local_model_paths[[as.character(model_id)[1]]],
+    error = function(e) NULL
+  )
+  if (is.null(doc_path) || !nzchar(doc_path)) {
+    cat("[KAYNAKÇA-LOCAL] Model için belge yolu bulunamadı:", model_id, "\n")
+    return("")
+  }
+
+  cat("[KAYNAKÇA-LOCAL] Belge deposu:", doc_path, "\n")
+
+  # Belge indeksini al (önbellek TTL ile yönetilir)
+  idx <- tryCatch(.build_basename_index(doc_path), error = function(e) {
+    cat("[KAYNAKÇA-LOCAL] İndeks oluşturma hatası:", e$message, "\n")
+    list(map = list())
+  })
+  if (is.null(idx$map) || length(idx$map) == 0) {
+    cat("[KAYNAKÇA-LOCAL] İndeks boş veya oluşturulamadı\n")
+    return("")
+  }
+
+  cat("[KAYNAKÇA-LOCAL] İndekste", length(idx$map), "benzersiz dosya adı var\n")
+
+  # Son kullanıcı sorusunu çıkar
+  user_query <- .extract_last_user_query(chat_history)
+  if (!nzchar(user_query)) {
+    cat("[KAYNAKÇA-LOCAL] Kullanıcı sorusu bulunamadı\n")
+    return("")
+  }
+
+  # Anahtar kelimeleri çıkar
+  keywords <- extract_search_keywords(user_query, ai_content)
+  if (length(keywords) == 0) {
+    cat("[KAYNAKÇA-LOCAL] Anahtar kelime çıkarılamadı\n")
+    return("")
+  }
+  cat("[KAYNAKÇA-LOCAL] Anahtar kelimeler:", paste(keywords, collapse = ", "), "\n")
+
+  # Her dosya adını anahtar kelimelerle puanla
+  all_basenames <- names(idx$map)
+  scores <- vapply(all_basenames, function(bn) {
+    # Dosya adını normalize et (alt çizgi, tire → boşluk, Türkçe → ASCII)
+    normalized <- .normalize_turkish(bn)
+    normalized <- gsub("[_\\-\\.]", " ", normalized)
+    # Her anahtar kelimenin dosya adında geçip geçmediğini say
+    sum(vapply(keywords, function(kw) {
+      if (grepl(kw, normalized, fixed = TRUE)) 1L else 0L
+    }, integer(1)))
+  }, integer(1))
+
+  # Sıfır puanlıları filtrele
+  nonzero_mask <- scores > 0
+  if (!any(nonzero_mask)) {
+    cat("[KAYNAKÇA-LOCAL] Hiçbir dosya eşleşmedi\n")
+    return("")
+  }
+
+  # Puana göre azalan sırada sırala ve ilk max_results kadarını al
+  filtered_basenames <- all_basenames[nonzero_mask]
+  filtered_scores <- scores[nonzero_mask]
+  top_order <- order(filtered_scores, decreasing = TRUE)
+  top_basenames <- head(filtered_basenames[top_order], max_results)
+  top_scores <- head(filtered_scores[top_order], max_results)
+
+  cat("[KAYNAKÇA-LOCAL] Eşleşen dosyalar:\n")
+  for (j in seq_along(top_basenames)) {
+    cat("  ", j, ") ", top_basenames[j], " (puan: ", top_scores[j], ")\n", sep = "")
+  }
+
+  # Tıklanabilir Kaynakça HTML'i oluştur
+  kaynakca_html <- build_kaynakca_from_local_files(top_basenames, idx$map)
+  cat("[KAYNAKÇA-LOCAL] Kaynakça oluşturuldu:", length(top_basenames), "dosya\n")
+  kaynakca_html
+}
