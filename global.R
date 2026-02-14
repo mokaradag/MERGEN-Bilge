@@ -568,15 +568,25 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         if (!is.null(first_choice$message$tool_calls) && length(first_choice$message$tool_calls) > 0) {
           tool_calls_struct <- first_choice$message$tool_calls
         }
-        # Türkçe: RAG sunucusundan yapısal kaynakları yakala
+        # Türkçe: RAG sunucusundan yapısal kaynakları yakala (sources veya citations)
         if (!is.null(first_choice$message$sources)) {
           sources_list <- first_choice$message$sources
+        } else if (!is.null(first_choice$message$citations)) {
+          sources_list <- first_choice$message$citations
         }
       }
     }
-    # Türkçe: Üst düzey kaynakları da kontrol et (bazı API'ler burada döndürür)
+    # Türkçe: Üst düzey kaynakları da kontrol et (Open WebUI sources veya citations döndürebilir)
     if (is.null(sources_list) && is.list(response_content)) {
-      sources_list <- response_content$sources %||% response_content$message$sources
+      sources_list <- response_content$sources %||% response_content$citations %||%
+                      response_content$message$sources %||% response_content$message$citations
+    }
+
+    # Türkçe: Tanılama — kaynak tespiti sonucu
+    if (!is.null(sources_list) && length(sources_list) > 0) {
+      cat("[SOURCES] İlk yanıttan", length(sources_list), "kaynak grubu bulundu\n")
+    } else {
+      cat("[SOURCES] İlk yanıtta kaynak bulunamadı (response alanları:", paste(names(response_content), collapse = ", "), ")\n")
     }
     
 	# Only error if neither content nor structured tool calls exist (length-safe)
@@ -639,11 +649,18 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	          tool_calls_struct <- NULL
 	          has_content <- TRUE
 	          cat("[RETRY] Başarılı: content_nchar=", nchar(ai_content), "\n")
-	          # Türkçe: Retry yanıtından kaynakları da al
+	          # Türkçe: Retry yanıtından kaynakları da al (sources veya citations)
 	          if (!is.null(retry_msg$sources)) {
 	            sources_list <- retry_msg$sources
+	          } else if (!is.null(retry_msg$citations)) {
+	            sources_list <- retry_msg$citations
 	          } else if (!is.null(retry_content$sources)) {
 	            sources_list <- retry_content$sources
+	          } else if (!is.null(retry_content$citations)) {
+	            sources_list <- retry_content$citations
+	          }
+	          if (!is.null(sources_list)) {
+	            cat("[RETRY] Kaynak bulundu:", length(sources_list), "kaynak grubu\n")
 	          }
 	        } else {
 	          cat("[RETRY] Temizleme sonrası anlamlı içerik kalmadı (nchar=", nchar(retry_text), ")\n")
@@ -1353,6 +1370,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         # Türkçe: Geçerli OpenAI uyumlu yapı mı kontrol et
         if (is.list(parsed) && !is.null(parsed$choices) && length(parsed$choices) > 0) {
           cat("[PARSE] Düz JSON olarak başarıyla ayrıştırıldı (choices mevcut)\n")
+          # Türkçe: Open WebUI citations alanını sources olarak normalize et
+          if (is.null(parsed$sources) && !is.null(parsed$citations)) {
+            parsed$sources <- parsed$citations
+          }
+          src_keys <- intersect(names(parsed), c("sources", "citations"))
+          if (length(src_keys) > 0) cat("[PARSE] Düz JSON kaynaklar bulundu:", paste(src_keys, collapse = ", "), "\n")
           return(parsed)
         }
         NULL
@@ -1392,22 +1415,29 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             NULL
           })
           if (is.null(parsed)) next
-          
+
+          # Türkçe: Tanılama — her SSE chunk'ının üst düzey alanlarını logla (kaynak tespiti için)
+          chunk_keys <- names(parsed)
+          has_src <- any(c("sources", "citations") %in% chunk_keys)
+          if (has_src) {
+            cat("[PARSE] SSE chunk kaynaklar içeriyor! Alanlar:", paste(chunk_keys, collapse = ", "), "\n")
+          }
+
           if (!is.null(parsed$choices) && length(parsed$choices) > 0) {
             ch <- parsed$choices[[1]]
-            
+
             # Streaming format: delta.content
             dc <- ch$delta$content
             if (is.character(dc) && nzchar(dc)) {
               full_content <- paste0(full_content, dc)
             }
-            
+
             # Non-streaming format: message.content (tam yanıt tek parçada)
             mc <- ch$message$content
             if (is.character(mc) && nzchar(mc)) {
               full_content <- mc
             }
-            
+
             # Türkçe: Streaming tool_calls delta parçalarını birleştir
             tc_list <- ch$delta$tool_calls %||% ch$message$tool_calls
             if (is.list(tc_list) && length(tc_list) > 0) {
@@ -1427,13 +1457,15 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
                 }
               }
             }
-            
-            # Kaynakları topla
-            sc <- ch$message$sources %||% ch$delta$sources
+
+            # Türkçe: Kaynakları topla (sources veya citations — Open WebUI her ikisini de kullanır)
+            sc <- ch$message$sources %||% ch$delta$sources %||%
+                  ch$message$citations %||% ch$delta$citations
             if (!is.null(sc)) sources_collected <- sc
           }
-          # Üst düzey kaynaklar
+          # Türkçe: Üst düzey kaynaklar (Open WebUI sources veya citations olarak döndürebilir)
           if (!is.null(parsed$sources)) sources_collected <- parsed$sources
+          if (is.null(sources_collected) && !is.null(parsed$citations)) sources_collected <- parsed$citations
         }
         
 		# Türkçe: Tool call'ları yapısal olarak koru, argümanları içerik olarak ÇIKARMA.
