@@ -575,6 +575,66 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	if (!has_content && (is.null(tool_calls_struct) || length(tool_calls_struct) == 0)) {
 	  stop("EMPTY_RESPONSE: AI'dan geçerli bir yanıt alınamadı.")
 	}
+
+	# Türkçe: Model tool_calls döndürdü ama MCP kapalıysa, araç kullanmadan tekrar iste.
+	# Bu durum RAG modellerin arama sorgusu döndürmesinde oluşur (ör. query_knowledge_files).
+	if (!has_content && !is.null(tool_calls_struct) && length(tool_calls_struct) > 0 && !mcp_enabled_now) {
+	  tc_names <- paste(sapply(tool_calls_struct, function(tc) tc$`function`$name %||% "?"), collapse = ", ")
+	  cat("[RETRY] Model tool_calls döndürdü (", tc_names, ") ama MCP kapalı — tool_choice='none' ile tekrar deneniyor\n")
+	  
+	  # Türkçe: Aynı isteği tool_choice="none" ile tekrar gönder
+	  retry_body <- list(
+	    model = selected_model,
+	    messages = messages_payload,
+	    stream = FALSE,
+	    temperature = temp_value,
+	    tool_choice = "none"
+	  )
+	  
+	  retry_response <- tryCatch({
+	    httr::POST(
+	      api_endpoint,
+	      do.call(httr::add_headers, hdrs),
+	      body = jsonlite::toJSON(retry_body, auto_unbox = TRUE),
+	      encode = "raw",
+	      httr::timeout(300)
+	    )
+	  }, error = function(e) {
+	    cat("[RETRY] Tekrar istek hatası:", e$message, "\n")
+	    NULL
+	  })
+	  
+	  if (!is.null(retry_response) && httr::status_code(retry_response) == 200) {
+	    retry_content <- safe_parse_llm_response(retry_response)
+	    
+	    if (is.list(retry_content) && !is.null(retry_content$choices) && length(retry_content$choices) > 0) {
+	      retry_msg <- retry_content$choices[[1]]$message
+	      retry_text <- retry_msg$content %||% ""
+	      if (is.character(retry_text) && nzchar(retry_text)) {
+	        cat("[RETRY] Başarılı: content_nchar=", nchar(retry_text), "\n")
+	        ai_content <- retry_text
+	        tool_calls_struct <- NULL
+	        has_content <- TRUE
+	        # Türkçe: Retry yanıtından kaynakları da al
+	        if (!is.null(retry_msg$sources)) {
+	          sources_list <- retry_msg$sources
+	        } else if (!is.null(retry_content$sources)) {
+	          sources_list <- retry_content$sources
+	        }
+	      }
+	    }
+	    
+	    # Türkçe: Retry de başarısızsa hata ver
+	    if (!has_content) {
+	      cat("[RETRY] tool_choice='none' ile de içerik alınamadı\n")
+	      stop("EMPTY_RESPONSE: Model araç çağrısı döndürdü ancak doğrudan yanıt alınamadı.")
+	    }
+	  } else {
+	    status_code <- if (!is.null(retry_response)) httr::status_code(retry_response) else "NULL"
+	    cat("[RETRY] Tekrar istek başarısız, HTTP:", status_code, "\n")
+	    stop("EMPTY_RESPONSE: Model araç çağrısı döndürdü, tekrar istek başarısız.")
+	  }
+	}
     
 	cat("[RESPONSE] Content length:", if (has_content) nchar(ai_content[1]) else 0, "chars\n")
 	cat("[RESPONSE] Preview:", if (has_content) substr(ai_content[1], 1, 200) else "", "...\n")
@@ -1247,15 +1307,40 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       cat("[PARSE] Content-Type text/event-stream algılandı, manuel ayrıştırma yapılıyor\n")
       raw_text <- httr::content(response, "text", encoding = "UTF-8")
       
-      # SSE formatını kontrol et (data: {...} satırları)
+      # DEBUG: Ham yanıtın ilk 500 karakterini logla
+      cat("[PARSE] Ham yanıt uzunluğu:", nchar(raw_text), "karakter\n")
+      cat("[PARSE] İlk 500 karakter: ", substr(raw_text, 1, 500), "\n")
+      
+      # Türkçe: ÖNCE düz JSON olarak ayrıştırmayı dene.
+      # Bazı API'ler text/event-stream başlığı ile düz JSON döndürür.
+      json_result <- tryCatch({
+        parsed <- jsonlite::fromJSON(raw_text, simplifyVector = FALSE)
+        # Türkçe: Geçerli OpenAI uyumlu yapı mı kontrol et
+        if (is.list(parsed) && !is.null(parsed$choices) && length(parsed$choices) > 0) {
+          cat("[PARSE] Düz JSON olarak başarıyla ayrıştırıldı (choices mevcut)\n")
+          return(parsed)
+        }
+        NULL
+      }, error = function(e) NULL)
+      
+      if (!is.null(json_result)) return(json_result)
+      
+      # Türkçe: Düz JSON değilse SSE formatını dene (data: {...} satırları)
       lines <- strsplit(raw_text, "\n")[[1]]
       data_lines <- grep("^data:\\s*", lines, value = TRUE)
+      
+      cat("[PARSE] Toplam satır:", length(lines), "- SSE data satırı:", length(data_lines), "\n")
       
       if (length(data_lines) > 0) {
         # Türkçe: SSE satırlarından JSON kısmını çıkar
         data_lines <- sub("^data:\\s*", "", data_lines)
         data_lines <- data_lines[!grepl("^\\[DONE\\]", trimws(data_lines))]
         data_lines <- data_lines[nzchar(trimws(data_lines))]
+        
+	  cat("[PARSE] Filtrelenmiş data satırı:", length(data_lines), "\n")
+        if (length(data_lines) > 0) {
+          cat("[PARSE] İlk data satırı: ", substr(data_lines[1], 1, 300), "\n")
+        }
         
         if (length(data_lines) == 0) {
           stop("EMPTY_RESPONSE: SSE yanıtında geçerli veri satırı bulunamadı.")
@@ -1264,17 +1349,50 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         # Türkçe: Streaming delta'ları birleştir
         full_content <- ""
         sources_collected <- NULL
+        tool_calls_map <- list()
+        
         for (dl in data_lines) {
-          parsed <- tryCatch(jsonlite::fromJSON(dl, simplifyVector = FALSE), error = function(e) NULL)
+          parsed <- tryCatch(jsonlite::fromJSON(dl, simplifyVector = FALSE), error = function(e) {
+            cat("[PARSE] JSON ayrıştırma hatası: ", substr(dl, 1, 100), " -> ", e$message, "\n")
+            NULL
+          })
           if (is.null(parsed)) next
+          
           if (!is.null(parsed$choices) && length(parsed$choices) > 0) {
             ch <- parsed$choices[[1]]
+            
             # Streaming format: delta.content
             dc <- ch$delta$content
-            if (!is.null(dc)) full_content <- paste0(full_content, dc)
-            # Non-streaming format: message.content (tam yanıt)
+            if (is.character(dc) && nzchar(dc)) {
+              full_content <- paste0(full_content, dc)
+            }
+            
+            # Non-streaming format: message.content (tam yanıt tek parçada)
             mc <- ch$message$content
-            if (!is.null(mc)) full_content <- mc
+            if (is.character(mc) && nzchar(mc)) {
+              full_content <- mc
+            }
+            
+            # Türkçe: Streaming tool_calls delta parçalarını birleştir
+            tc_list <- ch$delta$tool_calls %||% ch$message$tool_calls
+            if (is.list(tc_list) && length(tc_list) > 0) {
+              for (tc in tc_list) {
+                tc_idx <- as.character(tc$index %||% "0")
+                if (is.null(tool_calls_map[[tc_idx]])) {
+                  tool_calls_map[[tc_idx]] <- list(name = "", arguments = "")
+                }
+                if (!is.null(tc$`function`$name) && nzchar(tc$`function`$name)) {
+                  tool_calls_map[[tc_idx]]$name <- tc$`function`$name
+                }
+                if (!is.null(tc$`function`$arguments)) {
+                  tool_calls_map[[tc_idx]]$arguments <- paste0(
+                    tool_calls_map[[tc_idx]]$arguments,
+                    tc$`function`$arguments
+                  )
+                }
+              }
+            }
+            
             # Kaynakları topla
             sc <- ch$message$sources %||% ch$delta$sources
             if (!is.null(sc)) sources_collected <- sc
@@ -1283,25 +1401,52 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           if (!is.null(parsed$sources)) sources_collected <- parsed$sources
         }
         
-        # Türkçe: Standart OpenAI uyumlu yapı oluştur
-        result <- list(
-          choices = list(list(
-            message = list(content = full_content, role = "assistant")
-          ))
-        )
-        if (!is.null(sources_collected)) {
-          result$choices[[1]]$message$sources <- sources_collected
+		# Türkçe: Tool call'ları yapısal olarak koru, argümanları içerik olarak ÇIKARMA.
+        # Model arama sorgusu (ör. query_knowledge_files) döndürebilir — bu yanıt değil.
+        assembled_tool_calls <- NULL
+        if (length(tool_calls_map) > 0) {
+          cat("[PARSE] Tool calls algılandı (", length(tool_calls_map), " adet)\n")
+          assembled_tool_calls <- lapply(names(tool_calls_map), function(tc_key) {
+            tc_info <- tool_calls_map[[tc_key]]
+            cat("[PARSE] Tool call [", tc_key, "]: name=", tc_info$name, 
+                " args_len=", nchar(tc_info$arguments), "\n")
+            list(
+              id = paste0("call_sse_", tc_key),
+              type = "function",
+              `function` = list(
+                name = tc_info$name,
+                arguments = tc_info$arguments
+              )
+            )
+          })
         }
+        
+        cat("[PARSE] SSE birleştirme sonucu: content_nchar=", nchar(full_content), 
+            " tool_calls=", length(tool_calls_map), "\n")
+        
+		# Türkçe: Standart OpenAI uyumlu yapı oluştur (tool_calls dahil)
+        msg <- list(content = full_content, role = "assistant")
+        if (!is.null(assembled_tool_calls)) {
+          msg$tool_calls <- assembled_tool_calls
+        }
+        if (!is.null(sources_collected)) {
+          msg$sources <- sources_collected
+        }
+        result <- list(choices = list(list(message = msg)))
         return(result)
         
       } else {
-        # Türkçe: SSE değilse düz JSON olarak ayrıştırmayı dene
-        return(tryCatch(
-          jsonlite::fromJSON(raw_text, simplifyVector = FALSE),
-          error = function(e) {
-            stop(paste0("PARSE_ERROR: text/event-stream yanıtı ayrıştırılamadı: ", e$message))
-          }
-        ))
+        # Türkçe: Ne düz JSON ne SSE — ham metin varsa onu doğrudan içerik olarak dön
+        raw_trimmed <- trimws(raw_text)
+        if (nzchar(raw_trimmed)) {
+          cat("[PARSE] SSE/JSON ayrıştırılamadı, ham metin içerik olarak kullanılıyor\n")
+          return(list(
+            choices = list(list(
+              message = list(content = raw_trimmed, role = "assistant")
+            ))
+          ))
+        }
+        stop("EMPTY_RESPONSE: text/event-stream yanıtı boş.")
       }
       
     } else {
