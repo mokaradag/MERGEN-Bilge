@@ -625,6 +625,11 @@ sendMessageInit <- function(
       # Standart sohbet modu veya SQL analizi
       if (identical(tool_family, "sql_analysis")) {
          # messages_to_process zaten hazır
+      } else if (identical(tool_family, "process") || identical(tool_family, "app_expert")) {
+        # RAG modelleri: Modelin kendi sunucu tarafı sistem promptunu kullanması için
+        # MERGEN-Bilge'den ek sistem mesajı veya Kaynakça talimatı eklenmez.
+        # Kullanıcı mesajları olduğu gibi modele iletilir.
+        messages_to_process <- recent_messages
       } else {
         messages_to_process <- c(list(system_msg), recent_messages)
       }
