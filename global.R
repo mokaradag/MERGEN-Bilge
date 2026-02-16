@@ -287,7 +287,7 @@ MAX_MCP_RECURSION <- 4
 
 # Shared LLM worker function with prompt-based MCP support
 call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL, enable_tools = NULL, recursion_depth = 0) {
-  worker_start_time <- Sys.time()      # <— add this line
+  worker_start_time <- Sys.time()
   # Prevent infinite recursion
 
   if (recursion_depth > 5) {
@@ -582,15 +582,22 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	  tc_names <- paste(sapply(tool_calls_struct, function(tc) tc$`function`$name %||% "?"), collapse = ", ")
 	  cat("[RETRY] Model tool_calls döndürdü (", tc_names, ") ama MCP kapalı — tool_choice='none' ile tekrar deneniyor\n")
 
-	  # Türkçe: Mesaj listesinin sonuna araç kullanmama talimatı ekle.
-	  # Qwen/RAG modelleri tool_choice='none' olsa bile metin olarak araç çağrısı yazabiliyor.
-	  retry_messages <- c(messages_payload, list(
-	    list(role = "system", content = paste0(
-	      "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
-	      "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
-	      "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
+	  is_rag_model <- identical(tool_family, "process") || identical(tool_family, "app_expert")
+
+	  if (is_rag_model) {
+	    # RAG modelleri (process/app_expert): Modele ek talimat eklenmez.
+	    # Model kendi bilgi tabanını kullanarak doğrudan yanıt verir.
+	    retry_messages <- messages_payload
+	  } else {
+	    # Diğer modeller: Araç kullanmama talimatı ekle.
+	    retry_messages <- c(messages_payload, list(
+	      list(role = "system", content = paste0(
+	        "ÖNEMLİ: Herhangi bir araç veya fonksiyon çağrısı KULLANMA. ",
+	        "<function=...>, <tool_call>, query_knowledge_files gibi hiçbir araç söz dizimi yazma. ",
+	        "Soruyu doğrudan, kendi bilginle ve düz metin olarak yanıtla."
+	      ))
 	    ))
-	  ))
+	  }
 
 	  retry_body <- list(
 	    model = selected_model,
@@ -620,9 +627,14 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	      retry_msg <- retry_content$choices[[1]]$message
 	      retry_text <- retry_msg$content %||% ""
 	      if (is.character(retry_text) && nzchar(retry_text)) {
-	        # Türkçe: Yanıttaki metin-tabanlı araç çağrılarını temizle
-	        retry_text <- strip_planner_text(retry_text)
-	        cat("[RETRY] Temizlenmiş içerik: content_nchar=", nchar(retry_text), "\n")
+	        if (is_rag_model) {
+	          # RAG modelleri: Yanıtı olduğu gibi al, değiştirme
+	          cat("[RETRY] RAG model yanıtı alındı: content_nchar=", nchar(retry_text), "\n")
+	        } else {
+	          # Diğer modeller: Metin-tabanlı araç çağrılarını temizle
+	          retry_text <- strip_planner_text(retry_text)
+	          cat("[RETRY] Temizlenmiş içerik: content_nchar=", nchar(retry_text), "\n")
+	        }
 
 	        # Türkçe: Temizleme sonrası anlamlı içerik kaldı mı kontrol et
 	        if (nzchar(retry_text) && nchar(retry_text) >= 10) {
@@ -630,12 +642,6 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 	          tool_calls_struct <- NULL
 	          has_content <- TRUE
 	          cat("[RETRY] Başarılı: content_nchar=", nchar(ai_content), "\n")
-	          # Türkçe: Retry yanıtından kaynakları da al
-	          if (!is.null(retry_msg$sources)) {
-	            sources_list <- retry_msg$sources
-	          } else if (!is.null(retry_content$sources)) {
-	            sources_list <- retry_content$sources
-	          }
 	        } else {
 	          cat("[RETRY] Temizleme sonrası anlamlı içerik kalmadı (nchar=", nchar(retry_text), ")\n")
 	        }
@@ -884,78 +890,35 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 			))
         }
 		
-		# Türkçe: Ham araç sonuçlarını detaylı logla
-        cat("\n========== [GLOBAL] HAM ARAÇ SONUÇLARI ==========\n")
+		# Araç sonuç özetini logla
         for (i in seq_along(tool_results_raw)) {
           raw <- tool_results_raw[[i]]
-          cat("\n[GLOBAL] Araç #", i, "\n")
-          cat("[GLOBAL] Class:", class(raw), "\n")
-          cat("[GLOBAL] Names:", paste(names(raw), collapse=", "), "\n")
-          
-          if (is.list(raw)) {
-            if (!is.null(raw$error)) {
-              cat("[GLOBAL] *** HATA VAR ***: ", raw$error, "\n")
-            }
-            
+          if (is.list(raw) && !is.null(raw$error)) {
+            cat("[MCP] Araç #", i, " HATA:", raw$error, "\n")
+          } else {
             df <- raw$`sonuç_önizleme` %||% raw$preview
             if (is.data.frame(df)) {
-              cat("[GLOBAL] DataFrame bulundu - Satır:", nrow(df), " Sütun:", ncol(df), "\n")
-              if (nrow(df) > 0) {
-                cat("[GLOBAL] İlk satır:\n")
-                print(df[1, , drop=FALSE])
-              }
-            } else {
-              cat("[GLOBAL] DataFrame YOK veya geçersiz!\n")
+              cat("[MCP] Araç #", i, " sonuç:", nrow(df), "satır x", ncol(df), "sütun\n")
             }
           }
         }
-        cat("========== [GLOBAL] HAM SONUÇLAR BİTİŞ ==========\n\n")
         
-# Türkçe: Araç sonuçlarını LLM için okunabilir formata çevir
-        cat("\n╔════════════════════════════════════════════════════╗\n")
-        cat("║  [GLOBAL] ARAÇ SONUÇLARINI FORMATLAMAYA BAŞLIYOR  ║\n")
-        cat("╚════════════════════════════════════════════════════╝\n\n")
-        
+        # Araç sonuçlarını LLM için okunabilir formata çevir
         tool_results <- lapply(seq_along(tool_calls), function(i) {
           raw <- tool_results_raw[[i]]
           tool_name <- tool_calls[[i]]$function_name
-          
-          cat("\n========== [GLOBAL] Araç #", i, " Formatlanıyor ==========\n")
-          cat("[GLOBAL] Araç adı:", tool_name, "\n")
-          cat("[GLOBAL] raw değişkeni class:", class(raw), "\n")
-          cat("[GLOBAL] raw değişkeni names:", paste(names(raw), collapse=", "), "\n")
-          
-          # Türkçe: sonuç_önizleme veya preview'i bul
-          df <- NULL
-          if (!is.null(raw$`sonuç_önizleme`)) {
-            cat("[GLOBAL] sonuç_önizleme bulundu\n")
-            df <- raw$`sonuç_önizleme`
-          } else if (!is.null(raw$preview)) {
-            cat("[GLOBAL] preview bulundu\n")
-            df <- raw$preview
-          } else {
-            cat("[GLOBAL] *** UYARI: Ne sonuç_önizleme ne de preview bulundu! ***\n")
-          }
-          
-          cat("[GLOBAL] df class:", class(df), "\n")
-          cat("[GLOBAL] df is.data.frame:", is.data.frame(df), "\n") 
+
+          df <- raw$`sonuç_önizleme` %||% raw$preview
 
           if (is.list(raw) && (!is.null(raw$chart) || isTRUE(raw$`__mcp_plot`))) {
-            cat("[GLOBAL] Grafik sonucu algılandı; JSON yerine özet kullanılacak.\n")
             result_text <- build_chart_summary(raw)
 
           } else if (is.data.frame(df)) {
-            cat("[GLOBAL] DataFrame boyutu: ", nrow(df), " satır x ", ncol(df), " sütun\n")
-            cat("[GLOBAL] Sütun isimleri:", paste(colnames(df), collapse=", "), "\n")
-            
             if (nrow(df) > 0) {
               # Ensure UTF-8 headers/cells so Turkish characters render correctly
               df <- as.data.frame(df, stringsAsFactors = FALSE)
               df[] <- lapply(df, function(col) tryCatch(enc2utf8(as.character(col)), error = function(e) col))
               colnames(df) <- tryCatch(enc2utf8(colnames(df)), error = function(e) colnames(df))
-			  
-              cat("[GLOBAL] ✓ VERİ VAR - İLK SATIR:\n")
-              print(df[1, , drop=FALSE])
               
               # Türkçe: DataFrame'i markdown tablo olarak formatla
               header <- paste0("| ", paste(colnames(df), collapse = " | "), " |")
@@ -1001,49 +964,26 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
                 "BU TABLODAKİ SAYILARI BİREBİR KOPYALA!"
               )
               
-              cat("\n[GLOBAL] ✓ Markdown tablo oluşturuldu\n")
-              cat("[GLOBAL] Tablo uzunluğu:", nchar(table_md), "karakter\n")
-              cat("[GLOBAL] Tablo ilk 500 karakteri:\n")
-              cat(substr(table_md, 1, 500), "\n...\n")
-              
             } else {
-              cat("[GLOBAL] *** UYARI: DataFrame BOŞ (0 satır) ***\n")
               result_text <- "UYARI: Sorgu sonucu boş döndü."
             }
           } else if (is.list(raw) && !is.null(raw$result) && is.character(raw$result)) {
-            cat("[GLOBAL] ✓ Liste içindeki result metni kullanılacak\n")
             result_text <- paste(raw$result, collapse = "\n\n")
           } else if (is.character(raw) && length(raw)) {
-            cat("[GLOBAL] ✓ Ham karakter vektörü kullanılacak\n")
             result_text <- paste(raw, collapse = "\n\n")
           } else {
-            cat("[GLOBAL] *** UYARI: df DataFrame değil! JSON formatında dönecek ***\n")
             result_text <- jsonlite::toJSON(raw, auto_unbox = TRUE, pretty = TRUE)
           }
-          
-          cat("[GLOBAL] result_text uzunluğu:", nchar(result_text), "karakter\n")
-          cat("[GLOBAL] result_text ilk 300 karakteri:\n")
-          cat(substr(result_text, 1, 300), "\n...\n")
-          cat("========================================\n\n")
-          
+
           list(tool = tool_name, result = result_text)
         })
         
-        cat("\n╔════════════════════════════════════════════════════╗\n")
-        cat("║  [GLOBAL] TÜM ARAÇLAR FORMATLANDI                  ║\n")
-        cat("╚════════════════════════════════════════════════════╝\n\n")
-        
-		# Türkçe: Araç sonuçlarını log'a yaz
+        # Araç sonuç özetlerini logla
         for (i in seq_along(tool_results)) {
-          tr <- tool_results[[i]]
-          cat("\n========== ARAÇ SONUCU ", i, " ==========\n")
-          cat("Araç Adı: ", tr$tool, "\n")
-          cat("Sonuç Uzunluğu: ", nchar(tr$result), " karakter\n")
-          cat("İlk 1000 karakter:\n", substr(tr$result, 1, 1000), "\n")
-          cat("========================================\n\n")
+          cat("[MCP] Araç", tool_results[[i]]$tool, "sonuç:", nchar(tool_results[[i]]$result), "karakter\n")
         }
-        
-        # Türkçe: LLM için sonuç mesajı oluştur
+
+        # LLM için sonuç mesajı oluştur
         results_text <- paste(
           vapply(tool_results, function(tr) trimws(tr$result), character(1)),
           collapse = "\n\n"
@@ -1067,33 +1007,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 		  ))
 		}
         
-        # Türkçe: Tam sonuç metnini log'a yaz (LLM'e ne gönderildiğini görmek için)
-        cat("\n========== LLM'E GÖNDERİLEN TAM SONUÇ METNİ ==========\n")
-        cat(results_text, "\n")
-        cat("========================================\n\n")
-		
-		# Türkçe: Chat history'nin son elemanını (AI'a gönderilecek mesajı) detaylı logla
-        cat("\n╔═══════════════════════════════════════════════════════════╗\n")
-        cat("║  [GLOBAL] AI'A GÖNDERİLECEK MESAJIN SON HALİ              ║\n")
-        cat("╚═══════════════════════════════════════════════════════════╝\n\n")
-        
-        last_msg <- chat_history[[length(chat_history)]]
-        cat("[GLOBAL] Son mesaj role:", last_msg$role, "\n")
-        cat("[GLOBAL] Son mesaj uzunluğu:", nchar(last_msg$content), "karakter\n")
-        cat("\n[GLOBAL] SON MESAJIN TAM İÇERİĞİ:\n")
-        cat("════════════════════════════════════════════════════════════\n")
-        cat(last_msg$content)
-        cat("\n════════════════════════════════════════════════════════════\n\n")
-        
-        # Türkçe: Markdown tablo var mı kontrol et
-        if (grepl("\\|.*\\|.*\\|", last_msg$content)) {
-          cat("[GLOBAL] ✓ Mesajda markdown tablo BULUNDU\n")
-          # Türkçe: Kaç satır tablo var?
-          table_lines <- length(gregexpr("\n", last_msg$content)[[1]])
-          cat("[GLOBAL] Tabloda yaklaşık", table_lines, "satır var\n")
-        } else {
-          cat("[GLOBAL] *** UYARI: Mesajda markdown tablo BULUNAMADI! ***\n")
-        }
+        cat("[MCP] Araç sonuçları hazır, toplam:", nchar(results_text), "karakter\n")
         
         # Add to history - IMPORTANT: Don't include raw tool call text
         chat_history <- append(chat_history, list(
@@ -1151,33 +1065,6 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         # Türkçe: Sistem mesajını chat_history'nin başına ekle
         chat_history <- c(list(system_msg_anti_hallucination), chat_history)
 		
-		# Türkçe: DEBUG - Tüm chat_history'yi dosyaya yaz
-        tryCatch({
-          debug_file <- file.path(tempdir(), sprintf("chat_debug_%s.txt", format(Sys.time(), "%Y%m%d_%H%M%S")))
-          writeLines(
-            c(
-              "═══════════════════════════════════════════════",
-              "CHAT HISTORY - AI'A GÖNDERİLEN TÜM MESAJLAR",
-              "═══════════════════════════════════════════════",
-              "",
-              sapply(seq_along(chat_history), function(i) {
-                msg <- chat_history[[i]]
-                paste0(
-                  "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-                  "MESAJ #", i, " - Role: ", msg$role, "\n",
-                  "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
-                  msg$content
-                )
-              })
-            ),
-            debug_file
-          )
-          cat("\n[GLOBAL] ✓ Chat history dosyaya yazıldı:", debug_file, "\n")
-          cat("[GLOBAL] Bu dosyayı inceleyerek AI'a tam olarak ne gönderildiğini görebilirsiniz\n\n")
-        }, error = function(e) {
-          cat("[GLOBAL] Dosya yazma hatası:", e$message, "\n")
-        })
-        
         # SECOND PASS: ask the model to write the final answer from tool results (tools OFF)
         messages_payload2 <- lapply(chat_history, function(msg) {
           role_val <- if (!is.null(msg$type)) {
@@ -1284,13 +1171,15 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     cat("[SUCCESS] Returning response\n")
     cat("========================================\n\n")
 
-	ai_content <- strip_planner_text(ai_content)
+	is_rag_passthrough <- identical(tool_family, "process") || identical(tool_family, "app_expert")
 
-	# Türkçe: Yapısal kaynak yoksa düz metin Kaynakça'yı tıklanabilir yap
-	ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
-
-	# Türkçe yorum: Model araç çağırmadıysa ve grafik niyeti varsa yedek grafik bloğu ekle
-	ai_content <- add_fallback_chart(ai_content)
+	if (!is_rag_passthrough) {
+	  # Standart modeller: Metin temizliği ve post-processing uygula
+	  ai_content <- strip_planner_text(ai_content)
+	  ai_content <- convert_plain_kaynakca_to_clickable(ai_content)
+	  ai_content <- add_fallback_chart(ai_content)
+	}
+	# RAG modelleri (process/app_expert): Yanıt olduğu gibi döndürülür, değiştirilmez
 
 	return(list(
 	  content = ai_content,
