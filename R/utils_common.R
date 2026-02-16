@@ -38,13 +38,6 @@ strip_planner_text <- function(x) {
   s <- gsub("\\{\\s*\"action\"\\s*:\\s*\"[^\"]+\"[^{}]*\"parameters\"\\s*:\\s*\\{[^{}]*\\}\\s*\\}", "", s, perl = TRUE)
   s <- gsub("\\s*<tool_call>.*?</tool_call>\\s*", "", s, perl = TRUE)
 
-  # Qwen/RAG modellerin metin olarak yazdığı <function=...> biçimli araç çağrılarını kaldır
-  s <- gsub("<function=\\w+>.*?</function>", "", s, perl = TRUE)
-  # Tamamlanmamış (kapanış etiketi eksik) <function=...> bloklarını da kaldır
-  s <- gsub("<function=\\w+>(?:(?!</function>).)*$", "", s, perl = TRUE)
-  # Kalan kapanmamış </too, </tool vb. parçaları kaldır
-  s <- gsub("</?(too|tool|function|parameter)\\w*>?\\s*$", "", s, perl = TRUE)
-
   # Planlayıcı meta-cümlelerini kaldır (İngilizce kalıplar)
   s <- gsub("(?im)^(we need to .*|let'?s try.*|probably .*|i'?ll try.*|we will call.*|we will invoke.*|now produce the tool call\\.?|we need to produce a tool call\\.?)\\s*$", "", s, perl = TRUE)
 
