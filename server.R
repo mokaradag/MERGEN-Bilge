@@ -1,4 +1,10 @@
-# server.R
+# ==============================================================================
+# Dosya Adı: server.R
+# Açıklama:  Shiny uygulamasının ana sunucu (server) fonksiyonu.
+#            Kullanıcı oturumlarını başlatır, kimlik doğrulama işlemlerini yönetir,
+#            tüm modülleri (sohbet, dosyalar, ayarlar, TTS/STT, vb.) bağlar ve
+#            uygulamanın reaktif durumunu (values) yönetir.
+# ==============================================================================
 
 server <- function(input, output, session) {
 
@@ -12,40 +18,40 @@ server <- function(input, output, session) {
   
   # ---- Kullanıcı ve oturum başlatma ------------------------------------------
 
-	# Kullanıcı kimlik bilgilerini çözümle (Keycloak'a hazır)
-	user_identity <- resolveUserIdentity()
-	system_username <- user_identity$username
+    # Kullanıcı kimlik bilgilerini çözümle (Keycloak'a hazır)
+    user_identity <- resolveUserIdentity()
+    system_username <- user_identity$username
 
-	# Veritabanından kalıcı kullanıcı kimliğini al veya oluştur
-	current_user_id <- get_or_create_user(system_username)
-	
-	# Kimlik bilgilerini session'a kaydet (welcome ekranı ve diğer modüller için)
-	session$userData$user_identity <- user_identity
-	session$userData$user_first_name <- user_identity$first_name
+    # Veritabanından kalıcı kullanıcı kimliğini al veya oluştur
+    current_user_id <- get_or_create_user(system_username)
+    
+    # Kimlik bilgilerini session'a kaydet (welcome ekranı ve diğer modüller için)
+    session$userData$user_identity <- user_identity
+    session$userData$user_first_name <- user_identity$first_name
 
-	# Sohbet baloncuklarında kullanıcı adı ve avatar için user_config güncelle
-	user_config$name   <<- user_identity$full_name
-	user_config$userId <<- user_identity$sicil %||% as.character(current_user_id)
+    # Sohbet baloncuklarında kullanıcı adı ve avatar için user_config güncelle
+    user_config$name    <<- user_identity$full_name
+    user_config$userId <<- user_identity$sicil %||% as.character(current_user_id)
 
-	# Kullanıcı oturumu için önbellek dizinini yapılandır
-	cache_dir <- session_cache$setup_user_session(current_user_id)
+    # Kullanıcı oturumu için önbellek dizinini yapılandır
+    cache_dir <- session_cache$setup_user_session(current_user_id)
 
-	# Expose username & (later) api key to this session
-	session$userData$system_username <- system_username
-	
-	# Mount API key module (replaces old inline modal/handlers)
-	api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
-	
-  # Expose user id to tools/resolvers
-  session$userData$user_id <- current_user_id   
+    # Kullanıcı adını ve (ileride) API anahtarını bu oturuma sun
+    session$userData$system_username <- system_username
+    
+    # API anahtarı modülünü bağla (eski satır içi modal/işleyicilerin yerini alır)
+    api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
+    
+  # Kullanıcı kimliğini araçlara/çözücülere sun
+  session$userData$user_id <- current_user_id    
 
-  # Initialize performance tracking module
+  # Performans takibi modülünü başlat
   perf_tracker <- performanceStatsServer("perf_stats", current_user_id)
   
-  # Mount health module
+  # Sağlık modülünü bağla
   healthServer("health_module", perf_tracker = perf_tracker)
 
-  # --- Module Server Initialization (Yukarı Taşındı) ---
+  # --- Modül Sunucusu Başlatma (Yukarı Taşındı) ---
   settings_data <- settingsServer("settings_module", parent_session = session)
 
   # İleri referanslar: Bu fonksiyonlar daha sonra tanımlanacak ama şimdiden observer'lara geçirilmeli
@@ -70,25 +76,25 @@ server <- function(input, output, session) {
   # Geri bildirim modülü
   feedback_modal <- feedbackServer("feedback_module", current_user_id)
         
-  # Initialize AI processing module
+  # YZ (AI) işleme modülünü başlat
   ai_processor <- aiProcessingServer("ai_proc")
   
-  # Initialize TTS processing module
+  # TTS (Metinden Sese) işleme modülünü başlat
   tts_processor <- ttsProcessingServer("tts_proc")
   
-  # Initialize TTS Visualizer
+  # TTS Görselleştiricisini başlat
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
   
   # Müzik yöneticisini başlat (modüler)
   musicHandlersInit(input, session, settings_data)
   
-  # Initialize Speech-to-Text Module
+  # Sesten Metne (STT) modülünü başlat
   stt_data <- sttServer("stt_module", parent_session = session, settings = settings_data)
   
-  # Initialize File Preview module (replaces preview outputs + modal helpers)
+  # Dosya Önizleme modülünü başlat (eski önizleme çıktıları + modal yardımcılarının yerini alır)
   filePreview <- filePreviewServer("file_preview")
   
-  # Lightweight follow-up suggestion generator
+  # Hafif sıklet takip sorusu önerisi oluşturucu
   fallback_followup_tool <- create_followup_suggestions_tool()
   followup_tools <- followupSuggestionsServer("followup_module")
   if (is.null(followup_tools) || is.null(followup_tools$generate)) {
@@ -97,32 +103,32 @@ server <- function(input, output, session) {
   
   init_docx_preview_js(session)
   
-  # Load existing feedback when the app starts
+  # Uygulama başladığında mevcut geri bildirimleri yükle
   initial_feedback <- load_feedback_from_db(current_user_id)
   
-  # --- Core Reactive Values for the Application ---
-	values <- reactiveValues(
-	  messages = list(),
-	  saved_chats = list(),
-	  show_welcome = TRUE,
-	  current_chat_id = NULL,
-	  last_request_time = NULL,
-	  is_sending = FALSE,
-	  typing = FALSE,
-	  liked_messages = initial_feedback$liked,
-	  disliked_messages = initial_feedback$disliked,
-	  current_font_size = "medium",
-	  temp_files = list()
-	)
+  # --- Uygulama için Çekirdek Reaktif Değerler ---
+    values <- reactiveValues(
+      messages = list(),
+      saved_chats = list(),
+      show_welcome = TRUE,
+      current_chat_id = NULL,
+      last_request_time = NULL,
+      is_sending = FALSE,
+      typing = FALSE,
+      liked_messages = initial_feedback$liked,
+      disliked_messages = initial_feedback$disliked,
+      current_font_size = "medium",
+      temp_files = list()
+    )
 
-	session$userData$welcome_screen_attached <- FALSE
-		
-	# chat export wiring (copy & export)
-	chatExportInit(input, output, session, values, user_display_name = user_config$name)
+    session$userData$welcome_screen_attached <- FALSE
+        
+    # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
+    chatExportInit(input, output, session, values, user_display_name = user_config$name)
 
-	# chart store for resolving ```chartlab``` refs
-	if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
-	  
+    # Chartlab referanslarını çözümlemek için grafik deposu
+    if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
+      
   chat_list_trigger <- reactiveVal(0)
   stop_generation <- reactiveVal(FALSE)
   file_to_add <- reactiveVal(NULL)
@@ -140,24 +146,24 @@ server <- function(input, output, session) {
   # Ayar gözlemcilerini başlat (modüler)
   settingsObserversInit(input, session, values, settings_data)
   
-	# Session timeout management (modulerized)
-	sessionTimeoutServer(
-	  "session_timeout",
-	  idle_minutes    = 30,
-	  activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
-	)
-	    		  
-	# Pass values reactive to file manager for temp_files access
-	file_manager_data <- fileManagerServer(
-	  "file_manager_module",
-	  new_file_trigger = reactive({ file_to_add() }),
-	  session_files_reactive = session_files,
-	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
-	  user_id = current_user_id,
-	  settings_data = settings_data  # YENİ: Settings modülünü ilet
-	)
-	
-  # Store file manager data in session for summarization module access
+    # Oturum zaman aşımı yönetimi (modülerleştirildi)
+    sessionTimeoutServer(
+      "session_timeout",
+      idle_minutes    = 30,
+      activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
+    )
+                
+    # Geçici dosya (temp_files) erişimi için 'values' reaktif nesnesini dosya yöneticisine ilet
+    file_manager_data <- fileManagerServer(
+      "file_manager_module",
+      new_file_trigger = reactive({ file_to_add() }),
+      session_files_reactive = session_files,
+      mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
+      user_id = current_user_id,
+      settings_data = settings_data
+    )
+    
+  # Özetleme modülü erişimi için dosya yöneticisi verilerini oturumda sakla
   session$userData$file_manager_data <- file_manager_data
   
   # Sohbet UI gözlemcilerini başlat (values artık mevcut)
@@ -177,8 +183,8 @@ server <- function(input, output, session) {
   
   # Dosya tıklama gözlemcilerini başlat (kaynak, analiz, önizleme)
   fileClickObserversInit(input, session, settings_data, api_config, filePreview, file_manager_data, session_files)
-	
-  # One place to store app-visible files (+ summaries)
+    
+  # Uygulamada görünen dosyaları (+ özetleri) saklamak için merkezi yer
   if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
   
   saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
@@ -209,52 +215,52 @@ server <- function(input, output, session) {
   downloadOutputsInit(output, session, session_files, current_user_id)
   
   historyServer("history_module", all_messages = reactive({
-	all <- values$saved_chats
-	if (length(values$messages) > 0) {
-	  all$current_chat <- list(
-		title = "Mevcut Söyleşi",
-		messages = values$messages,
-		timestamp = Sys.time(),
-		message_count = length(values$messages)
-	  )
-	}
-	return(all)
+    all <- values$saved_chats
+    if (length(values$messages) > 0) {
+      all$current_chat <- list(
+        title = "Mevcut Söyleşi",
+        messages = values$messages,
+        timestamp = Sys.time(),
+        message_count = length(values$messages)
+      )
+    }
+    return(all)
   }))
     
-  # message search wiring
+  # Mesaj arama bağlantıları
   messageSearchInit(input, session, values, reactive(values$messages))
-	    		
-	# --- Temel Sohbet Fonksiyonları (LLM handlers'dan önce tanımlanmalı) ---
-	reset_chat_state <- function() chat_reset_state(session, values)
+                
+    # --- Temel Sohbet Fonksiyonları (LLM handlers'dan önce tanımlanmalı) ---
+    reset_chat_state <- function() chat_reset_state(session, values)
  
-	add_message <- function(content, type = "user", html = NULL, followups = NULL,
-							audio_src = NULL, audio_voice = NULL) {
-	  chat_add_message(
-			session, values, settings_data, output,
-			content, type, html, current_user_id,
-			followups = followups,
-			audio_src = audio_src,
-			audio_voice = audio_voice
-	  )
-	}
-	
-	# LLM yanıt işleyicilerini başlat (modüler)
-	llm_handlers <- llmResponseHandlersInit(
-	  session = session,
-	  values = values,
-	  settings_data = settings_data,
-	  ai_processor = ai_processor,
-	  perf_tracker = perf_tracker,
-	  active_request_id = active_request_id,
-	  stop_generation = stop_generation,
-	  reset_chat_state_fn = reset_chat_state,
-	  add_message_fn = add_message,
-	  trigger_tts_fn = trigger_tts_for_message,
-	  followup_tools = followup_tools,
-	  fallback_followup_tool = fallback_followup_tool,
-	  api_config = api_config
-	)
-	generate_non_streaming_stoppable <- llm_handlers$generate_non_streaming_stoppable
+    add_message <- function(content, type = "user", html = NULL, followups = NULL,
+                            audio_src = NULL, audio_voice = NULL) {
+      chat_add_message(
+            session, values, settings_data, output,
+            content, type, html, current_user_id,
+            followups = followups,
+            audio_src = audio_src,
+            audio_voice = audio_voice
+      )
+    }
+    
+    # LLM yanıt işleyicilerini başlat (modüler)
+    llm_handlers <- llmResponseHandlersInit(
+      session = session,
+      values = values,
+      settings_data = settings_data,
+      ai_processor = ai_processor,
+      perf_tracker = perf_tracker,
+      active_request_id = active_request_id,
+      stop_generation = stop_generation,
+      reset_chat_state_fn = reset_chat_state,
+      add_message_fn = add_message,
+      trigger_tts_fn = trigger_tts_for_message,
+      followup_tools = followup_tools,
+      fallback_followup_tool = fallback_followup_tool,
+      api_config = api_config
+    )
+    generate_non_streaming_stoppable <- llm_handlers$generate_non_streaming_stoppable
     
   # Sohbet giriş observer'larını başlat (modüler)
   chatInputObserversInit(
@@ -272,67 +278,67 @@ server <- function(input, output, session) {
     api_key, user_config, pool
   )
   
-  # chat action wiring (like/dislike/regenerate/edit)
+  # Sohbet eylemi bağlantıları (beğen/beğenme/yeniden oluştur/düzenle)
   chatActionsInit(
-	input, session, values,
-	current_user_id      = current_user_id,
-	send_message_fn      = send_message,
-	stop_generation      = stop_generation,
-	reset_chat_state     = reset_chat_state,
-	feedback_modal       = feedback_modal
+    input, session, values,
+    current_user_id      = current_user_id,
+    send_message_fn      = send_message,
+    stop_generation      = stop_generation,
+    reset_chat_state     = reset_chat_state,
+    feedback_modal       = feedback_modal
   )
-  	  							     							         	   
-	generate_title_from_prompt <- function(prompt, max_len = 60) {
-	  chat_generate_title_from_prompt(prompt, max_len)
-	}
+                                                     
+    generate_title_from_prompt <- function(prompt, max_len = 60) {
+      chat_generate_title_from_prompt(prompt, max_len)
+    }
  
-	simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL, on_start = NULL, tts_engine = NULL, tts_voice = NULL) {
-	  chat_simulate_streaming(
-		full_response,
-		session,
-		values,
-		settings_data,
-		output,
-		stop_generation,
-		followups = followups,
-		on_complete = on_complete,
-		on_start = on_start,
-		tts_engine = tts_engine,
-		tts_voice = tts_voice
-	  )
-	}
+    simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL, on_start = NULL, tts_engine = NULL, tts_voice = NULL) {
+      chat_simulate_streaming(
+        full_response,
+        session,
+        values,
+        settings_data,
+        output,
+        stop_generation,
+        followups = followups,
+        on_complete = on_complete,
+        on_start = on_start,
+        tts_engine = tts_engine,
+        tts_voice = tts_voice
+      )
+    }
  
-	# TTS işleyicilerini başlat (modüler)
-	tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
-	trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
-	attach_tts_audio <- tts_handlers$attach_tts_audio
+    # TTS işleyicilerini başlat (modüler)
+    tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
+    trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
+    attach_tts_audio <- tts_handlers$attach_tts_audio
  
-	send_message_handlers <- sendMessageInit(
-	  session = session,
-	  input = input,
-	  values = values,
-	  settings_data = settings_data,
-	  session_files = session_files,
-	  file_manager_data = file_manager_data,
-	  current_user_id = current_user_id,
-	  stop_generation = stop_generation,
-	  active_request_id = active_request_id,
-	  quick_action_skip_mcp = quick_action_skip_mcp,
-	  perf_tracker = perf_tracker,
-	  ai_processor = ai_processor,
-	  tts_processor = tts_processor,
-	  followup_tools = followup_tools,
-	  fallback_followup_tool = fallback_followup_tool,
-	  api_config = api_config,
-	  add_message_fn = add_message,
-	  reset_chat_state_fn = reset_chat_state,
-	  simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
-	  cache_mcp_file_locally_fn = cache_mcp_file_locally,
-	  update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
-	  saved_chats_data = saved_chats_data,
-	  generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
-	)
+    send_message_handlers <- sendMessageInit(
+      session = session,
+      input = input,
+      values = values,
+      settings_data = settings_data,
+      session_files = session_files,
+      file_manager_data = file_manager_data,
+      current_user_id = current_user_id,
+      stop_generation = stop_generation,
+      active_request_id = active_request_id,
+      quick_action_skip_mcp = quick_action_skip_mcp,
+      perf_tracker = perf_tracker,
+      ai_processor = ai_processor,
+      tts_processor = tts_processor,
+      followup_tools = followup_tools,
+      fallback_followup_tool = fallback_followup_tool,
+      api_config = api_config,
+      add_message_fn = add_message,
+      reset_chat_state_fn = reset_chat_state,
+      simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
+      cache_mcp_file_locally_fn = cache_mcp_file_locally,
+      update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
+      saved_chats_data = saved_chats_data,
+      generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
+    )
  
-	# send_message fonksiyonunu modülden al ve ortama ata
-	send_message_fns$send_message <- send_message_handlers$send_message
+    # send_message fonksiyonunu modülden al ve ortama ata
+    send_message_fns$send_message <- send_message_handlers$send_message
 }
