@@ -229,109 +229,10 @@ $(document).ready(function() {
   // Alt tarafa yakınlık bayrağını global yap
   window.isNearBottom = isNearBottom;
 
-  // Bootstrap tooltip'leri başlat
+  // Hızlı işlem butonları için tooltip yönetimi
   $(document).ready(function() {
-    // Modern welcome ekranındaki butonlar için tooltip'leri başlat
-	$(document).on('mouseenter', '.modern-welcome-action-btn', function() {
-	  const title = $(this).data('original-title');
-	  if (title && title.trim() !== '') {
-		const tooltip = $('<div class="custom-tooltip"></div>')
-		  .text(title)
-		  .css({
-			position: 'fixed',
-			'z-index': '9999',
-			'background-color': 'rgba(0, 0, 0, 0.95)',
-			color: '#fff',
-			padding: '10px 14px',
-			'border-radius': '8px',
-			'font-size': '13px',
-			'max-width': '280px',
-			'white-space': 'pre-wrap',
-			'word-wrap': 'break-word',
-			'border': '1px solid rgba(255, 255, 255, 0.1)',
-			'backdrop-filter': 'blur(10px)',
-			'box-shadow': '0 8px 24px rgba(0, 0, 0, 0.4)',
-			'pointer-events': 'none'
-		  })
-		  .appendTo('body');
-		
-		const btnRect = this.getBoundingClientRect();
-		tooltip.css({
-		  top: (btnRect.top - tooltip.outerHeight() - 12) + 'px',
-		  left: (btnRect.left + (btnRect.width / 2) - (tooltip.outerWidth() / 2)) + 'px'
-		});
-		
-		$(this).data('custom-tooltip', tooltip);
-	  }
-	});
-    
-	$(document).on('mouseleave', '.modern-welcome-action-btn', function() {
-	  const tooltip = $(this).data('custom-tooltip');
-	  if (tooltip) {
-		tooltip.remove();
-		$(this).removeData('custom-tooltip');
-	  }
-	});
-    
-    // Sayfa yüklendiğinde orijinal title'ları sakla
-	$(document).on('mousedown', '.modern-welcome-action-btn', function() {
-	  var $btn = $(this);
-	  var tooltip = $btn.data('custom-tooltip');
-	  if (tooltip) {
-		tooltip.remove();
-		$btn.removeData('custom-tooltip');
-	  }
-	  $('.custom-tooltip').remove();
-	  $('.modern-welcome-action-btn').each(function() {
-		var t = $(this).data('custom-tooltip');
-		if (t) t.remove();
-		$(this).removeData('custom-tooltip');
-		$(this).tooltip('dispose');
-	  });
-	});
 
-	$(document).on('click', '.modern-welcome-action-btn', function() {
-	  $('.custom-tooltip').remove();
-	  $('.tooltip').remove();
-	  $('.modern-welcome-action-btn').each(function() {
-		$(this).removeData('custom-tooltip');
-	  });
-	});
-
-	$(document).on('shiny:inputchanged', function(event) {
-	  if (event.name === 'quick_template') {
-		$('.custom-tooltip').remove();
-	  }
-	});
-
-	$(document).on('click', '.sidebar-menu a, .nav-tabs a, [data-toggle="tab"]', function() {
-	  $('.custom-tooltip').remove();
-	});
-
-	$(document).on('shiny:visualchange', function() {
-	  $('.custom-tooltip').remove();
-	});
-
-	var welcomeObserver = new MutationObserver(function(mutations) {
-	  mutations.forEach(function(mutation) {
-		if (mutation.target.classList && mutation.target.classList.contains('hidden')) {
-		  $('.custom-tooltip').remove();
-		}
-	  });
-	});
-	var welcomeWrapper = document.getElementById('welcome_fullscreen_container');
-	if (welcomeWrapper) {
-	  welcomeObserver.observe(welcomeWrapper, { attributes: true, attributeFilter: ['class'] });
-	}
-
-	$('.modern-welcome-action-btn').each(function() {
-	  const title = $(this).attr('title');
-	  if (title) {
-		$(this).data('original-title', title);
-		$(this).removeAttr('title');
-	  }
-	});
-
+	// Tüm tooltip'leri temizleyen merkezi fonksiyon
 	window.clearAllTooltips = function() {
 	  $('.custom-tooltip').remove();
 	  $('.tooltip').remove();
@@ -342,13 +243,133 @@ $(document).ready(function() {
 	  });
 	};
 
-	setInterval(function() {
-	  var welcomeHidden = $('#welcome_fullscreen_container').hasClass('hidden') || 
-	                      $('#welcome_fullscreen_container').css('display') === 'none' ||
-	                      $('#welcome_fullscreen_container').children().length === 0;
-	  if (welcomeHidden && $('.custom-tooltip').length > 0) {
+	// Butonlardan title attribute'unu sakla ve kaldır (tarayıcı tooltip'ini engelle)
+	function storeOriginalTitles() {
+	  $('.modern-welcome-action-btn').each(function() {
+		var title = $(this).attr('title');
+		if (title) {
+		  $(this).data('original-title', title);
+		  $(this).removeAttr('title');
+		}
+	  });
+	}
+
+	// Sayfa yüklendiğinde ve dinamik içerik eklendiğinde title'ları sakla
+	storeOriginalTitles();
+	var welcomeTitleObserver = new MutationObserver(function() {
+	  storeOriginalTitles();
+	});
+	var welcomeContainer = document.getElementById('welcome_fullscreen_container');
+	if (welcomeContainer) {
+	  welcomeTitleObserver.observe(welcomeContainer, { childList: true, subtree: true });
+	}
+
+	// Buton üzerine gelince tooltip göster
+	$(document).on('mouseenter', '.modern-welcome-action-btn', function() {
+	  var $btn = $(this);
+	  // Eğer title henüz data'ya aktarılmamışsa aktar
+	  if (!$btn.data('original-title') && $btn.attr('title')) {
+		$btn.data('original-title', $btn.attr('title'));
+		$btn.removeAttr('title');
+	  }
+	  var title = $btn.data('original-title');
+	  if (!title || title.trim() === '') return;
+
+	  // Önceki tooltip varsa temizle
+	  var existing = $btn.data('custom-tooltip');
+	  if (existing) existing.remove();
+
+	  var tooltip = $('<div class="custom-tooltip"></div>')
+		.text(title)
+		.css({
+		  position: 'fixed',
+		  'z-index': '9999',
+		  'background-color': 'rgba(0, 0, 0, 0.95)',
+		  color: '#fff',
+		  padding: '10px 14px',
+		  'border-radius': '8px',
+		  'font-size': '13px',
+		  'max-width': '280px',
+		  'white-space': 'pre-wrap',
+		  'word-wrap': 'break-word',
+		  'border': '1px solid rgba(255, 255, 255, 0.1)',
+		  'backdrop-filter': 'blur(10px)',
+		  'box-shadow': '0 8px 24px rgba(0, 0, 0, 0.4)',
+		  'pointer-events': 'none'
+		})
+		.appendTo('body');
+
+	  var btnRect = this.getBoundingClientRect();
+	  tooltip.css({
+		top: (btnRect.top - tooltip.outerHeight() - 12) + 'px',
+		left: (btnRect.left + (btnRect.width / 2) - (tooltip.outerWidth() / 2)) + 'px'
+	  });
+
+	  $btn.data('custom-tooltip', tooltip);
+	});
+
+	// Butondan ayrılınca tooltip kaldır
+	$(document).on('mouseleave', '.modern-welcome-action-btn', function() {
+	  var tooltip = $(this).data('custom-tooltip');
+	  if (tooltip) {
+		tooltip.remove();
+		$(this).removeData('custom-tooltip');
+	  }
+	});
+
+	// Butona tıklanınca tüm tooltip'leri temizle
+	$(document).on('mousedown click', '.modern-welcome-action-btn', function() {
+	  window.clearAllTooltips();
+	});
+
+	// Sayfa/sekme geçişlerinde tüm tooltip'leri temizle
+	$(document).on('click', '.sidebar-menu a, .nav-tabs a, [data-toggle="tab"]', function() {
+	  window.clearAllTooltips();
+	});
+
+	$(document).on('shiny:inputchanged', function(event) {
+	  if (event.name === 'quick_template' || event.name === 'tabs') {
 		window.clearAllTooltips();
 	  }
-	}, 500);
+	});
+
+	$(document).on('shiny:visualchange', function() {
+	  window.clearAllTooltips();
+	});
+
+	// Welcome container gizlendiğinde tooltip'leri temizle
+	var welcomeVisObserver = new MutationObserver(function(mutations) {
+	  mutations.forEach(function(mutation) {
+		var target = mutation.target;
+		if (target.classList && (target.classList.contains('hidden') || target.style.display === 'none')) {
+		  window.clearAllTooltips();
+		}
+	  });
+	});
+	if (welcomeContainer) {
+	  welcomeVisObserver.observe(welcomeContainer, { attributes: true, attributeFilter: ['class', 'style'] });
+	}
+
+	// Güvenlik ağı: Buton artık DOM'da değilse veya welcome gizliyse tooltip'leri temizle
+	setInterval(function() {
+	  var tooltips = $('.custom-tooltip');
+	  if (tooltips.length === 0) return;
+
+	  // Welcome ekranı gizliyse veya boşsa tüm tooltip'leri temizle
+	  var $welcome = $('#welcome_fullscreen_container');
+	  var welcomeHidden = $welcome.hasClass('hidden') ||
+						  $welcome.css('display') === 'none' ||
+						  $welcome.children().length === 0;
+	  if (welcomeHidden) {
+		window.clearAllTooltips();
+		return;
+	  }
+
+	  // Üzerine gelinen buton yoksa kalan tooltip'leri temizle
+	  var hoveredBtn = $('.modern-welcome-action-btn:hover');
+	  if (hoveredBtn.length === 0) {
+		window.clearAllTooltips();
+	  }
+	}, 300);
   });
 });

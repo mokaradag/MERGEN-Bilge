@@ -47,9 +47,13 @@ const CinematicVideoManager = {
         this.elements.video.addEventListener('ended', () => this.handleVideoEnd());
         this.elements.video.addEventListener('error', (e) => this.handleVideoError(e));
         
-        // Page visibility handling
+        // Sayfa görünürlük değişikliği: sekme gizlenince duraklat, görününce devam et
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) this.pauseIfPlaying();
+            if (document.hidden) {
+                this.pauseIfPlaying();
+            } else {
+                this.resumeIfPaused();
+            }
         });
 
 		// Sekme değişimini izle
@@ -211,6 +215,19 @@ const CinematicVideoManager = {
     pauseIfPlaying: function() {
         if (this.state.isPlaying) {
             this.pauseVideo();
+        }
+    },
+
+    // Sayfa tekrar görünür olduğunda videoyu devam ettir
+    resumeIfPaused: function() {
+        if (!this.isSettingsTabActive()) return;
+        if (this.state.isPlaying && this.elements.video && this.elements.video.paused) {
+            var playPromise = this.elements.video.play();
+            if (playPromise) {
+                playPromise.catch(function(error) {
+                    console.warn('[VIDEO] Devam ettirme başarısız:', error);
+                });
+            }
         }
     },
 

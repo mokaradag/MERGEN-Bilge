@@ -357,6 +357,40 @@ section.content,
   font-size: 13px !important;
 }
 
+/* DT scrollY kullanıldığında oluşan çift başlık satırını düzelt */
+.dataTables_wrapper .dataTables_scrollHead {
+  background: var(--background-dark) !important;
+  overflow: visible !important;
+}
+
+.dataTables_wrapper .dataTables_scrollHead table {
+  margin-bottom: 0 !important;
+}
+
+.dataTables_wrapper .dataTables_scrollHead table thead th {
+  background: var(--background-medium, var(--background-dark)) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+  padding: 12px 16px !important;
+  border-bottom: 2px solid var(--border-color) !important;
+  font-size: 13px !important;
+}
+
+/* scrollBody içindeki tekrar eden thead'i gizle */
+.dataTables_wrapper .dataTables_scrollBody thead {
+  visibility: hidden !important;
+  height: 0 !important;
+  line-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.dataTables_wrapper .dataTables_scrollBody thead th {
+  padding: 0 !important;
+  border: none !important;
+  height: 0 !important;
+  line-height: 0 !important;
+}
+
 .dataTables_wrapper .dataTables_scrollBody {
   overflow-x: hidden !important;
 }

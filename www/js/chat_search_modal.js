@@ -225,6 +225,10 @@
           var labelText = snippet.type === 'user' ? 'Soru' : 'Yanıt';
           html += '<div class="chat-search-snippet">';
           html += '<span class="chat-search-snippet-label ' + labelClass + '">' + labelText + '</span>';
+          // Zaman damgası varsa göster
+          if (snippet.timestamp) {
+            html += '<span class="chat-search-snippet-timestamp">' + escapeHtml(snippet.timestamp) + '</span> ';
+          }
           html += highlightTerm(snippet.snippet, term);
           html += '</div>';
         });

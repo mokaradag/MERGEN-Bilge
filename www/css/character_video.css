@@ -5,8 +5,8 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 10px;
-  background-color: #000; /* Prevents white flashes during transitions */
+  border-radius: 18px;
+  background-color: #000; /* Geçiş sırasında beyaz parlamayı önler */
 }
 
 /* Both elements occupy the full container */

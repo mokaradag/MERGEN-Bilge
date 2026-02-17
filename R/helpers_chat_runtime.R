@@ -442,6 +442,9 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
     values$temp_files <- list()
   }
 
+  # Karşılama ekranında "aşağı kaydır" butonunu gizle
+  shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
+
   insertUI(
     selector = "#chat_content_container", where = "beforeEnd",
     ui = createWelcomeScreen(values$saved_chats)
