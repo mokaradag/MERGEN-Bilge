@@ -111,51 +111,77 @@
     }
   };
 
-  // Copy AI message content
+  // Mesaj içeriğini kopyala (CodeMirror kod blokları dahil tam metin)
   window.copyAIMessageContent = function(msgId) {
     try {
-      const msgElement = document.getElementById(msgId);
+      var msgElement = document.getElementById(msgId);
       if (!msgElement) {
         window.showToast('Mesaj bulunamadı.', 'error');
         return;
       }
-      
-      const isStreaming = msgElement.dataset.streaming === "true";
-      let textContent = '';
-      
+
+      var isStreaming = msgElement.dataset.streaming === "true";
+      var textParts = [];
+
       if (isStreaming) {
-        const streamingContent = msgElement.querySelector('.streaming-content');
+        var streamingContent = msgElement.querySelector('.streaming-content');
         if (streamingContent) {
-          textContent = streamingContent.textContent || streamingContent.innerText;
+          textParts.push(streamingContent.textContent || streamingContent.innerText || '');
         }
       } else {
-        const contentElements = msgElement.querySelectorAll('p, pre, code, h1, h2, h3, h4, h5, h6, li, td, th');
-        contentElements.forEach(el => {
-          if (!el.closest('button')) {
-            textContent += el.textContent + '\n';
+        // Mesaj içeriğindeki tüm üst seviye elemanları sırayla dolaş
+        var children = msgElement.children;
+        for (var i = 0; i < children.length; i++) {
+          var child = children[i];
+
+          // Takip sorusu kutusunu atla
+          if (child.classList.contains('followup-suggestions-box')) continue;
+          // TTS ses oynatıcısını atla
+          if (child.classList.contains('tts-audio-container')) continue;
+
+          // Kod bloğu mu kontrol et (CodeMirror içerir)
+          if (child.classList.contains('code-container')) {
+            var cmEl = child.querySelector('.CodeMirror');
+            if (cmEl && cmEl.CodeMirror) {
+              // CodeMirror örneğinden tam kodu al
+              textParts.push(cmEl.CodeMirror.getValue());
+            } else {
+              // Yedek: textarea'dan al
+              var ta = child.querySelector('.codemirror-textarea');
+              if (ta) {
+                textParts.push(ta.value || ta.textContent || '');
+              }
+            }
+          } else {
+            // Normal metin içeriği
+            var text = child.innerText || child.textContent || '';
+            if (text.trim()) {
+              textParts.push(text);
+            }
           }
-        });
-        
-        if (!textContent.trim()) {
-          textContent = msgElement.textContent || msgElement.innerText;
+        }
+
+        // Hiçbir şey bulunamadıysa yedek olarak tüm innerText'i al
+        if (textParts.length === 0) {
+          textParts.push(msgElement.innerText || msgElement.textContent || '');
         }
       }
-      
-      navigator.clipboard.writeText(textContent.trim()).then(() => {
+
+      var fullText = textParts.join('\n\n').trim();
+      navigator.clipboard.writeText(fullText).then(function() {
         window.showToast('İçerik panoya kopyalandı.', 'success');
-        
-        const btn = document.querySelector(`#copy_ai_${msgId}`);
+        var btn = document.querySelector('#copy_ai_' + msgId) || document.querySelector('#copy_user_' + msgId);
         if (btn) {
-          const icon = btn.querySelector('i');
-          const originalClass = icon.className;
+          var icon = btn.querySelector('i');
+          var originalClass = icon.className;
           icon.className = 'fas fa-check';
-          setTimeout(() => { icon.className = originalClass; }, 2000);
+          setTimeout(function() { icon.className = originalClass; }, 2000);
         }
-      }).catch(err => {
+      }).catch(function(err) {
         window.showToast('Kopyalama başarısız oldu.', 'error');
       });
     } catch (e) {
-      console.error('Copy failed:', e);
+      console.error('Kopyalama hatası:', e);
       window.showToast('Kopyalama başarısız oldu.', 'error');
     }
   };

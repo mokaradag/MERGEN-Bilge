@@ -78,6 +78,7 @@ source("R/module_session_timeout.R", encoding = "UTF-8")
 source("R/module_file_preview.R", encoding = "UTF-8")
 source("R/module_api_key.R", encoding = "UTF-8")
 source("R/module_message_search.R", encoding = "UTF-8")
+source("R/module_chat_search.R",    encoding = "UTF-8")  # Söyleşi içerik arama modalı
 source("R/module_followup_questions.R", encoding = "UTF-8")
 source("R/module_chat_actions.R",  encoding = "UTF-8")
 source("R/module_chat_export.R",   encoding = "UTF-8")

@@ -119,6 +119,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/image_gallery.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/summarization_tools.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/code_collapse.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_search_modal.css"),
     
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -194,6 +195,7 @@ ui <- dashboardPage(
     tags$script(src = "js/image_tools.js"),
     tags$script(src = "js/image_gallery.js"),
     tags$script(src = "js/summarization_tools.js"),
+    tags$script(src = "js/chat_search_modal.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),

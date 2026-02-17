@@ -48,15 +48,16 @@ table.dataTable {
 }
 
 table.dataTable thead {
-  background: var(--background-dark);
+  background: linear-gradient(145deg, #1a2744 0%, #1e2d4a 100%) !important;
 }
 
 table.dataTable thead th {
-  color: var(--text-primary) !important;
+  color: #e2e8f0 !important;
   font-weight: 600 !important;
   text-align: left !important;
   padding: 12px !important;
-  border-bottom: 2px solid var(--border-color) !important;
+  border-bottom: 2px solid rgba(99, 140, 255, 0.2) !important;
+  background: transparent !important;
 }
 
 table.dataTable tbody tr {
