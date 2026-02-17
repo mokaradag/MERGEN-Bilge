@@ -22,8 +22,9 @@ tagList(
           textInput(ns("search_chats"), label = NULL, placeholder = "Başlıklarda ara...", width = "300px"),
           tags$button(
             type = "button",
-            class = "btn-modern btn-info",
+            class = "btn-modern btn-secondary",
             style = "margin-left: 8px; white-space: nowrap;",
+            title = "Tüm söyleşi içeriklerinde tam metin araması yapar",
             onclick = "if(window.openChatSearchModal) window.openChatSearchModal();",
             tags$i(class = "fas fa-search", style = "margin-right: 6px;"),
             "İçerikte Ara"

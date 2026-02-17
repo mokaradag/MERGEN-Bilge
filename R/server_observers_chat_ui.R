@@ -81,7 +81,10 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
     
     start_new_chat()
     session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-    
+
+    # Karşılama ekranına dönüldüğünde "aşağı kaydır" butonunu gizle
+    shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
+
     shinyjs::delay(300, {
       render_welcome_screen(values$saved_chats, replace_existing = TRUE)
     })

@@ -300,6 +300,15 @@
   color: #34d399;
 }
 
+/* Snippet zaman damgası */
+.chat-search-snippet-timestamp {
+  font-size: 10px;
+  color: #555;
+  margin-right: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* Eşleşen kelime vurgusu */
 .chat-search-highlight {
   background: rgba(96, 165, 250, 0.25);

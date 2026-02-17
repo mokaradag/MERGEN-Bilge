@@ -21,9 +21,9 @@ search_chats_content_from_db <- function(user_id, search_term) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # SQL Server'da LIKE ile içerik araması
+  # SQL Server'da LIKE ile içerik araması (sonuç limiti 1000)
   query <- "
-    SELECT TOP 200
+    SELECT TOP 1000
       c.ChatID,
       c.ChatTitle,
       m.MessageContent,
@@ -128,7 +128,8 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
         row <- group[i, ]
         content <- row$message_content
         # Eşleşen kısmın etrafını kes (snippet oluştur)
-        match_pos <- regexpr(search_term, content, ignore.case = TRUE)
+        # fixed = TRUE ile regex özel karakterlerinin (ör. C++ içindeki +) hata vermesi önlenir
+        match_pos <- regexpr(search_term, content, ignore.case = TRUE, fixed = TRUE)
         if (match_pos > 0) {
           start <- max(1, match_pos - 80)
           end <- min(nchar(content), match_pos + attr(match_pos, "match.length") + 80)
@@ -139,10 +140,14 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
           snippet <- substr(content, 1, 160)
           if (nchar(content) > 160) snippet <- paste0(snippet, "...")
         }
+        # Zaman damgasını okunabilir formata çevir
+        ts_formatted <- tryCatch({
+          format(as.POSIXct(row$message_timestamp), "%d.%m.%Y %H:%M")
+        }, error = function(e) row$message_timestamp)
         list(
           snippet = snippet,
           type = row$message_type,
-          timestamp = row$message_timestamp
+          timestamp = ts_formatted
         )
       })
 

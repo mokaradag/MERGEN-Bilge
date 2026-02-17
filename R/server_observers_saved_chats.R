@@ -85,7 +85,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       return()
     }
     
-    # Welcome ekranını temizle
+    # Welcome ekranını temizle ve aşağı kaydır butonunu gizle
     shinyjs::runjs("
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
@@ -98,6 +98,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       }
       $('#welcome_fullscreen_container').addClass('hidden').empty();
       $('#chat_content_container').show().empty();
+      $('#scroll_to_bottom_container').removeClass('show');
     ")
     
     removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
@@ -149,6 +150,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     }
 
     # Tüm mesajlar eklendikten sonra grafikleri toplu olarak render et
+    # 1) İstemci tarafında Highcharts ile statik grafikleri çiz (yeniden deneme mekanizmalı)
     shinyjs::runjs("
       setTimeout(function() {
         if (typeof window.renderSavedCharts === 'function') {
@@ -156,6 +158,8 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         }
       }, 600);
     ")
+    # 2) Plotly/Highcharter çıktı bağlamalarını yeniden kur (sunucu taraflı grafikler)
+    chat_rebind_all_charts(session, output, values$messages)
 
     shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 400);")
     

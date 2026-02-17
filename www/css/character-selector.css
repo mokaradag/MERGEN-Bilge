@@ -92,12 +92,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: visible;
+  overflow: hidden;
   width: 420px;
   min-width: 383px;
   height: 620px;
   border-radius: 18px;
-  background: transparent;
+  background: #000;
   box-shadow: none;
   place-self: start center;
 }
