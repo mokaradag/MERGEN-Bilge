@@ -44,6 +44,7 @@
   color: var(--text-primary);
   margin: 0 !important;
   line-height: 50px;
+  font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .page-subtitle {

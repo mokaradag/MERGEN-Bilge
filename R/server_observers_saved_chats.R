@@ -132,34 +132,32 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       
       insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
       
-      # Kod bloklarını initialize et
+      # Kod bloklarını initialize et (local ile closure sorununu önle)
       wrapper_id <- paste0("message_wrapper_", msg$id)
       if (isTRUE(msg$has_code)) {
-        shinyjs::runjs(sprintf("
-          setTimeout(function() {
-            var wrapper = document.getElementById('%s');
-            if (wrapper) {
-              var editors = wrapper.querySelectorAll('.CodeMirror');
-              editors.forEach(function(cm) {
-                if (cm.CodeMirror) cm.CodeMirror.refresh();
-              });
-            }
-          }, 200);
-        ", wrapper_id))
-      }
-      
-      # ChartLab grafiklerini render et
-      if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
-        shinyjs::delay(300, {
-          shinyjs::runjs(sprintf(
-            "window.renderSavedCharts && window.renderSavedCharts('%s');",
-            wrapper_id
-          ))
+        local({
+          wid <- wrapper_id
+          shinyjs::runjs(sprintf("
+            setTimeout(function() {
+              if (typeof window.initializeCodeMirrorInElement === 'function') {
+                window.initializeCodeMirrorInElement('%s');
+              }
+            }, 200);
+          ", wid))
         })
       }
     }
-    
-    shinyjs::runjs("setTimeout(() => { scrollToBottom(false); }, 300);")
+
+    # Tüm mesajlar eklendikten sonra grafikleri toplu olarak render et
+    shinyjs::runjs("
+      setTimeout(function() {
+        if (typeof window.renderSavedCharts === 'function') {
+          window.renderSavedCharts('chat_content_container');
+        }
+      }, 600);
+    ")
+
+    shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 400);")
     
     updateTabItems(session, "tabs", "chat")
     showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")

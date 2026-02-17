@@ -193,7 +193,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  z-index: 101;
+  z-index: 1002;
+  pointer-events: none;
 }
 
 .fab-button {
@@ -205,6 +206,7 @@
   color: var(--text-secondary) !important;
   box-shadow: var(--shadow-lg) !important;
   transition: all var(--transition-fast) !important;
+  pointer-events: auto;
 }
 
 .fab-button:hover {
@@ -224,6 +226,10 @@
 
 #scroll_to_bottom_container.show {
   opacity: 1;
+  pointer-events: auto;
+}
+
+#scroll_to_bottom_container.show .fab-button {
   pointer-events: auto;
 }
 

@@ -193,6 +193,15 @@ server <- function(input, output, session) {
   savedChatsObserversInit(input, output, session, values, settings_data,
                            saved_chats_data, current_user_id, load_chat_in_progress)
 
+  # Söyleşi içerik arama modülünü başlat
+  chatSearchInit(input, session, current_user_id, function(chat_id) {
+    # Arama sonucundan sohbet yükleme - saved_chats observer'ını tetikle
+    shinyjs::runjs(sprintf(
+      "Shiny.setInputValue('welcome_load_chat_id', '%s', {priority: 'event'});",
+      chat_id
+    ))
+  })
+
   # Görsel galerisi modülünü başlat
   gallery_data <- imageGalleryServer("image_gallery_module", current_user_id)
 

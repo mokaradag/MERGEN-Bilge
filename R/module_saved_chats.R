@@ -19,7 +19,15 @@ tagList(
         class = "scrollable-content",
         div(
           class = "saved-chats-controls",
-          textInput(ns("search_chats"), label = NULL, placeholder = "Söyleşilerde ara...", width = "300px")
+          textInput(ns("search_chats"), label = NULL, placeholder = "Başlıklarda ara...", width = "300px"),
+          tags$button(
+            type = "button",
+            class = "btn-modern btn-info",
+            style = "margin-left: 8px; white-space: nowrap;",
+            onclick = "if(window.openChatSearchModal) window.openChatSearchModal();",
+            tags$i(class = "fas fa-search", style = "margin-right: 6px;"),
+            "İçerikte Ara"
+          )
         ),
         div(
           class = "pagination-controls",

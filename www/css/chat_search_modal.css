@@ -1,0 +1,322 @@
+/* Dosya Yolu: www/css/chat_search_modal.css */
+/* Açıklama:   Sohbet içerik arama modalı stilleri - koyu tema */
+
+/* Modal arka planı */
+.chat-search-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 8vh;
+}
+
+.chat-search-overlay.active {
+  display: flex;
+}
+
+/* Modal kutusu */
+.chat-search-modal {
+  width: 90%;
+  max-width: 720px;
+  max-height: 75vh;
+  background: linear-gradient(145deg, #141418 0%, #1a1a22 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: chatSearchSlideIn 0.25s ease;
+}
+
+@keyframes chatSearchSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Arama başlığı */
+.chat-search-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.chat-search-icon {
+  color: #60a5fa;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.chat-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f0f0f0;
+  font-size: 16px;
+  font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  caret-color: #60a5fa;
+}
+
+.chat-search-input::placeholder {
+  color: #555;
+}
+
+.chat-search-close {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #888;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.chat-search-close:hover {
+  background: rgba(255, 80, 80, 0.15);
+  border-color: rgba(255, 80, 80, 0.3);
+  color: #ff6b6b;
+}
+
+/* Bilgi çubuğu */
+.chat-search-info {
+  padding: 8px 20px;
+  font-size: 12px;
+  color: #666;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-search-count {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.chat-search-hint {
+  color: #555;
+  font-size: 11px;
+}
+
+/* Yükleniyor göstergesi */
+.chat-search-loading {
+  display: none;
+  padding: 30px 20px;
+  text-align: center;
+  color: #666;
+}
+
+.chat-search-loading.active {
+  display: block;
+}
+
+.chat-search-spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(96, 165, 250, 0.2);
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: chatSearchSpin 0.7s linear infinite;
+  margin-bottom: 8px;
+}
+
+@keyframes chatSearchSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Sonuç listesi */
+.chat-search-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.chat-search-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-search-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-search-results::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.chat-search-results::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Boş durum */
+.chat-search-empty {
+  display: none;
+  padding: 40px 20px;
+  text-align: center;
+  color: #555;
+}
+
+.chat-search-empty.active {
+  display: block;
+}
+
+.chat-search-empty i {
+  font-size: 36px;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.chat-search-empty p {
+  font-size: 14px;
+  margin: 4px 0;
+}
+
+/* Başlangıç durumu */
+.chat-search-initial {
+  display: block;
+  padding: 40px 20px;
+  text-align: center;
+  color: #555;
+}
+
+.chat-search-initial.hidden {
+  display: none;
+}
+
+.chat-search-initial i {
+  font-size: 36px;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+/* Sonuç kartları */
+.chat-search-result-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.chat-search-result-card:hover {
+  background: rgba(96, 165, 250, 0.06);
+  border-color: rgba(96, 165, 250, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.chat-search-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.chat-search-result-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+  font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.chat-search-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.chat-search-match-badge {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Snippet (eşleşme parçası) */
+.chat-search-snippets {
+  padding: 8px 14px 10px;
+}
+
+.chat-search-snippet {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #999;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.chat-search-snippet:last-child {
+  border-bottom: none;
+}
+
+.chat-search-snippet-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.chat-search-snippet-label.user-label {
+  color: #a78bfa;
+}
+
+.chat-search-snippet-label.ai-label {
+  color: #34d399;
+}
+
+/* Eşleşen kelime vurgusu */
+.chat-search-highlight {
+  background: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+/* Mobil uyumluluk */
+@media (max-width: 768px) {
+  .chat-search-modal {
+    width: 96%;
+    max-height: 85vh;
+  }
+
+  .chat-search-overlay {
+    padding-top: 4vh;
+  }
+}
