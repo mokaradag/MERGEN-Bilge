@@ -97,6 +97,12 @@ $(document).ready(function() {
             setTimeout(() => window.initializeCodeMirrorInElement('message_wrapper_' + data.id), 0);
         }
 
+		// Mesajdaki tabloları kaydırılabilir sarmalayıcıya yerleştir
+        if (typeof window.wrapMessageTables === 'function') {
+            var wrapperEl = document.getElementById('message_wrapper_' + data.id);
+            if (wrapperEl) window.wrapMessageTables(wrapperEl);
+        }
+
         // Takip eden sorular kutusundaki "bekliyor" durumunu kaldır
         const followupBox = document.getElementById('followup_container_' + data.id);
         if (followupBox) {
