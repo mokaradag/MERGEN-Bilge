@@ -308,11 +308,12 @@ section.content,
 }
 
 .admin-datatable thead th {
-  background: var(--background-medium) !important;
-  color: var(--text-secondary) !important;
+  /* Koyu mavi gradyan - "Modellere Göre Geri Bildirim" tablosuyla aynı */
+  background: linear-gradient(145deg, #1a2744 0%, #1e2d4a 100%) !important;
+  color: #e2e8f0 !important;
   font-weight: 600 !important;
   padding: 12px 16px !important;
-  border-bottom: 2px solid var(--border-color) !important;
+  border-bottom: 2px solid rgba(99, 140, 255, 0.2) !important;
   font-size: 13px !important;
   text-transform: none !important;
   letter-spacing: 0.5px !important;
@@ -368,11 +369,12 @@ section.content,
 }
 
 .dataTables_wrapper .dataTables_scrollHead table thead th {
-  background: var(--background-medium, var(--background-dark)) !important;
-  color: var(--text-secondary) !important;
+  /* scrollY tablolarında da koyu mavi gradyan uygula */
+  background: linear-gradient(145deg, #1a2744 0%, #1e2d4a 100%) !important;
+  color: #e2e8f0 !important;
   font-weight: 600 !important;
   padding: 12px 16px !important;
-  border-bottom: 2px solid var(--border-color) !important;
+  border-bottom: 2px solid rgba(99, 140, 255, 0.2) !important;
   font-size: 13px !important;
 }
 
