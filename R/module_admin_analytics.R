@@ -1420,7 +1420,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data$avg_chat_length <- round(data$avg_chat_length, 1)
       data$display_name <- ifelse(!is.na(data$full_name) & nzchar(data$full_name), data$full_name, data$user_name)
       display_data <- data[, c("row_num", "display_name", "chat_count", "total_messages", "avg_chat_length")]
-      colnames(display_data) <- c("#", "Kullanıcı", "Söyleşi", "Mesaj", "Ort. Uzunluk")
+      colnames(display_data) <- c("", "Kullanıcı", "Söyleşi", "Mesaj", "Ort. Uzunluk")
       
       DT::datatable(
         display_data,
@@ -1668,8 +1668,8 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data$ResponseDuration <- round(data$ResponseDuration, 2)
       data$query_time <- format(as.POSIXct(data$query_time), "%d.%m.%Y %H:%M")
       display_data <- data[, c("row_num", "ModelUsed", "ResponseDuration", "query_preview", "query_time")]
-      colnames(display_data) <- c("#", "Model", "Süre (sn)", "Sorgu Önizleme", "Tarih")
-      
+      colnames(display_data) <- c("", "Model", "Süre (sn)", "Sorgu Önizleme", "Tarih")
+
       DT::datatable(
         display_data,
         options = list(
@@ -1690,16 +1690,16 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         rownames = FALSE
       )
     })
-    
+
     output$fastest_queries_table <- DT::renderDataTable({
       data <- analytics_data()$fastest_queries
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
-      
+
       data$row_num <- 1:nrow(data)
       data$ResponseDuration <- round(data$ResponseDuration, 2)
       data$query_time <- format(as.POSIXct(data$query_time), "%d.%m.%Y %H:%M")
       display_data <- data[, c("row_num", "ModelUsed", "ResponseDuration", "query_preview", "query_time")]
-      colnames(display_data) <- c("#", "Model", "Süre (sn)", "Sorgu Önizleme", "Tarih")
+      colnames(display_data) <- c("", "Model", "Süre (sn)", "Sorgu Önizleme", "Tarih")
       
       DT::datatable(
         display_data,
@@ -1871,7 +1871,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data$row_num <- 1:nrow(data)
       data$display_name <- ifelse(!is.na(data$full_name) & nzchar(data$full_name), data$full_name, data$user_name)
       display_data <- data[, c("row_num", "ChatTitle", "msg_count", "display_name")]
-      colnames(display_data) <- c("#", "Söyleşi Başlığı", "Mesaj", "Kullanıcı")
+      colnames(display_data) <- c("", "Söyleşi Başlığı", "Mesaj", "Kullanıcı")
       
       DT::datatable(
         display_data,
@@ -1904,7 +1904,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data$row_num <- 1:nrow(data)
       
       display_data <- data[, c("row_num", "ChatTitle", "user_name", "ai_count", "user_count", "regen_count")]
-      colnames(display_data) <- c("#", "Söyleşi Başlığı", "Kullanıcı", "YZ Yanıt", "Kullanıcı Mesaj", "Yeniden Oluşturma")
+      colnames(display_data) <- c("", "Söyleşi Başlığı", "Kullanıcı", "YZ Yanıt", "Kullanıcı Mesaj", "Yeniden Oluşturma")
       
       DT::datatable(
         display_data,
@@ -1998,7 +1998,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       data$first_chat <- format(as.POSIXct(data$first_chat), "%d.%m.%Y")
       data$display_name <- ifelse(!is.na(data$full_name) & nzchar(data$full_name), data$full_name, data$user_name)
       display_data <- data[, c("row_num", "display_name", "first_chat", "chat_count", "active_days")]
-      colnames(display_data) <- c("#", "Kullanıcı", "İlk Söyleşi", "Söyleşi Sayısı", "Aktif Gün")
+      colnames(display_data) <- c("", "Kullanıcı", "İlk Söyleşi", "Söyleşi Sayısı", "Aktif Gün")
       
       DT::datatable(
         display_data,

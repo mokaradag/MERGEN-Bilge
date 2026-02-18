@@ -67,7 +67,7 @@ create_code_block_html <- function(code, language = "auto") {
 parse_ai_response_robustly <- function(content) {
   content <- gsub("\\\\n", "\n", content)
 
-  # If the content has actual reference URLs at the bottom, make them clickable
+  # HTTP URL referanslarını tıklanabilir bağlantılara dönüştür
   content <- gsub("\\[1\\]:\\s*(https?://[^\\s]+)", '[1]: <a href="\\1" target="_blank">\\1</a>', content)
   content <- gsub("\\[2\\]:\\s*(https?://[^\\s]+)", '[2]: <a href="\\1" target="_blank">\\1</a>', content)
   content <- gsub("\\[3\\]:\\s*(https?://[^\\s]+)", '[3]: <a href="\\1" target="_blank">\\1</a>', content)
@@ -75,26 +75,36 @@ parse_ai_response_robustly <- function(content) {
   content <- gsub("\\[5\\]:\\s*(https?://[^\\s]+)", '[5]: <a href="\\1" target="_blank">\\1</a>', content)
   content <- gsub("\\[6\\]:\\s*(https?://[^\\s]+)", '[6]: <a href="\\1" target="_blank">\\1</a>', content)
 
-  # NEW: Guard — if no code fences, just return markdown
+  # "Kaynakça:" bölümünü ayrıştır ve tıklanabilir hale getir
+  citation_result <- tryCatch(
+    process_citations(content),
+    error = function(e) list(content = content, citation_html = "")
+  )
+  content      <- citation_result$content
+  citation_html <- citation_result$citation_html
+
+  # Kod bloğu yoksa sadece markdown işle
   fences <- stringr::str_locate_all(content, "```")[[1]]
   if (is.null(fences) || NROW(fences) < 2) {
     html_content <- commonmark::markdown_html(content, hardbreaks = TRUE, extensions = c("strikethrough", "table"))
-    return(list(html = html_content, has_code = FALSE))
+    # Kaynakça HTML'ini yanıt sonuna ekle
+    final_html <- paste0(html_content, citation_html)
+    return(list(html = final_html, has_code = FALSE))
   }
 
   first_fence <- fences[1, ]
   last_fence  <- fences[NROW(fences), ]
-  
-  text_before <- substr(content, 1, first_fence[1] - 1)
+
+  text_before     <- substr(content, 1, first_fence[1] - 1)
   full_code_block <- substr(content, first_fence[1], last_fence[2])
-  text_after <- substr(content, last_fence[2] + 1, nchar(content))
-  
+  text_after      <- substr(content, last_fence[2] + 1, nchar(content))
+
   lang_match <- stringr::str_match(full_code_block, "```(\\w*\\b)?\\n?")
-  language <- if (!is.na(lang_match[1, 2]) && nchar(lang_match[1, 2]) > 0) lang_match[1, 2] else "auto"
-  
+  language   <- if (!is.na(lang_match[1, 2]) && nchar(lang_match[1, 2]) > 0) lang_match[1, 2] else "auto"
+
   code_content <- stringr::str_remove(full_code_block, paste0("```", language, "\\n?"))
   code_content <- stringr::str_remove(code_content, "```$")
-  
+
   html_parts <- list()
   if (nchar(trimws(text_before)) > 0) {
     html_parts <- append(html_parts, commonmark::markdown_html(text_before, hardbreaks = TRUE, extensions = c("strikethrough", "table")))
@@ -103,7 +113,11 @@ parse_ai_response_robustly <- function(content) {
   if (nchar(trimws(text_after)) > 0) {
     html_parts <- append(html_parts, commonmark::markdown_html(text_after, hardbreaks = TRUE, extensions = c("strikethrough", "table")))
   }
-  
+  # Kaynakça HTML'ini yanıt sonuna ekle
+  if (nzchar(citation_html)) {
+    html_parts <- append(html_parts, citation_html)
+  }
+
   return(list(html = paste(html_parts, collapse = ""), has_code = TRUE))
 }
 
