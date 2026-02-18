@@ -31,56 +31,19 @@ $(document).ready(function() {
   });
 });
 
-// Kaynak linki tıklamaları (Kaynakça kutusundaki dosya bağlantıları)
-$(document).on('click', '.source-link', function(e) {
-  e.preventDefault();
-  e.stopPropagation();
+// Kaynak linki tıklamaları
+$(document).on('click', '.source-link', function() {
+  const filename = $(this).data('filename');
+  const sourceId = $(this).data('source-id');
   
-  var $link = $(this);
-  var filename = $link.data('filename') || ($link.find('.citation-file-name').text() || '').trim();
-  var sourceId = $link.data('source-id') || '';
+  console.log('[SOURCE CLICK] User clicked:', filename);
+  console.log('[SOURCE CLICK] Source ID:', sourceId);
   
-  console.log('[SOURCE CLICK] Dosya tıklandı:', filename);
-  
-  if (filename && window.Shiny) {
-    Shiny.setInputValue('source_file_clicked', {
-      filename: filename,
-      sourceId: sourceId,
-      nonce: Math.random()
-    }, {priority: 'event'});
-  }
-});
-
-// Satır içi alıntı numarası tıklamaları ([1], [2] gibi)
-$(document).on('click', '.citation-index-btn', function(e) {
-  e.preventDefault();
-  e.stopPropagation();
-  
-  var citationNum = parseInt($(this).data('citation-num'), 10);
-  if (isNaN(citationNum) || citationNum < 1) return;
-  
-  // Aynı mesaj baloncuğundaki Kaynakça kutusunu bul
-  var $wrapper = $(this).closest('[id^="message_wrapper_"]');
-  var $sourceLinks = $wrapper.find('.citation-sources-list .source-link');
-  
-  // Bulunamazsa sayfadaki en son Kaynakça kutusunu ara
-  if ($sourceLinks.length === 0) {
-    $sourceLinks = $('.citation-sources-list .source-link');
-  }
-  
-  var $target = $sourceLinks.eq(citationNum - 1);
-  if ($target.length > 0) {
-    var filename = $target.data('filename') || ($target.find('.citation-file-name').text() || '').trim();
-    console.log('[CITATION] Satır içi alıntı [' + citationNum + '] -> dosya:', filename);
-    
-    if (filename && window.Shiny) {
-      Shiny.setInputValue('source_file_clicked', {
-        filename: filename,
-        sourceId: 'inline_citation_' + citationNum,
-        nonce: Math.random()
-      }, {priority: 'event'});
-    }
-  }
+  Shiny.setInputValue('source_file_clicked', {
+    filename: filename,
+    sourceId: sourceId,
+    nonce: Math.random()
+  }, {priority: 'event'});
 });
 
 // Analiz dosyası linki tıklamaları

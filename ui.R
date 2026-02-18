@@ -120,8 +120,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/summarization_tools.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/code_collapse.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_search_modal.css"),
-    tags$link(rel = "stylesheet", type = "text/css", href = "css/citations.css"),
-
+    
     # --- Local CodeMirror CSS ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/theme/material-darker.min.css"),

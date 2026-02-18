@@ -53,21 +53,16 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
   
   session$onFlushed(function(){
     shinyjs::runjs("
-	  if (!window.__srcLinkBound) {
+      if (!window.__srcLinkBound) {
         window.__srcLinkBound = true;
         document.addEventListener('click', function(e){
-          // closest() ile alt elemanlardaki (ikon, metin) tıklamaları da yakala
-          var t = e.target.closest ? e.target.closest('.source-link') : null;
-          if (!t) {
-            // Satır içi alıntı numaraları için de kontrol et
-            var citBtn = e.target.closest ? e.target.closest('.citation-index-btn') : null;
-            if (citBtn) { e.preventDefault(); e.stopPropagation(); }
-            return;
+          var t = e.target;
+          if (t && t.classList && t.classList.contains('source-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            var fn = t.getAttribute('data-filename') || (t.textContent || '').trim();
+            Shiny.setInputValue('source_file_clicked', { filename: fn, nonce: Math.random() }, { priority: 'event' });
           }
-          e.preventDefault();
-          e.stopPropagation();
-          var fn = t.getAttribute('data-filename') || (t.textContent || '').trim();
-          Shiny.setInputValue('source_file_clicked', { filename: fn, nonce: Math.random() }, { priority: 'event' });
         }, true);
       }
     ");
