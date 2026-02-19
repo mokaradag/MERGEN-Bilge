@@ -57,143 +57,63 @@ settingsUI <- function(id) {
                 )
               )
             ),
-			# Model Settings Card (3/12 + 1/12 + 4/12 + 1/12 + 3/12)
+			# Model Ayarları Kartı (4/12 + 4/12 + 4/12)
 			div(
 			  class = "settings-card",
 			  h3("Model Ayarları", class = "settings-title"),
 			  fluidRow(
-				# 1) 3/12 — Model Seçimi
+				# 4/12 — Model Seçimi
 				column(
-				  width = 3,
+				  width = 4,
 				  h4("Model Seçimi", class = "setting-subtitle"),
 				  p("Kullanmak istediğiniz modeli seçin.", class = "setting-description", style = "margin-top:4px;"),
 				  div(
-                    class = "setting-item",
-                    style = "max-width: 250px;",
-                    selectInput(
-                      inputId = ns("model_selection"),
-                      label   = NULL,
-                      choices = api_config$local_models,
-                      selected = api_config$local_models[1],
-                      width = "100%"
-                    ),
-                    # Model açıklaması alt yazı olarak
-                    uiOutput(ns("model_description_text"))
-                  ),
+					class = "setting-item",
+					style = "max-width: 250px;",
+					selectInput(
+					  inputId = ns("model_selection"),
+					  label   = NULL,
+					  choices = api_config$local_models,
+					  selected = api_config$local_models[1],
+					  width = "100%"
+					),
+					uiOutput(ns("model_description_text"))
+				  )
+				), # Column 1 kapanış
+
+				# 4/12 — Yanıt Sonrası Öneriler
+				column(
+				  width = 4,
 				  div(
 					class = "setting-item followup-toggle",
 					h4("Yanıt Sonrası Öneriler", class = "setting-subtitle"),
-					p(
-					  "Model yanıtlarının sonunda otomatik takip soruları görüntüleyin.",
-					  class = "setting-description",
-					  style = "margin-top:4px;"
-					),
+					p("Model yanıtlarının sonunda otomatik takip soruları görüntüleyin.", class = "setting-description", style = "margin-top:4px;"),
 					div(
 					  class = "checkbox-item followup-checkbox",
 					  checkboxInput(
 						inputId = ns("enable_followups"),
 						label = tags$span("Takip sorusu önerilerini göster"),
-						value = TRUE
+						value = FALSE
 					  )
 					)
 				  )
-				),
+				), # Column 2 kapanış
 
-				# 1/12 — Spacer
-				column(width = 1, HTML("&nbsp;")),
-
-				# 4/12 — Analiz Araçları
+				# 4/12 — API Anahtarını Güncelle
 				column(
 				  width = 4,
-				  h4("Analiz Araçları", class = "setting-subtitle"),
-				  p(
-					"Analiz modunu seçin: rData (kurumsal veri gölü) veya MCP: Excel (yüklenen dosya). ",
-					"Aynı anda yalnızca biri aktif olabilir; isterseniz ikisini de kapatabilirsiniz.",
-					class = "setting-description", style = "margin-top:4px;"
-				  ),
-				  div(
-					class = "setting-item",
-					# Yeni: rData odaklı analiz seçeneği (varsayılan açık)
-					div(
-					  class = "checkbox-item",
-					  checkboxInput(
-						inputId = ns("enable_rdata_tools"),
-						label = tags$span("Proje ve Kaynak Analizi", style = "white-space: nowrap;"),
-						value = FALSE
-					  )
-					),
-					# Mevcut: MCP Excel analizi
-					div(
-					  class = "checkbox-item",
-					  checkboxInput(
-						inputId = ns("enable_mcp_tools"),
-						label = tags$span("Model Context Protocol (MCP): Excel", style = "white-space: nowrap;"),
-						value = FALSE
-					  )
-					),
-					# YENİ: Dosya Özetleme modu
-					div(
-					  class = "checkbox-item",
-					  checkboxInput(
-						inputId = ns("enable_summarization_tools"),
-						label = tags$span("Dosya Özetleme", style = "white-space: nowrap;"),
-						value = FALSE
-					  )
-					),
-					div(
-					  class = "checkbox-item",
-					  checkboxInput(
-						inputId = ns("enable_coding_tools"),
-						label = tags$span("Kod Uzmanı", style = "white-space: nowrap;"),
-						value = FALSE
-					  )
-					),
-					div(
-					  class = "checkbox-item",
-					  checkboxInput(
-						inputId = ns("enable_process_tools"),
-						label = tags$span("Süreç Yönetimi", style = "white-space: nowrap;"),
-						value = FALSE
-					  )
-					),
-					div(
-					  class = "checkbox-item",
-					  checkboxInput(
-						inputId = ns("enable_app_expert_tools"),
-						label = tags$span("Uygulama Uzmanı", style = "white-space: nowrap;"),
-						value = FALSE
-					  )
-					),
-					div(
-					  class = "checkbox-item",
-					  checkboxInput(
-						inputId = ns("enable_image_tools"),
-						label = tags$span("Görsel Uzmanı", style = "white-space: nowrap;"),
-						value = FALSE
-					  )
-					)
-				  )
-				),
-
-				# 1/12 — Spacer
-				column(width = 1, HTML("&nbsp;")),
-
-				# 3/12 — API Anahtarını Güncelle
-				column(
-				  width = 3,
 				  h4("API Anahtarını Güncelle", class = "setting-subtitle"),
-				  p("LLM erişimi için kişisel API anahtarınızı yönetin.", class = "setting-description", style = "margin-top:4px;"),
+				  # DÜZELTME: p() etiketi içindeki hatalı div yapısı çıkarıldı
+				  p("LLM erişimi için kişisel API anahtarınızı yönetin.", class = "setting-description"),
 				  div(
 					class = "setting-item",
 					div(
 					  style = "display:flex; flex-direction:column; gap:10px; align-items:flex-start;",
-					  # Güncelle (modal açar)
 					  actionButton(
 						ns("update_api_key_btn"),
 						label = tagList(icon("key"), "API Anahtarını Güncelle"),
 						class = "btn-modern btn-warning"
 					  ),
-					  # Rate limit artışı — aynı stil, farklı koyu renk
 					  tags$a(
 						href   = getOption(
 						  "mergen.rate_limit_url",
@@ -206,6 +126,36 @@ settingsUI <- function(id) {
 					)
 				  )
 				)
+			  )
+			),
+			# Analiz Araçları Kartı
+			div(
+			  class = "settings-card tool-selector-card",
+			  h3("Analiz Araçları", class = "settings-title"),
+			  # Gizli checkbox'lar (mevcut Shiny mantığı korunuyor)
+			  div(
+				style = "display:none;",
+				checkboxInput(ns("enable_rdata_tools"), "rData", value = FALSE),
+				checkboxInput(ns("enable_mcp_tools"), "MCP Excel", value = FALSE),
+				checkboxInput(ns("enable_summarization_tools"), "Özetleme", value = FALSE),
+				checkboxInput(ns("enable_coding_tools"), "Kodlama", value = FALSE),
+				checkboxInput(ns("enable_process_tools"), "Süreç", value = FALSE),
+				checkboxInput(ns("enable_app_expert_tools"), "Uygulama", value = FALSE),
+				checkboxInput(ns("enable_image_tools"), "Görsel", value = FALSE)
+			  ),
+			  # Buton seçici (JS tarafından doldurulur)
+			  div(
+				class = "tool-selector-buttons",
+				id = ns("tool_buttons")
+			  ),
+			  # Açıklama alanı
+			  div(
+				class = "tool-description-area",
+				p(
+				  class = "tool-desc-subtext",
+				  "Analiz araçları, yapay zeka modelinin harici veri kaynakları ve uzman yetenekleri ile etkileşime girmesini sağlar. Aynı anda yalnızca bir araç aktif olabilir."
+				),
+				p(class = "tool-desc-detail", id = ns("tool_desc_text"))
 			  )
 			),
             # New layout: Interface Settings (9) + Shortcuts (3)
@@ -282,7 +232,7 @@ settingsUI <- function(id) {
 					checkboxInput(
 					  inputId = ns("enable_tts_audio"),
 					  label = tags$span("Yanıtları Seslendir"),
-					  value = TRUE
+					  value = FALSE
 					)
 				  ),
 				  p("AI yanıtlarını otomatik seslendir.", class = "setting-description", style = "margin-top: 4px;")
@@ -467,7 +417,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_typing_indicator = TRUE,
 	  enable_streaming        = TRUE,
 	  enable_widescreen       = TRUE,
-	  enable_tts_audio        = TRUE,
+	  enable_tts_audio        = FALSE,
 	  enable_rdata_tools      = FALSE,
 	  enable_mcp_tools        = FALSE,
 	  enable_summarization_tools = FALSE,
@@ -479,7 +429,7 @@ settingsServer <- function(id, parent_session = NULL) {
       image_quality_hd = FALSE,
       summary_detail_level = "standard",
       summary_focus_mode = "general",
-	  enable_followups        = TRUE,
+	  enable_followups        = FALSE,
 	  font_size               = "medium",
 	  enable_background_music = FALSE,
 	  music_volume = 0.3

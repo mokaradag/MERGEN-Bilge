@@ -308,11 +308,11 @@ section.content,
 }
 
 .admin-datatable thead th {
-  background: var(--background-medium) !important;
-  color: var(--text-secondary) !important;
+  background: linear-gradient(145deg, #1a2744 0%, #1e2d4a 100%) !important;
+  color: #e2e8f0 !important;
   font-weight: 600 !important;
   padding: 12px 16px !important;
-  border-bottom: 2px solid var(--border-color) !important;
+  border-bottom: 2px solid rgba(99, 140, 255, 0.2) !important;
   font-size: 13px !important;
   text-transform: none !important;
   letter-spacing: 0.5px !important;
@@ -368,11 +368,11 @@ section.content,
 }
 
 .dataTables_wrapper .dataTables_scrollHead table thead th {
-  background: var(--background-medium, var(--background-dark)) !important;
-  color: var(--text-secondary) !important;
+  background: linear-gradient(145deg, #1a2744 0%, #1e2d4a 100%) !important;
+  color: #e2e8f0 !important;
   font-weight: 600 !important;
   padding: 12px 16px !important;
-  border-bottom: 2px solid var(--border-color) !important;
+  border-bottom: 2px solid rgba(99, 140, 255, 0.2) !important;
   font-size: 13px !important;
 }
 
@@ -560,4 +560,28 @@ section.content,
 
 .tooltip.in {
   transition: opacity 0.15s ease-out;
+}
+
+/* "#" satır numarası başlığını gizle (datatables.css ile uyum) */
+.admin-datatable thead th.row-number-col,
+.admin-datatable thead th:first-child {
+  font-size: 0 !important;
+}
+
+.admin-datatable thead th.row-number-col::after,
+.admin-datatable thead th:first-child::after {
+  content: "" !important;
+}
+
+/* Başlık hizalamasını sütun değerleriyle eşle */
+.admin-datatable thead th.dt-center {
+  text-align: center !important;
+}
+
+.admin-datatable thead th.dt-left {
+  text-align: left !important;
+}
+
+.admin-datatable thead th.dt-right {
+  text-align: right !important;
 }

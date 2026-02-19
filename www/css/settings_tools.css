@@ -1,0 +1,157 @@
+/* www/css/settings_tools.css */
+/* Ayarlar sayfası - Analiz Araçları buton kartı stilleri */
+
+/* Analiz Araçları kartı ana kapsayıcı */
+.tool-selector-card {
+  background: linear-gradient(160deg, rgba(16, 18, 32, 0.92), rgba(8, 9, 18, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Buton ızgarası */
+.tool-selector-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(14, 16, 30, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 24px rgba(0, 0, 0, 0.35);
+  margin-bottom: 16px;
+}
+
+/* Tek buton stili */
+.tool-select-btn {
+  flex: 1 1 clamp(160px, 14vw, 200px);
+  min-width: 150px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(155deg, rgba(24, 26, 42, 0.96), rgba(12, 14, 24, 0.98));
+  color: var(--text-secondary);
+  font-family: "Bahnschrift", "Segoe UI", "Trebuchet MS", "Verdana", Arial, sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  isolation: isolate;
+  transition: color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease,
+              background 0.35s ease, border-color 0.25s ease;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  outline: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.tool-select-btn i {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.25s ease, color 0.25s ease, filter 0.25s ease;
+}
+
+.tool-select-btn:hover {
+  transform: translateY(-2px);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: linear-gradient(155deg, rgba(28, 30, 48, 0.98), rgba(14, 16, 28, 0.98));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.tool-select-btn:hover i {
+  opacity: 1;
+}
+
+/* Aktif durum - araç tema rengiyle */
+.tool-select-btn.active {
+  color: #fff;
+  border-color: var(--tool-accent, #10b981);
+  background: linear-gradient(155deg,
+    rgba(var(--tool-r, 16), var(--tool-g, 185), var(--tool-b, 129), 0.18),
+    rgba(var(--tool-r, 16), var(--tool-g, 185), var(--tool-b, 129), 0.08));
+  box-shadow:
+    0 0 20px rgba(var(--tool-r, 16), var(--tool-g, 185), var(--tool-b, 129), 0.15),
+    0 8px 24px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 1px rgba(var(--tool-r, 16), var(--tool-g, 185), var(--tool-b, 129), 0.2);
+  transform: translateY(-2px);
+}
+
+.tool-select-btn.active i {
+  opacity: 1;
+  color: var(--tool-accent, #10b981);
+  filter: drop-shadow(0 0 6px var(--tool-accent, #10b981));
+}
+
+.tool-select-btn.active::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 12px;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--tool-accent, #10b981), transparent 60%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* Araç açıklama alanı */
+.tool-description-area {
+  min-height: 60px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: rgba(14, 16, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: all 0.3s ease;
+}
+
+.tool-description-area .tool-desc-subtext {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.tool-description-area .tool-desc-detail {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0;
+  min-height: 20px;
+}
+
+/* Açıklama yazma efekti */
+.tool-desc-detail .typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--tool-accent, var(--primary-color));
+  margin-left: 2px;
+  animation: toolCursorBlink 0.8s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes toolCursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Duyarlı tasarım */
+@media (max-width: 992px) {
+  .tool-select-btn {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 140px;
+  }
+}
+
+@media (max-width: 576px) {
+  .tool-select-btn {
+    flex: 1 1 100%;
+  }
+}

@@ -1422,20 +1422,34 @@ adminAnalyticsServer <- function(id, pool = NULL) {
       display_data <- data[, c("row_num", "display_name", "chat_count", "total_messages", "avg_chat_length")]
       colnames(display_data) <- c("#", "Kullanıcı", "Söyleşi", "Mesaj", "Ort. Uzunluk")
       
-      DT::datatable(
+	  DT::datatable(
         display_data,
         options = list(
           dom = 't',
-          pageLength = 15,
+          pageLength = 20,
           scrollY = FALSE,
           ordering = TRUE,
-          order = list(list(3, 'desc')),
+          order = list(list(2, 'desc')),
           language = turkish_dt_language,
           columnDefs = list(
             list(className = 'dt-center', targets = c(0, 2, 3, 4)),
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
+          ),
+          headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
@@ -1558,6 +1572,20 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
+          ),
+		  headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
@@ -1684,6 +1712,20 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(width = '250px', targets = 3)
+          ),
+		  headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
@@ -1715,6 +1757,20 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(width = '250px', targets = 3)
+          ),
+		  headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
@@ -1745,6 +1801,20 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
+          ),
+		  headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
@@ -1887,6 +1957,20 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
+          ),
+		  headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
@@ -1921,6 +2005,20 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
+          ),
+		  headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
@@ -2015,6 +2113,20 @@ adminAnalyticsServer <- function(id, pool = NULL) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(orderable = FALSE, targets = 0)
+          ),
+		  headerCallback = JS(
+            "function(thead, data, start, end, display) {",
+            "  var api = this.api();",
+            "  api.columns().every(function(idx) {",
+            "    var col = api.column(idx);",
+            "    var th = $(col.header());",
+            "    var td = $(col.nodes()).first();",
+            "    if (td.hasClass('dt-center')) th.css('text-align', 'center');",
+            "    else if (td.hasClass('dt-right')) th.css('text-align', 'right');",
+            "    else th.css('text-align', 'left');",
+            "    if (idx === 0) { th.css('font-size', '0'); }",
+            "  });",
+            "}"
           )
         ),
         class = "admin-datatable",
