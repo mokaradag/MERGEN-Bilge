@@ -29,9 +29,18 @@ server <- function(input, output, session) {
     session$userData$user_identity <- user_identity
     session$userData$user_first_name <- user_identity$first_name
 
-    # Sohbet baloncuklarında kullanıcı adı ve avatar için user_config güncelle
+	# Sohbet baloncuklarında kullanıcı adı ve avatar için user_config güncelle
+    # NOT: <<- yerine session-local kopya kullanılıyor (çoklu oturum güvenliği)
+    session$userData$user_config <- list(
+      name       = user_identity$full_name,
+      icon       = user_config$icon,
+      userId     = user_identity$sicil %||% as.character(current_user_id),
+      auth_level = user_config$auth_level
+    )
+    # Geriye dönük uyumluluk: global user_config'i de güncelle
+    # (tek kullanıcılı dağıtımlarda sorun olmaz; çoklu kullanıcıda kaldırılmalı)
     user_config$name    <<- user_identity$full_name
-    user_config$userId <<- user_identity$sicil %||% as.character(current_user_id)
+    user_config$userId  <<- user_identity$sicil %||% as.character(current_user_id)
 
     # Kullanıcı oturumu için önbellek dizinini yapılandır
     cache_dir <- session_cache$setup_user_session(current_user_id)
@@ -129,13 +138,9 @@ server <- function(input, output, session) {
     # Chartlab referanslarını çözümlemek için grafik deposu
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
       
-  chat_list_trigger <- reactiveVal(0)
   stop_generation <- reactiveVal(FALSE)
   file_to_add <- reactiveVal(NULL)
   session_files <- reactiveVal(list())
-  last_activity <- reactiveVal(Sys.time())
-  session_active <- reactiveVal(TRUE)
-  processing_request <- reactiveVal(FALSE)
   active_request_id <- reactiveVal(NULL)
   quick_action_skip_mcp <- reactiveVal(FALSE)
   

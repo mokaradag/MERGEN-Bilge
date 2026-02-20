@@ -54,7 +54,7 @@ push_followup_update <- function(session, message_id, followups, pending = FALSE
 
 chat_add_message <- function(session, values, settings_data, output,
                              content, type = "user", html = NULL,
-                             current_user_id, filePreview = NULL,
+                             current_user_id,
                              followups = NULL, audio_src = NULL,
                              audio_voice = NULL) {
   if (isTRUE(values$show_welcome)) {

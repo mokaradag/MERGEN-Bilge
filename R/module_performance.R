@@ -1,10 +1,16 @@
+# ==============================================================================
 # R/module_performance.R
-# Performance tracking module
+# Dosya Yolu: R/module_performance.R
+# Açıklama: Shiny uygulaması için performans takip modülü.
+# Aktif kullanıcı sayısı, toplam istek, ortalama yanıt süresi ve hata
+# sayılarını izler; performans optimizasyonu için belirli aralıklarla diske kaydeder.
+# ==============================================================================
 
 performanceStatsServer <- function(id, current_user_id) {
   moduleServer(id, function(input, output, session) {
     
-    # Initialize performance stats
+    # --- PERFORMANS İSTATİSTİKLERİ ---
+    # Başlangıç değerlerini atayarak reaktif değişkenleri oluşturur
     stats <- reactiveValues(
       active_users = 1,
       total_requests = 0,
@@ -14,10 +20,11 @@ performanceStatsServer <- function(id, current_user_id) {
       uptime_start = Sys.time()
     )
     
-    # Stats file path
+    # İstatistiklerin kaydedileceği dosya yolu
     stats_file <- "logs/performance_stats.txt"
     
-    # Load existing stats - WRAPPED IN ISOLATE
+    # --- MEVCUT İSTATİSTİKLERİ YÜKLEME ---
+    # Uygulama başladığında diske kaydedilmiş eski verileri okur (isolate içinde)
     isolate({
       if (file.exists(stats_file)) {
         saved <- tryCatch({
@@ -35,7 +42,8 @@ performanceStatsServer <- function(id, current_user_id) {
       }
     })
     
-    # Track a successful request
+    # --- BAŞARILI İSTEK TAKİBİ ---
+    # Başarılı bir isteği kaydeder ve ortalama yanıt süresini hesaplayarak günceller
     track_request <- function(duration_seconds = NULL) {
       isolate({
         stats$total_requests <- stats$total_requests + 1
@@ -52,26 +60,29 @@ performanceStatsServer <- function(id, current_user_id) {
         cat(sprintf("[STATS] Total: %d, Avg: %.2f, Errors: %d\n", 
                     stats$total_requests, stats$avg_response_time, stats$error_count))
         
-        # Save to disk
-        tryCatch({
-          if (!dir.exists("logs")) dir.create("logs", recursive = TRUE)
-          
-          stats_df <- data.frame(
-            total_requests = stats$total_requests,
-            avg_response_time = stats$avg_response_time,
-            error_count = stats$error_count,
-            stringsAsFactors = FALSE
-          )
-          
-          write.table(stats_df, stats_file, 
-                      row.names = FALSE, sep = "\t", quote = FALSE)
-        }, error = function(e) {
-          cat("[ERROR] Failed to save stats:", e$message, "\n")
-        })
+        # Her 10 istekte bir diske kaydet (performans optimizasyonu)
+        if (stats$total_requests %% 10 == 0) {
+          tryCatch({
+            if (!dir.exists("logs")) dir.create("logs", recursive = TRUE)
+            
+            stats_df <- data.frame(
+              total_requests = stats$total_requests,
+              avg_response_time = stats$avg_response_time,
+              error_count = stats$error_count,
+              stringsAsFactors = FALSE
+            )
+            
+            write.table(stats_df, stats_file, 
+                        row.names = FALSE, sep = "\t", quote = FALSE)
+          }, error = function(e) {
+            cat("[ERROR] Failed to save stats:", e$message, "\n")
+          })
+        }
       })
     }
     
-    # Track an error
+    # --- HATA TAKİBİ ---
+    # Başarısız istekleri kaydeder ve hata sayacını artırır
     track_error <- function() {
       isolate({
         stats$total_requests <- stats$total_requests + 1
@@ -80,26 +91,29 @@ performanceStatsServer <- function(id, current_user_id) {
         cat(sprintf("[STATS] Total: %d, Errors: %d\n", 
                     stats$total_requests, stats$error_count))
         
-        # Save to disk
-        tryCatch({
-          if (!dir.exists("logs")) dir.create("logs", recursive = TRUE)
-          
-          stats_df <- data.frame(
-            total_requests = stats$total_requests,
-            avg_response_time = stats$avg_response_time,
-            error_count = stats$error_count,
-            stringsAsFactors = FALSE
-          )
-          
-          write.table(stats_df, stats_file, 
-                      row.names = FALSE, sep = "\t", quote = FALSE)
-        }, error = function(e) {
-          cat("[ERROR] Failed to save stats:", e$message, "\n")
-        })
+        # Her 10 istekte bir diske kaydet (performans optimizasyonu)
+        if (stats$total_requests %% 10 == 0) {
+          tryCatch({
+            if (!dir.exists("logs")) dir.create("logs", recursive = TRUE)
+            
+            stats_df <- data.frame(
+              total_requests = stats$total_requests,
+              avg_response_time = stats$avg_response_time,
+              error_count = stats$error_count,
+              stringsAsFactors = FALSE
+            )
+            
+            write.table(stats_df, stats_file, 
+                        row.names = FALSE, sep = "\t", quote = FALSE)
+          }, error = function(e) {
+            cat("[ERROR] Failed to save stats:", e$message, "\n")
+          })
+        }
       })
     }
     
-    # Return public interface
+    # --- MODÜL DIŞA AKTARIMI ---
+    # Modülün diğer bileşenler tarafından kullanılabilecek arayüzünü döndürür
     return(list(
       track_request = track_request,
       track_error = track_error,

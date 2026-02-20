@@ -13,33 +13,10 @@
 #' @param current_user_id Mevcut kullanıcı ID'si
 startupObserversInit <- function(input, session, values, render_welcome_screen, current_user_id) {
   
+  # Karşılama ekranını başlat (widget bağımlılıkları ui.R'de statik olarak tanımlı)
   observeEvent(TRUE, {
     if (isTRUE(values$show_welcome)) {
       render_welcome_screen(values$saved_chats)
-    }
-    
-    if (requireNamespace("highcharter", quietly = TRUE)) {
-      insertUI(
-        selector = "body", where = "beforeEnd",
-        ui = tags$div(
-          style = "width:1px;height:1px;overflow:hidden;position:absolute;left:-9999px;top:-9999px;",
-          highcharter::highchartOutput("deps_hc", width = "1px", height = "1px")
-        ),
-        immediate = TRUE
-      )
-    }
-    if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)) {
-      insertUI(
-        selector = "body", where = "beforeEnd",
-        ui = tags$div(
-          style = "width:1px;height:1px;overflow:hidden;position:absolute;left:-9999px;top:-9999px;",
-          tagList(
-            plotly::plotlyOutput("deps_pl", width = "1px", height = "1px"),
-            plotly::plotlyOutput("plotly_html", width = "1px", height = "1px")
-          )
-        ),
-        immediate = TRUE
-      )
     }
   }, once = TRUE)
   
