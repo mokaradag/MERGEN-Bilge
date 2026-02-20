@@ -209,11 +209,47 @@ sendMessageInit <- function(
  
     messages_to_process <- recent_messages
  
-    # Proje ve Kaynak Analizi gösterge modu
-    # RAG işleme modelin içinde gerçekleştiğinden R tarafı ön işleme atlanır;
-    # sadece başlık çubuğunda gösterge olarak görünür ve streaming yolu kullanılır.
+    # SQL Analizi modu işleme
+    # pk_analiz_process_request() RAG bağlamını hazırlar ve LLM mesajlarına enjekte eder;
+    # sonuç karakter dizesiyse doğrudan AI mesajı olarak gösterilir.
     if (identical(tool_family, "sql_analysis")) {
-      cat("[SERVER] 'Proje ve Kaynak Analizi' modu aktif - RAG model devraliniyor, streaming yolu kullanilacak.\n")
+       cat("[SERVER] 'Proje ve Kaynak Analizi' secildi. Modul cagiriliyor...\n")
+ 
+       if (isTRUE(stop_generation())) {
+         removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+         values$typing <- FALSE
+         reset_chat_state_fn()
+         return(invisible(NULL))
+       }
+ 
+       analiz_result <- tryCatch({
+         pk_analiz_process_request(user_message_text, messages_to_process, session, stop_check = stop_generation)
+       }, error = function(e) {
+         paste0("⚠️ Analiz modülü hatası: ", e$message)
+       })
+ 
+       if (is.character(analiz_result)) {
+         removeUI(selector = "#typing-animation-wrapper")
+         values$typing <- FALSE
+ 
+         add_message_fn(analiz_result, "ai")
+         return()
+ 
+       } else if (is.list(analiz_result)) {
+         cat("[SERVER] SQL Analizi basarili. Veriler LLM baglamina ekleniyor...\n")
+ 
+         last_idx <- length(messages_to_process)
+         if (last_idx > 0) {
+           messages_to_process[[last_idx]]$content <- analiz_result$user_context
+         }
+ 
+         sys_msg <- list(
+           role = "system",
+           content = analiz_result$prompt_context,
+           type = "system"
+         )
+         messages_to_process <- append(list(sys_msg), messages_to_process)
+       }
     }
  
     # Karakter verilerini al
