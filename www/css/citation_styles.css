@@ -1,0 +1,59 @@
+/* Dosya Yolu: www/css/citation_styles.css */
+/* Açıklama: Satır içi atıf referansları ([n]) ve Kaynakça girişleri için   */
+/*           koyu tema stilleri. citation_handler.js ile birlikte çalışır.  */
+
+/* ─── Satır İçi Atıf Düğmesi (.citation-ref) ───────────────────────────── */
+.citation-ref {
+  display: inline-block;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 5px;
+  margin: 0 1px;
+  vertical-align: super;
+  border-radius: 3px;
+  cursor: pointer;
+
+  /* Koyu tema: yarı saydam mavi-gri arka plan */
+  background: rgba(99, 179, 237, 0.12);
+  color: #7ec8e3;
+  border: 1px solid rgba(99, 179, 237, 0.25);
+
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
+
+.citation-ref:hover {
+  background: rgba(99, 179, 237, 0.25);
+  color: #bee3f8;
+  border-color: rgba(99, 179, 237, 0.55);
+}
+
+.citation-ref:active {
+  background: rgba(99, 179, 237, 0.4);
+  color: #ebf8ff;
+}
+
+/* ─── Kaynakça Girişi (.kaynakca-entry) ─────────────────────────────────── */
+/* Her Kaynakça satırını sarmalayan span; normalde görünmez davranır         */
+.kaynakca-entry {
+  display: block;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 1px 0;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* ─── Vurgulama Animasyonu (.citation-highlight) ─────────────────────────── */
+/* JS tıklama olayı sonrası geçici olarak eklenir, 2.2 sn sonra kaldırılır  */
+.kaynakca-entry.citation-highlight {
+  background: rgba(99, 179, 237, 0.15);
+  box-shadow: inset 3px 0 0 0 #63b3ed;
+  animation: citationPulse 2.2s ease forwards;
+}
+
+@keyframes citationPulse {
+  0%   { background: rgba(99, 179, 237, 0.30); box-shadow: inset 3px 0 0 0 #63b3ed; }
+  40%  { background: rgba(99, 179, 237, 0.18); box-shadow: inset 3px 0 0 0 #63b3ed; }
+  100% { background: rgba(99, 179, 237, 0.00); box-shadow: inset 3px 0 0 0 transparent; }
+}
