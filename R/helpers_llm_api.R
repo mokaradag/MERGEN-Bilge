@@ -250,10 +250,13 @@ call_local_llm <- function(chat_history, current_settings) {
             "</span>"
           )
 
+          # Her Kaynakca girisini veri-entry ozelligi ile sarar; JS atif eslestirmesi icin gerekli
           line <- paste0(
+            "<span class='kaynakca-entry' data-entry='", i, "'>",
             i, ") ", label_prefix, icon_html,
             if (nzchar(left_html)) paste0(left_html, " - ") else "",
-            clickable_html, "\n"
+            clickable_html,
+            "</span>\n"
           )
 
         } else {
@@ -264,7 +267,12 @@ call_local_llm <- function(chat_history, current_settings) {
             htmltools::htmlEscape(src_info$filename),
             "</span>"
           )
-          line <- paste0(i, ") ", label_prefix, icon_html, clickable_html, "\n")
+          # Tek parcali Kaynakca girisi de ayni sekilde sarlaniyor
+          line <- paste0(
+            "<span class='kaynakca-entry' data-entry='", i, "'>",
+            i, ") ", label_prefix, icon_html, clickable_html,
+            "</span>\n"
+          )
         }
 
         sources_text <- paste0(sources_text, line)
