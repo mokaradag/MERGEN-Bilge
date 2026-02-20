@@ -314,7 +314,9 @@ if (window.Shiny) {
         modelWrapper.classList.remove('model-selector-locked');
         var summaryControls = document.getElementById('summary_chat_controls');
         var summaryActive = summaryControls && !summaryControls.classList.contains('hidden');
-        if (!summaryActive) {
+        var analysisControls = document.getElementById('analysis_chat_controls');
+        var analysisActive = analysisControls && !analysisControls.classList.contains('hidden');
+        if (!summaryActive && !analysisActive) {
           modelWrapper.style.opacity = '1';
           modelWrapper.style.pointerEvents = 'auto';
           modelWrapper.title = 'Model Değiştir';

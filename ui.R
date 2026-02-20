@@ -121,6 +121,7 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/code_collapse.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_search_modal.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/settings_tools.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/analysis_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/citation_styles.css"),
     
     # --- Local CodeMirror CSS ---
@@ -199,6 +200,7 @@ ui <- dashboardPage(
     tags$script(src = "js/summarization_tools.js"),
     tags$script(src = "js/chat_search_modal.js"),
 	tags$script(src = "js/settings_tools.js"),
+    tags$script(src = "js/analysis_tools.js"),
     tags$script(src = "js/citation_handler.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
@@ -347,6 +349,35 @@ ui <- dashboardPage(
                         tags$option(value = "numerical", "Sayısal Veri"),
                         tags$option(value = "decisions", "Karar & Öneri"),
                         tags$option(value = "comparison", "Karşılaştırma")
+                      )
+                    )
+                  ),
+                  # Analiz kontrolleri (Proje ve Kaynak Analizi aktifken görünür)
+                  div(
+                    id = "analysis_chat_controls",
+                    class = "analysis-chat-controls hidden",
+                    div(
+                      class = "analysis-control-item",
+                      tags$button(
+                        id = "chat_deep_thinking_toggle",
+                        class = "deep-thinking-toggle",
+                        type = "button",
+                        title = "Derin Düşünme: Pasif - Tek sorgu analizi yapılacak",
+                        tags$i(class = "fas fa-brain toggle-icon"),
+                        tags$span(class = "toggle-label", "Derin Düşünme")
+                      )
+                    ),
+                    div(class = "analysis-control-separator"),
+                    div(
+                      class = "analysis-control-item",
+                      tags$select(
+                        id = "chat_analysis_detail",
+                        class = "analysis-detail-select",
+                        title = "Detay Seviyesi: Yanıtın ne kadar ayrıntılı olacağını belirler",
+                        disabled = "disabled",
+                        tags$option(value = "ozet", "Özet"),
+                        tags$option(value = "standart", selected = "selected", "Standart"),
+                        tags$option(value = "detayli", "Detaylı")
                       )
                     )
                   ),

@@ -210,39 +210,71 @@ sendMessageInit <- function(
     messages_to_process <- recent_messages
  
     # SQL Analizi modu işleme
-    # pk_analiz_process_request() RAG bağlamını hazırlar ve LLM mesajlarına enjekte eder;
+    # Derin düşünme aktifse pk_deep_analysis_process(), değilse pk_analiz_process_request() kullanılır.
+    # Her iki fonksiyon da RAG bağlamını hazırlar ve LLM mesajlarına enjekte eder;
     # sonuç karakter dizesiyse doğrudan AI mesajı olarak gösterilir.
     if (identical(tool_family, "sql_analysis")) {
-       cat("[SERVER] 'Proje ve Kaynak Analizi' secildi. Modul cagiriliyor...\n")
- 
+       # Derin düşünme modu kontrolü
+       deep_thinking_active <- isTRUE(settings_data$analysis_deep_thinking)
+       analysis_detail <- settings_data$analysis_detail_level %||% "standart"
+
+       if (deep_thinking_active) {
+         cat(sprintf("[SERVER] 'Derin Düşünme' modu aktif. Detay: %s. Çoklu sorgu analizi başlatılıyor...\n", analysis_detail))
+       } else {
+         cat("[SERVER] 'Proje ve Kaynak Analizi' secildi (tekil mod). Modul cagiriliyor...\n")
+       }
+
        if (isTRUE(stop_generation())) {
          removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
          values$typing <- FALSE
          reset_chat_state_fn()
          return(invisible(NULL))
        }
- 
+
        analiz_result <- tryCatch({
-         pk_analiz_process_request(user_message_text, messages_to_process, session, stop_check = stop_generation)
+         if (deep_thinking_active) {
+           # Derin düşünme: çoklu sorgu analizi
+           pk_deep_analysis_process(
+             user_message_text, messages_to_process, session,
+             detail_level = analysis_detail,
+             stop_check = stop_generation
+           )
+         } else {
+           # Standart: tekil sorgu analizi
+           pk_analiz_process_request(user_message_text, messages_to_process, session, stop_check = stop_generation)
+         }
        }, error = function(e) {
          paste0("⚠️ Analiz modülü hatası: ", e$message)
        })
- 
+
        if (is.character(analiz_result)) {
          removeUI(selector = "#typing-animation-wrapper")
          values$typing <- FALSE
- 
+
          add_message_fn(analiz_result, "ai")
          return()
- 
+
        } else if (is.list(analiz_result)) {
-         cat("[SERVER] SQL Analizi basarili. Veriler LLM baglamina ekleniyor...\n")
- 
+         # Hata mesajı döndüyse
+         if (identical(analiz_result$type, "error_message")) {
+           removeUI(selector = "#typing-animation-wrapper")
+           values$typing <- FALSE
+           add_message_fn(analiz_result$content, "ai")
+           return()
+         }
+
+         cat(sprintf("[SERVER] SQL Analizi basarili. Veriler LLM baglamina ekleniyor... (Derin: %s)\n", deep_thinking_active))
+
+         # Derin düşünme modunda max_tokens güncelle
+         if (!is.null(analiz_result$max_tokens)) {
+           current_settings$max_output_tokens <- analiz_result$max_tokens
+         }
+
          last_idx <- length(messages_to_process)
          if (last_idx > 0) {
            messages_to_process[[last_idx]]$content <- analiz_result$user_context
          }
- 
+
          sys_msg <- list(
            role = "system",
            content = analiz_result$prompt_context,

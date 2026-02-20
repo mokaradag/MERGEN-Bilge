@@ -101,7 +101,9 @@ if (window.Shiny) {
         modelWrapper.classList.remove('model-selector-locked');
         var imageControls = document.getElementById('image_chat_controls');
         var imageActive = imageControls && !imageControls.classList.contains('hidden');
-        if (!imageActive) {
+        var analysisControls = document.getElementById('analysis_chat_controls');
+        var analysisActive = analysisControls && !analysisControls.classList.contains('hidden');
+        if (!imageActive && !analysisActive) {
           modelWrapper.style.opacity = '1';
           modelWrapper.style.pointerEvents = 'auto';
           modelWrapper.title = 'Model Değiştir';

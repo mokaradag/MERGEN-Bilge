@@ -118,11 +118,24 @@ quickActionsInit <- function(input, session, values, settings_data,
       change_model_if_provided(template_model)
       session$sendCustomMessage("toggleImageMode", list(active = FALSE))
       session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
+      session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+    } else if (tool_name == "enable_rdata_tools") {
+      # Analiz modu: model değiştir, analiz kontrollerini göster, model seçiciyi kilitle
+      change_model_if_provided(template_model)
+      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+      session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+      session$sendCustomMessage("toggleAnalysisMode", list(active = TRUE))
+      # Mevcut analiz ayarlarını senkronize et
+      session$sendCustomMessage("syncAnalysisSettingsToChat", list(
+        deep_thinking = isTRUE(isolate(settings_data$analysis_deep_thinking)),
+        detail_level = isolate(settings_data$analysis_detail_level) %||% "standart"
+      ))
     } else {
       # Normal model değiştirme
       change_model_if_provided(template_model)
       session$sendCustomMessage("toggleImageMode", list(active = FALSE))
       session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+      session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
     }
     
     # 2. Araçları kapat, sadece istenen aracı aç
