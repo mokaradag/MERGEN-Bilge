@@ -1,0 +1,302 @@
+/* www/css/mode_selection.css */
+/* Dosya Yolu: www/css/mode_selection.css */
+/* Açıklama: Kullanıcı deneyim modu seçim arayüzü stilleri. */
+/* Giriş ekranı modal kutusu ve Ayarlar sayfası mod kartları. */
+
+/* ============================================================= */
+/* MOD SEÇİM MODALI (GİRİŞ EKRANI)                              */
+/* ============================================================= */
+.mode-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10500;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mode-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mode-modal-box {
+  background: linear-gradient(145deg, rgba(18, 18, 28, 0.95), rgba(10, 10, 18, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 36px 40px;
+  max-width: 780px;
+  width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  transform: translateY(20px) scale(0.97);
+  transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.mode-modal-overlay.active .mode-modal-box {
+  transform: translateY(0) scale(1);
+}
+
+/* Kapatma butonu */
+.mode-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  z-index: 5;
+}
+
+.mode-modal-close:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Modal başlık */
+.mode-modal-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.mode-modal-header h3 {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.15em;
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+}
+
+.mode-modal-header p {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  letter-spacing: 0.03em;
+}
+
+/* ============================================================= */
+/* MOD BUTONLARI (MODAL & AYARLAR ORTAK)                         */
+/* ============================================================= */
+.mode-cards-container {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.mode-card {
+  flex: 1;
+  min-width: 200px;
+  max-width: 240px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 22px 18px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.35s cubic-bezier(0.19, 1, 0.22, 1);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.mode-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--mode-accent, rgba(255, 255, 255, 0.1));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.mode-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-2px);
+}
+
+.mode-card:hover::before {
+  opacity: 0.6;
+}
+
+.mode-card.selected {
+  border-color: var(--mode-accent, rgba(0, 242, 255, 0.4));
+  background: rgba(var(--mode-accent-rgb, 0, 242, 255), 0.06);
+  box-shadow: 0 0 24px rgba(var(--mode-accent-rgb, 0, 242, 255), 0.08);
+}
+
+.mode-card.selected::before {
+  opacity: 1;
+}
+
+/* Mod ikon alanı */
+.mode-card-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+}
+
+.mode-card:hover .mode-card-icon {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.mode-card.selected .mode-card-icon {
+  border-color: var(--mode-accent, rgba(0, 242, 255, 0.3));
+  background: rgba(var(--mode-accent-rgb, 0, 242, 255), 0.08);
+}
+
+.mode-card-icon i {
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.3s ease;
+}
+
+.mode-card.selected .mode-card-icon i {
+  color: var(--mode-accent, rgba(0, 242, 255, 0.9));
+}
+
+/* Mod başlık */
+.mode-card-title {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 8px 0;
+  letter-spacing: 0.06em;
+}
+
+/* Mod açıklama alanı */
+.mode-card-desc {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.73rem;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1.55;
+  min-height: 60px;
+  letter-spacing: 0.01em;
+}
+
+.mode-card-desc .typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 0.85em;
+  margin-left: 1px;
+  animation: modeTypingBlink 0.8s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+/* ============================================================= */
+/* RENK TEMALARı                                                 */
+/* ============================================================= */
+/* Odak Modu - Soğuk mavi */
+.mode-card[data-mode="odak"] {
+  --mode-accent: rgba(100, 180, 255, 0.8);
+  --mode-accent-rgb: 100, 180, 255;
+}
+
+/* Denge Modu - Turkuaz */
+.mode-card[data-mode="denge"] {
+  --mode-accent: rgba(0, 220, 180, 0.8);
+  --mode-accent-rgb: 0, 220, 180;
+}
+
+/* Keşif Modu - Turuncu-altın */
+.mode-card[data-mode="kesif"] {
+  --mode-accent: rgba(255, 180, 60, 0.8);
+  --mode-accent-rgb: 255, 180, 60;
+}
+
+/* ============================================================= */
+/* AYARLAR SAYFASI MOD SEÇİMİ                                   */
+/* ============================================================= */
+.settings-mode-card {
+  margin-bottom: 12px;
+}
+
+.settings-mode-container {
+  display: flex;
+  gap: 14px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.settings-mode-container .mode-card {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.06);
+  max-width: 230px;
+}
+
+.settings-mode-container .mode-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.settings-mode-container .mode-card.selected {
+  border-color: var(--mode-accent, rgba(0, 242, 255, 0.35));
+  background: rgba(var(--mode-accent-rgb, 0, 242, 255), 0.04);
+}
+
+/* ============================================================= */
+/* ANİMASYONLAR                                                  */
+/* ============================================================= */
+@keyframes modeTypingBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ============================================================= */
+/* DUYARLI TASARIM                                               */
+/* ============================================================= */
+@media (max-width: 768px) {
+  .mode-modal-box {
+    padding: 24px 20px;
+    width: 95%;
+  }
+
+  .mode-cards-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .mode-card {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .settings-mode-container {
+    flex-direction: column;
+  }
+
+  .settings-mode-container .mode-card {
+    max-width: 100%;
+  }
+}

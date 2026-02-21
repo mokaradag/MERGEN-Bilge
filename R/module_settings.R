@@ -34,6 +34,40 @@ settingsUI <- function(id) {
         fluidRow(
           column(
             width = 12,
+            # Deneyim Modu Seçim Kartı
+            div(
+              class = "settings-card settings-mode-card",
+              h3("Deneyim Modu", class = "settings-title"),
+              p("Çalışma tarzınıza uygun modu seçin. Mod değişiklikleri ilgili ayarları otomatik günceller.",
+                class = "setting-description", style = "margin-bottom: 10px;"),
+              div(
+                class = "settings-mode-container",
+                # Odak Modu
+                div(
+                  class = "mode-card selected",
+                  `data-mode` = "odak",
+                  div(class = "mode-card-icon", tags$i(class = "fas fa-bolt")),
+                  div(class = "mode-card-title", "Odak"),
+                  div(class = "mode-card-desc")
+                ),
+                # Denge Modu
+                div(
+                  class = "mode-card",
+                  `data-mode` = "denge",
+                  div(class = "mode-card-icon", tags$i(class = "fas fa-compass")),
+                  div(class = "mode-card-title", "Denge"),
+                  div(class = "mode-card-desc")
+                ),
+                # Tam Donanım Modu
+                div(
+                  class = "mode-card",
+                  `data-mode` = "kesif",
+                  div(class = "mode-card-icon", tags$i(class = "fas fa-rocket")),
+                  div(class = "mode-card-title", "Tam Donanım"),
+                  div(class = "mode-card-desc")
+                )
+              )
+            ),
             # Character Selection Card
             div(
               class = "settings-card character-selector-card",
@@ -194,6 +228,20 @@ settingsUI <- function(id) {
                           width = "100%"
                         ),
                         p("Mesajların yazı tipi boyutunu ayarlayın", class = "setting-description")
+                      ),
+                      div(
+                        class = "setting-item",
+                        style = "margin-top: 16px;",
+                        h4("Başlangıç Ekranı", class = "setting-subtitle"),
+                        div(
+                          class = "checkbox-item",
+                          checkboxInput(
+                            inputId = ns("skip_intro_animation"),
+                            label = "Giriş animasyonunu atla",
+                            value = FALSE
+                          )
+                        ),
+                        p("Uygulama açılışında derin uzay animasyonunu göstermez", class = "setting-description")
                       )
                     )
                   )
@@ -486,7 +534,9 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_followups        = FALSE,
 	  font_size               = "medium",
 	  enable_background_music = FALSE,
-	  music_volume = 0.3
+	  music_volume = 0.3,
+	  experience_mode = "odak",
+	  skip_intro_animation = FALSE
 	)
     
     observeEvent(input$update_api_key_btn, {
@@ -571,8 +621,34 @@ settingsServer <- function(id, parent_session = NULL) {
 
 	observeEvent(input$music_volume, {
 	  settings$music_volume <- input$music_volume
-	  
+
 	  session$sendCustomMessage("setMusicVolume", input$music_volume)
+	}, ignoreInit = TRUE)
+
+	# Deneyim modu değişikliği (Ayarlar sayfasından)
+	observeEvent(input$experience_mode_changed, {
+	  req(input$experience_mode_changed)
+	  mode <- input$experience_mode_changed$mode
+	  if (is.null(mode) || !mode %in% c("odak", "denge", "kesif")) return()
+
+	  settings$experience_mode <- mode
+
+	  # Mod ayarlarını uygula
+	  if (!is.null(parent_session)) {
+	    apply_experience_mode(parent_session, settings, mode)
+	  } else {
+	    apply_experience_mode(session, settings, mode)
+	  }
+	}, ignoreInit = TRUE)
+
+	# Giriş animasyonunu atlama ayarı
+	observeEvent(input$skip_intro_animation, {
+	  settings$skip_intro_animation <- isTRUE(input$skip_intro_animation)
+	  # localStorage'a yansıt
+	  shinyjs::runjs(sprintf(
+	    "try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.skip_intro = %s; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
+	    tolower(as.character(isTRUE(input$skip_intro_animation)))
+	  ))
 	}, ignoreInit = TRUE)
 
     # Temporary character selection (not saved until user clicks save)
@@ -846,6 +922,18 @@ settingsServer <- function(id, parent_session = NULL) {
         updateSelectInput(session, "analysis_detail_level", selected = loaded$analysis_detail_level)
       }
 
+      # Deneyim modu yükle
+      if (!is.null(loaded$experience_mode) && loaded$experience_mode %in% c("odak", "denge", "kesif")) {
+        settings$experience_mode <- loaded$experience_mode
+        session$sendCustomMessage("updateSettingsMode", list(mode = loaded$experience_mode))
+      }
+
+      # Giriş animasyonu atlama ayarını yükle
+      if (!is.null(loaded$skip_intro)) {
+        settings$skip_intro_animation <- isTRUE(loaded$skip_intro)
+        updateCheckboxInput(session, "skip_intro_animation", value = isTRUE(loaded$skip_intro))
+      }
+
       loaded_settings <- loaded
       if (!is.null(loaded_settings$enable_mcp_tools)) {
         updateCheckboxInput(session, "enable_mcp_tools", value = loaded_settings$enable_mcp_tools)
@@ -1108,6 +1196,8 @@ settingsServer <- function(id, parent_session = NULL) {
       to_save$summary_focus_mode     <- settings$summary_focus_mode
       to_save$analysis_deep_thinking <- settings$analysis_deep_thinking
       to_save$analysis_detail_level  <- settings$analysis_detail_level
+      to_save$experience_mode        <- settings$experience_mode
+      to_save$skip_intro             <- isTRUE(settings$skip_intro_animation)
       session$sendCustomMessage("saveSettings", to_save)
       
       showToast(session, "Ayarlar kaydedildi!", "success")
@@ -1140,7 +1230,13 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$font_size               <- "medium"
 	  settings$enable_background_music <- FALSE
 	  settings$music_volume <- 0.3
- 
+
+	  # Deneyim modu ve giriş animasyonu sıfırla
+	  settings$experience_mode <- "odak"
+	  settings$skip_intro_animation <- FALSE
+	  updateCheckboxInput(session, "skip_intro_animation", value = FALSE)
+	  session$sendCustomMessage("updateSettingsMode", list(mode = "odak"))
+
 	  # Görsel ayarlarını sıfırla
 	  settings$image_size <- "1024x1024"
 	  settings$image_quality_hd <- FALSE

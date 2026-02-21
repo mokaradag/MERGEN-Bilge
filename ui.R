@@ -93,6 +93,8 @@ ui <- dashboardPage(
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_input.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/date_picker.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/cinematic_intro.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/deep_space_intro.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/mode_selection.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/mcp_indicator.css"),
 	tags$link(rel = "stylesheet", type = "text/css", href = "css/file_manager.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/history_saved_chats.css"),
@@ -163,6 +165,14 @@ ui <- dashboardPage(
     tags$script(src = "codemirror/addon/fold/indent-fold.min.js"),
     tags$script(src = "codemirror/addon/fold/xml-fold.js"),
     
+    # Three.js kütüphanesi (yerel) - Derin uzay giriş animasyonu için
+    tags$script(src = "lib/threejs/three.min.js"),
+    tags$script(src = "lib/threejs/OrbitControls.js"),
+    tags$script(src = "lib/threejs/EffectComposer.js"),
+    tags$script(src = "lib/threejs/RenderPass.js"),
+    tags$script(src = "lib/threejs/UnrealBloomPass.js"),
+    tags$script(src = "lib/threejs/Lensflare.js"),
+
     # Your Custom Script
 	tags$script(src = "js/code-collapse.js"),
 	tags$script(src = "js/utils.js"),
@@ -199,6 +209,8 @@ ui <- dashboardPage(
     tags$script(src = "js/image_gallery.js"),
     tags$script(src = "js/summarization_tools.js"),
     tags$script(src = "js/chat_search_modal.js"),
+    tags$script(src = "js/deep_space_intro.js"),
+    tags$script(src = "js/mode_selection.js"),
 	tags$script(src = "js/settings_tools.js"),
     tags$script(src = "js/analysis_tools.js"),
     tags$script(src = "js/citation_handler.js"),
@@ -206,17 +218,8 @@ ui <- dashboardPage(
     tags$div(id = "toast-container", class = "toast-container")
   ),
       
-    # Cinematic intro screen that fades out on load
-    tags$div(
-      id = "intro-container",
-      class = "intro-container",
-      tags$canvas(id = "neural-canvas", class = "neural-canvas"),
-      tags$div(
-        class = "intro-logo",
-        tags$span("MERGEN", class = "intro-text-primary"),
-        tags$span("Bilge", class = "intro-text-secondary")
-      )
-    ),
+    # Derin uzay giriş ekranı (eski sinematik intro'nun yerini alır)
+    createStartupScreenUI(),
 	
 	# Geri bildirim modalı
 	feedbackUI("feedback_module"),

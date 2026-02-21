@@ -48,6 +48,9 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
   observeEvent(input$reloadWelcomeScreenTrigger, {
     if (isTRUE(values$show_welcome)) {
       shinyjs::runjs("
+        if(window.DeepSpaceIntro && window.DeepSpaceIntro.destroy) {
+          window.DeepSpaceIntro.destroy();
+        }
         if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
           window.WelcomeVideoPlayer.destroy();
         }
