@@ -1,0 +1,123 @@
+/* www/css/fonts.css */
+/* Dosya Yolu: www/css/fonts.css */
+/* Açıklama: Yerel font tanımları. İnternet erişimi olmayan ortamda */
+/* Orbitron ve Jura fontlarını yerel .ttf dosyalarından yükler. */
+/* Font dosyaları www/fonts/ dizininde bulunmalıdır. */
+
+/* ============================================================= */
+/* ORBİTRON FONT AİLESİ                                         */
+/* Kullanım: MERGEN başlık yazısı, mod kartı başlıkları          */
+/* ============================================================= */
+
+/* Değişken font dosyası (tüm ağırlıkları kapsar) */
+@font-face {
+  font-family: 'Orbitron';
+  src: url('../fonts/Orbitron-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Sabit ağırlık alternatifleri (değişken font yüklenemezse) */
+@font-face {
+  font-family: 'Orbitron';
+  src: url('../fonts/Orbitron-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Orbitron';
+  src: url('../fonts/Orbitron-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Orbitron';
+  src: url('../fonts/Orbitron-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Orbitron';
+  src: url('../fonts/Orbitron-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Orbitron';
+  src: url('../fonts/Orbitron-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Orbitron';
+  src: url('../fonts/Orbitron-Black.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================================= */
+/* JURA FONT AİLESİ                                             */
+/* Kullanım: Alt başlıklar, açıklama metinleri, butonlar        */
+/* ============================================================= */
+
+/* Değişken font dosyası (tüm ağırlıkları kapsar) */
+@font-face {
+  font-family: 'Jura';
+  src: url('../fonts/Jura-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Sabit ağırlık alternatifleri (değişken font yüklenemezse) */
+@font-face {
+  font-family: 'Jura';
+  src: url('../fonts/Jura-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Jura';
+  src: url('../fonts/Jura-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Jura';
+  src: url('../fonts/Jura-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Jura';
+  src: url('../fonts/Jura-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Jura';
+  src: url('../fonts/Jura-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

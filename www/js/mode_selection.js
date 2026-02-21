@@ -52,37 +52,72 @@
   // Yazma animasyonu değişkenleri (her kart için ayrı)
   var _typingTimers = {};
 
-  // Yazma animasyonu
+  // Doğal ritimli yazma animasyonu
+  // Noktalama işaretlerinde duraklama, değişken hız, karakter sayısı farkı
   function typeText(element, text, cardId) {
     // Önceki animasyonu iptal et
     if (_typingTimers[cardId]) {
-      clearInterval(_typingTimers[cardId]);
+      clearTimeout(_typingTimers[cardId]);
       _typingTimers[cardId] = null;
     }
 
     var index = 0;
     element.innerHTML = '<span class="typing-cursor"></span>';
 
-    _typingTimers[cardId] = setInterval(function() {
-      if (index < text.length) {
-        var charsToAdd = Math.min(2, text.length - index);
-        var chunk = text.substring(index, index + charsToAdd);
-
-        var cursor = element.querySelector('.typing-cursor');
-        if (cursor) cursor.remove();
-        element.innerHTML += chunk;
-        element.innerHTML += '<span class="typing-cursor"></span>';
-
-        index += charsToAdd;
-      } else {
-        clearInterval(_typingTimers[cardId]);
-        _typingTimers[cardId] = null;
+    function typeNextChunk() {
+      if (index >= text.length) {
+        // Yazma tamamlandı, imleci kısa süre sonra kaldır
         var cursor = element.querySelector('.typing-cursor');
         if (cursor) {
           setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1500);
         }
+        _typingTimers[cardId] = null;
+        return;
       }
-    }, 18);
+
+      // Bir sonraki karakter
+      var currentChar = text[index];
+
+      // Kaç karakter eklenecek (1-3 arası değişken)
+      var charsToAdd = 1;
+      if (currentChar !== '.' && currentChar !== ',' && currentChar !== '!' &&
+          currentChar !== '?' && currentChar !== ';') {
+        charsToAdd = Math.floor(Math.random() * 3) + 1;
+        charsToAdd = Math.min(charsToAdd, text.length - index);
+      }
+
+      var chunk = text.substring(index, index + charsToAdd);
+
+      // İmleci kaldır, metin ekle, imleci tekrar ekle
+      var cursor = element.querySelector('.typing-cursor');
+      if (cursor) cursor.remove();
+      element.innerHTML += chunk;
+      element.innerHTML += '<span class="typing-cursor"></span>';
+
+      index += charsToAdd;
+
+      // Sonraki adım için gecikme hesapla (doğal ritim)
+      var delay;
+      var lastAddedChar = chunk[chunk.length - 1];
+
+      if (lastAddedChar === '.' || lastAddedChar === '!' || lastAddedChar === '?') {
+        // Cümle sonu: uzun duraklama
+        delay = 180 + Math.random() * 120;
+      } else if (lastAddedChar === ',') {
+        // Virgül: orta duraklama
+        delay = 100 + Math.random() * 80;
+      } else if (lastAddedChar === ' ') {
+        // Boşluk: kısa duraklama
+        delay = 30 + Math.random() * 40;
+      } else {
+        // Normal karakter: temel hız + rastgele varyasyon
+        delay = 14 + Math.random() * 28;
+      }
+
+      _typingTimers[cardId] = setTimeout(typeNextChunk, delay);
+    }
+
+    typeNextChunk();
   }
 
   // ============================================================
@@ -93,19 +128,21 @@
     if (!overlay) return;
     overlay.classList.add('active');
 
-    // Açıklama animasyonlarını başlat
+    // Açıklama animasyonlarını kademeli olarak başlat
+    // Her kart arasında belirgin gecikme (700ms) ve açılış gecikmesi (400ms)
     setTimeout(function() {
       var cards = overlay.querySelectorAll('.mode-card');
       cards.forEach(function(card, i) {
         var desc = card.querySelector('.mode-card-desc');
         var mode = card.getAttribute('data-mode');
         if (desc && MODE_DEFINITIONS[mode]) {
+          // Her kart 700ms arayla başlar (belirgin kademeli efekt)
           setTimeout(function() {
             typeText(desc, MODE_DEFINITIONS[mode].description, 'modal_' + mode);
-          }, i * 200);
+          }, i * 700);
         }
       });
-    }, 300);
+    }, 400);
   }
 
   function closeModeModal() {
@@ -116,7 +153,7 @@
     // Yazma animasyonlarını durdur
     Object.keys(_typingTimers).forEach(function(key) {
       if (key.indexOf('modal_') === 0 && _typingTimers[key]) {
-        clearInterval(_typingTimers[key]);
+        clearTimeout(_typingTimers[key]);
         _typingTimers[key] = null;
       }
     });
@@ -186,6 +223,8 @@
       if (container.parentNode) {
         container.parentNode.removeChild(container);
       }
+      // Sidebar ve header'ı tekrar göster
+      document.body.classList.remove('deep-space-active');
       // Uygulamayı hazır olarak işaretle
       document.body.classList.add('app-ready');
     }, 1200);
@@ -200,13 +239,15 @@
     container.dataset.modeInitialized = 'true';
 
     var cards = container.querySelectorAll('.mode-card');
-    cards.forEach(function(card) {
+    cards.forEach(function(card, i) {
       var mode = card.getAttribute('data-mode');
       var desc = card.querySelector('.mode-card-desc');
 
-      // Açıklama yazma animasyonu
+      // Açıklama yazma animasyonu (kademeli başlat)
       if (desc && MODE_DEFINITIONS[mode]) {
-        typeText(desc, MODE_DEFINITIONS[mode].description, 'settings_' + mode);
+        setTimeout(function() {
+          typeText(desc, MODE_DEFINITIONS[mode].description, 'settings_' + mode);
+        }, i * 500);
       }
 
       // Tıklama olayı
@@ -220,6 +261,12 @@
   // SHINY MESAJ HANDLERLARI
   // ============================================================
   $(document).ready(function() {
+
+    // İlk yüklemede derin uzay konteyneri varsa sidebar/header'ı gizle
+    var dsContainer = document.getElementById('deep-space-container');
+    if (dsContainer) {
+      document.body.classList.add('deep-space-active');
+    }
 
     // Giriş ekranını başlat
     Shiny.addCustomMessageHandler('initDeepSpace', function(data) {

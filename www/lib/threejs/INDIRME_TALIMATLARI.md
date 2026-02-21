@@ -8,32 +8,32 @@ bu dosyaların manuel olarak indirilmesi gerekmektedir.
 
 Aşağıdaki dosyaları `www/lib/threejs/` dizinine indirin:
 
-### Ana Kütüphane
-- **three.min.js** (Three.js r160 UMD build)
-  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js
+**ÖNEMLİ:** Three.js v0.147.0 kullanılmalıdır. Bu sürüm, `examples/js/`
+klasöründeki UMD (global) yapıyı destekleyen son sürümdür. v0.148.0 ve
+sonrası sadece ES module (`examples/jsm/`) destekler.
 
-### Eklenti Dosyaları (UMD versiyonları gerekli)
-Orijinal HTML ES module kullandığı için bu dosyaların UMD/global yapıya
-dönüştürülmüş versiyonları gereklidir:
+### Ana Kütüphane
+- **three.min.js** (Three.js r147 UMD build)
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js
+
+### Eklenti Dosyaları (UMD/global versiyonları)
+Bu dosyalar global `THREE` nesnesine eklenti olarak eklenir ve
+ES module import gerektirmez:
 
 - **OrbitControls.js**
-  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js
 
 - **EffectComposer.js**
-  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/postprocessing/EffectComposer.js
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/EffectComposer.js
 
 - **RenderPass.js**
-  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/postprocessing/RenderPass.js
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/RenderPass.js
 
 - **UnrealBloomPass.js**
-  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/postprocessing/UnrealBloomPass.js
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/UnrealBloomPass.js
 
 - **Lensflare.js**
-  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/objects/Lensflare.js
-
-**NOT:** Three.js r160 sürümünde `examples/js/` klasörü hala mevcuttur.
-Bu dosyalar global `THREE` nesnesine eklenti olarak eklenir ve
-ES module import gerektirmez.
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/objects/Lensflare.js
 
 ## 2. Doku (Texture) Dosyaları
 
@@ -67,22 +67,21 @@ Aşağıdaki dosyaları `www/lib/threejs/textures/` dizinine indirin:
 
 ## 3. Font Dosyaları
 
-Animasyonda kullanılan fontlar CSS `@import` ile yüklenmektedir.
-İnternet erişimi olmayan ortamda bu fontların da yerel olarak
-sunulması gerekir:
+Animasyonda kullanılan fontlar `www/css/fonts.css` dosyasındaki
+`@font-face` tanımlarıyla yerel olarak yüklenir.
 
 ### Google Fonts
-- **Orbitron** (ağırlıklar: 500, 900) - MERGEN başlık yazısı
+- **Orbitron** (ağırlıklar: 400-900) - MERGEN başlık yazısı
   - https://fonts.google.com/specimen/Orbitron
-  - Dosyalar: Orbitron-Medium.woff2, Orbitron-Black.woff2
+  - Dosyalar: Orbitron-VariableFont_wght.ttf (veya sabit ağırlık dosyaları)
 
-- **Jura** (ağırlıklar: 300, 600) - Alt başlık ve açıklama metinleri
+- **Jura** (ağırlıklar: 300-700) - Alt başlık ve açıklama metinleri
   - https://fonts.google.com/specimen/Jura
-  - Dosyalar: Jura-Light.woff2, Jura-SemiBold.woff2
+  - Dosyalar: Jura-VariableFont_wght.ttf (veya sabit ağırlık dosyaları)
 
-Bu font dosyaları `www/fonts/` dizinine yerleştirilmeli ve
-`www/css/fonts.css` dosyasına `@font-face` tanımları eklenmelidir.
-Mevcut `fonts.css` dosyanızda bu fontlar zaten tanımlı olabilir.
+Bu font dosyaları `www/fonts/` dizinine yerleştirilmelidir.
+`www/css/fonts.css` dosyasında bu fontların `@font-face` tanımları
+zaten mevcuttur.
 
 ## 4. Şirket Logosu
 
@@ -97,6 +96,22 @@ Mevcut `fonts.css` dosyanızda bu fontlar zaten tanımlı olabilir.
 ```
 www/
 ├── company_logo.png
+├── fonts/
+│   ├── Orbitron-VariableFont_wght.ttf
+│   ├── Orbitron-Regular.ttf
+│   ├── Orbitron-Medium.ttf
+│   ├── Orbitron-SemiBold.ttf
+│   ├── Orbitron-Bold.ttf
+│   ├── Orbitron-ExtraBold.ttf
+│   ├── Orbitron-Black.ttf
+│   ├── Jura-VariableFont_wght.ttf
+│   ├── Jura-Light.ttf
+│   ├── Jura-Regular.ttf
+│   ├── Jura-Medium.ttf
+│   ├── Jura-SemiBold.ttf
+│   └── Jura-Bold.ttf
+├── css/
+│   └── fonts.css
 ├── lib/
 │   └── threejs/
 │       ├── three.min.js
