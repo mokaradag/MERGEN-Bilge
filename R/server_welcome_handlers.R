@@ -30,6 +30,9 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
  
     # Animasyonları önce temizle
 	shinyjs::runjs("
+      if(window.DeepSpaceIntro && window.DeepSpaceIntro.destroy) {
+        window.DeepSpaceIntro.destroy();
+      }
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
       }
@@ -78,6 +81,9 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
   start_new_chat <- function() {
     # Önce mevcut animasyonları tamamen temizle
 	shinyjs::runjs("
+      if(window.DeepSpaceIntro && window.DeepSpaceIntro.destroy) {
+        window.DeepSpaceIntro.destroy();
+      }
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
       }

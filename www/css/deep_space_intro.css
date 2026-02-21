@@ -1,0 +1,298 @@
+/* www/css/deep_space_intro.css */
+/* Dosya Yolu: www/css/deep_space_intro.css */
+/* Açıklama: Derin uzay giriş ekranı stilleri. Tam ekran animasyon, */
+/* yükleme göstergesi, logo, mod seçimi ve atlama onay kutusu. */
+
+/* ============================================================= */
+/* ANA KONTEYNER                                                 */
+/* ============================================================= */
+#deep-space-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#deep-space-container.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Three.js tuval konteyneri */
+#deep-space-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  touch-action: none;
+  outline: none;
+}
+
+/* ============================================================= */
+/* YÜKLEME GÖSTERGESİ                                           */
+/* ============================================================= */
+#deep-space-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #00ffff;
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.3em;
+  pointer-events: none;
+  transition: opacity 0.8s ease-out;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+  z-index: 20;
+}
+
+/* ============================================================= */
+/* FİLM TANECİKLİ KATMAN (OVERLAY)                              */
+/* ============================================================= */
+.deep-space-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* ============================================================= */
+/* ŞİRKET LOGOSU (SOL ÜST KÖŞE)                                */
+/* ============================================================= */
+.deep-space-company-logo {
+  position: absolute;
+  top: 24px;
+  left: 28px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  animation: dsFadeIn 2s cubic-bezier(0.19, 1, 0.22, 1) 0.8s forwards;
+}
+
+.deep-space-company-logo img {
+  height: 42px;
+  width: auto;
+  filter: brightness(1) drop-shadow(0 0 8px rgba(255, 255, 255, 0.15));
+}
+
+/* ============================================================= */
+/* MERGEN BİLGE YAZISI (SAĞ ALT KÖŞE)                           */
+/* ============================================================= */
+.deep-space-branding {
+  position: absolute;
+  bottom: 40px;
+  right: 40px;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.deep-space-branding-inner {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: dsSlideIn 2.5s cubic-bezier(0.19, 1, 0.22, 1) 1s forwards;
+  padding-right: 15px;
+  border-right: 2px solid rgba(0, 242, 255, 0.3);
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.4));
+}
+
+.deep-space-title {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  margin: 0;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: #ffffff;
+  text-shadow: 0 0 30px rgba(137, 207, 240, 0.6);
+  line-height: 1.1;
+}
+
+.deep-space-subtitle {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: clamp(0.8rem, 2vw, 1.2rem);
+  letter-spacing: 0.5em;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 10px;
+  text-transform: uppercase;
+  font-weight: 300;
+}
+
+/* ============================================================= */
+/* KEŞFET BUTONU (ALT ORTA)                                      */
+/* ============================================================= */
+.deep-space-explore-btn {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  opacity: 0;
+  animation: dsFadeInUp 1.5s cubic-bezier(0.19, 1, 0.22, 1) 2s forwards;
+}
+
+.deep-space-explore-btn button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  padding: 14px 42px;
+  cursor: pointer;
+  text-transform: uppercase;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.deep-space-explore-btn button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 242, 255, 0.08), transparent);
+  transition: left 0.6s ease;
+}
+
+.deep-space-explore-btn button:hover {
+  border-color: rgba(0, 242, 255, 0.5);
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(0, 242, 255, 0.4);
+  box-shadow: 0 0 20px rgba(0, 242, 255, 0.1), inset 0 0 20px rgba(0, 242, 255, 0.03);
+}
+
+.deep-space-explore-btn button:hover::before {
+  left: 100%;
+}
+
+.deep-space-explore-btn button:active {
+  transform: scale(0.97);
+}
+
+/* ============================================================= */
+/* ANİMASYONU ATLAMA ONAY KUTUSU (SOL ALT KÖŞE)                 */
+/* ============================================================= */
+.deep-space-skip-checkbox {
+  position: absolute;
+  bottom: 20px;
+  left: 28px;
+  z-index: 15;
+  opacity: 0;
+  animation: dsFadeIn 2s cubic-bezier(0.19, 1, 0.22, 1) 3s forwards;
+}
+
+.deep-space-skip-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.05em;
+  transition: color 0.3s ease;
+  user-select: none;
+}
+
+.deep-space-skip-checkbox label:hover {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.deep-space-skip-checkbox input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.deep-space-skip-checkbox input[type="checkbox"]:checked {
+  border-color: rgba(0, 242, 255, 0.5);
+  background: rgba(0, 242, 255, 0.15);
+}
+
+.deep-space-skip-checkbox input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid rgba(0, 242, 255, 0.8);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* ============================================================= */
+/* ANİMASYONLAR                                                  */
+/* ============================================================= */
+@keyframes dsFadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes dsFadeInUp {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes dsSlideIn {
+  0%   { opacity: 0; transform: translateY(20px); filter: blur(10px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+/* ============================================================= */
+/* DUYARLI TASARIM                                               */
+/* ============================================================= */
+@media (max-width: 768px) {
+  .deep-space-branding {
+    bottom: 90px;
+    right: 20px;
+  }
+
+  .deep-space-explore-btn {
+    bottom: 36px;
+  }
+
+  .deep-space-company-logo {
+    top: 16px;
+    left: 16px;
+  }
+
+  .deep-space-company-logo img {
+    height: 32px;
+  }
+
+  .deep-space-skip-checkbox {
+    bottom: 12px;
+    left: 16px;
+  }
+}

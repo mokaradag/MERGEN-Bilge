@@ -179,6 +179,9 @@ server <- function(input, output, session) {
   
   # Başlangıç ve oturum ilk yükleme gözlemcilerini başlat (modüler)
   startupObserversInit(input, session, values, render_welcome_screen, current_user_id)
+
+  # Derin uzay giriş ekranı gözlemcilerini başlat (modüler)
+  startupScreenObserversInit(input, session, settings_data)
   
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
