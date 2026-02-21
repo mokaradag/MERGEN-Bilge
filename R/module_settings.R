@@ -375,6 +375,58 @@ settingsUI <- function(id) {
                   )
                 )
               )
+            ),
+
+            # Proje ve Kaynak Analizi Ayarları Kartı
+            div(
+              class = "settings-card analysis-settings-card",
+              id = ns("analysis_settings_card"),
+              h3("Proje ve Kaynak Analizi Ayarları", class = "settings-title"),
+              p("Veri analizi modunun davranışını yapılandırın. 'Derin Düşünme' aktifken çoklu sorgu analizi yapılır.",
+                class = "setting-description"),
+
+              fluidRow(
+                column(
+                  width = 6,
+                  div(
+                    class = "setting-item",
+                    h4("Derin Düşünme", class = "setting-subtitle"),
+                    p("Aktifken birden fazla sorgu seçilir ve toplu analiz yapılır.", class = "setting-description", style = "margin-top:4px;"),
+                    div(
+                      class = "deep-thinking-switch-container",
+                      tags$label(
+                        class = "deep-thinking-switch",
+                        tags$input(
+                          type = "checkbox",
+                          id = ns("analysis_deep_thinking"),
+                          class = "deep-thinking-switch-input"
+                        ),
+                        tags$span(class = "switch-slider")
+                      ),
+                      tags$span(class = "deep-thinking-label", "Çoklu Sorgu Analizi")
+                    )
+                  )
+                ),
+                column(
+                  width = 6,
+                  div(
+                    class = "setting-item",
+                    h4("Detay Seviyesi", class = "setting-subtitle"),
+                    p("Yanıtın ne kadar ayrıntılı olacağını belirler.", class = "setting-description", style = "margin-top:4px;"),
+                    selectInput(
+                      inputId = ns("analysis_detail_level"),
+                      label = NULL,
+                      choices = c(
+                        "Özet" = "ozet",
+                        "Standart" = "standart",
+                        "Detaylı" = "detayli"
+                      ),
+                      selected = "standart",
+                      width = "100%"
+                    )
+                  )
+                )
+              )
             )
           )
         )
@@ -429,6 +481,8 @@ settingsServer <- function(id, parent_session = NULL) {
       image_quality_hd = FALSE,
       summary_detail_level = "standard",
       summary_focus_mode = "general",
+      analysis_deep_thinking = FALSE,
+      analysis_detail_level = "standart",
 	  enable_followups        = FALSE,
 	  font_size               = "medium",
 	  enable_background_music = FALSE,
@@ -778,6 +832,20 @@ settingsServer <- function(id, parent_session = NULL) {
         updateSelectInput(session, "summary_focus_mode", selected = loaded$summary_focus_mode)
       }
 
+      # Analiz ayarlarını yükle
+      if (!is.null(loaded$analysis_deep_thinking)) {
+        settings$analysis_deep_thinking <- isTRUE(loaded$analysis_deep_thinking)
+        temp_analysis_deep_thinking(isTRUE(loaded$analysis_deep_thinking))
+        if (isTRUE(loaded$analysis_deep_thinking)) {
+          shinyjs::runjs(sprintf("$('#%s').prop('checked', true);", ns("analysis_deep_thinking")))
+        }
+      }
+      if (!is.null(loaded$analysis_detail_level) && loaded$analysis_detail_level %in% c("ozet", "standart", "detayli")) {
+        settings$analysis_detail_level <- loaded$analysis_detail_level
+        temp_analysis_detail_level(loaded$analysis_detail_level)
+        updateSelectInput(session, "analysis_detail_level", selected = loaded$analysis_detail_level)
+      }
+
       loaded_settings <- loaded
       if (!is.null(loaded_settings$enable_mcp_tools)) {
         updateCheckboxInput(session, "enable_mcp_tools", value = loaded_settings$enable_mcp_tools)
@@ -791,6 +859,10 @@ settingsServer <- function(id, parent_session = NULL) {
   # Özetleme ayarları için geçici değişkenler (kaydet butonuna basılana kadar uygulanmaz)
   temp_summary_detail_level <- reactiveVal("standard")
   temp_summary_focus_mode <- reactiveVal("general")
+
+  # Analiz ayarları için geçici değişkenler
+  temp_analysis_deep_thinking <- reactiveVal(FALSE)
+  temp_analysis_detail_level <- reactiveVal("standart")
  
   # Görsel ayarları değişiklik observer'ı - sadece geçici değişkeni güncelle
   # NOT: Ayarlar sayfasındaki değişiklikler SADECE "Ayarları Kaydet" butonuna
@@ -813,7 +885,16 @@ settingsServer <- function(id, parent_session = NULL) {
   observeEvent(input$summary_focus_mode, {
     temp_summary_focus_mode(input$summary_focus_mode)
   }, ignoreInit = TRUE)
- 
+
+  # Analiz ayarları değişiklik observer'ları - sadece geçici değişkenleri güncelle
+  observeEvent(input$analysis_deep_thinking, {
+    temp_analysis_deep_thinking(isTRUE(input$analysis_deep_thinking))
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$analysis_detail_level, {
+    temp_analysis_detail_level(input$analysis_detail_level)
+  }, ignoreInit = TRUE)
+
   # Ana Söyleşi'den gelen değişiklikleri Ayarlar sayfasına yansıt
   # (Sadece settings reaktif değerleri değişirse UI'ı güncelle)
   observeEvent(settings$image_size, {
@@ -853,7 +934,28 @@ settingsServer <- function(id, parent_session = NULL) {
       updateSelectInput(session, "summary_focus_mode", selected = settings$summary_focus_mode)
     }
   }, ignoreInit = TRUE)
-    
+
+  # Ana Söyleşi'den gelen analiz ayarı değişikliklerini Ayarlar sayfasına yansıt
+  observeEvent(settings$analysis_deep_thinking, {
+    current_temp <- temp_analysis_deep_thinking()
+    if (!identical(settings$analysis_deep_thinking, current_temp)) {
+      temp_analysis_deep_thinking(settings$analysis_deep_thinking)
+      if (isTRUE(settings$analysis_deep_thinking)) {
+        shinyjs::runjs(sprintf("$('#%s').prop('checked', true);", ns("analysis_deep_thinking")))
+      } else {
+        shinyjs::runjs(sprintf("$('#%s').prop('checked', false);", ns("analysis_deep_thinking")))
+      }
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(settings$analysis_detail_level, {
+    current_temp <- temp_analysis_detail_level()
+    if (!identical(settings$analysis_detail_level, current_temp)) {
+      temp_analysis_detail_level(settings$analysis_detail_level)
+      updateSelectInput(session, "analysis_detail_level", selected = settings$analysis_detail_level)
+    }
+  }, ignoreInit = TRUE)
+
     # Update internal state when inputs change
     observeEvent(input$font_size,               { settings$font_size               <- input$font_size })
     observeEvent(input$enable_animations,       { settings$enable_animations       <- input$enable_animations })
@@ -894,12 +996,33 @@ settingsServer <- function(id, parent_session = NULL) {
 		    temp_model_selection(image_model)
 		    session$sendCustomMessage("toggleImageMode", list(active = TRUE))
 		    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+		    session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
 		  }
 
 		  # Dosya Özetleme aktifleştirildiğinde kontrolleri göster
 		  if (tool_name == "enable_summarization_tools") {
 		    session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
 		    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+		    session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+		  }
+
+		  # Proje ve Kaynak Analizi aktifleştirildiğinde kontrolleri göster
+		  if (tool_name == "enable_rdata_tools") {
+		    session$sendCustomMessage("toggleAnalysisMode", list(active = TRUE))
+		    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+		    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+		    # Mevcut analiz ayarlarını sohbet kontrollerine senkronize et
+		    session$sendCustomMessage("syncAnalysisSettingsToChat", list(
+		      deep_thinking = isTRUE(settings$analysis_deep_thinking),
+		      detail_level = settings$analysis_detail_level %||% "standart"
+		    ))
+		  }
+
+		  # Diğer araçlar aktifken analiz kontrollerini gizle
+		  if (!tool_name %in% c("enable_rdata_tools", "enable_image_tools", "enable_summarization_tools")) {
+		    session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+		    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+		    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
 		  }
 		} else {
 		  # Görsel Uzmanı devre dışı bırakıldığında varsayılan modele dön
@@ -915,6 +1038,11 @@ settingsServer <- function(id, parent_session = NULL) {
 		  # Dosya Özetleme devre dışı bırakıldığında kontrolleri gizle
 		  if (tool_name == "enable_summarization_tools") {
 		    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+		  }
+
+		  # Proje ve Kaynak Analizi devre dışı bırakıldığında kontrolleri gizle
+		  if (tool_name == "enable_rdata_tools") {
+		    session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
 		  }
 		}
 	  }, ignoreInit = TRUE)
@@ -935,10 +1063,15 @@ settingsServer <- function(id, parent_session = NULL) {
       settings$summary_detail_level <- temp_summary_detail_level()
       settings$summary_focus_mode <- temp_summary_focus_mode()
 
-      cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s, Görsel Boyutu: %s, HD: %s, Özet Detay: %s, Özet Odak: %s\n",
+      # Analiz ayarlarını geçici değişkenlerden uygula ve senkronize et
+      settings$analysis_deep_thinking <- temp_analysis_deep_thinking()
+      settings$analysis_detail_level <- temp_analysis_detail_level()
+
+      cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s, Görsel Boyutu: %s, HD: %s, Özet Detay: %s, Özet Odak: %s, Analiz Derin: %s, Analiz Detay: %s\n",
                   settings$model_selection, settings$selected_character,
                   settings$image_size, settings$image_quality_hd,
-                  settings$summary_detail_level, settings$summary_focus_mode))
+                  settings$summary_detail_level, settings$summary_focus_mode,
+                  settings$analysis_deep_thinking, settings$analysis_detail_level))
  
       Sys.sleep(0.1)
  
@@ -959,6 +1092,12 @@ settingsServer <- function(id, parent_session = NULL) {
 	    focus_mode = settings$summary_focus_mode
 	  ))
 
+	  # Analiz ayarlarını Ana Söyleşi sayfasına senkronize et
+	  session$sendCustomMessage("syncAnalysisSettingsToChat", list(
+	    deep_thinking = isTRUE(settings$analysis_deep_thinking),
+	    detail_level = settings$analysis_detail_level
+	  ))
+
 	  to_save <- reactiveValuesToList(settings)
 	  to_save$enable_rdata_tools <- isTRUE(input$enable_rdata_tools)
       to_save$enable_mcp_tools   <- isTRUE(input$enable_mcp_tools)
@@ -967,6 +1106,8 @@ settingsServer <- function(id, parent_session = NULL) {
       to_save$image_quality_hd       <- settings$image_quality_hd
       to_save$summary_detail_level   <- settings$summary_detail_level
       to_save$summary_focus_mode     <- settings$summary_focus_mode
+      to_save$analysis_deep_thinking <- settings$analysis_deep_thinking
+      to_save$analysis_detail_level  <- settings$analysis_detail_level
       session$sendCustomMessage("saveSettings", to_save)
       
       showToast(session, "Ayarlar kaydedildi!", "success")
@@ -1011,6 +1152,12 @@ settingsServer <- function(id, parent_session = NULL) {
 	  settings$summary_focus_mode <- "general"
 	  temp_summary_detail_level("standard")
 	  temp_summary_focus_mode("general")
+
+	  # Analiz ayarlarını sıfırla
+	  settings$analysis_deep_thinking <- FALSE
+	  settings$analysis_detail_level <- "standart"
+	  temp_analysis_deep_thinking(FALSE)
+	  temp_analysis_detail_level("standart")
 	  
 	  updateSelectInput(session, "model_selection", selected = settings$model_selection)
 	  update_character_display(settings$selected_character)
@@ -1048,6 +1195,17 @@ settingsServer <- function(id, parent_session = NULL) {
 	    detail_level = "standard",
 	    focus_mode = "general"
 	  ))
+
+	  # Analiz ayarları UI'ını güncelle
+	  updateSelectInput(session, "analysis_detail_level", selected = "standart")
+	  shinyjs::runjs(sprintf("$('#%s').prop('checked', false);", ns("analysis_deep_thinking")))
+
+	  # Ana Söyleşi'deki analiz kontrollerini de sıfırla
+	  session$sendCustomMessage("syncAnalysisSettingsToChat", list(
+	    deep_thinking = FALSE,
+	    detail_level = "standart"
+	  ))
+	  session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
 
 	  session$sendCustomMessage("clearSettings", list())
 	  showToast(session, "Ayarlar sıfırlandı!", "info")

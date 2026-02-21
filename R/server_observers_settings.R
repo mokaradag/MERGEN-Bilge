@@ -94,5 +94,16 @@ visualSettingsSyncInit <- function(input, settings_data) {
     }
   }, ignoreInit = TRUE)
 
+  # Analiz ayarları senkronizasyonu (Sohbet → Ayarlar, anlık)
+  observeEvent(input$chat_deep_thinking, {
+    settings_data$analysis_deep_thinking <- isTRUE(input$chat_deep_thinking)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$chat_analysis_detail, {
+    if (!is.null(input$chat_analysis_detail)) {
+      settings_data$analysis_detail_level <- input$chat_analysis_detail
+    }
+  }, ignoreInit = TRUE)
+
   invisible(NULL)
 }
