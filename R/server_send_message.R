@@ -248,18 +248,19 @@ sendMessageInit <- function(
        })
 
        if (is.character(analiz_result)) {
-         removeUI(selector = "#typing-animation-wrapper")
+         removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
          values$typing <- FALSE
-
          add_message_fn(analiz_result, "ai")
+         reset_chat_state_fn()
          return()
 
        } else if (is.list(analiz_result)) {
          # Hata mesajı döndüyse
          if (identical(analiz_result$type, "error_message")) {
-           removeUI(selector = "#typing-animation-wrapper")
+           removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
            values$typing <- FALSE
            add_message_fn(analiz_result$content, "ai")
+           reset_chat_state_fn()
            return()
          }
 

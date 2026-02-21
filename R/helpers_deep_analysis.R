@@ -102,7 +102,8 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
     "2. En az 1, en fazla ", max_queries, " sorgu seç.\n",
     "3. Her sorgu için güven skoru belirt (0-100).\n",
     "4. Sadece gerçekten ilgili sorguları seç - alakasız sorgu ekleme.\n",
-    "5. Sorgular güven skoruna göre AZALAN sırada olmalı.\n\n",
+    "5. AYNI SORGUYU BİRDEN FAZLA SEÇME - her match_id benzersiz olmalı!\n",
+    "6. Sorgular güven skoruna göre AZALAN sırada olmalı.\n\n",
 
     "### ZORUNLU JSON ÇIKTISI:\n",
     "{\"matches\": [{\"match_id\": 1, \"confidence\": 90, \"reason\": \"Kısa açıklama\"}, ...]}\n\n",
@@ -162,11 +163,17 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
       return(NULL)
     }
 
-    # Eşleşmeleri işle
+    # Eşleşmeleri işle (tekrarlı sorguları engelle)
     selected <- list()
+    selected_indices <- integer(0)
     for (m in parsed$matches) {
       idx <- as.integer(m$match_id)
       if (!is.null(idx) && idx > 0 && idx <= length(library)) {
+        # Aynı sorgu zaten seçildiyse atla
+        if (idx %in% selected_indices) {
+          cat(sprintf("[DEEP_ANALYSIS] Tekrarlı sorgu atlandı: ID=%d ('%s')\n", idx, library[[idx]]$name))
+          next
+        }
         confidence <- as.numeric(m$confidence %||% 0)
         if (confidence >= 30) {
           q <- library[[idx]]
@@ -175,6 +182,7 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
           q$selection_reason <- m$reason %||% ""
           q$.matched_idx <- idx
           selected <- append(selected, list(q))
+          selected_indices <- c(selected_indices, idx)
         }
       }
     }
@@ -393,8 +401,17 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
   }
 
   detail_instruction <- detail_config$instruction %||% ""
-  max_tokens <- detail_config$max_tokens %||% 3000
+  base_max_tokens <- detail_config$max_tokens %||% 3000
   query_count <- length(successful)
+
+  # Çoklu sorgu varsa max_tokens'ı ölçekle - her ek sorgu için %30 artır
+  # Aksi halde LLM tüm sorguları raporlayamadan kesebilir
+  if (query_count > 1) {
+    scale_factor <- 1 + (query_count - 1) * 0.3
+    max_tokens <- min(as.integer(base_max_tokens * scale_factor), 8192)
+  } else {
+    max_tokens <- base_max_tokens
+  }
 
   # Her sorgu sonucunu bağlam bloğuna dönüştür
   data_blocks <- vapply(seq_along(successful), function(i) {
@@ -445,18 +462,23 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- Profesyonel, güvenilir ve net Türkçe kullan\n",
     "- \"Muhtemelen\", \"belki\" gibi belirsizliklerden kaçın\n",
     "- Markdown tablo formatını listeleme/sıralama için kullan\n",
-    "- FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol\n"
+    "- FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol\n",
+    "- Başarısız sorgular varsa, bunları da raporla (hangileri ve neden başarısız olduklarını kısaca belirt)\n",
+    "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n"
   )
 
-  # Başarısız sorgu bilgisi
+  # Başarısız sorgu bilgisi - LLM'e belirgin şekilde sun
   failed_note <- ""
   if (length(failed) > 0) {
     failed_note <- paste0(
-      "\n\n--- BAŞARISIZ SORGULAR (Bilgi) ---\n",
+      "\n\n══════════════════════════════════════════\n",
+      sprintf("⚠️ BAŞARISIZ SORGULAR (%d adet)\n", length(failed)),
+      "══════════════════════════════════════════\n",
       paste(vapply(failed, function(f) {
-        sprintf("- %s: %s", f$query_name, f$error_msg %||% "Hata")
+        sprintf("- **%s**: %s", f$query_name, f$error_msg %||% "Hata")
       }, character(1)), collapse = "\n"),
-      "\n(Bu sorgular sonuç döndüremedi, mevcut verilerle devam et.)\n"
+      "\n\nBu sorguları yanıtında kısaca belirt: hangi sorguların veri döndüremediğini ",
+      "ve olası nedenlerini kullanıcıya bildir.\n"
     )
   }
 
@@ -583,7 +605,19 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }
 
   # D. Sonuçları birleştir
-  cat(sprintf("[DEEP_ANALYSIS] %d sorgu tamamlandı, bağlam oluşturuluyor...\n", length(query_results)))
+  successful_count <- sum(vapply(query_results, function(r) isTRUE(r$success), logical(1)))
+  failed_count <- length(query_results) - successful_count
+  cat(sprintf("[DEEP_ANALYSIS] %d sorgu tamamlandı (%d başarılı, %d başarısız), bağlam oluşturuluyor...\n",
+              length(query_results), successful_count, failed_count))
+
+  if (failed_count > 0) {
+    failed_names <- vapply(
+      Filter(function(r) !isTRUE(r$success), query_results),
+      function(r) sprintf("%s (%s)", r$query_name, r$error_msg %||% "bilinmeyen hata"),
+      character(1)
+    )
+    cat(sprintf("[DEEP_ANALYSIS] Başarısız sorgular: %s\n", paste(failed_names, collapse = "; ")))
+  }
 
   context <- build_deep_analysis_context(query_results, user_prompt, detail_config)
 
