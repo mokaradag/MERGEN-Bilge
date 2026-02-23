@@ -3,6 +3,7 @@
 // Açıklama: Derin uzay giriş animasyonu modülü. Three.js ile Dünya, Ay,
 // uydu yörüngeleri ve Samanyolu arka planı oluşturur. Tüm işlem istemci
 // tarafında (kullanıcının bilgisayarında) gerçekleşir, sunucuya yük bindirmez.
+// NOT: Three.js v0.147.0 (UMD yapısı) ile uyumludur.
 
 window.DeepSpaceIntro = (function() {
   'use strict';
@@ -18,6 +19,7 @@ window.DeepSpaceIntro = (function() {
   var _controls = null;
   var _clock = null;
   var _resizeHandler = null;
+  var _containerEl = null;
 
   // Sahne nesneleri
   var _globe = null;
@@ -27,6 +29,7 @@ window.DeepSpaceIntro = (function() {
   var _satellites = [];
   var _globeMat = null;
   var _atmoMat = null;
+  var _sunLight = null;
 
   // Fiziksel sabitler
   var EARTH_AXIAL_TILT = 23.5 * (Math.PI / 180);
@@ -51,10 +54,18 @@ window.DeepSpaceIntro = (function() {
     return Math.sqrt(GM / r) * 0.15;
   }
 
-  // Doku yükleme yardımcısı
+  // Doku yükleme yardımcısı (v0.147.0 uyumlu)
   function loadTex(loader, url, renderer) {
-    var tex = loader.load(url);
-    tex.colorSpace = THREE.SRGBColorSpace;
+    var tex = loader.load(
+      url,
+      function() { /* başarılı */ },
+      undefined,
+      function(err) {
+        console.warn('[DeepSpaceIntro] Doku yüklenemedi:', url);
+      }
+    );
+    // v0.147.0: encoding kullanılır (colorSpace yerine)
+    tex.encoding = THREE.sRGBEncoding;
     tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return tex;
   }
@@ -72,7 +83,8 @@ window.DeepSpaceIntro = (function() {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
     var tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
+    // v0.147.0: encoding kullanılır
+    tex.encoding = THREE.sRGBEncoding;
     return tex;
   }
 
@@ -133,6 +145,17 @@ window.DeepSpaceIntro = (function() {
     return { precessionPivot: precessionPivot, material: material, radius: radius };
   }
 
+  // Yükleme göstergesini gizle
+  function hideLoadingIndicator() {
+    var loadingEl = document.getElementById('deep-space-loading');
+    if (loadingEl) {
+      loadingEl.style.opacity = '0';
+      setTimeout(function() {
+        loadingEl.style.display = 'none';
+      }, 1000);
+    }
+  }
+
   // Ana başlatma fonksiyonu
   function init(containerId, options) {
     if (_active) return;
@@ -145,12 +168,17 @@ window.DeepSpaceIntro = (function() {
       console.error('[DeepSpaceIntro] Konteyner bulunamadı:', containerId);
       return;
     }
+    _containerEl = container;
 
     // Three.js varlığını kontrol et
     if (typeof THREE === 'undefined') {
       console.error('[DeepSpaceIntro] Three.js yüklenmemiş!');
+      hideLoadingIndicator();
       return;
     }
+
+    // Sidebar ve header'ı gizle
+    document.body.classList.add('deep-space-active');
 
     // Sahne kurulumu
     _scene = new THREE.Scene();
@@ -161,28 +189,66 @@ window.DeepSpaceIntro = (function() {
     textureLoader.crossOrigin = 'anonymous';
 
     // Kamera
-    _camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 20000);
+    _camera = new THREE.PerspectiveCamera(
+      45,
+      container.clientWidth / container.clientHeight,
+      0.1,
+      20000
+    );
     _camera.position.set(0, 0, 30);
 
     // İşleyici (Renderer)
-    _renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', alpha: true });
+    _renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: true
+    });
     _renderer.setSize(container.clientWidth, container.clientHeight);
     _renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     _renderer.toneMapping = THREE.ACESFilmicToneMapping;
     _renderer.toneMappingExposure = 0.85;
+    // v0.147.0: outputEncoding kullanılır (outputColorSpace yerine)
+    _renderer.outputEncoding = THREE.sRGBEncoding;
     _renderer.shadowMap.enabled = true;
     _renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(_renderer.domElement);
 
     // Arka plan (Samanyolu)
     var basePath = options.texturePath || 'lib/threejs/textures/';
-    var starMapTexture = textureLoader.load(basePath + 'starmap.jpg', function() {
-      starMapTexture.mapping = THREE.EquirectangularReflectionMapping;
-      starMapTexture.colorSpace = THREE.SRGBColorSpace;
-    });
+    var texturesLoaded = 0;
+    var totalTextures = 7; // starmap + 4 earth + clouds + moon
+
+    // Doku yükleme sayacı
+    function onTextureLoaded() {
+      texturesLoaded++;
+      if (texturesLoaded >= totalTextures) {
+        hideLoadingIndicator();
+      }
+    }
+
+    // Zaman aşımı: 15 saniye sonra yükleme göstergesini yine de gizle
+    setTimeout(function() {
+      hideLoadingIndicator();
+    }, 15000);
+
+    var starMapTexture = textureLoader.load(
+      basePath + 'starmap.jpg',
+      function(tex) {
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        // v0.147.0: encoding kullanılır
+        tex.encoding = THREE.sRGBEncoding;
+        _scene.background = tex;
+        _scene.environment = tex;
+        onTextureLoaded();
+      },
+      undefined,
+      function(err) {
+        console.warn('[DeepSpaceIntro] Samanyolu dokusu yüklenemedi:', basePath + 'starmap.jpg');
+        onTextureLoaded();
+      }
+    );
+    // Yükleme tamamlanmadan da arka plan atanabilir (siyah olacak, sonra değişecek)
     _scene.background = starMapTexture;
-    _scene.environment = starMapTexture;
-    _scene.backgroundIntensity = 0.4;
 
     // Ana grup
     var mainGroup = new THREE.Group();
@@ -193,8 +259,7 @@ window.DeepSpaceIntro = (function() {
     earthTiltGroup.rotation.z = EARTH_AXIAL_TILT;
     mainGroup.add(earthTiltGroup);
 
-    // Dünya geometrisi ve materyali
-    var globeGeo = new THREE.SphereGeometry(3.5, 128, 128);
+    // Dünya dokuları
     var earthDayMap = loadTex(textureLoader, basePath + 'earth_atmos_2048.jpg', _renderer);
     var earthNormalMap = loadTex(textureLoader, basePath + 'earth_normal_2048.jpg', _renderer);
     var earthSpecularMap = loadTex(textureLoader, basePath + 'earth_specular_2048.jpg', _renderer);
@@ -202,16 +267,14 @@ window.DeepSpaceIntro = (function() {
     var earthLightsMap = loadTex(textureLoader, basePath + 'earth_lights_2048.png', _renderer);
     var moonMap = loadTex(textureLoader, basePath + 'moon_1024.jpg', _renderer);
 
-    // Yükleme göstergesi
+    // Yükleme sayacını doku başarı/hata geri çağırma ile de artır
+    // (loadTex zaten hata durumunu logluyor)
     THREE.DefaultLoadingManager.onLoad = function() {
-      var loadingEl = document.getElementById('deep-space-loading');
-      if (loadingEl) {
-        loadingEl.style.opacity = '0';
-        setTimeout(function() {
-          loadingEl.style.display = 'none';
-        }, 1000);
-      }
+      hideLoadingIndicator();
     };
+
+    // Dünya geometrisi ve materyali
+    var globeGeo = new THREE.SphereGeometry(3.5, 128, 128);
 
     _globeMat = new THREE.MeshPhysicalMaterial({
       map: earthDayMap,
@@ -231,11 +294,12 @@ window.DeepSpaceIntro = (function() {
       sheen: 0.0
     });
 
-    // Gündüz/gece shader düzenlemesi
+    // Gündüz/gece shader düzenlemesi (v0.147.0 uyumlu)
     _globeMat.onBeforeCompile = function(shader) {
       shader.uniforms.uSunDirWorld = { value: new THREE.Vector3(0, 0, 1) };
       _globeMat.userData.shader = shader;
 
+      // Vertex shader: dünya normali hesaplama
       shader.vertexShader = shader.vertexShader.replace(
         'varying vec3 vViewPosition;',
         'varying vec3 vViewPosition;\nvarying vec3 vWorldNormalCustom;'
@@ -244,6 +308,8 @@ window.DeepSpaceIntro = (function() {
         '#include <defaultnormal_vertex>\nvWorldNormalCustom = normalize( ( modelMatrix * vec4( objectNormal, 0.0 ) ).xyz );'
       );
 
+      // Fragment shader: gece ışıkları maskeleme
+      // v0.147.0: vUv kullanılır (vEmissiveMapUv yerine)
       shader.fragmentShader = shader.fragmentShader.replace(
         'varying vec3 vViewPosition;',
         'varying vec3 vViewPosition;\nvarying vec3 vWorldNormalCustom;\nuniform vec3 uSunDirWorld;'
@@ -251,7 +317,7 @@ window.DeepSpaceIntro = (function() {
         '#include <emissivemap_fragment>',
         [
           '#ifdef USE_EMISSIVEMAP',
-          '  vec4 emissiveColor = texture2D( emissiveMap, vEmissiveMapUv );',
+          '  vec4 emissiveColor = texture2D( emissiveMap, vUv );',
           '  float sunDot = dot(normalize(vWorldNormalCustom), normalize(uSunDirWorld));',
           '  float nightMask = smoothstep(0.0, -0.2, sunDot);',
           '  emissiveColor.rgb *= nightMask;',
@@ -299,11 +365,11 @@ window.DeepSpaceIntro = (function() {
       },
       vertexShader: [
         'varying vec3 vNormal;',
-        'varying vec3 vViewPosition;',
+        'varying vec3 vViewPos;',
         'void main() {',
         '  vNormal = normalize(normalMatrix * normal);',
         '  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);',
-        '  vViewPosition = -mvPosition.xyz;',
+        '  vViewPos = -mvPosition.xyz;',
         '  gl_Position = projectionMatrix * mvPosition;',
         '}'
       ].join('\n'),
@@ -312,9 +378,9 @@ window.DeepSpaceIntro = (function() {
         'uniform vec3 uAtmosphereColor;',
         'uniform vec3 uSunsetBase;',
         'varying vec3 vNormal;',
-        'varying vec3 vViewPosition;',
+        'varying vec3 vViewPos;',
         'void main() {',
-        '  vec3 viewDir = normalize(vViewPosition);',
+        '  vec3 viewDir = normalize(vViewPos);',
         '  vec3 normal = normalize(vNormal);',
         '  float viewAngle = dot(normal, viewDir);',
         '  float atmosphereFactor = pow(0.6 - viewAngle, 4.0);',
@@ -382,20 +448,20 @@ window.DeepSpaceIntro = (function() {
 
     // Güneş ışığı
     var sunPos = new THREE.Vector3(1000, 300, 800);
-    var sunLight = new THREE.DirectionalLight(0xffffff, 4.8);
-    sunLight.position.copy(sunPos);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 4096;
-    sunLight.shadow.mapSize.height = 4096;
-    sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 5000;
-    sunLight.shadow.bias = -0.0005;
+    _sunLight = new THREE.DirectionalLight(0xffffff, 4.8);
+    _sunLight.position.copy(sunPos);
+    _sunLight.castShadow = true;
+    _sunLight.shadow.mapSize.width = 4096;
+    _sunLight.shadow.mapSize.height = 4096;
+    _sunLight.shadow.camera.near = 10;
+    _sunLight.shadow.camera.far = 5000;
+    _sunLight.shadow.bias = -0.0005;
     var shadowSize = 100;
-    sunLight.shadow.camera.left = -shadowSize;
-    sunLight.shadow.camera.right = shadowSize;
-    sunLight.shadow.camera.top = shadowSize;
-    sunLight.shadow.camera.bottom = -shadowSize;
-    _scene.add(sunLight);
+    _sunLight.shadow.camera.left = -shadowSize;
+    _sunLight.shadow.camera.right = shadowSize;
+    _sunLight.shadow.camera.top = shadowSize;
+    _sunLight.shadow.camera.bottom = -shadowSize;
+    _scene.add(_sunLight);
 
     // Lens parlama
     if (typeof THREE.Lensflare !== 'undefined') {
@@ -408,7 +474,7 @@ window.DeepSpaceIntro = (function() {
       lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 60, 0.3));
       lensflare.addElement(new THREE.LensflareElement(textureFlare3, 70, 0.5));
       lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 120, 0.4));
-      sunLight.add(lensflare);
+      _sunLight.add(lensflare);
     }
 
     // Güneş geometrisi
@@ -501,15 +567,17 @@ window.DeepSpaceIntro = (function() {
       if (_moonPivot) _moonPivot.rotation.y += MOON_ORBIT_SPEED * dt;
 
       // Atmosfer shader güncelleme
-      sunDirView.copy(sunLight.position).normalize();
-      sunDirWorld.copy(sunDirView);
-      sunDirView.applyMatrix4(_camera.matrixWorldInverse).normalize();
+      if (_sunLight) {
+        sunDirView.copy(_sunLight.position).normalize();
+        sunDirWorld.copy(sunDirView);
+        sunDirView.applyMatrix4(_camera.matrixWorldInverse).normalize();
 
-      if (_atmoMat) {
-        _atmoMat.uniforms.uSunDirection.value.copy(sunDirView);
-      }
-      if (_globeMat && _globeMat.userData.shader) {
-        _globeMat.userData.shader.uniforms.uSunDirWorld.value.copy(sunDirWorld);
+        if (_atmoMat) {
+          _atmoMat.uniforms.uSunDirection.value.copy(sunDirView);
+        }
+        if (_globeMat && _globeMat.userData.shader) {
+          _globeMat.userData.shader.uniforms.uSunDirWorld.value.copy(sunDirWorld);
+        }
       }
 
       // Uydu dinamikleri
@@ -531,24 +599,31 @@ window.DeepSpaceIntro = (function() {
 
     // Pencere boyut değişikliği
     _resizeHandler = function() {
-      if (!_camera || !_renderer || !container) return;
-      _camera.aspect = container.clientWidth / container.clientHeight;
+      if (!_camera || !_renderer || !_containerEl) return;
+      var w = _containerEl.clientWidth;
+      var h = _containerEl.clientHeight;
+      if (w === 0 || h === 0) return;
+      _camera.aspect = w / h;
       _camera.updateProjectionMatrix();
-      _renderer.setSize(container.clientWidth, container.clientHeight);
+      _renderer.setSize(w, h);
       if (_composer) {
-        _composer.setSize(container.clientWidth, container.clientHeight);
+        _composer.setSize(w, h);
       }
     };
     window.addEventListener('resize', _resizeHandler);
 
     // Animasyonu başlat
     animate();
+    console.log('[DeepSpaceIntro] Sahne başarıyla oluşturuldu.');
   }
 
   // Temizleme fonksiyonu
   function destroy() {
     _destroyed = true;
     _active = false;
+
+    // Gövde sınıfını kaldır
+    document.body.classList.remove('deep-space-active');
 
     if (_animFrameId) {
       cancelAnimationFrame(_animFrameId);
@@ -566,7 +641,10 @@ window.DeepSpaceIntro = (function() {
     }
 
     if (_composer) {
-      _composer.dispose();
+      // v0.147.0: EffectComposer dispose olmayabilir, güvenli kontrol
+      if (typeof _composer.dispose === 'function') {
+        _composer.dispose();
+      }
       _composer = null;
     }
 
@@ -602,6 +680,8 @@ window.DeepSpaceIntro = (function() {
     _satellites = [];
     _globeMat = null;
     _atmoMat = null;
+    _sunLight = null;
+    _containerEl = null;
   }
 
   function isActive() {

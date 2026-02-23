@@ -4,14 +4,34 @@
 /* yükleme göstergesi, logo, mod seçimi ve atlama onay kutusu. */
 
 /* ============================================================= */
+/* DERİN UZAY AKTİF - SIDEBAR VE HEADER GİZLEME                 */
+/* Giriş ekranı gösterilirken dashboard sidebar ve header gizlenir */
+/* ============================================================= */
+body.deep-space-active .main-sidebar {
+  display: none !important;
+}
+
+body.deep-space-active .main-header {
+  display: none !important;
+}
+
+body.deep-space-active .content-wrapper {
+  margin-left: 0 !important;
+}
+
+body.deep-space-active .main-footer {
+  margin-left: 0 !important;
+}
+
+/* ============================================================= */
 /* ANA KONTEYNER                                                 */
 /* ============================================================= */
 #deep-space-container {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   z-index: 10000;
   background: #000;
   display: flex;

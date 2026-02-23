@@ -140,6 +140,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       shinyjs::runjs("
         var ds = document.getElementById('deep-space-container');
         if (ds && ds.parentNode) ds.parentNode.removeChild(ds);
+        document.body.classList.remove('deep-space-active');
         document.body.classList.add('app-ready');
       ")
     } else {
