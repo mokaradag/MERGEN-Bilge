@@ -232,20 +232,36 @@ window.DeepSpaceIntro = (function() {
       hideLoadingIndicator();
     }, 15000);
 
-    var starMapTexture = textureLoader.load(
+    // Yıldız haritası: Büyük küre geometrisi kullanarak ekran boyutundan
+    // bağımsız sabit çözünürlük sağlanır (6000x3000px doku esnemez).
+    // EquirectangularReflectionMapping yerine kürenin iç yüzeyine eşlenir.
+    var _starSphere = null;
+    textureLoader.load(
       basePath + 'starmap.jpg',
       function(tex) {
-        tex.mapping = THREE.EquirectangularReflectionMapping;
         // v0.147.0: encoding kullanılır
         tex.encoding = THREE.sRGBEncoding;
-        // Yıldız haritası bulanıklığını önle: mipmap kullanma, doğrudan lineer filtrele
-        // Orijinal çözünürlük: 6000x3000px - küçültme yapılmamalı
+        // Bulanıklığı önle: mipmap kullanma, doğrudan lineer filtrele
         tex.minFilter = THREE.LinearFilter;
         tex.magFilter = THREE.LinearFilter;
         tex.generateMipmaps = false;
         tex.anisotropy = _renderer.capabilities.getMaxAnisotropy();
-        _scene.background = tex;
+
+        // Büyük küre: kamera her zaman içinde kalır, doku sabit çözünürlükte kalır
+        var starGeo = new THREE.SphereGeometry(9000, 64, 64);
+        var starMat = new THREE.MeshBasicMaterial({
+          map: tex,
+          side: THREE.BackSide, // Kürenin iç yüzeyini göster
+          depthWrite: false,
+          fog: false
+        });
+        _starSphere = new THREE.Mesh(starGeo, starMat);
+        _scene.add(_starSphere);
+
+        // Ortam ışığı için environment haritası olarak da kullan
+        tex.mapping = THREE.EquirectangularReflectionMapping;
         _scene.environment = tex;
+
         onTextureLoaded();
       },
       undefined,
@@ -254,8 +270,8 @@ window.DeepSpaceIntro = (function() {
         onTextureLoaded();
       }
     );
-    // Yükleme tamamlanmadan da arka plan atanabilir (siyah olacak, sonra değişecek)
-    _scene.background = starMapTexture;
+    // Sahne arka planını siyah yap (küre yüklenene kadar)
+    _scene.background = new THREE.Color(0x000000);
 
     // Ana grup
     var mainGroup = new THREE.Group();
@@ -386,39 +402,57 @@ window.DeepSpaceIntro = (function() {
         'uniform vec3 uSunsetBase;',
         'varying vec3 vNormal;',
         'varying vec3 vViewPos;',
+        '',
         'void main() {',
         '  vec3 viewDir = normalize(vViewPos);',
         '  vec3 normal = normalize(vNormal);',
-        '  float viewAngle = dot(normal, viewDir);',
-        // Atmosfer kenar parlaması (Fresnel)
-        '  float atmosphereFactor = pow(clamp(0.65 - viewAngle, 0.0, 1.0), 3.5);',
-        // Güneş tarafı belirleme
-        '  float sunOrientation = dot(normal, uSunDirection);',
-        '  float daySide = smoothstep(-0.3, 0.3, sunOrientation);',
-        '  vec3 finalColor = uAtmosphereColor;',
-        // Gün batımı / ufuk çizgisi renklendirmesi
-        '  float horizonFactor = 1.0 - abs(sunOrientation);',
-        '  float sunsetGlow = pow(horizonFactor, 8.0) * 1.2;',
-        '  vec3 sunsetColor = mix(uSunsetBase, vec3(1.0, 0.6, 0.2), 0.3);',
-        '  finalColor = mix(finalColor, sunsetColor, sunsetGlow);',
-        // Ufuk çizgisinde güneş arkası parlama (limb glow)
-        '  float limbAngle = 1.0 - abs(viewAngle);',
-        '  float sunBehindLimb = max(0.0, dot(viewDir, uSunDirection));',
-        '  float limbGlow = pow(limbAngle, 6.0) * pow(sunBehindLimb, 3.0) * 1.5;',
-        '  vec3 limbColor = mix(vec3(1.0, 0.85, 0.6), vec3(1.0, 1.0, 1.0), pow(sunBehindLimb, 4.0));',
+        '  float NdotV = dot(normal, viewDir);',
+        '  float NdotL = dot(normal, uSunDirection);',
+        '  float VdotL = max(0.0, dot(viewDir, uSunDirection));',
+        '',
+        // Fresnel kenar parlaması - atmosferin ince kenarında daha yoğun
+        '  float fresnel = pow(clamp(0.7 - NdotV, 0.0, 1.0), 3.0);',
+        '',
+        // Gündüz/gece geçişi
+        '  float daySide = smoothstep(-0.25, 0.25, NdotL);',
+        '',
+        // Rayleigh saçılması (kısa dalga boyu = mavi, uzun yol = turuncu/kırmızı)
+        '  vec3 rayleighDay = uAtmosphereColor;',
+        // Ufuk çizgisinde güneş ışığı daha uzun yol kat eder = daha fazla kırmızı
+        '  float horizonAngle = 1.0 - abs(NdotL);',
+        '  float sunsetIntensity = pow(horizonAngle, 3.0) * smoothstep(-0.1, 0.3, NdotL);',
+        '  vec3 sunsetWarm = mix(uSunsetBase, vec3(1.0, 0.4, 0.05), 0.5);',
+        '  vec3 sunsetHot = vec3(1.0, 0.7, 0.3);',
+        '  vec3 sunsetColor = mix(sunsetWarm, sunsetHot, pow(VdotL, 2.0));',
+        '  vec3 finalColor = mix(rayleighDay, sunsetColor, sunsetIntensity * 1.8);',
+        '',
+        // Ufuk çizgisi limb parlaması - güneş yönüne bağlı yoğun kenar ışığı
+        '  float limbFresnel = pow(clamp(1.0 - abs(NdotV), 0.0, 1.0), 4.0);',
+        '  float sunAlignment = pow(VdotL, 2.5);',
+        '  float limbGlow = limbFresnel * sunAlignment * 3.0;',
+        '  vec3 limbColor = mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 1.0, 0.95), pow(VdotL, 5.0));',
         '  finalColor = mix(finalColor, limbColor, clamp(limbGlow, 0.0, 1.0));',
+        '',
         // Temel atmosfer saydamlığı
-        '  float alpha = atmosphereFactor * (daySide * 0.85 + 0.15);',
-        // Güneş parlaması (doğrudan bakış)
-        '  float sunGlare = max(0.0, dot(viewDir, uSunDirection));',
-        '  alpha += pow(sunGlare, 16.0) * 0.15;',
-        // Mie saçılması (güneş etrafında yoğun parlama)
-        '  float mieScattering = pow(sunGlare, 80.0) * 0.8;',
-        '  float mieWide = pow(sunGlare, 20.0) * 0.2;',
-        '  finalColor = mix(finalColor, vec3(1.0, 0.95, 0.85), mieScattering + mieWide);',
-        '  alpha += mieScattering + mieWide;',
-        // Ufuk çizgisi arkası parlama ekle
-        '  alpha += limbGlow * 0.4;',
+        '  float alpha = fresnel * (daySide * 0.9 + 0.12);',
+        '',
+        // İleri Mie saçılması (güneşe doğru bakışta yoğun parlama halesi)
+        // Dar çekirdek + geniş hale = gerçekçi güneş parlaması
+        '  float mieCore = pow(VdotL, 128.0) * 2.5;',
+        '  float mieMid = pow(VdotL, 32.0) * 0.6;',
+        '  float mieWide = pow(VdotL, 8.0) * 0.12;',
+        '  float mieTot = mieCore + mieMid + mieWide;',
+        '  vec3 mieColor = mix(vec3(1.0, 0.95, 0.85), vec3(1.0, 1.0, 1.0), pow(VdotL, 16.0));',
+        '  finalColor = mix(finalColor, mieColor, clamp(mieTot, 0.0, 1.0));',
+        '  alpha += mieTot;',
+        '',
+        // Limb parlama saydamlığa katkısı
+        '  alpha += limbGlow * 0.6;',
+        '',
+        // Ufuk çizgisinde ek atmosferik parıltı (sunrise/sunset sırasında)
+        '  float horizonGlow = pow(horizonAngle, 6.0) * pow(max(0.0, NdotL + 0.1), 2.0) * 0.5;',
+        '  alpha += horizonGlow;',
+        '',
         '  gl_FragColor = vec4(finalColor, clamp(alpha, 0.0, 1.0));',
         '}'
       ].join('\n'),
@@ -715,6 +749,8 @@ window.DeepSpaceIntro = (function() {
     _atmoMat = null;
     _sunLight = null;
     _containerEl = null;
+    // Yıldız haritası küresini de temizle (animate kapanışında _starSphere erişilemez,
+    // ama scene.traverse zaten tüm nesneleri temizler)
   }
 
   function isActive() {
