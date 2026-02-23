@@ -121,3 +121,30 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* jetbrains-mono-regular - latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  src: local(''),
+       url('../webfonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+
+/* inter-regular - latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  src: local(''),
+       url('../webfonts/Inter-Regular.woff2') format('woff2');
+}
+
+/* inter-700 - latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  src: local(''),
+       url('../webfonts/Inter-SemiBold.woff2') format('woff2');
+}

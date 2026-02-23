@@ -636,17 +636,4 @@
   .cinematic-card-inner {
     padding: 24px;
   }
-
-  .cinematic-card-icon-box {
-    width: 56px;
-    height: 56px;
-  }
-
-  .cinematic-card-icon {
-    font-size: 1.5rem;
-  }
-
-  .cinematic-card-title {
-    font-size: 1.4rem;
-  }
 }
