@@ -68,7 +68,7 @@ body.deep-space-active .main-footer {
   color: #00ffff;
   font-family: 'Jura', 'Segoe UI', sans-serif;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 16px !important;
   letter-spacing: 0.3em;
   pointer-events: none;
   transition: opacity 0.8s ease-out;
@@ -188,7 +188,7 @@ body.deep-space-active .main-footer {
   gap: 12px;
   cursor: pointer;
   font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 1rem;
+  font-size: 16px !important;
   color: rgba(255, 255, 255, 0.6);
   letter-spacing: 0.06em;
   transition: color 0.3s ease;

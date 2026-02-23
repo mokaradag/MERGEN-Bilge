@@ -53,8 +53,8 @@ createStartupScreenUI <- function() {
             tags$defs(
               tags$linearGradient(
                 id = "snake-gradient", x1 = "0%", y1 = "0%", x2 = "100%", y2 = "100%",
-                tags$stop(offset = "0%", `stop-color` = "#6366f1"),
-                tags$stop(offset = "100%", `stop-color` = "#10b981")
+                tags$stop(offset = "0%", `stop-color` = "#818cf8"),
+                tags$stop(offset = "100%", `stop-color` = "#34d399")
               )
             ),
             tags$rect(
@@ -63,7 +63,7 @@ createStartupScreenUI <- function() {
               rx = "31", ry = "31",
               fill = "none",
               stroke = "url(#snake-gradient)",
-              `stroke-width` = "2",
+              `stroke-width` = "3",
               `stroke-dasharray` = "25 75",
               `stroke-linecap` = "round",
               `pathLength` = "100"
