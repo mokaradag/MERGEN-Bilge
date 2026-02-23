@@ -64,24 +64,22 @@
     0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-/* Spotlight ışıma efekti (fare takibi) */
+/* Spotlight ışıma efekti (fare takibi) - geniş ve belirgin */
 .mode-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   background: radial-gradient(
-    500px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    var(--glow-color, transparent) 0%,
-    rgba(255, 255, 255, 0.02) 15%,
-    transparent 50%
+    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    var(--glow-color, transparent),
+    transparent 40%
   );
   opacity: 0;
   transition: opacity 0.5s ease;
   pointer-events: none;
   z-index: 5;
   mix-blend-mode: screen;
-  filter: blur(1px);
 }
 
 .mode-card:hover::before {
@@ -147,7 +145,7 @@
 }
 
 .mode-card-icon i {
-  font-size: 1.6rem;
+  font-size: 28px !important;
   color: rgba(var(--mode-accent-rgb, 255, 255, 255), 0.5);
   transition: all 0.4s ease;
   position: relative;
@@ -166,8 +164,8 @@
 
 /* Mod başlık */
 .mode-card-title {
-  font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 1.3rem;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 22px !important;
   font-weight: 300;
   color: rgba(226, 232, 240, 0.85);
   margin: 0 0 14px 0;
@@ -186,8 +184,8 @@
 
 /* Mod açıklama alanı */
 .mode-card-desc {
-  font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.92rem;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 15px !important;
   color: rgba(203, 213, 225, 0.7);
   line-height: 1.65;
   min-height: 72px;

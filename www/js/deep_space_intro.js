@@ -384,7 +384,7 @@ window.DeepSpaceIntro = (function() {
       uniforms: {
         uSunDirection: { value: new THREE.Vector3(0, 0, 1) },
         uAtmosphereColor: { value: new THREE.Color(0.2, 0.5, 0.9) },
-        uSunsetBase: { value: new THREE.Color(0.8, 0.3, 0.0) }
+        uSunsetBase: { value: new THREE.Color(0.6, 0.3, 0.1) }
       },
       vertexShader: [
         'varying vec3 vNormal;',
@@ -411,47 +411,42 @@ window.DeepSpaceIntro = (function() {
         '  float VdotL = max(0.0, dot(viewDir, uSunDirection));',
         '',
         // Fresnel kenar parlaması - atmosferin ince kenarında daha yoğun
-        '  float fresnel = pow(clamp(0.7 - NdotV, 0.0, 1.0), 3.0);',
+        '  float fresnel = pow(clamp(0.65 - NdotV, 0.0, 1.0), 3.5);',
         '',
         // Gündüz/gece geçişi
         '  float daySide = smoothstep(-0.25, 0.25, NdotL);',
         '',
-        // Rayleigh saçılması (kısa dalga boyu = mavi, uzun yol = turuncu/kırmızı)
-        '  vec3 rayleighDay = uAtmosphereColor;',
-        // Ufuk çizgisinde güneş ışığı daha uzun yol kat eder = daha fazla kırmızı
-        '  float horizonAngle = 1.0 - abs(NdotL);',
-        '  float sunsetIntensity = pow(horizonAngle, 3.0) * smoothstep(-0.1, 0.3, NdotL);',
-        '  vec3 sunsetWarm = mix(uSunsetBase, vec3(1.0, 0.4, 0.05), 0.5);',
-        '  vec3 sunsetHot = vec3(1.0, 0.7, 0.3);',
-        '  vec3 sunsetColor = mix(sunsetWarm, sunsetHot, pow(VdotL, 2.0));',
-        '  vec3 finalColor = mix(rayleighDay, sunsetColor, sunsetIntensity * 1.8);',
+        // Atmosfer rengi: ağırlıklı olarak mavi kalmalı
+        '  vec3 finalColor = uAtmosphereColor;',
         '',
-        // Ufuk çizgisi limb parlaması - güneş yönüne bağlı yoğun kenar ışığı
-        '  float limbFresnel = pow(clamp(1.0 - abs(NdotV), 0.0, 1.0), 4.0);',
-        '  float sunAlignment = pow(VdotL, 2.5);',
-        '  float limbGlow = limbFresnel * sunAlignment * 3.0;',
-        '  vec3 limbColor = mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 1.0, 0.95), pow(VdotL, 5.0));',
+        // Gün batımı efekti SADECE güneş-ufuk çizgisine çok yakın dar bölgede
+        // Düşük yoğunluk ve yüksek üs ile renklilik bastırılır
+        '  float terminator = smoothstep(-0.02, 0.12, NdotL) * smoothstep(0.28, 0.08, NdotL);',
+        '  float sunsetMix = terminator * pow(VdotL, 2.5) * 0.3;',
+        '  vec3 sunsetColor = mix(vec3(0.9, 0.55, 0.3), vec3(0.95, 0.75, 0.5), VdotL);',
+        '  finalColor = mix(finalColor, sunsetColor, sunsetMix);',
+        '',
+        // Ufuk çizgisi limb parlaması - yalnızca güneş yönünde, beyaz-mavi
+        '  float limbFresnel = pow(clamp(1.0 - abs(NdotV), 0.0, 1.0), 6.0);',
+        '  float sunAlignment = pow(VdotL, 4.0);',
+        '  float limbGlow = limbFresnel * sunAlignment * 1.5;',
+        '  vec3 limbColor = mix(vec3(0.7, 0.85, 1.0), vec3(0.9, 0.95, 1.0), pow(VdotL, 6.0));',
         '  finalColor = mix(finalColor, limbColor, clamp(limbGlow, 0.0, 1.0));',
         '',
         // Temel atmosfer saydamlığı
-        '  float alpha = fresnel * (daySide * 0.9 + 0.12);',
+        '  float alpha = fresnel * (daySide * 0.85 + 0.1);',
         '',
-        // İleri Mie saçılması (güneşe doğru bakışta yoğun parlama halesi)
-        // Dar çekirdek + geniş hale = gerçekçi güneş parlaması
-        '  float mieCore = pow(VdotL, 128.0) * 2.5;',
-        '  float mieMid = pow(VdotL, 32.0) * 0.6;',
-        '  float mieWide = pow(VdotL, 8.0) * 0.12;',
+        // İleri Mie saçılması (güneşe doğru bakışta parlama halesi)
+        '  float mieCore = pow(VdotL, 128.0) * 2.0;',
+        '  float mieMid = pow(VdotL, 32.0) * 0.4;',
+        '  float mieWide = pow(VdotL, 8.0) * 0.08;',
         '  float mieTot = mieCore + mieMid + mieWide;',
-        '  vec3 mieColor = mix(vec3(1.0, 0.95, 0.85), vec3(1.0, 1.0, 1.0), pow(VdotL, 16.0));',
+        '  vec3 mieColor = mix(vec3(1.0, 0.95, 0.9), vec3(1.0, 1.0, 1.0), pow(VdotL, 16.0));',
         '  finalColor = mix(finalColor, mieColor, clamp(mieTot, 0.0, 1.0));',
         '  alpha += mieTot;',
         '',
         // Limb parlama saydamlığa katkısı
-        '  alpha += limbGlow * 0.6;',
-        '',
-        // Ufuk çizgisinde ek atmosferik parıltı (sunrise/sunset sırasında)
-        '  float horizonGlow = pow(horizonAngle, 6.0) * pow(max(0.0, NdotL + 0.1), 2.0) * 0.5;',
-        '  alpha += horizonGlow;',
+        '  alpha += limbGlow * 0.25;',
         '',
         '  gl_FragColor = vec4(finalColor, clamp(alpha, 0.0, 1.0));',
         '}'

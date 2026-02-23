@@ -71,15 +71,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
-  padding: 0 52px;
-  height: 72px;
+  gap: 20px;
+  padding: 0 58px;
+  height: 78px;
   background: rgba(10, 10, 10, 0.85);
   border-radius: 9999px;
   color: rgba(226, 232, 240, 0.9);
-  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
   font-weight: 500;
-  font-size: 1.1rem;
+  font-size: 20px !important;
   letter-spacing: 0.25em;
   border: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
@@ -144,14 +144,14 @@
 
 .explore-snake-trail {
   animation: exploreSnakeTrail 4s linear infinite;
-  filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.8));
+  filter: drop-shadow(0 0 8px rgba(129, 140, 248, 0.9)) drop-shadow(0 0 16px rgba(99, 102, 241, 0.4));
 }
 
 /* Buton ikonları */
 .explore-btn-icon {
   position: relative;
   z-index: 30;
-  font-size: 1.4rem;
+  font-size: 26px !important;
   color: #818cf8;
   transition: transform 0.5s ease-out;
 }
@@ -175,7 +175,7 @@
 .explore-btn-arrow {
   position: relative;
   z-index: 30;
-  font-size: 0.9rem;
+  font-size: 16px !important;
   color: rgba(148, 163, 184, 0.6);
   transition: all 0.3s ease;
 }
@@ -241,8 +241,8 @@
 }
 
 .cinematic-modal-title {
-  font-family: 'Orbitron', 'Segoe UI', sans-serif;
-  font-size: 2.2rem;
+  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
+  font-size: 34px !important;
   font-weight: 300;
   color: #ffffff;
   letter-spacing: 0.08em;
@@ -250,8 +250,8 @@
 }
 
 .cinematic-modal-subtitle {
-  font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.95rem;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 15px !important;
   color: rgba(148, 163, 184, 0.6);
   letter-spacing: 0.25em;
   font-weight: 600;
@@ -264,7 +264,7 @@
   background: transparent;
   border: none;
   color: rgba(148, 163, 184, 0.5);
-  font-size: 1.5rem;
+  font-size: 24px !important;
   cursor: pointer;
   border-radius: 9999px;
   transition: all 0.3s ease;
@@ -305,29 +305,26 @@
   transform: translateY(-8px);
 }
 
-/* Kart içi ışıma (spotlight) - yumuşak geçişli, halka artefaktı olmayan */
+/* Kart içi ışıma (spotlight) - React örneğiyle eşleştirilmiş geniş parlama */
 .cinematic-mode-card.spotlight-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   background: radial-gradient(
-    700px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    var(--glow-color, transparent) 0%,
-    rgba(255, 255, 255, 0.03) 15%,
-    rgba(255, 255, 255, 0.01) 30%,
-    transparent 55%
+    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    var(--glow-color, transparent),
+    transparent 40%
   );
   opacity: 0;
   transition: opacity 0.5s ease;
   pointer-events: none;
   z-index: 5;
   mix-blend-mode: screen;
-  filter: blur(2px);
 }
 
 .cinematic-mode-card.spotlight-card:hover::before {
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 /* Kart arka plan katmanı */
@@ -375,9 +372,9 @@
 /* İkon kutusu */
 .cinematic-card-icon-box {
   position: relative;
-  width: 68px;
-  height: 68px;
-  border-radius: 14px;
+  width: 76px;
+  height: 76px;
+  border-radius: 16px;
   margin-bottom: 32px;
   display: flex;
   align-items: center;
@@ -396,7 +393,7 @@
 .cinematic-card-icon {
   position: relative;
   z-index: 10;
-  font-size: 1.8rem;
+  font-size: 32px !important;
   transition: all 0.5s ease;
 }
 
@@ -416,8 +413,8 @@
 
 /* Kart başlık */
 .cinematic-card-title {
-  font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 1.8rem;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 30px !important;
   font-weight: 300;
   color: rgba(226, 232, 240, 0.9);
   margin: 0 0 14px 0;
@@ -430,8 +427,8 @@
 
 /* Kısa açıklama */
 .cinematic-card-short {
-  font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 1rem;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 16px !important;
   font-weight: 500;
   color: rgba(148, 163, 184, 0.7);
   letter-spacing: 0.04em;
@@ -446,8 +443,8 @@
 }
 
 .cinematic-card-desc {
-  font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 1rem;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 16px !important;
   color: rgba(203, 213, 225, 0.8);
   font-weight: 300;
   line-height: 1.7;
@@ -485,7 +482,7 @@
 }
 
 .cinematic-card-arrow i {
-  font-size: 1.3rem;
+  font-size: 22px !important;
 }
 
 .cinematic-mode-card[data-mode="odak"] .cinematic-card-arrow i { color: #fbbf24; }
@@ -624,9 +621,9 @@
 @media (max-width: 480px) {
   .explore-cinematic-btn {
     padding: 0 36px;
-    height: 60px;
+    height: 64px;
     gap: 14px;
-    font-size: 0.95rem;
+    font-size: 16px !important;
   }
 
   .cinematic-modal-container {
@@ -635,5 +632,18 @@
 
   .cinematic-card-inner {
     padding: 24px;
+  }
+
+  .cinematic-card-icon-box {
+    width: 60px;
+    height: 60px;
+  }
+
+  .cinematic-card-icon {
+    font-size: 26px !important;
+  }
+
+  .cinematic-card-title {
+    font-size: 24px !important;
   }
 }
