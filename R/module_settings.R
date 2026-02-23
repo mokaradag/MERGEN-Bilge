@@ -232,16 +232,16 @@ settingsUI <- function(id) {
                       div(
                         class = "setting-item",
                         style = "margin-top: 16px;",
-                        h4("Başlangıç Ekranı", class = "setting-subtitle"),
+                        h4("Giriş Ekranı", class = "setting-subtitle"),
                         div(
                           class = "checkbox-item",
                           checkboxInput(
-                            inputId = ns("skip_intro_animation"),
-                            label = "Giriş animasyonunu atla",
-                            value = FALSE
+                            inputId = ns("show_intro_animation"),
+                            label = "Giriş animasyonunu göster",
+                            value = TRUE
                           )
                         ),
-                        p("Uygulama açılışında derin uzay animasyonunu göstermez", class = "setting-description")
+                        p("Uygulama açılışında derin uzay giriş ekranını gösterir", class = "setting-description")
                       )
                     )
                   )
@@ -536,7 +536,7 @@ settingsServer <- function(id, parent_session = NULL) {
 	  enable_background_music = FALSE,
 	  music_volume = 0.3,
 	  experience_mode = "odak",
-	  skip_intro_animation = FALSE
+	  show_intro_animation = TRUE
 	)
     
     observeEvent(input$update_api_key_btn, {
@@ -641,13 +641,13 @@ settingsServer <- function(id, parent_session = NULL) {
 	  }
 	}, ignoreInit = TRUE)
 
-	# Giriş animasyonunu atlama ayarı
-	observeEvent(input$skip_intro_animation, {
-	  settings$skip_intro_animation <- isTRUE(input$skip_intro_animation)
-	  # localStorage'a yansıt
+	# Giriş animasyonunu göster/gizle ayarı
+	observeEvent(input$show_intro_animation, {
+	  settings$show_intro_animation <- isTRUE(input$show_intro_animation)
+	  # localStorage'a yansıt (skip_intro = show_intro'nun tersi)
 	  shinyjs::runjs(sprintf(
 	    "try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.skip_intro = %s; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
-	    tolower(as.character(isTRUE(input$skip_intro_animation)))
+	    tolower(as.character(!isTRUE(input$show_intro_animation)))
 	  ))
 	}, ignoreInit = TRUE)
 
@@ -928,10 +928,10 @@ settingsServer <- function(id, parent_session = NULL) {
         session$sendCustomMessage("updateSettingsMode", list(mode = loaded$experience_mode))
       }
 
-      # Giriş animasyonu atlama ayarını yükle
+      # Giriş animasyonu gösterme ayarını yükle (skip_intro'nun tersi)
       if (!is.null(loaded$skip_intro)) {
-        settings$skip_intro_animation <- isTRUE(loaded$skip_intro)
-        updateCheckboxInput(session, "skip_intro_animation", value = isTRUE(loaded$skip_intro))
+        settings$show_intro_animation <- !isTRUE(loaded$skip_intro)
+        updateCheckboxInput(session, "show_intro_animation", value = !isTRUE(loaded$skip_intro))
       }
 
       loaded_settings <- loaded
@@ -1197,7 +1197,7 @@ settingsServer <- function(id, parent_session = NULL) {
       to_save$analysis_deep_thinking <- settings$analysis_deep_thinking
       to_save$analysis_detail_level  <- settings$analysis_detail_level
       to_save$experience_mode        <- settings$experience_mode
-      to_save$skip_intro             <- isTRUE(settings$skip_intro_animation)
+      to_save$skip_intro             <- !isTRUE(settings$show_intro_animation)
       session$sendCustomMessage("saveSettings", to_save)
       
       showToast(session, "Ayarlar kaydedildi!", "success")
@@ -1233,8 +1233,8 @@ settingsServer <- function(id, parent_session = NULL) {
 
 	  # Deneyim modu ve giriş animasyonu sıfırla
 	  settings$experience_mode <- "odak"
-	  settings$skip_intro_animation <- FALSE
-	  updateCheckboxInput(session, "skip_intro_animation", value = FALSE)
+	  settings$show_intro_animation <- TRUE
+	  updateCheckboxInput(session, "show_intro_animation", value = TRUE)
 	  session$sendCustomMessage("updateSettingsMode", list(mode = "odak"))
 
 	  # Görsel ayarlarını sıfırla
