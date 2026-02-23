@@ -168,48 +168,7 @@ body.deep-space-active .main-footer {
   animation: dsFadeInUp 1.5s cubic-bezier(0.19, 1, 0.22, 1) 2s forwards;
 }
 
-.deep-space-explore-btn button {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: rgba(255, 255, 255, 0.9);
-  font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.25em;
-  padding: 14px 42px;
-  cursor: pointer;
-  text-transform: uppercase;
-  border-radius: 2px;
-  position: relative;
-  overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-}
-
-.deep-space-explore-btn button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(0, 242, 255, 0.08), transparent);
-  transition: left 0.6s ease;
-}
-
-.deep-space-explore-btn button:hover {
-  border-color: rgba(0, 242, 255, 0.5);
-  color: #ffffff;
-  text-shadow: 0 0 12px rgba(0, 242, 255, 0.4);
-  box-shadow: 0 0 20px rgba(0, 242, 255, 0.1), inset 0 0 20px rgba(0, 242, 255, 0.03);
-}
-
-.deep-space-explore-btn button:hover::before {
-  left: 100%;
-}
-
-.deep-space-explore-btn button:active {
-  transform: scale(0.97);
-}
+/* Buton stilleri explore_cinematic.css dosyasında tanımlanmıştır */
 
 /* ============================================================= */
 /* ANİMASYONU ATLAMA ONAY KUTUSU (SOL ALT KÖŞE)                 */
@@ -226,37 +185,45 @@ body.deep-space-active .main-footer {
 .deep-space-skip-checkbox label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.35);
-  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.06em;
   transition: color 0.3s ease;
   user-select: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 .deep-space-skip-checkbox label:hover {
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.deep-space-skip-checkbox .skip-checkbox-text {
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .deep-space-skip-checkbox input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 2px;
-  background: transparent;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
   cursor: pointer;
   position: relative;
   transition: all 0.3s ease;
   flex-shrink: 0;
+  vertical-align: middle;
+  margin: 0;
 }
 
 .deep-space-skip-checkbox input[type="checkbox"]:checked {
-  border-color: rgba(0, 242, 255, 0.5);
-  background: rgba(0, 242, 255, 0.15);
+  border-color: rgba(0, 242, 255, 0.6);
+  background: rgba(0, 242, 255, 0.2);
 }
 
 .deep-space-skip-checkbox input[type="checkbox"]:checked::after {
@@ -264,10 +231,10 @@ body.deep-space-active .main-footer {
   position: absolute;
   top: 1px;
   left: 4px;
-  width: 4px;
-  height: 8px;
-  border: solid rgba(0, 242, 255, 0.8);
-  border-width: 0 1.5px 1.5px 0;
+  width: 5px;
+  height: 9px;
+  border: solid rgba(0, 242, 255, 0.9);
+  border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 

@@ -1,0 +1,636 @@
+/* www/css/explore_cinematic.css */
+/* Dosya Yolu: www/css/explore_cinematic.css */
+/* Açıklama: Sinematik Keşfet butonu ve mod seçim modalı stilleri. */
+/* React örneğindeki deneyimi birebir yansıtır: yılan izi, cam parlaması, */
+/* spotlight kartlar, yazma animasyonu, işaretçi ışıması ve geçiş efektleri. */
+
+/* ============================================================= */
+/* ANİMASYON TANIMLARI                                           */
+/* ============================================================= */
+
+/* Yavaş yılan izi (SVG kenarlık) */
+@keyframes exploreSnakeTrail {
+  0% { stroke-dashoffset: 100; }
+  100% { stroke-dashoffset: 0; }
+}
+
+/* Parlayan metin süpürmesi */
+@keyframes exploreSweepShine {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+/* Odak modu - dalga/ripple efekti */
+@keyframes exploreFocusRipple {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* Denge modu - uçuşan zerreler */
+@keyframes exploreDynamicFloat1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-6px, -12px) scale(1.5); }
+}
+
+@keyframes exploreDynamicFloat2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(6px, -8px) scale(1.2); }
+}
+
+/* Tam Donanım - lazer tarayıcı */
+@keyframes exploreScannerLine {
+  0% { top: -10%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 110%; opacity: 0; }
+}
+
+/* Yazma imleci yanıp sönme */
+@keyframes cinematicTypingBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Kart giriş animasyonu */
+@keyframes cinematicCardEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ============================================================= */
+/* SİNEMATİK KEŞFET BUTONU                                      */
+/* ============================================================= */
+.explore-cinematic-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 40px;
+  height: 64px;
+  background: rgba(10, 10, 10, 0.85);
+  border-radius: 9999px;
+  color: rgba(226, 232, 240, 0.9);
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+  letter-spacing: 0.25em;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  text-transform: uppercase;
+  overflow: visible;
+  transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.explore-cinematic-btn:hover {
+  background: rgba(17, 17, 17, 0.95);
+  box-shadow: 0 0 50px -10px rgba(99, 102, 241, 0.6);
+  transform: scale(1.02);
+}
+
+.explore-cinematic-btn:active {
+  transform: scale(0.98);
+}
+
+/* Cam yansıması (hover'da soldan sağa kayar) */
+.explore-glass-wrap {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.explore-glass-reflection {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transform: skewX(-20deg);
+  z-index: 20;
+  pointer-events: none;
+  transition: none;
+}
+
+.hover-glass-trigger:hover .explore-glass-reflection {
+  left: 200%;
+  transition: left 0.7s ease-in-out;
+}
+
+/* SVG yılan izi */
+.explore-snake-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 20;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  overflow: visible;
+}
+
+.explore-cinematic-btn:hover .explore-snake-svg {
+  opacity: 1;
+}
+
+.explore-snake-trail {
+  animation: exploreSnakeTrail 4s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.8));
+}
+
+/* Buton ikonları */
+.explore-btn-icon {
+  position: relative;
+  z-index: 30;
+  font-size: 1.1rem;
+  color: #818cf8;
+  transition: transform 0.5s ease-out;
+}
+
+.explore-cinematic-btn:hover .explore-btn-icon {
+  transform: rotate(45deg);
+}
+
+.explore-btn-text {
+  position: relative;
+  z-index: 30;
+  transition: color 0.3s ease;
+  text-shadow: none;
+}
+
+.explore-cinematic-btn:hover .explore-btn-text {
+  color: #ffffff;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.explore-btn-arrow {
+  position: relative;
+  z-index: 30;
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.6);
+  transition: all 0.3s ease;
+}
+
+.explore-cinematic-btn:hover .explore-btn-arrow {
+  color: #34d399;
+  transform: translateX(4px);
+}
+
+/* ============================================================= */
+/* SİNEMATİK MOD SEÇİM MODALI                                   */
+/* ============================================================= */
+.cinematic-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: all 0.7s ease-in-out;
+}
+
+.cinematic-modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Modal konteyner */
+.cinematic-modal-container {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  transform: translateY(40px) scale(0.9);
+  opacity: 0;
+  transition: all 0.7s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.cinematic-modal-overlay.active .cinematic-modal-container {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* Modal başlık */
+.cinematic-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 40px;
+  padding: 0 16px;
+  transition: opacity 0.5s ease;
+}
+
+.cinematic-modal-overlay.mode-selected .cinematic-modal-header {
+  opacity: 0;
+}
+
+.cinematic-modal-title {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 300;
+  color: #ffffff;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.cinematic-modal-subtitle {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.8rem;
+  color: rgba(148, 163, 184, 0.6);
+  letter-spacing: 0.25em;
+  font-weight: 600;
+  margin: 8px 0 0 0;
+}
+
+/* Kapatma butonu */
+.cinematic-modal-close {
+  padding: 12px;
+  background: transparent;
+  border: none;
+  color: rgba(148, 163, 184, 0.5);
+  font-size: 1.2rem;
+  cursor: pointer;
+  border-radius: 9999px;
+  transition: all 0.3s ease;
+  line-height: 1;
+}
+
+.cinematic-modal-close:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  transform: rotate(90deg);
+}
+
+/* ============================================================= */
+/* SİNEMATİK MOD KARTLARI                                       */
+/* ============================================================= */
+.cinematic-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  padding: 0 16px;
+}
+
+/* Tek bir kart */
+.cinematic-mode-card {
+  position: relative;
+  border-radius: 16px;
+  padding: 1px;
+  cursor: pointer;
+  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: cinematicCardEnter 0.6s ease-out both;
+}
+
+.cinematic-mode-card:nth-child(1) { animation-delay: 0.1s; }
+.cinematic-mode-card:nth-child(2) { animation-delay: 0.15s; }
+.cinematic-mode-card:nth-child(3) { animation-delay: 0.2s; }
+
+.cinematic-mode-card:hover {
+  transform: translateY(-8px);
+}
+
+/* Kart içi ışıma (spotlight) */
+.cinematic-mode-card.spotlight-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    var(--glow-color, transparent),
+    transparent 40%
+  );
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  z-index: 5;
+  mix-blend-mode: screen;
+}
+
+.cinematic-mode-card.spotlight-card:hover::before {
+  opacity: 0.6;
+}
+
+/* Kart arka plan katmanı */
+.cinematic-card-inner {
+  position: relative;
+  z-index: 10;
+  height: 100%;
+  padding: 32px;
+  pointer-events: none;
+  background: rgba(10, 10, 10, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: border-color 0.5s ease;
+}
+
+.cinematic-mode-card:hover .cinematic-card-inner {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Seçilmiş kart efekti */
+.cinematic-mode-card.selected .cinematic-card-inner {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Seçilmeyen kartlar soluk ve bulanık */
+.cinematic-mode-card.other-selected {
+  opacity: 0;
+  transform: scale(0.75);
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+/* Seçilen kart büyür */
+.cinematic-mode-card.selected {
+  transform: scale(1.1);
+  z-index: 50;
+}
+
+/* ============================================================= */
+/* KART İÇERİK ÖĞELERİ                                         */
+/* ============================================================= */
+
+/* İkon kutusu */
+.cinematic-card-icon-box {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  transition: all 0.7s ease-out;
+}
+
+.cinematic-mode-card:hover .cinematic-card-icon-box {
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
+}
+
+.cinematic-card-icon {
+  position: relative;
+  z-index: 10;
+  font-size: 1.4rem;
+  transition: all 0.5s ease;
+}
+
+.cinematic-mode-card:hover .cinematic-card-icon,
+.cinematic-mode-card.selected .cinematic-card-icon {
+  filter: drop-shadow(0 0 12px currentColor);
+}
+
+/* Renk temaları */
+.cinematic-mode-card[data-mode="odak"] .cinematic-card-icon { color: #fbbf24; }
+.cinematic-mode-card[data-mode="denge"] .cinematic-card-icon { color: #818cf8; }
+.cinematic-mode-card[data-mode="kesif"] .cinematic-card-icon { color: #34d399; }
+
+.cinematic-mode-card[data-mode="odak"] { --glow-color: rgba(251, 191, 36, 0.6); }
+.cinematic-mode-card[data-mode="denge"] { --glow-color: rgba(129, 140, 248, 0.6); }
+.cinematic-mode-card[data-mode="kesif"] { --glow-color: rgba(52, 211, 153, 0.6); }
+
+/* Kart başlık */
+.cinematic-card-title {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: rgba(226, 232, 240, 0.9);
+  margin: 0 0 12px 0;
+  transition: color 0.3s ease;
+}
+
+.cinematic-mode-card:hover .cinematic-card-title {
+  color: #ffffff;
+}
+
+/* Kısa açıklama */
+.cinematic-card-short {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.7);
+  letter-spacing: 0.04em;
+  margin: 0 0 24px 0;
+}
+
+/* Detaylı açıklama alanı (yazma animasyonu) */
+.cinematic-card-desc-area {
+  height: 130px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 24px;
+}
+
+.cinematic-card-desc {
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 0.88rem;
+  color: rgba(203, 213, 225, 0.8);
+  font-weight: 300;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+}
+
+/* Yazma imleci */
+.cinematic-card-desc .typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cinematicTypingBlink 0.8s step-end infinite;
+}
+
+.cinematic-mode-card[data-mode="odak"] .typing-cursor { background-color: #fbbf24; }
+.cinematic-mode-card[data-mode="denge"] .typing-cursor { background-color: #818cf8; }
+.cinematic-mode-card[data-mode="kesif"] .typing-cursor { background-color: #34d399; }
+
+/* Ok ikonu (sağ alt) */
+.cinematic-card-arrow {
+  position: absolute;
+  bottom: 32px;
+  right: 32px;
+  opacity: 0;
+  transform: translateX(-24px);
+  transition: all 0.5s ease;
+}
+
+.cinematic-mode-card:hover .cinematic-card-arrow,
+.cinematic-mode-card.selected .cinematic-card-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.cinematic-card-arrow i {
+  font-size: 1.1rem;
+}
+
+.cinematic-mode-card[data-mode="odak"] .cinematic-card-arrow i { color: #fbbf24; }
+.cinematic-mode-card[data-mode="denge"] .cinematic-card-arrow i { color: #818cf8; }
+.cinematic-mode-card[data-mode="kesif"] .cinematic-card-arrow i { color: #34d399; }
+
+/* ============================================================= */
+/* MİKRO ANİMASYONLAR (İKON KUTUSU İÇİ)                         */
+/* ============================================================= */
+
+.micro-anim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Odak: Dalga/Ripple efekti */
+.micro-anim-odak {
+  display: none;
+}
+
+.cinematic-mode-card:hover .micro-anim-odak,
+.cinematic-mode-card.selected .micro-anim-odak {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cinematic-mode-card:hover .micro-anim-odak::before,
+.cinematic-mode-card:hover .micro-anim-odak::after {
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #fbbf24;
+}
+
+.cinematic-mode-card:hover .micro-anim-odak::before {
+  animation: exploreFocusRipple 1.5s cubic-bezier(0.1, 0, 0.3, 1) infinite;
+}
+
+.cinematic-mode-card:hover .micro-anim-odak::after {
+  animation: exploreFocusRipple 1.5s cubic-bezier(0.1, 0, 0.3, 1) infinite 0.4s;
+  opacity: 0.5;
+}
+
+/* Denge: Uçuşan zerreler */
+.micro-anim-denge {
+  display: none;
+}
+
+.cinematic-mode-card:hover .micro-anim-denge,
+.cinematic-mode-card.selected .micro-anim-denge {
+  display: block;
+}
+
+.cinematic-mode-card:hover .micro-anim-denge::before,
+.cinematic-mode-card:hover .micro-anim-denge::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: #c7d2fe;
+}
+
+.cinematic-mode-card:hover .micro-anim-denge::before {
+  width: 6px;
+  height: 6px;
+  top: 8px;
+  left: 12px;
+  filter: blur(1px);
+  animation: exploreDynamicFloat1 2s ease-in-out infinite;
+}
+
+.cinematic-mode-card:hover .micro-anim-denge::after {
+  width: 4px;
+  height: 4px;
+  bottom: 8px;
+  right: 12px;
+  filter: blur(0.5px);
+  background: #a5b4fc;
+  animation: exploreDynamicFloat2 2.5s ease-in-out infinite 0.5s;
+}
+
+/* Tam Donanım: Lazer tarayıcı çizgisi */
+.micro-anim-kesif {
+  display: none;
+}
+
+.cinematic-mode-card:hover .micro-anim-kesif,
+.cinematic-mode-card.selected .micro-anim-kesif {
+  display: block;
+}
+
+.cinematic-mode-card:hover .micro-anim-kesif::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #34d399;
+  box-shadow: 0 0 8px #34d399;
+  z-index: 20;
+  animation: exploreScannerLine 2s linear infinite;
+}
+
+/* ============================================================= */
+/* DUYARLI TASARIM                                               */
+/* ============================================================= */
+@media (max-width: 992px) {
+  .cinematic-cards-grid {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+    margin: 0 auto;
+    gap: 20px;
+  }
+
+  .cinematic-modal-title {
+    font-size: 1.3rem;
+  }
+
+  .cinematic-modal-subtitle {
+    font-size: 0.7rem;
+  }
+
+  .cinematic-card-desc-area {
+    height: 100px;
+  }
+
+  .cinematic-mode-card.selected {
+    transform: scale(1.03);
+  }
+}
+
+@media (max-width: 480px) {
+  .explore-cinematic-btn {
+    padding: 0 28px;
+    height: 56px;
+    gap: 12px;
+    font-size: 0.8rem;
+  }
+
+  .cinematic-modal-container {
+    padding: 0 8px;
+  }
+
+  .cinematic-card-inner {
+    padding: 24px;
+  }
+}

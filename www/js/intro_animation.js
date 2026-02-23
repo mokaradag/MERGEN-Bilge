@@ -4,7 +4,7 @@
 // veya atlanmışsa uygulamayı doğrudan hazır duruma getirir.
 
 $(document).ready(function() {
-  // Derin uzay konteyneri varsa müdahale etme (mode_selection.js yönetecek)
+  // Derin uzay konteyneri varsa müdahale etme (explore_cinematic.js yönetecek)
   var deepSpaceContainer = document.getElementById('deep-space-container');
   if (deepSpaceContainer) {
     // Derin uzay giriş ekranı mevcut, kendi akışına bırak

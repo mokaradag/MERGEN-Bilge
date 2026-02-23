@@ -37,10 +37,43 @@ createStartupScreenUI <- function() {
         )
       ),
 
-      # Keşfet butonu (alt orta)
+      # Sinematik Keşfet butonu (alt orta)
       tags$div(
         class = "deep-space-explore-btn",
-        tags$button(id = "explore-btn", "KEŞFET")
+        tags$button(
+          id = "explore-btn",
+          class = "explore-cinematic-btn hover-glass-trigger",
+          # Cam yansıması katmanı
+          tags$div(class = "explore-glass-wrap",
+            tags$div(class = "explore-glass-reflection")
+          ),
+          # SVG yılan izi animasyonu
+          tags$svg(
+            class = "explore-snake-svg",
+            tags$defs(
+              tags$linearGradient(
+                id = "snake-gradient", x1 = "0%", y1 = "0%", x2 = "100%", y2 = "100%",
+                tags$stop(offset = "0%", `stop-color` = "#6366f1"),
+                tags$stop(offset = "100%", `stop-color` = "#10b981")
+              )
+            ),
+            tags$rect(
+              class = "explore-snake-trail",
+              x = "0", y = "0", width = "100%", height = "100%",
+              rx = "31", ry = "31",
+              fill = "none",
+              stroke = "url(#snake-gradient)",
+              `stroke-width` = "2",
+              `stroke-dasharray` = "25 75",
+              `stroke-linecap` = "round",
+              `pathLength` = "100"
+            )
+          ),
+          # Buton içeriği
+          tags$i(class = "fas fa-compass explore-btn-icon"),
+          tags$span(class = "explore-btn-text", "KEŞFET"),
+          tags$i(class = "fas fa-chevron-right explore-btn-arrow")
+        )
       ),
 
       # Animasyonu bir daha gösterme onay kutusu (sol alt köşe)
@@ -48,54 +81,98 @@ createStartupScreenUI <- function() {
         class = "deep-space-skip-checkbox",
         tags$label(
           tags$input(type = "checkbox", id = "skip-intro-checkbox"),
-          "Başlangıçta gösterme"
+          tags$span(class = "skip-checkbox-text", "Bir daha gösterme")
         )
       ),
 
-      # Mod seçim modalı
+      # Sinematik mod seçim modalı
       tags$div(
         id = "mode-modal-overlay",
-        class = "mode-modal-overlay",
+        class = "cinematic-modal-overlay",
         tags$div(
-          class = "mode-modal-box",
-          # Kapatma butonu
-          tags$button(
-            class = "mode-modal-close",
-            title = "Kapat (Esc)",
-            tags$i(class = "fas fa-times")
-          ),
-          # Modal başlık
+          class = "cinematic-modal-container",
+          # Başlık ve kapatma butonu
           tags$div(
-            class = "mode-modal-header",
-            tags$h3("Deneyim Modu"),
-            tags$p("Çalışma tarzınıza uygun modu seçin")
+            class = "cinematic-modal-header",
+            tags$div(
+              tags$h2(class = "cinematic-modal-title", "Sistem Protokolü"),
+              tags$p(class = "cinematic-modal-subtitle", "DENEYİM KONFİGÜRASYONUNU SEÇİN")
+            ),
+            tags$button(
+              class = "cinematic-modal-close",
+              title = "Kapat (Esc)",
+              tags$i(class = "fas fa-times")
+            )
           ),
-          # Mod kartları
+          # Mod kartları (3 sütun)
           tags$div(
-            class = "mode-cards-container",
+            class = "cinematic-cards-grid",
             # Odak Modu
             tags$div(
-              class = "mode-card",
+              class = "cinematic-mode-card spotlight-card",
               `data-mode` = "odak",
-              tags$div(class = "mode-card-icon", tags$i(class = "fas fa-bolt")),
-              tags$div(class = "mode-card-title", "Odak"),
-              tags$div(class = "mode-card-desc")
+              tags$div(
+                class = "cinematic-card-inner",
+                # İkon kutusu
+                tags$div(
+                  class = "cinematic-card-icon-box",
+                  # Odak mikro animasyonu (dalga/ripple)
+                  tags$div(class = "micro-anim micro-anim-odak"),
+                  tags$i(class = "fas fa-bolt cinematic-card-icon")
+                ),
+                tags$h3(class = "cinematic-card-title", "Odak"),
+                tags$p(class = "cinematic-card-short", "Maksimum hız, mutlak sadelik."),
+                tags$div(class = "cinematic-card-desc-area",
+                  tags$div(class = "cinematic-card-desc")
+                ),
+                tags$div(class = "cinematic-card-arrow",
+                  tags$i(class = "fas fa-chevron-right")
+                )
+              )
             ),
             # Denge Modu
             tags$div(
-              class = "mode-card",
+              class = "cinematic-mode-card spotlight-card",
               `data-mode` = "denge",
-              tags$div(class = "mode-card-icon", tags$i(class = "fas fa-compass")),
-              tags$div(class = "mode-card-title", "Denge"),
-              tags$div(class = "mode-card-desc")
+              tags$div(
+                class = "cinematic-card-inner",
+                # Denge mikro animasyonu (uçuşan zerreler)
+                tags$div(
+                  class = "cinematic-card-icon-box",
+                  tags$div(class = "micro-anim micro-anim-denge"),
+                  tags$i(class = "fas fa-compass cinematic-card-icon")
+                ),
+                tags$h3(class = "cinematic-card-title", "Denge"),
+                tags$p(class = "cinematic-card-short", "İnteraktif asistan desteği."),
+                tags$div(class = "cinematic-card-desc-area",
+                  tags$div(class = "cinematic-card-desc")
+                ),
+                tags$div(class = "cinematic-card-arrow",
+                  tags$i(class = "fas fa-chevron-right")
+                )
+              )
             ),
             # Tam Donanım Modu
             tags$div(
-              class = "mode-card",
+              class = "cinematic-mode-card spotlight-card",
               `data-mode` = "kesif",
-              tags$div(class = "mode-card-icon", tags$i(class = "fas fa-rocket")),
-              tags$div(class = "mode-card-title", "Tam Donanım"),
-              tags$div(class = "mode-card-desc")
+              tags$div(
+                class = "cinematic-card-inner",
+                # Tam Donanım mikro animasyonu (lazer tarayıcı)
+                tags$div(
+                  class = "cinematic-card-icon-box",
+                  tags$div(class = "micro-anim micro-anim-kesif"),
+                  tags$i(class = "fas fa-rocket cinematic-card-icon")
+                ),
+                tags$h3(class = "cinematic-card-title", "Tam Donanım"),
+                tags$p(class = "cinematic-card-short", "Tüm sistemlerin kilidini açın."),
+                tags$div(class = "cinematic-card-desc-area",
+                  tags$div(class = "cinematic-card-desc")
+                ),
+                tags$div(class = "cinematic-card-arrow",
+                  tags$i(class = "fas fa-chevron-right")
+                )
+              )
             )
           )
         )
@@ -131,18 +208,22 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     ")
   }, once = TRUE)
 
-  # Atlama tercibine göre giriş ekranını göster veya atla
+  # Atlama tercihine göre giriş ekranını göster veya tamamen atla
   observeEvent(input$startup_skip_intro, {
     skip <- isTRUE(input$startup_skip_intro)
 
     if (skip) {
-      # Giriş ekranını atla, doğrudan uygulamaya geç
+      # Giriş ekranını tamamen atla - DOM'dan kaldır ve uygulamayı göster
       shinyjs::runjs("
-        var ds = document.getElementById('deep-space-container');
-        if (ds && ds.parentNode) ds.parentNode.removeChild(ds);
-        document.body.classList.remove('deep-space-active');
-        document.body.classList.add('app-ready');
+        (function() {
+          var ds = document.getElementById('deep-space-container');
+          if (ds && ds.parentNode) ds.parentNode.removeChild(ds);
+          document.body.classList.remove('deep-space-active');
+          document.body.classList.add('app-ready');
+        })();
       ")
+      # Ayarlar sayfasındaki onay kutusunu da senkronize et
+      updateCheckboxInput(session, "settings_module-show_intro_animation", value = FALSE)
     } else {
       # Three.js sahnesini başlat
       session$sendCustomMessage("initDeepSpace", list(
@@ -166,13 +247,18 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     session$sendCustomMessage("updateSettingsMode", list(mode = mode))
   }, ignoreInit = TRUE)
 
-  # Animasyonu atlama onay kutusu değişikliği
+  # Animasyonu atlama onay kutusu değişikliği (giriş ekranındaki checkbox)
   observeEvent(input$skip_intro_changed, {
     req(input$skip_intro_changed)
     skip <- isTRUE(input$skip_intro_changed$skip)
 
-    # Ayarlar sayfasındaki onay kutusunu güncelle
-    updateCheckboxInput(session, "settings_module-skip_intro_animation", value = skip)
+    # Ayarlar sayfasındaki onay kutusunu güncelle (skip = TRUE ise show = FALSE)
+    updateCheckboxInput(session, "settings_module-show_intro_animation", value = !skip)
+
+    # settings_data reaktif değerini de güncelle
+    if (!is.null(settings_data)) {
+      settings_data$show_intro_animation <- !skip
+    }
   }, ignoreInit = TRUE)
 
   invisible(NULL)
