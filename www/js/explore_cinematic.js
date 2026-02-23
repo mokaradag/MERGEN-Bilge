@@ -23,7 +23,7 @@
     },
     denge: {
       id: 'denge',
-      title: 'Denge',
+      title: 'Dinamik',
       description: 'Düşüncelerinizi besleyen bir ortam. Akıllı takip ' +
         'önerileri ve odaklanmayı artıran akustik arka plan ile iş akışınızı ' +
         'derinleştirin. Konfor ve işlevsellik bir arada.',
@@ -35,7 +35,7 @@
     },
     kesif: {
       id: 'kesif',
-      title: 'Tam Donanım',
+      title: 'Bütünleşik',
       description: 'Sentetik seslendirme, proaktif analizler ve tam duyusal ' +
         'katılım. Sistemin yeteneklerinin doruk noktasında, eksiksiz bir ' +
         'deneyim yaşayın. Tüm özellikler aktif.',

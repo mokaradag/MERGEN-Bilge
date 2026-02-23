@@ -46,25 +46,31 @@ settingsUI <- function(id) {
                 div(
                   class = "mode-card selected",
                   `data-mode` = "odak",
-                  div(class = "mode-card-icon", tags$i(class = "fas fa-bolt")),
-                  div(class = "mode-card-title", "Odak"),
-                  div(class = "mode-card-desc")
+                  div(class = "mode-card-inner",
+                    div(class = "mode-card-icon", tags$i(class = "fas fa-bolt")),
+                    div(class = "mode-card-title", "Odak"),
+                    div(class = "mode-card-desc")
+                  )
                 ),
-                # Denge Modu
+                # Dinamik Modu
                 div(
                   class = "mode-card",
                   `data-mode` = "denge",
-                  div(class = "mode-card-icon", tags$i(class = "fas fa-compass")),
-                  div(class = "mode-card-title", "Denge"),
-                  div(class = "mode-card-desc")
+                  div(class = "mode-card-inner",
+                    div(class = "mode-card-icon", tags$i(class = "fas fa-wand-magic-sparkles")),
+                    div(class = "mode-card-title", "Dinamik"),
+                    div(class = "mode-card-desc")
+                  )
                 ),
-                # Tam Donanım Modu
+                # Bütünleşik Modu
                 div(
                   class = "mode-card",
                   `data-mode` = "kesif",
-                  div(class = "mode-card-icon", tags$i(class = "fas fa-rocket")),
-                  div(class = "mode-card-title", "Tam Donanım"),
-                  div(class = "mode-card-desc")
+                  div(class = "mode-card-inner",
+                    div(class = "mode-card-icon", tags$i(class = "fas fa-microchip")),
+                    div(class = "mode-card-title", "Bütünleşik"),
+                    div(class = "mode-card-desc")
+                  )
                 )
               )
             ),

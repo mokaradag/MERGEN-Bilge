@@ -185,15 +185,15 @@ body.deep-space-active .main-footer {
 .deep-space-skip-checkbox label {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
   font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.55);
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.6);
   letter-spacing: 0.06em;
   transition: color 0.3s ease;
   user-select: none;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
 }
 
 .deep-space-skip-checkbox label:hover {
@@ -208,10 +208,10 @@ body.deep-space-active .main-footer {
 .deep-space-skip-checkbox input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid rgba(255, 255, 255, 0.4);
-  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  border-radius: 4px;
   background: rgba(0, 0, 0, 0.3);
   cursor: pointer;
   position: relative;
@@ -230,11 +230,11 @@ body.deep-space-active .main-footer {
   content: '';
   position: absolute;
   top: 1px;
-  left: 4px;
-  width: 5px;
-  height: 9px;
+  left: 6px;
+  width: 6px;
+  height: 11px;
   border: solid rgba(0, 242, 255, 0.9);
-  border-width: 0 2px 2px 0;
+  border-width: 0 2.5px 2.5px 0;
   transform: rotate(45deg);
 }
 

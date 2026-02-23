@@ -95,8 +95,8 @@ createStartupScreenUI <- function() {
           tags$div(
             class = "cinematic-modal-header",
             tags$div(
-              tags$h2(class = "cinematic-modal-title", "Sistem Protokolü"),
-              tags$p(class = "cinematic-modal-subtitle", "DENEYİM KONFİGÜRASYONUNU SEÇİN")
+              tags$h2(class = "cinematic-modal-title", "Deneyim Seviyenizi Seçin"),
+              tags$p(class = "cinematic-modal-subtitle", "ÇALIŞMA TARZINIZA UYGUN MODU BELİRLEYİN")
             ),
             tags$button(
               class = "cinematic-modal-close",
@@ -130,20 +130,20 @@ createStartupScreenUI <- function() {
                 )
               )
             ),
-            # Denge Modu
+            # Dinamik Modu
             tags$div(
               class = "cinematic-mode-card spotlight-card",
               `data-mode` = "denge",
               tags$div(
                 class = "cinematic-card-inner",
-                # Denge mikro animasyonu (uçuşan zerreler)
+                # Dinamik mikro animasyonu (uçuşan zerreler)
                 tags$div(
                   class = "cinematic-card-icon-box",
                   tags$div(class = "micro-anim micro-anim-denge"),
-                  tags$i(class = "fas fa-compass cinematic-card-icon")
+                  tags$i(class = "fas fa-wand-magic-sparkles cinematic-card-icon")
                 ),
-                tags$h3(class = "cinematic-card-title", "Denge"),
-                tags$p(class = "cinematic-card-short", "İnteraktif asistan desteği."),
+                tags$h3(class = "cinematic-card-title", "Dinamik"),
+                tags$p(class = "cinematic-card-short", "Akıllı asistan desteği."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")
                 ),
@@ -152,19 +152,19 @@ createStartupScreenUI <- function() {
                 )
               )
             ),
-            # Tam Donanım Modu
+            # Bütünleşik Modu
             tags$div(
               class = "cinematic-mode-card spotlight-card",
               `data-mode` = "kesif",
               tags$div(
                 class = "cinematic-card-inner",
-                # Tam Donanım mikro animasyonu (lazer tarayıcı)
+                # Bütünleşik mikro animasyonu (lazer tarayıcı)
                 tags$div(
                   class = "cinematic-card-icon-box",
                   tags$div(class = "micro-anim micro-anim-kesif"),
-                  tags$i(class = "fas fa-rocket cinematic-card-icon")
+                  tags$i(class = "fas fa-microchip cinematic-card-icon")
                 ),
-                tags$h3(class = "cinematic-card-title", "Tam Donanım"),
+                tags$h3(class = "cinematic-card-title", "Bütünleşik"),
                 tags$p(class = "cinematic-card-short", "Tüm sistemlerin kilidini açın."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")

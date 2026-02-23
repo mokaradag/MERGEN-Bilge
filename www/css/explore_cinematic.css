@@ -26,7 +26,7 @@
   100% { transform: scale(2.5); opacity: 0; }
 }
 
-/* Denge modu - uçuşan zerreler */
+/* Dinamik modu - uçuşan zerreler */
 @keyframes exploreDynamicFloat1 {
   0%, 100% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(-6px, -12px) scale(1.5); }
@@ -37,7 +37,7 @@
   50% { transform: translate(6px, -8px) scale(1.2); }
 }
 
-/* Tam Donanım - lazer tarayıcı */
+/* Bütünleşik - lazer tarayıcı */
 @keyframes exploreScannerLine {
   0% { top: -10%; opacity: 0; }
   10% { opacity: 1; }
@@ -71,15 +71,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 0 40px;
-  height: 64px;
+  gap: 18px;
+  padding: 0 52px;
+  height: 72px;
   background: rgba(10, 10, 10, 0.85);
   border-radius: 9999px;
   color: rgba(226, 232, 240, 0.9);
   font-family: 'Jura', 'Segoe UI', sans-serif;
   font-weight: 500;
-  font-size: 0.9rem;
+  font-size: 1.1rem;
   letter-spacing: 0.25em;
   border: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
@@ -151,7 +151,7 @@
 .explore-btn-icon {
   position: relative;
   z-index: 30;
-  font-size: 1.1rem;
+  font-size: 1.4rem;
   color: #818cf8;
   transition: transform 0.5s ease-out;
 }
@@ -175,7 +175,7 @@
 .explore-btn-arrow {
   position: relative;
   z-index: 30;
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   color: rgba(148, 163, 184, 0.6);
   transition: all 0.3s ease;
 }
@@ -242,7 +242,7 @@
 
 .cinematic-modal-title {
   font-family: 'Orbitron', 'Segoe UI', sans-serif;
-  font-size: 1.8rem;
+  font-size: 2.2rem;
   font-weight: 300;
   color: #ffffff;
   letter-spacing: 0.08em;
@@ -251,20 +251,20 @@
 
 .cinematic-modal-subtitle {
   font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   color: rgba(148, 163, 184, 0.6);
   letter-spacing: 0.25em;
   font-weight: 600;
-  margin: 8px 0 0 0;
+  margin: 10px 0 0 0;
 }
 
 /* Kapatma butonu */
 .cinematic-modal-close {
-  padding: 12px;
+  padding: 14px;
   background: transparent;
   border: none;
   color: rgba(148, 163, 184, 0.5);
-  font-size: 1.2rem;
+  font-size: 1.5rem;
   cursor: pointer;
   border-radius: 9999px;
   transition: all 0.3s ease;
@@ -305,26 +305,29 @@
   transform: translateY(-8px);
 }
 
-/* Kart içi ışıma (spotlight) */
+/* Kart içi ışıma (spotlight) - yumuşak geçişli, halka artefaktı olmayan */
 .cinematic-mode-card.spotlight-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   background: radial-gradient(
-    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    var(--glow-color, transparent),
-    transparent 40%
+    700px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    var(--glow-color, transparent) 0%,
+    rgba(255, 255, 255, 0.03) 15%,
+    rgba(255, 255, 255, 0.01) 30%,
+    transparent 55%
   );
   opacity: 0;
   transition: opacity 0.5s ease;
   pointer-events: none;
   z-index: 5;
   mix-blend-mode: screen;
+  filter: blur(2px);
 }
 
 .cinematic-mode-card.spotlight-card:hover::before {
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 /* Kart arka plan katmanı */
@@ -372,9 +375,9 @@
 /* İkon kutusu */
 .cinematic-card-icon-box {
   position: relative;
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
+  width: 68px;
+  height: 68px;
+  border-radius: 14px;
   margin-bottom: 32px;
   display: flex;
   align-items: center;
@@ -393,7 +396,7 @@
 .cinematic-card-icon {
   position: relative;
   z-index: 10;
-  font-size: 1.4rem;
+  font-size: 1.8rem;
   transition: all 0.5s ease;
 }
 
@@ -414,10 +417,10 @@
 /* Kart başlık */
 .cinematic-card-title {
   font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   font-weight: 300;
   color: rgba(226, 232, 240, 0.9);
-  margin: 0 0 12px 0;
+  margin: 0 0 14px 0;
   transition: color 0.3s ease;
 }
 
@@ -428,7 +431,7 @@
 /* Kısa açıklama */
 .cinematic-card-short {
   font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 500;
   color: rgba(148, 163, 184, 0.7);
   letter-spacing: 0.04em;
@@ -444,7 +447,7 @@
 
 .cinematic-card-desc {
   font-family: 'Jura', 'Segoe UI', sans-serif;
-  font-size: 0.88rem;
+  font-size: 1rem;
   color: rgba(203, 213, 225, 0.8);
   font-weight: 300;
   line-height: 1.7;
@@ -482,7 +485,7 @@
 }
 
 .cinematic-card-arrow i {
-  font-size: 1.1rem;
+  font-size: 1.3rem;
 }
 
 .cinematic-mode-card[data-mode="odak"] .cinematic-card-arrow i { color: #fbbf24; }
@@ -531,7 +534,7 @@
   opacity: 0.5;
 }
 
-/* Denge: Uçuşan zerreler */
+/* Dinamik: Uçuşan zerreler */
 .micro-anim-denge {
   display: none;
 }
@@ -568,7 +571,7 @@
   animation: exploreDynamicFloat2 2.5s ease-in-out infinite 0.5s;
 }
 
-/* Tam Donanım: Lazer tarayıcı çizgisi */
+/* Bütünleşik: Lazer tarayıcı çizgisi */
 .micro-anim-kesif {
   display: none;
 }
@@ -596,21 +599,21 @@
 @media (max-width: 992px) {
   .cinematic-cards-grid {
     grid-template-columns: 1fr;
-    max-width: 420px;
+    max-width: 440px;
     margin: 0 auto;
     gap: 20px;
   }
 
   .cinematic-modal-title {
-    font-size: 1.3rem;
+    font-size: 1.6rem;
   }
 
   .cinematic-modal-subtitle {
-    font-size: 0.7rem;
+    font-size: 0.8rem;
   }
 
   .cinematic-card-desc-area {
-    height: 100px;
+    height: 110px;
   }
 
   .cinematic-mode-card.selected {
@@ -620,10 +623,10 @@
 
 @media (max-width: 480px) {
   .explore-cinematic-btn {
-    padding: 0 28px;
-    height: 56px;
-    gap: 12px;
-    font-size: 0.8rem;
+    padding: 0 36px;
+    height: 60px;
+    gap: 14px;
+    font-size: 0.95rem;
   }
 
   .cinematic-modal-container {
