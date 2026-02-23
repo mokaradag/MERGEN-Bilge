@@ -20,19 +20,34 @@ sonrası sadece ES module (`examples/jsm/`) destekler.
 Bu dosyalar global `THREE` nesnesine eklenti olarak eklenir ve
 ES module import gerektirmez:
 
-- **OrbitControls.js**
+- **OrbitControls.js** (Kamera kontrolleri)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js
 
-- **EffectComposer.js**
+### Post-Processing Bağımlılıkları
+**ÖNEMLİ:** EffectComposer ve UnrealBloomPass dahili olarak aşağıdaki dosyaları
+gerektirir. Bu dosyalar olmadan bloom efekti çalışmaz (ancak sahne yine de
+doğrudan render ile görüntülenir).
+
+- **CopyShader.js** (EffectComposer bağımlılığı)
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/shaders/CopyShader.js
+
+- **LuminosityHighPassShader.js** (UnrealBloomPass bağımlılığı)
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/shaders/LuminosityHighPassShader.js
+
+- **ShaderPass.js** (EffectComposer bağımlılığı)
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/ShaderPass.js
+
+- **EffectComposer.js** (Post-processing ana modülü)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/EffectComposer.js
 
-- **RenderPass.js**
+- **RenderPass.js** (Sahne render adımı)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/RenderPass.js
 
-- **UnrealBloomPass.js**
+- **UnrealBloomPass.js** (Bloom/parlama efekti)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/UnrealBloomPass.js
 
-- **Lensflare.js**
+### Diğer Eklentiler
+- **Lensflare.js** (Güneş lens parlama efekti)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/objects/Lensflare.js
 
 ## 2. Doku (Texture) Dosyaları
@@ -116,6 +131,9 @@ www/
 │   └── threejs/
 │       ├── three.min.js
 │       ├── OrbitControls.js
+│       ├── CopyShader.js
+│       ├── LuminosityHighPassShader.js
+│       ├── ShaderPass.js
 │       ├── EffectComposer.js
 │       ├── RenderPass.js
 │       ├── UnrealBloomPass.js
