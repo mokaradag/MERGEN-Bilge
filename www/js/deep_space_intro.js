@@ -512,18 +512,28 @@ window.DeepSpaceIntro = (function() {
     _scene.add(fillLight);
 
     // Post-processing (Bloom efekti)
-    if (typeof THREE.EffectComposer !== 'undefined') {
-      _composer = new THREE.EffectComposer(_renderer);
-      _composer.addPass(new THREE.RenderPass(_scene, _camera));
+    // try-catch: EffectComposer dahili olarak ShaderPass ve CopyShader gerektirir.
+    // Bu dosyalar eksikse (ShaderPass.js, CopyShader.js, LuminosityHighPassShader.js)
+    // doğrudan render'a düşülür, sahne yine de çalışır.
+    try {
+      if (typeof THREE.EffectComposer !== 'undefined' &&
+          typeof THREE.RenderPass !== 'undefined' &&
+          typeof THREE.UnrealBloomPass !== 'undefined') {
+        _composer = new THREE.EffectComposer(_renderer);
+        _composer.addPass(new THREE.RenderPass(_scene, _camera));
 
-      var bloom = new THREE.UnrealBloomPass(
-        new THREE.Vector2(container.clientWidth, container.clientHeight),
-        1.5, 0.4, 0.85
-      );
-      bloom.threshold = 0.5;
-      bloom.strength = 0.5;
-      bloom.radius = 0.6;
-      _composer.addPass(bloom);
+        var bloom = new THREE.UnrealBloomPass(
+          new THREE.Vector2(container.clientWidth, container.clientHeight),
+          1.5, 0.4, 0.85
+        );
+        bloom.threshold = 0.5;
+        bloom.strength = 0.5;
+        bloom.radius = 0.6;
+        _composer.addPass(bloom);
+      }
+    } catch(e) {
+      console.warn('[DeepSpaceIntro] Post-processing başlatılamadı (eksik bağımlılık?), doğrudan render kullanılacak:', e.message);
+      _composer = null;
     }
 
     // Kamera kontrolleri

@@ -29,10 +29,10 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
     shiny::removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
  
     # Animasyonları önce temizle
+    # NOT: DeepSpaceIntro'yu burada yok etme! Giriş ekranı kendi yaşam
+    # döngüsünü module_startup_screen.R ve mode_selection.js ile yönetir.
+    # Burada yok etmek, aktif giriş animasyonunu sonlandırır.
 	shinyjs::runjs("
-      if(window.DeepSpaceIntro && window.DeepSpaceIntro.destroy) {
-        window.DeepSpaceIntro.destroy();
-      }
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
       }
@@ -80,10 +80,8 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
   # Bu fonksiyon mevcut sohbeti temizler ve hoş geldin ekranını gösterir
   start_new_chat <- function() {
     # Önce mevcut animasyonları tamamen temizle
+    # NOT: DeepSpaceIntro burada yok edilmez (kendi yaşam döngüsü var)
 	shinyjs::runjs("
-      if(window.DeepSpaceIntro && window.DeepSpaceIntro.destroy) {
-        window.DeepSpaceIntro.destroy();
-      }
       if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
         window.WelcomeVideoPlayer.destroy();
       }

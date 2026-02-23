@@ -165,9 +165,13 @@ ui <- dashboardPage(
     tags$script(src = "codemirror/addon/fold/indent-fold.min.js"),
     tags$script(src = "codemirror/addon/fold/xml-fold.js"),
     
-    # Three.js kütüphanesi (yerel) - Derin uzay giriş animasyonu için
+    # Three.js kütüphanesi (yerel, v0.147.0 UMD) - Derin uzay giriş animasyonu için
     tags$script(src = "lib/threejs/three.min.js"),
     tags$script(src = "lib/threejs/OrbitControls.js"),
+    # Post-processing bağımlılıkları (EffectComposer ve UnrealBloomPass için gerekli)
+    tags$script(src = "lib/threejs/CopyShader.js"),
+    tags$script(src = "lib/threejs/LuminosityHighPassShader.js"),
+    tags$script(src = "lib/threejs/ShaderPass.js"),
     tags$script(src = "lib/threejs/EffectComposer.js"),
     tags$script(src = "lib/threejs/RenderPass.js"),
     tags$script(src = "lib/threejs/UnrealBloomPass.js"),
