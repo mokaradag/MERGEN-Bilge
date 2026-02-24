@@ -80,8 +80,8 @@ window.getAnalysisSettings = function() {
 window.syncAnalysisSettings = function(source) {
   var chatDetail = document.getElementById('chat_analysis_detail');
   var chatDeepBtn = document.getElementById('chat_deep_thinking_toggle');
-  var settingsDetail = document.getElementById('settings_module-analysis_detail_level');
-  var settingsDeep = document.getElementById('settings_module-analysis_deep_thinking');
+  var settingsDetail = document.getElementById('settings_yapilandirma_module-analysis_detail_level');
+  var settingsDeep = document.getElementById('settings_yapilandirma_module-analysis_deep_thinking');
 
   if (source === 'chat') {
     // Sohbet → Ayarlar
@@ -199,8 +199,8 @@ if (window.Shiny) {
    * Sohbetten ayarlar sayfasına senkronize et
    */
   Shiny.addCustomMessageHandler('syncChatAnalysisSettingsToSettings', function(data) {
-    var settingsDetail = document.getElementById('settings_module-analysis_detail_level');
-    var settingsDeep = document.getElementById('settings_module-analysis_deep_thinking');
+    var settingsDetail = document.getElementById('settings_yapilandirma_module-analysis_detail_level');
+    var settingsDeep = document.getElementById('settings_yapilandirma_module-analysis_deep_thinking');
 
     if (settingsDetail && data.detail_level) {
       settingsDetail.value = data.detail_level;

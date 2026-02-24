@@ -236,8 +236,8 @@ window.getImageSettings = function() {
 window.syncImageSettings = function(source) {
   const chatSize = document.getElementById('chat_image_size');
   const chatQuality = document.getElementById('chat_image_quality_hd');
-  const settingsSize = document.getElementById('settings_module-image_size');
-  const settingsQuality = document.getElementById('settings_module-image_quality_hd');
+  const settingsSize = document.getElementById('settings_yapilandirma_module-image_size');
+  const settingsQuality = document.getElementById('settings_yapilandirma_module-image_quality_hd');
   
   if (source === 'chat') {
     // Sohbetten Ayarlara
@@ -327,8 +327,8 @@ if (window.Shiny) {
   
   // Sohbet kontrollerinden Ayarlara senkronizasyon
   Shiny.addCustomMessageHandler('syncChatImageSettingsToSettings', function(data) {
-    const settingsSize = document.getElementById('settings_module-image_size');
-    const settingsQuality = document.getElementById('settings_module-image_quality_hd');
+    const settingsSize = document.getElementById('settings_yapilandirma_module-image_size');
+    const settingsQuality = document.getElementById('settings_yapilandirma_module-image_quality_hd');
     
     if (settingsSize && data.size) {
       settingsSize.value = data.size;

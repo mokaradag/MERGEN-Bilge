@@ -36,7 +36,10 @@ ui <- dashboardPage(
         menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
-	  menuItem("Ayarlar", tabName = "settings", icon = icon("cog")),
+	  menuItem("Ayarlar", icon = icon("cog"), startExpanded = FALSE,
+        menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
+        menuSubItem("Yapılandırma", tabName = "settings_yapilandirma", icon = icon("sliders-h"))
+      ),
       menuItemOutput("admin_menu_item"),
       menuItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
     ),
@@ -430,8 +433,9 @@ ui <- dashboardPage(
       # Files Tab
       tabItem(tabName = "files", fileManagerUI("file_manager_module")),
       
-      # Settings Tab
-      tabItem(tabName = "settings", settingsUI("settings_module")),
+      # Ayarlar Alt Sekmeleri
+      tabItem(tabName = "settings_kisisel", settingsKisiselUI("settings_kisisel_module")),
+      tabItem(tabName = "settings_yapilandirma", settingsYapilandirmaUI("settings_yapilandirma_module")),
 
       # Admin Analytics Tab (ADMIN only)
       tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),

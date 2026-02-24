@@ -60,8 +60,8 @@ server <- function(input, output, session) {
   # Sağlık modülünü bağla
   healthServer("health_module", perf_tracker = perf_tracker)
 
-  # --- Modül Sunucusu Başlatma (Yukarı Taşındı) ---
-  settings_data <- settingsServer("settings_module", parent_session = session)
+  # --- Ayarlar Koordinatörünü Başlat ---
+  settings_data <- settingsInit(session = session, parent_session = session)
 
   # İleri referanslar: Bu fonksiyonlar daha sonra tanımlanacak ama şimdiden observer'lara geçirilmeli
   # Sarmalayıcılar kullanarak gecikmeli bağlama sağlanır

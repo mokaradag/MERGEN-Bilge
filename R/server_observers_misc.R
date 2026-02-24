@@ -85,7 +85,7 @@ miscObserversInit <- function(input, output, session, values,
   }, ignoreInit = TRUE)
   
   # API anahtarı modal açma
-  observeEvent(input$`settings_module-open_api_key_modal`, {
+  observeEvent(input$`settings_yapilandirma_module-open_api_key_modal`, {
     api_key$open("API Anahtarı Güncelleme")
   }, ignoreInit = TRUE)
   

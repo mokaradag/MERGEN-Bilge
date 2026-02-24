@@ -118,12 +118,12 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     for (tool in analysis_tools) {
       if (tool != "enable_image_tools") {
         settings_data[[tool]] <- FALSE
-        updateCheckboxInput(session, paste0("settings_module-", tool), value = FALSE)
+        updateCheckboxInput(session, paste0("settings_yapilandirma_module-", tool), value = FALSE)
       }
     }
     # Görsel Uzmanı aracını aktifleştir
     settings_data$enable_image_tools <- TRUE
-    updateCheckboxInput(session, "settings_module-enable_image_tools", value = TRUE)
+    updateCheckboxInput(session, "settings_yapilandirma_module-enable_image_tools", value = TRUE)
 
     # Görsel modu için model ayarla ve UI kontrollerini güncelle
     image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")

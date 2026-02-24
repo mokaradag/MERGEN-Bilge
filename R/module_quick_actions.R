@@ -43,7 +43,7 @@ quickActionsInit <- function(input, session, values, settings_data,
     if (!is.null(template_model) && nzchar(template_model)) {
       cat("[QUICK_TEMPLATE] Model değiştiriliyor:", template_model, "\n")
       isolate({ settings_data$model_selection <- template_model })
-      updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+      updateSelectInput(session, "settings_yapilandirma_module-model_selection", selected = template_model)
       session$sendCustomMessage("saveSettings", list(model_selection = template_model))
       showToast(session, paste("Model değiştirildi:", template_model), "info")
       return(TRUE)
@@ -78,7 +78,7 @@ quickActionsInit <- function(input, session, values, settings_data,
     
     for (tool in all_tools) {
       value <- identical(tool, active_tool)
-      updateCheckboxInput(session, paste0("settings_module-", tool), value = value)
+      updateCheckboxInput(session, paste0("settings_yapilandirma_module-", tool), value = value)
     }
   }
   
@@ -345,7 +345,7 @@ quickActionsInit <- function(input, session, values, settings_data,
         cat("[QUICK_TEMPLATE] Normal template için model değiştiriliyor:", template_model, "\n")
         
         isolate({ settings_data$model_selection <- template_model })
-        updateSelectInput(session, "settings_module-model_selection", selected = template_model)
+        updateSelectInput(session, "settings_yapilandirma_module-model_selection", selected = template_model)
         session$sendCustomMessage("saveSettings", list(model_selection = template_model))
         showToast(session, paste("Model değiştirildi:", template_model), "info")
         
@@ -370,7 +370,7 @@ quickActionsInit <- function(input, session, values, settings_data,
     
     # Ayarlar modülündeki reaktif değeri güncelle
     isolate({ settings_data$model_selection <- new_model_id })
-    updateSelectInput(session, "settings_module-model_selection", selected = new_model_id)
+    updateSelectInput(session, "settings_yapilandirma_module-model_selection", selected = new_model_id)
     
     # Modelin görünen adını bul
     all_models <- api_config$local_models

@@ -27,8 +27,8 @@ window.getSummarySettings = function() {
 window.syncSummarySettings = function(source) {
   var chatDetail = document.getElementById('chat_summary_detail');
   var chatFocus = document.getElementById('chat_summary_focus');
-  var settingsDetail = document.getElementById('settings_module-summary_detail_level');
-  var settingsFocus = document.getElementById('settings_module-summary_focus_mode');
+  var settingsDetail = document.getElementById('settings_yapilandirma_module-summary_detail_level');
+  var settingsFocus = document.getElementById('settings_yapilandirma_module-summary_focus_mode');
 
   if (source === 'chat') {
     if (settingsDetail && chatDetail) {
@@ -113,8 +113,8 @@ if (window.Shiny) {
   });
 
   Shiny.addCustomMessageHandler('syncChatSummarySettingsToSettings', function(data) {
-    var settingsDetail = document.getElementById('settings_module-summary_detail_level');
-    var settingsFocus = document.getElementById('settings_module-summary_focus_mode');
+    var settingsDetail = document.getElementById('settings_yapilandirma_module-summary_detail_level');
+    var settingsFocus = document.getElementById('settings_yapilandirma_module-summary_focus_mode');
 
     if (settingsDetail && data.detail_level) {
       settingsDetail.value = data.detail_level;
