@@ -131,8 +131,9 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
       reset_trigger(isolate(reset_trigger()) + 1)
     }, ignoreInit = TRUE)
 
-    # Geçici karakter seçimi (kaydedilene kadar uygulanmaz)
+    # Geçici seçimler (kaydedilene kadar uygulanmaz)
     temp_selected_character <- reactiveVal("mergen")
+    temp_experience_mode <- reactiveVal("odak")
 
     # Karakter verileri
     characters_data <- reactive(get_characters_data())
@@ -235,17 +236,14 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
       ))
     })
 
-    # Deneyim modu değişikliği
+    # Deneyim modu değişikliği - sadece geçici olarak kaydet, "Ayarları Kaydet" ile uygulanır
     observeEvent(input$experience_mode_changed, {
       req(input$experience_mode_changed)
       mode <- input$experience_mode_changed$mode
       if (is.null(mode) || !mode %in% c("odak", "denge", "kesif")) return()
 
-      settings$experience_mode <- mode
-
-      # Mod ayarlarını uygula
-      target_session <- parent_session %||% session
-      apply_experience_mode(target_session, settings, mode)
+      cat(sprintf("[SETTINGS-KISISEL] Mod geçici olarak seçildi: %s (kaydet ile uygulanacak)\n", mode))
+      temp_experience_mode(mode)
     }, ignoreInit = TRUE)
 
     # Karakter video modülünü başlat
@@ -260,6 +258,7 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
       save_trigger = save_trigger,
       reset_trigger = reset_trigger,
       temp_selected_character = temp_selected_character,
+      temp_experience_mode = temp_experience_mode,
       update_character_display = update_character_display
     ))
   })

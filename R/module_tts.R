@@ -16,25 +16,47 @@ ttsProcessingServer <- function(id) {
       nzchar(endpoint)
     }
 
-    #' Normalize text before sending to TTS
+    #' TTS'e göndermeden önce metni normalleştir
     prepare_tts_text <- function(text) {
       if (!is.character(text) || length(text) == 0) return("")
 
       cleaned <- as.character(text[1])
-      # Remove code blocks
+      # Kod bloklarını kaldır
       cleaned <- gsub("```[\\s\\S]*?```", " ", cleaned)
-      # Remove inline code ticks
+      # Satır içi kod tırnaklarını kaldır
       cleaned <- gsub("`([^`]*)`", "\\1", cleaned)
-      # Remove bracketed references like [DOC] or [1]
+      # Köşeli parantez referanslarını kaldır [DOC] veya [1]
       cleaned <- gsub("\u3010[^\u3011]+\u3011", " ", cleaned)
       cleaned <- gsub("\\[.*?\\]", " ", cleaned)
-      # Normalize whitespace
+      # Markdown bağlantılarından sadece metni al: [metin](url) -> metin
+      cleaned <- gsub("[[]([^]]*)[]]\\(([^)]*)\\)", "\\1", cleaned, perl = TRUE)
+      # Çıplak URL'leri kaldır (http/https/www ile başlayanlar)
+      cleaned <- gsub("https?://[^\\s)]+", " ", cleaned, perl = TRUE)
+      cleaned <- gsub("www\\.[^\\s)]+", " ", cleaned, perl = TRUE)
+      # E-posta adreslerini kaldır
+      cleaned <- gsub("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", " ", cleaned, perl = TRUE)
+      # Emoji ve özel Unicode karakterleri kaldır
+      # Emoji aralıkları: Emoticons, Dingbats, Misc Symbols, Supplemental Symbols, Transport/Map, Flags, vb.
+      cleaned <- gsub("[\U0001F600-\U0001F64F]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0001F300-\U0001F5FF]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0001F680-\U0001F6FF]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0001F1E0-\U0001F1FF]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U00002702-\U000027B0]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0000FE00-\U0000FE0F]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0001F900-\U0001F9FF]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0001FA00-\U0001FA6F]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0001FA70-\U0001FAFF]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U00002600-\U000026FF]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U0000200D\U0000FE0F\U000020E3]", "", cleaned, perl = TRUE)
+      cleaned <- gsub("[\U00002B50\U00002B55\U0000231A\U0000231B\U00002328\U000023CF\U000023E9-\U000023F3\U000023F8-\U000023FA]", "", cleaned, perl = TRUE)
+      # Dosya yollarını kaldır (Windows ve Unix)
+      cleaned <- gsub("[A-Z]:\\\\[^\\s]+", " ", cleaned, perl = TRUE)
+      cleaned <- gsub("/[a-zA-Z0-9_./\\-]+\\.[a-zA-Z]{2,4}", " ", cleaned, perl = TRUE)
+      # Markdown biçimlendirme karakterlerini kaldır
+      cleaned <- gsub("[#>*_-]+", " ", cleaned)
+      # Satır sonlarını ve fazla boşlukları normalleştir
       cleaned <- gsub("\n+", " ", cleaned)
       cleaned <- gsub("[[:space:]]+", " ", cleaned)
-      # Extract link text: [text](url) -> text
-      cleaned <- gsub("[[]([^]]*)[]]\\(([^)]*)\\)", "\\1", cleaned, perl = TRUE)
-      # Remove markdown headers/formatting chars
-      cleaned <- gsub("[#>*_-]+", " ", cleaned)
       trimws(cleaned)
     }
 

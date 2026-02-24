@@ -79,6 +79,62 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     }
   }
 
+  # Uzun metni cümle sınırlarında parçalara bölen yardımcı fonksiyon
+  split_text_into_chunks <- function(text, max_chunk_chars = 800) {
+    if (nchar(text) <= max_chunk_chars) return(list(text))
+
+    chunks <- list()
+    remaining <- text
+
+    while (nzchar(remaining)) {
+      if (nchar(remaining) <= max_chunk_chars) {
+        chunks <- c(chunks, list(remaining))
+        break
+      }
+
+      # max_chunk_chars sınırı içinde son cümle sonu bul
+      search_window <- substr(remaining, 1, max_chunk_chars)
+
+      # Öncelik 1: Cümle sonu noktalama (.!?)
+      split_pos <- -1
+      punct_positions <- gregexpr("[.!?](?=\\s|$)", search_window, perl = TRUE)[[1]]
+      if (punct_positions[1] > 0) {
+        # En son cümle sonunu tercih et
+        split_pos <- tail(punct_positions, 1)
+      }
+
+      # Öncelik 2: Virgül, noktalı virgül, iki nokta
+      if (split_pos < 10) {
+        secondary_punct <- gregexpr("[,;:](?=\\s)", search_window, perl = TRUE)[[1]]
+        if (secondary_punct[1] > 0) {
+          split_pos <- tail(secondary_punct, 1)
+        }
+      }
+
+      # Öncelik 3: Kelime sınırı (boşluk)
+      if (split_pos < 10) {
+        spaces <- gregexpr("\\s", search_window)[[1]]
+        if (spaces[1] > 0) {
+          split_pos <- tail(spaces, 1)
+        }
+      }
+
+      # Hiçbir bölünme noktası bulunamazsa zorla böl
+      if (split_pos < 1) {
+        split_pos <- max_chunk_chars
+      }
+
+      chunk <- trimws(substr(remaining, 1, split_pos))
+      remaining <- trimws(substr(remaining, split_pos + 1, nchar(remaining)))
+
+      if (nzchar(chunk)) {
+        chunks <- c(chunks, list(chunk))
+      }
+    }
+
+    chunks
+  }
+
   trigger_tts_for_message <- function(msg_id, content) {
     if (!isTRUE(settings_data$enable_tts_audio)) return(invisible(NULL))
 
@@ -100,7 +156,7 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       if (isTRUE(stop_generation())) return()
 
       if (isTRUE(res$success) && nzchar(res$audio_src)) {
-        cat(sprintf("[TTS] Sending chunk %d (Duration: %.2fs)\n", idx, res$duration))
+        cat(sprintf("[TTS] Parça %d gönderiliyor (Süre: %.2fs)\n", idx, res$duration))
 
         tts_visualizer$trigger(duration = res$duration)
 
@@ -113,45 +169,21 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       }
     }
 
-    if (nchar(full_text) > 15) {
-      search_window <- substr(full_text, 1, 50)
+    # Metni parçalara böl (uzun metinler için çoklu parça desteği)
+    chunks <- split_text_into_chunks(full_text, max_chunk_chars = 800)
+    cat(sprintf("[TTS] Metin %d parçaya bölündü (toplam: %d karakter)\n", length(chunks), nchar(full_text)))
 
-      split_pos <- -1
-      punct_match <- regexpr("[.,?!:;](?=\\s|$)", search_window, perl = TRUE)
-
-      if (punct_match > 0) {
-        split_pos <- punct_match + attr(punct_match, "match.length") - 1
-      } else {
-        spaces <- gregexpr("\\s", search_window)[[1]]
-        valid_spaces <- spaces[spaces > 10]
-        if (length(valid_spaces) > 0) {
-          split_pos <- valid_spaces[1]
-        } else if (length(spaces) > 0 && spaces[1] > 0) {
-          split_pos <- tail(spaces, 1)
-        }
-      }
-
-      if (split_pos > 2) {
-        first_chunk <- substr(full_text, 1, split_pos)
-        remainder   <- trimws(substr(full_text, split_pos + 1, nchar(full_text)))
-
-        if (nzchar(remainder)) {
-          cat("[TTS] Fast split active. Chunk 1:", nchar(first_chunk), "chars.\n")
-
-          p1 <- tts_processor$synthesize_speech(first_chunk, voice = voice_sel)
-          p2 <- tts_processor$synthesize_speech(remainder, voice = voice_sel)
-
-          p1 %...>% (function(res) send_chunk(res, 0)) %...!% (function(e) warning("TTS C1 fail"))
-          p2 %...>% (function(res) send_chunk(res, 1)) %...!% (function(e) warning("TTS C2 fail"))
-
-          return(invisible(NULL))
-        }
-      }
+    # Her parça için TTS isteği oluştur
+    for (i in seq_along(chunks)) {
+      chunk_text <- chunks[[i]]
+      chunk_idx <- i - 1L
+      local({
+        idx <- chunk_idx
+        tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
+          (function(res) send_chunk(res, idx)) %...!%
+          (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
+      })
     }
-
-    tts_processor$synthesize_speech(full_text, voice = voice_sel) %...>%
-      (function(res) send_chunk(res, 0)) %...!%
-      (function(e) cat("[TTS] Error:", conditionMessage(e), "\n"))
 
     invisible(NULL)
   }

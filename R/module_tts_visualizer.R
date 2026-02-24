@@ -83,15 +83,19 @@ ttsVisualizerServer <- function(id, settings_data) {
       send_state(state = "stop")
     }
 
-    # Visibility Logic
+    # Görünürlük mantığı
     observe({
       is_enabled <- isTRUE(settings_data$enable_tts_audio)
       shinyjs::toggleClass(id = "container", class = "shiny-visual-hidden", condition = !is_enabled)
 
       if (is_enabled) {
+        # Birden fazla gecikmeyle boyutlandırma dene (sekme gizli olabilir)
         shinyjs::delay(200, {
           session$sendCustomMessage("resizeTTSVisualizer", list())
           send_state(state = "idle")
+        })
+        shinyjs::delay(800, {
+          session$sendCustomMessage("resizeTTSVisualizer", list())
         })
       } else {
         stop_animation()
