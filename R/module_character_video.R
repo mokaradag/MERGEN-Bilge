@@ -1,11 +1,21 @@
 # R/module_character_video.R
+# Dosya Yolu: R/module_character_video.R
+# Açıklama: Karakterlerin sinematik video ve statik görsel yönetimini sağlayan modül.
+#           Karakter değişimlerinde ilgili video dosyalarını tarar ve 
+#           JavaScript tarafındaki CinematicVideoManager'a veri iletir.
 
+#' Karakter Video Verilerini Getir
+#'
+#' @param char_id Karakterin benzersiz kimliği (mergen, ulgen, vb.)
+#' @return Karakterin görsel yollarını ve video listelerini (intro, loop, select) içeren liste
 get_character_video_data <- function(char_id) {
+  # Karakter kimliğini standart formata getir
   char_key <- tolower(trimws(char_id))
   if (char_key == "umay ana") char_key <- "umay"
   
   cat(sprintf("[VIDEO R] get_character_video_data çağrıldı: '%s' -> '%s'\n", char_id, char_key))
   
+  # Karakterlerin orijinal statik resim dosya eşleştirmeleri
   image_map <- list(
     "mergen" = "Mergen_resim.original.png",
     "ulgen" = "Ulgen_resim.original.png",
@@ -14,37 +24,41 @@ get_character_video_data <- function(char_id) {
     "umay" = "Umay_Ana_resim.original.png"
   )
   
-  # Resim yolu
+  # Resim yolunu oluştur
   img_filename <- image_map[[char_key]]
   if (is.null(img_filename)) {
-    # Fallback to existing logic or empty
+    # Bulunamazsa boş bırak veya varsayılan mantığa dön
     image_path <- ""
   } else {
     image_path <- file.path("characters", "resim", img_filename)
   }
   
-  # Video dosyalari tarama fonksiyonu
+  # Belirli bir tipteki (intro, loop, select) video dosyalarını dizinden tarayan iç fonksiyon
 	scan_videos <- function(type) {
+	  # Fiziksel dosya yolunu belirle
 	  sys_dir <- file.path("www", "characters", "video", char_key, type)
 	  
 	  if (!dir.exists(sys_dir)) {
-		return(list())  # Boş liste döndür (JSON'da [])
+		return(list())  # Dizin yoksa boş liste döndür (JSON'da [])
 	  }
 	  
+	  # Desteklenen video formatlarını tara
 	  files <- list.files(sys_dir, pattern = "\\.(mp4|webm|MP4|WEBM)$", 
 						  full.names = FALSE, ignore.case = TRUE)
 	  
 	  cat(sprintf("[VIDEO R] %s - %s: %d dosya bulundu\n", char_key, type, length(files)))
 	  
 	  if (length(files) == 0) {
-		return(list())  # Boş liste
+		return(list())  # Dosya yoksa boş liste
 	  }
 	  
+	  # İstemci (browser) tarafında kullanılacak yolları oluştur
 	  paths <- file.path("characters", "video", char_key, type, files)
 	  
 	  as.list(paths)
 	}
   
+  # JS tarafına gönderilecek veri yapısını hazırla
   result <- list(
     character = char_key,
     image = image_path,
@@ -58,12 +72,17 @@ get_character_video_data <- function(char_id) {
   return(result)
 }
 
+#' Karakter Video Modülü UI
+#'
+#' @param id Modül ad alanı kimliği
+#' @return Video oynatıcı ve statik resim elementlerini içeren UI tanımı
 characterVideoUI <- function(id) {
   ns <- NS(id)
   tagList(
     tags$div(
       id = ns("video_container"),
       class = "cinematic-video-container",
+      # Ana video oynatıcı elementi
       tags$video(
         id = ns("character_player"),
         class = "character-video-player",
@@ -72,13 +91,14 @@ characterVideoUI <- function(id) {
         muted = TRUE,
         preload = "none"
       ),
+      # Video yüklenene kadar veya hata durumunda gösterilecek statik resim
       tags$img(
         id = ns("character_static_img"),
         class = "character-static-image",
         src = ""
       )
     ),
-    # CinematicVideoManager henüz yüklenmemiş olabilir, yeniden deneme mekanizması
+    # CinematicVideoManager bileşenini başlatan ve elemanları bağlayan betik
     tags$script(sprintf("
       (function() {
         var videoId = '%s';
@@ -86,6 +106,7 @@ characterVideoUI <- function(id) {
         var attempts = 0;
         function tryInit() {
           attempts++;
+          // Global CinematicVideoManager nesnesinin ve DOM elemanlarının hazır olduğunu kontrol et
           if (typeof CinematicVideoManager !== 'undefined' &&
               document.getElementById(videoId) &&
               document.getElementById(imageId)) {
@@ -94,6 +115,7 @@ characterVideoUI <- function(id) {
               imageElementId: imageId
             });
           } else if (attempts < 20) {
+            // Henüz hazır değilse 250ms sonra tekrar dene
             setTimeout(tryInit, 250);
           } else {
             console.error('[VIDEO] Başlatma zaman aşımı: elemanlar veya yönetici bulunamadı');
@@ -109,16 +131,23 @@ characterVideoUI <- function(id) {
   )
 }
 
+#' Karakter Video Modülü Sunucu
+#'
+#' @param id Modül ad alanı kimliği
+#' @param selected_character_trigger Seçili karakteri takip eden reaktif tetikleyici
+#' @return Sunucu mantığı
 characterVideoServer <- function(id, selected_character_trigger) {
   moduleServer(id, function(input, output, session) {
     
-    # Karakter degistiginde verileri guncelle ve introyu baslat
+    # Karakter değiştiğinde verileri güncelle ve giriş animasyonunu (intro) başlat
     observeEvent(selected_character_trigger(), {
       char_id <- selected_character_trigger()
+      # Dosya sisteminden video ve görsel yollarını al
       video_data <- get_character_video_data(char_id)
+      # JS tarafındaki yöneticimize güncel verileri gönder
       session$sendCustomMessage("updateCharacterVideo", video_data)
     })
     
-    # Ayarlari Kaydet is handled via module_settings.R trigger
+    # Not: "Ayarları Kaydet" tetiklemesi ana ayarlar modülü (module_settings.R) üzerinden yönetilir.
   })
 }

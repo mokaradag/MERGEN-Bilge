@@ -1,22 +1,28 @@
 # R/module_tts.R
-# Text-to-Speech (TTS) processing module (OpenAI-compatible)
-# Fully Optimized for Low Latency (Namespace usage, no library loading in workers)
+# Dosya Yolu: R/module_tts.R
+# Açıklama: OpenAI uyumlu Metinden Sese (TTS) dönüştürme modülü.
+#           Düşük gecikme süresi için optimize edilmiştir (Namespace kullanımı, 
+#           worker'larda kütüphane yüklemesi yapılmaz).
 
-#' TTS Processing Server Module
+#' TTS İşleme Sunucu Modülü
 #'
-#' Provides an asynchronous helper for converting text into speech using
-#' an OpenAI-compatible `/audio/speech` endpoint. Returns base64-encoded
-#' audio URLs that can be injected into the chat UI.
+#' OpenAI uyumlu bir `/audio/speech` uç noktası kullanarak metni sese dönüştürmek
+#' için asenkron bir yardımcı sağlar. Sohbet arayüzüne enjekte edilebilen 
+#' base64 kodlu ses URL'leri döndürür.
+#'
+#' @param id Modül ad alanı kimliği
+#' @return Modül sunucu mantığı (synthesize_speech, tts_available, prepare_tts_text fonksiyonlarını içeren liste)
 ttsProcessingServer <- function(id) {
   moduleServer(id, function(input, output, session) {
 
-    #' Whether TTS is available (endpoint configured)
+    #' TTS hizmetinin kullanılabilir olup olmadığını kontrol et (uç nokta yapılandırılmış mı?)
     tts_available <- function() {
       endpoint <- tts_config$base_url %||% ""
       nzchar(endpoint)
     }
 
-    #' TTS'e göndermeden önce metni normalleştir
+    #' TTS'e göndermeden önce metni normalleştir (temizle)
+    #' Kod bloklarını, bağlantıları, emojileri ve özel karakterleri ayıklar.
     prepare_tts_text <- function(text) {
       if (!is.character(text) || length(text) == 0) return("")
 
@@ -36,7 +42,6 @@ ttsProcessingServer <- function(id) {
       # E-posta adreslerini kaldır
       cleaned <- gsub("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", " ", cleaned, perl = TRUE)
       # Emoji ve özel Unicode karakterleri kaldır
-      # Emoji aralıkları: Emoticons, Dingbats, Misc Symbols, Supplemental Symbols, Transport/Map, Flags, vb.
       cleaned <- gsub("[\U0001F600-\U0001F64F]", "", cleaned, perl = TRUE)
       cleaned <- gsub("[\U0001F300-\U0001F5FF]", "", cleaned, perl = TRUE)
       cleaned <- gsub("[\U0001F680-\U0001F6FF]", "", cleaned, perl = TRUE)
@@ -60,7 +65,7 @@ ttsProcessingServer <- function(id) {
       trimws(cleaned)
     }
 
-    #' Build the final speech endpoint URL
+    #' Nihai ses uç noktası (speech endpoint) URL'sini oluştur
     build_speech_url <- function() {
       base <- tts_config$base_url %||% ""
       if (!nzchar(base)) return("")
@@ -71,11 +76,11 @@ ttsProcessingServer <- function(id) {
       paste0(base, "/audio/speech")
     }
 
-    #' Resolve API key for the TTS endpoint
+    #' TTS uç noktası için API anahtarını belirle
     resolve_tts_api_key <- function() {
-      # 1. Try session specific key
+      # 1. Oturuma özel anahtarı dene
       user_key <- tryCatch({
-        sess_key <- session$userData$ai_api_key %||% NULL
+        sess_key <- session$userData$ai_api_key %% NULL
         if (is.null(sess_key) || !nzchar(sess_key)) return(NULL)
         as.character(sess_key)[1]
       }, error = function(e) NULL)
@@ -84,29 +89,31 @@ ttsProcessingServer <- function(id) {
         return(user_key)
       }
 
-      # 2. Try global config key
+      # 2. Global yapılandırma anahtarını dene
       default_key <- tts_config$api_key %||% ""
       if (is.null(default_key) || is.na(default_key)) default_key <- ""
       default_key
     }
 
-    #' Asynchronously synthesize speech
-    #' @return promise resolving to list(success, audio_src, voice, duration, error)
+    #' Asenkron olarak ses sentezle
+    #' @param text Seslendirilecek metin
+    #' @param voice Kullanılacak ses (opsiyonel)
+    #' @return promise nesnesi: list(success, audio_src, voice, duration, error)
     synthesize_speech <- function(text, voice = NULL) {
       if (!tts_available()) {
         return(promises::promise_resolve(list(
-          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "TTS endpoint is not configured."
+          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "TTS uç noktası yapılandırılmamış."
         )))
       }
 
       speech_text <- prepare_tts_text(text)
       if (!nzchar(speech_text)) {
         return(promises::promise_resolve(list(
-          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "TTS text is empty."
+          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "Seslendirilecek metin boş."
         )))
       }
 
-      # --- MAIN PROCESS VARIABLES (Capture before future) ---
+      # --- ANA SÜREÇ DEĞİŞKENLERİ (Future içine aktarılmadan önce yakalanır) ---
       speech_url   <- build_speech_url()
       voice_to_use <- voice %||% tts_config$default_voice %||% "tr-male-1"
       api_key      <- resolve_tts_api_key()
@@ -117,15 +124,15 @@ ttsProcessingServer <- function(id) {
       verify_ssl_val <- tts_config$verify_ssl
       should_verify  <- if (is.null(verify_ssl_val)) FALSE else isTRUE(verify_ssl_val)
       
-      # Log file path (absolute)
+      # Log dosyası yolu (mutlak yol)
       debug_log_file <- normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE)
       if (!file.exists(dirname(debug_log_file))) dir.create(dirname(debug_log_file), recursive = TRUE)
 
-      # --- ASYNC WORKER START ---
+      # --- ASENKRON ÇALIŞTIRICI (WORKER) BAŞLANGICI ---
       future_promise({
         start_time <- Sys.time()
         
-        # -- Worker Side Logging Helper --
+        # -- Worker Tarafı Log Yardımcısı --
         worker_log <- function(msg) {
           try({
             cat(sprintf("[%s] [Worker-%s] %s\n", 
@@ -136,18 +143,18 @@ ttsProcessingServer <- function(id) {
           }, silent = TRUE)
         }
 
-        worker_log(sprintf("INIT: URL=%s | Model=%s | Voice=%s", speech_url, model_to_use, voice_to_use))
+        worker_log(sprintf("BAŞLATMA: URL=%s | Model=%s | Ses=%s", speech_url, model_to_use, voice_to_use))
 
-        # IMPORTANT: NO library() calls here. Using explicit namespaces (httr::, base64enc::)
-        # to drastically reduce worker startup latency.
+        # ÖNEMLİ: Burada library() çağrısı yapılmaz. Gecikmeyi azaltmak için 
+        # açık ad alanları (httr::, base64enc::) kullanılır.
 
-        # Header Setup
+        # Üstbilgi (Header) Kurulumu
         headers <- c(
           `Content-Type` = "application/json",
           `Authorization` = paste("Bearer", api_key)
         )
 
-        # Body Setup
+        # Gövde (Body) Kurulumu
         body_data <- list(
           model = model_to_use,
           voice = voice_to_use,
@@ -155,16 +162,16 @@ ttsProcessingServer <- function(id) {
           response_format = "mp3"
         )
         
-        # Config Setup (SSL Bypass if needed)
+        # Yapılandırma Kurulumu (Gerekiyorsa SSL doğrulaması atlanır)
         req_config <- if (isTRUE(should_verify)) {
            list() 
         } else {
            httr::config(ssl_verifypeer = 0L, ssl_verifyhost = 0L)
         }
         
-        worker_log("SENDING POST Request...")
+        worker_log("POST İsteği Gönderiliyor...")
         
-        # Execute Request
+        # İstek Yürütme
         resp <- tryCatch({
           httr::POST(
             url = speech_url,
@@ -175,18 +182,18 @@ ttsProcessingServer <- function(id) {
             req_config 
           )
         }, error = function(e) {
-           worker_log(sprintf("FATAL ERROR in POST: %s", conditionMessage(e)))
+           worker_log(sprintf("POST İşleminde Kritik Hata: %s", conditionMessage(e)))
            return(list(error_obj = e))
         })
         
-        # Handle Connection Errors
+        # Bağlantı Hatalarını Yönet
         if (is.list(resp) && !is.null(resp$error_obj)) {
            err_msg <- conditionMessage(resp$error_obj)
            return(list(success = FALSE, audio_src = NULL, voice = voice_to_use, duration = 0, error = err_msg))
         }
 
         status <- httr::status_code(resp)
-        worker_log(sprintf("RESPONSE Status: %d", status))
+        worker_log(sprintf("YANIT Durumu: %d", status))
 
         if (status >= 200 && status < 300) {
           content_type <- httr::headers(resp)[["content-type"]] %||% ""
@@ -197,7 +204,7 @@ ttsProcessingServer <- function(id) {
 
           audio_src <- NULL
           
-          # Check for JSON wrapper (rare but possible in some proxies)
+          # JSON sarmalayıcı kontrolü (bazı proxy'lerde nadir de olsa görülebilir)
           if (grepl("json", content_type, ignore.case = TRUE)) {
             parsed <- tryCatch(httr::content(resp, as = "parsed", encoding = "UTF-8"),
                                error = function(e) NULL)
@@ -217,41 +224,41 @@ ttsProcessingServer <- function(id) {
             }
           }
 
-          # Standard Binary Response (Most common for OpenAI API)
+          # Standart İkili (Binary) Yanıt (OpenAI API için en yaygın durum)
           if (is.null(audio_src)) {
             audio_raw <- httr::content(resp, as = "raw")
-            worker_log(sprintf("BINARY CONTENT: %d bytes received", length(audio_raw)))
+            worker_log(sprintf("İKİLİ İÇERİK: %d bayt alındı", length(audio_raw)))
             
             if (length(audio_raw) > 0) {
-                # Use base64enc explicitly
+                # base64enc paketini doğrudan kullan
                 audio_b64 <- base64enc::base64encode(audio_raw)
                 audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
             }
           }
 
           if (!nzchar(audio_src)) {
-            worker_log("FAIL: Empty audio content.")
+            worker_log("BAŞARISIZ: Ses içeriği boş.");
             return(list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                         duration = 0, error = "Ses yanıtı boş döndü."))
           }
           
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-          worker_log(sprintf("SUCCESS: Audio ready in %.2fs", duration))
+          worker_log(sprintf("BAŞARILI: Ses %.2fs içinde hazırlandı", duration))
 
           list(success = TRUE, audio_src = audio_src, voice = voice_to_use,
                duration = duration, error = NULL)
         } else {
           err_msg <- tryCatch(httr::content(resp, as = "text", encoding = "UTF-8"),
-                              error = function(e) "TTS request failed.")
-          worker_log(sprintf("API FAIL: %s", substr(err_msg, 1, 100)))
+                              error = function(e) "TTS isteği başarısız oldu.")
+          worker_log(sprintf("API HATASI: %s", substr(err_msg, 1, 100)))
           list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                duration = 0, error = paste("TTS hata:", err_msg))
         }
       }) %...!% {
         function(e) {
-          # Log unhandled exceptions in the future
+          # İşlenmemiş istisnaları (exception) logla
           try({
-             cat(sprintf("[%s] [Worker-ERR] %s\n", format(Sys.time(), "%H:%M:%S"), conditionMessage(e)), 
+             cat(sprintf("[%s] [Worker-HATA] %s\n", format(Sys.time(), "%H:%M:%S"), conditionMessage(e)), 
                  file = normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE), append = TRUE)
           }, silent = TRUE)
           
@@ -269,7 +276,12 @@ ttsProcessingServer <- function(id) {
   })
 }
 
-#' Build a reusable audio player UI snippet for a chat message
+#' Sohbet mesajı için yeniden kullanılabilir ses oynatıcı UI parçası oluştur
+#'
+#' @param message_id Mesajın kimliği
+#' @param audio_src Base64 kodlu ses kaynağı
+#' @param voice Ses adı (etiket için)
+#' @return HTML div elemanı
 build_tts_audio_ui <- function(message_id, audio_src, voice = NULL) {
   if (is.null(audio_src) || !nzchar(audio_src)) return(NULL)
 
@@ -287,7 +299,7 @@ build_tts_audio_ui <- function(message_id, audio_src, voice = NULL) {
       tags$i(class = "fas fa-volume-up"),
       span(label)
     ),
-	tags$audio(
+  tags$audio(
       controls = "controls",
       preload = "auto",
       src = audio_src
