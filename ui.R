@@ -1,10 +1,12 @@
-# ui.R (Updated with message search bar)
+# ui.R
+# Dosya Yolu: ui.R
+# Açıklama: MERGEN AI uygulamasının ana Kullanıcı Arayüzü (UI) tanımı.
+#           shinydashboard kullanılarak başlık (header), yan menü (sidebar)
+#           ve ana gövde (body) yapısı oluşturulmuştur. (Mesaj arama çubuğu güncellenmiştir)
 
-# The main UI is defined using shinydashboard's dashboardPage.
-# This structure provides the header, sidebar, and body of the application.
 ui <- dashboardPage(
   
-  # --- Header ---
+  # --- Başlık (Header) ---
   dashboardHeader(
     titleWidth = 250,
     title = tags$span(
@@ -23,12 +25,12 @@ ui <- dashboardPage(
     )
   ),
   
-  # --- Sidebar ---
+  # --- Yan Menü (Sidebar) ---
   dashboardSidebar(
     width = 250,
     sidebarMenu(
       id = "tabs",
-      # Each menuItem corresponds to a tab in the main body.
+      # Her bir menuItem, ana gövdedeki bir sekmeye (tab) karşılık gelir.
       menuItem("Ana Söyleşi", tabName = "chat", icon = icon("comments")),
       menuItem("Söyleşi Yönetimi", icon = icon("folder-open"), startExpanded = FALSE,
         menuSubItem("Söyleşi Geçmişi", tabName = "history", icon = icon("history")),
@@ -36,14 +38,14 @@ ui <- dashboardPage(
         menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
-	  menuItem("Ayarlar", icon = icon("cog"), startExpanded = FALSE,
+      menuItem("Ayarlar", icon = icon("cog"), startExpanded = FALSE,
         menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
         menuSubItem("Yapılandırma", tabName = "settings_yapilandirma", icon = icon("sliders-h"))
       ),
       menuItemOutput("admin_menu_item"),
       menuItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
     ),
-    # A static footer at the bottom of the sidebar.
+    # Yan menünün alt kısmındaki sabit altbilgi (footer).
     div(
       class = "sidebar-footer",
       p("MERGEN AI v0.9", class = "sidebar-version"),
@@ -51,95 +53,95 @@ ui <- dashboardPage(
     )
   ),
   
-  # --- Body ---
+  # --- Ana Gövde (Body) ---
   dashboardBody(
-    useShinyjs(), # Initialize shinyjs
-	sttUI("stt_module"),
-	
-	# --- Hidden widget dependency loaders (critical for string-injected outputs) ---
-	tags$div(
-	style = "position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;",
-	if (requireNamespace("highcharter", quietly = TRUE))
-	  highcharter::highchartOutput("deps_hc", height = "1px"),
-	if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE))
-	  plotly::plotlyOutput("deps_pl", height = "1px")
-	),
+    useShinyjs(), # shinyjs'i başlat (JavaScript etkileşimleri için)
+    sttUI("stt_module"),
+    
+    # --- Gizli widget bağımlılık yükleyicileri (Metin olarak eklenen çıktılar için kritik) ---
+    tags$div(
+    style = "position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;",
+    if (requireNamespace("highcharter", quietly = TRUE))
+      highcharter::highchartOutput("deps_hc", height = "1px"),
+    if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE))
+      plotly::plotlyOutput("deps_pl", height = "1px")
+    ),
 
-    # --- Head Content ---
+    # --- Başlık İçeriği (Head Content) ---
   tags$head(
     tags$script(HTML("document.documentElement.lang = 'tr'")),
     tags$meta(charset = "UTF-8"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
     tags$link(rel = "icon", type = "image/png", href = "mergen_avatar.png"),
     
-    # --- Local CSS Files ---
+    # --- Yerel CSS Dosyaları ---
     tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_modern.css"),
-    tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_greeting_personal.css"),	
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_greeting_personal.css"),    
     tags$link(rel = "stylesheet", type = "text/css", href = "css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/model_selector.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/codemirror-custom.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/character-selector.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/character_video.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/typing-indicator.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/codemirror-custom.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/character-selector.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/character_video.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/typing-indicator.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/tts_visualizer.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/stt.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/music_slider.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/variables.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/music_slider.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/variables.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/animations.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/layout.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/layout.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/components.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/code_highlighting.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/code_highlighting.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_screen.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/datatables.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_messages.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_input.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/date_picker.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_messages.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_input.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/date_picker.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/cinematic_intro.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/deep_space_intro.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/mode_selection.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/explore_cinematic.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/mcp_indicator.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/file_manager.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/file_manager.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/history_saved_chats.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/settings_page.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/health_check.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/health_check.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/disconnect_overlay.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_header.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/quick_templates.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/quick_templates.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/capabilities.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/custom_buttons.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/utilities.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/utilities.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/responsive.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/accessibility.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/layout_overrides.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/pagination_custom.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/layout_overrides.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/pagination_custom.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/modals_custom.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_styles.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/welcome_styles.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/recent_chats_custom.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/empty_state.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/animations_extra.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/animations_extra.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/message_actions.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/feedback_modal.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/image_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/image_gallery.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/summarization_tools.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/code_collapse.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/code_collapse.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/chat_search_modal.css"),
-	tags$link(rel = "stylesheet", type = "text/css", href = "css/settings_tools.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/settings_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/analysis_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/citation_styles.css"),
     
-    # --- Local CodeMirror CSS ---
+    # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/theme/material-darker.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/addon/fold/foldgutter.min.css"),
 
-    # --- Local JavaScript Files ---
-    # Core CodeMirror
+    # --- Yerel JavaScript Dosyaları ---
+    # Çekirdek CodeMirror
     tags$script(src = "codemirror/codemirror.min.js"),
     
-    # Language Modes (Comprehensive List)
+    # Dil Modları (Kapsamlı Liste)
     tags$script(src = "codemirror/mode/r.min.js"),
     tags$script(src = "codemirror/mode/python.min.js"),
     tags$script(src = "codemirror/mode/javascript.min.js"),
@@ -160,7 +162,7 @@ ui <- dashboardPage(
     tags$script(src = "codemirror/mode/octave.min.js"),
     tags$script(src = "codemirror/mode/julia.min.js"),
 
-    # Addons
+    # Eklentiler (Addons)
     tags$script(src = "codemirror/addon/comment/comment.min.js"),
     tags$script(src = "codemirror/addon/fold/foldcode.min.js"),
     tags$script(src = "codemirror/addon/fold/foldgutter.min.js"),
@@ -181,37 +183,37 @@ ui <- dashboardPage(
     tags$script(src = "lib/threejs/UnrealBloomPass.js"),
     tags$script(src = "lib/threejs/Lensflare.js"),
 
-    # Your Custom Script
-	tags$script(src = "js/code-collapse.js"),
-	tags$script(src = "js/utils.js"),
-	tags$script(src = "js/shiny_message_handlers.js"),
-	tags$script(src = "js/ui_init.js"),
-	tags$script(src = "js/file_handlers.js"),
-	tags$script(src = "js/input_handlers.js"),
-	tags$script(src = "js/interaction_handlers.js"),
-	tags$script(src = "js/app_core.js"),
-	tags$script(src = "js/chart_renderer.js"),
+    # Özel JavaScript Betikleri
+    tags$script(src = "js/code-collapse.js"),
+    tags$script(src = "js/utils.js"),
+    tags$script(src = "js/shiny_message_handlers.js"),
+    tags$script(src = "js/ui_init.js"),
+    tags$script(src = "js/file_handlers.js"),
+    tags$script(src = "js/input_handlers.js"),
+    tags$script(src = "js/interaction_handlers.js"),
+    tags$script(src = "js/app_core.js"),
+    tags$script(src = "js/chart_renderer.js"),
     tags$script(src = "js/streaming_manager.js"),
-	tags$script(src = "js/table_scroll_handler.js"),
-	tags$script(src = "js/toast.js"),
-	tags$script(src = "js/markdown-parser.js"),
-	tags$script(src = "js/layout-manager.js"),
-	tags$script(src = "js/codemirror-manager.js"),
+    tags$script(src = "js/table_scroll_handler.js"),
+    tags$script(src = "js/toast.js"),
+    tags$script(src = "js/markdown-parser.js"),
+    tags$script(src = "js/layout-manager.js"),
+    tags$script(src = "js/codemirror-manager.js"),
     tags$script(src = "js/cinematic_video.js"),
     tags$script(src = "js/character_typing.js"),
     tags$script(src = "js/tts_visualizer.js"),
     tags$script(src = "js/stt_client.js"),
-	tags$script(src = "js/intro_animation.js"),
+    tags$script(src = "js/intro_animation.js"),
     tags$script(src = "js/typing_animation.js"),
-	tags$script(src = "js/neural_welcome.js"),
+    tags$script(src = "js/neural_welcome.js"),
     tags$script(src = "js/welcome_video_player.js"),
     tags$script(src = "js/welcome_neural_modern.js"),
     tags$script(src = "js/welcome_greeting.js"),
-	tags$script(src = "js/welcome_greeting_personal.js"),
+    tags$script(src = "js/welcome_greeting_personal.js"),
     tags$script(src = "js/tts_manager.js"),
     tags$script(src = "js/character_manager.js"),
     tags$script(src = "js/shortcuts_manager.js"),
-	tags$script(src = "js/feedback_modal.js"),
+    tags$script(src = "js/feedback_modal.js"),
     tags$script(src = "js/music_manager.js"),
     tags$script(src = "js/image_tools.js"),
     tags$script(src = "js/image_gallery.js"),
@@ -220,23 +222,23 @@ ui <- dashboardPage(
     tags$script(src = "js/deep_space_intro.js"),
     tags$script(src = "js/mode_selection.js"),
     tags$script(src = "js/explore_cinematic.js"),
-	tags$script(src = "js/settings_tools.js"),
+    tags$script(src = "js/settings_tools.js"),
     tags$script(src = "js/analysis_tools.js"),
     tags$script(src = "js/citation_handler.js"),
     
     tags$div(id = "toast-container", class = "toast-container")
   ),
       
-    # Derin uzay giriş ekranı (eski sinematik intro'nun yerini alır)
+    # Derin uzay giriş ekranı
     createStartupScreenUI(),
-	
-	# Geri bildirim modalı
-	feedbackUI("feedback_module"),
     
-    # --- Tab Content ---
-    # The content for each tab defined in the sidebar.
-	tabItems(
-      # Main Chat Tab (Core UI, not a module)
+    # Geri bildirim modalı
+    feedbackUI("feedback_module"),
+    
+    # --- Sekme İçerikleri (Tab Content) ---
+    # Yan menüde tanımlanan her bir sekme için gösterilecek içerikler.
+    tabItems(
+      # Ana Söyleşi Sekmesi (Çekirdek UI, modül değil)
       tabItem(
         tabName = "chat",
         div(
@@ -247,7 +249,7 @@ ui <- dashboardPage(
             div(
               class = "chat-header-left",
               h4("Söyleşi", class = "page-title"),
-              # MCP modu göstergesi (Excel veya RData aktifse gösterilir) - moved to left
+              # MCP modu göstergesi (Excel veya RData aktifse gösterilir) - sola taşındı
               uiOutput("mcp_mode_indicator"),
               conditionalPanel(
                 condition = "!output.show_welcome_screen",
@@ -267,7 +269,7 @@ ui <- dashboardPage(
               )
             ),
             
-            # --- TTS Visualizer Module UI ---
+            # --- TTS Görselleştirici Modül UI ---
             ttsVisualizerUI("tts_viz"),
             
             div(
@@ -406,7 +408,7 @@ ui <- dashboardPage(
                     title = "Gönder (Enter)"
                   )
                 ),
-                div(style = "display: none;", fileInput("file_upload", label = NULL, multiple = FALSE)) # Single file upload for chat context
+                div(style = "display: none;", fileInput("file_upload", label = NULL, multiple = FALSE))
               )
             ),
             div(
@@ -417,34 +419,32 @@ ui <- dashboardPage(
         )
       ),
       
-      # --- Module UI Calls ---
-      # Each tabItem now simply calls the UI function from its corresponding module file.
-      # This makes the main UI file clean and easy to navigate.
+      # --- Modül UI Çağrıları ---
       
-      # History Tab
+      # Geçmiş Sekmesi
       tabItem(tabName = "history", historyUI("history_module")),
       
-      # Saved Chats Tab
+      # Kaydedilmiş Söyleşiler Sekmesi
       tabItem(tabName = "saved_chats", savedChatsUI("saved_chats_module")),
 
-      # Image Gallery Tab
+      # Görsel Galerisi Sekmesi
       tabItem(tabName = "image_gallery", imageGalleryUI("image_gallery_module")),
       
-      # Files Tab
+      # Dosya Yönetimi Sekmesi
       tabItem(tabName = "files", fileManagerUI("file_manager_module")),
       
       # Ayarlar Alt Sekmeleri
       tabItem(tabName = "settings_kisisel", settingsKisiselUI("settings_kisisel_module")),
       tabItem(tabName = "settings_yapilandirma", settingsYapilandirmaUI("settings_yapilandirma_module")),
 
-      # Admin Analytics Tab (ADMIN only)
+      # Admin Analitik Sekmesi (Sadece Yöneticiler için)
       tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),
 
-      # Health Check Tab (modularized)
+      # Sistem Durumu Sekmesi (Modüler yapı)
       tabItem(tabName = "health", healthUI("health_module"))
     ),
     
-    # Hidden inputs for JavaScript communication
+    # JavaScript iletişimi için gizli girdiler (Hidden inputs)
     tags$div(
       style = "display: none;",
       textInput("keyboard_nav", ""),
@@ -452,6 +452,7 @@ ui <- dashboardPage(
       textInput("loaded_settings", "")
     ),
 
+    # Bağlantı kesilme durumu için kaplama (overlay) ekranı
     tags$div(
       id = "disconnect-overlay",
       class = "disconnect-overlay",

@@ -1,5 +1,7 @@
-// www/js/settings_tools.js
-// Ayarlar sayfası - Analiz Araçları buton seçim ve açıklama yönetimi
+// settings_tools.js
+// Dosya Yolu: www/js/settings_tools.js
+// Açıklama: Ayarlar sayfasındaki "Analiz Araçları" bölümünün buton seçimleri
+//           ve bu araçların dinamik açıklama (yazma efekti) yönetimini sağlar.
 
 (function() {
   'use strict';

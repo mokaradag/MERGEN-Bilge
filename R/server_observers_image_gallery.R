@@ -114,6 +114,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       "enable_coding_tools", "enable_process_tools", "enable_app_expert_tools",
       "enable_image_tools"
     )
+	
     # Önce diğer tüm araçları devre dışı bırak
     for (tool in analysis_tools) {
       if (tool != "enable_image_tools") {
@@ -121,6 +122,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
         updateCheckboxInput(session, paste0("settings_yapilandirma_module-", tool), value = FALSE)
       }
     }
+	
     # Görsel Uzmanı aracını aktifleştir
     settings_data$enable_image_tools <- TRUE
     updateCheckboxInput(session, "settings_yapilandirma_module-enable_image_tools", value = TRUE)
