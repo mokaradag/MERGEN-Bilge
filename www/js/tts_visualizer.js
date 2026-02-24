@@ -269,6 +269,17 @@ $(document).ready(function() {
       }
     });
   
+  // --- Sekme değişikliğinde canvas boyutlandırma ---
+  // Ana Söyleşi sekmesine geçildiğinde canvas boyutunu güncelle (gizli sekmede boyut 0 olabilir)
+  $(document).on('shown.bs.tab', function() {
+    if (visualizer) {
+      setTimeout(function() {
+        visualizer.resize();
+        setTimeout(function() { visualizer.resize(); }, 200);
+      }, 100);
+    }
+  });
+
   // --- Audio Event Listeners (Backup) ---
   document.addEventListener('play', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {

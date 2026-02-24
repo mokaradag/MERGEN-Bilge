@@ -64,28 +64,47 @@ characterVideoUI <- function(id) {
     tags$div(
       id = ns("video_container"),
       class = "cinematic-video-container",
-      # Removed inline styles for display/z-index to let CSS handle states
-	  tags$video(
+      tags$video(
         id = ns("character_player"),
         class = "character-video-player",
         autoplay = FALSE,
         playsinline = TRUE,
-        muted = FALSE,
+        muted = TRUE,
         preload = "none"
       ),
       tags$img(
         id = ns("character_static_img"),
         class = "character-static-image",
-        src = "" 
+        src = ""
       )
     ),
+    # CinematicVideoManager henüz yüklenmemiş olabilir, yeniden deneme mekanizması
     tags$script(sprintf("
-      $(document).ready(function() {
-        CinematicVideoManager.init({
-          videoElementId: '%s',
-          imageElementId: '%s'
-        });
-      });
+      (function() {
+        var videoId = '%s';
+        var imageId = '%s';
+        var attempts = 0;
+        function tryInit() {
+          attempts++;
+          if (typeof CinematicVideoManager !== 'undefined' &&
+              document.getElementById(videoId) &&
+              document.getElementById(imageId)) {
+            CinematicVideoManager.init({
+              videoElementId: videoId,
+              imageElementId: imageId
+            });
+          } else if (attempts < 20) {
+            setTimeout(tryInit, 250);
+          } else {
+            console.error('[VIDEO] Başlatma zaman aşımı: elemanlar veya yönetici bulunamadı');
+          }
+        }
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+          setTimeout(tryInit, 100);
+        } else {
+          document.addEventListener('DOMContentLoaded', function() { setTimeout(tryInit, 100); });
+        }
+      })();
     ", ns("character_player"), ns("character_static_img")))
   )
 }

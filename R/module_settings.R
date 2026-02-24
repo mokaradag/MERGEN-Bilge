@@ -72,6 +72,7 @@ settingsInit <- function(session, parent_session = NULL) {
 
     if (!is.null(loaded$experience_mode) && loaded$experience_mode %in% c("odak", "denge", "kesif")) {
       settings$experience_mode <- loaded$experience_mode
+      kisisel$temp_experience_mode(loaded$experience_mode)
       session$sendCustomMessage("updateSettingsMode", list(mode = loaded$experience_mode))
     }
 
@@ -189,6 +190,14 @@ settingsInit <- function(session, parent_session = NULL) {
     # Kişiselleştirme geçici değerlerini uygula
     settings$selected_character <- kisisel$temp_selected_character()
 
+    # Deneyim modu değişikliği varsa uygula (sadece kaydet butonunda)
+    new_mode <- kisisel$temp_experience_mode()
+    if (!is.null(new_mode) && new_mode != isolate(settings$experience_mode)) {
+      settings$experience_mode <- new_mode
+      apply_experience_mode(session, settings, new_mode)
+      cat(sprintf("[SETTINGS] Deneyim modu uygulandı: %s\n", new_mode))
+    }
+
     # Yapılandırma geçici değerlerini uygula
     settings$model_selection <- yapilandirma$temp_model_selection()
     settings$image_size <- yapilandirma$temp_image_size()
@@ -282,6 +291,7 @@ settingsInit <- function(session, parent_session = NULL) {
 
     # Kişiselleştirme geçici değerlerini sıfırla
     kisisel$temp_selected_character("mergen")
+    kisisel$temp_experience_mode("odak")
     kisisel$update_character_display("mergen")
     session$sendCustomMessage("updateSettingsMode", list(mode = "odak"))
 

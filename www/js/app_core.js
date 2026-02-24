@@ -232,10 +232,11 @@ $(document).ready(function() {
   // Hızlı işlem butonları için tooltip yönetimi
   $(document).ready(function() {
 
-	// Tüm tooltip'leri temizleyen merkezi fonksiyon
+	// Hoş geldin ekranı tooltip'lerini temizleyen merkezi fonksiyon
+	// Not: Bootstrap tooltip'leri (.tooltip) burada kaldırılmaz,
+	// Yönetici Paneli ve diğer sayfaların tooltip'lerini bozmamak için.
 	window.clearAllTooltips = function() {
 	  $('.custom-tooltip').remove();
-	  $('.tooltip').remove();
 	  $('.modern-welcome-action-btn').each(function() {
 		var t = $(this).data('custom-tooltip');
 		if (t) t.remove();
@@ -333,8 +334,12 @@ $(document).ready(function() {
 	  }
 	});
 
-	$(document).on('shiny:visualchange', function() {
-	  window.clearAllTooltips();
+	$(document).on('shiny:visualchange', function(event) {
+	  // Yalnızca hoş geldin ekranı görünürken tooltip'leri temizle
+	  var $welcome = $('#welcome_fullscreen_container');
+	  if ($welcome.length > 0 && $welcome.is(':visible')) {
+	    window.clearAllTooltips();
+	  }
 	});
 
 	// Welcome container gizlendiğinde tooltip'leri temizle

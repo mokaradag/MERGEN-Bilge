@@ -40,8 +40,23 @@ const CinematicVideoManager = {
             this.elements.image.style.opacity = '1';
         };
 
-        this.elements.video.muted = false;
+        // Tarayıcı otomatik oynatma politikası: ilk başta sessiz başlat,
+        // kullanıcı etkileşiminden sonra sesi aç
+        this.elements.video.muted = true;
         this.elements.video.volume = 1.0;
+
+        // Kullanıcı etkileşimi sonrası sesi aç
+        var self = this;
+        var unmuteOnInteraction = function() {
+            if (self.elements.video) {
+                self.elements.video.muted = false;
+                console.log('[VIDEO] Kullanıcı etkileşimi algılandı, ses açıldı');
+            }
+            document.removeEventListener('click', unmuteOnInteraction);
+            document.removeEventListener('keydown', unmuteOnInteraction);
+        };
+        document.addEventListener('click', unmuteOnInteraction, { once: true });
+        document.addEventListener('keydown', unmuteOnInteraction, { once: true });
         
         // Event Listeners
         this.elements.video.addEventListener('ended', () => this.handleVideoEnd());
@@ -172,11 +187,11 @@ const CinematicVideoManager = {
 
 	showVideo: function(src) {
         if (!this.elements.video) return;
-        
+
         console.log('[VIDEO] Video gösteriliyor:', src);
 
         this.elements.container.classList.add('video-playing');
-        
+
 		this.elements.video.src = src;
 		this.elements.video.load();
 		this.state.isPlaying = true;
@@ -184,12 +199,23 @@ const CinematicVideoManager = {
 		if (window.MusicManager) {
 		  window.MusicManager.duck();
 		}
-        
+
+        var self = this;
         const playPromise = this.elements.video.play();
         if (playPromise) {
             playPromise.catch(error => {
-                console.error('[VIDEO] Playback failed:', error);
-                this.handleVideoError(error);
+                // Otomatik oynatma engellendiyse, sessiz olarak tekrar dene
+                if (error.name === 'NotAllowedError' && !self.elements.video.muted) {
+                    console.warn('[VIDEO] Sesli oynatma engellendi, sessiz deneniyor');
+                    self.elements.video.muted = true;
+                    self.elements.video.play().catch(function(e2) {
+                        console.error('[VIDEO] Sessiz oynatma da başarısız:', e2);
+                        self.handleVideoError(e2);
+                    });
+                    return;
+                }
+                console.error('[VIDEO] Oynatma başarısız:', error);
+                self.handleVideoError(error);
             });
         }
     },

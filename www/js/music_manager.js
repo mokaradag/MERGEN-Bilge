@@ -169,17 +169,35 @@ const MusicManager = {
 	},
 
   toggle: function(enabled) {
+    // Aynı duruma tekrar geçişi engelle (yarış durumu koruması)
+    if (this.state.enabled === enabled) {
+      console.log('[MUSIC] toggle: Zaten', enabled ? 'AÇIK' : 'KAPALI', '- atlanıyor');
+      return;
+    }
     this.state.enabled = enabled;
 
     if (enabled) {
-      if (!this.state.currentAudio) {
-        this.loadPlaylist('genel');
-      }
-    } else {
+      // Önce mevcut sesi temizle (üst üste çalmayı engelle)
       if (this.state.currentAudio) {
-        this.fadeOut(this.state.currentAudio, () => {
-          this.state.currentAudio.pause();
-          this.state.currentAudio = null;
+        this.state.currentAudio.pause();
+        this.state.currentAudio.src = '';
+        this.state.currentAudio = null;
+      }
+      this.state.currentTrack = null;
+      this.state.playlist = [];
+      this.state.isTransitioning = false;
+      this.loadPlaylist('genel');
+    } else {
+      // Playlist yükleme isteğini de iptal et
+      this.state.playlist = [];
+      this.state.isTransitioning = false;
+      if (this.state.currentAudio) {
+        var audioToStop = this.state.currentAudio;
+        this.state.currentAudio = null;
+        this.state.currentTrack = null;
+        this.fadeOut(audioToStop, function() {
+          audioToStop.pause();
+          audioToStop.src = '';
         });
       }
     }
@@ -228,11 +246,16 @@ $(document).ready(function() {
   });
 
   Shiny.addCustomMessageHandler('setMusicPlaylist', function(data) {
+    // Müzik kapalıysa gelen playlist'i yoksay (gecikmeli yanıt koruması)
+    if (!MusicManager.state.enabled) {
+      console.log('[MUSIC] Müzik kapalı, gelen playlist yoksayıldı');
+      return;
+    }
     if (data.files && data.files.length > 0) {
       MusicManager.state.playlist = data.files;
       MusicManager.state.playlistType = data.type;
       console.log('[MUSIC] Playlist sunucudan alındı:', data.type, data.files.length, 'şarkı');
-      
+
       if (!MusicManager.state.currentAudio && MusicManager.state.enabled) {
         MusicManager.playNext();
       }

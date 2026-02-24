@@ -722,7 +722,12 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     output$tab_content_area <- renderUI({
       tab <- input$admin_tabs
       if (is.null(tab)) tab <- "overview"
-      
+
+      # İçerik oluşturulduktan sonra Bootstrap tooltip'lerini yeniden başlat
+      shinyjs::delay(100, {
+        shinyjs::runJs("$('.admin-scrollable-content [data-toggle=\"tooltip\"]').tooltip({container: 'body', trigger: 'hover'});")
+      })
+
       switch(tab,
         "overview" = overview_ui(),
         "users" = users_ui(),

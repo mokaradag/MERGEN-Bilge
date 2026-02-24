@@ -555,9 +555,14 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
     }, ignoreInit = TRUE)
 
     # Müzik ayarları observer'ları
+    # Not: Mod değişikliği sırasında checkbox programatik olarak güncellenebilir.
+    # Yarış durumunu engellemek için mevcut değerle karşılaştır.
     observeEvent(input$enable_background_music, {
-      settings$enable_background_music <- input$enable_background_music
-      session$sendCustomMessage("toggleMusic", input$enable_background_music)
+      new_val <- isTRUE(input$enable_background_music)
+      if (!identical(new_val, isolate(settings$enable_background_music))) {
+        settings$enable_background_music <- new_val
+        session$sendCustomMessage("toggleMusic", new_val)
+      }
     }, ignoreInit = TRUE)
 
     observeEvent(input$music_volume, {
