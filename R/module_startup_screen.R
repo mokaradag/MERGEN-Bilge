@@ -223,7 +223,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
         })();
       ")
       # Ayarlar sayfasındaki onay kutusunu da senkronize et
-      updateCheckboxInput(session, "settings_module-show_intro_animation", value = FALSE)
+      updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
     } else {
       # Three.js sahnesini başlat
       session$sendCustomMessage("initDeepSpace", list(
@@ -253,7 +253,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     skip <- isTRUE(input$skip_intro_changed$skip)
 
     # Ayarlar sayfasındaki onay kutusunu güncelle (skip = TRUE ise show = FALSE)
-    updateCheckboxInput(session, "settings_module-show_intro_animation", value = !skip)
+    updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = !skip)
 
     # settings_data reaktif değerini de güncelle
     if (!is.null(settings_data)) {
@@ -298,9 +298,9 @@ apply_experience_mode <- function(session, settings_data, mode) {
   settings_data$enable_background_music <- s$enable_background_music
 
   # UI onay kutularını güncelle
-  updateCheckboxInput(session, "settings_module-enable_tts_audio", value = s$enable_tts_audio)
-  updateCheckboxInput(session, "settings_module-enable_followups", value = s$enable_followups)
-  updateCheckboxInput(session, "settings_module-enable_background_music", value = s$enable_background_music)
+  updateCheckboxInput(session, "settings_yapilandirma_module-enable_tts_audio", value = s$enable_tts_audio)
+  updateCheckboxInput(session, "settings_yapilandirma_module-enable_followups", value = s$enable_followups)
+  updateCheckboxInput(session, "settings_yapilandirma_module-enable_background_music", value = s$enable_background_music)
 
   # Müzik durumunu güncelle
   session$sendCustomMessage("toggleMusic", s$enable_background_music)

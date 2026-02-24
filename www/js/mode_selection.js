@@ -158,7 +158,7 @@
     }
 
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('settings_module-experience_mode_changed', {
+      Shiny.setInputValue('settings_kisisel_module-experience_mode_changed', {
         mode: mode,
         source: 'settings',
         timestamp: Date.now()
@@ -215,8 +215,8 @@
       document.body.classList.add('deep-space-active');
     }
 
-    // Ayarlar sekmesine geçişte mod kartlarını başlat
-    $(document).on('click', '[data-value="settings"]', function() {
+    // Kişiselleştirme sekmesine geçişte mod kartlarını başlat
+    $(document).on('click', '[data-value="settings_kisisel"]', function() {
       setTimeout(initSettingsModeCards, 400);
     });
 

@@ -217,9 +217,9 @@
 
     // NS prefix'ini checkbox'lardan çıkar
     var nsPrefix = '';
-    var sampleCb = document.getElementById('settings_module-enable_rdata_tools');
+    var sampleCb = document.getElementById('settings_yapilandirma_module-enable_rdata_tools');
     if (sampleCb) {
-      nsPrefix = 'settings_module-';
+      nsPrefix = 'settings_yapilandirma_module-';
     }
 
     container.innerHTML = '';
@@ -273,8 +273,8 @@
     });
   });
 
-  // Sekme değişikliğinde yeniden başlat (Ayarlar sekmesine geçiş)
-  $(document).on('click', '[data-value="settings"]', function() {
+  // Sekme değişikliğinde yeniden başlat (Yapılandırma sekmesine geçiş)
+  $(document).on('click', '[data-value="settings_yapilandirma"]', function() {
     setTimeout(initToolButtons, 300);
   });
 })();

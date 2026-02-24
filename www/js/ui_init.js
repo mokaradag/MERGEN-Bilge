@@ -30,7 +30,7 @@ $(document).ready(function() {
 
   // Ayarlar açılır menüsündeki değişiklikleri izle
   const settingsObserver = new MutationObserver(function(mutations) {
-    const dropdown = document.querySelector('#settings_module-model_selection');
+    const dropdown = document.querySelector('#settings_yapilandirma_module-model_selection');
     if (dropdown && dropdown.selectize) {
       const currentValue = dropdown.selectize.getValue();
       if (currentValue) {
@@ -39,10 +39,10 @@ $(document).ready(function() {
     }
   });
   
-  // Ayarlar sekmesi görünür olduğunda izlemeye başla
-  $(document).on('click', '[data-value="settings"]', function() {
+  // Yapılandırma sekmesi görünür olduğunda izlemeye başla
+  $(document).on('click', '[data-value="settings_yapilandirma"]', function() {
     setTimeout(function() {
-      const dropdown = document.querySelector('#settings_module-model_selection');
+      const dropdown = document.querySelector('#settings_yapilandirma_module-model_selection');
       if (dropdown) {
         settingsObserver.observe(dropdown.parentNode, {
           childList: true,

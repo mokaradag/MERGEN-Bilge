@@ -54,7 +54,7 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
       for (tool in analysis_tools) {
         if (isTRUE(isolate(settings_data[[tool]]))) {
           isolate({ settings_data[[tool]] <- FALSE })
-          updateCheckboxInput(session, paste0("settings_module-", tool), value = FALSE)
+          updateCheckboxInput(session, paste0("settings_yapilandirma_module-", tool), value = FALSE)
           deactivated_tools <- c(deactivated_tools, tool_labels[[tool]])
         }
       }
