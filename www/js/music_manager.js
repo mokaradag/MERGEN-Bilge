@@ -1,269 +1,367 @@
 // www/js/music_manager.js
-// Arka plan müzik yönetim sistemi
+// Arka plan müzik yönetim sistemi - Tek ses kaynağı mimarisi
+// Akış: Ana Tema (bir kez) → Karakter Müziği (rastgele döngü)
 
 const MusicManager = {
+  // Tek global durum
   state: {
-    enabled: false,
-    volume: 0.3,
-    currentTrack: null,
-    currentAudio: null,
-    playlist: [],
-    playlistType: 'genel',
-    isTransitioning: false,
+    enabled: false,          // Müzik açık mı
+    character: 'mergen',     // Aktif karakter
+    phase: 'idle',           // 'idle' | 'theme' | 'character'
     normalVolume: 0.3,
-    reducedVolume: 0.08
+    isDucked: false
   },
+
+  // Tek ses elemanı - yarış durumunu önler
+  _audio: null,
+  _fadeInterval: null,
+  // Sunucudan gelen çalma listeleri
+  _themePlaylist: [],
+  _characterPlaylist: [],
+  // Bekleyen istek sayacı (gecikmeli yanıtları yönetir)
+  _pendingRequestId: 0,
 
   config: {
-    musicBasePath: 'music/',
-    fadeTime: 1500,
-    crossfadeTime: 2000
+    fadeTime: 1500
   },
 
+  // ─── BAŞLATMA ───
   init: function(settings) {
-	this.state.enabled = settings.enabled || false;
-	this.state.volume = settings.volume || 0.3;
-	this.state.normalVolume = this.state.volume;
-	this.state.reducedVolume = 0;
+    this.state.enabled = settings.enabled || false;
+    this.state.normalVolume = settings.volume || 0.3;
+    this.state.character = settings.character || 'mergen';
 
-	if (this.state.enabled) {
-      this.loadPlaylist('genel');
-    }
+    console.log('[MUSIC] Başlatıldı:', this.state.enabled ? 'AÇIK' : 'KAPALI',
+                '| Karakter:', this.state.character);
 
-    console.log('[MUSIC] Manager başlatıldı:', this.state.enabled ? 'AÇIK' : 'KAPALI');
-  },
-
-	loadPlaylist: function(type, character) {
-	  this.state.playlistType = type;
-	  Shiny.setInputValue('get_music_playlist', {
-		type: type,
-		character: character,
-		nonce: Math.random()
-	  });
-	  console.log('[MUSIC] Playlist sunucudan isteniyor:', type, character || '');
-	},
-
-  playNext: function() {
-    if (!this.state.enabled || this.state.playlist.length === 0) return;
-
-    const randomIndex = Math.floor(Math.random() * this.state.playlist.length);
-    const track = this.state.playlist[randomIndex];
-
-    this.playTrack(track);
-  },
-
-  playTrack: function(src) {
-    if (this.state.isTransitioning) return;
-
-    const oldAudio = this.state.currentAudio;
-    const newAudio = new Audio(src);
-    
-    newAudio.volume = 0;
-    newAudio.preload = 'auto';
-
-    newAudio.addEventListener('canplaythrough', () => {
-      this.state.isTransitioning = true;
-
-      if (oldAudio) {
-        this.fadeOut(oldAudio, () => {
-          oldAudio.pause();
-          oldAudio.src = '';
-        });
-      }
-
-      this.fadeIn(newAudio, this.state.normalVolume, () => {
-        this.state.isTransitioning = false;
-      });
-
-      newAudio.play().catch(e => console.warn('[MUSIC] Oynatma hatası:', e));
-
-      this.state.currentAudio = newAudio;
-      this.state.currentTrack = src;
-
-      newAudio.addEventListener('ended', () => this.playNext());
-      
-      console.log('[MUSIC] Oynatılıyor:', src.split('/').pop());
-    }, { once: true });
-
-    newAudio.load();
-  },
-
-  fadeIn: function(audio, targetVolume, callback) {
-    const step = targetVolume / 30;
-    const interval = this.config.fadeTime / 30;
-
-    const fade = setInterval(() => {
-      if (audio.volume < targetVolume - step) {
-        audio.volume = Math.min(audio.volume + step, targetVolume);
-      } else {
-        audio.volume = targetVolume;
-        clearInterval(fade);
-        if (callback) callback();
-      }
-    }, interval);
-  },
-
-  fadeOut: function(audio, callback) {
-    const step = audio.volume / 30;
-    const interval = this.config.fadeTime / 30;
-
-    const fade = setInterval(() => {
-      if (audio.volume > step) {
-        audio.volume = Math.max(audio.volume - step, 0);
-      } else {
-        audio.volume = 0;
-        clearInterval(fade);
-        if (callback) callback();
-      }
-    }, interval);
-  },
-
-  setVolume: function(volume) {
-    this.state.normalVolume = volume;
-    this.state.reducedVolume = 0;
-
-    if (this.state.currentAudio) {
-      this.fadeToVolume(this.state.currentAudio, volume, 500);
+    if (this.state.enabled) {
+      this._startFromBeginning();
     }
   },
 
-  fadeToVolume: function(audio, targetVolume, duration) {
-    const startVolume = audio.volume;
-    const diff = targetVolume - startVolume;
-    const steps = 20;
-    const stepTime = duration / steps;
-    const stepSize = diff / steps;
+  // ─── ANA KONTROL: BAŞLAT (Tema → Karakter akışı) ───
+  _startFromBeginning: function() {
+    // Önce her şeyi temizle
+    this._stopAudio();
+    this.state.phase = 'idle';
+    this._themePlaylist = [];
+    this._characterPlaylist = [];
 
-    let currentStep = 0;
-    const interval = setInterval(() => {
-      if (currentStep < steps) {
-        audio.volume = Math.max(0, Math.min(1, startVolume + (stepSize * currentStep)));
-        currentStep++;
-      } else {
-        audio.volume = targetVolume;
-        clearInterval(interval);
-      }
-    }, stepTime);
+    // Sunucudan tema playlist'ini iste
+    this._requestPlaylist('tema');
   },
 
-  duck: function() {
-    if (this.state.currentAudio) {
-      this.fadeToVolume(this.state.currentAudio, this.state.reducedVolume, 400);
-    }
+  // ─── SUNUCUDAN PLAYLIST İSTE ───
+  _requestPlaylist: function(type) {
+    this._pendingRequestId++;
+    var requestId = this._pendingRequestId;
+
+    Shiny.setInputValue('get_music_playlist', {
+      type: type,
+      character: this.state.character,
+      requestId: requestId,
+      nonce: Math.random()
+    });
+    console.log('[MUSIC] Playlist isteniyor:', type, '| Karakter:', this.state.character, '| ID:', requestId);
   },
 
-	unduck: function() {
-	  if (this.state.currentAudio) {
-		this.fadeToVolume(this.state.currentAudio, this.state.normalVolume, 600);
-	  }
-	},
-
-	reset: function() {
-	  if (this.state.currentAudio) {
-		this.state.currentAudio.pause();
-		this.state.currentAudio.src = '';
-		this.state.currentAudio = null;
-	  }
-	  this.state.currentTrack = null;
-	  this.state.playlist = [];
-	},
-
-  toggle: function(enabled) {
-    // Aynı duruma tekrar geçişi engelle (yarış durumu koruması)
-    if (this.state.enabled === enabled) {
-      console.log('[MUSIC] toggle: Zaten', enabled ? 'AÇIK' : 'KAPALI', '- atlanıyor');
+  // ─── SUNUCUDAN GELEN PLAYLIST'İ İŞLE ───
+  receivePlaylist: function(data) {
+    // Müzik kapalıysa yoksay
+    if (!this.state.enabled) {
+      console.log('[MUSIC] Müzik kapalı, gelen playlist yoksayıldı');
       return;
     }
+
+    // Eski/gecikmeli yanıtları yoksay
+    if (data.requestId && data.requestId < this._pendingRequestId) {
+      console.log('[MUSIC] Eski playlist yanıtı yoksayıldı (ID:', data.requestId, '< güncel:', this._pendingRequestId, ')');
+      return;
+    }
+
+    var files = data.files || [];
+    var type = data.type || 'tema';
+
+    console.log('[MUSIC] Playlist alındı:', type, '|', files.length, 'parça');
+
+    if (type === 'tema') {
+      this._themePlaylist = files;
+      // Tema varsa çalmaya başla, yoksa doğrudan karakter müziğine geç
+      if (files.length > 0 && this.state.phase === 'idle') {
+        this.state.phase = 'theme';
+        this._playRandomFrom(this._themePlaylist);
+      } else {
+        // Tema yok, karakter playlist'ini iste
+        this._requestPlaylist('karakter');
+      }
+    } else if (type === 'karakter') {
+      this._characterPlaylist = files;
+      // Eğer tema bitmiş veya hiç yoksa karakter müziğini başlat
+      if (this.state.phase === 'idle' || this.state.phase === 'waiting_character') {
+        this.state.phase = 'character';
+        this._playRandomFrom(this._characterPlaylist);
+      }
+    }
+  },
+
+  // ─── RASTGELE PARÇA ÇAL ───
+  _playRandomFrom: function(playlist) {
+    if (!this.state.enabled || !playlist || playlist.length === 0) {
+      console.warn('[MUSIC] Çalınacak parça yok');
+      return;
+    }
+
+    var index = Math.floor(Math.random() * playlist.length);
+    var src = playlist[index];
+    this._playTrack(src);
+  },
+
+  // ─── TEK PARÇA ÇAL (Tek Audio nesnesi) ───
+  _playTrack: function(src) {
+    // Mevcut sesi tamamen durdur
+    this._stopAudio();
+
+    if (!this.state.enabled) return;
+
+    var self = this;
+    var audio = new Audio(src);
+    audio.volume = 0;
+    audio.preload = 'auto';
+    this._audio = audio;
+
+    audio.addEventListener('canplaythrough', function() {
+      // Bu audio hâlâ aktif mi kontrol et (yarış koruması)
+      if (self._audio !== audio) {
+        audio.pause();
+        audio.src = '';
+        return;
+      }
+
+      var targetVol = self.state.isDucked ? 0 : self.state.normalVolume;
+      self._fadeToVolume(audio, targetVol, self.config.fadeTime);
+      audio.play().catch(function(e) {
+        console.warn('[MUSIC] Oynatma hatası:', e);
+      });
+
+      console.log('[MUSIC] Oynatılıyor [' + self.state.phase + ']:', src.split('/').pop());
+    }, { once: true });
+
+    audio.addEventListener('ended', function() {
+      // Bu audio hâlâ aktif mi kontrol et
+      if (self._audio !== audio) return;
+
+      self._handleTrackEnded();
+    }, { once: true });
+
+    audio.addEventListener('error', function(e) {
+      console.warn('[MUSIC] Ses hatası:', e);
+      if (self._audio !== audio) return;
+      self._handleTrackEnded();
+    }, { once: true });
+
+    audio.load();
+  },
+
+  // ─── PARÇA BİTTİĞİNDE ───
+  _handleTrackEnded: function() {
+    if (!this.state.enabled) return;
+
+    if (this.state.phase === 'theme') {
+      // Ana tema bitti → karakter müziğine geç
+      console.log('[MUSIC] Ana tema bitti, karakter müziğine geçiliyor');
+      this.state.phase = 'waiting_character';
+
+      if (this._characterPlaylist.length > 0) {
+        // Zaten yüklüyse direkt çal
+        this.state.phase = 'character';
+        this._playRandomFrom(this._characterPlaylist);
+      } else {
+        // Sunucudan iste
+        this._requestPlaylist('karakter');
+      }
+    } else if (this.state.phase === 'character') {
+      // Karakter müziği bitti → bir sonraki rastgele parçayı çal
+      this._playRandomFrom(this._characterPlaylist);
+    }
+  },
+
+  // ─── SESİ DURDUR ───
+  _stopAudio: function() {
+    // Fade interval'ı temizle
+    if (this._fadeInterval) {
+      clearInterval(this._fadeInterval);
+      this._fadeInterval = null;
+    }
+
+    if (this._audio) {
+      try {
+        this._audio.pause();
+        this._audio.src = '';
+      } catch(e) { /* yoksay */ }
+      this._audio = null;
+    }
+  },
+
+  // ─── SES SEVİYESİ GEÇİŞİ ───
+  _fadeToVolume: function(audio, targetVolume, duration) {
+    if (this._fadeInterval) {
+      clearInterval(this._fadeInterval);
+      this._fadeInterval = null;
+    }
+
+    if (!audio) return;
+
+    var startVolume = audio.volume;
+    var diff = targetVolume - startVolume;
+    if (Math.abs(diff) < 0.01) {
+      audio.volume = targetVolume;
+      return;
+    }
+
+    var steps = 20;
+    var stepTime = (duration || 500) / steps;
+    var stepSize = diff / steps;
+    var currentStep = 0;
+
+    this._fadeInterval = setInterval(function() {
+      currentStep++;
+      if (currentStep >= steps) {
+        try { audio.volume = Math.max(0, Math.min(1, targetVolume)); } catch(e) {}
+        clearInterval(this._fadeInterval);
+        this._fadeInterval = null;
+        return;
+      }
+      try {
+        audio.volume = Math.max(0, Math.min(1, startVolume + (stepSize * currentStep)));
+      } catch(e) {
+        clearInterval(this._fadeInterval);
+        this._fadeInterval = null;
+      }
+    }.bind(this), stepTime);
+  },
+
+  // ─── AÇIK API ───
+
+  // Müziği aç/kapat (sadece "Ayarları Kaydet" butonundan çağrılmalı)
+  toggle: function(enabled, character) {
+    console.log('[MUSIC] toggle:', enabled ? 'AÇIK' : 'KAPALI', '| Karakter:', character || this.state.character);
+
+    if (character) {
+      this.state.character = character;
+    }
+
+    // Aynı duruma tekrar geçişi engelle
+    if (this.state.enabled === enabled) {
+      // Karakter değiştiyse playlist'i yenile
+      if (enabled && character && this.state.phase === 'character') {
+        this._characterPlaylist = [];
+        this._requestPlaylist('karakter');
+      }
+      return;
+    }
+
     this.state.enabled = enabled;
 
     if (enabled) {
-      // Önce mevcut sesi temizle (üst üste çalmayı engelle)
-      if (this.state.currentAudio) {
-        this.state.currentAudio.pause();
-        this.state.currentAudio.src = '';
-        this.state.currentAudio = null;
-      }
-      this.state.currentTrack = null;
-      this.state.playlist = [];
-      this.state.isTransitioning = false;
-      this.loadPlaylist('genel');
+      this._startFromBeginning();
     } else {
-      // Playlist yükleme isteğini de iptal et
-      this.state.playlist = [];
-      this.state.isTransitioning = false;
-      if (this.state.currentAudio) {
-        var audioToStop = this.state.currentAudio;
-        this.state.currentAudio = null;
-        this.state.currentTrack = null;
-        this.fadeOut(audioToStop, function() {
-          audioToStop.pause();
-          audioToStop.src = '';
-        });
+      // Fade out ile durdur
+      var audioToStop = this._audio;
+      this._audio = null;
+      this.state.phase = 'idle';
+      this._themePlaylist = [];
+      this._characterPlaylist = [];
+      this._pendingRequestId++;
+
+      if (audioToStop) {
+        this._fadeToVolume(audioToStop, 0, 800);
+        setTimeout(function() {
+          try {
+            audioToStop.pause();
+            audioToStop.src = '';
+          } catch(e) {}
+        }, 900);
       }
     }
   },
 
-	switchContext: function(type, character) {
-	  if (!this.state.enabled) return;
+  // Karakter değişikliği (sadece "Ayarları Kaydet" sonrası çağrılır)
+  setCharacter: function(character) {
+    if (!character || character === this.state.character) return;
+    console.log('[MUSIC] Karakter değişti:', this.state.character, '→', character);
+    this.state.character = character;
 
-	  const newType = type === 'karakter' ? 'karakter' : 'genel';
+    if (!this.state.enabled) return;
 
-	  if (this.state.playlistType !== newType || (newType === 'karakter' && character) || !this.state.currentAudio) {
-		console.log('[MUSIC] Bağlam değişimi:', newType, character || '');
+    // Karakter müziği çalıyorsa yeni karakter playlist'ine geç
+    if (this.state.phase === 'character') {
+      this._characterPlaylist = [];
+      this._stopAudio();
+      this._requestPlaylist('karakter');
+    }
+    // Tema çalıyorsa tema bittikten sonra yeni karakter müziği gelecek
+  },
 
-		var audioToFade = this.state.currentAudio;
-		this.state.currentAudio = null;
-		this.state.currentTrack = null;
-		this.state.playlist = [];
+  // Ses seviyesini ayarla
+  setVolume: function(volume) {
+    this.state.normalVolume = volume;
+    if (this._audio && !this.state.isDucked) {
+      this._fadeToVolume(this._audio, volume, 500);
+    }
+  },
 
-		if (audioToFade) {
-		  this.fadeOut(audioToFade, function() {
-			audioToFade.pause();
-			audioToFade.src = '';
-		  });
-		}
+  // TTS/video sırasında sesi kıs
+  duck: function() {
+    if (this.state.isDucked) return;
+    this.state.isDucked = true;
+    if (this._audio) {
+      this._fadeToVolume(this._audio, 0, 400);
+    }
+  },
 
-		this.loadPlaylist(newType, character);
-	  }
-	}
+  // TTS/video bitince sesi geri getir
+  unduck: function() {
+    if (!this.state.isDucked) return;
+    this.state.isDucked = false;
+    if (this._audio) {
+      this._fadeToVolume(this._audio, this.state.normalVolume, 600);
+    }
+  }
 };
 
+// Global erişim
+window.MusicManager = MusicManager;
+
+// ─── SHINY MESAJ İŞLEYİCİLERİ ───
 $(document).ready(function() {
   Shiny.addCustomMessageHandler('initMusicManager', function(settings) {
     MusicManager.init(settings);
   });
 
-  Shiny.addCustomMessageHandler('toggleMusic', function(enabled) {
-    MusicManager.toggle(enabled);
+  // Müziği aç/kapat (sadece ayar kaydedildiğinde çağrılır)
+  Shiny.addCustomMessageHandler('toggleMusic', function(data) {
+    if (typeof data === 'boolean') {
+      MusicManager.toggle(data);
+    } else {
+      MusicManager.toggle(data.enabled, data.character);
+    }
   });
 
   Shiny.addCustomMessageHandler('setMusicVolume', function(volume) {
     MusicManager.setVolume(volume);
   });
 
-  Shiny.addCustomMessageHandler('switchMusicContext', function(data) {
-    MusicManager.switchContext(data.type, data.character);
+  // Karakter değişikliği (ayar kaydedildiğinde)
+  Shiny.addCustomMessageHandler('setMusicCharacter', function(data) {
+    MusicManager.setCharacter(data.character);
   });
 
+  // Sunucudan playlist yanıtı
   Shiny.addCustomMessageHandler('setMusicPlaylist', function(data) {
-    // Müzik kapalıysa gelen playlist'i yoksay (gecikmeli yanıt koruması)
-    if (!MusicManager.state.enabled) {
-      console.log('[MUSIC] Müzik kapalı, gelen playlist yoksayıldı');
-      return;
-    }
-    if (data.files && data.files.length > 0) {
-      MusicManager.state.playlist = data.files;
-      MusicManager.state.playlistType = data.type;
-      console.log('[MUSIC] Playlist sunucudan alındı:', data.type, data.files.length, 'şarkı');
-
-      if (!MusicManager.state.currentAudio && MusicManager.state.enabled) {
-        MusicManager.playNext();
-      }
-    } else {
-      console.warn('[MUSIC] Sunucudan boş playlist döndü.');
-    }
+    MusicManager.receivePlaylist(data);
   });
 
+  // Diğer ses kaynakları (TTS, video) çalınca müziği kıs
   document.addEventListener('play', function(e) {
     if (e.target && e.target.tagName === 'AUDIO' && !e.target.src.includes('/music/')) {
       MusicManager.duck();
@@ -272,23 +370,7 @@ $(document).ready(function() {
 
   document.addEventListener('pause', function(e) {
     if (e.target && e.target.tagName === 'AUDIO' && !e.target.src.includes('/music/')) {
-      setTimeout(() => MusicManager.unduck(), 300);
+      setTimeout(function() { MusicManager.unduck(); }, 300);
     }
   }, true);
-
-  $(document).on('shown.bs.tab', function() {
-    const activeTab = $('.sidebar-menu li.active a').attr('data-value');
-    
-    if (activeTab === 'chat' || activeTab === 'tab-chat') {
-      const hasMessages = $('#chat_content_container .message-bubble').length > 0;
-      if (hasMessages) {
-        const character = $('[data-character].active').attr('data-character') || 'mergen';
-        MusicManager.switchContext('karakter', character);
-      } else {
-        MusicManager.switchContext('genel');
-      }
-    } else {
-      MusicManager.switchContext('genel');
-    }
-  });
 });

@@ -185,15 +185,20 @@ $(document).ready(function() {
         }
       },
       
-      setIdle: function() { 
-        if(visualizer) visualizer.setMode(MODES.IDLE); 
-        
+      setIdle: function() {
+        if(visualizer) visualizer.setMode(MODES.IDLE);
+
         var $container = $('.tts-visualizer-container');
         $container.removeClass('talking-mode');
-        
+
         // RESET DYNAMIC COLORS (remove inline styles to fall back to CSS defaults)
         $container.css({'border-color': '', 'box-shadow': ''});
         $container.find('.tts-tooltip').css({'border-color': '', 'box-shadow': ''});
+      },
+
+      // Duraklatma durumu (TTS sesi geçici olarak durduğunda)
+      setPaused: function() {
+        if(visualizer) visualizer.setMode(MODES.IDLE);
       },
 
       stop: function() {

@@ -87,6 +87,14 @@ const CinematicVideoManager = {
 		});
 
         console.log('[VIDEO] CinematicVideoManager initialized.');
+
+        // Bekleyen karakter yüklemesi varsa şimdi işle
+        if (this._pendingLoad) {
+            var pending = this._pendingLoad;
+            this._pendingLoad = null;
+            console.log('[VIDEO] Bekleyen karakter yüklemesi işleniyor:', pending.data.character);
+            this.loadCharacter({ data: pending.data, trigger: pending.trigger });
+        }
     },
 
     isSettingsTabActive: function() {
@@ -136,27 +144,36 @@ const CinematicVideoManager = {
 	loadCharacter: function(message) {
 		const data = message.data || message;
 		const trigger = message.trigger || 'auto';
-		
+
 		console.log('[VIDEO] Karakter yükleniyor:', data.character, 'trigger:', trigger);
-		
+
+		// DOM elemanları henüz hazır değilse veriyi sakla ve bekle
+		if (!this.elements.video || !this.elements.image) {
+			console.warn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
+			this.state.data = data;
+			this.state.currentChar = data.character;
+			this._pendingLoad = { data: data, trigger: trigger };
+			return;
+		}
+
 		this.stopEverything();
-		
+
 		this.state.data = data;
 		this.state.currentChar = data.character;
-		
+
 		if (data.image) {
 			this.elements.image.src = data.image;
 			this.elements.video.poster = data.image;
 			console.log('[VIDEO] Resim ve poster yüklendi:', data.image);
 		}
-		
+
 		const playIntro = () => {
 			if (this.isSettingsTabActive()) {
 				console.log('[VIDEO] Intro oynatılıyor, trigger:', trigger);
 				this.playSequence('intro');
 			}
 		};
-		
+
 		if (trigger === 'click') {
 			playIntro();
 		} else {

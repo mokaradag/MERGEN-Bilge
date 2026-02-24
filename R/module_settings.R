@@ -207,6 +207,22 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$analysis_deep_thinking <- yapilandirma$temp_analysis_deep_thinking()
     settings$analysis_detail_level <- yapilandirma$temp_analysis_detail_level()
 
+    # Müzik durumunu checkbox'tan oku ve uygula (sadece kaydet anında)
+    music_checkbox_val <- isTRUE(session$input[["settings_yapilandirma_module-enable_background_music"]])
+    if (!identical(music_checkbox_val, isolate(settings$enable_background_music))) {
+      settings$enable_background_music <- music_checkbox_val
+      session$sendCustomMessage("toggleMusic", list(
+        enabled = music_checkbox_val,
+        character = settings$selected_character %||% "mergen"
+      ))
+      cat(sprintf("[MUSIC] Müzik durumu kaydedildi: %s\n", music_checkbox_val))
+    }
+
+    # Karakter değişikliği müzik yöneticisine bildir
+    session$sendCustomMessage("setMusicCharacter", list(
+      character = settings$selected_character %||% "mergen"
+    ))
+
     cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s, Görsel Boyutu: %s, HD: %s, Özet Detay: %s, Özet Odak: %s, Analiz Derin: %s, Analiz Detay: %s\n",
                 settings$model_selection, settings$selected_character,
                 settings$image_size, settings$image_quality_hd,
@@ -303,6 +319,9 @@ settingsInit <- function(session, parent_session = NULL) {
     yapilandirma$temp_summary_focus_mode("general")
     yapilandirma$temp_analysis_deep_thinking(FALSE)
     yapilandirma$temp_analysis_detail_level("standart")
+
+    # Müziği durdur (varsayılan: odak modu, müzik kapalı)
+    session$sendCustomMessage("toggleMusic", list(enabled = FALSE))
 
     # Ana Söyleşi'deki kontrolleri sıfırla
     session$sendCustomMessage("syncImageSettingsToChat", list(

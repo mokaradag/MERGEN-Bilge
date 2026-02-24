@@ -302,8 +302,11 @@ apply_experience_mode <- function(session, settings_data, mode) {
   updateCheckboxInput(session, "settings_yapilandirma_module-enable_followups", value = s$enable_followups)
   updateCheckboxInput(session, "settings_yapilandirma_module-enable_background_music", value = s$enable_background_music)
 
-  # Müzik durumunu güncelle
-  session$sendCustomMessage("toggleMusic", s$enable_background_music)
+  # Müzik durumunu güncelle (karakter bilgisiyle birlikte)
+  session$sendCustomMessage("toggleMusic", list(
+    enabled = s$enable_background_music,
+    character = shiny::isolate(settings_data$selected_character) %||% "mergen"
+  ))
 
   # Mod tercihini localStorage'a kaydet
   shinyjs::runjs(sprintf(

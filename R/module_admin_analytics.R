@@ -725,7 +725,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
 
       # İçerik oluşturulduktan sonra Bootstrap tooltip'lerini yeniden başlat
       shinyjs::delay(100, {
-        shinyjs::runJs("$('.admin-scrollable-content [data-toggle=\"tooltip\"]').tooltip({container: 'body', trigger: 'hover'});")
+        shinyjs::runjs("$('.admin-scrollable-content [data-toggle=\"tooltip\"]').tooltip({container: 'body', trigger: 'hover', delay: {show: 100, hide: 300}});")
       })
 
       switch(tab,

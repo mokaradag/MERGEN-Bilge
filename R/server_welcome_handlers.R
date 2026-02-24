@@ -65,8 +65,7 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 	# Animasyonları başlat (her render'da çağrılmalı)
     shinyjs::delay(200, {
       session$sendCustomMessage("initModernWelcome", list())
-      session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-      
+
       # Kişiselleştirilmiş karşılama animasyonunu başlat
       shinyjs::delay(400, {
         session$sendCustomMessage("initPersonalGreeting", list(
@@ -113,8 +112,7 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
     # Yeni welcome ekranını render et
     render_welcome_screen(values$saved_chats, replace_existing = TRUE)
  
-    # Müzik bağlamını genel moda döndür
-    session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+    # Müzik bağlam geçişi kaldırıldı - yeni mimaride müzik kesintisiz çalar
   }
  
   # Fonksiyonları döndür

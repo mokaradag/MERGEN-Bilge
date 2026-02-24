@@ -38,29 +38,9 @@ settingsObserversInit <- function(input, session, values, settings_data) {
     )
   }, ignoreNULL = FALSE)
   
-  # Karakter değiştiğinde müzik bağlamını güncelle
-  observeEvent(settings_data$selected_character, {
-    if (isTRUE(settings_data$enable_background_music)) {
-      session$sendCustomMessage("switchMusicContext", list(
-        type = "karakter",
-        character = settings_data$selected_character
-      ))
-    }
-  }, ignoreInit = TRUE)
-  
-  # Ana sohbette mesaj eklendiğinde müzik modunu güncelle
-  observeEvent(length(values$messages), {
-    if (isTRUE(settings_data$enable_background_music)) {
-      if (length(values$messages) > 0) {
-        session$sendCustomMessage("switchMusicContext", list(
-          type = "karakter",
-          character = settings_data$selected_character %||% "mergen"
-        ))
-      } else {
-        session$sendCustomMessage("switchMusicContext", list(type = "genel"))
-      }
-    }
-  }, ignoreInit = TRUE)
+  # Müzik bağlam geçişleri kaldırıldı.
+  # Yeni mimari: Ana Tema (bir kez) → Karakter Müziği (döngü).
+  # Karakter değişikliği yalnızca "Ayarları Kaydet" ile uygulanır (module_settings.R).
   
   invisible(NULL)
 }
