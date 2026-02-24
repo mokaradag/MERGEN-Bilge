@@ -191,10 +191,12 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$selected_character <- kisisel$temp_selected_character()
 
     # Deneyim modu değişikliği varsa uygula (sadece kaydet butonunda)
+    mode_changed <- FALSE
     new_mode <- kisisel$temp_experience_mode()
     if (!is.null(new_mode) && new_mode != isolate(settings$experience_mode)) {
       settings$experience_mode <- new_mode
       apply_experience_mode(session, settings, new_mode)
+      mode_changed <- TRUE
       cat(sprintf("[SETTINGS] Deneyim modu uygulandı: %s\n", new_mode))
     }
 
@@ -208,14 +210,18 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$analysis_detail_level <- yapilandirma$temp_analysis_detail_level()
 
     # Müzik durumunu checkbox'tan oku ve uygula (sadece kaydet anında)
-    music_checkbox_val <- isTRUE(session$input[["settings_yapilandirma_module-enable_background_music"]])
-    if (!identical(music_checkbox_val, isolate(settings$enable_background_music))) {
-      settings$enable_background_music <- music_checkbox_val
-      session$sendCustomMessage("toggleMusic", list(
-        enabled = music_checkbox_val,
-        character = settings$selected_character %||% "mergen"
-      ))
-      cat(sprintf("[MUSIC] Müzik durumu kaydedildi: %s\n", music_checkbox_val))
+    # Mod değişikliği olduysa müzik zaten apply_experience_mode tarafından ayarlandı,
+    # checkbox değerini tekrar okumayı atla (yarış durumu koruması)
+    if (!mode_changed) {
+      music_checkbox_val <- isTRUE(session$input[["settings_yapilandirma_module-enable_background_music"]])
+      if (!identical(music_checkbox_val, isolate(settings$enable_background_music))) {
+        settings$enable_background_music <- music_checkbox_val
+        session$sendCustomMessage("toggleMusic", list(
+          enabled = music_checkbox_val,
+          character = settings$selected_character %||% "mergen"
+        ))
+        cat(sprintf("[MUSIC] Müzik durumu kaydedildi: %s\n", music_checkbox_val))
+      }
     }
 
     # Karakter değişikliği müzik yöneticisine bildir
