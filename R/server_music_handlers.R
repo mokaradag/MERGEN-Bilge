@@ -49,7 +49,8 @@ musicHandlersInit <- function(input, session, settings_data) {
 
         session$sendCustomMessage("setMusicPlaylist", list(
           files = I(file_urls),
-          type = playlist_type
+          type = playlist_type,
+          requestId = msg$requestId %||% NULL
         ))
       }
     }

@@ -10,6 +10,9 @@ const MusicManager = {
     playlist: [],
     playlistType: 'genel',
     isTransitioning: false,
+    playRequestId: 0,
+    playlistRequestId: 0,
+    currentCharacter: null,
     normalVolume: 0.3,
     reducedVolume: 0.08
   },
@@ -34,13 +37,17 @@ const MusicManager = {
   },
 
 	loadPlaylist: function(type, character) {
+	  this.state.playlistRequestId += 1;
+	  const requestId = this.state.playlistRequestId;
+	  this.state.currentCharacter = character || null;
 	  this.state.playlistType = type;
 	  Shiny.setInputValue('get_music_playlist', {
 		type: type,
 		character: character,
+		requestId: requestId,
 		nonce: Math.random()
 	  });
-	  console.log('[MUSIC] Playlist sunucudan isteniyor:', type, character || '');
+	  console.log('[MUSIC] Playlist sunucudan isteniyor:', type, character || '', 'requestId=', requestId);
 	},
 
   playNext: function() {
@@ -55,6 +62,9 @@ const MusicManager = {
   playTrack: function(src) {
     if (this.state.isTransitioning) return;
 
+    this.state.playRequestId += 1;
+    const requestId = this.state.playRequestId;
+
     const oldAudio = this.state.currentAudio;
     const newAudio = new Audio(src);
     
@@ -62,6 +72,12 @@ const MusicManager = {
     newAudio.preload = 'auto';
 
     newAudio.addEventListener('canplaythrough', () => {
+      if (!this.state.enabled || requestId !== this.state.playRequestId) {
+        newAudio.pause();
+        newAudio.src = '';
+        return;
+      }
+
       this.state.isTransitioning = true;
 
       if (oldAudio) {
@@ -159,6 +175,9 @@ const MusicManager = {
 	},
 
 	reset: function() {
+	  this.state.playRequestId += 1;
+	  this.state.playlistRequestId += 1;
+	  this.state.isTransitioning = false;
 	  if (this.state.currentAudio) {
 		this.state.currentAudio.pause();
 		this.state.currentAudio.src = '';
@@ -166,6 +185,7 @@ const MusicManager = {
 	  }
 	  this.state.currentTrack = null;
 	  this.state.playlist = [];
+	  this.state.currentCharacter = null;
 	},
 
   toggle: function(enabled) {
@@ -177,29 +197,10 @@ const MusicManager = {
     this.state.enabled = enabled;
 
     if (enabled) {
-      // Önce mevcut sesi temizle (üst üste çalmayı engelle)
-      if (this.state.currentAudio) {
-        this.state.currentAudio.pause();
-        this.state.currentAudio.src = '';
-        this.state.currentAudio = null;
-      }
-      this.state.currentTrack = null;
-      this.state.playlist = [];
-      this.state.isTransitioning = false;
+      this.reset();
       this.loadPlaylist('genel');
     } else {
-      // Playlist yükleme isteğini de iptal et
-      this.state.playlist = [];
-      this.state.isTransitioning = false;
-      if (this.state.currentAudio) {
-        var audioToStop = this.state.currentAudio;
-        this.state.currentAudio = null;
-        this.state.currentTrack = null;
-        this.fadeOut(audioToStop, function() {
-          audioToStop.pause();
-          audioToStop.src = '';
-        });
-      }
+      this.reset();
     }
   },
 
@@ -208,21 +209,12 @@ const MusicManager = {
 
 	  const newType = type === 'karakter' ? 'karakter' : 'genel';
 
-	  if (this.state.playlistType !== newType || (newType === 'karakter' && character) || !this.state.currentAudio) {
+	  const normalizedCharacter = character || null;
+	  const isCharacterChanged = newType === 'karakter' && this.state.currentCharacter !== normalizedCharacter;
+	  if (this.state.playlistType !== newType || isCharacterChanged || !this.state.currentAudio) {
 		console.log('[MUSIC] Bağlam değişimi:', newType, character || '');
 
-		var audioToFade = this.state.currentAudio;
-		this.state.currentAudio = null;
-		this.state.currentTrack = null;
-		this.state.playlist = [];
-
-		if (audioToFade) {
-		  this.fadeOut(audioToFade, function() {
-			audioToFade.pause();
-			audioToFade.src = '';
-		  });
-		}
-
+		this.reset();
 		this.loadPlaylist(newType, character);
 	  }
 	}
@@ -251,6 +243,11 @@ $(document).ready(function() {
       console.log('[MUSIC] Müzik kapalı, gelen playlist yoksayıldı');
       return;
     }
+    if (data.requestId && data.requestId !== MusicManager.state.playlistRequestId) {
+      console.log('[MUSIC] Eski playlist yanıtı yoksayıldı. requestId=', data.requestId);
+      return;
+    }
+
     if (data.files && data.files.length > 0) {
       MusicManager.state.playlist = data.files;
       MusicManager.state.playlistType = data.type;
