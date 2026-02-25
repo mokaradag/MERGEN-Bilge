@@ -1,12 +1,23 @@
-// www/js/tts_visualizer.js
+/* www/js/tts_visualizer.js */
+/**
+ * Dosya Yolu: www/js/tts_visualizer.js
+ * Açıklama: Metinden Sese (TTS) işlemi sırasında aktif olan dinamik ses dalgası görselleştiricisi.
+ * Canvas API kullanarak "Sonic Pulse" animasyonları oluşturur, karakterin
+ * tema rengine göre dinamik olarak renklenir ve konuşma moduna geçer.
+ */
 
 $(document).ready(function() {
   
-  // --- Constants ---
+  // --- Sabitler ---
+  // Görselleştiricinin çalışma modları: Bekleme (Sakin) ve Konuşma (Aktif)
   const MODES = { IDLE: 'IDLE', TALKING: 'TALKING' };
 
-  // --- Visualizer Class ---
+  // --- Görselleştirici Sınıfı ---
   class SonicPulseVisualizer {
+    /**
+     * @param {string} canvasId Çizim yapılacak canvas elemanının ID'si
+     * @param {string} overlaySelector İsim katmanı seçicisi
+     */
     constructor(canvasId, overlaySelector) {
       this.canvas = document.getElementById(canvasId);
       this.$overlay = $(overlaySelector);
@@ -17,16 +28,20 @@ $(document).ready(function() {
       this.width = 0;
       this.height = 0;
       this.mode = MODES.IDLE;
-      this.baseColor = '#7C4DFF'; 
+      this.baseColor = '#7C4DFF'; // Varsayılan tema rengi
       this.time = 0;
-      this.particles = [];
-      this.strands = this.generateStrands(12); 
+      this.particles = []; // Konuşma modunda çıkan partiküller
+      this.strands = this.generateStrands(12); // Dalga katmanları
       
       this.resize();
       window.addEventListener('resize', () => this.resize());
       this.animate();
     }
 
+    /**
+     * Rastgele parametrelerle dalga katmanları (strands) oluşturur.
+     * @param {number} count Oluşturulacak katman sayısı
+     */
     generateStrands(count) {
       const strands = [];
       for (let i = 0; i < count; i++) {
@@ -41,6 +56,9 @@ $(document).ready(function() {
       return strands;
     }
 
+    /**
+     * Canvas boyutlarını kapsayıcı elemana göre ayarlar ve yüksek DPI desteği sağlar.
+     */
     resize() {
       if (!this.canvas || !this.ctx) return;
       const parent = this.canvas.parentElement;
@@ -57,9 +75,15 @@ $(document).ready(function() {
       this.ctx.scale(dpr, dpr);
     }
 
+    // Çalışma modunu değiştir (IDLE / TALKING)
     setMode(mode) { this.mode = mode; }
+    
+    // Tema rengini ayarlar (Hex formatında)
     setColor(hex) { this.baseColor = hex; }
 
+    /**
+     * Hex renk kodunu RGB nesnesine dönüştürür.
+     */
     hexToRgb(hex) {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
       return result ? {
@@ -69,9 +93,13 @@ $(document).ready(function() {
       } : { r: 124, g: 77, b: 255 };
     }
 
+    /**
+     * Ana animasyon döngüsü (requestAnimationFrame).
+     */
     animate() {
       if (!this.ctx) return;
       const render = () => {
+        // Eğer eleman gizliyse ve bekleme modundaysa kaynak tüketmemek için çizimi atla
         if (!this.canvas.offsetParent && this.mode === MODES.IDLE) {
            requestAnimationFrame(render);
            return;
@@ -82,6 +110,7 @@ $(document).ready(function() {
         const globalAmp = isTalking ? 0.8 : 0.2;
         this.time += 0.02 * speed;
 
+        // Canvas'ı temizle
         this.ctx.clearRect(0, 0, this.width, this.height);
         this.ctx.globalCompositeOperation = 'lighter';
         this.ctx.lineCap = 'round';
@@ -90,12 +119,14 @@ $(document).ready(function() {
         const centerY = this.height / 2;
         const rgb = this.hexToRgb(this.baseColor);
         
+        // Dalga katmanlarını çiz
         this.strands.forEach((strand) => {
           this.ctx.beginPath();
           const colorStr = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${strand.alpha})`;
           let isFirst = true;
           for (let x = 0; x <= this.width; x += 4) {
             const nx = (x / this.width) * 2 - 1; 
+            // "Windowing" fonksiyonu: Kenarlarda dalgayı sıfırlar (Gassian benzeri efekt)
             const window = Math.pow(1 - Math.pow(nx, 2), 2); 
             const wave = Math.sin((x * 0.02 * strand.frequency) + (this.time * strand.speed) + strand.phaseOffset);
             const jitter = isTalking ? Math.sin(x * 0.1 + this.time * 5) * 0.1 : 0;
@@ -110,6 +141,7 @@ $(document).ready(function() {
           this.ctx.shadowBlur = 0;
         });
 
+        // Konuşma modunda rastgele partiküller oluştur
         if (isTalking && Math.random() < 0.2) {
            this.particles.push({
              x: this.width / 2 + (Math.random() - 0.5) * (this.width * 0.5),
@@ -121,6 +153,7 @@ $(document).ready(function() {
            });
         }
 
+        // Partikülleri güncelle ve çiz
         this.ctx.fillStyle = this.baseColor;
         for (let i = this.particles.length - 1; i >= 0; i--) {
           let p = this.particles[i];
@@ -140,13 +173,14 @@ $(document).ready(function() {
     }
   }
 
-  // --- Initialization ---
+  // --- Başlatma Mantığı ---
   let visualizer = null;
 
   setTimeout(() => {
+    // Görselleştiriciyi başlat
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
     
-    // Fix rendering when container shows up
+    // Görünürlük değişikliklerini izle (Konteynır gösterildiğinde boyutları düzelt)
     const canvasEl = document.getElementById('tts_canvas');
     if (canvasEl) {
       const container = canvasEl.parentElement;
@@ -159,25 +193,26 @@ $(document).ready(function() {
       resizeObserver.observe(container, { attributes: true, attributeFilter: ['class', 'style'] });
     }
 
-    // Global State for controlling from R or other JS
+    // R veya diğer JS dosyalarından erişilebilecek küresel durum nesnesi
     window.ttsVisualizerState = {
+      // Konuşma moduna geç ve UI'ı güncelle
       setTalking: function() { 
         if(visualizer) visualizer.setMode(MODES.TALKING); 
         
         var $container = $('.tts-visualizer-container');
         $container.addClass('talking-mode');
 
-        // FORCE DYNAMIC COLOR: Use the visualizer's current baseColor for borders/shadows
+        // DİNAMİK RENK: Görselleştiricinin o anki tema rengini UI elemanlarına uygula
         if (visualizer && visualizer.baseColor) {
             var color = visualizer.baseColor;
             
-            // Apply color to the main container border and glow
+            // Konteynır kenarlığı ve parlaması
             $container.css({
                 'border-color': color,
                 'box-shadow': '0 0 20px ' + color + '40, inset 0 0 15px rgba(0,0,0,0.3)'
             });
             
-            // Apply color to the "Stop" tooltip border and glow
+            // "Durdur" ipucu rengi
             $container.find('.tts-tooltip').css({
                 'border-color': color,
                 'box-shadow': '0 4px 20px rgba(0, 0, 0, 0.6), 0 0 10px ' + color + '33' 
@@ -185,32 +220,29 @@ $(document).ready(function() {
         }
       },
       
-      setIdle: function() {
-        if(visualizer) visualizer.setMode(MODES.IDLE);
-
+      // Bekleme moduna dön ve UI stillerini temizle
+      setIdle: function() { 
+        if(visualizer) visualizer.setMode(MODES.IDLE); 
+        
         var $container = $('.tts-visualizer-container');
         $container.removeClass('talking-mode');
-
-        // RESET DYNAMIC COLORS (remove inline styles to fall back to CSS defaults)
+        
+        // Dinamik renkleri sıfırla (CSS varsayılanlarına dön)
         $container.css({'border-color': '', 'box-shadow': ''});
         $container.find('.tts-tooltip').css({'border-color': '', 'box-shadow': ''});
       },
 
-      // Duraklatma durumu (TTS sesi geçici olarak durduğunda)
-      setPaused: function() {
-        if(visualizer) visualizer.setMode(MODES.IDLE);
-      },
-
+      // Seslendirmeyi ve animasyonu tamamen durdur (Kullanıcı tıkladığında çağrılır)
       stop: function() {
-        // 1. Reset Visuals using setIdle (clears colors and classes)
+        // 1. Görselleri sıfırla
         this.setIdle();
 
-        // 2. Stop Main TTS Engine (Critical Fix for floating Audio objects)
+        // 2. Ana TTS motorunu durdur
         if (window.mergenTTS && typeof window.mergenTTS.stop === 'function') {
             window.mergenTTS.stop();
         }
 
-        // 3. Brutal Stop Audio (Fallback for any other DOM audio elements)
+        // 3. Mevcut tüm ses elemanlarını zorla durdur
         $('audio').each(function() {
             try {
                 this.pause();
@@ -221,10 +253,9 @@ $(document).ready(function() {
     };
   }, 100);
 
-  // --- CLICK HANDLER (The Guaranteed Fix) ---
-  // Listens on document to ensure dynamic elements are caught
+  // --- TIKLAMA İŞLEYİCİSİ ---
+  // Görselleştiriciye tıklandığında seslendirmeyi durdurur
   $(document).on('click', '.tts-visualizer-container', function() {
-    // Only stop if currently in talking mode
     if ($(this).hasClass('talking-mode')) {
         if (window.ttsVisualizerState) {
             window.ttsVisualizerState.stop();
@@ -232,11 +263,13 @@ $(document).ready(function() {
     }
   });
 
-  // --- Shiny Message Handler ---
+  // --- Shiny Mesaj İşleyicileri ---
+  // Canvas boyutunu yeniden hesapla
   Shiny.addCustomMessageHandler('resizeTTSVisualizer', function(message) {
     if (visualizer) { visualizer.resize(); setTimeout(() => visualizer.resize(), 200); }
   });
 
+  // TTS durumunu (konuşma/durma) R'dan gelen verilere göre güncelle
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
       if (message.color) visualizer.setColor(message.color);
       
@@ -259,6 +292,7 @@ $(document).ready(function() {
             });
         }
 
+        // Süre bilgisi varsa otomatik olarak bekleme moduna geçmek için zamanlayıcı kur
         if (message.duration > 0) {
           if (window._ttsTimer) clearTimeout(window._ttsTimer);
           window._ttsTimer = setTimeout(() => {
@@ -274,8 +308,8 @@ $(document).ready(function() {
       }
     });
   
-  // --- Sekme değişikliğinde canvas boyutlandırma ---
-  // Ana Söyleşi sekmesine geçildiğinde canvas boyutunu güncelle (gizli sekmede boyut 0 olabilir)
+  // --- Sekme Değişikliği İzleyici ---
+  // Gizli sekmelerde canvas boyutları 0 olabilir, sekme açıldığında yeniden boyutlandır
   $(document).on('shown.bs.tab', function() {
     if (visualizer) {
       setTimeout(function() {
@@ -285,7 +319,8 @@ $(document).ready(function() {
     }
   });
 
-  // --- Audio Event Listeners (Backup) ---
+  // --- Ses Olayı Dinleyicileri (Yedek) ---
+  // Sayfadaki herhangi bir ses oynatıldığında görselleştiriciyi tetikle
   document.addEventListener('play', function(e) {
     if(e.target && e.target.tagName === 'AUDIO') {
       if (window._ttsTimer) clearTimeout(window._ttsTimer);

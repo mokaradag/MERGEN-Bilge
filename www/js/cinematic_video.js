@@ -1,6 +1,13 @@
 /* www/js/cinematic_video.js */
+/**
+ * Dosya Yolu: www/js/cinematic_video.js
+ * Açıklama: Karakterlerin sinematik video döngülerini ve geçişlerini yöneten istemci taraflı yönetici.
+ * Giriş (intro), döngü (loop) ve seçim (select) videoları arasındaki mantığı,
+ * otomatik oynatma politikalarını ve statik görsel geçişlerini kontrol eder.
+ */
 
 const CinematicVideoManager = {
+    // Yönetici durumu: Mevcut karakter, video listeleri, zamanlayıcılar ve oynatma durumu
     state: {
         currentChar: null,
         data: null,
@@ -9,43 +16,52 @@ const CinematicVideoManager = {
         lastVideoType: null,
         videoLoadAttempts: 0
     },
+    // DOM eleman referansları
     elements: {
         video: null,
         image: null,
         container: null
     },
+    // Yapılandırma ayarları
     config: {
-        imageDisplayDuration: 4000, // Duration to show image between loops (ms)
+        imageDisplayDuration: 4000, // Döngüler arasında statik görselin gösterilme süresi (ms)
         maxLoadAttempts: 3
     },
 
+    /**
+     * Yöneticiyi başlatır ve gerekli olay dinleyicilerini (event listeners) kurar.
+     * @param {Object} config Eleman ID'lerini içeren yapılandırma nesnesi
+     */
     init: function(config) {
         this.elements.video = document.getElementById(config.videoElementId);
         this.elements.image = document.getElementById(config.imageElementId);
-        // Find the container (parent of the video element)
+        // Video elemanının üst kapsayıcısını (container) bul
         this.elements.container = this.elements.video ? this.elements.video.parentElement : null;
 
         if (!this.elements.video || !this.elements.image || !this.elements.container) {
-            console.error('[VIDEO] Critical elements missing in DOM.');
+            console.error('[VIDEO] Kritik DOM elemanları eksik.');
             return;
         }
-		
+        
+        // Statik görsel yükleme hatası yönetimi
         this.elements.image.onerror = () => {
-            console.warn('[VIDEO] Image failed to load. Hiding element to prevent broken icon.');
+            console.warn('[VIDEO] Görsel yüklenemedi. Kırık ikon görünmemesi için gizleniyor.');
             this.elements.image.style.opacity = '0';
             this.elements.video.poster = "";
         };
         
+        // Görsel yüklendiğinde görünür yap
         this.elements.image.onload = () => {
             this.elements.image.style.opacity = '1';
         };
 
-        // Tarayıcı otomatik oynatma politikası: ilk başta sessiz başlat,
-        // kullanıcı etkileşiminden sonra sesi aç
+        /**
+         * Tarayıcı otomatik oynatma (autoplay) politikası yönetimi:
+         * Videolar başlangıçta sessiz (muted) başlatılır. İlk kullanıcı etkileşiminden (tıklama, tuş) sonra ses açılır.
+         */
         this.elements.video.muted = true;
         this.elements.video.volume = 1.0;
 
-        // Kullanıcı etkileşimi sonrası sesi aç
         var self = this;
         var unmuteOnInteraction = function() {
             if (self.elements.video) {
@@ -58,11 +74,11 @@ const CinematicVideoManager = {
         document.addEventListener('click', unmuteOnInteraction, { once: true });
         document.addEventListener('keydown', unmuteOnInteraction, { once: true });
         
-        // Event Listeners
+        // Video olaylarını dinle
         this.elements.video.addEventListener('ended', () => this.handleVideoEnd());
         this.elements.video.addEventListener('error', (e) => this.handleVideoError(e));
         
-        // Sayfa görünürlük değişikliği: sekme gizlenince duraklat, görününce devam et
+        // Sekme görünürlüğü değiştiğinde performansı korumak için videoyu yönet
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 this.pauseIfPlaying();
@@ -71,34 +87,28 @@ const CinematicVideoManager = {
             }
         });
 
-		// Sekme değişimini izle
-		$(document).on('shown.bs.tab', 'a[data-toggle="tab"]', (e) => {
-			const nowOnSettings = this.isSettingsTabActive();
-			
-			if (nowOnSettings) {
-				if (this.state.data) {
-					console.log('[VIDEO] Ayarlar sekmesine girildi, intro başlatılıyor');
-					this.playSequence('intro');
-				}
-			} else {
-				console.log('[VIDEO] Ayarlar sekmesinden çıkıldı, tüm oynatma durduruluyor');
-				this.stopEverything();
-			}
-		});
+        // Shiny sekmeleri arasındaki değişimi izle (Ayarlar sekmesine özel çalışma)
+        $(document).on('shown.bs.tab', 'a[data-toggle="tab"]', (e) => {
+            const nowOnSettings = this.isSettingsTabActive();
+            
+            if (nowOnSettings) {
+                if (this.state.data) {
+                    console.log('[VIDEO] Ayarlar sekmesine girildi, giriş (intro) başlatılıyor');
+                    this.playSequence('intro');
+                }
+            } else {
+                console.log('[VIDEO] Ayarlar sekmesinden çıkıldı, kaynak tüketmemek için durduruluyor');
+                this.stopEverything();
+            }
+        });
 
-        console.log('[VIDEO] CinematicVideoManager initialized.');
-
-        // Bekleyen karakter yüklemesi varsa şimdi işle
-        if (this._pendingLoad) {
-            var pending = this._pendingLoad;
-            this._pendingLoad = null;
-            console.log('[VIDEO] Bekleyen karakter yüklemesi işleniyor:', pending.data.character);
-            this.loadCharacter({ data: pending.data, trigger: pending.trigger });
-        }
+        console.log('[VIDEO] CinematicVideoManager başarıyla başlatıldı.');
     },
 
+    /**
+     * Mevcut aktif sekmenin "Ayarlar" olup olmadığını kontrol eder.
+     */
     isSettingsTabActive: function() {
-        // Check if the active sidebar item points to settings
         const activeTab = document.querySelector('.sidebar-menu li.active a');
         if (!activeTab) return false;
         
@@ -107,83 +117,84 @@ const CinematicVideoManager = {
         
         return dataValue === 'settings' || 
                dataValue === 'tab_settings' || 
-               href === '#shiny-tab-settings';
+               href === '#shiny-tab-settings' ||
+               dataValue === 'settings_kisisel'; // Kişiselleştirme alt sekmesi kontrolü
     },
 
-	getRandomVideo: function(type) {
-		if (!this.state.data?.videos?.[type]) {
-			console.warn(`[VIDEO] '${type}' kategorisi bulunamadı`);
-			return null;
-		}
-		
-		let videos = this.state.data.videos[type];
-		
-		// Boş veya geçersiz kontrolü
-		if (!videos || (Array.isArray(videos) && videos.length === 0)) {
-			console.warn(`[VIDEO] '${type}' için video listesi boş`);
-			return null;
-		}
-		
-		// Tek string ise diziye dönüştür
-		if (typeof videos === 'string' && videos.length > 0) {
-			videos = [videos];
-		}
-		
-		// Hâlâ array değilse hata
-		if (!Array.isArray(videos)) {
-			console.error(`[VIDEO] '${type}' geçersiz format:`, typeof videos);
-			return null;
-		}
-		
-		// Rastgele seç
-		const selected = videos[Math.floor(Math.random() * videos.length)];
-		console.log(`[VIDEO] '${type}' seçildi:`, selected);
-		return selected;
-	},
+    /**
+     * Belirli bir kategoriden (intro, loop, select) rastgele bir video seçer.
+     * @param {string} type Video kategorisi
+     */
+    getRandomVideo: function(type) {
+        if (!this.state.data?.videos?.[type]) {
+            console.warn(`[VIDEO] '${type}' kategorisi bulunamadı`);
+            return null;
+        }
+        
+        let videos = this.state.data.videos[type];
+        
+        if (!videos || (Array.isArray(videos) && videos.length === 0)) {
+            console.warn(`[VIDEO] '${type}' için video listesi boş`);
+            return null;
+        }
+        
+        if (typeof videos === 'string' && videos.length > 0) {
+            videos = [videos];
+        }
+        
+        if (!Array.isArray(videos)) {
+            console.error(`[VIDEO] '${type}' geçersiz format:`, typeof videos);
+            return null;
+        }
+        
+        const selected = videos[Math.floor(Math.random() * videos.length)];
+        console.log(`[VIDEO] '${type}' seçildi:`, selected);
+        return selected;
+    },
 
-	loadCharacter: function(message) {
-		const data = message.data || message;
-		const trigger = message.trigger || 'auto';
+    /**
+     * R/Shiny tarafından gönderilen karakter verilerini yükler ve süreci başlatır.
+     * @param {Object} message Karakter görsel ve video yollarını içeren veri
+     */
+    loadCharacter: function(message) {
+        const data = message.data || message;
+        const trigger = message.trigger || 'auto';
+        
+        console.log('[VIDEO] Karakter yükleniyor:', data.character, 'tetikleyici:', trigger);
+        
+        this.stopEverything();
+        
+        this.state.data = data;
+        this.state.currentChar = data.character;
+        
+        if (data.image) {
+            this.elements.image.src = data.image;
+            this.elements.video.poster = data.image;
+            console.log('[VIDEO] Resim ve poster güncellendi:', data.image);
+        }
+        
+        const playIntro = () => {
+            if (this.isSettingsTabActive()) {
+                console.log('[VIDEO] Giriş videosu başlatılıyor');
+                this.playSequence('intro');
+            }
+        };
+        
+        // Eğer kullanıcı tıkladıysa hemen, otomatikse kısa bir gecikmeyle başlat
+        if (trigger === 'click') {
+            playIntro();
+        } else {
+            setTimeout(playIntro, 100);
+        }
+    },
 
-		console.log('[VIDEO] Karakter yükleniyor:', data.character, 'trigger:', trigger);
-
-		// DOM elemanları henüz hazır değilse veriyi sakla ve bekle
-		if (!this.elements.video || !this.elements.image) {
-			console.warn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
-			this.state.data = data;
-			this.state.currentChar = data.character;
-			this._pendingLoad = { data: data, trigger: trigger };
-			return;
-		}
-
-		this.stopEverything();
-
-		this.state.data = data;
-		this.state.currentChar = data.character;
-
-		if (data.image) {
-			this.elements.image.src = data.image;
-			this.elements.video.poster = data.image;
-			console.log('[VIDEO] Resim ve poster yüklendi:', data.image);
-		}
-
-		const playIntro = () => {
-			if (this.isSettingsTabActive()) {
-				console.log('[VIDEO] Intro oynatılıyor, trigger:', trigger);
-				this.playSequence('intro');
-			}
-		};
-
-		if (trigger === 'click') {
-			playIntro();
-		} else {
-			setTimeout(playIntro, 100);
-		}
-	},
-
+    /**
+     * Belirli bir kategorideki video döngüsünü yürütür.
+     * @param {string} type Oynatılacak sekans tipi
+     */
     playSequence: function(type) {
         if (!this.isSettingsTabActive()) {
-            console.log('[VIDEO] Not on Settings tab, aborting play.');
+            console.log('[VIDEO] Ayarlar sekmesinde değiliz, oynatma iptal edildi.');
             return;
         }
 
@@ -191,9 +202,8 @@ const CinematicVideoManager = {
         const videoSrc = this.getRandomVideo(type);
         
         if (!videoSrc) {
-            console.warn(`[VIDEO] No videos for '${type}', falling back to image loop.`);
+            console.warn(`[VIDEO] '${type}' için video yok, görsele dönülüyor.`);
             this.showImage();
-            // Even if no video, we schedule next loop to keep the cycle alive
             this.scheduleNextLoop(); 
             return;
         }
@@ -202,66 +212,83 @@ const CinematicVideoManager = {
         this.showVideo(videoSrc);
     },
 
-	showVideo: function(src) {
+    /**
+     * Video oynatıcıyı görünür yapar ve kaynağı yükleyip oynatır.
+     * @param {string} src Video dosya yolu
+     */
+    showVideo: function(src) {
         if (!this.elements.video) return;
 
-        console.log('[VIDEO] Video gösteriliyor:', src);
+        console.log('[VIDEO] Oynatılıyor:', src);
 
+        // Kapsayıcıya 'video-playing' sınıfı ekleyerek CSS üzerinden görünürlüğü ayarla
         this.elements.container.classList.add('video-playing');
 
-		this.elements.video.src = src;
-		this.elements.video.load();
-		this.state.isPlaying = true;
+        this.elements.video.src = src;
+        this.elements.video.load();
+        this.state.isPlaying = true;
 
-		if (window.MusicManager) {
-		  window.MusicManager.duck();
-		}
+        // Arka plan müziği varsa sesini kıs (ducking)
+        if (window.MusicManager) {
+            window.MusicManager.duck();
+        }
 
         var self = this;
         const playPromise = this.elements.video.play();
         if (playPromise) {
             playPromise.catch(error => {
-                // Otomatik oynatma engellendiyse, sessiz olarak tekrar dene
+                // Tarayıcı kısıtlaması nedeniyle engellenirse sessiz modda tekrar dene
                 if (error.name === 'NotAllowedError' && !self.elements.video.muted) {
                     console.warn('[VIDEO] Sesli oynatma engellendi, sessiz deneniyor');
                     self.elements.video.muted = true;
                     self.elements.video.play().catch(function(e2) {
-                        console.error('[VIDEO] Sessiz oynatma da başarısız:', e2);
+                        console.error('[VIDEO] Oynatma tamamen başarısız:', e2);
                         self.handleVideoError(e2);
                     });
                     return;
                 }
-                console.error('[VIDEO] Oynatma başarısız:', error);
+                console.error('[VIDEO] Oynatma hatası:', error);
                 self.handleVideoError(error);
             });
         }
     },
 
+    /**
+     * Videoyu gizler ve statik görseli ön plana çıkarır.
+     */
     showImage: function() {
         if (!this.elements.container) return;
 
-        console.log('[VIDEO] Showing Image');
+        console.log('[VIDEO] Statik görsele geçiliyor');
         
-        // Remove CSS class to revert to default state (Image visible, Video hidden)
+        // CSS sınıfını kaldırarak varsayılan (görselin göründüğü) duruma dön
         this.elements.container.classList.remove('video-playing');
         
         this.pauseVideo();
         this.state.isPlaying = false;
     },
 
+    /**
+     * Videoyu duraklatır.
+     */
     pauseVideo: function() {
         if (this.elements.video && !this.elements.video.paused) {
             this.elements.video.pause();
         }
     },
 
+    /**
+     * Eğer video aktif olarak oynuyorsa duraklatır.
+     */
     pauseIfPlaying: function() {
         if (this.state.isPlaying) {
             this.pauseVideo();
         }
     },
 
-    // Sayfa tekrar görünür olduğunda videoyu devam ettir
+    /**
+     * Sayfa tekrar görünür olduğunda duraklatılan videoyu devam ettirir.
+     */
     resumeIfPaused: function() {
         if (!this.isSettingsTabActive()) return;
         if (this.state.isPlaying && this.elements.video && this.elements.video.paused) {
@@ -274,48 +301,60 @@ const CinematicVideoManager = {
         }
     },
 
+    /**
+     * Video sona erdiğinde bir sonraki adımı belirler.
+     * Mantık: Giriş -> Bekleme -> Döngü, Seçim -> Bekleme -> Döngü
+     */
     handleVideoEnd: function() {
-		console.log('[VIDEO] Video ended. Type:', this.state.lastVideoType);
+        console.log('[VIDEO] Video sona erdi. Tip:', this.state.lastVideoType);
 
-		this.showImage();
+        this.showImage();
 
-		if (window.MusicManager) {
-		  window.MusicManager.unduck();
-		}
+        // Arka plan müziğinin sesini normale döndür
+        if (window.MusicManager) {
+            window.MusicManager.unduck();
+        }
         
-        // 2. Decide what to do next
-        // Logic: Intro -> Loop, Select -> Loop, Loop -> Loop
+        // Ayarlar sekmesindeysek bir sonraki döngüyü planla
         if (this.isSettingsTabActive()) {
             this.scheduleNextLoop();
         }
     },
 
+    /**
+     * Belirli bir bekleme süresinden sonra 'loop' tipi videoyu başlatır.
+     */
     scheduleNextLoop: function() {
         this.clearTimer();
         
-        console.log(`[VIDEO] Scheduling next loop in ${this.config.imageDisplayDuration}ms`);
+        console.log(`[VIDEO] Sonraki döngü planlandı: ${this.config.imageDisplayDuration}ms`);
         this.state.timer = setTimeout(() => {
             if (this.isSettingsTabActive()) {
-                // Always go to 'loop' bucket after the wait
                 this.playSequence('loop');
             }
         }, this.config.imageDisplayDuration);
     },
 
+    /**
+     * Video yükleme/oynatma hatası durumunda görsele dön ve döngüyü sürdür.
+     */
     handleVideoError: function(error) {
-        console.error('[VIDEO] Error:', error);
-        // Fallback to image
+        console.error('[VIDEO] Hata oluştu:', error);
         this.showImage();
-        // Try to continue cycle
         this.scheduleNextLoop();
     },
 
+    /**
+     * Karakter seçildiğinde (örn: Ayarları Kaydet butonuna tıklandığında) oynatılır.
+     */
     playSelectSequence: function() {
-        console.log('[VIDEO] Selection triggered.');
-        // "Ayarları Kaydet" clicked -> Play 'select' video
+        console.log('[VIDEO] Seçim animasyonu tetiklendi.');
         this.playSequence('select');
     },
 
+    /**
+     * Tüm zamanlayıcıları ve oynatmayı durdurarak temizlik yapar.
+     */
     stopEverything: function() {
         this.clearTimer();
         this.pauseVideo();
@@ -324,6 +363,9 @@ const CinematicVideoManager = {
         this.state.lastVideoType = null;
     },
 
+    /**
+     * Aktif zamanlayıcıyı (setTimeout) temizler.
+     */
     clearTimer: function() {
         if (this.state.timer) {
             clearTimeout(this.state.timer);
@@ -332,10 +374,16 @@ const CinematicVideoManager = {
     }
 };
 
+/**
+ * R/Shiny Özel Mesaj İşleyicileri
+ */
+
+// Karakter verileri güncellendiğinde tetiklenir
 Shiny.addCustomMessageHandler('updateCharacterVideo', function(data) {
     CinematicVideoManager.loadCharacter(data);
 });
 
+// Karakter seçim animasyonu (select) istendiğinde tetiklenir
 Shiny.addCustomMessageHandler('triggerVideoSelection', function(message) {
     CinematicVideoManager.playSelectSequence();
 });
