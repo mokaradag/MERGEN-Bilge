@@ -256,7 +256,6 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         # Animasyonları başlat
         shinyjs::delay(100, {
           session$sendCustomMessage("initModernWelcome", list())
-          session$sendCustomMessage("switchMusicContext", list(type = "genel"))
           
           # Kişiselleştirilmiş karşılama animasyonunu başlat
           shinyjs::delay(400, {
@@ -323,7 +322,6 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
           # Animasyonları başlat
           shinyjs::delay(100, {
             session$sendCustomMessage("initModernWelcome", list())
-            session$sendCustomMessage("switchMusicContext", list(type = "genel"))
             
             # Kişiselleştirilmiş karşılama animasyonunu başlat
             shinyjs::delay(400, {

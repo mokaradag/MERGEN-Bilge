@@ -211,43 +211,8 @@ $(document).ready(function() {
     container.appendChild(listDiv);
   });
 
-  Shiny.addCustomMessageHandler('playAudioMessage', function(data) {
-    if (!data || !data.id || !data.src) return;
-    
-    const wrapper = document.getElementById('message_wrapper_' + data.id);
-    if (!wrapper) return;
-    
-    let audioContainer = wrapper.querySelector('.tts-audio-container');
-    
-    if (!audioContainer) {
-      audioContainer = document.createElement('div');
-      audioContainer.className = 'tts-audio-container';
-      audioContainer.id = 'tts_audio_' + data.id;
-      
-      const audioElement = document.createElement('audio');
-      audioElement.controls = true;
-      audioElement.autoplay = true;
-      audioElement.src = data.src;
-      audioElement.style.width = '100%';
-      audioElement.style.maxWidth = '400px';
-      audioElement.style.marginTop = '10px';
-      
-      audioContainer.appendChild(audioElement);
-      
-      const messageContent = wrapper.querySelector('.ai-message');
-      if (messageContent) {
-        messageContent.appendChild(audioContainer);
-      }
-    } else {
-      const audioElement = audioContainer.querySelector('audio');
-      if (audioElement) {
-        audioElement.src = data.src;
-        audioElement.play().catch(function(err) {
-          console.warn('Audio oynatma hatası:', err);
-        });
-      }
-    }
-  });
+  // NOT: playAudioMessage işleyicisi tts_manager.js'deki kuyruk sistemi tarafından yönetilir.
+  // Burada tekrar tanımlamıyoruz, çünkü Shiny her mesaj tipi için yalnızca bir işleyici destekler.
 
   Shiny.addCustomMessageHandler('showNeuralAnimation', function(message) {
     setTimeout(function() {
@@ -292,23 +257,8 @@ $(document).ready(function() {
 	  }, 300);
 	});
 
-  Shiny.addCustomMessageHandler('switchMusicContext', function(data) {
-    if (typeof window.MusicManager !== 'undefined' && window.MusicManager.switchContext) {
-      window.MusicManager.switchContext(data);
-    }
-  });
-
-  Shiny.addCustomMessageHandler('initMusicManager', function(data) {
-    if (typeof window.MusicManager !== 'undefined' && window.MusicManager.init) {
-      window.MusicManager.init(data);
-    }
-  });
-
-  Shiny.addCustomMessageHandler('setMusicPlaylist', function(data) {
-    if (typeof window.MusicManager !== 'undefined' && window.MusicManager.setPlaylist) {
-      window.MusicManager.setPlaylist(data);
-    }
-  });
+  // NOT: Müzik işleyicileri (initMusicManager, toggleMusic, setMusicPlaylist, setMusicCharacter, setMusicVolume)
+  // music_manager.js tarafından yönetilir. Burada tekrar tanımlamıyoruz.
 
   Shiny.addCustomMessageHandler('saveCurrentChat', function(messages) {
     try {

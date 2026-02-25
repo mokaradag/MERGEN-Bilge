@@ -80,7 +80,7 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
     }
     
     start_new_chat()
-    session$sendCustomMessage("switchMusicContext", list(type = "genel"))
+    # Müzik bağlam geçişi kaldırıldı - yeni mimaride müzik kesintisiz çalar
 
     # Karşılama ekranına dönüldüğünde "aşağı kaydır" butonunu gizle
     shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
