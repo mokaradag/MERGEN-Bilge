@@ -5,6 +5,12 @@
 # global.R tarafından config_logging.R'den sonra source() ile çağrılır.
 # ==============================================================================
 
+# --- .Renviron DOSYASINI ZORLA YÜKLE ---
+# Tüm Sys.getenv() çağrılarından ÖNCE yüklenmeli ki doğru değerler okunabilsin
+if (file.exists(".Renviron")) {
+  readRenviron(".Renviron")
+}
+
 # --- GLOBAL YAPILANDIRMA ---
 
 # Word önizleme modu: "html" (istemci tarafı mammoth.js) veya "pdf" (sunucu tarafı LibreOffice)
@@ -79,11 +85,6 @@ tts_config <- list(
   timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "30")),
   verify_ssl      = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
 )
-
-# --- .Renviron DOSYASINI ZORLA YÜKLE ---
-if (file.exists(".Renviron")) {
-  readRenviron(".Renviron")
-}
 
 # --- SES TANIMA (STT) YAPILANDIRMASI ---
 stt_config <- list(

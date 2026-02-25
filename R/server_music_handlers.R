@@ -76,7 +76,7 @@ musicHandlersInit <- function(input, session, settings_data) {
           utils::URLencode(full_rel_path)
         }, character(1), USE.NAMES = FALSE)
 
-        cat(sprintf("[MUSIC] Playlist gönderiliyor: %s | %d parça\n", playlist_type, length(file_urls)))
+        cat(sprintf("[MUSIC] Playlist gönderiliyor: %s | Karakter: %s | %d parça\n", playlist_type, character_name, length(file_urls)))
 
         session$sendCustomMessage("setMusicPlaylist", list(
           files = I(file_urls),
