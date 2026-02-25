@@ -77,10 +77,11 @@ ttsProcessingServer <- function(id) {
     }
 
     #' TTS uç noktası için API anahtarını belirle
+    #' Öncelik: oturum anahtarı > TTS anahtarı > birincil LLM anahtarı
     resolve_tts_api_key <- function() {
-      # 1. Oturuma özel anahtarı dene
+      # 1. Oturuma özel anahtarı dene (kullanıcının LLM API anahtarı)
       user_key <- tryCatch({
-        sess_key <- session$userData$ai_api_key %% NULL
+        sess_key <- session$userData$ai_api_key %||% NULL
         if (is.null(sess_key) || !nzchar(sess_key)) return(NULL)
         as.character(sess_key)[1]
       }, error = function(e) NULL)
@@ -89,10 +90,16 @@ ttsProcessingServer <- function(id) {
         return(user_key)
       }
 
-      # 2. Global yapılandırma anahtarını dene
+      # 2. TTS'e özel yapılandırma anahtarını dene
       default_key <- tts_config$api_key %||% ""
       if (is.null(default_key) || is.na(default_key)) default_key <- ""
-      default_key
+      if (nzchar(default_key)) return(default_key)
+
+      # 3. Birincil LLM API anahtarını dene (TTS anahtarı boşsa yedek)
+      llm_key <- tryCatch(Sys.getenv("LOCAL_LLM_API_KEY", ""), error = function(e) "")
+      if (!is.null(llm_key) && nzchar(llm_key)) return(llm_key)
+
+      ""
     }
 
     #' Asenkron olarak ses sentezle
@@ -101,6 +108,7 @@ ttsProcessingServer <- function(id) {
     #' @return promise nesnesi: list(success, audio_src, voice, duration, error)
     synthesize_speech <- function(text, voice = NULL) {
       if (!tts_available()) {
+        cat("[TTS] Seslendirme kullanılamıyor: uç nokta yapılandırılmamış\n")
         return(promises::promise_resolve(list(
           success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "TTS uç noktası yapılandırılmamış."
         )))
@@ -108,6 +116,7 @@ ttsProcessingServer <- function(id) {
 
       speech_text <- prepare_tts_text(text)
       if (!nzchar(speech_text)) {
+        cat("[TTS] Temizleme sonrası metin boş, seslendirme atlanıyor\n")
         return(promises::promise_resolve(list(
           success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "Seslendirilecek metin boş."
         )))
@@ -120,6 +129,9 @@ ttsProcessingServer <- function(id) {
       model_to_use <- tts_config$model %||% "tts-1-hd"
       timeout_val  <- as.numeric(tts_config$timeout_seconds %||% 30)
       if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 30
+
+      cat(sprintf("[TTS] İstek hazırlanıyor: URL=%s | Model=%s | Ses=%s | API Key uzunluk=%d | Metin=%d karakter\n",
+                  speech_url, model_to_use, voice_to_use, nchar(api_key), nchar(speech_text)))
       
       verify_ssl_val <- tts_config$verify_ssl
       should_verify  <- if (is.null(verify_ssl_val)) FALSE else isTRUE(verify_ssl_val)
@@ -254,18 +266,17 @@ ttsProcessingServer <- function(id) {
           list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                duration = 0, error = paste("TTS hata:", err_msg))
         }
-      }) %...!% {
-        function(e) {
-          # İşlenmemiş istisnaları (exception) logla
-          try({
-             cat(sprintf("[%s] [Worker-HATA] %s\n", format(Sys.time(), "%H:%M:%S"), conditionMessage(e)), 
-                 file = normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE), append = TRUE)
-          }, silent = TRUE)
-          
-          list(success = FALSE, audio_src = NULL, voice = voice_to_use,
-               duration = 0, error = conditionMessage(e))
-        }
-      }
+      }) %...!% (function(e) {
+        # İşlenmemiş istisnaları (exception) logla
+        cat(sprintf("[TTS] Worker hatası: %s\n", conditionMessage(e)))
+        try({
+           cat(sprintf("[%s] [Worker-HATA] %s\n", format(Sys.time(), "%H:%M:%S"), conditionMessage(e)),
+               file = normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE), append = TRUE)
+        }, silent = TRUE)
+
+        list(success = FALSE, audio_src = NULL, voice = voice_to_use,
+             duration = 0, error = conditionMessage(e))
+      })
     }
 
     list(

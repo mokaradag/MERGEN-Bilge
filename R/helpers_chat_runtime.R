@@ -397,22 +397,30 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     })
   }
 
-  # -- 5. DECISION: WAIT FOR TTS? --
+  # -- 5. KARAR: TTS BEKLENSİN Mİ? --
   if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(full_response)) {
-      # "Thinking" animation stays visible here while we wait for TTS
+      cat(sprintf("[TTS-STREAM] Seslendirme başlatılıyor (ses: %s, metin: %d karakter)\n",
+                  tts_voice %||% "varsayılan", nchar(full_response)))
+      # "Düşünüyor" animasyonu TTS hazır olana kadar görünür kalır
       promises::then(
           tts_engine(full_response, tts_voice),
           onFulfilled = function(result) {
-              # TTS done -> Start Text Stream & Audio together
+              # TTS tamamlandı → Metin akışı ve ses birlikte başlasın
+              if (isTRUE(result$success)) {
+                cat(sprintf("[TTS-STREAM] Seslendirme başarılı (süre: %.2fs)\n", result$duration %||% 0))
+              } else {
+                cat(sprintf("[TTS-STREAM] Seslendirme başarısız: %s\n", result$error %||% "bilinmeyen hata"))
+              }
               start_streaming_execution(result)
           },
           onRejected = function(err) {
-              # TTS failed -> Start Text Stream anyway
+              # TTS başarısız → Metin akışı yine de başlasın
+              cat(sprintf("[TTS-STREAM] Promise hatası: %s\n", conditionMessage(err)))
               start_streaming_execution(NULL)
           }
       )
   } else {
-      # No TTS -> Start immediately
+      # TTS yok → Hemen başla
       start_streaming_execution(NULL)
   }
 }

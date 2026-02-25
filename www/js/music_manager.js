@@ -252,9 +252,11 @@ const MusicManager = {
 
     // Aynı duruma tekrar geçişi engelle
     if (this.state.enabled === enabled) {
-      // Karakter değiştiyse playlist'i yenile
-      if (enabled && character && this.state.phase === 'character') {
+      // Karakter değiştiyse mevcut sesi durdur ve yeni playlist'i iste
+      if (enabled && character && (this.state.phase === 'character' || this.state.phase === 'waiting_character')) {
         this._characterPlaylist = [];
+        this._stopAudio();
+        this.state.phase = 'waiting_character';
         this._requestPlaylist('karakter');
       }
       return;
@@ -293,10 +295,12 @@ const MusicManager = {
 
     if (!this.state.enabled) return;
 
-    // Karakter müziği çalıyorsa yeni karakter playlist'ine geç
-    if (this.state.phase === 'character') {
+    // Karakter müziği çalıyorsa veya bekliyorsa yeni karakter playlist'ine geç
+    if (this.state.phase === 'character' || this.state.phase === 'waiting_character') {
       this._characterPlaylist = [];
       this._stopAudio();
+      // Faz'ı 'waiting_character' yap ki receivePlaylist() çalmayı başlatsın
+      this.state.phase = 'waiting_character';
       this._requestPlaylist('karakter');
     }
     // Tema çalıyorsa tema bittikten sonra yeni karakter müziği gelecek
