@@ -103,6 +103,14 @@ const CinematicVideoManager = {
         });
 
         console.log('[VIDEO] CinematicVideoManager başarıyla başlatıldı.');
+		
+		// Bekleyen karakter yüklemesi varsa şimdi işle
+        if (this._pendingLoad) {
+            var pending = this._pendingLoad;
+            this._pendingLoad = null;
+            console.log('[VIDEO] Bekleyen karakter yüklemesi işleniyor:', pending.data.character);
+            this.loadCharacter({ data: pending.data, trigger: pending.trigger });
+        }
     },
 
     /**
@@ -161,6 +169,15 @@ const CinematicVideoManager = {
         const trigger = message.trigger || 'auto';
         
         console.log('[VIDEO] Karakter yükleniyor:', data.character, 'tetikleyici:', trigger);
+		
+		// DOM elemanları henüz hazır değilse veriyi sakla ve bekle
+		if (!this.elements.video || !this.elements.image) {
+			console.warn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
+			this.state.data = data;
+			this.state.currentChar = data.character;
+			this._pendingLoad = { data: data, trigger: trigger };
+			return;
+		}
         
         this.stopEverything();
         

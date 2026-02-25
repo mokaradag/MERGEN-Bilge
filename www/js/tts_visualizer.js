@@ -231,6 +231,11 @@ $(document).ready(function() {
         $container.css({'border-color': '', 'box-shadow': ''});
         $container.find('.tts-tooltip').css({'border-color': '', 'box-shadow': ''});
       },
+	  
+	  // Duraklatma durumu (TTS sesi geçici olarak durduğunda)
+      setPaused: function() {
+        if(visualizer) visualizer.setMode(MODES.IDLE);
+      },
 
       // Seslendirmeyi ve animasyonu tamamen durdur (Kullanıcı tıkladığında çağrılır)
       stop: function() {

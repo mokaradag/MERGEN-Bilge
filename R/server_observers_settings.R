@@ -37,11 +37,7 @@ settingsObserversInit <- function(input, session, values, settings_data) {
       condition = settings_data$enable_animations
     )
   }, ignoreNULL = FALSE)
-  
-  # Müzik bağlam geçişleri kaldırıldı.
-  # Yeni mimari: Ana Tema (bir kez) → Karakter Müziği (döngü).
-  # Karakter değişikliği yalnızca "Ayarları Kaydet" ile uygulanır (module_settings.R).
-  
+    
   invisible(NULL)
 }
 
