@@ -19,6 +19,11 @@ $(document).ready(function() {
       if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
         window.ttsVisualizerState.setIdle();
       }
+      // "Seslendirmeyi Durdur" basıldığında onended çalışmadığı için
+      // arka plan müziğini burada normale döndür
+      if (window.MusicManager) {
+        window.MusicManager.unduck();
+      }
     }
   };
 

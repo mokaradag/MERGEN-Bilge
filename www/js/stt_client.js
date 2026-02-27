@@ -49,8 +49,9 @@ window.STT_Client = (function() {
     let smoothedFreqs = new Array(64).fill(0);
     
 	function init(config) {
+		// STT başlatılırken müziği tamamen sessize al - mikrofon paraziti önlenir
 		if (window.MusicManager) {
-			window.MusicManager.duck();
+			window.MusicManager.duckForSTT();
 		}
 
 		const { canvasId, timerId, dbId, nsPrefix, color } = config;
@@ -126,16 +127,13 @@ window.STT_Client = (function() {
 		audioContext = new (window.AudioContext || window.webkitAudioContext)();
 	  }
 	  analyser = audioContext.createAnalyser();
-	  analyser.fftSize = 256; 
+	  analyser.fftSize = 256;
 	  analyser.smoothingTimeConstant = 0.85;
-	  
+
 	  const source = audioContext.createMediaStreamSource(stream);
 	  source.connect(analyser);
 	  dataArray = new Uint8Array(analyser.frequencyBinCount);
-	  
-	  if (window.MusicManager) {
-		window.MusicManager.duck();
-	  }
+	  // Not: Müzik zaten init() içinde duckForSTT() ile sessize alındı
 	}
     
     function draw() {
@@ -365,8 +363,9 @@ window.STT_Client = (function() {
 		canvasElement = null;
 		window.removeEventListener('resize', resizeCanvas);
 
+		// STT bitti: müziği yumuşak geçişle normale döndür
 		if (window.MusicManager) {
-		  window.MusicManager.unduck();
+		  window.MusicManager.unduckAfterSTT();
 		}
     }
     

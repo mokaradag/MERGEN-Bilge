@@ -622,14 +622,25 @@ $(document).ready(function() {
         }
     });
 
-    // Kişiselleştirme alt sekmesine tıklandığında da dene
+    // Kişiselleştirme alt sekmesine tıklandığında video döngüsünü başlat
     $(document).on('click', '[data-value="settings_kisisel"]', function() {
         setTimeout(function() {
             if (!CinematicVideoManager._initialized) {
+                // İlk kez: başlat
                 var found = CinematicVideoManager._findElementsByClass();
                 if (found) {
                     console.log('[VIDEO] Kişiselleştirme sekmesinde başlatma tetiklendi');
                     CinematicVideoManager.init(CinematicVideoManager._initConfig);
+                }
+            } else {
+                // Zaten başlatılmış: elemanları güncelle ve intro'yu başlat
+                if (!CinematicVideoManager.elements.video || !CinematicVideoManager.elements.image) {
+                    CinematicVideoManager._ensureElements() || CinematicVideoManager._findElementsByClass();
+                }
+                // Veri mevcut ve oynatılmıyorsa giriş videosunu başlat
+                if (CinematicVideoManager.state.data && !CinematicVideoManager.state.isPlaying) {
+                    console.log('[VIDEO] Sekme geçişinde giriş videosu başlatılıyor');
+                    CinematicVideoManager.playSequence('intro');
                 }
             }
         }, 300);

@@ -60,11 +60,11 @@ createStartupScreenUI <- function() {
             tags$rect(
               class = "explore-snake-trail",
               x = "0", y = "0", width = "100%", height = "100%",
-              rx = "31", ry = "31",
+              rx = "33", ry = "33",
               fill = "none",
               stroke = "url(#snake-gradient)",
-              `stroke-width` = "3",
-              `stroke-dasharray` = "25 75",
+              `stroke-width` = "4",
+              `stroke-dasharray` = "30 70",
               `stroke-linecap` = "round",
               `pathLength` = "100"
             )
