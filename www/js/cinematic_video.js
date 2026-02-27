@@ -56,6 +56,32 @@ const CinematicVideoManager = {
     },
 
     /**
+     * _initConfig olmadan DOM elemanlarını sınıf ismiyle bulmayı dener.
+     * Yedek mekanizma olarak kullanılır.
+     * @returns {boolean} Elemanlar başarıyla bulunduysa true
+     */
+    _findElementsByClass: function() {
+        var video = document.querySelector('.character-video-player');
+        var image = document.querySelector('.character-static-image');
+        var container = video ? video.parentElement : null;
+
+        if (video && image && container) {
+            this.elements.video = video;
+            this.elements.image = image;
+            this.elements.container = container;
+            // _initConfig yoksa oluştur
+            if (!this._initConfig) {
+                this._initConfig = {
+                    videoElementId: video.id,
+                    imageElementId: image.id
+                };
+            }
+            return true;
+        }
+        return false;
+    },
+
+    /**
      * Yöneticiyi başlatır ve gerekli olay dinleyicilerini (event listeners) kurar.
      * @param {Object} config Eleman ID'lerini içeren yapılandırma nesnesi
      */
@@ -206,27 +232,29 @@ const CinematicVideoManager = {
 
         // DOM elemanları null ise yeniden bulmayı dene
         if (!this.elements.video || !this.elements.image) {
+            // Önce _initConfig ile dene, yoksa sınıf ismiyle ara
+            var found = false;
             if (this._initConfig) {
-                console.log('[VIDEO] Elemanlar kayıp, yeniden bağlanmaya çalışılıyor...');
-                if (this._ensureElements()) {
-                    console.log('[VIDEO] Elemanlar yeniden bağlandı.');
-                    // Başlatma henüz yapılmadıysa şimdi yap
-                    if (!this._initialized) {
-                        this.init(this._initConfig);
-                        return; // init() bekleyen yüklemeyi işler
-                    }
-                } else {
-                    console.warn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
-                    this.state.data = data;
-                    this.state.currentChar = data.character;
-                    this._pendingLoad = { data: data, trigger: trigger };
-                    return;
+                found = this._ensureElements();
+            }
+            if (!found) {
+                found = this._findElementsByClass();
+            }
+
+            if (found) {
+                console.log('[VIDEO] Elemanlar bulundu ve bağlandı.');
+                // Başlatma henüz yapılmadıysa şimdi yap
+                if (!this._initialized) {
+                    this.init(this._initConfig);
+                    return; // init() bekleyen yüklemeyi işler
                 }
             } else {
-                console.warn('[VIDEO] DOM elemanları ve yapılandırma hazır değil, veri saklanıyor');
+                console.warn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
                 this.state.data = data;
                 this.state.currentChar = data.character;
                 this._pendingLoad = { data: data, trigger: trigger };
+                // Kısa süre sonra tekrar deneyecek zamanlayıcı kur
+                this._scheduleRetryLoad(data, trigger);
                 return;
             }
         }
@@ -418,12 +446,52 @@ const CinematicVideoManager = {
     },
 
     /**
+     * Bekleyen yükleme için zamanlayıcı kur.
+     * DOM elemanları bulunana kadar belirli aralıklarla tekrar dener.
+     */
+    _scheduleRetryLoad: function(data, trigger) {
+        var self = this;
+        var retryCount = 0;
+        var maxRetries = 40; // 10 saniye boyunca dene
+        var retryDelay = 250;
+
+        if (this._retryTimer) {
+            clearInterval(this._retryTimer);
+        }
+
+        this._retryTimer = setInterval(function() {
+            retryCount++;
+            var found = self._ensureElements() || self._findElementsByClass();
+
+            if (found) {
+                clearInterval(self._retryTimer);
+                self._retryTimer = null;
+                console.log('[VIDEO] Zamanlayıcıyla elemanlar bulundu, yükleme devam ediyor');
+                if (!self._initialized) {
+                    self.init(self._initConfig);
+                } else {
+                    self._pendingLoad = null;
+                    self.loadCharacter({ data: data, trigger: trigger });
+                }
+            } else if (retryCount >= maxRetries) {
+                clearInterval(self._retryTimer);
+                self._retryTimer = null;
+                console.warn('[VIDEO] Zamanlayıcı zaman aşımı: elemanlar bulunamadı');
+            }
+        }, retryDelay);
+    },
+
+    /**
      * Karakter seçildiğinde (örn: Ayarları Kaydet butonuna tıklandığında) oynatılır.
      */
     playSelectSequence: function() {
         // Elemanları doğrula (kaydet sonrası referans kaybı koruması)
         if (!this.elements.video || !this.elements.image) {
-            this._ensureElements();
+            var found = this._ensureElements() || this._findElementsByClass();
+            if (!found) {
+                console.warn('[VIDEO] Seçim animasyonu: elemanlar bulunamadı, iptal edildi');
+                return;
+            }
         }
         console.log('[VIDEO] Seçim animasyonu tetiklendi.');
         this.playSequence('select');
@@ -467,5 +535,41 @@ $(document).ready(function() {
     // Karakter seçim animasyonu (select) istendiğinde tetiklenir
     Shiny.addCustomMessageHandler('triggerVideoSelection', function(message) {
         CinematicVideoManager.playSelectSequence();
+    });
+
+    // Ayarlar sekmesine geçildiğinde başlatmayı dene (yedek mekanizma)
+    $(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function() {
+        // Henüz başlatılmadıysa ve Ayarlar sekmesindeyse başlatmayı dene
+        if (!CinematicVideoManager._initialized) {
+            var found = CinematicVideoManager._findElementsByClass();
+            if (found) {
+                console.log('[VIDEO] Sekme geçişinde başlatma tetiklendi');
+                CinematicVideoManager.init(CinematicVideoManager._initConfig);
+            }
+        } else {
+            // Zaten başlatılmış ama elemanlar kaybolmuş olabilir
+            if (!CinematicVideoManager.elements.video || !CinematicVideoManager.elements.image) {
+                CinematicVideoManager._ensureElements() || CinematicVideoManager._findElementsByClass();
+            }
+            // Ayarlar sekmesindeyse ve veri varsa döngüyü başlat
+            if (CinematicVideoManager.isSettingsTabActive() && CinematicVideoManager.state.data) {
+                if (!CinematicVideoManager.state.isPlaying) {
+                    CinematicVideoManager.playSequence('intro');
+                }
+            }
+        }
+    });
+
+    // Kişiselleştirme alt sekmesine tıklandığında da dene
+    $(document).on('click', '[data-value="settings_kisisel"]', function() {
+        setTimeout(function() {
+            if (!CinematicVideoManager._initialized) {
+                var found = CinematicVideoManager._findElementsByClass();
+                if (found) {
+                    console.log('[VIDEO] Kişiselleştirme sekmesinde başlatma tetiklendi');
+                    CinematicVideoManager.init(CinematicVideoManager._initConfig);
+                }
+            }
+        }, 300);
     });
 });

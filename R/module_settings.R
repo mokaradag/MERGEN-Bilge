@@ -191,13 +191,17 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$selected_character <- kisisel$temp_selected_character()
 
     # Deneyim modu değişikliği varsa uygula (sadece kaydet butonunda)
+    # Kullanıcı mod kartına tıkladıysa aynı mod olsa bile tekrar uygula
     mode_changed <- FALSE
     new_mode <- kisisel$temp_experience_mode()
-    if (!is.null(new_mode) && new_mode != isolate(settings$experience_mode)) {
+    explicitly_clicked <- isTRUE(kisisel$mode_was_clicked())
+    if (!is.null(new_mode) && (new_mode != isolate(settings$experience_mode) || explicitly_clicked)) {
       settings$experience_mode <- new_mode
       apply_experience_mode(session, settings, new_mode)
       mode_changed <- TRUE
-      cat(sprintf("[SETTINGS] Deneyim modu uygulandı: %s\n", new_mode))
+      # Tıklama bayrağını sıfırla
+      kisisel$mode_was_clicked(FALSE)
+      cat(sprintf("[SETTINGS] Deneyim modu uygulandı: %s (açık tıklama: %s)\n", new_mode, explicitly_clicked))
     }
 
     # Yapılandırma geçici değerlerini uygula

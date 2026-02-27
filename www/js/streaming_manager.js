@@ -92,6 +92,11 @@ $(document).ready(function() {
         // Final HTML içeriğini yerleştir
         messageDiv.innerHTML = data.html;
 
+        // Tabloları kaydırılabilir sarmalayıcıya al
+        if (typeof window.wrapMessageTables === 'function') {
+            window.wrapMessageTables(messageDiv);
+        }
+
         // CodeMirror (Kod blokları) başlat
         if (window.initializeCodeMirrorInElement) {
             setTimeout(() => window.initializeCodeMirrorInElement('message_wrapper_' + data.id), 0);
