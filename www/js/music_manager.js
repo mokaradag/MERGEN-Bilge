@@ -27,7 +27,8 @@ const MusicManager = {
 
   config: {
     fadeTime: 1500,
-    crossfadeTime: 1200  // Karakter geçişi için çapraz solma süresi
+    crossfadeTime: 1200,      // Karakter geçişi için çapraz solma süresi
+    duckedVolumeRatio: 0.15   // Kısılmış ses seviyesi oranı (normalVolume * bu oran)
   },
 
   // ─── BAŞLATMA ───
@@ -155,9 +156,14 @@ const MusicManager = {
         return;
       }
 
-      var targetVol = self.state.isDucked ? 0 : self.state.normalVolume;
+      // Kısılmış durumdaysa düşük ses seviyesinde başlat, değilse normal seviyeye çık
+      var targetVol = self.state.isDucked
+        ? Math.max(0.02, self.state.normalVolume * self.config.duckedVolumeRatio)
+        : self.state.normalVolume;
       self._fadeToVolume(audio, targetVol, self.config.fadeTime);
       audio.play().catch(function(e) {
+        if (self._intentionalStop) return;
+        if (e.name === 'AbortError') return;
         console.warn('[MUSIC] Oynatma hatası:', e.message || e);
       });
 
@@ -257,6 +263,7 @@ const MusicManager = {
 
   // ─── SES SEVİYESİ GEÇİŞİ ───
   _fadeToVolume: function(audio, targetVolume, duration) {
+    // Önceki fade işlemini temizle
     if (this._fadeInterval) {
       clearInterval(this._fadeInterval);
       this._fadeInterval = null;
@@ -267,7 +274,7 @@ const MusicManager = {
     var startVolume = audio.volume;
     var diff = targetVolume - startVolume;
     if (Math.abs(diff) < 0.01) {
-      try { audio.volume = targetVolume; } catch(e) {}
+      try { audio.volume = Math.max(0, Math.min(1, targetVolume)); } catch(e) {}
       return;
     }
 
@@ -275,22 +282,24 @@ const MusicManager = {
     var stepTime = (duration || 500) / steps;
     var stepSize = diff / steps;
     var currentStep = 0;
+    var self = this;
 
+    // setInterval'da self kullanarak this bağlam sorununu önle
     this._fadeInterval = setInterval(function() {
       currentStep++;
       if (currentStep >= steps) {
         try { audio.volume = Math.max(0, Math.min(1, targetVolume)); } catch(e) {}
-        clearInterval(this._fadeInterval);
-        this._fadeInterval = null;
+        clearInterval(self._fadeInterval);
+        self._fadeInterval = null;
         return;
       }
       try {
         audio.volume = Math.max(0, Math.min(1, startVolume + (stepSize * currentStep)));
       } catch(e) {
-        clearInterval(this._fadeInterval);
-        this._fadeInterval = null;
+        clearInterval(self._fadeInterval);
+        self._fadeInterval = null;
       }
-    }.bind(this), stepTime);
+    }, stepTime);
   },
 
   // ─── AÇIK API ───
@@ -375,21 +384,23 @@ const MusicManager = {
     }
   },
 
-  // TTS/video sırasında sesi kıs
+  // Karakter videosu/TTS sırasında sesi kıs (tamamen kapatma, sadece alçalt)
   duck: function() {
     if (this.state.isDucked) return;
     this.state.isDucked = true;
     if (this._audio) {
-      this._fadeToVolume(this._audio, 0, 400);
+      // Sesi tamamen kapatma, düşük seviyeye indir (yumuşak geçişle)
+      var duckedVolume = Math.max(0.02, this.state.normalVolume * this.config.duckedVolumeRatio);
+      this._fadeToVolume(this._audio, duckedVolume, 600);
     }
   },
 
-  // TTS/video bitince sesi geri getir
+  // Karakter videosu/TTS bitince sesi geri getir (yumuşak geçişle)
   unduck: function() {
     if (!this.state.isDucked) return;
     this.state.isDucked = false;
     if (this._audio) {
-      this._fadeToVolume(this._audio, this.state.normalVolume, 600);
+      this._fadeToVolume(this._audio, this.state.normalVolume, 800);
     }
   }
 };
@@ -426,7 +437,8 @@ $(document).ready(function() {
     MusicManager.receivePlaylist(data);
   });
 
-  // Diğer ses kaynakları (TTS, video) çalınca müziği kıs
+  // Diğer ses kaynakları (TTS) çalınca müziği kıs
+  // NOT: Video için CinematicVideoManager zaten duck/unduck çağırıyor
   document.addEventListener('play', function(e) {
     if (e.target && e.target.tagName === 'AUDIO' && !e.target.src.includes('/music/')) {
       MusicManager.duck();

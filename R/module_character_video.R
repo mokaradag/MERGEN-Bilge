@@ -16,21 +16,22 @@ get_character_video_data <- function(char_id) {
   cat(sprintf("[VIDEO R] get_character_video_data çağrıldı: '%s' -> '%s'\n", char_id, char_key))
   
   # Karakterlerin orijinal statik resim dosya eşleştirmeleri
+  # (config_characters.R ile tutarlı: alt çizgi kullanımı)
   image_map <- list(
-    "mergen" = "Mergen_resim.original.png",
-    "ulgen" = "Ulgen_resim.original.png",
-    "kayra" = "Kayra_resim.original.png",
-    "erlik" = "Erlik_resim.original.png",
-    "umay" = "Umay_Ana_resim.original.png"
+    "mergen" = "Mergen_resim_original.png",
+    "ulgen" = "Ulgen_resim_original.png",
+    "kayra" = "Kayra_resim_original.png",
+    "erlik" = "Erlik_resim_original.png",
+    "umay" = "Umay_Ana_resim_original.png"
   )
   
-  # Resim yolunu oluştur
+  # Resim yolunu oluştur (URL-safe: boşluk ve özel karakterler kodlanır)
   img_filename <- image_map[[char_key]]
   if (is.null(img_filename)) {
     # Bulunamazsa boş bırak veya varsayılan mantığa dön
     image_path <- ""
   } else {
-    image_path <- file.path("characters", "resim", img_filename)
+    image_path <- paste0("characters/resim/", utils::URLencode(img_filename))
   }
   
   # Belirli bir tipteki (intro, loop, select) video dosyalarını dizinden tarayan iç fonksiyon
