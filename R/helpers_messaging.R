@@ -286,16 +286,18 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
             div(
               class = "message-actions",
               if (is_last_user_message && !is_streaming) {
-                actionButton(
-                  paste0("edit_user_", msg$id), "", icon = icon("pencil-alt"),
-                  class = "message-action-btn", title = "Düzenle",
-                  onclick = sprintf("Shiny.setInputValue('edit_message_request', '%s', {priority: 'event'})", msg$id)
+                tags$button(
+                  id = paste0("edit_user_", msg$id),
+                  class = "btn btn-default message-action-btn", title = "Düzenle",
+                  onclick = sprintf("Shiny.setInputValue('edit_message_request', '%s', {priority: 'event'})", msg$id),
+                  icon("pencil-alt")
                 )
               },
-              actionButton(
-                paste0("copy_user_", msg$id), "", icon = icon("copy"),
-                class = "message-action-btn", title = "Kopyala",
-                onclick = sprintf("copyAIMessageContent('%s')", msg$id)
+              tags$button(
+                id = paste0("copy_user_", msg$id),
+                class = "btn btn-default message-action-btn", title = "Kopyala",
+                onclick = sprintf("copyAIMessageContent('%s')", msg$id),
+                icon("copy")
               )
             )
           ),
@@ -341,37 +343,41 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
             ),
             div(
               class = "message-actions",
-              actionButton(
-                paste0("like_", msg$id), "", icon = icon("thumbs-up"),
+              tags$button(
+                id = paste0("like_", msg$id),
                 class = paste(
-                  "message-action-btn like-btn",
+                  "btn btn-default message-action-btn like-btn",
                   if (is_streaming) "streaming-hidden" else "",
                   if (isTRUE(as.character(msg$db_id) %in% as.character(liked_ids))) "active liked" else ""
                 ),
                 title = "Beğen",
-                onclick = sprintf("Shiny.setInputValue('like_message', '%s', {priority: 'event'})", msg$id)
+                onclick = sprintf("Shiny.setInputValue('like_message', '%s', {priority: 'event'})", msg$id),
+                icon("thumbs-up")
               ),
-              actionButton(
-                paste0("dislike_", msg$id), "", icon = icon("thumbs-down"),
+              tags$button(
+                id = paste0("dislike_", msg$id),
                 class = paste(
-                  "message-action-btn dislike-btn",
+                  "btn btn-default message-action-btn dislike-btn",
                   if (is_streaming) "streaming-hidden" else "",
                   if (isTRUE(as.character(msg$db_id) %in% as.character(disliked_ids))) "active disliked" else ""
                 ),
                 title = "Beğenme",
-                onclick = sprintf("Shiny.setInputValue('dislike_message', '%s', {priority: 'event'})", msg$id)
+                onclick = sprintf("Shiny.setInputValue('dislike_message', '%s', {priority: 'event'})", msg$id),
+                icon("thumbs-down")
               ),
-              actionButton(
-                paste0("copy_ai_", msg$id), "", icon = icon("copy"),
-                class = paste("message-action-btn", if(is_streaming) "streaming-hidden" else ""),
+              tags$button(
+                id = paste0("copy_ai_", msg$id),
+                class = paste("btn btn-default message-action-btn", if(is_streaming) "streaming-hidden" else ""),
                 title = "Kopyala",
-                onclick = sprintf("copyAIMessageContent('%s')", msg$id)
+                onclick = sprintf("copyAIMessageContent('%s')", msg$id),
+                icon("copy")
               ),
-              actionButton(
-                paste0("regenerate_", msg$id), "", icon = icon("sync-alt"),
-                class = paste("message-action-btn", if(is_streaming) "streaming-hidden" else ""),
+              tags$button(
+                id = paste0("regenerate_", msg$id),
+                class = paste("btn btn-default message-action-btn", if(is_streaming) "streaming-hidden" else ""),
                 title = "Yeniden Oluştur",
-                onclick = sprintf("Shiny.setInputValue('regenerate_message', '%s', {priority: 'event'})", msg$id)
+                onclick = sprintf("Shiny.setInputValue('regenerate_message', '%s', {priority: 'event'})", msg$id),
+                icon("sync-alt")
               )
             )
           ),

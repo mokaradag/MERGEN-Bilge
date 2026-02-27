@@ -99,14 +99,15 @@ characterVideoUI <- function(id) {
       )
     ),
     # CinematicVideoManager bileşenini başlatan ve elemanları bağlayan betik
+    # Başlatma betiği: Daha uzun süre dener, bulamazsa sekme geçişinde yedek mekanizma devreye girer
     tags$script(sprintf("
       (function() {
         var videoId = '%s';
         var imageId = '%s';
         var attempts = 0;
+        var maxAttempts = 60;
         function tryInit() {
           attempts++;
-          // Global CinematicVideoManager nesnesinin ve DOM elemanlarının hazır olduğunu kontrol et
           if (typeof CinematicVideoManager !== 'undefined' &&
               document.getElementById(videoId) &&
               document.getElementById(imageId)) {
@@ -114,11 +115,12 @@ characterVideoUI <- function(id) {
               videoElementId: videoId,
               imageElementId: imageId
             });
-          } else if (attempts < 20) {
-            // Henüz hazır değilse 250ms sonra tekrar dene
-            setTimeout(tryInit, 250);
+          } else if (attempts < maxAttempts) {
+            // İlk 20 denemede 250ms, sonrasında 500ms aralıkla dene
+            var delay = attempts < 20 ? 250 : 500;
+            setTimeout(tryInit, delay);
           } else {
-            console.error('[VIDEO] Başlatma zaman aşımı: elemanlar veya yönetici bulunamadı');
+            console.warn('[VIDEO] Başlatma: elemanlar henüz bulunamadı, sekme geçişinde tekrar denenecek');
           }
         }
         if (document.readyState === 'complete' || document.readyState === 'interactive') {

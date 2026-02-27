@@ -134,6 +134,8 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
     # Geçici seçimler (kaydedilene kadar uygulanmaz)
     temp_selected_character <- reactiveVal("mergen")
     temp_experience_mode <- reactiveVal("odak")
+    # Kullanıcı mod kartına tıkladı mı (aynı mod tekrar seçildiğinde uygulama için)
+    mode_was_clicked <- reactiveVal(FALSE)
 
     # Karakter verileri
     characters_data <- reactive(get_characters_data())
@@ -244,6 +246,17 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
 
       cat(sprintf("[SETTINGS-KISISEL] Mod geçici olarak seçildi: %s (kaydet ile uygulanacak)\n", mode))
       temp_experience_mode(mode)
+      mode_was_clicked(TRUE)
+    }, ignoreInit = TRUE)
+
+    # Giriş ekranından mod değiştiğinde temp_experience_mode'u senkronize et
+    observeEvent(settings$experience_mode, {
+      current <- temp_experience_mode()
+      if (!identical(settings$experience_mode, current)) {
+        temp_experience_mode(settings$experience_mode)
+        # Mod kartlarını JS tarafında da güncelle
+        session$sendCustomMessage("updateSettingsMode", list(mode = settings$experience_mode))
+      }
     }, ignoreInit = TRUE)
 
     # Karakter video modülünü başlat
@@ -259,6 +272,7 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
       reset_trigger = reset_trigger,
       temp_selected_character = temp_selected_character,
       temp_experience_mode = temp_experience_mode,
+      mode_was_clicked = mode_was_clicked,
       update_character_display = update_character_display
     ))
   })

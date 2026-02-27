@@ -292,6 +292,9 @@ apply_experience_mode <- function(session, settings_data, mode) {
   s <- mode_settings[[mode]]
   if (is.null(s)) return()
 
+  # Mod adını da güncelle (giriş ekranından seçildiğinde senkronizasyon için)
+  settings_data$experience_mode <- mode
+
   # Reaktif değerleri güncelle
   settings_data$enable_tts_audio <- s$enable_tts_audio
   settings_data$enable_followups <- s$enable_followups

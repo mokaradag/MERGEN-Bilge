@@ -1,13 +1,13 @@
 // www/js/music_manager.js
 // Arka plan müzik yönetim sistemi - Tek ses kaynağı mimarisi
-// Akış: Ana Tema (bir kez) → Karakter Müziği (rastgele döngü)
+// Akış: Ana Tema (bir kez, sadece ilk başlatmada) → Karakter Müziği (rastgele döngü)
 
 const MusicManager = {
   // Tek global durum
   state: {
     enabled: false,          // Müzik açık mı
     character: 'mergen',     // Aktif karakter
-    phase: 'idle',           // 'idle' | 'theme' | 'character'
+    phase: 'idle',           // 'idle' | 'theme' | 'character' | 'waiting_character'
     normalVolume: 0.3,
     isDucked: false
   },
@@ -20,9 +20,14 @@ const MusicManager = {
   _characterPlaylist: [],
   // Bekleyen istek sayacı (gecikmeli yanıtları yönetir)
   _pendingRequestId: 0,
+  // Ana tema daha önce çalındı mı (oturum boyunca bir kez)
+  _themePlayedOnce: false,
+  // Kasıtlı durdurma bayrağı (hata olaylarını bastırmak için)
+  _intentionalStop: false,
 
   config: {
-    fadeTime: 1500
+    fadeTime: 1500,
+    crossfadeTime: 1200  // Karakter geçişi için çapraz solma süresi
   },
 
   // ─── BAŞLATMA ───
@@ -47,8 +52,21 @@ const MusicManager = {
     this._themePlaylist = [];
     this._characterPlaylist = [];
 
-    // Sunucudan tema playlist'ini iste
-    this._requestPlaylist('tema');
+    // Ana tema daha önce çalındıysa doğrudan karakter müziğine geç
+    if (this._themePlayedOnce) {
+      console.log('[MUSIC] Ana tema zaten çalındı, doğrudan karakter müziğine geçiliyor');
+      this._requestPlaylist('karakter');
+    } else {
+      // İlk kez: sunucudan tema playlist'ini iste
+      this._requestPlaylist('tema');
+    }
+  },
+
+  // ─── SADECE KARAKTER MÜZİĞİNİ BAŞLAT (tema olmadan) ───
+  _startCharacterMusic: function() {
+    this._characterPlaylist = [];
+    this.state.phase = 'waiting_character';
+    this._requestPlaylist('karakter');
   },
 
   // ─── SUNUCUDAN PLAYLIST İSTE ───
@@ -89,6 +107,7 @@ const MusicManager = {
       // Tema varsa çalmaya başla, yoksa doğrudan karakter müziğine geç
       if (files.length > 0 && this.state.phase === 'idle') {
         this.state.phase = 'theme';
+        this._themePlayedOnce = true;
         this._playRandomFrom(this._themePlaylist);
       } else {
         // Tema yok, karakter playlist'ini iste
@@ -132,18 +151,17 @@ const MusicManager = {
     audio.addEventListener('canplaythrough', function() {
       // Bu audio hâlâ aktif mi kontrol et (yarış koruması)
       if (self._audio !== audio) {
-        audio.pause();
-        audio.src = '';
+        try { audio.pause(); audio.src = ''; } catch(e) {}
         return;
       }
 
       var targetVol = self.state.isDucked ? 0 : self.state.normalVolume;
       self._fadeToVolume(audio, targetVol, self.config.fadeTime);
       audio.play().catch(function(e) {
-        console.warn('[MUSIC] Oynatma hatası:', e);
+        console.warn('[MUSIC] Oynatma hatası:', e.message || e);
       });
 
-      console.log('[MUSIC] Oynatılıyor [' + self.state.phase + ']:', src.split('/').pop());
+      console.log('[MUSIC] Oynatılıyor [' + self.state.phase + ']:', decodeURIComponent(src.split('/').pop()));
     }, { once: true });
 
     audio.addEventListener('ended', function() {
@@ -154,8 +172,11 @@ const MusicManager = {
     }, { once: true });
 
     audio.addEventListener('error', function(e) {
-      console.warn('[MUSIC] Ses hatası:', e);
+      // Kasıtlı durdurma sırasında hata olaylarını bastır
+      if (self._intentionalStop) return;
+      // Artık aktif değilse yoksay
       if (self._audio !== audio) return;
+      console.warn('[MUSIC] Ses yükleme hatası, sonraki parçaya geçiliyor');
       self._handleTrackEnded();
     }, { once: true });
 
@@ -187,6 +208,8 @@ const MusicManager = {
 
   // ─── SESİ DURDUR ───
   _stopAudio: function() {
+    this._intentionalStop = true;
+
     // Fade interval'ı temizle
     if (this._fadeInterval) {
       clearInterval(this._fadeInterval);
@@ -196,10 +219,40 @@ const MusicManager = {
     if (this._audio) {
       try {
         this._audio.pause();
-        this._audio.src = '';
+        this._audio.removeAttribute('src');
+        this._audio.load(); // Kaynağı temizle (hata olayı tetiklemeden)
       } catch(e) { /* yoksay */ }
       this._audio = null;
     }
+
+    // Kısa gecikmeyle bayrağı sıfırla
+    var self = this;
+    setTimeout(function() { self._intentionalStop = false; }, 100);
+  },
+
+  // ─── YUMUŞAK GEÇİŞLE DURDUR (fade out → callback) ───
+  _fadeOutAndStop: function(callback) {
+    var audioToFade = this._audio;
+    if (!audioToFade) {
+      if (callback) callback();
+      return;
+    }
+
+    // Mevcut audio referansını hemen kaldır (yeni parça ile çakışma önlenir)
+    this._audio = null;
+
+    var self = this;
+    this._fadeToVolume(audioToFade, 0, this.config.crossfadeTime);
+    setTimeout(function() {
+      self._intentionalStop = true;
+      try {
+        audioToFade.pause();
+        audioToFade.removeAttribute('src');
+        audioToFade.load();
+      } catch(e) {}
+      setTimeout(function() { self._intentionalStop = false; }, 100);
+      if (callback) callback();
+    }, self.config.crossfadeTime + 50);
   },
 
   // ─── SES SEVİYESİ GEÇİŞİ ───
@@ -214,7 +267,7 @@ const MusicManager = {
     var startVolume = audio.volume;
     var diff = targetVolume - startVolume;
     if (Math.abs(diff) < 0.01) {
-      audio.volume = targetVolume;
+      try { audio.volume = targetVolume; } catch(e) {}
       return;
     }
 
@@ -246,18 +299,21 @@ const MusicManager = {
   toggle: function(enabled, character) {
     console.log('[MUSIC] toggle:', enabled ? 'AÇIK' : 'KAPALI', '| Karakter:', character || this.state.character);
 
+    var characterChanged = character && character !== this.state.character;
     if (character) {
       this.state.character = character;
     }
 
-    // Aynı duruma tekrar geçişi engelle
+    // Aynı duruma tekrar geçiş
     if (this.state.enabled === enabled) {
-      // Karakter değiştiyse mevcut sesi durdur ve yeni playlist'i iste
-      if (enabled && character && (this.state.phase === 'character' || this.state.phase === 'waiting_character')) {
+      // Müzik açık ve karakter değiştiyse yumuşak geçişle yeni karakter müziğine geç
+      if (enabled && characterChanged && (this.state.phase === 'character' || this.state.phase === 'waiting_character')) {
         this._characterPlaylist = [];
-        this._stopAudio();
-        this.state.phase = 'waiting_character';
-        this._requestPlaylist('karakter');
+        var self = this;
+        this._fadeOutAndStop(function() {
+          self.state.phase = 'waiting_character';
+          self._requestPlaylist('karakter');
+        });
       }
       return;
     }
@@ -267,7 +323,7 @@ const MusicManager = {
     if (enabled) {
       this._startFromBeginning();
     } else {
-      // Fade out ile durdur
+      // Yumuşak geçişle durdur
       var audioToStop = this._audio;
       this._audio = null;
       this.state.phase = 'idle';
@@ -276,12 +332,16 @@ const MusicManager = {
       this._pendingRequestId++;
 
       if (audioToStop) {
+        var self = this;
         this._fadeToVolume(audioToStop, 0, 800);
         setTimeout(function() {
+          self._intentionalStop = true;
           try {
             audioToStop.pause();
-            audioToStop.src = '';
+            audioToStop.removeAttribute('src');
+            audioToStop.load();
           } catch(e) {}
+          setTimeout(function() { self._intentionalStop = false; }, 100);
         }, 900);
       }
     }
@@ -290,18 +350,19 @@ const MusicManager = {
   // Karakter değişikliği (sadece "Ayarları Kaydet" sonrası çağrılır)
   setCharacter: function(character) {
     if (!character || character === this.state.character) return;
-    console.log('[MUSIC] Karakter değişti:', this.state.character, '→', character);
+    console.log('[MUSIC] Karakter değişti:', this.state.character, '->', character);
     this.state.character = character;
 
     if (!this.state.enabled) return;
 
-    // Karakter müziği çalıyorsa veya bekliyorsa yeni karakter playlist'ine geç
+    // Karakter müziği çalıyorsa veya bekliyorsa yumuşak geçişle yeni karakter playlist'ine geç
     if (this.state.phase === 'character' || this.state.phase === 'waiting_character') {
       this._characterPlaylist = [];
-      this._stopAudio();
-      // Faz'ı 'waiting_character' yap ki receivePlaylist() çalmayı başlatsın
-      this.state.phase = 'waiting_character';
-      this._requestPlaylist('karakter');
+      var self = this;
+      this._fadeOutAndStop(function() {
+        self.state.phase = 'waiting_character';
+        self._requestPlaylist('karakter');
+      });
     }
     // Tema çalıyorsa tema bittikten sonra yeni karakter müziği gelecek
   },
