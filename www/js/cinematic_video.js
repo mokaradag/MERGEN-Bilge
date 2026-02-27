@@ -28,6 +28,8 @@ const CinematicVideoManager = {
     _initialized: false,
     // Olay dinleyicileri kayıtlı mı
     _listenersAttached: false,
+    // Oynatma sekans kimliği (yarış durumu koruması)
+    _playSeqId: 0,
     // Yapılandırma ayarları
     config: {
         imageDisplayDuration: 4000, // Döngüler arasında statik görselin gösterilme süresi (ms)
@@ -140,20 +142,24 @@ const CinematicVideoManager = {
                 }
             });
 
-            // Shiny sekmeleri arasındaki değişimi izle (Ayarlar sekmesine özel çalışma)
+            // Shiny sekmeleri arasındaki değişimi izle (sadece Kişiselleştirme sekmesine özel)
             $(document).on('shown.bs.tab', 'a[data-toggle="tab"]', (e) => {
-                var nowOnSettings = this.isSettingsTabActive();
+                var nowOnKisisel = this._isKisiselTabActive();
 
-                if (nowOnSettings) {
+                if (nowOnKisisel) {
                     // Elemanları yeniden doğrula (sekme geçişlerinde referans kaybı koruması)
                     this._ensureElements();
                     if (this.state.data) {
-                        console.log('[VIDEO] Ayarlar sekmesine girildi, giriş (intro) başlatılıyor');
+                        console.log('[VIDEO] Kişiselleştirme sekmesine girildi, giriş (intro) başlatılıyor');
                         this.playSequence('intro');
                     }
                 } else {
-                    console.log('[VIDEO] Ayarlar sekmesinden çıkıldı, kaynak tüketmemek için durduruluyor');
+                    console.log('[VIDEO] Kişiselleştirme sekmesinden çıkıldı, kaynak tüketmemek için durduruluyor');
                     this.stopEverything();
+                    // Müzik kısılmış kaldıysa geri getir
+                    if (window.MusicManager && window.MusicManager.state.isDucked) {
+                        window.MusicManager.unduck();
+                    }
                 }
             });
 
@@ -173,20 +179,32 @@ const CinematicVideoManager = {
     },
 
     /**
-     * Mevcut aktif sekmenin "Ayarlar" (Kişiselleştirme veya Yapılandırma) olup olmadığını kontrol eder.
+     * Mevcut aktif sekmenin "Kişiselleştirme" olup olmadığını kontrol eder.
+     * Videolar SADECE Kişiselleştirme sayfasında oynatılır.
+     * Tab pane'in görünürlüğünü kontrol eder (sidebar li.active alt menülerde güvenilmez).
+     */
+    _isKisiselTabActive: function() {
+        // Yöntem 1: Tab pane'in aktif olup olmadığını doğrudan kontrol et
+        var kisiselPane = document.getElementById('shiny-tab-settings_kisisel');
+        if (kisiselPane && kisiselPane.classList.contains('active')) {
+            return true;
+        }
+        // Yöntem 2: Sidebar'daki aktif bağlantıları kontrol et (yedek)
+        var activeLinks = document.querySelectorAll('.sidebar-menu li.active > a[data-value]');
+        for (var i = 0; i < activeLinks.length; i++) {
+            if (activeLinks[i].getAttribute('data-value') === 'settings_kisisel') {
+                return true;
+            }
+        }
+        return false;
+    },
+
+    /**
+     * Geriye uyumluluk için eski isSettingsTabActive adını da koru.
+     * Artık sadece Kişiselleştirme sekmesini kontrol eder.
      */
     isSettingsTabActive: function() {
-        var activeTab = document.querySelector('.sidebar-menu li.active a');
-        if (!activeTab) return false;
-
-        var dataValue = activeTab.getAttribute('data-value');
-        var href = activeTab.getAttribute('href');
-
-        return dataValue === 'settings' ||
-               dataValue === 'tab_settings' ||
-               href === '#shiny-tab-settings' ||
-               dataValue === 'settings_kisisel' ||
-               dataValue === 'settings_yapilandirma';
+        return this._isKisiselTabActive();
     },
 
     /**
@@ -259,20 +277,31 @@ const CinematicVideoManager = {
             }
         }
 
+        // Çift tetikleme koruması: aynı karakter + aynı tetikleyici zaten işlendiyse yoksay
+        // (click ve auto sırayla geldiğinde ikincisini atla)
+        if (this.state.currentChar === data.character && trigger === 'auto' && this.state.isPlaying) {
+            console.log('[VIDEO] Aynı karakter zaten oynatılıyor, yinelenen auto tetikleyicisi atlandı');
+            return;
+        }
+
+        // Mevcut oynatmayı durdur (yeni sekans kimliği ile)
+        this._playSeqId++;
         this.stopEverything();
 
         this.state.data = data;
         this.state.currentChar = data.character;
 
         if (data.image) {
-            this.elements.image.src = data.image;
-            this.elements.video.poster = data.image;
-            console.log('[VIDEO] Resim ve poster güncellendi:', data.image);
+            // Görsel URL'sini güvenli şekilde ata (boşluk ve özel karakter koruması)
+            var safeImage = encodeURI(data.image);
+            this.elements.image.src = safeImage;
+            this.elements.video.poster = safeImage;
+            console.log('[VIDEO] Resim ve poster güncellendi:', safeImage);
         }
 
         var self = this;
         var playIntro = function() {
-            if (self.isSettingsTabActive()) {
+            if (self._isKisiselTabActive()) {
                 console.log('[VIDEO] Giriş videosu başlatılıyor');
                 self.playSequence('intro');
             }
@@ -291,8 +320,8 @@ const CinematicVideoManager = {
      * @param {string} type Oynatılacak sekans tipi
      */
     playSequence: function(type) {
-        if (!this.isSettingsTabActive()) {
-            console.log('[VIDEO] Ayarlar sekmesinde değiliz, oynatma iptal edildi.');
+        if (!this._isKisiselTabActive()) {
+            console.log('[VIDEO] Kişiselleştirme sekmesinde değiliz, oynatma iptal edildi.');
             return;
         }
 
@@ -319,6 +348,9 @@ const CinematicVideoManager = {
 
         console.log('[VIDEO] Oynatılıyor:', src);
 
+        // Mevcut sekans kimliğini yakala (yarış durumu koruması)
+        var seqId = this._playSeqId;
+
         // Kapsayıcıya 'video-playing' sınıfı ekleyerek CSS üzerinden görünürlüğü ayarla
         if (this.elements.container) {
             this.elements.container.classList.add('video-playing');
@@ -328,7 +360,7 @@ const CinematicVideoManager = {
         this.elements.video.load();
         this.state.isPlaying = true;
 
-        // Arka plan müziği varsa sesini kıs (ducking)
+        // Arka plan müziği varsa sesini kıs (tamamen kapatma, sadece alçalt)
         if (window.MusicManager) {
             window.MusicManager.duck();
         }
@@ -337,11 +369,21 @@ const CinematicVideoManager = {
         var playPromise = this.elements.video.play();
         if (playPromise) {
             playPromise.catch(function(error) {
+                // Sekans değiştiyse bu artık geçersiz bir oynatma - sessizce yoksay
+                if (seqId !== self._playSeqId) return;
+
+                // AbortError: kaynak değişti veya durduruldu - güvenle yoksay
+                if (error.name === 'AbortError') {
+                    return;
+                }
+
                 // Tarayıcı kısıtlaması nedeniyle engellenirse sessiz modda tekrar dene
                 if (error.name === 'NotAllowedError' && self.elements.video && !self.elements.video.muted) {
                     console.warn('[VIDEO] Sesli oynatma engellendi, sessiz deneniyor');
                     self.elements.video.muted = true;
                     self.elements.video.play().catch(function(e2) {
+                        if (seqId !== self._playSeqId) return;
+                        if (e2.name === 'AbortError') return;
                         console.error('[VIDEO] Oynatma tamamen başarısız:', e2);
                         self.handleVideoError(e2);
                     });
@@ -390,12 +432,16 @@ const CinematicVideoManager = {
      * Sayfa tekrar görünür olduğunda duraklatılan videoyu devam ettirir.
      */
     resumeIfPaused: function() {
-        if (!this.isSettingsTabActive()) return;
+        if (!this._isKisiselTabActive()) return;
         if (this.state.isPlaying && this.elements.video && this.elements.video.paused) {
+            var seqId = this._playSeqId;
+            var self = this;
             var playPromise = this.elements.video.play();
             if (playPromise) {
                 playPromise.catch(function(error) {
-                    console.warn('[VIDEO] Devam ettirme başarısız:', error);
+                    if (seqId !== self._playSeqId) return;
+                    if (error.name === 'AbortError') return;
+                    console.warn('[VIDEO] Devam ettirme başarısız:', error.name);
                 });
             }
         }
@@ -415,8 +461,8 @@ const CinematicVideoManager = {
             window.MusicManager.unduck();
         }
 
-        // Ayarlar sekmesindeysek bir sonraki döngüyü planla
-        if (this.isSettingsTabActive()) {
+        // Kişiselleştirme sekmesindeysek bir sonraki döngüyü planla
+        if (this._isKisiselTabActive()) {
             this.scheduleNextLoop();
         }
     },
@@ -430,7 +476,7 @@ const CinematicVideoManager = {
 
         console.log('[VIDEO] Sonraki döngü planlandı: ' + this.config.imageDisplayDuration + 'ms');
         this.state.timer = setTimeout(function() {
-            if (self.isSettingsTabActive()) {
+            if (self._isKisiselTabActive()) {
                 self.playSequence('loop');
             }
         }, this.config.imageDisplayDuration);
@@ -440,8 +486,17 @@ const CinematicVideoManager = {
      * Video yükleme/oynatma hatası durumunda görsele dön ve döngüyü sürdür.
      */
     handleVideoError: function(error) {
+        // AbortError'ları sessizce yoksay - yarış durumundan kaynaklanan beklenen davranış
+        if (error && error.name === 'AbortError') return;
+
         console.error('[VIDEO] Hata oluştu:', error);
         this.showImage();
+
+        // Müzik kısılmış kaldıysa geri getir
+        if (window.MusicManager && window.MusicManager.state.isDucked) {
+            window.MusicManager.unduck();
+        }
+
         this.scheduleNextLoop();
     },
 
@@ -485,6 +540,9 @@ const CinematicVideoManager = {
      * Karakter seçildiğinde (örn: Ayarları Kaydet butonuna tıklandığında) oynatılır.
      */
     playSelectSequence: function() {
+        // Kişiselleştirme sekmesinde değilsek iptal et
+        if (!this._isKisiselTabActive()) return;
+
         // Elemanları doğrula (kaydet sonrası referans kaybı koruması)
         if (!this.elements.video || !this.elements.image) {
             var found = this._ensureElements() || this._findElementsByClass();
@@ -537,9 +595,15 @@ $(document).ready(function() {
         CinematicVideoManager.playSelectSequence();
     });
 
-    // Ayarlar sekmesine geçildiğinde başlatmayı dene (yedek mekanizma)
+    // Kişiselleştirme sekmesine geçildiğinde başlatmayı dene (yedek mekanizma)
     $(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function() {
-        // Henüz başlatılmadıysa ve Ayarlar sekmesindeyse başlatmayı dene
+        var activeTab = document.querySelector('.sidebar-menu li.active a');
+        var dataValue = activeTab ? activeTab.getAttribute('data-value') : '';
+
+        // Sadece Kişiselleştirme sekmesi için işlem yap
+        if (dataValue !== 'settings_kisisel') return;
+
+        // Henüz başlatılmadıysa başlatmayı dene
         if (!CinematicVideoManager._initialized) {
             var found = CinematicVideoManager._findElementsByClass();
             if (found) {
@@ -551,11 +615,9 @@ $(document).ready(function() {
             if (!CinematicVideoManager.elements.video || !CinematicVideoManager.elements.image) {
                 CinematicVideoManager._ensureElements() || CinematicVideoManager._findElementsByClass();
             }
-            // Ayarlar sekmesindeyse ve veri varsa döngüyü başlat
-            if (CinematicVideoManager.isSettingsTabActive() && CinematicVideoManager.state.data) {
-                if (!CinematicVideoManager.state.isPlaying) {
-                    CinematicVideoManager.playSequence('intro');
-                }
+            // Kişiselleştirme sekmesindeyse ve veri varsa döngüyü başlat
+            if (CinematicVideoManager.state.data && !CinematicVideoManager.state.isPlaying) {
+                CinematicVideoManager.playSequence('intro');
             }
         }
     });

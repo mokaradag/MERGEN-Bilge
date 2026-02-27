@@ -49,16 +49,19 @@ create_modern_welcome_action <- function(action_data) {
   # Bu, tarayıcıların yerleşik tooltip mekanizmasını kullanır
   tooltip_title <- sprintf("%s\n\n%s", action_data$title, action_data$description)
   
+  # Mesaj metnini Base64 ile kodla (inline JS söz dizimi hatalarını önlemek için)
+  safe_message_b64 <- base64enc::base64encode(charToRaw(enc2utf8(action_data$message %||% "")))
+
   tags$button(
     class = "modern-welcome-action-btn",
     title = tooltip_title, # Tooltip'i title attribute'üne ekle
     style = sprintf("--theme-r: %d; --theme-g: %d; --theme-b: %d;", rgb[1], rgb[2], rgb[3]),
-	onclick = sprintf("Shiny.setInputValue('quick_template', {text: '%s', model: '%s', action_id: '%s'}, {priority: 'event'}); $('.custom-tooltip').remove(); $('#welcome_fullscreen_container').fadeOut(300); return false;",
-				  gsub("'", "\\\\'", action_data$message),
-				  action_data$model_value,
-				  action_data$id),
+    # Veriyi data attribute'lerde sakla, JS'de oku (söz dizimi hatası riski yok)
+    `data-action-message` = safe_message_b64,
+    `data-action-model` = action_data$model_value,
+    `data-action-id` = action_data$id,
+    onclick = "window._handleQuickAction(this); return false;",
 
-    
     # Tooltip için özel CSS sınıfı ekle
     `data-toggle` = "tooltip",
     `data-placement` = "top",
