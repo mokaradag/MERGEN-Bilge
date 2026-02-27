@@ -489,7 +489,6 @@
 .modern-welcome-texture-overlay {
   position: absolute;
   inset: 0;
-  background-image: url('https://www.transparenttextures.com/patterns/carbon-fibre.png');
   opacity: 0.03;
   mix-blend-mode: screen;
   pointer-events: none;
