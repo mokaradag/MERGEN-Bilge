@@ -50,6 +50,7 @@ createStartupScreenUI <- function() {
           # SVG yılan izi animasyonu
           tags$svg(
             class = "explore-snake-svg",
+            overflow = "visible",
             tags$defs(
               tags$linearGradient(
                 id = "snake-gradient", x1 = "0%", y1 = "0%", x2 = "100%", y2 = "100%",
@@ -60,7 +61,7 @@ createStartupScreenUI <- function() {
             tags$rect(
               class = "explore-snake-trail",
               x = "0", y = "0", width = "100%", height = "100%",
-              rx = "33", ry = "33",
+              rx = "31", ry = "31",
               fill = "none",
               stroke = "url(#snake-gradient)",
               `stroke-width` = "4",

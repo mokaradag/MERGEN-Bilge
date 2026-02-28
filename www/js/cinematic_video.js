@@ -263,8 +263,10 @@ const CinematicVideoManager = {
                 console.log('[VIDEO] Elemanlar bulundu ve bağlandı.');
                 // Başlatma henüz yapılmadıysa şimdi yap
                 if (!this._initialized) {
+                    // Veri kaybolmaması için init() öncesinde pendingLoad'a yaz
+                    this._pendingLoad = { data: data, trigger: trigger };
                     this.init(this._initConfig);
-                    return; // init() bekleyen yüklemeyi işler
+                    return; // init() _pendingLoad'u işleyerek loadCharacter'ı yeniden çağıracak
                 }
             } else {
                 console.warn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
