@@ -131,7 +131,8 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/settings_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/analysis_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/citation_styles.css"),
-    
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/ai_expert_subtitle.css"),
+
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
     tags$link(rel = "stylesheet", href = "codemirror/theme/material-darker.min.css"),
@@ -225,7 +226,8 @@ ui <- dashboardPage(
     tags$script(src = "js/settings_tools.js"),
     tags$script(src = "js/analysis_tools.js"),
     tags$script(src = "js/citation_handler.js"),
-    
+    tags$script(src = "js/ai_expert_manager.js"),
+
     tags$div(id = "toast-container", class = "toast-container")
   ),
       
@@ -234,7 +236,10 @@ ui <- dashboardPage(
     
     # Geri bildirim modalı
     feedbackUI("feedback_module"),
-    
+
+    # AI Uzman altyazı seridi (tüm sayfalarda sabit konumlu)
+    aiExpertSubtitleUI("ai_expert_module"),
+
     # --- Sekme İçerikleri (Tab Content) ---
     # Yan menüde tanımlanan her bir sekme için gösterilecek içerikler.
     tabItems(

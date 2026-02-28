@@ -276,17 +276,20 @@ apply_experience_mode <- function(session, settings_data, mode) {
     odak = list(
       enable_tts_audio = FALSE,
       enable_followups = FALSE,
-      enable_background_music = FALSE
+      enable_background_music = FALSE,
+      enable_ai_expert = FALSE
     ),
     denge = list(
       enable_tts_audio = FALSE,
       enable_followups = TRUE,
-      enable_background_music = TRUE
+      enable_background_music = TRUE,
+      enable_ai_expert = FALSE
     ),
     kesif = list(
       enable_tts_audio = TRUE,
       enable_followups = TRUE,
-      enable_background_music = TRUE
+      enable_background_music = TRUE,
+      enable_ai_expert = TRUE
     )
   )
 
@@ -300,11 +303,13 @@ apply_experience_mode <- function(session, settings_data, mode) {
   settings_data$enable_tts_audio <- s$enable_tts_audio
   settings_data$enable_followups <- s$enable_followups
   settings_data$enable_background_music <- s$enable_background_music
+  settings_data$enable_ai_expert <- s$enable_ai_expert
 
   # UI onay kutularını güncelle
   updateCheckboxInput(session, "settings_yapilandirma_module-enable_tts_audio", value = s$enable_tts_audio)
   updateCheckboxInput(session, "settings_yapilandirma_module-enable_followups", value = s$enable_followups)
   updateCheckboxInput(session, "settings_yapilandirma_module-enable_background_music", value = s$enable_background_music)
+  updateCheckboxInput(session, "settings_yapilandirma_module-enable_ai_expert", value = s$enable_ai_expert)
 
   # Müzik durumunu güncelle (karakter bilgisiyle birlikte)
   session$sendCustomMessage("toggleMusic", list(
@@ -314,10 +319,11 @@ apply_experience_mode <- function(session, settings_data, mode) {
 
   # Mod tercihini localStorage'a kaydet
   shinyjs::runjs(sprintf(
-    "try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.experience_mode = '%s'; s.enable_tts_audio = %s; s.enable_followups = %s; s.enable_background_music = %s; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
+    "try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.experience_mode = '%s'; s.enable_tts_audio = %s; s.enable_followups = %s; s.enable_background_music = %s; s.enable_ai_expert = %s; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
     mode,
     tolower(as.character(s$enable_tts_audio)),
     tolower(as.character(s$enable_followups)),
-    tolower(as.character(s$enable_background_music))
+    tolower(as.character(s$enable_background_music)),
+    tolower(as.character(s$enable_ai_expert))
   ))
 }

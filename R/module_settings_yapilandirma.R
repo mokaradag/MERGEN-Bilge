@@ -216,7 +216,7 @@ settingsYapilandirmaUI <- function(id) {
               fluidRow(
                 # Sesli Yanıt
                 column(
-                  width = 4,
+                  width = 3,
                   h4("Sesli Yanıt", class = "setting-subtitle"),
                   div(
                     class = "checkbox-item",
@@ -229,9 +229,24 @@ settingsYapilandirmaUI <- function(id) {
                   ),
                   p("AI yanıtlarını otomatik seslendir.", class = "setting-description", style = "margin-top: 4px;")
                 ),
+                # AI Uzman Konuşması
+                column(
+                  width = 3,
+                  h4("AI Uzman", class = "setting-subtitle"),
+                  div(
+                    class = "checkbox-item",
+                    style = "margin-top: 8px;",
+                    checkboxInput(
+                      inputId = ns("enable_ai_expert"),
+                      label = tags$span("AI Uzman Konuşması"),
+                      value = FALSE
+                    )
+                  ),
+                  p("Bütünleşik modda AI proaktif konuşma.", class = "setting-description", style = "margin-top: 4px;")
+                ),
                 # Müzik
                 column(
-                  width = 4,
+                  width = 3,
                   h4("Müzik", class = "setting-subtitle"),
                   div(
                     class = "checkbox-item",
@@ -246,7 +261,7 @@ settingsYapilandirmaUI <- function(id) {
                 ),
                 # Ses Seviyesi
                 column(
-                  width = 4,
+                  width = 3,
                   h4("Ses Seviyesi", class = "setting-subtitle"),
                   div(
                     style = "margin-top: 8px;",
@@ -668,6 +683,7 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
     observeEvent(input$enable_streaming,        { settings$enable_streaming        <- input$enable_streaming })
     observeEvent(input$enable_widescreen,       { settings$enable_widescreen       <- input$enable_widescreen })
     observeEvent(input$enable_tts_audio,        { settings$enable_tts_audio        <- isTRUE(input$enable_tts_audio) })
+    observeEvent(input$enable_ai_expert,        { settings$enable_ai_expert        <- isTRUE(input$enable_ai_expert) })
     observeEvent(input$enable_followups,        { settings$enable_followups        <- isTRUE(input$enable_followups) })
 
     # Analiz araçları - karşılıklı dışlama mantığı

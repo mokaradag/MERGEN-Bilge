@@ -97,9 +97,12 @@ server <- function(input, output, session) {
   # Müzik yöneticisini başlat (modüler)
   musicHandlersInit(input, session, settings_data)
   
+  # AI Uzman modülünü başlat (altyazı + konuşma durum yönetimi)
+  ai_expert <- aiExpertServer("ai_expert_module", settings_data, tts_processor, tts_visualizer)
+
   # Sesten Metne (STT) modülünü başlat
   stt_data <- sttServer("stt_module", parent_session = session, settings = settings_data)
-  
+
   # Dosya Önizleme modülünü başlat (eski önizleme çıktıları + modal yardımcılarının yerini alır)
   filePreview <- filePreviewServer("file_preview")
   
@@ -182,6 +185,10 @@ server <- function(input, output, session) {
 
   # Derin uzay giriş ekranı gözlemcilerini başlat (modüler)
   startupScreenObserversInit(input, session, settings_data)
+
+  # AI Uzman işleyicilerini başlat (karşılama, sayfa rehberliği, boşta konuşma)
+  aiExpertHandlersInit(input, session, values, settings_data,
+                        ai_expert, tts_processor, current_user_id)
   
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)

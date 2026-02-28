@@ -40,6 +40,7 @@ settingsInit <- function(session, parent_session = NULL) {
     enable_followups        = FALSE,
     font_size               = "medium",
     enable_background_music = FALSE,
+    enable_ai_expert        = FALSE,
     music_volume            = 0.3,
     experience_mode         = "odak",
     show_intro_animation    = TRUE
@@ -100,6 +101,9 @@ settingsInit <- function(session, parent_session = NULL) {
     }
     if (!is.null(loaded$enable_background_music)) {
       settings$enable_background_music <- loaded$enable_background_music
+    }
+    if (!is.null(loaded$enable_ai_expert)) {
+      settings$enable_ai_expert <- isTRUE(loaded$enable_ai_expert)
     }
     if (!is.null(loaded$music_volume)) {
       settings$music_volume <- loaded$music_volume
@@ -228,6 +232,10 @@ settingsInit <- function(session, parent_session = NULL) {
       }
     }
 
+    # AI Uzman checkbox durumunu oku ve uygula
+    ai_expert_val <- isTRUE(session$input[["settings_yapilandirma_module-enable_ai_expert"]])
+    settings$enable_ai_expert <- ai_expert_val
+
     # Karakter değişikliği müzik yöneticisine bildir
     session$sendCustomMessage("setMusicCharacter", list(
       character = settings$selected_character %||% "mergen"
@@ -305,6 +313,7 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$enable_followups         <- TRUE
     settings$font_size                <- "medium"
     settings$enable_background_music  <- FALSE
+    settings$enable_ai_expert         <- FALSE
     settings$music_volume             <- 0.3
     settings$experience_mode          <- "odak"
     settings$show_intro_animation     <- TRUE

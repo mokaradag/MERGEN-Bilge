@@ -67,3 +67,11 @@ TRANSLATION_MODEL=technical name 1
 
 # Görsel oluşturma zaman aşımı (saniye) - HD görseller için uzun süre gerekli
 IMAGE_GEN_TIMEOUT=180
+
+# ------------------------------------------------------------------------------
+# AI UZMAN (AI EXPERT) KONUSMA AYARLARI
+# ------------------------------------------------------------------------------
+
+# AI Uzman konusma metni olusturmak icin kullanilacak model
+# Butunlesik modda proaktif konusma icin (karsilama, sayfa rehberligi vb.)
+AI_EXPERT_MODEL=technical name 1
