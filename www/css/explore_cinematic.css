@@ -71,9 +71,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 0 48px;
-  height: 66px;
+  gap: 12px;
+  padding: 0 28px;
+  height: 62px;
   /* Uzay temasına uygun, koyu indigo gradyan - siyah arka plandan belirgin */
   background: linear-gradient(135deg, rgba(37, 33, 100, 0.92) 0%, rgba(15, 15, 40, 0.95) 100%);
   border-radius: 9999px;
@@ -81,7 +81,7 @@
   font-family: 'Jura', 'Segoe UI', sans-serif !important;
   font-weight: 500;
   font-size: 24px !important;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.12em;
   border: 1px solid rgba(129, 140, 248, 0.4);
   cursor: pointer;
   text-transform: uppercase;
@@ -127,7 +127,8 @@
   transition: left 0.7s ease-in-out;
 }
 
-/* SVG yılan izi - negatif inset ile kenar kırpılmasını önler */
+/* SVG yılan izi - SVG varsayılan overflow:hidden'ı override eder */
+/* overflow="visible" SVG özelliği R tarafında da tanımlı */
 .explore-snake-svg {
   position: absolute;
   inset: -3px;
@@ -137,7 +138,7 @@
   z-index: 20;
   opacity: 0;
   transition: opacity 0.5s ease;
-  overflow: visible;
+  overflow: visible !important;
 }
 
 .explore-cinematic-btn:hover .explore-snake-svg {
@@ -622,10 +623,11 @@
 
 @media (max-width: 480px) {
   .explore-cinematic-btn {
-    padding: 0 32px;
-    height: 56px;
-    gap: 12px;
+    padding: 0 22px;
+    height: 52px;
+    gap: 10px;
     font-size: 18px !important;
+    letter-spacing: 0.08em;
   }
 
   .cinematic-modal-container {
