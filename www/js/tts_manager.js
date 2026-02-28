@@ -24,6 +24,8 @@ $(document).ready(function() {
       if (window.MusicManager) {
         window.MusicManager.unduck();
       }
+      // AI Uzman modülüne TTS durumunu bildir (yarış durumu önleme)
+      try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
     }
   };
 
@@ -65,6 +67,8 @@ $(document).ready(function() {
 		  if (window.MusicManager) {
 			window.MusicManager.duck();
 		  }
+		  // AI Uzman modülüne TTS başladığını bildir (yarış durumu önleme)
+		  try { Shiny.setInputValue('tts_is_playing', true, { priority: 'event' }); } catch(e) {}
 		};
 
       audio.onpause = function() {
@@ -82,6 +86,8 @@ $(document).ready(function() {
 			if (window.MusicManager) {
 			  window.MusicManager.unduck();
 			}
+			// AI Uzman modülüne TTS bittiğini bildir
+			try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
 		  }
 		  processTTSQueue();
 		};
