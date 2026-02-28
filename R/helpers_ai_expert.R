@@ -1,47 +1,47 @@
 # R/helpers_ai_expert.R
 # Dosya Yolu: R/helpers_ai_expert.R
-# Aciklama: AI Uzman (AI Expert) modulu icin yardimci fonksiyonlar.
-#            Kullanicinin gecmis etkilesimlerini analiz eder, uygun karsilama
-#            metni olusturur ve LLM API cagrilarini yonetir.
+# Açıklama: AI Uzman (AI Expert) modülü için yardımcı fonksiyonlar.
+#            Kullanıcının geçmiş etkileşimlerini analiz eder, uygun karşılama
+#            metni oluşturur ve LLM API çağrılarını yönetir.
 
-# --- AI Uzman icin LLM cagri fonksiyonu ---
-# Bu fonksiyon, AI Uzman konusma metni olusturmak icin LLM API'sini cagirir.
-# Worker-safe: Tum reaktif degerler onceden yakalanmis olmalidir.
+# --- AI Uzman için LLM çağrı fonksiyonu ---
+# Bu fonksiyon, AI Uzman konuşma metni oluşturmak için LLM API'sini çağırır.
+# Worker-safe: Tüm reaktif değerler önceden yakalanmış olmalıdır.
 #
 # @param system_prompt Sistem istemi (karakter + rehber bilgisi)
-# @param user_context Kullanici baglam bilgisi (gecmis sohbetler, son giris vb.)
-# @param model_name Kullanilacak model adi (.Renviron'dan)
-# @param api_key API anahtari
-# @param endpoint API uc noktasi URL'i
-# @param max_tokens Maksimum token sayisi (varsayilan: 300, kisa konusmalar icin)
-# @return Karakter dizisi (AI yaniti) veya NULL (hata durumunda)
+# @param user_context Kullanıcı bağlam bilgisi (geçmiş sohbetler, son giriş vb.)
+# @param model_name Kullanılacak model adı (.Renviron'dan)
+# @param api_key API anahtarı
+# @param endpoint API uç noktası URL'i
+# @param max_tokens Maksimum token sayısı (varsayılan: 300, kısa konuşmalar için)
+# @return Karakter dizisi (AI yanıtı) veya NULL (hata durumunda)
 call_ai_expert_llm <- function(system_prompt, user_context, model_name,
                                 api_key = NULL, endpoint = NULL,
                                 max_tokens = 300) {
 
-  # Uc nokta ve model adi kontrolu
+  # Uç nokta ve model adı kontrolü
   if (is.null(endpoint) || !nzchar(endpoint)) {
     endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
   }
   if (!nzchar(endpoint)) {
-    cat("[AI_EXPERT] API uc noktasi yapilandirilmamis, konusma olusturulamadi.\n")
+    cat("[AI_EXPERT] API uç noktası yapılandırılmamış, konuşma oluşturulamadı.\n")
     return(NULL)
   }
 
   if (is.null(model_name) || !nzchar(model_name)) {
     model_name <- Sys.getenv("AI_EXPERT_MODEL", "")
     if (!nzchar(model_name)) {
-      cat("[AI_EXPERT] Model adi belirtilmemis.\n")
+      cat("[AI_EXPERT] Model adı belirtilmemiş.\n")
       return(NULL)
     }
   }
 
-  # API anahtari cozumleme
+  # API anahtarı çözümleme
   if (is.null(api_key) || !nzchar(api_key)) {
     api_key <- Sys.getenv("LOCAL_LLM_API_KEY", "")
   }
 
-  # Mesaj yapisi
+  # Mesaj yapısı
   messages_payload <- list(
     list(role = "system", content = system_prompt),
     list(role = "user", content = user_context)
@@ -55,7 +55,7 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
     max_tokens  = max_tokens
   )
 
-  # Basliklar
+  # Başlıklar
 
   hds <- list(`Content-Type` = "application/json")
   if (nzchar(api_key)) hds$Authorization <- paste("Bearer", api_key)
@@ -69,21 +69,21 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
       httr::timeout(60)
     )
   }, error = function(e) {
-    cat(sprintf("[AI_EXPERT] API baglanti hatasi: %s\n", conditionMessage(e)))
+    cat(sprintf("[AI_EXPERT] API bağlantı hatası: %s\n", conditionMessage(e)))
     return(NULL)
   })
 
   if (is.null(response)) return(NULL)
 
   if (httr::status_code(response) >= 400) {
-    cat(sprintf("[AI_EXPERT] API HTTP hatasi: %d\n", httr::status_code(response)))
+    cat(sprintf("[AI_EXPERT] API HTTP hatası: %d\n", httr::status_code(response)))
     return(NULL)
   }
 
   parsed <- tryCatch(httr::content(response, "parsed"), error = function(e) NULL)
   if (is.null(parsed)) return(NULL)
 
-  # Yaniti cikar
+  # Yanıtı çıkar
   ai_text <- NULL
   if (is.list(parsed$choices) && length(parsed$choices) > 0) {
     choice <- parsed$choices[[1]]
@@ -93,55 +93,55 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
   }
 
   if (is.null(ai_text) || !nzchar(ai_text)) {
-    cat("[AI_EXPERT] API yaniti bos.\n")
+    cat("[AI_EXPERT] API yanıtı boş.\n")
     return(NULL)
   }
 
-  cat(sprintf("[AI_EXPERT] Konusma metni olusturuldu (%d karakter)\n", nchar(ai_text)))
+  cat(sprintf("[AI_EXPERT] Konuşma metni oluşturuldu (%d karakter)\n", nchar(ai_text)))
   return(ai_text)
 }
 
 
-# --- Kullanici baglam bilgisi olusturma ---
-# Veritabanindan kullanicinin gecmis verilerini alir ve metin olarak dondurur.
-# Worker-safe: DB baglantisi fonksiyon icinde acilir.
+# --- Kullanıcı bağlam bilgisi oluşturma ---
+# Veritabanından kullanıcının geçmiş verilerini alır ve metin olarak döndürür.
+# Worker-safe: DB bağlantısı fonksiyon içinde açılır.
 #
-# @param user_id Kullanici ID
-# @param last_login_date Son giris tarihi (onceden yakalanmis)
-# @param include_recent_prompts Son mesajlari dahil et (varsayilan: TRUE)
-# @param max_prompts Alinacak maksimum mesaj sayisi (varsayilan: 5)
-# @return Baglam bilgisi iceren karakter dizisi
+# @param user_id Kullanıcı ID
+# @param last_login_date Son giriş tarihi (önceden yakalanmış)
+# @param include_recent_prompts Son mesajları dahil et (varsayılan: TRUE)
+# @param max_prompts Alınacak maksimum mesaj sayısı (varsayılan: 5)
+# @return Bağlam bilgisi içeren karakter dizisi
 build_ai_expert_user_context <- function(user_id, last_login_date = NULL,
                                           include_recent_prompts = TRUE,
                                           max_prompts = 5) {
 
   context_parts <- list()
 
-  # Son giris zamani bilgisi
+  # Son giriş zamanı bilgisi
 
   if (!is.null(last_login_date)) {
     context_parts <- c(context_parts, sprintf(
-      "Kullanicinin son giris zamani: %s", as.character(last_login_date)
+      "Kullanıcının son giriş zamanı: %s", as.character(last_login_date)
     ))
 
-    # Son giris ile simdi arasindaki farki hesapla
+    # Son giriş ile şimdi arasındaki farkı hesapla
     time_diff <- difftime(Sys.time(), as.POSIXct(last_login_date), units = "hours")
     if (time_diff < 1) {
-      context_parts <- c(context_parts, "Kullanici cok kisa sure once giris yapmis (1 saatten az).")
+      context_parts <- c(context_parts, "Kullanıcı çok kısa süre önce giriş yapmış (1 saatten az).")
     } else if (time_diff < 24) {
-      context_parts <- c(context_parts, sprintf("Kullanici yaklasik %.0f saat once giris yapmis.", as.numeric(time_diff)))
+      context_parts <- c(context_parts, sprintf("Kullanıcı yaklaşık %.0f saat önce giriş yapmış.", as.numeric(time_diff)))
     } else {
       days_ago <- as.numeric(difftime(Sys.time(), as.POSIXct(last_login_date), units = "days"))
-      context_parts <- c(context_parts, sprintf("Kullanici yaklasik %.0f gun once giris yapmis.", days_ago))
+      context_parts <- c(context_parts, sprintf("Kullanıcı yaklaşık %.0f gün önce giriş yapmış.", days_ago))
     }
   }
 
-  # Son kullanici mesajlari
+  # Son kullanıcı mesajları
   if (isTRUE(include_recent_prompts)) {
     recent_prompts <- tryCatch({
       fetch_recent_user_prompts(user_id, max_prompts)
     }, error = function(e) {
-      cat(sprintf("[AI_EXPERT] Son mesajlar alinamadi: %s\n", conditionMessage(e)))
+      cat(sprintf("[AI_EXPERT] Son mesajlar alınamadı: %s\n", conditionMessage(e)))
       NULL
     })
 
@@ -151,28 +151,28 @@ build_ai_expert_user_context <- function(user_id, last_login_date = NULL,
         collapse = "\n"
       )
       context_parts <- c(context_parts, sprintf(
-        "Kullanicinin son mesajlari:\n%s", prompts_text
+        "Kullanıcının son mesajları:\n%s", prompts_text
       ))
     } else {
-      context_parts <- c(context_parts, "Kullanicinin gecmis mesaji bulunmuyor (ilk kullanim olabilir).")
+      context_parts <- c(context_parts, "Kullanıcının geçmiş mesajı bulunmuyor (ilk kullanım olabilir).")
     }
   }
 
   # Mevcut zaman bilgisi
   context_parts <- c(context_parts, sprintf(
-    "Simdi: %s", format(Sys.time(), "%d %B %Y %H:%M", tz = "Europe/Istanbul")
+    "Şimdi: %s", format(Sys.time(), "%d %B %Y %H:%M", tz = "Europe/Istanbul")
   ))
 
   paste(context_parts, collapse = "\n\n")
 }
 
 
-# --- Son kullanici mesajlarini DB'den al ---
-# Worker-safe: Kendi baglantisini acar.
+# --- Son kullanıcı mesajlarını DB'den al ---
+# Worker-safe: Kendi bağlantısını açar.
 #
-# @param user_id Kullanici ID
-# @param max_prompts Maksimum mesaj sayisi
-# @return Karakter vektoru (mesaj icerikler) veya NULL
+# @param user_id Kullanıcı ID
+# @param max_prompts Maksimum mesaj sayısı
+# @return Karakter vektörü (mesaj içerikler) veya NULL
 fetch_recent_user_prompts <- function(user_id, max_prompts = 5) {
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -189,7 +189,7 @@ fetch_recent_user_prompts <- function(user_id, max_prompts = 5) {
   result <- tryCatch(
     DBI::dbGetQuery(conn, query, params = list(user_id)),
     error = function(e) {
-      cat(sprintf("[AI_EXPERT] DB sorgu hatasi: %s\n", conditionMessage(e)))
+      cat(sprintf("[AI_EXPERT] DB sorgu hatası: %s\n", conditionMessage(e)))
       data.frame()
     }
   )
@@ -202,10 +202,10 @@ fetch_recent_user_prompts <- function(user_id, max_prompts = 5) {
 }
 
 
-# --- Son giris tarihini DB'den al ---
-# Worker-safe: Kendi baglantisini acar.
+# --- Son giriş tarihini DB'den al ---
+# Worker-safe: Kendi bağlantısını açar.
 #
-# @param user_id Kullanici ID
+# @param user_id Kullanıcı ID
 # @return POSIXct tarih veya NULL
 fetch_user_last_login <- function(user_id) {
   conn_info <- get_connection()
@@ -216,7 +216,7 @@ fetch_user_last_login <- function(user_id) {
   result <- tryCatch(
     DBI::dbGetQuery(conn, query, params = list(user_id)),
     error = function(e) {
-      cat(sprintf("[AI_EXPERT] LastLoginDate sorgu hatasi: %s\n", conditionMessage(e)))
+      cat(sprintf("[AI_EXPERT] LastLoginDate sorgu hatası: %s\n", conditionMessage(e)))
       data.frame()
     }
   )
@@ -229,12 +229,12 @@ fetch_user_last_login <- function(user_id) {
 }
 
 
-# --- AI Uzman sistem istemi olustur ---
-# Secili karakter ve rehber belgesine dayali sistem istemi olusturur.
+# --- AI Uzman sistem istemi oluştur ---
+# Seçili karakter ve rehber belgesine dayalı sistem istemi oluşturur.
 #
 # @param character_data Karakter bilgileri (config_characters.R'den)
-# @param scenario Senaryo turu ("greeting", "page_guidance", "idle_chat")
-# @param page_name Sayfa adi (sayfa rehberligi icin)
+# @param scenario Senaryo türü ("greeting", "page_guidance", "idle_chat")
+# @param page_name Sayfa adı (sayfa rehberliği için)
 # @return Sistem istemi karakter dizisi
 build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
                                            page_name = NULL) {
@@ -249,71 +249,71 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     )
   }
 
-  # Karakter kisilik bilgisi
+  # Karakter kişilik bilgisi
   char_name <- character_data$display_name %||% "MERGEN"
   char_style <- character_data$style_tr %||% ""
   char_system <- character_data$system_prompt_en %||% ""
 
-  # Senaryo bazli yonlendirme
+  # Senaryo bazlı yönlendirme
 
   scenario_instruction <- switch(scenario,
     "greeting" = paste0(
-      "Kullaniciya kisa ve sicak bir karsilama yap. ",
-      "Karakterinin kisiligini yansit. ",
-      "Kullanicinin gecmis bilgilerine dayanarak uygun bir karsilama olustur. ",
-      "Ilk kullanici ise kendini kisa tanit. Donen kullanici ise son konusmalarindan bahset. ",
-      "Uzun konusma. 2-4 cumle yeterli. Profesyonel ve sicak ol."
+      "Kullanıcıya kısa ve sıcak bir karşılama yap. ",
+      "Karakterinin kişiliğini yansıt. ",
+      "Kullanıcının geçmiş bilgilerine dayanarak uygun bir karşılama oluştur. ",
+      "İlk kullanıcı ise kendini kısa tanıt. Dönen kullanıcı ise son konuşmalarından bahset. ",
+      "Uzun konuşma. 2-4 cümle yeterli. Profesyonel ve sıcak ol."
     ),
     "page_guidance" = sprintf(
-      "Kullanici '%s' sayfasina gecti. Bu sayfa hakkinda kisa ve faydali bir rehberlik yap. 1-2 cumle yeterli. Profesyonel ol.",
+      "Kullanıcı '%s' sayfasına geçti. Bu sayfa hakkında kısa ve faydalı bir rehberlik yap. 1-2 cümle yeterli. Profesyonel ol.",
       page_name %||% "bilinmeyen"
     ),
     "idle_chat" = paste0(
-      "Kullanici bir suredir bosta bekliyor. Kisa ve profesyonel bir sohbet baslat. ",
-      "Ilgili bir ipucu ver veya nasil yardimci olabileceginissor. 1-2 cumle yeterli."
+      "Kullanıcı bir süredir boşta bekliyor. Kısa ve profesyonel bir sohbet başlat. ",
+      "İlgili bir ipucu ver veya nasıl yardımcı olabileceğini sor. 1-2 cümle yeterli."
     ),
-    # Varsayilan
-    "Kisa ve profesyonel bir mesaj olustur."
+    # Varsayılan
+    "Kısa ve profesyonel bir mesaj oluştur."
   )
 
-  # Sistem istemini birlestir
+  # Sistem istemini birleştir
   prompt <- paste0(
-    "Sen ", char_name, " adinda bir AI asistanisin. ",
-    "Turkce konusuyorsun. Asla Ingilizce konusma. ",
+    "Sen ", char_name, " adında bir AI asistanısın. ",
+    "Türkçe konuşuyorsun. Asla İngilizce konuşma. ",
     char_style, "\n\n",
-    "ONEMLI KURALLAR:\n",
-    "- Her zaman Turkce konusman gerekiyor\n",
-    "- Kisa ve oz ol, uzun monologlardan kacin\n",
-    "- Profesyonel, saygilii, sicak ve bilge ol\n",
+    "ÖNEMLİ KURALLAR:\n",
+    "- Her zaman Türkçe konuşman gerekiyor\n",
+    "- Kısa ve öz ol, uzun monologlardan kaçın\n",
+    "- Profesyonel, saygılı, sıcak ve bilge ol\n",
     "- Mekanik veya robotik durma\n",
-    "- Kullaniciya ismiyle hitap etme (ismini bilmiyorsun)\n",
+    "- Kullanıcıya ismiyle hitap etme (ismini bilmiyorsun)\n",
     "- Emoji kullanma\n",
-    "- Markdown formatlamasi kullanma\n",
-    "- Sadece duz metin yaz\n\n",
-    "GOREV:\n", scenario_instruction, "\n\n",
-    "UYGULAMA REHBERI (Referans):\n",
-    if (nzchar(guide_text)) substr(guide_text, 1, 8000) else "(Rehber belgesi bulunamadi)"
+    "- Markdown formatlaması kullanma\n",
+    "- Sadece düz metin yaz\n\n",
+    "GÖREV:\n", scenario_instruction, "\n\n",
+    "UYGULAMA REHBERİ (Referans):\n",
+    if (nzchar(guide_text)) substr(guide_text, 1, 8000) else "(Rehber belgesi bulunamadı)"
   )
 
   return(prompt)
 }
 
 
-# --- TTS icin metin hazirlama (AI Uzman konusmasi icin) ---
+# --- TTS için metin hazırlama (AI Uzman konuşması için) ---
 # server_tts_handlers.R'deki prepare_tts_text ile benzer ama daha basit.
 #
 # @param text Ham metin
-# @return TTS icin temizlenmis metin
+# @return TTS için temizlenmiş metin
 prepare_ai_expert_tts_text <- function(text) {
   if (is.null(text) || !nzchar(text)) return("")
 
-  # Markdown isaretlerini kaldir
+  # Markdown işaretlerini kaldır
   clean <- gsub("\\*+", "", text)
   clean <- gsub("#+\\s*", "", clean)
   clean <- gsub("`+", "", clean)
   clean <- gsub("\\[([^]]+)\\]\\([^)]+\\)", "\\1", clean)
 
-  # Fazla boslugu temizle
+  # Fazla boşluğu temizle
   clean <- gsub("\\s+", " ", clean)
   clean <- trimws(clean)
 

@@ -1,37 +1,37 @@
 // www/js/ai_expert_manager.js
 // Dosya Yolu: www/js/ai_expert_manager.js
-// Aciklama: AI Uzman altyazi animasyonlari, TTS senkronizasyonu ve
-//           muzik ses kisma (ducking) yonetimi.
-//           Yaris durumu (race condition) onleme mekanizmalarini icerir.
+// Açıklama: AI Uzman altyazı animasyonları, TTS senkronizasyonu ve
+//            müzik ses kısma (ducking) yönetimi.
+//            Yarış durumu (race condition) önleme mekanizmalarını içerir.
 
 const AIExpertManager = {
 
-  // --- Durum degiskenleri ---
+  // --- Durum değişkenleri ---
   state: {
-    isSpeaking: false,        // AI simdi konusuyor mu
-    currentText: '',          // Goruntulenecek tam metin
-    displayedChars: 0,        // Simdiye kadar gorunen karakter sayisi
-    typeInterval: null,       // Yazma animasyonu interval referansi
-    hideTimeout: null,        // Gizleme zamanlayicisi
-    audioElement: null,       // Ses elemani (AI konusmasi icin)
-    nsPrefix: '',             // Shiny namespace oneki
-    accentColor: '#7C4DFF'   // Karakter tema rengi
+    isSpeaking: false,        // AI şimdi konuşuyor mu
+    currentText: '',          // Görüntülenecek tam metin
+    displayedChars: 0,        // Şimdiye kadar görünen karakter sayısı
+    typeInterval: null,       // Yazma animasyonu interval referansı
+    hideTimeout: null,        // Gizleme zamanlayıcısı
+    audioElement: null,       // Ses elemanı (AI konuşması için)
+    nsPrefix: '',             // Shiny namespace öneki
+    accentColor: '#7C4DFF'    // Karakter tema rengi
   },
 
-  // --- Yapilandirma ---
+  // --- Yapılandırma ---
   config: {
-    typeSpeed: 40,            // Karakter basina yazma hizi (ms)
-    sentencePause: 300,       // Cumle sonu duraklamasi (ms)
+    typeSpeed: 40,            // Karakter başına yazma hızı (ms)
+    sentencePause: 300,       // Cümle sonu duraklaması (ms)
     fadeOutDelay: 2000,       // Ses bittikten sonra bekleme (ms)
-    maxVisibleChars: 200,     // Ekranda gorunen maksimum karakter
-    wordFadeThreshold: 150    // Eski kelimelerin solmaya basladigi esik
+    maxVisibleChars: 200,     // Ekranda görünen maksimum karakter
+    wordFadeThreshold: 150    // Eski kelimelerin solmaya başladığı eşik
   },
 
-  // --- BASLATMA ---
+  // --- BAŞLATMA ---
 
-  // Altyaziyi goster ve yazma animasyonunu baslat
+  // Altyazıyı göster ve yazma animasyonunu başlat
   startSubtitle: function(data) {
-    // Yaris durumu kontrolu: Zaten konusuyorsa durdur
+    // Yarış durumu kontrolü: Zaten konuşuyorsa durdur
     if (this.state.isSpeaking) {
       this.stopSubtitle({ nsPrefix: this.state.nsPrefix });
     }
@@ -47,48 +47,48 @@ const AIExpertManager = {
     var textEl = this._getTextElement();
 
     if (!strip || !textEl) {
-      console.warn('[AI_EXPERT] Altyazi elemanlari bulunamadi');
+      console.warn('[AI_EXPERT] Altyazı elemanları bulunamadı');
       return;
     }
 
-    // Avatar guncelle
+    // Avatar güncelle
     if (avatar && data.avatarSrc) {
       avatar.src = data.avatarSrc;
       avatar.style.borderColor = this.state.accentColor;
     }
 
-    // CSS degiskenini guncelle
+    // CSS değişkenini güncelle
     strip.style.setProperty('--ai-expert-accent', this.state.accentColor);
 
-    // Metni sifirla
+    // Metni sıfırla
     textEl.textContent = '';
     textEl.classList.add('ai-expert-typing');
 
-    // Seridi goster (giris animasyonu)
+    // Şeridi göster (giriş animasyonu)
     strip.classList.remove('ai-expert-hidden', 'ai-expert-exiting');
     strip.classList.add('ai-expert-entering', 'ai-expert-visible', 'ai-expert-speaking');
 
-    // Giris animasyonu bittikten sonra 'entering' sinifini kaldir
+    // Giriş animasyonu bittikten sonra 'entering' sınıfını kaldır
     setTimeout(function() {
       strip.classList.remove('ai-expert-entering');
     }, 600);
 
-    // Muzik ses kisma
+    // Müzik ses kısma
     if (window.MusicManager) {
       window.MusicManager.duck();
     }
 
-    // Yazma animasyonunu baslat
+    // Yazma animasyonunu başlat
     this._startTyping();
 
-    console.log('[AI_EXPERT] Altyazi baslatildi:', this.state.currentText.substring(0, 50) + '...');
+    console.log('[AI_EXPERT] Altyazı başlatıldı:', this.state.currentText.substring(0, 50) + '...');
   },
 
   // --- YAZMA ANIMASYONU ---
   _startTyping: function() {
     var self = this;
 
-    // Onceki interval'i temizle
+    // Önceki interval'i temizle
     if (this.state.typeInterval) {
       clearInterval(this.state.typeInterval);
       this.state.typeInterval = null;
@@ -106,7 +106,7 @@ const AIExpertManager = {
       }
 
       if (self.state.displayedChars >= text.length) {
-        // Tum metin yazildi
+        // Tüm metin yazıldı
         clearInterval(self.state.typeInterval);
         self.state.typeInterval = null;
         textEl.classList.remove('ai-expert-typing');
@@ -116,9 +116,9 @@ const AIExpertManager = {
       self.state.displayedChars++;
       var visible = text.substring(0, self.state.displayedChars);
 
-      // Ekranda gorunen metin cok uzunsa basindan kirp
+      // Ekranda görünen metin çok uzunsa başından kırp
       if (visible.length > self.config.maxVisibleChars) {
-        // En yakin kelime sinirinda kirp
+        // En yakın kelime sınırında kırp
         var trimStart = visible.length - self.config.maxVisibleChars;
         var spaceIdx = visible.indexOf(' ', trimStart);
         if (spaceIdx > 0 && spaceIdx < trimStart + 30) {
@@ -130,7 +130,7 @@ const AIExpertManager = {
 
       textEl.textContent = visible;
 
-      // Cumle sonu duraklamasi (. ! ?)
+      // Cümle sonu duraklaması (. ! ?)
       var currentChar = text[self.state.displayedChars - 1];
       if ('.!?'.indexOf(currentChar) >= 0 && self.state.displayedChars < text.length) {
         clearInterval(self.state.typeInterval);
@@ -148,7 +148,7 @@ const AIExpertManager = {
   playAudio: function(data) {
     var self = this;
 
-    // Mevcut sesi durdur (yaris durumu onleme)
+    // Mevcut sesi durdur (yarış durumu önleme)
     this._stopAudio();
 
     var audio = new Audio();
@@ -158,13 +158,13 @@ const AIExpertManager = {
     this.state.audioElement = audio;
 
     audio.addEventListener('ended', function() {
-      if (self.state.audioElement !== audio) return; // Yaris korumasi
+      if (self.state.audioElement !== audio) return; // Yarış koruması
       self._onAudioEnded();
     }, { once: true });
 
     audio.addEventListener('error', function() {
       if (self.state.audioElement !== audio) return;
-      console.warn('[AI_EXPERT] Ses oynatma hatasi');
+      console.warn('[AI_EXPERT] Ses oynatma hatası');
       self._onAudioEnded();
     }, { once: true });
 
@@ -172,44 +172,44 @@ const AIExpertManager = {
     if (playPromise !== undefined) {
       playPromise.catch(function(err) {
         console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
-        // Ses oynatma basarisiz, sadece altyazi goster
+        // Ses oynatma başarısız, sadece altyazı göster
         self._scheduleHide(self._estimateReadTime(self.state.currentText));
       });
     }
   },
 
-  // --- SES BITTIKTEN SONRA ---
+  // --- SES BİTTİKTEN SONRA ---
   _onAudioEnded: function() {
     this.state.audioElement = null;
 
-    // TTS gorsellestiricisini durdur
+    // TTS görselleştiricisini durdur
     if (window.ttsVisualizerState && window.ttsVisualizerState.stop) {
       window.ttsVisualizerState.stop();
     }
 
-    // Altyaziyi kisa bir gecikmeyle gizle
+    // Altyazıyı kısa bir gecikmeyle gizle
     this._scheduleHide(this.config.fadeOutDelay);
   },
 
-  // --- SES OLMADAN GERI DONUS (fallback) ---
+  // --- SES OLMADAN GERİ DÖNÜŞ (fallback) ---
   noAudioFallback: function(data) {
-    // Ses yoksa metin uzunluguna gore tahmini gosterim suresi
+    // Ses yoksa metin uzunluğuna göre tahmini gösterim süresi
     var textLength = data.textLength || this.state.currentText.length || 100;
     var estimatedMs = this._estimateReadTime(this.state.currentText || '');
     this._scheduleHide(estimatedMs);
   },
 
-  // --- OKUMA SURESI TAHMINI ---
+  // --- OKUMA SÜRESİ TAHMİNİ ---
   _estimateReadTime: function(text) {
     if (!text || !text.length) return 5000;
-    // Ortalama Turkce okuma hizi: dakikada ~180 kelime, kelime basi ~5.5 karakter
+    // Ortalama Türkçe okuma hızı: dakikada ~180 kelime, kelime başı ~5.5 karakter
     var words = text.length / 5.5;
     var minutes = words / 180;
     var ms = Math.max(4000, Math.min(15000, minutes * 60 * 1000));
     return ms + this.config.fadeOutDelay;
   },
 
-  // --- GIZLEME ZAMANLAYICISI ---
+  // --- GİZLEME ZAMANLAYICISI ---
   _scheduleHide: function(delayMs) {
     var self = this;
 
@@ -222,7 +222,7 @@ const AIExpertManager = {
     }, delayMs);
   },
 
-  // --- ALTYAZIYI GIZLE ---
+  // --- ALTYAZIYI GİZLE ---
   _hideSubtitle: function() {
     var strip = this._getStrip();
     var textEl = this._getTextElement();
@@ -242,17 +242,17 @@ const AIExpertManager = {
       textEl.classList.remove('ai-expert-typing');
     }
 
-    // Durumu sifirla
+    // Durumu sıfırla
     this.state.isSpeaking = false;
     this.state.currentText = '';
     this.state.displayedChars = 0;
 
-    // Muzik sesini geri getir
+    // Müzik sesini geri getir
     if (window.MusicManager && !window.MusicManager.state._sttActive) {
       window.MusicManager.unduck();
     }
 
-    // Shiny'ye konusma bitti sinyali gonder
+    // Shiny'ye konuşma bitti sinyali gönder
     if (this.state.nsPrefix) {
       var inputId = this.state.nsPrefix + 'ai_expert_speech_ended';
       Shiny.setInputValue(inputId, Date.now(), { priority: 'event' });
@@ -261,7 +261,7 @@ const AIExpertManager = {
 
   // --- DURDURMA ---
   stopSubtitle: function(data) {
-    // Zamanlayicilari temizle
+    // Zamanlayıcıları temizle
     if (this.state.typeInterval) {
       clearInterval(this.state.typeInterval);
       this.state.typeInterval = null;
@@ -274,15 +274,15 @@ const AIExpertManager = {
     // Sesi durdur
     this._stopAudio();
 
-    // TTS gorsellestiricisini durdur
+    // TTS görselleştiricisini durdur
     if (window.ttsVisualizerState && window.ttsVisualizerState.stop) {
       window.ttsVisualizerState.stop();
     }
 
-    // Altyaziyi gizle
+    // Altyazıyı gizle
     this._hideSubtitle();
 
-    console.log('[AI_EXPERT] Konusma durduruldu');
+    console.log('[AI_EXPERT] Konuşma durduruldu');
   },
 
   // --- SES DURDURMA ---
@@ -314,33 +314,33 @@ const AIExpertManager = {
   }
 };
 
-// Global erisim
+// Global erişim
 window.AIExpertManager = AIExpertManager;
 
-// --- SHINY MESAJ ISLEYICILERI ---
+// --- SHINY MESAJ İŞLEYİCİLERİ ---
 $(document).ready(function() {
 
-  // Altyaziyi baslatma mesaji
+  // Altyazıyı başlatma mesajı
   Shiny.addCustomMessageHandler('aiExpertStartSubtitle', function(data) {
     AIExpertManager.startSubtitle(data);
   });
 
-  // Ses oynatma mesaji
+  // Ses oynatma mesajı
   Shiny.addCustomMessageHandler('aiExpertPlayAudio', function(data) {
     AIExpertManager.playAudio(data);
   });
 
-  // Ses olmadan geri donus mesaji
+  // Ses olmadan geri dönüş mesajı
   Shiny.addCustomMessageHandler('aiExpertNoAudioFallback', function(data) {
     AIExpertManager.noAudioFallback(data);
   });
 
-  // Durdurma mesaji
+  // Durdurma mesajı
   Shiny.addCustomMessageHandler('aiExpertStopSubtitle', function(data) {
     AIExpertManager.stopSubtitle(data);
   });
 
-  // TTS gorsellestiricisi gorunurlugu
+  // TTS görselleştiricisi görünürlüğü
   Shiny.addCustomMessageHandler('aiExpertVisualizerVisibility', function(data) {
     var container = document.querySelector('.tts-visualizer-container');
     if (container) {

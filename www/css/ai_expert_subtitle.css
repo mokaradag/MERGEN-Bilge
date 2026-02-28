@@ -1,15 +1,15 @@
 /* www/css/ai_expert_subtitle.css */
 /* Dosya Yolu: www/css/ai_expert_subtitle.css */
-/* Aciklama: AI Uzman altyazi seridi stilleri. Sayfa altinda sabit konumlu,
-             seffaf arka planli, modern ve animasyonlu altyazi gorunumu. */
+/* Açıklama: AI Uzman altyazı şeridi stilleri. Sayfa altında sabit konumlu,
+             şeffaf arka planlı, modern ve animasyonlu altyazı görünümü. */
 
-/* --- Ana Altyazi Seridi --- */
+/* --- Ana Altyazı Şeridi --- */
 .ai-expert-subtitle-strip {
   position: fixed;
-  bottom: 80px;             /* Sohbet giris kutusunun hemen uzerinde */
+  bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 900;             /* Icerik uzerinde ama modal'larin altinda */
+  z-index: 900;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -29,24 +29,24 @@
               transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Gorunur durum */
+/* Görünür durum */
 .ai-expert-subtitle-strip.ai-expert-visible {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* Gizli durum (varsayilan) */
+/* Gizli durum (varsayılan) */
 .ai-expert-subtitle-strip.ai-expert-hidden {
   opacity: 0;
   pointer-events: none;
 }
 
-/* Giris animasyonu */
+/* Giriş animasyonu */
 .ai-expert-subtitle-strip.ai-expert-entering {
   animation: aiExpertSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Cikis animasyonu */
+/* Çıkış animasyonu */
 .ai-expert-subtitle-strip.ai-expert-exiting {
   animation: aiExpertFadeOut 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
@@ -73,7 +73,7 @@
   }
 }
 
-/* --- Karakter Avatari --- */
+/* --- Karakter Avatarı --- */
 .ai-expert-avatar-wrapper {
   flex-shrink: 0;
 }
@@ -87,7 +87,7 @@
   transition: border-color 0.4s ease;
 }
 
-/* --- Altyazi Metin Alani --- */
+/* --- Altyazı Metin Alanı --- */
 .ai-expert-subtitle-text-wrapper {
   flex: 1;
   overflow: hidden;
@@ -102,13 +102,13 @@
   line-height: 1.5;
   letter-spacing: 0.01em;
   font-feature-settings: "locl" 1;
-  /* Metin tasma onleme */
+  /* Metin taşma önleme */
   overflow: hidden;
   text-overflow: ellipsis;
-  max-height: 4.5em; /* Maksimum 3 satir */
+  max-height: 4.5em;
 }
 
-/* Yazma efekti icin blink imlecc */
+/* Yazma efekti için blink imleç */
 .ai-expert-subtitle-text.ai-expert-typing::after {
   content: '';
   display: inline-block;
@@ -156,7 +156,7 @@
   transform: scale(0.95);
 }
 
-/* --- Parlama efekti (konusma sirasinda) --- */
+/* --- Parlama efekti (konuşma sırasında) --- */
 .ai-expert-subtitle-strip.ai-expert-speaking {
   border-color: rgba(124, 77, 255, 0.15);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
@@ -164,12 +164,12 @@
               0 0 0 1px rgba(124, 77, 255, 0.06);
 }
 
-/* --- Sidebar acikken konum ayari --- */
+/* --- Sidebar açıkken konum ayarı --- */
 .sidebar-open .ai-expert-subtitle-strip {
-  left: calc(50% + 125px); /* Sidebar genisligi / 2 kadar saga kaydir */
+  left: calc(50% + 125px);
 }
 
-/* --- Duyarli tasarim (responsive) --- */
+/* --- Duyarlı tasarım (responsive) --- */
 @media (max-width: 992px) {
   .ai-expert-subtitle-strip {
     max-width: 85%;
@@ -203,11 +203,11 @@
 
   .ai-expert-subtitle-text {
     font-size: 0.8rem;
-    max-height: 3em; /* Mobilde 2 satir */
+    max-height: 3em;
   }
 }
 
-/* --- Azaltilmis hareket tercihi --- */
+/* --- Azaltılmış hareket tercihi --- */
 @media (prefers-reduced-motion: reduce) {
   .ai-expert-subtitle-strip {
     transition: opacity 0.2s ease;

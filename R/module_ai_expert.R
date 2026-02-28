@@ -1,25 +1,25 @@
 # R/module_ai_expert.R
 # Dosya Yolu: R/module_ai_expert.R
-# Aciklama: AI Uzman (AI Expert) Shiny modulu.
-#            Altyazi (subtitle) goruntuleyicisi UI bilesenini ve
-#            sunucu tarafindaki durum yonetimini icerir.
+# Açıklama: AI Uzman (AI Expert) Shiny modülü.
+#            Altyazı (subtitle) görüntüleyicisi UI bileşenini ve
+#            sunucu tarafındaki durum yönetimini içerir.
 
-#' AI Uzman Altyazi UI Bileseni
+#' AI Uzman Altyazı UI Bileşeni
 #'
-#' Sayfa altinda sabit konumlu altyazi seridi olusturur.
-#' Bu serit, AI konusmasi sirasinda metin goruntuler.
+#' Sayfa altında sabit konumlu altyazı şeridi oluşturur.
+#' Bu şerit, AI konuşması sırasında metin görüntüler.
 #'
-#' @param id Modul ad alani kimligi
-#' @return Altyazi seridi UI tanimi
+#' @param id Modül ad alanı kimliği
+#' @return Altyazı şeridi UI tanımı
 aiExpertSubtitleUI <- function(id) {
   ns <- NS(id)
 
-  # Sabit konumlu altyazi seridi (tum sayfalarda gorunur)
+  # Sabit konumlu altyazı şeridi (tüm sayfalarda görünür)
   tags$div(
     id = ns("subtitle_strip"),
     class = "ai-expert-subtitle-strip ai-expert-hidden",
 
-    # Sol: Karakter avatari
+    # Sol: Karakter avatarı
     tags$div(
       class = "ai-expert-avatar-wrapper",
       tags$img(
@@ -29,7 +29,7 @@ aiExpertSubtitleUI <- function(id) {
       )
     ),
 
-    # Orta: Altyazi metin alani
+    # Orta: Altyazı metin alanı
     tags$div(
       class = "ai-expert-subtitle-text-wrapper",
       tags$span(
@@ -39,85 +39,85 @@ aiExpertSubtitleUI <- function(id) {
       )
     ),
 
-    # Sag: Durdurma butonu
+    # Sağ: Durdurma butonu
     tags$div(
       class = "ai-expert-stop-wrapper",
       tags$button(
         id = ns("stop_ai_talk"),
         class = "ai-expert-stop-btn",
-        title = "AI konusmasini durdur",
+        title = "AI konuşmasını durdur",
         tags$i(class = "fa-solid fa-xmark")
       )
     )
   )
 }
 
-#' AI Uzman Sunucu Modulu
+#' AI Uzman Sunucu Modülü
 #'
-#' AI Uzman konusma durumunu, zamanlamasini ve yarris durumu
-#' onleme mantikini yonetir.
+#' AI Uzman konuşma durumunu, zamanlamasını ve yarış durumu
+#' önleme mantığını yönetir.
 #'
-#' @param id Modul ad alani kimligi
-#' @param settings_data Merkezi ayarlar reaktif degerleri
-#' @param tts_processor TTS isleme modulu (sesli cikti icin)
-#' @param tts_visualizer TTS gorsellestiricisi (animasyon tetiklemek icin)
-#' @return AI Uzman kontrol fonksiyonlarini iceren liste
+#' @param id Modül ad alanı kimliği
+#' @param settings_data Merkezi ayarlar reaktif değerleri
+#' @param tts_processor TTS işleme modülü (sesli çıktı için)
+#' @param tts_visualizer TTS görselleştiricisi (animasyon tetiklemek için)
+#' @return AI Uzman kontrol fonksiyonlarını içeren liste
 aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
   moduleServer(id, function(input, output, session) {
 
     ns <- session$ns
 
-    # --- Reaktif durum degiskenleri ---
-    is_speaking     <- reactiveVal(FALSE)    # AI simdi konusuyor mu
-    is_cooldown     <- reactiveVal(FALSE)    # Bekleme suresi aktif mi
-    last_speak_time <- reactiveVal(NULL)     # Son konusma zamani
+    # --- Reaktif durum değişkenleri ---
+    is_speaking     <- reactiveVal(FALSE)    # AI şimdi konuşuyor mu
+    is_cooldown     <- reactiveVal(FALSE)    # Bekleme süresi aktif mi
+    last_speak_time <- reactiveVal(NULL)     # Son konuşma zamanı
     current_page    <- reactiveVal("chat")   # Aktif sayfa
-    user_is_active  <- reactiveVal(FALSE)    # Kullanici mesaj gonderiyor mu
+    user_is_active  <- reactiveVal(FALSE)    # Kullanıcı mesaj gönderiyor mu
 
-    # Bekleme suresi (saniye) - iki konusma arasi minimum sure
+    # Bekleme süresi (saniye) - iki konuşma arası minimum süre
     COOLDOWN_SECONDS <- 120
 
-    # Yasakli sayfalar (bu sayfalarda AI konusmaz)
+    # Yasaklı sayfalar (bu sayfalarda AI konuşmaz)
     MUTED_PAGES <- c("settings_kisisel", "admin_analytics", "health")
 
-    # --- Yardimci: AI Uzman konusmasi mumkun mu? ---
+    # --- Yardımcı: AI Uzman konuşması mümkün mü? ---
     can_speak <- function() {
-      # 1. Ozellik acik mi?
+      # 1. Özellik açık mı?
       if (!isTRUE(settings_data$enable_ai_expert)) return(FALSE)
 
-      # 2. Butunlesik mod mu?
+      # 2. Bütünleşik mod mu?
       if (!identical(settings_data$experience_mode, "kesif")) return(FALSE)
 
-      # 3. Yasakli sayfa mi?
+      # 3. Yasaklı sayfa mı?
       page <- isolate(current_page())
       if (page %in% MUTED_PAGES) return(FALSE)
 
-      # 4. Zaten konusuyor mu?
+      # 4. Zaten konuşuyor mu?
       if (isTRUE(is_speaking())) return(FALSE)
 
-      # 5. TTS seslendirmesi veya STT kaydi aktif mi? (yaris durumu onleme)
+      # 5. TTS seslendirmesi veya STT kaydı aktif mi? (yarış durumu önleme)
       if (isTRUE(settings_data$enable_tts_audio)) {
-        # TTS aciksa ve kullanici bir prompt gonderdiyse, AI konusmamali
-        # (TTS seslendirmesi ile cakisma onlenir)
+        # TTS açıksa ve kullanıcı bir prompt gönderdiyse, AI konuşmamalı
+        # (TTS seslendirmesi ile çakışma önlenir)
       }
 
-      # 6. Bekleme suresinde mi?
+      # 6. Bekleme süresinde mi?
       if (isTRUE(is_cooldown())) return(FALSE)
 
-      # 7. Son konusmadan yeterli sure gecti mi?
+      # 7. Son konuşmadan yeterli süre geçti mi?
       lst <- isolate(last_speak_time())
       if (!is.null(lst)) {
         elapsed <- as.numeric(difftime(Sys.time(), lst, units = "secs"))
         if (elapsed < COOLDOWN_SECONDS) return(FALSE)
       }
 
-      # 8. Kullanici aktif mi? (yaziyorsa veya istek gonderdiyse konusma)
+      # 8. Kullanıcı aktif mi? (yazıyorsa veya istek gönderdiyse konuşma)
       if (isTRUE(user_is_active())) return(FALSE)
 
       return(TRUE)
     }
 
-    # --- Konusmayi baslat ---
+    # --- Konuşmayı başlat ---
     start_speaking <- function(text) {
       if (is.null(text) || !nzchar(text)) return(invisible(NULL))
       if (isTRUE(is_speaking())) return(invisible(NULL))
@@ -133,7 +133,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       avatar_src <- if (!is.null(char_info)) char_info$avatar else "mergen_avatar.png"
       accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
 
-      # Istemciye altyazi goster mesaji gonder
+      # İstemciye altyazı göster mesajı gönder
       session$sendCustomMessage("aiExpertStartSubtitle", list(
         text        = text,
         avatarSrc   = avatar_src,
@@ -141,40 +141,40 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         nsPrefix    = ns("")
       ))
 
-      # TTS ile seslendirme (TTS islemcisi kullanilabilir durumda ise)
+      # TTS ile seslendirme (TTS işlemcisi kullanılabilir durumda ise)
       tts_available <- FALSE
       tryCatch({
         tts_available <- isTRUE(tts_processor$tts_available())
       }, error = function(e) {})
 
       if (tts_available) {
-        # TTS ses tonunu karakter ayarindan al
+        # TTS ses tonunu karakter ayarından al
         voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
           char_info$tts_voice
         } else {
           "tr-male-1"
         }
 
-        # TTS icin metin hazirlama
+        # TTS için metin hazırlama
         clean_text <- prepare_ai_expert_tts_text(text)
 
         tts_processor$synthesize_speech(clean_text, voice = voice_sel) %...>%
           (function(res) {
             if (isTRUE(res$success) && nzchar(res$audio_src)) {
-              cat(sprintf("[AI_EXPERT] TTS basarili (Sure: %.2fs)\n", res$duration))
+              cat(sprintf("[AI_EXPERT] TTS başarılı (Süre: %.2fs)\n", res$duration))
 
-              # TTS gorsellestiricisini tetikle
+              # TTS görselleştiricisini tetikle
               tts_visualizer$trigger(duration = res$duration)
 
-              # Istemciye sesi gonder
+              # İstemciye sesi gönder
               session$sendCustomMessage("aiExpertPlayAudio", list(
                 src      = res$audio_src,
                 duration = res$duration,
                 nsPrefix = ns("")
               ))
             } else {
-              cat("[AI_EXPERT] TTS basarisiz, sadece altyazi gosteriliyor.\n")
-              # TTS basarisiz olsa da altyazi zamanlayicisini baslat
+              cat("[AI_EXPERT] TTS başarısız, sadece altyazı gösteriliyor.\n")
+              # TTS başarısız olsa da altyazı zamanlayıcısını başlat
               session$sendCustomMessage("aiExpertNoAudioFallback", list(
                 textLength = nchar(text),
                 nsPrefix   = ns("")
@@ -182,14 +182,14 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
             }
           }) %...!%
           (function(e) {
-            cat(sprintf("[AI_EXPERT] TTS hatasi: %s\n", conditionMessage(e)))
+            cat(sprintf("[AI_EXPERT] TTS hatası: %s\n", conditionMessage(e)))
             session$sendCustomMessage("aiExpertNoAudioFallback", list(
               textLength = nchar(text),
               nsPrefix   = ns("")
             ))
           })
       } else {
-        # TTS yoksa sadece altyazi goster, sure tahminle
+        # TTS yoksa sadece altyazı göster, süre tahminle
         session$sendCustomMessage("aiExpertNoAudioFallback", list(
           textLength = nchar(text),
           nsPrefix   = ns("")
@@ -199,7 +199,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       invisible(NULL)
     }
 
-    # --- Konusmayi durdur ---
+    # --- Konuşmayı durdur ---
     stop_speaking <- function() {
       if (!isTRUE(is_speaking())) return(invisible(NULL))
 
@@ -208,7 +208,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         nsPrefix = ns("")
       ))
 
-      # Bekleme suresini baslat
+      # Bekleme süresini başlat
       is_cooldown(TRUE)
       shinyjs::delay(COOLDOWN_SECONDS * 1000, {
         is_cooldown(FALSE)
@@ -222,31 +222,31 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       stop_speaking()
     })
 
-    # --- Istemciden "konusma bitti" sinyali ---
+    # --- İstemciden "konuşma bitti" sinyali ---
     observeEvent(input$ai_expert_speech_ended, {
       is_speaking(FALSE)
-      # Bekleme suresini baslat
+      # Bekleme süresini başlat
       is_cooldown(TRUE)
       shinyjs::delay(COOLDOWN_SECONDS * 1000, {
         is_cooldown(FALSE)
       })
     })
 
-    # --- TTS Gorsellestiricisi gorunurlugu ---
-    # enable_ai_expert veya enable_tts_audio acikken gorsellestiricyi goster
+    # --- TTS Görselleştiricisi görünürlüğü ---
+    # enable_ai_expert veya enable_tts_audio açıkken görselleştiriciyi göster
     observe({
       ai_expert_on <- isTRUE(settings_data$enable_ai_expert) &&
                        identical(settings_data$experience_mode, "kesif")
       tts_on <- isTRUE(settings_data$enable_tts_audio)
       should_show <- ai_expert_on || tts_on
 
-      # Istemciye gorsellestiricinin gorunurlugunu bildir
+      # İstemciye görselleştiricinin görünürlüğünü bildir
       session$sendCustomMessage("aiExpertVisualizerVisibility", list(
         visible = should_show
       ))
     })
 
-    # --- Dis erisim icin fonksiyonlar ---
+    # --- Dış erişim için fonksiyonlar ---
     return(list(
       start_speaking  = start_speaking,
       stop_speaking   = stop_speaking,
