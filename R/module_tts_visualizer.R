@@ -101,9 +101,12 @@ ttsVisualizerServer <- function(id, settings_data) {
       send_state(state = "stop")
     }
 
-    # Görünürlük Mantığı (Ayarlardaki TTS özelliğine göre)
+    # Görünürlük Mantığı (TTS veya AI Uzman açıkken göster)
     observe({
-      is_enabled <- isTRUE(settings_data$enable_tts_audio)
+      tts_on <- isTRUE(settings_data$enable_tts_audio)
+      ai_expert_on <- isTRUE(settings_data$enable_ai_expert) &&
+                       identical(settings_data$experience_mode, "kesif")
+      is_enabled <- tts_on || ai_expert_on
       shinyjs::toggleClass(id = "container", class = "shiny-visual-hidden", condition = !is_enabled)
 
       if (is_enabled) {
