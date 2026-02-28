@@ -71,17 +71,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
-  padding: 0 58px;
-  height: 78px;
-  background: rgba(10, 10, 10, 0.85);
+  gap: 16px;
+  padding: 0 48px;
+  height: 66px;
+  /* Uzay temasına uygun, koyu indigo gradyan - siyah arka plandan belirgin */
+  background: linear-gradient(135deg, rgba(37, 33, 100, 0.92) 0%, rgba(15, 15, 40, 0.95) 100%);
   border-radius: 9999px;
-  color: rgba(226, 232, 240, 0.9);
+  color: rgba(226, 232, 240, 0.95);
   font-family: 'Jura', 'Segoe UI', sans-serif !important;
   font-weight: 500;
-  font-size: 20px !important;
+  font-size: 24px !important;
   letter-spacing: 0.25em;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(129, 140, 248, 0.4);
   cursor: pointer;
   text-transform: uppercase;
   overflow: visible;
@@ -89,8 +90,9 @@
 }
 
 .explore-cinematic-btn:hover {
-  background: rgba(17, 17, 17, 0.95);
-  box-shadow: 0 0 50px -10px rgba(99, 102, 241, 0.6);
+  background: linear-gradient(135deg, rgba(55, 48, 140, 0.96) 0%, rgba(25, 22, 70, 0.98) 100%);
+  box-shadow: 0 0 50px -10px rgba(99, 102, 241, 0.7), 0 0 80px -30px rgba(52, 211, 153, 0.3);
+  border-color: rgba(129, 140, 248, 0.6);
   transform: scale(1.02);
 }
 
@@ -125,12 +127,12 @@
   transition: left 0.7s ease-in-out;
 }
 
-/* SVG yılan izi */
+/* SVG yılan izi - negatif inset ile kenar kırpılmasını önler */
 .explore-snake-svg {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: -3px;
+  width: calc(100% + 6px);
+  height: calc(100% + 6px);
   pointer-events: none;
   z-index: 20;
   opacity: 0;
@@ -620,10 +622,10 @@
 
 @media (max-width: 480px) {
   .explore-cinematic-btn {
-    padding: 0 36px;
-    height: 64px;
-    gap: 14px;
-    font-size: 16px !important;
+    padding: 0 32px;
+    height: 56px;
+    gap: 12px;
+    font-size: 18px !important;
   }
 
   .cinematic-modal-container {

@@ -9,7 +9,8 @@ const MusicManager = {
     character: 'mergen',     // Aktif karakter
     phase: 'idle',           // 'idle' | 'theme' | 'character' | 'waiting_character'
     normalVolume: 0.3,
-    isDucked: false
+    isDucked: false,
+    _sttActive: false        // STT kayıt modunda mı (tam sessizlik için)
   },
 
   // Tek ses elemanı - yarış durumunu önler
@@ -397,7 +398,28 @@ const MusicManager = {
 
   // Karakter videosu/TTS bitince sesi geri getir (yumuşak geçişle)
   unduck: function() {
+    // STT aktifken unduck yapma: kayıt bitmeden müzik geri gelmemeli
+    if (this.state._sttActive) return;
     if (!this.state.isDucked) return;
+    this.state.isDucked = false;
+    if (this._audio) {
+      this._fadeToVolume(this._audio, this.state.normalVolume, 800);
+    }
+  },
+
+  // STT kaydı sırasında sesi tamamen sıfırla - mikrofon parazitini önler
+  duckForSTT: function() {
+    if (this.state._sttActive) return; // Zaten STT modunda
+    this.state._sttActive = true;
+    this.state.isDucked = true;
+    if (this._audio) {
+      this._fadeToVolume(this._audio, 0, 600);
+    }
+  },
+
+  // STT kaydı bitince sesi normale döndür (yumuşak geçişle)
+  unduckAfterSTT: function() {
+    this.state._sttActive = false;
     this.state.isDucked = false;
     if (this._audio) {
       this._fadeToVolume(this._audio, this.state.normalVolume, 800);
@@ -447,7 +469,10 @@ $(document).ready(function() {
 
   document.addEventListener('pause', function(e) {
     if (e.target && e.target.tagName === 'AUDIO' && !e.target.src.includes('/music/')) {
-      setTimeout(function() { MusicManager.unduck(); }, 300);
+      // STT aktifken otomatik unduck yapma - kayıt bitince unduckAfterSTT çağrılacak
+      if (!MusicManager.state._sttActive) {
+        setTimeout(function() { MusicManager.unduck(); }, 300);
+      }
     }
   }, true);
 });
