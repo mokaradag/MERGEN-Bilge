@@ -1,7 +1,9 @@
 /* www/css/ai_expert_subtitle.css */
 /* Dosya Yolu: www/css/ai_expert_subtitle.css */
 /* Açıklama: AI Uzman altyazı şeridi stilleri. Sayfa altında sabit konumlu,
-             şeffaf arka planlı, modern ve animasyonlu altyazı görünümü. */
+             şeffaf arka planlı, modern ve animasyonlu altyazı görünümü.
+             Yazı tipi boyutu ayarlardan dinamik olarak alınır.
+             Geniş yatay alan kullanılır. */
 
 /* --- Ana Altyazı Şeridi --- */
 .ai-expert-subtitle-strip {
@@ -12,13 +14,14 @@
   z-index: 900;
   display: flex;
   align-items: center;
-  gap: 12px;
-  max-width: 700px;
-  width: 90%;
-  padding: 10px 18px;
-  background: rgba(15, 15, 15, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  gap: 14px;
+  /* Geniş yatay alan kullanımı - sohbet giriş kutusu genişliğinde */
+  max-width: 900px;
+  width: 92%;
+  padding: 12px 20px;
+  background: rgba(15, 15, 15, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
@@ -79,8 +82,8 @@
 }
 
 .ai-expert-subtitle-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: 2px solid var(--ai-expert-accent, #7C4DFF);
   object-fit: cover;
@@ -96,16 +99,36 @@
 
 .ai-expert-subtitle-text {
   display: block;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.95);
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.55;
   letter-spacing: 0.01em;
   font-feature-settings: "locl" 1;
   /* Metin taşma önleme */
   overflow: hidden;
   text-overflow: ellipsis;
-  max-height: 4.5em;
+  max-height: 6em;
+}
+
+/* --- Yazı Tipi Boyutu Sınıfları (Yapılandırma ayarlarıyla eşleşir) --- */
+.ai-expert-subtitle-text.ai-font-small {
+  font-size: 0.9rem;
+  max-height: 5.5em;
+}
+
+.ai-expert-subtitle-text.ai-font-medium {
+  font-size: 1.05rem;
+  max-height: 6em;
+}
+
+.ai-expert-subtitle-text.ai-font-large {
+  font-size: 1.18rem;
+  max-height: 6.5em;
+}
+
+.ai-expert-subtitle-text.ai-font-xlarge {
+  font-size: 1.3rem;
+  max-height: 7em;
 }
 
 /* Yazma efekti için blink imleç */
@@ -134,34 +157,35 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   transition: all 0.25s ease;
   padding: 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .ai-expert-stop-btn:hover {
-  background: rgba(255, 65, 108, 0.2);
+  background: rgba(255, 65, 108, 0.25);
   color: #ff416c;
-  transform: scale(1.1);
+  transform: scale(1.15);
 }
 
 .ai-expert-stop-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.9);
+  background: rgba(255, 65, 108, 0.4);
 }
 
 /* --- Parlama efekti (konuşma sırasında) --- */
 .ai-expert-subtitle-strip.ai-expert-speaking {
-  border-color: rgba(124, 77, 255, 0.15);
+  border-color: rgba(124, 77, 255, 0.2);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
-              0 0 20px rgba(124, 77, 255, 0.08),
-              0 0 0 1px rgba(124, 77, 255, 0.06);
+              0 0 24px rgba(124, 77, 255, 0.1),
+              0 0 0 1px rgba(124, 77, 255, 0.08);
 }
 
 /* --- Sidebar açıkken konum ayarı --- */
@@ -172,38 +196,43 @@
 /* --- Duyarlı tasarım (responsive) --- */
 @media (max-width: 992px) {
   .ai-expert-subtitle-strip {
-    max-width: 85%;
+    max-width: 88%;
     bottom: 70px;
-    padding: 8px 14px;
+    padding: 10px 16px;
   }
 
   .ai-expert-subtitle-avatar {
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
   }
 
-  .ai-expert-subtitle-text {
-    font-size: 0.85rem;
-  }
+  .ai-expert-subtitle-text.ai-font-small { font-size: 0.85rem; }
+  .ai-expert-subtitle-text.ai-font-medium { font-size: 0.95rem; }
+  .ai-expert-subtitle-text.ai-font-large { font-size: 1.08rem; }
+  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 1.18rem; }
 }
 
 @media (max-width: 576px) {
   .ai-expert-subtitle-strip {
-    max-width: 95%;
+    max-width: 96%;
     bottom: 60px;
-    padding: 6px 10px;
-    gap: 8px;
+    padding: 8px 12px;
+    gap: 10px;
     border-radius: 12px;
   }
 
   .ai-expert-subtitle-avatar {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
   }
 
+  .ai-expert-subtitle-text.ai-font-small { font-size: 0.8rem; }
+  .ai-expert-subtitle-text.ai-font-medium { font-size: 0.88rem; }
+  .ai-expert-subtitle-text.ai-font-large { font-size: 0.95rem; }
+  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 1.05rem; }
+
   .ai-expert-subtitle-text {
-    font-size: 0.8rem;
-    max-height: 3em;
+    max-height: 4em;
   }
 }
 
