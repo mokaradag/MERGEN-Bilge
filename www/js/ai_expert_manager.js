@@ -151,6 +151,11 @@ const AIExpertManager = {
       window.MusicManager.duck();
     }
 
+    // TTS görselleştiricisini aktive et (ses olmasa bile animasyon göster)
+    if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
+      window.ttsVisualizerState.setTalking();
+    }
+
     // Yazma animasyonunu başlat
     this._startTyping();
 
@@ -171,6 +176,7 @@ const AIExpertManager = {
       case 'large':
         textEl.classList.add('ai-font-large');
         break;
+      case 'xlarge':
       case 'x-large':
         textEl.classList.add('ai-font-xlarge');
         break;

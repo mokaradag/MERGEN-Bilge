@@ -4,6 +4,7 @@
 #            Karşılama, sayfa rehberliği, boşta konuşma ve kullanıcı adıyla
 #            kişiselleştirilmiş etkileşim mantığını yönetir.
 #            Yarış durumu (race condition) önleme mekanizmalarını içerir.
+#            Boşta konuşma zinciri her zaman yeniden planlanır (kırılmaz).
 
 #' AI Uzman İşleyicilerini Başlat
 #'
@@ -31,14 +32,35 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # Kullanıcı adı (DB'den alınacak)
   user_first_name <- session$userData$user_first_name %||% ""
 
+  # Boşta konuşma arası (ms) - daha sık konuşma için kısa tutuldu
+  IDLE_INTERVAL_MS   <- 35000   # 35 saniye
+  # Karşılama sonrası ilk boşta konuşma bekleme süresi (ms)
+  FIRST_IDLE_DELAY_MS <- 25000  # 25 saniye
+
   # --- Karşılama konuşması (uygulama açıldığında bir kez) ---
   # session$onFlushed ile UI hazır olduktan sonra çalışır
   session$onFlushed(function() {
     # Ayarların yüklenmesini beklemek için kısa bir gecikme
-    shinyjs::delay(3000, {
+    shinyjs::delay(2500, {
       trigger_greeting()
     })
   }, once = TRUE)
+
+  # --- Ayarlar değiştiğinde karşılama tetikleyicisi ---
+  # Kullanıcı giriş ekranında "Bütünleşik" modunu seçtiğinde veya
+  # ayarlar localStorage'dan yüklendiğinde karşılamayı tetikle
+  observe({
+    # Ayar değişikliklerini izle
+    ai_on <- isTRUE(settings_data$enable_ai_expert)
+    mode <- settings_data$experience_mode
+
+    # Koşullar sağlanıyorsa ve karşılama henüz yapılmadıysa tetikle
+    if (ai_on && identical(mode, "kesif") && !isTRUE(isolate(greeting_done()))) {
+      shinyjs::delay(1500, {
+        trigger_greeting()
+      })
+    }
+  })
 
   # Karşılama konuşmasını tetikleme fonksiyonu
   trigger_greeting <- function() {
@@ -116,12 +138,23 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         ai_expert$start_speaking(greeting_text, ai_expert$COOLDOWN_GREETING)
 
         # Boşta konuşma zamanlayıcısını başlat
-        shinyjs::delay(45000, {
-          trigger_idle_chat()
-        })
+        schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+      } else {
+        # Metin alınamadıysa bile boşta konuşma zamanlayıcısını başlat
+        schedule_idle_chat(FIRST_IDLE_DELAY_MS)
       }
     }) %...!% (function(e) {
       cat(sprintf("[AI_EXPERT] Karşılama hatası: %s\n", conditionMessage(e)))
+      # Hata durumunda bile boşta konuşma zamanlayıcısını başlat
+      schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+    })
+  }
+
+  # --- Boşta konuşma zamanlayıcısı yardımcısı ---
+  # Her zaman bir sonraki boşta konuşmayı planlar (zincir asla kırılmaz)
+  schedule_idle_chat <- function(delay_ms = IDLE_INTERVAL_MS) {
+    shinyjs::delay(delay_ms, {
+      trigger_idle_chat()
     })
   }
 
@@ -139,14 +172,12 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     if (!isTRUE(settings_data$enable_ai_expert)) return()
     if (!identical(settings_data$experience_mode, "kesif")) return()
 
-    # Zaten ziyaret edilmiş sayfada tekrar konuşma (ilk ziyaret hariç)
+    # Zaten ziyaret edilmiş sayfaları kontrol et
     visited <- isolate(visited_pages())
 
     # Ana Söyleşi sayfasına geri dönüldüğünde: boşta konuşma zamanlayıcısını başlat
     if (page == "chat") {
-      shinyjs::delay(40000, {
-        trigger_idle_chat()
-      })
+      schedule_idle_chat(20000)
       return()
     }
 
@@ -156,8 +187,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     # Sayfayı ziyaret edilmiş olarak işaretle
     visited_pages(unique(c(visited, page)))
 
-    # Gecikme ile sayfa rehberliği konuşması
-    delay_ms <- if (already_visited) 5000 else 2500
+    # Gecikme ile sayfa rehberliği konuşması - daha hızlı yanıt
+    delay_ms <- if (already_visited) 3000 else 1500
     shinyjs::delay(delay_ms, {
       trigger_page_guidance(page, already_visited)
     })
@@ -236,24 +267,37 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         if (ai_expert$can_speak()) {
           ai_expert$start_speaking(guidance_text, ai_expert$COOLDOWN_PAGE)
           last_page_talk_time(Sys.time())
-
-          # Sayfada kalırsa boşta konuşma zamanlayıcısını başlat
-          shinyjs::delay(45000, {
-            trigger_idle_chat()
-          })
         }
       }
+      # Sayfa konuşması başarılı olsun ya da olmasın, boşta konuşmayı planla
+      schedule_idle_chat(IDLE_INTERVAL_MS)
     }) %...!% (function(e) {
       cat(sprintf("[AI_EXPERT] Sayfa rehberliği hatası: %s\n", conditionMessage(e)))
+      # Hata durumunda bile bir sonraki boşta konuşmayı planla
+      schedule_idle_chat(IDLE_INTERVAL_MS)
     })
   }
 
   # --- Boşta konuşma (kullanıcı bir süredir etkileşimde bulunmadığında) ---
   trigger_idle_chat <- function() {
-    if (!ai_expert$can_speak()) return()
+    # Özellik kapalıysa sadece yeniden planla
+    if (!isTRUE(settings_data$enable_ai_expert) ||
+        !identical(settings_data$experience_mode, "kesif")) {
+      schedule_idle_chat(IDLE_INTERVAL_MS)
+      return()
+    }
 
-    # Kullanıcı aktif sohbetteyse ve TTS açıksa konuşma
-    if (isTRUE(values$is_sending)) return()
+    # Konuşamıyorsa yeniden planla ve çık
+    if (!ai_expert$can_speak()) {
+      schedule_idle_chat(IDLE_INTERVAL_MS)
+      return()
+    }
+
+    # Kullanıcı aktif sohbetteyse yeniden planla ve çık
+    if (isTRUE(values$is_sending)) {
+      schedule_idle_chat(IDLE_INTERVAL_MS)
+      return()
+    }
 
     cat("[AI_EXPERT] Boşta konuşma tetikleniyor...\n")
 
@@ -331,15 +375,14 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       if (!is.null(idle_text) && nzchar(idle_text)) {
         if (ai_expert$can_speak()) {
           ai_expert$start_speaking(idle_text, ai_expert$COOLDOWN_IDLE)
-
-          # Bir sonraki boşta konuşma için zamanlayıcı kur (60 saniye sonra)
-          shinyjs::delay(60000, {
-            trigger_idle_chat()
-          })
         }
       }
+      # Her zaman bir sonraki boşta konuşmayı planla (zincir asla kırılmaz)
+      schedule_idle_chat(IDLE_INTERVAL_MS)
     }) %...!% (function(e) {
       cat(sprintf("[AI_EXPERT] Boşta konuşma hatası: %s\n", conditionMessage(e)))
+      # Hata durumunda bile bir sonraki boşta konuşmayı planla
+      schedule_idle_chat(IDLE_INTERVAL_MS)
     })
   }
 
