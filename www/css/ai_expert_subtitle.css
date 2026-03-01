@@ -2,24 +2,24 @@
 /* Dosya Yolu: www/css/ai_expert_subtitle.css */
 /* Açıklama: AI Uzman altyazı şeridi stilleri. Sayfa altında sabit konumlu,
              şeffaf arka planlı, modern ve animasyonlu altyazı görünümü.
-             Yazı tipi boyutu ayarlardan dinamik olarak alınır.
-             Geniş yatay alan kullanılır. */
+             Yazı tipi boyutu Yapılandırma ayarlarıyla birebir eşleşir.
+             Sohbet giriş kutusu genişliğinde geniş yatay alan kullanır. */
 
 /* --- Ana Altyazı Şeridi --- */
 .ai-expert-subtitle-strip {
   position: fixed;
   bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 250px;
+  right: 0;
   z-index: 900;
   display: flex;
   align-items: center;
-  gap: 14px;
-  /* Geniş yatay alan kullanımı - sohbet giriş kutusu genişliğinde */
-  max-width: 900px;
-  width: 92%;
-  padding: 12px 20px;
-  background: rgba(15, 15, 15, 0.88);
+  gap: 16px;
+  /* Sohbet giriş kutusuyla aynı yatay alan */
+  width: auto;
+  margin: 0 20px;
+  padding: 14px 22px;
+  background: rgba(15, 15, 15, 0.90);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -29,7 +29,9 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              left 0.3s ease-in-out;
+  transform: none;
 }
 
 /* Görünür durum */
@@ -57,22 +59,22 @@
 @keyframes aiExpertSlideUp {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(20px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
   }
 }
 
 @keyframes aiExpertFadeOut {
   from {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
   }
   to {
     opacity: 0;
-    transform: translateX(-50%) translateY(10px);
+    transform: translateY(10px);
   }
 }
 
@@ -82,8 +84,8 @@
 }
 
 .ai-expert-subtitle-avatar {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   border: 2px solid var(--ai-expert-accent, #7C4DFF);
   object-fit: cover;
@@ -101,34 +103,34 @@
   display: block;
   color: rgba(255, 255, 255, 0.95);
   font-weight: 400;
-  line-height: 1.55;
+  line-height: 1.6;
   letter-spacing: 0.01em;
   font-feature-settings: "locl" 1;
   /* Metin taşma önleme */
   overflow: hidden;
   text-overflow: ellipsis;
-  max-height: 6em;
+  max-height: 7em;
 }
 
-/* --- Yazı Tipi Boyutu Sınıfları (Yapılandırma ayarlarıyla eşleşir) --- */
+/* --- Yazı Tipi Boyutu Sınıfları (Yapılandırma ayarlarıyla BİREBİR eşleşir) --- */
 .ai-expert-subtitle-text.ai-font-small {
-  font-size: 0.9rem;
-  max-height: 5.5em;
+  font-size: 14px;
+  max-height: 6em;
 }
 
 .ai-expert-subtitle-text.ai-font-medium {
-  font-size: 1.05rem;
-  max-height: 6em;
+  font-size: 16px;
+  max-height: 7em;
 }
 
 .ai-expert-subtitle-text.ai-font-large {
-  font-size: 1.18rem;
-  max-height: 6.5em;
+  font-size: 18px;
+  max-height: 7.5em;
 }
 
 .ai-expert-subtitle-text.ai-font-xlarge {
-  font-size: 1.3rem;
-  max-height: 7em;
+  font-size: 20px;
+  max-height: 8em;
 }
 
 /* Yazma efekti için blink imleç */
@@ -157,8 +159,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.08);
@@ -166,7 +168,7 @@
   cursor: pointer;
   transition: all 0.25s ease;
   padding: 0;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .ai-expert-stop-btn:hover {
@@ -188,51 +190,52 @@
               0 0 0 1px rgba(124, 77, 255, 0.08);
 }
 
-/* --- Sidebar açıkken konum ayarı --- */
-.sidebar-open .ai-expert-subtitle-strip {
-  left: calc(50% + 125px);
+/* --- Sidebar kapatıldığında konum ayarı --- */
+.sidebar-collapse .ai-expert-subtitle-strip {
+  left: 50px;
 }
 
 /* --- Duyarlı tasarım (responsive) --- */
 @media (max-width: 992px) {
   .ai-expert-subtitle-strip {
-    max-width: 88%;
+    left: 0;
     bottom: 70px;
-    padding: 10px 16px;
+    padding: 12px 16px;
+    margin: 0 12px;
   }
 
   .ai-expert-subtitle-avatar {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
   }
 
-  .ai-expert-subtitle-text.ai-font-small { font-size: 0.85rem; }
-  .ai-expert-subtitle-text.ai-font-medium { font-size: 0.95rem; }
-  .ai-expert-subtitle-text.ai-font-large { font-size: 1.08rem; }
-  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 1.18rem; }
+  .ai-expert-subtitle-text.ai-font-small { font-size: 13px; }
+  .ai-expert-subtitle-text.ai-font-medium { font-size: 15px; }
+  .ai-expert-subtitle-text.ai-font-large { font-size: 17px; }
+  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 19px; }
 }
 
 @media (max-width: 576px) {
   .ai-expert-subtitle-strip {
-    max-width: 96%;
     bottom: 60px;
-    padding: 8px 12px;
-    gap: 10px;
+    padding: 10px 14px;
+    gap: 12px;
     border-radius: 12px;
+    margin: 0 8px;
   }
 
   .ai-expert-subtitle-avatar {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
   }
 
-  .ai-expert-subtitle-text.ai-font-small { font-size: 0.8rem; }
-  .ai-expert-subtitle-text.ai-font-medium { font-size: 0.88rem; }
-  .ai-expert-subtitle-text.ai-font-large { font-size: 0.95rem; }
-  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 1.05rem; }
+  .ai-expert-subtitle-text.ai-font-small { font-size: 12px; }
+  .ai-expert-subtitle-text.ai-font-medium { font-size: 14px; }
+  .ai-expert-subtitle-text.ai-font-large { font-size: 16px; }
+  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 18px; }
 
   .ai-expert-subtitle-text {
-    max-height: 4em;
+    max-height: 5em;
   }
 }
 
@@ -245,7 +248,6 @@
   .ai-expert-subtitle-strip.ai-expert-entering {
     animation: none;
     opacity: 1;
-    transform: translateX(-50%);
   }
 
   .ai-expert-subtitle-strip.ai-expert-exiting {

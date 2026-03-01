@@ -76,11 +76,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     user_is_active  <- reactiveVal(FALSE)    # Kullanıcı mesaj gönderiyor mu
     tts_vocalizing  <- reactiveVal(FALSE)    # TTS yanıt seslendirmesi aktif mi
 
-    # Bekleme süreleri (saniye) - senaryoya göre farklı süreler
-    COOLDOWN_AFTER_GREETING  <- 20  # Karşılama sonrası bekleme
-    COOLDOWN_AFTER_PAGE      <- 15  # Sayfa rehberliği sonrası bekleme
-    COOLDOWN_AFTER_IDLE      <- 25  # Boşta konuşma sonrası bekleme
-    COOLDOWN_AFTER_STOP      <- 10  # Manuel durdurma sonrası bekleme
+    # Bekleme süreleri (saniye) - daha hızlı ve akıcı deneyim için kısa tutuldu
+    COOLDOWN_AFTER_GREETING  <- 10  # Karşılama sonrası bekleme
+    COOLDOWN_AFTER_PAGE      <- 8   # Sayfa rehberliği sonrası bekleme
+    COOLDOWN_AFTER_IDLE      <- 12  # Boşta konuşma sonrası bekleme
+    COOLDOWN_AFTER_STOP      <- 5   # Manuel durdurma sonrası bekleme
 
     # Aktif bekleme süresi (dinamik olarak değişir)
     active_cooldown_seconds <- reactiveVal(15)
@@ -181,8 +181,8 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
             if (isTRUE(res$success) && nzchar(res$audio_src)) {
               cat(sprintf("[AI_EXPERT] TTS hazır (Süre: %.2fs). Altyazı ve ses birlikte başlatılıyor.\n", res$duration))
 
-              # TTS görselleştiricisini tetikle
-              tts_visualizer$trigger(duration = res$duration)
+              # TTS görselleştiricisini tetikle (süre 0 = zamanlayıcı yok, ses bitince JS tarafında kapanır)
+              tts_visualizer$trigger(duration = 0)
 
               # Altyazı + ses birlikte başlatılıyor (senkronize)
               session$sendCustomMessage("aiExpertStartWithAudio", list(
@@ -228,6 +228,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           })
       } else {
         # TTS yoksa sadece altyazı göster, süre tahminle
+        # Görselleştiriciyisesiz bile aktive et (animasyon göster)
+        tts_visualizer$trigger(duration = 0)
+
         session$sendCustomMessage("aiExpertStartSubtitle", list(
           text        = text,
           avatarSrc   = avatar_src,

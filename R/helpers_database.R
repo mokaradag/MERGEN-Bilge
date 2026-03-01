@@ -502,6 +502,8 @@ format_chat_messages <- function(chat_df) {
     }
 
     timestamp_val <- row$MessageTimestamp
+    # Saat dilimini belirle: ODBC sürücüsü genellikle UTC döndürür,
+    # format() tz parametresiyle ham saat değerini korur
     ts_tz <- attr(timestamp_val, "tzone")
     if (is.null(ts_tz) || !nzchar(ts_tz)) {
       ts_tz <- "UTC"

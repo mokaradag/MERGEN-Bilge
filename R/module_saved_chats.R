@@ -79,20 +79,27 @@ savedChatsServer <- function(id, saved_chats) {
 
     cached_meta <- reactiveVal(empty_meta())
 
+    # Saat dilimi sabiti - DB'deki zaman damgaları Istanbul zamanında saklanır
+    TARGET_TZ <- "Europe/Istanbul"
+
     parse_timestamp <- function(value) {
       if (inherits(value, "POSIXt")) {
-        return(value)
+        # DB sürücüsü (ODBC) zaman damgasını UTC olarak döndürebilir,
+        # ancak DB'deki gerçek değer Istanbul zamanıdır.
+        # Saat yüzü değerini Istanbul olarak yeniden yorumla (dönüştürme yapmadan).
+        clock_str <- format(value, "%Y-%m-%d %H:%M:%S")
+        return(as.POSIXct(clock_str, tz = TARGET_TZ))
       }
       if (is.numeric(value)) {
-        return(as.POSIXct(value, origin = "1970-01-01", tz = Sys.timezone()))
+        return(as.POSIXct(value, origin = "1970-01-01", tz = TARGET_TZ))
       }
       if (is.character(value) && nzchar(value)) {
-        parsed <- suppressWarnings(as.POSIXct(value, tz = Sys.timezone()))
+        parsed <- suppressWarnings(as.POSIXct(value, tz = TARGET_TZ))
         if (is.na(parsed)) {
-          parsed <- suppressWarnings(as.POSIXct(value, format = "%d.%m.%Y - %H:%M", tz = "Europe/Istanbul"))
+          parsed <- suppressWarnings(as.POSIXct(value, format = "%d.%m.%Y - %H:%M", tz = TARGET_TZ))
         }
         if (is.na(parsed)) {
-          parsed <- suppressWarnings(as.POSIXct(value, format = "%Y-%m-%d %H:%M:%S", tz = Sys.timezone()))
+          parsed <- suppressWarnings(as.POSIXct(value, format = "%Y-%m-%d %H:%M:%S", tz = TARGET_TZ))
         }
         if (!is.na(parsed)) {
           return(parsed)
@@ -140,7 +147,7 @@ savedChatsServer <- function(id, saved_chats) {
         as.numeric(parse_timestamp(raw))
       }, numeric(1))
 
-      timestamps <- as.POSIXct(timestamps, origin = "1970-01-01", tz = Sys.timezone())
+      timestamps <- as.POSIXct(timestamps, origin = "1970-01-01", tz = TARGET_TZ)
 
       message_counts <- vapply(chats, function(chat) as.integer(chat$message_count %||% 0L), integer(1))
 
