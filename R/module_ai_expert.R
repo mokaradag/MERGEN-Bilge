@@ -262,9 +262,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         tts_visualizer$stop()
       }, error = function(e) {})
 
-      # Bekleme süresini başlat
+      # Bekleme süresini başlat (0 geçilirse bekleme olmaz)
       cd <- cooldown_secs %||% COOLDOWN_AFTER_STOP
-      start_cooldown(cd)
+      if (cd > 0) {
+        start_cooldown(cd)
+      }
 
       invisible(NULL)
     }

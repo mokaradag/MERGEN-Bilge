@@ -240,6 +240,14 @@ ui <- dashboardPage(
     # AI Uzman altyazı seridi (tüm sayfalarda sabit konumlu)
     aiExpertSubtitleUI("ai_expert_module"),
 
+    # --- TTS Görselleştirici (tüm sayfalarda sabit konumlu) ---
+    # AI Uzman konuşması veya TTS seslendirmesi sırasında animasyon gösterir
+    tags$div(
+      id = "tts_visualizer_floating",
+      class = "tts-visualizer-floating-wrapper",
+      ttsVisualizerUI("tts_viz")
+    ),
+
     # --- Sekme İçerikleri (Tab Content) ---
     # Yan menüde tanımlanan her bir sekme için gösterilecek içerikler.
     tabItems(
@@ -273,10 +281,7 @@ ui <- dashboardPage(
                 )
               )
             ),
-            
-            # --- TTS Görselleştirici Modül UI ---
-            ttsVisualizerUI("tts_viz"),
-            
+
             div(
               class = "chat-header-right chat-actions",
               actionButton(

@@ -2,24 +2,25 @@
 /* Dosya Yolu: www/css/ai_expert_subtitle.css */
 /* Açıklama: AI Uzman altyazı şeridi stilleri. Sayfa altında sabit konumlu,
              şeffaf arka planlı, modern ve animasyonlu altyazı görünümü.
-             Yazı tipi boyutu Yapılandırma ayarlarıyla birebir eşleşir.
+             Yazı tipi boyutu Yapılandırma ayarlarıyla eşleşir.
              Sohbet giriş kutusu genişliğinde geniş yatay alan kullanır. */
 
 /* --- Ana Altyazı Şeridi --- */
 .ai-expert-subtitle-strip {
-  position: fixed;
-  bottom: 80px;
-  left: 250px;
-  right: 0;
-  z-index: 900;
-  display: flex;
-  align-items: center;
+  position: fixed !important;
+  bottom: 80px !important;
+  left: 250px !important;
+  right: 0 !important;
+  z-index: 1100 !important;
+  display: flex !important;
+  align-items: center !important;
   gap: 16px;
   /* Sohbet giriş kutusuyla aynı yatay alan */
-  width: auto;
-  margin: 0 20px;
-  padding: 14px 22px;
-  background: rgba(15, 15, 15, 0.90);
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 20px !important;
+  padding: 16px 24px !important;
+  background: rgba(15, 15, 15, 0.92) !important;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -31,19 +32,20 @@
   transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
               left 0.3s ease-in-out;
-  transform: none;
+  transform: none !important;
+  box-sizing: border-box !important;
 }
 
 /* Görünür durum */
 .ai-expert-subtitle-strip.ai-expert-visible {
-  opacity: 1;
-  pointer-events: auto;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 /* Gizli durum (varsayılan) */
 .ai-expert-subtitle-strip.ai-expert-hidden {
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 /* Giriş animasyonu */
@@ -84,8 +86,8 @@
 }
 
 .ai-expert-subtitle-avatar {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 2px solid var(--ai-expert-accent, #7C4DFF);
   object-fit: cover;
@@ -94,43 +96,44 @@
 
 /* --- Altyazı Metin Alanı --- */
 .ai-expert-subtitle-text-wrapper {
-  flex: 1;
+  flex: 1 !important;
   overflow: hidden;
   min-width: 0;
 }
 
 .ai-expert-subtitle-text {
-  display: block;
-  color: rgba(255, 255, 255, 0.95);
-  font-weight: 400;
-  line-height: 1.6;
+  display: block !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+  font-weight: 400 !important;
+  line-height: 1.65 !important;
   letter-spacing: 0.01em;
   font-feature-settings: "locl" 1;
-  /* Metin taşma önleme */
   overflow: hidden;
   text-overflow: ellipsis;
-  max-height: 7em;
+  max-height: 8em;
 }
 
-/* --- Yazı Tipi Boyutu Sınıfları (Yapılandırma ayarlarıyla BİREBİR eşleşir) --- */
+/* --- Yazı Tipi Boyutu Sınıfları ---
+   Yapılandırma ayarlarıyla eşleşir, büyütülmüş değerler.
+   !important ile olası framework geçersiz kılmalarını engeller. */
 .ai-expert-subtitle-text.ai-font-small {
-  font-size: 14px;
-  max-height: 6em;
+  font-size: 16px !important;
+  max-height: 7em;
 }
 
 .ai-expert-subtitle-text.ai-font-medium {
-  font-size: 16px;
-  max-height: 7em;
+  font-size: 18px !important;
+  max-height: 8em;
 }
 
 .ai-expert-subtitle-text.ai-font-large {
-  font-size: 18px;
-  max-height: 7.5em;
+  font-size: 20px !important;
+  max-height: 8.5em;
 }
 
 .ai-expert-subtitle-text.ai-font-xlarge {
-  font-size: 20px;
-  max-height: 8em;
+  font-size: 22px !important;
+  max-height: 9em;
 }
 
 /* Yazma efekti için blink imleç */
@@ -159,8 +162,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.08);
@@ -168,7 +171,7 @@
   cursor: pointer;
   transition: all 0.25s ease;
   padding: 0;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .ai-expert-stop-btn:hover {
@@ -192,50 +195,50 @@
 
 /* --- Sidebar kapatıldığında konum ayarı --- */
 .sidebar-collapse .ai-expert-subtitle-strip {
-  left: 50px;
+  left: 50px !important;
 }
 
 /* --- Duyarlı tasarım (responsive) --- */
 @media (max-width: 992px) {
   .ai-expert-subtitle-strip {
-    left: 0;
-    bottom: 70px;
-    padding: 12px 16px;
-    margin: 0 12px;
+    left: 0 !important;
+    bottom: 70px !important;
+    padding: 14px 16px !important;
+    margin: 0 12px !important;
   }
 
   .ai-expert-subtitle-avatar {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
   }
 
-  .ai-expert-subtitle-text.ai-font-small { font-size: 13px; }
-  .ai-expert-subtitle-text.ai-font-medium { font-size: 15px; }
-  .ai-expert-subtitle-text.ai-font-large { font-size: 17px; }
-  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 19px; }
+  .ai-expert-subtitle-text.ai-font-small { font-size: 15px !important; }
+  .ai-expert-subtitle-text.ai-font-medium { font-size: 17px !important; }
+  .ai-expert-subtitle-text.ai-font-large { font-size: 19px !important; }
+  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 21px !important; }
 }
 
 @media (max-width: 576px) {
   .ai-expert-subtitle-strip {
-    bottom: 60px;
-    padding: 10px 14px;
+    bottom: 60px !important;
+    padding: 12px 14px !important;
     gap: 12px;
     border-radius: 12px;
-    margin: 0 8px;
+    margin: 0 8px !important;
   }
 
   .ai-expert-subtitle-avatar {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
   }
 
-  .ai-expert-subtitle-text.ai-font-small { font-size: 12px; }
-  .ai-expert-subtitle-text.ai-font-medium { font-size: 14px; }
-  .ai-expert-subtitle-text.ai-font-large { font-size: 16px; }
-  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 18px; }
+  .ai-expert-subtitle-text.ai-font-small { font-size: 14px !important; }
+  .ai-expert-subtitle-text.ai-font-medium { font-size: 16px !important; }
+  .ai-expert-subtitle-text.ai-font-large { font-size: 18px !important; }
+  .ai-expert-subtitle-text.ai-font-xlarge { font-size: 20px !important; }
 
   .ai-expert-subtitle-text {
-    max-height: 5em;
+    max-height: 6em;
   }
 }
 

@@ -469,10 +469,15 @@ $(document).ready(function() {
 
   document.addEventListener('pause', function(e) {
     if (e.target && e.target.tagName === 'AUDIO' && !e.target.src.includes('/music/')) {
-      // STT aktifken otomatik unduck yapma - kayıt bitince unduckAfterSTT çağrılacak
-      if (!MusicManager.state._sttActive) {
-        setTimeout(function() { MusicManager.unduck(); }, 300);
-      }
+      // STT aktifken otomatik unduck yapma
+      if (MusicManager.state._sttActive) return;
+      // AI Uzman konuşması devam ediyorsa otomatik unduck yapma
+      if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) return;
+      setTimeout(function() {
+        // Unduck öncesi son kontrol: AI hâlâ konuşuyor olabilir
+        if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) return;
+        MusicManager.unduck();
+      }, 300);
     }
   }, true);
 });
