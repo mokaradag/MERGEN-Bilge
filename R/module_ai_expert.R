@@ -307,7 +307,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       stop_speaking     = stop_speaking,
       is_speaking       = is_speaking,
       can_speak         = can_speak,
-      set_page          = function(page) current_page(page),
+      set_page          = function(page) {
+        current_page(page)
+        # JS tarafına sayfa bilgisini gönder (altyazı konumu ayarı için)
+        session$sendCustomMessage("aiExpertSetPage", list(page = page))
+      },
       set_user_active   = function(active) user_is_active(active),
       set_tts_vocalizing = function(active) tts_vocalizing(active),
       # Bekleme süreleri dış erişim için

@@ -247,7 +247,12 @@ $(document).ready(function() {
             window.mergenTTS.stop();
         }
 
-        // 3. Mevcut tüm ses elemanlarını zorla durdur
+        // 3. AI Uzman konuşmasını da durdur (varsa)
+        if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) {
+            window.AIExpertManager.stopSubtitle({});
+        }
+
+        // 4. Mevcut tüm ses elemanlarını zorla durdur
         $('audio').each(function() {
             try {
                 this.pause();

@@ -19,7 +19,8 @@ const AIExpertManager = {
     nsPrefix: '',             // Shiny namespace öneki
     accentColor: '#7C4DFF',   // Karakter tema rengi
     fontSize: 'medium',       // Yazı tipi boyutu ayarı
-    stopRequested: false      // Durdurma istendi mi
+    stopRequested: false,     // Durdurma istendi mi
+    currentPage: 'chat'       // Aktif sayfa (altyazı konumu için)
   },
 
   // --- Yapılandırma ---
@@ -71,6 +72,9 @@ const AIExpertManager = {
     // Metni sıfırla
     textEl.textContent = '';
     textEl.classList.add('ai-expert-typing');
+
+    // Sayfa bazlı konum sınıfını uygula
+    this._applyPageClass(strip);
 
     // Şeridi göster (giriş animasyonu)
     strip.classList.remove('ai-expert-hidden', 'ai-expert-exiting');
@@ -137,6 +141,9 @@ const AIExpertManager = {
     // Metni sıfırla
     textEl.textContent = '';
     textEl.classList.add('ai-expert-typing');
+
+    // Sayfa bazlı konum sınıfını uygula
+    this._applyPageClass(strip);
 
     // Şeridi göster
     strip.classList.remove('ai-expert-hidden', 'ai-expert-exiting');
@@ -463,6 +470,30 @@ const AIExpertManager = {
     }
   },
 
+  // --- SAYFA BAZLI KONUM AYARI ---
+  _applyPageClass: function(strip) {
+    if (!strip) return;
+    // Önceki sayfa sınıflarını kaldır
+    strip.classList.remove('ai-expert-page-chat', 'ai-expert-page-files');
+    // Aktif sayfaya göre sınıf ekle
+    var page = this.state.currentPage || 'chat';
+    if (page === 'chat') {
+      strip.classList.add('ai-expert-page-chat');
+    } else if (page === 'files') {
+      strip.classList.add('ai-expert-page-files');
+    }
+  },
+
+  // Aktif sayfayı güncelle (R tarafından çağrılır)
+  setPage: function(page) {
+    this.state.currentPage = page || 'chat';
+    // Eğer konuşma devam ediyorsa konum sınıfını hemen güncelle
+    var strip = this._getStrip();
+    if (strip) {
+      this._applyPageClass(strip);
+    }
+  },
+
   // --- DOM ELEMAN YARDIMCILARI ---
   _getStrip: function() {
     if (!this.state.nsPrefix) return null;
@@ -521,6 +552,11 @@ $(document).ready(function() {
         container.classList.add('shiny-visual-hidden');
       }
     }
+  });
+
+  // Sayfa değişikliği mesajı (R tarafından gönderilir)
+  Shiny.addCustomMessageHandler('aiExpertSetPage', function(data) {
+    AIExpertManager.setPage(data.page);
   });
 
   // Durdurma butonu doğrudan tıklama işleyicisi (Shiny binding'e ek olarak)
