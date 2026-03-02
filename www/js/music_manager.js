@@ -400,6 +400,8 @@ const MusicManager = {
   unduck: function() {
     // STT aktifken unduck yapma: kayıt bitmeden müzik geri gelmemeli
     if (this.state._sttActive) return;
+    // AI Uzman konuşması devam ediyorsa unduck yapma (sayfa geçişlerinde korunur)
+    if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) return;
     if (!this.state.isDucked) return;
     this.state.isDucked = false;
     if (this._audio) {

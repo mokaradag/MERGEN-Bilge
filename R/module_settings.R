@@ -41,6 +41,9 @@ settingsInit <- function(session, parent_session = NULL) {
     font_size               = "medium",
     enable_background_music = FALSE,
     enable_ai_expert        = FALSE,
+    ai_expert_talk_length   = "orta",
+    ai_expert_talk_frequency = "orta",
+    ai_expert_talk_style    = "profesyonel",
     music_volume            = 0.3,
     experience_mode         = "odak",
     show_intro_animation    = TRUE
@@ -104,6 +107,15 @@ settingsInit <- function(session, parent_session = NULL) {
     }
     if (!is.null(loaded$enable_ai_expert)) {
       settings$enable_ai_expert <- isTRUE(loaded$enable_ai_expert)
+    }
+    if (!is.null(loaded$ai_expert_talk_length) && loaded$ai_expert_talk_length %in% c("kisa", "orta", "uzun")) {
+      settings$ai_expert_talk_length <- loaded$ai_expert_talk_length
+    }
+    if (!is.null(loaded$ai_expert_talk_frequency) && loaded$ai_expert_talk_frequency %in% c("az", "orta", "sik")) {
+      settings$ai_expert_talk_frequency <- loaded$ai_expert_talk_frequency
+    }
+    if (!is.null(loaded$ai_expert_talk_style) && loaded$ai_expert_talk_style %in% c("profesyonel", "samimi", "motivasyonel", "bilimsel")) {
+      settings$ai_expert_talk_style <- loaded$ai_expert_talk_style
     }
     if (!is.null(loaded$music_volume)) {
       settings$music_volume <- loaded$music_volume
@@ -236,6 +248,20 @@ settingsInit <- function(session, parent_session = NULL) {
     ai_expert_val <- isTRUE(session$input[["settings_yapilandirma_module-enable_ai_expert"]])
     settings$enable_ai_expert <- ai_expert_val
 
+    # AI Uzman konuşma ayarlarını oku ve uygula
+    talk_length <- session$input[["settings_yapilandirma_module-ai_expert_talk_length"]]
+    if (!is.null(talk_length) && talk_length %in% c("kisa", "orta", "uzun")) {
+      settings$ai_expert_talk_length <- talk_length
+    }
+    talk_freq <- session$input[["settings_yapilandirma_module-ai_expert_talk_frequency"]]
+    if (!is.null(talk_freq) && talk_freq %in% c("az", "orta", "sik")) {
+      settings$ai_expert_talk_frequency <- talk_freq
+    }
+    talk_style <- session$input[["settings_yapilandirma_module-ai_expert_talk_style"]]
+    if (!is.null(talk_style) && talk_style %in% c("profesyonel", "samimi", "motivasyonel", "bilimsel")) {
+      settings$ai_expert_talk_style <- talk_style
+    }
+
     # Karakter değişikliği müzik yöneticisine bildir
     session$sendCustomMessage("setMusicCharacter", list(
       character = settings$selected_character %||% "mergen"
@@ -314,6 +340,9 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$font_size                <- "medium"
     settings$enable_background_music  <- FALSE
     settings$enable_ai_expert         <- FALSE
+    settings$ai_expert_talk_length    <- "orta"
+    settings$ai_expert_talk_frequency <- "orta"
+    settings$ai_expert_talk_style     <- "profesyonel"
     settings$music_volume             <- 0.3
     settings$experience_mode          <- "odak"
     settings$show_intro_animation     <- TRUE

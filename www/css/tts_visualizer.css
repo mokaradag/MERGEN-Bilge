@@ -145,6 +145,12 @@
   display: none !important;
 }
 
+/* Ana Söyleşi karşılama sayfası: visualizer'ı biraz aşağı al (başlık olmadığında) */
+/* Karşılama ekranında başlık gizli olduğundan gap oluşmasını önle */
+.tts-visualizer-floating-wrapper {
+  margin-top: 4px;
+}
+
 /* Duyarlı tasarım */
 @media (max-width: 992px) {
   .tts-visualizer-floating-wrapper {

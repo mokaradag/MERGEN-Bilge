@@ -188,7 +188,8 @@ server <- function(input, output, session) {
 
   # AI Uzman işleyicilerini başlat (karşılama, sayfa rehberliği, boşta konuşma)
   aiExpertHandlersInit(input, session, values, settings_data,
-                        ai_expert, tts_processor, current_user_id)
+                        ai_expert, tts_processor, current_user_id,
+                        chat_history_rv = reactive(values$messages))
   
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)

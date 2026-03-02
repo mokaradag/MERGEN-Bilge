@@ -140,11 +140,13 @@ fetch_user_full_name <- function(user_id) {
 # @param last_login_date Son giriş tarihi (önceden yakalanmış)
 # @param include_recent_prompts Son mesajları dahil et (varsayılan: TRUE)
 # @param max_prompts Alınacak maksimum mesaj sayısı (varsayılan: 5)
+# @param current_session_messages Mevcut oturumdaki mesajlar (reaktif olmayan düz liste)
 # @return Bağlam bilgisi içeren karakter dizisi
 build_ai_expert_user_context <- function(user_id, user_name = "",
                                           last_login_date = NULL,
                                           include_recent_prompts = TRUE,
-                                          max_prompts = 5) {
+                                          max_prompts = 5,
+                                          current_session_messages = NULL) {
 
   context_parts <- list()
 
@@ -203,6 +205,18 @@ build_ai_expert_user_context <- function(user_id, user_name = "",
       context_parts <- c(context_parts,
         "Kullanıcının geçmiş mesajı bulunmuyor. Bu muhtemelen ilk kullanımı.")
     }
+  }
+
+  # Mevcut oturumdaki mesajlar (güncel bağlam)
+  if (!is.null(current_session_messages) && length(current_session_messages) > 0) {
+    session_prompts <- paste(
+      sprintf("- \"%s\"", substr(current_session_messages, 1, 200)),
+      collapse = "\n"
+    )
+    context_parts <- c(context_parts, sprintf(
+      "Bu oturumdaki kullanıcı mesajları (EN GÜNCEL - öncelikli bağlam):\n%s",
+      session_prompts
+    ))
   }
 
   # Mevcut zaman bilgisi
@@ -288,7 +302,9 @@ fetch_user_last_login <- function(user_id) {
 # @return Sistem istemi karakter dizisi
 build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
                                            page_name = NULL, user_name = NULL,
-                                           is_revisit = FALSE) {
+                                           is_revisit = FALSE,
+                                           talk_length = "orta",
+                                           talk_style = "profesyonel") {
 
   # Rehber belgesini oku
   guide_text <- ""
@@ -322,12 +338,18 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
       "Karakterinin kişiliğini doğal şekilde yansıt. ",
       "Kullanıcının geçmiş bilgilerine dayanarak konuşmanı kişiselleştir:\n",
       "- İlk kez gelen kullanıcı ise: Kendini tanıt, uygulamanın neler yapabileceğinden ",
-      "bahset, kullanıcıyı keşfe davet et. Samimi ve merak uyandırıcı ol.\n",
+      "bahset, kullanıcıyı keşfe davet et. Samimi ve merak uyandırıcı ol. ",
+      "Sağ taraftaki Hızlı Başlangıç butonlarından bahset: dosya yükleme ve analiz, ",
+      "toplantı notu özetleme, proje durum raporu oluşturma gibi hızlı işlemleri ",
+      "kolayca başlatabileceklerini söyle.\n",
       "- Geri dönen kullanıcı ise: Son konuşma konularından doğal bir geçişle bahset. ",
       "'Geçen seferki konuşmamızda...' gibi bir giriş yapabilirsin. ",
-      "Kaldığı yerden devam etmek isteyip istemediğini sor.\n",
+      "Kaldığı yerden devam etmek isteyip istemediğini sor. ",
+      "Ayrıca sağ taraftaki hızlı işlem butonlarıyla yeni bir şey deneyebileceğini belirt.\n",
       "- Uzun süredir giriş yapmamış kullanıcı ise: Tekrar görmenin sevindirici olduğunu ",
       "belirt, nazikçe yokluğuna değin, nasıl yardımcı olabileceğini sor.\n\n",
+      "Kullanıcı Ana Söyleşi sayfasında. Bu sayfada sohbet edebilir, sorular sorabilir ",
+      "ve sağ taraftaki Hızlı Başlangıç butonlarını kullanarak hızlıca işlemlere başlayabilir.\n\n",
       "KONUŞMA TARZI: Doğal, akıcı, insan gibi konuş. Kısa cümleler kullanma, ",
       "birkaç cümlelik akıcı paragraflar oluştur. Monolog gibi değil, ",
       "karşındaki kişiyle sohbet ediyormuş gibi konuş. 4-6 cümle ideal. ",
@@ -355,21 +377,66 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
       "YASAKLAR: Asla selam verme, asla 'merhaba' deme, asla 'hoş geldin' deme, ",
       "asla 'uzun süredir görüşmedik' deme. Bu zaten devam eden bir sohbet, ",
       "her konuşmayı sıfırdan başlatma. Daha önce söylediklerini tekrarlama.\n\n",
+      "KESİNLİKLE FARKLI GİRİŞ CÜMLELERİ KULLAN. Aşağıdaki giriş kalıplarından ",
+      "HER SEFERINDE FARKLI bir tanesini rastgele seç:\n",
+      "- 'Şimdi aklıma ilginç bir şey geldi...'\n",
+      "- 'Bir şey paylaşmak istiyorum...'\n",
+      "- 'Az önce düşünüyordum da...'\n",
+      "- 'Sana bir şey sormak istiyorum...'\n",
+      "- 'İlginç bir detay var aklımda...'\n",
+      "- 'Bir fikrim var, ne dersin...'\n",
+      "- 'Dikkatimi bir şey çekti...'\n",
+      "- 'Hım, şöyle bir düşünce var...'\n",
+      "- 'Aslında şunu merak ediyorum...'\n",
+      "- 'Bir konuyu açmak isterim...'\n",
+      "- 'Bugün ilginç bir şey keşfettim...'\n",
+      "- 'Şöyle bir ipucu vermek istiyorum...'\n",
+      "- 'Bir gözlemimi paylaşayım...'\n",
+      "- 'Sence şöyle bir durum nasıl olurdu...'\n",
+      "- 'Tam da şu konu hakkında...'\n",
+      "- Veya hiç giriş cümlesi kullanmadan doğrudan konuya gir\n\n",
+      "'Bir şey fark ettim', 'Bu arada aklıma bir fikir geldi', 'Biliyor musun' gibi ",
+      "kalıpları TEKRARLAMA, her seferinde farklı bir giriş kullan.\n\n",
       "Doğal bir şekilde konuşmayı sürdür. Her seferinde FARKLI bir konuya değin. ",
-      "Sadece bulunduğu sayfadan bahsetme, çeşitli konulara doğal geçişler yap:\n",
-      "- Kullanıcının son konuşma konularına dayalı bir yorum veya öneri yap\n",
+      "Sadece bulunduğu sayfadan bahsetme, çeşitli konulara doğal geçişler yap.\n\n",
+      "KONU SEÇENEKLERİ (her seferinde farklı bir kategori seç):\n",
+      "- Kullanıcının son konuşma konularına dayalı derinlemesine bir yorum veya öneri\n",
       "- Uygulamanın az bilinen veya güçlü bir özelliğinden ilginç bir şekilde bahset\n",
-      "- İş hayatına veya verimliliğe dair yararlı bir ipucu paylaş\n",
-      "- Yapay zeka veya teknoloji dünyasından ilginç bir bilgi paylaş\n",
-      "- Kullanıcıya doğal bir soru sor (zorlayıcı olmadan, merak uyandırıcı)\n",
-      "- Kendi karakterine özgü bir düşünce veya gözlem paylaş\n\n",
-      "KONUŞMA TARZI: Doğal ve insani ol. Sanki arkadaşına bir şey söylüyormuşsun gibi ",
-      "akıcı başla. Örneğin: 'Bu arada aklıma geldi...', 'Bir şey paylaşmak istiyorum...', ",
-      "'Biliyor musun, az önce düşündüm de...', 'Merak ettim...' gibi doğal geçişler kullan. ",
-      "3-5 cümle ile akıcı şekilde konuş. Her konuşma benzersiz ve taze olsun."
+      "- Elektronik savunma sektörüne dair ilginç bir bilgi veya gelişme paylaş\n",
+      "- Radar, elektronik harp, sinyal işleme gibi savunma teknolojileri hakkında bilgi ver\n",
+      "- Yapay zeka ve savunma sanayi arasındaki bağlantılardan bahset\n",
+      "- Türk savunma sanayisinin başarıları veya gelişmeleri hakkında sohbet et\n",
+      "- Veri analizi veya büyük veri konusunda pratik bir ipucu paylaş\n",
+      "- İş hayatında verimlilik artıran bir teknik veya alışkanlık öner\n",
+      "- Takım çalışması veya proje yönetimi hakkında hafif bir sohbet aç\n",
+      "- Yapay zeka dünyasından güncel ve ilginç bir gelişme paylaş\n",
+      "- Kullanıcıya düşündürücü ama rahat bir soru sor\n",
+      "- Kendi karakterine özgü bir düşünce veya gözlem paylaş\n",
+      "- Hafif bir sohbet konusu aç: hava durumu, hafta sonu planları, kahve molası gibi\n",
+      "- Motivasyon veren kısa bir not veya bakış açısı paylaş\n\n",
+      "KONUŞMA TARZI: Doğal ve insani ol. Sanki iş arkadaşına bir şey söylüyormuşsun gibi ",
+      "akıcı konuş. 3-5 cümle ile akıcı şekilde konuş. Her konuşma benzersiz ve taze olsun. ",
+      "Aynı konuyu veya aynı giriş cümlesini kesinlikle tekrarlama."
     ),
     # Varsayılan
     paste0(name_instruction, "Profesyonel ve samimi bir mesaj oluştur. 3-5 cümle ile konuş.")
+  )
+
+  # Konuşma uzunluğu talimatı
+  length_instruction <- switch(talk_length %||% "orta",
+    "kisa" = "UZUNLUK: Çok kısa konuş, 1-2 cümle yeterli. Özlü ve vurucu ol.",
+    "orta" = "UZUNLUK: 3-5 cümle ile akıcı şekilde konuş.",
+    "uzun" = "UZUNLUK: 5-8 cümle ile detaylı ve zengin konuş. Konuyu derinlemesine işle.",
+    "UZUNLUK: 3-5 cümle ile akıcı şekilde konuş."
+  )
+
+  # Konuşma tarzı talimatı
+  style_instruction <- switch(talk_style %||% "profesyonel",
+    "profesyonel" = "TARZ: Profesyonel, saygılı ve bilge. Kurumsal ortama uygun, ciddi ama sıcak.",
+    "samimi" = "TARZ: Samimi ve rahat. Sanki iş arkadaşınla sohbet ediyorsun. Espritüel olabilirsin ama ölçülü ol.",
+    "motivasyonel" = "TARZ: Motivasyonel ve ilham verici. Kullanıcıyı teşvik et, olumlu enerji yay. Başarıları takdir et.",
+    "bilimsel" = "TARZ: Bilimsel ve analitik. Teknik detaylara değin, veriye dayalı konuş. Savunma teknolojileri, yapay zeka ve mühendislik konularına ağırlık ver.",
+    "TARZ: Profesyonel, saygılı ve bilge. Kurumsal ortama uygun, ciddi ama sıcak."
   )
 
   # Sistem istemini birleştir
@@ -377,19 +444,22 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     "Sen ", char_name, " adında bir AI asistanısın. ",
     "MERGEN Bilge uygulamasının yapay zeka uzmanı olarak kullanıcıyla sesli ve yazılı etkileşim kuruyorsun. ",
     "Türkçe konuşuyorsun. Asla İngilizce konuşma. ",
+    "Bir elektronik savunma şirketinde çalışıyorsun. ",
     if (nzchar(char_style)) paste0("\nKarakter Tarzı: ", char_style, "\n") else "",
     "\n\n",
     "ÖNEMLİ KURALLAR:\n",
     "- Her zaman Türkçe konuş, asla İngilizce kelime veya cümle kullanma\n",
     "- Doğal, akıcı ve insani bir şekilde konuş - kısa kesik cümleler değil, akıcı paragraflar\n",
-    "- Profesyonel, saygılı, sıcak ve bilge ol\n",
     "- Mekanik veya robotik durma, bir insan gibi konuş\n",
     "- Emoji kullanma\n",
     "- Markdown formatlaması kullanma (yıldız, diyez, madde işareti vb.)\n",
     "- Sadece düz metin yaz, liste yapma\n",
-    "- Kurumsal bir ortamda çalışıyorsun, profesyonel ama sıcak ol\n",
     "- Bilge, rehber niteliğinde ama kibirli veya üstten konuşma\n",
-    "- Konuşman sesli olarak okunacak, bu yüzden kulağa hoş gelen, doğal bir Türkçe kullan\n\n",
+    "- Konuşman sesli olarak okunacak, bu yüzden kulağa hoş gelen, doğal bir Türkçe kullan\n",
+    "- Uzun tire (em dash, en dash) kullanma, normal tire veya virgül kullan\n",
+    "- Özel Unicode karakterleri kullanma (oklar, kutucuklar, semboller vb.)\n\n",
+    length_instruction, "\n",
+    style_instruction, "\n\n",
     "GÖREV:\n", scenario_instruction, "\n\n",
     "UYGULAMA REHBERİ (Referans olarak kullan):\n",
     if (nzchar(guide_text)) substr(guide_text, 1, 10000) else "(Rehber belgesi bulunamadı)"
@@ -401,6 +471,8 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
 
 # --- TTS için metin hazırlama (AI Uzman konuşması için) ---
 # server_tts_handlers.R'deki prepare_tts_text ile benzer ama daha basit.
+# Özel karakterleri (long-dash, unicode sembolleri vb.) temizleyerek
+# TTS motorunun takılmasını önler.
 #
 # @param text Ham metin
 # @return TTS için temizlenmiş metin
@@ -412,6 +484,37 @@ prepare_ai_expert_tts_text <- function(text) {
   clean <- gsub("#+\\s*", "", clean)
   clean <- gsub("`+", "", clean)
   clean <- gsub("\\[([^]]+)\\]\\([^)]+\\)", "\\1", clean)
+
+  # Uzun tire ve özel tire karakterlerini normal tireye dönüştür
+  clean <- gsub("\u2013", "-", clean)  # en dash
+  clean <- gsub("\u2014", "-", clean)  # em dash
+  clean <- gsub("\u2015", "-", clean)  # horizontal bar
+  clean <- gsub("\u2012", "-", clean)  # figure dash
+
+  # Özel tırnak işaretlerini düz tırnaklara dönüştür
+
+  clean <- gsub("[\u201C\u201D\u201E\u201F]", '"', clean)  # akıllı çift tırnaklar
+  clean <- gsub("[\u2018\u2019\u201A\u201B]", "'", clean)  # akıllı tek tırnaklar
+
+  # Üç nokta ve diğer özel noktalama
+  clean <- gsub("\u2026", "...", clean)  # ellipsis
+  clean <- gsub("\u2022", ",", clean)    # bullet
+  clean <- gsub("\u00B7", ",", clean)    # middle dot
+
+  # Ok ve diğer sembolleri kaldır
+  clean <- gsub("[\u2190-\u21FF]", " ", clean)  # oklar
+  clean <- gsub("[\u2500-\u257F]", " ", clean)  # kutu çizim karakterleri
+  clean <- gsub("[\u25A0-\u25FF]", " ", clean)  # geometrik şekiller
+
+  # Diğer yaygın sorunlu Unicode karakterleri
+  clean <- gsub("\u00A0", " ", clean)    # no-break space
+  clean <- gsub("\u200B", "", clean)     # zero-width space
+  clean <- gsub("\u200C", "", clean)     # zero-width non-joiner
+  clean <- gsub("\u200D", "", clean)     # zero-width joiner
+  clean <- gsub("\uFEFF", "", clean)     # BOM
+
+  # Kalan kontrol karakterlerini temizle (tab ve newline hariç)
+  clean <- gsub("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "", clean)
 
   # Fazla boşluğu temizle
   clean <- gsub("\\s+", " ", clean)

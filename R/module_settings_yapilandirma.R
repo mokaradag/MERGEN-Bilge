@@ -209,14 +209,14 @@ settingsYapilandirmaUI <- function(id) {
                 )
               )
             ),
-            # Ses Ayarları Kartı
+            # Ses Ayarları Kartı (AI Uzman ayrı karta taşındı)
             div(
               class = "settings-card",
               h3("Ses Ayarları", class = "settings-title"),
               fluidRow(
                 # Sesli Yanıt
                 column(
-                  width = 3,
+                  width = 4,
                   h4("Sesli Yanıt", class = "setting-subtitle"),
                   div(
                     class = "checkbox-item",
@@ -229,24 +229,9 @@ settingsYapilandirmaUI <- function(id) {
                   ),
                   p("AI yanıtlarını otomatik seslendir.", class = "setting-description", style = "margin-top: 4px;")
                 ),
-                # AI Uzman Konuşması
-                column(
-                  width = 3,
-                  h4("AI Uzman", class = "setting-subtitle"),
-                  div(
-                    class = "checkbox-item",
-                    style = "margin-top: 8px;",
-                    checkboxInput(
-                      inputId = ns("enable_ai_expert"),
-                      label = tags$span("AI Uzman Konuşması"),
-                      value = FALSE
-                    )
-                  ),
-                  p("Bütünleşik modda AI proaktif konuşma.", class = "setting-description", style = "margin-top: 4px;")
-                ),
                 # Müzik
                 column(
-                  width = 3,
+                  width = 4,
                   h4("Müzik", class = "setting-subtitle"),
                   div(
                     class = "checkbox-item",
@@ -261,7 +246,7 @@ settingsYapilandirmaUI <- function(id) {
                 ),
                 # Ses Seviyesi
                 column(
-                  width = 3,
+                  width = 4,
                   h4("Ses Seviyesi", class = "setting-subtitle"),
                   div(
                     style = "margin-top: 8px;",
@@ -276,6 +261,95 @@ settingsYapilandirmaUI <- function(id) {
                     )
                   ),
                   p("Müzik ses seviyesi (anlık uygulanır).", class = "setting-description", style = "margin-top: 4px;")
+                )
+              )
+            ),
+            # AI Uzman Konuşması Kartı (yeni, ayrı kart)
+            div(
+              class = "settings-card ai-expert-settings-card",
+              id = ns("ai_expert_settings_card"),
+              h3("AI Uzman Konuşması", class = "settings-title"),
+              p("Bütünleşik modda AI uzmanın proaktif konuşma davranışını yapılandırın. Bu ayarlar yalnızca Bütünleşik (Keşif) modu aktifken geçerlidir.",
+                class = "setting-description"),
+              fluidRow(
+                # AI Uzman Etkinleştirme
+                column(
+                  width = 3,
+                  h4("Durum", class = "setting-subtitle"),
+                  div(
+                    class = "checkbox-item",
+                    style = "margin-top: 8px;",
+                    checkboxInput(
+                      inputId = ns("enable_ai_expert"),
+                      label = tags$span("AI Uzman Konuşması"),
+                      value = FALSE
+                    )
+                  ),
+                  p("AI uzmanını etkinleştir veya devre dışı bırak.", class = "setting-description", style = "margin-top: 4px;")
+                ),
+                # Konuşma Uzunluğu
+                column(
+                  width = 3,
+                  h4("Konuşma Uzunluğu", class = "setting-subtitle"),
+                  div(
+                    class = "setting-item",
+                    style = "margin-top: 8px; max-width: 200px;",
+                    selectInput(
+                      inputId = ns("ai_expert_talk_length"),
+                      label = NULL,
+                      choices = c(
+                        "Kısa (1-2 cümle)" = "kisa",
+                        "Orta (3-5 cümle)" = "orta",
+                        "Uzun (5-8 cümle)" = "uzun"
+                      ),
+                      selected = "orta",
+                      width = "100%"
+                    )
+                  ),
+                  p("AI uzmanın her konuşmasının ne kadar uzun olacağını belirler.", class = "setting-description", style = "margin-top: 4px;")
+                ),
+                # Konuşma Sıklığı
+                column(
+                  width = 3,
+                  h4("Konuşma Sıklığı", class = "setting-subtitle"),
+                  div(
+                    class = "setting-item",
+                    style = "margin-top: 8px; max-width: 200px;",
+                    selectInput(
+                      inputId = ns("ai_expert_talk_frequency"),
+                      label = NULL,
+                      choices = c(
+                        "Az (60 sn)" = "az",
+                        "Orta (35 sn)" = "orta",
+                        "Sık (20 sn)" = "sik"
+                      ),
+                      selected = "orta",
+                      width = "100%"
+                    )
+                  ),
+                  p("AI uzmanın ne sıklıkla boşta konuşma başlatacağını belirler.", class = "setting-description", style = "margin-top: 4px;")
+                ),
+                # Konuşma Tarzı
+                column(
+                  width = 3,
+                  h4("Konuşma Tarzı", class = "setting-subtitle"),
+                  div(
+                    class = "setting-item",
+                    style = "margin-top: 8px; max-width: 200px;",
+                    selectInput(
+                      inputId = ns("ai_expert_talk_style"),
+                      label = NULL,
+                      choices = c(
+                        "Profesyonel" = "profesyonel",
+                        "Samimi" = "samimi",
+                        "Motivasyonel" = "motivasyonel",
+                        "Bilimsel" = "bilimsel"
+                      ),
+                      selected = "profesyonel",
+                      width = "100%"
+                    )
+                  ),
+                  p("AI uzmanın konuşma tonunu ve tarzını belirler.", class = "setting-description", style = "margin-top: 4px;")
                 )
               )
             ),
@@ -685,6 +759,11 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
     observeEvent(input$enable_tts_audio,        { settings$enable_tts_audio        <- isTRUE(input$enable_tts_audio) })
     observeEvent(input$enable_ai_expert,        { settings$enable_ai_expert        <- isTRUE(input$enable_ai_expert) })
     observeEvent(input$enable_followups,        { settings$enable_followups        <- isTRUE(input$enable_followups) })
+
+    # AI Uzman konuşma ayarları - anlık güncelleme
+    observeEvent(input$ai_expert_talk_length,   { settings$ai_expert_talk_length   <- input$ai_expert_talk_length })
+    observeEvent(input$ai_expert_talk_frequency, { settings$ai_expert_talk_frequency <- input$ai_expert_talk_frequency })
+    observeEvent(input$ai_expert_talk_style,    { settings$ai_expert_talk_style    <- input$ai_expert_talk_style })
 
     # Analiz araçları - karşılıklı dışlama mantığı
     ANALYSIS_TOOLS <- c(

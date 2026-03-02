@@ -22,7 +22,7 @@
 #' @return Görünmez NULL
 aiExpertHandlersInit <- function(input, session, values, settings_data,
                                   ai_expert, tts_processor,
-                                  current_user_id) {
+                                  current_user_id, chat_history_rv = NULL) {
 
   # --- Durum değişkenleri ---
   greeting_done     <- reactiveVal(FALSE)
@@ -34,10 +34,21 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # Kullanıcı adı (DB'den alınacak)
   user_first_name <- session$userData$user_first_name %||% ""
 
-  # Boşta konuşma arası (ms)
-  IDLE_INTERVAL_MS   <- 35000   # 35 saniye
+  # Boşta konuşma arası (ms) - ayarlardan okunur
+  IDLE_INTERVAL_MS   <- 35000   # 35 saniye (varsayılan, ayarlarla güncellenir)
   # Karşılama sonrası ilk boşta konuşma bekleme süresi (ms)
   FIRST_IDLE_DELAY_MS <- 20000  # 20 saniye
+
+  # Sıklık ayarına göre interval hesapla
+  get_idle_interval <- function() {
+    freq <- isolate(settings_data$ai_expert_talk_frequency) %||% "orta"
+    switch(freq,
+      "az"  = 60000,  # 60 saniye
+      "orta" = 35000, # 35 saniye
+      "sik" = 20000,  # 20 saniye
+      35000
+    )
+  }
 
   # --- Yardımcı: Temel konuşabilirlik kontrolü (bekleme süresini ATLAR) ---
   # Sayfa rehberliği gibi kullanıcı eylemine doğrudan yanıt verilen durumlarda kullanılır
@@ -70,6 +81,30 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       api_key = final_api_key,
       user_name = user_first_name
     )
+  }
+
+  # --- Yardımcı: Mevcut oturumdaki kullanıcı mesajlarını yakala ---
+  capture_session_messages <- function(max_messages = 5) {
+    tryCatch({
+      if (!is.null(chat_history_rv)) {
+        history <- isolate(chat_history_rv())
+        if (is.list(history) && length(history) > 0) {
+          # Sadece kullanıcı mesajlarını filtrele
+          user_msgs <- Filter(function(m) {
+            identical(m$role, "user") && !is.null(m$content) && nzchar(m$content)
+          }, history)
+          # Son max_messages mesajı al (en yeni sondan)
+          if (length(user_msgs) > max_messages) {
+            user_msgs <- tail(user_msgs, max_messages)
+          }
+          return(sapply(user_msgs, function(m) m$content))
+        }
+      }
+      return(NULL)
+    }, error = function(e) {
+      cat(sprintf("[AI_EXPERT] Oturum mesajları yakalanamadı: %s\n", conditionMessage(e)))
+      return(NULL)
+    })
   }
 
   # --- Yardımcı: Kullanıcı adını worker içinde çözümle ---
@@ -112,6 +147,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     params <- prepare_llm_params()
     user_id <- current_user_id
+    talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
+    talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
     # Gecikmesiz LLM çağrısı
     promises::future_promise({
@@ -123,7 +160,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         include_recent_prompts = TRUE, max_prompts = 5
       )
       system_prompt <- build_ai_expert_system_prompt(
-        params$char_info, scenario = "greeting", user_name = u_name
+        params$char_info, scenario = "greeting", user_name = u_name,
+        talk_length = talk_length_val, talk_style = talk_style_val
       )
       call_ai_expert_llm(
         system_prompt = system_prompt, user_context = user_context,
@@ -143,7 +181,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   }
 
   # --- Boşta konuşma zamanlayıcısı yardımcısı ---
-  schedule_idle_chat <- function(delay_ms = IDLE_INTERVAL_MS) {
+  schedule_idle_chat <- function(delay_ms = NULL) {
+    if (is.null(delay_ms)) delay_ms <- get_idle_interval()
     shinyjs::delay(delay_ms, {
       trigger_idle_chat()
     })
@@ -202,13 +241,16 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     cat(sprintf("[AI_EXPERT] Sayfa rehberliği: %s (tekrar ziyaret: %s)\n", page_name_tr, is_revisit))
 
     params <- prepare_llm_params()
+    talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
+    talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
     # GECİKMESİZ: LLM çağrısı hemen başlar
     promises::future_promise({
       u_name <- resolve_user_name(params$user_name)
       system_prompt <- build_ai_expert_system_prompt(
         params$char_info, scenario = "page_guidance",
-        page_name = page_name_tr, user_name = u_name, is_revisit = is_revisit
+        page_name = page_name_tr, user_name = u_name, is_revisit = is_revisit,
+        talk_length = talk_length_val, talk_style = talk_style_val
       )
       user_context <- sprintf(
         "Kullanıcı '%s' sayfasına geçiş yaptı. Şimdi: %s. Bu sayfayı %s ziyaret ediyor.",
@@ -229,10 +271,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         ai_expert$start_speaking(guidance_text, ai_expert$COOLDOWN_PAGE)
         last_page_talk_time(Sys.time())
       }
-      schedule_idle_chat(IDLE_INTERVAL_MS)
+      schedule_idle_chat()
     }) %...!% (function(e) {
       cat(sprintf("[AI_EXPERT] Sayfa rehberliği hatası: %s\n", conditionMessage(e)))
-      schedule_idle_chat(IDLE_INTERVAL_MS)
+      schedule_idle_chat()
     })
   }
 
@@ -240,15 +282,15 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   trigger_idle_chat <- function() {
     if (!isTRUE(settings_data$enable_ai_expert) ||
         !identical(settings_data$experience_mode, "kesif")) {
-      schedule_idle_chat(IDLE_INTERVAL_MS)
+      schedule_idle_chat()
       return()
     }
     if (!ai_expert$can_speak()) {
-      schedule_idle_chat(IDLE_INTERVAL_MS)
+      schedule_idle_chat()
       return()
     }
     if (isTRUE(values$is_sending)) {
-      schedule_idle_chat(IDLE_INTERVAL_MS)
+      schedule_idle_chat()
       return()
     }
 
@@ -274,6 +316,13 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     # Boşta konuşma sayacını LLM bağlamına ekle
     idle_count_val <- current_count
 
+    # Mevcut oturumdaki mesajları yakala (reaktif değerleri main thread'de oku)
+    session_msgs <- capture_session_messages(5)
+
+    # AI Uzman konuşma uzunluğu/sıklığı/tarz ayarlarını oku
+    talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
+    talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
+
     promises::future_promise({
       u_name <- resolve_user_name(params$user_name)
 
@@ -284,7 +333,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
       system_prompt <- build_ai_expert_system_prompt(
         params$char_info, scenario = "idle_chat",
-        page_name = page_name_tr, user_name = u_name
+        page_name = page_name_tr, user_name = u_name,
+        talk_length = talk_length_val, talk_style = talk_style_val
       )
 
       context_parts <- list()
@@ -295,13 +345,22 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
       # Konuşma sayacı: LLM'ye bu bilgiyi ver ki tekrar etmesin
       context_parts <- c(context_parts, sprintf(
-        "Bu oturumda %d. boşta konuşman. ÖNEMLİ: Selam verme, merhaba deme, hoş geldin deme. Bu zaten devam eden bir sohbet. Önceki konuşmalarını tekrarlama, her seferinde farklı bir konuya değin. Yaratıcı ol, sürpriz yap.",
+        "Bu oturumda %d. boşta konuşman. ÖNEMLİ: Selam verme, merhaba deme, hoş geldin deme. Bu zaten devam eden bir sohbet. Önceki konuşmalarını tekrarlama, her seferinde farklı bir konuya değin ve farklı bir giriş cümlesi kullan. Yaratıcı ol, sürpriz yap.",
         idle_count_val
       ))
 
+      # Mevcut oturum mesajları (en güncel bağlam)
+      if (!is.null(session_msgs) && length(session_msgs) > 0) {
+        session_text <- paste(sprintf("- \"%s\"", substr(session_msgs, 1, 200)), collapse = "\n")
+        context_parts <- c(context_parts, sprintf(
+          "Bu oturumdaki kullanıcı mesajları (EN GÜNCEL - bu konulara öncelik ver):\n%s",
+          session_text
+        ))
+      }
+
       if (!is.null(recent_prompts) && length(recent_prompts) > 0) {
         prompts_text <- paste(sprintf("- \"%s\"", substr(recent_prompts, 1, 120)), collapse = "\n")
-        context_parts <- c(context_parts, sprintf("Kullanıcının son konuşma konuları:\n%s", prompts_text))
+        context_parts <- c(context_parts, sprintf("Veritabanından son konuşma konuları:\n%s", prompts_text))
       }
       context_parts <- c(context_parts, sprintf("Şimdi: %s", format(Sys.time(), "%d %B %Y %H:%M")))
 
@@ -318,10 +377,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
           ai_expert$start_speaking(idle_text, ai_expert$COOLDOWN_IDLE)
         }
       }
-      schedule_idle_chat(IDLE_INTERVAL_MS)
+      schedule_idle_chat()
     }) %...!% (function(e) {
       cat(sprintf("[AI_EXPERT] Boşta konuşma hatası: %s\n", conditionMessage(e)))
-      schedule_idle_chat(IDLE_INTERVAL_MS)
+      schedule_idle_chat()
     })
   }
 
