@@ -1,11 +1,39 @@
 /* www/css/tts_visualizer.css */
+/* Açıklama: TTS görselleştirici stilleri. Tüm sayfalarda sabit konumlu,
+             içerik alanının üst kısmında ortalanmış olarak görüntülenir.
+             AI Uzman konuşması veya TTS seslendirmesi sırasında aktif olur. */
+
+/* Sabit konumlu kapsayıcı (tüm sayfalarda görünür) */
+.tts-visualizer-floating-wrapper {
+  position: fixed;
+  top: 58px;
+  left: 250px;
+  right: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: left 0.3s ease-in-out;
+}
+
+/* Sidebar kapatıldığında konum ayarı */
+.sidebar-collapse .tts-visualizer-floating-wrapper {
+  left: 50px;
+}
+
+/* Outer Wrapper */
+.tts-outer-wrapper {
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
 
 /* Main Container */
 .tts-visualizer-container {
   position: relative;
-  width: 500px;  
-  height: 54px;  
-  margin-left: 15px;
+  width: 500px;
+  height: 54px;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 27px;
@@ -23,7 +51,7 @@
 
 /* Talking Mode Active (Applied via JS/R) */
 .tts-visualizer-container.talking-mode {
-  cursor: pointer; /* Indicates Clickable */
+  cursor: pointer;
   border-color: rgba(124, 77, 255, 0.5);
   box-shadow: 0 0 20px rgba(124, 77, 255, 0.2), inset 0 0 15px rgba(0,0,0,0.3);
 }
@@ -75,40 +103,34 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  
-  /* Button Appearance */
-  background-color: rgba(20, 20, 20, 0.95); /* Dark, solid background for contrast */
+
+  background-color: rgba(20, 20, 20, 0.95);
   color: #ffffff;
-  border: 1px solid rgba(124, 77, 255, 0.6); /* Mergen purple accent border */
-  
-  /* Typography - Increased size for crispness */
+  border: 1px solid rgba(124, 77, 255, 0.6);
+
   font-family: 'Segoe UI', 'Inter', sans-serif;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.5px;
   white-space: nowrap;
-  
-  /* Layout */
+
   display: flex;
   align-items: center;
-  gap: 10px; /* Space between icon and text */
+  gap: 10px;
   padding: 10px 24px;
   border-radius: 30px;
-  
-  /* Behavior */
-  pointer-events: none; /* Clicks pass through to the container */
+
+  pointer-events: none;
   opacity: 0;
   transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   z-index: 999;
-  
-  /* Shadow and Glow */
+
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 10px rgba(124, 77, 255, 0.2);
   backdrop-filter: blur(4px);
 }
 
-/* Style for the new Icon */
 .tts-tooltip i {
-  color: #FF5252; /* bright red for the stop icon */
+  color: #FF5252;
   font-size: 16px;
   filter: drop-shadow(0 0 5px rgba(255, 82, 82, 0.4));
 }
@@ -123,7 +145,27 @@
   display: none !important;
 }
 
-.tts-outer-wrapper {
-  display: flex;
-  align-items: center;
+/* Duyarlı tasarım */
+@media (max-width: 992px) {
+  .tts-visualizer-floating-wrapper {
+    left: 0;
+    top: 50px;
+  }
+  .tts-visualizer-container {
+    width: 400px;
+  }
+}
+
+@media (max-width: 576px) {
+  .tts-visualizer-container {
+    width: 300px;
+    height: 46px;
+  }
+  .tts-avatar-img {
+    width: 34px;
+    height: 34px;
+  }
+  .tts-name-text {
+    font-size: 1.1rem;
+  }
 }
