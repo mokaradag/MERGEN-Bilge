@@ -1031,5 +1031,3 @@ load_feedback_details_from_db <- function(user_id, message_id) {
   if (nrow(result) == 0) return(NULL)
   as.list(result[1, ])
 }
-
-# End of helpers_database.R
