@@ -21,7 +21,7 @@ destekGeriBildirimUI <- function(id) {
         h3("Geri Bildirim & Hata Bildirimi"),
         p(
           class = "destek-section-desc",
-          HTML("Görüşleriniz bizim için çok değerli. Geri bildirimleriniz ve hata raporlarınız, ürünümüzü geliştirmemize yardımcı olur.")
+          HTML("G\u00f6r\u00fc\u015fleriniz bizim i\u00e7in \u00e7ok de\u011ferli. Geri bildirimleriniz ve hata raporlar\u0131n\u0131z, \u00fcr\u00fcn\u00fcm\u00fcz\u00fc geli\u015ftirmemize yard\u0131mc\u0131 olur.")
         )
       ),
 
@@ -69,18 +69,18 @@ destekGeriBildirimUI <- function(id) {
               id = ns("satisfaction_container"),
               lapply(1:5, function(i) {
                 emojiler <- c(
-                  "😡", # 1 - Çok Kötü
-                  "😕", # 2 - Kötü
-                  "😐", # 3 - Orta
-                  "🙂", # 4 - İyi
-                  "😍"  # 5 - Çok İyi
+                  "\U0001F621", # 1 - Çok Kötü
+                  "\U0001F615", # 2 - Kötü
+                  "\U0001F610", # 3 - Orta
+                  "\U0001F642", # 4 - İyi
+                  "\U0001F60D"  # 5 - Çok İyi
                 )
                 etiketler <- c(
-                  HTML("Çok Kötü"),
-                  HTML("Kötü"),
+                  HTML("\u00c7ok K\u00f6t\u00fc"),
+                  HTML("K\u00f6t\u00fc"),
                   "Orta",
-                  HTML("İyi"),
-                  HTML("Çok İyi")
+                  HTML("\u0130yi"),
+                  HTML("\u00c7ok \u0130yi")
                 )
                 div(
                   class = "destek-satisfaction-item",
@@ -103,7 +103,7 @@ destekGeriBildirimUI <- function(id) {
             ),
             div(id = ns("hata_memnuniyet"), class = "destek-error-msg", style = "display:none;",
               icon("circle-exclamation"),
-              HTML("Lütfen genel memnuniyetinizi belirtin.")
+              HTML("L\u00fctfen genel memnuniyetinizi belirtin.")
             )
           ),
 
@@ -111,11 +111,11 @@ destekGeriBildirimUI <- function(id) {
           div(
             class = "destek-form-group",
             tags$label(class = "destek-form-label",
-              HTML("Bizi bir arkadaşınıza veya meslektaşınıza tavsiye etme olasılığınız nedir?")
+              HTML("Bizi bir arkada\u015f\u0131n\u0131za veya meslekta\u015f\u0131n\u0131za tavsiye etme olas\u0131l\u0131\u011f\u0131n\u0131z nedir?")
             ),
             div(
               class = "destek-nps-container",
-              span(class = "destek-nps-label-left", HTML("Kesinlikle hayır")),
+              span(class = "destek-nps-label-left", HTML("Kesinlikle hay\u0131r")),
               div(
                 class = "destek-nps-buttons",
                 id = ns("nps_container"),
@@ -141,7 +141,7 @@ destekGeriBildirimUI <- function(id) {
             )
           ),
 
-          # Geri Bildirim Etiketleri (Opsiyonel)
+          # Geri Bildirim Etiketleri (Opsiyonel) - Animasyonlu ikonlar
           div(
             class = "destek-form-group",
             tags$label(class = "destek-form-label", "Etiketler"),
@@ -149,11 +149,11 @@ destekGeriBildirimUI <- function(id) {
               class = "destek-tags-container",
               id = ns("feedback_tags_container"),
               lapply(list(
-                list(id = "yeni_ozellik", label = HTML("Yeni Özellik İsteği"), icon = "wand-magic-sparkles", renk = "indigo"),
-                list(id = "tasarim", label = HTML("Tasarım Önerisi"), icon = "palette", renk = "purple"),
-                list(id = "sikayet", label = HTML("Şikayet"), icon = "circle-exclamation", renk = "red"),
-                list(id = "performans", label = "Performans", icon = "bolt", renk = "amber"),
-                list(id = "diger", label = HTML("Diğer"), icon = "ellipsis", renk = "cyan")
+                list(id = "yeni_ozellik", label = HTML("Yeni \u00d6zellik \u0130ste\u011fi"), icon = "wand-magic-sparkles", renk = "indigo", anim = "sparkle"),
+                list(id = "tasarim", label = HTML("Tasar\u0131m \u00d6nerisi"), icon = "palette", renk = "purple", anim = "palette"),
+                list(id = "sikayet", label = HTML("\u015eikayet"), icon = "circle-exclamation", renk = "red", anim = "alert"),
+                list(id = "performans", label = "Performans", icon = "bolt", renk = "amber", anim = "bolt"),
+                list(id = "diger", label = HTML("Di\u011fer"), icon = "ellipsis", renk = "cyan", anim = "dots")
               ), function(etiket) {
                 div(
                   class = paste0("destek-tag-btn destek-tag-", etiket$renk),
@@ -162,7 +162,9 @@ destekGeriBildirimUI <- function(id) {
                     "destekToggleTag(this, '%s')",
                     ns("secili_etiketler")
                   ),
-                  icon(etiket$icon),
+                  div(class = paste0("destek-tag-icon-", etiket$anim),
+                    icon(etiket$icon)
+                  ),
                   span(etiket$label)
                 )
               })
@@ -178,13 +180,13 @@ destekGeriBildirimUI <- function(id) {
           # En çok neyi sevdiniz? (Opsiyonel)
           div(
             class = "destek-form-group",
-            tags$label(class = "destek-form-label", HTML("En çok neyi sevdiniz?")),
+            tags$label(class = "destek-form-label", HTML("En \u00e7ok neyi sevdiniz?")),
             div(
               class = "destek-textarea-wrapper",
               tags$textarea(
                 id = ns("en_cok_sevilen"),
                 class = "destek-textarea",
-                placeholder = HTML("Deneyiminizle ilgili beğendiğiniz şeyleri paylaşın..."),
+                placeholder = HTML("Deneyiminizle ilgili be\u011fendi\u011finiz \u015feyleri payla\u015f\u0131n..."),
                 maxlength = "500",
                 rows = 3,
                 oninput = sprintf("destekUpdateCharCount(this, '%s')", ns("sevilen_counter"))
@@ -196,13 +198,13 @@ destekGeriBildirimUI <- function(id) {
           # Neyi geliştirebiliriz? (Opsiyonel)
           div(
             class = "destek-form-group",
-            tags$label(class = "destek-form-label", HTML("Neyi geliştirebiliriz?")),
+            tags$label(class = "destek-form-label", HTML("Neyi geli\u015ftirebiliriz?")),
             div(
               class = "destek-textarea-wrapper",
               tags$textarea(
                 id = ns("gelistirme"),
                 class = "destek-textarea",
-                placeholder = HTML("Geliştirmemizi istediğiniz alanları belirtin..."),
+                placeholder = HTML("Geli\u015ftirmemizi istedi\u011finiz alanlar\u0131 belirtin..."),
                 maxlength = "500",
                 rows = 3,
                 oninput = sprintf("destekUpdateCharCount(this, '%s')", ns("gelistirme_counter"))
@@ -224,7 +226,7 @@ destekGeriBildirimUI <- function(id) {
                 icon("check", class = "destek-checkbox-icon")
               ),
               span(class = "destek-checkbox-label",
-                HTML("Geri bildirimimle ilgili benimle iletişime geçebilirsiniz.")
+                HTML("Geri bildirimimle ilgili benimle ileti\u015fime ge\u00e7ebilirsiniz.")
               )
             ),
             tags$input(
@@ -235,18 +237,16 @@ destekGeriBildirimUI <- function(id) {
             )
           ),
 
-          # Gönder butonu
+          # Gönder butonu - klavye kısayolu tooltip olarak
           div(
             class = "destek-form-actions",
             div(
               class = "destek-submit-wrapper",
               actionButton(
                 ns("gonder_geri_bildirim"),
-                label = tagList(icon("paper-plane"), HTML("Gönder")),
-                class = "destek-submit-btn"
-              ),
-              span(class = "destek-submit-hint",
-                HTML("⌘ ↵ ile gönder")
+                label = tagList(icon("paper-plane"), HTML("G\u00f6nder")),
+                class = "destek-submit-btn",
+                title = "\u2318 + Enter ile g\u00f6nder"
               )
             )
           )
@@ -276,11 +276,11 @@ destekGeriBildirimUI <- function(id) {
           div(class = "destek-success-icon-wrapper",
             icon("circle-check", class = "destek-success-icon")
           ),
-          h3(HTML("Teşekkür Ederiz")),
+          h3(HTML("Te\u015fekk\u00fcr Ederiz")),
           p(
             id = ns("basari_mesaji"),
             class = "destek-success-message",
-            HTML("Değerli geri bildiriminiz için teşekkürler. Fikirleriniz, ürünümüzün geleceğini şekillendiriyor.")
+            HTML("De\u011ferli geri bildiriminiz i\u00e7in te\u015fekk\u00fcrler. Fikirleriniz, \u00fcr\u00fcn\u00fcm\u00fczün gelece\u011fini \u015fekillendiriyor.")
           )
         )
       )
@@ -348,8 +348,8 @@ destekGeriBildirimServer <- function(id, current_user_id) {
         )
 
         # Başarı ekranını göster
-        shinyjs::runJs(sprintf(
-          "document.getElementById('%s').textContent = 'Değerli geri bildiriminiz için teşekkürler. Fikirleriniz, ürünümüzün geleceğini şekillendiriyor.';",
+        shinyjs::runjs(sprintf(
+          "document.getElementById('%s').textContent = 'De\u011ferli geri bildiriminiz i\u00e7in te\u015fekk\u00fcrler. Fikirleriniz, \u00fcr\u00fcn\u00fcm\u00fczün gelece\u011fini \u015fekillendiriyor.';",
           ns("basari_mesaji")
         ))
         shinyjs::hide("sekme_geri_bildirim")
@@ -361,12 +361,12 @@ destekGeriBildirimServer <- function(id, current_user_id) {
           shinyjs::hide("basari_ekrani")
           shinyjs::show("sekme_geri_bildirim")
           # Formu sıfırla (JS ile)
-          shinyjs::runJs(sprintf("destekResetFeedbackForm('%s');", ns("")))
+          shinyjs::runjs(sprintf("destekResetFeedbackForm('%s');", ns("")))
         })
 
       }, error = function(e) {
         cat("[DESTEK] Geri bildirim kaydedilemedi:", conditionMessage(e), "\n")
-        showToast(session, "Geri bildirim kaydedilemedi. Lütfen tekrar deneyin.", "error")
+        showToast(session, "Geri bildirim kaydedilemedi. L\u00fctfen tekrar deneyin.", "error")
       })
     })
 
@@ -374,8 +374,8 @@ destekGeriBildirimServer <- function(id, current_user_id) {
     observeEvent(hata_result$basarili(), {
       req(hata_result$basarili() > 0)
 
-      shinyjs::runJs(sprintf(
-        "document.getElementById('%s').textContent = 'Hata bildiriminiz başarıyla sistemimize kaydedildi. Ekibimiz en kısa sürede inceleyecektir.';",
+      shinyjs::runjs(sprintf(
+        "document.getElementById('%s').textContent = 'Hata bildiriminiz ba\u015far\u0131yla sistemimize kaydedildi. Ekibimiz en k\u0131sa s\u00fcrede inceleyecektir.';",
         ns("basari_mesaji")
       ))
       shinyjs::hide("sekme_geri_bildirim")

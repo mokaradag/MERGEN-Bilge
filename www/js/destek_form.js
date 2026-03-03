@@ -4,31 +4,41 @@
 //           dosya sürükle-bırak, konu ekleme/silme ve form sıfırlama işlevleri.
 
 // ==============================================================================
-// MEMNUNİYET SEÇİCİ
+// MEMNUNİYET SEÇİCİ (Tekrar tıklayarak iptal edilebilir)
 // ==============================================================================
 
 /**
- * Memnuniyet puanını seç (emoji butonları)
+ * Memnuniyet puanını seç veya iptal et (emoji butonları)
  * @param {string} inputId - Shiny gizli input ID'si
  * @param {number} value - Seçilen puan (1-5)
  */
 function destekSelectSatisfaction(inputId, value) {
-  // Tüm öğelerin aktif durumunu kaldır
-  var container = document.getElementById(inputId).closest('.destek-form-group');
+  var hiddenInput = document.getElementById(inputId);
+  if (!hiddenInput) return;
+
+  var container = hiddenInput.closest('.destek-form-group');
   var items = container.querySelectorAll('.destek-satisfaction-item');
-  items.forEach(function(item) {
-    item.classList.remove('active');
-  });
+  var currentValue = hiddenInput.value;
 
-  // Seçilen öğeyi aktif yap
-  var selected = container.querySelector('.destek-satisfaction-item[data-value="' + value + '"]');
-  if (selected) {
-    selected.classList.add('active');
+  // Aynı değere tıklanırsa iptal et (toggle)
+  if (currentValue === String(value)) {
+    items.forEach(function(item) {
+      item.classList.remove('active');
+    });
+    hiddenInput.value = '';
+    Shiny.setInputValue(inputId, '', {priority: 'event'});
+  } else {
+    // Yeni değer seç
+    items.forEach(function(item) {
+      item.classList.remove('active');
+    });
+    var selected = container.querySelector('.destek-satisfaction-item[data-value="' + value + '"]');
+    if (selected) {
+      selected.classList.add('active');
+    }
+    hiddenInput.value = value;
+    Shiny.setInputValue(inputId, value, {priority: 'event'});
   }
-
-  // Shiny'ye değeri gönder
-  document.getElementById(inputId).value = value;
-  Shiny.setInputValue(inputId, value, {priority: 'event'});
 
   // Hata mesajını gizle
   var errorEl = document.getElementById(inputId.replace('memnuniyet', 'hata_memnuniyet'));
@@ -36,28 +46,41 @@ function destekSelectSatisfaction(inputId, value) {
 }
 
 // ==============================================================================
-// NPS SEÇİCİ
+// NPS SEÇİCİ (Tekrar tıklayarak iptal edilebilir)
 // ==============================================================================
 
 /**
- * NPS puanını seç (0-10 butonları)
+ * NPS puanını seç veya iptal et (0-10 butonları)
  * @param {string} inputId - Shiny gizli input ID'si
  * @param {number} value - Seçilen puan (0-10)
  */
 function destekSelectNPS(inputId, value) {
-  var container = document.getElementById(inputId).closest('.destek-form-group');
+  var hiddenInput = document.getElementById(inputId);
+  if (!hiddenInput) return;
+
+  var container = hiddenInput.closest('.destek-form-group');
   var buttons = container.querySelectorAll('.destek-nps-btn');
-  buttons.forEach(function(btn) {
-    btn.classList.remove('active');
-  });
+  var currentValue = hiddenInput.value;
 
-  var selected = container.querySelector('.destek-nps-btn[data-value="' + value + '"]');
-  if (selected) {
-    selected.classList.add('active');
+  // Aynı değere tıklanırsa iptal et (toggle)
+  if (currentValue === String(value)) {
+    buttons.forEach(function(btn) {
+      btn.classList.remove('active');
+    });
+    hiddenInput.value = '';
+    Shiny.setInputValue(inputId, '', {priority: 'event'});
+  } else {
+    // Yeni değer seç
+    buttons.forEach(function(btn) {
+      btn.classList.remove('active');
+    });
+    var selected = container.querySelector('.destek-nps-btn[data-value="' + value + '"]');
+    if (selected) {
+      selected.classList.add('active');
+    }
+    hiddenInput.value = value;
+    Shiny.setInputValue(inputId, value, {priority: 'event'});
   }
-
-  document.getElementById(inputId).value = value;
-  Shiny.setInputValue(inputId, value, {priority: 'event'});
 }
 
 // ==============================================================================
@@ -184,11 +207,31 @@ function destekUpdateCharCount(textarea, counterId) {
 }
 
 // ==============================================================================
-// KONU EKLEME / SİLME
+// KONU EKLEME / SİLME (Dinamik "Konu" / "Konular" etiketi)
 // ==============================================================================
 
 // Konu sayacı (benzersiz ID üretimi için)
 var destekKonuSayac = 1;
+
+/**
+ * Konu etiketini güncelle (tekil/çoğul)
+ * @param {string} nsPrefix - Modül namespace öneki
+ */
+function destekUpdateKonuLabel(nsPrefix) {
+  var container = document.getElementById(nsPrefix + 'konular_container');
+  if (!container) return;
+
+  var rows = container.querySelectorAll('.destek-konu-row');
+  var label = document.getElementById(nsPrefix + 'konu_label');
+  if (label) {
+    // innerHTML'i güncelle, required yıldızını koru
+    if (rows.length > 1) {
+      label.innerHTML = 'Konular <span class="destek-required-star" style="color: #f87171;"> *</span>';
+    } else {
+      label.innerHTML = 'Konu <span class="destek-required-star" style="color: #f87171;"> *</span>';
+    }
+  }
+}
 
 /**
  * Yeni konu girişi ekle
@@ -218,6 +261,7 @@ function destekAddKonu(nsPrefix) {
   deleteBtn.onclick = function() {
     row.remove();
     destekCollectKonular(nsPrefix);
+    destekUpdateKonuLabel(nsPrefix);
   };
 
   row.appendChild(input);
@@ -225,6 +269,9 @@ function destekAddKonu(nsPrefix) {
   container.appendChild(row);
 
   input.focus();
+
+  // Etiketi güncelle
+  destekUpdateKonuLabel(nsPrefix);
 }
 
 /**
@@ -405,6 +452,9 @@ function destekResetBugForm(nsPrefix) {
       }
     });
   }
+
+  // Konu etiketini güncelle
+  destekUpdateKonuLabel(nsPrefix);
 
   // Kategorileri temizle
   var katContainer = document.getElementById(nsPrefix + 'kategori_container');
