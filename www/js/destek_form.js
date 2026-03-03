@@ -1,0 +1,490 @@
+// Dosya Yolu: www/js/destek_form.js
+// Açıklama: Destek sayfası form etkileşimleri.
+//           Memnuniyet seçici, NPS puanlama, etiket/kategori seçimi,
+//           dosya sürükle-bırak, konu ekleme/silme ve form sıfırlama işlevleri.
+
+// ==============================================================================
+// MEMNUNİYET SEÇİCİ
+// ==============================================================================
+
+/**
+ * Memnuniyet puanını seç (emoji butonları)
+ * @param {string} inputId - Shiny gizli input ID'si
+ * @param {number} value - Seçilen puan (1-5)
+ */
+function destekSelectSatisfaction(inputId, value) {
+  // Tüm öğelerin aktif durumunu kaldır
+  var container = document.getElementById(inputId).closest('.destek-form-group');
+  var items = container.querySelectorAll('.destek-satisfaction-item');
+  items.forEach(function(item) {
+    item.classList.remove('active');
+  });
+
+  // Seçilen öğeyi aktif yap
+  var selected = container.querySelector('.destek-satisfaction-item[data-value="' + value + '"]');
+  if (selected) {
+    selected.classList.add('active');
+  }
+
+  // Shiny'ye değeri gönder
+  document.getElementById(inputId).value = value;
+  Shiny.setInputValue(inputId, value, {priority: 'event'});
+
+  // Hata mesajını gizle
+  var errorEl = document.getElementById(inputId.replace('memnuniyet', 'hata_memnuniyet'));
+  if (errorEl) errorEl.style.display = 'none';
+}
+
+// ==============================================================================
+// NPS SEÇİCİ
+// ==============================================================================
+
+/**
+ * NPS puanını seç (0-10 butonları)
+ * @param {string} inputId - Shiny gizli input ID'si
+ * @param {number} value - Seçilen puan (0-10)
+ */
+function destekSelectNPS(inputId, value) {
+  var container = document.getElementById(inputId).closest('.destek-form-group');
+  var buttons = container.querySelectorAll('.destek-nps-btn');
+  buttons.forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+
+  var selected = container.querySelector('.destek-nps-btn[data-value="' + value + '"]');
+  if (selected) {
+    selected.classList.add('active');
+  }
+
+  document.getElementById(inputId).value = value;
+  Shiny.setInputValue(inputId, value, {priority: 'event'});
+}
+
+// ==============================================================================
+// ETİKET SEÇİCİ (Çoklu)
+// ==============================================================================
+
+/**
+ * Etiket seçimini değiştir (toggle)
+ * @param {HTMLElement} el - Tıklanan etiket butonu
+ * @param {string} inputId - Shiny gizli input ID'si
+ */
+function destekToggleTag(el, inputId) {
+  el.classList.toggle('active');
+
+  // Seçili etiketleri topla
+  var container = el.closest('.destek-tags-container');
+  var activeTags = container.querySelectorAll('.destek-tag-btn.active');
+  var values = Array.from(activeTags).map(function(btn) {
+    return btn.getAttribute('data-tag');
+  });
+
+  var combinedValue = values.join(',');
+  document.getElementById(inputId).value = combinedValue;
+  Shiny.setInputValue(inputId, combinedValue, {priority: 'event'});
+}
+
+// ==============================================================================
+// KATEGORİ SEÇİCİ (Çoklu)
+// ==============================================================================
+
+/**
+ * Kategori seçimini değiştir (toggle)
+ * @param {HTMLElement} el - Tıklanan kategori butonu
+ * @param {string} inputId - Shiny gizli input ID'si
+ */
+function destekToggleCategory(el, inputId) {
+  el.classList.toggle('active');
+
+  var container = el.closest('.destek-category-container');
+  var activeCategories = container.querySelectorAll('.destek-category-btn.active');
+  var values = Array.from(activeCategories).map(function(btn) {
+    return btn.getAttribute('data-category');
+  });
+
+  var combinedValue = values.join(',');
+  document.getElementById(inputId).value = combinedValue;
+  Shiny.setInputValue(inputId, combinedValue, {priority: 'event'});
+
+  // Hata mesajını gizle
+  var errorEl = document.getElementById(inputId.replace('secili_kategoriler', 'hata_kategoriler'));
+  if (errorEl && values.length > 0) errorEl.style.display = 'none';
+}
+
+// ==============================================================================
+// ÖNCELİK SEÇİCİ (Tekli)
+// ==============================================================================
+
+/**
+ * Öncelik seviyesini seç
+ * @param {HTMLElement} el - Tıklanan öncelik butonu
+ * @param {string} inputId - Shiny gizli input ID'si
+ */
+function destekSelectPriority(el, inputId) {
+  var container = el.closest('.destek-priority-container');
+  container.querySelectorAll('.destek-priority-btn').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+
+  el.classList.add('active');
+
+  var value = el.getAttribute('data-priority');
+  document.getElementById(inputId).value = value;
+  Shiny.setInputValue(inputId, value, {priority: 'event'});
+}
+
+// ==============================================================================
+// ONAY KUTUSU (CHECKBOX)
+// ==============================================================================
+
+/**
+ * İletişim izni onay kutusunu değiştir
+ * @param {string} inputId - Shiny gizli input ID'si
+ */
+function destekToggleCheckbox(inputId) {
+  var hiddenInput = document.getElementById(inputId);
+  var visualCheckbox = document.getElementById(inputId.replace('iletisim_izni', 'iletisim_checkbox_visual'));
+
+  if (!hiddenInput || !visualCheckbox) return;
+
+  var isChecked = hiddenInput.value === 'true';
+  hiddenInput.value = isChecked ? 'false' : 'true';
+
+  if (isChecked) {
+    visualCheckbox.classList.remove('checked');
+  } else {
+    visualCheckbox.classList.add('checked');
+  }
+
+  Shiny.setInputValue(inputId, hiddenInput.value, {priority: 'event'});
+}
+
+// ==============================================================================
+// KARAKTER SAYACI
+// ==============================================================================
+
+/**
+ * Metin alanı karakter sayacını güncelle
+ * @param {HTMLTextAreaElement} textarea - Metin alanı
+ * @param {string} counterId - Sayaç span ID'si
+ */
+function destekUpdateCharCount(textarea, counterId) {
+  var counter = document.getElementById(counterId);
+  if (!counter) return;
+
+  var count = textarea.value.length;
+  var max = textarea.getAttribute('maxlength') || 500;
+  counter.textContent = count + ' / ' + max;
+
+  if (count > max * 0.9) {
+    counter.classList.add('destek-limit-warning');
+  } else {
+    counter.classList.remove('destek-limit-warning');
+  }
+}
+
+// ==============================================================================
+// KONU EKLEME / SİLME
+// ==============================================================================
+
+// Konu sayacı (benzersiz ID üretimi için)
+var destekKonuSayac = 1;
+
+/**
+ * Yeni konu girişi ekle
+ * @param {string} nsPrefix - Modül namespace öneki
+ */
+function destekAddKonu(nsPrefix) {
+  destekKonuSayac++;
+  var container = document.getElementById(nsPrefix + 'konular_container');
+  if (!container) return;
+
+  var row = document.createElement('div');
+  row.className = 'destek-konu-row';
+  row.setAttribute('data-index', destekKonuSayac);
+
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'destek-text-input';
+  input.id = nsPrefix + 'konu_' + destekKonuSayac;
+  input.placeholder = '\u00d6rn: Profil resmi y\u00fcklenmiyor';
+  input.maxLength = 200;
+
+  var deleteBtn = document.createElement('button');
+  deleteBtn.className = 'destek-konu-sil-btn';
+  deleteBtn.type = 'button';
+  deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+  deleteBtn.setAttribute('data-index', destekKonuSayac);
+  deleteBtn.onclick = function() {
+    row.remove();
+    destekCollectKonular(nsPrefix);
+  };
+
+  row.appendChild(input);
+  row.appendChild(deleteBtn);
+  container.appendChild(row);
+
+  input.focus();
+}
+
+/**
+ * Tüm konu girişlerini topla ve Shiny'ye gönder
+ * @param {string} nsPrefix - Modül namespace öneki
+ */
+function destekCollectKonular(nsPrefix) {
+  var container = document.getElementById(nsPrefix + 'konular_container');
+  if (!container) return;
+
+  var inputs = container.querySelectorAll('.destek-text-input');
+  var values = [];
+  inputs.forEach(function(input) {
+    var val = input.value.trim();
+    if (val) values.push(val);
+  });
+
+  var combined = values.join(' || ');
+  Shiny.setInputValue(nsPrefix + 'konular_birlesik', combined, {priority: 'event'});
+}
+
+// ==============================================================================
+// DOSYA SÜRÜKLE-BIRAK
+// ==============================================================================
+
+/**
+ * Sürükle-bırak dosya işleme
+ * @param {DragEvent} event - Sürükleme olayı
+ * @param {string} nsPrefix - Modül namespace öneki
+ */
+function destekHandleDrop(event, nsPrefix) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('destek-drag-over');
+
+  var files = event.dataTransfer.files;
+  if (!files || files.length === 0) return;
+
+  // Shiny dosya yükleme mekanizmasını kullanarak dosyaları işle
+  var fileInput = document.getElementById(nsPrefix + 'dosya_input');
+  if (fileInput) {
+    // DataTransfer nesnesini oluştur
+    var dt = new DataTransfer();
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      // Kabul edilen dosya türlerini kontrol et
+      var validTypes = ['image/png', 'image/jpeg', 'image/gif', 'video/mp4'];
+      if (validTypes.indexOf(file.type) !== -1) {
+        if (file.size <= 10 * 1024 * 1024) {
+          dt.items.add(file);
+        }
+      }
+    }
+    fileInput.files = dt.files;
+    // Change olayını tetikle (Shiny'nin dosyayı algılaması için)
+    $(fileInput).trigger('change');
+  }
+}
+
+/**
+ * Yüklenen dosya listesini güncelle
+ * @param {string} nsPrefix - Modül namespace öneki
+ * @param {Array} files - Dosya bilgileri dizisi [{name, size}]
+ */
+function destekUpdateFileList(nsPrefix, files) {
+  var listContainer = document.getElementById(nsPrefix + 'dosya_listesi');
+  if (!listContainer) return;
+
+  listContainer.innerHTML = '';
+
+  if (!files || files.length === 0) return;
+
+  files.forEach(function(file, index) {
+    var item = document.createElement('div');
+    item.className = 'destek-file-item';
+
+    var sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    var truncName = file.name.length > 30 ? file.name.substring(0, 27) + '...' : file.name;
+
+    item.innerHTML =
+      '<i class="fas fa-file destek-file-item-icon"></i>' +
+      '<div class="destek-file-item-info">' +
+        '<div class="destek-file-item-name">' + truncName + '</div>' +
+        '<div class="destek-file-item-size">' + sizeMB + ' MB</div>' +
+      '</div>' +
+      '<button class="destek-file-item-remove" onclick="destekRemoveFile(\'' + nsPrefix + '\', ' + (index + 1) + ')" title="Kald\u0131r">' +
+        '<i class="fas fa-xmark"></i>' +
+      '</button>';
+
+    listContainer.appendChild(item);
+  });
+}
+
+/**
+ * Dosyayı listeden kaldır
+ * @param {string} nsPrefix - Modül namespace öneki
+ * @param {number} index - Dosya indeksi (1-tabanlı)
+ */
+function destekRemoveFile(nsPrefix, index) {
+  Shiny.setInputValue(nsPrefix + 'dosya_sil', index, {priority: 'event'});
+}
+
+// ==============================================================================
+// FORM SIFIRLAMA
+// ==============================================================================
+
+/**
+ * Geri bildirim formunu sıfırla
+ * @param {string} nsPrefix - Modül namespace öneki
+ */
+function destekResetFeedbackForm(nsPrefix) {
+  // Memnuniyet seçimini temizle
+  document.querySelectorAll('.destek-satisfaction-item').forEach(function(item) {
+    item.classList.remove('active');
+  });
+  var memnuniyetInput = document.getElementById(nsPrefix + 'memnuniyet');
+  if (memnuniyetInput) {
+    memnuniyetInput.value = '';
+    Shiny.setInputValue(nsPrefix + 'memnuniyet', '', {priority: 'event'});
+  }
+
+  // NPS seçimini temizle
+  document.querySelectorAll('.destek-nps-btn').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+  var npsInput = document.getElementById(nsPrefix + 'nps_puan');
+  if (npsInput) {
+    npsInput.value = '';
+    Shiny.setInputValue(nsPrefix + 'nps_puan', '', {priority: 'event'});
+  }
+
+  // Etiketleri temizle
+  document.querySelectorAll('.destek-tag-btn').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+  var tagsInput = document.getElementById(nsPrefix + 'secili_etiketler');
+  if (tagsInput) {
+    tagsInput.value = '';
+    Shiny.setInputValue(nsPrefix + 'secili_etiketler', '', {priority: 'event'});
+  }
+
+  // Metin alanlarını temizle
+  ['en_cok_sevilen', 'gelistirme'].forEach(function(fieldId) {
+    var textarea = document.getElementById(nsPrefix + fieldId);
+    if (textarea) textarea.value = '';
+  });
+
+  // Sayaçları sıfırla
+  ['sevilen_counter', 'gelistirme_counter'].forEach(function(counterId) {
+    var counter = document.getElementById(nsPrefix + counterId);
+    if (counter) {
+      counter.textContent = '0 / 500';
+      counter.classList.remove('destek-limit-warning');
+    }
+  });
+
+  // İletişim iznini sıfırla
+  var iletisimInput = document.getElementById(nsPrefix + 'iletisim_izni');
+  var checkboxVisual = document.getElementById(nsPrefix + 'iletisim_checkbox_visual');
+  if (iletisimInput) iletisimInput.value = 'false';
+  if (checkboxVisual) checkboxVisual.classList.remove('checked');
+}
+
+/**
+ * Hata bildirim formunu sıfırla
+ * @param {string} nsPrefix - Modül namespace öneki
+ */
+function destekResetBugForm(nsPrefix) {
+  // Konu girişlerini tek girişe indir
+  var konuContainer = document.getElementById(nsPrefix + 'konular_container');
+  if (konuContainer) {
+    var rows = konuContainer.querySelectorAll('.destek-konu-row');
+    rows.forEach(function(row, i) {
+      if (i === 0) {
+        var input = row.querySelector('.destek-text-input');
+        if (input) input.value = '';
+      } else {
+        row.remove();
+      }
+    });
+  }
+
+  // Kategorileri temizle
+  var katContainer = document.getElementById(nsPrefix + 'kategori_container');
+  if (katContainer) {
+    katContainer.querySelectorAll('.destek-category-btn').forEach(function(btn) {
+      btn.classList.remove('active');
+    });
+  }
+  var katInput = document.getElementById(nsPrefix + 'secili_kategoriler');
+  if (katInput) katInput.value = '';
+
+  // Önceliği varsayılana döndür
+  var oncContainer = document.getElementById(nsPrefix + 'oncelik_container');
+  if (oncContainer) {
+    oncContainer.querySelectorAll('.destek-priority-btn').forEach(function(btn) {
+      btn.classList.remove('active');
+      if (btn.getAttribute('data-priority') === 'orta') {
+        btn.classList.add('active');
+      }
+    });
+  }
+  var oncInput = document.getElementById(nsPrefix + 'secili_oncelik');
+  if (oncInput) oncInput.value = 'orta';
+
+  // Açıklamayı temizle
+  var aciklama = document.getElementById(nsPrefix + 'hata_aciklama');
+  if (aciklama) aciklama.value = '';
+
+  var aciklamaCounter = document.getElementById(nsPrefix + 'aciklama_counter');
+  if (aciklamaCounter) {
+    aciklamaCounter.textContent = '0 / 500';
+    aciklamaCounter.classList.remove('destek-limit-warning');
+  }
+
+  // Dosya listesini temizle
+  var dosyaListesi = document.getElementById(nsPrefix + 'dosya_listesi');
+  if (dosyaListesi) dosyaListesi.innerHTML = '';
+
+  // Hata mesajlarını gizle
+  ['hata_konular', 'hata_kategoriler', 'hata_aciklama_msg'].forEach(function(id) {
+    var el = document.getElementById(nsPrefix + id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+// ==============================================================================
+// KLAVYE KISAYOLLARI
+// ==============================================================================
+
+// Form gönderimi için Ctrl+Enter / Cmd+Enter kısayolu
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    // Aktif destek formunu bul
+    var activeGeriBildirim = document.querySelector('.destek-tab-content.active .destek-submit-btn, .destek-tab-content[style*="block"] .destek-submit-btn');
+    if (!activeGeriBildirim) {
+      // Geri bildirim formunda olabilir (doğrudan görünür)
+      var visibleSubmit = document.querySelector('#sekme_geri_bildirim:not([style*="none"]) .destek-submit-btn');
+      if (visibleSubmit) {
+        visibleSubmit.click();
+        return;
+      }
+    }
+    if (activeGeriBildirim) {
+      activeGeriBildirim.click();
+    }
+  }
+});
+
+// ==============================================================================
+// FORM GÖNDERİMİ ÖNCE KONU TOPLAMA
+// ==============================================================================
+
+// Form gönderilmeden önce konuları topla
+$(document).on('click', '.destek-submit-btn', function() {
+  // Bu butonun en yakın ns prefix'ini bul
+  var btn = this;
+  var btnId = btn.id;
+  if (btnId && btnId.includes('gonder_hata')) {
+    // Hata bildirim formu - konuları topla
+    var nsPrefix = btnId.replace('gonder_hata', '');
+    destekCollectKonular(nsPrefix);
+  }
+});

@@ -1,6 +1,6 @@
 # MERGEN Bilge - Yapay Zeka Uzman Rehberi
 # Bu belge, AI Uzman (AI Expert) modülü tarafından kullanıcıyla etkileşim kurmak için referans olarak kullanılır.
-# Dil: Türkçe | Son Güncelleme: Şubat 2026
+# Dil: Türkçe | Son Güncelleme: Mart 2026
 
 ---
 
@@ -137,7 +137,28 @@ Pratik İpuçları:
 - Analiz araçlarından aynı anda sadece biri aktif olabilir, ihtiyacınıza göre değiştirin
 - Arka plan müziği ve AI Uzman konuşması Bütünleşik modda en verimli şekilde çalışır
 
-### 3.5 Sistem Durumu
+### 3.5 Destek
+Kullanıcıların yardım alabileceği, geri bildirimde bulunabileceği ve hata bildirebileceği kapsamlı destek sayfası. Üç alt bölümden oluşur:
+
+#### 3.5.1 Yardım Merkezi
+E-posta ve telefon destek kanallarının yer aldığı iletişim sayfası. Kullanıcılar herhangi bir sorunla karşılaştıklarında veya yardıma ihtiyaç duyduklarında bu kanallardan destek ekibine ulaşabilirler.
+
+#### 3.5.2 Geri Bildirim & Hata Bildirimi
+İki sekmeli bir yapıda sunulan kapsamlı geri bildirim aracı:
+
+Geri Bildirim Sekmesi: Emoji tabanlı memnuniyet puanlama (1-5), NPS puanlama (0-10), etiket seçimi (Yeni Özellik İsteği, Tasarım Önerisi, Şikayet, Performans, Diğer), beğenilen ve geliştirilebilecek yönler için metin alanları, iletişim izni onay kutusu.
+
+Hata Bildir Sekmesi: Çoklu konu girişi, kategori seçimi (Arayüz/Tasarım, Fonksiyonellik, Performans, Çökme/Hata, Diğer), öncelik seviyesi (Düşük, Orta, Yüksek, Kritik), detaylı açıklama alanı, dosya ekleri desteği (sürükle-bırak ile PNG/JPG/GIF/MP4, maks. 10MB).
+
+Pratik İpuçları:
+- Geri bildirim göndermeden önce memnuniyet puanını seçmeyi unutmayın
+- Hata bildirirken sorunu adım adım açıklamak çözüm sürecini hızlandırır
+- Ekran görüntüsü eklemek hata tespitinde büyük fayda sağlar
+
+#### 3.5.3 Hakkında
+MERGEN Bilge uygulamasının detaylı tanıtım sayfası. Temel özellikler, tüm sayfaların detaylı açıklamaları ve kullanım rehberi burada yer alır.
+
+### 3.6 Sistem Durumu
 Sistem yöneticileri için ayrılmış teknik izleme sayfası. Servis durumları, bağlantı kontrolleri ve sistem sağlığı bilgileri burada yer alır.
 
 ---
@@ -242,6 +263,10 @@ Tekrar ziyaret: Yeni dosya yüklemek veya mevcut dosyaları sohbete eklemek iste
 #### 5.3.6 Yapılandırma Sayfası (settings_yapilandirma)
 İlk ziyaret: Teknik ayarların burada yönetildiğini açıkla. Model seçimi, analiz araçları, arayüz tercihleri ve ses ayarlarından bahset. Değişikliklerin "Ayarları Kaydet" ile uygulanacağını hatırlat.
 Tekrar ziyaret: Farklı modelleri deneyebileceğini, araç ayarlarını ihtiyacına göre değiştirebileceğini belirt. Yazı boyutu, animasyon ve sesli yanıt gibi tercihlerini buradan yönetebileceğini hatırlat.
+
+#### 5.3.7 Destek Sayfası (destek)
+İlk ziyaret: Bu sayfanın kullanıcıların yardım alabileceği, görüşlerini paylaşabileceği ve hata bildirebileceği kapsamlı bir destek merkezi olduğunu belirt. Sol taraftaki gezinme panelinden Yardım Merkezi, Geri Bildirim & Hata Bildirimi ve Hakkında alt sayfalarına erişebileceğini anlat. Özellikle Hakkında sayfasında uygulamanın tüm sayfalarının detaylı açıklamalarını bulabileceğini belirt.
+Tekrar ziyaret: Bir öneride bulunmak veya bir sorun bildirmek istiyorsa Geri Bildirim & Hata sekmesini kullanabileceğini hatırlat. Hata bildirirken ekran görüntüsü eklemenin çözüm sürecini hızlandıracağını belirt.
 
 ### 5.4 Boşta Konuşma Senaryoları
 
@@ -358,7 +383,7 @@ Tüm sohbetler kullanıcı bazında ayrı tutulur. API anahtarları şifrelenere
 - Türkçe karakterler bozuk: Tarayıcı karakter kodlamasını UTF-8 yapın
 
 ### 11.2 Destek
-Teknik sorunlar için sistem yöneticinize veya IT destek ekibine başvurun.
+Teknik sorunlar için sistem yöneticinize veya IT destek ekibine başvurun. Ayrıca uygulama içindeki Destek sayfasından geri bildirimde bulunabilir veya hata bildirebilirsiniz.
 
 ---
 

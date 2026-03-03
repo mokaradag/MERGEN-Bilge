@@ -60,6 +60,9 @@ server <- function(input, output, session) {
   # Sağlık modülünü bağla
   healthServer("health_module", perf_tracker = perf_tracker)
 
+  # Destek modülünü bağla
+  destekServer("destek_module", current_user_id = current_user_id)
+
   # --- Ayarlar Koordinatörünü Başlat ---
   settings_data <- settingsInit(session = session, parent_session = session)
 
