@@ -68,6 +68,36 @@ Bu tablo, kullanıcı bilgilerini (örneğin tam ad) almak için kullanılan mev
 | `KullaniciAdi`| `NVARCHAR(255)` | Sistemdeki kullanıcı adı. |
 | `KaynakAdi` | `NVARCHAR(255)` | Kullanıcının tam adı. |
 
+#### 7. `MB_Destek_Geri_Bildirim`
+Bu tablo, destek sayfasındaki geri bildirim formundan gelen kullanıcı memnuniyeti ve öneri verilerini saklar.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
+| :--- | :--- | :--- | :--- |
+| `GeriBildirimID` | `INT` veya `BIGINT` | Her geri bildirim için benzersiz tanımlayıcı. | Birincil Anahtar, muhtemelen `IDENTITY`. |
+| `UserID` | `INT` veya `BIGINT` | Geri bildirimi gönderen kullanıcı. | `MB_Users.UserID`'ye Yabancı Anahtar. |
+| `Memnuniyet` | `INT` | Emoji tabanlı memnuniyet puanı (1-5). | 1=Çok Kötü, 2=Kötü, 3=Orta, 4=İyi, 5=Çok İyi |
+| `NPS_Puan` | `INT` | Net Promoter Score puanı (0-10). | Opsiyonel, NULL olabilir. |
+| `Etiketler` | `NVARCHAR(500)` | Seçilen geri bildirim etiketleri. | Virgülle ayrılmış (ör. "yeni_ozellik,performans"). |
+| `EnCokSevilen` | `NVARCHAR(500)` | "En çok neyi sevdiniz?" yanıtı. | Opsiyonel, NULL olabilir. |
+| `Gelistirme` | `NVARCHAR(500)` | "Neyi geliştirebiliriz?" yanıtı. | Opsiyonel, NULL olabilir. |
+| `IletisimIzni` | `BIT` | İletişim izni verilip verilmediği (0 veya 1). | |
+| `OlusturmaTarihi` | `DATETIME` | Geri bildirimin oluşturulduğu zaman damgası. | |
+
+#### 8. `MB_Destek_Hata_Bildir`
+Bu tablo, destek sayfasındaki hata bildirimi formundan gelen hata raporlarını ve dosya eklerini saklar.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
+| :--- | :--- | :--- | :--- |
+| `HataBildirimID` | `INT` veya `BIGINT` | Her hata bildirimi için benzersiz tanımlayıcı. | Birincil Anahtar, muhtemelen `IDENTITY`. |
+| `UserID` | `INT` veya `BIGINT` | Bildirimi gönderen kullanıcı. | `MB_Users.UserID`'ye Yabancı Anahtar. |
+| `Konular` | `NVARCHAR(MAX)` | Hata konuları. | " || " ile ayrılmış çoklu konular. |
+| `Kategoriler` | `NVARCHAR(500)` | Seçilen kategoriler. | Virgülle ayrılmış (ör. "arayuz,performans"). |
+| `Oncelik` | `NVARCHAR(50)` | Öncelik seviyesi. | 'dusuk', 'orta', 'yuksek' veya 'kritik'. |
+| `Aciklama` | `NVARCHAR(MAX)` | Detaylı hata açıklaması ve yeniden üretme adımları. | |
+| `EkDosyaYollari` | `NVARCHAR(MAX)` | Eklenen dosyaların sunucu yolları. | Virgülle ayrılmış dosya yolları, NULL olabilir. |
+| `Durum` | `NVARCHAR(50)` | Hata bildiriminin durumu. | 'acik', 'inceleniyor', 'cozuldu', 'kapatildi'. Varsayılan: 'acik'. |
+| `OlusturmaTarihi` | `DATETIME` | Bildirimin oluşturulduğu zaman damgası. | |
+
 ---
 ### Tablo İlişkileri
 
@@ -77,3 +107,5 @@ Tablolar mantıksal bir hiyerarşi içinde birbirine bağlıdır:
 * **`MB_Chats`** `1` <--> `*` **`MB_Messages`** (Bir sohbetin birden fazla mesajı olabilir).
 * **`MB_Messages`** `1` <--> `*` **`MB_Feedback`** (Bir mesaja birden fazla kullanıcı geri bildirimde bulunabilir, ancak mevcut uygulama mantığı mesaj başına bir kullanıcı geri bildirimini zorunlu kılmaktadır).
 * **`MB_Messages`** `1` <--> `1` **`MB_Usage_Log`** (Bir kullanıcı istemi mesajı, bir yapay zeka kullanım günlüğü girdisiyle sonuçlanır).
+* **`MB_Users`** `1` <--> `*` **`MB_Destek_Geri_Bildirim`** (Bir kullanıcı birden fazla geri bildirim gönderebilir).
+* **`MB_Users`** `1` <--> `*` **`MB_Destek_Hata_Bildir`** (Bir kullanıcı birden fazla hata bildirimi yapabilir).

@@ -42,6 +42,7 @@ ui <- dashboardPage(
         menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
         menuSubItem("Yapılandırma", tabName = "settings_yapilandirma", icon = icon("sliders-h"))
       ),
+      menuItem("Destek", tabName = "destek", icon = icon("life-ring")),
       menuItemOutput("admin_menu_item"),
       menuItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
     ),
@@ -132,6 +133,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/analysis_tools.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/citation_styles.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/ai_expert_subtitle.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_page.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -227,6 +229,7 @@ ui <- dashboardPage(
     tags$script(src = "js/analysis_tools.js"),
     tags$script(src = "js/citation_handler.js"),
     tags$script(src = "js/ai_expert_manager.js"),
+    tags$script(src = "js/destek_form.js"),
 
     tags$div(id = "toast-container", class = "toast-container")
   ),
@@ -446,6 +449,9 @@ ui <- dashboardPage(
       # Ayarlar Alt Sekmeleri
       tabItem(tabName = "settings_kisisel", settingsKisiselUI("settings_kisisel_module")),
       tabItem(tabName = "settings_yapilandirma", settingsYapilandirmaUI("settings_yapilandirma_module")),
+
+      # Destek Sayfası
+      tabItem(tabName = "destek", destekUI("destek_module")),
 
       # Admin Analitik Sekmesi (Sadece Yöneticiler için)
       tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),

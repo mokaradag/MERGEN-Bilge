@@ -12,6 +12,7 @@
 - **System Health Monitoring**: Real-time service status and logging
 - **AI Integration**: LLM API calls with MCP (Model Context Protocol) tool support
 - **Advanced Features**: Image generation, visual gallery, analytics, and custom project analysis
+- **Support Pages (Destek)**: Help center, feedback collection (satisfaction + NPS + tags), bug reporting with file attachments, and about page with app guide
 
 ---
 
@@ -58,6 +59,7 @@ Core utilities and functions used throughout the application:
 - **`helpers_followup_questions.R`**: Follow-up question generation
 - **`helpers_summarization_modes.R`**: Summarization strategy definitions
 - **`helpers_summarization_prompts.R`**: Prompt templates for summarization
+- **`helpers_destek_database.R`**: Support page database operations (MB_Destek_Geri_Bildirim, MB_Destek_Hata_Bildir)
 
 #### Utility Functions (`utils_*.R`)
 Low-level utilities:
@@ -84,6 +86,11 @@ Shiny modules for major UI sections and features:
 - **`module_chartlab.R`**: Chart specifications and visualization
 - **`module_followup_questions.R`**: Auto-generated follow-up questions
 - **`module_feedback.R`**: User feedback collection
+- **`module_destek.R`**: Support page coordinator (Yardım Merkezi, Geri Bildirim & Hata, Hakkında)
+- **`module_destek_yardim.R`**: Help center with contact information
+- **`module_destek_geri_bildirim.R`**: Feedback form (satisfaction, NPS, tags, comments)
+- **`module_destek_hata_bildir.R`**: Bug report form (topics, categories, priority, attachments)
+- **`module_destek_hakkinda.R`**: About page with app features and page guide
 - **`module_quick_actions.R`**: Quick action buttons
 - **`module_message_search.R`**: Message search functionality
 - **`module_chat_search.R`**: Chat history search
@@ -583,6 +590,6 @@ Example: `claude/add-claude-documentation-DbQhd`
 ---
 
 ## Last Updated
-February 20, 2026
+March 3, 2026
 
 **Note**: This documentation reflects the current state of the codebase. For specific implementation details, always refer to the actual source code and inline comments in R files.
