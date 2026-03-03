@@ -42,7 +42,11 @@ ui <- dashboardPage(
         menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
         menuSubItem("Yapılandırma", tabName = "settings_yapilandirma", icon = icon("sliders-h"))
       ),
-      menuItem("Destek", tabName = "destek", icon = icon("life-ring")),
+      menuItem("Destek", icon = icon("life-ring"), startExpanded = FALSE,
+        menuSubItem("Yardım Merkezi", tabName = "destek_yardim", icon = icon("circle-question")),
+        menuSubItem("Geri Bildirim & Hata", tabName = "destek_geri_bildirim", icon = icon("comment-dots")),
+        menuSubItem("Hakkında", tabName = "destek_hakkinda", icon = icon("info-circle"))
+      ),
       menuItemOutput("admin_menu_item"),
       menuItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
     ),
@@ -450,8 +454,10 @@ ui <- dashboardPage(
       tabItem(tabName = "settings_kisisel", settingsKisiselUI("settings_kisisel_module")),
       tabItem(tabName = "settings_yapilandirma", settingsYapilandirmaUI("settings_yapilandirma_module")),
 
-      # Destek Sayfası
-      tabItem(tabName = "destek", destekUI("destek_module")),
+      # Destek Sayfaları
+      tabItem(tabName = "destek_yardim", destekUI("destek_module", sayfa = "yardim")),
+      tabItem(tabName = "destek_geri_bildirim", destekUI("destek_module", sayfa = "geri_bildirim")),
+      tabItem(tabName = "destek_hakkinda", destekUI("destek_module", sayfa = "hakkinda")),
 
       # Admin Analitik Sekmesi (Sadece Yöneticiler için)
       tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),

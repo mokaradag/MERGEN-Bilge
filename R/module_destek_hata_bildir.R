@@ -13,11 +13,12 @@ destekHataBildirUI <- function(id) {
     div(
       class = "destek-form-card",
 
-      # Konu (Zorunlu - Çoklu giriş)
+      # Konu (Zorunlu - Çoklu giriş) - Dinamik etiket JS ile güncellenir
       div(
         class = "destek-form-group",
         tags$label(
           class = "destek-form-label destek-label-required",
+          id = ns("konu_label"),
           "Konu"
         ),
         div(
@@ -31,7 +32,7 @@ destekHataBildirUI <- function(id) {
               type = "text",
               class = "destek-text-input",
               id = ns("konu_1"),
-              placeholder = HTML("Örn: Profil resmi yüklenmiyor"),
+              placeholder = HTML("\u00d6rn: Profil resmi y\u00fcklenmiyor"),
               maxlength = "200"
             )
           )
@@ -50,11 +51,11 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_konular"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("Lütfen tüm konu alanlarını doldurun veya boş olanları silin.")
+          HTML("L\u00fctfen t\u00fcm konu alanlar\u0131n\u0131 doldurun veya bo\u015f olanlar\u0131 silin.")
         )
       ),
 
-      # Kategori (Zorunlu - Çoklu seçim)
+      # Kategori (Zorunlu - Çoklu seçim) - Animasyonlu ikonlar
       div(
         class = "destek-form-group",
         tags$label(
@@ -65,11 +66,11 @@ destekHataBildirUI <- function(id) {
           class = "destek-category-container",
           id = ns("kategori_container"),
           lapply(list(
-            list(id = "arayuz", label = HTML("Arayüz / Tasarım"), icon = "palette", renk = "purple"),
+            list(id = "arayuz", label = HTML("Aray\u00fcz / Tasar\u0131m"), icon = "palette", renk = "purple"),
             list(id = "fonksiyonellik", label = "Fonksiyonellik", icon = "wrench", renk = "blue"),
             list(id = "performans", label = "Performans", icon = "bolt", renk = "amber"),
-            list(id = "cokme", label = HTML("Çökme / Hata"), icon = "triangle-exclamation", renk = "red"),
-            list(id = "diger", label = HTML("Diğer"), icon = "ellipsis", renk = "cyan")
+            list(id = "cokme", label = HTML("\u00c7\u00f6kme / Hata"), icon = "triangle-exclamation", renk = "red"),
+            list(id = "diger", label = HTML("Di\u011fer"), icon = "ellipsis", renk = "cyan")
           ), function(kat) {
             div(
               class = paste0("destek-category-btn destek-cat-", kat$renk),
@@ -79,7 +80,7 @@ destekHataBildirUI <- function(id) {
                 ns("secili_kategoriler")
               ),
               div(class = paste0("destek-cat-icon-wrapper destek-cat-icon-", kat$renk),
-                icon(kat$icon, class = paste0("destek-cat-icon-", kat$id))
+                icon(kat$icon)
               ),
               span(kat$label)
             )
@@ -93,21 +94,21 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_kategoriler"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("Lütfen en az bir kategori seçin.")
+          HTML("L\u00fctfen en az bir kategori se\u00e7in.")
         )
       ),
 
       # Öncelik Seviyesi (Opsiyonel)
       div(
         class = "destek-form-group",
-        tags$label(class = "destek-form-label", HTML("Öncelik Seviyesi")),
+        tags$label(class = "destek-form-label", HTML("\u00d6ncelik Seviyesi")),
         div(
           class = "destek-priority-container",
           id = ns("oncelik_container"),
           lapply(list(
-            list(id = "dusuk", label = HTML("Düşük"), renk = "blue"),
+            list(id = "dusuk", label = HTML("D\u00fc\u015f\u00fck"), renk = "blue"),
             list(id = "orta", label = "Orta", renk = "amber"),
-            list(id = "yuksek", label = HTML("Yüksek"), renk = "orange"),
+            list(id = "yuksek", label = HTML("Y\u00fcksek"), renk = "orange"),
             list(id = "kritik", label = "Kritik", renk = "red")
           ), function(onc) {
             div(
@@ -135,14 +136,14 @@ destekHataBildirUI <- function(id) {
         class = "destek-form-group",
         tags$label(
           class = "destek-form-label destek-label-required",
-          HTML("Açıklama & Yeniden Üretme Adımları")
+          HTML("A\u00e7\u0131klama & Yeniden \u00dcretme Ad\u0131mlar\u0131")
         ),
         div(
           class = "destek-textarea-wrapper",
           tags$textarea(
             id = ns("hata_aciklama"),
             class = "destek-textarea destek-textarea-lg",
-            placeholder = HTML("Sorunu nasıl yaşadığınızı adım adım anlatın..."),
+            placeholder = HTML("Sorunu nas\u0131l ya\u015fad\u0131\u011f\u0131n\u0131z\u0131 ad\u0131m ad\u0131m anlat\u0131n..."),
             maxlength = "500",
             rows = 6,
             oninput = sprintf("destekUpdateCharCount(this, '%s')", ns("aciklama_counter"))
@@ -151,7 +152,7 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_aciklama_msg"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("Lütfen açıklama alanını doldurun.")
+          HTML("L\u00fctfen a\u00e7\u0131klama alan\u0131n\u0131 doldurun.")
         )
       ),
 
@@ -169,11 +170,11 @@ destekHataBildirUI <- function(id) {
           div(class = "destek-upload-content",
             icon("cloud-arrow-up", class = "destek-upload-icon"),
             p(class = "destek-upload-text",
-              HTML("Dosyaları sürükleyin veya"),
-              tags$span(class = "destek-upload-link", HTML("gözatın"))
+              HTML("Dosyalar\u0131 s\u00fcr\u00fckleyin veya"),
+              tags$span(class = "destek-upload-link", HTML("g\u00f6zat\u0131n"))
             ),
             p(class = "destek-upload-hint",
-              HTML("PNG, JPG, GIF, MP4 • Maks. 10MB"))
+              HTML("PNG, JPG, GIF, MP4 \u2022 Maks. 10MB"))
           )
         ),
         # Gizli dosya girişi
@@ -191,18 +192,16 @@ destekHataBildirUI <- function(id) {
         )
       ),
 
-      # Gönder butonu
+      # Gönder butonu - klavye kısayolu tooltip olarak
       div(
         class = "destek-form-actions",
         div(
           class = "destek-submit-wrapper",
           actionButton(
             ns("gonder_hata"),
-            label = tagList(icon("paper-plane"), HTML("Gönder")),
-            class = "destek-submit-btn"
-          ),
-          span(class = "destek-submit-hint",
-            HTML("⌘ ↵ ile gönder")
+            label = tagList(icon("paper-plane"), HTML("G\u00f6nder")),
+            class = "destek-submit-btn",
+            title = "\u2318 + Enter ile g\u00f6nder"
           )
         )
       )
@@ -233,7 +232,7 @@ destekHataBildirServer <- function(id, current_user_id) {
 
       # Dosya boyutu kontrolü (10MB)
       if (!is.null(dosya_verisi$size) && dosya_verisi$size > 10 * 1024 * 1024) {
-        showToast(session, "Dosya boyutu 10MB'dan büyük olamaz.", "error")
+        showToast(session, "Dosya boyutu 10MB'dan b\u00fcy\u00fck olamaz.", "error")
         return()
       }
 
@@ -255,7 +254,7 @@ destekHataBildirServer <- function(id, current_user_id) {
         mevcut[[idx]] <- NULL
         yuklenen_dosyalar(mevcut)
         # Dosya listesini JS ile güncelle
-        shinyjs::runJs(sprintf(
+        shinyjs::runjs(sprintf(
           "destekUpdateFileList('%s', %s);",
           ns(""),
           jsonlite::toJSON(lapply(mevcut, function(d) {
@@ -275,7 +274,7 @@ destekHataBildirServer <- function(id, current_user_id) {
         for (i in seq_len(nrow(dosyalar))) {
           dosya <- dosyalar[i, ]
           if (dosya$size > 10 * 1024 * 1024) {
-            showToast(session, paste0(dosya$name, " dosyası 10MB sınırını aşıyor."), "error")
+            showToast(session, paste0(dosya$name, " dosyas\u0131 10MB s\u0131n\u0131r\u0131n\u0131 a\u015f\u0131yor."), "error")
             next
           }
 
@@ -298,7 +297,7 @@ destekHataBildirServer <- function(id, current_user_id) {
 
         # Dosya listesini JS ile güncelle
         mevcut <- yuklenen_dosyalar()
-        shinyjs::runJs(sprintf(
+        shinyjs::runjs(sprintf(
           "destekUpdateFileList('%s', %s);",
           ns(""),
           jsonlite::toJSON(lapply(mevcut, function(d) {
@@ -362,14 +361,14 @@ destekHataBildirServer <- function(id, current_user_id) {
 
         # Formu sıfırla
         yuklenen_dosyalar(list())
-        shinyjs::runJs(sprintf("destekResetBugForm('%s');", ns("")))
+        shinyjs::runjs(sprintf("destekResetBugForm('%s');", ns("")))
 
         # Başarı sinyali gönder
         basarili_trigger(basarili_trigger() + 1)
 
       }, error = function(e) {
         cat("[DESTEK] Hata bildirimi kaydedilemedi:", conditionMessage(e), "\n")
-        showToast(session, "Hata bildirimi kaydedilemedi. Lütfen tekrar deneyin.", "error")
+        showToast(session, "Hata bildirimi kaydedilemedi. L\u00fctfen tekrar deneyin.", "error")
       })
     })
 

@@ -1,6 +1,6 @@
 /* Dosya Yolu: www/css/destek_page.css */
 /* Açıklama: Destek sayfaları için tüm stiller.
-   Ana düzen, yan gezinme, form elemanları, animasyonlar ve alt sayfa stilleri. */
+   Ana düzen, form elemanları, animasyonlar ve alt sayfa stilleri. */
 
 /* ==============================================================================
    ANA DÜZEN
@@ -13,13 +13,6 @@
   overflow: hidden;
   position: relative;
   background: var(--background-dark);
-}
-
-.destek-layout {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-  height: calc(100vh - 70px);
 }
 
 /* Destek rozeti */
@@ -44,78 +37,13 @@
 }
 
 /* ==============================================================================
-   SOL GEZİNME PANELİ (SIDEBAR)
+   İÇERİK ALANI (SIDEBAR YOK - TAM GENİŞLİK)
    ============================================================================== */
 
-.destek-sidebar {
-  width: 240px;
-  min-width: 240px;
-  background: var(--background-medium);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 24px 16px;
-  overflow-y: auto;
-}
-
-.destek-sidebar-section {
-  margin-bottom: 8px;
-}
-
-.destek-sidebar-title {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  padding: 0 12px;
-  margin-bottom: 12px;
-}
-
-.destek-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 4px;
-  user-select: none;
-}
-
-.destek-nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
-}
-
-.destek-nav-item.active {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.destek-nav-item i {
-  font-size: 16px;
-  width: 20px;
-  text-align: center;
-  opacity: 0.7;
-}
-
-.destek-nav-item.active i {
-  opacity: 1;
-  color: var(--primary-color);
-}
-
-/* ==============================================================================
-   SAĞ İÇERİK ALANI
-   ============================================================================== */
-
-.destek-content {
+.destek-content-full {
   flex: 1;
   overflow-y: auto;
-  padding: 32px;
+  padding: 32px 40px;
   background: var(--background-dark);
 }
 
@@ -134,33 +62,33 @@
 
 .destek-section-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 40px;
 }
 
 .destek-section-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.05);
-  margin-bottom: 16px;
-  font-size: 22px;
+  margin-bottom: 18px;
+  font-size: 26px;
   color: var(--primary-color);
 }
 
 .destek-section-header h3 {
   color: var(--text-primary);
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .destek-section-desc {
   color: var(--text-muted);
-  font-size: 14px;
-  max-width: 500px;
+  font-size: 16px;
+  max-width: 600px;
   margin: 0 auto;
   line-height: 1.6;
 }
@@ -170,21 +98,21 @@
    ============================================================================== */
 
 .destek-yardim-container {
-  max-width: 700px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
 .destek-contact-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 24px;
 }
 
 .destek-contact-card {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 28px;
+  border-radius: 20px;
+  padding: 36px;
   text-align: center;
   transition: all 0.3s ease;
 }
@@ -199,42 +127,52 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.05);
-  margin-bottom: 16px;
-  font-size: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 20px;
+  font-size: 24px;
   color: var(--text-primary);
 }
 
 .destek-contact-card h4 {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+/* E-posta ve Telefon başlık renklerini koyu tema ile uyumlu yap */
+.destek-contact-card h4.destek-email-title {
+  color: #818cf8;
+}
+
+.destek-contact-card h4.destek-phone-title {
+  color: #a78bfa;
 }
 
 .destek-contact-desc {
   color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: 20px;
 }
 
 .destek-contact-link {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-secondary);
-  font-size: 14px;
+  color: #818cf8;
+  font-size: 16px;
   font-weight: 500;
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 .destek-contact-link:hover {
-  color: var(--text-primary);
+  color: #a5b4fc;
 }
 
 /* ==============================================================================
@@ -245,10 +183,10 @@
   display: flex;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 4px;
-  margin-bottom: 24px;
-  max-width: 700px;
+  margin-bottom: 28px;
+  max-width: 900px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -259,13 +197,13 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 12px 20px;
-  border-radius: 10px;
+  padding: 14px 24px;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
   color: var(--text-muted);
   font-weight: 500;
-  font-size: 14px;
+  font-size: 16px;
   user-select: none;
 }
 
@@ -288,7 +226,7 @@
 
 /* Yıldız ikonu animasyonu (Geri Bildirim sekmesi) */
 .destek-tab-icon-star {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .destek-tab-btn.active .destek-tab-icon-star {
@@ -300,20 +238,33 @@
   to { transform: rotate(360deg); }
 }
 
-/* Böcek ikonu animasyonu (Hata Bildir sekmesi) */
+/* Böcek ikonu animasyonu (Hata Bildir sekmesi) - orijinale uygun:
+   Böcek aşağıdan yukarıya yürür, sola-sağa bakar.
+   Sekme aktif olmadığında y:0'a döner. */
 .destek-tab-icon-bug {
-  font-size: 16px;
+  font-size: 18px;
+  transition: transform 0.3s ease;
 }
 
 .destek-tab-btn.active .destek-tab-icon-bug {
-  animation: destekBugBounce 2s linear infinite;
+  animation: destekBugWalk 2s linear infinite;
 }
 
-@keyframes destekBugBounce {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-4px) rotate(-10deg); }
-  50% { transform: translateY(0) rotate(0deg); }
-  75% { transform: translateY(-4px) rotate(10deg); }
+@keyframes destekBugWalk {
+  0% { transform: translateY(12px) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  20% { transform: translateY(6px) rotate(-15deg); }
+  40% { transform: translateY(0px) rotate(15deg); }
+  60% { transform: translateY(-6px) rotate(-15deg); }
+  80% { transform: translateY(-12px) rotate(15deg); }
+  90% { opacity: 1; }
+  100% { transform: translateY(-12px) rotate(0deg); opacity: 0; }
+}
+
+/* Aktif olmadığında normal pozisyon */
+.destek-tab-btn:not(.active) .destek-tab-icon-bug {
+  transform: translateY(0) rotate(0deg);
+  opacity: 1;
 }
 
 /* ==============================================================================
@@ -321,27 +272,27 @@
    ============================================================================== */
 
 .destek-feedback-container {
-  max-width: 700px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
 .destek-form-card {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 32px;
+  border-radius: 20px;
+  padding: 40px;
 }
 
 .destek-form-group {
-  margin-bottom: 28px;
+  margin-bottom: 36px;
 }
 
 .destek-form-label {
   display: block;
   color: rgba(199, 210, 254, 0.8);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .destek-label-required::after {
@@ -356,20 +307,21 @@
 .destek-satisfaction-selector {
   display: flex;
   justify-content: center;
-  gap: 16px;
-  padding: 16px 0;
+  gap: 20px;
+  padding: 20px 0;
+  flex-wrap: wrap;
 }
 
 .destek-satisfaction-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   cursor: pointer;
   transition: all 0.5s ease;
   opacity: 0.6;
-  padding: 12px;
-  border-radius: 12px;
+  padding: 16px 20px;
+  border-radius: 16px;
 }
 
 .destek-satisfaction-item:hover {
@@ -380,17 +332,18 @@
 .destek-satisfaction-item.active {
   opacity: 1;
   transform: scale(1.1);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
 }
 
 .destek-emoji {
-  font-size: 36px;
+  font-size: 48px;
   line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
 }
 
 .destek-emoji-label {
-  font-size: 12px;
+  font-size: 15px;
   color: var(--text-muted);
   font-weight: 500;
 }
@@ -406,16 +359,17 @@
 .destek-nps-container {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .destek-nps-label-left,
 .destek-nps-label-right {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-muted);
   white-space: nowrap;
-  min-width: 90px;
+  min-width: 100px;
 }
 
 .destek-nps-label-left { text-align: right; }
@@ -423,43 +377,47 @@
 
 .destek-nps-buttons {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
 }
 
 .destek-nps-btn {
-  width: 36px;
-  height: 36px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--text-muted);
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .destek-nps-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
   transform: scale(1.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
-/* NPS renk sınıfları */
-.destek-nps-btn.active[data-value="0"] { background: #dc2626; color: white; box-shadow: 0 0 15px rgba(220, 38, 38, 0.4); }
-.destek-nps-btn.active[data-value="1"] { background: #ef4444; color: white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
-.destek-nps-btn.active[data-value="2"] { background: #ea580c; color: white; box-shadow: 0 0 15px rgba(234, 88, 12, 0.4); }
-.destek-nps-btn.active[data-value="3"] { background: #f97316; color: white; box-shadow: 0 0 15px rgba(249, 115, 22, 0.4); }
-.destek-nps-btn.active[data-value="4"] { background: #f59e0b; color: white; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
-.destek-nps-btn.active[data-value="5"] { background: #eab308; color: white; box-shadow: 0 0 15px rgba(234, 179, 8, 0.4); }
-.destek-nps-btn.active[data-value="6"] { background: #facc15; color: #1a1a1a; box-shadow: 0 0 15px rgba(250, 204, 21, 0.4); }
-.destek-nps-btn.active[data-value="7"] { background: #84cc16; color: white; box-shadow: 0 0 15px rgba(132, 204, 22, 0.4); }
-.destek-nps-btn.active[data-value="8"] { background: #22c55e; color: white; box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
-.destek-nps-btn.active[data-value="9"] { background: #16a34a; color: white; box-shadow: 0 0 15px rgba(22, 163, 74, 0.4); }
-.destek-nps-btn.active[data-value="10"] { background: #166534; color: white; box-shadow: 0 0 15px rgba(22, 101, 52, 0.4); }
+/* NPS renk sınıfları - aktif olduğunda scale ve renk */
+.destek-nps-btn.active { transform: scale(1.1); color: white; }
+.destek-nps-btn.active[data-value="0"] { background: #dc2626; border-color: #b91c1c; box-shadow: 0 0 15px rgba(220, 38, 38, 0.4); }
+.destek-nps-btn.active[data-value="1"] { background: #ef4444; border-color: #dc2626; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+.destek-nps-btn.active[data-value="2"] { background: #ea580c; border-color: #c2410c; box-shadow: 0 0 15px rgba(234, 88, 12, 0.4); }
+.destek-nps-btn.active[data-value="3"] { background: #f97316; border-color: #ea580c; box-shadow: 0 0 15px rgba(249, 115, 22, 0.4); }
+.destek-nps-btn.active[data-value="4"] { background: #f59e0b; border-color: #d97706; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+.destek-nps-btn.active[data-value="5"] { background: #eab308; border-color: #ca8a04; box-shadow: 0 0 15px rgba(234, 179, 8, 0.4); }
+.destek-nps-btn.active[data-value="6"] { background: #facc15; border-color: #eab308; box-shadow: 0 0 15px rgba(250, 204, 21, 0.4); color: #1a1a1a; }
+.destek-nps-btn.active[data-value="7"] { background: #84cc16; border-color: #65a30d; box-shadow: 0 0 15px rgba(132, 204, 22, 0.4); }
+.destek-nps-btn.active[data-value="8"] { background: #22c55e; border-color: #16a34a; box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
+.destek-nps-btn.active[data-value="9"] { background: #16a34a; border-color: #15803d; box-shadow: 0 0 15px rgba(22, 163, 74, 0.4); }
+.destek-nps-btn.active[data-value="10"] { background: #166534; border-color: #14532d; box-shadow: 0 0 15px rgba(21, 128, 61, 0.4); }
 
 /* ==============================================================================
    ETİKET SEÇİCİ
@@ -468,18 +426,18 @@
 .destek-tags-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
 }
 
 .destek-tag-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 12px 22px;
+  border-radius: 14px;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -496,6 +454,60 @@
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+/* Etiket ikon animasyonları (her zaman aktif - orijinale uygun) */
+.destek-tag-btn .destek-tag-icon-sparkle i {
+  animation: destekTagSparkle 3s ease-in-out infinite;
+}
+
+@keyframes destekTagSparkle {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(15deg) scale(1.1); }
+  50% { transform: rotate(-15deg) scale(1); }
+  75% { transform: rotate(0deg) scale(1.1); }
+}
+
+.destek-tag-btn .destek-tag-icon-palette i {
+  animation: destekTagPalette 3s ease-in-out infinite;
+}
+
+@keyframes destekTagPalette {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+}
+
+.destek-tag-btn .destek-tag-icon-alert i {
+  animation: destekTagAlert 1.5s ease-in-out infinite;
+  animation-delay: 2s;
+}
+
+@keyframes destekTagAlert {
+  0%, 100% { transform: rotate(0deg); }
+  16% { transform: rotate(15deg); }
+  33% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+  66% { transform: rotate(-15deg); }
+  83% { transform: rotate(0deg); }
+}
+
+.destek-tag-btn .destek-tag-icon-bolt i {
+  animation: destekTagBolt 2s ease-in-out infinite;
+}
+
+@keyframes destekTagBolt {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.destek-tag-btn .destek-tag-icon-dots i {
+  animation: destekTagDots 2s ease-in-out infinite;
+}
+
+@keyframes destekTagDots {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+}
+
+/* Etiket renk sınıfları (aktif durumda) */
 .destek-tag-indigo.active { background: rgba(99, 102, 241, 0.1); box-shadow: 0 0 15px rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.3); color: #a5b4fc; }
 .destek-tag-purple.active { background: rgba(168, 85, 247, 0.1); box-shadow: 0 0 15px rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3); color: #c4b5fd; }
 .destek-tag-red.active { background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
@@ -514,10 +526,10 @@
   width: 100%;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 14px 16px;
+  border-radius: 14px;
+  padding: 16px 20px;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 16px;
   font-family: var(--font-primary);
   resize: vertical;
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
@@ -526,8 +538,8 @@
 
 .destek-textarea:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
 }
 
 .destek-textarea::placeholder {
@@ -535,15 +547,15 @@
 }
 
 .destek-textarea-lg {
-  min-height: 140px;
+  min-height: 160px;
 }
 
 .destek-char-counter {
   display: block;
   text-align: right;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .destek-char-counter.destek-limit-warning {
@@ -554,10 +566,10 @@
   width: 100%;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: 12px;
+  padding: 14px 18px;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 16px;
   font-family: var(--font-primary);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
   box-sizing: border-box;
@@ -565,8 +577,8 @@
 
 .destek-text-input:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
 }
 
 .destek-text-input::placeholder {
@@ -580,12 +592,12 @@
 .destek-konular-container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .destek-konu-row {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
 }
 
@@ -597,15 +609,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   background: rgba(239, 68, 68, 0.1);
   border: none;
   color: #f87171;
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  font-size: 16px;
 }
 
 .destek-konu-sil-btn:hover {
@@ -614,20 +627,20 @@
 }
 
 .destek-add-btn-wrapper {
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .destek-add-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  border-radius: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px dashed rgba(255, 255, 255, 0.15);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -645,18 +658,18 @@
 .destek-category-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
 }
 
 .destek-category-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 18px;
-  border-radius: 12px;
+  gap: 12px;
+  padding: 14px 22px;
+  border-radius: 14px;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -672,105 +685,106 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 18px;
 }
 
-/* Kategori animasyonları */
-.destek-category-btn.active .destek-cat-icon-palette {
-  animation: destekPaletteRotate 3s ease-in-out infinite;
+/* Kategori ikon animasyonları (her zaman aktif - orijinale uygun) */
+.destek-cat-icon-wrapper.destek-cat-icon-purple i {
+  animation: destekCatPalette 3s ease-in-out infinite;
 }
 
-@keyframes destekPaletteRotate {
+@keyframes destekCatPalette {
   0%, 100% { transform: rotate(-15deg); }
   50% { transform: rotate(15deg); }
 }
 
-.destek-category-btn.active .destek-cat-icon-wrench {
-  animation: destekWrenchRotate 2.5s ease-in-out infinite;
+.destek-cat-icon-wrapper.destek-cat-icon-blue i {
+  animation: destekCatWrench 2.5s ease-in-out infinite;
 }
 
-@keyframes destekWrenchRotate {
+@keyframes destekCatWrench {
   0%, 100% { transform: rotate(0deg); }
   50% { transform: rotate(-45deg); }
 }
 
-.destek-category-btn.active .destek-cat-icon-bolt {
-  animation: destekBoltPulse 2s ease-in-out infinite;
+.destek-cat-icon-wrapper.destek-cat-icon-amber i {
+  animation: destekCatBolt 2s ease-in-out infinite;
 }
 
-@keyframes destekBoltPulse {
+@keyframes destekCatBolt {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
 }
 
-.destek-category-btn.active .destek-cat-icon-triangle-exclamation {
-  animation: destekAlertShake 1.5s ease-in-out infinite;
+.destek-cat-icon-wrapper.destek-cat-icon-red i {
+  animation: destekCatAlert 1.5s ease-in-out infinite;
+  animation-delay: 2s;
 }
 
-@keyframes destekAlertShake {
+@keyframes destekCatAlert {
   0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-5deg); }
-  75% { transform: rotate(5deg); }
+  16% { transform: rotate(15deg); }
+  33% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+  66% { transform: rotate(-15deg); }
+  83% { transform: rotate(0deg); }
 }
 
-.destek-category-btn.active .destek-cat-icon-ellipsis {
-  animation: destekDotsPulse 2s ease-in-out infinite;
+.destek-cat-icon-wrapper.destek-cat-icon-cyan i {
+  animation: destekCatDots 2s ease-in-out infinite;
 }
 
-@keyframes destekDotsPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.9); }
+@keyframes destekCatDots {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
 }
 
 /* Kategori renk sınıfları (aktif durumda) */
-.destek-cat-purple.active { background: rgba(168, 85, 247, 0.1); box-shadow: 0 0 15px rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3); }
-.destek-cat-blue.active { background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
-.destek-cat-amber.active { background: rgba(245, 158, 11, 0.1); box-shadow: 0 0 15px rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.3); }
-.destek-cat-red.active { background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); }
-.destek-cat-cyan.active { background: rgba(6, 182, 212, 0.1); box-shadow: 0 0 15px rgba(6, 182, 212, 0.15); border-color: rgba(6, 182, 212, 0.3); }
+.destek-cat-purple.active { background: rgba(168, 85, 247, 0.1); box-shadow: 0 0 15px rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3); color: #c4b5fd; }
+.destek-cat-blue.active { background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); color: #93c5fd; }
+.destek-cat-amber.active { background: rgba(245, 158, 11, 0.1); box-shadow: 0 0 15px rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.3); color: #fcd34d; }
+.destek-cat-red.active { background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+.destek-cat-cyan.active { background: rgba(6, 182, 212, 0.1); box-shadow: 0 0 15px rgba(6, 182, 212, 0.15); border-color: rgba(6, 182, 212, 0.3); color: #67e8f9; }
 
 /* ==============================================================================
-   ÖNCELİK SEÇİCİ
+   ÖNCELİK SEÇİCİ - Orijinale uygun renkli arka planlar
    ============================================================================== */
 
 .destek-priority-container {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
 }
 
 .destek-priority-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 10px;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 14px;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
   user-select: none;
 }
 
 .destek-priority-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.destek-priority-btn.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: var(--text-primary);
-  transform: scale(1.02);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .destek-priority-dot {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: all 0.3s ease;
+  opacity: 0.5;
 }
 
 .destek-dot-blue { background: #3b82f6; }
@@ -778,23 +792,58 @@
 .destek-dot-orange { background: #f97316; }
 .destek-dot-red { background: #ef4444; }
 
-.destek-priority-btn.active .destek-priority-dot {
-  box-shadow: 0 0 8px currentColor;
+/* Aktif öncelik butonları - renkli arka plan */
+.destek-priority-btn.active {
+  transform: scale(1.02);
 }
 
-.destek-priority-btn.active .destek-dot-blue { box-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
-.destek-priority-btn.active .destek-dot-amber { box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
-.destek-priority-btn.active .destek-dot-orange { box-shadow: 0 0 8px rgba(249, 115, 22, 0.5); }
-.destek-priority-btn.active .destek-dot-red { box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+.destek-priority-btn.active .destek-priority-dot {
+  opacity: 1;
+  transform: scale(1.25);
+}
+
+.destek-priority-btn.active .destek-dot-blue { box-shadow: 0 0 8px rgba(59, 130, 246, 0.6); }
+.destek-priority-btn.active .destek-dot-amber { box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+.destek-priority-btn.active .destek-dot-orange { box-shadow: 0 0 8px rgba(249, 115, 22, 0.6); }
+.destek-priority-btn.active .destek-dot-red { box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+
+/* Renkli arka planlar - orijinale uygun */
+.destek-priority-btn[data-priority="dusuk"].active {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+}
+
+.destek-priority-btn[data-priority="orta"].active {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.15);
+}
+
+.destek-priority-btn[data-priority="yuksek"].active {
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: #fdba74;
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.15);
+}
+
+.destek-priority-btn[data-priority="kritik"].active {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+}
 
 /* ==============================================================================
-   DOSYA YÜKLEME ALANI
+   DOSYA YÜKLEME ALANI - Turuncu hover ve sürükleme
    ============================================================================== */
 
 .destek-upload-zone {
   border: 2px dashed rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 32px;
+  border-radius: 18px;
+  padding: 40px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -802,65 +851,70 @@
 }
 
 .destek-upload-zone:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(249, 115, 22, 0.5);
+  background: rgba(249, 115, 22, 0.05);
 }
 
 .destek-upload-zone.destek-drag-over {
-  border-color: var(--primary-color);
-  background: rgba(255, 107, 53, 0.05);
+  border-color: #f97316;
+  background: rgba(249, 115, 22, 0.1);
 }
 
 .destek-upload-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .destek-upload-icon {
-  font-size: 32px;
+  font-size: 36px;
   color: var(--text-muted);
-  transition: transform 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .destek-upload-zone:hover .destek-upload-icon {
   transform: translateY(-4px);
-  color: var(--text-secondary);
+  color: #f97316;
+}
+
+.destek-upload-zone.destek-drag-over .destek-upload-icon {
+  color: #f97316;
+  transform: translateY(-4px);
 }
 
 .destek-upload-text {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-secondary);
 }
 
 .destek-upload-link {
-  color: var(--text-primary);
+  color: #f97316;
   font-weight: 600;
   text-decoration: underline;
 }
 
 .destek-upload-hint {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-muted);
 }
 
 /* Dosya listesi */
 .destek-file-list {
-  margin-top: 12px;
+  margin-top: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .destek-file-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 14px;
+  padding: 12px 16px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
+  border-radius: 12px;
   animation: destekFadeIn 0.2s ease;
 }
 
@@ -875,7 +929,7 @@
 }
 
 .destek-file-item-name {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
@@ -884,17 +938,18 @@
 }
 
 .destek-file-item-size {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-muted);
+  font-family: monospace;
 }
 
 .destek-file-item-remove {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: transparent;
   border: none;
   color: var(--text-muted);
@@ -912,21 +967,21 @@
    ============================================================================== */
 
 .destek-checkbox-group {
-  margin-top: 24px;
+  margin-top: 28px;
 }
 
 .destek-checkbox-wrapper {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   cursor: pointer;
   user-select: none;
 }
 
 .destek-checkbox {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   border: 2px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
@@ -943,7 +998,7 @@
 
 .destek-checkbox-icon {
   color: white;
-  font-size: 12px;
+  font-size: 13px;
   transform: scale(0);
   opacity: 0;
   transition: all 0.2s ease;
@@ -955,7 +1010,7 @@
 }
 
 .destek-checkbox-label {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-secondary);
 }
 
@@ -964,8 +1019,8 @@
    ============================================================================== */
 
 .destek-form-actions {
-  margin-top: 32px;
-  padding-top: 24px;
+  margin-top: 36px;
+  padding-top: 28px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   justify-content: flex-end;
@@ -981,12 +1036,12 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 28px;
-  border-radius: 10px;
+  padding: 14px 32px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1002,11 +1057,6 @@
   transform: scale(0.98);
 }
 
-.destek-submit-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
 /* ==============================================================================
    HATA MESAJLARI
    ============================================================================== */
@@ -1016,7 +1066,7 @@
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: #f87171;
   animation: destekFadeIn 0.2s ease;
 }
@@ -1043,37 +1093,37 @@
 
 .destek-success-content {
   text-align: center;
-  max-width: 400px;
-  padding: 32px;
+  max-width: 450px;
+  padding: 40px;
 }
 
 .destek-success-icon-wrapper {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 80px;
-  height: 80px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   background: rgba(74, 222, 128, 0.1);
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   box-shadow: 0 0 40px rgba(74, 222, 128, 0.15);
 }
 
 .destek-success-icon {
-  font-size: 40px;
+  font-size: 44px;
   color: #4ade80;
 }
 
 .destek-success-content h3 {
   color: var(--text-primary);
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .destek-success-message {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.6;
 }
 
@@ -1082,7 +1132,7 @@
    ============================================================================== */
 
 .destek-hakkinda-container {
-  max-width: 750px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
@@ -1090,10 +1140,10 @@
 .destek-hakkinda-hero {
   position: relative;
   text-align: center;
-  padding: 40px 32px;
-  border-radius: 20px;
+  padding: 48px 40px;
+  border-radius: 24px;
   overflow: hidden;
-  margin-bottom: 40px;
+  margin-bottom: 48px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -1116,26 +1166,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.06);
-  margin-bottom: 20px;
-  font-size: 28px;
+  margin-bottom: 24px;
+  font-size: 32px;
   color: var(--primary-color);
 }
 
 .destek-hakkinda-title {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 800;
   color: var(--text-primary);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .destek-hakkinda-subtitle {
-  font-size: 15px;
+  font-size: 17px;
   color: var(--text-muted);
-  max-width: 500px;
+  max-width: 600px;
   margin: 0 auto;
   line-height: 1.6;
 }
@@ -1143,24 +1193,24 @@
 /* Özellik Kartları */
 .destek-hakkinda-section-title {
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .destek-features-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 40px;
+  gap: 20px;
+  margin-bottom: 48px;
 }
 
 .destek-feature-card {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 18px;
+  padding: 28px;
   transition: all 0.3s ease;
 }
 
@@ -1173,11 +1223,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  margin-bottom: 14px;
-  font-size: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  font-size: 22px;
 }
 
 .destek-feature-amber .destek-feature-icon { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
@@ -1187,38 +1237,38 @@
 
 .destek-feature-card h4 {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .destek-feature-card p {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.6;
 }
 
 /* Sayfa Rehberi */
 .destek-hakkinda-guide {
-  margin-bottom: 40px;
+  margin-bottom: 48px;
 }
 
 .destek-hakkinda-guide-intro {
   text-align: center;
   color: var(--text-muted);
-  font-size: 14px;
-  margin-bottom: 24px;
+  font-size: 16px;
+  margin-bottom: 28px;
   line-height: 1.6;
 }
 
 .destek-guide-card {
   display: flex;
-  gap: 20px;
-  padding: 24px;
+  gap: 24px;
+  padding: 28px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  margin-bottom: 14px;
+  border-radius: 16px;
+  margin-bottom: 16px;
   transition: all 0.3s ease;
 }
 
@@ -1230,11 +1280,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  border-radius: 12px;
-  font-size: 18px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 14px;
+  font-size: 20px;
   flex-shrink: 0;
 }
 
@@ -1246,24 +1296,24 @@
 
 .destek-guide-content h4 {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .destek-guide-content p {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.6;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .destek-guide-sub {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.5;
-  margin-bottom: 6px;
-  padding-left: 8px;
+  margin-bottom: 8px;
+  padding-left: 10px;
   border-left: 2px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -1272,11 +1322,11 @@
 }
 
 .destek-guide-tips {
-  margin-top: 10px;
-  padding: 12px 16px;
+  margin-top: 12px;
+  padding: 14px 18px;
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 10px;
-  font-size: 13px;
+  border-radius: 12px;
+  font-size: 15px;
 }
 
 .destek-guide-tips strong {
@@ -1296,18 +1346,18 @@
 
 /* İstatistikler */
 .destek-hakkinda-stats {
-  padding: 32px;
+  padding: 36px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  margin-bottom: 32px;
+  border-radius: 18px;
+  margin-bottom: 36px;
 }
 
 .destek-stats-grid {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 48px;
+  gap: 56px;
 }
 
 .destek-stat-item {
@@ -1316,32 +1366,32 @@
 
 .destek-stat-number {
   display: block;
-  font-size: 32px;
+  font-size: 36px;
   font-weight: 800;
   color: var(--text-primary);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .destek-stat-label {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-muted);
 }
 
 .destek-stat-divider {
   width: 1px;
-  height: 48px;
+  height: 52px;
   background: rgba(255, 255, 255, 0.1);
 }
 
 /* Alt Bilgi */
 .destek-hakkinda-footer {
   text-align: center;
-  padding: 24px;
+  padding: 28px;
 }
 
 .destek-footer-content {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .destek-footer-content i {
@@ -1362,9 +1412,9 @@
 
 @keyframes destekIconPulse {
   0%, 100% { transform: rotate(0deg) scale(1); }
-  25% { transform: rotate(15deg) scale(1.1); }
-  50% { transform: rotate(-15deg) scale(1); }
-  75% { transform: rotate(0deg) scale(1.1); }
+  25% { transform: rotate(10deg) scale(1.05); }
+  50% { transform: rotate(-10deg) scale(1); }
+  75% { transform: rotate(0deg) scale(1.05); }
 }
 
 .destek-icon-float i {
@@ -1379,19 +1429,15 @@
 .destek-icon-rotate i {
   animation: destekIconRotate 1s ease-in-out;
   animation-delay: 3s;
-  animation-iteration-count: 1;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
 }
 
-.destek-icon-rotate:hover i {
-  animation: destekIconRotateHover 1s ease-in-out infinite;
-}
-
-@keyframes destekIconRotateHover {
-  0% { transform: rotate(0deg); }
+@keyframes destekIconRotate {
+  0%, 100% { transform: rotate(0deg); }
   25% { transform: rotate(15deg); }
   50% { transform: rotate(-15deg); }
   75% { transform: rotate(15deg); }
-  100% { transform: rotate(0deg); }
 }
 
 .destek-icon-sparkle i {
@@ -1410,34 +1456,7 @@
    ============================================================================== */
 
 @media (max-width: 768px) {
-  .destek-layout {
-    flex-direction: column;
-  }
-
-  .destek-sidebar {
-    width: 100%;
-    min-width: 100%;
-    padding: 16px;
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .destek-sidebar-section {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-  }
-
-  .destek-sidebar-title {
-    display: none;
-  }
-
-  .destek-nav-item {
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .destek-content {
+  .destek-content-full {
     padding: 20px;
   }
 
@@ -1451,7 +1470,7 @@
 
   .destek-nps-container {
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
   }
 
   .destek-nps-label-left,
@@ -1461,11 +1480,15 @@
 
   .destek-satisfaction-selector {
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
   }
 
   .destek-guide-card {
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
+  }
+
+  .destek-priority-container {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
