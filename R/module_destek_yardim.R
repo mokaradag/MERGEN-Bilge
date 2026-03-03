@@ -17,10 +17,10 @@ destekYardimUI <- function(id) {
         div(class = "destek-section-icon destek-icon-pulse",
           icon("circle-question")
         ),
-        h3(HTML("Yard\u0131m Merkezi")),
+        h3(HTML("Yardım Merkezi")),
         p(
           class = "destek-section-desc",
-          HTML("Herhangi bir sorunuz veya yard\u0131ma ihtiyac\u0131n\u0131z oldu\u011funda a\u015fa\u011f\u0131daki kanallardan bize ula\u015fabilirsiniz.")
+          HTML("Herhangi bir sorunuz veya yardıma ihtiyacınız olduğunda aşağıdaki kanallardan bize ulaşabilirsiniz.")
         )
       ),
       # İletişim kartları
@@ -34,7 +34,7 @@ destekYardimUI <- function(id) {
           ),
           h4("E-posta Destek"),
           p(class = "destek-contact-desc",
-            HTML("Sorular\u0131n\u0131z\u0131 ve taleplerinizi e-posta ile iletebilirsiniz. En k\u0131sa s\u00fcrede d\u00f6n\u00fc\u015f sa\u011flanacakt\u0131r.")
+            HTML("Sorularınızı ve taleplerinizi e-posta ile iletebilirsiniz. En kısa sürede dönüş sağlanacaktır.")
           ),
           tags$a(
             href = "mailto:destek@mergen.ai",
@@ -51,7 +51,7 @@ destekYardimUI <- function(id) {
           ),
           h4("Telefon Destek"),
           p(class = "destek-contact-desc",
-            HTML("Acil durumlar ve h\u0131zl\u0131 destek i\u00e7in telefon hatt\u0131m\u0131zdan bize ula\u015fabilirsiniz.")
+            HTML("Acil durumlar ve hızlı destek için telefon hattımızdan bize ulaşabilirsiniz.")
           ),
           tags$a(
             href = "tel:+908501234567",

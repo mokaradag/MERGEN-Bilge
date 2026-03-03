@@ -31,7 +31,7 @@ destekHataBildirUI <- function(id) {
               type = "text",
               class = "destek-text-input",
               id = ns("konu_1"),
-              placeholder = HTML("\u00d6rn: Profil resmi y\u00fcklenmiyor"),
+              placeholder = HTML("Örn: Profil resmi yüklenmiyor"),
               maxlength = "200"
             )
           )
@@ -50,7 +50,7 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_konular"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("L\u00fctfen t\u00fcm konu alanlar\u0131n\u0131 doldurun veya bo\u015f olanlar\u0131 silin.")
+          HTML("Lütfen tüm konu alanlarını doldurun veya boş olanları silin.")
         )
       ),
 
@@ -65,11 +65,11 @@ destekHataBildirUI <- function(id) {
           class = "destek-category-container",
           id = ns("kategori_container"),
           lapply(list(
-            list(id = "arayuz", label = HTML("Aray\u00fcz / Tasar\u0131m"), icon = "palette", renk = "purple"),
+            list(id = "arayuz", label = HTML("Arayüz / Tasarım"), icon = "palette", renk = "purple"),
             list(id = "fonksiyonellik", label = "Fonksiyonellik", icon = "wrench", renk = "blue"),
             list(id = "performans", label = "Performans", icon = "bolt", renk = "amber"),
-            list(id = "cokme", label = HTML("\u00c7\u00f6kme / Hata"), icon = "triangle-exclamation", renk = "red"),
-            list(id = "diger", label = HTML("Di\u011fer"), icon = "ellipsis", renk = "cyan")
+            list(id = "cokme", label = HTML("Çökme / Hata"), icon = "triangle-exclamation", renk = "red"),
+            list(id = "diger", label = HTML("Diğer"), icon = "ellipsis", renk = "cyan")
           ), function(kat) {
             div(
               class = paste0("destek-category-btn destek-cat-", kat$renk),
@@ -93,21 +93,21 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_kategoriler"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("L\u00fctfen en az bir kategori se\u00e7in.")
+          HTML("Lütfen en az bir kategori seçin.")
         )
       ),
 
       # Öncelik Seviyesi (Opsiyonel)
       div(
         class = "destek-form-group",
-        tags$label(class = "destek-form-label", HTML("\u00d6ncelik Seviyesi")),
+        tags$label(class = "destek-form-label", HTML("Öncelik Seviyesi")),
         div(
           class = "destek-priority-container",
           id = ns("oncelik_container"),
           lapply(list(
-            list(id = "dusuk", label = HTML("D\u00fc\u015f\u00fck"), renk = "blue"),
+            list(id = "dusuk", label = HTML("Düşük"), renk = "blue"),
             list(id = "orta", label = "Orta", renk = "amber"),
-            list(id = "yuksek", label = HTML("Y\u00fcksek"), renk = "orange"),
+            list(id = "yuksek", label = HTML("Yüksek"), renk = "orange"),
             list(id = "kritik", label = "Kritik", renk = "red")
           ), function(onc) {
             div(
@@ -135,14 +135,14 @@ destekHataBildirUI <- function(id) {
         class = "destek-form-group",
         tags$label(
           class = "destek-form-label destek-label-required",
-          HTML("A\u00e7\u0131klama & Yeniden \u00dcretme Ad\u0131mlar\u0131")
+          HTML("Açıklama & Yeniden Üretme Adımları")
         ),
         div(
           class = "destek-textarea-wrapper",
           tags$textarea(
             id = ns("hata_aciklama"),
             class = "destek-textarea destek-textarea-lg",
-            placeholder = HTML("Sorunu nas\u0131l ya\u015fad\u0131\u011f\u0131n\u0131z\u0131 ad\u0131m ad\u0131m anlat\u0131n..."),
+            placeholder = HTML("Sorunu nasıl yaşadığınızı adım adım anlatın..."),
             maxlength = "500",
             rows = 6,
             oninput = sprintf("destekUpdateCharCount(this, '%s')", ns("aciklama_counter"))
@@ -151,7 +151,7 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_aciklama_msg"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("L\u00fctfen a\u00e7\u0131klama alan\u0131n\u0131 doldurun.")
+          HTML("Lütfen açıklama alanını doldurun.")
         )
       ),
 
@@ -169,11 +169,11 @@ destekHataBildirUI <- function(id) {
           div(class = "destek-upload-content",
             icon("cloud-arrow-up", class = "destek-upload-icon"),
             p(class = "destek-upload-text",
-              HTML("Dosyalar\u0131 s\u00fcr\u00fckleyin veya"),
-              tags$span(class = "destek-upload-link", HTML("g\u00f6zat\u0131n"))
+              HTML("Dosyaları sürükleyin veya"),
+              tags$span(class = "destek-upload-link", HTML("gözatın"))
             ),
             p(class = "destek-upload-hint",
-              HTML("PNG, JPG, GIF, MP4 \u2022 Maks. 10MB"))
+              HTML("PNG, JPG, GIF, MP4 • Maks. 10MB"))
           )
         ),
         # Gizli dosya girişi
@@ -198,11 +198,11 @@ destekHataBildirUI <- function(id) {
           class = "destek-submit-wrapper",
           actionButton(
             ns("gonder_hata"),
-            label = tagList(icon("paper-plane"), HTML("G\u00f6nder")),
+            label = tagList(icon("paper-plane"), HTML("Gönder")),
             class = "destek-submit-btn"
           ),
           span(class = "destek-submit-hint",
-            HTML("\u2318 \u21b5 ile g\u00f6nder")
+            HTML("⌘ ↵ ile gönder")
           )
         )
       )
