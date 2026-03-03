@@ -1,7 +1,7 @@
 /* www/css/tts_visualizer.css */
-/* Açıklama: TTS görselleştirici stilleri. Tüm sayfalarda sabit konumlu,
-             içerik alanının üst kısmında ortalanmış olarak görüntülenir.
-             AI Uzman konuşması veya TTS seslendirmesi sırasında aktif olur. */
+/* Açıklama: TTS görselleştirici stilleri. Tüm sayfalarda sabit konumlu, 
+   içerik alanının üst kısmında ortalanmış olarak görüntülenir. 
+   AI Uzman konuşması veya TTS seslendirmesi sırasında aktif olur. */
 
 /* Sabit konumlu kapsayıcı (tüm sayfalarda görünür) */
 .tts-visualizer-floating-wrapper {
@@ -17,19 +17,19 @@
   transition: left 0.3s ease-in-out;
 }
 
-/* Sidebar kapatıldığında konum ayarı */
+/* Kenar çubuğu (sidebar) kapatıldığında konum ayarı */
 .sidebar-collapse .tts-visualizer-floating-wrapper {
   left: 50px;
 }
 
-/* Outer Wrapper */
+/* Dış Sarıcı Kapsayıcı */
 .tts-outer-wrapper {
   display: flex;
   align-items: center;
   pointer-events: auto;
 }
 
-/* Main Container */
+/* Ana Konteyner */
 .tts-visualizer-container {
   position: relative;
   width: 500px;
@@ -49,14 +49,14 @@
   box-sizing: border-box;
 }
 
-/* Talking Mode Active (Applied via JS/R) */
+/* Konuşma Modu Aktif (JS/R üzerinden uygulanır) */
 .tts-visualizer-container.talking-mode {
   cursor: pointer;
   border-color: rgba(124, 77, 255, 0.5);
   box-shadow: 0 0 20px rgba(124, 77, 255, 0.2), inset 0 0 15px rgba(0,0,0,0.3);
 }
 
-/* Character Info */
+/* Karakter Bilgileri */
 .tts-char-info {
   display: flex;
   align-items: center;
@@ -66,7 +66,7 @@
   z-index: 5;
 }
 
-/* Avatar */
+/* Profil Resmi (Avatar) */
 .tts-avatar-img {
   width: 42px;
   height: 42px;
@@ -76,7 +76,7 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
-/* Name */
+/* İsim Metni */
 .tts-name-text {
   font-family: 'Segoe UI', sans-serif;
   font-size: 1.5rem;
@@ -87,7 +87,7 @@
   letter-spacing: 0.5px;
 }
 
-/* Canvas */
+/* Çizim Alanı (Canvas) */
 .tts-canvas {
   display: block;
   flex-grow: 1;
@@ -97,7 +97,7 @@
   -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
 }
 
-/* TOOLTIP STYLES */
+/* İPUCU (TOOLTIP) STİLLERİ */
 .tts-tooltip {
   position: absolute;
   top: 50%;
@@ -135,23 +135,22 @@
   filter: drop-shadow(0 0 5px rgba(255, 82, 82, 0.4));
 }
 
-/* SHOW TOOLTIP ON HOVER (Only when Talking) */
+/* ÜZERİNE GELİNDİĞİNDE İPUCUNU GÖSTER (Sadece konuşurken) */
 .tts-visualizer-container.talking-mode:hover .tts-tooltip {
   opacity: 1;
 }
 
-/* Hide helper */
+/* Gizleme yardımcısı sınıfı */
 .tts-visualizer-container.shiny-visual-hidden {
   display: none !important;
 }
 
-/* Ana Söyleşi karşılama sayfası: visualizer'ı biraz aşağı al (başlık olmadığında) */
-/* Karşılama ekranında başlık gizli olduğundan gap oluşmasını önle */
+/* Ana Söyleşi karşılama sayfası: Başlık olmadığında görselleştiriciyi biraz aşağı kaydır */
 .tts-visualizer-floating-wrapper {
   margin-top: 4px;
 }
 
-/* Duyarlı tasarım */
+/* Duyarlı (Responsive) Tasarım */
 @media (max-width: 992px) {
   .tts-visualizer-floating-wrapper {
     left: 0;
