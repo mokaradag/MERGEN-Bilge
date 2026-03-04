@@ -28,7 +28,7 @@ destekUI <- function(id, sayfa = "yardim") {
   tagList(
     div(
       class = "destek-container",
-      # Sayfa başlığı (Sade başlık - sürüm bilgisi olmadan)
+      # Sayfa başlığı (sade - rozet veya sürüm bilgisi yok)
       fluidRow(
         column(
           width = 12,
@@ -36,10 +36,7 @@ destekUI <- function(id, sayfa = "yardim") {
             class = "chat-header settings-header-fixed",
             div(
               class = "chat-header-left",
-              h4(baslik, class = "page-title"),
-              span(class = "destek-badge",
-                icon(baslik_ikon), "DESTEK"
-              )
+              h4(baslik, class = "page-title")
             )
           )
         )

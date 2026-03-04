@@ -68,6 +68,7 @@ destekGeriBildirimUI <- function(id) {
               class = "destek-satisfaction-selector",
               id = ns("satisfaction_container"),
               lapply(1:5, function(i) {
+                # Emoji karakterleri doğrudan kullanılıyor
                 emojiler <- c(
                   "\U0001F621", # 1 - Çok Kötü
                   "\U0001F615", # 2 - Kötü
@@ -324,6 +325,7 @@ destekGeriBildirimServer <- function(id, current_user_id) {
       memnuniyet <- input$memnuniyet
       if (is.null(memnuniyet) || memnuniyet == "" || memnuniyet == "0") {
         shinyjs::show("hata_memnuniyet")
+        showToast(session, "Lütfen zorunlu alanları doldurun: Genel memnuniyetinizi belirtmeniz gerekiyor.", "error")
         return(invisible(NULL))
       }
       shinyjs::hide("hata_memnuniyet")

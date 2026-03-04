@@ -101,8 +101,9 @@
   align-items: center;
   gap: 12px;
   padding: 16px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.12);
   flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.6) 0%, rgba(49, 46, 129, 0.4) 100%);
 }
 
 .destek-chatbot-header-icon {

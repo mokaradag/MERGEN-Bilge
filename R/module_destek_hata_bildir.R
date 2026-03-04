@@ -175,7 +175,7 @@ destekHataBildirUI <- function(id) {
               tags$span(class = "destek-upload-link", "göz atın")
             ),
             p(class = "destek-upload-hint",
-              "PNG, JPG, GIF, MP4 \u2022 Maks. 10MB")
+              "PNG, JPG, GIF, MP4 • Maks. 10MB")
           )
         ),
         # Gizli dosya girişi
@@ -339,7 +339,10 @@ destekHataBildirServer <- function(id, current_user_id) {
         shinyjs::hide("hata_aciklama_msg")
       }
 
-      if (hatalar) return(invisible(NULL))
+      if (hatalar) {
+        showToast(session, "Lütfen zorunlu alanları doldurun: İşaretli alanları kontrol edin.", "error")
+        return(invisible(NULL))
+      }
 
       # Ek dosya yollarını topla
       dosyalar <- yuklenen_dosyalar()

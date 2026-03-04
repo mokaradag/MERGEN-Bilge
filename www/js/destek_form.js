@@ -554,3 +554,90 @@ document.addEventListener('keydown', function(e) {
     }
   }
 });
+
+// ==============================================================================
+// İSTATİSTİK SAYAÇ ANİMASYONU (Hakkında sayfası)
+// ==============================================================================
+
+/**
+ * Sayfa kaydırıldığında istatistik sayılarını animasyonla sayar
+ * IntersectionObserver kullanarak görünürlük takibi yapar
+ */
+(function() {
+  var animated = false;
+
+  function animateCounters() {
+    if (animated) return;
+
+    var counters = document.querySelectorAll('.destek-stat-animated');
+    if (counters.length === 0) return;
+
+    animated = true;
+
+    counters.forEach(function(counter) {
+      var target = parseInt(counter.getAttribute('data-target'), 10);
+      var suffix = counter.getAttribute('data-suffix') || '';
+      var duration = 1500;
+      var startTime = null;
+
+      function step(timestamp) {
+        if (!startTime) startTime = timestamp;
+        var progress = Math.min((timestamp - startTime) / duration, 1);
+        // Yavaşlayan eğri (ease-out)
+        var easedProgress = 1 - Math.pow(1 - progress, 3);
+        var current = Math.round(easedProgress * target);
+        counter.textContent = current + suffix;
+
+        if (progress < 1) {
+          requestAnimationFrame(step);
+        }
+      }
+
+      requestAnimationFrame(step);
+    });
+  }
+
+  // IntersectionObserver ile görünürlük takibi
+  function setupObserver() {
+    var statsSection = document.getElementById('destek-stats-section');
+    if (!statsSection) return;
+
+    if ('IntersectionObserver' in window) {
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            animateCounters();
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.3 });
+      observer.observe(statsSection);
+    } else {
+      // Eski tarayıcılar için geri dönüş
+      animateCounters();
+    }
+  }
+
+  // Sayfa yüklendiğinde veya Shiny sayfası açıldığında
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupObserver);
+  } else {
+    setupObserver();
+  }
+
+  // Shiny sekme değişikliklerini dinle (Hakkında sayfasına geçildiğinde)
+  $(document).on('shiny:value', function() {
+    setTimeout(function() {
+      animated = false;
+      setupObserver();
+    }, 200);
+  });
+
+  // Sidebar menü tıklamalarını da dinle
+  $(document).on('click', '.sidebar-menu a', function() {
+    setTimeout(function() {
+      animated = false;
+      setupObserver();
+    }, 500);
+  });
+})();
