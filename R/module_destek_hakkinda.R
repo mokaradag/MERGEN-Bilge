@@ -197,20 +197,37 @@ destekHakkindaUI <- function(id) {
         )
       ),
 
-      # İstatistikler
+      # İstatistikler (sayılar sayfa kaydırıldığında animasyonlu sayar)
       div(
         class = "destek-hakkinda-stats",
+        id = "destek-stats-section",
         h3(class = "destek-hakkinda-section-title", "Sürekli Gelişiyoruz"),
         div(
           class = "destek-stats-grid",
           div(class = "destek-stat-item",
-            span(class = "destek-stat-number", "99%"),
+            div(class = "destek-stat-icon-wrapper destek-stat-icon-green",
+              icon("face-smile")
+            ),
+            span(
+              class = "destek-stat-number destek-stat-animated",
+              `data-target` = "99",
+              `data-suffix` = "%",
+              "0%"
+            ),
             span(class = "destek-stat-label", "Memnuniyet")
           ),
           div(class = "destek-stat-divider"),
           div(class = "destek-stat-item",
-            span(class = "destek-stat-number", "5"),
-            span(class = "destek-stat-label", "Benzersiz Karakter")
+            div(class = "destek-stat-icon-wrapper destek-stat-icon-blue",
+              icon("microchip")
+            ),
+            span(
+              class = "destek-stat-number destek-stat-animated",
+              `data-target` = "10",
+              `data-suffix` = "+",
+              "0+"
+            ),
+            span(class = "destek-stat-label", "Yapay Zeka Aracı")
           )
         )
       ),
@@ -222,7 +239,7 @@ destekHakkindaUI <- function(id) {
           class = "destek-footer-content",
           icon("heart"),
           " Özenle geliştirildi",
-          span(class = "destek-footer-divider", "\u2022"),
+          span(class = "destek-footer-divider", "•"),
           "Sürüm 0.9"
         )
       )

@@ -70,7 +70,7 @@ destekYardimUI <- function(id) {
           div(class = "destek-contact-card-body",
             h4(class = "destek-phone-title", "Telefon Destek"),
             p(class = "destek-contact-desc",
-              "Acil durumlar ve anında destek gerektiren konular için müşteri hizmetlerimizi arayabilirsiniz."
+              "Destek gerektiren konular için aşağıdaki numarayı arayabilirsiniz."
             ),
             tags$a(
               href = "tel:+908501234567",
@@ -202,7 +202,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
       gecmis <- sohbet_gecmisi()
       gecmis[[length(gecmis) + 1]] <- list(role = "user", content = kullanici_mesaji)
 
-      # LLM'e gönder
+      # LLM'e gönder (helpers_ai_expert.R ile aynı desen)
       tryCatch({
         # Destek chatbot modeli
         chatbot_model <- Sys.getenv("DESTEK_CHATBOT_MODEL", unset = "")
@@ -213,20 +213,14 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           chatbot_model <- Sys.getenv("FILTER_MODEL", unset = "")
         }
 
-        # API ayarları
+        # API uç noktası
         api_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", unset = "")
-        api_key <- NULL
-
-        # Kullanıcının şifrelenmiş API anahtarını al
-        if (!is.null(current_user_id)) {
-          tryCatch({
-            api_key <- get_user_api_key(current_user_id)
-          }, error = function(e) NULL)
-        }
-
         if (!nzchar(api_endpoint)) {
           stop("LLM endpoint tanımlı değil.")
         }
+
+        # API anahtarı (.Renviron'dan)
+        api_key <- Sys.getenv("LOCAL_LLM_API_KEY", unset = "")
 
         # Sistem mesajı
         sistem_mesaji <- paste0(
@@ -256,52 +250,66 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           mesajlar[[length(mesajlar) + 1]] <- m
         }
 
-        # API çağrısı
-        headers <- c(
-          "Content-Type" = "application/json"
-        )
-        if (!is.null(api_key) && nzchar(api_key)) {
-          headers["Authorization"] <- paste("Bearer", api_key)
-        }
+        # Başlıklar (helpers_ai_expert.R ile aynı desen)
+        hds <- list(`Content-Type` = "application/json")
+        if (nzchar(api_key)) hds$Authorization <- paste("Bearer", api_key)
 
+        # İstek gövdesi
         body <- list(
           model = chatbot_model,
           messages = mesajlar,
+          stream = FALSE,
           temperature = 0.3,
           max_tokens = 800
         )
 
+        # API çağrısı (httr encode = "json" kullan - kanıtlanmış yöntem)
         response <- httr::POST(
           url = api_endpoint,
-          httr::add_headers(.headers = headers),
-          body = jsonlite::toJSON(body, auto_unbox = TRUE),
-          encode = "raw",
-          httr::content_type_json(),
-          httr::timeout(30)
+          body = body,
+          encode = "json",
+          do.call(httr::add_headers, hds),
+          httr::timeout(60)
         )
 
-        if (httr::status_code(response) == 200) {
-          yanit_json <- jsonlite::fromJSON(httr::content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
-          bot_yaniti <- yanit_json$choices[[1]]$message$content
+        if (httr::status_code(response) < 400) {
+          parsed <- httr::content(response, "parsed")
 
-          # Geçmişe ekle
-          gecmis[[length(gecmis) + 1]] <- list(role = "assistant", content = bot_yaniti)
-          sohbet_gecmisi(gecmis)
+          bot_yaniti <- NULL
+          if (is.list(parsed$choices) && length(parsed$choices) > 0) {
+            choice <- parsed$choices[[1]]
+            if (!is.null(choice$message) && !is.null(choice$message$content)) {
+              bot_yaniti <- trimws(choice$message$content)
+            }
+          }
 
-          # Düşünme animasyonunu gizle ve yanıtı göster
-          shinyjs::runjs(sprintf(
-            "destekChatbotDusunmeGizle('%s');", ns("")
-          ))
-          shinyjs::runjs(sprintf(
-            "destekChatbotMesajEkle('%s', %s, 'bot');",
-            ns(""),
-            jsonlite::toJSON(bot_yaniti, auto_unbox = TRUE)
-          ))
+          if (!is.null(bot_yaniti) && nzchar(bot_yaniti)) {
+            # Geçmişe ekle
+            gecmis[[length(gecmis) + 1]] <- list(role = "assistant", content = bot_yaniti)
+            sohbet_gecmisi(gecmis)
+
+            # Düşünme animasyonunu gizle ve yanıtı göster
+            shinyjs::runjs(sprintf(
+              "destekChatbotDusunmeGizle('%s');", ns("")
+            ))
+            shinyjs::runjs(sprintf(
+              "destekChatbotMesajEkle('%s', %s, 'bot');",
+              ns(""),
+              jsonlite::toJSON(bot_yaniti, auto_unbox = TRUE)
+            ))
+          } else {
+            sohbet_gecmisi(gecmis)
+            shinyjs::runjs(sprintf("destekChatbotDusunmeGizle('%s');", ns("")))
+            shinyjs::runjs(sprintf(
+              "destekChatbotMesajEkle('%s', %s, 'bot');",
+              ns(""),
+              jsonlite::toJSON("Üzgünüm, yanıt oluşturulamadı. Lütfen daha sonra tekrar deneyin.", auto_unbox = TRUE)
+            ))
+          }
         } else {
+          cat(sprintf("[DESTEK CHATBOT] API HTTP hatası: %d\n", httr::status_code(response)))
           sohbet_gecmisi(gecmis)
-          shinyjs::runjs(sprintf(
-            "destekChatbotDusunmeGizle('%s');", ns("")
-          ))
+          shinyjs::runjs(sprintf("destekChatbotDusunmeGizle('%s');", ns("")))
           shinyjs::runjs(sprintf(
             "destekChatbotMesajEkle('%s', %s, 'bot');",
             ns(""),
@@ -312,9 +320,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
       }, error = function(e) {
         cat("[DESTEK CHATBOT] Hata:", conditionMessage(e), "\n")
         sohbet_gecmisi(gecmis)
-        shinyjs::runjs(sprintf(
-          "destekChatbotDusunmeGizle('%s');", ns("")
-        ))
+        shinyjs::runjs(sprintf("destekChatbotDusunmeGizle('%s');", ns("")))
         shinyjs::runjs(sprintf(
           "destekChatbotMesajEkle('%s', %s, 'bot');",
           ns(""),
