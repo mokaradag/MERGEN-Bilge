@@ -31,10 +31,7 @@
   letter-spacing: 0.5px;
 }
 
-.destek-version-info {
-  color: var(--text-muted);
-  font-size: 13px;
-}
+/* Sürüm bilgisi başlıktan kaldırıldı */
 
 /* ==============================================================================
    İÇERİK ALANI (SIDEBAR YOK - TAM GENİŞLİK)
@@ -98,7 +95,7 @@
    ============================================================================== */
 
 .destek-yardim-container {
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -186,9 +183,6 @@
   border-radius: 14px;
   padding: 4px;
   margin-bottom: 28px;
-  max-width: 900px;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .destek-tab-btn {
@@ -252,13 +246,15 @@
 
 @keyframes destekBugWalk {
   0% { transform: translateY(12px) rotate(0deg); opacity: 0; }
-  10% { opacity: 1; }
-  20% { transform: translateY(6px) rotate(-15deg); }
-  40% { transform: translateY(0px) rotate(15deg); }
-  60% { transform: translateY(-6px) rotate(-15deg); }
-  80% { transform: translateY(-12px) rotate(15deg); }
-  90% { opacity: 1; }
-  100% { transform: translateY(-12px) rotate(0deg); opacity: 0; }
+  5% { opacity: 1; }
+  15% { transform: translateY(8px) rotate(-15deg); }
+  30% { transform: translateY(4px) rotate(15deg); }
+  45% { transform: translateY(0px) rotate(-15deg); }
+  60% { transform: translateY(-4px) rotate(15deg); }
+  75% { transform: translateY(-8px) rotate(-15deg); }
+  90% { transform: translateY(-12px) rotate(0deg); opacity: 1; }
+  95% { opacity: 0; }
+  100% { transform: translateY(12px) rotate(0deg); opacity: 0; }
 }
 
 /* Aktif olmadığında normal pozisyon */
@@ -272,7 +268,7 @@
    ============================================================================== */
 
 .destek-feedback-container {
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -1132,7 +1128,7 @@
    ============================================================================== */
 
 .destek-hakkinda-container {
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
 }
 

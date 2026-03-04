@@ -138,6 +138,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/citation_styles.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/ai_expert_subtitle.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_page.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_yardim_chatbot.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -234,6 +235,7 @@ ui <- dashboardPage(
     tags$script(src = "js/citation_handler.js"),
     tags$script(src = "js/ai_expert_manager.js"),
     tags$script(src = "js/destek_form.js"),
+    tags$script(src = "js/destek_yardim_chatbot.js"),
 
     tags$div(id = "toast-container", class = "toast-container")
   ),

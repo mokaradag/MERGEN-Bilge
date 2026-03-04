@@ -1,0 +1,387 @@
+/* Dosya Yolu: www/css/destek_yardim_chatbot.css */
+/* Açıklama: Yardım Merkezi yapay zeka sohbet asistanı stilleri.
+   Modern/koyu tema tasarım, mesaj balonları ve düşünme animasyonu. */
+
+/* ==============================================================================
+   YARDIM MERKEZİ KOMPAKT BAŞLIK
+   ============================================================================== */
+
+.destek-yardim-header-compact {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.destek-yardim-header-compact .destek-section-icon {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.destek-yardim-header-compact .destek-yardim-header-text h3 {
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.destek-yardim-header-compact .destek-section-desc {
+  text-align: left;
+  margin: 0;
+  max-width: none;
+}
+
+/* ==============================================================================
+   İLETİŞİM KARTLARI (GENİŞ VE KOMPAKT)
+   ============================================================================== */
+
+.destek-contact-grid-wide {
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.destek-contact-card-wide {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 24px;
+  text-align: left;
+}
+
+.destek-contact-card-wide .destek-contact-icon {
+  margin-bottom: 0;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  font-size: 20px;
+}
+
+.destek-contact-card-wide .destek-contact-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.destek-contact-card-wide h4 {
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+
+.destek-contact-card-wide .destek-contact-desc {
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.destek-contact-card-wide .destek-contact-link {
+  font-size: 14px;
+}
+
+/* ==============================================================================
+   CHATBOT ANA KONTEYNER
+   ============================================================================== */
+
+.destek-chatbot-container {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: calc(100vh - 380px);
+  min-height: 350px;
+}
+
+/* ==============================================================================
+   CHATBOT BAŞLIK
+   ============================================================================== */
+
+.destek-chatbot-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.destek-chatbot-header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+  color: #a5b4fc;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.destek-chatbot-header-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.destek-chatbot-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.destek-chatbot-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.destek-chatbot-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4ade80;
+}
+
+.destek-chatbot-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+
+/* ==============================================================================
+   MESAJ ALANI
+   ============================================================================== */
+
+.destek-chatbot-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-behavior: smooth;
+}
+
+/* Kaydırma çubuğu stili */
+.destek-chatbot-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.destek-chatbot-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.destek-chatbot-messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.destek-chatbot-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ==============================================================================
+   MESAJ BALONLARI
+   ============================================================================== */
+
+.destek-chatbot-message {
+  display: flex;
+  gap: 10px;
+  animation: destekChatbotFadeIn 0.3s ease;
+}
+
+@keyframes destekChatbotFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Bot mesajı (sol tarafa hizalı) */
+.destek-chatbot-message-bot {
+  align-self: flex-start;
+  max-width: 85%;
+}
+
+.destek-chatbot-message-bot .destek-chatbot-bubble {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  color: var(--text-primary);
+  border-radius: 4px 16px 16px 16px;
+}
+
+/* Kullanıcı mesajı (sağ tarafa hizalı) */
+.destek-chatbot-message-user {
+  align-self: flex-end;
+  max-width: 75%;
+  flex-direction: row-reverse;
+}
+
+.destek-chatbot-message-user .destek-chatbot-bubble {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border-radius: 16px 4px 16px 16px;
+}
+
+/* Balon ortak stilleri */
+.destek-chatbot-bubble {
+  padding: 12px 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* Bot avatarı */
+.destek-chatbot-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+  color: #a5b4fc;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* ==============================================================================
+   DÜŞÜNME ANİMASYONU (Basit nokta animasyonu)
+   ============================================================================== */
+
+.destek-chatbot-thinking {
+  display: flex;
+  gap: 10px;
+  align-self: flex-start;
+  padding: 0 24px 16px;
+}
+
+.destek-chatbot-thinking-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 18px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 4px 16px 16px 16px;
+}
+
+.destek-thinking-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a5b4fc;
+  animation: destekThinkingBounce 1.2s ease-in-out infinite;
+}
+
+.destek-thinking-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.destek-thinking-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes destekThinkingBounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+/* ==============================================================================
+   MESAJ GİRİŞ ALANI
+   ============================================================================== */
+
+.destek-chatbot-input-area {
+  display: flex;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.destek-chatbot-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: var(--font-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.destek-chatbot-input:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.destek-chatbot-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.destek-chatbot-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.destek-chatbot-send-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
+  transform: scale(1.05);
+  color: white;
+}
+
+.destek-chatbot-send-btn:active {
+  transform: scale(0.95);
+}
+
+/* ==============================================================================
+   DUYARLI TASARIM
+   ============================================================================== */
+
+@media (max-width: 768px) {
+  .destek-yardim-header-compact {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .destek-yardim-header-compact .destek-section-desc {
+    text-align: center;
+  }
+
+  .destek-contact-grid-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .destek-contact-card-wide {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .destek-chatbot-container {
+    height: calc(100vh - 500px);
+    min-height: 300px;
+  }
+}

@@ -141,7 +141,17 @@ Pratik İpuçları:
 Kullanıcıların yardım alabileceği, geri bildirimde bulunabileceği ve hata bildirebileceği kapsamlı destek sayfası. Üç alt bölümden oluşur:
 
 #### 3.5.1 Yardım Merkezi
-E-posta ve telefon destek kanallarının yer aldığı iletişim sayfası. Kullanıcılar herhangi bir sorunla karşılaştıklarında veya yardıma ihtiyaç duyduklarında bu kanallardan destek ekibine ulaşabilirler.
+E-posta ve telefon destek kanalları ile yapay zeka destekli sohbet asistanının yer aldığı kapsamlı yardım sayfası.
+
+İletişim Kanalları:
+- E-posta Destek: destek@mergen.ai adresine e-posta göndererek destek talebi oluşturabilirsiniz. E-posta bağlantısına tıkladığınızda hazır bir şablon açılır.
+- Telefon Destek: +90 850 123 45 67 numarasını arayarak acil durumlar ve anında destek gerektiren konularda yardım alabilirsiniz.
+
+Yardım Asistanı (Yapay Zeka Sohbet Botu):
+- Sayfanın alt kısmında yer alan yapay zeka destekli sohbet asistanı, MERGEN Bilge uygulaması hakkındaki sorularınızı yanıtlar.
+- Asistan yalnızca uygulama ile ilgili konularda bilgi verir; uygulama dışı konularda E-posta veya Telefon Destek kanallarına yönlendirir.
+- Soru sormak için metin kutusuna yazın ve Enter tuşuna basın veya gönder butonuna tıklayın.
+- Asistan, uygulamanın tüm sayfaları, özellikleri, kısayolları ve kullanım ipuçları hakkında bilgi verebilir.
 
 #### 3.5.2 Geri Bildirim & Hata Bildirimi
 İki sekmeli bir yapıda sunulan kapsamlı geri bildirim aracı:

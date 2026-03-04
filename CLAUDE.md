@@ -12,7 +12,7 @@
 - **System Health Monitoring**: Real-time service status and logging
 - **AI Integration**: LLM API calls with MCP (Model Context Protocol) tool support
 - **Advanced Features**: Image generation, visual gallery, analytics, and custom project analysis
-- **Support Pages (Destek)**: Help center, feedback collection (satisfaction + NPS + tags), bug reporting with file attachments, and about page with app guide
+- **Support Pages (Destek)**: Help center with AI chatbot assistant (knowledge base: ai_rehber.md), feedback collection (satisfaction + NPS + tags), bug reporting with file attachments, and about page with app guide
 
 ---
 
@@ -87,7 +87,7 @@ Shiny modules for major UI sections and features:
 - **`module_followup_questions.R`**: Auto-generated follow-up questions
 - **`module_feedback.R`**: User feedback collection
 - **`module_destek.R`**: Support page coordinator (Yardım Merkezi, Geri Bildirim & Hata, Hakkında)
-- **`module_destek_yardim.R`**: Help center with contact information
+- **`module_destek_yardim.R`**: Help center with contact information and AI chatbot assistant (uses ai_rehber.md as knowledge base, model configured via DESTEK_CHATBOT_MODEL in .Renviron)
 - **`module_destek_geri_bildirim.R`**: Feedback form (satisfaction, NPS, tags, comments)
 - **`module_destek_hata_bildir.R`**: Bug report form (topics, categories, priority, attachments)
 - **`module_destek_hakkinda.R`**: About page with app features and page guide
@@ -288,6 +288,11 @@ TRANSLATION_MODEL=<model-name>    # For prompt translation
 ### File Storage
 ```
 MCP_FILES_BASE=//server/share/uploads  # UNC or local path for MCP file storage
+```
+
+### Destek Chatbot
+```
+DESTEK_CHATBOT_MODEL=<model-name>  # AI chatbot model for Help Center (falls back to AI_EXPERT_MODEL or FILTER_MODEL)
 ```
 
 ### Other
@@ -589,7 +594,15 @@ Example: `claude/add-claude-documentation-DbQhd`
 
 ---
 
+### www/ Static Assets - Destek Specific
+```
+www/css/destek_page.css              # Main destek pages styling (full-width layout, forms, animations)
+www/css/destek_yardim_chatbot.css    # Help Center AI chatbot styling (dark theme, message bubbles, thinking animation)
+www/js/destek_form.js                # Form interactions (satisfaction, NPS, tags, categories, priority, file upload, validation)
+www/js/destek_yardim_chatbot.js      # Chatbot client-side logic (message sending, display, thinking indicator)
+```
+
 ## Last Updated
-March 3, 2026
+March 4, 2026
 
 **Note**: This documentation reflects the current state of the codebase. For specific implementation details, always refer to the actual source code and inline comments in R files.

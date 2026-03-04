@@ -30,10 +30,11 @@ destekHataBildirUI <- function(id) {
             `data-index` = "1",
             tags$input(
               type = "text",
-              class = "destek-text-input",
+              class = "destek-text-input destek-konu-input",
               id = ns("konu_1"),
-              placeholder = HTML("\u00d6rn: Profil resmi y\u00fcklenmiyor"),
-              maxlength = "200"
+              placeholder = "Örn: Profil resmi yüklenmiyor",
+              maxlength = "200",
+              oninput = sprintf("destekCollectKonular('%s')", ns(""))
             )
           )
         ),
@@ -51,7 +52,7 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_konular"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("L\u00fctfen t\u00fcm konu alanlar\u0131n\u0131 doldurun veya bo\u015f olanlar\u0131 silin.")
+          "Lütfen en az bir konu girin."
         )
       ),
 
@@ -66,11 +67,11 @@ destekHataBildirUI <- function(id) {
           class = "destek-category-container",
           id = ns("kategori_container"),
           lapply(list(
-            list(id = "arayuz", label = HTML("Aray\u00fcz / Tasar\u0131m"), icon = "palette", renk = "purple"),
+            list(id = "arayuz", label = "Arayüz / Tasarım", icon = "palette", renk = "purple"),
             list(id = "fonksiyonellik", label = "Fonksiyonellik", icon = "wrench", renk = "blue"),
             list(id = "performans", label = "Performans", icon = "bolt", renk = "amber"),
-            list(id = "cokme", label = HTML("\u00c7\u00f6kme / Hata"), icon = "triangle-exclamation", renk = "red"),
-            list(id = "diger", label = HTML("Di\u011fer"), icon = "ellipsis", renk = "cyan")
+            list(id = "cokme", label = "Çökme / Hata", icon = "triangle-exclamation", renk = "red"),
+            list(id = "diger", label = "Diğer", icon = "ellipsis", renk = "cyan")
           ), function(kat) {
             div(
               class = paste0("destek-category-btn destek-cat-", kat$renk),
@@ -94,25 +95,25 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_kategoriler"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("L\u00fctfen en az bir kategori se\u00e7in.")
+          "Lütfen en az bir kategori seçin."
         )
       ),
 
-      # Öncelik Seviyesi (Opsiyonel)
+      # Öncelik Seviyesi (Opsiyonel - seçim iptal edilebilir)
       div(
         class = "destek-form-group",
-        tags$label(class = "destek-form-label", HTML("\u00d6ncelik Seviyesi")),
+        tags$label(class = "destek-form-label", "Öncelik Seviyesi"),
         div(
           class = "destek-priority-container",
           id = ns("oncelik_container"),
           lapply(list(
-            list(id = "dusuk", label = HTML("D\u00fc\u015f\u00fck"), renk = "blue"),
+            list(id = "dusuk", label = "Düşük", renk = "blue"),
             list(id = "orta", label = "Orta", renk = "amber"),
-            list(id = "yuksek", label = HTML("Y\u00fcksek"), renk = "orange"),
+            list(id = "yuksek", label = "Yüksek", renk = "orange"),
             list(id = "kritik", label = "Kritik", renk = "red")
           ), function(onc) {
             div(
-              class = paste0("destek-priority-btn", if (onc$id == "orta") " active" else ""),
+              class = "destek-priority-btn",
               `data-priority` = onc$id,
               onclick = sprintf(
                 "destekSelectPriority(this, '%s')",
@@ -127,7 +128,7 @@ destekHataBildirUI <- function(id) {
           type = "hidden",
           id = ns("secili_oncelik"),
           name = ns("secili_oncelik"),
-          value = "orta"
+          value = ""
         )
       ),
 
@@ -136,14 +137,14 @@ destekHataBildirUI <- function(id) {
         class = "destek-form-group",
         tags$label(
           class = "destek-form-label destek-label-required",
-          HTML("A\u00e7\u0131klama & Yeniden \u00dcretme Ad\u0131mlar\u0131")
+          "Açıklama & Yeniden Üretme Adımları"
         ),
         div(
           class = "destek-textarea-wrapper",
           tags$textarea(
             id = ns("hata_aciklama"),
             class = "destek-textarea destek-textarea-lg",
-            placeholder = HTML("Sorunu nas\u0131l ya\u015fad\u0131\u011f\u0131n\u0131z\u0131 ad\u0131m ad\u0131m anlat\u0131n..."),
+            placeholder = "Sorunu nasıl yaşadığınızı adım adım anlatın...",
             maxlength = "500",
             rows = 6,
             oninput = sprintf("destekUpdateCharCount(this, '%s')", ns("aciklama_counter"))
@@ -152,7 +153,7 @@ destekHataBildirUI <- function(id) {
         ),
         div(id = ns("hata_aciklama_msg"), class = "destek-error-msg", style = "display:none;",
           icon("circle-exclamation"),
-          HTML("L\u00fctfen a\u00e7\u0131klama alan\u0131n\u0131 doldurun.")
+          "Lütfen açıklama alanını doldurun."
         )
       ),
 
@@ -170,11 +171,11 @@ destekHataBildirUI <- function(id) {
           div(class = "destek-upload-content",
             icon("cloud-arrow-up", class = "destek-upload-icon"),
             p(class = "destek-upload-text",
-              HTML("Dosyalar\u0131 s\u00fcr\u00fckleyin veya"),
-              tags$span(class = "destek-upload-link", HTML("g\u00f6zat\u0131n"))
+              "Dosyaları sürükleyin veya ",
+              tags$span(class = "destek-upload-link", "göz atın")
             ),
             p(class = "destek-upload-hint",
-              HTML("PNG, JPG, GIF, MP4 \u2022 Maks. 10MB"))
+              "PNG, JPG, GIF, MP4 \u2022 Maks. 10MB")
           )
         ),
         # Gizli dosya girişi
@@ -192,16 +193,16 @@ destekHataBildirUI <- function(id) {
         )
       ),
 
-      # Gönder butonu - klavye kısayolu tooltip olarak
+      # Gönder butonu
       div(
         class = "destek-form-actions",
         div(
           class = "destek-submit-wrapper",
           actionButton(
             ns("gonder_hata"),
-            label = tagList(icon("paper-plane"), HTML("G\u00f6nder")),
+            label = tagList(icon("paper-plane"), "Gönder"),
             class = "destek-submit-btn",
-            title = "\u2318 + Enter ile g\u00f6nder"
+            title = "Ctrl + Enter ile gönder"
           )
         )
       )
@@ -232,7 +233,7 @@ destekHataBildirServer <- function(id, current_user_id) {
 
       # Dosya boyutu kontrolü (10MB)
       if (!is.null(dosya_verisi$size) && dosya_verisi$size > 10 * 1024 * 1024) {
-        showToast(session, "Dosya boyutu 10MB'dan b\u00fcy\u00fck olamaz.", "error")
+        showToast(session, "Dosya boyutu 10MB'dan büyük olamaz.", "error")
         return()
       }
 
@@ -274,7 +275,7 @@ destekHataBildirServer <- function(id, current_user_id) {
         for (i in seq_len(nrow(dosyalar))) {
           dosya <- dosyalar[i, ]
           if (dosya$size > 10 * 1024 * 1024) {
-            showToast(session, paste0(dosya$name, " dosyas\u0131 10MB s\u0131n\u0131r\u0131n\u0131 a\u015f\u0131yor."), "error")
+            showToast(session, paste0(dosya$name, " dosyası 10MB sınırını aşıyor."), "error")
             next
           }
 
@@ -311,7 +312,7 @@ destekHataBildirServer <- function(id, current_user_id) {
     observeEvent(input$gonder_hata, {
       hatalar <- FALSE
 
-      # Konuları topla (JS'den gelen birleştirilmiş metin)
+      # Konuları topla (JS oninput ile sürekli güncelleniyor)
       konular_text <- input$konular_birlesik
       if (is.null(konular_text) || !nzchar(trimws(konular_text %||% ""))) {
         shinyjs::show("hata_konular")
@@ -354,7 +355,7 @@ destekHataBildirServer <- function(id, current_user_id) {
           user_id = current_user_id,
           konular = konular_text,
           kategoriler = kategoriler,
-          oncelik = input$secili_oncelik %||% "orta",
+          oncelik = if (!is.null(input$secili_oncelik) && nzchar(input$secili_oncelik)) input$secili_oncelik else "belirtilmedi",
           aciklama = aciklama,
           ek_dosya_yollari = ek_yollari
         )
@@ -368,7 +369,7 @@ destekHataBildirServer <- function(id, current_user_id) {
 
       }, error = function(e) {
         cat("[DESTEK] Hata bildirimi kaydedilemedi:", conditionMessage(e), "\n")
-        showToast(session, "Hata bildirimi kaydedilemedi. L\u00fctfen tekrar deneyin.", "error")
+        showToast(session, "Hata bildirimi kaydedilemedi. Lütfen tekrar deneyin.", "error")
       })
     })
 
