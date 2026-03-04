@@ -23,10 +23,10 @@ destekHakkindaUI <- function(id) {
             icon("wand-magic-sparkles")
           ),
           h2(class = "destek-hakkinda-title",
-            HTML("MERGEN Bilge ile Tanışın")
+            "MERGEN Bilge ile Tanışın"
           ),
           p(class = "destek-hakkinda-subtitle",
-            HTML("Türk ve Altay mitolojisinden esinlenen, kurumsal ortamlar için tasarlanmış gelişmiş yapay zeka asistanınız.")
+            "Türk ve Altay mitolojisinden esinlenen, kurumsal ortamlar için tasarlanmış gelişmiş yapay zeka asistanınız."
           )
         )
       ),
@@ -35,7 +35,7 @@ destekHakkindaUI <- function(id) {
       div(
         class = "destek-hakkinda-features",
         h3(class = "destek-hakkinda-section-title",
-          HTML("Temel Özellikler")
+          "Temel Özellikler"
         ),
         div(
           class = "destek-features-grid",
@@ -45,8 +45,8 @@ destekHakkindaUI <- function(id) {
             div(class = "destek-feature-icon",
               icon("bolt")
             ),
-            h4(HTML("Akıllı Sohbet")),
-            p(HTML("Doğal dilde soru sorma, analiz isteme ve fikir alışverişi. Gerçek zamanlı akış (streaming) ile hızlı yanıtlar, kod vurgulama ve takip soruları desteği."))
+            h4("Akıllı Sohbet"),
+            p("Doğal dilde soru sorma, analiz isteme ve fikir alışverişi. Gerçek zamanlı akış (streaming) ile hızlı yanıtlar, kod vurgulama ve takip soruları desteği.")
           ),
           # Kart 2: Güvenlik
           div(
@@ -54,8 +54,8 @@ destekHakkindaUI <- function(id) {
             div(class = "destek-feature-icon",
               icon("shield-halved")
             ),
-            h4(HTML("Üstün Güvenlik")),
-            p(HTML("Tüm sohbetler kullanıcı bazında ayrı tutulur. API anahtarları şifrelenerek saklanır. Oturum zaman aşımı ile güvenlik sağlanır."))
+            h4("Üstün Güvenlik"),
+            p("Tüm sohbetler kullanıcı bazında ayrı tutulur. API anahtarları şifrelenerek saklanır. Oturum zaman aşımı ile güvenlik sağlanır.")
           ),
           # Kart 3: Dosya Analizi
           div(
@@ -63,8 +63,8 @@ destekHakkindaUI <- function(id) {
             div(class = "destek-feature-icon",
               icon("microchip")
             ),
-            h4(HTML("Akıllı Dosya Analizi")),
-            p(HTML("Excel, PDF, Word, RData ve daha birçok format desteklenir. MCP araçlarıyla derinlemesine analiz, özetleme ve veri işleme yetenekleri."))
+            h4("Akıllı Dosya Analizi"),
+            p("Excel, PDF, Word, RData ve daha birçok format desteklenir. MCP araçlarıyla derinlemesine analiz, özetleme ve veri işleme yetenekleri.")
           ),
           # Kart 4: Çoklu Karakter
           div(
@@ -73,7 +73,7 @@ destekHakkindaUI <- function(id) {
               icon("globe")
             ),
             h4("5 Benzersiz Karakter"),
-            p(HTML("Türk ve Altay mitolojisinden esinlenen 5 farklı karakter. Her biri farklı uzmanlık alanı ve iletişim tarzına sahip."))
+            p("Türk ve Altay mitolojisinden esinlenen 5 farklı karakter. Her biri farklı uzmanlık alanı ve iletişim tarzına sahip.")
           )
         )
       ),
@@ -83,7 +83,7 @@ destekHakkindaUI <- function(id) {
         class = "destek-hakkinda-guide",
         h3(class = "destek-hakkinda-section-title", "Sayfa Rehberi"),
         p(class = "destek-hakkinda-guide-intro",
-          HTML("MERGEN Bilge'nin her sayfası, farklı bir ihtiyaca yönelik tasarlanmıştır. Aşağıda her sayfanın detaylı açıklamasını bulabilirsiniz.")
+          "MERGEN Bilge'nin her sayfası, farklı bir ihtiyaca yönelik tasarlanmıştır. Aşağıda her sayfanın detaylı açıklamasını bulabilirsiniz."
         ),
 
         # Ana Söyleşi
@@ -94,15 +94,15 @@ destekHakkindaUI <- function(id) {
           ),
           div(
             class = "destek-guide-content",
-            h4(HTML("Ana Söyleşi")),
-            p(HTML("Uygulamanın kalbidir. Alt kısımdaki metin kutusuna sorunuzu veya isteğinizi yazın ve Gönder butonuna basın. Yanıtlar gerçek zamanlı olarak ekrana yansıtılır.")),
+            h4("Ana Söyleşi"),
+            p("Uygulamanın kalbidir. Alt kısımdaki metin kutusuna sorunuzu veya isteğinizi yazın ve Gönder butonuna basın. Yanıtlar gerçek zamanlı olarak ekrana yansıtılır."),
             div(class = "destek-guide-tips",
-              tags$strong(HTML("İpuçları:")),
+              tags$strong("İpuçları:"),
               tags$ul(
-                tags$li(HTML("Dosya paylaşımı için sürükle-bırak veya ataç simgesini kullanın")),
-                tags$li(HTML("Mikrofon butonu ile sesli mesaj gönderebilirsiniz")),
-                tags$li(HTML("Yanıt sonundaki takip sorularına tıklayarak sohbeti derinleştirebilirsiniz")),
-                tags$li(HTML("Hoş geldin ekranındaki hızlı eylem kartları ile doğrudan başlayabilirsiniz"))
+                tags$li("Dosya paylaşımı için sürükle-bırak veya ataç simgesini kullanın"),
+                tags$li("Mikrofon butonu ile sesli mesaj gönderebilirsiniz"),
+                tags$li("Yanıt sonundaki takip sorularına tıklayarak sohbeti derinleştirebilirsiniz"),
+                tags$li("Hoş geldin ekranındaki hızlı eylem kartları ile doğrudan başlayabilirsiniz")
               )
             )
           )
@@ -116,19 +116,19 @@ destekHakkindaUI <- function(id) {
           ),
           div(
             class = "destek-guide-content",
-            h4(HTML("Söyleşi Yönetimi")),
-            p(HTML("Geçmiş sohbetlerinizi yönetmenizi sağlayan üç alt sayfadan oluşur.")),
+            h4("Söyleşi Yönetimi"),
+            p("Geçmiş sohbetlerinizi yönetmenizi sağlayan üç alt sayfadan oluşur."),
             div(class = "destek-guide-sub",
-              tags$strong(HTML("Söyleşi Geçmişi:")),
-              HTML(" Tüm sohbetlerinizin kronolojik listesi. Herhangi birine tıklayarak o ana geri dönebilirsiniz.")
+              tags$strong("Söyleşi Geçmişi:"),
+              " Tüm sohbetlerinizin kronolojik listesi. Herhangi birine tıklayarak o ana geri dönebilirsiniz."
             ),
             div(class = "destek-guide-sub",
-              tags$strong(HTML("Kayıtlı Söyleşiler:")),
-              HTML(" Otomatik kaydedilen sohbetler. Arama, yer imi ve silme işlemleri yapabilirsiniz.")
+              tags$strong("Kayıtlı Söyleşiler:"),
+              " Otomatik kaydedilen sohbetler. Arama, yer imi ve silme işlemleri yapabilirsiniz."
             ),
             div(class = "destek-guide-sub",
-              tags$strong(HTML("Görsel Galerisi:")),
-              HTML(" Yapay zeka ile oluşturduğunuz tüm görsellerin koleksiyonu. Büyütme, indirme ve kaynak sohbet referansı.")
+              tags$strong("Görsel Galerisi:"),
+              " Yapay zeka ile oluşturduğunuz tüm görsellerin koleksiyonu. Büyütme, indirme ve kaynak sohbet referansı."
             )
           )
         ),
@@ -141,11 +141,11 @@ destekHakkindaUI <- function(id) {
           ),
           div(
             class = "destek-guide-content",
-            h4(HTML("Dosya Yönetimi")),
-            p(HTML("Dosyalarınızı yönettiğiniz merkezi alan. Sürükle-bırak desteği ile dosya yükleme, önizleme ve sohbete ekleme.")),
+            h4("Dosya Yönetimi"),
+            p("Dosyalarınızı yönettiğiniz merkezi alan. Sürükle-bırak desteği ile dosya yükleme, önizleme ve sohbete ekleme."),
             div(class = "destek-guide-tips",
               tags$strong("Desteklenen Formatlar:"),
-              HTML(" Excel (.xlsx, .xls), PDF, Word (.docx), CSV, RData, metin dosyaları ve daha fazlası.")
+              " Excel (.xlsx, .xls), PDF, Word (.docx), CSV, RData, metin dosyaları ve daha fazlası."
             )
           )
         ),
@@ -159,14 +159,14 @@ destekHakkindaUI <- function(id) {
           div(
             class = "destek-guide-content",
             h4("Ayarlar"),
-            p(HTML("Kişiselleştirme ve yapılandırma seçeneklerini içeren iki alt sayfadan oluşur.")),
+            p("Kişiselleştirme ve yapılandırma seçeneklerini içeren iki alt sayfadan oluşur."),
             div(class = "destek-guide-sub",
-              tags$strong(HTML("Kişiselleştirme:")),
-              HTML(" Deneyim modu (Odak, Dinamik, Bütünleşik) ve yapay zeka karakter seçimi. Her karakterin kendine özgü kişiliği ve uzmanlık alanı vardır.")
+              tags$strong("Kişiselleştirme:"),
+              " Deneyim modu (Odak, Dinamik, Bütünleşik) ve yapay zeka karakter seçimi. Her karakterin kendine özgü kişiliği ve uzmanlık alanı vardır."
             ),
             div(class = "destek-guide-sub",
-              tags$strong(HTML("Yapılandırma:")),
-              HTML(" YZ model seçimi, analiz araçları, arayüz tercihleri (yazı boyutu, animasyonlar, geniş ekran), ses ve TTS/STT ayarları.")
+              tags$strong("Yapılandırma:"),
+              " YZ model seçimi, analiz araçları, arayüz tercihleri (yazı boyutu, animasyonlar, geniş ekran), ses ve TTS/STT ayarları."
             )
           )
         ),
@@ -180,18 +180,18 @@ destekHakkindaUI <- function(id) {
           div(
             class = "destek-guide-content",
             h4("Destek"),
-            p(HTML("Şu an bulunduğunuz sayfa! Üç alt bölümden oluşur.")),
+            p("Şu an bulunduğunuz sayfa! Üç alt bölümden oluşur."),
             div(class = "destek-guide-sub",
-              tags$strong(HTML("Yardım Merkezi:")),
-              HTML(" E-posta ve telefon destek kanalları.")
+              tags$strong("Yardım Merkezi:"),
+              " E-posta ve telefon destek kanalları ile yapay zeka destekli sohbet asistanı."
             ),
             div(class = "destek-guide-sub",
               tags$strong("Geri Bildirim & Hata:"),
-              HTML(" Memnuniyet değerlendirmesi, öneriler ve hata bildirimi.")
+              " Memnuniyet değerlendirmesi, öneriler ve hata bildirimi."
             ),
             div(class = "destek-guide-sub",
-              tags$strong(HTML("Hakkında:")),
-              HTML(" Uygulama özellikleri ve sayfa rehberi (bu sayfa).")
+              tags$strong("Hakkında:"),
+              " Uygulama özellikleri ve sayfa rehberi (bu sayfa)."
             )
           )
         )
@@ -200,7 +200,7 @@ destekHakkindaUI <- function(id) {
       # İstatistikler
       div(
         class = "destek-hakkinda-stats",
-        h3(class = "destek-hakkinda-section-title", HTML("Sürekli Gelişiyoruz")),
+        h3(class = "destek-hakkinda-section-title", "Sürekli Gelişiyoruz"),
         div(
           class = "destek-stats-grid",
           div(class = "destek-stat-item",
@@ -209,8 +209,8 @@ destekHakkindaUI <- function(id) {
           ),
           div(class = "destek-stat-divider"),
           div(class = "destek-stat-item",
-            span(class = "destek-stat-number", "24/7"),
-            span(class = "destek-stat-label", "Destek")
+            span(class = "destek-stat-number", "5"),
+            span(class = "destek-stat-label", "Benzersiz Karakter")
           )
         )
       ),
@@ -221,9 +221,9 @@ destekHakkindaUI <- function(id) {
         div(
           class = "destek-footer-content",
           icon("heart"),
-          HTML(" Özenle geliştirildi"),
-          span(class = "destek-footer-divider", "•"),
-          HTML("Sürüm 0.9")
+          " Özenle geliştirildi",
+          span(class = "destek-footer-divider", "\u2022"),
+          "Sürüm 0.9"
         )
       )
     )

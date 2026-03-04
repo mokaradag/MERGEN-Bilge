@@ -75,3 +75,11 @@ IMAGE_GEN_TIMEOUT=180
 # AI Uzman konusma metni olusturmak icin kullanilacak model
 # Butunlesik modda proaktif konusma icin (karsilama, sayfa rehberligi vb.)
 AI_EXPERT_MODEL=technical name 1
+
+# ------------------------------------------------------------------------------
+# DESTEK CHATBOT AYARLARI
+# ------------------------------------------------------------------------------
+
+# Yardim Merkezi chatbot asistani icin kullanilacak model
+# Tanimli degilse AI_EXPERT_MODEL veya FILTER_MODEL kullanilir
+DESTEK_CHATBOT_MODEL=technical name 1

@@ -1,6 +1,7 @@
 # Dosya Yolu: R/module_destek_yardim.R
 # Açıklama: Yardım Merkezi alt sayfası modülü.
 #            E-posta ve telefon destek bilgilerini gösterir.
+#            Yapay zeka destekli sohbet asistanı içerir (bilgi kaynağı: ai_rehber.md).
 
 # ==============================================================================
 # YARDIM MERKEZİ UI
@@ -11,66 +12,144 @@ destekYardimUI <- function(id) {
   tagList(
     div(
       class = "destek-yardim-container",
-      # Başlık ve giriş
+
+      # Başlık ve giriş (ikon başlığın yanında, kompakt)
       div(
-        class = "destek-section-header",
+        class = "destek-yardim-header-compact",
         div(class = "destek-section-icon destek-icon-pulse",
           icon("circle-question")
         ),
-        h3(HTML("Yard\u0131m Merkezi")),
-        p(
-          class = "destek-section-desc",
-          HTML("Size nas\u0131l yard\u0131mc\u0131 olabiliriz? \u0130leti\u015fim kanallar\u0131m\u0131zdan bize 7/24 ula\u015fabilirsiniz.")
+        div(class = "destek-yardim-header-text",
+          h3("Yardım Merkezi"),
+          p(class = "destek-section-desc",
+            "Size nasıl yardımcı olabiliriz? İletişim kanallarımızdan bize ulaşabilirsiniz."
+          )
         )
       ),
-      # İletişim kartları
+
+      # İletişim kartları (yatay, geniş, kompakt)
       div(
-        class = "destek-contact-grid",
+        class = "destek-contact-grid destek-contact-grid-wide",
         # E-posta kartı
         div(
-          class = "destek-contact-card",
+          class = "destek-contact-card destek-contact-card-wide",
           div(class = "destek-contact-icon destek-icon-float",
             icon("envelope")
           ),
-          h4(class = "destek-email-title", "E-posta Destek"),
-          p(class = "destek-contact-desc",
-            HTML("Her t\u00fcrl\u00fc sorunuz, \u00f6neriniz veya \u015fikayetiniz i\u00e7in bize e-posta g\u00f6nderebilirsiniz. Ekibimiz en k\u0131sa s\u00fcrede d\u00f6n\u00fc\u015f yapacakt\u0131r.")
-          ),
-          tags$a(
-            href = paste0(
-              "mailto:destek@mergen.ai",
-              "?subject=", utils::URLencode("MERGEN Bilge - Destek Talebi"),
-              "&body=", utils::URLencode(paste0(
-                "Say\u0131n MERGEN Bilge Destek Ekibi,\n\n",
-                "A\u015fa\u011f\u0131daki konu hakk\u0131nda deste\u011finize ihtiyac\u0131m bulunmaktad\u0131r:\n\n",
-                "Konu: \n",
-                "A\u00e7\u0131klama: \n\n",
-                "Bilgilerinize sayg\u0131yla arz ederim.\n\n",
-                "Kullan\u0131c\u0131 Bilgileri:\n",
-                "Uygulama: MERGEN Bilge v0.9\n",
-                "Tarih: ", format(Sys.Date(), "%d.%m.%Y")
-              ))
+          div(class = "destek-contact-card-body",
+            h4(class = "destek-email-title", "E-posta Destek"),
+            p(class = "destek-contact-desc",
+              "Her türlü sorunuz, öneriniz veya şikayetiniz için bize e-posta gönderebilirsiniz."
             ),
-            class = "destek-contact-link",
-            icon("arrow-right"),
-            "destek@mergen.ai"
+            tags$a(
+              href = paste0(
+                "mailto:destek@mergen.ai",
+                "?subject=", utils::URLencode("MERGEN Bilge - Destek Talebi"),
+                "&body=", utils::URLencode(paste0(
+                  "Merhaba MERGEN Bilge Destek Ekibi,\n\n",
+                  "Aşağıdaki konu hakkında desteğinize ihtiyacım bulunmaktadır:\n\n",
+                  "Konu: \n",
+                  "Açıklama: \n\n",
+                  "İyi çalışmalar dilerim,\n\n",
+                  "Uygulama: MERGEN Bilge v0.9\n",
+                  "Tarih: ", format(Sys.Date(), "%d.%m.%Y")
+                ))
+              ),
+              class = "destek-contact-link",
+              icon("arrow-right"),
+              "destek@mergen.ai"
+            )
           )
         ),
         # Telefon kartı
         div(
-          class = "destek-contact-card",
+          class = "destek-contact-card destek-contact-card-wide",
           div(class = "destek-contact-icon destek-icon-rotate",
             icon("phone")
           ),
-          h4(class = "destek-phone-title", "Telefon Destek"),
-          p(class = "destek-contact-desc",
-            HTML("Acil durumlar ve an\u0131nda destek gerektiren konular i\u00e7in m\u00fc\u015fteri hizmetlerimizi arayabilirsiniz.")
+          div(class = "destek-contact-card-body",
+            h4(class = "destek-phone-title", "Telefon Destek"),
+            p(class = "destek-contact-desc",
+              "Acil durumlar ve anında destek gerektiren konular için müşteri hizmetlerimizi arayabilirsiniz."
+            ),
+            tags$a(
+              href = "tel:+908501234567",
+              class = "destek-contact-link",
+              icon("arrow-right"),
+              "+90 850 123 45 67"
+            )
+          )
+        )
+      ),
+
+      # Yapay Zeka Sohbet Asistanı
+      div(
+        class = "destek-chatbot-container",
+        # Chatbot başlığı
+        div(
+          class = "destek-chatbot-header",
+          div(class = "destek-chatbot-header-icon",
+            icon("robot")
           ),
-          tags$a(
-            href = "tel:+908501234567",
-            class = "destek-contact-link",
-            icon("arrow-right"),
-            "+90 850 123 45 67"
+          div(class = "destek-chatbot-header-text",
+            span(class = "destek-chatbot-title", "Yardım Asistanı"),
+            span(class = "destek-chatbot-subtitle", "MERGEN Bilge hakkında sorularınızı yanıtlar")
+          ),
+          div(class = "destek-chatbot-status",
+            span(class = "destek-chatbot-status-dot"),
+            "Çevrimiçi"
+          )
+        ),
+        # Sohbet mesajları alanı
+        div(
+          id = ns("chatbot_messages"),
+          class = "destek-chatbot-messages",
+          # Başlangıç mesajı
+          div(
+            class = "destek-chatbot-message destek-chatbot-message-bot",
+            div(class = "destek-chatbot-avatar",
+              icon("robot")
+            ),
+            div(class = "destek-chatbot-bubble",
+              "Merhaba! Ben MERGEN Bilge Yardım Asistanı. Uygulama hakkında sorularınızı yanıtlayabilirim. Nasıl yardımcı olabilirim?"
+            )
+          )
+        ),
+        # Düşünme animasyonu (gizli)
+        div(
+          id = ns("chatbot_thinking"),
+          class = "destek-chatbot-thinking",
+          style = "display: none;",
+          div(class = "destek-chatbot-avatar",
+            icon("robot")
+          ),
+          div(class = "destek-chatbot-thinking-dots",
+            span(class = "destek-thinking-dot"),
+            span(class = "destek-thinking-dot"),
+            span(class = "destek-thinking-dot")
+          )
+        ),
+        # Mesaj giriş alanı
+        div(
+          class = "destek-chatbot-input-area",
+          tags$input(
+            type = "text",
+            id = ns("chatbot_input"),
+            class = "destek-chatbot-input",
+            placeholder = "Sorunuzu yazın...",
+            maxlength = "500",
+            autocomplete = "off",
+            onkeydown = sprintf(
+              "if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); destekChatbotGonder('%s'); }",
+              ns("")
+            )
+          ),
+          tags$button(
+            id = ns("chatbot_send_btn"),
+            class = "destek-chatbot-send-btn",
+            type = "button",
+            onclick = sprintf("destekChatbotGonder('%s')", ns("")),
+            icon("paper-plane")
           )
         )
       )
@@ -82,9 +161,168 @@ destekYardimUI <- function(id) {
 # YARDIM MERKEZİ SERVER
 # ==============================================================================
 
-destekYardimServer <- function(id) {
+destekYardimServer <- function(id, current_user_id = NULL) {
   moduleServer(id, function(input, output, session) {
-    # Yardım merkezi sayfası statik içerik, sunucu mantığı gerekmez
+    ns <- session$ns
+
+    # Bilgi tabanını yükle (ai_rehber.md)
+    bilgi_tabani <- tryCatch({
+      rehber_yolu <- file.path("ai_rehber.md")
+      if (file.exists(rehber_yolu)) {
+        readLines(rehber_yolu, encoding = "UTF-8", warn = FALSE) |> paste(collapse = "\n")
+      } else {
+        "Bilgi tabanı yüklenemedi."
+      }
+    }, error = function(e) {
+      "Bilgi tabanı yüklenemedi."
+    })
+
+    # Sohbet geçmişi (LLM bağlamı için)
+    sohbet_gecmisi <- reactiveVal(list())
+
+    # Chatbot mesajı gönderildiğinde
+    observeEvent(input$chatbot_mesaj, {
+      kullanici_mesaji <- trimws(input$chatbot_mesaj)
+      if (is.null(kullanici_mesaji) || !nzchar(kullanici_mesaji)) return()
+
+      # Kullanıcı mesajını ekrana ekle (JS ile)
+      shinyjs::runjs(sprintf(
+        "destekChatbotMesajEkle('%s', %s, 'user');",
+        ns(""),
+        jsonlite::toJSON(kullanici_mesaji, auto_unbox = TRUE)
+      ))
+
+      # Düşünme animasyonunu göster
+      shinyjs::runjs(sprintf(
+        "destekChatbotDusunmeGoster('%s');",
+        ns("")
+      ))
+
+      # Sohbet geçmişini güncelle
+      gecmis <- sohbet_gecmisi()
+      gecmis[[length(gecmis) + 1]] <- list(role = "user", content = kullanici_mesaji)
+
+      # LLM'e gönder
+      tryCatch({
+        # Destek chatbot modeli
+        chatbot_model <- Sys.getenv("DESTEK_CHATBOT_MODEL", unset = "")
+        if (!nzchar(chatbot_model)) {
+          chatbot_model <- Sys.getenv("AI_EXPERT_MODEL", unset = "")
+        }
+        if (!nzchar(chatbot_model)) {
+          chatbot_model <- Sys.getenv("FILTER_MODEL", unset = "")
+        }
+
+        # API ayarları
+        api_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", unset = "")
+        api_key <- NULL
+
+        # Kullanıcının şifrelenmiş API anahtarını al
+        if (!is.null(current_user_id)) {
+          tryCatch({
+            api_key <- get_user_api_key(current_user_id)
+          }, error = function(e) NULL)
+        }
+
+        if (!nzchar(api_endpoint)) {
+          stop("LLM endpoint tanımlı değil.")
+        }
+
+        # Sistem mesajı
+        sistem_mesaji <- paste0(
+          "Sen MERGEN Bilge uygulamasının Yardım Asistanısın. ",
+          "Görevin YALNIZCA aşağıdaki bilgi tabanındaki içeriğe dayanarak kullanıcının sorularını yanıtlamaktır. ",
+          "Bilgi tabanı dışında bir konuda soru sorulursa, kibar bir şekilde bu konuda bilginin olmadığını belirt ",
+          "ve kullanıcıyı E-posta Destek (destek@mergen.ai) veya Telefon Destek (+90 850 123 45 67) kanallarına yönlendir.\n\n",
+          "KURALLAR:\n",
+          "- Sadece bilgi tabanındaki içeriğe dayanarak yanıt ver.\n",
+          "- Uydurma veya tahmine dayalı bilgi verme.\n",
+          "- Yanıtlarını Türkçe ver.\n",
+          "- Kısa ve öz yanıtlar ver, gereksiz uzatma.\n",
+          "- Markdown biçimlendirme kullanma, düz metin olarak yanıt ver.\n",
+          "- Emoji kullanma.\n\n",
+          "BİLGİ TABANI:\n",
+          bilgi_tabani
+        )
+
+        # Mesaj listesini oluştur
+        mesajlar <- list(
+          list(role = "system", content = sistem_mesaji)
+        )
+
+        # Son 10 mesajı ekle (bağlam penceresi)
+        son_mesajlar <- tail(gecmis, 10)
+        for (m in son_mesajlar) {
+          mesajlar[[length(mesajlar) + 1]] <- m
+        }
+
+        # API çağrısı
+        headers <- c(
+          "Content-Type" = "application/json"
+        )
+        if (!is.null(api_key) && nzchar(api_key)) {
+          headers["Authorization"] <- paste("Bearer", api_key)
+        }
+
+        body <- list(
+          model = chatbot_model,
+          messages = mesajlar,
+          temperature = 0.3,
+          max_tokens = 800
+        )
+
+        response <- httr::POST(
+          url = api_endpoint,
+          httr::add_headers(.headers = headers),
+          body = jsonlite::toJSON(body, auto_unbox = TRUE),
+          encode = "raw",
+          httr::content_type_json(),
+          httr::timeout(30)
+        )
+
+        if (httr::status_code(response) == 200) {
+          yanit_json <- jsonlite::fromJSON(httr::content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
+          bot_yaniti <- yanit_json$choices[[1]]$message$content
+
+          # Geçmişe ekle
+          gecmis[[length(gecmis) + 1]] <- list(role = "assistant", content = bot_yaniti)
+          sohbet_gecmisi(gecmis)
+
+          # Düşünme animasyonunu gizle ve yanıtı göster
+          shinyjs::runjs(sprintf(
+            "destekChatbotDusunmeGizle('%s');", ns("")
+          ))
+          shinyjs::runjs(sprintf(
+            "destekChatbotMesajEkle('%s', %s, 'bot');",
+            ns(""),
+            jsonlite::toJSON(bot_yaniti, auto_unbox = TRUE)
+          ))
+        } else {
+          sohbet_gecmisi(gecmis)
+          shinyjs::runjs(sprintf(
+            "destekChatbotDusunmeGizle('%s');", ns("")
+          ))
+          shinyjs::runjs(sprintf(
+            "destekChatbotMesajEkle('%s', %s, 'bot');",
+            ns(""),
+            jsonlite::toJSON("Üzgünüm, şu anda yanıt veremiyorum. Lütfen daha sonra tekrar deneyin veya E-posta Destek (destek@mergen.ai) kanalından bize ulaşın.", auto_unbox = TRUE)
+          ))
+        }
+
+      }, error = function(e) {
+        cat("[DESTEK CHATBOT] Hata:", conditionMessage(e), "\n")
+        sohbet_gecmisi(gecmis)
+        shinyjs::runjs(sprintf(
+          "destekChatbotDusunmeGizle('%s');", ns("")
+        ))
+        shinyjs::runjs(sprintf(
+          "destekChatbotMesajEkle('%s', %s, 'bot');",
+          ns(""),
+          jsonlite::toJSON("Üzgünüm, şu anda yanıt veremiyorum. Lütfen E-posta Destek (destek@mergen.ai) veya Telefon Destek (+90 850 123 45 67) kanallarından bize ulaşın.", auto_unbox = TRUE)
+        ))
+      })
+    }, ignoreInit = TRUE)
+
     invisible(NULL)
   })
 }

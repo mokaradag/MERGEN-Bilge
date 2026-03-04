@@ -28,7 +28,7 @@ destekUI <- function(id, sayfa = "yardim") {
   tagList(
     div(
       class = "destek-container",
-      # Sayfa başlığı (MERGEN Bilge standart header)
+      # Sayfa başlığı (Sade başlık - sürüm bilgisi olmadan)
       fluidRow(
         column(
           width = 12,
@@ -39,13 +39,6 @@ destekUI <- function(id, sayfa = "yardim") {
               h4(baslik, class = "page-title"),
               span(class = "destek-badge",
                 icon(baslik_ikon), "DESTEK"
-              )
-            ),
-            div(
-              class = "chat-header-right",
-              span(
-                class = "destek-version-info",
-                "MERGEN Bilge v0.9"
               )
             )
           )
@@ -75,7 +68,7 @@ destekServer <- function(id, current_user_id) {
     ns <- session$ns
 
     # Alt modül sunucularını başlat
-    destekYardimServer("yardim_module")
+    destekYardimServer("yardim_module", current_user_id = current_user_id)
     destekGeriBildirimServer("geri_bildirim_module", current_user_id = current_user_id)
     destekHakkindaServer("hakkinda_module")
 
