@@ -219,10 +219,18 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           stop("LLM endpoint tanımlı değil.")
         }
 
-        # API anahtarı (.Renviron'dan)
-        api_key <- Sys.getenv("LOCAL_LLM_API_KEY", unset = "")
+        # API anahtarı - önce kullanıcının kişisel anahtarını dene (Ana Söyleşi ile aynı desen)
+        # API gateway rate limiter kullanıcı anahtarına göre tanımlama yapar
+        user_api_key <- NULL
+        if (!is.null(session$userData$ai_api_key)) {
+          user_api_key <- as.character(session$userData$ai_api_key)[1]
+        }
+        env_api_key <- Sys.getenv("LOCAL_LLM_API_KEY", unset = "")
+        api_key <- if (!is.null(user_api_key) && nzchar(user_api_key)) user_api_key else env_api_key
 
-        cat(sprintf("[DESTEK CHATBOT] Model: %s, Endpoint: %s\n", chatbot_model, api_endpoint))
+        cat(sprintf("[DESTEK CHATBOT] Model: %s, Endpoint: %s, API Key: %s\n",
+                    chatbot_model, api_endpoint,
+                    if (nzchar(api_key)) paste0(substr(api_key, 1, 8), "...") else "(YOK)"))
 
         # Bilgi tabanını boyut sınırı ile kes (büyük sistem mesajı 500 hatasına yol açabilir)
         bilgi_icerigi <- bilgi_tabani
