@@ -222,26 +222,39 @@ destekYardimServer <- function(id, current_user_id = NULL) {
         # API anahtarı (.Renviron'dan)
         api_key <- Sys.getenv("LOCAL_LLM_API_KEY", unset = "")
 
-        # Sistem mesajı
+        cat(sprintf("[DESTEK CHATBOT] Model: %s, Endpoint: %s\n", chatbot_model, api_endpoint))
+
+        # Bilgi tabanını boyut sınırı ile kes (büyük sistem mesajı 500 hatasına yol açabilir)
+        bilgi_icerigi <- bilgi_tabani
+        if (nchar(bilgi_icerigi) > 12000) {
+          bilgi_icerigi <- substr(bilgi_icerigi, 1, 12000)
+          bilgi_icerigi <- paste0(bilgi_icerigi, "\n\n[Bilgi tabani kisaltildi]")
+        }
+
+        # Sistem mesajı (kısa talimatlar - bilgi tabanı ayrı mesajda)
         sistem_mesaji <- paste0(
-          "Sen MERGEN Bilge uygulamasının Yardım Asistanısın. ",
-          "Görevin YALNIZCA aşağıdaki bilgi tabanındaki içeriğe dayanarak kullanıcının sorularını yanıtlamaktır. ",
-          "Bilgi tabanı dışında bir konuda soru sorulursa, kibar bir şekilde bu konuda bilginin olmadığını belirt ",
-          "ve kullanıcıyı E-posta Destek (destek@mergen.ai) veya Telefon Destek (+90 850 123 45 67) kanallarına yönlendir.\n\n",
+          "Sen MERGEN Bilge uygulamasinin Yardim Asistanisin. ",
+          "Gorevin YALNIZCA sana verilen bilgi tabanindaki icerigi kullanarak kullanicinin sorularini yanitlamaktir. ",
+          "Bilgi tabani disinda bir konuda soru sorulursa, kibar bir sekilde bu konuda bilginin olmadigini belirt ",
+          "ve kullaniciyi E-posta Destek (destek@mergen.ai) veya Telefon Destek (+90 850 123 45 67) kanallarina yonlendir.\n\n",
           "KURALLAR:\n",
-          "- Sadece bilgi tabanındaki içeriğe dayanarak yanıt ver.\n",
-          "- Uydurma veya tahmine dayalı bilgi verme.\n",
-          "- Yanıtlarını Türkçe ver.\n",
-          "- Kısa ve öz yanıtlar ver, gereksiz uzatma.\n",
-          "- Markdown biçimlendirme kullanma, düz metin olarak yanıt ver.\n",
-          "- Emoji kullanma.\n\n",
-          "BİLGİ TABANI:\n",
-          bilgi_tabani
+          "- Sadece bilgi tabanindaki icerigi kullanarak yanit ver.\n",
+          "- Uydurma veya tahmine dayali bilgi verme.\n",
+          "- Yanitlarini Turkce ver.\n",
+          "- Kisa ve oz yanitlar ver, gereksiz uzatma.\n",
+          "- Markdown bicimlendirme kullanma, duz metin olarak yanit ver.\n",
+          "- Emoji kullanma."
         )
 
-        # Mesaj listesini oluştur
+        # Mesaj listesini oluştur - bilgi tabanı ayrı user mesajı olarak
         mesajlar <- list(
-          list(role = "system", content = sistem_mesaji)
+          list(role = "system", content = sistem_mesaji),
+          list(role = "user", content = paste0(
+            "Asagidaki bilgi tabanini referans olarak kullan. ",
+            "Bundan sonraki sorularimi bu bilgi tabanina dayanarak yanitla:\n\n",
+            bilgi_icerigi
+          )),
+          list(role = "assistant", content = "Anladim, bilgi tabanini inceledim. MERGEN Bilge hakkindaki sorularinizi yanitmaya hazirim.")
         )
 
         # Son 10 mesajı ekle (bağlam penceresi)
@@ -307,7 +320,13 @@ destekYardimServer <- function(id, current_user_id = NULL) {
             ))
           }
         } else {
-          cat(sprintf("[DESTEK CHATBOT] API HTTP hatası: %d\n", httr::status_code(response)))
+          # Hata detayını logla (teşhis için)
+          hata_detay <- tryCatch(
+            httr::content(response, "text", encoding = "UTF-8"),
+            error = function(e2) "yanit govdesi okunamadi"
+          )
+          cat(sprintf("[DESTEK CHATBOT] API HTTP hatasi: %d - %s\n",
+                      httr::status_code(response), substr(hata_detay, 1, 500)))
           sohbet_gecmisi(gecmis)
           shinyjs::runjs(sprintf("destekChatbotDusunmeGizle('%s');", ns("")))
           shinyjs::runjs(sprintf(
