@@ -577,8 +577,28 @@ document.addEventListener('keydown', function(e) {
     counters.forEach(function(counter) {
       var target = parseInt(counter.getAttribute('data-target'), 10);
       var suffix = counter.getAttribute('data-suffix') || '';
+      var useGradient = counter.hasAttribute('data-gradient');
       var duration = 1500;
       var startTime = null;
+
+      function getGradientColor(percent) {
+        // Kırmızı(0%) → Sarı(50%) → Yeşil(100%) gradyan renk skalası
+        var r, g, b;
+        if (percent <= 50) {
+          // Kırmızı → Sarı (0-50%)
+          var t = percent / 50;
+          r = Math.round(239 + (250 - 239) * t);  // #ef4444 → #facc15
+          g = Math.round(68 + (204 - 68) * t);
+          b = Math.round(68 + (21 - 68) * t);
+        } else {
+          // Sarı → Yeşil (50-100%)
+          var t2 = (percent - 50) / 50;
+          r = Math.round(250 + (74 - 250) * t2);   // #facc15 → #4ade80
+          g = Math.round(204 + (222 - 204) * t2);
+          b = Math.round(21 + (128 - 21) * t2);
+        }
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+      }
 
       function step(timestamp) {
         if (!startTime) startTime = timestamp;
@@ -587,6 +607,15 @@ document.addEventListener('keydown', function(e) {
         var easedProgress = 1 - Math.pow(1 - progress, 3);
         var current = Math.round(easedProgress * target);
         counter.textContent = current + suffix;
+
+        // Gradyan renk animasyonu (memnuniyet yüzdesi için)
+        if (useGradient) {
+          var percent = (current / target) * 100;
+          var color = getGradientColor(percent);
+          counter.style.color = color;
+          // Hafif parlama efekti
+          counter.style.textShadow = '0 0 20px ' + color.replace('rgb', 'rgba').replace(')', ',0.3)');
+        }
 
         if (progress < 1) {
           requestAnimationFrame(step);

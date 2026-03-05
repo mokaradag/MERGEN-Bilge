@@ -212,6 +212,7 @@ destekHakkindaUI <- function(id) {
               class = "destek-stat-number destek-stat-animated",
               `data-target` = "99",
               `data-suffix` = "%",
+              `data-gradient` = "true",
               "0%"
             ),
             span(class = "destek-stat-label", "Memnuniyet")
