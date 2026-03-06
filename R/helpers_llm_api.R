@@ -199,8 +199,12 @@ call_local_llm <- function(chat_history, current_settings) {
 
     mergen_debug_cat("[SUMMARY] Total unique sources:", length(extracted_sources), "\n")
 
-    # Tıklanabilir bağlantılarla Kaynakça bölümü ekle
+    # Tiklanabilir baglantilarla Kaynakca bolumu ekle
     if (length(extracted_sources) > 0) {
+      # LLM'in kendi urettigi duz metin Kaynakca bolumunu kaldir (tekrari onle)
+      ai_content <- sub("\\n*Kaynakça:\\s*\\n(\\s*\\[?\\d+[)\\].]\\s*[^\\n]+\\n?)*\\s*$", "", ai_content, perl = TRUE)
+      ai_content <- trimws(ai_content)
+
       sources_text <- "\n\nKaynakça:\n"
 
       for (i in seq_along(extracted_sources)) {

@@ -62,7 +62,13 @@ filePreviewServer <- function(id) {
 		)
 
 		file_ext   <- tolower(tools::file_ext(file_storage$preview_file$name))
-		modalTitle <- paste("Dosya Önizleme:", file_storage$preview_file$name)
+		# Dosya adindaki && ayiricisini " - " ile degistir ve baslik stili uygula
+		display_name <- gsub("\\s*&&\\s*", " - ", file_storage$preview_file$name)
+		modalTitle <- tags$span(
+		  tags$span("Dosya Önizleme:", style = "color: #a5b4fc; font-weight: 600;"),
+		  " ",
+		  tags$span(display_name, style = "color: #e5e7eb; font-weight: 400;")
+		)
 		footer <- tagList(
 		  downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary"),
 		  modalButton("Kapat")
@@ -121,18 +127,9 @@ filePreviewServer <- function(id) {
           ))
 
         } else if (file_ext %in% c("docx")) {
-          # DOCX -> mammoth.js ile HTML'e dönüştür (çevrimdışı yerel dosyadan yüklenir)
-          # Not: file_storage$preview_file zaten yukarıda ayarlandı; download butonu çalışır
-          # Başlıkta sadece son '&&' parçasını göster
-          {
-            # Görüntü başlığı sadeleştirme: 'A && B && C.docx' -> 'C.docx'
-            if (grepl("\\s&&\\s|&&", file_storage$preview_file$name, perl = TRUE)) {
-              modalTitle <- paste(
-                "Dosya Önizleme:",
-                trimws(tail(strsplit(file_storage$preview_file$name, "&&", fixed = TRUE)[[1]], 1))
-              )
-            }
-          }
+          # DOCX -> mammoth.js ile HTML'e donustur (cevrimdisi yerel dosyadan yuklenir)
+          # Not: file_storage$preview_file zaten yukarida ayarlandi; download butonu calisir
+          # Baslik biçimlendirmesi artik tum dosya turleri icin yukarida yapiliyor
 
           # Modal iskeleti (boş hedef; JS mesajı ile doldurulacak)
 			showModal(modalDialog(

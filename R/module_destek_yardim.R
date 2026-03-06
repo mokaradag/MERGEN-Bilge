@@ -20,7 +20,7 @@ destekYardimUI <- function(id) {
           icon("circle-question")
         ),
         div(class = "destek-yardim-header-text",
-          h3("Yardım Merkezi"),
+          h3("Bize Ulaşın"),
           p(class = "destek-section-desc",
             "Size nasıl yardımcı olabiliriz? İletişim kanallarımızdan bize ulaşabilirsiniz."
           )

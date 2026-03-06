@@ -50,6 +50,12 @@ function destekChatbotFormatMessage(text) {
   // Satır içi kod (`...`)
   formatted = formatted.replace(/`([^`]+)`/g, '<code class="destek-inline-code">$1</code>');
 
+  // Başlıklar (### h3, ## h2, # h1)
+  formatted = formatted.replace(/^####\s+(.+)$/gm, '<h4 class="destek-chat-heading">$1</h4>');
+  formatted = formatted.replace(/^###\s+(.+)$/gm, '<h4 class="destek-chat-heading">$1</h4>');
+  formatted = formatted.replace(/^##\s+(.+)$/gm, '<h3 class="destek-chat-heading">$1</h3>');
+  formatted = formatted.replace(/^#\s+(.+)$/gm, '<h3 class="destek-chat-heading">$1</h3>');
+
   // Kalın (**...**)
   formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
@@ -67,6 +73,10 @@ function destekChatbotFormatMessage(text) {
 
   // Satır sonlarını <br> olarak koru (kod blokları dışında)
   formatted = formatted.replace(/\n/g, '<br>');
+
+  // Başlık etiketleri etrafındaki gereksiz <br> etiketlerini temizle
+  formatted = formatted.replace(/<br>\s*(<h[34] class="destek-chat-heading">)/g, '$1');
+  formatted = formatted.replace(/(<\/h[34]>)\s*<br>/g, '$1');
 
   return formatted;
 }

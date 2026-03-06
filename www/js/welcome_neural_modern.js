@@ -1,5 +1,5 @@
 // www/js/welcome_neural_modern.js
-// Modern karşılama ekranı için neural network canvas animasyonu
+// Modern karsilama ekrani icin neural network canvas animasyonu
 
 window.WelcomeNeuralNetwork = (function() {
   let canvas = null;
@@ -15,31 +15,48 @@ window.WelcomeNeuralNetwork = (function() {
   const connectionDistance = 140;
   const mouse = { x: -1000, y: -1000 };
 
-	function init(canvasElement) {
-	  if (!canvasElement) return;
-	  
-	  // Önceki animasyonları temizle
-	  if (animationId) {
-		cancelAnimationFrame(animationId);
-		animationId = null;
-	  }
-	  
-	  canvas = canvasElement;
-	  ctx = canvas.getContext('2d');
-	  
-	  resize();
-	  window.addEventListener('resize', resize);
-	  window.addEventListener('mousemove', handleMouseMove);
-	  
-	  createParticles();
-	  animate();
-	}
+  // Animasyon rengi (varsayilan turuncu, karakter aksanina gore degisir)
+  let pColor = { r: 255, g: 86, b: 32 };
+
+  // Hex renk kodunu RGB objesine donustur
+  function hexToRgb(hex) {
+    var c = (hex || '').replace('#', '');
+    if (!c || c.length < 6) return null;
+    var n = parseInt(c, 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+
+  function init(canvasElement, accentHex) {
+    if (!canvasElement) return;
+
+    // Onceki animasyonlari temizle
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+
+    // Karakter aksan rengi varsa kullan
+    if (accentHex) {
+      var rgb = hexToRgb(accentHex);
+      if (rgb) pColor = rgb;
+    }
+
+    canvas = canvasElement;
+    ctx = canvas.getContext('2d');
+
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', handleMouseMove);
+
+    createParticles();
+    animate();
+  }
 
   function resize() {
     if (!canvas) return;
     const parent = canvas.parentElement;
     if (!parent) return;
-    
+
     width = parent.clientWidth;
     height = parent.clientHeight;
     canvas.width = width;
@@ -68,19 +85,23 @@ window.WelcomeNeuralNetwork = (function() {
 
   function animate(currentTime) {
     if (!ctx || !canvas) return;
-    
+
     if (!lastFrameTime) lastFrameTime = currentTime;
     const elapsed = currentTime - lastFrameTime;
-    
+
     if (elapsed < frameDuration) {
       animationId = requestAnimationFrame(animate);
       return;
     }
-    
+
     lastFrameTime = currentTime - (elapsed % frameDuration);
-    
+
     ctx.clearRect(0, 0, width, height);
-    
+
+    // Renk degerlerini hazirla
+    var fillStr = 'rgb(' + pColor.r + ', ' + pColor.g + ', ' + pColor.b + ')';
+    var shadowStr = 'rgba(' + pColor.r + ', ' + pColor.g + ', ' + pColor.b + ', 0.8)';
+
     particles.forEach((p, i) => {
       p.x += p.vx;
       p.y += p.vy;
@@ -98,9 +119,9 @@ window.WelcomeNeuralNetwork = (function() {
 
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgb(255, 86, 32)';
+      ctx.fillStyle = fillStr;
       ctx.shadowBlur = 8;
-      ctx.shadowColor = 'rgba(255, 86, 32, 0.8)';
+      ctx.shadowColor = shadowStr;
       ctx.fill();
       ctx.shadowBlur = 0;
 
@@ -113,7 +134,7 @@ window.WelcomeNeuralNetwork = (function() {
         if (dist2 < connectionDistance) {
           ctx.beginPath();
           const opacity = 1 - dist2 / connectionDistance;
-          ctx.strokeStyle = `rgba(255, 86, 32, ${opacity * 0.8})`;
+          ctx.strokeStyle = 'rgba(' + pColor.r + ', ' + pColor.g + ', ' + pColor.b + ', ' + (opacity * 0.8) + ')';
           ctx.lineWidth = 0.6;
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(p2.x, p2.y);
@@ -130,10 +151,10 @@ window.WelcomeNeuralNetwork = (function() {
       cancelAnimationFrame(animationId);
       animationId = null;
     }
-    
+
     window.removeEventListener('resize', resize);
     window.removeEventListener('mousemove', handleMouseMove);
-    
+
     canvas = null;
     ctx = null;
     particles = [];
