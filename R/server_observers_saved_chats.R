@@ -110,7 +110,50 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     values$disliked_messages <- all_feedback$disliked
     values$current_chat_id <- chat_id
     values$show_welcome <- FALSE
-    
+
+    # Mesaj iceriginden aktif araci tespit et ve etkinlestir
+    detected_tool <- NULL
+    for (m in values$messages) {
+      msg_content <- m$content %||% ""
+      if (m$type %||% "" %in% c("ai", "assistant")) {
+        if (grepl("source-link|kaynakca-entry", msg_content, perl = TRUE)) {
+          # Kaynak baglantilari iceren mesaj: surec veya MCP araci
+          detected_tool <- "enable_process_tools"
+        } else if (grepl("generated-image|image_gen_|dall-e|gorsel-sonuc", msg_content, ignore.case = TRUE, perl = TRUE)) {
+          detected_tool <- "enable_image_tools"
+        }
+        if (!is.null(detected_tool)) break
+      }
+    }
+
+    if (!is.null(detected_tool)) {
+      # Tum analiz araclarini devre disi birak
+      analysis_tools <- c(
+        "enable_rdata_tools", "enable_mcp_tools", "enable_summarization_tools",
+        "enable_coding_tools", "enable_process_tools", "enable_app_expert_tools",
+        "enable_image_tools"
+      )
+      for (tool in analysis_tools) {
+        isolate({ settings_data[[tool]] <- FALSE })
+        updateCheckboxInput(session, paste0("settings_yapilandirma_module-", tool), value = FALSE)
+      }
+      # Tespit edilen araci etkinlestir
+      isolate({ settings_data[[detected_tool]] <- TRUE })
+      updateCheckboxInput(session, paste0("settings_yapilandirma_module-", detected_tool), value = TRUE)
+
+      # istemci tarafini bilgilendir
+      session$sendCustomMessage("saveSettings", stats::setNames(
+        as.list(vapply(analysis_tools, function(t) identical(t, detected_tool), logical(1))),
+        analysis_tools
+      ))
+
+      if (identical(detected_tool, "enable_image_tools")) {
+        session$sendCustomMessage("toggleImageMode", list(active = TRUE))
+      }
+
+      cat(sprintf("[SAVED_CHATS] Arac tespit edildi ve etkinlestirildi: %s\n", detected_tool))
+    }
+
     # Karakter verisini al
     selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
     chars_data <- get_characters_data()

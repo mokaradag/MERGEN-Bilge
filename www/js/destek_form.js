@@ -564,11 +564,11 @@ document.addEventListener('keydown', function(e) {
  * IntersectionObserver kullanarak görünürlük takibi yapar
  */
 (function() {
-  // Her sayacın animasyon durumunu takip et (çift animasyonu önler)
-  var animatedElements = new WeakSet();
+  // Animasyonu devam eden elemanları takip et (eş zamanlı çift tetiklemeyi önler)
+  var animatingElements = new WeakSet();
 
   function getGradientColor(percent) {
-    // Kırmızı(0%) → Sarı(50%) → Yeşil(100%) gradyan renk skalası
+    // Kırmızı(0%) -> Sarı(50%) -> Yeşil(100%) gradyan renk skalası
     var r, g, b;
     if (percent <= 50) {
       var t = percent / 50;
@@ -584,10 +584,18 @@ document.addEventListener('keydown', function(e) {
     return 'rgb(' + r + ',' + g + ',' + b + ')';
   }
 
+  // Sayacı başlangıç değerine döndür
+  function resetCounter(counter) {
+    var suffix = counter.getAttribute('data-suffix') || '';
+    counter.textContent = '0' + suffix;
+    counter.style.color = '';
+    counter.style.textShadow = '';
+  }
+
   function animateCounter(counter) {
-    // Bu eleman zaten animasyon gördüyse tekrarlama
-    if (animatedElements.has(counter)) return;
-    animatedElements.add(counter);
+    // Zaten animasyon sürmekteyse tekrar başlatma
+    if (animatingElements.has(counter)) return;
+    animatingElements.add(counter);
 
     var target = parseInt(counter.getAttribute('data-target'), 10);
     var suffix = counter.getAttribute('data-suffix') || '';
@@ -611,6 +619,9 @@ document.addEventListener('keydown', function(e) {
 
       if (progress < 1) {
         requestAnimationFrame(step);
+      } else {
+        // Animasyon tamamlandı, kilidi serbest bırak
+        animatingElements.delete(counter);
       }
     }
 
@@ -633,10 +644,8 @@ document.addEventListener('keydown', function(e) {
     var counters = statsSection.querySelectorAll('.destek-stat-animated');
     if (counters.length === 0) return;
 
-    // Tüm sayaçlar zaten animasyon gördüyse tekrar gözlemleme
-    var allDone = true;
-    counters.forEach(function(c) { if (!animatedElements.has(c)) allDone = false; });
-    if (allDone) return;
+    // Sayaçları sıfırla (her sayfa ziyaretinde yeniden animasyon için)
+    counters.forEach(function(c) { resetCounter(c); });
 
     if ('IntersectionObserver' in window) {
       currentObserver = new IntersectionObserver(function(entries) {

@@ -186,7 +186,15 @@ $(document).ready(function() {
 		
 		const neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
 		if (neuralCanvas && window.WelcomeNeuralNetwork) {
-		  window.WelcomeNeuralNetwork.init(neuralCanvas);
+		  // Aktif karakter butonunun aksan rengini al
+		  var accentColor = message.accentColor || null;
+		  if (!accentColor) {
+		    var activeBtn = document.querySelector('.character-btn.active');
+		    if (activeBtn) {
+		      accentColor = getComputedStyle(activeBtn).getPropertyValue('--character-accent').trim() || null;
+		    }
+		  }
+		  window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor);
 		}
 		
 		const greetingText = document.getElementById('dynamic-greeting-text');
