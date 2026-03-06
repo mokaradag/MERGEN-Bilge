@@ -95,9 +95,18 @@ destekYardimUI <- function(id) {
             span(class = "destek-chatbot-title", "Yardım Asistanı"),
             span(class = "destek-chatbot-subtitle", "MERGEN Bilge hakkında sorularınızı yanıtlar")
           ),
-          div(class = "destek-chatbot-status",
-            span(class = "destek-chatbot-status-dot"),
-            "Çevrimiçi"
+          div(class = "destek-chatbot-header-actions",
+            div(class = "destek-chatbot-status",
+              span(class = "destek-chatbot-status-dot"),
+              "Çevrimiçi"
+            ),
+            tags$button(
+              class = "destek-chatbot-clear-btn",
+              type = "button",
+              title = "Sohbeti temizle",
+              onclick = sprintf("destekChatbotTemizle('%s')", ns("")),
+              icon("trash-can")
+            )
           )
         ),
         # Sohbet mesajları alanı
@@ -228,10 +237,6 @@ destekYardimServer <- function(id, current_user_id = NULL) {
         env_api_key <- Sys.getenv("LOCAL_LLM_API_KEY", unset = "")
         api_key <- if (!is.null(user_api_key) && nzchar(user_api_key)) user_api_key else env_api_key
 
-        cat(sprintf("[DESTEK CHATBOT] Model: %s, Endpoint: %s, API Key: %s\n",
-                    chatbot_model, api_endpoint,
-                    if (nzchar(api_key)) paste0(substr(api_key, 1, 8), "...") else "(YOK)"))
-
         # Bilgi tabanını boyut sınırı ile kes (büyük sistem mesajı 500 hatasına yol açabilir)
         bilgi_icerigi <- bilgi_tabani
         if (nchar(bilgi_icerigi) > 12000) {
@@ -250,7 +255,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           "- Uydurma veya tahmine dayali bilgi verme.\n",
           "- Yanitlarini Turkce ver.\n",
           "- Kisa ve oz yanitlar ver, gereksiz uzatma.\n",
-          "- Markdown bicimlendirme kullanma, duz metin olarak yanit ver.\n",
+          "- Gerektiginde Markdown bicimlendirme kullanabilirsin (kalin, italik, liste, kod blogu).\n",
           "- Emoji kullanma."
         )
 
@@ -281,7 +286,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           messages = mesajlar,
           stream = FALSE,
           temperature = 0.3,
-          max_tokens = 800
+          max_tokens = 2000
         )
 
         # API çağrısı (httr encode = "json" kullan - kanıtlanmış yöntem)
@@ -354,6 +359,11 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           jsonlite::toJSON("Üzgünüm, şu anda yanıt veremiyorum. Lütfen E-posta Destek (destek@mergen.ai) veya Telefon Destek (+90 850 123 45 67) kanallarından bize ulaşın.", auto_unbox = TRUE)
         ))
       })
+    }, ignoreInit = TRUE)
+
+    # Sohbet temizleme
+    observeEvent(input$chatbot_temizle, {
+      sohbet_gecmisi(list())
     }, ignoreInit = TRUE)
 
     invisible(NULL)

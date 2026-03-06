@@ -259,6 +259,9 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
 
   is_streaming <- isTRUE(msg$is_streaming)
 
+  # Oturum-yerel user_config varsa onu kullan, yoksa global'e düş (çoklu kullanıcı güvenliği)
+  uc <- settings$user_config %||% user_config
+
   div(id = paste0("message_wrapper_", msg$id), {
 
     if (msg$type == "user") {
@@ -272,15 +275,15 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
               class = "user-avatar",
               style = "overflow: hidden; width: 40px; height: 40px;",
               tags$img(
-                src = paste0("https://url......./", user_config$userId, ".jpg"),
-                alt = user_config$name,
+                src = paste0("https://url......./", uc$userId, ".jpg"),
+                alt = uc$name,
                 style = "width: 100%; height: 100%; object-fit: cover;",
                 onerror = "this.style.display='none'; this.parentElement.classList.add('gradient-user'); this.parentElement.innerHTML='<i class=\"fas fa-user\"></i>';"
               )
             ),
             div(
               class = "message-info",
-              div(class = "message-author", user_config$name),
+              div(class = "message-author", uc$name),
               div(class = paste("message-time", if (isTRUE(settings$enable_timestamps)) "" else "hidden"), msg$timestamp)
             ),
             div(

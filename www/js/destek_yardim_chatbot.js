@@ -25,6 +25,80 @@ function destekChatbotGonder(nsPrefix) {
 }
 
 // ==============================================================================
+// ZENGİN METİN BİÇİMLENDİRME
+// ==============================================================================
+
+/**
+ * Bot yanıtını zengin metin formatına dönüştür (kod blokları, kalın, italik, liste)
+ * @param {string} text - Ham metin
+ * @returns {string} HTML çıktısı
+ */
+function destekChatbotFormatMessage(text) {
+  // Kod bloklarını işle (``` ile çevrili)
+  var formatted = text.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+    var langLabel = lang ? '<span class="destek-code-lang">' + lang + '</span>' : '';
+    return '<div class="destek-code-block">' +
+      '<div class="destek-code-header">' + langLabel +
+        '<button class="destek-code-copy-btn" onclick="destekChatbotCopyCode(this)" title="Kopyala">' +
+          '<i class="fas fa-copy"></i>' +
+        '</button>' +
+      '</div>' +
+      '<pre class="destek-code-pre"><code>' + destekEscapeHtml(code.trim()) + '</code></pre>' +
+    '</div>';
+  });
+
+  // Satır içi kod (`...`)
+  formatted = formatted.replace(/`([^`]+)`/g, '<code class="destek-inline-code">$1</code>');
+
+  // Kalın (**...**)
+  formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+  // İtalik (*...*)
+  formatted = formatted.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+
+  // Madde işaretli listeler (- veya * ile başlayan satırlar)
+  formatted = formatted.replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>');
+  formatted = formatted.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul class="destek-chat-list">$1</ul>');
+  // Bitişik <ul> etiketlerini birleştir
+  formatted = formatted.replace(/<\/ul>\s*<ul class="destek-chat-list">/g, '');
+
+  // Numaralı listeler (1. 2. vb.)
+  formatted = formatted.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+
+  // Satır sonlarını <br> olarak koru (kod blokları dışında)
+  formatted = formatted.replace(/\n/g, '<br>');
+
+  return formatted;
+}
+
+/**
+ * HTML özel karakterlerini escape et
+ */
+function destekEscapeHtml(text) {
+  var div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Kod bloğunu panoya kopyala
+ */
+function destekChatbotCopyCode(btn) {
+  var codeBlock = btn.closest('.destek-code-block');
+  if (!codeBlock) return;
+  var code = codeBlock.querySelector('code');
+  if (!code) return;
+
+  navigator.clipboard.writeText(code.textContent).then(function() {
+    var icon = btn.querySelector('i');
+    if (icon) {
+      icon.className = 'fas fa-check';
+      setTimeout(function() { icon.className = 'fas fa-copy'; }, 1500);
+    }
+  });
+}
+
+// ==============================================================================
 // MESAJ EKLEME
 // ==============================================================================
 
@@ -42,7 +116,7 @@ function destekChatbotMesajEkle(nsPrefix, mesaj, tip) {
   messageDiv.className = 'destek-chatbot-message destek-chatbot-message-' + tip;
 
   if (tip === 'bot') {
-    // Bot mesajı: avatar + balon
+    // Bot mesajı: avatar + zengin metin balon
     var avatar = document.createElement('div');
     avatar.className = 'destek-chatbot-avatar';
     avatar.innerHTML = '<i class="fas fa-robot"></i>';
@@ -50,10 +124,10 @@ function destekChatbotMesajEkle(nsPrefix, mesaj, tip) {
 
     var bubble = document.createElement('div');
     bubble.className = 'destek-chatbot-bubble';
-    bubble.textContent = mesaj;
+    bubble.innerHTML = destekChatbotFormatMessage(mesaj);
     messageDiv.appendChild(bubble);
   } else {
-    // Kullanıcı mesajı: sadece balon
+    // Kullanıcı mesajı: düz metin balon
     var bubble = document.createElement('div');
     bubble.className = 'destek-chatbot-bubble';
     bubble.textContent = mesaj;
@@ -64,6 +138,35 @@ function destekChatbotMesajEkle(nsPrefix, mesaj, tip) {
 
   // Otomatik kaydır
   container.scrollTop = container.scrollHeight;
+}
+
+// ==============================================================================
+// SOHBET TEMİZLEME
+// ==============================================================================
+
+/**
+ * Sohbet geçmişini temizle ve başlangıç mesajını yeniden ekle
+ * @param {string} nsPrefix - Modül namespace öneki
+ */
+function destekChatbotTemizle(nsPrefix) {
+  var container = document.getElementById(nsPrefix + 'chatbot_messages');
+  if (!container) return;
+
+  // Tüm mesajları kaldır
+  container.innerHTML = '';
+
+  // Başlangıç mesajını yeniden ekle
+  var welcomeDiv = document.createElement('div');
+  welcomeDiv.className = 'destek-chatbot-message destek-chatbot-message-bot';
+  welcomeDiv.innerHTML =
+    '<div class="destek-chatbot-avatar"><i class="fas fa-robot"></i></div>' +
+    '<div class="destek-chatbot-bubble">' +
+      'Merhaba! Ben MERGEN Bilge Yardım Asistanı. Uygulama hakkında sorularınızı yanıtlayabilirim. Nasıl yardımcı olabilirim?' +
+    '</div>';
+  container.appendChild(welcomeDiv);
+
+  // Shiny'ye sohbet temizleme sinyali gönder
+  Shiny.setInputValue(nsPrefix + 'chatbot_temizle', Math.random(), {priority: 'event'});
 }
 
 // ==============================================================================

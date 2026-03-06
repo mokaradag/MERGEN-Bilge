@@ -564,90 +564,98 @@ document.addEventListener('keydown', function(e) {
  * IntersectionObserver kullanarak görünürlük takibi yapar
  */
 (function() {
-  var animated = false;
+  // Her sayacın animasyon durumunu takip et (çift animasyonu önler)
+  var animatedElements = new WeakSet();
 
-  function animateCounters() {
-    if (animated) return;
+  function getGradientColor(percent) {
+    // Kırmızı(0%) → Sarı(50%) → Yeşil(100%) gradyan renk skalası
+    var r, g, b;
+    if (percent <= 50) {
+      var t = percent / 50;
+      r = Math.round(239 + (250 - 239) * t);
+      g = Math.round(68 + (204 - 68) * t);
+      b = Math.round(68 + (21 - 68) * t);
+    } else {
+      var t2 = (percent - 50) / 50;
+      r = Math.round(250 + (74 - 250) * t2);
+      g = Math.round(204 + (222 - 204) * t2);
+      b = Math.round(21 + (128 - 21) * t2);
+    }
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
 
-    var counters = document.querySelectorAll('.destek-stat-animated');
-    if (counters.length === 0) return;
+  function animateCounter(counter) {
+    // Bu eleman zaten animasyon gördüyse tekrarlama
+    if (animatedElements.has(counter)) return;
+    animatedElements.add(counter);
 
-    animated = true;
+    var target = parseInt(counter.getAttribute('data-target'), 10);
+    var suffix = counter.getAttribute('data-suffix') || '';
+    var useGradient = counter.hasAttribute('data-gradient');
+    var duration = 1500;
+    var startTime = null;
 
-    counters.forEach(function(counter) {
-      var target = parseInt(counter.getAttribute('data-target'), 10);
-      var suffix = counter.getAttribute('data-suffix') || '';
-      var useGradient = counter.hasAttribute('data-gradient');
-      var duration = 1500;
-      var startTime = null;
+    function step(timestamp) {
+      if (!startTime) startTime = timestamp;
+      var progress = Math.min((timestamp - startTime) / duration, 1);
+      var easedProgress = 1 - Math.pow(1 - progress, 3);
+      var current = Math.round(easedProgress * target);
+      counter.textContent = current + suffix;
 
-      function getGradientColor(percent) {
-        // Kırmızı(0%) → Sarı(50%) → Yeşil(100%) gradyan renk skalası
-        var r, g, b;
-        if (percent <= 50) {
-          // Kırmızı → Sarı (0-50%)
-          var t = percent / 50;
-          r = Math.round(239 + (250 - 239) * t);  // #ef4444 → #facc15
-          g = Math.round(68 + (204 - 68) * t);
-          b = Math.round(68 + (21 - 68) * t);
-        } else {
-          // Sarı → Yeşil (50-100%)
-          var t2 = (percent - 50) / 50;
-          r = Math.round(250 + (74 - 250) * t2);   // #facc15 → #4ade80
-          g = Math.round(204 + (222 - 204) * t2);
-          b = Math.round(21 + (128 - 21) * t2);
-        }
-        return 'rgb(' + r + ',' + g + ',' + b + ')';
+      if (useGradient) {
+        var percent = (current / target) * 100;
+        var color = getGradientColor(percent);
+        counter.style.color = color;
+        counter.style.textShadow = '0 0 20px ' + color.replace('rgb', 'rgba').replace(')', ',0.3)');
       }
 
-      function step(timestamp) {
-        if (!startTime) startTime = timestamp;
-        var progress = Math.min((timestamp - startTime) / duration, 1);
-        // Yavaşlayan eğri (ease-out)
-        var easedProgress = 1 - Math.pow(1 - progress, 3);
-        var current = Math.round(easedProgress * target);
-        counter.textContent = current + suffix;
-
-        // Gradyan renk animasyonu (memnuniyet yüzdesi için)
-        if (useGradient) {
-          var percent = (current / target) * 100;
-          var color = getGradientColor(percent);
-          counter.style.color = color;
-          // Hafif parlama efekti
-          counter.style.textShadow = '0 0 20px ' + color.replace('rgb', 'rgba').replace(')', ',0.3)');
-        }
-
-        if (progress < 1) {
-          requestAnimationFrame(step);
-        }
+      if (progress < 1) {
+        requestAnimationFrame(step);
       }
+    }
 
-      requestAnimationFrame(step);
-    });
+    requestAnimationFrame(step);
   }
 
   // IntersectionObserver ile görünürlük takibi
+  var currentObserver = null;
+
   function setupObserver() {
+    // Önceki gözlemciyi temizle
+    if (currentObserver) {
+      currentObserver.disconnect();
+      currentObserver = null;
+    }
+
     var statsSection = document.getElementById('destek-stats-section');
     if (!statsSection) return;
 
+    var counters = statsSection.querySelectorAll('.destek-stat-animated');
+    if (counters.length === 0) return;
+
+    // Tüm sayaçlar zaten animasyon gördüyse tekrar gözlemleme
+    var allDone = true;
+    counters.forEach(function(c) { if (!animatedElements.has(c)) allDone = false; });
+    if (allDone) return;
+
     if ('IntersectionObserver' in window) {
-      var observer = new IntersectionObserver(function(entries) {
+      currentObserver = new IntersectionObserver(function(entries) {
         entries.forEach(function(entry) {
           if (entry.isIntersecting) {
-            animateCounters();
-            observer.unobserve(entry.target);
+            counters.forEach(function(counter) {
+              animateCounter(counter);
+            });
+            if (currentObserver) currentObserver.disconnect();
           }
         });
       }, { threshold: 0.3 });
-      observer.observe(statsSection);
+      currentObserver.observe(statsSection);
     } else {
-      // Eski tarayıcılar için geri dönüş
-      animateCounters();
+      counters.forEach(function(counter) { animateCounter(counter); });
     }
   }
 
-  // Sayfa yüklendiğinde veya Shiny sayfası açıldığında
+  // Sayfa yüklendiğinde
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', setupObserver);
   } else {
@@ -656,17 +664,11 @@ document.addEventListener('keydown', function(e) {
 
   // Shiny sekme değişikliklerini dinle (Hakkında sayfasına geçildiğinde)
   $(document).on('shiny:value', function() {
-    setTimeout(function() {
-      animated = false;
-      setupObserver();
-    }, 200);
+    setTimeout(setupObserver, 200);
   });
 
   // Sidebar menü tıklamalarını da dinle
   $(document).on('click', '.sidebar-menu a', function() {
-    setTimeout(function() {
-      animated = false;
-      setupObserver();
-    }, 500);
+    setTimeout(setupObserver, 500);
   });
 })();
