@@ -78,7 +78,8 @@ call_local_llm <- function(chat_history, current_settings) {
 
   # Sıcaklık ve maksimum token ayarları
   temp_value <- if (!is.null(current_settings$temperature)) current_settings$temperature else 0.4
-  max_tokens_val <- current_settings$max_output_tokens %||% 2048
+  # Varsayilan token limiti: 4096 (uzun kod bloklarinin kesilmesini onler)
+  max_tokens_val <- current_settings$max_output_tokens %||% 4096
 
   body <- list(
     model = selected_model,

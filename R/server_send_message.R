@@ -132,6 +132,7 @@ sendMessageInit <- function(
       tool_family <- "summarization"
     } else if (isTRUE(settings_data$enable_coding_tools)) {
       tool_family <- "coding"
+      current_settings$max_output_tokens <- 4096
     } else if (isTRUE(settings_data$enable_process_tools)) {
       tool_family <- "process"
     } else if (isTRUE(settings_data$enable_app_expert_tools)) {
