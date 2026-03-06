@@ -10,7 +10,7 @@
 }
 
 .CodeMirror-scroll {
-  max-height: 450px !important;
+  max-height: 800px !important;
   overflow-y: auto !important;
 }
 
