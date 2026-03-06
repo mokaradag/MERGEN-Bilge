@@ -286,7 +286,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           messages = mesajlar,
           stream = FALSE,
           temperature = 0.3,
-          max_tokens = 2000
+          max_tokens = 4096
         )
 
         # API çağrısı (httr encode = "json" kullan - kanıtlanmış yöntem)
