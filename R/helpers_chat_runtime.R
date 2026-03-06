@@ -122,6 +122,11 @@ chat_add_message <- function(session, values, settings_data, output,
     Find(function(x) x$id == selected_char_id, chars_data$styles)
   } else NULL
 
+  # Oturum-yerel user_config'i settings'e ekle (çoklu kullanıcı güvenliği)
+  if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
+    settings_data$user_config <- session$userData$user_config
+  }
+
   ui_to_insert <- render_message_bubble_ui(
     new_message, settings_data,
     is_last_user_message = is_last_user_msg,
@@ -255,6 +260,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       initial_msg$followups <- followups
     }
     values$messages <- append(values$messages, list(initial_msg))
+
+    # Oturum-yerel user_config'i settings'e ekle (çoklu kullanıcı güvenliği)
+    if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
+      settings_data$user_config <- session$userData$user_config
+    }
 
     # Render UI
     ui_to_insert <- render_message_bubble_ui(

@@ -280,22 +280,40 @@ $(document).ready(function() {
 	  var existing = $btn.data('custom-tooltip');
 	  if (existing) existing.remove();
 
+	  // Başlık ve açıklamayı ayır (format: "Başlık\n\nAçıklama")
+	  var parts = title.split('\n\n');
+	  var tooltipTitle = parts[0] || '';
+	  var tooltipDesc = parts.slice(1).join('\n\n') || '';
+
+	  // Butonun tema rengini al
+	  var themeR = $btn.css('--theme-r') || getComputedStyle(this).getPropertyValue('--theme-r').trim();
+	  var themeG = $btn.css('--theme-g') || getComputedStyle(this).getPropertyValue('--theme-g').trim();
+	  var themeB = $btn.css('--theme-b') || getComputedStyle(this).getPropertyValue('--theme-b').trim();
+	  var themeColor = 'rgb(' + themeR + ',' + themeG + ',' + themeB + ')';
+	  var themeBorderColor = 'rgba(' + themeR + ',' + themeG + ',' + themeB + ', 0.25)';
+	  var themeGlowColor = 'rgba(' + themeR + ',' + themeG + ',' + themeB + ', 0.08)';
+
+	  var tooltipHtml =
+		'<div style="font-size:14px;font-weight:700;color:' + themeColor + ';margin-bottom:6px;letter-spacing:-0.01em;">' +
+		  $('<span>').text(tooltipTitle).html() +
+		'</div>' +
+		(tooltipDesc ? '<div style="font-size:12.5px;color:rgba(255,255,255,0.7);line-height:1.5;">' +
+		  $('<span>').text(tooltipDesc).html() +
+		'</div>' : '');
+
 	  var tooltip = $('<div class="custom-tooltip"></div>')
-		.text(title)
+		.html(tooltipHtml)
 		.css({
 		  position: 'fixed',
 		  'z-index': '9999',
-		  'background-color': 'rgba(0, 0, 0, 0.95)',
-		  color: '#fff',
-		  padding: '10px 14px',
-		  'border-radius': '8px',
-		  'font-size': '13px',
-		  'max-width': '280px',
-		  'white-space': 'pre-wrap',
+		  'background': 'linear-gradient(135deg, rgba(15, 15, 20, 0.97) 0%, rgba(10, 10, 15, 0.97) 100%)',
+		  padding: '12px 16px',
+		  'border-radius': '12px',
+		  'max-width': '300px',
 		  'word-wrap': 'break-word',
-		  'border': '1px solid rgba(255, 255, 255, 0.1)',
-		  'backdrop-filter': 'blur(10px)',
-		  'box-shadow': '0 8px 24px rgba(0, 0, 0, 0.4)',
+		  'border': '1px solid ' + themeBorderColor,
+		  'backdrop-filter': 'blur(20px)',
+		  'box-shadow': '0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.04)',
 		  'pointer-events': 'none'
 		})
 		.appendTo('body');

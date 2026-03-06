@@ -38,7 +38,9 @@ server <- function(input, output, session) {
       auth_level = user_config$auth_level
     )
     # Geriye dönük uyumluluk: global user_config'i de güncelle
-    # (tek kullanıcılı dağıtımlarda sorun olmaz; çoklu kullanıcıda kaldırılmalı)
+    # NOT: Çoklu kullanıcıda yarış koşulu riski var ancak render_message_bubble_ui
+    # artık settings$user_config'i (oturum-yerel) tercih eder. Bu satırlar yalnızca
+    # settings üzerinden user_config almayan eski kod yolları (chatExportInit vb.) için kalıyor.
     user_config$name    <<- user_identity$full_name
     user_config$userId  <<- user_identity$sicil %||% as.character(current_user_id)
 
@@ -139,7 +141,7 @@ server <- function(input, output, session) {
     session$userData$welcome_screen_attached <- FALSE
         
     # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
-    chatExportInit(input, output, session, values, user_display_name = user_config$name)
+    chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name %||% user_config$name)
 
     # Chartlab referanslarını çözümlemek için grafik deposu
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()

@@ -136,6 +136,12 @@
   color: var(--text-muted);
 }
 
+.destek-chatbot-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .destek-chatbot-status {
   display: flex;
   align-items: center;
@@ -150,6 +156,27 @@
   border-radius: 50%;
   background: #4ade80;
   box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+
+.destek-chatbot-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.destek-chatbot-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #f87171;
 }
 
 /* ==============================================================================
@@ -356,6 +383,107 @@
 
 .destek-chatbot-send-btn:active {
   transform: scale(0.95);
+}
+
+/* ==============================================================================
+   ZENGİN METİN BİÇİMLENDİRME (Bot yanıtları)
+   ============================================================================== */
+
+/* Kod blokları */
+.destek-code-block {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+
+.destek-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.destek-code-lang {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.destek-code-copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.destek-code-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.destek-code-pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.destek-code-pre code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #e5e7eb;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+/* Satır içi kod */
+.destek-inline-code {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12.5px;
+  color: #c4b5fd;
+}
+
+/* Chat içi listeler */
+.destek-chat-list {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.destek-chat-list li {
+  margin-bottom: 3px;
+  line-height: 1.5;
+}
+
+/* Kalın ve italik metin */
+.destek-chatbot-bubble strong {
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.destek-chatbot-bubble em {
+  font-style: italic;
+  color: #c4b5fd;
 }
 
 /* ==============================================================================
