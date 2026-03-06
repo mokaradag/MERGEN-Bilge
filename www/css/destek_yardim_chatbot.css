@@ -261,21 +261,6 @@
   line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
-  overflow: hidden;
-  min-width: 0;
-}
-
-/* Kod blogu iceren balonlarda tasma engellemesi */
-.destek-chatbot-bubble .destek-code-block {
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.destek-chatbot-bubble .destek-code-pre {
-  max-height: none;
-  overflow-x: auto;
-  overflow-y: auto;
-  white-space: pre;
 }
 
 /* Bot avatarı */
@@ -455,6 +440,7 @@
   margin: 0;
   padding: 12px 14px;
   overflow-x: auto;
+  max-height: 400px;
   overflow-y: auto;
 }
 
