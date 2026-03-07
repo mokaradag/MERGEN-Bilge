@@ -1,11 +1,22 @@
-# R/module_file_preview.R
+# Dosya Yolu: R/module_file_preview.R
+# Açıklama: Dosya önizleme modülü sunucu (server) tarafı.
+#            Yüklenen dosyaların (PDF, Excel, Word, Metin vb.) modal pencerelerde
+#            önizlenmesini ve indirilmesini yönetir.
+
+# ==============================================================================
+# DOSYA ÖNİZLEME SERVER
+# ==============================================================================
+
 filePreviewServer <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # Önizlenecek veriyi tutan reaktif değer
     preview_data <- reactiveVal(NULL)
+    # Önizlenen dosyanın bilgilerini saklayan reaktif liste
     file_storage <- reactiveValues(preview_file = NULL)
 
+    # Excel verilerini DataTables kullanarak render eden çıktı
     output$preview_excel_table <- DT::renderDataTable({
       req(preview_data())
       DT::datatable(preview_data(), options = list(
@@ -17,7 +28,8 @@ filePreviewServer <- function(id) {
       ))
     })
 
-	output$download_preview_file <- downloadHandler(
+    # Önizlemesi yapılan dosyayı indirmeyi sağlayan handler
+    output$download_preview_file <- downloadHandler(
       filename = function() {
         if (!is.null(file_storage$preview_file)) {
           return(file_storage$preview_file$name)
@@ -25,6 +37,7 @@ filePreviewServer <- function(id) {
         return("file.txt")
       },
       content = function(file) {
+        # Dosya mevcutsa kopyalama işlemini gerçekleştir
         if (!is.null(file_storage$preview_file) &&
             !is.null(file_storage$preview_file$datapath) &&
             path_exists_relaxed(file_storage$preview_file$datapath)) {
@@ -33,81 +46,90 @@ filePreviewServer <- function(id) {
             error = function(e) file.copy(file_storage$preview_file$datapath, file, overwrite = TRUE)
           )
         } else {
+          # Dosya bulunamazsa uyarı yazdır
           writeLines("File not found", file)
         }
       }
     )
 
-	open <- function(file_info) {
-	  tryCatch({
-			datapath <- file_info$datapath %||% file_info$path %||%
-			  resolve_uploaded_file(file_info$name, session$userData$user_id)
+    # Dosya önizleme penceresini açan ana fonksiyon
+    open <- function(file_info) {
+      tryCatch({
+        # Dosya yolunu belirle veya doğrula
+        datapath <- file_info$datapath %||% file_info$path %||%
+          resolve_uploaded_file(file_info$name, session$userData$user_id)
 
-			if (is.null(datapath) || !nzchar(datapath) || !path_exists_relaxed(datapath)) {
-			  showToast(session,
-									sprintf("Dosya bulunamadı veya erişilemiyor: %s", file_info$name %||% ""),
-									"error")
-				return(invisible(NULL))
-			}
+        # Dosya yolunun geçerliliğini kontrol et
+        if (is.null(datapath) || !nzchar(datapath) || !path_exists_relaxed(datapath)) {
+          showToast(session,
+                    sprintf("Dosya bulunamadı veya erişilemiyor: %s", file_info$name %||% ""),
+                    "error")
+          return(invisible(NULL))
+        }
 
-        # CHANGE: Removed normalizePath which was corrupting UNC paths. 
-        # Just ensure slashes are consistent for R.
-		datapath <- gsub("\\\\", "/", datapath)
+        # Dosya yolundaki ters eğik çizgileri düzelt
+        datapath <- gsub("\\\\", "/", datapath)
 
-		# Keep a normalized copy for the downloader as well
-		file_storage$preview_file <- list(
-		  name    = file_info$name %||% basename(datapath),
-		  datapath = datapath,
-		  size    = file_info$size %||% suppressWarnings(file.info(datapath)$size)
-		)
+        # İndirme işlemi için dosya bilgilerini normalize edilmiş halde sakla
+        file_storage$preview_file <- list(
+          name     = file_info$name %||% basename(datapath),
+          datapath = datapath,
+          size     = file_info$size %||% suppressWarnings(file.info(datapath)$size)
+        )
 
-		file_ext   <- tolower(tools::file_ext(file_storage$preview_file$name))
-		# Dosya adindaki && ayiricisini " - " ile degistir ve baslik stili uygula
-		display_name <- gsub("\\s*&&\\s*", " - ", file_storage$preview_file$name)
-		modalTitle <- tags$span(
-		  tags$span("Dosya Önizleme:", style = "color: #a5b4fc; font-weight: 600;"),
-		  " ",
-		  tags$span(display_name, style = "color: #e5e7eb; font-weight: 400;")
-		)
-		footer <- tagList(
-		  downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary"),
-		  modalButton("Kapat")
-		)
+        # Dosya uzantısını al
+        file_ext   <- tolower(tools::file_ext(file_storage$preview_file$name))
 
-		if (file_ext == "pdf") {
-			# Modal hemen açılsın, src daha sonra ayarlansın
-			showModal(modalDialog(
-			  title = modalTitle,
-			  tags$iframe(
-				id = ns("pdf_iframe"),
-				src = "about:blank",
-				width = "100%", height = "500px", style = "border: none;"
-			  ),
-			  size = "l", easyClose = TRUE, footer = footer
-			))
+        # Dosya adındaki && ayırıcısını " - " ile değiştir ve başlık stili uygula
+        display_name <- gsub("\\s*&&\\s*", " - ", file_storage$preview_file$name)
+        modalTitle <- tags$span(
+          tags$span("Dosya Önizleme:", style = "color: #a5b4fc; font-weight: 600;"),
+          " ",
+          tags$span(display_name, style = "color: #e5e7eb; font-weight: 400;")
+        )
 
-			# PDF'i arka planda base64'e çevir ve iframe src değerini ayarla
-			future::future({
-			  base64enc::base64encode(datapath)
-			}) %...>% (function(b64){
-			  if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-				shinyjs::runjs(sprintf(
-				  "var el=document.getElementById('%s'); if(el){ el.src='data:application/pdf;base64,%s'; }",
-				  ns("pdf_iframe"), b64[1]
-				))
-			  } else {
-				showToast(session, "PDF içeriği hazırlanamadı.", "error")
-			  }
-			}) %...!% (function(e){
-			  showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
-			})
+        # Modal alt bilgi (footer) tasarımı
+        footer <- tagList(
+          downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary"),
+          modalButton("Kapat")
+        )
+
+        if (file_ext == "pdf") {
+          # PDF Dosyaları İçin Önizleme
+          # Modal hemen açılsın, src daha sonra ayarlansın
+          showModal(modalDialog(
+            title = modalTitle,
+            tags$iframe(
+              id = ns("pdf_iframe"),
+              src = "about:blank",
+              width = "100%", height = "500px", style = "border: none;"
+            ),
+            size = "l", easyClose = TRUE, footer = footer
+          ))
+
+          # PDF'i arka planda base64'e çevir ve iframe src değerini ayarla
+          future::future({
+            base64enc::base64encode(datapath)
+          }) %...>% (function(b64){
+            if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+              shinyjs::runjs(sprintf(
+                "var el=document.getElementById('%s'); if(el){ el.src='data:application/pdf;base64,%s'; }",
+                ns("pdf_iframe"), b64[1]
+              ))
+            } else {
+              showToast(session, "PDF içeriği hazırlanamadı.", "error")
+            }
+          }) %...!% (function(e){
+            showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
+          })
 
         } else if (file_ext %in% c("xlsx", "xls")) {
+          # Excel Dosyaları İçin Önizleme
           err <- NULL
-			df <- tryCatch(
-			  safe_read_excel_table(datapath, n_max = 100),
-			  error = function(e) { err <<- e$message; NULL }
-			)
+          df <- tryCatch(
+            safe_read_excel_table(datapath, n_max = 100),
+            error = function(e) { err <<- e$message; NULL }
+          )
           if (is.null(df)) {
             showModal(modalDialog(title = modalTitle,
                                   paste("Excel dosyası okunamadı:", err %||% "Bilinmeyen hata"),
@@ -117,61 +139,60 @@ filePreviewServer <- function(id) {
           preview_data(df)
           showModal(modalDialog(
             title = modalTitle,
-			# Not: yalnız modal gövdesi kayacak; DataTables kendi yatay kaydırmasını yönetir (scrollX=TRUE)
-			div(
-			  class = "excel-preview_container",
-			  style = "overflow: visible;",
-			  DT::dataTableOutput(ns("preview_excel_table"))
-			),
+            # Yalnız modal gövdesi kayacak; DataTables kendi yatay kaydırmasını yönetir (scrollX=TRUE)
+            div(
+              class = "excel-preview_container",
+              style = "overflow: visible;",
+              DT::dataTableOutput(ns("preview_excel_table"))
+            ),
             size = "l", easyClose = TRUE, footer = footer
           ))
 
         } else if (file_ext %in% c("docx")) {
-          # DOCX -> mammoth.js ile HTML'e donustur (cevrimdisi yerel dosyadan yuklenir)
-          # Not: file_storage$preview_file zaten yukarida ayarlandi; download butonu calisir
-          # Baslik biçimlendirmesi artik tum dosya turleri icin yukarida yapiliyor
-
+          # Word Dosyaları İçin Önizleme
           # Modal iskeleti (boş hedef; JS mesajı ile doldurulacak)
-			showModal(modalDialog(
-			  title = modalTitle,
-			  # Tek dikey kaydırma modal gövdesine — iç kapsayıcı kaydırmasız
-				tags$head(tags$style(HTML("
-				  /* Modal gövdesi tek kaydırma alanı olsun */
-				  .modal-body { max-height: 80vh; overflow-y: auto; }
-				  /* İçerik kapsayıcısında kaydırma olmasın */
-				  .modal-body #", ns("docx_preview_container"), " { overflow: visible !important; }
-				  /* İframe içinde kaydırma kapalı — içeriği iframe yüksekliği kadar göster */
-				  .modal-body #", ns("docx_preview_container"), " iframe { display:block; width:100%; border:0; overflow:hidden; }
-				"))),
-			  tags$div(
-				id = ns("docx_preview_container"),
-				style = "overflow: visible; background: white; padding: 20px; border-radius: 8px;",
-				HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor…</div>")
-			  ),
-			  size = "l", easyClose = TRUE, footer = footer
-			))
+          showModal(modalDialog(
+            title = modalTitle,
+            # Tek dikey kaydırma modal gövdesine — iç kapsayıcı kaydırmasız
+            tags$head(tags$style(HTML("
+              /* Modal gövdesi tek kaydırma alanı olsun */
+              .modal-body { max-height: 80vh; overflow-y: auto; }
+              /* İçerik kapsayıcısında kaydırma olmasın */
+              .modal-body #", ns("docx_preview_container"), " { overflow: visible !important; }
+              /* İframe içinde kaydırma kapalı — içeriği iframe yüksekliği kadar göster */
+              .modal-body #", ns("docx_preview_container"), " iframe { display:block; width:100%; border:0; overflow:hidden; }
+            "))),
+            tags$div(
+              id = ns("docx_preview_container"),
+              style = "overflow: visible; background: white; padding: 20px; border-radius: 8px;",
+              HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor…</div>")
+            ),
+            size = "l", easyClose = TRUE, footer = footer
+          ))
 
-			# İçeriği base64 olarak arka planda hazırla; modal hemen açılmış olacak
-			future::future({
-			  base64enc::base64encode(datapath)
-			}) %...>% (function(b64){
-			  if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-				session$sendCustomMessage(
-				  "openDocxPreview",
-				  list(base64 = b64, targetId = ns("docx_preview_container"))
-				)
-			  } else {
-				showToast(session, "DOCX içeriği hazırlanamadı.", "error")
-			  }
-			}) %...!% (function(e){
-			  showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
-			})
+          # İçeriği base64 olarak arka planda hazırla; modal hemen açılmış olacak
+          future::future({
+            base64enc::base64encode(datapath)
+          }) %...>% (function(b64){
+            if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+              session$sendCustomMessage(
+                "openDocxPreview",
+                list(base64 = b64, targetId = ns("docx_preview_container"))
+              )
+            } else {
+              showToast(session, "DOCX içeriği hazırlanamadı.", "error")
+            }
+          }) %...!% (function(e){
+            showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
+          })
 
         } else if (file_ext %in% c("txt", "csv", "json", "log", "md", "r", "py", "js", "html", "css")) {
-			content <- tryCatch(
-			  readLines(datapath, warn = FALSE, encoding = "UTF-8"),
-			  error = function(e) readLines(datapath, warn = FALSE)  # encoding fallback
-			)
+          # Metin ve Kod Dosyaları İçin Önizleme
+          content <- tryCatch(
+            readLines(datapath, warn = FALSE, encoding = "UTF-8"),
+            error = function(e) readLines(datapath, warn = FALSE)
+          )
+          # Eğer içerik 1000 satırdan fazlaysa kırp ve bilgi ekle
           if (length(content) > 1000) {
             content <- c(content[1:1000], "...", paste("(", length(content) - 1000, "satır daha)"))
           }
@@ -183,6 +204,7 @@ filePreviewServer <- function(id) {
           ))
 
         } else {
+          # Desteklenmeyen Dosya Türleri İçin Uyarı
           showModal(modalDialog(
             title = modalTitle,
             div(class = "unsupported-preview",
@@ -195,11 +217,12 @@ filePreviewServer <- function(id) {
         }
 
       }, error = function(e) {
+        # Beklenmeyen bir hata oluştuğunda
         showToast(session, paste("Dosya önizleme hatası:", e$message), "error")
       })
     }
 
-    # public API
+    # Dışarıya açılan (public) API (Kullanılabilir fonksiyonlar)
     list(open = open)
   })
 }
