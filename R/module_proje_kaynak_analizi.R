@@ -611,7 +611,7 @@ apply_rls_to_data <- function(data, user_info, rls_cols) {
   return(filtered_data)
 }
 
-generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary", rls_total_rows = NULL, user_filter_applied = FALSE) {
+generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary", rls_total_rows = NULL, user_filter_applied = FALSE, pre_aggregated_columns = NULL) {
   # Kolon adlarını okunabilir hale getirme fonksiyonu
   prettify_col_name <- function(col) {
     # CamelCase ayırma
@@ -639,7 +639,18 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   
   num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
   cat_cols <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
-  
+
+  # Onceden toplulaştirilmis sutunlari sayisal ozetten cikar
+  pre_agg_cols <- character(0)
+  if (!is.null(pre_aggregated_columns) && length(pre_aggregated_columns) > 0) {
+    pre_agg_cols <- intersect(pre_aggregated_columns, num_cols)
+    if (length(pre_agg_cols) > 0) {
+      num_cols <- setdiff(num_cols, pre_agg_cols)
+      cat(sprintf("[PK_ANALIZ] Onceden toplulaştirilmis sutunlar istatistik ozetinden cikarildi: %s\n",
+                  paste(pre_agg_cols, collapse = ", ")))
+    }
+  }
+
   summary_parts <- list()
   summary_parts[[1]] <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
   
@@ -647,6 +658,22 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     summary_parts[[length(summary_parts) + 1]] <- sprintf(
       "\n\n⚠️ FİLTRELEME UYARISI:\n- Yetki dahilinde toplam satır: %d\n- Kullanıcı filtreleme sonrası satır: %d\n- BU %d SATIR SPESİFİK FİLTRELEME KRİTERİNE AİTTİR (tüm veri için değil!)\n- Oran/yüzde hesaplarken SADECE filtreleme sonrası %d satırı referans al",
       rls_total_rows, total_rows, total_rows, total_rows
+    )
+  }
+
+  # Onceden toplulaştirilmis sutunlar hakkinda AI'a uyari ekle
+  if (length(pre_agg_cols) > 0) {
+    pretty_names <- vapply(pre_agg_cols, prettify_col_name, character(1))
+    summary_parts[[length(summary_parts) + 1]] <- sprintf(
+      paste0(
+        "\n\n⚠️ ONCEDEN TOPLULAŞTIRILMIŞ SUTUN UYARISI:\n",
+        "Asagidaki sutunlar SQL sorgusunda zaten toplulaştirilmiştir (SUM/AVG/COUNT OVER PARTITION BY vb.):\n",
+        "- %s\n",
+        "Bu sutunlardaki degerler satirlar arasinda tekrar edebilir.\n",
+        "ASLA bu sutunlara toplam, ortalama veya herhangi bir istatistiksel ozet hesaplama UYGULAMA.\n",
+        "Bu sutunlari YALNIZCA satir bazinda yorumla, oldugu gibi aktar."
+      ),
+      paste(pretty_names, collapse = ", ")
     )
   }
   
@@ -772,7 +799,7 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     cat(sprintf("[PK_ANALIZ] UYARI: Prompt çok büyük (%d karakter), kırpılıyor.\n", nchar(current_text)))
     # Önce preview satır sayısını yarıya indir
     if (max_preview_rows > 5) {
-      return(generate_statistical_summary(data, max_preview_rows = floor(max_preview_rows / 2), max_total_chars = max_total_chars))
+      return(generate_statistical_summary(data, max_preview_rows = floor(max_preview_rows / 2), max_total_chars = max_total_chars, pre_aggregated_columns = pre_aggregated_columns))
     }
     # Eğer hala büyükse, sadece temel özet gönder
     basic_summary <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
@@ -1071,11 +1098,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   dynamic_preview_rows <- if (nrow(filtered_data) <= 500) nrow(filtered_data) else 500
   
   stat_summary <- generate_statistical_summary(
-    filtered_data, 
-    max_preview_rows = dynamic_preview_rows, 
+    filtered_data,
+    max_preview_rows = dynamic_preview_rows,
     mode = analysis_mode,
     rls_total_rows = nrow(secure_data),
-    user_filter_applied = user_filter_was_applied
+    user_filter_applied = user_filter_was_applied,
+    pre_aggregated_columns = selected_query$pre_aggregated_columns
   )
   
   cat(sprintf("[PK_ANALIZ] Istatistiksel ozet olusturuldu: %d satir, %d onizleme\n",

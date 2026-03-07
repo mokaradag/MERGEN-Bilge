@@ -45,6 +45,7 @@ ui <- dashboardPage(
       menuItem("Destek", icon = icon("life-ring"), startExpanded = FALSE,
         menuSubItem("Yardım Merkezi", tabName = "destek_yardim", icon = icon("circle-question")),
         menuSubItem("Geri Bildirim & Hata", tabName = "destek_geri_bildirim", icon = icon("comment-dots")),
+        menuSubItem("Yenilikler", tabName = "destek_surum", icon = icon("rocket")),
         menuSubItem("Hakkında", tabName = "destek_hakkinda", icon = icon("info-circle"))
       ),
       menuItemOutput("admin_menu_item"),
@@ -139,6 +140,8 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/ai_expert_subtitle.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_page.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_yardim_chatbot.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/explore_character_step.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/surum_bilgilendirme.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -236,6 +239,8 @@ ui <- dashboardPage(
     tags$script(src = "js/ai_expert_manager.js"),
     tags$script(src = "js/destek_form.js"),
     tags$script(src = "js/destek_yardim_chatbot.js"),
+    tags$script(src = "js/explore_character_step.js"),
+    tags$script(src = "js/surum_bilgilendirme.js"),
 
     tags$div(id = "toast-container", class = "toast-container")
   ),
@@ -456,9 +461,10 @@ ui <- dashboardPage(
       tabItem(tabName = "settings_kisisel", settingsKisiselUI("settings_kisisel_module")),
       tabItem(tabName = "settings_yapilandirma", settingsYapilandirmaUI("settings_yapilandirma_module")),
 
-      # Destek Sayfaları
+      # Destek Sayfalari
       tabItem(tabName = "destek_yardim", destekUI("destek_module", sayfa = "yardim")),
       tabItem(tabName = "destek_geri_bildirim", destekUI("destek_module", sayfa = "geri_bildirim")),
+      tabItem(tabName = "destek_surum", destekUI("destek_module", sayfa = "surum")),
       tabItem(tabName = "destek_hakkinda", destekUI("destek_module", sayfa = "hakkinda")),
 
       # Admin Analitik Sekmesi (Sadece Yöneticiler için)

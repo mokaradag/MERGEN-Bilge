@@ -10,10 +10,11 @@
 destekUI <- function(id, sayfa = "yardim") {
   ns <- NS(id)
 
-  # Sayfa başlığını belirle
+  # Sayfa basligini belirle
   baslik <- switch(sayfa,
     "yardim" = "Yardım Merkezi",
     "geri_bildirim" = "Geri Bildirim & Hata",
+    "surum" = "Yenilikler",
     "hakkinda" = "Hakkında",
     "Destek"
   )
@@ -21,6 +22,7 @@ destekUI <- function(id, sayfa = "yardim") {
   baslik_ikon <- switch(sayfa,
     "yardim" = "circle-question",
     "geri_bildirim" = "comment-dots",
+    "surum" = "rocket",
     "hakkinda" = "info-circle",
     "life-ring"
   )
@@ -48,6 +50,8 @@ destekUI <- function(id, sayfa = "yardim") {
           div(class = "destek-page", destekYardimUI(ns("yardim_module")))
         } else if (sayfa == "geri_bildirim") {
           div(class = "destek-page", destekGeriBildirimUI(ns("geri_bildirim_module")))
+        } else if (sayfa == "surum") {
+          div(class = "destek-page", destekSurumUI(ns("surum_module")))
         } else if (sayfa == "hakkinda") {
           div(class = "destek-page", destekHakkindaUI(ns("hakkinda_module")))
         }
@@ -64,9 +68,10 @@ destekServer <- function(id, current_user_id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Alt modül sunucularını başlat
+    # Alt modul sunucularini baslat
     destekYardimServer("yardim_module", current_user_id = current_user_id)
     destekGeriBildirimServer("geri_bildirim_module", current_user_id = current_user_id)
+    destekSurumServer("surum_module")
     destekHakkindaServer("hakkinda_module")
 
     invisible(NULL)

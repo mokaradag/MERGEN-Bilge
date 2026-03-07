@@ -26,6 +26,16 @@ window.WelcomeNeuralNetwork = (function() {
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
   }
 
+  // Renk doygunlugunu artirarak daha canli renkler olustur
+  function boostSaturation(rgb, factor) {
+    var avg = (rgb.r + rgb.g + rgb.b) / 3;
+    return {
+      r: Math.min(255, Math.round(avg + (rgb.r - avg) * factor)),
+      g: Math.min(255, Math.round(avg + (rgb.g - avg) * factor)),
+      b: Math.min(255, Math.round(avg + (rgb.b - avg) * factor))
+    };
+  }
+
   function init(canvasElement, accentHex) {
     if (!canvasElement) return;
 
@@ -35,10 +45,10 @@ window.WelcomeNeuralNetwork = (function() {
       animationId = null;
     }
 
-    // Karakter aksan rengi varsa kullan
+    // Karakter aksan rengi varsa kullan (doygunluk arttirilmis)
     if (accentHex) {
       var rgb = hexToRgb(accentHex);
-      if (rgb) pColor = rgb;
+      if (rgb) pColor = boostSaturation(rgb, 1.35);
     }
 
     canvas = canvasElement;
@@ -78,7 +88,7 @@ window.WelcomeNeuralNetwork = (function() {
         y: Math.random() * height,
         vx: (Math.random() - 0.5) * 0.4,
         vy: (Math.random() - 0.5) * 0.4,
-        size: Math.random() * 1.5 + 1.0
+        size: Math.random() * 2.0 + 1.2
       });
     }
   }
@@ -120,7 +130,7 @@ window.WelcomeNeuralNetwork = (function() {
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fillStyle = fillStr;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 12;
       ctx.shadowColor = shadowStr;
       ctx.fill();
       ctx.shadowBlur = 0;
@@ -134,8 +144,8 @@ window.WelcomeNeuralNetwork = (function() {
         if (dist2 < connectionDistance) {
           ctx.beginPath();
           const opacity = 1 - dist2 / connectionDistance;
-          ctx.strokeStyle = 'rgba(' + pColor.r + ', ' + pColor.g + ', ' + pColor.b + ', ' + (opacity * 0.8) + ')';
-          ctx.lineWidth = 0.6;
+          ctx.strokeStyle = 'rgba(' + pColor.r + ', ' + pColor.g + ', ' + pColor.b + ', ' + (opacity * 0.95) + ')';
+          ctx.lineWidth = 0.8;
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
@@ -161,8 +171,28 @@ window.WelcomeNeuralNetwork = (function() {
     lastFrameTime = 0;
   }
 
+  // Canli olarak renk guncelle (karakter degistiginde)
+  function updateColor(accentHex) {
+    if (accentHex) {
+      var rgb = hexToRgb(accentHex);
+      if (rgb) pColor = boostSaturation(rgb, 1.35);
+    }
+  }
+
   return {
     init: init,
-    destroy: destroy
+    destroy: destroy,
+    updateColor: updateColor
   };
 })();
+
+// Shiny mesaj dinleyicisi: Neural network rengini guncelle
+if (typeof Shiny !== 'undefined') {
+  $(document).on('shiny:connected', function() {
+    Shiny.addCustomMessageHandler('updateNeuralColor', function(data) {
+      if (data && data.accent && window.WelcomeNeuralNetwork) {
+        window.WelcomeNeuralNetwork.updateColor(data.accent);
+      }
+    });
+  });
+}

@@ -241,7 +241,7 @@ destekHakkindaUI <- function(id) {
           icon("heart"),
           " Özenle geliştirildi",
           span(class = "destek-footer-divider", "•"),
-          "Sürüm 0.9"
+          paste0("Sürüm ", get_current_version())
         )
       )
     )

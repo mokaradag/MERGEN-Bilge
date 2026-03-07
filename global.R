@@ -47,6 +47,7 @@ source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yardımcı
 # --- MODÜLLERİ VE YARDIMCILARI YÜKLE ---
 # Shiny uygulamaları için standart göreceli yollar kullanmak en güvenilir yöntemdir.
 source("R/config_characters.R", encoding = "UTF-8")
+source("R/config_version_history.R", encoding = "UTF-8")
 source("welcome_screen.R",     encoding = "UTF-8")
 source("R/helpers_database.R", encoding ="UTF-8")
 source("R/helpers_language.R", encoding ="UTF-8")
@@ -91,6 +92,7 @@ source("R/module_feedback.R", encoding = "UTF-8")
 source("R/helpers_destek_database.R", encoding = "UTF-8")
 source("R/module_destek_yardim.R", encoding = "UTF-8")
 source("R/module_destek_hakkinda.R", encoding = "UTF-8")
+source("R/module_destek_surum.R", encoding = "UTF-8")
 source("R/module_destek_hata_bildir.R", encoding = "UTF-8")
 source("R/module_destek_geri_bildirim.R", encoding = "UTF-8")
 source("R/module_destek.R", encoding = "UTF-8")

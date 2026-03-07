@@ -168,6 +168,32 @@
     if (_selectedModeId) return;
 
     var mode = card.getAttribute('data-mode');
+
+    // Butunlesik mod secildiyse karakter secim adimina yonlendir
+    if (mode === 'kesif' && window.CinematicCharacterStep) {
+      _selectedModeId = null;
+
+      // Secilen karti animasyonla vurgula
+      var allCards = document.querySelectorAll('.cinematic-mode-card');
+      allCards.forEach(function(c) {
+        if (c.getAttribute('data-mode') === mode) {
+          c.classList.add('selected');
+        } else {
+          c.classList.add('other-selected');
+        }
+      });
+
+      // Kisa gecikme ile 2. adima gec
+      setTimeout(function() {
+        // Kart siniflarini temizle
+        allCards.forEach(function(c) {
+          c.classList.remove('selected', 'other-selected');
+        });
+        window.CinematicCharacterStep.showCharacterStep();
+      }, 600);
+      return;
+    }
+
     _selectedModeId = mode;
 
     // Seçilen kartı işaretle, diğerlerini soldur
