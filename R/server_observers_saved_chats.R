@@ -111,26 +111,32 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     values$current_chat_id <- chat_id
     values$show_welcome <- FALSE
 
-	# Mesaj içeriğinden aktif aracı tespit et ve etkinleştir
-    # Not: Bazı işaretçiler (source-link, kaynakça-entry) ham içerik yerine
-    # HTML içeriğinde bulunur, bu yüzden her iki alan da kontrol edilir.
+    # Mesaj içeriğinden aktif aracı tespit et ve etkinleştir
+    # Görsel Uzmanı tespiti güvenilir çalışıyor (görsel yanıtlar belirgin işaretçiler içerir).
+    # Diğer araçlar için içerik tabanlı tespit yapılır; eşleşme yoksa araç durumu değiştirilmez.
     detected_tool <- NULL
     for (m in values$messages) {
       if (m$type %||% "" %in% c("ai", "assistant")) {
         msg_content <- m$content %||% ""
-        msg_html <- m$html_content %||% ""
+        msg_html    <- m$html_content %||% ""
         combined_text <- paste(msg_content, msg_html)
+
+        # Görsel araç tespiti (en güvenilir - galeri yaklaşımıyla uyumlu)
+        if (grepl("\\[GORSEL|\\[GÖRSEL|generated-image|image_gen_|dall-e|gorsel-sonuc",
+                  combined_text, ignore.case = TRUE, perl = TRUE)) {
+          detected_tool <- "enable_image_tools"
+          break
+        }
+        # Süreç yönetimi araç tespiti
         if (grepl("source-link|kaynakca-entry", combined_text, perl = TRUE)) {
           detected_tool <- "enable_process_tools"
-        } else if (grepl("\\[GORSEL|\\[GÖRSEL|generated-image|image_gen_|dall-e|gorsel-sonuc", combined_text, ignore.case = TRUE, perl = TRUE)) {
-          detected_tool <- "enable_image_tools"
+          break
         }
-        if (!is.null(detected_tool)) break
       }
     }
 
     if (!is.null(detected_tool)) {
-      # Tum analiz araclarini devre disi birak
+      # Tüm analiz araçlarını devre dışı bırak
       analysis_tools <- c(
         "enable_rdata_tools", "enable_mcp_tools", "enable_summarization_tools",
         "enable_coding_tools", "enable_process_tools", "enable_app_expert_tools",
@@ -140,21 +146,24 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         isolate({ settings_data[[tool]] <- FALSE })
         updateCheckboxInput(session, paste0("settings_yapilandirma_module-", tool), value = FALSE)
       }
-      # Tespit edilen araci etkinlestir
+      # Tespit edilen aracı etkinleştir
       isolate({ settings_data[[detected_tool]] <- TRUE })
       updateCheckboxInput(session, paste0("settings_yapilandirma_module-", detected_tool), value = TRUE)
 
-      # istemci tarafini bilgilendir
+      # İstemci tarafını bilgilendir
       session$sendCustomMessage("saveSettings", stats::setNames(
         as.list(vapply(analysis_tools, function(t) identical(t, detected_tool), logical(1))),
         analysis_tools
       ))
 
+      # Görsel modu için ek UI güncellemeleri (galeri yaklaşımıyla aynı)
       if (identical(detected_tool, "enable_image_tools")) {
         session$sendCustomMessage("toggleImageMode", list(active = TRUE))
+        image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+        isolate({ settings_data$model_selection <- image_model })
       }
 
-      cat(sprintf("[SAVED_CHATS] Arac tespit edildi ve etkinlestirildi: %s\n", detected_tool))
+      cat(sprintf("[SAVED_CHATS] Araç tespit edildi ve etkinleştirildi: %s\n", detected_tool))
     }
 
     # Karakter verisini al

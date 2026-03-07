@@ -155,15 +155,24 @@ createStartupScreenUI <- function() {
               `data-mode` = "odak",
               tags$div(
                 class = "cinematic-card-inner",
-                # İkon kutusu
+                # Ozellik gostergeleri (sag ust kose)
+                tags$div(
+                  class = "cinematic-feature-indicators",
+                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "tts",
+                    title = "Sesli Yanit: Kapali"),
+                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "followup",
+                    title = "Takip Sorulari: Kapali"),
+                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "music",
+                    title = "Arka Plan Muzigi: Kapali")
+                ),
+                # Ikon kutusu
                 tags$div(
                   class = "cinematic-card-icon-box",
-                  # Odak mikro animasyonu (dalga/ripple)
                   tags$div(class = "micro-anim micro-anim-odak"),
                   tags$i(class = "fas fa-bolt cinematic-card-icon")
                 ),
                 tags$h3(class = "cinematic-card-title", "Odak"),
-                tags$p(class = "cinematic-card-short", "Maksimum hız, mutlak sadelik."),
+                tags$p(class = "cinematic-card-short", "Maksimum hiz, mutlak sadelik."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")
                 ),
@@ -178,14 +187,24 @@ createStartupScreenUI <- function() {
               `data-mode` = "denge",
               tags$div(
                 class = "cinematic-card-inner",
-                # Dinamik mikro animasyonu (uçuşan zerreler)
+                # Ozellik gostergeleri (sag ust kose)
+                tags$div(
+                  class = "cinematic-feature-indicators",
+                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "tts",
+                    title = "Sesli Yanit: Kapali"),
+                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "followup",
+                    title = "Takip Sorulari: Aktif"),
+                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "music",
+                    title = "Arka Plan Muzigi: Aktif")
+                ),
+                # Dinamik mikro animasyonu
                 tags$div(
                   class = "cinematic-card-icon-box",
                   tags$div(class = "micro-anim micro-anim-denge"),
                   tags$i(class = "fas fa-wand-magic-sparkles cinematic-card-icon")
                 ),
                 tags$h3(class = "cinematic-card-title", "Dinamik"),
-                tags$p(class = "cinematic-card-short", "Akıllı asistan desteği."),
+                tags$p(class = "cinematic-card-short", "Akilli asistan destegi."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")
                 ),
@@ -194,20 +213,30 @@ createStartupScreenUI <- function() {
                 )
               )
             ),
-            # Bütünleşik Modu
+            # Butunlesik Modu
             tags$div(
               class = "cinematic-mode-card spotlight-card",
               `data-mode` = "kesif",
               tags$div(
                 class = "cinematic-card-inner",
-                # Bütünleşik mikro animasyonu (lazer tarayıcı)
+                # Ozellik gostergeleri (sag ust kose)
+                tags$div(
+                  class = "cinematic-feature-indicators",
+                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "tts",
+                    title = "Sesli Yanit: Aktif"),
+                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "followup",
+                    title = "Takip Sorulari: Aktif"),
+                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "music",
+                    title = "Arka Plan Muzigi: Aktif")
+                ),
+                # Butunlesik mikro animasyonu
                 tags$div(
                   class = "cinematic-card-icon-box",
                   tags$div(class = "micro-anim micro-anim-kesif"),
                   tags$i(class = "fas fa-microchip cinematic-card-icon")
                 ),
-                tags$h3(class = "cinematic-card-title", "Bütünleşik"),
-                tags$p(class = "cinematic-card-short", "Tüm sistemlerin kilidini açın."),
+                tags$h3(class = "cinematic-card-title", "Butunlesik"),
+                tags$p(class = "cinematic-card-short", "Tum sistemlerin kilidini acin."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")
                 ),
@@ -221,40 +250,54 @@ createStartupScreenUI <- function() {
           tags$div(
             id = "cinematic-character-step",
             class = "cinematic-character-step",
-            # Başlık
+            # Başlık ve kapatma butonu
             tags$div(
               class = "cinematic-char-step-header",
-              tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
-              tags$p(class = "cinematic-char-step-subtitle", "HER KARAKTERİN BENZERSİZ BİR KİŞİLİĞİ VARDIR")
+              tags$div(
+                tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
+                tags$p(class = "cinematic-char-step-subtitle", "HER KARAKTERİN BENZERSİZ BİR KİŞİLİĞİ VARDIR")
+              ),
+              tags$button(
+                class = "cinematic-char-close-btn",
+                title = "Kapat (Esc)",
+                tags$i(class = "fas fa-times")
+              )
             ),
             # Karakter butonları satırı
             tags$div(
               class = "cinematic-char-buttons",
               id = "cinematic-char-buttons-row"
             ),
-            # Karakter içerik alanı (görsel + bilgi)
+            # Karakter içerik alanı (görsel + bilgi) - Kişiselleştirme sayfası ile aynı düzen
             tags$div(
               class = "cinematic-character-layout",
-              # Sol: Görsel
+              # Sol: Görsel (video + statik resim)
               tags$div(
                 class = "cinematic-char-visual",
                 tags$div(
                   class = "cinematic-char-image-wrapper",
+                  # Video oynatıcı (giriş ekranı karakter seçimi için)
+                  tags$video(
+                    id = "explore-char-video",
+                    class = "explore-char-video-player",
+                    autoplay = FALSE,
+                    playsinline = TRUE,
+                    muted = TRUE,
+                    preload = "none",
+                    style = "display: none;"
+                  ),
                   tags$img(
                     id = "cinematic-char-preview-img",
                     src = "characters/resim/Mergen_resim_original.png",
                     alt = "Karakter"
-                  ),
-                  tags$div(
-                    class = "cinematic-char-name-overlay",
-                    tags$h3(class = "cinematic-char-display-name", "MERGEN"),
-                    tags$p(class = "cinematic-char-subtitle", "Standart")
                   )
                 )
               ),
-              # Sağ: Bilgi
+              # Sağ: Bilgi (isim ve alt başlık üst kısımda, hikaye yazma efektiyle)
               tags$div(
                 class = "cinematic-char-info",
+                tags$h3(class = "cinematic-char-display-name", "MERGEN"),
+                tags$p(class = "cinematic-char-subtitle-text", "Standart"),
                 tags$div(class = "cinematic-char-lore"),
                 tags$div(class = "cinematic-char-metrics"),
                 tags$div(class = "cinematic-char-signatures")
@@ -374,6 +417,17 @@ startupScreenObserversInit <- function(input, session, settings_data) {
         "})();"
       )
       shinyjs::runjs(buttons_js)
+
+      # Tüm karakterlerin video verilerini önceden yükle (Bütünleşik mod karakter adımı için)
+      for (ch in char_list) {
+        video_data <- tryCatch(
+          get_character_video_data(ch$id),
+          error = function(e) NULL
+        )
+        if (!is.null(video_data)) {
+          session$sendCustomMessage("loadExploreCharVideo", video_data)
+        }
+      }
     }
 
     # Sürüm bilgilendirme verilerini modala gönder
@@ -439,6 +493,18 @@ startupScreenObserversInit <- function(input, session, settings_data) {
           "try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.selected_character = '%s'; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
           char_id
         ))
+      }
+    }
+  }, ignoreInit = TRUE)
+
+  # Giriş ekranı karakter adımından video verisi talebi
+  observeEvent(input$explore_request_char_video, {
+    req(input$explore_request_char_video)
+    char_id <- input$explore_request_char_video$character
+    if (!is.null(char_id) && nzchar(char_id)) {
+      video_data <- tryCatch(get_character_video_data(char_id), error = function(e) NULL)
+      if (!is.null(video_data)) {
+        session$sendCustomMessage("loadExploreCharVideo", video_data)
       }
     }
   }, ignoreInit = TRUE)

@@ -758,3 +758,33 @@ window.DeepSpaceIntro = (function() {
     isActive: isActive
   };
 })();
+
+// Otomatik başlatma: Shiny bağlantısını beklemeden uzay animasyonunu hemen başlat.
+// localStorage'dan atlama tercihi kontrol edilir; atlama seçilmişse başlatma yapılmaz.
+(function() {
+  'use strict';
+  function autoInitDeepSpace() {
+    try {
+      var raw = localStorage.getItem('mergen_settings');
+      if (raw) {
+        var s = JSON.parse(raw);
+        if (s.skip_intro === true) return; // Kullanıcı animasyonu atlamayı seçmiş
+      }
+    } catch(e) {}
+
+    var container = document.getElementById('deep-space-canvas');
+    if (container && window.DeepSpaceIntro && !window.DeepSpaceIntro.isActive()) {
+      window.DeepSpaceIntro.init('deep-space-canvas', {
+        texturePath: 'lib/threejs/textures/'
+      });
+    }
+  }
+
+  // DOM hazır olur olmaz başlat
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoInitDeepSpace);
+  } else {
+    // DOM zaten hazır, küçük bir gecikmeyle başlat (elemanların eklenmesini bekle)
+    setTimeout(autoInitDeepSpace, 50);
+  }
+})();

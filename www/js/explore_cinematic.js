@@ -293,6 +293,11 @@
     var container = document.getElementById('deep-space-container');
     if (!container) return;
 
+    // Giris muzigini yumusak gecisle durdur
+    if (window.SpaceIntroMusic && window.SpaceIntroMusic.fadeOutAndStop) {
+      window.SpaceIntroMusic.fadeOutAndStop();
+    }
+
     container.classList.add('fade-out');
     setTimeout(function() {
       if (window.DeepSpaceIntro && window.DeepSpaceIntro.destroy) {

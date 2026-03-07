@@ -2,7 +2,9 @@
 # Dosya Yolu: R/server_music_handlers.R
 # Açıklama: Arka plan müzik yönetimi için observer fonksiyonları.
 # Basit akış: Ana Tema (bir kez) → Karakter Müziği (rastgele döngü)
+# Giris ekrani icin ayri muzik yoneticisi: SpaceIntroMusic (www/music/intro/)
 # Klasör yapısı:
+#   www/music/intro/          → Giris ekrani uzay muzikleri
 #   www/music/Ana Tema/       → Ana tema müzikleri (bir kez çalınır)
 #   www/music/Karakter/mergen/ → MERGEN karakter müzikleri
 #   www/music/Karakter/ulgen/  → ÜLGEN karakter müzikleri
@@ -24,6 +26,23 @@ musicHandlersInit <- function(input, session, settings_data) {
       volume = shiny::isolate(settings_data$music_volume) %||% 0.3,
       character = shiny::isolate(settings_data$selected_character) %||% "mergen"
     ))
+
+    # Giris ekrani intro muzik playlist'ini gonder
+    intro_dir <- file.path("www", "music", "intro")
+    if (dir.exists(intro_dir)) {
+      intro_files <- list.files(intro_dir, pattern = "\\.mp3$", full.names = FALSE, ignore.case = TRUE)
+      if (length(intro_files) > 0) {
+        intro_urls <- vapply(intro_files, function(f) {
+          utils::URLencode(paste0("music/intro/", f))
+        }, character(1), USE.NAMES = FALSE)
+
+        cat(sprintf("[MUSIC] Giris muzik playlist'i gonderiliyor: %d parca\n", length(intro_urls)))
+        session$sendCustomMessage("initSpaceIntroMusic", list(
+          files = I(intro_urls),
+          volume = shiny::isolate(settings_data$music_volume) %||% 0.25
+        ))
+      }
+    }
   }, once = TRUE)
 
   # İstemciden playlist isteği geldiğinde

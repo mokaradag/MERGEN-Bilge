@@ -2,6 +2,7 @@
 /* Dosya Yolu: www/css/explore_character_step.css */
 /* Açıklama: Bütünleşik mod karakter seçim adımı stilleri. */
 /* Giriş ekranındaki mod seçim modalında 2. adım olarak gösterilir. */
+/* Kişiselleştirme sayfasındaki deneyimle tutarlı tasarım. */
 
 /* ============================================================= */
 /* ADIM GÖSTERGE ÇUBUĞU                                          */
@@ -66,6 +67,54 @@
   display: block;
 }
 
+/* Başlık ve kapatma butonu - yatay düzen */
+.cinematic-char-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.cinematic-char-step-title {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
+  font-size: 30px !important;
+  font-weight: 300;
+  color: #ffffff;
+  letter-spacing: 0.08em;
+  margin: 0 0 6px 0;
+}
+
+.cinematic-char-step-subtitle {
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 14px !important;
+  color: rgba(148, 163, 184, 0.6);
+  letter-spacing: 0.2em;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Kapatma butonu (2. adım) */
+.cinematic-char-close-btn {
+  padding: 14px;
+  background: transparent;
+  border: none;
+  color: rgba(148, 163, 184, 0.5);
+  font-size: 24px !important;
+  cursor: pointer;
+  border-radius: 9999px;
+  transition: all 0.3s ease;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.cinematic-char-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  transform: rotate(90deg);
+}
+
+/* İki sütunlu düzen - Kişiselleştirme sayfasıyla aynı */
 .cinematic-character-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -80,13 +129,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 380px;
+  min-height: 420px;
 }
 
+/* Görsel/Video sarmalayıcı - Kişiselleştirme boyutlarıyla aynı */
 .cinematic-char-image-wrapper {
   position: relative;
-  width: 320px;
-  height: 380px;
+  width: 380px;
+  height: 440px;
   border-radius: 20px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.4);
@@ -105,42 +155,46 @@
   transition: opacity 0.5s ease;
 }
 
-/* Görsel üzerindeki isimlendirme */
-.cinematic-char-name-overlay {
+/* Video oynatıcı stili */
+.explore-char-video-player {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 24px 20px 16px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
-  text-align: center;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 2;
 }
 
-.cinematic-char-display-name {
-  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
-  font-size: 22px !important;
-  font-weight: 400;
-  color: #ffffff;
-  letter-spacing: 0.15em;
-  margin: 0;
-}
-
-.cinematic-char-subtitle {
-  font-family: 'Jura', 'Segoe UI', sans-serif !important;
-  font-size: 13px !important;
-  color: rgba(148, 163, 184, 0.8);
-  letter-spacing: 0.2em;
-  margin: 4px 0 0 0;
-  text-transform: uppercase;
-}
-
-/* Sağ panel: Bilgi alanı */
+/* Sağ panel: Karakter bilgileri */
 .cinematic-char-info {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
+/* Karakter adı - sağ panelde */
+.cinematic-char-info .cinematic-char-display-name {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
+  font-size: 28px !important;
+  font-weight: 400;
+  color: #ffffff;
+  letter-spacing: 0.12em;
+  margin: 0;
+}
+
+/* Karakter alt başlık - sağ panelde */
+.cinematic-char-subtitle-text {
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 14px !important;
+  color: rgba(148, 163, 184, 0.7);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin: 0 0 8px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Hikaye metni alanı */
 .cinematic-char-lore {
   font-size: 14px;
   line-height: 1.7;
@@ -149,8 +203,20 @@
   background: rgba(255, 255, 255, 0.02);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+  min-height: 80px;
   max-height: 140px;
   overflow-y: auto;
+}
+
+/* Yazma efekti imleci */
+.cinematic-lore-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background-color: rgba(129, 140, 248, 0.8);
+  animation: cinematicTypingBlink 0.8s step-end infinite;
 }
 
 /* Profil metrikleri */
@@ -361,31 +427,6 @@
   display: none;
 }
 
-/* Karakter adımı başlığını göster */
-.cinematic-char-step-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.cinematic-char-step-title {
-  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
-  font-size: 30px !important;
-  font-weight: 300;
-  color: #ffffff;
-  letter-spacing: 0.08em;
-  margin: 0 0 8px 0;
-}
-
-.cinematic-char-step-subtitle {
-  font-family: 'Jura', 'Segoe UI', sans-serif !important;
-  font-size: 14px !important;
-  color: rgba(148, 163, 184, 0.6);
-  letter-spacing: 0.2em;
-  font-weight: 600;
-  text-transform: uppercase;
-  margin: 0;
-}
-
 /* ============================================================= */
 /* RESPONSIVE TASARIM                                            */
 /* ============================================================= */
@@ -397,12 +438,12 @@
   }
 
   .cinematic-char-visual {
-    min-height: 280px;
+    min-height: 300px;
   }
 
   .cinematic-char-image-wrapper {
-    width: 260px;
-    height: 300px;
+    width: 300px;
+    height: 360px;
   }
 
   .cinematic-char-buttons {
