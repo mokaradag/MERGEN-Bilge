@@ -16,7 +16,8 @@
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Video tarafı biraz daha geniş, neural ağ tarafı biraz daha dar */
+  grid-template-columns: 57fr 43fr;
   z-index: 0;
 }
 

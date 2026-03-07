@@ -378,7 +378,7 @@
 .destek-nps-buttons {
   display: flex;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 10px;
   justify-content: center;
 }
 

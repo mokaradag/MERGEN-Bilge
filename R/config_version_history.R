@@ -1,106 +1,120 @@
 # R/config_version_history.R
 # Dosya Yolu: R/config_version_history.R
-# Açıklama: Sürüm geçmişi ve güncelleme bilgilerini tanımlayan yapılandırma dosyası.
-# Her yeni sürüm için buraya yeni bir giriş eklenir.
+# Açıklama: Sürüm geçmişi verilerini version_history.md dosyasından okur ve ayrıştırır.
+# Yeni sürüm eklemek için sadece version_history.md dosyasını güncellemek yeterlidir.
 
-#' Sürüm Geçmişi Verilerini Getir
+#' Markdown Dosyasından Sürüm Geçmişini Ayrıştır
 #'
-#' @description Tüm sürüm bilgilerini kronolojik sıralamayla döndürür.
-#' En güncel sürüm listenin başında yer alır.
-#'
-#' @return Sürüm listesi: her eleman id, version, date, title, highlights ve details içerir.
+#' @description version_history.md dosyasını okur ve yapılandırılmış listeye dönüştürür.
+#' @return Sürüm listesi: current_version ve versions içerir.
 get_version_history <- function() {
-  list(
-    # Mevcut sürüm
-    current_version = "1.0",
+  md_path <- file.path(getwd(), "version_history.md")
 
-    versions = list(
+  if (!file.exists(md_path)) {
+    warning("[VERSİYON] version_history.md dosyası bulunamadı: ", md_path)
+    return(list(current_version = "0.0", versions = list()))
+  }
 
-      # ------------------------------------------------------------------
-      # SÜRÜM 1.0 — Üretim Sürümü
-      # ------------------------------------------------------------------
-      list(
-        id = "v1_0",
-        version = "1.0",
-        date = "2026-03-07",
-        title = "MERGEN Bilge Resmi Lansman",
-        badge = "Yeni",
-        highlights = list(
-          "Bütünleşik mod ile tam özellikli deneyim",
-          "5 benzersiz AI karakter ve sinematik seçim ekranı",
-          "Proje ve Kaynak Analizi aracı ile akıllı veri sorgulama",
-          "Görsel oluşturma ve galeri yönetimi",
-          "Destek merkezi, geri bildirim ve hata bildirimi",
-          "Sürüm bilgilendirme sistemi"
-        ),
-        details = list(
-          list(
-            category = "Yeni Özellikler",
-            icon = "sparkles",
-            items = list(
-              "Sinematik giriş ekranı ile 3 farklı deneyim modu (Odak, Dinamik, Bütünleşik)",
-              "Bütünleşik modda karakter seçim adımı eklendi",
-              "Sürüm bilgilendirme sistemi: giriş ekranında bildirim ikonu ve özel sayfa",
-              "Karakter bazlı neural network animasyonu (daha canlı renkler)",
-              "Proje sorgulamaları için önceden toplulaştırılmış sütun desteği"
-            )
-          ),
-          list(
-            category = "İyileştirmeler",
-            icon = "arrow-up-right-dots",
-            items = list(
-              "Kayıtlı söyleşi yüklendiğinde araç aktivasyonu düzeltildi",
-              "NPS puanlama daireleri daha kompakt ve doğru konumlandırıldı",
-              "Neural network animasyon renkleri daha belirgin hale getirildi",
-              "Sorgu sonuçlarında önceden hesaplanmış sütunlar istatistik özetinden çıkarıldı"
-            )
-          ),
-          list(
-            category = "Teknik",
-            icon = "code",
-            items = list(
-              "Modüler dosya yapısı ile ayrılmış CSS, JS ve R betikleri",
-              "Karakter verileri istemciye dinamik olarak aktarılıyor",
-              "Yarış koşullarına karşı önlemler alınmıştır"
-            )
-          )
-        )
-      ),
+  lines <- readLines(md_path, encoding = "UTF-8", warn = FALSE)
 
-      # ------------------------------------------------------------------
-      # SÜRÜM 0.9 — Beta Sürümü
-      # ------------------------------------------------------------------
-      list(
-        id = "v0_9",
-        version = "0.9",
-        date = "2026-03-04",
-        title = "Beta Sürümü",
+  versions <- list()
+  current_version <- NULL
+  current_ver <- NULL
+  current_section <- NULL  # "highlights" veya "detail"
+  section_icon <- NULL
+
+  # Mevcut sürümü listeye ekle
+  flush_version <- function() {
+    if (!is.null(current_ver)) {
+      versions[[length(versions) + 1]] <<- current_ver
+    }
+  }
+
+  for (line in lines) {
+    trimmed <- trimws(line)
+
+    # Boş satır veya yorum satırını atla
+    if (nchar(trimmed) == 0 || grepl("^<!--", trimmed) || grepl("^-->", trimmed)) next
+    # Sürüm ayracı
+    if (trimmed == "---") {
+      current_section <- NULL
+      next
+    }
+
+    # Sürüm başlığı: ## v1.0 | 2026-03-07 | Başlık
+    if (grepl("^## v", trimmed)) {
+      flush_version()
+      parts <- strsplit(sub("^## ", "", trimmed), "\\s*\\|\\s*")[[1]]
+      ver_num <- sub("^v", "", trimws(parts[1]))
+      ver_date <- if (length(parts) >= 2) trimws(parts[2]) else ""
+      ver_title <- if (length(parts) >= 3) trimws(parts[3]) else ""
+
+      # İlk sürüm mevcut sürümdür
+      if (is.null(current_version)) current_version <- ver_num
+
+      current_ver <- list(
+        id = paste0("v", gsub("\\.", "_", ver_num)),
+        version = ver_num,
+        date = ver_date,
+        title = ver_title,
         badge = NULL,
-        highlights = list(
-          "Temel sohbet altyapısı ve LLM entegrasyonu",
-          "Dosya yükleme ve analiz özellikleri",
-          "Karakter sistemi ve kişiselleştirme sayfası",
-          "Destek sayfaları (Yardım Merkezi, Geri Bildirim, Hakkında)"
-        ),
-        details = list(
-          list(
-            category = "Temel Özellikler",
-            icon = "layer-group",
-            items = list(
-              "Gerçek zamanlı akış (streaming) ile LLM yanıt sistemi",
-              "MCP araç entegrasyonu ve tekrarlı araç çağırma desteği",
-              "Dosya yükleme, önizleme ve sohbete ekleme",
-              "Söyleşi kaydetme, yükleme ve arama",
-              "5 AI karakter profili ve video tanıtım sistemi",
-              "TTS ve STT entegrasyonu",
-              "Görsel oluşturma (DALL-E entegrasyonu)",
-              "Sinematik giriş ekranı ve deneyim modu seçimi",
-              "Destek: Yardım Merkezi, Geri Bildirim, Hata Bildirimi, Hakkında"
-            )
-          )
-        )
+        highlights = list(),
+        details = list()
       )
-    )
+      current_section <- NULL
+      next
+    }
+
+    # Rozet satırı: badge: Yeni
+    if (grepl("^badge:", trimmed) && !is.null(current_ver)) {
+      badge_val <- trimws(sub("^badge:\\s*", "", trimmed))
+      if (nzchar(badge_val) && badge_val != "NULL") {
+        current_ver$badge <<- badge_val
+      }
+      next
+    }
+
+    # Bölüm başlığı: ### Öne Çıkanlar veya ### Kategori | ikon
+    if (grepl("^### ", trimmed) && !is.null(current_ver)) {
+      section_text <- sub("^### ", "", trimmed)
+      section_parts <- strsplit(section_text, "\\s*\\|\\s*")[[1]]
+      section_name <- trimws(section_parts[1])
+
+      if (grepl("^Öne Çıkanlar", section_name, ignore.case = TRUE)) {
+        current_section <- "highlights"
+      } else {
+        current_section <- "detail"
+        section_icon <- if (length(section_parts) >= 2) trimws(section_parts[2]) else "circle"
+        # Yeni detay bölümü ekle
+        current_ver$details[[length(current_ver$details) + 1]] <<- list(
+          category = section_name,
+          icon = section_icon,
+          items = list()
+        )
+      }
+      next
+    }
+
+    # Madde satırı: - İçerik
+    if (grepl("^- ", trimmed) && !is.null(current_ver) && !is.null(current_section)) {
+      item_text <- sub("^- ", "", trimmed)
+      if (current_section == "highlights") {
+        current_ver$highlights[[length(current_ver$highlights) + 1]] <<- item_text
+      } else if (current_section == "detail" && length(current_ver$details) > 0) {
+        detail_idx <- length(current_ver$details)
+        current_ver$details[[detail_idx]]$items[[
+          length(current_ver$details[[detail_idx]]$items) + 1
+        ]] <<- item_text
+      }
+    }
+  }
+
+  # Son sürümü ekle
+  flush_version()
+
+  list(
+    current_version = current_version %||% "0.0",
+    versions = versions
   )
 }
 

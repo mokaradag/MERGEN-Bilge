@@ -239,6 +239,8 @@ ui <- dashboardPage(
     tags$script(src = "js/ai_expert_manager.js"),
     tags$script(src = "js/destek_form.js"),
     tags$script(src = "js/destek_yardim_chatbot.js"),
+    tags$script(src = "js/space_intro_music.js"),
+    tags$script(src = "js/explore_character_video.js"),
     tags$script(src = "js/explore_character_step.js"),
     tags$script(src = "js/surum_bilgilendirme.js"),
 

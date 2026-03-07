@@ -198,8 +198,9 @@
     var versions = data.versions;
     var currentVersion = data.current_version;
 
-    // Sürüm sekmeleri
-    var tabsHTML = '<div class="destek-surum-tabs" id="surum-modal-tabs">';
+    // Donmuş sekmeler alanı (başlığın altında, kaydırma alanının üstünde)
+    var tabsHTML = '<div class="surum-modal-tabs-bar">';
+    tabsHTML += '<div class="destek-surum-tabs" id="surum-modal-tabs">';
     versions.forEach(function(v, idx) {
       tabsHTML += '<button class="destek-surum-tab' + (idx === 0 ? ' active' : '') + '" ';
       tabsHTML += 'data-version-id="' + v.id + '">';
@@ -207,12 +208,15 @@
       tabsHTML += '</button>';
     });
     tabsHTML += '</div>';
+    tabsHTML += '</div>';
 
-    // İlk sürümün içeriğini göster
-    var contentHTML = '<div id="surum-modal-version-content">';
+    // Kaydırılan içerik alanı
+    var contentHTML = '<div class="surum-modal-scroll-area">';
+    contentHTML += '<div id="surum-modal-version-content">';
     if (versions.length > 0) {
       contentHTML += buildVersionCardHTML(versions[0], versions[0].version === currentVersion);
     }
+    contentHTML += '</div>';
     contentHTML += '</div>';
 
     modalContent.innerHTML = tabsHTML + contentHTML;
@@ -229,6 +233,9 @@
         if (v) {
           var vc = document.getElementById('surum-modal-version-content');
           if (vc) vc.innerHTML = buildVersionCardHTML(v, v.version === currentVersion);
+          // Kaydırma alanını en üste getir
+          var scrollArea = modalContent.querySelector('.surum-modal-scroll-area');
+          if (scrollArea) scrollArea.scrollTop = 0;
         }
       });
     });
