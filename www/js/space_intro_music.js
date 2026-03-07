@@ -14,7 +14,7 @@
     _active: false,        // Müzik aktif mi
     _stopped: false,       // Kalıcı durdurma (mod seçildikten sonra)
     _isDucked: false,
-    _fadeInterval: null,
+    _fadeRafId: null,       // requestAnimationFrame kimliği
     _volume: 0.25,         // Varsayılan ses seviyesi
     _duckedRatio: 0.12,    // Kısılan ses oranı
     _fadeTime: 1500,       // Solma süresi (ms)
@@ -34,6 +34,7 @@
 
       if (files.length > 0 && !this._active) {
         this._active = true;
+        // Gecikme olmadan hemen başlat
         this._playRandom();
       }
     },
@@ -94,9 +95,9 @@
     // Sesi durdur (dâhilî)
     _stopAudio: function() {
       this._intentionalStop = true;
-      if (this._fadeInterval) {
-        clearInterval(this._fadeInterval);
-        this._fadeInterval = null;
+      if (this._fadeRafId) {
+        cancelAnimationFrame(this._fadeRafId);
+        this._fadeRafId = null;
       }
       if (this._audio) {
         try {
@@ -110,11 +111,11 @@
       setTimeout(function() { self._intentionalStop = false; }, 100);
     },
 
-    // Ses seviyesi geçişi
+    // Ses seviyesi geçişi - requestAnimationFrame ile pürüzsüz
     _fadeTo: function(audio, target, duration) {
-      if (this._fadeInterval) {
-        clearInterval(this._fadeInterval);
-        this._fadeInterval = null;
+      if (this._fadeRafId) {
+        cancelAnimationFrame(this._fadeRafId);
+        this._fadeRafId = null;
       }
       if (!audio) return;
 
@@ -125,27 +126,33 @@
         return;
       }
 
-      var steps = 25;
-      var stepTime = (duration || 500) / steps;
-      var stepSize = diff / steps;
-      var current = 0;
+      var startTime = performance.now();
+      var fadeDuration = duration || 500;
       var self = this;
 
-      this._fadeInterval = setInterval(function() {
-        current++;
-        if (current >= steps) {
-          try { audio.volume = Math.max(0, Math.min(1, target)); } catch(e) {}
-          clearInterval(self._fadeInterval);
-          self._fadeInterval = null;
+      function step(now) {
+        var elapsed = now - startTime;
+        var progress = Math.min(elapsed / fadeDuration, 1);
+        // Yumuşak eğri (easeInOutQuad)
+        var eased = progress < 0.5
+          ? 2 * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+        try {
+          audio.volume = Math.max(0, Math.min(1, start + diff * eased));
+        } catch(e) {
+          self._fadeRafId = null;
           return;
         }
-        try {
-          audio.volume = Math.max(0, Math.min(1, start + (stepSize * current)));
-        } catch(e) {
-          clearInterval(self._fadeInterval);
-          self._fadeInterval = null;
+
+        if (progress < 1) {
+          self._fadeRafId = requestAnimationFrame(step);
+        } else {
+          self._fadeRafId = null;
         }
-      }, stepTime);
+      }
+
+      this._fadeRafId = requestAnimationFrame(step);
     },
 
     // --- AÇIK API ---

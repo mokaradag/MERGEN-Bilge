@@ -22,6 +22,7 @@ get_version_history <- function() {
   current_ver <- NULL
   current_section <- NULL  # "highlights" veya "detail"
   section_icon <- NULL
+  in_comment <- FALSE      # HTML yorum bloğu içinde mi
 
   # Mevcut sürümü listeye ekle
   flush_version <- function() {
@@ -33,8 +34,24 @@ get_version_history <- function() {
   for (line in lines) {
     trimmed <- trimws(line)
 
-    # Boş satır veya yorum satırını atla
-    if (nchar(trimmed) == 0 || grepl("^<!--", trimmed) || grepl("^-->", trimmed)) next
+    # HTML yorum bloğu takibi (çok satırlı <!-- ... --> desteği)
+    if (grepl("<!--", trimmed)) {
+      in_comment <- TRUE
+      # Aynı satırda kapanıyorsa (<!-- ... -->)
+      if (grepl("-->", trimmed)) {
+        in_comment <- FALSE
+      }
+      next
+    }
+    if (in_comment) {
+      if (grepl("-->", trimmed)) {
+        in_comment <- FALSE
+      }
+      next
+    }
+
+    # Boş satırı atla
+    if (nchar(trimmed) == 0) next
     # Sürüm ayracı
     if (trimmed == "---") {
       current_section <- NULL

@@ -19,15 +19,9 @@
 #' @param settings_data Ayarlar modülünden dönen reaktif ayarlar
 musicHandlersInit <- function(input, session, settings_data) {
 
-  # Uygulama başlatıldığında müzik durumunu istemciye gönder
+  # Giriş müziğini öncelikli olarak gönder (gecikmeyi azalt)
   session$onFlushed(function() {
-    session$sendCustomMessage("initMusicManager", list(
-      enabled = isTRUE(shiny::isolate(settings_data$enable_background_music)),
-      volume = shiny::isolate(settings_data$music_volume) %||% 0.3,
-      character = shiny::isolate(settings_data$selected_character) %||% "mergen"
-    ))
-
-    # Giriş ekranı intro müzik playlist'ini gönder
+    # Önce giriş ekranı intro müziğini gönder (en hızlı deneyim için)
     intro_dir <- file.path("www", "music", "intro")
     if (dir.exists(intro_dir)) {
       intro_files <- list.files(intro_dir, pattern = "\\.mp3$", full.names = FALSE, ignore.case = TRUE)
@@ -43,6 +37,13 @@ musicHandlersInit <- function(input, session, settings_data) {
         ))
       }
     }
+
+    # Ana müzik yöneticisini başlat
+    session$sendCustomMessage("initMusicManager", list(
+      enabled = isTRUE(shiny::isolate(settings_data$enable_background_music)),
+      volume = shiny::isolate(settings_data$music_volume) %||% 0.3,
+      character = shiny::isolate(settings_data$selected_character) %||% "mergen"
+    ))
   }, once = TRUE)
 
   # İstemciden playlist isteği geldiğinde

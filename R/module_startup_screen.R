@@ -155,15 +155,29 @@ createStartupScreenUI <- function() {
               `data-mode` = "odak",
               tags$div(
                 class = "cinematic-card-inner",
-                # Özellik göstergeleri (sağ üst köşe)
+                # Özellik göstergeleri (sağ üst köşe - ikonlu)
                 tags$div(
                   class = "cinematic-feature-indicators",
-                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "tts",
-                    title = "Sesli Yanıt: Kapalı"),
-                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "followup",
-                    title = "Takip Soruları: Kapalı"),
-                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "music",
-                    title = "Arka Plan Müziği: Kapalı")
+                  tags$div(class = "cinematic-feature-icon off", `data-feature` = "tts",
+                    `data-tooltip` = "Sesli Yanıt: Kapalı",
+                    tags$i(class = "fas fa-volume-mute")
+                  ),
+                  tags$div(class = "cinematic-feature-icon off", `data-feature` = "followup",
+                    `data-tooltip` = "Takip Soruları: Kapalı",
+                    tags$i(class = "fas fa-comments")
+                  ),
+                  tags$div(class = "cinematic-feature-icon off", `data-feature` = "music",
+                    `data-tooltip` = "Arka Plan Müziği: Kapalı",
+                    tags$i(class = "fas fa-music")
+                  ),
+                  tags$div(class = "cinematic-feature-icon off", `data-feature` = "sound",
+                    `data-tooltip` = "Ses Efektleri: Kapalı",
+                    tags$i(class = "fas fa-bell-slash")
+                  ),
+                  tags$div(class = "cinematic-feature-icon off", `data-feature` = "character",
+                    `data-tooltip` = "Karakter Sistemi: Kapalı",
+                    tags$i(class = "fas fa-user-slash")
+                  )
                 ),
                 # İkon kutusu
                 tags$div(
@@ -187,15 +201,29 @@ createStartupScreenUI <- function() {
               `data-mode` = "denge",
               tags$div(
                 class = "cinematic-card-inner",
-                # Özellik göstergeleri (sağ üst köşe)
+                # Özellik göstergeleri (sağ üst köşe - ikonlu)
                 tags$div(
                   class = "cinematic-feature-indicators",
-                  tags$div(class = "cinematic-feature-dot off", `data-feature` = "tts",
-                    title = "Sesli Yanıt: Kapalı"),
-                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "followup",
-                    title = "Takip Soruları: Aktif"),
-                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "music",
-                    title = "Arka Plan Müziği: Aktif")
+                  tags$div(class = "cinematic-feature-icon off", `data-feature` = "tts",
+                    `data-tooltip` = "Sesli Yanıt: Kapalı",
+                    tags$i(class = "fas fa-volume-mute")
+                  ),
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "followup",
+                    `data-tooltip` = "Takip Soruları: Aktif",
+                    tags$i(class = "fas fa-comments")
+                  ),
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "music",
+                    `data-tooltip` = "Arka Plan Müziği: Aktif",
+                    tags$i(class = "fas fa-music")
+                  ),
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "sound",
+                    `data-tooltip` = "Ses Efektleri: Aktif",
+                    tags$i(class = "fas fa-bell")
+                  ),
+                  tags$div(class = "cinematic-feature-icon off", `data-feature` = "character",
+                    `data-tooltip` = "Karakter Sistemi: Kapalı",
+                    tags$i(class = "fas fa-user-slash")
+                  )
                 ),
                 # Dinamik mikro animasyonu (uçuşan zerreler)
                 tags$div(
@@ -219,15 +247,29 @@ createStartupScreenUI <- function() {
               `data-mode` = "kesif",
               tags$div(
                 class = "cinematic-card-inner",
-                # Özellik göstergeleri (sağ üst köşe)
+                # Özellik göstergeleri (sağ üst köşe - ikonlu)
                 tags$div(
                   class = "cinematic-feature-indicators",
-                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "tts",
-                    title = "Sesli Yanıt: Aktif"),
-                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "followup",
-                    title = "Takip Soruları: Aktif"),
-                  tags$div(class = "cinematic-feature-dot on", `data-feature` = "music",
-                    title = "Arka Plan Müziği: Aktif")
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "tts",
+                    `data-tooltip` = "Sesli Yanıt: Aktif",
+                    tags$i(class = "fas fa-volume-up")
+                  ),
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "followup",
+                    `data-tooltip` = "Takip Soruları: Aktif",
+                    tags$i(class = "fas fa-comments")
+                  ),
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "music",
+                    `data-tooltip` = "Arka Plan Müziği: Aktif",
+                    tags$i(class = "fas fa-music")
+                  ),
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "sound",
+                    `data-tooltip` = "Ses Efektleri: Aktif",
+                    tags$i(class = "fas fa-bell")
+                  ),
+                  tags$div(class = "cinematic-feature-icon on", `data-feature` = "character",
+                    `data-tooltip` = "Karakter Sistemi: Aktif",
+                    tags$i(class = "fas fa-user-astronaut")
+                  )
                 ),
                 # Bütünleşik mikro animasyonu (lazer tarayıcı)
                 tags$div(
@@ -250,23 +292,23 @@ createStartupScreenUI <- function() {
           tags$div(
             id = "cinematic-character-step",
             class = "cinematic-character-step",
-            # Başlık ve kapatma butonu
+            # Başlık satırı - karakter butonları sağ tarafta
             tags$div(
               class = "cinematic-char-step-header",
               tags$div(
                 tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
                 tags$p(class = "cinematic-char-step-subtitle", "HER KARAKTERİN BENZERSİZ BİR KİŞİLİĞİ VARDIR")
               ),
+              # Karakter butonları - başlık satırının sağ tarafında
+              tags$div(
+                class = "cinematic-char-buttons",
+                id = "cinematic-char-buttons-row"
+              ),
               tags$button(
                 class = "cinematic-char-close-btn",
                 title = "Kapat (Esc)",
                 tags$i(class = "fas fa-times")
               )
-            ),
-            # Karakter butonları satırı
-            tags$div(
-              class = "cinematic-char-buttons",
-              id = "cinematic-char-buttons-row"
             ),
             # Karakter içerik alanı (görsel + bilgi) - Kişiselleştirme sayfası ile aynı düzen
             tags$div(
