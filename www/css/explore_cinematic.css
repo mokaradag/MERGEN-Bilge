@@ -214,14 +214,22 @@
   pointer-events: auto;
 }
 
-/* Modal konteyner */
+/* Modal konteyner - karakter seçim adımı için genişletildi */
 .cinematic-modal-container {
   position: relative;
   width: 100%;
   max-width: 1200px;
+  max-height: 95vh;
+  overflow-y: auto;
   transform: translateY(40px) scale(0.9);
   opacity: 0;
   transition: all 0.7s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* Kaydırma çubuğu gizle */
+.cinematic-modal-container::-webkit-scrollbar {
+  width: 0;
+  display: none;
 }
 
 .cinematic-modal-overlay.active .cinematic-modal-container {
@@ -290,14 +298,16 @@
   padding: 0 16px;
 }
 
-/* Tek bir kart */
+/* Tek bir kart - GPU hızlandırma ile pürüzsüz geçiş */
 .cinematic-mode-card {
   position: relative;
   border-radius: 16px;
   padding: 1px;
   cursor: pointer;
-  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: transform 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.7s ease, filter 0.7s ease;
   animation: cinematicCardEnter 0.6s ease-out both;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .cinematic-mode-card:nth-child(1) { animation-delay: 0.1s; }
@@ -374,34 +384,120 @@
 
 .cinematic-feature-indicators {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: 12px;
+  right: 12px;
   display: flex;
-  gap: 6px;
+  gap: 4px;
   z-index: 15;
   pointer-events: auto;
 }
 
-.cinematic-feature-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-  cursor: default;
+.cinematic-feature-icon {
   position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
-.cinematic-feature-dot.on {
-  background: rgba(52, 211, 153, 0.8);
-  box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+.cinematic-feature-icon i {
+  font-size: 11px;
+  transition: all 0.3s ease;
 }
 
-.cinematic-feature-dot.off {
-  background: rgba(239, 68, 68, 0.5);
-  box-shadow: 0 0 4px rgba(239, 68, 68, 0.25);
+.cinematic-feature-icon.on {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.2);
 }
 
-/* Tooltip: title özelliği ile tarayıcı yerleşik tooltip gösterilir */
+.cinematic-feature-icon.on i {
+  color: rgba(52, 211, 153, 0.85);
+}
+
+.cinematic-feature-icon.on:hover {
+  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(52, 211, 153, 0.35);
+  transform: translateY(-1px);
+}
+
+.cinematic-feature-icon.off {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.12);
+}
+
+.cinematic-feature-icon.off i {
+  color: rgba(239, 68, 68, 0.45);
+}
+
+.cinematic-feature-icon.off:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+/* Özellik ikonu özel araç ipucu */
+.cinematic-feature-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  padding: 6px 12px;
+  background: linear-gradient(135deg, rgba(15, 15, 40, 0.95), rgba(20, 20, 55, 0.92));
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  border-radius: 8px;
+  color: rgba(226, 232, 240, 0.9);
+  font-family: 'Jura', 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.25s cubic-bezier(0.19, 1, 0.22, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(129, 140, 248, 0.06);
+  z-index: 100;
+}
+
+/* Araç ipucu ok işareti */
+.cinematic-feature-icon::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid rgba(20, 20, 55, 0.92);
+  opacity: 0;
+  transition: all 0.25s cubic-bezier(0.19, 1, 0.22, 1);
+  pointer-events: none;
+  z-index: 100;
+}
+
+.cinematic-feature-icon:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.cinematic-feature-icon:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Aktif durum araç ipucu kenarlığı */
+.cinematic-feature-icon.on::after {
+  border-color: rgba(52, 211, 153, 0.2);
+}
+
+.cinematic-feature-icon.off::after {
+  border-color: rgba(239, 68, 68, 0.15);
+}
 
 /* ============================================================= */
 /* KART İÇERİK ÖĞELERİ                                         */

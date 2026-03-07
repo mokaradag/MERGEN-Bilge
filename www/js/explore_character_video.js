@@ -3,6 +3,7 @@
 // Açıklama: Giriş ekranı Bütünleşik mod karakter seçim adımında video oynatma yönetimi.
 // Kişiselleştirme sayfasındaki CinematicVideoManager yaklaşımını tekrarlar,
 // ancak bağımsız bir örnek (instance) olarak çalışır.
+// Kullanıcı bu noktaya gelene kadar zaten tıklama yapmış olduğundan ses açıktır.
 
 (function() {
   'use strict';
@@ -17,7 +18,7 @@
     _isPlaying: false,     // Video oynatılıyor mu
     _seqId: 0,             // Yarış durumu koruma sayacı
     _initialized: false,   // Başlatılma durumu
-    _unmuted: false,       // Ses açıldı mı
+    _selectVideoEndCallback: null, // Seçim videosu bitiş geri çağırması
 
     // Sabit yapılandırma
     IMAGE_DISPLAY_DURATION: 4000,
@@ -39,17 +40,19 @@
         self._handleVideoEnd();
       });
 
-      // Kullanıcı etkileşiminde sesi aç
-      var unmuteHandler = function() {
-        if (self._videoEl && self._unmuted === false) {
-          self._videoEl.muted = false;
-          self._unmuted = true;
+      // Video verisi yüklendiğinde resmi gizle (siyah ekranı önle)
+      this._videoEl.addEventListener('playing', function() {
+        // Video gerçekten başladığında resmi gizle
+        if (self._imageEl && self._isPlaying) {
+          self._imageEl.style.opacity = '0';
+          setTimeout(function() {
+            if (self._isPlaying && self._imageEl) {
+              self._imageEl.style.display = 'none';
+              self._imageEl.style.opacity = '1';
+            }
+          }, 300);
         }
-        document.removeEventListener('click', unmuteHandler);
-        document.removeEventListener('keydown', unmuteHandler);
-      };
-      document.addEventListener('click', unmuteHandler);
-      document.addEventListener('keydown', unmuteHandler);
+      });
     },
 
     // ============================================================
@@ -69,9 +72,10 @@
       if (this._imageEl && videoData && videoData.image) {
         this._imageEl.src = videoData.image;
         this._imageEl.style.display = 'block';
+        this._imageEl.style.opacity = '1';
       }
 
-      // Video elemanını gizle
+      // Video elemanını hazırla ama henüz gösterme
       if (this._videoEl) {
         this._videoEl.style.display = 'none';
         this._videoEl.removeAttribute('src');
@@ -103,14 +107,15 @@
     _showVideo: function(src) {
       if (!this._videoEl) return;
 
-      var seqId = this._seqId;
       var self = this;
 
-      // Resmi gizle, videoyu göster
-      if (this._imageEl) this._imageEl.style.display = 'none';
+      // Resmi henüz gizleme - video 'playing' olayında gizlenecek
+      // Bu sayede siyah ekran görünmez
       this._videoEl.style.display = 'block';
       this._videoEl.src = src;
-      this._videoEl.muted = !this._unmuted;
+      // Kullanıcı bu noktaya gelene kadar zaten tıklama yapmış (Keşfet + Bütünleşik)
+      // Bu nedenle ses doğrudan açık olmalı
+      this._videoEl.muted = false;
       this._isPlaying = true;
 
       // Müzik ducking
@@ -126,7 +131,7 @@
         playPromise.catch(function(err) {
           if (err.name === 'AbortError') return; // Beklenen durum
           if (err.name === 'NotAllowedError') {
-            // Sessiz modda tekrar dene
+            // Tarayıcı engellediyse sessiz modda tekrar dene
             if (self._videoEl) {
               self._videoEl.muted = true;
               self._videoEl.play().catch(function() {});
@@ -142,6 +147,14 @@
     _handleVideoEnd: function() {
       this._isPlaying = false;
 
+      // Seçim videosu geri çağırması varsa çalıştır
+      if (this._selectVideoEndCallback) {
+        var cb = this._selectVideoEndCallback;
+        this._selectVideoEndCallback = null;
+        cb();
+        return; // Seçim videosu bittikten sonra döngüye geçme
+      }
+
       // Müzik unduck
       if (window.SpaceIntroMusic && window.SpaceIntroMusic.unduck) {
         window.SpaceIntroMusic.unduck();
@@ -151,7 +164,10 @@
       }
 
       // Resmi göster
-      if (this._imageEl) this._imageEl.style.display = 'block';
+      if (this._imageEl) {
+        this._imageEl.style.display = 'block';
+        this._imageEl.style.opacity = '1';
+      }
       if (this._videoEl) this._videoEl.style.display = 'none';
 
       // Bekleme süresi sonrası loop videosu oynat
@@ -164,15 +180,24 @@
     },
 
     // ============================================================
-    // SEÇİM VİDEOSU OYNAT
+    // SEÇİM VİDEOSU OYNAT (bitişte geri çağırma desteği)
     // ============================================================
-    playSelectSequence: function() {
-      if (!this._data || !this._data.videos) return;
+    playSelectSequence: function(onComplete) {
+      if (!this._data || !this._data.videos) {
+        if (onComplete) onComplete();
+        return;
+      }
       var selectVideos = this._data.videos.select;
-      if (!selectVideos || selectVideos.length === 0) return;
+      if (!selectVideos || selectVideos.length === 0) {
+        if (onComplete) onComplete();
+        return;
+      }
 
       this._seqId++;
       this.stopEverything();
+
+      // Bitiş geri çağırmasını kaydet
+      this._selectVideoEndCallback = onComplete || null;
 
       var src = selectVideos[Math.floor(Math.random() * selectVideos.length)];
       this._showVideo(src);
@@ -182,6 +207,7 @@
     // HER ŞEYİ DURDUR
     // ============================================================
     stopEverything: function() {
+      this._selectVideoEndCallback = null;
       if (this._timer) {
         clearTimeout(this._timer);
         this._timer = null;
@@ -192,6 +218,7 @@
       }
       if (this._imageEl) {
         this._imageEl.style.display = 'block';
+        this._imageEl.style.opacity = '1';
       }
       this._isPlaying = false;
 

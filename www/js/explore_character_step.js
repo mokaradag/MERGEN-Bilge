@@ -19,8 +19,12 @@
   // Adım durumu
   var _currentStep = 1;
 
-  // Yazma animasyonu zamanlayıcısı
+  // Çift tıklama koruma kilidi
+  var _confirmInProgress = false;
+
+  // Yazma animasyonu zamanlayıcıları
   var _loreTypingTimer = null;
+  var _subtitleTypingTimer = null;
 
   // ============================================================
   // KARAKTER VERİSİNİ YÜKLE
@@ -73,8 +77,9 @@
       window.ExploreCharVideo.stopEverything();
     }
 
-    // Yazma animasyonunu durdur
+    // Yazma animasyonlarını durdur
     stopLoreTyping();
+    stopSubtitleTyping();
 
     // 2. adım içeriğini gizle
     var charStep = document.getElementById('cinematic-character-step');
@@ -111,6 +116,7 @@
       window.ExploreCharVideo.stopEverything();
     }
     stopLoreTyping();
+    stopSubtitleTyping();
 
     // Önce 1. adıma dön (durumu sıfırla)
     _currentStep = 1;
@@ -206,6 +212,60 @@
   }
 
   // ============================================================
+  // ALT BAŞLIK YAZMA EFEKTİ
+  // ============================================================
+  function typeSubtitleText(element, text) {
+    stopSubtitleTyping();
+    if (!element || !text) return;
+
+    var index = 0;
+    element.innerHTML = '<span class="cinematic-subtitle-cursor"></span>';
+
+    function typeNext() {
+      if (index >= text.length) {
+        // Yazma tamamlandı, imleci kaldır
+        var cursor = element.querySelector('.cinematic-subtitle-cursor');
+        if (cursor) {
+          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1200);
+        }
+        _subtitleTypingTimer = null;
+        return;
+      }
+
+      var ch = text.charAt(index);
+      var cursor = element.querySelector('.cinematic-subtitle-cursor');
+      if (cursor) cursor.remove();
+
+      element.appendChild(document.createTextNode(ch));
+
+      var newCursor = document.createElement('span');
+      newCursor.className = 'cinematic-subtitle-cursor';
+      element.appendChild(newCursor);
+
+      index++;
+
+      // Alt başlık için biraz daha hızlı yazma
+      var delay = 14 + (Math.random() * 10 - 5);
+      if (ch === ',' || ch === '.' || ch === '!' || ch === '?') {
+        delay += 180;
+      } else if (ch === ' ') {
+        delay += 20;
+      }
+
+      _subtitleTypingTimer = setTimeout(typeNext, delay);
+    }
+
+    _subtitleTypingTimer = setTimeout(typeNext, 30);
+  }
+
+  function stopSubtitleTyping() {
+    if (_subtitleTypingTimer) {
+      clearTimeout(_subtitleTypingTimer);
+      _subtitleTypingTimer = null;
+    }
+  }
+
+  // ============================================================
   // MODALDA KARAKTER SEÇ
   // ============================================================
   function selectCharacterInModal(charId, animate) {
@@ -263,7 +323,14 @@
     var displayName = document.querySelector('.cinematic-char-info .cinematic-char-display-name');
     var subtitleEl = document.querySelector('.cinematic-char-info .cinematic-char-subtitle-text');
     if (displayName) displayName.textContent = charData.display_name;
-    if (subtitleEl) subtitleEl.textContent = charData.style_tr || charData.subtitle;
+    if (subtitleEl) {
+      var subtitleText = charData.style_tr || charData.subtitle;
+      if (animate !== false) {
+        typeSubtitleText(subtitleEl, subtitleText);
+      } else {
+        subtitleEl.textContent = subtitleText;
+      }
+    }
 
     // Hikaye metnini yazma efektiyle güncelle
     var loreEl = document.querySelector('.cinematic-char-lore');
@@ -320,12 +387,8 @@
   // KARAKTER ONAYLANDIĞINDA
   // ============================================================
   function confirmCharacterSelection() {
-    if (!_selectedCharId) return;
-
-    // Seçim videosunu oynat
-    if (window.ExploreCharVideo) {
-      window.ExploreCharVideo.playSelectSequence();
-    }
+    if (!_selectedCharId || _confirmInProgress) return;
+    _confirmInProgress = true;
 
     // Shiny'ye bildir: karakter + mod birlikte
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
@@ -346,13 +409,14 @@
       localStorage.setItem('mergen_settings', JSON.stringify(settings));
     } catch(e) {}
 
-    // Video bittikten sonra modalı kapat (veya 1.5 saniye sonra)
-    setTimeout(function() {
+    // Video bittiğinde geçiş yapacak fonksiyon
+    function onVideoComplete() {
       // Video oynatmayı durdur
       if (window.ExploreCharVideo) {
         window.ExploreCharVideo.stopEverything();
       }
       stopLoreTyping();
+      stopSubtitleTyping();
 
       // Modalı kapat
       if (window.CinematicExplore) {
@@ -368,7 +432,16 @@
 
       // Durumu sıfırla
       _currentStep = 1;
-    }, 1500);
+      _confirmInProgress = false;
+    }
+
+    // Seçim videosunu oynat ve bittiğinde geçiş yap
+    if (window.ExploreCharVideo) {
+      window.ExploreCharVideo.playSelectSequence(onVideoComplete);
+    } else {
+      // Video yöneticisi yoksa doğrudan geçiş yap
+      setTimeout(onVideoComplete, 800);
+    }
   }
 
   // ============================================================

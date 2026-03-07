@@ -23,19 +23,20 @@ ttsProcessingServer <- function(id) {
 
     #' TTS'e göndermeden önce metni normalleştir (temizle)
     #' Kod bloklarını, bağlantıları, emojileri ve özel karakterleri ayıklar.
+    #' Sayısal değerleri Türkçe okunuşlarına dönüştürür.
     prepare_tts_text <- function(text) {
       if (!is.character(text) || length(text) == 0) return("")
 
       cleaned <- as.character(text[1])
-      # Kod bloklarını kaldır
-      cleaned <- gsub("```[\\s\\S]*?```", " ", cleaned)
+      # Kod bloklarını kaldır (çok satırlı)
+      cleaned <- gsub("```[\\s\\S]*?```", " ", cleaned, perl = TRUE)
       # Satır içi kod tırnaklarını kaldır
       cleaned <- gsub("`([^`]*)`", "\\1", cleaned)
+      # Markdown bağlantılarından sadece metni al: [metin](url) -> metin (URL'lerden önce)
+      cleaned <- gsub("\\[([^\\]]*?)\\]\\([^)]*\\)", "\\1", cleaned, perl = TRUE)
       # Köşeli parantez referanslarını kaldır [DOC] veya [1]
       cleaned <- gsub("\u3010[^\u3011]+\u3011", " ", cleaned)
-      cleaned <- gsub("\\[.*?\\]", " ", cleaned)
-      # Markdown bağlantılarından sadece metni al: [metin](url) -> metin
-      cleaned <- gsub("[[]([^]]*)[]]\\(([^)]*)\\)", "\\1", cleaned, perl = TRUE)
+      cleaned <- gsub("\\[[^\\]]*\\]", " ", cleaned, perl = TRUE)
       # Çıplak URL'leri kaldır (http/https/www ile başlayanlar)
       cleaned <- gsub("https?://[^\\s)]+", " ", cleaned, perl = TRUE)
       cleaned <- gsub("www\\.[^\\s)]+", " ", cleaned, perl = TRUE)
@@ -57,12 +58,121 @@ ttsProcessingServer <- function(id) {
       # Dosya yollarını kaldır (Windows ve Unix)
       cleaned <- gsub("[A-Z]:\\\\[^\\s]+", " ", cleaned, perl = TRUE)
       cleaned <- gsub("/[a-zA-Z0-9_./\\-]+\\.[a-zA-Z]{2,4}", " ", cleaned, perl = TRUE)
-      # Markdown biçimlendirme karakterlerini kaldır
-      cleaned <- gsub("[#>*_-]+", " ", cleaned)
+      # Markdown biçimlendirme karakterlerini kaldır (her birini ayrı ayrı, ilk/son karakteri yutmamak için)
+      cleaned <- gsub("\\*{1,3}", " ", cleaned)   # Kalın/italik yıldızlar
+      cleaned <- gsub("_{1,3}", " ", cleaned)     # Kalın/italik alt çizgiler
+      cleaned <- gsub("^#{1,6}\\s+", "", cleaned, perl = TRUE)  # Satır başı başlık işaretleri
+      cleaned <- gsub("\\n#{1,6}\\s+", "\n", cleaned, perl = TRUE)  # Ara satır başlıkları
+      cleaned <- gsub("^>\\s*", "", cleaned, perl = TRUE)  # Alıntı işaretleri (satır başı)
+      cleaned <- gsub("\\n>\\s*", "\n", cleaned, perl = TRUE)  # Alıntı işaretleri (ara satır)
+      cleaned <- gsub("^\\s*[-]\\s+", "", cleaned, perl = TRUE)  # Liste işaretleri (tire, satır başı)
+      cleaned <- gsub("\\n\\s*[-]\\s+", "\n", cleaned, perl = TRUE)  # Liste işaretleri (tire, ara satır)
+      # Noktalama sonrası boşluk ekle (karakterin yutulmasını önler)
+      cleaned <- gsub("([.!?,:;])([[:alpha:]])", "\\1 \\2", cleaned, perl = TRUE)
+      # Sayıları Türkçe okunuşlarına dönüştür
+      cleaned <- convert_numbers_to_turkish(cleaned)
       # Satır sonlarını ve fazla boşlukları normalleştir
-      cleaned <- gsub("\n+", " ", cleaned)
+      cleaned <- gsub("\n+", ". ", cleaned)
       cleaned <- gsub("[[:space:]]+", " ", cleaned)
       trimws(cleaned)
+    }
+
+    #' Sayısal değerleri Türkçe metin okunuşlarına dönüştür
+    #' @param text Dönüştürülecek metin
+    #' @return Sayıları Türkçe kelimelerle değiştirilmiş metin
+    convert_numbers_to_turkish <- function(text) {
+      if (!is.character(text) || !nzchar(text)) return(text)
+
+      # Ondalıklı sayıları işle (örn: 3.14 -> "üç nokta on dört")
+      text <- gsub("(\\d+)[.,](\\d+)", "\\1 nokta \\2", text, perl = TRUE)
+
+      # Yüzde ifadelerini işle (örn: %50 -> "yüzde elli")
+      text <- gsub("%(\\d+)", "y\u00FCzde \\1", text, perl = TRUE)
+
+      # Tekil rakamlar tablosu
+      birler <- c("0" = "s\u0131f\u0131r", "1" = "bir", "2" = "iki", "3" = "\u00FC\u00E7",
+                  "4" = "d\u00F6rt", "5" = "be\u015F", "6" = "alt\u0131",
+                  "7" = "yedi", "8" = "sekiz", "9" = "dokuz")
+      onlar <- c("10" = "on", "20" = "yirmi", "30" = "otuz", "40" = "k\u0131rk",
+                 "50" = "elli", "60" = "altm\u0131\u015F", "70" = "yetmi\u015F",
+                 "80" = "seksen", "90" = "doksan")
+
+      # Tek sayıyı Türkçe kelimeye çeviren iç fonksiyon
+      number_to_word <- function(n) {
+        n <- as.integer(n)
+        if (is.na(n)) return(as.character(n))
+        if (n < 0) return(paste("eksi", number_to_word(abs(n))))
+        if (n == 0) return("s\u0131f\u0131r")
+
+        result <- ""
+
+        # Milyonlar
+        if (n >= 1000000) {
+          milyon <- n %/% 1000000
+          if (milyon == 1) {
+            result <- paste0(result, "bir milyon ")
+          } else {
+            result <- paste0(result, number_to_word(milyon), " milyon ")
+          }
+          n <- n %% 1000000
+        }
+
+        # Binler
+        if (n >= 1000) {
+          bin <- n %/% 1000
+          if (bin == 1) {
+            result <- paste0(result, "bin ")
+          } else {
+            result <- paste0(result, number_to_word(bin), " bin ")
+          }
+          n <- n %% 1000
+        }
+
+        # Yüzler
+        if (n >= 100) {
+          yuz <- n %/% 100
+          if (yuz == 1) {
+            result <- paste0(result, "y\u00FCz ")
+          } else {
+            result <- paste0(result, birler[as.character(yuz)], " y\u00FCz ")
+          }
+          n <- n %% 100
+        }
+
+        # Onlar
+        if (n >= 10) {
+          on_val <- (n %/% 10) * 10
+          result <- paste0(result, onlar[as.character(on_val)], " ")
+          n <- n %% 10
+        }
+
+        # Birler
+        if (n > 0) {
+          result <- paste0(result, birler[as.character(n)])
+        }
+
+        trimws(result)
+      }
+
+      # Metindeki bağımsız sayıları kelimeye dönüştür (en fazla 7 basamak)
+      matches <- gregexpr("\\b\\d{1,7}\\b", text, perl = TRUE)
+
+      # Sayıları sondan başa doğru değiştir (konum kaymasını önlemek için)
+      if (length(matches[[1]]) > 0 && matches[[1]][1] != -1) {
+        positions <- matches[[1]]
+        lengths <- attr(matches[[1]], "match.length")
+        for (i in rev(seq_along(positions))) {
+          num_str <- substr(text, positions[i], positions[i] + lengths[i] - 1)
+          word <- number_to_word(as.integer(num_str))
+          text <- paste0(
+            substr(text, 1, positions[i] - 1),
+            word,
+            substr(text, positions[i] + lengths[i], nchar(text))
+          )
+        }
+      }
+
+      text
     }
 
     #' Nihai ses uç noktası (speech endpoint) URL'sini oluştur

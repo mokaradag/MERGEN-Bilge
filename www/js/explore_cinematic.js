@@ -171,7 +171,7 @@
 
     // Bütünleşik mod seçildiyse karakter seçim adımına yönlendir
     if (mode === 'kesif' && window.CinematicCharacterStep) {
-      _selectedModeId = null;
+      _selectedModeId = mode; // Çift tıklama koruması için geçici olarak ayarla
 
       // Seçilen kartı animasyonla vurgula
       var allCards = document.querySelectorAll('.cinematic-mode-card');
@@ -190,6 +190,8 @@
           c.classList.remove('selected', 'other-selected');
         });
         window.CinematicCharacterStep.showCharacterStep();
+        // Koruma kilidini serbest bırak (geri dönüşe izin ver)
+        _selectedModeId = null;
       }, 600);
       return;
     }

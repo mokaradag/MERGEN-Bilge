@@ -59,7 +59,7 @@
 .cinematic-character-step {
   display: none;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1400px;
   animation: cinematicCardEnter 0.6s ease-out both;
 }
 
@@ -67,12 +67,13 @@
   display: block;
 }
 
-/* Başlık ve kapatma butonu - yatay düzen */
+/* Başlık satırı - karakter butonları sağ tarafa taşındı */
 .cinematic-char-step-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
+  gap: 16px;
 }
 
 .cinematic-char-step-title {
@@ -114,11 +115,11 @@
   transform: rotate(90deg);
 }
 
-/* İki sütunlu düzen - Kişiselleştirme sayfasıyla aynı */
+/* İki sütunlu düzen - Kişiselleştirme sayfasıyla aynı boyutlar */
 .cinematic-character-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 40px;
+  grid-template-columns: auto 1fr;
+  gap: 36px;
   align-items: start;
 }
 
@@ -129,17 +130,17 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 420px;
+  min-height: 580px;
 }
 
-/* Görsel/Video sarmalayıcı - Kişiselleştirme boyutlarıyla aynı */
+/* Görsel/Video sarmalayıcı - Kişiselleştirme sayfasıyla aynı boyutlar */
 .cinematic-char-image-wrapper {
   position: relative;
-  width: 380px;
-  height: 440px;
-  border-radius: 20px;
+  width: 420px;
+  height: 620px;
+  border-radius: 18px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
@@ -153,9 +154,11 @@
 
 .cinematic-char-image-wrapper img {
   transition: opacity 0.5s ease;
+  position: relative;
+  z-index: 1;
 }
 
-/* Video oynatıcı stili */
+/* Video oynatıcı stili - GPU hızlandırma */
 .explore-char-video-player {
   position: absolute;
   inset: 0;
@@ -163,6 +166,8 @@
   height: 100%;
   object-fit: cover;
   z-index: 2;
+  will-change: opacity;
+  transform: translateZ(0);
 }
 
 /* Sağ panel: Karakter bilgileri */
@@ -170,6 +175,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: 620px;
 }
 
 /* Karakter adı - sağ panelde */
@@ -192,9 +198,21 @@
   margin: 0 0 8px 0;
   padding-bottom: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  min-height: 18px;
 }
 
-/* Hikaye metni alanı */
+/* Yazma efekti imleci (alt başlık için) */
+.cinematic-subtitle-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 0.9em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background-color: rgba(148, 163, 184, 0.6);
+  animation: cinematicTypingBlink 0.8s step-end infinite;
+}
+
+/* Hikaye metni alanı - yükseklik artırıldı, kaydırma kaldırıldı */
 .cinematic-char-lore {
   font-size: 14px;
   line-height: 1.7;
@@ -203,9 +221,23 @@
   background: rgba(255, 255, 255, 0.02);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.05);
-  min-height: 80px;
-  max-height: 140px;
+  min-height: 120px;
+  max-height: 220px;
   overflow-y: auto;
+}
+
+/* Hikaye metni kaydırma çubuğu */
+.cinematic-char-lore::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cinematic-char-lore::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cinematic-char-lore::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
 }
 
 /* Yazma efekti imleci */
@@ -279,30 +311,32 @@
 }
 
 /* ============================================================= */
-/* KARAKTER BUTONLARI SATIRI                                     */
+/* KARAKTER BUTONLARI - başlık satırında sağ tarafa taşındı       */
 /* ============================================================= */
 
 .cinematic-char-buttons {
   display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 28px;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 .cinematic-char-btn {
   position: relative;
-  padding: 10px 24px;
+  padding: 8px 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.03);
   color: rgba(226, 232, 240, 0.7);
   font-family: 'Jura', 'Segoe UI', sans-serif !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
   overflow: hidden;
+  white-space: nowrap;
 }
 
 .cinematic-char-btn::before {
@@ -361,7 +395,7 @@
   display: flex;
   justify-content: center;
   gap: 16px;
-  margin-top: 28px;
+  margin-top: 20px;
 }
 
 .cinematic-char-back-btn {
@@ -431,27 +465,28 @@
 /* RESPONSIVE TASARIM                                            */
 /* ============================================================= */
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .cinematic-character-layout {
     grid-template-columns: 1fr;
     gap: 24px;
   }
 
   .cinematic-char-visual {
-    min-height: 300px;
+    min-height: 400px;
   }
 
   .cinematic-char-image-wrapper {
-    width: 300px;
-    height: 360px;
+    width: 340px;
+    height: 500px;
   }
 
   .cinematic-char-buttons {
     flex-wrap: wrap;
+    justify-content: center;
   }
 
   .cinematic-char-btn {
-    padding: 8px 18px;
+    padding: 8px 16px;
     font-size: 12px !important;
   }
 }

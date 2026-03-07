@@ -60,12 +60,18 @@
   // ============================================================
   // SÜRÜM MODALI (GİRİŞ EKRANINDAN)
   // ============================================================
+  var _confettiActive = false;
+
   function openVersionModal() {
     var overlay = document.getElementById('surum-modal-overlay');
     if (overlay) {
       overlay.classList.add('active');
-      // Confetti animasyonu
-      launchConfetti();
+      // Confetti animasyonu (çift tetikleme koruması)
+      if (!_confettiActive) {
+        _confettiActive = true;
+        launchConfetti();
+        setTimeout(function() { _confettiActive = false; }, 5000);
+      }
     }
   }
 
@@ -256,8 +262,8 @@
     try {
       var parts = dateStr.split('-');
       var months = [
-        'Ocak', 'Subat', 'Mart', 'Nisan', 'Mayis', 'Haziran',
-        'Temmuz', 'Agustos', 'Eylul', 'Ekim', 'Kasim', 'Aralik'
+        'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+        'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
       ];
       var day = parseInt(parts[2], 10);
       var month = months[parseInt(parts[1], 10) - 1] || parts[1];
