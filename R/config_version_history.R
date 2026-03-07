@@ -69,7 +69,7 @@ get_version_history <- function() {
     if (grepl("^badge:", trimmed) && !is.null(current_ver)) {
       badge_val <- trimws(sub("^badge:\\s*", "", trimmed))
       if (nzchar(badge_val) && badge_val != "NULL") {
-        current_ver$badge <<- badge_val
+        current_ver$badge <- badge_val
       }
       next
     }
@@ -86,7 +86,7 @@ get_version_history <- function() {
         current_section <- "detail"
         section_icon <- if (length(section_parts) >= 2) trimws(section_parts[2]) else "circle"
         # Yeni detay bölümü ekle
-        current_ver$details[[length(current_ver$details) + 1]] <<- list(
+        current_ver$details[[length(current_ver$details) + 1]] <- list(
           category = section_name,
           icon = section_icon,
           items = list()
@@ -99,12 +99,12 @@ get_version_history <- function() {
     if (grepl("^- ", trimmed) && !is.null(current_ver) && !is.null(current_section)) {
       item_text <- sub("^- ", "", trimmed)
       if (current_section == "highlights") {
-        current_ver$highlights[[length(current_ver$highlights) + 1]] <<- item_text
+        current_ver$highlights[[length(current_ver$highlights) + 1]] <- item_text
       } else if (current_section == "detail" && length(current_ver$details) > 0) {
         detail_idx <- length(current_ver$details)
         current_ver$details[[detail_idx]]$items[[
           length(current_ver$details[[detail_idx]]$items) + 1
-        ]] <<- item_text
+        ]] <- item_text
       }
     }
   }
