@@ -155,24 +155,24 @@ createStartupScreenUI <- function() {
               `data-mode` = "odak",
               tags$div(
                 class = "cinematic-card-inner",
-                # Ozellik gostergeleri (sag ust kose)
+                # Özellik göstergeleri (sağ üst köşe)
                 tags$div(
                   class = "cinematic-feature-indicators",
                   tags$div(class = "cinematic-feature-dot off", `data-feature` = "tts",
-                    title = "Sesli Yanit: Kapali"),
+                    title = "Sesli Yanıt: Kapalı"),
                   tags$div(class = "cinematic-feature-dot off", `data-feature` = "followup",
-                    title = "Takip Sorulari: Kapali"),
+                    title = "Takip Soruları: Kapalı"),
                   tags$div(class = "cinematic-feature-dot off", `data-feature` = "music",
-                    title = "Arka Plan Muzigi: Kapali")
+                    title = "Arka Plan Müziği: Kapalı")
                 ),
-                # Ikon kutusu
+                # İkon kutusu
                 tags$div(
                   class = "cinematic-card-icon-box",
                   tags$div(class = "micro-anim micro-anim-odak"),
                   tags$i(class = "fas fa-bolt cinematic-card-icon")
                 ),
                 tags$h3(class = "cinematic-card-title", "Odak"),
-                tags$p(class = "cinematic-card-short", "Maksimum hiz, mutlak sadelik."),
+                tags$p(class = "cinematic-card-short", "Maksimum hız, mutlak sadelik."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")
                 ),
@@ -187,24 +187,24 @@ createStartupScreenUI <- function() {
               `data-mode` = "denge",
               tags$div(
                 class = "cinematic-card-inner",
-                # Ozellik gostergeleri (sag ust kose)
+                # Özellik göstergeleri (sağ üst köşe)
                 tags$div(
                   class = "cinematic-feature-indicators",
                   tags$div(class = "cinematic-feature-dot off", `data-feature` = "tts",
-                    title = "Sesli Yanit: Kapali"),
+                    title = "Sesli Yanıt: Kapalı"),
                   tags$div(class = "cinematic-feature-dot on", `data-feature` = "followup",
-                    title = "Takip Sorulari: Aktif"),
+                    title = "Takip Soruları: Aktif"),
                   tags$div(class = "cinematic-feature-dot on", `data-feature` = "music",
-                    title = "Arka Plan Muzigi: Aktif")
+                    title = "Arka Plan Müziği: Aktif")
                 ),
-                # Dinamik mikro animasyonu
+                # Dinamik mikro animasyonu (uçuşan zerreler)
                 tags$div(
                   class = "cinematic-card-icon-box",
                   tags$div(class = "micro-anim micro-anim-denge"),
                   tags$i(class = "fas fa-wand-magic-sparkles cinematic-card-icon")
                 ),
                 tags$h3(class = "cinematic-card-title", "Dinamik"),
-                tags$p(class = "cinematic-card-short", "Akilli asistan destegi."),
+                tags$p(class = "cinematic-card-short", "Akıllı asistan desteği."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")
                 ),
@@ -213,30 +213,30 @@ createStartupScreenUI <- function() {
                 )
               )
             ),
-            # Butunlesik Modu
+            # Bütünleşik Modu
             tags$div(
               class = "cinematic-mode-card spotlight-card",
               `data-mode` = "kesif",
               tags$div(
                 class = "cinematic-card-inner",
-                # Ozellik gostergeleri (sag ust kose)
+                # Özellik göstergeleri (sağ üst köşe)
                 tags$div(
                   class = "cinematic-feature-indicators",
                   tags$div(class = "cinematic-feature-dot on", `data-feature` = "tts",
-                    title = "Sesli Yanit: Aktif"),
+                    title = "Sesli Yanıt: Aktif"),
                   tags$div(class = "cinematic-feature-dot on", `data-feature` = "followup",
-                    title = "Takip Sorulari: Aktif"),
+                    title = "Takip Soruları: Aktif"),
                   tags$div(class = "cinematic-feature-dot on", `data-feature` = "music",
-                    title = "Arka Plan Muzigi: Aktif")
+                    title = "Arka Plan Müziği: Aktif")
                 ),
-                # Butunlesik mikro animasyonu
+                # Bütünleşik mikro animasyonu (lazer tarayıcı)
                 tags$div(
                   class = "cinematic-card-icon-box",
                   tags$div(class = "micro-anim micro-anim-kesif"),
                   tags$i(class = "fas fa-microchip cinematic-card-icon")
                 ),
-                tags$h3(class = "cinematic-card-title", "Butunlesik"),
-                tags$p(class = "cinematic-card-short", "Tum sistemlerin kilidini acin."),
+                tags$h3(class = "cinematic-card-title", "Bütünleşik"),
+                tags$p(class = "cinematic-card-short", "Tüm sistemlerin kilidini açın."),
                 tags$div(class = "cinematic-card-desc-area",
                   tags$div(class = "cinematic-card-desc")
                 ),

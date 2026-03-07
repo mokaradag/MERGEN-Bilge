@@ -115,7 +115,7 @@
   opacity: 1;
 }
 
-/* Modal donmus ust kisim (baslik + sekmeler) */
+/* Modal donmuş üst kısım (başlık + sekmeler) */
 .surum-modal-header {
   flex-shrink: 0;
   display: flex;
@@ -169,14 +169,14 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
-/* Modal icerik donmus sekmeler alani */
+/* Modal içerik donmuş sekmeler alanı */
 .surum-modal-tabs-bar {
   flex-shrink: 0;
   padding: 20px 36px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Modal kaydirilan icerik alani */
+/* Modal kaydırılan içerik alanı */
 .surum-modal-scroll-area {
   flex: 1;
   overflow-y: auto;
@@ -184,7 +184,7 @@
   min-height: 0;
 }
 
-/* Kaydirma cubugu stilleri */
+/* Kaydırma çubuğu stilleri */
 .surum-modal-scroll-area::-webkit-scrollbar {
   width: 6px;
 }
@@ -224,7 +224,7 @@
   background: rgba(129, 140, 248, 0.03);
 }
 
-/* Surum karti baslik */
+/* Sürüm kartı başlık */
 .surum-card-header {
   display: flex;
   align-items: center;

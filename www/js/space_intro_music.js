@@ -1,26 +1,26 @@
 // www/js/space_intro_music.js
 // Dosya Yolu: www/js/space_intro_music.js
-// Aciklama: Uzay giris ekrani arka plan muzik yoneticisi.
-// Uygulama yuklendiginde otomatik baslar, mod secildikten sonra durur.
-// Karakter videolari sirasinda ses kisilir (duck/unduck).
-// Parcalar www/music/intro/ klasorunden rastgele secilir.
+// Açıklama: Uzay giriş ekranı arka plan müzik yöneticisi.
+// Uygulama yüklendiğinde otomatik başlar, mod seçildikten sonra durur.
+// Karakter videoları sırasında ses kısılır (duck/unduck).
+// Parçalar www/music/intro/ klasöründen rastgele seçilir.
 
 (function() {
   'use strict';
 
   var SpaceIntroMusic = {
     _audio: null,
-    _playlist: [],         // Sunucudan gelen parca listesi
-    _active: false,        // Muzik aktif mi
-    _stopped: false,       // Kalici durdurma (mod secildikten sonra)
+    _playlist: [],         // Sunucudan gelen parça listesi
+    _active: false,        // Müzik aktif mi
+    _stopped: false,       // Kalıcı durdurma (mod seçildikten sonra)
     _isDucked: false,
     _fadeInterval: null,
-    _volume: 0.25,         // Varsayilan ses seviyesi
-    _duckedRatio: 0.12,    // Kisilan ses orani
-    _fadeTime: 1500,       // Solma suresi (ms)
+    _volume: 0.25,         // Varsayılan ses seviyesi
+    _duckedRatio: 0.12,    // Kısılan ses oranı
+    _fadeTime: 1500,       // Solma süresi (ms)
     _intentionalStop: false,
 
-    // Sunucudan playlist al ve calmaya basla
+    // Sunucudan playlist al ve çalmaya başla
     init: function(data) {
       if (this._stopped) return;
 
@@ -30,7 +30,7 @@
       }
 
       this._playlist = files;
-      console.log('[SPACE-MUSIC] Playlist alindi:', files.length, 'parca');
+      console.log('[SPACE-MUSIC] Playlist alındı:', files.length, 'parça');
 
       if (files.length > 0 && !this._active) {
         this._active = true;
@@ -38,7 +38,7 @@
       }
     },
 
-    // Rastgele parca sec ve cal
+    // Rastgele parça seç ve çal
     _playRandom: function() {
       if (!this._active || this._stopped || this._playlist.length === 0) return;
 
@@ -47,7 +47,7 @@
       this._playTrack(src);
     },
 
-    // Tek parca cal
+    // Tek parça çal
     _playTrack: function(src) {
       this._stopAudio();
       if (this._stopped) return;
@@ -70,28 +70,28 @@
         self._fadeTo(audio, targetVol, self._fadeTime);
         audio.play().catch(function(e) {
           if (self._intentionalStop || e.name === 'AbortError') return;
-          console.warn('[SPACE-MUSIC] Oynatma hatasi:', e.message || e);
+          console.warn('[SPACE-MUSIC] Oynatma hatası:', e.message || e);
         });
 
-        console.log('[SPACE-MUSIC] Calinyor:', decodeURIComponent(src.split('/').pop()));
+        console.log('[SPACE-MUSIC] Çalınıyor:', decodeURIComponent(src.split('/').pop()));
       }, { once: true });
 
       audio.addEventListener('ended', function() {
         if (self._audio !== audio || self._stopped) return;
-        // Sonraki rastgele parcaya gec
+        // Sonraki rastgele parçaya geç
         self._playRandom();
       }, { once: true });
 
       audio.addEventListener('error', function() {
         if (self._intentionalStop || self._audio !== audio) return;
-        console.warn('[SPACE-MUSIC] Yukleme hatasi, sonraki parcaya geciliyor');
+        console.warn('[SPACE-MUSIC] Yükleme hatası, sonraki parçaya geçiliyor');
         self._playRandom();
       }, { once: true });
 
       audio.load();
     },
 
-    // Sesi durdur (dahili)
+    // Sesi durdur (dâhilî)
     _stopAudio: function() {
       this._intentionalStop = true;
       if (this._fadeInterval) {
@@ -110,7 +110,7 @@
       setTimeout(function() { self._intentionalStop = false; }, 100);
     },
 
-    // Ses seviyesi gecisi
+    // Ses seviyesi geçişi
     _fadeTo: function(audio, target, duration) {
       if (this._fadeInterval) {
         clearInterval(this._fadeInterval);
@@ -148,9 +148,9 @@
       }, stepTime);
     },
 
-    // --- ACIK API ---
+    // --- AÇIK API ---
 
-    // Muzigi tamamen durdur (mod secildikten sonra, geri donusu yok)
+    // Müziği tamamen durdur (mod seçildikten sonra, geri dönüşü yok)
     fadeOutAndStop: function() {
       if (this._stopped) return;
       this._stopped = true;
@@ -172,10 +172,10 @@
           setTimeout(function() { self._intentionalStop = false; }, 100);
         }, 2100);
       }
-      console.log('[SPACE-MUSIC] Kalici durdurma (mod secildi)');
+      console.log('[SPACE-MUSIC] Kalıcı durdurma (mod seçildi)');
     },
 
-    // Karakter videosu sirasinda sesi kis
+    // Karakter videosu sırasında sesi kıs
     duck: function() {
       if (this._isDucked || this._stopped) return;
       this._isDucked = true;
@@ -200,13 +200,13 @@
     }
   };
 
-  // Global erisim
+  // Global erişim
   window.SpaceIntroMusic = SpaceIntroMusic;
 
   // Shiny mesaj dinleyicisi
   $(document).ready(function() {
     if (typeof Shiny !== 'undefined') {
-      // Sunucudan intro muzik playlist'ini al
+      // Sunucudan intro müzik playlist'ini al
       Shiny.addCustomMessageHandler('initSpaceIntroMusic', function(data) {
         SpaceIntroMusic.init(data);
       });

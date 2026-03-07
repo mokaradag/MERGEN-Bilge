@@ -198,7 +198,7 @@
     var versions = data.versions;
     var currentVersion = data.current_version;
 
-    // Donmus sekmeler alani (basligin altinda, kaydirma alaninin ustunde)
+    // Donmuş sekmeler alanı (başlığın altında, kaydırma alanının üstünde)
     var tabsHTML = '<div class="surum-modal-tabs-bar">';
     tabsHTML += '<div class="destek-surum-tabs" id="surum-modal-tabs">';
     versions.forEach(function(v, idx) {
@@ -210,7 +210,7 @@
     tabsHTML += '</div>';
     tabsHTML += '</div>';
 
-    // Kaydirilan icerik alani
+    // Kaydırılan içerik alanı
     var contentHTML = '<div class="surum-modal-scroll-area">';
     contentHTML += '<div id="surum-modal-version-content">';
     if (versions.length > 0) {
@@ -221,7 +221,7 @@
 
     modalContent.innerHTML = tabsHTML + contentHTML;
 
-    // Sekme tiklamalarini dinle
+    // Sekme tıklamalarını dinle
     var tabs = modalContent.querySelectorAll('.destek-surum-tab');
     tabs.forEach(function(tab) {
       tab.addEventListener('click', function() {
@@ -233,7 +233,7 @@
         if (v) {
           var vc = document.getElementById('surum-modal-version-content');
           if (vc) vc.innerHTML = buildVersionCardHTML(v, v.version === currentVersion);
-          // Kaydirma alanini en uste getir
+          // Kaydırma alanını en üste getir
           var scrollArea = modalContent.querySelector('.surum-modal-scroll-area');
           if (scrollArea) scrollArea.scrollTop = 0;
         }

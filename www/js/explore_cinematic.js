@@ -293,7 +293,7 @@
     var container = document.getElementById('deep-space-container');
     if (!container) return;
 
-    // Giris muzigini yumusak gecisle durdur
+    // Giriş müziğini yumuşak geçişle durdur
     if (window.SpaceIntroMusic && window.SpaceIntroMusic.fadeOutAndStop) {
       window.SpaceIntroMusic.fadeOutAndStop();
     }
