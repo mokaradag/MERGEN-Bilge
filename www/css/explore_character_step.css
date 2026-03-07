@@ -1,0 +1,416 @@
+/* www/css/explore_character_step.css */
+/* Dosya Yolu: www/css/explore_character_step.css */
+/* Aciklama: Butunlesik mod karakter secim adimi stilleri. */
+/* Giris ekranindaki mod secim modalinda 2. adim olarak gosterilir. */
+
+/* ============================================================= */
+/* ADIM GOSTERGE CUBUGU                                          */
+/* ============================================================= */
+
+.cinematic-step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 32px;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.cinematic-step-indicator.visible {
+  opacity: 1;
+}
+
+.cinematic-step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  transition: all 0.4s ease;
+}
+
+.cinematic-step-dot.active {
+  background: rgba(129, 140, 248, 0.8);
+  box-shadow: 0 0 12px rgba(129, 140, 248, 0.5);
+  transform: scale(1.3);
+}
+
+.cinematic-step-dot.completed {
+  background: rgba(52, 211, 153, 0.7);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+}
+
+.cinematic-step-line {
+  width: 40px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: background 0.4s ease;
+}
+
+.cinematic-step-line.completed {
+  background: linear-gradient(90deg, rgba(52, 211, 153, 0.6), rgba(129, 140, 248, 0.6));
+}
+
+/* ============================================================= */
+/* KARAKTER SECIM ADIMI (2. ADIM)                                */
+/* ============================================================= */
+
+.cinematic-character-step {
+  display: none;
+  width: 100%;
+  max-width: 1200px;
+  animation: cinematicCardEnter 0.6s ease-out both;
+}
+
+.cinematic-character-step.active {
+  display: block;
+}
+
+.cinematic-character-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: start;
+}
+
+/* Sol panel: Video ve gorsel */
+.cinematic-char-visual {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 380px;
+}
+
+.cinematic-char-image-wrapper {
+  position: relative;
+  width: 320px;
+  height: 380px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.cinematic-char-image-wrapper video,
+.cinematic-char-image-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cinematic-char-image-wrapper img {
+  transition: opacity 0.5s ease;
+}
+
+/* Gorsel uzerindeki isimlendirme */
+.cinematic-char-name-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px 20px 16px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+  text-align: center;
+}
+
+.cinematic-char-display-name {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
+  font-size: 22px !important;
+  font-weight: 400;
+  color: #ffffff;
+  letter-spacing: 0.15em;
+  margin: 0;
+}
+
+.cinematic-char-subtitle {
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 13px !important;
+  color: rgba(148, 163, 184, 0.8);
+  letter-spacing: 0.2em;
+  margin: 4px 0 0 0;
+  text-transform: uppercase;
+}
+
+/* Sag panel: Bilgi alani */
+.cinematic-char-info {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cinematic-char-lore {
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(226, 232, 240, 0.85);
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+/* Profil metrikleri */
+.cinematic-char-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cinematic-char-metric {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cinematic-char-metric-label {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.8);
+  min-width: 130px;
+  letter-spacing: 0.05em;
+}
+
+.cinematic-char-metric-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cinematic-char-metric-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  width: 0;
+}
+
+.cinematic-char-metric-value {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.6);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* Imza hareketleri */
+.cinematic-char-signatures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cinematic-char-signature-tag {
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.7);
+  letter-spacing: 0.03em;
+}
+
+/* ============================================================= */
+/* KARAKTER BUTONLARI SATIRI                                     */
+/* ============================================================= */
+
+.cinematic-char-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.cinematic-char-btn {
+  position: relative;
+  padding: 10px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(226, 232, 240, 0.7);
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+  overflow: hidden;
+}
+
+.cinematic-char-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.cinematic-char-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.cinematic-char-btn.active {
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Karakter bazli aksan renkleri */
+.cinematic-char-btn.active[data-character="mergen"] {
+  background: rgba(124, 77, 255, 0.25);
+  border-color: rgba(124, 77, 255, 0.5);
+  box-shadow: 0 4px 20px rgba(124, 77, 255, 0.2);
+}
+.cinematic-char-btn.active[data-character="ulgen"] {
+  background: rgba(47, 109, 246, 0.25);
+  border-color: rgba(47, 109, 246, 0.5);
+  box-shadow: 0 4px 20px rgba(47, 109, 246, 0.2);
+}
+.cinematic-char-btn.active[data-character="kayra"] {
+  background: rgba(18, 169, 123, 0.25);
+  border-color: rgba(18, 169, 123, 0.5);
+  box-shadow: 0 4px 20px rgba(18, 169, 123, 0.2);
+}
+.cinematic-char-btn.active[data-character="erlik"] {
+  background: rgba(182, 106, 44, 0.25);
+  border-color: rgba(182, 106, 44, 0.5);
+  box-shadow: 0 4px 20px rgba(182, 106, 44, 0.2);
+}
+.cinematic-char-btn.active[data-character="umay"] {
+  background: rgba(233, 134, 134, 0.25);
+  border-color: rgba(233, 134, 134, 0.5);
+  box-shadow: 0 4px 20px rgba(233, 134, 134, 0.2);
+}
+
+/* ============================================================= */
+/* SEC VE GERI BUTONLARI                                         */
+/* ============================================================= */
+
+.cinematic-char-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.cinematic-char-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(226, 232, 240, 0.7);
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cinematic-char-back-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.cinematic-char-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 36px;
+  border: none;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(124, 77, 255, 0.6) 0%, rgba(52, 211, 153, 0.4) 100%);
+  color: #ffffff;
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 15px !important;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+  text-transform: uppercase;
+  box-shadow: 0 4px 24px rgba(124, 77, 255, 0.2);
+}
+
+.cinematic-char-select-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 30px rgba(124, 77, 255, 0.35);
+}
+
+.cinematic-char-select-btn:active {
+  transform: scale(0.98);
+}
+
+/* ============================================================= */
+/* 1. ADIM GIZLE/GOSTER GECISLERI                                */
+/* ============================================================= */
+
+.cinematic-cards-grid.hidden-step {
+  display: none;
+}
+
+.cinematic-modal-header.hidden-step {
+  display: none;
+}
+
+/* Karakter adimi basligini goster */
+.cinematic-char-step-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.cinematic-char-step-title {
+  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
+  font-size: 30px !important;
+  font-weight: 300;
+  color: #ffffff;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px 0;
+}
+
+.cinematic-char-step-subtitle {
+  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  font-size: 14px !important;
+  color: rgba(148, 163, 184, 0.6);
+  letter-spacing: 0.2em;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ============================================================= */
+/* RESPONSIVE TASARIM                                            */
+/* ============================================================= */
+
+@media (max-width: 900px) {
+  .cinematic-character-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .cinematic-char-visual {
+    min-height: 280px;
+  }
+
+  .cinematic-char-image-wrapper {
+    width: 260px;
+    height: 300px;
+  }
+
+  .cinematic-char-buttons {
+    flex-wrap: wrap;
+  }
+
+  .cinematic-char-btn {
+    padding: 8px 18px;
+    font-size: 12px !important;
+  }
+}

@@ -27,6 +27,40 @@ createStartupScreenUI <- function() {
         tags$img(src = "company_logo.png", alt = "Şirket Logosu")
       ),
 
+      # Surum bilgilendirme rozeti (sag ust kose)
+      tags$div(
+        class = "deep-space-version-badge",
+        tags$div(class = "version-badge-dot"),
+        tags$i(class = "fas fa-bell version-badge-icon"),
+        tags$span(class = "version-badge-text",
+          paste0("v", get_current_version(), " - Yeni!")
+        )
+      ),
+
+      # Surum bilgilendirme modali
+      tags$div(
+        id = "surum-modal-overlay",
+        class = "surum-modal-overlay",
+        tags$div(
+          class = "surum-modal-container",
+          tags$div(
+            class = "surum-modal-header",
+            tags$div(
+              class = "surum-modal-title-area",
+              tags$div(class = "surum-modal-icon",
+                tags$i(class = "fas fa-rocket")
+              ),
+              tags$h3(class = "surum-modal-title", "Yenilikler")
+            ),
+            tags$button(
+              class = "surum-modal-close",
+              tags$i(class = "fas fa-times")
+            )
+          ),
+          tags$div(id = "surum-modal-content")
+        )
+      ),
+
       # MERGEN BİLGE yazısı (sağ alt köşe)
       tags$div(
         class = "deep-space-branding",
@@ -92,6 +126,13 @@ createStartupScreenUI <- function() {
         class = "cinematic-modal-overlay",
         tags$div(
           class = "cinematic-modal-container",
+          # Adim gosterge cubugu (mod secimi + karakter secimi)
+          tags$div(
+            class = "cinematic-step-indicator",
+            tags$div(class = "cinematic-step-dot active"),
+            tags$div(class = "cinematic-step-line"),
+            tags$div(class = "cinematic-step-dot")
+          ),
           # Başlık ve kapatma butonu
           tags$div(
             class = "cinematic-modal-header",
@@ -105,7 +146,7 @@ createStartupScreenUI <- function() {
               tags$i(class = "fas fa-times")
             )
           ),
-          # Mod kartları (3 sütun)
+          # Mod kartları (3 sütun) - 1. adim
           tags$div(
             class = "cinematic-cards-grid",
             # Odak Modu
@@ -175,6 +216,64 @@ createStartupScreenUI <- function() {
                 )
               )
             )
+          ),
+          # Karakter secim adimi (2. adim) - sadece Butunlesik mod icin
+          tags$div(
+            id = "cinematic-character-step",
+            class = "cinematic-character-step",
+            # Baslik
+            tags$div(
+              class = "cinematic-char-step-header",
+              tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
+              tags$p(class = "cinematic-char-step-subtitle", "HER KARAKTERİN BENZERSİZ BİR KİŞİLİĞİ VARDIR")
+            ),
+            # Karakter butonlari satiri
+            tags$div(
+              class = "cinematic-char-buttons",
+              id = "cinematic-char-buttons-row"
+            ),
+            # Karakter icerik alani (gorsel + bilgi)
+            tags$div(
+              class = "cinematic-character-layout",
+              # Sol: Gorsel
+              tags$div(
+                class = "cinematic-char-visual",
+                tags$div(
+                  class = "cinematic-char-image-wrapper",
+                  tags$img(
+                    id = "cinematic-char-preview-img",
+                    src = "characters/resim/Mergen_resim_original.png",
+                    alt = "Karakter"
+                  ),
+                  tags$div(
+                    class = "cinematic-char-name-overlay",
+                    tags$h3(class = "cinematic-char-display-name", "MERGEN"),
+                    tags$p(class = "cinematic-char-subtitle", "Standart")
+                  )
+                )
+              ),
+              # Sag: Bilgi
+              tags$div(
+                class = "cinematic-char-info",
+                tags$div(class = "cinematic-char-lore"),
+                tags$div(class = "cinematic-char-metrics"),
+                tags$div(class = "cinematic-char-signatures")
+              )
+            ),
+            # Alt butonlar
+            tags$div(
+              class = "cinematic-char-actions",
+              tags$button(
+                class = "cinematic-char-back-btn",
+                tags$i(class = "fas fa-chevron-left"),
+                tags$span("Geri")
+              ),
+              tags$button(
+                class = "cinematic-char-select-btn",
+                tags$span("Başlayalım"),
+                tags$i(class = "fas fa-rocket")
+              )
+            )
           )
         )
       )
@@ -233,6 +332,60 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     }
   }, once = TRUE)
 
+  # Giris ekrani acildiginda karakter verilerini istemciye gonder
+  session$onFlushed(function() {
+    chars_data <- get_characters_data()
+    if (!is.null(chars_data) && !is.null(chars_data$styles)) {
+      char_list <- lapply(chars_data$styles, function(ch) {
+        list(
+          id = ch$id,
+          label = ch$label,
+          display_name = ch$display_name,
+          subtitle = ch$subtitle,
+          image = ch$image,
+          accent = ch$accent,
+          accent_hover = ch$accent_hover,
+          accent_active = ch$accent_active,
+          lore_tr = ch$lore_tr,
+          selection_card_tr = ch$selection_card_tr,
+          style_tr = ch$style_tr,
+          profile_metrics = ch$profile_metrics,
+          signature_moves = ch$signature_moves
+        )
+      })
+      session$sendCustomMessage("loadCinematicCharacters", list(characters = char_list))
+
+      # Karakter butonlarini olustur (istemci tarafinda)
+      buttons_js <- paste0(
+        "(function() {",
+        "  var row = document.getElementById('cinematic-char-buttons-row');",
+        "  if (!row) return;",
+        "  row.innerHTML = '';",
+        "  var chars = ", jsonlite::toJSON(lapply(char_list, function(ch) {
+          list(id = ch$id, label = ch$label, accent = ch$accent)
+        }), auto_unbox = TRUE), ";",
+        "  chars.forEach(function(ch, i) {",
+        "    var btn = document.createElement('button');",
+        "    btn.className = 'cinematic-char-btn' + (i === 0 ? ' active' : '');",
+        "    btn.setAttribute('data-character', ch.id);",
+        "    btn.textContent = ch.label;",
+        "    row.appendChild(btn);",
+        "  });",
+        "})();"
+      )
+      shinyjs::runjs(buttons_js)
+    }
+
+    # Surum bilgilendirme verilerini modala gonder
+    version_data <- get_version_history()
+    if (!is.null(version_data)) {
+      session$sendCustomMessage("initVersionModal", list(
+        versions = version_data$versions,
+        current_version = version_data$current_version
+      ))
+    }
+  }, once = TRUE)
+
   # Mod seçimi (giriş ekranından)
   observeEvent(input$selected_experience_mode, {
     req(input$selected_experience_mode)
@@ -246,6 +399,48 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 
     # Ayarlar sayfasındaki mod kartlarını güncelle
     session$sendCustomMessage("updateSettingsMode", list(mode = mode))
+
+    # Karakter secimi de geldiyse (Butunlesik mod 2. adimdan)
+    char_id <- mode_data$character
+    if (!is.null(char_id) && nzchar(char_id)) {
+      cat(sprintf("[STARTUP] Karakter secildi (giris ekranindan): %s\n", char_id))
+
+      # Karakter ayarlarini guncelle
+      settings_data$selected_character <- char_id
+
+      # Karakter verilerini al
+      chars_data <- get_characters_data()
+      char <- if (!is.null(chars_data)) {
+        Find(function(x) x$id == char_id, chars_data$styles)
+      } else NULL
+
+      if (!is.null(char)) {
+        # Yapilandirma sayfasindaki karakter butonlarini guncelle
+        session$sendCustomMessage("updateCharacterButtons", list(
+          character = char_id,
+          accent = char$accent,
+          accent_active = char$accent_active,
+          accent_hover = char$accent_hover
+        ))
+
+        # Hosgeldin ekranindaki neural network rengini guncelle
+        session$sendCustomMessage("updateNeuralColor", list(
+          accent = char$accent
+        ))
+
+        # Muzik karakterini guncelle
+        session$sendCustomMessage("toggleMusic", list(
+          enabled = TRUE,
+          character = char_id
+        ))
+
+        # localStorage'a kaydet
+        shinyjs::runjs(sprintf(
+          "try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.selected_character = '%s'; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
+          char_id
+        ))
+      }
+    }
   }, ignoreInit = TRUE)
 
   # Animasyonu atlama onay kutusu değişikliği (giriş ekranındaki checkbox)

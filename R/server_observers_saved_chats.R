@@ -112,14 +112,17 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     values$show_welcome <- FALSE
 
     # Mesaj iceriginden aktif araci tespit et ve etkinlestir
+    # Not: Bazi isaretciler (source-link, kaynakca-entry) ham icerik yerine
+    # HTML iceriginde bulunur, bu yuzden her iki alan da kontrol edilir.
     detected_tool <- NULL
     for (m in values$messages) {
-      msg_content <- m$content %||% ""
       if (m$type %||% "" %in% c("ai", "assistant")) {
-        if (grepl("source-link|kaynakca-entry", msg_content, perl = TRUE)) {
-          # Kaynak baglantilari iceren mesaj: surec veya MCP araci
+        msg_content <- m$content %||% ""
+        msg_html <- m$html_content %||% ""
+        combined_text <- paste(msg_content, msg_html)
+        if (grepl("source-link|kaynakca-entry", combined_text, perl = TRUE)) {
           detected_tool <- "enable_process_tools"
-        } else if (grepl("generated-image|image_gen_|dall-e|gorsel-sonuc", msg_content, ignore.case = TRUE, perl = TRUE)) {
+        } else if (grepl("\\[GORSEL|\\[GÖRSEL|generated-image|image_gen_|dall-e|gorsel-sonuc", combined_text, ignore.case = TRUE, perl = TRUE)) {
           detected_tool <- "enable_image_tools"
         }
         if (!is.null(detected_tool)) break
