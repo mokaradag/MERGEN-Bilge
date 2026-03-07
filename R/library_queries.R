@@ -41,11 +41,11 @@ FROM
 #   - proje_kodu_col: Proje bazlı yetki (PY) için filtre uygulanacak sütun adı (yoksa NULL)
 #   - eps_kodu_col: EPS bazlı yetki (KY-P/DIR-P) için filtre uygulanacak sütun adı (yoksa NULL)
 #
-# pre_aggregated_columns: SQL sorgusunda zaten toplulaştirilmis (SUM/AVG/COUNT OVER
-#   PARTITION BY gibi) sayisal sutunlar. Bu sutunlar birden fazla satirda tekrarlandigi
-#   icin R tarafindan yeniden toplam/ortalama hesaplanmamalidir.
-#   AI bu sutunlari yalnizca satir bazinda yorumlamali, istatistiksel ozete dahil etmemelidir.
-#   Ornek: pre_aggregated_columns = c("PartitionToplami", "GrupOrtalamasi")
+# pre_aggregated_columns: SQL sorgusunda zaten toplulaştırılmış (SUM/AVG/COUNT OVER
+#   PARTITION BY gibi) sayısal sütunlar. Bu sütunlar birden fazla satırda tekrarlandığı
+#   için R tarafından yeniden toplam/ortalama hesaplanmamalıdır.
+#   AI bu sütunları yalnızca satır bazında yorumlamalı, istatistiksel özete dahil etmemelidir.
+#   Örnek: pre_aggregated_columns = c("PartitionToplamı", "GrupOrtalaması")
 
 query_library <- list(
   

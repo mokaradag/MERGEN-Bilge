@@ -1,19 +1,19 @@
 // www/js/surum_bilgilendirme.js
 // Dosya Yolu: www/js/surum_bilgilendirme.js
-// Aciklama: Surum bilgilendirme modali ve destek sayfasi etkilesim mantigi.
-// Giris ekranindaki bildirim ikonu, surum modali ve
-// destek sayfasindaki surum icerigini yonetir.
+// Açıklama: Sürüm bilgilendirme modalı ve destek sayfası etkileşim mantığı.
+// Giriş ekranındaki bildirim ikonu, sürüm modalı ve
+// destek sayfasındaki sürüm içeriğini yönetir.
 
 (function() {
   'use strict';
 
   // ============================================================
-  // SURUM KARTI HTML OLUSTURMA
+  // SÜRÜM KARTI HTML OLUŞTURMA
   // ============================================================
   function buildVersionCardHTML(version, isCurrent) {
     var html = '<div class="surum-card' + (isCurrent ? ' current' : '') + '">';
 
-    // Baslik satiri
+    // Başlık satırı
     html += '<div class="surum-card-header">';
     html += '<span class="surum-card-version">v' + escapeHtml(version.version) + '</span>';
     if (version.badge) {
@@ -22,10 +22,10 @@
     html += '<span class="surum-card-date">' + formatDate(version.date) + '</span>';
     html += '</div>';
 
-    // Baslik
+    // Başlık
     html += '<h4 class="surum-card-title">' + escapeHtml(version.title) + '</h4>';
 
-    // One cikan ozellikler
+    // Öne çıkan özellikler
     if (version.highlights && version.highlights.length > 0) {
       html += '<div class="surum-highlights">';
       version.highlights.forEach(function(h) {
@@ -58,7 +58,7 @@
   }
 
   // ============================================================
-  // SURUM MODALI (GIRIS EKRANINDAN)
+  // SÜRÜM MODALI (GİRİŞ EKRANINDAN)
   // ============================================================
   function openVersionModal() {
     var overlay = document.getElementById('surum-modal-overlay');
@@ -77,7 +77,7 @@
   }
 
   // ============================================================
-  // CONFETTI ANIMASYONU
+  // CONFETTI ANİMASYONU
   // ============================================================
   function launchConfetti() {
     var canvas = document.createElement('canvas');
@@ -90,7 +90,7 @@
     var particles = [];
     var colors = ['#818cf8', '#34d399', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
 
-    // Parcacik olustur
+    // Parçacık oluştur
     for (var i = 0; i < 80; i++) {
       particles.push({
         x: Math.random() * canvas.width,
@@ -110,7 +110,7 @@
 
     function animateConfetti() {
       var elapsed = Date.now() - startTime;
-      // 3 saniye sonra solmaya basla
+      // 3 saniye sonra solmaya başla
       if (elapsed > 4000) {
         canvas.remove();
         return;
@@ -121,7 +121,7 @@
       particles.forEach(function(p) {
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.05; // Yercekimi
+        p.vy += 0.05; // Yerçekimi
         p.rotation += p.rotSpeed;
 
         // 3 saniyeden sonra soldur
@@ -145,7 +145,7 @@
   }
 
   // ============================================================
-  // DESTEK SAYFASI ICERIGI
+  // DESTEK SAYFASI İÇERİĞİ
   // ============================================================
   function initSurumPage(data) {
     if (!data || !data.versions) return;
@@ -157,7 +157,7 @@
     var versions = data.versions;
     var currentVersion = data.current_version;
 
-    // Sekmeleri olustur
+    // Sekmeleri oluştur
     tabsContainer.innerHTML = '';
     versions.forEach(function(v, idx) {
       var tab = document.createElement('button');
@@ -165,18 +165,18 @@
       tab.setAttribute('data-version-id', v.id);
       tab.textContent = 'v' + v.version;
       tab.onclick = function() {
-        // Tum sekmeleri pasif yap
+        // Tüm sekmeleri pasif yap
         tabsContainer.querySelectorAll('.destek-surum-tab').forEach(function(t) {
           t.classList.remove('active');
         });
         tab.classList.add('active');
-        // Icerigi guncelle
+        // İçeriği güncelle
         showVersionContent(contentContainer, v, v.version === currentVersion);
       };
       tabsContainer.appendChild(tab);
     });
 
-    // Ilk surumu goster
+    // İlk sürümü göster
     if (versions.length > 0) {
       showVersionContent(contentContainer, versions[0], versions[0].version === currentVersion);
     }
@@ -187,7 +187,7 @@
   }
 
   // ============================================================
-  // GIRIS EKRANI MODAL ICERIGI
+  // GİRİŞ EKRANI MODAL İÇERİĞİ
   // ============================================================
   function initVersionModal(data) {
     if (!data || !data.versions) return;
@@ -198,7 +198,7 @@
     var versions = data.versions;
     var currentVersion = data.current_version;
 
-    // Surum sekmeleri
+    // Sürüm sekmeleri
     var tabsHTML = '<div class="destek-surum-tabs" id="surum-modal-tabs">';
     versions.forEach(function(v, idx) {
       tabsHTML += '<button class="destek-surum-tab' + (idx === 0 ? ' active' : '') + '" ';
@@ -208,7 +208,7 @@
     });
     tabsHTML += '</div>';
 
-    // Ilk surumun icerigini goster
+    // İlk sürümün içeriğini göster
     var contentHTML = '<div id="surum-modal-version-content">';
     if (versions.length > 0) {
       contentHTML += buildVersionCardHTML(versions[0], versions[0].version === currentVersion);
@@ -217,7 +217,7 @@
 
     modalContent.innerHTML = tabsHTML + contentHTML;
 
-    // Sekme tiklamalarini dinle
+    // Sekme tıklamalarını dinle
     var tabs = modalContent.querySelectorAll('.destek-surum-tab');
     tabs.forEach(function(tab) {
       tab.addEventListener('click', function() {
@@ -235,7 +235,7 @@
   }
 
   // ============================================================
-  // YARDIMCI FONKSIYONLAR
+  // YARDIMCI FONKSİYONLAR
   // ============================================================
   function escapeHtml(str) {
     if (!str) return '';
@@ -262,11 +262,11 @@
   }
 
   // ============================================================
-  // OLAY DINLEYICILERI
+  // OLAY DİNLEYİCİLERİ
   // ============================================================
   $(document).ready(function() {
 
-    // Giris ekrani bildirim ikonu tiklamasi
+    // Giriş ekranı bildirim ikonu tıklaması
     $(document).on('click', '.deep-space-version-badge', function(e) {
       e.stopPropagation();
       openVersionModal();
@@ -303,7 +303,7 @@
     }
   });
 
-  // Global erisim
+  // Global erişim
   window.SurumBilgilendirme = {
     openModal: openVersionModal,
     closeModal: closeVersionModal,

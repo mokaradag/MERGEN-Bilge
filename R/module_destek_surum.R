@@ -1,11 +1,11 @@
 # R/module_destek_surum.R
 # Dosya Yolu: R/module_destek_surum.R
-# Aciklama: Surum bilgilendirme alt sayfasi modulu.
-#            Uygulama surum gecmisi, guncelleme detaylari ve
-#            degisiklik kayitlarini gosterir.
+# Açıklama: Sürüm bilgilendirme alt sayfası modülü.
+#            Uygulama sürüm geçmişi, güncelleme detayları ve
+#            değişiklik kayıtlarını gösterir.
 
 # ==============================================================================
-# SURUM BILGILENDIRME UI
+# SÜRÜM BİLGİLENDİRME UI
 # ==============================================================================
 
 destekSurumUI <- function(id) {
@@ -14,7 +14,7 @@ destekSurumUI <- function(id) {
     div(
       class = "destek-surum-container",
 
-      # Hero Bolumu
+      # Hero Bölümü
       div(
         class = "destek-surum-hero",
         div(class = "destek-surum-hero-bg"),
@@ -24,21 +24,21 @@ destekSurumUI <- function(id) {
             icon("rocket")
           ),
           h2(class = "destek-surum-title",
-            "Surum Bilgilendirme"
+            "Sürüm Bilgilendirme"
           ),
           p(class = "destek-surum-subtitle",
-            "MERGEN Bilge'nin gelisim yolculugu ve guncelleme detaylari"
+            "MERGEN Bilge'nin gelişim yolculuğu ve güncelleme detayları"
           )
         )
       ),
 
-      # Surum secici sekmeler
+      # Sürüm seçici sekmeler
       div(
         class = "destek-surum-tabs",
         id = ns("version_tabs")
       ),
 
-      # Surum icerik alani
+      # Sürüm içerik alanı
       div(
         class = "destek-surum-content",
         id = ns("version_content")
@@ -48,14 +48,14 @@ destekSurumUI <- function(id) {
 }
 
 # ==============================================================================
-# SURUM BILGILENDIRME SERVER
+# SÜRÜM BİLGİLENDİRME SERVER
 # ==============================================================================
 
 destekSurumServer <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Surum verilerini yukle ve istemciye gonder
+    # Sürüm verilerini yükle ve istemciye gönder
     observe({
       version_data <- get_version_history()
       if (is.null(version_data)) return()

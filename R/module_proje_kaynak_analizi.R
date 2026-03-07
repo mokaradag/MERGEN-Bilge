@@ -640,13 +640,13 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
   cat_cols <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
 
-  # Onceden toplulaştirilmis sutunlari sayisal ozetten cikar
+  # Önceden toplulaştırılmış sütunları sayısal özetten çıkar
   pre_agg_cols <- character(0)
   if (!is.null(pre_aggregated_columns) && length(pre_aggregated_columns) > 0) {
     pre_agg_cols <- intersect(pre_aggregated_columns, num_cols)
     if (length(pre_agg_cols) > 0) {
       num_cols <- setdiff(num_cols, pre_agg_cols)
-      cat(sprintf("[PK_ANALIZ] Onceden toplulaştirilmis sutunlar istatistik ozetinden cikarildi: %s\n",
+      cat(sprintf("[PK_ANALIZ] Önceden toplulaştırılmış sütunlar istatistik özetinden çıkarıldı: %s\n",
                   paste(pre_agg_cols, collapse = ", ")))
     }
   }
@@ -661,17 +661,17 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     )
   }
 
-  # Onceden toplulaştirilmis sutunlar hakkinda AI'a uyari ekle
+  # Önceden toplulaştırılmış sütunlar hakkında AI'a uyarı ekle
   if (length(pre_agg_cols) > 0) {
     pretty_names <- vapply(pre_agg_cols, prettify_col_name, character(1))
     summary_parts[[length(summary_parts) + 1]] <- sprintf(
       paste0(
-        "\n\n⚠️ ONCEDEN TOPLULAŞTIRILMIŞ SUTUN UYARISI:\n",
-        "Asagidaki sutunlar SQL sorgusunda zaten toplulaştirilmiştir (SUM/AVG/COUNT OVER PARTITION BY vb.):\n",
+        "\n\n⚠️ ÖNCEDEN TOPLULAŞTIRILMIŞ SÜTUN UYARISI:\n",
+        "Aşağıdaki sütunlar SQL sorgusunda zaten toplulaştırılmıştır (SUM/AVG/COUNT OVER PARTITION BY vb.):\n",
         "- %s\n",
-        "Bu sutunlardaki degerler satirlar arasinda tekrar edebilir.\n",
-        "ASLA bu sutunlara toplam, ortalama veya herhangi bir istatistiksel ozet hesaplama UYGULAMA.\n",
-        "Bu sutunlari YALNIZCA satir bazinda yorumla, oldugu gibi aktar."
+        "Bu sütunlardaki değerler satırlar arasında tekrar edebilir.\n",
+        "ASLA bu sütunlara toplam, ortalama veya herhangi bir istatistiksel özet hesaplama UYGULAMA.\n",
+        "Bu sütunları YALNIZCA satır bazında yorumla, olduğu gibi aktar."
       ),
       paste(pretty_names, collapse = ", ")
     )

@@ -1,9 +1,9 @@
 /* www/css/surum_bilgilendirme.css */
 /* Dosya Yolu: www/css/surum_bilgilendirme.css */
-/* Aciklama: Surum bilgilendirme sayfasi ve giris ekrani bildirim ikonu stilleri. */
+/* Açıklama: Sürüm bilgilendirme sayfası ve giriş ekranı bildirim ikonu stilleri. */
 
 /* ============================================================= */
-/* GIRIS EKRANI BILDIRIM IKONU                                   */
+/* GİRİŞ EKRANI BİLDİRİM İKONU                                   */
 /* ============================================================= */
 
 .deep-space-version-badge {
@@ -65,7 +65,7 @@
 }
 
 /* ============================================================= */
-/* SURUM BILGILENDIRME MODALI (GIRIS EKRANINDAN)                 */
+/* SÜRÜM BİLGİLENDİRME MODALI (GİRİŞ EKRANINDAN)                 */
 /* ============================================================= */
 
 .surum-modal-overlay {
@@ -111,7 +111,7 @@
   opacity: 1;
 }
 
-/* Kaydirma cubugu stillestirilmis */
+/* Kaydırma çubuğu stillerleştirilmiş */
 .surum-modal-container::-webkit-scrollbar {
   width: 6px;
 }
@@ -125,7 +125,7 @@
   border-radius: 3px;
 }
 
-/* Modal baslik */
+/* Modal başlık */
 .surum-modal-header {
   display: flex;
   align-items: center;
@@ -178,7 +178,7 @@
 }
 
 /* ============================================================= */
-/* SURUM KARTI (MODAL VE SAYFA ICIN ORTAK)                       */
+/* SÜRÜM KARTI (MODAL VE SAYFA İÇİN ORTAK)                       */
 /* ============================================================= */
 
 .surum-card {
@@ -199,7 +199,7 @@
   background: rgba(129, 140, 248, 0.03);
 }
 
-/* Surum karti baslik */
+/* Sürüm kartı başlık */
 .surum-card-header {
   display: flex;
   align-items: center;
@@ -240,7 +240,7 @@
   font-weight: 500;
 }
 
-/* One cikan ozellikler */
+/* Öne çıkan özellikler */
 .surum-highlights {
   display: flex;
   flex-wrap: wrap;
@@ -308,7 +308,7 @@
 }
 
 /* ============================================================= */
-/* DESTEK SAYFASI SURUM GORUNTULEME                              */
+/* DESTEK SAYFASI SÜRÜM GÖRÜNTÜLEME                              */
 /* ============================================================= */
 
 .destek-surum-container {
@@ -364,7 +364,7 @@
   margin: 0;
 }
 
-/* Surum sekmeleri */
+/* Sürüm sekmeleri */
 .destek-surum-tabs {
   display: flex;
   gap: 8px;
@@ -396,13 +396,13 @@
   color: rgba(129, 140, 248, 0.95);
 }
 
-/* Surum icerik */
+/* Sürüm içerik */
 .destek-surum-content {
   padding-bottom: 40px;
 }
 
 /* ============================================================= */
-/* CONFETTI ANIMASYONU                                           */
+/* CONFETTI ANİMASYONU                                           */
 /* ============================================================= */
 
 .confetti-canvas {

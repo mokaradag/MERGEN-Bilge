@@ -111,9 +111,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     values$current_chat_id <- chat_id
     values$show_welcome <- FALSE
 
-    # Mesaj iceriginden aktif araci tespit et ve etkinlestir
-    # Not: Bazi isaretciler (source-link, kaynakca-entry) ham icerik yerine
-    # HTML iceriginde bulunur, bu yuzden her iki alan da kontrol edilir.
+	# Mesaj içeriğinden aktif aracı tespit et ve etkinleştir
+    # Not: Bazı işaretçiler (source-link, kaynakça-entry) ham içerik yerine
+    # HTML içeriğinde bulunur, bu yüzden her iki alan da kontrol edilir.
     detected_tool <- NULL
     for (m in values$messages) {
       if (m$type %||% "" %in% c("ai", "assistant")) {

@@ -461,7 +461,7 @@ ui <- dashboardPage(
       tabItem(tabName = "settings_kisisel", settingsKisiselUI("settings_kisisel_module")),
       tabItem(tabName = "settings_yapilandirma", settingsYapilandirmaUI("settings_yapilandirma_module")),
 
-      # Destek Sayfalari
+      # Destek Sayfaları
       tabItem(tabName = "destek_yardim", destekUI("destek_module", sayfa = "yardim")),
       tabItem(tabName = "destek_geri_bildirim", destekUI("destek_module", sayfa = "geri_bildirim")),
       tabItem(tabName = "destek_surum", destekUI("destek_module", sayfa = "surum")),

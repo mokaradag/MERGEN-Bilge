@@ -10,7 +10,7 @@
 destekUI <- function(id, sayfa = "yardim") {
   ns <- NS(id)
 
-  # Sayfa basligini belirle
+  # Sayfa başlığını belirle
   baslik <- switch(sayfa,
     "yardim" = "Yardım Merkezi",
     "geri_bildirim" = "Geri Bildirim & Hata",
@@ -68,7 +68,7 @@ destekServer <- function(id, current_user_id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Alt modul sunucularini baslat
+    # Alt modül sunucularını başlat
     destekYardimServer("yardim_module", current_user_id = current_user_id)
     destekGeriBildirimServer("geri_bildirim_module", current_user_id = current_user_id)
     destekSurumServer("surum_module")

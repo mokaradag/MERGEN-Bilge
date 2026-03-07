@@ -1,71 +1,71 @@
 // www/js/explore_character_step.js
 // Dosya Yolu: www/js/explore_character_step.js
-// Aciklama: Butunlesik mod karakter secim adimi etkilesim mantigi.
-// Mod secim modalinda 2. adim olarak karakter secimini yonetir.
+// Açıklama: Bütünleşik mod karakter seçim adımı etkileşim mantığı.
+// Mod seçim modalında 2. adım olarak karakter seçimini yönetir.
 
 (function() {
   'use strict';
 
-  // Secili karakter ID
+  // Seçili karakter ID
   var _selectedCharId = 'mergen';
 
-  // Karakter verileri (R tarafindan doldurulacak)
+  // Karakter verileri (R tarafından doldurulacak)
   var _charactersData = null;
 
-  // Adim durumu
+  // Adım durumu
   var _currentStep = 1;
 
   // ============================================================
-  // KARAKTER VERISINI YUKLE
+  // KARAKTER VERİSİNİ YÜKLE
   // ============================================================
   function loadCharactersData(data) {
     _charactersData = data;
   }
 
   // ============================================================
-  // 2. ADIMA GEC (KARAKTER SECIMI)
+  // 2. ADIMA GEÇ (KARAKTER SEÇİMİ)
   // ============================================================
   function showCharacterStep() {
     _currentStep = 2;
 
-    // 1. adim icerigini gizle
+    // 1. adım içeriğini gizle
     var cardsGrid = document.querySelector('.cinematic-cards-grid');
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.add('hidden-step');
     if (modalHeader) modalHeader.classList.add('hidden-step');
 
-    // Adim gostergesini guncelle
+    // Adım göstergesini güncelle
     updateStepIndicator(2);
 
-    // 2. adim icerigini goster
+    // 2. adım içeriğini göster
     var charStep = document.getElementById('cinematic-character-step');
     if (charStep) {
       charStep.classList.add('active');
-      // Varsayilan karakteri goster
+      // Varsayılan karakteri göster
       selectCharacterInModal(_selectedCharId, false);
     }
   }
 
   // ============================================================
-  // 1. ADIMA GER DON
+  // 1. ADIMA GERİ DÖN
   // ============================================================
   function showModeStep() {
     _currentStep = 1;
 
-    // 2. adim icerigini gizle
+    // 2. adım içeriğini gizle
     var charStep = document.getElementById('cinematic-character-step');
     if (charStep) charStep.classList.remove('active');
 
-    // 1. adim icerigini goster
+    // 1. adım içeriğini göster
     var cardsGrid = document.querySelector('.cinematic-cards-grid');
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.remove('hidden-step');
     if (modalHeader) modalHeader.classList.remove('hidden-step');
 
-    // Adim gostergesini guncelle
+    // Adım göstergesini güncelle
     updateStepIndicator(1);
 
-    // Mod secim durumunu sifirla (tekrar secilebilsin)
+    // Mod seçim durumunu sıfırla (tekrar seçilebilsin)
     if (window.CinematicExplore) {
       var overlay = document.getElementById('mode-modal-overlay');
       if (overlay) {
@@ -79,7 +79,7 @@
   }
 
   // ============================================================
-  // ADIM GOSTERGE CUBUGUNU GUNCELLE
+  // ADIM GÖSTERGE ÇUBUĞUNU GÜNCELLE
   // ============================================================
   function updateStepIndicator(step) {
     var indicator = document.querySelector('.cinematic-step-indicator');
@@ -102,7 +102,7 @@
   }
 
   // ============================================================
-  // MODALDA KARAKTER SEC
+  // MODALDA KARAKTER SEÇ
   // ============================================================
   function selectCharacterInModal(charId, animate) {
     if (!_charactersData) return;
@@ -119,13 +119,13 @@
     }
     if (!charData) return;
 
-    // Butonlari guncelle
+    // Butonları güncelle
     var buttons = document.querySelectorAll('.cinematic-char-btn');
     buttons.forEach(function(btn) {
       btn.classList.toggle('active', btn.getAttribute('data-character') === charId);
     });
 
-    // Gorseli guncelle
+    // Görseli güncelle
     var imgWrapper = document.querySelector('.cinematic-char-image-wrapper');
     if (imgWrapper) {
       var img = imgWrapper.querySelector('img');
@@ -142,19 +142,19 @@
       }
     }
 
-    // Isim yerlesimini guncelle
+    // İsim yerleşimini güncelle
     var displayName = document.querySelector('.cinematic-char-display-name');
     var subtitleEl = document.querySelector('.cinematic-char-subtitle');
     if (displayName) displayName.textContent = charData.display_name;
     if (subtitleEl) subtitleEl.textContent = charData.subtitle;
 
-    // Hikaye metnini guncelle
+    // Hikaye metnini güncelle
     var loreEl = document.querySelector('.cinematic-char-lore');
     if (loreEl) {
       loreEl.textContent = charData.lore_tr;
     }
 
-    // Metrikleri guncelle (animasyonlu)
+    // Metrikleri güncelle (animasyonlu)
     var metricsContainer = document.querySelector('.cinematic-char-metrics');
     if (metricsContainer && charData.profile_metrics) {
       metricsContainer.innerHTML = '';
@@ -169,7 +169,7 @@
           '<span class="cinematic-char-metric-value">' + metric.value + '</span>';
         metricsContainer.appendChild(metricEl);
 
-        // Cubuk animasyonu
+        // Çubuk animasyonu
         var fill = metricEl.querySelector('.cinematic-char-metric-fill');
         if (fill) {
           setTimeout(function() {
@@ -179,7 +179,7 @@
       });
     }
 
-    // Imza hareketlerini guncelle
+    // İmza hareketlerini güncelle
     var sigContainer = document.querySelector('.cinematic-char-signatures');
     if (sigContainer && charData.signature_moves) {
       sigContainer.innerHTML = '';
@@ -191,7 +191,7 @@
       });
     }
 
-    // Sec butonunun rengini guncelle
+    // Seç butonunun rengini güncelle
     var selectBtn = document.querySelector('.cinematic-char-select-btn');
     if (selectBtn && charData.accent) {
       selectBtn.style.background = 'linear-gradient(135deg, ' + charData.accent + ' 0%, rgba(52, 211, 153, 0.4) 100%)';
@@ -200,7 +200,7 @@
   }
 
   // ============================================================
-  // KARAKTER ONAYLANDIGINDA
+  // KARAKTER ONAYLANDIĞINDA
   // ============================================================
   function confirmCharacterSelection() {
     if (!_selectedCharId) return;
@@ -224,28 +224,28 @@
       localStorage.setItem('mergen_settings', JSON.stringify(settings));
     } catch(e) {}
 
-    // Modali kapat
+    // Modalı kapat
     if (window.CinematicExplore) {
       window.CinematicExplore.closeModal();
     }
 
-    // Giris ekranini kapat
+    // Giriş ekranını kapat
     setTimeout(function() {
       if (window.CinematicExplore) {
         window.CinematicExplore.dismissDeepSpace();
       }
     }, 200);
 
-    // Durumu sifirla
+    // Durumu sıfırla
     _currentStep = 1;
   }
 
   // ============================================================
-  // OLAY DINLEYICILERI
+  // OLAY DİNLEYİCİLERİ
   // ============================================================
   $(document).ready(function() {
 
-    // Karakter butonlarina tiklama
+    // Karakter butonlarına tıklama
     $(document).on('click', '.cinematic-char-btn', function() {
       var charId = $(this).attr('data-character');
       if (charId) {
@@ -258,12 +258,12 @@
       showModeStep();
     });
 
-    // Sec ve basla butonu
+    // Seç ve başla butonu
     $(document).on('click', '.cinematic-char-select-btn', function() {
       confirmCharacterSelection();
     });
 
-    // Shiny mesaj dinleyicisi: karakter verilerini yukle
+    // Shiny mesaj dinleyicisi: karakter verilerini yükle
     if (typeof Shiny !== 'undefined') {
       Shiny.addCustomMessageHandler('loadCinematicCharacters', function(data) {
         if (data && data.characters) {
@@ -273,7 +273,7 @@
     }
   });
 
-  // Global erisim
+  // Global erişim
   window.CinematicCharacterStep = {
     showCharacterStep: showCharacterStep,
     showModeStep: showModeStep,

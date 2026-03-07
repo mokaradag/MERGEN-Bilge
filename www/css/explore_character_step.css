@@ -1,10 +1,10 @@
 /* www/css/explore_character_step.css */
 /* Dosya Yolu: www/css/explore_character_step.css */
-/* Aciklama: Butunlesik mod karakter secim adimi stilleri. */
-/* Giris ekranindaki mod secim modalinda 2. adim olarak gosterilir. */
+/* Açıklama: Bütünleşik mod karakter seçim adımı stilleri. */
+/* Giriş ekranındaki mod seçim modalında 2. adım olarak gösterilir. */
 
 /* ============================================================= */
-/* ADIM GOSTERGE CUBUGU                                          */
+/* ADIM GÖSTERGE ÇUBUĞU                                          */
 /* ============================================================= */
 
 .cinematic-step-indicator {
@@ -52,7 +52,7 @@
 }
 
 /* ============================================================= */
-/* KARAKTER SECIM ADIMI (2. ADIM)                                */
+/* KARAKTER SEÇİM ADIMI (2. ADIM)                                */
 /* ============================================================= */
 
 .cinematic-character-step {
@@ -73,7 +73,7 @@
   align-items: start;
 }
 
-/* Sol panel: Video ve gorsel */
+/* Sol panel: Video ve görsel */
 .cinematic-char-visual {
   position: relative;
   display: flex;
@@ -105,7 +105,7 @@
   transition: opacity 0.5s ease;
 }
 
-/* Gorsel uzerindeki isimlendirme */
+/* Görsel üzerindeki isimlendirme */
 .cinematic-char-name-overlay {
   position: absolute;
   bottom: 0;
@@ -134,7 +134,7 @@
   text-transform: uppercase;
 }
 
-/* Sag panel: Bilgi alani */
+/* Sağ panel: Bilgi alanı */
 .cinematic-char-info {
   display: flex;
   flex-direction: column;
@@ -195,7 +195,7 @@
   text-align: right;
 }
 
-/* Imza hareketleri */
+/* İmza hareketleri */
 .cinematic-char-signatures {
   display: flex;
   flex-wrap: wrap;
@@ -260,7 +260,7 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-/* Karakter bazli aksan renkleri */
+/* Karakter bazlı aksan renkleri */
 .cinematic-char-btn.active[data-character="mergen"] {
   background: rgba(124, 77, 255, 0.25);
   border-color: rgba(124, 77, 255, 0.5);
@@ -288,7 +288,7 @@
 }
 
 /* ============================================================= */
-/* SEC VE GERI BUTONLARI                                         */
+/* SEÇ VE GERİ BUTONLARI                                         */
 /* ============================================================= */
 
 .cinematic-char-actions {
@@ -350,7 +350,7 @@
 }
 
 /* ============================================================= */
-/* 1. ADIM GIZLE/GOSTER GECISLERI                                */
+/* 1. ADIM GİZLE/GÖSTER GEÇİŞLERİ                                */
 /* ============================================================= */
 
 .cinematic-cards-grid.hidden-step {
@@ -361,7 +361,7 @@
   display: none;
 }
 
-/* Karakter adimi basligini goster */
+/* Karakter adımı başlığını göster */
 .cinematic-char-step-header {
   text-align: center;
   margin-bottom: 32px;

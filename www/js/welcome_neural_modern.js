@@ -1,5 +1,5 @@
 // www/js/welcome_neural_modern.js
-// Modern karsilama ekrani icin neural network canvas animasyonu
+// Modern karşılama ekranı için neural network canvas animasyonu
 
 window.WelcomeNeuralNetwork = (function() {
   let canvas = null;
@@ -15,10 +15,10 @@ window.WelcomeNeuralNetwork = (function() {
   const connectionDistance = 140;
   const mouse = { x: -1000, y: -1000 };
 
-  // Animasyon rengi (varsayilan turuncu, karakter aksanina gore degisir)
+  // Animasyon rengi (varsayılan turuncu, karakter aksanına göre değişir)
   let pColor = { r: 255, g: 86, b: 32 };
 
-  // Hex renk kodunu RGB objesine donustur
+  // Hex renk kodunu RGB objesine dönüştür
   function hexToRgb(hex) {
     var c = (hex || '').replace('#', '');
     if (!c || c.length < 6) return null;
@@ -26,7 +26,7 @@ window.WelcomeNeuralNetwork = (function() {
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
   }
 
-  // Renk doygunlugunu artirarak daha canli renkler olustur
+  // Renk doygunluğunu artırarak daha canlı renkler oluştur
   function boostSaturation(rgb, factor) {
     var avg = (rgb.r + rgb.g + rgb.b) / 3;
     return {
@@ -39,13 +39,13 @@ window.WelcomeNeuralNetwork = (function() {
   function init(canvasElement, accentHex) {
     if (!canvasElement) return;
 
-    // Onceki animasyonlari temizle
+    // Önceki animasyonları temizle
     if (animationId) {
       cancelAnimationFrame(animationId);
       animationId = null;
     }
 
-    // Karakter aksan rengi varsa kullan (doygunluk arttirilmis)
+    // Karakter aksan rengi varsa kullan (doygunluk arttırılmış)
     if (accentHex) {
       var rgb = hexToRgb(accentHex);
       if (rgb) pColor = boostSaturation(rgb, 1.35);
@@ -108,7 +108,7 @@ window.WelcomeNeuralNetwork = (function() {
 
     ctx.clearRect(0, 0, width, height);
 
-    // Renk degerlerini hazirla
+    // Renk değerlerini hazırla
     var fillStr = 'rgb(' + pColor.r + ', ' + pColor.g + ', ' + pColor.b + ')';
     var shadowStr = 'rgba(' + pColor.r + ', ' + pColor.g + ', ' + pColor.b + ', 0.8)';
 
@@ -171,7 +171,7 @@ window.WelcomeNeuralNetwork = (function() {
     lastFrameTime = 0;
   }
 
-  // Canli olarak renk guncelle (karakter degistiginde)
+  // Canlı olarak renk güncelle (karakter değiştiğinde)
   function updateColor(accentHex) {
     if (accentHex) {
       var rgb = hexToRgb(accentHex);
@@ -186,7 +186,7 @@ window.WelcomeNeuralNetwork = (function() {
   };
 })();
 
-// Shiny mesaj dinleyicisi: Neural network rengini guncelle
+// Shiny mesaj dinleyicisi: Neural network rengini güncelle
 if (typeof Shiny !== 'undefined') {
   $(document).on('shiny:connected', function() {
     Shiny.addCustomMessageHandler('updateNeuralColor', function(data) {

@@ -1,23 +1,23 @@
 # R/config_version_history.R
 # Dosya Yolu: R/config_version_history.R
-# Aciklama: Surum gecmisi ve guncelleme bilgilerini tanimlayan yapilandirma dosyasi.
-# Her yeni surum icin buraya yeni bir giris eklenir.
+# Açıklama: Sürüm geçmişi ve güncelleme bilgilerini tanımlayan yapılandırma dosyası.
+# Her yeni sürüm için buraya yeni bir giriş eklenir.
 
-#' Surum Gecmisi Verilerini Getir
+#' Sürüm Geçmişi Verilerini Getir
 #'
-#' @description Tum surum bilgilerini kronolojik siralamayla dondurur.
-#' En guncel surum listenin basinda yer alir.
+#' @description Tüm sürüm bilgilerini kronolojik sıralamayla döndürür.
+#' En güncel sürüm listenin başında yer alır.
 #'
-#' @return Surum listesi: her eleman id, version, date, title, highlights ve details iceri.
+#' @return Sürüm listesi: her eleman id, version, date, title, highlights ve details içerir.
 get_version_history <- function() {
   list(
-    # Mevcut surum
+    # Mevcut sürüm
     current_version = "1.0",
 
     versions = list(
 
       # ------------------------------------------------------------------
-      # SURUM 1.0 — Uretim Surumu
+      # SÜRÜM 1.0 — Üretim Sürümü
       # ------------------------------------------------------------------
       list(
         id = "v1_0",
@@ -26,76 +26,76 @@ get_version_history <- function() {
         title = "MERGEN Bilge Resmi Lansman",
         badge = "Yeni",
         highlights = list(
-          "Butunlesik mod ile tam ozellikli deneyim",
-          "5 benzersiz AI karakter ve sinematik secim ekrani",
-          "Proje ve Kaynak Analizi araci ile akilli veri sorgulama",
-          "Gorsel olusturma ve galeri yonetimi",
+          "Bütünleşik mod ile tam özellikli deneyim",
+          "5 benzersiz AI karakter ve sinematik seçim ekranı",
+          "Proje ve Kaynak Analizi aracı ile akıllı veri sorgulama",
+          "Görsel oluşturma ve galeri yönetimi",
           "Destek merkezi, geri bildirim ve hata bildirimi",
-          "Surum bilgilendirme sistemi"
+          "Sürüm bilgilendirme sistemi"
         ),
         details = list(
           list(
-            category = "Yeni Ozellikler",
+            category = "Yeni Özellikler",
             icon = "sparkles",
             items = list(
-              "Sinematik giris ekrani ile 3 farkli deneyim modu (Odak, Dinamik, Butunlesik)",
-              "Butunlesik modda karakter secim adimi eklendi",
-              "Surum bilgilendirme sistemi: giris ekraninda bildirim ikonu ve ozel sayfa",
-              "Karakter bazli neural network animasyonu (daha canli renkler)",
-              "Proje sorgulamalari icin onceden toplulaştirilmiş sutun destegi"
+              "Sinematik giriş ekranı ile 3 farklı deneyim modu (Odak, Dinamik, Bütünleşik)",
+              "Bütünleşik modda karakter seçim adımı eklendi",
+              "Sürüm bilgilendirme sistemi: giriş ekranında bildirim ikonu ve özel sayfa",
+              "Karakter bazlı neural network animasyonu (daha canlı renkler)",
+              "Proje sorgulamaları için önceden toplulaştırılmış sütun desteği"
             )
           ),
           list(
-            category = "Iyilestirmeler",
+            category = "İyileştirmeler",
             icon = "arrow-up-right-dots",
             items = list(
-              "Kayitli soylesi yuklendiginde arac aktivasyonu duzeltildi",
-              "NPS puanlama daireleri daha kompakt ve dogru konumlandirildi",
+              "Kayıtlı söyleşi yüklendiğinde araç aktivasyonu düzeltildi",
+              "NPS puanlama daireleri daha kompakt ve doğru konumlandırıldı",
               "Neural network animasyon renkleri daha belirgin hale getirildi",
-              "Sorgu sonuclarinda onceden hesaplanmis sutunlar istatistik ozetinden cikarildi"
+              "Sorgu sonuçlarında önceden hesaplanmış sütunlar istatistik özetinden çıkarıldı"
             )
           ),
           list(
             category = "Teknik",
             icon = "code",
             items = list(
-              "Moduler dosya yapisi ile ayrilmis CSS, JS ve R betikleri",
-              "Karakter verileri istemciye dinamik olarak aktariliyor",
-              "Yaris kosullarina karsi onlemler alinmistir"
+              "Modüler dosya yapısı ile ayrılmış CSS, JS ve R betikleri",
+              "Karakter verileri istemciye dinamik olarak aktarılıyor",
+              "Yarış koşullarına karşı önlemler alınmıştır"
             )
           )
         )
       ),
 
       # ------------------------------------------------------------------
-      # SURUM 0.9 — Beta Surumu
+      # SÜRÜM 0.9 — Beta Sürümü
       # ------------------------------------------------------------------
       list(
         id = "v0_9",
         version = "0.9",
         date = "2026-03-04",
-        title = "Beta Surumu",
+        title = "Beta Sürümü",
         badge = NULL,
         highlights = list(
-          "Temel sohbet altyapisi ve LLM entegrasyonu",
-          "Dosya yukleme ve analiz ozellikleri",
-          "Karakter sistemi ve kisisellesirme sayfasi",
-          "Destek sayfalari (Yardim Merkezi, Geri Bildirim, Hakkinda)"
+          "Temel sohbet altyapısı ve LLM entegrasyonu",
+          "Dosya yükleme ve analiz özellikleri",
+          "Karakter sistemi ve kişiselleştirme sayfası",
+          "Destek sayfaları (Yardım Merkezi, Geri Bildirim, Hakkında)"
         ),
         details = list(
           list(
-            category = "Temel Ozellikler",
+            category = "Temel Özellikler",
             icon = "layer-group",
             items = list(
-              "Gercek zamanli akis (streaming) ile LLM yanit sistemi",
-              "MCP arac entegrasyonu ve tekrarli arac cagirma destegi",
-              "Dosya yukleme, onizleme ve sohbete ekleme",
-              "Soylesi kaydetme, yukleme ve arama",
-              "5 AI karakter profili ve video tanitim sistemi",
+              "Gerçek zamanlı akış (streaming) ile LLM yanıt sistemi",
+              "MCP araç entegrasyonu ve tekrarlı araç çağırma desteği",
+              "Dosya yükleme, önizleme ve sohbete ekleme",
+              "Söyleşi kaydetme, yükleme ve arama",
+              "5 AI karakter profili ve video tanıtım sistemi",
               "TTS ve STT entegrasyonu",
-              "Gorsel olusturma (DALL-E entegrasyonu)",
-              "Sinematik giris ekrani ve deneyim modu secimi",
-              "Destek: Yardim Merkezi, Geri Bildirim, Hata Bildirimi, Hakkinda"
+              "Görsel oluşturma (DALL-E entegrasyonu)",
+              "Sinematik giriş ekranı ve deneyim modu seçimi",
+              "Destek: Yardım Merkezi, Geri Bildirim, Hata Bildirimi, Hakkında"
             )
           )
         )
@@ -104,8 +104,8 @@ get_version_history <- function() {
   )
 }
 
-#' Mevcut Surum Numarasini Getir
-#' @return Karakter turunde surum numarasi
+#' Mevcut Sürüm Numarasını Getir
+#' @return Karakter türünde sürüm numarası
 get_current_version <- function() {
   get_version_history()$current_version
 }

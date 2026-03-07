@@ -27,7 +27,7 @@ createStartupScreenUI <- function() {
         tags$img(src = "company_logo.png", alt = "Şirket Logosu")
       ),
 
-      # Surum bilgilendirme rozeti (sag ust kose)
+      # Sürüm bilgilendirme rozeti (sağ üst köşe)
       tags$div(
         class = "deep-space-version-badge",
         tags$div(class = "version-badge-dot"),
@@ -37,7 +37,7 @@ createStartupScreenUI <- function() {
         )
       ),
 
-      # Surum bilgilendirme modali
+      # Sürüm bilgilendirme modalı
       tags$div(
         id = "surum-modal-overlay",
         class = "surum-modal-overlay",
@@ -126,7 +126,7 @@ createStartupScreenUI <- function() {
         class = "cinematic-modal-overlay",
         tags$div(
           class = "cinematic-modal-container",
-          # Adim gosterge cubugu (mod secimi + karakter secimi)
+          # Adım gösterge çubuğu (mod seçimi + karakter seçimi)
           tags$div(
             class = "cinematic-step-indicator",
             tags$div(class = "cinematic-step-dot active"),
@@ -146,7 +146,7 @@ createStartupScreenUI <- function() {
               tags$i(class = "fas fa-times")
             )
           ),
-          # Mod kartları (3 sütun) - 1. adim
+          # Mod kartları (3 sütun) - 1. adım
           tags$div(
             class = "cinematic-cards-grid",
             # Odak Modu
@@ -217,25 +217,25 @@ createStartupScreenUI <- function() {
               )
             )
           ),
-          # Karakter secim adimi (2. adim) - sadece Butunlesik mod icin
+          # Karakter seçim adımı (2. adım) - sadece Bütünleşik mod için
           tags$div(
             id = "cinematic-character-step",
             class = "cinematic-character-step",
-            # Baslik
+            # Başlık
             tags$div(
               class = "cinematic-char-step-header",
               tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
               tags$p(class = "cinematic-char-step-subtitle", "HER KARAKTERİN BENZERSİZ BİR KİŞİLİĞİ VARDIR")
             ),
-            # Karakter butonlari satiri
+            # Karakter butonları satırı
             tags$div(
               class = "cinematic-char-buttons",
               id = "cinematic-char-buttons-row"
             ),
-            # Karakter icerik alani (gorsel + bilgi)
+            # Karakter içerik alanı (görsel + bilgi)
             tags$div(
               class = "cinematic-character-layout",
-              # Sol: Gorsel
+              # Sol: Görsel
               tags$div(
                 class = "cinematic-char-visual",
                 tags$div(
@@ -252,7 +252,7 @@ createStartupScreenUI <- function() {
                   )
                 )
               ),
-              # Sag: Bilgi
+              # Sağ: Bilgi
               tags$div(
                 class = "cinematic-char-info",
                 tags$div(class = "cinematic-char-lore"),
@@ -332,7 +332,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     }
   }, once = TRUE)
 
-  # Giris ekrani acildiginda karakter verilerini istemciye gonder
+  # Giriş ekranı açıldığında karakter verilerini istemciye gönder
   session$onFlushed(function() {
     chars_data <- get_characters_data()
     if (!is.null(chars_data) && !is.null(chars_data$styles)) {
@@ -355,7 +355,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       })
       session$sendCustomMessage("loadCinematicCharacters", list(characters = char_list))
 
-      # Karakter butonlarini olustur (istemci tarafinda)
+      # Karakter butonlarını oluştur (istemci tarafında)
       buttons_js <- paste0(
         "(function() {",
         "  var row = document.getElementById('cinematic-char-buttons-row');",
@@ -376,7 +376,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       shinyjs::runjs(buttons_js)
     }
 
-    # Surum bilgilendirme verilerini modala gonder
+    # Sürüm bilgilendirme verilerini modala gönder
     version_data <- get_version_history()
     if (!is.null(version_data)) {
       session$sendCustomMessage("initVersionModal", list(
@@ -400,12 +400,12 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     # Ayarlar sayfasındaki mod kartlarını güncelle
     session$sendCustomMessage("updateSettingsMode", list(mode = mode))
 
-    # Karakter secimi de geldiyse (Butunlesik mod 2. adimdan)
+    # Karakter seçimi de geldiyse (Bütünleşik mod 2. adımdan)
     char_id <- mode_data$character
     if (!is.null(char_id) && nzchar(char_id)) {
-      cat(sprintf("[STARTUP] Karakter secildi (giris ekranindan): %s\n", char_id))
+      cat(sprintf("[STARTUP] Karakter seçildi (giriş ekranından): %s\n", char_id))
 
-      # Karakter ayarlarini guncelle
+      # Karakter ayarlarını güncelle
       settings_data$selected_character <- char_id
 
       # Karakter verilerini al
@@ -415,7 +415,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       } else NULL
 
       if (!is.null(char)) {
-        # Yapilandirma sayfasindaki karakter butonlarini guncelle
+        # Yapılandırma sayfasındaki karakter butonlarını güncelle
         session$sendCustomMessage("updateCharacterButtons", list(
           character = char_id,
           accent = char$accent,
@@ -423,12 +423,12 @@ startupScreenObserversInit <- function(input, session, settings_data) {
           accent_hover = char$accent_hover
         ))
 
-        # Hosgeldin ekranindaki neural network rengini guncelle
+        # Hoşgeldin ekranındaki neural network rengini güncelle
         session$sendCustomMessage("updateNeuralColor", list(
           accent = char$accent
         ))
 
-        # Muzik karakterini guncelle
+        # Müzik karakterini güncelle
         session$sendCustomMessage("toggleMusic", list(
           enabled = TRUE,
           character = char_id

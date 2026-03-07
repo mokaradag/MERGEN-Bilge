@@ -169,11 +169,11 @@
 
     var mode = card.getAttribute('data-mode');
 
-    // Butunlesik mod secildiyse karakter secim adimina yonlendir
+    // Bütünleşik mod seçildiyse karakter seçim adımına yönlendir
     if (mode === 'kesif' && window.CinematicCharacterStep) {
       _selectedModeId = null;
 
-      // Secilen karti animasyonla vurgula
+      // Seçilen kartı animasyonla vurgula
       var allCards = document.querySelectorAll('.cinematic-mode-card');
       allCards.forEach(function(c) {
         if (c.getAttribute('data-mode') === mode) {
@@ -183,9 +183,9 @@
         }
       });
 
-      // Kisa gecikme ile 2. adima gec
+      // Kısa gecikme ile 2. adıma geç
       setTimeout(function() {
-        // Kart siniflarini temizle
+        // Kart sınıflarını temizle
         allCards.forEach(function(c) {
           c.classList.remove('selected', 'other-selected');
         });
