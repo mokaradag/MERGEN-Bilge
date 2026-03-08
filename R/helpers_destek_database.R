@@ -170,6 +170,34 @@ destek_kullanici_geri_bildirim <- function(user_id) {
   DBI::dbGetQuery(conn, query, params = list(as.integer(user_id)))
 }
 
+# ==============================================================================
+# HATA BİLDİRİMİ DURUM GÜNCELLEME (Yönetici paneli için)
+# ==============================================================================
+
+#' Hata bildiriminin durumunu güncelle
+#' @param bildirim_id Hata bildirim ID
+#' @param yeni_durum Yeni durum değeri (acik, inceleme, cozuldu, kapandi, reddedildi)
+#' @return Güncellenen satır sayısı
+destek_hata_durum_guncelle <- function(bildirim_id, yeni_durum) {
+  stopifnot(!is.null(bildirim_id), !is.null(yeni_durum))
+
+  gecerli_durumlar <- c("acik", "inceleme", "cozuldu", "kapandi", "reddedildi")
+  if (!yeni_durum %in% gecerli_durumlar) {
+    stop(paste0("Geçersiz durum değeri: ", yeni_durum))
+  }
+
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info))
+
+  query <- "UPDATE MB_Destek_Hata_Bildir SET Durum = ? WHERE HataBildirimID = ?"
+
+  DBI::dbExecute(conn, query, params = list(
+    as.character(yeni_durum),
+    as.integer(bildirim_id)
+  ))
+}
+
 #' Belirli bir kullanıcının hata bildirim geçmişini getir
 #' @param user_id Kullanıcı kimliği
 #' @return data.frame
