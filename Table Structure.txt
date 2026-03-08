@@ -95,7 +95,7 @@ Bu tablo, destek sayfasındaki hata bildirimi formundan gelen hata raporlarını
 | `Oncelik` | `NVARCHAR(50)` | Öncelik seviyesi. | 'dusuk', 'orta', 'yuksek' veya 'kritik'. |
 | `Aciklama` | `NVARCHAR(MAX)` | Detaylı hata açıklaması ve yeniden üretme adımları. | |
 | `EkDosyaYollari` | `NVARCHAR(MAX)` | Eklenen dosyaların sunucu yolları. | Virgülle ayrılmış dosya yolları, NULL olabilir. |
-| `Durum` | `NVARCHAR(50)` | Hata bildiriminin durumu. | 'acik', 'inceleniyor', 'cozuldu', 'kapatildi'. Varsayılan: 'acik'. |
+| `Durum` | `NVARCHAR(50)` | Hata bildiriminin durumu. | 'acik', 'inceleme', 'cozuldu', 'kapandi', 'reddedildi'. Varsayılan: 'acik'. Yönetici panelinden güncellenebilir. |
 | `OlusturmaTarihi` | `DATETIME` | Bildirimin oluşturulduğu zaman damgası. | |
 
 ---

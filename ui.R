@@ -48,8 +48,7 @@ ui <- dashboardPage(
         menuSubItem("Yenilikler", tabName = "destek_surum", icon = icon("rocket")),
         menuSubItem("Hakkında", tabName = "destek_hakkinda", icon = icon("info-circle"))
       ),
-      menuItemOutput("admin_menu_item"),
-      menuItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
+      menuItemOutput("admin_menu_item")
     ),
     # Yan menünün alt kısmındaki sabit altbilgi (footer).
     div(
@@ -140,6 +139,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/ai_expert_subtitle.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_page.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_yardim_chatbot.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/admin_destek_analytics.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/explore_character_step.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/surum_bilgilendirme.css"),
 
@@ -469,10 +469,12 @@ ui <- dashboardPage(
       tabItem(tabName = "destek_surum", destekUI("destek_module", sayfa = "surum")),
       tabItem(tabName = "destek_hakkinda", destekUI("destek_module", sayfa = "hakkinda")),
 
-      # Admin Analitik Sekmesi (Sadece Yöneticiler için)
+      # Yönetici Paneli Alt Sekmeleri (Sadece yöneticiler için)
       tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),
+      tabItem(tabName = "admin_geri_bildirim", adminGeriBildirimUI("admin_geri_bildirim_module")),
+      tabItem(tabName = "admin_hata_analizi", adminHataAnaliziUI("admin_hata_analizi_module")),
 
-      # Sistem Durumu Sekmesi (Modüler yapı)
+      # Sistem Durumu Sekmesi (Yönetici paneli altında)
       tabItem(tabName = "health", healthUI("health_module"))
     ),
     

@@ -13,6 +13,7 @@
 - **AI Integration**: LLM API calls with MCP (Model Context Protocol) tool support
 - **Advanced Features**: Image generation, visual gallery, analytics, and custom project analysis
 - **Support Pages (Destek)**: Help center with AI chatbot assistant (knowledge base: ai_rehber.md), feedback collection (satisfaction + NPS + tags), bug reporting with file attachments, and about page with app guide
+- **Admin Feedback & Bug Analytics**: Dedicated admin pages for analyzing user feedback (satisfaction trends, NPS scoring, tag distribution) and bug reports (priority/category heatmap, attachment viewer, status management)
 
 ---
 
@@ -59,7 +60,8 @@ Core utilities and functions used throughout the application:
 - **`helpers_followup_questions.R`**: Follow-up question generation
 - **`helpers_summarization_modes.R`**: Summarization strategy definitions
 - **`helpers_summarization_prompts.R`**: Prompt templates for summarization
-- **`helpers_destek_database.R`**: Support page database operations (MB_Destek_Geri_Bildirim, MB_Destek_Hata_Bildir)
+- **`helpers_destek_database.R`**: Support page database operations (MB_Destek_Geri_Bildirim, MB_Destek_Hata_Bildir, status updates)
+- **`helpers_admin_analytics.R`**: Shared utilities for admin analytics modules (metric cards, safe query, Turkish formatting, DT language, color palette)
 
 #### Utility Functions (`utils_*.R`)
 Low-level utilities:
@@ -79,7 +81,9 @@ Shiny modules for major UI sections and features:
 - **`module_stt.R`**: Speech-to-text implementation
 - **`module_api_key.R`**: API key management
 - **`module_performance.R`**: Performance monitoring
-- **`module_admin_analytics.R`**: Admin analytics dashboard
+- **`module_admin_analytics.R`**: Admin analytics dashboard (Genel Analiz - general system metrics, uses shared helpers)
+- **`module_admin_geri_bildirim.R`**: Admin feedback analytics (Geri Bildirim Analizi - satisfaction, NPS, tag analysis with treemap, gauge, bubble charts)
+- **`module_admin_hata_analizi.R`**: Admin bug report analytics (Hata Analizi - priority/category analysis, heatmap, attachment viewer, status management)
 - **`module_image_generation.R`**: Image generation features
 - **`module_image_gallery.R`**: Image gallery display
 - **`module_proje_kaynak_analizi.R`**: Project source analysis (Turkish-specific)
@@ -594,15 +598,29 @@ Example: `claude/add-claude-documentation-DbQhd`
 
 ---
 
-### www/ Static Assets - Destek Specific
+### www/ Static Assets - Destek & Admin Analytics Specific
 ```
 www/css/destek_page.css              # Main destek pages styling (full-width layout, forms, animations)
 www/css/destek_yardim_chatbot.css    # Help Center AI chatbot styling (dark theme, message bubbles, thinking animation)
+www/css/admin_destek_analytics.css   # Feedback & bug analytics pages styling (attachment modal, heatmap, gauge, treemap)
 www/js/destek_form.js                # Form interactions (satisfaction, NPS, tags, categories, priority, file upload, validation)
 www/js/destek_yardim_chatbot.js      # Chatbot client-side logic (message sending, display, thinking indicator)
 ```
 
+**For Admin Analytics Work**:
+1. `R/helpers_admin_analytics.R` - Shared utilities (metric cards, safe query, DT language, Turkish formatting)
+2. `R/module_admin_analytics.R` - Genel Analiz (main dashboard, refactored to use shared helpers)
+3. `R/module_admin_geri_bildirim.R` - Geri Bildirim Analizi (satisfaction, NPS, tags)
+4. `R/module_admin_hata_analizi.R` - Hata Analizi (priority, category, attachments, status management)
+
+### Admin Panel Menu Structure (Admin-Only)
+The "Yönetici Paneli" sidebar menu is dynamically rendered for ADMIN users only, with 4 sub-items:
+1. **Genel Analiz** (`admin_analytics`) - System metrics, user analytics, AI performance, chat quality, time analysis
+2. **Geri Bildirim Analizi** (`admin_geri_bildirim`) - User feedback from "Geri Bildirim" form: satisfaction (1-5), NPS (0-10), tags, comments
+3. **Hata Analizi** (`admin_hata_analizi`) - Bug reports from "Hata Bildir" form: topics, categories, priority, attachments, status management
+4. **Sistem Durumu** (`health`) - System health monitoring
+
 ## Last Updated
-March 4, 2026
+March 8, 2026
 
 **Note**: This documentation reflects the current state of the codebase. For specific implementation details, always refer to the actual source code and inline comments in R files.

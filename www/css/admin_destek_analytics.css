@@ -1,0 +1,154 @@
+/* Dosya Yolu: www/css/admin_destek_analytics.css */
+/* Açıklama: Geri Bildirim Analizi ve Hata Analizi yönetici sayfaları için */
+/*           ek stiller. Temel stiller admin_analytics.css dosyasından miras alınır. */
+
+/* ==============================================================================
+   EK DOSYA ÖNİZLEME MODALI
+   ============================================================================== */
+
+.admin-attachment-modal .modal-content {
+  background: var(--background-medium, #1a1a1a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.admin-attachment-modal .modal-header {
+  border-bottom: 1px solid var(--border-color, #333);
+  padding: 15px 20px;
+}
+
+.admin-attachment-modal .modal-title {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.admin-attachment-modal .modal-body {
+  padding: 20px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.admin-attachment-item {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--background-dark, #0f0f0f);
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #333);
+}
+
+.admin-attachment-item:last-child {
+  margin-bottom: 0;
+}
+
+.admin-attachment-item img {
+  display: block;
+  margin: 0 auto;
+  transition: transform 0.3s ease;
+}
+
+.admin-attachment-item img:hover {
+  transform: scale(1.02);
+  cursor: zoom-in;
+}
+
+.admin-attachment-item video {
+  display: block;
+  margin: 0 auto;
+  background: #000;
+}
+
+/* ==============================================================================
+   NPS GAUGE ÖZELLEŞTİRMELERİ
+   ============================================================================== */
+
+.highcharts-pane {
+  fill: rgba(51, 51, 51, 0.3) !important;
+}
+
+/* ==============================================================================
+   HEATMAP ÖZELLEŞTİRMELERİ
+   ============================================================================== */
+
+.highcharts-color-axis {
+  stroke: #333;
+}
+
+/* ==============================================================================
+   DURUM GÜNCELLEME MODALI
+   ============================================================================== */
+
+.admin-analytics-container .modal .form-group label {
+  color: #ccc;
+  font-weight: 500;
+}
+
+.admin-analytics-container .modal .form-control {
+  background: var(--background-dark, #0f0f0f);
+  color: #fff;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 8px;
+}
+
+.admin-analytics-container .modal .form-control:focus {
+  border-color: var(--primary-color, #ff6b35);
+  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2);
+}
+
+/* ==============================================================================
+   TREEMAP ÖZELLEŞTİRMELERİ
+   ============================================================================== */
+
+.highcharts-treemap-series .highcharts-point {
+  stroke: var(--background-medium, #1a1a1a) !important;
+  stroke-width: 2px;
+}
+
+/* ==============================================================================
+   BUBBLE GRAFİK ÖZELLEŞTİRMELERİ
+   ============================================================================== */
+
+.highcharts-bubble-series .highcharts-point {
+  fill-opacity: 0.7;
+  stroke-width: 1px;
+}
+
+/* ==============================================================================
+   DETAY TABLOSU ROZETLERİ
+   ============================================================================== */
+
+.admin-datatable td span[style*="border-radius"] {
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+/* ==============================================================================
+   MODAL SCROLLBAR (koyu tema)
+   ============================================================================== */
+
+.admin-attachment-modal .modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-attachment-modal .modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-attachment-modal .modal-body::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.admin-attachment-modal .modal-body::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* ==============================================================================
+   DÜZELTİCİ: Solid gauge etiket konumlandırması
+   ============================================================================== */
+
+.highcharts-data-label text {
+  font-family: inherit !important;
+}

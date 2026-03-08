@@ -95,16 +95,23 @@ miscObserversInit <- function(input, output, session, values,
   })
   outputOptions(output, "show_admin_menu", suspendWhenHidden = FALSE)
   
-  # Yönetici menü öğesi
+  # Yönetici menü öğesi (alt menülerle gruplandırılmış)
   output$admin_menu_item <- renderMenu({
     if (isTRUE(user_config$auth_level == "ADMIN")) {
-      menuItem("Yönetici Paneli", tabName = "admin_analytics", icon = icon("chart-bar"))
+      menuItem("Yönetici Paneli", icon = icon("shield-alt"), startExpanded = FALSE,
+        menuSubItem("Genel Analiz", tabName = "admin_analytics", icon = icon("chart-line")),
+        menuSubItem("Geri Bildirim Analizi", tabName = "admin_geri_bildirim", icon = icon("comment-dots")),
+        menuSubItem("Hata Analizi", tabName = "admin_hata_analizi", icon = icon("bug")),
+        menuSubItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
+      )
     }
   })
-  
-  # Yönetici analitik sunucusunu başlat (eğer admin ise)
+
+  # Yönetici analitik sunucularını başlat (eğer admin ise)
   if (isTRUE(user_config$auth_level == "ADMIN")) {
     adminAnalyticsServer("admin_analytics_module", pool = pool)
+    adminGeriBildirimServer("admin_geri_bildirim_module")
+    adminHataAnaliziServer("admin_hata_analizi_module")
   }
   
   # Mesaj sayısı çıktısı
