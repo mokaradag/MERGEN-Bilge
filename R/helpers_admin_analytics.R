@@ -7,12 +7,12 @@
 # ==============================================================================
 
 # Türkçe ay kısaltmaları
-admin_turkish_months <- c("Oca", "\u015eub", "Mar", "Nis", "May", "Haz",
-                          "Tem", "A\u011fu", "Eyl", "Eki", "Kas", "Ara")
+admin_turkish_months <- c("Oca", "Şub", "Mar", "Nis", "May", "Haz",
+                          "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara")
 
-# Türkçe gün isimleri (Pazartesi'den ba\u015flar)
-admin_turkish_days <- c("Pazartesi", "Sal\u0131", "\u00c7ar\u015famba",
-                        "Per\u015fembe", "Cuma", "Cumartesi", "Pazar")
+# Türkçe gün isimleri (Pazartesi'den başlar)
+admin_turkish_days <- c("Pazartesi", "Salı", "Çarşamba",
+                        "Perşembe", "Cuma", "Cumartesi", "Pazar")
 
 # Modern renk paleti
 admin_modern_colors <- list(
@@ -26,29 +26,29 @@ admin_modern_colors <- list(
 
 # Türkçe DataTable dil ayarları
 admin_turkish_dt_language <- list(
-  processing   = "\u0130\u015fleniyor...",
+  processing   = "İşleniyor...",
   search       = "Ara:",
-  lengthMenu   = "_MENU_ kay\u0131t g\u00f6ster",
-  info         = "_TOTAL_ kay\u0131ttan _START_ - _END_ aras\u0131 g\u00f6steriliyor",
-  infoEmpty    = "Kay\u0131t yok",
-  infoFiltered = "(_MAX_ kay\u0131t i\u00e7inden filtrelendi)",
+  lengthMenu   = "_MENU_ kayıt göster",
+  info         = "_TOTAL_ kayıttan _START_ - _END_ arası gösteriliyor",
+  infoEmpty    = "Kayıt yok",
+  infoFiltered = "(_MAX_ kayıt içinden filtrelendi)",
   infoPostFix  = "",
-  loadingRecords = "Y\u00fckleniyor...",
-  zeroRecords  = "E\u015fle\u015fen kay\u0131t bulunamad\u0131",
+  loadingRecords = "Yükleniyor...",
+  zeroRecords  = "Eşleşen kayıt bulunamadı",
   emptyTable   = "Tabloda veri yok",
   paginate = list(
-    first    = "\u0130lk",
-    previous = "\u00d6nceki",
+    first    = "İlk",
+    previous = "Önceki",
     `next`   = "Sonraki",
     last     = "Son"
   ),
   aria = list(
-    sortAscending  = ": artan s\u0131ralama",
-    sortDescending = ": azalan s\u0131ralama"
+    sortAscending  = ": artan sıralama",
+    sortDescending = ": azalan sıralama"
   )
 )
 
-# DataTable ba\u015fl\u0131k hizalama callback'i (tüm admin tablolarda ortak)
+# DataTable başlık hizalama callback'i (tüm admin tablolarda ortak)
 admin_dt_header_callback <- JS(
   "function(thead, data, start, end, display) {",
   "  var api = this.api();",
@@ -77,7 +77,7 @@ admin_safe_query <- function(query) {
     on.exit(release_connection(conn_info))
     DBI::dbGetQuery(conn_info$conn, query)
   }, error = function(e) {
-    log_error("[ADMIN] SQL Hatas\u0131: {conditionMessage(e)}")
+    log_error("[ADMIN] SQL Hatası: {conditionMessage(e)}")
     data.frame()
   })
 }
@@ -254,7 +254,7 @@ admin_page_layout <- function(ns, page_title, page_icon = "chart-bar",
             span(
               id = ns(last_update_id),
               style = "color: #999; margin-right: 15px; font-size: 14px;",
-              "Son G\u00fcncelleme: --"
+              "Son Güncelleme: --"
             ),
             actionButton(
               ns(refresh_btn_id),
@@ -318,7 +318,7 @@ admin_refresh_setup <- function(input, session, refresh_btn_id = "refresh_analyt
       id = ns(last_update_id),
       time = last_update()
     ))
-    showToast(session, "Veriler g\u00fcncellendi", "success")
+    showToast(session, "Veriler güncellendi", "success")
   })
 
   list(
