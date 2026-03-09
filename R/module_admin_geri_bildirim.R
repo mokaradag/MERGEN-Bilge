@@ -540,14 +540,14 @@ adminGeriBildirimServer <- function(id) {
       data <- gb_data()$gunluk_trend
       if (nrow(data) == 0) return(highcharter::highchart())
 
-      data$tarih_label <- sapply(data$tarih, admin_format_turkish_date)
+      data$tarih_label <- vapply(data$tarih, admin_format_turkish_date, character(1))
       data$ort_memnuniyet <- round(data$ort_memnuniyet, 2)
 
       highcharter::highchart() %>%
         highcharter::hc_chart(backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = data$tarih_label,
+          categories = as.list(data$tarih_label),
           labels = list(style = list(color = "#999"))
         ) %>%
         highcharter::hc_yAxis_multiples(
@@ -685,18 +685,20 @@ adminGeriBildirimServer <- function(id) {
       data <- data[order(data$yil, data$hafta), ]
       data$ort_memnuniyet <- round(data$ort_memnuniyet, 2)
 
-      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih göster
-      data$label <- if (nrow(data) <= 3) {
-        sapply(data$hafta_basi, function(d) format(as.Date(d), "%d.%m.%Y"))
-      } else {
-        paste0("H", data$hafta)
-      }
+      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih aralığı göster
+      data$label <- vapply(seq_len(nrow(data)), function(i) {
+        if (nrow(data) <= 3) {
+          tryCatch(format(as.Date(data$hafta_basi[i]), "%d.%m.%Y"), error = function(e) paste0("H", data$hafta[i]))
+        } else {
+          paste0("H", data$hafta[i])
+        }
+      }, character(1))
 
-      chart_data <- lapply(1:nrow(data), function(i) {
+      chart_data <- lapply(seq_len(nrow(data)), function(i) {
         list(
           y = data$ort_memnuniyet[i],
           cnt = data$cnt[i],
-          hafta_basi = format(as.Date(data$hafta_basi[i]), "%d.%m.%Y")
+          hafta_basi = tryCatch(format(as.Date(data$hafta_basi[i]), "%d.%m.%Y"), error = function(e) "-")
         )
       })
 
@@ -704,7 +706,7 @@ adminGeriBildirimServer <- function(id) {
         highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = data$label,
+          categories = as.list(data$label),
           labels = list(style = list(color = "#999"))
         ) %>%
         highcharter::hc_yAxis(
@@ -932,18 +934,20 @@ adminGeriBildirimServer <- function(id) {
 
       data <- data[order(data$yil, data$hafta), ]
 
-      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih göster
-      data$label <- if (nrow(data) <= 3) {
-        sapply(data$hafta_basi, function(d) format(as.Date(d), "%d.%m.%Y"))
-      } else {
-        paste0("H", data$hafta)
-      }
+      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih aralığı göster
+      data$label <- vapply(seq_len(nrow(data)), function(i) {
+        if (nrow(data) <= 3) {
+          tryCatch(format(as.Date(data$hafta_basi[i]), "%d.%m.%Y"), error = function(e) paste0("H", data$hafta[i]))
+        } else {
+          paste0("H", data$hafta[i])
+        }
+      }, character(1))
 
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = data$label,
+          categories = as.list(data$label),
           labels = list(style = list(color = "#999"))
         ) %>%
         highcharter::hc_yAxis(

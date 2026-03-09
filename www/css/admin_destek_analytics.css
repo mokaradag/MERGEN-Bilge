@@ -48,15 +48,29 @@
   transition: transform 0.3s ease;
 }
 
-.admin-attachment-item img:hover {
-  transform: scale(1.02);
-  cursor: zoom-in;
-}
-
 .admin-attachment-item video {
   display: block;
   margin: 0 auto;
   background: #000;
+}
+
+/* Yakınlaştırılabilir görsel konteyner */
+.admin-attachment-zoom-container {
+  text-align: center;
+  overflow: hidden;
+}
+
+.admin-attachment-zoom-container img {
+  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.admin-attachment-zoom-container.zoomed {
+  overflow: auto;
+}
+
+.admin-attachment-zoom-container.zoomed img {
+  transform: scale(2);
+  cursor: zoom-out;
 }
 
 /* ==============================================================================

@@ -13,7 +13,8 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
+  padding-top: 16px;
   opacity: 0;
   transition: opacity 0.5s ease;
 }
@@ -188,7 +189,7 @@
   margin: 0;
 }
 
-/* Karakter alt başlık - sağ panelde */
+/* Karakter alt başlık - sağ panelde (sabit yükseklik, animasyon boyutu değiştirmesin) */
 .cinematic-char-subtitle-text {
   font-family: 'Jura', 'Segoe UI', sans-serif !important;
   font-size: 14px !important;
@@ -198,7 +199,9 @@
   margin: 0 0 8px 0;
   padding-bottom: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  min-height: 18px;
+  min-height: 32px;
+  height: 32px;
+  overflow: hidden;
 }
 
 /* Yazma efekti imleci (alt başlık için) */
@@ -212,7 +215,7 @@
   animation: cinematicTypingBlink 0.8s step-end infinite;
 }
 
-/* Hikaye metni alanı - yükseklik artırıldı, kaydırma kaldırıldı */
+/* Hikaye metni alanı - sabit yükseklik (yazma animasyonu sırasında boyut değişmesin) */
 .cinematic-char-lore {
   font-size: 14px;
   line-height: 1.7;
@@ -221,8 +224,7 @@
   background: rgba(255, 255, 255, 0.02);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.05);
-  min-height: 120px;
-  max-height: 220px;
+  height: 200px;
   overflow-y: auto;
 }
 

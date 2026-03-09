@@ -184,6 +184,15 @@
   opacity: 1;
 }
 
+/* Modal içerik sarmalayıcı - flex zincirini sürdür */
+#surum-modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Modal donmuş üst kısım (başlık + sekmeler) */
 .surum-modal-header {
   flex-shrink: 0;

@@ -218,9 +218,11 @@
 .cinematic-modal-container {
   position: relative;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1300px;
   max-height: 95vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 20px;
   transform: translateY(40px) scale(0.9);
   opacity: 0;
   transition: all 0.7s cubic-bezier(0.19, 1, 0.22, 1);
@@ -318,14 +320,14 @@
   transform: translateY(-8px);
 }
 
-/* Kart içi ışıma (spotlight) - React örneğiyle eşleştirilmiş geniş parlama */
+/* Kart içi ışıma (spotlight) - GPU yükü azaltılmış versiyon */
 .cinematic-mode-card.spotlight-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   background: radial-gradient(
-    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
     var(--glow-color, transparent),
     transparent 40%
   );
@@ -333,26 +335,25 @@
   transition: opacity 0.5s ease;
   pointer-events: none;
   z-index: 5;
-  mix-blend-mode: screen;
+  will-change: opacity;
 }
 
 .cinematic-mode-card.spotlight-card:hover::before {
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
-/* Kart arka plan katmanı */
+/* Kart arka plan katmanı - GPU yükünü azaltmak için backdrop-filter sabitlendi */
 .cinematic-card-inner {
   position: relative;
   z-index: 10;
   height: 100%;
   padding: 32px;
   pointer-events: none;
-  background: rgba(10, 10, 10, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(10, 10, 10, 0.88);
   border-radius: 15px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: border-color 0.5s ease;
+  /* backdrop-filter kaldırıldı: hover sırasında ses bozulmasına neden oluyordu */
 }
 
 .cinematic-mode-card:hover .cinematic-card-inner {
