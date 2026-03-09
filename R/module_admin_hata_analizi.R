@@ -414,9 +414,11 @@ adminHataAnaliziServer <- function(id) {
           )
         ),
         # Ek dosya önizleme modal'ı
+        # NOT: data-backdrop="static" ve özel z-index ile modal'ın etkileşim sorununu önle
         tags$div(
           id = ns("ek_dosya_modal"),
           class = "modal fade admin-attachment-modal",
+          `data-backdrop` = "static", `data-keyboard` = "true",
           tabindex = "-1", role = "dialog",
           tags$div(
             class = "modal-dialog modal-lg", role = "document",
@@ -439,9 +441,11 @@ adminHataAnaliziServer <- function(id) {
           )
         ),
         # Durum güncelleme modal'ı
+        # NOT: data-backdrop="static" ile modal'ın etkileşim sorununu önle
         tags$div(
           id = ns("durum_modal"),
           class = "modal fade",
+          `data-backdrop` = "static", `data-keyboard` = "true",
           tabindex = "-1", role = "dialog",
           tags$div(
             class = "modal-dialog modal-sm", role = "document",
@@ -763,6 +767,7 @@ adminHataAnaliziServer <- function(id) {
         highcharter::hc_legend(
           align = "right", layout = "vertical", verticalAlign = "middle",
           symbolHeight = 200,
+          title = list(text = "Bildirim<br/>Sayısı", style = list(color = "#999", fontSize = "11px")),
           itemStyle = list(color = "#999")
         ) %>%
         highcharter::hc_credits(enabled = FALSE)
@@ -830,7 +835,13 @@ adminHataAnaliziServer <- function(id) {
       if (nrow(data) == 0) return(highcharter::highchart())
 
       data <- data[order(data$yil, data$hafta), ]
-      data$label <- paste0("H", data$hafta)
+
+      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih göster
+      data$label <- if (nrow(data) <= 3) {
+        sapply(data$hafta_basi, function(d) format(as.Date(d), "%d.%m.%Y"))
+      } else {
+        paste0("H", data$hafta)
+      }
 
       chart_data <- lapply(1:nrow(data), function(i) {
         list(
@@ -1050,9 +1061,14 @@ adminHataAnaliziServer <- function(id) {
           uzanti <- tolower(tools::file_ext(dosya_yolu))
           dosya_adi <- basename(dosya_yolu)
 
-          # Güvenli dosya yolunu oluştur (destek_uploads klasöründen servis et)
-          # Dosya yolu zaten destek_uploads/ altında olmalı
-          gorsel_yol <- dosya_yolu
+          # Dosya yolunu addResourcePath üzerinden erişilebilir URL'ye dönüştür
+          # Veritabanında saklanan yol: "destek_uploads/1/dosya.png"
+          # Shiny kaynak yolu: "/destek_uploads/1/dosya.png" (addResourcePath ile eşleşir)
+          gorsel_yol <- if (grepl("^destek_uploads/", dosya_yolu)) {
+            paste0("/", dosya_yolu)
+          } else {
+            paste0("/destek_uploads/", dosya_yolu)
+          }
 
           if (uzanti %in% c("png", "jpg", "jpeg", "gif")) {
             div(
@@ -1086,8 +1102,16 @@ adminHataAnaliziServer <- function(id) {
         do.call(tagList, dosya_elements)
       })
 
-      # Modal'ı aç
-      shinyjs::runjs(sprintf("$('#%s').modal('show');", ns("ek_dosya_modal")))
+      # Modal'ı body'ye taşı (Shiny modül namespace içindeki z-index sorunlarını önlemek için)
+      # ve ardından göster
+      shinyjs::runjs(sprintf("
+        var modal = $('#%s');
+        if (!modal.data('moved-to-body')) {
+          modal.appendTo('body');
+          modal.data('moved-to-body', true);
+        }
+        modal.modal('show');
+      ", ns("ek_dosya_modal")))
     })
 
     # ============================================================
@@ -1107,8 +1131,15 @@ adminHataAnaliziServer <- function(id) {
       # Bildirim ID'sini hidden input'a yaz
       shinyjs::runjs(sprintf("$('#%s').val(%d);", ns("durum_bildirim_id"), bildirim_id))
 
-      # Modal'ı aç
-      shinyjs::runjs(sprintf("$('#%s').modal('show');", ns("durum_modal")))
+      # Modal'ı body'ye taşı ve göster
+      shinyjs::runjs(sprintf("
+        var modal = $('#%s');
+        if (!modal.data('moved-to-body')) {
+          modal.appendTo('body');
+          modal.data('moved-to-body', true);
+        }
+        modal.modal('show');
+      ", ns("durum_modal")))
     })
 
     observeEvent(input$durum_kaydet, {
@@ -1130,7 +1161,7 @@ adminHataAnaliziServer <- function(id) {
         destek_hata_durum_guncelle(bildirim_id, yeni_durum)
         showToast(session, "Durum başarıyla güncellendi", "success")
         refresh$trigger(refresh$trigger() + 1)
-        shinyjs::runjs(sprintf("$('#%s').modal('hide');", ns("durum_modal")))
+        shinyjs::runjs(sprintf("$('#%s').modal('hide'); $('.modal-backdrop').remove();", ns("durum_modal")))
       }, error = function(e) {
         showToast(session, paste("Hata:", conditionMessage(e)), "error")
       })

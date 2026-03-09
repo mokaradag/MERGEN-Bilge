@@ -32,6 +32,12 @@ DB_TARGETS <- list(
 # Yorumlu yanıtlara izin ver (LLM'in ikinci yazım geçişi açık kalsın)
 options(mergen.ai.strict_data_only = FALSE)
 
+# Destek ek dosyalarını sunmak için kaynak yolu tanımla
+destek_uploads_dir <- file.path(getwd(), "destek_uploads")
+if (dir.exists(destek_uploads_dir)) {
+  shiny::addResourcePath("destek_uploads", destek_uploads_dir)
+}
+
 # ==============================================================================
 # MODÜLERLEŞTİRİLMİŞ YAPILANDIRMA DOSYALARI
 # ==============================================================================
@@ -88,6 +94,13 @@ source("R/module_followup_questions.R", encoding = "UTF-8")
 source("R/module_chat_actions.R",  encoding = "UTF-8")
 source("R/module_chat_export.R",   encoding = "UTF-8")
 source("R/helpers_admin_analytics.R", encoding = "UTF-8")
+source("R/module_admin_genel_bakis.R", encoding = "UTF-8")
+source("R/module_admin_kullanici_analizi.R", encoding = "UTF-8")
+source("R/module_admin_yz_performans.R", encoding = "UTF-8")
+source("R/module_admin_geri_bildirim_genel.R", encoding = "UTF-8")
+source("R/module_admin_sohbet_kalitesi.R", encoding = "UTF-8")
+source("R/module_admin_zaman_analizi.R", encoding = "UTF-8")
+source("R/module_admin_gelismis_analizler.R", encoding = "UTF-8")
 source("R/module_admin_analytics.R", encoding = "UTF-8")
 source("R/module_admin_geri_bildirim.R", encoding = "UTF-8")
 source("R/module_admin_hata_analizi.R", encoding = "UTF-8")

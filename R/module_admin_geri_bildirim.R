@@ -684,7 +684,13 @@ adminGeriBildirimServer <- function(id) {
 
       data <- data[order(data$yil, data$hafta), ]
       data$ort_memnuniyet <- round(data$ort_memnuniyet, 2)
-      data$label <- paste0("H", data$hafta)
+
+      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih göster
+      data$label <- if (nrow(data) <= 3) {
+        sapply(data$hafta_basi, function(d) format(as.Date(d), "%d.%m.%Y"))
+      } else {
+        paste0("H", data$hafta)
+      }
 
       chart_data <- lapply(1:nrow(data), function(i) {
         list(
@@ -925,7 +931,13 @@ adminGeriBildirimServer <- function(id) {
       if (nrow(data) == 0) return(highcharter::highchart())
 
       data <- data[order(data$yil, data$hafta), ]
-      data$label <- paste0("H", data$hafta)
+
+      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih göster
+      data$label <- if (nrow(data) <= 3) {
+        sapply(data$hafta_basi, function(d) format(as.Date(d), "%d.%m.%Y"))
+      } else {
+        paste0("H", data$hafta)
+      }
 
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
@@ -1098,41 +1110,67 @@ adminGeriBildirimServer <- function(id) {
 
       data$row_num <- 1:nrow(data)
 
-      # Memnuniyet emojisi
-      memn_emoji <- c("😡", "😞", "😐", "😊", "🤩")
+      # Memnuniyet emojisi (sıralama için gizli değer eklenir)
+      memn_emoji <- c("\U0001F621", "\U0001F61E", "\U0001F610", "\U0001F60A", "\U0001F929")
       data$memn_display <- ifelse(
         !is.na(data$Memnuniyet) & data$Memnuniyet >= 1 & data$Memnuniyet <= 5,
         paste0(memn_emoji[data$Memnuniyet], " ", data$Memnuniyet, "/5"),
         "-"
       )
+      # Sıralama için sayısal değer (gizli sütun)
+      data$memn_sort <- ifelse(!is.na(data$Memnuniyet), data$Memnuniyet, 0)
 
-      data$nps_display <- ifelse(!is.na(data$NPS_Puan), as.character(data$NPS_Puan), "-")
+      # NPS puanı renkli gösterim
+      nps_renk <- function(puan) {
+        if (is.na(puan)) return("-")
+        renk <- if (puan >= 9) "#10b981" else if (puan >= 7) "#f59e0b" else "#ef4444"
+        sprintf('<span style="color:%s; font-weight:bold;">%d</span>', renk, puan)
+      }
+      data$nps_display <- sapply(data$NPS_Puan, nps_renk)
+      data$nps_sort <- ifelse(!is.na(data$NPS_Puan), data$NPS_Puan, -1)
+
       data$tarih <- format(as.POSIXct(data$OlusturmaTarihi), "%d.%m.%Y %H:%M")
       data$etiketler_display <- ifelse(!is.na(data$Etiketler) & nzchar(data$Etiketler), data$Etiketler, "-")
       data$sevilen_display <- ifelse(!is.na(data$EnCokSevilen) & nzchar(data$EnCokSevilen), data$EnCokSevilen, "-")
       data$gelistirme_display <- ifelse(!is.na(data$Gelistirme) & nzchar(data$Gelistirme), data$Gelistirme, "-")
-      data$iletisim_display <- ifelse(data$IletisimIzni == 1, "Evet", "Hayır")
+
+      # İletişim izni ikonu ve renkli gösterim
+      data$iletisim_display <- ifelse(
+        data$IletisimIzni == 1,
+        '<span style="color:#10b981;"><i class="fas fa-check-circle"></i> Evet</span>',
+        '<span style="color:#ef4444;"><i class="fas fa-times-circle"></i> Hayır</span>'
+      )
+
       data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
 
-      display_data <- data[, c("row_num", "kullanici", "memn_display", "nps_display",
+      display_data <- data[, c("row_num", "kullanici", "memn_display", "memn_sort",
+                                "nps_display", "nps_sort",
                                 "etiketler_display", "sevilen_display", "gelistirme_display",
                                 "iletisim_display", "tarih")]
-      colnames(display_data) <- c("#", "Kullanıcı", "Memnuniyet", "NPS", "Etiketler",
-                                   "En Çok Sevilen", "Geliştirilecek", "İletişim İzni", "Tarih")
+      colnames(display_data) <- c("#", "Kullanıcı", "Memnuniyet", "memn_sort",
+                                   "NPS", "nps_sort",
+                                   "Etiketler", "En Çok Sevilen", "Geliştirilecek",
+                                   "İletişim İzni", "Tarih")
 
       DT::datatable(
         display_data,
         escape = FALSE,
         options = list(
           dom = 'frtip', pageLength = 15,
-          ordering = TRUE, order = list(list(8, 'desc')),
+          ordering = TRUE, order = list(list(10, 'desc')),
           language = admin_turkish_dt_language,
           columnDefs = list(
-            list(className = 'dt-center', targets = c(0, 2, 3, 7, 8)),
+            list(className = 'dt-center', targets = c(0, 2, 4, 9, 10)),
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
-            list(width = '180px', targets = c(5, 6)),
-            list(orderable = FALSE, targets = 0)
+            list(width = '180px', targets = c(7, 8)),
+            list(orderable = FALSE, targets = 0),
+            # Gizli sıralama sütunları
+            list(visible = FALSE, targets = c(3, 5)),
+            # Memnuniyet sütunu memn_sort'a göre sıralansın
+            list(orderData = 3, targets = 2),
+            # NPS sütunu nps_sort'a göre sıralansın
+            list(orderData = 5, targets = 4)
           ),
           headerCallback = admin_dt_header_callback
         ),
