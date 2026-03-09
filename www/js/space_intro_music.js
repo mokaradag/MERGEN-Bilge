@@ -210,10 +210,24 @@
   // Global erişim
   window.SpaceIntroMusic = SpaceIntroMusic;
 
-  // Shiny mesaj dinleyicisi
+  // HTML'deki gömülü veri ve Shiny mesaj dinleyicisi
   $(document).ready(function() {
+    // Önce HTML'de gömülü müzik verisini kontrol et (sunucu mesajını beklemeden hemen başlat)
+    var embeddedData = document.getElementById('intro-music-data');
+    if (embeddedData) {
+      try {
+        var data = JSON.parse(embeddedData.textContent);
+        if (data && data.files && data.files.length > 0) {
+          console.log('[SPACE-MUSIC] Gömülü veri bulundu, hemen başlatılıyor');
+          SpaceIntroMusic.init(data);
+        }
+      } catch(e) {
+        console.warn('[SPACE-MUSIC] Gömülü veri ayrıştırma hatası:', e);
+      }
+    }
+
     if (typeof Shiny !== 'undefined') {
-      // Sunucudan intro müzik playlist'ini al
+      // Sunucudan intro müzik playlist'ini al (yedek veya güncelleme olarak)
       Shiny.addCustomMessageHandler('initSpaceIntroMusic', function(data) {
         SpaceIntroMusic.init(data);
       });

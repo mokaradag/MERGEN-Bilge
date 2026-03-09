@@ -7,7 +7,26 @@
 #' @description Derin uzay giriş ekranının HTML yapısını oluşturur
 #' @return HTML tagList nesnesi
 createStartupScreenUI <- function() {
+  # Giriş müzik dosyalarını ön yükle (sunucu mesajını beklemeden çalabilmesi için)
+  intro_music_urls <- character(0)
+  intro_dir <- file.path("www", "music", "intro")
+  if (dir.exists(intro_dir)) {
+    intro_files <- list.files(intro_dir, pattern = "\\.mp3$", full.names = FALSE, ignore.case = TRUE)
+    if (length(intro_files) > 0) {
+      intro_music_urls <- vapply(intro_files, function(f) {
+        utils::URLencode(paste0("music/intro/", f))
+      }, character(1), USE.NAMES = FALSE)
+    }
+  }
+
   tagList(
+    # Giriş müzik verisi (istemci tarafında hemen erişilebilir)
+    if (length(intro_music_urls) > 0) {
+      tags$script(type = "application/json", id = "intro-music-data",
+        jsonlite::toJSON(list(files = intro_music_urls, volume = 0.25), auto_unbox = TRUE)
+      )
+    },
+
     # Ana konteyner
     tags$div(
       id = "deep-space-container",

@@ -413,28 +413,28 @@ adminHataAnaliziServer <- function(id) {
             )
           )
         ),
-        # Ek dosya önizleme modal'ı
-        # NOT: data-backdrop="static" ve özel z-index ile modal'ın etkileşim sorununu önle
+        # Ek dosya önizleme modal'ı (genişletilmiş, yakınlaştırma ve indirme destekli)
         tags$div(
           id = ns("ek_dosya_modal"),
           class = "modal fade admin-attachment-modal",
           `data-backdrop` = "static", `data-keyboard` = "true",
           tabindex = "-1", role = "dialog",
           tags$div(
-            class = "modal-dialog modal-lg", role = "document",
+            class = "modal-dialog", role = "document",
+            style = "max-width: 90vw; width: 1100px; margin: 30px auto;",
             tags$div(
               class = "modal-content",
               style = "background: #1a1a1a; border: 1px solid #333; border-radius: 12px;",
               tags$div(
                 class = "modal-header",
-                style = "border-bottom: 1px solid #333; padding: 15px 20px;",
+                style = "border-bottom: 1px solid #333; padding: 15px 24px;",
                 h4(class = "modal-title", style = "color: #fff;", icon("paperclip"), " Ek Dosyalar"),
                 tags$button(type = "button", class = "close", `data-dismiss` = "modal",
                   style = "color: #999; opacity: 0.8;", tags$span(HTML("&times;")))
               ),
               tags$div(
                 class = "modal-body",
-                style = "padding: 20px; max-height: 70vh; overflow-y: auto;",
+                style = "padding: 24px; max-height: 85vh; overflow-y: auto;",
                 uiOutput(ns("ek_dosya_content"))
               )
             )
@@ -448,7 +448,8 @@ adminHataAnaliziServer <- function(id) {
           `data-backdrop` = "static", `data-keyboard` = "true",
           tabindex = "-1", role = "dialog",
           tags$div(
-            class = "modal-dialog modal-sm", role = "document",
+            class = "modal-dialog", role = "document",
+            style = "max-width: 420px;",
             tags$div(
               class = "modal-content",
               style = "background: #1a1a1a; border: 1px solid #333; border-radius: 12px;",
@@ -461,16 +462,20 @@ adminHataAnaliziServer <- function(id) {
               ),
               tags$div(
                 class = "modal-body",
-                style = "padding: 20px;",
+                style = "padding: 24px; min-height: 200px;",
                 tags$input(type = "hidden", id = ns("durum_bildirim_id")),
                 selectInput(ns("yeni_durum"), "Yeni Durum:",
-                  choices = c("Açık" = "acik", "İncelemede" = "inceleme",
-                              "Çözüldü" = "cozuldu", "Kapandı" = "kapandi",
-                              "Reddedildi" = "reddedildi"),
+                  choices = c(
+                    "\U0001F7E1 Açık" = "acik",
+                    "\U0001F535 İncelemede" = "inceleme",
+                    "\U0001F7E2 Çözüldü" = "cozuldu",
+                    "\U000026AB Kapandı" = "kapandi",
+                    "\U0001F534 Reddedildi" = "reddedildi"
+                  ),
                   selected = "acik"
                 ),
                 actionButton(ns("durum_kaydet"), "Kaydet",
-                  class = "btn-modern btn-primary", style = "width: 100%; margin-top: 10px;")
+                  class = "btn-modern btn-primary", style = "width: 100%; margin-top: 14px;")
               )
             )
           )
@@ -537,13 +542,13 @@ adminHataAnaliziServer <- function(id) {
       data <- ha_data()$gunluk_trend
       if (nrow(data) == 0) return(highcharter::highchart())
 
-      data$tarih_label <- sapply(data$tarih, admin_format_turkish_date)
+      data$tarih_label <- vapply(data$tarih, admin_format_turkish_date, character(1))
 
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = data$tarih_label,
+          categories = as.list(data$tarih_label),
           labels = list(style = list(color = "#999"))
         ) %>%
         highcharter::hc_yAxis(
@@ -737,7 +742,7 @@ adminHataAnaliziServer <- function(id) {
         highcharter::hc_yAxis(
           categories = oncelikler,
           labels = list(style = list(color = "#ccc")),
-          title = list(text = NULL),
+          title = list(text = "Öncelik", style = list(color = "#999")),
           reversed = TRUE
         ) %>%
         highcharter::hc_colorAxis(
@@ -779,7 +784,7 @@ adminHataAnaliziServer <- function(id) {
       if (nrow(data) == 0) return(highcharter::highchart())
 
       tarihler <- sort(unique(data$tarih))
-      tarih_labels <- sapply(tarihler, admin_format_turkish_date)
+      tarih_labels <- vapply(tarihler, admin_format_turkish_date, character(1))
 
       oncelik_renkler <- c(
         "dusuk" = "#3b82f6", "orta" = "#f59e0b",
@@ -793,7 +798,7 @@ adminHataAnaliziServer <- function(id) {
         highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = tarih_labels,
+          categories = as.list(tarih_labels),
           labels = list(style = list(color = "#999"))
         ) %>%
         highcharter::hc_yAxis(
@@ -836,17 +841,19 @@ adminHataAnaliziServer <- function(id) {
 
       data <- data[order(data$yil, data$hafta), ]
 
-      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih göster
-      data$label <- if (nrow(data) <= 3) {
-        sapply(data$hafta_basi, function(d) format(as.Date(d), "%d.%m.%Y"))
-      } else {
-        paste0("H", data$hafta)
-      }
+      # Tek değer olduğunda "H10" gibi kısa etiketler yerine tarih aralığı göster
+      data$label <- vapply(seq_len(nrow(data)), function(i) {
+        if (nrow(data) <= 3) {
+          tryCatch(format(as.Date(data$hafta_basi[i]), "%d.%m.%Y"), error = function(e) paste0("H", data$hafta[i]))
+        } else {
+          paste0("H", data$hafta[i])
+        }
+      }, character(1))
 
-      chart_data <- lapply(1:nrow(data), function(i) {
+      chart_data <- lapply(seq_len(nrow(data)), function(i) {
         list(
           y = data$cnt[i],
-          hafta_basi = format(as.Date(data$hafta_basi[i]), "%d.%m.%Y")
+          hafta_basi = tryCatch(format(as.Date(data$hafta_basi[i]), "%d.%m.%Y"), error = function(e) "-")
         )
       })
 
@@ -854,7 +861,7 @@ adminHataAnaliziServer <- function(id) {
         highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = data$label,
+          categories = as.list(data$label),
           labels = list(style = list(color = "#999"))
         ) %>%
         highcharter::hc_yAxis(
@@ -884,6 +891,8 @@ adminHataAnaliziServer <- function(id) {
 
     # Saatlik dağılım
     output$ha_saatlik_chart <- highcharter::renderHighchart({
+      # Yenile butonuna açık bağımlılık (grafik yeniden çizilsin)
+      refresh$trigger()
       data <- ha_data()$saatlik_dagilim
       if (nrow(data) == 0) return(highcharter::highchart())
 
@@ -959,14 +968,23 @@ adminHataAnaliziServer <- function(id) {
 
       data$row_num <- 1:nrow(data)
 
+      # Arka plan rengine göre okunabilir metin rengi seç (açık arka plan → koyu metin)
+      badge_text_color <- function(bg_hex) {
+        rgb_vals <- col2rgb(bg_hex)
+        # Algısal parlaklık hesabı (WCAG formülü)
+        parlaklik <- (0.299 * rgb_vals[1] + 0.587 * rgb_vals[2] + 0.114 * rgb_vals[3]) / 255
+        if (parlaklik > 0.55) "#1a1a1a" else "#ffffff"
+      }
+
       # Öncelik rozeti
       oncelik_badge <- function(o) {
         renk <- switch(o,
           "dusuk" = "#3b82f6", "orta" = "#f59e0b",
           "yuksek" = "#f97316", "kritik" = "#ef4444", "#94a3b8"
         )
+        metin_renk <- badge_text_color(renk)
         label <- ifelse(o %in% names(oncelik_cevirisi), oncelik_cevirisi[o], o)
-        sprintf('<span style="background:%s; color:#fff; padding:2px 8px; border-radius:4px; font-size:11px;">%s</span>', renk, label)
+        sprintf('<span style="background:%s; color:%s; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;">%s</span>', renk, metin_renk, label)
       }
 
       # Durum rozeti
@@ -976,8 +994,9 @@ adminHataAnaliziServer <- function(id) {
           "cozuldu" = "#10b981", "kapandi" = "#64748b",
           "reddedildi" = "#ef4444", "#94a3b8"
         )
+        metin_renk <- badge_text_color(renk)
         label <- ifelse(d %in% names(durum_cevirisi), durum_cevirisi[d], d)
-        sprintf('<span style="background:%s; color:#fff; padding:2px 8px; border-radius:4px; font-size:11px;">%s</span>', renk, label)
+        sprintf('<span style="background:%s; color:%s; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;">%s</span>', renk, metin_renk, label)
       }
 
       data$oncelik_display <- sapply(data$Oncelik, oncelik_badge)
@@ -1056,14 +1075,29 @@ adminHataAnaliziServer <- function(id) {
       dosyalar <- trimws(strsplit(dosya_yollari, ",")[[1]])
 
       output$ek_dosya_content <- renderUI({
+        # İndirme butonu oluşturma yardımcı fonksiyonu
+        indir_btn <- function(gorsel_yol, dosya_adi) {
+          tags$a(
+            href = gorsel_yol, download = dosya_adi, target = "_blank",
+            class = "btn btn-sm",
+            style = paste(
+              "display: inline-flex; align-items: center; gap: 6px;",
+              "margin-top: 10px; padding: 6px 16px;",
+              "background: linear-gradient(135deg, #06b6d4, #3b82f6);",
+              "color: #fff; border: none; border-radius: 8px;",
+              "font-size: 12px; font-weight: 600; text-decoration: none;",
+              "transition: all 0.3s ease;"
+            ),
+            icon("download"), dosya_adi
+          )
+        }
+
         dosya_elements <- lapply(dosyalar, function(dosya_yolu) {
           # Dosya uzantısını belirle
           uzanti <- tolower(tools::file_ext(dosya_yolu))
           dosya_adi <- basename(dosya_yolu)
 
           # Dosya yolunu addResourcePath üzerinden erişilebilir URL'ye dönüştür
-          # Veritabanında saklanan yol: "destek_uploads/1/dosya.png"
-          # Shiny kaynak yolu: "/destek_uploads/1/dosya.png" (addResourcePath ile eşleşir)
           gorsel_yol <- if (grepl("^destek_uploads/", dosya_yolu)) {
             paste0("/", dosya_yolu)
           } else {
@@ -1073,28 +1107,46 @@ adminHataAnaliziServer <- function(id) {
           if (uzanti %in% c("png", "jpg", "jpeg", "gif")) {
             div(
               class = "admin-attachment-item",
-              h5(icon("image"), " ", dosya_adi, style = "color: #ccc; margin-bottom: 8px;"),
-              tags$img(
-                src = gorsel_yol,
-                style = "max-width: 100%; max-height: 500px; border-radius: 8px; border: 1px solid #333;",
-                alt = dosya_adi
+              div(
+                style = "display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;",
+                h5(icon("image"), " ", dosya_adi, style = "color: #ccc; margin: 0;"),
+                indir_btn(gorsel_yol, dosya_adi)
+              ),
+              # Yakınlaştırılabilir görsel konteyner
+              div(
+                class = "admin-attachment-zoom-container",
+                style = "position: relative; overflow: hidden; border-radius: 8px; border: 1px solid #333; cursor: zoom-in;",
+                onclick = "this.classList.toggle('zoomed'); this.style.cursor = this.classList.contains('zoomed') ? 'zoom-out' : 'zoom-in';",
+                tags$img(
+                  src = gorsel_yol,
+                  style = "width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; transition: transform 0.3s ease;",
+                  alt = dosya_adi
+                )
               )
             )
           } else if (uzanti == "mp4") {
             div(
               class = "admin-attachment-item",
-              h5(icon("video"), " ", dosya_adi, style = "color: #ccc; margin-bottom: 8px;"),
+              div(
+                style = "display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;",
+                h5(icon("video"), " ", dosya_adi, style = "color: #ccc; margin: 0;"),
+                indir_btn(gorsel_yol, dosya_adi)
+              ),
               tags$video(
                 src = gorsel_yol,
                 controls = "controls",
-                style = "max-width: 100%; max-height: 500px; border-radius: 8px;",
+                style = "width: 100%; max-height: 70vh; border-radius: 8px; background: #000;",
                 type = "video/mp4"
               )
             )
           } else {
             div(
               class = "admin-attachment-item",
-              h5(icon("file"), " ", dosya_adi, style = "color: #ccc; margin-bottom: 8px;"),
+              div(
+                style = "display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;",
+                h5(icon("file"), " ", dosya_adi, style = "color: #ccc; margin: 0;"),
+                indir_btn(gorsel_yol, dosya_adi)
+              ),
               p(style = "color: #999;", "Bu dosya türü önizlenemez.")
             )
           }
@@ -1143,11 +1195,9 @@ adminHataAnaliziServer <- function(id) {
     })
 
     observeEvent(input$durum_kaydet, {
-      bildirim_id_str <- shinyjs::js$getInputValue(ns("durum_bildirim_id"))
-
-      # Bildirim ID'sini input üzerinden al
+      # Hidden input'tan bildirim ID'sini JavaScript ile oku ve Shiny'ye gönder
       shinyjs::runjs(sprintf(
-        "Shiny.setInputValue('%s', parseInt($('#%s').val()));",
+        "Shiny.setInputValue('%s', parseInt($('#%s').val()), {priority: 'event'});",
         ns("durum_bildirim_id_val"), ns("durum_bildirim_id")
       ))
     })

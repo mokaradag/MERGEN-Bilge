@@ -319,10 +319,15 @@
       }
     }
 
-    // İsim ve alt başlığı sağ panelde güncelle
+    // İsim ve alt başlığı sağ panelde güncelle (isim rengi karakter temasına göre)
     var displayName = document.querySelector('.cinematic-char-info .cinematic-char-display-name');
     var subtitleEl = document.querySelector('.cinematic-char-info .cinematic-char-subtitle-text');
-    if (displayName) displayName.textContent = charData.display_name;
+    if (displayName) {
+      displayName.textContent = charData.display_name;
+      if (charData.accent) {
+        displayName.style.color = charData.accent;
+      }
+    }
     if (subtitleEl) {
       var subtitleText = charData.style_tr || charData.subtitle;
       if (animate !== false) {
