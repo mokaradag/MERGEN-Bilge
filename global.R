@@ -154,7 +154,7 @@ source("R/module_destek_hakkinda.R",       encoding = "UTF-8")
 source("R/module_destek_surum.R",          encoding = "UTF-8")
 source("R/module_destek_hata_bildir.R",    encoding = "UTF-8")
 source("R/module_destek_geri_bildirim.R",  encoding = "UTF-8")
-source("R/module_destek.R",                encoding = "UTF-8")  # Destek koordinatörü (alt modüllerden sonra)
+source("R/module_destek.R",                encoding = "UTF-8")
 
 # -- Yönetici Paneli Modülleri --
 source("R/module_admin_genel_bakis.R",           encoding = "UTF-8")
@@ -164,7 +164,7 @@ source("R/module_admin_geri_bildirim_genel.R",   encoding = "UTF-8")
 source("R/module_admin_sohbet_kalitesi.R",       encoding = "UTF-8")
 source("R/module_admin_zaman_analizi.R",         encoding = "UTF-8")
 source("R/module_admin_gelismis_analizler.R",    encoding = "UTF-8")
-source("R/module_admin_analytics.R",             encoding = "UTF-8")  # Ana analitik koordinatörü
+source("R/module_admin_analytics.R",             encoding = "UTF-8")
 source("R/module_admin_geri_bildirim.R",         encoding = "UTF-8")
 source("R/module_admin_hata_analizi.R",          encoding = "UTF-8")
 
@@ -179,8 +179,8 @@ source("R/server_session_cache.R",     encoding = "UTF-8")
 # -- Sohbet İşleyicileri --
 source("R/server_outputs_chat.R",              encoding = "UTF-8")
 source("R/server_llm_response_handlers.R",     encoding = "UTF-8")
-source("R/server_handler_summarization.R",     encoding = "UTF-8")  # Özetleme modu işleyicisi
-source("R/server_handler_image_generation.R",  encoding = "UTF-8")  # Görsel oluşturma modu işleyicisi
+source("R/server_handler_summarization.R",     encoding = "UTF-8")
+source("R/server_handler_image_generation.R",  encoding = "UTF-8")
 source("R/server_send_message.R",              encoding = "UTF-8")
 
 # -- Medya İşleyicileri --
