@@ -8,15 +8,20 @@
 
 server <- function(input, output, session) {
 
+  # ============================================================================
+  # BÖLÜM 1: OTURUM ÖN BELLEKLEME VE ALTYAPI
+  # ============================================================================
   session_cache <- sessionCacheInit(session)
   mcp_saved_path <- session_cache$mcp_saved_path
   cache_mcp_file_locally <- session_cache$cache_mcp_file_locally
   update_mcp_registry_snapshot <- session_cache$update_mcp_registry_snapshot
-  
+
   # Widget bağımlılık çıktılarını başlat (modüler)
   widgetDependencyOutputsInit(output)
-  
-  # ---- Kullanıcı ve oturum başlatma ------------------------------------------
+
+  # ============================================================================
+  # BÖLÜM 2: KİMLİK DOĞRULAMA VE KULLANICI OTURUMU
+  # ============================================================================
 
     # Kullanıcı kimlik bilgilerini çözümle (Keycloak'a hazır)
     user_identity <- resolveUserIdentity()
@@ -37,12 +42,9 @@ server <- function(input, output, session) {
       userId     = user_identity$sicil %||% as.character(current_user_id),
       auth_level = user_config$auth_level
     )
-    # Geriye dönük uyumluluk: global user_config'i de güncelle
-    # NOT: Çoklu kullanıcıda yarış koşulu riski var ancak render_message_bubble_ui
-    # artık settings$user_config'i (oturum-yerel) tercih eder. Bu satırlar yalnızca
-    # settings üzerinden user_config almayan eski kod yolları (chatExportInit vb.) için kalıyor.
-    user_config$name    <<- user_identity$full_name
-    user_config$userId  <<- user_identity$sicil %||% as.character(current_user_id)
+    # NOT: Küresel user_config artık <<- ile güncellenmez.
+    # Tüm oturum-yerel erişimler session$userData$user_config üzerinden yapılır.
+    # Bu sayede çoklu kullanıcı oturumlarında yarış koşulu riski ortadan kalkar.
 
     # Kullanıcı oturumu için önbellek dizinini yapılandır
     cache_dir <- session_cache$setup_user_session(current_user_id)
@@ -56,16 +58,16 @@ server <- function(input, output, session) {
   # Kullanıcı kimliğini araçlara/çözücülere sun
   session$userData$user_id <- current_user_id    
 
-  # Performans takibi modülünü başlat
+  # ============================================================================
+  # BÖLÜM 3: PERFORMANS, SAĞLIK VE DESTEK MODÜLLERİ
+  # ============================================================================
   perf_tracker <- performanceStatsServer("perf_stats", current_user_id)
-  
-  # Sağlık modülünü bağla
   healthServer("health_module", perf_tracker = perf_tracker)
-
-  # Destek modülünü bağla
   destekServer("destek_module", current_user_id = current_user_id)
 
-  # --- Ayarlar Koordinatörünü Başlat ---
+  # ============================================================================
+  # BÖLÜM 4: AYARLAR VE İLERİ REFERANSLAR
+  # ============================================================================
   settings_data <- settingsInit(session = session, parent_session = session)
 
   # İleri referanslar: Bu fonksiyonlar daha sonra tanımlanacak ama şimdiden observer'lara geçirilmeli
@@ -87,30 +89,22 @@ server <- function(input, output, session) {
   # Sohbet header çıktılarını başlat (modüler) - sadece settings_data kullanıyor
   chatOutputsInit(output, settings_data)
   
-  # Geri bildirim modülü
+  # ============================================================================
+  # BÖLÜM 5: MEDYA MODÜLLERİ (YZ İŞLEME, TTS, STT, MÜZİK)
+  # ============================================================================
   feedback_modal <- feedbackServer("feedback_module", current_user_id)
-        
-  # YZ (AI) işleme modülünü başlat
   ai_processor <- aiProcessingServer("ai_proc")
-  
-  # TTS (Metinden Sese) işleme modülünü başlat
   tts_processor <- ttsProcessingServer("tts_proc")
-  
-  # TTS Görselleştiricisini başlat
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
-  
-  # Müzik yöneticisini başlat (modüler)
   musicHandlersInit(input, session, settings_data)
-  
-  # AI Uzman modülünü başlat (altyazı + konuşma durum yönetimi)
   ai_expert <- aiExpertServer("ai_expert_module", settings_data, tts_processor, tts_visualizer)
-
-  # Sesten Metne (STT) modülünü başlat
   stt_data <- sttServer("stt_module", parent_session = session, settings = settings_data)
 
-  # Dosya Önizleme modülünü başlat (eski önizleme çıktıları + modal yardımcılarının yerini alır)
+  # ============================================================================
+  # BÖLÜM 6: DOSYA YÖNETİMİ VE ÖNİZLEME
+  # ============================================================================
   filePreview <- filePreviewServer("file_preview")
-  
+
   # Hafif sıklet takip sorusu önerisi oluşturucu
   fallback_followup_tool <- create_followup_suggestions_tool()
   followup_tools <- followupSuggestionsServer("followup_module")
@@ -123,7 +117,9 @@ server <- function(input, output, session) {
   # Uygulama başladığında mevcut geri bildirimleri yükle
   initial_feedback <- load_feedback_from_db(current_user_id)
   
-  # --- Uygulama için Çekirdek Reaktif Değerler ---
+  # ============================================================================
+  # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
+  # ============================================================================
     values <- reactiveValues(
       messages = list(),
       saved_chats = list(),
@@ -141,7 +137,7 @@ server <- function(input, output, session) {
     session$userData$welcome_screen_attached <- FALSE
         
     # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
-    chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name %||% user_config$name)
+    chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name)
 
     # Chartlab referanslarını çözümlemek için grafik deposu
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
@@ -152,14 +148,13 @@ server <- function(input, output, session) {
   active_request_id <- reactiveVal(NULL)
   quick_action_skip_mcp <- reactiveVal(FALSE)
   
-  # Hızlı eylem şablonları modülünü başlat (values ve session_files artık mevcut)
+  # ============================================================================
+  # BÖLÜM 8: GÖZLEMCİLER VE UI BAĞLANTILARI
+  # ============================================================================
   quickActionsInit(input, session, values, settings_data,
                    session_files, send_message, quick_action_skip_mcp)
-  
-  # Ayar gözlemcilerini başlat (modüler)
   settingsObserversInit(input, session, values, settings_data)
-  
-    # Oturum zaman aşımı yönetimi (modülerleştirildi)
+
     sessionTimeoutServer(
       "session_timeout",
       idle_minutes    = 30,
@@ -260,7 +255,9 @@ server <- function(input, output, session) {
   # Mesaj arama bağlantıları
   messageSearchInit(input, session, values, reactive(values$messages))
                 
-    # --- Temel Sohbet Fonksiyonları (LLM handlers'dan önce tanımlanmalı) ---
+    # ==========================================================================
+    # BÖLÜM 9: SOHBET MOTORU VE LLM ENTEGRASYONU
+    # ==========================================================================
     reset_chat_state <- function() chat_reset_state(session, values)
  
     add_message <- function(content, type = "user", html = NULL, followups = NULL,
@@ -305,7 +302,7 @@ server <- function(input, output, session) {
   miscObserversInit(
     input, output, session, values,
     file_manager_data, filePreview, add_message,
-    api_key, user_config, pool
+    api_key, session$userData$user_config, pool
   )
   
   # Sohbet eylemi bağlantıları (beğen/beğenme/yeniden oluştur/düzenle)
