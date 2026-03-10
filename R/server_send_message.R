@@ -204,9 +204,7 @@ sendMessageInit <- function(
     uploaded_names <- if (length(current_session_files) > 0) names(current_session_files) else character(0)
     uploaded_count <- length(uploaded_names)
  
-    cat(sprintf("[FILE CONTEXT] Current files in session: %d - %s\n",
-                uploaded_count,
-                paste(uploaded_names, collapse = ", ")))
+    log_debug("[FILE CONTEXT] Oturumdaki dosya sayısı: {uploaded_count} - {paste(uploaded_names, collapse = ', ')}")
  
     messages_to_process <- recent_messages
  
@@ -220,9 +218,9 @@ sendMessageInit <- function(
        analysis_detail <- settings_data$analysis_detail_level %||% "standart"
 
        if (deep_thinking_active) {
-         cat(sprintf("[SERVER] 'Derin Düşünme' modu aktif. Detay: %s. Çoklu sorgu analizi başlatılıyor...\n", analysis_detail))
+         log_debug("[SERVER] Derin Düşünme modu aktif. Detay: {analysis_detail}. Çoklu sorgu analizi başlatılıyor...")
        } else {
-         cat("[SERVER] 'Proje ve Kaynak Analizi' secildi (tekil mod). Modul cagiriliyor...\n")
+         log_debug("[SERVER] Proje ve Kaynak Analizi seçildi (tekil mod). Modül çağırılıyor...")
        }
 
        if (isTRUE(stop_generation())) {
@@ -265,7 +263,7 @@ sendMessageInit <- function(
            return()
          }
 
-         cat(sprintf("[SERVER] SQL Analizi basarili. Veriler LLM baglamina ekleniyor... (Derin: %s)\n", deep_thinking_active))
+         log_debug("[SERVER] SQL Analizi başarılı. Veriler LLM bağlamına ekleniyor... (Derin: {deep_thinking_active})")
 
          # Derin düşünme modunda max_tokens güncelle
          if (!is.null(analiz_result$max_tokens)) {
@@ -375,214 +373,32 @@ sendMessageInit <- function(
     system_msg <- list(type = "system", content = style_instruction)
     messages_to_process <- c(list(system_msg), messages_to_process)
  
-    cat(sprintf("[STYLE] Using character: %s (temp: %.2f)\n", selected_char_id, temperature_value))
+    log_debug("[STYLE] Karakter: {selected_char_id} (sıcaklık: {sprintf('%.2f', temperature_value)})")
  
-    # DOSYA ÖZETLEME MODU
+    # DOSYA ÖZETLEME MODU — ayrı dosyaya taşındı (server_handler_summarization.R)
     if (identical(tool_family, "summarization")) {
- 
-      if (uploaded_count == 0) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
-        values$is_sending <- FALSE
-        showToast(session, "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", "info")
-        return(invisible(NULL))
-      }
- 
-      cat("[SUMMARIZATION] Dosya Özetleme modu aktif, özetleme başlatılıyor. Dosya sayısı:", uploaded_count, "\n")
- 
-      if (!exists("process_summarization_request", mode = "function")) {
-        source("R/module_summarization.R", encoding = "UTF-8", local = TRUE)
-      }
- 
-      values$typing <- TRUE
-      if (isTRUE(settings_data$enable_typing_indicator)) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        insertUI(
-          selector = "#chat_content_container",
-          where = "beforeEnd",
-          ui = div(
-            id = "typing-animation-wrapper",
-            class = "message-bubble",
-            style = "display: flex; justify-content: center; padding: 20px;",
-            div(class = "ring", "Belgeleriniz özetleniyor", span())
-          ),
-          immediate = TRUE
-        )
-      }
- 
-      if (nchar(user_message_text) > 0) {
-        current_session_files$user_query <- user_message_text
-        cat("[SUMMARIZATION] Kullanıcı sorgusu özetlemeye eklendi:", user_message_text, "\n")
-      }
- 
-      summary_detail <- input$chat_summary_detail %||% settings_data$summary_detail_level %||% "standard"
-      summary_focus <- input$chat_summary_focus %||% settings_data$summary_focus_mode %||% "general"
-
-      if (identical(summary_focus, "comparison") && uploaded_count == 1) {
-        summary_focus <- "general"
-        showToast(session, "Karşılaştırma modu için birden fazla dosya gereklidir. Genel moda geçildi.", "warning")
-        session$sendCustomMessage("syncSummarySettingsToChat", list(
-          detail_level = summary_detail,
-          focus_mode = "general"
-        ))
-        session$sendCustomMessage("syncChatSummarySettingsToSettings", list(
-          detail_level = summary_detail,
-          focus_mode = "general"
-        ))
-        cat("[SUMMARIZATION] Tek dosya ile karşılaştırma modu seçildi, genel moda geçildi\n")
-      }
-
-      cat("[SUMMARIZATION] Mod parametreleri - Detay:", summary_detail, "Odak:", summary_focus, "\n")
-
-      # Promise ile özetleme
-	  p <- tryCatch(
-        process_summarization_request(
-          file_list = current_session_files,
-          session = session,
-          settings = settings_data,
-          ai_processor = ai_processor,
-          max_chars_per_file = if (grepl("256k|256K", settings_data$model_selection %||% "")) {
-            200000
-          } else {
-            120000
-          },
-          detail_level = summary_detail,
-          focus_mode = summary_focus
-        ),
-        error = function(e) {
-          # Senkron hata durumunda promise olarak sar
-          promises::promise_resolve(list(
-            success = FALSE,
-            message = paste("Özetleme başlatılamadı:", conditionMessage(e))
-          ))
-        }
+      summarization_ctx <- list(
+        session = session, input = input, values = values,
+        settings_data = settings_data, ai_processor = ai_processor,
+        uploaded_count = uploaded_count, user_message_text = user_message_text,
+        current_session_files = current_session_files,
+        add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
       )
- 
-      promises::then(
-        p,
-        onFulfilled = function(result) {
-          removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-          values$typing <- FALSE
- 
-          if (!result$success) {
-            showToast(session, result$message, "error")
-            reset_chat_state_fn()
-            return(invisible(NULL))
-          }
- 
-          add_message_fn(result$summary, "ai")
- 
-          showToast(session, paste(result$file_count, "dosya başarıyla özetlendi."), "success")
- 
-          reset_chat_state_fn()
-        },
-        onRejected = function(err) {
-          removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-          values$typing <- FALSE
-          showToast(session, paste("Özetleme hatası:", conditionMessage(err)), "error")
-          reset_chat_state_fn()
-        }
-      )
- 
+      handle_summarization_mode(summarization_ctx)
       return(invisible(NULL))
- 
+
+    # GÖRSEL OLUŞTURMA MODU — ayrı dosyaya taşındı (server_handler_image_generation.R)
     } else if (identical(tool_family, "image")) {
-      # GÖRSEL OLUŞTURMA MODU - DALL-E-3 API
-      cat("[IMAGE_MODE] Görsel Uzmanı modu aktif - görsel oluşturma başlatılıyor\n")
- 
-      chat_size <- input$chat_image_size
-      chat_quality_hd <- isTRUE(input$chat_image_quality_hd)
- 
-      image_size <- if (!is.null(chat_size) && nzchar(chat_size)) {
-        chat_size
-      } else {
-        settings_data$image_size %||% "1024x1024"
-      }
- 
-      image_quality <- if (chat_quality_hd) "hd" else {
-        if (isTRUE(settings_data$image_quality_hd)) "hd" else "standard"
-      }
- 
-      api_key_for_image <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
- 
-      if (!nzchar(api_key_for_image)) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
-        add_message_fn("⚠️ Görsel oluşturmak için API anahtarı gerekli. Lütfen Ayarlar sayfasından API anahtarınızı girin.", "ai")
-        reset_chat_state_fn()
-        return(invisible(NULL))
-      }
- 
-      # Yükleme göstergesi güncelle
-      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-      insertUI(
-        selector = "#chat_content_container",
-        where = "beforeEnd",
-        ui = div(
-          id = "typing-animation-wrapper",
-          class = "message-bubble",
-          style = "display: flex; justify-content: center; padding: 20px;",
-          div(class = "image-generating",
-            div(class = "image-generating-spinner"),
-            div(class = "image-generating-text", "Görsel oluşturuluyor... Bu işlem 30 saniye ile 2 dakika arasında sürebilir.")
-          )
-        ),
-        immediate = TRUE
+      image_ctx <- list(
+        session = session, input = input, values = values,
+        settings_data = settings_data,
+        user_message_text = user_message_text,
+        current_user_id = current_user_id,
+        add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
       )
-      shinyjs::runjs("window.smartScrollToBottom();")
- 
-      # Asenkron görsel oluşturma için değişkenleri yakala
-      current_user_id_local <- current_user_id
-      current_chat_id_local <- values$current_chat_id
-      user_prompt_local <- user_message_text
-      image_size_local <- image_size
-      image_quality_local <- image_quality
-      api_key_local <- api_key_for_image
- 
-      future_promise({
-        generate_image(
-          prompt = user_prompt_local,
-          api_key = api_key_local,
-          size = image_size_local,
-          quality = image_quality_local,
-          user_id = current_user_id_local,
-          chat_id = current_chat_id_local
-        )
-      }) %...>% (function(result) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
- 
-        if (isTRUE(result$success)) {
-          image_html <- render_generated_image_html(result, paste0("img_", floor(as.numeric(Sys.time()) * 1000)))
- 
-          image_description <- result$revised_prompt %||% "[Görsel oluşturuldu]"
-          image_path_marker <- if (!is.null(result$local_path) && nzchar(result$local_path)) {
-            paste0("[GÖRSEL:", result$local_path, "]")
-          } else {
-            "[GÖRSEL]"
-          }
-          content_text <- paste0(image_path_marker, " ", image_description)
- 
-          add_message_fn(content_text, "ai", html = image_html)
-          showToast(session, "Görsel oluşturuldu!", "success")
-        } else {
-          error_msg <- result$error %||% "Görsel oluşturulamadı"
-          error_html <- render_generated_image_html(result, "error")
-          add_message_fn(paste0("❌ ", error_msg), "ai", html = error_html)
-          showToast(session, error_msg, "error")
-        }
- 
-        reset_chat_state_fn()
-      }) %...!% (function(err) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
-        add_message_fn(paste0("❌ Görsel oluşturma hatası: ", err$message), "ai")
-        showToast(session, paste("Hata:", err$message), "error")
-        reset_chat_state_fn()
-      })
- 
+      handle_image_generation_mode(image_ctx)
       return(invisible(NULL))
- 
+
     } else if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
       # MCP EXCEL MODU
       file_list_text <- paste0(
@@ -707,19 +523,15 @@ sendMessageInit <- function(
     current_settings$uploaded_files  <- uploaded_names
     current_settings$shiny_session   <- session
  
-    cat("\n========== ANALYSIS MODE ==========\n")
-    cat("[MODE] tool_family:", tool_family, "\n")
-    cat("[SQL_ANALYSIS] enabled:", cfg_sql_analysis_on, "\n")
-    cat("[EXCEL_MCP] enabled:", cfg_excel_on, "\n")
-    cat("===================================\n\n")
+    log_debug("[MODE] Araç ailesi: {tool_family}, SQL Analizi: {cfg_sql_analysis_on}, Excel MCP: {cfg_excel_on}")
  
     if (!is.null(session$userData$current_session_files) && length(session$userData$current_session_files) > 0) {
-      cat("[MCP] Files available:", length(session$userData$current_session_files), "\n")
+      log_debug("[MCP] Mevcut dosya sayısı: {length(session$userData$current_session_files)}")
  
       if (!is.null(session$userData$current_session_files)) {
         for (key in names(session$userData$current_session_files)) {
           obj <- session$userData$current_session_files[[key]]
-          cat("[MCP DEBUG] Key:", key, "| Name:", obj$name %||% "?", "| Path:", obj$path %||% obj$datapath %||% "?", "\n")
+          log_debug("[MCP] Anahtar: {key} | Ad: {obj$name %||% '?'} | Yol: {obj$path %||% obj$datapath %||% '?'}")
         }
       }
  
@@ -727,13 +539,12 @@ sendMessageInit <- function(
             fobj <- session$userData$current_session_files[[fname]]
             if (is.list(fobj)) {
               fpath <- fobj$datapath %||% fobj$path
-              cat("[MCP]   -", fname, "->", fpath, "(exists:", path_exists_relaxed(fpath), ")\n")
+              log_debug("[MCP] {fname} -> {fpath} (mevcut: {path_exists_relaxed(fpath)})")
             }
       }
     } else {
-      cat("[MCP] NO FILES STORED - MCP will not work!\n")
+      log_debug("[MCP] Oturumda dosya yok — MCP çalışmayacak")
     }
-    cat("================================\n\n")
  
     # Excel modunda dosyaları MCP tabanına kopyala
     if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
@@ -774,7 +585,7 @@ sendMessageInit <- function(
         }
  
         if (is.null(path_now) || !nzchar(path_now) || !path_exists_relaxed(path_now)) {
-          cat("[FILE STORE] Path missing for", fname, "- skipping\n")
+          log_debug("[FILE STORE] {fname} için yol bulunamadı — atlanıyor")
           next
         }
  
@@ -788,14 +599,14 @@ sendMessageInit <- function(
                         if (nzchar(copied) && path_exists_relaxed(copied)) path_now <- copied
           }
         }, error = function(e) {
-          cat("[FILE STORE] copy_to_mcp_base failed:", e$message, "\n")
+          log_warn("[FILE STORE] copy_to_mcp_base başarısız: {e$message}")
         })
  
         cached_path <- cache_mcp_file_locally_fn(path_now)
         if (is.null(cached_path) || !nzchar(cached_path)) {
           cached_path <- path_now
         } else if (!identical(cached_path, path_now)) {
-          cat("[FILE STORE] Local MCP cache prepared:", cached_path, "\n")
+          log_debug("[FILE STORE] Yerel MCP önbelleği hazırlandı: {cached_path}")
         }
         cached_path <- safe_windows_short_path(cached_path, must_exist = path_exists_relaxed(cached_path))
  
@@ -839,9 +650,9 @@ sendMessageInit <- function(
       }
       if (length(csf)) {
             unique_names <- unique(vapply(csf, function(x) x$name %||% "", character(1)))
-        cat("[FILE STORE] MCP files (selected): ", paste(unique_names[nzchar(unique_names)], collapse = ", "), "\n", sep = "")
+        log_debug("[FILE STORE] MCP dosyaları (seçili): {paste(unique_names[nzchar(unique_names)], collapse = ', ')}")
       } else {
-        cat("[FILE STORE] No valid MCP files after filtering.\n")
+        log_debug("[FILE STORE] Filtreleme sonrasında geçerli MCP dosyası yok")
       }
     } else {
       session$userData$current_session_files <- list()
@@ -864,7 +675,7 @@ sendMessageInit <- function(
         if (is.null(full_path) || !nzchar(full_path)) next
  
         current_settings$file_paths[[fname]] <- as.character(full_path)
-        cat("[FILE PATH ADDED]", fname, "->", full_path, "\n")
+        log_debug("[FILE PATH ADDED] {fname} -> {full_path}")
       }
     }
  
@@ -873,14 +684,14 @@ sendMessageInit <- function(
       model_selected <- api_config$local_models[1]
     }
  
-    print(paste("Send message using model:", model_selected))
+    log_debug("Mesaj gönderiliyor, model: {model_selected}")
  
     # LLM çağrısı: Streaming veya Non-streaming
     if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable_mcp_tools)) {
       # STREAMING modu
       start_time <- Sys.time()
  
-      cat("[MONITORING] Starting AI request (STREAMING mode)\n")
+      log_debug("[MONITORING] AI isteği başlatılıyor (STREAMING modu)")
  
       settings_for_llm <- current_settings
       settings_for_llm$model_selection <- model_selected
@@ -904,7 +715,7 @@ sendMessageInit <- function(
         p,
         onFulfilled = function(res) {
           if (!res$success) {
-            cat("[AI MODULE] Streaming request failed\n")
+            log_warn("[AI MODULE] Streaming isteği başarısız")
             perf_tracker$track_error()
             removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
             values$typing <- FALSE
@@ -913,7 +724,7 @@ sendMessageInit <- function(
             return(invisible(NULL))
           }
  
-          cat("[MONITORING] Streaming request completed\n")
+          log_debug("[MONITORING] Streaming isteği tamamlandı")
           dbg_dump("LLM_RESPONSE_STREAMING", list(
             success = res$success, duration = res$duration,
             content_preview = substr(res$content %||% "", 1, 800)
@@ -970,7 +781,7 @@ sendMessageInit <- function(
           invisible(NULL)
         },
         onRejected = function(err) {
-          cat("[MONITORING] Streaming request FAILED\n")
+          log_warn("[MONITORING] Streaming isteği BAŞARISIZ")
           perf_tracker$track_error()
           removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
           values$typing <- FALSE
@@ -991,7 +802,7 @@ sendMessageInit <- function(
       )
  
       p <- p %...!% (function(e) {
-        cat("[STREAM_CHAIN][CATCH] ", conditionMessage(e), "\n", sep = "")
+        log_warn("[STREAM_CHAIN] Hata yakalandı: {conditionMessage(e)}")
         perf_tracker$track_error()
         removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
         values$typing <- FALSE
@@ -1007,7 +818,7 @@ sendMessageInit <- function(
  
     } else {
       # NON-STREAMING modu
-      cat("[MONITORING] Starting AI request (NON-STREAMING mode)\n")
+      log_debug("[MONITORING] AI isteği başlatılıyor (NON-STREAMING modu)")
       generate_non_streaming_stoppable_fn(
         messages_to_process,
         current_settings,

@@ -177,9 +177,11 @@ source("R/module_admin_hata_analizi.R",          encoding = "UTF-8")
 source("R/server_session_cache.R",     encoding = "UTF-8")
 
 # -- Sohbet İşleyicileri --
-source("R/server_outputs_chat.R",      encoding = "UTF-8")
-source("R/server_llm_response_handlers.R", encoding = "UTF-8")
-source("R/server_send_message.R",      encoding = "UTF-8")
+source("R/server_outputs_chat.R",              encoding = "UTF-8")
+source("R/server_llm_response_handlers.R",     encoding = "UTF-8")
+source("R/server_handler_summarization.R",     encoding = "UTF-8")  # Özetleme modu işleyicisi
+source("R/server_handler_image_generation.R",  encoding = "UTF-8")  # Görsel oluşturma modu işleyicisi
+source("R/server_send_message.R",              encoding = "UTF-8")
 
 # -- Medya İşleyicileri --
 source("R/server_tts_handlers.R",      encoding = "UTF-8")
