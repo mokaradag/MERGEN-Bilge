@@ -1,0 +1,90 @@
+/* Dosya Yolu: www/css/admin_yanit_analizi.css */
+/* Açıklama: Yanıt Geri Bildirimi Analizi yönetici sayfası için ek stiller. */
+/*           Polar grafik, beğeni/beğenmeme göstergeleri ve yorum tablosu */
+/*           özelleştirmelerini içerir. */
+
+/* ==============================================================================
+   POLAR GRAFİK ÖZELLEŞTİRMELERİ
+   ============================================================================== */
+
+.highcharts-polar .highcharts-xaxis-labels text {
+  fill: #999 !important;
+}
+
+.highcharts-polar .highcharts-yaxis-grid path {
+  stroke: #333 !important;
+}
+
+/* ==============================================================================
+   BEĞENİ / BEĞENMEMİ ROZET STİLLERİ
+   ============================================================================== */
+
+.ya-badge-like {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ya-badge-dislike {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ==============================================================================
+   YORUM TABLOSU ÖZELLEŞTİRMELERİ
+   ============================================================================== */
+
+.admin-analytics-container .admin-datatable td {
+  vertical-align: middle;
+}
+
+/* Yanıt önizleme hücresi - metin taşmasını önle */
+.admin-analytics-container .admin-datatable td:nth-child(6) {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Yorum hücresi - metin taşmasını önle */
+.admin-analytics-container .admin-datatable td:nth-child(5) {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==============================================================================
+   MODEL KARŞILAŞTIRMA TABLOSU
+   ============================================================================== */
+
+.scrollable-table-equal .dataTables_wrapper {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.scrollable-table-equal .dataTables_wrapper::-webkit-scrollbar {
+  width: 5px;
+}
+
+.scrollable-table-equal .dataTables_wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable-table-equal .dataTables_wrapper::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}

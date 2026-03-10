@@ -167,6 +167,7 @@ source("R/module_admin_gelismis_analizler.R",    encoding = "UTF-8")
 source("R/module_admin_analytics.R",             encoding = "UTF-8")
 source("R/module_admin_geri_bildirim.R",         encoding = "UTF-8")
 source("R/module_admin_hata_analizi.R",          encoding = "UTF-8")
+source("R/module_admin_yanit_analizi.R",         encoding = "UTF-8")
 
 # ------------------------------------------------------------------------------
 # GRUP 7: Sunucu Tarafı İşleyiciler ve Gözlemciler
