@@ -66,15 +66,17 @@ adminGeriBildirimServer <- function(id) {
       refresh$trigger()
 
       list(
-        # Tüm geri bildirimler
+        # Tüm geri bildirimler (DC01_userr ile e-posta adresi de çekilir)
         tumu = admin_safe_query("
           SELECT
             gb.GeriBildirimID, gb.UserID, u.KaynakAdi AS KullaniciAdi,
             gb.Memnuniyet, gb.NPS_Puan, gb.Etiketler,
             gb.EnCokSevilen, gb.Gelistirme, gb.IletisimIzni,
-            gb.OlusturmaTarihi
+            gb.OlusturmaTarihi,
+            dc.EmailAddress
           FROM MB_Destek_Geri_Bildirim gb
           LEFT JOIN MB_Users u ON gb.UserID = u.UserID
+          LEFT JOIN DC01_userr dc ON u.KullaniciAdi = dc.Name
           ORDER BY gb.OlusturmaTarihi DESC
         "),
 
@@ -370,6 +372,7 @@ adminGeriBildirimServer <- function(id) {
             width = 6,
             div(
               class = "analytics-card",
+              style = "min-height: 460px;",
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("arrow-right-arrow-left"), " Memnuniyet – NPS Korelasyonu"),
@@ -382,7 +385,7 @@ adminGeriBildirimServer <- function(id) {
             width = 6,
             div(
               class = "analytics-card",
-              style = "min-height: 420px;",
+              style = "min-height: 460px;",
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("users"), " Kullanıcı Bazlı Memnuniyet"),
@@ -767,7 +770,8 @@ adminGeriBildirimServer <- function(id) {
         highcharter::hc_yAxis(
           title = list(text = "Ortalama NPS Puanı (0-10)", style = list(color = "#999")),
           labels = list(style = list(color = "#999")),
-          gridLineColor = "#444", min = 0, max = 10
+          gridLineColor = "#444", min = 0, max = 10,
+          maxPadding = 0.08, endOnTick = FALSE
         ) %>%
         highcharter::hc_add_series(
           name = "Korelasyon", data = chart_data, color = "#8b5cf6",
@@ -1145,30 +1149,50 @@ adminGeriBildirimServer <- function(id) {
         '<span style="color:#ef4444;"><i class="fas fa-times-circle"></i> Hayır</span>'
       )
 
+      # E-posta sütunu: İletişim izni varsa mailto ikonu göster
+      data$eposta_display <- sapply(seq_len(nrow(data)), function(i) {
+        if (isTRUE(data$IletisimIzni[i] == 1) && !is.na(data$EmailAddress[i]) && nzchar(data$EmailAddress[i])) {
+          kullanici_adi <- ifelse(!is.na(data$KullaniciAdi[i]) && nzchar(data$KullaniciAdi[i]), data$KullaniciAdi[i], "Kullanıcı")
+          konu <- utils::URLencode(paste0("MERGEN Bilge - Geri Bildirim #", data$GeriBildirimID[i]))
+          govde <- utils::URLencode(paste0(
+            "Sayın ", kullanici_adi, ",\n\n",
+            "MERGEN Bilge uygulamasına bıraktığınız geri bildirim (", format(as.POSIXct(data$OlusturmaTarihi[i]), "%d.%m.%Y"), ") hakkında sizinle iletişime geçmek istiyoruz.\n\n",
+            "Saygılarımızla,\nMERGEN Bilge Yönetim Ekibi"
+          ))
+          sprintf(
+            '<a href="mailto:%s?subject=%s&body=%s" title="%s adresine e-posta gönder" class="admin-mail-icon"><i class="fas fa-envelope"></i></a>',
+            htmltools::htmlEscape(data$EmailAddress[i]), konu, govde,
+            htmltools::htmlEscape(data$EmailAddress[i])
+          )
+        } else {
+          ""
+        }
+      })
+
       data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
 
       display_data <- data[, c("row_num", "kullanici", "memn_display", "memn_sort",
                                 "nps_display", "nps_sort",
                                 "etiketler_display", "sevilen_display", "gelistirme_display",
-                                "iletisim_display", "tarih")]
+                                "iletisim_display", "eposta_display", "tarih")]
       colnames(display_data) <- c("#", "Kullanıcı", "Memnuniyet", "memn_sort",
                                    "NPS", "nps_sort",
                                    "Etiketler", "En Çok Sevilen", "Geliştirilecek",
-                                   "İletişim İzni", "Tarih")
+                                   "İletişim İzni", "\U0001F4E7", "Tarih")
 
       DT::datatable(
         display_data,
         escape = FALSE,
         options = list(
           dom = 'frtip', pageLength = 15,
-          ordering = TRUE, order = list(list(10, 'desc')),
+          ordering = TRUE, order = list(list(11, 'desc')),
           language = admin_turkish_dt_language,
           columnDefs = list(
-            list(className = 'dt-center', targets = c(0, 2, 4, 9, 10)),
+            list(className = 'dt-center', targets = c(0, 2, 4, 9, 10, 11)),
             list(className = 'row-number-col', targets = 0),
-            list(width = '40px', targets = 0),
+            list(width = '40px', targets = c(0, 10)),
             list(width = '180px', targets = c(7, 8)),
-            list(orderable = FALSE, targets = 0),
+            list(orderable = FALSE, targets = c(0, 10)),
             # Gizli sıralama sütunları
             list(visible = FALSE, targets = c(3, 5)),
             # Memnuniyet sütunu memn_sort'a göre sıralansın

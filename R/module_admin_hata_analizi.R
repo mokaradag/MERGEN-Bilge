@@ -462,20 +462,20 @@ adminHataAnaliziServer <- function(id) {
               ),
               tags$div(
                 class = "modal-body",
-                style = "padding: 24px; min-height: 200px;",
+                style = "padding: 24px; min-height: 320px;",
                 tags$input(type = "hidden", id = ns("durum_bildirim_id")),
                 selectInput(ns("yeni_durum"), "Yeni Durum:",
                   choices = c(
-                    "\U0001F7E1 Açık" = "acik",
-                    "\U0001F535 İncelemede" = "inceleme",
-                    "\U0001F7E2 Çözüldü" = "cozuldu",
-                    "\U000026AB Kapandı" = "kapandi",
-                    "\U0001F534 Reddedildi" = "reddedildi"
+                    "Açık" = "acik",
+                    "İncelemede" = "inceleme",
+                    "Çözüldü" = "cozuldu",
+                    "Kapandı" = "kapandi",
+                    "Reddedildi" = "reddedildi"
                   ),
                   selected = "acik"
                 ),
                 actionButton(ns("durum_kaydet"), "Kaydet",
-                  class = "btn-modern btn-primary", style = "width: 100%; margin-top: 14px;")
+                  class = "btn-modern btn-primary", style = "margin-top: 14px;")
               )
             )
           )
@@ -646,7 +646,7 @@ adminHataAnaliziServer <- function(id) {
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_plotOptions(
           pie = list(
-            innerSize = "55%", borderWidth = 0,
+            innerSize = "70%", borderWidth = 0,
             dataLabels = list(
               enabled = TRUE,
               format = "<b>{point.name}</b>: {point.percentage:.1f}%",

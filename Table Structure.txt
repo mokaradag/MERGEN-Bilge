@@ -39,13 +39,16 @@ Bu ana tablo, tüm konuşmalardaki kullanıcı ve yapay zeka tarafından oluştu
 | `MessageOrder` | `INT` | Bir sohbet içindeki mesajların doğru sırasını korumak için bir numara. | Konuşmaları yeniden oluşturmak için gereklidir. |
 
 #### 4. `MB_Feedback`
-Bu tablo, belirli yapay zeka mesajlarına kullanıcılar tarafından yapılan geri bildirimleri (beğenme/beğenmeme) izler.
+Bu tablo, belirli yapay zeka mesajlarına kullanıcılar tarafından yapılan geri bildirimleri (beğenme/beğenmeme) izler. Genişletilmiş sürüm etiket, yorum ve zaman damgası bilgilerini de içerir.
 
 | Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
 | :--- | :--- | :--- | :--- |
 | `UserID` | `INT` veya `BIGINT` | Geri bildirimi sağlayan kullanıcı. | `MessageID` ile birlikte bileşik anahtarın (composite key) bir parçasıdır. |
 | `MessageID` | `INT` veya `BIGINT` | Geri bildirim alan yapay zeka mesajı. | `UserID` ile birlikte bileşik anahtarın bir parçasıdır. |
 | `FeedbackType`| `NVARCHAR(50)` | Geri bildirim türü, örn. 'like' veya 'dislike'. | |
+| `FeedbackTags`| `NVARCHAR(500)` | Kullanıcının seçtiği geri bildirim etiketleri. | Virgülle ayrılmış (ör. "Açık ve net,Detaylı"). Beğeni ve beğenmeme için farklı etiket setleri. Opsiyonel, NULL olabilir. |
+| `FeedbackComment`| `NVARCHAR(MAX)` | Kullanıcının yazdığı serbest metin yorumu. | Opsiyonel, NULL olabilir. |
+| `FeedbackTimestamp`| `DATETIME2(0)` | Geri bildirimin verildiği veya güncellendiği zaman damgası. | `GETDATE()` ile otomatik atanır. |
 
 #### 5. `MB_Usage_Log`
 Bu tablo, her bir yapay zeka etkileşiminin ayrıntılarını kaydederek denetim ve performans izleme amaçlı kullanılır.
@@ -68,7 +71,15 @@ Bu tablo, kullanıcı bilgilerini (örneğin tam ad) almak için kullanılan mev
 | `KullaniciAdi`| `NVARCHAR(255)` | Sistemdeki kullanıcı adı. |
 | `KaynakAdi` | `NVARCHAR(255)` | Kullanıcının tam adı. |
 
-#### 7. `MB_Destek_Geri_Bildirim`
+#### 7. `DC01_userr` (Harici Tablo)
+Bu tablo, kullanıcıların e-posta adreslerini barındıran harici bir kaynak tablodur. Yönetici panelinden kullanıcılara e-posta göndermek için kullanılır.
+
+| Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama |
+| :--- | :--- | :--- |
+| `Name` | `NVARCHAR(255)` | Kullanıcının sistemdeki kullanıcı adı. `MB_Users.KullaniciAdi` ile eşleştirilir. |
+| `EmailAddress` | `NVARCHAR(255)` | Kullanıcının e-posta adresi. |
+
+#### 8. `MB_Destek_Geri_Bildirim`
 Bu tablo, destek sayfasındaki geri bildirim formundan gelen kullanıcı memnuniyeti ve öneri verilerini saklar.
 
 | Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |
@@ -83,7 +94,7 @@ Bu tablo, destek sayfasındaki geri bildirim formundan gelen kullanıcı memnuni
 | `IletisimIzni` | `BIT` | İletişim izni verilip verilmediği (0 veya 1). | |
 | `OlusturmaTarihi` | `DATETIME` | Geri bildirimin oluşturulduğu zaman damgası. | |
 
-#### 8. `MB_Destek_Hata_Bildir`
+#### 9. `MB_Destek_Hata_Bildir`
 Bu tablo, destek sayfasındaki hata bildirimi formundan gelen hata raporlarını ve dosya eklerini saklar.
 
 | Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama | Notlar |

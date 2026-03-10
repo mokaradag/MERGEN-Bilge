@@ -160,6 +160,30 @@
 }
 
 /* ==============================================================================
+   E-POSTA İKONU (Geri Bildirim tablosu)
+   ============================================================================== */
+
+.admin-mail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: #fff !important;
+  text-decoration: none !important;
+  transition: all 0.2s ease;
+  font-size: 13px;
+}
+
+.admin-mail-icon:hover {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+/* ==============================================================================
    DÜZELTİCİ: Solid gauge etiket konumlandırması
    ============================================================================== */
 

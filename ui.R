@@ -140,6 +140,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_page.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/destek_yardim_chatbot.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/admin_destek_analytics.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/admin_yanit_analizi.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/explore_character_step.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/surum_bilgilendirme.css"),
 
@@ -474,6 +475,7 @@ ui <- dashboardPage(
       tabItem(tabName = "admin_analytics", adminAnalyticsUI("admin_analytics_module")),
       tabItem(tabName = "admin_geri_bildirim", adminGeriBildirimUI("admin_geri_bildirim_module")),
       tabItem(tabName = "admin_hata_analizi", adminHataAnaliziUI("admin_hata_analizi_module")),
+      tabItem(tabName = "admin_yanit_analizi", adminYanitAnaliziUI("admin_yanit_analizi_module")),
 
       # Sistem Durumu Sekmesi (Yönetici paneli altında)
       tabItem(tabName = "health", healthUI("health_module"))

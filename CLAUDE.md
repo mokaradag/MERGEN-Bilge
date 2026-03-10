@@ -84,6 +84,7 @@ Shiny modules for major UI sections and features:
 - **`module_admin_analytics.R`**: Admin analytics dashboard (Genel Analiz - general system metrics, uses shared helpers)
 - **`module_admin_geri_bildirim.R`**: Admin feedback analytics (Geri Bildirim Analizi - satisfaction, NPS, tag analysis with treemap, gauge, bubble charts)
 - **`module_admin_hata_analizi.R`**: Admin bug report analytics (Hata Analizi - priority/category analysis, heatmap, attachment viewer, status management)
+- **`module_admin_yanit_analizi.R`**: Admin AI response feedback analytics (Yanıt Geri Bildirimi Analizi - like/dislike analysis, model performance, tag analysis, time trends, polar charts)
 - **`module_image_generation.R`**: Image generation features
 - **`module_image_gallery.R`**: Image gallery display
 - **`module_proje_kaynak_analizi.R`**: Project source analysis (Turkish-specific)
@@ -602,7 +603,8 @@ Example: `claude/add-claude-documentation-DbQhd`
 ```
 www/css/destek_page.css              # Main destek pages styling (full-width layout, forms, animations)
 www/css/destek_yardim_chatbot.css    # Help Center AI chatbot styling (dark theme, message bubbles, thinking animation)
-www/css/admin_destek_analytics.css   # Feedback & bug analytics pages styling (attachment modal, heatmap, gauge, treemap)
+www/css/admin_destek_analytics.css   # Feedback & bug analytics pages styling (attachment modal, heatmap, gauge, treemap, mail icon)
+www/css/admin_yanit_analizi.css     # AI response feedback analytics page styling (polar chart, badges, comment table)
 www/js/destek_form.js                # Form interactions (satisfaction, NPS, tags, categories, priority, file upload, validation)
 www/js/destek_yardim_chatbot.js      # Chatbot client-side logic (message sending, display, thinking indicator)
 ```
@@ -610,17 +612,19 @@ www/js/destek_yardim_chatbot.js      # Chatbot client-side logic (message sendin
 **For Admin Analytics Work**:
 1. `R/helpers_admin_analytics.R` - Shared utilities (metric cards, safe query, DT language, Turkish formatting)
 2. `R/module_admin_analytics.R` - Genel Analiz (main dashboard, refactored to use shared helpers)
-3. `R/module_admin_geri_bildirim.R` - Geri Bildirim Analizi (satisfaction, NPS, tags)
+3. `R/module_admin_geri_bildirim.R` - Geri Bildirim Analizi (satisfaction, NPS, tags, email contact)
 4. `R/module_admin_hata_analizi.R` - Hata Analizi (priority, category, attachments, status management)
+5. `R/module_admin_yanit_analizi.R` - Yanıt Geri Bildirimi Analizi (like/dislike, model performance, tags, time analysis)
 
 ### Admin Panel Menu Structure (Admin-Only)
-The "Yönetici Paneli" sidebar menu is dynamically rendered for ADMIN users only, with 4 sub-items:
+The "Yönetici Paneli" sidebar menu is dynamically rendered for ADMIN users only, with 5 sub-items:
 1. **Genel Analiz** (`admin_analytics`) - System metrics, user analytics, AI performance, chat quality, time analysis
-2. **Geri Bildirim Analizi** (`admin_geri_bildirim`) - User feedback from "Geri Bildirim" form: satisfaction (1-5), NPS (0-10), tags, comments
+2. **Geri Bildirim Analizi** (`admin_geri_bildirim`) - User feedback from "Geri Bildirim" form: satisfaction (1-5), NPS (0-10), tags, comments, admin email contact for users with contact permission
 3. **Hata Analizi** (`admin_hata_analizi`) - Bug reports from "Hata Bildir" form: topics, categories, priority, attachments, status management
-4. **Sistem Durumu** (`health`) - System health monitoring
+4. **Yanıt Geri Bildirimi** (`admin_yanit_analizi`) - AI response feedback from MB_Feedback: like/dislike analysis, model performance comparison, tag & comment analysis, time/user trends, polar charts
+5. **Sistem Durumu** (`health`) - System health monitoring
 
 ## Last Updated
-March 8, 2026
+March 10, 2026
 
 **Note**: This documentation reflects the current state of the codebase. For specific implementation details, always refer to the actual source code and inline comments in R files.
