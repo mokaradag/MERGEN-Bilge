@@ -93,11 +93,11 @@ stt_config <- list(
   api_key  = Sys.getenv("AI_KEYS_MASTER", Sys.getenv("OPENAI_API_KEY", ""))
 )
 
-# STT yapılandırma kontrol çıktısı
-cat("--- STT CONFIG CHECK ---\n")
-cat("Endpoint:", stt_config$endpoint, "\n")
-cat("API Key Length:", nchar(stt_config$api_key), "(If 0, your .Renviron is not loading!)\n")
-cat("------------------------\n")
+# STT yapılandırma durumunu log seviyesinde kaydet (üretimde hassas bilgi sızdırmaz)
+log_debug("STT yapılandırma kontrolü - Endpoint tanımlı: {nzchar(stt_config$endpoint)}, API anahtarı uzunluğu: {nchar(stt_config$api_key)}")
+if (!nzchar(stt_config$api_key)) {
+  log_warn("STT API anahtarı boş — .Renviron dosyasının doğru yüklendiğinden emin olun.")
+}
 
 # Başlangıçta indeksleri hazırla (ilk tıklama gecikmesini azaltır)
 try({
