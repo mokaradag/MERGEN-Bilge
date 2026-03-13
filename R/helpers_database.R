@@ -177,20 +177,29 @@ validate_message_content <- function(content) {
 # Database operation helpers
 # -------------------------
 
-# Get or create user; returns integer UserID (UPDATED with validation)
-get_or_create_user <- function(username) {
+# Kullanıcı al veya oluştur; tam sayı UserID döndürür
+# sso_claims: SSO aktifken Keycloak'tan gelen ek bilgiler (opsiyonel)
+get_or_create_user <- function(username, sso_claims = NULL) {
   stopifnot(is.character(username) && length(username) == 1)
-  
-  # ADDED: Input validation (Suggestion #2)
+
+  # Girdi doğrulama
   validate_username(username)
-  
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
-  user_details <- dbGetQuery(conn, user_details_query, params = list(username))
-  kaynak_adi <- if (nrow(user_details) > 0) user_details$KaynakAdi[1] else username
+  # KaynakAdi'nı belirle: önce SSO claim, sonra DC01_user_base, en son username
+  kaynak_adi <- username
+  if (!is.null(sso_claims$full_name) && nzchar(sso_claims$full_name)) {
+    kaynak_adi <- sso_claims$full_name
+  } else {
+    user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
+    user_details <- dbGetQuery(conn, user_details_query, params = list(username))
+    if (nrow(user_details) > 0 && nzchar(user_details$KaynakAdi[1] %||% "")) {
+      kaynak_adi <- user_details$KaynakAdi[1]
+    }
+  }
 
   user_id_query <- "SELECT UserID FROM MB_Users WHERE KullaniciAdi = ?"
   user_id_result <- dbGetQuery(conn, user_id_query, params = list(username))
@@ -199,13 +208,84 @@ get_or_create_user <- function(username) {
     user_id <- as.integer(user_id_result$UserID[1])
     update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
     dbExecute(conn, update_query, params = list(kaynak_adi, user_id))
+
+    # SSO ek alanlarını güncelle (tablo destekliyorsa)
+    if (!is.null(sso_claims)) {
+      update_sso_fields(conn, user_id, sso_claims)
+    }
+
     return(user_id)
   } else {
     insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, ?, GETDATE())"
     res <- dbGetQuery(conn, insert_query, params = list(username, kaynak_adi))
-    if (nrow(res) == 0) stop("Failed to retrieve new UserID after insert.")
-    return(as.integer(res$UserID[1]))
+    if (nrow(res) == 0) stop("Yeni kullanıcı oluşturulduktan sonra UserID alınamadı.")
+    user_id <- as.integer(res$UserID[1])
+
+    # SSO ek alanlarını kaydet
+    if (!is.null(sso_claims)) {
+      update_sso_fields(conn, user_id, sso_claims)
+    }
+
+    return(user_id)
   }
+}
+
+# SSO ek alanlarını MB_Users tablosunda güncelle
+# Tablo bu sütunlara sahip değilse sessizce atla
+update_sso_fields <- function(conn, user_id, sso_claims) {
+  tryCatch({
+    # Tabloda SSO sütunlarının varlığını kontrol et
+    cols_query <- "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MB_Users' AND COLUMN_NAME IN ('Sicil', 'Email', 'Sektor', 'Departman', 'Mudurluk', 'MasrafYeriKodu', 'SonGirisKaynagi')"
+    existing_cols <- dbGetQuery(conn, cols_query)$COLUMN_NAME
+
+    if (length(existing_cols) == 0) {
+      # SSO sütunları henüz eklenmemiş - sessizce atla
+      return(invisible(NULL))
+    }
+
+    # Mevcut sütunlara göre dinamik UPDATE oluştur
+    set_parts <- c()
+    params <- list()
+
+    if ("Sicil" %in% existing_cols && !is.null(sso_claims$sicil)) {
+      set_parts <- c(set_parts, "Sicil = ?")
+      params <- c(params, list(sso_claims$sicil))
+    }
+    if ("Email" %in% existing_cols && !is.null(sso_claims$email)) {
+      set_parts <- c(set_parts, "Email = ?")
+      params <- c(params, list(sso_claims$email))
+    }
+    if ("Sektor" %in% existing_cols && !is.null(sso_claims$sektor)) {
+      set_parts <- c(set_parts, "Sektor = ?")
+      params <- c(params, list(sso_claims$sektor))
+    }
+    if ("Departman" %in% existing_cols && !is.null(sso_claims$department)) {
+      set_parts <- c(set_parts, "Departman = ?")
+      params <- c(params, list(sso_claims$department))
+    }
+    if ("Mudurluk" %in% existing_cols && !is.null(sso_claims$mudurluk)) {
+      set_parts <- c(set_parts, "Mudurluk = ?")
+      params <- c(params, list(sso_claims$mudurluk))
+    }
+    if ("MasrafYeriKodu" %in% existing_cols && !is.null(sso_claims$masraf_yeri_kodu)) {
+      set_parts <- c(set_parts, "MasrafYeriKodu = ?")
+      params <- c(params, list(sso_claims$masraf_yeri_kodu))
+    }
+    if ("SonGirisKaynagi" %in% existing_cols) {
+      set_parts <- c(set_parts, "SonGirisKaynagi = ?")
+      params <- c(params, list("keycloak"))
+    }
+
+    if (length(set_parts) > 0) {
+      query <- paste0("UPDATE MB_Users SET ", paste(set_parts, collapse = ", "), " WHERE UserID = ?")
+      params <- c(params, list(user_id))
+      dbExecute(conn, query, params = params)
+    }
+  }, error = function(e) {
+    # SSO alanları güncellenemedi - kritik değil, sessizce devam et
+    log_warn("SSO alanları güncellenemedi (UserID={user_id}): {e$message}")
+  })
+  invisible(NULL)
 }
 
 # Load chats and their messages for a user (returns list)

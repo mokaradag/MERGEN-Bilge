@@ -20,43 +20,83 @@ server <- function(input, output, session) {
   widgetDependencyOutputsInit(output)
 
   # ============================================================================
-  # BÖLÜM 2: KİMLİK DOĞRULAMA VE KULLANICI OTURUMU
+  # BÖLÜM 2: KİMLİK DOĞRULAMA VE KULLANICI OTURUMU (SSO DESTEKLİ)
   # ============================================================================
 
-    # Kullanıcı kimlik bilgilerini çözümle (Keycloak'a hazır)
+  # SSO modülünü başlat (SSO_ENABLED=FALSE ise otomatik geçiş yapar)
+  sso_state <- ssoAuthServer("sso_module")
+
+  # --- Kimlik çözümleme ve oturum kurulumu ---
+  # SSO kapalı (yerel geliştirme): Senkron akış, mevcut davranış korunur
+  # SSO aktif (Keycloak): Token doğrulandıktan sonra observer ile güncellenir
+  if (!isTRUE(SSO_ENABLED)) {
+    # ===== YEREL GELİŞTİRME MODU =====
     user_identity <- resolveUserIdentity()
     system_username <- user_identity$username
-
-    # Veritabanından kalıcı kullanıcı kimliğini al veya oluştur
     current_user_id <- get_or_create_user(system_username)
-    
-    # Kimlik bilgilerini session'a kaydet (welcome ekranı ve diğer modüller için)
-    session$userData$user_identity <- user_identity
+
+    session$userData$user_identity   <- user_identity
     session$userData$user_first_name <- user_identity$first_name
+    session$userData$system_username  <- system_username
+    session$userData$user_id         <- current_user_id
+    session$userData$sso_active      <- FALSE
+    session$userData$auth_source     <- "local"
+    session$userData$auth_initialized <- TRUE
 
-	# Sohbet baloncuklarında kullanıcı adı ve avatar için user_config güncelle
-    # NOT: <<- yerine session-local kopya kullanılıyor (çoklu oturum güvenliği)
     session$userData$user_config <- list(
-      name       = user_identity$full_name,
-      icon       = user_config$icon,
-      userId     = user_identity$sicil %||% as.character(current_user_id),
-      auth_level = user_config$auth_level
+      name             = user_identity$full_name,
+      icon             = user_config$icon,
+      userId           = as.character(current_user_id),
+      auth_level       = user_config$auth_level,
+      sicil            = NULL, email = NULL, first_name = user_identity$first_name,
+      last_name        = NULL, sektor = NULL, department = NULL,
+      mudurluk         = NULL, masraf_yeri_kodu = NULL
     )
-    # NOT: Küresel user_config artık <<- ile güncellenmez.
-    # Tüm oturum-yerel erişimler session$userData$user_config üzerinden yapılır.
-    # Bu sayede çoklu kullanıcı oturumlarında yarış koşulu riski ortadan kalkar.
 
-    # Kullanıcı oturumu için önbellek dizinini yapılandır
     cache_dir <- session_cache$setup_user_session(current_user_id)
+  } else {
+    # ===== SSO (KEYCLOAK) MODU =====
+    # Geçici değerler: Modüller bu değerlerle başlatılır,
+    # token doğrulandığında observer gerçek değerlerle günceller
+    current_user_id <- 0L
+    session$userData$auth_initialized <- FALSE
+    session$userData$sso_active <- TRUE
 
-    # Kullanıcı adını ve (ileride) API anahtarını bu oturuma sun
-    session$userData$system_username <- system_username
-    
-    # API anahtarı modülünü bağla (eski satır içi modal/işleyicilerin yerini alır)
-    api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
-    
-  # Kullanıcı kimliğini araçlara/çözücülere sun
-  session$userData$user_id <- current_user_id    
+    # Token doğrulandığında oturum bilgilerini kur
+    observeEvent(sso_state$authenticated, {
+      req(isTRUE(sso_state$authenticated))
+      claims <- sso_state$user_claims
+
+      ui <- resolveUserIdentity(sso_claims = claims)
+      uname <- ui$username
+      uid <- get_or_create_user(uname, sso_claims = claims)
+
+      session$userData$user_identity   <- ui
+      session$userData$user_first_name <- ui$first_name
+      session$userData$system_username  <- uname
+      session$userData$user_id         <- uid
+      session$userData$auth_source     <- "keycloak"
+
+      session$userData$user_config <- list(
+        name             = ui$full_name,
+        icon             = user_config$icon,
+        userId           = ui$sicil %||% as.character(uid),
+        auth_level       = ui$auth_level %||% user_config$auth_level,
+        sicil            = ui$sicil, email = ui$email,
+        first_name       = ui$first_name, last_name = ui$last_name,
+        sektor           = ui$sektor, department = ui$department,
+        mudurluk         = ui$mudurluk, masraf_yeri_kodu = ui$masraf_yeri_kodu
+      )
+
+      session_cache$setup_user_session(uid)
+      session$userData$auth_initialized <- TRUE
+
+      log_info("SSO oturum kuruldu: kullanıcı={uname}, id={uid}, yetki={ui$auth_level}")
+    }, ignoreInit = TRUE, once = TRUE)
+  }
+
+  # API anahtarı modülünü bağla
+  api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
 
   # ============================================================================
   # BÖLÜM 3: PERFORMANS, SAĞLIK VE DESTEK MODÜLLERİ

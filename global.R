@@ -61,6 +61,7 @@ source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yardımcı
 # GRUP 2: Yapılandırma Dosyaları
 # Temel altyapıya bağımlıdır, uygulama genelinde kullanılan sabitleri tanımlar.
 # ------------------------------------------------------------------------------
+source("R/config_sso.R",              encoding = "UTF-8")  # SSO yapılandırması ve küresel mod anahtarı
 source("R/config_file_store.R",       encoding = "UTF-8")  # Dosya deposu altyapısı
 source("R/config_characters.R",       encoding = "UTF-8")  # Karakter/persona tanımları
 source("R/config_version_history.R",  encoding = "UTF-8")  # Sürüm geçmişi
@@ -91,6 +92,7 @@ source("R/helpers_summarization_modes.R",   encoding = "UTF-8")  # Özetleme str
 source("R/helpers_summarization_prompts.R", encoding = "UTF-8")  # Özetleme şablonları
 source("R/helpers_followup_questions.R",    encoding = "UTF-8")  # Takip sorusu üretimi
 source("R/helpers_deep_analysis.R",         encoding = "UTF-8")  # Derin analiz yardımcıları
+source("R/helpers_sso.R",                   encoding = "UTF-8")  # SSO yardımcı fonksiyonları (JWT, token doğrulama)
 source("R/helpers_destek_database.R",       encoding = "UTF-8")  # Destek sayfası veritabanı işlemleri
 source("R/helpers_admin_analytics.R",       encoding = "UTF-8")  # Yönetici analitik yardımcıları
 source("R/helpers_ai_expert.R",             encoding = "UTF-8")  # AI Uzman yardımcıları
@@ -138,7 +140,8 @@ source("R/module_tts.R",              encoding = "UTF-8")
 source("R/module_stt.R",              encoding = "UTF-8")
 source("R/module_character_video.R",  encoding = "UTF-8")
 
-# -- Oturum ve Performans Modülleri --
+# -- SSO ve Oturum Modülleri --
+source("R/module_sso.R",             encoding = "UTF-8")  # SSO kimlik doğrulama modülü
 source("R/module_session_timeout.R",  encoding = "UTF-8")
 source("R/module_performance.R",      encoding = "UTF-8")
 source("R/module_user_identity.R",    encoding = "UTF-8")
