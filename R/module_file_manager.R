@@ -806,7 +806,7 @@ fileManagerServer <- function(
     
       if (isTRUE(generate_message)) {
 		html_message <- sprintf(
-		  "📎 <b>%s</b> yüklendi. Yapay zekâya eklemek için <i>Model Bağlamı</i> sütunundaki kutucuğu işaretleyin. Önizlemek için <a href='#' class='file-link js-file-action' data-action='view' data-file-id='%s'>tıklayın</a>.",
+		  "\U0001F4CE <b>%s</b> yüklendi. Yapay zekâya eklemek için <i>Model Bağlamı</i> sütunundaki kutucuğu işaretleyin. Önizlemek için <a href='#' class='file-link js-file-action' data-action='view' data-file-id='%s'>tıklayın</a>.",
 		  htmltools::htmlEscape(file_name), file_id
 		)
         message_data(list(content = paste(file_name, "yüklendi."),
@@ -896,7 +896,7 @@ fileManagerServer <- function(
           if (length(saved_infos) > 0) {
             message_data(list(
               content = sprintf("%d dosya yüklendi.", length(saved_infos)),
-              html    = sprintf("📎 <b>%d dosya</b> yüklendi ve sohbete eklendi.", length(saved_infos)),
+              html    = sprintf("\U0001F4CE <b>%d dosya</b> yüklendi ve sohbete eklendi.", length(saved_infos)),
               type    = "system"
             ))
             message_trigger(message_trigger() + 1)

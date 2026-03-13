@@ -39,7 +39,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
             }
           ", ns("api_key_plain_input")))),
 
-          # 🔒 info + tooltip
+          # \U0001F512 info + tooltip
           tags$p(HTML(
             'API anahtarınız sistemde <span id="secure_tooltip" tabindex="0" data-toggle="tooltip" data-placement="top" data-container="body" data-html="true" title="&lt;i class=&quot;fa fa-lock&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; AES-256-GCM ile şifreleme yapılır">güvenle</span> saklanır.'
           )),
