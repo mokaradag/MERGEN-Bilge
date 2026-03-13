@@ -1,7 +1,7 @@
 # R/module_summarization.R
 # Dosya özetleme modülü - Tek veya çoklu belgeleri kapsamlı şekilde özetler
 
-source("R/helpers_summarization_prompts.R", encoding = "UTF-8")
+safe_source("R/helpers_summarization_prompts.R", encoding = "UTF-8")
 
 process_summarization_request <- function(
   file_list,
