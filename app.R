@@ -1,13 +1,13 @@
 # app.R
 
-# This is the main entry point for the Shiny application.
-# It sources the necessary files in the correct order and launches the app.
+# Bu, Shiny uygulaması için ana giriş noktasıdır.
+# Gerekli dosyaları doğru sırayla yükler ve uygulamayı başlatır.
 
-# Define safe_source() here FIRST, before sourcing anything.
-# On some Windows VMs with Turkish locale, source(encoding = "UTF-8") still
-# misreads multi-byte characters causing INCOMPLETE_STRING parse errors.
-# This reads the file as UTF-8 text first, then parses the text buffer,
-# which completely bypasses the file-level encoding bug.
+# safe_source() fonksiyonunu burada İLK olarak tanımla, herhangi bir dosya yüklenmeden önce.
+# Türkçe yerel ayara sahip bazı Windows sanal makinelerinde source(encoding = "UTF-8")
+# çok baytlı karakterleri hâlâ yanlış okuyarak INCOMPLETE_STRING parse hatalarına
+# neden olabilir. Bu yöntem dosyayı önce UTF-8 metni olarak okur, sonra metin
+# tamponunu parse eder; böylece dosya düzeyindeki encoding hatasını tamamen atlar.
 safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
   lines <- readLines(file, encoding = encoding, warn = FALSE)
   exprs <- parse(text = lines, keep.source = FALSE, encoding = encoding)
@@ -15,19 +15,20 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
   invisible(NULL)
 }
 
-# 1. Source the global configuration and all helper/module files.
-#    This makes all libraries, functions, and module definitions available.
-#    global.R also defines safe_source() (identical copy) for documentation clarity.
+# 1. Global yapılandırmayı ve tüm yardımcı/modül dosyalarını yükle.
+#    Böylece tüm kütüphaneler, fonksiyonlar ve modül tanımları kullanılabilir olur.
+#    global.R ayrıca dokümantasyonun açık olması için safe_source() fonksiyonunu
+#    (aynı kopya) tekrar tanımlar.
 safe_source("global.R", encoding = "UTF-8")
 
-# 2. Source the user interface definition.
-#    This loads the `ui` object.
+# 2. Kullanıcı arayüzü tanımını yükle.
+#    Bu işlem `ui` nesnesini yükler.
 safe_source("ui.R", encoding = "UTF-8")
 
-# 3. Source the server logic.
-#    This loads the `server` function.
+# 3. Sunucu (server) mantığını yükle.
+#    Bu işlem `server` fonksiyonunu yükler.
 safe_source("server.R", encoding = "UTF-8")
 
-# 4. Run the application.
-#    This function takes the UI and server components and starts the Shiny app.
+# 4. Uygulamayı çalıştır.
+#    Bu fonksiyon UI ve server bileşenlerini alır ve Shiny uygulamasını başlatır.
 shinyApp(ui = ui, server = server)

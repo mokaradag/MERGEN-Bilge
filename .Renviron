@@ -31,7 +31,7 @@ SSO_KEYCLOAK_URL=
 SSO_REALM=byd_intranet_apps
 
 # Keycloak istemci (client) kimliği
-SSO_CLIENT_ID=mergen_bilge
+SSO_CLIENT_ID=mergen
 
 # Token doğrulama seçenekleri
 SSO_VALIDATE_ISSUER=TRUE
