@@ -143,6 +143,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/admin_yanit_analizi.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/explore_character_step.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/surum_bilgilendirme.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/sso_auth.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -193,6 +194,9 @@ ui <- dashboardPage(
     tags$script(src = "lib/threejs/RenderPass.js", defer = "defer"),
     tags$script(src = "lib/threejs/UnrealBloomPass.js", defer = "defer"),
     tags$script(src = "lib/threejs/Lensflare.js", defer = "defer"),
+
+    # --- SSO Kimlik Doğrulama Betiği (senkron - diğer betiklerden önce yüklenmeli) ---
+    tags$script(src = "js/sso_auth.js"),
 
     # --- Kritik JavaScript Betikleri (senkron yüklenir, sayfa işlevselliği için gerekli) ---
     tags$script(src = "js/utils.js"),
@@ -249,6 +253,9 @@ ui <- dashboardPage(
     tags$div(id = "toast-container", class = "toast-container")
   ),
       
+    # SSO kimlik doğrulama katmanı (SSO_ENABLED=TRUE ise görünür)
+    ssoAuthUI("sso_module"),
+
     # Derin uzay giriş ekranı
     createStartupScreenUI(),
     

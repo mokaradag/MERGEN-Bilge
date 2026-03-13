@@ -18,6 +18,32 @@ DB_DSN_2="SecondaryConnection_Placeholder"
 DB_DSN_3="TertiaryConnection_Placeholder"
 
 # ------------------------------------------------------------------------------
+# SSO (TEK OTURUM AÇMA) AYARLARI
+# ------------------------------------------------------------------------------
+
+# Küresel mod anahtarı: TRUE = Keycloak SSO aktif, FALSE = yerel geliştirme modu
+SSO_ENABLED=FALSE
+
+# Keycloak sunucu adresi (örnek: https://keycloak.example.com)
+SSO_KEYCLOAK_URL=
+
+# Keycloak realm adı
+SSO_REALM=byd_intranet_apps
+
+# Keycloak istemci (client) kimliği
+SSO_CLIENT_ID=mergen_bilge
+
+# Token doğrulama seçenekleri
+SSO_VALIDATE_ISSUER=TRUE
+SSO_VALIDATE_EXPIRY=TRUE
+
+# Token yenileme uyarı süresi (saniye cinsinden, token dolmadan bu kadar önce uyar)
+SSO_TOKEN_REFRESH_MARGIN=300
+
+# SSO hata ayıklama modu (detaylı log çıktısı)
+SSO_DEBUG=FALSE
+
+# ------------------------------------------------------------------------------
 # DİĞER AYARLAR
 # ------------------------------------------------------------------------------
 

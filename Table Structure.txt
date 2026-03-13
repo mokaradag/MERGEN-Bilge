@@ -14,6 +14,13 @@ Bu tablo, uygulama ile etkileşime giren her bir benzersiz kullanıcı hakkında
 | `KullaniciAdi` | `NVARCHAR(255)` | Kullanıcının sistemdeki kullanıcı adı (ör. `ahmet.yilmaz`). | Bir kullanıcıyı benzersiz olarak tanımlar. |
 | `KaynakAdi` | `NVARCHAR(255)` | Kullanıcının tam adı, muhtemelen harici bir kaynaktan alınır. | `DC01_user_base` tablosundan doldurulur. |
 | `LastLoginDate`| `DATETIME` | Kullanıcının son oturum başlangıcının zaman damgası. | Uygulama her başlatıldığında güncellenir. |
+| `Sicil` | `NVARCHAR(50)` | Çalışan sicil numarası. | SSO (Keycloak) ile otomatik doldurulur. Opsiyonel sütun. |
+| `Email` | `NVARCHAR(255)` | Kullanıcının e-posta adresi. | SSO ile otomatik doldurulur. Opsiyonel sütun. |
+| `Sektor` | `NVARCHAR(100)` | İş sektörü. | SSO ile otomatik doldurulur. Opsiyonel sütun. |
+| `Departman` | `NVARCHAR(200)` | Departman bilgisi. | SSO ile otomatik doldurulur. Opsiyonel sütun. |
+| `Mudurluk` | `NVARCHAR(200)` | Müdürlük bilgisi. | SSO ile otomatik doldurulur. Opsiyonel sütun. |
+| `MasrafYeriKodu` | `NVARCHAR(200)` | Masraf yeri kodu. | SSO ile otomatik doldurulur. Opsiyonel sütun. |
+| `SonGirisKaynagi` | `NVARCHAR(50)` | Son girişin kaynağı: 'local' veya 'keycloak'. | SSO ile otomatik güncellenir. Opsiyonel sütun. |
 
 #### 2. `MB_Chats`
 Bu tablo, her bir sohbet oturumunun üst verilerini tutar.
@@ -64,12 +71,14 @@ Bu tablo, her bir yapay zeka etkileşiminin ayrıntılarını kaydederek denetim
 | `ResponseSuccess`| `BIT` veya `TINYINT` | YZ çağrısının başarılı olup olmadığını belirten bayrak (0 veya 1). | |
 
 #### 6. `DC01_user_base` (Harici Tablo)
-Bu tablo, kullanıcı bilgilerini (örneğin tam ad) almak için kullanılan mevcut, harici bir kaynak tablo olarak görünmektedir.
+Bu tablo, kullanıcı bilgilerini (örneğin tam ad) almak için kullanılan mevcut, harici bir kaynak tablo olarak görünmektedir. Keycloak SSO entegrasyonunda kullanıcının yetki seviyesini doğrulamak için de kullanılır.
 
 | Sütun Adı | Tahmin Edilen Veri Tipi | Açıklama |
 | :--- | :--- | :--- |
-| `KullaniciAdi`| `NVARCHAR(255)` | Sistemdeki kullanıcı adı. |
+| `KullaniciAdi`| `NVARCHAR(255)` | Sistemdeki kullanıcı adı. Keycloak'tan gelen `preferred_username` ile eşleştirilir. |
 | `KaynakAdi` | `NVARCHAR(255)` | Kullanıcının tam adı. |
+| `Yetki` | `VARCHAR(5)` | Yetki seviyesi: SUPERADMIN, ADMIN, DIR, DIR-P, KY-P, KY, PY, KAL, TEST, URETIM vb. |
+| `MasrafYeriKodu` | `NVARCHAR(200)` | Masraf yeri kod(lar)ı, virgülle ayrılmış. |
 
 #### 7. `DC01_userr` (Harici Tablo)
 Bu tablo, kullanıcıların e-posta adreslerini barındıran harici bir kaynak tablodur. Yönetici panelinden kullanıcılara e-posta göndermek için kullanılır.

@@ -368,14 +368,23 @@ SERVICE_DESK <- list(
 )
 
 # --- KULLANICI YAPILANDIRMASI ---
-# Not: name ve userId oturum başında server.R tarafından DB'den güncellenir.
-# Keycloak entegrasyonu sonrası bu değerler otomatik doldurulacak.
-# auth_level şimdilik statik kalıyor; Keycloak sonrası rol tabanlı olacak.
+# Not: name ve userId oturum başında server.R tarafından güncellenir.
+# SSO_ENABLED=TRUE ise Keycloak token'ından, FALSE ise DB'den doldurulur.
+# Ek alanlar (sicil, sektor, department, vb.) SSO aktifken Keycloak'tan gelir.
 user_config <- list(
-  name       = "",
-  icon       = "user-circle",
-  userId     = "",
-  auth_level = Sys.getenv("MERGEN_AUTH_LEVEL", "ADMIN")
+  name            = "",
+  icon            = "user-circle",
+  userId          = "",
+  auth_level      = Sys.getenv("MERGEN_AUTH_LEVEL", "ADMIN"),
+  # SSO ile gelen ek alanlar (Keycloak claim'leri)
+  sicil           = NULL,
+  email           = NULL,
+  first_name      = NULL,
+  last_name       = NULL,
+  sektor          = NULL,
+  department      = NULL,
+  mudurluk        = NULL,
+  masraf_yeri_kodu = NULL
 )
 
 # --- KULLANICI API ANAHTARI YÖNETİMİ ---

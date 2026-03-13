@@ -14,6 +14,7 @@
 - **Advanced Features**: Image generation, visual gallery, analytics, and custom project analysis
 - **Support Pages (Destek)**: Help center with AI chatbot assistant (knowledge base: ai_rehber.md), feedback collection (satisfaction + NPS + tags), bug reporting with file attachments, and about page with app guide
 - **Admin Feedback & Bug Analytics**: Dedicated admin pages for analyzing user feedback (satisfaction trends, NPS scoring, tag distribution) and bug reports (priority/category heatmap, attachment viewer, status management)
+- **SSO Authentication**: Keycloak Single Sign-On with global mode switch (SSO_ENABLED). Supports dual-mode: Keycloak SSO for production VMs, local system username for development. JWT token validation, organizational claim extraction (sicil, department, müdürlük), and database authorization.
 
 ---
 
@@ -37,10 +38,11 @@ The R directory contains modular components organized by function:
 #### Configuration Files (`config_*.R`)
 - **`config_packages.R`**: Package dependencies and loading
 - **`config_logging.R`**: Logging infrastructure setup
+- **`config_sso.R`**: SSO (Single Sign-On) configuration and global mode switch (SSO_ENABLED). Keycloak URLs, claim mapping, validation settings
 - **`config_characters.R`**: Character/persona definitions
 - **`config_file_store.R`**: File storage and handling configuration
 - **`config_sql_loader.R`**: SQL database loading configuration
-- **`config_api.R`**: API configuration and endpoints
+- **`config_api.R`**: API configuration and endpoints. user_config extended with SSO fields (sicil, email, sektor, department, mudurluk, masraf_yeri_kodu)
 
 #### Helper Functions (`helpers_*.R`)
 Core utilities and functions used throughout the application:
@@ -60,6 +62,7 @@ Core utilities and functions used throughout the application:
 - **`helpers_followup_questions.R`**: Follow-up question generation
 - **`helpers_summarization_modes.R`**: Summarization strategy definitions
 - **`helpers_summarization_prompts.R`**: Prompt templates for summarization
+- **`helpers_sso.R`**: SSO helper functions: JWT token decoding (decode_jwt_payload), token validation (validate_jwt_token), Keycloak claim extraction (extract_user_claims), logout URL building, database authorization check
 - **`helpers_destek_database.R`**: Support page database operations (MB_Destek_Geri_Bildirim, MB_Destek_Hata_Bildir, status updates)
 - **`helpers_admin_analytics.R`**: Shared utilities for admin analytics modules (metric cards, safe query, Turkish formatting, DT language, color palette)
 
@@ -100,6 +103,7 @@ Shiny modules for major UI sections and features:
 - **`module_message_search.R`**: Message search functionality
 - **`module_chat_search.R`**: Chat history search
 - **`module_user_identity.R`**: User identification and authentication
+- **`module_sso.R`**: SSO authentication Shiny module (ssoAuthUI + ssoAuthServer). Handles Keycloak token reception, validation, and auth state management. Inactive when SSO_ENABLED=FALSE
 - **`module_session_timeout.R`**: Session timeout management
 - **`module_file_preview.R`**: File preview in-app
 
@@ -300,6 +304,18 @@ MCP_FILES_BASE=//server/share/uploads  # UNC or local path for MCP file storage
 DESTEK_CHATBOT_MODEL=<model-name>  # AI chatbot model for Help Center (falls back to AI_EXPERT_MODEL or FILTER_MODEL)
 ```
 
+### SSO (Keycloak) Configuration
+```
+SSO_ENABLED=FALSE                         # Global switch: TRUE=Keycloak, FALSE=local dev
+SSO_KEYCLOAK_URL=https://keycloak.example.com  # Keycloak server URL
+SSO_REALM=byd_intranet_apps              # Keycloak realm name
+SSO_CLIENT_ID=mergen_bilge               # Keycloak client ID
+SSO_VALIDATE_ISSUER=TRUE                 # Validate JWT issuer claim
+SSO_VALIDATE_EXPIRY=TRUE                 # Validate JWT expiration
+SSO_TOKEN_REFRESH_MARGIN=300             # Warn before token expires (seconds)
+SSO_DEBUG=FALSE                           # Verbose SSO logging
+```
+
 ### Other
 ```
 AI_KEYS_MASTER=<32+ char random secret>  # For encrypting stored API keys
@@ -344,12 +360,24 @@ AI_KEYS_MASTER=<32+ char random secret>  # For encrypting stored API keys
 
 ### 4. Session Lifecycle
 
-1. User login → `resolveUserIdentity()` authenticates
-2. `get_or_create_user()` ensures DB entry
+**SSO Disabled (Local Development):**
+1. App starts → `resolveUserIdentity()` gets system username + DB lookup
+2. `get_or_create_user()` ensures MB_Users entry
 3. `sessionCacheInit()` sets up session-specific cache
 4. User configuration loaded into `session$userData`
 5. All modules initialized with session namespace
 6. Session timeout managed by `module_session_timeout.R`
+
+**SSO Enabled (Keycloak Production):**
+1. App starts → SSO overlay shown, JavaScript checks for JWT token
+2. No token → Redirect to Keycloak login page
+3. Token exists → Sent to R server via `Shiny.setInputValue`
+4. `ssoAuthServer()` validates JWT: decode → issuer check → expiry check
+5. `check_user_authorization()` verifies user in `DC01_user_base`
+6. `resolveUserIdentity(sso_claims)` extracts Keycloak claims with Turkish encoding fix
+7. `get_or_create_user(username, sso_claims)` creates/updates MB_Users with SSO fields
+8. SSO overlay hidden → Normal app flow begins
+9. Token expiry monitored; user warned before session expires
 
 ### 5. Background Processing
 
@@ -607,6 +635,8 @@ www/css/admin_destek_analytics.css   # Feedback & bug analytics pages styling (a
 www/css/admin_yanit_analizi.css     # AI response feedback analytics page styling (polar chart, badges, comment table)
 www/js/destek_form.js                # Form interactions (satisfaction, NPS, tags, categories, priority, file upload, validation)
 www/js/destek_yardim_chatbot.js      # Chatbot client-side logic (message sending, display, thinking indicator)
+www/js/sso_auth.js                   # SSO client-side auth: Keycloak redirect, token extraction, Shiny bridge
+www/css/sso_auth.css                 # SSO auth overlay styling (loading spinner, error state, transitions)
 ```
 
 **For Admin Analytics Work**:
@@ -625,6 +655,6 @@ The "Yönetici Paneli" sidebar menu is dynamically rendered for ADMIN users only
 5. **Sistem Durumu** (`health`) - System health monitoring
 
 ## Last Updated
-March 10, 2026
+March 13, 2026
 
 **Note**: This documentation reflects the current state of the codebase. For specific implementation details, always refer to the actual source code and inline comments in R files.
