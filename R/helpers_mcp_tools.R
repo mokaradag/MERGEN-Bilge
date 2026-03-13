@@ -1876,7 +1876,7 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
   schema_section <- ""
   if (!is.null(file_schema) && nzchar(file_schema)) {
     schema_section <- paste0(
-      "# 📊 YÜKLÜ DOSYA BİLGİSİ\n\n",
+      "# \U0001F4CA YÜKLÜ DOSYA BİLGİSİ\n\n",
       file_schema, "\n\n",
       "---\n\n",
       "**ÖNEMLİ:** Yukarıdaki şemada gördüğün GERÇEK sütun isimlerini kullan!\n",

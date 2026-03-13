@@ -880,7 +880,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     }
     
     if (is.null(selected_query$id)) {
-      return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. Lütfen sorunuzu farklı kelimelerle tekrar deneyin veya mevcut analiz kategorilerini inceleyin.")
+      return("\U0001F914 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. Lütfen sorunuzu farklı kelimelerle tekrar deneyin veya mevcut analiz kategorilerini inceleyin.")
     }
   }
   
@@ -1043,7 +1043,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
   
   if (nrow(secure_data) == 0) {
-      return(paste0("🔍 **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
+      return(paste0("\U0001F50D **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
   }
     
   # AI fonksiyonuna veriyi de gonderiyoruz ki degerleri gorebilsin
@@ -1088,7 +1088,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     cat("[PK_ANALIZ] Filtreleme sonrasi veri yok, islem tamamlandi.\n")
     return(list(
       type = "error_message",
-      content = "🔍 **Sonuç:** Filtreleme sonrası veri bulunamadı. Lütfen farklı kriterlerle tekrar deneyin."
+      content = "\U0001F50D **Sonuç:** Filtreleme sonrası veri bulunamadı. Lütfen farklı kriterlerle tekrar deneyin."
     ))
   }
   
@@ -1150,10 +1150,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "5. TEMELLENDİRME: Sadece sağlanan verilerle konuş; varsayım, spekülasyon veya komik yorumlardan uzak dur\n",
       "6. TON: Doğal, akıcı Türkçe; robotik olmayan, güven veren uzman dili\n\n",
       "ZORUNLU YAPI:\n",
-      "- **📋 Özet**: 2-3 cümlede kritik bulgular ve iş etkisi\n",
-      "- **🔍 Detaylı İnceleme**: Her kritik sütun için ayrı bölüm (##)\n",
-      "- **🎯 Kök Nedenler**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
-      "- **💡 Öneriler**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
+      "- **\U0001F4CB Özet**: 2-3 cümlede kritik bulgular ve iş etkisi\n",
+      "- **\U0001F50D Detaylı İnceleme**: Her kritik sütun için ayrı bölüm (##)\n",
+      "- **\U0001F3AF Kök Nedenler**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
+      "- **\U0001F4A1 Öneriler**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
       "- **⚠️ Dikkat Edilmesi Gerekenler**: Veride görünen potansiyel sorunları belirt\n\n",
       "TABLO FORMATI KURALI:\n",
       "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
@@ -1184,9 +1184,9 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "4. TEMELLENDİRME: Sadece sağlanan özetle konuş; varsayım, komik yorum veya spekülasyondan kaçın\n",
       "5. PROFESYONEL TON: Güvenilir, bilge, robotik olmayan dil\n\n",
       "ZORUNLU YAPI:\n",
-      "- **📋 Özet**: 2-3 cümlede kritik bulgular ve etki\n",
-      "- **📊 Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
-      "- **💡 Öneriler**: Somut, önceliklendirilmiş eylemler\n",
+      "- **\U0001F4CB Özet**: 2-3 cümlede kritik bulgular ve etki\n",
+      "- **\U0001F4CA Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
+      "- **\U0001F4A1 Öneriler**: Somut, önceliklendirilmiş eylemler\n",
       "- **⚠️ Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
       "TABLO FORMATI KURALI:\n",
       "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
@@ -1204,12 +1204,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	if (!is.null(selected_query$info_file) && nzchar(selected_query$info_file)) {
 	  file_path_normalized <- gsub("\\\\", "/", selected_query$info_file)
 	  system_prompt <- paste0(system_prompt, 
-		"\n8. EK DOSYA: Kullaniciya su dosyayi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>👉 <span class='analysis-file-link' data-filepath='", file_path_normalized, "' style='color:#007bff; cursor:pointer; text-decoration:underline; font-weight:bold;'>İlgili Dosyayı Görüntüle</span>\n")
+		"\n8. EK DOSYA: Kullaniciya su dosyayi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F449 <span class='analysis-file-link' data-filepath='", file_path_normalized, "' style='color:#007bff; cursor:pointer; text-decoration:underline; font-weight:bold;'>İlgili Dosyayı Görüntüle</span>\n")
 	}
 
 	if (!is.null(selected_query$info_url) && nzchar(selected_query$info_url)) {
 	  system_prompt <- paste0(system_prompt, 
-		"\n9. EK LINK: Kullaniciya su adresi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>🌐 <a href='", selected_query$info_url, "' target='_blank' rel='noopener noreferrer'><b>Daha Fazla Bilgi</b></a>\n")
+		"\n9. EK LINK: Kullaniciya su adresi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F310 <a href='", selected_query$info_url, "' target='_blank' rel='noopener noreferrer'><b>Daha Fazla Bilgi</b></a>\n")
 	}
   
   user_msg <- paste0(

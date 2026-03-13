@@ -390,7 +390,7 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     return(list(
       type = "error_message",
       content = paste0(
-        "🔍 **Derin Analiz Sonucu:** Hiçbir sorgu başarılı sonuç döndürmedi.\n\n",
+        "\U0001F50D **Derin Analiz Sonucu:** Hiçbir sorgu başarılı sonuç döndürmedi.\n\n",
         if (length(failed) > 0) {
           paste0("Başarısız sorgular:\n",
                  paste(vapply(failed, function(f) {
@@ -419,7 +419,7 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     r <- successful[[i]]
     paste0(
       sprintf("\n\n══════════════════════════════════════════\n"),
-      sprintf("📊 SORGU %d/%d: %s\n", i, query_count, r$query_name),
+      sprintf("\U0001F4CA SORGU %d/%d: %s\n", i, query_count, r$query_name),
       sprintf("Açıklama: %s\n", r$query_desc),
       sprintf("Toplam Satır: %d | İlgililik: %.0f%%\n", r$row_count, r$relevance),
       sprintf("══════════════════════════════════════════\n"),
@@ -447,12 +447,12 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
 
     "### ZORUNLU YAPI:\n",
     "Her sorgu için:\n",
-    "## 📊 [Sorgu Adı]\n",
+    "## \U0001F4CA [Sorgu Adı]\n",
     "- Temel bulgular ve istatistikler\n",
     "- Dikkat çeken noktalar\n\n",
 
     "Son bölüm:\n",
-    "## 🔗 Genel Değerlendirme\n",
+    "## \U0001F517 Genel Değerlendirme\n",
     "- Sorgular arası bağlantılar ve çapraz bulgular\n",
     "- Bütünsel öneriler\n",
     "- Uyarılar ve riskler\n\n",
@@ -556,7 +556,7 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
     if (!is.null(single) && !is.null(single$id)) {
       selected_queries <- list(single)
     } else {
-      return("🤔 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. Lütfen sorunuzu farklı kelimelerle deneyin.")
+      return("\U0001F914 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. Lütfen sorunuzu farklı kelimelerle deneyin.")
     }
   }
 
