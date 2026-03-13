@@ -20,7 +20,7 @@ handle_summarization_mode <- function(ctx) {
   log_debug("[SUMMARIZATION] Dosya Özetleme modu aktif, özetleme başlatılıyor. Dosya sayısı: {ctx$uploaded_count}")
 
   if (!exists("process_summarization_request", mode = "function")) {
-    source("R/module_summarization.R", encoding = "UTF-8", local = TRUE)
+    safe_source("R/module_summarization.R", encoding = "UTF-8")
   }
 
   ctx$values$typing <- TRUE

@@ -1,7 +1,7 @@
 # welcome_screen.R
 # Modern karşılama ekranı yardımcı fonksiyonları
 
-source("R/welcome_screen_modern.R", encoding = "UTF-8")
+safe_source("R/welcome_screen_modern.R", encoding = "UTF-8")
 
 MAIN_ACTIONS_DATA <- list(
   list(

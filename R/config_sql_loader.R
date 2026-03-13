@@ -11,7 +11,7 @@
 # --- SQL DOSYALARINI ÖN YÜKLEME ---
 # library_queries.R dosyasının yüklü olduğundan emin ol
 if (!exists("query_library")) {
-  source("R/library_queries.R", encoding = "UTF-8")
+  safe_source("R/library_queries.R", encoding = "UTF-8")
 }
 
 .sql_loaded_count <- 0L
