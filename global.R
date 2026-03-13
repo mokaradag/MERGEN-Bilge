@@ -27,7 +27,15 @@ try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent 
 # okuyup ardından parse() ile değerlendirir ve bu sorunu tamamen ortadan kaldırır.
 # ------------------------------------------------------------------------------
 safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
-  lines <- readLines(file, encoding = encoding, warn = FALSE)
+  # Read as raw bytes — no encoding conversion happens here
+  raw <- readBin(file, "raw", file.info(file)$size)
+  text <- rawToChar(raw)
+  Encoding(text) <- encoding
+  # Remove BOM if present
+  text <- sub("^\uFEFF", "", text)
+  # Split into lines (handle both \r\n and \n)
+  lines <- strsplit(text, "\r?\n")[[1]]
+  Encoding(lines) <- encoding
   exprs <- parse(text = lines, keep.source = FALSE, encoding = encoding)
   eval(exprs, envir = envir)
   invisible(NULL)
