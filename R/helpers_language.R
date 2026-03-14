@@ -25,7 +25,7 @@ detect_code_content <- function(text) {
     "fluidRow\\(", "renderUI\\(", "renderPlot\\(", "tags\\$",
     "library\\(\\s*\\w+\\s*\\)", "require\\(\\s*\\w+\\s*\\)",
     "%>%", "\\|>",
-    # SQL (çok-kelimeli kalıplar — tek kelime yetmez)
+    # SQL (çok-kelimeli kalıplar - tek kelime yetmez)
     "SELECT\\b[\\s\\S]+?\\bFROM\\b", "INSERT\\s+INTO\\b", "UPDATE\\b[\\s\\S]+?\\bSET\\b",
     "CREATE\\s+(TABLE|VIEW|INDEX|PROCEDURE|FUNCTION)\\b",
     "ALTER\\s+TABLE\\b", "DROP\\s+(TABLE|VIEW|INDEX)\\b",
@@ -232,7 +232,7 @@ detect_language <- function(code) {
     ),
 
     # ============================================================
-    # MATLAB — Sadece MATLAB'a özgü kalıplar (SQL ile çakışma YOK)
+    # MATLAB - Sadece MATLAB'a özgü kalıplar (SQL ile çakışma YOK)
     # ============================================================
     matlab = list(
       # MATLAB fonksiyon bildirimi: function [out] = name(args) veya function name(args)
@@ -242,23 +242,23 @@ detect_language <- function(code) {
       "\\bdisp\\(" = 8, "\\bfprintf\\(" = 7,
       # MATLAB hücre modu (%% başlık)
       "^\\s*%%\\s+" = 6,
-      # MATLAB'a özgü kontrol yapısı (elseif — Python'da elif, SQL'de yok)
+      # MATLAB'a özgü kontrol yapısı (elseif - Python'da elif, SQL'de yok)
       "\\belseif\\b" = 7,
       # Sadece MATLAB'da bulunan yerleşik fonksiyonlar
       "\\bnargin\\b|\\bnargout\\b" = 12,
       "\\bzeros\\(|\\bones\\(|\\blinspace\\(|\\blogspace\\(" = 10,
       "\\bsubplot\\(|\\bfigure\\(|\\bhold\\s+on" = 9,
       "\\breshape\\(|\\brepmat\\(|\\bcell\\(" = 8,
-      # Eleman-bazlı operatörler (.* ./ .^ — sadece MATLAB)
+      # Eleman-bazlı operatörler (.* ./ .^ - sadece MATLAB)
       "\\.\\*|\\.\\/|\\.\\^" = 8,
       # MATLAB satır sonu noktalı virgül (çıktı bastırma)
       ";\\s*$" = 1,
-      # end — çok düşük ağırlık (SQL/Ruby/Python ile çakışır)
+      # end - çok düşük ağırlık (SQL/Ruby/Python ile çakışır)
       "\\bend\\b" = 1
     ),
 
     # ============================================================
-    # SQL — Güçlendirilmiş kalıplar
+    # SQL - Güçlendirilmiş kalıplar
     # ============================================================
     sql = list(
       # Çok-kelimeli bileşik kalıplar (en güvenilir)
@@ -368,7 +368,7 @@ detect_language <- function(code) {
   )
 
   # ============================================================
-  # Puanlama döngüsü — tüm diller için kalıpları uygula
+  # Puanlama döngüsü - tüm diller için kalıpları uygula
   # ============================================================
   for (lang in names(patterns)) {
     for (pattern in names(patterns[[lang]])) {
@@ -457,7 +457,7 @@ split_text_and_code <- function(text) {
     # NOT: Yalın İngilizce ile çakışan kelimeler (AND, OR, ON, AS, SET, END)
     #      buradan çıkarıldı. Sadece bağlam içinde anlamlı olan kalıplar var.
     code_pats <- c(
-      # SQL — sadece bileşik/bağlamsal kalıplar (yalın kelimeler YOK)
+      # SQL - sadece bileşik/bağlamsal kalıplar (yalın kelimeler YOK)
       "^\\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|EXEC|DECLARE|MERGE|TRUNCATE)\\b",
       "^\\s*FROM\\s+[\\[\\w]",               # FROM tablo_adi veya FROM [tablo]
       "^\\s*WHERE\\s+\\w+\\s*(=|<|>|IN|LIKE|IS|BETWEEN)\\b",  # WHERE kolon = deger
@@ -509,7 +509,7 @@ split_text_and_code <- function(text) {
       # Uzun doğal dil cümleleri (5+ kelime, kod karakteri az)
       "^\\s*(\\w+\\s+){5,}\\w+[.!?]?\\s*$",
       # Madde işareti ile başlayan metin
-      "^\\s*[-*•]\\s+[A-Za-zÇçĞğİıÖöŞşÜü]",
+      "^\\s*[-*\U2022]\\s+[A-Za-zÇçĞğİıÖöŞşÜü]",
       # Numaralı liste
       "^\\s*\\d+[.):]\\s+[A-Za-zÇçĞğİıÖöŞşÜü]",
       # Sadece harf ve boşluktan oluşan satır (noktalama hariç)

@@ -219,7 +219,7 @@ wire_chart_output <- function(output, out_id, spec) {
   agg   <- params$agg   %||% NULL
   topn  <- params$top_n %||% NA_integer_
 
-  # Kutu grafik devre dışıysa güvenli görselleştirmeye düş (hist → bar)
+  # Kutu grafik devre dışıysa güvenli görselleştirmeye düş (hist -> bar)
   if (identical(type, "box")) {
     # Türkçe yorum: x ekseni için sayısal kolonu, yoksa kategorik kolonu kullan
     type <- "hist"

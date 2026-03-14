@@ -41,7 +41,7 @@ settingsObserversInit <- function(input, session, values, settings_data) {
   invisible(NULL)
 }
 
-#' Görsel Ayarları Senkronizasyonu Başlat (Sohbet → Ayarlar)
+#' Görsel Ayarları Senkronizasyonu Başlat (Sohbet -> Ayarlar)
 #' @description Ana sohbet arayüzündeki görsel ayar değişikliklerini ayarlar modülüne senkronize eder
 #' @param input Shiny input nesnesi
 #' @param settings_data Ayarlar modülünden dönen reaktif ayarlar
@@ -57,7 +57,7 @@ visualSettingsSyncInit <- function(input, settings_data) {
     settings_data$image_quality_hd <- isTRUE(input$chat_image_quality_hd)
   }, ignoreInit = TRUE)
 
-  # Özetleme ayarları senkronizasyonu (Sohbet → Ayarlar, anlık)
+  # Özetleme ayarları senkronizasyonu (Sohbet -> Ayarlar, anlık)
   observeEvent(input$chat_summary_detail, {
     if (!is.null(input$chat_summary_detail)) {
       settings_data$summary_detail_level <- input$chat_summary_detail
@@ -70,7 +70,7 @@ visualSettingsSyncInit <- function(input, settings_data) {
     }
   }, ignoreInit = TRUE)
 
-  # Analiz ayarları senkronizasyonu (Sohbet → Ayarlar, anlık)
+  # Analiz ayarları senkronizasyonu (Sohbet -> Ayarlar, anlık)
   observeEvent(input$chat_deep_thinking, {
     settings_data$analysis_deep_thinking <- isTRUE(input$chat_deep_thinking)
   }, ignoreInit = TRUE)

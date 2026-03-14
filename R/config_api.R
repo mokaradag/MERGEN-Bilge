@@ -96,7 +96,7 @@ stt_config <- list(
 # STT yapılandırma durumunu log seviyesinde kaydet (üretimde hassas bilgi sızdırmaz)
 log_debug("STT yapılandırma kontrolü - Endpoint tanımlı: {nzchar(stt_config$endpoint)}, API anahtarı uzunluğu: {nchar(stt_config$api_key)}")
 if (!nzchar(stt_config$api_key)) {
-  log_warn("STT API anahtarı boş — .Renviron dosyasının doğru yüklendiğinden emin olun.")
+  log_warn("STT API anahtarı boş \U2014 .Renviron dosyasının doğru yüklendiğinden emin olun.")
 }
 
 # Başlangıçta indeksleri hazırla (ilk tıklama gecikmesini azaltır)

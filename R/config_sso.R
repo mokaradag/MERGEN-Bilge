@@ -1,14 +1,14 @@
 # Dosya Yolu: R/config_sso.R
 # Açıklama: SSO (Tek Oturum Açma) yapılandırması ve küresel mod anahtarı.
 #            Keycloak entegrasyonu için gerekli tüm ayarları .Renviron'dan okur.
-#            SSO_ENABLED=TRUE → Keycloak modu (sanal makine), FALSE → yerel geliştirme modu.
+#            SSO_ENABLED=TRUE -> Keycloak modu (sanal makine), FALSE -> yerel geliştirme modu.
 
 # ==============================================================================
 # SSO KÜRESEL MOD ANAHTARI
 # ==============================================================================
 # Bu değişken uygulamanın kimlik doğrulama modunu belirler:
-#   TRUE  → Keycloak SSO aktif (sanal makine / üretim ortamı)
-#   FALSE → Yerel geliştirme modu (sistem kullanıcı adı ile çalışır)
+#   TRUE  -> Keycloak SSO aktif (sanal makine / üretim ortamı)
+#   FALSE -> Yerel geliştirme modu (sistem kullanıcı adı ile çalışır)
 SSO_ENABLED <- as.logical(Sys.getenv("SSO_ENABLED", "FALSE"))
 
 # Güvenlik kontrolü: geçersiz değer durumunda FALSE olarak ayarla

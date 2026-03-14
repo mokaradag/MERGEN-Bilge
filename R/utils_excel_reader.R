@@ -95,7 +95,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
     else stop(sprintf("Dosya bulunamadı (Yol: %s)", path_prepared))
   }
 
-  # Doğru okuyucuyu seç (xlsx vs xls) — dosya imzasına göre
+  # Doğru okuyucuyu seç (xlsx vs xls) - dosya imzasına göre
   # Windows kısa yollarında (örn. DATA~1.XLS) uzantı yanıltıcı olabileceğinden
   # imza tabanlı algılama tercih edilir.
   pick_reader <- function(p) {
@@ -114,7 +114,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
     reader <- pick_reader(path_prepared)
     reader(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal")
   }, error = function(e) {
-    # Libxls uyumsuzluk kurtarması (ShortPath .XLS → .xlsx içeriği)
+    # Libxls uyumsuzluk kurtarması (ShortPath .XLS -> .xlsx içeriği)
     if (grepl("libxls error", conditionMessage(e), ignore.case = TRUE)) {
       return(readxl::read_xlsx(
         path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal"

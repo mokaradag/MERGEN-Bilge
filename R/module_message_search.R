@@ -48,9 +48,9 @@ messageSearchInit <- function(input, session, values, messages_reactive) {
 
     # Also reflect on the two arrow button labels (if present)
     updateActionButton(session, "prev_match",
-      label = sprintf('← (%d/%d)', state$current, state$total))
+      label = sprintf('\U2190 (%d/%d)', state$current, state$total))
     updateActionButton(session, "next_match",
-      label = sprintf('(%d/%d) →', state$current, state$total))
+      label = sprintf('(%d/%d) \U2192', state$current, state$total))
   }, ignoreInit = TRUE)
 
   # Prev
@@ -65,9 +65,9 @@ messageSearchInit <- function(input, session, values, messages_reactive) {
     ))
     shinyjs::runjs(sprintf("$('#search_counter').text('%d/%d');", state$current, state$total))
     updateActionButton(session, "prev_match",
-      label = sprintf('← (%d/%d)', state$current, state$total))
+      label = sprintf('\U2190 (%d/%d)', state$current, state$total))
     updateActionButton(session, "next_match",
-      label = sprintf('(%d/%d) →', state$current, state$total))
+      label = sprintf('(%d/%d) \U2192', state$current, state$total))
   }, ignoreInit = TRUE)
 
   # Next
@@ -82,8 +82,8 @@ messageSearchInit <- function(input, session, values, messages_reactive) {
     ))
     shinyjs::runjs(sprintf("$('#search_counter').text('%d/%d');", state$current, state$total))
     updateActionButton(session, "prev_match",
-      label = sprintf('← (%d/%d)', state$current, state$total))
+      label = sprintf('\U2190 (%d/%d)', state$current, state$total))
     updateActionButton(session, "next_match",
-      label = sprintf('(%d/%d) →', state$current, state$total))
+      label = sprintf('(%d/%d) \U2192', state$current, state$total))
   }, ignoreInit = TRUE)
 }

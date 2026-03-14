@@ -3,7 +3,7 @@
 # Bu dosya server.R'den ayrılarak modülerlik sağlanmıştır.
  
 # Kullanıcı perspektifine düzeltme yapan fonksiyon
-# "istiyor musunuz?" → "istiyorum, nasıl yapabilirim?" dönüşümü yapar
+# "istiyor musunuz?" -> "istiyorum, nasıl yapabilirim?" dönüşümü yapar
 ensure_user_perspective <- function(texts) {
   if (is.null(texts) || !length(texts)) return(texts)
   out <- texts
@@ -92,7 +92,7 @@ truncate_followup_context <- function(text, limit = 2000L) {
   val <- text[1] %||% ""
   if (!nzchar(val)) return("")
   if (nchar(val) <= limit) return(val)
-  paste0(substr(val, 1, limit), " …")
+  paste0(substr(val, 1, limit), " \U2026")
 }
  
 # AI kullanarak takip soruları oluşturan fonksiyon

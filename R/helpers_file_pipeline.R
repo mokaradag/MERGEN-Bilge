@@ -185,8 +185,8 @@ handle_file_upload_batch <- function(uploads_df,
   cat(sprintf("[UPLOAD] %d dosya alındı: %s\n",
               total, paste(vapply(uploads, `[[`, "", "name"), collapse = ", ")))
 
-  note_id <- showNotification(if (total > 1) "Dosyalar alındı. İşleme başlanıyor…" else
-                                            "Dosya alındı. İşleme başlanıyor…",
+  note_id <- showNotification(if (total > 1) "Dosyalar alındı. İşleme başlanıyor\U2026" else
+                                            "Dosya alındı. İşleme başlanıyor\U2026",
                               duration = NULL, type = "message")
 
   process_next <- function(i) {

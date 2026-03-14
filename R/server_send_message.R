@@ -375,7 +375,7 @@ sendMessageInit <- function(
  
     log_debug("[STYLE] Karakter: {selected_char_id} (sıcaklık: {sprintf('%.2f', temperature_value)})")
  
-    # DOSYA ÖZETLEME MODU — ayrı dosyaya taşındı (server_handler_summarization.R)
+    # DOSYA ÖZETLEME MODU - ayrı dosyaya taşındı (server_handler_summarization.R)
     if (identical(tool_family, "summarization")) {
       summarization_ctx <- list(
         session = session, input = input, values = values,
@@ -387,7 +387,7 @@ sendMessageInit <- function(
       handle_summarization_mode(summarization_ctx)
       return(invisible(NULL))
 
-    # GÖRSEL OLUŞTURMA MODU — ayrı dosyaya taşındı (server_handler_image_generation.R)
+    # GÖRSEL OLUŞTURMA MODU - ayrı dosyaya taşındı (server_handler_image_generation.R)
     } else if (identical(tool_family, "image")) {
       image_ctx <- list(
         session = session, input = input, values = values,
@@ -429,7 +429,7 @@ sendMessageInit <- function(
       messages_to_process <- c(list(system_msg), head(recent_messages, -1), list(final_context_prompt))
  
     } else if (identical(tool_family, "none") && uploaded_count > 0) {
-      # MCP kapalı → seçili dosyaların özetini/alıntısını doğrudan bağlama ekle
+      # MCP kapalı -> seçili dosyaların özetini/alıntısını doğrudan bağlama ekle
       file_blocks <- character(0)
       total_budget <- 120000
       per_file_cap <- max(4000, floor(total_budget / max(1, uploaded_count)))
@@ -543,7 +543,7 @@ sendMessageInit <- function(
             }
       }
     } else {
-      log_debug("[MCP] Oturumda dosya yok — MCP çalışmayacak")
+      log_debug("[MCP] Oturumda dosya yok \U2014 MCP çalışmayacak")
     }
  
     # Excel modunda dosyaları MCP tabanına kopyala
@@ -585,7 +585,7 @@ sendMessageInit <- function(
         }
  
         if (is.null(path_now) || !nzchar(path_now) || !path_exists_relaxed(path_now)) {
-          log_debug("[FILE STORE] {fname} için yol bulunamadı — atlanıyor")
+          log_debug("[FILE STORE] {fname} için yol bulunamadı \U2014 atlanıyor")
           next
         }
  

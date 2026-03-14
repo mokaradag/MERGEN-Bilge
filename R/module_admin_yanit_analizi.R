@@ -466,7 +466,7 @@ adminYanitAnaliziServer <- function(id) {
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("chart-line"), " Haftalık Beğeni Oranı Trendi"),
-                admin_create_info_button("Son 12 haftadaki beğeni oranı değişimi (beğeni / toplam × 100).")
+                admin_create_info_button("Son 12 haftadaki beğeni oranı değişimi (beğeni / toplam \U00D7 100).")
               ),
               highcharter::highchartOutput(ns("ya_haftalik_oran_chart"), height = "380px")
             )
@@ -548,7 +548,7 @@ adminYanitAnaliziServer <- function(id) {
               class = "analytics-card",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("th"), " Saat × Gün Isı Haritası"),
+                h4(class = "card-title", icon("th"), " Saat \U00D7 Gün Isı Haritası"),
                 admin_create_info_button("Haftanın günleri ve günün saatlerine göre geri bildirim yoğunluğu.")
               ),
               highcharter::highchartOutput(ns("ya_saat_gun_heatmap"), height = "350px")
@@ -684,7 +684,7 @@ adminYanitAnaliziServer <- function(id) {
       data <- ya_data()$uzunluk_analiz
       if (nrow(data) == 0) return(highcharter::highchart())
 
-      # Sıralama: Kısa → Çok Uzun
+      # Sıralama: Kısa -> Çok Uzun
       sira <- c("Kısa (< 500)", "Orta (500-1500)", "Uzun (1500-3000)", "Çok Uzun (> 3000)")
       data$uzunluk_grubu <- factor(data$uzunluk_grubu, levels = sira)
       data <- data[order(data$uzunluk_grubu), ]
@@ -1034,7 +1034,7 @@ adminYanitAnaliziServer <- function(id) {
     # GRAFİKLER: ZAMAN & KULLANICI ANALİZİ
     # ============================================================
 
-    # Saat × Gün ısı haritası
+    # Saat \U00D7 Gün ısı haritası
     output$ya_saat_gun_heatmap <- highcharter::renderHighchart({
       # Yenile butonuna açık bağımlılık
       refresh$trigger()
@@ -1044,7 +1044,7 @@ adminYanitAnaliziServer <- function(id) {
 
       # Saatlik ve günlük verileri çapraz tablo için birleştir
       # SQL Server'da DATEPART(WEEKDAY, ...) 1=Pazar olarak döner
-      # Saat × gün ısı haritası için ayrı bir sorgu lazım
+      # Saat \U00D7 gün ısı haritası için ayrı bir sorgu lazım
       # Mevcut verilerden oluşturabiliriz ancak ideal olan ayrı sorgu
       # Şimdilik saatlik veriyi kullan
 

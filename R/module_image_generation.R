@@ -52,7 +52,7 @@ get_user_image_dir <- function(user_id, chat_id = NULL) {
 }
 
 # ------------------------------------------------------------------------------
-# TÜRKÇE → İNGİLİZCE ÇEVİRİ
+# TÜRKÇE -> İNGİLİZCE ÇEVİRİ
 # ------------------------------------------------------------------------------
 
 #' Türkçe promptu İngilizceye çevir
@@ -133,7 +133,7 @@ translate_prompt_to_english <- function(turkish_prompt, api_key) {
 }
 
 # ------------------------------------------------------------------------------
-# İNGİLİZCE → TÜRKÇE ÇEVİRİ (DALL-E YORUMU İÇİN)
+# İNGİLİZCE -> TÜRKÇE ÇEVİRİ (DALL-E YORUMU İÇİN)
 # ------------------------------------------------------------------------------
 
 #' DALL-E yorumunu detaylı bir açıklamaya dönüştür ve Türkçeye çevir

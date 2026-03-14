@@ -1,16 +1,16 @@
 # R/server_music_handlers.R
 # Dosya Yolu: R/server_music_handlers.R
 # Açıklama: Arka plan müzik yönetimi için observer fonksiyonları.
-# Basit akış: Ana Tema (bir kez) → Karakter Müziği (rastgele döngü)
+# Basit akış: Ana Tema (bir kez) -> Karakter Müziği (rastgele döngü)
 # Giriş ekranı için ayrı müzik yöneticisi: SpaceIntroMusic (www/music/intro/)
 # Klasör yapısı:
-#   www/music/intro/          → Giriş ekranı uzay müzikleri
-#   www/music/Ana Tema/       → Ana tema müzikleri (bir kez çalınır)
-#   www/music/Karakter/mergen/ → MERGEN karakter müzikleri
-#   www/music/Karakter/ulgen/  → ÜLGEN karakter müzikleri
-#   www/music/Karakter/kayra/  → KAYRA karakter müzikleri
-#   www/music/Karakter/erlik/  → ERLİK karakter müzikleri
-#   www/music/Karakter/umay/   → UMAY ANA karakter müzikleri
+#   www/music/intro/          -> Giriş ekranı uzay müzikleri
+#   www/music/Ana Tema/       -> Ana tema müzikleri (bir kez çalınır)
+#   www/music/Karakter/mergen/ -> MERGEN karakter müzikleri
+#   www/music/Karakter/ulgen/  -> ÜLGEN karakter müzikleri
+#   www/music/Karakter/kayra/  -> KAYRA karakter müzikleri
+#   www/music/Karakter/erlik/  -> ERLİK karakter müzikleri
+#   www/music/Karakter/umay/   -> UMAY ANA karakter müzikleri
 
 #' Müzik İşleyicilerini Başlat
 #' @description Arka plan müzik yönetimi için observer'ları kurar

@@ -14,7 +14,7 @@ mergen_debug_cat <- function(...) {
 }
 
 # --- ANA LLM API ÇAĞRI FONKSİYONU ---
-# İşçi güvenli (worker-safe) LLM çağrısı — orijinal çalışan sürümden korunmuştur
+# İşçi güvenli (worker-safe) LLM çağrısı - orijinal çalışan sürümden korunmuştur
 call_local_llm <- function(chat_history, current_settings) {
   llm_start_time <- Sys.time()
   selected_model <- current_settings$model_selection

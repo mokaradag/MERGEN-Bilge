@@ -101,7 +101,7 @@ chatActionsInit <- function(input, session, values,
     showToast(session, "Yanıt yeniden oluşturuldu.", "success")
   }, ignoreInit = TRUE)
 
-  # Edit → open modal
+  # Edit -> open modal
   shiny::observeEvent(input$edit_message_request, {
     req(input$edit_message_request)
     msg_id <- input$edit_message_request

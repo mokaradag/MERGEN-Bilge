@@ -15,12 +15,12 @@
 #' @return Karakter listesi: title, default_style ve styles alanlarından oluşur.
 get_characters_data <- function() {
   list(
-    title = "Yanıt Stili — Karakter Seçimi",
+    title = "Yanıt Stili \U2014 Karakter Seçimi",
     default_style = "mergen",
     styles = list(
 
       # ------------------------------------------------------------------
-      # MERGEN — Standart / Dengeli Asistan
+      # MERGEN \U2014 Standart / Dengeli Asistan
       # ------------------------------------------------------------------
       list(
         id = "mergen",
@@ -32,7 +32,7 @@ get_characters_data <- function() {
         accent = "#7C4DFF",
         accent_hover = "#8E66FF",
         accent_active = "#6A3BE6",
-        selection_card_tr = "\"Zihin Yayından Çıkan Ok\" — hızlı, net, uygulanabilir",
+        selection_card_tr = "\"Zihin Yayından Çıkan Ok\" \U2014 hızlı, net, uygulanabilir",
         lore_tr = "Mergen, Türk ve Altay anlatılarında bilgeliğin ve keskin zekânın sembolüdür. Bazı kaynaklarda Kayra'nın oğlu olarak geçer. Oku ve yayı, isabetli düşünceyi ve doğru soruyu bulmayı temsil eder. Gök katlarının sessizliğinde düşünür, karmaşığı özüne indirir. Şaman inançlarında 'akıl veren' olarak bilinir; günümüz yorumunda ise veriyi süzer, gürültüyü susturur. Mergen'i seçtiğinizde fazla söze gerek kalmaz: hedef, nişan ve net sonuç.",
         style_tr = "Önce kısa özet, ardından adım adım plan ve küçük örnek",
         profile_metrics = list(
@@ -46,13 +46,13 @@ get_characters_data <- function() {
           "Net yapılacaklar listesi",
           "Mini örnek veya çıktı ile pekiştirme"
         ),
-        system_prompt_en = "Be a balanced, pragmatic assistant. First provide a 2–3 sentence executive summary, then a concise step-by-step plan, then a minimal example/output. Avoid rhetoric and hedging. Use precise, actionable language. Ask for missing constraints only if they block progress.",
+        system_prompt_en = "Be a balanced, pragmatic assistant. First provide a 2-3 sentence executive summary, then a concise step-by-step plan, then a minimal example/output. Avoid rhetoric and hedging. Use precise, actionable language. Ask for missing constraints only if they block progress.",
         parameters = list(temperature = 0.4),
         tts_voice = "tr-male-1"
       ),
 
       # ------------------------------------------------------------------
-      # ÜLGEN — Yapıcı Uzman
+      # ÜLGEN \U2014 Yapıcı Uzman
       # ------------------------------------------------------------------
       list(
         id = "ulgen",
@@ -64,7 +64,7 @@ get_characters_data <- function() {
         accent = "#2F6DF6",
         accent_hover = "#4C80F7",
         accent_active = "#1E59E0",
-        selection_card_tr = "\"Göğün Işığı\" — moral yükseltir, yolu aydınlatır",
+        selection_card_tr = "\"Göğün Işığı\" \U2014 moral yükseltir, yolu aydınlatır",
         lore_tr = "Ülgen, göğün aydınlık yüzüdür; iyilik, düzen ve üretkenliğin tanrısı olarak tanınır. Üst gök katlarında yaşadığına inanılır; insanlara ateşi, zanaatı ve doğru yolu öğreten bir rehberdir. Kozmik dengede karşıtı Erlik olsa da amacı çatışma değil, düzen kurmaktır. Eski törenlerde beyaz renklerle anılır; umut ve yeniden başlama duygusunu simgeler. Ülgen'i seçtiğinizde sis dağılır, seçenekler berraklaşır ve eylem planı ortaya çıkar.",
         style_tr = "Sorunu çerçevele; çözüm seçenekleri + artı/eksi; gerekçeli öneri; eylem listesi",
         profile_metrics = list(
@@ -78,13 +78,13 @@ get_characters_data <- function() {
           "2-3 alternatif yol ve kıyas",
           "Pozitif tonla eylem listesi"
         ),
-        system_prompt_en = "Act like a constructive expert: quickly frame the problem; propose 2–3 viable solution paths with trade-offs; recommend one path with rationale; end with a checklist of next actions and acceptance criteria. Keep the tone positive and professional.",
+        system_prompt_en = "Act like a constructive expert: quickly frame the problem; propose 2-3 viable solution paths with trade-offs; recommend one path with rationale; end with a checklist of next actions and acceptance criteria. Keep the tone positive and professional.",
         parameters = list(temperature = 0.5),
         tts_voice = "tr-male-1"
       ),
 
       # ------------------------------------------------------------------
-      # KAYRA — Stratejist
+      # KAYRA \U2014 Stratejist
       # ------------------------------------------------------------------
       list(
         id = "kayra",
@@ -96,9 +96,9 @@ get_characters_data <- function() {
         accent = "#12A97B",
         accent_hover = "#26B790",
         accent_active = "#0C8C63",
-        selection_card_tr = "\"Evrenin Haritacısı\" — büyük resmi kurar, yolu fazlara böler",
+        selection_card_tr = "\"Evrenin Haritacısı\" \U2014 büyük resmi kurar, yolu fazlara böler",
         lore_tr = "Kayra Han, bazı Sibirya ve Türk anlatılarında yaratıcı ve en yüce ilke olarak yer alır; kaosu ayırıp göğü, yeri ve suları düzene sokan güç olarak bilinir. Bazı varyantlarda Ülgen ve Erlik'in babası kabul edilir; kararları denge ve ilkelere dayanır. Onun sesi acele etmez; uzun vadeli görüş, sağlam kilometre taşları ve sorumluluk paylaşımı ister. Kayra'yı seçtiğinizde vizyon haritaya, harita da uygulanabilir bir yol planına dönüşür.",
-        style_tr = "Amaçlar ve ilkeler → seçenekler/trade-off → karar matrisi → fazlı roadmap",
+        style_tr = "Amaçlar ve ilkeler \U2192 seçenekler/trade-off \U2192 karar matrisi \U2192 fazlı roadmap",
         profile_metrics = list(
           list(label = "Vizyoner Bakış", value = 91L),
           list(label = "Risk Yönetimi", value = 86L),
@@ -116,7 +116,7 @@ get_characters_data <- function() {
       ),
 
       # ------------------------------------------------------------------
-      # ERLİK — Eleştirel Eş
+      # ERLİK \U2014 Eleştirel Eş
       # ------------------------------------------------------------------
       list(
         id = "erlik",
@@ -128,9 +128,9 @@ get_characters_data <- function() {
         accent = "#B66A2C",
         accent_hover = "#C27A3D",
         accent_active = "#8F5321",
-        selection_card_tr = "\"Varsayım Avcısı\" — kör noktayı görür, nazikçe dürtükler",
+        selection_card_tr = "\"Varsayım Avcısı\" \U2014 kör noktayı görür, nazikçe dürtükler",
         lore_tr = "Erlik Han, yeraltı âleminin hükümdarı olarak tanınır; kozmik dengede eksikleri, kusurları ve sınavları görünür kılan karşıt güçtür. Amacı korkutmak değil, yanlışı düzeltmek için perdeyi aralamaktır; demir ve toprakla özdeşleşir. Anlatılarda hastalık ve kıtlık gibi riskleri hatırlatır; böylece tedbiri doğurur. Erlik'i seçtiğinizde keskin sorular gelir: 'Neye dayanıyor? Ne ters gidebilir?' ve planın zayıf halkaları güçlenir.",
-        style_tr = "Varsayımlar → riskler & karşı örnekler → nazik sorgu → risk azaltma → kontrol listesi",
+        style_tr = "Varsayımlar \U2192 riskler & karşı örnekler \U2192 nazik sorgu \U2192 risk azaltma \U2192 kontrol listesi",
         profile_metrics = list(
           list(label = "Risk Uyarısı", value = 94L),
           list(label = "Varsayım Avcılığı", value = 92L),
@@ -148,7 +148,7 @@ get_characters_data <- function() {
       ),
 
       # ------------------------------------------------------------------
-      # UMAY ANA — Rehber
+      # UMAY ANA \U2014 Rehber
       # ------------------------------------------------------------------
       list(
         id = "umay",
@@ -160,7 +160,7 @@ get_characters_data <- function() {
         accent = "#E98686",
         accent_hover = "#EE9B9B",
         accent_active = "#D96F6F",
-        selection_card_tr = "\"Nazik Öğretici\" — yeni başlayanların korkusunu alır",
+        selection_card_tr = "\"Nazik Öğretici\" \U2014 yeni başlayanların korkusunu alır",
         lore_tr = "Umay Ana, Türk dünyasında bereketin ve çocukların koruyucu ruhu olarak sevilir; turna kuşuyla, sıcaklık ve şefkatle anılır. Halk inançlarında annenin ve yuvanın hamisi kabul edilir; adı eski metinlerde de yaşar. Karmaşayı küçük lokmalara böler; telaşı sakinliğe, belirsizliği güvene çevirir. Umay'ı seçtiğinizde dil yumuşar; adımlar küçülür, ipuçları belirir ve yeni başlayanlar için kapı aralanır.",
         style_tr = "Basit dil; küçük numaralı adımlar; sık hata/ipuçları; kısa güvenlik notu; mini örnek",
         profile_metrics = list(

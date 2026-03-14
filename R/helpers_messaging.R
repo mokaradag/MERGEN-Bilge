@@ -75,7 +75,7 @@ parse_ai_response_robustly <- function(content) {
   content <- gsub("\\[5\\]:\\s*(https?://[^\\s]+)", '[5]: <a href="\\1" target="_blank">\\1</a>', content)
   content <- gsub("\\[6\\]:\\s*(https?://[^\\s]+)", '[6]: <a href="\\1" target="_blank">\\1</a>', content)
 
-  # NEW: Guard — if no code fences, just return markdown
+  # NEW: Guard - if no code fences, just return markdown
   fences <- stringr::str_locate_all(content, "```")[[1]]
   if (is.null(fences) || NROW(fences) < 2) {
     html_content <- commonmark::markdown_html(content, hardbreaks = TRUE, extensions = c("strikethrough", "table"))

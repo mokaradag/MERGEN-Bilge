@@ -153,19 +153,19 @@ filePreviewServer <- function(id) {
           # Modal iskeleti (boş hedef; JS mesajı ile doldurulacak)
           showModal(modalDialog(
             title = modalTitle,
-            # Tek dikey kaydırma modal gövdesine — iç kapsayıcı kaydırmasız
+            # Tek dikey kaydırma modal gövdesine \U2014 iç kapsayıcı kaydırmasız
             tags$head(tags$style(HTML("
               /* Modal gövdesi tek kaydırma alanı olsun */
               .modal-body { max-height: 80vh; overflow-y: auto; }
               /* İçerik kapsayıcısında kaydırma olmasın */
               .modal-body #", ns("docx_preview_container"), " { overflow: visible !important; }
-              /* İframe içinde kaydırma kapalı — içeriği iframe yüksekliği kadar göster */
+              /* İframe içinde kaydırma kapalı \u2014 içeriği iframe yüksekliği kadar göster */
               .modal-body #", ns("docx_preview_container"), " iframe { display:block; width:100%; border:0; overflow:hidden; }
             "))),
             tags$div(
               id = ns("docx_preview_container"),
               style = "overflow: visible; background: white; padding: 20px; border-radius: 8px;",
-              HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor…</div>")
+              HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor\U2026</div>")
             ),
             size = "l", easyClose = TRUE, footer = footer
           ))

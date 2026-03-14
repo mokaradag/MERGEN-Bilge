@@ -375,7 +375,7 @@ adminGeriBildirimServer <- function(id) {
               style = "min-height: 460px;",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("arrow-right-arrow-left"), " Memnuniyet – NPS Korelasyonu"),
+                h4(class = "card-title", icon("arrow-right-arrow-left"), " Memnuniyet \U2013 NPS Korelasyonu"),
                 admin_create_info_button("Memnuniyet puanına göre ortalama NPS puanı. Kabarcık büyüklüğü yanıt sayısını temsil eder.")
               ),
               highcharter::highchartOutput(ns("gb_korelasyon_chart"), height = "350px")
@@ -743,7 +743,7 @@ adminGeriBildirimServer <- function(id) {
         highcharter::hc_credits(enabled = FALSE)
     })
 
-    # Memnuniyet – NPS korelasyonu (bubble grafik)
+    # Memnuniyet \U2014 NPS korelasyonu (bubble grafik)
     output$gb_korelasyon_chart <- highcharter::renderHighchart({
       data <- gb_data()$memnuniyet_nps_korelasyon
       if (nrow(data) == 0) return(highcharter::highchart())

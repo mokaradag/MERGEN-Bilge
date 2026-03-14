@@ -125,13 +125,13 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	  "- 'Ortalama proje süresi', 'Toplam bütçe', 'Maliyet özeti'\n\n",
 	  
 	  "**SPESİFİK SORU ÖRNEKLERİ (FİLTRE EKLE):**\n",
-	  "- 'P1234 projesinin durumu nedir?' → filter: ProjeKodu='P1234'\n",
-  	  "- 'Malzeme Üretim projesinin durumu nedir?' → filter: ProjeAdi='Malzeme Üretim'\n",
-	  "- 'Ahmet Yılmaz hangi projelerde?' → filter: KaynakAdi contains 'Ahmet Yılmaz'\n",
-	  "- 'PGRM program müdürlüğündeki projeler' → filter: ProgMdlKodu='4_PGRM'\n",	  
-	  "- 'Elektronik Tasarım Müdürlüğündeki çalışanlar' → filter: MasrafYeri='Elektronik Tasarım Müdürlüğü'\n",	 	  
-	  "- '12345678 masraf yerindeki çalışanlar' → filter: MasrafYeriKodu='12345678'\n",
-	  "- 'Aktif durumdaki projeler' → filter: Durum='1'\n\n",
+	  "- 'P1234 projesinin durumu nedir?' -> filter: ProjeKodu='P1234'\n",
+  	  "- 'Malzeme Üretim projesinin durumu nedir?' -> filter: ProjeAdi='Malzeme Üretim'\n",
+	  "- 'Ahmet Yılmaz hangi projelerde?' -> filter: KaynakAdi contains 'Ahmet Yılmaz'\n",
+	  "- 'PGRM program müdürlüğündeki projeler' -> filter: ProgMdlKodu='4_PGRM'\n",	  
+	  "- 'Elektronik Tasarım Müdürlüğündeki çalışanlar' -> filter: MasrafYeri='Elektronik Tasarım Müdürlüğü'\n",	 	  
+	  "- '12345678 masraf yerindeki çalışanlar' -> filter: MasrafYeriKodu='12345678'\n",
+	  "- 'Aktif durumdaki projeler' -> filter: Durum='1'\n\n",
 	  
 	  "### ANALİZ EVRENİ VE TERMİNOLOJİ\n",
 	  "**Proje Yönetimi Terimleri:**\n",
@@ -149,12 +149,12 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	"1. **GENEL SORULARDA FİLTRE KULLANMA:** \n",
 	"   - Kullanıcı 'kaç proje var', 'toplam', 'tüm', 'hepsi', 'dağılım', 'liste' gibi kelimeler kullanıyorsa,\n",
 	"   - VE spesifik bir kod/isim BELİRTMİYORSA,\n",
-	"   - → filters: [] (BOŞ DİZİ döndür)\n",
+	"   - -> filters: [] (BOŞ DİZİ döndür)\n",
 	"   - Aggregation olarak 'count' veya 'group_by' kullanabilirsin.\n\n",
 
 	"2. **SPESİFİK SORULARDA FİLTRE EKLE:**\n",
 	"   - Proje kodu (P123), masraf yeri (M1), kişi adı (Ahmet Yılmaz) gibi BELİRLİ varlıklar belirtilmişse,\n",
-	"   - → Bu varlıkları filters dizisine ekle.\n\n",
+	"   - -> Bu varlıkları filters dizisine ekle.\n\n",
 
 	"3. **Çoklu Filtreleme:** Kullanıcı birden fazla koşul belirtirse (örn: 'M1 masraf yerinde unvanı mühendis olanlar'), bunların hepsini 'filters' listesine ekle.\n",
 
@@ -186,8 +186,8 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     "Bazı alanlar sayısal veya kodlanmış değerler kullanır:\n",
     "- **AktifKaynak, Durum, Status**: 1 (aktif/yes), 0 (pasif/no)\n",
     "- **Onay, Approval**: 1 (onaylı), 0 (onaysız)\n",
-    "Kullanıcı 'aktif', 'Y', 'yes' derse → value: '1' kullan.\n",
-    "Kullanıcı 'pasif', 'N', 'no' derse → value: '0' kullan.\n\n",
+    "Kullanıcı 'aktif', 'Y', 'yes' derse -> value: '1' kullan.\n",
+    "Kullanıcı 'pasif', 'N', 'no' derse -> value: '0' kullan.\n\n",
     
     "### OPERATÖRLER ('operation'):\n",
     "- 'exact_match': Kodlar ve ID'ler için (örn: P101, M1).\n",
@@ -764,9 +764,9 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   preview_data <- NULL
   if (mode == "full") {
     full_table_md <- paste0(
-      "╔═══════════════════════════════════════════════════════════════╗\n",
-      "║           DETAYLI İSTATİSTİKSEL ANALİZ MODU                 ║\n",
-      "╚═══════════════════════════════════════════════════════════════╝\n\n",
+      "+===============================================================+\n",
+      "|           DETAYLI İSTATİSTİKSEL ANALİZ MODU                 |\n",
+      "+===============================================================+\n\n",
       "AŞAĞIDAKİ TÜM SÜTUNLARI DETAYLI ANALİZ ET!\n\n"
     )
     
@@ -1460,9 +1460,9 @@ print_score_table <- function(scores_df) {
   scores_df <- scores_df[order(-scores_df$final_score), ]
   
   cat("\n")
-  cat("╔══════════════════════════════════════════════════════════════════════════════╗\n")
-  cat("║                        SORGU İLGİLİLİK SKORLARI                             ║\n")
-  cat("╚══════════════════════════════════════════════════════════════════════════════╝\n")
+  cat("+==============================================================================+\n")
+  cat("|                        SORGU İLGİLİLİK SKORLARI                             |\n")
+  cat("+==============================================================================+\n")
   cat("\n")
   
   max_name_len <- max(nchar(scores_df$query_name), na.rm = TRUE)
@@ -1470,8 +1470,8 @@ print_score_table <- function(scores_df) {
   
   cat(sprintf("%-6s %-*s %10s %12s %11s\n", 
               "ID", max_name_len, "Sorgu Adı", "AI Skor", "Heur. Skor", "Final Skor"))
-  cat(strrep("─", 6 + max_name_len + 10 + 12 + 11 + 5), "\n")
-  
+  cat(strrep("-", 6 + max_name_len + 10 + 12 + 11 + 5), "\n")
+
   for (i in seq_len(nrow(scores_df))) {
     row <- scores_df[i, ]
     name_display <- substr(row$query_name, 1, max_name_len)
@@ -1487,6 +1487,6 @@ print_score_table <- function(scores_df) {
                 row$query_id, max_name_len, name_display, ai_str, heur_str, final_str))
   }
   
-  cat(strrep("─", 6 + max_name_len + 10 + 12 + 11 + 5), "\n")
+  cat(strrep("-", 6 + max_name_len + 10 + 12 + 11 + 5), "\n")
   cat("\n")
 }

@@ -2,7 +2,7 @@
 # R/utils_file_index.R
 # Dosya Yolu: R/utils_file_index.R
 # Açıklama: Ağ/yerel klasörlerde hızlı dosya arama için önbellekli indeks
-# mekanizması. basename → tam yol eşlemesi tutar ve TTL ile yenilenir.
+# mekanizması. basename -> tam yol eşlemesi tutar ve TTL ile yenilenir.
 # global.R tarafından utils_path_helpers.R'den sonra source() ile çağrılır.
 # ==============================================================================
 
@@ -11,7 +11,7 @@
 FILE_INDEX_TTL_MIN <- suppressWarnings(as.numeric(Sys.getenv("MCP_INDEX_TTL_MIN", "10")))
 if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 10
 
-# Belirtilen klasördeki dosyaları tarar ve basename → tam yol haritası oluşturur
+# Belirtilen klasördeki dosyaları tarar ve basename -> tam yol haritası oluşturur
 .build_basename_index <- function(base_path, pattern = "\\.(docx|doc|pdf|xlsx|xls|csv|txt|json|md|r|py|log)$", force = FALSE) {
   # not: büyük ağ klasörlerinde tekrar taramayı sınırlamak için TTL
   now <- Sys.time()
