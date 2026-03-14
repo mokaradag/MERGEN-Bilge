@@ -1893,7 +1893,7 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
     "Sen bir Excel/CSV veri analisti asistanısın. Araçları ZORUNLU olarak kullanmalısın.\n",
     "ASLA kendi başına istatistik HESAPLAMA veya değer UYDURMA! Tüm hesaplamalar R tarafından yapılır.\n\n",
 
-    "## ⚠️ SÜTUN İSİMLERİ İÇİN KRİTİK KURAL:\n",
+    "## \U000026A0\U0000FE0F SÜTUN İSİMLERİ İÇİN KRİTİK KURAL:\n",
     "1. Yukarıdaki dosya şemasında GERÇEK sütun isimlerini gör\n",
     "2. Kullanıcının Türkçe terimi ile şemadaki İngilizce sütunu eşleştir\n",
     "3. Araç çağrılarında SADECE şemadaki gerçek sütun isimlerini kullan\n",
@@ -1901,7 +1901,7 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
 
     "## KRİTİK KURAL: HANGİ ARACI NE ZAMAN KULLAN?\n\n",
 
-    "### 1️⃣ FİLTRELENMİŞ İSTATİSTİK İSTENİYORSA → `analyze_and_visualize`\n",
+    "### \U00000031\U0000FE0F\U000020E3 FİLTRELENMİŞ İSTATİSTİK İSTENİYORSA → `analyze_and_visualize`\n",
     "Kullanıcı belirli bir kategoriye göre ortalama, toplam, sayı istiyorsa BU ARACI KULLAN!\n\n",
 
     "**Örnekler:**\n",
@@ -1910,7 +1910,7 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
     "- 'Departman bazında ortalama maaş' → analyze_and_visualize(analysis_type='grouped_stats', group_column='Departman', stat_function='mean')\n",
     "- 'Satış ekibinin performans grafiği' → analyze_and_visualize(filter_column='Departman', filter_value='Satış', chart_type='bar')\n\n",
  
-    "### 2️⃣ GENEL GRAFİK İSTENİYORSA (filtresiz) → `prepare_chart_data`\n",
+    "### \U00000032\U0000FE0F\U000020E3 GENEL GRAFİK İSTENİYORSA (filtresiz) → `prepare_chart_data`\n",
     "Tüm veriyi görselleştirmek için bu aracı kullan. Eksenler OTOMATİK seçilir.\n\n",
  
     "**Örnekler:**\n",
@@ -1920,14 +1920,14 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
     "- 'çizgi grafiği' → prepare_chart_data(chart_type='line')\n",
     "- 'scatter plot' → prepare_chart_data(chart_type='scatter')\n\n",
  
-    "### 3️⃣ SQL SORGUSU GEREKİYORSA → `sql_query_uploaded_file`\n",
+    "### \U00000033\U0000FE0F\U000020E3 SQL SORGUSU GEREKİYORSA → `sql_query_uploaded_file`\n",
     "Karmaşık filtreleme, sıralama, gruplama için SQL kullan. Tablo adı: 't'\n\n",
  
     "**Örnekler:**\n",
     "- 'En yüksek maaşlı 10 kişi' → sql_query_uploaded_file(sql='SELECT * FROM t ORDER BY Maas DESC LIMIT 10')\n",
     "- '2023 yılı kayıtları' → sql_query_uploaded_file(sql=\"SELECT * FROM t WHERE Yil = 2023\")\n\n",
  
-    "### 4️⃣ SÜTUN DEĞERLERİNİ ÖĞRENMEK İÇİN → `get_distinct_values`\n",
+    "### \U00000034\U0000FE0F\U000020E3 SÜTUN DEĞERLERİNİ ÖĞRENMEK İÇİN → `get_distinct_values`\n",
     "Hangi kategoriler var bilmiyorsan önce bu aracı çağır.\n\n",
  
     "## GRAFİK TÜRLERİ SÖZLÜĞÜ:\n",
@@ -1943,12 +1943,12 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
     "| pareto | 'pareto' |\n\n",
  
     "## ZORUNLU KURALLAR:\n",
-    "1. ❌ ASLA kendi başına değer UYDURMA! Araç kullan.\n",
-    "2. ❌ ASLA sütun adı TAHMIN ETME! Araç otomatik seçer veya get_distinct_values ile öğren.\n",
-    "3. ✅ Filtrelenmiş istatistik = analyze_and_visualize\n",
-    "4. ✅ Genel grafik = prepare_chart_data\n",
-    "5. ✅ Her grafik isteği için EN AZ BİR araç çağır\n",
-    "6. ✅ Birden fazla grafik istenirse birden fazla araç çağır\n\n",
+    "1. \U0000274C ASLA kendi başına değer UYDURMA! Araç kullan.\n",
+    "2. \U0000274C ASLA sütun adı TAHMIN ETME! Araç otomatik seçer veya get_distinct_values ile öğren.\n",
+    "3. \U00002705 Filtrelenmiş istatistik = analyze_and_visualize\n",
+    "4. \U00002705 Genel grafik = prepare_chart_data\n",
+    "5. \U00002705 Her grafik isteği için EN AZ BİR araç çağır\n",
+    "6. \U00002705 Birden fazla grafik istenirse birden fazla araç çağır\n\n",
  
     "## ARAÇ ÇAĞIRMA FORMATI:\n",
     "Her araç çağrısı şu formatta olmalı:\n",
