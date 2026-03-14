@@ -46,7 +46,8 @@ settingsInit <- function(session, parent_session = NULL) {
     ai_expert_talk_style    = "profesyonel",
     music_volume            = 0.3,
     experience_mode         = "odak",
-    show_intro_animation    = TRUE
+    show_intro_animation    = TRUE,
+    claude_code_timeout     = claude_code_config$timeout_seconds
   )
 
   # ---- Alt modülleri başlat ----

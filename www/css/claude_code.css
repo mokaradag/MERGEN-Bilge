@@ -1,18 +1,22 @@
 /* =============================================================================
    Dosya Yolu: www/css/claude_code.css
    Açıklama: Claude Code entegrasyon sayfasının stil tanımları.
-             8-bit piksel animasyonları, karakter temalı renkler,
-             terminal görünümü ve duyarlı tasarım için CSS kuralları.
+             Karakter temalı renkler, sabit düzen, retro karşılama ekranı,
+             küçültülmüş 8-bit animasyon, araç kullanımı blokları,
+             durum çubuğu ikon/renk desteği ve duyarlı tasarım.
    ============================================================================= */
 
-/* --- Ana Kapsayıcı --- */
+/* --- Tema Değişkenleri (karakter bazlı güncellenir) --- */
 .claude-code-container {
+  --cc-theme-accent: #7C4DFF;
+  --cc-theme-hover: #8E66FF;
   width: 100%;
   max-width: 100%;
   padding: 0;
-  min-height: calc(100vh - 60px);
+  height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* --- Rozet --- */
@@ -25,7 +29,7 @@
   font-weight: 700;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  background: linear-gradient(135deg, #7C4DFF 0%, #536DFE 100%);
+  background: linear-gradient(135deg, var(--cc-theme-accent) 0%, var(--cc-theme-hover) 100%);
   color: #fff;
   margin-left: 10px;
   vertical-align: middle;
@@ -58,30 +62,33 @@
   color: #F44336;
 }
 
-.cc-status-unknown {
+.cc-status-unknown,
+.cc-status-checking {
   background: rgba(158, 158, 158, 0.15);
   color: #9E9E9E;
 }
 
-/* --- Ana İçerik Düzeni --- */
+/* --- Ana İçerik Düzeni (sabit yükseklik) --- */
 .cc-main-content {
   display: flex;
   gap: 16px;
   padding: 16px;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
-/* --- Sol Panel --- */
+/* --- Sol Panel (kaydırılabilir, yatay taşma yok) --- */
 .cc-sidebar-panel {
-  width: 320px;
-  min-width: 280px;
-  max-width: 360px;
+  width: 300px;
+  min-width: 260px;
+  max-width: 320px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
-  max-height: calc(100vh - 130px);
+  overflow-x: hidden;
+  max-height: 100%;
 }
 
 /* --- Ayar Kartı --- */
@@ -95,6 +102,7 @@
 
 .cc-settings-card:hover {
   border-color: rgba(124, 77, 255, 0.3);
+  border-color: color-mix(in srgb, var(--cc-theme-accent) 30%, transparent);
 }
 
 .cc-card-title {
@@ -108,8 +116,54 @@
 }
 
 .cc-card-title i {
-  color: #7C4DFF;
+  color: var(--cc-theme-accent);
   font-size: 14px;
+}
+
+/* --- Proje Dizini Satırı --- */
+.cc-workdir-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.cc-workdir-row .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.cc-browse-btn {
+  margin-top: 0;
+  min-width: 36px;
+  height: 34px;
+  padding: 0 8px !important;
+  border-radius: 8px !important;
+  background: var(--input-bg, #0d0d1a) !important;
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1)) !important;
+  color: var(--cc-theme-accent) !important;
+  transition: all 0.2s !important;
+}
+
+.cc-browse-btn:hover {
+  border-color: var(--cc-theme-accent) !important;
+  background: rgba(124, 77, 255, 0.1) !important;
+}
+
+/* --- Model Seçim Alanı --- */
+.cc-model-select-wrapper {
+  margin-bottom: 4px;
+}
+
+.cc-select-label {
+  font-size: 12px;
+  color: var(--text-secondary, #aaa);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.cc-model-select-wrapper .form-group {
+  margin-bottom: 0;
 }
 
 /* --- Giriş Alanları --- */
@@ -134,98 +188,9 @@
 }
 
 .cc-settings-card .form-control:focus {
-  border-color: #7C4DFF;
+  border-color: var(--cc-theme-accent);
   box-shadow: 0 0 0 2px rgba(124, 77, 255, 0.2);
   outline: none;
-}
-
-/* --- CLI Durum Bilgisi --- */
-.cc-cli-status {
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  margin-bottom: 10px;
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  line-height: 1.4;
-}
-
-.cc-cli-status code {
-  font-size: 11px;
-  word-break: break-all;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.cc-cli-found {
-  background: rgba(76, 175, 80, 0.1);
-  color: #81C784;
-  border: 1px solid rgba(76, 175, 80, 0.2);
-}
-
-.cc-cli-missing {
-  background: rgba(255, 152, 0, 0.1);
-  color: #FFB74D;
-  border: 1px solid rgba(255, 152, 0, 0.2);
-}
-
-/* --- Yardım Metni --- */
-.cc-help-text {
-  display: block;
-  color: var(--text-secondary, #888);
-  font-size: 11px;
-  margin-top: -6px;
-  margin-bottom: 10px;
-  padding-left: 2px;
-}
-
-/* --- Bağlantı Test Alanı --- */
-.cc-test-row {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.cc-test-btn {
-  width: 100%;
-  border-radius: 8px !important;
-  font-size: 13px !important;
-  padding: 8px 16px !important;
-}
-
-.cc-test-loading,
-.cc-test-success,
-.cc-test-error {
-  font-size: 12px;
-  padding: 8px;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.cc-test-loading {
-  color: #64B5F6;
-  background: rgba(100, 181, 246, 0.1);
-}
-
-.cc-test-success {
-  color: #81C784;
-  background: rgba(129, 199, 132, 0.1);
-}
-
-.cc-test-error {
-  color: #E57373;
-  background: rgba(229, 115, 115, 0.1);
-}
-
-.cc-test-success small,
-.cc-test-error small {
-  font-size: 11px;
-  opacity: 0.8;
 }
 
 /* --- Senaryo Izgarası --- */
@@ -252,34 +217,76 @@
 }
 
 .cc-scenario-btn:hover {
-  border-color: #7C4DFF !important;
+  border-color: var(--cc-theme-accent) !important;
   background: rgba(124, 77, 255, 0.08) !important;
   transform: translateY(-1px);
 }
 
 .cc-scenario-btn i {
-  color: #7C4DFF;
+  color: var(--cc-theme-accent);
   font-size: 14px;
   flex-shrink: 0;
 }
 
-/* --- Dizin İçerik Listesi --- */
+/* --- Dizin İçerik Kartı --- */
 .cc-dir-card {
   flex: 1;
-  min-height: 150px;
+  min-height: 120px;
   max-height: 300px;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Dizin gezinti çubuğu */
+.cc-dir-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.cc-dir-up-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1)) !important;
+  color: var(--text-secondary, #aaa) !important;
+  font-size: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.cc-dir-up-btn:hover {
+  border-color: var(--cc-theme-accent) !important;
+  color: var(--cc-theme-accent) !important;
+}
+
+.cc-dir-current-path {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cc-refresh-btn {
-  float: right;
-  margin-top: -6px;
-  font-size: 11px !important;
-  padding: 2px 8px !important;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 !important;
   border-radius: 6px !important;
   background: transparent !important;
   color: var(--text-secondary, #aaa) !important;
   border: 1px solid var(--border-color, rgba(255,255,255,0.1)) !important;
+  font-size: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .cc-dir-list {
@@ -318,6 +325,19 @@
 .cc-dir-klasor i { color: #FFD54F; }
 .cc-dir-dosya i { color: #90CAF9; }
 
+/* Tıklanabilir klasörler */
+.cc-dir-clickable {
+  cursor: pointer;
+}
+
+.cc-dir-clickable:hover {
+  background: rgba(124, 77, 255, 0.12);
+}
+
+.cc-dir-clickable:hover .cc-dir-name {
+  color: var(--cc-theme-accent);
+}
+
 .cc-dir-name {
   flex: 1;
   white-space: nowrap;
@@ -343,7 +363,7 @@
   color: #E57373;
 }
 
-/* --- Sağ Panel: Terminal --- */
+/* --- Sağ Panel: Terminal (sabit düzen) --- */
 .cc-terminal-panel {
   flex: 1;
   display: flex;
@@ -354,23 +374,47 @@
   border-radius: 12px;
   overflow: hidden;
   position: relative;
+  max-height: 100%;
 }
 
-/* --- Düşünme Kaplama Katmanı --- */
-.cc-thinking-overlay {
+/* --- Karşılama Ekranı (retro 8-bit oyun) --- */
+.cc-welcome-screen {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 5;
+  display: none;
+  background: transparent;
+}
+
+.cc-welcome-screen.cc-welcome-active {
+  display: block;
+}
+
+.cc-welcome-canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* --- Küçültülmüş Düşünme Animasyonu --- */
+.cc-thinking-mini {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  background: rgba(13, 13, 26, 0.85);
-  z-index: 10;
-  transition: opacity 0.3s ease;
+  gap: 10px;
+  padding: 8px 14px 8px 10px;
+  background: rgba(13, 13, 26, 0.9);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  z-index: 15;
   backdrop-filter: blur(4px);
+  transition: opacity 0.3s ease;
 }
 
 .cc-hidden {
@@ -378,66 +422,37 @@
   pointer-events: none;
 }
 
-/* --- 8-bit Piksel Karakter --- */
-.cc-pixel-character-container {
-  width: 128px;
-  height: 128px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  image-rendering: pixelated;
-  margin-bottom: 16px;
-}
-
-.cc-pixel-canvas {
-  width: 128px;
-  height: 128px;
+.cc-pixel-canvas-mini {
+  width: 48px;
+  height: 48px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
 
-/* --- Düşünme Metni --- */
-.cc-thinking-text {
-  font-size: 16px;
-  font-weight: 600;
+.cc-thinking-text-mini {
+  font-size: 12px;
+  font-weight: 500;
   color: #e0e0e0;
-  text-align: center;
-  letter-spacing: 0.5px;
-  animation: cc-text-blink 1.5s infinite;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.2s ease;
 }
 
-@keyframes cc-text-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* --- Çıktı Alanı --- */
+/* --- Çıktı Alanı (kaydırılabilir, sabit yükseklik) --- */
 .cc-output-wrapper {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
-  min-height: 200px;
+  min-height: 0;
 }
 
 .cc-output-area {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 100%;
-}
-
-/* Boş durum mesajı */
-.cc-output-area:empty::before {
-  content: 'Claude Code terminali hazır. Bir komut yazın ve Çalıştır düğmesine basın.';
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 200px;
-  color: var(--text-secondary, #666);
-  font-size: 14px;
-  text-align: center;
-  opacity: 0.6;
 }
 
 /* --- Mesaj Kabarcıkları --- */
@@ -453,26 +468,20 @@
 }
 
 @keyframes cc-message-appear {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .cc-message-user {
   background: rgba(124, 77, 255, 0.12);
   border: 1px solid rgba(124, 77, 255, 0.2);
-  border-left: 3px solid #7C4DFF;
+  border-left: 3px solid var(--cc-theme-accent);
 }
 
 .cc-message-assistant {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 3px solid var(--cc-accent, #7C4DFF);
+  border-left: 3px solid var(--cc-accent, var(--cc-theme-accent));
 }
 
 .cc-message-error {
@@ -498,9 +507,7 @@
   letter-spacing: 0.5px;
 }
 
-.cc-message-time {
-  margin-left: auto;
-}
+.cc-message-time { margin-left: auto; }
 
 .cc-message-duration {
   color: #81C784;
@@ -510,6 +517,17 @@
 /* --- Mesaj İçeriği --- */
 .cc-message-body {
   color: var(--text-primary, #e0e0e0);
+}
+
+.cc-user-pre {
+  white-space: pre-wrap;
+  margin: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
 }
 
 .cc-message-body pre {
@@ -528,9 +546,7 @@
   font-size: 12px;
 }
 
-.cc-message-body p {
-  margin: 4px 0;
-}
+.cc-message-body p { margin: 4px 0; }
 
 .cc-message-body h1,
 .cc-message-body h2,
@@ -546,11 +562,125 @@
   margin: 4px 0;
 }
 
-/* --- Komut Giriş Alanı --- */
+/* =============================================================================
+   ARAÇ KULLANIMI BLOKLARI (kabuk komutları, dosya işlemleri)
+   ============================================================================= */
+
+.cc-tool-section {
+  margin-bottom: 10px;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cc-tool-section-header {
+  padding: 6px 12px;
+  background: rgba(0,0,0,0.2);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #999);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cc-tool-section-header i {
+  color: var(--cc-theme-accent);
+}
+
+.cc-tool-block {
+  border-top: 1px solid rgba(255,255,255,0.04);
+  padding: 0;
+}
+
+.cc-tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-primary, #ddd);
+  transition: background 0.15s;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cc-tool-header:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.cc-tool-header i {
+  color: var(--cc-theme-accent);
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+
+.cc-tool-toggle-icon {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-secondary, #888);
+  transition: transform 0.2s;
+}
+
+.cc-tool-title {
+  font-weight: 500;
+}
+
+.cc-tool-content {
+  padding: 4px 12px 6px 36px;
+}
+
+.cc-tool-command {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: #81C784;
+  background: rgba(0,0,0,0.3);
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  word-break: break-all;
+}
+
+.cc-tool-path {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: #90CAF9;
+}
+
+.cc-tool-result {
+  padding: 6px 12px 8px 36px;
+  transition: max-height 0.3s ease, opacity 0.2s;
+  overflow: hidden;
+}
+
+.cc-tool-result pre {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #aaa);
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.cc-tool-result-hidden {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+}
+
+/* --- Komut Giriş Alanı (sabit altta) --- */
 .cc-input-area {
   padding: 12px 16px;
   border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
   background: var(--input-bg, rgba(13, 13, 26, 0.5));
+  flex-shrink: 0;
 }
 
 .cc-input-wrapper {
@@ -576,7 +706,7 @@
 }
 
 .cc-prompt-input:focus {
-  border-color: #7C4DFF;
+  border-color: var(--cc-theme-accent);
   box-shadow: 0 0 0 2px rgba(124, 77, 255, 0.15);
 }
 
@@ -619,8 +749,8 @@
 }
 
 .cc-action-btn:hover {
-  border-color: #7C4DFF !important;
-  color: #7C4DFF !important;
+  border-color: var(--cc-theme-accent) !important;
+  color: var(--cc-theme-accent) !important;
 }
 
 .cc-run-btn {
@@ -629,7 +759,7 @@
   gap: 6px;
   padding: 8px 20px !important;
   border-radius: 10px !important;
-  background: linear-gradient(135deg, #7C4DFF 0%, #536DFE 100%) !important;
+  background: linear-gradient(135deg, var(--cc-theme-accent) 0%, var(--cc-theme-hover) 100%) !important;
   border: none !important;
   color: #fff !important;
   font-size: 13px !important;
@@ -672,56 +802,89 @@
 }
 
 /* =============================================================================
-   8-BiT PiKSEL ANiMASYONLARI
+   KLASÖR TARAYICI MODAL
    ============================================================================= */
 
-/* Piksel karakter için ortak animasyon */
-@keyframes cc-pixel-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+.cc-folder-browser {
+  min-height: 300px;
 }
 
-@keyframes cc-pixel-float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-4px) rotate(2deg); }
-  75% { transform: translateY(-4px) rotate(-2deg); }
+.cc-folder-path-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
-/* Karakter temalı parlama efekti */
-@keyframes cc-glow-mergen {
-  0%, 100% { box-shadow: 0 0 10px rgba(124, 77, 255, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(124, 77, 255, 0.6); }
+.cc-folder-nav-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  border-radius: 8px !important;
 }
 
-@keyframes cc-glow-ulgen {
-  0%, 100% { box-shadow: 0 0 10px rgba(47, 109, 246, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(47, 109, 246, 0.6); }
+.cc-folder-path-input {
+  flex: 1;
+  background: var(--input-bg, #0d0d1a);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  color: var(--text-primary, #e0e0e0);
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  font-family: 'Fira Code', 'Consolas', monospace;
 }
 
-@keyframes cc-glow-kayra {
-  0%, 100% { box-shadow: 0 0 10px rgba(18, 169, 123, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(18, 169, 123, 0.6); }
+.cc-folder-list {
+  max-height: 350px;
+  overflow-y: auto;
 }
 
-@keyframes cc-glow-erlik {
-  0%, 100% { box-shadow: 0 0 10px rgba(182, 106, 44, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(182, 106, 44, 0.6); }
+.cc-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 13px;
+  color: var(--text-primary, #e0e0e0);
 }
 
-@keyframes cc-glow-umay {
-  0%, 100% { box-shadow: 0 0 10px rgba(233, 134, 134, 0.3); }
-  50% { box-shadow: 0 0 25px rgba(233, 134, 134, 0.6); }
+.cc-folder-item:hover {
+  background: rgba(124, 77, 255, 0.1);
 }
 
-/* Piksel yıldız efekti */
-@keyframes cc-pixel-star {
-  0% { opacity: 0; transform: scale(0); }
-  50% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0); }
+.cc-folder-item i {
+  color: #FFD54F;
+  font-size: 16px;
 }
 
 /* =============================================================================
-   DUYARLI TASARIM (Responsive)
+   YAPILNDIRMA SAYFASI CLAUDE CODE KARTI
+   ============================================================================= */
+
+.cc-config-card .cc-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.cc-config-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cc-config-item label {
+  font-size: 12px;
+  color: var(--text-secondary, #aaa);
+}
+
+/* =============================================================================
+   DUYARLI TASARIM
    ============================================================================= */
 
 @media (max-width: 1024px) {
@@ -732,18 +895,18 @@
   .cc-sidebar-panel {
     width: 100%;
     max-width: 100%;
-    max-height: 400px;
+    max-height: 350px;
     flex-direction: row;
     flex-wrap: wrap;
   }
 
   .cc-settings-card {
     flex: 1;
-    min-width: 260px;
+    min-width: 240px;
   }
 
   .cc-dir-card {
-    max-height: 200px;
+    max-height: 180px;
   }
 }
 
@@ -759,5 +922,9 @@
   .cc-main-content {
     padding: 8px;
     gap: 8px;
+  }
+
+  .cc-thinking-text-mini {
+    display: none;
   }
 }

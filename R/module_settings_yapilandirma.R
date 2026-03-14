@@ -138,6 +138,56 @@ settingsYapilandirmaUI <- function(id) {
                 p(class = "tool-desc-detail", id = ns("tool_desc_text"))
               )
             ),
+            # Claude Code Yapılandırma Kartı
+            div(
+              class = "settings-card cc-config-card",
+              h3("Claude Code Yapılandırma", class = "settings-title"),
+              p("Claude Code CLI bağlantı ayarları, zaman aşımı ve durum bilgisi.",
+                class = "setting-description"),
+              fluidRow(
+                # Zaman Aşımı
+                column(
+                  width = 4,
+                  h4("Zaman Aşımı", class = "setting-subtitle"),
+                  p("Claude Code komutları için maksimum bekleme süresi.", class = "setting-description", style = "margin-top:4px;"),
+                  div(
+                    class = "setting-item",
+                    style = "max-width: 200px;",
+                    numericInput(
+                      inputId = ns("claude_code_timeout"),
+                      label = NULL,
+                      value = claude_code_config$timeout_seconds,
+                      min = 30,
+                      max = 600,
+                      step = 30
+                    ),
+                    tags$small(class = "setting-description", "30-600 saniye arası")
+                  )
+                ),
+                # Bağlantı Testi
+                column(
+                  width = 4,
+                  h4("Bağlantı Testi", class = "setting-subtitle"),
+                  p("Claude Code CLI erişimini test edin.", class = "setting-description", style = "margin-top:4px;"),
+                  div(
+                    class = "setting-item",
+                    actionButton(
+                      ns("cc_test_connection"),
+                      label = tagList(icon("satellite-dish"), "Bağlantı Testi"),
+                      class = "btn-modern btn-primary"
+                    ),
+                    uiOutput(ns("cc_test_result_ui"))
+                  )
+                ),
+                # CLI Durumu
+                column(
+                  width = 4,
+                  h4("CLI Durumu", class = "setting-subtitle"),
+                  p("Claude Code CLI kurulum ve erişim bilgisi.", class = "setting-description", style = "margin-top:4px;"),
+                  uiOutput(ns("cc_cli_status_info"))
+                )
+              )
+            ),
             # Arayüz Ayarları ve Kısayollar
             fluidRow(
               column(
@@ -845,6 +895,85 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
         }
       }, ignoreInit = TRUE)
     })
+
+    # --- Claude Code Yapılandırma Kartı ---
+
+    # CLI durumunu göster
+    output$cc_cli_status_info <- renderUI({
+      yol <- resolve_claude_cli_path(claude_code_config$cli_path)
+
+      if (!is.null(yol)) {
+        tags$div(
+          style = "padding: 8px 10px; border-radius: 8px; font-size: 12px; background: rgba(76,175,80,0.1); color: #81C784; border: 1px solid rgba(76,175,80,0.2);",
+          icon("check-circle"),
+          tags$span("CLI bulundu:"),
+          tags$br(),
+          tags$code(style = "font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 1px 4px; border-radius: 3px;", yol)
+        )
+      } else {
+        tags$div(
+          style = "padding: 8px 10px; border-radius: 8px; font-size: 12px; background: rgba(255,152,0,0.1); color: #FFB74D; border: 1px solid rgba(255,152,0,0.2);",
+          icon("exclamation-triangle"),
+          tags$span("CLI otomatik tespit edilemedi."),
+          tags$br(),
+          tags$small("npm ile Claude Code kurulu olduğundan emin olun.")
+        )
+      }
+    })
+
+    # Bağlantı testi
+    observeEvent(input$cc_test_connection, {
+      cli_yolu <- resolve_claude_cli_path(claude_code_config$cli_path)
+
+      shinyjs::disable("cc_test_connection")
+      output$cc_test_result_ui <- renderUI({
+        tags$span(style = "font-size: 12px; color: #64B5F6;",
+                  icon("spinner", class = "fa-spin"), "Test ediliyor...")
+      })
+
+      future_promise({
+        test_claude_code_connection(
+          cli_path = cli_yolu,
+          workdir = tempdir()
+        )
+      }) %...>% (function(sonuc) {
+        output$cc_test_result_ui <- renderUI({
+          if (sonuc$success) {
+            tags$div(
+              style = "font-size: 12px; color: #81C784; margin-top: 8px;",
+              icon("check-circle"),
+              tags$span(sonuc$message),
+              tags$br(),
+              tags$small(style = "opacity: 0.8;", sonuc$details)
+            )
+          } else {
+            tags$div(
+              style = "font-size: 12px; color: #E57373; margin-top: 8px;",
+              icon("exclamation-triangle"),
+              tags$span(sonuc$message),
+              tags$br(),
+              tags$small(style = "opacity: 0.8;", sonuc$details)
+            )
+          }
+        })
+        shinyjs::enable("cc_test_connection")
+      }) %...!% (function(hata) {
+        output$cc_test_result_ui <- renderUI({
+          tags$div(
+            style = "font-size: 12px; color: #E57373; margin-top: 8px;",
+            icon("exclamation-triangle"),
+            tags$span("Test sırasında beklenmeyen hata."),
+            tags$small(conditionMessage(hata))
+          )
+        })
+        shinyjs::enable("cc_test_connection")
+      })
+    }, ignoreInit = TRUE)
+
+    # Zaman aşımı değerini settings'e aktar
+    observeEvent(input$claude_code_timeout, {
+      settings$claude_code_timeout <- input$claude_code_timeout
+    }, ignoreInit = TRUE)
 
     # Koordinatöre döndürülecek değerler
     return(list(

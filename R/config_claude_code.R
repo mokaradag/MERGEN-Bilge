@@ -1,7 +1,7 @@
 # ==============================================================================
 # Dosya Yolu: R/config_claude_code.R
 # Açıklama: Claude Code entegrasyonu için yapılandırma sabitleri ve varsayılan
-#           ayarları tanımlar. API ucu noktaları, model listesi, zaman aşımı
+#           ayarları tanımlar. API ucu noktaları, model katmanları, zaman aşımı
 #           ve karakter temalı düşünme mesajları burada merkezi olarak yönetilir.
 # ==============================================================================
 
@@ -31,6 +31,36 @@ claude_code_config <- list(
 )
 
 # ------------------------------------------------------------------------------
+# MODEL KATMANLARI
+# settings.json'daki teknik model adları yerine kullanıcı dostu Türkçe
+# etiketler gösterilir. Sıralama bu listedeki sıraya göre yapılır.
+# ------------------------------------------------------------------------------
+
+claude_code_model_tiers <- list(
+  list(
+    etiket   = "Hızlı",
+    ikon     = "fa-bolt",
+    aciklama = "Hızlı yanıt, basit görevler için",
+    anahtar_deseni = "HAIKU"
+  ),
+  list(
+    etiket   = "Dengeli",
+    ikon     = "fa-balance-scale",
+    aciklama = "Hız ve kalite dengesi",
+    anahtar_deseni = "SONNET"
+  ),
+  list(
+    etiket   = "Güçlü",
+    ikon     = "fa-brain",
+    aciklama = "Karmaşık görevler için en güçlü model",
+    anahtar_deseni = "OPUS"
+  )
+)
+
+# Varsayılan etiketleri
+claude_code_varsayilan_etiket <- "Varsayılan"
+
+# ------------------------------------------------------------------------------
 # DÜŞÜNME MESAJLARI (Türkçe, eğlenceli, karakter temalı)
 # Her karakter için ayrı düşünme mesajları tanımlanır.
 # 8-bit tema ile uyumlu kısa ve esprili mesajlar.
@@ -43,8 +73,8 @@ claude_code_thinking_messages <- list(
     "Dosyaları tarıyor...",
     "Algoritma dokuyor...",
     "Satırları çözümlüyor...",
-    "Bit ve baytları harmanlatıyor...",
-    "Fonksiyonları birbirine bağlatıyor...",
+    "Bit ve baytları harmanlıyor...",
+    "Fonksiyonları birbirine bağlıyor...",
     "Değişkenleri takip ediyor...",
     "Derleme büyüsü yapıyor...",
     "Hata ayıklama modunda...",
@@ -53,7 +83,12 @@ claude_code_thinking_messages <- list(
     "Döngülerden geçiş yapıyor...",
     "Veri akışını izliyor...",
     "Sözdizimini kontrol ediyor...",
-    "Modülleri yükleniyor..."
+    "Modülleri yüklüyor...",
+    "Bağımlılıkları çözüyor...",
+    "Dallanma noktalarını inceliyor...",
+    "İfadeleri ayrıştırıyor...",
+    "Bellek haritasını okuyor...",
+    "Yığın izini takip ediyor..."
   ),
 
   # Mergen - Keskin ve pratik
@@ -62,7 +97,10 @@ claude_code_thinking_messages <- list(
     "Kodun özünü süzdürüyorum...",
     "Okun ucu çözüme yöneldi...",
     "Bilgi okunu bileyliyor...",
-    "Hedef kilitlendi, analiz ediliyor..."
+    "Hedef kilitlendi, analiz ediliyor...",
+    "Sadağından yeni bir ok çekiyor...",
+    "Rüzgarı hesaplıyor, nişanı ayarlıyor...",
+    "Ok yaydan fırlamak üzere..."
   ),
 
   # Ülgen - Yapıcı ve ilham verici
@@ -71,7 +109,10 @@ claude_code_thinking_messages <- list(
     "Işık yolunu araştırıyor...",
     "Çözüm alternatiflerini tartıyorum...",
     "Göğün ışığında kod inceleniyor...",
-    "Yaratıcı seçenekler üretiyor..."
+    "Yaratıcı seçenekler üretiyor...",
+    "Bulutların arasından süzülüyor...",
+    "Yıldızlardan ilham alıyor...",
+    "Gök kubbeyi tarayıp çözüm arıyor..."
   ),
 
   # Kayra - Stratejik ve vizyoner
@@ -80,7 +121,10 @@ claude_code_thinking_messages <- list(
     "Strateji haritası çiziliyor...",
     "Evrenin düzeni analiz ediliyor...",
     "Fazlı plan oluşturuluyor...",
-    "Kilometre taşları belirleniyor..."
+    "Kilometre taşları belirleniyor...",
+    "Hamleleri önceden hesaplıyor...",
+    "Satranç tahtasını kuruyor...",
+    "Stratejik derinliğe dalıyor..."
   ),
 
   # Erlik - Eleştirici ve keskin
@@ -89,7 +133,10 @@ claude_code_thinking_messages <- list(
     "Kör noktalar kontrol ediliyor...",
     "Riskleri tarıyorum...",
     "Zayıf halkaları güçlendiriyorum...",
-    "Perde aralandırılıyor..."
+    "Perde aralandırılıyor...",
+    "Gizli hataları ortaya çıkarıyor...",
+    "Kod derinliklerini kazıyor...",
+    "Her taşın altına bakıyor..."
   ),
 
   # Umay Ana - Şefkatli ve öğretici
@@ -98,7 +145,10 @@ claude_code_thinking_messages <- list(
     "Adımları küçük lokmalara bölüyorum...",
     "Yeni başlayanlar için ipuçları hazırlıyorum...",
     "Nazikçe yol gösteriyorum...",
-    "Bereket tohumları ekiliyor..."
+    "Bereket tohumları ekiliyor...",
+    "Sabırla her adımı açıklıyor...",
+    "Bilgelik ışığını paylaşıyor...",
+    "Koruyucu kanatlarını açıyor..."
   )
 )
 
@@ -150,6 +200,22 @@ claude_code_scenarios <- list(
     aciklama = "Kendi komutunuzu yazarak Claude Code ile serbestçe etkileşime geçin.",
     sablon = ""
   )
+)
+
+# ------------------------------------------------------------------------------
+# DURUM ÇUBUĞU DURUMLAR VE RENKLERİ
+# Durum çubuğundaki metin ve renk eşleştirmeleri
+# ------------------------------------------------------------------------------
+
+claude_code_status_styles <- list(
+  hazir       = list(metin = "Hazır",        renk = "#81C784", ikon = "circle"),
+  calisiyor   = list(metin = "Çalışıyor",    renk = "#64B5F6", ikon = "spinner"),
+  tamamlandi  = list(metin = "Tamamlandı",   renk = "#81C784", ikon = "check-circle"),
+  hata        = list(metin = "Hata",         renk = "#E57373", ikon = "exclamation-triangle"),
+  zaman_asimi = list(metin = "Zaman Aşımı",  renk = "#FFB74D", ikon = "clock"),
+  bagli       = list(metin = "Bağlı",        renk = "#81C784", ikon = "check-circle"),
+  bagli_degil = list(metin = "Bağlantı Yok", renk = "#E57373", ikon = "times-circle"),
+  kontrol     = list(metin = "Kontrol Edilmedi", renk = "#9E9E9E", ikon = "question-circle")
 )
 
 # ------------------------------------------------------------------------------
