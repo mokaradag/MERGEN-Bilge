@@ -29,7 +29,7 @@ handle_image_generation_mode <- function(ctx) {
   if (!nzchar(api_key_for_image)) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
-    ctx$add_message_fn("⚠️ Görsel oluşturmak için API anahtarı gerekli. Lütfen Ayarlar sayfasından API anahtarınızı girin.", "ai")
+    ctx$add_message_fn("\U000026A0\U0000FE0F Görsel oluşturmak için API anahtarı gerekli. Lütfen Ayarlar sayfasından API anahtarınızı girin.", "ai")
     ctx$reset_chat_state_fn()
     return(TRUE)
   }
@@ -89,7 +89,7 @@ handle_image_generation_mode <- function(ctx) {
     } else {
       error_msg <- result$error %||% "Görsel oluşturulamadı"
       error_html <- render_generated_image_html(result, "error")
-      ctx$add_message_fn(paste0("❌ ", error_msg), "ai", html = error_html)
+      ctx$add_message_fn(paste0("\U0000274C ", error_msg), "ai", html = error_html)
       showToast(ctx$session, error_msg, "error")
     }
 
@@ -97,7 +97,7 @@ handle_image_generation_mode <- function(ctx) {
   }) %...!% (function(err) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
-    ctx$add_message_fn(paste0("❌ Görsel oluşturma hatası: ", err$message), "ai")
+    ctx$add_message_fn(paste0("\U0000274C Görsel oluşturma hatası: ", err$message), "ai")
     showToast(ctx$session, paste("Hata:", err$message), "error")
     ctx$reset_chat_state_fn()
   })
