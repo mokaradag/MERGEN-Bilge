@@ -190,7 +190,7 @@ llmResponseHandlersInit <- function(
             cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
             showToast(session, "Render hatası: içerik boş/uygunsuz. Günlüğe yazıldı.", "error")
             # Sohbet akışını bozmamak için placeholder mesaj ekle
-            ai_msg <- add_message_fn("⚠️ Model boş bir yanıt döndürdü (loglandı).", "ai")
+            ai_msg <- add_message_fn("\U000026A0\U0000FE0F Model boş bir yanıt döndürdü (loglandı).", "ai")
           })
  
           # TTS'i tetikle (eğer mesaj eklendiyse ve durdurulmadıysa)

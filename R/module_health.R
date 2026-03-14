@@ -103,7 +103,7 @@ healthServer <- function(id, perf_tracker) {
       if (!is.null(pool_info) && !isFALSE(pool_info$valid)) {
         HTML(sprintf(
           '<div style="line-height: 2;">
-            <span style="color: #60a5fa;">Durum:</span> <span style="color: #4ade80;">✓ SAĞLIKLI</span><br>
+            <span style="color: #60a5fa;">Durum:</span> <span style="color: #4ade80;">\U00002713 SAĞLIKLI</span><br>
             <span style="color: #60a5fa;">Bağlantı Modu:</span> <span style="color: #fff;">%s</span><br><br>
             <span style="color: #94a3b8;">%s</span>
           </div>',
@@ -113,7 +113,7 @@ healthServer <- function(id, perf_tracker) {
       } else {
         HTML(sprintf(
           '<div style="line-height: 2;">
-            <span style="color: #f87171;">✗ Veritabanı bağlantısı kurulamadı</span><br>
+            <span style="color: #f87171;">\U00002717 Veritabanı bağlantısı kurulamadı</span><br>
             <span style="color: #94a3b8;">Hata: %s</span>
           </div>',
           pool_info$error %||% "Bilinmeyen hata"
@@ -148,7 +148,7 @@ healthServer <- function(id, perf_tracker) {
       active_users <- isolate(perf_tracker$stats$active_users)
       
       error_rate <- if (total > 0) (errors / total) * 100 else 0
-      status_icon <- if (error_rate < 5) "✓" else if (error_rate < 10) "⚠" else "✗"
+      status_icon <- if (error_rate < 5) "\U00002713" else if (error_rate < 10) "\U000026A0" else "\U00002717"
       status_text <- if (error_rate < 5) "SAĞLIKLI" else if (error_rate < 10) "UYARI" else "KRİTİK"
       status_color <- if (error_rate < 5) "#4ade80" else if (error_rate < 10) "#fbbf24" else "#f87171"
       
@@ -285,7 +285,7 @@ healthServer <- function(id, perf_tracker) {
 		if (exists("helpers_rdata_lake", mode = "list")) {
 		  if (file.exists(helpers_rdata_lake$db_path)) {
 			db_size <- file.size(helpers_rdata_lake$db_path) / 1024^2
-			sprintf("✓ Aktif (%.1f MB)", db_size)
+			sprintf("\U00002713 Aktif (%.1f MB)", db_size)
 		  } else {
 			"○ Hazır değil"
 		  }
@@ -293,7 +293,7 @@ healthServer <- function(id, perf_tracker) {
 		  "○ Yüklenmedi"
 		}
 	  }, error = function(e) {
-		"✗ Hata"
+		"\U00002717 Hata"
 	  })
 	  
 	  HTML(sprintf(

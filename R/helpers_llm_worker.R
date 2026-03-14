@@ -613,7 +613,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
               df[] <- lapply(df, function(col) tryCatch(enc2utf8(as.character(col)), error = function(e) col))
               colnames(df) <- tryCatch(enc2utf8(colnames(df)), error = function(e) colnames(df))
         
-              mergen_debug_cat("[GLOBAL] ✓ VERİ VAR - İLK SATIR:\n")
+              mergen_debug_cat("[GLOBAL] \U00002713 VERİ VAR - İLK SATIR:\n")
               if (isTRUE(getOption("mergen.debug", FALSE))) {
                 print(df[1, , drop=FALSE])
               }
@@ -655,14 +655,14 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
                 source_table_line, "\n",
                 if (nzchar(dropped_line)) paste0(dropped_line, "\n") else "",
                 "\n",
-                "⬇️ AŞAĞIDA ", nrow(df), " SATIR GERÇEK VERİ VAR ⬇️\n",
+                "\U00002B07\U0000FE0F AŞAĞIDA ", nrow(df), " SATIR GERÇEK VERİ VAR \U00002B07\U0000FE0F\n",
                 "BU SAYILARI AYNEN KULLAN - UYDURMA!\n\n",
                 table_md, "\n\n",
-                "⬆️ YUKARDA ", nrow(df), " SATIR GERÇEK VERİ VAR ⬆️\n",
+                "\U00002B06\U0000FE0F YUKARDA ", nrow(df), " SATIR GERÇEK VERİ VAR \U00002B06\U0000FE0F\n",
                 "BU TABLODAKİ SAYILARI BİREBİR KOPYALA!"
               )
               
-              mergen_debug_cat("\n[GLOBAL] ✓ Markdown tablo oluşturuldu\n")
+              mergen_debug_cat("\n[GLOBAL] \U00002713 Markdown tablo oluşturuldu\n")
               mergen_debug_cat("[GLOBAL] Tablo uzunluğu:", nchar(table_md), "karakter\n")
               mergen_debug_cat("[GLOBAL] Tablo ilk 500 karakteri:\n")
               mergen_debug_cat(substr(table_md, 1, 500), "\n...\n")
@@ -672,10 +672,10 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
               result_text <- "UYARI: Sorgu sonucu boş döndü."
             }
           } else if (is.list(raw) && !is.null(raw$result) && is.character(raw$result)) {
-            mergen_debug_cat("[GLOBAL] ✓ Liste içindeki result metni kullanılacak\n")
+            mergen_debug_cat("[GLOBAL] \U00002713 Liste içindeki result metni kullanılacak\n")
             result_text <- paste(raw$result, collapse = "\n\n")
           } else if (is.character(raw) && length(raw)) {
-            mergen_debug_cat("[GLOBAL] ✓ Ham karakter vektörü kullanılacak\n")
+            mergen_debug_cat("[GLOBAL] \U00002713 Ham karakter vektörü kullanılacak\n")
             result_text <- paste(raw, collapse = "\n\n")
           } else {
             mergen_debug_cat("[GLOBAL] *** UYARI: df DataFrame değil! JSON formatında dönecek ***\n")
@@ -748,7 +748,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         
         # Markdown tablo var mı kontrol et
         if (grepl("\\|.*\\|.*\\|", last_msg$content)) {
-          mergen_debug_cat("[GLOBAL] ✓ Mesajda markdown tablo BULUNDU\n")
+          mergen_debug_cat("[GLOBAL] \U00002713 Mesajda markdown tablo BULUNDU\n")
           # Kaç satır tablo var?
           table_lines <- length(gregexpr("\n", last_msg$content)[[1]])
           mergen_debug_cat("[GLOBAL] Tabloda yaklaşık", table_lines, "satır var\n")
@@ -770,19 +770,19 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             "Yukarıdaki tablo GERÇEK VERİDİR. Bu veritabanından geldi.\n\n",
             "SEN BİR VERİ RAPORLAYICI ROBOTSUN - VERİ ÜRETME!\n\n",
             "YAPMAN GEREKENLER:\n",
-            "✓ Yukarıdaki tabloda gördüğün TAM sayıları kopyala\n",
-            "✓ Hiçbir değeri yuvarlaMA, değiştirME\n",
-            "✓ Tablodaki her satırı kullan\n",
-            "✓ ProjeAdi ve sayıları BİREBİR kopyala\n\n",
-            "✓ Yanıtı TEK SEFERDE tamamla; ek deneme veya ikinci tur bekleme.\n",
-            "✓ Sonuçları yorumla: trend, uç değer ve dağılımı en az 4-5 cümlelik öğretici bir paragrafla açıkla; kullanıcının hangi desene odaklanması gerektiğini belirt.\n",
-            "✓ Grafik varsa, eksenler ve göze çarpan deseni 1-2 cümlede özetle.\n\n",
+            "\U00002713 Yukarıdaki tabloda gördüğün TAM sayıları kopyala\n",
+            "\U00002713 Hiçbir değeri yuvarlaMA, değiştirME\n",
+            "\U00002713 Tablodaki her satırı kullan\n",
+            "\U00002713 ProjeAdi ve sayıları BİREBİR kopyala\n\n",
+            "\U00002713 Yanıtı TEK SEFERDE tamamla; ek deneme veya ikinci tur bekleme.\n",
+            "\U00002713 Sonuçları yorumla: trend, uç değer ve dağılımı en az 4-5 cümlelik öğretici bir paragrafla açıkla; kullanıcının hangi desene odaklanması gerektiğini belirt.\n",
+            "\U00002713 Grafik varsa, eksenler ve göze çarpan deseni 1-2 cümlede özetle.\n\n",
             "ASLA YAPMA:\n",
-            "✗ 'Örnek Çıktı' yazma\n",
-            "✗ Sahte sayılar üretme\n",
-            "✗ Tahmin etme\n",
-            "✗ Benzer değerler uydurma\n",
-            "✗ '...' kullanma\n\n",
+            "\U00002717 'Örnek Çıktı' yazma\n",
+            "\U00002717 Sahte sayılar üretme\n",
+            "\U00002717 Tahmin etme\n",
+            "\U00002717 Benzer değerler uydurma\n",
+            "\U00002717 '...' kullanma\n\n",
             "Eğer yukarıdaki tabloda veri YOKSA:\n",
             "→ 'Sonuç bulunamadı' de ve DUR\n\n",
             "Eğer yukarıdaki tabloda veri VARSA:\n",
@@ -834,7 +834,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             ),
             debug_file
           )
-          mergen_debug_cat("\n[GLOBAL] ✓ Chat history dosyaya yazıldı:", debug_file, "\n")
+          mergen_debug_cat("\n[GLOBAL] \U00002713 Chat history dosyaya yazıldı:", debug_file, "\n")
           mergen_debug_cat("[GLOBAL] Bu dosyayı inceleyerek AI'a tam olarak ne gönderildiğini görebilirsiniz\n\n")
         }, error = function(e) {
           mergen_debug_cat("[GLOBAL] Dosya yazma hatası:", e$message, "\n")

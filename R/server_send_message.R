@@ -243,7 +243,7 @@ sendMessageInit <- function(
            pk_analiz_process_request(user_message_text, messages_to_process, session, stop_check = stop_generation)
          }
        }, error = function(e) {
-         paste0("⚠️ Analiz modülü hatası: ", e$message)
+         paste0("\U000026A0\U0000FE0F Analiz modülü hatası: ", e$message)
        })
 
        if (is.character(analiz_result)) {

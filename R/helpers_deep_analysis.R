@@ -473,7 +473,7 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
   if (length(failed) > 0) {
     failed_note <- paste0(
       "\n\n══════════════════════════════════════════\n",
-      sprintf("⚠️ BAŞARISIZ SORGULAR (%d adet)\n", length(failed)),
+      sprintf("\U000026A0\U0000FE0F BAŞARISIZ SORGULAR (%d adet)\n", length(failed)),
       "══════════════════════════════════════════\n",
       paste(vapply(failed, function(f) {
         sprintf("- **%s**: %s", f$query_name, f$error_msg %||% "Hata")
@@ -524,7 +524,7 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   cat(sprintf("[DEEP_ANALYSIS] Kullanıcı Sorusu: '%s'\n", user_prompt))
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
 
   detail_config <- get_analysis_detail_config(detail_level)
@@ -538,11 +538,11 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   release_connection(conn_list)
 
   if (!isTRUE(rls_info$authorized)) {
-    return("⚠️ **Yetki Hatası:** Sistemde kullanıcı kaydınız bulunamadı.")
+    return("\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız bulunamadı.")
   }
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
-    return("⚠️ **İşlem Durduruldu:** Analiz iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
   # B. Çoklu sorgu seçimi (AI)
@@ -563,7 +563,7 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   cat(sprintf("[DEEP_ANALYSIS] %d sorgu işlenecek.\n", length(selected_queries)))
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
-    return("⚠️ **İşlem Durduruldu:** Analiz iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
   # C. Her sorguyu bağımsız olarak çalıştır
@@ -602,7 +602,7 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }
 
   if (length(query_results) == 0) {
-    return("⚠️ **Derin Analiz:** Hiçbir sorgu çalıştırılamadı. Lütfen tekrar deneyin.")
+    return("\U000026A0\U0000FE0F **Derin Analiz:** Hiçbir sorgu çalıştırılamadı. Lütfen tekrar deneyin.")
   }
 
   # D. Sonuçları birleştir
