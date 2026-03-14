@@ -17,7 +17,7 @@ claudeCodeUI <- function(id) {
     div(
       class = "claude-code-container",
 
-      # --- Sayfa Basligi ---
+      # --- Sayfa Başlığı ---
       div(
         class = "chat-header settings-header-fixed",
         div(
