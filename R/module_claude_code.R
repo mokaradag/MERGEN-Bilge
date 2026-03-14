@@ -2,7 +2,7 @@
 # Dosya Yolu: R/module_claude_code.R
 # Açıklama: Claude Code entegrasyon modülü. Kullanıcılara web arayüzü üzerinden
 #           Claude Code CLI yeteneklerini sunar. Dosya okuma/yazma, terminal
-#           komutlari, arac kullanimi gibi tam ajan yetenekleri desteklenir.
+#           komutları, araç kullanımı gibi tam ajan yetenekleri desteklenir.
 #           Karakter temalı 8-bit animasyonlar ve Türkçe düşünme mesajları içerir.
 # ==============================================================================
 
@@ -13,19 +13,19 @@
 claudeCodeUI <- function(id) {
   ns <- NS(id)
 
-  # Baslangicta settings.json'dan model listesini oku
+  # Başlangıçta settings.json'dan model listesini oku
   ayarlar <- read_claude_settings_json()
   model_secenekleri <- ayarlar$models
   varsayilan_model <- ayarlar$default_model
 
-  # Model seceneklerini olustur (dropdown icin)
+  # Model seçeneklerini oluştur (dropdown için)
   if (length(model_secenekleri) > 0) {
     # Etiketli liste: "OPUS - GLM-5-FP8" gibi
     model_etiketleri <- paste0(names(model_secenekleri), " - ", unname(model_secenekleri))
     model_degerleri <- setNames(unname(model_secenekleri), model_etiketleri)
   } else {
-    # settings.json bulunamadiysa veya model yoksa
-    model_degerleri <- c("Varsayilan (settings.json)" = "")
+    # settings.json bulunamadıysa veya model yoksa
+    model_degerleri <- c("Varsayılan (settings.json)" = "")
     varsayilan_model <- ""
   }
 
@@ -61,7 +61,7 @@ claudeCodeUI <- function(id) {
             class = "cc-settings-card",
             h5(class = "cc-card-title", icon("plug"), "Bağlantı Ayarları"),
 
-            # CLI Durumu (otomatik tespit gostergesi)
+            # CLI Durumu (otomatik tespit göstergesi)
             uiOutput(ns("cli_status_info")),
 
             # Proje Dizini
@@ -69,17 +69,17 @@ claudeCodeUI <- function(id) {
               ns("workdir"),
               label = "Proje Dizini",
               value = claude_code_config$default_workdir,
-              placeholder = "Ornek: C:/Users/kullanici/projeler/benim-projem"
+              placeholder = "Örnek: C:/Users/kullanıcı/projeler/benim-projem"
             ),
             tags$small(
               class = "cc-help-text",
-              "Projenizin klasor yolunu yazin. Claude Code bu dizinde calisacak."
+              "Projenizin klasör yolunu yazın. Claude Code bu dizinde çalışacak."
             ),
 
-            # Model Secimi (dropdown)
+            # Model Seçimi (dropdown)
             selectInput(
               ns("model"),
-              label = "Model Secimi",
+              label = "Model Seçimi",
               choices = model_degerleri,
               selected = if (nzchar(varsayilan_model)) varsayilan_model else NULL
             ),
@@ -257,7 +257,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
           icon("exclamation-triangle"),
           tags$span("CLI otomatik tespit edilemedi."),
           tags$br(),
-          tags$small("npm ile Claude Code kurulu oldugundan emin olun.")
+          tags$small("npm ile Claude Code kurulu olduğundan emin olun.")
         )
       }
     })
@@ -393,7 +393,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
             class = "cc-dir-list",
             if (icerik$toplam > length(icerik$items)) {
               tags$small(class = "cc-dir-count",
-                         paste0(icerik$toplam, " ogeden ilk ",
+                         paste0(icerik$toplam, " ögeden ilk ",
                                 length(icerik$items), " tanesi"))
             },
             lapply(icerik$items, function(oge) {
@@ -438,11 +438,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       prompt <- input$prompt_input
       if (is.null(prompt) || !nzchar(trimws(prompt))) return()
 
-      # Cift tiklama korumasi
+      # Çift tıklama koruması
       if (isTRUE(rv$is_running)) return()
       rv$is_running <- TRUE
 
-      # Ayarlari al
+      # Ayarları al
       cli_yolu <- rv$cli_path_resolved
       calisma_dizini <- input$workdir
       model <- input$model
@@ -456,14 +456,14 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
           message = list(
             target = ns("output_area"),
             type = "error",
-            content = "Claude Code CLI bulunamadi. Lutfen npm ile kurulu oldugundan emin olun.",
+            content = "Claude Code CLI bulunamadı. Lütfen npm ile kurulu olduğundan emin olun.",
             timestamp = format(Sys.time(), "%H:%M:%S")
           )
         )
         return()
       }
 
-      # Calisma dizini yoksa gecici alan kullan
+      # Çalışma dizini yoksa geçici alan kullan
       if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
         calisma_dizini <- get_user_workspace(current_user_id)
       }
