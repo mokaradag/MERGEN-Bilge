@@ -15,7 +15,7 @@
 - **Support Pages (Destek)**: Help center with AI chatbot assistant (knowledge base: ai_rehber.md), feedback collection (satisfaction + NPS + tags), bug reporting with file attachments, and about page with app guide
 - **Admin Feedback & Bug Analytics**: Dedicated admin pages for analyzing user feedback (satisfaction trends, NPS scoring, tag distribution) and bug reports (priority/category heatmap, attachment viewer, status management)
 - **SSO Authentication**: Keycloak Single Sign-On with global mode switch (SSO_ENABLED). Supports dual-mode: Keycloak SSO for production VMs, local system username for development. JWT token validation, organizational claim extraction (sicil, department, müdürlük), and database authorization.
-- **Claude Code Integration**: Dedicated page wrapping Claude Code CLI as a web-based agent interface. Full agent capabilities (file read/write, terminal commands, tool use) via processx subprocess management. Character-themed 8-bit pixel animations, Turkish thinking messages, pre-defined scenarios, connection testing, and directory browsing.
+- **Claude Code Integration**: Dedicated page wrapping Claude Code CLI as a web-based agent interface. Full agent capabilities (file read/write, terminal commands, tool use) via processx subprocess management. JSON output parsing with tool use visualization (collapsible shell commands, file operations). Character-themed 8-bit pixel animations (miniaturized during thinking, retro welcome screen game with interactive characters). Model tier selection (Hizli/Dengeli/Guclu), folder browser dialog, auto connection test on page load, thinking message rotation, character-based theme switching, user name display in chat bubbles. Configuration moved to Yapilandirma page (timeout, connection test, CLI status).
 
 ---
 
@@ -650,17 +650,20 @@ www/css/admin_yanit_analizi.css     # AI response feedback analytics page stylin
 www/js/destek_form.js                # Form interactions (satisfaction, NPS, tags, categories, priority, file upload, validation)
 www/js/destek_yardim_chatbot.js      # Chatbot client-side logic (message sending, display, thinking indicator)
 www/js/sso_auth.js                   # SSO client-side auth: Keycloak redirect, token extraction, Shiny bridge
-www/css/claude_code.css              # Claude Code page styling (8-bit animations, terminal, character themes, responsive)
-www/js/claude_code.js                # Claude Code client-side logic (pixel character engine, message display, thinking animations, keyboard shortcuts)
+www/css/claude_code.css              # Claude Code page styling (character theme variables, fixed layout, tool use blocks, mini animation, welcome screen, folder browser, responsive)
+www/js/claude_code.js                # Claude Code client-side logic (mini pixel engine, tool use toggle, thinking message rotation, theme updates, keyboard shortcuts)
+www/js/claude_code_welcome.js        # Claude Code retro welcome screen (16x16 pixel characters, physics, mouse interaction, star background)
 www/css/sso_auth.css                 # SSO auth overlay styling (loading spinner, error state, transitions)
 ```
 
 **For Claude Code Work**:
-1. `R/config_claude_code.R` - Configuration constants, thinking messages, pre-defined scenarios
-2. `R/helpers_claude_code.R` - CLI interaction (run_claude_code, status check, connection test, workspace management)
-3. `R/module_claude_code.R` - Main UI and server module (claudeCodeUI + claudeCodeServer)
-4. `www/css/claude_code.css` - Styling (8-bit animations, terminal, character themes)
-5. `www/js/claude_code.js` - Client-side logic (pixel engine, message display, keyboard shortcuts)
+1. `R/config_claude_code.R` - Configuration constants, model tiers, thinking messages, pre-defined scenarios, status styles
+2. `R/helpers_claude_code.R` - CLI interaction (run_claude_code with JSON output, parse_claude_code_json_output, build_model_tier_choices, format_tool_uses_html, status check, connection test, workspace management)
+3. `R/module_claude_code.R` - Main UI and server module (claudeCodeUI + claudeCodeServer) with folder browser, auto connection test, user name display, character theme switching
+4. `R/module_settings_yapilandirma.R` - Claude Code configuration card (timeout, connection test, CLI status) in Yapilandirma page
+5. `www/css/claude_code.css` - Styling (character theme variables, fixed layout, tool use blocks, miniaturized animation, welcome screen, folder browser modal)
+6. `www/js/claude_code.js` - Client-side logic (mini pixel engine, tool use toggle, thinking message rotation, theme updates, keyboard shortcuts)
+7. `www/js/claude_code_welcome.js` - Retro 8-bit welcome screen game (16x16 pixel characters, physics, mouse interaction, star background)
 
 **For Admin Analytics Work**:
 1. `R/helpers_admin_analytics.R` - Shared utilities (metric cards, safe query, DT language, Turkish formatting)
@@ -687,6 +690,6 @@ The "Yönetici Paneli" sidebar menu is dynamically rendered for ADMIN users only
 5. **Sistem Durumu** (`health`) - System health monitoring
 
 ## Last Updated
-March 14, 2026
+March 14, 2026 (Claude Code page major refactoring)
 
 **Note**: This documentation reflects the current state of the codebase. For specific implementation details, always refer to the actual source code and inline comments in R files.

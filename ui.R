@@ -252,6 +252,7 @@ ui <- dashboardPage(
     tags$script(src = "js/explore_character_step.js", defer = "defer"),
     tags$script(src = "js/surum_bilgilendirme.js", defer = "defer"),
     tags$script(src = "js/claude_code.js", defer = "defer"),
+    tags$script(src = "js/claude_code_welcome.js", defer = "defer"),
 
     tags$div(id = "toast-container", class = "toast-container")
   ),

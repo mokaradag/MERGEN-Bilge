@@ -3,6 +3,7 @@
 # Açıklama: Claude Code CLI ile etkileşim için arka plan işçi fonksiyonları.
 #           processx paketi ile alt süreç yönetimi, CLI otomatik tespiti,
 #           settings.json okuma, oturum yönetimi ve dosya sistemi işlemleri.
+#           JSON çıktı desteği ile araç kullanımı ve kabuk komutlarını ayrıştırır.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -19,7 +20,7 @@ resolve_claude_cli_path <- function(kullanici_yolu = "") {
   # Kullanıcı bir yol verdiyse öncelikle onu dene
 
   if (nzchar(kullanici_yolu)) {
-    # Windows'ta .cmd uzantisi yoksa ekle
+    # Windows'ta .cmd uzantısı yoksa ekle
     if (.Platform$OS.type == "windows" && !grepl("\\.(cmd|exe|bat)$", kullanici_yolu, ignore.case = TRUE)) {
       cmd_yolu <- paste0(kullanici_yolu, ".cmd")
       if (file.exists(cmd_yolu)) {
@@ -132,7 +133,72 @@ read_claude_settings_json <- function() {
 }
 
 # ------------------------------------------------------------------------------
-# CLAUDE CODE CLI CALISTIRMA
+# MODEL KATMAN EŞLEŞTİRME
+# settings.json'daki teknik model adlarını kullanıcı dostu etiketlerle eşleştirir
+# ------------------------------------------------------------------------------
+
+#' Model listesini kullanıcı dostu katman etiketleriyle eşleştirir
+#'
+#' @param model_listesi Adlandırılmış karakter vektörü (anahtar=etiket, değer=model_id)
+#' @return Adlandırılmış liste: her eleman list(etiket, ikon, aciklama, deger)
+build_model_tier_choices <- function(model_listesi) {
+  if (length(model_listesi) == 0) {
+    return(list(list(
+      etiket = claude_code_varsayilan_etiket,
+      ikon = "fa-cog",
+      aciklama = "Yapılandırma dosyasındaki varsayılan model",
+      deger = ""
+    )))
+  }
+
+  katmanlar <- claude_code_model_tiers
+  sonuc <- list()
+
+  for (i in seq_along(model_listesi)) {
+    model_id <- unname(model_listesi[i])
+    anahtar <- names(model_listesi)[i]
+
+    # Katman eşleştirmesi yap (anahtar adındaki desene göre)
+    eslesme <- NULL
+    for (katman in katmanlar) {
+      if (grepl(katman$anahtar_deseni, anahtar, ignore.case = TRUE)) {
+        eslesme <- katman
+        break
+      }
+    }
+
+    if (is.null(eslesme)) {
+      # Eşleşme bulunamadıysa varsayılan etiket kullan
+      sonuc[[length(sonuc) + 1]] <- list(
+        etiket = paste0(claude_code_varsayilan_etiket, " (", anahtar, ")"),
+        ikon = "fa-cog",
+        aciklama = paste("Model:", model_id),
+        deger = model_id
+      )
+    } else {
+      sonuc[[length(sonuc) + 1]] <- list(
+        etiket = eslesme$etiket,
+        ikon = eslesme$ikon,
+        aciklama = eslesme$aciklama,
+        deger = model_id
+      )
+    }
+  }
+
+  # Sıralama: Hızlı -> Dengeli -> Güçlü -> Diğer
+  siralama <- c("Hızlı", "Dengeli", "Güçlü")
+  sonuc <- sonuc[order(match(
+    sapply(sonuc, function(x) x$etiket),
+    siralama,
+    nomatch = length(siralama) + 1
+  ))]
+
+  return(sonuc)
+}
+
+# ------------------------------------------------------------------------------
+# CLAUDE CODE CLI ÇALIŞTIRMA (JSON ÇIKTI DESTEKLİ)
+# --output-format json ile araç kullanımı ve kabuk komutlarını ayrıştırır
 # ------------------------------------------------------------------------------
 
 #' Claude Code CLI komutunu arka planda çalıştır
@@ -141,9 +207,9 @@ read_claude_settings_json <- function() {
 #' @param workdir Çalışma dizini (proje klasörü)
 #' @param model Kullanılacak model adı (boş ise varsayılan kullanılır)
 #' @param timeout_sec Zaman aşımı süresi (saniye)
-#' @param session_id Oturum kimligi (izolasyon icin)
+#' @param session_id Oturum kimliği (izolasyon için)
 #' @param cli_path Claude Code CLI çalıştırılabilir dosya yolu
-#' @return Liste: success (mantıksal), output (metin), error (hata metni), duration (süre)
+#' @return Liste: success, output, error, duration, tool_uses (araç kullanımları)
 run_claude_code <- function(prompt,
                             workdir = getwd(),
                             model = NULL,
@@ -153,17 +219,18 @@ run_claude_code <- function(prompt,
 
   baslangic <- Sys.time()
 
-  # Girdi dogrulamasi
+  # Girdi doğrulaması
   if (!nzchar(trimws(prompt))) {
     return(list(
       success = FALSE,
       output = "",
       error = "Komut metni boş olamaz.",
-      duration = 0
+      duration = 0,
+      tool_uses = list()
     ))
   }
 
-  # CLI yolunu cozumle (verilmediyse otomatik tespit et)
+  # CLI yolunu çözümle (verilmediyse otomatik tespit et)
   if (is.null(cli_path) || !nzchar(cli_path)) {
     cli_path <- resolve_claude_cli_path(claude_code_config$cli_path)
   }
@@ -172,7 +239,8 @@ run_claude_code <- function(prompt,
       success = FALSE,
       output = "",
       error = "Claude Code CLI bulunamadı. Lütfen CLI yolunu kontrol edin.",
-      duration = 0
+      duration = 0,
+      tool_uses = list()
     ))
   }
 
@@ -182,16 +250,17 @@ run_claude_code <- function(prompt,
       success = FALSE,
       output = "",
       error = paste0("Çalışma dizini bulunamadı: ", workdir),
-      duration = 0
+      duration = 0,
+      tool_uses = list()
     ))
   }
 
   # CLI argümanları oluştur
   # --print: interaktif olmayan mod, çıktıyı doğrudan yazdır
-  # --output-format text: düz metin çıktısı
+  # --output-format json: yapılandırılmış çıktı (araç kullanımlarını da içerir)
   args <- c(
     "--print",
-    "--output-format", "text"
+    "--output-format", "json"
   )
 
   # Model belirtilmişse ekle
@@ -222,11 +291,16 @@ run_claude_code <- function(prompt,
     if (result$status == 0) {
       log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Başarılı - Süre:",
                      round(sure, 1), "sn"))
+
+      # JSON çıktısını ayrıştır
+      ayristirma <- parse_claude_code_json_output(result$stdout)
+
       list(
         success = TRUE,
-        output = result$stdout,
+        output = ayristirma$text_output,
         error = "",
-        duration = round(sure, 1)
+        duration = round(sure, 1),
+        tool_uses = ayristirma$tool_uses
       )
     } else {
       hata_mesaji <- if (nzchar(result$stderr)) result$stderr else result$stdout
@@ -236,7 +310,8 @@ run_claude_code <- function(prompt,
         success = FALSE,
         output = result$stdout,
         error = hata_mesaji,
-        duration = round(sure, 1)
+        duration = round(sure, 1),
+        tool_uses = list()
       )
     }
 
@@ -252,7 +327,8 @@ run_claude_code <- function(prompt,
         output = "",
         error = paste0("İşlem zaman aşımına uğradı (", timeout_sec, " saniye). ",
                        "Daha kısa bir komut deneyin veya zaman aşımı süresini artırın."),
-        duration = round(sure, 1)
+        duration = round(sure, 1),
+        tool_uses = list()
       ))
     }
 
@@ -261,9 +337,95 @@ run_claude_code <- function(prompt,
       success = FALSE,
       output = "",
       error = paste0("Claude Code çalıştırılırken hata oluştu: ", hata_metni),
-      duration = round(sure, 1)
+      duration = round(sure, 1),
+      tool_uses = list()
     )
   })
+}
+
+# ------------------------------------------------------------------------------
+# JSON ÇIKTI AYRIŞTIRMA
+# Claude Code'un --output-format json çıktısını ayrıştırır.
+# Her satır ayrı bir JSON nesnesidir (JSONL formatı).
+# ------------------------------------------------------------------------------
+
+#' Claude Code JSON çıktısını ayrıştırır
+#'
+#' @param ham_cikti CLI'dan gelen ham çıktı metni
+#' @return Liste: text_output (metin çıktısı), tool_uses (araç kullanımları listesi)
+parse_claude_code_json_output <- function(ham_cikti) {
+  sonuc <- list(text_output = "", tool_uses = list())
+
+  if (is.null(ham_cikti) || !nzchar(ham_cikti)) return(sonuc)
+
+  # JSONL satırlarını ayrıştır
+  satirlar <- strsplit(ham_cikti, "\n")[[1]]
+  metin_parcalari <- c()
+
+  for (satir in satirlar) {
+    satir <- trimws(satir)
+    if (!nzchar(satir)) next
+
+    tryCatch({
+      nesne <- jsonlite::fromJSON(satir, simplifyVector = FALSE)
+
+      tur <- nesne$type %||% ""
+
+      if (tur == "text") {
+        # Metin bloğu
+        metin_parcalari <- c(metin_parcalari, nesne$content %||% "")
+
+      } else if (tur == "tool_use") {
+        # Araç kullanımı (bash komutu, dosya okuma/yazma, vb.)
+        arac <- list(
+          id = nesne$id %||% "",
+          name = nesne$name %||% "",
+          input = nesne$input %||% list()
+        )
+        sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
+
+      } else if (tur == "tool_result") {
+        # Araç sonucu - ilgili araç kullanımına ekle
+        arac_id <- nesne$tool_use_id %||% ""
+        icerik <- nesne$content %||% ""
+        for (j in seq_along(sonuc$tool_uses)) {
+          if (identical(sonuc$tool_uses[[j]]$id, arac_id)) {
+            sonuc$tool_uses[[j]]$result <- icerik
+            break
+          }
+        }
+
+      } else if (tur == "result") {
+        # Son sonuç bloğu
+        metin_parcalari <- c(metin_parcalari, nesne$result %||% "")
+
+      } else if (tur == "assistant") {
+        # Asistan mesajı - içerik bloklarını işle
+        if (!is.null(nesne$content) && is.list(nesne$content)) {
+          for (blok in nesne$content) {
+            blok_tur <- blok$type %||% ""
+            if (blok_tur == "text") {
+              metin_parcalari <- c(metin_parcalari, blok$text %||% "")
+            } else if (blok_tur == "tool_use") {
+              arac <- list(
+                id = blok$id %||% "",
+                name = blok$name %||% "",
+                input = blok$input %||% list()
+              )
+              sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
+            }
+          }
+        }
+      }
+
+    }, error = function(e) {
+      # JSON ayrıştırma başarısız olursa ham satırı metin olarak ekle
+      metin_parcalari <<- c(metin_parcalari, satir)
+    })
+  }
+
+  sonuc$text_output <- paste(metin_parcalari, collapse = "\n")
+  return(sonuc)
 }
 
 # ------------------------------------------------------------------------------
@@ -275,7 +437,7 @@ run_claude_code <- function(prompt,
 #' @param cli_path Claude Code CLI yolu (NULL ise otomatik tespit)
 #' @return Liste: installed (mantıksal), version (sürüm metni), path (bulunan yol), error (hata)
 check_claude_code_status <- function(cli_path = NULL) {
-  # CLI yolunu cozumle
+  # CLI yolunu çözümle
   if (is.null(cli_path) || !nzchar(cli_path)) {
     cli_path <- resolve_claude_cli_path(claude_code_config$cli_path)
   } else {
@@ -458,6 +620,88 @@ format_claude_code_output <- function(output) {
     escaped <- htmltools::htmlEscape(output)
     return(paste0("<pre>", escaped, "</pre>"))
   })
+}
+
+# ------------------------------------------------------------------------------
+# ARAÇ KULLANIMI HTML BİÇİMLENDİRME
+# Araç kullanımlarını (bash, dosya okuma/yazma) okunabilir HTML bloklarına çevirir
+# ------------------------------------------------------------------------------
+
+#' Araç kullanımlarını HTML formatına dönüştürür
+#'
+#' @param tool_uses Araç kullanımları listesi
+#' @return HTML formatlı metin
+format_tool_uses_html <- function(tool_uses) {
+  if (length(tool_uses) == 0) return("")
+
+  html_parcalari <- lapply(tool_uses, function(arac) {
+    arac_adi <- arac$name %||% "bilinmeyen"
+    girdi <- arac$input %||% list()
+    sonuc_metni <- arac$result %||% ""
+
+    # Araç türüne göre ikon ve başlık belirle
+    if (grepl("bash|execute|shell", arac_adi, ignore.case = TRUE)) {
+      ikon <- "terminal"
+      baslik <- "Kabuk Komutu"
+      komut <- girdi$command %||% girdi$cmd %||% ""
+      icerik <- if (nzchar(komut)) {
+        paste0('<code class="cc-tool-command">', htmltools::htmlEscape(komut), '</code>')
+      } else ""
+    } else if (grepl("read|file_read", arac_adi, ignore.case = TRUE)) {
+      ikon <- "file-code"
+      baslik <- "Dosya Okuma"
+      dosya <- girdi$path %||% girdi$file_path %||% ""
+      icerik <- if (nzchar(dosya)) {
+        paste0('<span class="cc-tool-path">', htmltools::htmlEscape(dosya), '</span>')
+      } else ""
+    } else if (grepl("write|file_write|edit", arac_adi, ignore.case = TRUE)) {
+      ikon <- "pen"
+      baslik <- "Dosya Yazma"
+      dosya <- girdi$path %||% girdi$file_path %||% ""
+      icerik <- if (nzchar(dosya)) {
+        paste0('<span class="cc-tool-path">', htmltools::htmlEscape(dosya), '</span>')
+      } else ""
+    } else if (grepl("search|grep|glob", arac_adi, ignore.case = TRUE)) {
+      ikon <- "search"
+      baslik <- "Arama"
+      desen <- girdi$pattern %||% girdi$query %||% ""
+      icerik <- if (nzchar(desen)) {
+        paste0('<span class="cc-tool-path">', htmltools::htmlEscape(desen), '</span>')
+      } else ""
+    } else {
+      ikon <- "cog"
+      baslik <- arac_adi
+      icerik <- ""
+    }
+
+    # Sonuç metnini kısalt (çok uzunsa)
+    sonuc_html <- ""
+    if (nzchar(sonuc_metni)) {
+      sonuc_kisaltilmis <- if (nchar(sonuc_metni) > 500) {
+        paste0(substr(sonuc_metni, 1, 500), "...")
+      } else {
+        sonuc_metni
+      }
+      sonuc_html <- paste0(
+        '<div class="cc-tool-result"><pre>',
+        htmltools::htmlEscape(sonuc_kisaltilmis),
+        '</pre></div>'
+      )
+    }
+
+    paste0(
+      '<div class="cc-tool-block">',
+      '<div class="cc-tool-header">',
+      '<i class="fas fa-', ikon, '"></i> ',
+      '<span class="cc-tool-title">', htmltools::htmlEscape(baslik), '</span>',
+      '</div>',
+      if (nzchar(icerik)) paste0('<div class="cc-tool-content">', icerik, '</div>') else "",
+      sonuc_html,
+      '</div>'
+    )
+  })
+
+  paste(html_parcalari, collapse = "\n")
 }
 
 # ------------------------------------------------------------------------------
