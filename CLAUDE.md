@@ -15,6 +15,7 @@
 - **Support Pages (Destek)**: Help center with AI chatbot assistant (knowledge base: ai_rehber.md), feedback collection (satisfaction + NPS + tags), bug reporting with file attachments, and about page with app guide
 - **Admin Feedback & Bug Analytics**: Dedicated admin pages for analyzing user feedback (satisfaction trends, NPS scoring, tag distribution) and bug reports (priority/category heatmap, attachment viewer, status management)
 - **SSO Authentication**: Keycloak Single Sign-On with global mode switch (SSO_ENABLED). Supports dual-mode: Keycloak SSO for production VMs, local system username for development. JWT token validation, organizational claim extraction (sicil, department, müdürlük), and database authorization.
+- **Claude Code Integration**: Dedicated page wrapping Claude Code CLI as a web-based agent interface. Full agent capabilities (file read/write, terminal commands, tool use) via processx subprocess management. Character-themed 8-bit pixel animations, Turkish thinking messages, pre-defined scenarios, connection testing, and directory browsing.
 
 ---
 
@@ -43,6 +44,7 @@ The R directory contains modular components organized by function:
 - **`config_file_store.R`**: File storage and handling configuration
 - **`config_sql_loader.R`**: SQL database loading configuration
 - **`config_api.R`**: API configuration and endpoints. user_config extended with SSO fields (sicil, email, sektor, department, mudurluk, masraf_yeri_kodu)
+- **`config_claude_code.R`**: Claude Code CLI configuration, thinking messages per character, pre-defined scenarios
 
 #### Helper Functions (`helpers_*.R`)
 Core utilities and functions used throughout the application:
@@ -65,6 +67,7 @@ Core utilities and functions used throughout the application:
 - **`helpers_sso.R`**: SSO helper functions: JWT token decoding (decode_jwt_payload), token validation (validate_jwt_token), Keycloak claim extraction (extract_user_claims), logout URL building, database authorization check
 - **`helpers_destek_database.R`**: Support page database operations (MB_Destek_Geri_Bildirim, MB_Destek_Hata_Bildir, status updates)
 - **`helpers_admin_analytics.R`**: Shared utilities for admin analytics modules (metric cards, safe query, Turkish formatting, DT language, color palette)
+- **`helpers_claude_code.R`**: Claude Code CLI interaction (run_claude_code, check_claude_code_status, test_claude_code_connection, workspace management, directory listing, output formatting, thinking message selection)
 
 #### Utility Functions (`utils_*.R`)
 Low-level utilities:
@@ -100,6 +103,7 @@ Shiny modules for major UI sections and features:
 - **`module_destek_hata_bildir.R`**: Bug report form (topics, categories, priority, attachments)
 - **`module_destek_hakkinda.R`**: About page with app features and page guide
 - **`module_quick_actions.R`**: Quick action buttons
+- **`module_claude_code.R`**: Claude Code agent integration page (claudeCodeUI + claudeCodeServer). Wraps Claude Code CLI via processx for full agent capabilities. Character-themed 8-bit animations, scenario templates, connection testing, directory browser
 - **`module_message_search.R`**: Message search functionality
 - **`module_chat_search.R`**: Chat history search
 - **`module_user_identity.R`**: User identification and authentication
@@ -314,6 +318,17 @@ SSO_VALIDATE_ISSUER=TRUE                 # Validate JWT issuer claim
 SSO_VALIDATE_EXPIRY=TRUE                 # Validate JWT expiration
 SSO_TOKEN_REFRESH_MARGIN=300             # Warn before token expires (seconds)
 SSO_DEBUG=FALSE                           # Verbose SSO logging
+```
+
+### Claude Code Integration
+```
+CLAUDE_CODE_CLI_PATH=claude              # Path to Claude Code CLI executable
+CLAUDE_CODE_DEFAULT_WORKDIR=             # Default working directory (empty = user workspace)
+CLAUDE_CODE_TIMEOUT=300                  # Request timeout in seconds
+CLAUDE_CODE_MAX_TOKENS=4096              # Default max tokens
+CLAUDE_CODE_MODEL=                       # Default model (empty = CLI default)
+CLAUDE_CODE_MAX_CONCURRENT=5             # Max concurrent sessions
+CLAUDE_CODE_PERSIST_SESSIONS=TRUE        # Persist session history
 ```
 
 ### Other
@@ -636,8 +651,17 @@ www/css/admin_yanit_analizi.css     # AI response feedback analytics page stylin
 www/js/destek_form.js                # Form interactions (satisfaction, NPS, tags, categories, priority, file upload, validation)
 www/js/destek_yardim_chatbot.js      # Chatbot client-side logic (message sending, display, thinking indicator)
 www/js/sso_auth.js                   # SSO client-side auth: Keycloak redirect, token extraction, Shiny bridge
+www/css/claude_code.css              # Claude Code page styling (8-bit animations, terminal, character themes, responsive)
+www/js/claude_code.js                # Claude Code client-side logic (pixel character engine, message display, thinking animations, keyboard shortcuts)
 www/css/sso_auth.css                 # SSO auth overlay styling (loading spinner, error state, transitions)
 ```
+
+**For Claude Code Work**:
+1. `R/config_claude_code.R` - Configuration constants, thinking messages, pre-defined scenarios
+2. `R/helpers_claude_code.R` - CLI interaction (run_claude_code, status check, connection test, workspace management)
+3. `R/module_claude_code.R` - Main UI and server module (claudeCodeUI + claudeCodeServer)
+4. `www/css/claude_code.css` - Styling (8-bit animations, terminal, character themes)
+5. `www/js/claude_code.js` - Client-side logic (pixel engine, message display, keyboard shortcuts)
 
 **For Admin Analytics Work**:
 1. `R/helpers_admin_analytics.R` - Shared utilities (metric cards, safe query, DT language, Turkish formatting)
@@ -645,6 +669,15 @@ www/css/sso_auth.css                 # SSO auth overlay styling (loading spinner
 3. `R/module_admin_geri_bildirim.R` - Geri Bildirim Analizi (satisfaction, NPS, tags, email contact)
 4. `R/module_admin_hata_analizi.R` - Hata Analizi (priority, category, attachments, status management)
 5. `R/module_admin_yanit_analizi.R` - Yanıt Geri Bildirimi Analizi (like/dislike, model performance, tags, time analysis)
+
+### Sidebar Menu Structure
+The main sidebar includes these items (visible to all users):
+1. **Ana Söyleşi** (`chat`) - Main AI chat interface
+2. **Claude Code** (`claude_code`) - Claude Code agent interface with full CLI capabilities
+3. **Söyleşi Yönetimi** - Conversation management (history, saved chats, image gallery)
+4. **Dosya Yönetimi** (`files`) - File upload and management
+5. **Ayarlar** - Settings (personal, configuration)
+6. **Destek** - Support (help center, feedback, versions, about)
 
 ### Admin Panel Menu Structure (Admin-Only)
 The "Yönetici Paneli" sidebar menu is dynamically rendered for ADMIN users only, with 5 sub-items:
@@ -655,6 +688,6 @@ The "Yönetici Paneli" sidebar menu is dynamically rendered for ADMIN users only
 5. **Sistem Durumu** (`health`) - System health monitoring
 
 ## Last Updated
-March 13, 2026
+March 14, 2026
 
 **Note**: This documentation reflects the current state of the codebase. For specific implementation details, always refer to the actual source code and inline comments in R files.

@@ -37,6 +37,7 @@ ui <- dashboardPage(
         menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark")),
         menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
+      menuItem("Claude Code", tabName = "claude_code", icon = icon("terminal")),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
       menuItem("Ayarlar", icon = icon("cog"), startExpanded = FALSE,
         menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
@@ -144,6 +145,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/explore_character_step.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/surum_bilgilendirme.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/sso_auth.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -249,6 +251,7 @@ ui <- dashboardPage(
     tags$script(src = "js/explore_character_video.js", defer = "defer"),
     tags$script(src = "js/explore_character_step.js", defer = "defer"),
     tags$script(src = "js/surum_bilgilendirme.js", defer = "defer"),
+    tags$script(src = "js/claude_code.js", defer = "defer"),
 
     tags$div(id = "toast-container", class = "toast-container")
   ),
@@ -465,6 +468,9 @@ ui <- dashboardPage(
       # Görsel Galerisi Sekmesi
       tabItem(tabName = "image_gallery", imageGalleryUI("image_gallery_module")),
       
+      # Claude Code Sekmesi
+      tabItem(tabName = "claude_code", claudeCodeUI("claude_code_module")),
+
       # Dosya Yönetimi Sekmesi
       tabItem(tabName = "files", fileManagerUI("file_manager_module")),
       
