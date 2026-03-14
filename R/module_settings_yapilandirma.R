@@ -635,7 +635,7 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
         if (!nzchar(success_msg)) {
           success_msg <- "API anahtarı güncellendi."
         } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
-          success_msg <- paste("API anahtarı güncellendi —", success_msg)
+          success_msg <- paste("API anahtarı güncellendi \U2014", success_msg)
         }
         showToast(session, success_msg, "success")
       }, error = function(e) {

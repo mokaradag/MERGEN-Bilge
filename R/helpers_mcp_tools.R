@@ -750,7 +750,7 @@ helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   
   # [FIX] Return list for error
   if (inherits(df, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), df$message)))
+    return(list(error = sprintf("Excel dosyası okunamadı: %s \U2014 %s", basename(path), df$message)))
   }
 
   n_rows <- nrow(df)
@@ -804,7 +804,7 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+    return(list(error = sprintf("Excel dosyası okunamadı: %s \U2014 %s", basename(path), dt$message)))
   }
 
   if (!(column %in% names(dt))) {
@@ -878,7 +878,7 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
   }, error = function(e) e)
   
   if (inherits(dt, "error")) {
-    return(list(error = sprintf("Excel dosyası okunamadı: %s — %s", basename(path), dt$message)))
+    return(list(error = sprintf("Excel dosyası okunamadı: %s \U2014 %s", basename(path), dt$message)))
   }
 
   # Normalize date/time as character
@@ -963,7 +963,7 @@ helpers_mcp_tools$prepare_chart_data <- function(
     helpers_mcp_tools$safe_read_table_generic(res$path)
   }, error = function(e) e)
   if (inherits(dt, "error")) {
-    return(list(error = sprintf("Dosya okunamadı: %s — %s", basename(res$path), dt$message), ok = FALSE))
+    return(list(error = sprintf("Dosya okunamadı: %s \U2014 %s", basename(res$path), dt$message), ok = FALSE))
   }
   
   # --- Türkçe yorum: Sütun doğrulama ve akıllı eşleştirme ---
@@ -1048,12 +1048,12 @@ helpers_mcp_tools$prepare_chart_data <- function(
       }
     }
  
-    # Türkçe yorum: Pie/Donut için agg parametresi ZORUNLU — yoksa otomatik ekle
+    # Türkçe yorum: Pie/Donut için agg parametresi ZORUNLU - yoksa otomatik ekle
     if (is.null(agg) || !nzchar(agg)) {
       agg <- "sum"  # Varsayılan olarak toplam kullan
     }
  
-    # Türkçe yorum: Pie/Donut için top_n parametresi ZORUNLU — yoksa otomatik ekle
+    # Türkçe yorum: Pie/Donut için top_n parametresi ZORUNLU - yoksa otomatik ekle
     # Bu, sonsuz dilim oluşturulmasını engeller
     if (is.null(top_n) || is.na(top_n) || !is.numeric(top_n)) {
       top_n <- 10  # Maksimum 10 dilim göster
@@ -1881,7 +1881,7 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
       "---\n\n",
       "**ÖNEMLİ:** Yukarıdaki şemada gördüğün GERÇEK sütun isimlerini kullan!\n",
       "Kullanıcı Türkçe terim kullanırsa, şemadaki İngilizce karşılığını bul.\n",
-      "Örnek: Kullanıcı 'departman' derse → şemada 'Department' sütununu kullan.\n\n",
+      "Örnek: Kullanıcı 'departman' derse \U2192 şemada 'Department' sütununu kullan.\n\n",
       "---\n\n"
     )
   }
@@ -1901,33 +1901,33 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
 
     "## KRİTİK KURAL: HANGİ ARACI NE ZAMAN KULLAN?\n\n",
 
-    "### \U00000031\U0000FE0F\U000020E3 FİLTRELENMİŞ İSTATİSTİK İSTENİYORSA → `analyze_and_visualize`\n",
+    "### \U00000031\U0000FE0F\U000020E3 FİLTRELENMİŞ İSTATİSTİK İSTENİYORSA \U2192 `analyze_and_visualize`\n",
     "Kullanıcı belirli bir kategoriye göre ortalama, toplam, sayı istiyorsa BU ARACI KULLAN!\n\n",
 
     "**Örnekler:**\n",
-    "- 'IT departmanının ortalama maaşı' → analyze_and_visualize(filter_column='Department', filter_value='IT', stat_function='mean')\n",
-    "- 'Erkeklerin toplam çalışma saati' → analyze_and_visualize(filter_column='Gender', filter_value='Male', stat_function='sum')\n",
-    "- 'Departman bazında ortalama maaş' → analyze_and_visualize(analysis_type='grouped_stats', group_column='Departman', stat_function='mean')\n",
-    "- 'Satış ekibinin performans grafiği' → analyze_and_visualize(filter_column='Departman', filter_value='Satış', chart_type='bar')\n\n",
+    "- 'IT departmanının ortalama maaşı' \U2192 analyze_and_visualize(filter_column='Department', filter_value='IT', stat_function='mean')\n",
+    "- 'Erkeklerin toplam çalışma saati' \U2192 analyze_and_visualize(filter_column='Gender', filter_value='Male', stat_function='sum')\n",
+    "- 'Departman bazında ortalama maaş' \U2192 analyze_and_visualize(analysis_type='grouped_stats', group_column='Departman', stat_function='mean')\n",
+    "- 'Satış ekibinin performans grafiği' \U2192 analyze_and_visualize(filter_column='Departman', filter_value='Satış', chart_type='bar')\n\n",
  
-    "### \U00000032\U0000FE0F\U000020E3 GENEL GRAFİK İSTENİYORSA (filtresiz) → `prepare_chart_data`\n",
+    "### \U00000032\U0000FE0F\U000020E3 GENEL GRAFİK İSTENİYORSA (filtresiz) \U2192 `prepare_chart_data`\n",
     "Tüm veriyi görselleştirmek için bu aracı kullan. Eksenler OTOMATİK seçilir.\n\n",
  
     "**Örnekler:**\n",
-    "- 'histogram çiz' → prepare_chart_data(chart_type='hist')\n",
-    "- 'bar grafiği' → prepare_chart_data(chart_type='bar')\n",
-    "- 'pasta grafiği' → prepare_chart_data(chart_type='pie')\n",
-    "- 'çizgi grafiği' → prepare_chart_data(chart_type='line')\n",
-    "- 'scatter plot' → prepare_chart_data(chart_type='scatter')\n\n",
+    "- 'histogram çiz' \U2192 prepare_chart_data(chart_type='hist')\n",
+    "- 'bar grafiği' \U2192 prepare_chart_data(chart_type='bar')\n",
+    "- 'pasta grafiği' \U2192 prepare_chart_data(chart_type='pie')\n",
+    "- 'çizgi grafiği' \U2192 prepare_chart_data(chart_type='line')\n",
+    "- 'scatter plot' \U2192 prepare_chart_data(chart_type='scatter')\n\n",
  
-    "### \U00000033\U0000FE0F\U000020E3 SQL SORGUSU GEREKİYORSA → `sql_query_uploaded_file`\n",
+    "### \U00000033\U0000FE0F\U000020E3 SQL SORGUSU GEREKİYORSA \U2192 `sql_query_uploaded_file`\n",
     "Karmaşık filtreleme, sıralama, gruplama için SQL kullan. Tablo adı: 't'\n\n",
  
     "**Örnekler:**\n",
-    "- 'En yüksek maaşlı 10 kişi' → sql_query_uploaded_file(sql='SELECT * FROM t ORDER BY Maas DESC LIMIT 10')\n",
-    "- '2023 yılı kayıtları' → sql_query_uploaded_file(sql=\"SELECT * FROM t WHERE Yil = 2023\")\n\n",
+    "- 'En yüksek maaşlı 10 kişi' \U2192 sql_query_uploaded_file(sql='SELECT * FROM t ORDER BY Maas DESC LIMIT 10')\n",
+    "- '2023 yılı kayıtları' \U2192 sql_query_uploaded_file(sql=\"SELECT * FROM t WHERE Yil = 2023\")\n\n",
  
-    "### \U00000034\U0000FE0F\U000020E3 SÜTUN DEĞERLERİNİ ÖĞRENMEK İÇİN → `get_distinct_values`\n",
+    "### \U00000034\U0000FE0F\U000020E3 SÜTUN DEĞERLERİNİ ÖĞRENMEK İÇİN \U2192 `get_distinct_values`\n",
     "Hangi kategoriler var bilmiyorsan önce bu aracı çağır.\n\n",
  
     "## GRAFİK TÜRLERİ SÖZLÜĞÜ:\n",

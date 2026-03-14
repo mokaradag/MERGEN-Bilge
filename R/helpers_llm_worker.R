@@ -163,7 +163,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
   # 2) Yanlış eksen seçimleri
   # 3) İstenmeyen grafik kombinasyonları
   add_fallback_chart <- function(original_text) {
-    # Fallback devre dışı — orijinal metni olduğu gibi döndür
+    # Fallback devre dışı - orijinal metni olduğu gibi döndür
     return(original_text %||% "")
   }
     
@@ -257,7 +257,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     # Ollama 'tools' desteklemiyorsa (400 hatası), şemasız tekrar dene
     if (status == 400 && mcp_enabled_now && isTRUE(attach_tool_schema) &&
       grepl("does not support tools|tool", tolower(resp_txt))) {
-    mergen_debug_cat("[RETRY] 400 & tools not supported → retrying without tool schema...\n")
+    mergen_debug_cat("[RETRY] 400 & tools not supported -> retrying without tool schema...\n")
     body$tools <- NULL
     body$tool_choice <- NULL
     response <- httr::POST(
@@ -274,7 +274,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
 
     # HTTP durum kodlarına göre hata fırlat
     if (status != 200) {
-    msg_tail <- if (nzchar(resp_txt)) paste0(" — ", substr(resp_txt, 1, 500)) else ""
+    msg_tail <- if (nzchar(resp_txt)) paste0(" \U2014 ", substr(resp_txt, 1, 500)) else ""
     if (status == 429)      stop("RATE_LIMIT: Çok fazla istek gönderildi.", call. = FALSE)
     else if (status %in% c(401,403)) stop("AUTH_ERROR: Kimlik doğrulama hatası.", call. = FALSE)
     else if (status >= 500) stop(sprintf("SERVER_ERROR: Sunucu hatası (Kod: %d)%s", status, msg_tail), call. = FALSE)
@@ -385,7 +385,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     # ÖNEMLİ: İşçi fonksiyonundayız, Shiny oturumuna doğrudan dokunma
     chart_blocks_text <- ""
     try({
-        # __mcp_plot şartını kaldır — chart alanı olan tüm sonuçlar geçerlidir
+        # __mcp_plot şartını kaldır - chart alanı olan tüm sonuçlar geçerlidir
         chart_specs <- Filter(function(x) is.list(x) && !is.null(x[["chart"]]), tool_results_raw)
       if (length(chart_specs)) {
 
@@ -571,9 +571,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         mergen_debug_cat("========== [GLOBAL] HAM SONUÇLAR BİTİŞ ==========\n\n")
         
     # Araç sonuçlarını LLM için okunabilir formata çevir
-        mergen_debug_cat("\n╔════════════════════════════════════════════════════╗\n")
-        mergen_debug_cat("║  [GLOBAL] ARAÇ SONUÇLARINI FORMATLAMAYA BAŞLIYOR  ║\n")
-        mergen_debug_cat("╚════════════════════════════════════════════════════╝\n\n")
+        mergen_debug_cat("\n+====================================================+\n")
+        mergen_debug_cat("|  [GLOBAL] ARAÇ SONUÇLARINI FORMATLAMAYA BAŞLIYOR  |\n")
+        mergen_debug_cat("+====================================================+\n\n")
         
         tool_results <- lapply(seq_along(tool_calls), function(i) {
           raw <- tool_results_raw[[i]]
@@ -646,9 +646,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
               }
         
               result_text <- paste0(
-                "╔════════════════════════════════════════╗\n",
-                "║  VERİTABANINDAN GELEN GERÇEK VERİ      ║\n",
-                "╚════════════════════════════════════════╝\n\n",
+                "+========================================+\n",
+                "|  VERİTABANINDAN GELEN GERÇEK VERİ      |\n",
+                "+========================================+\n\n",
                 "SQL Sorgusu: ", raw$sql_effective %||% "N/A", "\n",
                 "Dönen Toplam Satır: ", nrow(df), "\n",
                 "Dönen Toplam Sütun: ", ncol(df), "\n",
@@ -690,9 +690,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           list(tool = tool_name, result = result_text)
         })
         
-        mergen_debug_cat("\n╔════════════════════════════════════════════════════╗\n")
-        mergen_debug_cat("║  [GLOBAL] TÜM ARAÇLAR FORMATLANDI                  ║\n")
-        mergen_debug_cat("╚════════════════════════════════════════════════════╝\n\n")
+        mergen_debug_cat("\n+====================================================+\n")
+        mergen_debug_cat("|  [GLOBAL] TÜM ARAÇLAR FORMATLANDI                  |\n")
+        mergen_debug_cat("+====================================================+\n\n")
         
     # Araç sonuçlarını log'a yaz
         for (i in seq_along(tool_results)) {
@@ -734,17 +734,17 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         mergen_debug_cat("========================================\n\n")
     
     # Chat history'nin son elemanını (AI'a gönderilecek mesajı) detaylı logla
-        mergen_debug_cat("\n╔═══════════════════════════════════════════════════════════╗\n")
-        mergen_debug_cat("║  [GLOBAL] AI'A GÖNDERİLECEK MESAJIN SON HALİ              ║\n")
-        mergen_debug_cat("╚═══════════════════════════════════════════════════════════╝\n\n")
+        mergen_debug_cat("\n+===========================================================+\n")
+        mergen_debug_cat("|  [GLOBAL] AI'A GÖNDERİLECEK MESAJIN SON HALİ              |\n")
+        mergen_debug_cat("+===========================================================+\n\n")
         
         last_msg <- chat_history[[length(chat_history)]]
         mergen_debug_cat("[GLOBAL] Son mesaj role:", last_msg$role, "\n")
         mergen_debug_cat("[GLOBAL] Son mesaj uzunluğu:", nchar(last_msg$content), "karakter\n")
         mergen_debug_cat("\n[GLOBAL] SON MESAJIN TAM İÇERİĞİ:\n")
-        mergen_debug_cat("════════════════════════════════════════════════════════════\n")
+        mergen_debug_cat("============================================================\n")
         mergen_debug_cat(last_msg$content)
-        mergen_debug_cat("\n════════════════════════════════════════════════════════════\n\n")
+        mergen_debug_cat("\n============================================================\n\n")
         
         # Markdown tablo var mı kontrol et
         if (grepl("\\|.*\\|.*\\|", last_msg$content)) {
@@ -764,9 +764,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           list(role = "user", content = paste0(
             "Araç sonuçları:\n\n",
             results_text,
-            "\n\n╔═══════════════════════════════════════════════════════╗\n",
-            "║  MUTLAK KURAL - ASLA İHLAL ETME                       ║\n",
-            "╚═══════════════════════════════════════════════════════╝\n\n",
+            "\n\n+=======================================================+\n",
+            "|  MUTLAK KURAL - ASLA İHLAL ETME                       |\n",
+            "+=======================================================+\n\n",
             "Yukarıdaki tablo GERÇEK VERİDİR. Bu veritabanından geldi.\n\n",
             "SEN BİR VERİ RAPORLAYICI ROBOTSUN - VERİ ÜRETME!\n\n",
             "YAPMAN GEREKENLER:\n",
@@ -784,9 +784,9 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             "\U00002717 Benzer değerler uydurma\n",
             "\U00002717 '...' kullanma\n\n",
             "Eğer yukarıdaki tabloda veri YOKSA:\n",
-            "→ 'Sonuç bulunamadı' de ve DUR\n\n",
+            "-> 'Sonuç bulunamadı' de ve DUR\n\n",
             "Eğer yukarıdaki tabloda veri VARSA:\n",
-            "→ O sayıları AYNEN yaz\n\n",
+            "-> O sayıları AYNEN yaz\n\n",
             "ŞİMDİ: Yukarıdaki GERÇEK tabloyu kullanarak kullanıcının sorusunu cevapla."
           ))
         ))
@@ -818,16 +818,16 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           debug_file <- file.path(tempdir(), sprintf("chat_debug_%s.txt", format(Sys.time(), "%Y%m%d_%H%M%S")))
           writeLines(
             c(
-              "═══════════════════════════════════════════════",
+              "===============================================",
               "CHAT HISTORY - AI'A GÖNDERİLEN TÜM MESAJLAR",
-              "═══════════════════════════════════════════════",
+              "===============================================",
               "",
               sapply(seq_along(chat_history), function(i) {
                 msg <- chat_history[[i]]
                 paste0(
-                  "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                  "\n\n--------------------------------------------\n",
                   "MESAJ #", i, " - Role: ", msg$role, "\n",
-                  "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                  "--------------------------------------------\n",
                   msg$content
                 )
               })

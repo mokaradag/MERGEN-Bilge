@@ -415,7 +415,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       promises::then(
           tts_engine(full_response, tts_voice),
           onFulfilled = function(result) {
-              # TTS tamamlandı → Metin akışı ve ses birlikte başlasın
+              # TTS tamamlandı -> Metin akışı ve ses birlikte başlasın
               if (isTRUE(result$success)) {
                 cat(sprintf("[TTS-STREAM] Seslendirme başarılı (süre: %.2fs)\n", result$duration %||% 0))
               } else {
@@ -424,13 +424,13 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               start_streaming_execution(result)
           },
           onRejected = function(err) {
-              # TTS başarısız → Metin akışı yine de başlasın
+              # TTS başarısız -> Metin akışı yine de başlasın
               cat(sprintf("[TTS-STREAM] Promise hatası: %s\n", conditionMessage(err)))
               start_streaming_execution(NULL)
           }
       )
   } else {
-      # TTS yok → Hemen başla
+      # TTS yok -> Hemen başla
       start_streaming_execution(NULL)
   }
 }

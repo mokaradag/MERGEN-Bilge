@@ -9,7 +9,7 @@ fileManagerUI <- function(id) {
   ns <- NS(id)
   
 tagList(
-    # 32×32 attach checkbox + center it in its cell
+    # 32\U00D732 attach checkbox + center it in its cell
 	tags$head(tags$style(HTML("
 		  .files-table-card .attach-cell { display:flex; align-items:center; justify-content:center; }
 		  .files-table-card input.attach-checkbox { width:32px; height:32px; margin:0; }
@@ -902,7 +902,7 @@ fileManagerServer <- function(
             message_trigger(message_trigger() + 1)
             showToast(session, paste(length(saved_infos), "dosya başarıyla yüklendi!"), "success")
   
-            # hand off to parent (stable paths) → summarizer
+            # hand off to parent (stable paths) -> summarizer
             files_added_to_context(saved_infos)
           }
           

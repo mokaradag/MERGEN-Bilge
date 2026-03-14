@@ -418,11 +418,11 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
   data_blocks <- vapply(seq_along(successful), function(i) {
     r <- successful[[i]]
     paste0(
-      sprintf("\n\n══════════════════════════════════════════\n"),
+      sprintf("\n\n==========================================\n"),
       sprintf("\U0001F4CA SORGU %d/%d: %s\n", i, query_count, r$query_name),
       sprintf("Açıklama: %s\n", r$query_desc),
       sprintf("Toplam Satır: %d | İlgililik: %.0f%%\n", r$row_count, r$relevance),
-      sprintf("══════════════════════════════════════════\n"),
+      sprintf("==========================================\n"),
       r$summary_text,
       "\n\n--- ÖRNEK VERİ (JSON) ---\n",
       r$preview_json,
@@ -472,9 +472,9 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
   failed_note <- ""
   if (length(failed) > 0) {
     failed_note <- paste0(
-      "\n\n══════════════════════════════════════════\n",
+      "\n\n==========================================\n",
       sprintf("\U000026A0\U0000FE0F BAŞARISIZ SORGULAR (%d adet)\n", length(failed)),
-      "══════════════════════════════════════════\n",
+      "==========================================\n",
       paste(vapply(failed, function(f) {
         sprintf("- **%s**: %s", f$query_name, f$error_msg %||% "Hata")
       }, character(1)), collapse = "\n"),

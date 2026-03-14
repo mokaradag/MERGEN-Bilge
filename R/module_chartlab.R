@@ -110,7 +110,7 @@ chartLabServer <- function(id) {
       first_or_null <- function(x) if (length(x)) x[[1]] else NULL
 
       sp$type    <- tolower(sp$type %||% "")
-      # box/boxplot is no longer supported — hard-fallback to histogram
+      # box/boxplot is no longer supported - hard-fallback to histogram
       if (sp$type %in% c("box","boxplot","box_plot","bx")) sp$type <- "hist"
       sp$mapping <- sp$mapping %||% list()
       
@@ -223,7 +223,7 @@ chartLabServer <- function(id) {
 		output[[out_id]] <- highcharter::renderHighchart({
           library(highcharter)
           hc <- highchart() %>% hc_exporting(enabled = TRUE) %>%
-            hc_title(text = paste0(toupper(type), " — ", file_label)) %>%
+            hc_title(text = paste0(toupper(type), " \U2014 ", file_label)) %>%
             hc_add_theme(mergen_dark_theme())
 
           # Flip chart to horizontal if requested (safer than switching to 'bar' in complex combos)
@@ -491,7 +491,7 @@ chartLabServer <- function(id) {
     # public API ------------------------------------------------------
     push_spec <- function(spec_payload) {
       # spec_payload is typically result$chart
-      spec_payload <- auto_guess_chart_spec(spec_payload)   # ← ensure mapping exists for UI meta
+      spec_payload <- auto_guess_chart_spec(spec_payload)   # \U2190 ensure mapping exists for UI meta
       id <- make_id()
       rv$items[[id]] <- list(spec = spec_payload, file = spec_payload$file %||% NULL)
       rv$order <- c(id, rv$order)  # newest first
@@ -508,7 +508,7 @@ chartLabServer <- function(id) {
         file_label <- sp$file %||% ""
         tagList(
           div(class="chart-card",
-              div(class="chart-title", paste0(toupper(sp$type), " — ", file_label)),
+              div(class="chart-title", paste0(toupper(sp$type), " \U2014 ", file_label)),
               div(class="chart-meta",
                   paste0("x=", sp$mapping$x %||% "-", "  y=", sp$mapping$y %||% "-", "  group=", sp$mapping$group %||% "-")),
               if (requireNamespace("highcharter", quietly = TRUE))

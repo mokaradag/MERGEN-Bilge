@@ -1,11 +1,11 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_llm_tool_formatters.R
 # Açıklama:   LLM araç sonuçlarını formatlama, Excel veri profili çıkarma,
-#              MCP Excel yedek yardımcıları ve DOCX→PDF dönüştürme fonksiyonları.
+#              MCP Excel yedek yardımcıları ve DOCX->PDF dönüştürme fonksiyonları.
 #              global.R tarafından config_api.R'den sonra source() ile çağrılır.
 # ==============================================================================
 
-# --- DOCX → PDF DÖNÜŞTÜRMESİ (LibreOffice ile, opsiyonel) ---
+# --- DOCX -> PDF DÖNÜŞTÜRMESİ (LibreOffice ile, opsiyonel) ---
 # Sadece options(mergen.word_preview_mode) == "pdf" iken kullanılır
 convert_docx_to_pdf <- function(docx_path) {
   if (!file.exists(docx_path)) stop("Yol bulunamadı: ", docx_path)
@@ -66,7 +66,7 @@ format_answer_from_tool_results <- function(tool_results_raw) {
     minv  <- get2(tr, "minimum", "min")
     maxv  <- get2(tr, "maksimum", "max")
     return(sprintf(
-      "%s sütunu — Ortalama: %.2f, Medyan: %.2f, Min: %.2f, Max: %.2f",
+      "%s sütunu \U2014 Ortalama: %.2f, Medyan: %.2f, Min: %.2f, Max: %.2f",
       col %||% "Seçilen", meanv %||% NA_real_, med %||% NA_real_, minv %||% NA_real_, maxv %||% NA_real_
     ))
   }

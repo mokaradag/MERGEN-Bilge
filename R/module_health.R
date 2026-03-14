@@ -287,10 +287,10 @@ healthServer <- function(id, perf_tracker) {
 			db_size <- file.size(helpers_rdata_lake$db_path) / 1024^2
 			sprintf("\U00002713 Aktif (%.1f MB)", db_size)
 		  } else {
-			"○ Hazır değil"
+			"\U25CB Hazır değil"
 		  }
 		} else {
-		  "○ Yüklenmedi"
+		  "\U25CB Yüklenmedi"
 		}
 	  }, error = function(e) {
 		"\U00002717 Hata"

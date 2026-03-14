@@ -28,11 +28,11 @@ imageGalleryUI <- function(id) {
         div(
           class = "pagination-controls",
           style = "text-align: center; margin: 6px 0 14px; padding: 10px 0;",
-          actionButton(ns("first_page"), "« İlk", class = "btn-modern btn-secondary"),
-          actionButton(ns("prev_page"), "‹ Önceki", class = "btn-modern btn-secondary"),
+          actionButton(ns("first_page"), "\U00AB İlk", class = "btn-modern btn-secondary"),
+          actionButton(ns("prev_page"), "\U2039 Önceki", class = "btn-modern btn-secondary"),
           span(textOutput(ns("page_info"), inline = TRUE), style = "margin: 0 20px;"),
-          actionButton(ns("next_page"), "Sonraki ›", class = "btn-modern btn-secondary"),
-          actionButton(ns("last_page"), "Son »", class = "btn-modern btn-secondary")
+          actionButton(ns("next_page"), "Sonraki \U203A", class = "btn-modern btn-secondary"),
+          actionButton(ns("last_page"), "Son \U00BB", class = "btn-modern btn-secondary")
         ),
         uiOutput(ns("gallery_content"))
       )

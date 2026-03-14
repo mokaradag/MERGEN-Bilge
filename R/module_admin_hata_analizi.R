@@ -204,7 +204,7 @@ adminHataAnaliziServer <- function(id) {
           ORDER BY yil, hafta
         "),
 
-        # Öncelik × Kategori çapraz tablosu (ısı haritası için)
+        # Öncelik \U00D7 Kategori çapraz tablosu (ısı haritası için)
         oncelik_kategori = admin_safe_query("
           SELECT Oncelik, Kategoriler, COUNT(*) as cnt
           FROM MB_Destek_Hata_Bildir
@@ -370,7 +370,7 @@ adminHataAnaliziServer <- function(id) {
               class = "analytics-card",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("th"), " Öncelik × Kategori Isı Haritası"),
+                h4(class = "card-title", icon("th"), " Öncelik \U00D7 Kategori Isı Haritası"),
                 admin_create_info_button("Her öncelik-kategori kombinasyonu için hata bildirim yoğunluğu. Koyu renkler daha fazla bildirimi temsil eder.")
               ),
               highcharter::highchartOutput(ns("ha_heatmap_chart"), height = "350px")
@@ -699,7 +699,7 @@ adminHataAnaliziServer <- function(id) {
         highcharter::hc_credits(enabled = FALSE)
     })
 
-    # Isı haritası (Öncelik × Kategori)
+    # Isı haritası (Öncelik \U00D7 Kategori)
     output$ha_heatmap_chart <- highcharter::renderHighchart({
       data <- ha_data()$oncelik_kategori
       if (nrow(data) == 0) return(highcharter::highchart())
@@ -767,7 +767,7 @@ adminHataAnaliziServer <- function(id) {
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a", borderColor = "#333",
           style = list(color = "#fff"),
-          formatter = JS("function() { return '<b>' + this.series.xAxis.categories[this.point.x] + '</b> × <b>' + this.series.yAxis.categories[this.point.y] + '</b><br/>Bildirim: ' + this.point.value; }")
+          formatter = JS("function() { return '<b>' + this.series.xAxis.categories[this.point.x] + '</b> \U00D7 <b>' + this.series.yAxis.categories[this.point.y] + '</b><br/>Bildirim: ' + this.point.value; }")
         ) %>%
         highcharter::hc_legend(
           align = "right", layout = "vertical", verticalAlign = "middle",
@@ -968,7 +968,7 @@ adminHataAnaliziServer <- function(id) {
 
       data$row_num <- 1:nrow(data)
 
-      # Arka plan rengine göre okunabilir metin rengi seç (açık arka plan → koyu metin)
+      # Arka plan rengine göre okunabilir metin rengi seç (açık arka plan -> koyu metin)
       badge_text_color <- function(bg_hex) {
         rgb_vals <- col2rgb(bg_hex)
         # Algısal parlaklık hesabı (WCAG formülü)

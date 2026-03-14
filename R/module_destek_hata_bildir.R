@@ -175,7 +175,7 @@ destekHataBildirUI <- function(id) {
               tags$span(class = "destek-upload-link", "göz atın")
             ),
             p(class = "destek-upload-hint",
-              "PNG, JPG, GIF, MP4 • Maks. 10MB")
+              "PNG, JPG, GIF, MP4 \U2022 Maks. 10MB")
           )
         ),
         # Gizli dosya girişi

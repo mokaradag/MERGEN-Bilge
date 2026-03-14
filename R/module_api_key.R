@@ -154,7 +154,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         if (!nzchar(success_msg)) {
           success_msg <- "API anahtarı kaydedildi."
         } else if (!grepl("API anahtarı", success_msg, fixed = TRUE)) {
-          success_msg <- paste("API anahtarı kaydedildi —", success_msg)
+          success_msg <- paste("API anahtarı kaydedildi \U2014", success_msg)
         }
         showToast(session, success_msg, "success")
       }, error = function(e) {

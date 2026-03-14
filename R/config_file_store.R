@@ -348,7 +348,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
     if (prune_missing && any(!exists_vec)) {
       missing_keys <- unique(df$key[!exists_vec])
       missing_names <- unique(df$name[!exists_vec])
-      log_warn("[INDEX] {length(missing_keys)} kayıt bulunamadı (user={uid}): {paste(missing_names, collapse = ', ')} — indeks temizleniyor")
+      log_warn("[INDEX] {length(missing_keys)} kayıt bulunamadı (user={uid}): {paste(missing_names, collapse = ', ')} \U2014 indeks temizleniyor")
       drop_stale_entries(missing_keys)
     }
 

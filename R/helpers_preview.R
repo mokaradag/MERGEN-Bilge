@@ -45,7 +45,7 @@ init_docx_preview_js <- function(session) {
 
       // iframe için minimal tema (uygulama CSS'inden izole)
       var DOCX_CSS = [
-        // not: iç belge kaydırma yapmasın — yalnız modal gövdesi kayacak
+        // not: iç belge kaydırma yapmasın \u2014 yalnız modal gövdesi kayacak
         'html,body{margin:0;padding:16px;background:#fff;color:#111;font:14px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden;}',
         'p{margin:0 0 8px 0;} h1,h2,h3,h4,h5,h6{color:#111;margin:12px 0 8px 0;}',
         'ul,ol{margin:6px 0 8px 26px;} li{margin:4px 0;}',
@@ -62,7 +62,7 @@ init_docx_preview_js <- function(session) {
           iframe = document.createElement('iframe');
           // İzolasyon: üst sayfanın CSS/JS'i etkilenmesin
           iframe.setAttribute('sandbox','allow-same-origin');
-          // not: iç çubukları tamamen kapat — sadece modal gövdesi kayacak
+          // not: iç çubukları tamamen kapat \u2014 sadece modal gövdesi kayacak
           iframe.setAttribute('scrolling','no');
           iframe.style.overflow = 'hidden';
           iframe.style.width = '100%';
@@ -92,7 +92,7 @@ init_docx_preview_js <- function(session) {
         if (!target) return;
 
         // kullanıcıya net bir geri bildirim
-        target.innerHTML = '<div style=\"padding:8px;font-size:12px;opacity:.7\">Yükleniyor…</div>';
+        target.innerHTML = '<div style=\"padding:8px;font-size:12px;opacity:.7\">Yükleniyor\U2026</div>';
 
         ensureMammoth(function(){
           try{
@@ -224,10 +224,10 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
 
   found_path <- NULL
 
-  # (a) Kullanıcı kovası — önce TAM adla dene, sonra basename
+  # (a) Kullanıcı kovası - önce TAM adla dene, sonra basename
   uid <- session$userData$user_id %||% NULL
   if (!is.null(uid)) {
-    log_debug("[SRC_CLICK] (a) kullanıcı kovası aranıyor… user_id={uid}")
+    log_debug("[SRC_CLICK] (a) kullanıcı kovası aranıyor\U2026 user_id={uid}")
     cand_user_full <- try(resolve_uploaded_file(filename_full, user_id = uid), silent = TRUE)
     if (!inherits(cand_user_full, "try-error") && !is.null(cand_user_full) && path_exists_relaxed(cand_user_full)) {
       found_path <- normalizePath(cand_user_full, winslash = "/", mustWork = FALSE)
@@ -279,9 +279,9 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
     }
   }
 
-  # (c) Önbellek (genel index) — en son başvur
+  # (c) Önbellek (genel index) - en son başvur
   if (is.null(found_path)) {
-    log_debug("[SRC_CLICK] (c) genel index üzerinden çözümleme deneniyor…")
+    log_debug("[SRC_CLICK] (c) genel index üzerinden çözümleme deneniyor\U2026")
 
     # Tam ipucu -> sonra basename
     cand_global_full <- try(resolve_uploaded_file(raw_hint, user_id = NULL), silent = TRUE)

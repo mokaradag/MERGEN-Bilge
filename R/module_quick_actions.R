@@ -365,7 +365,7 @@ quickActionsInit <- function(input, session, values, settings_data,
     req(input$quick_action_model_change)
     new_model_id <- input$quick_action_model_change
     
-    # Hızlı eylem → bir sonraki istekte MCP kapalı
+    # Hızlı eylem -> bir sonraki istekte MCP kapalı
     quick_action_skip_mcp(TRUE)
     
     # Ayarlar modülündeki reaktif değeri güncelle
