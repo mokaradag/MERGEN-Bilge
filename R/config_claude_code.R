@@ -1,158 +1,158 @@
 # ==============================================================================
 # Dosya Yolu: R/config_claude_code.R
-# Aciklama: Claude Code entegrasyonu icin yapilandirma sabitleri ve varsayilan
-#           ayarlari tanimlar. API ucu noktalari, model listesi, zaman asimi
-#           ve karakter temali dusunme mesajlari burada merkezi olarak yonetilir.
+# Açıklama: Claude Code entegrasyonu için yapılandırma sabitleri ve varsayılan
+#           ayarları tanımlar. API ucu noktaları, model listesi, zaman aşımı
+#           ve karakter temalı düşünme mesajları burada merkezi olarak yönetilir.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# CLAUDE CODE YAPILANDIRMA SABiTLERi
+# CLAUDE CODE YAPILANDIRMA SABİTLERİ
 # ------------------------------------------------------------------------------
 
-# .Renviron dosyasindan Claude Code ayarlarini oku
+# .Renviron dosyasından Claude Code ayarlarını oku
 claude_code_config <- list(
   # Claude Code CLI yolu (sunucuda kurulu olmalidir)
   cli_path = Sys.getenv("CLAUDE_CODE_CLI_PATH", "claude"),
 
 
-  # Varsayilan calisma dizini (kullanici degistirebilir)
+  # Varsayılan çalışma dizini (kullanıcı değiştirebilir)
   default_workdir = Sys.getenv("CLAUDE_CODE_DEFAULT_WORKDIR", ""),
 
-  # Maksimum istek suresi (saniye)
+  # Maksimum istek süresi (saniye)
   timeout_seconds = as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "300")),
 
-  # Maksimum token sayisi
+  # Maksimum token sayısı
   default_max_tokens = as.integer(Sys.getenv("CLAUDE_CODE_MAX_TOKENS", "4096")),
 
-  # Varsayilan model
+  # Varsayılan model
   default_model = Sys.getenv("CLAUDE_CODE_MODEL", ""),
 
-  # Izin verilen maksimum es zamanli islem sayisi
+  # İzin verilen maksimum eş zamanlı işlem sayısı
 
   max_concurrent = as.integer(Sys.getenv("CLAUDE_CODE_MAX_CONCURRENT", "5")),
 
-  # Oturum gecmisini sakla
+  # Oturum geçmişini sakla
   persist_sessions = as.logical(Sys.getenv("CLAUDE_CODE_PERSIST_SESSIONS", "TRUE"))
 )
 
 # ------------------------------------------------------------------------------
-# DUSUNME MESAJLARI (Turkce, eglenceli, karakter temali)
-# Her karakter icin ayri dusunme mesajlari tanimlanir.
-# 8-bit tema ile uyumlu kisa ve esprili mesajlar.
+# DÜŞÜNME MESAJLARI (Türkçe, eğlenceli, karakter temalı)
+# Her karakter için ayrı düşünme mesajları tanımlanır.
+# 8-bit tema ile uyumlu kısa ve esprili mesajlar.
 # ------------------------------------------------------------------------------
 
 claude_code_thinking_messages <- list(
-  # Genel (karakter bagimsiz) mesajlar
+  # Genel (karakter bağımsız) mesajlar
   genel = c(
-    "Kodlar arasinda geziniyor...",
-    "Dosyalari taratiyor...",
+    "Kodlar arasında geziniyor...",
+    "Dosyaları tarıyor...",
     "Algoritma dokuyor...",
-    "Satirlari cozumluyor...",
-    "Bit ve baytlari harmanlatiyor...",
-    "Fonksiyonlari birbirine baglatiyor...",
-    "Degiskenleri takip ediyor...",
-    "Derleme buyusu yapiyor...",
-    "Hata ayiklama modunda...",
-    "Kod ormaninda yol ariyor...",
+    "Satırları çözümlüyor...",
+    "Bit ve baytları harmanlatıyor...",
+    "Fonksiyonları birbirine bağlatıyor...",
+    "Değişkenleri takip ediyor...",
+    "Derleme büyüsü yapıyor...",
+    "Hata ayıklama modunda...",
+    "Kod ormanında yol arıyor...",
     "Pikselleri hizaya getiriyor...",
-    "Dongulerden gecis yapiyor...",
-    "Veri akisini izliyor...",
-    "Sozdizimini kontrol ediyor...",
-    "Modulleri yukleniyor..."
+    "Döngülerden geçiş yapıyor...",
+    "Veri akışını izliyor...",
+    "Sözdizimini kontrol ediyor...",
+    "Modülleri yükleniyor..."
   ),
 
   # Mergen - Keskin ve pratik
   mergen = c(
-    "Mergen oku gerdi, hedefe nisanlaniyor...",
-    "Kodun ozunu suzduruyorum...",
-    "Okun ucu cozume yoneldi...",
+    "Mergen oku gerdi, hedefe nişanlanıyor...",
+    "Kodun özünü süzdürüyorum...",
+    "Okun ucu çözüme yöneldi...",
     "Bilgi okunu bileyliyor...",
     "Hedef kilitlendi, analiz ediliyor..."
   ),
 
-  # Ulgen - Yapici ve ilham verici
+  # Ülgen - Yapıcı ve ilham verici
   ulgen = c(
-    "Ulgen gokyuzunden bakiyor...",
-    "Isik yolunu arasitiyor...",
-    "Cozum alternatiflerini tartiyorum...",
-    "Gogun isiginda kod inceleniyor...",
-    "Yaratici secenekler uratiyor..."
+    "Ülgen gökyüzünden bakıyor...",
+    "Işık yolunu araştırıyor...",
+    "Çözüm alternatiflerini tartıyorum...",
+    "Göğün ışığında kod inceleniyor...",
+    "Yaratıcı seçenekler üretiyor..."
   ),
 
   # Kayra - Stratejik ve vizyoner
   kayra = c(
-    "Kayra Han buyuk resmi kuruyor...",
-    "Strateji haritasi ciziliyor...",
-    "Evrenin duzeni analiz ediliyor...",
-    "Fazli plan olusturuluyor...",
-    "Kilometre taslari belirleniyor..."
+    "Kayra Han büyük resmi kuruyor...",
+    "Strateji haritası çiziliyor...",
+    "Evrenin düzeni analiz ediliyor...",
+    "Fazlı plan oluşturuluyor...",
+    "Kilometre taşları belirleniyor..."
   ),
 
-  # Erlik - Elestirici ve keskin
+  # Erlik - Eleştirici ve keskin
   erlik = c(
-    "Erlik varsayimlari avliyor...",
-    "Kor noktalar kontrol ediliyor...",
-    "Riskleri tarayorum...",
-    "Zayif halkalari guclandiriyorum...",
-    "Perde aralandirilliyor..."
+    "Erlik varsayımları avlıyor...",
+    "Kör noktalar kontrol ediliyor...",
+    "Riskleri tarıyorum...",
+    "Zayıf halkaları güçlendiriyorum...",
+    "Perde aralandırılıyor..."
   ),
 
-  # Umay Ana - Sefkatli ve ogretici
+  # Umay Ana - Şefkatli ve öğretici
   umay = c(
-    "Umay Ana sefkatle bakiyor...",
-    "Adimlari kucuk lokmalara boluyorum...",
-    "Yeni baslayanlar icin ipuclari hazirliyorum...",
-    "Nazikce yol gosteriyorum...",
-    "Bereket tohumlari ekiliyor..."
+    "Umay Ana şefkatle bakıyor...",
+    "Adımları küçük lokmalara bölüyorum...",
+    "Yeni başlayanlar için ipuçları hazırlıyorum...",
+    "Nazikçe yol gösteriyorum...",
+    "Bereket tohumları ekiliyor..."
   )
 )
 
 # ------------------------------------------------------------------------------
-# ON TANIMLI SENARYOLAR
-# Kullanicilarin hizlica kullanabilecegi hazir komut sablonlari.
+# ÖN TANIMLI SENARYOLAR
+# Kullanıcıların hızlıca kullanabileceği hazır komut şablonları.
 # ------------------------------------------------------------------------------
 
 claude_code_scenarios <- list(
   list(
     id = "kod_inceleme",
-    baslik = "Kod Inceleme",
+    baslik = "Kod İnceleme",
     ikon = "search",
-    aciklama = "Secilen dosya veya klasordeki kodu inceler ve iyilestirme onerileri sunar.",
-    sablon = "Bu projedeki kodlari incele. Kod kalitesi, guvenlik ve performans acisindan iyilestirme onerileri sun."
+    aciklama = "Seçilen dosya veya klasördeki kodu inceler ve iyileştirme önerileri sunar.",
+    sablon = "Bu projedeki kodları incele. Kod kalitesi, güvenlik ve performans açısından iyileştirme önerileri sun."
   ),
   list(
     id = "hata_ayiklama",
-    baslik = "Hata Ayiklama",
+    baslik = "Hata Ayıklama",
     ikon = "bug",
-    aciklama = "Koddaki hatalari bulur ve cozum yollarini gosterir.",
-    sablon = "Bu projedeki hatalari bul ve duzelt. Her hata icin aciklama ve cozum onerisi ver."
+    aciklama = "Koddaki hataları bulur ve çözüm yollarını gösterir.",
+    sablon = "Bu projedeki hataları bul ve düzelt. Her hata için açıklama ve çözüm önerisi ver."
   ),
   list(
     id = "dokumantasyon",
-    baslik = "Dokumantasyon",
+    baslik = "Dokümantasyon",
     ikon = "file-alt",
-    aciklama = "Proje icin dokumantasyon olusturur veya mevcut dokumantasyonu gunceller.",
-    sablon = "Bu proje icin kapsamli bir dokumantasyon olustur. Dosya yapisi, fonksiyonlar ve kullanim kilavuzunu icersin."
+    aciklama = "Proje için dokümantasyon oluşturur veya mevcut dokümantasyonu günceller.",
+    sablon = "Bu proje için kapsamlı bir dokümantasyon oluştur. Dosya yapısı, fonksiyonlar ve kullanım kılavuzunu içersin."
   ),
   list(
     id = "test_yazimi",
-    baslik = "Test Yazimi",
+    baslik = "Test Yazımı",
     ikon = "vial",
-    aciklama = "Mevcut kod icin birim testleri olusturur.",
-    sablon = "Bu projedeki ana fonksiyonlar icin birim testleri yaz. Kenar durumlarini da kapsasin."
+    aciklama = "Mevcut kod için birim testleri oluşturur.",
+    sablon = "Bu projedeki ana fonksiyonlar için birim testleri yaz. Kenar durumlarını da kapsasın."
   ),
   list(
     id = "refaktoring",
-    baslik = "Kod Duzenleme",
+    baslik = "Kod Düzenleme",
     ikon = "broom",
-    aciklama = "Kodu daha temiz ve surdurulebilir hale getirir.",
-    sablon = "Bu koddaki tekrarlayan kisimlari, uzun fonksiyonlari ve karmasik yapilari sadelelestir."
+    aciklama = "Kodu daha temiz ve sürdürülebilir hale getirir.",
+    sablon = "Bu koddaki tekrarlayan kısımları, uzun fonksiyonları ve karmaşık yapıları sadeleştir."
   ),
   list(
     id = "serbest",
     baslik = "Serbest Komut",
     ikon = "terminal",
-    aciklama = "Kendi komutunuzu yazarak Claude Code ile serbestce etkilesime gecin.",
+    aciklama = "Kendi komutunuzu yazarak Claude Code ile serbestçe etkileşime geçin.",
     sablon = ""
   )
 )
