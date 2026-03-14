@@ -1,8 +1,8 @@
 /* =============================================================================
    Dosya Yolu: www/css/claude_code.css
-   Aciklama: Claude Code entegrasyon sayfasinin stil tanimlari.
+   Açıklama: Claude Code entegrasyon sayfasının stil tanımları.
              8-bit piksel animasyonlari, karakter temali renkler,
-             terminal gorunumu ve duyarli tasarim icin CSS kurallari.
+             terminal görünümü ve duyarlı tasarım için CSS kuralları.
    ============================================================================= */
 
 /* --- Ana Kapsayici --- */
@@ -63,7 +63,7 @@
   color: #9E9E9E;
 }
 
-/* --- Ana Icerik Duzeni --- */
+/* --- Ana İçerik Düzeni --- */
 .cc-main-content {
   display: flex;
   gap: 16px;
@@ -84,7 +84,7 @@
   max-height: calc(100vh - 130px);
 }
 
-/* --- Ayar Karti --- */
+/* --- Ayar Kartı --- */
 .cc-settings-card {
   background: var(--card-bg, #1a1a2e);
   border: 1px solid var(--border-color, rgba(255,255,255,0.08));
@@ -112,7 +112,7 @@
   font-size: 14px;
 }
 
-/* --- Giris Alanlari --- */
+/* --- Giriş Alanları --- */
 .cc-settings-card .form-group {
   margin-bottom: 10px;
 }
@@ -139,7 +139,7 @@
   outline: none;
 }
 
-/* --- Calisma Dizini Satiri --- */
+/* --- Çalışma Dizini Satırı --- */
 .cc-workdir-row {
   display: flex;
   gap: 6px;
@@ -169,7 +169,7 @@
   color: #7C4DFF !important;
 }
 
-/* --- Baglanti Test Alani --- */
+/* --- Bağlantı Test Alanı --- */
 .cc-test-row {
   margin-top: 8px;
   display: flex;
@@ -251,7 +251,7 @@
   flex-shrink: 0;
 }
 
-/* --- Dizin Icerik Listesi --- */
+/* --- Dizin İçerik Listesi --- */
 .cc-dir-card {
   flex: 1;
   min-height: 150px;
@@ -331,7 +331,7 @@
   color: #E57373;
 }
 
-/* --- Sag Panel: Terminal --- */
+/* --- Sağ Panel: Terminal --- */
 .cc-terminal-panel {
   flex: 1;
   display: flex;
@@ -344,7 +344,7 @@
   position: relative;
 }
 
-/* --- Dusunme Kaplama Katmani --- */
+/* --- Düşünme Kaplama Katmanı --- */
 .cc-thinking-overlay {
   position: absolute;
   top: 0;
@@ -384,7 +384,7 @@
   image-rendering: crisp-edges;
 }
 
-/* --- Dusunme Metni --- */
+/* --- Düşünme Metni --- */
 .cc-thinking-text {
   font-size: 16px;
   font-weight: 600;
@@ -399,7 +399,7 @@
   50% { opacity: 0.5; }
 }
 
-/* --- Cikti Alani --- */
+/* --- Çıktı Alanı --- */
 .cc-output-wrapper {
   flex: 1;
   overflow-y: auto;
@@ -414,9 +414,9 @@
   min-height: 100%;
 }
 
-/* Bos durum mesaji */
+/* Boş durum mesajı */
 .cc-output-area:empty::before {
-  content: 'Claude Code terminali hazir. Bir komut yazin ve Calistir dugmesine basin.';
+  content: 'Claude Code terminali hazır. Bir komut yazın ve Çalıştır düğmesine basın.';
   display: flex;
   align-items: center;
   justify-content: center;
@@ -428,7 +428,7 @@
   opacity: 0.6;
 }
 
-/* --- Mesaj Kabarciklari --- */
+/* --- Mesaj Kabarcıkları --- */
 .cc-message {
   max-width: 100%;
   padding: 12px 16px;
@@ -470,7 +470,7 @@
   color: #E57373;
 }
 
-/* --- Mesaj Basligi --- */
+/* --- Mesaj Başlığı --- */
 .cc-message-header {
   display: flex;
   align-items: center;
@@ -495,7 +495,7 @@
   font-weight: 500;
 }
 
-/* --- Mesaj Icerigi --- */
+/* --- Mesaj İçeriği --- */
 .cc-message-body {
   color: var(--text-primary, #e0e0e0);
 }
@@ -534,7 +534,7 @@
   margin: 4px 0;
 }
 
-/* --- Komut Giris Alani --- */
+/* --- Komut Giriş Alanı --- */
 .cc-input-area {
   padding: 12px 16px;
   border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
@@ -572,7 +572,7 @@
   color: var(--text-secondary, #666);
 }
 
-/* --- Giris Eylemleri --- */
+/* --- Giriş Eylemleri --- */
 .cc-input-actions {
   display: flex;
   align-items: center;
@@ -638,7 +638,7 @@
   transform: none;
 }
 
-/* --- Durum Cubugu --- */
+/* --- Durum Çubuğu --- */
 .cc-status-bar {
   display: flex;
   align-items: center;
@@ -663,7 +663,7 @@
    8-BiT PiKSEL ANiMASYONLARI
    ============================================================================= */
 
-/* Piksel karakter icin ortak animasyon */
+/* Piksel karakter için ortak animasyon */
 @keyframes cc-pixel-bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }

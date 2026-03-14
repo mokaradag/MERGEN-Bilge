@@ -1,8 +1,8 @@
 // =============================================================================
 // Dosya Yolu: www/js/claude_code.js
-// Aciklama: Claude Code entegrasyon sayfasinin istemci tarafi mantigi.
-//           Mesaj gosterimi, 8-bit piksel karakter animasyonu, dusunme
-//           efektleri ve klavye kisayollarini yonetir.
+// Açıklama: Claude Code entegrasyon sayfasının istemci tarafı mantığı.
+//           Mesaj gösterimi, 8-bit piksel karakter animasyonu, düşünme
+//           efektleri ve klavye kısayollarını yönetir.
 // =============================================================================
 
 (function() {
@@ -10,7 +10,7 @@
 
   // ---------------------------------------------------------------------------
   // 8-BiT PiKSEL KARAKTER TANiMLARI
-  // Her karakter icin 8x8 piksel haritasi (0=bos, 1=ana renk, 2=koyu ton)
+  // Her karakter için 8x8 piksel haritası (0=boş, 1=ana renk, 2=koyu ton)
   // ---------------------------------------------------------------------------
   var PIXEL_CHARACTERS = {
     mergen: {
@@ -99,7 +99,7 @@
   /**
    * 8-bit piksel karakteri canvas uzerine cizer
    * @param {HTMLCanvasElement} canvas - Hedef canvas
-   * @param {string} characterId - Karakter kimligi
+   * @param {string} characterId - Karakter kimliği
    * @param {number} frame - Animasyon karesi
    */
   function drawPixelCharacter(canvas, characterId, frame) {
@@ -135,15 +135,15 @@
       }
     }
 
-    // Yildiz parcaciklari ekle
+    // Yıldız parçacıkları ekle
     drawStarParticles(ctx, charData.color, frame, canvas.width, canvas.height);
   }
 
   /**
-   * Parlayan yildiz parcaciklarini cizer
+   * Parlayan yıldız parçacıklarını çizer
    */
   function drawStarParticles(ctx, color, frame, width, height) {
-    // Yeni parcaciklar ekle (arada sirada)
+    // Yeni parçacıklar ekle (arada sırada)
     if (frame % 15 === 0) {
       starParticles.push({
         x: Math.random() * width,
@@ -154,7 +154,7 @@
       });
     }
 
-    // Parcaciklari ciz ve guncelle
+    // Parçacıkları çiz ve güncelle
     for (var i = starParticles.length - 1; i >= 0; i--) {
       var p = starParticles[i];
       p.life++;
@@ -179,14 +179,14 @@
       ctx.restore();
     }
 
-    // Fazla parcaciklari temizle
+    // Fazla parçacıkları temizle
     if (starParticles.length > 20) {
       starParticles = starParticles.slice(-15);
     }
   }
 
   /**
-   * Dusunme animasyon dongusunu baslatir
+   * Düşünme animasyon döngüsünü başlatır
    */
   function startThinkingAnimation(canvasId, characterId) {
     var canvas = document.getElementById(canvasId);
@@ -205,7 +205,7 @@
   }
 
   /**
-   * Dusunme animasyon dongusunu durdurur
+   * Düşünme animasyon döngüsünü durdurur
    */
   function stopThinkingAnimation() {
     if (animationFrameId) {
@@ -220,7 +220,7 @@
   // ---------------------------------------------------------------------------
 
   /**
-   * Cikti alanina yeni bir mesaj kabarcigi ekler
+   * Çıktı alanına yeni bir mesaj kabarcığı ekler
    * @param {Object} data - Mesaj verileri
    */
   function addMessage(data) {
@@ -258,7 +258,7 @@
 
     headerHtml += '</div>';
 
-    // Icerik
+    // İçerik
     var bodyHtml = '<div class="cc-message-body">';
     if (data.type === 'user') {
       bodyHtml += '<pre style="white-space:pre-wrap;margin:0;background:transparent;border:none;padding:0;">' +
@@ -279,7 +279,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // SHINY MESAJ iSLEYiCiLERi
+  // SHINY MESAJ İŞLEYİCİLERİ
   // ---------------------------------------------------------------------------
 
   // Mesaj Ekleme
@@ -287,7 +287,7 @@
     addMessage(data);
   });
 
-  // Ciktiyi Temizle
+  // Çıktıyı Temizle
   Shiny.addCustomMessageHandler('cc-clear-output', function(data) {
     var target = document.getElementById(data.target);
     if (target) {
@@ -295,7 +295,7 @@
     }
   });
 
-  // Dusunme Animasyonunu Baslat
+  // Düşünme Animasyonunu Başlat
   Shiny.addCustomMessageHandler('cc-thinking-start', function(data) {
     var overlay = document.getElementById(data.overlayId);
     var textEl = document.getElementById(data.textId);
@@ -306,31 +306,31 @@
     }
 
     if (textEl) {
-      textEl.textContent = data.message || 'Dusunuyor...';
+      textEl.textContent = data.message || 'Düşünüyor...';
       if (data.accentColor) {
         textEl.style.color = data.accentColor;
       }
     }
 
     if (statusEl) {
-      statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calisiyor...';
+      statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Çalışıyor...';
     }
 
-    // 8-bit animasyonu baslat
+    // 8-bit animasyonu başlat
     startThinkingAnimation(data.canvasId, data.characterId || 'mergen');
 
-    // Dusunme mesajini periyodik olarak degistir
+    // Düşünme mesajını periyodik olarak değiştir
     if (window.ccThinkingInterval) clearInterval(window.ccThinkingInterval);
     window.ccThinkingInterval = setInterval(function() {
       if (textEl && overlay && !overlay.classList.contains('cc-hidden')) {
-        // R tarafina mesaj degisimi istegi gonder
+        // R tarafına mesaj değişimi isteği gönder
         Shiny.setInputValue(data.statusId.replace('status_text', 'thinking_tick'),
                             Math.random(), {priority: 'event'});
       }
     }, 3000);
   });
 
-  // Dusunme Animasyonunu Durdur
+  // Düşünme Animasyonunu Durdur
   Shiny.addCustomMessageHandler('cc-thinking-stop', function(data) {
     var overlay = document.getElementById(data.overlayId);
 
@@ -346,7 +346,7 @@
     }
   });
 
-  // Durum Cubugu Guncelle
+  // Durum Çubuğu Güncelle
   Shiny.addCustomMessageHandler('cc-update-status', function(data) {
     var statusEl = document.getElementById(data.statusId);
     var durationEl = document.getElementById(data.durationId);
@@ -365,12 +365,12 @@
   // ---------------------------------------------------------------------------
 
   document.addEventListener('keydown', function(e) {
-    // Ctrl+Enter veya Shift+Enter ile komutu gonder
+    // Ctrl+Enter veya Shift+Enter ile komutu gönder
     if ((e.ctrlKey || e.shiftKey) && e.key === 'Enter') {
       var textarea = e.target;
       if (textarea && textarea.classList.contains('cc-prompt-input')) {
         e.preventDefault();
-        // En yakin moduldeki calistir dugmesini bul ve tikla
+        // En yakın modüldeki çalıştır düğmesini bul ve tıkla
         var container = textarea.closest('.cc-terminal-panel');
         if (container) {
           var runBtn = container.querySelector('.cc-run-btn');

@@ -1,24 +1,24 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_claude_code.R
-# Aciklama: Claude Code CLI ile etkilesim icin arka plan isci fonksiyonlari.
-#           processx paketi ile alt surec yonetimi, cikti akisi okuma,
-#           oturum yonetimi ve dosya sistemi islemlerini icerir.
+# Açıklama: Claude Code CLI ile etkileşim için arka plan işçi fonksiyonları.
+#           processx paketi ile alt süreç yönetimi, çıktı akışı okuma,
+#           oturum yönetimi ve dosya sistemi işlemlerini içerir.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# CLAUDE CODE CLI CALISTIRMA
+# CLAUDE CODE CLI ÇALIŞTIRMA
 # ------------------------------------------------------------------------------
 
-#' Claude Code CLI komutunu arka planda calistir
+#' Claude Code CLI komutunu arka planda çalıştır
 #'
-#' @param prompt Kullanicinin gonderdigi komut/soru metni
-#' @param workdir Calisma dizini (proje klasoru)
-#' @param max_tokens Maksimum token sayisi
-#' @param model Kullanilacak model adi (bos ise varsayilan kullanilir)
-#' @param timeout_sec Zaman asimi suresi (saniye)
-#' @param session_id Oturum kimligi (izolasyon icin)
-#' @param cli_path Claude Code CLI calistirilabilir dosya yolu
-#' @return Liste: success (mantiksal), output (metin), error (hata metni), duration (sure)
+#' @param prompt Kullanıcının gönderdiği komut/soru metni
+#' @param workdir Çalışma dizini (proje klasörü)
+#' @param max_tokens Maksimum token sayısı
+#' @param model Kullanılacak model adı (boş ise varsayılan kullanılır)
+#' @param timeout_sec Zaman aşımı süresi (saniye)
+#' @param session_id Oturum kimliği (izolasyon için)
+#' @param cli_path Claude Code CLI çalıştırılabilir dosya yolu
+#' @return Liste: success (mantıksal), output (metin), error (hata metni), duration (süre)
 run_claude_code <- function(prompt,
                             workdir = getwd(),
                             max_tokens = 4096L,
@@ -29,34 +29,34 @@ run_claude_code <- function(prompt,
 
   baslangic <- Sys.time()
 
-  # Girdi dogrulamasi
+  # Girdi doğrulaması
 
   if (!nzchar(trimws(prompt))) {
     return(list(
       success = FALSE,
       output = "",
-      error = "Komut metni bos olamaz.",
+      error = "Komut metni boş olamaz.",
       duration = 0
     ))
   }
 
-  # Calisma dizini kontrolu
+  # Çalışma dizini kontrolü
   if (!dir.exists(workdir)) {
     return(list(
       success = FALSE,
       output = "",
-      error = paste0("Calisma dizini bulunamadi: ", workdir),
+      error = paste0("Çalışma dizini bulunamadı: ", workdir),
       duration = 0
     ))
   }
 
-  # CLI argumanlari olustur
+  # CLI argümanları oluştur
   args <- c(
-    "--print",           # Interaktif olmayan mod, ciktiyi dogrudan yazdir
-    "--output-format", "text"  # Metin formatinda cikti
+    "--print",           # İnteraktif olmayan mod, çıktıyı doğrudan yazdır
+    "--output-format", "text"  # Metin formatında çıktı
   )
 
-  # Model belirtilmisse ekle
+  # Model belirtilmişse ekle
   if (!is.null(model) && nzchar(model)) {
     args <- c(args, "--model", model)
   }
@@ -69,9 +69,9 @@ run_claude_code <- function(prompt,
   # Komutu ekle
   args <- c(args, prompt)
 
-  # processx ile calistir
+  # processx ile çalıştır
   tryCatch({
-    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI calistiriliyor:",
+    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI çalıştırılıyor:",
                    cli_path, paste(args[1:min(3, length(args))], collapse = " "), "..."))
 
     result <- processx::run(
@@ -87,7 +87,7 @@ run_claude_code <- function(prompt,
     sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
 
     if (result$status == 0) {
-      log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Basarili - Sure:",
+      log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Başarılı - Süre:",
                      round(sure, 1), "sn"))
       list(
         success = TRUE,
@@ -111,36 +111,36 @@ run_claude_code <- function(prompt,
     sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
     hata_metni <- conditionMessage(e)
 
-    # Zaman asimi kontrolu
+    # Zaman aşımı kontrolü
     if (grepl("timeout|timed out", hata_metni, ignore.case = TRUE)) {
-      log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Zaman asimi:", timeout_sec, "sn"))
+      log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Zaman aşımı:", timeout_sec, "sn"))
       return(list(
         success = FALSE,
         output = "",
-        error = paste0("Islem zaman asimina ugradi (", timeout_sec, " saniye). ",
-                       "Daha kisa bir komut deneyin veya zaman asimi suresini artirin."),
+        error = paste0("İşlem zaman aşımına uğradı (", timeout_sec, " saniye). ",
+                       "Daha kısa bir komut deneyin veya zaman aşımı süresini artırın."),
         duration = round(sure, 1)
       ))
     }
 
-    log_error(paste(CLAUDE_CODE_LOG_PREFIX, "CLI hatasi:", hata_metni))
+    log_error(paste(CLAUDE_CODE_LOG_PREFIX, "CLI hatası:", hata_metni))
     list(
       success = FALSE,
       output = "",
-      error = paste0("Claude Code calistirilirken hata olustu: ", hata_metni),
+      error = paste0("Claude Code çalıştırılırken hata oluştu: ", hata_metni),
       duration = round(sure, 1)
     )
   })
 }
 
 # ------------------------------------------------------------------------------
-# CLAUDE CODE CLI DURUM KONTROLU
+# CLAUDE CODE CLI DURUM KONTROLÜ
 # ------------------------------------------------------------------------------
 
-#' Claude Code CLI'nin kurulu ve erisilebilir olup olmadigini kontrol eder
+#' Claude Code CLI'nin kurulu ve erişilebilir olup olmadığını kontrol eder
 #'
 #' @param cli_path Claude Code CLI yolu
-#' @return Liste: installed (mantiksal), version (surum metni), error (hata metni)
+#' @return Liste: installed (mantıksal), version (sürüm metni), error (hata metni)
 check_claude_code_status <- function(cli_path = "claude") {
   tryCatch({
     result <- processx::run(
@@ -161,37 +161,37 @@ check_claude_code_status <- function(cli_path = "claude") {
     list(
       installed = FALSE,
       version = "",
-      error = paste0("Claude Code bulunamadi: ", conditionMessage(e))
+      error = paste0("Claude Code bulunamadı: ", conditionMessage(e))
     )
   })
 }
 
 # ------------------------------------------------------------------------------
-# BAGLANTI TESTi
+# BAĞLANTI TESTİ
 # ------------------------------------------------------------------------------
 
-#' API baglantisini test eder
+#' API bağlantısını test eder
 #'
 #' @param cli_path Claude Code CLI yolu
 #' @param model Test edilecek model (opsiyonel)
-#' @param workdir Calisma dizini
+#' @param workdir Çalışma dizini
 #' @return Liste: success, message, details
 test_claude_code_connection <- function(cli_path = "claude",
                                         model = NULL,
                                         workdir = tempdir()) {
-  # Oncelikle CLI kontrolu yap
+  # Öncelikle CLI kontrolü yap
   durum <- check_claude_code_status(cli_path)
   if (!durum$installed) {
     return(list(
       success = FALSE,
-      message = "Claude Code CLI bulunamadi veya erisilemez.",
+      message = "Claude Code CLI bulunamadı veya erişilemez.",
       details = durum$error
     ))
   }
 
-  # Basit bir test komutu gonder
+  # Basit bir test komutu gönder
   test_sonuc <- run_claude_code(
-    prompt = "Merhaba, bu bir baglanti testidir. Sadece 'Baglanti basarili' yaz.",
+    prompt = "Merhaba, bu bir bağlantı testidir. Sadece 'Bağlantı başarılı' yaz.",
     workdir = workdir,
     max_tokens = 100L,
     model = model,
@@ -202,27 +202,27 @@ test_claude_code_connection <- function(cli_path = "claude",
   if (test_sonuc$success) {
     list(
       success = TRUE,
-      message = paste0("Baglanti basarili! Claude Code v", durum$version),
-      details = paste0("Yanit suresi: ", test_sonuc$duration, " saniye")
+      message = paste0("Bağlantı başarılı! Claude Code v", durum$version),
+      details = paste0("Yanıt süresi: ", test_sonuc$duration, " saniye")
     )
   } else {
     list(
       success = FALSE,
-      message = "Claude Code CLI calisiyor ancak API baglantisi basarisiz.",
+      message = "Claude Code CLI çalışıyor ancak API bağlantısı başarısız.",
       details = test_sonuc$error
     )
   }
 }
 
 # ------------------------------------------------------------------------------
-# KULLANICI CALISMA DiZiNi YONETIMI
+# KULLANICI ÇALIŞMA DİZİNİ YÖNETİMİ
 # ------------------------------------------------------------------------------
 
-#' Kullanici icin izole bir calisma alani olusturur veya mevcut olani dondurur
+#' Kullanıcı için izole bir çalışma alanı oluşturur veya mevcut olanı döndürür
 #'
-#' @param user_id Kullanici kimligi
-#' @param base_dir Temel dizin (varsayilan: tempdir altinda)
-#' @return Calisma dizini yolu
+#' @param user_id Kullanıcı kimliği
+#' @param base_dir Temel dizin (varsayılan: tempdir altında)
+#' @return Çalışma dizini yolu
 get_user_workspace <- function(user_id, base_dir = NULL) {
   if (is.null(base_dir) || !nzchar(base_dir)) {
     base_dir <- file.path(tempdir(), "claude_code_workspaces")
@@ -232,7 +232,7 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
 
   if (!dir.exists(user_dir)) {
     dir.create(user_dir, recursive = TRUE, showWarnings = FALSE)
-    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Kullanici calisma alani olusturuldu:",
+    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Kullanıcı çalışma alanı oluşturuldu:",
                    user_dir))
   }
 
@@ -240,20 +240,20 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
 }
 
 # ------------------------------------------------------------------------------
-# DIZIN LISTELEME
+# DİZİN LİSTELEME
 # ------------------------------------------------------------------------------
 
-#' Belirtilen dizindeki dosya ve klasorleri listeler
+#' Belirtilen dizindeki dosya ve klasörleri listeler
 #'
 #' @param path Dizin yolu
-#' @param max_items Maksimum oge sayisi
-#' @return Dosya/klasor bilgileri listesi
+#' @param max_items Maksimum öğe sayısı
+#' @return Dosya/klasör bilgileri listesi
 list_directory_contents <- function(path, max_items = 100L) {
   if (!dir.exists(path)) {
     return(list(
       success = FALSE,
       items = list(),
-      error = paste0("Dizin bulunamadi: ", path)
+      error = paste0("Dizin bulunamadı: ", path)
     ))
   }
 
@@ -288,47 +288,47 @@ list_directory_contents <- function(path, max_items = 100L) {
 }
 
 # ------------------------------------------------------------------------------
-# CIKTI BICIMLENDIRME
+# ÇIKTI BİÇİMLENDİRME
 # ------------------------------------------------------------------------------
 
-#' Claude Code ciktisini HTML formatina donusturur
+#' Claude Code çıktısını HTML formatına dönüştürür
 #'
-#' @param output Ham cikti metni
-#' @return HTML formatli metin
+#' @param output Ham çıktı metni
+#' @return HTML formatlı metin
 format_claude_code_output <- function(output) {
   if (is.null(output) || !nzchar(output)) {
     return("")
   }
 
-  # Markdown'i HTML'e donustur (commonmark paketi ile)
+  # Markdown'ı HTML'e dönüştür (commonmark paketi ile)
   tryCatch({
     html <- commonmark::markdown_html(output, extensions = TRUE)
     return(html)
   }, error = function(e) {
-    # Donusum basarisiz olursa ham metni dondur
+    # Dönüşüm başarısız olursa ham metni döndür
     escaped <- htmltools::htmlEscape(output)
     return(paste0("<pre>", escaped, "</pre>"))
   })
 }
 
 # ------------------------------------------------------------------------------
-# RASTGELE DUSUNME MESAJI SEC
+# RASTGELE DÜŞÜNME MESAJI SEÇ
 # ------------------------------------------------------------------------------
 
-#' Aktif karaktere gore rastgele bir dusunme mesaji dondurur
+#' Aktif karaktere göre rastgele bir düşünme mesajı döndürür
 #'
-#' @param karakter_id Aktif karakter kimligi (mergen, ulgen, kayra, erlik, umay)
-#' @return Dusunme mesaji metni
+#' @param karakter_id Aktif karakter kimliği (mergen, ulgen, kayra, erlik, umay)
+#' @return Düşünme mesajı metni
 get_thinking_message <- function(karakter_id = "mergen") {
-  # Karakter mesajlarini al
+  # Karakter mesajlarını al
   karakter_mesajlari <- claude_code_thinking_messages[[karakter_id]]
 
-  # Genel mesajlarla birlestir
+  # Genel mesajlarla birleştir
   tum_mesajlar <- c(
     claude_code_thinking_messages[["genel"]],
     if (!is.null(karakter_mesajlari)) karakter_mesajlari
   )
 
-  # Rastgele sec
+  # Rastgele seç
   sample(tum_mesajlar, 1)
 }
