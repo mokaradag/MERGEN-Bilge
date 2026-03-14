@@ -322,11 +322,10 @@ SSO_DEBUG=FALSE                           # Verbose SSO logging
 
 ### Claude Code Integration
 ```
-CLAUDE_CODE_CLI_PATH=claude              # Path to Claude Code CLI executable
+CLAUDE_CODE_CLI_PATH=                    # Path to Claude Code CLI (empty = auto-detect)
 CLAUDE_CODE_DEFAULT_WORKDIR=             # Default working directory (empty = user workspace)
 CLAUDE_CODE_TIMEOUT=300                  # Request timeout in seconds
-CLAUDE_CODE_MAX_TOKENS=4096              # Default max tokens
-CLAUDE_CODE_MODEL=                       # Default model (empty = CLI default)
+CLAUDE_CODE_MODEL=                       # Default model (empty = read from ~/.claude/settings.json)
 CLAUDE_CODE_MAX_CONCURRENT=5             # Max concurrent sessions
 CLAUDE_CODE_PERSIST_SESSIONS=TRUE        # Persist session history
 ```

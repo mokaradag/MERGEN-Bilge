@@ -1,36 +1,159 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_claude_code.R
-# Açıklama: Claude Code CLI ile etkileşim için arka plan işçi fonksiyonları.
-#           processx paketi ile alt süreç yönetimi, çıktı akışı okuma,
-#           oturum yönetimi ve dosya sistemi işlemlerini içerir.
+# Aciklama: Claude Code CLI ile etkilesim icin arka plan isci fonksiyonlari.
+#           processx paketi ile alt surec yonetimi, CLI otomatik tespiti,
+#           settings.json okuma, oturum yonetimi ve dosya sistemi islemleri.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# CLAUDE CODE CLI ÇALIŞTIRMA
+# CLI YOLU OTOMATIK TESPITI
+# Windows'ta npm global kurulumlar .cmd uzantili dosya olusturur.
+# processx bu uzantiyi kendisi cozemez, acikca belirtilmelidir.
+# ------------------------------------------------------------------------------
+
+#' Claude Code CLI yolunu otomatik tespit eder
+#'
+#' @param kullanici_yolu Kullanicinin elle girdigi yol (bos olabilir)
+#' @return Gecerli CLI yolu veya NULL (bulunamadiysa)
+resolve_claude_cli_path <- function(kullanici_yolu = "") {
+  # Kullanici bir yol verdiyse oncelikle onu dene
+
+  if (nzchar(kullanici_yolu)) {
+    # Windows'ta .cmd uzantisi yoksa ekle
+    if (.Platform$OS.type == "windows" && !grepl("\\.(cmd|exe|bat)$", kullanici_yolu, ignore.case = TRUE)) {
+      cmd_yolu <- paste0(kullanici_yolu, ".cmd")
+      if (file.exists(cmd_yolu)) {
+        return(normalizePath(cmd_yolu, winslash = "/"))
+      }
+    }
+    # Yol dogrudan mevcut mu?
+    if (file.exists(kullanici_yolu)) {
+      return(normalizePath(kullanici_yolu, winslash = "/"))
+    }
+  }
+
+  # Otomatik tespit: Sys.which ile PATH'te ara
+  if (.Platform$OS.type == "windows") {
+    # Windows'ta claude.cmd'yi ara
+    cmd_yolu <- Sys.which("claude.cmd")
+    if (nzchar(cmd_yolu)) return(normalizePath(cmd_yolu, winslash = "/"))
+
+    # Tipik npm global kurulum dizinini kontrol et
+    npm_dizini <- file.path(Sys.getenv("APPDATA"), "npm")
+    npm_claude <- file.path(npm_dizini, "claude.cmd")
+    if (file.exists(npm_claude)) return(normalizePath(npm_claude, winslash = "/"))
+  } else {
+    # Linux/macOS: PATH'te claude'u ara
+    cli_yolu <- Sys.which("claude")
+    if (nzchar(cli_yolu)) return(normalizePath(cli_yolu))
+  }
+
+  return(NULL)
+}
+
+# ------------------------------------------------------------------------------
+# SETTINGS.JSON OKUMA
+# Claude Code'un kendi ayar dosyasini okuyarak model listesini ve
+# varsayilan modeli alir. Bu dosya ~/.claude/settings.json konumundadir.
+# ------------------------------------------------------------------------------
+
+#' Claude Code settings.json dosyasini okur
+#'
+#' @return Liste: models (model isimleri), default_model, base_url, raw (ham veri)
+read_claude_settings_json <- function() {
+  # settings.json konumu
+  if (.Platform$OS.type == "windows") {
+    ayar_yolu <- file.path(Sys.getenv("USERPROFILE"), ".claude", "settings.json")
+  } else {
+    ayar_yolu <- file.path(Sys.getenv("HOME"), ".claude", "settings.json")
+  }
+
+  sonuc <- list(
+    models = character(0),
+    default_model = "",
+    base_url = "",
+    raw = NULL,
+    dosya_yolu = ayar_yolu
+  )
+
+  if (!file.exists(ayar_yolu)) {
+    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "settings.json bulunamadi:", ayar_yolu))
+    return(sonuc)
+  }
+
+  tryCatch({
+    icerik <- jsonlite::fromJSON(ayar_yolu, simplifyVector = FALSE)
+    sonuc$raw <- icerik
+
+    # Varsayilan model
+    if (!is.null(icerik$model) && nzchar(icerik$model)) {
+      sonuc$default_model <- icerik$model
+    }
+
+    # Ortam degiskenleri icerisindeki modelleri topla
+    model_listesi <- c()
+
+    if (!is.null(icerik$env)) {
+      env <- icerik$env
+
+      # ANTHROPIC_BASE_URL
+      if (!is.null(env$ANTHROPIC_BASE_URL)) {
+        sonuc$base_url <- env$ANTHROPIC_BASE_URL
+      }
+
+      # ANTHROPIC_DEFAULT_*_MODEL degiskenlerini tara
+      model_anahtarlari <- grep("^ANTHROPIC_DEFAULT_.*_MODEL$", names(env), value = TRUE)
+      for (anahtar in model_anahtarlari) {
+        model_adi <- env[[anahtar]]
+        if (!is.null(model_adi) && nzchar(model_adi)) {
+          # Anahtar adindan etiketi cikar (OPUS, SONNET, HAIKU, vb.)
+          etiket <- gsub("^ANTHROPIC_DEFAULT_(.+)_MODEL$", "\\1", anahtar)
+          model_listesi <- c(model_listesi, setNames(model_adi, etiket))
+        }
+      }
+    }
+
+    # Varsayilan model listeye dahil degilse ekle
+    if (nzchar(sonuc$default_model) && !(sonuc$default_model %in% model_listesi)) {
+      model_listesi <- c(setNames(sonuc$default_model, "VARSAYILAN"), model_listesi)
+    }
+
+    sonuc$models <- model_listesi
+
+    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "settings.json okundu.",
+                   length(model_listesi), "model bulundu.",
+                   "Varsayilan:", sonuc$default_model))
+
+  }, error = function(e) {
+    log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "settings.json okunamadi:", conditionMessage(e)))
+  })
+
+  return(sonuc)
+}
+
+# ------------------------------------------------------------------------------
+# CLAUDE CODE CLI CALISTIRMA
 # ------------------------------------------------------------------------------
 
 #' Claude Code CLI komutunu arka planda çalıştır
 #'
-#' @param prompt Kullanıcının gönderdiği komut/soru metni
-#' @param workdir Çalışma dizini (proje klasörü)
-#' @param max_tokens Maksimum token sayısı
-#' @param model Kullanılacak model adı (boş ise varsayılan kullanılır)
-#' @param timeout_sec Zaman aşımı süresi (saniye)
-#' @param session_id Oturum kimliği (izolasyon için)
-#' @param cli_path Claude Code CLI çalıştırılabilir dosya yolu
-#' @return Liste: success (mantıksal), output (metin), error (hata metni), duration (süre)
+#' @param prompt Kullanicinin gonderdigi komut/soru metni
+#' @param workdir Calisma dizini (proje klasoru)
+#' @param model Kullanilacak model adi (bos ise varsayilan kullanilir)
+#' @param timeout_sec Zaman asimi suresi (saniye)
+#' @param session_id Oturum kimligi (izolasyon icin)
+#' @param cli_path Claude Code CLI calistirilabilir dosya yolu
+#' @return Liste: success (mantiksal), output (metin), error (hata metni), duration (sure)
 run_claude_code <- function(prompt,
                             workdir = getwd(),
-                            max_tokens = 4096L,
                             model = NULL,
                             timeout_sec = 300L,
                             session_id = NULL,
-                            cli_path = "claude") {
+                            cli_path = NULL) {
 
   baslangic <- Sys.time()
 
-  # Girdi doğrulaması
-
+  # Girdi dogrulamasi
   if (!nzchar(trimws(prompt))) {
     return(list(
       success = FALSE,
@@ -40,7 +163,20 @@ run_claude_code <- function(prompt,
     ))
   }
 
-  # Çalışma dizini kontrolü
+  # CLI yolunu cozumle (verilmediyse otomatik tespit et)
+  if (is.null(cli_path) || !nzchar(cli_path)) {
+    cli_path <- resolve_claude_cli_path(claude_code_config$cli_path)
+  }
+  if (is.null(cli_path)) {
+    return(list(
+      success = FALSE,
+      output = "",
+      error = "Claude Code CLI bulunamadi. Lutfen CLI yolunu kontrol edin.",
+      duration = 0
+    ))
+  }
+
+  # Calisma dizini kontrolu
   if (!dir.exists(workdir)) {
     return(list(
       success = FALSE,
@@ -50,10 +186,12 @@ run_claude_code <- function(prompt,
     ))
   }
 
-  # CLI argümanları oluştur
+  # CLI argumanlari olustur
+  # --print: interaktif olmayan mod, ciktiyi dogrudan yazdir
+  # --output-format text: duz metin cikti
   args <- c(
-    "--print",           # İnteraktif olmayan mod, çıktıyı doğrudan yazdır
-    "--output-format", "text"  # Metin formatında çıktı
+    "--print",
+    "--output-format", "text"
   )
 
   # Model belirtilmişse ekle
@@ -61,12 +199,7 @@ run_claude_code <- function(prompt,
     args <- c(args, "--model", model)
   }
 
-  # Maksimum token
-  if (!is.null(max_tokens) && max_tokens > 0) {
-    args <- c(args, "--max-tokens", as.character(max_tokens))
-  }
-
-  # Komutu ekle
+  # Komutu (prompt) arguman olarak ekle
   args <- c(args, prompt)
 
   # processx ile çalıştır
@@ -139,9 +272,25 @@ run_claude_code <- function(prompt,
 
 #' Claude Code CLI'nin kurulu ve erişilebilir olup olmadığını kontrol eder
 #'
-#' @param cli_path Claude Code CLI yolu
-#' @return Liste: installed (mantıksal), version (sürüm metni), error (hata metni)
-check_claude_code_status <- function(cli_path = "claude") {
+#' @param cli_path Claude Code CLI yolu (NULL ise otomatik tespit)
+#' @return Liste: installed (mantiksal), version (surum metni), path (bulunan yol), error (hata)
+check_claude_code_status <- function(cli_path = NULL) {
+  # CLI yolunu cozumle
+  if (is.null(cli_path) || !nzchar(cli_path)) {
+    cli_path <- resolve_claude_cli_path(claude_code_config$cli_path)
+  } else {
+    cli_path <- resolve_claude_cli_path(cli_path)
+  }
+
+  if (is.null(cli_path)) {
+    return(list(
+      installed = FALSE,
+      version = "",
+      path = "",
+      error = "Claude Code CLI bulunamadi. npm ile kurulu oldugundan emin olun."
+    ))
+  }
+
   tryCatch({
     result <- processx::run(
       command = cli_path,
@@ -153,15 +302,16 @@ check_claude_code_status <- function(cli_path = "claude") {
 
     if (result$status == 0) {
       surum <- trimws(result$stdout)
-      list(installed = TRUE, version = surum, error = "")
+      list(installed = TRUE, version = surum, path = cli_path, error = "")
     } else {
-      list(installed = FALSE, version = "", error = result$stdout)
+      list(installed = FALSE, version = "", path = cli_path, error = result$stdout)
     }
   }, error = function(e) {
     list(
       installed = FALSE,
       version = "",
-      error = paste0("Claude Code bulunamadı: ", conditionMessage(e))
+      path = cli_path,
+      error = paste0("Claude Code calistirilamadi: ", conditionMessage(e))
     )
   })
 }
@@ -172,11 +322,11 @@ check_claude_code_status <- function(cli_path = "claude") {
 
 #' API bağlantısını test eder
 #'
-#' @param cli_path Claude Code CLI yolu
+#' @param cli_path Claude Code CLI yolu (NULL ise otomatik tespit)
 #' @param model Test edilecek model (opsiyonel)
 #' @param workdir Çalışma dizini
 #' @return Liste: success, message, details
-test_claude_code_connection <- function(cli_path = "claude",
+test_claude_code_connection <- function(cli_path = NULL,
                                         model = NULL,
                                         workdir = tempdir()) {
   # Öncelikle CLI kontrolü yap
@@ -189,21 +339,20 @@ test_claude_code_connection <- function(cli_path = "claude",
     ))
   }
 
-  # Basit bir test komutu gönder
+  # Basit bir test komutu gonder (kisa ve hizli)
   test_sonuc <- run_claude_code(
-    prompt = "Merhaba, bu bir bağlantı testidir. Sadece 'Bağlantı başarılı' yaz.",
+    prompt = "Sadece 'OK' yaz, baska bir sey yazma.",
     workdir = workdir,
-    max_tokens = 100L,
     model = model,
-    timeout_sec = 30L,
-    cli_path = cli_path
+    timeout_sec = 60L,
+    cli_path = durum$path
   )
 
   if (test_sonuc$success) {
     list(
       success = TRUE,
-      message = paste0("Bağlantı başarılı! Claude Code v", durum$version),
-      details = paste0("Yanıt süresi: ", test_sonuc$duration, " saniye")
+      message = paste0("Baglanti basarili! Claude Code v", durum$version),
+      details = paste0("CLI: ", durum$path, " | Yanit suresi: ", test_sonuc$duration, " sn")
     )
   } else {
     list(

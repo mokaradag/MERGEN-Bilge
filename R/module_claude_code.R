@@ -13,6 +13,22 @@
 claudeCodeUI <- function(id) {
   ns <- NS(id)
 
+  # Baslangicta settings.json'dan model listesini oku
+  ayarlar <- read_claude_settings_json()
+  model_secenekleri <- ayarlar$models
+  varsayilan_model <- ayarlar$default_model
+
+  # Model seceneklerini olustur (dropdown icin)
+  if (length(model_secenekleri) > 0) {
+    # Etiketli liste: "OPUS - GLM-5-FP8" gibi
+    model_etiketleri <- paste0(names(model_secenekleri), " - ", unname(model_secenekleri))
+    model_degerleri <- setNames(unname(model_secenekleri), model_etiketleri)
+  } else {
+    # settings.json bulunamadiysa veya model yoksa
+    model_degerleri <- c("Varsayilan (settings.json)" = "")
+    varsayilan_model <- ""
+  }
+
   tagList(
     div(
       class = "claude-code-container",
@@ -45,48 +61,27 @@ claudeCodeUI <- function(id) {
             class = "cc-settings-card",
             h5(class = "cc-card-title", icon("plug"), "Bağlantı Ayarları"),
 
-            # CLI Yolu
+            # CLI Durumu (otomatik tespit gostergesi)
+            uiOutput(ns("cli_status_info")),
+
+            # Proje Dizini
             textInput(
-              ns("cli_path"),
-              label = "Claude Code CLI Yolu",
-              value = claude_code_config$cli_path,
-              placeholder = "claude"
+              ns("workdir"),
+              label = "Proje Dizini",
+              value = claude_code_config$default_workdir,
+              placeholder = "Ornek: C:/Users/kullanici/projeler/benim-projem"
+            ),
+            tags$small(
+              class = "cc-help-text",
+              "Projenizin klasor yolunu yazin. Claude Code bu dizinde calisacak."
             ),
 
-            # Çalışma Dizini
-            div(
-              class = "cc-workdir-row",
-              textInput(
-                ns("workdir"),
-                label = "Proje Dizini",
-                value = "",
-                placeholder = "Projenizin klasör yolunu girin..."
-              ),
-              actionButton(
-                ns("browse_dir"),
-                label = NULL,
-                icon = icon("folder-open"),
-                class = "btn-sm cc-browse-btn",
-                title = "Dizin Seç"
-              )
-            ),
-
-            # Model Seçimi
-            textInput(
+            # Model Secimi (dropdown)
+            selectInput(
               ns("model"),
-              label = "Model (opsiyonel)",
-              value = claude_code_config$default_model,
-              placeholder = "Varsayılan model kullanılır"
-            ),
-
-            # Maksimum Token
-            numericInput(
-              ns("max_tokens"),
-              label = "Maksimum Token",
-              value = claude_code_config$default_max_tokens,
-              min = 100,
-              max = 32000,
-              step = 100
+              label = "Model Secimi",
+              choices = model_degerleri,
+              selected = if (nzchar(varsayilan_model)) varsayilan_model else NULL
             ),
 
             # Zaman Aşımı
@@ -235,16 +230,46 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       is_running = FALSE,
       output_history = list(),
       last_result = NULL,
-      connection_ok = NULL
+      connection_ok = NULL,
+      cli_path_resolved = NULL
     )
+
+    # --- Uygulama basladiginda CLI yolunu otomatik tespit et ---
+    observe({
+      yol <- resolve_claude_cli_path(claude_code_config$cli_path)
+      rv$cli_path_resolved <- yol
+    }, priority = 100)
+
+    # --- CLI Durum Bilgisi ---
+    output$cli_status_info <- renderUI({
+      yol <- rv$cli_path_resolved
+
+      if (!is.null(yol)) {
+        tags$div(
+          class = "cc-cli-status cc-cli-found",
+          icon("check-circle"),
+          tags$span("CLI bulundu:"),
+          tags$code(yol)
+        )
+      } else {
+        tags$div(
+          class = "cc-cli-status cc-cli-missing",
+          icon("exclamation-triangle"),
+          tags$span("CLI otomatik tespit edilemedi."),
+          tags$br(),
+          tags$small("npm ile Claude Code kurulu oldugundan emin olun.")
+        )
+      }
+    })
 
     # --- Aktif karakter bilgisini al ---
     get_active_character <- reactive({
-      if (!is.null(settings_data) && !is.null(settings_data$selected_style)) {
-        karakter_id <- settings_data$selected_style
-      } else {
-        karakter_id <- "mergen"
+      # settings_data icindeki dogru alan adi: selected_character
+      karakter_id <- "mergen"
+      if (!is.null(settings_data) && !is.null(settings_data$selected_character)) {
+        karakter_id <- settings_data$selected_character
       }
+
       # Karakter verilerinden renk bilgisini al
       karakterler <- get_characters_data()
       secili <- NULL
@@ -285,7 +310,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
 
     # --- Bağlantı Testi ---
     observeEvent(input$test_connection, {
-      cli_yolu <- input$cli_path %||% "claude"
+      cli_yolu <- rv$cli_path_resolved
       model <- input$model
 
       # UI geri bildirimini göster
@@ -300,7 +325,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       future_promise({
         test_claude_code_connection(
           cli_path = cli_yolu,
-          model = if (nzchar(model)) model else NULL,
+          model = if (!is.null(model) && nzchar(model)) model else NULL,
           workdir = tempdir()
         )
       }) %...>% (function(sonuc) {
@@ -417,14 +442,28 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       if (isTRUE(rv$is_running)) return()
       rv$is_running <- TRUE
 
-      # Ayarları al
-      cli_yolu <- input$cli_path %||% "claude"
+      # Ayarlari al
+      cli_yolu <- rv$cli_path_resolved
       calisma_dizini <- input$workdir
       model <- input$model
-      maks_token <- input$max_tokens %||% 4096L
       zaman_asimi <- input$timeout %||% 300L
 
-      # Çalışma dizini yoksa geçici alan kullan
+      # CLI yolu yoksa hata ver
+      if (is.null(cli_yolu)) {
+        rv$is_running <- FALSE
+        session$sendCustomMessage(
+          type = "cc-add-message",
+          message = list(
+            target = ns("output_area"),
+            type = "error",
+            content = "Claude Code CLI bulunamadi. Lutfen npm ile kurulu oldugundan emin olun.",
+            timestamp = format(Sys.time(), "%H:%M:%S")
+          )
+        )
+        return()
+      }
+
+      # Calisma dizini yoksa gecici alan kullan
       if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
         calisma_dizini <- get_user_workspace(current_user_id)
       }
@@ -471,8 +510,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
         run_claude_code(
           prompt = prompt,
           workdir = calisma_dizini,
-          max_tokens = maks_token,
-          model = if (nzchar(model)) model else NULL,
+          model = if (!is.null(model) && nzchar(model)) model else NULL,
           timeout_sec = zaman_asimi,
           cli_path = cli_yolu
         )
