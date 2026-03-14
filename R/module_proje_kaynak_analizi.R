@@ -100,12 +100,12 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	  "Kullanıcının Türkçe sorduğu doğal dil sorularını analiz ederek yapılandırılmış bir JSON filtreleme sorgusuna dönüştürmekle görevlisin.\n\n",
 	  
 	  "### KRİTİK: GENEL SORULAR VS SPESİFİK FİLTRELER\n",
-	  "❗❗❗ ÇOĞU SORGU ZATEN BELİRLİ BİR KONUYA ÖZELDIR - GEREKSİZ FİLTRE EKLEME!\n",
+	  "\U00002757\U00002757\U00002757 ÇOĞU SORGU ZATEN BELİRLİ BİR KONUYA ÖZELDIR - GEREKSİZ FİLTRE EKLEME!\n",
 	  "Örnek: 'Rolden kaynağa çevrilmemiş aktiviteler' sorgusu zaten bu konuya özgüdür. 'çevrilmemiş' kelimesini filtre olarak kullanma!\n",
 	  "Örnek: 'Bütçesi aşan projeler' sorgusu zaten bütçe aşımı içerir. 'aşan' kelimesini filtre olarak kullanma!\n\n",
 	  
-	  "❗ Kullanıcı GENEL bir analiz istiyorsa (tüm projeler, tüm kaynaklar, özet istatistikler), FİLTRE KULLANMA!\n",
-	  "✅ Sadece kullanıcı BELİRLİ bir VARLIK belirtirse filtre ekle:\n",
+	  "\U00002757 Kullanıcı GENEL bir analiz istiyorsa (tüm projeler, tüm kaynaklar, özet istatistikler), FİLTRE KULLANMA!\n",
+	  "\U00002705 Sadece kullanıcı BELİRLİ bir VARLIK belirtirse filtre ekle:\n",
 	  "   - Proje kodu: 'P1234', 'PROJE-001'\n",
 	  "   - Proje adı: 'Malzeme Üretim Projesi', 'Elektronik Tasarım'\n",
 	  "   - Kişi adı: 'Ahmet Yılmaz', 'Mehmet'\n",
@@ -113,7 +113,7 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	  "   - Masraf yeri kodu: '12345678'\n",
 	  "   - Tarih aralığı: '2024', 'Ocak', 'son 3 ay'\n\n",
 	  
-	  "❌ FİLTRE YAPILMAMASI GEREKEN DURUMLAR:\n",
+	  "\U0000274C FİLTRE YAPILMAMASI GEREKEN DURUMLAR:\n",
 	  "- Kullanıcı sorgu konusunu tekrar ediyor: 'aktiviteler', 'kaynaklar', 'projeler' gibi genel terimler\n",
 	  "- Kullanıcı analiz türü belirtiyor: 'özetle', 'listele', 'kaç tane', 'var mı'\n",
 	  "- Kullanıcı sorgu kriterini tekrar ediyor: Sorgu zaten 'çevrilmemiş aktiviteler'i getiriyorsa, 'çevrilmemiş' filtresiz bırak\n\n",
@@ -169,7 +169,7 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	"- String içinde sütun isimlerini aynen kullan.\n",
 	"- String operatörleri: ==, !=, >, <, >=, <=, &, |, %in%\n",
 	"- 'contains' benzeri işler için: grepl('değer', SutunAdi, ignore.case=TRUE)\n",
-	"⚠️ KRİTİK KURALLAR:\n",
+	"\U000026A0\U0000FE0F KRİTİK KURALLAR:\n",
 	"1. Parantezleri mutlaka dengele! Açılan her '(' kapatılmalıdır.\n",
 	"2. String içindeki değerler için TEK TIRNAK (') kullan. Çift tırnak (\") JSON yapısını bozar.\n",
 	"3. Örnek: \"(Durum == 'Completed') | (grepl('Analiz', Aciklama))\"\n\n",
@@ -656,7 +656,7 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   
   if (isTRUE(user_filter_applied) && !is.null(rls_total_rows) && rls_total_rows > total_rows) {
     summary_parts[[length(summary_parts) + 1]] <- sprintf(
-      "\n\n⚠️ FİLTRELEME UYARISI:\n- Yetki dahilinde toplam satır: %d\n- Kullanıcı filtreleme sonrası satır: %d\n- BU %d SATIR SPESİFİK FİLTRELEME KRİTERİNE AİTTİR (tüm veri için değil!)\n- Oran/yüzde hesaplarken SADECE filtreleme sonrası %d satırı referans al",
+      "\n\n\U000026A0\U0000FE0F FİLTRELEME UYARISI:\n- Yetki dahilinde toplam satır: %d\n- Kullanıcı filtreleme sonrası satır: %d\n- BU %d SATIR SPESİFİK FİLTRELEME KRİTERİNE AİTTİR (tüm veri için değil!)\n- Oran/yüzde hesaplarken SADECE filtreleme sonrası %d satırı referans al",
       rls_total_rows, total_rows, total_rows, total_rows
     )
   }
@@ -666,7 +666,7 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     pretty_names <- vapply(pre_agg_cols, prettify_col_name, character(1))
     summary_parts[[length(summary_parts) + 1]] <- sprintf(
       paste0(
-        "\n\n⚠️ ÖNCEDEN TOPLULAŞTIRILMIŞ SÜTUN UYARISI:\n",
+        "\n\n\U000026A0\U0000FE0F ÖNCEDEN TOPLULAŞTIRILMIŞ SÜTUN UYARISI:\n",
         "Aşağıdaki sütunlar SQL sorgusunda zaten toplulaştırılmıştır (SUM/AVG/COUNT OVER PARTITION BY vb.):\n",
         "- %s\n",
         "Bu sütunlardaki değerler satırlar arasında tekrar edebilir.\n",
@@ -828,7 +828,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (baslangic)\n")
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
   cat(sprintf("[PK_ANALIZ] Kullanici Prompt: '%s'\n", user_prompt))
@@ -848,12 +848,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   rls_info <- get_user_rls_info(username, conn)
   if (!isTRUE(rls_info$authorized)) {
     cat("[PK_ANALIZ] Yetki Hatasi: Kullanici bulunamadi.\n")
-    return("⚠️ **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
+    return("\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
   }
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (RLS sonrasi)\n")
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
   cat("[PK_ANALIZ] Akilli sorgu secimi yapiliyor (select_smart_query)...\n")
@@ -896,7 +896,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (sorgu secimi sonrasi)\n")
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
@@ -965,7 +965,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       
     } else {
       cat(sprintf("[PK_ANALIZ] HATA: Belirtilen SQL dosyasi bulunamadi: %s\n", fpath))
-      return(paste0("⚠️ **Yapılandırma Hatası:** SQL dosyası bulunamadı: ", fpath))
+      return(paste0("\U000026A0\U0000FE0F **Yapılandırma Hatası:** SQL dosyası bulunamadı: ", fpath))
     }
   } 
   
@@ -977,19 +977,19 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   # Hata Kontrolü: İçerik hala boş mu?
   if (!nzchar(sql_query_text)) {
     cat("[PK_ANALIZ] HATA: Ne sql_file ne de sql metni gecerli!\n")
-    return("⚠️ **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
+    return("\U000026A0\U0000FE0F **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
   }
 
 	if (grepl("^[a-zA-Z]:[\\\\/]|^[\\\\/]{2}|^\\./|^\\.\\./|^[^/\\\\]+[\\\\/]", sql_query_text)) {
 	  cat(sprintf("[PK_ANALIZ] KRITIK HATA: sql_query_text dosya yolu iceriyor!\n"))
 	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 300)))
-	  return("⚠️ **Sistem Hatası:** SQL sorgusu yüklenemedi (dosya yolu algılandı).")
+	  return("\U000026A0\U0000FE0F **Sistem Hatası:** SQL sorgusu yüklenemedi (dosya yolu algılandı).")
 	}
 
 	if (nchar(sql_query_text) < 10 || !grepl("SELECT|INSERT|UPDATE|DELETE|EXEC", sql_query_text, ignore.case = TRUE)) {
 	  cat(sprintf("[PK_ANALIZ] HATA: Gecersiz SQL icerigi!\n"))
 	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 200)))
-	  return("⚠️ **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
+	  return("\U000026A0\U0000FE0F **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
 	}
 
 	target_db <- selected_query$db_target
@@ -1018,14 +1018,14 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     
   }, error = function(e) {
     cat(sprintf("[PK_ANALIZ] SQL HATASI: %s\n", e$message))
-    return(paste0("⚠️ **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`", e$message, "`"))
+    return(paste0("\U000026A0\U0000FE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`", e$message, "`"))
   })
   
-  if (is.character(raw_data) && startsWith(raw_data, "⚠️")) return(raw_data)
+  if (is.character(raw_data) && startsWith(raw_data, "\U000026A0\U0000FE0F")) return(raw_data)
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (SQL sonrasi)\n")
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
   cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
@@ -1039,7 +1039,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (RLS sonrasi)\n")
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
   if (nrow(secure_data) == 0) {
@@ -1049,7 +1049,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   # AI fonksiyonuna veriyi de gonderiyoruz ki degerleri gorebilsin
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme oncesi)\n")
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
   if (isTRUE(selected_query$disable_ai_filters)) {
@@ -1077,7 +1077,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme sonrasi)\n")
-    return("⚠️ **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
 			  
 	if (nrow(filtered_data) < nrow(secure_data) * 0.05 && nrow(secure_data) > 100) {
@@ -1135,7 +1135,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "Sen Primavera P6 ve SAP PS alanında 15+ yıl deneyimli, sektörde saygın bir veri analistisin. Fortune 500 şirketlerine danışmanlık yapan bir uzman gibi konuş - profesyonel, net ve eyleme dönük.\n\n",
       "Sorgu: ", selected_query$name, "\n",
       "Amaç: ", selected_query$description, "\n\n",
-      "⚠️ KRİTİK FİLTRELEME KURALI:\n",
+      "\U000026A0\U0000FE0F KRİTİK FİLTRELEME KURALI:\n",
       "Eğer veri setinde 'FİLTRELEME UYARISI' görüyorsan:\n",
       "- Verilen satır sayısı YALNIZCA kullanıcının spesifik filtreleme kriterine aittir\n",
       "- Bu, TÜM projelerin/TÜM veritabanının satır sayısı DEĞİLDİR\n",
@@ -1154,7 +1154,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "- **\U0001F50D Detaylı İnceleme**: Her kritik sütun için ayrı bölüm (##)\n",
       "- **\U0001F3AF Kök Nedenler**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
       "- **\U0001F4A1 Öneriler**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
-      "- **⚠️ Dikkat Edilmesi Gerekenler**: Veride görünen potansiyel sorunları belirt\n\n",
+      "- **\U000026A0\U0000FE0F Dikkat Edilmesi Gerekenler**: Veride görünen potansiyel sorunları belirt\n\n",
       "TABLO FORMATI KURALI:\n",
       "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
       "- Tablo formatı: | Sütun1 | Sütun2 | ... | şeklinde, başlık satırı ve ayırıcı ile\n",
@@ -1171,7 +1171,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "Sen MERGEN'in kıdemli veri analisti asistansın. R tarafından hazırlanan istatistiksel özet, senin tek gerçeğindir. Kullanıcıya değer üretmek için bu verileri derinlemesine yorumla.\n\n",
       "SORGU: ", selected_query$name, "\n",
       "AMACI: ", selected_query$description, "\n\n",
-      "⚠️ KRİTİK FİLTRELEME KURALI:\n",
+      "\U000026A0\U0000FE0F KRİTİK FİLTRELEME KURALI:\n",
       "Eğer istatistiksel özette 'FİLTRELEME UYARISI' görüyorsan:\n",
       "- Satır sayısı YALNIZCA kullanıcının spesifik filtreleme için geçerlidir\n",
       "- Tüm veri seti için geçerli değildir\n",
@@ -1187,7 +1187,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       "- **\U0001F4CB Özet**: 2-3 cümlede kritik bulgular ve etki\n",
       "- **\U0001F4CA Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
       "- **\U0001F4A1 Öneriler**: Somut, önceliklendirilmiş eylemler\n",
-      "- **⚠️ Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
+      "- **\U000026A0\U0000FE0F Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
       "TABLO FORMATI KURALI:\n",
       "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
       "- Tablo formatı: | Sütun1 | Sütun2 | ... | şeklinde, başlık satırı ve ayırıcı ile\n",
