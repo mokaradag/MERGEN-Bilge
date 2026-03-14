@@ -1,7 +1,7 @@
 /* =============================================================================
    Dosya Yolu: www/css/claude_code.css
    Açıklama: Claude Code entegrasyon sayfasının stil tanımları.
-             8-bit piksel animasyonlari, karakter temali renkler,
+             8-bit piksel animasyonları, karakter temalı renkler,
              terminal görünümü ve duyarlı tasarım için CSS kuralları.
    ============================================================================= */
 
@@ -171,7 +171,7 @@
   border: 1px solid rgba(255, 152, 0, 0.2);
 }
 
-/* --- Yardim Metni --- */
+/* --- Yardım Metni --- */
 .cc-help-text {
   display: block;
   color: var(--text-secondary, #888);
@@ -228,7 +228,7 @@
   opacity: 0.8;
 }
 
-/* --- Senaryo Izgarasi --- */
+/* --- Senaryo Izgarası --- */
 .cc-scenario-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -687,7 +687,7 @@
   75% { transform: translateY(-4px) rotate(-2deg); }
 }
 
-/* Karakter temali parlama efekti */
+/* Karakter temalı parlama efekti */
 @keyframes cc-glow-mergen {
   0%, 100% { box-shadow: 0 0 10px rgba(124, 77, 255, 0.3); }
   50% { box-shadow: 0 0 25px rgba(124, 77, 255, 0.6); }
@@ -713,7 +713,7 @@
   50% { box-shadow: 0 0 25px rgba(233, 134, 134, 0.6); }
 }
 
-/* Piksel yildiz efekti */
+/* Piksel yıldız efekti */
 @keyframes cc-pixel-star {
   0% { opacity: 0; transform: scale(0); }
   50% { opacity: 1; transform: scale(1); }
