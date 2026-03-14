@@ -155,13 +155,13 @@ safe_source("R/module_stt.R",              encoding = "UTF-8")
 safe_source("R/module_character_video.R",  encoding = "UTF-8")
 
 # -- SSO ve Oturum Modülleri --
-safe_source("R/module_sso.R",             encoding = "UTF-8")  # SSO kimlik doğrulama modülü
+safe_source("R/module_sso.R",             encoding = "UTF-8")
 safe_source("R/module_session_timeout.R",  encoding = "UTF-8")
 safe_source("R/module_performance.R",      encoding = "UTF-8")
 safe_source("R/module_user_identity.R",    encoding = "UTF-8")
 safe_source("R/module_startup_screen.R",   encoding = "UTF-8")
 safe_source("R/module_quick_actions.R",    encoding = "UTF-8")
-safe_source("R/module_claude_code.R",     encoding = "UTF-8")  # Claude Code entegrasyon modülü
+safe_source("R/module_claude_code.R",     encoding = "UTF-8")
 
 # -- Proje Analiz Modülleri --
 safe_source("R/module_proje_kaynak_analizi.R", encoding = "UTF-8")

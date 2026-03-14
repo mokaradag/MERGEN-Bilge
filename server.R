@@ -120,7 +120,7 @@ server <- function(input, output, session) {
   send_message_fns <- new.env(parent = emptyenv())
   send_message <- function(...) send_message_fns$send_message(...)
     
-  # Claude Code modulu (settings_data hazir olduktan sonra baslatilir)
+  # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
   claudeCodeServer("claude_code_module",
                    current_user_id = current_user_id,
                    settings_data = settings_data)

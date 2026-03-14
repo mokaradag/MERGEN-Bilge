@@ -1,9 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: R/module_claude_code.R
-# Aciklama: Claude Code entegrasyon modulu. Kullanicilara web arayuzu uzerinden
+# Açıklama: Claude Code entegrasyon modülü. Kullanıcılara web arayüzü üzerinden
 #           Claude Code CLI yeteneklerini sunar. Dosya okuma/yazma, terminal
 #           komutlari, arac kullanimi gibi tam ajan yetenekleri desteklenir.
-#           Karakter temali 8-bit animasyonlar ve Turkce dusunme mesajlari icerir.
+#           Karakter temalı 8-bit animasyonlar ve Türkçe düşünme mesajları içerir.
 # ==============================================================================
 
 # ==============================================================================
@@ -33,7 +33,7 @@ claudeCodeUI <- function(id) {
     div(
       class = "claude-code-container",
 
-      # --- Sayfa Basligi ---
+      # --- Sayfa Başlığı ---
       div(
         class = "chat-header settings-header-fixed",
         div(
@@ -43,12 +43,12 @@ claudeCodeUI <- function(id) {
         ),
         div(
           class = "chat-header-right",
-          # Durum gostergesi
+          # Durum göstergesi
           uiOutput(ns("connection_status_badge"))
         )
       ),
 
-      # --- Ana Icerik ---
+      # --- Ana İçerik ---
       div(
         class = "cc-main-content",
 
@@ -56,10 +56,10 @@ claudeCodeUI <- function(id) {
         div(
           class = "cc-sidebar-panel",
 
-          # Baglanti Ayarlari
+          # Bağlantı Ayarları
           div(
             class = "cc-settings-card",
-            h5(class = "cc-card-title", icon("plug"), "Baglanti Ayarlari"),
+            h5(class = "cc-card-title", icon("plug"), "Bağlantı Ayarları"),
 
             # CLI Durumu (otomatik tespit gostergesi)
             uiOutput(ns("cli_status_info")),
@@ -84,32 +84,32 @@ claudeCodeUI <- function(id) {
               selected = if (nzchar(varsayilan_model)) varsayilan_model else NULL
             ),
 
-            # Zaman Asimi
+            # Zaman Aşımı
             numericInput(
               ns("timeout"),
-              label = "Zaman Asimi (saniye)",
+              label = "Zaman Aşımı (saniye)",
               value = claude_code_config$timeout_seconds,
               min = 30,
               max = 600,
               step = 30
             ),
 
-            # Baglanti Test Dugmesi
+            # Bağlantı Test Düğmesi
             div(
               class = "cc-test-row",
               actionButton(
                 ns("test_connection"),
-                label = tagList(icon("satellite-dish"), "Baglanti Testi"),
+                label = tagList(icon("satellite-dish"), "Bağlantı Testi"),
                 class = "btn-modern btn-primary cc-test-btn"
               ),
               uiOutput(ns("test_result_ui"))
             )
           ),
 
-          # On Tanimli Senaryolar
+          # Ön Tanımlı Senaryolar
           div(
             class = "cc-settings-card cc-scenarios-card",
-            h5(class = "cc-card-title", icon("bolt"), "Hazir Senaryolar"),
+            h5(class = "cc-card-title", icon("bolt"), "Hazır Senaryolar"),
             div(
               class = "cc-scenario-grid",
               lapply(claude_code_scenarios, function(senaryo) {
@@ -126,10 +126,10 @@ claudeCodeUI <- function(id) {
             )
           ),
 
-          # Dizin Icerik Paneli
+          # Dizin İçerik Paneli
           div(
             class = "cc-settings-card cc-dir-card",
-            h5(class = "cc-card-title", icon("folder-tree"), "Dizin Icerigi"),
+            h5(class = "cc-card-title", icon("folder-tree"), "Dizin İçeriği"),
             actionButton(
               ns("refresh_dir"),
               label = tagList(icon("sync"), "Yenile"),
@@ -139,17 +139,17 @@ claudeCodeUI <- function(id) {
           )
         ),
 
-        # --- Sag Panel: Terminal / Sohbet Alani ---
+        # --- Sağ Panel: Terminal / Sohbet Alanı ---
         div(
           class = "cc-terminal-panel",
 
-          # 8-bit Karakter Animasyonu ve Dusunme Mesaji
+          # 8-bit Karakter Animasyonu ve Düşünme Mesajı
           div(
             id = ns("thinking_overlay"),
             class = "cc-thinking-overlay cc-hidden",
             div(
               class = "cc-pixel-character-container",
-              # 8-bit karakter animasyonu (JavaScript ile yonetilir)
+              # 8-bit karakter animasyonu (JavaScript ile yönetilir)
               tags$canvas(
                 id = ns("pixel_canvas"),
                 class = "cc-pixel-canvas",
@@ -163,17 +163,17 @@ claudeCodeUI <- function(id) {
             )
           ),
 
-          # Cikti / Sonuc Alani
+          # Çıktı / Sonuç Alanı
           div(
             class = "cc-output-wrapper",
             div(
               id = ns("output_area"),
               class = "cc-output-area"
-              # Icerik JavaScript tarafindan yonetilir
+              # İçerik JavaScript tarafından yönetilir
             )
           ),
 
-          # Komut Giris Alani
+          # Komut Giriş Alanı
           div(
             class = "cc-input-area",
             div(
@@ -181,12 +181,12 @@ claudeCodeUI <- function(id) {
               tags$textarea(
                 id = ns("prompt_input"),
                 class = "cc-prompt-input",
-                placeholder = "Claude Code'a bir komut yazin...",
+                placeholder = "Claude Code'a bir komut yazın...",
                 rows = 3
               ),
               div(
                 class = "cc-input-actions",
-                # Karakter Gostergesi
+                # Karakter Göstergesi
                 uiOutput(ns("active_character_indicator")),
                 # Temizle Dugmesi
                 actionButton(
@@ -194,12 +194,12 @@ claudeCodeUI <- function(id) {
                   label = NULL,
                   icon = icon("eraser"),
                   class = "cc-action-btn cc-clear-btn",
-                  title = "Ciktiyi Temizle"
+                  title = "Çıktıyı Temizle"
                 ),
-                # Calistir Dugmesi
+                # Çalıştır Düğmesi
                 actionButton(
                   ns("run_command"),
-                  label = tagList(icon("play"), "Calistir"),
+                  label = tagList(icon("play"), "Çalıştır"),
                   class = "cc-run-btn"
                 )
               )
@@ -207,7 +207,7 @@ claudeCodeUI <- function(id) {
             # Durum Cubugu
             div(
               class = "cc-status-bar",
-              span(id = ns("status_text"), class = "cc-status-text", "Hazir"),
+              span(id = ns("status_text"), class = "cc-status-text", "Hazır"),
               span(id = ns("duration_text"), class = "cc-duration-text")
             )
           )
@@ -283,7 +283,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       secili
     })
 
-    # --- Baglanti Durumu Rozeti ---
+    # --- Bağlantı Durumu Rozeti ---
     output$connection_status_badge <- renderUI({
       durum <- rv$connection_ok
       if (is.null(durum)) {
@@ -294,11 +294,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
                   icon("check-circle"), "Bagli")
       } else {
         tags$span(class = "cc-status-badge cc-status-error",
-                  icon("times-circle"), "Baglanti Yok")
+                  icon("times-circle"), "Bağlantı Yok")
       }
     })
 
-    # --- Aktif Karakter Gostergesi ---
+    # --- Aktif Karakter Göstergesi ---
     output$active_character_indicator <- renderUI({
       karakter <- get_active_character()
       tags$span(
@@ -308,12 +308,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       )
     })
 
-    # --- Baglanti Testi ---
+    # --- Bağlantı Testi ---
     observeEvent(input$test_connection, {
       cli_yolu <- rv$cli_path_resolved
       model <- input$model
 
-      # UI geri bildirimini goster
+      # UI geri bildirimini göster
       shinyjs::disable("test_connection")
 
       output$test_result_ui <- renderUI({
@@ -354,7 +354,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
           tags$div(
             class = "cc-test-error",
             icon("exclamation-triangle"),
-            tags$span("Test sirasinda beklenmeyen hata olustu."),
+            tags$span("Test sırasında beklenmeyen hata oluştu."),
             tags$small(conditionMessage(hata))
           )
         })
@@ -371,7 +371,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       })
     })
 
-    # --- Dizin Icerigini Goster ---
+    # --- Dizin İçeriğini Göster ---
     observe_dir_contents <- function() {
       yol <- input$workdir
       if (is.null(yol) || !nzchar(yol)) {
@@ -387,7 +387,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
         if (!icerik$success) {
           tags$p(class = "cc-dir-error", icerik$error)
         } else if (length(icerik$items) == 0) {
-          tags$p(class = "cc-dir-empty", "Dizin bos.")
+          tags$p(class = "cc-dir-empty", "Dizin boş.")
         } else {
           tags$div(
             class = "cc-dir-list",
@@ -424,7 +424,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       observe_dir_contents()
     }, ignoreInit = TRUE)
 
-    # --- Ciktiyi Temizle ---
+    # --- Çıktıyı Temizle ---
     observeEvent(input$clear_output, {
       rv$output_history <- list()
       session$sendCustomMessage(
@@ -433,7 +433,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       )
     })
 
-    # --- Ana Komut Calistirma ---
+    # --- Ana Komut Çalıştırma ---
     observeEvent(input$run_command, {
       prompt <- input$prompt_input
       if (is.null(prompt) || !nzchar(trimws(prompt))) return()
@@ -473,10 +473,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       karakter_id <- karakter$id
       karakter_renk <- karakter$accent
 
-      # Dusunme mesajini sec
+      # Düşünme mesajını seç
       dusunme_mesaji <- get_thinking_message(karakter_id)
 
-      # Kullanici komutunu ciktiya ekle
+      # Kullanıcı komutunu çıktıya ekle
       session$sendCustomMessage(
         type = "cc-add-message",
         message = list(
@@ -487,7 +487,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
         )
       )
 
-      # Dusunme animasyonunu baslat
+      # Düşünme animasyonunu başlat
       session$sendCustomMessage(
         type = "cc-thinking-start",
         message = list(
@@ -501,11 +501,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
         )
       )
 
-      # Giris alanini temizle ve devre disi birak
+      # Giriş alanını temizle ve devre dışı bırak
       updateTextAreaInput(session, "prompt_input", value = "")
       shinyjs::disable("run_command")
 
-      # Arka planda calistir
+      # Arka planda çalıştır
       future_promise({
         run_claude_code(
           prompt = prompt,
@@ -518,7 +518,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
         rv$last_result <- sonuc
         rv$is_running <- FALSE
 
-        # Dusunme animasyonunu durdur
+        # Düşünme animasyonunu durdur
         session$sendCustomMessage(
           type = "cc-thinking-stop",
           message = list(
@@ -528,7 +528,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
           )
         )
 
-        # Sonucu cikti alanina ekle
+        # Sonucu çıktı alanına ekle
         if (sonuc$success) {
           cikti_html <- format_claude_code_output(sonuc$output)
 
@@ -545,18 +545,18 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
             )
           )
 
-          # Durum cubugunu guncelle
+          # Durum çubuğunu güncelle
           session$sendCustomMessage(
             type = "cc-update-status",
             message = list(
               statusId = ns("status_text"),
               durationId = ns("duration_text"),
-              status = "Tamamlandi",
+              status = "Tamamlandı",
               duration = paste0(sonuc$duration, " sn")
             )
           )
         } else {
-          # Hata mesaji
+          # Hata mesajı
           session$sendCustomMessage(
             type = "cc-add-message",
             message = list(
@@ -578,10 +578,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
           )
         }
 
-        # Giris alanini ve dugmeyi tekrar etkinlestir
+        # Giriş alanını ve düğmeyi tekrar etkinleştir
         shinyjs::enable("run_command")
 
-        # Cikti gecmisine ekle
+        # Çıktı geçmişine ekle
         rv$output_history <- c(rv$output_history, list(list(
           prompt = prompt,
           result = sonuc,
@@ -589,14 +589,14 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
           character = karakter_id
         )))
 
-        # Dizin icerigini guncelle (dosya degismis olabilir)
+        # Dizin içeriğini güncelle (dosya değişmiş olabilir)
         observe_dir_contents()
 
       }) %...!% (function(hata) {
         rv$is_running <- FALSE
         shinyjs::enable("run_command")
 
-        # Dusunme animasyonunu durdur
+        # Düşünme animasyonunu durdur
         session$sendCustomMessage(
           type = "cc-thinking-stop",
           message = list(
@@ -629,7 +629,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL) {
       })
     })
 
-    # --- Klavye Kisayolu: Enter ile gonderme ---
+    # --- Klavye Kısayolu: Enter ile gönderme ---
     observeEvent(input$prompt_submit_key, {
       # JavaScript tarafindan tetiklenir (Ctrl+Enter veya Shift+Enter)
       if (!isTRUE(rv$is_running)) {
