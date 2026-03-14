@@ -15,7 +15,35 @@ get_version_history <- function() {
     return(list(current_version = "0.0", versions = list()))
   }
 
-  lines <- readLines(md_path, encoding = "UTF-8", warn = FALSE)
+  # Dosyayı UTF-8 olarak okumayı dener; başarısız olursa yaygın Windows
+  # kodlamalarından güvenli geri dönüş yapar.
+  read_version_lines <- function(path) {
+    try_read <- function(enc) {
+      suppressWarnings(readLines(path, encoding = enc, warn = FALSE, skipNul = TRUE))
+    }
+
+    lines <- try_read("UTF-8")
+    normalized <- suppressWarnings(iconv(lines, from = "UTF-8", to = "UTF-8", sub = ""))
+
+    if (length(normalized) > 0 && !all(is.na(normalized))) {
+      normalized[is.na(normalized)] <- ""
+      return(normalized)
+    }
+
+    fallback_encodings <- c("CP1254", "latin1")
+    for (enc in fallback_encodings) {
+      fallback_lines <- try_read(enc)
+      fallback_normalized <- suppressWarnings(iconv(fallback_lines, from = enc, to = "UTF-8", sub = ""))
+      if (length(fallback_normalized) > 0 && !all(is.na(fallback_normalized))) {
+        fallback_normalized[is.na(fallback_normalized)] <- ""
+        return(fallback_normalized)
+      }
+    }
+
+    character(0)
+  }
+
+  lines <- read_version_lines(md_path)
 
   versions <- list()
   current_version <- NULL
