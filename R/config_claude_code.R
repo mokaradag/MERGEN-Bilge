@@ -11,9 +11,8 @@
 
 # .Renviron dosyasindan Claude Code ayarlarini oku
 claude_code_config <- list(
-  # Claude Code CLI yolu (sunucuda kurulu olmalidir)
-  cli_path = Sys.getenv("CLAUDE_CODE_CLI_PATH", "claude"),
-
+  # Claude Code CLI yolu (bos ise otomatik tespit edilir)
+  cli_path = Sys.getenv("CLAUDE_CODE_CLI_PATH", ""),
 
   # Varsayilan calisma dizini (kullanici degistirebilir)
   default_workdir = Sys.getenv("CLAUDE_CODE_DEFAULT_WORKDIR", ""),
@@ -21,14 +20,10 @@ claude_code_config <- list(
   # Maksimum istek suresi (saniye)
   timeout_seconds = as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "300")),
 
-  # Maksimum token sayisi
-  default_max_tokens = as.integer(Sys.getenv("CLAUDE_CODE_MAX_TOKENS", "4096")),
-
-  # Varsayilan model
+  # Varsayilan model (bos ise settings.json'dan okunur)
   default_model = Sys.getenv("CLAUDE_CODE_MODEL", ""),
 
   # Izin verilen maksimum es zamanli islem sayisi
-
   max_concurrent = as.integer(Sys.getenv("CLAUDE_CODE_MAX_CONCURRENT", "5")),
 
   # Oturum gecmisini sakla

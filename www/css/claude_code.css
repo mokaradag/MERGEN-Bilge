@@ -139,34 +139,46 @@
   outline: none;
 }
 
-/* --- Calisma Dizini Satiri --- */
-.cc-workdir-row {
+/* --- CLI Durum Bilgisi --- */
+.cc-cli-status {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 10px;
   display: flex;
+  align-items: flex-start;
   gap: 6px;
-  align-items: flex-end;
+  line-height: 1.4;
 }
 
-.cc-workdir-row .form-group {
-  flex: 1;
+.cc-cli-status code {
+  font-size: 11px;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
-.cc-browse-btn {
-  margin-bottom: 15px;
-  background: var(--input-bg, #0d0d1a) !important;
-  border: 1px solid var(--border-color, rgba(255,255,255,0.1)) !important;
-  color: var(--text-secondary, #aaa) !important;
-  border-radius: 8px !important;
-  width: 36px;
-  height: 34px;
-  padding: 0 !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.cc-cli-found {
+  background: rgba(76, 175, 80, 0.1);
+  color: #81C784;
+  border: 1px solid rgba(76, 175, 80, 0.2);
 }
 
-.cc-browse-btn:hover {
-  border-color: #7C4DFF !important;
-  color: #7C4DFF !important;
+.cc-cli-missing {
+  background: rgba(255, 152, 0, 0.1);
+  color: #FFB74D;
+  border: 1px solid rgba(255, 152, 0, 0.2);
+}
+
+/* --- Yardim Metni --- */
+.cc-help-text {
+  display: block;
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+  margin-top: -6px;
+  margin-bottom: 10px;
+  padding-left: 2px;
 }
 
 /* --- Baglanti Test Alani --- */
