@@ -937,6 +937,9 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
           workdir = tempdir()
         )
       }) %...>% (function(sonuc) {
+        # Sonucu Claude Code sayfasına da ilet
+        settings$claude_code_connection_ok <- sonuc$success
+
         output$cc_test_result_ui <- renderUI({
           if (sonuc$success) {
             tags$div(
@@ -958,6 +961,7 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
         })
         shinyjs::enable("cc_test_connection")
       }) %...!% (function(hata) {
+        settings$claude_code_connection_ok <- FALSE
         output$cc_test_result_ui <- renderUI({
           tags$div(
             style = "font-size: 12px; color: #E57373; margin-top: 8px;",

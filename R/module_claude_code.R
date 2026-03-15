@@ -23,7 +23,7 @@ claudeCodeUI <- function(id) {
   katmanlar <- build_model_tier_choices(model_secenekleri)
   model_degerleri <- setNames(
     sapply(katmanlar, function(k) k$deger),
-    sapply(katmanlar, function(k) k$etiket)
+    sapply(katmanlar, function(k) paste0(k$ikon_unicode, " ", k$etiket))
   )
 
   tagList(
@@ -69,12 +69,22 @@ claudeCodeUI <- function(id) {
                 value = claude_code_config$default_workdir,
                 placeholder = "Proje klasör yolunu girin..."
               ),
-              actionButton(
-                ns("browse_folder"),
-                label = NULL,
-                icon = icon("folder-open"),
+              # Sistem klasör seçici (dosya yükleme benzeri)
+              tags$label(
                 class = "cc-browse-btn",
-                title = "Klasör seç"
+                title = "Klasör seç",
+                icon("folder-open"),
+                tags$input(
+                  type = "file",
+                  id = ns("folder_picker_input"),
+                  webkitdirectory = "true",
+                  directory = "true",
+                  style = "display:none;",
+                  onchange = sprintf(
+                    "var files = this.files; if(files.length > 0) { var path = files[0].webkitRelativePath || ''; var folder = path.split('/')[0] || ''; Shiny.setInputValue('%s', folder, {priority:'event'}); }",
+                    ns("folder_picked")
+                  )
+                )
               )
             ),
 
@@ -142,11 +152,20 @@ claudeCodeUI <- function(id) {
         div(
           class = "cc-terminal-panel",
 
-          # Retro karşılama ekranı (çıktı alanı boşken görünür)
+          # Çıktı / Sonuç Alanı (kaydırılabilir, esnek yükseklik)
           div(
-            id = ns("welcome_screen"),
-            class = "cc-welcome-screen"
-            # İçerik JavaScript tarafından oluşturulur
+            class = "cc-output-wrapper",
+            # Retro karşılama ekranı (çıktı alanı boşken görünür)
+            div(
+              id = ns("welcome_screen"),
+              class = "cc-welcome-screen cc-welcome-active"
+              # İçerik JavaScript tarafından oluşturulur
+            ),
+            div(
+              id = ns("output_area"),
+              class = "cc-output-area"
+              # İçerik JavaScript tarafından yönetilir
+            )
           ),
 
           # 8-bit düşünme animasyonu (küçültülmüş, köşede)
@@ -162,16 +181,6 @@ claudeCodeUI <- function(id) {
             div(
               id = ns("thinking_text"),
               class = "cc-thinking-text-mini"
-            )
-          ),
-
-          # Çıktı / Sonuç Alanı (sabit yükseklik, kaydırılabilir)
-          div(
-            class = "cc-output-wrapper",
-            div(
-              id = ns("output_area"),
-              class = "cc-output-area"
-              # İçerik JavaScript tarafından yönetilir
             )
           ),
 
@@ -236,7 +245,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       connection_ok = NULL,
       cli_path_resolved = NULL,
       has_messages = FALSE,
-      dir_browse_path = NULL  # Dizin gezgini için mevcut yol
+      conversation_context = list()  # Bağlam koruma için konuşma geçmişi
     )
 
     # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
@@ -245,7 +254,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       rv$cli_path_resolved <- yol
     }, priority = 100)
 
-    # --- Sayfa yüklendiğinde otomatik bağlantı testi (gereksinim 15) ---
+    # --- Sayfa yüklendiğinde otomatik bağlantı testi ---
     observe({
       # Bir kerelik çalışsın
       req(is.null(rv$connection_ok))
@@ -274,11 +283,33 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       })
     }, priority = 50)
 
+    # --- Yapılandırma sayfasından bağlantı testi sonucunu dinle ---
+    observe({
+      req(!is.null(settings_data))
+      # Yapılandırma sayfasında test başarılı olduysa güncelle
+      zaman_asimi <- settings_data$claude_code_timeout
+      if (!is.null(zaman_asimi)) {
+        # Zaman aşımı ayarı değiştiğinde not al (iletişim aktif)
+      }
+    })
+
+    # --- Yapılandırma sayfasından bağlantı testi sonucu geldiğinde güncelle ---
+    observe({
+      req(!is.null(settings_data))
+      yapilandirma_sonucu <- settings_data$claude_code_connection_ok
+      if (!is.null(yapilandirma_sonucu)) {
+        rv$connection_ok <- yapilandirma_sonucu
+      }
+    })
+
     # --- Aktif karakter bilgisini al ---
     get_active_character <- reactive({
       karakter_id <- "mergen"
       if (!is.null(settings_data) && !is.null(settings_data$selected_character)) {
-        karakter_id <- settings_data$selected_character
+        secili <- settings_data$selected_character
+        if (!is.null(secili) && nzchar(secili)) {
+          karakter_id <- secili
+        }
       }
 
       # Karakter verilerinden renk bilgisini al
@@ -294,7 +325,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       secili
     })
 
-    # --- Karakter değiştiğinde temayı güncelle (gereksinim 13) ---
+    # --- Karakter değiştiğinde temayı güncelle ---
     observe({
       karakter <- get_active_character()
       session$sendCustomMessage(
@@ -308,7 +339,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
-    # --- Kullanıcı adını belirle (gereksinim 7) ---
+    # --- Kullanıcı adını belirle ---
     kullanici_adi <- reactive({
       # Önce parametre olarak gelen adı dene
       if (!is.null(user_first_name)) {
@@ -351,134 +382,31 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
-    # --- Klasör Seçim Diyaloğu (gereksinim 2) ---
-    observeEvent(input$browse_folder, {
-      mevcut_yol <- input$workdir
-      if (is.null(mevcut_yol) || !nzchar(mevcut_yol)) {
-        # Varsayılan başlangıç dizini
-        if (.Platform$OS.type == "windows") {
-          mevcut_yol <- Sys.getenv("USERPROFILE", "C:/")
-        } else {
-          mevcut_yol <- Sys.getenv("HOME", "/")
-        }
+    # --- Sistem klasör seçici sonucu ---
+    observeEvent(input$folder_picked, {
+      req(input$folder_picked)
+      # Tarayıcıdan gelen klasör adı
+      secilen <- input$folder_picked
+      if (nzchar(secilen)) {
+        updateTextInput(session, "workdir", value = secilen)
       }
-
-      # Dizini listele ve modalda göster
-      showModal(modalDialog(
-        title = tagList(icon("folder-open"), "Klasör Seç"),
-        size = "m",
-        easyClose = TRUE,
-        div(
-          class = "cc-folder-browser",
-          # Mevcut yol göstergesi
-          div(
-            class = "cc-folder-path-bar",
-            actionButton(ns("folder_go_up"), label = NULL, icon = icon("arrow-up"),
-                         class = "btn-sm cc-folder-nav-btn", title = "Üst dizin"),
-            tags$input(
-              type = "text",
-              id = ns("folder_current_path"),
-              class = "cc-folder-path-input",
-              value = mevcut_yol
-            )
-          ),
-          # Dizin listesi
-          uiOutput(ns("folder_browser_list"))
-        ),
-        footer = tagList(
-          tags$button("İptal", class = "btn-modern btn-secondary", `data-dismiss` = "modal"),
-          actionButton(ns("folder_select_confirm"), "Bu Klasörü Seç",
-                       class = "btn-modern btn-primary", icon = icon("check"))
-        )
-      ))
-
-      # Başlangıç dizinini ayarla
-      rv$dir_browse_path <- mevcut_yol
-    })
-
-    # Klasör tarayıcı listesi güncelleme
-    observe({
-      req(rv$dir_browse_path)
-      yol <- rv$dir_browse_path
-
-      output$folder_browser_list <- renderUI({
-        if (!dir.exists(yol)) {
-          return(tags$p(class = "cc-dir-error", "Dizin bulunamadı."))
-        }
-
-        icerik <- list_directory_contents(yol, max_items = 50L)
-
-        if (!icerik$success) {
-          return(tags$p(class = "cc-dir-error", icerik$error))
-        }
-
-        # Sadece klasörleri göster
-        klasorler <- Filter(function(x) x$tip == "klasor", icerik$items)
-
-        if (length(klasorler) == 0) {
-          return(tags$p(class = "cc-dir-empty", "Bu dizinde alt klasör yok."))
-        }
-
-        tags$div(
-          class = "cc-folder-list",
-          lapply(klasorler, function(k) {
-            tags$div(
-              class = "cc-folder-item",
-              onclick = sprintf(
-                "Shiny.setInputValue('%s', '%s', {priority: 'event'});",
-                ns("folder_navigate"),
-                gsub("'", "\\\\'", k$yol)
-              ),
-              icon("folder"),
-              tags$span(k$ad)
-            )
-          })
-        )
-      })
-
-      # Yol göstergesini güncelle
-      shinyjs::runjs(sprintf(
-        "var el = document.getElementById('%s'); if(el) el.value = '%s';",
-        ns("folder_current_path"),
-        gsub("\\\\", "\\\\\\\\", gsub("'", "\\\\'", yol))
-      ))
-    })
-
-    # Klasöre tıklanınca gezin
-    observeEvent(input$folder_navigate, {
-      req(input$folder_navigate)
-      yeni_yol <- input$folder_navigate
-      if (dir.exists(yeni_yol)) {
-        rv$dir_browse_path <- normalizePath(yeni_yol, winslash = "/", mustWork = FALSE)
-      }
-    })
-
-    # Üst dizine git
-    observeEvent(input$folder_go_up, {
-      req(rv$dir_browse_path)
-      ust <- dirname(rv$dir_browse_path)
-      if (dir.exists(ust)) {
-        rv$dir_browse_path <- normalizePath(ust, winslash = "/", mustWork = FALSE)
-      }
-    })
-
-    # Klasör seçimini onayla
-    observeEvent(input$folder_select_confirm, {
-      req(rv$dir_browse_path)
-      updateTextInput(session, "workdir", value = rv$dir_browse_path)
-      removeModal()
     })
 
     # --- Senaryo Düğmeleri ---
     lapply(claude_code_scenarios, function(senaryo) {
       observeEvent(input[[paste0("scenario_", senaryo$id)]], {
         if (nzchar(senaryo$sablon)) {
-          updateTextAreaInput(session, "prompt_input", value = senaryo$sablon)
+          # textarea güncelleme (JavaScript ile)
+          shinyjs::runjs(sprintf(
+            "var el = document.getElementById('%s'); if(el) { el.value = %s; el.focus(); }",
+            ns("prompt_input"),
+            jsonlite::toJSON(senaryo$sablon, auto_unbox = TRUE)
+          ))
         }
       })
     })
 
-    # --- Dizin İçeriğini Göster (tıklanabilir klasörlerle - gereksinim 16) ---
+    # --- Dizin İçeriğini Göster (tıklanabilir klasörlerle) ---
     observe_dir_contents <- function() {
       yol <- input$workdir
       if (is.null(yol) || !nzchar(yol)) {
@@ -575,6 +503,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     observeEvent(input$clear_output, {
       rv$output_history <- list()
       rv$has_messages <- FALSE
+      rv$conversation_context <- list()
       session$sendCustomMessage(
         type = "cc-clear-output",
         message = list(
@@ -584,7 +513,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
-    # --- Düşünme mesajı güncelleme (gereksinim 12) ---
+    # --- Düşünme mesajı güncelleme ---
     observeEvent(input$thinking_tick, {
       karakter <- get_active_character()
       yeni_mesaj <- get_thinking_message(karakter$id)
@@ -599,8 +528,16 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
     # --- Ana Komut Çalıştırma ---
     observeEvent(input$run_command, {
-      prompt <- input$prompt_input
-      if (is.null(prompt) || !nzchar(trimws(prompt))) return()
+      prompt <- NULL
+
+      # JavaScript'ten gelen prompt değerini oku
+      prompt_from_js <- input$prompt_value
+      if (!is.null(prompt_from_js) && nzchar(trimws(prompt_from_js))) {
+        prompt <- trimws(prompt_from_js)
+      }
+
+      # Boş kontrolü
+      if (is.null(prompt) || !nzchar(prompt)) return()
 
       # Çift tıklama koruması
       if (isTRUE(rv$is_running)) return()
@@ -654,6 +591,28 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Karşılama ekranını gizle, mesaj alanı aktif
       rv$has_messages <- TRUE
 
+      # Konuşma bağlamına ekle
+      rv$conversation_context <- c(rv$conversation_context, list(
+        list(role = "user", content = prompt)
+      ))
+
+      # Bağlamı birleştir (son 10 mesaj)
+      baglam_metni <- ""
+      if (length(rv$conversation_context) > 1) {
+        son_mesajlar <- tail(rv$conversation_context, 10)
+        baglam_parcalari <- sapply(son_mesajlar[-length(son_mesajlar)], function(m) {
+          paste0(if (m$role == "user") "Kullanıcı" else "Asistan", ": ", m$content)
+        })
+        baglam_metni <- paste(baglam_parcalari, collapse = "\n")
+      }
+
+      # Bağlam varsa prompt'a ekle
+      tam_prompt <- if (nzchar(baglam_metni)) {
+        paste0("Önceki konuşma bağlamı:\n", baglam_metni, "\n\nŞimdiki istek:\n", prompt)
+      } else {
+        prompt
+      }
+
       # Kullanıcı komutunu çıktıya ekle
       session$sendCustomMessage(
         type = "cc-add-message",
@@ -681,14 +640,17 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         )
       )
 
-      # Giriş alanını temizle ve devre dışı bırak
-      updateTextAreaInput(session, "prompt_input", value = "")
+      # Prompt giriş alanını temizle
+      shinyjs::runjs(sprintf(
+        "var el = document.getElementById('%s'); if(el) el.value = '';",
+        ns("prompt_input")
+      ))
       shinyjs::disable("run_command")
 
       # Arka planda çalıştır
       future_promise({
         run_claude_code(
-          prompt = prompt,
+          prompt = tam_prompt,
           workdir = calisma_dizini,
           model = if (!is.null(model) && nzchar(model)) model else NULL,
           timeout_sec = zaman_asimi,
@@ -697,6 +659,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       }) %...>% (function(sonuc) {
         rv$last_result <- sonuc
         rv$is_running <- FALSE
+
+        # Konuşma bağlamına yanıtı ekle
+        rv$conversation_context <- c(rv$conversation_context, list(
+          list(role = "assistant", content = sonuc$output)
+        ))
 
         # Düşünme animasyonunu durdur
         session$sendCustomMessage(

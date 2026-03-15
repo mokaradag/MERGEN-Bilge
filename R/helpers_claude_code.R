@@ -146,6 +146,7 @@ build_model_tier_choices <- function(model_listesi) {
     return(list(list(
       etiket = claude_code_varsayilan_etiket,
       ikon = "fa-cog",
+      ikon_unicode = "⚙",
       aciklama = "Yapılandırma dosyasındaki varsayılan model",
       deger = ""
     )))
@@ -172,6 +173,7 @@ build_model_tier_choices <- function(model_listesi) {
       sonuc[[length(sonuc) + 1]] <- list(
         etiket = paste0(claude_code_varsayilan_etiket, " (", anahtar, ")"),
         ikon = "fa-cog",
+        ikon_unicode = "⚙",
         aciklama = paste("Model:", model_id),
         deger = model_id
       )
@@ -179,6 +181,7 @@ build_model_tier_choices <- function(model_listesi) {
       sonuc[[length(sonuc) + 1]] <- list(
         etiket = eslesme$etiket,
         ikon = eslesme$ikon,
+        ikon_unicode = eslesme$ikon_unicode %||% "",
         aciklama = eslesme$aciklama,
         deger = model_id
       )

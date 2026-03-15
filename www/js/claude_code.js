@@ -3,7 +3,7 @@
 // Açıklama: Claude Code entegrasyon sayfasının istemci tarafı mantığı.
 //           Mesaj gösterimi, araç kullanımı görüntüleme, küçültülmüş 8-bit
 //           piksel animasyonu, düşünme mesajı döngüsü, karakter teması
-//           güncelleme ve klavye kısayollarını yönetir.
+//           güncelleme, klavye kısayolları ve prompt değeri yönetimini sağlar.
 // =============================================================================
 
 (function() {
@@ -16,10 +16,8 @@
   var PIXEL_CHARS_MINI = {
     mergen: {
       frames: [
-        // Kare 1: duruş
         [[0,0,0,1,1,0,0,0],[0,0,1,1,1,1,0,0],[0,1,2,1,1,2,1,0],[0,1,1,1,1,1,1,0],
          [0,0,1,2,2,1,0,0],[0,1,1,1,1,1,1,0],[0,1,0,1,1,0,1,0],[0,1,0,0,0,0,1,0]],
-        // Kare 2: zıplama
         [[0,0,0,1,1,0,0,0],[0,0,1,1,1,1,0,0],[0,1,2,1,1,2,1,0],[0,1,1,1,1,1,1,0],
          [0,0,1,2,2,1,0,0],[0,1,1,1,1,1,1,0],[0,0,1,1,1,1,0,0],[0,1,0,0,0,0,1,0]]
       ],
@@ -166,10 +164,15 @@
     var target = document.getElementById(data.target);
     if (!target) return;
 
-    // Karşılama ekranını gizle
+    // Karşılama ekranını gizle ve animasyonu durdur
     if (data.welcomeId) {
       var welcome = document.getElementById(data.welcomeId);
-      if (welcome) welcome.classList.remove('cc-welcome-active');
+      if (welcome) {
+        welcome.classList.remove('cc-welcome-active');
+        if (typeof window.ccStopWelcome === 'function') {
+          window.ccStopWelcome();
+        }
+      }
     }
 
     var msgDiv = document.createElement('div');
@@ -248,6 +251,19 @@
   }
 
   // -------------------------------------------------------------------------
+  // PROMPT DEĞER OKUMA YARDIMCISI
+  // Shiny'nin raw textarea'dan değer okuması için prompt değerini gönderir
+  // -------------------------------------------------------------------------
+  function sendPromptValue(ns) {
+    var textarea = document.querySelector('.cc-prompt-input');
+    if (!textarea) return;
+    var value = textarea.value || '';
+    // Shiny'ye prompt değerini gönder
+    var inputId = ns ? ns.replace(/-$/, '') + '-prompt_value' : 'claude_code_module-prompt_value';
+    Shiny.setInputValue(inputId, value, {priority: 'event'});
+  }
+
+  // -------------------------------------------------------------------------
   // SHINY MESAJ İŞLEYİCİLERİ
   // -------------------------------------------------------------------------
 
@@ -263,7 +279,13 @@
 
     if (data.welcomeId) {
       var welcome = document.getElementById(data.welcomeId);
-      if (welcome) welcome.classList.add('cc-welcome-active');
+      if (welcome) {
+        welcome.classList.add('cc-welcome-active');
+        // Karşılama animasyonunu yeniden başlat
+        if (typeof window.ccStartWelcome === 'function') {
+          window.ccStartWelcome(data.welcomeId);
+        }
+      }
     }
   });
 
@@ -286,12 +308,13 @@
 
     startMiniAnimation(data.canvasId, data.characterId || 'mergen');
 
-    // Düşünme mesajını periyodik değiştir
+    // Düşünme mesajını periyodik değiştir (3 saniyede bir)
     if (window.ccThinkingInterval) clearInterval(window.ccThinkingInterval);
     window.ccThinkingInterval = setInterval(function() {
       if (textEl && overlay && !overlay.classList.contains('cc-hidden')) {
-        Shiny.setInputValue(data.statusId.replace('status_text', 'thinking_tick'),
-                            Math.random(), {priority: 'event'});
+        // thinking_tick adını namespace ile oluştur
+        var tickId = data.statusId.replace('status_text', 'thinking_tick');
+        Shiny.setInputValue(tickId, Math.random(), {priority: 'event'});
       }
     }, 3000);
   });
@@ -309,7 +332,7 @@
     }
   });
 
-  // Düşünme metni güncelleme (gereksinim 12)
+  // Düşünme metni güncelleme
   Shiny.addCustomMessageHandler('cc-update-thinking-text', function(data) {
     var textEl = document.getElementById(data.textId);
     if (textEl) {
@@ -338,7 +361,7 @@
     }
   });
 
-  // Karakter teması güncelleme (gereksinim 13)
+  // Karakter teması güncelleme
   Shiny.addCustomMessageHandler('cc-update-theme', function(data) {
     var container = document.querySelector('.claude-code-container');
     if (!container) return;
@@ -356,20 +379,51 @@
     if (badge) {
       badge.style.background = 'linear-gradient(135deg, ' + accent + ' 0%, ' + hover + ' 100%)';
     }
+
+    // Karşılama ekranını da güncelle
+    if (typeof window.ccUpdateWelcomeTheme === 'function') {
+      window.ccUpdateWelcomeTheme(data.characterId, accent);
+    }
   });
 
   // -------------------------------------------------------------------------
-  // KLAVYE KISAYOLLARI
+  // KLAVYE KISAYOLLARI VE DÜĞME TIKLAMA YÖNETİMİ
   // -------------------------------------------------------------------------
+
+  // Çalıştır düğmesine tıklanmadan önce prompt değerini Shiny'ye gönder
+  document.addEventListener('click', function(e) {
+    var runBtn = e.target.closest('.cc-run-btn');
+    if (runBtn && !runBtn.disabled) {
+      // Prompt değerini hemen Shiny'ye gönder
+      var container = runBtn.closest('.cc-terminal-panel') || runBtn.closest('.claude-code-container');
+      if (container) {
+        var textarea = container.querySelector('.cc-prompt-input');
+        if (textarea) {
+          var ns = textarea.id.replace(/prompt_input$/, '');
+          var inputId = ns + 'prompt_value';
+          Shiny.setInputValue(inputId, textarea.value || '', {priority: 'event'});
+        }
+      }
+    }
+  }, true); // capture phase - düğme tıklamasından önce çalışır
+
+  // Ctrl+Enter veya Shift+Enter ile gönder
   document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.shiftKey) && e.key === 'Enter') {
       var textarea = e.target;
       if (textarea && textarea.classList.contains('cc-prompt-input')) {
         e.preventDefault();
-        var container = textarea.closest('.cc-terminal-panel');
+        var container = textarea.closest('.cc-terminal-panel') || textarea.closest('.claude-code-container');
         if (container) {
           var runBtn = container.querySelector('.cc-run-btn');
-          if (runBtn && !runBtn.disabled) runBtn.click();
+          if (runBtn && !runBtn.disabled) {
+            // Önce prompt değerini gönder
+            var ns = textarea.id.replace('prompt_input', '');
+            var inputId = ns + 'prompt_value';
+            Shiny.setInputValue(inputId, textarea.value || '', {priority: 'event'});
+            // Sonra düğmeyi tıkla (küçük gecikme ile)
+            setTimeout(function() { runBtn.click(); }, 50);
+          }
         }
       }
     }

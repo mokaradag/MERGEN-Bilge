@@ -3,7 +3,7 @@
 // Açıklama: Claude Code karşılama ekranı için retro 8-bit oyun animasyonu.
 //           Beş karakter piksel sahnede dolaşır, fareyle etkileşime girer
 //           ve birbirleriyle çarpıştığında zıplar. Retro yazı tipi efekti
-//           ve yıldız arka planı içerir.
+//           ve yıldız arka planı içerir. Giriş alanını asla engellemez.
 // =============================================================================
 
 (function() {
@@ -26,7 +26,6 @@
   // -------------------------------------------------------------------------
   var WELCOME_CHARS = {
     mergen: {
-      // Okçu karakter - yay ve ok ile
       idle: [
         [0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0],
         [0,0,0,0,1,1,3,3,3,1,1,0,0,0,0,0],
@@ -65,7 +64,6 @@
       ]
     },
     ulgen: {
-      // Işık halesi olan bilge karakter
       idle: [
         [0,0,0,0,3,3,3,3,3,3,3,3,0,0,0,0],
         [0,0,0,3,0,0,1,1,1,1,0,0,3,0,0,0],
@@ -104,7 +102,6 @@
       ]
     },
     kayra: {
-      // Stratejist - zırhlı karakter
       idle: [
         [0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
         [0,0,0,0,1,1,2,2,2,2,1,1,0,0,0,0],
@@ -143,7 +140,6 @@
       ]
     },
     erlik: {
-      // Eleştirmen - sert bakışlı karakter
       idle: [
         [0,0,0,0,2,2,1,1,1,1,2,2,0,0,0,0],
         [0,0,0,2,1,1,1,1,1,1,1,1,2,0,0,0],
@@ -182,7 +178,6 @@
       ]
     },
     umay: {
-      // Koruyucu ana - kanatları olan karakter
       idle: [
         [0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
         [0,0,0,0,1,1,3,3,3,3,1,1,0,0,0,0],
@@ -233,6 +228,7 @@
   var mouseX = -100;
   var mouseY = -100;
   var welcomeFrame = 0;
+  var currentAccent = '#7C4DFF';
 
   // -------------------------------------------------------------------------
   // YILDIZ ARKA PLANI
@@ -270,10 +266,11 @@
     var charIds = ['mergen', 'ulgen', 'kayra', 'erlik', 'umay'];
     var chars = [];
     var spacing = width / (charIds.length + 1);
+    // Karakter yüksekliği canvas yüksekliğine göre ölçeklenir
+    var groundY = height * 0.72;
 
     for (var i = 0; i < charIds.length; i++) {
       var cid = charIds[i];
-      var groundY = height * 0.65;
       chars.push({
         id: cid,
         x: spacing * (i + 1),
@@ -396,13 +393,11 @@
   // -------------------------------------------------------------------------
   function drawRetroText(ctx, text, x, y, size, color, shadowColor) {
     ctx.save();
-    ctx.font = size + 'px monospace';
+    ctx.font = 'bold ' + size + 'px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // Gölge
     if (shadowColor) {
       ctx.fillStyle = shadowColor;
-      ctx.fillRect;
       ctx.fillText(text, x + 2, y + 2);
     }
     ctx.fillStyle = color;
@@ -414,14 +409,12 @@
   // ZEMİN ÇİZİMİ
   // -------------------------------------------------------------------------
   function drawGround(ctx, width, height, accentColor) {
-    var groundY = height * 0.7;
-    // Zemin çizgisi (piksel stili)
+    var groundY = height * 0.78;
     ctx.fillStyle = accentColor || '#7C4DFF';
     ctx.globalAlpha = 0.3;
     for (var i = 0; i < width; i += 4) {
       ctx.fillRect(i, groundY, 2, 2);
     }
-    // İkinci çizgi
     ctx.globalAlpha = 0.15;
     for (var j = 0; j < width; j += 8) {
       ctx.fillRect(j, groundY + 6, 4, 1);
@@ -434,11 +427,11 @@
   // -------------------------------------------------------------------------
   function drawNameTag(ctx, name, x, y, color) {
     ctx.save();
-    ctx.font = '9px monospace';
+    ctx.font = 'bold 10px monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = color;
-    ctx.globalAlpha = 0.7;
-    ctx.fillText(name, x, y + 10);
+    ctx.globalAlpha = 0.8;
+    ctx.fillText(name, x, y + 12);
     ctx.restore();
   }
 
@@ -458,36 +451,29 @@
     drawStars(welcomeCtx, welcomeStars, welcomeFrame, w, h);
 
     // Zemin
-    var activeChar = document.querySelector('.claude-code-container');
-    var accent = '#7C4DFF';
-    if (activeChar) {
-      var charId = activeChar.getAttribute('data-character') || 'mergen';
-      if (CHAR_COLORS[charId]) accent = CHAR_COLORS[charId].main;
-    }
-    drawGround(welcomeCtx, w, h, accent);
+    drawGround(welcomeCtx, w, h, currentAccent);
 
     // Başlık metni
     var titleAlpha = 0.6 + Math.sin(welcomeFrame * 0.03) * 0.2;
     welcomeCtx.globalAlpha = titleAlpha;
-    drawRetroText(welcomeCtx, 'CLAUDE CODE', w / 2, h * 0.18, 22, accent, 'rgba(0,0,0,0.5)');
+    drawRetroText(welcomeCtx, 'CLAUDE CODE', w / 2, h * 0.15, Math.min(24, w / 20), currentAccent, 'rgba(0,0,0,0.5)');
     welcomeCtx.globalAlpha = 0.5;
-    drawRetroText(welcomeCtx, 'Ajan Terminali', w / 2, h * 0.28, 12, '#aaaaaa', null);
+    drawRetroText(welcomeCtx, 'Ajan Terminali', w / 2, h * 0.24, Math.min(14, w / 35), '#aaaaaa', null);
     welcomeCtx.globalAlpha = 1;
 
     // Alt bilgi metni
     welcomeCtx.globalAlpha = 0.3 + Math.sin(welcomeFrame * 0.05) * 0.15;
-    drawRetroText(welcomeCtx, 'Bir komut yazarak basla...', w / 2, h * 0.88, 10, '#888888', null);
+    drawRetroText(welcomeCtx, 'Bir komut yazarak basla...', w / 2, h * 0.92, Math.min(11, w / 45), '#888888', null);
     welcomeCtx.globalAlpha = 1;
 
-    // Karakterleri güncelle ve çiz
-    var charScale = Math.max(2, Math.min(3, w / 250));
+    // Karakterleri güncelle ve çiz - ölçek canvas boyutuna göre ayarlanır
+    var charScale = Math.max(3, Math.min(5, Math.min(w / 180, h / 80)));
     var charNames = { mergen: 'MERGEN', ulgen: 'ULGEN', kayra: 'KAYRA', erlik: 'ERLIK', umay: 'UMAY' };
 
     for (var i = 0; i < welcomeChars.length; i++) {
       var ch = welcomeChars[i];
       updateCharacter(ch, w, h, welcomeFrame);
 
-      // Sprite seç (yürüme / durma)
       var pixels = ch.isWalking && ch.walkFrame % 30 < 15
         ? ch.charData.walk
         : ch.charData.idle;
@@ -514,7 +500,7 @@
     var container = document.getElementById(containerId);
     if (!container) return;
 
-    // Mevcut canvas'ı temizle
+    // Mevcut animasyonu temizle
     stopWelcomeScreen();
 
     // Canvas oluştur
@@ -529,8 +515,19 @@
     function resizeCanvas() {
       if (!welcomeCanvas || !welcomeCanvas.parentElement) return;
       var rect = welcomeCanvas.parentElement.getBoundingClientRect();
-      welcomeCanvas.width = rect.width;
-      welcomeCanvas.height = rect.height;
+      if (rect.width > 0 && rect.height > 0) {
+        welcomeCanvas.width = rect.width;
+        welcomeCanvas.height = rect.height;
+        // Boyut değiştiğinde karakterleri yeniden konumla
+        if (welcomeChars.length > 0) {
+          var groundY = rect.height * 0.72;
+          var spacing = rect.width / (welcomeChars.length + 1);
+          for (var i = 0; i < welcomeChars.length; i++) {
+            welcomeChars[i].baseY = groundY;
+            if (welcomeChars[i].y > groundY) welcomeChars[i].y = groundY;
+          }
+        }
+      }
     }
     resizeCanvas();
 
@@ -538,6 +535,13 @@
     welcomeStars = initStars(60, welcomeCanvas.width, welcomeCanvas.height);
     welcomeChars = initCharacters(welcomeCanvas.width, welcomeCanvas.height);
     welcomeFrame = 0;
+
+    // Mevcut vurgu rengini al
+    var ccContainer = document.querySelector('.claude-code-container');
+    if (ccContainer) {
+      var charId = ccContainer.getAttribute('data-character') || 'mergen';
+      if (CHAR_COLORS[charId]) currentAccent = CHAR_COLORS[charId].main;
+    }
 
     // Fare takibi
     welcomeCanvas.addEventListener('mousemove', function(e) {
@@ -584,6 +588,19 @@
   }
 
   // -------------------------------------------------------------------------
+  // GENEL ERİŞİM FONKSİYONLARI (claude_code.js tarafından çağrılabilir)
+  // -------------------------------------------------------------------------
+  window.ccStartWelcome = startWelcomeScreen;
+  window.ccStopWelcome = stopWelcomeScreen;
+  window.ccUpdateWelcomeTheme = function(characterId, accent) {
+    if (CHAR_COLORS[characterId]) {
+      currentAccent = CHAR_COLORS[characterId].main;
+    } else if (accent) {
+      currentAccent = accent;
+    }
+  };
+
+  // -------------------------------------------------------------------------
   // SHINY ENTEGRASYONU
   // -------------------------------------------------------------------------
 
@@ -618,11 +635,11 @@
     setTimeout(function() {
       var welcomeEls = document.querySelectorAll('.cc-welcome-screen');
       welcomeEls.forEach(function(el) {
-        if (el.id) {
+        if (el.id && el.classList.contains('cc-welcome-active')) {
           startWelcomeScreen(el.id);
         }
       });
-    }, 500);
+    }, 800);
   });
 
 })();

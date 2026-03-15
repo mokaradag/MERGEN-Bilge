@@ -47,7 +47,8 @@ settingsInit <- function(session, parent_session = NULL) {
     music_volume            = 0.3,
     experience_mode         = "odak",
     show_intro_animation    = TRUE,
-    claude_code_timeout     = claude_code_config$timeout_seconds
+    claude_code_timeout     = claude_code_config$timeout_seconds,
+    claude_code_connection_ok = NULL
   )
 
   # ---- Alt modülleri başlat ----
