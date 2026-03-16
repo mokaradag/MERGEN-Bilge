@@ -149,6 +149,36 @@
     }
   }
 
+  // Tüm araç sonuçlarını gizle/göster
+  window.ccToggleAllTools = function(el) {
+    var section = el.closest('.cc-tool-section');
+    if (!section) return;
+    var results = section.querySelectorAll('.cc-tool-result');
+    var icon = el.querySelector('i');
+    // Hepsi gizli mi kontrol et
+    var allHidden = true;
+    results.forEach(function(r) {
+      if (!r.classList.contains('cc-tool-result-hidden')) allHidden = false;
+    });
+    results.forEach(function(r) {
+      if (allHidden) {
+        r.classList.remove('cc-tool-result-hidden');
+      } else {
+        r.classList.add('cc-tool-result-hidden');
+      }
+    });
+    // İkonu güncelle
+    var headers = section.querySelectorAll('.cc-tool-toggle-icon');
+    headers.forEach(function(h) {
+      h.classList.remove('fa-chevron-right', 'fa-chevron-down');
+      h.classList.add(allHidden ? 'fa-chevron-down' : 'fa-chevron-right');
+    });
+    if (icon) {
+      icon.classList.remove('fa-eye', 'fa-eye-slash');
+      icon.classList.add(allHidden ? 'fa-eye' : 'fa-eye-slash');
+    }
+  };
+
   // Araç blokları için tıklama işleyicisi (event delegation)
   document.addEventListener('click', function(e) {
     var header = e.target.closest('.cc-tool-header');
@@ -204,12 +234,14 @@
     }
     headerHtml += '</div>';
 
-    // Araç kullanımı (açılır/kapanır bloklar)
+    // Araç kullanımı (açılır/kapanır bloklar, tümünü gizle/göster düğmesi)
     var toolHtml = '';
     if (data.toolContent && data.toolContent.length > 0) {
       toolHtml = '<div class="cc-tool-section">' +
                  '<div class="cc-tool-section-header">' +
                  '<i class="fas fa-cogs"></i> Araç Kullanımları' +
+                 '<span class="cc-tool-toggle-all" onclick="window.ccToggleAllTools(this)" title="Tümünü gizle/göster">' +
+                 '<i class="fas fa-eye"></i></span>' +
                  '</div>' + data.toolContent + '</div>';
     }
 
@@ -224,18 +256,16 @@
 
     msgDiv.innerHTML = headerHtml + toolHtml + bodyHtml;
 
-    // Araç sonuçlarını varsayılan olarak gizle
+    // Araç sonuçlarını varsayılan olarak GÖSTER (kullanıcı kapatabilir)
     var toolResults = msgDiv.querySelectorAll('.cc-tool-result');
-    toolResults.forEach(function(tr) {
-      tr.classList.add('cc-tool-result-hidden');
-    });
+    // Sonuçlar açık başlar, kullanıcı tıklayarak kapatabilir
 
     // Açma/kapama ikonlarını ekle
     var toolHeaders = msgDiv.querySelectorAll('.cc-tool-header');
     toolHeaders.forEach(function(th) {
       if (!th.querySelector('.cc-tool-toggle-icon')) {
         var toggleIcon = document.createElement('i');
-        toggleIcon.className = 'fas fa-chevron-right cc-tool-toggle-icon';
+        toggleIcon.className = 'fas fa-chevron-down cc-tool-toggle-icon';
         th.appendChild(toggleIcon);
       }
       th.style.cursor = 'pointer';
@@ -309,12 +339,19 @@
     startMiniAnimation(data.canvasId, data.characterId || 'mergen');
 
     // Düşünme mesajını periyodik değiştir (3 saniyede bir)
+    // Sunucu tarafına istek göndererek yeni mesaj al
     if (window.ccThinkingInterval) clearInterval(window.ccThinkingInterval);
     window.ccThinkingInterval = setInterval(function() {
-      if (textEl && overlay && !overlay.classList.contains('cc-hidden')) {
-        // thinking_tick adını namespace ile oluştur
+      // Overlay hala görünür mü kontrol et (DOM'dan tekrar al)
+      var currentOverlay = document.getElementById(data.overlayId);
+      var currentTextEl = document.getElementById(data.textId);
+      if (currentTextEl && currentOverlay && !currentOverlay.classList.contains('cc-hidden')) {
         var tickId = data.statusId.replace('status_text', 'thinking_tick');
         Shiny.setInputValue(tickId, Math.random(), {priority: 'event'});
+      } else {
+        // Overlay gizlenmişse interval'i temizle
+        clearInterval(window.ccThinkingInterval);
+        window.ccThinkingInterval = null;
       }
     }, 3000);
   });

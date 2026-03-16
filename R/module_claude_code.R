@@ -21,9 +21,13 @@ claudeCodeUI <- function(id) {
 
   # Model katmanlarını oluştur
   katmanlar <- build_model_tier_choices(model_secenekleri)
+  # Etiketleri hizalı ikon ve metin ile oluştur
   model_degerleri <- setNames(
     sapply(katmanlar, function(k) k$deger),
-    sapply(katmanlar, function(k) paste0(k$ikon_unicode, " ", k$etiket))
+    sapply(katmanlar, function(k) {
+      # Sabit genişlikte metin etiketi (hizalama için)
+      paste0("[", substr(toupper(k$etiket), 1, 1), "] ", k$etiket, " - ", k$aciklama)
+    })
   )
 
   tagList(
@@ -60,7 +64,7 @@ claudeCodeUI <- function(id) {
             class = "cc-settings-card",
             h5(class = "cc-card-title", icon("folder-open"), "Proje Dizini"),
 
-            # Proje dizini giriş alanı + klasör seçim düğmesi
+            # Proje dizini giriş alanı + klasör tarayıcı düğmesi
             div(
               class = "cc-workdir-row",
               textInput(
@@ -69,22 +73,13 @@ claudeCodeUI <- function(id) {
                 value = claude_code_config$default_workdir,
                 placeholder = "Proje klasör yolunu girin..."
               ),
-              # Sistem klasör seçici (dosya yükleme benzeri)
-              tags$label(
+              # Sunucu taraflı klasör tarayıcı düğmesi
+              actionButton(
+                ns("open_folder_browser"),
+                label = NULL,
+                icon = icon("folder-open"),
                 class = "cc-browse-btn",
-                title = "Klasör seç",
-                icon("folder-open"),
-                tags$input(
-                  type = "file",
-                  id = ns("folder_picker_input"),
-                  webkitdirectory = "true",
-                  directory = "true",
-                  style = "display:none;",
-                  onchange = sprintf(
-                    "var files = this.files; if(files.length > 0) { var path = files[0].webkitRelativePath || ''; var folder = path.split('/')[0] || ''; Shiny.setInputValue('%s', folder, {priority:'event'}); }",
-                    ns("folder_picked")
-                  )
-                )
+                title = "Klasör seç"
               )
             ),
 
@@ -207,6 +202,13 @@ claudeCodeUI <- function(id) {
                   class = "cc-action-btn cc-clear-btn",
                   title = "Çıktıyı Temizle"
                 ),
+                # Durdur Düğmesi (çalışırken görünür)
+                actionButton(
+                  ns("stop_command"),
+                  label = tagList(icon("stop"), "Durdur"),
+                  class = "cc-stop-btn cc-hidden",
+                  title = "İşlemi durdur"
+                ),
                 # Çalıştır Düğmesi
                 actionButton(
                   ns("run_command"),
@@ -245,7 +247,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       connection_ok = NULL,
       cli_path_resolved = NULL,
       has_messages = FALSE,
-      conversation_context = list()  # Bağlam koruma için konuşma geçmişi
+      conversation_context = list(),  # Bağlam koruma için konuşma geçmişi
+      stop_requested = FALSE          # Durdurma isteği bayrağı
     )
 
     # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
@@ -254,34 +257,30 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       rv$cli_path_resolved <- yol
     }, priority = 100)
 
-    # --- Sayfa yüklendiğinde otomatik bağlantı testi ---
+    # --- Otomatik bağlantı testi (sayfa görüntülendiğinde, başlangıçta değil) ---
+    # Uygulama başlangıcını yavaşlatmamak için sadece CLI durumunu kontrol et,
+    # tam bağlantı testini kullanıcı sayfayı görüntülediğinde çalıştır.
     observe({
-      # Bir kerelik çalışsın
       req(is.null(rv$connection_ok))
       cli_yolu <- rv$cli_path_resolved
       if (is.null(cli_yolu)) {
         rv$connection_ok <- FALSE
         return()
       }
-
-      model <- isolate(input$model)
-
-      future_promise({
-        test_claude_code_connection(
-          cli_path = cli_yolu,
-          model = if (!is.null(model) && nzchar(model)) model else NULL,
-          workdir = tempdir()
-        )
-      }) %...>% (function(sonuc) {
-        rv$connection_ok <- sonuc$success
-        durum <- if (sonuc$success) "Başarılı" else "Başarısız"
-        log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Otomatik bağlantı testi:", durum))
-      }) %...!% (function(hata) {
-        rv$connection_ok <- FALSE
-        # Hata mesajındaki süslü parantezleri temizle (glue formatter çakışması)
-        hata_mesaji <- gsub("[{}]", "", conditionMessage(hata))
-        log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Otomatik bağlantı testi hatası:", hata_mesaji))
+      # Sadece CLI erişilebilirliğini kontrol et (hızlı, --version ile)
+      durum <- tryCatch({
+        check_claude_code_status(cli_yolu)
+      }, error = function(e) {
+        list(installed = FALSE)
       })
+      if (durum$installed) {
+        rv$connection_ok <- TRUE
+        log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI erişilebilir:", durum$version))
+      } else {
+        rv$connection_ok <- FALSE
+        temiz_hata <- gsub("[{}]", "", durum$error %||% "")
+        log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "CLI erişilemez:", temiz_hata))
+      }
     }, priority = 50)
 
     # --- Yapılandırma sayfasından bağlantı testi sonucunu dinle ---
@@ -383,14 +382,121 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
-    # --- Sistem klasör seçici sonucu ---
-    observeEvent(input$folder_picked, {
-      req(input$folder_picked)
-      # Tarayıcıdan gelen klasör adı
-      secilen <- input$folder_picked
-      if (nzchar(secilen)) {
-        updateTextInput(session, "workdir", value = secilen)
+    # --- Sunucu taraflı klasör tarayıcı ---
+    rv_browser <- reactiveValues(
+      current_path = NULL,
+      history = list()
+    )
+
+    observeEvent(input$open_folder_browser, {
+      # Mevcut çalışma dizininden başla veya ana dizinden
+      baslangic <- input$workdir
+      if (is.null(baslangic) || !nzchar(baslangic) || !dir.exists(baslangic)) {
+        baslangic <- if (.Platform$OS.type == "windows") {
+          Sys.getenv("USERPROFILE", "C:/")
+        } else {
+          Sys.getenv("HOME", "/")
+        }
       }
+      rv_browser$current_path <- normalizePath(baslangic, winslash = "/", mustWork = FALSE)
+
+      showModal(modalDialog(
+        title = tagList(icon("folder-tree"), "Klasör Seçici"),
+        size = "m",
+        easyClose = TRUE,
+        div(
+          class = "cc-folder-browser",
+          # Mevcut yol göstergesi
+          div(
+            class = "cc-fb-path-bar",
+            actionButton(ns("fb_go_up"), label = NULL, icon = icon("arrow-up"),
+                        class = "btn-sm", title = "Üst dizine git"),
+            tags$span(id = ns("fb_current_path"), class = "cc-fb-path-text")
+          ),
+          # Klasör listesi
+          div(class = "cc-fb-list-container",
+            uiOutput(ns("fb_folder_list"))
+          )
+        ),
+        footer = tagList(
+          actionButton(ns("fb_select"), "Bu Klasörü Seç",
+                      class = "btn-primary", icon = icon("check")),
+          modalButton("İptal")
+        )
+      ))
+    })
+
+    # Klasör tarayıcı yol göstergesini ve listeyi güncelle
+    observe({
+      req(rv_browser$current_path)
+      yol <- rv_browser$current_path
+
+      # Yol göstergesini güncelle
+      shinyjs::runjs(sprintf(
+        "var el = document.getElementById('%s'); if(el) el.textContent = '%s';",
+        ns("fb_current_path"),
+        gsub("\\\\", "\\\\\\\\", gsub("'", "\\\\'", yol))
+      ))
+
+      # Klasörleri listele
+      output$fb_folder_list <- renderUI({
+        if (!dir.exists(yol)) {
+          return(tags$p(class = "cc-dir-error", paste0("Dizin bulunamadı: ", yol)))
+        }
+        dosyalar <- tryCatch({
+          list.dirs(yol, full.names = TRUE, recursive = FALSE)
+        }, error = function(e) character(0))
+
+        if (length(dosyalar) == 0) {
+          return(tags$p(class = "cc-dir-empty", "Alt klasör bulunamadı."))
+        }
+
+        # En fazla 100 klasör göster
+        dosyalar <- head(dosyalar, 100)
+
+        tags$div(
+          class = "cc-fb-folder-list",
+          lapply(dosyalar, function(d) {
+            klasor_adi <- basename(d)
+            tam_yol <- normalizePath(d, winslash = "/", mustWork = FALSE)
+            tags$div(
+              class = "cc-dir-item cc-dir-klasor cc-dir-clickable",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', '%s', {priority: 'event'});",
+                ns("fb_navigate"),
+                gsub("'", "\\\\'", tam_yol)
+              ),
+              icon("folder"),
+              tags$span(class = "cc-dir-name", klasor_adi)
+            )
+          })
+        )
+      })
+    })
+
+    # Klasör tarayıcıda gezinme
+    observeEvent(input$fb_navigate, {
+      req(input$fb_navigate)
+      yeni_yol <- input$fb_navigate
+      if (dir.exists(yeni_yol)) {
+        rv_browser$current_path <- normalizePath(yeni_yol, winslash = "/", mustWork = FALSE)
+      }
+    })
+
+    # Üst dizine git
+    observeEvent(input$fb_go_up, {
+      req(rv_browser$current_path)
+      ust <- dirname(rv_browser$current_path)
+      if (dir.exists(ust) && ust != rv_browser$current_path) {
+        rv_browser$current_path <- normalizePath(ust, winslash = "/", mustWork = FALSE)
+      }
+    })
+
+    # Seçimi onayla
+    observeEvent(input$fb_select, {
+      req(rv_browser$current_path)
+      updateTextInput(session, "workdir", value = rv_browser$current_path)
+      removeModal()
     })
 
     # --- Senaryo Düğmeleri ---
@@ -647,6 +753,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         ns("prompt_input")
       ))
       shinyjs::disable("run_command")
+      rv$stop_requested <- FALSE
+      # Durdur düğmesini göster, çalıştır düğmesini gizle
+      shinyjs::runjs(sprintf(
+        "document.getElementById('%s').classList.remove('cc-hidden');",
+        ns("stop_command")
+      ))
 
       # Arka planda çalıştır
       future_promise({
@@ -736,6 +848,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
         # Giriş alanını ve düğmeyi tekrar etkinleştir
         shinyjs::enable("run_command")
+        # Durdur düğmesini gizle
+        shinyjs::runjs(sprintf(
+          "document.getElementById('%s').classList.add('cc-hidden');",
+          ns("stop_command")
+        ))
 
         # Çıktı geçmişine ekle
         rv$output_history <- c(rv$output_history, list(list(
@@ -751,6 +868,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       }) %...!% (function(hata) {
         rv$is_running <- FALSE
         shinyjs::enable("run_command")
+        # Durdur düğmesini gizle
+        shinyjs::runjs(sprintf(
+          "document.getElementById('%s').classList.add('cc-hidden');",
+          ns("stop_command")
+        ))
 
         # Düşünme animasyonunu durdur
         session$sendCustomMessage(
@@ -786,6 +908,53 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           )
         )
       })
+    })
+
+    # --- Durdur düğmesi ---
+    observeEvent(input$stop_command, {
+      if (isTRUE(rv$is_running)) {
+        rv$stop_requested <- TRUE
+        rv$is_running <- FALSE
+        shinyjs::enable("run_command")
+        shinyjs::runjs(sprintf(
+          "document.getElementById('%s').classList.add('cc-hidden');",
+          ns("stop_command")
+        ))
+
+        # Düşünme animasyonunu durdur
+        session$sendCustomMessage(
+          type = "cc-thinking-stop",
+          message = list(
+            overlayId = ns("thinking_overlay"),
+            statusId = ns("status_text"),
+            durationId = ns("duration_text")
+          )
+        )
+
+        # Kullanıcıya bildir
+        session$sendCustomMessage(
+          type = "cc-add-message",
+          message = list(
+            target = ns("output_area"),
+            type = "error",
+            content = "İşlem kullanıcı tarafından durduruldu.",
+            timestamp = format(Sys.time(), "%H:%M:%S"),
+            welcomeId = ns("welcome_screen")
+          )
+        )
+
+        session$sendCustomMessage(
+          type = "cc-update-status",
+          message = list(
+            statusId = ns("status_text"),
+            durationId = ns("duration_text"),
+            status = "Durduruldu",
+            statusIcon = "stop-circle",
+            statusColor = "#FFB74D",
+            duration = ""
+          )
+        )
+      }
     })
 
     # --- Klavye Kısayolu: Enter ile gönderme ---

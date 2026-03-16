@@ -431,6 +431,22 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       ")
       # Ayarlar sayfasındaki onay kutusunu da senkronize et
       updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
+
+      # Giriş atlandığında varsayılan karakterin rengini uygula
+      char_id <- settings_data$selected_character %||% "mergen"
+      chars_data <- get_characters_data()
+      char <- if (!is.null(chars_data)) {
+        Find(function(x) x$id == char_id, chars_data$styles)
+      } else NULL
+      if (!is.null(char)) {
+        session$sendCustomMessage("updateNeuralColor", list(accent = char$accent))
+        session$sendCustomMessage("updateCharacterButtons", list(
+          character = char_id,
+          accent = char$accent,
+          accent_active = char$accent_active,
+          accent_hover = char$accent_hover
+        ))
+      }
     } else {
       # Three.js sahnesini başlat
       session$sendCustomMessage("initDeepSpace", list(
@@ -515,13 +531,18 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     # Ayarlar sayfasındaki mod kartlarını güncelle
     session$sendCustomMessage("updateSettingsMode", list(mode = mode))
 
-    # Karakter seçimi de geldiyse (Bütünleşik mod 2. adımdan)
+    # Karakter seçimi: Bütünleşik modda 2. adımdan gelir,
+    # diğer modlarda varsayılan "mergen" kullanılır
     char_id <- mode_data$character
-    if (!is.null(char_id) && nzchar(char_id)) {
-      cat(sprintf("[STARTUP] Karakter seçildi (giriş ekranından): %s\n", char_id))
+    if (is.null(char_id) || !nzchar(char_id)) {
+      char_id <- settings_data$selected_character %||% "mergen"
+    }
+    cat(sprintf("[STARTUP] Karakter belirlendi: %s (mod: %s)\n", char_id, mode))
 
-      # Karakter ayarlarını güncelle
-      settings_data$selected_character <- char_id
+    # Karakter ayarlarını güncelle
+    settings_data$selected_character <- char_id
+
+    {
 
       # Karakter verilerini al
       chars_data <- get_characters_data()

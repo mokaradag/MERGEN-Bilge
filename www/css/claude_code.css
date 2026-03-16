@@ -593,6 +593,18 @@
   color: var(--cc-theme-accent);
 }
 
+.cc-tool-toggle-all {
+  margin-left: auto;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.cc-tool-toggle-all:hover {
+  background: rgba(255,255,255,0.1);
+}
+
 .cc-tool-block {
   border-top: 1px solid rgba(255,255,255,0.04);
   padding: 0;
@@ -757,6 +769,31 @@
   color: var(--cc-theme-accent) !important;
 }
 
+.cc-stop-btn {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px !important;
+  border-radius: 10px !important;
+  background: linear-gradient(135deg, #E57373 0%, #EF5350 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 8px rgba(229, 115, 115, 0.3);
+}
+
+.cc-stop-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(229, 115, 115, 0.4);
+}
+
+.cc-stop-btn.cc-hidden {
+  display: none !important;
+}
+
 .cc-run-btn {
   display: flex !important;
   align-items: center;
@@ -803,6 +840,48 @@
 .cc-duration-text {
   color: #81C784;
   font-weight: 500;
+}
+
+/* =============================================================================
+   KLASÖR TARAYICI MODAL
+   ============================================================================= */
+
+.cc-folder-browser {
+  min-height: 300px;
+}
+
+.cc-fb-path-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.cc-fb-path-text {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-primary, #e0e0e0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.cc-fb-list-container {
+  max-height: 350px;
+  overflow-y: auto;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.cc-fb-folder-list .cc-dir-item {
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 2px 0;
 }
 
 /* =============================================================================

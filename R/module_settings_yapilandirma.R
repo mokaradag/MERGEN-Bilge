@@ -962,12 +962,14 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
         shinyjs::enable("cc_test_connection")
       }) %...!% (function(hata) {
         settings$claude_code_connection_ok <- FALSE
+        # Süslü parantezleri temizle (glue formatter çakışmasını önle)
+        temiz_hata <- gsub("[{}]", "", conditionMessage(hata))
         output$cc_test_result_ui <- renderUI({
           tags$div(
             style = "font-size: 12px; color: #E57373; margin-top: 8px;",
             icon("exclamation-triangle"),
             tags$span("Test sırasında beklenmeyen hata."),
-            tags$small(conditionMessage(hata))
+            tags$small(temiz_hata)
           )
         })
         shinyjs::enable("cc_test_connection")
