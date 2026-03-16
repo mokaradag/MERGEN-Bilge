@@ -248,10 +248,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       cli_path_resolved = NULL,
       has_messages = FALSE,
       conversation_context = list(),  # Bağlam koruma için konuşma geçmişi
-      stop_requested = FALSE,         # Durdurma isteği bayrağı
       cli_session_id = NULL,          # Claude Code CLI oturum kimliği (--resume için)
       current_model = NULL,           # Model değişim takibi
-      active_process = NULL           # Aktif processx süreci (durdurma için)
+      active_process = NULL,          # Aktif processx süreci (durdurma için)
+      poll_state = NULL               # Yoklama durumu (ortam değişkeni, later için)
     )
 
     # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
@@ -758,7 +758,6 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         ns("prompt_input")
       ))
       shinyjs::disable("run_command")
-      rv$stop_requested <- FALSE
       shinyjs::runjs(sprintf(
         "document.getElementById('%s').classList.remove('cc-hidden');",
         ns("stop_command")
@@ -772,6 +771,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # later::later ile yoklama yaparak parçaları anlık gönder
       # -----------------------------------------------------------------------
       baslangic_zamani <- Sys.time()
+
+      # later::later geri çağırmaları reaktif bağlam dışında çalışır.
+      # Durdurma bayrağını paylaşımlı ortam değişkeni ile takip et.
+      # rv$poll_state üzerinden saklayarak durdur düğmesinden erişilebilir olur.
+      durum_env <- new.env(parent = emptyenv())
+      durum_env$durduruldu <- FALSE
+      rv$poll_state <- durum_env
 
       # CLI argümanlarını oluştur
       cli_args <- c(
@@ -809,8 +815,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
         # Yoklama fonksiyonu: süreç çalışırken tekrar tekrar çağrılır
         poll_process <- function() {
-          # Durdurma isteği kontrolü
-          if (isTRUE(rv$stop_requested)) {
+          # Durdurma isteği kontrolü (ortam değişkeni - reaktif bağlam gerektirmez)
+          if (isTRUE(durum_env$durduruldu)) {
             tryCatch(proc$kill(), error = function(e) NULL)
             finalize_streaming("Durduruldu", "stop-circle", "#FFB74D")
             return()
@@ -1078,7 +1084,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     # --- Durdur düğmesi ---
     observeEvent(input$stop_command, {
       if (isTRUE(rv$is_running)) {
-        rv$stop_requested <- TRUE
+        # Yoklama döngüsüne durdurma sinyali gönder (ortam değişkeni ile)
+        if (!is.null(rv$poll_state)) {
+          rv$poll_state$durduruldu <- TRUE
+        }
 
         # Aktif süreci sonlandır
         if (!is.null(rv$active_process)) {
