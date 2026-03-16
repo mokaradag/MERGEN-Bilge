@@ -293,10 +293,10 @@ run_claude_code <- function(prompt,
     )
 
     # Zaman aşımı ile bekle
-    bekleme <- proc$wait(timeout = timeout_sec * 1000)
+    proc$wait(timeout = timeout_sec * 1000)
 
-    # Zaman aşımı kontrolü
-    if (!bekleme) {
+    # Zaman aşımı kontrolü (süreç hâlâ çalışıyorsa zaman aşımına uğramıştır)
+    if (proc$is_alive()) {
       tryCatch(proc$kill(), error = function(e) NULL)
       sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
       log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Zaman aşımı:", timeout_sec, "sn"))
@@ -482,6 +482,13 @@ check_claude_code_status <- function(cli_path = NULL) {
       cleanup_tree = TRUE
     )
     proc$wait(timeout = 10000)
+
+    if (proc$is_alive()) {
+      tryCatch(proc$kill(), error = function(e) NULL)
+      return(list(installed = FALSE, version = "", path = cli_path,
+                  error = "CLI zaman aşımına uğradı"))
+    }
+
     stdout_metin <- proc$read_all_output()
     cikis_kodu <- proc$get_exit_status()
 
