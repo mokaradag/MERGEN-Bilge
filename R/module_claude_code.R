@@ -274,12 +274,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         )
       }) %...>% (function(sonuc) {
         rv$connection_ok <- sonuc$success
-        log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Otomatik bağlantı testi:",
-                       if (sonuc$success) "Başarılı" else "Başarısız"))
+        durum <- if (sonuc$success) "Başarılı" else "Başarısız"
+        log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Otomatik bağlantı testi:", durum))
       }) %...!% (function(hata) {
         rv$connection_ok <- FALSE
-        log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Otomatik bağlantı testi hatası:",
-                       conditionMessage(hata)))
+        # Hata mesajındaki süslü parantezleri temizle (glue formatter çakışması)
+        hata_mesaji <- gsub("[{}]", "", conditionMessage(hata))
+        log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Otomatik bağlantı testi hatası:", hata_mesaji))
       })
     }, priority = 50)
 
