@@ -417,6 +417,9 @@ startupScreenObserversInit <- function(input, session, settings_data) {
     skip <- isTRUE(input$startup_skip_intro)
 
     if (skip) {
+      # Giriş ekranı atlandı - işaretle
+      session$userData$deep_space_dismissed <- TRUE
+
       # Giriş ekranını tamamen atla - DOM'dan kaldır ve uygulamayı göster
       shinyjs::runjs("
         (function() {
@@ -479,16 +482,10 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       )
       shinyjs::runjs(buttons_js)
 
-      # Tüm karakterlerin video verilerini önceden yükle (Bütünleşik mod karakter adımı için)
-      for (ch in char_list) {
-        video_data <- tryCatch(
-          get_character_video_data(ch$id),
-          error = function(e) NULL
-        )
-        if (!is.null(video_data)) {
-          session$sendCustomMessage("loadExploreCharVideo", video_data)
-        }
-      }
+      # Video verileri artık tembel yükleme ile alınıyor:
+      # Kullanıcı Bütünleşik mod karakter adımına girdiğinde
+      # explore_request_char_video olayı ile talep edilir.
+      # Başlangıçta tüm karakterleri yüklemek oturumu gereksiz yere bloke eder.
     }
 
     # Sürüm bilgilendirme verilerini modala gönder
@@ -508,6 +505,9 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 
     mode <- mode_data$mode
     if (is.null(mode) || !mode %in% c("odak", "denge", "kesif")) return()
+
+    # Giriş ekranı kapanıyor - işaretle (yeniden render koruması için)
+    session$userData$deep_space_dismissed <- TRUE
 
     # Mod ayarlarını uygula
     apply_experience_mode(session, settings_data, mode)

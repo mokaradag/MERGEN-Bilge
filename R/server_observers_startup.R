@@ -71,9 +71,20 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     onFulfilled = function(chats) {
       chats <- chats %||% list()
       values$saved_chats <- chats
-      
+
+      # Kayıtlı sohbetler yüklendiğinde karşılama ekranını güncelle.
+      # Derin uzay giriş animasyonu aktifken tam yeniden render yapmak
+      # tüm başlangıç dizisini gereksiz yere yeniden tetikler.
       if (length(chats) > 0) {
-        render_welcome_screen(chats, replace_existing = TRUE)
+        if (isTRUE(session$userData$deep_space_dismissed)) {
+          # Giriş animasyonu kapandıktan sonra - güvenle güncelle
+          render_welcome_screen(chats, replace_existing = TRUE)
+        } else {
+          # Giriş animasyonu hâlâ aktif - yeniden render ertelendi.
+          # Karşılama ekranı zaten ilk render'da oluşturuldu;
+          # saved_chats değiştiğinde bir sonraki render'da güncellenecek.
+          cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
+        }
       }
       NULL
     },
