@@ -38,9 +38,12 @@ musicHandlersInit <- function(input, session, settings_data) {
       }
     }
 
-    # Ana müzik yöneticisini başlat
+    # Ana müzik yöneticisini hazırla (henüz çalmaya başlama)
+    # Müzik, mod seçiminden sonra toggleMusic ile başlatılır.
+    # Giriş ekranı atlandıysa (skip_intro) o zaman doğrudan başlat.
+    intro_atlanmis <- isTRUE(session$userData$deep_space_dismissed)
     session$sendCustomMessage("initMusicManager", list(
-      enabled = isTRUE(shiny::isolate(settings_data$enable_background_music)),
+      enabled = if (intro_atlanmis) isTRUE(shiny::isolate(settings_data$enable_background_music)) else FALSE,
       volume = shiny::isolate(settings_data$music_volume) %||% 0.3,
       character = shiny::isolate(settings_data$selected_character) %||% "mergen"
     ))

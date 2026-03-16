@@ -288,7 +288,6 @@ run_claude_code <- function(prompt,
       wd = workdir,
       stdout = "|",
       stderr = "|",
-      env = c("current", TERM = "dumb"),
       cleanup = TRUE,
       cleanup_tree = TRUE
     )
