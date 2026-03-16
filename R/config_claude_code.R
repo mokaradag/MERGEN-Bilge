@@ -42,24 +42,21 @@ claude_code_model_tiers <- list(
     ikon     = "fa-bolt",
     ikon_unicode = "\u26A1",
     aciklama = "Hızlı yanıt, basit görevler için",
-    anahtar_deseni = "HAIKU",
-    varsayilan_model = "Qwen3-Next-80B-A3B-Instruct"
+    anahtar_deseni = "HAIKU"
   ),
   list(
     etiket   = "Dengeli",
     ikon     = "fa-balance-scale",
     ikon_unicode = "\u2694",
     aciklama = "Hız ve kalite dengesi",
-    anahtar_deseni = "SONNET",
-    varsayilan_model = "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+    anahtar_deseni = "SONNET"
   ),
   list(
     etiket   = "Güçlü",
     ikon     = "fa-brain",
     ikon_unicode = "\u2B50",
     aciklama = "Karmaşık görevler için en güçlü model",
-    anahtar_deseni = "OPUS",
-    varsayilan_model = "GLM-5-FP6"
+    anahtar_deseni = "OPUS"
   )
 )
 
