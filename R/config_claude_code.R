@@ -40,18 +40,21 @@ claude_code_model_tiers <- list(
   list(
     etiket   = "Hızlı",
     ikon     = "fa-bolt",
+    ikon_unicode = "⚡",
     aciklama = "Hızlı yanıt, basit görevler için",
     anahtar_deseni = "HAIKU"
   ),
   list(
     etiket   = "Dengeli",
     ikon     = "fa-balance-scale",
+    ikon_unicode = "⚖",
     aciklama = "Hız ve kalite dengesi",
     anahtar_deseni = "SONNET"
   ),
   list(
     etiket   = "Güçlü",
     ikon     = "fa-brain",
+    ikon_unicode = "⭐",
     aciklama = "Karmaşık görevler için en güçlü model",
     anahtar_deseni = "OPUS"
   )
