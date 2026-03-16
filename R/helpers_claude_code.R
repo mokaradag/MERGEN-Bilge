@@ -229,7 +229,8 @@ run_claude_code <- function(prompt,
       output = "",
       error = "Komut metni boş olamaz.",
       duration = 0,
-      tool_uses = list()
+      tool_uses = list(),
+      session_id = NULL
     ))
   }
 
@@ -243,7 +244,8 @@ run_claude_code <- function(prompt,
       output = "",
       error = "Claude Code CLI bulunamadı. Lütfen CLI yolunu kontrol edin.",
       duration = 0,
-      tool_uses = list()
+      tool_uses = list(),
+      session_id = NULL
     ))
   }
 
@@ -254,7 +256,8 @@ run_claude_code <- function(prompt,
       output = "",
       error = paste0("Çalışma dizini bulunamadı: ", workdir),
       duration = 0,
-      tool_uses = list()
+      tool_uses = list(),
+      session_id = NULL
     ))
   }
 
@@ -272,6 +275,12 @@ run_claude_code <- function(prompt,
   # Model belirtilmişse ekle
   if (!is.null(model) && nzchar(model)) {
     args <- c(args, "--model", model)
+  }
+
+  # Oturum devamı: session_id varsa --resume ile önceki konuşmayı sürdür
+  # Bu sayede CLI kendi iç hafızasından konuşma geçmişini yükler
+  if (!is.null(session_id) && nzchar(session_id)) {
+    args <- c(args, "--resume", session_id)
   }
 
   # Komutu (prompt) argüman olarak ekle
@@ -306,7 +315,8 @@ run_claude_code <- function(prompt,
         error = paste0("İşlem zaman aşımına uğradı (", timeout_sec, " saniye). ",
                        "Daha kısa bir komut deneyin veya zaman aşımı süresini artırın."),
         duration = round(sure, 1),
-        tool_uses = list()
+        tool_uses = list(),
+        session_id = NULL
       ))
     }
 
@@ -328,7 +338,8 @@ run_claude_code <- function(prompt,
         output = ayristirma$text_output,
         error = "",
         duration = round(sure, 1),
-        tool_uses = ayristirma$tool_uses
+        tool_uses = ayristirma$tool_uses,
+        session_id = ayristirma$session_id
       )
     } else {
       hata_mesaji <- if (nzchar(stderr_metin)) stderr_metin else stdout_metin
@@ -341,7 +352,8 @@ run_claude_code <- function(prompt,
         output = stdout_metin,
         error = hata_mesaji,
         duration = round(sure, 1),
-        tool_uses = list()
+        tool_uses = list(),
+        session_id = NULL
       )
     }
 
@@ -357,7 +369,8 @@ run_claude_code <- function(prompt,
       output = "",
       error = paste0("Claude Code çalıştırılırken hata oluştu: ", hata_metni),
       duration = round(sure, 1),
-      tool_uses = list()
+      tool_uses = list(),
+      session_id = NULL
     )
   })
 }
@@ -373,7 +386,7 @@ run_claude_code <- function(prompt,
 #' @param ham_cikti CLI'dan gelen ham çıktı metni
 #' @return Liste: text_output (metin çıktısı), tool_uses (araç kullanımları listesi)
 parse_claude_code_json_output <- function(ham_cikti) {
-  sonuc <- list(text_output = "", tool_uses = list())
+  sonuc <- list(text_output = "", tool_uses = list(), session_id = NULL)
 
   if (is.null(ham_cikti) || !nzchar(ham_cikti)) return(sonuc)
 
@@ -415,8 +428,11 @@ parse_claude_code_json_output <- function(ham_cikti) {
         }
 
       } else if (tur == "result") {
-        # Son sonuç bloğu
+        # Son sonuç bloğu - session_id bilgisini de al
         metin_parcalari <- c(metin_parcalari, nesne$result %||% "")
+        if (!is.null(nesne$session_id) && nzchar(nesne$session_id %||% "")) {
+          sonuc$session_id <- nesne$session_id
+        }
 
       } else if (tur == "assistant") {
         # Asistan mesajı - içerik bloklarını işle

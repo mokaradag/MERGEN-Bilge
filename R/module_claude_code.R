@@ -248,7 +248,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       cli_path_resolved = NULL,
       has_messages = FALSE,
       conversation_context = list(),  # Bağlam koruma için konuşma geçmişi
-      stop_requested = FALSE          # Durdurma isteği bayrağı
+      stop_requested = FALSE,         # Durdurma isteği bayrağı
+      cli_session_id = NULL,          # Claude Code CLI oturum kimliği (--resume için)
+      current_model = NULL            # Model değişim takibi
     )
 
     # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
@@ -499,6 +501,19 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       removeModal()
     })
 
+    # --- Model değiştiğinde oturumu sıfırla ---
+    # Farklı bir modele geçildiğinde önceki oturumun bağlamı geçersiz olur.
+    # Yeni model ile temiz bir oturum başlatılmalıdır.
+    observeEvent(input$model, {
+      if (!is.null(rv$current_model) && !identical(rv$current_model, input$model)) {
+        rv$cli_session_id <- NULL
+        rv$conversation_context <- list()
+        log_info(paste(CLAUDE_CODE_LOG_PREFIX,
+                       "Model değişti, oturum sıfırlandı. Yeni model:", input$model))
+      }
+      rv$current_model <- input$model
+    }, ignoreInit = TRUE)
+
     # --- Senaryo Düğmeleri ---
     lapply(claude_code_scenarios, function(senaryo) {
       observeEvent(input[[paste0("scenario_", senaryo$id)]], {
@@ -603,6 +618,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     })
 
     observeEvent(input$workdir, {
+      # Çalışma dizini değiştiğinde oturumu sıfırla
+      rv$cli_session_id <- NULL
+      rv$conversation_context <- list()
       observe_dir_contents()
     }, ignoreInit = TRUE)
 
@@ -611,6 +629,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       rv$output_history <- list()
       rv$has_messages <- FALSE
       rv$conversation_context <- list()
+      rv$cli_session_id <- NULL
       session$sendCustomMessage(
         type = "cc-clear-output",
         message = list(
@@ -698,27 +717,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Karşılama ekranını gizle, mesaj alanı aktif
       rv$has_messages <- TRUE
 
-      # Konuşma bağlamına ekle
+      # Konuşma bağlamına ekle (arayüz takibi için)
       rv$conversation_context <- c(rv$conversation_context, list(
         list(role = "user", content = prompt)
       ))
 
-      # Bağlamı birleştir (son 10 mesaj)
-      baglam_metni <- ""
-      if (length(rv$conversation_context) > 1) {
-        son_mesajlar <- tail(rv$conversation_context, 10)
-        baglam_parcalari <- sapply(son_mesajlar[-length(son_mesajlar)], function(m) {
-          paste0(if (m$role == "user") "Kullanıcı" else "Asistan", ": ", m$content)
-        })
-        baglam_metni <- paste(baglam_parcalari, collapse = "\n")
-      }
-
-      # Bağlam varsa prompt'a ekle
-      tam_prompt <- if (nzchar(baglam_metni)) {
-        paste0("Önceki konuşma bağlamı:\n", baglam_metni, "\n\nŞimdiki istek:\n", prompt)
-      } else {
-        prompt
-      }
+      # Oturum kimliğini yakala (future içinde reaktif değer kullanılamaz)
+      oturum_id <- rv$cli_session_id
 
       # Kullanıcı komutunu çıktıya ekle
       session$sendCustomMessage(
@@ -761,22 +766,29 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       ))
 
       # Arka planda çalıştır
+      # CLI'ya sadece kullanıcının mesajını gönder, bağlam --resume ile sağlanır
       future_promise({
         run_claude_code(
-          prompt = tam_prompt,
+          prompt = prompt,
           workdir = calisma_dizini,
           model = if (!is.null(model) && nzchar(model)) model else NULL,
           timeout_sec = zaman_asimi,
+          session_id = oturum_id,
           cli_path = cli_yolu
         )
       }) %...>% (function(sonuc) {
         rv$last_result <- sonuc
         rv$is_running <- FALSE
 
-        # Konuşma bağlamına yanıtı ekle
+        # Konuşma bağlamına yanıtı ekle (arayüz takibi için)
         rv$conversation_context <- c(rv$conversation_context, list(
           list(role = "assistant", content = sonuc$output)
         ))
+
+        # CLI oturum kimliğini kaydet (sonraki mesajlarda --resume için)
+        if (!is.null(sonuc$session_id) && nzchar(sonuc$session_id %||% "")) {
+          rv$cli_session_id <- sonuc$session_id
+        }
 
         # Düşünme animasyonunu durdur
         session$sendCustomMessage(
