@@ -564,9 +564,9 @@ startupScreenObserversInit <- function(input, session, settings_data) {
           accent = char$accent
         ))
 
-        # Müzik karakterini güncelle
+        # Müzik karakterini güncelle (modun müzik ayarına göre)
         session$sendCustomMessage("toggleMusic", list(
-          enabled = TRUE,
+          enabled = isTRUE(settings_data$enable_background_music),
           character = char_id
         ))
 
