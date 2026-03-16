@@ -441,8 +441,10 @@
   function welcomeAnimLoop() {
     if (!welcomeCanvas || !welcomeCtx) return;
 
-    var w = welcomeCanvas.width;
-    var h = welcomeCanvas.height;
+    // Mantıksal boyutları kullan (DPI ölçeklemesinden bağımsız)
+    var dpr = window.devicePixelRatio || 1;
+    var w = welcomeCanvas.width / dpr;
+    var h = welcomeCanvas.height / dpr;
 
     // Arka planı temizle
     welcomeCtx.clearRect(0, 0, w, h);
@@ -512,13 +514,24 @@
     container.appendChild(welcomeCanvas);
 
     // Canvas boyutunu ayarla
+    var resizeRetryCount = 0;
     function resizeCanvas() {
       if (!welcomeCanvas || !welcomeCanvas.parentElement) return;
       var rect = welcomeCanvas.parentElement.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
-        welcomeCanvas.width = rect.width;
-        welcomeCanvas.height = rect.height;
+        // Piksel oranını hesaba kat (yüksek DPI ekranlar için)
+        var dpr = window.devicePixelRatio || 1;
+        welcomeCanvas.width = Math.floor(rect.width * dpr);
+        welcomeCanvas.height = Math.floor(rect.height * dpr);
+        // CSS boyutu ayarla
+        welcomeCanvas.style.width = rect.width + 'px';
+        welcomeCanvas.style.height = rect.height + 'px';
+        // Context ölçekleme (yüksek DPI desteği)
+        if (welcomeCtx) {
+          welcomeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
         // Boyut değiştiğinde karakterleri yeniden konumla
+        // Mantıksal boyutları kullan (DPI ölçeklemeden önce)
         if (welcomeChars.length > 0) {
           var groundY = rect.height * 0.72;
           var spacing = rect.width / (welcomeChars.length + 1);
@@ -527,13 +540,24 @@
             if (welcomeChars[i].y > groundY) welcomeChars[i].y = groundY;
           }
         }
+        resizeRetryCount = 0;
+      } else if (resizeRetryCount < 10) {
+        // Konteyner henüz görünür değilse tekrar dene
+        resizeRetryCount++;
+        setTimeout(resizeCanvas, 200);
       }
     }
     resizeCanvas();
 
     welcomeCtx = welcomeCanvas.getContext('2d');
-    welcomeStars = initStars(60, welcomeCanvas.width, welcomeCanvas.height);
-    welcomeChars = initCharacters(welcomeCanvas.width, welcomeCanvas.height);
+    // DPI ölçeklemesini context'e uygula
+    var dpr = window.devicePixelRatio || 1;
+    welcomeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Mantıksal boyutlarla başlat
+    var logicalW = welcomeCanvas.width / dpr;
+    var logicalH = welcomeCanvas.height / dpr;
+    welcomeStars = initStars(60, logicalW, logicalH);
+    welcomeChars = initCharacters(logicalW, logicalH);
     welcomeFrame = 0;
 
     // Mevcut vurgu rengini al
@@ -629,17 +653,30 @@
     stopWelcomeScreen();
   });
 
-  // Sayfa ilk yüklendiğinde otomatik başlat
+  // Sayfa ilk yüklendiğinde otomatik başlat (konteyner görünür olduğunda)
   $(document).on('shiny:connected', function() {
-    // Kısa gecikme ile welcome screen'i bul ve başlat
-    setTimeout(function() {
+    var denemeSayisi = 0;
+    var maxDeneme = 15;
+    function dene() {
+      denemeSayisi++;
       var welcomeEls = document.querySelectorAll('.cc-welcome-screen');
+      var baslatildi = false;
       welcomeEls.forEach(function(el) {
         if (el.id && el.classList.contains('cc-welcome-active')) {
-          startWelcomeScreen(el.id);
+          var rect = el.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            startWelcomeScreen(el.id);
+            baslatildi = true;
+          }
         }
       });
-    }, 800);
+      // Henüz başlatılamadıysa ve deneme hakkı varsa tekrar dene
+      if (!baslatildi && denemeSayisi < maxDeneme) {
+        setTimeout(dene, 500);
+      }
+    }
+    // İlk denemeyi kısa gecikme ile başlat
+    setTimeout(dene, 500);
   });
 
 })();

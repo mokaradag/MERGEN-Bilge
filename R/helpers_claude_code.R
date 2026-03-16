@@ -261,9 +261,12 @@ run_claude_code <- function(prompt,
   # CLI argümanları oluştur
   # --print: interaktif olmayan mod, çıktıyı doğrudan yazdır
   # --output-format json: yapılandırılmış çıktı (araç kullanımlarını da içerir)
+  # --dangerously-skip-permissions: izin isteklerini otomatik kabul et
+  #   (interaktif olmayan modda kullanıcı onayı verilemediği için gerekli)
   args <- c(
     "--print",
-    "--output-format", "json"
+    "--output-format", "json",
+    "--dangerously-skip-permissions"
   )
 
   # Model belirtilmişse ekle
@@ -274,56 +277,29 @@ run_claude_code <- function(prompt,
   # Komutu (prompt) argüman olarak ekle
   args <- c(args, prompt)
 
-  # processx ile çalıştır
+  # processx::process$new ile çalıştır (handle yönetimi daha güvenli)
   tryCatch({
     log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI çalıştırılıyor:",
                    cli_path, paste(args[1:min(3, length(args))], collapse = " "), "..."))
 
-    result <- processx::run(
+    proc <- processx::process$new(
       command = cli_path,
       args = args,
       wd = workdir,
-      timeout = timeout_sec,
-      error_on_status = FALSE,
-      stderr_to_stdout = FALSE,
-      env = c("current", TERM = "dumb")
+      stdout = "|",
+      stderr = "|",
+      env = c("current", TERM = "dumb"),
+      cleanup = TRUE,
+      cleanup_tree = TRUE
     )
 
-    sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
-
-    if (result$status == 0) {
-      log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Başarılı - Süre:",
-                     round(sure, 1), "sn"))
-
-      # JSON çıktısını ayrıştır
-      ayristirma <- parse_claude_code_json_output(result$stdout)
-
-      list(
-        success = TRUE,
-        output = ayristirma$text_output,
-        error = "",
-        duration = round(sure, 1),
-        tool_uses = ayristirma$tool_uses
-      )
-    } else {
-      hata_mesaji <- if (nzchar(result$stderr)) result$stderr else result$stdout
-      log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Hata kodu:", result$status,
-                     "- Mesaj:", substr(hata_mesaji, 1, 200)))
-      list(
-        success = FALSE,
-        output = result$stdout,
-        error = hata_mesaji,
-        duration = round(sure, 1),
-        tool_uses = list()
-      )
-    }
-
-  }, error = function(e) {
-    sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
-    hata_metni <- conditionMessage(e)
+    # Zaman aşımı ile bekle
+    bekleme <- proc$wait(timeout = timeout_sec * 1000)
 
     # Zaman aşımı kontrolü
-    if (grepl("timeout|timed out", hata_metni, ignore.case = TRUE)) {
+    if (!bekleme) {
+      tryCatch(proc$kill(), error = function(e) NULL)
+      sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
       log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Zaman aşımı:", timeout_sec, "sn"))
       return(list(
         success = FALSE,
@@ -335,7 +311,48 @@ run_claude_code <- function(prompt,
       ))
     }
 
-    log_error(paste(CLAUDE_CODE_LOG_PREFIX, "CLI hatası:", hata_metni))
+    stdout_metin <- proc$read_all_output()
+    stderr_metin <- proc$read_all_error()
+    cikis_kodu <- proc$get_exit_status()
+
+    sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+
+    if (identical(cikis_kodu, 0L)) {
+      log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Başarılı - Süre:",
+                     round(sure, 1), "sn"))
+
+      # JSON çıktısını ayrıştır
+      ayristirma <- parse_claude_code_json_output(stdout_metin)
+
+      list(
+        success = TRUE,
+        output = ayristirma$text_output,
+        error = "",
+        duration = round(sure, 1),
+        tool_uses = ayristirma$tool_uses
+      )
+    } else {
+      hata_mesaji <- if (nzchar(stderr_metin)) stderr_metin else stdout_metin
+      # Süslü parantezleri temizle (glue formatter çakışmasını önle)
+      temiz_log <- gsub("[{}]", "", substr(hata_mesaji, 1, 200))
+      log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Hata kodu:", cikis_kodu,
+                     "- Mesaj:", temiz_log))
+      list(
+        success = FALSE,
+        output = stdout_metin,
+        error = hata_mesaji,
+        duration = round(sure, 1),
+        tool_uses = list()
+      )
+    }
+
+  }, error = function(e) {
+    sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+    hata_metni <- conditionMessage(e)
+
+    # Süslü parantezleri temizle (glue formatter çakışmasını önle)
+    temiz_hata <- gsub("[{}]", "", hata_metni)
+    log_error(paste(CLAUDE_CODE_LOG_PREFIX, "CLI hatası:", temiz_hata))
     list(
       success = FALSE,
       output = "",
@@ -457,19 +474,23 @@ check_claude_code_status <- function(cli_path = NULL) {
   }
 
   tryCatch({
-    result <- processx::run(
+    proc <- processx::process$new(
       command = cli_path,
       args = c("--version"),
-      timeout = 10,
-      error_on_status = FALSE,
-      stderr_to_stdout = TRUE
+      stdout = "|",
+      stderr = "|",
+      cleanup = TRUE,
+      cleanup_tree = TRUE
     )
+    proc$wait(timeout = 10000)
+    stdout_metin <- proc$read_all_output()
+    cikis_kodu <- proc$get_exit_status()
 
-    if (result$status == 0) {
-      surum <- trimws(result$stdout)
+    if (identical(cikis_kodu, 0L)) {
+      surum <- trimws(stdout_metin)
       list(installed = TRUE, version = surum, path = cli_path, error = "")
     } else {
-      list(installed = FALSE, version = "", path = cli_path, error = result$stdout)
+      list(installed = FALSE, version = "", path = cli_path, error = stdout_metin)
     }
   }, error = function(e) {
     list(

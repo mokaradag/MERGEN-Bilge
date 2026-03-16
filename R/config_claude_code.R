@@ -47,7 +47,7 @@ claude_code_model_tiers <- list(
   list(
     etiket   = "Dengeli",
     ikon     = "fa-balance-scale",
-    ikon_unicode = "\u2696",
+    ikon_unicode = "\u2694",
     aciklama = "Hız ve kalite dengesi",
     anahtar_deseni = "SONNET"
   ),
