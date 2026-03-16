@@ -931,8 +931,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
                 rv$cli_session_id <- ayristirma$session_id
               }
 
-              # Konuşma bağlamına ekle
-              rv$conversation_context <- c(rv$conversation_context, list(
+              # Konuşma bağlamına ekle (isolate: later callback reaktif bağlam dışında)
+              rv$conversation_context <- c(isolate(rv$conversation_context), list(
                 list(role = "assistant", content = ayristirma$text_output)
               ))
 
@@ -985,10 +985,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
               finalize_streaming("Hata", "exclamation-triangle", "#E57373", sure)
             }
 
-            # Geçmişe ekle
-            rv$output_history <- c(rv$output_history, list(list(
+            # Geçmişe ekle (isolate: later callback reaktif bağlam dışında)
+            rv$output_history <- c(isolate(rv$output_history), list(list(
               prompt = prompt,
-              result = rv$last_result,
+              result = isolate(rv$last_result),
               timestamp = Sys.time(),
               character = karakter_id
             )))
