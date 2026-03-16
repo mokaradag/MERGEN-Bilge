@@ -250,7 +250,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       conversation_context = list(),  # Bağlam koruma için konuşma geçmişi
       stop_requested = FALSE,         # Durdurma isteği bayrağı
       cli_session_id = NULL,          # Claude Code CLI oturum kimliği (--resume için)
-      current_model = NULL            # Model değişim takibi
+      current_model = NULL,           # Model değişim takibi
+      active_process = NULL           # Aktif processx süreci (durdurma için)
     )
 
     # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
@@ -652,7 +653,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
-    # --- Ana Komut Çalıştırma ---
+    # --- Ana Komut Çalıştırma (Canlı Akış Destekli) ---
     observeEvent(input$run_command, {
       prompt <- NULL
 
@@ -674,7 +675,6 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       calisma_dizini <- input$workdir
       model <- input$model
       zaman_asimi <- isolate({
-        # Yapılandırma sayfasından zaman aşımı değerini al
         if (!is.null(settings_data) && !is.null(settings_data$claude_code_timeout)) {
           settings_data$claude_code_timeout
         } else {
@@ -717,12 +717,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Karşılama ekranını gizle, mesaj alanı aktif
       rv$has_messages <- TRUE
 
-      # Konuşma bağlamına ekle (arayüz takibi için)
+      # Konuşma bağlamına ekle
       rv$conversation_context <- c(rv$conversation_context, list(
         list(role = "user", content = prompt)
       ))
 
-      # Oturum kimliğini yakala (future içinde reaktif değer kullanılamaz)
+      # Oturum kimliğini yakala
       oturum_id <- rv$cli_session_id
 
       # Kullanıcı komutunu çıktıya ekle
@@ -738,7 +738,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         )
       )
 
-      # Düşünme animasyonunu başlat (küçük, köşede)
+      # Düşünme animasyonunu başlat
       session$sendCustomMessage(
         type = "cc-thinking-start",
         message = list(
@@ -759,64 +759,256 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       ))
       shinyjs::disable("run_command")
       rv$stop_requested <- FALSE
-      # Durdur düğmesini göster, çalıştır düğmesini gizle
       shinyjs::runjs(sprintf(
         "document.getElementById('%s').classList.remove('cc-hidden');",
         ns("stop_command")
       ))
 
-      # Arka planda çalıştır
-      # CLI'ya sadece kullanıcının mesajını gönder, bağlam --resume ile sağlanır
-      future_promise({
-        run_claude_code(
-          prompt = prompt,
-          workdir = calisma_dizini,
-          model = if (!is.null(model) && nzchar(model)) model else NULL,
-          timeout_sec = zaman_asimi,
-          session_id = oturum_id,
-          cli_path = cli_yolu
+      # Zaman damgası (akış mesajları için)
+      zaman_damgasi <- format(Sys.time(), "%H:%M:%S")
+
+      # -----------------------------------------------------------------------
+      # CANLI AKIŞ: processx süreci ana R sürecinde başlat,
+      # later::later ile yoklama yaparak parçaları anlık gönder
+      # -----------------------------------------------------------------------
+      baslangic_zamani <- Sys.time()
+
+      # CLI argümanlarını oluştur
+      cli_args <- c(
+        "--print",
+        "--output-format", "json",
+        "--dangerously-skip-permissions"
+      )
+      if (!is.null(model) && nzchar(model)) {
+        cli_args <- c(cli_args, "--model", model)
+      }
+      if (!is.null(oturum_id) && nzchar(oturum_id)) {
+        cli_args <- c(cli_args, "--resume", oturum_id)
+      }
+      cli_args <- c(cli_args, prompt)
+
+      # Süreci başlat
+      tryCatch({
+        log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Canlı akış başlatılıyor"))
+
+        proc <- processx::process$new(
+          command = cli_yolu,
+          args = cli_args,
+          wd = calisma_dizini,
+          stdout = "|",
+          stderr = "|",
+          cleanup = TRUE,
+          cleanup_tree = TRUE
         )
-      }) %...>% (function(sonuc) {
-        rv$last_result <- sonuc
-        rv$is_running <- FALSE
 
-        # Konuşma bağlamına yanıtı ekle (arayüz takibi için)
-        rv$conversation_context <- c(rv$conversation_context, list(
-          list(role = "assistant", content = sonuc$output)
-        ))
+        # Süreç referansını sakla (durdurma için)
+        rv$active_process <- proc
 
-        # CLI oturum kimliğini kaydet (sonraki mesajlarda --resume için)
-        if (!is.null(sonuc$session_id) && nzchar(sonuc$session_id %||% "")) {
-          rv$cli_session_id <- sonuc$session_id
+        # Metin biriktiricisi
+        tum_satirlar <- character(0)
+
+        # Yoklama fonksiyonu: süreç çalışırken tekrar tekrar çağrılır
+        poll_process <- function() {
+          # Durdurma isteği kontrolü
+          if (isTRUE(rv$stop_requested)) {
+            tryCatch(proc$kill(), error = function(e) NULL)
+            finalize_streaming("Durduruldu", "stop-circle", "#FFB74D")
+            return()
+          }
+
+          # Zaman aşımı kontrolü
+          gecen_sure <- as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
+          if (gecen_sure > zaman_asimi) {
+            tryCatch(proc$kill(), error = function(e) NULL)
+            log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Akış zaman aşımı:", zaman_asimi, "sn"))
+            session$sendCustomMessage(
+              type = "cc-add-message",
+              message = list(
+                target = ns("output_area"),
+                type = "error",
+                content = paste0("İşlem zaman aşımına uğradı (", zaman_asimi, " saniye)."),
+                timestamp = format(Sys.time(), "%H:%M:%S"),
+                welcomeId = ns("welcome_screen")
+              )
+            )
+            finalize_streaming("Zaman Aşımı", "clock", "#FFB74D")
+            return()
+          }
+
+          # stdout'tan oku
+          tryCatch({
+            proc$poll_io(0)  # Beklemesiz kontrol
+            yeni_satirlar <- tryCatch(proc$read_output_lines(), error = function(e) character(0))
+
+            if (length(yeni_satirlar) > 0) {
+              for (satir in yeni_satirlar) {
+                satir <- trimws(satir)
+                if (!nzchar(satir)) next
+
+                tum_satirlar <<- c(tum_satirlar, satir)
+
+                # Parçayı ayrıştır ve istemciye gönder
+                parca <- parse_streaming_chunk(satir)
+                if (!is.null(parca)) {
+                  bicimlenmis <- format_streaming_chunk_html(parca)
+                  if (!is.null(bicimlenmis)) {
+                    session$sendCustomMessage(
+                      type = "cc-stream-chunk",
+                      message = list(
+                        target = ns("output_area"),
+                        welcomeId = ns("welcome_screen"),
+                        chunkType = bicimlenmis$tip,
+                        html = bicimlenmis$html,
+                        toolId = bicimlenmis$arac_id %||% "",
+                        accentColor = karakter_renk,
+                        characterName = karakter$display_name,
+                        timestamp = zaman_damgasi
+                      )
+                    )
+                  }
+                }
+              }
+            }
+          }, error = function(e) {
+            log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Akış okuma hatası:",
+                           conditionMessage(e)))
+          })
+
+          # Süreç hala çalışıyorsa tekrar yokla
+          if (proc$is_alive()) {
+            later::later(poll_process, delay = 0.2)
+          } else {
+            # Süreç bitti - kalan çıktıyı oku
+            tryCatch({
+              kalan <- proc$read_all_output()
+              if (nzchar(kalan)) {
+                kalan_satirlar <- strsplit(kalan, "\n")[[1]]
+                for (satir in kalan_satirlar) {
+                  satir <- trimws(satir)
+                  if (!nzchar(satir)) next
+                  tum_satirlar <<- c(tum_satirlar, satir)
+
+                  parca <- parse_streaming_chunk(satir)
+                  if (!is.null(parca)) {
+                    bicimlenmis <- format_streaming_chunk_html(parca)
+                    if (!is.null(bicimlenmis)) {
+                      session$sendCustomMessage(
+                        type = "cc-stream-chunk",
+                        message = list(
+                          target = ns("output_area"),
+                          welcomeId = ns("welcome_screen"),
+                          chunkType = bicimlenmis$tip,
+                          html = bicimlenmis$html,
+                          toolId = bicimlenmis$arac_id %||% "",
+                          accentColor = karakter_renk,
+                          characterName = karakter$display_name,
+                          timestamp = zaman_damgasi
+                        )
+                      )
+                    }
+                  }
+                }
+              }
+            }, error = function(e) NULL)
+
+            # Tam çıktıyı ayrıştır
+            tam_cikti <- paste(tum_satirlar, collapse = "\n")
+            ayristirma <- parse_claude_code_json_output(tam_cikti)
+            cikis_kodu <- proc$get_exit_status()
+            sure <- round(as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs")), 1)
+
+            if (identical(cikis_kodu, 0L)) {
+              log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış tamamlandı - Süre:", sure, "sn"))
+
+              # Oturum kimliğini kaydet
+              if (!is.null(ayristirma$session_id) && nzchar(ayristirma$session_id %||% "")) {
+                rv$cli_session_id <- ayristirma$session_id
+              }
+
+              # Konuşma bağlamına ekle
+              rv$conversation_context <- c(rv$conversation_context, list(
+                list(role = "assistant", content = ayristirma$text_output)
+              ))
+
+              # Son içeriği HTML olarak biçimlendir
+              son_icerik <- format_claude_code_output(ayristirma$text_output)
+
+              # Akış mesajını sonlandır
+              session$sendCustomMessage(
+                type = "cc-stream-end",
+                message = list(
+                  target = ns("output_area"),
+                  duration = sure,
+                  finalContent = son_icerik
+                )
+              )
+
+              # Sonucu sakla
+              rv$last_result <- list(
+                success = TRUE, output = ayristirma$text_output,
+                error = "", duration = sure,
+                tool_uses = ayristirma$tool_uses,
+                session_id = ayristirma$session_id
+              )
+
+              finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure)
+            } else {
+              # Hata durumu
+              stderr_metin <- tryCatch(proc$read_all_error(), error = function(e) "")
+              hata_mesaji <- if (nzchar(stderr_metin)) stderr_metin else tam_cikti
+              temiz_log <- gsub("[{}]", "", substr(hata_mesaji, 1, 200))
+              log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Akış hata kodu:", cikis_kodu,
+                             "- Mesaj:", temiz_log))
+
+              session$sendCustomMessage(
+                type = "cc-stream-end",
+                message = list(target = ns("output_area"))
+              )
+
+              session$sendCustomMessage(
+                type = "cc-add-message",
+                message = list(
+                  target = ns("output_area"),
+                  type = "error",
+                  content = htmltools::htmlEscape(hata_mesaji),
+                  timestamp = format(Sys.time(), "%H:%M:%S"),
+                  welcomeId = ns("welcome_screen")
+                )
+              )
+
+              finalize_streaming("Hata", "exclamation-triangle", "#E57373", sure)
+            }
+
+            # Geçmişe ekle
+            rv$output_history <- c(rv$output_history, list(list(
+              prompt = prompt,
+              result = rv$last_result,
+              timestamp = Sys.time(),
+              character = karakter_id
+            )))
+
+            # Dizin içeriğini güncelle
+            observe_dir_contents()
+          }
         }
 
-        # Düşünme animasyonunu durdur
-        session$sendCustomMessage(
-          type = "cc-thinking-stop",
-          message = list(
-            overlayId = ns("thinking_overlay"),
-            statusId = ns("status_text"),
-            durationId = ns("duration_text")
-          )
-        )
+        # Akış sonlandırma yardımcı fonksiyonu
+        finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL) {
+          rv$is_running <- FALSE
+          rv$active_process <- NULL
+          shinyjs::enable("run_command")
+          shinyjs::runjs(sprintf(
+            "document.getElementById('%s').classList.add('cc-hidden');",
+            ns("stop_command")
+          ))
 
-        # Sonucu çıktı alanına ekle
-        if (sonuc$success) {
-          cikti_html <- format_claude_code_output(sonuc$output)
-          arac_html <- format_tool_uses_html(sonuc$tool_uses)
-
+          # Düşünme animasyonunu durdur
           session$sendCustomMessage(
-            type = "cc-add-message",
+            type = "cc-thinking-stop",
             message = list(
-              target = ns("output_area"),
-              type = "assistant",
-              content = cikti_html,
-              toolContent = arac_html,
-              timestamp = format(Sys.time(), "%H:%M:%S"),
-              duration = sonuc$duration,
-              accentColor = karakter_renk,
-              characterName = karakter$display_name,
-              welcomeId = ns("welcome_screen")
+              overlayId = ns("thinking_overlay"),
+              statusId = ns("status_text"),
+              durationId = ns("duration_text")
             )
           )
 
@@ -826,67 +1018,25 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             message = list(
               statusId = ns("status_text"),
               durationId = ns("duration_text"),
-              status = "Tamamlandı",
-              statusIcon = "check-circle",
-              statusColor = "#81C784",
-              duration = paste0(sonuc$duration, " sn")
-            )
-          )
-        } else {
-          # Hata mesajı
-          session$sendCustomMessage(
-            type = "cc-add-message",
-            message = list(
-              target = ns("output_area"),
-              type = "error",
-              content = htmltools::htmlEscape(sonuc$error),
-              timestamp = format(Sys.time(), "%H:%M:%S"),
-              welcomeId = ns("welcome_screen")
-            )
-          )
-
-          session$sendCustomMessage(
-            type = "cc-update-status",
-            message = list(
-              statusId = ns("status_text"),
-              durationId = ns("duration_text"),
-              status = "Hata",
-              statusIcon = "exclamation-triangle",
-              statusColor = "#E57373",
-              duration = paste0(sonuc$duration, " sn")
+              status = durum_metin,
+              statusIcon = durum_ikon,
+              statusColor = durum_renk,
+              duration = if (!is.null(sure)) paste0(sure, " sn") else ""
             )
           )
         }
 
-        # Giriş alanını ve düğmeyi tekrar etkinleştir
-        shinyjs::enable("run_command")
-        # Durdur düğmesini gizle
-        shinyjs::runjs(sprintf(
-          "document.getElementById('%s').classList.add('cc-hidden');",
-          ns("stop_command")
-        ))
+        # Yoklamayı başlat
+        later::later(poll_process, delay = 0.2)
 
-        # Çıktı geçmişine ekle
-        rv$output_history <- c(rv$output_history, list(list(
-          prompt = prompt,
-          result = sonuc,
-          timestamp = Sys.time(),
-          character = karakter_id
-        )))
-
-        # Dizin içeriğini güncelle (dosya değişmiş olabilir)
-        observe_dir_contents()
-
-      }) %...!% (function(hata) {
+      }, error = function(e) {
         rv$is_running <- FALSE
         shinyjs::enable("run_command")
-        # Durdur düğmesini gizle
         shinyjs::runjs(sprintf(
           "document.getElementById('%s').classList.add('cc-hidden');",
           ns("stop_command")
         ))
 
-        # Düşünme animasyonunu durdur
         session$sendCustomMessage(
           type = "cc-thinking-stop",
           message = list(
@@ -896,13 +1046,16 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           )
         )
 
+        hata_metni <- conditionMessage(e)
+        temiz_hata <- gsub("[{}]", "", hata_metni)
+        log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Akış başlatma hatası:", temiz_hata))
+
         session$sendCustomMessage(
           type = "cc-add-message",
           message = list(
             target = ns("output_area"),
             type = "error",
-            content = paste0("Beklenmeyen hata: ",
-                             htmltools::htmlEscape(conditionMessage(hata))),
+            content = paste0("Beklenmeyen hata: ", htmltools::htmlEscape(hata_metni)),
             timestamp = format(Sys.time(), "%H:%M:%S"),
             welcomeId = ns("welcome_screen")
           )
@@ -926,46 +1079,15 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     observeEvent(input$stop_command, {
       if (isTRUE(rv$is_running)) {
         rv$stop_requested <- TRUE
-        rv$is_running <- FALSE
-        shinyjs::enable("run_command")
-        shinyjs::runjs(sprintf(
-          "document.getElementById('%s').classList.add('cc-hidden');",
-          ns("stop_command")
-        ))
 
-        # Düşünme animasyonunu durdur
-        session$sendCustomMessage(
-          type = "cc-thinking-stop",
-          message = list(
-            overlayId = ns("thinking_overlay"),
-            statusId = ns("status_text"),
-            durationId = ns("duration_text")
-          )
-        )
-
-        # Kullanıcıya bildir
-        session$sendCustomMessage(
-          type = "cc-add-message",
-          message = list(
-            target = ns("output_area"),
-            type = "error",
-            content = "İşlem kullanıcı tarafından durduruldu.",
-            timestamp = format(Sys.time(), "%H:%M:%S"),
-            welcomeId = ns("welcome_screen")
-          )
-        )
-
-        session$sendCustomMessage(
-          type = "cc-update-status",
-          message = list(
-            statusId = ns("status_text"),
-            durationId = ns("duration_text"),
-            status = "Durduruldu",
-            statusIcon = "stop-circle",
-            statusColor = "#FFB74D",
-            duration = ""
-          )
-        )
+        # Aktif süreci sonlandır
+        if (!is.null(rv$active_process)) {
+          tryCatch({
+            rv$active_process$kill()
+            log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Süreç kullanıcı tarafından durduruldu"))
+          }, error = function(e) NULL)
+          rv$active_process <- NULL
+        }
       }
     })
 

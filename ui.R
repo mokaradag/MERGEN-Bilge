@@ -146,6 +146,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/surum_bilgilendirme.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/sso_auth.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code_streaming.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -252,6 +253,7 @@ ui <- dashboardPage(
     tags$script(src = "js/explore_character_step.js", defer = "defer"),
     tags$script(src = "js/surum_bilgilendirme.js", defer = "defer"),
     tags$script(src = "js/claude_code.js", defer = "defer"),
+    tags$script(src = "js/claude_code_streaming.js", defer = "defer"),
     tags$script(src = "js/claude_code_welcome.js", defer = "defer"),
 
     tags$div(id = "toast-container", class = "toast-container")

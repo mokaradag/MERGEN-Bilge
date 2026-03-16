@@ -42,21 +42,24 @@ claude_code_model_tiers <- list(
     ikon     = "fa-bolt",
     ikon_unicode = "\u26A1",
     aciklama = "Hızlı yanıt, basit görevler için",
-    anahtar_deseni = "HAIKU"
+    anahtar_deseni = "HAIKU",
+    varsayilan_model = "Qwen3-Next-80B-A3B-Instruct"
   ),
   list(
     etiket   = "Dengeli",
     ikon     = "fa-balance-scale",
     ikon_unicode = "\u2694",
     aciklama = "Hız ve kalite dengesi",
-    anahtar_deseni = "SONNET"
+    anahtar_deseni = "SONNET",
+    varsayilan_model = "Qwen/Qwen3-Coder-480B-A35B-Instruct"
   ),
   list(
     etiket   = "Güçlü",
     ikon     = "fa-brain",
     ikon_unicode = "\u2B50",
     aciklama = "Karmaşık görevler için en güçlü model",
-    anahtar_deseni = "OPUS"
+    anahtar_deseni = "OPUS",
+    varsayilan_model = "GLM-5-FP6"
   )
 )
 
@@ -219,6 +222,24 @@ claude_code_status_styles <- list(
   bagli       = list(metin = "Bağlı",        renk = "#81C784", ikon = "check-circle"),
   bagli_degil = list(metin = "Bağlantı Yok", renk = "#E57373", ikon = "times-circle"),
   kontrol     = list(metin = "Kontrol Edilmedi", renk = "#9E9E9E", ikon = "question-circle")
+)
+
+# ------------------------------------------------------------------------------
+# CANLI AKIŞ AYARLARI
+# Kabuk komutları ve araç kullanımlarının gerçek zamanlı görüntülenmesi için.
+# ------------------------------------------------------------------------------
+claude_code_streaming_config <- list(
+  # Akış yoklama aralığı (milisaniye) - processx çıktı okuma sıklığı
+  poll_interval_ms = 200L,
+
+  # Dosya önizleme satır sınırı (yazılan dosyaların ilk N satırı gösterilir)
+  file_preview_lines = 10L,
+
+  # Araç sonucu kısaltma karakter sınırı
+  result_truncate_chars = 1000L,
+
+  # Kabuk komutları varsayılan olarak görünür mü
+  shell_visible_default = TRUE
 )
 
 # ------------------------------------------------------------------------------

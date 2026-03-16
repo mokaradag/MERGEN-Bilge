@@ -110,6 +110,8 @@ safe_source("R/helpers_destek_database.R",       encoding = "UTF-8")  # Destek s
 safe_source("R/helpers_admin_analytics.R",       encoding = "UTF-8")  # Yönetici analitik yardımcıları
 safe_source("R/helpers_ai_expert.R",             encoding = "UTF-8")  # AI Uzman yardımcıları
 safe_source("R/helpers_claude_code.R",           encoding = "UTF-8")  # Claude Code CLI yardımcıları
+safe_source("R/helpers_claude_code_streaming.R", encoding = "UTF-8")  # Claude Code canlı akış desteği
+safe_source("R/helpers_claude_code_formatters.R", encoding = "UTF-8") # Claude Code HTML biçimlendiriciler
 
 # ------------------------------------------------------------------------------
 # GRUP 5: LLM (Büyük Dil Modeli) Entegrasyon Katmanı

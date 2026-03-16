@@ -1,0 +1,187 @@
+/* =============================================================================
+   Dosya Yolu: www/css/claude_code_streaming.css
+   Açıklama: Claude Code canlı akış ve kabuk görünürlüğü stilleri.
+             Kabuk komutu blokları, dosya önizlemeleri, akış göstergesi,
+             gizle/göster düğmeleri ve canlı durum ikonları için stiller.
+   ============================================================================= */
+
+/* --- Kabuk Komutu Blokları --- */
+.cc-shell-block {
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+  overflow: hidden;
+}
+
+/* Kabuk blokları gizlendiğinde */
+.cc-shell-hidden {
+  max-height: 0 !important;
+  opacity: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+}
+
+/* --- Kabuk Komutu Özel Stilleri --- */
+.cc-shell-content {
+  padding: 6px 12px 6px 36px;
+}
+
+.cc-shell-command {
+  display: block;
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: #81C784;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 6px 10px;
+  border-radius: 4px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.cc-shell-prompt {
+  color: #64B5F6;
+  font-weight: 700;
+  user-select: none;
+}
+
+/* --- Dosya Önizleme --- */
+.cc-file-preview {
+  margin-top: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cc-file-preview-header {
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #999);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cc-file-preview-header i {
+  color: #90CAF9;
+}
+
+.cc-file-preview-content {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary, #bbb);
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* --- Araç Durumu İkonları --- */
+.cc-tool-status {
+  margin-left: auto;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+}
+
+.cc-tool-running i {
+  color: #64B5F6;
+  font-size: 11px;
+}
+
+.cc-tool-done i {
+  color: #81C784;
+}
+
+/* --- Araç Sonucu Bekleniyor --- */
+.cc-tool-result-pending {
+  padding: 6px 12px 6px 36px;
+}
+
+.cc-tool-result-loading {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  padding: 4px 0;
+}
+
+.cc-tool-result-loading i {
+  color: #64B5F6;
+  margin-right: 6px;
+}
+
+/* --- Araç Sonucu Önceden Biçimlendirilmiş --- */
+.cc-tool-result-pre {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #aaa);
+  max-height: 150px;
+  overflow-y: auto;
+  margin: 0;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* --- Araç Yolu İkonu --- */
+.cc-tool-path-icon {
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+/* --- Araç Sayacı --- */
+.cc-tool-count {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  font-weight: 400;
+}
+
+/* --- Kabuk Görünürlüğü Düğmesi --- */
+.cc-shell-visibility-toggle {
+  margin-left: 6px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.cc-shell-visibility-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cc-shell-visibility-toggle i {
+  color: #81C784;
+  font-size: 11px;
+  transition: color 0.2s;
+}
+
+/* Kapatıldığında soluk görünüm */
+.cc-shell-toggle-off i {
+  color: #666;
+}
+
+/* --- Akış Mesajı Göstergesi --- */
+.cc-message-streaming {
+  border-left-color: #64B5F6;
+}
+
+.cc-streaming-indicator {
+  color: #64B5F6;
+  font-size: 11px;
+  margin-left: 8px;
+}
+
+.cc-streaming-indicator i {
+  animation: cc-spin 1s linear infinite;
+}
+
+@keyframes cc-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
