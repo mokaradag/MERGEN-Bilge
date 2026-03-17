@@ -819,6 +819,72 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         # Metin biriktiricisi
         tum_satirlar <- character(0)
 
+        # Ayrıştırılmış parçayı istemciye gönder.
+        # "assistant" tipi mesajları alt bloklarına ayırarak her birini
+        # kendi tipinde (text/tool_use) ayrı ayrı gönderir.
+        # "result" tipini "text" olarak gönderir.
+        send_parca <- function(parca) {
+          if (is.null(parca)) return()
+
+          if (parca$tip == "assistant" && !is.null(parca$bloklar)) {
+            # Asistan mesajını alt bloklarına ayır ve her birini ayrı gönder
+            for (blok in parca$bloklar) {
+              blok_bicimlenmis <- format_streaming_chunk_html(blok)
+              if (!is.null(blok_bicimlenmis)) {
+                session$sendCustomMessage(
+                  type = "cc-stream-chunk",
+                  message = list(
+                    target = ns("output_area"),
+                    welcomeId = ns("welcome_screen"),
+                    chunkType = blok_bicimlenmis$tip,
+                    html = blok_bicimlenmis$html,
+                    toolId = blok_bicimlenmis$arac_id %||% "",
+                    accentColor = karakter_renk,
+                    characterName = karakter$display_name,
+                    timestamp = zaman_damgasi
+                  )
+                )
+              }
+            }
+          } else if (parca$tip == "result") {
+            # Sonuç mesajını metin olarak gönder
+            bicimlenmis <- format_streaming_chunk_html(parca)
+            if (!is.null(bicimlenmis)) {
+              session$sendCustomMessage(
+                type = "cc-stream-chunk",
+                message = list(
+                  target = ns("output_area"),
+                  welcomeId = ns("welcome_screen"),
+                  chunkType = "text",
+                  html = bicimlenmis$html,
+                  toolId = "",
+                  accentColor = karakter_renk,
+                  characterName = karakter$display_name,
+                  timestamp = zaman_damgasi
+                )
+              )
+            }
+          } else {
+            # Diğer tipler (text, tool_use, tool_result, raw_text)
+            bicimlenmis <- format_streaming_chunk_html(parca)
+            if (!is.null(bicimlenmis)) {
+              session$sendCustomMessage(
+                type = "cc-stream-chunk",
+                message = list(
+                  target = ns("output_area"),
+                  welcomeId = ns("welcome_screen"),
+                  chunkType = bicimlenmis$tip,
+                  html = bicimlenmis$html,
+                  toolId = bicimlenmis$arac_id %||% "",
+                  accentColor = karakter_renk,
+                  characterName = karakter$display_name,
+                  timestamp = zaman_damgasi
+                )
+              )
+            }
+          }
+        }
+
         # Yoklama fonksiyonu: süreç çalışırken tekrar tekrar çağrılır
         poll_process <- function() {
           # Durdurma isteği kontrolü (ortam değişkeni - reaktif bağlam gerektirmez)
@@ -861,24 +927,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
                 # Parçayı ayrıştır ve istemciye gönder
                 parca <- parse_streaming_chunk(satir)
-                if (!is.null(parca)) {
-                  bicimlenmis <- format_streaming_chunk_html(parca)
-                  if (!is.null(bicimlenmis)) {
-                    session$sendCustomMessage(
-                      type = "cc-stream-chunk",
-                      message = list(
-                        target = ns("output_area"),
-                        welcomeId = ns("welcome_screen"),
-                        chunkType = bicimlenmis$tip,
-                        html = bicimlenmis$html,
-                        toolId = bicimlenmis$arac_id %||% "",
-                        accentColor = karakter_renk,
-                        characterName = karakter$display_name,
-                        timestamp = zaman_damgasi
-                      )
-                    )
-                  }
-                }
+                send_parca(parca)
               }
             }
           }, error = function(e) {
@@ -901,24 +950,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
                   tum_satirlar <<- c(tum_satirlar, satir)
 
                   parca <- parse_streaming_chunk(satir)
-                  if (!is.null(parca)) {
-                    bicimlenmis <- format_streaming_chunk_html(parca)
-                    if (!is.null(bicimlenmis)) {
-                      session$sendCustomMessage(
-                        type = "cc-stream-chunk",
-                        message = list(
-                          target = ns("output_area"),
-                          welcomeId = ns("welcome_screen"),
-                          chunkType = bicimlenmis$tip,
-                          html = bicimlenmis$html,
-                          toolId = bicimlenmis$arac_id %||% "",
-                          accentColor = karakter_renk,
-                          characterName = karakter$display_name,
-                          timestamp = zaman_damgasi
-                        )
-                      )
-                    }
-                  }
+                  send_parca(parca)
                 }
               }
             }, error = function(e) NULL)
@@ -951,7 +983,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
                 message = list(
                   target = ns("output_area"),
                   duration = sure,
-                  finalContent = son_icerik
+                  finalContent = son_icerik,
+                  accentColor = karakter_renk,
+                  characterName = karakter$display_name
                 )
               )
 

@@ -73,8 +73,9 @@
     } else if (tip === 'tool_result') {
       // Mevcut araç bloğuna sonucu ekle
       handleToolResultChunk(target, data);
-    } else if (tip === 'text' || tip === 'raw_text') {
+    } else if (tip === 'text' || tip === 'raw_text' || tip === 'result') {
       // Metin parçasını mevcut asistan mesajına ekle
+      // 'result' tipi de metin olarak işlenir (son sonuç bloğu)
       handleTextChunk(target, data);
     }
 
@@ -234,6 +235,24 @@
     if (!target) return;
 
     var streamingMsg = target.querySelector('#cc-streaming-msg');
+
+    // Akış mesajı hiç oluşturulamadıysa ve son içerik varsa,
+    // yedek olarak tamamlanmış bir mesaj oluştur
+    if (!streamingMsg && data.finalContent) {
+      streamingMsg = document.createElement('div');
+      streamingMsg.className = 'cc-message cc-message-assistant';
+      if (data.accentColor) {
+        streamingMsg.style.setProperty('--cc-accent', data.accentColor);
+      }
+      var charName = data.characterName || 'Claude Code';
+      var headerHtml = '<div class="cc-message-header">' +
+        '<span class="cc-message-sender" style="color:' +
+        (data.accentColor || '#7C4DFF') + ';">' + charName + '</span>' +
+        '</div>';
+      streamingMsg.innerHTML = headerHtml + '<div class="cc-message-body"></div>';
+      target.appendChild(streamingMsg);
+    }
+
     if (streamingMsg) {
       // Akış ID sini kaldır (artık tamamlanmış mesaj)
       streamingMsg.removeAttribute('id');
