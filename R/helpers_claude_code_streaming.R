@@ -61,8 +61,10 @@ run_claude_code_streaming <- function(prompt,
   }
 
   # CLI argümanları (stream-json ile gerçek zamanlı çıktı)
+  # --verbose bayrağı stream-json formatı için zorunlu
   args <- c(
     "--print",
+    "--verbose",
     "--output-format", "stream-json",
     "--include-partial-messages",
     "--dangerously-skip-permissions"
