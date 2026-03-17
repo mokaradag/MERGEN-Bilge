@@ -579,7 +579,7 @@
   font-size: inherit;
 }
 
-/* Kod bloklari (pre > code) - koyu tema uyumlu */
+/* Kod blokları (pre > code) - koyu tema uyumlu */
 .cc-message-body pre {
   background: #1e1e1e;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -601,7 +601,7 @@
   font-size: inherit;
 }
 
-/* Satir ici kod - koyu tema uyumlu (kirmizi/beyaz degil!) */
+/* Satır içi kod - koyu tema uyumlu (kırmızı/beyaz değil!) */
 .cc-message-body code {
   font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
   font-size: 0.9em;
@@ -612,7 +612,7 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Kod blogu renkleri (sozdizimi vurgulama benzeri) */
+/* Kod bloğu renkleri (sözdizimi vurgulama benzeri) */
 .cc-code-block {
   background: #1e1e1e;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -673,7 +673,7 @@
   text-underline-offset: 2px;
 }
 
-/* Yazi tipi boyutu ayarlar sayfasi ile uyum */
+/* Yazı tipi boyutu ayarlar sayfası ile uyum */
 .font-small .cc-message-body { font-size: 13px; }
 .font-medium .cc-message-body { font-size: 14px; }
 .font-large .cc-message-body { font-size: 16px; }

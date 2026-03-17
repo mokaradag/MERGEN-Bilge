@@ -231,7 +231,7 @@
   var currentAccent = '#7C4DFF';
 
   // -------------------------------------------------------------------------
-  // YILDIZ ARKA PLANI (derinlik katmanli)
+  // YILDIZ ARKA PLANI (derinlik katmanlı)
   // -------------------------------------------------------------------------
   function initStars(count, width, height) {
     var stars = [];
@@ -409,12 +409,12 @@
   }
 
   // -------------------------------------------------------------------------
-  // ARKA PLAN MANZARA ÇİZİMİ (piksel sanat tarzi doga)
+  // ARKA PLAN MANZARA ÇİZİMİ (piksel sanat tarzı doğa)
   // -------------------------------------------------------------------------
   function drawLandscape(ctx, width, height, accentColor, frame) {
     var groundY = height * 0.78;
 
-    // Gokyuzu gradyani (koyu mor-mavi)
+    // Gökyüzü gradyanı (koyu mor-mavi)
     var grad = ctx.createLinearGradient(0, 0, 0, groundY);
     grad.addColorStop(0, '#0a0a1a');
     grad.addColorStop(0.4, '#0f0f2e');
@@ -423,13 +423,13 @@
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, groundY);
 
-    // Arka plan daglar (piksel tarzi siluet)
+    // Arka plan dağlar (piksel tarzı siluet)
     ctx.fillStyle = '#151530';
     drawPixelMountains(ctx, width, groundY, 0.5, 0.18, 40);
     ctx.fillStyle = '#1a1a3d';
     drawPixelMountains(ctx, width, groundY, 0.65, 0.12, 30);
 
-    // Zemin (piksel cimen tarzi)
+    // Zemin (piksel çimen tarzı)
     var groundGrad = ctx.createLinearGradient(0, groundY, 0, height);
     groundGrad.addColorStop(0, '#1a2810');
     groundGrad.addColorStop(0.3, '#152008');
@@ -437,7 +437,7 @@
     ctx.fillStyle = groundGrad;
     ctx.fillRect(0, groundY, width, height - groundY);
 
-    // Cimen detaylari (piksel noktalar)
+    // Çimen detayları (piksel noktalar)
     var accent = accentColor || '#7C4DFF';
     ctx.globalAlpha = 0.15;
     ctx.fillStyle = '#2d4a1a';
@@ -446,7 +446,7 @@
       ctx.fillRect(i, groundY - h, 2, h);
     }
 
-    // Zemin cizgi (vurgu rengi ile)
+    // Zemin çizgi (vurgu rengi ile)
     ctx.globalAlpha = 0.4;
     ctx.fillStyle = accent;
     for (var j = 0; j < width; j += 3) {
@@ -459,7 +459,7 @@
     ctx.globalAlpha = 1;
   }
 
-  // Piksel tarzi dag silueti
+  // Piksel tarzı dağ silueti
   function drawPixelMountains(ctx, width, baseY, heightRatio, variance, stepSize) {
     var mountainH = baseY * heightRatio;
     ctx.beginPath();
@@ -469,7 +469,7 @@
                   Math.sin(x * 0.02 + 1.5) * mountainH * 0.25 +
                   Math.sin(x * 0.05 + 3) * mountainH * 0.1;
       var y = baseY - mountainH * 0.3 - noise * variance * 3;
-      // Piksel hizalama
+      // Piksel hizalama (doğru)
       ctx.lineTo(Math.floor(x), Math.floor(y));
     }
     ctx.lineTo(width, baseY);
@@ -493,37 +493,37 @@
   // -------------------------------------------------------------------------
   // ANA ANİMASYON DÖNGÜSÜ
   // -------------------------------------------------------------------------
-  // Retro metinler (MERGEN Bilge hakkinda bilgilendirici)
+  // Retro metinler (MERGEN Bilge hakkında bilgilendirici)
   var retroMetinler = [
-    'MERGEN BILGE',
-    'Yapay Zeka Asistani',
-    'Turkce - Akilli - Guvenilir'
+    'MERGEN BİLGE',
+    'Yapay Zekâ Asistanı',
+    'Türkçe - Akıllı - Güvenilir'
   ];
 
   function welcomeAnimLoop() {
     if (!welcomeCanvas || !welcomeCtx) return;
 
-    // Mantiksal boyutlari kullan (DPI olceklemesinden bagimsiz)
+    // Mantıksal boyutları kullan (DPI ölçeklemesinden bağımsız)
     var dpr = window.devicePixelRatio || 1;
     var w = welcomeCanvas.width / dpr;
     var h = welcomeCanvas.height / dpr;
 
-    // Arka plani temizle
+    // Arka planı temizle
     welcomeCtx.clearRect(0, 0, w, h);
 
-    // Manzara arka plani (gokyuzu, daglar, zemin)
+    // Manzara arka planı (gökyüzü, dağlar, zemin)
     drawLandscape(welcomeCtx, w, h, currentAccent, welcomeFrame);
 
-    // Yildizlari ciz
+    // Yıldızları çiz
     drawStars(welcomeCtx, welcomeStars, welcomeFrame, w, h);
 
-    // Baslik metni - MERGEN BILGE
+    // Başlık metni - MERGEN BİLGE
     var titleSize = Math.min(28, Math.max(16, w / 18));
     var titleAlpha = 0.7 + Math.sin(welcomeFrame * 0.025) * 0.2;
     welcomeCtx.globalAlpha = titleAlpha;
     drawRetroText(welcomeCtx, retroMetinler[0], w / 2, h * 0.12, titleSize, currentAccent, 'rgba(0,0,0,0.6)');
 
-    // Alt baslik
+    // Alt başlık
     welcomeCtx.globalAlpha = 0.55;
     var subSize = Math.min(14, Math.max(10, w / 40));
     drawRetroText(welcomeCtx, retroMetinler[1], w / 2, h * 0.20, subSize, '#cccccc', null);
@@ -538,9 +538,9 @@
     drawRetroText(welcomeCtx, '[ AJAN TERMINALI ]', w / 2, h * 0.35, Math.min(12, w / 45), currentAccent, null);
     welcomeCtx.globalAlpha = 1;
 
-    // Karakterleri guncelle ve ciz - olcek canvas boyutuna gore ayarlanir
+    // Karakterleri güncelle ve çiz - ölçek canvas boyutuna göre ayarlanır
     var charScale = Math.max(3, Math.min(6, Math.min(w / 150, h / 70)));
-    var charNames = { mergen: 'MERGEN', ulgen: 'ULGEN', kayra: 'KAYRA', erlik: 'ERLIK', umay: 'UMAY' };
+    var charNames = { mergen: 'MERGEN', ulgen: 'ÜLGEN', kayra: 'KAYRA', erlik: 'ERLİK', umay: 'UMAY' };
 
     for (var i = 0; i < welcomeChars.length; i++) {
       var ch = welcomeChars[i];
@@ -550,7 +550,7 @@
         ? ch.charData.walk
         : ch.charData.idle;
 
-      // Golge
+      // Gölge
       welcomeCtx.globalAlpha = 0.25;
       welcomeCtx.fillStyle = ch.colors.dark;
       var shadowW = 16 * charScale * 0.7;
