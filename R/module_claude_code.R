@@ -251,7 +251,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       cli_session_id = NULL,          # Claude Code CLI oturum kimliği (--resume için)
       current_model = NULL,           # Model değişim takibi
       active_process = NULL,          # Aktif processx süreci (durdurma için)
-      poll_state = NULL               # Yoklama durumu (ortam değişkeni, later için)
+      poll_state = NULL,              # Yoklama durumu (ortam değişkeni, durdurma için)
+      stream_env = NULL               # Akış durumu (yoklama gözlemcisi için)
     )
 
     # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
@@ -773,17 +774,26 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       zaman_damgasi <- format(Sys.time(), "%H:%M:%S")
 
       # -----------------------------------------------------------------------
-      # CANLI AKIŞ: processx süreci ana R sürecinde başlat,
-      # later::later ile yoklama yaparak parçaları anlık gönder
+      # CANLI AKIŞ: processx süreci başlat, akış durumunu rv'ye kaydet.
+      # Yoklama ayrı bir observe() ile yapılır (invalidateLater ile).
+      # Bu sayede sendCustomMessage mesajları reaktif döngü içinde kalarak
+      # her yoklama turunda tarayıcıya zamanında iletilir.
       # -----------------------------------------------------------------------
-      baslangic_zamani <- Sys.time()
 
-      # later::later geri çağırmaları reaktif bağlam dışında çalışır.
-      # Durdurma bayrağını paylaşımlı ortam değişkeni ile takip et.
-      # rv$poll_state üzerinden saklayarak durdur düğmesinden erişilebilir olur.
-      durum_env <- new.env(parent = emptyenv())
-      durum_env$durduruldu <- FALSE
-      rv$poll_state <- durum_env
+      # Akış durumu ortamı (referans nesnesi - reaktif tetikleme yapmadan değiştirilebilir)
+      stream_env <- new.env(parent = emptyenv())
+      stream_env$baslangic <- Sys.time()
+      stream_env$zaman_asimi <- zaman_asimi
+      stream_env$karakter_renk <- karakter_renk
+      stream_env$karakter_adi <- karakter$display_name
+      stream_env$karakter_id <- karakter_id
+      stream_env$zaman_damgasi <- zaman_damgasi
+      stream_env$prompt <- prompt
+      stream_env$calisma_dizini <- calisma_dizini
+      stream_env$tum_satirlar <- character(0)
+      stream_env$durduruldu <- FALSE
+      rv$stream_env <- stream_env
+      rv$poll_state <- stream_env
 
       # CLI argümanlarını oluştur
       cli_args <- c(
@@ -813,279 +823,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           cleanup_tree = TRUE
         )
 
-        # Süreç referansını sakla (durdurma için)
+        # Süreç referansını sakla (yoklama gözlemcisi ve durdurma için)
         rv$active_process <- proc
-
-        # Metin biriktiricisi
-        tum_satirlar <- character(0)
-
-        # Ayrıştırılmış parçayı istemciye gönder.
-        # "assistant" tipi mesajları alt bloklarına ayırarak her birini
-        # kendi tipinde (text/tool_use) ayrı ayrı gönderir.
-        # "result" tipini "text" olarak gönderir.
-        send_parca <- function(parca) {
-          if (is.null(parca)) return()
-
-          if (parca$tip == "assistant" && !is.null(parca$bloklar)) {
-            # Asistan mesajını alt bloklarına ayır ve her birini ayrı gönder
-            for (blok in parca$bloklar) {
-              blok_bicimlenmis <- format_streaming_chunk_html(blok)
-              if (!is.null(blok_bicimlenmis)) {
-                session$sendCustomMessage(
-                  type = "cc-stream-chunk",
-                  message = list(
-                    target = ns("output_area"),
-                    welcomeId = ns("welcome_screen"),
-                    chunkType = blok_bicimlenmis$tip,
-                    html = blok_bicimlenmis$html,
-                    toolId = blok_bicimlenmis$arac_id %||% "",
-                    accentColor = karakter_renk,
-                    characterName = karakter$display_name,
-                    timestamp = zaman_damgasi
-                  )
-                )
-              }
-            }
-          } else if (parca$tip == "result") {
-            # Sonuç mesajını metin olarak gönder
-            bicimlenmis <- format_streaming_chunk_html(parca)
-            if (!is.null(bicimlenmis)) {
-              session$sendCustomMessage(
-                type = "cc-stream-chunk",
-                message = list(
-                  target = ns("output_area"),
-                  welcomeId = ns("welcome_screen"),
-                  chunkType = "text",
-                  html = bicimlenmis$html,
-                  toolId = "",
-                  accentColor = karakter_renk,
-                  characterName = karakter$display_name,
-                  timestamp = zaman_damgasi
-                )
-              )
-            }
-          } else {
-            # Diğer tipler (text, tool_use, tool_result, raw_text)
-            bicimlenmis <- format_streaming_chunk_html(parca)
-            if (!is.null(bicimlenmis)) {
-              session$sendCustomMessage(
-                type = "cc-stream-chunk",
-                message = list(
-                  target = ns("output_area"),
-                  welcomeId = ns("welcome_screen"),
-                  chunkType = bicimlenmis$tip,
-                  html = bicimlenmis$html,
-                  toolId = bicimlenmis$arac_id %||% "",
-                  accentColor = karakter_renk,
-                  characterName = karakter$display_name,
-                  timestamp = zaman_damgasi
-                )
-              )
-            }
-          }
-        }
-
-        # Yoklama fonksiyonu: süreç çalışırken tekrar tekrar çağrılır
-        poll_process <- function() {
-          # Durdurma isteği kontrolü (ortam değişkeni - reaktif bağlam gerektirmez)
-          if (isTRUE(durum_env$durduruldu)) {
-            tryCatch(proc$kill(), error = function(e) NULL)
-            finalize_streaming("Durduruldu", "stop-circle", "#FFB74D")
-            return()
-          }
-
-          # Zaman aşımı kontrolü
-          gecen_sure <- as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
-          if (gecen_sure > zaman_asimi) {
-            tryCatch(proc$kill(), error = function(e) NULL)
-            log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Akış zaman aşımı:", zaman_asimi, "sn"))
-            session$sendCustomMessage(
-              type = "cc-add-message",
-              message = list(
-                target = ns("output_area"),
-                type = "error",
-                content = paste0("İşlem zaman aşımına uğradı (", zaman_asimi, " saniye)."),
-                timestamp = format(Sys.time(), "%H:%M:%S"),
-                welcomeId = ns("welcome_screen")
-              )
-            )
-            finalize_streaming("Zaman Aşımı", "clock", "#FFB74D")
-            return()
-          }
-
-          # stdout'tan oku
-          tryCatch({
-            proc$poll_io(0)  # Beklemesiz kontrol
-            yeni_satirlar <- tryCatch(proc$read_output_lines(), error = function(e) character(0))
-
-            if (length(yeni_satirlar) > 0) {
-              for (satir in yeni_satirlar) {
-                satir <- trimws(satir)
-                if (!nzchar(satir)) next
-
-                tum_satirlar <<- c(tum_satirlar, satir)
-
-                # Parçayı ayrıştır ve istemciye gönder
-                parca <- parse_streaming_chunk(satir)
-                send_parca(parca)
-              }
-            }
-          }, error = function(e) {
-            log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Akış okuma hatası:",
-                           conditionMessage(e)))
-          })
-
-          # Süreç hala çalışıyorsa tekrar yokla
-          if (proc$is_alive()) {
-            later::later(poll_process, delay = 0.2)
-          } else {
-            # Süreç bitti - kalan çıktıyı oku
-            tryCatch({
-              kalan <- proc$read_all_output()
-              if (nzchar(kalan)) {
-                kalan_satirlar <- strsplit(kalan, "\n")[[1]]
-                for (satir in kalan_satirlar) {
-                  satir <- trimws(satir)
-                  if (!nzchar(satir)) next
-                  tum_satirlar <<- c(tum_satirlar, satir)
-
-                  parca <- parse_streaming_chunk(satir)
-                  send_parca(parca)
-                }
-              }
-            }, error = function(e) NULL)
-
-            # Tam çıktıyı ayrıştır
-            tam_cikti <- paste(tum_satirlar, collapse = "\n")
-            ayristirma <- parse_claude_code_json_output(tam_cikti)
-            cikis_kodu <- proc$get_exit_status()
-            sure <- round(as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs")), 1)
-
-            if (identical(cikis_kodu, 0L)) {
-              log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış tamamlandı - Süre:", sure, "sn"))
-
-              # Oturum kimliğini kaydet
-              if (!is.null(ayristirma$session_id) && nzchar(ayristirma$session_id %||% "")) {
-                rv$cli_session_id <- ayristirma$session_id
-              }
-
-              # Konuşma bağlamına ekle (isolate: later callback reaktif bağlam dışında)
-              rv$conversation_context <- c(isolate(rv$conversation_context), list(
-                list(role = "assistant", content = ayristirma$text_output)
-              ))
-
-              # Son içeriği HTML olarak biçimlendir
-              son_icerik <- format_claude_code_output(ayristirma$text_output)
-
-              # Akış mesajını sonlandır
-              session$sendCustomMessage(
-                type = "cc-stream-end",
-                message = list(
-                  target = ns("output_area"),
-                  duration = sure,
-                  finalContent = son_icerik,
-                  accentColor = karakter_renk,
-                  characterName = karakter$display_name
-                )
-              )
-
-              # Sonucu sakla
-              rv$last_result <- list(
-                success = TRUE, output = ayristirma$text_output,
-                error = "", duration = sure,
-                tool_uses = ayristirma$tool_uses,
-                session_id = ayristirma$session_id
-              )
-
-              finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure)
-            } else {
-              # Hata durumu
-              stderr_metin <- tryCatch(proc$read_all_error(), error = function(e) "")
-              hata_mesaji <- if (nzchar(stderr_metin)) stderr_metin else tam_cikti
-              temiz_log <- gsub("[{}]", "", substr(hata_mesaji, 1, 200))
-              log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Akış hata kodu:", cikis_kodu,
-                             "- Mesaj:", temiz_log))
-
-              session$sendCustomMessage(
-                type = "cc-stream-end",
-                message = list(target = ns("output_area"))
-              )
-
-              session$sendCustomMessage(
-                type = "cc-add-message",
-                message = list(
-                  target = ns("output_area"),
-                  type = "error",
-                  content = htmltools::htmlEscape(hata_mesaji),
-                  timestamp = format(Sys.time(), "%H:%M:%S"),
-                  welcomeId = ns("welcome_screen")
-                )
-              )
-
-              finalize_streaming("Hata", "exclamation-triangle", "#E57373", sure)
-            }
-
-            # Geçmişe ekle (isolate: later callback reaktif bağlam dışında)
-            rv$output_history <- c(isolate(rv$output_history), list(list(
-              prompt = prompt,
-              result = isolate(rv$last_result),
-              timestamp = Sys.time(),
-              character = karakter_id
-            )))
-
-            # Dizin içeriğini güncelle (later::later bağlamı - dizin değerini geç)
-            observe_dir_contents(dizin = calisma_dizini)
-          }
-        }
-
-        # Akış sonlandırma yardımcı fonksiyonu
-        # Not: Bu fonksiyon later::later geri çağırmasından çağrılır,
-        # dolayısıyla shinyjs kullanılamaz (oturum bulunamaz hatası verir).
-        # Bunun yerine session$sendCustomMessage ile JS tarafına mesaj gönderilir.
-        finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL) {
-          rv$is_running <- FALSE
-          rv$active_process <- NULL
-
-          # Düğme durumlarını güncelle (shinyjs yerine doğrudan JS mesajı)
-          session$sendCustomMessage(
-            type = "cc-finalize-ui",
-            message = list(
-              runBtnId = ns("run_command"),
-              stopBtnId = ns("stop_command")
-            )
-          )
-
-          # Düşünme animasyonunu durdur
-          session$sendCustomMessage(
-            type = "cc-thinking-stop",
-            message = list(
-              overlayId = ns("thinking_overlay"),
-              statusId = ns("status_text"),
-              durationId = ns("duration_text")
-            )
-          )
-
-          # Durum çubuğunu güncelle
-          session$sendCustomMessage(
-            type = "cc-update-status",
-            message = list(
-              statusId = ns("status_text"),
-              durationId = ns("duration_text"),
-              status = durum_metin,
-              statusIcon = durum_ikon,
-              statusColor = durum_renk,
-              duration = if (!is.null(sure)) paste0(sure, " sn") else ""
-            )
-          )
-        }
-
-        # Yoklamayı başlat
-        later::later(poll_process, delay = 0.2)
+        # rv$is_running zaten TRUE - yoklama gözlemcisi otomatik başlayacak
 
       }, error = function(e) {
         rv$is_running <- FALSE
 
-        # Düğme durumlarını güncelle (tutarlılık için sendCustomMessage ile)
         session$sendCustomMessage(
           type = "cc-finalize-ui",
           message = list(
@@ -1130,6 +874,257 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           )
         )
       })
+    })
+
+    # =====================================================================
+    # CANLI AKIŞ YOKLAMA GÖZLEMCİSİ
+    # observe + invalidateLater ile reaktif döngü içinde çalışır.
+    # Bu sayede sendCustomMessage mesajları her turda tarayıcıya iletilir.
+    # later::later kullanıldığında mesajlar reaktif döngü dışında kalarak
+    # birikir ve yalnızca süreç bittiğinde toplu gönderilirdi.
+    # =====================================================================
+
+    # --- Akış parçası gönderme yardımcısı ---
+    # "assistant" mesajlarını alt bloklarına ayırarak her birini
+    # kendi tipinde (text/tool_use) ayrı ayrı gönderir.
+    send_parca <- function(parca, env) {
+      if (is.null(parca)) return()
+
+      send_chunk <- function(tip, html, arac_id = "") {
+        session$sendCustomMessage(
+          type = "cc-stream-chunk",
+          message = list(
+            target = ns("output_area"),
+            welcomeId = ns("welcome_screen"),
+            chunkType = tip,
+            html = html,
+            toolId = arac_id,
+            accentColor = env$karakter_renk,
+            characterName = env$karakter_adi,
+            timestamp = env$zaman_damgasi
+          )
+        )
+      }
+
+      if (parca$tip == "assistant" && !is.null(parca$bloklar)) {
+        # Asistan mesajını alt bloklarına ayır ve her birini ayrı gönder
+        for (blok in parca$bloklar) {
+          blok_fmt <- format_streaming_chunk_html(blok)
+          if (!is.null(blok_fmt)) {
+            send_chunk(blok_fmt$tip, blok_fmt$html, blok_fmt$arac_id %||% "")
+          }
+        }
+      } else if (parca$tip == "result") {
+        # Sonuç mesajını metin olarak gönder
+        fmt <- format_streaming_chunk_html(parca)
+        if (!is.null(fmt)) send_chunk("text", fmt$html)
+      } else {
+        # Diğer tipler (text, tool_use, tool_result, raw_text)
+        fmt <- format_streaming_chunk_html(parca)
+        if (!is.null(fmt)) {
+          send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
+        }
+      }
+    }
+
+    # --- Akış sonlandırma yardımcısı ---
+    finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL) {
+      rv$is_running <- FALSE
+      rv$active_process <- NULL
+      rv$stream_env <- NULL
+
+      # Düğmeleri güncelle
+      session$sendCustomMessage(
+        type = "cc-finalize-ui",
+        message = list(
+          runBtnId = ns("run_command"),
+          stopBtnId = ns("stop_command")
+        )
+      )
+
+      # Düşünme animasyonunu durdur
+      session$sendCustomMessage(
+        type = "cc-thinking-stop",
+        message = list(
+          overlayId = ns("thinking_overlay"),
+          statusId = ns("status_text"),
+          durationId = ns("duration_text")
+        )
+      )
+
+      # Durum çubuğunu güncelle
+      session$sendCustomMessage(
+        type = "cc-update-status",
+        message = list(
+          statusId = ns("status_text"),
+          durationId = ns("duration_text"),
+          status = durum_metin,
+          statusIcon = durum_ikon,
+          statusColor = durum_renk,
+          duration = if (!is.null(sure)) paste0(sure, " sn") else ""
+        )
+      )
+    }
+
+    # --- Yoklama gözlemcisi ---
+    observe({
+      # Yalnızca akış aktifken çalış
+      req(isTRUE(rv$is_running))
+      proc <- rv$active_process
+      req(!is.null(proc))
+
+      # 200ms sonra tekrar çalış (reaktif döngü içinde)
+      invalidateLater(200, session)
+
+      env <- rv$stream_env
+      if (is.null(env)) return()
+
+      # Durdurma isteği kontrolü
+      if (isTRUE(env$durduruldu)) {
+        tryCatch(proc$kill(), error = function(e) NULL)
+        finalize_streaming("Durduruldu", "stop-circle", "#FFB74D")
+        return()
+      }
+
+      # Zaman aşımı kontrolü
+      gecen_sure <- as.numeric(difftime(Sys.time(), env$baslangic, units = "secs"))
+      if (gecen_sure > env$zaman_asimi) {
+        tryCatch(proc$kill(), error = function(e) NULL)
+        log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Akış zaman aşımı:", env$zaman_asimi, "sn"))
+        session$sendCustomMessage(
+          type = "cc-add-message",
+          message = list(
+            target = ns("output_area"),
+            type = "error",
+            content = paste0("İşlem zaman aşımına uğradı (", env$zaman_asimi, " saniye)."),
+            timestamp = format(Sys.time(), "%H:%M:%S"),
+            welcomeId = ns("welcome_screen")
+          )
+        )
+        finalize_streaming("Zaman Aşımı", "clock", "#FFB74D")
+        return()
+      }
+
+      # stdout'tan oku
+      tryCatch({
+        proc$poll_io(0)
+        yeni_satirlar <- tryCatch(proc$read_output_lines(), error = function(e) character(0))
+
+        if (length(yeni_satirlar) > 0) {
+          for (satir in yeni_satirlar) {
+            satir <- trimws(satir)
+            if (!nzchar(satir)) next
+            env$tum_satirlar <- c(env$tum_satirlar, satir)
+
+            # Parçayı ayrıştır ve istemciye gönder
+            parca <- parse_streaming_chunk(satir)
+            send_parca(parca, env)
+          }
+        }
+      }, error = function(e) {
+        log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Akış okuma hatası:",
+                       conditionMessage(e)))
+      })
+
+      # Süreç bitmişse sonlandır
+      if (!proc$is_alive()) {
+        # Kalan çıktıyı oku
+        tryCatch({
+          kalan <- proc$read_all_output()
+          if (nzchar(kalan)) {
+            kalan_satirlar <- strsplit(kalan, "\n")[[1]]
+            for (satir in kalan_satirlar) {
+              satir <- trimws(satir)
+              if (!nzchar(satir)) next
+              env$tum_satirlar <- c(env$tum_satirlar, satir)
+
+              parca <- parse_streaming_chunk(satir)
+              send_parca(parca, env)
+            }
+          }
+        }, error = function(e) NULL)
+
+        # Tam çıktıyı ayrıştır
+        tam_cikti <- paste(env$tum_satirlar, collapse = "\n")
+        ayristirma <- parse_claude_code_json_output(tam_cikti)
+        cikis_kodu <- proc$get_exit_status()
+        sure <- round(as.numeric(difftime(Sys.time(), env$baslangic, units = "secs")), 1)
+
+        if (identical(cikis_kodu, 0L)) {
+          log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış tamamlandı - Süre:", sure, "sn"))
+
+          # Oturum kimliğini kaydet
+          if (!is.null(ayristirma$session_id) && nzchar(ayristirma$session_id %||% "")) {
+            rv$cli_session_id <- ayristirma$session_id
+          }
+
+          # Konuşma bağlamına ekle
+          rv$conversation_context <- c(rv$conversation_context, list(
+            list(role = "assistant", content = ayristirma$text_output)
+          ))
+
+          # Son içeriği HTML olarak biçimlendir
+          son_icerik <- format_claude_code_output(ayristirma$text_output)
+
+          # Akış mesajını sonlandır
+          session$sendCustomMessage(
+            type = "cc-stream-end",
+            message = list(
+              target = ns("output_area"),
+              duration = sure,
+              finalContent = son_icerik,
+              accentColor = env$karakter_renk,
+              characterName = env$karakter_adi
+            )
+          )
+
+          # Sonucu sakla
+          rv$last_result <- list(
+            success = TRUE, output = ayristirma$text_output,
+            error = "", duration = sure,
+            tool_uses = ayristirma$tool_uses,
+            session_id = ayristirma$session_id
+          )
+
+          finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure)
+        } else {
+          # Hata durumu
+          stderr_metin <- tryCatch(proc$read_all_error(), error = function(e) "")
+          hata_mesaji <- if (nzchar(stderr_metin)) stderr_metin else tam_cikti
+          temiz_log <- gsub("[{}]", "", substr(hata_mesaji, 1, 200))
+          log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Akış hata kodu:", cikis_kodu,
+                         "- Mesaj:", temiz_log))
+
+          session$sendCustomMessage(
+            type = "cc-stream-end",
+            message = list(target = ns("output_area"))
+          )
+
+          session$sendCustomMessage(
+            type = "cc-add-message",
+            message = list(
+              target = ns("output_area"),
+              type = "error",
+              content = htmltools::htmlEscape(hata_mesaji),
+              timestamp = format(Sys.time(), "%H:%M:%S"),
+              welcomeId = ns("welcome_screen")
+            )
+          )
+
+          finalize_streaming("Hata", "exclamation-triangle", "#E57373", sure)
+        }
+
+        # Geçmişe ekle
+        rv$output_history <- c(rv$output_history, list(list(
+          prompt = env$prompt,
+          result = rv$last_result,
+          timestamp = Sys.time(),
+          character = env$karakter_id
+        )))
+
+        # Dizin içeriğini güncelle
+        observe_dir_contents(dizin = env$calisma_dizini)
+      }
     })
 
     # --- Durdur düğmesi ---

@@ -431,11 +431,14 @@
   // Akış sonlandırma: düğmeleri güncelle (çalıştır etkinleştir, durdur gizle)
   Shiny.addCustomMessageHandler('cc-finalize-ui', function(data) {
     // Çalıştır düğmesini etkinleştir
+    // shinyjs::disable hem disabled özniteliği hem de disabled sınıfı ekler,
+    // ikisini de kaldırmak gerekir.
     if (data.runBtnId) {
       var runBtn = document.getElementById(data.runBtnId);
       if (runBtn) {
         runBtn.disabled = false;
         runBtn.removeAttribute('disabled');
+        runBtn.classList.remove('disabled');
       }
     }
     // Durdur düğmesini gizle
