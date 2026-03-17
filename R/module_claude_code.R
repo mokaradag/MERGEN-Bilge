@@ -542,11 +542,15 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       icerik <- list_directory_contents(yol)
 
       # Mevcut dizin yolunu güncelle
-      shinyjs::runjs(sprintf(
-        "var el = document.getElementById('%s'); if(el) el.textContent = '%s';",
-        ns("dir_current_path"),
-        gsub("\\\\", "\\\\\\\\", gsub("'", "\\\\'", yol))
-      ))
+      # Not: shinyjs::runjs yerine sendCustomMessage kullanılır,
+      # çünkü bu fonksiyon later::later bağlamından da çağrılabilir.
+      session$sendCustomMessage(
+        type = "cc-update-element-text",
+        message = list(
+          elementId = ns("dir_current_path"),
+          text = yol
+        )
+      )
 
       output$dir_contents_ui <- renderUI({
         if (!icerik$success) {
@@ -999,14 +1003,21 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         }
 
         # Akış sonlandırma yardımcı fonksiyonu
+        # Not: Bu fonksiyon later::later geri çağırmasından çağrılır,
+        # dolayısıyla shinyjs kullanılamaz (oturum bulunamaz hatası verir).
+        # Bunun yerine session$sendCustomMessage ile JS tarafına mesaj gönderilir.
         finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL) {
           rv$is_running <- FALSE
           rv$active_process <- NULL
-          shinyjs::enable("run_command")
-          shinyjs::runjs(sprintf(
-            "document.getElementById('%s').classList.add('cc-hidden');",
-            ns("stop_command")
-          ))
+
+          # Düğme durumlarını güncelle (shinyjs yerine doğrudan JS mesajı)
+          session$sendCustomMessage(
+            type = "cc-finalize-ui",
+            message = list(
+              runBtnId = ns("run_command"),
+              stopBtnId = ns("stop_command")
+            )
+          )
 
           # Düşünme animasyonunu durdur
           session$sendCustomMessage(
@@ -1037,11 +1048,15 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       }, error = function(e) {
         rv$is_running <- FALSE
-        shinyjs::enable("run_command")
-        shinyjs::runjs(sprintf(
-          "document.getElementById('%s').classList.add('cc-hidden');",
-          ns("stop_command")
-        ))
+
+        # Düğme durumlarını güncelle (tutarlılık için sendCustomMessage ile)
+        session$sendCustomMessage(
+          type = "cc-finalize-ui",
+          message = list(
+            runBtnId = ns("run_command"),
+            stopBtnId = ns("stop_command")
+          )
+        )
 
         session$sendCustomMessage(
           type = "cc-thinking-stop",
