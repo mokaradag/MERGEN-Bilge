@@ -73,9 +73,17 @@
     } else if (tip === 'tool_result') {
       // Mevcut araç bloğuna sonucu ekle
       handleToolResultChunk(target, data);
+    } else if (tip === 'text_delta') {
+      // Metin parçası (stream-json formatından anlık gelen token)
+      handleTextDeltaChunk(target, data);
+    } else if (tip === 'tool_input_delta') {
+      // Araç girdisi delta (komut bilgisi parça parça geliyor)
+      handleToolInputDelta(target, data);
+    } else if (tip === 'content_block_stop') {
+      // İçerik bloğu tamamlandı
+      handleContentBlockStop(target, data);
     } else if (tip === 'text' || tip === 'raw_text' || tip === 'result') {
-      // Metin parçasını mevcut asistan mesajına ekle
-      // 'result' tipi de metin olarak işlenir (son sonuç bloğu)
+      // Eski format: tam metin parçası
       handleTextChunk(target, data);
     }
 
@@ -173,8 +181,179 @@
   }
 
   // ---------------------------------------------------------------------------
-  // METİN PARCASI EKLEME
-  // Metin parçalarını mevcut asistan mesajının gövdesine ekler.
+  // METİN DELTA PARCASI (stream-json formatı)
+  // Metin tokenlerini anlık olarak asistan mesajının gövdesine ekler.
+  // ---------------------------------------------------------------------------
+  function handleTextDeltaChunk(target, data) {
+    var msgContainer = getOrCreateStreamingMessage(target, data);
+    var body = msgContainer.querySelector('.cc-message-body');
+    if (!body) return;
+
+    // Ham metni biriktir
+    var currentText = body.getAttribute('data-raw-text') || '';
+    currentText += (data.html || '');
+    body.setAttribute('data-raw-text', currentText);
+
+    // Basit metin olarak göster (son biçimleme cc-stream-end ile yapılır)
+    body.innerHTML = simpleMarkdownToHtml(currentText);
+  }
+
+  // ---------------------------------------------------------------------------
+  // ARAÇ GİRDİSİ DELTA
+  // Araç girdisi JSON parçasını biriktirerek komut bilgisini günceller.
+  // Bu sayede kabuk komutu yazılırken kullanıcı canlı olarak görebilir.
+  // ---------------------------------------------------------------------------
+  function handleToolInputDelta(target, data) {
+    var msgContainer = target.querySelector('#cc-streaming-msg');
+    if (!msgContainer) return;
+
+    // Son araç bloğunu bul
+    var toolBlocks = msgContainer.querySelectorAll('.cc-tool-block');
+    if (toolBlocks.length === 0) return;
+    var lastBlock = toolBlocks[toolBlocks.length - 1];
+
+    // JSON parçasını biriktir
+    var currentJson = lastBlock.getAttribute('data-input-json') || '';
+    currentJson += (data.html || '');
+    lastBlock.setAttribute('data-input-json', currentJson);
+
+    // Komutu canlı göster (JSON tamamlanmamış olsa da)
+    var komut = extractCommandFromPartialJson(currentJson);
+    if (komut) {
+      var cmdEl = lastBlock.querySelector('.cc-tool-command');
+      if (!cmdEl) {
+        // Komut alanı yoksa oluştur
+        var contentDiv = lastBlock.querySelector('.cc-tool-content');
+        if (!contentDiv) {
+          contentDiv = document.createElement('div');
+          contentDiv.className = 'cc-tool-content cc-shell-content';
+          var resultDiv = lastBlock.querySelector('.cc-tool-result');
+          if (resultDiv) {
+            lastBlock.insertBefore(contentDiv, resultDiv);
+          } else {
+            lastBlock.appendChild(contentDiv);
+          }
+        }
+        contentDiv.innerHTML =
+          '<code class="cc-tool-command cc-shell-command">' +
+          '<span class="cc-shell-prompt">$ </span>' +
+          '<span class="cc-cmd-text"></span>' +
+          '<span class="cc-typing-cursor">|</span>' +
+          '</code>';
+        cmdEl = contentDiv.querySelector('.cc-cmd-text');
+      } else {
+        // Mevcut komut elemanı - sadece metin kısmını güncelle
+        var cmdText = cmdEl.querySelector('.cc-cmd-text');
+        if (cmdText) cmdEl = cmdText;
+      }
+      if (cmdEl) {
+        cmdEl.textContent = komut;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // İÇERİK BLOĞU TAMAMLANDI
+  // Araç girdisi deltası tamamlandığında son durumu günceller.
+  // ---------------------------------------------------------------------------
+  function handleContentBlockStop(target, data) {
+    var msgContainer = target.querySelector('#cc-streaming-msg');
+    if (!msgContainer) return;
+
+    // Yazma imlecini kaldır
+    var cursors = msgContainer.querySelectorAll('.cc-typing-cursor');
+    cursors.forEach(function(c) { c.remove(); });
+
+    // Son araç bloğunun girdisini tamamla
+    var toolBlocks = msgContainer.querySelectorAll('.cc-tool-block');
+    if (toolBlocks.length === 0) return;
+    var lastBlock = toolBlocks[toolBlocks.length - 1];
+
+    var inputJson = lastBlock.getAttribute('data-input-json') || '';
+    if (inputJson) {
+      // JSON tamamlandı - dosya yolunu veya aramayı göster
+      try {
+        var parsed = JSON.parse(inputJson);
+        updateToolBlockWithInput(lastBlock, parsed);
+      } catch (e) {
+        // JSON ayrıştırılamazsa mevcut görünümü koru
+      }
+      lastBlock.removeAttribute('data-input-json');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ARAÇ BLOĞUNU GİRDİ İLE GÜNCELLE
+  // Tamamlanmış araç girdisine göre dosya yolu, arama deseni vb. gösterir.
+  // ---------------------------------------------------------------------------
+  function updateToolBlockWithInput(block, input) {
+    var toolType = block.getAttribute('data-tool-type') || 'other';
+    var contentDiv = block.querySelector('.cc-tool-content');
+
+    if (toolType === 'file_read' && (input.path || input.file_path)) {
+      // Dosya okuma - dosya yolunu göster
+      if (!contentDiv) {
+        contentDiv = document.createElement('div');
+        contentDiv.className = 'cc-tool-content';
+        var resultDiv = block.querySelector('.cc-tool-result');
+        if (resultDiv) block.insertBefore(contentDiv, resultDiv);
+        else block.appendChild(contentDiv);
+      }
+      contentDiv.innerHTML =
+        '<span class="cc-tool-path">' +
+        '<i class="fas fa-file-code cc-tool-path-icon"></i> ' +
+        escapeHtml(input.path || input.file_path) +
+        '</span>';
+
+    } else if (toolType === 'file_write' && (input.path || input.file_path)) {
+      // Dosya yazma - dosya yolu ve önizleme
+      if (!contentDiv) {
+        contentDiv = document.createElement('div');
+        contentDiv.className = 'cc-tool-content';
+        var resultDiv = block.querySelector('.cc-tool-result');
+        if (resultDiv) block.insertBefore(contentDiv, resultDiv);
+        else block.appendChild(contentDiv);
+      }
+      var html = '<span class="cc-tool-path">' +
+        '<i class="fas fa-pen cc-tool-path-icon"></i> ' +
+        escapeHtml(input.path || input.file_path) + '</span>';
+
+      // Dosya içeriği önizlemesi
+      var fileContent = input.content || input.new_content || '';
+      if (fileContent) {
+        var lines = fileContent.split('\n');
+        var preview = lines.slice(0, 10).join('\n');
+        if (lines.length > 10) {
+          preview += '\n... (+' + (lines.length - 10) + ' satır daha)';
+        }
+        html += '<div class="cc-file-preview">' +
+          '<div class="cc-file-preview-header">' +
+          '<i class="fas fa-eye"></i> Dosya Önizlemesi</div>' +
+          '<pre class="cc-file-preview-content">' +
+          escapeHtml(preview) + '</pre></div>';
+      }
+      contentDiv.innerHTML = html;
+
+    } else if (toolType === 'search' && (input.pattern || input.query)) {
+      // Arama
+      if (!contentDiv) {
+        contentDiv = document.createElement('div');
+        contentDiv.className = 'cc-tool-content';
+        var resultDiv = block.querySelector('.cc-tool-result');
+        if (resultDiv) block.insertBefore(contentDiv, resultDiv);
+        else block.appendChild(contentDiv);
+      }
+      contentDiv.innerHTML =
+        '<span class="cc-tool-path">' +
+        '<i class="fas fa-search cc-tool-path-icon"></i> ' +
+        escapeHtml(input.pattern || input.query) + '</span>';
+    }
+    // bash komutu zaten handleToolInputDelta ile gösterildi
+  }
+
+  // ---------------------------------------------------------------------------
+  // METİN PARCASI EKLEME (eski format)
+  // Tam metin parçalarını mevcut asistan mesajının gövdesine ekler.
   // ---------------------------------------------------------------------------
   function handleTextChunk(target, data) {
     var msgContainer = getOrCreateStreamingMessage(target, data);
@@ -186,8 +365,7 @@
     currentText += (data.html || '');
     body.setAttribute('data-raw-text', currentText);
 
-    // Markdown'ı HTML'e dönüştür (basit düzeyde)
-    body.innerHTML = currentText;
+    body.innerHTML = simpleMarkdownToHtml(currentText);
   }
 
   // ---------------------------------------------------------------------------
@@ -301,6 +479,78 @@
 
     scrollToBottom(target);
   });
+
+  // ---------------------------------------------------------------------------
+  // YARDIMCI: KISMI JSON'DAN KOMUT ÇIKARMA
+  // Henüz tamamlanmamış JSON'dan "command" alanını çıkarmaya çalışır.
+  // ---------------------------------------------------------------------------
+  function extractCommandFromPartialJson(partialJson) {
+    // Tamamlanmış JSON ise ayrıştır
+    try {
+      var obj = JSON.parse(partialJson);
+      return obj.command || obj.cmd || null;
+    } catch (e) {
+      // Tamamlanmamış - regex ile çıkarmayı dene
+      var match = partialJson.match(/"(?:command|cmd)"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (match) return match[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+      // Hala yazılıyor olabilir - açık tırnak arasındaki metni al
+      var partialMatch = partialJson.match(/"(?:command|cmd)"\s*:\s*"((?:[^"\\]|\\.)*)$/);
+      if (partialMatch) return partialMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // YARDIMCI: HTML KAÇIŞ
+  // ---------------------------------------------------------------------------
+  function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // ---------------------------------------------------------------------------
+  // YARDIMCI: BASİT MARKDOWN -> HTML DÖNÜŞÜMÜ
+  // Akış sırasında ham metni okunabilir HTML'e çevirir.
+  // ---------------------------------------------------------------------------
+  function simpleMarkdownToHtml(text) {
+    if (!text) return '';
+
+    // Kod bloklarını koru (```)
+    var codeBlocks = [];
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
+      var idx = codeBlocks.length;
+      codeBlocks.push('<pre class="cc-code-block"><code>' + escapeHtml(code.trim()) + '</code></pre>');
+      return '___CODE_BLOCK_' + idx + '___';
+    });
+
+    // Satır içi kod
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Kalın
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // İtalik
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Başlıklar
+    text = text.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+    text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+
+    // Satır sonlarını <br> ile değiştir (paragraf ayrımı)
+    text = text.replace(/\n\n/g, '</p><p>');
+    text = text.replace(/\n/g, '<br>');
+
+    // Kod bloklarını geri koy
+    for (var i = 0; i < codeBlocks.length; i++) {
+      text = text.replace('___CODE_BLOCK_' + i + '___', codeBlocks[i]);
+    }
+
+    return '<p>' + text + '</p>';
+  }
 
   // ---------------------------------------------------------------------------
   // YARDIMCI: ALT KAYDIRMA

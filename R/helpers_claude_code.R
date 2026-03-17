@@ -394,21 +394,85 @@ parse_claude_code_json_output <- function(ham_cikti) {
   satirlar <- strsplit(ham_cikti, "\n")[[1]]
   metin_parcalari <- c()
 
+  # Araç girdisi delta biriktiricisi (stream-json formatı için)
+  arac_girdi_tamponlari <- list()
+
   for (satir in satirlar) {
     satir <- trimws(satir)
     if (!nzchar(satir)) next
 
     tryCatch({
       nesne <- jsonlite::fromJSON(satir, simplifyVector = FALSE)
-
       tur <- nesne$type %||% ""
 
+      # --- stream-json formatı (sarmalayıcı ile) ---
+      if (tur == "stream_event") {
+        olay <- nesne$event
+        if (is.null(olay)) next
+
+        # session_id sarmalayıcıda bulunur
+        if (!is.null(nesne$session_id) && nzchar(nesne$session_id %||% "")) {
+          sonuc$session_id <- nesne$session_id
+        }
+
+        olay_turu <- olay$type %||% ""
+
+        if (olay_turu == "content_block_start") {
+          blok <- olay$content_block
+          if (!is.null(blok) && (blok$type %||% "") == "tool_use") {
+            arac <- list(
+              id = blok$id %||% "",
+              name = blok$name %||% "",
+              input = blok$input %||% list()
+            )
+            sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
+            # Girdi tamponunu başlat
+            arac_girdi_tamponlari[[blok$id %||% ""]] <- ""
+          }
+
+        } else if (olay_turu == "content_block_delta") {
+          delta <- olay$delta
+          if (!is.null(delta)) {
+            delta_turu <- delta$type %||% ""
+            if (delta_turu == "text_delta") {
+              metin_parcalari <- c(metin_parcalari, delta$text %||% "")
+            } else if (delta_turu == "input_json_delta") {
+              # Araç girdisi parçasını biriktir (son araç için)
+              if (length(sonuc$tool_uses) > 0) {
+                son_arac_id <- sonuc$tool_uses[[length(sonuc$tool_uses)]]$id
+                mevcut <- arac_girdi_tamponlari[[son_arac_id]] %||% ""
+                arac_girdi_tamponlari[[son_arac_id]] <- paste0(
+                  mevcut, delta$partial_json %||% ""
+                )
+              }
+            }
+          }
+
+        } else if (olay_turu == "content_block_stop") {
+          # Araç girdisi tamponunu JSON olarak ayrıştır ve araca ata
+          if (length(sonuc$tool_uses) > 0) {
+            son_arac <- sonuc$tool_uses[[length(sonuc$tool_uses)]]
+            tampon <- arac_girdi_tamponlari[[son_arac$id]] %||% ""
+            if (nzchar(tampon)) {
+              tryCatch({
+                sonuc$tool_uses[[length(sonuc$tool_uses)]]$input <-
+                  jsonlite::fromJSON(tampon, simplifyVector = FALSE)
+              }, error = function(e) NULL)
+            }
+          }
+
+        } else if (olay_turu == "result") {
+          metin_parcalari <- c(metin_parcalari, olay$result %||% "")
+        }
+
+        next
+      }
+
+      # --- Eski json formatı (geriye uyumluluk) ---
       if (tur == "text") {
-        # Metin bloğu
         metin_parcalari <- c(metin_parcalari, nesne$content %||% "")
 
       } else if (tur == "tool_use") {
-        # Araç kullanımı (bash komutu, dosya okuma/yazma, vb.)
         arac <- list(
           id = nesne$id %||% "",
           name = nesne$name %||% "",
@@ -417,7 +481,6 @@ parse_claude_code_json_output <- function(ham_cikti) {
         sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
 
       } else if (tur == "tool_result") {
-        # Araç sonucu - ilgili araç kullanımına ekle
         arac_id <- nesne$tool_use_id %||% ""
         icerik <- nesne$content %||% ""
         for (j in seq_along(sonuc$tool_uses)) {
@@ -428,14 +491,12 @@ parse_claude_code_json_output <- function(ham_cikti) {
         }
 
       } else if (tur == "result") {
-        # Son sonuç bloğu - session_id bilgisini de al
         metin_parcalari <- c(metin_parcalari, nesne$result %||% "")
         if (!is.null(nesne$session_id) && nzchar(nesne$session_id %||% "")) {
           sonuc$session_id <- nesne$session_id
         }
 
       } else if (tur == "assistant") {
-        # Asistan mesajı - içerik bloklarını işle
         if (!is.null(nesne$content) && is.list(nesne$content)) {
           for (blok in nesne$content) {
             blok_tur <- blok$type %||% ""
@@ -454,12 +515,11 @@ parse_claude_code_json_output <- function(ham_cikti) {
       }
 
     }, error = function(e) {
-      # JSON ayrıştırma başarısız olursa ham satırı metin olarak ekle
       metin_parcalari <<- c(metin_parcalari, satir)
     })
   }
 
-  sonuc$text_output <- paste(metin_parcalari, collapse = "\n")
+  sonuc$text_output <- paste(metin_parcalari, collapse = "")
   return(sonuc)
 }
 
