@@ -801,6 +801,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # include-partial-messages ile metin parçaları da anlık gelir
       cli_args <- c(
         "--print",
+        "--verbose",
         "--output-format", "stream-json",
         "--include-partial-messages",
         "--dangerously-skip-permissions"
