@@ -168,8 +168,11 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
         immediate = TRUE
       )
 
-      # Varsayılan karakteri göster
-      update_character_display(settings$selected_character)
+      # Varsayılan karakteri göster (DOM'a eklendikten sonra)
+      # insertUI asenkron olduğu için kısa gecikme ile buton stillerini güncelle
+      shiny::onFlushed(function() {
+        update_character_display(settings$selected_character)
+      }, once = TRUE, session = session)
     }, once = TRUE, ignoreInit = FALSE)
 
     # Karakter görüntüsünü güncelleme fonksiyonu

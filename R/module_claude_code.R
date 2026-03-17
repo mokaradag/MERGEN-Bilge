@@ -21,14 +21,15 @@ claudeCodeUI <- function(id) {
 
   # Model katmanlarını oluştur
   katmanlar <- build_model_tier_choices(model_secenekleri)
-  # Etiketleri hizalı ikon ve metin ile oluştur
+  # Kısa etiketler (ikon + isim), açıklama tooltip ile gösterilir
   model_degerleri <- setNames(
     sapply(katmanlar, function(k) k$deger),
-    sapply(katmanlar, function(k) {
-      # Sabit genişlikte metin etiketi (hizalama için)
-      paste0("[", substr(toupper(k$etiket), 1, 1), "] ", k$etiket, " - ", k$aciklama)
-    })
+    sapply(katmanlar, function(k) k$etiket)
   )
+  # Açıklama ve ikon verilerini JSON olarak JavaScript'e iletmek için hazırla
+  model_meta <- lapply(katmanlar, function(k) {
+    list(deger = k$deger, etiket = k$etiket, ikon = k$ikon, aciklama = k$aciklama)
+  })
 
   tagList(
     div(
@@ -83,16 +84,39 @@ claudeCodeUI <- function(id) {
               )
             ),
 
-            # Model Seçimi (katmanlı dropdown)
+            # Model Seçimi (ikon + tooltip ile)
             div(
               class = "cc-model-select-wrapper",
               tags$label(class = "cc-select-label", "Model"),
-              selectInput(
+              div(
+                class = "cc-model-tier-group",
+                lapply(model_meta, function(m) {
+                  secili <- if (nzchar(varsayilan_model)) {
+                    identical(m$deger, varsayilan_model)
+                  } else {
+                    identical(m$etiket, "Dengeli")
+                  }
+                  tags$button(
+                    type = "button",
+                    class = paste0("cc-model-tier-btn", if (secili) " active" else ""),
+                    `data-value` = m$deger,
+                    `data-ikon` = m$ikon,
+                    title = m$aciklama,
+                    onclick = sprintf(
+                      "document.querySelectorAll('.cc-model-tier-btn').forEach(function(b){b.classList.remove('active')});this.classList.add('active');Shiny.setInputValue('%s',this.getAttribute('data-value'),{priority:'event'});",
+                      ns("model")
+                    ),
+                    tags$i(class = paste0("fas ", m$ikon)),
+                    tags$span(m$etiket)
+                  )
+                })
+              ),
+              # Başlangıç değerini Shiny'ye bildir
+              tags$script(sprintf(
+                "$(function(){Shiny.setInputValue('%s','%s');});",
                 ns("model"),
-                label = NULL,
-                choices = model_degerleri,
-                selected = if (nzchar(varsayilan_model)) varsayilan_model else NULL
-              )
+                if (nzchar(varsayilan_model)) gsub("'", "\\\\'", varsayilan_model) else ""
+              ))
             )
           ),
 
@@ -341,6 +365,18 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           displayName = karakter$display_name
         )
       )
+    })
+
+    # --- Yazı tipi boyutu değiştiğinde Claude Code sayfasına uygula ---
+    observe({
+      req(!is.null(settings_data))
+      boyut <- settings_data$font_size
+      if (!is.null(boyut) && nzchar(boyut)) {
+        session$sendCustomMessage(
+          type = "cc-update-font-size",
+          message = list(size = boyut)
+        )
+      }
     })
 
     # --- Kullanıcı adını belirle ---

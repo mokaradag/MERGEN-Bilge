@@ -15,7 +15,7 @@ $(document).ready(function() {
       btn.style.removeProperty('--character-accent-glow');
     });
 
-    const activeBtn = document.querySelector(`[data-character="${data.character}"]`);
+    const activeBtn = document.querySelector(`.character-btn[data-character="${data.character}"]`);
     if (!activeBtn) return;
 
     activeBtn.classList.add('active');
