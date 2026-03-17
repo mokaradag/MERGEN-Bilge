@@ -530,8 +530,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     })
 
     # --- Dizin İçeriğini Göster (tıklanabilir klasörlerle) ---
-    observe_dir_contents <- function() {
-      yol <- input$workdir
+    # dizin parametresi: later::later gibi reaktif olmayan bağlamlardan
+    # çağrıldığında input$workdir yerine kullanılır.
+    observe_dir_contents <- function(dizin = NULL) {
+      yol <- dizin %||% isolate(input$workdir)
       if (is.null(yol) || !nzchar(yol)) {
         output$dir_contents_ui <- renderUI({
           tags$p(class = "cc-dir-empty", "Proje dizini belirtilmedi.")
@@ -997,8 +999,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
               character = karakter_id
             )))
 
-            # Dizin içeriğini güncelle
-            observe_dir_contents()
+            # Dizin içeriğini güncelle (later::later bağlamı - dizin değerini geç)
+            observe_dir_contents(dizin = calisma_dizini)
           }
         }
 
