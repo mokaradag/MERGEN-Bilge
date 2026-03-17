@@ -398,6 +398,16 @@
     }
   });
 
+  // Yazı tipi boyutu güncelleme (Ayarlar sayfasından)
+  Shiny.addCustomMessageHandler('cc-update-font-size', function(data) {
+    var container = document.querySelector('.claude-code-container');
+    if (!container) return;
+    // Üst seviye content-wrapper'a sınıf ekle
+    var wrapper = container.closest('.content-wrapper') || container.closest('.tab-pane') || container;
+    wrapper.classList.remove('font-small', 'font-medium', 'font-large', 'font-xlarge');
+    wrapper.classList.add('font-' + (data.size || 'medium'));
+  });
+
   // Karakter teması güncelleme
   Shiny.addCustomMessageHandler('cc-update-theme', function(data) {
     var container = document.querySelector('.claude-code-container');

@@ -15,7 +15,7 @@ $(document).ready(function() {
       btn.style.removeProperty('--character-accent-glow');
     });
 
-    const activeBtn = document.querySelector(`[data-character="${data.character}"]`);
+    const activeBtn = document.querySelector(`.character-btn[data-character="${data.character}"]`);
     if (!activeBtn) return;
 
     activeBtn.classList.add('active');
@@ -41,7 +41,7 @@ $(document).ready(function() {
     activeBtn.style.setProperty('--character-accent-soft', hexToRgba(accentBase, 0.24));
     activeBtn.style.setProperty('--character-accent-glow', hexToRgba(accentHover, 0.48));
 
-    // Neural network animasyonunu karakter rengine gore guncelle
+    // Neural network animasyonunu karakter rengine göre güncelle
     var neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
     if (neuralCanvas && window.WelcomeNeuralNetwork) {
       window.WelcomeNeuralNetwork.destroy();

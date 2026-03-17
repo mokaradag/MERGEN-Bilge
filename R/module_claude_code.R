@@ -1,10 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: R/module_claude_code.R
-# Açıklama: Claude Code entegrasyon modülü. Kullanıcılara web arayüzü üzerinden
-#           Claude Code CLI yeteneklerini sunar. Dosya okuma/yazma, terminal
-#           komutları, araç kullanımı gibi tam ajan yetenekleri desteklenir.
-#           Karakter temalı 8-bit animasyonlar, araç kullanımı görüntüleme,
-#           retro karşılama ekranı ve Türkçe düşünme mesajları içerir.
+# Açıklama: Claude Code entegrasyon modülünün ana dosyası. UI tanımı ve sunucu
+#           mantığının giriş noktasını içerir. Klasör tarayıcı gözlemcileri
+#           module_claude_code_klasor.R dosyasında, canlı akış yardımcıları
+#           module_claude_code_akis.R dosyasında tanımlıdır.
 # ==============================================================================
 
 # ==============================================================================
@@ -21,14 +20,15 @@ claudeCodeUI <- function(id) {
 
   # Model katmanlarını oluştur
   katmanlar <- build_model_tier_choices(model_secenekleri)
-  # Etiketleri hizalı ikon ve metin ile oluştur
+  # Kısa etiketler (ikon + isim), açıklama tooltip ile gösterilir
   model_degerleri <- setNames(
     sapply(katmanlar, function(k) k$deger),
-    sapply(katmanlar, function(k) {
-      # Sabit genişlikte metin etiketi (hizalama için)
-      paste0("[", substr(toupper(k$etiket), 1, 1), "] ", k$etiket, " - ", k$aciklama)
-    })
+    sapply(katmanlar, function(k) k$etiket)
   )
+  # Açıklama ve ikon verilerini JSON olarak JavaScript'e iletmek için hazırla
+  model_meta <- lapply(katmanlar, function(k) {
+    list(deger = k$deger, etiket = k$etiket, ikon = k$ikon, aciklama = k$aciklama)
+  })
 
   tagList(
     div(
@@ -83,16 +83,39 @@ claudeCodeUI <- function(id) {
               )
             ),
 
-            # Model Seçimi (katmanlı dropdown)
+            # Model Seçimi (ikon + tooltip ile)
             div(
               class = "cc-model-select-wrapper",
               tags$label(class = "cc-select-label", "Model"),
-              selectInput(
+              div(
+                class = "cc-model-tier-group",
+                lapply(model_meta, function(m) {
+                  secili <- if (nzchar(varsayilan_model)) {
+                    identical(m$deger, varsayilan_model)
+                  } else {
+                    identical(m$etiket, "Dengeli")
+                  }
+                  tags$button(
+                    type = "button",
+                    class = paste0("cc-model-tier-btn", if (secili) " active" else ""),
+                    `data-value` = m$deger,
+                    `data-ikon` = m$ikon,
+                    title = m$aciklama,
+                    onclick = sprintf(
+                      "document.querySelectorAll('.cc-model-tier-btn').forEach(function(b){b.classList.remove('active')});this.classList.add('active');Shiny.setInputValue('%s',this.getAttribute('data-value'),{priority:'event'});",
+                      ns("model")
+                    ),
+                    tags$i(class = paste0("fas ", m$ikon)),
+                    tags$span(m$etiket)
+                  )
+                })
+              ),
+              # Başlangıç değerini Shiny'ye bildir
+              tags$script(sprintf(
+                "$(function(){Shiny.setInputValue('%s','%s');});",
                 ns("model"),
-                label = NULL,
-                choices = model_degerleri,
-                selected = if (nzchar(varsayilan_model)) varsayilan_model else NULL
-              )
+                if (nzchar(varsayilan_model)) gsub("'", "\\\\'", varsayilan_model) else ""
+              ))
             )
           ),
 
@@ -343,6 +366,18 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
+    # --- Yazı tipi boyutu değiştiğinde Claude Code sayfasına uygula ---
+    observe({
+      req(!is.null(settings_data))
+      boyut <- settings_data$font_size
+      if (!is.null(boyut) && nzchar(boyut)) {
+        session$sendCustomMessage(
+          type = "cc-update-font-size",
+          message = list(size = boyut)
+        )
+      }
+    })
+
     # --- Kullanıcı adını belirle ---
     kullanici_adi <- reactive({
       # Önce parametre olarak gelen adı dene
@@ -386,122 +421,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
-    # --- Sunucu taraflı klasör tarayıcı ---
+    # --- Sunucu taraflı klasör tarayıcı (module_claude_code_klasor.R) ---
     rv_browser <- reactiveValues(
       current_path = NULL,
       history = list()
     )
-
-    observeEvent(input$open_folder_browser, {
-      # Mevcut çalışma dizininden başla veya ana dizinden
-      baslangic <- input$workdir
-      if (is.null(baslangic) || !nzchar(baslangic) || !dir.exists(baslangic)) {
-        baslangic <- if (.Platform$OS.type == "windows") {
-          Sys.getenv("USERPROFILE", "C:/")
-        } else {
-          Sys.getenv("HOME", "/")
-        }
-      }
-      rv_browser$current_path <- normalizePath(baslangic, winslash = "/", mustWork = FALSE)
-
-      showModal(modalDialog(
-        title = tagList(icon("folder-tree"), "Klasör Seçici"),
-        size = "m",
-        easyClose = TRUE,
-        div(
-          class = "cc-folder-browser",
-          # Mevcut yol göstergesi
-          div(
-            class = "cc-fb-path-bar",
-            actionButton(ns("fb_go_up"), label = NULL, icon = icon("arrow-up"),
-                        class = "btn-sm", title = "Üst dizine git"),
-            tags$span(id = ns("fb_current_path"), class = "cc-fb-path-text")
-          ),
-          # Klasör listesi
-          div(class = "cc-fb-list-container",
-            uiOutput(ns("fb_folder_list"))
-          )
-        ),
-        footer = tagList(
-          actionButton(ns("fb_select"), "Bu Klasörü Seç",
-                      class = "btn-primary", icon = icon("check")),
-          modalButton("İptal")
-        )
-      ))
-    })
-
-    # Klasör tarayıcı yol göstergesini ve listeyi güncelle
-    observe({
-      req(rv_browser$current_path)
-      yol <- rv_browser$current_path
-
-      # Yol göstergesini güncelle
-      shinyjs::runjs(sprintf(
-        "var el = document.getElementById('%s'); if(el) el.textContent = '%s';",
-        ns("fb_current_path"),
-        gsub("\\\\", "\\\\\\\\", gsub("'", "\\\\'", yol))
-      ))
-
-      # Klasörleri listele
-      output$fb_folder_list <- renderUI({
-        if (!dir.exists(yol)) {
-          return(tags$p(class = "cc-dir-error", paste0("Dizin bulunamadı: ", yol)))
-        }
-        dosyalar <- tryCatch({
-          list.dirs(yol, full.names = TRUE, recursive = FALSE)
-        }, error = function(e) character(0))
-
-        if (length(dosyalar) == 0) {
-          return(tags$p(class = "cc-dir-empty", "Alt klasör bulunamadı."))
-        }
-
-        # En fazla 100 klasör göster
-        dosyalar <- head(dosyalar, 100)
-
-        tags$div(
-          class = "cc-fb-folder-list",
-          lapply(dosyalar, function(d) {
-            klasor_adi <- basename(d)
-            tam_yol <- normalizePath(d, winslash = "/", mustWork = FALSE)
-            tags$div(
-              class = "cc-dir-item cc-dir-klasor cc-dir-clickable",
-              onclick = sprintf(
-                "Shiny.setInputValue('%s', '%s', {priority: 'event'});",
-                ns("fb_navigate"),
-                gsub("'", "\\\\'", tam_yol)
-              ),
-              icon("folder"),
-              tags$span(class = "cc-dir-name", klasor_adi)
-            )
-          })
-        )
-      })
-    })
-
-    # Klasör tarayıcıda gezinme
-    observeEvent(input$fb_navigate, {
-      req(input$fb_navigate)
-      yeni_yol <- input$fb_navigate
-      if (dir.exists(yeni_yol)) {
-        rv_browser$current_path <- normalizePath(yeni_yol, winslash = "/", mustWork = FALSE)
-      }
-    })
-
-    # Üst dizine git
-    observeEvent(input$fb_go_up, {
-      req(rv_browser$current_path)
-      ust <- dirname(rv_browser$current_path)
-      if (dir.exists(ust) && ust != rv_browser$current_path) {
-        rv_browser$current_path <- normalizePath(ust, winslash = "/", mustWork = FALSE)
-      }
-    })
-
-    # Seçimi onayla
-    observeEvent(input$fb_select, {
-      req(rv_browser$current_path)
-      updateTextInput(session, "workdir", value = rv_browser$current_path)
-      removeModal()
-    })
+    init_klasor_gezgini_observers(input, output, session, ns, rv_browser)
 
     # --- Model değiştiğinde oturumu sıfırla ---
     # Farklı bir modele geçildiğinde önceki oturumun bağlamı geçersiz olur.
@@ -889,136 +814,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     # birikir ve yalnızca süreç bittiğinde toplu gönderilirdi.
     # =====================================================================
 
-    # --- Akış parçası gönderme yardımcısı ---
-    # stream-json formatındaki olayları istemciye iletir.
-    # text_delta: Metin parçası (anlık gösterilir)
-    # tool_use: Araç kullanımı başlangıcı (kabuk bloğu oluşturur)
-    # tool_input_delta: Araç girdisi parçası (komut bilgisi geldiğinde günceller)
-    # tool_result: Araç sonucu (mevcut bloğu günceller)
-    # content_block_stop: İçerik bloğu sonu
-    # assistant: Eski format uyumluluğu (alt blokları ayrı gönderir)
-    send_parca <- function(parca, env) {
-      if (is.null(parca)) return()
-
-      send_chunk <- function(tip, html, arac_id = "", ekstra = list()) {
-        mesaj <- c(
-          list(
-            target = ns("output_area"),
-            welcomeId = ns("welcome_screen"),
-            chunkType = tip,
-            html = html,
-            toolId = arac_id,
-            accentColor = env$karakter_renk,
-            characterName = env$karakter_adi,
-            timestamp = env$zaman_damgasi
-          ),
-          ekstra
-        )
-        session$sendCustomMessage(type = "cc-stream-chunk", message = mesaj)
-      }
-
-      tip <- parca$tip
-
-      if (tip == "text_delta") {
-        # Metin parçası - anlık olarak istemciye ilet
-        icerik <- parca$icerik %||% ""
-        if (nzchar(icerik)) {
-          send_chunk("text_delta", htmltools::htmlEscape(icerik))
-        }
-
-      } else if (tip == "tool_input_delta") {
-        # Araç girdisi JSON parçası - istemcide biriktirmek için ilet
-        send_chunk("tool_input_delta", parca$parcali_json %||% "",
-                   ekstra = list(blockIndex = parca$blok_indeks %||% 0))
-
-      } else if (tip == "content_block_stop") {
-        # İçerik bloğu tamamlandı - istemciye bildir
-        send_chunk("content_block_stop", "",
-                   ekstra = list(blockIndex = parca$blok_indeks %||% 0))
-
-      } else if (tip == "tool_use") {
-        # Araç kullanımı başladı - canlı kabuk bloğu oluştur
-        fmt <- format_streaming_chunk_html(parca)
-        if (!is.null(fmt)) {
-          send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
-        }
-
-      } else if (tip == "tool_result") {
-        # Araç sonucu geldi - mevcut bloğu güncelle
-        fmt <- format_streaming_chunk_html(parca)
-        if (!is.null(fmt)) {
-          send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
-        }
-
-      } else if (tip == "result") {
-        # Son sonuç - oturum kimliğini kaydet
-        if (!is.null(parca$session_id) && nzchar(parca$session_id %||% "")) {
-          env$oturum_id <- parca$session_id
-        }
-        # Son sonucu metin olarak gönder
-        fmt <- format_streaming_chunk_html(parca)
-        if (!is.null(fmt)) send_chunk("text", fmt$html)
-
-      } else if (tip == "assistant" && !is.null(parca$bloklar)) {
-        # Eski format: asistan mesajını alt bloklarına ayır
-        for (blok in parca$bloklar) {
-          blok_fmt <- format_streaming_chunk_html(blok)
-          if (!is.null(blok_fmt)) {
-            send_chunk(blok_fmt$tip, blok_fmt$html, blok_fmt$arac_id %||% "")
-          }
-        }
-
-      } else if (tip == "message_start" || tip == "message_delta" || tip == "message_stop") {
-        # Mesaj seviyesi olaylar - şimdilik yoksay
-        NULL
-
-      } else if (tip == "text" || tip == "raw_text") {
-        # Eski format metin veya ham metin
-        fmt <- format_streaming_chunk_html(parca)
-        if (!is.null(fmt)) {
-          send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
-        }
-      }
-    }
-
-    # --- Akış sonlandırma yardımcısı ---
-    finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL) {
-      rv$is_running <- FALSE
-      rv$active_process <- NULL
-      rv$stream_env <- NULL
-
-      # Düğmeleri güncelle
-      session$sendCustomMessage(
-        type = "cc-finalize-ui",
-        message = list(
-          runBtnId = ns("run_command"),
-          stopBtnId = ns("stop_command")
-        )
-      )
-
-      # Düşünme animasyonunu durdur
-      session$sendCustomMessage(
-        type = "cc-thinking-stop",
-        message = list(
-          overlayId = ns("thinking_overlay"),
-          statusId = ns("status_text"),
-          durationId = ns("duration_text")
-        )
-      )
-
-      # Durum çubuğunu güncelle
-      session$sendCustomMessage(
-        type = "cc-update-status",
-        message = list(
-          statusId = ns("status_text"),
-          durationId = ns("duration_text"),
-          status = durum_metin,
-          statusIcon = durum_ikon,
-          statusColor = durum_renk,
-          duration = if (!is.null(sure)) paste0(sure, " sn") else ""
-        )
-      )
-    }
+    # --- Akış yardımcıları (module_claude_code_akis.R) ---
+    akis <- create_akis_yardimcilari(session, ns, rv)
+    send_parca <- akis$send_parca
+    finalize_streaming <- akis$finalize_streaming
 
     # --- Yoklama gözlemcisi ---
     observe({

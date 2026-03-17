@@ -103,7 +103,9 @@ Shiny modules for major UI sections and features:
 - **`module_destek_hata_bildir.R`**: Bug report form (topics, categories, priority, attachments)
 - **`module_destek_hakkinda.R`**: About page with app features and page guide
 - **`module_quick_actions.R`**: Quick action buttons
-- **`module_claude_code.R`**: Claude Code agent integration page (claudeCodeUI + claudeCodeServer). Wraps Claude Code CLI via processx for full agent capabilities. Character-themed 8-bit animations, scenario templates, connection testing, directory browser
+- **`module_claude_code.R`**: Claude Code agent integration page (claudeCodeUI + claudeCodeServer). Wraps Claude Code CLI via processx for full agent capabilities. Character-themed 8-bit animations, scenario templates, connection testing
+- **`module_claude_code_klasor.R`**: Claude Code klasör tarayıcı alt modülü. Sunucu taraflı modal klasör seçme, gezinme ve onaylama gözlemcileri
+- **`module_claude_code_akis.R`**: Claude Code canlı akış yardımcıları. Akış parçası gönderme (send_parca) ve akış sonlandırma (finalize_streaming) fonksiyonları
 - **`module_message_search.R`**: Message search functionality
 - **`module_chat_search.R`**: Chat history search
 - **`module_user_identity.R`**: User identification and authentication
@@ -659,7 +661,9 @@ www/css/sso_auth.css                 # SSO auth overlay styling (loading spinner
 **For Claude Code Work**:
 1. `R/config_claude_code.R` - Configuration constants, model tiers, thinking messages, pre-defined scenarios, status styles
 2. `R/helpers_claude_code.R` - CLI interaction (run_claude_code with JSON output, parse_claude_code_json_output, build_model_tier_choices, format_tool_uses_html, status check, connection test, workspace management)
-3. `R/module_claude_code.R` - Main UI and server module (claudeCodeUI + claudeCodeServer) with folder browser, auto connection test, user name display, character theme switching
+3. `R/module_claude_code.R` - Main UI and server module (claudeCodeUI + claudeCodeServer) with auto connection test, user name display, character theme switching
+4. `R/module_claude_code_klasor.R` - Folder browser sub-module (modal, navigation, selection)
+5. `R/module_claude_code_akis.R` - Streaming helpers (send_parca, finalize_streaming)
 4. `R/module_settings_yapilandirma.R` - Claude Code configuration card (timeout, connection test, CLI status) in Yapilandirma page
 5. `www/css/claude_code.css` - Styling (character theme variables, fixed layout, tool use blocks, miniaturized animation, welcome screen, folder browser modal)
 6. `www/js/claude_code.js` - Client-side logic (mini pixel engine, tool use toggle, thinking message rotation, theme updates, keyboard shortcuts)

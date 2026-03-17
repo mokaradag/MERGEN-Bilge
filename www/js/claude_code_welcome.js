@@ -231,17 +231,18 @@
   var currentAccent = '#7C4DFF';
 
   // -------------------------------------------------------------------------
-  // YILDIZ ARKA PLANI
+  // YILDIZ ARKA PLANI (derinlik katmanlı)
   // -------------------------------------------------------------------------
   function initStars(count, width, height) {
     var stars = [];
     for (var i = 0; i < count; i++) {
       stars.push({
         x: Math.random() * width,
-        y: Math.random() * height,
-        size: Math.random() * 2 + 0.5,
+        y: Math.random() * (height * 0.65),
+        size: Math.random() * 2.5 + 0.5,
         speed: Math.random() * 0.3 + 0.1,
-        twinkle: Math.random() * Math.PI * 2
+        twinkle: Math.random() * Math.PI * 2,
+        layer: Math.floor(Math.random() * 3)
       });
     }
     return stars;
@@ -250,9 +251,11 @@
   function drawStars(ctx, stars, frame, width, height) {
     for (var i = 0; i < stars.length; i++) {
       var s = stars[i];
-      var alpha = 0.3 + Math.sin(s.twinkle + frame * 0.02) * 0.3;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#ffffff';
+      var layerAlpha = [0.2, 0.4, 0.7][s.layer];
+      var alpha = layerAlpha + Math.sin(s.twinkle + frame * 0.02) * 0.25;
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      var renk = s.layer === 2 ? '#E8E8FF' : (s.layer === 1 ? '#CCE0FF' : '#AABBDD');
+      ctx.fillStyle = renk;
       ctx.fillRect(Math.floor(s.x), Math.floor(s.y), Math.ceil(s.size), Math.ceil(s.size));
       s.twinkle += s.speed * 0.05;
     }
@@ -406,20 +409,72 @@
   }
 
   // -------------------------------------------------------------------------
-  // ZEMİN ÇİZİMİ
+  // ARKA PLAN MANZARA ÇİZİMİ (piksel sanat tarzı doğa)
   // -------------------------------------------------------------------------
-  function drawGround(ctx, width, height, accentColor) {
+  function drawLandscape(ctx, width, height, accentColor, frame) {
     var groundY = height * 0.78;
-    ctx.fillStyle = accentColor || '#7C4DFF';
-    ctx.globalAlpha = 0.3;
-    for (var i = 0; i < width; i += 4) {
-      ctx.fillRect(i, groundY, 2, 2);
-    }
+
+    // Gökyüzü gradyanı (koyu mor-mavi)
+    var grad = ctx.createLinearGradient(0, 0, 0, groundY);
+    grad.addColorStop(0, '#0a0a1a');
+    grad.addColorStop(0.4, '#0f0f2e');
+    grad.addColorStop(0.7, '#1a1535');
+    grad.addColorStop(1, '#1e1040');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, groundY);
+
+    // Arka plan dağlar (piksel tarzı siluet)
+    ctx.fillStyle = '#151530';
+    drawPixelMountains(ctx, width, groundY, 0.5, 0.18, 40);
+    ctx.fillStyle = '#1a1a3d';
+    drawPixelMountains(ctx, width, groundY, 0.65, 0.12, 30);
+
+    // Zemin (piksel çimen tarzı)
+    var groundGrad = ctx.createLinearGradient(0, groundY, 0, height);
+    groundGrad.addColorStop(0, '#1a2810');
+    groundGrad.addColorStop(0.3, '#152008');
+    groundGrad.addColorStop(1, '#0d1505');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, groundY, width, height - groundY);
+
+    // Çimen detayları (piksel noktalar)
+    var accent = accentColor || '#7C4DFF';
     ctx.globalAlpha = 0.15;
-    for (var j = 0; j < width; j += 8) {
-      ctx.fillRect(j, groundY + 6, 4, 1);
+    ctx.fillStyle = '#2d4a1a';
+    for (var i = 0; i < width; i += 4) {
+      var h = Math.sin(i * 0.1 + frame * 0.01) * 2 + 2;
+      ctx.fillRect(i, groundY - h, 2, h);
+    }
+
+    // Zemin çizgi (vurgu rengi ile)
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = accent;
+    for (var j = 0; j < width; j += 3) {
+      ctx.fillRect(j, groundY, 2, 1);
+    }
+    ctx.globalAlpha = 0.12;
+    for (var k = 0; k < width; k += 6) {
+      ctx.fillRect(k, groundY + 4, 3, 1);
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Piksel tarzı dağ silueti
+  function drawPixelMountains(ctx, width, baseY, heightRatio, variance, stepSize) {
+    var mountainH = baseY * heightRatio;
+    ctx.beginPath();
+    ctx.moveTo(0, baseY);
+    for (var x = 0; x <= width; x += stepSize) {
+      var noise = Math.sin(x * 0.008) * mountainH * 0.6 +
+                  Math.sin(x * 0.02 + 1.5) * mountainH * 0.25 +
+                  Math.sin(x * 0.05 + 3) * mountainH * 0.1;
+      var y = baseY - mountainH * 0.3 - noise * variance * 3;
+      // Piksel hizalama (doğru)
+      ctx.lineTo(Math.floor(x), Math.floor(y));
+    }
+    ctx.lineTo(width, baseY);
+    ctx.closePath();
+    ctx.fill();
   }
 
   // -------------------------------------------------------------------------
@@ -438,6 +493,13 @@
   // -------------------------------------------------------------------------
   // ANA ANİMASYON DÖNGÜSÜ
   // -------------------------------------------------------------------------
+  // Retro metinler (MERGEN Bilge hakkında bilgilendirici)
+  var retroMetinler = [
+    'MERGEN BİLGE',
+    'Yapay Zekâ Asistanı',
+    'Türkçe - Akıllı - Güvenilir'
+  ];
+
   function welcomeAnimLoop() {
     if (!welcomeCanvas || !welcomeCtx) return;
 
@@ -449,28 +511,36 @@
     // Arka planı temizle
     welcomeCtx.clearRect(0, 0, w, h);
 
+    // Manzara arka planı (gökyüzü, dağlar, zemin)
+    drawLandscape(welcomeCtx, w, h, currentAccent, welcomeFrame);
+
     // Yıldızları çiz
     drawStars(welcomeCtx, welcomeStars, welcomeFrame, w, h);
 
-    // Zemin
-    drawGround(welcomeCtx, w, h, currentAccent);
-
-    // Başlık metni
-    var titleAlpha = 0.6 + Math.sin(welcomeFrame * 0.03) * 0.2;
+    // Başlık metni - MERGEN BİLGE
+    var titleSize = Math.min(28, Math.max(16, w / 18));
+    var titleAlpha = 0.7 + Math.sin(welcomeFrame * 0.025) * 0.2;
     welcomeCtx.globalAlpha = titleAlpha;
-    drawRetroText(welcomeCtx, 'CLAUDE CODE', w / 2, h * 0.15, Math.min(24, w / 20), currentAccent, 'rgba(0,0,0,0.5)');
-    welcomeCtx.globalAlpha = 0.5;
-    drawRetroText(welcomeCtx, 'Ajan Terminali', w / 2, h * 0.24, Math.min(14, w / 35), '#aaaaaa', null);
-    welcomeCtx.globalAlpha = 1;
+    drawRetroText(welcomeCtx, retroMetinler[0], w / 2, h * 0.12, titleSize, currentAccent, 'rgba(0,0,0,0.6)');
 
-    // Alt bilgi metni
-    welcomeCtx.globalAlpha = 0.3 + Math.sin(welcomeFrame * 0.05) * 0.15;
-    drawRetroText(welcomeCtx, 'Bir komut yazarak basla...', w / 2, h * 0.92, Math.min(11, w / 45), '#888888', null);
+    // Alt başlık
+    welcomeCtx.globalAlpha = 0.55;
+    var subSize = Math.min(14, Math.max(10, w / 40));
+    drawRetroText(welcomeCtx, retroMetinler[1], w / 2, h * 0.20, subSize, '#cccccc', null);
+
+    // Slogan
+    welcomeCtx.globalAlpha = 0.4;
+    var sloganSize = Math.min(11, Math.max(8, w / 50));
+    drawRetroText(welcomeCtx, retroMetinler[2], w / 2, h * 0.27, sloganSize, '#999999', null);
+
+    // Ajan Terminali etiketi
+    welcomeCtx.globalAlpha = 0.45 + Math.sin(welcomeFrame * 0.04) * 0.15;
+    drawRetroText(welcomeCtx, '[ AJAN TERMINALI ]', w / 2, h * 0.35, Math.min(12, w / 45), currentAccent, null);
     welcomeCtx.globalAlpha = 1;
 
     // Karakterleri güncelle ve çiz - ölçek canvas boyutuna göre ayarlanır
-    var charScale = Math.max(3, Math.min(5, Math.min(w / 180, h / 80)));
-    var charNames = { mergen: 'MERGEN', ulgen: 'ULGEN', kayra: 'KAYRA', erlik: 'ERLIK', umay: 'UMAY' };
+    var charScale = Math.max(3, Math.min(6, Math.min(w / 150, h / 70)));
+    var charNames = { mergen: 'MERGEN', ulgen: 'ÜLGEN', kayra: 'KAYRA', erlik: 'ERLİK', umay: 'UMAY' };
 
     for (var i = 0; i < welcomeChars.length; i++) {
       var ch = welcomeChars[i];
@@ -481,15 +551,21 @@
         : ch.charData.idle;
 
       // Gölge
-      welcomeCtx.globalAlpha = 0.2;
+      welcomeCtx.globalAlpha = 0.25;
       welcomeCtx.fillStyle = ch.colors.dark;
-      var shadowW = 16 * charScale * 0.6;
-      welcomeCtx.fillRect(ch.x - shadowW / 2, ch.baseY + 2, shadowW, 3);
+      var shadowW = 16 * charScale * 0.7;
+      welcomeCtx.fillRect(ch.x - shadowW / 2, ch.baseY + 2, shadowW, 4);
       welcomeCtx.globalAlpha = 1;
 
       drawPixelSprite(welcomeCtx, pixels, ch.x, ch.y, charScale, ch.colors, ch.facingRight);
       drawNameTag(welcomeCtx, charNames[ch.id] || ch.id, ch.x, ch.y, ch.colors.main);
     }
+
+    // Alt bilgi metni (daha kompakt)
+    welcomeCtx.globalAlpha = 0.3 + Math.sin(welcomeFrame * 0.05) * 0.1;
+    var bottomSize = Math.min(10, Math.max(8, w / 55));
+    drawRetroText(welcomeCtx, '> komut yaz, Enter\'a bas _', w / 2, h * 0.93, bottomSize, '#666666', null);
+    welcomeCtx.globalAlpha = 1;
 
     welcomeFrame++;
     welcomeAnimId = requestAnimationFrame(welcomeAnimLoop);
@@ -556,7 +632,7 @@
     // Mantıksal boyutlarla başlat
     var logicalW = welcomeCanvas.width / dpr;
     var logicalH = welcomeCanvas.height / dpr;
-    welcomeStars = initStars(60, logicalW, logicalH);
+    welcomeStars = initStars(100, logicalW, logicalH);
     welcomeChars = initCharacters(logicalW, logicalH);
     welcomeFrame = 0;
 
@@ -614,7 +690,11 @@
   // -------------------------------------------------------------------------
   // GENEL ERİŞİM FONKSİYONLARI (claude_code.js tarafından çağrılabilir)
   // -------------------------------------------------------------------------
-  window.ccStartWelcome = startWelcomeScreen;
+  window.ccStartWelcome = function(containerId) {
+    welcomeBaslatildi = false;
+    startWelcomeScreen(containerId);
+    welcomeBaslatildi = true;
+  };
   window.ccStopWelcome = stopWelcomeScreen;
   window.ccUpdateWelcomeTheme = function(characterId, accent) {
     if (CHAR_COLORS[characterId]) {
@@ -653,30 +733,35 @@
     stopWelcomeScreen();
   });
 
-  // Sayfa ilk yüklendiğinde otomatik başlat (konteyner görünür olduğunda)
-  $(document).on('shiny:connected', function() {
-    var denemeSayisi = 0;
-    var maxDeneme = 15;
-    function dene() {
-      denemeSayisi++;
-      var welcomeEls = document.querySelectorAll('.cc-welcome-screen');
-      var baslatildi = false;
-      welcomeEls.forEach(function(el) {
-        if (el.id && el.classList.contains('cc-welcome-active')) {
-          var rect = el.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            startWelcomeScreen(el.id);
-            baslatildi = true;
-          }
+  // Karşılama ekranı ilk kez gösterildiğinde otomatik başlat
+  // Sekme değişikliğini dinleyerek Claude Code sekmesi görünür olduğunda tetikler
+  var welcomeBaslatildi = false;
+
+  function karsilamaBaslat() {
+    if (welcomeBaslatildi) return;
+    var welcomeEls = document.querySelectorAll('.cc-welcome-screen.cc-welcome-active');
+    welcomeEls.forEach(function(el) {
+      if (el.id) {
+        var rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          startWelcomeScreen(el.id);
+          welcomeBaslatildi = true;
         }
-      });
-      // Henüz başlatılamadıysa ve deneme hakkı varsa tekrar dene
-      if (!baslatildi && denemeSayisi < maxDeneme) {
-        setTimeout(dene, 500);
       }
+    });
+  }
+
+  // Sekme değişikliğinde kontrol et (shinydashboard sekme geçişleri)
+  $(document).on('shiny:inputchanged', function(e) {
+    if (e.name === 'tabs' && e.value === 'claude_code') {
+      // Sekme geçiş animasyonu tamamlandıktan sonra başlat
+      setTimeout(karsilamaBaslat, 300);
     }
-    // İlk denemeyi kısa gecikme ile başlat
-    setTimeout(dene, 500);
+  });
+
+  // Shiny bağlandığında da dene (sayfa doğrudan Claude Code sekmesinde açılırsa)
+  $(document).on('shiny:connected', function() {
+    setTimeout(karsilamaBaslat, 800);
   });
 
 })();

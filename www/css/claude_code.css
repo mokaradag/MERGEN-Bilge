@@ -170,6 +170,52 @@
   margin-bottom: 0;
 }
 
+/* --- Model Katman Düğmeleri --- */
+.cc-model-tier-group {
+  display: flex;
+  gap: 6px;
+}
+
+.cc-model-tier-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--input-bg, #0d0d1a);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  color: var(--text-secondary, #aaa);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cc-model-tier-btn:hover {
+  border-color: var(--cc-theme-accent);
+  color: var(--text-primary, #e0e0e0);
+  background: rgba(124, 77, 255, 0.06);
+}
+
+.cc-model-tier-btn.active {
+  border-color: var(--cc-theme-accent);
+  background: rgba(124, 77, 255, 0.15);
+  color: #fff;
+  font-weight: 600;
+}
+
+.cc-model-tier-btn.active i {
+  color: var(--cc-theme-accent);
+}
+
+.cc-model-tier-btn i {
+  font-size: 13px;
+  color: var(--text-secondary, #888);
+  transition: color 0.2s;
+}
+
 /* --- Giriş Alanları --- */
 .cc-settings-card .form-group {
   margin-bottom: 10px;
@@ -533,37 +579,110 @@
   font-size: inherit;
 }
 
+/* Kod blokları (pre > code) - koyu tema uyumlu */
 .cc-message-body pre {
-  background: rgba(0, 0, 0, 0.3);
+  background: #1e1e1e;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  padding: 12px;
+  border-radius: 8px;
+  padding: 14px;
   overflow-x: auto;
-  font-size: 12px;
-  line-height: 1.5;
-  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 10px 0;
+  color: #d4d4d4;
 }
 
+.cc-message-body pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Satır içi kod - koyu tema uyumlu (kırmızı/beyaz değil!) */
 .cc-message-body code {
   font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
-  font-size: 12px;
+  font-size: 0.9em;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6c07b;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.cc-message-body p { margin: 4px 0; }
+/* Kod bloğu renkleri (sözdizimi vurgulama benzeri) */
+.cc-code-block {
+  background: #1e1e1e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 10px 0;
+  color: #d4d4d4;
+}
+
+.cc-code-block code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  color: inherit;
+}
+
+.cc-message-body p { margin: 6px 0; }
 
 .cc-message-body h1,
 .cc-message-body h2,
 .cc-message-body h3,
 .cc-message-body h4 {
-  margin: 12px 0 6px;
+  margin: 14px 0 8px;
   color: var(--text-primary, #e0e0e0);
+  font-weight: 600;
 }
+
+.cc-message-body h1 { font-size: 1.4em; }
+.cc-message-body h2 { font-size: 1.25em; }
+.cc-message-body h3 { font-size: 1.1em; }
+.cc-message-body h4 { font-size: 1.05em; }
 
 .cc-message-body ul,
 .cc-message-body ol {
   padding-left: 20px;
-  margin: 4px 0;
+  margin: 6px 0;
 }
+
+.cc-message-body li {
+  margin: 3px 0;
+}
+
+.cc-message-body strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.cc-message-body em {
+  color: #b0b0b0;
+}
+
+.cc-message-body a {
+  color: var(--cc-theme-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Yazı tipi boyutu ayarlar sayfası ile uyum */
+.font-small .cc-message-body { font-size: 13px; }
+.font-medium .cc-message-body { font-size: 14px; }
+.font-large .cc-message-body { font-size: 16px; }
+.font-xlarge .cc-message-body { font-size: 18px; }
+
+.font-small .cc-message { font-size: 13px; }
+.font-medium .cc-message { font-size: 14px; }
+.font-large .cc-message { font-size: 16px; }
+.font-xlarge .cc-message { font-size: 18px; }
 
 /* =============================================================================
    ARAÇ KULLANIMI BLOKLARI (kabuk komutları, dosya işlemleri)
@@ -692,7 +811,7 @@
 
 /* --- Komut Giriş Alanı (sabit altta, asla taşmaz) --- */
 .cc-input-area {
-  padding: 12px 16px;
+  padding: 8px 16px;
   border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
   background: var(--input-bg, rgba(13, 13, 26, 0.5));
   flex-shrink: 0;
@@ -713,9 +832,9 @@
   color: var(--text-primary, #e0e0e0);
   font-family: 'Fira Code', 'Consolas', monospace;
   font-size: 13px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   resize: vertical;
-  min-height: 60px;
+  min-height: 44px;
   max-height: 200px;
   transition: border-color 0.2s;
   outline: none;
