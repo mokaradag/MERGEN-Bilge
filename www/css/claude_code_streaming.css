@@ -185,3 +185,45 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* --- Yazma İmleci (araç girdisi canlı yazım) --- */
+.cc-typing-cursor {
+  color: #64B5F6;
+  font-weight: 700;
+  animation: cc-cursor-blink 0.8s step-end infinite;
+}
+
+@keyframes cc-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* --- Kod Blokları (akış sırasında basit markdown) --- */
+.cc-message-body .cc-code-block {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+
+.cc-message-body .cc-code-block code {
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: #e0e0e0;
+  background: none;
+  padding: 0;
+}
+
+/* --- Akış sırasında metin gövdesi --- */
+.cc-message-streaming .cc-message-body p {
+  margin: 4px 0;
+}
+
+/* --- Araç girdisi canlı yazım alanı --- */
+.cc-shell-content .cc-cmd-text {
+  color: #81C784;
+}

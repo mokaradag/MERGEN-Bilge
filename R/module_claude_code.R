@@ -792,13 +792,17 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       stream_env$calisma_dizini <- calisma_dizini
       stream_env$tum_satirlar <- character(0)
       stream_env$durduruldu <- FALSE
+      stream_env$oturum_id <- NULL  # stream-json olaylarından gelecek
       rv$stream_env <- stream_env
       rv$poll_state <- stream_env
 
       # CLI argümanlarını oluştur
+      # stream-json formatı olayları gerçek zamanlı olarak satır satır verir
+      # include-partial-messages ile metin parçaları da anlık gelir
       cli_args <- c(
         "--print",
-        "--output-format", "json",
+        "--output-format", "stream-json",
+        "--include-partial-messages",
         "--dangerously-skip-permissions"
       )
       if (!is.null(model) && nzchar(model)) {
@@ -885,15 +889,19 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     # =====================================================================
 
     # --- Akış parçası gönderme yardımcısı ---
-    # "assistant" mesajlarını alt bloklarına ayırarak her birini
-    # kendi tipinde (text/tool_use) ayrı ayrı gönderir.
+    # stream-json formatındaki olayları istemciye iletir.
+    # text_delta: Metin parçası (anlık gösterilir)
+    # tool_use: Araç kullanımı başlangıcı (kabuk bloğu oluşturur)
+    # tool_input_delta: Araç girdisi parçası (komut bilgisi geldiğinde günceller)
+    # tool_result: Araç sonucu (mevcut bloğu günceller)
+    # content_block_stop: İçerik bloğu sonu
+    # assistant: Eski format uyumluluğu (alt blokları ayrı gönderir)
     send_parca <- function(parca, env) {
       if (is.null(parca)) return()
 
-      send_chunk <- function(tip, html, arac_id = "") {
-        session$sendCustomMessage(
-          type = "cc-stream-chunk",
-          message = list(
+      send_chunk <- function(tip, html, arac_id = "", ekstra = list()) {
+        mesaj <- c(
+          list(
             target = ns("output_area"),
             welcomeId = ns("welcome_screen"),
             chunkType = tip,
@@ -902,24 +910,69 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             accentColor = env$karakter_renk,
             characterName = env$karakter_adi,
             timestamp = env$zaman_damgasi
-          )
+          ),
+          ekstra
         )
+        session$sendCustomMessage(type = "cc-stream-chunk", message = mesaj)
       }
 
-      if (parca$tip == "assistant" && !is.null(parca$bloklar)) {
-        # Asistan mesajını alt bloklarına ayır ve her birini ayrı gönder
+      tip <- parca$tip
+
+      if (tip == "text_delta") {
+        # Metin parçası - anlık olarak istemciye ilet
+        icerik <- parca$icerik %||% ""
+        if (nzchar(icerik)) {
+          send_chunk("text_delta", htmltools::htmlEscape(icerik))
+        }
+
+      } else if (tip == "tool_input_delta") {
+        # Araç girdisi JSON parçası - istemcide biriktirmek için ilet
+        send_chunk("tool_input_delta", parca$parcali_json %||% "",
+                   ekstra = list(blockIndex = parca$blok_indeks %||% 0))
+
+      } else if (tip == "content_block_stop") {
+        # İçerik bloğu tamamlandı - istemciye bildir
+        send_chunk("content_block_stop", "",
+                   ekstra = list(blockIndex = parca$blok_indeks %||% 0))
+
+      } else if (tip == "tool_use") {
+        # Araç kullanımı başladı - canlı kabuk bloğu oluştur
+        fmt <- format_streaming_chunk_html(parca)
+        if (!is.null(fmt)) {
+          send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
+        }
+
+      } else if (tip == "tool_result") {
+        # Araç sonucu geldi - mevcut bloğu güncelle
+        fmt <- format_streaming_chunk_html(parca)
+        if (!is.null(fmt)) {
+          send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
+        }
+
+      } else if (tip == "result") {
+        # Son sonuç - oturum kimliğini kaydet
+        if (!is.null(parca$session_id) && nzchar(parca$session_id %||% "")) {
+          env$oturum_id <- parca$session_id
+        }
+        # Son sonucu metin olarak gönder
+        fmt <- format_streaming_chunk_html(parca)
+        if (!is.null(fmt)) send_chunk("text", fmt$html)
+
+      } else if (tip == "assistant" && !is.null(parca$bloklar)) {
+        # Eski format: asistan mesajını alt bloklarına ayır
         for (blok in parca$bloklar) {
           blok_fmt <- format_streaming_chunk_html(blok)
           if (!is.null(blok_fmt)) {
             send_chunk(blok_fmt$tip, blok_fmt$html, blok_fmt$arac_id %||% "")
           }
         }
-      } else if (parca$tip == "result") {
-        # Sonuç mesajını metin olarak gönder
-        fmt <- format_streaming_chunk_html(parca)
-        if (!is.null(fmt)) send_chunk("text", fmt$html)
-      } else {
-        # Diğer tipler (text, tool_use, tool_result, raw_text)
+
+      } else if (tip == "message_start" || tip == "message_delta" || tip == "message_stop") {
+        # Mesaj seviyesi olaylar - şimdilik yoksay
+        NULL
+
+      } else if (tip == "text" || tip == "raw_text") {
+        # Eski format metin veya ham metin
         fmt <- format_streaming_chunk_html(parca)
         if (!is.null(fmt)) {
           send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
@@ -1044,7 +1097,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           }
         }, error = function(e) NULL)
 
-        # Tam çıktıyı ayrıştır
+        # Tam çıktıyı ayrıştır (stream-json ve eski json formatı uyumlu)
         tam_cikti <- paste(env$tum_satirlar, collapse = "\n")
         ayristirma <- parse_claude_code_json_output(tam_cikti)
         cikis_kodu <- proc$get_exit_status()
@@ -1053,9 +1106,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         if (identical(cikis_kodu, 0L)) {
           log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış tamamlandı - Süre:", sure, "sn"))
 
-          # Oturum kimliğini kaydet
-          if (!is.null(ayristirma$session_id) && nzchar(ayristirma$session_id %||% "")) {
-            rv$cli_session_id <- ayristirma$session_id
+          # Oturum kimliğini kaydet (akış sırasında veya ayrıştırma sonucu)
+          oturum_id <- env$oturum_id %||% ayristirma$session_id
+          if (!is.null(oturum_id) && nzchar(oturum_id %||% "")) {
+            rv$cli_session_id <- oturum_id
           }
 
           # Konuşma bağlamına ekle
@@ -1063,10 +1117,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             list(role = "assistant", content = ayristirma$text_output)
           ))
 
-          # Son içeriği HTML olarak biçimlendir
+          # Akış mesajını sonlandır
+          # stream-json modunda metin zaten anlık gösterildiği için
+          # finalContent yalnızca yedek olarak gönderilir
           son_icerik <- format_claude_code_output(ayristirma$text_output)
 
-          # Akış mesajını sonlandır
           session$sendCustomMessage(
             type = "cc-stream-end",
             message = list(
@@ -1083,7 +1138,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             success = TRUE, output = ayristirma$text_output,
             error = "", duration = sure,
             tool_uses = ayristirma$tool_uses,
-            session_id = ayristirma$session_id
+            session_id = oturum_id
           )
 
           finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure)

@@ -60,10 +60,11 @@ run_claude_code_streaming <- function(prompt,
     ))
   }
 
-  # CLI argümanları
+  # CLI argümanları (stream-json ile gerçek zamanlı çıktı)
   args <- c(
     "--print",
-    "--output-format", "json",
+    "--output-format", "stream-json",
+    "--include-partial-messages",
     "--dangerously-skip-permissions"
   )
 
@@ -205,49 +206,40 @@ run_claude_code_streaming <- function(prompt,
 # ------------------------------------------------------------------------------
 # TEK SATIR JSONL AYRIŞTIRMA (AKIŞ PARCASI)
 # Her satırı ayrıştırıp tip ve içerik bilgisi döndürür.
+# stream-json formatı: {"type":"stream_event","event":{...},"session_id":"..."}
+# Eski json formatı da geriye uyumluluk için desteklenir.
 # ------------------------------------------------------------------------------
 
 #' Akış parçasını (tek JSONL satırı) ayrıştır
 #'
+#' stream-json formatında her satır bir stream_event sarmalayıcısı içerir.
+#' İç olay (event) Anthropic API akış formatını takip eder:
+#' content_block_start, content_block_delta, content_block_stop,
+#' message_start, message_delta, message_stop vb.
+#'
 #' @param satir Tek bir JSON satırı
-#' @return Liste: tip (text/tool_use/tool_result/result), veri (içerik)
-#'         veya NULL (ayrıştırılamazsa)
+#' @return Liste: tip ve ilgili veriler, veya NULL
 parse_streaming_chunk <- function(satir) {
   tryCatch({
     nesne <- jsonlite::fromJSON(satir, simplifyVector = FALSE)
     tur <- nesne$type %||% ""
 
+    # --- stream-json formatı (sarmalayıcı ile) ---
+    if (tur == "stream_event") {
+      olay <- nesne$event
+      if (is.null(olay)) return(NULL)
+      oturum_id <- nesne$session_id %||% NULL
+      return(parse_stream_event(olay, oturum_id))
+    }
+
+    # --- Eski json formatı (geriye uyumluluk) ---
     if (tur == "text") {
-      # Metin parçası
-      return(list(
-        tip = "text",
-        icerik = nesne$content %||% ""
-      ))
+      return(list(tip = "text", icerik = nesne$content %||% ""))
 
     } else if (tur == "tool_use") {
-      # Araç kullanımı başladı (kabuk komutu, dosya okuma/yazma vb.)
-      girdi <- nesne$input %||% list()
-      arac_adi <- nesne$name %||% ""
-
-      # Araç türünü belirle
-      arac_turu <- detect_tool_type(arac_adi)
-
-      return(list(
-        tip = "tool_use",
-        arac_id = nesne$id %||% "",
-        arac_adi = arac_adi,
-        arac_turu = arac_turu,
-        girdi = girdi,
-        # Kabuk komutu ise komutu çıkar
-        komut = girdi$command %||% girdi$cmd %||% "",
-        # Dosya işlemi ise yolu çıkar
-        dosya_yolu = girdi$path %||% girdi$file_path %||% "",
-        # Dosya yazma ise içeriği çıkar
-        dosya_icerigi = girdi$content %||% girdi$new_content %||% ""
-      ))
+      return(parse_tool_use_nesne(nesne))
 
     } else if (tur == "tool_result") {
-      # Araç sonucu geldi
       return(list(
         tip = "tool_result",
         arac_id = nesne$tool_use_id %||% "",
@@ -255,7 +247,6 @@ parse_streaming_chunk <- function(satir) {
       ))
 
     } else if (tur == "result") {
-      # Son sonuç
       return(list(
         tip = "result",
         icerik = nesne$result %||% "",
@@ -263,7 +254,6 @@ parse_streaming_chunk <- function(satir) {
       ))
 
     } else if (tur == "assistant") {
-      # Asistan mesajı (içerik blokları)
       bloklar <- list()
       if (!is.null(nesne$content) && is.list(nesne$content)) {
         for (blok in nesne$content) {
@@ -271,18 +261,7 @@ parse_streaming_chunk <- function(satir) {
           if (blok_tur == "text") {
             bloklar <- c(bloklar, list(list(tip = "text", icerik = blok$text %||% "")))
           } else if (blok_tur == "tool_use") {
-            arac_turu <- detect_tool_type(blok$name %||% "")
-            girdi <- blok$input %||% list()
-            bloklar <- c(bloklar, list(list(
-              tip = "tool_use",
-              arac_id = blok$id %||% "",
-              arac_adi = blok$name %||% "",
-              arac_turu = arac_turu,
-              girdi = girdi,
-              komut = girdi$command %||% girdi$cmd %||% "",
-              dosya_yolu = girdi$path %||% girdi$file_path %||% "",
-              dosya_icerigi = girdi$content %||% girdi$new_content %||% ""
-            )))
+            bloklar <- c(bloklar, list(parse_tool_use_nesne(blok)))
           }
         }
       }
@@ -291,9 +270,136 @@ parse_streaming_chunk <- function(satir) {
 
     return(NULL)
   }, error = function(e) {
-    # JSON ayrıştırılamadıysa ham metin olarak döndür
     return(list(tip = "raw_text", icerik = satir))
   })
+}
+
+# ------------------------------------------------------------------------------
+# STREAM-JSON OLAY AYRIŞTIRMA
+# Anthropic API akış formatındaki olayları dahili tiplere dönüştürür.
+# ------------------------------------------------------------------------------
+
+#' stream-json formatındaki bir olayı ayrıştır
+#'
+#' @param olay İç olay nesnesi (event alanı)
+#' @param oturum_id Oturum kimliği (sarmalayıcıdan)
+#' @return Ayrıştırılmış parça listesi veya NULL
+parse_stream_event <- function(olay, oturum_id = NULL) {
+  olay_turu <- olay$type %||% ""
+
+  if (olay_turu == "content_block_start") {
+    # İçerik bloğu başlangıcı (metin veya araç kullanımı)
+    blok <- olay$content_block
+    if (is.null(blok)) return(NULL)
+    blok_turu <- blok$type %||% ""
+
+    if (blok_turu == "tool_use") {
+      # Araç kullanımı başladı - girdi henüz boş, sonra delta ile gelecek
+      arac_adi <- blok$name %||% ""
+      arac_turu <- detect_tool_type(arac_adi)
+      return(list(
+        tip = "tool_use",
+        arac_id = blok$id %||% "",
+        arac_adi = arac_adi,
+        arac_turu = arac_turu,
+        girdi = blok$input %||% list(),
+        komut = "",
+        dosya_yolu = "",
+        dosya_icerigi = "",
+        # Hangi içerik bloğu olduğunu takip et
+        blok_indeks = olay$index %||% 0
+      ))
+    } else if (blok_turu == "text") {
+      # Metin bloğu başlangıcı (genelde boş, delta ile dolar)
+      ilk_metin <- blok$text %||% ""
+      if (nzchar(ilk_metin)) {
+        return(list(tip = "text_delta", icerik = ilk_metin))
+      }
+      return(NULL)
+    }
+    return(NULL)
+
+  } else if (olay_turu == "content_block_delta") {
+    # İçerik parçası (metin veya araç girdisi delta)
+    delta <- olay$delta
+    if (is.null(delta)) return(NULL)
+    delta_turu <- delta$type %||% ""
+
+    if (delta_turu == "text_delta") {
+      # Metin parçası - anlık olarak gösterilecek
+      return(list(
+        tip = "text_delta",
+        icerik = delta$text %||% ""
+      ))
+
+    } else if (delta_turu == "input_json_delta") {
+      # Araç girdisi JSON parçası - biriktirmek gerekir
+      return(list(
+        tip = "tool_input_delta",
+        parcali_json = delta$partial_json %||% "",
+        blok_indeks = olay$index %||% 0
+      ))
+    }
+    return(NULL)
+
+  } else if (olay_turu == "content_block_stop") {
+    # İçerik bloğu sonu
+    return(list(
+      tip = "content_block_stop",
+      blok_indeks = olay$index %||% 0
+    ))
+
+  } else if (olay_turu == "message_start") {
+    # Mesaj başlangıcı (model bilgisi içerir)
+    mesaj <- olay$message
+    return(list(
+      tip = "message_start",
+      model = if (!is.null(mesaj)) mesaj$model %||% "" else ""
+    ))
+
+  } else if (olay_turu == "message_delta") {
+    # Mesaj seviyesi güncelleme (durdurma nedeni, token kullanımı)
+    return(list(tip = "message_delta"))
+
+  } else if (olay_turu == "message_stop") {
+    # Mesaj tamamlandı
+    return(list(tip = "message_stop"))
+
+  } else if (olay_turu == "result") {
+    # Son sonuç
+    return(list(
+      tip = "result",
+      icerik = olay$result %||% "",
+      session_id = oturum_id
+    ))
+  }
+
+  return(NULL)
+}
+
+# ------------------------------------------------------------------------------
+# ARAÇ KULLANIMI NESNE AYRIŞTIRMA YARDIMCISI
+# tool_use tipindeki nesneleri standart formata dönüştürür.
+# ------------------------------------------------------------------------------
+
+#' Araç kullanımı nesnesini standart formata dönüştür
+#' @param nesne tool_use JSON nesnesi
+#' @return Standart araç kullanımı listesi
+parse_tool_use_nesne <- function(nesne) {
+  girdi <- nesne$input %||% list()
+  arac_adi <- nesne$name %||% ""
+  arac_turu <- detect_tool_type(arac_adi)
+
+  list(
+    tip = "tool_use",
+    arac_id = nesne$id %||% "",
+    arac_adi = arac_adi,
+    arac_turu = arac_turu,
+    girdi = girdi,
+    komut = girdi$command %||% girdi$cmd %||% "",
+    dosya_yolu = girdi$path %||% girdi$file_path %||% "",
+    dosya_icerigi = girdi$content %||% girdi$new_content %||% ""
+  )
 }
 
 # ------------------------------------------------------------------------------
