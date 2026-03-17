@@ -424,6 +424,40 @@
   });
 
   // -------------------------------------------------------------------------
+  // ARAYÜZ DURUMU GÜNCELLEME (later::later bağlamından güvenli çağrı)
+  // shinyjs oturum bulamadığında çökmeyi önlemek için doğrudan DOM günceller.
+  // -------------------------------------------------------------------------
+
+  // Akış sonlandırma: düğmeleri güncelle (çalıştır etkinleştir, durdur gizle)
+  Shiny.addCustomMessageHandler('cc-finalize-ui', function(data) {
+    // Çalıştır düğmesini etkinleştir
+    if (data.runBtnId) {
+      var runBtn = document.getElementById(data.runBtnId);
+      if (runBtn) {
+        runBtn.disabled = false;
+        runBtn.removeAttribute('disabled');
+      }
+    }
+    // Durdur düğmesini gizle
+    if (data.stopBtnId) {
+      var stopBtn = document.getElementById(data.stopBtnId);
+      if (stopBtn) {
+        stopBtn.classList.add('cc-hidden');
+      }
+    }
+  });
+
+  // Eleman metin içeriğini güncelle (dizin yolu vb.)
+  Shiny.addCustomMessageHandler('cc-update-element-text', function(data) {
+    if (data.elementId) {
+      var el = document.getElementById(data.elementId);
+      if (el) {
+        el.textContent = data.text || '';
+      }
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // KLAVYE KISAYOLLARI VE DÜĞME TIKLAMA YÖNETİMİ
   // -------------------------------------------------------------------------
 
