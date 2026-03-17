@@ -163,7 +163,9 @@ safe_source("R/module_performance.R",      encoding = "UTF-8")
 safe_source("R/module_user_identity.R",    encoding = "UTF-8")
 safe_source("R/module_startup_screen.R",   encoding = "UTF-8")
 safe_source("R/module_quick_actions.R",    encoding = "UTF-8")
-safe_source("R/module_claude_code.R",     encoding = "UTF-8")
+safe_source("R/module_claude_code_klasor.R", encoding = "UTF-8")  # Claude Code klasör tarayıcı
+safe_source("R/module_claude_code_akis.R",   encoding = "UTF-8")  # Claude Code akış yardımcıları
+safe_source("R/module_claude_code.R",        encoding = "UTF-8")  # Claude Code ana modülü
 
 # -- Proje Analiz Modülleri --
 safe_source("R/module_proje_kaynak_analizi.R", encoding = "UTF-8")
