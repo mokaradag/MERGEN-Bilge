@@ -10,21 +10,21 @@
 # tamponunu parse eder; böylece dosya düzeyindeki encoding hatasını tamamen atlar.
 safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
   source(file, encoding = encoding, local = envir)
-}
+  }
 
-# 1. Global yapılandırmayı ve tüm yardımcı/modül dosyalarını yükle.
-#    Böylece tüm kütüphaneler, fonksiyonlar ve modül tanımları kullanılabilir olur.
-#    global.R ayrıca dokümantasyonun açık olması için safe_source() fonksiyonunu
-#    (aynı kopya) tekrar tanımlar.
-safe_source("global.R", encoding = "UTF-8")
+  # 1. Global yapılandırmayı ve tüm yardımcı/modül dosyalarını yükle.
+  #    Böylece tüm kütüphaneler, fonksiyonlar ve modül tanımları kullanılabilir olur.
+  #    global.R ayrıca dokümantasyonun açık olması için safe_source() fonksiyonunu
+  #    (aynı kopya) tekrar tanımlar.
+  safe_source("global.R", encoding = "UTF-8")
 
-# 2. Kullanıcı arayüzü tanımını yükle.
-#    Bu işlem `ui` nesnesini yükler.
-safe_source("ui.R", encoding = "UTF-8")
+  # 2. Kullanıcı arayüzü tanımını yükle.
+  #    Bu işlem `ui` nesnesini yükler.
+  safe_source("ui.R", encoding = "UTF-8")
 
-# 3. Sunucu (server) mantığını yükle.
-#    Bu işlem `server` fonksiyonunu yükler.
-safe_source("server.R", encoding = "UTF-8")
+  # 3. Sunucu (server) mantığını yükle.
+  #    Bu işlem `server` fonksiyonunu yükler.
+  safe_source("server.R", encoding = "UTF-8")
 
 # 4. Uygulamayı çalıştır.
 #    runApp(".") kullanarak uygulama dizinini belirtiriz; böylece Shiny
