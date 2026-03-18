@@ -153,6 +153,7 @@ safe_source("R/module_api_key.R",                encoding = "UTF-8")
 safe_source("R/module_ai_processing.R",    encoding = "UTF-8")
 safe_source("R/module_ai_expert.R",        encoding = "UTF-8")
 safe_source("R/module_tts.R",              encoding = "UTF-8")
+safe_source("R/module_tts_visualizer.R",   encoding = "UTF-8")
 safe_source("R/module_stt.R",              encoding = "UTF-8")
 safe_source("R/module_character_video.R",  encoding = "UTF-8")
 
@@ -190,6 +191,8 @@ safe_source("R/module_admin_analytics.R",             encoding = "UTF-8")
 safe_source("R/module_admin_geri_bildirim.R",         encoding = "UTF-8")
 safe_source("R/module_admin_hata_analizi.R",          encoding = "UTF-8")
 safe_source("R/module_admin_yanit_analizi.R",         encoding = "UTF-8")
+safe_source("R/module_health.R",                      encoding = "UTF-8")
+safe_source("R/module_chartlab.R",                    encoding = "UTF-8")
 
 # ------------------------------------------------------------------------------
 # GRUP 7: Sunucu Tarafı İşleyiciler ve Gözlemciler
@@ -215,6 +218,7 @@ safe_source("R/server_ai_expert_handlers.R", encoding = "UTF-8")
 
 # -- Hoş Geldin Ekranı --
 safe_source("welcome_screen.R",            encoding = "UTF-8")
+safe_source("R/welcome_screen_modern.R",   encoding = "UTF-8")
 safe_source("R/server_welcome_handlers.R",  encoding = "UTF-8")
 
 # -- Gözlemciler (Observer'lar) --
