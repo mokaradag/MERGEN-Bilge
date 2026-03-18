@@ -43,7 +43,7 @@ createStartupScreenUI <- function() {
       # Şirket logosu (sol üst köşe)
       tags$div(
         class = "deep-space-company-logo",
-        tags$img(src = "company_logo.png", alt = "Şirket Logosu")
+        tags$img(src = "img/company_logo.png", alt = "Şirket Logosu")
       ),
 
       # Sürüm bilgilendirme rozeti (sağ üst köşe)

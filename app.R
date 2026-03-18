@@ -38,6 +38,10 @@ safe_source("server.R", encoding = "UTF-8")
 for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
   addResourcePath(subdir, file.path("www", subdir))
 }
+# www/ kök dizinindeki dosyalar (mergen_avatar.png, company_logo.png vb.)
+# boş prefix ile kaydedilemez. "img" prefix'i ile www/ kök dizinini kaydet.
+# Kodda bu dosyalar "img/dosya.png" şeklinde referans edilir.
+addResourcePath("img", "www")
 
 # 5. Uygulamayı çalıştır.
 runApp(shinyApp(ui = ui, server = server),

@@ -13,7 +13,7 @@ ui <- dashboardPage(
       class = "navbar-brand",
       span(class = "brand-logo", 
         tags$img(
-          src = "mergen_avatar.png",
+          src = "img/mergen_avatar.png",
           alt = "MERGEN",
           style = "width: 100%; height: 100%; object-fit: cover; border-radius: 10px;"
         )
@@ -78,7 +78,7 @@ ui <- dashboardPage(
     tags$script(HTML("document.documentElement.lang = 'tr'")),
     tags$meta(charset = "UTF-8"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
-    tags$link(rel = "icon", type = "image/png", href = "mergen_avatar.png"),
+    tags$link(rel = "icon", type = "image/png", href = "img/mergen_avatar.png"),
     
     # --- Yerel CSS Dosyaları ---
     tags$link(rel = "stylesheet", type = "text/css", href = "css/fonts.css"),

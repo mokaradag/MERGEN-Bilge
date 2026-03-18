@@ -147,7 +147,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       chars_data <- get_characters_data()
       char_info <- Find(function(x) x$id == char_id, chars_data$styles)
 
-      avatar_src <- if (!is.null(char_info)) char_info$avatar else "mergen_avatar.png"
+      avatar_src <- if (!is.null(char_info)) char_info$avatar else "img/mergen_avatar.png"
       accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
 
       # Yazı tipi boyutunu ayarlardan al
