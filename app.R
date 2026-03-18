@@ -26,13 +26,21 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
   #    Bu işlem `server` fonksiyonunu yükler.
   safe_source("server.R", encoding = "UTF-8")
 
-# 4. Uygulamayı çalıştır.
-#    runApp(".") kullanarak uygulama dizinini belirtiriz; böylece Shiny
-#    www/ klasörünü otomatik olarak bulur ve statik kaynakları (CSS, JS, resim)
-#    doğru şekilde sunar. Bu hem "Run App" butonu hem de Ctrl+Enter ile çalışır.
-#    Dosyalar zaten yukarıda yüklendiği için Shiny'nin tekrar source etmesi
-#    zararsızdır — aynı nesneler üzerine yazılır.
-runApp(".",
+# 4. www/ alt klasörlerini kaynak yolu olarak kaydet.
+#    "Run App" butonu runApp(appDir) kullanır ve www/ otomatik sunulur.
+#    Ancak Ctrl+Enter ile çalıştırıldığında shinyApp(ui, server) uygulama
+#    dizinini bilmez; bu yüzden www/ kaynakları bulunamaz.
+#    runApp(".") kullanılamaz çünkü:
+#      - app.R'ı tekrar source ederek özyineleme yaratır
+#      - normalizePath ile uzun yolları (>260 karakter) çözemez (Windows VM sorunu)
+#    Çözüm: Her www/ alt klasörünü kendi adıyla kaydet.
+#    Örn: addResourcePath("css", "www/css") → /css/style.css URL'si çalışır.
+for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
+  addResourcePath(subdir, file.path("www", subdir))
+}
+
+# 5. Uygulamayı çalıştır.
+runApp(shinyApp(ui = ui, server = server),
 	host = "0.0.0.0",
 	port = 8000,
 	launch.browser = TRUE,
