@@ -50,28 +50,31 @@ if (is.na(SSO_CONFIG$token_refresh_margin_secs)) SSO_CONFIG$token_refresh_margin
 # ==============================================================================
 # KEYCLOAK URL'LERİ (TÜRETME)
 # ==============================================================================
-# Keycloak uç noktalarını otomatik olarak oluştur
+# Keycloak uç noktalarını otomatik olarak oluştur.
+# SSO_KEYCLOAK_URL iki formatta kabul edilir:
+#   1. Sadece sunucu URL'si: https://keycloak.example.com
+#   2. Tam issuer URL'si:    https://keycloak.example.com/realms/my_realm
+# Her iki durumda da doğru uç noktalar türetilir.
 if (nzchar(SSO_CONFIG$keycloak_base_url)) {
-  SSO_CONFIG$auth_endpoint <- sprintf(
-    "%s/realms/%s/protocol/openid-connect/auth",
-    SSO_CONFIG$keycloak_base_url,
-    SSO_CONFIG$realm
-  )
-  SSO_CONFIG$logout_endpoint <- sprintf(
-    "%s/realms/%s/protocol/openid-connect/logout",
-    SSO_CONFIG$keycloak_base_url,
-    SSO_CONFIG$realm
-  )
-  SSO_CONFIG$token_endpoint <- sprintf(
-    "%s/realms/%s/protocol/openid-connect/token",
-    SSO_CONFIG$keycloak_base_url,
-    SSO_CONFIG$realm
-  )
-  SSO_CONFIG$issuer_url <- sprintf(
-    "%s/realms/%s",
-    SSO_CONFIG$keycloak_base_url,
-    SSO_CONFIG$realm
-  )
+  # URL'nin sonundaki eğik çizgiyi temizle
+  keycloak_url_clean <- sub("/+$", "", SSO_CONFIG$keycloak_base_url)
+
+  # URL zaten /realms/{realm} içeriyor mu kontrol et
+  realm_suffix <- paste0("/realms/", SSO_CONFIG$realm)
+  if (grepl(paste0(realm_suffix, "$"), keycloak_url_clean, fixed = FALSE)) {
+    # SSO_KEYCLOAK_URL zaten issuer URL'si formatında (örn: .../realms/byd_intranet_apps)
+    # Realm tekrar eklenmemeli - doğrudan issuer URL olarak kullan
+    issuer_base <- keycloak_url_clean
+  } else {
+    # SSO_KEYCLOAK_URL sadece sunucu adresi (örn: https://keycloak.example.com)
+    # Realm bilgisini ekle
+    issuer_base <- paste0(keycloak_url_clean, "/realms/", SSO_CONFIG$realm)
+  }
+
+  SSO_CONFIG$issuer_url      <- issuer_base
+  SSO_CONFIG$auth_endpoint   <- paste0(issuer_base, "/protocol/openid-connect/auth")
+  SSO_CONFIG$logout_endpoint <- paste0(issuer_base, "/protocol/openid-connect/logout")
+  SSO_CONFIG$token_endpoint  <- paste0(issuer_base, "/protocol/openid-connect/token")
 } else if (isTRUE(SSO_ENABLED)) {
   warning("SSO_ENABLED=TRUE ancak SSO_KEYCLOAK_URL tanımlanmamış! Keycloak çalışmayacak.")
 }
@@ -99,7 +102,9 @@ SSO_CLAIM_MAP <- list(
 # ==============================================================================
 if (isTRUE(SSO_ENABLED)) {
   log_info("SSO modu AKTİF - Keycloak kimlik doğrulama kullanılacak")
-  log_info("SSO Keycloak URL: {SSO_CONFIG$keycloak_base_url}")
+  log_info("SSO Keycloak URL (girilen): {SSO_CONFIG$keycloak_base_url}")
+  log_info("SSO Issuer URL (türetilen): {SSO_CONFIG$issuer_url}")
+  log_info("SSO Auth Endpoint: {SSO_CONFIG$auth_endpoint}")
   log_info("SSO Realm: {SSO_CONFIG$realm}")
   log_info("SSO Client ID: {SSO_CONFIG$client_id}")
 } else {
