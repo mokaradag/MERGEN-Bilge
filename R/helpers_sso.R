@@ -220,9 +220,11 @@ build_sso_logout_url <- function(redirect_uri = NULL) {
 #' Kullanıcı Yetki Seviyesini Veritabanından Al
 #' @description DC01_user_base tablosundan kullanıcının yetki seviyesini sorgular.
 #'   Keycloak ile giriş yapan kullanıcının uygulamaya erişim hakkını doğrular.
+#'   Önce KullaniciAdi ile, bulunamazsa sicil (SicilNo) ile eşleşme dener.
 #' @param username Keycloak'tan gelen preferred_username
+#' @param sicil Keycloak'tan gelen sicil numarası (opsiyonel, yedek eşleşme için)
 #' @return Liste: list(authorized = TRUE/FALSE, yetki = ..., masraf_yeri_kodu = ...)
-check_user_authorization <- function(username) {
+check_user_authorization <- function(username, sicil = NULL) {
   if (is.null(username) || !nzchar(username)) {
     return(list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL))
   }
@@ -232,11 +234,23 @@ check_user_authorization <- function(username) {
     conn <- conn_info$conn
     on.exit(release_connection(conn_info))
 
-    query <- "SELECT KaynakAdi, Yetki, MasrafYeriKodu FROM DC01_user_base WHERE LOWER(KullaniciAdi) = LOWER(?)"
+    # 1. Önce KullaniciAdi ile eşleştir (preferred_username -> KullaniciAdi)
+    query <- "SELECT KaynakAdi, Yetki, MasrafYeriKodu, KullaniciAdi FROM DC01_user_base WHERE LOWER(KullaniciAdi) = LOWER(?)"
     result <- dbGetQuery(conn, query, params = list(username))
+
+    log_info("SSO yetki sorgusu: preferred_username='{username}', bulunan={nrow(result)} kayıt")
+
+    # 2. KullaniciAdi ile bulunamazsa sicil numarası ile dene
+    if (nrow(result) == 0 && !is.null(sicil) && nzchar(sicil)) {
+      log_info("SSO yetki: KullaniciAdi ile bulunamadı, sicil ile deneniyor: {sicil}")
+      query_sicil <- "SELECT KaynakAdi, Yetki, MasrafYeriKodu, KullaniciAdi FROM DC01_user_base WHERE LOWER(KullaniciAdi) = LOWER(?)"
+      result <- dbGetQuery(conn, query_sicil, params = list(sicil))
+      log_info("SSO yetki sorgusu (sicil): bulunan={nrow(result)} kayıt")
+    }
 
     if (nrow(result) > 0) {
       row <- result[1, ]
+      log_info("SSO yetki: Kullanıcı bulundu - DB.KullaniciAdi='{row$KullaniciAdi}', Yetki='{row$Yetki}'")
       list(
         authorized      = TRUE,
         yetki           = row$Yetki %||% "USER",
@@ -244,7 +258,7 @@ check_user_authorization <- function(username) {
         kaynak_adi      = row$KaynakAdi
       )
     } else {
-      log_warn("Kullanıcı DC01_user_base tablosunda bulunamadı: {username}")
+      log_warn("Kullanıcı DC01_user_base tablosunda bulunamadı: username='{username}', sicil='{sicil %||% 'YOK'}'")
       list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL)
     }
   }, error = function(e) {
