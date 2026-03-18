@@ -28,4 +28,9 @@ safe_source("server.R", encoding = "UTF-8")
 
 # 4. Uygulamayı çalıştır.
 #    Bu fonksiyon UI ve server bileşenlerini alır ve Shiny uygulamasını başlatır.
-shinyApp(ui = ui, server = server)
+runApp(shinyApp(ui = ui, server = server),
+	host = "0.0.0.0",
+	port = 8000,
+	launch.browser = TRUE,
+	quiet = TRUE
+)
