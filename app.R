@@ -26,15 +26,13 @@ safe_source("ui.R", encoding = "UTF-8")
 #    Bu işlem `server` fonksiyonunu yükler.
 safe_source("server.R", encoding = "UTF-8")
 
-# 4. www/ klasörünü kaynak yolu olarak kaydet.
-#    "Run App" butonu runApp(".") kullandığında www/ otomatik sunulur.
-#    Ancak Ctrl+Enter ile çalıştırmada shinyApp(ui, server) uygulama
-#    dizinini bilmez; bu yüzden www/ kaynakları bulunamaz.
-addResourcePath("", normalizePath("www"))
-
-# 5. Uygulamayı çalıştır.
-#    Bu fonksiyon UI ve server bileşenlerini alır ve Shiny uygulamasını başlatır.
-runApp(shinyApp(ui = ui, server = server),
+# 4. Uygulamayı çalıştır.
+#    runApp(".") kullanarak uygulama dizinini belirtiriz; böylece Shiny
+#    www/ klasörünü otomatik olarak bulur ve statik kaynakları (CSS, JS, resim)
+#    doğru şekilde sunar. Bu hem "Run App" butonu hem de Ctrl+Enter ile çalışır.
+#    Dosyalar zaten yukarıda yüklendiği için Shiny'nin tekrar source etmesi
+#    zararsızdır — aynı nesneler üzerine yazılır.
+runApp(".",
 	host = "0.0.0.0",
 	port = 8000,
 	launch.browser = TRUE,
