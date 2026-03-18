@@ -114,9 +114,7 @@ ssoAuthServer <- function(id) {
         return()
       }
 
-      if (isTRUE(SSO_CONFIG$debug_mode)) {
-        log_info("SSO: JWT token alındı, doğrulama başlatılıyor...")
-      }
+      log_info("SSO: JWT token alındı (uzunluk={nchar(token)}), doğrulama başlatılıyor...")
 
       # Token doğrulama
       validation <- validate_jwt_token(token)
@@ -145,7 +143,8 @@ ssoAuthServer <- function(id) {
       }
 
       # Veritabanından yetki kontrolü
-      auth_info <- check_user_authorization(claims$username)
+      # preferred_username ile eşleşme yapılır, bulunamazsa sicil ile denenir
+      auth_info <- check_user_authorization(claims$username, sicil = claims$sicil)
 
       if (!isTRUE(auth_info$authorized)) {
         log_warn("SSO: Kullanıcı yetkisiz - {claims$username}")
