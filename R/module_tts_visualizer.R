@@ -65,7 +65,7 @@ ttsVisualizerServer <- function(id, settings_data) {
 
       display_name <- if (!is.null(char_info)) char_info$display_name else "MERGEN"
       accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
-      avatar_src <- if (!is.null(char_info) && !is.null(char_info$avatar)) char_info$avatar else "mergen_avatar.png"
+      avatar_src <- if (!is.null(char_info) && !is.null(char_info$avatar)) char_info$avatar else "img/mergen_avatar.png"
 
       # 1. İçeriği Güncelle (Resim, İsim, Renkler)
       shinyjs::runjs(sprintf("$('#%s').attr('src', '%s');", ns("char_avatar"), avatar_src))

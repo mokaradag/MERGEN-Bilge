@@ -324,7 +324,7 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
               class = "ai-avatar",
               style = "overflow: hidden; width: 40px; height: 40px;",
               tags$img(
-                src = if (!is.null(character_data)) character_data$avatar else "mergen_avatar.png",
+                src = if (!is.null(character_data)) character_data$avatar else "img/mergen_avatar.png",
                 alt = if (!is.null(character_data)) character_data$display_name else "MERGEN Bilge",
                 style = "width: 100%; height: 100%; object-fit: cover;",
                 onerror = "this.style.display='none'; this.parentElement.classList.add('gradient-ai'); this.parentElement.innerHTML='<i class=\"fas fa-magic\"></i>';"

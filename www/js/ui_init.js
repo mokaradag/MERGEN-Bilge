@@ -81,6 +81,6 @@ $(document).ready(function() {
       link.type = 'image/png';
       document.head.appendChild(link);
     }
-    link.href = 'mergen_avatar.png';
+    link.href = 'img/mergen_avatar.png';
   })();
 });
