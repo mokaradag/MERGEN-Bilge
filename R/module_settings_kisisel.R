@@ -170,14 +170,19 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
 
       # Varsayılan karakteri göster (DOM'a eklendikten sonra)
       # insertUI asenkron olduğu için kısa gecikme ile buton stillerini güncelle
+      # onFlushed reaktif bağlam değildir, isolate() ile sarmalanmalıdır.
+      secili_karakter <- isolate(settings$selected_character)
       shiny::onFlushed(function() {
-        update_character_display(settings$selected_character)
+        update_character_display(secili_karakter)
       }, once = TRUE, session = session)
     }, once = TRUE, ignoreInit = FALSE)
 
     # Karakter görüntüsünü güncelleme fonksiyonu
+    # Not: Bu fonksiyon hem reaktif bağlamdan (observeEvent) hem de reaktif
+    # olmayan bağlamdan (onFlushed) çağrılabilir. get_characters_data() düz
+    # bir fonksiyondur (reaktif değil), bu yüzden her iki bağlamda da güvenlidir.
     update_character_display <- function(char_id) {
-      chars <- characters_data()
+      chars <- get_characters_data()
       if (is.null(chars)) return()
 
       char <- Find(function(x) x$id == char_id, chars$styles)
