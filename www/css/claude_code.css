@@ -427,27 +427,7 @@
   max-height: 100%;
 }
 
-/* --- Karşılama Ekranı (retro 8-bit oyun) --- */
-/* Çıktı sarmalayıcısı İÇİNDE, giriş alanının üstünde DEĞİL */
-.cc-welcome-screen {
-  display: none;
-  width: 100%;
-  height: 100%;
-  min-height: 300px;
-  background: transparent;
-  /* Giriş alanını ENGELLEMEMELİ - z-index yok, pozisyon relatif */
-}
-
-.cc-welcome-screen.cc-welcome-active {
-  display: block;
-}
-
-.cc-welcome-canvas {
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
+/* Karsilama ekrani stilleri bilge_yolac_welcome.css dosyasina tasindi */
 
 /* --- Küçültülmüş Düşünme Animasyonu --- */
 .cc-thinking-mini {

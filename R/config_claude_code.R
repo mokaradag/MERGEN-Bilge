@@ -242,4 +242,4 @@ claude_code_streaming_config <- list(
 # ------------------------------------------------------------------------------
 # LOG AYARLARI
 # ------------------------------------------------------------------------------
-CLAUDE_CODE_LOG_PREFIX <- "[Claude Code]"
+CLAUDE_CODE_LOG_PREFIX <- "[Bilge Yolaç]"
