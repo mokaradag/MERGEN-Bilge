@@ -7,7 +7,7 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // Slogan listesi (Turkce karakterlerle)
+  // Slogan listesi (Türkçe karakterlerle)
   var SLOGANLAR = [
     "Görevi al, yolu aç.",
     "Bilge düşünür, anında açar.",
@@ -43,9 +43,9 @@
   var tiklaYanipSonme = 0;
 
   var SLOGAN_DEGISIM_SURESI = 4000; // 4 saniye
-  var SLOGAN_GECIS_SURESI = 800;    // Gecis animasyonu
+  var SLOGAN_GECIS_SURESI = 800;    // Geçiş animasyonu
 
-  // Piksel yazi cizim yardimcisi
+  // Piksel yazı çizim yardımcısı
   function pikselYaziCiz(ctx, metin, x, y, boyut, renk, golge, parlama) {
     ctx.save();
 
@@ -69,13 +69,13 @@
     ctx.restore();
   }
 
-  // Baslik ciz
+  // Başlık çiz
   function baslikCiz(ctx) {
     var state = BY.state;
     var merkezX = state.canvasGenislik / 2;
     var baslikY = state.canvasYukseklik * 0.12;
 
-    // Baslik boyutu - responsive
+    // Başlık boyutu - responsive
     var baslikBoyut = Math.min(36, state.canvasGenislik * 0.05);
     if (baslikBoyut < 18) baslikBoyut = 18;
 
@@ -97,10 +97,10 @@
     ctx.fillText("BİLGE YOLAÇ", merkezX, baslikY);
     ctx.restore();
 
-    // Ana baslik
+    // Ana başlık
     pikselYaziCiz(ctx, "BİLGE YOLAÇ", merkezX, baslikY, baslikBoyut, "#FFFFFF", true, baslikParlama);
 
-    // Alt baslik
+    // Alt başlık
     var altBaslikBoyut = Math.max(10, baslikBoyut * 0.35);
     ctx.save();
     ctx.font = altBaslikBoyut + "px monospace";
@@ -110,7 +110,7 @@
     ctx.restore();
   }
 
-  // Slogan ciz
+  // Slogan çiz
   function sloganCiz(ctx) {
     var state = BY.state;
     var merkezX = state.canvasGenislik / 2;
@@ -147,14 +147,14 @@
     ctx.restore();
   }
 
-  // Alt bilgi ciz
+  // Alt bilgi çiz
   function altBilgiCiz(ctx) {
     var state = BY.state;
     var merkezX = state.canvasGenislik / 2;
     var altY = state.canvasYukseklik * 0.93;
     var altBoyut = Math.max(10, Math.min(14, state.canvasGenislik * 0.018));
 
-    // "BASLAMAK ICIN TIKLA" - yanip sonen
+    // "BAŞLAMAK İÇİN TIKLA" - yanıp sönen
     tiklaYanipSonme = 0.5 + Math.sin(performance.now() * 0.003) * 0.4;
 
     ctx.save();
@@ -167,7 +167,7 @@
     ctx.fillText("BAŞLAMAK İÇİN TIKLA", merkezX, altY);
     ctx.restore();
 
-    // "REHBERINI SEC" - sabit
+    // "REHBERİNİ SEÇ" - sabit
     ctx.save();
     ctx.font = (altBoyut - 2) + "px monospace";
     ctx.textAlign = "center";
@@ -236,7 +236,7 @@
             sloganSlideOfset = 50 * (1 - (gecisIlerleme - 0.5) * 2);
           }
         } else {
-          // Gecis tamamlandi
+          // Geçiş tamamlandı
           sloganGecis = false;
           sloganOpaklik = 1;
           sloganSlideOfset = 0;

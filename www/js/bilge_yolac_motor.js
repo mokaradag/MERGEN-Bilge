@@ -7,13 +7,13 @@
   // Ana ad alanı oluştur
   window.BilgeYolac = window.BilgeYolac || {};
 
-  // Paylasilan yapilandirma
+  // Paylaşılan yapılandırma
   window.BilgeYolac.config = {
-    PIKSEL_BOYUT: 3,
-    KARAKTER_BOYUT: 16,
+    PIKSEL_BOYUT: 2,
+    KARAKTER_BOYUT: 32,
     KARE_HIZI: 60,
     SEVIYE_SURESI: 45000,        // 45 saniye
-    GECIS_SURESI: 2000,          // 2 saniye gecis
+    GECIS_SURESI: 2000,          // 2 saniye geçiş
     YERCEKIM: 0.3,
     SURTUNME: 0.85,
     ZEMIN_ORANI: 0.78,           // Canvas yuksekliginin %78'i zemin seviyesi
@@ -54,7 +54,7 @@
     fareY: -1000,
     fareUzerinde: false,
     temaRenk: "#7C4DFF",
-    oyunDurumu: "bekleme"  // bekleme, oynuyor, gecis, zafer
+    oyunDurumu: "bekleme"  // bekleme, oynuyor, geçiş, zafer
   };
 
   // Motor fonksiyonları
@@ -178,7 +178,7 @@
       var state = window.BilgeYolac.state;
       var config = window.BilgeYolac.config;
 
-      // Seviye zamanlayicisi
+      // Seviye zamanlayıcısı
       var seviyeGecenSure = zaman - state.seviyeBaslangic;
 
       if (!state.gecisAktif && seviyeGecenSure > config.SEVIYE_SURESI) {
@@ -264,7 +264,7 @@
       }
     },
 
-    // Seviye gecis efekti
+    // Seviye geçiş efekti
     gecisEfektiCiz: function(ctx) {
       var state = window.BilgeYolac.state;
       var ilerleme = state.gecisIlerleme;

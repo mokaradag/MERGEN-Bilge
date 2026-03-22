@@ -427,7 +427,7 @@
   max-height: 100%;
 }
 
-/* Karsilama ekrani stilleri bilge_yolac_welcome.css dosyasina tasindi */
+/* Karşılama ekranı stilleri bilge_yolac_welcome.css dosyasına taşındı */
 
 /* --- Küçültülmüş Düşünme Animasyonu --- */
 .cc-thinking-mini {
@@ -452,8 +452,8 @@
 }
 
 .cc-pixel-canvas-mini {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }

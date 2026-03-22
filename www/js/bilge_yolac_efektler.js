@@ -210,7 +210,7 @@
         break;
 
       case "gok_dalgasi":
-        // Enerji dalgasi
+        // Enerji dalgası
         radarDarbesiEkle(merkezX, merkezY, renk);
         radarDarbesiEkle(merkezX, merkezY - 10, karakter.renkler.acik);
         parcacikOlustur(merkezX, merkezY - 20, renk, "yukari", 12);
@@ -243,7 +243,7 @@
     var merkezX = state.canvasGenislik / 2;
     var merkezY = state.zeminY * 0.5;
 
-    // Buyuk patlama
+    // Büyük patlama
     var renkler = ["#FFD700", "#FF6B6B", "#4ECDC4", "#A47DFF", "#FF9FF3"];
     for (var i = 0; i < renkler.length; i++) {
       parcacikOlustur(merkezX + (Math.random() - 0.5) * 100, merkezY, renkler[i], "kivilcim", 10);
@@ -252,7 +252,7 @@
     // Merkezi radar darbesi
     radarDarbesiEkle(merkezX, merkezY, "#FFD700");
 
-    // Her karakter icin efekt
+    // Her karakter için efekt
     var karakterler = state.karakterler;
     for (var k = 0; k < karakterler.length; k++) {
       var kar = karakterler[k];
@@ -280,7 +280,7 @@
     var y = state.zeminY * (0.3 + Math.random() * 0.4);
     parcacikOlustur(x, y, seviye.aksan, "yukari", 3);
 
-    // Ara sira radar darbesi
+    // Ara sıra radar darbesi
     if (Math.random() > 0.5) {
       radarDarbesiEkle(
         Math.random() * state.canvasGenislik,

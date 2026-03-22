@@ -7,7 +7,7 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // Seviye tanimlari
+  // Seviye tanımları
   var SEVIYELER = [
     {
       isim: "Kozmik Radar Alanı",
@@ -66,10 +66,10 @@
     }
   ];
 
-  // Yildiz verileri
+  // Yıldız verileri
   var yildizlar = [];
 
-  // Dag noktalari (iki katman)
+  // Dağ noktaları (iki katman)
   var daglar1 = [];
   var daglar2 = [];
 
@@ -86,7 +86,7 @@
         boyut: 0.5 + Math.random() * 1.5,
         parlama: Math.random() * Math.PI * 2,
         hiz: 0.1 + Math.random() * 0.3,
-        derinlik: Math.floor(Math.random() * 3) // 0=yakin, 1=orta, 2=uzak
+        derinlik: Math.floor(Math.random() * 3) // 0=yakın, 1=orta, 2=uzak
       });
     }
   }
@@ -95,7 +95,7 @@
     daglar1 = [];
     daglar2 = [];
 
-    // Arka dag katmani (yavas hareket)
+    // Arka dağ katmanı (yavaş hareket)
     for (var i = 0; i < 30; i++) {
       daglar1.push({
         x: i / 30,
@@ -103,7 +103,7 @@
       });
     }
 
-    // On dag katmani (orta hiz)
+    // Ön dağ katmanı (orta hız)
     for (var j = 0; j < 40; j++) {
       daglar2.push({
         x: j / 40,
@@ -122,7 +122,7 @@
     ctx.fillRect(0, 0, state.canvasGenislik, state.zeminY);
   }
 
-  // Yildizlari ciz
+  // Yıldızları çiz
   function yildizlariCiz(ctx, seviye, zaman) {
     var state = BY.state;
 
@@ -130,7 +130,7 @@
       var y = yildizlar[i];
       var parlaklik = 0.4 + Math.sin(zaman * 0.002 * y.hiz + y.parlama) * 0.4;
 
-      // Derinlige gore paralaks
+      // Derinliğe göre paralaks
       var paralaksKayma = arkaPlanKayma * (0.05 + y.derinlik * 0.03);
       var ekranX = ((y.x + paralaksKayma) % 1) * state.canvasGenislik;
       if (ekranX < 0) ekranX += state.canvasGenislik;
@@ -156,7 +156,7 @@
   function daglariCiz(ctx, seviye) {
     var state = BY.state;
 
-    // Arka dag katmani
+    // Arka dağ katmanı
     ctx.save();
     ctx.fillStyle = seviye.dagRenk1;
     ctx.beginPath();
@@ -173,7 +173,7 @@
     ctx.fill();
     ctx.restore();
 
-    // On dag katmani
+    // Ön dağ katmanı
     ctx.save();
     ctx.fillStyle = seviye.dagRenk2;
     ctx.beginPath();
@@ -191,7 +191,7 @@
     ctx.restore();
   }
 
-  // Zemin ciz
+  // Zemin çiz
   function zeminCiz(ctx, seviye) {
     var state = BY.state;
 
@@ -215,7 +215,7 @@
     ctx.stroke();
     ctx.restore();
 
-    // Cim/detay piksel deseni
+    // Çim/detay piksel deseni
     ctx.save();
     ctx.fillStyle = seviye.cimRenk;
     for (var i = 0; i < state.canvasGenislik; i += 8) {
@@ -225,7 +225,7 @@
     ctx.restore();
   }
 
-  // Seviyeye ozel detaylar ciz
+  // Seviyeye özel detaylar çiz
   function detaylarCiz(ctx, seviye, zaman) {
     var state = BY.state;
 
@@ -248,16 +248,16 @@
     }
   }
 
-  // Radar detaylari: radar canagi, sinyal dalgalari
+  // Radar detayları: radar çanağı, sinyal dalgaları
   function radarDetaylariCiz(ctx, seviye, zaman) {
     var state = BY.state;
 
-    // Radar canagi (arka planda)
+    // Radar çanağı (arka planda)
     ctx.save();
     var cX = state.canvasGenislik * 0.85;
     var cY = state.zeminY * 0.3;
 
-    // Canak govdesi
+    // Çanak gövdesi
     ctx.strokeStyle = seviye.aksan;
     ctx.lineWidth = 2;
     ctx.globalAlpha = 0.5;
@@ -266,13 +266,13 @@
     ctx.quadraticCurveTo(cX, cY - 15, cX + 20, cY);
     ctx.stroke();
 
-    // Canak direği
+    // Çanak direği
     ctx.beginPath();
     ctx.moveTo(cX, cY);
     ctx.lineTo(cX, cY + 30);
     ctx.stroke();
 
-    // Sinyal halkalari
+    // Sinyal halkaları
     var halkaSayisi = 3;
     for (var h = 0; h < halkaSayisi; h++) {
       var yaricap = 15 + ((zaman * 0.03 + h * 20) % 60);
@@ -287,12 +287,12 @@
     ctx.restore();
   }
 
-  // Anten detaylari
+  // Anten detayları
   function antenDetaylariCiz(ctx, seviye, zaman) {
     var state = BY.state;
     ctx.save();
 
-    // Anten yapilari
+    // Anten yapıları
     var antenler = [
       { x: state.canvasGenislik * 0.15, yukseklik: 60 },
       { x: state.canvasGenislik * 0.75, yukseklik: 45 },
@@ -319,7 +319,7 @@
       ctx.lineTo(a.x + 8, tabanY - a.yukseklik);
       ctx.stroke();
 
-      // Yanip sonen isik
+      // Yanıp sönen ışık
       var yanipSonme = Math.sin(zaman * 0.005 + i) > 0.5;
       if (yanipSonme) {
         ctx.fillStyle = seviye.aksan;
@@ -331,7 +331,7 @@
     ctx.restore();
   }
 
-  // Agac detaylari
+  // Ağaç detayları
   function agacDetaylariCiz(ctx, seviye, zaman) {
     var state = BY.state;
     ctx.save();
@@ -370,12 +370,12 @@
     ctx.restore();
   }
 
-  // Tapinak detaylari
+  // Tapınak detayları
   function tapinakDetaylariCiz(ctx, seviye, zaman) {
     var state = BY.state;
     ctx.save();
 
-    // Tapinak sutunlari
+    // Tapınak sütunları
     var sutunlar = [
       state.canvasGenislik * 0.2,
       state.canvasGenislik * 0.35,
@@ -389,14 +389,14 @@
       var sX = sutunlar[i];
       var tabanY = state.zeminY;
 
-      // Sutun
+      // Sütun
       ctx.fillStyle = "#3A2A15";
       ctx.fillRect(sX - 5, tabanY - 70, 10, 70);
 
-      // Sutun basi
+      // Sütun başı
       ctx.fillRect(sX - 8, tabanY - 75, 16, 6);
 
-      // Enerji oymalari
+      // Enerji oymaları
       ctx.fillStyle = seviye.aksan;
       ctx.globalAlpha = 0.2 + Math.sin(zaman * 0.003 + i * 1.5) * 0.15;
       ctx.fillRect(sX - 2, tabanY - 60, 4, 3);
@@ -405,7 +405,7 @@
       ctx.globalAlpha = 0.35;
     }
 
-    // Ust kemer
+    // Üst kemer
     ctx.strokeStyle = "#3A2A15";
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -416,16 +416,16 @@
     ctx.restore();
   }
 
-  // Harp alani detaylari
+  // Harp alanı detayları
   function harpDetaylariCiz(ctx, seviye, zaman) {
     var state = BY.state;
     ctx.save();
 
-    // Hasar gormus yapilar
+    // Hasar görmüş yapılar
     ctx.fillStyle = "#1A0808";
     ctx.globalAlpha = 0.4;
 
-    // Yikik duvar parcalari
+    // Yıkık duvar parçaları
     var parcalar = [
       { x: state.canvasGenislik * 0.1, g: 15, y: 20 },
       { x: state.canvasGenislik * 0.45, g: 25, y: 12 },
@@ -470,7 +470,7 @@
     },
 
     guncelle: function(zaman) {
-      // Yavas paralaks kaymasi
+      // Yavaş paralaks kayması
       arkaPlanKayma += 0.0002;
     },
 

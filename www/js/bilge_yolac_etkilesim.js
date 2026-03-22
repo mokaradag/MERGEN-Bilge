@@ -7,7 +7,7 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // Fare olay dinleyicileri referanslari (temizlik icin)
+  // Fare olay dinleyicileri referansları (temizlik için)
   var fareHareketRef = null;
   var fareTiklaRef = null;
   var fareAyrilRef = null;
@@ -33,7 +33,7 @@
       var hover = mesafeX < k.genislik * 0.8 && mesafeY < k.yukseklik * 0.8;
 
       if (hover && !k.hoverAktif) {
-        // Hover basladi - karakter tepkisi
+        // Hover başladı - karakter tepkisi
         k.hoverAktif = true;
         k.animasyonDurumu = "hover";
         hoverTepkisiVer(k);
@@ -47,7 +47,7 @@
     }
   }
 
-  // Karakter bazinda hover tepkisi
+  // Karakter bazında hover tepkisi
   function hoverTepkisiVer(karakter) {
     // Hafif zıplama
     if (karakter.hizY === 0) {
@@ -65,10 +65,10 @@
       );
     }
 
-    // Karaktere ozel hover davranislari
+    // Karaktere özel hover davranışları
     switch (karakter.id) {
       case "mergen":
-        // Hedef nisangahi efekti
+        // Hedef nişangâhı efekti
         if (BY.efektler && BY.efektler.radarDarbesiEkle) {
           BY.efektler.radarDarbesiEkle(
             karakter.x + karakter.genislik / 2,
@@ -79,7 +79,7 @@
         break;
 
       case "ulgen":
-        // Sakin enerji dalgasi
+        // Sakin enerji dalgası
         if (BY.efektler && BY.efektler.radarDarbesiEkle) {
           BY.efektler.radarDarbesiEkle(
             karakter.x + karakter.genislik / 2,
@@ -90,7 +90,7 @@
         break;
 
       case "kayra":
-        // Kure genislemesi
+        // Küre genişlemesi
         if (BY.efektler && BY.efektler.parcacikOlustur) {
           BY.efektler.parcacikOlustur(
             karakter.x + karakter.genislik / 2,
@@ -116,7 +116,7 @@
         break;
 
       case "umay_ana":
-        // Kalkan genislemesi
+        // Kalkan genişlemesi
         if (BY.efektler && BY.efektler.radarDarbesiEkle) {
           BY.efektler.radarDarbesiEkle(
             karakter.x + karakter.genislik / 2,
@@ -178,7 +178,7 @@
         }
       }
 
-      // Tikla efekti
+      // Tıkla efekti
       if (BY.efektler && BY.efektler.parcacikOlustur) {
         BY.efektler.parcacikOlustur(tiklaX, tiklaY, "#FFFFFF", "kivilcim", 8);
       }
@@ -192,7 +192,7 @@
     state.fareY = -1000;
     state.fareUzerinde = false;
 
-    // Tum hover durumlarini sifirla
+    // Tüm hover durumlarını sıfırla
     var karakterler = state.karakterler;
     for (var i = 0; i < karakterler.length; i++) {
       karakterler[i].hoverAktif = false;
@@ -219,7 +219,7 @@
       var canvas = BY.state.canvas;
       if (!canvas) return;
 
-      // Onceki dinleyicileri kaldir
+      // Önceki dinleyicileri kaldır
       this.temizle();
 
       // Yeni dinleyicileri ekle
