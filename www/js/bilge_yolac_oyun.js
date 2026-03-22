@@ -14,7 +14,7 @@
   var sonYetenekZamani = 0;
   var sonTakimEylemiZamani = 0;
   var zaferGosterildi = false;
-  var ilerlemeYonu = 1; // 1=sag, -1=sol
+  var ilerlemeYonu = 1; // 1=sağ, -1=sol
 
   // Takimin hedef konumu
   var takimHedefX = 0;
@@ -25,7 +25,7 @@
   var EYLEM_SURESI = 4000;      // 4 saniye ortak eylem
   var ZAFER_SURESI = 5000;      // 5 saniye zafer gosterimi
 
-  // Takim ilerleme mantigi
+  // Takım ilerleme mantığı
   function takimIlerlemeGuncelle(zaman) {
     var state = BY.state;
     var karakterler = state.karakterler;
@@ -38,7 +38,7 @@
         // Karakterleri birlikte ilerlet
         takimHedefX += ilerlemeYonu * 0.3;
 
-        // Sinir kontrolu
+        // Sınır kontrolü
         if (takimHedefX > state.canvasGenislik * 0.6) {
           ilerlemeYonu = -1;
         } else if (takimHedefX < state.canvasGenislik * 0.1) {
@@ -60,7 +60,7 @@
         break;
 
       case "duraklama":
-        // Karakterler duraksasin, idle durumuna gecsin
+        // Karakterler durakasın, idle durumuna geçsin
         for (var j = 0; j < karakterler.length; j++) {
           karakterler[j].animasyonDurumu = "idle";
         }
@@ -105,7 +105,7 @@
           takimZamanlayici = zaman;
           zaferGosterildi = true;
 
-          // Karakterleri normale dondur
+          // Karakterleri normale döndür
           for (var n = 0; n < karakterler.length; n++) {
             karakterler[n].animasyonDurumu = "idle";
             karakterler[n].zaferAktif = false;
@@ -115,12 +115,12 @@
     }
   }
 
-  // Ortak eylem baslat
+  // Ortak eylem başlat
   function ortakEylemBaslat() {
     var state = BY.state;
     var karakterler = state.karakterler;
 
-    // Sirayla yetenek kullan
+    // Sırayla yetenek kullan
     for (var i = 0; i < karakterler.length; i++) {
       (function(index) {
         setTimeout(function() {
@@ -132,12 +132,12 @@
     }
   }
 
-  // Zafer animasyonu baslat
+  // Zafer animasyonu başlat
   function zaferBaslat() {
     var state = BY.state;
     var karakterler = state.karakterler;
 
-    // Tum karakterleri zafer durumuna al
+    // Tüm karakterleri zafer durumuna al
     for (var i = 0; i < karakterler.length; i++) {
       karakterler[i].zaferAktif = true;
       karakterler[i].animasyonDurumu = "victory";
@@ -152,7 +152,7 @@
     }
   }
 
-  // Periyodik bireysel yetenek kullanimi
+  // Periyodik bireysel yetenek kullanımı
   function bireyselYetenekKontrol(zaman) {
     if (zaman - sonYetenekZamani < 6000) return; // Her 6 saniyede bir
     sonYetenekZamani = zaman;
@@ -161,7 +161,7 @@
     var karakterler = state.karakterler;
     if (karakterler.length === 0) return;
 
-    // Rastgele bir karakter sec ve yetenek kullandir
+    // Rastgele bir karakter seç ve yetenek kullandır
     if (takimDurumu === "ilerleme") {
       var rastgeleIndex = Math.floor(Math.random() * karakterler.length);
       var karakter = karakterler[rastgeleIndex];
@@ -172,7 +172,7 @@
     }
   }
 
-  // Takim senkronizasyon efekti
+  // Takım senkronizasyon efekti
   function takimSenkronKontrol(zaman) {
     if (zaman - sonTakimEylemiZamani < 15000) return; // Her 15 saniyede bir
     sonTakimEylemiZamani = zaman;
@@ -180,11 +180,11 @@
     var state = BY.state;
     var karakterler = state.karakterler;
 
-    // Kisa senkronizasyon ani
+    // Kısa senkronizasyon anı
     for (var i = 0; i < karakterler.length; i++) {
       karakterler[i].takimSenkron = true;
 
-      // Senkron parcacik
+      // Senkron parçacık
       if (BY.efektler && BY.efektler.parcacikOlustur) {
         BY.efektler.parcacikOlustur(
           karakterler[i].x + karakterler[i].genislik / 2,
@@ -203,7 +203,7 @@
       })(karakterler[i]);
     }
 
-    // Senkron cizgisi efekti - karakterler arasi baglanti
+    // Senkron çizgisi efekti - karakterler arası bağlantı
     if (BY.efektler && BY.efektler.radarDarbesiEkle && karakterler.length > 0) {
       var merkezX = 0;
       var merkezY = 0;

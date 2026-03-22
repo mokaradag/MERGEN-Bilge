@@ -7,12 +7,12 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // Renk kodlari: 0=bos, 1=ana, 2=koyu, 3=acik, 4=ten, 5=sakal/sac, 6=aksesuarRenk, 7=silahlRenk
-  // Her karakter icin idle ve walk kareleri tanimlaniyor
+  // Renk kodları: 0=boş, 1=ana, 2=koyu, 3=açık, 4=ten, 5=sakal/saç, 6=aksesuarRenk, 7=silahRenk
+  // Her karakter için idle, walk ve attack kareleri tanımlanıyor
 
   var SPRITE_VERILERI = {
 
-    // MERGEN (Mor) - Okcu savasci, migferli, yay ve ok
+    // MERGEN (Mor) - Okçu savaşçı, miğferli, yay ve ok
     mergen: {
       renkler: {
         1: "#7C4DFF", 2: "#5B2FCF", 3: "#A47DFF",
@@ -57,7 +57,7 @@
       ]
     },
 
-    // ULGEN (Mavi) - Gok hakimi, geyik boynuzlu tac, cuppeli kral
+    // ÜLGEN (Mavi) - Gök hâkimi, geyik boynuzlu taç, cüppeli kral
     ulgen: {
       renkler: {
         1: "#2F6DF6", 2: "#1A4DC0", 3: "#6B9BFF",
@@ -102,7 +102,7 @@
       ]
     },
 
-    // KAYRA (Yesil) - Bilge ihtiyar, asali, parlayan kure
+    // KAYRA (Yeşil) - Bilge ihtiyar, asalı, parlayan küre
     kayra: {
       renkler: {
         1: "#2ECC71", 2: "#1A9C54", 3: "#6EE89B",
@@ -147,7 +147,7 @@
       ]
     },
 
-    // ERLIK (Kirmizi) - Tacli kral, asali, tehditkar
+    // ERLİK (Kırmızı) - Taçlı kral, asalı, tehditkâr
     erlik: {
       renkler: {
         1: "#E74C3C", 2: "#B53A2E", 3: "#F08070",
@@ -192,7 +192,7 @@
       ]
     },
 
-    // UMAY ANA (Pembe) - Koruyucu ana, baslikli, kucaginda bebek
+    // UMAY ANA (Pembe) - Koruyucu ana, başlıklı, kucağında bebek
     umay_ana: {
       renkler: {
         1: "#E98686", 2: "#C05F5F", 3: "#F5ABAB",
@@ -238,7 +238,7 @@
     }
   };
 
-  // Karakter isimleri ve yetenek tanimlari
+  // Karakter isimleri ve yetenek tanımları
   var KARAKTER_BILGILERI = {
     mergen:   { isim: "MERGEN",   yetenek: "ok_atisi",     yetenekSuresi: 90, aciklama: "Okçu" },
     ulgen:    { isim: "ÜLGEN",    yetenek: "gok_dalgasi",  yetenekSuresi: 80, aciklama: "Gök Hakimi" },
@@ -247,7 +247,7 @@
     umay_ana: { isim: "UMAY ANA", yetenek: "kalkan_kur",   yetenekSuresi: 95, aciklama: "Koruyucu" }
   };
 
-  // Animasyon durumlari
+  // Animasyon durumları
   var ANIMASYON_DURUMLARI = [
     "idle", "walk", "hover", "ability_prep",
     "ability_exec", "ability_recovery",
@@ -272,7 +272,7 @@
       y: state.zeminY - 48,
       hizX: 0,
       hizY: 0,
-      yon: 1,  // 1=sag, -1=sol
+      yon: 1,  // 1=sağ, -1=sol
       genislik: 16 * config.PIKSEL_BOYUT,
       yukseklik: 16 * config.PIKSEL_BOYUT,
       renkler: renkler,
@@ -298,7 +298,7 @@
     };
   }
 
-  // Sprite cizim fonksiyonu
+  // Sprite çizim fonksiyonu
   function spriteCiz(ctx, sprite, renkHaritasi, x, y, pikselBoyut, yon, parlama) {
     if (!sprite || !ctx) return;
 
@@ -349,20 +349,20 @@
     // Nefes animasyonu
     karakter.nefesOfset = Math.sin(zaman * 0.003 + karakter.x * 0.01) * 1.5;
 
-    // Goz kirpma
+    // Göz kırpma
     karakter.gozKirpma = (karakter.gozKirpma + 1) % 200;
 
-    // Aura donusu
+    // Aura dönüşü
     karakter.auraAci = (karakter.auraAci + 0.02) % (Math.PI * 2);
 
-    // Animasyon kare degisimi
+    // Animasyon kare değişimi
     karakter.animasyonZamanlayici++;
     if (karakter.animasyonZamanlayici > 15) {
       karakter.animasyonZamanlayici = 0;
       karakter.animasyonKare = (karakter.animasyonKare + 1) % 2;
     }
 
-    // Yetenek zamanlayicisi
+    // Yetenek zamanlayıcısı
     if (karakter.yetenekAktif) {
       karakter.yetenekZamanlayici--;
       if (karakter.yetenekZamanlayici <= 0) {
@@ -377,7 +377,7 @@
     karakter.x += karakter.hizX;
     karakter.y += karakter.hizY;
 
-    // Zemin carpisma
+    // Zemin çarpışma
     var zeminSiniri = state.zeminY - karakter.yukseklik;
     if (karakter.y > zeminSiniri) {
       karakter.y = zeminSiniri;
@@ -402,7 +402,7 @@
     if (karakter.animasyonDurumu === "idle" || karakter.animasyonDurumu === "walk") {
       karakter.hareketBekleme--;
       if (karakter.hareketBekleme <= 0) {
-        // Yeni hedef sec
+        // Yeni hedef seç
         var hedefMerkez = state.canvasGenislik / 2;
         karakter.hedefX = hedefMerkez + (Math.random() - 0.5) * state.canvasGenislik * 0.6;
         karakter.hareketBekleme = 60 + Math.random() * 180;
@@ -419,12 +419,12 @@
     }
   }
 
-  // Karakter cizim
+  // Karakter çizim
   function karakterCiz(ctx, karakter) {
     var config = BY.config;
     var piksel = config.PIKSEL_BOYUT;
 
-    // Golge
+    // Gölge
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.beginPath();
@@ -469,7 +469,7 @@
 
     spriteCiz(ctx, mevcutSprite, karakter.spriteRenkler, karakter.x, cizimY, piksel, karakter.yon, parlamaGuc);
 
-    // Isim etiketi
+    // İsim etiketi
     ctx.save();
     ctx.font = "bold 9px monospace";
     ctx.textAlign = "center";
@@ -527,7 +527,7 @@
         karakterGuncelle(karakterler[i], zaman);
       }
 
-      // Karakter-karakter carpismasi
+      // Karakter-karakter çarpışması
       for (var a = 0; a < karakterler.length; a++) {
         for (var b = a + 1; b < karakterler.length; b++) {
           var ka = karakterler[a];

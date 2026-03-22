@@ -51,7 +51,7 @@
 
   // Tema güncelle
   function temaGuncelle(karakterId, aksanRenk) {
-    // Renk şablonunu güncelle (eğer geçerli bir karakter ID'si verilmisse)
+    // Renk şablonunu güncelle (eğer geçerli bir karakter ID'si verilmişse)
     if (karakterId && BY.config.KARAKTER_RENKLERI[karakterId]) {
       BY.state.temaRenk = BY.config.KARAKTER_RENKLERI[karakterId].ana;
     } else if (aksanRenk) {
@@ -59,7 +59,7 @@
     }
   }
 
-  // Global fonksiyonlari tanimla (claude_code.js ile uyumluluk)
+  // Global fonksiyonları tanımla (claude_code.js ile uyumluluk)
   window.ccStartWelcome = function(containerId) {
     karsilamaBaslat(containerId);
   };
@@ -83,13 +83,13 @@
       }, 500);
     });
 
-    // Karsilama ekranini goster
+    // Karşılama ekranını göster
     Shiny.addCustomMessageHandler("cc-show-welcome", function(mesaj) {
       var hedefId = mesaj.containerId || "claude_code_module-welcome_screen";
       karsilamaBaslat(hedefId);
     });
 
-    // Karsilama ekranini gizle
+    // Karşılama ekranını gizle
     Shiny.addCustomMessageHandler("cc-hide-welcome", function(mesaj) {
       karsilamaDurdur();
       var container = document.getElementById(mesaj.containerId || "claude_code_module-welcome_screen");
@@ -98,10 +98,10 @@
       }
     });
 
-    // Sekme degisimi dinle
+    // Sekme değişimi dinle
     $(document).on("shiny:inputchanged", function(e) {
       if (e.name === "tabs" && e.value === "claude_code") {
-        // Bilge Yolac sekmesine gecildi
+        // Bilge Yolaç sekmesine geçildi
         setTimeout(function() {
           var container = document.getElementById("claude_code_module-welcome_screen");
           if (container && container.classList.contains("cc-welcome-active")) {
@@ -112,7 +112,7 @@
           }
         }, 300);
       } else {
-        // Baska sekmeye gecildi - motoru duraklat (bellek tasarrufu)
+        // Başka sekmeye geçildi - motoru durakla (bellek tasarrufu)
         if (BY.state.calisiyor) {
           BY.motor.durdur();
         }
