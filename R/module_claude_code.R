@@ -41,7 +41,7 @@ claudeCodeUI <- function(id) {
         class = "chat-header settings-header-fixed",
         div(
           class = "chat-header-left",
-          h4("Claude Code", class = "page-title"),
+          h4("Bilge Yolaç", class = "page-title"),
           tags$span(class = "cc-badge", "AJAN")
         ),
         div(

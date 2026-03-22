@@ -37,7 +37,7 @@ ui <- dashboardPage(
         menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark")),
         menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
-      menuItem("Claude Code", tabName = "claude_code", icon = icon("terminal")),
+      menuItem("Bilge Yolaç", tabName = "claude_code", icon = icon("terminal")),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
       menuItem("Ayarlar", icon = icon("cog"), startExpanded = FALSE,
         menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
@@ -147,6 +147,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/sso_auth.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code_streaming.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/bilge_yolac_welcome.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
     tags$link(rel = "stylesheet", href = "codemirror/codemirror.min.css"),
@@ -254,7 +255,15 @@ ui <- dashboardPage(
     tags$script(src = "js/surum_bilgilendirme.js", defer = "defer"),
     tags$script(src = "js/claude_code.js", defer = "defer"),
     tags$script(src = "js/claude_code_streaming.js", defer = "defer"),
-    tags$script(src = "js/claude_code_welcome.js", defer = "defer"),
+    # Bilge Yolac karsilama ekrani modulleri (yukleme sirasi onemli)
+    tags$script(src = "js/bilge_yolac_motor.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_karakterler.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_dunya.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_efektler.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_arayuz.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_etkilesim.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_oyun.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_kopru.js", defer = "defer"),
 
     tags$div(id = "toast-container", class = "toast-container")
   ),
