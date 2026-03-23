@@ -124,8 +124,8 @@ fileManagerServer <- function(
     NULL
   })
 
-    # user_id reactiveVal olabilir - fonksiyon ise çağırarak değeri al
-    resolved_uid <- if (is.function(user_id)) user_id() else user_id
+    # user_id reactiveVal olabilir - isolate ile başlangıç değerini al
+    resolved_uid <- if (is.function(user_id)) isolate(user_id()) else user_id
     module_user_id <- resolved_uid %||% session$userData$user_id %||% "unknown"
     module_user_id_chr <- as.character(module_user_id %||% "unknown")
 

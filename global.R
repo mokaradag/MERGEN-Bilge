@@ -6,6 +6,11 @@
 #            ve yapılandırma dosyalarını (R/ klasörü altındaki) yükler.
 # ==============================================================================
 
+# Çift yükleme koruması: app.R zaten global.R'ı yüklüyorsa, Shiny'nin
+# otomatik tekrar yüklemesini atla. Bu sayede başlangıç logları iki kez basılmaz.
+if (isTRUE(getOption("mergen.global_loaded"))) return(invisible())
+options(mergen.global_loaded = TRUE)
+
 # Küresel olarak UTF-8 kodlamasını zorla
 options(encoding = "UTF-8")
 
