@@ -89,7 +89,7 @@ tagList(
 			style = "margin: 6px 0 12px 0; font-size: 12px; color: #a3a3a3;",
 			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir; kapalıyken birden fazla seçim yapabilirsiniz."
 		  ),
-		  DT::dataTableOutput(ns("files_table"))
+		  DT::DTOutput(ns("files_table"))
 		)
       )
     ),
@@ -124,10 +124,16 @@ fileManagerServer <- function(
     NULL
   })
 
-    # user_id reactiveVal olabilir - isolate ile başlangıç değerini al
-    resolved_uid <- if (is.function(user_id)) isolate(user_id()) else user_id
-    module_user_id <- resolved_uid %||% session$userData$user_id %||% "unknown"
-    module_user_id_chr <- as.character(module_user_id %||% "unknown")
+    # user_id reactiveVal olabilir - reaktif olarak takip et
+    # SSO modunda başlangıçta 0 gelir, kimlik doğrulandığında güncellenir
+    module_user_id_reactive <- reactive({
+      uid <- if (is.function(user_id)) user_id() else user_id
+      uid <- uid %||% session$userData$user_id %||% "unknown"
+      as.character(uid %||% "unknown")
+    })
+    # Geriye uyumluluk: mevcut kod module_user_id_chr kullanıyor
+    # Bu değer artık reaktif observer'larla güncellenir
+    module_user_id_chr <- isolate(module_user_id_reactive())
 
     fm_debug <- function(event, ...) {
       parts <- vapply(list(...), function(x) {
@@ -522,23 +528,31 @@ fileManagerServer <- function(
       files_in_context = list()
     )
 
-    # --- NEW: initial population from the user's persistent folder
+    # --- Kullanıcı klasöründen dosya yükleme ---
+    # SSO modunda user_id başlangıçta 0 olur; 0 iken yükleme atlanır.
+    # Kimlik doğrulandığında observer tetiklenir ve gerçek kullanıcı dosyaları yüklenir.
 	observeEvent(TRUE, {
-	  refresh_from_user_folder("initial")
+	  if (module_user_id_chr != "0" && module_user_id_chr != "unknown") {
+	    refresh_from_user_folder("initial")
+	  }
 	}, once = TRUE, ignoreNULL = TRUE)
 
-	# Proactive warm-up: refresh a few extra times during the first seconds
+	# Proactive warm-up: user_id geçerliyse ilk saniyelerde tekrar dene
 	initial_refresh_attempts <- reactiveVal(0)
 	observe({
 	  if (initial_refresh_attempts() >= 3) {
 		return()
+	  }
+	  # user_id=0 iken warm-up yapma
+	  if (module_user_id_chr == "0" || module_user_id_chr == "unknown") {
+	    return()
 	  }
 
 	  invalidateLater(600, session)
 	  attempt <- initial_refresh_attempts() + 1
 	  initial_refresh_attempts(attempt)
 
-	  # Stop early if data is already present
+	  # Veri zaten varsa erken çık
 	  if (nrow(module_values$files) > 0) {
 		initial_refresh_attempts(3)
 		return()
@@ -546,6 +560,18 @@ fileManagerServer <- function(
 
 	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
 	})
+
+	# SSO modunda: kullanıcı kimliği doğrulandığında module_user_id_chr'ı güncelle
+	# ve dosyaları yeniden yükle
+	observeEvent(module_user_id_reactive(), {
+	  new_uid <- module_user_id_reactive()
+	  if (new_uid != "0" && new_uid != "unknown" && new_uid != module_user_id_chr) {
+	    module_user_id_chr <<- new_uid
+	    fm_debug("sso_user_update", sprintf("kullanıcı kimliği güncellendi: %s", new_uid))
+	    initial_refresh_attempts(0)  # warm-up sayacını sıfırla
+	    refresh_from_user_folder("sso_auth_complete")
+	  }
+	}, ignoreInit = TRUE)
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
@@ -1040,7 +1066,7 @@ fileManagerServer <- function(
       shinyjs::delay(100, { all_files_cleared(FALSE) })
     }, ignoreInit = TRUE)
                    
-	output$files_table <- DT::renderDataTable({
+	output$files_table <- DT::renderDT({
 	  dat <- module_values$files
 	  if (nrow(dat) == 0) dat <- dat[0, ]
 	  DT::datatable(

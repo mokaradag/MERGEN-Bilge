@@ -65,7 +65,10 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observe({
       refresh_trigger()
-      images <- scan_user_images(current_user_id())
+      uid <- current_user_id()
+      # SSO modunda kimlik doğrulanmadan (user_id=0) tarama yapma
+      if (identical(uid, 0L) || identical(uid, 0)) return()
+      images <- scan_user_images(uid)
       cached_images(images)
     })
 

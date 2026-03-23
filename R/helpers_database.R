@@ -111,9 +111,18 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
 # -------------------------
 # Veritabanına yazılacak metinleri UTF-8 olarak normalleştirir.
 # Türkçe karakterlerin (ç, ğ, ı, ö, ş, ü vb.) doğru kaydedilmesini sağlar.
+# ODBC sürücüsünün çift-encoding yapmasını önlemek için iconv kullanılır.
 ensure_utf8 <- function(text) {
   if (is.null(text) || !is.character(text)) return(text)
-  tryCatch(enc2utf8(text), error = function(e) text)
+  tryCatch({
+    # Önce enc2utf8 ile R'ın iç temsilini UTF-8'e dönüştür
+    result <- enc2utf8(text)
+    # Encoding etiketini açıkça ayarla
+    Encoding(result) <- "UTF-8"
+    # iconv ile temiz UTF-8 garantisi sağla (bozuk baytları kaldırır)
+    clean <- iconv(result, from = "UTF-8", to = "UTF-8", sub = "")
+    if (!is.na(clean) && nzchar(clean)) clean else result
+  }, error = function(e) text)
 }
 
 # -------------------------
@@ -200,10 +209,18 @@ get_or_create_user <- function(username, sso_claims = NULL) {
   on.exit(release_connection(conn_info))
 
   # KaynakAdi'nı belirle: önce SSO claim, sonra DC01_user_base, en son username
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
+  # Türkçe karakterlerin doğru kaydedilmesi için encoding düzeltmesi + UTF-8 normalleştirme
   kaynak_adi <- username
   if (!is.null(sso_claims$full_name) && nzchar(sso_claims$full_name)) {
-    kaynak_adi <- ensure_utf8(sso_claims$full_name)
+    # fixTurkishEncoding SSO claim'lerinde zaten uygulanmış olabilir;
+    # yine de DB yazımı öncesi son kontrol olarak tekrar uygula
+    kaynak_adi <- ensure_utf8(
+      if (exists("fixTurkishEncoding", mode = "function")) {
+        fixTurkishEncoding(sso_claims$full_name)
+      } else {
+        sso_claims$full_name
+      }
+    )
   } else {
     user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
     user_details <- dbGetQuery(conn, user_details_query, params = list(username))

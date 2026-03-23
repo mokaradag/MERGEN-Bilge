@@ -89,9 +89,9 @@ resolveUserIdentity <- function(sso_claims = NULL) {
     NULL
   })
 
-  # Tam ad ve ilk isim belirle
+  # Tam ad ve ilk isim belirle (DB'den gelen bozuk Türkçe karakterleri düzelt)
   if (!is.null(db_result) && nzchar(db_result)) {
-    full_name  <- db_result
+    full_name  <- fixTurkishEncoding(db_result)
     first_name <- extractFirstName(full_name)
   } else {
     full_name  <- capitalizeFirst(system_username)
@@ -126,19 +126,22 @@ fixTurkishEncoding <- function(text) {
   if (is.null(text) || !nzchar(text)) return(text)
 
   # Yaygın bozuk UTF-8 -> doğru Türkçe karakter eşlemeleri
+  # (Çift-encoding: UTF-8 baytları Latin-1 olarak yorumlanıp tekrar UTF-8'e kodlandığında)
   replacements <- list(
-    c("\u00c3\u0087",       "\u00c7"),   # Ç
-    c("\u00c3\u009c",       "\u00dc"),   # Ü
-    c("\u00c3\u0096",       "\u00d6"),   # Ö
-    c("\u00c4\u009e",       "\u011e"),   # Ğ
-    c("\u00c4\u00b0",       "\u0130"),   # İ
-    c("\u00c5\u009e",       "\u015e"),   # Ş
-    c("\u00c3\u00a7",       "\u00e7"),   # ç
-    c("\u00c3\u00bc",       "\u00fc"),   # ü
-    c("\u00c3\u00b6",       "\u00f6"),   # ö
-    c("\u00c4\u009f",       "\u011f"),   # ğ
-    c("\u00c4\u00b1",       "\u0131"),   # ı
-    c("\u00c5\u009f",       "\u015f")    # ş
+    # Büyük harfler
+    c("\u00c3\u0087",       "\u00c7"),   # Ç  (UTF-8: C3 87)
+    c("\u00c3\u009c",       "\u00dc"),   # Ü  (UTF-8: C3 9C)
+    c("\u00c3\u0096",       "\u00d6"),   # Ö  (UTF-8: C3 96)
+    c("\u00c4\u009e",       "\u011e"),   # Ğ  (UTF-8: C4 9E)
+    c("\u00c4\u00b0",       "\u0130"),   # İ  (UTF-8: C4 B0)
+    c("\u00c5\u009e",       "\u015e"),   # Ş  (UTF-8: C5 9E)
+    # Küçük harfler
+    c("\u00c3\u00a7",       "\u00e7"),   # ç  (UTF-8: C3 A7)
+    c("\u00c3\u00bc",       "\u00fc"),   # ü  (UTF-8: C3 BC)
+    c("\u00c3\u00b6",       "\u00f6"),   # ö  (UTF-8: C3 B6)
+    c("\u00c4\u009f",       "\u011f"),   # ğ  (UTF-8: C4 9F)
+    c("\u00c4\u00b1",       "\u0131"),   # ı  (UTF-8: C4 B1)
+    c("\u00c5\u009f",       "\u015f")    # ş  (UTF-8: C5 9F)
   )
 
   result <- text
@@ -146,15 +149,27 @@ fixTurkishEncoding <- function(text) {
     result <- gsub(rep[1], rep[2], result, fixed = TRUE)
   }
 
-  # Hâlâ bozuk karakterler varsa latin1 -> UTF-8 dönüşümü dene
-  if (grepl("[\u00c3\u00c4\u00c5]", result)) {
+  # Çift-encoding onarımı: ham baytları Latin-1 olarak okuyup UTF-8'e dönüştür
+  # Bu yöntem DB'den okunan bozuk Türkçe verileri de düzeltir
+  if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result)) {
     tryCatch({
-      raw_bytes <- charToRaw(result)
-      result <- rawToChar(raw_bytes)
-      Encoding(result) <- "UTF-8"
-      if (!validUTF8(result)) {
-        result <- iconv(text, from = "latin1", to = "UTF-8")
+      repaired <- iconv(result, from = "UTF-8", to = "latin1", sub = "byte")
+      if (!is.na(repaired)) {
+        Encoding(repaired) <- "UTF-8"
+        if (validUTF8(repaired)) {
+          result <- repaired
+        }
       }
+    }, error = function(e) {
+      # Dönüşüm başarısızsa orijinal sonucu koru
+    })
+  }
+
+  # Son kontrol: hâlâ bozuk baytlar varsa iconv ile temizle
+  if (!validUTF8(result)) {
+    tryCatch({
+      clean <- iconv(text, from = "latin1", to = "UTF-8")
+      if (!is.na(clean) && nzchar(clean)) result <- clean
     }, error = function(e) {
       log_warn("Encoding düzeltme başarısız: {e$message}")
     })
