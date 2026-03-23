@@ -35,7 +35,7 @@ chatInputObserversInit <- function(input, session, values, settings_data,
   observeEvent(input$send_prompt_from_js, {
     req(input$send_prompt_from_js)
     
-    if (!check_rate_limit(current_user_id)) {
+    if (!check_rate_limit(current_user_id())) {
       showToast(session, "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.", "warning")
       return()
     }
@@ -66,7 +66,7 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     req(input$file_upload)
     handle_file_upload_batch(
       uploads_df           = input$file_upload,
-      current_user_id      = current_user_id,
+      current_user_id      = current_user_id(),
       session              = session,
       settings_data        = settings_data,
       file_manager_data    = file_manager_data,

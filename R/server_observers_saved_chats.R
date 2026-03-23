@@ -105,7 +105,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
     
     values$messages <- chat_to_load$messages %||% list()
-    all_feedback <- load_feedback_from_db(current_user_id)
+    all_feedback <- load_feedback_from_db(current_user_id())
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
     values$current_chat_id <- chat_id
@@ -259,9 +259,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # Mevcut sohbet mi siliniyor kontrol et
     current_chat_deleted <- identical(as.character(values$current_chat_id), as.character(chat_id))
     
-    delete_chat_from_db(chat_id, current_user_id)
-    
-    values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
+    delete_chat_from_db(chat_id, current_user_id())
+
+    values$saved_chats <- load_chats_from_db(current_user_id(), include_messages = FALSE)
     saved_chats_data$refresh()
     
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
@@ -326,7 +326,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   # Tüm sohbetleri temizleme observer'ı
   observeEvent(saved_chats_data$clear_all_chats_trigger(), {
     if (saved_chats_data$clear_all_chats_trigger() > 0) {
-      clear_all_chats_from_db(current_user_id)
+      clear_all_chats_from_db(current_user_id())
       values$saved_chats <- list()
       saved_chats_data$refresh()
       showToast(session, "Tüm söyleşiler temizlendi.", "warning")

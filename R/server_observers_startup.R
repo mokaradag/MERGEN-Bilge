@@ -64,9 +64,14 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     }
   }, ignoreInit = TRUE)
   
+  # current_user_id reactiveVal olduğu için değeri şimdi yakala
+  # (future_promise içinde reactive erişim yapılamaz)
+  uid_for_load <- isolate(current_user_id())
   session$userData$initial_saved_chats_promise <- promises::then(
     promises::future_promise({
-      load_chats_from_db(current_user_id, include_messages = FALSE)
+      # SSO modunda uid henüz 0 olabilir - bu durumda boş liste döner
+      if (identical(uid_for_load, 0L)) return(list())
+      load_chats_from_db(uid_for_load, include_messages = FALSE)
     }),
     onFulfilled = function(chats) {
       chats <- chats %||% list()

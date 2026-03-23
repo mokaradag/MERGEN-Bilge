@@ -46,7 +46,7 @@ downloadOutputsInit <- function(output, session, session_files, current_user_id)
       paste0("chat_logs_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
-      logs_df <- fetch_user_activity_logs(current_user_id)
+      logs_df <- fetch_user_activity_logs(current_user_id())
       write.csv(logs_df, file, row.names = FALSE, fileEncoding = "UTF-8")
     }
   )

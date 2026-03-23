@@ -35,13 +35,16 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
 #      - normalizePath ile uzun yolları (>260 karakter) çözemez (Windows VM sorunu)
 #    Çözüm: Her www/ alt klasörünü kendi adıyla kaydet.
 #    Örn: addResourcePath("css", "www/css") → /css/style.css URL'si çalışır.
-for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
-  addResourcePath(subdir, file.path("www", subdir))
+#    NOT: Mutlak yol kullanılır, böylece Ctrl+Enter ile çalıştırıldığında da
+#    kaynak yolları doğru çözümlenir.
+www_abs_dir <- normalizePath("www", mustWork = FALSE)
+for (subdir in list.dirs(www_abs_dir, recursive = FALSE, full.names = FALSE)) {
+  addResourcePath(subdir, file.path(www_abs_dir, subdir))
 }
 # www/ kök dizinindeki dosyalar (mergen_avatar.png, company_logo.png vb.)
 # boş prefix ile kaydedilemez. "img" prefix'i ile www/ kök dizinini kaydet.
 # Kodda bu dosyalar "img/dosya.png" şeklinde referans edilir.
-addResourcePath("img", "www")
+addResourcePath("img", www_abs_dir)
 
 # 5. Uygulamayı çalıştır.
 runApp(shinyApp(ui = ui, server = server),

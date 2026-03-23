@@ -29,16 +29,23 @@ server <- function(input, output, session) {
   # --- Kimlik çözümleme ve oturum kurulumu ---
   # SSO kapalı (yerel geliştirme): Senkron akış, mevcut davranış korunur
   # SSO aktif (Keycloak): Token doğrulandıktan sonra observer ile güncellenir
+  #
+  # current_user_id artık reactiveVal olarak tanımlanır.
+  # Böylece SSO modunda kimlik doğrulama tamamlandığında değer güncellenir
+  # ve bağımlı observer/reactive'ler otomatik olarak yeniden çalışır.
+  current_user_id <- reactiveVal(0L)
+
   if (!isTRUE(SSO_ENABLED)) {
     # ===== YEREL GELİŞTİRME MODU =====
     user_identity <- resolveUserIdentity()
     system_username <- user_identity$username
-    current_user_id <- get_or_create_user(system_username)
+    resolved_uid <- get_or_create_user(system_username)
+    current_user_id(resolved_uid)
 
     session$userData$user_identity   <- user_identity
     session$userData$user_first_name <- user_identity$first_name
     session$userData$system_username  <- system_username
-    session$userData$user_id         <- current_user_id
+    session$userData$user_id         <- resolved_uid
     session$userData$sso_active      <- FALSE
     session$userData$auth_source     <- "local"
     session$userData$auth_initialized <- TRUE
@@ -46,19 +53,18 @@ server <- function(input, output, session) {
     session$userData$user_config <- list(
       name             = user_identity$full_name,
       icon             = user_config$icon,
-      userId           = as.character(current_user_id),
+      userId           = as.character(resolved_uid),
       auth_level       = user_config$auth_level,
       sicil            = NULL, email = NULL, first_name = user_identity$first_name,
       last_name        = NULL, sektor = NULL, department = NULL,
       mudurluk         = NULL, masraf_yeri_kodu = NULL
     )
 
-    cache_dir <- session_cache$setup_user_session(current_user_id)
+    cache_dir <- session_cache$setup_user_session(resolved_uid)
   } else {
     # ===== SSO (KEYCLOAK) MODU =====
     # Geçici değerler: Modüller bu değerlerle başlatılır,
     # token doğrulandığında observer gerçek değerlerle günceller
-    current_user_id <- 0L
     session$userData$auth_initialized <- FALSE
     session$userData$sso_active <- TRUE
 
@@ -70,6 +76,9 @@ server <- function(input, output, session) {
       ui <- resolveUserIdentity(sso_claims = claims)
       uname <- ui$username
       uid <- get_or_create_user(uname, sso_claims = claims)
+
+      # reactiveVal'i güncelle - bağımlı observer'lar otomatik tetiklenir
+      current_user_id(uid)
 
       session$userData$user_identity   <- ui
       session$userData$user_first_name <- ui$first_name
@@ -90,6 +99,17 @@ server <- function(input, output, session) {
 
       session_cache$setup_user_session(uid)
       session$userData$auth_initialized <- TRUE
+
+      # SSO sonrası kayıtlı söyleşileri yükle ve karşılama ekranını güncelle
+      tryCatch({
+        chats <- load_chats_from_db(uid, include_messages = FALSE)
+        values$saved_chats <- chats %||% list()
+        if (length(values$saved_chats) > 0 && isTRUE(values$show_welcome)) {
+          session$sendCustomMessage("reloadWelcomeScreen", list(timestamp = as.numeric(Sys.time())))
+        }
+      }, error = function(e) {
+        log_warn("SSO sonrası söyleşi yüklemesi başarısız: {e$message}")
+      })
 
       log_info("SSO oturum kuruldu: kullanıcı={uname}, id={uid}, yetki={ui$auth_level}")
     }, ignoreInit = TRUE, once = TRUE)
@@ -161,7 +181,8 @@ server <- function(input, output, session) {
   init_docx_preview_js(session)
   
   # Uygulama başladığında mevcut geri bildirimleri yükle
-  initial_feedback <- load_feedback_from_db(current_user_id)
+  # current_user_id reactiveVal olduğu için isolate ile değer alınır
+  initial_feedback <- load_feedback_from_db(isolate(current_user_id()))
   
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
@@ -310,7 +331,7 @@ server <- function(input, output, session) {
                             audio_src = NULL, audio_voice = NULL) {
       chat_add_message(
             session, values, settings_data, output,
-            content, type, html, current_user_id,
+            content, type, html, isolate(current_user_id()),
             followups = followups,
             audio_src = audio_src,
             audio_voice = audio_voice

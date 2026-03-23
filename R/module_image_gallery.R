@@ -65,7 +65,7 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observe({
       refresh_trigger()
-      images <- scan_user_images(current_user_id)
+      images <- scan_user_images(current_user_id())
       cached_images(images)
     })
 
@@ -190,7 +190,7 @@ imageGalleryServer <- function(id, current_user_id) {
 
                 file_size_kb <- round(row$file_size / 1024, 1)
                 created_str <- format(row$created_at, "%d.%m.%Y %H:%M")
-                chat_title <- get_chat_title_for_image(row$chat_id, current_user_id) %||% "Bilinmeyen Söyleşi"
+                chat_title <- get_chat_title_for_image(row$chat_id, current_user_id()) %||% "Bilinmeyen Söyleşi"
 
                 # Açıklama metnini tooltip olarak göster
                 desc_text <- if (nzchar(row$description)) row$description else ""
@@ -300,7 +300,7 @@ imageGalleryServer <- function(id, current_user_id) {
       removeModal()
       req(info$file_path)
 
-      success <- delete_single_image(info$file_path, current_user_id, info$chat_id)
+      success <- delete_single_image(info$file_path, current_user_id(), info$chat_id)
       if (success) {
         showToast(session, "Görsel silindi.", "warning")
         delete_image_trigger(list(file_path = info$file_path, chat_id = info$chat_id))
@@ -329,7 +329,7 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observeEvent(input$confirm_clear_all_images, {
       removeModal()
-      deleted_count <- delete_all_user_images(current_user_id)
+      deleted_count <- delete_all_user_images(current_user_id())
       clear_all_trigger(clear_all_trigger() + 1)
       refresh_trigger(refresh_trigger() + 1)
       current_page(1)

@@ -96,7 +96,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
 
 	# Mesajları ve durum bilgisini yükle
     values$messages <- chat_to_load$messages %||% list()
-    all_feedback <- load_feedback_from_db(current_user_id)
+    all_feedback <- load_feedback_from_db(current_user_id())
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
     values$current_chat_id <- chat_id_int

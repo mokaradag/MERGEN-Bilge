@@ -65,7 +65,7 @@ get_connection <- function(target = "primary") {
     stop(sprintf("HATA: '%s' için .Renviron içinde DSN tanımı bulunamadı (Target: %s)", dsn_var, target))
   }
   
-  conn <- DBI::dbConnect(odbc::odbc(), dsn = dsn_name)
+  conn <- DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
   return(list(conn = conn, pooled = FALSE, pool = NULL))
 }
 
@@ -95,7 +95,7 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
       if (!requireNamespace("odbc", quietly = TRUE) || !requireNamespace("DBI", quietly = TRUE)) {
         stop("Worker needs 'odbc' and 'DBI' packages installed.")
       }
-      conn <- DBI::dbConnect(odbc::odbc(), dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN))
+      conn <- DBI::dbConnect(odbc::odbc(), dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN), encoding = "UTF-8")
       return(conn)
     }, error = function(e) {
       if (i == max_retries) {
@@ -104,6 +104,16 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
       Sys.sleep(retry_delay * i)  # Exponential backoff
     })
   }
+}
+
+# -------------------------
+# UTF-8 Kodlama Yardımcısı
+# -------------------------
+# Veritabanına yazılacak metinleri UTF-8 olarak normalleştirir.
+# Türkçe karakterlerin (ç, ğ, ı, ö, ş, ü vb.) doğru kaydedilmesini sağlar.
+ensure_utf8 <- function(text) {
+  if (is.null(text) || !is.character(text)) return(text)
+  tryCatch(enc2utf8(text), error = function(e) text)
 }
 
 # -------------------------
@@ -190,9 +200,10 @@ get_or_create_user <- function(username, sso_claims = NULL) {
   on.exit(release_connection(conn_info))
 
   # KaynakAdi'nı belirle: önce SSO claim, sonra DC01_user_base, en son username
+  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
   kaynak_adi <- username
   if (!is.null(sso_claims$full_name) && nzchar(sso_claims$full_name)) {
-    kaynak_adi <- sso_claims$full_name
+    kaynak_adi <- ensure_utf8(sso_claims$full_name)
   } else {
     user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
     user_details <- dbGetQuery(conn, user_details_query, params = list(username))
@@ -826,6 +837,9 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
+  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
+  initial_title <- ensure_utf8(initial_title)
+
   query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, ?)"
   res <- dbGetQuery(conn, query, params = list(user_id, initial_title))
   if (nrow(res) == 0) stop("Failed to create new chat session in DB.")
@@ -862,7 +876,11 @@ save_message_to_db <- function(chat_id, msg) {
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
-  res <- dbGetQuery(conn, query, params = list(chat_id, msg$content, msg$type, ts, next_order))
+  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
+  msg_content <- ensure_utf8(msg$content)
+  msg_type <- ensure_utf8(msg$type)
+
+  res <- dbGetQuery(conn, query, params = list(chat_id, msg_content, msg_type, ts, next_order))
   if (nrow(res) == 0) stop("Failed to save message to DB.")
   return(as.integer(res$MessageID[1]))
 }
@@ -898,9 +916,10 @@ update_message_content_in_db <- function(message_id, new_content) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
   
+  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
+  new_content <- ensure_utf8(new_content)
+
   query <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
-  
-  # Execute the update statement
   dbExecute(conn, query, params = list(new_content, as.integer(message_id)))
 }
 
@@ -913,6 +932,9 @@ update_chat_title_in_db <- function(chat_id, new_title) {
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
+
+  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
+  new_title <- ensure_utf8(new_title)
 
   query <- "UPDATE MB_Chats SET ChatTitle = ? WHERE ChatID = ?"
   dbExecute(conn, query, params = list(new_title, chat_id))
@@ -1045,6 +1067,10 @@ worker_save_assistant_response <- function(chat_id, response_text,
   # FIX: Add 3 hours to timestamp for GMT+3
   timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
+  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
+  response_text <- ensure_utf8(response_text)
+  message_type <- ensure_utf8(message_type)
+
   insert_q <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
     OUTPUT INSERTED.MessageID AS MessageID
@@ -1072,8 +1098,9 @@ save_feedback_to_db_extended <- function(user_id, message_id, feedback_type, tag
   on.exit(release_connection(conn_info))
 
   # NULL degerleri SQL NULL (NA) olarak isle
-  safe_tags <- if (is.null(tags) || length(tags) == 0) NA_character_ else as.character(tags)
-  safe_comment <- if (is.null(comment) || length(comment) == 0) NA_character_ else as.character(comment)
+  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
+  safe_tags <- if (is.null(tags) || length(tags) == 0) NA_character_ else ensure_utf8(as.character(tags))
+  safe_comment <- if (is.null(comment) || length(comment) == 0) NA_character_ else ensure_utf8(as.character(comment))
 
   query <- "
     MERGE MB_Feedback AS target
