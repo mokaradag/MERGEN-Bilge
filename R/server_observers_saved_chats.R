@@ -64,7 +64,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     
     if (isTRUE(needs_hydrate)) {
       detail <- tryCatch(
-        load_chat_messages_from_db(chat_id),
+        load_chat_messages_from_db(chat_id, user_id = current_user_id()),
         error = function(e) {
           warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
           NULL

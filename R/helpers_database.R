@@ -612,28 +612,41 @@ format_chat_messages <- function(chat_df) {
   })
 }
 
-load_chat_messages_from_db <- function(chat_id) {
+load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   stopifnot(!is.null(chat_id))
 
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query <- "
-    SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-           m.MessageType, m.MessageTimestamp, m.MessageOrder
-    FROM MB_Chats c
-    LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-    WHERE c.ChatID = ?
-    ORDER BY m.MessageOrder ASC
-  "
+  # Güvenlik: user_id verilmişse yalnızca o kullanıcının söyleşisini yükle
+  if (!is.null(user_id)) {
+    query <- "
+      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+             m.MessageType, m.MessageTimestamp, m.MessageOrder
+      FROM MB_Chats c
+      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+      WHERE c.ChatID = ? AND c.UserID = ?
+      ORDER BY m.MessageOrder ASC
+    "
+  } else {
+    query <- "
+      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+             m.MessageType, m.MessageTimestamp, m.MessageOrder
+      FROM MB_Chats c
+      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+      WHERE c.ChatID = ?
+      ORDER BY m.MessageOrder ASC
+    "
+  }
 
   chat_param <- suppressWarnings(as.integer(chat_id))
   if (is.na(chat_param)) {
     chat_param <- chat_id
   }
 
-  chat_df <- dbGetQuery(conn, query, params = list(chat_param))
+  params <- if (!is.null(user_id)) list(chat_param, as.integer(user_id)) else list(chat_param)
+  chat_df <- dbGetQuery(conn, query, params = params)
   if (nrow(chat_df) == 0) {
     return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
   }
