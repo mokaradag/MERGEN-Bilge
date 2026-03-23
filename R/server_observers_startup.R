@@ -64,40 +64,48 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     }
   }, ignoreInit = TRUE)
   
-  # current_user_id reactiveVal olduğu için değeri şimdi yakala
-  # (future_promise içinde reactive erişim yapılamaz)
-  uid_for_load <- isolate(current_user_id())
-  session$userData$initial_saved_chats_promise <- promises::then(
-    promises::future_promise({
-      # SSO modunda uid henüz 0 olabilir - bu durumda boş liste döner
-      if (identical(uid_for_load, 0L)) return(list())
-      load_chats_from_db(uid_for_load, include_messages = FALSE)
-    }),
-    onFulfilled = function(chats) {
-      chats <- chats %||% list()
-      values$saved_chats <- chats
+  # --- Kayıtlı söyleşileri asenkron yükle ---
+  # SSO modunda current_user_id başlangıçta 0L olur; kullanıcı kimliği
+  # doğrulandığında reactiveVal güncellenir. Bu observer değişikliği
+  # yakalar ve gerçek kullanıcı için söyleşileri yükler.
+  load_saved_chats_for_user <- function(uid) {
+    session$userData$initial_saved_chats_promise <- promises::then(
+      promises::future_promise({
+        if (identical(uid, 0L) || identical(uid, 0)) return(list())
+        load_chats_from_db(uid, include_messages = FALSE)
+      }),
+      onFulfilled = function(chats) {
+        chats <- chats %||% list()
+        values$saved_chats <- chats
 
-      # Kayıtlı sohbetler yüklendiğinde karşılama ekranını güncelle.
-      # Derin uzay giriş animasyonu aktifken tam yeniden render yapmak
-      # tüm başlangıç dizisini gereksiz yere yeniden tetikler.
-      if (length(chats) > 0) {
-        if (isTRUE(session$userData$deep_space_dismissed)) {
-          # Giriş animasyonu kapandıktan sonra - güvenle güncelle
-          render_welcome_screen(chats, replace_existing = TRUE)
-        } else {
-          # Giriş animasyonu hâlâ aktif - yeniden render ertelendi.
-          # Karşılama ekranı zaten ilk render'da oluşturuldu;
-          # saved_chats değiştiğinde bir sonraki render'da güncellenecek.
-          cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
+        # Kayıtlı sohbetler yüklendiğinde karşılama ekranını güncelle
+        if (length(chats) > 0) {
+          if (isTRUE(session$userData$deep_space_dismissed)) {
+            render_welcome_screen(chats, replace_existing = TRUE)
+          } else {
+            cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
+          }
         }
+        NULL
+      },
+      onRejected = function(err) {
+        warning(sprintf("[SERVER] Kayıtlı söyleşi yüklemesi başarısız: %s", conditionMessage(err)))
+        NULL
       }
-      NULL
-    },
-    onRejected = function(err) {
-      warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
-      NULL
+    )
+  }
+
+  # İlk yükleme: SSO kapalıysa hemen çalışır, SSO açıksa uid=0 olduğundan atlanır
+  uid_for_load <- isolate(current_user_id())
+  load_saved_chats_for_user(uid_for_load)
+
+  # SSO modunda: kullanıcı kimliği doğrulandığında söyleşileri yeniden yükle
+  observeEvent(current_user_id(), {
+    uid <- current_user_id()
+    if (!identical(uid, 0L) && !identical(uid, 0)) {
+      load_saved_chats_for_user(uid)
     }
-  )
-  
+  }, ignoreInit = TRUE)
+
   invisible(NULL)
 }

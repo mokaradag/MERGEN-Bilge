@@ -67,9 +67,12 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
       session$sendCustomMessage("initModernWelcome", list())
 
       # Kişiselleştirilmiş karşılama animasyonunu başlat
+      # SSO modunda user_first_name başlangıçta NULL olabilir;
+      # session$userData'dan güncel değeri oku
       shinyjs::delay(400, {
+        current_name <- session$userData$user_first_name %||% user_first_name %||% ""
         session$sendCustomMessage("initPersonalGreeting", list(
-          first_name = user_first_name %||% ""
+          first_name = current_name
         ))
       })
     })

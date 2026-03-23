@@ -100,16 +100,17 @@ server <- function(input, output, session) {
       session_cache$setup_user_session(uid)
       session$userData$auth_initialized <- TRUE
 
-      # SSO sonrası kayıtlı söyleşileri yükle ve karşılama ekranını güncelle
+      # SSO sonrası geri bildirimleri yeniden yükle
       tryCatch({
-        chats <- load_chats_from_db(uid, include_messages = FALSE)
-        values$saved_chats <- chats %||% list()
-        if (length(values$saved_chats) > 0 && isTRUE(values$show_welcome)) {
-          session$sendCustomMessage("reloadWelcomeScreen", list(timestamp = as.numeric(Sys.time())))
-        }
+        fb <- load_feedback_from_db(uid)
+        values$liked_messages <- fb$liked
+        values$disliked_messages <- fb$disliked
       }, error = function(e) {
-        log_warn("SSO sonrası söyleşi yüklemesi başarısız: {e$message}")
+        log_warn("SSO sonrası geri bildirim yüklemesi başarısız: {e$message}")
       })
+
+      # NOT: Kayıtlı söyleşiler startupObserversInit içindeki
+      # observeEvent(current_user_id()) tarafından otomatik yüklenir.
 
       log_info("SSO oturum kuruldu: kullanıcı={uname}, id={uid}, yetki={ui$auth_level}")
     }, ignoreInit = TRUE, once = TRUE)
@@ -141,10 +142,11 @@ server <- function(input, output, session) {
   send_message <- function(...) send_message_fns$send_message(...)
     
   # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
+  # SSO modunda user_first_name başlangıçta NULL olabilir; reactive ile ilet
   claudeCodeServer("claude_code_module",
                    current_user_id = current_user_id,
                    settings_data = settings_data,
-                   user_first_name = session$userData$user_first_name)
+                   user_first_name = reactive({ session$userData$user_first_name }))
 
   # Görsel ayarları senkronizasyonunu başlat (Sohbet → Ayarlar, modüler)
   visualSettingsSyncInit(input, settings_data)
@@ -181,8 +183,11 @@ server <- function(input, output, session) {
   init_docx_preview_js(session)
   
   # Uygulama başladığında mevcut geri bildirimleri yükle
-  # current_user_id reactiveVal olduğu için isolate ile değer alınır
-  initial_feedback <- load_feedback_from_db(isolate(current_user_id()))
+  # SSO modunda başlangıçta user_id=0 olabilir; boş liste döner
+  initial_feedback <- tryCatch(
+    load_feedback_from_db(isolate(current_user_id())),
+    error = function(e) list(liked = character(0), disliked = character(0))
+  )
   
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
@@ -204,7 +209,8 @@ server <- function(input, output, session) {
     session$userData$welcome_screen_attached <- FALSE
         
     # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
-    chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name)
+    chatExportInit(input, output, session, values,
+                   user_display_name = session$userData$user_config$name %||% "Kullanıcı")
 
     # Chartlab referanslarını çözümlemek için grafik deposu
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()

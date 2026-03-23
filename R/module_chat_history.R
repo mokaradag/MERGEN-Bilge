@@ -272,7 +272,7 @@ historyServer <- function(id, all_messages) {
       return(history_data)
     })
     
-    output$history_table <- renderDataTable({
+    output$history_table <- DT::renderDT({
       DT::datatable(
         filtered_history(),
         colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
