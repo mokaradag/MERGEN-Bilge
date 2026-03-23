@@ -18,8 +18,8 @@ resolveUserIdentity <- function(sso_claims = NULL) {
   if (isTRUE(SSO_ENABLED) && !is.null(sso_claims)) {
 
     username   <- sso_claims$username %||% ""
-    first_name <- sso_claims$first_name %||% ""
-    full_name  <- sso_claims$full_name %||% ""
+    first_name <- ensure_utf8(fixTurkishEncoding(sso_claims$first_name %||% ""))
+    full_name  <- ensure_utf8(fixTurkishEncoding(sso_claims$full_name %||% ""))
     sicil      <- sso_claims$sicil
 
     # İlk isim boşsa tam isimden çıkar

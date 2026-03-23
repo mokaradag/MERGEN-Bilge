@@ -226,7 +226,13 @@ build_sso_logout_url <- function(redirect_uri = NULL) {
 #' @return Liste: list(authorized = TRUE/FALSE, yetki = ..., masraf_yeri_kodu = ...)
 check_user_authorization <- function(username, sicil = NULL) {
   if (is.null(username) || !nzchar(username)) {
-    return(list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL))
+    return(list(
+      authorized = FALSE,
+      yetki = NULL,
+      masraf_yeri_kodu = NULL,
+      kaynak_adi = NULL,
+      kullanici_adi = NULL
+    ))
   }
 
   tryCatch({
@@ -250,20 +256,37 @@ check_user_authorization <- function(username, sicil = NULL) {
 
     if (nrow(result) > 0) {
       row <- result[1, ]
+      kaynak_adi <- row$KaynakAdi %||% ""
+      # Türkçe karakter bozulmalarını normalize et
+      kaynak_adi <- ensure_utf8(fixTurkishEncoding(kaynak_adi))
+
       log_info("SSO yetki: Kullanıcı bulundu - DB.KullaniciAdi='{row$KullaniciAdi}', Yetki='{row$Yetki}'")
       list(
         authorized      = TRUE,
         yetki           = row$Yetki %||% "USER",
         masraf_yeri_kodu = row$MasrafYeriKodu,
-        kaynak_adi      = row$KaynakAdi
+        kaynak_adi      = kaynak_adi,
+        kullanici_adi   = row$KullaniciAdi %||% username
       )
     } else {
       log_warn("Kullanıcı DC01_user_base tablosunda bulunamadı: username='{username}', sicil='{sicil %||% 'YOK'}'")
-      list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL)
+      list(
+        authorized = FALSE,
+        yetki = NULL,
+        masraf_yeri_kodu = NULL,
+        kaynak_adi = NULL,
+        kullanici_adi = NULL
+      )
     }
   }, error = function(e) {
     log_error("Yetkilendirme sorgusu hatası: {e$message}")
     # Veritabanı hatası durumunda varsayılan yetki ile devam et
-    list(authorized = TRUE, yetki = "USER", masraf_yeri_kodu = NULL, kaynak_adi = NULL)
+    list(
+      authorized = TRUE,
+      yetki = "USER",
+      masraf_yeri_kodu = NULL,
+      kaynak_adi = NULL,
+      kullanici_adi = username
+    )
   })
 }

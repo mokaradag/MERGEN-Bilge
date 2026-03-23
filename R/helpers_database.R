@@ -212,13 +212,40 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     }
   }
 
-  user_id_query <- "SELECT UserID FROM MB_Users WHERE KullaniciAdi = ?"
+  # SSO tarafında kullanıcı adı büyük/küçük harf veya alternatif kimlik formatıyla gelebilir.
+  # Bu yüzden önce KullaniciAdi üzerinden case-insensitive eşleşme yapılır.
+  user_id_query <- "SELECT TOP 1 UserID FROM MB_Users WHERE LOWER(KullaniciAdi) = LOWER(?)"
   user_id_result <- dbGetQuery(conn, user_id_query, params = list(username))
+
+  # KullaniciAdi ile bulunamazsa ve sicil bilgisi varsa Sicil üzerinden de eşleştir.
+  # Böylece mevcut UserID korunur ve geçmiş kayıtlar doğru kullanıcıya bağlanır.
+  if (nrow(user_id_result) == 0 && !is.null(sso_claims$sicil) && nzchar(sso_claims$sicil)) {
+    sicil_col_check <- tryCatch(
+      dbGetQuery(
+        conn,
+        "SELECT 1 AS exists_flag
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_NAME = 'MB_Users' AND COLUMN_NAME = 'Sicil'"
+      ),
+      error = function(e) data.frame()
+    )
+
+    if (nrow(sicil_col_check) > 0) {
+      user_id_by_sicil <- dbGetQuery(
+        conn,
+        "SELECT TOP 1 UserID FROM MB_Users WHERE Sicil = ?",
+        params = list(sso_claims$sicil)
+      )
+      if (nrow(user_id_by_sicil) > 0) {
+        user_id_result <- user_id_by_sicil
+      }
+    }
+  }
 
   if (nrow(user_id_result) > 0) {
     user_id <- as.integer(user_id_result$UserID[1])
-    update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
-    dbExecute(conn, update_query, params = list(kaynak_adi, user_id))
+    update_query <- "UPDATE MB_Users SET KullaniciAdi = ?, KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
+    dbExecute(conn, update_query, params = list(username, kaynak_adi, user_id))
 
     # SSO ek alanlarını güncelle (tablo destekliyorsa)
     if (!is.null(sso_claims)) {
