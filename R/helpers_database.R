@@ -116,13 +116,32 @@ ensure_utf8 <- function(text) {
   tryCatch(enc2utf8(text), error = function(e) text)
 }
 
+
+# SSO kullanıcı adını kanonik hale getirir (eşleşme tutarlılığı için)
+normalize_sso_username <- function(username) {
+  if (is.null(username) || !is.character(username)) return(username)
+
+  normalized <- trimws(username)
+  normalized <- sub("@.*$", "", normalized)  # email formatında gelirse domain kısmını kaldır
+  normalized <- tolower(normalized)
+  normalized
+}
+
+# Türkçe karakter bozulmalarını düzeltir ve UTF-8 normalizasyonu uygular
+normalize_turkish_text <- function(text) {
+  if (is.null(text) || !is.character(text)) return(text)
+
+  normalized <- tryCatch(fixTurkishEncoding(text), error = function(e) text)
+  ensure_utf8(normalized)
+}
+
 # -------------------------
 # Input Validation Helper (NEW - Suggestion #2)
 # -------------------------
 validate_username <- function(username) {
   # Only allow alphanumeric, underscore, dot, and hyphen
-  if (!grepl("^[a-zA-Z0-9_.-]+$", username)) {
-    stop("Geçersiz kullanıcı adı formatı. Sadece harf, rakam, alt çizgi, nokta ve tire kullanılabilir.")
+  if (!grepl("^[a-zA-Z0-9_.@-]+$", username)) {
+    stop("Geçersiz kullanıcı adı formatı. Sadece harf, rakam, alt çizgi, nokta, @ ve tire kullanılabilir.")
   }
   
   # Check length constraints
@@ -192,6 +211,9 @@ validate_message_content <- function(content) {
 get_or_create_user <- function(username, sso_claims = NULL) {
   stopifnot(is.character(username) && length(username) == 1)
 
+  # SSO kullanıcı adını normalize et (domain/case farkları nedeniyle yeni kullanıcı açılmasını önler)
+  username <- normalize_sso_username(username)
+
   # Girdi doğrulama
   validate_username(username)
 
@@ -203,22 +225,27 @@ get_or_create_user <- function(username, sso_claims = NULL) {
   # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
   kaynak_adi <- username
   if (!is.null(sso_claims$full_name) && nzchar(sso_claims$full_name)) {
-    kaynak_adi <- ensure_utf8(sso_claims$full_name)
+    kaynak_adi <- normalize_turkish_text(sso_claims$full_name)
   } else {
     user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
     user_details <- dbGetQuery(conn, user_details_query, params = list(username))
     if (nrow(user_details) > 0 && nzchar(user_details$KaynakAdi[1] %||% "")) {
-      kaynak_adi <- user_details$KaynakAdi[1]
+      kaynak_adi <- normalize_turkish_text(user_details$KaynakAdi[1])
     }
   }
 
-  user_id_query <- "SELECT UserID FROM MB_Users WHERE KullaniciAdi = ?"
+  user_id_query <- "SELECT TOP 1 UserID, KullaniciAdi, KaynakAdi FROM MB_Users WHERE LOWER(KullaniciAdi) = LOWER(?) ORDER BY UserID"
   user_id_result <- dbGetQuery(conn, user_id_query, params = list(username))
 
   if (nrow(user_id_result) > 0) {
     user_id <- as.integer(user_id_result$UserID[1])
-    update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
-    dbExecute(conn, update_query, params = list(kaynak_adi, user_id))
+
+    # Kullanıcı adı/kaynak adı değerlerini kanonik hale getir (SSO case farkları ve Türkçe karakter sorunları)
+    canonical_username <- normalize_sso_username(user_id_result$KullaniciAdi[1] %||% username)
+    canonical_kaynak_adi <- normalize_turkish_text(kaynak_adi)
+
+    update_query <- "UPDATE MB_Users SET KullaniciAdi = ?, KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
+    dbExecute(conn, update_query, params = list(canonical_username, canonical_kaynak_adi, user_id))
 
     # SSO ek alanlarını güncelle (tablo destekliyorsa)
     if (!is.null(sso_claims)) {
@@ -228,7 +255,8 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     return(user_id)
   } else {
     insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, ?, GETDATE())"
-    res <- dbGetQuery(conn, insert_query, params = list(username, kaynak_adi))
+    canonical_kaynak_adi <- normalize_turkish_text(kaynak_adi)
+    res <- dbGetQuery(conn, insert_query, params = list(username, canonical_kaynak_adi))
     if (nrow(res) == 0) stop("Yeni kullanıcı oluşturulduktan sonra UserID alınamadı.")
     user_id <- as.integer(res$UserID[1])
 
@@ -260,27 +288,27 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
 
     if ("Sicil" %in% existing_cols && !is.null(sso_claims$sicil)) {
       set_parts <- c(set_parts, "Sicil = ?")
-      params <- c(params, list(sso_claims$sicil))
+      params <- c(params, list(normalize_turkish_text(sso_claims$sicil)))
     }
     if ("Email" %in% existing_cols && !is.null(sso_claims$email)) {
       set_parts <- c(set_parts, "Email = ?")
-      params <- c(params, list(sso_claims$email))
+      params <- c(params, list(normalize_turkish_text(sso_claims$email)))
     }
     if ("Sektor" %in% existing_cols && !is.null(sso_claims$sektor)) {
       set_parts <- c(set_parts, "Sektor = ?")
-      params <- c(params, list(sso_claims$sektor))
+      params <- c(params, list(normalize_turkish_text(sso_claims$sektor)))
     }
     if ("Departman" %in% existing_cols && !is.null(sso_claims$department)) {
       set_parts <- c(set_parts, "Departman = ?")
-      params <- c(params, list(sso_claims$department))
+      params <- c(params, list(normalize_turkish_text(sso_claims$department)))
     }
     if ("Mudurluk" %in% existing_cols && !is.null(sso_claims$mudurluk)) {
       set_parts <- c(set_parts, "Mudurluk = ?")
-      params <- c(params, list(sso_claims$mudurluk))
+      params <- c(params, list(normalize_turkish_text(sso_claims$mudurluk)))
     }
     if ("MasrafYeriKodu" %in% existing_cols && !is.null(sso_claims$masraf_yeri_kodu)) {
       set_parts <- c(set_parts, "MasrafYeriKodu = ?")
-      params <- c(params, list(sso_claims$masraf_yeri_kodu))
+      params <- c(params, list(normalize_turkish_text(sso_claims$masraf_yeri_kodu)))
     }
     if ("SonGirisKaynagi" %in% existing_cols) {
       set_parts <- c(set_parts, "SonGirisKaynagi = ?")

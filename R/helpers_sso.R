@@ -226,7 +226,7 @@ build_sso_logout_url <- function(redirect_uri = NULL) {
 #' @return Liste: list(authorized = TRUE/FALSE, yetki = ..., masraf_yeri_kodu = ...)
 check_user_authorization <- function(username, sicil = NULL) {
   if (is.null(username) || !nzchar(username)) {
-    return(list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL))
+    return(list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL, kullanici_adi = NULL))
   }
 
   tryCatch({
@@ -243,7 +243,7 @@ check_user_authorization <- function(username, sicil = NULL) {
     # 2. KullaniciAdi ile bulunamazsa sicil numarası ile dene
     if (nrow(result) == 0 && !is.null(sicil) && nzchar(sicil)) {
       log_info("SSO yetki: KullaniciAdi ile bulunamadı, sicil ile deneniyor: {sicil}")
-      query_sicil <- "SELECT KaynakAdi, Yetki, MasrafYeriKodu, KullaniciAdi FROM DC01_user_base WHERE LOWER(KullaniciAdi) = LOWER(?)"
+      query_sicil <- "SELECT KaynakAdi, Yetki, MasrafYeriKodu, KullaniciAdi FROM DC01_user_base WHERE CAST(SicilNo AS NVARCHAR(50)) = ?"
       result <- dbGetQuery(conn, query_sicil, params = list(sicil))
       log_info("SSO yetki sorgusu (sicil): bulunan={nrow(result)} kayıt")
     }
@@ -255,15 +255,16 @@ check_user_authorization <- function(username, sicil = NULL) {
         authorized      = TRUE,
         yetki           = row$Yetki %||% "USER",
         masraf_yeri_kodu = row$MasrafYeriKodu,
-        kaynak_adi      = row$KaynakAdi
+        kaynak_adi      = row$KaynakAdi,
+        kullanici_adi   = row$KullaniciAdi
       )
     } else {
       log_warn("Kullanıcı DC01_user_base tablosunda bulunamadı: username='{username}', sicil='{sicil %||% 'YOK'}'")
-      list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL)
+      list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL, kullanici_adi = NULL)
     }
   }, error = function(e) {
     log_error("Yetkilendirme sorgusu hatası: {e$message}")
     # Veritabanı hatası durumunda varsayılan yetki ile devam et
-    list(authorized = TRUE, yetki = "USER", masraf_yeri_kodu = NULL, kaynak_adi = NULL)
+    list(authorized = TRUE, yetki = "USER", masraf_yeri_kodu = NULL, kaynak_adi = NULL, kullanici_adi = NULL)
   })
 }

@@ -89,7 +89,7 @@ server <- function(input, output, session) {
       session$userData$user_config <- list(
         name             = ui$full_name,
         icon             = user_config$icon,
-        userId           = ui$sicil %||% as.character(uid),
+        userId           = as.character(uid),
         auth_level       = ui$auth_level %||% user_config$auth_level,
         sicil            = ui$sicil, email = ui$email,
         first_name       = ui$first_name, last_name = ui$last_name,

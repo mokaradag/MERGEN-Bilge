@@ -161,6 +161,11 @@ ssoAuthServer <- function(id) {
       # Veritabanı bilgileriyle claim'leri zenginleştir
       claims$yetki           <- auth_info$yetki
       claims$masraf_yeri_kodu <- auth_info$masraf_yeri_kodu
+      
+      # DB'deki kanonik kullanıcı adını kullan (case/domain farklarını önler)
+      if (!is.null(auth_info$kullanici_adi) && nzchar(auth_info$kullanici_adi)) {
+        claims$username <- tolower(auth_info$kullanici_adi)
+      }
 
       # DB'deki KaynakAdi ile Keycloak adını karşılaştır, DB'dekini tercih et
       if (!is.null(auth_info$kaynak_adi) && nzchar(auth_info$kaynak_adi)) {
