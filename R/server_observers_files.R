@@ -55,7 +55,7 @@ fileObserversInit <- function(input, session, settings_data, session_files,
       if (!(file_info$name %in% names(session_files()))) {
         processAndSummarizeFile(
           file_info,
-          current_user_id = current_user_id,
+          current_user_id = current_user_id(),
           session = session,
           settings = settings_data,
           file_manager_data = file_manager_data,
