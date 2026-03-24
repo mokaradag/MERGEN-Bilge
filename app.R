@@ -51,16 +51,21 @@ build_sanitized_path_variants <- function(path, mustWork = FALSE) {
   raw <- as.character(path)
   native <- tryCatch(enc2native(raw), error = function(e) raw)
   utf8 <- tryCatch(enc2utf8(raw), error = function(e) raw)
-  iconv_utf8 <- tryCatch(iconv(raw, from = "", to = "UTF-8", sub = ""), error = function(e) raw)
+  iconv_utf8 <- tryCatch({
+    r <- iconv(raw, from = "", to = "UTF-8")
+    if (is.na(r)) raw else r
+  }, error = function(e) raw)
   iconv_ascii <- tryCatch(iconv(raw, from = "", to = "ASCII//TRANSLIT", sub = ""), error = function(e) raw)
 
+  # Native kodlamadaki yollar önce denenir: addResourcePath() dosya sistemi
+  # erişimi için yerel kodlamayı kullanır.
   candidates <- unique(Filter(nzchar, c(
-    tryCatch(normalize_utf8_path(raw, mustWork = mustWork), error = function(e) raw),
+    native,
     tryCatch(normalize_utf8_path(native, mustWork = mustWork), error = function(e) native),
-    tryCatch(normalize_utf8_path(utf8, mustWork = mustWork), error = function(e) utf8),
+    tryCatch(normalize_utf8_path(raw, mustWork = mustWork), error = function(e) raw),
     tryCatch(normalize_utf8_path(iconv_utf8, mustWork = mustWork), error = function(e) iconv_utf8),
     tryCatch(normalize_utf8_path(iconv_ascii, mustWork = mustWork), error = function(e) iconv_ascii),
-    native,
+    raw,
     utf8,
     iconv_utf8,
     iconv_ascii
@@ -82,9 +87,14 @@ register_resource_path <- function(prefix, path, mustWork = FALSE, strict = FALS
 
   last_error <- NULL
   for (candidate in variants) {
+    # enc2native() önce denenir çünkü addResourcePath() C seviyesinde
+    # dosya sistemi erişimi yapar ve yerel kodlamadaki yolu bekler.
+    # UTF-8 olarak etiketlenmiş ama yerel baytlar içeren dizeler
+    # "invalid multibyte string" hatasına neden olur.
+    native_candidate <- tryCatch(enc2native(candidate), error = function(e) candidate)
     candidate_variants <- unique(Filter(nzchar, c(
+      native_candidate,
       candidate,
-      tryCatch(enc2native(candidate), error = function(e) candidate),
       tryCatch(enc2utf8(candidate), error = function(e) candidate)
     )))
 
