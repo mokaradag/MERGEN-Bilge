@@ -89,6 +89,26 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
     p
   }
 
+  # İç yardımcı: mutlak yollarda baştaki tekrar eden segmentleri temizle.
+  # Örn: /main/uygulamalar/main/uygulamalar/... -> /main/uygulamalar/...
+  dedupe_repeated_root_segments <- function(p) {
+    if (!nzchar(p) || !startsWith(p, "/")) return(p)
+
+    parts <- strsplit(sub("^/+", "", p), "/", fixed = TRUE)[[1]]
+    n <- length(parts)
+    if (n < 4) return(p)
+
+    max_k <- floor(n / 2)
+    for (k in seq(max_k, 1)) {
+      if (all(parts[seq_len(k)] == parts[(k + 1):(2 * k)])) {
+        deduped <- c(parts[seq_len(k)], parts[-seq_len(2 * k)])
+        return(paste0("/", paste(deduped, collapse = "/")))
+      }
+    }
+
+    p
+  }
+
   candidate <- as.character(candidate)
 
   # Ters eğik çizgileri düzelt
@@ -107,7 +127,8 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
     }
   }
 
-  normalize_utf8_path(candidate, mustWork = must_exist)
+  normalized <- normalize_utf8_path(candidate, mustWork = must_exist)
+  dedupe_repeated_root_segments(normalized)
 }
 
 # --- MCP TEMEL DİZİN ÇÖZÜMLEYICI ---
