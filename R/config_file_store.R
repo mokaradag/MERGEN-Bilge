@@ -388,10 +388,22 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   )
 
   if (!length(paths)) {
-    paths <- tryCatch(
-      list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
-      error = function(e) character(0)
-    )
+    path_variants <- unique(Filter(nzchar, c(
+      as.character(dir),
+      tryCatch(enc2utf8(dir), error = function(e) as.character(dir)),
+      tryCatch(enc2native(dir), error = function(e) as.character(dir))
+    )))
+
+    for (candidate_dir in path_variants) {
+      candidate_paths <- tryCatch(
+        list.files(candidate_dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+        error = function(e) character(0)
+      )
+      if (length(candidate_paths)) {
+        paths <- candidate_paths
+        break
+      }
+    }
   }
 
   if (!length(paths)) {
