@@ -41,14 +41,26 @@ safe_source("server.R", encoding = "UTF-8")
 #    Örn: addResourcePath("css", "www/css") → /css/style.css URL'si çalışır.
 #    NOT: Mutlak yol kullanılır, böylece Ctrl+Enter ile çalıştırıldığında da
 #    kaynak yolları doğru çözümlenir.
-www_abs_dir <- normalizePath("www", mustWork = FALSE)
+www_abs_dir <- tryCatch(normalize_utf8_path("www", mustWork = FALSE), error = function(e) normalizePath("www", mustWork = FALSE))
+www_abs_dir <- tryCatch(enc2native(www_abs_dir), error = function(e) www_abs_dir)
+
 for (subdir in list.dirs(www_abs_dir, recursive = FALSE, full.names = FALSE)) {
-  addResourcePath(subdir, file.path(www_abs_dir, subdir))
+  subdir_path <- file.path(www_abs_dir, subdir)
+  tryCatch({
+    addResourcePath(subdir, subdir_path)
+  }, error = function(e) {
+    # Ctrl+Enter akışında Windows çok baytlı yol hatası alınırsa UTF-8 varyantı ile tekrar dene.
+    addResourcePath(subdir, enc2utf8(subdir_path))
+  })
 }
 # www/ kök dizinindeki dosyalar (mergen_avatar.png, company_logo.png vb.)
 # boş prefix ile kaydedilemez. "img" prefix'i ile www/ kök dizinini kaydet.
 # Kodda bu dosyalar "img/dosya.png" şeklinde referans edilir.
-addResourcePath("img", www_abs_dir)
+tryCatch({
+  addResourcePath("img", www_abs_dir)
+}, error = function(e) {
+  addResourcePath("img", enc2utf8(www_abs_dir))
+})
 
 # 5. Shiny sunucu seçeneklerini ayarla.
 #    runApp() artık bu dosya tarafından çağrılmaz; Shiny altyapısı (veya

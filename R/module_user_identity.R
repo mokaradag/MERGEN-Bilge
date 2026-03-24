@@ -151,22 +151,14 @@ fixTurkishEncoding <- function(text) {
 
   # YEDEK YÖNTEM: Hâlâ bozuk karakterler varsa bilinen eşlemelerle düzelt.
   # (iconv yöntemi bazı özel durumlarda başarısız olabilir)
-  if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result, perl = TRUE)) {
+  # Not: Üretim ortamında "ORÄ‡UN" gibi CP1252/CP1254 türevi bozulmalar görülebilir.
+  if (grepl("[ÃÄÅ]", result, perl = TRUE)) {
     replacements <- list(
-      # Büyük harfler (çift-encoding sonucu oluşan bozuk bayt çiftleri → doğru karakter)
-      c("\u00c3\u0087",       "\u00c7"),   # Ç  (UTF-8: C3 87)
-      c("\u00c3\u009c",       "\u00dc"),   # Ü  (UTF-8: C3 9C)
-      c("\u00c3\u0096",       "\u00d6"),   # Ö  (UTF-8: C3 96)
-      c("\u00c4\u009e",       "\u011e"),   # Ğ  (UTF-8: C4 9E)
-      c("\u00c4\u00b0",       "\u0130"),   # İ  (UTF-8: C4 B0)
-      c("\u00c5\u009e",       "\u015e"),   # Ş  (UTF-8: C5 9E)
-      # Küçük harfler
-      c("\u00c3\u00a7",       "\u00e7"),   # ç  (UTF-8: C3 A7)
-      c("\u00c3\u00bc",       "\u00fc"),   # ü  (UTF-8: C3 BC)
-      c("\u00c3\u00b6",       "\u00f6"),   # ö  (UTF-8: C3 B6)
-      c("\u00c4\u009f",       "\u011f"),   # ğ  (UTF-8: C4 9F)
-      c("\u00c4\u00b1",       "\u0131"),   # ı  (UTF-8: C4 B1)
-      c("\u00c5\u009f",       "\u015f")    # ş  (UTF-8: C5 9F)
+      # Yaygın UTF-8 mojibake eşleşmeleri
+      c("Ã‡", "Ç"), c("Ãœ", "Ü"), c("Ã–", "Ö"), c("Äž", "Ğ"), c("Ä°", "İ"), c("Åž", "Ş"),
+      c("Ã§", "ç"), c("Ã¼", "ü"), c("Ã¶", "ö"), c("ÄŸ", "ğ"), c("Ä±", "ı"), c("ÅŸ", "ş"),
+      # CP1252/CP1254 kaynaklı tipik bozulmalar
+      c("Ä‡", "Ç"), c("ÄŸ", "ğ"), c("Äž", "Ğ"), c("Ä±", "ı"), c("Ä°", "İ"), c("ÅŸ", "ş"), c("Åž", "Ş")
     )
     for (rep in replacements) {
       result <- gsub(rep[1], rep[2], result, fixed = TRUE)
