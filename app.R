@@ -41,26 +41,80 @@ safe_source("server.R", encoding = "UTF-8")
 #    Örn: addResourcePath("css", "www/css") → /css/style.css URL'si çalışır.
 #    NOT: Mutlak yol kullanılır, böylece Ctrl+Enter ile çalıştırıldığında da
 #    kaynak yolları doğru çözümlenir.
-www_abs_dir <- tryCatch(normalize_utf8_path("www", mustWork = FALSE), error = function(e) normalizePath("www", mustWork = FALSE))
-www_abs_dir <- tryCatch(enc2native(www_abs_dir), error = function(e) www_abs_dir)
+www_abs_dir <- normalize_utf8_path("www", mustWork = FALSE)
 
-for (subdir in list.dirs(www_abs_dir, recursive = FALSE, full.names = FALSE)) {
-  subdir_path <- file.path(www_abs_dir, subdir)
-  tryCatch({
-    addResourcePath(subdir, subdir_path)
-  }, error = function(e) {
-    # Ctrl+Enter akışında Windows çok baytlı yol hatası alınırsa UTF-8 varyantı ile tekrar dene.
-    addResourcePath(subdir, enc2utf8(subdir_path))
-  })
+build_sanitized_path_variants <- function(path, mustWork = FALSE) {
+  if (is.null(path) || !nzchar(path)) {
+    return(character(0))
+  }
+
+  raw <- as.character(path)
+  candidates <- unique(Filter(nzchar, c(
+    tryCatch(normalize_utf8_path(raw, mustWork = mustWork), error = function(e) raw),
+    tryCatch(normalize_utf8_path(enc2utf8(raw), mustWork = mustWork), error = function(e) enc2utf8(raw)),
+    tryCatch(normalize_utf8_path(iconv(raw, from = "", to = "UTF-8", sub = ""), mustWork = mustWork), error = function(e) raw),
+    tryCatch(normalize_utf8_path(iconv(raw, from = "", to = "ASCII//TRANSLIT", sub = ""), mustWork = mustWork), error = function(e) raw)
+  )))
+
+  candidates
+}
+
+register_resource_path <- function(prefix, path, mustWork = FALSE) {
+  variants <- build_sanitized_path_variants(path, mustWork = mustWork)
+  if (!length(variants)) {
+    stop(sprintf("Kaynak yolu üretilemedi (prefix: %s, path: %s)", prefix, path))
+  }
+
+  last_error <- NULL
+  for (candidate in variants) {
+    ok <- tryCatch({
+      addResourcePath(prefix, candidate)
+      TRUE
+    }, error = function(e) {
+      last_error <<- e
+      FALSE
+    })
+
+    if (isTRUE(ok)) {
+      return(invisible(candidate))
+    }
+  }
+
+  stop(sprintf(
+    "addResourcePath başarısız (prefix: %s). Denenen sanitize edilmiş yollar: %s. Son hata: %s",
+    prefix,
+    paste(variants, collapse = " | "),
+    if (!is.null(last_error)) conditionMessage(last_error) else "bilinmeyen hata"
+  ))
+}
+
+if (!dir.exists(www_abs_dir)) {
+  stop(sprintf("www dizini bulunamadı veya erişilemiyor: %s", www_abs_dir))
+}
+
+subdirs <- list.dirs(www_abs_dir, recursive = FALSE, full.names = FALSE)
+for (subdir in subdirs) {
+  if (!nzchar(subdir) || is.na(subdir)) {
+    warning(sprintf("Geçersiz alt klasör adı algılandı (www: %s).", www_abs_dir), call. = FALSE)
+    next
+  }
+
+  if (is.na(iconv(subdir, from = "", to = "UTF-8", sub = NA))) {
+    warning(sprintf(
+      "Alt klasör adı encoding sorunu içeriyor ve atlanıyor: '%s' (www: %s)",
+      subdir,
+      www_abs_dir
+    ), call. = FALSE)
+    next
+  }
+
+  subdir_path <- normalize_utf8_path(file.path(www_abs_dir, subdir), mustWork = FALSE)
+  register_resource_path(subdir, subdir_path, mustWork = FALSE)
 }
 # www/ kök dizinindeki dosyalar (mergen_avatar.png, company_logo.png vb.)
 # boş prefix ile kaydedilemez. "img" prefix'i ile www/ kök dizinini kaydet.
 # Kodda bu dosyalar "img/dosya.png" şeklinde referans edilir.
-tryCatch({
-  addResourcePath("img", www_abs_dir)
-}, error = function(e) {
-  addResourcePath("img", enc2utf8(www_abs_dir))
-})
+register_resource_path("img", www_abs_dir, mustWork = FALSE)
 
 # 5. Shiny sunucu seçeneklerini ayarla.
 #    runApp() artık bu dosya tarafından çağrılmaz; Shiny altyapısı (veya
