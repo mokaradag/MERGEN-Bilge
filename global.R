@@ -8,8 +8,9 @@
 
 # Çift yükleme koruması: app.R zaten global.R'ı yüklüyorsa, Shiny'nin
 # otomatik tekrar yüklemesini atla. Bu sayede başlangıç logları iki kez basılmaz.
+# NOT: Bayrak dosyanın SONUNDA ayarlanır; böylece yükleme ortasında çökmeler
+# olursa bir sonraki denemede yeniden yükleme yapılabilir.
 if (isTRUE(getOption("mergen.global_loaded"))) return(invisible())
-options(mergen.global_loaded = TRUE)
 
 # Küresel olarak UTF-8 kodlamasını zorla
 options(encoding = "UTF-8")
@@ -251,3 +252,6 @@ safe_source("R/server_observers_misc.R",           encoding = "UTF-8")
 
 # -- Çıktılar ve İndirmeler --
 safe_source("R/server_outputs_downloads.R", encoding = "UTF-8")
+
+# Tüm dosyalar başarıyla yüklendi - çift yükleme koruması bayrağını ayarla
+options(mergen.global_loaded = TRUE)

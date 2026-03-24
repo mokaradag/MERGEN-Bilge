@@ -85,8 +85,15 @@ check_rate_limit <- function(user_id) {
 
 # --- PARALEL İŞÇİ HAVUZU YAPILANDIRMASI ---
 # Sistem kapasitesine göre işçi sayısını belirle (en az 1, en fazla 10)
+# Küme oluşturma başarısız olursa (sunucu ağ/güvenlik kısıtlamaları vb.)
+# sıralı moda düşerek uygulamanın çökmesini engelle
 n_workers <- max(1, min(parallelly::availableCores() - 1, 10))
-plan(multisession, workers = n_workers)
+tryCatch({
+  plan(multisession, workers = n_workers)
+}, error = function(e) {
+  message(sprintf("[UYARI] Paralel işçi havuzu oluşturulamadı (%s). Sıralı moda geçiliyor.", e$message))
+  tryCatch(plan(sequential), error = function(e2) NULL)
+})
 
 # İşçi havuzu izleme fonksiyonu
 monitor_workers <- function() {
