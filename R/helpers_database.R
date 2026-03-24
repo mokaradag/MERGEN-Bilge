@@ -60,13 +60,22 @@ get_connection <- function(target = "primary") {
   # Türkçe karakter desteği: ODBC sürücüsüne UTF-8 istemci karakter seti bildir.
   # FreeTDS için ClientCharset=UTF-8, NVARCHAR sütunlarına doğru Unicode yazımı sağlar.
   # Microsoft ODBC Driver bu parametreyi sessizce yoksayar, dolayısıyla güvenlidir.
+  # LANG ortam değişkeni de ayarlanır (MSODBCSQL sürücüsü bunu kullanır).
   conn <- tryCatch({
     conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
     DBI::dbConnect(odbc::odbc(), .connection_string = conn_str, encoding = "UTF-8")
   }, error = function(e) {
-    # ClientCharset desteklenmiyorsa standart DSN bağlantısına geri dön
+    log_warn("ODBC bağlantısı ClientCharset ile başarısız: {e$message}")
+    # Yedek bağlantı: encoding parametresi korunur
     DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
   })
+
+  # Bağlantı sonrası: SQL Server oturumunda NVARCHAR parametrelerin
+  # doğru yorumlanması için ANSI ayarlarını etkinleştir
+  tryCatch({
+    DBI::dbExecute(conn, "SET ANSI_NULLS ON")
+    DBI::dbExecute(conn, "SET QUOTED_IDENTIFIER ON")
+  }, error = function(e) NULL)
 
   return(list(conn = conn, pooled = FALSE, pool = NULL))
 }
@@ -106,6 +115,11 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
       }, error = function(e2) {
         DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
       })
+      # Worker bağlantısı için de ANSI ayarlarını etkinleştir
+      tryCatch({
+        DBI::dbExecute(conn, "SET ANSI_NULLS ON")
+        DBI::dbExecute(conn, "SET QUOTED_IDENTIFIER ON")
+      }, error = function(e2) NULL)
       return(conn)
     }, error = function(e) {
       if (i == max_retries) {

@@ -95,11 +95,16 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
   # UNC yolu kontrolü: /server/share biçimini //server/share'e çevir
-  maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
-  if (maybe_unc) {
-    cleaned <- paste0("//", sub("^/+", "", candidate))
-    cleaned <- dedupe_leading_pair(cleaned)
-    return(enc2utf8(cleaned))
+  # NOT: Bu dönüşüm YALNIZCA Windows'ta yapılır. Linux'ta tek slash ile başlayan
+  # yollar (ör: /opt/uygulamalar/...) normal yerel yollardır ve UNC'ye çevrilmemeli.
+  # Linux'ta UNC paylaşımları mount noktası üzerinden erişilir (/mnt/paylasim gibi).
+  if (.Platform$OS.type == "windows") {
+    maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
+    if (maybe_unc) {
+      cleaned <- paste0("//", sub("^/+", "", candidate))
+      cleaned <- dedupe_leading_pair(cleaned)
+      return(enc2utf8(cleaned))
+    }
   }
 
   normalize_utf8_path(candidate, mustWork = must_exist)

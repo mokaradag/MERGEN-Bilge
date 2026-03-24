@@ -17,6 +17,16 @@ options(encoding = "UTF-8")
 # Future paketinin RNG (rastgele sayı üretimi) hatalarını yoksay
 options(future.rng.onMisuse = "ignore")
 
+# LANG ortam değişkenini UTF-8 olarak ayarla (Linux'ta ODBC sürücüleri ve
+# dosya sistemi işlemleri için kritik; MSODBCSQL sürücüsü bu değişkeni
+# karakter kodlaması belirlemek için kullanır)
+if (!grepl("UTF-8|utf8", Sys.getenv("LANG", ""), ignore.case = TRUE)) {
+  Sys.setenv(LANG = "en_US.UTF-8")
+}
+if (!grepl("UTF-8|utf8", Sys.getenv("LC_ALL", ""), ignore.case = TRUE)) {
+  Sys.setenv(LC_ALL = "en_US.UTF-8")
+}
+
 # Yerel ayarları İngilizce UTF-8 olarak ayarlamayı dene (hataları gizle)
 try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
 
