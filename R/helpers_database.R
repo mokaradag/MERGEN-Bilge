@@ -1,29 +1,21 @@
-# R/helpers_database.R
-# Complete, corrected helpers for DB access and worker-safe operations.
-# - Never serialize pool/DBI external pointers into workers.
-# - Worker functions create their own DB connections (no 'pool' needed).
-# - These functions DO NOT access Shiny reactives; always pass plain R values
-#   (e.g. chat_id, user_id, prompt_text) into futures/workers. Capture reactives
-#   in the main Shiny reactive context BEFORE starting background work.
+# Dosya Yolu: R/helpers_database.R
+# Açıklama: Veritabanı erişimi ve worker-safe işlemler için yardımcı fonksiyonlar.
+#   - Worker'lara pool/DBI harici pointer'ları aktarmayın.
+#   - Worker fonksiyonları kendi DB bağlantılarını oluşturur (pool gerekmez).
+#   - Bu fonksiyonlar Shiny reactive'lerine ERİŞMEZ; her zaman düz R değerleri
+#     (chat_id, user_id, prompt_text vb.) future/worker'lara geçirin.
+#   - Reactive değerleri ana Shiny reactive bağlamında yakalayın (isolate ile).
 #
-# Usage:
-# 1) In main process: source("helpers_database.R"); call init_db_pool(dsn) if you want a pool.
-# 2) In server code: capture reactive values (e.g. chat_id <- isolate(rv$current_chat_id)) and
-#    pass those primitives into futures.
-# 3) In workers (future blocks) call worker_save_assistant_response(...) which will create
-#    a fresh DB connection inside the worker.
-#
-# NOTE: This file assumes a SQL Server-like OUTPUT ... INSERTED.MessageID behavior.
-#       If your DB differs, adjust the INSERT returning syntax accordingly.
+# NOT: SQL Server'a özgü OUTPUT ... INSERTED sözdizimi kullanılmaktadır.
 
 library(DBI)
 library(odbc)
 library(pool)
 
-# --- Configuration ---
+# --- Yapılandırma ---
 .DEFAULT_DSN <- Sys.getenv("DB_DSN", "TestConnection")
 
-# Get pool statistics
+# Havuz istatistiklerini al
 get_pool_info <- function() {
   return(list(
     valid = TRUE,
@@ -33,7 +25,7 @@ get_pool_info <- function() {
 }
 
 get_connection <- function(target = "primary") {
-  
+
   # 1. Hangi Veritabanı? (.Renviron içindeki değişkeni seçiyoruz)
   dsn_var <- switch(target,
     "primary"   = "DB_DSN",      # Varsayılan Ana Veritabanı
@@ -41,7 +33,7 @@ get_connection <- function(target = "primary") {
     "tertiary"  = "DB_DSN_3",    # Üçüncül Veritabanı
     "DB_DSN"                     # Hata durumunda varsayılan
   )
-  
+
   # 2. Pooling Kontrolü (Sadece Ana Veritabanı için ve pool aktifse)
   # Şu an kullanmıyor, ama performans için kapıyı açık bırakıldı.
   if (target == "primary" && exists("pool", envir = .GlobalEnv)) {
@@ -51,57 +43,75 @@ get_connection <- function(target = "primary") {
     }
   }
 
-  # 3. Direct Connection (Fallback)
+  # 3. Doğrudan Bağlantı
   # Havuz yoksa veya ikincil veritabanı isteniyorsa doğrudan bağlan.
   if (!requireNamespace("odbc", quietly = TRUE) || !requireNamespace("DBI", quietly = TRUE)) {
     stop("Worker/process requires 'odbc' and 'DBI' packages installed.")
   }
-  
+
   # Seçilen hedefin DSN adını çevresel değişkenden al
   dsn_name <- Sys.getenv(dsn_var, .DEFAULT_DSN)
-  
+
   # Eğer DSN tanımlı değilse hata ver (Debugging kolaylığı için)
   if (dsn_name == "") {
     stop(sprintf("HATA: '%s' için .Renviron içinde DSN tanımı bulunamadı (Target: %s)", dsn_var, target))
   }
-  
-  conn <- DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
+
+  # Türkçe karakter desteği: ODBC sürücüsüne UTF-8 istemci karakter seti bildir.
+  # FreeTDS için ClientCharset=UTF-8, NVARCHAR sütunlarına doğru Unicode yazımı sağlar.
+  # Microsoft ODBC Driver bu parametreyi sessizce yoksayar, dolayısıyla güvenlidir.
+  conn <- tryCatch({
+    conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
+    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str, encoding = "UTF-8")
+  }, error = function(e) {
+    # ClientCharset desteklenmiyorsa standart DSN bağlantısına geri dön
+    DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
+  })
+
   return(list(conn = conn, pooled = FALSE, pool = NULL))
 }
 
-# Release connection - only disconnect if it's NOT a pool
+# Bağlantı serbest bırakma - sadece pool OLMAYAN bağlantıları kapat
 release_connection <- function(conn_info) {
   if (is.null(conn_info)) return(invisible(NULL))
-  
-  # If it's a pool, do nothing - pool manages its own connections
+
+  # Pool bağlantısıysa dokunma - pool kendi bağlantılarını yönetir
   if (isTRUE(conn_info$pooled)) {
     return(invisible(NULL))
   }
-  
-  # Only disconnect direct connections (non-pooled)
+
+  # Sadece doğrudan (pool dışı) bağlantıları kapat
   tryCatch({
     DBI::dbDisconnect(conn_info$conn)
   }, error = function(e) {
-    # ignore
+    # yoksay
   })
-  
+
   invisible(NULL)
 }
 
-# Worker-side helper: create a fresh DBI connection in the worker with retry logic
+# Worker tarafı: arka plan işlemlerinde kullanılmak üzere yeni bir DBI bağlantısı oluşturur.
+# Yeniden deneme mantığı ile bağlantı hatalarına dayanıklıdır.
 worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
+  dsn_name <- Sys.getenv("DB_DSN", .DEFAULT_DSN)
   for (i in 1:max_retries) {
     tryCatch({
       if (!requireNamespace("odbc", quietly = TRUE) || !requireNamespace("DBI", quietly = TRUE)) {
         stop("Worker needs 'odbc' and 'DBI' packages installed.")
       }
-      conn <- DBI::dbConnect(odbc::odbc(), dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN), encoding = "UTF-8")
+      # Türkçe karakter desteği: ClientCharset=UTF-8 ile ODBC sürücüsüne bildir
+      conn <- tryCatch({
+        conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
+        DBI::dbConnect(odbc::odbc(), .connection_string = conn_str, encoding = "UTF-8")
+      }, error = function(e2) {
+        DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
+      })
       return(conn)
     }, error = function(e) {
       if (i == max_retries) {
         stop(paste("Failed to connect to database after", max_retries, "attempts:", e$message))
       }
-      Sys.sleep(retry_delay * i)  # Exponential backoff
+      Sys.sleep(retry_delay * i)
     })
   }
 }
@@ -111,30 +121,46 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
 # -------------------------
 # Veritabanına yazılacak metinleri UTF-8 olarak normalleştirir.
 # Türkçe karakterlerin (ç, ğ, ı, ö, ş, ü vb.) doğru kaydedilmesini sağlar.
-# ODBC sürücüsünün çift-encoding yapmasını önlemek için iconv kullanılır.
+# ODBC sürücüsüne gönderilmeden önce R encoding etiketinin UTF-8 olmasını garanti eder.
 ensure_utf8 <- function(text) {
   if (is.null(text) || !is.character(text)) return(text)
   tryCatch({
-    # Önce enc2utf8 ile R'ın iç temsilini UTF-8'e dönüştür
+    # R'ın iç temsilini UTF-8'e dönüştür ve encoding etiketini ayarla
     result <- enc2utf8(text)
-    # Encoding etiketini açıkça ayarla
     Encoding(result) <- "UTF-8"
-    # iconv ile temiz UTF-8 garantisi sağla (bozuk baytları kaldırır)
+
+    # Çift-encoding kontrolü: UTF-8 baytlarının Latin-1 olarak yorumlanıp
+    # tekrar UTF-8'e kodlanmış olabileceği durumları düzelt
+    # (Ör: "Ã§" → "ç", "Ä\u009e" → "ğ")
+    if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result, perl = TRUE)) {
+      repaired <- tryCatch({
+        raw <- iconv(result, from = "UTF-8", to = "latin1", sub = "byte")
+        if (!is.na(raw)) {
+          Encoding(raw) <- "UTF-8"
+          if (validUTF8(raw)) raw else result
+        } else {
+          result
+        }
+      }, error = function(e) result)
+      result <- repaired
+    }
+
+    # Son temizlik: bozuk baytları kaldır
     clean <- iconv(result, from = "UTF-8", to = "UTF-8", sub = "")
     if (!is.na(clean) && nzchar(clean)) clean else result
   }, error = function(e) text)
 }
 
 # -------------------------
-# Input Validation Helper (NEW - Suggestion #2)
+# Girdi Doğrulama Yardımcıları
 # -------------------------
 validate_username <- function(username) {
-  # Only allow alphanumeric, underscore, dot, and hyphen
+  # Sadece harf, rakam, alt çizgi, nokta ve tire karakterlerine izin ver
   if (!grepl("^[a-zA-Z0-9_.-]+$", username)) {
     stop("Geçersiz kullanıcı adı formatı. Sadece harf, rakam, alt çizgi, nokta ve tire kullanılabilir.")
   }
   
-  # Check length constraints
+  # Uzunluk sınırı kontrolü
   if (nchar(username) < 3 || nchar(username) > 50) {
     stop("Kullanıcı adı 3-50 karakter arasında olmalıdır.")
   }
@@ -143,17 +169,17 @@ validate_username <- function(username) {
 }
 
 validate_chat_title <- function(title) {
-  # Length constraint
+  # Uzunluk sınırı kontrolü
   if (nchar(title) > 200) {
-    stop("Chat title must be less than 200 characters.")
+    stop("Sohbet başlığı 200 karakterden kısa olmalıdır.")
   }
-  
+
   if (nchar(title) < 1) {
-    stop("Chat title cannot be empty.")
+    stop("Sohbet başlığı boş olamaz.")
   }
-  
-  # Block potential SQL injection patterns (defense in depth)
-  # Even with parameterized queries, we reject suspicious patterns
+
+  # Olası SQL enjeksiyon kalıplarını engelle (derinlemesine savunma)
+  # Parametreli sorgular kullanılsa bile şüpheli kalıpları reddet
   dangerous_patterns <- c(
     "';",           # SQL statement terminator
     "--",           # SQL comment
@@ -172,7 +198,7 @@ validate_chat_title <- function(title) {
   
   for (pattern in dangerous_patterns) {
     if (grepl(pattern, title, ignore.case = TRUE)) {
-      stop("Chat title contains invalid SQL patterns.")
+      stop("Sohbet başlığı geçersiz SQL kalıpları içeriyor.")
     }
   }
   
@@ -180,20 +206,20 @@ validate_chat_title <- function(title) {
 }
 
 validate_message_content <- function(content) {
-  # Length constraint (adjusted to 20000)
+  # Uzunluk sınırı kontrolü (maksimum 20000 karakter)
   if (nchar(content) > 20000) {
-    stop("Message content exceeds maximum length of 20,000 characters.")
+    stop("Mesaj içeriği 20.000 karakter sınırını aşıyor.")
   }
-  
+
   if (nchar(content) < 1) {
-    stop("Message content cannot be empty.")
+    stop("Mesaj içeriği boş olamaz.")
   }
   
   return(TRUE)
 }
 
 # -------------------------
-# Database operation helpers
+# Veritabanı İşlem Yardımcıları
 # -------------------------
 
 # Kullanıcı al veya oluştur; tam sayı UserID döndürür
@@ -275,29 +301,30 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
     set_parts <- c()
     params <- list()
 
+    # Türkçe karakterlerin doğru kaydedilmesi için tüm metin değerlerine ensure_utf8 uygula
     if ("Sicil" %in% existing_cols && !is.null(sso_claims$sicil)) {
       set_parts <- c(set_parts, "Sicil = ?")
-      params <- c(params, list(sso_claims$sicil))
+      params <- c(params, list(ensure_utf8(sso_claims$sicil)))
     }
     if ("Email" %in% existing_cols && !is.null(sso_claims$email)) {
       set_parts <- c(set_parts, "Email = ?")
-      params <- c(params, list(sso_claims$email))
+      params <- c(params, list(ensure_utf8(sso_claims$email)))
     }
     if ("Sektor" %in% existing_cols && !is.null(sso_claims$sektor)) {
       set_parts <- c(set_parts, "Sektor = ?")
-      params <- c(params, list(sso_claims$sektor))
+      params <- c(params, list(ensure_utf8(sso_claims$sektor)))
     }
     if ("Departman" %in% existing_cols && !is.null(sso_claims$department)) {
       set_parts <- c(set_parts, "Departman = ?")
-      params <- c(params, list(sso_claims$department))
+      params <- c(params, list(ensure_utf8(sso_claims$department)))
     }
     if ("Mudurluk" %in% existing_cols && !is.null(sso_claims$mudurluk)) {
       set_parts <- c(set_parts, "Mudurluk = ?")
-      params <- c(params, list(sso_claims$mudurluk))
+      params <- c(params, list(ensure_utf8(sso_claims$mudurluk)))
     }
     if ("MasrafYeriKodu" %in% existing_cols && !is.null(sso_claims$masraf_yeri_kodu)) {
       set_parts <- c(set_parts, "MasrafYeriKodu = ?")
-      params <- c(params, list(sso_claims$masraf_yeri_kodu))
+      params <- c(params, list(ensure_utf8(sso_claims$masraf_yeri_kodu)))
     }
     if ("SonGirisKaynagi" %in% existing_cols) {
       set_parts <- c(set_parts, "SonGirisKaynagi = ?")
@@ -316,8 +343,7 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
   invisible(NULL)
 }
 
-# Load chats and their messages for a user (returns list)
-# process_message_content() fallback is provided if missing.
+# Kullanıcının sohbetlerini ve mesajlarını yükle (liste döndürür)
 load_chats_from_db <- function(user_id, include_messages = TRUE) {
   stopifnot(!is.null(user_id))
   conn_info <- get_connection()
@@ -338,7 +364,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     summary_data <- dbGetQuery(conn, query, params = list(user_id))
     if (nrow(summary_data) == 0) return(list())
 
-    # Preserve the CreateTimestamp DESC order from the SQL query
+    # SQL sorgusundaki CreateTimestamp DESC sırasını koru
     unique_chat_ids <- as.character(summary_data$ChatID)
 
     formatted <- lapply(seq_len(nrow(summary_data)), function(i) {
@@ -354,7 +380,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     })
     names(formatted) <- unique_chat_ids
 
-    # Ensure the list is in the correct order matching the SQL query
+    # SQL sorgusuyla eşleşen doğru sırada olduğundan emin ol
     formatted <- formatted[unique_chat_ids]
     return(formatted)
   }
@@ -370,7 +396,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
   all_data <- dbGetQuery(conn, query, params = list(user_id))
   if (nrow(all_data) == 0) return(list())
 
-  # Preserve the CreateTimestamp DESC order from the SQL query
+  # SQL sorgusundaki CreateTimestamp DESC sırasını koru
   unique_chat_ids <- unique(all_data$ChatID)
   
   chat_list <- split(all_data, all_data$ChatID)
@@ -394,7 +420,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     )
   })
   
-  # Reorder the list to match the original CreateTimestamp DESC order
+  # Orijinal CreateTimestamp DESC sırasına göre yeniden sırala
   formatted_chats <- formatted_chats[as.character(unique_chat_ids)]
   return(formatted_chats)
 }
@@ -782,7 +808,7 @@ load_chat_messages_batch <- function(chat_ids) {
   formatted
 }
 
-# Lightweight history fetch: return paired user/assistant rows per chat
+# Hafif geçmiş sorgusu: her sohbet için kullanıcı/asistan mesaj çiftlerini döndür
 load_history_rows_batch <- function(chat_ids) {
   if (is.null(chat_ids) || length(chat_ids) == 0) {
     return(list())
@@ -856,13 +882,12 @@ load_history_rows_batch <- function(chat_ids) {
   formatted
 }
 
-# Create new chat, return ChatID integer (UPDATED with validation)
+# Yeni sohbet oluştur, ChatID tamsayı döndür
 create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   stopifnot(!is.null(user_id))
   
-  # ADDED: Input validation
   validate_chat_title(initial_title)
-  
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
@@ -872,7 +897,7 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
 
   query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, ?)"
   res <- dbGetQuery(conn, query, params = list(user_id, initial_title))
-  if (nrow(res) == 0) stop("Failed to create new chat session in DB.")
+  if (nrow(res) == 0) stop("Veritabanında yeni sohbet oturumu oluşturulamadı.")
   return(as.integer(res$ChatID[1]))
 }
 
@@ -881,13 +906,12 @@ sanitize_input <- function(text) {
   return(text)
 }
 
-# Save message (synchronous/main process or worker-safe if get_connection created a worker conn)
-# msg is a list: list(content=..., type="user"/"assistant", timestamp=POSIXct or formatted string)
+# Mesajı kaydet (senkron/ana süreç veya worker-safe)
+# msg: list(content=..., type="user"/"assistant", timestamp=POSIXct veya biçimlendirilmiş metin)
 save_message_to_db <- function(chat_id, msg) {
   stopifnot(!is.null(chat_id))
   stopifnot(is.list(msg) && !is.null(msg$content) && !is.null(msg$type))
 
-  # Validate message content
   validate_message_content(msg$content)
 
   conn_info <- get_connection()
@@ -911,16 +935,16 @@ save_message_to_db <- function(chat_id, msg) {
   msg_type <- ensure_utf8(msg$type)
 
   res <- dbGetQuery(conn, query, params = list(chat_id, msg_content, msg_type, ts, next_order))
-  if (nrow(res) == 0) stop("Failed to save message to DB.")
+  if (nrow(res) == 0) stop("Mesaj veritabanına kaydedilemedi.")
   return(as.integer(res$MessageID[1]))
 }
 
-# Safe message saving with fallback logging
+# Güvenli mesaj kaydetme (hata durumunda dosyaya log yazar)
 save_message_safely <- function(chat_id, message, user_id = NULL) {
   tryCatch({
     save_message_to_db(chat_id, message)
   }, error = function(e) {
-    # Log failed messages to file for recovery
+    # Başarısız mesajları kurtarma için dosyaya logla
     log_file <- file.path(tempdir(), paste0("failed_messages_", Sys.Date(), ".log"))
     log_entry <- list(
       timestamp = Sys.time(),
@@ -938,7 +962,7 @@ save_message_safely <- function(chat_id, message, user_id = NULL) {
   })
 }                          
 
-# Update an existing message's content in the database
+# Veritabanındaki mevcut bir mesajın içeriğini güncelle
 update_message_content_in_db <- function(message_id, new_content) {
   stopifnot(!is.null(message_id), is.character(new_content))
   
@@ -956,7 +980,6 @@ update_message_content_in_db <- function(message_id, new_content) {
 update_chat_title_in_db <- function(chat_id, new_title) {
   stopifnot(!is.null(chat_id))
   
-  # ADDED: Input validation
   validate_chat_title(new_title)
   
   conn_info <- get_connection()
@@ -970,7 +993,7 @@ update_chat_title_in_db <- function(chat_id, new_title) {
   dbExecute(conn, query, params = list(new_title, chat_id))
 }
 
-# Feedback functions
+# Geri bildirim fonksiyonları
 save_feedback_to_db <- function(user_id, message_id, feedback_type) {
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -1009,7 +1032,7 @@ load_feedback_from_db <- function(user_id) {
   )
 }
 
-# Log usage
+# Kullanım günlüğü kaydet
 log_ai_usage <- function(chat_id, message_id, user_id, model_used, duration, success) {
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -1022,7 +1045,7 @@ log_ai_usage <- function(chat_id, message_id, user_id, model_used, duration, suc
   dbExecute(conn, query, params = list(chat_id, message_id, user_id, model_used, duration, success))
 }
 
-# Chat deletion
+# Sohbet silme
 delete_chat_from_db <- function(chat_id, user_id) {
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -1068,13 +1091,9 @@ clear_all_chats_from_db <- function(user_id) {
 }
 
 # -------------------------
-# Worker-safe convenience
+# Worker-safe yardımcı fonksiyonlar
 # -------------------------
-# Use inside future / worker. Do NOT reference Shiny reactives here.
-# Example usage inside future:
-#   future({
-#     worker_save_assistant_response(chat_id = chat_id_val, response_text = resp, model_used = "<local-llm>", user_id = user_id)
-#   })
+# Future / worker içinde kullanılır. Shiny reactive'lerine burada ERİŞMEYİN.
 worker_save_assistant_response <- function(chat_id, response_text,
                                            message_type = "assistant",
                                            timestamp = Sys.time(),
@@ -1082,19 +1101,19 @@ worker_save_assistant_response <- function(chat_id, response_text,
                                            user_id = NULL,
                                            model_used = "<local-llm>",
                                            duration = 0.0) {
-  # create fresh worker connection
+  # Yeni worker bağlantısı oluştur
   conn <- worker_db_connect()
   on.exit({
     tryCatch(DBI::dbDisconnect(conn), error = function(e) NULL)
   })
 
-  # compute next order safely
+  # Sonraki mesaj sırasını güvenli şekilde hesapla
   max_order_q <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
   max_order <- tryCatch(DBI::dbGetQuery(conn, max_order_q, params = list(chat_id))$maxord[1],
                         error = function(e) NA)
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
-  # FIX: Add 3 hours to timestamp for GMT+3
+  # Zaman damgasını Türkiye saatine (GMT+3) çevir
   timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
   # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
@@ -1114,7 +1133,7 @@ worker_save_assistant_response <- function(chat_id, response_text,
       log_q <- "INSERT INTO MB_Usage_Log (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess) VALUES (?, ?, ?, ?, ?, ?)"
       DBI::dbExecute(conn, log_q, params = list(chat_id, response_message_id, user_id, model_used, duration, 1))
     }, error = function(e) {
-      # ignore logging errors
+      # Loglama hatalarını yoksay
     })
   }
 
