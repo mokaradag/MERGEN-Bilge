@@ -64,19 +64,7 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
   # Windows'ta özel karakter içeren yollar için kısa (8.3) formu tercih et
   normalized <- safe_windows_short_path(normalized, must_exist = FALSE)
 
-  # Baytları yerel kodlamadan UTF-8'e dönüştür.
-  # enc2utf8() yalnızca encoding etiketini değiştirir, baytları dönüştürmez.
-  # Sunucu yerel ayarı ISO-8859-9 (Türkçe) ise 0xFE gibi baytlar geçersiz
-
-  # UTF-8 olarak işaretlenir ve addResourcePath gibi C seviyesi fonksiyonlar
-  # "invalid multibyte string" hatası verir. iconv(from="") yerel kodlamayı
-  # otomatik algılar ve baytları gerçekten UTF-8'e çevirir.
-  converted <- tryCatch({
-    result <- iconv(normalized, from = "", to = "UTF-8")
-    if (is.na(result)) enc2utf8(normalized) else result
-  }, error = function(e) {
-    tryCatch(enc2utf8(normalized), error = function(e2) normalized)
-  })
+  enc2utf8(normalized)
 }
 
 # --- HATAYI ÖNLEYİCİ: KÖK DİZİN TEKRARI TEMİZLİĞİ ---
