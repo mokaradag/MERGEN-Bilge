@@ -86,7 +86,9 @@ check_rate_limit <- function(user_id) {
 # --- PARALEL İŞÇİ HAVUZU YAPILANDIRMASI ---
 # Sistem kapasitesine göre işçi sayısını belirle (en az 1, en fazla 10)
 # Küme oluşturma başarısız olursa (sunucu ağ/güvenlik kısıtlamaları vb.)
-# sıralı moda düşerek uygulamanın çökmesini engelle
+# sıralı moda düşerek uygulamanın çökmesini engelle.
+# NOT: Zaman aşımı global.R'de parallelly.makeClusterPSOCK.connectTimeout
+# seçeneği ile 10 saniyeye indirilmiştir (varsayılan 125sn çok uzun).
 n_workers <- max(1, min(parallelly::availableCores() - 1, 10))
 tryCatch({
   plan(multisession, workers = n_workers)
