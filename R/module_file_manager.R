@@ -427,6 +427,24 @@ fileManagerServer <- function(
   }
   
 	refresh_from_user_folder <- function(trigger = "manual") {
+	  normalize_path_for_refresh <- function(path_in) {
+		path_chr <- as.character(path_in %||% "")
+		if (!nzchar(path_chr)) return(path_chr)
+
+		path_norm <- tryCatch(normalize_mcp_path(path_chr, must_exist = FALSE),
+							  error = function(e) gsub("\\\\", "/", path_chr))
+
+		# UNC onarımı yalnızca Windows'ta uygulanır.
+		if (.Platform$OS.type == "windows" && grepl("^/[^/]", path_norm)) {
+		  path_unc <- paste0("/", path_norm)
+		  if (isTRUE(path_exists_relaxed(path_unc))) {
+			return(path_unc)
+		  }
+		}
+
+		path_norm
+	  }
+
 	  uid <- module_user_id_chr
 	  fm_debug("refresh_start", sprintf("trigger=%s", trigger))
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
@@ -454,7 +472,7 @@ fileManagerServer <- function(
 	  fm_debug("refresh_found", sprintf("%d candidate file(s) (source=%s)", nrow(df), source_tag))
 		  
 	  for (i in seq_len(nrow(df))) {
-			p <- df$path[i]
+			p <- normalize_path_for_refresh(df$path[i])
 			display_name <- df$name[i]
 			exists_now <- path_exists_relaxed(p)
 			fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
@@ -462,28 +480,6 @@ fileManagerServer <- function(
 			  fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
 			  next
 			}
-			
-			# Windows UNC yolları (\\server\share) veritabanından tek slash (/server/share) olarak gelebilir.
-            # Bu durumda R dosyayı bulamaz. Eğer dosya bu haliyle erişilemiyorsa, başına slash ekleyip (//server/share) 
-            # UNC formatına çevirerek deniyoruz.
-            
-            # 1. Tüm ters slash'leri R standardı olan düz slash'e çevir
-            p_fixed <- gsub("\\\\", "/", p)
-            
-            # 2. Eğer dosya bu haliyle doğrudan bulunamıyorsa onarmayı dene
-            if (!file.exists(p_fixed) && !fs::file_exists(p_fixed)) {
-              
-              # 3. Eğer yol tek slash ile başlıyorsa (örn: /rehisds/...) ama çift slash değilse
-              if (grepl("^/[^/]", p_fixed)) {
-                 p_unc <- paste0("/", p_fixed) # Başına slash ekle -> //rehisds/...
-                 # Eğer bu UNC varyasyonu diskte varsa, yolu güncelle
-                 if (file.exists(p_unc) || fs::file_exists(p_unc)) {
-                    p_fixed <- p_unc
-                 }
-              }
-            }
-            # 4. Onarılmış yolu ana değişkene ata
-            p <- p_fixed
 
             # CHANGE: Robust size calculation that handles NA/errors gracefully
 			f_size <- tryCatch({
