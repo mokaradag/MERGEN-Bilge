@@ -49,11 +49,21 @@ build_sanitized_path_variants <- function(path, mustWork = FALSE) {
   }
 
   raw <- as.character(path)
+  native <- tryCatch(enc2native(raw), error = function(e) raw)
+  utf8 <- tryCatch(enc2utf8(raw), error = function(e) raw)
+  iconv_utf8 <- tryCatch(iconv(raw, from = "", to = "UTF-8", sub = ""), error = function(e) raw)
+  iconv_ascii <- tryCatch(iconv(raw, from = "", to = "ASCII//TRANSLIT", sub = ""), error = function(e) raw)
+
   candidates <- unique(Filter(nzchar, c(
     tryCatch(normalize_utf8_path(raw, mustWork = mustWork), error = function(e) raw),
-    tryCatch(normalize_utf8_path(enc2utf8(raw), mustWork = mustWork), error = function(e) enc2utf8(raw)),
-    tryCatch(normalize_utf8_path(iconv(raw, from = "", to = "UTF-8", sub = ""), mustWork = mustWork), error = function(e) raw),
-    tryCatch(normalize_utf8_path(iconv(raw, from = "", to = "ASCII//TRANSLIT", sub = ""), mustWork = mustWork), error = function(e) raw)
+    tryCatch(normalize_utf8_path(native, mustWork = mustWork), error = function(e) native),
+    tryCatch(normalize_utf8_path(utf8, mustWork = mustWork), error = function(e) utf8),
+    tryCatch(normalize_utf8_path(iconv_utf8, mustWork = mustWork), error = function(e) iconv_utf8),
+    tryCatch(normalize_utf8_path(iconv_ascii, mustWork = mustWork), error = function(e) iconv_ascii),
+    native,
+    utf8,
+    iconv_utf8,
+    iconv_ascii
   )))
 
   candidates
@@ -72,13 +82,26 @@ register_resource_path <- function(prefix, path, mustWork = FALSE, strict = FALS
 
   last_error <- NULL
   for (candidate in variants) {
-    ok <- tryCatch({
-      addResourcePath(prefix, candidate)
-      TRUE
-    }, error = function(e) {
-      last_error <<- e
-      FALSE
-    })
+    candidate_variants <- unique(Filter(nzchar, c(
+      candidate,
+      tryCatch(enc2native(candidate), error = function(e) candidate),
+      tryCatch(enc2utf8(candidate), error = function(e) candidate)
+    )))
+
+    ok <- FALSE
+    for (candidate_local in candidate_variants) {
+      ok <- tryCatch({
+        addResourcePath(prefix, candidate_local)
+        TRUE
+      }, error = function(e) {
+        last_error <<- e
+        FALSE
+      })
+
+      if (isTRUE(ok)) {
+        break
+      }
+    }
 
     if (isTRUE(ok)) {
       return(invisible(TRUE))
