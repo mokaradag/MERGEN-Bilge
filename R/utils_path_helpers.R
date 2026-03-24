@@ -137,6 +137,27 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 # NOT: Bu fonksiyon MERGEN_UPLOADS_DIR global değişkenine bağımlıdır
 #      ve config_file_store.R'de çağrılır.
 resolve_mcp_base_dir <- function() {
+  sanitize_mcp_base_raw <- function(raw_path) {
+    raw_chr <- if (is.null(raw_path) || !length(raw_path)) "" else as.character(raw_path[1])
+    if (!nzchar(raw_chr)) return(raw_chr)
+
+    raw_chr <- gsub("\\\\", "/", raw_chr, fixed = TRUE)
+    is_abs <- startsWith(raw_chr, "/") || grepl("^[A-Za-z]:/", raw_chr)
+    if (is_abs) return(raw_chr)
+
+    cwd <- tryCatch(getwd(), error = function(e) "")
+    cwd <- gsub("\\\\", "/", cwd, fixed = TRUE)
+    cwd <- sub("/+$", "", cwd)
+    if (!nzchar(cwd)) return(raw_chr)
+
+    cwd_rel <- sub("^/+", "", cwd)
+    if (startsWith(raw_chr, paste0(cwd_rel, "/")) || identical(raw_chr, cwd_rel)) {
+      return(paste0("/", raw_chr))
+    }
+
+    raw_chr
+  }
+
   path_exists_local <- function(path) {
     if (is.null(path) || !nzchar(path)) return(FALSE)
 
@@ -161,7 +182,7 @@ resolve_mcp_base_dir <- function() {
     FALSE
   }
 
-  raw <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
+  raw <- sanitize_mcp_base_raw(Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR))
   base <- normalize_mcp_path(raw, must_exist = FALSE)
 
   tryCatch({

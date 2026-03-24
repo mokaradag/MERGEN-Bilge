@@ -288,7 +288,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   normalize_user_dir_for_listing <- function(path_in) {
     path_chr <- as.character(path_in %||% "")
     if (!nzchar(path_chr)) return(path_chr)
-    normalize_utf8_path(path_chr, mustWork = FALSE)
+    normalize_mcp_path(path_chr, must_exist = FALSE)
   }
   
   drop_stale_entries <- function(keys_to_remove) {
