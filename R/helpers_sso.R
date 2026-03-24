@@ -41,7 +41,12 @@ decode_jwt_payload <- function(token) {
     # Base64 çöz ve JSON olarak ayrıştır
     raw_bytes <- base64enc::base64decode(payload_b64)
     json_str <- rawToChar(raw_bytes)
+    # Ham baytları UTF-8 olarak işaretle (JWT payload her zaman UTF-8'dir)
     Encoding(json_str) <- "UTF-8"
+    # Geçerli UTF-8 olduğundan emin ol; değilse Latin-1'den dönüştür
+    if (!validUTF8(json_str)) {
+      json_str <- iconv(json_str, from = "latin1", to = "UTF-8")
+    }
 
     payload <- jsonlite::fromJSON(json_str, simplifyVector = FALSE)
 

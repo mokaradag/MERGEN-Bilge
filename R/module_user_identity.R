@@ -125,33 +125,17 @@ resolveUserIdentity <- function(sso_claims = NULL) {
 fixTurkishEncoding <- function(text) {
   if (is.null(text) || !nzchar(text)) return(text)
 
-  # Yaygın bozuk UTF-8 -> doğru Türkçe karakter eşlemeleri
-  # (Çift-encoding: UTF-8 baytları Latin-1 olarak yorumlanıp tekrar UTF-8'e kodlandığında)
-  replacements <- list(
-    # Büyük harfler
-    c("\u00c3\u0087",       "\u00c7"),   # Ç  (UTF-8: C3 87)
-    c("\u00c3\u009c",       "\u00dc"),   # Ü  (UTF-8: C3 9C)
-    c("\u00c3\u0096",       "\u00d6"),   # Ö  (UTF-8: C3 96)
-    c("\u00c4\u009e",       "\u011e"),   # Ğ  (UTF-8: C4 9E)
-    c("\u00c4\u00b0",       "\u0130"),   # İ  (UTF-8: C4 B0)
-    c("\u00c5\u009e",       "\u015e"),   # Ş  (UTF-8: C5 9E)
-    # Küçük harfler
-    c("\u00c3\u00a7",       "\u00e7"),   # ç  (UTF-8: C3 A7)
-    c("\u00c3\u00bc",       "\u00fc"),   # ü  (UTF-8: C3 BC)
-    c("\u00c3\u00b6",       "\u00f6"),   # ö  (UTF-8: C3 B6)
-    c("\u00c4\u009f",       "\u011f"),   # ğ  (UTF-8: C4 9F)
-    c("\u00c4\u00b1",       "\u0131"),   # ı  (UTF-8: C4 B1)
-    c("\u00c5\u009f",       "\u015f")    # ş  (UTF-8: C5 9F)
-  )
-
   result <- text
-  for (rep in replacements) {
-    result <- gsub(rep[1], rep[2], result, fixed = TRUE)
-  }
 
-  # Çift-encoding onarımı: ham baytları Latin-1 olarak okuyup UTF-8'e dönüştür
-  # Bu yöntem DB'den okunan bozuk Türkçe verileri de düzeltir
-  if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result)) {
+  # Encoding etiketini açıkça UTF-8 olarak ayarla
+  Encoding(result) <- "UTF-8"
+
+  # ÖNCELİKLİ YÖNTEMİ: iconv ile çift-encoding onarımı.
+  # Keycloak veya DB'den gelen bozuk Türkçe genellikle şu şekilde oluşur:
+  # Orijinal UTF-8 baytları Latin-1/Windows-1252 olarak yorumlanır ve tekrar UTF-8'e kodlanır.
+  # Örnek: "Ğ" (C4 9E) → Latin-1 okuma → "Ä" + kontrol karakteri → tekrar UTF-8 → bozuk metin.
+  # Çözüm: UTF-8 → Latin-1 (baytları geri al) → UTF-8 olarak işaretle.
+  if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result, perl = TRUE)) {
     tryCatch({
       repaired <- iconv(result, from = "UTF-8", to = "latin1", sub = "byte")
       if (!is.na(repaired)) {
@@ -161,11 +145,35 @@ fixTurkishEncoding <- function(text) {
         }
       }
     }, error = function(e) {
-      # Dönüşüm başarısızsa orijinal sonucu koru
+      # Dönüşüm başarısızsa, karakter bazlı değiştirme yöntemine geç
     })
   }
 
-  # Son kontrol: hâlâ bozuk baytlar varsa iconv ile temizle
+  # YEDEK YÖNTEM: Hâlâ bozuk karakterler varsa bilinen eşlemelerle düzelt.
+  # (iconv yöntemi bazı özel durumlarda başarısız olabilir)
+  if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result, perl = TRUE)) {
+    replacements <- list(
+      # Büyük harfler (çift-encoding sonucu oluşan bozuk bayt çiftleri → doğru karakter)
+      c("\u00c3\u0087",       "\u00c7"),   # Ç  (UTF-8: C3 87)
+      c("\u00c3\u009c",       "\u00dc"),   # Ü  (UTF-8: C3 9C)
+      c("\u00c3\u0096",       "\u00d6"),   # Ö  (UTF-8: C3 96)
+      c("\u00c4\u009e",       "\u011e"),   # Ğ  (UTF-8: C4 9E)
+      c("\u00c4\u00b0",       "\u0130"),   # İ  (UTF-8: C4 B0)
+      c("\u00c5\u009e",       "\u015e"),   # Ş  (UTF-8: C5 9E)
+      # Küçük harfler
+      c("\u00c3\u00a7",       "\u00e7"),   # ç  (UTF-8: C3 A7)
+      c("\u00c3\u00bc",       "\u00fc"),   # ü  (UTF-8: C3 BC)
+      c("\u00c3\u00b6",       "\u00f6"),   # ö  (UTF-8: C3 B6)
+      c("\u00c4\u009f",       "\u011f"),   # ğ  (UTF-8: C4 9F)
+      c("\u00c4\u00b1",       "\u0131"),   # ı  (UTF-8: C4 B1)
+      c("\u00c5\u009f",       "\u015f")    # ş  (UTF-8: C5 9F)
+    )
+    for (rep in replacements) {
+      result <- gsub(rep[1], rep[2], result, fixed = TRUE)
+    }
+  }
+
+  # Son kontrol: hâlâ geçersiz UTF-8 baytları varsa temizle
   if (!validUTF8(result)) {
     tryCatch({
       clean <- iconv(text, from = "latin1", to = "UTF-8")
