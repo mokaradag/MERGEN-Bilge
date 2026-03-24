@@ -43,6 +43,46 @@ safe_source("server.R", encoding = "UTF-8")
 #    kaynak yolları doğru çözümlenir.
 www_abs_dir <- normalize_utf8_path("www", mustWork = FALSE)
 
+resolve_resource_root <- function(www_dir) {
+  path_has_encoding_issue <- is.na(tryCatch(
+    iconv(www_dir, from = "", to = "UTF-8", sub = NA),
+    error = function(e) NA_character_
+  ))
+
+  if (dir.exists(www_dir) && !isTRUE(path_has_encoding_issue)) {
+    return(www_dir)
+  }
+
+  # Bazı locale/encoding kombinasyonlarında normalizePath() ile üretilen
+  # mutlak yol addResourcePath() içinde "invalid multibyte string" hatasına
+  # düşebilir. Bu durumda ASCII bir geçici yol üzerinden www/ dizinine
+  # symlink (veya kopya) oluşturarak kaynakları güvenli bir yoldan sun.
+  alias_root <- file.path(tempdir(), "mergen_www_alias")
+  alias_www <- file.path(alias_root, "www")
+
+  unlink(alias_www, recursive = TRUE, force = TRUE)
+  dir.create(alias_root, recursive = TRUE, showWarnings = FALSE)
+
+  linked <- tryCatch(
+    file.symlink(from = "www", to = alias_www),
+    warning = function(w) FALSE,
+    error = function(e) FALSE
+  )
+
+  if (!isTRUE(linked)) {
+    copied <- tryCatch(
+      file.copy(from = "www", to = alias_www, recursive = TRUE),
+      warning = function(w) FALSE,
+      error = function(e) FALSE
+    )
+    if (!isTRUE(copied)) {
+      return(www_dir)
+    }
+  }
+
+  normalize_utf8_path(alias_www, mustWork = FALSE)
+}
+
 build_sanitized_path_variants <- function(path, mustWork = FALSE) {
   if (is.null(path) || !nzchar(path)) {
     return(character(0))
@@ -121,11 +161,13 @@ register_resource_path <- function(prefix, path, mustWork = FALSE, strict = FALS
   invisible(FALSE)
 }
 
-if (!dir.exists(www_abs_dir)) {
+if (!dir.exists(www_abs_dir) && !dir.exists("www")) {
   stop(sprintf("www dizini bulunamadı veya erişilemiyor: %s", www_abs_dir))
 }
 
-subdirs <- list.dirs(www_abs_dir, recursive = FALSE, full.names = FALSE)
+www_resource_root <- resolve_resource_root(www_abs_dir)
+
+subdirs <- list.dirs(www_resource_root, recursive = FALSE, full.names = FALSE)
 for (subdir in subdirs) {
   if (!nzchar(subdir) || is.na(subdir)) {
     warning(sprintf("Geçersiz alt klasör adı algılandı (www: %s).", www_abs_dir), call. = FALSE)
@@ -136,18 +178,18 @@ for (subdir in subdirs) {
     warning(sprintf(
       "Alt klasör adı encoding sorunu içeriyor ve atlanıyor: '%s' (www: %s)",
       subdir,
-      www_abs_dir
+      www_resource_root
     ), call. = FALSE)
     next
   }
 
-  subdir_path <- normalize_utf8_path(file.path(www_abs_dir, subdir), mustWork = FALSE)
+  subdir_path <- normalize_utf8_path(file.path(www_resource_root, subdir), mustWork = FALSE)
   register_resource_path(subdir, subdir_path, mustWork = FALSE)
 }
 # www/ kök dizinindeki dosyalar (mergen_avatar.png, company_logo.png vb.)
 # boş prefix ile kaydedilemez. "img" prefix'i ile www/ kök dizinini kaydet.
 # Kodda bu dosyalar "img/dosya.png" şeklinde referans edilir.
-register_resource_path("img", www_abs_dir, mustWork = FALSE)
+register_resource_path("img", www_resource_root, mustWork = FALSE)
 
 # 5. Shiny sunucu seçeneklerini ayarla.
 #    runApp() artık bu dosya tarafından çağrılmaz; Shiny altyapısı (veya
