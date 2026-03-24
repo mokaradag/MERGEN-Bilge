@@ -17,10 +17,10 @@ resolveUserIdentity <- function(sso_claims = NULL) {
   # ===========================================================================
   if (isTRUE(SSO_ENABLED) && !is.null(sso_claims)) {
 
-    username   <- sso_claims$username %||% ""
-    first_name <- sso_claims$first_name %||% ""
-    full_name  <- sso_claims$full_name %||% ""
-    sicil      <- sso_claims$sicil
+    username   <- ensure_utf8(fixTurkishEncoding(sso_claims$username %||% ""))
+    first_name <- ensure_utf8(fixTurkishEncoding(sso_claims$first_name %||% ""))
+    full_name  <- ensure_utf8(fixTurkishEncoding(sso_claims$full_name %||% ""))
+    sicil      <- ensure_utf8(sso_claims$sicil)
 
     # İlk isim boşsa tam isimden çıkar
     if (!nzchar(first_name) && nzchar(full_name)) {
@@ -44,12 +44,12 @@ resolveUserIdentity <- function(sso_claims = NULL) {
       first_name      = first_name,
       full_name       = full_name,
       sicil           = sicil,
-      email           = sso_claims$email,
-      last_name       = sso_claims$last_name,
-      sektor          = sso_claims$sektor,
-      department      = sso_claims$department,
-      mudurluk        = sso_claims$mudurluk,
-      masraf_yeri_kodu = sso_claims$masraf_yeri_kodu,
+      email           = ensure_utf8(sso_claims$email),
+      last_name       = ensure_utf8(fixTurkishEncoding(sso_claims$last_name %||% "")),
+      sektor          = ensure_utf8(fixTurkishEncoding(sso_claims$sektor %||% "")),
+      department      = ensure_utf8(fixTurkishEncoding(sso_claims$department %||% "")),
+      mudurluk        = ensure_utf8(fixTurkishEncoding(sso_claims$mudurluk %||% "")),
+      masraf_yeri_kodu = ensure_utf8(sso_claims$masraf_yeri_kodu),
       auth_level      = sso_claims$yetki %||% "USER",
       keycloak_sid    = sso_claims$keycloak_sid,
       keycloak_sub    = sso_claims$keycloak_sub,
