@@ -59,10 +59,15 @@ build_sanitized_path_variants <- function(path, mustWork = FALSE) {
   candidates
 }
 
-register_resource_path <- function(prefix, path, mustWork = FALSE) {
+register_resource_path <- function(prefix, path, mustWork = FALSE, strict = FALSE) {
   variants <- build_sanitized_path_variants(path, mustWork = mustWork)
   if (!length(variants)) {
-    stop(sprintf("Kaynak yolu üretilemedi (prefix: %s, path: %s)", prefix, path))
+    msg <- sprintf("Kaynak yolu üretilemedi (prefix: %s, path: %s)", prefix, path)
+    if (isTRUE(strict)) {
+      stop(msg)
+    }
+    warning(msg, call. = FALSE)
+    return(invisible(FALSE))
   }
 
   last_error <- NULL
@@ -76,16 +81,21 @@ register_resource_path <- function(prefix, path, mustWork = FALSE) {
     })
 
     if (isTRUE(ok)) {
-      return(invisible(candidate))
+      return(invisible(TRUE))
     }
   }
 
-  stop(sprintf(
+  msg <- sprintf(
     "addResourcePath başarısız (prefix: %s). Denenen sanitize edilmiş yollar: %s. Son hata: %s",
     prefix,
     paste(variants, collapse = " | "),
     if (!is.null(last_error)) conditionMessage(last_error) else "bilinmeyen hata"
-  ))
+  )
+  if (isTRUE(strict)) {
+    stop(msg)
+  }
+  warning(msg, call. = FALSE)
+  invisible(FALSE)
 }
 
 if (!dir.exists(www_abs_dir)) {
