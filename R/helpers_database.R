@@ -287,7 +287,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 
   if (nrow(user_id_result) > 0) {
     user_id <- as.integer(user_id_result$UserID[1])
-    update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
+    update_query <- "UPDATE MB_Users SET KaynakAdi = CAST(? AS NVARCHAR(255)), LastLoginDate = GETDATE() WHERE UserID = ?"
     dbExecute(conn, update_query, params = list(kaynak_adi, user_id))
 
     # SSO ek alanlarını güncelle (tablo destekliyorsa)
@@ -297,7 +297,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 
     return(user_id)
   } else {
-    insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, ?, GETDATE())"
+    insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, CAST(? AS NVARCHAR(255)), GETDATE())"
     res <- dbGetQuery(conn, insert_query, params = list(username, kaynak_adi))
     if (nrow(res) == 0) stop("Yeni kullanıcı oluşturulduktan sonra UserID alınamadı.")
     user_id <- as.integer(res$UserID[1])
@@ -338,15 +338,15 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
       params <- c(params, list(ensure_utf8(sso_claims$email)))
     }
     if ("Sektor" %in% existing_cols && !is.null(sso_claims$sektor)) {
-      set_parts <- c(set_parts, "Sektor = ?")
+      set_parts <- c(set_parts, "Sektor = CAST(? AS NVARCHAR(255))")
       params <- c(params, list(ensure_utf8(sso_claims$sektor)))
     }
     if ("Departman" %in% existing_cols && !is.null(sso_claims$department)) {
-      set_parts <- c(set_parts, "Departman = ?")
+      set_parts <- c(set_parts, "Departman = CAST(? AS NVARCHAR(255))")
       params <- c(params, list(ensure_utf8(sso_claims$department)))
     }
     if ("Mudurluk" %in% existing_cols && !is.null(sso_claims$mudurluk)) {
-      set_parts <- c(set_parts, "Mudurluk = ?")
+      set_parts <- c(set_parts, "Mudurluk = CAST(? AS NVARCHAR(255))")
       params <- c(params, list(ensure_utf8(sso_claims$mudurluk)))
     }
     if ("MasrafYeriKodu" %in% existing_cols && !is.null(sso_claims$masraf_yeri_kodu)) {
@@ -354,7 +354,7 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
       params <- c(params, list(ensure_utf8(sso_claims$masraf_yeri_kodu)))
     }
     if ("SonGirisKaynagi" %in% existing_cols) {
-      set_parts <- c(set_parts, "SonGirisKaynagi = ?")
+      set_parts <- c(set_parts, "SonGirisKaynagi = CAST(? AS NVARCHAR(50))")
       params <- c(params, list("keycloak"))
     }
 
@@ -922,7 +922,7 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
   initial_title <- ensure_utf8(initial_title)
 
-  query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, ?)"
+  query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, CAST(? AS NVARCHAR(4000)))"
   res <- dbGetQuery(conn, query, params = list(user_id, initial_title))
   if (nrow(res) == 0) stop("Veritabanında yeni sohbet oturumu oluşturulamadı.")
   return(as.integer(res$ChatID[1]))
@@ -948,7 +948,7 @@ save_message_to_db <- function(chat_id, msg) {
   query <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
     OUTPUT INSERTED.MessageID AS MessageID
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (?, CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(50)), ?, ?)
   "
   
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
@@ -1000,7 +1000,7 @@ update_message_content_in_db <- function(message_id, new_content) {
   # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
   new_content <- ensure_utf8(new_content)
 
-  query <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
+  query <- "UPDATE MB_Messages SET MessageContent = CAST(? AS NVARCHAR(MAX)) WHERE MessageID = ?"
   dbExecute(conn, query, params = list(new_content, as.integer(message_id)))
 }
 
@@ -1016,7 +1016,7 @@ update_chat_title_in_db <- function(chat_id, new_title) {
   # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
   new_title <- ensure_utf8(new_title)
 
-  query <- "UPDATE MB_Chats SET ChatTitle = ? WHERE ChatID = ?"
+  query <- "UPDATE MB_Chats SET ChatTitle = CAST(? AS NVARCHAR(4000)) WHERE ChatID = ?"
   dbExecute(conn, query, params = list(new_title, chat_id))
 }
 
@@ -1150,7 +1150,7 @@ worker_save_assistant_response <- function(chat_id, response_text,
   insert_q <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
     OUTPUT INSERTED.MessageID AS MessageID
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (?, CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(50)), ?, ?)
   "
   res <- DBI::dbGetQuery(conn, insert_q, params = list(chat_id, response_text, message_type, timestamp_gmt3, next_order))
   response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_

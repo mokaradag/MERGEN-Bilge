@@ -84,18 +84,24 @@ check_rate_limit <- function(user_id) {
 }
 
 # --- PARALEL İŞÇİ HAVUZU YAPILANDIRMASI ---
-# Sistem kapasitesine göre işçi sayısını belirle (en az 1, en fazla 10)
-# Küme oluşturma başarısız olursa (sunucu ağ/güvenlik kısıtlamaları vb.)
-# sıralı moda düşerek uygulamanın çökmesini engelle.
-# NOT: Zaman aşımı global.R'de parallelly.makeClusterPSOCK.connectTimeout
-# seçeneği ile 10 saniyeye indirilmiştir (varsayılan 125sn çok uzun).
-n_workers <- max(1, min(parallelly::availableCores() - 1, 10))
-tryCatch({
-  plan(multisession, workers = n_workers)
-}, error = function(e) {
-  message(sprintf("[UYARI] Paralel işçi havuzu oluşturulamadı (%s). Sıralı moda geçiliyor.", e$message))
-  tryCatch(plan(sequential), error = function(e2) NULL)
-})
+# Varsayılan: başlatma gecikmesini engellemek için sıralı mod.
+# İstenirse MERGEN_ENABLE_PARALLEL=TRUE ile tekrar açılabilir.
+enable_parallel <- tolower(trimws(Sys.getenv("MERGEN_ENABLE_PARALLEL", "false"))) %in% c("1", "true", "yes", "on")
+n_workers <- 1L
+
+if (isTRUE(enable_parallel)) {
+  n_workers <- max(1, min(parallelly::availableCores() - 1, 10))
+  tryCatch({
+    plan(multisession, workers = n_workers)
+  }, error = function(e) {
+    message(sprintf("[UYARI] Paralel işçi havuzu oluşturulamadı (%s). Sıralı moda geçiliyor.", e$message))
+    n_workers <<- 1L
+    tryCatch(plan(sequential), error = function(e2) NULL)
+  })
+} else {
+  plan(sequential)
+  message("[BİLGİ] Paralel işçi havuzu devre dışı (MERGEN_ENABLE_PARALLEL=FALSE).")
+}
 
 # İşçi havuzu izleme fonksiyonu
 monitor_workers <- function() {
