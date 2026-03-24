@@ -197,6 +197,16 @@ ensure_utf8 <- function(text) {
   vapply(text, repair_one, character(1), USE.NAMES = FALSE)
 }
 
+# SQL'e gidecek metin parametreleri için tek giriş noktası.
+# İlke: Sonradan yorumda düzeltmek yerine, veriyi doğru formatta kaydet.
+prepare_sql_text_params <- function(...) {
+  values <- list(...)
+  lapply(values, function(x) {
+    if (is.null(x)) return(x)
+    ensure_utf8(x)
+  })
+}
+
 # -------------------------
 # Girdi Doğrulama Yardımcıları
 # -------------------------
@@ -601,6 +611,8 @@ format_chat_messages <- function(chat_df) {
   lapply(seq_len(nrow(chat_df)), function(i) {
     row <- chat_df[i, ]
     
+    # Render katmanı: yalnız görüntüleme için metni toparla.
+    # Kayıt katmanı zaten doğru formatta saklamalıdır; burada DB verisini değiştirmeyiz.
     content_text <- ensure_utf8(
       if (exists("fixTurkishEncoding", mode = "function")) {
         fixTurkishEncoding(row$MessageContent %||% "")
@@ -968,11 +980,11 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
-  initial_title <- ensure_utf8(initial_title)
+  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
+  sql_text <- prepare_sql_text_params(initial_title)
 
   query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, CAST(? AS NVARCHAR(4000)))"
-  res <- dbGetQuery(conn, query, params = list(user_id, initial_title))
+  res <- dbGetQuery(conn, query, params = list(user_id, sql_text[[1]]))
   if (nrow(res) == 0) stop("Veritabanında yeni sohbet oturumu oluşturulamadı.")
   return(as.integer(res$ChatID[1]))
 }
@@ -1006,11 +1018,9 @@ save_message_to_db <- function(chat_id, msg) {
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
-  msg_content <- ensure_utf8(msg$content)
-  msg_type <- ensure_utf8(msg$type)
-
-  res <- dbGetQuery(conn, query, params = list(chat_id, msg_content, msg_type, ts, next_order))
+  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
+  sql_text <- prepare_sql_text_params(msg$content, msg$type)
+  res <- dbGetQuery(conn, query, params = list(chat_id, sql_text[[1]], sql_text[[2]], ts, next_order))
   if (nrow(res) == 0) stop("Mesaj veritabanına kaydedilemedi.")
   return(as.integer(res$MessageID[1]))
 }
@@ -1046,11 +1056,11 @@ update_message_content_in_db <- function(message_id, new_content) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
   
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
-  new_content <- ensure_utf8(new_content)
+  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
+  sql_text <- prepare_sql_text_params(new_content)
 
   query <- "UPDATE MB_Messages SET MessageContent = CAST(? AS NVARCHAR(MAX)) WHERE MessageID = ?"
-  dbExecute(conn, query, params = list(new_content, as.integer(message_id)))
+  dbExecute(conn, query, params = list(sql_text[[1]], as.integer(message_id)))
 }
 
 update_chat_title_in_db <- function(chat_id, new_title) {
@@ -1062,11 +1072,11 @@ update_chat_title_in_db <- function(chat_id, new_title) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
-  new_title <- ensure_utf8(new_title)
+  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
+  sql_text <- prepare_sql_text_params(new_title)
 
   query <- "UPDATE MB_Chats SET ChatTitle = CAST(? AS NVARCHAR(4000)) WHERE ChatID = ?"
-  dbExecute(conn, query, params = list(new_title, chat_id))
+  dbExecute(conn, query, params = list(sql_text[[1]], chat_id))
 }
 
 # Geri bildirim fonksiyonları
@@ -1192,16 +1202,15 @@ worker_save_assistant_response <- function(chat_id, response_text,
   # Zaman damgasını Türkiye saatine (GMT+3) çevir
   timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
-  response_text <- ensure_utf8(response_text)
-  message_type <- ensure_utf8(message_type)
+  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
+  sql_text <- prepare_sql_text_params(response_text, message_type)
 
   insert_q <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
     OUTPUT INSERTED.MessageID AS MessageID
     VALUES (?, CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(50)), ?, ?)
   "
-  res <- DBI::dbGetQuery(conn, insert_q, params = list(chat_id, response_text, message_type, timestamp_gmt3, next_order))
+  res <- DBI::dbGetQuery(conn, insert_q, params = list(chat_id, sql_text[[1]], sql_text[[2]], timestamp_gmt3, next_order))
   response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_
 
   if (isTRUE(log_usage)) {
