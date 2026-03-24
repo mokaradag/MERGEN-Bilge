@@ -125,56 +125,77 @@ resolveUserIdentity <- function(sso_claims = NULL) {
 fixTurkishEncoding <- function(text) {
   if (is.null(text) || !nzchar(text)) return(text)
 
-  result <- text
+  raw_text <- as.character(text)
+  result <- raw_text
 
-  # Encoding etiketini açıkça UTF-8 olarak ayarla
-  Encoding(result) <- "UTF-8"
+  # Her durumda deterministik bir normalize uygula:
+  # 1) UTF-8'e güvenli dönüşüm dene
+  # 2) Başarısızsa karakter kaybı yerine transliterasyon + temizleme ile öngörülebilir çıktı üret
+  normalize_fallback <- function(x) {
+    x_utf8 <- tryCatch(enc2utf8(x), error = function(e) x)
+    x_clean <- tryCatch(iconv(x_utf8, from = "", to = "UTF-8", sub = ""), error = function(e) NA_character_)
+    if (!is.na(x_clean) && nzchar(x_clean)) {
+      return(x_clean)
+    }
 
-  # ÖNCELİKLİ YÖNTEMİ: iconv ile çift-encoding onarımı.
-  # Keycloak veya DB'den gelen bozuk Türkçe genellikle şu şekilde oluşur:
-  # Orijinal UTF-8 baytları Latin-1/Windows-1252 olarak yorumlanır ve tekrar UTF-8'e kodlanır.
-  # Örnek: "Ğ" (C4 9E) → Latin-1 okuma → "Ä" + kontrol karakteri → tekrar UTF-8 → bozuk metin.
-  # Çözüm: UTF-8 → Latin-1 (baytları geri al) → UTF-8 olarak işaretle.
-  if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result, perl = TRUE)) {
-    tryCatch({
-      repaired <- iconv(result, from = "UTF-8", to = "latin1", sub = "byte")
-      if (!is.na(repaired)) {
-        Encoding(repaired) <- "UTF-8"
-        if (validUTF8(repaired)) {
-          result <- repaired
-        }
-      }
-    }, error = function(e) {
-      # Dönüşüm başarısızsa, karakter bazlı değiştirme yöntemine geç
-    })
+    x_ascii <- tryCatch(iconv(x_utf8, from = "", to = "ASCII//TRANSLIT", sub = ""), error = function(e) NA_character_)
+    if (is.na(x_ascii) || !nzchar(x_ascii)) {
+      x_ascii <- gsub("[^[:print:]]+", "", x_utf8, perl = TRUE)
+    }
+    trimws(x_ascii)
   }
 
-  # YEDEK YÖNTEM: Hâlâ bozuk karakterler varsa bilinen eşlemelerle düzelt.
-  # (iconv yöntemi bazı özel durumlarda başarısız olabilir)
-  # Not: Üretim ortamında "ORÄ‡UN" gibi CP1252/CP1254 türevi bozulmalar görülebilir.
-  if (grepl("[ÃÄÅ]", result, perl = TRUE)) {
+  result <- normalize_fallback(result)
+
+  # Çift-encoding (mojibake) onarım adayları
+  candidates <- unique(c(
+    result,
+    tryCatch(iconv(result, from = "UTF-8", to = "latin1", sub = "byte"), error = function(e) NA_character_),
+    tryCatch(iconv(result, from = "UTF-8", to = "windows-1254", sub = "byte"), error = function(e) NA_character_),
+    tryCatch(iconv(result, from = "latin1", to = "UTF-8", sub = ""), error = function(e) NA_character_),
+    tryCatch(iconv(result, from = "windows-1254", to = "UTF-8", sub = ""), error = function(e) NA_character_)
+  ))
+  candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
+
+  # Bilinen mojibake + CP1254/Latin-1 tekil/truncated desen onarımı
+  apply_replacements <- function(x) {
     replacements <- list(
-      # Yaygın UTF-8 mojibake eşleşmeleri
       c("Ã‡", "Ç"), c("Ãœ", "Ü"), c("Ã–", "Ö"), c("Äž", "Ğ"), c("Ä°", "İ"), c("Åž", "Ş"),
       c("Ã§", "ç"), c("Ã¼", "ü"), c("Ã¶", "ö"), c("ÄŸ", "ğ"), c("Ä±", "ı"), c("ÅŸ", "ş"),
-      # CP1252/CP1254 kaynaklı tipik bozulmalar
-      c("Ä‡", "Ç"), c("ÄŸ", "ğ"), c("Äž", "Ğ"), c("Ä±", "ı"), c("Ä°", "İ"), c("ÅŸ", "ş"), c("Åž", "Ş")
+      c("Ä‡", "Ç"), c("ÄŸ", "ğ"), c("Äž", "Ğ"), c("Ä±", "ı"), c("Ä°", "İ"), c("ÅŸ", "ş"), c("Åž", "Ş"),
+      # Tekil/truncated bayt kaynaklı tipik kalıntılar
+      c("Ð", "Ğ"), c("ð", "ğ"), c("Þ", "Ş"), c("þ", "ş"),
+      c("Ý", "İ"), c("ý", "ı"), c("¿", " "), c("�", "")
     )
+    out <- x
     for (rep in replacements) {
-      result <- gsub(rep[1], rep[2], result, fixed = TRUE)
+      out <- gsub(rep[1], rep[2], out, fixed = TRUE)
     }
+    out
   }
 
-  # Son kontrol: hâlâ geçersiz UTF-8 baytları varsa temizle
-  if (!validUTF8(result)) {
-    tryCatch({
-      clean <- iconv(text, from = "latin1", to = "UTF-8")
-      if (!is.na(clean) && nzchar(clean)) result <- clean
-    }, error = function(e) {
-      log_warn("Encoding düzeltme başarısız: {e$message}")
-    })
+  candidates <- unique(vapply(candidates, apply_replacements, character(1), USE.NAMES = FALSE))
+  candidates <- unique(vapply(candidates, normalize_fallback, character(1), USE.NAMES = FALSE))
+
+  # En iyi adayı seç: Türkçe karakter içeren ve daha okunabilir adayı tercih et
+  score_candidate <- function(x) {
+    has_noise <- grepl("[ÃÄÅÐÞÝ�]", x, perl = TRUE)
+    tr_hits <- gregexpr("[ÇĞİÖŞÜçğıöşü]", x, perl = TRUE)[[1]]
+    tr_count <- ifelse(identical(tr_hits[1], -1L), 0L, length(tr_hits))
+    printable_hits <- gregexpr("[[:print:]]", x, perl = TRUE)[[1]]
+    printable <- ifelse(identical(printable_hits[1], -1L), 0L, length(printable_hits))
+    penalty <- ifelse(has_noise, 10, 0)
+    tr_count * 100 + printable - penalty
   }
 
+  if (length(candidates) > 0) {
+    scores <- vapply(candidates, score_candidate, numeric(1))
+    result <- candidates[[which.max(scores)]]
+  }
+
+  # Son normalize: geçersiz UTF-8'i deterministik şekilde temizle
+  result <- normalize_fallback(result)
+  Encoding(result) <- "UTF-8"
   result
 }
 

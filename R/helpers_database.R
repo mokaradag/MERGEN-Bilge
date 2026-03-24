@@ -275,6 +275,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 
   # Girdi doğrulama
   validate_username(username)
+  username <- ensure_utf8(username)
 
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -282,7 +283,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 
   # KaynakAdi'nı belirle: önce SSO claim, sonra DC01_user_base, en son username
   # Türkçe karakterlerin doğru kaydedilmesi için encoding düzeltmesi + UTF-8 normalleştirme
-  kaynak_adi <- username
+  kaynak_adi <- ensure_utf8(username)
   if (!is.null(sso_claims$full_name) && nzchar(sso_claims$full_name)) {
     # fixTurkishEncoding SSO claim'lerinde zaten uygulanmış olabilir;
     # yine de DB yazımı öncesi son kontrol olarak tekrar uygula
@@ -380,7 +381,7 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
     }
     if ("SonGirisKaynagi" %in% existing_cols) {
       set_parts <- c(set_parts, "SonGirisKaynagi = CAST(? AS NVARCHAR(50))")
-      params <- c(params, list("keycloak"))
+      params <- c(params, list(ensure_utf8("keycloak")))
     }
 
     if (length(set_parts) > 0) {
@@ -768,7 +769,13 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df) else list()
 
   list(
-    title = chat_df$ChatTitle[1],
+    title = ensure_utf8(
+      if (exists("fixTurkishEncoding", mode = "function")) {
+        fixTurkishEncoding(chat_df$ChatTitle[1] %||% "")
+      } else {
+        chat_df$ChatTitle[1] %||% ""
+      }
+    ),
     timestamp = chat_df$CreateTimestamp[1],
     messages = messages,
     message_count = length(messages)
@@ -1190,7 +1197,7 @@ worker_save_assistant_response <- function(chat_id, response_text,
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
   # Zaman damgasını Türkiye saatine (GMT+3) çevir
-  timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
+  timestamp_gmt3 <- ensure_utf8(format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"))
 
   # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
   response_text <- ensure_utf8(response_text)
@@ -1206,6 +1213,7 @@ worker_save_assistant_response <- function(chat_id, response_text,
 
   if (isTRUE(log_usage)) {
     tryCatch({
+      model_used <- ensure_utf8(model_used)
       log_q <- "INSERT INTO MB_Usage_Log (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess) VALUES (?, ?, ?, ?, ?, ?)"
       DBI::dbExecute(conn, log_q, params = list(chat_id, response_message_id, user_id, model_used, duration, 1))
     }, error = function(e) {
