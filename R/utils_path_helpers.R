@@ -89,6 +89,25 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
     p
   }
 
+  # İç yardımcı: Linux'ta yanlış birleşimlerden doğan tekrar eden kök önekini temizle
+  # Örn: /main/uygulamalar/main/uygulamalar/... -> /main/uygulamalar/...
+  dedupe_repeated_root_prefix <- function(p) {
+    if (!nzchar(p)) return(p)
+    parts <- strsplit(p, "/", fixed = TRUE)[[1]]
+    parts <- parts[nzchar(parts)]
+    n <- length(parts)
+    if (n < 4) return(p)
+
+    max_prefix <- floor(n / 2)
+    for (k in seq_len(max_prefix)) {
+      if (k >= 2 && identical(parts[1:k], parts[(k + 1):(2 * k)])) {
+        deduped <- c(parts[1:k], parts[-(1:(2 * k))])
+        return(paste0("/", paste(deduped, collapse = "/")))
+      }
+    }
+    p
+  }
+
   candidate <- as.character(candidate)
 
   # Ters eğik çizgileri düzelt
@@ -105,9 +124,18 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
       cleaned <- dedupe_leading_pair(cleaned)
       return(enc2utf8(cleaned))
     }
+  } else {
+    # Linux/Unix: UNC benzeri çoklu başlangıç slash'larını tek slash'a indir.
+    # Bu, normalizePath'in //main/... türü girdileri yanlış yorumlayıp
+    # kök segmentini tekrarlamasını engeller.
+    candidate <- sub("^//+", "/", candidate, perl = TRUE)
   }
 
-  normalize_utf8_path(candidate, mustWork = must_exist)
+  normalized <- normalize_utf8_path(candidate, mustWork = must_exist)
+  if (.Platform$OS.type != "windows") {
+    normalized <- dedupe_repeated_root_prefix(normalized)
+  }
+  normalized
 }
 
 # --- MCP TEMEL DİZİN ÇÖZÜMLEYICI ---

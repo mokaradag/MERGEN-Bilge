@@ -128,6 +128,16 @@ fixTurkishEncoding <- function(text) {
   raw_text <- as.character(text)
   result <- raw_text
 
+  safe_gsub <- function(pattern, replacement, x, fixed = FALSE, perl = FALSE, useBytes = FALSE) {
+    tryCatch(
+      gsub(pattern, replacement, x, fixed = fixed, perl = perl, useBytes = useBytes),
+      error = function(e) {
+        # Geçersiz UTF-8 durumunda byte-seviyesinde geri dene
+        gsub(pattern, replacement, x, fixed = fixed, perl = perl, useBytes = TRUE)
+      }
+    )
+  }
+
   # Her durumda deterministik bir normalize uygula:
   # 1) UTF-8'e güvenli dönüşüm dene
   # 2) Başarısızsa karakter kaybı yerine transliterasyon + temizleme ile öngörülebilir çıktı üret
@@ -140,7 +150,7 @@ fixTurkishEncoding <- function(text) {
 
     x_ascii <- tryCatch(iconv(x_utf8, from = "", to = "ASCII//TRANSLIT", sub = ""), error = function(e) NA_character_)
     if (is.na(x_ascii) || !nzchar(x_ascii)) {
-      x_ascii <- gsub("[^[:print:]]+", "", x_utf8, perl = TRUE)
+      x_ascii <- safe_gsub("[^[:print:]]+", "", x_utf8, perl = TRUE, useBytes = TRUE)
     }
     trimws(x_ascii)
   }
@@ -169,7 +179,7 @@ fixTurkishEncoding <- function(text) {
     )
     out <- x
     for (rep in replacements) {
-      out <- gsub(rep[1], rep[2], out, fixed = TRUE)
+      out <- safe_gsub(rep[1], rep[2], out, fixed = TRUE)
     }
     out
   }
