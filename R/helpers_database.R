@@ -60,7 +60,10 @@ get_connection <- function(target = "primary") {
   # Türkçe karakter desteği: ODBC sürücüsüne UTF-8 istemci karakter seti bildir.
   # FreeTDS için ClientCharset=UTF-8, NVARCHAR sütunlarına doğru Unicode yazımı sağlar.
   # Microsoft ODBC Driver bu parametreyi sessizce yoksayar, dolayısıyla güvenlidir.
-  # LANG ortam değişkeni de ayarlanır (MSODBCSQL sürücüsü bunu kullanır).
+  # LANG ortam değişkeni global.R'de ayarlanır (MSODBCSQL sürücüsü bunu kullanır).
+  # NOT: ODBC sürücüsü C seviyesindeki LC_CTYPE locale değerini kullanarak
+  # gelen baytların kodlamasını belirler. global.R'de C.UTF-8 locale zorunlu
+  # kılınmıştır; bu sayede R'dan gelen UTF-8 baytları doğru yorumlanır.
   conn <- tryCatch({
     conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
     DBI::dbConnect(odbc::odbc(), .connection_string = conn_str, encoding = "UTF-8")
@@ -75,6 +78,7 @@ get_connection <- function(target = "primary") {
   tryCatch({
     DBI::dbExecute(conn, "SET ANSI_NULLS ON")
     DBI::dbExecute(conn, "SET QUOTED_IDENTIFIER ON")
+    DBI::dbExecute(conn, "SET ANSI_PADDING ON")
   }, error = function(e) NULL)
 
   return(list(conn = conn, pooled = FALSE, pool = NULL))
@@ -109,6 +113,14 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
         stop("Worker needs 'odbc' and 'DBI' packages installed.")
       }
       # Türkçe karakter desteği: ClientCharset=UTF-8 ile ODBC sürücüsüne bildir
+      # Worker süreçlerinde de LC_CTYPE locale kontrolü yap (fork edilen
+      # süreçler ana sürecin locale ayarını miras almalı, ama garanti değil)
+      if (!grepl("UTF-8|utf8", Sys.getlocale("LC_CTYPE"), ignore.case = TRUE)) {
+        for (.wloc in c("C.UTF-8", "en_US.UTF-8", "en_US.utf8")) {
+          .wres <- tryCatch(suppressWarnings(Sys.setlocale("LC_CTYPE", .wloc)), error = function(e) "")
+          if (nzchar(.wres) && grepl("UTF-8|utf8", .wres, ignore.case = TRUE)) break
+        }
+      }
       conn <- tryCatch({
         conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
         DBI::dbConnect(odbc::odbc(), .connection_string = conn_str, encoding = "UTF-8")
@@ -119,6 +131,7 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
       tryCatch({
         DBI::dbExecute(conn, "SET ANSI_NULLS ON")
         DBI::dbExecute(conn, "SET QUOTED_IDENTIFIER ON")
+        DBI::dbExecute(conn, "SET ANSI_PADDING ON")
       }, error = function(e2) NULL)
       return(conn)
     }, error = function(e) {

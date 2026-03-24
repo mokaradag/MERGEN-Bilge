@@ -262,13 +262,19 @@ mergen_user_upload_dir <- function(user_id) {
     FALSE
   })
 
-  if (!isTRUE(created) || !dir.exists(p)) {
+  # dir.exists() Türkçe karakterli yollarda başarısız olabilir (locale sorunu);
+  # file.exists() ve path_exists_relaxed() ile de kontrol et
+  p_exists <- tryCatch(dir.exists(p), error = function(e) FALSE) ||
+              tryCatch(file.exists(p), error = function(e) FALSE)
+  if (!isTRUE(created) && !p_exists) {
     fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
     fs::dir_create(fallback, recurse = TRUE)
-    return(normalize_mcp_path(fallback, must_exist = dir.exists(fallback)))
+    fb_exists <- tryCatch(dir.exists(fallback), error = function(e) FALSE) ||
+                 tryCatch(file.exists(fallback), error = function(e) FALSE)
+    return(normalize_mcp_path(fallback, must_exist = fb_exists))
   }
 
-  normalize_mcp_path(p, must_exist = dir.exists(p))
+  normalize_mcp_path(p, must_exist = p_exists || isTRUE(created))
 }
 
 # Kullanıcının yüklediği dosyaların listesini döndürür
@@ -366,9 +372,19 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
     }
   }
 
-  # Fallback: plain folder listing (pre-index or very old data)
+  # Yedek yöntem: indeks boşsa dosya sisteminden doğrudan listele
   dir <- mergen_user_upload_dir(user_id)
-  if (!dir.exists(dir)) {
+  # dir.exists() Türkçe karakterli yollarda (ör: "Geliştirme") başarısız olabilir
+  # (C locale UTF-8 değilse). Birden fazla yöntemle kontrol et.
+  dir_ok <- tryCatch(dir.exists(dir), error = function(e) FALSE)
+  if (!dir_ok) {
+    dir_ok <- tryCatch(file.exists(dir), error = function(e) FALSE)
+  }
+  if (!dir_ok) {
+    # path_exists_relaxed farklı encoding varyantlarını ve UNC formatlarını dener
+    dir_ok <- tryCatch(path_exists_relaxed(dir), error = function(e) FALSE)
+  }
+  if (!isTRUE(dir_ok)) {
     log_info("[INDEX] user={uid} için klasör bulunamadı: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
