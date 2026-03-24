@@ -116,23 +116,45 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 # NOT: Bu fonksiyon MERGEN_UPLOADS_DIR global değişkenine bağımlıdır
 #      ve config_file_store.R'de çağrılır.
 resolve_mcp_base_dir <- function() {
+  path_exists_local <- function(path) {
+    if (is.null(path) || !nzchar(path)) return(FALSE)
+
+    variants <- unique(Filter(nzchar, c(
+      as.character(path),
+      tryCatch(enc2utf8(path), error = function(e) as.character(path)),
+      tryCatch(enc2native(path), error = function(e) as.character(path))
+    )))
+
+    for (candidate in variants) {
+      if (tryCatch(isTRUE(dir.exists(candidate)), error = function(e) FALSE)) return(TRUE)
+      if (tryCatch(isTRUE(file.exists(candidate)), error = function(e) FALSE)) return(TRUE)
+
+      parent_dir <- tryCatch(dirname(candidate), error = function(e) "")
+      leaf_name <- tryCatch(basename(candidate), error = function(e) "")
+      if (nzchar(parent_dir) && nzchar(leaf_name)) {
+        listed <- tryCatch(list.files(parent_dir, all.files = TRUE, no.. = TRUE), error = function(e) character(0))
+        if (length(listed) && any(tolower(listed) == tolower(leaf_name))) return(TRUE)
+      }
+    }
+
+    FALSE
+  }
+
   raw <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
   base <- normalize_mcp_path(raw, must_exist = FALSE)
 
-  created <- tryCatch({
+  tryCatch({
     fs::dir_create(base, recurse = TRUE)
-    TRUE
-  }, error = function(e) FALSE)
+  }, error = function(e) NULL)
 
-  if (!isTRUE(created) || !dir.exists(base)) {
+  if (!isTRUE(path_exists_local(base))) {
     base <- MERGEN_UPLOADS_DIR
     tryCatch({
       fs::dir_create(base, recurse = TRUE)
     }, error = function(e) {
-      # Son çare: base R ile oluştur
       dir.create(base, showWarnings = FALSE, recursive = TRUE)
     })
   }
 
-  normalize_mcp_path(base, must_exist = dir.exists(base))
+  normalize_mcp_path(base, must_exist = path_exists_local(base))
 }

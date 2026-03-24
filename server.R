@@ -75,7 +75,7 @@ server <- function(input, output, session) {
 
       ui <- resolveUserIdentity(sso_claims = claims)
       uname <- ui$username
-      uid <- get_or_create_user(uname, sso_claims = claims)
+      uid <- get_or_create_user(uname, sso_claims = ui)
 
       # reactiveVal'i güncelle - bağımlı observer'lar otomatik tetiklenir
       current_user_id(uid)

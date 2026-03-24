@@ -66,11 +66,21 @@ get_connection <- function(target = "primary") {
   # kılınmıştır; bu sayede R'dan gelen UTF-8 baytları doğru yorumlanır.
   conn <- tryCatch({
     conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
-    DBI::dbConnect(odbc::odbc(), .connection_string = conn_str, encoding = "UTF-8")
+    DBI::dbConnect(
+      odbc::odbc(),
+      .connection_string = conn_str,
+      encoding = "UTF-8",
+      name_encoding = "UTF-8"
+    )
   }, error = function(e) {
     log_warn("ODBC bağlantısı ClientCharset ile başarısız: {e$message}")
     # Yedek bağlantı: encoding parametresi korunur
-    DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
+    DBI::dbConnect(
+      odbc::odbc(),
+      dsn = dsn_name,
+      encoding = "UTF-8",
+      name_encoding = "UTF-8"
+    )
   })
 
   # Bağlantı sonrası: SQL Server oturumunda NVARCHAR parametrelerin
@@ -123,9 +133,19 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
       }
       conn <- tryCatch({
         conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
-        DBI::dbConnect(odbc::odbc(), .connection_string = conn_str, encoding = "UTF-8")
+		DBI::dbConnect(
+		  odbc::odbc(),
+		  .connection_string = conn_str,
+		  encoding = "UTF-8",
+		  name_encoding = "UTF-8"
+		)
       }, error = function(e2) {
-        DBI::dbConnect(odbc::odbc(), dsn = dsn_name, encoding = "UTF-8")
+		DBI::dbConnect(
+		  odbc::odbc(),
+		  dsn = dsn_name,
+		  encoding = "UTF-8",
+		  name_encoding = "UTF-8"
+		)
       })
       # Worker bağlantısı için de ANSI ayarlarını etkinleştir
       tryCatch({
@@ -150,32 +170,31 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
 # Türkçe karakterlerin (ç, ğ, ı, ö, ş, ü vb.) doğru kaydedilmesini sağlar.
 # ODBC sürücüsüne gönderilmeden önce R encoding etiketinin UTF-8 olmasını garanti eder.
 ensure_utf8 <- function(text) {
-  if (is.null(text) || !is.character(text)) return(text)
-  tryCatch({
-    # R'ın iç temsilini UTF-8'e dönüştür ve encoding etiketini ayarla
-    result <- enc2utf8(text)
-    Encoding(result) <- "UTF-8"
+  if (is.null(text)) return(text)
 
-    # Çift-encoding kontrolü: UTF-8 baytlarının Latin-1 olarak yorumlanıp
-    # tekrar UTF-8'e kodlanmış olabileceği durumları düzelt
-    # (Ör: "Ã§" → "ç", "Ä\u009e" → "ğ")
-    if (grepl("[\u00c3\u00c4\u00c5][\u0080-\u00bf]", result, perl = TRUE)) {
-      repaired <- tryCatch({
-        raw <- iconv(result, from = "UTF-8", to = "latin1", sub = "byte")
-        if (!is.na(raw)) {
-          Encoding(raw) <- "UTF-8"
-          if (validUTF8(raw)) raw else result
-        } else {
-          result
-        }
-      }, error = function(e) result)
-      result <- repaired
+  if (!is.character(text)) {
+    text <- as.character(text)
+  }
+
+  repair_one <- function(x) {
+    if (is.na(x) || !nzchar(x)) return(x)
+
+    out <- enc2utf8(x)
+
+    if (exists("fixTurkishEncoding", mode = "function")) {
+      out <- tryCatch(fixTurkishEncoding(out), error = function(e) out)
     }
 
-    # Son temizlik: bozuk baytları kaldır
-    clean <- iconv(result, from = "UTF-8", to = "UTF-8", sub = "")
-    if (!is.na(clean) && nzchar(clean)) clean else result
-  }, error = function(e) text)
+    out2 <- tryCatch(iconv(out, from = "", to = "UTF-8", sub = ""), error = function(e) out)
+    if (!is.na(out2) && nzchar(out2)) {
+      out <- out2
+    }
+
+    Encoding(out) <- "UTF-8"
+    out
+  }
+
+  vapply(text, repair_one, character(1), USE.NAMES = FALSE)
 }
 
 # -------------------------
@@ -278,7 +297,13 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
     user_details <- dbGetQuery(conn, user_details_query, params = list(username))
     if (nrow(user_details) > 0 && nzchar(user_details$KaynakAdi[1] %||% "")) {
-      kaynak_adi <- user_details$KaynakAdi[1]
+      kaynak_adi <- ensure_utf8(
+        if (exists("fixTurkishEncoding", mode = "function")) {
+          fixTurkishEncoding(user_details$KaynakAdi[1])
+        } else {
+          user_details$KaynakAdi[1]
+        }
+      )
     }
   }
 
@@ -398,7 +423,13 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
       row <- summary_data[i, ]
       msg_count <- ifelse(is.na(row$MessageCount), 0L, row$MessageCount)
       list(
-        title = row$ChatTitle,
+        title = ensure_utf8(
+          if (exists("fixTurkishEncoding", mode = "function")) {
+            fixTurkishEncoding(row$ChatTitle %||% "")
+          } else {
+            row$ChatTitle %||% ""
+          }
+        ),
         messages = NULL,
         timestamp = row$CreateTimestamp,
         last_message_timestamp = row$LastMessageTimestamp,
@@ -439,7 +470,13 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     }
     
     list(
-      title = chat_df$ChatTitle[1],
+      title = ensure_utf8(
+        if (exists("fixTurkishEncoding", mode = "function")) {
+          fixTurkishEncoding(chat_df$ChatTitle[1] %||% "")
+        } else {
+          chat_df$ChatTitle[1] %||% ""
+        }
+      ),
       messages = messages,
       timestamp = chat_df$CreateTimestamp[1],
       last_message_timestamp = last_msg_time,
@@ -564,7 +601,13 @@ format_chat_messages <- function(chat_df) {
   lapply(seq_len(nrow(chat_df)), function(i) {
     row <- chat_df[i, ]
     
-    content_text <- row$MessageContent %||% ""
+    content_text <- ensure_utf8(
+      if (exists("fixTurkishEncoding", mode = "function")) {
+        fixTurkishEncoding(row$MessageContent %||% "")
+      } else {
+        row$MessageContent %||% ""
+      }
+    )
     msg_type <- row$MessageType %||% "user"
     
     # Boşlukları temizle (BOM veya görünmez karakterler için)
@@ -795,7 +838,13 @@ load_chat_messages_batch <- function(chat_ids) {
     }
 
     list(
-      title = chat_df$ChatTitle[1],
+		title = ensure_utf8(
+		  if (exists("fixTurkishEncoding", mode = "function")) {
+			fixTurkishEncoding(chat_df$ChatTitle[1] %||% "")
+		  } else {
+			chat_df$ChatTitle[1] %||% ""
+		  }
+		),
       timestamp = chat_df$CreateTimestamp[1],
 	  messages = messages,
       message_count = length(messages),

@@ -164,8 +164,9 @@ ssoAuthServer <- function(id) {
 
       # DB'deki KaynakAdi ile Keycloak adını karşılaştır, DB'dekini tercih et
       if (!is.null(auth_info$kaynak_adi) && nzchar(auth_info$kaynak_adi)) {
-        claims$full_name  <- auth_info$kaynak_adi
-        claims$first_name <- extractFirstName(auth_info$kaynak_adi)
+        normalized_kaynak_adi <- ensure_utf8(fixTurkishEncoding(auth_info$kaynak_adi))
+        claims$full_name  <- normalized_kaynak_adi
+        claims$first_name <- extractFirstName(normalized_kaynak_adi)
       }
 
       # Başarılı kimlik doğrulama

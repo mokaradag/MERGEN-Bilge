@@ -395,13 +395,7 @@ fileManagerServer <- function(
   
   # --- NEW: persistent storage helpers -----------------------------------------
   get_user_upload_dir <- function() {
-    base <- getOption(
-      "mergen.mcp_base_dir",
-      Sys.getenv("MCP_FILES_BASE",
-                 normalizePath(file.path(getwd(), "mergen_uploads"),
-                               winslash = "/", mustWork = FALSE))
-    )
-    file.path(base, sprintf("user_%s", module_user_id_chr))
+    mergen_user_upload_dir(module_user_id_chr)
   }
   
   is_under_mcp_base <- function(p) {
@@ -415,8 +409,21 @@ fileManagerServer <- function(
     
   list_user_folder_files <- function() {
     udir <- get_user_upload_dir()
-    if (!dir.exists(udir)) return(character(0))
-    list.files(udir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
+    if (!path_exists_relaxed(udir)) return(character(0))
+
+    out <- tryCatch(
+      fs::dir_ls(udir, recurse = FALSE, type = "file"),
+      error = function(e) character(0)
+    )
+
+    if (!length(out)) {
+      out <- tryCatch(
+        list.files(udir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+        error = function(e) character(0)
+      )
+    }
+
+    out
   }
   
 	refresh_from_user_folder <- function(trigger = "manual") {

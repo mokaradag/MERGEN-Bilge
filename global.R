@@ -39,23 +39,33 @@ Sys.setenv(LC_ALL = "en_US.UTF-8")
 # C.UTF-8 hemen hemen tüm modern Linux sistemlerinde mevcuttur.
 # ==============================================================================
 .mergen_utf8_locale_set <- FALSE
+.result_all <- ""
+.result_ctype <- ""
+
 for (.loc in c("C.UTF-8", "en_US.UTF-8", "en_US.utf8", "tr_TR.UTF-8", "tr_TR.utf8")) {
   if (!.mergen_utf8_locale_set) {
-    .result <- tryCatch(
+    .result_all <- tryCatch(
+      suppressWarnings(Sys.setlocale("LC_ALL", .loc)),
+      error = function(e) ""
+    )
+    .result_ctype <- tryCatch(
       suppressWarnings(Sys.setlocale("LC_CTYPE", .loc)),
       error = function(e) ""
     )
-    if (nzchar(.result) && grepl("UTF-8|utf8", .result, ignore.case = TRUE)) {
+
+    if ((nzchar(.result_all) && grepl("UTF-8|utf8", .result_all, ignore.case = TRUE)) ||
+        (nzchar(.result_ctype) && grepl("UTF-8|utf8", .result_ctype, ignore.case = TRUE))) {
       .mergen_utf8_locale_set <- TRUE
     }
   }
 }
+
 if (!.mergen_utf8_locale_set) {
   warning("[UYARI] UTF-8 yerel ayarı atanamadı! Türkçe karakterler veritabanında bozulabilir. ",
           "Sistem yöneticinize 'C.UTF-8' veya 'en_US.UTF-8' locale kurulmasını isteyin.")
 }
-# Geçici değişkenleri temizle
-rm(.mergen_utf8_locale_set, .loc, .result, envir = environment())
+
+rm(.mergen_utf8_locale_set, .loc, .result_all, .result_ctype, envir = environment())
 
 # ------------------------------------------------------------------------------
 # GÜVENLİ KAYNAK YÜKLEME FONKSİYONU (SAFE SOURCE)

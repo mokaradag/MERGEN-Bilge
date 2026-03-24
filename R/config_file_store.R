@@ -252,29 +252,31 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
 
 # Kullanıcıya özel yükleme dizinini döndürür (yoksa oluşturur)
 mergen_user_upload_dir <- function(user_id) {
-  base <- resolve_mcp_base_dir()
-  p <- file.path(base, sprintf("user_%s", as.character(user_id)))
-  created <- tryCatch({
-    fs::dir_create(p, recurse = TRUE)
-    TRUE
-  }, error = function(e) {
-    log_warn("[INDEX] Kullanıcı klasörü oluşturulamadı ({conditionMessage(e)}); varsayılan dizine düşülüyor")
-    FALSE
-  })
-
-  # dir.exists() Türkçe karakterli yollarda başarısız olabilir (locale sorunu);
-  # file.exists() ve path_exists_relaxed() ile de kontrol et
-  p_exists <- tryCatch(dir.exists(p), error = function(e) FALSE) ||
-              tryCatch(file.exists(p), error = function(e) FALSE)
-  if (!isTRUE(created) && !p_exists) {
-    fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
-    fs::dir_create(fallback, recurse = TRUE)
-    fb_exists <- tryCatch(dir.exists(fallback), error = function(e) FALSE) ||
-                 tryCatch(file.exists(fallback), error = function(e) FALSE)
-    return(normalize_mcp_path(fallback, must_exist = fb_exists))
+  path_exists_now <- function(path) {
+    if (exists("path_exists_relaxed", mode = "function")) {
+      return(isTRUE(path_exists_relaxed(path)))
+    }
+    tryCatch(isTRUE(dir.exists(path)) || isTRUE(file.exists(path)), error = function(e) FALSE)
   }
 
-  normalize_mcp_path(p, must_exist = p_exists || isTRUE(created))
+  base <- resolve_mcp_base_dir()
+  p <- file.path(base, sprintf("user_%s", as.character(user_id)))
+
+  tryCatch({
+    fs::dir_create(p, recurse = TRUE)
+  }, error = function(e) NULL)
+
+  if (!path_exists_now(p)) {
+    fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
+    tryCatch({
+      fs::dir_create(fallback, recurse = TRUE)
+    }, error = function(e) {
+      dir.create(fallback, showWarnings = FALSE, recursive = TRUE)
+    })
+    return(normalize_mcp_path(fallback, must_exist = path_exists_now(fallback)))
+  }
+
+  normalize_mcp_path(p, must_exist = TRUE)
 }
 
 # Kullanıcının yüklediği dosyaların listesini döndürür
@@ -374,22 +376,24 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
 
   # Yedek yöntem: indeks boşsa dosya sisteminden doğrudan listele
   dir <- mergen_user_upload_dir(user_id)
-  # dir.exists() Türkçe karakterli yollarda (ör: "Geliştirme") başarısız olabilir
-  # (C locale UTF-8 değilse). Birden fazla yöntemle kontrol et.
-  dir_ok <- tryCatch(dir.exists(dir), error = function(e) FALSE)
-  if (!dir_ok) {
-    dir_ok <- tryCatch(file.exists(dir), error = function(e) FALSE)
-  }
-  if (!dir_ok) {
-    # path_exists_relaxed farklı encoding varyantlarını ve UNC formatlarını dener
-    dir_ok <- tryCatch(path_exists_relaxed(dir), error = function(e) FALSE)
-  }
+  dir_ok <- tryCatch(isTRUE(path_exists_relaxed(dir)), error = function(e) FALSE)
   if (!isTRUE(dir_ok)) {
     log_info("[INDEX] user={uid} için klasör bulunamadı: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
-  
-  paths <- list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
+
+  paths <- tryCatch(
+    fs::dir_ls(dir, recurse = FALSE, type = "file"),
+    error = function(e) character(0)
+  )
+
+  if (!length(paths)) {
+    paths <- tryCatch(
+      list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+      error = function(e) character(0)
+    )
+  }
+
   if (!length(paths)) {
     log_info("[INDEX] user={uid} klasörü boş: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
