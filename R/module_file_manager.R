@@ -537,6 +537,8 @@ fileManagerServer <- function(
 
     # --- NEW: initial population from the user's persistent folder
 	observeEvent(TRUE, {
+	  # SSO açıkken doğrulama tamamlanmadan erken tarama yapma
+	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) return()
 	  refresh_from_user_folder("initial")
 	}, once = TRUE, ignoreNULL = TRUE)
 
@@ -557,13 +559,19 @@ fileManagerServer <- function(
 		return()
 	  }
 
+	  # SSO açıkken auth bitmeden gereksiz tarama yapma
+	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) return()
 	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
 	})
 
-    # SSO tamamlandıktan sonra gerçek kullanıcı klasörünü tekrar yükle
+    # SSO tamamlandığında gerçek kullanıcı klasörünü tek sefer yükle
     observe({
-      req(isTRUE(session$userData$auth_initialized))
-      refresh_from_user_folder("auth_ready")
+      if (!isTRUE(SSO_ENABLED)) return()
+      if (isTRUE(session$userData$auth_initialized)) {
+        refresh_from_user_folder("auth_ready")
+        return()
+      }
+      invalidateLater(300, session)
     })
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
