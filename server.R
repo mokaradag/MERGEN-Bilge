@@ -217,9 +217,12 @@ server <- function(input, output, session) {
       settings_data = settings_data
     )
 
-    # Kullanıcı "Dosya Yönetimi" sekmesine her GEÇİŞTE (tek sefer) kalıcı dosyaları yeniden tara
+    # Kullanıcı "Dosya Yönetimi" sekmesine ilk geçişte kalıcı dosyaları yalnızca bir kez tara
     last_tab <- reactiveVal(NULL)
+    files_tab_refreshed <- reactiveVal(FALSE)
     observeEvent(input$tabs, {
+      if (isTRUE(files_tab_refreshed())) return()
+
       current_tab <- input$tabs %||% ""
       previous_tab <- last_tab()
       last_tab(current_tab)
@@ -229,6 +232,7 @@ server <- function(input, output, session) {
 
       if (is.function(file_manager_data$refresh_persisted_files)) {
         file_manager_data$refresh_persisted_files("tab_open")
+        files_tab_refreshed(TRUE)
       }
     }, ignoreInit = TRUE)
     
