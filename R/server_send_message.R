@@ -32,9 +32,26 @@ sendMessageInit <- function(
   saved_chats_data,
   generate_non_streaming_stoppable_fn
 ) {
+  resolve_current_user_id <- function() {
+    session_uid <- session$userData$user_id %||% NULL
+    uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+    if (is.na(uid)) uid <- 0L
+    uid
+  }
+
  
   # Ana mesaj gönderme fonksiyonu
   send_message <- function(prompt_text, is_summarization_request = FALSE) {
+    if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
+      showToast(session, "Kimlik doğrulama tamamlanmadan mesaj gönderilemez.", "warning")
+      return(invisible(NULL))
+    }
+
+    effective_user_id <- resolve_current_user_id()
+    if (effective_user_id <= 0) {
+      showToast(session, "Kullanıcı kimliği alınamadı. Lütfen sayfayı yenileyin.", "error")
+      return(invisible(NULL))
+    }
  
     # Hoş geldin ekranını tamamen temizle ve sohbet içeriğini göster
     if (isTRUE(values$show_welcome)) {
@@ -148,9 +165,9 @@ sendMessageInit <- function(
       title_prompt <- if (nchar(user_message_text) > 0) user_message_text else "Dosya Analizi"
       chat_title <- generate_title_from_prompt(title_prompt, max_len = 60)
       tryCatch({
-        new_id <- create_new_chat_in_db(current_user_id, initial_title = chat_title)
+        new_id <- create_new_chat_in_db(effective_user_id, initial_title = chat_title)
         values$current_chat_id <- new_id
-        values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
+        values$saved_chats <- load_chats_from_db(effective_user_id, include_messages = FALSE)
         saved_chats_data$refresh()
       }, error = function(e) {
         showToast(session, paste("Yeni sohbet oluşturulamadı:", e$message), "error")
@@ -393,7 +410,7 @@ sendMessageInit <- function(
         session = session, input = input, values = values,
         settings_data = settings_data,
         user_message_text = user_message_text,
-        current_user_id = current_user_id,
+        current_user_id = effective_user_id,
         add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
       )
       handle_image_generation_mode(image_ctx)
@@ -508,7 +525,7 @@ sendMessageInit <- function(
     # MCP snapshot hazırla
     mcp_snapshot <- session$userData$mcp_registry_snapshot %||% (session$userData$current_session_files %||% list())
  
-    current_settings$current_user_id <- current_user_id
+    current_settings$current_user_id <- effective_user_id
     current_settings$mcp_registry_snapshot <- mcp_snapshot
  
     current_settings$tool_family <- tool_family
@@ -578,7 +595,7 @@ sendMessageInit <- function(
  
         path_now <- pick_existing_path(finfo)
         if (is.null(path_now) || !nzchar(path_now)) {
-          resolved <- try(resolve_uploaded_file(fname, current_user_id), silent = TRUE)
+          resolved <- try(resolve_uploaded_file(fname, effective_user_id), silent = TRUE)
           if (!inherits(resolved, "try-error") && nzchar(resolved) && path_exists_relaxed(resolved)) {
                 path_now <- resolved
           }
@@ -595,7 +612,7 @@ sendMessageInit <- function(
         path_original <- path_now
         tryCatch({
           if (!is_under_mcp_base(path_now) && isTRUE(current_settings$enable_mcp_tools)) {
-                        copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), current_user_id)
+                        copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), effective_user_id)
                         if (nzchar(copied) && path_exists_relaxed(copied)) path_now <- copied
           }
         }, error = function(e) {
@@ -733,7 +750,7 @@ sendMessageInit <- function(
           perf_tracker$track_request(res$duration)
  
           if (isTRUE(stop_generation()) || !identical(active_request_id(), res$req_id)) {
-            try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id,
+            try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                              model_selected, res$duration, FALSE), silent = TRUE)
             removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
             values$typing <- FALSE
@@ -741,7 +758,7 @@ sendMessageInit <- function(
             return(invisible(NULL))
           }
  
-          try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id,
+          try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                                            model_selected, res$duration, TRUE), silent = TRUE)
  
           if (is.list(res$chart_store) && length(res$chart_store) > 0) {
@@ -787,7 +804,7 @@ sendMessageInit <- function(
           values$typing <- FALSE
  
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-          try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, current_user_id,
+          try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                            model_selected, duration, FALSE), silent = TRUE)
  
           if (!isTRUE(stop_generation())) {
