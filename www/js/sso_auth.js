@@ -19,10 +19,36 @@
   }
 
   onDomReady(function() {
-    // SSO yapılandırma verilerini HTML'den oku
+
+    // =========================================================================
+    // HATA GÖSTERİM FONKSİYONU (yapılandırma yüklenmeden önce de çalışır)
+    // =========================================================================
+    // SSO overlay element ID'leri ssoAuthUI tarafından "sso_module-" ön eki ile
+    // oluşturulur. Yapılandırma (config) henüz ayrıştırılmamış olsa bile
+    // bu sabit ID'ler üzerinden hata gösterebiliriz.
+    var OVERLAY_ID  = 'sso_module-sso_overlay';
+    var LOADING_ID  = 'sso_module-sso_loading';
+    var ERROR_ID    = 'sso_module-sso_error';
+    var ERROR_MSG_ID = 'sso_module-sso_error_message';
+
+    function showOverlayError(message) {
+      console.error('[SSO] HATA:', message);
+      var loadingEl  = document.getElementById(LOADING_ID);
+      var errorEl    = document.getElementById(ERROR_ID);
+      var errorMsgEl = document.getElementById(ERROR_MSG_ID);
+
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (errorEl)   errorEl.style.display = 'block';
+      if (errorMsgEl) errorMsgEl.textContent = message;
+    }
+
+    // =========================================================================
+    // YAPILANDIRMA YÜKLEME
+    // =========================================================================
     var configEl = document.getElementById('sso_module-sso_config_data');
     if (!configEl) {
-      // SSO modülü yüklenmemiş - yerel geliştirme modunda
+      // SSO modülü yüklenmemiş - yerel geliştirme modunda (SSO_ENABLED=FALSE)
+      // Overlay da yoktur, dolayısıyla hata göstermeye gerek yok
       console.log('[SSO] Yapılandırma elementi bulunamadı - yerel mod');
       return;
     }
@@ -32,6 +58,7 @@
       config = JSON.parse(configEl.textContent);
     } catch (e) {
       console.error('[SSO] Yapılandırma ayrıştırma hatası:', e);
+      showOverlayError('SSO yapılandırması okunamadı. Lütfen sistem yöneticinize başvurunuz.');
       return;
     }
 
@@ -43,6 +70,10 @@
     // Yapılandırma doğrulaması
     if (!config.auth_endpoint) {
       console.error('[SSO] Keycloak auth_endpoint tanımlanmamış');
+      showOverlayError(
+        'Keycloak yapılandırması eksik (auth_endpoint). ' +
+        '.Renviron dosyasında SSO_KEYCLOAK_URL değerini kontrol ediniz.'
+      );
       return;
     }
 
@@ -176,16 +207,10 @@
     }
 
     /**
-     * Hata durumunu göster
+     * Hata durumunu göster (yapılandırma yüklendikten sonra kullanılabilir)
      */
     function showError(message) {
-      var loadingEl = document.getElementById(config.loading_id);
-      var errorEl = document.getElementById(config.error_id);
-      var errorMsgEl = document.getElementById(config.error_msg_id);
-
-      if (loadingEl) loadingEl.style.display = 'none';
-      if (errorEl) errorEl.style.display = 'block';
-      if (errorMsgEl) errorMsgEl.textContent = message;
+      showOverlayError(message);
     }
 
     // ===========================================================================
@@ -195,7 +220,11 @@
     /**
      * Shiny hazır olduğunda mesaj dinleyicilerini kaydet
      */
+    var handlersRegistered = false;
     function registerShinyHandlers() {
+      if (handlersRegistered) return;
+      handlersRegistered = true;
+
       // Başarılı giriş - katmanı gizle
       Shiny.addCustomMessageHandler('sso_auth_success', function(data) {
         console.log('[SSO] Kimlik doğrulama başarılı:', data.username);
@@ -307,6 +336,31 @@
 
       trySetInput();
     }
+
+    // ===========================================================================
+    // GÜVENLİK ZAMANAŞIMI
+    // ===========================================================================
+    // Sunucu tarafı doğrulama tamamlanmazsa kullanıcıyı bilgilendir.
+    // sendTokenToShiny zaten 20 saniyelik polling timeout'una sahiptir;
+    // bu zamanaşımı, token gönderildikten sonra sunucudan yanıt gelmemesi
+    // durumunu kapsar (ör. DB hatası, ağ sorunu).
+    var authTimeout = setTimeout(function() {
+      // Overlay hâlâ görünürse hata göster
+      var overlay = document.getElementById(OVERLAY_ID);
+      if (overlay && !overlay.classList.contains('sso-auth-hidden')) {
+        showOverlayError(
+          'Kimlik doğrulama zaman aşımına uğradı. ' +
+          'Lütfen sayfayı yenileyiniz veya sistem yöneticinize başvurunuz.'
+        );
+      }
+    }, 30000);  // 30 saniye
+
+    // Başarılı girişte zamanaşımını temizle
+    var origHideOverlay = hideOverlay;
+    hideOverlay = function() {
+      clearTimeout(authTimeout);
+      origHideOverlay();
+    };
 
     // ===========================================================================
     // ÇIKIŞ (LOGOUT) DESTEĞİ
