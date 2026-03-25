@@ -29,7 +29,17 @@ normalize_db_value <- function(x) {
   if (is.null(x) || is.na(x) || !is.character(x)) {
     return(x)
   }
-  tryCatch(enc2utf8(x), error = function(e) x)
+  out <- tryCatch(enc2utf8(x), error = function(e) x)
+
+  # VM tarafında UTF-8 metin CP125x gibi okunmuşsa (örn: "Ã‡"), tek adımda onar.
+  has_mojibake <- grepl("[ÃÂ][[:print:]]", out)
+  if (any(has_mojibake, na.rm = TRUE)) {
+    repaired <- suppressWarnings(iconv(out, from = "latin1", to = "UTF-8"))
+    ok <- !is.na(repaired) & nzchar(repaired)
+    out[ok] <- repaired[ok]
+  }
+
+  out
 }
 
 normalize_db_params <- function(params) {
