@@ -266,19 +266,37 @@
 
     /**
      * Token'ı Shiny sunucusuna gönder
-     * Shiny hazır olana kadar bekler
+     * Shiny hazır olana VE WebSocket bağlantısı kurulana kadar bekler
+     *
+     * ÖNEMLİ: Shiny.setInputValue({ priority: 'event' }) ile gönderilen değerler
+     * anında gönderilmeye çalışılır. WebSocket bağlantısı henüz kurulmamışsa
+     * bu gönderim sessizce başarısız olur ve değer kaybolur.
+     * Bu nedenle sadece Shiny nesnesinin varlığını değil, WebSocket bağlantısının
+     * aktif olup olmadığını da kontrol etmemiz gerekir.
      */
     function sendTokenToShiny(token) {
       var inputName = NS_PREFIX + 'sso_jwt_token';
       var maxAttempts = 200;  // 200 * 100ms = 20 saniye (Shiny yüklenmesi için yeterli)
       var attempt = 0;
 
+      function isShinyConnected() {
+        return typeof Shiny !== 'undefined' &&
+               Shiny.setInputValue &&
+               Shiny.shinyapp &&
+               typeof Shiny.shinyapp.isConnected === 'function' &&
+               Shiny.shinyapp.isConnected();
+      }
+
+      function doSend() {
+        registerShinyHandlers();
+        Shiny.setInputValue(inputName, token, { priority: 'event' });
+        console.log('[SSO] Token Shiny sunucusuna gönderildi (deneme #' + attempt + ')');
+      }
+
       function trySetInput() {
         attempt++;
-        if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-          registerShinyHandlers();
-          Shiny.setInputValue(inputName, token, { priority: 'event' });
-          console.log('[SSO] Token Shiny sunucusuna gönderildi (deneme #' + attempt + ')');
+        if (isShinyConnected()) {
+          doSend();
         } else if (attempt < maxAttempts) {
           setTimeout(trySetInput, 100);
         } else {
