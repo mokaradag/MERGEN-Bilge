@@ -387,10 +387,37 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
   
-  paths <- tryCatch(
-    list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
-    error = function(e) character(0)
-  )
+  # Ağ paylaşımı/UNC varyasyonlarında dizin okunurluğunu farklı yollarla dene
+  list_user_files_relaxed <- function(dir_path) {
+    dir_chr <- as.character(dir_path %||% "")
+    if (!nzchar(dir_chr)) return(character(0))
+
+    variants <- unique(Filter(nzchar, c(
+      dir_chr,
+      gsub("/", "\\\\", dir_chr, fixed = TRUE),
+      enc2utf8(dir_chr),
+      enc2native(dir_chr),
+      if (grepl("^/[^/]", dir_chr)) paste0("/", dir_chr) else NULL
+    )))
+
+    for (v in variants) {
+      files_base <- tryCatch(
+        list.files(v, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+        error = function(e) character(0)
+      )
+      if (length(files_base)) return(files_base)
+
+      files_fs <- tryCatch(
+        as.character(fs::dir_ls(v, recurse = FALSE, type = "file")),
+        error = function(e) character(0)
+      )
+      if (length(files_fs)) return(files_fs)
+    }
+
+    character(0)
+  }
+
+  paths <- list_user_files_relaxed(dir)
   if (!length(paths)) {
     log_info("[INDEX] user={uid} klasörü boş: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
