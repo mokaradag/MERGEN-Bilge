@@ -19,11 +19,18 @@ options(
 # Future paketinin RNG (rastgele sayı üretimi) hatalarını yoksay
 options(future.rng.onMisuse = "ignore")
 
-# Yerel ayarları İngilizce UTF-8 olarak ayarlamayı dene (hataları gizle)
-try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
-
-# Sadece bu yerel ayar çağrısı için uyarıları bastır (Türkçe karakter desteği)
-try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE)
+# Windows sunucularda (özellikle SSO servis hesabında) LC_CTYPE CP1254 kalabiliyor.
+# Uygulama boyunca metinlerin tutarlı olması için UTF-8 LC_CTYPE'i kesinleştirmeyi dene.
+for (loc in c(
+  Sys.getenv("APP_CTYPE_UTF8", ""),
+  "English_United States.utf8",
+  "en_US.UTF-8",
+  "C.UTF-8"
+)) {
+  if (!nzchar(loc)) next
+  ok <- try(suppressWarnings(Sys.setlocale("LC_CTYPE", loc)), silent = TRUE)
+  if (!inherits(ok, "try-error") && !is.na(ok) && isTRUE(l10n_info()[["UTF-8"]])) break
+}
 
 # ------------------------------------------------------------------------------
 # GÜVENLİ KAYNAK YÜKLEME FONKSİYONU (SAFE SOURCE)
