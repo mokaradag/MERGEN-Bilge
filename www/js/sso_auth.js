@@ -22,6 +22,10 @@
     // SSO yapılandırma verilerini HTML'den oku
     var configEl = document.getElementById('sso_module-sso_config_data');
     if (!configEl) {
+      // Modül id'si değişmişse sonek eşleşmesi ile bul
+      configEl = document.querySelector('[id$="sso_config_data"]');
+    }
+    if (!configEl) {
       // SSO modülü yüklenmemiş - yerel geliştirme modunda
       console.log('[SSO] Yapılandırma elementi bulunamadı - yerel mod');
       return;
@@ -49,6 +53,7 @@
     console.log('[SSO] Yapılandırma yüklendi, auth_endpoint:', config.auth_endpoint);
 
     var NS_PREFIX = config.ns_prefix || 'sso_module-';
+    var authResponseReceived = false;
 
     // ===========================================================================
     // TOKEN YÖNETİMİ
@@ -58,19 +63,35 @@
      * URL hash'inden access_token parametresini çıkar
      * Keycloak implicit flow: #access_token=eyJ...&token_type=bearer&expires_in=300
      */
-    function extractTokenFromHash() {
-      var hash = window.location.hash;
-      if (!hash || hash.length < 2) return null;
+    function parseUrlParams(paramString) {
+      var out = {};
+      if (!paramString) return out;
 
-      var params = {};
-      hash.substring(1).split('&').forEach(function(part) {
-        var kv = part.split('=');
-        if (kv.length === 2) {
-          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
-        }
+      paramString.split('&').forEach(function(part) {
+        if (!part) return;
+        var eqIndex = part.indexOf('=');
+        if (eqIndex === -1) return;
+        var key = decodeURIComponent(part.substring(0, eqIndex));
+        var value = decodeURIComponent(part.substring(eqIndex + 1));
+        out[key] = value;
       });
 
-      return params.access_token || null;
+      return out;
+    }
+
+    function extractAuthParams() {
+      var hash = window.location.hash;
+      var search = window.location.search;
+      var hashParams = (hash && hash.length > 1) ? parseUrlParams(hash.substring(1)) : {};
+      var searchParams = (search && search.length > 1) ? parseUrlParams(search.substring(1)) : {};
+
+      return {
+        access_token: hashParams.access_token || searchParams.access_token || null,
+        id_token: hashParams.id_token || searchParams.id_token || null,
+        code: hashParams.code || searchParams.code || null,
+        error: hashParams.error || searchParams.error || null,
+        error_description: hashParams.error_description || searchParams.error_description || null
+      };
     }
 
     /**
@@ -139,6 +160,14 @@
      * Kullanıcıyı Keycloak giriş sayfasına yönlendir
      */
     function redirectToKeycloak() {
+      if (isRedirectLoopDetected()) {
+        console.error('[SSO] Sürekli yönlendirme döngüsü tespit edildi');
+        showError(
+          'Kimlik doğrulama yönlendirmesi tekrar ediyor. Lütfen SSO redirect URI ayarını kontrol ediniz.'
+        );
+        return;
+      }
+
       // redirect_uri: Keycloak kimlik doğrulama sonrası kullanıcıyı geri yönlendirir.
       // Bu URL'nin Keycloak client ayarlarında "Valid Redirect URIs" listesinde
       // tam olarak kayıtlı olması gerekir (örn: https://sunucu-adresi/ veya * ile wildcard).
@@ -154,7 +183,38 @@
         '&scope='         + encodeURIComponent(config.scope);
 
       console.log('[SSO] Keycloak\'a yönlendiriliyor:', authUrl);
+      markRedirectAttempt();
       window.location.href = authUrl;
+    }
+
+    function markRedirectAttempt() {
+      try {
+        var now = Date.now();
+        sessionStorage.setItem('mergen_sso_last_redirect_ts', String(now));
+      } catch (e) {
+        // Sessiz hata
+      }
+    }
+
+    function clearRedirectAttempt() {
+      try {
+        sessionStorage.removeItem('mergen_sso_last_redirect_ts');
+      } catch (e) {
+        // Sessiz hata
+      }
+    }
+
+    function isRedirectLoopDetected() {
+      try {
+        var lastRedirectTs = parseInt(
+          sessionStorage.getItem('mergen_sso_last_redirect_ts') || '0',
+          10
+        );
+        if (!lastRedirectTs) return false;
+        return (Date.now() - lastRedirectTs) < 8000;
+      } catch (e) {
+        return false;
+      }
     }
 
     // ===========================================================================
@@ -198,12 +258,15 @@
     function registerShinyHandlers() {
       // Başarılı giriş - katmanı gizle
       Shiny.addCustomMessageHandler('sso_auth_success', function(data) {
+        authResponseReceived = true;
+        clearRedirectAttempt();
         console.log('[SSO] Kimlik doğrulama başarılı:', data.username);
         hideOverlay();
       });
 
       // Hata - hata mesajını göster
       Shiny.addCustomMessageHandler('sso_auth_error', function(data) {
+        authResponseReceived = true;
         console.warn('[SSO] Kimlik doğrulama hatası:', data.message);
         clearStoredToken();
         showError(data.message);
@@ -234,16 +297,38 @@
       console.log('[SSO] initSSO başlatılıyor...');
 
       // 1. URL hash'inden token kontrol et (Keycloak'tan dönüş)
-      var hashToken = extractTokenFromHash();
-      if (hashToken) {
+      var authParams = extractAuthParams();
+      var incomingToken = authParams.access_token || authParams.id_token;
+
+      // Keycloak hata cevabı
+      if (authParams.error) {
+        var errMsg = authParams.error_description || authParams.error;
+        console.error('[SSO] Keycloak hata dönüşü:', authParams.error, errMsg);
+        clearStoredToken();
+        history.replaceState(null, '', window.location.pathname);
+        showError('Keycloak kimlik doğrulaması başarısız: ' + errMsg);
+        return;
+      }
+
+      // Authorization code flow için açık uyarı (bu uygulama token bekler)
+      if (authParams.code && !incomingToken) {
+        console.error('[SSO] Authorization code alındı ancak access_token gelmedi');
+        history.replaceState(null, '', window.location.pathname);
+        showError(
+          'Keycloak "code" döndürdü ancak uygulama "token" bekliyor. response_type ayarını kontrol ediniz.'
+        );
+        return;
+      }
+
+      if (incomingToken) {
         console.log('[SSO] URL hash\'inden token çıkarıldı');
         // URL'den token'ı temizle (güvenlik için)
         history.replaceState(null, '', window.location.pathname + window.location.search);
-        storeToken(hashToken);
+        storeToken(incomingToken);
       }
 
       // 2. Kayıtlı token'ı kontrol et
-      var token = hashToken || getStoredToken();
+      var token = incomingToken || getStoredToken();
 
       if (!token) {
         console.log('[SSO] Token bulunamadı - Keycloak\'a yönlendiriliyor');
@@ -279,6 +364,14 @@
           registerShinyHandlers();
           Shiny.setInputValue(inputName, token, { priority: 'event' });
           console.log('[SSO] Token Shiny sunucusuna gönderildi (deneme #' + attempt + ')');
+          setTimeout(function() {
+            if (!authResponseReceived) {
+              console.error('[SSO] Sunucudan auth yanıtı alınamadı (15sn timeout)');
+              showError(
+                'Kimlik doğrulama yanıtı alınamadı. Lütfen sunucu loglarını ve ağ bağlantısını kontrol ediniz.'
+              );
+            }
+          }, 15000);
         } else if (attempt < maxAttempts) {
           setTimeout(trySetInput, 100);
         } else {
