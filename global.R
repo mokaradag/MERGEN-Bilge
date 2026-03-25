@@ -9,6 +9,13 @@
 # Küresel olarak UTF-8 kodlamasını zorla
 options(encoding = "UTF-8")
 
+# Veritabanı istemci kodlamasını tek noktadan yönet (Windows + ODBC için)
+# İhtiyaç halinde .Renviron içine DB_CLIENT_ENCODING=... yazılarak değiştirilebilir.
+options(
+  mergen.db.client_encoding = Sys.getenv("DB_CLIENT_ENCODING", "UTF-8"),
+  mergen.db.name_encoding = Sys.getenv("DB_NAME_ENCODING", "UTF-8")
+)
+
 # Future paketinin RNG (rastgele sayı üretimi) hatalarını yoksay
 options(future.rng.onMisuse = "ignore")
 

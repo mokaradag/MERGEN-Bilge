@@ -130,7 +130,7 @@ extract_user_claims <- function(payload) {
     if (is.null(claim_key)) return(NULL)
     val <- payload[[claim_key]]
     if (is.null(val) || !nzchar(as.character(val))) return(NULL)
-    as.character(val)
+    tryCatch(enc2utf8(as.character(val)), error = function(e) as.character(val))
   }
 
   # Ham değerleri çıkar
