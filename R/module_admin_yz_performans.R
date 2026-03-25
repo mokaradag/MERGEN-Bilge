@@ -46,7 +46,7 @@ admin_ai_perf_ui <- function(ns, create_info_button) {
             h4(class = "card-title", icon("hourglass-end"), " En Yavaş 20 Sorgu"),
             create_info_button("En uzun süren 20 YZ yanıtının listesi.")
           ),
-          div(class = "table-container", DT::dataTableOutput(ns("slowest_queries_table")))
+          div(class = "table-container", DT::DTOutput(ns("slowest_queries_table")))
         )
       ),
       column(
@@ -58,7 +58,7 @@ admin_ai_perf_ui <- function(ns, create_info_button) {
             h4(class = "card-title", icon("bolt"), " En Hızlı 20 Sorgu"),
             create_info_button("En kısa sürede yanıtlanan 20 YZ sorgusunun listesi.")
           ),
-          div(class = "table-container", DT::dataTableOutput(ns("fastest_queries_table")))
+          div(class = "table-container", DT::DTOutput(ns("fastest_queries_table")))
         )
       )
     )
@@ -163,12 +163,12 @@ admin_ai_perf_outputs <- function(output, analytics_data_fn, turkish_dt_language
   }
 
   # En yavaş sorgular tablosu
-  output$slowest_queries_table <- DT::renderDataTable({
+  output$slowest_queries_table <- DT::renderDT({
     sorgu_tablosu_olustur(analytics_data_fn()$slowest_queries, turkish_dt_language)
   })
 
   # En hızlı sorgular tablosu
-  output$fastest_queries_table <- DT::renderDataTable({
+  output$fastest_queries_table <- DT::renderDT({
     sorgu_tablosu_olustur(analytics_data_fn()$fastest_queries, turkish_dt_language)
   })
 }

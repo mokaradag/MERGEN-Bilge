@@ -17,7 +17,7 @@ filePreviewServer <- function(id) {
     file_storage <- reactiveValues(preview_file = NULL)
 
     # Excel verilerini DataTables kullanarak render eden çıktı
-    output$preview_excel_table <- DT::renderDataTable({
+    output$preview_excel_table <- DT::renderDT({
       req(preview_data())
       DT::datatable(preview_data(), options = list(
         pageLength = 10,
@@ -143,7 +143,7 @@ filePreviewServer <- function(id) {
             div(
               class = "excel-preview_container",
               style = "overflow: visible;",
-              DT::dataTableOutput(ns("preview_excel_table"))
+              DT::DTOutput(ns("preview_excel_table"))
             ),
             size = "l", easyClose = TRUE, footer = footer
           ))

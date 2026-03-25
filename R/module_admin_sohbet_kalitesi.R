@@ -66,7 +66,7 @@ admin_chat_quality_ui <- function(data, ns, create_metric_card, create_info_butt
             h4(class = "card-title", icon("list-ol"), " En Uzun Söyleşiler"),
             create_info_button("En fazla mesaj içeren söyleşiler.")
           ),
-          div(class = "table-container scrollable-table-equal", DT::dataTableOutput(ns("longest_chats_table")))
+          div(class = "table-container scrollable-table-equal", DT::DTOutput(ns("longest_chats_table")))
         )
       )
     ),
@@ -80,7 +80,7 @@ admin_chat_quality_ui <- function(data, ns, create_metric_card, create_info_butt
             h4(class = "card-title", icon("redo"), " En Çok Yeniden Oluşturulan Yanıtlar"),
             create_info_button("Birden fazla YZ yanıtı içeren söyleşiler (yeniden oluşturma göstergesi).")
           ),
-          div(class = "table-container", DT::dataTableOutput(ns("regenerated_table")))
+          div(class = "table-container", DT::DTOutput(ns("regenerated_table")))
         )
       )
     )
@@ -121,7 +121,7 @@ admin_chat_quality_outputs <- function(output, analytics_data_fn, turkish_dt_lan
   })
 
   # En uzun söyleşiler tablosu
-  output$longest_chats_table <- DT::renderDataTable({
+  output$longest_chats_table <- DT::renderDT({
     data <- analytics_data_fn()$longest_chats
     if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
@@ -149,7 +149,7 @@ admin_chat_quality_outputs <- function(output, analytics_data_fn, turkish_dt_lan
   })
 
   # Yeniden oluşturulan yanıtlar tablosu
-  output$regenerated_table <- DT::renderDataTable({
+  output$regenerated_table <- DT::renderDT({
     data <- analytics_data_fn()$regenerated_responses
     if (nrow(data) == 0) return(DT::datatable(data.frame()))
 

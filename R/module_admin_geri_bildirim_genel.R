@@ -40,7 +40,7 @@ admin_feedback_ui <- function(data, ns, create_metric_card, create_info_button, 
             h4(class = "card-title", icon("robot"), " Modellere Göre Geri Bildirim"),
             create_info_button("Her model için beğeni, beğenmeme sayıları ve toplam yanıt sayısı.")
           ),
-          div(class = "table-container", DT::dataTableOutput(ns("model_feedback_table")))
+          div(class = "table-container", DT::DTOutput(ns("model_feedback_table")))
         )
       )
     ),
@@ -103,7 +103,7 @@ admin_feedback_ui <- function(data, ns, create_metric_card, create_info_button, 
 admin_feedback_outputs <- function(output, analytics_data_fn, turkish_dt_language, format_turkish_date) {
 
   # Model geri bildirim tablosu
-  output$model_feedback_table <- DT::renderDataTable({
+  output$model_feedback_table <- DT::renderDT({
     data <- analytics_data_fn()$model_feedback
     if (nrow(data) == 0) return(DT::datatable(data.frame()))
 

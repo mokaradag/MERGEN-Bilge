@@ -89,7 +89,7 @@ tagList(
 			style = "margin: 6px 0 12px 0; font-size: 12px; color: #a3a3a3;",
 			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir; kapalıyken birden fazla seçim yapabilirsiniz."
 		  ),
-		  DT::dataTableOutput(ns("files_table"))
+		  DT::DTOutput(ns("files_table"))
 		)
       )
     ),
@@ -1059,7 +1059,7 @@ fileManagerServer <- function(
       shinyjs::delay(100, { all_files_cleared(FALSE) })
     }, ignoreInit = TRUE)
                    
-	output$files_table <- DT::renderDataTable({
+	output$files_table <- DT::renderDT({
 	  dat <- module_values$files
 	  if (nrow(dat) == 0) dat <- dat[0, ]
 	  DT::datatable(
