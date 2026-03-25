@@ -216,6 +216,14 @@ server <- function(input, output, session) {
       user_id = current_user_id,
       settings_data = settings_data
     )
+
+    # Kullanıcı "Dosya Yönetimi" sekmesine geçtiğinde kalıcı dosyaları yeniden tara
+    observeEvent(input$tabs, {
+      req(identical(input$tabs, "files"))
+      if (is.function(file_manager_data$refresh_persisted_files)) {
+        file_manager_data$refresh_persisted_files("tab_open")
+      }
+    }, ignoreInit = TRUE)
     
   # Özetleme modülü erişimi için dosya yöneticisi verilerini oturumda sakla
   session$userData$file_manager_data <- file_manager_data

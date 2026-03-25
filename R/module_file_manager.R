@@ -1191,6 +1191,9 @@ fileManagerServer <- function(
 	  remove_file_from_manager = function(filename) { remove_file_by_name(filename, quiet = TRUE) },
 	  set_attachment_checked   = set_attachment_checked,
 	  sync_file_to_context     = sync_file_to_context,
+	  refresh_persisted_files  = function(trigger = "manual") {
+		refresh_from_user_folder(trigger)
+	  },
 	  reset_attachment_state   = function() {
 		ids <- names(module_values$files_in_context)
 		if (length(ids) > 0) {
