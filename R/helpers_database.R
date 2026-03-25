@@ -29,17 +29,15 @@ normalize_db_value <- function(x) {
   if (is.null(x) || is.na(x) || !is.character(x)) {
     return(x)
   }
-  out <- tryCatch(enc2utf8(x), error = function(e) x)
 
-  # VM tarafında UTF-8 metin CP125x gibi okunmuşsa (örn: "Ã‡"), tek adımda onar.
-  has_mojibake <- grepl("[ÃÂ][[:print:]]", out)
-  if (any(has_mojibake, na.rm = TRUE)) {
-    repaired <- suppressWarnings(iconv(out, from = "latin1", to = "UTF-8"))
-    ok <- !is.na(repaired) & nzchar(repaired)
-    out[ok] <- repaired[ok]
+  # DB parametresini çalışma ortamının yerel kodlamasına çevir:
+  # - UTF-8 oturumda UTF-8 gönder
+  # - UTF-8 olmayan Windows oturumunda native (örn. CP1254) gönder
+  out_utf8 <- tryCatch(enc2utf8(x), error = function(e) x)
+  if (isTRUE(l10n_info()[["UTF-8"]])) {
+    return(out_utf8)
   }
-
-  out
+  tryCatch(enc2native(out_utf8), error = function(e) out_utf8)
 }
 
 normalize_db_params <- function(params) {
