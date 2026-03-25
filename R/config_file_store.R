@@ -262,13 +262,15 @@ mergen_user_upload_dir <- function(user_id) {
     FALSE
   })
 
-  if (!isTRUE(created) || !dir.exists(p)) {
+  p_exists <- tryCatch(path_exists_relaxed(p), error = function(e) dir.exists(p))
+  if (!isTRUE(created) || !isTRUE(p_exists)) {
     fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
     fs::dir_create(fallback, recurse = TRUE)
-    return(normalize_mcp_path(fallback, must_exist = dir.exists(fallback)))
+    fallback_exists <- tryCatch(path_exists_relaxed(fallback), error = function(e) dir.exists(fallback))
+    return(normalize_mcp_path(fallback, must_exist = isTRUE(fallback_exists)))
   }
 
-  normalize_mcp_path(p, must_exist = dir.exists(p))
+  normalize_mcp_path(p, must_exist = isTRUE(p_exists))
 }
 
 # Kullanıcının yüklediği dosyaların listesini döndürür
@@ -368,12 +370,54 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
 
   # Fallback: plain folder listing (pre-index or very old data)
   dir <- mergen_user_upload_dir(user_id)
-  if (!dir.exists(dir)) {
+
+  # UNC/encoding farkları nedeniyle dizin tespiti esnek yapılır
+  dir_ok <- tryCatch(path_exists_relaxed(dir), error = function(e) dir.exists(dir))
+  if (!isTRUE(dir_ok) && grepl("^/[^/]", dir)) {
+    # Tek slash ile gelen UNC benzeri yolu çift slash varyantı ile de dene
+    dir_unc <- paste0("/", dir)
+    if (isTRUE(tryCatch(path_exists_relaxed(dir_unc), error = function(e) FALSE))) {
+      dir <- dir_unc
+      dir_ok <- TRUE
+    }
+  }
+
+  if (!isTRUE(dir_ok)) {
     log_info("[INDEX] user={uid} için klasör bulunamadı: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
   
-  paths <- list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
+  # Ağ paylaşımı/UNC varyasyonlarında dizin okunurluğunu farklı yollarla dene
+  list_user_files_relaxed <- function(dir_path) {
+    dir_chr <- as.character(dir_path %||% "")
+    if (!nzchar(dir_chr)) return(character(0))
+
+    variants <- unique(Filter(nzchar, c(
+      dir_chr,
+      gsub("/", "\\\\", dir_chr, fixed = TRUE),
+      enc2utf8(dir_chr),
+      enc2native(dir_chr),
+      if (grepl("^/[^/]", dir_chr)) paste0("/", dir_chr) else NULL
+    )))
+
+    for (v in variants) {
+      files_base <- tryCatch(
+        list.files(v, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+        error = function(e) character(0)
+      )
+      if (length(files_base)) return(files_base)
+
+      files_fs <- tryCatch(
+        as.character(fs::dir_ls(v, recurse = FALSE, type = "file")),
+        error = function(e) character(0)
+      )
+      if (length(files_fs)) return(files_fs)
+    }
+
+    character(0)
+  }
+
+  paths <- list_user_files_relaxed(dir)
   if (!length(paths)) {
     log_info("[INDEX] user={uid} klasörü boş: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))

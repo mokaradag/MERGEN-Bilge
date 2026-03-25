@@ -216,6 +216,14 @@ server <- function(input, output, session) {
       user_id = current_user_id,
       settings_data = settings_data
     )
+
+    # SSO doğrulaması tamamlandığında kullanıcı dosyalarını tek sefer yükle
+    observeEvent(sso_state$authenticated, {
+      req(isTRUE(sso_state$authenticated))
+      if (is.function(file_manager_data$refresh_persisted_files)) {
+        file_manager_data$refresh_persisted_files("auth_ready")
+      }
+    }, ignoreInit = TRUE, once = TRUE)
     
   # Özetleme modülü erişimi için dosya yöneticisi verilerini oturumda sakla
   session$userData$file_manager_data <- file_manager_data

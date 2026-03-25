@@ -537,6 +537,8 @@ fileManagerServer <- function(
 
     # --- NEW: initial population from the user's persistent folder
 	observeEvent(TRUE, {
+	  # SSO açıkken doğrulama tamamlanmadan erken tarama yapma
+	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) return()
 	  refresh_from_user_folder("initial")
 	}, once = TRUE, ignoreNULL = TRUE)
 
@@ -557,14 +559,12 @@ fileManagerServer <- function(
 		return()
 	  }
 
+	  # SSO açıkken auth bitmeden gereksiz tarama yapma
+	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) return()
 	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
 	})
 
-    # SSO tamamlandıktan sonra gerçek kullanıcı klasörünü tekrar yükle
-    observe({
-      req(isTRUE(session$userData$auth_initialized))
-      refresh_from_user_folder("auth_ready")
-    })
+    # Not: SSO sonrası tetikleme server.R tarafından tek sefer yönetilir
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
@@ -1183,6 +1183,9 @@ fileManagerServer <- function(
 	  remove_file_from_manager = function(filename) { remove_file_by_name(filename, quiet = TRUE) },
 	  set_attachment_checked   = set_attachment_checked,
 	  sync_file_to_context     = sync_file_to_context,
+	  refresh_persisted_files  = function(trigger = "manual") {
+		refresh_from_user_folder(trigger)
+	  },
 	  reset_attachment_state   = function() {
 		ids <- names(module_values$files_in_context)
 		if (length(ids) > 0) {
