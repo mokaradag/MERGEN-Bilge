@@ -12,11 +12,56 @@ options(encoding = "UTF-8")
 # Future paketinin RNG (rastgele sayı üretimi) hatalarını yoksay
 options(future.rng.onMisuse = "ignore")
 
-# Yerel ayarları İngilizce UTF-8 olarak ayarlamayı dene (hataları gizle)
-try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
+# ------------------------------------------------------------------------------
+# UTF-8 YEREL AYARINI BASİT VE SAĞLAM BİÇİMDE ZORLA
+# ------------------------------------------------------------------------------
+# Özellikle Windows sunucularda süreç CP1254 ile başlayabiliyor. Bu durumda Shiny
+# girişleri (örn. SSO açıkken) uygulama içinde bozulup veritabanına yanlış
+# yazılabiliyor. Aşağıdaki yaklaşım:
+# 1) Önce LC_CTYPE için yaygın UTF-8 locale adaylarını dener
+# 2) UTF-8 aktif olunca LC_COLLATE / LC_TIME için de aynı locale'i uygular
+# 3) Sonuç UTF-8 değilse tek bir net uyarı üretir
+# ------------------------------------------------------------------------------
+force_utf8_locale <- function() {
+  locale_candidates <- c(
+    "en_US.UTF-8",
+    "English_United States.utf8",
+    "Turkish_Turkey.UTF-8",
+    "Turkish_Turkey.utf8",
+    "tr_TR.UTF-8",
+    "C.UTF-8"
+  )
 
-# Sadece bu yerel ayar çağrısı için uyarıları bastır (Türkçe karakter desteği)
-try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE)
+  applied <- NA_character_
+  for (loc in locale_candidates) {
+    result <- tryCatch(
+      suppressWarnings(Sys.setlocale("LC_CTYPE", loc)),
+      error = function(e) NA_character_
+    )
+    if (!is.na(result) && isTRUE(l10n_info()[["UTF-8"]])) {
+      applied <- loc
+      break
+    }
+  }
+
+  if (!is.na(applied)) {
+    try(suppressWarnings(Sys.setlocale("LC_COLLATE", applied)), silent = TRUE)
+    try(suppressWarnings(Sys.setlocale("LC_TIME", applied)), silent = TRUE)
+  }
+
+  if (!isTRUE(l10n_info()[["UTF-8"]])) {
+    warning(
+      paste0(
+        "UTF-8 locale aktif edilemedi. Mevcut LC_CTYPE='",
+        Sys.getlocale("LC_CTYPE"),
+        "'. Turkish karakter bozulmalarını önlemek için süreci UTF-8 locale ile başlatın."
+      ),
+      call. = FALSE
+    )
+  }
+}
+
+force_utf8_locale()
 
 # ------------------------------------------------------------------------------
 # GÜVENLİ KAYNAK YÜKLEME FONKSİYONU (SAFE SOURCE)
