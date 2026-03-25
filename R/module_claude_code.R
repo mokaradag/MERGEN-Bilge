@@ -632,7 +632,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       # Çalışma dizini yoksa geçici alan kullan
       if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
-        calisma_dizini <- get_user_workspace(current_user_id())
+        calisma_dizini <- get_user_workspace(current_user_id)
       }
 
       # Karakter bilgisini al

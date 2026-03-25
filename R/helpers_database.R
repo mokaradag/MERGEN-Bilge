@@ -1,21 +1,29 @@
-# Dosya Yolu: R/helpers_database.R
-# Açıklama: Veritabanı erişimi ve worker-safe işlemler için yardımcı fonksiyonlar.
-#   - Worker'lara pool/DBI harici pointer'ları aktarmayın.
-#   - Worker fonksiyonları kendi DB bağlantılarını oluşturur (pool gerekmez).
-#   - Bu fonksiyonlar Shiny reactive'lerine ERİŞMEZ; her zaman düz R değerleri
-#     (chat_id, user_id, prompt_text vb.) future/worker'lara geçirin.
-#   - Reactive değerleri ana Shiny reactive bağlamında yakalayın (isolate ile).
+# R/helpers_database.R
+# Complete, corrected helpers for DB access and worker-safe operations.
+# - Never serialize pool/DBI external pointers into workers.
+# - Worker functions create their own DB connections (no 'pool' needed).
+# - These functions DO NOT access Shiny reactives; always pass plain R values
+#   (e.g. chat_id, user_id, prompt_text) into futures/workers. Capture reactives
+#   in the main Shiny reactive context BEFORE starting background work.
 #
-# NOT: SQL Server'a özgü OUTPUT ... INSERTED sözdizimi kullanılmaktadır.
+# Usage:
+# 1) In main process: source("helpers_database.R"); call init_db_pool(dsn) if you want a pool.
+# 2) In server code: capture reactive values (e.g. chat_id <- isolate(rv$current_chat_id)) and
+#    pass those primitives into futures.
+# 3) In workers (future blocks) call worker_save_assistant_response(...) which will create
+#    a fresh DB connection inside the worker.
+#
+# NOTE: This file assumes a SQL Server-like OUTPUT ... INSERTED.MessageID behavior.
+#       If your DB differs, adjust the INSERT returning syntax accordingly.
 
 library(DBI)
 library(odbc)
 library(pool)
 
-# --- Yapılandırma ---
+# --- Configuration ---
 .DEFAULT_DSN <- Sys.getenv("DB_DSN", "TestConnection")
 
-# Havuz istatistiklerini al
+# Get pool statistics
 get_pool_info <- function() {
   return(list(
     valid = TRUE,
@@ -25,7 +33,7 @@ get_pool_info <- function() {
 }
 
 get_connection <- function(target = "primary") {
-
+  
   # 1. Hangi Veritabanı? (.Renviron içindeki değişkeni seçiyoruz)
   dsn_var <- switch(target,
     "primary"   = "DB_DSN",      # Varsayılan Ana Veritabanı
@@ -33,7 +41,7 @@ get_connection <- function(target = "primary") {
     "tertiary"  = "DB_DSN_3",    # Üçüncül Veritabanı
     "DB_DSN"                     # Hata durumunda varsayılan
   )
-
+  
   # 2. Pooling Kontrolü (Sadece Ana Veritabanı için ve pool aktifse)
   # Şu an kullanmıyor, ama performans için kapıyı açık bırakıldı.
   if (target == "primary" && exists("pool", envir = .GlobalEnv)) {
@@ -43,180 +51,71 @@ get_connection <- function(target = "primary") {
     }
   }
 
-  # 3. Doğrudan Bağlantı
+  # 3. Direct Connection (Fallback)
   # Havuz yoksa veya ikincil veritabanı isteniyorsa doğrudan bağlan.
   if (!requireNamespace("odbc", quietly = TRUE) || !requireNamespace("DBI", quietly = TRUE)) {
     stop("Worker/process requires 'odbc' and 'DBI' packages installed.")
   }
-
+  
   # Seçilen hedefin DSN adını çevresel değişkenden al
   dsn_name <- Sys.getenv(dsn_var, .DEFAULT_DSN)
-
+  
   # Eğer DSN tanımlı değilse hata ver (Debugging kolaylığı için)
   if (dsn_name == "") {
     stop(sprintf("HATA: '%s' için .Renviron içinde DSN tanımı bulunamadı (Target: %s)", dsn_var, target))
   }
-
-  # Türkçe karakter desteği: ODBC sürücüsüne UTF-8 istemci karakter seti bildir.
-  # FreeTDS için ClientCharset=UTF-8, NVARCHAR sütunlarına doğru Unicode yazımı sağlar.
-  # Microsoft ODBC Driver bu parametreyi sessizce yoksayar, dolayısıyla güvenlidir.
-  # LANG ortam değişkeni global.R'de ayarlanır (MSODBCSQL sürücüsü bunu kullanır).
-  # NOT: ODBC sürücüsü C seviyesindeki LC_CTYPE locale değerini kullanarak
-  # gelen baytların kodlamasını belirler. global.R'de C.UTF-8 locale zorunlu
-  # kılınmıştır; bu sayede R'dan gelen UTF-8 baytları doğru yorumlanır.
-  conn <- tryCatch({
-    conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
-    DBI::dbConnect(
-      odbc::odbc(),
-      .connection_string = conn_str,
-      encoding = "UTF-8",
-      name_encoding = "UTF-8"
-    )
-  }, error = function(e) {
-    log_warn("ODBC bağlantısı ClientCharset ile başarısız: {e$message}")
-    # Yedek bağlantı: encoding parametresi korunur
-    DBI::dbConnect(
-      odbc::odbc(),
-      dsn = dsn_name,
-      encoding = "UTF-8",
-      name_encoding = "UTF-8"
-    )
-  })
-
-  # Bağlantı sonrası: SQL Server oturumunda NVARCHAR parametrelerin
-  # doğru yorumlanması için ANSI ayarlarını etkinleştir
-  tryCatch({
-    DBI::dbExecute(conn, "SET ANSI_NULLS ON")
-    DBI::dbExecute(conn, "SET QUOTED_IDENTIFIER ON")
-    DBI::dbExecute(conn, "SET ANSI_PADDING ON")
-  }, error = function(e) NULL)
-
+  
+  conn <- DBI::dbConnect(odbc::odbc(), dsn = dsn_name)
   return(list(conn = conn, pooled = FALSE, pool = NULL))
 }
 
-# Bağlantı serbest bırakma - sadece pool OLMAYAN bağlantıları kapat
+# Release connection - only disconnect if it's NOT a pool
 release_connection <- function(conn_info) {
   if (is.null(conn_info)) return(invisible(NULL))
-
-  # Pool bağlantısıysa dokunma - pool kendi bağlantılarını yönetir
+  
+  # If it's a pool, do nothing - pool manages its own connections
   if (isTRUE(conn_info$pooled)) {
     return(invisible(NULL))
   }
-
-  # Sadece doğrudan (pool dışı) bağlantıları kapat
+  
+  # Only disconnect direct connections (non-pooled)
   tryCatch({
     DBI::dbDisconnect(conn_info$conn)
   }, error = function(e) {
-    # yoksay
+    # ignore
   })
-
+  
   invisible(NULL)
 }
 
-# Worker tarafı: arka plan işlemlerinde kullanılmak üzere yeni bir DBI bağlantısı oluşturur.
-# Yeniden deneme mantığı ile bağlantı hatalarına dayanıklıdır.
+# Worker-side helper: create a fresh DBI connection in the worker with retry logic
 worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
-  dsn_name <- Sys.getenv("DB_DSN", .DEFAULT_DSN)
   for (i in 1:max_retries) {
     tryCatch({
       if (!requireNamespace("odbc", quietly = TRUE) || !requireNamespace("DBI", quietly = TRUE)) {
         stop("Worker needs 'odbc' and 'DBI' packages installed.")
       }
-      # Türkçe karakter desteği: ClientCharset=UTF-8 ile ODBC sürücüsüne bildir
-      # Worker süreçlerinde de LC_CTYPE locale kontrolü yap (fork edilen
-      # süreçler ana sürecin locale ayarını miras almalı, ama garanti değil)
-      if (!grepl("UTF-8|utf8", Sys.getlocale("LC_CTYPE"), ignore.case = TRUE)) {
-        for (.wloc in c("C.UTF-8", "en_US.UTF-8", "en_US.utf8")) {
-          .wres <- tryCatch(suppressWarnings(Sys.setlocale("LC_CTYPE", .wloc)), error = function(e) "")
-          if (nzchar(.wres) && grepl("UTF-8|utf8", .wres, ignore.case = TRUE)) break
-        }
-      }
-      conn <- tryCatch({
-        conn_str <- paste0("DSN=", dsn_name, ";ClientCharset=UTF-8;")
-		DBI::dbConnect(
-		  odbc::odbc(),
-		  .connection_string = conn_str,
-		  encoding = "UTF-8",
-		  name_encoding = "UTF-8"
-		)
-      }, error = function(e2) {
-		DBI::dbConnect(
-		  odbc::odbc(),
-		  dsn = dsn_name,
-		  encoding = "UTF-8",
-		  name_encoding = "UTF-8"
-		)
-      })
-      # Worker bağlantısı için de ANSI ayarlarını etkinleştir
-      tryCatch({
-        DBI::dbExecute(conn, "SET ANSI_NULLS ON")
-        DBI::dbExecute(conn, "SET QUOTED_IDENTIFIER ON")
-        DBI::dbExecute(conn, "SET ANSI_PADDING ON")
-      }, error = function(e2) NULL)
+      conn <- DBI::dbConnect(odbc::odbc(), dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN))
       return(conn)
     }, error = function(e) {
       if (i == max_retries) {
         stop(paste("Failed to connect to database after", max_retries, "attempts:", e$message))
       }
-      Sys.sleep(retry_delay * i)
+      Sys.sleep(retry_delay * i)  # Exponential backoff
     })
   }
 }
 
 # -------------------------
-# UTF-8 Kodlama Yardımcısı
-# -------------------------
-# Veritabanına yazılacak metinleri UTF-8 olarak normalleştirir.
-# Türkçe karakterlerin (ç, ğ, ı, ö, ş, ü vb.) doğru kaydedilmesini sağlar.
-# ODBC sürücüsüne gönderilmeden önce R encoding etiketinin UTF-8 olmasını garanti eder.
-ensure_utf8 <- function(text) {
-  if (is.null(text)) return(text)
-
-  if (!is.character(text)) {
-    text <- as.character(text)
-  }
-
-  repair_one <- function(x) {
-    if (is.na(x) || !nzchar(x)) return(x)
-
-    out <- enc2utf8(x)
-
-    if (exists("fixTurkishEncoding", mode = "function")) {
-      out <- tryCatch(fixTurkishEncoding(out), error = function(e) out)
-    }
-
-    out2 <- tryCatch(iconv(out, from = "", to = "UTF-8", sub = ""), error = function(e) out)
-    if (!is.na(out2) && nzchar(out2)) {
-      out <- out2
-    }
-
-    Encoding(out) <- "UTF-8"
-    out
-  }
-
-  vapply(text, repair_one, character(1), USE.NAMES = FALSE)
-}
-
-# SQL'e gidecek metin parametreleri için tek giriş noktası.
-# İlke: Sonradan yorumda düzeltmek yerine, veriyi doğru formatta kaydet.
-prepare_sql_text_params <- function(...) {
-  values <- list(...)
-  lapply(values, function(x) {
-    if (is.null(x)) return(x)
-    ensure_utf8(x)
-  })
-}
-
-# -------------------------
-# Girdi Doğrulama Yardımcıları
+# Input Validation Helper (NEW - Suggestion #2)
 # -------------------------
 validate_username <- function(username) {
-  # Sadece harf, rakam, alt çizgi, nokta ve tire karakterlerine izin ver
+  # Only allow alphanumeric, underscore, dot, and hyphen
   if (!grepl("^[a-zA-Z0-9_.-]+$", username)) {
     stop("Geçersiz kullanıcı adı formatı. Sadece harf, rakam, alt çizgi, nokta ve tire kullanılabilir.")
   }
   
-  # Uzunluk sınırı kontrolü
+  # Check length constraints
   if (nchar(username) < 3 || nchar(username) > 50) {
     stop("Kullanıcı adı 3-50 karakter arasında olmalıdır.")
   }
@@ -225,17 +124,17 @@ validate_username <- function(username) {
 }
 
 validate_chat_title <- function(title) {
-  # Uzunluk sınırı kontrolü
+  # Length constraint
   if (nchar(title) > 200) {
-    stop("Sohbet başlığı 200 karakterden kısa olmalıdır.")
+    stop("Chat title must be less than 200 characters.")
   }
-
+  
   if (nchar(title) < 1) {
-    stop("Sohbet başlığı boş olamaz.")
+    stop("Chat title cannot be empty.")
   }
-
-  # Olası SQL enjeksiyon kalıplarını engelle (derinlemesine savunma)
-  # Parametreli sorgular kullanılsa bile şüpheli kalıpları reddet
+  
+  # Block potential SQL injection patterns (defense in depth)
+  # Even with parameterized queries, we reject suspicious patterns
   dangerous_patterns <- c(
     "';",           # SQL statement terminator
     "--",           # SQL comment
@@ -254,7 +153,7 @@ validate_chat_title <- function(title) {
   
   for (pattern in dangerous_patterns) {
     if (grepl(pattern, title, ignore.case = TRUE)) {
-      stop("Sohbet başlığı geçersiz SQL kalıpları içeriyor.")
+      stop("Chat title contains invalid SQL patterns.")
     }
   }
   
@@ -262,20 +161,20 @@ validate_chat_title <- function(title) {
 }
 
 validate_message_content <- function(content) {
-  # Uzunluk sınırı kontrolü (maksimum 20000 karakter)
+  # Length constraint (adjusted to 20000)
   if (nchar(content) > 20000) {
-    stop("Mesaj içeriği 20.000 karakter sınırını aşıyor.")
+    stop("Message content exceeds maximum length of 20,000 characters.")
   }
-
+  
   if (nchar(content) < 1) {
-    stop("Mesaj içeriği boş olamaz.")
+    stop("Message content cannot be empty.")
   }
   
   return(TRUE)
 }
 
 # -------------------------
-# Veritabanı İşlem Yardımcıları
+# Database operation helpers
 # -------------------------
 
 # Kullanıcı al veya oluştur; tam sayı UserID döndürür
@@ -285,36 +184,20 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 
   # Girdi doğrulama
   validate_username(username)
-  username <- ensure_utf8(username)
 
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
   # KaynakAdi'nı belirle: önce SSO claim, sonra DC01_user_base, en son username
-  # Türkçe karakterlerin doğru kaydedilmesi için encoding düzeltmesi + UTF-8 normalleştirme
-  kaynak_adi <- ensure_utf8(username)
+  kaynak_adi <- username
   if (!is.null(sso_claims$full_name) && nzchar(sso_claims$full_name)) {
-    # fixTurkishEncoding SSO claim'lerinde zaten uygulanmış olabilir;
-    # yine de DB yazımı öncesi son kontrol olarak tekrar uygula
-    kaynak_adi <- ensure_utf8(
-      if (exists("fixTurkishEncoding", mode = "function")) {
-        fixTurkishEncoding(sso_claims$full_name)
-      } else {
-        sso_claims$full_name
-      }
-    )
+    kaynak_adi <- sso_claims$full_name
   } else {
     user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
     user_details <- dbGetQuery(conn, user_details_query, params = list(username))
     if (nrow(user_details) > 0 && nzchar(user_details$KaynakAdi[1] %||% "")) {
-      kaynak_adi <- ensure_utf8(
-        if (exists("fixTurkishEncoding", mode = "function")) {
-          fixTurkishEncoding(user_details$KaynakAdi[1])
-        } else {
-          user_details$KaynakAdi[1]
-        }
-      )
+      kaynak_adi <- user_details$KaynakAdi[1]
     }
   }
 
@@ -323,7 +206,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 
   if (nrow(user_id_result) > 0) {
     user_id <- as.integer(user_id_result$UserID[1])
-    update_query <- "UPDATE MB_Users SET KaynakAdi = CAST(? AS NVARCHAR(255)), LastLoginDate = GETDATE() WHERE UserID = ?"
+    update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
     dbExecute(conn, update_query, params = list(kaynak_adi, user_id))
 
     # SSO ek alanlarını güncelle (tablo destekliyorsa)
@@ -333,7 +216,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 
     return(user_id)
   } else {
-    insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, CAST(? AS NVARCHAR(255)), GETDATE())"
+    insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, ?, GETDATE())"
     res <- dbGetQuery(conn, insert_query, params = list(username, kaynak_adi))
     if (nrow(res) == 0) stop("Yeni kullanıcı oluşturulduktan sonra UserID alınamadı.")
     user_id <- as.integer(res$UserID[1])
@@ -364,34 +247,33 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
     set_parts <- c()
     params <- list()
 
-    # Türkçe karakterlerin doğru kaydedilmesi için tüm metin değerlerine ensure_utf8 uygula
     if ("Sicil" %in% existing_cols && !is.null(sso_claims$sicil)) {
       set_parts <- c(set_parts, "Sicil = ?")
-      params <- c(params, list(ensure_utf8(sso_claims$sicil)))
+      params <- c(params, list(sso_claims$sicil))
     }
     if ("Email" %in% existing_cols && !is.null(sso_claims$email)) {
       set_parts <- c(set_parts, "Email = ?")
-      params <- c(params, list(ensure_utf8(sso_claims$email)))
+      params <- c(params, list(sso_claims$email))
     }
     if ("Sektor" %in% existing_cols && !is.null(sso_claims$sektor)) {
-      set_parts <- c(set_parts, "Sektor = CAST(? AS NVARCHAR(255))")
-      params <- c(params, list(ensure_utf8(sso_claims$sektor)))
+      set_parts <- c(set_parts, "Sektor = ?")
+      params <- c(params, list(sso_claims$sektor))
     }
     if ("Departman" %in% existing_cols && !is.null(sso_claims$department)) {
-      set_parts <- c(set_parts, "Departman = CAST(? AS NVARCHAR(255))")
-      params <- c(params, list(ensure_utf8(sso_claims$department)))
+      set_parts <- c(set_parts, "Departman = ?")
+      params <- c(params, list(sso_claims$department))
     }
     if ("Mudurluk" %in% existing_cols && !is.null(sso_claims$mudurluk)) {
-      set_parts <- c(set_parts, "Mudurluk = CAST(? AS NVARCHAR(255))")
-      params <- c(params, list(ensure_utf8(sso_claims$mudurluk)))
+      set_parts <- c(set_parts, "Mudurluk = ?")
+      params <- c(params, list(sso_claims$mudurluk))
     }
     if ("MasrafYeriKodu" %in% existing_cols && !is.null(sso_claims$masraf_yeri_kodu)) {
       set_parts <- c(set_parts, "MasrafYeriKodu = ?")
-      params <- c(params, list(ensure_utf8(sso_claims$masraf_yeri_kodu)))
+      params <- c(params, list(sso_claims$masraf_yeri_kodu))
     }
     if ("SonGirisKaynagi" %in% existing_cols) {
-      set_parts <- c(set_parts, "SonGirisKaynagi = CAST(? AS NVARCHAR(50))")
-      params <- c(params, list(ensure_utf8("keycloak")))
+      set_parts <- c(set_parts, "SonGirisKaynagi = ?")
+      params <- c(params, list("keycloak"))
     }
 
     if (length(set_parts) > 0) {
@@ -406,7 +288,8 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
   invisible(NULL)
 }
 
-# Kullanıcının sohbetlerini ve mesajlarını yükle (liste döndürür)
+# Load chats and their messages for a user (returns list)
+# process_message_content() fallback is provided if missing.
 load_chats_from_db <- function(user_id, include_messages = TRUE) {
   stopifnot(!is.null(user_id))
   conn_info <- get_connection()
@@ -427,20 +310,14 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     summary_data <- dbGetQuery(conn, query, params = list(user_id))
     if (nrow(summary_data) == 0) return(list())
 
-    # SQL sorgusundaki CreateTimestamp DESC sırasını koru
+    # Preserve the CreateTimestamp DESC order from the SQL query
     unique_chat_ids <- as.character(summary_data$ChatID)
 
     formatted <- lapply(seq_len(nrow(summary_data)), function(i) {
       row <- summary_data[i, ]
       msg_count <- ifelse(is.na(row$MessageCount), 0L, row$MessageCount)
       list(
-        title = ensure_utf8(
-          if (exists("fixTurkishEncoding", mode = "function")) {
-            fixTurkishEncoding(row$ChatTitle %||% "")
-          } else {
-            row$ChatTitle %||% ""
-          }
-        ),
+        title = row$ChatTitle,
         messages = NULL,
         timestamp = row$CreateTimestamp,
         last_message_timestamp = row$LastMessageTimestamp,
@@ -449,7 +326,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     })
     names(formatted) <- unique_chat_ids
 
-    # SQL sorgusuyla eşleşen doğru sırada olduğundan emin ol
+    # Ensure the list is in the correct order matching the SQL query
     formatted <- formatted[unique_chat_ids]
     return(formatted)
   }
@@ -465,7 +342,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
   all_data <- dbGetQuery(conn, query, params = list(user_id))
   if (nrow(all_data) == 0) return(list())
 
-  # SQL sorgusundaki CreateTimestamp DESC sırasını koru
+  # Preserve the CreateTimestamp DESC order from the SQL query
   unique_chat_ids <- unique(all_data$ChatID)
   
   chat_list <- split(all_data, all_data$ChatID)
@@ -481,13 +358,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     }
     
     list(
-      title = ensure_utf8(
-        if (exists("fixTurkishEncoding", mode = "function")) {
-          fixTurkishEncoding(chat_df$ChatTitle[1] %||% "")
-        } else {
-          chat_df$ChatTitle[1] %||% ""
-        }
-      ),
+      title = chat_df$ChatTitle[1],
       messages = messages,
       timestamp = chat_df$CreateTimestamp[1],
       last_message_timestamp = last_msg_time,
@@ -495,7 +366,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     )
   })
   
-  # Orijinal CreateTimestamp DESC sırasına göre yeniden sırala
+  # Reorder the list to match the original CreateTimestamp DESC order
   formatted_chats <- formatted_chats[as.character(unique_chat_ids)]
   return(formatted_chats)
 }
@@ -612,15 +483,7 @@ format_chat_messages <- function(chat_df) {
   lapply(seq_len(nrow(chat_df)), function(i) {
     row <- chat_df[i, ]
     
-    # Render katmanı: yalnız görüntüleme için metni toparla.
-    # Kayıt katmanı zaten doğru formatta saklamalıdır; burada DB verisini değiştirmeyiz.
-    content_text <- ensure_utf8(
-      if (exists("fixTurkishEncoding", mode = "function")) {
-        fixTurkishEncoding(row$MessageContent %||% "")
-      } else {
-        row$MessageContent %||% ""
-      }
-    )
+    content_text <- row$MessageContent %||% ""
     msg_type <- row$MessageType %||% "user"
     
     # Boşlukları temizle (BOM veya görünmez karakterler için)
@@ -738,41 +601,28 @@ format_chat_messages <- function(chat_df) {
   })
 }
 
-load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
+load_chat_messages_from_db <- function(chat_id) {
   stopifnot(!is.null(chat_id))
 
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Güvenlik: user_id verilmişse yalnızca o kullanıcının söyleşisini yükle
-  if (!is.null(user_id)) {
-    query <- "
-      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-             m.MessageType, m.MessageTimestamp, m.MessageOrder
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.ChatID = ? AND c.UserID = ?
-      ORDER BY m.MessageOrder ASC
-    "
-  } else {
-    query <- "
-      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-             m.MessageType, m.MessageTimestamp, m.MessageOrder
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.ChatID = ?
-      ORDER BY m.MessageOrder ASC
-    "
-  }
+  query <- "
+    SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+           m.MessageType, m.MessageTimestamp, m.MessageOrder
+    FROM MB_Chats c
+    LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+    WHERE c.ChatID = ?
+    ORDER BY m.MessageOrder ASC
+  "
 
   chat_param <- suppressWarnings(as.integer(chat_id))
   if (is.na(chat_param)) {
     chat_param <- chat_id
   }
 
-  params <- if (!is.null(user_id)) list(chat_param, as.integer(user_id)) else list(chat_param)
-  chat_df <- dbGetQuery(conn, query, params = params)
+  chat_df <- dbGetQuery(conn, query, params = list(chat_param))
   if (nrow(chat_df) == 0) {
     return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
   }
@@ -781,13 +631,7 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df) else list()
 
   list(
-    title = ensure_utf8(
-      if (exists("fixTurkishEncoding", mode = "function")) {
-        fixTurkishEncoding(chat_df$ChatTitle[1] %||% "")
-      } else {
-        chat_df$ChatTitle[1] %||% ""
-      }
-    ),
+    title = chat_df$ChatTitle[1],
     timestamp = chat_df$CreateTimestamp[1],
     messages = messages,
     message_count = length(messages)
@@ -857,13 +701,7 @@ load_chat_messages_batch <- function(chat_ids) {
     }
 
     list(
-		title = ensure_utf8(
-		  if (exists("fixTurkishEncoding", mode = "function")) {
-			fixTurkishEncoding(chat_df$ChatTitle[1] %||% "")
-		  } else {
-			chat_df$ChatTitle[1] %||% ""
-		  }
-		),
+      title = chat_df$ChatTitle[1],
       timestamp = chat_df$CreateTimestamp[1],
 	  messages = messages,
       message_count = length(messages),
@@ -903,7 +741,7 @@ load_chat_messages_batch <- function(chat_ids) {
   formatted
 }
 
-# Hafif geçmiş sorgusu: her sohbet için kullanıcı/asistan mesaj çiftlerini döndür
+# Lightweight history fetch: return paired user/assistant rows per chat
 load_history_rows_batch <- function(chat_ids) {
   if (is.null(chat_ids) || length(chat_ids) == 0) {
     return(list())
@@ -977,22 +815,20 @@ load_history_rows_batch <- function(chat_ids) {
   formatted
 }
 
-# Yeni sohbet oluştur, ChatID tamsayı döndür
+# Create new chat, return ChatID integer (UPDATED with validation)
 create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   stopifnot(!is.null(user_id))
   
+  # ADDED: Input validation
   validate_chat_title(initial_title)
-
+  
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
-  sql_text <- prepare_sql_text_params(initial_title)
-
-  query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, CAST(? AS NVARCHAR(4000)))"
-  res <- dbGetQuery(conn, query, params = list(user_id, sql_text[[1]]))
-  if (nrow(res) == 0) stop("Veritabanında yeni sohbet oturumu oluşturulamadı.")
+  query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, ?)"
+  res <- dbGetQuery(conn, query, params = list(user_id, initial_title))
+  if (nrow(res) == 0) stop("Failed to create new chat session in DB.")
   return(as.integer(res$ChatID[1]))
 }
 
@@ -1001,12 +837,13 @@ sanitize_input <- function(text) {
   return(text)
 }
 
-# Mesajı kaydet (senkron/ana süreç veya worker-safe)
-# msg: list(content=..., type="user"/"assistant", timestamp=POSIXct veya biçimlendirilmiş metin)
+# Save message (synchronous/main process or worker-safe if get_connection created a worker conn)
+# msg is a list: list(content=..., type="user"/"assistant", timestamp=POSIXct or formatted string)
 save_message_to_db <- function(chat_id, msg) {
   stopifnot(!is.null(chat_id))
   stopifnot(is.list(msg) && !is.null(msg$content) && !is.null(msg$type))
 
+  # Validate message content
   validate_message_content(msg$content)
 
   conn_info <- get_connection()
@@ -1016,7 +853,7 @@ save_message_to_db <- function(chat_id, msg) {
   query <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
     OUTPUT INSERTED.MessageID AS MessageID
-    VALUES (?, CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(50)), ?, ?)
+    VALUES (?, ?, ?, ?, ?)
   "
   
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
@@ -1025,19 +862,17 @@ save_message_to_db <- function(chat_id, msg) {
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
-  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
-  sql_text <- prepare_sql_text_params(msg$content, msg$type)
-  res <- dbGetQuery(conn, query, params = list(chat_id, sql_text[[1]], sql_text[[2]], ts, next_order))
-  if (nrow(res) == 0) stop("Mesaj veritabanına kaydedilemedi.")
+  res <- dbGetQuery(conn, query, params = list(chat_id, msg$content, msg$type, ts, next_order))
+  if (nrow(res) == 0) stop("Failed to save message to DB.")
   return(as.integer(res$MessageID[1]))
 }
 
-# Güvenli mesaj kaydetme (hata durumunda dosyaya log yazar)
+# Safe message saving with fallback logging
 save_message_safely <- function(chat_id, message, user_id = NULL) {
   tryCatch({
     save_message_to_db(chat_id, message)
   }, error = function(e) {
-    # Başarısız mesajları kurtarma için dosyaya logla
+    # Log failed messages to file for recovery
     log_file <- file.path(tempdir(), paste0("failed_messages_", Sys.Date(), ".log"))
     log_entry <- list(
       timestamp = Sys.time(),
@@ -1055,7 +890,7 @@ save_message_safely <- function(chat_id, message, user_id = NULL) {
   })
 }                          
 
-# Veritabanındaki mevcut bir mesajın içeriğini güncelle
+# Update an existing message's content in the database
 update_message_content_in_db <- function(message_id, new_content) {
   stopifnot(!is.null(message_id), is.character(new_content))
   
@@ -1063,30 +898,27 @@ update_message_content_in_db <- function(message_id, new_content) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
   
-  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
-  sql_text <- prepare_sql_text_params(new_content)
-
-  query <- "UPDATE MB_Messages SET MessageContent = CAST(? AS NVARCHAR(MAX)) WHERE MessageID = ?"
-  dbExecute(conn, query, params = list(sql_text[[1]], as.integer(message_id)))
+  query <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
+  
+  # Execute the update statement
+  dbExecute(conn, query, params = list(new_content, as.integer(message_id)))
 }
 
 update_chat_title_in_db <- function(chat_id, new_title) {
   stopifnot(!is.null(chat_id))
   
+  # ADDED: Input validation
   validate_chat_title(new_title)
   
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
-  sql_text <- prepare_sql_text_params(new_title)
-
-  query <- "UPDATE MB_Chats SET ChatTitle = CAST(? AS NVARCHAR(4000)) WHERE ChatID = ?"
-  dbExecute(conn, query, params = list(sql_text[[1]], chat_id))
+  query <- "UPDATE MB_Chats SET ChatTitle = ? WHERE ChatID = ?"
+  dbExecute(conn, query, params = list(new_title, chat_id))
 }
 
-# Geri bildirim fonksiyonları
+# Feedback functions
 save_feedback_to_db <- function(user_id, message_id, feedback_type) {
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -1125,7 +957,7 @@ load_feedback_from_db <- function(user_id) {
   )
 }
 
-# Kullanım günlüğü kaydet
+# Log usage
 log_ai_usage <- function(chat_id, message_id, user_id, model_used, duration, success) {
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -1138,7 +970,7 @@ log_ai_usage <- function(chat_id, message_id, user_id, model_used, duration, suc
   dbExecute(conn, query, params = list(chat_id, message_id, user_id, model_used, duration, success))
 }
 
-# Sohbet silme
+# Chat deletion
 delete_chat_from_db <- function(chat_id, user_id) {
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -1184,9 +1016,13 @@ clear_all_chats_from_db <- function(user_id) {
 }
 
 # -------------------------
-# Worker-safe yardımcı fonksiyonlar
+# Worker-safe convenience
 # -------------------------
-# Future / worker içinde kullanılır. Shiny reactive'lerine burada ERİŞMEYİN.
+# Use inside future / worker. Do NOT reference Shiny reactives here.
+# Example usage inside future:
+#   future({
+#     worker_save_assistant_response(chat_id = chat_id_val, response_text = resp, model_used = "<local-llm>", user_id = user_id)
+#   })
 worker_save_assistant_response <- function(chat_id, response_text,
                                            message_type = "assistant",
                                            timestamp = Sys.time(),
@@ -1194,39 +1030,35 @@ worker_save_assistant_response <- function(chat_id, response_text,
                                            user_id = NULL,
                                            model_used = "<local-llm>",
                                            duration = 0.0) {
-  # Yeni worker bağlantısı oluştur
+  # create fresh worker connection
   conn <- worker_db_connect()
   on.exit({
     tryCatch(DBI::dbDisconnect(conn), error = function(e) NULL)
   })
 
-  # Sonraki mesaj sırasını güvenli şekilde hesapla
+  # compute next order safely
   max_order_q <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
   max_order <- tryCatch(DBI::dbGetQuery(conn, max_order_q, params = list(chat_id))$maxord[1],
                         error = function(e) NA)
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
-  # Zaman damgasını Türkiye saatine (GMT+3) çevir
-  timestamp_gmt3 <- ensure_utf8(format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul"))
-
-  # Kayıt katmanında doğru kodlama: SQL parametresinden hemen önce normalize et.
-  sql_text <- prepare_sql_text_params(response_text, message_type)
+  # FIX: Add 3 hours to timestamp for GMT+3
+  timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
   insert_q <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
     OUTPUT INSERTED.MessageID AS MessageID
-    VALUES (?, CAST(? AS NVARCHAR(MAX)), CAST(? AS NVARCHAR(50)), ?, ?)
+    VALUES (?, ?, ?, ?, ?)
   "
-  res <- DBI::dbGetQuery(conn, insert_q, params = list(chat_id, sql_text[[1]], sql_text[[2]], timestamp_gmt3, next_order))
+  res <- DBI::dbGetQuery(conn, insert_q, params = list(chat_id, response_text, message_type, timestamp_gmt3, next_order))
   response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_
 
   if (isTRUE(log_usage)) {
     tryCatch({
-      model_used <- ensure_utf8(model_used)
       log_q <- "INSERT INTO MB_Usage_Log (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess) VALUES (?, ?, ?, ?, ?, ?)"
       DBI::dbExecute(conn, log_q, params = list(chat_id, response_message_id, user_id, model_used, duration, 1))
     }, error = function(e) {
-      # Loglama hatalarını yoksay
+      # ignore logging errors
     })
   }
 
@@ -1240,9 +1072,8 @@ save_feedback_to_db_extended <- function(user_id, message_id, feedback_type, tag
   on.exit(release_connection(conn_info))
 
   # NULL degerleri SQL NULL (NA) olarak isle
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
-  safe_tags <- if (is.null(tags) || length(tags) == 0) NA_character_ else ensure_utf8(as.character(tags))
-  safe_comment <- if (is.null(comment) || length(comment) == 0) NA_character_ else ensure_utf8(as.character(comment))
+  safe_tags <- if (is.null(tags) || length(tags) == 0) NA_character_ else as.character(tags)
+  safe_comment <- if (is.null(comment) || length(comment) == 0) NA_character_ else as.character(comment)
 
   query <- "
     MERGE MB_Feedback AS target

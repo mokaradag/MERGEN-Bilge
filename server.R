@@ -29,23 +29,16 @@ server <- function(input, output, session) {
   # --- Kimlik çözümleme ve oturum kurulumu ---
   # SSO kapalı (yerel geliştirme): Senkron akış, mevcut davranış korunur
   # SSO aktif (Keycloak): Token doğrulandıktan sonra observer ile güncellenir
-  #
-  # current_user_id artık reactiveVal olarak tanımlanır.
-  # Böylece SSO modunda kimlik doğrulama tamamlandığında değer güncellenir
-  # ve bağımlı observer/reactive'ler otomatik olarak yeniden çalışır.
-  current_user_id <- reactiveVal(0L)
-
   if (!isTRUE(SSO_ENABLED)) {
     # ===== YEREL GELİŞTİRME MODU =====
     user_identity <- resolveUserIdentity()
     system_username <- user_identity$username
-    resolved_uid <- get_or_create_user(system_username)
-    current_user_id(resolved_uid)
+    current_user_id <- get_or_create_user(system_username)
 
     session$userData$user_identity   <- user_identity
     session$userData$user_first_name <- user_identity$first_name
     session$userData$system_username  <- system_username
-    session$userData$user_id         <- resolved_uid
+    session$userData$user_id         <- current_user_id
     session$userData$sso_active      <- FALSE
     session$userData$auth_source     <- "local"
     session$userData$auth_initialized <- TRUE
@@ -53,18 +46,19 @@ server <- function(input, output, session) {
     session$userData$user_config <- list(
       name             = user_identity$full_name,
       icon             = user_config$icon,
-      userId           = as.character(resolved_uid),
+      userId           = as.character(current_user_id),
       auth_level       = user_config$auth_level,
       sicil            = NULL, email = NULL, first_name = user_identity$first_name,
       last_name        = NULL, sektor = NULL, department = NULL,
       mudurluk         = NULL, masraf_yeri_kodu = NULL
     )
 
-    cache_dir <- session_cache$setup_user_session(resolved_uid)
+    cache_dir <- session_cache$setup_user_session(current_user_id)
   } else {
     # ===== SSO (KEYCLOAK) MODU =====
     # Geçici değerler: Modüller bu değerlerle başlatılır,
     # token doğrulandığında observer gerçek değerlerle günceller
+    current_user_id <- 0L
     session$userData$auth_initialized <- FALSE
     session$userData$sso_active <- TRUE
 
@@ -75,10 +69,7 @@ server <- function(input, output, session) {
 
       ui <- resolveUserIdentity(sso_claims = claims)
       uname <- ui$username
-      uid <- get_or_create_user(uname, sso_claims = ui)
-
-      # reactiveVal'i güncelle - bağımlı observer'lar otomatik tetiklenir
-      current_user_id(uid)
+      uid <- get_or_create_user(uname, sso_claims = claims)
 
       session$userData$user_identity   <- ui
       session$userData$user_first_name <- ui$first_name
@@ -99,18 +90,6 @@ server <- function(input, output, session) {
 
       session_cache$setup_user_session(uid)
       session$userData$auth_initialized <- TRUE
-
-      # SSO sonrası geri bildirimleri yeniden yükle
-      tryCatch({
-        fb <- load_feedback_from_db(uid)
-        values$liked_messages <- fb$liked
-        values$disliked_messages <- fb$disliked
-      }, error = function(e) {
-        log_warn("SSO sonrası geri bildirim yüklemesi başarısız: {e$message}")
-      })
-
-      # NOT: Kayıtlı söyleşiler startupObserversInit içindeki
-      # observeEvent(current_user_id()) tarafından otomatik yüklenir.
 
       log_info("SSO oturum kuruldu: kullanıcı={uname}, id={uid}, yetki={ui$auth_level}")
     }, ignoreInit = TRUE, once = TRUE)
@@ -142,11 +121,10 @@ server <- function(input, output, session) {
   send_message <- function(...) send_message_fns$send_message(...)
     
   # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
-  # SSO modunda user_first_name başlangıçta NULL olabilir; reactive ile ilet
   claudeCodeServer("claude_code_module",
                    current_user_id = current_user_id,
                    settings_data = settings_data,
-                   user_first_name = reactive({ session$userData$user_first_name }))
+                   user_first_name = session$userData$user_first_name)
 
   # Görsel ayarları senkronizasyonunu başlat (Sohbet → Ayarlar, modüler)
   visualSettingsSyncInit(input, settings_data)
@@ -183,11 +161,7 @@ server <- function(input, output, session) {
   init_docx_preview_js(session)
   
   # Uygulama başladığında mevcut geri bildirimleri yükle
-  # SSO modunda başlangıçta user_id=0 olabilir; boş liste döner
-  initial_feedback <- tryCatch(
-    load_feedback_from_db(isolate(current_user_id())),
-    error = function(e) list(liked = character(0), disliked = character(0))
-  )
+  initial_feedback <- load_feedback_from_db(current_user_id)
   
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
@@ -209,8 +183,7 @@ server <- function(input, output, session) {
     session$userData$welcome_screen_attached <- FALSE
         
     # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
-    chatExportInit(input, output, session, values,
-                   user_display_name = session$userData$user_config$name %||% "Kullanıcı")
+    chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name)
 
     # Chartlab referanslarını çözümlemek için grafik deposu
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
@@ -337,7 +310,7 @@ server <- function(input, output, session) {
                             audio_src = NULL, audio_voice = NULL) {
       chat_add_message(
             session, values, settings_data, output,
-            content, type, html, isolate(current_user_id()),
+            content, type, html, current_user_id,
             followups = followups,
             audio_src = audio_src,
             audio_voice = audio_voice

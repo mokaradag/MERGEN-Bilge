@@ -432,12 +432,6 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       # Ayarlar sayfasındaki onay kutusunu da senkronize et
       updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
 
-      # Giriş ekranı atlandıktan sonra karşılama ekranını yeniden render et
-      # (saved_chats yüklenmiş olabilir ama giriş ekranı aktifken render ertelenmişti)
-      shinyjs::delay(300, {
-        session$sendCustomMessage("reloadWelcomeScreen", list(timestamp = as.numeric(Sys.time())))
-      })
-
       # Giriş atlandığında varsayılan karakterin rengini uygula
       char_id <- settings_data$selected_character %||% "mergen"
       chars_data <- get_characters_data()
@@ -530,12 +524,6 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 
     # Giriş ekranı kapanıyor - işaretle (yeniden render koruması için)
     session$userData$deep_space_dismissed <- TRUE
-
-    # Giriş ekranı kapandıktan sonra karşılama ekranını yeniden render et
-    # (saved_chats yüklenmiş olabilir ama giriş ekranı aktifken render ertelenmişti)
-    shinyjs::delay(500, {
-      session$sendCustomMessage("reloadWelcomeScreen", list(timestamp = as.numeric(Sys.time())))
-    })
 
     # Mod ayarlarını uygula
     apply_experience_mode(session, settings_data, mode)

@@ -7,7 +7,7 @@ path_exists_relaxed <- function(path) {
   candidate <- as.character(path[1])
   if (!nzchar(candidate)) return(FALSE)
 
-  # Varyant üret: slash, backslash, UNC ve encoding kombinasyonları
+  # Generate variants: Slashes, Backslashes, UNC
   cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
   
   variants <- unique(trimws(Filter(nzchar, c(
@@ -21,34 +21,15 @@ path_exists_relaxed <- function(path) {
     gsub("/", "\\\\", cand_slash, fixed = TRUE)
   ))))
 
-  exists_one <- function(p) {
-    if (!nzchar(p %||% "")) return(FALSE)
-    if (tryCatch(isTRUE(file.exists(p)), error = function(e) FALSE)) return(TRUE)
-    if (tryCatch(isTRUE(fs::file_exists(p)), error = function(e) FALSE)) return(TRUE)
-    if (tryCatch(isTRUE(dir.exists(p)), error = function(e) FALSE)) return(TRUE)
-
-    # Bazı Linux/SMB kurulumlarında dir.exists/file.exists FALSE dönebilir;
-    # ebeveyn klasörden list.files ile de doğrulama yap.
-    parent_dir <- tryCatch(dirname(p), error = function(e) "")
-    leaf_name <- tryCatch(basename(p), error = function(e) "")
-    if (nzchar(parent_dir) && nzchar(leaf_name)) {
-      listed <- tryCatch(list.files(parent_dir, all.files = TRUE, no.. = TRUE), error = function(e) character(0))
-      if (length(listed) && any(tolower(listed) == tolower(leaf_name))) return(TRUE)
-    }
-    FALSE
-  }
-
   for (chk in variants) {
-    if (exists_one(chk)) return(TRUE)
-
-    chk_utf8 <- tryCatch(enc2utf8(chk), error = function(e) chk)
-    if (exists_one(chk_utf8)) return(TRUE)
-
-    chk_native <- tryCatch(enc2native(chk), error = function(e) chk)
-    if (exists_one(chk_native)) return(TRUE)
-
-    chk_cp1254 <- tryCatch(iconv(chk, from = "UTF-8", to = "WINDOWS-1254"), error = function(e) NA_character_)
-    if (!is.na(chk_cp1254) && exists_one(chk_cp1254)) return(TRUE)
+    # 1. Check as is
+    if (tryCatch(isTRUE(file.exists(chk)), error=function(e) FALSE)) return(TRUE)
+    if (tryCatch(isTRUE(fs::file_exists(chk)), error=function(e) FALSE)) return(TRUE)
+    
+    # 2. Check UTF-8 encoded (for Turkish chars)
+    chk_utf8 <- tryCatch(enc2utf8(chk), error=function(e) chk)
+    if (tryCatch(isTRUE(file.exists(chk_utf8)), error=function(e) FALSE)) return(TRUE)
+    if (tryCatch(isTRUE(fs::file_exists(chk_utf8)), error=function(e) FALSE)) return(TRUE)
   }
 
   FALSE

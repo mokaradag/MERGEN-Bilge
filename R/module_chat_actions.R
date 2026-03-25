@@ -32,7 +32,7 @@ chatActionsInit <- function(input, session, values,
       db_id <- as.integer(actual$db_id)
       if (db_id %in% as.integer(values$liked_messages)) {
         values$liked_messages <- setdiff(values$liked_messages, as.character(db_id))
-        remove_feedback_from_db(current_user_id(), db_id)
+        remove_feedback_from_db(current_user_id, db_id)
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_like"))
         showToast(session, "Beğeni kaldırıldı.", "info")
       } else {
@@ -64,7 +64,7 @@ chatActionsInit <- function(input, session, values,
       db_id <- as.integer(actual$db_id)
       if (db_id %in% as.integer(values$disliked_messages)) {
         values$disliked_messages <- setdiff(values$disliked_messages, as.character(db_id))
-        remove_feedback_from_db(current_user_id(), db_id)
+        remove_feedback_from_db(current_user_id, db_id)
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_dislike"))
         showToast(session, "Geri bildirim kaldırıldı.", "info")
       } else {

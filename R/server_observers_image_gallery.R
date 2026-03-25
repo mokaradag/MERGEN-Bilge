@@ -59,7 +59,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     # Önbellekte yoksa veya mesajlar yüklenmemişse veritabanından yükle
     if (isTRUE(needs_hydrate)) {
       detail <- tryCatch(
-        load_chat_messages_from_db(chat_id_int, user_id = current_user_id()),
+        load_chat_messages_from_db(chat_id_int),
         error = function(e) {
           warning(sprintf("[IMAGE_GALLERY] Söyleşi yüklenemedi (ChatID: %s): %s", chat_id, e$message))
           NULL
@@ -96,7 +96,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
 
 	# Mesajları ve durum bilgisini yükle
     values$messages <- chat_to_load$messages %||% list()
-    all_feedback <- load_feedback_from_db(current_user_id())
+    all_feedback <- load_feedback_from_db(current_user_id)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
     values$current_chat_id <- chat_id_int
@@ -247,7 +247,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       # Önbellekteki söyleşiyi silmek yerine veritabanından yeniden yükle
       if (!is.na(chat_id_int)) {
         refreshed <- tryCatch(
-          load_chat_messages_from_db(chat_id_int, user_id = current_user_id()),
+          load_chat_messages_from_db(chat_id_int),
           error = function(e) NULL
         )
         if (!is.null(refreshed)) {
@@ -261,7 +261,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       # Eğer şu an o söyleşi aktifse, mesajları da yeniden yükle
       if (identical(as.character(values$current_chat_id), chat_key)) {
         detail <- tryCatch(
-          load_chat_messages_from_db(chat_id_int, user_id = current_user_id()),
+          load_chat_messages_from_db(chat_id_int),
           error = function(e) NULL
         )
         if (!is.null(detail)) {
@@ -310,7 +310,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
           chat_id_int <- suppressWarnings(as.integer(chat_key))
           if (!is.na(chat_id_int)) {
             refreshed <- tryCatch(
-              load_chat_messages_from_db(chat_id_int, user_id = current_user_id()),
+              load_chat_messages_from_db(chat_id_int),
               error = function(e) NULL
             )
             if (!is.null(refreshed)) {
@@ -330,7 +330,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     # Aktif söyleşi varsa mesajları veritabanından yeniden yükle
     if (!is.null(values$current_chat_id)) {
       detail <- tryCatch(
-        load_chat_messages_from_db(values$current_chat_id, user_id = current_user_id()),
+        load_chat_messages_from_db(values$current_chat_id),
         error = function(e) NULL
       )
       if (!is.null(detail)) {

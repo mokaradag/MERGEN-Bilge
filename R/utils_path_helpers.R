@@ -89,46 +89,20 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
     p
   }
 
-  # İç yardımcı: mutlak yollarda baştaki tekrar eden segmentleri temizle.
-  # Örn: /main/uygulamalar/main/uygulamalar/... -> /main/uygulamalar/...
-  dedupe_repeated_root_segments <- function(p) {
-    if (!nzchar(p) || !startsWith(p, "/")) return(p)
-
-    parts <- strsplit(sub("^/+", "", p), "/", fixed = TRUE)[[1]]
-    n <- length(parts)
-    if (n < 4) return(p)
-
-    max_k <- floor(n / 2)
-    for (k in seq(max_k, 1)) {
-      if (all(parts[seq_len(k)] == parts[(k + 1):(2 * k)])) {
-        deduped <- c(parts[seq_len(k)], parts[-seq_len(2 * k)])
-        return(paste0("/", paste(deduped, collapse = "/")))
-      }
-    }
-
-    p
-  }
-
   candidate <- as.character(candidate)
 
   # Ters eğik çizgileri düzelt
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
   # UNC yolu kontrolü: /server/share biçimini //server/share'e çevir
-  # NOT: Bu dönüşüm YALNIZCA Windows'ta yapılır. Linux'ta tek slash ile başlayan
-  # yollar (ör: /opt/uygulamalar/...) normal yerel yollardır ve UNC'ye çevrilmemeli.
-  # Linux'ta UNC paylaşımları mount noktası üzerinden erişilir (/mnt/paylasim gibi).
-  if (.Platform$OS.type == "windows") {
-    maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
-    if (maybe_unc) {
-      cleaned <- paste0("//", sub("^/+", "", candidate))
-      cleaned <- dedupe_leading_pair(cleaned)
-      return(enc2utf8(cleaned))
-    }
+  maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
+  if (maybe_unc) {
+    cleaned <- paste0("//", sub("^/+", "", candidate))
+    cleaned <- dedupe_leading_pair(cleaned)
+    return(enc2utf8(cleaned))
   }
 
-  normalized <- normalize_utf8_path(candidate, mustWork = must_exist)
-  dedupe_repeated_root_segments(normalized)
+  normalize_utf8_path(candidate, mustWork = must_exist)
 }
 
 # --- MCP TEMEL DİZİN ÇÖZÜMLEYICI ---
@@ -137,66 +111,23 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 # NOT: Bu fonksiyon MERGEN_UPLOADS_DIR global değişkenine bağımlıdır
 #      ve config_file_store.R'de çağrılır.
 resolve_mcp_base_dir <- function() {
-  sanitize_mcp_base_raw <- function(raw_path) {
-    raw_chr <- if (is.null(raw_path) || !length(raw_path)) "" else as.character(raw_path[1])
-    if (!nzchar(raw_chr)) return(raw_chr)
-
-    raw_chr <- gsub("\\\\", "/", raw_chr, fixed = TRUE)
-    is_abs <- startsWith(raw_chr, "/") || grepl("^[A-Za-z]:/", raw_chr)
-    if (is_abs) return(raw_chr)
-
-    cwd <- tryCatch(getwd(), error = function(e) "")
-    cwd <- gsub("\\\\", "/", cwd, fixed = TRUE)
-    cwd <- sub("/+$", "", cwd)
-    if (!nzchar(cwd)) return(raw_chr)
-
-    cwd_rel <- sub("^/+", "", cwd)
-    if (startsWith(raw_chr, paste0(cwd_rel, "/")) || identical(raw_chr, cwd_rel)) {
-      return(paste0("/", raw_chr))
-    }
-
-    raw_chr
-  }
-
-  path_exists_local <- function(path) {
-    if (is.null(path) || !nzchar(path)) return(FALSE)
-
-    variants <- unique(Filter(nzchar, c(
-      as.character(path),
-      tryCatch(enc2utf8(path), error = function(e) as.character(path)),
-      tryCatch(enc2native(path), error = function(e) as.character(path))
-    )))
-
-    for (candidate in variants) {
-      if (tryCatch(isTRUE(dir.exists(candidate)), error = function(e) FALSE)) return(TRUE)
-      if (tryCatch(isTRUE(file.exists(candidate)), error = function(e) FALSE)) return(TRUE)
-
-      parent_dir <- tryCatch(dirname(candidate), error = function(e) "")
-      leaf_name <- tryCatch(basename(candidate), error = function(e) "")
-      if (nzchar(parent_dir) && nzchar(leaf_name)) {
-        listed <- tryCatch(list.files(parent_dir, all.files = TRUE, no.. = TRUE), error = function(e) character(0))
-        if (length(listed) && any(tolower(listed) == tolower(leaf_name))) return(TRUE)
-      }
-    }
-
-    FALSE
-  }
-
-  raw <- sanitize_mcp_base_raw(Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR))
+  raw <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
   base <- normalize_mcp_path(raw, must_exist = FALSE)
 
-  tryCatch({
+  created <- tryCatch({
     fs::dir_create(base, recurse = TRUE)
-  }, error = function(e) NULL)
+    TRUE
+  }, error = function(e) FALSE)
 
-  if (!isTRUE(path_exists_local(base))) {
+  if (!isTRUE(created) || !dir.exists(base)) {
     base <- MERGEN_UPLOADS_DIR
     tryCatch({
       fs::dir_create(base, recurse = TRUE)
     }, error = function(e) {
+      # Son çare: base R ile oluştur
       dir.create(base, showWarnings = FALSE, recursive = TRUE)
     })
   }
 
-  normalize_mcp_path(base, must_exist = path_exists_local(base))
+  normalize_mcp_path(base, must_exist = dir.exists(base))
 }

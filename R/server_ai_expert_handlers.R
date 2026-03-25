@@ -109,10 +109,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Yardımcı: Kullanıcı adını worker içinde çözümle ---
   resolve_user_name <- function(user_name) {
-    # Bu fonksiyon future_promise içinden çağrılabilir,
-    # bu yüzden session$userData'dan oku (reactive değil)
-    uid <- session$userData$user_id %||% isolate(current_user_id())
-    user_full_name <- fetch_user_full_name(uid)
+    user_full_name <- fetch_user_full_name(current_user_id)
     u_name <- user_name
     if (nzchar(user_full_name %||% "")) {
       parts <- strsplit(trimws(user_full_name), "\\s+")[[1]]
@@ -149,7 +146,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     cat("[AI_EXPERT] Karşılama konuşması tetikleniyor...\n")
 
     params <- prepare_llm_params()
-    user_id <- current_user_id()
+    user_id <- current_user_id
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
@@ -326,14 +323,11 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
-    # future_promise içinde reactive erişim yapılamaz - değeri şimdi yakala
-    uid_for_idle <- isolate(current_user_id())
-
     promises::future_promise({
       u_name <- resolve_user_name(params$user_name)
 
       recent_prompts <- tryCatch(
-        fetch_recent_user_prompts(uid_for_idle, 3),
+        fetch_recent_user_prompts(current_user_id, 3),
         error = function(e) NULL
       )
 

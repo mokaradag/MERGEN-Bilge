@@ -26,11 +26,10 @@ destek_geri_bildirim_kaydet <- function(user_id, memnuniyet, nps_puan = NULL,
   on.exit(release_connection(conn_info))
 
   # NULL değerleri SQL NULL olarak işle
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
   safe_nps <- if (is.null(nps_puan) || is.na(nps_puan)) NA_integer_ else as.integer(nps_puan)
-  safe_etiketler <- if (is.null(etiketler) || !nzchar(etiketler)) NA_character_ else ensure_utf8(as.character(etiketler))
-  safe_sevilen <- if (is.null(en_cok_sevilen) || !nzchar(en_cok_sevilen)) NA_character_ else ensure_utf8(as.character(en_cok_sevilen))
-  safe_gelistirme <- if (is.null(gelistirme) || !nzchar(gelistirme)) NA_character_ else ensure_utf8(as.character(gelistirme))
+  safe_etiketler <- if (is.null(etiketler) || !nzchar(etiketler)) NA_character_ else as.character(etiketler)
+  safe_sevilen <- if (is.null(en_cok_sevilen) || !nzchar(en_cok_sevilen)) NA_character_ else as.character(en_cok_sevilen)
+  safe_gelistirme <- if (is.null(gelistirme) || !nzchar(gelistirme)) NA_character_ else as.character(gelistirme)
   safe_iletisim <- if (isTRUE(iletisim_izni)) 1L else 0L
 
   query <- "
@@ -74,12 +73,8 @@ destek_hata_bildir_kaydet <- function(user_id, konular, kategoriler, oncelik = "
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Türkçe karakterlerin doğru kaydedilmesi için UTF-8 normalleştirmesi
-  safe_ek_dosyalar <- if (is.null(ek_dosya_yollari) || !nzchar(ek_dosya_yollari)) NA_character_ else ensure_utf8(as.character(ek_dosya_yollari))
-  safe_oncelik <- if (is.null(oncelik) || !nzchar(oncelik)) "orta" else ensure_utf8(as.character(oncelik))
-  konular <- ensure_utf8(as.character(konular))
-  kategoriler <- ensure_utf8(as.character(kategoriler))
-  aciklama <- ensure_utf8(as.character(aciklama))
+  safe_ek_dosyalar <- if (is.null(ek_dosya_yollari) || !nzchar(ek_dosya_yollari)) NA_character_ else as.character(ek_dosya_yollari)
+  safe_oncelik <- if (is.null(oncelik) || !nzchar(oncelik)) "orta" else as.character(oncelik)
 
   query <- "
     INSERT INTO MB_Destek_Hata_Bildir

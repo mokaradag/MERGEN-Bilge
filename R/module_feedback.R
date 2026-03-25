@@ -138,7 +138,7 @@ feedbackServer <- function(id, current_user_id) {
       
       tryCatch({
         save_feedback_to_db_extended(
-          user_id = current_user_id(),
+          user_id = current_user_id,
           message_id = current_message_id(),
           feedback_type = current_feedback_type(),
           tags = if (nchar(tags_str) > 0) tags_str else NULL,

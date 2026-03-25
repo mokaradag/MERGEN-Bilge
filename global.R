@@ -6,66 +6,17 @@
 #            ve yapılandırma dosyalarını (R/ klasörü altındaki) yükler.
 # ==============================================================================
 
-# Çift yükleme koruması: app.R zaten global.R'ı yüklüyorsa, Shiny'nin
-# otomatik tekrar yüklemesini atla. Bu sayede başlangıç logları iki kez basılmaz.
-# NOT: Bayrak dosyanın SONUNDA ayarlanır; böylece yükleme ortasında çökmeler
-# olursa bir sonraki denemede yeniden yükleme yapılabilir.
-if (isTRUE(getOption("mergen.global_loaded"))) return(invisible())
-
 # Küresel olarak UTF-8 kodlamasını zorla
 options(encoding = "UTF-8")
 
 # Future paketinin RNG (rastgele sayı üretimi) hatalarını yoksay
 options(future.rng.onMisuse = "ignore")
 
-# Paralel işçi havuzu oluşturma zaman aşımını kısalt (varsayılan 125sn çok uzun;
-# sunucuda işçiler bağlanamazsa uygulamanın hızlıca sıralı moda geçmesi için 10sn yeterli)
-options(parallelly.makeClusterPSOCK.connectTimeout = 10)
+# Yerel ayarları İngilizce UTF-8 olarak ayarlamayı dene (hataları gizle)
+try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
 
-# LANG ortam değişkenini UTF-8 olarak ayarla (Linux'ta ODBC sürücüleri ve
-# dosya sistemi işlemleri için kritik; MSODBCSQL sürücüsü bu değişkeni
-# karakter kodlaması belirlemek için kullanır)
-Sys.setenv(LANG = "en_US.UTF-8")
-Sys.setenv(LC_ALL = "en_US.UTF-8")
-
-# ==============================================================================
-# C SEVİYESİNDE UTF-8 YEREL AYARI (KRİTİK)
-# ==============================================================================
-# ODBC sürücüsü (MSODBCSQL) C seviyesindeki yerel ayarı (locale) kullanarak
-# karakter kodlamasını belirler. Eğer LC_CTYPE UTF-8 değilse, R'dan gelen
-# UTF-8 baytları Latin-1 olarak yorumlanır ve Türkçe karakterler bozulur.
-# Birden fazla yerel ayar adı denenir çünkü Linux dağıtımları farklı isimlendirme
-# kullanır (ör: "en_US.UTF-8" vs "en_US.utf8" vs "C.UTF-8").
-# C.UTF-8 hemen hemen tüm modern Linux sistemlerinde mevcuttur.
-# ==============================================================================
-.mergen_utf8_locale_set <- FALSE
-.result_all <- ""
-.result_ctype <- ""
-
-for (.loc in c("C.UTF-8", "en_US.UTF-8", "en_US.utf8", "tr_TR.UTF-8", "tr_TR.utf8")) {
-  if (!.mergen_utf8_locale_set) {
-    .result_all <- tryCatch(
-      suppressWarnings(Sys.setlocale("LC_ALL", .loc)),
-      error = function(e) ""
-    )
-    .result_ctype <- tryCatch(
-      suppressWarnings(Sys.setlocale("LC_CTYPE", .loc)),
-      error = function(e) ""
-    )
-
-    if ((nzchar(.result_all) && grepl("UTF-8|utf8", .result_all, ignore.case = TRUE)) ||
-        (nzchar(.result_ctype) && grepl("UTF-8|utf8", .result_ctype, ignore.case = TRUE))) {
-      .mergen_utf8_locale_set <- TRUE
-    }
-  }
-}
-
-if (!.mergen_utf8_locale_set) {
-  warning("[UYARI] UTF-8 yerel ayarı atanamadı! Türkçe karakterler veritabanında bozulabilir. ",
-          "Sistem yöneticinize 'C.UTF-8' veya 'en_US.UTF-8' locale kurulmasını isteyin.")
-}
-
-rm(.mergen_utf8_locale_set, .loc, .result_all, .result_ctype, envir = environment())
+# Sadece bu yerel ayar çağrısı için uyarıları bastır (Türkçe karakter desteği)
+try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE)
 
 # ------------------------------------------------------------------------------
 # GÜVENLİ KAYNAK YÜKLEME FONKSİYONU (SAFE SOURCE)
@@ -285,6 +236,3 @@ safe_source("R/server_observers_misc.R",           encoding = "UTF-8")
 
 # -- Çıktılar ve İndirmeler --
 safe_source("R/server_outputs_downloads.R", encoding = "UTF-8")
-
-# Tüm dosyalar başarıyla yüklendi - çift yükleme koruması bayrağını ayarla
-options(mergen.global_loaded = TRUE)

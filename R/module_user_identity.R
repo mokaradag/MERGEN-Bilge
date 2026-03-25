@@ -17,10 +17,10 @@ resolveUserIdentity <- function(sso_claims = NULL) {
   # ===========================================================================
   if (isTRUE(SSO_ENABLED) && !is.null(sso_claims)) {
 
-    username   <- ensure_utf8(fixTurkishEncoding(sso_claims$username %||% ""))
-    first_name <- ensure_utf8(fixTurkishEncoding(sso_claims$first_name %||% ""))
-    full_name  <- ensure_utf8(fixTurkishEncoding(sso_claims$full_name %||% ""))
-    sicil      <- ensure_utf8(sso_claims$sicil)
+    username   <- sso_claims$username %||% ""
+    first_name <- sso_claims$first_name %||% ""
+    full_name  <- sso_claims$full_name %||% ""
+    sicil      <- sso_claims$sicil
 
     # İlk isim boşsa tam isimden çıkar
     if (!nzchar(first_name) && nzchar(full_name)) {
@@ -44,12 +44,12 @@ resolveUserIdentity <- function(sso_claims = NULL) {
       first_name      = first_name,
       full_name       = full_name,
       sicil           = sicil,
-      email           = ensure_utf8(sso_claims$email),
-      last_name       = ensure_utf8(fixTurkishEncoding(sso_claims$last_name %||% "")),
-      sektor          = ensure_utf8(fixTurkishEncoding(sso_claims$sektor %||% "")),
-      department      = ensure_utf8(fixTurkishEncoding(sso_claims$department %||% "")),
-      mudurluk        = ensure_utf8(fixTurkishEncoding(sso_claims$mudurluk %||% "")),
-      masraf_yeri_kodu = ensure_utf8(sso_claims$masraf_yeri_kodu),
+      email           = sso_claims$email,
+      last_name       = sso_claims$last_name,
+      sektor          = sso_claims$sektor,
+      department      = sso_claims$department,
+      mudurluk        = sso_claims$mudurluk,
+      masraf_yeri_kodu = sso_claims$masraf_yeri_kodu,
       auth_level      = sso_claims$yetki %||% "USER",
       keycloak_sid    = sso_claims$keycloak_sid,
       keycloak_sub    = sso_claims$keycloak_sub,
@@ -89,9 +89,9 @@ resolveUserIdentity <- function(sso_claims = NULL) {
     NULL
   })
 
-  # Tam ad ve ilk isim belirle (DB'den gelen bozuk Türkçe karakterleri düzelt)
+  # Tam ad ve ilk isim belirle
   if (!is.null(db_result) && nzchar(db_result)) {
-    full_name  <- fixTurkishEncoding(db_result)
+    full_name  <- db_result
     first_name <- extractFirstName(full_name)
   } else {
     full_name  <- capitalizeFirst(system_username)
@@ -125,87 +125,41 @@ resolveUserIdentity <- function(sso_claims = NULL) {
 fixTurkishEncoding <- function(text) {
   if (is.null(text) || !nzchar(text)) return(text)
 
-  raw_text <- as.character(text)
-  result <- raw_text
+  # Yaygın bozuk UTF-8 -> doğru Türkçe karakter eşlemeleri
+  replacements <- list(
+    c("\u00c3\u0087",       "\u00c7"),   # Ç
+    c("\u00c3\u009c",       "\u00dc"),   # Ü
+    c("\u00c3\u0096",       "\u00d6"),   # Ö
+    c("\u00c4\u009e",       "\u011e"),   # Ğ
+    c("\u00c4\u00b0",       "\u0130"),   # İ
+    c("\u00c5\u009e",       "\u015e"),   # Ş
+    c("\u00c3\u00a7",       "\u00e7"),   # ç
+    c("\u00c3\u00bc",       "\u00fc"),   # ü
+    c("\u00c3\u00b6",       "\u00f6"),   # ö
+    c("\u00c4\u009f",       "\u011f"),   # ğ
+    c("\u00c4\u00b1",       "\u0131"),   # ı
+    c("\u00c5\u009f",       "\u015f")    # ş
+  )
 
-  safe_gsub <- function(pattern, replacement, x, fixed = FALSE, perl = FALSE, useBytes = FALSE) {
-    tryCatch(
-      gsub(pattern, replacement, x, fixed = fixed, perl = perl, useBytes = useBytes),
-      error = function(e) {
-        # Geçersiz UTF-8 durumunda byte-seviyesinde geri dene
-        gsub(pattern, replacement, x, fixed = fixed, perl = perl, useBytes = TRUE)
+  result <- text
+  for (rep in replacements) {
+    result <- gsub(rep[1], rep[2], result, fixed = TRUE)
+  }
+
+  # Hâlâ bozuk karakterler varsa latin1 -> UTF-8 dönüşümü dene
+  if (grepl("[\u00c3\u00c4\u00c5]", result)) {
+    tryCatch({
+      raw_bytes <- charToRaw(result)
+      result <- rawToChar(raw_bytes)
+      Encoding(result) <- "UTF-8"
+      if (!validUTF8(result)) {
+        result <- iconv(text, from = "latin1", to = "UTF-8")
       }
-    )
+    }, error = function(e) {
+      log_warn("Encoding düzeltme başarısız: {e$message}")
+    })
   }
 
-  # Her durumda deterministik bir normalize uygula:
-  # 1) UTF-8'e güvenli dönüşüm dene
-  # 2) Başarısızsa karakter kaybı yerine transliterasyon + temizleme ile öngörülebilir çıktı üret
-  normalize_fallback <- function(x) {
-    x_utf8 <- tryCatch(enc2utf8(x), error = function(e) x)
-    x_clean <- tryCatch(iconv(x_utf8, from = "", to = "UTF-8", sub = ""), error = function(e) NA_character_)
-    if (!is.na(x_clean) && nzchar(x_clean)) {
-      return(x_clean)
-    }
-
-    x_ascii <- tryCatch(iconv(x_utf8, from = "", to = "ASCII//TRANSLIT", sub = ""), error = function(e) NA_character_)
-    if (is.na(x_ascii) || !nzchar(x_ascii)) {
-      x_ascii <- safe_gsub("[^[:print:]]+", "", x_utf8, perl = TRUE, useBytes = TRUE)
-    }
-    trimws(x_ascii)
-  }
-
-  result <- normalize_fallback(result)
-
-  # Çift-encoding (mojibake) onarım adayları
-  candidates <- unique(c(
-    result,
-    tryCatch(iconv(result, from = "UTF-8", to = "latin1", sub = "byte"), error = function(e) NA_character_),
-    tryCatch(iconv(result, from = "UTF-8", to = "windows-1254", sub = "byte"), error = function(e) NA_character_),
-    tryCatch(iconv(result, from = "latin1", to = "UTF-8", sub = ""), error = function(e) NA_character_),
-    tryCatch(iconv(result, from = "windows-1254", to = "UTF-8", sub = ""), error = function(e) NA_character_)
-  ))
-  candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
-
-  # Bilinen mojibake + CP1254/Latin-1 tekil/truncated desen onarımı
-  apply_replacements <- function(x) {
-    replacements <- list(
-      c("Ã‡", "Ç"), c("Ãœ", "Ü"), c("Ã–", "Ö"), c("Äž", "Ğ"), c("Ä°", "İ"), c("Åž", "Ş"),
-      c("Ã§", "ç"), c("Ã¼", "ü"), c("Ã¶", "ö"), c("ÄŸ", "ğ"), c("Ä±", "ı"), c("ÅŸ", "ş"),
-      c("Ä‡", "Ç"), c("ÄŸ", "ğ"), c("Äž", "Ğ"), c("Ä±", "ı"), c("Ä°", "İ"), c("ÅŸ", "ş"), c("Åž", "Ş"),
-      # Tekil/truncated bayt kaynaklı tipik kalıntılar
-      c("Ð", "Ğ"), c("ð", "ğ"), c("Þ", "Ş"), c("þ", "ş"),
-      c("Ý", "İ"), c("ý", "ı"), c("¿", " "), c("�", "")
-    )
-    out <- x
-    for (rep in replacements) {
-      out <- safe_gsub(rep[1], rep[2], out, fixed = TRUE)
-    }
-    out
-  }
-
-  candidates <- unique(vapply(candidates, apply_replacements, character(1), USE.NAMES = FALSE))
-  candidates <- unique(vapply(candidates, normalize_fallback, character(1), USE.NAMES = FALSE))
-
-  # En iyi adayı seç: Türkçe karakter içeren ve daha okunabilir adayı tercih et
-  score_candidate <- function(x) {
-    has_noise <- grepl("[ÃÄÅÐÞÝ�]", x, perl = TRUE)
-    tr_hits <- gregexpr("[ÇĞİÖŞÜçğıöşü]", x, perl = TRUE)[[1]]
-    tr_count <- ifelse(identical(tr_hits[1], -1L), 0L, length(tr_hits))
-    printable_hits <- gregexpr("[[:print:]]", x, perl = TRUE)[[1]]
-    printable <- ifelse(identical(printable_hits[1], -1L), 0L, length(printable_hits))
-    penalty <- ifelse(has_noise, 10, 0)
-    tr_count * 100 + printable - penalty
-  }
-
-  if (length(candidates) > 0) {
-    scores <- vapply(candidates, score_candidate, numeric(1))
-    result <- candidates[[which.max(scores)]]
-  }
-
-  # Son normalize: geçersiz UTF-8'i deterministik şekilde temizle
-  result <- normalize_fallback(result)
-  Encoding(result) <- "UTF-8"
   result
 }
 

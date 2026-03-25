@@ -280,7 +280,7 @@ destekHataBildirServer <- function(id, current_user_id) {
           }
 
           # Dosyayı destek_uploads klasörüne kopyala
-          hedef_dir <- file.path("destek_uploads", as.character(current_user_id()))
+          hedef_dir <- file.path("destek_uploads", as.character(current_user_id))
           if (!dir.exists(hedef_dir)) dir.create(hedef_dir, recursive = TRUE)
           hedef_yol <- file.path(hedef_dir, paste0(
             format(Sys.time(), "%Y%m%d%H%M%S"), "_", dosya$name
@@ -355,7 +355,7 @@ destekHataBildirServer <- function(id, current_user_id) {
       # Veritabanına kaydet
       tryCatch({
         destek_hata_bildir_kaydet(
-          user_id = current_user_id(),
+          user_id = current_user_id,
           konular = konular_text,
           kategoriler = kategoriler,
           oncelik = if (!is.null(input$secili_oncelik) && nzchar(input$secili_oncelik)) input$secili_oncelik else "belirtilmedi",

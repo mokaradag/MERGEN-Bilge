@@ -252,31 +252,23 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
 
 # Kullanıcıya özel yükleme dizinini döndürür (yoksa oluşturur)
 mergen_user_upload_dir <- function(user_id) {
-  path_exists_now <- function(path) {
-    if (exists("path_exists_relaxed", mode = "function")) {
-      return(isTRUE(path_exists_relaxed(path)))
-    }
-    tryCatch(isTRUE(dir.exists(path)) || isTRUE(file.exists(path)), error = function(e) FALSE)
-  }
-
   base <- resolve_mcp_base_dir()
   p <- file.path(base, sprintf("user_%s", as.character(user_id)))
-
-  tryCatch({
+  created <- tryCatch({
     fs::dir_create(p, recurse = TRUE)
-  }, error = function(e) NULL)
+    TRUE
+  }, error = function(e) {
+    log_warn("[INDEX] Kullanıcı klasörü oluşturulamadı ({conditionMessage(e)}); varsayılan dizine düşülüyor")
+    FALSE
+  })
 
-  if (!path_exists_now(p)) {
+  if (!isTRUE(created) || !dir.exists(p)) {
     fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
-    tryCatch({
-      fs::dir_create(fallback, recurse = TRUE)
-    }, error = function(e) {
-      dir.create(fallback, showWarnings = FALSE, recursive = TRUE)
-    })
-    return(normalize_mcp_path(fallback, must_exist = path_exists_now(fallback)))
+    fs::dir_create(fallback, recurse = TRUE)
+    return(normalize_mcp_path(fallback, must_exist = dir.exists(fallback)))
   }
 
-  normalize_mcp_path(p, must_exist = TRUE)
+  normalize_mcp_path(p, must_exist = dir.exists(p))
 }
 
 # Kullanıcının yüklediği dosyaların listesini döndürür
@@ -284,12 +276,6 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   idx <- .load_index()
   uid <- as.character(user_id)
   bucket <- idx[[uid]]
-
-  normalize_user_dir_for_listing <- function(path_in) {
-    path_chr <- as.character(path_in %||% "")
-    if (!nzchar(path_chr)) return(path_chr)
-    normalize_mcp_path(path_chr, must_exist = FALSE)
-  }
   
   drop_stale_entries <- function(keys_to_remove) {
     if (!length(keys_to_remove)) return(invisible(FALSE))
@@ -375,53 +361,21 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
       )
       attr(out, "source") <- "index"
       attr(out, "count") <- nrow(out)
-      log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: index, normalized='index-entry', fallback='index-hit')")
+      log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: index)")
       return(out)
     }
   }
 
-  # Yedek yöntem: indeks boşsa dosya sisteminden doğrudan listele
-  dir <- normalize_user_dir_for_listing(mergen_user_upload_dir(user_id))
-  dir_ok <- tryCatch(isTRUE(path_exists_relaxed(dir)), error = function(e) FALSE)
-  if (!isTRUE(dir_ok)) {
-    log_info("[INDEX] user={uid} için klasör bulunamadı (normalized='{dir}', fallback='none')")
+  # Fallback: plain folder listing (pre-index or very old data)
+  dir <- mergen_user_upload_dir(user_id)
+  if (!dir.exists(dir)) {
+    log_info("[INDEX] user={uid} için klasör bulunamadı: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
-
-  paths <- tryCatch(
-    fs::dir_ls(dir, recurse = FALSE, type = "file"),
-    error = function(e) character(0)
-  )
-  selected_fallback <- "fs::dir_ls(normalized)"
-
+  
+  paths <- list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
   if (!length(paths)) {
-    path_variants <- unique(vapply(Filter(nzchar, c(
-      as.character(dir),
-      tryCatch(enc2utf8(dir), error = function(e) as.character(dir)),
-      tryCatch(enc2native(dir), error = function(e) as.character(dir))
-    )), normalize_user_dir_for_listing, character(1)))
-
-    path_variants <- unique(Filter(nzchar, c(
-      path_variants,
-      normalize_user_dir_for_listing(tryCatch(normalize_mcp_path(dir, must_exist = FALSE),
-                                              error = function(e) dir))
-    )))
-
-    for (candidate_dir in path_variants) {
-      candidate_paths <- tryCatch(
-        list.files(candidate_dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
-        error = function(e) character(0)
-      )
-      if (length(candidate_paths)) {
-        paths <- candidate_paths
-        selected_fallback <- sprintf("list.files(%s)", candidate_dir)
-        break
-      }
-    }
-  }
-
-  if (!length(paths)) {
-    log_info("[INDEX] user={uid} klasörü boş (normalized='{dir}', fallback='{selected_fallback}')")
+    log_info("[INDEX] user={uid} klasörü boş: {dir}")
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
 
@@ -432,7 +386,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   )
   attr(out, "source") <- "filesystem"
   attr(out, "count") <- nrow(out)
-  log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: filesystem, normalized='{dir}', fallback='{selected_fallback}')")
+  log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: filesystem)")
   out
 }
 

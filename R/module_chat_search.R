@@ -100,7 +100,7 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
 
     # Veritabanında ara
     results <- tryCatch(
-      search_chats_content_from_db(current_user_id(), search_term),
+      search_chats_content_from_db(current_user_id, search_term),
       error = function(e) {
         warning(sprintf("[CHAT_SEARCH] Arama hatası: %s", e$message))
         NULL

@@ -6,48 +6,6 @@
 # JWT TOKEN ÇÖZÜMLEME
 # ==============================================================================
 
-#' SSO claim metnini normalize et
-#' @description Tüm metin claim'lerini önce güvenli UTF-8'e çevirir, ardından
-#'   Türkçe karakter onarımı uygular.
-#' @param value normalize edilecek değer
-#' @return normalize edilmiş değer
-normalize_claim_text <- function(value) {
-  if (is.null(value)) return(NULL)
-  if (!is.character(value)) value <- as.character(value)
-  if (length(value) == 0) return(value)
-
-  normalized <- vapply(value, function(x) {
-    if (is.na(x) || !nzchar(x)) return(x)
-
-    out <- tryCatch(enc2utf8(x), error = function(e) x)
-    out2 <- tryCatch(iconv(out, from = "", to = "UTF-8", sub = ""), error = function(e) NA_character_)
-    if (!is.na(out2) && nzchar(out2)) {
-      out <- out2
-    }
-
-    if (exists("fixTurkishEncoding", mode = "function")) {
-      out <- tryCatch(fixTurkishEncoding(out), error = function(e) out)
-    }
-
-    Encoding(out) <- "UTF-8"
-    out
-  }, character(1), USE.NAMES = FALSE)
-
-  normalized
-}
-
-#' SSO claim yapısını normalize et (recursive)
-normalize_claim_structure <- function(value) {
-  if (is.null(value)) return(NULL)
-  if (is.list(value)) {
-    return(lapply(value, normalize_claim_structure))
-  }
-  if (is.character(value)) {
-    return(normalize_claim_text(value))
-  }
-  value
-}
-
 #' JWT Token Payload Çözümleme
 #' @description JWT token'ın payload (gövde) kısmını Base64 ile çözer ve JSON olarak ayrıştırır.
 #'   Token formatı: header.payload.signature (3 parça, nokta ile ayrılmış)
@@ -83,18 +41,9 @@ decode_jwt_payload <- function(token) {
     # Base64 çöz ve JSON olarak ayrıştır
     raw_bytes <- base64enc::base64decode(payload_b64)
     json_str <- rawToChar(raw_bytes)
-
-    # JWT standardına göre payload JSON metni UTF-8'dir.
-    # Bazı ortamlarda rawToChar sonrası encoding etiketi kaybolduğu için
-    # doğrudan UTF-8'e normalize ediyoruz; yalnızca gerçekten gerekirse
-    # latin1 geri dönüşümüne başvuruyoruz.
-    json_str <- tryCatch(enc2utf8(json_str), error = function(e) json_str)
-    if (!validUTF8(json_str)) {
-      json_str <- tryCatch(iconv(json_str, from = "latin1", to = "UTF-8"), error = function(e) json_str)
-    }
+    Encoding(json_str) <- "UTF-8"
 
     payload <- jsonlite::fromJSON(json_str, simplifyVector = FALSE)
-    payload <- normalize_claim_structure(payload)
 
     if (isTRUE(SSO_CONFIG$debug_mode)) {
       log_info("JWT payload başarıyla çözümlendi. Alanlar: {paste(names(payload), collapse=', ')}")
@@ -181,7 +130,7 @@ extract_user_claims <- function(payload) {
     if (is.null(claim_key)) return(NULL)
     val <- payload[[claim_key]]
     if (is.null(val) || !nzchar(as.character(val))) return(NULL)
-    normalize_claim_text(as.character(val))
+    as.character(val)
   }
 
   # Ham değerleri çıkar

@@ -89,7 +89,7 @@ tagList(
 			style = "margin: 6px 0 12px 0; font-size: 12px; color: #a3a3a3;",
 			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir; kapalıyken birden fazla seçim yapabilirsiniz."
 		  ),
-		  DT::DTOutput(ns("files_table"))
+		  DT::dataTableOutput(ns("files_table"))
 		)
       )
     ),
@@ -124,16 +124,8 @@ fileManagerServer <- function(
     NULL
   })
 
-    # user_id reactiveVal olabilir - reaktif olarak takip et
-    # SSO modunda başlangıçta 0 gelir, kimlik doğrulandığında güncellenir
-    module_user_id_reactive <- reactive({
-      uid <- if (is.function(user_id)) user_id() else user_id
-      uid <- uid %||% session$userData$user_id %||% "unknown"
-      as.character(uid %||% "unknown")
-    })
-    # Geriye uyumluluk: mevcut kod module_user_id_chr kullanıyor
-    # Bu değer artık reaktif observer'larla güncellenir
-    module_user_id_chr <- isolate(module_user_id_reactive())
+    module_user_id <- user_id %||% session$userData$user_id %||% "unknown"
+    module_user_id_chr <- as.character(module_user_id %||% "unknown")
 
     fm_debug <- function(event, ...) {
       parts <- vapply(list(...), function(x) {
@@ -395,7 +387,13 @@ fileManagerServer <- function(
   
   # --- NEW: persistent storage helpers -----------------------------------------
   get_user_upload_dir <- function() {
-    mergen_user_upload_dir(module_user_id_chr)
+    base <- getOption(
+      "mergen.mcp_base_dir",
+      Sys.getenv("MCP_FILES_BASE",
+                 normalizePath(file.path(getwd(), "mergen_uploads"),
+                               winslash = "/", mustWork = FALSE))
+    )
+    file.path(base, sprintf("user_%s", module_user_id_chr))
   }
   
   is_under_mcp_base <- function(p) {
@@ -409,42 +407,11 @@ fileManagerServer <- function(
     
   list_user_folder_files <- function() {
     udir <- get_user_upload_dir()
-    if (!path_exists_relaxed(udir)) return(character(0))
-
-    out <- tryCatch(
-      fs::dir_ls(udir, recurse = FALSE, type = "file"),
-      error = function(e) character(0)
-    )
-
-    if (!length(out)) {
-      out <- tryCatch(
-        list.files(udir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
-        error = function(e) character(0)
-      )
-    }
-
-    out
+    if (!dir.exists(udir)) return(character(0))
+    list.files(udir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
   }
   
 	refresh_from_user_folder <- function(trigger = "manual") {
-	  normalize_path_for_refresh <- function(path_in) {
-		path_chr <- as.character(path_in %||% "")
-		if (!nzchar(path_chr)) return(path_chr)
-
-		path_norm <- tryCatch(normalize_mcp_path(path_chr, must_exist = FALSE),
-							  error = function(e) gsub("\\\\", "/", path_chr))
-
-		# UNC onarımı yalnızca Windows'ta uygulanır.
-		if (.Platform$OS.type == "windows" && grepl("^/[^/]", path_norm)) {
-		  path_unc <- paste0("/", path_norm)
-		  if (isTRUE(path_exists_relaxed(path_unc))) {
-			return(path_unc)
-		  }
-		}
-
-		path_norm
-	  }
-
 	  uid <- module_user_id_chr
 	  fm_debug("refresh_start", sprintf("trigger=%s", trigger))
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
@@ -472,7 +439,7 @@ fileManagerServer <- function(
 	  fm_debug("refresh_found", sprintf("%d candidate file(s) (source=%s)", nrow(df), source_tag))
 		  
 	  for (i in seq_len(nrow(df))) {
-			p <- normalize_path_for_refresh(df$path[i])
+			p <- df$path[i]
 			display_name <- df$name[i]
 			exists_now <- path_exists_relaxed(p)
 			fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
@@ -480,6 +447,28 @@ fileManagerServer <- function(
 			  fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
 			  next
 			}
+			
+			# Windows UNC yolları (\\server\share) veritabanından tek slash (/server/share) olarak gelebilir.
+            # Bu durumda R dosyayı bulamaz. Eğer dosya bu haliyle erişilemiyorsa, başına slash ekleyip (//server/share) 
+            # UNC formatına çevirerek deniyoruz.
+            
+            # 1. Tüm ters slash'leri R standardı olan düz slash'e çevir
+            p_fixed <- gsub("\\\\", "/", p)
+            
+            # 2. Eğer dosya bu haliyle doğrudan bulunamıyorsa onarmayı dene
+            if (!file.exists(p_fixed) && !fs::file_exists(p_fixed)) {
+              
+              # 3. Eğer yol tek slash ile başlıyorsa (örn: /rehisds/...) ama çift slash değilse
+              if (grepl("^/[^/]", p_fixed)) {
+                 p_unc <- paste0("/", p_fixed) # Başına slash ekle -> //rehisds/...
+                 # Eğer bu UNC varyasyonu diskte varsa, yolu güncelle
+                 if (file.exists(p_unc) || fs::file_exists(p_unc)) {
+                    p_fixed <- p_unc
+                 }
+              }
+            }
+            # 4. Onarılmış yolu ana değişkene ata
+            p <- p_fixed
 
             # CHANGE: Robust size calculation that handles NA/errors gracefully
 			f_size <- tryCatch({
@@ -531,31 +520,23 @@ fileManagerServer <- function(
       files_in_context = list()
     )
 
-    # --- Kullanıcı klasöründen dosya yükleme ---
-    # SSO modunda user_id başlangıçta 0 olur; 0 iken yükleme atlanır.
-    # Kimlik doğrulandığında observer tetiklenir ve gerçek kullanıcı dosyaları yüklenir.
+    # --- NEW: initial population from the user's persistent folder
 	observeEvent(TRUE, {
-	  if (module_user_id_chr != "0" && module_user_id_chr != "unknown") {
-	    refresh_from_user_folder("initial")
-	  }
+	  refresh_from_user_folder("initial")
 	}, once = TRUE, ignoreNULL = TRUE)
 
-	# Proactive warm-up: user_id geçerliyse ilk saniyelerde tekrar dene
+	# Proactive warm-up: refresh a few extra times during the first seconds
 	initial_refresh_attempts <- reactiveVal(0)
 	observe({
 	  if (initial_refresh_attempts() >= 3) {
 		return()
-	  }
-	  # user_id=0 iken warm-up yapma
-	  if (module_user_id_chr == "0" || module_user_id_chr == "unknown") {
-	    return()
 	  }
 
 	  invalidateLater(600, session)
 	  attempt <- initial_refresh_attempts() + 1
 	  initial_refresh_attempts(attempt)
 
-	  # Veri zaten varsa erken çık
+	  # Stop early if data is already present
 	  if (nrow(module_values$files) > 0) {
 		initial_refresh_attempts(3)
 		return()
@@ -563,18 +544,6 @@ fileManagerServer <- function(
 
 	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
 	})
-
-	# SSO modunda: kullanıcı kimliği doğrulandığında module_user_id_chr'ı güncelle
-	# ve dosyaları yeniden yükle
-	observeEvent(module_user_id_reactive(), {
-	  new_uid <- module_user_id_reactive()
-	  if (new_uid != "0" && new_uid != "unknown" && new_uid != module_user_id_chr) {
-	    module_user_id_chr <<- new_uid
-	    fm_debug("sso_user_update", sprintf("kullanıcı kimliği güncellendi: %s", new_uid))
-	    initial_refresh_attempts(0)  # warm-up sayacını sıfırla
-	    refresh_from_user_folder("sso_auth_complete")
-	  }
-	}, ignoreInit = TRUE)
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
@@ -1069,7 +1038,7 @@ fileManagerServer <- function(
       shinyjs::delay(100, { all_files_cleared(FALSE) })
     }, ignoreInit = TRUE)
                    
-	output$files_table <- DT::renderDT({
+	output$files_table <- DT::renderDataTable({
 	  dat <- module_values$files
 	  if (nrow(dat) == 0) dat <- dat[0, ]
 	  DT::datatable(

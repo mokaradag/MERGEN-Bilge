@@ -343,7 +343,7 @@ destekGeriBildirimServer <- function(id, current_user_id) {
       # Veritabanına kaydet
       tryCatch({
         destek_geri_bildirim_kaydet(
-          user_id = current_user_id(),
+          user_id = current_user_id,
           memnuniyet = as.integer(memnuniyet),
           nps_puan = if (!is.null(nps) && nps != "") as.integer(nps) else NULL,
           etiketler = if (!is.null(etiketler) && etiketler != "") etiketler else NULL,
