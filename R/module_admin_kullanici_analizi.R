@@ -33,7 +33,7 @@ admin_users_ui <- function(ns, create_info_button) {
             h4(class = "card-title", icon("star"), " Güçlü Kullanıcılar"),
             create_info_button("En yoğun sistem kullanıcıları.")
           ),
-          div(class = "table-container scrollable-table-equal", DT::dataTableOutput(ns("power_users_table")))
+          div(class = "table-container scrollable-table-equal", DT::DTOutput(ns("power_users_table")))
         )
       )
     ),
@@ -73,7 +73,7 @@ admin_users_ui <- function(ns, create_info_button) {
             h4(class = "card-title", icon("upload"), " Dosya Yükleyenler"),
             create_info_button("En fazla dosya yükleyen kullanıcıların listesi.")
           ),
-          div(class = "table-container", DT::dataTableOutput(ns("file_uploaders_table")))
+          div(class = "table-container", DT::DTOutput(ns("file_uploaders_table")))
         )
       )
     )
@@ -125,7 +125,7 @@ admin_users_outputs <- function(output, analytics_data_fn, turkish_dt_language, 
   })
 
   # Güçlü kullanıcılar tablosu
-  output$power_users_table <- DT::renderDataTable({
+  output$power_users_table <- DT::renderDT({
     data <- analytics_data_fn()$power_users
     if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
@@ -213,7 +213,7 @@ admin_users_outputs <- function(output, analytics_data_fn, turkish_dt_language, 
   })
 
   # Dosya yükleyenler tablosu
-  output$file_uploaders_table <- DT::renderDataTable({
+  output$file_uploaders_table <- DT::renderDT({
     data <- analytics_data_fn()$file_uploaders
     if (nrow(data) == 0) return(DT::datatable(data.frame()))
 

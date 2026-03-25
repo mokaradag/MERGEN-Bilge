@@ -409,7 +409,7 @@ adminHataAnaliziServer <- function(id) {
                 h4(class = "card-title", icon("table"), " Tüm Hata Bildirimleri"),
                 admin_create_info_button("Tüm hata bildirimlerinin detaylı listesi. Ek dosyaları görüntülemek için 'Dosyalar' sütunundaki bağlantılara tıklayın.")
               ),
-              div(class = "table-container", DT::dataTableOutput(ns("ha_detay_tablo")))
+              div(class = "table-container", DT::DTOutput(ns("ha_detay_tablo")))
             )
           )
         ),
@@ -526,7 +526,7 @@ adminHataAnaliziServer <- function(id) {
                 admin_create_info_button("En çok hata bildirimi yapan kullanıcılar.")
               ),
               div(class = "table-container scrollable-table-equal",
-                DT::dataTableOutput(ns("ha_kullanici_tablo")))
+                DT::DTOutput(ns("ha_kullanici_tablo")))
             )
           )
         )
@@ -930,7 +930,7 @@ adminHataAnaliziServer <- function(id) {
     })
 
     # Kullanıcı bazlı tablo
-    output$ha_kullanici_tablo <- DT::renderDataTable({
+    output$ha_kullanici_tablo <- DT::renderDT({
       data <- ha_data()$kullanici_bildirim
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
@@ -962,7 +962,7 @@ adminHataAnaliziServer <- function(id) {
     # ============================================================
     # DETAYLI BİLDİRİMLER TABLOSU
     # ============================================================
-    output$ha_detay_tablo <- DT::renderDataTable({
+    output$ha_detay_tablo <- DT::renderDT({
       data <- ha_data()$tumu
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 

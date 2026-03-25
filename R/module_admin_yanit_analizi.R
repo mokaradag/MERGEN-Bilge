@@ -481,7 +481,7 @@ adminYanitAnaliziServer <- function(id) {
                 admin_create_info_button("Modellerin detaylı performans karşılaştırması: toplam yanıt, beğeni oranı ve ortalama yanıt süresi.")
               ),
               div(class = "table-container scrollable-table-equal",
-                DT::dataTableOutput(ns("ya_model_tablo")))
+                DT::DTOutput(ns("ya_model_tablo")))
             )
           )
         )
@@ -529,7 +529,7 @@ adminYanitAnaliziServer <- function(id) {
                 h4(class = "card-title", icon("comment-dots"), " Son Kullanıcı Yorumları"),
                 admin_create_info_button("Kullanıcıların bıraktığı son metin yorumları. Yanıt önizlemesi ve geri bildirim tipi ile birlikte gösterilir.")
               ),
-              div(class = "table-container", DT::dataTableOutput(ns("ya_yorum_tablo")))
+              div(class = "table-container", DT::DTOutput(ns("ya_yorum_tablo")))
             )
           )
         )
@@ -579,7 +579,7 @@ adminYanitAnaliziServer <- function(id) {
                 admin_create_info_button("En çok geri bildirim veren kullanıcılar ve beğeni oranları.")
               ),
               div(class = "table-container scrollable-table-equal",
-                DT::dataTableOutput(ns("ya_kullanici_tablo")))
+                DT::DTOutput(ns("ya_kullanici_tablo")))
             )
           )
         )
@@ -872,7 +872,7 @@ adminYanitAnaliziServer <- function(id) {
     })
 
     # Model karşılaştırma tablosu
-    output$ya_model_tablo <- DT::renderDataTable({
+    output$ya_model_tablo <- DT::renderDT({
       data <- ya_data()$model_performans
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
@@ -983,7 +983,7 @@ adminYanitAnaliziServer <- function(id) {
     })
 
     # Son kullanıcı yorumları tablosu
-    output$ya_yorum_tablo <- DT::renderDataTable({
+    output$ya_yorum_tablo <- DT::renderDT({
       data <- ya_data()$son_yorumlar
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
@@ -1161,7 +1161,7 @@ adminYanitAnaliziServer <- function(id) {
     })
 
     # Kullanıcı bazlı geri bildirim tablosu
-    output$ya_kullanici_tablo <- DT::renderDataTable({
+    output$ya_kullanici_tablo <- DT::renderDT({
       data <- ya_data()$kullanici_ozet
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 

@@ -72,7 +72,7 @@ admin_time_analysis_ui <- function(data, ns, create_metric_card, create_info_but
             create_info_button("Birden fazla söyleşi başlatan kullanıcıların aktivasyon analizi.")
           ),
           div(class = "table-container", style = "height: 320px; overflow-y: auto;",
-            DT::dataTableOutput(ns("new_user_activation_table")))
+            DT::DTOutput(ns("new_user_activation_table")))
         )
       ),
       column(
@@ -150,7 +150,7 @@ admin_time_analysis_outputs <- function(output, analytics_data_fn, turkish_dt_la
   })
 
   # Yeni kullanıcı aktivasyon tablosu
-  output$new_user_activation_table <- DT::renderDataTable({
+  output$new_user_activation_table <- DT::renderDT({
     data <- analytics_data_fn()$new_user_activation
     if (nrow(data) == 0) return(DT::datatable(data.frame()))
 

@@ -392,7 +392,7 @@ adminGeriBildirimServer <- function(id) {
                 admin_create_info_button("Her kullanıcının ortalama memnuniyet puanı ve bildirim sayısı.")
               ),
               div(class = "table-container scrollable-table-equal",
-                DT::dataTableOutput(ns("gb_kullanici_tablo")))
+                DT::DTOutput(ns("gb_kullanici_tablo")))
             )
           )
         )
@@ -527,7 +527,7 @@ adminGeriBildirimServer <- function(id) {
                 h4(class = "card-title", icon("table"), " Tüm Geri Bildirimler (Detaylı)"),
                 admin_create_info_button("Kullanıcılardan gelen tüm geri bildirimlerin detaylı listesi. Arama ve sıralama yapılabilir.")
               ),
-              div(class = "table-container", DT::dataTableOutput(ns("gb_detay_tablo")))
+              div(class = "table-container", DT::DTOutput(ns("gb_detay_tablo")))
             )
           )
         )
@@ -787,7 +787,7 @@ adminGeriBildirimServer <- function(id) {
     })
 
     # Kullanıcı bazlı memnuniyet tablosu
-    output$gb_kullanici_tablo <- DT::renderDataTable({
+    output$gb_kullanici_tablo <- DT::renderDT({
       data <- gb_data()$kullanici_memnuniyet
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
@@ -1112,7 +1112,7 @@ adminGeriBildirimServer <- function(id) {
     })
 
     # Detaylı geri bildirim tablosu
-    output$gb_detay_tablo <- DT::renderDataTable({
+    output$gb_detay_tablo <- DT::renderDT({
       data <- gb_data()$tumu
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
