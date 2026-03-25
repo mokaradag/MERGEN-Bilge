@@ -123,44 +123,11 @@ resolveUserIdentity <- function(sso_claims = NULL) {
 #' @param text Düzeltilecek metin
 #' @return Düzeltilmiş metin
 fixTurkishEncoding <- function(text) {
-  if (is.null(text) || !nzchar(text)) return(text)
+  if (is.null(text)) return(text)
+  if (!length(text)) return(text)
 
-  # Yaygın bozuk UTF-8 -> doğru Türkçe karakter eşlemeleri
-  replacements <- list(
-    c("\u00c3\u0087",       "\u00c7"),   # Ç
-    c("\u00c3\u009c",       "\u00dc"),   # Ü
-    c("\u00c3\u0096",       "\u00d6"),   # Ö
-    c("\u00c4\u009e",       "\u011e"),   # Ğ
-    c("\u00c4\u00b0",       "\u0130"),   # İ
-    c("\u00c5\u009e",       "\u015e"),   # Ş
-    c("\u00c3\u00a7",       "\u00e7"),   # ç
-    c("\u00c3\u00bc",       "\u00fc"),   # ü
-    c("\u00c3\u00b6",       "\u00f6"),   # ö
-    c("\u00c4\u009f",       "\u011f"),   # ğ
-    c("\u00c4\u00b1",       "\u0131"),   # ı
-    c("\u00c5\u009f",       "\u015f")    # ş
-  )
-
-  result <- text
-  for (rep in replacements) {
-    result <- gsub(rep[1], rep[2], result, fixed = TRUE)
-  }
-
-  # Hâlâ bozuk karakterler varsa latin1 -> UTF-8 dönüşümü dene
-  if (grepl("[\u00c3\u00c4\u00c5]", result)) {
-    tryCatch({
-      raw_bytes <- charToRaw(result)
-      result <- rawToChar(raw_bytes)
-      Encoding(result) <- "UTF-8"
-      if (!validUTF8(result)) {
-        result <- iconv(text, from = "latin1", to = "UTF-8")
-      }
-    }, error = function(e) {
-      log_warn("Encoding düzeltme başarısız: {e$message}")
-    })
-  }
-
-  result
+  out <- tryCatch(enc2utf8(as.character(text)), error = function(e) as.character(text))
+  tryCatch(iconv(out, from = "", to = "UTF-8", sub = ""), error = function(e) out)
 }
 
 
