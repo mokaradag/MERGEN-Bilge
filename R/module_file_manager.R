@@ -124,8 +124,15 @@ fileManagerServer <- function(
     NULL
   })
 
-    module_user_id <- user_id %||% session$userData$user_id %||% "unknown"
-    module_user_id_chr <- as.character(module_user_id %||% "unknown")
+    get_effective_user_id <- function() {
+      session_uid <- session$userData$user_id %||% NULL
+      uid <- session_uid %||% user_id %||% "unknown"
+      as.character(uid %||% "unknown")
+    }
+
+    module_user_id_chr <- reactive({
+      get_effective_user_id()
+    })
 
     fm_debug <- function(event, ...) {
       parts <- vapply(list(...), function(x) {
@@ -134,7 +141,7 @@ fileManagerServer <- function(
       }, character(1))
       msg <- trimws(paste(parts, collapse = " "))
       cat(sprintf("[FILE_MANAGER][user:%s][%s] %s\n",
-                  module_user_id_chr %||% "unknown",
+                  module_user_id_chr() %||% "unknown",
                   event %||% "event",
                   if (nzchar(msg)) msg else "(no details)"))
     }
@@ -393,7 +400,7 @@ fileManagerServer <- function(
                  normalizePath(file.path(getwd(), "mergen_uploads"),
                                winslash = "/", mustWork = FALSE))
     )
-    file.path(base, sprintf("user_%s", module_user_id_chr))
+    file.path(base, sprintf("user_%s", module_user_id_chr()))
   }
   
   is_under_mcp_base <- function(p) {
@@ -412,7 +419,15 @@ fileManagerServer <- function(
   }
   
 	refresh_from_user_folder <- function(trigger = "manual") {
-	  uid <- module_user_id_chr
+	  uid <- module_user_id_chr()
+      if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
+        fm_debug("refresh_skip", sprintf("trigger=%s, auth henüz tamamlanmadı", trigger))
+        return(invisible(NULL))
+      }
+      if (!nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
+        fm_debug("refresh_skip", sprintf("trigger=%s, geçersiz user_id=%s", trigger, uid))
+        return(invisible(NULL))
+      }
 	  fm_debug("refresh_start", sprintf("trigger=%s", trigger))
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
@@ -544,6 +559,12 @@ fileManagerServer <- function(
 
 	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
 	})
+
+    # SSO tamamlandıktan sonra gerçek kullanıcı klasörünü tekrar yükle
+    observe({
+      req(isTRUE(session$userData$auth_initialized))
+      refresh_from_user_folder("auth_ready")
+    })
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
@@ -943,7 +964,7 @@ fileManagerServer <- function(
       req(info)
     
 	  # 1) Fiziksel dosyayı sil (birden fazla yol adayını dene)
-      uid <- isolate(module_user_id_chr)
+      uid <- isolate(module_user_id_chr())
       deleted_physical <- FALSE
 
       # Önce doğrudan bilinen yolları dene (en güvenilir)
@@ -1014,7 +1035,7 @@ fileManagerServer <- function(
       removeModal()
     
       # 1) Physically delete everything in the user's persisted bucket and clear index
-      uid <- isolate(module_user_id_chr)
+      uid <- isolate(module_user_id_chr())
       if (!is.null(uid)) try(mergen_clear_user_bucket(uid), silent = TRUE)
     
       # 2) Notify parent that all files are gone
