@@ -217,24 +217,13 @@ server <- function(input, output, session) {
       settings_data = settings_data
     )
 
-    # Kullanıcı "Dosya Yönetimi" sekmesine ilk geçişte kalıcı dosyaları yalnızca bir kez tara
-    last_tab <- reactiveVal(NULL)
-    files_tab_refreshed <- reactiveVal(FALSE)
-    observeEvent(input$tabs, {
-      if (isTRUE(files_tab_refreshed())) return()
-
-      current_tab <- input$tabs %||% ""
-      previous_tab <- last_tab()
-      last_tab(current_tab)
-
-      if (!identical(current_tab, "files")) return()
-      if (identical(previous_tab, "files")) return()
-
+    # SSO doğrulaması tamamlandığında kullanıcı dosyalarını tek sefer yükle
+    observeEvent(sso_state$authenticated, {
+      req(isTRUE(sso_state$authenticated))
       if (is.function(file_manager_data$refresh_persisted_files)) {
-        file_manager_data$refresh_persisted_files("tab_open")
-        files_tab_refreshed(TRUE)
+        file_manager_data$refresh_persisted_files("auth_ready")
       }
-    }, ignoreInit = TRUE)
+    }, ignoreInit = TRUE, once = TRUE)
     
   # Özetleme modülü erişimi için dosya yöneticisi verilerini oturumda sakla
   session$userData$file_manager_data <- file_manager_data

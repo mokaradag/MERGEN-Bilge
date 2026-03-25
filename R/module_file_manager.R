@@ -564,15 +564,7 @@ fileManagerServer <- function(
 	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
 	})
 
-    # SSO tamamlandığında gerçek kullanıcı klasörünü tek sefer yükle
-    observe({
-      if (!isTRUE(SSO_ENABLED)) return()
-      if (isTRUE(session$userData$auth_initialized)) {
-        refresh_from_user_folder("auth_ready")
-        return()
-      }
-      invalidateLater(300, session)
-    })
+    # Not: SSO sonrası tetikleme server.R tarafından tek sefer yönetilir
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
