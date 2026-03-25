@@ -130,9 +130,9 @@ fileManagerServer <- function(
       as.character(uid %||% "unknown")
     }
 
-    module_user_id_chr <- reactive({
+    module_user_id_chr <- function() {
       get_effective_user_id()
-    })
+    }
 
     fm_debug <- function(event, ...) {
       parts <- vapply(list(...), function(x) {
