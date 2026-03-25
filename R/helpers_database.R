@@ -22,6 +22,19 @@ library(pool)
 
 # --- Configuration ---
 .DEFAULT_DSN <- Sys.getenv("DB_DSN", "TestConnection")
+.DEFAULT_DB_CLIENT_ENCODING <- getOption("mergen.db.client_encoding", "UTF-8")
+.DEFAULT_DB_NAME_ENCODING <- getOption("mergen.db.name_encoding", .DEFAULT_DB_CLIENT_ENCODING)
+
+normalize_db_value <- function(x) {
+  if (is.null(x) || is.na(x) || !is.character(x)) {
+    return(x)
+  }
+  tryCatch(enc2utf8(x), error = function(e) x)
+}
+
+normalize_db_params <- function(params) {
+  lapply(params, normalize_db_value)
+}
 
 # Get pool statistics
 get_pool_info <- function() {
@@ -65,7 +78,12 @@ get_connection <- function(target = "primary") {
     stop(sprintf("HATA: '%s' için .Renviron içinde DSN tanımı bulunamadı (Target: %s)", dsn_var, target))
   }
   
-  conn <- DBI::dbConnect(odbc::odbc(), dsn = dsn_name)
+  conn <- DBI::dbConnect(
+    odbc::odbc(),
+    dsn = dsn_name,
+    encoding = .DEFAULT_DB_CLIENT_ENCODING,
+    name_encoding = .DEFAULT_DB_NAME_ENCODING
+  )
   return(list(conn = conn, pooled = FALSE, pool = NULL))
 }
 
@@ -95,7 +113,12 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
       if (!requireNamespace("odbc", quietly = TRUE) || !requireNamespace("DBI", quietly = TRUE)) {
         stop("Worker needs 'odbc' and 'DBI' packages installed.")
       }
-      conn <- DBI::dbConnect(odbc::odbc(), dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN))
+      conn <- DBI::dbConnect(
+        odbc::odbc(),
+        dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN),
+        encoding = .DEFAULT_DB_CLIENT_ENCODING,
+        name_encoding = .DEFAULT_DB_NAME_ENCODING
+      )
       return(conn)
     }, error = function(e) {
       if (i == max_retries) {
@@ -195,19 +218,19 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     kaynak_adi <- sso_claims$full_name
   } else {
     user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
-    user_details <- dbGetQuery(conn, user_details_query, params = list(username))
+    user_details <- dbGetQuery(conn, user_details_query, params = normalize_db_params(list(username)))
     if (nrow(user_details) > 0 && nzchar(user_details$KaynakAdi[1] %||% "")) {
       kaynak_adi <- user_details$KaynakAdi[1]
     }
   }
 
   user_id_query <- "SELECT UserID FROM MB_Users WHERE KullaniciAdi = ?"
-  user_id_result <- dbGetQuery(conn, user_id_query, params = list(username))
+  user_id_result <- dbGetQuery(conn, user_id_query, params = normalize_db_params(list(username)))
 
   if (nrow(user_id_result) > 0) {
     user_id <- as.integer(user_id_result$UserID[1])
     update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
-    dbExecute(conn, update_query, params = list(kaynak_adi, user_id))
+    dbExecute(conn, update_query, params = normalize_db_params(list(kaynak_adi, user_id)))
 
     # SSO ek alanlarını güncelle (tablo destekliyorsa)
     if (!is.null(sso_claims)) {
@@ -217,7 +240,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     return(user_id)
   } else {
     insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, ?, GETDATE())"
-    res <- dbGetQuery(conn, insert_query, params = list(username, kaynak_adi))
+    res <- dbGetQuery(conn, insert_query, params = normalize_db_params(list(username, kaynak_adi)))
     if (nrow(res) == 0) stop("Yeni kullanıcı oluşturulduktan sonra UserID alınamadı.")
     user_id <- as.integer(res$UserID[1])
 
@@ -279,7 +302,7 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
     if (length(set_parts) > 0) {
       query <- paste0("UPDATE MB_Users SET ", paste(set_parts, collapse = ", "), " WHERE UserID = ?")
       params <- c(params, list(user_id))
-      dbExecute(conn, query, params = params)
+      dbExecute(conn, query, params = normalize_db_params(params))
     }
   }, error = function(e) {
     # SSO alanları güncellenemedi - kritik değil, sessizce devam et
@@ -827,7 +850,7 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   on.exit(release_connection(conn_info))
 
   query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, ?)"
-  res <- dbGetQuery(conn, query, params = list(user_id, initial_title))
+  res <- dbGetQuery(conn, query, params = normalize_db_params(list(user_id, initial_title)))
   if (nrow(res) == 0) stop("Failed to create new chat session in DB.")
   return(as.integer(res$ChatID[1]))
 }
@@ -862,7 +885,7 @@ save_message_to_db <- function(chat_id, msg) {
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
-  res <- dbGetQuery(conn, query, params = list(chat_id, msg$content, msg$type, ts, next_order))
+  res <- dbGetQuery(conn, query, params = normalize_db_params(list(chat_id, msg$content, msg$type, ts, next_order)))
   if (nrow(res) == 0) stop("Failed to save message to DB.")
   return(as.integer(res$MessageID[1]))
 }
@@ -901,7 +924,7 @@ update_message_content_in_db <- function(message_id, new_content) {
   query <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
   
   # Execute the update statement
-  dbExecute(conn, query, params = list(new_content, as.integer(message_id)))
+  dbExecute(conn, query, params = normalize_db_params(list(new_content, as.integer(message_id))))
 }
 
 update_chat_title_in_db <- function(chat_id, new_title) {
@@ -915,7 +938,7 @@ update_chat_title_in_db <- function(chat_id, new_title) {
   on.exit(release_connection(conn_info))
 
   query <- "UPDATE MB_Chats SET ChatTitle = ? WHERE ChatID = ?"
-  dbExecute(conn, query, params = list(new_title, chat_id))
+  dbExecute(conn, query, params = normalize_db_params(list(new_title, chat_id)))
 }
 
 # Feedback functions
@@ -931,7 +954,7 @@ save_feedback_to_db <- function(user_id, message_id, feedback_type) {
     WHEN MATCHED THEN UPDATE SET FeedbackType = source.FeedbackType
     WHEN NOT MATCHED BY TARGET THEN INSERT (UserID, MessageID, FeedbackType) VALUES (source.UserID, source.MessageID, source.FeedbackType);
   "
-  dbExecute(conn, query, params = list(user_id, as.integer(message_id), feedback_type))
+  dbExecute(conn, query, params = normalize_db_params(list(user_id, as.integer(message_id), feedback_type)))
 }
 
 remove_feedback_from_db <- function(user_id, message_id) {
@@ -967,7 +990,7 @@ log_ai_usage <- function(chat_id, message_id, user_id, model_used, duration, suc
     INSERT INTO MB_Usage_Log (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess)
     VALUES (?, ?, ?, ?, ?, ?)
   "
-  dbExecute(conn, query, params = list(chat_id, message_id, user_id, model_used, duration, success))
+  dbExecute(conn, query, params = normalize_db_params(list(chat_id, message_id, user_id, model_used, duration, success)))
 }
 
 # Chat deletion
@@ -1050,13 +1073,13 @@ worker_save_assistant_response <- function(chat_id, response_text,
     OUTPUT INSERTED.MessageID AS MessageID
     VALUES (?, ?, ?, ?, ?)
   "
-  res <- DBI::dbGetQuery(conn, insert_q, params = list(chat_id, response_text, message_type, timestamp_gmt3, next_order))
+  res <- DBI::dbGetQuery(conn, insert_q, params = normalize_db_params(list(chat_id, response_text, message_type, timestamp_gmt3, next_order)))
   response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_
 
   if (isTRUE(log_usage)) {
     tryCatch({
       log_q <- "INSERT INTO MB_Usage_Log (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess) VALUES (?, ?, ?, ?, ?, ?)"
-      DBI::dbExecute(conn, log_q, params = list(chat_id, response_message_id, user_id, model_used, duration, 1))
+      DBI::dbExecute(conn, log_q, params = normalize_db_params(list(chat_id, response_message_id, user_id, model_used, duration, 1)))
     }, error = function(e) {
       # ignore logging errors
     })
@@ -1090,13 +1113,13 @@ save_feedback_to_db_extended <- function(user_id, message_id, feedback_type, tag
       VALUES (source.UserID, source.MessageID, source.FeedbackType, source.FeedbackTags, source.FeedbackComment, CAST(GETDATE() AS datetime2(0)));
   "
   
-  dbExecute(conn, query, params = list(
+  dbExecute(conn, query, params = normalize_db_params(list(
     user_id, 
     as.integer(message_id), 
     feedback_type,
     safe_tags,
     safe_comment
-  ))
+  )))
 }
 
 # Geri bildirim detaylarını yükleme
