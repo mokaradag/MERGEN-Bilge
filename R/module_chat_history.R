@@ -110,7 +110,9 @@ historyServer <- function(id, all_messages) {
         stamp_map[[chat_id]] <- stamp_key
 
         cached <- cache[[chat_id]]
-        if (!is.null(cached) && identical(cached$stamp, stamp_key)) {
+        if (!is.null(cached) &&
+            identical(cached$stamp, stamp_key) &&
+            length(cached$rows %||% list()) > 0) {
           next
         }
 
