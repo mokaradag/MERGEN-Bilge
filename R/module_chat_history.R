@@ -214,12 +214,19 @@ historyServer <- function(id, all_messages) {
       if (length(ids) == 0) {
         return()
       }
-	  
-      ensure_history_cache(ids, chats)
 
-      current_queue <- pending_prefetch()
-      pending_prefetch(unique(c(current_queue, ids)))
-      schedule_prefetch()
+      # İlk açılışta tüm sohbetleri tek seferde yüklemek gecikmeye neden oluyor.
+      # Önce küçük bir ilk parti yükle, kalanını arka planda tamamla.
+      first_batch_size <- min(30L, length(ids))
+      first_batch <- ids[seq_len(first_batch_size)]
+      ensure_history_cache(first_batch, chats)
+
+      remaining_ids <- setdiff(ids, first_batch)
+      if (length(remaining_ids) > 0) {
+        current_queue <- pending_prefetch()
+        pending_prefetch(unique(c(current_queue, remaining_ids)))
+        schedule_prefetch()
+      }
     }, ignoreNULL = FALSE, priority = 1)
 	
     filtered_history <- reactive({
