@@ -49,6 +49,7 @@ historyServer <- function(id, all_messages) {
 	pending_prefetch <- reactiveVal(character())
     prefetch_active <- reactiveVal(FALSE)
     latest_chats <- reactiveVal(list())
+    full_hydration_in_progress <- reactiveVal(FALSE)
 
     stamp_for_chat <- function(chat_info) {
       stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
@@ -144,6 +145,41 @@ historyServer <- function(id, all_messages) {
       }
       invisible(NULL)
     }
+
+    hydrate_all_history_async <- function(chat_ids, chats) {
+      if (length(chat_ids) == 0 || isTRUE(full_hydration_in_progress())) {
+        return(invisible(NULL))
+      }
+      full_hydration_in_progress(TRUE)
+
+      promises::then(
+        promises::future_promise({
+          load_history_rows_batch(chat_ids)
+        }),
+        onFulfilled = function(fetched) {
+          cache <- messages_cache()
+          for (chat_id in chat_ids) {
+            chat_info <- chats[[chat_id]]
+            if (is.null(chat_info)) next
+
+            stamp_key <- stamp_for_chat(chat_info)
+            pairs <- fetched[[chat_id]] %||% fetched[[as.character(chat_id)]]
+            if (!is.list(pairs)) pairs <- list()
+            cache[[chat_id]] <- list(rows = pairs, stamp = stamp_key)
+          }
+          messages_cache(cache)
+          trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
+          full_hydration_in_progress(FALSE)
+          NULL
+        },
+        onRejected = function(err) {
+          warning(sprintf("[HISTORY] Tam hydrate başarısız: %s", conditionMessage(err)))
+          full_hydration_in_progress(FALSE)
+          NULL
+        }
+      )
+      invisible(NULL)
+    }
     
     # FIX #5: Add "Bugün" button handler
     observeEvent(input$today_filter, {
@@ -224,9 +260,8 @@ historyServer <- function(id, all_messages) {
       first_batch <- ids[seq_len(first_batch_size)]
       ensure_history_cache(first_batch, chats)
 
-      current_queue <- pending_prefetch()
-      pending_prefetch(unique(c(current_queue, ids)))
-      schedule_prefetch()
+      # Tam listeyi arka planda tek seferde tamamla.
+      hydrate_all_history_async(ids, chats)
     }, ignoreNULL = FALSE, priority = 1)
 	
     filtered_history <- reactive({
@@ -345,9 +380,8 @@ historyServer <- function(id, all_messages) {
         }
         messages_cache(cache)
 
-        current_queue <- pending_prefetch()
-        pending_prefetch(unique(c(current_queue, ids)))
-        schedule_prefetch()
+        # Yenile'de tam hydrate'i tekrar dene.
+        hydrate_all_history_async(ids, chats)
       }
 
       trigger_refresh(trigger_refresh() + 1)
