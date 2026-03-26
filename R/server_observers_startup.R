@@ -75,6 +75,31 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     effective_user_id <- resolve_current_user_id()
     req(!is.na(effective_user_id), effective_user_id > 0)
 
+    refresh_welcome_if_needed <- function(chats) {
+      if (length(chats) == 0) {
+        return(invisible(NULL))
+      }
+      if (isTRUE(session$userData$deep_space_dismissed)) {
+        render_welcome_screen(chats, replace_existing = TRUE)
+      } else {
+        cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
+      }
+      invisible(NULL)
+    }
+
+    # İlk ekranın hızlı gelmesi için önce hafif özet listeyi yükle.
+    preview_chats <- tryCatch(
+      load_chats_preview_from_db(effective_user_id, limit = 30L),
+      error = function(e) {
+        warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(e)))
+        list()
+      }
+    )
+    if (length(preview_chats) > 0) {
+      values$saved_chats <- preview_chats
+      refresh_welcome_if_needed(preview_chats)
+    }
+
     session$userData$initial_saved_chats_promise <- promises::then(
       promises::future_promise({
         load_chats_from_db(effective_user_id, include_messages = FALSE)
@@ -83,20 +108,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
         chats <- chats %||% list()
         values$saved_chats <- chats
 
-        # Kayıtlı sohbetler yüklendiğinde karşılama ekranını güncelle.
-        # Derin uzay giriş animasyonu aktifken tam yeniden render yapmak
-        # tüm başlangıç dizisini gereksiz yere yeniden tetikler.
-        if (length(chats) > 0) {
-          if (isTRUE(session$userData$deep_space_dismissed)) {
-            # Giriş animasyonu kapandıktan sonra - güvenle güncelle
-            render_welcome_screen(chats, replace_existing = TRUE)
-          } else {
-            # Giriş animasyonu hâlâ aktif - yeniden render ertelendi.
-            # Karşılama ekranı zaten ilk render'da oluşturuldu;
-            # saved_chats değiştiğinde bir sonraki render'da güncellenecek.
-            cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
-          }
-        }
+        # Tam liste geldiğinde karşılama ekranını güncelle.
+        refresh_welcome_if_needed(chats)
         NULL
       },
       onRejected = function(err) {
