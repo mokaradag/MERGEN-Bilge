@@ -309,22 +309,25 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
         }
     }
     
-    # -- 4. TEXT STREAMING LOOP --
-    words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
-    if (length(words) == 0) words <- c(full_response)
+    # -- 4. METİN AKIŞ DÖNGÜSÜ --
+    # Kelime bazlı akış yerine karakter bazlı akış kullanılır.
+    # Bu sayede kısa yanıtlarda "tek tek kelime" hissi azalır ve ilk çıktı daha hızlı görünür.
+    chars <- strsplit(full_response, "", fixed = TRUE)[[1]]
+    if (length(chars) == 0) chars <- c(full_response)
 
-    total_words <- length(words)
-    chunk_size <- max(1, ceiling(total_words / 100))
+    total_chars <- length(chars)
+    hedef_guncelleme <- min(120L, max(24L, as.integer(total_chars / 18L)))
+    chunk_size <- max(1L, ceiling(total_chars / hedef_guncelleme))
 
     streaming_state <- shiny::reactiveValues(
       accumulated = "",
-      current_index = 1,
+      current_index = 1L,
       msg_id = msg_id
     )
 
     stream_observer <- shiny::observe({
       isolate({
-        if (stop_generation() || streaming_state$current_index > total_words) {
+        if (stop_generation() || streaming_state$current_index > total_chars) {
           # ... Finalization Logic ...
 		  # vapply kullanarak tip güvenliği sağla ve performansı artır
 		  msg_index <- which(vapply(values$messages, function(m) identical(m$id, streaming_state$msg_id), logical(1)))
@@ -382,9 +385,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
           return()
         }
 
-        chunk_end <- min(streaming_state$current_index + chunk_size - 1, total_words)
-        chunk_words <- words[streaming_state$current_index:chunk_end]
-        chunk_text <- paste(chunk_words, collapse = "")
+        chunk_end <- min(streaming_state$current_index + chunk_size - 1L, total_chars)
+        chunk_chars <- chars[streaming_state$current_index:chunk_end]
+        chunk_text <- paste(chunk_chars, collapse = "")
 
         streaming_state$accumulated <- paste0(streaming_state$accumulated, chunk_text)
 
@@ -397,13 +400,15 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
         session$sendCustomMessage("streamingUpdate", list(
           id = streaming_state$msg_id,
           text = streaming_state$accumulated,
+          delta = chunk_text,
           isPartial = TRUE
         ))
 
-        streaming_state$current_index <- chunk_end + 1
+        streaming_state$current_index <- chunk_end + 1L
       })
 
-      shiny::invalidateLater(25)
+      # Daha düşük aralık: kullanıcı ilk kelimeyi daha erken görür.
+      shiny::invalidateLater(10)
     })
   }
 

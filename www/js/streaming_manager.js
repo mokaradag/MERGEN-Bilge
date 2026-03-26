@@ -1,6 +1,7 @@
 // www/js/streaming_manager.js
 
 $(document).ready(function() {
+    const streamingState = new Map();
     
     // Akış (Streaming) mesajını başlat - Mesaj kutusunu hazırlar
     Shiny.addCustomMessageHandler('initStreamingMessage', function(data) {
@@ -9,6 +10,7 @@ $(document).ready(function() {
             // İçeriği temizle ve streaming işaretini koy
             messageDiv.innerHTML = '<div class="streaming-content" data-streaming="true"></div>';
             messageDiv.dataset.streaming = 'true';
+            streamingState.set(data.id, { rawText: '', raf: null });
             
             // Aksiyon butonlarını (kopyala, beğen vb.) akış bitene kadar gizle
             const wrapper = document.getElementById('message_wrapper_' + data.id);
@@ -32,18 +34,26 @@ $(document).ready(function() {
         }
         
         if (data.isPartial) {
-            // Metni Markdown olarak ayrıştır (parseStreamingMarkdown global fonksiyonu kullanılır)
-            // Not: parseStreamingMarkdown, markdown-parser.js dosyasındadır.
-            const formattedHtml = typeof parseStreamingMarkdown === 'function' 
-                                  ? parseStreamingMarkdown(data.text) 
-                                  : data.text;
-                                  
-            contentDiv.innerHTML = formattedHtml;
-            
-            // Akış sırasında her zaman en alta kaydır
-            if (typeof window.smartScrollToBottom === 'function') {
-                window.smartScrollToBottom(false); // false = animasyonsuz, hızlı kaydırma
+            // Performans için ara aşamada sade metin gösteriyoruz.
+            // Markdown biçimleme sadece finalizeStreamingMessage aşamasında yapılır.
+            const state = streamingState.get(data.id) || { rawText: '', raf: null };
+            if (typeof data.delta === 'string' && data.delta.length > 0) {
+                state.rawText += data.delta;
+            } else if (typeof data.text === 'string') {
+                state.rawText = data.text;
             }
+
+            if (!state.raf) {
+                state.raf = window.requestAnimationFrame(function() {
+                    contentDiv.textContent = state.rawText;
+                    state.raf = null;
+                    if (typeof window.smartScrollToBottom === 'function') {
+                        window.smartScrollToBottom(false);
+                    }
+                });
+            }
+
+            streamingState.set(data.id, state);
         }
     });
 
@@ -89,6 +99,13 @@ $(document).ready(function() {
             });
         }
         
+        // Son içerik yazıldıktan sonra geçici akış durumunu temizle
+        const state = streamingState.get(data.id);
+        if (state && state.raf) {
+            window.cancelAnimationFrame(state.raf);
+        }
+        streamingState.delete(data.id);
+
         // Final HTML içeriğini yerleştir
         messageDiv.innerHTML = data.html;
 
