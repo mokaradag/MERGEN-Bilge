@@ -182,13 +182,15 @@ historyServer <- function(id, all_messages) {
       prefetch_active(TRUE)
 
       schedule_later(0, function() {
+        on.exit(prefetch_active(FALSE), add = TRUE)
+
         ids <- pending_prefetch()
         if (length(ids) == 0) {
-          prefetch_active(FALSE)
           return()
         }
 
-        batch_size <- min(100, length(ids))
+        # İlk görünür içeriğin hızlı gelmesi için küçük partilerle ilerle
+        batch_size <- min(30L, length(ids))
         batch <- ids[seq_len(batch_size)]
         remaining <- ids[-seq_len(batch_size)]
         pending_prefetch(remaining)
@@ -198,10 +200,7 @@ historyServer <- function(id, all_messages) {
         try(ensure_history_cache(batch, subset_chats), silent = TRUE)
 
         if (length(pending_prefetch()) > 0) {
-          prefetch_active(FALSE)
           schedule_prefetch()
-        } else {
-          prefetch_active(FALSE)
         }
       })
     }
@@ -215,18 +214,11 @@ historyServer <- function(id, all_messages) {
         return()
       }
 
-      # İlk açılışta tüm sohbetleri tek seferde yüklemek gecikmeye neden oluyor.
-      # Önce küçük bir ilk parti yükle, kalanını arka planda tamamla.
-      first_batch_size <- min(30L, length(ids))
-      first_batch <- ids[seq_len(first_batch_size)]
-      ensure_history_cache(first_batch, chats)
-
-      remaining_ids <- setdiff(ids, first_batch)
-      if (length(remaining_ids) > 0) {
-        current_queue <- pending_prefetch()
-        pending_prefetch(unique(c(current_queue, remaining_ids)))
-        schedule_prefetch()
-      }
+      # İlk yüklemeyi senkron yapmak yerine tamamını kuyruğa al.
+      # Böylece Ana Söyleşi açılışı bloklanmaz, geçmiş verisi arka planda dolar.
+      current_queue <- pending_prefetch()
+      pending_prefetch(unique(c(ids, current_queue)))
+      schedule_prefetch()
     }, ignoreNULL = FALSE, priority = 1)
 	
     filtered_history <- reactive({
