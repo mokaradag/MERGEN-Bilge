@@ -46,10 +46,7 @@ historyServer <- function(id, all_messages) {
     
     trigger_refresh <- reactiveVal(0)
 	messages_cache <- reactiveVal(list())
-	pending_prefetch <- reactiveVal(character())
-    prefetch_active <- reactiveVal(FALSE)
     latest_chats <- reactiveVal(list())
-    full_hydration_in_progress <- reactiveVal(FALSE)
 
     stamp_for_chat <- function(chat_info) {
       stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
@@ -146,41 +143,6 @@ historyServer <- function(id, all_messages) {
       invisible(NULL)
     }
 
-    hydrate_all_history_async <- function(chat_ids, chats) {
-      if (length(chat_ids) == 0 || isTRUE(full_hydration_in_progress())) {
-        return(invisible(NULL))
-      }
-      full_hydration_in_progress(TRUE)
-
-      promises::then(
-        promises::future_promise({
-          load_history_rows_batch(chat_ids)
-        }),
-        onFulfilled = function(fetched) {
-          cache <- messages_cache()
-          for (chat_id in chat_ids) {
-            chat_info <- chats[[chat_id]]
-            if (is.null(chat_info)) next
-
-            stamp_key <- stamp_for_chat(chat_info)
-            pairs <- fetched[[chat_id]] %||% fetched[[as.character(chat_id)]]
-            if (!is.list(pairs)) pairs <- list()
-            cache[[chat_id]] <- list(rows = pairs, stamp = stamp_key)
-          }
-          messages_cache(cache)
-          trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
-          full_hydration_in_progress(FALSE)
-          NULL
-        },
-        onRejected = function(err) {
-          warning(sprintf("[HISTORY] Tam hydrate başarısız: %s", conditionMessage(err)))
-          full_hydration_in_progress(FALSE)
-          NULL
-        }
-      )
-      invisible(NULL)
-    }
-    
     # FIX #5: Add "Bugün" button handler
     observeEvent(input$today_filter, {
       updateDateRangeInput(session, "date_range",
@@ -189,62 +151,6 @@ historyServer <- function(id, all_messages) {
       showToast(session, "Bugünün kayıtları gösteriliyor.", "info")
     })
 	
-    schedule_later <- function(delay, callback) {
-      domain <- session$domain %||% shiny::getDefaultReactiveDomain()
-      runner <- function() {
-        if (!is.null(domain)) {
-          shiny::withReactiveDomain(domain, callback)
-        } else {
-          callback()
-        }
-      }
-	  
-      if (requireNamespace("later", quietly = TRUE)) {
-        later::later(runner, delay)
-      } else {
-        runner()
-      }
-    }
-
-    schedule_prefetch <- function() {
-      if (isTRUE(prefetch_active())) {
-        return()
-      }
-
-      batch_ids <- pending_prefetch()
-      if (length(batch_ids) == 0) {
-        prefetch_active(FALSE)
-        return()
-      }
-
-      prefetch_active(TRUE)
-
-      schedule_later(0, function() {
-        ids <- pending_prefetch()
-        if (length(ids) == 0) {
-          prefetch_active(FALSE)
-          return()
-        }
-
-        # Uzun beklemeleri önlemek için küçük partilerle ilerle.
-        batch_size <- min(30L, length(ids))
-        batch <- ids[seq_len(batch_size)]
-        remaining <- ids[-seq_len(batch_size)]
-        pending_prefetch(remaining)
-
-        chats <- latest_chats()
-        subset_chats <- chats[names(chats) %in% c(batch, "current_chat")]
-        try(ensure_history_cache(batch, subset_chats), silent = TRUE)
-
-        if (length(pending_prefetch()) > 0) {
-          prefetch_active(FALSE)
-          schedule_prefetch()
-        } else {
-          prefetch_active(FALSE)
-        }
-      })
-    }
-
     observeEvent(all_messages(), {
       chats <- all_messages() %||% list()
       latest_chats(chats)
@@ -254,14 +160,8 @@ historyServer <- function(id, all_messages) {
         return()
       }
 
-      # İlk görünür tabloyu hızlandırmak için yalnızca küçük bir ilk parti
-      # senkron hazırlanır; kalan kayıtlar kuyruktan arka planda gelir.
-      first_batch_size <- min(30L, length(ids))
-      first_batch <- ids[seq_len(first_batch_size)]
-      ensure_history_cache(first_batch, chats)
-
-      # Tam listeyi arka planda tek seferde tamamla.
-      hydrate_all_history_async(ids, chats)
+      # Hızlı/parsiyel yükleme yerine tam tabloyu tek akışta hazırla.
+      ensure_history_cache(ids, chats)
     }, ignoreNULL = FALSE, priority = 1)
 	
     filtered_history <- reactive({
@@ -367,23 +267,6 @@ historyServer <- function(id, all_messages) {
     )
     
     observeEvent(input$refresh_history, {
-      # Yenile'de eksik kalan kayıtları yeniden denemek için kuyrukla.
-      chats <- latest_chats() %||% list()
-      ids <- setdiff(names(chats), "current_chat")
-      if (length(ids) > 0) {
-        cache <- messages_cache()
-        for (chat_id in ids) {
-          cached <- cache[[chat_id]]
-          if (is.null(cached) || length(cached$rows %||% list()) == 0) {
-            cache[[chat_id]] <- NULL
-          }
-        }
-        messages_cache(cache)
-
-        # Yenile'de tam hydrate'i tekrar dene.
-        hydrate_all_history_async(ids, chats)
-      }
-
       trigger_refresh(trigger_refresh() + 1)
       showToast(session, "Geçmiş tablosu yenilendi.", "info")
     })
