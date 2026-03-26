@@ -124,9 +124,11 @@ safe_source("R/helpers_claude_code_formatters.R", encoding = "UTF-8") # Claude C
 # GRUP 5: LLM (Büyük Dil Modeli) Entegrasyon Katmanı
 # API yapılandırması ve yardımcı fonksiyonlara bağımlıdır.
 # ------------------------------------------------------------------------------
-safe_source("R/helpers_llm_tool_formatters.R", encoding = "UTF-8")  # Araç şeması biçimlendirme
-safe_source("R/helpers_llm_api.R",             encoding = "UTF-8")  # LLM API istek oluşturma
-safe_source("R/helpers_llm_worker.R",          encoding = "UTF-8")  # Arka plan LLM çağrıları
+safe_source("R/helpers_llm_tool_formatters.R",      encoding = "UTF-8")  # Araç şeması biçimlendirme
+safe_source("R/helpers_llm_response_postprocess.R", encoding = "UTF-8")  # LLM yanıt son işleme ve Kaynakça yardımcıları
+safe_source("R/helpers_llm_api.R",                  encoding = "UTF-8")  # LLM API istek oluşturma
+safe_source("R/helpers_llm_sse.R",                  encoding = "UTF-8")  # Gerçek SSE akışı yardımcıları
+safe_source("R/helpers_llm_worker.R",               encoding = "UTF-8")  # Arka plan LLM çağrıları
 
 # ------------------------------------------------------------------------------
 # GRUP 6: Shiny Modülleri (UI + Sunucu)
@@ -214,6 +216,7 @@ safe_source("R/server_outputs_chat.R",              encoding = "UTF-8")
 safe_source("R/server_llm_response_handlers.R",     encoding = "UTF-8")
 safe_source("R/server_handler_summarization.R",     encoding = "UTF-8")
 safe_source("R/server_handler_image_generation.R",  encoding = "UTF-8")
+safe_source("R/server_handler_true_streaming.R",    encoding = "UTF-8")
 safe_source("R/server_send_message.R",              encoding = "UTF-8")
 
 # -- Medya İşleyicileri --

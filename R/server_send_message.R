@@ -10,6 +10,7 @@
 sendMessageInit <- function(
   session,
   input,
+  output,
   values,
   settings_data,
   session_files,
@@ -704,30 +705,70 @@ sendMessageInit <- function(
     log_debug("Mesaj gönderiliyor, model: {model_selected}")
  
     # LLM çağrısı: Streaming veya Non-streaming
-    if (isTRUE(current_settings$enable_streaming) && !isTRUE(current_settings$enable_mcp_tools)) {
-      # STREAMING modu
+    if (isTRUE(current_settings$enable_streaming) &&
+        !isTRUE(current_settings$enable_mcp_tools) &&
+        !isTRUE(settings_data$enable_tts_audio)) {
+      # GERÇEK SSE modu
+      log_debug("[MONITORING] AI isteği başlatılıyor (GERÇEK SSE modu)")
+
+      safe_settings <- current_settings
+      safe_settings$shiny_session <- NULL
+      dbg_dump("LLM_REQUEST_TRUE_STREAMING", list(
+        model = model_selected,
+        messages = messages_to_process,
+        settings = safe_settings
+      ))
+
+      true_stream_ctx <- list(
+        session = session,
+        input = input,
+        output = output,
+        values = values,
+        settings_data = settings_data,
+        stop_generation = stop_generation,
+        active_request_id = active_request_id,
+        perf_tracker = perf_tracker,
+        api_config = api_config,
+        current_user_id = effective_user_id,
+        current_settings = current_settings,
+        model_selected = model_selected,
+        messages_to_process = messages_to_process,
+        user_message_text = user_message_text,
+        user_prompt_msg = user_prompt_msg,
+        chat_id_val = chat_id_val,
+        add_message_fn = add_message_fn,
+        reset_chat_state_fn = reset_chat_state_fn,
+        followup_tools = followup_tools,
+        fallback_followup_tool = fallback_followup_tool
+      )
+
+      handle_true_streaming_mode(true_stream_ctx)
+
+    } else if (isTRUE(current_settings$enable_streaming) &&
+               !isTRUE(current_settings$enable_mcp_tools)) {
+      # TTS açıkken mevcut davranışı koru
       start_time <- Sys.time()
- 
+
       log_debug("[MONITORING] AI isteği başlatılıyor (STREAMING modu)")
- 
+
       settings_for_llm <- current_settings
       settings_for_llm$model_selection <- model_selected
- 
+
       req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
       active_request_id(req_id)
       stop_generation(FALSE)
       values$is_sending <- TRUE
- 
+
       safe_settings <- current_settings; safe_settings$shiny_session <- NULL
       dbg_dump("LLM_REQUEST_STREAMING", list(model = model_selected, messages = messages_to_process, settings = safe_settings))
- 
+
       p <- ai_processor$call_llm_streaming(messages_to_process, current_settings, model_selected)
- 
+
       p <- promises::then(p, onFulfilled = function(result) {
         result$req_id <- req_id
         result
       })
- 
+
       p <- promises::then(
         p,
         onFulfilled = function(res) {
@@ -740,15 +781,15 @@ sendMessageInit <- function(
             reset_chat_state_fn()
             return(invisible(NULL))
           }
- 
+
           log_debug("[MONITORING] Streaming isteği tamamlandı")
           dbg_dump("LLM_RESPONSE_STREAMING", list(
             success = res$success, duration = res$duration,
             content_preview = substr(res$content %||% "", 1, 800)
           ))
- 
+
           perf_tracker$track_request(res$duration)
- 
+
           if (isTRUE(stop_generation()) || !identical(active_request_id(), res$req_id)) {
             try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                              model_selected, res$duration, FALSE), silent = TRUE)
@@ -757,35 +798,35 @@ sendMessageInit <- function(
             reset_chat_state_fn()
             return(invisible(NULL))
           }
- 
+
           try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                                            model_selected, res$duration, TRUE), silent = TRUE)
- 
+
           if (is.list(res$chart_store) && length(res$chart_store) > 0) {
             if (is.null(session$userData$chart_store) || !is.list(session$userData$chart_store)) {
               session$userData$chart_store <- list()
             }
             session$userData$chart_store <- utils::modifyList(session$userData$chart_store, res$chart_store)
           }
- 
+
           # Takip soruları oluştur
           followup_questions <- build_followup_suggestions(
             user_message_text, res$content, settings_data, session,
             api_config, followup_tools, fallback_followup_tool
           )
- 
+
           local_char_id <- current_settings$selected_character %||% "mergen"
           local_chars_data <- get_characters_data()
           local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
           resolved_voice <- if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"
- 
+
           tts_engine_param <- NULL
           tts_voice_param <- NULL
           if (isTRUE(settings_data$enable_tts_audio)) {
             tts_engine_param <- tts_processor$synthesize_speech
             tts_voice_param <- resolved_voice
           }
- 
+
           simulate_streaming_stoppable_fn(
             res$content,
             followups = followup_questions,
@@ -802,11 +843,11 @@ sendMessageInit <- function(
           perf_tracker$track_error()
           removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
           values$typing <- FALSE
- 
+
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
           try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                            model_selected, duration, FALSE), silent = TRUE)
- 
+
           if (!isTRUE(stop_generation())) {
             msg <- as.character(conditionMessage(err))
             msg <- sub("^[A-Z_]+:\\s*", "", msg)
@@ -817,7 +858,7 @@ sendMessageInit <- function(
           invisible(NULL)
         }
       )
- 
+
       p <- p %...!% (function(e) {
         log_warn("[STREAM_CHAIN] Hata yakalandı: {conditionMessage(e)}")
         perf_tracker$track_error()
@@ -829,10 +870,10 @@ sendMessageInit <- function(
         reset_chat_state_fn()
         invisible(NULL)
       })
- 
+
       promises::finally(p, onFinally = function() {
       })
- 
+
     } else {
       # NON-STREAMING modu
       log_debug("[MONITORING] AI isteği başlatılıyor (NON-STREAMING modu)")
