@@ -260,6 +260,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       initial_msg$followups <- followups
     }
     values$messages <- append(values$messages, list(initial_msg))
+    # Akış boyunca her turda liste taramamak için mesaj indeksini bir kez sabitle.
+    msg_index <- length(values$messages)
 
     # Oturum-yerel user_config'i settings'e ekle (çoklu kullanıcı güvenliği)
     if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
@@ -314,7 +316,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     if (length(words) == 0) words <- c(full_response)
 
     total_words <- length(words)
-    chunk_size <- max(1, ceiling(total_words / 100))
+    # DOM ve markdown ayrıştırma maliyetini düşürmek için güncelleme sayısını sınırla.
+    hedef_guncelleme_sayisi <- 30L
+    chunk_size <- max(1L, ceiling(total_words / hedef_guncelleme_sayisi))
 
     streaming_state <- shiny::reactiveValues(
       accumulated = "",
@@ -326,9 +330,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       isolate({
         if (stop_generation() || streaming_state$current_index > total_words) {
           # ... Finalization Logic ...
-		  # vapply kullanarak tip güvenliği sağla ve performansı artır
-		  msg_index <- which(vapply(values$messages, function(m) identical(m$id, streaming_state$msg_id), logical(1)))
-          if (length(msg_index) > 0) {
+          if (length(values$messages) >= msg_index &&
+              identical(values$messages[[msg_index]]$id, streaming_state$msg_id)) {
             final_text <- if (nchar(streaming_state$accumulated) > 0) streaming_state$accumulated else full_response
 
             chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)
@@ -388,12 +391,6 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
         streaming_state$accumulated <- paste0(streaming_state$accumulated, chunk_text)
 
-		# vapply kullanarak tip güvenliği sağla
-		msg_index <- which(vapply(values$messages, function(m) m$id %||% "", character(1)) == streaming_state$msg_id)
-        if (length(msg_index) > 0) {
-          values$messages[[msg_index]]$content <- streaming_state$accumulated
-        }
-
         session$sendCustomMessage("streamingUpdate", list(
           id = streaming_state$msg_id,
           text = streaming_state$accumulated,
@@ -403,7 +400,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
         streaming_state$current_index <- chunk_end + 1
       })
 
-      shiny::invalidateLater(25)
+      shiny::invalidateLater(30)
     })
   }
 
