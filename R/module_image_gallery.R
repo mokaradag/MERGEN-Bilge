@@ -47,10 +47,12 @@ imageGalleryUI <- function(id) {
 imageGalleryServer <- function(id, current_user_id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    coerce_user_id <- function(x) suppressWarnings(as.integer(x %||% 0L))
 
     images_per_page <- 24
     current_page <- reactiveVal(1)
     refresh_trigger <- reactiveVal(0)
+    effective_user_id <- reactiveVal(coerce_user_id(current_user_id))
 	cached_images <- reactiveVal(data.frame(
       file_path = character(), chat_id = character(), filename = character(),
       created_at = as.POSIXct(character()), file_size = numeric(),
@@ -63,9 +65,24 @@ imageGalleryServer <- function(id, current_user_id) {
     clear_all_trigger <- reactiveVal(0)
     navigate_to_chat_trigger <- reactiveVal(NULL)
 
+    # SSO akışında kullanıcı ID sonradan geldiği için etkin kullanıcıyı canlı güncelle
+    observe({
+      invalidateLater(1000, session)
+      resolved_uid <- coerce_user_id(session$userData$user_id %||% current_user_id)
+      if (!is.na(resolved_uid) && resolved_uid > 0 && !identical(effective_user_id(), resolved_uid)) {
+        effective_user_id(resolved_uid)
+        refresh_trigger(refresh_trigger() + 1)
+      }
+    })
+
     observe({
       refresh_trigger()
-      images <- scan_user_images(current_user_id)
+      uid <- effective_user_id()
+      if (is.na(uid) || uid <= 0) {
+        cached_images(cached_images()[0, , drop = FALSE])
+        return()
+      }
+      images <- scan_user_images(uid)
       cached_images(images)
     })
 
@@ -190,7 +207,7 @@ imageGalleryServer <- function(id, current_user_id) {
 
                 file_size_kb <- round(row$file_size / 1024, 1)
                 created_str <- format(row$created_at, "%d.%m.%Y %H:%M")
-                chat_title <- get_chat_title_for_image(row$chat_id, current_user_id) %||% "Bilinmeyen Söyleşi"
+                chat_title <- get_chat_title_for_image(row$chat_id, effective_user_id()) %||% "Bilinmeyen Söyleşi"
 
                 # Açıklama metnini tooltip olarak göster
                 desc_text <- if (nzchar(row$description)) row$description else ""
@@ -300,7 +317,7 @@ imageGalleryServer <- function(id, current_user_id) {
       removeModal()
       req(info$file_path)
 
-      success <- delete_single_image(info$file_path, current_user_id, info$chat_id)
+      success <- delete_single_image(info$file_path, effective_user_id(), info$chat_id)
       if (success) {
         showToast(session, "Görsel silindi.", "warning")
         delete_image_trigger(list(file_path = info$file_path, chat_id = info$chat_id))
@@ -329,7 +346,7 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observeEvent(input$confirm_clear_all_images, {
       removeModal()
-      deleted_count <- delete_all_user_images(current_user_id)
+      deleted_count <- delete_all_user_images(effective_user_id())
       clear_all_trigger(clear_all_trigger() + 1)
       refresh_trigger(refresh_trigger() + 1)
       current_page(1)
