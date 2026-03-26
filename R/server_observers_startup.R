@@ -107,10 +107,20 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
   }
 
   if (isTRUE(session$userData$sso_active)) {
-    observe({
-      req(isTRUE(session$userData$auth_initialized))
+    # session$userData$auth_initialized reaktif olmadığı için
+    # kısa aralıkla kontrol ederek kimlik hazır olunca tek sefer yükle.
+    auth_wait_observer <- NULL
+    auth_wait_observer <- observe({
+      if (!isTRUE(session$userData$auth_initialized)) {
+        invalidateLater(200, session)
+        return(invisible(NULL))
+      }
       load_initial_saved_chats()
-    }, once = TRUE)
+      if (!is.null(auth_wait_observer)) {
+        auth_wait_observer$destroy()
+      }
+      invisible(NULL)
+    })
   } else {
     load_initial_saved_chats()
   }
