@@ -314,7 +314,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     if (length(words) == 0) words <- c(full_response)
 
     total_words <- length(words)
-    chunk_size <- max(1, ceiling(total_words / 100))
+    total_chars <- nchar(full_response, type = "chars", allowNA = FALSE, keepNA = FALSE)
+    # Akış hızını yanıt uzunluğuna göre uyarlayıp gereksiz yavaşlamayı engelle
+    hedef_adim_sayisi <- max(12L, min(36L, as.integer(ceiling(total_chars / 28))))
+    chunk_size <- max(1L, as.integer(ceiling(total_words / hedef_adim_sayisi)))
+    tick_ms <- if (total_chars < 220) 8L else if (total_chars < 1200) 14L else 20L
 
     streaming_state <- shiny::reactiveValues(
       accumulated = "",
@@ -403,7 +407,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
         streaming_state$current_index <- chunk_end + 1
       })
 
-      shiny::invalidateLater(25)
+      shiny::invalidateLater(tick_ms)
     })
   }
 

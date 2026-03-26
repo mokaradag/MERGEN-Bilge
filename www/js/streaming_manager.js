@@ -1,11 +1,50 @@
 // www/js/streaming_manager.js
 
 $(document).ready(function() {
+    const streamRenderState = {};
+
+    function ensureRenderState(messageId) {
+        if (!streamRenderState[messageId]) {
+            streamRenderState[messageId] = {
+                pendingText: '',
+                lastRenderAt: 0,
+                timerId: null
+            };
+        }
+        return streamRenderState[messageId];
+    }
+
+    function clearRenderState(messageId) {
+        const st = streamRenderState[messageId];
+        if (!st) return;
+        if (st.timerId) {
+            clearTimeout(st.timerId);
+        }
+        delete streamRenderState[messageId];
+    }
+
+    function renderStreamingNow(messageId, messageDiv, contentDiv) {
+        const st = streamRenderState[messageId];
+        if (!st) return;
+
+        const formattedHtml = typeof parseStreamingMarkdown === 'function'
+            ? parseStreamingMarkdown(st.pendingText)
+            : st.pendingText;
+
+        contentDiv.innerHTML = formattedHtml;
+        st.lastRenderAt = performance.now();
+        st.timerId = null;
+
+        if (typeof window.smartScrollToBottom === 'function') {
+            window.smartScrollToBottom(false);
+        }
+    }
     
     // Akış (Streaming) mesajını başlat - Mesaj kutusunu hazırlar
     Shiny.addCustomMessageHandler('initStreamingMessage', function(data) {
         const messageDiv = document.getElementById(data.id);
         if (messageDiv) {
+            clearRenderState(data.id);
             // İçeriği temizle ve streaming işaretini koy
             messageDiv.innerHTML = '<div class="streaming-content" data-streaming="true"></div>';
             messageDiv.dataset.streaming = 'true';
@@ -32,17 +71,22 @@ $(document).ready(function() {
         }
         
         if (data.isPartial) {
-            // Metni Markdown olarak ayrıştır (parseStreamingMarkdown global fonksiyonu kullanılır)
-            // Not: parseStreamingMarkdown, markdown-parser.js dosyasındadır.
-            const formattedHtml = typeof parseStreamingMarkdown === 'function' 
-                                  ? parseStreamingMarkdown(data.text) 
-                                  : data.text;
-                                  
-            contentDiv.innerHTML = formattedHtml;
-            
-            // Akış sırasında her zaman en alta kaydır
-            if (typeof window.smartScrollToBottom === 'function') {
-                window.smartScrollToBottom(false); // false = animasyonsuz, hızlı kaydırma
+            // Her parçayı anında Markdown parse etmek pahalı olduğu için kısa aralıkta grupla
+            const st = ensureRenderState(data.id);
+            st.pendingText = data.text || '';
+
+            const now = performance.now();
+            const renderAraligiMs = 45;
+            if ((now - st.lastRenderAt) >= renderAraligiMs) {
+                if (st.timerId) {
+                    clearTimeout(st.timerId);
+                    st.timerId = null;
+                }
+                renderStreamingNow(data.id, messageDiv, contentDiv);
+            } else if (!st.timerId) {
+                st.timerId = setTimeout(function() {
+                    renderStreamingNow(data.id, messageDiv, contentDiv);
+                }, renderAraligiMs - (now - st.lastRenderAt));
             }
         }
     });
@@ -90,6 +134,7 @@ $(document).ready(function() {
         }
         
         // Final HTML içeriğini yerleştir
+        clearRenderState(data.id);
         messageDiv.innerHTML = data.html;
 
         // Tabloları kaydırılabilir sarmalayıcıya al
