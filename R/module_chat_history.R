@@ -188,7 +188,8 @@ historyServer <- function(id, all_messages) {
           return()
         }
 
-        batch_size <- min(100, length(ids))
+        # Uzun beklemeleri önlemek için küçük partilerle ilerle.
+        batch_size <- min(30L, length(ids))
         batch <- ids[seq_len(batch_size)]
         remaining <- ids[-seq_len(batch_size)]
         pending_prefetch(remaining)
@@ -329,6 +330,24 @@ historyServer <- function(id, all_messages) {
     )
     
     observeEvent(input$refresh_history, {
+      # Yenile'de eksik kalan kayıtları yeniden denemek için kuyrukla.
+      chats <- latest_chats() %||% list()
+      ids <- setdiff(names(chats), "current_chat")
+      if (length(ids) > 0) {
+        cache <- messages_cache()
+        for (chat_id in ids) {
+          cached <- cache[[chat_id]]
+          if (is.null(cached) || length(cached$rows %||% list()) == 0) {
+            cache[[chat_id]] <- NULL
+          }
+        }
+        messages_cache(cache)
+
+        current_queue <- pending_prefetch()
+        pending_prefetch(unique(c(current_queue, ids)))
+        schedule_prefetch()
+      }
+
       trigger_refresh(trigger_refresh() + 1)
       showToast(session, "Geçmiş tablosu yenilendi.", "info")
     })
