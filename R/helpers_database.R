@@ -321,6 +321,43 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
 
 # Load chats and their messages for a user (returns list)
 # process_message_content() fallback is provided if missing.
+load_chats_preview_from_db <- function(user_id, limit = 30L) {
+  stopifnot(!is.null(user_id))
+
+  safe_limit <- suppressWarnings(as.integer(limit))
+  if (is.na(safe_limit) || safe_limit <= 0) {
+    safe_limit <- 30L
+  }
+
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info))
+
+  query <- sprintf("
+      SELECT TOP %d c.ChatID, c.ChatTitle, c.CreateTimestamp
+      FROM MB_Chats c
+      WHERE c.UserID = ? AND c.IsDeleted = 0
+      ORDER BY c.CreateTimestamp DESC
+    ", safe_limit)
+
+  preview_data <- dbGetQuery(conn, query, params = list(user_id))
+  if (nrow(preview_data) == 0) return(list())
+
+  chat_ids <- as.character(preview_data$ChatID)
+  formatted <- lapply(seq_len(nrow(preview_data)), function(i) {
+    row <- preview_data[i, ]
+    list(
+      title = row$ChatTitle,
+      messages = NULL,
+      timestamp = row$CreateTimestamp,
+      last_message_timestamp = row$CreateTimestamp,
+      message_count = 0L
+    )
+  })
+  names(formatted) <- chat_ids
+  formatted[chat_ids]
+}
+
 load_chats_from_db <- function(user_id, include_messages = TRUE) {
   stopifnot(!is.null(user_id))
   conn_info <- get_connection()

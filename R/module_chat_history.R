@@ -46,8 +46,6 @@ historyServer <- function(id, all_messages) {
     
     trigger_refresh <- reactiveVal(0)
 	messages_cache <- reactiveVal(list())
-	pending_prefetch <- reactiveVal(character())
-    prefetch_active <- reactiveVal(FALSE)
     latest_chats <- reactiveVal(list())
 
     stamp_for_chat <- function(chat_info) {
@@ -110,7 +108,9 @@ historyServer <- function(id, all_messages) {
         stamp_map[[chat_id]] <- stamp_key
 
         cached <- cache[[chat_id]]
-        if (!is.null(cached) && identical(cached$stamp, stamp_key)) {
+        if (!is.null(cached) &&
+            identical(cached$stamp, stamp_key) &&
+            length(cached$rows %||% list()) > 0) {
           next
         }
 
@@ -142,7 +142,7 @@ historyServer <- function(id, all_messages) {
       }
       invisible(NULL)
     }
-    
+
     # FIX #5: Add "Bugün" button handler
     observeEvent(input$today_filter, {
       updateDateRangeInput(session, "date_range",
@@ -151,61 +151,6 @@ historyServer <- function(id, all_messages) {
       showToast(session, "Bugünün kayıtları gösteriliyor.", "info")
     })
 	
-    schedule_later <- function(delay, callback) {
-      domain <- session$domain %||% shiny::getDefaultReactiveDomain()
-      runner <- function() {
-        if (!is.null(domain)) {
-          shiny::withReactiveDomain(domain, callback)
-        } else {
-          callback()
-        }
-      }
-	  
-      if (requireNamespace("later", quietly = TRUE)) {
-        later::later(runner, delay)
-      } else {
-        runner()
-      }
-    }
-
-    schedule_prefetch <- function() {
-      if (isTRUE(prefetch_active())) {
-        return()
-      }
-
-      batch_ids <- pending_prefetch()
-      if (length(batch_ids) == 0) {
-        prefetch_active(FALSE)
-        return()
-      }
-
-      prefetch_active(TRUE)
-
-      schedule_later(0, function() {
-        ids <- pending_prefetch()
-        if (length(ids) == 0) {
-          prefetch_active(FALSE)
-          return()
-        }
-
-        batch_size <- min(100, length(ids))
-        batch <- ids[seq_len(batch_size)]
-        remaining <- ids[-seq_len(batch_size)]
-        pending_prefetch(remaining)
-
-        chats <- latest_chats()
-        subset_chats <- chats[names(chats) %in% c(batch, "current_chat")]
-        try(ensure_history_cache(batch, subset_chats), silent = TRUE)
-
-        if (length(pending_prefetch()) > 0) {
-          prefetch_active(FALSE)
-          schedule_prefetch()
-        } else {
-          prefetch_active(FALSE)
-        }
-      })
-    }
-
     observeEvent(all_messages(), {
       chats <- all_messages() %||% list()
       latest_chats(chats)
@@ -214,12 +159,9 @@ historyServer <- function(id, all_messages) {
       if (length(ids) == 0) {
         return()
       }
-	  
-      ensure_history_cache(ids, chats)
 
-      current_queue <- pending_prefetch()
-      pending_prefetch(unique(c(current_queue, ids)))
-      schedule_prefetch()
+      # Hızlı/parsiyel yükleme yerine tam tabloyu tek akışta hazırla.
+      ensure_history_cache(ids, chats)
     }, ignoreNULL = FALSE, priority = 1)
 	
     filtered_history <- reactive({

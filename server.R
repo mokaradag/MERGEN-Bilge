@@ -113,8 +113,14 @@ server <- function(input, output, session) {
   # İleri referanslar: Bu fonksiyonlar daha sonra tanımlanacak ama şimdiden observer'lara geçirilmeli
   # Sarmalayıcılar kullanarak gecikmeli bağlama sağlanır
   welcome_fns <- new.env(parent = emptyenv())
-  render_welcome_screen <- function(...) welcome_fns$render_welcome_screen(...)
-  start_new_chat <- function(...) welcome_fns$start_new_chat(...)
+  render_welcome_screen <- function(...) {
+    fn <- welcome_fns$render_welcome_screen
+    if (is.function(fn)) fn(...) else invisible(NULL)
+  }
+  start_new_chat <- function(...) {
+    fn <- welcome_fns$start_new_chat
+    if (is.function(fn)) fn(...) else invisible(NULL)
+  }
 
   # send_message için ileri referans (R/server_send_message.R modülünden atanacak)
   send_message_fns <- new.env(parent = emptyenv())

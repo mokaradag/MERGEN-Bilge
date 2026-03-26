@@ -64,35 +64,79 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     }
   }, ignoreInit = TRUE)
   
-  session$userData$initial_saved_chats_promise <- promises::then(
-    promises::future_promise({
-      load_chats_from_db(current_user_id, include_messages = FALSE)
-    }),
-    onFulfilled = function(chats) {
-      chats <- chats %||% list()
-      values$saved_chats <- chats
+  # SSO akışında başlangıçta current_user_id=0 gelebilir.
+  # Bu nedenle kullanıcı ID'sini her yükleme anında oturumdan çöz.
+  resolve_current_user_id <- function() {
+    session_uid <- session$userData$user_id %||% NULL
+    suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+  }
 
-      # Kayıtlı sohbetler yüklendiğinde karşılama ekranını güncelle.
-      # Derin uzay giriş animasyonu aktifken tam yeniden render yapmak
-      # tüm başlangıç dizisini gereksiz yere yeniden tetikler.
-      if (length(chats) > 0) {
-        if (isTRUE(session$userData$deep_space_dismissed)) {
-          # Giriş animasyonu kapandıktan sonra - güvenle güncelle
-          render_welcome_screen(chats, replace_existing = TRUE)
-        } else {
-          # Giriş animasyonu hâlâ aktif - yeniden render ertelendi.
-          # Karşılama ekranı zaten ilk render'da oluşturuldu;
-          # saved_chats değiştiğinde bir sonraki render'da güncellenecek.
-          cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
-        }
+  load_initial_saved_chats <- function() {
+    effective_user_id <- resolve_current_user_id()
+    req(!is.na(effective_user_id), effective_user_id > 0)
+
+    refresh_welcome_if_needed <- function(chats) {
+      if (length(chats) == 0) {
+        return(invisible(NULL))
       }
-      NULL
-    },
-    onRejected = function(err) {
-      warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
-      NULL
+      if (isTRUE(session$userData$deep_space_dismissed)) {
+        render_welcome_screen(chats, replace_existing = TRUE)
+      } else {
+        cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
+      }
+      invisible(NULL)
     }
-  )
+
+    # İlk ekranın hızlı gelmesi için önce hafif özet listeyi yükle.
+    preview_chats <- tryCatch(
+      load_chats_preview_from_db(effective_user_id, limit = 30L),
+      error = function(e) {
+        warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(e)))
+        list()
+      }
+    )
+    if (length(preview_chats) > 0) {
+      values$saved_chats <- preview_chats
+      refresh_welcome_if_needed(preview_chats)
+    }
+
+    session$userData$initial_saved_chats_promise <- promises::then(
+      promises::future_promise({
+        load_chats_from_db(effective_user_id, include_messages = FALSE)
+      }),
+      onFulfilled = function(chats) {
+        chats <- chats %||% list()
+        values$saved_chats <- chats
+
+        # Tam liste geldiğinde karşılama ekranını güncelle.
+        refresh_welcome_if_needed(chats)
+        NULL
+      },
+      onRejected = function(err) {
+        warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
+        NULL
+      }
+    )
+  }
+
+  if (isTRUE(session$userData$sso_active)) {
+    # session$userData$auth_initialized reaktif olmadığı için
+    # kısa aralıkla kontrol ederek kimlik hazır olunca tek sefer yükle.
+    auth_wait_observer <- NULL
+    auth_wait_observer <- observe({
+      if (!isTRUE(session$userData$auth_initialized)) {
+        invalidateLater(200, session)
+        return(invisible(NULL))
+      }
+      load_initial_saved_chats()
+      if (!is.null(auth_wait_observer)) {
+        auth_wait_observer$destroy()
+      }
+      invisible(NULL)
+    })
+  } else {
+    load_initial_saved_chats()
+  }
   
   invisible(NULL)
 }
