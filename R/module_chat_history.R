@@ -215,7 +215,11 @@ historyServer <- function(id, all_messages) {
         return()
       }
 
-      ensure_history_cache(ids, chats)
+      # İlk görünür tabloyu hızlandırmak için yalnızca küçük bir ilk parti
+      # senkron hazırlanır; kalan kayıtlar kuyruktan arka planda gelir.
+      first_batch_size <- min(30L, length(ids))
+      first_batch <- ids[seq_len(first_batch_size)]
+      ensure_history_cache(first_batch, chats)
 
       current_queue <- pending_prefetch()
       pending_prefetch(unique(c(current_queue, ids)))
