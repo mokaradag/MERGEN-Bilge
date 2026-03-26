@@ -196,8 +196,8 @@ historyServer <- function(id, all_messages) {
         pending_prefetch(remaining)
 
         chats <- latest_chats()
-        subset_chats <- chats[names(chats) %in% c(batch, "current_chat")]
-        try(ensure_history_cache(batch, subset_chats), silent = TRUE)
+        # İsim eşleşmesi kaynaklı kaçırmaları önlemek için tam listeyi geçir.
+        try(ensure_history_cache(batch, chats), silent = TRUE)
 
         if (length(pending_prefetch()) > 0) {
           # Bir sonraki partiyi planlamadan önce kilidi bırak.
