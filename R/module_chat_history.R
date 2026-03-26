@@ -200,6 +200,9 @@ historyServer <- function(id, all_messages) {
         try(ensure_history_cache(batch, subset_chats), silent = TRUE)
 
         if (length(pending_prefetch()) > 0) {
+          # Bir sonraki partiyi planlamadan önce kilidi bırak.
+          # Aksi halde iç içe çağrı prefetch_active=TRUE görüp erken döner.
+          prefetch_active(FALSE)
           schedule_prefetch()
         }
       })
