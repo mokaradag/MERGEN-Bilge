@@ -182,28 +182,26 @@ historyServer <- function(id, all_messages) {
       prefetch_active(TRUE)
 
       schedule_later(0, function() {
-        on.exit(prefetch_active(FALSE), add = TRUE)
-
         ids <- pending_prefetch()
         if (length(ids) == 0) {
+          prefetch_active(FALSE)
           return()
         }
 
-        # İlk görünür içeriğin hızlı gelmesi için küçük partilerle ilerle
-        batch_size <- min(30L, length(ids))
+        batch_size <- min(100, length(ids))
         batch <- ids[seq_len(batch_size)]
         remaining <- ids[-seq_len(batch_size)]
         pending_prefetch(remaining)
 
         chats <- latest_chats()
-        # İsim eşleşmesi kaynaklı kaçırmaları önlemek için tam listeyi geçir.
-        try(ensure_history_cache(batch, chats), silent = TRUE)
+        subset_chats <- chats[names(chats) %in% c(batch, "current_chat")]
+        try(ensure_history_cache(batch, subset_chats), silent = TRUE)
 
         if (length(pending_prefetch()) > 0) {
-          # Bir sonraki partiyi planlamadan önce kilidi bırak.
-          # Aksi halde iç içe çağrı prefetch_active=TRUE görüp erken döner.
           prefetch_active(FALSE)
           schedule_prefetch()
+        } else {
+          prefetch_active(FALSE)
         }
       })
     }
@@ -217,10 +215,10 @@ historyServer <- function(id, all_messages) {
         return()
       }
 
-      # İlk yüklemeyi senkron yapmak yerine tamamını kuyruğa al.
-      # Böylece Ana Söyleşi açılışı bloklanmaz, geçmiş verisi arka planda dolar.
+      ensure_history_cache(ids, chats)
+
       current_queue <- pending_prefetch()
-      pending_prefetch(unique(c(ids, current_queue)))
+      pending_prefetch(unique(c(current_queue, ids)))
       schedule_prefetch()
     }, ignoreNULL = FALSE, priority = 1)
 	
