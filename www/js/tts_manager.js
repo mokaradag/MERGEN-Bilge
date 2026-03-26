@@ -95,8 +95,15 @@ $(document).ready(function() {
       audio.onerror = function(e) {
         console.warn("[MERGEN TTS] Ses hatası:", e);
         window.mergenTTS.isPlaying = false;
-        if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+        const kuyrukBos = window.mergenTTS.queue.length === 0;
+        if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
           window.ttsVisualizerState.setIdle();
+        }
+        if (kuyrukBos && window.MusicManager) {
+          window.MusicManager.unduck();
+        }
+        if (kuyrukBos) {
+          try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
         }
         processTTSQueue();
       };
@@ -108,8 +115,15 @@ $(document).ready(function() {
         }).catch(error => {
           console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
           window.mergenTTS.isPlaying = false;
-          if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+          const kuyrukBos = window.mergenTTS.queue.length === 0;
+          if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
             window.ttsVisualizerState.setIdle();
+          }
+          if (kuyrukBos && window.MusicManager) {
+            window.MusicManager.unduck();
+          }
+          if (kuyrukBos) {
+            try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
           }
           processTTSQueue();
         });

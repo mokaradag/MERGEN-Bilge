@@ -108,8 +108,11 @@ $(document).ready(function() {
             followupBox.classList.remove('pending');
         }
 
-        // Son bir kez en alta kaydır (Eğer kullanıcı zaten en alttaysa)
-        if (window.isNearBottom && typeof window.smartScrollToBottom === 'function') {
+        // Son bir kez en alta kaydır (yalnızca kullanıcı zaten alta yakınsa)
+        const kullaniciAltaYakinMi = (typeof window.isNearBottom === 'function')
+            ? window.isNearBottom()
+            : false;
+        if (kullaniciAltaYakinMi && typeof window.smartScrollToBottom === 'function') {
             window.smartScrollToBottom();
         }
     });
