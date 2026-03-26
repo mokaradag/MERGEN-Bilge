@@ -241,18 +241,6 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   observeEvent(saved_chats_data$load_chat_id(), {
     do_load_chat(saved_chats_data$load_chat_id())
   }, ignoreInit = TRUE)
-
-  # Kayıtlı Söyleşiler "Yenile": DB'den yeniden yükle ve modülü tazele
-  observeEvent(input$`saved_chats_module-refresh_saved_chats`, {
-    values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
-    saved_chats_data$refresh()
-  }, ignoreInit = TRUE)
-
-  # Söyleşi Geçmişi "Yenile": aynı kaynaktan yeniden yükleyip geçmişi tetikle
-  observeEvent(input$`history_module-refresh_history`, {
-    values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
-    saved_chats_data$refresh()
-  }, ignoreInit = TRUE)
   
   # -------------------------------------------------------------------------
   # Sohbet Silme ve Temizleme
