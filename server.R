@@ -299,18 +299,7 @@ server <- function(input, output, session) {
   # İndirme ve dosya gösterge çıktılarını başlat (modüler)
   downloadOutputsInit(output, session, session_files, current_user_id)
   
-  historyServer("history_module", all_messages = reactive({
-    all <- values$saved_chats
-    if (length(values$messages) > 0) {
-      all$current_chat <- list(
-        title = "Mevcut Söyleşi",
-        messages = values$messages,
-        timestamp = Sys.time(),
-        message_count = length(values$messages)
-      )
-    }
-    return(all)
-  }))
+  historyServer("history_module", all_messages = reactive(values$saved_chats))
     
   # Mesaj arama bağlantıları
   messageSearchInit(input, session, values, reactive(values$messages))
