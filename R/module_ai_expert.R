@@ -167,13 +167,10 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           "tr-male-1"
         }
 
-        # TTS için metin hazırlama
-        clean_text <- prepare_ai_expert_tts_text(text)
-
-        cat(sprintf("[AI_EXPERT] TTS sentezleniyor (%d karakter)...\n", nchar(clean_text)))
+        cat(sprintf("[AI_EXPERT] TTS sentezleniyor (%d karakter)...\n", nchar(text)))
 
         # ÖNEMLİ: Altyazıyı TTS hazır olana kadar BEKLETEREK senkronize ediyoruz
-        tts_processor$synthesize_speech(clean_text, voice = voice_sel) %...>%
+        tts_processor$synthesize_speech(text, voice = voice_sel) %...>%
           (function(res) {
             # Hâlâ konuşma durumundaysa devam et (durdurulmuş olabilir)
             if (!isTRUE(is_speaking())) return()
