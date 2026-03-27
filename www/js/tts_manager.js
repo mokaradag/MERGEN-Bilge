@@ -108,25 +108,40 @@ $(document).ready(function() {
         processTTSQueue();
       };
 
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          console.log("[MERGEN TTS] Parça oynatılıyor", item.index);
-        }).catch(error => {
-          console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
-          window.mergenTTS.isPlaying = false;
-          const kuyrukBos = window.mergenTTS.queue.length === 0;
-          if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-            window.ttsVisualizerState.setIdle();
-          }
-          if (kuyrukBos && window.MusicManager) {
-            window.MusicManager.unduck();
-          }
-          if (kuyrukBos) {
-            try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
-          }
-          processTTSQueue();
-        });
+      let playTriggered = false;
+      const startPlayback = function() {
+        if (playTriggered) return;
+        playTriggered = true;
+
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            console.log("[MERGEN TTS] Parça oynatılıyor", item.index);
+          }).catch(error => {
+            console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
+            window.mergenTTS.isPlaying = false;
+            const kuyrukBos = window.mergenTTS.queue.length === 0;
+            if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+              window.ttsVisualizerState.setIdle();
+            }
+            if (kuyrukBos && window.MusicManager) {
+              window.MusicManager.unduck();
+            }
+            if (kuyrukBos) {
+              try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
+            }
+            processTTSQueue();
+          });
+        }
+      };
+
+      if (audio.readyState >= 2) {
+        startPlayback();
+      } else {
+        audio.addEventListener('loadeddata', startPlayback, { once: true });
+        audio.addEventListener('canplaythrough', startPlayback, { once: true });
+        setTimeout(startPlayback, 1200);
+        try { audio.load(); } catch(e) {}
       }
     } catch (e) {
       console.error("[MERGEN TTS] İstisna:", e);

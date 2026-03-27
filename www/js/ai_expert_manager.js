@@ -279,13 +279,28 @@ const AIExpertManager = {
       self._onAudioEnded();
     }, { once: true });
 
-    var playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(function(err) {
-        console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
-        // Ses oynatılamazsa süre tahminiyle devam et
-        self._scheduleHide(self._estimateReadTime(self.state.currentText));
-      });
+    var playTriggered = false;
+    var startPlayback = function() {
+      if (playTriggered) return;
+      playTriggered = true;
+
+      var playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(function(err) {
+          console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
+          // Ses oynatılamazsa süre tahminiyle devam et
+          self._scheduleHide(self._estimateReadTime(self.state.currentText));
+        });
+      }
+    };
+
+    if (audio.readyState >= 2) {
+      startPlayback();
+    } else {
+      audio.addEventListener('loadeddata', startPlayback, { once: true });
+      audio.addEventListener('canplaythrough', startPlayback, { once: true });
+      setTimeout(startPlayback, 1200);
+      try { audio.load(); } catch(e) {}
     }
   },
 
