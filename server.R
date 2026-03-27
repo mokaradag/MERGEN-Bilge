@@ -95,6 +95,16 @@ server <- function(input, output, session) {
     }, ignoreInit = TRUE, once = TRUE)
   }
 
+  # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
+  # SSO akışında başlangıçta 0L gelebilir; doğrulama tamamlanınca
+  # session$userData$user_id gerçek değeri taşır.
+  resolve_current_user_id <- function() {
+    session_uid <- session$userData$user_id %||% NULL
+    uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+    if (is.na(uid)) uid <- 0L
+    uid
+  }
+
   # API anahtarı modülünü bağla
   api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
 
@@ -166,8 +176,12 @@ server <- function(input, output, session) {
   
   init_docx_preview_js(session)
   
-  # Uygulama başladığında mevcut geri bildirimleri yükle
-  initial_feedback <- load_feedback_from_db(current_user_id)
+  # SSO akışında gerçek kullanıcı kimliği başlangıçta hazır olmayabilir.
+  # Bu yüzden ilk değerleri boş başlatıp kimlik doğrulama tamamlanınca yükle.
+  initial_feedback <- list(
+    liked = character(0),
+    disliked = character(0)
+  )
   
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
@@ -187,6 +201,28 @@ server <- function(input, output, session) {
     )
 
     session$userData$welcome_screen_attached <- FALSE
+
+    # Geri bildirimleri gerçek kullanıcı kimliği ile yeniden yükle.
+    sync_feedback_from_db <- function() {
+      effective_user_id <- resolve_current_user_id()
+      if (effective_user_id <= 0) {
+        return(invisible(NULL))
+      }
+
+      all_feedback <- load_feedback_from_db(effective_user_id)
+      values$liked_messages <- all_feedback$liked
+      values$disliked_messages <- all_feedback$disliked
+      invisible(NULL)
+    }
+
+    if (isTRUE(SSO_ENABLED)) {
+      observeEvent(sso_state$authenticated, {
+        req(isTRUE(sso_state$authenticated), isTRUE(session$userData$auth_initialized))
+        sync_feedback_from_db()
+      }, ignoreInit = TRUE, once = TRUE)
+    } else {
+      sync_feedback_from_db()
+    }
         
     # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
     chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name)
@@ -311,9 +347,11 @@ server <- function(input, output, session) {
  
     add_message <- function(content, type = "user", html = NULL, followups = NULL,
                             audio_src = NULL, audio_voice = NULL) {
+      effective_user_id <- resolve_current_user_id()
+
       chat_add_message(
             session, values, settings_data, output,
-            content, type, html, current_user_id,
+            content, type, html, effective_user_id,
             followups = followups,
             audio_src = audio_src,
             audio_voice = audio_voice

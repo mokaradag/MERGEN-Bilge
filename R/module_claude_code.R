@@ -262,6 +262,14 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
+    resolve_current_user_id <- function() {
+      session_uid <- session$userData$user_id %||% NULL
+      uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+      if (is.na(uid)) uid <- 0L
+      uid
+    }
+
     # Reaktif değerler
     rv <- reactiveValues(
       is_running = FALSE,
@@ -630,9 +638,44 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         return()
       }
 
-      # Çalışma dizini yoksa geçici alan kullan
+      # SSO akışında kimlik doğrulama tamamlanmadan komut çalıştırma.
+      if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
+        rv$is_running <- FALSE
+
+        session$sendCustomMessage(
+          type = "cc-add-message",
+          message = list(
+            target = ns("output_area"),
+            type = "error",
+            content = "Kimlik doğrulama tamamlanmadan komut çalıştırılamaz.",
+            timestamp = format(Sys.time(), "%H:%M:%S"),
+            welcomeId = ns("welcome_screen")
+          )
+        )
+        return()
+      }
+
+      # Çalışma dizini yoksa gerçek kullanıcı kimliği ile kullanıcı çalışma alanını kullan.
       if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
-        calisma_dizini <- get_user_workspace(current_user_id)
+        effective_user_id <- resolve_current_user_id()
+
+        if (effective_user_id > 0) {
+          calisma_dizini <- get_user_workspace(effective_user_id)
+        } else {
+          rv$is_running <- FALSE
+
+          session$sendCustomMessage(
+            type = "cc-add-message",
+            message = list(
+              target = ns("output_area"),
+              type = "error",
+              content = "Kullanıcı çalışma alanı oluşturulamadı. Lütfen sayfayı yenileyin.",
+              timestamp = format(Sys.time(), "%H:%M:%S"),
+              welcomeId = ns("welcome_screen")
+            )
+          )
+          return()
+        }
       }
 
       # Karakter bilgisini al

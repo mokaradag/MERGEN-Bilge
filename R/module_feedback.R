@@ -64,6 +64,14 @@ feedbackServer <- function(id, current_user_id) {
     current_message_id <- reactiveVal(NULL)
     current_feedback_type <- reactiveVal(NULL)
     selected_tags <- reactiveVal(character(0))
+
+    # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
+    resolve_current_user_id <- function() {
+      session_uid <- session$userData$user_id %||% NULL
+      uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+      if (is.na(uid)) uid <- 0L
+      uid
+    }
     
     # Hızlı seçim etiketleri
 	like_tags <- c("Açık ve net", "Detaylı", "Faydalı", "Hızlı yanıt", "Profesyonel", "Doğru Bilgi", "Diğer")
@@ -137,8 +145,10 @@ feedbackServer <- function(id, current_user_id) {
       comment <- trimws(input$feedback_comment %||% "")
       
       tryCatch({
+        effective_user_id <- resolve_current_user_id()
+
         save_feedback_to_db_extended(
-          user_id = current_user_id,
+          user_id = effective_user_id,
           message_id = current_message_id(),
           feedback_type = current_feedback_type(),
           tags = if (nchar(tags_str) > 0) tags_str else NULL,

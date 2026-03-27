@@ -9,6 +9,14 @@ chatActionsInit <- function(input, session, values,
                             feedback_modal = NULL) {
   message_to_edit_id <- shiny::reactiveVal(NULL)
 
+  # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
+  resolve_current_user_id <- function() {
+    session_uid <- session$userData$user_id %||% NULL
+    uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+    if (is.na(uid)) uid <- 0L
+    uid
+  }
+
   # Optional: prevent accidental double-handling of the same click within 250ms
   .last_feedback <- shiny::reactiveVal(list(kind = NULL, id = NULL, at = 0))
   .is_recent_duplicate <- function(kind, id, window = 0.25) {
@@ -31,8 +39,9 @@ chatActionsInit <- function(input, session, values,
     if (isTRUE(!is.null(actual$db_id)) && isTRUE(!is.na(actual$db_id))) {
       db_id <- as.integer(actual$db_id)
       if (db_id %in% as.integer(values$liked_messages)) {
+        effective_user_id <- resolve_current_user_id()
         values$liked_messages <- setdiff(values$liked_messages, as.character(db_id))
-        remove_feedback_from_db(current_user_id, db_id)
+        remove_feedback_from_db(effective_user_id, db_id)
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_like"))
         showToast(session, "Beğeni kaldırıldı.", "info")
       } else {
@@ -63,8 +72,9 @@ chatActionsInit <- function(input, session, values,
     if (isTRUE(!is.null(actual$db_id)) && isTRUE(!is.na(actual$db_id))) {
       db_id <- as.integer(actual$db_id)
       if (db_id %in% as.integer(values$disliked_messages)) {
+        effective_user_id <- resolve_current_user_id()
         values$disliked_messages <- setdiff(values$disliked_messages, as.character(db_id))
-        remove_feedback_from_db(current_user_id, db_id)
+        remove_feedback_from_db(effective_user_id, db_id)
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_dislike"))
         showToast(session, "Geri bildirim kaldırıldı.", "info")
       } else {

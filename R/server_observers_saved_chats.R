@@ -19,6 +19,14 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   
   # Son silinen sohbet ID'sini takip et (silme sonrası yanlış yüklemeyi engellemek için)
   last_deleted_chat_id <- reactiveVal(NULL)
+
+  # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
+  resolve_current_user_id <- function() {
+    session_uid <- session$userData$user_id %||% NULL
+    uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+    if (is.na(uid)) uid <- 0L
+    uid
+  }
   
   # -------------------------------------------------------------------------
   # Ortak Sohbet Yükleme Fonksiyonu
@@ -110,7 +118,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
       settings_data$user_config <- session$userData$user_config
     }
-    all_feedback <- load_feedback_from_db(current_user_id)
+	
+    effective_user_id <- resolve_current_user_id()
+    all_feedback <- load_feedback_from_db(effective_user_id)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
     values$current_chat_id <- chat_id
@@ -284,9 +294,11 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # Mevcut sohbet mi siliniyor kontrol et
     current_chat_deleted <- identical(as.character(values$current_chat_id), as.character(chat_id))
     
-    delete_chat_from_db(chat_id, current_user_id)
+    effective_user_id <- resolve_current_user_id()
+
+    delete_chat_from_db(chat_id, effective_user_id)
     
-    values$saved_chats <- load_chats_from_db(current_user_id, include_messages = FALSE)
+    values$saved_chats <- load_chats_from_db(effective_user_id, include_messages = FALSE)
     saved_chats_data$refresh()
     
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
@@ -351,7 +363,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   # Tüm sohbetleri temizleme observer'ı
   observeEvent(saved_chats_data$clear_all_chats_trigger(), {
     if (saved_chats_data$clear_all_chats_trigger() > 0) {
-      clear_all_chats_from_db(current_user_id)
+      effective_user_id <- resolve_current_user_id()
+
+      clear_all_chats_from_db(effective_user_id)
       values$saved_chats <- list()
       saved_chats_data$refresh()
       showToast(session, "Tüm söyleşiler temizlendi.", "warning")
