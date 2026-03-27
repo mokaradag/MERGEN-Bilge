@@ -67,8 +67,12 @@ ttsProcessingServer <- function(id) {
       cleaned <- gsub("\\n>\\s*", "\n", cleaned, perl = TRUE)  # Alıntı işaretleri (ara satır)
       cleaned <- gsub("^\\s*[-]\\s+", "", cleaned, perl = TRUE)  # Liste işaretleri (tire, satır başı)
       cleaned <- gsub("\\n\\s*[-]\\s+", "\n", cleaned, perl = TRUE)  # Liste işaretleri (tire, ara satır)
-      # Noktalama sonrası boşluk ekle (karakterin yutulmasını önler)
-      cleaned <- gsub("([.!?,:;])([[:alpha:]])", "\\1 \\2", cleaned, perl = TRUE)
+      # Tırnak karakterlerini sadeleştir (akışı bozup ilk harfi yutabilen durumları azaltır)
+      cleaned <- gsub("[“”«»]", "\"", cleaned, perl = TRUE)
+      # Noktalama/tırnak sonrası boşluk ekle (karakterin yutulmasını önler)
+      cleaned <- gsub("([.!?,:;\"'])([[:alpha:]\\p{L}])", "\\1 \\2", cleaned, perl = TRUE)
+      # Açılış tırnağından sonra boşluk bırak: \"Bey\" -> \" Bey\"
+      cleaned <- gsub("([\"'])([[:alpha:]\\p{L}])", "\\1 \\2", cleaned, perl = TRUE)
       # Sayıları Türkçe okunuşlarına dönüştür
       cleaned <- convert_numbers_to_turkish(cleaned)
       # Satır sonlarını ve fazla boşlukları normalleştir
@@ -231,6 +235,9 @@ ttsProcessingServer <- function(id) {
           success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "Seslendirilecek metin boş."
         )))
       }
+      # Bazı TTS motorlarında ilk fonemin kırpılmasını azaltmak için
+      # metnin başına kısa bir duraklama işareti ekle.
+      speech_text <- paste0(". ", speech_text)
 
       # --- ANA SÜREÇ DEĞİŞKENLERİ (Future içine aktarılmadan önce yakalanır) ---
       speech_url   <- build_speech_url()
@@ -281,7 +288,7 @@ ttsProcessingServer <- function(id) {
           model = model_to_use,
           voice = voice_to_use,
           input = speech_text,
-          response_format = "mp3"
+          response_format = "wav"
         )
         
         # Yapılandırma Kurulumu (Gerekiyorsa SSL doğrulaması atlanır)
@@ -319,7 +326,7 @@ ttsProcessingServer <- function(id) {
 
         if (status >= 200 && status < 300) {
           content_type <- httr::headers(resp)[["content-type"]] %||% ""
-          mime_type <- "audio/mpeg"
+          mime_type <- "audio/wav"
           if (nzchar(content_type)) {
             mime_type <- strsplit(content_type, ";", fixed = TRUE)[[1]][1]
           }
