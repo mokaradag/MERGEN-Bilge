@@ -85,9 +85,13 @@ call_local_llm <- function(chat_history, current_settings) {
     model = selected_model,
     messages = messages_payload,
     stream = FALSE,
-    temperature = temp_value,
     max_tokens = max_tokens_val
   )
+
+  # Düşünmeli modeller bazı uçlarda temperature alanını reddedebiliyor
+  if (!grepl("(?i)(think|reason|qwen3\\.5)", selected_model, perl = TRUE)) {
+    body$temperature <- temp_value
+  }
 
   # Yerel uçlarda boş Authorization başlığını GÖNDERME
   hds <- list(`Content-Type` = "application/json")

@@ -387,9 +387,24 @@ sendMessageInit <- function(
       0.4
     }
  
-    # Sistem talimatını ekle
+    # SQL analizinde ikinci system mesajı üretme; mevcut system mesajı ile birleştir
     system_msg <- list(type = "system", content = style_instruction)
-    messages_to_process <- c(list(system_msg), messages_to_process)
+
+    if (identical(tool_family, "sql_analysis") &&
+        length(messages_to_process) > 0 &&
+        identical(
+          tolower(as.character(messages_to_process[[1]]$role %||% messages_to_process[[1]]$type %||% "")),
+          "system"
+        )) {
+
+      mevcut_system_icerik <- as.character(messages_to_process[[1]]$content %||% "")
+      messages_to_process[[1]]$content <- paste0(style_instruction, "\n\n", mevcut_system_icerik)
+      messages_to_process[[1]]$type <- "system"
+      messages_to_process[[1]]$role <- "system"
+
+    } else {
+      messages_to_process <- c(list(system_msg), messages_to_process)
+    }
  
     log_debug("[STYLE] Karakter: {selected_char_id} (sıcaklık: {sprintf('%.2f', temperature_value)})")
  
@@ -701,13 +716,21 @@ sendMessageInit <- function(
     if (is.null(model_selected) || model_selected == "") {
       model_selected <- api_config$local_models[1]
     }
- 
+
+    # Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır
+    is_thinking_model <- grepl("(?i)(think|reason|qwen3\\.5)", model_selected, perl = TRUE)
+    force_non_streaming_sql <- identical(tool_family, "sql_analysis") && is_thinking_model
+
     log_debug("Mesaj gönderiliyor, model: {model_selected}")
- 
+    if (isTRUE(force_non_streaming_sql)) {
+      log_debug("[MONITORING] SQL analizi için düşünmeli model tespit edildi; streaming kapatılıp non-streaming kullanılacak")
+    }
+
     # LLM çağrısı: Streaming veya Non-streaming
     if (isTRUE(current_settings$enable_streaming) &&
         !isTRUE(current_settings$enable_mcp_tools) &&
-        !isTRUE(settings_data$enable_tts_audio)) {
+        !isTRUE(settings_data$enable_tts_audio) &&
+        !isTRUE(force_non_streaming_sql)) {
       # GERÇEK SSE modu
       log_debug("[MONITORING] AI isteği başlatılıyor (GERÇEK SSE modu)")
 
@@ -745,7 +768,8 @@ sendMessageInit <- function(
       handle_true_streaming_mode(true_stream_ctx)
 
     } else if (isTRUE(current_settings$enable_streaming) &&
-               !isTRUE(current_settings$enable_mcp_tools)) {
+               !isTRUE(current_settings$enable_mcp_tools) &&
+               !isTRUE(force_non_streaming_sql)) {
       # TTS açıkken mevcut davranışı koru
       start_time <- Sys.time()
 

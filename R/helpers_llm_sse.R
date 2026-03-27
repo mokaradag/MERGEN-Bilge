@@ -228,9 +228,13 @@ call_local_llm_sse_worker <- function(chat_history,
       model = selected_model,
       messages = messages_payload,
       stream = TRUE,
-      temperature = temp_value,
       max_tokens = max_tokens_val
     )
+
+    # Düşünmeli modeller bazı uçlarda temperature alanını reddedebiliyor
+    if (!grepl("(?i)(think|reason|qwen3\\.5)", selected_model, perl = TRUE)) {
+      body$temperature <- temp_value
+    }
 
     headers <- c("Content-Type" = "application/json")
     if (nzchar(api_key)) {
