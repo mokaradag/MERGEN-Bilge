@@ -1,5 +1,5 @@
 // www/js/bilge_yolac_kopru.js
-// Shiny entegrasyonu: startWelcomeScreen/stopWelcomeScreen/ccUpdateWelcomeTheme globalleri, sekme değişim tespiti
+// Shiny köprüsü: karşılama ekranı başlat/durdur, tema güncelleme, sekme değişim tespiti, Shiny mesaj işleyicileri
 
 (function() {
   "use strict";
@@ -7,40 +7,46 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // Karşılama ekranını başlat
+  // ════════════════════════════════════════════════════════════════════════
+  //  KARŞILAMA EKRANI BAŞLAT
+  // ════════════════════════════════════════════════════════════════════════
+
   function karsilamaBaslat(containerId) {
     var hedefId = containerId || "claude_code_module-welcome_screen";
 
     var container = document.getElementById(hedefId);
     if (!container) return;
 
-    // Container'i aktif yap
+    // Kapsayıcıyı aktif yap
     container.classList.add("cc-welcome-active");
 
-    // Motoru başlat
+    // Motoru başlat (canvas oluşturur, durumu sıfırlar)
     var basarili = BY.motor.init(hedefId);
     if (!basarili) return;
 
-    // Etkileşimi başlat
+    // Motoru çalıştır (oyun döngüsünü başlatır, alt sistemleri tetikler)
+    BY.motor.baslat();
+
+    // Etkileşimi başlat (motor çalıştıktan sonra, canvas hazır olunca)
     if (BY.etkilesim && BY.etkilesim.baslat) {
       BY.etkilesim.baslat();
     }
-
-    // Motoru çalıştır
-    BY.motor.baslat();
   }
 
-  // Karşılama ekranını durdur
+  // ════════════════════════════════════════════════════════════════════════
+  //  KARŞILAMA EKRANI DURDUR
+  // ════════════════════════════════════════════════════════════════════════
+
   function karsilamaDurdur() {
-    // Motoru durdur
+    // Motoru durdur (animasyon döngüsünü iptal eder)
     BY.motor.durdur();
 
-    // Etkileşimi temizle
+    // Etkileşim dinleyicilerini temizle
     if (BY.etkilesim && BY.etkilesim.temizle) {
       BY.etkilesim.temizle();
     }
 
-    // Canvas temizle
+    // Canvas'ı kapsayıcıdan kaldır
     var state = BY.state;
     if (state.canvas && state.canvas.parentElement) {
       state.canvas.parentElement.removeChild(state.canvas);
@@ -49,9 +55,12 @@
     }
   }
 
-  // Tema güncelle
+  // ════════════════════════════════════════════════════════════════════════
+  //  TEMA GÜNCELLEME
+  // ════════════════════════════════════════════════════════════════════════
+
   function temaGuncelle(karakterId, aksanRenk) {
-    // Renk şablonunu güncelle (eğer geçerli bir karakter ID'si verilmişse)
+    // Geçerli bir karakter kimliği verilmişse ilgili renk paletini kullan
     if (karakterId && BY.config.KARAKTER_RENKLERI[karakterId]) {
       BY.state.temaRenk = BY.config.KARAKTER_RENKLERI[karakterId].ana;
     } else if (aksanRenk) {
@@ -59,7 +68,10 @@
     }
   }
 
-  // Global fonksiyonları tanımla (claude_code.js ile uyumluluk)
+  // ════════════════════════════════════════════════════════════════════════
+  //  GLOBAL FONKSİYONLAR (claude_code.js ile uyumluluk)
+  // ════════════════════════════════════════════════════════════════════════
+
   window.ccStartWelcome = function(containerId) {
     karsilamaBaslat(containerId);
   };
@@ -72,10 +84,13 @@
     temaGuncelle(karakterId, aksanRenk);
   };
 
-  // Shiny mesaj işleyicileri
+  // ════════════════════════════════════════════════════════════════════════
+  //  SHINY MESAJ İŞLEYİCİLERİ VE SEKME DEĞİŞİM TESPİTİ
+  // ════════════════════════════════════════════════════════════════════════
+
   if (typeof Shiny !== "undefined") {
 
-    // Karşılama ekranı başlat
+    // Karşılama ekranını başlat
     Shiny.addCustomMessageHandler("cc-init-welcome", function(mesaj) {
       var hedefId = mesaj.containerId || "claude_code_module-welcome_screen";
       setTimeout(function() {
@@ -101,18 +116,18 @@
     // Sekme değişimi dinle
     $(document).on("shiny:inputchanged", function(e) {
       if (e.name === "tabs" && e.value === "claude_code") {
-        // Bilge Yolaç sekmesine geçildi
+        // Claude Code sekmesine geçildi
         setTimeout(function() {
           var container = document.getElementById("claude_code_module-welcome_screen");
           if (container && container.classList.contains("cc-welcome-active")) {
-            // Zaten aktifse motoru kontrol et
+            // Zaten aktifse ama motor durmuşsa yeniden başlat
             if (!BY.state.calisiyor) {
               karsilamaBaslat();
             }
           }
         }, 300);
       } else {
-        // Başka sekmeye geçildi - motoru durakla (bellek tasarrufu)
+        // Başka sekmeye geçildi - motoru duraksat (bellek tasarrufu)
         if (BY.state.calisiyor) {
           BY.motor.durdur();
         }
