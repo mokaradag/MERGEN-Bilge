@@ -255,10 +255,13 @@ ui <- dashboardPage(
     tags$script(src = "js/surum_bilgilendirme.js", defer = "defer"),
     tags$script(src = "js/claude_code.js", defer = "defer"),
     tags$script(src = "js/claude_code_streaming.js", defer = "defer"),
-    # Bilge Yolac karsilama ekrani modulleri (yukleme sirasi onemli)
+    # Bilge Yolaç karşılama ekranı modülleri (yükleme sırası önemli)
     tags$script(src = "js/bilge_yolac_motor.js", defer = "defer"),
-    tags$script(src = "js/bilge_yolac_karakterler.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_fizik.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_seviye.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_dunya.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_karakterler.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_dusmanlar.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_efektler.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_arayuz.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_etkilesim.js", defer = "defer"),

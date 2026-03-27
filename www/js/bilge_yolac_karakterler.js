@@ -316,7 +316,7 @@
 
     if (yon < 0) {
       ctx.translate(cizimX, 0);
-      ctx.scale(-1, 0);
+      ctx.scale(-1, 1);
       ctx.translate(-cizimX, 0);
     }
 
