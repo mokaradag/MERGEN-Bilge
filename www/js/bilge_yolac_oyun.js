@@ -1,5 +1,5 @@
 // www/js/bilge_yolac_oyun.js
-// Ana oyun mantığı: platformer ilerleme, düşman çarpışmaları, seviye tamamlama, skor sistemi, takım yönetimi
+// Ana oyun mantığı: durum yönetimi, takım koordinasyonu, mermi çarpışmaları, seviye ilerleme, boss savaşı, zafer akışı
 
 (function() {
   "use strict";
@@ -7,360 +7,522 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // ── Oyun sabitleri ──────────────────────────────────────────────────────────
-  var TAKIM_HIZI = 1.2;              // Takımın ileri yürüme hızı (piksel/kare)
-  var DUSMAN_ALGILAMA_MESAFESI = 250; // Düşman algılama mesafesi (piksel)
-  var BOSS_ALGILAMA_MESAFESI = 400;   // Boss alanına giriş mesafesi
-  var ZAFER_SURESI = 3000;            // Zafer gösterimi süresi (ms)
-  var MERMI_TAKIM_HASARI = 8;         // Düşman mermisi takım hasarı
-  var TAKIM_VURUŞ_ALANI = 80;         // Takım çarpışma yarıçapı (piksel)
-  var OTOMATIK_SALDIRI_ARALIĞI = 100; // Otomatik saldırı kareleri arası
-  var TAKIM_IYILESME_HIZI = 0.02;     // Her karede iyileşme miktarı
-  var SEVIYE_TAMAMLAMA_BONUSU = 500;  // Seviye tamamlama bonus puanı
+  // ── Dahili durum değişkenleri ────────────────────────────────────────────
+  var takimYurumeHizi = 0.5;        // Takımın otomatik yürüme hızı
+  var sonYetenekZamani = 0;          // Son bireysel yetenek kullanım zamanı
+  var zaferBaslangic = 0;            // Zafer animasyonunun başladığı an
+  var bossOlusturuldu = false;       // Boss düşmanı oluşturuldu mu
+  var oyunBitisSayaci = 0;           // Oyun sonu gecikmesi
 
-  // ── İç durum değişkenleri ───────────────────────────────────────────────────
-  var zaferZamanlayici = 0;
-  var bossOlusturuldu = false;
-  var sonSaldiriKaresi = 0;
-  var takimDurumu = "ilerleme";  // ilerleme | savas | boss | bekleme
-  var oyunBasladi = false;
+  // Zamanlama sabitleri
+  var ZAFER_SURESI = 3000;           // 3 saniye zafer gösterimi
+  var BIREYSEL_YETENEK_ARASI = 6000; // 6 saniyede bir rastgele yetenek
+  var TAKIM_CARPMA_GENISLIK = 80;    // Takım çarpışma alanı yarı genişliği
+  var TAKIM_CARPMA_YUKSEKLIK = 40;   // Takım çarpışma alanı yarı yüksekliği
 
-  // ── Takım ilerleme mantığı ──────────────────────────────────────────────────
-  function takimIlerlemeGuncelle() {
+  // ════════════════════════════════════════════════════════════════════════
+  //  TAKIM MERKEZİ HESAPLAMA
+  // ════════════════════════════════════════════════════════════════════════
+
+  function takimMerkeziHesapla() {
     var state = BY.state;
     var karakterler = state.karakterler;
-    if (karakterler.length === 0) return;
+    if (karakterler.length === 0) return { x: 0, y: state.zeminY };
 
-    // Yakında düşman var mı kontrol et
-    var enYakinDusman = enYakinDusmaniAl();
-    var dusmanYakinda = enYakinDusman && enYakinDusman.mesafe < DUSMAN_ALGILAMA_MESAFESI;
+    var topX = 0;
+    var topY = 0;
+    for (var i = 0; i < karakterler.length; i++) {
+      topX += karakterler[i].x + karakterler[i].genislik / 2;
+      topY += karakterler[i].y + karakterler[i].yukseklik / 2;
+    }
+    return {
+      x: topX / karakterler.length,
+      y: topY / karakterler.length
+    };
+  }
 
-    // Boss alanına yaklaştık mı
-    var cikis = BY.seviye ? BY.seviye.cikisNoktasiAl() : null;
-    var bossSpawn = BY.seviye ? BY.seviye.bossSpawnAl() : null;
-    var takimMerkez = BY.karakterler ? BY.karakterler.takimMerkeziAl() : { x: 0, y: 0 };
+  // ════════════════════════════════════════════════════════════════════════
+  //  BEKLEME DURUMU GÜNCELLEMESİ
+  // ════════════════════════════════════════════════════════════════════════
 
-    // Boss alanına giriş
-    if (bossSpawn && takimMerkez.x > bossSpawn.x - BOSS_ALGILAMA_MESAFESI && !bossOlusturuldu) {
-      state.oyunDurumu = "boss";
-      takimDurumu = "boss";
-      bossOlusturuldu = true;
+  function beklemeGuncelle(zaman) {
+    var state = BY.state;
+    var karakterler = state.karakterler;
 
-      // Boss düşmanını oluştur
-      if (BY.dusmanlar && BY.dusmanlar.bossBaşlat) {
-        BY.dusmanlar.bossBaşlat(bossSpawn);
-      } else if (BY.dusmanlar && BY.dusmanlar.baslat) {
-        // Boss yoksa normal düşman olarak ekle
-        state.dusmanlar.push({
-          tip: "boss",
-          x: bossSpawn.x,
-          y: state.zeminY - 48,
-          hizX: 0, hizY: 0,
-          genislik: 32, yukseklik: 32,
-          can: 300, maxCan: 300,
-          hasar: 15, aktif: true,
-          durum: "patrol",
-          saldiriZamanlayici: 0,
-          animKare: 0, yonX: -1,
-          pikseBoyut: BY.config.PIKSEL_BOYUT
-        });
+    // Karakterler bekleme formasyonunda idle animasyonu
+    for (var i = 0; i < karakterler.length; i++) {
+      var k = karakterler[i];
+      if (k.animasyonDurumu !== "hover") {
+        k.animasyonDurumu = "idle";
       }
+
+      // Hafif sallantı animasyonu
+      var sallanma = Math.sin(zaman * 0.001 + i * 0.7) * 0.3;
+      k.hizX += sallanma * 0.02;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  OYNUYOR DURUMU GÜNCELLEMESİ
+  // ════════════════════════════════════════════════════════════════════════
+
+  function oynuyorGuncelle(zaman) {
+    var state = BY.state;
+    var karakterler = state.karakterler;
+
+    // Takımı sağa doğru otomatik yürüt
+    for (var i = 0; i < karakterler.length; i++) {
+      var k = karakterler[i];
+      // Formasyon pozisyonunu hesapla
+      var formasyonX = takimMerkeziHesapla().x - (karakterler.length - 1) * 20 + i * 40;
+
+      // Hedefe doğru yumuşak hareket
+      k.hedefX = formasyonX + takimYurumeHizi * 50;
+      k.animasyonDurumu = "walk";
+      k.yon = 1; // Sağa bak
+
+      // Otomatik ilerleme kuvveti
+      k.hizX += takimYurumeHizi * 0.05;
+    }
+
+    // Çıkış noktasını kontrol et (seviye sonu)
+    var cikisX = state.dunyaGenislik * 0.85;
+    if (BY.seviye && typeof BY.seviye.cikisNoktasiAl === "function") {
+      var cikis = BY.seviye.cikisNoktasiAl();
+      if (cikis && cikis.x) cikisX = cikis.x;
+    }
+
+    var takimMerkez = takimMerkeziHesapla();
+
+    // Boss alanına ulaştı mı kontrol et (çıkış noktasının %70'i)
+    var bossBaslangicX = cikisX * 0.7;
+    if (takimMerkez.x > bossBaslangicX) {
+      state.oyunDurumu = "boss";
+      bossOlusturuldu = false;
       return;
     }
 
-    // Düşman yakınsa savaş moduna geç
-    if (dusmanYakinda) {
-      takimDurumu = "savas";
-      otomatikSaldiriKontrol();
-    } else {
-      takimDurumu = "ilerleme";
-    }
+    // Mermi çarpışmalarını kontrol et
+    mermiCarpismalariKontrol();
 
-    // İlerleme modundaysa takımı sağa doğru hareket ettir
-    if (takimDurumu === "ilerleme") {
-      for (var i = 0; i < karakterler.length; i++) {
-        var k = karakterler[i];
-        // Her karakter formatında hedef ata (sağa doğru)
-        k.hedefX = takimMerkez.x + TAKIM_HIZI * 30 + i * 40;
-
-        // Platformlara otomatik zıplama: önünde platform var mı?
-        var onundePlatform = platformKontrol(k);
-        if (onundePlatform && (k.zempimdeMi || k.hizY === 0)) {
-          k.hizY = -6;
-        }
-      }
-    }
+    // Periyodik bireysel yetenek kullanımı
+    bireyselYetenekKontrol(zaman);
   }
 
-  // ── Çıkış noktası kontrolü ──────────────────────────────────────────────────
-  function cikisKontrol() {
+  // ════════════════════════════════════════════════════════════════════════
+  //  BOSS DURUMU GÜNCELLEMESİ
+  // ════════════════════════════════════════════════════════════════════════
+
+  function bossGuncelle(zaman) {
     var state = BY.state;
-    var cikis = BY.seviye ? BY.seviye.cikisNoktasiAl() : null;
-    if (!cikis) return;
+    var karakterler = state.karakterler;
 
-    var takimMerkez = BY.karakterler ? BY.karakterler.takimMerkeziAl() : null;
-    if (!takimMerkez) return;
-
-    // Çıkış noktasına ulaşıldı mı?
-    if (takimMerkez.x >= cikis.x) {
-      seviyeTamamla();
+    // Takımı durdur (boss savaşında yerinde kal)
+    for (var i = 0; i < karakterler.length; i++) {
+      var k = karakterler[i];
+      k.animasyonDurumu = "idle";
+      // Formasyonu koru ama ilerleme
+      k.hizX *= 0.9;
     }
-  }
 
-  // ── Boss savaşı kontrolü ────────────────────────────────────────────────────
-  function bossKontrol() {
-    var state = BY.state;
+    // Boss henüz oluşturulmadıysa oluştur
+    if (!bossOlusturuldu) {
+      bossOlustur();
+      bossOlusturuldu = true;
+    }
 
-    // Boss yenildi mi kontrol et
+    // Boss'un ölüp ölmediğini kontrol et
     var bossHayatta = false;
-    for (var i = 0; i < state.dusmanlar.length; i++) {
-      if (state.dusmanlar[i].tip === "boss" && state.dusmanlar[i].aktif && state.dusmanlar[i].can > 0) {
+    var dusmanlar = state.dusmanlar;
+    for (var j = 0; j < dusmanlar.length; j++) {
+      if (dusmanlar[j].tur === "boss" && dusmanlar[j].can > 0) {
         bossHayatta = true;
         break;
       }
     }
 
     if (!bossHayatta && bossOlusturuldu) {
-      // Boss yenildi - zafer!
-      state.oyunDurumu = "zafer";
-      zaferZamanlayici = performance.now();
+      // Boss yenildi - zafer durumuna geç
+      seviyeTamamla();
+      return;
+    }
 
-      // Zafer efektleri
+    // Mermi çarpışmalarını kontrol et
+    mermiCarpismalariKontrol();
+
+    // Periyodik bireysel yetenek kullanımı (boss savaşında daha sık)
+    bireyselYetenekKontrol(zaman, 3000);
+  }
+
+  // Boss düşmanı oluştur
+  function bossOlustur() {
+    var state = BY.state;
+    var takimMerkez = takimMerkeziHesapla();
+
+    // Boss'u takımın sağında oluştur
+    var bossX = takimMerkez.x + 200;
+    var bossY = state.zeminY - 48; // Boss biraz daha büyük
+
+    var bossRenkler = BY.config.DUSMAN_RENKLERI.boss;
+
+    var boss = {
+      tur: "boss",
+      isim: "MUHAFIZ",
+      x: bossX,
+      y: bossY,
+      genislik: 48,
+      yukseklik: 48,
+      hizX: 0,
+      hizY: 0,
+      can: 200,
+      maxCan: 200,
+      hasar: 8,
+      renkler: bossRenkler,
+      animasyonDurumu: "idle",
+      sonSaldiriZamani: 0,
+      saldiriAraligi: 2000 // 2 saniyede bir saldırı
+    };
+
+    state.dusmanlar.push(boss);
+
+    // Boss ortaya çıkış efekti
+    if (BY.efektler) {
+      BY.efektler.patlamaEfektiOlustur(bossX + 24, bossY + 24);
+      BY.efektler.radarDarbesiEkle(bossX + 24, bossY + 24, "#FFD700");
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  ZAFER DURUMU GÜNCELLEMESİ
+  // ════════════════════════════════════════════════════════════════════════
+
+  function zaferGuncelle(zaman) {
+    var state = BY.state;
+    var karakterler = state.karakterler;
+
+    // Zafer zamanını kaydet
+    if (zaferBaslangic === 0) {
+      zaferBaslangic = zaman;
+
+      // Zafer efekti
       if (BY.efektler && BY.efektler.zaferEfektiOlustur) {
         BY.efektler.zaferEfektiOlustur();
       }
     }
 
-    // Boss savaşında da otomatik saldırı
-    otomatikSaldiriKontrol();
+    // Karakterleri zafer animasyonuna al
+    for (var i = 0; i < karakterler.length; i++) {
+      var k = karakterler[i];
+      k.animasyonDurumu = "victory";
+      k.zaferAktif = true;
+
+      // Rastgele zafer zıplaması
+      if (Math.random() > 0.96 && k.hizY === 0) {
+        k.hizY = -4 - Math.random() * 2;
+      }
+    }
+
+    // Zafer süresi doldu mu
+    var gecenSure = zaman - zaferBaslangic;
+    if (gecenSure > ZAFER_SURESI) {
+      // Karakterleri normale döndür
+      for (var j = 0; j < karakterler.length; j++) {
+        karakterler[j].animasyonDurumu = "idle";
+        karakterler[j].zaferAktif = false;
+      }
+
+      // Seviye geçişini başlat
+      zaferBaslangic = 0;
+      seviyeIlerlet();
+    }
   }
 
-  // ── Mermi çarpışma kontrolü ─────────────────────────────────────────────────
-  function mermiCarpismaKontrol() {
+  // ════════════════════════════════════════════════════════════════════════
+  //  MERMİ ÇARPIŞMA KONTROLÜ
+  // ════════════════════════════════════════════════════════════════════════
+
+  function mermiCarpismalariKontrol() {
     var state = BY.state;
     var mermiler = state.mermiler;
-    if (!mermiler) return;
-
-    var takimMerkez = BY.karakterler ? BY.karakterler.takimMerkeziAl() : null;
+    var dusmanlar = state.dusmanlar;
+    var takimMerkez = takimMerkeziHesapla();
 
     for (var i = mermiler.length - 1; i >= 0; i--) {
       var m = mermiler[i];
-      if (!m) continue;
 
       if (m.sahip === "takim") {
-        // Takım mermisi → düşmanlara çarpma
-        for (var d = 0; d < state.dusmanlar.length; d++) {
-          var dusman = state.dusmanlar[d];
-          if (!dusman || !dusman.aktif || dusman.can <= 0) continue;
+        // Takım mermisi → düşmanlara çarpma kontrolü
+        for (var j = 0; j < dusmanlar.length; j++) {
+          var d = dusmanlar[j];
+          if (d.can <= 0) continue;
 
-          // Mermi düşmana değdi mi?
-          if (BY.fizik && BY.fizik.kutucukCarpisma) {
-            var carpisti = BY.fizik.kutucukCarpisma(
-              { x: m.x, y: m.y, genislik: 4, yukseklik: 4 },
-              dusman
-            );
-            if (carpisti) {
-              // Düşmana hasar ver
-              if (BY.dusmanlar && BY.dusmanlar.hasarVer) {
-                BY.dusmanlar.hasarVer(dusman, m.hasar || 10);
-              } else {
-                dusman.can -= (m.hasar || 10);
-              }
-              // Mermii kaldır
-              mermiler.splice(i, 1);
-              break;
+          // Basit kutucuk çarpışma
+          var carpisti = kutuCarpismasi(
+            m.x, m.y, m.genislik || 4, m.yukseklik || 4,
+            d.x, d.y, d.genislik, d.yukseklik
+          );
+
+          if (carpisti) {
+            // Düşmana hasar ver
+            var hasar = m.hasar || 10;
+            d.can -= hasar;
+
+            // Hasar efekti
+            if (BY.efektler) {
+              BY.efektler.hasarEfektiOlustur(
+                d.x + d.genislik / 2,
+                d.y + d.yukseklik / 2,
+                "#FF4444"
+              );
             }
+
+            // Düşman öldü mü
+            if (d.can <= 0) {
+              // Patlama efekti
+              if (BY.efektler) {
+                BY.efektler.patlamaEfektiOlustur(
+                  d.x + d.genislik / 2,
+                  d.y + d.yukseklik / 2
+                );
+              }
+
+              // Skor ekle
+              var skorBonus = d.tur === "boss" ? 500 : 100;
+              skoreEkle(skorBonus);
+            }
+
+            // Mermiyi kaldır
+            mermiler.splice(i, 1);
+            break;
           }
         }
-      } else if (m.sahip === "dusman" && takimMerkez) {
-        // Düşman mermisi → takıma çarpma
-        var mesafeX = Math.abs(m.x - takimMerkez.x);
-        var mesafeY = Math.abs(m.y - takimMerkez.y);
+      } else if (m.sahip === "dusman") {
+        // Düşman mermisi → takım alanına çarpma kontrolü
+        var takimCarpisti = kutuCarpismasi(
+          m.x, m.y, m.genislik || 4, m.yukseklik || 4,
+          takimMerkez.x - TAKIM_CARPMA_GENISLIK,
+          takimMerkez.y - TAKIM_CARPMA_YUKSEKLIK,
+          TAKIM_CARPMA_GENISLIK * 2,
+          TAKIM_CARPMA_YUKSEKLIK * 2
+        );
 
-        if (mesafeX < TAKIM_VURUŞ_ALANI && mesafeY < TAKIM_VURUŞ_ALANI * 0.6) {
+        if (takimCarpisti) {
           // Takıma hasar ver
-          if (BY.karakterler && BY.karakterler.takimHasarAl) {
-            BY.karakterler.takimHasarAl(m.hasar || MERMI_TAKIM_HASARI);
-          } else {
-            state.takimCan = Math.max(0, state.takimCan - (m.hasar || MERMI_TAKIM_HASARI));
+          var takimHasari = m.hasar || 5;
+          state.takimCan = Math.max(0, state.takimCan - takimHasari);
+
+          // Hasar efekti
+          if (BY.efektler) {
+            BY.efektler.hasarEfektiOlustur(
+              takimMerkez.x,
+              takimMerkez.y,
+              "#FF8800"
+            );
           }
+
+          // Mermiyi kaldır
           mermiler.splice(i, 1);
+
+          // Oyun bitti mi kontrol
+          if (state.takimCan <= 0) {
+            oyunuSifirla();
+            return;
+          }
         }
       }
     }
   }
 
-  // ── Otomatik saldırı sistemi ────────────────────────────────────────────────
-  function otomatikSaldiriKontrol() {
+  // Basit kutucuk çarpışma kontrolü
+  function kutuCarpismasi(ax, ay, ag, ayu, bx, by, bg, byu) {
+    return ax < bx + bg &&
+           ax + ag > bx &&
+           ay < by + byu &&
+           ay + ayu > by;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  PERİYODİK BİREYSEL YETENEK KULLANIMI
+  // ════════════════════════════════════════════════════════════════════════
+
+  function bireyselYetenekKontrol(zaman, aralik) {
+    aralik = aralik || BIREYSEL_YETENEK_ARASI;
+    if (zaman - sonYetenekZamani < aralik) return;
+    sonYetenekZamani = zaman;
+
     var state = BY.state;
-    if (state.kare - sonSaldiriKaresi < OTOMATIK_SALDIRI_ARALIĞI) return;
-
-    var enYakin = enYakinDusmaniAl();
-    if (!enYakin) return;
-
-    sonSaldiriKaresi = state.kare;
-
-    // Rastgele bir karakter saldırı yapsın
     var karakterler = state.karakterler;
     if (karakterler.length === 0) return;
-    var saldiran = karakterler[Math.floor(Math.random() * karakterler.length)];
 
-    if (BY.karakterler && BY.karakterler.yetenekCalistir) {
-      BY.karakterler.yetenekCalistir(saldiran);
+    // Rastgele bir karakter seç ve yetenek kullandır
+    var rastgeleIndex = Math.floor(Math.random() * karakterler.length);
+    var karakter = karakterler[rastgeleIndex];
+
+    if (!karakter.yetenekAktif && BY.karakterler && BY.karakterler.yetenekCalistir) {
+      BY.karakterler.yetenekCalistir(karakter);
     }
   }
 
-  // ── En yakın düşmanı bul ────────────────────────────────────────────────────
-  function enYakinDusmaniAl() {
-    var state = BY.state;
-    var takimMerkez = BY.karakterler ? BY.karakterler.takimMerkeziAl() : null;
-    if (!takimMerkez) return null;
+  // ════════════════════════════════════════════════════════════════════════
+  //  SEVİYE TAMAMLAMA VE İLERLEME
+  // ════════════════════════════════════════════════════════════════════════
 
-    var enYakin = null;
-    var enYakinMesafe = Infinity;
-
-    for (var i = 0; i < state.dusmanlar.length; i++) {
-      var d = state.dusmanlar[i];
-      if (!d || !d.aktif || d.can <= 0) continue;
-
-      var mesafe = Math.abs(d.x - takimMerkez.x);
-      if (mesafe < enYakinMesafe) {
-        enYakinMesafe = mesafe;
-        enYakin = { dusman: d, mesafe: mesafe };
-      }
-    }
-
-    return enYakin;
-  }
-
-  // ── Önündeki platform kontrolü ──────────────────────────────────────────────
-  function platformKontrol(karakter) {
-    var state = BY.state;
-    var platformlar = state.platformlar;
-    if (!platformlar) return false;
-
-    for (var i = 0; i < platformlar.length; i++) {
-      var p = platformlar[i];
-      // Karakterin biraz ilerisinde ve üstünde bir platform var mı?
-      var ilerideMi = p.x > karakter.x && p.x < karakter.x + 120;
-      var ustundeMi = p.y < karakter.y && p.y > karakter.y - 80;
-      if (ilerideMi && ustundeMi) return true;
-    }
-    return false;
-  }
-
-  // ── Oyun bitişi kontrolü ────────────────────────────────────────────────────
-  function oyunBitisKontrol() {
-    var state = BY.state;
-    if (state.takimCan <= 0) {
-      // Takım yenildi - seviyeyi yeniden yükle
-      state.takimCan = state.takimMaxCan;
-      state.oyunDurumu = "oynuyor";
-      bossOlusturuldu = false;
-      takimDurumu = "ilerleme";
-
-      // Kamerayı ve karakterleri sıfırla
-      state.kameraX = 0;
-      for (var i = 0; i < state.karakterler.length; i++) {
-        state.karakterler[i].x = 60 + i * 40;
-        state.karakterler[i].y = state.zeminY - 48;
-      }
-
-      // Seviyeyi yeniden yükle
-      if (BY.seviye && BY.seviye.yukle) {
-        BY.seviye.yukle(state.mevcutSeviye);
-      }
-    }
-  }
-
-  // ── Yavaş iyileşme ─────────────────────────────────────────────────────────
-  function iyilesmeGuncelle() {
-    var state = BY.state;
-    if (takimDurumu === "ilerleme" && state.takimCan < state.takimMaxCan) {
-      state.takimCan = Math.min(state.takimMaxCan, state.takimCan + TAKIM_IYILESME_HIZI);
-    }
-  }
-
-  // ── Seviye tamamlama ────────────────────────────────────────────────────────
+  // Seviyeyi tamamla: yıldız derecesi hesapla, bonus skor ekle
   function seviyeTamamla() {
     var state = BY.state;
 
-    // Yıldız puanı hesapla
-    var canYuzdesi = state.takimCan / state.takimMaxCan;
-    var yildiz = canYuzdesi > 0.8 ? 3 : (canYuzdesi > 0.5 ? 2 : 1);
+    // Yıldız derecelendirmesi (kalan sağlığa göre)
+    var saglikOrani = state.takimCan / state.takimMaxCan;
+    var yildizSayisi;
+    if (saglikOrani > 0.8) {
+      yildizSayisi = 3;
+    } else if (saglikOrani > 0.5) {
+      yildizSayisi = 2;
+    } else {
+      yildizSayisi = 1;
+    }
 
-    // Bonus puan
-    state.skor += SEVIYE_TAMAMLAMA_BONUSU * yildiz;
+    // Bonus skor: yıldız başına 200 puan
+    skoreEkle(yildizSayisi * 200);
 
     // Zafer durumuna geç
     state.oyunDurumu = "zafer";
-    zaferZamanlayici = performance.now();
-    state._zaferYildiz = yildiz;
-
-    // Zafer efektleri
-    if (BY.efektler && BY.efektler.zaferEfektiOlustur) {
-      BY.efektler.zaferEfektiOlustur();
-    }
+    zaferBaslangic = 0;
   }
 
-  // ── Zafer sonrası geçiş ────────────────────────────────────────────────────
-  function zaferSonrasiKontrol(zaman) {
-    if (zaman - zaferZamanlayici > ZAFER_SURESI) {
-      var state = BY.state;
-
-      // Seviye geçişi başlat
-      state.gecisAktif = true;
-      state.gecisBaslangic = zaman;
-      state.gecisIlerleme = 0;
-      state._gecisYuklendi = false;
-      state.oyunDurumu = "gecis";
-
-      // İç durumu sıfırla
-      bossOlusturuldu = false;
-      takimDurumu = "ilerleme";
-      sonSaldiriKaresi = 0;
-    }
-  }
-
-  // ── Bekleme durumunda idle animasyon ────────────────────────────────────────
-  function beklemeGuncelle() {
+  // Sonraki seviyeye ilerle
+  function seviyeIlerlet() {
     var state = BY.state;
-    var karakterler = state.karakterler;
-    if (karakterler.length === 0) return;
 
-    // Karakterler ekranın ortasında hafifçe hareket etsin
-    var merkez = state.canvasGenislik * 0.4;
-    for (var i = 0; i < karakterler.length; i++) {
-      var k = karakterler[i];
-      k.hedefX = merkez + i * 45 + Math.sin(performance.now() * 0.001 + i) * 20;
-      k.animasyonDurumu = "idle";
+    // Sonraki seviye numarası
+    var sonrakiSeviye = (state.mevcutSeviye + 1) % 5;
+
+    // Seviye geçişini motor üzerinden başlat
+    if (BY.motor && typeof BY.motor.gecisBaslat === "function") {
+      BY.motor.gecisBaslat();
+    } else {
+      // Motor geçişi yoksa doğrudan yükle
+      state.mevcutSeviye = sonrakiSeviye;
+      state.oyunDurumu = "oynuyor";
+      seviyeSifirla();
     }
   }
 
-  // ── Dış arayüz ─────────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════
+  //  SKOR YÖNETİMİ
+  // ════════════════════════════════════════════════════════════════════════
+
+  function skoreEkle(miktar) {
+    var state = BY.state;
+    state.skor += miktar;
+
+    // Yüzen skor metni efekti (opsiyonel)
+    if (BY.efektler && BY.efektler.parcacikOlustur) {
+      var takimMerkez = takimMerkeziHesapla();
+      BY.efektler.parcacikOlustur(
+        takimMerkez.x,
+        takimMerkez.y - 30,
+        "#FFD700",
+        "yukari",
+        3
+      );
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  OYUN SIFIRLAMA
+  // ════════════════════════════════════════════════════════════════════════
+
+  // Takım canı bittiğinde aynı seviyeyi yeniden yükle
+  function oyunuSifirla() {
+    var state = BY.state;
+
+    // Sağlığı sıfırla
+    state.takimCan = state.takimMaxCan;
+
+    // Mermileri ve düşmanları temizle
+    state.mermiler = [];
+    state.dusmanlar = [];
+
+    // Kamerayı sıfırla
+    state.kameraX = 0;
+
+    // Karakterleri başlangıç pozisyonuna al
+    var karakterler = state.karakterler;
+    for (var i = 0; i < karakterler.length; i++) {
+      karakterler[i].x = 60 + i * 40;
+      karakterler[i].hizX = 0;
+      karakterler[i].hizY = 0;
+      karakterler[i].animasyonDurumu = "idle";
+    }
+
+    // Seviyeyi yeniden yükle
+    if (BY.seviye && typeof BY.seviye.yukle === "function") {
+      BY.seviye.yukle(state.mevcutSeviye);
+    }
+
+    // Oyun durumunu oynuyor'a geri al
+    state.oyunDurumu = "oynuyor";
+    bossOlusturuldu = false;
+  }
+
+  // Seviye verilerini sıfırla (yeni seviyeye geçerken)
+  function seviyeSifirla() {
+    var state = BY.state;
+
+    state.mermiler = [];
+    state.dusmanlar = [];
+    state.kameraX = 0;
+    bossOlusturuldu = false;
+
+    // Karakterleri başlangıç noktasına al
+    var karakterler = state.karakterler;
+    for (var i = 0; i < karakterler.length; i++) {
+      karakterler[i].x = 60 + i * 40;
+      karakterler[i].hizX = 0;
+      karakterler[i].hizY = 0;
+    }
+
+    // Seviye verilerini yükle
+    if (BY.seviye && typeof BY.seviye.yukle === "function") {
+      BY.seviye.yukle(state.mevcutSeviye);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  DIŞ ARAYÜZ
+  // ════════════════════════════════════════════════════════════════════════
+
   BY.oyun = {
     baslat: function() {
       var state = BY.state;
-      takimDurumu = "ilerleme";
-      zaferZamanlayici = 0;
-      bossOlusturuldu = false;
-      sonSaldiriKaresi = 0;
-      oyunBasladi = true;
 
-      // Skor ve can sıfırlama (sadece ilk başlangıçta)
-      if (state.skor === 0) {
-        state.takimCan = state.takimMaxCan;
-      }
+      // Başlangıç değerlerini ayarla
+      state.skor = 0;
+      state.takimCan = state.takimMaxCan;
+      state.mermiler = [];
+      state.dusmanlar = [];
+      state.kameraX = 0;
+      state.oyunDurumu = "oynuyor";
+
+      sonYetenekZamani = performance.now();
+      zaferBaslangic = 0;
+      bossOlusturuldu = false;
+      oyunBitisSayaci = 0;
 
       // İlk seviyeyi yükle
-      if (BY.seviye && BY.seviye.yukle) {
+      if (BY.seviye && typeof BY.seviye.yukle === "function") {
         BY.seviye.yukle(state.mevcutSeviye);
       }
 
       // Karakterleri başlangıç pozisyonuna yerleştir
-      state.kameraX = 0;
-      for (var i = 0; i < state.karakterler.length; i++) {
-        state.karakterler[i].x = 60 + i * 40;
+      var karakterler = state.karakterler;
+      for (var i = 0; i < karakterler.length; i++) {
+        karakterler[i].x = 60 + i * 40;
+        karakterler[i].hizX = 0;
+        karakterler[i].hizY = 0;
+        karakterler[i].animasyonDurumu = "idle";
+        karakterler[i].yon = 1;
       }
     },
 
@@ -369,41 +531,33 @@
 
       switch (state.oyunDurumu) {
         case "bekleme":
-          beklemeGuncelle();
+          beklemeGuncelle(zaman);
           break;
 
         case "oynuyor":
-          takimIlerlemeGuncelle();
-          mermiCarpismaKontrol();
-          iyilesmeGuncelle();
-          oyunBitisKontrol();
-          cikisKontrol();
+          oynuyorGuncelle(zaman);
           break;
 
         case "boss":
-          bossKontrol();
-          mermiCarpismaKontrol();
-          oyunBitisKontrol();
+          bossGuncelle(zaman);
           break;
 
         case "zafer":
-          zaferSonrasiKontrol(zaman);
+          zaferGuncelle(zaman);
           break;
 
         case "gecis":
-          // Motor.guncelle tarafından yönetilir
+          // Geçiş motor.js tarafından yönetilir, burada bekliyoruz
           break;
       }
     },
 
-    skoreEkle: function(miktar) {
-      BY.state.skor += miktar;
-    },
+    skoreEkle: skoreEkle,
 
     seviyeTamamla: seviyeTamamla,
 
     getTakimDurumu: function() {
-      return takimDurumu;
+      return BY.state.oyunDurumu;
     }
   };
 
