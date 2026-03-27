@@ -100,8 +100,6 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
   cat(sprintf("[AI_EXPERT] Konuşma metni oluşturuldu (%d karakter)\n", nchar(ai_text)))
   return(ai_text)
 }
-
-
 # --- Kullanıcının tam adını DB'den al ---
 # Worker-safe: Kendi bağlantısını açar.
 # MB_Users tablosundaki KaynakAdi sütunundan kullanıcı adını alır.
@@ -466,59 +464,4 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
   )
 
   return(prompt)
-}
-
-
-# --- TTS için metin hazırlama (AI Uzman konuşması için) ---
-# server_tts_handlers.R'deki prepare_tts_text ile benzer ama daha basit.
-# Özel karakterleri (long-dash, unicode sembolleri vb.) temizleyerek
-# TTS motorunun takılmasını önler.
-#
-# @param text Ham metin
-# @return TTS için temizlenmiş metin
-prepare_ai_expert_tts_text <- function(text) {
-  if (is.null(text) || !nzchar(text)) return("")
-
-  # Markdown işaretlerini kaldır
-  clean <- gsub("\\*+", "", text)
-  clean <- gsub("#+\\s*", "", clean)
-  clean <- gsub("`+", "", clean)
-  clean <- gsub("\\[([^]]+)\\]\\([^)]+\\)", "\\1", clean)
-
-  # Uzun tire ve özel tire karakterlerini normal tireye dönüştür
-  clean <- gsub("\u2013", "-", clean)  # en dash
-  clean <- gsub("\u2014", "-", clean)  # em dash
-  clean <- gsub("\u2015", "-", clean)  # horizontal bar
-  clean <- gsub("\u2012", "-", clean)  # figure dash
-
-  # Özel tırnak işaretlerini düz tırnaklara dönüştür
-
-  clean <- gsub("[\u201C\u201D\u201E\u201F]", '"', clean)  # akıllı çift tırnaklar
-  clean <- gsub("[\u2018\u2019\u201A\u201B]", "'", clean)  # akıllı tek tırnaklar
-
-  # Üç nokta ve diğer özel noktalama
-  clean <- gsub("\u2026", "...", clean)  # ellipsis
-  clean <- gsub("\u2022", ",", clean)    # bullet
-  clean <- gsub("\u00B7", ",", clean)    # middle dot
-
-  # Ok ve diğer sembolleri kaldır
-  clean <- gsub("[\u2190-\u21FF]", " ", clean)  # oklar
-  clean <- gsub("[\u2500-\u257F]", " ", clean)  # kutu çizim karakterleri
-  clean <- gsub("[\u25A0-\u25FF]", " ", clean)  # geometrik şekiller
-
-  # Diğer yaygın sorunlu Unicode karakterleri
-  clean <- gsub("\u00A0", " ", clean)    # no-break space
-  clean <- gsub("\u200B", "", clean)     # zero-width space
-  clean <- gsub("\u200C", "", clean)     # zero-width non-joiner
-  clean <- gsub("\u200D", "", clean)     # zero-width joiner
-  clean <- gsub("\uFEFF", "", clean)     # BOM
-
-  # Kalan kontrol karakterlerini temizle (tab ve newline hariç)
-  clean <- gsub("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "", clean)
-
-  # Fazla boşluğu temizle
-  clean <- gsub("\\s+", " ", clean)
-  clean <- trimws(clean)
-
-  return(clean)
 }
