@@ -60,6 +60,12 @@ savedChatsServer <- function(id, saved_chats) {
     clear_all_trigger <- reactiveVal(0)
     refresh_trigger <- reactiveVal(0)
 
+    observeEvent(input$load_chat_id, {
+      # Sohbet kartı tıklamasını doğrudan reactiveVal'e aktar.
+      # eventReactive gecikmesi/önceki değer riski olmadan güncel ID taşınır.
+      load_chat_trigger(input$load_chat_id)
+    }, ignoreInit = TRUE)
+
     search_term_debounced <- reactiveVal()
     search_timer <- reactiveTimer(300)
 	
@@ -424,7 +430,7 @@ savedChatsServer <- function(id, saved_chats) {
     
     return(
       list(
-        load_chat_id = eventReactive(input$load_chat_id, { input$load_chat_id }),
+        load_chat_id = load_chat_trigger,
         delete_chat_id = delete_chat_trigger,
         clear_all_chats_trigger = clear_all_trigger,
         refresh = refresh

@@ -105,6 +105,11 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
     
     values$messages <- chat_to_load$messages %||% list()
+    # Geri yüklenen sohbetlerde kullanıcı başlığı/avatarı doğru görünsün diye
+    # oturum-yerel user_config'i settings içine enjekte et.
+    if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
+      settings_data$user_config <- session$userData$user_config
+    }
     all_feedback <- load_feedback_from_db(current_user_id)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
