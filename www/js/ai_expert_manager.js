@@ -279,14 +279,24 @@ const AIExpertManager = {
       self._onAudioEnded();
     }, { once: true });
 
-    var playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(function(err) {
-        console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
-        // Ses oynatılamazsa süre tahminiyle devam et
-        self._scheduleHide(self._estimateReadTime(self.state.currentText));
-      });
-    }
+    var playStarted = false;
+    var startPlayback = function() {
+      if (playStarted || self.state.audioElement !== audio) return;
+      playStarted = true;
+      var playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(function(err) {
+          console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
+          // Ses oynatılamazsa süre tahminiyle devam et
+          self._scheduleHide(self._estimateReadTime(self.state.currentText));
+        });
+      }
+    };
+
+    // İlk hece/harf kaybını azaltmak için veri hazır olduktan sonra başlat
+    audio.addEventListener('canplaythrough', startPlayback, { once: true });
+    audio.addEventListener('loadeddata', startPlayback, { once: true });
+    setTimeout(startPlayback, 800);
   },
 
   // --- SES OYNATMA (eski uyumluluk için) ---

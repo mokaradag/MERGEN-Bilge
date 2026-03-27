@@ -59,6 +59,7 @@ $(document).ready(function() {
       window.mergenTTS.currentAudio = new Audio(item.src);
       const audio = window.mergenTTS.currentAudio;
       audio.volume = 1.0;
+      audio.preload = 'auto';
 
 		audio.onplay = function() {
 		  if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
@@ -108,26 +109,38 @@ $(document).ready(function() {
         processTTSQueue();
       };
 
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          console.log("[MERGEN TTS] Parça oynatılıyor", item.index);
-        }).catch(error => {
-          console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
-          window.mergenTTS.isPlaying = false;
-          const kuyrukBos = window.mergenTTS.queue.length === 0;
-          if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-            window.ttsVisualizerState.setIdle();
-          }
-          if (kuyrukBos && window.MusicManager) {
-            window.MusicManager.unduck();
-          }
-          if (kuyrukBos) {
-            try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
-          }
-          processTTSQueue();
-        });
-      }
+      let playStarted = false;
+      const startPlayback = function() {
+        if (playStarted || window.mergenTTS.currentAudio !== audio) return;
+        playStarted = true;
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            console.log("[MERGEN TTS] Parça oynatılıyor", item.index);
+          }).catch(error => {
+            console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
+            window.mergenTTS.isPlaying = false;
+            const kuyrukBos = window.mergenTTS.queue.length === 0;
+            if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+              window.ttsVisualizerState.setIdle();
+            }
+            if (kuyrukBos && window.MusicManager) {
+              window.MusicManager.unduck();
+            }
+            if (kuyrukBos) {
+              try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
+            }
+            processTTSQueue();
+          });
+        }
+      };
+
+      // Bazı tarayıcılarda src atanır atanmaz play() çağrısı ilk fonemi kesebiliyor.
+      // Önce ses verisi yüklenene kadar bekleyip sonra oynatıyoruz.
+      audio.addEventListener('canplaythrough', startPlayback, { once: true });
+      audio.addEventListener('loadeddata', startPlayback, { once: true });
+      // Güvenlik amaçlı: olaylar gecikirse yine de oynatmayı başlat.
+      setTimeout(startPlayback, 800);
     } catch (e) {
       console.error("[MERGEN TTS] İstisna:", e);
       window.mergenTTS.isPlaying = false;
