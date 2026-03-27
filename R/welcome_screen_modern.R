@@ -110,15 +110,12 @@ create_modern_welcome_action <- function(action_data) {
 
 create_modern_preview_button <- function(chat_data) {
   tags$button(
+    type = "button",
     class = "modern-welcome-preview-btn",
     `data-chat-id` = chat_data$id,
-	# Karşılama ekranından doğrudan ana session'a sohbet yükleme isteği gönder
-    # (modül eventReactive zincirini atlayarak ilk tıklama sorununu önler)
-    onclick = sprintf("if (!this.dataset.loading) {
-      this.dataset.loading = 'true';
-      Shiny.setInputValue('welcome_load_chat_id', '%s', {priority: 'event'});
-      setTimeout(() => delete this.dataset.loading, 1000);
-    }", chat_data$id),
+    # Karşılama ekranından doğrudan ana session'a sohbet yükleme isteği gönder.
+    # Tek tıklamada her zaman tetiklenmesi için istemci tarafı kilidi kullanılmıyor.
+    onclick = sprintf("Shiny.setInputValue('welcome_load_chat_id', '%s', {priority: 'event'});", chat_data$id),
     
     div(class = "modern-welcome-preview-icon-box",
 		tags$i(class = "fas fa-comment modern-welcome-preview-icon")

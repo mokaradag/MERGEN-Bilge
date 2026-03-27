@@ -216,9 +216,29 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # 2) Plotly/Highcharter çıktı bağlamalarını yeniden kur (sunucu taraflı grafikler)
     chat_rebind_all_charts(session, output, values$messages)
 
-    shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 400);")
+    # Uzun söyleşi geçmişlerinde içerik/kartlar geç render olabildiği için
+    # birkaç kez dip kaydırma denemesi yap.
+    shinyjs::runjs("
+      (function() {
+        var attempts = 0;
+        var maxAttempts = 6;
+        var timer = setInterval(function() {
+          attempts += 1;
+          if (typeof window.scrollToBottom === 'function') {
+            window.scrollToBottom(false);
+          }
+          if (attempts >= maxAttempts) {
+            clearInterval(timer);
+          }
+        }, 180);
+      })();
+    ")
     
     updateTabItems(session, "tabs", "chat")
+    # Sekme geçişinden hemen sonra bir kez daha dip kaydır.
+    shinyjs::delay(120, {
+      shinyjs::runjs("if (typeof window.scrollToBottom === 'function') window.scrollToBottom(false);")
+    })
     showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")
     
     # Kilidi kısa bir gecikmeyle serbest bırak

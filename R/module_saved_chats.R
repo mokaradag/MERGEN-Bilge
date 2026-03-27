@@ -325,13 +325,9 @@ savedChatsServer <- function(id, saved_chats) {
                   style = "min-width: 0; overflow: hidden;",
                   `data-chat-id` = chat_id,
                   onclick = sprintf(
-                    "
-                    if (!this.dataset.loading) {
-                      this.dataset.loading = 'true';
-                      Shiny.setInputValue('%s', '%s', {priority: 'event'});
-                      setTimeout(() => delete this.dataset.loading, 1000);
-                    }
-                  ", ns("load_chat_id"), chat_id),
+                    "Shiny.setInputValue('%s', '%s', {priority: 'event'});",
+                    ns("load_chat_id"), chat_id
+                  ),
                   div(
                     class = "chat-card-header",
                     h5(chat_row$title, class = "chat-title chat-title-small", style = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"),
