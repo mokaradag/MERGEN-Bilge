@@ -83,7 +83,10 @@ tts_config <- list(
   model           = Sys.getenv("LOCAL_TTS_MODEL", "tts-1-hd"),
   default_voice   = Sys.getenv("LOCAL_TTS_VOICE", "tr-male-1"),
   timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "30")),
-  verify_ssl      = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
+  verify_ssl      = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE"))),
+  # WAV formatı MP3'teki kodlama gecikmesini (encoder delay) ortadan kaldırarak
+  # ilk sesin yutulmasını önler. TTS sunucunuz WAV desteklemiyorsa "mp3" yapın.
+  response_format = Sys.getenv("LOCAL_TTS_FORMAT", "wav")
 )
 
 # --- SES TANIMA (STT) YAPILANDIRMASI ---

@@ -58,6 +58,9 @@ ttsProcessingServer <- function(id) {
       # Dosya yollarını kaldır (Windows ve Unix)
       cleaned <- gsub("[A-Z]:\\\\[^\\s]+", " ", cleaned, perl = TRUE)
       cleaned <- gsub("/[a-zA-Z0-9_./\\-]+\\.[a-zA-Z]{2,4}", " ", cleaned, perl = TRUE)
+      # Çift tırnak işaretlerini kaldır: TTS motoru " karakterini söyleyiş birimi
+      # sınırı olarak yorumlar ve sonraki ilk sesi yutar ("Bey" → "ey" hatası).
+      cleaned <- gsub('"', '', cleaned, fixed = TRUE)
       # Markdown biçimlendirme karakterlerini kaldır (her birini ayrı ayrı, ilk/son karakteri yutmamak için)
       cleaned <- gsub("\\*{1,3}", " ", cleaned)   # Kalın/italik yıldızlar
       cleaned <- gsub("_{1,3}", " ", cleaned)     # Kalın/italik alt çizgiler
@@ -73,6 +76,11 @@ ttsProcessingServer <- function(id) {
       cleaned <- convert_numbers_to_turkish(cleaned)
       # Satır sonlarını ve fazla boşlukları normalleştir
       cleaned <- gsub("\n+", ". ", cleaned)
+      # Büyük harfle başlayan yeni cümlelerdeki noktalama işaretlerini virgüle
+      # dönüştür: TTS motoru nokta/ünlem/soru işaretini yeni bir söyleyiş birimi
+      # başlangıcı sayar ve o birimin ilk sesini yutar ("Nasıl" → "asıl" hatası).
+      # Virgül ise devam işareti olarak algılanır; birimi bölmez, ses yutulmaz.
+      cleaned <- gsub("([.!?])\\s+([[:upper:]])", ", \\2", cleaned, perl = TRUE)
       cleaned <- gsub("[[:space:]]+", " ", cleaned)
       trimws(cleaned)
     }
@@ -281,7 +289,7 @@ ttsProcessingServer <- function(id) {
           model = model_to_use,
           voice = voice_to_use,
           input = speech_text,
-          response_format = "mp3"
+          response_format = tts_config$response_format %||% "wav"
         )
         
         # Yapılandırma Kurulumu (Gerekiyorsa SSL doğrulaması atlanır)

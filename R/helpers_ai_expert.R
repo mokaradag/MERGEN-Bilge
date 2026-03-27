@@ -491,9 +491,11 @@ prepare_ai_expert_tts_text <- function(text) {
   clean <- gsub("\u2015", "-", clean)  # horizontal bar
   clean <- gsub("\u2012", "-", clean)  # figure dash
 
-  # Özel tırnak işaretlerini düz tırnaklara dönüştür
-
-  clean <- gsub("[\u201C\u201D\u201E\u201F]", '"', clean)  # akıllı çift tırnaklar
+  # Özel tırnak işaretlerini kaldır: TTS motoru " karakterini söyleyiş birimi
+  # sınırı sayar ve arkasındaki ilk sesi yutar ("Bey" → "ey" hatası).
+  # Akıllı çift tırnakları da temizle (düz tırnağa çevirip sonra sil).
+  clean <- gsub("[\u201C\u201D\u201E\u201F]", "", clean)  # akıllı çift tırnaklar
+  clean <- gsub('"', '', clean, fixed = TRUE)              # düz çift tırnaklar
   clean <- gsub("[\u2018\u2019\u201A\u201B]", "'", clean)  # akıllı tek tırnaklar
 
   # Üç nokta ve diğer özel noktalama
