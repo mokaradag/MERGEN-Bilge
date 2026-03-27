@@ -346,7 +346,7 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     mode = "summary",
     rls_total_rows = nrow(secure_data),
     user_filter_applied = (nrow(filtered_data) < nrow(secure_data)),
-    pre_aggregated_columns = q$pre_aggregated_columns
+    pre_aggregated_columns = query$pre_aggregated_columns
   )
 
   # Önizleme JSON
