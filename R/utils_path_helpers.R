@@ -97,26 +97,23 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   candidate <- as.character(candidate)
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
-  # UNC yolları: hem //server/share hem de /server/share formatını yakala
-
-  maybe_unc <- grepl("^//", candidate) || grepl("^/[^/]+/[^/]+", candidate)
+  maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
   if (maybe_unc) {
     cleaned <- paste0("//", sub("^/+", "", candidate))
     cleaned <- dedupe_leading_pair(cleaned)
+    return(cleaned)
+  }
 
-    # normalizePath ile Türkçe karakter encoding'ini düzelt, sonra UNC önekini koru
-    resolved <- tryCatch(
-      normalizePath(cleaned, winslash = "/", mustWork = must_exist),
-      error = function(e) cleaned
-    )
+  # Zaten // ile başlayan UNC yolları: encoding'i düzeltmek için
+  # normalize_utf8_path'e gönder ama sonra UNC önekini koru
+  if (grepl("^//", candidate)) {
+    resolved <- normalize_utf8_path(candidate, mustWork = must_exist)
     resolved <- gsub("\\\\", "/", resolved, fixed = TRUE)
-    # normalizePath UNC önekini kaldırmışsa geri ekle
-    if (nzchar(resolved) && !grepl("^//", resolved) && grepl("^/", resolved)) {
-      resolved <- paste0("/", resolved)
-    } else if (nzchar(resolved) && !grepl("^[/\\\\]", resolved)) {
-      # normalizePath tamamen farklı bir yol döndürdüyse orijinali koru
-      resolved <- cleaned
+    if (nzchar(resolved) && !grepl("^//", resolved)) {
+      # normalizePath UNC önekini kaldırdıysa geri ekle
+      resolved <- paste0("//", sub("^/+", "", resolved))
     }
+    resolved <- dedupe_leading_pair(resolved)
     return(resolved)
   }
 
