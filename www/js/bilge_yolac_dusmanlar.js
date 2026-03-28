@@ -159,6 +159,7 @@
 
     return {
       tip: tip,
+      isim: tip === "boss" ? "MUHAFIZ" : tip.toUpperCase(),
       x: x,
       y: y,
       hizX: 0,

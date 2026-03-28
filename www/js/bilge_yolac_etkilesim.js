@@ -168,11 +168,9 @@
 
     // ── Bekleme durumunda: oyunu başlat ──
     if (state.oyunDurumu === "bekleme") {
-      state.oyunDurumu = "oynuyor";
-
-      // Oyun modülünü başlat
-      if (BY.oyun && typeof BY.oyun.baslat === "function") {
-        BY.oyun.baslat();
+      // Oyun modülünü fiilen başlat (bekleme → oynuyor)
+      if (BY.oyun && typeof BY.oyun.oyunuBaslat === "function") {
+        BY.oyun.oyunuBaslat();
       }
 
       // Başlatma efekti
@@ -257,6 +255,16 @@
     var state = BY.state;
     if (!state.calisiyor) return;
 
+    // Metin giriş alanına yazıyorsak oyun tuşlarını yakala
+    var aktifEleman = document.activeElement;
+    if (aktifEleman) {
+      var etiket = aktifEleman.tagName.toLowerCase();
+      if (etiket === "input" || etiket === "textarea" || etiket === "select" ||
+          aktifEleman.isContentEditable) {
+        return; // Giriş alanındaysa oyun etkileşimini devre dışı bırak
+      }
+    }
+
     // Boşluk tuşu: takım atılma hareketi
     if (e.code === "Space" || e.keyCode === 32) {
       e.preventDefault();
@@ -290,9 +298,8 @@
 
       // Bekleme durumunda boşluk ile de başlat
       if (state.oyunDurumu === "bekleme") {
-        state.oyunDurumu = "oynuyor";
-        if (BY.oyun && typeof BY.oyun.baslat === "function") {
-          BY.oyun.baslat();
+        if (BY.oyun && typeof BY.oyun.oyunuBaslat === "function") {
+          BY.oyun.oyunuBaslat();
         }
       }
     }

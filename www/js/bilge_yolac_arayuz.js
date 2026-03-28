@@ -204,7 +204,7 @@
     ctx.fillStyle = "#FFFFFF";
     ctx.shadowColor = "#FFFFFF";
     ctx.shadowBlur = 4;
-    ctx.fillText("BAŞLAMAK İÇİN TIKLA", merkezX, altY);
+    ctx.fillText("BAŞLAMAK İÇİN TIKLA veya BOŞLUK", merkezX, altY);
     ctx.restore();
 
     // ── Sol alt köşede seviye ismi ──
@@ -283,6 +283,9 @@
     // ── Alt: Yetenek bekleme süreleri göstergeleri ──
     yetenekGostergeleriCiz(ctx);
 
+    // ── Alt sol: Kontrol ipuçları ──
+    kontrolIpuclariCiz(ctx);
+
     // ── Üst orta: Boss sağlık çubuğu (boss aktifse) ──
     if (state.oyunDurumu === "boss") {
       bossSaglikCiz(ctx);
@@ -334,6 +337,12 @@
     var genislik = 150;
     var yukseklik = 12;
 
+    // Güvenli sayısal değerler (NaN / undefined koruması)
+    var takimCan = (typeof state.takimCan === "number" && !isNaN(state.takimCan))
+      ? state.takimCan : 0;
+    var takimMaxCan = (typeof state.takimMaxCan === "number" && !isNaN(state.takimMaxCan) && state.takimMaxCan > 0)
+      ? state.takimMaxCan : 100;
+
     // Etiket
     ctx.save();
     ctx.font = "bold 9px monospace";
@@ -343,7 +352,7 @@
     ctx.restore();
 
     // Sağlık çubuğu
-    var oran = state.takimCan / state.takimMaxCan;
+    var oran = takimCan / takimMaxCan;
     saglikCubugu(ctx, x, y, genislik, yukseklik, oran);
 
     // Sayısal değer
@@ -351,7 +360,7 @@
     ctx.font = "bold 8px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillText(Math.ceil(state.takimCan) + "/" + state.takimMaxCan, x + genislik / 2, y + yukseklik - 2);
+    ctx.fillText(Math.ceil(takimCan) + "/" + takimMaxCan, x + genislik / 2, y + yukseklik - 2);
     ctx.restore();
   }
 
@@ -360,6 +369,11 @@
     var state = BY.state;
     var sagX = state.canvasGenislik - 12;
 
+    // Güvenli sayısal değerler
+    var skor = (typeof state.skor === "number" && !isNaN(state.skor)) ? state.skor : 0;
+    var seviye = (typeof state.mevcutSeviye === "number" && !isNaN(state.mevcutSeviye))
+      ? state.mevcutSeviye : 0;
+
     // Skor
     ctx.save();
     ctx.font = "bold 11px monospace";
@@ -367,7 +381,7 @@
     ctx.fillStyle = "#FFD700";
     ctx.shadowColor = "#FFD700";
     ctx.shadowBlur = 3;
-    ctx.fillText("SKOR: " + state.skor, sagX, 18);
+    ctx.fillText("SKOR: " + skor, sagX, 18);
     ctx.restore();
 
     // Seviye göstergesi
@@ -375,7 +389,7 @@
     ctx.font = "9px monospace";
     ctx.textAlign = "right";
     ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText("SEVİYE: " + (state.mevcutSeviye + 1) + "/5", sagX, 30);
+    ctx.fillText("SEVİYE: " + (seviye + 1) + "/5", sagX, 30);
     ctx.restore();
   }
 
@@ -430,6 +444,22 @@
     }
   }
 
+  // Alt sol: Kontrol ipuçları (oyun sırasında küçük metin)
+  function kontrolIpuclariCiz(ctx) {
+    var state = BY.state;
+    if (state.oyunDurumu !== "oynuyor" && state.oyunDurumu !== "boss") return;
+
+    var x = 12;
+    var y = state.canvasYukseklik - 8;
+
+    ctx.save();
+    ctx.font = "8px monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillText("TIKLA: Takım Saldırısı  |  BOŞLUK: Hızlan", x, y);
+    ctx.restore();
+  }
+
   // Üst orta: Boss sağlık çubuğu
   function bossSaglikCiz(ctx) {
     var state = BY.state;
@@ -438,7 +468,7 @@
     // Boss düşmanı bul
     var boss = null;
     for (var i = 0; i < dusmanlar.length; i++) {
-      if (dusmanlar[i].tur === "boss") {
+      if (dusmanlar[i].tip === "boss") {
         boss = dusmanlar[i];
         break;
       }

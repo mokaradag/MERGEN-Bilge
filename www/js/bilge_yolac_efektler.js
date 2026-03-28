@@ -513,6 +513,31 @@
   // ════════════════════════════════════════════════════════════════════════
 
   // Karakter yetenek efekti oluştur
+  // Takım mermisi oluştur — düşmanlara hasar veren mermi ekler
+  function takimMermisiOlustur(kaynakX, kaynakY, hasar, renk, adet) {
+    var state = BY.state;
+    adet = adet || 1;
+    hasar = hasar || 10;
+
+    for (var i = 0; i < adet; i++) {
+      // Sağa doğru hafif yayılarak ateşle
+      var aci = -0.3 + (adet > 1 ? (i / (adet - 1)) * 0.6 : 0);
+      var hiz = 3.5 + Math.random() * 1;
+      state.mermiler.push({
+        x: kaynakX,
+        y: kaynakY + (Math.random() - 0.5) * 10,
+        hizX: Math.cos(aci) * hiz,
+        hizY: Math.sin(aci) * hiz,
+        hasar: hasar,
+        sahip: "takim",
+        yasam: 120,
+        genislik: 5,
+        yukseklik: 3,
+        renk: renk || "#FFFFFF"
+      });
+    }
+  }
+
   function yetenekEfektiOlustur(karakter) {
     var merkezX = karakter.x + karakter.genislik / 2;
     var merkezY = karakter.y + karakter.yukseklik / 2;
@@ -520,38 +545,45 @@
 
     switch (karakter.yetenekTuru) {
       case "ok_atisi":
-        // Ok izleri
+        // Ok izleri + saldırı mermileri
         for (var i = 0; i < 8; i++) {
           parcacikOlustur(merkezX + 20, merkezY - 10, renk, "kivilcim", 1);
         }
         radarDarbesiEkle(merkezX, merkezY, renk);
+        takimMermisiOlustur(merkezX, merkezY, 15, renk, 3);
         break;
 
       case "gok_dalgasi":
-        // Enerji dalgası
+        // Enerji dalgası + alan hasarı mermileri
         radarDarbesiEkle(merkezX, merkezY, renk);
         radarDarbesiEkle(merkezX, merkezY - 10, karakter.renkler.acik);
         parcacikOlustur(merkezX, merkezY - 20, renk, "yukari", 12);
+        takimMermisiOlustur(merkezX, merkezY - 10, 12, renk, 5);
         break;
 
       case "kure_olustur":
-        // Küre parçacıkları
+        // Küre parçacıkları + enerji mermileri
         parcacikOlustur(merkezX, merkezY, renk, "daire", 15);
         radarDarbesiEkle(merkezX, merkezY, karakter.renkler.acik);
+        takimMermisiOlustur(merkezX, merkezY, 10, renk, 4);
         break;
 
       case "kaos_saldiri":
-        // Kaotik parçacıklar
+        // Kaotik parçacıklar + güçlü saldırı
         parcacikOlustur(merkezX, merkezY, renk, "kivilcim", 20);
         parcacikOlustur(merkezX, merkezY, "#FF0000", "kivilcim", 5);
+        takimMermisiOlustur(merkezX, merkezY, 20, renk, 3);
         break;
 
       case "kalkan_kur":
-        // Koruyucu kalkan
+        // Koruyucu kalkan + hafif saldırı + can yenileme
         radarDarbesiEkle(merkezX, merkezY, renk);
         radarDarbesiEkle(merkezX, merkezY, karakter.renkler.acik);
         parcacikOlustur(merkezX, merkezY, renk, "daire", 10);
         kalkanEfektiOlustur(merkezX, merkezY, 35, karakter.renkler.acik);
+        takimMermisiOlustur(merkezX, merkezY, 5, renk, 2);
+        // Hafif can yenileme
+        BY.state.takimCan = Math.min(BY.state.takimMaxCan, BY.state.takimCan + 3);
         break;
     }
   }

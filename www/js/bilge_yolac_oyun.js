@@ -10,9 +10,11 @@
   // ── Dahili durum değişkenleri ────────────────────────────────────────────
   var takimYurumeHizi = 0.5;        // Takımın otomatik yürüme hızı
   var sonYetenekZamani = 0;          // Son bireysel yetenek kullanım zamanı
+  var sonOtomatikAtesZamani = 0;     // Son otomatik ateş zamanı
   var zaferBaslangic = 0;            // Zafer animasyonunun başladığı an
   var bossOlusturuldu = false;       // Boss düşmanı oluşturuldu mu
   var oyunBitisSayaci = 0;           // Oyun sonu gecikmesi
+  var OTOMATIK_ATES_ARASI = 1500;   // 1.5 saniyede bir otomatik ateş
 
   // Zamanlama sabitleri
   var ZAFER_SURESI = 3000;           // 3 saniye zafer gösterimi
@@ -81,8 +83,8 @@
       k.animasyonDurumu = "walk";
       k.yon = 1; // Sağa bak
 
-      // Otomatik ilerleme kuvveti
-      k.hizX += takimYurumeHizi * 0.05;
+      // Otomatik ilerleme kuvveti (dünya boyunca ilerlemek için yeterli hız)
+      k.hizX += takimYurumeHizi * 0.15;
     }
 
     // Çıkış noktasını kontrol et (seviye sonu)
@@ -105,8 +107,11 @@
     // Mermi çarpışmalarını kontrol et
     mermiCarpismalariKontrol();
 
-    // Periyodik bireysel yetenek kullanımı
+    // Periyodik bireysel yetenek kullanımı (otomatik saldırı)
     bireyselYetenekKontrol(zaman);
+
+    // Otomatik ateş: yakındaki düşmanlara periyodik mermi
+    otomatikAtes(zaman);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -135,7 +140,7 @@
     var bossHayatta = false;
     var dusmanlar = state.dusmanlar;
     for (var j = 0; j < dusmanlar.length; j++) {
-      if (dusmanlar[j].tur === "boss" && dusmanlar[j].can > 0) {
+      if (dusmanlar[j].tip === "boss" && dusmanlar[j].can > 0) {
         bossHayatta = true;
         break;
       }
@@ -152,41 +157,27 @@
 
     // Periyodik bireysel yetenek kullanımı (boss savaşında daha sık)
     bireyselYetenekKontrol(zaman, 3000);
+
+    // Otomatik ateş (boss savaşında da çalışır)
+    otomatikAtes(zaman);
   }
 
-  // Boss düşmanı oluştur
+  // Boss düşmanı oluştur — düşman modülü üzerinden tam donanımlı boss yaratır
   function bossOlustur() {
     var state = BY.state;
     var takimMerkez = takimMerkeziHesapla();
 
     // Boss'u takımın sağında oluştur
     var bossX = takimMerkez.x + 200;
-    var bossY = state.zeminY - 48; // Boss biraz daha büyük
 
-    var bossRenkler = BY.config.DUSMAN_RENKLERI.boss;
-
-    var boss = {
-      tur: "boss",
-      isim: "MUHAFIZ",
-      x: bossX,
-      y: bossY,
-      genislik: 48,
-      yukseklik: 48,
-      hizX: 0,
-      hizY: 0,
-      can: 200,
-      maxCan: 200,
-      hasar: 8,
-      renkler: bossRenkler,
-      animasyonDurumu: "idle",
-      sonSaldiriZamani: 0,
-      saldiriAraligi: 2000 // 2 saniyede bir saldırı
-    };
-
-    state.dusmanlar.push(boss);
+    // Düşman modülü aracılığıyla boss oluştur (sprite, renkHaritası, aktif vb. dahil)
+    if (BY.dusmanlar && typeof BY.dusmanlar.bossBaşlat === "function") {
+      BY.dusmanlar.bossBaşlat({ x: bossX });
+    }
 
     // Boss ortaya çıkış efekti
     if (BY.efektler) {
+      var bossY = state.zeminY - 48;
       BY.efektler.patlamaEfektiOlustur(bossX + 24, bossY + 24);
       BY.efektler.radarDarbesiEkle(bossX + 24, bossY + 24, "#FFD700");
     }
@@ -287,7 +278,7 @@
               }
 
               // Skor ekle
-              var skorBonus = d.tur === "boss" ? 500 : 100;
+              var skorBonus = d.tip === "boss" ? 500 : 100;
               skoreEkle(skorBonus);
             }
 
@@ -360,6 +351,68 @@
 
     if (!karakter.yetenekAktif && BY.karakterler && BY.karakterler.yetenekCalistir) {
       BY.karakterler.yetenekCalistir(karakter);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  OTOMATİK ATEŞ — Rastgele bir karakter periyodik olarak ateş eder
+  // ════════════════════════════════════════════════════════════════════════
+
+  function otomatikAtes(zaman) {
+    if (zaman - sonOtomatikAtesZamani < OTOMATIK_ATES_ARASI) return;
+    sonOtomatikAtesZamani = zaman;
+
+    var state = BY.state;
+    var karakterler = state.karakterler;
+    var dusmanlar = state.dusmanlar;
+    if (karakterler.length === 0 || !dusmanlar || dusmanlar.length === 0) return;
+
+    // Rastgele bir karakter seç
+    var idx = Math.floor(Math.random() * karakterler.length);
+    var karakter = karakterler[idx];
+    var kaynakX = karakter.x + karakter.genislik;
+    var kaynakY = karakter.y + karakter.yukseklik * 0.4;
+
+    // En yakın düşmanı bul
+    var enYakinD = null;
+    var enYakinMesafe = Infinity;
+    for (var i = 0; i < dusmanlar.length; i++) {
+      var d = dusmanlar[i];
+      if (!d || !d.aktif || d.can <= 0) continue;
+      var mesafe = Math.abs(d.x - karakter.x);
+      if (mesafe < enYakinMesafe && mesafe < 500) {
+        enYakinMesafe = mesafe;
+        enYakinD = d;
+      }
+    }
+
+    if (!enYakinD) return;
+
+    // Düşmana doğru mermi oluştur
+    var hedefX = enYakinD.x + enYakinD.genislik / 2;
+    var hedefY = enYakinD.y + enYakinD.yukseklik / 2;
+    var dx = hedefX - kaynakX;
+    var dy = hedefY - kaynakY;
+    var mesafe = Math.sqrt(dx * dx + dy * dy);
+    if (mesafe < 1) mesafe = 1;
+
+    var hiz = 3;
+    state.mermiler.push({
+      x: kaynakX,
+      y: kaynakY,
+      hizX: (dx / mesafe) * hiz,
+      hizY: (dy / mesafe) * hiz,
+      hasar: 8,
+      sahip: "takim",
+      yasam: 120,
+      genislik: 4,
+      yukseklik: 3,
+      renk: karakter.renkler ? karakter.renkler.ana : "#FFFFFF"
+    });
+
+    // Ateş efekti
+    if (BY.efektler && BY.efektler.parcacikOlustur) {
+      BY.efektler.parcacikOlustur(kaynakX, kaynakY, karakter.renkler ? karakter.renkler.ana : "#FFF", "kivilcim", 3);
     }
   }
 
@@ -494,7 +547,19 @@
   // ════════════════════════════════════════════════════════════════════════
 
   BY.oyun = {
+    // Alt sistem başlatması — oyun durumunu değiştirmez, sadece dahili
+    // zamanlayıcıları sıfırlar. motor.baslat() tarafından çağrılır.
     baslat: function() {
+      sonYetenekZamani = performance.now();
+      sonOtomatikAtesZamani = performance.now();
+      zaferBaslangic = 0;
+      bossOlusturuldu = false;
+      oyunBitisSayaci = 0;
+    },
+
+    // Oyunu fiilen başlat (bekleme → oynuyor geçişi).
+    // Tıklama veya boşluk tuşu ile tetiklenir.
+    oyunuBaslat: function() {
       var state = BY.state;
 
       // Başlangıç değerlerini ayarla
@@ -506,6 +571,7 @@
       state.oyunDurumu = "oynuyor";
 
       sonYetenekZamani = performance.now();
+      sonOtomatikAtesZamani = performance.now();
       zaferBaslangic = 0;
       bossOlusturuldu = false;
       oyunBitisSayaci = 0;

@@ -113,26 +113,41 @@
       }
     });
 
-    // Sekme değişimi dinle
+    // Sekme değişimi dinle — yalnızca "tabs" girdisi değiştiğinde tepki ver
     $(document).on("shiny:inputchanged", function(e) {
-      if (e.name === "tabs" && e.value === "claude_code") {
-        // Claude Code sekmesine geçildi
+      // Yalnızca sekme değişikliklerini yakala, diğer girdileri yok say
+      if (e.name !== "tabs") return;
+
+      if (e.value === "claude_code") {
+        // Claude Code sekmesine geçildi — kısa gecikme ile görünürlük bekle
         setTimeout(function() {
           var container = document.getElementById("claude_code_module-welcome_screen");
-          if (container && container.classList.contains("cc-welcome-active")) {
-            // Zaten aktifse ama motor durmuşsa yeniden başlat
-            if (!BY.state.calisiyor) {
-              karsilamaBaslat();
-            }
+          if (!container) return;
+
+          // Kapsayıcı boyutu sıfırsa henüz görünür değil, tekrar dene
+          if (container.clientWidth === 0 || container.clientHeight === 0) {
+            setTimeout(function() { baslatKontrol(container); }, 400);
+            return;
           }
+
+          baslatKontrol(container);
         }, 300);
       } else {
-        // Başka sekmeye geçildi - motoru duraksat (bellek tasarrufu)
+        // Başka sekmeye geçildi — motoru duraksat (bellek tasarrufu)
         if (BY.state.calisiyor) {
           BY.motor.durdur();
         }
       }
     });
+
+    // Yardımcı: karşılama ekranını başlatma kontrolü
+    function baslatKontrol(container) {
+      if (container && container.classList.contains("cc-welcome-active")) {
+        if (!BY.state.calisiyor) {
+          karsilamaBaslat();
+        }
+      }
+    }
 
     // Shiny bağlantısı kurulduğunda otomatik başlat
     $(document).on("shiny:connected", function() {
