@@ -64,17 +64,38 @@ copy_to_mcp_base <- function(upload, user_id) {
      p
   }
 
-  base <- Sys.getenv("MCP_FILES_BASE")
+  # KRİTİK: Önce config_file_store.R'de normalizePath() ile çözümlenen
+  # seçeneği kullan (Türkçe karakter encoding'i doğru). Sys.getenv() ham
+  # baytlar döndürerek Windows'ta dosya yolunu bozabiliyor
+  # (Geliştirme -> GeliAYtirme gibi).
+  base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) {
-    base <- getOption(
-      "mergen.mcp_base_dir",
-      default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
-    )
+    raw_env <- Sys.getenv("MCP_FILES_BASE", "")
+    if (nzchar(raw_env)) {
+      # normalizePath ile encoding'i düzelt
+      base <- tryCatch(
+        normalizePath(raw_env, winslash = "/", mustWork = FALSE),
+        error = function(e) raw_env
+      )
+    }
   }
-  
+  if (!nzchar(base)) {
+    base <- normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
+  }
+
   # Use safe local normalization
   base <- safe_norm(base)
-  fs::dir_create(base, recurse = TRUE)
+
+  cat(sprintf("[copy_to_mcp_base] user_id=%s, kaynak=%s, hedef_base=%s\n",
+              as.character(user_id), upload$datapath, base))
+
+  tryCatch(
+    fs::dir_create(base, recurse = TRUE),
+    error = function(e) {
+      cat(sprintf("[copy_to_mcp_base] fs::dir_create(base) başarısız: %s - base R deneniyor\n", conditionMessage(e)))
+      dir.create(base, showWarnings = TRUE, recursive = TRUE)
+    }
+  )
 
   # Skip re-copy if already under base
   src_norm  <- safe_norm(upload$datapath)
@@ -87,7 +108,22 @@ copy_to_mcp_base <- function(upload, user_id) {
 
   # per-user bucket
   user_dir <- fs::path(base, sprintf("user_%s", as.character(user_id)))
-  fs::dir_create(user_dir, recurse = TRUE)
+  tryCatch(
+    fs::dir_create(user_dir, recurse = TRUE),
+    error = function(e) {
+      # fs başarısız olursa base R ile dene
+      cat(sprintf("[copy_to_mcp_base] fs::dir_create başarısız: %s - base::dir.create deneniyor\n", conditionMessage(e)))
+      dir.create(as.character(user_dir), showWarnings = TRUE, recursive = TRUE)
+    }
+  )
+
+  # Dizin gerçekten var mı kontrol et
+  if (!dir.exists(as.character(user_dir)) && !path_exists_relaxed(user_dir)) {
+    cat(sprintf("[copy_to_mcp_base] HATA: Kullanıcı dizini oluşturulamadı: %s\n", user_dir))
+    cat(sprintf("[copy_to_mcp_base]   base encoding: %s, Encoding()=%s\n",
+                base, Encoding(base)))
+    stop(sprintf("Kullanıcı dizini oluşturulamadı: %s", user_dir))
+  }
 
   ext <- tools::file_ext(upload$name)
   unique_tag <- digest::digest(file = upload$datapath, algo = "xxhash64")
@@ -102,9 +138,48 @@ copy_to_mcp_base <- function(upload, user_id) {
     )
   )
 
-  fs::file_copy(upload$datapath, dest, overwrite = TRUE)
-  if (!fs::file_exists(dest)) {
-    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
+  # Önce fs::file_copy dene, başarısız olursa base::file.copy ile yedek
+  copy_success <- tryCatch({
+    fs::file_copy(upload$datapath, dest, overwrite = TRUE)
+    TRUE
+  }, error = function(e) {
+    cat(sprintf("[copy_to_mcp_base] fs::file_copy başarısız: %s\n", conditionMessage(e)))
+    FALSE
+  })
+
+  if (!copy_success || !tryCatch(fs::file_exists(dest), error = function(e) FALSE)) {
+    # base::file.copy ile yedek deneme (farklı encoding davranışı olabilir)
+    cat(sprintf("[copy_to_mcp_base] Yedek yol: base::file.copy deneniyor: %s -> %s\n",
+                upload$datapath, dest))
+    copy_success <- tryCatch({
+      file.copy(upload$datapath, as.character(dest), overwrite = TRUE)
+    }, error = function(e) {
+      cat(sprintf("[copy_to_mcp_base] base::file.copy de başarısız: %s\n", conditionMessage(e)))
+      FALSE
+    })
+  }
+
+  # Boyut doğrulaması: dosya gerçekten yazıldı mı?
+  dest_exists <- path_exists_relaxed(dest)
+  if (!dest_exists) {
+    # Son çare: enc2native ile dene (locale farklıysa)
+    dest_native <- tryCatch(enc2native(as.character(dest)), error = function(e) as.character(dest))
+    if (!identical(dest_native, as.character(dest))) {
+      cat(sprintf("[copy_to_mcp_base] Native encoding ile yeniden deneniyor: %s\n", dest_native))
+      tryCatch(file.copy(upload$datapath, dest_native, overwrite = TRUE), error = function(e) NULL)
+      dest_exists <- path_exists_relaxed(dest_native) || path_exists_relaxed(dest)
+    }
+  }
+
+  if (!dest_exists) {
+    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı, fs=%s, base=%s)",
+                 upload$datapath, dest, as.character(copy_success), as.character(dest_exists)))
+  }
+
+  src_size <- suppressWarnings(file.info(upload$datapath)$size)
+  dest_size <- suppressWarnings(file.info(as.character(dest))$size)
+  if (!is.na(src_size) && !is.na(dest_size) && dest_size != src_size) {
+    cat(sprintf("[copy_to_mcp_base] UYARI: Boyut uyuşmazlığı! kaynak=%d, hedef=%d\n", src_size, dest_size))
   }
 
   # Dosya gerçekten oluştuysa yolu olduğu gibi koru.
@@ -120,8 +195,9 @@ copy_to_mcp_base <- function(upload, user_id) {
 
 # Is path under MCP base?
 is_under_mcp_base <- function(p) {
-  base <- Sys.getenv("MCP_FILES_BASE")
-  if (!nzchar(base)) base <- getOption("mergen.mcp_base_dir", "")
+  # Önce doğru encoding'li seçeneği kullan (config_file_store.R'den)
+  base <- getOption("mergen.mcp_base_dir", "")
+  if (!nzchar(base)) base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) return(FALSE)
 
   safe_norm <- function(x) {

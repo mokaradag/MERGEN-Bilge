@@ -50,12 +50,19 @@ fileObserversInit <- function(input, session, settings_data, session_files,
     files_to_add <- file_manager_data$files_added_to_context()
     req(files_to_add)
   
+    # SSO modunda current_user_id başlangıçta 0L olabilir;
+    # oturumdaki gerçek kullanıcı kimliğini çözümle
+    effective_uid <- suppressWarnings(as.integer(
+      session$userData$user_id %||% current_user_id %||% 0L
+    ))
+    if (is.na(effective_uid)) effective_uid <- 0L
+
     processed_count <- 0
     for (file_info in files_to_add) {
       if (!(file_info$name %in% names(session_files()))) {
         processAndSummarizeFile(
           file_info,
-          current_user_id = current_user_id,
+          current_user_id = effective_uid,
           session = session,
           settings = settings_data,
           file_manager_data = file_manager_data,

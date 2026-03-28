@@ -55,6 +55,14 @@ processAndSummarizeFile <- function(file_info,
   effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
   if (is.na(effective_user_id)) effective_user_id <- 0L
 
+  if (effective_user_id <= 0L) {
+    cat(sprintf("[FILE PIPELINE] UYARI: effective_user_id=%d (session=%s, param=%s) - dosya: %s\n",
+                effective_user_id,
+                as.character(session$userData$user_id %||% "NULL"),
+                as.character(current_user_id %||% "NULL"),
+                file_info$name))
+  }
+
   # Ensure file is persisted under MCP base
   dest <- file_info$datapath
   if (!is_under_mcp_base(dest)) {
@@ -166,6 +174,14 @@ handle_file_upload_batch <- function(uploads_df,
   effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
   if (is.na(effective_user_id)) effective_user_id <- 0L
 
+  # SSO modunda 0L ile başlayan user_id'yi oturumdan çözümle
+  if (effective_user_id <= 0L) {
+    cat(sprintf("[UPLOAD BATCH] UYARI: effective_user_id=%d, session$userData$user_id=%s, current_user_id=%s\n",
+                effective_user_id,
+                as.character(session$userData$user_id %||% "NULL"),
+                as.character(current_user_id %||% "NULL")))
+  }
+
   uploads <- NULL
   if (is.data.frame(uploads_df)) {
     if (nrow(uploads_df) == 0) return(invisible(NULL))
@@ -218,27 +234,57 @@ handle_file_upload_batch <- function(uploads_df,
                                  duration = NULL, type = "message")
 
     # Dosyayı kalıcı dizine kopyala ve hemen indekse kaydet
+    copy_ok <- FALSE
     tryCatch({
       dest <- copy_to_mcp_base(uf, effective_user_id)
-      uf$datapath <- dest
-      cat("[UPLOAD BATCH] Dosya kopyalandı:", uf$name, "->", dest, "\n")
+
+      # Ek doğrulama: dosya boyutunu karşılaştır
+      src_size <- suppressWarnings(file.info(uf$datapath)$size)
+      dest_size <- suppressWarnings(file.info(dest)$size)
+      if (!is.na(src_size) && !is.na(dest_size) && dest_size > 0) {
+        uf$datapath <- dest
+        copy_ok <- TRUE
+        cat(sprintf("[UPLOAD BATCH] Dosya kopyalandı: %s -> %s (boyut: %d bayt)\n",
+                    uf$name, dest, dest_size))
+      } else if (path_exists_relaxed(dest)) {
+        # fs::file_info başarısız olabilir ama dosya mevcut olabilir (ağ paylaşımı)
+        uf$datapath <- dest
+        copy_ok <- TRUE
+        cat(sprintf("[UPLOAD BATCH] Dosya kopyalandı (boyut doğrulanamadı): %s -> %s\n",
+                    uf$name, dest))
+      } else {
+        cat(sprintf("[UPLOAD BATCH] HATA: Dosya kopyalandı ama doğrulanamadı: %s -> %s (src_size=%s, dest_size=%s)\n",
+                    uf$name, dest,
+                    as.character(src_size %||% "NA"), as.character(dest_size %||% "NA")))
+      }
 
       # Hemen indekse kaydet (özetleme başarısız olsa bile dosya kalıcı olacak)
-      tryCatch({
-        global_register_file(dest, uf$name, user_id = effective_user_id, persist_under_mcp_base = TRUE)
-        cat("[UPLOAD BATCH] Dosya indekse kaydedildi:", uf$name, "\n")
-      }, error = function(reg_err) {
-        cat("[UPLOAD BATCH] İndeks kaydı başarısız:", conditionMessage(reg_err), "\n")
-      })
+      if (copy_ok) {
+        tryCatch({
+          global_register_file(dest, uf$name, user_id = effective_user_id, persist_under_mcp_base = TRUE)
+          cat("[UPLOAD BATCH] Dosya indekse kaydedildi:", uf$name, "\n")
+        }, error = function(reg_err) {
+          cat("[UPLOAD BATCH] İndeks kaydı başarısız:", conditionMessage(reg_err), "\n")
+        })
+      }
     }, error = function(e) {
-      cat("[UPLOAD BATCH] Dosya kopyalama hatası:", conditionMessage(e), "\n")
+      cat(sprintf("[UPLOAD BATCH] Dosya kopyalama hatası: %s (user_id=%s, hedef_dizin=%s)\n",
+                  conditionMessage(e), as.character(effective_user_id),
+                  tryCatch(file.path(Sys.getenv("MCP_FILES_BASE"), paste0("user_", effective_user_id)),
+                           error = function(e2) "bilinmiyor")))
     })
+
+    # Dosya kopyalama başarısız olsa bile UI'da göster (geçici yol ile)
+    # ancak kullanıcıyı uyar
+    if (!copy_ok) {
+      showToast(session, sprintf("'%s' kalıcı klasöre kaydedilemedi. Dosya bu oturumda kullanılabilir ancak kalıcı olmayacak.", uf$name), "warning")
+    }
 
     file_to_add_reactive(uf)
 
     processAndSummarizeFile(
       uf,
-      current_user_id = current_user_id,
+      current_user_id = effective_user_id,
       session = session,
       settings = settings_data,
       file_manager_data = file_manager_data,
