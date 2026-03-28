@@ -539,8 +539,13 @@ sendMessageInit <- function(
     model_selected <- current_settings$model_selection
  
     # MCP snapshot hazırla
-    mcp_snapshot <- session$userData$mcp_registry_snapshot %||% (session$userData$current_session_files %||% list())
- 
+    # NOT: mcp_registry_snapshot boş list() olabilir (NULL değil); bu durumda %||% düşmez.
+    # Önce snapshot'ı dene, boşsa current_session_files'a düş.
+    mcp_snapshot <- session$userData$mcp_registry_snapshot
+    if (!is.list(mcp_snapshot) || length(mcp_snapshot) == 0) {
+      mcp_snapshot <- session$userData$current_session_files %||% list()
+    }
+
     current_settings$current_user_id <- effective_user_id
     current_settings$mcp_registry_snapshot <- mcp_snapshot
  
@@ -695,7 +700,10 @@ sendMessageInit <- function(
     if (!exists("mcp_snapshot", inherits = FALSE)) {
       mcp_snapshot <- update_mcp_registry_snapshot_fn()
     }
- 
+
+    # csf yeniden oluşturulduktan sonra snapshot'ı güncelle
+    current_settings$mcp_registry_snapshot <- mcp_snapshot
+
     # Dosya yollarını Excel modunda ilet
     current_settings$file_paths <- list()
     if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {

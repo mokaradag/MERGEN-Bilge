@@ -232,8 +232,16 @@ fileManagerServer <- function(
 	  if (is.null(session_files_reactive)) return(invisible())
 	  update_session_files(function(cur) {
 			cur <- cur %||% list()
-			# Minimal payload is OK for Ekli Dosyalar badge; summary will arrive later
-			cur[[file_obj$name]] <- cur[[file_obj$name]] %||% list(name = file_obj$name)
+			# Yol bilgisini de ekle; özetleme ve MCP araçları doğrudan kullanabilsin
+			entry <- cur[[file_obj$name]] %||% list()
+			entry$name <- file_obj$name
+			fpath <- file_obj$persisted_path %||% file_obj$datapath %||% file_obj$path
+			if (!is.null(fpath) && nzchar(fpath)) {
+			  entry$datapath <- fpath
+			  entry$path <- fpath
+			  entry$persisted_path <- fpath
+			}
+			cur[[file_obj$name]] <- entry
 			cur
 	  })
 	  fm_debug("attach", sprintf("added %s to session context", file_obj$name))
@@ -455,7 +463,7 @@ fileManagerServer <- function(
 		  
 	  for (i in seq_len(nrow(df))) {
 			p <- df$path[i]
-			display_name <- df$name[i]
+			display_name <- enc2utf8(as.character(df$name[i]))
 			exists_now <- path_exists_relaxed(p)
 			fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
 			if (!exists_now) {
