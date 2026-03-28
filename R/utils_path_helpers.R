@@ -60,11 +60,18 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     normalizePath(candidate, winslash = "/", mustWork = mustWork),
     error = function(e) candidate
   )
-  
-  # Windows'ta özel karakter içeren yollar için kısa (8.3) formu tercih et
-  normalized <- safe_windows_short_path(normalized, must_exist = FALSE)
 
-  enc2utf8(normalized)
+  normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
+
+  exists_now <- tryCatch(
+    isTRUE(file.exists(normalized)) ||
+      isTRUE(dir.exists(normalized)) ||
+      isTRUE(fs::file_exists(normalized)) ||
+      isTRUE(fs::dir_exists(normalized)),
+    error = function(e) FALSE
+  )
+
+  safe_windows_short_path(normalized, must_exist = exists_now)
 }
 
 # --- HATAYI ÖNLEYİCİ: KÖK DİZİN TEKRARI TEMİZLİĞİ ---
@@ -77,10 +84,8 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
 normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   if (is.null(candidate) || !nzchar(candidate)) return(candidate)
 
-  # İç yardımcı: baştaki çift eğik çizgi çiftlerini temizle
   dedupe_leading_pair <- function(p) {
     if (!nzchar(p)) return(p)
-    # "//server/share//server/share/..." gibi tekrarları algıla ve düzelt
     slashes <- sub("^(//)", "", p)
     parts <- strsplit(slashes, "/", fixed = TRUE)[[1]]
     if (length(parts) >= 4 && identical(parts[1:2], parts[3:4])) {
@@ -90,16 +95,13 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   }
 
   candidate <- as.character(candidate)
-
-  # Ters eğik çizgileri düzelt
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
-  # UNC yolu kontrolü: /server/share biçimini //server/share'e çevir
   maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
   if (maybe_unc) {
     cleaned <- paste0("//", sub("^/+", "", candidate))
     cleaned <- dedupe_leading_pair(cleaned)
-    return(enc2utf8(cleaned))
+    return(cleaned)
   }
 
   normalize_utf8_path(candidate, mustWork = must_exist)
@@ -111,7 +113,11 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 # NOT: Bu fonksiyon MERGEN_UPLOADS_DIR global değişkenine bağımlıdır
 #      ve config_file_store.R'de çağrılır.
 resolve_mcp_base_dir <- function() {
-  raw <- Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
+  raw <- Sys.getenv("MCP_FILES_BASE", "")
+  if (!nzchar(raw)) {
+    raw <- MERGEN_UPLOADS_DIR
+  }
+
   base <- normalize_mcp_path(raw, must_exist = FALSE)
 
   created <- tryCatch({
@@ -119,15 +125,19 @@ resolve_mcp_base_dir <- function() {
     TRUE
   }, error = function(e) FALSE)
 
-  if (!isTRUE(created) || !dir.exists(base)) {
+  base_exists <- tryCatch(
+    isTRUE(dir.exists(base)) || isTRUE(fs::dir_exists(base)),
+    error = function(e) FALSE
+  )
+
+  if (!isTRUE(created) || !isTRUE(base_exists)) {
     base <- MERGEN_UPLOADS_DIR
     tryCatch({
       fs::dir_create(base, recurse = TRUE)
     }, error = function(e) {
-      # Son çare: base R ile oluştur
       dir.create(base, showWarnings = FALSE, recursive = TRUE)
     })
   }
 
-  normalize_mcp_path(base, must_exist = dir.exists(base))
+  normalize_mcp_path(base, must_exist = TRUE)
 }

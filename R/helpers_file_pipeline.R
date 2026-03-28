@@ -51,10 +51,14 @@ processAndSummarizeFile <- function(file_info,
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
                               duration = NULL, type = "message")
 
+  # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan
+  effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
+  if (is.na(effective_user_id)) effective_user_id <- 0L
+
   # Ensure file is persisted under MCP base
   dest <- file_info$datapath
   if (!is_under_mcp_base(dest)) {
-    dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), current_user_id)
+    dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), effective_user_id)
   }
 
   # ============================================================================
@@ -63,14 +67,14 @@ processAndSummarizeFile <- function(file_info,
   tryCatch({
     global_register_file(
       dest, file_info$name,
-      user_id = current_user_id,
+      user_id = effective_user_id,
       persist_under_mcp_base = TRUE
     )
     cat("[FILE PIPELINE] Dosya indekse kaydedildi:", file_info$name, "\n")
   }, error = function(e) {
     cat("[FILE PIPELINE] İndeks kaydı başarısız:", conditionMessage(e), "\n")
   })
-
+  
   # Keep in session for MCP tools
   if (is.null(session$userData$current_session_files)) session$userData$current_session_files <- list()
   session$userData$current_session_files[[file_info$name]] <- list(
@@ -158,6 +162,10 @@ handle_file_upload_batch <- function(uploads_df,
                                      file_to_add_reactive) {
   if (is.null(uploads_df)) return(invisible(NULL))
 
+  # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan
+  effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
+  if (is.na(effective_user_id)) effective_user_id <- 0L
+
   uploads <- NULL
   if (is.data.frame(uploads_df)) {
     if (nrow(uploads_df) == 0) return(invisible(NULL))
@@ -211,13 +219,13 @@ handle_file_upload_batch <- function(uploads_df,
 
     # Dosyayı kalıcı dizine kopyala ve hemen indekse kaydet
     tryCatch({
-      dest <- copy_to_mcp_base(uf, current_user_id)
+      dest <- copy_to_mcp_base(uf, effective_user_id)
       uf$datapath <- dest
       cat("[UPLOAD BATCH] Dosya kopyalandı:", uf$name, "->", dest, "\n")
 
       # Hemen indekse kaydet (özetleme başarısız olsa bile dosya kalıcı olacak)
       tryCatch({
-        global_register_file(dest, uf$name, user_id = current_user_id, persist_under_mcp_base = TRUE)
+        global_register_file(dest, uf$name, user_id = effective_user_id, persist_under_mcp_base = TRUE)
         cat("[UPLOAD BATCH] Dosya indekse kaydedildi:", uf$name, "\n")
       }, error = function(reg_err) {
         cat("[UPLOAD BATCH] İndeks kaydı başarısız:", conditionMessage(reg_err), "\n")

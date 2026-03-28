@@ -901,34 +901,73 @@ fileManagerServer <- function(
       }
 
       saved_infos <- list()
-        if (nrow(new_df) > 0) {
-          withProgress(message = 'Dosyalar yükleniyor...', value = 0, {
-            for (i in seq_len(nrow(new_df))) {
-              incProgress(1 / nrow(new_df), detail = new_df$name[i])
-              result <- process_uploaded_file(new_df[i, , drop = FALSE], generate_message = FALSE)
-              # Only add to saved_infos if result is not NULL (valid file)
-              if (!is.null(result)) {
-                saved_infos[[length(saved_infos) + 1]] <- result
+      if (nrow(new_df) > 0) {
+        uid <- module_user_id_chr()
+
+        withProgress(message = 'Dosyalar yükleniyor...', value = 0, {
+          for (i in seq_len(nrow(new_df))) {
+            incProgress(1 / nrow(new_df), detail = new_df$name[i])
+
+            upload_row <- new_df[i, , drop = FALSE]
+            upload_name <- as.character(upload_row$name[1] %||% "")
+            upload_path <- as.character(upload_row$datapath[1] %||% "")
+
+            if (!nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
+              fm_debug("persist_abort", sprintf("geçersiz user_id nedeniyle kaydedilemedi: %s", upload_name))
+              showToast(session, paste("Dosya kalıcı klasöre kaydedilemedi:", upload_name), "error")
+              next
+            }
+
+            if (!is_under_mcp_base(upload_path)) {
+              persisted_path <- tryCatch({
+                copy_to_mcp_base(
+                  list(
+                    name = upload_name,
+                    datapath = upload_path,
+                    size = suppressWarnings(as.numeric(upload_row$size[1] %||% NA_real_)),
+                    type = as.character(upload_row$type[1] %||% "")
+                  ),
+                  uid
+                )
+              }, error = function(e) {
+                fm_debug("persist_error", sprintf("%s -> %s", upload_name, conditionMessage(e)))
+                ""
+              })
+
+              if (!nzchar(persisted_path) || !path_exists_relaxed(persisted_path)) {
+                showToast(session, paste("Dosya kalıcı klasöre kaydedilemedi:", upload_name), "error")
+                next
+              }
+
+              upload_row$datapath[1] <- persisted_path
+
+              persisted_size <- suppressWarnings(file.info(persisted_path)$size[1])
+              if (!is.na(persisted_size)) {
+                upload_row$size[1] <- persisted_size
               }
             }
-          })
-          
-          # Only show success message if at least one file was successfully uploaded
-          if (length(saved_infos) > 0) {
-            message_data(list(
-              content = sprintf("%d dosya yüklendi.", length(saved_infos)),
-              html    = sprintf("\U0001F4CE <b>%d dosya</b> yüklendi ve sohbete eklendi.", length(saved_infos)),
-              type    = "system"
-            ))
-            message_trigger(message_trigger() + 1)
-            showToast(session, paste(length(saved_infos), "dosya başarıyla yüklendi!"), "success")
-  
-            # hand off to parent (stable paths) -> summarizer
-            files_added_to_context(saved_infos)
+
+            result <- process_uploaded_file(upload_row, generate_message = FALSE)
+            if (!is.null(result)) {
+              saved_infos[[length(saved_infos) + 1]] <- result
+            }
           }
-          
-          shinyjs::delay(100, session$sendCustomMessage('resetBulkUploadCaption', list()))
+        })
+
+        if (length(saved_infos) > 0) {
+          message_data(list(
+            content = sprintf("%d dosya yüklendi.", length(saved_infos)),
+            html    = sprintf("\U0001F4CE <b>%d dosya</b> yüklendi ve sohbete eklendi.", length(saved_infos)),
+            type    = "system"
+          ))
+          message_trigger(message_trigger() + 1)
+          showToast(session, paste(length(saved_infos), "dosya başarıyla yüklendi!"), "success")
+
+          files_added_to_context(saved_infos)
         }
+
+        shinyjs::delay(100, session$sendCustomMessage('resetBulkUploadCaption', list()))
+      }
     }, ignoreInit = TRUE)
 
     # per-row actions

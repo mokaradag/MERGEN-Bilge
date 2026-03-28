@@ -15,28 +15,32 @@ get_version_history <- function() {
     return(list(current_version = "0.0", versions = list()))
   }
 
-  # Dosyayı UTF-8 olarak okumayı dener; başarısız olursa yaygın Windows
-  # kodlamalarından güvenli geri dönüş yapar.
+  # Dosyayı bayt düzeyinde okuyup UTF-8'e zorla çevir.
+  # Bu yaklaşım Windows + SSO oturumlarında Türkçe karakter kaybını engeller.
   read_version_lines <- function(path) {
-    try_read <- function(enc) {
-      suppressWarnings(readLines(path, encoding = enc, warn = FALSE, skipNul = TRUE))
+    raw_size <- suppressWarnings(file.info(path)$size[1])
+    if (is.na(raw_size) || raw_size <= 0) return(character(0))
+
+    raw_content <- readBin(path, what = "raw", n = raw_size)
+
+    decode_lines <- function(from) {
+      txt <- tryCatch(
+        iconv(list(raw_content), from = from, to = "UTF-8", sub = NA_character_)[[1]],
+        error = function(e) NA_character_
+      )
+
+      if (is.na(txt) || !nzchar(txt)) return(NULL)
+
+      txt <- sub("^\ufeff", "", txt, perl = TRUE)
+      txt <- enc2utf8(txt)
+      lines <- strsplit(txt, "\r\n|\n|\r", perl = TRUE)[[1]]
+      enc2utf8(lines)
     }
 
-    lines <- try_read("UTF-8")
-    normalized <- suppressWarnings(iconv(lines, from = "UTF-8", to = "UTF-8", sub = ""))
-
-    if (length(normalized) > 0 && !all(is.na(normalized))) {
-      normalized[is.na(normalized)] <- ""
-      return(normalized)
-    }
-
-    fallback_encodings <- c("CP1254", "latin1")
-    for (enc in fallback_encodings) {
-      fallback_lines <- try_read(enc)
-      fallback_normalized <- suppressWarnings(iconv(fallback_lines, from = enc, to = "UTF-8", sub = ""))
-      if (length(fallback_normalized) > 0 && !all(is.na(fallback_normalized))) {
-        fallback_normalized[is.na(fallback_normalized)] <- ""
-        return(fallback_normalized)
+    for (enc in c("UTF-8", "WINDOWS-1254", "CP1254", "latin1")) {
+      lines <- decode_lines(enc)
+      if (!is.null(lines) && length(lines) > 0) {
+        return(lines)
       }
     }
 
@@ -48,9 +52,9 @@ get_version_history <- function() {
   versions <- list()
   current_version <- NULL
   current_ver <- NULL
-  current_section <- NULL  # "highlights" veya "detail"
+  current_section <- NULL
   section_icon <- NULL
-  in_comment <- FALSE      # HTML yorum bloğu içinde mi
+  in_comment <- FALSE
 
   # Mevcut sürümü listeye ekle
   flush_version <- function() {
@@ -60,17 +64,17 @@ get_version_history <- function() {
   }
 
   for (line in lines) {
-    trimmed <- trimws(line)
+    trimmed <- enc2utf8(trimws(line))
 
-    # HTML yorum bloğu takibi (çok satırlı <!-- ... --> desteği)
+    # HTML yorum bloğu takibi
     if (grepl("<!--", trimmed)) {
       in_comment <- TRUE
-      # Aynı satırda kapanıyorsa (<!-- ... -->)
       if (grepl("-->", trimmed)) {
         in_comment <- FALSE
       }
       next
     }
+
     if (in_comment) {
       if (grepl("-->", trimmed)) {
         in_comment <- FALSE
@@ -80,6 +84,7 @@ get_version_history <- function() {
 
     # Boş satırı atla
     if (nchar(trimmed) == 0) next
+
     # Sürüm ayracı
     if (trimmed == "---") {
       current_section <- NULL
@@ -94,7 +99,6 @@ get_version_history <- function() {
       ver_date <- if (length(parts) >= 2) trimws(parts[2]) else ""
       ver_title <- if (length(parts) >= 3) trimws(parts[3]) else ""
 
-      # İlk sürüm mevcut sürümdür
       if (is.null(current_version)) current_version <- ver_num
 
       current_ver <- list(
@@ -110,7 +114,7 @@ get_version_history <- function() {
       next
     }
 
-    # Rozet satırı: badge: Yeni
+    # Rozet satırı
     if (grepl("^badge:", trimmed) && !is.null(current_ver)) {
       badge_val <- trimws(sub("^badge:\\s*", "", trimmed))
       if (nzchar(badge_val) && badge_val != "NULL") {
@@ -119,7 +123,7 @@ get_version_history <- function() {
       next
     }
 
-    # Bölüm başlığı: ### Öne Çıkanlar veya ### Kategori | ikon
+    # Bölüm başlığı
     if (grepl("^### ", trimmed) && !is.null(current_ver)) {
       section_text <- sub("^### ", "", trimmed)
       section_parts <- strsplit(section_text, "\\s*\\|\\s*")[[1]]
@@ -130,7 +134,6 @@ get_version_history <- function() {
       } else {
         current_section <- "detail"
         section_icon <- if (length(section_parts) >= 2) trimws(section_parts[2]) else "circle"
-        # Yeni detay bölümü ekle
         current_ver$details[[length(current_ver$details) + 1]] <- list(
           category = section_name,
           icon = section_icon,
@@ -140,9 +143,10 @@ get_version_history <- function() {
       next
     }
 
-    # Madde satırı: - İçerik
+    # Madde satırı
     if (grepl("^- ", trimmed) && !is.null(current_ver) && !is.null(current_section)) {
       item_text <- sub("^- ", "", trimmed)
+
       if (current_section == "highlights") {
         current_ver$highlights[[length(current_ver$highlights) + 1]] <- item_text
       } else if (current_section == "detail" && length(current_ver$details) > 0) {

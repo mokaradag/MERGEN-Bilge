@@ -106,7 +106,16 @@ copy_to_mcp_base <- function(upload, user_id) {
   if (!fs::file_exists(dest)) {
     stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı)", upload$datapath, dest))
   }
-  normalize_mcp_path(dest, must_exist = TRUE)
+
+  # Dosya gerçekten oluştuysa yolu olduğu gibi koru.
+  # Burada enc2utf8 uygulamak UNC + Türkçe karakterli yollarda
+  # Geliştirme -> GeliÅŸtirme gibi bozulmaya yol açabiliyor.
+  dest_chr <- gsub("\\\\", "/", as.character(dest), fixed = TRUE)
+  if (path_exists_relaxed(dest_chr)) {
+    return(dest_chr)
+  }
+
+  safe_windows_short_path(dest_chr, must_exist = TRUE)
 }
 
 # Is path under MCP base?
@@ -114,17 +123,35 @@ is_under_mcp_base <- function(p) {
   base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) return(FALSE)
-  
+
   safe_norm <- function(x) {
-     x <- gsub("\\\\", "/", x)
-     if (.Platform$OS.type == "windows" && grepl("^/[^/]", x)) x <- paste0("/", x)
-     x
+    x <- gsub("\\\\", "/", x)
+    if (.Platform$OS.type == "windows" && grepl("^/[^/]", x)) x <- paste0("/", x)
+    enc2utf8(x)
   }
-  
+
   np <- safe_norm(p)
   nb <- safe_norm(base)
+
+  if (!nzchar(np) || !nzchar(nb)) return(FALSE)
+
+  # Türkçe karakter bozulsa bile son klasör segmentleri ASCII kaldığı için
+  # önce bunlar üzerinden hızlı ve güvenli tespit yap.
+  np_parent <- tryCatch(basename(dirname(np)), error = function(e) "")
+  np_grand  <- tryCatch(basename(dirname(dirname(np))), error = function(e) "")
+  nb_base   <- tryCatch(basename(nb), error = function(e) "")
+
+  if (
+    grepl("^user_[0-9]+$", tolower(np_parent)) &&
+    nzchar(np_grand) &&
+    nzchar(nb_base) &&
+    identical(tolower(np_grand), tolower(nb_base))
+  ) {
+    return(TRUE)
+  }
+
   startsWith(normalize_for_path_compare(np), paste0(normalize_for_path_compare(nb), "/")) ||
-  normalize_for_path_compare(np) == normalize_for_path_compare(nb)
+    normalize_for_path_compare(np) == normalize_for_path_compare(nb)
 }
 
 # Turn a data.frame into simple CSV markdown (used for quick previews)

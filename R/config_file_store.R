@@ -64,8 +64,22 @@ mergen_register_uploaded_file <- function(src_path,
   }
   fs::dir_create(user_folder, recurse = TRUE)
 
-  src_norm  <- normalize_mcp_path(src_path, must_exist = FALSE)
-  base_norm <- normalize_mcp_path(base_dir, must_exist = dir.exists(base_dir))
+  # Var olan geçerli yolu mümkün olduğunca olduğu gibi koru.
+  preserve_existing_path <- function(p, must_exist = FALSE) {
+    if (is.null(p) || length(p) == 0) return("")
+    candidate <- gsub("\\\\", "/", as.character(p[1]), fixed = TRUE)
+    if (!nzchar(candidate)) return("")
+    if (!must_exist || path_exists_relaxed(candidate)) {
+      return(enc2utf8(candidate))
+    }
+    tryCatch(
+      normalize_mcp_path(candidate, must_exist = must_exist),
+      error = function(e) enc2utf8(candidate)
+    )
+  }
+
+  src_norm  <- preserve_existing_path(src_path, must_exist = FALSE)
+  base_norm <- preserve_existing_path(base_dir, must_exist = FALSE)
 
   # Karşılaştırma için yol normalizasyonu (küçük harf, ayırıcı düzeltmesi)
   normalize_for_compare <- function(p) {
@@ -81,9 +95,23 @@ mergen_register_uploaded_file <- function(src_path,
   src_cmp  <- normalize_for_compare(src_norm)
   base_cmp <- normalize_for_compare(base_norm)
 
-  # Kaynak zaten hedef dizin altındaysa kopyalama, sadece indeksle
-  if (nzchar(base_cmp) &&
-      (identical(src_cmp, base_cmp) || startsWith(src_cmp, paste0(base_cmp, "/")))) {
+  src_parent <- tryCatch(basename(dirname(src_norm)), error = function(e) "")
+  src_grand  <- tryCatch(basename(dirname(dirname(src_norm))), error = function(e) "")
+  user_leaf  <- tryCatch(basename(user_folder), error = function(e) "")
+  base_leaf  <- tryCatch(basename(base_dir), error = function(e) "")
+
+  already_in_user_bucket <- isTRUE(path_exists_relaxed(src_norm)) &&
+    nzchar(src_parent) && nzchar(src_grand) &&
+    nzchar(user_leaf) && nzchar(base_leaf) &&
+    identical(tolower(src_parent), tolower(user_leaf)) &&
+    identical(tolower(src_grand), tolower(base_leaf))
+
+  # Kaynak zaten kullanıcı kovası altındaysa ikinci kez fiziksel kopya alma, sadece indeksle
+  if (
+    already_in_user_bucket ||
+    (nzchar(base_cmp) &&
+      (identical(src_cmp, base_cmp) || startsWith(src_cmp, paste0(base_cmp, "/"))))
+  ) {
     dest_norm <- src_norm
   } else {
     unique_name <- paste0(
@@ -104,10 +132,14 @@ mergen_register_uploaded_file <- function(src_path,
       stop(sprintf("Dosya kopyalanamadı: %s -> %s", src_path, dest))
     }
 
-    dest_norm <- normalize_mcp_path(dest, must_exist = TRUE)
+    # Dosya oluştuysa yolu olduğu gibi koru; yeniden normalizasyon Türkçe karakteri bozabiliyor.
+    dest_norm <- gsub("\\\\", "/", as.character(dest), fixed = TRUE)
+    if (!path_exists_relaxed(dest_norm)) {
+      dest_norm <- normalize_mcp_path(dest_norm, must_exist = TRUE)
+    } else {
+      dest_norm <- enc2utf8(dest_norm)
+    }
   }
-
-  dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
 
   # İndekse kaydet (geriye uyumlu: path + display)
   idx <- .load_index()
@@ -423,11 +455,46 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
 
+  resolve_display_name_from_index <- function(file_path) {
+    idx_all <- .load_index()
+    target_path <- normalize_for_path_compare(file_path)
+    target_base <- tolower(basename(file_path))
+
+    for (bucket_name in names(idx_all)) {
+      bucket <- idx_all[[bucket_name]]
+
+      candidate_entries <- if (is.list(bucket) && (!is.null(bucket$path) || !is.null(bucket$display))) {
+        list(bucket)
+      } else if (is.list(bucket) && length(bucket) > 0) {
+        unname(bucket)
+      } else {
+        list()
+      }
+
+      for (entry in candidate_entries) {
+        entry_path <- if (is.list(entry) && !is.null(entry$path)) as.character(entry$path) else as.character(entry %||% "")
+        entry_display <- if (is.list(entry) && !is.null(entry$display)) as.character(entry$display) else ""
+
+        if (!nzchar(entry_path) || !nzchar(entry_display)) next
+
+        same_path <- identical(normalize_for_path_compare(entry_path), target_path)
+        same_file <- identical(tolower(basename(entry_path)), target_base)
+
+        if (same_path || same_file) {
+          return(enc2utf8(entry_display))
+        }
+      }
+    }
+
+    basename(file_path)
+  }
+
   out <- data.frame(
     path = vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE),
-    name = basename(paths),
+    name = vapply(paths, resolve_display_name_from_index, character(1)),
     stringsAsFactors = FALSE
   )
+  
   attr(out, "source") <- "filesystem"
   attr(out, "count") <- nrow(out)
   log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: filesystem)")
