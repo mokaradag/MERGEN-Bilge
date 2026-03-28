@@ -384,53 +384,77 @@
       karakter.hizY = 0;
     }
 
-    // Ekran sınırları
-    var solSinir = 20;
-    var sagSinir = state.canvasGenislik - karakter.genislik - 20;
-    if (karakter.x < solSinir) {
-      karakter.x = solSinir;
-      karakter.hizX = Math.abs(karakter.hizX) * 0.5;
-      karakter.yon = 1;
-    }
-    if (karakter.x > sagSinir) {
-      karakter.x = sagSinir;
-      karakter.hizX = -Math.abs(karakter.hizX) * 0.5;
-      karakter.yon = -1;
-    }
+    // Oyun durumuna göre sınır ve AI davranışı
+    var oyunAktif = (state.oyunDurumu === "oynuyor" || state.oyunDurumu === "boss");
 
-    // Hareket AI (idle durumda)
-    if (karakter.animasyonDurumu === "idle" || karakter.animasyonDurumu === "walk") {
-      karakter.hareketBekleme--;
-      if (karakter.hareketBekleme <= 0) {
-        // Yeni hedef seç
-        var hedefMerkez = state.canvasGenislik / 2;
-        karakter.hedefX = hedefMerkez + (Math.random() - 0.5) * state.canvasGenislik * 0.6;
-        karakter.hareketBekleme = 60 + Math.random() * 180;
+    if (oyunAktif) {
+      // ── Oyun sırasında: dünya sınırlarını kullan ──
+      var solSinirDunya = 0;
+      var sagSinirDunya = state.dunyaGenislik - karakter.genislik;
+      if (karakter.x < solSinirDunya) {
+        karakter.x = solSinirDunya;
+        karakter.hizX = 0;
+      }
+      if (karakter.x > sagSinirDunya) {
+        karakter.x = sagSinirDunya;
+        karakter.hizX = 0;
+      }
+      // Oyun sırasında idle AI çalışmaz — hareket oyun modülü tarafından yönetilir
+    } else {
+      // ── Bekleme / zafer durumunda: ekran sınırlarını kullan ──
+      var solSinir = 20;
+      var sagSinir = state.canvasGenislik - karakter.genislik - 20;
+      if (karakter.x < solSinir) {
+        karakter.x = solSinir;
+        karakter.hizX = Math.abs(karakter.hizX) * 0.5;
+        karakter.yon = 1;
+      }
+      if (karakter.x > sagSinir) {
+        karakter.x = sagSinir;
+        karakter.hizX = -Math.abs(karakter.hizX) * 0.5;
+        karakter.yon = -1;
       }
 
-      var fark = karakter.hedefX - karakter.x;
-      if (Math.abs(fark) > 10) {
-        karakter.hizX += (fark > 0 ? 0.15 : -0.15);
-        karakter.yon = fark > 0 ? 1 : -1;
-        karakter.animasyonDurumu = "walk";
-      } else {
-        karakter.animasyonDurumu = "idle";
+      // Hareket AI (yalnızca bekleme/zafer durumunda)
+      if (karakter.animasyonDurumu === "idle" || karakter.animasyonDurumu === "walk") {
+        karakter.hareketBekleme--;
+        if (karakter.hareketBekleme <= 0) {
+          var hedefMerkez = state.canvasGenislik / 2;
+          karakter.hedefX = hedefMerkez + (Math.random() - 0.5) * state.canvasGenislik * 0.6;
+          karakter.hareketBekleme = 60 + Math.random() * 180;
+        }
+
+        var fark = karakter.hedefX - karakter.x;
+        if (Math.abs(fark) > 10) {
+          karakter.hizX += (fark > 0 ? 0.15 : -0.15);
+          karakter.yon = fark > 0 ? 1 : -1;
+          karakter.animasyonDurumu = "walk";
+        } else {
+          karakter.animasyonDurumu = "idle";
+        }
       }
     }
   }
 
-  // Karakter çizim
+  // Karakter çizim (kamera ofseti uygulanır)
   function karakterCiz(ctx, karakter) {
+    var state = BY.state;
     var config = BY.config;
     var piksel = config.PIKSEL_BOYUT;
+
+    // Dünya koordinatından ekran koordinatına dönüşüm
+    var ekranX = karakter.x - state.kameraX;
+
+    // Görüş alanı dışındaysa çizme
+    if (ekranX + karakter.genislik < -50 || ekranX > state.canvasGenislik + 50) return;
 
     // Gölge
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.3)";
     ctx.beginPath();
     ctx.ellipse(
-      karakter.x + karakter.genislik / 2,
-      BY.state.zeminY - 2,
+      ekranX + karakter.genislik / 2,
+      state.zeminY - 2,
       karakter.genislik / 2.5,
       4,
       0, 0, Math.PI * 2
@@ -442,7 +466,7 @@
     var auraYogunluk = karakter.hoverAktif ? 12 : (karakter.yetenekAktif ? 15 : 5);
     ctx.save();
     ctx.beginPath();
-    var auraMerkezX = karakter.x + karakter.genislik / 2;
+    var auraMerkezX = ekranX + karakter.genislik / 2;
     var auraMerkezY = karakter.y + karakter.yukseklik * 0.3;
     var auraYaricap = karakter.genislik * 0.7 + Math.sin(karakter.auraAci) * 3;
     var auraGradyan = ctx.createRadialGradient(
@@ -467,7 +491,7 @@
     var cizimY = karakter.y + karakter.nefesOfset;
     var parlamaGuc = karakter.hoverAktif ? 10 : (karakter.yetenekAktif ? 15 : 0);
 
-    spriteCiz(ctx, mevcutSprite, karakter.spriteRenkler, karakter.x, cizimY, piksel, karakter.yon, parlamaGuc);
+    spriteCiz(ctx, mevcutSprite, karakter.spriteRenkler, ekranX, cizimY, piksel, karakter.yon, parlamaGuc);
 
     // İsim etiketi
     ctx.save();
@@ -476,7 +500,7 @@
     ctx.fillStyle = karakter.renkler.acik;
     ctx.shadowColor = "rgba(0,0,0,0.8)";
     ctx.shadowBlur = 3;
-    ctx.fillText(karakter.isim, karakter.x + karakter.genislik / 2, karakter.y - 8);
+    ctx.fillText(karakter.isim, ekranX + karakter.genislik / 2, karakter.y - 8);
     ctx.restore();
 
     // Platform parlama
@@ -487,8 +511,8 @@
       ctx.shadowColor = karakter.renkler.ana;
       ctx.shadowBlur = 8;
       ctx.beginPath();
-      ctx.moveTo(karakter.x, BY.state.zeminY);
-      ctx.lineTo(karakter.x + karakter.genislik, BY.state.zeminY);
+      ctx.moveTo(ekranX, state.zeminY);
+      ctx.lineTo(ekranX + karakter.genislik, state.zeminY);
       ctx.stroke();
       ctx.restore();
     }
@@ -566,7 +590,37 @@
 
     yetenekCalistir: yetenekCalistir,
     spriteCiz: spriteCiz,
-    karakterOlustur: karakterOlustur
+    karakterOlustur: karakterOlustur,
+
+    // Takımın dünya koordinatlarındaki merkezini döndür
+    takimMerkeziAl: function() {
+      var karakterler = BY.state.karakterler;
+      if (!karakterler || karakterler.length === 0) return null;
+      var topX = 0;
+      var topY = 0;
+      for (var i = 0; i < karakterler.length; i++) {
+        topX += karakterler[i].x + karakterler[i].genislik / 2;
+        topY += karakterler[i].y + karakterler[i].yukseklik / 2;
+      }
+      return {
+        x: topX / karakterler.length,
+        y: topY / karakterler.length
+      };
+    },
+
+    // Takıma hasar ver (düşman temas/alan hasarı için)
+    takimHasarAl: function(miktar) {
+      var state = BY.state;
+      state.takimCan = Math.max(0, state.takimCan - (miktar || 0));
+
+      // Hasar efekti
+      if (BY.efektler && BY.efektler.hasarEfektiOlustur) {
+        var merkez = this.takimMerkeziAl();
+        if (merkez) {
+          BY.efektler.hasarEfektiOlustur(merkez.x, merkez.y, "#FF8800");
+        }
+      }
+    }
   };
 
 })();
