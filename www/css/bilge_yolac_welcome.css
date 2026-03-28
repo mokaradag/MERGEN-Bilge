@@ -1,5 +1,5 @@
 /* www/css/bilge_yolac_welcome.css */
-/* Bilge Yolaç karşılama ekranı: canvas, CRT parlama, geçiş efektleri, slogan animasyonları */
+/* Bilge Yolaç platformer oyun ekranı: canvas, CRT parlama, HUD stilleri, geçiş efektleri */
 
 /* --- Canvas Temel Stili --- */
 .cc-welcome-screen {
@@ -25,6 +25,16 @@
   -ms-interpolation-mode: nearest-neighbor;
   cursor: pointer;
   display: block;
+  /* Tıklama olaylarının Shiny ile çakışmasını önle */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  touch-action: none;
+}
+
+/* Oyun çalışırken canvas odaklanabilir olsun (klavye girişi için) */
+.bilge-yolac-canvas:focus {
+  outline: none;
 }
 
 /* --- CRT Tarama Çizgisi Kaplama --- */
@@ -68,6 +78,18 @@
   0%   { opacity: 0; }
   50%  { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* --- Oyun Durumu Göstergeleri --- */
+@keyframes bilgeYolacNabiz {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+@keyframes bilgeYolacYildiz {
+  0%   { transform: scale(0) rotate(0deg); opacity: 0; }
+  50%  { transform: scale(1.2) rotate(180deg); opacity: 1; }
+  100% { transform: scale(1) rotate(360deg); opacity: 1; }
 }
 
 /* --- Responsive Ayarlar --- */
