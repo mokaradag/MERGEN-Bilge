@@ -255,6 +255,7 @@ ui <- dashboardPage(
     tags$script(src = "js/surum_bilgilendirme.js", defer = "defer"),
     tags$script(src = "js/claude_code.js", defer = "defer"),
     tags$script(src = "js/claude_code_streaming.js", defer = "defer"),
+
     # Bilge Yolaç karşılama ekranı modülleri (yükleme sırası önemli)
     tags$script(src = "js/bilge_yolac_motor.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_fizik.js", defer = "defer"),
