@@ -334,7 +334,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
         name = {
           disp <- if (is.list(val) && !is.null(val$display)) val$display else NA_character_
           disp <- disp %||% NA_character_
-          if (!is.na(disp) && nzchar(disp)) disp else key
+          if (!is.na(disp) && nzchar(disp)) enc2utf8(as.character(disp)) else key
         }
       )
     })

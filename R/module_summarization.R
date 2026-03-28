@@ -134,7 +134,7 @@ process_summarization_request <- function(
       }
     }
     
-    if (is.null(fpath) || !nzchar(fpath) || !file.exists(fpath)) {
+    if (is.null(fpath) || !nzchar(fpath) || !path_exists_relaxed(fpath)) {
       err_msg <- paste("Dosya yolu bulunamadı:", fname)
       log_error("[SUMMARIZATION] {err_msg}")
       read_errors <- c(read_errors, err_msg)

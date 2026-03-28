@@ -97,7 +97,9 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   candidate <- as.character(candidate)
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
-  maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
+  # UNC yolları: hem //server/share hem de /server/share formatını yakala
+
+  maybe_unc <- grepl("^//", candidate) || grepl("^/[^/]+/[^/]+", candidate)
   if (maybe_unc) {
     cleaned <- paste0("//", sub("^/+", "", candidate))
     cleaned <- dedupe_leading_pair(cleaned)
