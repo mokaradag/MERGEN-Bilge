@@ -103,7 +103,21 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   if (maybe_unc) {
     cleaned <- paste0("//", sub("^/+", "", candidate))
     cleaned <- dedupe_leading_pair(cleaned)
-    return(cleaned)
+
+    # normalizePath ile Türkçe karakter encoding'ini düzelt, sonra UNC önekini koru
+    resolved <- tryCatch(
+      normalizePath(cleaned, winslash = "/", mustWork = must_exist),
+      error = function(e) cleaned
+    )
+    resolved <- gsub("\\\\", "/", resolved, fixed = TRUE)
+    # normalizePath UNC önekini kaldırmışsa geri ekle
+    if (nzchar(resolved) && !grepl("^//", resolved) && grepl("^/", resolved)) {
+      resolved <- paste0("/", resolved)
+    } else if (nzchar(resolved) && !grepl("^[/\\\\]", resolved)) {
+      # normalizePath tamamen farklı bir yol döndürdüyse orijinali koru
+      resolved <- cleaned
+    }
+    return(resolved)
   }
 
   normalize_utf8_path(candidate, mustWork = must_exist)
