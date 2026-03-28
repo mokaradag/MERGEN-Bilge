@@ -64,12 +64,23 @@ copy_to_mcp_base <- function(upload, user_id) {
      p
   }
 
-  base <- Sys.getenv("MCP_FILES_BASE")
+  # KRİTİK: Önce config_file_store.R'de normalizePath() ile çözümlenen
+  # seçeneği kullan (Türkçe karakter encoding'i doğru). Sys.getenv() ham
+  # baytlar döndürerek Windows'ta dosya yolunu bozabiliyor
+  # (Geliştirme -> GeliAYtirme gibi).
+  base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) {
-    base <- getOption(
-      "mergen.mcp_base_dir",
-      default = normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
-    )
+    raw_env <- Sys.getenv("MCP_FILES_BASE", "")
+    if (nzchar(raw_env)) {
+      # normalizePath ile encoding'i düzelt
+      base <- tryCatch(
+        normalizePath(raw_env, winslash = "/", mustWork = FALSE),
+        error = function(e) raw_env
+      )
+    }
+  }
+  if (!nzchar(base)) {
+    base <- normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
   }
 
   # Use safe local normalization
@@ -184,8 +195,9 @@ copy_to_mcp_base <- function(upload, user_id) {
 
 # Is path under MCP base?
 is_under_mcp_base <- function(p) {
-  base <- Sys.getenv("MCP_FILES_BASE")
-  if (!nzchar(base)) base <- getOption("mergen.mcp_base_dir", "")
+  # Önce doğru encoding'li seçeneği kullan (config_file_store.R'den)
+  base <- getOption("mergen.mcp_base_dir", "")
+  if (!nzchar(base)) base <- Sys.getenv("MCP_FILES_BASE")
   if (!nzchar(base)) return(FALSE)
 
   safe_norm <- function(x) {
