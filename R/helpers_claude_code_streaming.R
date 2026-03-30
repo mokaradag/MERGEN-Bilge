@@ -89,6 +89,7 @@ run_claude_code_streaming <- function(prompt,
     proc <- processx::process$new(
       command = komut$command,
       args = komut$args,
+      env = komut$env,
       wd = workdir,
       stdout = "|",
       stderr = "|",

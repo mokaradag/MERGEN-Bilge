@@ -210,12 +210,24 @@ build_model_tier_choices <- function(model_listesi) {
 #'
 #' @param cli_path CLI çalıştırılabilir dosya yolu
 #' @param args CLI argümanları
-#' @return Liste: command, args
+#' @return Liste: command, args, env (ortam değişkenleri veya NULL)
 build_processx_command <- function(cli_path, args) {
   if (.Platform$OS.type == "windows" && grepl("\\.cmd$", cli_path, ignore.case = TRUE)) {
-    list(command = "cmd.exe", args = c("/c", cli_path, args))
+    # npm dizinini PATH'e ekle (node.exe'nin bulunabilmesi için)
+    npm_dizini <- normalizePath(dirname(cli_path), winslash = "/", mustWork = FALSE)
+    mevcut_path <- Sys.getenv("PATH")
+    if (!grepl(npm_dizini, mevcut_path, fixed = TRUE)) {
+      yeni_path <- paste(npm_dizini, mevcut_path, sep = ";")
+    } else {
+      yeni_path <- mevcut_path
+    }
+    list(
+      command = "cmd.exe",
+      args = c("/c", cli_path, args),
+      env = c(Sys.getenv(), PATH = yeni_path)
+    )
   } else {
-    list(command = cli_path, args = args)
+    list(command = cli_path, args = args, env = NULL)
   }
 }
 
@@ -318,6 +330,7 @@ run_claude_code <- function(prompt,
     proc <- processx::process$new(
       command = komut$command,
       args = komut$args,
+      env = komut$env,
       wd = workdir,
       stdout = "|",
       stderr = "|",
@@ -579,6 +592,7 @@ check_claude_code_status <- function(cli_path = NULL) {
     proc <- processx::process$new(
       command = komut$command,
       args = komut$args,
+      env = komut$env,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
@@ -599,14 +613,24 @@ check_claude_code_status <- function(cli_path = NULL) {
       surum <- trimws(stdout_metin)
       list(installed = TRUE, version = surum, path = cli_path, error = "")
     } else {
-      list(installed = FALSE, version = "", path = cli_path, error = stdout_metin)
+      stderr_metin <- proc$read_all_error()
+      hata_detay <- paste0(
+        "Çıkış kodu: ", cikis_kodu,
+        " | stdout: ", substr(stdout_metin, 1, 200),
+        " | stderr: ", substr(stderr_metin, 1, 200)
+      )
+      log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "CLI durum hatası:", gsub("[{}]", "", hata_detay)))
+      list(installed = FALSE, version = "", path = cli_path, error = hata_detay)
     }
   }, error = function(e) {
+    hata_metni <- conditionMessage(e)
+    log_error(paste(CLAUDE_CODE_LOG_PREFIX, "CLI başlatma hatası:",
+                    gsub("[{}]", "", hata_metni), "| Yol:", cli_path %||% "NULL"))
     list(
       installed = FALSE,
       version = "",
       path = cli_path,
-      error = paste0("Claude Code çalıştırılamadı: ", conditionMessage(e))
+      error = paste0("Claude Code çalıştırılamadı: ", hata_metni)
     )
   })
 }
