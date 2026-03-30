@@ -47,16 +47,10 @@ MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
   x
 }
 
-# Kaydetmeden önce native encoding dizeleri UTF-8'e çeviren yardımcı
-.convert_to_utf8 <- function(x) {
-  if (is.character(x)) return(enc2utf8(x))
-  if (is.list(x)) return(lapply(x, .convert_to_utf8))
-  x
-}
-
 .save_index <- function(idx) {
-  # Native encoding (ör. CP1254) baytlarını UTF-8'e çevir, yoksa JSON bozulur
-  idx <- .convert_to_utf8(idx)
+  # JSON yazımında baytları dönüştürme; yalnızca UTF-8 olarak işaretle.
+  # Aksi halde bazı ortamlarda (özellikle Windows/native encoding) çift kodlama oluşabilir.
+  idx <- .mark_utf8(idx)
   jsonlite::write_json(idx, MERGEN_INDEX_PATH, auto_unbox = TRUE, pretty = TRUE)
 }
 
@@ -166,7 +160,7 @@ mergen_register_uploaded_file <- function(src_path,
   # İndekse kaydet (geriye uyumlu: path + display)
   idx <- .load_index()
   key <- tolower(basename(as_name))
-  entry <- list(path = enc2utf8(dest_norm), display = enc2utf8(basename(as_name)))
+  entry <- list(path = .mark_utf8(dest_norm), display = .mark_utf8(basename(as_name)))
 
   if (!is.null(user_id)) {
     uid <- as.character(user_id)
@@ -356,8 +350,8 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
         name = {
           disp <- if (is.list(val) && !is.null(val$display)) val$display else NA_character_
           disp <- disp %||% NA_character_
-          # .load_index() zaten .mark_utf8() ile işaretliyor; yine de güvenlik için enc2utf8
-          if (!is.na(disp) && nzchar(disp)) enc2utf8(disp) else enc2utf8(key)
+          # .load_index() zaten .mark_utf8() ile işaretliyor; burada yeniden dönüştürme yapılmaz
+          if (!is.na(disp) && nzchar(disp)) .mark_utf8(disp) else .mark_utf8(key)
         }
       )
     })
