@@ -109,7 +109,11 @@ filePreviewServer <- function(id) {
 
           # PDF'i arka planda base64'e çevir ve iframe src değerini ayarla
           future::future({
-            base64enc::base64encode(datapath)
+            # UNC yollarında base R file() başarısız olabilir; çalışan varyantı bul
+            dp <- if (exists("resolve_readable_path", mode = "function")) {
+              resolve_readable_path(datapath)
+            } else datapath
+            base64enc::base64encode(dp)
           }) %...>% (function(b64){
             if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
               shinyjs::runjs(sprintf(
@@ -172,7 +176,10 @@ filePreviewServer <- function(id) {
 
           # İçeriği base64 olarak arka planda hazırla; modal hemen açılmış olacak
           future::future({
-            base64enc::base64encode(datapath)
+            dp <- if (exists("resolve_readable_path", mode = "function")) {
+              resolve_readable_path(datapath)
+            } else datapath
+            base64enc::base64encode(dp)
           }) %...>% (function(b64){
             if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
               session$sendCustomMessage(

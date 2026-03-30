@@ -1,5 +1,27 @@
 # R/helpers_files.R
 
+# UNC yolunu base R fonksiyonları (file(), readBin, pdftools vb.) için okunabilir formata çevirir.
+# path_exists_relaxed() dosyanın varlığını doğrular ancak base R'ın açamayacağı bir yol döndürebilir.
+# Bu fonksiyon file.exists() ile gerçekten açılabilecek varyantı bulur.
+resolve_readable_path <- function(path) {
+  if (is.null(path) || !nzchar(path)) return(path)
+  p <- as.character(path[1])
+  # Zaten base R ile çalışıyorsa dokunma
+  if (tryCatch(isTRUE(file.exists(p)), error = function(e) FALSE)) return(p)
+  # UNC forward slash -> backslash dene (\\server\share formatı)
+  p_bs <- gsub("/", "\\\\", p, fixed = TRUE)
+  if (tryCatch(isTRUE(file.exists(p_bs)), error = function(e) FALSE)) return(p_bs)
+  # Tek slash başlangıcını çift slash ile dene
+  p_fwd <- gsub("\\\\", "/", p, fixed = TRUE)
+  if (grepl("^/[^/]", p_fwd)) {
+    p_unc <- paste0("/", p_fwd)
+    if (tryCatch(isTRUE(file.exists(p_unc)), error = function(e) FALSE)) return(p_unc)
+    p_unc_bs <- gsub("/", "\\\\", p_unc, fixed = TRUE)
+    if (tryCatch(isTRUE(file.exists(p_unc_bs)), error = function(e) FALSE)) return(p_unc_bs)
+  }
+  p
+}
+
 # Relaxed file.exists for UNC + long paths + Encoding variants
 path_exists_relaxed <- function(path) {
   if (is.null(path) || length(path) == 0) return(FALSE)
@@ -249,6 +271,9 @@ dataframeToMarkdown <- function(df) {
 readFileContentToString <- function(file_info) {
   tryCatch({
     if (!path_exists_relaxed(file_info$datapath)) return("Hata: Dosya bulunamadı.")
+
+    # UNC yollarını base R fonksiyonlarının açabileceği formata çevir
+    file_info$datapath <- resolve_readable_path(file_info$datapath)
 
     file_ext  <- tolower(tools::file_ext(file_info$name))
     file_size <- file.info(file_info$datapath)$size

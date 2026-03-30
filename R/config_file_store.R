@@ -37,22 +37,34 @@ MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
 
 # --- İNDEKS YARDIMCILARI (ana süreç ve worker'lar tarafından kullanılır) ---
 
-# Tüm karakter değerlerini UTF-8'e dönüştüren özyinelemeli yardımcı
-.ensure_utf8 <- function(x) {
+# JSON'dan okunan dizeleri UTF-8 olarak İŞARETLEYEN özyinelemeli yardımcı.
+# ÖNEMLİ: enc2utf8() yerine Encoding()<-"UTF-8" kullanılır.
+# JSON zaten UTF-8'dir; enc2utf8() baytları yeniden dönüştürerek çift kodlamaya neden olur,
+# Encoding()<-"UTF-8" ise mevcut baytları olduğu gibi koruyup sadece işaretler.
+.mark_utf8 <- function(x) {
+  if (is.character(x)) { Encoding(x) <- "UTF-8"; return(x) }
+  if (is.list(x)) return(lapply(x, .mark_utf8))
+  x
+}
+
+# Kaydetmeden önce native encoding dizeleri UTF-8'e çeviren yardımcı
+.convert_to_utf8 <- function(x) {
   if (is.character(x)) return(enc2utf8(x))
-  if (is.list(x)) return(lapply(x, .ensure_utf8))
+  if (is.list(x)) return(lapply(x, .convert_to_utf8))
   x
 }
 
 .save_index <- function(idx) {
+  # Native encoding (ör. CP1254) baytlarını UTF-8'e çevir, yoksa JSON bozulur
+  idx <- .convert_to_utf8(idx)
   jsonlite::write_json(idx, MERGEN_INDEX_PATH, auto_unbox = TRUE, pretty = TRUE)
 }
 
 .load_index <- function() {
   if (file.exists(MERGEN_INDEX_PATH)) {
     idx <- jsonlite::read_json(MERGEN_INDEX_PATH, simplifyVector = TRUE)
-    # Windows'ta read_json native encoding döndürebilir; Türkçe karakterler için UTF-8 zorla
-    .ensure_utf8(idx)
+    # JSON dosyası UTF-8'dir; R bazen native encoding olarak işaretler, UTF-8 olarak düzelt
+    .mark_utf8(idx)
   } else {
     list()
   }
@@ -344,6 +356,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
         name = {
           disp <- if (is.list(val) && !is.null(val$display)) val$display else NA_character_
           disp <- disp %||% NA_character_
+          # .load_index() zaten .mark_utf8() ile işaretliyor; yine de güvenlik için enc2utf8
           if (!is.na(disp) && nzchar(disp)) enc2utf8(disp) else enc2utf8(key)
         }
       )
