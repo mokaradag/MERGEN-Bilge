@@ -225,6 +225,31 @@ resolve_node_path <- function() {
 }
 
 # ------------------------------------------------------------------------------
+# PROCESSX ÇIKTI KODLAMA DÜZELTMESİ
+# Claude Code CLI her zaman UTF-8 çıktı üretir ancak Windows'ta processx
+# çıktıyı sistemin yerel kodlamasında (örn. CP1254) okur. Bu fonksiyon
+# okunan metni güvenli bir şekilde UTF-8'e dönüştürür.
+# ------------------------------------------------------------------------------
+
+#' processx çıktısını UTF-8'e dönüştürür
+#'
+#' @description Windows'ta processx çıktıları sistemin yerel kodlamasında
+#'   okunur (Türkçe Windows'ta CP1254). Claude Code CLI ise her zaman UTF-8
+#'   çıktı verir. Bu fonksiyon okunan metni doğru kodlamaya çevirir.
+#' @param metin processx'ten okunan ham metin
+#' @return UTF-8 kodlamalı metin
+ensure_utf8 <- function(metin) {
+  if (is.null(metin) || !length(metin)) return(metin)
+  tryCatch({
+    out <- enc2utf8(as.character(metin))
+    # enc2utf8 yetersiz kalırsa iconv ile yeniden dene
+    iconv(out, from = "", to = "UTF-8", sub = "")
+  }, error = function(e) {
+    as.character(metin)
+  })
+}
+
+# ------------------------------------------------------------------------------
 # WINDOWS .CMD UYUMLULUĞU
 # Windows'ta .cmd dosyaları cmd.exe üzerinden çalıştırılmalıdır.
 # processx bazı sunucu ortamlarında .cmd'yi doğrudan çalıştıramaz.
@@ -264,9 +289,20 @@ build_processx_command <- function(cli_path, args) {
 
     env[[path_adi]] <- yeni_path
 
+    # UTF-8 çıktı kodlaması için ortam değişkenleri ayarla
+    # Node.js / Claude Code CLI'ın UTF-8 kullanmasını garanti altına alır
+    env[["PYTHONIOENCODING"]] <- "utf-8"
+    env[["PYTHONUTF8"]] <- "1"
+    env[["NODE_OPTIONS"]] <- paste(
+      env[["NODE_OPTIONS"]] %||% "",
+      "--input-type=module"
+    ) |> trimws()
+    # cmd.exe kod sayfasını UTF-8'e çevirmek için /U kullanmıyoruz çünkü
+    # processx pipe üzerinden okuyor; bunun yerine CHCP 65001 ile çalıştır
     list(
       command = Sys.getenv("ComSpec", "cmd.exe"),
-      args = c("/d", "/c", normalizePath(cli_path, winslash = "\\", mustWork = FALSE), args),
+      args = c("/d", "/c", "chcp", "65001", ">NUL", "&&",
+               normalizePath(cli_path, winslash = "\\", mustWork = FALSE), args),
       env = env
     )
   } else {
@@ -400,8 +436,9 @@ run_claude_code <- function(prompt,
       ))
     }
 
-    stdout_metin <- proc$read_all_output()
-    stderr_metin <- proc$read_all_error()
+    # Windows'ta processx yerel kodlama kullanır; UTF-8'e dönüştür
+    stdout_metin <- ensure_utf8(proc$read_all_output())
+    stderr_metin <- ensure_utf8(proc$read_all_error())
     cikis_kodu <- proc$get_exit_status()
 
     sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
@@ -672,14 +709,15 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
                   error = "CLI zaman aşımına uğradı"))
     }
 
-    stdout_metin <- proc$read_all_output()
+    # Windows'ta processx yerel kodlama kullanır; UTF-8'e dönüştür
+    stdout_metin <- ensure_utf8(proc$read_all_output())
     cikis_kodu <- proc$get_exit_status()
 
     if (identical(cikis_kodu, 0L)) {
       surum <- trimws(stdout_metin)
       list(installed = TRUE, version = surum, path = cli_path, error = "")
     } else {
-      stderr_metin <- proc$read_all_error()
+      stderr_metin <- ensure_utf8(proc$read_all_error())
       hata_detay <- paste0(
         "Çıkış kodu: ", cikis_kodu,
         " | stdout: ", substr(stdout_metin, 1, 200),

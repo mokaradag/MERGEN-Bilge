@@ -997,7 +997,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # stdout'tan oku
       tryCatch({
         proc$poll_io(0)
-        yeni_satirlar <- tryCatch(proc$read_output_lines(), error = function(e) character(0))
+        # Windows'ta processx yerel kodlama kullanır; UTF-8'e dönüştür
+        yeni_satirlar <- tryCatch(ensure_utf8(proc$read_output_lines()), error = function(e) character(0))
 
         if (length(yeni_satirlar) > 0) {
           for (satir in yeni_satirlar) {
@@ -1019,7 +1020,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       if (!proc$is_alive()) {
         # Kalan çıktıyı oku
         tryCatch({
-          kalan <- proc$read_all_output()
+          kalan <- ensure_utf8(proc$read_all_output())
           if (nzchar(kalan)) {
             kalan_satirlar <- strsplit(kalan, "\n")[[1]]
             for (satir in kalan_satirlar) {
@@ -1080,7 +1081,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure)
         } else {
           # Hata durumu
-          stderr_metin <- tryCatch(proc$read_all_error(), error = function(e) "")
+          stderr_metin <- tryCatch(ensure_utf8(proc$read_all_error()), error = function(e) "")
           hata_mesaji <- if (nzchar(stderr_metin)) stderr_metin else tam_cikti
           temiz_log <- gsub("[{}]", "", substr(hata_mesaji, 1, 200))
           log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Akış hata kodu:", cikis_kodu,
