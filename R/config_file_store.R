@@ -47,9 +47,22 @@ MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
   x
 }
 
+# Metni UTF-8'e güvenli biçimde dönüştür/işaretle:
+# - Baytlar zaten geçerli UTF-8 ise yeniden dönüştürme yapma (çift kodlamayı önle)
+# - Değilse native encoding'den UTF-8'e dönüştür
+.normalize_utf8_text <- function(x) {
+  if (!is.character(x)) return(x)
+  out <- x
+  enc <- Encoding(out)
+  needs_native_conversion <- !(enc %in% c("UTF-8", "bytes")) & !validUTF8(out)
+  out[needs_native_conversion] <- enc2utf8(out[needs_native_conversion])
+  Encoding(out[!needs_native_conversion]) <- "UTF-8"
+  out
+}
+
 # Kaydetmeden önce native encoding dizeleri UTF-8'e çeviren yardımcı
 .convert_to_utf8 <- function(x) {
-  if (is.character(x)) return(enc2utf8(x))
+  if (is.character(x)) return(.normalize_utf8_text(x))
   if (is.list(x)) return(lapply(x, .convert_to_utf8))
   x
 }
