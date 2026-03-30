@@ -109,3 +109,17 @@ AI_EXPERT_MODEL=technical name 1
 # Yardim Merkezi chatbot asistani icin kullanilacak model
 # Tanimli degilse AI_EXPERT_MODEL veya FILTER_MODEL kullanilir
 DESTEK_CHATBOT_MODEL=technical name 1
+
+# ------------------------------------------------------------------------------
+# Claude Code yapılandırması
+# ------------------------------------------------------------------------------
+
+# Claude Code CLI çalıştırılabilir .cmd dosyasının tam yolu
+CLAUDE_CODE_CLI_PATH=C:/Users/mokaradag/AppData/Roaming/npm/claude.cmd
+
+# Node.js çalıştırılabilir dosyasının tam yolu
+CLAUDE_CODE_NODE_PATH=C:/Program Files/nodejs/node.exe
+
+# Claude Code için güvenli yerel çalışma dizini
+# UNC ağ yolu yerine yerel bir klasör kullanılır
+CLAUDE_CODE_DEFAULT_WORKDIR=C:/Temp/mergen_claude

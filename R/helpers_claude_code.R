@@ -199,6 +199,31 @@ build_model_tier_choices <- function(model_listesi) {
   return(sonuc)
 }
 
+#' Node.js çalıştırılabilir yolunu çözümler
+#'
+#' @return Geçerli node.exe yolu veya NULL
+resolve_node_path <- function() {
+  adaylar <- c(
+    Sys.getenv("CLAUDE_CODE_NODE_PATH", ""),
+    Sys.which("node.exe"),
+    Sys.which("node"),
+    file.path(Sys.getenv("ProgramFiles"), "nodejs", "node.exe"),
+    file.path(Sys.getenv("ProgramFiles(x86)"), "nodejs", "node.exe"),
+    file.path(Sys.getenv("LocalAppData"), "Programs", "nodejs", "node.exe"),
+    file.path(Sys.getenv("NVM_SYMLINK"), "node.exe"),
+    file.path(Sys.getenv("NVM_HOME"), "node.exe")
+  )
+
+  for (aday in adaylar) {
+    if (!nzchar(aday)) next
+    if (file.exists(aday)) {
+      return(normalizePath(aday, winslash = "/", mustWork = FALSE))
+    }
+  }
+
+  return(NULL)
+}
+
 # ------------------------------------------------------------------------------
 # WINDOWS .CMD UYUMLULUĞU
 # Windows'ta .cmd dosyaları cmd.exe üzerinden çalıştırılmalıdır.
@@ -213,18 +238,36 @@ build_model_tier_choices <- function(model_listesi) {
 #' @return Liste: command, args, env (ortam değişkenleri veya NULL)
 build_processx_command <- function(cli_path, args) {
   if (.Platform$OS.type == "windows" && grepl("\\.cmd$", cli_path, ignore.case = TRUE)) {
-    # npm dizinini PATH'e ekle (node.exe'nin bulunabilmesi için)
-    npm_dizini <- normalizePath(dirname(cli_path), winslash = "/", mustWork = FALSE)
-    mevcut_path <- Sys.getenv("PATH")
-    if (!grepl(npm_dizini, mevcut_path, fixed = TRUE)) {
-      yeni_path <- paste(npm_dizini, mevcut_path, sep = ";")
+    # cmd.exe için Windows stilinde dizin kullan
+    npm_dizini <- normalizePath(dirname(cli_path), winslash = "\\", mustWork = FALSE)
+    node_yolu <- resolve_node_path()
+    node_dizini <- if (!is.null(node_yolu)) {
+      normalizePath(dirname(node_yolu), winslash = "\\", mustWork = FALSE)
     } else {
-      yeni_path <- mevcut_path
+      ""
     }
+
+    # Mevcut ortam değişkenlerini al ve PATH/Path anahtarını yerinde güncelle
+    env <- Sys.getenv()
+    path_eslesmeleri <- which(tolower(names(env)) == "path")
+    path_adi <- if (length(path_eslesmeleri) > 0) names(env)[path_eslesmeleri[1]] else "PATH"
+
+    mevcut_path <- if (path_adi %in% names(env)) unname(env[[path_adi]]) else ""
+    eklenecekler <- unique(Filter(nzchar, c(npm_dizini, node_dizini)))
+
+    yeni_path <- mevcut_path
+    for (dizin in rev(eklenecekler)) {
+      if (!grepl(dizin, yeni_path, fixed = TRUE)) {
+        yeni_path <- if (nzchar(yeni_path)) paste(dizin, yeni_path, sep = ";") else dizin
+      }
+    }
+
+    env[[path_adi]] <- yeni_path
+
     list(
-      command = "cmd.exe",
-      args = c("/c", cli_path, args),
-      env = c(Sys.getenv(), PATH = yeni_path)
+      command = Sys.getenv("ComSpec", "cmd.exe"),
+      args = c("/d", "/c", normalizePath(cli_path, winslash = "\\", mustWork = FALSE), args),
+      env = env
     )
   } else {
     list(command = cli_path, args = args, env = NULL)
@@ -560,6 +603,26 @@ parse_claude_code_json_output <- function(ham_cikti) {
   return(sonuc)
 }
 
+#' CLI durum kontrolü için güvenli çalışma dizini seçer
+#'
+#' @param workdir Tercih edilen çalışma dizini
+#' @return Yerel ve geçerli çalışma dizini yolu
+get_safe_claude_cli_workdir <- function(workdir = NULL) {
+  adaylar <- c(
+    workdir %||% "",
+    claude_code_config$default_workdir %||% "",
+    tempdir()
+  )
+
+  for (aday in adaylar) {
+    if (!nzchar(aday) || !dir.exists(aday)) next
+    if (.Platform$OS.type == "windows" && grepl("^\\\\\\\\", aday)) next
+    return(normalizePath(aday, winslash = "/", mustWork = FALSE))
+  }
+
+  normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+}
+
 # ------------------------------------------------------------------------------
 # CLAUDE CODE CLI DURUM KONTROLÜ
 # ------------------------------------------------------------------------------
@@ -568,7 +631,7 @@ parse_claude_code_json_output <- function(ham_cikti) {
 #'
 #' @param cli_path Claude Code CLI yolu (NULL ise otomatik tespit)
 #' @return Liste: installed (mantıksal), version (sürüm metni), path (bulunan yol), error (hata)
-check_claude_code_status <- function(cli_path = NULL) {
+check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
   # CLI yolunu çözümle
   if (is.null(cli_path) || !nzchar(cli_path)) {
     cli_path <- resolve_claude_cli_path(claude_code_config$cli_path)
@@ -586,13 +649,16 @@ check_claude_code_status <- function(cli_path = NULL) {
   }
 
   tryCatch({
-    # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
+    # Windows UNC yolundan çalışırken cmd.exe hata verdiği için
+    # durum kontrolünde güvenli yerel bir çalışma dizini kullan
     komut <- build_processx_command(cli_path, c("--version"))
+    guvenli_wd <- get_safe_claude_cli_workdir(workdir)
 
     proc <- processx::process$new(
       command = komut$command,
       args = komut$args,
       env = komut$env,
+      wd = guvenli_wd,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
@@ -649,7 +715,7 @@ test_claude_code_connection <- function(cli_path = NULL,
                                         model = NULL,
                                         workdir = tempdir()) {
   # Öncelikle CLI kontrolü yap
-  durum <- check_claude_code_status(cli_path)
+  durum <- check_claude_code_status(cli_path, workdir = workdir)
   if (!durum$installed) {
     return(list(
       success = FALSE,
