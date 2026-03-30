@@ -64,7 +64,7 @@ claudeCodeUI <- function(id) {
             class = "cc-settings-card",
             h5(class = "cc-card-title", icon("folder-open"), "Proje Dizini"),
 
-            # Proje dizini giriş alanı + klasör tarayıcı düğmesi
+            # Proje dizini giriş alanı + klasör tarayıcı düğmeleri
             div(
               class = "cc-workdir-row",
               textInput(
@@ -79,8 +79,39 @@ claudeCodeUI <- function(id) {
                 label = NULL,
                 icon = icon("folder-open"),
                 class = "cc-browse-btn",
-                title = "Klasör seç"
-              )
+                title = "Sunucu klasörü seç"
+              ),
+              # Yerel bilgisayardan klasör yükle (gizli fileInput + görünür düğme)
+              div(style = "display:none;",
+                fileInput(ns("yerel_klasor"), label = NULL, multiple = TRUE)
+              ),
+              actionButton(
+                ns("yerel_klasor_btn"),
+                label = NULL,
+                icon = icon("laptop"),
+                class = "cc-browse-btn",
+                title = "Yerel bilgisayardan klasör yükle",
+                onclick = sprintf(
+                  "document.getElementById('%s').click();",
+                  ns("yerel_klasor")
+                )
+              ),
+              # webkitdirectory özniteliğini ekle + göreceli yolları yakala
+              tags$script(HTML(sprintf("
+$(function(){
+  var fi = document.getElementById('%s');
+  if(fi){
+    fi.setAttribute('webkitdirectory','');
+    fi.setAttribute('directory','');
+    fi.addEventListener('change', function(e){
+      var yollar = [];
+      for(var i = 0; i < e.target.files.length; i++){
+        yollar.push(e.target.files[i].webkitRelativePath || e.target.files[i].name);
+      }
+      Shiny.setInputValue('%s', JSON.stringify(yollar), {priority:'event'});
+    });
+  }
+});", ns("yerel_klasor"), ns("yerel_klasor_yollar"))))
             ),
 
             # Model Seçimi (ikon + tooltip ile)
@@ -292,6 +323,23 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       rv$cli_path_resolved <- yol
     }, priority = 100)
 
+    # --- SSO modunda varsayılan çalışma dizinini kullanıcının profiline ayarla ---
+    observe({
+      req(isTRUE(SSO_ENABLED))
+      # Yapılandırmada açıkça bir yol belirtilmemişse kullanıcı profilini kullan
+      if (nzchar(claude_code_config$default_workdir)) return()
+      kullanici <- session$userData$system_username
+      req(!is.null(kullanici), nzchar(kullanici))
+      if (.Platform$OS.type == "windows") {
+        profil <- file.path("C:/Users", kullanici)
+      } else {
+        profil <- file.path("/home", kullanici)
+      }
+      if (dir.exists(profil)) {
+        updateTextInput(session, "workdir", value = normalizePath(profil, winslash = "/"))
+      }
+    }, priority = 90)
+
     # --- Otomatik bağlantı testi (sayfa görüntülendiğinde, başlangıçta değil) ---
     # Uygulama başlangıcını yavaşlatmamak için sadece CLI durumunu kontrol et,
     # tam bağlantı testini kullanıcı sayfayı görüntülediğinde çalıştır.
@@ -435,6 +483,47 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       history = list()
     )
     init_klasor_gezgini_observers(input, output, session, ns, rv_browser)
+
+    # --- Yerel klasör yükleme (kullanıcının kendi bilgisayarından) ---
+    observeEvent(input$yerel_klasor, {
+      dosyalar <- input$yerel_klasor
+      req(nrow(dosyalar) > 0)
+
+      # Göreceli yolları JavaScript'ten al
+      yollar_json <- input$yerel_klasor_yollar
+      yollar <- if (!is.null(yollar_json) && nzchar(yollar_json)) {
+        tryCatch(jsonlite::fromJSON(yollar_json), error = function(e) NULL)
+      }
+
+      # Kullanıcıya özel çalışma alanı oluştur
+      user_id <- resolve_current_user_id()
+      calisma_alani <- get_user_workspace(user_id)
+
+      # Dosyaları dizin yapısını koruyarak kopyala
+      dosya_sayisi <- 0L
+      for (i in seq_len(nrow(dosyalar))) {
+        # webkitRelativePath varsa kullan, yoksa düz dosya adı
+        goreceli <- if (!is.null(yollar) && length(yollar) >= i) {
+          yollar[i]
+        } else {
+          dosyalar$name[i]
+        }
+
+        hedef <- file.path(calisma_alani, goreceli)
+        hedef_dizin <- dirname(hedef)
+        if (!dir.exists(hedef_dizin)) dir.create(hedef_dizin, recursive = TRUE, showWarnings = FALSE)
+        file.copy(dosyalar$datapath[i], hedef, overwrite = TRUE)
+        dosya_sayisi <- dosya_sayisi + 1L
+      }
+
+      # Çalışma dizinini güncelle
+      updateTextInput(session, "workdir", value = normalizePath(calisma_alani, winslash = "/"))
+      showNotification(
+        paste0(dosya_sayisi, " dosya yerel bilgisayardan yüklendi."),
+        type = "message", duration = 5
+      )
+      log_info(paste(CLAUDE_CODE_LOG_PREFIX, dosya_sayisi, "dosya yerel klasörden yüklendi:", calisma_alani))
+    })
 
     # --- Model değiştiğinde oturumu sıfırla ---
     # Farklı bir modele geçildiğinde önceki oturumun bağlamı geçersiz olur.
@@ -786,9 +875,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       tryCatch({
         log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Canlı akış başlatılıyor"))
 
+        # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
+        komut <- build_processx_command(cli_yolu, cli_args)
+
         proc <- processx::process$new(
-          command = cli_yolu,
-          args = cli_args,
+          command = komut$command,
+          args = komut$args,
+          env = komut$env,
           wd = calisma_dizini,
           stdout = "|",
           stderr = "|",

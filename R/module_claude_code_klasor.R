@@ -20,18 +20,47 @@
 #' @return invisible(NULL)
 init_klasor_gezgini_observers <- function(input, output, session, ns, rv_browser) {
 
-  # --- Klasör tarayıcı modalını aç ---
-  observeEvent(input$open_folder_browser, {
-    # Mevcut çalışma dizininden başla veya ana dizinden
-    baslangic <- input$workdir
-    if (is.null(baslangic) || !nzchar(baslangic) || !dir.exists(baslangic)) {
-      baslangic <- if (.Platform$OS.type == "windows") {
-        Sys.getenv("USERPROFILE", "C:/")
-      } else {
-        Sys.getenv("HOME", "/")
+  # --- Kullanıcının ana dizinini belirle (SSO modunda kullanıcı profilini kullan) ---
+  resolve_user_home <- function() {
+    # SSO modunda oturum açmış kullanıcının profil dizinini kullan
+    if (isTRUE(SSO_ENABLED)) {
+      kullanici <- session$userData$system_username
+      if (!is.null(kullanici) && nzchar(kullanici)) {
+        if (.Platform$OS.type == "windows") {
+          profil <- file.path("C:/Users", kullanici)
+          if (dir.exists(profil)) return(normalizePath(profil, winslash = "/"))
+        } else {
+          profil <- file.path("/home", kullanici)
+          if (dir.exists(profil)) return(normalizePath(profil))
+        }
       }
     }
+    # Varsayılan: R sürecinin ana dizini
+    if (.Platform$OS.type == "windows") {
+      Sys.getenv("USERPROFILE", "C:/")
+    } else {
+      Sys.getenv("HOME", "/")
+    }
+  }
+
+  # --- Klasör tarayıcı modalını aç ---
+  observeEvent(input$open_folder_browser, {
+    # Mevcut çalışma dizininden başla veya kullanıcının ana dizininden
+    baslangic <- input$workdir
+    if (is.null(baslangic) || !nzchar(baslangic) || !dir.exists(baslangic)) {
+      baslangic <- resolve_user_home()
+    }
     rv_browser$current_path <- normalizePath(baslangic, winslash = "/", mustWork = FALSE)
+
+    # SSO modunda sunucu dosya sistemi uyarısı göster
+    sunucu_uyarisi <- if (isTRUE(SSO_ENABLED)) {
+      tags$div(
+        class = "cc-fb-server-notice",
+        style = "background: #2a2a3e; border: 1px solid #4a4a6a; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: #b0b0d0;",
+        icon("server"), " ",
+        "Bu tarayıcı sunucu dosya sistemini gösterir. Claude Code komutları sunucuda çalışır."
+      )
+    }
 
     showModal(modalDialog(
       title = tagList(icon("folder-tree"), "Klasör Seçici"),
@@ -39,6 +68,7 @@ init_klasor_gezgini_observers <- function(input, output, session, ns, rv_browser
       easyClose = TRUE,
       div(
         class = "cc-folder-browser",
+        sunucu_uyarisi,
         # Mevcut yol göstergesi
         div(
           class = "cc-fb-path-bar",
