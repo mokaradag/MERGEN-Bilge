@@ -292,6 +292,23 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       rv$cli_path_resolved <- yol
     }, priority = 100)
 
+    # --- SSO modunda varsayılan çalışma dizinini kullanıcının profiline ayarla ---
+    observe({
+      req(isTRUE(SSO_ENABLED))
+      # Yapılandırmada açıkça bir yol belirtilmemişse kullanıcı profilini kullan
+      if (nzchar(claude_code_config$default_workdir)) return()
+      kullanici <- session$userData$system_username
+      req(!is.null(kullanici), nzchar(kullanici))
+      if (.Platform$OS.type == "windows") {
+        profil <- file.path("C:/Users", kullanici)
+      } else {
+        profil <- file.path("/home", kullanici)
+      }
+      if (dir.exists(profil)) {
+        updateTextInput(session, "workdir", value = normalizePath(profil, winslash = "/"))
+      }
+    }, priority = 90)
+
     # --- Otomatik bağlantı testi (sayfa görüntülendiğinde, başlangıçta değil) ---
     # Uygulama başlangıcını yavaşlatmamak için sadece CLI durumunu kontrol et,
     # tam bağlantı testini kullanıcı sayfayı görüntülediğinde çalıştır.

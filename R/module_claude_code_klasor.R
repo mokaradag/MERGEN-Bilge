@@ -20,16 +20,35 @@
 #' @return invisible(NULL)
 init_klasor_gezgini_observers <- function(input, output, session, ns, rv_browser) {
 
+  # --- Kullanıcının ana dizinini belirle (SSO modunda kullanıcı profilini kullan) ---
+  resolve_user_home <- function() {
+    # SSO modunda oturum açmış kullanıcının profil dizinini kullan
+    if (isTRUE(SSO_ENABLED)) {
+      kullanici <- session$userData$system_username
+      if (!is.null(kullanici) && nzchar(kullanici)) {
+        if (.Platform$OS.type == "windows") {
+          profil <- file.path("C:/Users", kullanici)
+          if (dir.exists(profil)) return(normalizePath(profil, winslash = "/"))
+        } else {
+          profil <- file.path("/home", kullanici)
+          if (dir.exists(profil)) return(normalizePath(profil))
+        }
+      }
+    }
+    # Varsayılan: R sürecinin ana dizini
+    if (.Platform$OS.type == "windows") {
+      Sys.getenv("USERPROFILE", "C:/")
+    } else {
+      Sys.getenv("HOME", "/")
+    }
+  }
+
   # --- Klasör tarayıcı modalını aç ---
   observeEvent(input$open_folder_browser, {
-    # Mevcut çalışma dizininden başla veya ana dizinden
+    # Mevcut çalışma dizininden başla veya kullanıcının ana dizininden
     baslangic <- input$workdir
     if (is.null(baslangic) || !nzchar(baslangic) || !dir.exists(baslangic)) {
-      baslangic <- if (.Platform$OS.type == "windows") {
-        Sys.getenv("USERPROFILE", "C:/")
-      } else {
-        Sys.getenv("HOME", "/")
-      }
+      baslangic <- resolve_user_home()
     }
     rv_browser$current_path <- normalizePath(baslangic, winslash = "/", mustWork = FALSE)
 

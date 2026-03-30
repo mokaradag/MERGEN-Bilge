@@ -83,9 +83,12 @@ run_claude_code_streaming <- function(prompt,
   tryCatch({
     log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış modu ile CLI çalıştırılıyor"))
 
+    # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
+    komut <- build_processx_command(cli_path, args)
+
     proc <- processx::process$new(
-      command = cli_path,
-      args = args,
+      command = komut$command,
+      args = komut$args,
       wd = workdir,
       stdout = "|",
       stderr = "|",
