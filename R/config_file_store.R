@@ -62,9 +62,11 @@ MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
 
 .load_index <- function() {
   if (file.exists(MERGEN_INDEX_PATH)) {
-    idx <- jsonlite::read_json(MERGEN_INDEX_PATH, simplifyVector = TRUE)
-    # JSON dosyası UTF-8'dir; R bazen native encoding olarak işaretler, UTF-8 olarak düzelt
-    .mark_utf8(idx)
+    json_txt <- paste(
+      readLines(MERGEN_INDEX_PATH, warn = FALSE, encoding = "UTF-8"),
+      collapse = "\n"
+    )
+    jsonlite::fromJSON(json_txt, simplifyVector = TRUE)
   } else {
     list()
   }
@@ -354,10 +356,13 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
         key = key,
         path = normalize_utf8_path(if (is.list(val) && !is.null(val$path)) val$path else as.character(val), mustWork = FALSE),
         name = {
-          disp <- if (is.list(val) && !is.null(val$display)) val$display else NA_character_
+          disp <- if (is.list(val) && !is.null(val$display)) as.character(val$display) else NA_character_
           disp <- disp %||% NA_character_
-          # .load_index() zaten .mark_utf8() ile işaretliyor; yine de güvenlik için enc2utf8
-          if (!is.na(disp) && nzchar(disp)) enc2utf8(disp) else enc2utf8(key)
+          if (!is.na(disp) && nzchar(disp)) {
+            disp
+          } else {
+            as.character(key)
+          }
         }
       )
     })
@@ -504,7 +509,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
         same_file <- identical(tolower(basename(entry_path)), target_base)
 
         if (same_path || same_file) {
-          return(enc2utf8(entry_display))
+          return(as.character(entry_display))
         }
       }
     }
