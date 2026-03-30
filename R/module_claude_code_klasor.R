@@ -33,12 +33,23 @@ init_klasor_gezgini_observers <- function(input, output, session, ns, rv_browser
     }
     rv_browser$current_path <- normalizePath(baslangic, winslash = "/", mustWork = FALSE)
 
+    # SSO modunda sunucu dosya sistemi uyarısı göster
+    sunucu_uyarisi <- if (isTRUE(SSO_ENABLED)) {
+      tags$div(
+        class = "cc-fb-server-notice",
+        style = "background: #2a2a3e; border: 1px solid #4a4a6a; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: #b0b0d0;",
+        icon("server"), " ",
+        "Bu tarayıcı sunucu dosya sistemini gösterir. Claude Code komutları sunucuda çalışır."
+      )
+    }
+
     showModal(modalDialog(
       title = tagList(icon("folder-tree"), "Klasör Seçici"),
       size = "m",
       easyClose = TRUE,
       div(
         class = "cc-folder-browser",
+        sunucu_uyarisi,
         # Mevcut yol göstergesi
         div(
           class = "cc-fb-path-bar",

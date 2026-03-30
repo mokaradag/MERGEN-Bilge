@@ -200,6 +200,26 @@ build_model_tier_choices <- function(model_listesi) {
 }
 
 # ------------------------------------------------------------------------------
+# WINDOWS .CMD UYUMLULUĞU
+# Windows'ta .cmd dosyaları cmd.exe üzerinden çalıştırılmalıdır.
+# processx bazı sunucu ortamlarında .cmd'yi doğrudan çalıştıramaz.
+# ------------------------------------------------------------------------------
+
+#' processx için komut ve argümanları hazırlar
+#' Windows'ta .cmd dosyalarını cmd.exe /c üzerinden sarar
+#'
+#' @param cli_path CLI çalıştırılabilir dosya yolu
+#' @param args CLI argümanları
+#' @return Liste: command, args
+build_processx_command <- function(cli_path, args) {
+  if (.Platform$OS.type == "windows" && grepl("\\.cmd$", cli_path, ignore.case = TRUE)) {
+    list(command = "cmd.exe", args = c("/c", cli_path, args))
+  } else {
+    list(command = cli_path, args = args)
+  }
+}
+
+# ------------------------------------------------------------------------------
 # CLAUDE CODE CLI ÇALIŞTIRMA (JSON ÇIKTI DESTEKLİ)
 # --output-format json ile araç kullanımı ve kabuk komutlarını ayrıştırır
 # ------------------------------------------------------------------------------
@@ -286,14 +306,18 @@ run_claude_code <- function(prompt,
   # Komutu (prompt) argüman olarak ekle
   args <- c(args, prompt)
 
+  # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
+  # (RStudio sunucu oturumlarında processx doğrudan .cmd çalıştıramayabilir)
+  komut <- build_processx_command(cli_path, args)
+
   # processx::process$new ile çalıştır (handle yönetimi daha güvenli)
   tryCatch({
     log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI çalıştırılıyor:",
                    cli_path, paste(args[1:min(3, length(args))], collapse = " "), "..."))
 
     proc <- processx::process$new(
-      command = cli_path,
-      args = args,
+      command = komut$command,
+      args = komut$args,
       wd = workdir,
       stdout = "|",
       stderr = "|",
@@ -549,9 +573,12 @@ check_claude_code_status <- function(cli_path = NULL) {
   }
 
   tryCatch({
+    # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
+    komut <- build_processx_command(cli_path, c("--version"))
+
     proc <- processx::process$new(
-      command = cli_path,
-      args = c("--version"),
+      command = komut$command,
+      args = komut$args,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,

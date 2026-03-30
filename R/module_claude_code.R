@@ -786,9 +786,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       tryCatch({
         log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Canlı akış başlatılıyor"))
 
+        # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
+        komut <- build_processx_command(cli_yolu, cli_args)
+
         proc <- processx::process$new(
-          command = cli_yolu,
-          args = cli_args,
+          command = komut$command,
+          args = komut$args,
           wd = calisma_dizini,
           stdout = "|",
           stderr = "|",
