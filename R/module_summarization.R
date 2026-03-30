@@ -134,15 +134,20 @@ process_summarization_request <- function(
       }
     }
     
-    if (is.null(fpath) || !nzchar(fpath) || !file.exists(fpath)) {
+    fpath_exists <- if (!is.null(fpath) && nzchar(fpath)) {
+      tryCatch(path_exists_relaxed(fpath), error = function(e) file.exists(fpath))
+    } else FALSE
+
+    if (!isTRUE(fpath_exists)) {
       err_msg <- paste("Dosya yolu bulunamadı:", fname)
       log_error("[SUMMARIZATION] {err_msg}")
       read_errors <- c(read_errors, err_msg)
       next
     }
-    
-    # Normalize path
-    fpath <- normalizePath(fpath, winslash = "/", mustWork = FALSE)
+
+    # Normalize path - yalnızca normalizePath çalışırsa güncelle, aksi hâlde mevcut yolu koru
+    fpath_norm <- tryCatch(normalizePath(fpath, winslash = "/", mustWork = TRUE), error = function(e) NULL)
+    if (!is.null(fpath_norm)) fpath <- fpath_norm
     
     log_info("[SUMMARIZATION] Reading file: {fname} from path: {fpath}")
     

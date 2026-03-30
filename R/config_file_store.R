@@ -36,13 +36,23 @@ MERGEN_MCP_BASE_DIR <- resolve_mcp_base_dir()
 MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
 
 # --- İNDEKS YARDIMCILARI (ana süreç ve worker'lar tarafından kullanılır) ---
+
+# Tüm karakter değerlerini UTF-8'e dönüştüren özyinelemeli yardımcı
+.ensure_utf8 <- function(x) {
+  if (is.character(x)) return(enc2utf8(x))
+  if (is.list(x)) return(lapply(x, .ensure_utf8))
+  x
+}
+
 .save_index <- function(idx) {
   jsonlite::write_json(idx, MERGEN_INDEX_PATH, auto_unbox = TRUE, pretty = TRUE)
 }
 
 .load_index <- function() {
   if (file.exists(MERGEN_INDEX_PATH)) {
-    jsonlite::read_json(MERGEN_INDEX_PATH, simplifyVector = TRUE)
+    idx <- jsonlite::read_json(MERGEN_INDEX_PATH, simplifyVector = TRUE)
+    # Windows'ta read_json native encoding döndürebilir; Türkçe karakterler için UTF-8 zorla
+    .ensure_utf8(idx)
   } else {
     list()
   }
@@ -144,7 +154,7 @@ mergen_register_uploaded_file <- function(src_path,
   # İndekse kaydet (geriye uyumlu: path + display)
   idx <- .load_index()
   key <- tolower(basename(as_name))
-  entry <- list(path = dest_norm, display = basename(as_name))
+  entry <- list(path = enc2utf8(dest_norm), display = enc2utf8(basename(as_name)))
 
   if (!is.null(user_id)) {
     uid <- as.character(user_id)
@@ -334,7 +344,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
         name = {
           disp <- if (is.list(val) && !is.null(val$display)) val$display else NA_character_
           disp <- disp %||% NA_character_
-          if (!is.na(disp) && nzchar(disp)) disp else key
+          if (!is.na(disp) && nzchar(disp)) enc2utf8(disp) else enc2utf8(key)
         }
       )
     })

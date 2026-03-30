@@ -695,7 +695,11 @@ sendMessageInit <- function(
     if (!exists("mcp_snapshot", inherits = FALSE)) {
       mcp_snapshot <- update_mcp_registry_snapshot_fn()
     }
- 
+
+    # Dosya yeniden inşası sonrası snapshot'ı current_settings'e yansıt
+    # (İlk atama satır 545'te yapılıyor ama mcp_excel rebuild sonrası güncellenmiyordu)
+    current_settings$mcp_registry_snapshot <- mcp_snapshot
+
     # Dosya yollarını Excel modunda ilet
     current_settings$file_paths <- list()
     if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
