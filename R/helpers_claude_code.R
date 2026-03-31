@@ -289,20 +289,9 @@ build_processx_command <- function(cli_path, args) {
 
     env[[path_adi]] <- yeni_path
 
-    # UTF-8 çıktı kodlaması için ortam değişkenleri ayarla
-    # Node.js / Claude Code CLI'ın UTF-8 kullanmasını garanti altına alır
-    env[["PYTHONIOENCODING"]] <- "utf-8"
-    env[["PYTHONUTF8"]] <- "1"
-    env[["NODE_OPTIONS"]] <- paste(
-      env[["NODE_OPTIONS"]] %||% "",
-      "--input-type=module"
-    ) |> trimws()
-    # cmd.exe kod sayfasını UTF-8'e çevirmek için /U kullanmıyoruz çünkü
-    # processx pipe üzerinden okuyor; bunun yerine CHCP 65001 ile çalıştır
     list(
       command = Sys.getenv("ComSpec", "cmd.exe"),
-      args = c("/d", "/c", "chcp", "65001", ">NUL", "&&",
-               normalizePath(cli_path, winslash = "\\", mustWork = FALSE), args),
+      args = c("/d", "/c", normalizePath(cli_path, winslash = "\\", mustWork = FALSE), args),
       env = env
     )
   } else {
