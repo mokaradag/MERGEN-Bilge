@@ -1,90 +1,637 @@
-# MERGEN-Bilge
-Türkçe dilinde tasarlanmış MERGEN-Bilge, etkileşimli bir sohbet deneyimi, söyleşi yönetimi ve veri/dosya destekli iş akışlarını tek bir Shiny Dashboard arayüzünde birleştiren bir yapay zekâ asistanı uygulamasıdır. Uygulama, R tabanlıdır ve hem kurumsal veri kaynaklarıyla entegrasyon hem de kullanıcı dostu bir ön yüz sunmak için geniş bir paket ekosisteminden yararlanır.
+# MERGEN Bilge
 
-## Genel Bakış
-- **Ana Söyleşi:** Çoklu dil ve kod desteğiyle sohbet, akıcı cevap oluşturma, CodeMirror tabanlı kod düzenleme ve yanıt formatlama yetenekleri.
-- **Söyleşi Yönetimi:** Geçmiş kayıtlarını görüntüleme, favorilere alma ve yeniden kullanma imkânı sağlayan sekmeler ("Söyleşi Geçmişi" ve "Kayıtlı Söyleşiler").
-- **Dosya Yönetimi:** Belgeleri veya veri dosyalarını yükleyip işleme sokmak için merkezi bir bölüm.
-- **Ayarlar:** Sistem ve kullanıcı tercihlerini yapılandırma; profil, örnekleme ve özet hesaplama gibi ağır işlemleri açıp kapatmaya yönelik seçenekler.
-- **Sistem Durumu:** Sağlık kontrolleri ve günlük kayıtlarıyla uygulama servislerinin izlenmesi.
-- **Görsel Kimlik:** Özelleştirilmiş marka alanı, yerleşik simgeler, özel yazı tipleri ve tema bileşenleri.
+MERGEN Bilge, Türkçe odaklı, kurumsal kullanım için tasarlanmış, R/Shiny tabanlı gelişmiş bir yapay zeka asistanı uygulamasıdır. Uygulama; sohbet, dosya analizi, görsel üretimi, özetleme, süreç rehberliği, sesli etkileşim, destek merkezi ve kod odaklı çalışma alanı gibi çok sayıda yeteneği tek bir arayüzde bir araya getirir.
 
-## Mimari
-- **`app.R`:** Uygulamanın giriş noktası; `global.R`, `ui.R` ve `server.R` dosyalarını sırayla yükler ve Shiny uygulamasını başlatır.
-- **`global.R`:** Ortak ayarlar (UTF-8, yerel saat, örnekleme oranları), loglama kurulumu, hata yakalayıcı, RData depo yolları ve tüm paket yüklemeleri burada tanımlanır.
-- **`ui.R`:** `shinydashboard` ile oluşturulmuş başlık, kenar çubuğu ve gövde yerleşimi; CodeMirror editörü, özel stil/JS dosyaları, gizli bağımlılık yükleyicileri ve sekme bazlı gezinmeyi içerir.
-- **`server.R`:** Sunucu tarafı iş mantığı; sohbet akışı, dosya ve söyleşi işlemleri, sağlık denetimleri ve ayarların uygulanmasından sorumludur.
-- **Diğer dosyalar:**
-  - **`welcome_screen.R`:** Açılış ekranı ve karşılama bileşenleri.
-  - **`generate_schema_registry.R` & `Table Structure.txt`:** Veri şemalarına ilişkin yardımcı tanımlar.
-  - **`R/` klasörü:** Yardımcı fonksiyonlar, modüller ve bileşenler.
-  - **`www/` klasörü:** Statik varlıklar (CSS, JS, yazı tipleri, CodeMirror dağıtımı ve marka görselleri).
+MERGEN adı, Türk ve Altay mitolojisinde bilgeliği, isabetli düşünceyi ve yol göstericiliği çağrıştırır. Uygulamadaki karakter sistemi de bu mitolojik temadan beslenir ve kullanıcı deneyimine hem görsel hem davranışsal bir katman ekler.
 
-## Özellikler (Örnekler)
-- **Gelişmiş kod desteği:** R, Python, SQL, JavaScript ve diğer popüler diller için vurgulu düzenleme (CodeMirror modları). 
-- **Çok sekmeli gezinme:** "Ana Söyleşi", "Söyleşi Yönetimi", "Dosya Yönetimi", "Ayarlar" ve "Sistem Durumu" sekmeleriyle modüler yapı. 
-- **Kayıt ve izleme:** `logs/` dizininde günlükler; hata izleme için özel `shiny.error` yakalayıcısı ve `dbg_dump` yardımcıları. 
-- **Veri/Şema entegrasyonu:** RData depoları (`Rdata`, `RdataDaily`) ve şema kayıt dosyalarıyla veri keşfi ve profil oluşturma desteği. 
-- **Performans kontrolleri:** Başlangıçta ağır işlemleri devre dışı bırakmak için örnekleme ve özet üretim ayarları, gerektiğinde açılabilir opsiyonlar.
+---
 
-## Sistem Gereksinimleri
-- **R sürümü:** 4.2 veya üzeri önerilir.
-- **İşletim sistemi:** Linux, macOS veya Windows (UTF-8 desteği önerilir). Windows için yol normalizasyonu `safe_windows_short_path()` ile ele alınır.
-- **Bağımlı paketler (özet):** `shiny`, `shinydashboard`, `shinyjs`, `shinyWidgets`, `DT`, `dplyr`, `duckdb`, `arrow`, `DBI`, `future`, `logger`, `jsonlite`, `glue`, `readr`, `readxl`, `lubridate`, `promises`, `pool`, `httr`, `pdftools`, `stringr`, `tibble`, `tidyr`, `writexl`, `openssl`, `odbc`, `curl`, `htmltools`, `markdown`, `commonmark`, `data.table`, `purrr`, `stringi`, `urltools`, `fastmatch`, `cellranger`, `base64enc`, `later`, `shinycssloaders`, `shinyBS`, `cli`, `arrow` ve CodeMirror dağıtımını sağlayan statik dosyalar. 
+## Genel Özellikler
 
-> Not: Paket listesinin tamamı `global.R` içinde yer alır; yeni ortam kurulumunda eksik paketleri `install.packages()` ile yükleyin.
+### Yapay zeka söyleşi deneyimi
+- Gerçek zamanlı akış (streaming) ile yanıt üretimi
+- Türkçe odaklı sohbet deneyimi
+- Kod bloklarında sözdizimi vurgulama
+- Takip soruları ve mesaj eylemleri
+- Farklı model ve araç aileleriyle çalışma
 
-## Kurulum ve Çalıştırma
-1. Depoyu klonlayın:
-   ```bash
-   git clone https://<repo-url>/MERGEN-Bilge.git
-   cd MERGEN-Bilge
-   ```
-2. Gerekli R paketlerini yükleyin (yalın kurulum örneği):
-   ```r
-   pkgs <- c(
-     "shiny", "shinydashboard", "shinyjs", "shinyWidgets", "shinycssloaders", "shinyBS",
-     "DT", "dplyr", "duckdb", "arrow", "DBI", "future", "logger", "jsonlite", "glue",
-     "readr", "readxl", "lubridate", "promises", "pool", "httr", "pdftools", "stringr",
-     "tibble", "tidyr", "writexl", "openssl", "odbc", "curl", "htmltools", "markdown",
-     "commonmark", "data.table", "purrr", "stringi", "urltools", "fastmatch", "cellranger",
-     "base64enc", "later", "cli"
-   )
-   install.packages(pkgs, dependencies = TRUE)
-   ```
-3. Uygulamayı başlatın:
-   ```r
-   # R oturumunda
-   source("app.R")
-   # veya
-   shiny::runApp(".")
-   ```
-4. Tarayıcıda otomatik açılmazsa `http://localhost:3838` (veya R konsolunda belirtilen port) adresini ziyaret edin.
+### Dosya ve veri odaklı çalışma
+- Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
+- Dosya önizleme
+- Dosyaların söyleşi bağlamına eklenmesi
+- Özetleme, analiz ve veri işleme akışları
+- MCP tabanlı araçlarla gelişmiş dosya işleme
 
-## Yapılandırma
-- **Performans anahtarları:** `global.R` içindeki `options(mergen.rdata.*)` değerlerini kullanarak profil/özet üretimini açabilir veya örnekleme oranını değiştirebilirsiniz.
-- **Geçici dizinler:** `options(mergen.duckdb.temp_directory = Sys.getenv("MERGEN_DUCKDB_TEMP_DIR", tempdir()))` üzerinden DuckDB geçici dizinini kontrol edin.
-- **Günlükler:** `logs/` klasörü başlangıçta oluşturulur; günlük adı `mergen_YYYYMMDD.log` formatındadır. Hata ve debug çıktıları sırasıyla `shiny.error` ve `dbg_dump()` ile kaydedilir.
-- **Yerel ayarlar:** UTF-8 karakter seti ve Türkçe yerelleştirme için `Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")` çağrısı yapılır.
-- **Sesli yanıt (TTS):** OpenAI uyumlu bir seslendirme servisini etkinleştirmek için `.Renviron` dosyanıza (proje kökünde ya da kullanıcı ana dizininizde) aşağıdaki değişkenleri ekleyin:
-  - `LOCAL_TTS_ENDPOINT=https://<host>/v1` (zorunlu)
-  - `LOCAL_TTS_MODEL=tts-1-hd` (isteğe bağlı, model adını burada belirleyin)
-  - `LOCAL_TTS_API_KEY=<anahtar>` (istenirse; uygulama varsayılan olarak doğrulanmış birincil LLM anahtarınızı güvenli/şifreli kayıttan veya oturumdan paylaşır)
-  - `LOCAL_TTS_VOICE=nova` (isteğe bağlı; örneğin kadın için `nova`, erkek için `echo`; Ayarlar sekmesinden de seçebilirsiniz)
-  - `LOCAL_TTS_VERIFY_SSL=TRUE` (opsiyonel; on-prem/self-signed sertifika kullanıyorsanız `FALSE` yaparak SSL doğrulamasını kapatabilirsiniz)
-  Bu değişkenler uygulama başlamadan önce okunur. `LOCAL_TTS_API_KEY` tanımlanmazsa, anahtar yönetim modülünde şifrelenerek sakladığınız birincil API anahtarı otomatik olarak TTS isteğinde kullanılır. Ayarlar sekmesinde seslendirmeyi açıp kapatabilir ve ses tipini seçebilirsiniz.
+### Görsel ve medya özellikleri
+- Yapay zeka ile görsel oluşturma
+- Görsel galerisi
+- TTS ile sesli yanıt
+- STT ile sesli giriş
+- Arka plan müziği ve karakter temalı deneyim
 
-## Geliştirme Notları
-- Arayüz `shinydashboard` üzerinde sekmeli yapıda çalışır; yeni sekmeler eklemek için `ui.R` içindeki `sidebarMenu` ve `body` bölümlerini güncelleyin.
-- Sunucu tarafında yeni modüller eklerken asenkron işlemler için `future` ve `promises` paketleri kullanılabilir.
-- Kod düzenleme/görselleştirme bileşenleri CodeMirror çıktılarıdır; ek dil desteği için `www/codemirror/mode` altındaki ilgili JS dosyalarını ekleyin ve `ui.R` içinde `tags$script` ile yükleyin.
-- Test veya üretim ortamında ağır profil/özet işlemleri devredeyse `mergen.rdata.refresh_on_boot`, `mergen.rdata.enable_profiles`, `mergen.rdata.enable_aggregates` gibi seçenekleri ihtiyaçlarınıza göre ayarlayın.
+### Gelişmiş deneyim katmanları
+- Sinematik başlangıç ekranı
+- Hoş geldin ekranı
+- Karakter seçimi
+- Üç farklı deneyim modu
+- AI Uzman rehberliği
+- Bilge Yolaç sayfası ile kod odaklı ajan deneyimi
+
+### Kurumsal ve yönetimsel bileşenler
+- SSO / Keycloak desteği
+- Kullanıcı bazlı sohbet ve dosya ayrımı
+- Destek merkezi
+- Geri bildirim ve hata bildirimi
+- Sürüm bilgilendirme sayfası
+- Yönetici paneli ve analitik ekranlar
+
+---
+
+## Sayfa Haritası
+
+Uygulamadaki ana sayfalar aşağıdaki gibidir:
+
+### Ana Söyleşi
+Ana sohbet ekranıdır. Kullanıcı burada:
+- soru sorabilir,
+- dosya ekleyebilir,
+- hızlı eylem kartlarıyla belirli akışları başlatabilir,
+- model seçebilir,
+- sesli giriş kullanabilir,
+- görsel üretim, özetleme veya analiz odaklı kontrolleri aktif olarak kullanabilir.
+
+### Söyleşi Yönetimi
+Üç alt bölümden oluşur:
+- **Söyleşi Geçmişi**
+- **Kayıtlı Söyleşiler**
+- **Görsel Galerisi**
+
+### Bilge Yolaç
+Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfasıdır. Klasör seçimi, senaryo şablonları, model katmanları ve canlı akışlı araç kullanım görünümü içerir.
+
+### Dosya Yönetimi
+Kullanıcının yüklediği dosyaları yönettiği merkezdir. Yükleme, önizleme, listeleme ve söyleşiye bağlama işlemleri burada yapılır.
+
+### Ayarlar
+İki alt sayfa içerir:
+- **Kişiselleştirme**
+- **Yapılandırma**
+
+### Destek
+Dört alt sayfadan oluşur:
+- **Yardım Merkezi**
+- **Geri Bildirim & Hata**
+- **Yenilikler**
+- **Hakkında**
+
+### Yönetici Paneli
+Yetkili kullanıcılar için:
+- genel analitik,
+- geri bildirim analizi,
+- hata analizi,
+- yanıt geri bildirimi analizi,
+- sistem durumu
+
+ekranları sunulur.
+
+---
+
+## Hızlı Eylem Kartları
+
+Hoş geldin ekranındaki hızlı eylem sistemi, kullanıcıyı doğrudan belirli akışlara taşımak için tasarlanmıştır. Mevcut ana hızlı eylemler:
+
+- Süreç Yönetimi Sistemi
+- Uygulama Uzmanı
+- Proje ve Kaynak Analizi
+- Excel Analizi
+- Görsel Oluşturma
+- Kodlama Desteği
+- Özetleme Desteği
+
+Bu kartlar yalnızca görsel kısayol değildir; model seçimi, başlangıç mesajı ve araç davranışı üzerinde etkili olabilirler.
+
+---
+
+## Deneyim Modları
+
+MERGEN Bilge üç temel deneyim modu sunar:
+
+### Odak
+Daha sade ve dikkat dağıtıcılardan arındırılmış kullanım.
+
+### Dinamik
+Denge odaklı kullanım. Görsellik ve işlev arasında orta noktayı hedefler.
+
+### Bütünleşik
+Tam deneyim modudur. Karakter, ses, rehberlik ve zengin etkileşimlerin en yoğun biçimde hissedildiği moddur.
+
+---
+
+## Karakter Sistemi
+
+Uygulama beş ana karakter içerir:
+
+- **Mergen**
+- **Ülgen**
+- **Kayra**
+- **Erlik**
+- **Umay Ana**
+
+Karakter sistemi şu bileşenlerle ilişkilidir:
+- yanıt tarzı,
+- karakter kartları,
+- görsel kimlik,
+- AI Uzman tonu,
+- TTS ses seçimi,
+- tema renkleri,
+- bazı rehberlik ve anlatım tercihleri.
+
+Varsayılan karakter **Mergen**’dir.
+
+---
+
+## Mimari Özet
+
+Uygulama, klasik tek-dosya Shiny yaklaşımından daha modüler bir yapıya sahiptir. Ana yapı aşağıdaki gibidir:
+
+### `app.R`
+Gerçek giriş noktasıdır. Şunları yapar:
+- `safe_source()` tanımlar,
+- `global.R`, `ui.R`, `server.R` dosyalarını yükler,
+- `www/` alt klasörlerini resource path olarak kaydeder,
+- uygulamayı başlatır.
+
+### `global.R`
+Küresel yapılandırma ve yükleme sırasını yönetir. Şunları içerir:
+- UTF-8 ve locale ayarları
+- `safe_source()` tanımı
+- zorunlu ortam değişkeni kontrolü
+- dosya deposu altyapısı
+- paket yüklemeleri
+- tüm yardımcı, modül ve server handler dosyalarının sıralı yüklenmesi
+
+### `ui.R`
+Arayüzün omurgasıdır. Şunları tanımlar:
+- dashboard header
+- sidebar
+- tab içerikleri
+- CSS/JS bağımlılıkları
+- CodeMirror
+- giriş ekranı bileşenleri
+- gizli yardımcı input/output alanları
+
+### `server.R`
+Sunucu mantığının birleşim noktasıdır. Şunları koordine eder:
+- oturum başlatma
+- SSO / yerel kimlik çözümü
+- ayarlar
+- dosya yönetimi
+- medya modülleri
+- AI Uzman
+- Bilge Yolaç
+- sohbet motoru
+- kayıtlı söyleşi ve galeri akışları
+- LLM çağrı zinciri
+
+---
+
+## Yükleme Sırası ve Modüler Yapı
+
+`global.R` içindeki yükleme sırası bilinçli olarak katmanlara ayrılmıştır:
+
+### 1. Temel altyapı
+- paketler
+- ortak yardımcılar
+- loglama
+- yol ve dosya yardımcıları
+- rate limiter
+- Excel okuyucu
+
+### 2. Yapılandırma
+- SSO
+- dosya deposu
+- karakterler
+- sürüm geçmişi
+- API
+- Bilge Yolaç yapılandırması
+
+### 3. Veritabanı ve SQL
+- veritabanı bağlantıları
+- sorgu kütüphanesi
+- SQL yükleyici
+
+### 4. Çekirdek yardımcılar
+- dil yardımcıları
+- mesaj biçimlendirme
+- MCP araçları
+- dosya pipeline
+- önizleme
+- görsel galeri
+- AI Uzman yardımcıları
+- Bilge Yolaç yardımcıları
+
+### 5. LLM entegrasyon katmanı
+- araç formatlayıcıları
+- yanıt son işleme
+- SSE
+- worker çağrıları
+- API istek oluşturma
+
+### 6. Modüller
+- sohbet modülleri
+- dosya ve medya modülleri
+- ayar modülleri
+- AI / TTS / STT modülleri
+- SSO ve oturum modülleri
+- destek modülleri
+- admin modülleri
+- Bilge Yolaç modülleri
+
+### 7. Sunucu işleyicileri ve observer katmanı
+- session cache
+- chat handlers
+- image/summarization handlers
+- audio handlers
+- AI Uzman handlers
+- welcome handlers
+- observer dosyaları
+- output ve download işleyicileri
+
+---
+
+## Önemli Dizinler ve Dosyalar
+
+### Kök dizin
+- `app.R`
+- `global.R`
+- `ui.R`
+- `server.R`
+- `welcome_screen.R`
+- `version_history.md`
+- `CLAUDE.md`
+- `README.md`
+- `ai_rehber.md`
+
+### `R/`
+Uygulamanın asıl iş mantığı burada bulunur:
+- `config_*.R`
+- `helpers_*.R`
+- `utils_*.R`
+- `module_*.R`
+- `server_*.R`
+
+### `www/`
+Statik varlıklar:
+- `css/`
+- `js/`
+- `codemirror/`
+- `lib/`
+- `characters/`
+- kök görseller ve logolar
+
+### Veri ve çalışma dizinleri
+- `logs/`
+- `api_keys/`
+- `mergen_uploads/`
+- `destek_uploads/`
+
+---
+
+## Dosya Depolama Altyapısı
+
+Dosya depolama sistemi `R/config_file_store.R` içinde merkezi olarak tanımlanır.
+
+### Temel kavramlar
+- Kullanıcı bazlı klasör yapısı
+- Kalıcı yükleme dizini
+- JSON indeks dosyası
+- Dosya adı ile gerçek saklama adı ayrımı
+- Eksik indeks kayıtları için fallback dosya sistemi taraması
+- Periyodik garbage collection
+
+### Önemli yollar
+- `MERGEN_FILES_ROOT`
+- `MERGEN_UPLOADS_DIR`
+- `MERGEN_MCP_BASE_DIR`
+- `MERGEN_INDEX_PATH`
+
+### Zorunlu ortam değişkeni kontrolü
+Uygulama açılışta şu değişkenleri kontrol eder:
+- `LOCAL_LLM_ENDPOINT`
+- `DB_DSN`
+- `AI_KEYS_MASTER`
+
+Bunlardan biri eksikse uygulama başlamaz.
+
+---
+
+## Kimlik Doğrulama ve SSO
+
+Uygulama iki modda çalışabilir:
+
+### Yerel geliştirme modu
+`SSO_ENABLED=FALSE`
+
+Bu durumda:
+- sistem kullanıcısı veya yerel çözümleme ile kullanıcı tanımlanır,
+- hızlı yerel geliştirme yapılır,
+- Keycloak akışı devre dışıdır.
+
+### SSO modu
+`SSO_ENABLED=TRUE`
+
+Bu durumda:
+- Keycloak token akışı çalışır,
+- claim alanları ayrıştırılır,
+- kullanıcı veritabanı kaydı doğrulanır/güncellenir,
+- oturum bilgileri token doğrulaması sonrası tamamlanır.
+
+SSO ile ilgili ana yapılandırma `R/config_sso.R` içinde tanımlanır.
+
+---
+
+## Bilge Yolaç
+
+Bilge Yolaç, proje içinde ayrı bir ürün katmanı gibi düşünülebilir. Klasik sohbet ekranından farklı olarak kod odaklı bir ajan deneyimi sunar.
+
+### Bileşenleri
+- CLI yapılandırması
+- klasör seçici modülü
+- canlı akış modülü
+- araç kullanımı HTML biçimlendirme katmanı
+- özel JS/CSS görünümü
+- düşünme mesajları
+- model katmanları
+- senaryo şablonları
+
+### Model katmanları
+- Hızlı
+- Dengeli
+- Güçlü
+
+### Kullanım örnekleri
+- kod inceleme
+- hata ayıklama
+- dokümantasyon üretimi
+- test yazımı
+- refaktoring
+- serbest komut
+
+---
+
+## Yardım, Destek ve Sürüm Geçmişi
+
+### Yardım Merkezi
+Destek iletişim bilgileri ve uygulama hakkında soru sorulabilen yardım chatbotu içerir.
+
+### Geri Bildirim & Hata
+Kullanıcı geri bildirimleri ve hata raporları burada toplanır.
+
+### Yenilikler
+`version_history.md` dosyasından okunur ve uygulamada sürüm geçmişi olarak gösterilir.
+
+### Hakkında
+Uygulamanın tanıtım ve kullanım rehberi sayfasıdır.
+
+---
+
+## `ai_rehber.md` Dosyasının Rolü
+
+`ai_rehber.md` sıradan bir belge değildir. Şu iki amaçla aktif olarak kullanılır:
+
+1. Destek sayfasındaki yardım chatbotunun bilgi tabanı
+2. AI Uzman prompt yapısının referans kaynağı
+
+Bu nedenle bu dosyada yapılan değişiklikler, doğrudan ürün davranışını etkileyebilir.
+
+---
+
+## Kurulum
+
+## Gereksinimler
+Önerilen:
+- R 4.2+
+- UTF-8 destekli ortam
+- uygun ODBC sürücüleri
+- gerekli sistem kütüphaneleri
+
+## Temel R paketleri
+Uygulama `R/config_packages.R` içinde çok sayıda pakete dayanır. Başlıca paketler:
+
+- `shiny`
+- `shinydashboard`
+- `shinyjs`
+- `shinyWidgets`
+- `shinyBS`
+- `shinycssloaders`
+- `DBI`
+- `odbc`
+- `pool`
+- `future`
+- `promises`
+- `jsonlite`
+- `httr`
+- `dplyr`
+- `DT`
+- `readxl`
+- `readr`
+- `arrow`
+- `duckdb`
+- `pdftools`
+- `openssl`
+- `stringr`
+- `stringi`
+- `data.table`
+- `writexl`
+- `xml2`
+- `av`
+
+## Paket kurulumu örneği
+```r
+pkgs <- c(
+  "arrow", "base64enc", "cellranger", "cli", "commonmark", "curl",
+  "data.table", "DBI", "dplyr", "DT", "duckdb", "fastmatch",
+  "future", "glue", "htmltools", "httr", "jsonlite", "later",
+  "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
+  "promises", "purrr", "readr", "readxl", "shiny", "shinyBS",
+  "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets",
+  "stringdist", "stringi", "stringr", "tibble", "tidyr", "urltools",
+  "writexl", "xml2", "av"
+)
+
+install.packages(pkgs, dependencies = TRUE)
+```
+
+---
+
+## `.Renviron` Örneği
+
+Aşağıdaki örnek yalnızca şablondur. Gerçek değerleri kendi ortamınıza göre doldurmalısınız.
+
+```ini
+# Zorunlu
+LOCAL_LLM_ENDPOINT=https://your-llm-endpoint.example.com/v1/chat/completions
+DB_DSN=YourMainOdbcDsn
+AI_KEYS_MASTER=your-long-random-secret
+
+# İsteğe bağlı - ikincil LLM endpoint
+LOCAL_LLM_ENDPOINT_ALT=https://your-secondary-llm-endpoint.example.com/v1/chat/completions
+LOCAL_LLM_ENDPOINT_ALT_API_KEY=your-secondary-endpoint-key
+FILTER_MODEL=your-default-model
+AI_EXPERT_MODEL=your-ai-expert-model
+DESTEK_CHATBOT_MODEL=your-support-chatbot-model
+
+# TTS
+LOCAL_TTS_ENDPOINT=https://your-tts-endpoint.example.com/v1
+LOCAL_TTS_API_KEY=your-tts-key
+LOCAL_TTS_MODEL=tts-1-hd
+LOCAL_TTS_VOICE=tr-male-1
+LOCAL_TTS_TIMEOUT=30
+LOCAL_TTS_VERIFY_SSL=TRUE
+
+# STT
+LOCAL_STT_ENDPOINT=https://your-stt-endpoint.example.com/v1/audio/transcriptions
+LOCAL_STT_MODEL=whisper-large-v3
+
+# Görsel üretimi
+IMAGE_GEN_ENDPOINT=https://your-image-endpoint.example.com/v1/images/generations
+IMAGE_GEN_MODEL=dall-e-3
+IMAGE_GEN_TIMEOUT=180
+TRANSLATION_MODEL=your-translation-model
+
+# SSO
+SSO_ENABLED=FALSE
+SSO_KEYCLOAK_URL=https://your-keycloak.example.com
+SSO_REALM=byd_intranet_apps
+SSO_CLIENT_ID=mergen_bilge
+SSO_VALIDATE_ISSUER=TRUE
+SSO_VALIDATE_EXPIRY=TRUE
+SSO_TOKEN_REFRESH_MARGIN=300
+SSO_DEBUG=FALSE
+
+# Bilge Yolaç
+CLAUDE_CODE_CLI_PATH=
+CLAUDE_CODE_DEFAULT_WORKDIR=
+CLAUDE_CODE_TIMEOUT=600
+CLAUDE_CODE_MODEL=
+CLAUDE_CODE_MAX_CONCURRENT=5
+CLAUDE_CODE_PERSIST_SESSIONS=TRUE
+
+# MCP dosya deposu
+MCP_FILES_BASE=
+```
+
+---
+
+## Çalıştırma
+
+Bu depo için en güvenli yaklaşım, `app.R` dosyasını doğrudan çalıştırmaktır.
+
+### R oturumundan
+```r
+source("app.R", encoding = "UTF-8")
+```
+
+### Alternatif
+RStudio veya benzeri bir ortamda `app.R` dosyasının tamamını seçip çalıştırabilirsiniz.
+
+### Neden bu yaklaşım?
+Çünkü `app.R`:
+- `safe_source()` tanımlar,
+- `www/` klasörlerini resource path olarak kaydeder,
+- Windows/VM kullanım senaryoları için daha güvenli bir başlatma akışı sağlar.
+
+---
+
+## Geliştirme İlkeleri
+
+### 1. UTF-8 güvenliği
+Bu repoda Türkçe karakterler kritik önemdedir. Şunlara dikkat edin:
+- yeni dosyaları UTF-8 kaydedin,
+- text/JSON okuma-yazma akışlarını bozmayın,
+- gereksiz encoding dönüşümleri yapmayın.
+
+### 2. Küçük ve kontrollü değişiklik
+Geniş refaktör yerine hedefe yönelik düzeltmeler tercih edilir.
+
+### 3. `global.R` yükleme sırasına saygı
+Yeni bir modül/yardımcı eklenirse doğru gruba eklenmelidir.
+
+### 4. Kod yorumları Türkçe olmalı
+Koda yorum eklenecekse Türkçe yazılmalıdır.
+
+### 5. Reaktif ve worker ayrımı
+`future()` veya arka plan işlerinde reaktif nesneleri doğrudan kullanmayın.
+
+---
 
 ## Sorun Giderme
-- **Eksik paket hatası:** `install.packages()` ile eksik paketi kurun, ardından R oturumunu yeniden başlatın.
-- **Yerelleştirme/UFT-8 sorunları:** Sistem dilini Türkçe'ye veya UTF-8 uyumlu bir yerel ayara çekin; Windows'ta kısa yol düzeltmeleri için `safe_windows_short_path()` işlevi otomatik uygulanır.
-- **Port çakışması:** `shiny::runApp(port = <yeni_port>)` parametresiyle farklı bir port belirleyin.
-- **Büyük veri/özelleştirme:** RData klasör yollarını (`Rdata`, `RdataDaily`) yapılandırın ve örnekleme oranını (`mergen.rdata.profile_sample_frac`) artırıp azaltarak performans dengesini sağlayın.
 
-## Lisans
-Bu depo içinde lisans bilgisi belirtilmemiştir. Kurum içi kullanım veya dağıtım koşullarını kendi gereksinimlerinize göre belirleyin.
+### Uygulama başlamıyor
+Kontrol edin:
+- `.Renviron` mevcut mu
+- `LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER` tanımlı mı
+- ODBC bağlantısı çalışıyor mu
+
+### Türkçe karakterler bozuk görünüyor
+Kontrol edin:
+- dosyalar UTF-8 mi
+- VM/SSO akışında encoding davranışı değişmiş mi
+- JSON, DB veya stream katmanında çift dönüşüm olmuş mu
+
+### Statik dosyalar yüklenmiyor
+Kontrol edin:
+- `app.R` üzerinden mi çalıştırdınız
+- `www/` alt klasörleri doğru kaydediliyor mu
+- `img/` prefix’iyle sunulan kök dosya yolları doğru mu
+
+### Yüklenen dosya adı anlamsız görünüyor
+Kontrol edin:
+- indeks kaydı
+- display name alanı
+- kullanıcı bucket çözümleme akışı
+
+### SSO açıkken sorun çıkıyor, yerelde çıkmıyor
+Kontrol edin:
+- token claim’leri
+- kullanıcı oturumunun auth sonrası kurulma zamanı
+- UTF-8 / Türkçe alanlar
+- auth sonrası dosya yükleme/yenileme akışları
+
+### Bilge Yolaç akışı bozuk
+Kontrol edin:
+- `R/helpers_claude_code_streaming.R`
+- `www/js/claude_code_streaming.js`
+- Unicode semboller
+- canlı akışlı parça birleştirme mantığı
+
+---
+
+## Sürüm Bilgisi
+
+`version_history.md` içeriğine göre güncel genel sürüm hattı:
+
+- **v1.0** - resmi lansman
+- **v0.9** - beta sürümü
+
+---
+
+## Kısa Geliştirici Notu
+
+Bu repo sadece bir Shiny uygulaması değildir; aynı zamanda:
+- canlı prompt altyapısı,
+- modüler medya sistemi,
+- dosya indeksleme sistemi,
+- SSO geçişli kurumsal oturum yönetimi,
+- ve çok katmanlı bir kullanıcı deneyimi
+
+barındırır.
+
+Bu yüzden küçük görünen değişiklikler;
+- encoding,
+- resource path,
+- observer sırası,
+- session state,
+- veya tool-family akışını beklenmedik biçimde etkileyebilir.
+
+Özellikle `app.R`, `global.R`, `server.R`, `ui.R`, `config_file_store.R`, `helpers_ai_expert.R`, `module_claude_code.R` ve `ai_rehber.md` dosyalarını merkez dosyalar olarak düşünmek gerekir.
