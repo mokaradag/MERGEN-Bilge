@@ -32,12 +32,6 @@ create_akis_yardimcilari <- function(session, ns, rv) {
     if (is.null(parca)) return()
 
     send_chunk <- function(tip, html, arac_id = "", ekstra = list()) {
-      # Windows'ta kodlama etiketini garanti altına al:
-      # jsonlite::fromJSON() sonrası oluşan yeni stringler UTF-8
-      # işaretini kaybedebilir, sendCustomMessage() ise toJSON() ile
-      # serileştirirken "unknown" kodlamalı UTF-8 baytlarını yanlışlıkla
-      # yerel kodlamadan (Windows-1252) dönüştürmeye çalışır → mojibake.
-      html <- ensure_utf8(html)
       mesaj <- c(
         list(
           target = ns("output_area"),
@@ -58,14 +52,16 @@ create_akis_yardimcilari <- function(session, ns, rv) {
 
     if (tip == "text_delta") {
       # Metin parçası - anlık olarak istemciye ilet
+      # ASCII-dışı karakterleri HTML varlıklarına çevir (kodlama sorununu önler)
       icerik <- parca$icerik %||% ""
       if (nzchar(icerik)) {
-        send_chunk("text_delta", htmltools::htmlEscape(icerik))
+        send_chunk("text_delta", escape_non_ascii(htmltools::htmlEscape(icerik)))
       }
 
     } else if (tip == "tool_input_delta") {
       # Araç girdisi JSON parçası - istemcide biriktirmek için ilet
-      send_chunk("tool_input_delta", parca$parcali_json %||% "",
+      # NOT: JSON verisi olduğu için escape_non_ascii UYGULANMAZ
+      send_chunk("tool_input_delta", ensure_utf8(parca$parcali_json %||% ""),
                  ekstra = list(blockIndex = parca$blok_indeks %||% 0))
 
     } else if (tip == "content_block_stop") {
@@ -77,14 +73,14 @@ create_akis_yardimcilari <- function(session, ns, rv) {
       # Araç kullanımı başladı - canlı kabuk bloğu oluştur
       fmt <- format_streaming_chunk_html(parca)
       if (!is.null(fmt)) {
-        send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
+        send_chunk(fmt$tip, escape_non_ascii(fmt$html), fmt$arac_id %||% "")
       }
 
     } else if (tip == "tool_result") {
       # Araç sonucu geldi - mevcut bloğu güncelle
       fmt <- format_streaming_chunk_html(parca)
       if (!is.null(fmt)) {
-        send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
+        send_chunk(fmt$tip, escape_non_ascii(fmt$html), fmt$arac_id %||% "")
       }
 
     } else if (tip == "result") {
@@ -94,14 +90,14 @@ create_akis_yardimcilari <- function(session, ns, rv) {
       }
       # Son sonucu metin olarak gönder
       fmt <- format_streaming_chunk_html(parca)
-      if (!is.null(fmt)) send_chunk("text", fmt$html)
+      if (!is.null(fmt)) send_chunk("text", escape_non_ascii(fmt$html))
 
     } else if (tip == "assistant" && !is.null(parca$bloklar)) {
       # Eski format: asistan mesajını alt bloklarına ayır
       for (blok in parca$bloklar) {
         blok_fmt <- format_streaming_chunk_html(blok)
         if (!is.null(blok_fmt)) {
-          send_chunk(blok_fmt$tip, blok_fmt$html, blok_fmt$arac_id %||% "")
+          send_chunk(blok_fmt$tip, escape_non_ascii(blok_fmt$html), blok_fmt$arac_id %||% "")
         }
       }
 
@@ -113,7 +109,7 @@ create_akis_yardimcilari <- function(session, ns, rv) {
       # Eski format metin veya ham metin
       fmt <- format_streaming_chunk_html(parca)
       if (!is.null(fmt)) {
-        send_chunk(fmt$tip, fmt$html, fmt$arac_id %||% "")
+        send_chunk(fmt$tip, escape_non_ascii(fmt$html), fmt$arac_id %||% "")
       }
     }
   }
