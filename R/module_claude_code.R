@@ -1097,7 +1097,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             message = list(
               target = ns("output_area"),
               type = "error",
-              content = htmltools::htmlEscape(hata_mesaji),
+              content = ensure_utf8(htmltools::htmlEscape(hata_mesaji)),
               timestamp = format(Sys.time(), "%H:%M:%S"),
               welcomeId = ns("welcome_screen")
             )

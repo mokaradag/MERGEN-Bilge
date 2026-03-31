@@ -885,11 +885,13 @@ format_claude_code_output <- function(output) {
   # Markdown'ı HTML'e dönüştür (commonmark paketi ile)
   tryCatch({
     html <- commonmark::markdown_html(output, extensions = TRUE)
-    return(html)
+    # commonmark yeni string oluşturur ve Windows'ta UTF-8 etiketini
+    # kaybedebilir; sendCustomMessage → toJSON mojibake'ye yol açar
+    return(ensure_utf8(html))
   }, error = function(e) {
     # Dönüşüm başarısız olursa ham metni döndür
     escaped <- htmltools::htmlEscape(output)
-    return(paste0("<pre>", escaped, "</pre>"))
+    return(ensure_utf8(paste0("<pre>", escaped, "</pre>")))
   })
 }
 
