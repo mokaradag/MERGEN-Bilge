@@ -226,26 +226,46 @@ resolve_node_path <- function() {
 
 # ------------------------------------------------------------------------------
 # PROCESSX ÇIKTI KODLAMA DÜZELTMESİ
-# Claude Code CLI her zaman UTF-8 çıktı üretir ancak Windows'ta processx
-# okunan baytları sistemin yerel kodlamasıyla (örn. CP1254) etiketler.
-# Baytlar zaten UTF-8 olduğu için dönüştürme YAPILMAMALI, sadece R'a
-# "bu baytlar UTF-8" diye işaretlenmelidir. Aksi halde enc2utf8/iconv
-# zaten doğru olan UTF-8 baytlarını ikinci kez kodlar ve mojibake oluşur.
+# Claude Code CLI her zaman UTF-8 çıktı üretir. Windows'ta processx okunan
+# baytları "unknown" (yerel kodlama) olarak etiketler. jsonlite::fromJSON()
+# ise ayrıştırma sonrası baytları yerel kodlamaya (Windows-1252) dönüştürmüş
+# olabilir. Bu fonksiyon her iki durumu da güvenli şekilde ele alır:
+#   1) Baytlar zaten geçerli UTF-8 ise → sadece etiket değiştirir
+#   2) Baytlar yerel kodlamaya dönüştürülmüşse → enc2utf8 ile geri çevirir
 # ------------------------------------------------------------------------------
 
-#' processx çıktısını UTF-8 olarak işaretle (dönüştürme yapmadan)
+#' Metin verisini güvenli şekilde UTF-8'e dönüştürür
 #'
-#' @description Claude Code CLI her zaman UTF-8 çıktı verir. Windows'ta
-#'   processx bu baytları "bilinmeyen" kodlama olarak işaretler. Bu fonksiyon
-#'   baytları olduğu gibi bırakıp sadece R'ın kodlama etiketini UTF-8 yapar.
-#'   enc2utf8() veya iconv() KULLANILMAZ çünkü baytlar zaten UTF-8'dir.
-#' @param metin processx'ten okunan ham metin (karakter vektörü)
-#' @return Aynı baytlar, UTF-8 olarak etiketlenmiş
+#' @description İki aşamalı kontrol:
+#'   - Baytların geçerli UTF-8 olup olmadığını iconv(UTF-8→UTF-8) ile test eder
+#'   - Geçerli ise sadece R kodlama etiketini değiştirir (baytlara dokunmaz)
+#'   - Geçersiz ise yerel kodlamadan (Windows-1252 vb.) UTF-8'e dönüştürür
+#' @param metin Karakter vektörü
+#' @return UTF-8 kodlamalı metin
 ensure_utf8 <- function(metin) {
   if (is.null(metin) || !length(metin)) return(metin)
   metin <- as.character(metin)
-  Encoding(metin) <- "UTF-8"
-  metin
+
+  # Zaten UTF-8 olarak işaretli ise dokunma
+  kodlamalar <- Encoding(metin)
+  if (all(kodlamalar == "UTF-8")) return(metin)
+
+  # Baytların geçerli UTF-8 olup olmadığını test et:
+  # iconv(from="UTF-8", to="UTF-8") geçersiz baytlar için NA döndürür
+  test <- iconv(metin, from = "UTF-8", to = "UTF-8")
+  gecerli_utf8 <- !is.na(test)
+
+  # Her eleman için doğru stratejiyi uygula
+  sonuc <- metin
+  # Geçerli UTF-8 baytlar: sadece etiketi değiştir (dönüştürme yapma)
+  if (any(gecerli_utf8)) {
+    Encoding(sonuc[gecerli_utf8]) <- "UTF-8"
+  }
+  # Geçersiz UTF-8 baytlar: yerel kodlamadan dönüştür
+  if (any(!gecerli_utf8)) {
+    sonuc[!gecerli_utf8] <- enc2utf8(metin[!gecerli_utf8])
+  }
+  sonuc
 }
 
 # ------------------------------------------------------------------------------
