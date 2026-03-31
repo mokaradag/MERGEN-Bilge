@@ -89,6 +89,229 @@
   var shellVisible = true;
 
   // ---------------------------------------------------------------------------
+  // MOJIBAKE DÜZELTME HARİTASI
+  // Türkçe karakter ve sık görülen emoji bozulmalarını düzeltir.
+  // ---------------------------------------------------------------------------
+  var MOJIBAKE_MAP = {
+    "Ã§": "\u00E7",
+    "Ã‡": "\u00C7",
+    "Ã¶": "\u00F6",
+    "Ã–": "\u00D6",
+    "Ã¼": "\u00FC",
+    "Ãœ": "\u00DC",
+    "Ä±": "\u0131",
+    "Ä°": "\u0130",
+    "ÄŸ": "\u011F",
+    "Äž": "\u011E",
+    "ÅŸ": "\u015F",
+    "Åž": "\u015E",
+
+    "â€™": "\u2019",
+    "â€˜": "\u2018",
+    "â€œ": "\u201C",
+    "â€": "\u201D",
+    "â€“": "\u2013",
+    "â€”": "\u2014",
+    "â€¦": "\u2026",
+    "â€¢": "\u2022",
+    "â—": "\u25CF",
+    "Â©": "\u00A9",
+    "Â®": "\u00AE",
+    "Â°": "\u00B0",
+    "Â±": "\u00B1",
+    "Â·": "\u00B7",
+    "Â ": " ",
+    "Â": "",
+
+    "ğŸ“Œ": "\uD83D\uDCCC",
+    "ðŸ“Œ": "\uD83D\uDCCC",
+    "ğŸ“": "\uD83D\uDCCD",
+    "ðŸ“": "\uD83D\uDCCD",
+    "ğŸ“Ž": "\uD83D\uDCCE",
+    "ðŸ“Ž": "\uD83D\uDCCE",
+    "ğŸ“": "\uD83D\uDCC1",
+    "ðŸ“": "\uD83D\uDCC1",
+    "ğŸ“‚": "\uD83D\uDCC2",
+    "ðŸ“‚": "\uD83D\uDCC2",
+    "ğŸ“„": "\uD83D\uDCC4",
+    "ðŸ“„": "\uD83D\uDCC4",
+    "ğŸ“‹": "\uD83D\uDCCB",
+    "ðŸ“‹": "\uD83D\uDCCB",
+    "ğŸ“": "\uD83D\uDCDD",
+    "ðŸ“": "\uD83D\uDCDD",
+    "ğŸ“Š": "\uD83D\uDCCA",
+    "ðŸ“Š": "\uD83D\uDCCA",
+    "ğŸ“ˆ": "\uD83D\uDCC8",
+    "ðŸ“ˆ": "\uD83D\uDCC8",
+    "ğŸ“‰": "\uD83D\uDCC9",
+    "ðŸ“‰": "\uD83D\uDCC9",
+    "ğŸ“¦": "\uD83D\uDCE6",
+    "ðŸ“¦": "\uD83D\uDCE6",
+    "ğŸ“¬": "\uD83D\uDCEC",
+    "ðŸ“¬": "\uD83D\uDCEC",
+    "ğŸ“­": "\uD83D\uDCED",
+    "ðŸ“­": "\uD83D\uDCED",
+    "ğŸ“ž": "\uD83D\uDCDE",
+    "ðŸ“ž": "\uD83D\uDCDE",
+    "ğŸ“±": "\uD83D\uDCF1",
+    "ðŸ“±": "\uD83D\uDCF1",
+    "ğŸ“§": "\uD83D\uDCE7",
+    "ðŸ“§": "\uD83D\uDCE7",
+    "ğŸ“¨": "\uD83D\uDCE8",
+    "ðŸ“¨": "\uD83D\uDCE8",
+    "ğŸ“©": "\uD83D\uDCE9",
+    "ðŸ“©": "\uD83D\uDCE9",
+    "ğŸ“¤": "\uD83D\uDCE4",
+    "ðŸ“¤": "\uD83D\uDCE4",
+    "ğŸ“¥": "\uD83D\uDCE5",
+    "ðŸ“¥": "\uD83D\uDCE5",
+
+    "ğŸ”": "\uD83D\uDD0D",
+    "ðŸ”": "\uD83D\uDD0D",
+    "ğŸ”Ž": "\uD83D\uDD0E",
+    "ðŸ”Ž": "\uD83D\uDD0E",
+    "ğŸ”§": "\uD83D\uDD27",
+    "ðŸ”§": "\uD83D\uDD27",
+    "ğŸ”¨": "\uD83D\uDD28",
+    "ðŸ”¨": "\uD83D\uDD28",
+    "ğŸ”¥": "\uD83D\uDD25",
+    "ðŸ”¥": "\uD83D\uDD25",
+    "ğŸ”’": "\uD83D\uDD12",
+    "ðŸ”’": "\uD83D\uDD12",
+    "ğŸ”“": "\uD83D\uDD13",
+    "ðŸ”“": "\uD83D\uDD13",
+    "ğŸ”": "\uD83D\uDD10",
+    "ðŸ”": "\uD83D\uDD10",
+    "ğŸ”‘": "\uD83D\uDD11",
+    "ðŸ”‘": "\uD83D\uDD11",
+    "ğŸ””": "\uD83D\uDD14",
+    "ðŸ””": "\uD83D\uDD14",
+    "ğŸ”•": "\uD83D\uDD15",
+    "ðŸ”•": "\uD83D\uDD15",
+    "ğŸ””": "\uD83D\uDD14",
+    "ðŸ””": "\uD83D\uDD14",
+    "ğŸ”„": "\uD83D\uDD04",
+    "ðŸ”„": "\uD83D\uDD04",
+    "ğŸ”": "\uD83D\uDD01",
+    "ðŸ”": "\uD83D\uDD01",
+    "ğŸ”ƒ": "\uD83D\uDD03",
+    "ðŸ”ƒ": "\uD83D\uDD03",
+    "ğŸ”™": "\uD83D\uDD19",
+    "ðŸ”™": "\uD83D\uDD19",
+    "ğŸ”š": "\uD83D\uDD1A",
+    "ðŸ”š": "\uD83D\uDD1A",
+    "ğŸ”›": "\uD83D\uDD1B",
+    "ðŸ”›": "\uD83D\uDD1B",
+    "ğŸ”œ": "\uD83D\uDD1C",
+    "ðŸ”œ": "\uD83D\uDD1C",
+
+    "ğŸ’¡": "\uD83D\uDCA1",
+    "ðŸ’¡": "\uD83D\uDCA1",
+    "ğŸ’¥": "\uD83D\uDCA5",
+    "ðŸ’¥": "\uD83D\uDCA5",
+    "ğŸ’£": "\uD83D\uDCA3",
+    "ðŸ’£": "\uD83D\uDCA3",
+    "ğŸ’°": "\uD83D\uDCB0",
+    "ðŸ’°": "\uD83D\uDCB0",
+    "ğŸ’¸": "\uD83D\uDCB8",
+    "ðŸ’¸": "\uD83D\uDCB8",
+    "ğŸ’¬": "\uD83D\uDCAC",
+    "ðŸ’¬": "\uD83D\uDCAC",
+    "ğŸ’­": "\uD83D\uDCAD",
+    "ðŸ’­": "\uD83D\uDCAD",
+    "ğŸ’¯": "\uD83D\uDCAF",
+    "ðŸ’¯": "\uD83D\uDCAF",
+    "ğŸ’ª": "\uD83D\uDCAA",
+    "ðŸ’ª": "\uD83D\uDCAA",
+    "ğŸ’»": "\uD83D\uDCBB",
+    "ðŸ’»": "\uD83D\uDCBB",
+    "ğŸ’¼": "\uD83D\uDCBC",
+    "ðŸ’¼": "\uD83D\uDCBC",
+
+    "ğŸš€": "\uD83D\uDE80",
+    "ðŸš€": "\uD83D\uDE80",
+    "ğŸš¨": "\uD83D\uDEA8",
+    "ðŸš¨": "\uD83D\uDEA8",
+    "ğŸš§": "\uD83D\uDEA7",
+    "ðŸš§": "\uD83D\uDEA7",
+    "ğŸš«": "\uD83D\uDEAB",
+    "ðŸš«": "\uD83D\uDEAB",
+    "ğŸš©": "\uD83D\uDEA9",
+    "ðŸš©": "\uD83D\uDEA9",
+    "ğŸšª": "\uD83D\uDEAA",
+    "ðŸšª": "\uD83D\uDEAA",
+    "ğŸ›‘": "\uD83D\uDED1",
+    "ðŸ›‘": "\uD83D\uDED1",
+    "ğŸ› ë¸": "\uD83D\uDEE1\uFE0F",
+    "ðŸ› ë¸": "\uD83D\uDEE1\uFE0F",
+    "ğŸ›¡ï¸": "\uD83D\uDEE1\uFE0F",
+    "ðŸ›¡ï¸": "\uD83D\uDEE1\uFE0F",
+    "ğŸ›¡️": "\uD83D\uDEE1\uFE0F",
+    "ðŸ›¡️": "\uD83D\uDEE1\uFE0F",
+
+    "ğŸ›": "\uD83D\uDC1B",
+    "ðŸ›": "\uD83D\uDC1B",
+    "ğŸ": "\uD83D\uDC0D",
+    "ðŸ": "\uD83D\uDC0D",
+    "ğŸ¬": "\uD83D\uDC2C",
+    "ðŸ¬": "\uD83D\uDC2C",
+    "ğŸ³": "\uD83D\uDC33",
+    "ðŸ³": "\uD83D\uDC33",
+    "ğŸº": "\uD83D\uDC3A",
+    "ðŸº": "\uD83D\uDC3A",
+
+    "âš¡": "\u26A1",
+    "âœ…": "\u2705",
+    "âŒ": "\u274C",
+    "â—": "\u2757",
+    "â•": "\u2755",
+    "â“": "\u2753",
+    "â”": "\u2754",
+    "âœ”": "\u2714",
+    "âœ–": "\u2716",
+    "âœ¨": "\u2728",
+    "â˜…": "\u2605",
+    "â˜†": "\u2606",
+    "â˜…ï¸": "\u2605",
+    "â˜Ž": "\u260E",
+    "â˜‘": "\u2611",
+    "â˜": "\u2610",
+    "â˜’": "\u2612",
+    "â˜…": "\u2605",
+    "â˜…": "\u2605",
+    "âš ": "\u26A0",
+    "âš ï¸": "\u26A0\uFE0F",
+    "â˜…": "\u2605",
+    "â˜…": "\u2605",
+    "âœˆ": "\u2708",
+    "âœˆï¸": "\u2708\uFE0F",
+    "âœ‰": "\u2709",
+    "âœ‰ï¸": "\u2709\uFE0F",
+    "â˜": "\u2601",
+    "â˜€": "\u2600",
+    "â˜€ï¸": "\u2600\uFE0F",
+    "â˜": "\u2602",
+    "â˜‚ï¸": "\u2602\uFE0F",
+    "â˜ƒ": "\u2603",
+    "â˜ƒï¸": "\u2603\uFE0F",
+
+    "ï¸": "\uFE0F"
+  };
+
+  function fixMojibakeText(text) {
+    if (!text) return text;
+
+    var out = String(text);
+    Object.keys(MOJIBAKE_MAP)
+      .sort(function(a, b) { return b.length - a.length; })
+      .forEach(function(bad) {
+        out = out.split(bad).join(MOJIBAKE_MAP[bad]);
+      });
+
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
   // KABUK GÖRÜNÜRLÜĞÜNÜAÇ/KAPA
   // Tüm kabuk/araç bloklarının görünürlüğünü değiştirir.
   // ---------------------------------------------------------------------------
@@ -530,7 +753,7 @@
       if (data.finalContent) {
         var body = streamingMsg.querySelector('.cc-message-body');
         if (body) {
-          body.innerHTML = fixHtmlMojibake(data.finalContent);
+          body.innerHTML = fixMojibakeText(data.finalContent);
           body.removeAttribute('data-raw-text');
         }
       }
@@ -592,6 +815,8 @@
   // ---------------------------------------------------------------------------
   function simpleMarkdownToHtml(text) {
     if (!text) return '';
+
+    text = fixMojibakeText(text);
 
     // Kod bloklarını koru (```)
     var codeBlocks = [];
