@@ -402,8 +402,7 @@ run_claude_code <- function(prompt,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE,
-      encoding = "UTF-8"
+      cleanup_tree = TRUE
     )
 
     # Zaman aşımı ile bekle
@@ -690,8 +689,7 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE,
-      encoding = "UTF-8"
+      cleanup_tree = TRUE
     )
     proc$wait(timeout = 10000)
 
