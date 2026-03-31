@@ -15,18 +15,27 @@ handle_true_streaming_mode <- function(ctx) {
   perf_tracker <- ctx$perf_tracker
 
   baslangic_zamani <- Sys.time()
+  if (!is.null(ctx$istek_baslangic)) {
+    log_info(sprintf(
+      "[PERF] SSE handler başlatıldı - ön işlem süresi: %.0f ms",
+      as.numeric(difftime(baslangic_zamani, ctx$istek_baslangic, units = "secs")) * 1000
+    ))
+  }
   req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
 
   active_request_id(req_id)
   stop_generation(FALSE)
   values$is_sending <- TRUE
 
-  selected_char_id <- settings_data$selected_character %||% "mergen"
-  chars_data <- get_characters_data()
-  character_data <- if (!is.null(chars_data)) {
-    Find(function(x) x$id == selected_char_id, chars_data$styles)
-  } else {
-    NULL
+  character_data <- ctx$character_data
+  if (is.null(character_data)) {
+    selected_char_id <- settings_data$selected_character %||% "mergen"
+    chars_data <- get_characters_data()
+    character_data <- if (!is.null(chars_data)) {
+      Find(function(x) x$id == selected_char_id, chars_data$styles)
+    } else {
+      NULL
+    }
   }
 
   if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
@@ -57,6 +66,13 @@ handle_true_streaming_mode <- function(ctx) {
     }
 
     stream_env$ui_started <- TRUE
+
+    if (!is.null(ctx$istek_baslangic)) {
+      log_info(sprintf(
+        "[PERF] İlk token UI'da gösterildi - toplam gecikme: %.0f ms",
+        as.numeric(difftime(Sys.time(), ctx$istek_baslangic, units = "secs")) * 1000
+      ))
+    }
 
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     values$typing <- FALSE
@@ -219,6 +235,16 @@ handle_true_streaming_mode <- function(ctx) {
       perf_tracker$track_request(sure_degeri)
     }
 
+    # Ertelenen kayıtlı sohbet yenilemesini gerçekleştir
+    if (isTRUE(ctx$sohbet_yenileme_ertelendi)) {
+      tryCatch({
+        values$saved_chats <- load_chats_from_db(ctx$effective_user_id, include_messages = FALSE)
+        ctx$saved_chats_data$refresh()
+      }, error = function(e) {
+        log_warn("[STREAMING] Ertelenen sohbet yenilemesi başarısız: {e$message}")
+      })
+    }
+
     cleanup_streaming_state()
     ctx$reset_chat_state_fn()
     invisible(NULL)
@@ -253,6 +279,15 @@ handle_true_streaming_mode <- function(ctx) {
     if (!isTRUE(result$aborted) && nzchar(result$error %||% "")) {
       perf_tracker$track_error()
       showToast(session, result$error, "error")
+    }
+
+    if (isTRUE(ctx$sohbet_yenileme_ertelendi)) {
+      tryCatch({
+        values$saved_chats <- load_chats_from_db(ctx$effective_user_id, include_messages = FALSE)
+        ctx$saved_chats_data$refresh()
+      }, error = function(e) {
+        log_warn("[STREAMING] Ertelenen sohbet yenilemesi başarısız: {e$message}")
+      })
     }
 
     cleanup_streaming_state()
@@ -295,7 +330,8 @@ handle_true_streaming_mode <- function(ctx) {
 
   stream_env$poll_observer <- observe({
     req(!isTRUE(stream_env$finalized))
-    invalidateLater(50, session)
+    yoklama_ms <- if (isTRUE(stream_env$ui_started)) 50L else 20L
+    invalidateLater(yoklama_ms, session)
 
     if (isTRUE(stop_generation()) && !file.exists(stream_env$stop_file)) {
       file.create(stream_env$stop_file)

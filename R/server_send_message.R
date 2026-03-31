@@ -160,16 +160,24 @@ sendMessageInit <- function(
     } else {
       tool_family <- "none"
     }
- 
+
+    # Düz sohbet veya kodlama modunda dosya bağlamı yoksa hızlı yol kullan
+    hizli_yol <- tool_family %in% c("none", "coding") && uploaded_count == 0
+
     # Yeni sohbet oluştur (eğer mevcut sohbet yoksa)
+    sohbet_yenileme_ertelendi <- FALSE
     if (is.null(values$current_chat_id)) {
       title_prompt <- if (nchar(user_message_text) > 0) user_message_text else "Dosya Analizi"
       chat_title <- generate_title_from_prompt(title_prompt, max_len = 60)
       tryCatch({
         new_id <- create_new_chat_in_db(effective_user_id, initial_title = chat_title)
         values$current_chat_id <- new_id
-        values$saved_chats <- load_chats_from_db(effective_user_id, include_messages = FALSE)
-        saved_chats_data$refresh()
+        if (isTRUE(hizli_yol)) {
+          sohbet_yenileme_ertelendi <- TRUE
+        } else {
+          values$saved_chats <- load_chats_from_db(effective_user_id, include_messages = FALSE)
+          saved_chats_data$refresh()
+        }
       }, error = function(e) {
         showToast(session, paste("Yeni sohbet oluşturulamadı:", e$message), "error")
         return()
@@ -531,9 +539,7 @@ sendMessageInit <- function(
  
     chat_id_val <- isolate(values$current_chat_id)
  
-    if (!is.null(input$quick_action_model_change)) {
-      Sys.sleep(0.1)
-    }
+    # quick_action_model_change zaten reactiveValuesToList ile yakalandı; beklemeye gerek yok
  
     # Model seçimini al
     model_selected <- current_settings$model_selection
@@ -736,7 +742,7 @@ sendMessageInit <- function(
         !isTRUE(settings_data$enable_tts_audio) &&
         !isTRUE(force_non_streaming_sql)) {
       # GERÇEK SSE modu
-      log_debug("[MONITORING] AI isteği başlatılıyor (GERÇEK SSE modu)")
+      log_debug("[MONITORING] AI isteği başlatılıyor (GERÇEK SSE modu) | ön işlem: {sprintf('%.0f', as.numeric(difftime(Sys.time(), request_start_time, units='secs'))*1000)} ms | hızlı_yol: {hizli_yol}")
 
       safe_settings <- current_settings
       safe_settings$shiny_session <- NULL
@@ -766,7 +772,13 @@ sendMessageInit <- function(
         add_message_fn = add_message_fn,
         reset_chat_state_fn = reset_chat_state_fn,
         followup_tools = followup_tools,
-        fallback_followup_tool = fallback_followup_tool
+        fallback_followup_tool = fallback_followup_tool,
+        character_data = character_data,
+        sohbet_yenileme_ertelendi = sohbet_yenileme_ertelendi,
+        saved_chats_data = saved_chats_data,
+        effective_user_id = effective_user_id,
+        hizli_yol = hizli_yol,
+        istek_baslangic = request_start_time
       )
 
       handle_true_streaming_mode(true_stream_ctx)

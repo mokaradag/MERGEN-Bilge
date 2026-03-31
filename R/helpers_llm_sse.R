@@ -322,6 +322,12 @@ call_local_llm_sse_worker <- function(chat_history,
       timeout_ms = 300000
     )
 
+    log_info(sprintf(
+      "[SSE] HTTP isteği başlatılıyor - hazırlık: %.0f ms | model: %s",
+      as.numeric(difftime(Sys.time(), llm_start_time, units = "secs")) * 1000,
+      selected_model
+    ))
+
     response_meta <- curl::curl_fetch_stream(
       api_url,
       fun = function(raw_chunk) {
