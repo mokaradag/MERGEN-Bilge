@@ -10,39 +10,61 @@
 
   // ---------------------------------------------------------------------------
   // UTF-8 ÇİFT KODLAMA DÜZELTMESİ (MOJIBAKE FIX)
-  // Windows VM'de R/Shiny UTF-8 metni yanlışlıkla Latin-1/Windows-1252
-  // olarak yorumlayıp tekrar UTF-8'e kodlayabiliyor. Bu, ç→Ã§, ş→ÅŸ gibi
-  // mojibake kalıplarına yol açar. Bu fonksiyon çift kodlamayı tersine çevirir:
-  // Her karakterin Unicode kod noktasını bir bayt olarak alıp UTF-8 olarak
-  // yeniden yorumlar. Yalnızca mojibake tespit edildiğinde uygulanır.
+  // Windows VM'de R/Shiny, UTF-8 baytlarını Windows-1252 olarak yorumlayıp
+  // tekrar UTF-8'e kodluyor. Örnek: ç (UTF-8: C3 A7) → Ã (C3) + § (A7).
+  // ğ gibi harfler daha karmaşık: UTF-8 C4 9F → Ä (C4) + Ÿ (0x9F→U+0178).
+  // Windows-1252'nin 0x80-0x9F aralığı Latin-1'den farklı Unicode noktalarına
+  // eşlenir, bu yüzden ters dönüşüm için özel bir tablo gerekir.
   // ---------------------------------------------------------------------------
+
+  // Windows-1252 özel aralığı: Unicode kod noktası → orijinal bayt değeri
+  // 0x80-0x9F aralığındaki baytlar Windows-1252'de farklı Unicode'lara eşlenir
+  var WIN1252_REVERSE = {};
+  (function() {
+    var map = [
+      0x20AC,0x0081,0x201A,0x0192,0x201E,0x2026,0x2020,0x2021,
+      0x02C6,0x2030,0x0160,0x2039,0x0152,0x008D,0x017D,0x008F,
+      0x0090,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,
+      0x02DC,0x2122,0x0161,0x203A,0x0153,0x009D,0x017E,0x0178
+    ];
+    for (var i = 0; i < map.length; i++) {
+      WIN1252_REVERSE[map[i]] = 0x80 + i;
+    }
+  })();
+
+  // Unicode kod noktasını Windows-1252 bayt değerine çevirir
+  function unicodeToWin1252Byte(cp) {
+    if (cp < 0x80) return cp;           // ASCII: aynı
+    if (cp >= 0xA0 && cp <= 0xFF) return cp; // Latin-1 supplement: aynı
+    if (WIN1252_REVERSE[cp] !== undefined) return WIN1252_REVERSE[cp];
+    return -1; // Bu karakter Windows-1252'de yok → mojibake değil
+  }
+
   function fixMojibake(text) {
     if (!text || typeof text !== 'string') return text;
 
-    // Mojibake belirtilerini ara: çok baytlı UTF-8 dizilerin Latin-1
-    // yorumlanması sonucu oluşan tipik kalıplar (Ã, Å, Ä ile başlayan çiftler)
-    if (!/[\u00C0-\u00DF][\u0080-\u00BF]/.test(text) &&
-        !/[\u00E0-\u00EF][\u0080-\u00BF]{2}/.test(text)) {
-      return text; // Mojibake yok, metni olduğu gibi döndür
+    // Baytlara dönüştür (Windows-1252 Unicode → orijinal bayt)
+    var bytes = [];
+    for (var i = 0; i < text.length; i++) {
+      var b = unicodeToWin1252Byte(text.charCodeAt(i));
+      if (b < 0) return text; // Windows-1252 dışı karakter → mojibake değil
+      bytes.push(b);
     }
 
-    try {
-      // Her karakterin kod noktasını bir bayt olarak al
-      var bytes = [];
-      for (var i = 0; i < text.length; i++) {
-        var cp = text.charCodeAt(i);
-        if (cp > 255) return text; // Latin-1 aralığı dışında → mojibake değil
-        bytes.push(cp);
-      }
-      var decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+    // ASCII-only metin ise dönüşüm gereksiz
+    var hasHighByte = false;
+    for (var j = 0; j < bytes.length; j++) {
+      if (bytes[j] >= 0x80) { hasHighByte = true; break; }
+    }
+    if (!hasHighByte) return text;
 
-      // Başarılı dönüşüm: replacement character (U+FFFD) yoksa kullan
+    try {
+      var decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+      // Başarılı ve farklı ise kullan (replacement char U+FFFD yoksa)
       if (decoded.indexOf('\uFFFD') === -1 && decoded !== text) {
         return decoded;
       }
-    } catch (e) {
-      // Hata durumunda orijinal metni döndür
-    }
+    } catch (e) {}
     return text;
   }
 
@@ -50,17 +72,13 @@
   window.ccFixMojibake = fixMojibake;
 
   // HTML içindeki metin düğümlerindeki mojibake'yi düzelt
-  // (HTML etiketlerine dokunmaz, sadece metin içeriğini düzeltir)
+  // HTML etiketlerine dokunmaz, sadece metin kısımlarını düzeltir
   function fixHtmlMojibake(html) {
     if (!html || typeof html !== 'string') return html;
-    // Hızlı kontrol: mojibake belirtisi yoksa dokunma
-    if (!/[\u00C0-\u00DF][\u0080-\u00BF]/.test(html) &&
-        !/[\u00E0-\u00EF][\u0080-\u00BF]{2}/.test(html)) {
-      return html;
-    }
     // HTML etiketlerini koruyarak sadece metin kısımlarını düzelt
     return html.replace(/>([^<]+)</g, function(match, textContent) {
-      return '>' + fixMojibake(textContent) + '<';
+      var fixed = fixMojibake(textContent);
+      return '>' + fixed + '<';
     });
   }
 
