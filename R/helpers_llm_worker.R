@@ -115,6 +115,33 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       content_val <- msg$content %||% msg$message %||% as.character(msg)
       list(role = role_val, content = content_val)
     })
+
+    # Tüm system mesajlarını en başta tek bir system mesajında birleştir
+    merge_system_messages_to_front <- function(messages) {
+      if (!length(messages)) return(messages)
+
+      roles <- vapply(messages, function(m) {
+        tolower(as.character(m$role %||% "user"))[1]
+      }, character(1))
+
+      system_idx <- which(roles == "system")
+      if (!length(system_idx)) return(messages)
+
+      system_text <- paste(
+        vapply(messages[system_idx], function(m) {
+          as.character(m$content %||% "")[1]
+        }, character(1)),
+        collapse = "\n\n"
+      )
+      system_text <- trimws(system_text)
+
+      non_system_messages <- messages[roles != "system"]
+
+      c(
+        list(list(role = "system", content = system_text)),
+        non_system_messages
+      )
+    }
   
   # --- Grafik niyeti algılayıcı + zorunlu yedek oluşturucu --------------------
   # Metin içinde grafik isteği türünü (bar, line, vb.) algıla
@@ -212,6 +239,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       }
     }
   }
+
+    messages_payload <- merge_system_messages_to_front(messages_payload)
 
     temp_value <- if (!is.null(settings$temperature)) settings$temperature else 0.4
 
@@ -855,6 +884,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           content_val <- msg$content %||% msg$message %||% as.character(msg)
           list(role = role_val, content = content_val)
         })
+
+        messages_payload2 <- merge_system_messages_to_front(messages_payload2)
         
         body2 <- list(
           model = selected_model,
