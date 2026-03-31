@@ -700,6 +700,29 @@ helpers_mcp_tools$normalize_args <- function(args) {
   args
 }
 
+helpers_mcp_tools$normalize_chart_type <- function(chart_type) {
+  chart_type <- tolower(trimws(as.character(chart_type %||% "")))
+
+  aliases <- list(
+    line = c("line", "line graph", "line chart", "çizgi", "çizgi grafiği", "trend", "trend graph", "trend chart", "zaman serisi", "time series"),
+    scatter = c("scatter", "scatter plot", "scatter graph", "saçılım", "saçılım grafiği"),
+    area = c("area", "area graph", "area chart", "alan", "alan grafiği"),
+    pareto = c("pareto", "pareto graph", "pareto chart", "pareto grafiği"),
+    bar = c("bar", "bar graph", "bar chart", "column", "column chart", "çubuk", "çubuk grafiği", "sütun", "sütun grafiği"),
+    pie = c("pie", "pie chart", "pie graph", "pasta", "pasta grafiği"),
+    donut = c("donut", "doughnut", "donut chart", "doughnut chart", "halka", "halka grafiği"),
+    hist = c("hist", "histogram", "histogram chart", "dağılım")
+  )
+
+  for (nm in names(aliases)) {
+    if (chart_type %in% aliases[[nm]]) return(nm)
+  }
+
+  if (chart_type %in% c("box", "boxplot", "box_plot", "bx")) return("hist")
+
+  chart_type
+}
+
 # Human-friendly column aliases for SQL outputs
 helpers_mcp_tools$prettify_column_name <- function(nm) {
   if (is.null(nm) || length(nm) == 0) return("")
@@ -950,9 +973,7 @@ helpers_mcp_tools$prepare_chart_data <- function(
   session = NULL
 ) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
-  # Normalize and hard-block box/boxplot (no longer supported)
-  chart_type <- tolower(chart_type %||% "")
-  if (chart_type %in% c("box","boxplot","box_plot","bx")) chart_type <- "hist"
+  chart_type <- helpers_mcp_tools$normalize_chart_type(chart_type)
 
   # 1) resolve file
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
@@ -1607,7 +1628,7 @@ helpers_mcp_tools$analyze_and_visualize <- function(
   if (!is.null(chart_type) && nzchar(chart_type) && !is.null(chart_data) && nrow(chart_data) > 0) {
     # Türkçe: Grafik oluştur
     chart_spec <- list(
-      type = tolower(chart_type),
+      type = helpers_mcp_tools$normalize_chart_type(chart_type),
       mapping = list(
         x = names(chart_data)[1],
         y = names(chart_data)[2]
@@ -1825,7 +1846,7 @@ helpers_mcp_tools$get_openai_tools <- function(session = NULL) {
               group_column = list(type = "string", description = "Gruplama sütunu (grouped_stats için). Örn: 'Departman'"),
               stat_column = list(type = "string", description = "İstatistik hesaplanacak sayısal sütun (örn: 'Maas', 'CalismaSaati')"),
               stat_function = list(type = "string", description = "İstatistik fonksiyonu: 'mean', 'sum', 'count', 'median', 'min', 'max'"),
-              chart_type = list(type = "string", description = "Grafik eklensin mi? 'bar', 'pie', 'line', 'hist'. Boş bırakırsan grafik çizilmez.")
+              chart_type = list(type = "string", description = "Grafik eklensin mi? 'bar', 'pie', 'line', 'area', 'scatter', 'pareto', 'hist'. Boş bırakırsan grafik çizilmez.")
             ),
             required = list("file_name", "analysis_type")
           )
@@ -1941,7 +1962,13 @@ helpers_mcp_tools$get_mcp_tools_prompt <- function(file_schema = NULL) {
     "| alan, area | 'area' |\n",
     "| scatter, saçılım | 'scatter' |\n",
     "| pareto | 'pareto' |\n\n",
- 
+
+    "## GRAFİK TÜRÜ SEÇİMİ İÇİN EK KURALLAR:\n",
+    "- Kullanıcı 'çizgi grafiği' diyorsa ASLA 'scatter' seçme; chart_type='line' kullan.\n",
+    "- 'scatter' sadece iki sayısal sütun arasındaki ilişki/korelasyon için kullanılmalı.\n",
+    "- Kullanıcı 'alan grafiği' diyorsa chart_type='area' kullan.\n",
+    "- Kullanıcı 'pareto' diyorsa chart_type='pareto' kullan.\n\n",
+
     "## ZORUNLU KURALLAR:\n",
     "1. \U0000274C ASLA kendi başına değer UYDURMA! Araç kullan.\n",
     "2. \U0000274C ASLA sütun adı TAHMIN ETME! Araç otomatik seçer veya get_distinct_values ile öğren.\n",

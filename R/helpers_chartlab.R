@@ -76,12 +76,33 @@ wire_chart_output <- function(output, out_id, spec) {
   is_num <- function(v) is.numeric(v) || inherits(v, c("Date","POSIXct","POSIXt"))
   first_or_null <- function(x) if (length(x)) x[[1]] else NULL
 
+  normalize_chart_type <- function(chart_type) {
+    chart_type <- tolower(trimws(as.character(chart_type %||% "")))
+
+    aliases <- list(
+      line = c("line", "line graph", "line chart", "çizgi", "çizgi grafiği", "trend", "trend graph", "trend chart", "zaman serisi", "time series"),
+      scatter = c("scatter", "scatter plot", "scatter graph", "saçılım", "saçılım grafiği"),
+      area = c("area", "area graph", "area chart", "alan", "alan grafiği"),
+      pareto = c("pareto", "pareto graph", "pareto chart", "pareto grafiği"),
+      bar = c("bar", "bar graph", "bar chart", "column", "column chart", "çubuk", "çubuk grafiği", "sütun", "sütun grafiği"),
+      pie = c("pie", "pie chart", "pie graph", "pasta", "pasta grafiği"),
+      donut = c("donut", "doughnut", "donut chart", "doughnut chart", "halka", "halka grafiği"),
+      hist = c("hist", "histogram", "histogram chart", "dağılım")
+    )
+
+    for (nm in names(aliases)) {
+      if (chart_type %in% aliases[[nm]]) return(nm)
+    }
+
+    if (chart_type %in% c("box", "boxplot", "box_plot", "bx")) return("hist")
+
+    chart_type
+  }
+
   # -------- auto guess missing mapping/type + sanitize mapping ----------
   # Türkçe: Geliştirilmiş eksen tahmini ve hata kontrolü
   auto_guess <- function(sp) {
-    sp$type    <- tolower(sp$type %||% "")
-    # box/boxplot hard-fallback
-    if (sp$type %in% c("box","boxplot","box_plot","bx")) sp$type <- "hist"
+    sp$type <- normalize_chart_type(sp$type)
     sp$mapping <- sp$mapping %||% list()
  
     df <- sp$data
@@ -245,8 +266,17 @@ wire_chart_output <- function(output, out_id, spec) {
 
         aggfun <- function(z, f) {
           f <- tolower(f %||% "sum")
-          fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
-          fun(z, na.rm = TRUE)
+          fun <- switch(
+            f,
+            sum = function(v) sum(v, na.rm = TRUE),
+            mean = function(v) mean(v, na.rm = TRUE),
+            median = function(v) median(v, na.rm = TRUE),
+            min = function(v) min(v, na.rm = TRUE),
+            max = function(v) max(v, na.rm = TRUE),
+            count = function(v) sum(!is.na(v)),
+            function(v) sum(v, na.rm = TRUE)
+          )
+          fun(z)
         }
 
         # Validate mapping vs available columns; gracefully fall back instead of blank widgets
@@ -304,8 +334,7 @@ wire_chart_output <- function(output, out_id, spec) {
         } else if (identical(type, "pareto")) {
           req(x)
           if (!is.null(y)) {
-            dd <- aggregate(df[[y]], by = list(df[[x]]),
-                            FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
+            dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg))
             names(dd) <- c(x, "val")
           } else {
             dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
@@ -325,19 +354,37 @@ wire_chart_output <- function(output, out_id, spec) {
             hc_add_series(name = "Kümülatif %", type = "line", data = round(dd$cum_pct, 2), yAxis = 1,
                           tooltip = list(valueSuffix = "%")) %>%
             hc_tooltip(shared = TRUE)
-        } else if (identical(type,"line")) {
-          req(x, y)
-          if (is.null(grp)) hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
-          else              hchart(df, "line", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
-        } else if (identical(type,"scatter")) {
-          req(x, y)
-          if (is.null(grp)) hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
-          else              hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
-        } else if (identical(type,"area")) {
-          req(x, y)
-          if (is.null(grp)) hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
-          else              hchart(df, "area", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
-        } else {
+			} else if (identical(type,"line")) {
+			  req(x, y)
+			  if (is.null(grp)) {
+				dd <- stats::aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+				names(dd) <- c(x, "val")
+				dd <- dd[order(dd[[x]]), , drop = FALSE]
+				hchart(dd, "line", hcaes(x = !!rlang::sym(x), y = val)) %>% hc_add_theme(custom_theme)
+			  } else {
+				dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+				names(dd) <- c(x, grp, "val")
+				dd <- dd[order(dd[[grp]], dd[[x]]), , drop = FALSE]
+				hchart(dd, "line", hcaes(x = !!rlang::sym(x), y = val, group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+			  }
+			} else if (identical(type,"scatter")) {
+			  req(x, y)
+			  if (is.null(grp)) hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y))) %>% hc_add_theme(custom_theme)
+			  else              hchart(df, "scatter", hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y), group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+			} else if (identical(type,"area")) {
+			  req(x, y)
+			  if (is.null(grp)) {
+				dd <- stats::aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+				names(dd) <- c(x, "val")
+				dd <- dd[order(dd[[x]]), , drop = FALSE]
+				hchart(dd, "area", hcaes(x = !!rlang::sym(x), y = val)) %>% hc_add_theme(custom_theme)
+			  } else {
+				dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+				names(dd) <- c(x, grp, "val")
+				dd <- dd[order(dd[[grp]], dd[[x]]), , drop = FALSE]
+				hchart(dd, "area", hcaes(x = !!rlang::sym(x), y = val, group = !!rlang::sym(grp))) %>% hc_add_theme(custom_theme)
+			  }
+			} else {
           highchart() %>% hc_add_theme(custom_theme) %>% hc_title(text = "Bilinmeyen grafik türü")
         }
       }, error = function(e) {
@@ -355,8 +402,17 @@ wire_chart_output <- function(output, out_id, spec) {
         library(ggplot2); library(plotly)
         aggfun <- function(z, f) {
           f <- tolower(f %||% "sum")
-          fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
-          fun(z, na.rm = TRUE)
+          fun <- switch(
+            f,
+            sum = function(v) sum(v, na.rm = TRUE),
+            mean = function(v) mean(v, na.rm = TRUE),
+            median = function(v) median(v, na.rm = TRUE),
+            min = function(v) min(v, na.rm = TRUE),
+            max = function(v) max(v, na.rm = TRUE),
+            count = function(v) sum(!is.na(v)),
+            function(v) sum(v, na.rm = TRUE)
+          )
+          fun(z)
         }
         p <- NULL
         if (identical(type,"hist")) {
@@ -392,8 +448,7 @@ wire_chart_output <- function(output, out_id, spec) {
         } else if (identical(type, "pareto")) {
           req(x)
           if (!is.null(y)) {
-            dd <- aggregate(df[[y]], by = list(df[[x]]),
-                            FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
+            dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg))
             names(dd) <- c(x, "val")
           } else {
             dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
@@ -410,11 +465,38 @@ wire_chart_output <- function(output, out_id, spec) {
               plotly::layout(yaxis2 = list(overlaying = "y", side = "right", range = c(0,100), ticksuffix = "%"))
           )
         } else if (identical(type,"line")) {
-          req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_line()
+          req(x, y)
+          if (is.null(grp)) {
+            dd <- stats::aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+            names(dd) <- c(x, "val")
+            dd <- dd[order(dd[[x]]), , drop = FALSE]
+            p <- ggplot(dd, aes(x = .data[[x]], y = val, group = 1)) + geom_line()
+          } else {
+            dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+            names(dd) <- c(x, grp, "val")
+            dd <- dd[order(dd[[grp]], dd[[x]]), , drop = FALSE]
+            p <- ggplot(dd, aes(x = .data[[x]], y = val, color = .data[[grp]], group = .data[[grp]])) + geom_line()
+          }
         } else if (identical(type,"scatter")) {
-          req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_point(alpha = 0.8)
+          req(x, y)
+          if (is.null(grp)) {
+            p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]])) + geom_point(alpha = 0.8)
+          } else {
+            p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_point(alpha = 0.8)
+          }
         } else if (identical(type,"area")) {
-          req(x, y); p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], fill = .data[[grp]])) + geom_area(position = "stack")
+          req(x, y)
+          if (is.null(grp)) {
+            dd <- stats::aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+            names(dd) <- c(x, "val")
+            dd <- dd[order(dd[[x]]), , drop = FALSE]
+            p <- ggplot(dd, aes(x = .data[[x]], y = val, group = 1)) + geom_area()
+          } else {
+            dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg %||% "mean"))
+            names(dd) <- c(x, grp, "val")
+            dd <- dd[order(dd[[grp]], dd[[x]]), , drop = FALSE]
+            p <- ggplot(dd, aes(x = .data[[x]], y = val, fill = .data[[grp]], group = .data[[grp]])) + geom_area(position = "stack")
+          }
         } else {
           p <- ggplot() + ggtitle("Bilinmeyen grafik türü")
         }
