@@ -226,26 +226,82 @@ resolve_node_path <- function() {
 
 # ------------------------------------------------------------------------------
 # PROCESSX ÇIKTI KODLAMA DÜZELTMESİ
-# Claude Code CLI her zaman UTF-8 çıktı üretir ancak Windows'ta processx
-# okunan baytları sistemin yerel kodlamasıyla (örn. CP1254) etiketler.
-# Baytlar zaten UTF-8 olduğu için dönüştürme YAPILMAMALI, sadece R'a
-# "bu baytlar UTF-8" diye işaretlenmelidir. Aksi halde enc2utf8/iconv
-# zaten doğru olan UTF-8 baytlarını ikinci kez kodlar ve mojibake oluşur.
+# Claude Code CLI her zaman UTF-8 çıktı üretir. Windows'ta R'ın kodlama
+# sistemi (Encoding etiketleri, enc2utf8, iconv) güvenilir şekilde
+# çalışmayabiliyor. Bu yüzden tüm ASCII-dışı karakterleri HTML sayısal
+# varlıklarına (&#NNN;) çevirerek saf ASCII string elde ediyoruz.
+# Böylece toJSON serileştirmesinde kodlama sorunu kökten ortadan kalkar.
 # ------------------------------------------------------------------------------
 
-#' processx çıktısını UTF-8 olarak işaretle (dönüştürme yapmadan)
+#' ASCII-dışı karakterleri HTML sayısal varlıklarına çevirir
 #'
-#' @description Claude Code CLI her zaman UTF-8 çıktı verir. Windows'ta
-#'   processx bu baytları "bilinmeyen" kodlama olarak işaretler. Bu fonksiyon
-#'   baytları olduğu gibi bırakıp sadece R'ın kodlama etiketini UTF-8 yapar.
-#'   enc2utf8() veya iconv() KULLANILMAZ çünkü baytlar zaten UTF-8'dir.
-#' @param metin processx'ten okunan ham metin (karakter vektörü)
-#' @return Aynı baytlar, UTF-8 olarak etiketlenmiş
+#' @description R'ın kodlama etiketleme sorunlarını tamamen atlar.
+#'   Tüm ASCII-dışı karakterler &#NNN; formatına dönüştürülür.
+#'   Sonuç saf ASCII olduğu için toJSON/WebSocket sorunsuz çalışır.
+#'   Tarayıcı HTML varlıklarını otomatik olarak doğru karaktere çevirir.
+#' @param metin Karakter vektörü (tek veya çok elemanlı)
+#' @return Saf ASCII metin (HTML varlıkları ile)
+escape_non_ascii <- function(metin) {
+  if (is.null(metin) || !length(metin)) return(metin)
+  metin <- as.character(metin)
+
+  vapply(metin, function(m) {
+    if (!nzchar(m)) return(m)
+
+    # Önce UTF-8 olarak yorumlamayı dene
+    tryCatch({
+      # iconv ile UTF-8 → UTF-8 doğrulaması
+      test <- iconv(m, from = "UTF-8", to = "UTF-8")
+      if (!is.na(test)) {
+        Encoding(m) <- "UTF-8"
+      } else {
+        # Geçerli UTF-8 değilse yerel kodlamadan dönüştür
+        m <- enc2utf8(m)
+      }
+    }, error = function(e) {
+      tryCatch({ m <<- enc2utf8(m) }, error = function(e2) NULL)
+    })
+
+    # Karakter karakter dolaşıp ASCII-dışı olanları &#NNN; yap
+    kod_noktalari <- tryCatch(utf8ToInt(m), error = function(e) NULL)
+    if (is.null(kod_noktalari)) return(m)
+
+    parcalar <- vapply(kod_noktalari, function(kn) {
+      if (kn > 127L) {
+        sprintf("&#%d;", kn)
+      } else {
+        intToUtf8(kn)
+      }
+    }, character(1))
+
+    paste(parcalar, collapse = "")
+  }, character(1), USE.NAMES = FALSE)
+}
+
+#' processx çıktısını UTF-8 olarak işaretlemeye çalışır
+#'
+#' @description processx okuması sonrası baytları UTF-8 olarak etiketler.
+#'   jsonlite::fromJSON() ayrıştırması için hazırlık yapar.
+#' @param metin processx'ten okunan ham metin
+#' @return UTF-8 etiketli metin
 ensure_utf8 <- function(metin) {
   if (is.null(metin) || !length(metin)) return(metin)
   metin <- as.character(metin)
-  Encoding(metin) <- "UTF-8"
-  metin
+
+  kodlamalar <- Encoding(metin)
+  if (all(kodlamalar == "UTF-8")) return(metin)
+
+  test <- iconv(metin, from = "UTF-8", to = "UTF-8")
+  gecerli_utf8 <- !is.na(test)
+
+  sonuc <- metin
+  if (any(gecerli_utf8)) {
+    Encoding(sonuc[gecerli_utf8]) <- "UTF-8"
+  }
+  if (any(!gecerli_utf8)) {
+    sonuc[!gecerli_utf8] <- enc2utf8(metin[!gecerli_utf8])
+  }
+  sonuc
 }
 
 # ------------------------------------------------------------------------------
@@ -402,8 +458,7 @@ run_claude_code <- function(prompt,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE,
-      encoding = "UTF-8"
+      cleanup_tree = TRUE
     )
 
     # Zaman aşımı ile bekle
@@ -690,8 +745,7 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE,
-      encoding = "UTF-8"
+      cleanup_tree = TRUE
     )
     proc$wait(timeout = 10000)
 
@@ -865,6 +919,7 @@ format_claude_code_output <- function(output) {
   }
 
   # Markdown'ı HTML'e dönüştür (commonmark paketi ile)
+  # NOT: Mojibake düzeltmesi JavaScript tarafında yapılır (fixHtmlMojibake)
   tryCatch({
     html <- commonmark::markdown_html(output, extensions = TRUE)
     return(html)

@@ -9,6 +9,80 @@
   'use strict';
 
   // ---------------------------------------------------------------------------
+  // UTF-8 ÇİFT KODLAMA DÜZELTMESİ (MOJIBAKE FIX)
+  // Windows VM'de R/Shiny, UTF-8 baytlarını Windows-1252 olarak yorumlayıp
+  // tekrar UTF-8'e kodluyor. Örnek: ç (UTF-8: C3 A7) → Ã (C3) + § (A7).
+  // ğ gibi harfler daha karmaşık: UTF-8 C4 9F → Ä (C4) + Ÿ (0x9F→U+0178).
+  // Windows-1252'nin 0x80-0x9F aralığı Latin-1'den farklı Unicode noktalarına
+  // eşlenir, bu yüzden ters dönüşüm için özel bir tablo gerekir.
+  // ---------------------------------------------------------------------------
+
+  // Windows-1252 özel aralığı: Unicode kod noktası → orijinal bayt değeri
+  // 0x80-0x9F aralığındaki baytlar Windows-1252'de farklı Unicode'lara eşlenir
+  var WIN1252_REVERSE = {};
+  (function() {
+    var map = [
+      0x20AC,0x0081,0x201A,0x0192,0x201E,0x2026,0x2020,0x2021,
+      0x02C6,0x2030,0x0160,0x2039,0x0152,0x008D,0x017D,0x008F,
+      0x0090,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,
+      0x02DC,0x2122,0x0161,0x203A,0x0153,0x009D,0x017E,0x0178
+    ];
+    for (var i = 0; i < map.length; i++) {
+      WIN1252_REVERSE[map[i]] = 0x80 + i;
+    }
+  })();
+
+  // Unicode kod noktasını Windows-1252 bayt değerine çevirir
+  function unicodeToWin1252Byte(cp) {
+    if (cp < 0x80) return cp;           // ASCII: aynı
+    if (cp >= 0xA0 && cp <= 0xFF) return cp; // Latin-1 supplement: aynı
+    if (WIN1252_REVERSE[cp] !== undefined) return WIN1252_REVERSE[cp];
+    return -1; // Bu karakter Windows-1252'de yok → mojibake değil
+  }
+
+  function fixMojibake(text) {
+    if (!text || typeof text !== 'string') return text;
+
+    // Baytlara dönüştür (Windows-1252 Unicode → orijinal bayt)
+    var bytes = [];
+    for (var i = 0; i < text.length; i++) {
+      var b = unicodeToWin1252Byte(text.charCodeAt(i));
+      if (b < 0) return text; // Windows-1252 dışı karakter → mojibake değil
+      bytes.push(b);
+    }
+
+    // ASCII-only metin ise dönüşüm gereksiz
+    var hasHighByte = false;
+    for (var j = 0; j < bytes.length; j++) {
+      if (bytes[j] >= 0x80) { hasHighByte = true; break; }
+    }
+    if (!hasHighByte) return text;
+
+    try {
+      var decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+      // Başarılı ve farklı ise kullan (replacement char U+FFFD yoksa)
+      if (decoded.indexOf('\uFFFD') === -1 && decoded !== text) {
+        return decoded;
+      }
+    } catch (e) {}
+    return text;
+  }
+
+  // Diğer JS dosyalarından erişim için global yap
+  window.ccFixMojibake = fixMojibake;
+
+  // HTML içindeki metin düğümlerindeki mojibake'yi düzelt
+  // HTML etiketlerine dokunmaz, sadece metin kısımlarını düzeltir
+  function fixHtmlMojibake(html) {
+    if (!html || typeof html !== 'string') return html;
+    // HTML etiketlerini koruyarak sadece metin kısımlarını düzelt
+    return html.replace(/>([^<]+)</g, function(match, textContent) {
+      var fixed = fixMojibake(textContent);
+      return '>' + fixed + '<';
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // KABUK GÖRÜNÜRLÜĞÜ DURUMU
   // Kullanıcının kabuk komutlarını gizleyip gizlemediğini takip eder.
   // ---------------------------------------------------------------------------
@@ -189,9 +263,9 @@
     var body = msgContainer.querySelector('.cc-message-body');
     if (!body) return;
 
-    // Ham metni biriktir
+    // Ham metni biriktir (mojibake varsa düzelt)
     var currentText = body.getAttribute('data-raw-text') || '';
-    currentText += (data.html || '');
+    currentText += fixMojibake(data.html || '');
     body.setAttribute('data-raw-text', currentText);
 
     // Basit metin olarak göster (son biçimleme cc-stream-end ile yapılır)
@@ -452,10 +526,11 @@
       }
 
       // Mesaj gövdesini son içerikle güncelle (Markdown dönüştürme dahil)
+      // fixHtmlMojibake: R/Shiny'de oluşan çift kodlamayı düzeltir
       if (data.finalContent) {
         var body = streamingMsg.querySelector('.cc-message-body');
         if (body) {
-          body.innerHTML = data.finalContent;
+          body.innerHTML = fixHtmlMojibake(data.finalContent);
           body.removeAttribute('data-raw-text');
         }
       }
