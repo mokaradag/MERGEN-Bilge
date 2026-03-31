@@ -227,26 +227,25 @@ resolve_node_path <- function() {
 # ------------------------------------------------------------------------------
 # PROCESSX ÇIKTI KODLAMA DÜZELTMESİ
 # Claude Code CLI her zaman UTF-8 çıktı üretir ancak Windows'ta processx
-# çıktıyı sistemin yerel kodlamasında (örn. CP1254) okur. Bu fonksiyon
-# okunan metni güvenli bir şekilde UTF-8'e dönüştürür.
+# okunan baytları sistemin yerel kodlamasıyla (örn. CP1254) etiketler.
+# Baytlar zaten UTF-8 olduğu için dönüştürme YAPILMAMALI, sadece R'a
+# "bu baytlar UTF-8" diye işaretlenmelidir. Aksi halde enc2utf8/iconv
+# zaten doğru olan UTF-8 baytlarını ikinci kez kodlar ve mojibake oluşur.
 # ------------------------------------------------------------------------------
 
-#' processx çıktısını UTF-8'e dönüştürür
+#' processx çıktısını UTF-8 olarak işaretle (dönüştürme yapmadan)
 #'
-#' @description Windows'ta processx çıktıları sistemin yerel kodlamasında
-#'   okunur (Türkçe Windows'ta CP1254). Claude Code CLI ise her zaman UTF-8
-#'   çıktı verir. Bu fonksiyon okunan metni doğru kodlamaya çevirir.
-#' @param metin processx'ten okunan ham metin
-#' @return UTF-8 kodlamalı metin
+#' @description Claude Code CLI her zaman UTF-8 çıktı verir. Windows'ta
+#'   processx bu baytları "bilinmeyen" kodlama olarak işaretler. Bu fonksiyon
+#'   baytları olduğu gibi bırakıp sadece R'ın kodlama etiketini UTF-8 yapar.
+#'   enc2utf8() veya iconv() KULLANILMAZ çünkü baytlar zaten UTF-8'dir.
+#' @param metin processx'ten okunan ham metin (karakter vektörü)
+#' @return Aynı baytlar, UTF-8 olarak etiketlenmiş
 ensure_utf8 <- function(metin) {
   if (is.null(metin) || !length(metin)) return(metin)
-  tryCatch({
-    out <- enc2utf8(as.character(metin))
-    # enc2utf8 yetersiz kalırsa iconv ile yeniden dene
-    iconv(out, from = "", to = "UTF-8", sub = "")
-  }, error = function(e) {
-    as.character(metin)
-  })
+  metin <- as.character(metin)
+  Encoding(metin) <- "UTF-8"
+  metin
 }
 
 # ------------------------------------------------------------------------------
