@@ -471,12 +471,19 @@
                  '</div>' + data.toolContent + '</div>';
     }
 
-    // İçerik
+    // İçerik (mojibake düzeltmesi: R/Shiny çift kodlama sorunu)
+    var content = data.content || '';
+    if (data.type !== 'user' && typeof window.ccFixMojibake === 'function') {
+      // Asistan/hata mesajlarında HTML içindeki mojibake'yi düzelt
+      content = content.replace(/>([^<]+)</g, function(match, txt) {
+        return '>' + window.ccFixMojibake(txt) + '<';
+      });
+    }
     var bodyHtml = '<div class="cc-message-body">';
     if (data.type === 'user') {
       bodyHtml += '<pre class="cc-user-pre">' + data.content + '</pre>';
     } else {
-      bodyHtml += data.content;
+      bodyHtml += content;
     }
     bodyHtml += '</div>';
 

@@ -9,6 +9,62 @@
   'use strict';
 
   // ---------------------------------------------------------------------------
+  // UTF-8 ÇİFT KODLAMA DÜZELTMESİ (MOJIBAKE FIX)
+  // Windows VM'de R/Shiny UTF-8 metni yanlışlıkla Latin-1/Windows-1252
+  // olarak yorumlayıp tekrar UTF-8'e kodlayabiliyor. Bu, ç→Ã§, ş→ÅŸ gibi
+  // mojibake kalıplarına yol açar. Bu fonksiyon çift kodlamayı tersine çevirir:
+  // Her karakterin Unicode kod noktasını bir bayt olarak alıp UTF-8 olarak
+  // yeniden yorumlar. Yalnızca mojibake tespit edildiğinde uygulanır.
+  // ---------------------------------------------------------------------------
+  function fixMojibake(text) {
+    if (!text || typeof text !== 'string') return text;
+
+    // Mojibake belirtilerini ara: çok baytlı UTF-8 dizilerin Latin-1
+    // yorumlanması sonucu oluşan tipik kalıplar (Ã, Å, Ä ile başlayan çiftler)
+    if (!/[\u00C0-\u00DF][\u0080-\u00BF]/.test(text) &&
+        !/[\u00E0-\u00EF][\u0080-\u00BF]{2}/.test(text)) {
+      return text; // Mojibake yok, metni olduğu gibi döndür
+    }
+
+    try {
+      // Her karakterin kod noktasını bir bayt olarak al
+      var bytes = [];
+      for (var i = 0; i < text.length; i++) {
+        var cp = text.charCodeAt(i);
+        if (cp > 255) return text; // Latin-1 aralığı dışında → mojibake değil
+        bytes.push(cp);
+      }
+      var decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+
+      // Başarılı dönüşüm: replacement character (U+FFFD) yoksa kullan
+      if (decoded.indexOf('\uFFFD') === -1 && decoded !== text) {
+        return decoded;
+      }
+    } catch (e) {
+      // Hata durumunda orijinal metni döndür
+    }
+    return text;
+  }
+
+  // Diğer JS dosyalarından erişim için global yap
+  window.ccFixMojibake = fixMojibake;
+
+  // HTML içindeki metin düğümlerindeki mojibake'yi düzelt
+  // (HTML etiketlerine dokunmaz, sadece metin içeriğini düzeltir)
+  function fixHtmlMojibake(html) {
+    if (!html || typeof html !== 'string') return html;
+    // Hızlı kontrol: mojibake belirtisi yoksa dokunma
+    if (!/[\u00C0-\u00DF][\u0080-\u00BF]/.test(html) &&
+        !/[\u00E0-\u00EF][\u0080-\u00BF]{2}/.test(html)) {
+      return html;
+    }
+    // HTML etiketlerini koruyarak sadece metin kısımlarını düzelt
+    return html.replace(/>([^<]+)</g, function(match, textContent) {
+      return '>' + fixMojibake(textContent) + '<';
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // KABUK GÖRÜNÜRLÜĞÜ DURUMU
   // Kullanıcının kabuk komutlarını gizleyip gizlemediğini takip eder.
   // ---------------------------------------------------------------------------
@@ -189,9 +245,9 @@
     var body = msgContainer.querySelector('.cc-message-body');
     if (!body) return;
 
-    // Ham metni biriktir
+    // Ham metni biriktir (mojibake varsa düzelt)
     var currentText = body.getAttribute('data-raw-text') || '';
-    currentText += (data.html || '');
+    currentText += fixMojibake(data.html || '');
     body.setAttribute('data-raw-text', currentText);
 
     // Basit metin olarak göster (son biçimleme cc-stream-end ile yapılır)
@@ -452,10 +508,11 @@
       }
 
       // Mesaj gövdesini son içerikle güncelle (Markdown dönüştürme dahil)
+      // fixHtmlMojibake: R/Shiny'de oluşan çift kodlamayı düzeltir
       if (data.finalContent) {
         var body = streamingMsg.querySelector('.cc-message-body');
         if (body) {
-          body.innerHTML = data.finalContent;
+          body.innerHTML = fixHtmlMojibake(data.finalContent);
           body.removeAttribute('data-raw-text');
         }
       }

@@ -919,14 +919,14 @@ format_claude_code_output <- function(output) {
   }
 
   # Markdown'ı HTML'e dönüştür (commonmark paketi ile)
+  # NOT: Mojibake düzeltmesi JavaScript tarafında yapılır (fixHtmlMojibake)
   tryCatch({
     html <- commonmark::markdown_html(output, extensions = TRUE)
-    # ASCII-dışı karakterleri HTML varlıklarına çevir (kodlama sorununu önler)
-    return(escape_non_ascii(html))
+    return(html)
   }, error = function(e) {
     # Dönüşüm başarısız olursa ham metni döndür
     escaped <- htmltools::htmlEscape(output)
-    return(escape_non_ascii(paste0("<pre>", escaped, "</pre>")))
+    return(paste0("<pre>", escaped, "</pre>"))
   })
 }
 
