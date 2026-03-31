@@ -94,7 +94,8 @@ run_claude_code_streaming <- function(prompt,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE
+      cleanup_tree = TRUE,
+      encoding = "UTF-8"
     )
 
     # Sonuç biriktirici

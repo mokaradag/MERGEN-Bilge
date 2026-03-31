@@ -402,7 +402,8 @@ run_claude_code <- function(prompt,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE
+      cleanup_tree = TRUE,
+      encoding = "UTF-8"
     )
 
     # Zaman aşımı ile bekle
@@ -624,7 +625,9 @@ parse_claude_code_json_output <- function(ham_cikti) {
     })
   }
 
-  sonuc$text_output <- paste(metin_parcalari, collapse = "")
+  # paste() sonrası UTF-8 etiketini garanti altına al (Windows'ta
+  # jsonlite::fromJSON çıktısı kodlama işaretini kaybedebilir)
+  sonuc$text_output <- ensure_utf8(paste(metin_parcalari, collapse = ""))
   return(sonuc)
 }
 
@@ -687,7 +690,8 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE
+      cleanup_tree = TRUE,
+      encoding = "UTF-8"
     )
     proc$wait(timeout = 10000)
 

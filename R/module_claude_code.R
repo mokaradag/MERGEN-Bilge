@@ -886,7 +886,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           stdout = "|",
           stderr = "|",
           cleanup = TRUE,
-          cleanup_tree = TRUE
+          cleanup_tree = TRUE,
+          encoding = "UTF-8"
         )
 
         # Süreç referansını sakla (yoklama gözlemcisi ve durdurma için)
