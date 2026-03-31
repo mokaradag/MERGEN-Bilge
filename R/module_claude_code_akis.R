@@ -32,6 +32,12 @@ create_akis_yardimcilari <- function(session, ns, rv) {
     if (is.null(parca)) return()
 
     send_chunk <- function(tip, html, arac_id = "", ekstra = list()) {
+      # Windows'ta kodlama etiketini garanti altına al:
+      # jsonlite::fromJSON() sonrası oluşan yeni stringler UTF-8
+      # işaretini kaybedebilir, sendCustomMessage() ise toJSON() ile
+      # serileştirirken "unknown" kodlamalı UTF-8 baytlarını yanlışlıkla
+      # yerel kodlamadan (Windows-1252) dönüştürmeye çalışır → mojibake.
+      html <- ensure_utf8(html)
       mesaj <- c(
         list(
           target = ns("output_area"),

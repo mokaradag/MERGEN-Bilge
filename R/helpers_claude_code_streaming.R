@@ -94,7 +94,8 @@ run_claude_code_streaming <- function(prompt,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
-      cleanup_tree = TRUE
+      cleanup_tree = TRUE,
+      encoding = "UTF-8"
     )
 
     # Sonuç biriktirici
@@ -118,8 +119,9 @@ run_claude_code_streaming <- function(prompt,
       }
 
       # stdout'tan oku (kısa bekleme ile)
+      # Windows'ta processx yerel kodlama kullanır; UTF-8'e dönüştür
       proc$poll_io(200)
-      yeni_veri <- tryCatch(proc$read_output_lines(), error = function(e) character(0))
+      yeni_veri <- tryCatch(ensure_utf8(proc$read_output_lines()), error = function(e) character(0))
 
       if (length(yeni_veri) > 0) {
         for (satir in yeni_veri) {
@@ -147,8 +149,8 @@ run_claude_code_streaming <- function(prompt,
       }
     }
 
-    # Kalan çıktıyı oku
-    kalan <- tryCatch(proc$read_all_output(), error = function(e) "")
+    # Kalan çıktıyı oku (UTF-8'e dönüştür)
+    kalan <- tryCatch(ensure_utf8(proc$read_all_output()), error = function(e) "")
     if (nzchar(kalan)) {
       kalan_satirlar <- strsplit(kalan, "\n")[[1]]
       for (satir in kalan_satirlar) {
@@ -166,7 +168,7 @@ run_claude_code_streaming <- function(prompt,
       }
     }
 
-    stderr_metin <- tryCatch(proc$read_all_error(), error = function(e) "")
+    stderr_metin <- tryCatch(ensure_utf8(proc$read_all_error()), error = function(e) "")
     cikis_kodu <- proc$get_exit_status()
     sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
 
