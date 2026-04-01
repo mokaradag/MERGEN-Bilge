@@ -419,11 +419,28 @@ sendMessageInit <- function(
     # DOSYA ÖZETLEME MODU
     if (identical(tool_family, "summarization")) {
       summarization_ctx <- list(
-        session = session, input = input, values = values,
-        settings_data = settings_data, ai_processor = ai_processor,
-        uploaded_count = uploaded_count, user_message_text = user_message_text,
+        session = session,
+        input = input,
+        output = output,
+        values = values,
+        settings_data = settings_data,
+        ai_processor = ai_processor,
+        stop_generation = stop_generation,
+        active_request_id = active_request_id,
+        perf_tracker = perf_tracker,
+        api_config = api_config,
+        current_user_id = effective_user_id,
+        uploaded_count = uploaded_count,
+        user_message_text = user_message_text,
         current_session_files = current_session_files,
-        add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
+        user_prompt_msg = user_prompt_msg,
+        chat_id_val = isolate(values$current_chat_id),
+        saved_chats_data = saved_chats_data,
+        followup_tools = followup_tools,
+        fallback_followup_tool = fallback_followup_tool,
+        request_start_time = request_start_time,
+        add_message_fn = add_message_fn,
+        reset_chat_state_fn = reset_chat_state_fn
       )
       handle_summarization_mode(summarization_ctx)
       return(invisible(NULL))

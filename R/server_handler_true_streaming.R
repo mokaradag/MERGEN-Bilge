@@ -439,7 +439,7 @@ handle_true_streaming_mode <- function(ctx) {
 
     if (file.exists(stream_env$stream_file)) {
       satirlar <- tryCatch(
-        enc2utf8(readLines(stream_env$stream_file, warn = FALSE, encoding = "UTF-8")),
+        suppressWarnings(readLines(stream_env$stream_file, warn = FALSE, encoding = "UTF-8")),
         error = function(e) character(0)
       )
 
@@ -460,7 +460,7 @@ handle_true_streaming_mode <- function(ctx) {
           }
 
           if (identical(payload$type %||% "", "delta")) {
-            delta_text <- enc2utf8(as.character(payload$text %||% ""))
+            delta_text <- decode_stream_delta_payload(payload)
             if (!nzchar(delta_text)) {
               next
             }
@@ -526,19 +526,24 @@ handle_true_streaming_mode <- function(ctx) {
       return(invisible(NULL))
     }
 
-    final_text <- enc2utf8(normalize_llm_scalar_content(result$content))
-    final_text <- strip_planner_text(final_text)
-    final_text <- append_clickable_sources(final_text, result$sources)
+    base_final_text <- enc2utf8(normalize_llm_scalar_content(result$content))
+    base_final_text <- strip_planner_text(base_final_text)
+    base_final_text <- append_clickable_sources(base_final_text, result$sources)
 
     followup_questions <- build_followup_suggestions(
       ctx$user_message_text,
-      final_text,
+      base_final_text,
       settings_data,
       session,
       ctx$api_config,
       ctx$followup_tools,
       ctx$fallback_followup_tool
     )
+
+    final_text <- base_final_text
+    if (nzchar(ctx$final_text_suffix %||% "")) {
+      final_text <- paste0(final_text, ctx$final_text_suffix)
+    }
 
     finalize_stream_message(
       final_text = final_text,

@@ -48,7 +48,8 @@ build_summarization_system_prompt <- function(file_count = 1, total_chars = 0,
       "\n- Tablo verilerini düzenli şekilde sun",
       "\n- Her bölüm sonunda değerlendirme ekle",
       "\n- 256K bağlam pencereni tam olarak kullanarak hiçbir detayı atlama",
-      "\n- Bölümler arası geçişleri açık ve net yap"
+      "\n- Bölümler arası geçişleri açık ve net yap",
+      "\n- Yanıtı yarım bırakma; başladığın tüm ana bölümleri tek yanıtta tamamla"
     ),
     paste(
       "\n\nGÖREV: STANDART ÖZET",

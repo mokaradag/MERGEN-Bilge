@@ -135,13 +135,16 @@ append_stream_delta_line <- function(stream_file, text_value, stream_con = NULL)
     return(invisible(NULL))
   }
 
+  text_utf8 <- enc2utf8(text_value)
+  text_b64 <- base64enc::base64encode(charToRaw(text_utf8))
+
   payload <- jsonlite::toJSON(
-    list(type = "delta", text = enc2utf8(text_value)),
+    list(type = "delta", text_b64 = text_b64),
     auto_unbox = TRUE,
     null = "null"
   )
 
-  payload_line <- paste0(enc2utf8(payload), "\n")
+  payload_line <- paste0(payload, "\n")
 
   if (!is.null(stream_con)) {
     writeBin(charToRaw(payload_line), stream_con)
@@ -155,6 +158,31 @@ append_stream_delta_line <- function(stream_file, text_value, stream_con = NULL)
   writeBin(charToRaw(payload_line), con)
   flush(con)
   invisible(NULL)
+}
+
+decode_stream_delta_payload <- function(payload) {
+  if (is.null(payload)) {
+    return("")
+  }
+
+  if (!is.null(payload$text_b64) && nzchar(as.character(payload$text_b64 %||% ""))) {
+    decoded_raw <- tryCatch(
+      base64enc::base64decode(as.character(payload$text_b64)[1]),
+      error = function(e) NULL
+    )
+
+    if (!is.null(decoded_raw) && length(decoded_raw) > 0) {
+      decoded_text <- tryCatch(rawToChar(decoded_raw), error = function(e) "")
+      Encoding(decoded_text) <- "UTF-8"
+      return(enc2utf8(decoded_text))
+    }
+  }
+
+  if (!is.null(payload$text)) {
+    return(enc2utf8(as.character(payload$text %||% "")))
+  }
+
+  ""
 }
 
 # ------------------------------------------------------------------------------
