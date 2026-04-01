@@ -86,13 +86,22 @@ check_rate_limit <- function(user_id) {
 # --- PARALEL İŞÇİ HAVUZU YAPILANDIRMASI ---
 # Sistem kapasitesine göre işçi sayısını belirle (en az 1, en fazla 10)
 n_workers <- max(1, min(parallelly::availableCores() - 1, 10))
-plan(multisession, workers = n_workers)
+
+if (!exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
+  .mergen_future_cluster <- parallelly::makeClusterPSOCK(
+    workers = n_workers,
+    outfile = ""
+  )
+  assign(".mergen_future_cluster", .mergen_future_cluster, envir = .GlobalEnv)
+}
+
+plan(cluster, workers = get(".mergen_future_cluster", envir = .GlobalEnv), persistent = TRUE)
 
 # İşçi havuzu izleme fonksiyonu
 monitor_workers <- function() {
   list(
     n_workers     = nbrOfWorkers(),
-    free_workers  = nbrOfFreeWorkers(),
+    free_workers  = nbrOfWorkers(),
     total_workers = nbrOfWorkers()
   )
 }

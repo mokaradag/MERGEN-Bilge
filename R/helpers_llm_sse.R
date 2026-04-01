@@ -126,8 +126,12 @@ extract_llm_event_sources <- function(event_obj) {
 # AKIŞ DOSYASINA DELTA SATIRI EKLE
 # ------------------------------------------------------------------------------
 
-append_stream_delta_line <- function(stream_file, text_value) {
-  if (is.null(stream_file) || !nzchar(stream_file) || !nzchar(text_value)) {
+append_stream_delta_line <- function(stream_file, text_value, stream_con = NULL) {
+  if ((!nzchar(stream_file %||% "")) && is.null(stream_con)) {
+    return(invisible(NULL))
+  }
+
+  if (!nzchar(text_value %||% "")) {
     return(invisible(NULL))
   }
 
@@ -139,10 +143,17 @@ append_stream_delta_line <- function(stream_file, text_value) {
 
   payload_line <- paste0(enc2utf8(payload), "\n")
 
+  if (!is.null(stream_con)) {
+    writeBin(charToRaw(payload_line), stream_con)
+    flush(stream_con)
+    return(invisible(NULL))
+  }
+
   con <- file(stream_file, open = "ab")
   on.exit(close(con), add = TRUE)
 
   writeBin(charToRaw(payload_line), con)
+  flush(con)
   invisible(NULL)
 }
 
@@ -158,6 +169,23 @@ call_local_llm_sse_worker <- function(chat_history,
 
   tryCatch({
     selected_model <- current_settings$model_selection
+
+    request_start_unix <- suppressWarnings(as.numeric(current_settings$request_start_unix %||% NA_real_))
+    future_submit_unix <- suppressWarnings(as.numeric(current_settings$future_submit_unix %||% NA_real_))
+
+    if (!is.na(request_start_unix)) {
+      log_info(sprintf(
+        "[CHAT PERF] SSE worker giriş yaptı - istekten beri %.3f sn",
+        as.numeric(difftime(llm_start_time, as.POSIXct(request_start_unix, origin = "1970-01-01", tz = "UTC"), units = "secs"))
+      ))
+    }
+
+    if (!is.na(future_submit_unix)) {
+      log_info(sprintf(
+        "[CHAT PERF] SSE worker giriş yaptı - future gönderiminden beri %.3f sn",
+        as.numeric(difftime(llm_start_time, as.POSIXct(future_submit_unix, origin = "1970-01-01", tz = "UTC"), units = "secs"))
+      ))
+    }
 
     creds <- resolve_local_llm_credentials(selected_model)
     api_url <- creds$endpoint
@@ -246,9 +274,14 @@ call_local_llm_sse_worker <- function(chat_history,
     }
     file.create(stream_file)
 
+    stream_con <- file(stream_file, open = "ab")
+    on.exit(try(close(stream_con), silent = TRUE), add = TRUE)
+
     event_buffer <- ""
     accumulated_text <- ""
     accumulated_sources <- NULL
+
+    log_info(sprintf("[CHAT PERF] SSE işçi HTTP isteği başladı - model=%s", selected_model))
 
     process_single_event <- function(parsed_event) {
       if (is.null(parsed_event)) {
@@ -268,13 +301,17 @@ call_local_llm_sse_worker <- function(chat_history,
       if (nzchar(delta_text)) {
         if (!nzchar(accumulated_text)) {
           log_info(sprintf(
-            "[SSE] İlk delta alındı - %.3f sn",
+            "[CHAT PERF] SSE işçide ilk delta alındı - %.3f sn",
             as.numeric(difftime(Sys.time(), llm_start_time, units = "secs"))
           ))
         }
 
         accumulated_text <<- paste0(accumulated_text, delta_text)
-        append_stream_delta_line(stream_file, delta_text)
+        append_stream_delta_line(
+          stream_file = NULL,
+          text_value = delta_text,
+          stream_con = stream_con
+        )
       }
 
       event_sources <- extract_llm_event_sources(event_obj)
@@ -336,6 +373,13 @@ call_local_llm_sse_worker <- function(chat_history,
 
         if (!nzchar(chunk_text)) {
           return(invisible(NULL))
+        }
+
+        if (!nzchar(accumulated_text)) {
+          log_info(sprintf(
+            "[CHAT PERF] SSE işçide ilk ham HTTP parçası alındı - %.3f sn",
+            as.numeric(difftime(Sys.time(), llm_start_time, units = "secs"))
+          ))
         }
 
         event_buffer <<- paste0(event_buffer, chunk_text)

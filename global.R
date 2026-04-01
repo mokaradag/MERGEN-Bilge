@@ -300,3 +300,40 @@ safe_source("R/server_observers_misc.R",           encoding = "UTF-8")
 
 # -- Çıktılar ve İndirmeler --
 safe_source("R/server_outputs_downloads.R", encoding = "UTF-8")
+
+# Hızlı SSE işçilerini önceden ısıt
+if (exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
+  try({
+    .mergen_future_cluster <- get(".mergen_future_cluster", envir = .GlobalEnv)
+
+    parallel::clusterEvalQ(.mergen_future_cluster, {
+      options(encoding = "UTF-8")
+      library(curl)
+      library(jsonlite)
+      NULL
+    })
+
+    parallel::clusterExport(
+      .mergen_future_cluster,
+      varlist = c(
+        "%||%",
+        "api_config",
+        "log_info",
+        "log_warn",
+        "resolve_local_llm_credentials",
+        "extract_llm_content_and_sources",
+        "normalize_llm_scalar_content",
+        "strip_planner_text",
+        "decode_utf8_raw_chunk",
+        "parse_llm_sse_event",
+        "extract_llm_delta_text",
+        "extract_llm_event_sources",
+        "append_stream_delta_line",
+        "call_local_llm_sse_worker"
+      ),
+      envir = globalenv()
+    )
+
+    log_info("[CHAT PERF] SSE işçileri önceden ısıtıldı")
+  }, silent = TRUE)
+}

@@ -1,49 +1,107 @@
 // www/js/streaming_manager.js
 
 $(document).ready(function() {
-    
-    // Akış (Streaming) mesajını başlat - Mesaj kutusunu hazırlar
-    Shiny.addCustomMessageHandler('initStreamingMessage', function(data) {
-        const messageDiv = document.getElementById(data.id);
-        if (messageDiv) {
-            // İçeriği temizle ve streaming işaretini koy
-            messageDiv.innerHTML = '<div class="streaming-content" data-streaming="true"></div>';
-            messageDiv.dataset.streaming = 'true';
-            
-            // Aksiyon butonlarını (kopyala, beğen vb.) akış bitene kadar gizle
-            const wrapper = document.getElementById('message_wrapper_' + data.id);
-            if (wrapper) {
-            const actionButtons = wrapper.querySelectorAll('.streaming-hidden');
-            actionButtons.forEach(btn => {
-                btn.style.display = 'none';
-            });
-            }
-        }
-    });
 
-    // Gelişmiş akış güncelleme işleyicisi - Parça parça gelen metni işler
-    Shiny.addCustomMessageHandler('streamingUpdate', function(data) {
-        const messageDiv = document.getElementById(data.id);
-        if (!messageDiv) return;
-        
+    function getStreamingState(messageDiv) {
+        if (!messageDiv.__streamingState) {
+            messageDiv.__streamingState = {
+                accumulatedText: '',
+                renderTimer: null
+            };
+        }
+        return messageDiv.__streamingState;
+    }
+
+    function getStreamingContentDiv(messageDiv) {
         let contentDiv = messageDiv.querySelector('.streaming-content');
         if (!contentDiv) {
             contentDiv = messageDiv;
         }
-        
-        if (data.isPartial) {
-            // Metni Markdown olarak ayrıştır (parseStreamingMarkdown global fonksiyonu kullanılır)
-            // Not: parseStreamingMarkdown, markdown-parser.js dosyasındadır.
-            const formattedHtml = typeof parseStreamingMarkdown === 'function' 
-                                  ? parseStreamingMarkdown(data.text) 
-                                  : data.text;
-                                  
-            contentDiv.innerHTML = formattedHtml;
-            
-            // Akış sırasında her zaman en alta kaydır
-            if (typeof window.smartScrollToBottom === 'function') {
-                window.smartScrollToBottom(false); // false = animasyonsuz, hızlı kaydırma
+        return contentDiv;
+    }
+
+    function renderStreamingBuffer(messageDiv) {
+        const state = getStreamingState(messageDiv);
+        const contentDiv = getStreamingContentDiv(messageDiv);
+
+        const formattedHtml = typeof parseStreamingMarkdown === 'function'
+            ? parseStreamingMarkdown(state.accumulatedText)
+            : state.accumulatedText;
+
+        contentDiv.innerHTML = formattedHtml;
+        state.renderTimer = null;
+
+        if (typeof window.smartScrollToBottom === 'function') {
+            window.smartScrollToBottom(false);
+        }
+    }
+
+    function scheduleStreamingRender(messageDiv, immediate) {
+        const state = getStreamingState(messageDiv);
+
+        if (state.renderTimer) {
+            clearTimeout(state.renderTimer);
+            state.renderTimer = null;
+        }
+
+        if (immediate === true) {
+            renderStreamingBuffer(messageDiv);
+            return;
+        }
+
+        state.renderTimer = window.setTimeout(function() {
+            renderStreamingBuffer(messageDiv);
+        }, 16);
+    }
+
+    // Akış (Streaming) mesajını başlat - Mesaj kutusunu hazırlar
+    Shiny.addCustomMessageHandler('initStreamingMessage', function(data) {
+        const messageDiv = document.getElementById(data.id);
+        if (messageDiv) {
+            messageDiv.innerHTML = '<div class="streaming-content" data-streaming="true"></div>';
+            messageDiv.dataset.streaming = 'true';
+
+            const state = getStreamingState(messageDiv);
+            state.accumulatedText = data.content || '';
+            if (state.renderTimer) {
+                clearTimeout(state.renderTimer);
+                state.renderTimer = null;
             }
+
+            const wrapper = document.getElementById('message_wrapper_' + data.id);
+            if (wrapper) {
+                const actionButtons = wrapper.querySelectorAll('.streaming-hidden');
+                actionButtons.forEach(btn => {
+                    btn.style.display = 'none';
+                });
+            }
+        }
+    });
+
+    // Hızlı delta ekleme işleyicisi
+    Shiny.addCustomMessageHandler('streamingDelta', function(data) {
+        const messageDiv = document.getElementById(data.id);
+        if (!messageDiv) return;
+
+        const state = getStreamingState(messageDiv);
+        const delta = typeof data.delta === 'string' ? data.delta : '';
+
+        if (!delta.length) return;
+
+        state.accumulatedText += delta;
+        scheduleStreamingRender(messageDiv, false);
+    });
+
+    // Geriye dönük uyumlu tam içerik güncelleme işleyicisi
+    Shiny.addCustomMessageHandler('streamingUpdate', function(data) {
+        const messageDiv = document.getElementById(data.id);
+        if (!messageDiv) return;
+
+        const state = getStreamingState(messageDiv);
+        state.accumulatedText = typeof data.text === 'string' ? data.text : (state.accumulatedText || '');
+
+        if (data.isPartial) {
+            scheduleStreamingRender(messageDiv, false);
         }
     });
 
@@ -52,12 +110,12 @@ $(document).ready(function() {
         try {
             const message_div = $('#' + message.id);
             if (message_div.length > 0) {
-            let content_area = message_div.find('.message-content-body');
-            if (content_area.length === 0) {
-                message_div.html('<div class="message-content-body"></div>');
-                content_area = message_div.find('.message-content-body');
-            }
-            content_area.text(content_area.text() + message.text);
+                let content_area = message_div.find('.message-content-body');
+                if (content_area.length === 0) {
+                    message_div.html('<div class="message-content-body"></div>');
+                    content_area = message_div.find('.message-content-body');
+                }
+                content_area.text(content_area.text() + message.text);
             }
         } catch (e) {
             console.error('Eski streamUpdate işleyicisinde hata:', e);
@@ -68,19 +126,22 @@ $(document).ready(function() {
     Shiny.addCustomMessageHandler('finalizeStreamingMessage', function(data) {
         const messageDiv = document.getElementById(data.id);
         if (!messageDiv) return;
-        
-        // Akış durumunu kapat
+
+        const state = getStreamingState(messageDiv);
+        if (state.renderTimer) {
+            clearTimeout(state.renderTimer);
+            state.renderTimer = null;
+        }
+
         messageDiv.dataset.streaming = "false";
-        
-        // Sınıfları temizle ve butonları göster
+
         const wrapper = document.getElementById('message_wrapper_' + data.id);
         if (wrapper) {
             const aiMessage = wrapper.querySelector('.ai-message');
             if (aiMessage) {
                 aiMessage.classList.remove('streaming-message');
             }
-            
-            // Gizlenen butonları tekrar görünür yap
+
             const actionButtons = wrapper.querySelectorAll('.streaming-hidden');
             actionButtons.forEach(btn => {
                 btn.classList.remove('streaming-hidden');
@@ -88,27 +149,22 @@ $(document).ready(function() {
                 btn.disabled = false;
             });
         }
-        
-        // Final HTML içeriğini yerleştir
+
         messageDiv.innerHTML = data.html;
 
-        // Tabloları kaydırılabilir sarmalayıcıya al
         if (typeof window.wrapMessageTables === 'function') {
             window.wrapMessageTables(messageDiv);
         }
 
-        // CodeMirror (Kod blokları) başlat
         if (window.initializeCodeMirrorInElement) {
             setTimeout(() => window.initializeCodeMirrorInElement('message_wrapper_' + data.id), 0);
         }
 
-        // Takip eden sorular kutusundaki "bekliyor" durumunu kaldır
         const followupBox = document.getElementById('followup_container_' + data.id);
         if (followupBox) {
             followupBox.classList.remove('pending');
         }
 
-        // Son bir kez en alta kaydır (yalnızca kullanıcı zaten alta yakınsa)
         const kullaniciAltaYakinMi = (typeof window.isNearBottom === 'function')
             ? window.isNearBottom()
             : false;

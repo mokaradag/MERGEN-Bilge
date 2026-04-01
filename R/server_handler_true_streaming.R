@@ -15,6 +15,14 @@ handle_true_streaming_mode <- function(ctx) {
   perf_tracker <- ctx$perf_tracker
 
   baslangic_zamani <- Sys.time()
+  istek_baslangici <- ctx$request_start_time %||% baslangic_zamani
+  stream_profile <- ctx$stream_profile %||% list()
+  use_delta_transport <- isTRUE(stream_profile$use_delta_transport)
+  poll_interval_ms <- as.integer(stream_profile$poll_interval_ms %||% 50L)
+  if (is.na(poll_interval_ms) || poll_interval_ms < 15L) {
+    poll_interval_ms <- 50L
+  }
+
   req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
 
   active_request_id(req_id)
@@ -33,6 +41,12 @@ handle_true_streaming_mode <- function(ctx) {
     settings_data$user_config <- session$userData$user_config
   }
 
+  log_info(sprintf(
+    "[CHAT PERF] True streaming başladı - profil=%s, yoklama=%dms",
+    stream_profile$label %||% "standard",
+    poll_interval_ms
+  ))
+
   stream_env <- new.env(parent = emptyenv())
   stream_env$req_id <- req_id
   stream_env$msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
@@ -46,9 +60,74 @@ handle_true_streaming_mode <- function(ctx) {
   stream_env$finalized <- FALSE
   stream_env$ui_started <- FALSE
   stream_env$poll_observer <- NULL
+  stream_env$first_delta_logged <- FALSE
+  stream_env$first_ui_logged <- FALSE
+  stream_env$user_prompt_id <- ctx$user_prompt_msg$id %||% NULL
+  stream_env$user_prompt_db_id <- ctx$user_prompt_msg$db_id %||% NULL
+  stream_env$chat_persist_scheduled <- FALSE
 
   find_message_index <- function() {
     which(vapply(values$messages, function(m) identical(m$id, stream_env$msg_id), logical(1)))
+  }
+
+  ensure_chat_ready <- function() {
+    if (is.null(values$current_chat_id) && nzchar(ctx$pending_chat_title %||% "")) {
+      new_chat_id <- tryCatch({
+        create_new_chat_in_db(ctx$current_user_id, initial_title = ctx$pending_chat_title)
+      }, error = function(e) {
+        log_warn("[CHAT PERF] Ertelenen sohbet kaydı oluşturulamadı: {e$message}")
+        NULL
+      })
+
+      if (!is.null(new_chat_id)) {
+        values$current_chat_id <- new_chat_id
+
+        log_info(sprintf(
+          "[CHAT PERF] Ertelenen sohbet kaydı oluşturuldu - %.3f sn",
+          as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+        ))
+      }
+    }
+
+    if (!is.null(values$current_chat_id) &&
+        is.null(stream_env$user_prompt_db_id) &&
+        !is.null(stream_env$user_prompt_id)) {
+      user_idx <- which(vapply(values$messages, function(m) identical(m$id, stream_env$user_prompt_id), logical(1)))
+
+      if (length(user_idx) > 0) {
+        new_db_id <- tryCatch({
+          save_message_safely(values$current_chat_id, values$messages[[user_idx]], ctx$current_user_id)
+        }, error = function(e) NULL)
+
+        if (!is.null(new_db_id)) {
+          values$messages[[user_idx]]$db_id <- new_db_id
+          stream_env$user_prompt_db_id <- new_db_id
+          chat_store_message_in_saved_chats(values, values$messages[[user_idx]])
+
+          log_info(sprintf(
+            "[CHAT PERF] Kullanıcı mesajı kalıcı kaydedildi - %.3f sn",
+            as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+          ))
+        }
+      }
+    }
+
+    invisible(!is.null(values$current_chat_id) || !nzchar(ctx$pending_chat_title %||% ""))
+  }
+
+  schedule_chat_persist <- function() {
+    if (isTRUE(stream_env$chat_persist_scheduled)) {
+      return(invisible(NULL))
+    }
+
+    stream_env$chat_persist_scheduled <- TRUE
+
+    persist_delay <- if ((stream_profile$label %||% "") %in% c("plain_fast", "coding_fast")) 0.30 else 0
+
+    later::later(function() {
+      stream_env$chat_persist_scheduled <- FALSE
+      try(ensure_chat_ready(), silent = TRUE)
+    }, delay = persist_delay)
   }
 
   ensure_stream_ui_started <- function() {
@@ -57,6 +136,14 @@ handle_true_streaming_mode <- function(ctx) {
     }
 
     stream_env$ui_started <- TRUE
+
+    if (!isTRUE(stream_env$first_ui_logged)) {
+      stream_env$first_ui_logged <- TRUE
+      log_info(sprintf(
+        "[CHAT PERF] İlk UI kabuğu gönderildi - %.3f sn",
+        as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+      ))
+    }
 
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     values$typing <- FALSE
@@ -193,10 +280,15 @@ handle_true_streaming_mode <- function(ctx) {
 
     sure_degeri <- duration_value %||% as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
 
+    ensure_chat_ready()
+
+    chat_id_for_log <- values$current_chat_id %||% ctx$chat_id_val
+    user_prompt_db_id_for_log <- stream_env$user_prompt_db_id %||% ctx$user_prompt_msg$db_id
+
     try(
       log_ai_usage(
-        ctx$chat_id_val,
-        ctx$user_prompt_msg$db_id,
+        chat_id_for_log,
+        user_prompt_db_id_for_log,
         ctx$current_user_id,
         ctx$model_selected,
         sure_degeri,
@@ -211,6 +303,7 @@ handle_true_streaming_mode <- function(ctx) {
         values$messages[[idx]]$db_id <- new_db_id
       }
       chat_store_message_in_saved_chats(values, values$messages[[idx]])
+      try(ctx$saved_chats_data$refresh(), silent = TRUE)
     }, error = function(e) {
       showToast(session, paste("Mesaj kaydedilemedi:", e$message), "error")
     })
@@ -218,6 +311,12 @@ handle_true_streaming_mode <- function(ctx) {
     if (isTRUE(request_success)) {
       perf_tracker$track_request(sure_degeri)
     }
+
+    log_info(sprintf(
+      "[CHAT PERF] Akış sonlandırıldı - basarili=%s, sure=%.3f sn",
+      if (isTRUE(request_success)) "TRUE" else "FALSE",
+      sure_degeri
+    ))
 
     cleanup_streaming_state()
     ctx$reset_chat_state_fn()
@@ -260,17 +359,54 @@ handle_true_streaming_mode <- function(ctx) {
     invisible(NULL)
   }
 
+  chat_history_for_sse <- ctx$messages_to_process
+  stream_file_for_sse <- stream_env$stream_file
+  stop_file_for_sse <- stream_env$stop_file
+
   settings_for_sse <- ctx$current_settings
   settings_for_sse$model_selection <- ctx$model_selected
+  settings_for_sse$shiny_session <- NULL
+  settings_for_sse$request_start_unix <- as.numeric(istek_baslangici)
 
-  sse_promise <- promises::future_promise({
-    call_local_llm_sse_worker(
-      chat_history = ctx$messages_to_process,
-      current_settings = settings_for_sse,
-      stream_file = stream_env$stream_file,
-      stop_file = stream_env$stop_file
+  future_submit_time <- Sys.time()
+  settings_for_sse$future_submit_unix <- as.numeric(future_submit_time)
+
+  log_info(sprintf(
+    "[CHAT PERF] future_promise gönderiliyor - %.3f sn",
+    as.numeric(difftime(future_submit_time, istek_baslangici, units = "secs"))
+  ))
+
+  sse_promise <- promises::future_promise(
+    {
+      call_local_llm_sse_worker(
+        chat_history = chat_history_for_sse,
+        current_settings = settings_for_sse,
+        stream_file = stream_file_for_sse,
+        stop_file = stop_file_for_sse
+      )
+    },
+    globals = list(
+      chat_history_for_sse = chat_history_for_sse,
+      settings_for_sse = settings_for_sse,
+      stream_file_for_sse = stream_file_for_sse,
+      stop_file_for_sse = stop_file_for_sse,
+      call_local_llm_sse_worker = call_local_llm_sse_worker,
+      `%||%` = `%||%`,
+      resolve_local_llm_endpoint = resolve_local_llm_endpoint,
+      resolve_local_llm_credentials = resolve_local_llm_credentials,
+      extract_llm_content_and_sources = extract_llm_content_and_sources,
+      normalize_llm_scalar_content = normalize_llm_scalar_content,
+      strip_planner_text = strip_planner_text,
+      decode_utf8_raw_chunk = decode_utf8_raw_chunk,
+      parse_llm_sse_event = parse_llm_sse_event,
+      extract_llm_delta_text = extract_llm_delta_text,
+      extract_llm_event_sources = extract_llm_event_sources,
+      append_stream_delta_line = append_stream_delta_line,
+      log_info = log_info,
+      log_warn = log_warn,
+      api_config = api_config
     )
-  })
+  )
 
   sse_promise <- promises::then(
     sse_promise,
@@ -295,7 +431,7 @@ handle_true_streaming_mode <- function(ctx) {
 
   stream_env$poll_observer <- observe({
     req(!isTRUE(stream_env$finalized))
-    invalidateLater(50, session)
+    invalidateLater(poll_interval_ms, session)
 
     if (isTRUE(stop_generation()) && !file.exists(stream_env$stop_file)) {
       file.create(stream_env$stop_file)
@@ -310,6 +446,8 @@ handle_true_streaming_mode <- function(ctx) {
       if (length(satirlar) > stream_env$processed_line_count) {
         yeni_satirlar <- satirlar[seq.int(stream_env$processed_line_count + 1L, length(satirlar))]
         stream_env$processed_line_count <- length(satirlar)
+
+        delta_batch <- character(0)
 
         for (satir in yeni_satirlar) {
           payload <- tryCatch(
@@ -328,21 +466,43 @@ handle_true_streaming_mode <- function(ctx) {
             }
 
             stream_env$accumulated_text <- paste0(stream_env$accumulated_text, delta_text)
+            delta_batch <- c(delta_batch, delta_text)
 
-            if (!isTRUE(stream_env$ui_started)) {
-              ensure_stream_ui_started()
+            if (!isTRUE(stream_env$first_delta_logged)) {
+              stream_env$first_delta_logged <- TRUE
+              log_info(sprintf(
+                "[CHAT PERF] İlk delta gözlendi - %.3f sn",
+                as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+              ))
             }
+          }
+        }
 
-            idx <- find_message_index()
-            if (length(idx) > 0) {
-              values$messages[[idx]]$content <- stream_env$accumulated_text
-            }
+        if (length(delta_batch) > 0) {
+          if (!isTRUE(stream_env$ui_started)) {
+            ensure_stream_ui_started()
+          }
 
+          idx <- find_message_index()
+          if (length(idx) > 0) {
+            values$messages[[idx]]$content <- stream_env$accumulated_text
+          }
+
+          if (isTRUE(use_delta_transport)) {
+            session$sendCustomMessage("streamingDelta", list(
+              id = stream_env$msg_id,
+              delta = paste0(delta_batch, collapse = "")
+            ))
+          } else {
             session$sendCustomMessage("streamingUpdate", list(
               id = stream_env$msg_id,
               text = stream_env$accumulated_text,
               isPartial = TRUE
             ))
+          }
+
+          if (is.null(stream_env$user_prompt_db_id) || nzchar(ctx$pending_chat_title %||% "")) {
+            schedule_chat_persist()
           }
         }
       }
