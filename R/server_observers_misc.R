@@ -20,6 +20,14 @@ miscObserversInit <- function(input, output, session, values,
                                file_manager_data, filePreview, add_message,
                                api_key, user_config, pool) {
   
+  admin_modulleri_baslatildi <- reactiveVal(FALSE)
+  
+  mevcut_yetki <- reactive({
+    cfg <- user_config()
+    seviye <- cfg$auth_level %||% "USER"
+    toupper(trimws(as.character(seviye)))
+  })
+  
   # Geri bildirim verisi değiştiğinde buton renklerini JS ile güncelle
   observe({
     liked_db_ids <- as.character(values$liked_messages %||% character(0))
@@ -91,13 +99,13 @@ miscObserversInit <- function(input, output, session, values,
   
   # Yönetici menüsü görünürlüğü
   output$show_admin_menu <- reactive({
-    isTRUE(user_config$auth_level == "ADMIN")
+    identical(mevcut_yetki(), "ADMIN")
   })
   outputOptions(output, "show_admin_menu", suspendWhenHidden = FALSE)
   
   # Yönetici menü öğesi (alt menülerle gruplandırılmış)
   output$admin_menu_item <- renderMenu({
-    if (isTRUE(user_config$auth_level == "ADMIN")) {
+    if (identical(mevcut_yetki(), "ADMIN")) {
       menuItem("Yönetici Paneli", icon = icon("shield-alt"), startExpanded = FALSE,
         menuSubItem("Genel Analiz", tabName = "admin_analytics", icon = icon("chart-line")),
         menuSubItem("Geri Bildirim Analizi", tabName = "admin_geri_bildirim", icon = icon("comment-dots")),
@@ -108,13 +116,20 @@ miscObserversInit <- function(input, output, session, values,
     }
   })
 
-  # Yönetici analitik sunucularını başlat (eğer admin ise)
-  if (isTRUE(user_config$auth_level == "ADMIN")) {
+  # Yönetici analitik sunucularını yetki geldikten sonra tek sefer başlat
+  observeEvent(mevcut_yetki(), {
+    req(identical(mevcut_yetki(), "ADMIN"))
+    
+    if (isTRUE(admin_modulleri_baslatildi())) {
+      return(invisible(NULL))
+    }
+    
+    admin_modulleri_baslatildi(TRUE)
     adminAnalyticsServer("admin_analytics_module", pool = pool)
     adminGeriBildirimServer("admin_geri_bildirim_module")
     adminHataAnaliziServer("admin_hata_analizi_module")
     adminYanitAnaliziServer("admin_yanit_analizi_module")
-  }
+  }, ignoreInit = FALSE)
   
   # Mesaj sayısı çıktısı
   output$message_count <- renderText({ length(values$messages) })

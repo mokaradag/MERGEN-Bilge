@@ -12,6 +12,7 @@ server <- function(input, output, session) {
   # BÖLÜM 1: OTURUM ÖN BELLEKLEME VE ALTYAPI
   # ============================================================================
   session_cache <- sessionCacheInit(session)
+  user_config_rv <- reactiveVal(NULL)
   mcp_saved_path <- session_cache$mcp_saved_path
   cache_mcp_file_locally <- session_cache$cache_mcp_file_locally
   update_mcp_registry_snapshot <- session_cache$update_mcp_registry_snapshot
@@ -52,6 +53,7 @@ server <- function(input, output, session) {
       last_name        = NULL, sektor = NULL, department = NULL,
       mudurluk         = NULL, masraf_yeri_kodu = NULL
     )
+    user_config_rv(session$userData$user_config)
 
     cache_dir <- session_cache$setup_user_session(current_user_id)
   } else {
@@ -87,6 +89,7 @@ server <- function(input, output, session) {
         sektor           = ui$sektor, department = ui$department,
         mudurluk         = ui$mudurluk, masraf_yeri_kodu = ui$masraf_yeri_kodu
       )
+      user_config_rv(session$userData$user_config)
 
       session_cache$setup_user_session(uid)
       session$userData$auth_initialized <- TRUE
@@ -400,7 +403,7 @@ server <- function(input, output, session) {
   miscObserversInit(
     input, output, session, values,
     file_manager_data, filePreview, add_message,
-    api_key, session$userData$user_config, pool
+    api_key, user_config_rv, pool
   )
   
   # Sohbet eylemi bağlantıları (beğen/beğenme/yeniden oluştur/düzenle)
