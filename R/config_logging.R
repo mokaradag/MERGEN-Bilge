@@ -18,10 +18,14 @@ log_threshold(INFO)
 log_file_path <- file.path("logs", sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
 
 # Çoklu appender yapılandırması
+# Dosya logu düz metin olmalı
 log_appender(appender_file(log_file_path), index = 1)
-log_appender(appender_console, index = 2)
+log_layout(layout_glue, index = 1)
 
-log_layout(layout_glue_colors)
+# Konsol logu renkli kalabilir
+log_appender(appender_console, index = 2)
+log_layout(layout_glue_colors, index = 2)
+
 log_info("Application starting up...")
 
 # --- GLOBAL HATA YAKALAYICI ---
