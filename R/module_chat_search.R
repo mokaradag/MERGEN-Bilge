@@ -83,11 +83,16 @@ search_chats_content_from_db <- function(user_id, search_term) {
 #' @param load_chat_callback Sohbet yükleme fonksiyonu
 chatSearchInit <- function(input, session, current_user_id, load_chat_callback) {
 
-  # Arama sonuçları reaktif değeri
   search_results <- reactiveVal(NULL)
   search_active <- reactiveVal(FALSE)
 
-  # Arama butonuna tıklanınca veya JS'den gelen arama isteği
+  resolve_current_user_id <- function() {
+    resolve_effective_user_id(
+      session = session,
+      current_user_id = current_user_id
+    )
+  }
+
   observeEvent(input$chat_search_query, {
     query <- input$chat_search_query
     if (is.null(query) || !nzchar(trimws(query$term %||% ""))) {
@@ -98,9 +103,15 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
     search_term <- trimws(query$term)
     search_active(TRUE)
 
-    # Veritabanında ara
+    effective_user_id <- resolve_current_user_id()
+    if (effective_user_id <= 0) {
+      search_active(FALSE)
+      showToast(session, "Kimlik doğrulama tamamlanmadan arama yapılamaz.", "warning")
+      return()
+    }
+
     results <- tryCatch(
-      search_chats_content_from_db(current_user_id, search_term),
+      search_chats_content_from_db(effective_user_id, search_term),
       error = function(e) {
         warning(sprintf("[CHAT_SEARCH] Arama hatası: %s", e$message))
         NULL
@@ -110,7 +121,6 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
     search_active(FALSE)
 
     if (is.null(results) || nrow(results) == 0) {
-      # Sonuç bulunamadı mesajını JS'ye gönder
       session$sendCustomMessage("chatSearchResults", list(
         results = list(),
         term = search_term,
@@ -119,17 +129,19 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
       return()
     }
 
-    # Sonuçları sohbet bazında grupla
     grouped <- split(results, results$chat_id)
     formatted_results <- lapply(names(grouped), function(cid) {
       group <- grouped[[cid]]
-      # Her sohbet için en fazla 3 eşleşme göster
+
       snippets <- lapply(seq_len(min(3, nrow(group))), function(i) {
         row <- group[i, ]
         content <- row$message_content
-        # Eşleşen kısmın etrafını kes (snippet oluştur)
-        # fixed = TRUE ile regex özel karakterlerinin (ör. C++ içindeki +) hata vermesi önlenir
-        match_pos <- regexpr(search_term, content, ignore.case = TRUE, fixed = TRUE)
+
+        content_search <- tolower(content %||% "")
+        search_term_search <- tolower(search_term %||% "")
+
+        match_pos <- regexpr(search_term_search, content_search, fixed = TRUE)
+
         if (match_pos > 0) {
           start <- max(1, match_pos - 80)
           end <- min(nchar(content), match_pos + attr(match_pos, "match.length") + 80)
@@ -140,10 +152,11 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
           snippet <- substr(content, 1, 160)
           if (nchar(content) > 160) snippet <- paste0(snippet, "...")
         }
-        # Zaman damgasını okunabilir formata çevir
+
         ts_formatted <- tryCatch({
           format(as.POSIXct(row$message_timestamp), "%d.%m.%Y %H:%M")
         }, error = function(e) row$message_timestamp)
+
         list(
           snippet = snippet,
           type = row$message_type,
@@ -159,7 +172,6 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
       )
     })
 
-    # Sonuçları JS'ye gönder
     session$sendCustomMessage("chatSearchResults", list(
       results = formatted_results,
       term = search_term,
@@ -167,11 +179,9 @@ chatSearchInit <- function(input, session, current_user_id, load_chat_callback) 
     ))
   }, ignoreInit = TRUE)
 
-  # Arama sonucundan sohbet yükleme isteği
   observeEvent(input$chat_search_load_chat, {
     chat_id <- input$chat_search_load_chat
     if (!is.null(chat_id) && nzchar(chat_id)) {
-      # Modal'ı kapat (JS tarafında yapılıyor)
       if (is.function(load_chat_callback)) {
         load_chat_callback(chat_id)
       }

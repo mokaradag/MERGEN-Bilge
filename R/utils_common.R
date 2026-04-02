@@ -18,6 +18,34 @@ safe_nzchar <- function(x) {
   is.character(x) && length(x) > 0 && !is.na(x[1]) && nzchar(x[1])
 }
 
+# --- ÇAĞRI ANINDA DEĞER ÇÖZÜMLEYİCİ ---
+# Parametre olarak sabit değer veya fonksiyon gelebilir.
+# Fonksiyon geldiyse güvenli şekilde çağırır.
+resolve_runtime_value <- function(x) {
+  if (is.function(x)) {
+    return(tryCatch(x(), error = function(e) NULL))
+  }
+  x
+}
+
+# --- ETKİN KULLANICI KİMLİĞİ ÇÖZÜMLEYİCİ ---
+# Önce oturumdaki güncel kullanıcıyı, yoksa verilen fallback değeri kullanır.
+# Böylece SSO akışında başlangıçtaki geçici kimlik yerine gerçek kullanıcıya ulaşılır.
+resolve_effective_user_id <- function(session = NULL, current_user_id = NULL) {
+  session_uid <- NULL
+
+  if (!is.null(session) && !is.null(session$userData)) {
+    session_uid <- session$userData$user_id %||% NULL
+  }
+
+  fallback_uid <- resolve_runtime_value(current_user_id)
+
+  uid <- suppressWarnings(as.integer(session_uid %||% fallback_uid %||% 0L))
+  if (is.na(uid)) uid <- 0L
+
+  uid
+}
+
 # --- ZAMAN DAMGASI BİÇİMLENDİRİCİ ---
 # Türkiye formatında (GG.AA.YYYY - SS:DD) zaman damgası üretir
 format_timestamp <- function() {

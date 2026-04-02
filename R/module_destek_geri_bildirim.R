@@ -297,10 +297,15 @@ destekGeriBildirimServer <- function(id, current_user_id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Hata Bildir alt modülünü başlat
+    resolve_current_user_id <- function() {
+      resolve_effective_user_id(
+        session = session,
+        current_user_id = current_user_id
+      )
+    }
+
     hata_result <- destekHataBildirServer("hata_bildir_module", current_user_id = current_user_id)
 
-    # Sekme geçişi
     observeEvent(input$aktif_sekme, {
       sekmeler <- c("geri_bildirim", "hata")
 
@@ -319,9 +324,7 @@ destekGeriBildirimServer <- function(id, current_user_id) {
       ))
     }, ignoreInit = TRUE)
 
-    # Geri bildirim formu gönderimi
     observeEvent(input$gonder_geri_bildirim, {
-      # Memnuniyet doğrulama
       memnuniyet <- input$memnuniyet
       if (is.null(memnuniyet) || memnuniyet == "" || memnuniyet == "0") {
         shinyjs::show("hata_memnuniyet")
@@ -330,20 +333,23 @@ destekGeriBildirimServer <- function(id, current_user_id) {
       }
       shinyjs::hide("hata_memnuniyet")
 
-      # Verileri topla
       nps <- input$nps_puan
       etiketler <- input$secili_etiketler
       sevilen <- input$en_cok_sevilen
       gelistirme_metin <- input$gelistirme
 
-      # İletişim izni: "1" ise TRUE, diğer tüm durumlar FALSE
       iletisim_degeri <- input$iletisim_izni
       iletisim <- identical(as.character(iletisim_degeri), "1")
 
-      # Veritabanına kaydet
+      effective_user_id <- resolve_current_user_id()
+      if (effective_user_id <= 0) {
+        showToast(session, "Kimlik doğrulama tamamlanmadan geri bildirim gönderilemez.", "warning")
+        return(invisible(NULL))
+      }
+
       tryCatch({
         destek_geri_bildirim_kaydet(
-          user_id = current_user_id,
+          user_id = effective_user_id,
           memnuniyet = as.integer(memnuniyet),
           nps_puan = if (!is.null(nps) && nps != "") as.integer(nps) else NULL,
           etiketler = if (!is.null(etiketler) && etiketler != "") etiketler else NULL,
@@ -352,7 +358,6 @@ destekGeriBildirimServer <- function(id, current_user_id) {
           iletisim_izni = iletisim
         )
 
-        # Başarı ekranını göster
         shinyjs::runjs(sprintf(
           "document.getElementById('%s').textContent = 'Değerli geri bildiriminiz için teşekkürler. Fikirleriniz, ürünümüzün geleceğini şekillendiriyor.';",
           ns("basari_mesaji")
@@ -361,11 +366,9 @@ destekGeriBildirimServer <- function(id, current_user_id) {
         shinyjs::hide("sekme_hata")
         shinyjs::show("basari_ekrani")
 
-        # 4 saniye sonra formu sıfırla
         shinyjs::delay(4000, {
           shinyjs::hide("basari_ekrani")
           shinyjs::show("sekme_geri_bildirim")
-          # Formu sıfırla (JS ile)
           shinyjs::runjs(sprintf("destekResetFeedbackForm('%s');", ns("")))
         })
 
@@ -375,7 +378,6 @@ destekGeriBildirimServer <- function(id, current_user_id) {
       })
     })
 
-    # Hata bildirimi başarılı gönderildiğinde
     observeEvent(hata_result$basarili(), {
       req(hata_result$basarili() > 0)
 

@@ -49,41 +49,49 @@ imageGalleryServer <- function(id, current_user_id) {
     ns <- session$ns
     coerce_user_id <- function(x) suppressWarnings(as.integer(x %||% 0L))
 
+    resolve_current_user_id <- function() {
+      resolve_effective_user_id(
+        session = session,
+        current_user_id = current_user_id
+      )
+    }
+
+    empty_images_df <- function() {
+      data.frame(
+        file_path = character(), chat_id = character(), filename = character(),
+        created_at = as.POSIXct(character()), file_size = numeric(),
+        month_key = character(), month_label = character(),
+        description = character(), chat_title = character(),
+        stringsAsFactors = FALSE
+      )
+    }
+
     images_per_page <- 24
     current_page <- reactiveVal(1)
     refresh_trigger <- reactiveVal(0)
-    effective_user_id <- reactiveVal(coerce_user_id(current_user_id))
-	cached_images <- reactiveVal(data.frame(
-      file_path = character(), chat_id = character(), filename = character(),
-      created_at = as.POSIXct(character()), file_size = numeric(),
-      month_key = character(), month_label = character(),
-      description = character(), chat_title = character(),
-      stringsAsFactors = FALSE
-    ))
+    effective_user_id <- reactiveVal(coerce_user_id(resolve_current_user_id()))
+    cached_images <- reactiveVal(empty_images_df())
 
     delete_image_trigger <- reactiveVal(NULL)
     clear_all_trigger <- reactiveVal(0)
     navigate_to_chat_trigger <- reactiveVal(NULL)
 
-    # SSO akışında kullanıcı ID sonradan geldiği için etkin kullanıcıyı canlı güncelle
-    observe({
-      invalidateLater(1000, session)
-      resolved_uid <- coerce_user_id(session$userData$user_id %||% current_user_id)
-      if (!is.na(resolved_uid) && resolved_uid > 0 && !identical(effective_user_id(), resolved_uid)) {
-        effective_user_id(resolved_uid)
-        refresh_trigger(refresh_trigger() + 1)
+    refresh_gallery_cache <- function() {
+      uid <- coerce_user_id(resolve_current_user_id())
+      effective_user_id(uid)
+
+      if (is.na(uid) || uid <= 0) {
+        cached_images(empty_images_df())
+        return(invisible(NULL))
       }
-    })
+
+      cached_images(scan_user_images(uid))
+      invisible(NULL)
+    }
 
     observe({
       refresh_trigger()
-      uid <- effective_user_id()
-      if (is.na(uid) || uid <= 0) {
-        cached_images(cached_images()[0, , drop = FALSE])
-        return()
-      }
-      images <- scan_user_images(uid)
-      cached_images(images)
+      refresh_gallery_cache()
     })
 
     search_term_debounced <- reactiveVal("")

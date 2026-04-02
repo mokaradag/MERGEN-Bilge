@@ -99,10 +99,14 @@ server <- function(input, output, session) {
   # SSO akışında başlangıçta 0L gelebilir; doğrulama tamamlanınca
   # session$userData$user_id gerçek değeri taşır.
   resolve_current_user_id <- function() {
-    session_uid <- session$userData$user_id %||% NULL
-    uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
-    if (is.na(uid)) uid <- 0L
-    uid
+    resolve_effective_user_id(
+      session = session,
+      current_user_id = current_user_id
+    )
+  }
+
+  current_user_id_provider <- function() {
+    resolve_current_user_id()
   }
 
   # API anahtarı modülünü bağla
@@ -113,7 +117,7 @@ server <- function(input, output, session) {
   # ============================================================================
   perf_tracker <- performanceStatsServer("perf_stats", current_user_id)
   healthServer("health_module", perf_tracker = perf_tracker)
-  destekServer("destek_module", current_user_id = current_user_id)
+  destekServer("destek_module", current_user_id = current_user_id_provider)
 
   # ============================================================================
   # BÖLÜM 4: AYARLAR VE İLERİ REFERANSLAR
@@ -306,8 +310,7 @@ server <- function(input, output, session) {
                            saved_chats_data, current_user_id, load_chat_in_progress)
 
   # Söyleşi içerik arama modülünü başlat
-  chatSearchInit(input, session, current_user_id, function(chat_id) {
-    # Arama sonucundan sohbet yükleme - saved_chats observer'ını tetikle
+  chatSearchInit(input, session, current_user_id_provider, function(chat_id) {
     shinyjs::runjs(sprintf(
       "Shiny.setInputValue('welcome_load_chat_id', '%s', {priority: 'event'});",
       chat_id
@@ -315,7 +318,15 @@ server <- function(input, output, session) {
   })
 
   # Görsel galerisi modülünü başlat
-  gallery_data <- imageGalleryServer("image_gallery_module", current_user_id)
+  gallery_data <- imageGalleryServer("image_gallery_module", current_user_id_provider)
+  
+  observeEvent(sso_state$authenticated, {
+    req(isTRUE(sso_state$authenticated))
+
+    if (is.function(gallery_data$refresh)) {
+      gallery_data$refresh()
+    }
+  }, ignoreInit = TRUE, once = TRUE)
 
   # Görsel galerisi gözlemcilerini başlat
   imageGalleryObserversInit(input, session, values, settings_data,

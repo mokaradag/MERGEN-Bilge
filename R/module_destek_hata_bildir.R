@@ -218,20 +218,22 @@ destekHataBildirServer <- function(id, current_user_id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Yüklenen dosyaları takip et
-    yuklenen_dosyalar <- reactiveVal(list())
+    resolve_current_user_id <- function() {
+      resolve_effective_user_id(
+        session = session,
+        current_user_id = current_user_id
+      )
+    }
 
-    # Başarılı gönderim sinyali
+    yuklenen_dosyalar <- reactiveVal(list())
     basarili_trigger <- reactiveVal(0)
 
-    # Dosya yükleme gözlemcisi (JS tarafından tetiklenir)
     observeEvent(input$dosya_bilgisi, {
       dosya_verisi <- input$dosya_bilgisi
       if (is.null(dosya_verisi)) return()
 
       mevcut <- yuklenen_dosyalar()
 
-      # Dosya boyutu kontrolü (10MB)
       if (!is.null(dosya_verisi$size) && dosya_verisi$size > 10 * 1024 * 1024) {
         showToast(session, "Dosya boyutu 10MB'dan büyük olamaz.", "error")
         return()
@@ -241,20 +243,18 @@ destekHataBildirServer <- function(id, current_user_id) {
       yuklenen_dosyalar(mevcut)
     }, ignoreInit = TRUE)
 
-    # Dosya silme gözlemcisi
     observeEvent(input$dosya_sil, {
       idx <- as.integer(input$dosya_sil)
       if (is.null(idx) || is.na(idx)) return()
 
       mevcut <- yuklenen_dosyalar()
       if (idx >= 1 && idx <= length(mevcut)) {
-        # Fiziksel dosyayı da sil
         if (!is.null(mevcut[[idx]]$path) && file.exists(mevcut[[idx]]$path)) {
           file.remove(mevcut[[idx]]$path)
         }
         mevcut[[idx]] <- NULL
         yuklenen_dosyalar(mevcut)
-        # Dosya listesini JS ile güncelle
+
         shinyjs::runjs(sprintf(
           "destekUpdateFileList('%s', %s);",
           ns(""),
@@ -265,12 +265,16 @@ destekHataBildirServer <- function(id, current_user_id) {
       }
     }, ignoreInit = TRUE)
 
-    # Shiny file input ile dosya yükleme
     observeEvent(input$dosya_input, {
       dosyalar <- input$dosya_input
       if (is.null(dosyalar)) return()
 
-      # datapath, name, size, type alanlarını işle
+      effective_user_id <- resolve_current_user_id()
+      if (effective_user_id <= 0) {
+        showToast(session, "Kimlik doğrulama tamamlanmadan dosya yüklenemez.", "warning")
+        return(invisible(NULL))
+      }
+
       if (is.data.frame(dosyalar)) {
         for (i in seq_len(nrow(dosyalar))) {
           dosya <- dosyalar[i, ]
@@ -279,12 +283,14 @@ destekHataBildirServer <- function(id, current_user_id) {
             next
           }
 
-          # Dosyayı destek_uploads klasörüne kopyala
-          hedef_dir <- file.path("destek_uploads", as.character(current_user_id))
+          hedef_dir <- file.path("destek_uploads", as.character(effective_user_id))
           if (!dir.exists(hedef_dir)) dir.create(hedef_dir, recursive = TRUE)
-          hedef_yol <- file.path(hedef_dir, paste0(
-            format(Sys.time(), "%Y%m%d%H%M%S"), "_", dosya$name
-          ))
+
+          hedef_yol <- file.path(
+            hedef_dir,
+            paste0(format(Sys.time(), "%Y%m%d%H%M%S"), "_", dosya$name)
+          )
+
           file.copy(dosya$datapath, hedef_yol)
 
           mevcut <- yuklenen_dosyalar()
@@ -296,7 +302,6 @@ destekHataBildirServer <- function(id, current_user_id) {
           yuklenen_dosyalar(mevcut)
         }
 
-        # Dosya listesini JS ile güncelle
         mevcut <- yuklenen_dosyalar()
         shinyjs::runjs(sprintf(
           "destekUpdateFileList('%s', %s);",
@@ -308,11 +313,9 @@ destekHataBildirServer <- function(id, current_user_id) {
       }
     }, ignoreInit = TRUE)
 
-    # Hata bildirimi formu gönderimi
     observeEvent(input$gonder_hata, {
       hatalar <- FALSE
 
-      # Konuları topla (JS oninput ile sürekli güncelleniyor)
       konular_text <- input$konular_birlesik
       if (is.null(konular_text) || !nzchar(trimws(konular_text %||% ""))) {
         shinyjs::show("hata_konular")
@@ -321,7 +324,6 @@ destekHataBildirServer <- function(id, current_user_id) {
         shinyjs::hide("hata_konular")
       }
 
-      # Kategorileri kontrol et
       kategoriler <- input$secili_kategoriler
       if (is.null(kategoriler) || kategoriler == "") {
         shinyjs::show("hata_kategoriler")
@@ -330,7 +332,6 @@ destekHataBildirServer <- function(id, current_user_id) {
         shinyjs::hide("hata_kategoriler")
       }
 
-      # Açıklama kontrol et
       aciklama <- input$hata_aciklama
       if (is.null(aciklama) || !nzchar(trimws(aciklama %||% ""))) {
         shinyjs::show("hata_aciklama_msg")
@@ -344,7 +345,12 @@ destekHataBildirServer <- function(id, current_user_id) {
         return(invisible(NULL))
       }
 
-      # Ek dosya yollarını topla
+      effective_user_id <- resolve_current_user_id()
+      if (effective_user_id <= 0) {
+        showToast(session, "Kimlik doğrulama tamamlanmadan hata bildirimi gönderilemez.", "warning")
+        return(invisible(NULL))
+      }
+
       dosyalar <- yuklenen_dosyalar()
       ek_yollari <- if (length(dosyalar) > 0) {
         paste(sapply(dosyalar, function(d) d$path %||% ""), collapse = ",")
@@ -352,10 +358,9 @@ destekHataBildirServer <- function(id, current_user_id) {
         NULL
       }
 
-      # Veritabanına kaydet
       tryCatch({
         destek_hata_bildir_kaydet(
-          user_id = current_user_id,
+          user_id = effective_user_id,
           konular = konular_text,
           kategoriler = kategoriler,
           oncelik = if (!is.null(input$secili_oncelik) && nzchar(input$secili_oncelik)) input$secili_oncelik else "belirtilmedi",
@@ -363,11 +368,8 @@ destekHataBildirServer <- function(id, current_user_id) {
           ek_dosya_yollari = ek_yollari
         )
 
-        # Formu sıfırla
         yuklenen_dosyalar(list())
         shinyjs::runjs(sprintf("destekResetBugForm('%s');", ns("")))
-
-        # Başarı sinyali gönder
         basarili_trigger(basarili_trigger() + 1)
 
       }, error = function(e) {
@@ -376,7 +378,6 @@ destekHataBildirServer <- function(id, current_user_id) {
       })
     })
 
-    # Dışa döndürülecek değerler
     return(list(
       basarili = reactive(basarili_trigger())
     ))
