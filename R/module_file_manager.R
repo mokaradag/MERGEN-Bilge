@@ -542,28 +542,6 @@ fileManagerServer <- function(
 	  refresh_from_user_folder("initial")
 	}, once = TRUE, ignoreNULL = TRUE)
 
-	# Proactive warm-up: refresh a few extra times during the first seconds
-	initial_refresh_attempts <- reactiveVal(0)
-	observe({
-	  if (initial_refresh_attempts() >= 3) {
-		return()
-	  }
-
-	  invalidateLater(600, session)
-	  attempt <- initial_refresh_attempts() + 1
-	  initial_refresh_attempts(attempt)
-
-	  # Stop early if data is already present
-	  if (nrow(module_values$files) > 0) {
-		initial_refresh_attempts(3)
-		return()
-	  }
-
-	  # SSO açıkken auth bitmeden gereksiz tarama yapma
-	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) return()
-	  refresh_from_user_folder(sprintf("startup_boost_%s", attempt))
-	})
-
     # Not: SSO sonrası tetikleme server.R tarafından tek sefer yönetilir
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()

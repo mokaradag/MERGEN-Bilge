@@ -821,62 +821,92 @@ load_history_rows_batch <- function(chat_ids) {
     return(list())
   }
 
-  chat_data <- load_chat_messages_batch(ids)
-  if (length(chat_data) == 0) {
-    return(stats::setNames(vector("list", length(ids)), ids))
+  placeholder <- paste(rep("?", length(ids)), collapse = ", ")
+
+  param_values <- lapply(ids, function(id) {
+    numeric_id <- suppressWarnings(as.integer(id))
+    if (!is.na(numeric_id)) numeric_id else id
+  })
+
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info))
+
+  query <- paste0(
+    "WITH filtered AS (",
+    "  SELECT c.ChatID, c.ChatTitle, m.MessageID, m.MessageContent, m.MessageType, ",
+    "         m.MessageTimestamp, m.MessageOrder ",
+    "    FROM MB_Chats c ",
+    "    INNER JOIN MB_Messages m ON c.ChatID = m.ChatID ",
+    "   WHERE c.ChatID IN (", placeholder, ")",
+    "), ",
+    "user_msgs AS (",
+    "  SELECT ChatID, ChatTitle, MessageContent, MessageTimestamp, ",
+    "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
+    "    FROM filtered ",
+    "   WHERE MessageType = 'user'",
+    "), ",
+    "assistant_msgs AS (",
+    "  SELECT ChatID, MessageContent, ",
+    "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
+    "    FROM filtered ",
+    "   WHERE MessageType IN ('ai', 'assistant')",
+    ") ",
+    "SELECT u.ChatID, u.ChatTitle, u.MessageTimestamp, ",
+    "       LEFT(u.MessageContent, 100) AS Soru, ",
+    "       LEFT(a.MessageContent, 100) AS Cevap, ",
+    "       u.rn AS PairOrder ",
+    "  FROM user_msgs u ",
+    "  INNER JOIN assistant_msgs a ",
+    "          ON a.ChatID = u.ChatID ",
+    "         AND a.rn = u.rn ",
+    " ORDER BY u.ChatID ASC, u.rn ASC"
+  )
+
+  result <- dbGetQuery(conn, query, params = param_values)
+
+  if (nrow(result) == 0) {
+    empty <- stats::setNames(vector("list", length(ids)), ids)
+    return(lapply(empty, function(...) list()))
   }
 
-  build_rows <- function(chat, chat_id) {
-    messages <- chat$messages %||% list()
-    if (length(messages) == 0) {
-      return(list())
+  format_history_timestamp <- function(value) {
+    if (inherits(value, "POSIXt")) {
+      return(format(value, "%d.%m.%Y - %H:%M", tz = attr(value, "tzone") %||% "UTC"))
     }
 
-    output_rows <- list()
-    pending_user <- NULL
-    chat_title <- chat$title %||% chat_id
-
-    for (msg in messages) {
-      msg_type <- tolower(msg$type %||% "")
-
-      if (identical(msg_type, "user")) {
-        pending_user <- msg
-      } else if (msg_type %in% c("assistant", "ai")) {
-        if (!is.null(pending_user)) {
-          ts_val <- pending_user$timestamp %||% pending_user$timestamp_raw %||% pending_user$time
-
-          formatted_ts <- if (inherits(ts_val, "POSIXt")) {
-            format(ts_val, "%d.%m.%Y - %H:%M", tz = attr(ts_val, "tzone") %||% "")
-          } else if (is.character(ts_val) && nzchar(ts_val)) {
-            ts_val
-          } else {
-            tryCatch({
-              parsed <- as.POSIXct(ts_val, origin = "1970-01-01", tz = "UTC")
-              format(parsed, "%d.%m.%Y - %H:%M", tz = attr(parsed, "tzone") %||% "UTC")
-            }, error = function(...) "")
-          }
-
-          output_rows <- append(output_rows, list(list(
-            Chat_ID = chat_title,
-            Tarih = formatted_ts,
-            Soru = substr(pending_user$content %||% "", 1, 100),
-            Cevap = substr(msg$content %||% msg$html_content %||% "", 1, 100)
-          )))
-
-          pending_user <- NULL
-        }
-      }
+    parsed <- suppressWarnings(as.POSIXct(value, tz = "UTC"))
+    if (!is.na(parsed)) {
+      return(format(parsed, "%d.%m.%Y - %H:%M", tz = attr(parsed, "tzone") %||% "UTC"))
     }
 
-    output_rows
+    as.character(value %||% "")
   }
+
+  safe_chr <- function(value) {
+    if (is.null(value) || length(value) == 0 || is.na(value[1])) {
+      return("")
+    }
+    as.character(value[1])
+  }
+
+  split_rows <- split(result, as.character(result$ChatID))
+  names(split_rows) <- as.character(names(split_rows))
 
   formatted <- lapply(ids, function(chat_id) {
-    chat <- chat_data[[chat_id]] %||% chat_data[[as.character(chat_id)]]
-    if (is.null(chat)) {
+    chat_df <- split_rows[[chat_id]]
+    if (is.null(chat_df) || nrow(chat_df) == 0) {
       return(list())
     }
-    build_rows(chat, chat_id)
+
+    lapply(seq_len(nrow(chat_df)), function(i) {
+      list(
+        Chat_ID = safe_chr(chat_df$ChatTitle[i]),
+        Tarih = format_history_timestamp(chat_df$MessageTimestamp[i]),
+        Soru = safe_chr(chat_df$Soru[i]),
+        Cevap = safe_chr(chat_df$Cevap[i])
+      )
+    })
   })
 
   names(formatted) <- ids

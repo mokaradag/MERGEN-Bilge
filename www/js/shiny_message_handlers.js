@@ -161,13 +161,51 @@ $(document).ready(function() {
     }, 120);
   });
 
-	Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
-	  // Sadece welcome ekranı görünürken başlat
+	function bootModernWelcome(message, attempt) {
+	  attempt = attempt || 0;
+
 	  const welcomeContainer = document.querySelector('.modern-welcome-root');
 	  if (!welcomeContainer || welcomeContainer.offsetParent === null) {
 		return;
 	  }
-	  
+
+	  const videoContainer = document.querySelector('.modern-welcome-video-container');
+	  const neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
+	  const greetingText = document.getElementById('dynamic-greeting-text');
+
+	  if ((!videoContainer || !neuralCanvas || !greetingText) && attempt < 8) {
+		setTimeout(function() {
+		  bootModernWelcome(message, attempt + 1);
+		}, 35);
+		return;
+	  }
+
+	  if (videoContainer && window.WelcomeVideoPlayer) {
+		window.WelcomeVideoPlayer.init(videoContainer);
+	  }
+
+	  if (neuralCanvas && window.WelcomeNeuralNetwork) {
+		var accentColor = message && message.accentColor ? message.accentColor : null;
+		if (!accentColor) {
+		  var activeBtn = document.querySelector('.character-btn.active');
+		  if (activeBtn) {
+			accentColor = getComputedStyle(activeBtn).getPropertyValue('--character-accent').trim() || null;
+		  }
+		}
+		window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor);
+	  }
+
+	  if (greetingText && window.WelcomeGreeting) {
+		window.WelcomeGreeting.init(greetingText);
+	  }
+	}
+
+	Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
+	  const welcomeContainer = document.querySelector('.modern-welcome-root');
+	  if (!welcomeContainer || welcomeContainer.offsetParent === null) {
+		return;
+	  }
+
 	  if (window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
 		window.WelcomeVideoPlayer.destroy();
 	  }
@@ -177,31 +215,10 @@ $(document).ready(function() {
 	  if (window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
 		window.WelcomeGreeting.destroy();
 	  }
-	  
-	  setTimeout(function() {
-		const videoContainer = document.querySelector('.modern-welcome-video-container');
-		if (videoContainer && window.WelcomeVideoPlayer) {
-		  window.WelcomeVideoPlayer.init(videoContainer);
-		}
-		
-		const neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
-		if (neuralCanvas && window.WelcomeNeuralNetwork) {
-		  // Aktif karakter butonunun aksan rengini al
-		  var accentColor = message.accentColor || null;
-		  if (!accentColor) {
-		    var activeBtn = document.querySelector('.character-btn.active');
-		    if (activeBtn) {
-		      accentColor = getComputedStyle(activeBtn).getPropertyValue('--character-accent').trim() || null;
-		    }
-		  }
-		  window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor);
-		}
-		
-		const greetingText = document.getElementById('dynamic-greeting-text');
-		if (greetingText && window.WelcomeGreeting) {
-		  window.WelcomeGreeting.init(greetingText);
-		}
-	  }, 300);
+
+	  requestAnimationFrame(function() {
+		bootModernWelcome(message || {}, 0);
+	  });
 	});
 
   // NOT: Müzik işleyicileri (initMusicManager, toggleMusic, setMusicPlaylist, setMusicCharacter, setMusicVolume)

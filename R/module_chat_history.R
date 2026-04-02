@@ -142,6 +142,29 @@ historyServer <- function(id, all_messages) {
       }
       invisible(NULL)
     }
+	
+    refresh_history_cache <- function(chats = latest_chats(), force = FALSE) {
+      chats <- chats %||% list()
+      chat_ids <- setdiff(names(chats), "current_chat")
+
+      if (isTRUE(force)) {
+        messages_cache(list())
+      } else {
+        cache <- messages_cache()
+        if (length(cache) > 0) {
+          keep_ids <- intersect(names(cache), chat_ids)
+          messages_cache(cache[keep_ids])
+        }
+      }
+
+      if (length(chat_ids) == 0) {
+        trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
+        return(invisible(NULL))
+      }
+
+      ensure_history_cache(chat_ids, chats)
+      invisible(NULL)
+    }
 
     # FIX #5: Add "Bugün" button handler
     observeEvent(input$today_filter, {
@@ -155,13 +178,11 @@ historyServer <- function(id, all_messages) {
       chats <- all_messages() %||% list()
       latest_chats(chats)
 
-      ids <- setdiff(names(chats), "current_chat")
-      if (length(ids) == 0) {
-        return()
+      # Geçmiş sekmesi henüz açılmadıysa başlangıçta ağır ön yükleme yapma.
+      # Kullanıcı geçmişi ilk kez açtığında veya elle yenilediğinde doldurulacak.
+      if (length(messages_cache()) > 0) {
+        refresh_history_cache(chats, force = FALSE)
       }
-
-      # Hızlı/parsiyel yükleme yerine tam tabloyu tek akışta hazırla.
-      ensure_history_cache(ids, chats)
     }, ignoreNULL = FALSE, priority = 1)
 	
     filtered_history <- reactive({
@@ -267,15 +288,15 @@ historyServer <- function(id, all_messages) {
     )
     
     observeEvent(input$refresh_history, {
-      trigger_refresh(trigger_refresh() + 1)
+      refresh_history_cache(force = TRUE)
       showToast(session, "Geçmiş tablosu yenilendi.", "info")
     })
-	
+
 	# Ana sekme değişikliğinde tabloyu yenile (parent session'dan gelen sinyal)
     # NOT: Bu input, parent session tarafından doğrudan set edilir
     observeEvent(input$external_refresh_trigger, {
       cat("[HISTORY] Dış tetikleyici ile yenileme başlatıldı\n")
-      trigger_refresh(trigger_refresh() + 1)
+      refresh_history_cache(force = TRUE)
     }, ignoreInit = TRUE)
   })
 }

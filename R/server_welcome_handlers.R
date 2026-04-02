@@ -62,12 +62,12 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
  
     session$userData$welcome_screen_attached <- TRUE
  
-	# Animasyonları başlat (her render'da çağrılmalı)
-    shinyjs::delay(200, {
+    # Animasyonları başlat (her render'da çağrılmalı)
+    shinyjs::delay(40, {
       session$sendCustomMessage("initModernWelcome", list())
 
       # Kişiselleştirilmiş karşılama animasyonunu başlat
-      shinyjs::delay(400, {
+      shinyjs::delay(80, {
         session$sendCustomMessage("initPersonalGreeting", list(
           first_name = user_first_name %||% ""
         ))

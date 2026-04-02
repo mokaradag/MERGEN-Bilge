@@ -416,38 +416,45 @@ startupScreenObserversInit <- function(input, session, settings_data) {
   observeEvent(input$startup_skip_intro, {
     skip <- isTRUE(input$startup_skip_intro)
 
-    if (skip) {
-      # Giriş ekranı atlandı - işaretle
-      session$userData$deep_space_dismissed <- TRUE
+	if (skip) {
+	  # Giriş ekranı atlandı - işaretle
+	  session$userData$deep_space_dismissed <- TRUE
 
-      # Giriş ekranını tamamen atla - DOM'dan kaldır ve uygulamayı göster
-      shinyjs::runjs("
-        (function() {
-          var ds = document.getElementById('deep-space-container');
-          if (ds && ds.parentNode) ds.parentNode.removeChild(ds);
-          document.body.classList.remove('deep-space-active');
-          document.body.classList.add('app-ready');
-        })();
-      ")
-      # Ayarlar sayfasındaki onay kutusunu da senkronize et
-      updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
+	  # Giriş ekranını tamamen atla - DOM'dan kaldır ve uygulamayı göster
+	  shinyjs::runjs("
+		(function() {
+		  var ds = document.getElementById('deep-space-container');
+		  if (ds && ds.parentNode) ds.parentNode.removeChild(ds);
+		  document.body.classList.remove('deep-space-active');
+		  document.body.classList.add('app-ready');
+		})();
+	  ")
+	  # Ayarlar sayfasındaki onay kutusunu da senkronize et
+	  updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
 
-      # Giriş atlandığında varsayılan karakterin rengini uygula
-      char_id <- settings_data$selected_character %||% "mergen"
-      chars_data <- get_characters_data()
-      char <- if (!is.null(chars_data)) {
-        Find(function(x) x$id == char_id, chars_data$styles)
-      } else NULL
-      if (!is.null(char)) {
-        session$sendCustomMessage("updateNeuralColor", list(accent = char$accent))
-        session$sendCustomMessage("updateCharacterButtons", list(
-          character = char_id,
-          accent = char$accent,
-          accent_active = char$accent_active,
-          accent_hover = char$accent_hover
-        ))
-      }
-    } else {
+	  # Giriş atlandığında varsayılan karakterin rengini uygula
+	  char_id <- settings_data$selected_character %||% "mergen"
+	  chars_data <- get_characters_data()
+	  char <- if (!is.null(chars_data)) {
+		Find(function(x) x$id == char_id, chars_data$styles)
+	  } else NULL
+	  if (!is.null(char)) {
+		session$sendCustomMessage("updateNeuralColor", list(accent = char$accent))
+		session$sendCustomMessage("updateCharacterButtons", list(
+		  character = char_id,
+		  accent = char$accent,
+		  accent_active = char$accent_active,
+		  accent_hover = char$accent_hover
+		))
+	  }
+
+	  # Hoş geldin ekranını mevcut söyleşilerle hemen yeniden yükle
+	  shinyjs::delay(120, {
+		session$sendCustomMessage("reloadWelcomeScreen", list(
+		  timestamp = as.numeric(Sys.time())
+		))
+	  })
+	} else {
       # Three.js sahnesini başlat
       session$sendCustomMessage("initDeepSpace", list(
         texturePath = "lib/threejs/textures/"
@@ -515,69 +522,76 @@ startupScreenObserversInit <- function(input, session, settings_data) {
   }, once = TRUE)
 
   # Mod seçimi (giriş ekranından)
-  observeEvent(input$selected_experience_mode, {
-    req(input$selected_experience_mode)
-    mode_data <- input$selected_experience_mode
+	observeEvent(input$selected_experience_mode, {
+	  req(input$selected_experience_mode)
+	  mode_data <- input$selected_experience_mode
 
-    mode <- mode_data$mode
-    if (is.null(mode) || !mode %in% c("odak", "denge", "kesif")) return()
+	  mode <- mode_data$mode
+	  if (is.null(mode) || !mode %in% c("odak", "denge", "kesif")) return()
 
-    # Giriş ekranı kapanıyor - işaretle (yeniden render koruması için)
-    session$userData$deep_space_dismissed <- TRUE
+	  # Giriş ekranı kapanıyor - işaretle (yeniden render koruması için)
+	  session$userData$deep_space_dismissed <- TRUE
 
-    # Mod ayarlarını uygula
-    apply_experience_mode(session, settings_data, mode)
+	  # Mod ayarlarını uygula
+	  apply_experience_mode(session, settings_data, mode)
 
-    # Ayarlar sayfasındaki mod kartlarını güncelle
-    session$sendCustomMessage("updateSettingsMode", list(mode = mode))
+	  # Ayarlar sayfasındaki mod kartlarını güncelle
+	  session$sendCustomMessage("updateSettingsMode", list(mode = mode))
 
-    # Karakter seçimi: Bütünleşik modda 2. adımdan gelir,
-    # diğer modlarda varsayılan "mergen" kullanılır
-    char_id <- mode_data$character
-    if (is.null(char_id) || !nzchar(char_id)) {
-      char_id <- settings_data$selected_character %||% "mergen"
-    }
-    cat(sprintf("[STARTUP] Karakter belirlendi: %s (mod: %s)\n", char_id, mode))
+	  # Karakter seçimi: Bütünleşik modda 2. adımdan gelir,
+	  # diğer modlarda varsayılan "mergen" kullanılır
+	  char_id <- mode_data$character
+	  if (is.null(char_id) || !nzchar(char_id)) {
+		char_id <- settings_data$selected_character %||% "mergen"
+	  }
+	  cat(sprintf("[STARTUP] Karakter belirlendi: %s (mod: %s)\n", char_id, mode))
 
-    # Karakter ayarlarını güncelle
-    settings_data$selected_character <- char_id
+	  # Karakter ayarlarını güncelle
+	  settings_data$selected_character <- char_id
 
-    {
+	  {
 
-      # Karakter verilerini al
-      chars_data <- get_characters_data()
-      char <- if (!is.null(chars_data)) {
-        Find(function(x) x$id == char_id, chars_data$styles)
-      } else NULL
+		# Karakter verilerini al
+		chars_data <- get_characters_data()
+		char <- if (!is.null(chars_data)) {
+		  Find(function(x) x$id == char_id, chars_data$styles)
+		} else NULL
 
-      if (!is.null(char)) {
-        # Yapılandırma sayfasındaki karakter butonlarını güncelle
-        session$sendCustomMessage("updateCharacterButtons", list(
-          character = char_id,
-          accent = char$accent,
-          accent_active = char$accent_active,
-          accent_hover = char$accent_hover
-        ))
+		if (!is.null(char)) {
+		  # Yapılandırma sayfasındaki karakter butonlarını güncelle
+		  session$sendCustomMessage("updateCharacterButtons", list(
+			character = char_id,
+			accent = char$accent,
+			accent_active = char$accent_active,
+			accent_hover = char$accent_hover
+		  ))
 
-        # Hoşgeldin ekranındaki neural network rengini güncelle
-        session$sendCustomMessage("updateNeuralColor", list(
-          accent = char$accent
-        ))
+		  # Hoşgeldin ekranındaki neural network rengini güncelle
+		  session$sendCustomMessage("updateNeuralColor", list(
+			accent = char$accent
+		  ))
 
-        # Müzik karakterini güncelle (modun müzik ayarına göre)
-        session$sendCustomMessage("toggleMusic", list(
-          enabled = isTRUE(settings_data$enable_background_music),
-          character = char_id
-        ))
+		  # Müzik karakterini güncelle (modun müzik ayarına göre)
+		  session$sendCustomMessage("toggleMusic", list(
+			enabled = isTRUE(settings_data$enable_background_music),
+			character = char_id
+		  ))
 
-        # localStorage'a kaydet
-        shinyjs::runjs(sprintf(
-          "try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.selected_character = '%s'; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
-          char_id
-        ))
-      }
-    }
-  }, ignoreInit = TRUE)
+		  # localStorage'a kaydet
+		  shinyjs::runjs(sprintf(
+			"try { var s = JSON.parse(localStorage.getItem('mergen_settings') || '{}'); s.selected_character = '%s'; localStorage.setItem('mergen_settings', JSON.stringify(s)); } catch(e) {}",
+			char_id
+		  ))
+		}
+	  }
+
+	  # Hoş geldin ekranını mevcut söyleşilerle hemen yeniden yükle
+	  shinyjs::delay(120, {
+		session$sendCustomMessage("reloadWelcomeScreen", list(
+		  timestamp = as.numeric(Sys.time())
+		))
+	  })
+	}, ignoreInit = TRUE)
 
   # Giriş ekranı karakter adımından video verisi talebi
   observeEvent(input$explore_request_char_video, {
