@@ -45,24 +45,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     ");
   }, once = TRUE)
   
-  observeEvent(input$reloadWelcomeScreenTrigger, {
-    if (isTRUE(values$show_welcome)) {
-      # NOT: DeepSpaceIntro burada yok edilmez (kendi yaşam döngüsü var)
-      shinyjs::runjs("
-        if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-          window.WelcomeVideoPlayer.destroy();
-        }
-        if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-          window.WelcomeNeuralNetwork.destroy();
-        }
-        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-          window.WelcomeGreeting.destroy();
-        }
-      ")
-      
-      render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-    }
-  }, ignoreInit = TRUE)
+	observeEvent(input$reloadWelcomeScreenTrigger, {
+	  if (isTRUE(values$show_welcome)) {
+		render_welcome_screen(values$saved_chats, replace_existing = FALSE)
+	  }
+	}, ignoreInit = TRUE)
   
   # SSO akışında başlangıçta current_user_id=0 gelebilir.
   # Bu nedenle kullanıcı ID'sini her yükleme anında oturumdan çöz.
@@ -75,17 +62,19 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     effective_user_id <- resolve_current_user_id()
     req(!is.na(effective_user_id), effective_user_id > 0)
 
-    refresh_welcome_if_needed <- function(chats) {
-      if (length(chats) == 0) {
-        return(invisible(NULL))
-      }
-      if (isTRUE(session$userData$deep_space_dismissed)) {
-        render_welcome_screen(chats, replace_existing = TRUE)
-      } else {
-        cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
-      }
-      invisible(NULL)
-    }
+	refresh_welcome_if_needed <- function(chats) {
+	  if (!isTRUE(session$userData$deep_space_dismissed)) {
+		cat("[STARTUP] Giriş ekranı aktif, karşılama yeniden render ertelendi\n")
+		return(invisible(NULL))
+	  }
+
+	  if (!isTRUE(values$show_welcome)) {
+		return(invisible(NULL))
+	  }
+
+	  render_welcome_screen(chats, replace_existing = FALSE)
+	  invisible(NULL)
+	}
 
     # İlk ekranın hızlı gelmesi için önce hafif özet listeyi yükle.
 	preview_chats <- tryCatch(

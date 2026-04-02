@@ -411,6 +411,20 @@ startupScreenObserversInit <- function(input, session, settings_data) {
       })();
     ")
   }, once = TRUE)
+  
+  ensure_welcome_screen_ready <- function() {
+    if (isTRUE(session$userData$welcome_screen_attached)) {
+      return(invisible(NULL))
+    }
+
+    shinyjs::delay(120, {
+      session$sendCustomMessage("reloadWelcomeScreen", list(
+        timestamp = as.numeric(Sys.time())
+      ))
+    })
+
+    invisible(NULL)
+  }
 
   # Atlama tercihine göre giriş ekranını göster veya tamamen atla
   observeEvent(input$startup_skip_intro, {
@@ -448,12 +462,9 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 		))
 	  }
 
-	  # Hoş geldin ekranını mevcut söyleşilerle hemen yeniden yükle
-	  shinyjs::delay(120, {
-		session$sendCustomMessage("reloadWelcomeScreen", list(
-		  timestamp = as.numeric(Sys.time())
-		))
-	  })
+      # Karşılama ekranı zaten arkada kurulmuşsa tekrar yükleme yapma
+      ensure_welcome_screen_ready()
+	  
 	} else {
       # Three.js sahnesini başlat
       session$sendCustomMessage("initDeepSpace", list(
@@ -585,12 +596,10 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 		}
 	  }
 
-	  # Hoş geldin ekranını mevcut söyleşilerle hemen yeniden yükle
-	  shinyjs::delay(120, {
-		session$sendCustomMessage("reloadWelcomeScreen", list(
-		  timestamp = as.numeric(Sys.time())
-		))
-	  })
+    # Odak ve Dinamik akışında gereksiz yeniden yüklemeyi engelle
+    # Karşılama ekranı zaten hazırsa doğrudan görünür hale gelsin
+    ensure_welcome_screen_ready()
+	
 	}, ignoreInit = TRUE)
 
   # Giriş ekranı karakter adımından video verisi talebi

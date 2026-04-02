@@ -25,6 +25,9 @@
   // Yazma animasyonu zamanlayıcıları
   var _loreTypingTimer = null;
   var _subtitleTypingTimer = null;
+  
+  // Bütünleşik mod seçim videosu bittikten sonra uygulanacak ek bekleme
+  var KESIF_EK_BEKLEME_MS = 8000;
 
   // ============================================================
   // KARAKTER VERİSİNİ YÜKLE
@@ -416,28 +419,30 @@
 
     // Video bittiğinde geçiş yapacak fonksiyon
     function onVideoComplete() {
-      // Video oynatmayı durdur
-      if (window.ExploreCharVideo) {
-        window.ExploreCharVideo.stopEverything();
-      }
-      stopLoreTyping();
-      stopSubtitleTyping();
-
-      // Modalı kapat
-      if (window.CinematicExplore) {
-        window.CinematicExplore.closeModal();
-      }
-
-      // Giriş ekranını kapat
       setTimeout(function() {
-        if (window.CinematicExplore) {
-          window.CinematicExplore.dismissDeepSpace();
+        // Video oynatmayı durdur
+        if (window.ExploreCharVideo) {
+          window.ExploreCharVideo.stopEverything();
         }
-      }, 200);
+        stopLoreTyping();
+        stopSubtitleTyping();
 
-      // Durumu sıfırla
-      _currentStep = 1;
-      _confirmInProgress = false;
+        // Modalı kapat
+        if (window.CinematicExplore) {
+          window.CinematicExplore.closeModal();
+        }
+
+        // Giriş ekranını kapat
+        setTimeout(function() {
+          if (window.CinematicExplore) {
+            window.CinematicExplore.dismissDeepSpace();
+          }
+        }, 200);
+
+        // Durumu sıfırla
+        _currentStep = 1;
+        _confirmInProgress = false;
+      }, KESIF_EK_BEKLEME_MS);
     }
 
     // Seçim videosunu oynat ve bittiğinde geçiş yap

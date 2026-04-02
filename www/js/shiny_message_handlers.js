@@ -161,48 +161,51 @@ $(document).ready(function() {
     }, 120);
   });
 
+  var modernWelcomeBootTimer = null;
+
+	function clearModernWelcomeBootTimer() {
+	  if (modernWelcomeBootTimer) {
+		clearTimeout(modernWelcomeBootTimer);
+		modernWelcomeBootTimer = null;
+	  }
+	}
+
 	function bootModernWelcome(message, attempt) {
 	  attempt = attempt || 0;
 
-	  const welcomeContainer = document.querySelector('.modern-welcome-root');
-	  if (!welcomeContainer || welcomeContainer.offsetParent === null) {
-		return;
-	  }
+	  const MAX_ATTEMPTS = 80;
+	  const RETRY_DELAY_MS = 50;
 
+	  const welcomeContainer = document.querySelector('.modern-welcome-root');
 	  const videoContainer = document.querySelector('.modern-welcome-video-container');
 	  const neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
 	  const greetingText = document.getElementById('dynamic-greeting-text');
 
-	  if ((!videoContainer || !neuralCanvas || !greetingText) && attempt < 8) {
-		setTimeout(function() {
+	  const domReady = !!(
+		welcomeContainer &&
+		welcomeContainer.offsetParent !== null &&
+		videoContainer &&
+		neuralCanvas &&
+		greetingText
+	  );
+
+	  const depsReady = !!(
+		window.WelcomeVideoPlayer &&
+		window.WelcomeNeuralNetwork &&
+		window.WelcomeGreeting
+	  );
+
+	  if ((!domReady || !depsReady) && attempt < MAX_ATTEMPTS) {
+		modernWelcomeBootTimer = setTimeout(function() {
 		  bootModernWelcome(message, attempt + 1);
-		}, 35);
+		}, RETRY_DELAY_MS);
 		return;
 	  }
 
-	  if (videoContainer && window.WelcomeVideoPlayer) {
-		window.WelcomeVideoPlayer.init(videoContainer);
-	  }
+	  modernWelcomeBootTimer = null;
 
-	  if (neuralCanvas && window.WelcomeNeuralNetwork) {
-		var accentColor = message && message.accentColor ? message.accentColor : null;
-		if (!accentColor) {
-		  var activeBtn = document.querySelector('.character-btn.active');
-		  if (activeBtn) {
-			accentColor = getComputedStyle(activeBtn).getPropertyValue('--character-accent').trim() || null;
-		  }
-		}
-		window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor);
-	  }
-
-	  if (greetingText && window.WelcomeGreeting) {
-		window.WelcomeGreeting.init(greetingText);
-	  }
-	}
-
-	Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
-	  const welcomeContainer = document.querySelector('.modern-welcome-root');
-	  if (!welcomeContainer || welcomeContainer.offsetParent === null) {
+	  if (!domReady || !depsReady) {
+		console.warn('[WELCOME] Modern welcome bileşenleri zamanında hazır olmadı.');
 		return;
 	  }
 
@@ -214,6 +217,37 @@ $(document).ready(function() {
 	  }
 	  if (window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
 		window.WelcomeGreeting.destroy();
+	  }
+
+	  if (videoContainer) {
+		window.WelcomeVideoPlayer.init(videoContainer);
+	  }
+
+	  if (neuralCanvas) {
+		var accentColor = message && message.accentColor ? message.accentColor : null;
+		if (!accentColor) {
+		  var activeBtn = document.querySelector('.character-btn.active');
+		  if (activeBtn) {
+			accentColor = getComputedStyle(activeBtn).getPropertyValue('--character-accent').trim() || null;
+		  }
+		}
+		window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor);
+	  }
+
+	  if (greetingText) {
+		window.WelcomeGreeting.init(greetingText);
+	  }
+	}
+
+	Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
+	  clearModernWelcomeBootTimer();
+
+	  const welcomeContainer = document.querySelector('.modern-welcome-root');
+	  if (!welcomeContainer || welcomeContainer.offsetParent === null) {
+		modernWelcomeBootTimer = setTimeout(function() {
+		  bootModernWelcome(message || {}, 0);
+		}, 50);
+		return;
 	  }
 
 	  requestAnimationFrame(function() {

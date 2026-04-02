@@ -39,13 +39,13 @@ navigationObserversInit <- function(input, session, values, render_welcome_scree
       ))
     }
 
-    if (input$tabs == "chat" && isTRUE(values$show_welcome)) {
-      # Karşılama ekranında "aşağı kaydır" butonunu gizle
-      shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
-      shinyjs::delay(100, {
-        render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-      })
-    }
+	if (input$tabs == "chat" && isTRUE(values$show_welcome)) {
+	  # Karşılama ekranında "aşağı kaydır" butonunu gizle
+	  shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
+	  shinyjs::delay(100, {
+		render_welcome_screen(values$saved_chats, replace_existing = FALSE)
+	  })
+	}
   })
   
   invisible(NULL)

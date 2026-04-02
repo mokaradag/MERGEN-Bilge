@@ -128,7 +128,7 @@ create_modern_preview_button <- function(chat_data) {
   )
 }
 
-createModernWelcomeScreen <- function(saved_chats, main_actions) { 
+createModernRecentChatsSection <- function(saved_chats) {
   recent_chats <- if (length(saved_chats) > 0) {
     sorted_chats <- Filter(Negate(is.null), saved_chats)
     if (length(sorted_chats) > 0) {
@@ -142,19 +142,16 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
   } else {
     list()
   }
-  
-  # Son konuşmaları dinamik olarak oluştur - sadece gerçek sohbetleri göster
+
   preview_chats <- list()
-  
+
   if (length(recent_chats) > 0) {
-    # En fazla 3 sohbet göster
     max_preview <- min(3, length(recent_chats))
-    
+
     for (i in seq_len(max_preview)) {
       chat <- recent_chats[[i]]
       chat_id <- names(recent_chats)[i]
-      
-      # Sohbet içeriğinden snippet oluştur
+
       snippet_text <- "..."
       if (!is.null(chat$messages) && length(chat$messages) > 0) {
         first_content <- chat$messages[[1]]$content %||% ""
@@ -165,8 +162,7 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
           }
         }
       }
-      
-      # Zaman damgası formatla
+
       time_text <- tryCatch({
         if (inherits(chat$timestamp, "POSIXct")) {
           format(chat$timestamp, "%d.%m.%Y")
@@ -174,7 +170,7 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
           "..."
         }
       }, error = function(e) "...")
-      
+
       preview_chats[[i]] <- list(
         id = chat_id,
         title = chat$title %||% "Başlıksız Söyleşi",
@@ -183,6 +179,25 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
       )
     }
   }
+
+  if (length(preview_chats) > 0) {
+    div(
+      class = "modern-welcome-footer-section",
+      div(class = "modern-welcome-recent-header",
+          tags$i(class = "fas fa-history modern-welcome-recent-icon"),
+          tags$h3(class = "modern-welcome-recent-title", "Son Konuşmalar")
+      ),
+      div(class = "modern-welcome-recent-list",
+          lapply(preview_chats, create_modern_preview_button)
+      )
+    )
+  } else {
+    div(class = "modern-welcome-footer-section", style = "display: none;")
+  }
+}
+
+createModernWelcomeScreen <- function(saved_chats, main_actions) { 
+  recent_chats_section <- createModernRecentChatsSection(saved_chats)
   
   div(
     class = "modern-welcome-root",
@@ -243,21 +258,7 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
                     )
                 ),
                 
-				# Son Konuşmalar bölümü - sadece sohbet varsa göster
-                if (length(preview_chats) > 0) {
-                  div(class = "modern-welcome-footer-section",
-                      div(class = "modern-welcome-recent-header",
-                          tags$i(class = "fas fa-history modern-welcome-recent-icon"),
-                          tags$h3(class = "modern-welcome-recent-title", "Son Konuşmalar")
-                      ),
-                      div(class = "modern-welcome-recent-list",
-                          lapply(preview_chats, create_modern_preview_button)
-                      )
-                  )
-                } else {
-                  # Sohbet yoksa boş div
-                  div(class = "modern-welcome-footer-section", style = "display: none;")
-                }
+                recent_chats_section
             ),
             
             div(class = "modern-welcome-right-panel",
