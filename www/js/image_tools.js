@@ -66,6 +66,114 @@ window.downloadGeneratedImage = function(button) {
 // ------------------------------------------------------------------------------
 
 /**
+ * Data URL'i Blob'a dönüştür
+ * @param {string} dataUrl - data:image/... biçimindeki kaynak
+ * @returns {Blob}
+ */
+window.dataUrlToBlob = function(dataUrl) {
+  var parts = String(dataUrl || '').split(',');
+  var header = parts[0] || '';
+  var data = parts[1] || '';
+  var mimeMatch = header.match(/data:([^;]+);base64/i);
+  var mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+
+  var binary = atob(data);
+  var len = binary.length;
+  var bytes = new Uint8Array(len);
+
+  for (var i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+};
+
+/**
+ * HTML içeriğini panoya kopyala
+ * @param {string} html - HTML yükü
+ * @param {string} plainText - Düz metin yedeği
+ * @returns {Promise<void>}
+ */
+window.copyHtmlToClipboard = function(html, plainText) {
+  return new Promise(function(resolve, reject) {
+    var tamamlandi = false;
+
+    function temizle() {
+      document.removeEventListener('copy', onCopy, true);
+    }
+
+    function onCopy(e) {
+      try {
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/html', html);
+          e.clipboardData.setData('text/plain', plainText || '');
+          e.preventDefault();
+          tamamlandi = true;
+          temizle();
+          resolve();
+        }
+      } catch (err) {
+        temizle();
+        reject(err);
+      }
+    }
+
+    document.addEventListener('copy', onCopy, true);
+
+    try {
+      var basarili = document.execCommand('copy');
+
+      if (tamamlandi) {
+        return;
+      }
+
+      temizle();
+
+      if (basarili) {
+        resolve();
+      } else {
+        reject(new Error('HTML copy basarisiz'));
+      }
+    } catch (err) {
+      temizle();
+      reject(err);
+    }
+  });
+};
+
+/**
+ * Görsel elemanından gömülü HTML yükü üret
+ * @param {HTMLImageElement} img - Görsel elemanı
+ * @returns {string}
+ */
+window.buildEmbeddedImageHtml = function(img) {
+  var srcToUse = img.src || '';
+
+  try {
+    if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      var canvas = document.createElement('canvas');
+      var ctx = canvas.getContext('2d');
+
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+
+      srcToUse = canvas.toDataURL('image/png');
+    }
+  } catch (err) {
+    console.warn('[IMAGE_TOOLS] HTML kopyası için canvas üretilemedi:', err);
+  }
+
+  var escapedSrc = String(srcToUse)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return '<img src="' + escapedSrc + '" alt="MERGEN Bilge" />';
+};
+
+/**
  * Oluşturulan görseli panoya kopyala
  * @param {HTMLElement} button - Tıklanan buton elementi
  */
@@ -75,52 +183,100 @@ window.copyGeneratedImage = async function(button) {
     showToast('Görsel bulunamadı', 'error');
     return;
   }
-  
+
   const img = container.querySelector('.generated-image');
   if (!img || !img.src) {
     showToast('Görsel bulunamadı', 'error');
     return;
   }
-  
+
+  if (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+    showToast('Görsel henüz tam yüklenmedi', 'warning');
+    return;
+  }
+
   try {
-    // Canvas oluştur ve görseli çiz
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Görsel yüklenmişse boyutları al
-    const tempImg = new Image();
-    tempImg.crossOrigin = 'anonymous';
-    
-    tempImg.onload = async function() {
-      canvas.width = tempImg.naturalWidth;
-      canvas.height = tempImg.naturalHeight;
-      ctx.drawImage(tempImg, 0, 0);
-      
+    var gercekGorselKopyasiDestekli =
+      window.isSecureContext &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.write === 'function' &&
+      typeof window.ClipboardItem !== 'undefined';
+
+    // Önce gerçek bitmap kopyalamayı dene
+    if (gercekGorselKopyasiDestekli) {
       try {
-        // Canvas'ı blob'a dönüştür
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        
-        // Clipboard API ile kopyala
-        await navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': blob })
-        ]);
-        
-        showToast('Görsel panoya kopyalandı', 'success');
-      } catch (clipboardErr) {
-        console.error('[IMAGE_TOOLS] Clipboard hatası:', clipboardErr);
-        showToast('Kopyalama başarısız. Tarayıcı izni gerekebilir.', 'error');
+        let blob = null;
+
+        if (img.src.startsWith('data:image/')) {
+          blob = window.dataUrlToBlob(img.src);
+        } else {
+          try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            ctx.drawImage(img, 0, 0);
+
+            const pngDataUrl = canvas.toDataURL('image/png');
+            blob = window.dataUrlToBlob(pngDataUrl);
+          } catch (canvasErr) {
+            console.warn('[IMAGE_TOOLS] Canvas yolu başarısız, fetch denenecek:', canvasErr);
+
+            const response = await fetch(img.src, { credentials: 'same-origin' });
+            if (!response.ok) {
+              throw new Error('Gorsel verisi alinamadi');
+            }
+            blob = await response.blob();
+          }
+        }
+
+        if (blob && blob.size) {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              [blob.type || 'image/png']: blob
+            })
+          ]);
+
+          showToast('Görsel panoya kopyalandı', 'success');
+          return;
+        }
+      } catch (binaryErr) {
+        console.warn('[IMAGE_TOOLS] Gerçek görsel kopyalama başarısız, HTML yolu denenecek:', binaryErr);
       }
-    };
-    
-    tempImg.onerror = function() {
-      showToast('Görsel yüklenemedi', 'error');
-    };
-    
-    tempImg.src = img.src;
-    
+    }
+
+    // HTTP / güvenli olmayan bağlam için HTML tabanlı yedek yol
+    try {
+      var htmlPayload = window.buildEmbeddedImageHtml(img);
+      await window.copyHtmlToClipboard(
+        htmlPayload,
+        'MERGEN Bilge görseli'
+      );
+
+      showToast(
+        'Görsel HTML olarak panoya kopyalandı. Word/PowerPoint deneyin; Paint desteklemeyebilir.',
+        'success'
+      );
+      return;
+
+    } catch (htmlErr) {
+      console.error('[IMAGE_TOOLS] HTML kopyalama hatası:', htmlErr);
+    }
+
+    if (!window.isSecureContext) {
+      showToast(
+        'HTTP oturumlarında gerçek görsel kopyalama tarayıcı tarafından kısıtlanabilir. HTTPS üretimde tam destek verecektir.',
+        'error'
+      );
+      return;
+    }
+
+    showToast('Kopyalama başarısız. Tarayıcı izni gerekebilir.', 'error');
+
   } catch (err) {
     console.error('[IMAGE_TOOLS] Kopyalama hatası:', err);
-    showToast('Kopyalama başarısız', 'error');
+    showToast('Kopyalama başarısız. Tarayıcı izni gerekebilir.', 'error');
   }
 };
 

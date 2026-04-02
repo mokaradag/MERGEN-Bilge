@@ -174,14 +174,49 @@ destekYardimServer <- function(id, current_user_id = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
+    # Metni güvenli UTF-8'e dönüştür
+    destek_guvenli_utf8 <- function(x) {
+      if (is.null(x) || length(x) == 0) return("")
+      if (!is.character(x)) x <- as.character(x)
+      x <- paste(x, collapse = "\n")
+      x <- sub("^\ufeff", "", x, perl = TRUE)
+      x <- suppressWarnings(iconv(x, from = "", to = "UTF-8", sub = ""))
+      if (is.na(x)) return("")
+      enc2utf8(x)
+    }
+
+    # Bilgi tabanını farklı kodlamaları deneyerek oku
+    destek_dosya_oku <- function(dosya_yolu) {
+      if (!file.exists(dosya_yolu)) {
+        return("Bilgi tabanı yüklenemedi.")
+      }
+
+      dosya_boyutu <- file.info(dosya_yolu)$size
+      if (is.na(dosya_boyutu) || dosya_boyutu <= 0) {
+        return("")
+      }
+
+      ham_icerik <- readBin(dosya_yolu, what = "raw", n = dosya_boyutu)
+      aday_kodlamalar <- c("UTF-8", "WINDOWS-1254", "latin1")
+
+      for (kodlama in aday_kodlamalar) {
+        metin <- tryCatch(
+          iconv(list(ham_icerik), from = kodlama, to = "UTF-8", sub = "")[[1]],
+          error = function(e) NA_character_
+        )
+
+        if (!is.na(metin) && nzchar(metin)) {
+          metin <- sub("^\ufeff", "", metin, perl = TRUE)
+          return(enc2utf8(metin))
+        }
+      }
+
+      "Bilgi tabanı yüklenemedi."
+    }
+
     # Bilgi tabanını yükle (ai_rehber.md)
     bilgi_tabani <- tryCatch({
-      rehber_yolu <- file.path("ai_rehber.md")
-      if (file.exists(rehber_yolu)) {
-        readLines(rehber_yolu, encoding = "UTF-8", warn = FALSE) |> paste(collapse = "\n")
-      } else {
-        "Bilgi tabanı yüklenemedi."
-      }
+      destek_dosya_oku(file.path("ai_rehber.md"))
     }, error = function(e) {
       "Bilgi tabanı yüklenemedi."
     })
@@ -191,8 +226,8 @@ destekYardimServer <- function(id, current_user_id = NULL) {
 
     # Chatbot mesajı gönderildiğinde
     observeEvent(input$chatbot_mesaj, {
-      kullanici_mesaji <- trimws(input$chatbot_mesaj)
-      if (is.null(kullanici_mesaji) || !nzchar(kullanici_mesaji)) return()
+      kullanici_mesaji <- trimws(destek_guvenli_utf8(input$chatbot_mesaj %||% ""))
+      if (!nzchar(kullanici_mesaji)) return()
 
       # Kullanıcı mesajını ekrana ekle (JS ile)
       shinyjs::runjs(sprintf(
@@ -238,7 +273,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
         api_key <- if (!is.null(user_api_key) && nzchar(user_api_key)) user_api_key else env_api_key
 
         # Bilgi tabanını boyut sınırı ile kes (büyük sistem mesajı 500 hatasına yol açabilir)
-        bilgi_icerigi <- bilgi_tabani
+        bilgi_icerigi <- destek_guvenli_utf8(bilgi_tabani)
         if (nchar(bilgi_icerigi) > 12000) {
           bilgi_icerigi <- substr(bilgi_icerigi, 1, 12000)
           bilgi_icerigi <- paste0(bilgi_icerigi, "\n\n[Bilgi tabani kisaltildi]")
@@ -305,7 +340,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           if (is.list(parsed$choices) && length(parsed$choices) > 0) {
             choice <- parsed$choices[[1]]
             if (!is.null(choice$message) && !is.null(choice$message$content)) {
-              bot_yaniti <- trimws(choice$message$content)
+              bot_yaniti <- trimws(destek_guvenli_utf8(choice$message$content))
             }
           }
 

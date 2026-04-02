@@ -299,12 +299,19 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
               tags$button(
                 id = paste0("copy_user_", msg$id),
                 class = "btn btn-default message-action-btn", title = "Kopyala",
-                onclick = sprintf("copyAIMessageContent('%s')", msg$id),
+                onclick = sprintf("copyRenderedMessageById('%s', this)", msg$id),
                 icon("copy")
               )
             )
           ),
-          div(class = "message-content", id = msg$id, HTML(msg$html_content))
+          div(
+            class = "message-content",
+            id = msg$id,
+            `data-copy-b64` = jsonlite::base64_enc(
+              charToRaw(enc2utf8(as.character(msg$content %||% "")[1]))
+            ),
+            HTML(msg$html_content)
+          )
         )
       )
 
@@ -372,7 +379,7 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
                 id = paste0("copy_ai_", msg$id),
                 class = paste("btn btn-default message-action-btn", if(is_streaming) "streaming-hidden" else ""),
                 title = "Kopyala",
-                onclick = sprintf("copyAIMessageContent('%s')", msg$id),
+                onclick = sprintf("copyRenderedMessageById('%s', this)", msg$id),
                 icon("copy")
               ),
               tags$button(
@@ -384,10 +391,15 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
               )
             )
           ),
-          div(class = "message-content",
-              id = msg$id,
-              `data-streaming` = if(is_streaming) "true" else "false",
-              HTML(msg$html_content)),
+          div(
+            class = "message-content",
+            id = msg$id,
+            `data-copy-b64` = jsonlite::base64_enc(
+              charToRaw(enc2utf8(as.character(msg$content %||% "")[1]))
+            ),
+            `data-streaming` = if(is_streaming) "true" else "false",
+            HTML(msg$html_content)
+          ),
           if (!is.null(audio_block)) audio_block,
           build_followup_container(
             msg$id,
@@ -405,12 +417,19 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
           class = "system-message",
           div(
             style = "display: flex; align-items: center; justify-content: center; gap: 10px;",
-            div(class = "message-content", HTML(msg$html_content)),
+            div(
+              class = "message-content",
+              id = msg$id,
+              `data-copy-b64` = jsonlite::base64_enc(
+                charToRaw(enc2utf8(as.character(msg$content %||% "")[1]))
+              ),
+              HTML(msg$html_content)
+            ),
             tags$button(
               class = "message-action-btn",
               title = "Copy Text",
               icon("copy"),
-              onclick = sprintf("copyAIMessageContent('%s')", msg$id)
+              onclick = sprintf("copyRenderedMessageById('%s', this)", msg$id)
             )
           ),
           div(class = paste("message-time", if (isTRUE(settings$enable_timestamps)) "" else "hidden"), msg$timestamp)
