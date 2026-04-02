@@ -56,6 +56,39 @@
   margin-top: 0px; 
 }
 
+/* Arayüz Ayarları ve Kısayollar kartlarını eşit yükseklikte tut */
+.settings-equal-height-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.settings-equal-height-row > [class*="col-"] {
+  display: flex;
+}
+
+.settings-equal-height-card {
+  width: 100%;
+  height: 100%;
+  margin-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .settings-equal-height-row {
+    display: block;
+    margin-bottom: 0;
+  }
+
+  .settings-equal-height-row > [class*="col-"] {
+    display: block;
+  }
+
+  .settings-equal-height-card {
+    height: auto;
+    margin-bottom: 20px;
+  }
+}
+
 /* Ayarlar başlığı özel stil */
 .settings-title {
   font-size: 24px;

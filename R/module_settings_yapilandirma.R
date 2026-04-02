@@ -190,10 +190,12 @@ settingsYapilandirmaUI <- function(id) {
             ),
             # Arayüz Ayarları ve Kısayollar
             fluidRow(
+              class = "settings-equal-height-row",
               column(
                 width = 9,
+                class = "settings-equal-height-column",
                 div(
-                  class = "settings-card",
+                  class = "settings-card settings-equal-height-card",
                   style = "min-height: 425px;",
                   h3("Arayüz Ayarları", class = "settings-title"),
                   div(
@@ -244,16 +246,17 @@ settingsYapilandirmaUI <- function(id) {
               ),
               column(
                 width = 3,
+                class = "settings-equal-height-column",
                 div(
-                  class = "settings-card",
+                  class = "settings-card settings-equal-height-card",
                   style = "min-height: 425px;",
                   h3("Kısayollar", class = "settings-title", style = "margin-bottom: 16px;"),
                   div(
                     class = "shortcut-list",
                     div(class = "shortcut-item", tags$kbd("Enter"), " - Mesaj gönder"),
                     div(class = "shortcut-item", tags$kbd("Shift + Enter"), " - Yeni satır"),
-                    div(class = "shortcut-item", tags$kbd("Ctrl + U"), " - Dosya yükle"),
-                    div(class = "shortcut-item", tags$kbd("Ctrl + N"), " - Yeni sohbet"),
+                    div(class = "shortcut-item", tags$kbd("Ctrl + Alt + U"), " - Dosya yükle"),
+                    div(class = "shortcut-item", tags$kbd("Ctrl + Alt + N"), " - Yeni sohbet"),
                     div(class = "shortcut-item", tags$kbd("Page Up/Down"), " - Sayfa kaydır")
                   )
                 )

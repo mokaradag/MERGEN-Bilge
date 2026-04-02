@@ -452,7 +452,7 @@ ui <- dashboardPage(
                   div(class = "model-selector-wrapper",
                       uiOutput("chat_model_selector_ui", style = "display:inline-block;")
                   ),
-                  div(id = "file_btn_container", class = "action-btn file-btn", title = "Dosya Ekle (Ctrl+U)", tags$label(`for` = "file_upload", tags$i(class = "fas fa-paperclip"))),
+				  div(id = "file_btn_container", class = "action-btn file-btn", title = "Dosya Ekle (Ctrl+Alt+U)", tags$label(`for` = "file_upload", tags$i(class = "fas fa-paperclip"))),
                   actionButton(inputId = "voice_btn", label = "", icon = icon("microphone"), class = "action-btn voice-btn", title = "Sesli Giriş"),
                   actionButton(
                     inputId = "send_stop_btn",

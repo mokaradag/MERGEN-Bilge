@@ -53,9 +53,10 @@ $(document).ready(function() {
     }, 50);
   });
 
-  // Klavye kısayolları
+  // Sohbet giriş alanı tuşları
   $(document).on('keyup', function(e) {
     const chatInput = $(e.target);
+
     if (chatInput.is('.chat-input')) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -86,27 +87,54 @@ $(document).ready(function() {
         if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
         if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(e.target);
       }
+
+      return;
+    }
+  });
+
+  // Global kısayollar
+  $(document).on('keydown', function(e) {
+    const key = (e.key || '').toLowerCase();
+
+    if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && key === 'n') {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const newChatButton = document.getElementById('new_chat_btn');
+      if (newChatButton) {
+        newChatButton.click();
+      }
       return;
     }
 
-    // Global kısayollar
-    if (e.ctrlKey && e.key === 'n') {
+    if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && key === 'u') {
       e.preventDefault();
-      $('#new_chat_btn').click();
-    }
-    if (e.ctrlKey && e.key === 'u') {
-      e.preventDefault();
-      $('#file_upload').click();
+      e.stopPropagation();
+
+      const fileInput = document.getElementById('file_upload');
+      if (fileInput) {
+        fileInput.click();
+      }
+      return;
     }
 
-    if (e.key === 'PageUp') {
+    if (e.key === 'PageUp' || e.key === 'PageDown') {
       e.preventDefault();
-      $('.chat-container').animate({ scrollTop: '-=300' }, 200);
+      e.stopPropagation();
+
+      var chatContainer = $('.chat-container');
+
+      if (chatContainer.length) {
+        var sayfaKaydirmaMiktari = Math.max(160, Math.floor(chatContainer[0].clientHeight * 0.98));
+        var hedefScrollTop = chatContainer.scrollTop() + (e.key === 'PageUp' ? -sayfaKaydirmaMiktari : sayfaKaydirmaMiktari);
+
+        chatContainer.stop(true).animate({
+          scrollTop: hedefScrollTop
+        }, 200);
+      }
+      return;
     }
-    if (e.key === 'PageDown') {
-      e.preventDefault();
-      $('.chat-container').animate({ scrollTop: '+=300' }, 200);
-    }
+
     if (e.key === 'Escape') {
       $('.modal').modal('hide');
     }
