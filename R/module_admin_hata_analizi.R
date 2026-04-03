@@ -1002,6 +1002,8 @@ adminHataAnaliziServer <- function(id) {
       data$oncelik_display <- sapply(data$Oncelik, oncelik_badge)
       data$durum_display <- sapply(data$Durum, durum_badge)
       data$tarih <- format(as.POSIXct(data$OlusturmaTarihi), "%d.%m.%Y %H:%M")
+      # Tarih sütunu için gizli sıralama değeri (epoch saniye)
+      data$tarih_sort <- as.numeric(as.POSIXct(data$OlusturmaTarihi))
       data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
       data$konular_display <- ifelse(nzchar(data$Konular), data$Konular, "-")
 
@@ -1034,9 +1036,9 @@ adminHataAnaliziServer <- function(id) {
 
       display_data <- data[, c("row_num", "kullanici", "konular_display", "kategori_display",
                                 "oncelik_display", "durum_display", "aciklama_display",
-                                "dosya_display", "islem_display", "tarih")]
+                                "dosya_display", "islem_display", "tarih", "tarih_sort")]
       colnames(display_data) <- c("#", "Kullanıcı", "Konular", "Kategori", "Öncelik",
-                                   "Durum", "Açıklama", "Dosyalar", "İşlem", "Tarih")
+                                   "Durum", "Açıklama", "Dosyalar", "İşlem", "Tarih", "tarih_sort")
 
       DT::datatable(
         display_data,
@@ -1051,7 +1053,9 @@ adminHataAnaliziServer <- function(id) {
             list(width = '40px', targets = 0),
             list(width = '120px', targets = c(4, 5)),
             list(width = '60px', targets = 8),
-            list(orderable = FALSE, targets = c(0, 7, 8))
+            list(orderable = FALSE, targets = c(0, 7, 8)),
+            list(orderData = 10, targets = 9),
+            list(visible = FALSE, targets = 10)
           ),
           headerCallback = admin_dt_header_callback
         ),

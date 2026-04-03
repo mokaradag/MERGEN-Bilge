@@ -391,7 +391,7 @@ adminYanitAnaliziServer <- function(id) {
               class = "analytics-card",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("chart-area"), " Günlük Geri Bildirim Trendi (30 Gün)"),
+                h4(class = "card-title", icon("chart-area"), " Günlük Geri Bildirim Eğilimi (30 Gün)"),
                 admin_create_info_button("Son 30 gündeki günlük beğeni ve beğenmeme sayıları.")
               ),
               highcharter::highchartOutput(ns("ya_gunluk_trend_chart"), height = "320px")
@@ -617,7 +617,7 @@ adminYanitAnaliziServer <- function(id) {
           )
         ) %>%
         highcharter::hc_add_series(
-          name = "Beğeni", data = data$begeni, type = "areaspline",
+          name = "Beğeni", data = as.list(as.numeric(data$begeni)), type = "areaspline",
           color = "#10b981",
           fillColor = list(
             linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
@@ -625,7 +625,7 @@ adminYanitAnaliziServer <- function(id) {
           )
         ) %>%
         highcharter::hc_add_series(
-          name = "Beğenmeme", data = data$begenmeme, type = "areaspline",
+          name = "Beğenmeme", data = as.list(as.numeric(data$begenmeme)), type = "areaspline",
           color = "#ef4444",
           fillColor = list(
             linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
@@ -709,8 +709,8 @@ adminYanitAnaliziServer <- function(id) {
         highcharter::hc_plotOptions(
           bar = list(stacking = "normal", borderWidth = 0, borderRadius = 3)
         ) %>%
-        highcharter::hc_add_series(name = "Beğeni", data = data$begeni, color = "#10b981") %>%
-        highcharter::hc_add_series(name = "Beğenmeme", data = data$begenmeme, color = "#ef4444") %>%
+        highcharter::hc_add_series(name = "Beğeni", data = as.list(as.numeric(data$begeni)), color = "#10b981") %>%
+        highcharter::hc_add_series(name = "Beğenmeme", data = as.list(as.numeric(data$begenmeme)), color = "#ef4444") %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a", borderColor = "#333",
           style = list(color = "#fff"), shared = TRUE
@@ -728,6 +728,7 @@ adminYanitAnaliziServer <- function(id) {
       data$sure_grubu <- factor(data$sure_grubu, levels = sira)
       data <- data[order(data$sure_grubu), ]
       data <- data[!is.na(data$sure_grubu), ]
+      if (nrow(data) == 0) return(highcharter::highchart())
 
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "bar", backgroundColor = "transparent") %>%
@@ -745,8 +746,8 @@ adminYanitAnaliziServer <- function(id) {
         highcharter::hc_plotOptions(
           bar = list(stacking = "normal", borderWidth = 0, borderRadius = 3)
         ) %>%
-        highcharter::hc_add_series(name = "Beğeni", data = data$begeni, color = "#10b981") %>%
-        highcharter::hc_add_series(name = "Beğenmeme", data = data$begenmeme, color = "#ef4444") %>%
+        highcharter::hc_add_series(name = "Beğeni", data = as.list(as.numeric(data$begeni)), color = "#10b981") %>%
+        highcharter::hc_add_series(name = "Beğenmeme", data = as.list(as.numeric(data$begenmeme)), color = "#ef4444") %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a", borderColor = "#333",
           style = list(color = "#fff"), shared = TRUE
@@ -764,20 +765,23 @@ adminYanitAnaliziServer <- function(id) {
       data <- ya_data()$model_performans
       if (nrow(data) == 0) return(highcharter::highchart())
 
+      data$toplam_yanit <- as.numeric(data$toplam_yanit)
+      data$begeni <- as.numeric(data$begeni)
+      data$begenmeme <- as.numeric(data$begenmeme)
       data$begeni_oran <- ifelse(data$toplam_yanit > 0, round((data$begeni / data$toplam_yanit) * 100, 1), 0)
       data$begenmeme_oran <- ifelse(data$toplam_yanit > 0, round((data$begenmeme / data$toplam_yanit) * 100, 1), 0)
       data <- data[order(-data$begeni_oran), ]
 
       # Model isimlerini kısalt (çok uzunsa)
       data$model_kisa <- sapply(data$ModelUsed, function(m) {
-        if (nchar(m) > 35) paste0(substr(m, 1, 32), "...") else m
+        if (is.na(m) || nchar(m) > 35) paste0(substr(m, 1, 32), "...") else m
       })
 
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "bar", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = data$model_kisa,
+          categories = as.list(data$model_kisa),
           labels = list(style = list(color = "#ccc", fontSize = "12px"))
         ) %>%
         highcharter::hc_yAxis(
@@ -789,8 +793,8 @@ adminYanitAnaliziServer <- function(id) {
         highcharter::hc_plotOptions(
           bar = list(stacking = "normal", borderWidth = 0, borderRadius = 4)
         ) %>%
-        highcharter::hc_add_series(name = "Beğeni", data = data$begeni, color = "#10b981") %>%
-        highcharter::hc_add_series(name = "Beğenmeme", data = data$begenmeme, color = "#ef4444") %>%
+        highcharter::hc_add_series(name = "Beğeni", data = as.list(data$begeni), color = "#10b981") %>%
+        highcharter::hc_add_series(name = "Beğenmeme", data = as.list(data$begenmeme), color = "#ef4444") %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a", borderColor = "#333",
           style = list(color = "#fff"), shared = TRUE,
@@ -876,6 +880,10 @@ adminYanitAnaliziServer <- function(id) {
       data <- ya_data()$model_performans
       if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
+      data$toplam_yanit <- as.numeric(data$toplam_yanit)
+      data$begeni <- as.numeric(data$begeni)
+      data$begenmeme <- as.numeric(data$begenmeme)
+      data$ort_sure <- as.numeric(data$ort_sure)
       data$row_num <- 1:nrow(data)
       data$begeni_oran <- ifelse(data$toplam_yanit > 0, round((data$begeni / data$toplam_yanit) * 100, 1), 0)
       data$ort_sure <- round(data$ort_sure, 1)
