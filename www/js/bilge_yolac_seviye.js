@@ -1,5 +1,6 @@
 // www/js/bilge_yolac_seviye.js
-// Bilge Yolaç seviye sistemi: 5 seviye tanımı, platform düzenleri, düşman yerleşimleri, boss ve çıkış noktaları
+// Bilge Yolaç seviye sistemi: 5 dünya kimliği, platform düzenleri, çevre
+// set parçaları, düşman yerleşimleri, boss ve çıkış noktaları.
 
 (function() {
   "use strict";
@@ -9,236 +10,238 @@
 
   var state = BY.state;
 
-  // ── Seviye verileri ───────────────────────────────────────────────────────
-  // Platform y değerleri canvasYukseklik oranı olarak tanımlanır (0.35 - 0.72 arası)
-  // x değerleri dünya koordinatlarında, genislik/yukseklik piksel cinsindendir
-
   var SEVIYE_VERILERI = [
-
-    // ── Seviye 0: Kozmik Radar Alanı ──────────────────────────────────────
     {
-      isim: "Kozmik Radar Alanı",
-      dunyaGenislik: 3500,
+      isim: "Mergen Sınır Tapınağı",
+      dunyaId: "mergen",
+      dunyaGenislik: 3600,
       tema: 0,
       platformlar: [
-        // Sol bölge: giriş merdiveni
-        { x: 200,  y: 0.68, genislik: 120, yukseklik: 12 },
-        { x: 380,  y: 0.60, genislik: 100, yukseklik: 12 },
-        { x: 550,  y: 0.52, genislik: 140, yukseklik: 14 },
-        // Orta bölge: radar platformları
-        { x: 850,  y: 0.65, genislik: 160, yukseklik: 12 },
-        { x: 1100, y: 0.55, genislik: 100, yukseklik: 12 },
-        { x: 1350, y: 0.45, genislik: 180, yukseklik: 14 },
-        // Sağ bölge: yükselen geçit
-        { x: 1800, y: 0.62, genislik: 120, yukseklik: 12 },
-        { x: 2100, y: 0.50, genislik: 140, yukseklik: 14 },
-        { x: 2450, y: 0.58, genislik: 160, yukseklik: 12 },
-        { x: 2800, y: 0.70, genislik: 200, yukseklik: 14 }
+        { x: 180,  y: 0.68, genislik: 120, yukseklik: 12 },
+        { x: 360,  y: 0.60, genislik: 110, yukseklik: 12 },
+        { x: 540,  y: 0.52, genislik: 130, yukseklik: 12 },
+        { x: 820,  y: 0.64, genislik: 160, yukseklik: 12 },
+        { x: 1100, y: 0.56, genislik: 110, yukseklik: 12 },
+        { x: 1380, y: 0.44, genislik: 180, yukseklik: 14 },
+        { x: 1760, y: 0.62, genislik: 120, yukseklik: 12 },
+        { x: 2060, y: 0.50, genislik: 140, yukseklik: 14 },
+        { x: 2400, y: 0.58, genislik: 160, yukseklik: 12 },
+        { x: 2780, y: 0.48, genislik: 120, yukseklik: 12 },
+        { x: 3050, y: 0.66, genislik: 210, yukseklik: 14 }
+      ],
+      setParcalari: [
+        { x: 120, tur: "pole", katman: "arka", yOrani: 0.76, genislik: 96, yukseklik: 88, saydamlik: 0.75 },
+        { x: 340, tur: "temple", katman: "orta", yOrani: 0.78, genislik: 180, yukseklik: 120 },
+        { x: 710, tur: "radar", katman: "orta", yOrani: 0.78, genislik: 150, yukseklik: 120 },
+        { x: 1180, tur: "plateau", katman: "arka", yOrani: 0.74, genislik: 180, yukseklik: 100, saydamlik: 0.75 },
+        { x: 1480, tur: "temple", katman: "orta", yOrani: 0.74, genislik: 170, yukseklik: 120 },
+        { x: 1910, tur: "radar", katman: "orta", yOrani: 0.76, genislik: 140, yukseklik: 116 },
+        { x: 2300, tur: "grass", katman: "on", yOrani: 0.82, genislik: 120, yukseklik: 56, saydamlik: 0.95 },
+        { x: 2680, tur: "temple", katman: "arka", yOrani: 0.76, genislik: 220, yukseklik: 126, saydamlik: 0.70 },
+        { x: 3160, tur: "radar", katman: "orta", yOrani: 0.78, genislik: 170, yukseklik: 130 }
       ],
       dusmanSpawnlar: [
-        { x: 600,  tip: "drone" },
-        { x: 1000, tip: "drone" },
-        { x: 1400, tip: "drone" },
-        { x: 1900, tip: "jammer" },
-        { x: 2300, tip: "drone" },
-        { x: 2700, tip: "jammer" }
+        { x: 620, tip: "drone" },
+        { x: 980, tip: "drone" },
+        { x: 1360, tip: "sentinel" },
+        { x: 1860, tip: "jammer" },
+        { x: 2260, tip: "drone" },
+        { x: 2720, tip: "sentinel" },
+        { x: 3120, tip: "jammer" }
       ],
-      bossSpawn: { x: 3200, tip: "boss" },
-      cikisNoktasi: { x: 3400 }
+      bossSpawn: { x: 3320, tip: "boss" },
+      cikisNoktasi: { x: 3480 }
     },
-
-    // ── Seviye 1: Fütüristik Radar Üssü ──────────────────────────────────
     {
-      isim: "Fütüristik Radar Üssü",
-      dunyaGenislik: 3800,
+      isim: "Ülgen Göksel Kalesi",
+      dunyaId: "ulgen",
+      dunyaGenislik: 3900,
       tema: 1,
       platformlar: [
-        // Giriş bölgesi: düz platformlar
-        { x: 180,  y: 0.70, genislik: 140, yukseklik: 12 },
-        { x: 400,  y: 0.62, genislik: 100, yukseklik: 12 },
-        // İlk yükseliş zinciri
-        { x: 620,  y: 0.54, genislik: 120, yukseklik: 14 },
-        { x: 830,  y: 0.46, genislik: 100, yukseklik: 12 },
-        { x: 1050, y: 0.38, genislik: 160, yukseklik: 14 },
-        // Orta alan: üs yapıları
-        { x: 1400, y: 0.60, genislik: 200, yukseklik: 16 },
-        { x: 1700, y: 0.50, genislik: 140, yukseklik: 12 },
-        { x: 1950, y: 0.42, genislik: 120, yukseklik: 12 },
-        // Sağ bölge: iniş platformları
-        { x: 2300, y: 0.55, genislik: 160, yukseklik: 14 },
-        { x: 2600, y: 0.65, genislik: 180, yukseklik: 12 },
-        { x: 2900, y: 0.48, genislik: 100, yukseklik: 12 },
-        { x: 3150, y: 0.58, genislik: 140, yukseklik: 14 }
+        { x: 160,  y: 0.70, genislik: 140, yukseklik: 12 },
+        { x: 420,  y: 0.60, genislik: 110, yukseklik: 12 },
+        { x: 640,  y: 0.50, genislik: 120, yukseklik: 12 },
+        { x: 880,  y: 0.40, genislik: 120, yukseklik: 12 },
+        { x: 1160, y: 0.54, genislik: 180, yukseklik: 14 },
+        { x: 1480, y: 0.44, genislik: 140, yukseklik: 12 },
+        { x: 1760, y: 0.36, genislik: 120, yukseklik: 12 },
+        { x: 2060, y: 0.52, genislik: 180, yukseklik: 14 },
+        { x: 2380, y: 0.62, genislik: 190, yukseklik: 14 },
+        { x: 2720, y: 0.46, genislik: 110, yukseklik: 12 },
+        { x: 3020, y: 0.56, genislik: 150, yukseklik: 14 },
+        { x: 3340, y: 0.68, genislik: 220, yukseklik: 16 }
+      ],
+      setParcalari: [
+        { x: 300, tur: "spire", katman: "arka", yOrani: 0.70, genislik: 180, yukseklik: 140, saydamlik: 0.72 },
+        { x: 560, tur: "tower", katman: "orta", yOrani: 0.78, genislik: 140, yukseklik: 150 },
+        { x: 980, tur: "energy_gate", katman: "orta", yOrani: 0.76, genislik: 180, yukseklik: 126 },
+        { x: 1430, tur: "relay", katman: "on", yOrani: 0.74, genislik: 110, yukseklik: 110 },
+        { x: 1850, tur: "fortress", katman: "arka", yOrani: 0.72, genislik: 220, yukseklik: 130, saydamlik: 0.70 },
+        { x: 2170, tur: "tower", katman: "orta", yOrani: 0.76, genislik: 150, yukseklik: 150 },
+        { x: 2600, tur: "crystal", katman: "on", yOrani: 0.80, genislik: 110, yukseklik: 74 },
+        { x: 3170, tur: "energy_gate", katman: "orta", yOrani: 0.78, genislik: 190, yukseklik: 132 }
       ],
       dusmanSpawnlar: [
-        { x: 500,  tip: "drone" },
-        { x: 850,  tip: "drone" },
-        { x: 1200, tip: "jammer" },
-        { x: 1600, tip: "sentinel" },
-        { x: 2000, tip: "drone" },
-        { x: 2400, tip: "jammer" },
-        { x: 2800, tip: "sentinel" },
-        { x: 3100, tip: "drone" }
+        { x: 520, tip: "drone" },
+        { x: 880, tip: "sentinel" },
+        { x: 1220, tip: "jammer" },
+        { x: 1600, tip: "drone" },
+        { x: 1980, tip: "sentinel" },
+        { x: 2340, tip: "drone" },
+        { x: 2760, tip: "jammer" },
+        { x: 3200, tip: "sentinel" }
       ],
-      bossSpawn: { x: 3500, tip: "boss" },
-      cikisNoktasi: { x: 3700 }
+      bossSpawn: { x: 3520, tip: "boss" },
+      cikisNoktasi: { x: 3740 }
     },
-
-    // ── Seviye 2: Mistik Tekno Orman ──────────────────────────────────────
     {
-      isim: "Mistik Tekno Orman",
-      dunyaGenislik: 4000,
+      isim: "Kayra Kutsal Ormanı",
+      dunyaId: "kayra",
+      dunyaGenislik: 4050,
       tema: 2,
       platformlar: [
-        // Orman girişi: dal benzeri platformlar
-        { x: 150,  y: 0.65, genislik: 100, yukseklik: 10 },
+        { x: 140,  y: 0.66, genislik: 110, yukseklik: 10 },
         { x: 320,  y: 0.55, genislik: 80,  yukseklik: 10 },
-        { x: 500,  y: 0.45, genislik: 120, yukseklik: 12 },
-        { x: 700,  y: 0.60, genislik: 90,  yukseklik: 10 },
-        // Orman derinlikleri: zigzag dal yolu
-        { x: 950,  y: 0.50, genislik: 140, yukseklik: 12 },
-        { x: 1200, y: 0.38, genislik: 100, yukseklik: 12 },
-        { x: 1400, y: 0.55, genislik: 160, yukseklik: 14 },
-        { x: 1650, y: 0.42, genislik: 120, yukseklik: 12 },
-        // Orman kalbi: geniş ağaç taçları
-        { x: 1950, y: 0.48, genislik: 200, yukseklik: 16 },
-        { x: 2250, y: 0.58, genislik: 110, yukseklik: 12 },
-        { x: 2500, y: 0.40, genislik: 130, yukseklik: 12 },
-        // Orman çıkışı: alçalan patika
-        { x: 2800, y: 0.52, genislik: 150, yukseklik: 14 },
-        { x: 3100, y: 0.62, genislik: 180, yukseklik: 14 },
-        { x: 3400, y: 0.70, genislik: 160, yukseklik: 12 }
+        { x: 520,  y: 0.44, genislik: 130, yukseklik: 12 },
+        { x: 760,  y: 0.58, genislik: 100, yukseklik: 10 },
+        { x: 980,  y: 0.48, genislik: 150, yukseklik: 12 },
+        { x: 1260, y: 0.38, genislik: 100, yukseklik: 12 },
+        { x: 1520, y: 0.54, genislik: 170, yukseklik: 14 },
+        { x: 1820, y: 0.40, genislik: 120, yukseklik: 12 },
+        { x: 2140, y: 0.46, genislik: 220, yukseklik: 16 },
+        { x: 2480, y: 0.58, genislik: 120, yukseklik: 12 },
+        { x: 2780, y: 0.42, genislik: 140, yukseklik: 12 },
+        { x: 3120, y: 0.52, genislik: 180, yukseklik: 14 },
+        { x: 3460, y: 0.66, genislik: 190, yukseklik: 14 }
+      ],
+      setParcalari: [
+        { x: 220, tur: "sacred_tree", katman: "orta", yOrani: 0.80, genislik: 160, yukseklik: 170 },
+        { x: 600, tur: "fern", katman: "on", yOrani: 0.82, genislik: 120, yukseklik: 62 },
+        { x: 920, tur: "runic_ruin", katman: "arka", yOrani: 0.74, genislik: 180, yukseklik: 120, saydamlik: 0.72 },
+        { x: 1320, tur: "sacred_tree", katman: "orta", yOrani: 0.80, genislik: 170, yukseklik: 176 },
+        { x: 1790, tur: "rune_stone", katman: "on", yOrani: 0.80, genislik: 110, yukseklik: 84 },
+        { x: 2260, tur: "runic_ruin", katman: "orta", yOrani: 0.78, genislik: 200, yukseklik: 124 },
+        { x: 2680, tur: "sacred_tree", katman: "arka", yOrani: 0.78, genislik: 200, yukseklik: 180, saydamlik: 0.75 },
+        { x: 3180, tur: "rune_stone", katman: "on", yOrani: 0.80, genislik: 120, yukseklik: 86 }
       ],
       dusmanSpawnlar: [
-        { x: 400,  tip: "drone" },
-        { x: 700,  tip: "glitch" },
-        { x: 1050, tip: "sentinel" },
-        { x: 1350, tip: "drone" },
-        { x: 1700, tip: "jammer" },
-        { x: 2000, tip: "glitch" },
-        { x: 2350, tip: "sentinel" },
-        { x: 2700, tip: "drone" },
-        { x: 3000, tip: "jammer" },
-        { x: 3300, tip: "glitch" }
+        { x: 420, tip: "drone" },
+        { x: 760, tip: "glitch" },
+        { x: 1120, tip: "sentinel" },
+        { x: 1480, tip: "drone" },
+        { x: 1820, tip: "jammer" },
+        { x: 2220, tip: "glitch" },
+        { x: 2580, tip: "sentinel" },
+        { x: 3020, tip: "drone" },
+        { x: 3380, tip: "glitch" }
       ],
-      bossSpawn: { x: 3700, tip: "boss" },
+      bossSpawn: { x: 3660, tip: "boss" },
       cikisNoktasi: { x: 3900 }
     },
-
-    // ── Seviye 3: Kadim Tekno Tapınak ─────────────────────────────────────
     {
-      isim: "Kadim Tekno Tapınak",
-      dunyaGenislik: 4200,
+      isim: "Erlik Bozulma Mabedi",
+      dunyaId: "erlik",
+      dunyaGenislik: 4250,
       tema: 3,
       platformlar: [
-        // Tapınak girişi: simetrik basamaklar
-        { x: 160,  y: 0.72, genislik: 120, yukseklik: 14 },
-        { x: 340,  y: 0.64, genislik: 100, yukseklik: 12 },
-        { x: 520,  y: 0.56, genislik: 100, yukseklik: 12 },
-        { x: 700,  y: 0.48, genislik: 140, yukseklik: 14 },
-        // İç avlu: yükselen sütunlar
-        { x: 950,  y: 0.40, genislik: 80,  yukseklik: 10 },
-        { x: 1120, y: 0.52, genislik: 160, yukseklik: 14 },
-        { x: 1380, y: 0.36, genislik: 100, yukseklik: 12 },
-        { x: 1580, y: 0.60, genislik: 180, yukseklik: 16 },
-        // Kutsal salon: geniş platformlar
-        { x: 1900, y: 0.45, genislik: 200, yukseklik: 16 },
-        { x: 2200, y: 0.55, genislik: 120, yukseklik: 12 },
-        { x: 2420, y: 0.42, genislik: 140, yukseklik: 14 },
-        { x: 2680, y: 0.65, genislik: 100, yukseklik: 12 },
-        // Tapınak çıkışı: inen yol
-        { x: 2950, y: 0.50, genislik: 160, yukseklik: 14 },
-        { x: 3200, y: 0.58, genislik: 130, yukseklik: 12 },
-        { x: 3450, y: 0.68, genislik: 180, yukseklik: 14 },
-        { x: 3700, y: 0.72, genislik: 140, yukseklik: 12 }
+        { x: 140,  y: 0.72, genislik: 120, yukseklik: 14 },
+        { x: 330,  y: 0.62, genislik: 100, yukseklik: 12 },
+        { x: 520,  y: 0.54, genislik: 110, yukseklik: 12 },
+        { x: 740,  y: 0.44, genislik: 140, yukseklik: 14 },
+        { x: 980,  y: 0.58, genislik: 120, yukseklik: 12 },
+        { x: 1260, y: 0.36, genislik: 100, yukseklik: 12 },
+        { x: 1540, y: 0.54, genislik: 170, yukseklik: 16 },
+        { x: 1860, y: 0.44, genislik: 190, yukseklik: 16 },
+        { x: 2200, y: 0.56, genislik: 120, yukseklik: 12 },
+        { x: 2460, y: 0.42, genislik: 140, yukseklik: 14 },
+        { x: 2780, y: 0.66, genislik: 110, yukseklik: 12 },
+        { x: 3090, y: 0.50, genislik: 170, yukseklik: 14 },
+        { x: 3400, y: 0.60, genislik: 140, yukseklik: 12 },
+        { x: 3710, y: 0.70, genislik: 200, yukseklik: 14 }
+      ],
+      setParcalari: [
+        { x: 260, tur: "glitch_temple", katman: "arka", yOrani: 0.76, genislik: 210, yukseklik: 140, saydamlik: 0.74 },
+        { x: 690, tur: "thorn", katman: "on", yOrani: 0.82, genislik: 120, yukseklik: 88 },
+        { x: 1120, tur: "rift", katman: "orta", yOrani: 0.72, genislik: 160, yukseklik: 150 },
+        { x: 1570, tur: "glitch_crystal", katman: "on", yOrani: 0.80, genislik: 120, yukseklik: 98 },
+        { x: 1980, tur: "glitch_temple", katman: "orta", yOrani: 0.76, genislik: 220, yukseklik: 146 },
+        { x: 2470, tur: "rift", katman: "orta", yOrani: 0.74, genislik: 160, yukseklik: 152 },
+        { x: 2960, tur: "thorn", katman: "on", yOrani: 0.82, genislik: 140, yukseklik: 94 },
+        { x: 3480, tur: "glitch_temple", katman: "arka", yOrani: 0.76, genislik: 240, yukseklik: 150, saydamlik: 0.72 }
       ],
       dusmanSpawnlar: [
-        { x: 400,  tip: "sentinel" },
-        { x: 700,  tip: "drone" },
-        { x: 1000, tip: "jammer" },
-        { x: 1300, tip: "glitch" },
-        { x: 1600, tip: "sentinel" },
-        { x: 1950, tip: "drone" },
-        { x: 2250, tip: "glitch" },
-        { x: 2550, tip: "jammer" },
-        { x: 2850, tip: "sentinel" },
-        { x: 3150, tip: "drone" },
-        { x: 3400, tip: "glitch" },
-        { x: 3650, tip: "jammer" }
+        { x: 420, tip: "sentinel" },
+        { x: 780, tip: "glitch" },
+        { x: 1180, tip: "jammer" },
+        { x: 1540, tip: "glitch" },
+        { x: 1900, tip: "sentinel" },
+        { x: 2280, tip: "drone" },
+        { x: 2640, tip: "glitch" },
+        { x: 3040, tip: "jammer" },
+        { x: 3440, tip: "sentinel" },
+        { x: 3820, tip: "glitch" }
       ],
-      bossSpawn: { x: 3900, tip: "boss" },
-      cikisNoktasi: { x: 4100 }
+      bossSpawn: { x: 3950, tip: "boss" },
+      cikisNoktasi: { x: 4140 }
     },
-
-    // ── Seviye 4: Elektronik Harp Meydanı ─────────────────────────────────
     {
-      isim: "Elektronik Harp Meydanı",
-      dunyaGenislik: 4500,
+      isim: "Umay Şifa Mabedi",
+      dunyaId: "umay",
+      dunyaGenislik: 4520,
       tema: 4,
       platformlar: [
-        // Siperhane girişi: düzensiz bariyerler
-        { x: 140,  y: 0.70, genislik: 100, yukseklik: 12 },
-        { x: 320,  y: 0.58, genislik: 80,  yukseklik: 10 },
-        { x: 480,  y: 0.48, genislik: 120, yukseklik: 12 },
-        { x: 670,  y: 0.62, genislik: 90,  yukseklik: 10 },
-        // Ön cephe: dalgalı platform dizisi
-        { x: 880,  y: 0.42, genislik: 140, yukseklik: 14 },
-        { x: 1100, y: 0.55, genislik: 100, yukseklik: 12 },
-        { x: 1300, y: 0.38, genislik: 110, yukseklik: 12 },
-        { x: 1520, y: 0.50, genislik: 160, yukseklik: 14 },
-        // Savaş alanı merkezi: büyük karakol platformları
-        { x: 1800, y: 0.60, genislik: 200, yukseklik: 16 },
-        { x: 2100, y: 0.44, genislik: 120, yukseklik: 12 },
-        { x: 2330, y: 0.36, genislik: 100, yukseklik: 12 },
-        { x: 2550, y: 0.52, genislik: 180, yukseklik: 14 },
-        // Arka cephe: yoğun platform ağı
-        { x: 2850, y: 0.65, genislik: 140, yukseklik: 12 },
-        { x: 3080, y: 0.48, genislik: 120, yukseklik: 14 },
-        { x: 3300, y: 0.40, genislik: 100, yukseklik: 12 },
-        { x: 3520, y: 0.56, genislik: 160, yukseklik: 14 },
-        { x: 3780, y: 0.68, genislik: 200, yukseklik: 16 },
-        { x: 4050, y: 0.72, genislik: 140, yukseklik: 12 }
+        { x: 140,  y: 0.70, genislik: 110, yukseklik: 12 },
+        { x: 320,  y: 0.60, genislik: 90,  yukseklik: 10 },
+        { x: 520,  y: 0.48, genislik: 120, yukseklik: 12 },
+        { x: 740,  y: 0.58, genislik: 110, yukseklik: 10 },
+        { x: 980,  y: 0.42, genislik: 150, yukseklik: 14 },
+        { x: 1240, y: 0.56, genislik: 110, yukseklik: 12 },
+        { x: 1510, y: 0.38, genislik: 120, yukseklik: 12 },
+        { x: 1790, y: 0.52, genislik: 170, yukseklik: 14 },
+        { x: 2100, y: 0.64, genislik: 210, yukseklik: 16 },
+        { x: 2430, y: 0.46, genislik: 120, yukseklik: 12 },
+        { x: 2690, y: 0.36, genislik: 110, yukseklik: 12 },
+        { x: 2960, y: 0.54, genislik: 180, yukseklik: 14 },
+        { x: 3280, y: 0.66, genislik: 150, yukseklik: 12 },
+        { x: 3570, y: 0.50, genislik: 170, yukseklik: 14 },
+        { x: 3890, y: 0.68, genislik: 220, yukseklik: 16 }
+      ],
+      setParcalari: [
+        { x: 260, tur: "bloom", katman: "on", yOrani: 0.80, genislik: 120, yukseklik: 78 },
+        { x: 620, tur: "sanctuary_gate", katman: "arka", yOrani: 0.76, genislik: 200, yukseklik: 134, saydamlik: 0.72 },
+        { x: 980, tur: "life_pool", katman: "orta", yOrani: 0.80, genislik: 180, yukseklik: 96 },
+        { x: 1420, tur: "flora", katman: "on", yOrani: 0.82, genislik: 130, yukseklik: 76 },
+        { x: 1900, tur: "sanctuary_gate", katman: "orta", yOrani: 0.76, genislik: 220, yukseklik: 140 },
+        { x: 2450, tur: "life_pool", katman: "orta", yOrani: 0.80, genislik: 180, yukseklik: 96 },
+        { x: 3020, tur: "flora", katman: "on", yOrani: 0.82, genislik: 130, yukseklik: 76 },
+        { x: 3600, tur: "sanctuary_gate", katman: "arka", yOrani: 0.76, genislik: 240, yukseklik: 148, saydamlik: 0.72 }
       ],
       dusmanSpawnlar: [
-        { x: 350,  tip: "drone" },
-        { x: 600,  tip: "glitch" },
-        { x: 850,  tip: "sentinel" },
-        { x: 1100, tip: "jammer" },
-        { x: 1350, tip: "drone" },
-        { x: 1600, tip: "glitch" },
-        { x: 1900, tip: "sentinel" },
-        { x: 2200, tip: "jammer" },
-        { x: 2500, tip: "drone" },
-        { x: 2750, tip: "glitch" },
-        { x: 3000, tip: "sentinel" },
-        { x: 3250, tip: "jammer" },
-        { x: 3500, tip: "glitch" },
-        { x: 3800, tip: "sentinel" },
-        { x: 4000, tip: "drone" }
+        { x: 420, tip: "drone" },
+        { x: 820, tip: "sentinel" },
+        { x: 1200, tip: "jammer" },
+        { x: 1600, tip: "drone" },
+        { x: 2040, tip: "sentinel" },
+        { x: 2460, tip: "glitch" },
+        { x: 2900, tip: "jammer" },
+        { x: 3320, tip: "sentinel" },
+        { x: 3740, tip: "drone" }
       ],
-      bossSpawn: { x: 4200, tip: "boss" },
-      cikisNoktasi: { x: 4400 }
+      bossSpawn: { x: 4060, tip: "boss" },
+      cikisNoktasi: { x: 4360 }
     }
   ];
 
-  // ── Seviye modülü ─────────────────────────────────────────────────────────
   BY.seviye = {
-
-    // Belirtilen seviyeyi yükle ve durumu güncelle
     yukle: function(seviyeNo) {
-      if (seviyeNo < 0 || seviyeNo >= SEVIYE_VERILERI.length) {
-        console.warn("[BilgeYolac] Geçersiz seviye numarası:", seviyeNo);
-        seviyeNo = 0;
-      }
+      if (seviyeNo < 0 || seviyeNo >= SEVIYE_VERILERI.length) seviyeNo = 0;
 
       var veri = SEVIYE_VERILERI[seviyeNo];
-
-      // Dünya genişliğini ayarla
       state.dunyaGenislik = veri.dunyaGenislik;
       state.mevcutSeviye = seviyeNo;
+      state.aktifDunyaId = veri.dunyaId;
 
-      // Platformları oluştur: y oranlarını gerçek piksel değerlerine dönüştür
-      var canvasYukseklik = state.canvasYukseklik || 400; // Varsayılan yükseklik
+      var canvasYukseklik = state.canvasYukseklik || 400;
       var platformlar = [];
 
       for (var i = 0; i < veri.platformlar.length; i++) {
@@ -252,52 +255,54 @@
       }
 
       state.platformlar = platformlar;
-
-      // Düşman spawn verilerini düşman modülüne ilet
-      if (BY.dusmanlar && typeof BY.dusmanlar.baslat === "function") {
-        try {
-          BY.dusmanlar.baslat(veri.dusmanSpawnlar);
-        } catch (e) {
-          console.warn("[BilgeYolac] Düşman başlatma hatası:", e);
-        }
-      }
-
-      // Mermileri ve parçacıkları temizle (yeni seviye için)
       state.mermiler = [];
       state.parcaciklar = [];
+
+      if (BY.dunya && typeof BY.dunya.seviyeDegistir === "function") {
+        BY.dunya.seviyeDegistir(seviyeNo);
+      }
+
+      if (BY.dusmanlar && typeof BY.dusmanlar.baslat === "function") {
+        try { BY.dusmanlar.baslat(veri.dusmanSpawnlar); } catch (e) { console.warn("[BilgeYolac] Düşman başlatma hatası:", e); }
+      }
     },
 
-    // Mevcut seviye verilerini döndür
     mevcutVeriAl: function() {
       var seviyeNo = state.mevcutSeviye || 0;
       if (seviyeNo < 0 || seviyeNo >= SEVIYE_VERILERI.length) return null;
       return SEVIYE_VERILERI[seviyeNo];
     },
 
-    // Mevcut seviyenin platformlarını döndür (state'ten)
     platformlariAl: function() {
       return state.platformlar || [];
     },
 
-    // Mevcut seviyenin düşman spawn noktalarını döndür
+    setParcalariAl: function(katman) {
+      var veri = this.mevcutVeriAl();
+      if (!veri || !veri.setParcalari) return [];
+      if (!katman) return veri.setParcalari;
+      var sonuc = [];
+      for (var i = 0; i < veri.setParcalari.length; i++) {
+        if (veri.setParcalari[i].katman === katman) sonuc.push(veri.setParcalari[i]);
+      }
+      return sonuc;
+    },
+
     dusmanSpawnlariAl: function() {
       var veri = this.mevcutVeriAl();
       return veri ? veri.dusmanSpawnlar : [];
     },
 
-    // Mevcut seviyenin boss spawn bilgisini döndür
     bossSpawnAl: function() {
       var veri = this.mevcutVeriAl();
       return veri ? veri.bossSpawn : null;
     },
 
-    // Mevcut seviyenin çıkış noktasını döndür
     cikisNoktasiAl: function() {
       var veri = this.mevcutVeriAl();
       return veri ? veri.cikisNoktasi : null;
     },
 
-    // Toplam seviye sayısını döndür
     seviyeSayisi: function() {
       return SEVIYE_VERILERI.length;
     }

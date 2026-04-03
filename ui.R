@@ -259,9 +259,11 @@ ui <- dashboardPage(
     # Bilge Yolaç karşılama ekranı modülleri (yükleme sırası önemli)
     tags$script(src = "js/bilge_yolac_motor.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_fizik.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_varliklar.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_seviye.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_dunya.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_karakterler.js", defer = "defer"),
+    tags$script(src = "js/bilge_yolac_cephanelik.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_dusmanlar.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_efektler.js", defer = "defer"),
     tags$script(src = "js/bilge_yolac_arayuz.js", defer = "defer"),

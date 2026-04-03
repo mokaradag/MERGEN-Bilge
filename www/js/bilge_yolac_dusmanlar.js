@@ -1,5 +1,6 @@
 // www/js/bilge_yolac_dusmanlar.js
-// Düşman sistemi: 4 düşman tipi (Drone, Sentinel, Jammer, Glitch) + Boss, yapay zekâ davranışları, saldırı kalıpları
+// Düşman sistemi: dünya uyumlu görünüm, ayrışan siluetler, dünya bazlı boss
+// adları ve tematik mermi üretimi.
 
 (function() {
   "use strict";
@@ -7,17 +8,14 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // ── Düşman sprite verileri (8x8 piksel) ───────────────────────────────────
-  // Renk kodları: 0=boş, 1=gövde ana, 2=koyu, 3=açık, 4=göz/enerji
-
   var SPRITE_DRONE = [
-    [0,0,3,3,3,3,0,0],
-    [0,3,1,1,1,1,3,0],
-    [3,1,4,1,1,4,1,3],
+    [0,0,0,3,3,0,0,0],
+    [0,0,3,1,1,3,0,0],
+    [0,3,1,4,4,1,3,0],
     [3,1,1,1,1,1,1,3],
     [0,2,1,1,1,1,2,0],
     [0,0,2,3,3,2,0,0],
-    [0,0,0,2,2,0,0,0],
+    [0,2,0,0,0,0,2,0],
     [0,0,0,0,0,0,0,0]
   ];
 
@@ -33,14 +31,14 @@
   ];
 
   var SPRITE_JAMMER = [
-    [0,0,0,3,3,0,0,0],
-    [0,0,3,1,1,3,0,0],
-    [0,3,1,4,4,1,3,0],
-    [3,1,1,1,1,1,1,3],
+    [0,0,3,3,3,3,0,0],
+    [0,3,1,1,1,1,3,0],
+    [3,1,1,4,4,1,1,3],
     [3,1,1,1,1,1,1,3],
     [0,2,1,1,1,1,2,0],
     [0,0,2,2,2,2,0,0],
-    [0,2,0,0,0,0,2,0]
+    [0,2,0,0,0,0,2,0],
+    [2,0,0,0,0,0,0,2]
   ];
 
   var SPRITE_GLITCH = [
@@ -54,268 +52,240 @@
     [0,0,2,0,0,2,0,0]
   ];
 
-  // Boss sprite (16x16) - Kozmik Muhafız
   var SPRITE_BOSS = [
-    [0,0,0,0,3,3,3,3,3,3,3,3,0,0,0,0],
-    [0,0,0,3,1,1,1,3,3,1,1,1,3,0,0,0],
-    [0,0,3,1,2,1,1,1,1,1,1,2,1,3,0,0],
-    [0,3,1,1,1,4,4,1,1,4,4,1,1,1,3,0],
-    [0,3,1,1,1,4,4,1,1,4,4,1,1,1,3,0],
-    [0,3,2,1,1,1,1,1,1,1,1,1,1,2,3,0],
-    [3,1,2,1,1,1,3,3,3,3,1,1,1,2,1,3],
-    [3,1,1,2,1,1,1,1,1,1,1,1,2,1,1,3],
-    [3,1,1,2,1,1,1,1,1,1,1,1,2,1,1,3],
-    [3,1,1,1,2,1,1,3,3,1,1,2,1,1,1,3],
-    [0,3,1,1,1,2,2,1,1,2,2,1,1,1,3,0],
-    [0,3,1,1,1,1,1,1,1,1,1,1,1,1,3,0],
-    [0,0,3,1,1,1,2,2,2,2,1,1,1,3,0,0],
-    [0,0,0,3,2,1,1,0,0,1,1,2,3,0,0,0],
-    [0,0,0,0,2,2,0,0,0,0,2,2,0,0,0,0],
-    [0,0,0,2,2,0,0,0,0,0,0,2,2,0,0,0]
+    [0,0,0,3,3,3,3,3,3,3,3,0,0,0],
+    [0,0,3,1,1,1,1,3,3,1,1,1,3,0],
+    [0,3,1,2,1,1,1,1,1,1,1,2,1,3],
+    [3,1,1,1,4,4,1,1,1,4,4,1,1,1],
+    [3,1,2,1,1,1,1,3,3,1,1,1,1,2],
+    [3,1,1,2,1,1,1,1,1,1,1,1,2,1],
+    [3,1,1,2,1,1,1,1,1,1,1,1,2,1],
+    [3,1,1,1,2,1,1,3,3,1,1,2,1,1],
+    [3,1,1,1,1,2,2,1,1,2,2,1,1,1],
+    [0,3,1,1,1,1,1,1,1,1,1,1,1,3],
+    [0,0,3,1,1,1,2,2,2,2,1,1,3,0],
+    [0,0,0,3,2,1,1,0,0,1,1,2,3,0],
+    [0,0,0,0,2,2,0,0,0,0,2,2,0,0],
+    [0,0,0,2,2,0,0,0,0,0,0,2,2,0]
   ];
 
-  // ── Düşman tipi tanımları ─────────────────────────────────────────────────
   var DUSMAN_TIPLERI = {
-    drone: {
-      sprite: SPRITE_DRONE,
-      boyut: 8,
-      can: 30,
-      hasar: 5,
-      hiz: 0.8,
-      puan: 10,
-      ucan: true,
-      saldiriAraligi: 120
-    },
-    sentinel: {
-      sprite: SPRITE_SENTINEL,
-      boyut: 8,
-      can: 60,
-      hasar: 10,
-      hiz: 0.5,
-      puan: 25,
-      ucan: false,
-      saldiriAraligi: 90
-    },
-    jammer: {
-      sprite: SPRITE_JAMMER,
-      boyut: 8,
-      can: 40,
-      hasar: 3,
-      hiz: 0,
-      puan: 15,
-      ucan: false,
-      saldiriAraligi: 90
-    },
-    glitch: {
-      sprite: SPRITE_GLITCH,
-      boyut: 8,
-      can: 35,
-      hasar: 7,
-      hiz: 0.6,
-      puan: 20,
-      ucan: false,
-      saldiriAraligi: 150
-    },
-    boss: {
-      sprite: SPRITE_BOSS,
-      boyut: 16,
-      can: 300,
-      hasar: 15,
-      hiz: 0.4,
-      puan: 100,
-      ucan: false,
-      saldiriAraligi: 120
-    }
+    drone: { sprite: SPRITE_DRONE, boyut: 8, can: 26, hasar: 5, hiz: 0.85, puan: 15, ucan: true, saldiriAraligi: 120 },
+    sentinel: { sprite: SPRITE_SENTINEL, boyut: 8, can: 60, hasar: 9, hiz: 0.55, puan: 22, ucan: false, saldiriAraligi: 96 },
+    jammer: { sprite: SPRITE_JAMMER, boyut: 8, can: 42, hasar: 4, hiz: 0.12, puan: 18, ucan: false, saldiriAraligi: 110 },
+    glitch: { sprite: SPRITE_GLITCH, boyut: 8, can: 38, hasar: 7, hiz: 0.70, puan: 20, ucan: false, saldiriAraligi: 135 },
+    boss: { sprite: SPRITE_BOSS, boyut: 14, can: 320, hasar: 14, hiz: 0.42, puan: 120, ucan: false, saldiriAraligi: 90 }
   };
 
-  // ── Renk haritası oluştur ─────────────────────────────────────────────────
-  function renkHaritasiOlustur(tip) {
-    var renkler = BY.config.DUSMAN_RENKLERI[tip] || BY.config.DUSMAN_RENKLERI.drone;
-    return {
-      1: renkler.ana,
-      2: renkler.koyu,
-      3: renkler.acik,
-      4: "#FF0000"
-    };
+  function renkHaritasiOlustur(tip, dunyaId) {
+    var temel = BY.config.DUSMAN_RENKLERI[tip] || BY.config.DUSMAN_RENKLERI.drone;
+    var vurgu = temel.acik;
+    if (dunyaId === "mergen") vurgu = "#C6E6FF";
+    if (dunyaId === "ulgen") vurgu = "#D8F1FF";
+    if (dunyaId === "kayra") vurgu = "#A8FFC9";
+    if (dunyaId === "erlik") vurgu = "#FF7BA8";
+    if (dunyaId === "umay") vurgu = "#FFDDF3";
+    return { 1: temel.ana, 2: temel.koyu, 3: vurgu, 4: "#FFFFFF" };
   }
 
-  // ── Düşman nesnesi oluştur ────────────────────────────────────────────────
-  function dusmanOlustur(x, tip) {
-    var tanim = DUSMAN_TIPLERI[tip];
-    if (!tanim) tanim = DUSMAN_TIPLERI.drone;
+  function bossIsmiAl(dunyaId) {
+    if (BY.varliklar && typeof BY.varliklar.bossVarligiAl === "function") {
+      var boss = BY.varliklar.bossVarligiAl(dunyaId);
+      if (boss && boss.isim) return boss.isim;
+    }
+    return "Muhafız";
+  }
 
+  function dusmanOlustur(x, tip) {
+    var tanim = DUSMAN_TIPLERI[tip] || DUSMAN_TIPLERI.drone;
     var state = BY.state;
     var piksel = BY.config.PIKSEL_BOYUT;
-    var genislik = tanim.boyut * piksel;
-    var yukseklik = tanim.boyut * piksel;
+    var boyut = tanim.boyut * piksel;
+    var dunyaId = state.aktifDunyaId || "mergen";
 
-    // Y pozisyonu: uçan düşmanlar havada, diğerleri zeminde
-    var y;
-    if (tanim.ucan) {
-      y = state.zeminY * (0.3 + Math.random() * 0.3);
-    } else {
-      y = state.zeminY - yukseklik;
-    }
+    var y = tanim.ucan ? state.zeminY * (0.28 + Math.random() * 0.28) : state.zeminY - boyut;
 
     return {
       tip: tip,
-      isim: tip === "boss" ? "MUHAFIZ" : tip.toUpperCase(),
+      isim: tip === "boss" ? bossIsmiAl(dunyaId) : tip.toUpperCase(),
       x: x,
       y: y,
       hizX: 0,
       hizY: 0,
-      genislik: genislik,
-      yukseklik: yukseklik,
+      genislik: boyut,
+      yukseklik: boyut,
       can: tanim.can,
       maxCan: tanim.can,
       hasar: tanim.hasar,
       hiz: tanim.hiz,
       sprite: tanim.sprite,
-      renkHaritasi: renkHaritasiOlustur(tip),
-      pikseBoyut: piksel,
+      renkHaritasi: renkHaritasiOlustur(tip, dunyaId),
+      pikselBoyut: piksel,
       animKare: 0,
-      durum: "patrol",
+      durum: "devriye",
       saldiriZamanlayici: 0,
       yonX: -1,
       aktif: true,
       puan: tanim.puan,
-      // Tipe özel durum
       dalga: Math.random() * Math.PI * 2,
       teleportZamanlayici: 0,
-      fazIndeksi: 0,   // Boss fazı
-      minyonOlusturuldu: false
+      fazIndeksi: 0,
+      minyonOlusturuldu: false,
+      dunyaId: dunyaId
     };
   }
 
-  // ── Sprite çizim ──────────────────────────────────────────────────────────
-  function dusmanSpriteCiz(ctx, dusman) {
-    var state = BY.state;
-    var ekranX = dusman.x - state.kameraX;
-
-    // Ekran dışındaysa çizme
-    if (ekranX < -50 || ekranX > state.canvasGenislik + 50) return;
-
+  function spriteFallbackCiz(ctx, dusman, ekranX) {
     var sprite = dusman.sprite;
     var renkler = dusman.renkHaritasi;
-    var piksel = dusman.pikseBoyut;
-
-    if (!sprite) return;
+    var piksel = dusman.pikselBoyut;
 
     ctx.save();
-
-    // Glitch tipi için bozulma efekti
-    if (dusman.tip === "glitch" && dusman.durum === "teleport") {
-      ctx.globalAlpha = 0.4 + Math.random() * 0.3;
-    }
-
-    // Sprite piksellerini çiz
     for (var satir = 0; satir < sprite.length; satir++) {
       for (var sutun = 0; sutun < sprite[satir].length; sutun++) {
         var deger = sprite[satir][sutun];
-        if (deger === 0) continue;
-
-        var renk = renkler[deger];
-        if (!renk) continue;
-
-        ctx.fillStyle = renk;
-        var cX = Math.floor(ekranX + sutun * piksel);
-        var cY = Math.floor(dusman.y + satir * piksel);
-        ctx.fillRect(cX, cY, piksel, piksel);
+        if (!deger) continue;
+        ctx.fillStyle = renkler[deger];
+        ctx.fillRect(
+          Math.floor(ekranX + sutun * piksel),
+          Math.floor(dusman.y + satir * piksel),
+          piksel,
+          piksel
+        );
       }
     }
 
+    if (dusman.tip === "drone") {
+      ctx.strokeStyle = dusman.renkHaritasi[3];
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ekranX + 2, dusman.y + dusman.yukseklik * 0.5);
+      ctx.lineTo(ekranX - 6, dusman.y + dusman.yukseklik * 0.25);
+      ctx.moveTo(ekranX + dusman.genislik - 2, dusman.y + dusman.yukseklik * 0.5);
+      ctx.lineTo(ekranX + dusman.genislik + 6, dusman.y + dusman.yukseklik * 0.25);
+      ctx.stroke();
+    } else if (dusman.tip === "jammer") {
+      ctx.strokeStyle = dusman.renkHaritasi[3];
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(ekranX + dusman.genislik / 2, dusman.y + dusman.yukseklik / 2, dusman.genislik * 0.8, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (dusman.tip === "glitch") {
+      ctx.fillStyle = "rgba(255,255,255,0.16)";
+      ctx.fillRect(ekranX - 3, dusman.y + 3, dusman.genislik + 6, 2);
+      ctx.fillRect(ekranX + 4, dusman.y + dusman.yukseklik - 4, dusman.genislik - 8, 2);
+    } else if (dusman.tip === "boss") {
+      ctx.strokeStyle = dusman.renkHaritasi[3];
+      ctx.lineWidth = 2;
+      ctx.strokeRect(ekranX - 4, dusman.y - 4, dusman.genislik + 8, dusman.yukseklik + 8);
+    }
     ctx.restore();
   }
 
-  // ── Sağlık çubuğu çiz ────────────────────────────────────────────────────
+  function dusmanSpriteCiz(ctx, dusman) {
+    var state = BY.state;
+    var ekranX = dusman.x - state.kameraX;
+    if (ekranX < -80 || ekranX > state.canvasGenislik + 80) return;
+
+    var varlik = BY.varliklar && BY.varliklar.dusmanVarligiAl ? BY.varliklar.dusmanVarligiAl(dusman.tip, dusman.dunyaId) : null;
+    if (varlik && varlik.durum && varlik.durum.durum === "hazir") {
+      ctx.save();
+      if (dusman.tip === "glitch" && dusman.durum === "teleport") ctx.globalAlpha = 0.55;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(varlik.durum.resim, Math.floor(ekranX), Math.floor(dusman.y), dusman.genislik, dusman.yukseklik);
+      ctx.restore();
+      return;
+    }
+
+    spriteFallbackCiz(ctx, dusman, ekranX);
+  }
+
   function canBarCiz(ctx, dusman) {
     var state = BY.state;
     var ekranX = dusman.x - state.kameraX;
-    if (ekranX < -50 || ekranX > state.canvasGenislik + 50) return;
-    if (dusman.can >= dusman.maxCan) return; // Tam cansa gösterme
+    if (ekranX < -80 || ekranX > state.canvasGenislik + 80) return;
+    if (dusman.can >= dusman.maxCan) return;
 
-    var barG = dusman.genislik + 4;
-    var barY2 = 3;
-    var barX = ekranX - 2;
-    var barY = dusman.y - 6;
-    var canYuzde = dusman.can / dusman.maxCan;
+    var g = dusman.genislik + 6;
+    var h = 4;
+    var x = ekranX - 3;
+    var y = dusman.y - 8;
+    var oran = dusman.can / dusman.maxCan;
 
     ctx.save();
-    // Arka plan
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(barX, barY, barG, barY2);
-    // Can dolgusu
-    var renk = canYuzde > 0.5 ? "#2ECC71" : (canYuzde > 0.2 ? "#F39C12" : "#E74C3C");
-    ctx.fillStyle = renk;
-    ctx.fillRect(barX, barY, barG * canYuzde, barY2);
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(x, y, g, h);
+    ctx.fillStyle = oran > 0.5 ? "#2ECC71" : (oran > 0.2 ? "#F39C12" : "#E74C3C");
+    ctx.fillRect(x, y, g * oran, h);
     ctx.restore();
   }
 
-  // ── Düşman AI güncelleme ──────────────────────────────────────────────────
+  function takimMerkeziAl() {
+    return BY.karakterler && BY.karakterler.takimMerkeziAl ? BY.karakterler.takimMerkeziAl() : null;
+  }
+
+  function dusmanAtesEt(dusman, hedef) {
+    if (!BY.cephanelik || !BY.cephanelik.dusmanAtisiOlustur || !hedef) return;
+    BY.cephanelik.dusmanAtisiOlustur(dusman, hedef.x, hedef.y);
+
+    if (BY.efektler && BY.efektler.lazerEfektiOlustur) {
+      BY.efektler.lazerEfektiOlustur(
+        dusman.x + dusman.genislik / 2,
+        dusman.y + dusman.yukseklik / 2,
+        hedef.x,
+        hedef.y,
+        dusman.renkHaritasi[1]
+      );
+    }
+  }
 
   function droneGuncelle(dusman, takimMerkez) {
-    // Sinüs dalgası ile yukarı-aşağı hareket
     dusman.dalga += 0.03;
     dusman.y += Math.sin(dusman.dalga) * 0.8;
 
-    // Takıma yaklaşma
-    if (takimMerkez && Math.abs(dusman.x - takimMerkez.x) < 400) {
-      var yonX = takimMerkez.x < dusman.x ? -1 : 1;
-      dusman.hizX = yonX * dusman.hiz * 0.5;
-      dusman.yonX = yonX;
+    if (takimMerkez && Math.abs(dusman.x - takimMerkez.x) < 420) {
+      dusman.yonX = takimMerkez.x < dusman.x ? -1 : 1;
+      dusman.hizX = dusman.yonX * dusman.hiz * 0.6;
     } else {
       dusman.hizX *= 0.95;
     }
 
     dusman.x += dusman.hizX;
-
-    // Periyodik saldırı - lazer mermisi
     dusman.saldiriZamanlayici++;
     if (dusman.saldiriZamanlayici > DUSMAN_TIPLERI.drone.saldiriAraligi && takimMerkez) {
       dusman.saldiriZamanlayici = 0;
-      mermiOlustur(dusman, takimMerkez);
+      dusmanAtesEt(dusman, takimMerkez);
     }
   }
 
   function sentinelGuncelle(dusman, takimMerkez) {
-    // Yerçekimi ve platform çarpışması
     if (BY.fizik) {
       BY.fizik.yercegimiUygula(dusman);
       BY.fizik.platformCarpisma(dusman);
     }
 
-    // Takıma doğru yürü
     if (takimMerkez) {
       var mesafe = Math.abs(dusman.x - takimMerkez.x);
-      if (mesafe < 300) {
-        var yonX = takimMerkez.x < dusman.x ? -1 : 1;
-        // Yakınsa koşma (charge)
-        var hizCarpani = mesafe < 150 ? 2 : 1;
-        dusman.hizX = yonX * dusman.hiz * hizCarpani;
-        dusman.yonX = yonX;
+      if (mesafe < 320) {
+        dusman.yonX = takimMerkez.x < dusman.x ? -1 : 1;
+        dusman.hizX = dusman.yonX * dusman.hiz * (mesafe < 150 ? 1.8 : 1.0);
       }
     }
 
     dusman.x += dusman.hizX;
-    dusman.hizX *= 0.9;
+    dusman.hizX *= 0.84;
 
-    // Temas hasarı
-    if (takimMerkez && Math.abs(dusman.x - takimMerkez.x) < 30) {
+    if (takimMerkez && Math.abs(dusman.x - takimMerkez.x) < 40) {
       dusman.saldiriZamanlayici++;
       if (dusman.saldiriZamanlayici > DUSMAN_TIPLERI.sentinel.saldiriAraligi) {
         dusman.saldiriZamanlayici = 0;
-        if (BY.karakterler && BY.karakterler.takimHasarAl) {
-          BY.karakterler.takimHasarAl(dusman.hasar);
-        }
-        if (BY.efektler && BY.efektler.hasarEfektiOlustur) {
-          BY.efektler.hasarEfektiOlustur(takimMerkez.x, takimMerkez.y, "#FF4444");
-        }
+        if (BY.karakterler && BY.karakterler.takimHasarAl) BY.karakterler.takimHasarAl(dusman.hasar);
+        if (BY.efektler && BY.efektler.hasarEfektiOlustur) BY.efektler.hasarEfektiOlustur(takimMerkez.x, takimMerkez.y, "#FF6666");
       }
     }
   }
 
   function jammerGuncelle(dusman, takimMerkez) {
-    // Jammer hareketsiz kalır, periyodik alan hasarı verir
     if (BY.fizik) {
       BY.fizik.yercegimiUygula(dusman);
       BY.fizik.platformCarpisma(dusman);
@@ -325,62 +295,45 @@
     if (dusman.saldiriZamanlayici > DUSMAN_TIPLERI.jammer.saldiriAraligi) {
       dusman.saldiriZamanlayici = 0;
 
-      // Alan hasarı - takım yakındaysa
-      if (takimMerkez && Math.abs(dusman.x - takimMerkez.x) < 150) {
-        if (BY.karakterler && BY.karakterler.takimHasarAl) {
-          BY.karakterler.takimHasarAl(dusman.hasar);
-        }
+      if (BY.efektler && BY.efektler.radarDarbesiEkle) {
+        BY.efektler.radarDarbesiEkle(
+          dusman.x + dusman.genislik / 2,
+          dusman.y + dusman.yukseklik / 2,
+          dusman.renkHaritasi[1]
+        );
+      }
 
-        // Nabız halkası efekti
-        if (BY.efektler && BY.efektler.radarDarbesiEkle) {
-          BY.efektler.radarDarbesiEkle(
-            dusman.x + dusman.genislik / 2,
-            dusman.y + dusman.yukseklik / 2,
-            BY.config.DUSMAN_RENKLERI.jammer.ana
-          );
-        }
+      if (takimMerkez && Math.abs(dusman.x - takimMerkez.x) < 170) {
+        if (BY.karakterler && BY.karakterler.takimHasarAl) BY.karakterler.takimHasarAl(dusman.hasar);
+        dusmanAtesEt(dusman, takimMerkez);
       }
     }
   }
 
   function glitchGuncelle(dusman, takimMerkez) {
-    // Periyodik ışınlanma
     dusman.teleportZamanlayici++;
     if (dusman.teleportZamanlayici > 180) {
       dusman.teleportZamanlayici = 0;
       dusman.durum = "teleport";
 
-      // Rastgele yeni pozisyon (takım civarında)
       if (takimMerkez) {
-        dusman.x = takimMerkez.x + (Math.random() - 0.5) * 300;
-        dusman.y = BY.state.zeminY - dusman.yukseklik - Math.random() * 80;
+        dusman.x = takimMerkez.x + (Math.random() - 0.5) * 280;
+        dusman.y = BY.state.zeminY - dusman.yukseklik - Math.random() * 84;
       }
 
-      // Işınlanma efekti
       if (BY.efektler && BY.efektler.parcacikOlustur) {
-        BY.efektler.parcacikOlustur(
-          dusman.x + dusman.genislik / 2,
-          dusman.y + dusman.yukseklik / 2,
-          BY.config.DUSMAN_RENKLERI.glitch.ana,
-          "kivilcim", 8
-        );
+        BY.efektler.parcacikOlustur(dusman.x, dusman.y, dusman.renkHaritasi[1], "kivilcim", 9);
       }
 
-      // 3'lü mermi patlaması
       if (takimMerkez) {
         for (var i = -1; i <= 1; i++) {
-          mermiOlustur(dusman, {
-            x: takimMerkez.x + i * 30,
-            y: takimMerkez.y
-          });
+          dusmanAtesEt(dusman, { x: takimMerkez.x + i * 35, y: takimMerkez.y });
         }
       }
 
-      // Kısa süre sonra görünür ol
-      setTimeout(function() { dusman.durum = "patrol"; }, 500);
+      setTimeout(function() { dusman.durum = "devriye"; }, 380);
     }
 
-    // Yerçekimi
     if (BY.fizik) {
       BY.fizik.yercegimiUygula(dusman);
       BY.fizik.platformCarpisma(dusman);
@@ -388,187 +341,105 @@
   }
 
   function bossGuncelle(dusman, takimMerkez) {
-    // Yerçekimi
     if (BY.fizik) {
       BY.fizik.yercegimiUygula(dusman);
       BY.fizik.platformCarpisma(dusman);
     }
 
-    // Boss fazı belirle
     var canYuzde = dusman.can / dusman.maxCan;
-    if (canYuzde > 0.6) {
-      dusman.fazIndeksi = 0;
-    } else if (canYuzde > 0.3) {
-      dusman.fazIndeksi = 1;
-    } else {
-      dusman.fazIndeksi = 2;
-    }
+    dusman.fazIndeksi = canYuzde > 0.66 ? 0 : (canYuzde > 0.33 ? 1 : 2);
 
-    // Takıma doğru yavaş hareket
     if (takimMerkez) {
       var mesafe = dusman.x - takimMerkez.x;
-      if (Math.abs(mesafe) > 100) {
-        var yonX = mesafe > 0 ? -1 : 1;
-        dusman.hizX = yonX * dusman.hiz * (1 + dusman.fazIndeksi * 0.3);
-        dusman.yonX = yonX;
+      if (Math.abs(mesafe) > 120) {
+        dusman.yonX = mesafe > 0 ? -1 : 1;
+        dusman.hizX = dusman.yonX * dusman.hiz * (1 + dusman.fazIndeksi * 0.25);
       }
     }
 
     dusman.x += dusman.hizX;
-    dusman.hizX *= 0.9;
+    dusman.hizX *= 0.88;
 
-    // Saldırı kalıpları faza göre
-    var saldiriHizi = 120 - dusman.fazIndeksi * 30; // Faz arttıkça hızlanır
     dusman.saldiriZamanlayici++;
-
-    if (dusman.saldiriZamanlayici > saldiriHizi && takimMerkez) {
+    var aralik = 115 - dusman.fazIndeksi * 22;
+    if (dusman.saldiriZamanlayici > aralik && takimMerkez) {
       dusman.saldiriZamanlayici = 0;
 
-      switch (dusman.fazIndeksi) {
-        case 0: // Yavaş lazer çizgisi
-          mermiOlustur(dusman, takimMerkez);
-          break;
+      if (dusman.fazIndeksi === 0) {
+        dusmanAtesEt(dusman, takimMerkez);
+      } else if (dusman.fazIndeksi === 1) {
+        dusmanAtesEt(dusman, { x: takimMerkez.x - 40, y: takimMerkez.y });
+        dusmanAtesEt(dusman, takimMerkez);
+        dusmanAtesEt(dusman, { x: takimMerkez.x + 40, y: takimMerkez.y });
 
-        case 1: // Geniş saldırı + minyon
-          mermiOlustur(dusman, { x: takimMerkez.x - 40, y: takimMerkez.y });
-          mermiOlustur(dusman, takimMerkez);
-          mermiOlustur(dusman, { x: takimMerkez.x + 40, y: takimMerkez.y });
-
-          // Faz 2'de bir kez minyon oluştur
-          if (!dusman.minyonOlusturuldu) {
-            dusman.minyonOlusturuldu = true;
-            // 2 drone minyon
-            BY.state.dusmanlar.push(dusmanOlustur(dusman.x - 60, "drone"));
-            BY.state.dusmanlar.push(dusmanOlustur(dusman.x + 60, "drone"));
-          }
-          break;
-
-        case 2: // Öfke modu - hızlı ateş
-          for (var i = -2; i <= 2; i++) {
-            mermiOlustur(dusman, {
-              x: takimMerkez.x + i * 25,
-              y: takimMerkez.y
-            });
-          }
-          break;
+        if (!dusman.minyonOlusturuldu) {
+          dusman.minyonOlusturuldu = true;
+          BY.state.dusmanlar.push(dusmanOlustur(dusman.x - 70, "drone"));
+          BY.state.dusmanlar.push(dusmanOlustur(dusman.x + 70, "drone"));
+        }
+      } else {
+        for (var i = -2; i <= 2; i++) {
+          dusmanAtesEt(dusman, { x: takimMerkez.x + i * 28, y: takimMerkez.y - (Math.abs(i) % 2) * 18 });
+        }
       }
     }
   }
 
-  // ── Mermi oluştur ─────────────────────────────────────────────────────────
-  function mermiOlustur(dusman, hedef) {
-    var state = BY.state;
-    var kaynakX = dusman.x + dusman.genislik / 2;
-    var kaynakY = dusman.y + dusman.yukseklik / 2;
-
-    var dx = hedef.x - kaynakX;
-    var dy = hedef.y - kaynakY;
-    var mesafe = Math.sqrt(dx * dx + dy * dy);
-    if (mesafe < 1) mesafe = 1;
-
-    var hiz = 2.5;
-    state.mermiler.push({
-      x: kaynakX,
-      y: kaynakY,
-      hizX: (dx / mesafe) * hiz,
-      hizY: (dy / mesafe) * hiz,
-      hasar: dusman.hasar,
-      sahip: "dusman",
-      yasam: 180,
-      genislik: 4,
-      yukseklik: 4,
-      renk: dusman.renkHaritasi[1] || "#FF0000"
-    });
-
-    // Lazer efekti
-    if (BY.efektler && BY.efektler.lazerEfektiOlustur) {
-      BY.efektler.lazerEfektiOlustur(kaynakX, kaynakY, hedef.x, hedef.y, dusman.renkHaritasi[1]);
-    }
-  }
-
-  // ── Düşman ölüm işleme ───────────────────────────────────────────────────
   function dusmanOlumu(dusman) {
     dusman.aktif = false;
 
-    // Patlama efekti
     if (BY.efektler && BY.efektler.patlamaEfektiOlustur) {
-      BY.efektler.patlamaEfektiOlustur(
-        dusman.x + dusman.genislik / 2,
-        dusman.y + dusman.yukseklik / 2
-      );
+      BY.efektler.patlamaEfektiOlustur(dusman.x + dusman.genislik / 2, dusman.y + dusman.yukseklik / 2);
     }
 
-    // Puan ekle
     if (BY.oyun && BY.oyun.skoreEkle) {
       BY.oyun.skoreEkle(dusman.puan || 10);
     }
   }
 
-  // ── Dış arayüz ─────────────────────────────────────────────────────────────
   BY.dusmanlar = {
     DUSMAN_TIPLERI: DUSMAN_TIPLERI,
 
     baslat: function(spawnlar) {
       var state = BY.state;
       state.dusmanlar = [];
-
       if (!spawnlar || !Array.isArray(spawnlar)) return;
-
       for (var i = 0; i < spawnlar.length; i++) {
-        var s = spawnlar[i];
-        state.dusmanlar.push(dusmanOlustur(s.x, s.tip));
+        state.dusmanlar.push(dusmanOlustur(spawnlar[i].x, spawnlar[i].tip));
       }
     },
 
     guncelle: function(zaman) {
       var state = BY.state;
+      var takimMerkez = takimMerkeziAl();
       var dusmanlar = state.dusmanlar;
       if (!dusmanlar) return;
-
-      var takimMerkez = BY.karakterler ? BY.karakterler.takimMerkeziAl() : null;
 
       for (var i = dusmanlar.length - 1; i >= 0; i--) {
         var d = dusmanlar[i];
         if (!d || !d.aktif) continue;
 
-        // Can kontrolü
         if (d.can <= 0) {
           dusmanOlumu(d);
           continue;
         }
 
-        // Görünür alanın yakınındaki düşmanları güncelle (±600px)
-        if (Math.abs(d.x - state.kameraX - state.canvasGenislik / 2) > 600) continue;
+        if (Math.abs(d.x - state.kameraX - state.canvasGenislik / 2) > 760) continue;
 
-        // Animasyon karesi
         d.animKare = (d.animKare + 1) % 120;
 
-        // Tipe göre AI güncelle
         switch (d.tip) {
-          case "drone":
-            droneGuncelle(d, takimMerkez);
-            break;
-          case "sentinel":
-            sentinelGuncelle(d, takimMerkez);
-            break;
-          case "jammer":
-            jammerGuncelle(d, takimMerkez);
-            break;
-          case "glitch":
-            glitchGuncelle(d, takimMerkez);
-            break;
-          case "boss":
-            bossGuncelle(d, takimMerkez);
-            break;
+          case "drone": droneGuncelle(d, takimMerkez); break;
+          case "sentinel": sentinelGuncelle(d, takimMerkez); break;
+          case "jammer": jammerGuncelle(d, takimMerkez); break;
+          case "glitch": glitchGuncelle(d, takimMerkez); break;
+          case "boss": bossGuncelle(d, takimMerkez); break;
         }
       }
 
-      // Ölü düşmanları temizle (periyodik)
       if (state.kare % 60 === 0) {
         for (var j = dusmanlar.length - 1; j >= 0; j--) {
-          if (dusmanlar[j] && !dusmanlar[j].aktif) {
-            dusmanlar.splice(j, 1);
-          }
+          if (dusmanlar[j] && !dusmanlar[j].aktif) dusmanlar.splice(j, 1);
         }
       }
     },
@@ -582,34 +453,23 @@
         var d = dusmanlar[i];
         if (!d || !d.aktif) continue;
 
-        // Görünür alandaki düşmanları çiz
         var ekranX = d.x - state.kameraX;
-        if (ekranX < -50 || ekranX > state.canvasGenislik + 50) continue;
+        if (ekranX < -80 || ekranX > state.canvasGenislik + 80) continue;
 
-        // Gölge
         ctx.save();
-        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.fillStyle = "rgba(0,0,0,0.20)";
         ctx.beginPath();
-        ctx.ellipse(
-          ekranX + d.genislik / 2,
-          state.zeminY - 1,
-          d.genislik / 2,
-          3, 0, 0, Math.PI * 2
-        );
+        ctx.ellipse(ekranX + d.genislik / 2, state.zeminY - 1, d.genislik / 2, 3, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
-        // Sprite çiz
         dusmanSpriteCiz(ctx, d);
-
-        // Sağlık çubuğu
         canBarCiz(ctx, d);
 
-        // Jammer alan göstergesi
         if (d.tip === "jammer") {
           ctx.save();
-          ctx.globalAlpha = 0.1 + Math.sin(d.animKare * 0.05) * 0.05;
-          ctx.strokeStyle = BY.config.DUSMAN_RENKLERI.jammer.ana;
+          ctx.globalAlpha = 0.08 + Math.sin(d.animKare * 0.05) * 0.05;
+          ctx.strokeStyle = d.renkHaritasi[1];
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(ekranX + d.genislik / 2, d.y + d.yukseklik / 2, 100, 0, Math.PI * 2);
@@ -617,13 +477,12 @@
           ctx.restore();
         }
 
-        // Boss özel efektleri
         if (d.tip === "boss") {
           ctx.save();
-          ctx.globalAlpha = 0.15;
-          ctx.fillStyle = BY.config.DUSMAN_RENKLERI.boss.ana;
-          ctx.shadowColor = BY.config.DUSMAN_RENKLERI.boss.ana;
-          ctx.shadowBlur = 10;
+          ctx.globalAlpha = 0.14;
+          ctx.fillStyle = d.renkHaritasi[1];
+          ctx.shadowColor = d.renkHaritasi[3];
+          ctx.shadowBlur = 12;
           ctx.beginPath();
           ctx.arc(ekranX + d.genislik / 2, d.y + d.yukseklik / 2, d.genislik, 0, Math.PI * 2);
           ctx.fill();
@@ -631,42 +490,36 @@
         }
       }
 
-      // Mermileri çiz
-      mermileriCiz(ctx);
+      if (BY.cephanelik && BY.cephanelik.mermileriCiz) {
+        BY.cephanelik.mermileriCiz(ctx);
+      }
     },
 
     hasarVer: function(dusman, miktar) {
       if (!dusman) return;
       dusman.can -= miktar;
 
-      // Hasar efekti
       if (BY.efektler && BY.efektler.hasarEfektiOlustur) {
-        BY.efektler.hasarEfektiOlustur(
-          dusman.x + dusman.genislik / 2,
-          dusman.y,
-          "#FF4444"
-        );
+        BY.efektler.hasarEfektiOlustur(dusman.x + dusman.genislik / 2, dusman.y, "#FF6666");
       }
 
-      // Hasar parçacıkları
       if (BY.efektler && BY.efektler.parcacikOlustur) {
         BY.efektler.parcacikOlustur(
           dusman.x + dusman.genislik / 2,
           dusman.y + dusman.yukseklik / 2,
-          dusman.renkHaritasi[1] || "#FF0000",
-          "kivilcim", 3
+          dusman.renkHaritasi[1],
+          "kivilcim",
+          4
         );
       }
     },
 
     bossBaşlat: function(bossVeri) {
       if (!bossVeri) return;
-      var boss = dusmanOlustur(bossVeri.x, "boss");
-      BY.state.dusmanlar.push(boss);
+      BY.state.dusmanlar.push(dusmanOlustur(bossVeri.x, "boss"));
     },
 
     boyutGuncelle: function() {
-      // Düşman Y pozisyonlarını yeni zemin seviyesine göre güncelle
       var state = BY.state;
       for (var i = 0; i < state.dusmanlar.length; i++) {
         var d = state.dusmanlar[i];
@@ -676,26 +529,5 @@
       }
     }
   };
-
-  // ── Mermileri çiz (yardımcı) ──────────────────────────────────────────────
-  function mermileriCiz(ctx) {
-    var state = BY.state;
-    var mermiler = state.mermiler;
-    if (!mermiler) return;
-
-    for (var i = 0; i < mermiler.length; i++) {
-      var m = mermiler[i];
-      var ekranX = m.x - state.kameraX;
-
-      if (ekranX < -10 || ekranX > state.canvasGenislik + 10) continue;
-
-      ctx.save();
-      ctx.fillStyle = m.renk || "#FF0000";
-      ctx.shadowColor = m.renk || "#FF0000";
-      ctx.shadowBlur = 4;
-      ctx.fillRect(Math.floor(ekranX) - 2, Math.floor(m.y) - 2, 4, 4);
-      ctx.restore();
-    }
-  }
 
 })();
