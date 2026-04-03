@@ -103,33 +103,92 @@ admin_feedback_ui <- function(data, ns, create_metric_card, create_info_button, 
 admin_feedback_outputs <- function(output, analytics_data_fn, turkish_dt_language, format_turkish_date) {
 
   # Model geri bildirim tablosu
-  output$model_feedback_table <- DT::renderDT({
-    data <- analytics_data_fn()$model_feedback
-    if (nrow(data) == 0) return(DT::datatable(data.frame()))
+	output$model_feedback_table <- DT::renderDT({
+	  data <- analytics_data_fn()$model_feedback
+	  if (nrow(data) == 0) return(DT::datatable(data.frame()))
 
-    data$row_num <- 1:nrow(data)
-    data$like_rate <- round(ifelse(data$total_responses > 0, (data$likes / data$total_responses) * 100, 0), 1)
-    data$dislike_rate <- round(ifelse(data$total_responses > 0, (data$dislikes / data$total_responses) * 100, 0), 1)
-    display_data <- data[, c("row_num", "ModelUsed", "likes", "dislikes", "total_responses", "like_rate", "dislike_rate")]
-    colnames(display_data) <- c("#", "Model", "Beğeni", "Beğenmeme", "Toplam Yanıt", "Beğeni Oranı (%)", "Beğenmeme Oranı (%)")
+	  data$row_num <- 1:nrow(data)
+	  data$like_rate <- round(ifelse(data$total_responses > 0, (data$likes / data$total_responses) * 100, 0), 1)
+	  data$dislike_rate <- round(ifelse(data$total_responses > 0, (data$dislikes / data$total_responses) * 100, 0), 1)
 
-    DT::datatable(
-      display_data,
-      options = list(
-        dom = 'ftp', pageLength = 10,
-        ordering = TRUE, order = list(list(4, 'desc')),
-        language = turkish_dt_language,
-        columnDefs = list(
-          list(className = 'dt-center', targets = c(0, 2, 3, 4, 5, 6)),
-          list(className = 'row-number-col', targets = 0),
-          list(width = '40px', targets = 0),
-          list(orderable = FALSE, targets = 0)
-        ),
-        headerCallback = admin_dt_header_callback
-      ),
-      class = "admin-datatable", rownames = FALSE
-    )
-  })
+	  like_max <- max(data$likes, na.rm = TRUE)
+	  dislike_max <- max(data$dislikes, na.rm = TRUE)
+
+	  if (!is.finite(like_max) || like_max <= 0) like_max <- 1
+	  if (!is.finite(dislike_max) || dislike_max <= 0) dislike_max <- 1
+
+	  bar_hucre <- function(deger, max_deger, dolgu_renk, kenar_renk) {
+		oran <- if (is.na(deger) || max_deger <= 0) 0 else round((deger / max_deger) * 100, 1)
+		sprintf(
+		  '<div style="position:relative; min-width:96px; height:28px; background:rgba(255,255,255,0.04); border:1px solid %s; border-radius:8px; overflow:hidden;">
+			 <div style="position:absolute; left:0; top:0; bottom:0; width:%s%%; background:%s;"></div>
+			 <div style="position:relative; z-index:2; height:100%%; display:flex; align-items:center; justify-content:center; color:#f8fafc; font-weight:600;">%s</div>
+		   </div>',
+		  kenar_renk, oran, dolgu_renk, admin_format_number(deger)
+		)
+	  }
+
+	  data$likes_display <- vapply(
+		data$likes,
+		function(x) bar_hucre(x, like_max, "rgba(16, 185, 129, 0.38)", "rgba(16, 185, 129, 0.55)"),
+		character(1)
+	  )
+
+	  data$dislikes_display <- vapply(
+		data$dislikes,
+		function(x) bar_hucre(x, dislike_max, "rgba(239, 68, 68, 0.34)", "rgba(239, 68, 68, 0.55)"),
+		character(1)
+	  )
+
+	  display_data <- data[, c(
+		"row_num",
+		"ModelUsed",
+		"likes_display",
+		"likes",
+		"dislikes_display",
+		"dislikes",
+		"total_responses",
+		"like_rate",
+		"dislike_rate"
+	  )]
+
+	  colnames(display_data) <- c(
+		"#",
+		"Model",
+		"Beğeni",
+		"likes_sort",
+		"Beğenmeme",
+		"dislikes_sort",
+		"Toplam Yanıt",
+		"Beğeni Oranı (%)",
+		"Beğenmeme Oranı (%)"
+	  )
+
+	  DT::datatable(
+		display_data,
+		escape = FALSE,
+		options = list(
+		  dom = 'ftp',
+		  pageLength = 10,
+		  ordering = TRUE,
+		  order = list(list(6, 'desc')),
+		  language = turkish_dt_language,
+		  columnDefs = list(
+			list(className = 'dt-center', targets = c(0, 2, 4, 6, 7, 8)),
+			list(className = 'row-number-col', targets = 0),
+			list(width = '40px', targets = 0),
+			list(width = '120px', targets = c(2, 4)),
+			list(orderable = FALSE, targets = 0),
+			list(visible = FALSE, targets = c(3, 5)),
+			list(orderData = 3, targets = 2),
+			list(orderData = 5, targets = 4)
+		  ),
+		  headerCallback = admin_dt_header_callback
+		),
+		class = "admin-datatable",
+		rownames = FALSE
+	  )
+	})
 
   # Geri bildirim gruplu sütun grafik yardımcısı
   gruplu_sutun_grafik <- function(data, kategori_sutunu, bucket_order) {

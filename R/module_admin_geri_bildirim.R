@@ -314,7 +314,7 @@ adminGeriBildirimServer <- function(id) {
               class = "analytics-card",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("chart-area"), " Günlük Geri Bildirim Trendi (30 Gün)"),
+				h4(class = "card-title", icon("chart-area"), " Günlük Geri Bildirim Eğilimi (30 Gün)"),
                 admin_create_info_button("Son 30 gündeki günlük geri bildirim sayısı ve ortalama memnuniyet eğilimi.")
               ),
               highcharter::highchartOutput(ns("gb_gunluk_trend_chart"), height = "320px")
@@ -539,53 +539,66 @@ adminGeriBildirimServer <- function(id) {
     # ============================================================
 
     # Günlük trend (çift eksenli: sayı + ortalama memnuniyet)
-    output$gb_gunluk_trend_chart <- highcharter::renderHighchart({
-      data <- gb_data()$gunluk_trend
-      if (nrow(data) == 0) return(highcharter::highchart())
+	output$gb_gunluk_trend_chart <- highcharter::renderHighchart({
+	  data <- gb_data()$gunluk_trend
+	  if (nrow(data) == 0) return(highcharter::highchart())
 
-      data$tarih_label <- vapply(data$tarih, admin_format_turkish_date, character(1))
-      data$ort_memnuniyet <- round(data$ort_memnuniyet, 2)
+	  data$tarih <- as.Date(data$tarih)
+	  data <- data[order(data$tarih), , drop = FALSE]
+	  data$tarih_label <- unname(vapply(data$tarih, admin_format_turkish_date, character(1)))
+	  data$cnt <- suppressWarnings(as.numeric(data$cnt))
+	  data$ort_memnuniyet <- suppressWarnings(round(as.numeric(data$ort_memnuniyet), 2))
 
-      highcharter::highchart() %>%
-        highcharter::hc_chart(backgroundColor = "transparent") %>%
-        highcharter::hc_title(text = NULL) %>%
-        highcharter::hc_xAxis(
-          categories = as.list(data$tarih_label),
-          labels = list(style = list(color = "#999"))
-        ) %>%
-        highcharter::hc_yAxis_multiples(
-          list(
-            title = list(text = "Bildirim Sayısı", style = list(color = "#06b6d4")),
-            labels = list(style = list(color = "#999")),
-            gridLineColor = "#444",
-            min = 0
-          ),
-          list(
-            title = list(text = "Ort. Memnuniyet", style = list(color = "#f59e0b")),
-            labels = list(style = list(color = "#999")),
-            opposite = TRUE,
-            gridLineWidth = 0,
-            min = 1, max = 5
-          )
-        ) %>%
-        highcharter::hc_add_series(
-          name = "Bildirim Sayısı", data = data$cnt, type = "column",
-          color = "#06b6d4", yAxis = 0,
-          borderWidth = 0, borderRadius = 3
-        ) %>%
-        highcharter::hc_add_series(
-          name = "Ort. Memnuniyet", data = data$ort_memnuniyet, type = "spline",
-          color = "#f59e0b", yAxis = 1,
-          marker = list(enabled = TRUE, radius = 4),
-          lineWidth = 3
-        ) %>%
-        highcharter::hc_tooltip(
-          backgroundColor = "#1a1a1a", borderColor = "#333",
-          style = list(color = "#fff"), shared = TRUE
-        ) %>%
-        highcharter::hc_legend(itemStyle = list(color = "#999")) %>%
-        highcharter::hc_credits(enabled = FALSE)
-    })
+	  highcharter::highchart() %>%
+		highcharter::hc_chart(backgroundColor = "transparent") %>%
+		highcharter::hc_title(text = NULL) %>%
+		highcharter::hc_xAxis(
+		  categories = data$tarih_label,
+		  labels = list(style = list(color = "#999"))
+		) %>%
+		highcharter::hc_yAxis_multiples(
+		  list(
+			title = list(text = "Bildirim Sayısı", style = list(color = "#06b6d4")),
+			labels = list(style = list(color = "#999")),
+			gridLineColor = "#444",
+			min = 0
+		  ),
+		  list(
+			title = list(text = "Ort. Memnuniyet", style = list(color = "#f59e0b")),
+			labels = list(style = list(color = "#999")),
+			opposite = TRUE,
+			gridLineWidth = 0,
+			min = 1,
+			max = 5
+		  )
+		) %>%
+		highcharter::hc_add_series(
+		  name = "Bildirim Sayısı",
+		  data = data$cnt,
+		  type = "column",
+		  color = "#06b6d4",
+		  yAxis = 0,
+		  borderWidth = 0,
+		  borderRadius = 3
+		) %>%
+		highcharter::hc_add_series(
+		  name = "Ort. Memnuniyet",
+		  data = data$ort_memnuniyet,
+		  type = "spline",
+		  color = "#f59e0b",
+		  yAxis = 1,
+		  marker = list(enabled = TRUE, radius = 4),
+		  lineWidth = 3
+		) %>%
+		highcharter::hc_tooltip(
+		  backgroundColor = "#1a1a1a",
+		  borderColor = "#333",
+		  style = list(color = "#fff"),
+		  shared = TRUE
+		) %>%
+		highcharter::hc_legend(itemStyle = list(color = "#999")) %>%
+		highcharter::hc_credits(enabled = FALSE)
+	})
 
     # Memnuniyet polar/radar grafik
     output$gb_memnuniyet_polar_chart <- highcharter::renderHighchart({
@@ -744,47 +757,67 @@ adminGeriBildirimServer <- function(id) {
     })
 
     # Memnuniyet \U2014 NPS korelasyonu (bubble grafik)
-    output$gb_korelasyon_chart <- highcharter::renderHighchart({
-      data <- gb_data()$memnuniyet_nps_korelasyon
-      if (nrow(data) == 0) return(highcharter::highchart())
+	output$gb_korelasyon_chart <- highcharter::renderHighchart({
+	  data <- gb_data()$memnuniyet_nps_korelasyon
+	  if (nrow(data) == 0) return(highcharter::highchart())
 
-      data$ort_nps <- round(data$ort_nps, 1)
+	  data$Memnuniyet <- suppressWarnings(as.numeric(data$Memnuniyet))
+	  data$ort_nps <- suppressWarnings(round(as.numeric(data$ort_nps), 1))
+	  data$cnt <- suppressWarnings(as.numeric(data$cnt))
+	  data <- data[!is.na(data$Memnuniyet) & !is.na(data$ort_nps), , drop = FALSE]
+	  if (nrow(data) == 0) return(highcharter::highchart())
 
-      chart_data <- lapply(1:nrow(data), function(i) {
-        list(
-          x = data$Memnuniyet[i],
-          y = data$ort_nps[i],
-          z = data$cnt[i],
-          name = paste0("Memnuniyet: ", data$Memnuniyet[i])
-        )
-      })
+	  y_ust_limit <- max(10.8, max(data$ort_nps, na.rm = TRUE) + 0.8)
 
-      highcharter::highchart() %>%
-        highcharter::hc_chart(type = "bubble", backgroundColor = "transparent") %>%
-        highcharter::hc_title(text = NULL) %>%
-        highcharter::hc_xAxis(
-          title = list(text = "Memnuniyet Puanı (1-5)", style = list(color = "#999")),
-          labels = list(style = list(color = "#999")),
-          min = 0.5, max = 5.5, gridLineColor = "#444"
-        ) %>%
-        highcharter::hc_yAxis(
-          title = list(text = "Ortalama NPS Puanı (0-10)", style = list(color = "#999")),
-          labels = list(style = list(color = "#999")),
-          gridLineColor = "#444", min = 0, max = 10,
-          maxPadding = 0.08, endOnTick = FALSE
-        ) %>%
-        highcharter::hc_add_series(
-          name = "Korelasyon", data = chart_data, color = "#8b5cf6",
-          marker = list(fillOpacity = 0.7)
-        ) %>%
-        highcharter::hc_tooltip(
-          backgroundColor = "#1a1a1a", borderColor = "#333",
-          style = list(color = "#fff"),
-          formatter = JS("function() { return '<b>' + this.point.name + '</b><br/>Ort. NPS: ' + this.y + '<br/>Yanıt Sayısı: ' + this.point.z; }")
-        ) %>%
-        highcharter::hc_legend(enabled = FALSE) %>%
-        highcharter::hc_credits(enabled = FALSE)
-    })
+	  chart_data <- lapply(seq_len(nrow(data)), function(i) {
+		list(
+		  x = data$Memnuniyet[i],
+		  y = data$ort_nps[i],
+		  z = data$cnt[i],
+		  name = paste0("Memnuniyet: ", data$Memnuniyet[i])
+		)
+	  })
+
+	  highcharter::highchart() %>%
+		highcharter::hc_chart(type = "bubble", backgroundColor = "transparent") %>%
+		highcharter::hc_title(text = NULL) %>%
+		highcharter::hc_xAxis(
+		  title = list(text = "Memnuniyet Puanı (1-5)", style = list(color = "#999")),
+		  labels = list(style = list(color = "#999")),
+		  min = 0.5,
+		  max = 5.5,
+		  gridLineColor = "#444"
+		) %>%
+		highcharter::hc_yAxis(
+		  title = list(text = "Ortalama NPS Puanı (0-10)", style = list(color = "#999")),
+		  labels = list(style = list(color = "#999")),
+		  gridLineColor = "#444",
+		  min = 0,
+		  max = y_ust_limit,
+		  maxPadding = 0.18,
+		  endOnTick = FALSE
+		) %>%
+		highcharter::hc_plotOptions(
+		  bubble = list(
+			minSize = 12,
+			maxSize = 48
+		  )
+		) %>%
+		highcharter::hc_add_series(
+		  name = "Korelasyon",
+		  data = chart_data,
+		  color = "#8b5cf6",
+		  marker = list(fillOpacity = 0.7)
+		) %>%
+		highcharter::hc_tooltip(
+		  backgroundColor = "#1a1a1a",
+		  borderColor = "#333",
+		  style = list(color = "#fff"),
+		  formatter = JS("function() { return '<b>' + this.point.name + '</b><br/>Ort. NPS: ' + this.y + '<br/>Yanıt Sayısı: ' + this.point.z; }")
+		) %>%
+		highcharter::hc_legend(enabled = FALSE) %>%
+		highcharter::hc_credits(enabled = FALSE)
+	})
 
     # Kullanıcı bazlı memnuniyet tablosu
     output$gb_kullanici_tablo <- DT::renderDT({

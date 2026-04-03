@@ -130,17 +130,28 @@ adminYanitAnaliziServer <- function(id) {
 
         # Model bazlı performans
         model_performans = admin_safe_query("
+          WITH usage_map AS (
+            SELECT
+              MessageID,
+              MAX(ModelUsed) as ModelUsed,
+              AVG(CAST(ResponseDuration AS FLOAT)) as ResponseDuration
+            FROM MB_Usage_Log
+            WHERE ModelUsed IS NOT NULL AND ModelUsed <> ''
+            GROUP BY MessageID
+          )
           SELECT
-            u.ModelUsed,
+            um.ModelUsed,
             COUNT(*) as toplam_yanit,
             SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END) as begeni,
             SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END) as begenmeme,
-            AVG(u.ResponseDuration) as ort_sure
-          FROM MB_Usage_Log u
-          JOIN MB_Messages m_ai ON u.MessageID = m_ai.MessageID AND m_ai.MessageType = 'ai'
+            AVG(um.ResponseDuration) as ort_sure
+          FROM usage_map um
+          JOIN MB_Messages m_user ON um.MessageID = m_user.MessageID
+          JOIN MB_Messages m_ai ON m_ai.ChatID = m_user.ChatID
+            AND m_ai.MessageType = 'ai'
+            AND m_ai.MessageOrder = m_user.MessageOrder + 1
           JOIN MB_Feedback f ON m_ai.MessageID = f.MessageID
-          WHERE u.ModelUsed IS NOT NULL AND u.ModelUsed <> ''
-          GROUP BY u.ModelUsed
+          GROUP BY um.ModelUsed
           ORDER BY toplam_yanit DESC
         "),
 
@@ -186,24 +197,34 @@ adminYanitAnaliziServer <- function(id) {
 
         # Yanıt süresine göre beğeni dağılımı
         sure_analiz = admin_safe_query("
+          WITH usage_map AS (
+            SELECT
+              MessageID,
+              AVG(CAST(ResponseDuration AS FLOAT)) as ResponseDuration
+            FROM MB_Usage_Log
+            WHERE ResponseDuration IS NOT NULL
+            GROUP BY MessageID
+          )
           SELECT
             CASE
-              WHEN u.ResponseDuration <= 5 THEN '0-5 sn'
-              WHEN u.ResponseDuration <= 10 THEN '5-10 sn'
-              WHEN u.ResponseDuration <= 20 THEN '10-20 sn'
+              WHEN um.ResponseDuration <= 5 THEN '0-5 sn'
+              WHEN um.ResponseDuration <= 10 THEN '5-10 sn'
+              WHEN um.ResponseDuration <= 20 THEN '10-20 sn'
               ELSE '20+ sn'
             END as sure_grubu,
             SUM(CASE WHEN f.FeedbackType = 'like' THEN 1 ELSE 0 END) as begeni,
             SUM(CASE WHEN f.FeedbackType = 'dislike' THEN 1 ELSE 0 END) as begenmeme,
             COUNT(*) as toplam
-          FROM MB_Usage_Log u
-          JOIN MB_Messages m ON u.MessageID = m.MessageID AND m.MessageType = 'ai'
-          JOIN MB_Feedback f ON m.MessageID = f.MessageID
-          WHERE u.ResponseDuration IS NOT NULL
+          FROM usage_map um
+          JOIN MB_Messages m_user ON um.MessageID = m_user.MessageID
+          JOIN MB_Messages m_ai ON m_ai.ChatID = m_user.ChatID
+            AND m_ai.MessageType = 'ai'
+            AND m_ai.MessageOrder = m_user.MessageOrder + 1
+          JOIN MB_Feedback f ON m_ai.MessageID = f.MessageID
           GROUP BY CASE
-              WHEN u.ResponseDuration <= 5 THEN '0-5 sn'
-              WHEN u.ResponseDuration <= 10 THEN '5-10 sn'
-              WHEN u.ResponseDuration <= 20 THEN '10-20 sn'
+              WHEN um.ResponseDuration <= 5 THEN '0-5 sn'
+              WHEN um.ResponseDuration <= 10 THEN '5-10 sn'
+              WHEN um.ResponseDuration <= 20 THEN '10-20 sn'
               ELSE '20+ sn'
             END
         "),
@@ -459,14 +480,16 @@ adminYanitAnaliziServer <- function(id) {
           )
         ),
         fluidRow(
+          class = "equal-height-row",
           column(
             width = 7,
             div(
               class = "analytics-card",
+              style = "min-height: 460px;",
               div(
                 class = "card-title-row",
-                h4(class = "card-title", icon("chart-line"), " Haftalık Beğeni Oranı Trendi"),
-                admin_create_info_button("Son 12 haftadaki beğeni oranı değişimi (beğeni / toplam \U00D7 100).")
+                h4(class = "card-title", icon("chart-line"), " Haftalık Beğeni Oranı Eğilimi"),
+                admin_create_info_button("Son 12 haftadaki beğeni oranı değişimi (beğeni / toplam \u00D7 100).")
               ),
               highcharter::highchartOutput(ns("ya_haftalik_oran_chart"), height = "380px")
             )
@@ -475,13 +498,17 @@ adminYanitAnaliziServer <- function(id) {
             width = 5,
             div(
               class = "analytics-card",
+              style = "min-height: 460px;",
               div(
                 class = "card-title-row",
                 h4(class = "card-title", icon("table"), " Model Karşılaştırma Tablosu"),
                 admin_create_info_button("Modellerin detaylı performans karşılaştırması: toplam yanıt, beğeni oranı ve ortalama yanıt süresi.")
               ),
-              div(class = "table-container scrollable-table-equal",
-                DT::DTOutput(ns("ya_model_tablo")))
+              div(
+                class = "table-container scrollable-table-equal",
+                style = "max-height: 380px;",
+                DT::DTOutput(ns("ya_model_tablo"))
+              )
             )
           )
         )
@@ -593,8 +620,31 @@ adminYanitAnaliziServer <- function(id) {
     # Günlük trend (beğeni / beğenmeme yığılmış alan)
     output$ya_gunluk_trend_chart <- highcharter::renderHighchart({
       data <- ya_data()$gunluk_trend
-      if (nrow(data) == 0) return(highcharter::highchart())
 
+      tum_gunler <- data.frame(
+        tarih = seq(Sys.Date() - 29, Sys.Date(), by = "day")
+      )
+
+      if (nrow(data) > 0) {
+        data$tarih <- as.Date(data$tarih)
+        data$begeni <- as.numeric(data$begeni)
+        data$begenmeme <- as.numeric(data$begenmeme)
+
+        data <- merge(
+          tum_gunler,
+          data[, c("tarih", "begeni", "begenmeme")],
+          by = "tarih",
+          all.x = TRUE,
+          sort = TRUE
+        )
+      } else {
+        data <- tum_gunler
+        data$begeni <- 0
+        data$begenmeme <- 0
+      }
+
+      data$begeni[is.na(data$begeni)] <- 0
+      data$begenmeme[is.na(data$begenmeme)] <- 0
       data$tarih_label <- vapply(data$tarih, admin_format_turkish_date, character(1))
 
       highcharter::highchart() %>%
@@ -617,7 +667,7 @@ adminYanitAnaliziServer <- function(id) {
           )
         ) %>%
         highcharter::hc_add_series(
-          name = "Beğeni", data = as.list(as.numeric(data$begeni)), type = "areaspline",
+          name = "Beğeni", data = as.list(data$begeni), type = "areaspline",
           color = "#10b981",
           fillColor = list(
             linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
@@ -625,7 +675,7 @@ adminYanitAnaliziServer <- function(id) {
           )
         ) %>%
         highcharter::hc_add_series(
-          name = "Beğenmeme", data = as.list(as.numeric(data$begenmeme)), type = "areaspline",
+          name = "Beğenmeme", data = as.list(data$begenmeme), type = "areaspline",
           color = "#ef4444",
           fillColor = list(
             linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
@@ -722,19 +772,32 @@ adminYanitAnaliziServer <- function(id) {
     # Yanıt süresine göre beğeni (yığılmış yatay çubuk)
     output$ya_sure_chart <- highcharter::renderHighchart({
       data <- ya_data()$sure_analiz
-      if (nrow(data) == 0) return(highcharter::highchart())
-
       sira <- c("0-5 sn", "5-10 sn", "10-20 sn", "20+ sn")
-      data$sure_grubu <- factor(data$sure_grubu, levels = sira)
-      data <- data[order(data$sure_grubu), ]
-      data <- data[!is.na(data$sure_grubu), ]
-      if (nrow(data) == 0) return(highcharter::highchart())
+
+      tam <- data.frame(
+        sure_grubu = sira,
+        begeni = 0,
+        begenmeme = 0,
+        stringsAsFactors = FALSE
+      )
+
+      if (nrow(data) > 0) {
+        data$sure_grubu <- as.character(data$sure_grubu)
+        data$begeni <- as.numeric(data$begeni)
+        data$begenmeme <- as.numeric(data$begenmeme)
+
+        idx <- match(data$sure_grubu, tam$sure_grubu)
+        gecerli <- !is.na(idx)
+
+        tam$begeni[idx[gecerli]] <- data$begeni[gecerli]
+        tam$begenmeme[idx[gecerli]] <- data$begenmeme[gecerli]
+      }
 
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "bar", backgroundColor = "transparent") %>%
         highcharter::hc_title(text = NULL) %>%
         highcharter::hc_xAxis(
-          categories = as.character(data$sure_grubu),
+          categories = tam$sure_grubu,
           labels = list(style = list(color = "#ccc", fontSize = "12px"))
         ) %>%
         highcharter::hc_yAxis(
@@ -746,8 +809,8 @@ adminYanitAnaliziServer <- function(id) {
         highcharter::hc_plotOptions(
           bar = list(stacking = "normal", borderWidth = 0, borderRadius = 3)
         ) %>%
-        highcharter::hc_add_series(name = "Beğeni", data = as.list(as.numeric(data$begeni)), color = "#10b981") %>%
-        highcharter::hc_add_series(name = "Beğenmeme", data = as.list(as.numeric(data$begenmeme)), color = "#ef4444") %>%
+        highcharter::hc_add_series(name = "Beğeni", data = as.list(tam$begeni), color = "#10b981") %>%
+        highcharter::hc_add_series(name = "Beğenmeme", data = as.list(tam$begenmeme), color = "#ef4444") %>%
         highcharter::hc_tooltip(
           backgroundColor = "#1a1a1a", borderColor = "#333",
           style = list(color = "#fff"), shared = TRUE
