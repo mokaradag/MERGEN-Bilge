@@ -238,27 +238,47 @@ admin_feedback_outputs <- function(output, analytics_data_fn, turkish_dt_languag
     data <- analytics_data_fn()$feedback_trend
     if (nrow(data) == 0) return(highcharter::highchart())
 
-    data <- data[order(data$feedback_date), ]
-    data$date_label <- sapply(data$feedback_date, format_turkish_date)
+    tek_nokta <- nrow(data) == 1
+
+    data <- data[order(data$feedback_date), , drop = FALSE]
+    data$date_label <- unname(vapply(data$feedback_date, format_turkish_date, character(1)))
+    data$likes <- suppressWarnings(as.numeric(data$likes))
+    data$dislikes <- suppressWarnings(as.numeric(data$dislikes))
 
     highcharter::highchart() %>%
       highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
       highcharter::hc_title(text = NULL) %>%
-      highcharter::hc_xAxis(categories = data$date_label, labels = list(style = list(color = "#999"))) %>%
+      highcharter::hc_xAxis(
+        type = "category",
+        categories = as.list(data$date_label),
+        labels = list(style = list(color = "#999"))
+      ) %>%
       highcharter::hc_yAxis(
         title = list(text = "Geri Bildirim Sayısı", style = list(color = "#999")),
-        labels = list(style = list(color = "#999")), gridLineColor = "#444"
+        labels = list(style = list(color = "#999")),
+        gridLineColor = "#444"
       ) %>%
-      highcharter::hc_plotOptions(areaspline = list(marker = list(enabled = FALSE), lineWidth = 2)) %>%
+      highcharter::hc_plotOptions(
+        areaspline = list(
+          marker = list(enabled = tek_nokta, radius = 4),
+          lineWidth = 2
+        )
+      ) %>%
       highcharter::hc_add_series(
-        name = "Beğeni", data = data$likes, color = "#10b981",
+        name = "Beğeni",
+        data = unname(data$likes),
+        color = "#10b981",
+        marker = list(enabled = tek_nokta, radius = 4),
         fillColor = list(
           linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
           stops = list(list(0, "rgba(16, 185, 129, 0.2)"), list(1, "rgba(16, 185, 129, 0)"))
         )
       ) %>%
       highcharter::hc_add_series(
-        name = "Beğenmeme", data = data$dislikes, color = "#ef4444",
+        name = "Beğenmeme",
+        data = unname(data$dislikes),
+        color = "#ef4444",
+        marker = list(enabled = tek_nokta, radius = 4),
         fillColor = list(
           linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
           stops = list(list(0, "rgba(239, 68, 68, 0.2)"), list(1, "rgba(239, 68, 68, 0)"))

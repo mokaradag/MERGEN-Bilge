@@ -549,11 +549,16 @@ adminGeriBildirimServer <- function(id) {
 	  data$cnt <- suppressWarnings(as.numeric(data$cnt))
 	  data$ort_memnuniyet <- suppressWarnings(round(as.numeric(data$ort_memnuniyet), 2))
 
+	  if (all(is.na(data$cnt)) && all(is.na(data$ort_memnuniyet))) {
+		return(highcharter::highchart())
+	  }
+
 	  highcharter::highchart() %>%
 		highcharter::hc_chart(backgroundColor = "transparent") %>%
 		highcharter::hc_title(text = NULL) %>%
 		highcharter::hc_xAxis(
-		  categories = data$tarih_label,
+		  type = "category",
+		  categories = as.list(data$tarih_label),
 		  labels = list(style = list(color = "#999"))
 		) %>%
 		highcharter::hc_yAxis_multiples(
@@ -574,16 +579,15 @@ adminGeriBildirimServer <- function(id) {
 		) %>%
 		highcharter::hc_add_series(
 		  name = "Bildirim Sayısı",
-		  data = data$cnt,
+		  data = unname(data$cnt),
 		  type = "column",
 		  color = "#06b6d4",
 		  yAxis = 0,
-		  borderWidth = 0,
-		  borderRadius = 3
+		  borderWidth = 0
 		) %>%
 		highcharter::hc_add_series(
 		  name = "Ort. Memnuniyet",
-		  data = data$ort_memnuniyet,
+		  data = unname(data$ort_memnuniyet),
 		  type = "spline",
 		  color = "#f59e0b",
 		  yAxis = 1,
