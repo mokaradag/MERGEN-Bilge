@@ -274,6 +274,9 @@ for (i in seq_along(query_library)) {
     query_library[[i]]$sql <- full_sql
     query_library[[i]]$sql_source <- "sql_file"
     query_library[[i]]$sql_loaded_path <- path_to_use
+    # Ham UTF-8 baytlarini sakla: kodlama donusumlerinde karakter kaybi
+    # (ozellikle koseli parantez [...] icindeki Turkce kolon adlari) onlenir
+    query_library[[i]]$sql_raw <- charToRaw(enc2utf8(full_sql))
 
     .sql_loaded_count <- .sql_loaded_count + 1L
 

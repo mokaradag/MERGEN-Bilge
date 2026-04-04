@@ -245,12 +245,18 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   conn <- conn_list$conn
   on.exit(release_connection(conn_list), add = TRUE)
 
-  # 2. SQL içeriğini belirle
+  # 2. SQL icerigini belirle
+  # Ham baytlar (sql_raw) varsa oncelikli olarak kullan; kodlama donusumu
+  # sirasinda koseli parantezli Turkce kolon adlarinin bozulmasi onlenir
   sql_query_text <- ""
-  if (!is.null(query$sql_file) && nzchar(query$sql_file)) {
+  if (!is.null(query$sql_raw) && is.raw(query$sql_raw) && length(query$sql_raw) > 0) {
+    sql_query_text <- rawToChar(query$sql_raw)
+    Encoding(sql_query_text) <- "UTF-8"
+    cat(sprintf("[DEEP_QUERY] '%s' - SQL ham baytlardan (sql_raw) yuklendi.\n", query_name))
+  } else if (!is.null(query$sql_file) && nzchar(query$sql_file)) {
     fpath <- query$sql_file
     if (file.exists(fpath)) {
-      # Dosyadan oku (basitleştirilmiş - ana modüldeki gibi kodlama kontrolü)
+      # Dosyadan oku (basitlestirilmis kodlama kontrolu)
       sql_query_text <- tryCatch({
         f_con <- file(fpath, open = "rb")
         f_size <- file.info(fpath)$size
@@ -290,11 +296,12 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     return(list(query_name = query_name, success = FALSE, error_msg = "Güvenlik ihlali."))
   }
 
-  # 3. Sorguyu çalıştır
+  # 3. Sorguyu calistir (SQL metnini UTF-8 olarak gonder)
+  final_sql <- enc2utf8(trimws(sql_query_text))
   raw_data <- tryCatch(
-    DBI::dbGetQuery(conn, trimws(sql_query_text)),
+    DBI::dbGetQuery(conn, final_sql),
     error = function(e) {
-      cat(sprintf("[DEEP_QUERY] '%s' - SQL hatası: %s\n", query_name, e$message))
+      cat(sprintf("[DEEP_QUERY] '%s' - SQL hatasi: %s\n", query_name, e$message))
       NULL
     }
   )

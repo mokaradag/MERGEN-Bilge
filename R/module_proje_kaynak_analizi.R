@@ -968,8 +968,17 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
    
 	# 1. SQL icerigini belirle
 	# SQL artik startup sirasinda R/config_sql_loader.R tarafindan yukleniyor.
-	# Burada dosyayi yeniden okumuyoruz; dogrudan preload edilmis sql alanini kullaniyoruz.
-	sql_query_text <- selected_query$sql %||% ""
+	# Ham baytlar (sql_raw) varsa oncelikli olarak kullanilir; boylece
+	# R'nin string kodlama donusumleri sirasinda olusabilecek karakter kaybi
+	# (ozellikle [Adı Soyadı] gibi koseli parantezli Turkce kolon adlari) onlenir.
+	sql_query_text <- ""
+	if (!is.null(selected_query$sql_raw) && is.raw(selected_query$sql_raw) && length(selected_query$sql_raw) > 0) {
+	  sql_query_text <- rawToChar(selected_query$sql_raw)
+	  Encoding(sql_query_text) <- "UTF-8"
+	  cat("[PK_ANALIZ] SQL ham baytlardan (sql_raw) yuklendi - kodlama butunlugu korunuyor.\n")
+	} else {
+	  sql_query_text <- selected_query$sql %||% ""
+	}
 
 	if (!nzchar(trimws(sql_query_text))) {
 	  if (!is.null(selected_query$sql_file) && nzchar(selected_query$sql_file)) {
@@ -1025,7 +1034,19 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	}
 
 	final_sql <- trimws(sql_query_text)
-	final_sql <- normalize_db_value(final_sql)
+	# NOT: normalize_db_value() SQL metni icin kullanilmaz; bu fonksiyon
+	# tekil DB parametreleri icindir. ODBC baglantisi encoding = "UTF-8"
+	# ile yapilandirildigi icin SQL metnini UTF-8 olarak gonderiyoruz.
+	final_sql <- enc2utf8(final_sql)
+
+	# Koseli parantez teshis logu
+	bracket_open  <- nchar(gsub("[^\\[]", "", final_sql))
+	bracket_close <- nchar(gsub("[^\\]]", "", final_sql))
+	cat(sprintf("[PK_ANALIZ] SQL koseli parantez sayisi: [ = %d, ] = %d | Encoding: %s\n",
+	            bracket_open, bracket_close, Encoding(final_sql)))
+	if (bracket_open == 0 && bracket_close == 0) {
+	  cat("[PK_ANALIZ] UYARI: SQL metninde hic koseli parantez bulunamadi! Boslukllu kolon adlari hata verebilir.\n")
+	}
 
 	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
 
