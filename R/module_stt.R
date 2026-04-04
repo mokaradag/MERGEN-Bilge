@@ -227,10 +227,10 @@ sttServer <- function(id, parent_session, settings) {
         
         res <- httr::POST(
           url = api_url,
-          add_headers(Authorization = paste("Bearer", api_key)),
+          httr::add_headers(Authorization = paste("Bearer", api_key)),
           body = body_params,
           encode = "multipart",
-          timeout(10)
+          httr::timeout(10)
         )
         
         if (httr::status_code(res) == 200) {
