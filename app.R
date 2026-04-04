@@ -99,8 +99,8 @@ addResourcePath("img", "www")
 
 # 5. Uygulamayı çalıştır.
 runApp(shinyApp(ui = ui, server = server),
-	host = "0.0.0.0",
-	port = 8000,
-	launch.browser = TRUE,
-	quiet = TRUE
+  host = "0.0.0.0",
+  port = 8000,
+  launch.browser = TRUE,
+  quiet = TRUE
 )

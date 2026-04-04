@@ -65,7 +65,7 @@ sendMessageInit <- function(
         if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
           window.WelcomeNeuralNetwork.destroy();
         }
-		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
           window.WelcomeGreeting.destroy();
         }
         if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
@@ -152,7 +152,7 @@ sendMessageInit <- function(
       uploaded_count,
       as.numeric(difftime(Sys.time(), request_start_time, units = "secs"))
     ))
-	
+
     pending_chat_title <- NULL
     defer_chat_creation <- is.null(values$current_chat_id) &&
       (tool_family %in% c("none", "coding")) &&
