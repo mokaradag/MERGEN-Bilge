@@ -556,8 +556,13 @@ sendMessageInit <- function(
 
     chat_id_val <- isolate(values$current_chat_id)
 
-    # Model seçimini al
-    model_selected <- current_settings$model_selection
+    # Modeli araç ailesine göre server-side kesin olarak çöz
+    model_selected <- resolve_tool_model_for_family(
+      tool_family,
+      fallback_model = current_settings$model_selection
+    )
+
+    current_settings$model_selection <- model_selected
 
     # MCP snapshot hazırla
     mcp_snapshot <- session$userData$mcp_registry_snapshot %||% (session$userData$current_session_files %||% list())

@@ -104,6 +104,14 @@ quickActionsInit <- function(input, session, values, settings_data,
   handle_tool_action <- function(action_id, tool_name, toast_message,
                                   template_model, template_text) {
     cat("[QUICK_TEMPLATE]", action_id, "isteği tespit edildi\n")
+
+    tool_cfg <- get_tool_mode_config(action_id, by = "quick_action_id")
+    resolved_model <- tool_cfg$model_id %||% template_model %||%
+      settings_data$model_selection %||% as.character(api_config$local_models[1])
+
+    if (!is.null(resolved_model) && nzchar(resolved_model)) {
+      template_model <- resolved_model
+    }
     
     # 1. Görsel modu için özel model işleme
     if (tool_name == "enable_image_tools") {

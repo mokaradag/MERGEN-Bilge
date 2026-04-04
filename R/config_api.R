@@ -73,6 +73,93 @@ api_config <- list(
     "technical name 1" = "\\\\main folder\\secondary folder\\repository\\top folder",
     "technical name 2" = "\\\\main folder\\secondary folder\\repository\\top folder2"
   ),
+  # Araç/uzman modlarının merkezi tanımı
+  tool_mode_config = list(
+    process = list(
+      family = "process",
+      setting_flag = "enable_process_tools",
+      quick_action_id = "project-process",
+      title = "Süreç Yönetimi Sistemi",
+      message = "Kurumsal süreç ve dokümantasyon konusunda yardıma ihtiyacım var.",
+      description = "Şirket içi süreç, izleç, rehber ve şablon dokümanları hakkında detaylı bilgi edinin.",
+      icon_name = "briefcase",
+      themeColor = "#3b82f6",
+      model_id = "technical name 1",
+      real_tool = FALSE
+    ),
+    app_expert = list(
+      family = "app_expert",
+      setting_flag = "enable_app_expert_tools",
+      quick_action_id = "app-expert",
+      title = "Uygulama Uzmanı",
+      message = "Primavera P6 konusunda uzman desteğine ihtiyacım var.",
+      description = "Şirket genelinde kullanılan uygulamalar hakkında bilgi edinin. SAP, Primavera P6, Jira gibi uygulamalar hakkında detaylı bilgi edinin.",
+      icon_name = "window-maximize",
+      themeColor = "#8b5cf6",
+      model_id = "technical name 6",
+      real_tool = FALSE
+    ),	
+    sql_analysis = list(
+      family = "sql_analysis",
+      setting_flag = "enable_rdata_tools",
+      quick_action_id = "resource-analysis",
+      title = "Proje ve Kaynak Analizi",
+      message = "Kaynak kullanımını analiz etmem konusunda yardıma ihtiyacım var.",
+      description = "Primavera P6 ve SAP raporları üzerinden proje takvimi ve kaynak yönetimi hakkında verileri analiz edin.",
+      icon_name = "chart-bar",
+      themeColor = "#06b6d4",
+      model_id = "technical name 3",
+      real_tool = TRUE
+    ),
+    mcp_excel = list(
+      family = "mcp_excel",
+      setting_flag = "enable_mcp_tools",
+      quick_action_id = "excel-analysis",
+      title = "Excel Analizi",
+      message = "Excel dosyamı analiz etmem için yardım eder misin?",
+      description = "MCP Excel aracı ile karmaşık veri setlerini otomatik olarak analiz edin.",
+      icon_name = "file-excel",
+      themeColor = "#10b981",
+      model_id = "technical name 4",
+      real_tool = TRUE
+    ),
+    image = list(
+      family = "image",
+      setting_flag = "enable_image_tools",
+      quick_action_id = "image-creation",
+      title = "Görsel Oluşturma",
+      message = "Yapay zeka ile görsel oluşturmak istiyorum.",
+      description = "Metin tabanlı açıklamalarla AI görüntü oluşturma modellerini kullanarak özel görseller tasarlayın.",
+      icon_name = "image",
+      themeColor = "#ec4899",
+      model_id = Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3"),
+      real_tool = TRUE
+    ),	
+    coding = list(
+      family = "coding",
+      setting_flag = "enable_coding_tools",
+      quick_action_id = "coding-support",
+      title = "Kodlama Desteği",
+      message = "Yazılım geliştirme konusunda yardıma ihtiyacım var.",
+      description = "C++, Python, R, JavaScript ve diğer dillerde kod optimizasyonu, hata ayıklama, algoritma tasarımı ve best practice önerileri.",
+      icon_name = "code",
+      themeColor = "#f59e0b",
+      model_id = "technical name 5",
+      real_tool = FALSE
+    ),	
+    summarization = list(
+      family = "summarization",
+      setting_flag = "enable_summarization_tools",
+      quick_action_id = "summarization",
+      title = "Özetleme Desteği",
+      message = "__SUMMARIZATION_REQUEST__",
+      description = "Dosya Yönetimi'nde eklediğiniz belgeleri kapsamlı şekilde özetleyin. Tüm önemli başlıklar, alt konular ve sayısal veriler korunur.",
+      icon_name = "file-alt",
+      themeColor = "#6366f1",
+      model_id = "technical name 2",
+      real_tool = TRUE
+    )
+  ),
   # Model yetenekleri: thinking davranışı ve akış ayrıştırma kuralları
   local_model_capabilities = list(
     "technical name 1" = list(
@@ -363,6 +450,55 @@ determine_api_key_validation_target <- function(requested_model_id = NULL, confi
     fallback_used      = fallback_used,
     requested_model_id = requested_model_id
   )
+}
+
+# --- ARAÇ MODU ÇÖZÜMLEME YARDIMCILARI ---
+get_tool_mode_config <- function(value, by = c("family", "setting_flag", "quick_action_id"), config = api_config) {
+  by <- match.arg(by)
+  all_cfg <- config$tool_mode_config %||% list()
+
+  for (cfg in all_cfg) {
+    candidate <- cfg[[by]] %||% NULL
+    if (!is.null(candidate) && identical(as.character(candidate), as.character(value))) {
+      return(cfg)
+    }
+  }
+
+  NULL
+}
+
+resolve_tool_model_for_family <- function(tool_family, fallback_model = NULL, config = api_config) {
+  cfg <- get_tool_mode_config(tool_family, by = "family", config = config)
+  model_id <- cfg$model_id %||% fallback_model %||% as.character(config$local_models[1]) %||% ""
+  as.character(model_id)[1]
+}
+
+resolve_tool_model_for_flag <- function(setting_flag, fallback_model = NULL, config = api_config) {
+  cfg <- get_tool_mode_config(setting_flag, by = "setting_flag", config = config)
+  model_id <- cfg$model_id %||% fallback_model %||% as.character(config$local_models[1]) %||% ""
+  as.character(model_id)[1]
+}
+
+build_main_actions_data_from_config <- function(config = api_config) {
+  all_cfg <- config$tool_mode_config %||% list()
+
+  actions <- lapply(all_cfg, function(cfg) {
+    if (is.null(cfg$quick_action_id) || !nzchar(cfg$quick_action_id %||% "")) {
+      return(NULL)
+    }
+
+    list(
+      id = cfg$quick_action_id,
+      title = cfg$title %||% cfg$quick_action_id,
+      message = cfg$message %||% "",
+      description = cfg$description %||% "",
+      icon_name = cfg$icon_name %||% "bolt",
+      themeColor = cfg$themeColor %||% "#6366f1",
+      model_value = cfg$model_id %||% as.character(config$local_models[1]) %||% ""
+    )
+  })
+
+  Filter(Negate(is.null), actions)
 }
 
 # --- API ANAHTARI DOĞRULAMA ---
