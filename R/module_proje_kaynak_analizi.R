@@ -86,6 +86,71 @@ convert_date_columns <- function(data, date_col_names) {
   return(data)
 }
 
+normalize_pk_text_utf8 <- function(x) {
+  if (is.null(x)) return(x)
+  if (is.factor(x)) x <- as.character(x)
+  if (!is.character(x)) return(x)
+
+  denenecek_kodlamalar <- unique(c(
+    "UTF-8",
+    getOption("mergen.db.name_encoding", "UTF-8"),
+    getOption("mergen.db.client_encoding", "UTF-8"),
+    "",
+    "WINDOWS-1254",
+    "latin1"
+  ))
+
+  donustur_tek <- function(s) {
+    if (is.na(s) || !nzchar(s)) return(s)
+
+    for (kodlama in denenecek_kodlamalar) {
+      y <- tryCatch(
+        iconv(s, from = kodlama, to = "UTF-8", sub = NA),
+        error = function(e) NA_character_
+      )
+
+      if (!is.na(y)) {
+        Encoding(y) <- "UTF-8"
+        return(y)
+      }
+    }
+
+    y <- tryCatch(
+      iconv(s, from = "", to = "UTF-8", sub = "?"),
+      error = function(e) enc2utf8(s)
+    )
+
+    if (is.na(y)) {
+      y <- enc2utf8(s)
+    }
+
+    Encoding(y) <- "UTF-8"
+    y
+  }
+
+  out <- vapply(x, donustur_tek, character(1), USE.NAMES = FALSE)
+  out[is.na(x)] <- NA_character_
+  Encoding(out) <- "UTF-8"
+  out
+}
+
+normalize_pk_dataframe_utf8 <- function(df) {
+  if (is.null(df) || !is.data.frame(df)) return(df)
+
+  eski_isimler <- names(df)
+  if (!is.null(eski_isimler)) {
+    names(df) <- normalize_pk_text_utf8(eski_isimler)
+  }
+
+  for (j in seq_along(df)) {
+    if (is.character(df[[j]]) || is.factor(df[[j]])) {
+      df[[j]] <- normalize_pk_text_utf8(df[[j]])
+    }
+  }
+
+  df
+}
+
 extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL, stop_check = NULL) {
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -901,98 +966,54 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' (Table: %s)\n", selected_query$name, selected_query$description))
    
-  # 1. SQL İçeriğini Belirle (sql string veya sql_file dosyasından)
-  sql_query_text <- ""
+	# 1. SQL icerigini belirle
+	# SQL artik startup sirasinda R/config_sql_loader.R tarafindan yukleniyor.
+	# Burada dosyayi yeniden okumuyoruz; dogrudan preload edilmis sql alanini kullaniyoruz.
+	sql_query_text <- selected_query$sql %||% ""
 
-  # Oncelik: sql_file (Dosyadan oku)
-  # Eger sql_file tanimliysa, sql metni yerine dosya icerigini kullanmayi zorla.
-  if (!is.null(selected_query$sql_file) && nzchar(selected_query$sql_file)) {
-    fpath <- selected_query$sql_file
-    
-    if (file.exists(fpath)) {
-      cat(sprintf("[PK_ANALIZ] SQL dosyadan okunuyor: %s\n", fpath))
-      
-# Dosya içeriğini Binary (Raw) olarak oku
-      f_con <- file(fpath, open = "rb")
-      f_size <- file.info(fpath)$size
-      if (is.na(f_size)) f_size <- 0
-      raw_content <- readBin(f_con, "raw", n = f_size)
-      close(f_con)
-      
-      sql_query_text <- ""
-      
-      if (length(raw_content) > 0) {
-        # BOM Kontrolü (UTF-16 LE/BE)
-        has_bom_le <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xff) && raw_content[2] == as.raw(0xfe)
-        has_bom_be <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xfe) && raw_content[2] == as.raw(0xff)
-        
-        # Null Byte Varlığı (UTF-16 tespiti için)
-        has_nulls <- any(raw_content == as.raw(0))
-        
-        if (has_bom_le) {
-           sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
-        } else if (has_bom_be) {
-           sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
-        } else if (has_nulls) {
-           # BOM yok ama NULL var -> UTF-16. LE mi BE mi tahmini:
-           # Eğer ilk byte NULL ise (ve ikincisi değilse) bu Big Endian (00 XX) yapısıdır.
-           if (length(raw_content) >= 2 && raw_content[1] == as.raw(0) && raw_content[2] != as.raw(0)) {
-              cat("[PK_ANALIZ] Dosya NULL byte içeriyor (BE tespiti), UTF-16BE deneniyor...\n")
-              sql_query_text <- iconv(list(raw_content), from = "UTF-16BE", to = "UTF-8")[[1]]
-           } else {
-              cat("[PK_ANALIZ] Dosya NULL byte içeriyor, UTF-16LE deneniyor...\n")
-              sql_query_text <- iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
-           }
-        } else {
-           # UTF-8 veya WINDOWS-1254 (Türkçe) Kontrolü
-           text_utf8 <- iconv(list(raw_content), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
-           
-           if (grepl("<[0-9a-fA-F]{2}>", text_utf8)) {
-              cat("[PK_ANALIZ] Dosya UTF-8 değil (TR karakterler). WINDOWS-1254 kullanılıyor...\n")
-              converted <- iconv(list(raw_content), from = "WINDOWS-1254", to = "UTF-8")
-              sql_query_text <- if (length(converted) > 0 && !is.na(converted[[1]])) converted[[1]] else text_utf8
-           } else {
-              sql_query_text <- text_utf8
-           }
-        }
-      }
-      
-      # Sadece UTF-8 BOM temizliği (Null temizliği kaldırıldı)
-      sql_query_text <- gsub("^\ufeff", "", sql_query_text)
-      
-      cat(sprintf("[PK_ANALIZ] Okunan SQL uzunlugu: %d karakter\n", nchar(sql_query_text)))
-      cat(sprintf("[PK_ANALIZ] SQL baslangici:\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
-      
-    } else {
-      cat(sprintf("[PK_ANALIZ] HATA: Belirtilen SQL dosyasi bulunamadi: %s\n", fpath))
-      return(paste0("\U000026A0\U0000FE0F **Yapılandırma Hatası:** SQL dosyası bulunamadı: ", fpath))
-    }
-  } 
-  
-  # Alternatif: sql (Direkt metin) - Sadece dosya tanimi yoksa ve metin bos ise buraya bak
-  if (!nzchar(sql_query_text) && !is.null(selected_query$sql)) {
-    sql_query_text <- selected_query$sql
-  }
+	if (!nzchar(trimws(sql_query_text))) {
+	  if (!is.null(selected_query$sql_file) && nzchar(selected_query$sql_file)) {
+		cat(sprintf("[PK_ANALIZ] HATA: Startup sirasinda preload edilmis SQL bos. Dosya: %s\n", selected_query$sql_file))
+		return(paste0(
+		  "\u26A0\uFE0F **Yapılandırma Hatası:** SQL dosyası startup sırasında yüklenmemiş görünüyor. Dosya: ",
+		  selected_query$sql_file
+		))
+	  }
 
-  # Hata Kontrolü: İçerik hala boş mu?
-  if (!nzchar(sql_query_text)) {
-    cat("[PK_ANALIZ] HATA: Ne sql_file ne de sql metni gecerli!\n")
-    return("\U000026A0\U0000FE0F **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
-  }
+	  cat("[PK_ANALIZ] HATA: selected_query$sql bos.\n")
+	  return("\u26A0\uFE0F **Yapılandırma Hatası:** Sorgu için SQL kodu bulunamadı.")
+	}
+
+	sql_query_text <- as.character(sql_query_text)[1]
+	sql_query_text <- enc2utf8(sql_query_text)
+
+	# BOM temizligi
+	bom_char <- intToUtf8(65279L)
+	if (startsWith(sql_query_text, bom_char)) {
+	  sql_query_text <- substring(sql_query_text, 2L)
+	}
+
+	# Satir sonlarini normalize et
+	sql_query_text <- gsub("\r\n?|\r", "\n", sql_query_text, perl = TRUE)
+
+	cat(sprintf("[PK_ANALIZ] Preload edilmis SQL kullaniliyor. Uzunluk: %d karakter\n", nchar(sql_query_text)))
+	cat(sprintf("[PK_ANALIZ] SQL baslangici:\n%s\n[...]\n", substr(sql_query_text, 1, 200)))
 
 	if (grepl("^[a-zA-Z]:[\\\\/]|^[\\\\/]{2}|^\\./|^\\.\\./|^[^/\\\\]+[\\\\/]", sql_query_text)) {
-	  cat(sprintf("[PK_ANALIZ] KRITIK HATA: sql_query_text dosya yolu iceriyor!\n"))
+	  cat("[PK_ANALIZ] KRITIK HATA: sql_query_text dosya yolu iceriyor!\n")
 	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 300)))
-	  return("\U000026A0\U0000FE0F **Sistem Hatası:** SQL sorgusu yüklenemedi (dosya yolu algılandı).")
+	  return("\u26A0\uFE0F **Sistem Hatası:** SQL sorgusu yüklenemedi (dosya yolu algılandı).")
 	}
 
 	if (nchar(sql_query_text) < 10 || !grepl("SELECT|INSERT|UPDATE|DELETE|EXEC", sql_query_text, ignore.case = TRUE)) {
-	  cat(sprintf("[PK_ANALIZ] HATA: Gecersiz SQL icerigi!\n"))
+	  cat("[PK_ANALIZ] HATA: Gecersiz SQL icerigi!\n")
 	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 200)))
-	  return("\U000026A0\U0000FE0F **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
+	  return("\u26A0\uFE0F **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
 	}
 
-	target_db <- selected_query$db_target
+	target_db <- selected_query$db_target %||% DB_TARGETS$PRIMARY %||% "primary"
+	target_db <- tolower(trimws(as.character(target_db)[1]))
+	if (!nzchar(target_db)) target_db <- "primary"
 
 	if (!is.null(target_db) && target_db != "primary") {
 	   cat(sprintf("[PK_ANALIZ] Hedef DB 'primary' degil (%s). Baglanti degistiriliyor...\n", target_db))
@@ -1004,22 +1025,39 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	}
 
 	final_sql <- trimws(sql_query_text)
+	final_sql <- normalize_db_value(final_sql)
 
 	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
 
-  raw_data <- tryCatch({
-    # Güvenlik Kontrolü
-    if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(final_sql))) {
-      stop("Guvenlik ihlali: Yasakli SQL komutu.")
-    }
-    
-    # Sorguyu Çalıştır
-    DBI::dbGetQuery(conn, final_sql)
-    
-  }, error = function(e) {
-    cat(sprintf("[PK_ANALIZ] SQL HATASI: %s\n", e$message))
-    return(paste0("\U000026A0\U0000FE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`", e$message, "`"))
-  })
+	raw_data <- tryCatch({
+	  if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(final_sql))) {
+		stop("Guvenlik ihlali: Yasakli SQL komutu.")
+	  }
+
+	  DBI::dbGetQuery(conn, final_sql)
+
+	}, error = function(e) {
+	  err_msg <- conditionMessage(e)
+
+	  cat(sprintf(
+		"[PK_ANALIZ] SQL HATASI | DB: %s | Sorgu ID: %s | Sorgu Adi: %s\n",
+		selected_query$db_target %||% "primary",
+		selected_query$id %||% "?",
+		selected_query$name %||% "?"
+	  ))
+	  cat(sprintf(
+		"[PK_ANALIZ] SQL HATASI | SQL dosyasi: %s\n",
+		selected_query$sql_file %||% "inline"
+	  ))
+	  cat(sprintf("[PK_ANALIZ] SQL HATASI DETAY: %s\n", err_msg))
+	  cat(sprintf("[PK_ANALIZ] SQL ILK 500 KARAKTER:\n%s\n", substr(final_sql, 1, 500)))
+
+	  return(paste0(
+		"\u26A0\uFE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`",
+		err_msg,
+		"`"
+	  ))
+	})
   
   if (is.character(raw_data) && startsWith(raw_data, "\U000026A0\U0000FE0F")) return(raw_data)
   
@@ -1028,7 +1066,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
-  cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
+	raw_data <- normalize_pk_dataframe_utf8(raw_data)
+
+	cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
+	cat("[PK_ANALIZ] SQL sonucu UTF-8 normalize edildi.\n")
   
   if (!is.null(selected_query$date_columns)) {
     raw_data <- convert_date_columns(raw_data, selected_query$date_columns)
@@ -1057,6 +1098,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     filter_criteria <- list(filters = list(), aggregation = NULL)
     filtered_data <- secure_data
 	} else {
+	available_columns <- names(secure_data)
     filter_criteria <- extract_filter_criteria_from_prompt(user_prompt, secure_data, available_columns, conn, session, stop_check = stop_check)
   
     if (!is.null(filter_criteria$error)) {
@@ -1069,7 +1111,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
                 filter_criteria$operation %||% "NULL",
                 filter_criteria$aggregation %||% "NULL"))
   
-    filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
+	filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
+	filtered_data <- normalize_pk_dataframe_utf8(filtered_data)
   }
   
   cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n", 
@@ -1110,11 +1153,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
               stat_summary$row_count,
               if (!is.null(stat_summary$preview_data)) nrow(stat_summary$preview_data) else 0))
   
-  preview_json <- if (!is.null(stat_summary$preview_data) && nrow(stat_summary$preview_data) > 0) {
-    jsonlite::toJSON(stat_summary$preview_data, auto_unbox = TRUE, pretty = FALSE)
-  } else {
-    "{}"
-  }
+	preview_json <- if (!is.null(stat_summary$preview_data) && nrow(stat_summary$preview_data) > 0) {
+	  preview_data_safe <- normalize_pk_dataframe_utf8(stat_summary$preview_data)
+	  jsonlite::toJSON(preview_data_safe, auto_unbox = TRUE, pretty = FALSE, na = "null")
+	} else {
+	  "{}"
+	}
   
   data_str <- paste0(
     stat_summary$summary_text,

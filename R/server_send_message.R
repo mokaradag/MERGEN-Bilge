@@ -740,9 +740,9 @@ sendMessageInit <- function(
       model_selected <- api_config$local_models[1]
     }
 
-    # Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır
-    is_thinking_model <- grepl("(?i)(think|reason|qwen3\\.5)", model_selected, perl = TRUE)
-    force_non_streaming_sql <- identical(tool_family, "sql_analysis") && is_thinking_model
+	# Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır
+	is_thinking_model <- grepl("(?i)(think|reason|qwen3\\.5)", model_selected, perl = TRUE)
+	force_non_streaming_sql <- identical(tool_family, "sql_analysis") && is_thinking_model
 
     stream_profile <- list(
       label = "standard",
@@ -761,9 +761,9 @@ sendMessageInit <- function(
     }
 
     log_debug("Mesaj gönderiliyor, model: {model_selected}")
-    if (isTRUE(force_non_streaming_sql)) {
-      log_debug("[MONITORING] SQL analizi için düşünmeli model tespit edildi; streaming kapatılıp non-streaming kullanılacak")
-    }
+	if (isTRUE(force_non_streaming_sql)) {
+	  log_debug("[MONITORING] SQL analizi için düşünmeli model tespit edildi; streaming kapatılıp non-streaming kullanılacak")
+	}
 
     log_info(sprintf(
       "[CHAT PERF] LLM isteği hazırlanıyor - yol=%s, profil=%s, gecen=%.3f sn",
