@@ -94,7 +94,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       $('#chat_content_container').show().empty();
     ")
 
-	# Mesajları ve durum bilgisini yükle
+    # Mesajları ve durum bilgisini yükle
     values$messages <- chat_to_load$messages %||% list()
     all_feedback <- load_feedback_from_db(current_user_id)
     values$liked_messages <- all_feedback$liked
@@ -114,7 +114,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       "enable_coding_tools", "enable_process_tools", "enable_app_expert_tools",
       "enable_image_tools"
     )
-	
+
     # Önce diğer tüm araçları devre dışı bırak
     for (tool in analysis_tools) {
       if (tool != "enable_image_tools") {
@@ -122,7 +122,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
         updateCheckboxInput(session, paste0("settings_yapilandirma_module-", tool), value = FALSE)
       }
     }
-	
+
     # Görsel Uzmanı aracını aktifleştir
     settings_data$enable_image_tools <- TRUE
     updateCheckboxInput(session, "settings_yapilandirma_module-enable_image_tools", value = TRUE)
@@ -266,27 +266,27 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
         )
         if (!is.null(detail)) {
           values$messages <- detail$messages %||% list()
-		  
-		  # Aktif söyleşinin DOM'unu yeniden oluştur
-			shinyjs::runjs("$('#chat_content_container').empty();")
-			selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-			chars_data <- get_characters_data()
-			character_data <- if (!is.null(chars_data)) {
-			  Find(function(x) x$id == selected_char_id, chars_data$styles)
-			} else NULL
 
-			for (mi in seq_along(values$messages)) {
-			  msg <- values$messages[[mi]]
-			  is_last_user_msg <- (msg$type == "user" && mi == length(values$messages))
-			  ui_to_insert <- render_message_bubble_ui(
-				msg, settings_data,
-				is_last_user_message = is_last_user_msg,
-				character_data = character_data,
-				liked_ids = values$liked_messages,
-				disliked_ids = values$disliked_messages
-			  )
-			  insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
-			}
+          # Aktif söyleşinin DOM'unu yeniden oluştur
+          shinyjs::runjs("$('#chat_content_container').empty();")
+          selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+          chars_data <- get_characters_data()
+          character_data <- if (!is.null(chars_data)) {
+            Find(function(x) x$id == selected_char_id, chars_data$styles)
+          } else NULL
+
+          for (mi in seq_along(values$messages)) {
+            msg <- values$messages[[mi]]
+            is_last_user_msg <- (msg$type == "user" && mi == length(values$messages))
+            ui_to_insert <- render_message_bubble_ui(
+              msg, settings_data,
+              is_last_user_message = is_last_user_msg,
+              character_data = character_data,
+              liked_ids = values$liked_messages,
+              disliked_ids = values$disliked_messages
+            )
+            insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
+          }
         }
       }
     }

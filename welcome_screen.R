@@ -58,15 +58,15 @@ MAIN_ACTIONS_DATA <- list(
     themeColor = "#f59e0b",
     model_value = "mergen-local-model"
   ),
-	list(
-	  id = "summarization",
-	  title = "Özetleme Desteği",
-	  message = "__SUMMARIZATION_REQUEST__",
-	  description = "Dosya Yönetimi'nde eklediğiniz belgeleri kapsamlı şekilde özetleyin. Tüm önemli başlıklar, alt konular ve sayısal veriler korunur.",
-	  icon_name = "file-alt",
-	  themeColor = "#6366f1",
-	  model_value = "mergen-local-model"
-	)
+  list(
+    id = "summarization",
+    title = "Özetleme Desteği",
+    message = "__SUMMARIZATION_REQUEST__",
+    description = "Dosya Yönetimi'nde eklediğiniz belgeleri kapsamlı şekilde özetleyin. Tüm önemli başlıklar, alt konular ve sayısal veriler korunur.",
+    icon_name = "file-alt",
+    themeColor = "#6366f1",
+    model_value = "mergen-local-model"
+  )
 )
 
 createWelcomeScreen <- function(saved_chats) {
