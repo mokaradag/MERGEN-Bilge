@@ -72,6 +72,45 @@ api_config <- list(
   local_model_paths = list(
     "technical name 1" = "\\\\main folder\\secondary folder\\repository\\top folder",
     "technical name 2" = "\\\\main folder\\secondary folder\\repository\\top folder2"
+  ),
+  # Model yetenekleri: thinking davranışı ve akış ayrıştırma kuralları
+  local_model_capabilities = list(
+    "technical name 1" = list(
+      thinking = FALSE,
+      omit_temperature = FALSE,
+      stream_reasoning = FALSE,
+      allow_reasoning_fallback = FALSE
+    ),
+    "technical name 2" = list(
+      thinking = FALSE,
+      omit_temperature = FALSE,
+      stream_reasoning = FALSE,
+      allow_reasoning_fallback = FALSE
+    ),
+    "technical name 3" = list(
+      thinking = TRUE,
+      omit_temperature = TRUE,
+      stream_reasoning = FALSE,
+      allow_reasoning_fallback = TRUE
+    ),
+    "technical name 4" = list(
+      thinking = FALSE,
+      omit_temperature = FALSE,
+      stream_reasoning = FALSE,
+      allow_reasoning_fallback = FALSE
+    ),
+    "technical name 5" = list(
+      thinking = FALSE,
+      omit_temperature = FALSE,
+      stream_reasoning = FALSE,
+      allow_reasoning_fallback = FALSE
+    ),
+    "technical name 6" = list(
+      thinking = FALSE,
+      omit_temperature = FALSE,
+      stream_reasoning = FALSE,
+      allow_reasoning_fallback = FALSE
+    )
   )
 )
 
@@ -107,6 +146,42 @@ try({
 
 # --- UÇ NOKTA ÇÖZÜMLEME FONKSİYONLARI ---
 
+# Model capability'lerini çözümle
+get_local_model_capabilities <- function(model_id = NULL, config = api_config) {
+  defaults <- list(
+    thinking = FALSE,
+    omit_temperature = FALSE,
+    stream_reasoning = FALSE,
+    allow_reasoning_fallback = FALSE
+  )
+
+  model_id <- as.character(model_id %||% "")[1]
+  caps <- config$local_model_capabilities[[model_id]]
+
+  if (!is.list(caps)) {
+    caps <- list()
+  }
+
+  utils::modifyList(defaults, caps, keep.null = TRUE)
+}
+
+is_thinking_model <- function(model_id = NULL, config = api_config) {
+  isTRUE(get_local_model_capabilities(model_id, config)$thinking)
+}
+
+should_omit_temperature <- function(model_id = NULL, config = api_config) {
+  caps <- get_local_model_capabilities(model_id, config)
+  isTRUE(caps$omit_temperature) || isTRUE(caps$thinking)
+}
+
+should_stream_reasoning <- function(model_id = NULL, config = api_config) {
+  isTRUE(get_local_model_capabilities(model_id, config)$stream_reasoning)
+}
+
+should_allow_reasoning_fallback <- function(model_id = NULL, config = api_config) {
+  isTRUE(get_local_model_capabilities(model_id, config)$allow_reasoning_fallback)
+}
+
 # Verilen teknik model kimliği için uygun yerel LLM uç noktasını çözümle
 resolve_local_llm_endpoint <- function(model_id = NULL, config = api_config) {
   default_endpoint <- config$local_llm_endpoint %||% config$local_llm$endpoint %||% ""
@@ -129,7 +204,16 @@ resolve_local_llm_endpoint <- function(model_id = NULL, config = api_config) {
 
   # İstenen modele bağlı uç noktayı tercih et
   if (!is.null(model_id) && nzchar(model_id)) {
-    endpoint_key <- endpoint_map[[model_id]]
+    endpoint_key <- NULL
+    if (!is.null(endpoint_map) &&
+        length(endpoint_map) > 0 &&
+        !is.null(names(endpoint_map)) &&
+        model_id %in% names(endpoint_map)) {
+      endpoint_key <- as.character(endpoint_map[model_id])[1]
+      if (is.na(endpoint_key) || !nzchar(endpoint_key)) {
+        endpoint_key <- NULL
+      }
+    }
     chosen <- pick_endpoint(endpoint_key)
     if (!is.null(chosen) && nzchar(chosen)) {
       return(chosen)
@@ -137,7 +221,23 @@ resolve_local_llm_endpoint <- function(model_id = NULL, config = api_config) {
   }
 
   # Sonra tanımlı varsayılan anahtarı dene
-  default_key <- config$local_llm_default_endpoint_key %||% endpoint_map[[as.character(config$local_models[1])]] %||% names(endpoints)[1]
+  first_model_id <- as.character(config$local_models[1] %||% "")[1]
+
+  mapped_default_key <- NULL
+  if (!is.null(endpoint_map) &&
+      length(endpoint_map) > 0 &&
+      !is.null(names(endpoint_map)) &&
+      nzchar(first_model_id) &&
+      first_model_id %in% names(endpoint_map)) {
+    mapped_default_key <- as.character(endpoint_map[first_model_id])[1]
+    if (is.na(mapped_default_key) || !nzchar(mapped_default_key)) {
+      mapped_default_key <- NULL
+    }
+  }
+
+  default_key <- config$local_llm_default_endpoint_key %||%
+    mapped_default_key %||%
+    names(endpoints)[1]
   chosen_default <- pick_endpoint(default_key)
   if (!is.null(chosen_default) && nzchar(chosen_default)) {
     return(chosen_default)
@@ -166,7 +266,20 @@ resolve_local_llm_credentials <- function(model_id = NULL, config = api_config) 
   endpoint_key <- NULL
 
   if (!is.null(model_id) && nzchar(as.character(model_id)[1])) {
-    endpoint_key <- endpoint_map[[as.character(model_id)[1]]]
+    model_key <- as.character(model_id)[1]
+    endpoint_key <- NULL
+
+    if (!is.null(endpoint_map) &&
+        length(endpoint_map) > 0 &&
+        !is.null(names(endpoint_map)) &&
+        !is.na(model_key) &&
+        nzchar(model_key) &&
+        model_key %in% names(endpoint_map)) {
+      endpoint_key <- as.character(endpoint_map[model_key])[1]
+      if (is.na(endpoint_key) || !nzchar(endpoint_key)) {
+        endpoint_key <- NULL
+      }
+    }
   }
 
   if (is.null(endpoint_key) || !nzchar(endpoint_key)) {

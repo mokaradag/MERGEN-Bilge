@@ -9,36 +9,156 @@
 # METNİ GÜVENLİ TEKİL KARAKTER DİZİSİNE İNDİR
 # ------------------------------------------------------------------------------
 
-normalize_llm_scalar_content <- function(ai_content) {
-  if (is.null(ai_content)) {
+# İç içe LLM metin düğümlerini güvenli metne dönüştür
+normalize_llm_text_node <- function(x) {
+  if (is.null(x)) {
     return("")
   }
 
-  if (is.character(ai_content)) {
-    if (length(ai_content) == 0 || is.na(ai_content[1])) {
+  if (is.character(x)) {
+    x <- x[!is.na(x)]
+    if (!length(x)) {
       return("")
     }
-    return(as.character(ai_content)[1])
+    return(paste(x, collapse = ""))
   }
 
-  if (is.list(ai_content)) {
-    text_parts <- unlist(ai_content, use.names = FALSE)
-    text_parts <- text_parts[!is.na(text_parts)]
-    if (length(text_parts) == 0) {
+  if (is.atomic(x)) {
+    x <- as.character(x)
+    x <- x[!is.na(x)]
+    if (!length(x)) {
       return("")
     }
-    return(paste(as.character(text_parts), collapse = ""))
+    return(paste(x, collapse = ""))
   }
 
-  as.character(ai_content %||% "")
+  if (is.list(x)) {
+    if (!is.null(x$text)) {
+      return(normalize_llm_text_node(x$text))
+    }
+
+    if (!is.null(x$content)) {
+      return(normalize_llm_text_node(x$content))
+    }
+
+    if (!is.null(x$reasoning_content)) {
+      return(normalize_llm_text_node(x$reasoning_content))
+    }
+
+    if (!is.null(x$reasoning)) {
+      return(normalize_llm_text_node(x$reasoning))
+    }
+
+    parts <- vapply(x, function(item) {
+      normalize_llm_text_node(item)
+    }, character(1))
+
+    parts <- parts[nzchar(parts)]
+    if (!length(parts)) {
+      return("")
+    }
+
+    return(paste(parts, collapse = ""))
+  }
+
+  as.character(x %||% "")
+}
+
+extract_first_nonempty_llm_text <- function(...) {
+  adaylar <- list(...)
+
+  for (aday in adaylar) {
+    txt <- enc2utf8(normalize_llm_text_node(aday))
+    if (nzchar(txt)) {
+      return(txt)
+    }
+  }
+
+  ""
+}
+
+extract_llm_text_bundle <- function(response_content) {
+  content_text <- ""
+  reasoning_text <- ""
+
+  if (!is.list(response_content)) {
+    return(list(
+      content = enc2utf8(normalize_llm_text_node(response_content)),
+      reasoning = ""
+    ))
+  }
+
+  if (!is.null(response_content$choices) && length(response_content$choices) > 0) {
+    first_choice <- response_content$choices[[1]]
+
+    if (is.list(first_choice)) {
+      message_obj <- first_choice$message %||% list()
+      delta_obj <- first_choice$delta %||% list()
+
+      content_text <- extract_first_nonempty_llm_text(
+        message_obj$content,
+        delta_obj$content,
+        delta_obj$text,
+        first_choice$text,
+        response_content$content,
+        response_content$message$content
+      )
+
+      reasoning_text <- extract_first_nonempty_llm_text(
+        message_obj$reasoning_content,
+        message_obj$reasoning,
+        delta_obj$reasoning_content,
+        delta_obj$reasoning,
+        response_content$reasoning_content,
+        response_content$reasoning,
+        response_content$message$reasoning_content,
+        response_content$message$reasoning
+      )
+    }
+  }
+
+  if (!nzchar(content_text)) {
+    content_text <- extract_first_nonempty_llm_text(
+      response_content$content,
+      response_content$message$content
+    )
+  }
+
+  if (!nzchar(reasoning_text)) {
+    reasoning_text <- extract_first_nonempty_llm_text(
+      response_content$reasoning_content,
+      response_content$reasoning,
+      response_content$message$reasoning_content,
+      response_content$message$reasoning
+    )
+  }
+
+  list(
+    content = enc2utf8(content_text),
+    reasoning = enc2utf8(reasoning_text)
+  )
+}
+
+normalize_llm_scalar_content <- function(ai_content) {
+  txt <- enc2utf8(normalize_llm_text_node(ai_content))
+  if (!nzchar(txt)) {
+    return("")
+  }
+  txt
 }
 
 # ------------------------------------------------------------------------------
 # LLM YANITINDAN METİN VE KAYNAKLARI ÇIKAR
 # ------------------------------------------------------------------------------
 
-extract_llm_content_and_sources <- function(response_content) {
-  ai_content <- ""
+extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
+  text_bundle <- extract_llm_text_bundle(response_content)
+  ai_content <- text_bundle$content
+  sources_list <- NULL
+
+  if (!nzchar(ai_content) && should_allow_reasoning_fallback(model_id)) {
+    ai_content <- text_bundle$reasoning
+  }
   sources_list <- NULL
 
   if (!is.list(response_content)) {

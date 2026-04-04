@@ -245,11 +245,14 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     temp_value <- if (!is.null(settings$temperature)) settings$temperature else 0.4
 
     body <- list(
-      model = selected_model, 
-      messages = messages_payload, 
-      stream = FALSE,
-      temperature = temp_value
+      model = selected_model,
+      messages = messages_payload,
+      stream = FALSE
     )
+
+    if (!should_omit_temperature(selected_model)) {
+      body$temperature <- temp_value
+    }
 
     # Tüm uç noktalar OpenAI uyumlu kabul edilir; araç şemasını ekle
     if (mcp_enabled_now) {
@@ -313,7 +316,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     
     response_content <- httr::content(response, "parsed")
     
-    ai_content <- NULL
+    ayristirilmis_yanit <- extract_llm_content_and_sources(
+      response_content,
+      model_id = selected_model
+    )
+
+    ai_content <- ayristirilmis_yanit$content
     tool_calls_struct <- NULL
     
     if (is.list(response_content) &&
@@ -321,9 +329,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         length(response_content$choices) > 0) {
       first_choice <- response_content$choices[[1]]
       if (is.list(first_choice) && !is.null(first_choice$message)) {
-        ai_content <- first_choice$message$content %||% ""
-        # YENİ: API'den gelen yapısal araç çağrılarını yakala
-        if (!is.null(first_choice$message$tool_calls) && length(first_choice$message$tool_calls) > 0) {
+        if (!is.null(first_choice$message$tool_calls) &&
+            length(first_choice$message$tool_calls) > 0) {
           tool_calls_struct <- first_choice$message$tool_calls
         }
       }
@@ -890,9 +897,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         body2 <- list(
           model = selected_model,
           messages = messages_payload2,
-          stream = FALSE,
-          temperature = temp_value
+          stream = FALSE
         )
+
+        if (!should_omit_temperature(selected_model)) {
+          body2$temperature <- temp_value
+        }
         
         hdrs2 <- list(`Content-Type` = "application/json")
         if (!is.null(api_key) && nzchar(api_key)) {
@@ -927,13 +937,13 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     }
 
     rc2 <- httr::content(response2, "parsed")
-        ai2 <- NULL
-        if (is.list(rc2) && !is.null(rc2$choices) && length(rc2$choices) > 0) {
-          first_choice2 <- rc2$choices[[1]]
-          if (is.list(first_choice2) && !is.null(first_choice2$message)) {
-            ai2 <- first_choice2$message$content
-          }
-        }
+
+    ayristirilmis_yanit2 <- extract_llm_content_and_sources(
+      rc2,
+      model_id = selected_model
+    )
+
+    ai2 <- ayristirilmis_yanit2$content
         
     if (!(is.character(ai2) && length(ai2) > 0 && nzchar(ai2[1]))) {
       fb <- format_answer_from_tool_results(tool_results_raw)

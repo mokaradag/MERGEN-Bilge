@@ -89,7 +89,7 @@ call_local_llm <- function(chat_history, current_settings) {
   )
 
   # Düşünmeli modeller bazı uçlarda temperature alanını reddedebiliyor
-  if (!grepl("(?i)(think|reason|qwen3\\.5)", selected_model, perl = TRUE)) {
+  if (!should_omit_temperature(selected_model)) {
     body$temperature <- temp_value
   }
 
@@ -119,7 +119,11 @@ call_local_llm <- function(chat_history, current_settings) {
   response_content <- httr::content(response, "parsed")
 
   # İçerik ve kaynakları çıkar
-  ayristirilmis_yanit <- extract_llm_content_and_sources(response_content)
+  ayristirilmis_yanit <- extract_llm_content_and_sources(
+    response_content,
+    model_id = selected_model
+  )
+
   ai_content <- ayristirilmis_yanit$content
   sources_list <- ayristirilmis_yanit$sources
 

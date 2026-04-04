@@ -65,53 +65,63 @@ parse_llm_sse_event <- function(event_text) {
 # SSE OLAYINDAN METİN PARÇASI ÇIKAR
 # ------------------------------------------------------------------------------
 
-extract_llm_delta_text <- function(event_obj) {
+extract_llm_delta_bundle <- function(event_obj) {
   if (!is.list(event_obj)) {
-    return("")
+    return(list(content = "", reasoning = ""))
   }
+
+  content_text <- ""
+  reasoning_text <- ""
 
   if (!is.null(event_obj$choices) && length(event_obj$choices) > 0) {
     first_choice <- event_obj$choices[[1]]
 
-    if (!is.null(first_choice$delta)) {
-      delta_obj <- first_choice$delta
+    if (is.list(first_choice)) {
+      delta_obj <- first_choice$delta %||% list()
+      message_obj <- first_choice$message %||% list()
 
-      if (!is.null(delta_obj$content)) {
-        content_obj <- delta_obj$content
+      content_text <- extract_first_nonempty_llm_text(
+        delta_obj$content,
+        delta_obj$text,
+        message_obj$content,
+        first_choice$text
+      )
 
-        if (is.character(content_obj)) {
-          return(paste(content_obj, collapse = ""))
-        }
-
-        if (is.list(content_obj)) {
-          content_parts <- vapply(content_obj, function(part) {
-            if (is.character(part)) {
-              return(paste(part, collapse = ""))
-            }
-
-            if (is.list(part) && !is.null(part$text)) {
-              return(as.character(part$text %||% ""))
-            }
-
-            ""
-          }, character(1))
-
-          return(paste(content_parts, collapse = ""))
-        }
-      }
-
-      if (!is.null(delta_obj$text)) {
-        return(as.character(delta_obj$text %||% ""))
-      }
+      reasoning_text <- extract_first_nonempty_llm_text(
+        delta_obj$reasoning_content,
+        delta_obj$reasoning,
+        message_obj$reasoning_content,
+        message_obj$reasoning
+      )
     }
   }
 
-  if (!is.null(event_obj$delta) && !is.null(event_obj$delta$content)) {
-    return(as.character(event_obj$delta$content %||% ""))
+  if (!nzchar(content_text)) {
+    content_text <- extract_first_nonempty_llm_text(
+      event_obj$delta$content,
+      event_obj$delta$text,
+      event_obj$content
+    )
   }
 
-  ""
+  if (!nzchar(reasoning_text)) {
+    reasoning_text <- extract_first_nonempty_llm_text(
+      event_obj$delta$reasoning_content,
+      event_obj$delta$reasoning,
+      event_obj$reasoning_content,
+      event_obj$reasoning
+    )
+  }
+
+  list(
+    content = enc2utf8(content_text),
+    reasoning = enc2utf8(reasoning_text)
+  )
 }
+
+extract_llm_delta_text <- function(event_obj) {
+  extract_llm_delta_bundle(event_obj)$content
+}	
 
 # ------------------------------------------------------------------------------
 # SSE OLAYINDAN KAYNAK BİLGİSİ ÇIKAR
@@ -197,6 +207,9 @@ call_local_llm_sse_worker <- function(chat_history,
 
   tryCatch({
     selected_model <- current_settings$model_selection
+    model_caps <- get_local_model_capabilities(selected_model)
+    stream_reasoning <- isTRUE(model_caps$stream_reasoning)
+    allow_reasoning_fallback <- isTRUE(model_caps$allow_reasoning_fallback)
 
     request_start_unix <- suppressWarnings(as.numeric(current_settings$request_start_unix %||% NA_real_))
     future_submit_unix <- suppressWarnings(as.numeric(current_settings$future_submit_unix %||% NA_real_))
@@ -288,7 +301,7 @@ call_local_llm_sse_worker <- function(chat_history,
     )
 
     # Düşünmeli modeller bazı uçlarda temperature alanını reddedebiliyor
-    if (!grepl("(?i)(think|reason|qwen3\\.5)", selected_model, perl = TRUE)) {
+    if (!should_omit_temperature(selected_model)) {
       body$temperature <- temp_value
     }
 
@@ -307,6 +320,7 @@ call_local_llm_sse_worker <- function(chat_history,
 
     event_buffer <- ""
     accumulated_text <- ""
+    accumulated_reasoning <- ""
     accumulated_sources <- NULL
 
     log_info(sprintf("[CHAT PERF] SSE işçi HTTP isteği başladı - model=%s", selected_model))
@@ -325,8 +339,20 @@ call_local_llm_sse_worker <- function(chat_history,
         return(invisible(NULL))
       }
 
-      delta_text <- enc2utf8(extract_llm_delta_text(event_obj))
-      if (nzchar(delta_text)) {
+      delta_bundle <- extract_llm_delta_bundle(event_obj)
+      delta_text <- enc2utf8(delta_bundle$content)
+      reasoning_text <- enc2utf8(delta_bundle$reasoning)
+
+      if (nzchar(reasoning_text)) {
+        accumulated_reasoning <<- paste0(accumulated_reasoning, reasoning_text)
+      }
+
+      emit_text <- delta_text
+      if (!nzchar(emit_text) && isTRUE(stream_reasoning)) {
+        emit_text <- reasoning_text
+      }
+
+      if (nzchar(emit_text)) {
         if (!nzchar(accumulated_text)) {
           log_info(sprintf(
             "[CHAT PERF] SSE işçide ilk delta alındı - %.3f sn",
@@ -334,10 +360,10 @@ call_local_llm_sse_worker <- function(chat_history,
           ))
         }
 
-        accumulated_text <<- paste0(accumulated_text, delta_text)
+        accumulated_text <<- paste0(accumulated_text, emit_text)
         append_stream_delta_line(
           stream_file = NULL,
-          text_value = delta_text,
+          text_value = emit_text,
           stream_con = stream_con
         )
       }
@@ -425,6 +451,10 @@ call_local_llm_sse_worker <- function(chat_history,
 
     final_content <- strip_planner_text(accumulated_text)
     final_content <- enc2utf8(normalize_llm_scalar_content(final_content))
+
+    if (!nzchar(final_content) && isTRUE(allow_reasoning_fallback)) {
+      final_content <- enc2utf8(normalize_llm_scalar_content(accumulated_reasoning))
+    }
 
     list(
       success = TRUE,
