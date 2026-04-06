@@ -45,9 +45,9 @@ settingsYapilandirmaUI <- function(id) {
               class = "settings-card",
               h3("Model Ayarları", class = "settings-title"),
               fluidRow(
-                # Model Seçimi
+                # Model Seçimi (sol sütun)
                 column(
-                  width = 4,
+                  width = 3,
                   h4("Model Seçimi", class = "setting-subtitle"),
                   p("Kullanmak istediğiniz modeli seçin.", class = "setting-description", style = "margin-top:4px;"),
                   div(
@@ -59,11 +59,51 @@ settingsYapilandirmaUI <- function(id) {
                       choices = api_config$local_models,
                       selected = api_config$local_models[1],
                       width = "100%"
-                    ),
-                    uiOutput(ns("model_description_text"))
+                    )
                   )
                 ),
-                # Yanıt Sonrası Öneriler
+                # Model Bilgi Paneli (orta sütun)
+                column(
+                  width = 5,
+                  h4("Model Bilgisi", class = "setting-subtitle"),
+                  div(
+                    class = "model-info-panel",
+                    id = ns("model_info_panel"),
+                    `data-model-meta` = {
+                      # Model meta verisini JSON olarak hazırla
+                      model_meta <- list()
+                      for (mid in api_config$local_models) {
+                        caps <- api_config$local_model_capabilities[[mid]]
+                        model_meta[[mid]] <- list(
+                          description  = api_config$local_model_descriptions[[mid]] %||% "",
+                          context_size = api_config$local_model_context_sizes[[mid]] %||% "",
+                          thinking     = isTRUE(caps$thinking),
+                          icon         = api_config$local_model_icons[[mid]] %||% ""
+                        )
+                      }
+                      as.character(jsonlite::toJSON(model_meta, auto_unbox = TRUE))
+                    },
+                    # Açıklama alanı (JS tarafından yazma animasyonu ile doldurulur)
+                    div(class = "model-info-description", id = ns("model_info_desc")),
+                    # Rozetler satırı
+                    div(
+                      class = "model-info-badges",
+                      # Bağlam boyutu rozeti
+                      div(
+                        class = "model-badge context-badge",
+                        tags$i(class = "fas fa-microchip"),
+                        tags$span(class = "context-value", "-")
+                      ),
+                      # Düşünme yeteneği rozeti
+                      div(
+                        class = "model-badge thinking-badge thinking-inactive",
+                        tags$i(class = "fas fa-brain"),
+                        tags$span(class = "thinking-label", "Düşünme")
+                      )
+                    )
+                  )
+                ),
+                # Yanıt Sonrası Öneriler (sağ sütun)
                 column(
                   width = 4,
                   div(
@@ -79,16 +119,22 @@ settingsYapilandirmaUI <- function(id) {
                       )
                     )
                   )
-                ),
-                # API Anahtarını Güncelle
+                )
+              )
+            ),
+            # API Anahtarı Yönetimi Kartı
+            div(
+              class = "settings-card",
+              h3("API Anahtarı Yönetimi", class = "settings-title"),
+              fluidRow(
                 column(
-                  width = 4,
+                  width = 6,
                   h4("API Anahtarını Güncelle", class = "setting-subtitle"),
                   p("LLM erişimi için kişisel API anahtarınızı yönetin.", class = "setting-description"),
                   div(
                     class = "setting-item",
                     div(
-                      style = "display:flex; flex-direction:column; gap:10px; align-items:flex-start;",
+                      style = "display:flex; flex-direction:row; gap:12px; align-items:center; flex-wrap:wrap;",
                       actionButton(
                         ns("update_api_key_btn"),
                         label = tagList(icon("key"), "API Anahtarını Güncelle"),
@@ -583,21 +629,8 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       reset_trigger(isolate(reset_trigger()) + 1)
     }, ignoreInit = TRUE)
 
-    # Model açıklamasını dinamik göster
-    output$model_description_text <- renderUI({
-      req(input$model_selection)
-      descriptions <- api_config$local_model_descriptions %||% list()
-      desc <- descriptions[[input$model_selection]]
-      if (!is.null(desc) && nzchar(desc)) {
-        tags$p(
-          class = "setting-description",
-          style = "margin-top: 4px; font-size: 12px; color: #999; font-style: italic;",
-          desc
-        )
-      } else {
-        NULL
-      }
-    })
+    # Model açıklaması artık JS tarafından yönetiliyor (settings_model_info.js)
+    # Eski renderUI kaldırıldı; bilgi paneli istemci tarafında güncellenir.
 
     # Geçici değişkenler (kaydet butonuna basılana kadar uygulanmaz)
     temp_model_selection <- reactiveVal(api_config$local_models[1])

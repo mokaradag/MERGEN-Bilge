@@ -59,6 +59,24 @@ api_config <- list(
     "technical name 5" = "İkincil endpoint modeli",
     "technical name 6" = "Özel görevler için optimize"
   ),
+  # Model bağlam penceresi boyutları
+  local_model_context_sizes = list(
+    "technical name 1" = "128K",
+    "technical name 2" = "128K",
+    "technical name 3" = "256K",
+    "technical name 4" = "128K",
+    "technical name 5" = "200K",
+    "technical name 6" = "128K"
+  ),
+  # Dropdown'da model adlarının yanında gösterilecek Unicode ikonlar
+  local_model_icons = list(
+    "technical name 1" = "\u25C8",
+    "technical name 2" = "\u26A1",
+    "technical name 3" = "\u2726",
+    "technical name 4" = "\u25C6",
+    "technical name 5" = "\u25CE",
+    "technical name 6" = "\u2699"
+  ),
   # Her teknik model kimliğini bir uç nokta anahtarına eşle
   local_model_endpoint_map = c(
     "technical name 1" = "primary",
