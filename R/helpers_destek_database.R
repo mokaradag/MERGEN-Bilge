@@ -39,7 +39,8 @@ destek_geri_bildirim_kaydet <- function(user_id, memnuniyet, nps_puan = NULL,
     VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE())
   "
 
-  res <- DBI::dbGetQuery(conn, query, params = list(
+  # Parametreleri veritabanı yazımı öncesinde merkezi kodlama normalizasyonundan geçir
+  res <- DBI::dbGetQuery(conn, query, params = normalize_db_params(list(
     as.integer(user_id),
     as.integer(memnuniyet),
     safe_nps,
@@ -47,7 +48,7 @@ destek_geri_bildirim_kaydet <- function(user_id, memnuniyet, nps_puan = NULL,
     safe_sevilen,
     safe_gelistirme,
     safe_iletisim
-  ))
+  )))
 
   if (nrow(res) == 0) stop("Geri bildirim kaydedilemedi.")
   return(as.integer(res$GeriBildirimID[1]))
@@ -83,14 +84,15 @@ destek_hata_bildir_kaydet <- function(user_id, konular, kategoriler, oncelik = "
     VALUES (?, ?, ?, ?, ?, ?, 'acik', GETDATE())
   "
 
-  res <- DBI::dbGetQuery(conn, query, params = list(
+  # Parametreleri veritabanı yazımı öncesinde merkezi kodlama normalizasyonundan geçir
+  res <- DBI::dbGetQuery(conn, query, params = normalize_db_params(list(
     as.integer(user_id),
     as.character(konular),
     as.character(kategoriler),
     safe_oncelik,
     as.character(aciklama),
     safe_ek_dosyalar
-  ))
+  )))
 
   if (nrow(res) == 0) stop("Hata bildirimi kaydedilemedi.")
   return(as.integer(res$HataBildirimID[1]))
