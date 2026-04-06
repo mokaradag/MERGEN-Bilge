@@ -151,6 +151,48 @@ normalize_pk_dataframe_utf8 <- function(df) {
   df
 }
 
+execute_pk_sql_unicode <- function(conn, sql_text) {
+  if (is.null(sql_text) || !nzchar(trimws(sql_text))) {
+    stop("Bos SQL metni gonderilemez.")
+  }
+
+  # SQL metnini ham batch olarak degil, Unicode parametre olarak SQL Server'a gonder.
+  # Bu yontem, koseli parantezli + Turkce karakterli + bosluklu sutun adlarinda
+  # ODBC tarafinda yasanan parse/encoding sorunlarini asmak icin kullanilir.
+  wrapper_sql <- paste(
+    "DECLARE @sql NVARCHAR(MAX);",
+    "SET @sql = ?;",
+    "EXEC sp_executesql @sql;",
+    sep = "\n"
+  )
+
+  DBI::dbGetQuery(
+    conn,
+    wrapper_sql,
+    params = normalize_db_params(list(sql_text))
+  )
+}
+
+normalize_sql_server_identifiers <- function(sql_text) {
+  if (is.null(sql_text) || !nzchar(sql_text)) return(sql_text)
+
+  # Turkce karakter veya bosluk iceren koseli parantezli identifier'lari
+  # ANSI quoted identifier formatina cevir.
+  # Ornek:
+  # [Adı Soyadı]    -> "Adı Soyadı"
+  # [Aktivite Türü] -> "Aktivite Türü"
+  # [Kullanıcı Adı] -> "Kullanıcı Adı"
+  sql_text_fixed <- gsub(
+    "\\[([^\\]\\r\\n]*[ ÇĞİÖŞÜçğıöşü][^\\]\\r\\n]*)\\]",
+    "\"\\1\"",
+    sql_text,
+    perl = TRUE
+  )
+
+  # ODBC oturumunda quoted identifier davranisini netlestir
+  paste0("SET QUOTED_IDENTIFIER ON;\n", sql_text_fixed)
+}
+
 extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL, stop_check = NULL) {
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -1024,8 +1066,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	   conn <- conn_list$conn
 	}
 
+	# SQL metnini parametre donusumunden gecirme.
+	# normalize_db_value() parametreler icin uygundur; tam SQL metni icin kullanilmaz.
 	final_sql <- trimws(sql_query_text)
-	final_sql <- normalize_db_value(final_sql)
+	final_sql <- enc2utf8(final_sql)
 
 	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
 
@@ -1034,7 +1078,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 		stop("Guvenlik ihlali: Yasakli SQL komutu.")
 	  }
 
-	  DBI::dbGetQuery(conn, final_sql)
+	  execute_pk_sql_unicode(conn, final_sql)
 
 	}, error = function(e) {
 	  err_msg <- conditionMessage(e)

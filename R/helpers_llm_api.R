@@ -97,17 +97,29 @@ call_local_llm <- function(chat_history, current_settings) {
   hds <- list(`Content-Type` = "application/json")
   if (nzchar(api_key)) hds$Authorization <- paste("Bearer", api_key)
 
-  response <- tryCatch({
-    httr::POST(
-      url = api_url,
-      body = body,
-      encode = "json",
-      do.call(httr::add_headers, hds),
-      httr::timeout(300)
-    )
-  }, error = function(e) {
-    stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
-  })
+	# Non-streaming LLM istekleri icin zaman asimi suresi.
+	# Dusunen modeller yogunluk altinda daha uzun surebilecegi icin
+	# varsayilan sureyi tek noktadan yonetiyoruz.
+	request_timeout_sec <- suppressWarnings(as.numeric(
+	  current_settings$request_timeout_sec %||%
+		getOption("mergen.llm_timeout_sec", Sys.getenv("MERGEN_LLM_TIMEOUT_SEC", "900"))
+	))
+
+	if (is.na(request_timeout_sec) || request_timeout_sec <= 0) {
+	  request_timeout_sec <- 900
+	}
+
+	response <- tryCatch({
+	  httr::POST(
+		url = api_url,
+		body = body,
+		encode = "json",
+		do.call(httr::add_headers, hds),
+		httr::timeout(request_timeout_sec)
+	  )
+	}, error = function(e) {
+	  stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
+	})
 
   if (httr::status_code(response) >= 400) {
     error_content <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)
