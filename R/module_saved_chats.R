@@ -129,6 +129,17 @@ savedChatsServer <- function(id, saved_chats) {
       "December" = "Aralık"
     )
 
+    # Ay etiketini locale farklarından etkilenmeden üret
+    build_month_labels <- function(timestamps) {
+      raw_month_names <- format(timestamps, "%B")
+      translated_month_names <- unname(month_map[raw_month_names])
+
+      fallback_idx <- is.na(translated_month_names) | !nzchar(translated_month_names)
+      translated_month_names[fallback_idx] <- raw_month_names[fallback_idx]
+
+      paste0(translated_month_names, " ", format(timestamps, "%Y"))
+    }
+
     observeEvent(input$search_chats, {
       search_timer()
       current_page(1)  # Reset to first page on search
@@ -158,8 +169,7 @@ savedChatsServer <- function(id, saved_chats) {
       message_counts <- vapply(chats, function(chat) as.integer(chat$message_count %||% 0L), integer(1))
 
       month_keys <- format(timestamps, "%Y-%m")
-      month_labels <- paste0(month_map[format(timestamps, "%B")], " ", format(timestamps, "%Y"))
-      month_labels[is.na(month_labels)] <- format(timestamps[is.na(month_labels)], "%B %Y")
+      month_labels <- build_month_labels(timestamps)
 
       meta <- data.frame(
         chat_id = ids,
@@ -310,6 +320,8 @@ savedChatsServer <- function(id, saved_chats) {
           month_rows <- chats_meta[chats_meta$month_key == month_key, , drop = FALSE]
           if (nrow(month_rows) == 0) return(NULL)
 
+          month_total <- nrow(filtered_meta[filtered_meta$month_key == month_key, , drop = FALSE])
+
           month_rows <- month_rows[order(month_rows$timestamp, decreasing = TRUE), , drop = FALSE]
           month_rows <- month_rows[seq_len(min(nrow(month_rows), 25)), , drop = FALSE]
           
@@ -318,6 +330,10 @@ savedChatsServer <- function(id, saved_chats) {
             style = "margin: 0 15px 20px 0; background: rgba(18, 18, 18, 0.6); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 138, 0, 0.2); backdrop-filter: blur(10px);",
             h4(
               month_rows$month_label[1],
+              tags$span(
+                style = "margin-left: 8px; font-size: 16px; font-weight: 500; color: rgba(255, 138, 0, 0.85);",
+                sprintf("(%d söyleşi)", month_total)
+              ),
               style = "color: #ff8a00; margin-bottom: 20px; font-size: 20px; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255, 138, 0, 0.3); text-underline-offset: 5px;"
             ),
             div(
