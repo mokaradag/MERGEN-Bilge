@@ -1025,9 +1025,6 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	}
 
 	final_sql <- trimws(sql_query_text)
-	# SQL metnini her zaman UTF-8 olarak gönder; normalize_db_value() parametre
-	# değerleri içindir, sorgu metnine uygulanırsa Türkçe köşeli parantezli
-	# sütun adları (ör. [Adı Soyadı]) bozulur çünkü bağlantı UTF-8 bekler.
 	final_sql <- enc2utf8(final_sql)
 
 	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
@@ -1037,7 +1034,14 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 		stop("Guvenlik ihlali: Yasakli SQL komutu.")
 	  }
 
-	  DBI::dbGetQuery(conn, final_sql)
+	  # SSMS sorguları Unicode (UTF-16) olarak gönderir, R/ODBC ise ANSI yolunu
+	  # kullanır. Bu yüzden [Adı Soyadı] gibi Türkçe karakterli ve boşluklu
+	  # köşeli parantezli sütun adları ODBC üzerinden bozulur.
+	  # sp_executesql ile NVARCHAR olarak sarmalayarak SQL Server'ın sorguyu
+	  # Unicode ile işlemesini sağlıyoruz (SSMS ile aynı davranış).
+	  escaped_sql <- gsub("'", "''", final_sql, fixed = TRUE)
+	  unicode_sql <- paste0("EXEC sp_executesql N'", escaped_sql, "'")
+	  DBI::dbGetQuery(conn, unicode_sql)
 
 	}, error = function(e) {
 	  err_msg <- conditionMessage(e)
