@@ -91,14 +91,16 @@ settingsYapilandirmaUI <- function(id) {
                       # Bağlam boyutu rozeti
                       div(
                         class = "model-badge context-badge",
+                        title = "Ba\u011flam penceresi boyutu",
                         tags$i(class = "fas fa-microchip"),
                         tags$span(class = "context-value", "-")
                       ),
                       # Düşünme yeteneği rozeti
                       div(
                         class = "model-badge thinking-badge thinking-inactive",
+                        title = "D\u00fc\u015f\u00fcnme (thinking) yetene\u011fi",
                         tags$i(class = "fas fa-brain"),
-                        tags$span(class = "thinking-label", "Düşünme")
+                        tags$span(class = "thinking-label", "D\u00fc\u015f\u00fcnme")
                       )
                     )
                   )

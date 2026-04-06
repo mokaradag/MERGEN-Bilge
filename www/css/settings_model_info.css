@@ -9,20 +9,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px 20px;
-  border-radius: 14px;
-  background: linear-gradient(165deg, rgba(18, 20, 36, 0.92), rgba(10, 12, 22, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  min-height: 120px;
-  transition: border-color 0.4s ease, box-shadow 0.4s ease;
-}
-
-.model-info-panel.active {
-  border-color: rgba(255, 107, 53, 0.15);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3),
-              0 0 20px rgba(255, 107, 53, 0.04),
-              inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 8px 0;
+  min-height: 80px;
 }
 
 /* ===== Model Açıklaması (Yazma Animasyonlu) ===== */
@@ -137,15 +125,11 @@
 }
 
 /* ===== Animasyonlu Giriş Efekti ===== */
-.model-info-panel.animate-in .model-info-description {
-  animation: fadeSlideIn 0.35s ease-out;
-}
-
-.model-info-panel.animate-in .model-badge {
+.model-info-panel.animate-in .model-info-badges .model-badge {
   animation: badgePopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.model-info-panel.animate-in .model-badge:nth-child(2) {
+.model-info-panel.animate-in .model-info-badges .model-badge:nth-child(2) {
   animation-delay: 0.08s;
 }
 
@@ -171,14 +155,9 @@
   }
 }
 
-/* ===== Dropdown İkon Stili ===== */
-.model-dropdown-icon {
-  display: inline-block;
-  width: 18px;
-  text-align: center;
-  margin-right: 6px;
-  font-size: 13px;
-  opacity: 0.7;
+/* ===== Rozet Tooltip Desteği ===== */
+.model-badge[title] {
+  cursor: help;
 }
 
 /* ===== Duyarlı Tasarım ===== */

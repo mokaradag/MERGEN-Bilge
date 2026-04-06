@@ -12,6 +12,9 @@
   var _modelTypingIndex = 0;
   var _modelTypingText = '';
 
+  // Son seçilen model (gereksiz animasyonları önlemek için)
+  var _lastSelectedModel = null;
+
   // NS ön eki (Shiny modül ad alanı)
   var NS_PREFIX = 'settings_yapilandirma_module-';
 
@@ -66,11 +69,12 @@
     var panel = document.getElementById(NS_PREFIX + 'model_info_panel');
     if (!panel || !meta) return;
 
-    // Açıklama
     var descEl = panel.querySelector('.model-info-description');
     var contextEl = panel.querySelector('.context-value');
+    var contextBadge = panel.querySelector('.context-badge');
     var thinkingBadge = panel.querySelector('.thinking-badge');
 
+    // Açıklama
     if (descEl && meta.description) {
       if (animate) {
         typeModelDescription(descEl, meta.description);
@@ -83,31 +87,33 @@
     if (contextEl) {
       contextEl.textContent = meta.context_size || '-';
     }
+    // Bağlam rozeti tooltip
+    if (contextBadge) {
+      contextBadge.setAttribute('title', 'Ba\u011Flam penceresi: ' + (meta.context_size || '-') + ' token');
+    }
 
     // Düşünme yeteneği
     if (thinkingBadge) {
       thinkingBadge.classList.remove('thinking-active', 'thinking-inactive');
       if (meta.thinking) {
         thinkingBadge.classList.add('thinking-active');
+        thinkingBadge.setAttribute('title', 'Bu model geli\u015Fmi\u015F ak\u0131l y\u00FCr\u00FCtme (thinking) yetene\u011Fine sahip');
       } else {
         thinkingBadge.classList.add('thinking-inactive');
+        thinkingBadge.setAttribute('title', 'Bu model d\u00FC\u015F\u00FCnme (thinking) yetene\u011Fini desteklemiyor');
       }
     }
 
-    // Paneli aktif olarak işaretle
-    panel.classList.add('active');
-
-    // Animasyon sınıfı
+    // Animasyon sınıfı (yalnızca model değiştiğinde)
     if (animate) {
       panel.classList.remove('animate-in');
-      // Yeniden tetiklemek için reflow zorla
       void panel.offsetWidth;
       panel.classList.add('animate-in');
     }
   }
 
   /**
-   * Dropdown seçeneklerine Unicode ikonlar ekle
+   * Dropdown seçeneklerine emoji ikonlar ekle
    * @param {HTMLSelectElement} select - Hedef select elemanı
    * @param {object} allMeta - Tüm modellerin meta verisi
    */
@@ -117,9 +123,12 @@
     options.forEach(function(opt) {
       var modelId = opt.value;
       var meta = allMeta[modelId];
-      if (meta && meta.icon && opt.textContent.indexOf(meta.icon) === -1) {
-        opt.textContent = meta.icon + '  ' + opt.textContent;
-      }
+      if (!meta || !meta.icon) return;
+      // İkon zaten eklenmişse tekrar ekleme
+      var text = opt.textContent;
+      if (text.indexOf(meta.icon) !== -1) return;
+      // Emoji ikonu başa ekle
+      opt.textContent = meta.icon + ' ' + text;
     });
   }
 
@@ -155,15 +164,20 @@
     // Mevcut seçimi göster (animasyonsuz)
     var currentModel = selectEl.value;
     if (currentModel && allMeta[currentModel]) {
+      _lastSelectedModel = currentModel;
       updateModelInfoPanel(currentModel, allMeta[currentModel], false);
     }
 
-    // Değişiklik dinleyicisi
+    // Değişiklik dinleyicisi - yalnızca model gerçekten değiştiğinde animasyon yap
     $(selectEl).on('change', function() {
       var selectedModel = this.value;
-      if (selectedModel && allMeta[selectedModel]) {
-        updateModelInfoPanel(selectedModel, allMeta[selectedModel], true);
-      }
+      if (!selectedModel || !allMeta[selectedModel]) return;
+
+      // Aynı model tekrar seçildiyse animasyon yapma
+      if (selectedModel === _lastSelectedModel) return;
+
+      _lastSelectedModel = selectedModel;
+      updateModelInfoPanel(selectedModel, allMeta[selectedModel], true);
     });
   }
 
@@ -184,9 +198,12 @@
           addDropdownIcons(selectEl, allMeta);
 
           var selectedModel = selectEl.value;
-          if (selectedModel && allMeta[selectedModel]) {
-            updateModelInfoPanel(selectedModel, allMeta[selectedModel], true);
-          }
+          if (!selectedModel || !allMeta[selectedModel]) return;
+
+          // Aynı modelse animasyon yapma
+          var shouldAnimate = (selectedModel !== _lastSelectedModel);
+          _lastSelectedModel = selectedModel;
+          updateModelInfoPanel(selectedModel, allMeta[selectedModel], shouldAnimate);
         }, 100);
       }
     });

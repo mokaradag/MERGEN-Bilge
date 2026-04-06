@@ -70,12 +70,12 @@ api_config <- list(
   ),
   # Dropdown'da model adlarının yanında gösterilecek Unicode ikonlar
   local_model_icons = list(
-    "technical name 1" = "\u25C8",
-    "technical name 2" = "\u26A1",
-    "technical name 3" = "\u2726",
-    "technical name 4" = "\u25C6",
-    "technical name 5" = "\u25CE",
-    "technical name 6" = "\u2699"
+    "technical name 1" = "\U0001F4A1",
+    "technical name 2" = "\U0001F680",
+    "technical name 3" = "\U0001F9E0",
+    "technical name 4" = "\U0001F50D",
+    "technical name 5" = "\U0001F310",
+    "technical name 6" = "\U00002699"
   ),
   # Her teknik model kimliğini bir uç nokta anahtarına eşle
   local_model_endpoint_map = c(
