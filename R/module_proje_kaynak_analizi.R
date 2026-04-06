@@ -1025,7 +1025,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	}
 
 	final_sql <- trimws(sql_query_text)
-	final_sql <- normalize_db_value(final_sql)
+	# SQL metnini her zaman UTF-8 olarak gönder; normalize_db_value() parametre
+	# değerleri içindir, sorgu metnine uygulanırsa Türkçe köşeli parantezli
+	# sütun adları (ör. [Adı Soyadı]) bozulur çünkü bağlantı UTF-8 bekler.
+	final_sql <- enc2utf8(final_sql)
 
 	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
 
