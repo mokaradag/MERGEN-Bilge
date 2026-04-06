@@ -154,6 +154,20 @@
   color: var(--text-secondary) !important;
 }
 
+/* Model seçimi dropdown (modül ad alanı ile) */
+[id$="model_selection"].form-control {
+  max-width: 230px !important;
+  width: 100% !important;
+  background-color: var(--background-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+
+[id$="model_selection"].form-control option {
+  background-color: var(--background-medium, #1a1a1a) !important;
+  color: var(--text-secondary) !important;
+}
+
 /* Klavye kısayolları listesi */
 .shortcut-list {
   background: var(--background-dark);
