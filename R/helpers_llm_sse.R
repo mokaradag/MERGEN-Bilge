@@ -234,25 +234,29 @@ call_local_llm_sse_worker <- function(chat_history,
       stop("API endpoint not found in configuration")
     }
 
-    default_api_key <- creds$default_api_key %||% ""
-    allow_user_key <- isTRUE(creds$allow_user_key)
+	default_api_key <- creds$default_api_key %||% ""
+	allow_user_key <- isTRUE(creds$allow_user_key)
 
-    api_key <- ""
-    if (allow_user_key) {
-      api_key <- as.character(current_settings$api_key %||% current_settings$api_key_override %||% "")
-      if (!nzchar(api_key)) {
-        sess <- current_settings$shiny_session %||% NULL
-        if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) {
-          api_key <- as.character(sess$userData$ai_api_key)[1]
-        }
-      }
-    } else {
-      api_key <- as.character(current_settings$api_key_override %||% "")
-    }
+	# Sunucu tarafindan yonetilen endpoint'lerde kullanici anahtari veya
+	# api_key_override kesinlikle kullanilmaz. Bu endpoint'lerde sadece
+	# .Renviron icinden cozulenen varsayilan endpoint anahtari kullanilir.
+	api_key <- ""
 
-    if (!nzchar(api_key) && nzchar(default_api_key)) {
-      api_key <- as.character(default_api_key)[1]
-    }
+	if (allow_user_key) {
+	  api_key <- as.character(current_settings$api_key %||% current_settings$api_key_override %||% "")
+	  if (!nzchar(api_key)) {
+		sess <- current_settings$shiny_session %||% NULL
+		if (!is.null(sess) && !is.null(sess$userData$ai_api_key)) {
+		  api_key <- as.character(sess$userData$ai_api_key)[1]
+		}
+	  }
+	} else {
+	  api_key <- as.character(default_api_key)[1] %||% ""
+	}
+
+	if (!nzchar(api_key) && nzchar(default_api_key)) {
+	  api_key <- as.character(default_api_key)[1]
+	}
 
     is_local_noauth <- grepl("(?i)(localhost|127\\.0\\.0\\.1|ollama)", api_url)
     if (!nzchar(api_key) && !is_local_noauth) {
