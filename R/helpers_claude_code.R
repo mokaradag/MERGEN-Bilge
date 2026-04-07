@@ -867,7 +867,59 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
 #' @param max_items Maksimum öğe sayısı
 #' @return Dosya/klasör bilgileri listesi
 list_directory_contents <- function(path, max_items = 100L) {
-  if (!dir.exists(path)) {
+  if (is.null(path) || !nzchar(path)) {
+    return(list(
+      success = FALSE,
+      items = list(),
+      error = "Dizin yolu boş."
+    ))
+  }
+
+  # UNC/ağ paylaşımı/kodlama farkları için aynı dizinin olası varyasyonlarını üret
+  build_dir_variants <- function(dir_path) {
+    dir_chr <- gsub("\\\\", "/", as.character(dir_path %||% ""), fixed = TRUE)
+    if (!nzchar(dir_chr)) return(character(0))
+
+    unique(Filter(nzchar, c(
+      dir_chr,
+      enc2utf8(dir_chr),
+      enc2native(dir_chr),
+      if (grepl("^/[^/]", dir_chr)) paste0("/", dir_chr) else NULL
+    )))
+  }
+
+  # Aynı dizini hem base R hem fs ile listelemeyi dene
+  list_dir_relaxed <- function(dir_path) {
+    files_base <- tryCatch(
+      list.files(
+        dir_path,
+        full.names = TRUE,
+        recursive = FALSE,
+        all.files = FALSE
+      ),
+      error = function(e) character(0)
+    )
+
+    if (length(files_base) > 0) {
+      return(unique(files_base))
+    }
+
+    dirs_fs <- tryCatch(
+      as.character(fs::dir_ls(dir_path, recurse = FALSE, type = "directory")),
+      error = function(e) character(0)
+    )
+
+    files_fs <- tryCatch(
+      as.character(fs::dir_ls(dir_path, recurse = FALSE, type = "file")),
+      error = function(e) character(0)
+    )
+
+    unique(c(dirs_fs, files_fs))
+  }
+
+  aday_dizinler <- build_dir_variants(path)
+
+  if (!length(aday_dizinler)) {
     return(list(
       success = FALSE,
       items = list(),
@@ -875,34 +927,99 @@ list_directory_contents <- function(path, max_items = 100L) {
     ))
   }
 
-  tryCatch({
-    dosyalar <- list.files(path, full.names = TRUE, all.files = FALSE)
-    dosyalar <- head(dosyalar, max_items)
+  calisan_dizin <- NULL
+  tum_ogeler <- character(0)
 
-    ogeler <- lapply(dosyalar, function(f) {
-      bilgi <- file.info(f)
-      list(
-        ad = basename(f),
-        yol = f,
-        tip = if (bilgi$isdir) "klasor" else "dosya",
-        boyut = if (!bilgi$isdir) bilgi$size else NA_real_,
-        degistirilme = as.character(bilgi$mtime)
+  for (aday in aday_dizinler) {
+    dizin_var_mi <- tryCatch(path_exists_relaxed(aday), error = function(e) FALSE)
+
+    if (!isTRUE(dizin_var_mi)) {
+      dizin_var_mi <- tryCatch(
+        isTRUE(dir.exists(aday)) || isTRUE(fs::dir_exists(aday)),
+        error = function(e) FALSE
       )
-    })
+    }
 
-    list(
-      success = TRUE,
-      items = ogeler,
-      error = "",
-      toplam = length(list.files(path, all.files = FALSE))
-    )
-  }, error = function(e) {
-    list(
+    if (!isTRUE(dizin_var_mi)) next
+
+    bulunan_ogeler <- list_dir_relaxed(aday)
+
+    # En azından çalışan dizini kaydet
+    if (is.null(calisan_dizin)) {
+      calisan_dizin <- aday
+    }
+
+    # İçerik bulduysak bunu tercih et
+    if (length(bulunan_ogeler) > 0) {
+      calisan_dizin <- aday
+      tum_ogeler <- bulunan_ogeler
+      break
+    }
+  }
+
+  if (is.null(calisan_dizin)) {
+    return(list(
       success = FALSE,
       items = list(),
-      error = conditionMessage(e)
+      error = paste0("Dizin bulunamadı: ", path)
+    ))
+  }
+
+  tum_ogeler <- unique(tum_ogeler)
+  gosterilecek_ogeler <- head(tum_ogeler, max_items)
+
+  ogeler <- lapply(gosterilecek_ogeler, function(f) {
+    f_norm <- tryCatch(
+      normalize_mcp_path(f, must_exist = FALSE),
+      error = function(e) as.character(f)
+    )
+
+    bilgi <- tryCatch(file.info(f_norm), error = function(e) NULL)
+
+    klasor_mu <- tryCatch(isTRUE(bilgi$isdir[1]), error = function(e) FALSE)
+    if (is.null(bilgi) || is.na(klasor_mu)) {
+      klasor_mu <- tryCatch(
+        isTRUE(dir.exists(f_norm)) || isTRUE(fs::dir_exists(f_norm)),
+        error = function(e) FALSE
+      )
+    }
+
+    boyut <- if (isTRUE(klasor_mu)) {
+      NA_real_
+    } else {
+      suppressWarnings(as.numeric(tryCatch(bilgi$size[1], error = function(e) NA_real_)))
+    }
+
+    degistirilme <- tryCatch(as.character(bilgi$mtime[1]), error = function(e) "")
+
+    list(
+      ad = basename(f_norm),
+      yol = f_norm,
+      tip = if (isTRUE(klasor_mu)) "klasor" else "dosya",
+      boyut = boyut,
+      degistirilme = degistirilme
     )
   })
+
+  # Klasörleri üstte, ardından ada göre sırala
+  if (length(ogeler) > 1) {
+    siralama <- order(
+      vapply(ogeler, function(x) x$tip != "klasor", logical(1)),
+      tolower(vapply(ogeler, function(x) x$ad %||% "", character(1)))
+    )
+    ogeler <- ogeler[siralama]
+  }
+
+  list(
+    success = TRUE,
+    items = ogeler,
+    error = "",
+    toplam = length(tum_ogeler),
+    resolved_path = tryCatch(
+      normalize_mcp_path(calisan_dizin, must_exist = FALSE),
+      error = function(e) calisan_dizin
+    )
+  )
 }
 
 # ------------------------------------------------------------------------------
