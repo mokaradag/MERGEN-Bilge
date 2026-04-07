@@ -227,7 +227,6 @@ safe_source("R/module_performance.R",      encoding = "UTF-8")
 safe_source("R/module_user_identity.R",    encoding = "UTF-8")
 safe_source("R/module_startup_screen.R",   encoding = "UTF-8")
 safe_source("R/module_quick_actions.R",    encoding = "UTF-8")
-safe_source("R/module_claude_code_klasor.R", encoding = "UTF-8")
 safe_source("R/module_claude_code_akis.R",   encoding = "UTF-8")
 safe_source("R/module_claude_code.R",        encoding = "UTF-8")
 
