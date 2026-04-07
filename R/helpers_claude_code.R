@@ -867,8 +867,10 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
 #' @param max_items Maksimum öğe sayısı
 #' @return Dosya/klasör bilgileri listesi
 list_directory_contents <- function(path, max_items = 100L) {
-  # Windows UNC yollarında list.files doğru çalışsın diye yerel biçime dönüştür
-  path <- normalizePath(path, mustWork = FALSE)
+  # Windows UNC yollarında list.files yalnızca ters eğik çizgiyle çalışır
+  if (.Platform$OS.type == "windows") {
+    path <- gsub("/", "\\\\", path)
+  }
 
   if (!dir.exists(path)) {
     return(list(
