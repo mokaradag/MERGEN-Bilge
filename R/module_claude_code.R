@@ -1,8 +1,7 @@
 # ==============================================================================
 # Dosya Yolu: R/module_claude_code.R
 # Açıklama: Claude Code entegrasyon modülünün ana dosyası. UI tanımı ve sunucu
-#           mantığının giriş noktasını içerir. Klasör tarayıcı gözlemcileri
-#           module_claude_code_klasor.R dosyasında, canlı akış yardımcıları
+#           mantığının giriş noktasını içerir. Canlı akış yardımcıları
 #           module_claude_code_akis.R dosyasında tanımlıdır.
 # ==============================================================================
 
@@ -73,13 +72,13 @@ claudeCodeUI <- function(id) {
                 value = claude_code_config$default_workdir,
                 placeholder = "Proje klasör yolunu girin..."
               ),
-              # Sunucu taraflı klasör tarayıcı düğmesi
+              # Kullanıcının yükleme klasörüne yönlendir
               actionButton(
-                ns("open_folder_browser"),
+                ns("go_upload_folder"),
                 label = NULL,
                 icon = icon("folder-open"),
                 class = "cc-browse-btn",
-                title = "Sunucu klasörü seç"
+                title = "Yükleme klasörüne git"
               ),
               # Yerel bilgisayardan klasör yükle (gizli fileInput + görünür düğme)
               div(style = "display:none;",
@@ -477,12 +476,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
     })
 
-    # --- Sunucu taraflı klasör tarayıcı (module_claude_code_klasor.R) ---
-    rv_browser <- reactiveValues(
-      current_path = NULL,
-      history = list()
-    )
-    init_klasor_gezgini_observers(input, output, session, ns, rv_browser)
+    # --- Kullanıcının yükleme klasörüne yönlendirme ---
+    observeEvent(input$go_upload_folder, {
+      user_id <- resolve_current_user_id()
+      yukle_dizin <- mergen_user_upload_dir(user_id)
+      updateTextInput(session, "workdir", value = yukle_dizin)
+    })
 
     # --- Yerel klasör yükleme (kullanıcının kendi bilgisayarından) ---
     observeEvent(input$yerel_klasor, {
