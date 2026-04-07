@@ -50,17 +50,33 @@ settingsYapilandirmaUI <- function(id) {
                   width = 3,
                   h4("Model Seçimi", class = "setting-subtitle"),
                   p("Kullanmak istediğiniz modeli seçin.", class = "setting-description", style = "margin-top:4px;"),
-                  div(
-                    class = "setting-item",
-                    style = "max-width: 250px;",
-                    selectInput(
-                      inputId = ns("model_selection"),
-                      label   = NULL,
-                      choices = api_config$local_models,
-                      selected = api_config$local_models[1],
-                      width = "100%"
-                    )
-                  )
+					div(
+					  class = "setting-item",
+					  style = "max-width: 250px;",
+					  {
+						model_ids <- unname(api_config$local_models)
+						model_labels <- names(api_config$local_models)
+
+						model_choices_with_icons <- stats::setNames(
+						  object = model_ids,
+						  nm = vapply(seq_along(model_ids), function(i) {
+							model_id <- model_ids[i]
+							model_label <- model_labels[i]
+							model_icon <- api_config$local_model_icons[[model_id]] %||% ""
+							trimws(paste(model_icon, model_label))
+						  }, character(1))
+						)
+
+						selectInput(
+						  inputId   = ns("model_selection"),
+						  label     = NULL,
+						  choices   = model_choices_with_icons,
+						  selected  = model_ids[1],
+						  width     = "100%",
+						  selectize = FALSE
+						)
+					  }
+					)
                 ),
                 # Model Bilgi Paneli (orta sütun)
                 column(
