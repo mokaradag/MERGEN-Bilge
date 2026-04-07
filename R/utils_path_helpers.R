@@ -97,7 +97,8 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   candidate <- as.character(candidate)
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
-  maybe_unc <- grepl("^/[^/]+/[^/]+", candidate)
+  # UNC yolları: tek veya çift eğik çizgiyle başlayan ağ yollarını yakala
+  maybe_unc <- grepl("^/{1,2}[^/]+/[^/]+", candidate)
   if (maybe_unc) {
     cleaned <- paste0("//", sub("^/+", "", candidate))
     cleaned <- dedupe_leading_pair(cleaned)
