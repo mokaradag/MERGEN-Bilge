@@ -942,46 +942,8 @@
 }
 
 /* =============================================================================
-   KLASÖR TARAYICI MODAL
+   KLASÖR TARAYICI MODAL (kaldırıldı)
    ============================================================================= */
-
-.cc-folder-browser {
-  min-height: 300px;
-}
-
-.cc-fb-path-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(0,0,0,0.2);
-  border-radius: 8px;
-  margin-bottom: 12px;
-}
-
-.cc-fb-path-text {
-  font-family: 'Fira Code', 'Consolas', monospace;
-  font-size: 12px;
-  color: var(--text-primary, #e0e0e0);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
-.cc-fb-list-container {
-  max-height: 350px;
-  overflow-y: auto;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px;
-  padding: 4px;
-}
-
-.cc-fb-folder-list .cc-dir-item {
-  padding: 6px 10px;
-  border-radius: 6px;
-  margin: 2px 0;
-}
 
 /* =============================================================================
    YAPILANDIRMA SAYFASI CLAUDE CODE KARTI
