@@ -175,10 +175,59 @@ $(document).ready(function() {
 
   // --- Başlatma Mantığı ---
   let visualizer = null;
+  
+  // --- SAYFA BAŞLIĞINA YERLEŞTİRME YARDIMCILARI ---
+  // Aktif sekmedeki görünür başlığı bulur ve TTS görselleştiriciyi
+  // bu başlığın içine taşır.
+  function getActiveHeader() {
+    const selectors = [
+      '.tab-pane.active .chat-header:visible',
+      '.tab-pane.active .files-header:visible',
+      '.tab-pane.active .settings-header-fixed:visible',
+      '.content-wrapper .chat-header:visible',
+      '.content-wrapper .files-header:visible',
+      '.content-wrapper .settings-header-fixed:visible'
+    ];
+
+    for (const selector of selectors) {
+      const $header = $(selector).first();
+      if ($header.length) {
+        return $header;
+      }
+    }
+
+    return $();
+  }
+
+  function mountVisualizerInHeader() {
+    const $wrapper = $('#tts_visualizer_floating');
+    if (!$wrapper.length) return;
+
+    const $header = getActiveHeader();
+    if (!$header.length) return;
+
+    const $visibleChildren = $header.children(':visible');
+
+    // Başlıkta sol grup ile sağ grup arasına yerleştir.
+    if ($visibleChildren.length >= 2) {
+      $wrapper.insertAfter($visibleChildren.eq(0));
+    } else {
+      $header.append($wrapper);
+    }
+
+    if (visualizer) {
+      visualizer.resize();
+      setTimeout(() => visualizer.resize(), 60);
+    }
+  }
 
   setTimeout(() => {
     // Görselleştiriciyi başlat
     visualizer = new SonicPulseVisualizer('tts_canvas', '.tts-overlay-name');
+
+    // Aktif sayfa başlığına yerleştir
+    mountVisualizerInHeader();
+    setTimeout(mountVisualizerInHeader, 250);
     
     // Görünürlük değişikliklerini izle (Konteynır gösterildiğinde boyutları düzelt)
     const canvasEl = document.getElementById('tts_canvas');
@@ -276,11 +325,16 @@ $(document).ready(function() {
   // --- Shiny Mesaj İşleyicileri ---
   // Canvas boyutunu yeniden hesapla
   Shiny.addCustomMessageHandler('resizeTTSVisualizer', function(message) {
-    if (visualizer) { visualizer.resize(); setTimeout(() => visualizer.resize(), 200); }
+    mountVisualizerInHeader();
+    if (visualizer) {
+      visualizer.resize();
+      setTimeout(() => visualizer.resize(), 200);
+    }
   });
 
   // TTS durumunu (konuşma/durma) R'dan gelen verilere göre güncelle
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
+      mountVisualizerInHeader();
       if (message.color) visualizer.setColor(message.color);
       
       if (message.state === 'talking') {
@@ -321,12 +375,19 @@ $(document).ready(function() {
   // --- Sekme Değişikliği İzleyici ---
   // Gizli sekmelerde canvas boyutları 0 olabilir, sekme açıldığında yeniden boyutlandır
   $(document).on('shown.bs.tab', function() {
-    if (visualizer) {
-      setTimeout(function() {
+    setTimeout(function() {
+      mountVisualizerInHeader();
+      if (visualizer) {
         visualizer.resize();
         setTimeout(function() { visualizer.resize(); }, 200);
-      }, 100);
-    }
+      }
+    }, 100);
+  });
+
+  $(window).on('resize', function() {
+    setTimeout(function() {
+      mountVisualizerInHeader();
+    }, 50);
   });
 
   // --- Ses Olayı Dinleyicileri (Yedek) ---
