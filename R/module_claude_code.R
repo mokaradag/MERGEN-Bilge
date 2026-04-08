@@ -720,7 +720,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         return()
       }
 
-      icerik <- list_directory_contents(yol)
+      icerik <- list_directory_contents(
+        yol,
+        user_id = resolve_current_user_id()
+      )
+	  
       resolved_yol <- icerik$resolved_path %||% yol
 
       # Mevcut dizin yolunu güncelle
@@ -755,6 +759,18 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
                 else paste0(round(oge$boyut / 1048576, 1), " MB")
               } else ""
 
+              gorunen_ad <- oge$gorunen_ad %||% oge$ad
+
+              oge_ipucu <- if (!identical(gorunen_ad, oge$ad)) {
+                paste0(
+                  "Yüklenen ad: ", gorunen_ad,
+                  "\nSistem adı: ", oge$ad,
+                  "\nYol: ", oge$yol
+                )
+              } else {
+                oge$yol
+              }
+
               # Klasörlere tıklanabilirlik ekle
               ek_sinif <- if (oge$tip == "klasor") " cc-dir-clickable" else ""
               ek_olay <- if (oge$tip == "klasor") {
@@ -768,8 +784,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
               tags$div(
                 class = paste0("cc-dir-item cc-dir-", oge$tip, ek_sinif),
                 onclick = ek_olay,
+                title = oge_ipucu,
                 icon(ikon),
-                tags$span(class = "cc-dir-name", oge$ad),
+                tags$span(class = "cc-dir-name", gorunen_ad),
                 tags$span(class = "cc-dir-size", boyut_text)
               )
             })

@@ -1122,7 +1122,7 @@ sync_claude_runtime_workdir_back <- function(runtime_workdir, source_workdir) {
 #' @param path Dizin yolu
 #' @param max_items Maksimum öğe sayısı
 #' @return Dosya/klasör bilgileri listesi
-list_directory_contents <- function(path, max_items = 100L) {
+list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
   if (is.null(path) || !nzchar(path)) {
     return(list(
       success = FALSE,
@@ -1224,6 +1224,23 @@ list_directory_contents <- function(path, max_items = 100L) {
   tum_ogeler <- unique(tum_ogeler)
   gosterilecek_ogeler <- head(tum_ogeler, max_items)
 
+  idx_cache <- tryCatch(.load_index(), error = function(e) list())
+
+  gorunen_ad_getir <- function(dosya_yolu, klasor_mu) {
+    if (isTRUE(klasor_mu)) {
+      return(basename(dosya_yolu))
+    }
+
+    tryCatch(
+      mergen_resolve_display_name(
+        dosya_yolu,
+        user_id = user_id,
+        idx = idx_cache
+      ),
+      error = function(e) basename(dosya_yolu)
+    )
+  }
+
   ogeler <- lapply(gosterilecek_ogeler, function(f) {
     f_norm <- tryCatch(
       normalize_mcp_path(f, must_exist = FALSE),
@@ -1250,6 +1267,7 @@ list_directory_contents <- function(path, max_items = 100L) {
 
     list(
       ad = basename(f_norm),
+      gorunen_ad = gorunen_ad_getir(f_norm, klasor_mu),
       yol = f_norm,
       tip = if (isTRUE(klasor_mu)) "klasor" else "dosya",
       boyut = boyut,
@@ -1261,7 +1279,7 @@ list_directory_contents <- function(path, max_items = 100L) {
   if (length(ogeler) > 1) {
     siralama <- order(
       vapply(ogeler, function(x) x$tip != "klasor", logical(1)),
-      tolower(vapply(ogeler, function(x) x$ad %||% "", character(1)))
+      tolower(vapply(ogeler, function(x) x$gorunen_ad %||% x$ad %||% "", character(1)))
     )
     ogeler <- ogeler[siralama]
   }

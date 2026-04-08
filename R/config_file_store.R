@@ -329,6 +329,68 @@ mergen_user_upload_dir <- function(user_id) {
   normalize_mcp_path(p, must_exist = isTRUE(p_exists))
 }
 
+# İndeksteki kayıtları kullanarak dosya yoluna karşılık gelen görünen adı çözümler
+mergen_resolve_display_name <- function(file_path, user_id = NULL, idx = NULL) {
+  idx_all <- idx %||% .load_index()
+
+  hedef_yol <- normalize_for_path_compare(file_path)
+  hedef_basename <- tolower(basename(file_path %||% ""))
+
+  oncelikli_kovalar <- character(0)
+  if (!is.null(user_id) && nzchar(as.character(user_id))) {
+    uid <- as.character(user_id)
+    if (!is.null(idx_all[[uid]])) {
+      oncelikli_kovalar <- uid
+    }
+  }
+
+  kovalar <- unique(c(oncelikli_kovalar, names(idx_all)))
+
+  for (kova_adi in kovalar) {
+    kova <- idx_all[[kova_adi]]
+
+    aday_kayitlar <- if (is.list(kova) && (!is.null(kova$path) || !is.null(kova$display))) {
+      list(kova)
+    } else if (is.list(kova) && length(kova) > 0) {
+      unname(kova)
+    } else {
+      list()
+    }
+
+    for (kayit in aday_kayitlar) {
+      kayit_yolu <- if (is.list(kayit) && !is.null(kayit$path)) {
+        as.character(kayit$path)
+      } else {
+        as.character(kayit %||% "")
+      }
+
+      kayit_gorunen_ad <- if (is.list(kayit) && !is.null(kayit$display)) {
+        as.character(kayit$display)
+      } else {
+        ""
+      }
+
+      if (!nzchar(kayit_yolu) || !nzchar(kayit_gorunen_ad)) next
+
+      ayni_yol <- identical(
+        normalize_for_path_compare(kayit_yolu),
+        hedef_yol
+      )
+
+      ayni_dosya <- identical(
+        tolower(basename(kayit_yolu)),
+        hedef_basename
+      )
+
+      if (ayni_yol || ayni_dosya) {
+        return(kayit_gorunen_ad)
+      }
+    }
+  }
+
+  basename(file_path)
+}
+
 # Kullanıcının yüklediği dosyaların listesini döndürür
 mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   idx <- .load_index()
@@ -483,43 +545,19 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
 
-  resolve_display_name_from_index <- function(file_path) {
-    idx_all <- .load_index()
-    target_path <- normalize_for_path_compare(file_path)
-    target_base <- tolower(basename(file_path))
-
-    for (bucket_name in names(idx_all)) {
-      bucket <- idx_all[[bucket_name]]
-
-      candidate_entries <- if (is.list(bucket) && (!is.null(bucket$path) || !is.null(bucket$display))) {
-        list(bucket)
-      } else if (is.list(bucket) && length(bucket) > 0) {
-        unname(bucket)
-      } else {
-        list()
-      }
-
-      for (entry in candidate_entries) {
-        entry_path <- if (is.list(entry) && !is.null(entry$path)) as.character(entry$path) else as.character(entry %||% "")
-        entry_display <- if (is.list(entry) && !is.null(entry$display)) as.character(entry$display) else ""
-
-        if (!nzchar(entry_path) || !nzchar(entry_display)) next
-
-        same_path <- identical(normalize_for_path_compare(entry_path), target_path)
-        same_file <- identical(tolower(basename(entry_path)), target_base)
-
-        if (same_path || same_file) {
-          return(as.character(entry_display))
-        }
-      }
-    }
-
-    basename(file_path)
-  }
+  idx_cache <- .load_index()
 
   out <- data.frame(
     path = vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE),
-    name = vapply(paths, resolve_display_name_from_index, character(1)),
+    name = vapply(
+      paths,
+      function(p) mergen_resolve_display_name(
+        p,
+        user_id = user_id,
+        idx = idx_cache
+      ),
+      character(1)
+    ),
     stringsAsFactors = FALSE
   )
   
