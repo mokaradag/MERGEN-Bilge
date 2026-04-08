@@ -199,6 +199,194 @@ build_model_tier_choices <- function(model_listesi) {
   return(sonuc)
 }
 
+# ------------------------------------------------------------------------------
+# MODEL YETENEKLERİ VE DOKÜMAN UYUMLULUĞU
+# Düşünen modeller bazı ikili doküman akışlarında sorun çıkarabildiği için
+# model yetenekleri .Renviron üzerinden işaretlenir.
+# ------------------------------------------------------------------------------
+
+parse_claude_code_env_list <- function(deger) {
+  if (is.null(deger) || !length(deger)) return(character(0))
+
+  parcalar <- trimws(
+    unlist(strsplit(as.character(deger[[1]]), "[,;\\n\\r]+", perl = TRUE))
+  )
+
+  unique(parcalar[nzchar(parcalar)])
+}
+
+get_claude_code_model_capabilities <- function() {
+  list(
+    thinking_models = parse_claude_code_env_list(
+      Sys.getenv("CLAUDE_CODE_THINKING_MODELS", "")
+    ),
+    binary_doc_extensions = tolower(
+      parse_claude_code_env_list(
+        Sys.getenv(
+          "CLAUDE_CODE_BINARY_DOC_EXTENSIONS",
+          "pdf,xlsx,xls,doc,docx,ppt,pptx"
+        )
+      )
+    ),
+    auto_fallback_non_thinking_for_binary_docs = isTRUE(
+      as.logical(
+        Sys.getenv(
+          "CLAUDE_CODE_AUTO_FALLBACK_NON_THINKING_FOR_BINARY_DOCS",
+          "TRUE"
+        )
+      )
+    )
+  )
+}
+
+is_claude_code_thinking_model <- function(model_id) {
+  if (is.null(model_id) || !nzchar(model_id)) return(FALSE)
+
+  model_id %in% (get_claude_code_model_capabilities()$thinking_models %||% character(0))
+}
+
+prompt_mentions_binary_document_type <- function(prompt) {
+  metin <- tolower(enc2utf8(paste(as.character(prompt %||% ""), collapse = " ")))
+  if (!nzchar(metin)) return(FALSE)
+
+  tip_deseni <- paste(
+    c(
+      "\\bpdf\\b",
+      "\\bexcel\\b",
+      "\\bxlsx\\b",
+      "\\bxls\\b",
+      "\\bcsv\\b",
+      "\\bdocx\\b",
+      "\\bdoc\\b",
+      "\\bword\\b",
+      "\\bpptx\\b",
+      "\\bppt\\b",
+      "\\bpowerpoint\\b",
+      "\\bspreadsheet\\b",
+      "çalışma kitabı",
+      "calisma kitabi",
+      "elektronik tablo",
+      "sunum"
+    ),
+    collapse = "|"
+  )
+
+  grepl(tip_deseni, metin, perl = TRUE)
+}
+
+prompt_requests_document_operation <- function(prompt) {
+  metin <- tolower(enc2utf8(paste(as.character(prompt %||% ""), collapse = " ")))
+  if (!nzchar(metin)) return(FALSE)
+
+  islem_deseni <- paste(
+    c(
+      "\\boku\\b",
+      "\\bincele\\b",
+      "\\bözetle\\b",
+      "\\bozetle\\b",
+      "\\banaliz\\b",
+      "\\byorumla\\b",
+      "\\bkarşılaştır\\b",
+      "\\bkarsilastir\\b",
+      "\\blistele\\b",
+      "\\bread\\b",
+      "\\bsummarize\\b",
+      "\\banalyze\\b",
+      "\\bcompare\\b",
+      "\\blist\\b"
+    ),
+    collapse = "|"
+  )
+
+  grepl(islem_deseni, metin, perl = TRUE)
+}
+
+workdir_has_binary_documents <- function(workdir, extensions = NULL) {
+  if (is.null(workdir) || !nzchar(workdir) || !dir.exists(workdir)) return(FALSE)
+
+  if (is.null(extensions) || !length(extensions)) {
+    extensions <- get_claude_code_model_capabilities()$binary_doc_extensions
+  }
+
+  extensions <- tolower(as.character(extensions))
+  if (!length(extensions)) return(FALSE)
+
+  ogeler <- tryCatch(
+    list.files(
+      workdir,
+      recursive = FALSE,
+      full.names = FALSE,
+      all.files = FALSE,
+      include.dirs = FALSE
+    ),
+    error = function(e) character(0)
+  )
+
+  if (!length(ogeler)) return(FALSE)
+
+  uzantilar <- tolower(tools::file_ext(ogeler))
+  any(nzchar(uzantilar) & uzantilar %in% extensions)
+}
+
+resolve_claude_code_execution_model <- function(selected_model, prompt = "", workdir = "") {
+  sonuc <- list(
+    allow_run = TRUE,
+    model = selected_model %||% "",
+    fallback_used = FALSE,
+    reason = "",
+    selected_model = selected_model %||% ""
+  )
+
+  yetenekler <- get_claude_code_model_capabilities()
+
+  if (!isTRUE(yetenekler$auto_fallback_non_thinking_for_binary_docs)) {
+    return(sonuc)
+  }
+
+  if (!isTRUE(is_claude_code_thinking_model(selected_model))) {
+    return(sonuc)
+  }
+
+  ikili_dokuman_gorevi <- isTRUE(prompt_mentions_binary_document_type(prompt)) ||
+    (
+      isTRUE(prompt_requests_document_operation(prompt)) &&
+      isTRUE(workdir_has_binary_documents(workdir, yetenekler$binary_doc_extensions))
+    )
+
+  if (!isTRUE(ikili_dokuman_gorevi)) {
+    return(sonuc)
+  }
+
+  ayarlar <- read_claude_settings_json()
+
+  fallback_adaylari <- unique(unname(ayarlar$models))
+  fallback_adaylari <- fallback_adaylari[nzchar(fallback_adaylari)]
+  fallback_adaylari <- fallback_adaylari[
+    !(fallback_adaylari %in% (yetenekler$thinking_models %||% character(0)))
+  ]
+
+  if (!length(fallback_adaylari)) {
+    sonuc$allow_run <- FALSE
+    sonuc$reason <- paste(
+      "Seçili model düşünen bir model ve PDF/Excel benzeri ikili doküman akışı için",
+      "düşünmeyen bir yedek model tanımlı değil."
+    )
+    return(sonuc)
+  }
+
+  sonuc$model <- fallback_adaylari[1]
+  sonuc$fallback_used <- !identical(sonuc$model, selected_model)
+
+  if (isTRUE(sonuc$fallback_used)) {
+    sonuc$reason <- paste(
+      "Seçili düşünen model PDF/Excel benzeri ikili doküman akışında hata",
+      "üretebildiği için düşünmeyen modele geçildi."
+    )
+  }
+
+  sonuc
+}
+
 #' Node.js çalıştırılabilir yolunu çözümler
 #'
 #' @return Geçerli node.exe yolu veya NULL

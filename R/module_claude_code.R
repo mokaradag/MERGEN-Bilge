@@ -450,7 +450,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       has_messages = FALSE,
       conversation_context = list(),  # Bağlam koruma için konuşma geçmişi
       cli_session_id = NULL,          # Claude Code CLI oturum kimliği (--resume için)
-      current_model = NULL,           # Model değişim takibi
+      current_model = NULL,           # Arayüzde seçili model takibi
+      current_runtime_model = NULL,   # Gerçekte çalıştırılan model takibi
       active_process = NULL,          # Aktif processx süreci (durdurma için)
       poll_state = NULL,              # Yoklama durumu (ortam değişkeni, durdurma için)
       stream_env = NULL               # Akış durumu (yoklama gözlemcisi için)
@@ -951,6 +952,64 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       kaynak_calisma_dizini <- runtime_dizin$source_workdir %||% calisma_dizini
       calisma_dizini <- runtime_dizin$runtime_workdir %||% calisma_dizini
       mirror_kullanildi <- isTRUE(runtime_dizin$mirrored)
+
+      model_cozumu <- resolve_claude_code_execution_model(
+        selected_model = model,
+        prompt = prompt,
+        workdir = kaynak_calisma_dizini %||% calisma_dizini
+      )
+
+      if (!isTRUE(model_cozumu$allow_run)) {
+        rv$is_running <- FALSE
+
+        session$sendCustomMessage(
+          type = "cc-add-message",
+          message = list(
+            target = ns("output_area"),
+            type = "error",
+            content = htmltools::htmlEscape(model_cozumu$reason),
+            timestamp = format(Sys.time(), "%H:%M:%S"),
+            welcomeId = ns("welcome_screen")
+          )
+        )
+
+        return()
+      }
+
+      efektif_model <- model_cozumu$model %||% model
+
+      if (!is.null(rv$current_runtime_model) &&
+          !identical(rv$current_runtime_model, efektif_model)) {
+        rv$cli_session_id <- NULL
+        rv$conversation_context <- list()
+
+        log_info(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Çalıştırılan model değişti, CLI oturumu sıfırlandı. Yeni model:",
+          efektif_model
+        ))
+      }
+
+      rv$current_runtime_model <- efektif_model
+      model <- efektif_model
+
+      if (isTRUE(model_cozumu$fallback_used)) {
+        showNotification(
+          paste0(
+            "Doküman uyumluluğu için geçici olarak düşünmeyen modele geçildi: ",
+            efektif_model
+          ),
+          type = "warning",
+          duration = 6
+        )
+
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Düşünen model doküman görevi için düşünmeyen modele yönlendirildi.",
+          "Seçilen:", model_cozumu$selected_model,
+          "| Çalıştırılan:", efektif_model
+        ))
+      }
 
       # Karakter bilgisini al
       karakter <- get_active_character()
