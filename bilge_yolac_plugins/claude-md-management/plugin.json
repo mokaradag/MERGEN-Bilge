@@ -1,0 +1,5 @@
+{
+  "name": "claude-md-management",
+  "description": "CLAUDE.md dosyalarını oluşturma, güncelleme ve yönetme yetenekleri.",
+  "version": "1.0.0"
+}

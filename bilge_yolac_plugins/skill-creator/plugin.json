@@ -1,0 +1,5 @@
+{
+  "name": "skill-creator",
+  "description": "Claude Code skill dosyaları oluşturma aracı. Özel yetenekler tasarlar ve yapılandırır.",
+  "version": "1.0.0"
+}

@@ -1,0 +1,5 @@
+{
+  "name": "plugin-dev",
+  "description": "Claude Code plugin geliştirme aracı. Yeni plugin iskeletleri oluşturur ve mevcut pluginleri düzenler.",
+  "version": "1.0.0"
+}
