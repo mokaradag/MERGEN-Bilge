@@ -902,9 +902,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       }
 
       # Çalışma dizini yoksa gerçek kullanıcı kimliği ile kullanıcı çalışma alanını kullan.
-      if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
-        effective_user_id <- resolve_current_user_id()
+      effective_user_id <- resolve_current_user_id()
 
+      if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
         if (effective_user_id > 0) {
           calisma_dizini <- get_user_workspace(effective_user_id)
         } else {
@@ -923,6 +923,17 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           return()
         }
       }
+
+      # Windows + UNC + Türkçe karakterli dizinlerde cmd.exe kararsız çalışabildiği için
+      # gerekirse yerel ASCII çalışma alanına aynala.
+      runtime_dizin <- prepare_claude_runtime_workdir(
+        calisma_dizini,
+        user_id = effective_user_id
+      )
+
+      kaynak_calisma_dizini <- runtime_dizin$source_workdir %||% calisma_dizini
+      calisma_dizini <- runtime_dizin$runtime_workdir %||% calisma_dizini
+      mirror_kullanildi <- isTRUE(runtime_dizin$mirrored)
 
       # Karakter bilgisini al
       karakter <- get_active_character()
@@ -1004,6 +1015,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       stream_env$zaman_damgasi <- zaman_damgasi
       stream_env$prompt <- prompt
       stream_env$calisma_dizini <- calisma_dizini
+      stream_env$kaynak_calisma_dizini <- kaynak_calisma_dizini
+      stream_env$mirror_kullanildi <- mirror_kullanildi
       stream_env$tum_satirlar <- character(0)
       stream_env$durduruldu <- FALSE
       stream_env$oturum_id <- NULL  # stream-json olaylarından gelecek
@@ -1033,13 +1046,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Canlı akış başlatılıyor"))
 
         # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
-        komut <- build_processx_command(cli_yolu, cli_args)
+        komut <- build_processx_command(cli_yolu, cli_args, workdir = calisma_dizini)
 
         proc <- processx::process$new(
           command = komut$command,
           args = komut$args,
           env = komut$env,
-          wd = calisma_dizini,
+          wd = komut$wd %||% calisma_dizini,
           stdout = "|",
           stderr = "|",
           cleanup = TRUE,
@@ -1271,8 +1284,27 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           character = env$karakter_id
         )))
 
-        # Dizin içeriğini güncelle
-        observe_dir_contents(dizin = env$calisma_dizini)
+        # Yerel aynalama kullanıldıysa değişiklikleri kaynak klasöre geri yaz
+        if (isTRUE(env$mirror_kullanildi)) {
+          tryCatch(
+            sync_claude_runtime_workdir_back(
+              runtime_workdir = env$calisma_dizini,
+              source_workdir = env$kaynak_calisma_dizini
+            ),
+            error = function(e) {
+              log_warn(paste(
+                CLAUDE_CODE_LOG_PREFIX,
+                "Yerel çalışma alanı geri senkronlanamadı:",
+                conditionMessage(e)
+              ))
+            }
+          )
+        }
+
+        # Dizin içeriğini kaynak klasörden güncelle
+        observe_dir_contents(
+          dizin = env$kaynak_calisma_dizini %||% env$calisma_dizini
+        )
       }
     })
 

@@ -310,13 +310,38 @@ ensure_utf8 <- function(metin) {
 # processx bazı sunucu ortamlarında .cmd'yi doğrudan çalıştıramaz.
 # ------------------------------------------------------------------------------
 
+# Windows UNC/ağ paylaşımı yolu mu?
+is_windows_unc_path <- function(path) {
+  if (.Platform$OS.type != "windows") return(FALSE)
+  if (is.null(path) || !nzchar(path)) return(FALSE)
+
+  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+  grepl("^//", aday)
+}
+
+# cmd.exe içinde kullanılacak çalışma dizinini Windows biçimine çevir
+normalize_cmd_workdir <- function(path) {
+  aday <- as.character(path %||% "")
+  if (!nzchar(aday)) return("")
+
+  aday <- gsub("/", "\\\\", aday, fixed = TRUE)
+
+  # Tek ters slash ile başlayan UNC benzeri yolu çift ters slash yap
+  if (grepl("^\\\\[^\\\\]", aday)) {
+    aday <- paste0("\\", aday)
+  }
+
+  aday
+}
+
 #' processx için komut ve argümanları hazırlar
 #' Windows'ta .cmd dosyalarını cmd.exe /c üzerinden sarar
 #'
 #' @param cli_path CLI çalıştırılabilir dosya yolu
 #' @param args CLI argümanları
-#' @return Liste: command, args, env (ortam değişkenleri veya NULL)
-build_processx_command <- function(cli_path, args) {
+#' @param workdir Çalışma dizini
+#' @return Liste: command, args, env, wd
+build_processx_command <- function(cli_path, args, workdir = NULL) {
   if (.Platform$OS.type == "windows" && grepl("\\.cmd$", cli_path, ignore.case = TRUE)) {
     # cmd.exe için Windows stilinde dizin kullan
     npm_dizini <- normalizePath(dirname(cli_path), winslash = "\\", mustWork = FALSE)
@@ -344,13 +369,54 @@ build_processx_command <- function(cli_path, args) {
 
     env[[path_adi]] <- yeni_path
 
+    # UNC çalışma dizininde cmd.exe doğrudan başlatılırsa C:\Windows'a düşebilir.
+    # Bu yüzden ağ yolunu pushd ile geçici sürücüye eşleyip komutu orada çalıştır.
+    if (is_windows_unc_path(workdir)) {
+      hedef_dizin <- normalize_cmd_workdir(workdir)
+      cli_cmd <- normalizePath(cli_path, winslash = "\\", mustWork = FALSE)
+      quoted_args <- vapply(
+        args,
+        function(x) shQuote(as.character(x), type = "cmd"),
+        character(1),
+        USE.NAMES = FALSE
+      )
+
+      komut_satiri <- paste(
+        c(
+          "pushd",
+          shQuote(hedef_dizin, type = "cmd"),
+          "&&",
+          "call",
+          shQuote(cli_cmd, type = "cmd"),
+          quoted_args,
+          "&",
+          "popd"
+        ),
+        collapse = " "
+      )
+
+      log_info(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "UNC çalışma dizini pushd ile eşlendi:",
+        workdir
+      ))
+
+      return(list(
+        command = Sys.getenv("ComSpec", "cmd.exe"),
+        args = c("/d", "/c", komut_satiri),
+        env = env,
+        wd = get_safe_claude_cli_workdir(workdir)
+      ))
+    }
+
     list(
       command = Sys.getenv("ComSpec", "cmd.exe"),
       args = c("/d", "/c", normalizePath(cli_path, winslash = "\\", mustWork = FALSE), args),
-      env = env
+      env = env,
+      wd = workdir
     )
   } else {
-    list(command = cli_path, args = args, env = NULL)
+    list(command = cli_path, args = args, env = NULL, wd = workdir)
   }
 }
 
@@ -443,7 +509,7 @@ run_claude_code <- function(prompt,
 
   # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
   # (RStudio sunucu oturumlarında processx doğrudan .cmd çalıştıramayabilir)
-  komut <- build_processx_command(cli_path, args)
+  komut <- build_processx_command(cli_path, args, workdir = workdir)
 
   # processx::process$new ile çalıştır (handle yönetimi daha güvenli)
   tryCatch({
@@ -454,7 +520,7 @@ run_claude_code <- function(prompt,
       command = komut$command,
       args = komut$args,
       env = komut$env,
-      wd = workdir,
+      wd = komut$wd %||% workdir,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
@@ -555,6 +621,9 @@ parse_claude_code_json_output <- function(ham_cikti) {
   satirlar <- strsplit(ham_cikti, "\n")[[1]]
   metin_parcalari <- c()
 
+  # Metin daha önce delta/blok olarak geldiyse result alanını ikinci kez eklememek için bayrak
+  metin_zaten_toplandi <- FALSE
+
   # Araç girdisi delta biriktiricisi (stream-json formatı için)
   arac_girdi_tamponlari <- list()
 
@@ -596,7 +665,11 @@ parse_claude_code_json_output <- function(ham_cikti) {
           if (!is.null(delta)) {
             delta_turu <- delta$type %||% ""
             if (delta_turu == "text_delta") {
-              metin_parcalari <- c(metin_parcalari, delta$text %||% "")
+              delta_metin <- delta$text %||% ""
+              if (nzchar(delta_metin)) {
+                metin_parcalari <- c(metin_parcalari, delta_metin)
+                metin_zaten_toplandi <- TRUE
+              }
             } else if (delta_turu == "input_json_delta") {
               # Araç girdisi parçasını biriktir (son araç için)
               if (length(sonuc$tool_uses) > 0) {
@@ -623,7 +696,11 @@ parse_claude_code_json_output <- function(ham_cikti) {
           }
 
         } else if (olay_turu == "result") {
-          metin_parcalari <- c(metin_parcalari, olay$result %||% "")
+          sonuc_metin <- olay$result %||% ""
+          if (!isTRUE(metin_zaten_toplandi) && nzchar(sonuc_metin)) {
+            metin_parcalari <- c(metin_parcalari, sonuc_metin)
+            metin_zaten_toplandi <- TRUE
+          }
         }
 
         next
@@ -631,7 +708,11 @@ parse_claude_code_json_output <- function(ham_cikti) {
 
       # --- Eski json formatı (geriye uyumluluk) ---
       if (tur == "text") {
-        metin_parcalari <- c(metin_parcalari, nesne$content %||% "")
+        parca_metin <- nesne$content %||% ""
+        if (nzchar(parca_metin)) {
+          metin_parcalari <- c(metin_parcalari, parca_metin)
+          metin_zaten_toplandi <- TRUE
+        }
 
       } else if (tur == "tool_use") {
         arac <- list(
@@ -652,7 +733,11 @@ parse_claude_code_json_output <- function(ham_cikti) {
         }
 
       } else if (tur == "result") {
-        metin_parcalari <- c(metin_parcalari, nesne$result %||% "")
+        sonuc_metin <- nesne$result %||% ""
+        if (!isTRUE(metin_zaten_toplandi) && nzchar(sonuc_metin)) {
+          metin_parcalari <- c(metin_parcalari, sonuc_metin)
+          metin_zaten_toplandi <- TRUE
+        }
         if (!is.null(nesne$session_id) && nzchar(nesne$session_id %||% "")) {
           sonuc$session_id <- nesne$session_id
         }
@@ -662,7 +747,11 @@ parse_claude_code_json_output <- function(ham_cikti) {
           for (blok in nesne$content) {
             blok_tur <- blok$type %||% ""
             if (blok_tur == "text") {
-              metin_parcalari <- c(metin_parcalari, blok$text %||% "")
+              blok_metin <- blok$text %||% ""
+              if (nzchar(blok_metin)) {
+                metin_parcalari <- c(metin_parcalari, blok_metin)
+                metin_zaten_toplandi <- TRUE
+              }
             } else if (blok_tur == "tool_use") {
               arac <- list(
                 id = blok$id %||% "",
@@ -699,7 +788,10 @@ get_safe_claude_cli_workdir <- function(workdir = NULL) {
 
   for (aday in adaylar) {
     if (!nzchar(aday) || !dir.exists(aday)) next
-    if (.Platform$OS.type == "windows" && grepl("^\\\\\\\\", aday)) next
+    if (
+      .Platform$OS.type == "windows" &&
+      (grepl("^\\\\\\\\", aday) || grepl("^//", gsub("\\\\", "/", aday)))
+    ) next
     return(normalizePath(aday, winslash = "/", mustWork = FALSE))
   }
 
@@ -734,19 +826,20 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
   tryCatch({
     # Windows UNC yolundan çalışırken cmd.exe hata verdiği için
     # durum kontrolünde güvenli yerel bir çalışma dizini kullan
-    komut <- build_processx_command(cli_path, c("--version"))
+    komut <- build_processx_command(cli_path, c("--version"), workdir = workdir)
     guvenli_wd <- get_safe_claude_cli_workdir(workdir)
 
     proc <- processx::process$new(
       command = komut$command,
       args = komut$args,
       env = komut$env,
-      wd = guvenli_wd,
+      wd = komut$wd %||% guvenli_wd,
       stdout = "|",
       stderr = "|",
       cleanup = TRUE,
       cleanup_tree = TRUE
     )
+	
     proc$wait(timeout = 10000)
 
     if (proc$is_alive()) {
@@ -855,6 +948,169 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
   }
 
   return(normalizePath(user_dir, mustWork = FALSE))
+}
+
+# Windows cmd.exe için problem çıkarabilecek yol mu?
+is_problematic_windows_workdir <- function(path) {
+  if (.Platform$OS.type != "windows") return(FALSE)
+  if (is.null(path) || !nzchar(path)) return(FALSE)
+
+  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+
+  unc_mi <- grepl("^//", aday)
+  ascii_disi_var_mi <- grepl("[^ -~]", enc2utf8(aday), perl = TRUE)
+
+  isTRUE(unc_mi || ascii_disi_var_mi)
+}
+
+# Dizin içeriğini yerel çalışma alanına aynala
+mirror_directory_to_local_workspace <- function(source_dir, target_dir) {
+  if (!dir.exists(target_dir)) {
+    dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  ogeler <- tryCatch(
+    list.files(
+      source_dir,
+      full.names = TRUE,
+      recursive = FALSE,
+      all.files = FALSE,
+      include.dirs = TRUE
+    ),
+    error = function(e) character(0)
+  )
+
+  if (!length(ogeler)) {
+    return(invisible(TRUE))
+  }
+
+  kopya_ok <- tryCatch(
+    file.copy(
+      from = ogeler,
+      to = target_dir,
+      overwrite = TRUE,
+      recursive = TRUE,
+      copy.mode = TRUE,
+      copy.date = TRUE
+    ),
+    error = function(e) rep(FALSE, length(ogeler))
+  )
+
+  if (any(!kopya_ok)) {
+    for (i in seq_along(ogeler)) {
+      if (isTRUE(kopya_ok[i])) next
+
+      kaynak <- ogeler[i]
+      hedef <- file.path(target_dir, basename(kaynak))
+
+      tryCatch({
+        if (dir.exists(kaynak)) {
+          if (dir.exists(hedef)) unlink(hedef, recursive = TRUE, force = TRUE)
+          fs::dir_copy(kaynak, hedef, overwrite = TRUE)
+        } else {
+          fs::file_copy(kaynak, hedef, overwrite = TRUE)
+        }
+      }, error = function(e) {
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Yerel aynalama sırasında öge kopyalanamadı:",
+          basename(kaynak),
+          "-",
+          conditionMessage(e)
+        ))
+      })
+    }
+  }
+
+  invisible(TRUE)
+}
+
+# Problemli ağ/Unicode dizinlerini yerel ASCII çalışma klasörüne taşır
+prepare_claude_runtime_workdir <- function(workdir, user_id = NULL) {
+  if (is.null(workdir) || !nzchar(workdir)) {
+    return(list(
+      runtime_workdir = workdir,
+      source_workdir = workdir,
+      mirrored = FALSE
+    ))
+  }
+
+  source_dir <- tryCatch(
+    normalize_mcp_path(workdir, must_exist = FALSE),
+    error = function(e) as.character(workdir)
+  )
+
+  dir_ok <- tryCatch(
+    isTRUE(dir.exists(source_dir)) || isTRUE(fs::dir_exists(source_dir)),
+    error = function(e) FALSE
+  )
+
+  if (!isTRUE(dir_ok)) {
+    return(list(
+      runtime_workdir = workdir,
+      source_workdir = workdir,
+      mirrored = FALSE
+    ))
+  }
+
+  if (!is_problematic_windows_workdir(source_dir)) {
+    return(list(
+      runtime_workdir = source_dir,
+      source_workdir = source_dir,
+      mirrored = FALSE
+    ))
+  }
+
+  local_base <- file.path(
+    tempdir(),
+    "claude_code_runtime",
+    paste0("user_", as.character(user_id %||% "default")),
+    "active_dir"
+  )
+
+  if (dir.exists(local_base)) {
+    unlink(local_base, recursive = TRUE, force = TRUE)
+  }
+
+  dir.create(local_base, recursive = TRUE, showWarnings = FALSE)
+
+  mirror_directory_to_local_workspace(source_dir, local_base)
+
+  local_base <- normalizePath(local_base, winslash = "/", mustWork = FALSE)
+
+  log_info(paste(
+    CLAUDE_CODE_LOG_PREFIX,
+    "Problemli çalışma dizini yerel alana aynalandı:",
+    source_dir,
+    "->",
+    local_base
+  ))
+
+  list(
+    runtime_workdir = local_base,
+    source_workdir = source_dir,
+    mirrored = TRUE
+  )
+}
+
+# Yerel çalışma alanındaki değişiklikleri kaynak dizine geri senkronlar
+sync_claude_runtime_workdir_back <- function(runtime_workdir, source_workdir) {
+  if (is.null(runtime_workdir) || !nzchar(runtime_workdir)) return(invisible(FALSE))
+  if (is.null(source_workdir) || !nzchar(source_workdir)) return(invisible(FALSE))
+  if (!dir.exists(runtime_workdir)) return(invisible(FALSE))
+  if (!dir.exists(source_workdir)) return(invisible(FALSE))
+
+  mirror_directory_to_local_workspace(runtime_workdir, source_workdir)
+
+  log_info(paste(
+    CLAUDE_CODE_LOG_PREFIX,
+    "Yerel çalışma alanı kaynak dizine geri senkronlandı:",
+    runtime_workdir,
+    "->",
+    source_workdir
+  ))
+
+  invisible(TRUE)
 }
 
 # ------------------------------------------------------------------------------
