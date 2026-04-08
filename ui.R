@@ -148,6 +148,7 @@ ui <- dashboardPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "css/sso_auth.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code_streaming.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = "css/claude_code_plugins.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = "css/bilge_yolac_welcome.css"),
 
     # --- Yerel CodeMirror CSS Dosyaları ---
@@ -257,6 +258,7 @@ ui <- dashboardPage(
     tags$script(src = "js/surum_bilgilendirme.js", defer = "defer"),
     tags$script(src = "js/claude_code.js", defer = "defer"),
     tags$script(src = "js/claude_code_streaming.js", defer = "defer"),
+    tags$script(src = "js/claude_code_plugins.js", defer = "defer"),
 
     # Bilge Yolaç karşılama ekranı modülleri (yükleme sırası önemli)
     tags$script(src = "js/bilge_yolac_motor.js", defer = "defer"),

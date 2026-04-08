@@ -140,6 +140,7 @@ safe_source("R/config_characters.R",       encoding = "UTF-8")  # Karakter/perso
 safe_source("R/config_version_history.R",  encoding = "UTF-8")  # Sürüm geçmişi
 safe_source("R/config_api.R",              encoding = "UTF-8")  # API yapılandırması ve uç noktaları
 safe_source("R/config_claude_code.R",      encoding = "UTF-8")  # Claude Code yapılandırması
+safe_source("R/config_claude_code_plugins.R", encoding = "UTF-8")  # Claude Code Plugin yapılandırması
 
 # ------------------------------------------------------------------------------
 # GRUP 3: Veritabanı ve Sorgu Altyapısı
@@ -173,6 +174,7 @@ safe_source("R/helpers_ai_expert.R",             encoding = "UTF-8")  # AI Uzman
 safe_source("R/helpers_claude_code.R",           encoding = "UTF-8")  # Claude Code CLI yardımcıları
 safe_source("R/helpers_claude_code_streaming.R", encoding = "UTF-8")  # Claude Code canlı akış desteği
 safe_source("R/helpers_claude_code_formatters.R", encoding = "UTF-8") # Claude Code HTML biçimlendiriciler
+safe_source("R/helpers_claude_code_plugins.R", encoding = "UTF-8") # Claude Code Plugin CLI yardımcıları
 
 # ------------------------------------------------------------------------------
 # GRUP 5: LLM (Büyük Dil Modeli) Entegrasyon Katmanı
@@ -227,6 +229,7 @@ safe_source("R/module_performance.R",      encoding = "UTF-8")
 safe_source("R/module_user_identity.R",    encoding = "UTF-8")
 safe_source("R/module_startup_screen.R",   encoding = "UTF-8")
 safe_source("R/module_quick_actions.R",    encoding = "UTF-8")
+safe_source("R/module_claude_code_plugins.R", encoding = "UTF-8")  # Claude Code Plugin yönetim modülü
 safe_source("R/module_claude_code_akis.R",   encoding = "UTF-8")
 safe_source("R/module_claude_code.R",        encoding = "UTF-8")
 

@@ -209,6 +209,14 @@ If one is missing, startup stops with an explicit error.
 - `CLAUDE_CODE_MAX_CONCURRENT`
 - `CLAUDE_CODE_PERSIST_SESSIONS`
 
+#### Bilge Yolaç Plugins
+- `CLAUDE_CODE_PLUGINS_MARKETPLACE_URL`
+- `CLAUDE_CODE_PLUGINS_REFRESH_INTERVAL`
+- `CLAUDE_CODE_PLUGINS_ALLOW_TOGGLE`
+- `CLAUDE_CODE_PLUGINS_ALLOW_INSTALL`
+- `CLAUDE_CODE_PLUGINS_ALLOW_UNINSTALL`
+- `CLAUDE_CODE_PLUGINS_OPERATION_TIMEOUT`
+
 #### Image generation
 - `IMAGE_GEN_ENDPOINT`
 - `IMAGE_GEN_MODEL`
@@ -264,6 +272,7 @@ Defines application-wide configuration:
 - `R/config_version_history.R`
 - `R/config_api.R`
 - `R/config_claude_code.R`
+- `R/config_claude_code_plugins.R`
 
 ### Group 3 - Database and SQL
 Core persistence and DB access:
@@ -295,6 +304,7 @@ Shared utilities used across modules:
 - `R/helpers_claude_code.R`
 - `R/helpers_claude_code_streaming.R`
 - `R/helpers_claude_code_formatters.R`
+- `R/helpers_claude_code_plugins.R`
 
 ### Group 5 - LLM Integration Layer
 Model calls, tool formatting, SSE, worker execution:
@@ -348,6 +358,7 @@ User-facing and system-facing modules.
 - `R/module_quick_actions.R`
 - `R/module_claude_code_klasor.R`
 - `R/module_claude_code_akis.R`
+- `R/module_claude_code_plugins.R`
 - `R/module_claude_code.R`
 
 #### Analysis
@@ -778,16 +789,21 @@ Treat audio logic as concurrency-sensitive.
 Core files:
 
 - `R/config_claude_code.R`
+- `R/config_claude_code_plugins.R`
 - `R/helpers_claude_code.R`
 - `R/helpers_claude_code_streaming.R`
 - `R/helpers_claude_code_formatters.R`
+- `R/helpers_claude_code_plugins.R`
 - `R/module_claude_code.R`
 - `R/module_claude_code_klasor.R`
 - `R/module_claude_code_akis.R`
+- `R/module_claude_code_plugins.R`
 - `www/js/claude_code.js`
 - `www/js/claude_code_streaming.js`
+- `www/js/claude_code_plugins.js`
 - `www/css/claude_code.css`
 - `www/css/claude_code_streaming.css`
+- `www/css/claude_code_plugins.css`
 - Bilge Yolaç welcome JS files under `www/js/bilge_yolac_*.js`
 
 Bilge Yolaç is a web wrapper around Claude Code CLI-like behavior.

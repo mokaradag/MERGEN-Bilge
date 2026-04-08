@@ -193,7 +193,10 @@ $(function(){
               )
             ),
             uiOutput(ns("dir_contents_ui"))
-          )
+          ),
+
+          # Eklenti Yönetim Paneli
+          claudeCodePluginsUI(ns)
         ),
 
         # --- Sağ Panel: Terminal / Sohbet Alanı ---
@@ -1195,6 +1198,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     # later::later kullanıldığında mesajlar reaktif döngü dışında kalarak
     # birikir ve yalnızca süreç bittiğinde toplu gönderilirdi.
     # =====================================================================
+
+    # --- Eklenti yönetimi (module_claude_code_plugins.R) ---
+    claudeCodePluginsServer(input, output, session, ns, rv)
 
     # --- Akış yardımcıları (module_claude_code_akis.R) ---
     akis <- create_akis_yardimcilari(session, ns, rv)
