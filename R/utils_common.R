@@ -12,10 +12,47 @@
   if (is.null(a)) b else a
 }
 
+# --- UTF-8 METİN NORMALLEŞTİRİCİ ---
+# Bozuk veya farklı kodlamadan gelen metinleri güvenli UTF-8'e çevirir.
+normalize_utf8_text <- function(x) {
+  if (is.null(x)) return("")
+  if (length(x) == 0) return(character(0))
+
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+
+  donustur_tek <- function(deger) {
+    if (length(deger) == 0 || identical(deger, "")) return("")
+
+    denemeler <- c(
+      tryCatch(suppressWarnings(iconv(deger, from = "",             to = "UTF-8", sub = "")), error = function(e) NA_character_),
+      tryCatch(suppressWarnings(iconv(deger, from = "UTF-8",        to = "UTF-8", sub = "")), error = function(e) NA_character_),
+      tryCatch(suppressWarnings(iconv(deger, from = "WINDOWS-1254", to = "UTF-8", sub = "")), error = function(e) NA_character_),
+      tryCatch(suppressWarnings(iconv(deger, from = "latin1",       to = "UTF-8", sub = "")), error = function(e) NA_character_)
+    )
+
+    denemeler <- denemeler[!is.na(denemeler)]
+    if (length(denemeler) == 0) return("")
+
+    cikti <- denemeler[[1]]
+    cikti <- sub("^\ufeff", "", cikti, perl = TRUE)
+    Encoding(cikti) <- "UTF-8"
+    cikti
+  }
+
+  vapply(x, donustur_tek, FUN.VALUE = character(1), USE.NAMES = FALSE)
+}
+
+# --- GÜVENLİ BOŞLUK TEMİZLEYİCİ ---
+safe_trimws <- function(x) {
+  temiz <- normalize_utf8_text(x)
+  normalize_utf8_text(trimws(temiz))
+}
+
 # --- GÜVENLİ NZCHAR KONTROLÜ ---
-# Tek satırda NULL, NA ve boş karakter kontrolü yapar
 safe_nzchar <- function(x) {
-  is.character(x) && length(x) > 0 && !is.na(x[1]) && nzchar(x[1])
+  if (!is.character(x) || length(x) == 0 || is.na(x[1])) return(FALSE)
+  !identical(safe_trimws(x[1]), "")
 }
 
 # --- ÇAĞRI ANINDA DEĞER ÇÖZÜMLEYİCİ ---

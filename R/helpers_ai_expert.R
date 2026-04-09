@@ -19,27 +19,34 @@
 call_ai_expert_llm <- function(system_prompt, user_context, model_name,
                                 api_key = NULL, endpoint = NULL,
                                 max_tokens = 500) {
+								
+  system_prompt <- safe_trimws(system_prompt)
+  user_context  <- safe_trimws(user_context)
+  model_name    <- safe_trimws(model_name)
+  endpoint      <- safe_trimws(endpoint)
+  api_key       <- safe_trimws(api_key)
 
   # Uç nokta ve model adı kontrolü
-  if (is.null(endpoint) || !nzchar(endpoint)) {
-    endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
+  if (is.null(endpoint) || !safe_nzchar(endpoint)) {
+    endpoint <- safe_trimws(Sys.getenv("LOCAL_LLM_ENDPOINT", ""))
   }
-  if (!nzchar(endpoint)) {
+  
+  if (!safe_nzchar(endpoint)) {
     cat("[AI_EXPERT] API uç noktası yapılandırılmamış, konuşma oluşturulamadı.\n")
     return(NULL)
   }
 
-  if (is.null(model_name) || !nzchar(model_name)) {
-    model_name <- Sys.getenv("AI_EXPERT_MODEL", "")
-    if (!nzchar(model_name)) {
+  if (is.null(model_name) || !safe_nzchar(model_name)) {
+    model_name <- safe_trimws(Sys.getenv("AI_EXPERT_MODEL", ""))
+    if (!safe_nzchar(model_name)) {
       cat("[AI_EXPERT] Model adı belirtilmemiş.\n")
       return(NULL)
     }
   }
 
   # API anahtarı çözümleme
-  if (is.null(api_key) || !nzchar(api_key)) {
-    api_key <- Sys.getenv("LOCAL_LLM_API_KEY", "")
+  if (is.null(api_key) || !safe_nzchar(api_key)) {
+    api_key <- safe_trimws(Sys.getenv("LOCAL_LLM_API_KEY", ""))
   }
 
   # Mesaj yapısı
@@ -80,7 +87,18 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
     return(NULL)
   }
 
-  parsed <- tryCatch(httr::content(response, "parsed"), error = function(e) NULL)
+  response_text <- tryCatch(
+    httr::content(response, as = "text", encoding = "UTF-8"),
+    error = function(e) NULL
+  )
+
+  response_text <- normalize_utf8_text(response_text)
+  if (!safe_nzchar(response_text)) return(NULL)
+
+  parsed <- tryCatch(
+    jsonlite::fromJSON(response_text, simplifyVector = FALSE),
+    error = function(e) NULL
+  )
   if (is.null(parsed)) return(NULL)
 
   # Yanıtı çıkar
@@ -88,11 +106,11 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
   if (is.list(parsed$choices) && length(parsed$choices) > 0) {
     choice <- parsed$choices[[1]]
     if (!is.null(choice$message) && !is.null(choice$message$content)) {
-      ai_text <- trimws(choice$message$content)
+      ai_text <- safe_trimws(choice$message$content)
     }
   }
 
-  if (is.null(ai_text) || !nzchar(ai_text)) {
+  if (is.null(ai_text) || !safe_nzchar(ai_text)) {
     cat("[AI_EXPERT] API yanıtı boş.\n")
     return(NULL)
   }
@@ -121,8 +139,11 @@ fetch_user_full_name <- function(user_id) {
     }
   )
 
-  if (nrow(result) > 0 && !is.na(result$KaynakAdi[1]) && nzchar(result$KaynakAdi[1])) {
-    return(as.character(result$KaynakAdi[1]))
+  if (nrow(result) > 0 && !is.na(result$KaynakAdi[1])) {
+    ad_soyad <- safe_trimws(as.character(result$KaynakAdi[1]))
+    if (safe_nzchar(ad_soyad)) {
+      return(ad_soyad)
+    }
   }
 
   return("")
@@ -146,6 +167,8 @@ build_ai_expert_user_context <- function(user_id, user_name = "",
                                           max_prompts = 5,
                                           current_session_messages = NULL) {
 
+  user_name <- safe_trimws(user_name)
+  current_session_messages <- normalize_utf8_text(current_session_messages)
   context_parts <- list()
 
   # Kullanıcı adı bilgisi
@@ -222,6 +245,7 @@ build_ai_expert_user_context <- function(user_id, user_name = "",
     "Şimdi: %s", format(Sys.time(), "%d %B %Y %H:%M", tz = "Europe/Istanbul")
   ))
 
+  context_parts <- normalize_utf8_text(unlist(context_parts, use.names = FALSE))
   paste(context_parts, collapse = "\n\n")
 }
 
@@ -254,7 +278,7 @@ fetch_recent_user_prompts <- function(user_id, max_prompts = 5) {
   )
 
   if (nrow(result) > 0) {
-    return(as.character(result$MessageContent))
+    return(normalize_utf8_text(as.character(result$MessageContent)))
   }
 
   return(NULL)
@@ -309,14 +333,17 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
   guide_path <- file.path(getwd(), "ai_rehber.md")
   if (file.exists(guide_path)) {
     guide_text <- tryCatch(
-      paste(readLines(guide_path, encoding = "UTF-8", warn = FALSE), collapse = "\n"),
+      normalize_utf8_text(
+        paste(readLines(guide_path, encoding = "UTF-8", warn = FALSE), collapse = "\n")
+      ),
       error = function(e) ""
     )
   }
 
-  # Karakter kişilik bilgisi
-  char_name <- character_data$display_name %||% "MERGEN"
-  char_style <- character_data$style_tr %||% ""
+  char_name <- safe_trimws(character_data$display_name %||% "MERGEN")
+  char_style <- safe_trimws(character_data$style_tr %||% "")
+  page_name <- safe_trimws(page_name %||% "")
+  user_name <- safe_trimws(user_name %||% "")
   char_system <- character_data$system_prompt_en %||% ""
 
   # Kullanıcı adı talimatı
@@ -463,5 +490,5 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     if (nzchar(guide_text)) substr(guide_text, 1, 10000) else "(Rehber belgesi bulunamadı)"
   )
 
-  return(prompt)
+  return(safe_trimws(prompt))
 }

@@ -61,27 +61,31 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   }
 
   # --- Yardımcı: Ortak LLM çağrı parametrelerini hazırla ---
-  prepare_llm_params <- function() {
-    char_id <- isolate(settings_data$selected_character) %||% "mergen"
-    model_name <- Sys.getenv("AI_EXPERT_MODEL", "")
-    endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
-    api_key <- Sys.getenv("LOCAL_LLM_API_KEY", "")
-    user_api_key <- NULL
-    if (!is.null(session$userData$ai_api_key)) {
-      user_api_key <- session$userData$ai_api_key
-    }
-    final_api_key <- if (!is.null(user_api_key) && nzchar(user_api_key)) user_api_key else api_key
-    chars_data <- get_characters_data()
-    char_info <- Find(function(x) x$id == char_id, chars_data$styles)
-    if (is.null(char_info)) char_info <- chars_data$styles[[1]]
-    list(
-      char_info = char_info,
-      model_name = model_name,
-      endpoint = endpoint,
-      api_key = final_api_key,
-      user_name = user_first_name
-    )
-  }
+	prepare_llm_params <- function() {
+	  char_id <- isolate(settings_data$selected_character) %||% "mergen"
+	  model_name <- safe_trimws(Sys.getenv("AI_EXPERT_MODEL", ""))
+	  endpoint <- safe_trimws(Sys.getenv("LOCAL_LLM_ENDPOINT", ""))
+	  api_key <- safe_trimws(Sys.getenv("LOCAL_LLM_API_KEY", ""))
+	  user_api_key <- NULL
+
+	  if (!is.null(session$userData$ai_api_key)) {
+		user_api_key <- safe_trimws(session$userData$ai_api_key)
+	  }
+
+	  final_api_key <- if (!is.null(user_api_key) && safe_nzchar(user_api_key)) user_api_key else api_key
+
+	  chars_data <- get_characters_data()
+	  char_info <- Find(function(x) x$id == char_id, chars_data$styles)
+	  if (is.null(char_info)) char_info <- chars_data$styles[[1]]
+
+	  list(
+		char_info = char_info,
+		model_name = model_name,
+		endpoint = endpoint,
+		api_key = final_api_key,
+		user_name = safe_trimws(user_first_name)
+	  )
+	}
 
   # --- Yardımcı: Mevcut oturumdaki kullanıcı mesajlarını yakala ---
   capture_session_messages <- function(max_messages = 5) {
@@ -97,7 +101,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
           if (length(user_msgs) > max_messages) {
             user_msgs <- tail(user_msgs, max_messages)
           }
-          return(sapply(user_msgs, function(m) m$content))
+		  return(normalize_utf8_text(sapply(user_msgs, function(m) m$content)))
         }
       }
       return(NULL)
@@ -108,15 +112,20 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   }
 
   # --- Yardımcı: Kullanıcı adını worker içinde çözümle ---
-  resolve_user_name <- function(user_name) {
-    user_full_name <- fetch_user_full_name(current_user_id)
-    u_name <- user_name
-    if (nzchar(user_full_name %||% "")) {
-      parts <- strsplit(trimws(user_full_name), "\\s+")[[1]]
-      u_name <- paste0(toupper(substring(parts[1], 1, 1)), tolower(substring(parts[1], 2)))
-    }
-    u_name
-  }
+	resolve_user_name <- function(user_name) {
+	  user_full_name <- safe_trimws(fetch_user_full_name(current_user_id))
+	  u_name <- safe_trimws(user_name)
+
+	  if (safe_nzchar(user_full_name)) {
+		parts <- strsplit(user_full_name, "\\s+")[[1]]
+		first_name <- safe_trimws(parts[1] %||% "")
+		if (safe_nzchar(first_name)) {
+		  u_name <- first_name
+		}
+	  }
+
+	  u_name
+	}
 
   # --- Karşılama konuşması (uygulama açıldığında bir kez) ---
   session$onFlushed(function() {
