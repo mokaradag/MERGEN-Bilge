@@ -17,14 +17,16 @@
 #' @return tagList - Plugin paneli HTML yapısı
 claudeCodePluginsUI <- function(ns) {
   div(
-    class = "cc-settings-card cc-plugins-card",
+    # Varsayılan olarak daraltılmış başlat (yer tasarrufu)
+    class = "cc-settings-card cc-plugins-card cc-plugins-collapsed",
+    id = ns("plugins_wrapper"),
 
     # Panel Başlığı (tıklanabilir, daraltılabilir)
     div(
       class = "cc-card-title cc-plugins-header",
       onclick = sprintf(
         "document.getElementById('%s').classList.toggle('cc-plugins-collapsed');",
-        ns("plugins_panel")
+        ns("plugins_wrapper")
       ),
       icon("puzzle-piece"),
       span("Eklentiler"),

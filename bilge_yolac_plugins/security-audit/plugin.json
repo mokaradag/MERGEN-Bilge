@@ -1,0 +1,5 @@
+{
+  "name": "security-audit",
+  "description": "Güvenlik denetimi ve zafiyet tespiti aracı. Kod güvenlik analizi, OWASP kontrolleri ve güvenlik en iyi uygulamalarını sağlar.",
+  "version": "1.0.0"
+}

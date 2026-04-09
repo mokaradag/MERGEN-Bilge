@@ -1,0 +1,5 @@
+{
+  "name": "test-gen",
+  "description": "Test oluşturma ve test stratejisi aracı. Birim, entegrasyon ve uçtan uca testler üretir, test kapsamını artırır.",
+  "version": "1.0.0"
+}

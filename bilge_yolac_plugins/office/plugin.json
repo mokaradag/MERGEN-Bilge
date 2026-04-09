@@ -1,0 +1,5 @@
+{
+  "name": "office",
+  "description": "Ofis dosyaları oluşturma ve düzenleme aracı. DOCX, PDF, PPTX ve XLSX formatlarında dosya üretimi ve analizi sağlar.",
+  "version": "1.0.0"
+}

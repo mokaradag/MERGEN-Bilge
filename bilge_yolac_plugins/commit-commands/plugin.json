@@ -1,0 +1,5 @@
+{
+  "name": "commit-commands",
+  "description": "Git commit yönetimi aracı. Anlamlı commit mesajları oluşturur, conventional commit standardını uygular ve değişiklikleri düzenler.",
+  "version": "1.0.0"
+}

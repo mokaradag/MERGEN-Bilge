@@ -142,5 +142,10 @@ detect_plugin_components <- function(plugin_dir) {
     bilesenler <- c(bilesenler, "mcp_servers")
   }
 
+  # Şablonlar (templates/ dizini)
+  if (dir.exists(file.path(plugin_dir, "templates"))) {
+    bilesenler <- c(bilesenler, "templates")
+  }
+
   bilesenler
 }
