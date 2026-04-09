@@ -20,7 +20,12 @@ const AIExpertManager = {
     accentColor: '#7C4DFF',   // Karakter tema rengi
     fontSize: 'medium',       // Yazı tipi boyutu ayarı
     stopRequested: false,     // Durdurma istendi mi
-    currentPage: 'chat'       // Aktif sayfa (altyazı konumu için)
+    currentPage: 'chat',      // Aktif sayfa (altyazı konumu için)
+    sequenceMode: false,      // Parçalı TTS akışı aktif mi
+    totalChunks: 1,           // Toplam parça sayısı
+    nextChunkIndex: 1,        // Sıradaki beklenecek parça indeksi
+    queuedChunks: [],         // Hazır gelen ses parçaları kuyruğu
+    chunkWaitTimer: null      // Sonraki parçayı bekleme zamanlayıcısı
   },
 
   // --- Yapılandırma ---
@@ -47,6 +52,15 @@ const AIExpertManager = {
     this.state.nsPrefix = data.nsPrefix || '';
     this.state.accentColor = data.accentColor || '#7C4DFF';
     this.state.fontSize = data.fontSize || 'medium';
+    this.state.sequenceMode = (data.totalChunks || 1) > 1;
+    this.state.totalChunks = data.totalChunks || 1;
+    this.state.nextChunkIndex = 1;
+    this.state.queuedChunks = [];
+
+    if (this.state.chunkWaitTimer) {
+      clearTimeout(this.state.chunkWaitTimer);
+      this.state.chunkWaitTimer = null;
+    }
 
     var strip = this._getStrip();
     var avatar = this._getAvatar();
@@ -288,6 +302,83 @@ const AIExpertManager = {
       });
     }
   },
+  
+  // --- SONRAKİ SES PARÇASINI KUYRUKLA ---
+  queueAudioChunk: function(data) {
+    if (!this.state.isSpeaking) return;
+
+    this.state.queuedChunks.push({
+      index: data.index || 0,
+      text: data.text || '',
+      audioSrc: data.audioSrc || '',
+      audioDuration: data.audioDuration || 0
+    });
+
+    this.state.queuedChunks.sort(function(a, b) {
+      return a.index - b.index;
+    });
+
+    if (!this.state.audioElement) {
+      this._tryPlayNextQueuedChunk();
+    }
+  },
+
+  // --- SIRADAKİ HAZIR PARÇAYI OYNATMAYI DENE ---
+  _tryPlayNextQueuedChunk: function() {
+    var expectedIndex = this.state.nextChunkIndex;
+    var queueIndex = this.state.queuedChunks.findIndex(function(item) {
+      return item.index === expectedIndex;
+    });
+
+    if (queueIndex < 0) return false;
+
+    var item = this.state.queuedChunks.splice(queueIndex, 1)[0];
+    var textEl = this._getTextElement();
+
+    if (textEl) {
+      textEl.textContent = '';
+      textEl.classList.add('ai-expert-typing');
+    }
+
+    this.state.currentText = item.text || '';
+    this.state.displayedChars = 0;
+    this.state.nextChunkIndex += 1;
+
+    this._startTyping();
+    this._playAudioInternal(item.audioSrc, item.audioDuration);
+
+    return true;
+  },
+
+  // --- SONRAKİ PARÇAYI KISA SÜRE BEKLE ---
+  _waitForNextChunk: function() {
+    var self = this;
+    var startedAt = Date.now();
+
+    if (this.state.chunkWaitTimer) {
+      clearTimeout(this.state.chunkWaitTimer);
+      this.state.chunkWaitTimer = null;
+    }
+
+    var poll = function() {
+      if (!self.state.isSpeaking) return;
+
+      if (self._tryPlayNextQueuedChunk()) {
+        self.state.chunkWaitTimer = null;
+        return;
+      }
+
+      if ((Date.now() - startedAt) >= 8000) {
+        self.state.chunkWaitTimer = null;
+        self._scheduleHide(800);
+        return;
+      }
+
+      self.state.chunkWaitTimer = setTimeout(poll, 150);
+    };
+
+    poll();
+  },
 
   // --- SES OYNATMA (eski uyumluluk için) ---
   playAudio: function(data) {
@@ -297,6 +388,21 @@ const AIExpertManager = {
   // --- SES BİTTİKTEN SONRA ---
   _onAudioEnded: function() {
     this.state.audioElement = null;
+
+    // Parçalı akış varsa sıradaki parçaya geç
+    if (this.state.sequenceMode && this.state.nextChunkIndex < this.state.totalChunks) {
+      if (this._tryPlayNextQueuedChunk()) {
+        return;
+      }
+
+      this._waitForNextChunk();
+      return;
+    }
+
+    this.state.sequenceMode = false;
+    this.state.totalChunks = 1;
+    this.state.nextChunkIndex = 1;
+    this.state.queuedChunks = [];
 
     // TTS görselleştiricisini durdur
     if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
@@ -361,6 +467,15 @@ const AIExpertManager = {
     this.state.stopRequested = false;
     this.state.currentText = '';
     this.state.displayedChars = 0;
+    this.state.sequenceMode = false;
+    this.state.totalChunks = 1;
+    this.state.nextChunkIndex = 1;
+    this.state.queuedChunks = [];
+
+    if (this.state.chunkWaitTimer) {
+      clearTimeout(this.state.chunkWaitTimer);
+      this.state.chunkWaitTimer = null;
+    }
 
     // Müzik sesini geri getir
     if (window.MusicManager && !window.MusicManager.state._sttActive) {
@@ -394,6 +509,10 @@ const AIExpertManager = {
     if (this.state.hideTimeout) {
       clearTimeout(this.state.hideTimeout);
       this.state.hideTimeout = null;
+    }
+    if (this.state.chunkWaitTimer) {
+      clearTimeout(this.state.chunkWaitTimer);
+      this.state.chunkWaitTimer = null;
     }
 
     // Sesi zorla durdur
@@ -430,6 +549,10 @@ const AIExpertManager = {
     this.state.isSpeaking = false;
     this.state.currentText = '';
     this.state.displayedChars = 0;
+    this.state.sequenceMode = false;
+    this.state.totalChunks = 1;
+    this.state.nextChunkIndex = 1;
+    this.state.queuedChunks = [];
 
     // Shiny'ye konuşma bitti sinyali gönder
     if (this.state.nsPrefix || (data && data.nsPrefix)) {
@@ -452,9 +575,17 @@ const AIExpertManager = {
       clearTimeout(this.state.hideTimeout);
       this.state.hideTimeout = null;
     }
+    if (this.state.chunkWaitTimer) {
+      clearTimeout(this.state.chunkWaitTimer);
+      this.state.chunkWaitTimer = null;
+    }
     this._stopAudio();
     this.state.isSpeaking = false;
     this.state.stopRequested = false;
+    this.state.sequenceMode = false;
+    this.state.totalChunks = 1;
+    this.state.nextChunkIndex = 1;
+    this.state.queuedChunks = [];
   },
 
   // --- SES DURDURMA ---
@@ -525,6 +656,11 @@ $(document).ready(function() {
   // Sadece altyazı başlatma mesajı (TTS yoksa)
   Shiny.addCustomMessageHandler('aiExpertStartSubtitle', function(data) {
     AIExpertManager.startSubtitle(data);
+  });
+
+  // Sonraki AI Uzman ses parçasını kuyruğa ekle
+  Shiny.addCustomMessageHandler('aiExpertQueueAudioChunk', function(data) {
+    AIExpertManager.queueAudioChunk(data);
   });
 
   // Ses oynatma mesajı (eski uyumluluk)

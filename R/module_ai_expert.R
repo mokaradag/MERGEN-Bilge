@@ -132,120 +132,254 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       })
     }
 
+    # --- AI Uzman TTS metnini kısa parçalara böl ---
+    # Amaç: İlk ses parçasını daha hızlı üretmek ve konuşmayı bekletmeden başlatmak.
+    split_text_for_ai_expert_tts <- function(text, max_chunk_chars = 220, min_chunk_chars = 70) {
+      text <- trimws(as.character(text %||% ""))
+      if (!nzchar(text)) return(list())
+
+      sentence_candidates <- unlist(strsplit(text, "(?<=[.!?…])\\s+", perl = TRUE))
+      sentence_candidates <- trimws(sentence_candidates)
+      sentence_candidates <- sentence_candidates[nzchar(sentence_candidates)]
+
+      if (length(sentence_candidates) == 0) {
+        sentence_candidates <- text
+      }
+
+      split_long_piece <- function(piece) {
+        piece <- trimws(piece)
+        if (!nzchar(piece)) return(character(0))
+        if (nchar(piece) <= max_chunk_chars) return(piece)
+
+        comma_parts <- unlist(strsplit(piece, "(?<=[,;:])\\s+", perl = TRUE))
+        comma_parts <- trimws(comma_parts)
+        comma_parts <- comma_parts[nzchar(comma_parts)]
+
+        if (length(comma_parts) <= 1) {
+          words <- unlist(strsplit(piece, "\\s+"))
+          out <- character(0)
+          current <- ""
+
+          for (w in words) {
+            candidate <- trimws(paste(current, w))
+            if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
+              current <- candidate
+            } else {
+              out <- c(out, current)
+              current <- w
+            }
+          }
+
+          if (nzchar(current)) out <- c(out, current)
+          return(out)
+        }
+
+        out <- character(0)
+        current <- ""
+
+        for (part in comma_parts) {
+          candidate <- trimws(paste(current, part))
+          if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
+            current <- candidate
+          } else {
+            out <- c(out, split_long_piece(current))
+            current <- part
+          }
+        }
+
+        if (nzchar(current)) out <- c(out, split_long_piece(current))
+        out
+      }
+
+      chunks <- character(0)
+      current <- ""
+
+      for (sentence in sentence_candidates) {
+        sentence_parts <- split_long_piece(sentence)
+
+        for (part in sentence_parts) {
+          candidate <- trimws(paste(current, part))
+          if (!nzchar(current)) {
+            current <- part
+          } else if (nchar(candidate) <= max_chunk_chars) {
+            current <- candidate
+          } else if (nchar(current) < min_chunk_chars) {
+            current <- candidate
+          } else {
+            chunks <- c(chunks, current)
+            current <- part
+          }
+        }
+      }
+
+      if (nzchar(current)) chunks <- c(chunks, current)
+
+      chunks <- trimws(chunks)
+      chunks <- chunks[nzchar(chunks)]
+
+      as.list(chunks)
+    }
+	
     # --- Konuşmayı başlat ---
     # ÖNEMLİ: Altyazı ve ses senkronizasyonu
     # TTS hazır olana kadar altyazı başlatılmaz, böylece senkronize olurlar
-    start_speaking <- function(text, cooldown_secs = COOLDOWN_AFTER_PAGE) {
-      if (is.null(text) || !nzchar(text)) return(invisible(NULL))
-      if (isTRUE(is_speaking())) return(invisible(NULL))
+	start_speaking <- function(text, cooldown_secs = COOLDOWN_AFTER_PAGE) {
+	  if (is.null(text) || !nzchar(text)) return(invisible(NULL))
+	  if (isTRUE(is_speaking())) return(invisible(NULL))
 
-      is_speaking(TRUE)
-      last_speak_time(Sys.time())
+	  is_speaking(TRUE)
+	  last_speak_time(Sys.time())
 
-      # Karakter bilgilerini al
-      char_id <- isolate(settings_data$selected_character) %||% "mergen"
-      chars_data <- get_characters_data()
-      char_info <- Find(function(x) x$id == char_id, chars_data$styles)
+	  # Karakter bilgilerini al
+	  char_id <- isolate(settings_data$selected_character) %||% "mergen"
+	  chars_data <- get_characters_data()
+	  char_info <- Find(function(x) x$id == char_id, chars_data$styles)
 
-      avatar_src <- if (!is.null(char_info)) char_info$avatar else "img/mergen_avatar.png"
-      accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
+	  avatar_src <- if (!is.null(char_info)) char_info$avatar else "img/mergen_avatar.png"
+	  accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
 
-      # Yazı tipi boyutunu ayarlardan al
-      font_size <- isolate(settings_data$font_size) %||% "medium"
+	  # Yazı tipi boyutunu ayarlardan al
+	  font_size <- isolate(settings_data$font_size) %||% "medium"
 
-      # TTS ile seslendirme kontrolü
-      tts_available <- FALSE
-      tryCatch({
-        tts_available <- isTRUE(tts_processor$tts_available())
-      }, error = function(e) {})
+	  # TTS ile seslendirme kontrolü
+	  tts_available <- FALSE
+	  tryCatch({
+		tts_available <- isTRUE(tts_processor$tts_available())
+	  }, error = function(e) {})
 
-      if (tts_available) {
-        # TTS ses tonunu karakter ayarından al
-        voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
-          char_info$tts_voice
-        } else {
-          "tr-male-1"
-        }
+	  if (tts_available) {
+		# TTS ses tonunu karakter ayarından al
+		voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
+		  char_info$tts_voice
+		} else {
+		  "tr-male-1"
+		}
 
-        cat(sprintf("[AI_EXPERT] TTS sentezleniyor (%d karakter)...\n", nchar(text)))
+		# İlk sesi daha hızlı başlatmak için metni kısa parçalara böl
+		chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
+		if (length(chunks) == 0) chunks <- list(text)
 
-        # ÖNEMLİ: Altyazıyı TTS hazır olana kadar BEKLETEREK senkronize ediyoruz
-        tts_processor$synthesize_speech(text, voice = voice_sel) %...>%
-          (function(res) {
-            # Hâlâ konuşma durumundaysa devam et (durdurulmuş olabilir)
-            if (!isTRUE(is_speaking())) return()
+		cat(sprintf(
+		  "[AI_EXPERT] TTS %d parçaya bölündü (toplam: %d karakter)...\n",
+		  length(chunks), nchar(text)
+		))
 
-            if (isTRUE(res$success) && nzchar(res$audio_src)) {
-              cat(sprintf("[AI_EXPERT] TTS hazır (Süre: %.2fs). Altyazı ve ses birlikte başlatılıyor.\n", res$duration))
+		# İlk parçayı üret ve konuşmayı hemen başlat
+		tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
+		  (function(first_res) {
+			if (!isTRUE(is_speaking())) return()
 
-              # TTS görselleştiricisini tetikle (süre 0 = zamanlayıcı yok, ses bitince JS tarafında kapanır)
-              tts_visualizer$trigger(duration = 0)
+			if (isTRUE(first_res$success) && nzchar(first_res$audio_src)) {
+			  cat(sprintf(
+				"[AI_EXPERT] İlk TTS parçası hazır (Süre: %.2fs). Konuşma hemen başlatılıyor.\n",
+				first_res$duration
+			  ))
 
-              # Altyazı + ses birlikte başlatılıyor (senkronize)
-              session$sendCustomMessage("aiExpertStartWithAudio", list(
-                text        = text,
-                avatarSrc   = avatar_src,
-                accentColor = accent_color,
-                nsPrefix    = ns(""),
-                audioSrc    = res$audio_src,
-                audioDuration = res$duration,
-                fontSize    = font_size
-              ))
-            } else {
-              cat("[AI_EXPERT] TTS başarısız, sadece altyazı gösteriliyor.\n")
-              # TTS başarısız - altyazıyı tek başına göster
-              session$sendCustomMessage("aiExpertStartSubtitle", list(
-                text        = text,
-                avatarSrc   = avatar_src,
-                accentColor = accent_color,
-                nsPrefix    = ns(""),
-                fontSize    = font_size
-              ))
-              session$sendCustomMessage("aiExpertNoAudioFallback", list(
-                textLength = nchar(text),
-                nsPrefix   = ns("")
-              ))
-            }
-          }) %...!%
-          (function(e) {
-            cat(sprintf("[AI_EXPERT] TTS hatası: %s\n", conditionMessage(e)))
-            if (!isTRUE(is_speaking())) return()
-            # Hata durumunda altyazıyı sessiz göster
-            session$sendCustomMessage("aiExpertStartSubtitle", list(
-              text        = text,
-              avatarSrc   = avatar_src,
-              accentColor = accent_color,
-              nsPrefix    = ns(""),
-              fontSize    = font_size
-            ))
-            session$sendCustomMessage("aiExpertNoAudioFallback", list(
-              textLength = nchar(text),
-              nsPrefix   = ns("")
-            ))
-          })
-      } else {
-        # TTS yoksa sadece altyazı göster, süre tahminle
-        # Görselleştiriciyisesiz bile aktive et (animasyon göster)
-        tts_visualizer$trigger(duration = 0)
+			  # Görselleştiriciyi aktive et
+			  tts_visualizer$trigger(duration = 0)
 
-        session$sendCustomMessage("aiExpertStartSubtitle", list(
-          text        = text,
-          avatarSrc   = avatar_src,
-          accentColor = accent_color,
-          nsPrefix    = ns(""),
-          fontSize    = font_size
-        ))
-        session$sendCustomMessage("aiExpertNoAudioFallback", list(
-          textLength = nchar(text),
-          nsPrefix   = ns("")
-        ))
-      }
+			  # İlk parça için altyazı ve ses aynı anda başlasın
+			  session$sendCustomMessage("aiExpertStartWithAudio", list(
+				text          = chunks[[1]],
+				totalChunks   = length(chunks),
+				avatarSrc     = avatar_src,
+				accentColor   = accent_color,
+				nsPrefix      = ns(""),
+				audioSrc      = first_res$audio_src,
+				audioDuration = first_res$duration,
+				fontSize      = font_size
+			  ))
 
-      # Senaryo bazlı bekleme süresini kaydet (konuşma bittikten sonra uygulanacak)
-      active_cooldown_seconds(cooldown_secs)
+			  # Kalan parçaları arka arkaya hazırlayıp kuyruğa gönder
+			  if (length(chunks) > 1) {
+				for (i in 2:length(chunks)) {
+				  local({
+					idx <- i
+					chunk_text <- chunks[[idx]]
 
-      invisible(NULL)
-    }
+					tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
+					  (function(res) {
+						if (!isTRUE(is_speaking())) return()
+
+						if (isTRUE(res$success) && nzchar(res$audio_src)) {
+						  session$sendCustomMessage("aiExpertQueueAudioChunk", list(
+							index         = idx - 1L,
+							text          = chunk_text,
+							audioSrc      = res$audio_src,
+							audioDuration = res$duration,
+							nsPrefix      = ns("")
+						  ))
+						} else {
+						  cat(sprintf("[AI_EXPERT] TTS parça %d başarısız.\n", idx))
+						}
+					  }) %...!%
+					  (function(e) {
+						cat(sprintf(
+						  "[AI_EXPERT] TTS parça %d hatası: %s\n",
+						  idx, conditionMessage(e)
+						))
+					  })
+				  })
+				}
+			  }
+			} else {
+			  cat("[AI_EXPERT] İlk TTS parçası başarısız, sadece altyazı gösteriliyor.\n")
+
+			  session$sendCustomMessage("aiExpertStartSubtitle", list(
+				text        = text,
+				avatarSrc   = avatar_src,
+				accentColor = accent_color,
+				nsPrefix    = ns(""),
+				fontSize    = font_size
+			  ))
+
+			  session$sendCustomMessage("aiExpertNoAudioFallback", list(
+				textLength = nchar(text),
+				nsPrefix   = ns("")
+			  ))
+			}
+		  }) %...!%
+		  (function(e) {
+			cat(sprintf("[AI_EXPERT] TTS hatası: %s\n", conditionMessage(e)))
+			if (!isTRUE(is_speaking())) return()
+
+			session$sendCustomMessage("aiExpertStartSubtitle", list(
+			  text        = text,
+			  avatarSrc   = avatar_src,
+			  accentColor = accent_color,
+			  nsPrefix    = ns(""),
+			  fontSize    = font_size
+			))
+
+			session$sendCustomMessage("aiExpertNoAudioFallback", list(
+			  textLength = nchar(text),
+			  nsPrefix   = ns("")
+			))
+		  })
+	  } else {
+		# TTS yoksa sadece altyazı göster, süre tahminle
+		# Görselleştiriciyi sessiz bile aktive et (animasyon göster)
+		tts_visualizer$trigger(duration = 0)
+
+		session$sendCustomMessage("aiExpertStartSubtitle", list(
+		  text        = text,
+		  avatarSrc   = avatar_src,
+		  accentColor = accent_color,
+		  nsPrefix    = ns(""),
+		  fontSize    = font_size
+		))
+
+		session$sendCustomMessage("aiExpertNoAudioFallback", list(
+		  textLength = nchar(text),
+		  nsPrefix   = ns("")
+		))
+	  }
+
+	  # Senaryo bazlı bekleme süresini kaydet (konuşma bittikten sonra uygulanacak)
+	  active_cooldown_seconds(cooldown_secs)
+
+	  invisible(NULL)
+	}
 
     # --- Konuşmayı durdur ---
     stop_speaking <- function(cooldown_secs = NULL) {

@@ -269,7 +269,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       call_ai_expert_llm(
         system_prompt = system_prompt, user_context = user_context,
         model_name = params$model_name, api_key = params$api_key,
-        endpoint = params$endpoint, max_tokens = 400
+        endpoint = params$endpoint, max_tokens = 180
       )
     }) %...>% (function(guidance_text) {
       if (!is.null(guidance_text) && nzchar(guidance_text)) {
