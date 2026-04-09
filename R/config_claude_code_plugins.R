@@ -62,6 +62,11 @@ claude_code_plugin_bilesenler <- list(
     etiket = "MCP Sunucuları",
     ikon   = "server",
     aciklama = "Harici araç ve servis entegrasyonları"
+  ),
+  templates = list(
+    etiket = "Şablonlar",
+    ikon   = "file-code",
+    aciklama = "Hazır kod şablonları ve yardımcı fonksiyonlar"
   )
 )
 
