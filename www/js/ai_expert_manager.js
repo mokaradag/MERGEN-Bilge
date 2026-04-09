@@ -34,7 +34,9 @@ const AIExpertManager = {
     sentencePause: 250,       // Cümle sonu duraklaması (ms)
     fadeOutDelay: 2000,       // Ses bittikten sonra bekleme (ms)
     maxVisibleChars: 300,     // Ekranda görünen maksimum karakter
-    wordFadeThreshold: 250    // Eski kelimelerin solmaya başladığı eşik
+    wordFadeThreshold: 250,   // Eski kelimelerin solmaya başladığı eşik
+    chunkPollInterval: 150,   // Sonraki ses parçasını kontrol aralığı (ms)
+    chunkWaitMaxMs: 30000     // Sonraki ses parçası için azami bekleme süresi (ms)
   },
 
   // --- BAŞLATMA (Altyazı + Ses Birlikte - Senkronize) ---
@@ -52,8 +54,8 @@ const AIExpertManager = {
     this.state.nsPrefix = data.nsPrefix || '';
     this.state.accentColor = data.accentColor || '#7C4DFF';
     this.state.fontSize = data.fontSize || 'medium';
-    this.state.sequenceMode = (data.totalChunks || 1) > 1;
-    this.state.totalChunks = data.totalChunks || 1;
+    this.state.totalChunks = Math.max(1, Number(data.totalChunks || 1));
+    this.state.sequenceMode = this.state.totalChunks > 1;
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
 
@@ -307,16 +309,21 @@ const AIExpertManager = {
   queueAudioChunk: function(data) {
     if (!this.state.isSpeaking) return;
 
+    var chunkIndex = Number(data.index || 0);
+    var chunkDuration = Number(data.audioDuration || 0);
+
     this.state.queuedChunks.push({
-      index: data.index || 0,
+      index: chunkIndex,
       text: data.text || '',
       audioSrc: data.audioSrc || '',
-      audioDuration: data.audioDuration || 0
+      audioDuration: chunkDuration
     });
 
     this.state.queuedChunks.sort(function(a, b) {
       return a.index - b.index;
     });
+
+    console.log('[AI_EXPERT] Parça kuyruğa alındı:', chunkIndex, 'Beklenen:', this.state.nextChunkIndex);
 
     if (!this.state.audioElement) {
       this._tryPlayNextQueuedChunk();
@@ -325,7 +332,7 @@ const AIExpertManager = {
 
   // --- SIRADAKİ HAZIR PARÇAYI OYNATMAYI DENE ---
   _tryPlayNextQueuedChunk: function() {
-    var expectedIndex = this.state.nextChunkIndex;
+    var expectedIndex = Number(this.state.nextChunkIndex);
     var queueIndex = this.state.queuedChunks.findIndex(function(item) {
       return item.index === expectedIndex;
     });
@@ -360,6 +367,8 @@ const AIExpertManager = {
       this.state.chunkWaitTimer = null;
     }
 
+    console.log('[AI_EXPERT] Sonraki parça bekleniyor. Beklenen indeks:', this.state.nextChunkIndex);
+
     var poll = function() {
       if (!self.state.isSpeaking) return;
 
@@ -368,13 +377,14 @@ const AIExpertManager = {
         return;
       }
 
-      if ((Date.now() - startedAt) >= 8000) {
+      if ((Date.now() - startedAt) >= self.config.chunkWaitMaxMs) {
+        console.warn('[AI_EXPERT] Sonraki parça zamanında gelmedi, konuşma sonlandırılıyor.');
         self.state.chunkWaitTimer = null;
         self._scheduleHide(800);
         return;
       }
 
-      self.state.chunkWaitTimer = setTimeout(poll, 150);
+      self.state.chunkWaitTimer = setTimeout(poll, self.config.chunkPollInterval);
     };
 
     poll();

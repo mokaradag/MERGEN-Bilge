@@ -290,38 +290,75 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 				fontSize      = font_size
 			  ))
 
-			  # Kalan parçaları arka arkaya hazırlayıp kuyruğa gönder
-			  if (length(chunks) > 1) {
-				for (i in 2:length(chunks)) {
-				  local({
-					idx <- i
-					chunk_text <- chunks[[idx]]
+              # Kalan parçaları SIRALI biçimde hazırla ve kuyruğa gönder
+              # ÖNEMLİ: Bazı TTS uç noktaları paralel isteklerde kararsız çalışır.
+              # Bu nedenle ilk parçadan sonraki parçalar tek tek sentezlenir.
+              if (length(chunks) > 1) {
+                total_chunks <- length(chunks)
 
-					tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
-					  (function(res) {
-						if (!isTRUE(is_speaking())) return()
+                queue_next_chunk <- NULL
+                queue_next_chunk <- function(idx) {
+                  if (!isTRUE(is_speaking())) return(invisible(NULL))
+                  if (idx > total_chunks) return(invisible(NULL))
 
-						if (isTRUE(res$success) && nzchar(res$audio_src)) {
-						  session$sendCustomMessage("aiExpertQueueAudioChunk", list(
-							index         = idx - 1L,
-							text          = chunk_text,
-							audioSrc      = res$audio_src,
-							audioDuration = res$duration,
-							nsPrefix      = ns("")
-						  ))
-						} else {
-						  cat(sprintf("[AI_EXPERT] TTS parça %d başarısız.\n", idx))
-						}
-					  }) %...!%
-					  (function(e) {
-						cat(sprintf(
-						  "[AI_EXPERT] TTS parça %d hatası: %s\n",
-						  idx, conditionMessage(e)
-						))
-					  })
-				  })
-				}
-			  }
+                  chunk_text <- chunks[[idx]]
+
+                  cat(sprintf(
+                    "[AI_EXPERT] TTS parça %d/%d sentezleniyor (%d karakter)...\n",
+                    idx, total_chunks, nchar(chunk_text)
+                  ))
+
+                  tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
+                    local({
+                      current_idx <- idx
+                      current_text <- chunk_text
+
+                      function(res) {
+                        if (!isTRUE(is_speaking())) return()
+
+                        if (isTRUE(res$success) && nzchar(res$audio_src)) {
+                          cat(sprintf(
+                            "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
+                            current_idx, total_chunks, res$duration
+                          ))
+
+                          session$sendCustomMessage("aiExpertQueueAudioChunk", list(
+                            index         = current_idx - 1L,
+                            text          = current_text,
+                            audioSrc      = res$audio_src,
+                            audioDuration = res$duration,
+                            nsPrefix      = ns("")
+                          ))
+                        } else {
+                          cat(sprintf(
+                            "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
+                            current_idx, total_chunks
+                          ))
+                        }
+
+                        if (current_idx < total_chunks) {
+                          queue_next_chunk(current_idx + 1L)
+                        }
+                      }
+                    }) %...!%
+                    local({
+                      current_idx <- idx
+
+                      function(e) {
+                        cat(sprintf(
+                          "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
+                          current_idx, total_chunks, conditionMessage(e)
+                        ))
+
+                        if (isTRUE(is_speaking()) && current_idx < total_chunks) {
+                          queue_next_chunk(current_idx + 1L)
+                        }
+                      }
+                    })
+                }
+
+                queue_next_chunk(2L)
+              }
 			} else {
 			  cat("[AI_EXPERT] İlk TTS parçası başarısız, sadece altyazı gösteriliyor.\n")
 
