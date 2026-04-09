@@ -289,6 +289,9 @@ Statik varlıklar:
 - `characters/`
 - kök görseller ve logolar
 
+### `bilge_yolac_plugins/`
+Bilge Yolaç eklenti dizini. Her alt klasör bağımsız bir eklentidir. `plugin.json` ve isteğe bağlı bileşen dizinleri (`skills/`, `templates/` vb.) içerir. Uygulama bu klasörü otomatik olarak tarar; manuel kayıt gerekmez.
+
 ### Veri ve çalışma dizinleri
 - `logs/`
 - `api_keys/`
@@ -363,6 +366,7 @@ Bilge Yolaç, proje içinde ayrı bir ürün katmanı gibi düşünülebilir. Kl
 - düşünme mesajları
 - model katmanları
 - senaryo şablonları
+- eklenti yönetim paneli (sol kenar çubuğunda daraltılabilir)
 
 ### Model katmanları
 - Hızlı
@@ -375,7 +379,87 @@ Bilge Yolaç, proje içinde ayrı bir ürün katmanı gibi düşünülebilir. Kl
 - dokümantasyon üretimi
 - test yazımı
 - refaktoring
+- ofis belgesi üretimi (DOCX, XLSX, PPTX, PDF)
+- güvenlik denetimi
 - serbest komut
+
+---
+
+## Bilge Yolaç Eklenti Sistemi
+
+Bilge Yolaç, kök dizindeki `bilge_yolac_plugins/` klasöründen beslenen, çevrimdışı çalışan bir eklenti sistemine sahiptir. Hiçbir CLI veya internet bağlantısı gerektirmez.
+
+### Çalışma biçimi
+- Uygulama açılışında `scan_local_plugins()` `bilge_yolac_plugins/` klasörünü tarar.
+- Her alt klasördeki `plugin.json` okunur.
+- Bileşen dizinleri (`skills/`, `commands/`, `agents/`, `hooks/`, `mcp/`, `templates/`) otomatik tespit edilir.
+- Eklentiler Bilge Yolaç sol kenar çubuğundaki **Eklentiler** panelinde listelenir.
+- Panel varsayılan olarak daraltılmış başlar; kullanıcı başlığa tıklayarak açabilir.
+
+### Bir eklentinin dizin yapısı
+```
+bilge_yolac_plugins/<eklenti-adı>/
+├── plugin.json          # Zorunlu: ad, açıklama, sürüm
+├── skills/              # İsteğe bağlı: model yetenek metinleri
+│   └── main.md
+├── commands/            # İsteğe bağlı: slash komutları
+├── agents/              # İsteğe bağlı: alt ajanlar
+├── hooks/               # İsteğe bağlı: olay tabanlı otomasyon
+├── mcp/                 # İsteğe bağlı: MCP sunucu yapılandırması
+└── templates/           # İsteğe bağlı: hazır kod şablonları
+```
+
+### Varsayılan eklentiler
+
+**Temel eklentiler:**
+- `skill-creator` - Claude Code yetenek dosyası oluşturma rehberi
+- `plugin-dev` - eklenti geliştirme rehberi
+- `frontend-design` - arayüz tasarımı ve erişilebilirlik
+- `claude-md-management` - CLAUDE.md dosyası yönetimi
+
+**Geliştirme iş akışı:**
+- `code-review` - sistematik kod inceleme
+- `code-simplifier` - kod sadeleştirme
+- `commit-commands` - Git commit yönetimi
+- `feature-dev` - özellik geliştirme yaşam döngüsü
+- `pr-review-toolkit` - pull request inceleme
+- `ralph-loop` - tekrarlayan görev döngüleri
+
+**Kalite ve analiz:**
+- `test-gen` - test oluşturma
+- `security-audit` - güvenlik denetimi
+- `doc-gen` - kod dokümantasyonu üretimi
+- `debug-detective` - sistematik hata ayıklama
+
+**Belge üretimi:**
+- `office` - DOCX, XLSX, PPTX, PDF üretimi (R `officer`/`openxlsx` tabanlı)
+
+### Office eklenti çerçevesi
+`office` eklentisi, hazır R yardımcı fonksiyonları içeren bir `templates/` dizini barındırır:
+
+- `bilge_yolac_plugins/office/templates/docx_helpers.R` - officer tabanlı Word yardımcıları
+- `bilge_yolac_plugins/office/templates/xlsx_helpers.R` - openxlsx tabanlı Excel yardımcıları
+- `bilge_yolac_plugins/office/templates/pptx_helpers.R` - officer tabanlı PowerPoint yardımcıları
+- `bilge_yolac_plugins/office/templates/pdf_helpers.R` - yerleşik grDevices ile PDF (ek paket gerekmez)
+
+Bu şablonlar Shiny uygulamasına `source()` ile yüklenmez. Bilge Yolaç oturumunda ajan tarafından ihtiyaç duyuldukça çağrılacak bağımsız R betikleridir. Endişelerin ayrımı şu şekildedir:
+- `skills/main.md` - ne zaman ve neden kullanılacağı bilgisi
+- `templates/*.R` - gerçek çalışan kod
+
+### Yeni eklenti eklemek için
+1. `bilge_yolac_plugins/<ad>/` dizinini oluşturun.
+2. İçine `plugin.json` dosyasını yazın:
+   ```json
+   {
+     "name": "ad",
+     "description": "Türkçe açıklama",
+     "version": "1.0.0"
+   }
+   ```
+3. Gerektiği kadar bileşen dizini ekleyin (`skills/`, `commands/` vb.).
+4. Uygulamayı yeniden başlatın veya Eklentiler panelindeki yenile düğmesine tıklayın.
+
+Hiçbir R kodu değişikliği gerekmez; tarama otomatiktir.
 
 ---
 

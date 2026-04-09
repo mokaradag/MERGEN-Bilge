@@ -241,6 +241,12 @@ If one is missing, startup stops with an explicit error.
 - `CLAUDE.md` - coding-agent guide
 - `ai_rehber.md` - knowledge base for Support chatbot and AI Expert reference
 
+## Root-Level Directories (non-R/)
+
+- `R/` - all application R modules, helpers, and configuration files
+- `www/` - static assets (CSS, JS, CodeMirror, images, fonts)
+- `bilge_yolac_plugins/` - Bilge Yolaç auto-discovered plugin directory. Each subdirectory is one plugin with `plugin.json` and optional `skills/`, `commands/`, `agents/`, `hooks/`, `mcp/`, `templates/`. No CLI, no internet required.
+
 ---
 
 ## `global.R` Load Order
@@ -837,6 +843,98 @@ This area is especially sensitive to:
 - shell block toggling,
 - partial JSON parsing.
 
+### Bilge Yolaç Plugin Subsystem
+
+Bilge Yolaç has a dedicated, offline-friendly plugin system. Plugins live under `bilge_yolac_plugins/` at the repository root and are **auto-discovered** at runtime. No CLI, no internet, no manual registration.
+
+#### Plugin architecture files
+- `R/config_claude_code_plugins.R` - status labels, component types, log prefix
+- `R/helpers_claude_code_plugins.R` - `scan_local_plugins()`, `detect_plugin_components()`, `resolve_app_root()`
+- `R/module_claude_code_plugins.R` - `claudeCodePluginsUI()` and `claudeCodePluginsServer()`
+- `www/js/claude_code_plugins.js` - badge count update handler
+- `www/css/claude_code_plugins.css` - plugin panel and card styles
+
+#### Plugin directory layout
+Each plugin lives in `bilge_yolac_plugins/<plugin-name>/` and follows this layout:
+
+```
+<plugin-name>/
+├── plugin.json          # Required: name, description, version
+├── skills/              # Optional: knowledge files for Claude
+│   └── main.md
+├── commands/            # Optional: slash commands
+├── agents/              # Optional: sub-agents
+├── hooks/               # Optional: lifecycle scripts
+├── mcp/                 # Optional: MCP server configs
+└── templates/           # Optional: ready-to-use code helpers
+```
+
+#### Recognized component directories
+`detect_plugin_components()` detects these subdirectories and shows them as Turkish badges:
+
+| Directory | Component key | Turkish label |
+|-----------|---------------|---------------|
+| `commands/` | `commands` | Komutlar |
+| `agents/` | `agents` | Ajanlar |
+| `skills/` | `skills` | Yetenekler |
+| `hooks/` | `hooks` | Kancalar |
+| `mcp/` | `mcp_servers` | MCP Sunucuları |
+| `templates/` | `templates` | Şablonlar |
+
+If a new component type is added, update BOTH:
+1. `claude_code_plugin_bilesenler` in `R/config_claude_code_plugins.R`
+2. `detect_plugin_components()` in `R/helpers_claude_code_plugins.R`
+
+#### Current plugin roster (15 plugins)
+The `bilge_yolac_plugins/` directory ships with these plugins:
+
+**Foundational:**
+- `skill-creator` - guide for creating Claude Code skill files
+- `plugin-dev` - plugin development guide
+- `frontend-design` - frontend/UI design expertise
+- `claude-md-management` - CLAUDE.md file management
+
+**Development workflow:**
+- `code-review` - systematic code review checklist
+- `code-simplifier` - code simplification and refactoring
+- `commit-commands` - Git commit management (Conventional Commits)
+- `feature-dev` - feature development lifecycle
+- `pr-review-toolkit` - pull request review workflow
+- `ralph-loop` - polling/automation loops
+
+**Quality and analysis:**
+- `test-gen` - test generation across R/JS/Python
+- `security-audit` - OWASP-aligned security review
+- `doc-gen` - code documentation generation
+- `debug-detective` - systematic debugging methodology
+
+**Document generation:**
+- `office` - DOCX, XLSX, PPTX, PDF via R helpers (see below)
+
+#### Office plugin template framework
+The `office` plugin is the only one that currently ships with a `templates/` directory containing actual R helper files:
+
+- `bilge_yolac_plugins/office/templates/docx_helpers.R` - officer-based DOCX helpers
+- `bilge_yolac_plugins/office/templates/xlsx_helpers.R` - openxlsx-based XLSX helpers
+- `bilge_yolac_plugins/office/templates/pptx_helpers.R` - officer-based PPTX helpers
+- `bilge_yolac_plugins/office/templates/pdf_helpers.R` - grDevices-based PDF helpers (no extra packages)
+
+These helpers are NOT sourced into the Shiny app. They are standalone R files that Claude Code references via `source()` inside Bilge Yolaç sessions. The separation of concerns is:
+- `skills/main.md` - domain knowledge (when and why to use each format)
+- `templates/*.R` - reusable implementation (actual working code)
+
+If you extend the office framework, keep this separation. Never source template files into `global.R`.
+
+#### Plugin panel UI behavior
+The plugin panel is rendered by `claudeCodePluginsUI()` in the Bilge Yolaç left sidebar and is:
+
+- **Collapsible** via the header click handler
+- **Collapsed by default** (class `cc-plugins-collapsed` applied on initial render)
+- **Auto-refreshed** on page load via an observer with priority 40
+- **Manually refreshable** via the refresh button
+
+**Important collapse implementation detail:** The `cc-plugins-collapsed` class MUST be toggled on the outer wrapper `div` (`ns("plugins_wrapper")`), NOT on the inner content `div`. The CSS selectors `.cc-plugins-collapsed .cc-plugins-content` and `.cc-plugins-collapsed .cc-plugins-toggle-icon` are descendant selectors and will only match when the class lives on an ancestor. Do not regress this by moving the class toggle to the content div.
+
 ---
 
 ## 9) SSO
@@ -1190,7 +1288,10 @@ If you are new to the repo, read in this order:
 9. `R/config_characters.R`
 10. `R/helpers_ai_expert.R`
 11. `R/module_claude_code.R`
-12. `R/module_destek_yardim.R`
+12. `R/module_claude_code_plugins.R`
+13. `R/helpers_claude_code_plugins.R`
+14. `R/module_destek_yardim.R`
+15. `bilge_yolac_plugins/` (skim plugin layout and `office/templates/` as an example)
 
 ---
 

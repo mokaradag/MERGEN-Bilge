@@ -2,7 +2,7 @@
 # Amaç: Bu belge, MERGEN Bilge içindeki Yardım Asistanı ve AI Uzman davranışlarını besleyen ana referans metnidir.
 # Dil: Türkçe
 # Güncel Sürüm Referansı: v1.0
-# Son Güncelleme: Mart 2026
+# Son Güncelleme: Nisan 2026
 
 ---
 
@@ -219,6 +219,8 @@ Bilge Yolaç, standart sohbet ekranından farklı, kod odaklı bir çalışma al
 - dokümantasyon üretme,
 - test yazımı,
 - refaktoring,
+- güvenlik denetimi,
+- ofis belgesi üretimi,
 - serbest ajan komutları
 
 için uygundur.
@@ -236,7 +238,52 @@ Ayrıca senaryo şablonları yer alır:
 - Kod Düzenleme
 - Serbest Komut
 
+Bilge Yolaç sol kenar çubuğunda bir **Eklentiler** paneli bulunur. Bu panel varsayılan olarak daraltılmış gelir. Kullanıcı başlığa tıklayarak paneli açabilir ve yüklü eklentileri görebilir. Eklentiler, kod odaklı ajana farklı uzmanlık alanları kazandırır.
+
 Bu sayfa anlatılırken, kullanıcının seçili klasör üzerinde çalışan daha araç odaklı bir ajan deneyimi yaşadığı vurgulanmalıdır.
+
+---
+
+## 7.5.1 Bilge Yolaç Eklentileri
+
+Bilge Yolaç, çevrimdışı çalışan bir eklenti sistemine sahiptir. Eklentiler, kod ajanına belirli görevler için özelleşmiş rehberlik ve hazır kod şablonları sağlar. Kullanıcı internete veya harici bir servise bağlanmak zorunda kalmaz.
+
+Eklentiler Bilge Yolaç sol kenar çubuğundaki **Eklentiler** panelinde listelenir. Panel varsayılan olarak kapalı gelir; kullanıcı başlığa tıklayarak açabilir.
+
+Mevcut eklenti aileleri şunlardır:
+
+### Temel eklentiler
+- **skill-creator** - yeni yetenek dosyaları oluşturmaya yardımcı olur
+- **plugin-dev** - yeni eklenti iskeletleri hazırlar
+- **frontend-design** - arayüz ve erişilebilirlik tasarım rehberliği
+- **claude-md-management** - CLAUDE.md dosyalarını yönetir
+
+### Geliştirme iş akışı eklentileri
+- **code-review** - kod inceleme ve kalite kontrol
+- **code-simplifier** - karmaşık kodu sadeleştirme
+- **commit-commands** - anlamlı Git commit mesajı üretimi
+- **feature-dev** - yeni özellik geliştirme süreci
+- **pr-review-toolkit** - pull request değerlendirme
+- **ralph-loop** - tekrarlayan görev ve izleme döngüleri
+
+### Kalite ve analiz eklentileri
+- **test-gen** - birim, entegrasyon ve uçtan uca test oluşturma
+- **security-audit** - OWASP çerçevesinde güvenlik denetimi
+- **doc-gen** - kod, API ve README dokümantasyonu üretimi
+- **debug-detective** - sistematik hata ayıklama yaklaşımı
+
+### Belge üretim eklentisi
+- **office** - DOCX, XLSX, PPTX ve PDF belge üretimi. Bu eklenti, Word, Excel, PowerPoint ve PDF için hazır R yardımcı fonksiyonları içerir. Kurumsal rapor, sunum ve tablo üretimi için kullanılabilir. Uygulamanın çalıştığı ortamda internet bağlantısı olmasa da çalışır.
+
+### Kullanıcıya eklenti sistemini anlatırken
+Şu vurgular yapılabilir:
+- Eklentiler Bilge Yolaç'ın yeteneklerini genişletir.
+- Panel kapalı görünebilir; başlığa tıklanarak açılır.
+- Her eklentinin belirli bir uzmanlık alanı vardır.
+- Çevrimdışı çalışma için tasarlanmıştır.
+- Kurum içi kullanım için uygundur.
+
+Yardım Asistanı veya AI Uzman, eklentilerin teknik dosya yapısından söz etmemelidir. Kullanıcıya eklentiler birer uzmanlık alanı olarak tarif edilmelidir.
 
 ---
 
