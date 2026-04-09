@@ -264,6 +264,10 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 		  length(chunks), nchar(text)
 		))
 
+		# YARIŞ DURUMU KORUMASI: İlk parça istemciye gönderildi mi?
+		# Gönderildiyse geri dönüş (fallback) yolu tam metni tekrar tetiklememeli.
+		first_chunk_dispatched <- FALSE
+
 		# İlk parçayı üret ve konuşmayı hemen başlat
 		tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
 		  (function(first_res) {
@@ -289,6 +293,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 				audioDuration = first_res$duration,
 				fontSize      = font_size
 			  ))
+
+			  # İlk parça başarıyla istemciye iletildi: geri dönüş yolu artık devre dışı
+			  first_chunk_dispatched <<- TRUE
 
               # Kalan parçaları SIRALI biçimde hazırla ve kuyruğa gönder
               # ÖNEMLİ: Bazı TTS uç noktaları paralel isteklerde kararsız çalışır.
@@ -379,6 +386,16 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 		  (function(e) {
 			cat(sprintf("[AI_EXPERT] TTS hatası: %s\n", conditionMessage(e)))
 			if (!isTRUE(is_speaking())) return()
+
+			# YARIŞ DURUMU KORUMASI: İlk parça zaten istemciye iletildiyse
+			# (ses oynatılıyor veya az önce bitti), tam metinle altyazıyı
+			# YENİDEN BAŞLATMAK yanlış olur; mevcut parça akışı çalışmaya
+			# devam etmeli. Bu geri dönüş yalnızca henüz hiçbir parça
+			# gönderilmemişse tetiklenmelidir.
+			if (isTRUE(first_chunk_dispatched)) {
+			  cat("[AI_EXPERT] İlk parça zaten gönderilmiş; tam metin geri dönüşü atlandı.\n")
+			  return()
+			}
 
 			session$sendCustomMessage("aiExpertStartSubtitle", list(
 			  text        = text,
