@@ -1,0 +1,5 @@
+{
+  "name": "pr-review-toolkit",
+  "description": "Pull request inceleme araç seti. PR değerlendirme, geri bildirim yazma ve birleştirme öncesi kontrol süreçlerini yönetir.",
+  "version": "1.0.0"
+}

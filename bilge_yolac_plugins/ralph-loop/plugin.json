@@ -1,0 +1,5 @@
+{
+  "name": "ralph-loop",
+  "description": "Tekrarlayan görev döngüsü aracı. Belirli aralıklarla komut çalıştırma, durum kontrolü ve otomasyon döngülerini yönetir.",
+  "version": "1.0.0"
+}

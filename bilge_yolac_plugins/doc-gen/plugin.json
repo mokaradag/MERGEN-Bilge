@@ -1,0 +1,5 @@
+{
+  "name": "doc-gen",
+  "description": "Kod dokümantasyonu oluşturma aracı. API belgeleri, fonksiyon açıklamaları, README dosyaları ve teknik dokümantasyon üretir.",
+  "version": "1.0.0"
+}
