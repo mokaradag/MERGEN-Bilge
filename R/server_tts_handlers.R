@@ -179,7 +179,9 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       chunk_idx <- i - 1L
       local({
         idx <- chunk_idx
-        tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
+        current_text <- chunk_text
+
+        tts_processor$synthesize_speech(current_text, voice = voice_sel) %...>%
           (function(res) send_chunk(res, idx)) %...!%
           (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
       })

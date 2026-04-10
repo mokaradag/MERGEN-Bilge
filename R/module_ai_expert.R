@@ -315,53 +315,60 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
                     idx, total_chunks, nchar(chunk_text)
                   ))
 
-                  tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
-                    local({
-                      current_idx <- idx
-                      current_text <- chunk_text
+                  # Promise callback'lerini pipe dışında oluştur.
+                  # Böylece local() çağrısına promise nesnesi yanlışlıkla
+                  # argüman olarak enjekte edilmez.
+                  success_callback <- local({
+                    current_idx <- idx
+                    current_text <- chunk_text
 
-                      function(res) {
-                        if (!isTRUE(is_speaking())) return()
+                    function(res) {
+                      if (!isTRUE(is_speaking())) return()
 
-                        if (isTRUE(res$success) && nzchar(res$audio_src)) {
-                          cat(sprintf(
-                            "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
-                            current_idx, total_chunks, res$duration
-                          ))
-
-                          session$sendCustomMessage("aiExpertQueueAudioChunk", list(
-                            index         = current_idx - 1L,
-                            text          = current_text,
-                            audioSrc      = res$audio_src,
-                            audioDuration = res$duration,
-                            nsPrefix      = ns("")
-                          ))
-                        } else {
-                          cat(sprintf(
-                            "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
-                            current_idx, total_chunks
-                          ))
-                        }
-
-                        if (current_idx < total_chunks) {
-                          queue_next_chunk(current_idx + 1L)
-                        }
-                      }
-                    }) %...!%
-                    local({
-                      current_idx <- idx
-
-                      function(e) {
+                      if (isTRUE(res$success) && nzchar(res$audio_src)) {
                         cat(sprintf(
-                          "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
-                          current_idx, total_chunks, conditionMessage(e)
+                          "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
+                          current_idx, total_chunks, res$duration
                         ))
 
-                        if (isTRUE(is_speaking()) && current_idx < total_chunks) {
-                          queue_next_chunk(current_idx + 1L)
-                        }
+                        session$sendCustomMessage("aiExpertQueueAudioChunk", list(
+                          index         = current_idx - 1L,
+                          text          = current_text,
+                          audioSrc      = res$audio_src,
+                          audioDuration = res$duration,
+                          nsPrefix      = ns("")
+                        ))
+                      } else {
+                        cat(sprintf(
+                          "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
+                          current_idx, total_chunks
+                        ))
                       }
-                    })
+
+                      if (current_idx < total_chunks) {
+                        queue_next_chunk(current_idx + 1L)
+                      }
+                    }
+                  })
+
+                  error_callback <- local({
+                    current_idx <- idx
+
+                    function(e) {
+                      cat(sprintf(
+                        "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
+                        current_idx, total_chunks, conditionMessage(e)
+                      ))
+
+                      if (isTRUE(is_speaking()) && current_idx < total_chunks) {
+                        queue_next_chunk(current_idx + 1L)
+                      }
+                    }
+                  })
+
+                  tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
+                    success_callback %...!%
+                    error_callback
                 }
 
                 queue_next_chunk(2L)

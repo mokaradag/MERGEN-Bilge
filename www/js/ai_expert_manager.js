@@ -25,7 +25,8 @@ const AIExpertManager = {
     totalChunks: 1,           // Toplam parça sayısı
     nextChunkIndex: 1,        // Sıradaki beklenecek parça indeksi
     queuedChunks: [],         // Hazır gelen ses parçaları kuyruğu
-    chunkWaitTimer: null      // Sonraki parçayı bekleme zamanlayıcısı
+    chunkWaitTimer: null,     // Sonraki parçayı bekleme zamanlayıcısı
+    speechToken: 0            // Eski zamanlayıcıların yeni konuşmayı kapatmasını önler
   },
 
   // --- Yapılandırma ---
@@ -58,7 +59,17 @@ const AIExpertManager = {
     this.state.sequenceMode = this.state.totalChunks > 1;
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
+    this.state.speechToken += 1;
 
+    // Önceki konuşmadan kalmış zamanlayıcıları temizle
+    if (this.state.typeInterval) {
+      clearInterval(this.state.typeInterval);
+      this.state.typeInterval = null;
+    }
+    if (this.state.hideTimeout) {
+      clearTimeout(this.state.hideTimeout);
+      this.state.hideTimeout = null;
+    }
     if (this.state.chunkWaitTimer) {
       clearTimeout(this.state.chunkWaitTimer);
       this.state.chunkWaitTimer = null;
@@ -132,6 +143,21 @@ const AIExpertManager = {
     this.state.nsPrefix = data.nsPrefix || '';
     this.state.accentColor = data.accentColor || '#7C4DFF';
     this.state.fontSize = data.fontSize || 'medium';
+    this.state.speechToken += 1;
+
+    // Önceki konuşmadan kalmış zamanlayıcıları temizle
+    if (this.state.typeInterval) {
+      clearInterval(this.state.typeInterval);
+      this.state.typeInterval = null;
+    }
+    if (this.state.hideTimeout) {
+      clearTimeout(this.state.hideTimeout);
+      this.state.hideTimeout = null;
+    }
+    if (this.state.chunkWaitTimer) {
+      clearTimeout(this.state.chunkWaitTimer);
+      this.state.chunkWaitTimer = null;
+    }
 
     var strip = this._getStrip();
     var avatar = this._getAvatar();
@@ -351,6 +377,18 @@ const AIExpertManager = {
     this.state.displayedChars = 0;
     this.state.nextChunkIndex += 1;
 
+    // Yeni parça başlarken eski gizleme/bekleme zamanlayıcılarını iptal et
+    if (this.state.hideTimeout) {
+      clearTimeout(this.state.hideTimeout);
+      this.state.hideTimeout = null;
+    }
+    if (this.state.chunkWaitTimer) {
+      clearTimeout(this.state.chunkWaitTimer);
+      this.state.chunkWaitTimer = null;
+    }
+
+    console.log('[AI_EXPERT] Sıradaki ses parçası oynatılıyor:', item.index);
+
     this._startTyping();
     this._playAudioInternal(item.audioSrc, item.audioDuration);
 
@@ -443,18 +481,31 @@ const AIExpertManager = {
   // --- GİZLEME ZAMANLAYICISI ---
   _scheduleHide: function(delayMs) {
     var self = this;
+    var scheduledToken = this.state.speechToken;
 
     if (this.state.hideTimeout) {
       clearTimeout(this.state.hideTimeout);
     }
 
     this.state.hideTimeout = setTimeout(function() {
+      // Eski konuşmadan kalan zamanlayıcı yeni konuşmayı kapatamasın
+      if (scheduledToken !== self.state.speechToken) return;
       self._hideSubtitle();
     }, delayMs);
   },
 
   // --- ALTYAZIYI GİZLE ---
   _hideSubtitle: function() {
+    // Çok parçalı konuşma hâlâ devam ediyorsa gizleme yapma
+    if (this.state.sequenceMode && (
+      this.state.audioElement ||
+      this.state.queuedChunks.length > 0 ||
+      this.state.nextChunkIndex < this.state.totalChunks
+    )) {
+      console.log('[AI_EXPERT] Aktif parça akışı devam ettiği için gizleme ertelendi.');
+      return;
+    }
+
     var strip = this._getStrip();
     var textEl = this._getTextElement();
 
