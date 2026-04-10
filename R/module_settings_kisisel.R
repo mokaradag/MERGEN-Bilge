@@ -257,22 +257,46 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
       mode_was_clicked(TRUE)
     }, ignoreInit = TRUE)
 
-    # Giriş ekranından mod değiştiğinde temp_experience_mode'u senkronize et
-    observeEvent(settings$experience_mode, {
-      current <- temp_experience_mode()
-      if (!identical(settings$experience_mode, current)) {
-        temp_experience_mode(settings$experience_mode)
-        # Mod kartlarını JS tarafında da güncelle
-        session$sendCustomMessage("updateSettingsMode", list(mode = settings$experience_mode))
-      }
-    }, ignoreInit = TRUE)
+	# Giriş ekranından mod değiştiğinde temp_experience_mode'u senkronize et
+	observeEvent(settings$experience_mode, {
+	  current <- temp_experience_mode()
+	  if (!identical(settings$experience_mode, current)) {
+		temp_experience_mode(settings$experience_mode)
+		# Mod kartlarını JS tarafında da güncelle
+		session$sendCustomMessage("updateSettingsMode", list(mode = settings$experience_mode))
+	  }
+	}, ignoreInit = TRUE)
 
-    # Karakter video modülünü başlat
-    characterVideoServer("character_video", reactive({
-      char <- temp_selected_character()
-      cat(sprintf("[SETTINGS-KISISEL] Video modülüne gönderilen karakter: %s\n", char))
-      char
-    }))
+	# Giriş ekranı veya dış akışlardan gelen karakter değişimini senkronize et
+	observeEvent(settings$selected_character, {
+	  char_id <- settings$selected_character
+
+	  if (is.null(char_id) || !nzchar(char_id)) {
+		char_id <- "mergen"
+	  }
+
+	  current <- temp_selected_character()
+
+	  if (!identical(char_id, current)) {
+		cat(sprintf("[SETTINGS-KISISEL] Dış karakter senkronizasyonu: %s\n", char_id))
+		temp_selected_character(char_id)
+	  }
+
+	  update_character_display(char_id)
+
+	  session$sendCustomMessage("updateCharacterVideo", list(
+		data = get_character_video_data(char_id),
+		trigger = "external_sync",
+		timestamp = as.numeric(Sys.time())
+	  ))
+	}, ignoreInit = TRUE)
+
+	# Karakter video modülünü başlat
+	characterVideoServer("character_video", reactive({
+	  char <- temp_selected_character()
+	  cat(sprintf("[SETTINGS-KISISEL] Video modülüne gönderilen karakter: %s\n", char))
+	  char
+	}))
 
     # Koordinatöre döndürülecek değerler
     return(list(
