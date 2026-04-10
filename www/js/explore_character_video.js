@@ -81,12 +81,12 @@
         this._videoEl.removeAttribute('src');
       }
 
-      // Intro videosu var mı kontrol et
+      // Intro videosu var mı kontrol et - hemen başlat (gecikme en aza indirildi)
       if (videoData && videoData.videos && videoData.videos.intro && videoData.videos.intro.length > 0) {
         var self = this;
         setTimeout(function() {
           self._playSequence('intro');
-        }, 300);
+        }, 50);
       }
     },
 
@@ -201,6 +201,15 @@
 
       var src = selectVideos[Math.floor(Math.random() * selectVideos.length)];
       this._showVideo(src);
+    },
+
+    // ============================================================
+    // SEÇİM VİDEOSU SIRASI AKTİF Mİ?
+    // ============================================================
+    // Dışarıdan seçim videosu sırasının devam edip etmediğini
+    // sorgulamak için kullanılır. Bu sırada loadCharacter çağrılmamalıdır.
+    isSelectActive: function() {
+      return this._selectVideoEndCallback !== null;
     },
 
     // ============================================================

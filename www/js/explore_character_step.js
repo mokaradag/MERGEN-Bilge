@@ -26,8 +26,7 @@
   var _loreTypingTimer = null;
   var _subtitleTypingTimer = null;
   
-  // Bütünleşik mod seçim videosu bittikten sonra uygulanacak ek bekleme
-  var KESIF_EK_BEKLEME_MS = 8000;
+  // (Kaldırıldı: Eski 8 saniyelik ek bekleme gereksiz gecikmeye neden oluyordu)
 
   // ============================================================
   // KARAKTER VERİSİNİ YÜKLE
@@ -67,6 +66,34 @@
       // Varsayılan karakteri göster
       selectCharacterInModal(_selectedCharId, false);
     }
+
+    // Tüm karakter video verilerini ön yükle (geçişlerdeki gecikmeyi azaltır)
+    preloadAllCharacterVideos();
+  }
+
+  // ============================================================
+  // TÜM KARAKTER VİDEOLARINI ÖN YÜKLE
+  // ============================================================
+  // Karakter adımı açıldığında, henüz önbelleğe alınmamış
+  // karakterlerin video verilerini sunucudan ister. Böylece
+  // kullanıcı farklı karaktere geçtiğinde gecikme yaşanmaz.
+  function preloadAllCharacterVideos() {
+    if (!_charactersData || typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
+
+    var delay = 0;
+    _charactersData.forEach(function(ch) {
+      // Halihazırda seçili karakter selectCharacterInModal tarafından zaten istendi
+      if (ch.id === _selectedCharId) return;
+      if (!_characterVideoData[ch.id]) {
+        setTimeout(function() {
+          Shiny.setInputValue('explore_request_char_video', {
+            character: ch.id,
+            timestamp: Date.now()
+          }, { priority: 'event' });
+        }, delay);
+        delay += 80; // Ardışık isteklerin çakışmasını önlemek için küçük aralık
+      }
+    });
   }
 
   // ============================================================
@@ -398,59 +425,75 @@
     if (!_selectedCharId || _confirmInProgress) return;
     _confirmInProgress = true;
 
-    // Shiny'ye bildir: karakter + mod birlikte
-    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('selected_experience_mode', {
-        mode: 'kesif',
-        character: _selectedCharId,
-        source: 'welcome_character_step',
-        timestamp: Date.now()
-      }, { priority: 'event' });
-    }
+    // Seçili karakter ID'sini yakala (kapanış sırasında erişim için)
+    var selectedChar = _selectedCharId;
 
-    // localStorage'a kaydet
+    // localStorage'a hemen kaydet
     try {
       var raw = localStorage.getItem('mergen_settings');
       var settings = raw ? JSON.parse(raw) : {};
       settings.experience_mode = 'kesif';
-      settings.selected_character = _selectedCharId;
+      settings.selected_character = selectedChar;
       localStorage.setItem('mergen_settings', JSON.stringify(settings));
     } catch(e) {}
 
-    // Video bittiğinde geçiş yapacak fonksiyon
+    // Seçim videosu bittiğinde geçiş yapacak fonksiyon
+    // Not: Shiny bildirimi, giriş ekranı kapandıktan sonra gönderilir.
+    // Bu sayede müzik ancak geçiş tamamlandığında başlar (yarış durumu önlenir).
     function onVideoComplete() {
+      // Adımı hemen sıfırla: geç gelen ön yükleme yanıtlarının
+      // loadCharacter çağırmasını engeller (_currentStep === 2 koruması)
+      _currentStep = 1;
+
+      // Video oynatmayı durdur
+      if (window.ExploreCharVideo) {
+        window.ExploreCharVideo.stopEverything();
+      }
+      stopLoreTyping();
+      stopSubtitleTyping();
+
+      // Karakter adımı DOM durumunu temizle (2. adım → 1. adım sıfırlaması)
+      var charStep = document.getElementById('cinematic-character-step');
+      if (charStep) charStep.classList.remove('active');
+      var cardsGrid = document.querySelector('.cinematic-cards-grid');
+      var modalHeader = document.querySelector('.cinematic-modal-header');
+      if (cardsGrid) cardsGrid.classList.remove('hidden-step');
+      if (modalHeader) modalHeader.classList.remove('hidden-step');
+
+      // Modalı kapat
+      if (window.CinematicExplore) {
+        window.CinematicExplore.closeModal();
+      }
+
+      // Giriş ekranını kapat, ardından Shiny'ye bildir
       setTimeout(function() {
-        // Video oynatmayı durdur
-        if (window.ExploreCharVideo) {
-          window.ExploreCharVideo.stopEverything();
-        }
-        stopLoreTyping();
-        stopSubtitleTyping();
-
-        // Modalı kapat
         if (window.CinematicExplore) {
-          window.CinematicExplore.closeModal();
+          window.CinematicExplore.dismissDeepSpace();
         }
 
-        // Giriş ekranını kapat
-        setTimeout(function() {
-          if (window.CinematicExplore) {
-            window.CinematicExplore.dismissDeepSpace();
-          }
-        }, 200);
+        // Shiny'ye bildir: mod + karakter
+        // dismissDeepSpace çağrıldıktan sonra gönderilir, böylece
+        // giriş müziği önce kapanır, ardından ana tema müziği başlar
+        if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+          Shiny.setInputValue('selected_experience_mode', {
+            mode: 'kesif',
+            character: selectedChar,
+            source: 'welcome_character_step',
+            timestamp: Date.now()
+          }, { priority: 'event' });
+        }
 
-        // Durumu sıfırla
-        _currentStep = 1;
+        // Kilidi serbest bırak
         _confirmInProgress = false;
-      }, KESIF_EK_BEKLEME_MS);
+      }, 200);
     }
 
     // Seçim videosunu oynat ve bittiğinde geçiş yap
     if (window.ExploreCharVideo) {
       window.ExploreCharVideo.playSelectSequence(onVideoComplete);
     } else {
-      // Video yöneticisi yoksa doğrudan geçiş yap
-      setTimeout(onVideoComplete, 800);
+      // Video yöneticisi yoksa kısa gecikme ile doğrudan geçiş yap
+      setTimeout(onVideoComplete, 300);
     }
   }
 
@@ -493,6 +536,11 @@
       // Video verilerini yükle (her karakter için ayrı ayrı gelebilir)
       Shiny.addCustomMessageHandler('loadExploreCharVideo', function(data) {
         loadCharacterVideoData(data);
+        // Seçim videosu oynarken karakter yeniden yükleme yapma
+        // (geç gelen ön yükleme yanıtı, seçim videosu geri çağırmasını silmesin)
+        if (window.ExploreCharVideo && window.ExploreCharVideo.isSelectActive && window.ExploreCharVideo.isSelectActive()) {
+          return;
+        }
         // Eğer şu an bu karakter seçiliyse videoyu başlat
         if (data && data.character === _selectedCharId && _currentStep === 2 && window.ExploreCharVideo) {
           window.ExploreCharVideo.loadCharacter(data.character, data);
