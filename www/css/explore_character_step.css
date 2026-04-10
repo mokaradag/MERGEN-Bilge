@@ -437,18 +437,23 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+  transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+              box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+              filter 0.4s cubic-bezier(0.19, 1, 0.22, 1);
   text-transform: uppercase;
   box-shadow: 0 4px 24px rgba(124, 77, 255, 0.2);
 }
 
+/* Hover sırasında modal içinde dikey taşma oluşmaması için
+   büyütme yerine hafif yukarı kaydırma kullanılır. */
 .cinematic-char-select-btn:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 30px rgba(124, 77, 255, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(124, 77, 255, 0.30);
+  filter: brightness(1.05);
 }
 
 .cinematic-char-select-btn:active {
-  transform: scale(0.98);
+  transform: translateY(0);
 }
 
 /* ============================================================= */
