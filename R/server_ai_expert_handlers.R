@@ -31,6 +31,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   last_page_talk_time <- reactiveVal(NULL)         # Son sayfa konuşma zamanı
   idle_talk_counter <- reactiveVal(0L)             # Boşta konuşma sayacı (tekrar önleme)
 
+  # Karşılama için önceden hazırlanmış bağlam önbelleği
+  greeting_prefetch_result  <- reactiveVal(NULL)
+  greeting_prefetch_started <- reactiveVal(FALSE)
+
   # Kullanıcı adı (DB'den alınacak)
   user_first_name <- session$userData$user_first_name %||% ""
 
@@ -127,9 +131,62 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	  u_name
 	}
 
+  # --- Karşılama bağlamını önceden hazırla ---
+  start_greeting_prefetch <- function(force = FALSE) {
+    if (!force && isTRUE(greeting_prefetch_started())) return(invisible(NULL))
+    if (!isTRUE(settings_data$enable_ai_expert)) return(invisible(NULL))
+    if (!identical(settings_data$experience_mode, "kesif")) return(invisible(NULL))
+
+    greeting_prefetch_started(TRUE)
+
+    params <- prepare_llm_params()
+    user_id <- current_user_id
+    talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
+    talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
+
+    promises::future_promise({
+      last_login <- fetch_user_last_login(user_id)
+      u_name <- resolve_user_name(params$user_name)
+
+      user_context <- build_ai_expert_user_context(
+        user_id,
+        user_name = u_name,
+        last_login_date = last_login,
+        include_recent_prompts = TRUE,
+        max_prompts = 5
+      )
+
+      system_prompt <- build_ai_expert_system_prompt(
+        params$char_info,
+        scenario = "greeting",
+        user_name = u_name,
+        talk_length = talk_length_val,
+        talk_style = talk_style_val
+      )
+
+      list(
+        user_context = user_context,
+        system_prompt = system_prompt,
+        model_name = params$model_name,
+        api_key = params$api_key,
+        endpoint = params$endpoint
+      )
+    }) %...>% (function(prefetched) {
+      greeting_prefetch_result(prefetched)
+      cat("[AI_EXPERT] Karşılama bağlamı önceden hazırlandı.\n")
+    }) %...!% (function(e) {
+      greeting_prefetch_started(FALSE)
+      cat(sprintf("[AI_EXPERT] Karşılama ön yükleme hatası: %s\n", conditionMessage(e)))
+    })
+
+    invisible(NULL)
+  }
+
   # --- Karşılama konuşması (uygulama açıldığında bir kez) ---
   session$onFlushed(function() {
-    shinyjs::delay(2000, {
+    start_greeting_prefetch()
+
+    shinyjs::delay(150, {
       trigger_greeting()
     })
   }, once = TRUE)
@@ -138,55 +195,117 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   observe({
     ai_on <- isTRUE(settings_data$enable_ai_expert)
     mode <- settings_data$experience_mode
+
     if (ai_on && identical(mode, "kesif") && !isTRUE(isolate(greeting_done()))) {
-      shinyjs::delay(1000, {
+      start_greeting_prefetch()
+
+      shinyjs::delay(120, {
         trigger_greeting()
       })
     }
   })
 
   # Karşılama konuşmasını tetikleme fonksiyonu
-  trigger_greeting <- function() {
+  trigger_greeting <- function(prefetch_wait_attempt = 0L) {
     if (isTRUE(greeting_done())) return()
     if (!isTRUE(settings_data$enable_ai_expert)) return()
     if (!identical(settings_data$experience_mode, "kesif")) return()
 
+    prefetched <- isolate(greeting_prefetch_result())
+    prefetch_started <- isTRUE(isolate(greeting_prefetch_started()))
+
+    # Ön yükleme başlatıldıysa ama henüz bitmediyse kısa süre bekle
+    if (is.null(prefetched) && prefetch_started && prefetch_wait_attempt < 4L) {
+      shinyjs::delay(120, {
+        trigger_greeting(prefetch_wait_attempt + 1L)
+      })
+      return(invisible(NULL))
+    }
+
     greeting_done(TRUE)
     cat("[AI_EXPERT] Karşılama konuşması tetikleniyor...\n")
 
+    start_greeting_request <- function(system_prompt, user_context, model_name, api_key, endpoint) {
+      promises::future_promise({
+        call_ai_expert_llm(
+          system_prompt = system_prompt,
+          user_context = user_context,
+          model_name = model_name,
+          api_key = api_key,
+          endpoint = endpoint,
+          max_tokens = 220
+        )
+      }) %...>% (function(greeting_text) {
+        if (!is.null(greeting_text) && nzchar(greeting_text)) {
+          cat(sprintf("[AI_EXPERT] Karşılama metni alındı (%d karakter)\n", nchar(greeting_text)))
+          ai_expert$start_speaking(greeting_text, ai_expert$COOLDOWN_GREETING)
+        }
+        schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+      }) %...!% (function(e) {
+        cat(sprintf("[AI_EXPERT] Karşılama hatası: %s\n", conditionMessage(e)))
+        schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+      })
+    }
+
+    # Önceden hazırlanmış bağlam varsa doğrudan onu kullan
+    if (!is.null(prefetched)) {
+      start_greeting_request(
+        system_prompt = prefetched$system_prompt,
+        user_context = prefetched$user_context,
+        model_name = prefetched$model_name,
+        api_key = prefetched$api_key,
+        endpoint = prefetched$endpoint
+      )
+      return(invisible(NULL))
+    }
+
+    # Ön yükleme hazır değilse mevcut akışa geri düş
     params <- prepare_llm_params()
     user_id <- current_user_id
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
-    # Gecikmesiz LLM çağrısı
     promises::future_promise({
       last_login <- fetch_user_last_login(user_id)
       u_name <- resolve_user_name(params$user_name)
+
       user_context <- build_ai_expert_user_context(
-        user_id, user_name = u_name,
+        user_id,
+        user_name = u_name,
         last_login_date = last_login,
-        include_recent_prompts = TRUE, max_prompts = 5
+        include_recent_prompts = TRUE,
+        max_prompts = 5
       )
+
       system_prompt <- build_ai_expert_system_prompt(
-        params$char_info, scenario = "greeting", user_name = u_name,
-        talk_length = talk_length_val, talk_style = talk_style_val
+        params$char_info,
+        scenario = "greeting",
+        user_name = u_name,
+        talk_length = talk_length_val,
+        talk_style = talk_style_val
       )
-      call_ai_expert_llm(
-        system_prompt = system_prompt, user_context = user_context,
-        model_name = params$model_name, api_key = params$api_key,
-        endpoint = params$endpoint, max_tokens = 500
+
+      list(
+        system_prompt = system_prompt,
+        user_context = user_context,
+        model_name = params$model_name,
+        api_key = params$api_key,
+        endpoint = params$endpoint
       )
-    }) %...>% (function(greeting_text) {
-      if (!is.null(greeting_text) && nzchar(greeting_text)) {
-        cat(sprintf("[AI_EXPERT] Karşılama metni alındı (%d karakter)\n", nchar(greeting_text)))
-        ai_expert$start_speaking(greeting_text, ai_expert$COOLDOWN_GREETING)
-      }
-      schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+    }) %...>% (function(prepared) {
+      start_greeting_request(
+        system_prompt = prepared$system_prompt,
+        user_context = prepared$user_context,
+        model_name = prepared$model_name,
+        api_key = prepared$api_key,
+        endpoint = prepared$endpoint
+      )
     }) %...!% (function(e) {
-      cat(sprintf("[AI_EXPERT] Karşılama hatası: %s\n", conditionMessage(e)))
+      cat(sprintf("[AI_EXPERT] Karşılama hazırlık hatası: %s\n", conditionMessage(e)))
       schedule_idle_chat(FIRST_IDLE_DELAY_MS)
     })
+
+    invisible(NULL)
   }
 
   # --- Boşta konuşma zamanlayıcısı yardımcısı ---

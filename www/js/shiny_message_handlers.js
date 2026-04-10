@@ -170,11 +170,11 @@ $(document).ready(function() {
 	  }
 	}
 
-	function bootModernWelcome(message, attempt) {
-	  attempt = attempt || 0;
+	  function bootModernWelcome(message, attempt) {
+		attempt = attempt || 0;
 
-	  const MAX_ATTEMPTS = 80;
-	  const RETRY_DELAY_MS = 50;
+		const MAX_ATTEMPTS = 60;
+		const RETRY_DELAY_MS = 20;
 
 	  const welcomeContainer = document.querySelector('.modern-welcome-root');
 	  const videoContainer = document.querySelector('.modern-welcome-video-container');
@@ -239,21 +239,13 @@ $(document).ready(function() {
 	  }
 	}
 
-	Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
-	  clearModernWelcomeBootTimer();
+	  Shiny.addCustomMessageHandler('initModernWelcome', function(message) {
+		clearModernWelcomeBootTimer();
 
-	  const welcomeContainer = document.querySelector('.modern-welcome-root');
-	  if (!welcomeContainer || welcomeContainer.offsetParent === null) {
-		modernWelcomeBootTimer = setTimeout(function() {
+		requestAnimationFrame(function() {
 		  bootModernWelcome(message || {}, 0);
-		}, 50);
-		return;
-	  }
-
-	  requestAnimationFrame(function() {
-		bootModernWelcome(message || {}, 0);
+		});
 	  });
-	});
 
   // NOT: Müzik işleyicileri (initMusicManager, toggleMusic, setMusicPlaylist, setMusicCharacter, setMusicVolume)
   // music_manager.js tarafından yönetilir. Burada tekrar tanımlamıyoruz.
