@@ -15,48 +15,6 @@ window.WelcomePersonalGreeting = (function() {
   var _timeouts = [];
   var _destroyed = false;
   var _isFirstTransition = true; // İlk geçişte küçülme animasyonunu atla
-  
-  var _bootTimer = null;
-
-  function clearBootTimer() {
-    if (_bootTimer) {
-      clearTimeout(_bootTimer);
-      _bootTimer = null;
-    }
-  }
-
-  function bootPersonalGreeting(data, attempt) {
-    attempt = attempt || 0;
-
-    var MAX_ATTEMPTS = 60;
-    var RETRY_DELAY_MS = 20;
-
-    _iconBox = document.querySelector('.modern-welcome-icon-box');
-    _titleGroup = document.querySelector('.modern-welcome-title-group');
-    _greetingText = document.getElementById('dynamic-greeting-text');
-
-    var domReady = !!(
-      _iconBox &&
-      _titleGroup &&
-      _titleGroup.offsetParent !== null
-    );
-
-    if (!domReady && attempt < MAX_ATTEMPTS) {
-      _bootTimer = setTimeout(function() {
-        bootPersonalGreeting(data, attempt + 1);
-      }, RETRY_DELAY_MS);
-      return;
-    }
-
-    _bootTimer = null;
-    if (!domReady) return;
-
-    _iconBox.classList.add('personal-icon-animated');
-    _titleGroup.classList.add('personal-title-animated');
-
-    var firstName = (data && data.first_name) ? data.first_name : '';
-    startGreetingSequence(firstName);
-  }
 
   // --- Saate göre selamlama mesajları ve FontAwesome ikon eşlemeleri ---
   function getTimeBasedGreeting() {
@@ -308,19 +266,25 @@ window.WelcomePersonalGreeting = (function() {
     if (typeof Shiny === 'undefined') return;
 
     Shiny.addCustomMessageHandler('initPersonalGreeting', function(data) {
-      clearBootTimer();
       destroy();
       _destroyed = false;
 
-      requestAnimationFrame(function() {
-        bootPersonalGreeting(data, 0);
-      });
+      _iconBox = document.querySelector('.modern-welcome-icon-box');
+      _titleGroup = document.querySelector('.modern-welcome-title-group');
+      _greetingText = document.getElementById('dynamic-greeting-text');
+
+      if (!_iconBox || !_titleGroup) return;
+
+      _iconBox.classList.add('personal-icon-animated');
+      _titleGroup.classList.add('personal-title-animated');
+
+      var firstName = (data && data.first_name) ? data.first_name : '';
+      startGreetingSequence(firstName);
     });
   }
 
   // --- Temizleme ---
   function destroy() {
-    clearBootTimer();
     _destroyed = true;
     _phase = 'idle';
 

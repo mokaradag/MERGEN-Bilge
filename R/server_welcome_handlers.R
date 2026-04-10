@@ -86,12 +86,17 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 
 	  session$userData$welcome_screen_attached <- TRUE
 
-	  # Sabit bekleme kullanma; istemci tarafı hazır olduğunda kendi başlatır
-	  session$sendCustomMessage("initModernWelcome", list())
+	  # Animasyonları başlat (yalnızca gerçek full render'da çağrılmalı)
+	  shinyjs::delay(40, {
+		session$sendCustomMessage("initModernWelcome", list())
 
-	  session$sendCustomMessage("initPersonalGreeting", list(
-		first_name = user_first_name %||% ""
-	  ))
+		# Kişiselleştirilmiş karşılama animasyonunu başlat
+		shinyjs::delay(80, {
+		  session$sendCustomMessage("initPersonalGreeting", list(
+			first_name = user_first_name %||% ""
+		  ))
+		})
+	  })
 	}
  
   # Yeni sohbet başlat

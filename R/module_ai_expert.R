@@ -255,8 +255,8 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 		  "tr-male-1"
 		}
 
-		# İlk sesi daha erken başlatmak için parçaları küçült
-		chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 140, min_chunk_chars = 50)
+		# İlk sesi daha hızlı başlatmak için metni kısa parçalara böl
+		chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
 		if (length(chunks) == 0) chunks <- list(text)
 
 		cat(sprintf(

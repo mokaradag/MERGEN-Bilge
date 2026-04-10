@@ -472,7 +472,8 @@
         }
 
         // Shiny'ye bildir: mod + karakter
-        // dismissDeepSpace çağrıldıktan hemen sonra gönder
+        // dismissDeepSpace çağrıldıktan sonra gönderilir, böylece
+        // giriş müziği önce kapanır, ardından ana tema müziği başlar
         if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
           Shiny.setInputValue('selected_experience_mode', {
             mode: 'kesif',
@@ -484,7 +485,7 @@
 
         // Kilidi serbest bırak
         _confirmInProgress = false;
-      }, 40);
+      }, 200);
     }
 
     // Seçim videosunu oynat ve bittiğinde geçiş yap
