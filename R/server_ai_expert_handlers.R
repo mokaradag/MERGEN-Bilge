@@ -40,6 +40,16 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # Kullanıcı adı (DB'den alınacak)
   user_first_name <- session$userData$user_first_name %||% ""
+  
+  # SSO akışında başlangıçtaki current_user_id değeri 0 olabilir.
+  # Bu yüzden AI Uzman tarafında kullanıcı kimliğini her kullanım anında
+  # oturumdan yeniden çözmek gerekir.
+  resolve_ai_expert_user_id <- function() {
+    uid <- session$userData$user_id %||% current_user_id %||% 0L
+    uid <- suppressWarnings(as.integer(uid))
+    if (is.na(uid) || uid < 0) uid <- 0L
+    uid
+  }
 
   # Boşta konuşma arası (ms) - ayarlardan okunur
   IDLE_INTERVAL_MS   <- 35000   # 35 saniye (varsayılan, ayarlarla güncellenir)
@@ -137,7 +147,9 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     }
 
     # SSO ilk adı yoksa DB'deki tam addan ilk adı türet
-    user_full_name <- safe_trimws(fetch_user_full_name(current_user_id))
+    effective_user_id <- resolve_ai_expert_user_id()
+    user_full_name <- safe_trimws(fetch_user_full_name(effective_user_id))
+
     if (safe_nzchar(user_full_name)) {
       parts <- strsplit(user_full_name, "\\s+")[[1]]
       first_name <- safe_trimws(parts[1] %||% "")
@@ -214,7 +226,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     cat(sprintf("[AI_EXPERT] Karşılama konuşması ön hazırlanıyor... (karakter: %s)\n", char_id))
 
-    user_id <- current_user_id
+    user_id <- resolve_ai_expert_user_id()
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
@@ -495,6 +507,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     idle_talk_counter(current_count)
 
     cat(sprintf("[AI_EXPERT] Boşta konuşma #%d tetikleniyor...\n", current_count))
+    cat(sprintf("[AI_EXPERT] Etkin kullanıcı ID: %s\n", resolve_ai_expert_user_id()))
 
     params <- prepare_llm_params()
     current_page_val <- isolate(input$tabs) %||% "chat"
@@ -520,6 +533,9 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     # Mevcut oturumdaki mesajları yakala (reaktif değerleri main thread'de oku)
     session_msgs <- capture_session_messages(5)
 
+    # Gerçek kullanıcı kimliğini SSO oturumundan çöz
+    effective_user_id <- resolve_ai_expert_user_id()
+
     # AI Uzman konuşma uzunluğu/sıklığı/tarz ayarlarını oku
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
@@ -528,12 +544,12 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       u_name <- resolve_user_name(params$user_name)
 
       recent_prompts <- tryCatch(
-        fetch_recent_user_prompts(current_user_id, 5),
+        fetch_recent_user_prompts(effective_user_id, 5),
         error = function(e) NULL
       )
-	  
+
       user_work_context <- tryCatch(
-        fetch_user_work_context(current_user_id),
+        fetch_user_work_context(effective_user_id),
         error = function(e) NULL
       )
 
