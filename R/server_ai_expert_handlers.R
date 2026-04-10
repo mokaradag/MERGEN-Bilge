@@ -78,9 +78,14 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Yardımcı: Temel konuşabilirlik kontrolü (bekleme süresini ATLAR) ---
   # Sayfa rehberliği gibi kullanıcı eylemine doğrudan yanıt verilen durumlarda kullanılır
+  is_stt_modal_active <- function() {
+    isTRUE(isolate(input$stt_modal_active))
+  }
+
   can_speak_basic <- function() {
     if (!isTRUE(settings_data$enable_ai_expert)) return(FALSE)
     if (!identical(settings_data$experience_mode, "kesif")) return(FALSE)
+    if (is_stt_modal_active()) return(FALSE)
     if (isTRUE(ai_expert$is_speaking())) return(FALSE)
     if (isTRUE(isolate(values$is_sending))) return(FALSE)
     return(TRUE)
@@ -471,7 +476,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         temperature = generation_cfg$temperature
       )
     }) %...>% (function(guidance_text) {
-      if (!is.null(guidance_text) && nzchar(guidance_text)) {
+      if (!is.null(guidance_text) && nzchar(guidance_text) && !is_stt_modal_active()) {
         # Konuşma sırasında aktif konuşma varsa durdurup yenisini başlat
         if (isTRUE(ai_expert$is_speaking())) {
           ai_expert$stop_speaking(0)
@@ -490,6 +495,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   trigger_idle_chat <- function() {
     if (!isTRUE(settings_data$enable_ai_expert) ||
         !identical(settings_data$experience_mode, "kesif")) {
+      schedule_idle_chat()
+      return()
+    }
+    if (is_stt_modal_active()) {
       schedule_idle_chat()
       return()
     }
@@ -622,7 +631,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         temperature = generation_cfg$temperature
       )
     }) %...>% (function(idle_text) {
-      if (!is.null(idle_text) && nzchar(idle_text)) {
+      if (!is.null(idle_text) && nzchar(idle_text) && !is_stt_modal_active()) {
         if (ai_expert$can_speak()) {
           ai_expert$start_speaking(idle_text, ai_expert$COOLDOWN_IDLE)
         }
@@ -645,6 +654,25 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     } else {
       shinyjs::delay(3000, {
         ai_expert$set_user_active(FALSE)
+      })
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$stt_modal_active, {
+    stt_active <- isTRUE(input$stt_modal_active)
+
+    ai_expert$set_user_active(stt_active)
+
+    if (stt_active && isTRUE(ai_expert$is_speaking())) {
+      cat("[AI_EXPERT] STT modalı açıldı, AI konuşması durduruluyor.\n")
+      ai_expert$stop_speaking()
+    }
+
+    if (!stt_active) {
+      shinyjs::delay(1500, {
+        if (!isTRUE(input$stt_modal_active) && !isTRUE(values$is_sending)) {
+          ai_expert$set_user_active(FALSE)
+        }
       })
     }
   }, ignoreInit = TRUE)

@@ -79,7 +79,7 @@ sttServer <- function(id, parent_session, settings) {
           div(
             class = "stt-visualizer-wrapper",
             
-			# Sol: Modern Dalga Formu
+            # Sol: Modern Dalga Formu
             div(
               class = "stt-vis-canvas-container",
               tags$canvas(id = ns("visualizer_canvas"))
@@ -91,7 +91,7 @@ sttServer <- function(id, parent_session, settings) {
               div(
                 class = "stt-char-badge",
                 tags$img(src = char_info$image, class = "stt-avatar"),
-				div(
+                div(
                   class = "stt-char-text",
                   div(class = "stt-char-name", style = paste0("color: ", char_info$accent, ";"), char_info$display_name),
                   div(class = "stt-char-status", "Dinliyorum...")
@@ -125,7 +125,7 @@ sttServer <- function(id, parent_session, settings) {
           ),
           
           # --- KONTROLLER ---
-		  div(
+          div(
             class = "stt-controls",
             div(
               class = "stt-controls-left",
@@ -140,6 +140,9 @@ sttServer <- function(id, parent_session, settings) {
           )
         )
       ))
+      
+      # STT modalının açık olduğunu uygulama geneline bildir
+      shinyjs::runjs("Shiny.setInputValue('stt_modal_active', true, {priority: 'event'});")
       
       # JS Client'ı başlat
       shinyjs::delay(500, {
@@ -267,6 +270,9 @@ sttServer <- function(id, parent_session, settings) {
     })
     
     observeEvent(input$accept_btn, {
+      # STT modalı kapanıyor bilgisini uygulama geneline bildir
+      shinyjs::runjs("Shiny.setInputValue('stt_modal_active', false, {priority: 'event'});")
+      
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       text_to_send <- trimws(input$transcribed_text)
       removeModal()
@@ -276,6 +282,9 @@ sttServer <- function(id, parent_session, settings) {
     })
     
     observeEvent(input$dismiss_btn, {
+      # STT modalı kapanıyor bilgisini uygulama geneline bildir
+      shinyjs::runjs("Shiny.setInputValue('stt_modal_active', false, {priority: 'event'});")
+      
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       removeModal()
     })
