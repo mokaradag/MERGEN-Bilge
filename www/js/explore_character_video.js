@@ -204,6 +204,15 @@
     },
 
     // ============================================================
+    // SEÇİM VİDEOSU SIRASI AKTİF Mİ?
+    // ============================================================
+    // Dışarıdan seçim videosu sırasının devam edip etmediğini
+    // sorgulamak için kullanılır. Bu sırada loadCharacter çağrılmamalıdır.
+    isSelectActive: function() {
+      return this._selectVideoEndCallback !== null;
+    },
+
+    // ============================================================
     // HER ŞEYİ DURDUR
     // ============================================================
     stopEverything: function() {

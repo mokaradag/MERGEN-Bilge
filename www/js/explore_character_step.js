@@ -82,6 +82,8 @@
 
     var delay = 0;
     _charactersData.forEach(function(ch) {
+      // Halihazırda seçili karakter selectCharacterInModal tarafından zaten istendi
+      if (ch.id === _selectedCharId) return;
       if (!_characterVideoData[ch.id]) {
         setTimeout(function() {
           Shiny.setInputValue('explore_request_char_video', {
@@ -439,12 +441,24 @@
     // Not: Shiny bildirimi, giriş ekranı kapandıktan sonra gönderilir.
     // Bu sayede müzik ancak geçiş tamamlandığında başlar (yarış durumu önlenir).
     function onVideoComplete() {
+      // Adımı hemen sıfırla: geç gelen ön yükleme yanıtlarının
+      // loadCharacter çağırmasını engeller (_currentStep === 2 koruması)
+      _currentStep = 1;
+
       // Video oynatmayı durdur
       if (window.ExploreCharVideo) {
         window.ExploreCharVideo.stopEverything();
       }
       stopLoreTyping();
       stopSubtitleTyping();
+
+      // Karakter adımı DOM durumunu temizle (2. adım → 1. adım sıfırlaması)
+      var charStep = document.getElementById('cinematic-character-step');
+      if (charStep) charStep.classList.remove('active');
+      var cardsGrid = document.querySelector('.cinematic-cards-grid');
+      var modalHeader = document.querySelector('.cinematic-modal-header');
+      if (cardsGrid) cardsGrid.classList.remove('hidden-step');
+      if (modalHeader) modalHeader.classList.remove('hidden-step');
 
       // Modalı kapat
       if (window.CinematicExplore) {
@@ -469,8 +483,7 @@
           }, { priority: 'event' });
         }
 
-        // Durumu sıfırla
-        _currentStep = 1;
+        // Kilidi serbest bırak
         _confirmInProgress = false;
       }, 200);
     }
@@ -523,6 +536,11 @@
       // Video verilerini yükle (her karakter için ayrı ayrı gelebilir)
       Shiny.addCustomMessageHandler('loadExploreCharVideo', function(data) {
         loadCharacterVideoData(data);
+        // Seçim videosu oynarken karakter yeniden yükleme yapma
+        // (geç gelen ön yükleme yanıtı, seçim videosu geri çağırmasını silmesin)
+        if (window.ExploreCharVideo && window.ExploreCharVideo.isSelectActive && window.ExploreCharVideo.isSelectActive()) {
+          return;
+        }
         // Eğer şu an bu karakter seçiliyse videoyu başlat
         if (data && data.character === _selectedCharId && _currentStep === 2 && window.ExploreCharVideo) {
           window.ExploreCharVideo.loadCharacter(data.character, data);
