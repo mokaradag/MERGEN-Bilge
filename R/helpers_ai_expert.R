@@ -18,8 +18,8 @@
 # @return Karakter dizisi (AI yanıtı) veya NULL (hata durumunda)
 call_ai_expert_llm <- function(system_prompt, user_context, model_name,
                                 api_key = NULL, endpoint = NULL,
-                                max_tokens = 500) {
-								
+                                max_tokens = 500, temperature = 0.7) {
+
   system_prompt <- safe_trimws(system_prompt)
   user_context  <- safe_trimws(user_context)
   model_name    <- safe_trimws(model_name)
@@ -30,7 +30,7 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
   if (is.null(endpoint) || !safe_nzchar(endpoint)) {
     endpoint <- safe_trimws(Sys.getenv("LOCAL_LLM_ENDPOINT", ""))
   }
-  
+
   if (!safe_nzchar(endpoint)) {
     cat("[AI_EXPERT] API uç noktası yapılandırılmamış, konuşma oluşturulamadı.\n")
     return(NULL)
@@ -49,6 +49,18 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
     api_key <- safe_trimws(Sys.getenv("LOCAL_LLM_API_KEY", ""))
   }
 
+  # Üretim parametrelerini güvenli hale getir
+  max_tokens <- suppressWarnings(as.integer(max_tokens))
+  if (is.na(max_tokens) || max_tokens < 64) {
+    max_tokens <- 500L
+  }
+
+  temperature <- suppressWarnings(as.numeric(temperature))
+  if (!is.finite(temperature)) {
+    temperature <- 0.7
+  }
+  temperature <- max(0, min(1.2, temperature))
+
   # Mesaj yapısı
   messages_payload <- list(
     list(role = "system", content = system_prompt),
@@ -56,10 +68,10 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
   )
 
   body <- list(
-    model    = model_name,
-    messages = messages_payload,
-    stream   = FALSE,
-    temperature = 0.7,
+    model       = model_name,
+    messages    = messages_payload,
+    stream      = FALSE,
+    temperature = temperature,
     max_tokens  = max_tokens
   )
 
@@ -118,6 +130,7 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
   cat(sprintf("[AI_EXPERT] Konuşma metni oluşturuldu (%d karakter)\n", nchar(ai_text)))
   return(ai_text)
 }
+
 # --- Kullanıcının tam adını DB'den al ---
 # Worker-safe: Kendi bağlantısını açar.
 # MB_Users tablosundaki KaynakAdi sütunundan kullanıcı adını alır.
@@ -149,6 +162,73 @@ fetch_user_full_name <- function(user_id) {
   return("")
 }
 
+# --- Kullanıcının birim bilgisini DB'den al ---
+# Worker-safe: Kendi bağlantısını açar.
+# MB_Users tablosundaki Departman ve Mudurluk sütunlarını okur.
+# Departman boşsa Mudurluk değerini bağlam birimi olarak kullanır.
+#
+# @param user_id Kullanıcı ID
+# @return Liste: department, mudurluk, effective_unit, display_text
+fetch_user_work_context <- function(user_id) {
+  conn_info <- tryCatch(get_connection(), error = function(e) NULL)
+  if (is.null(conn_info)) {
+    return(list(
+      department = "",
+      mudurluk = "",
+      effective_unit = "",
+      display_text = ""
+    ))
+  }
+
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info))
+
+  query <- "SELECT Departman, Mudurluk FROM MB_Users WHERE UserID = ?"
+  result <- tryCatch(
+    DBI::dbGetQuery(conn, query, params = list(user_id)),
+    error = function(e) {
+      cat(sprintf("[AI_EXPERT] Departman/Mudurluk sorgu hatası: %s\n", conditionMessage(e)))
+      data.frame()
+    }
+  )
+
+  if (nrow(result) == 0) {
+    return(list(
+      department = "",
+      mudurluk = "",
+      effective_unit = "",
+      display_text = ""
+    ))
+  }
+
+  department <- ""
+  mudurluk <- ""
+
+  if ("Departman" %in% names(result) && !is.na(result$Departman[1])) {
+    department <- safe_trimws(as.character(result$Departman[1]))
+  }
+
+  if ("Mudurluk" %in% names(result) && !is.na(result$Mudurluk[1])) {
+    mudurluk <- safe_trimws(as.character(result$Mudurluk[1]))
+  }
+
+  effective_unit <- if (safe_nzchar(department)) department else mudurluk
+
+  display_text <- ""
+  if (safe_nzchar(department) && safe_nzchar(mudurluk)) {
+    display_text <- sprintf("%s (%s)", department, mudurluk)
+  } else if (safe_nzchar(effective_unit)) {
+    display_text <- effective_unit
+  }
+
+  list(
+    department = department,
+    mudurluk = mudurluk,
+    effective_unit = effective_unit,
+    display_text = display_text
+  )
+}
+
 
 # --- Kullanıcı bağlam bilgisi oluşturma ---
 # Veritabanından kullanıcının geçmiş verilerini alır ve metin olarak döndürür.
@@ -165,7 +245,8 @@ build_ai_expert_user_context <- function(user_id, user_name = "",
                                           last_login_date = NULL,
                                           include_recent_prompts = TRUE,
                                           max_prompts = 5,
-                                          current_session_messages = NULL) {
+                                          current_session_messages = NULL,
+                                          user_work_context = NULL) {
 
   user_name <- safe_trimws(user_name)
   current_session_messages <- normalize_utf8_text(current_session_messages)
@@ -174,6 +255,32 @@ build_ai_expert_user_context <- function(user_id, user_name = "",
   # Kullanıcı adı bilgisi
   if (nzchar(user_name)) {
     context_parts <- c(context_parts, sprintf("Kullanıcının adı: %s", user_name))
+  }
+  
+  # Kullanıcının birim bilgisi
+  if (is.list(user_work_context)) {
+    effective_unit <- safe_trimws(user_work_context$effective_unit %||% "")
+    department <- safe_trimws(user_work_context$department %||% "")
+    mudurluk <- safe_trimws(user_work_context$mudurluk %||% "")
+
+    if (safe_nzchar(department) && safe_nzchar(mudurluk)) {
+      context_parts <- c(context_parts, sprintf(
+        "Kullanıcının departmanı: %s. Bağlı olduğu müdürlük/direktörlük: %s",
+        department, mudurluk
+      ))
+    } else if (safe_nzchar(effective_unit)) {
+      context_parts <- c(context_parts, sprintf(
+        "Kullanıcının çalıştığı birim: %s",
+        effective_unit
+      ))
+    }
+
+    if (safe_nzchar(effective_unit)) {
+      context_parts <- c(
+        context_parts,
+        "Bu bilgiyi yalnızca konuşmayı bağlama oturtmak için kullan. Kullanıcının güncel işi, görevi veya üzerinde çalıştığı konu hakkında doğrulanmamış varsayım üretme."
+      )
+    }
   }
 
   # Son giriş zamanı bilgisi
@@ -311,6 +418,45 @@ fetch_user_last_login <- function(user_id) {
   return(NULL)
 }
 
+# --- AI Uzman üretim parametrelerini çözümle ---
+# Konuşma uzunluğu ve tarzı ayarlarının LLM üzerinde daha belirgin
+# etkisi olması için max_tokens ve temperature değerlerini üretir.
+#
+# @param scenario Senaryo türü
+# @param talk_length Konuşma uzunluğu ayarı
+# @param talk_style Konuşma tarzı ayarı
+# @return Liste: max_tokens, temperature
+get_ai_expert_generation_config <- function(scenario = "idle_chat",
+                                            talk_length = "orta",
+                                            talk_style = "profesyonel") {
+  base_max_tokens <- switch(scenario,
+    "greeting" = 220L,
+    "page_guidance" = 150L,
+    "idle_chat" = 240L,
+    220L
+  )
+
+  max_tokens <- switch(talk_length %||% "orta",
+    "kisa" = max(90L, as.integer(round(base_max_tokens * 0.60))),
+    "orta" = base_max_tokens,
+    "uzun" = as.integer(round(base_max_tokens * 1.60)),
+    base_max_tokens
+  )
+
+  temperature <- switch(talk_style %||% "profesyonel",
+    "profesyonel" = 0.55,
+    "samimi" = 0.80,
+    "motivasyonel" = 0.90,
+    "bilimsel" = 0.45,
+    0.70
+  )
+
+  list(
+    max_tokens = max_tokens,
+    temperature = temperature
+  )
+}
+
 
 # --- AI Uzman sistem istemi oluştur ---
 # Seçili karakter ve rehber belgesine dayalı, zengin ve doğal sistem istemi oluşturur.
@@ -399,49 +545,26 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     "idle_chat" = paste0(
       "Kullanıcı bir süredir sessiz ve etkileşimde bulunmadı. ",
       name_instruction,
-      "YASAKLAR: Asla selam verme, asla 'merhaba' deme, asla 'hoş geldin' deme, ",
-      "asla 'uzun süredir görüşmedik' deme. Bu zaten devam eden bir sohbet, ",
-      "her konuşmayı sıfırdan başlatma. Daha önce söylediklerini tekrarlama.\n\n",
-      "KESİNLİKLE FARKLI GİRİŞ CÜMLELERİ KULLAN. Aşağıdaki giriş kalıplarından ",
-      "HER SEFERINDE FARKLI bir tanesini rastgele seç:\n",
-      "- 'Şimdi aklıma ilginç bir şey geldi...'\n",
-      "- 'Bir şey paylaşmak istiyorum...'\n",
-      "- 'Az önce düşünüyordum da...'\n",
-      "- 'Sana bir şey sormak istiyorum...'\n",
-      "- 'İlginç bir detay var aklımda...'\n",
-      "- 'Bir fikrim var, ne dersin...'\n",
-      "- 'Dikkatimi bir şey çekti...'\n",
-      "- 'Hım, şöyle bir düşünce var...'\n",
-      "- 'Aslında şunu merak ediyorum...'\n",
-      "- 'Bir konuyu açmak isterim...'\n",
-      "- 'Bugün ilginç bir şey keşfettim...'\n",
-      "- 'Şöyle bir ipucu vermek istiyorum...'\n",
-      "- 'Bir gözlemimi paylaşayım...'\n",
-      "- 'Sence şöyle bir durum nasıl olurdu...'\n",
-      "- 'Tam da şu konu hakkında...'\n",
-      "- Veya hiç giriş cümlesi kullanmadan doğrudan konuya gir\n\n",
-      "'Bir şey fark ettim', 'Bu arada aklıma bir fikir geldi', 'Biliyor musun' gibi ",
-      "kalıpları TEKRARLAMA, her seferinde farklı bir giriş kullan.\n\n",
-      "Doğal bir şekilde konuşmayı sürdür. Her seferinde FARKLI bir konuya değin. ",
-      "Sadece bulunduğu sayfadan bahsetme, çeşitli konulara doğal geçişler yap.\n\n",
-      "KONU SEÇENEKLERİ (her seferinde farklı bir kategori seç):\n",
-      "- Kullanıcının son konuşma konularına dayalı derinlemesine bir yorum veya öneri\n",
-      "- Uygulamanın az bilinen veya güçlü bir özelliğinden ilginç bir şekilde bahset\n",
-      "- Elektronik savunma sektörüne dair ilginç bir bilgi veya gelişme paylaş\n",
-      "- Radar, elektronik harp, sinyal işleme gibi savunma teknolojileri hakkında bilgi ver\n",
-      "- Yapay zeka ve savunma sanayi arasındaki bağlantılardan bahset\n",
-      "- Türk savunma sanayisinin başarıları veya gelişmeleri hakkında sohbet et\n",
-      "- Veri analizi veya büyük veri konusunda pratik bir ipucu paylaş\n",
-      "- İş hayatında verimlilik artıran bir teknik veya alışkanlık öner\n",
-      "- Takım çalışması veya proje yönetimi hakkında hafif bir sohbet aç\n",
-      "- Yapay zeka dünyasından güncel ve ilginç bir gelişme paylaş\n",
-      "- Kullanıcıya düşündürücü ama rahat bir soru sor\n",
-      "- Kendi karakterine özgü bir düşünce veya gözlem paylaş\n",
-      "- Hafif bir sohbet konusu aç: hava durumu, hafta sonu planları, kahve molası gibi\n",
-      "- Motivasyon veren kısa bir not veya bakış açısı paylaş\n\n",
-      "KONUŞMA TARZI: Doğal ve insani ol. Sanki iş arkadaşına bir şey söylüyormuşsun gibi ",
-      "akıcı konuş. 3-5 cümle ile akıcı şekilde konuş. Her konuşma benzersiz ve taze olsun. ",
-      "Aynı konuyu veya aynı giriş cümlesini kesinlikle tekrarlama."
+      "Bu konuşma devam eden bir sohbetin doğal parçası gibi hissettirmeli. ",
+      "Sen aynı kurumda çalışan, teknik dünyaya aşina, güven veren bir iş arkadaşı gibi konuş. ",
+      "ASELSAN ve benzeri elektronik savunma, radar ve elektronik harp ortamının diline ve ciddiyetine uygun ol, ama resmî anons gibi konuşma.\n\n",
+      "ÖNCELİK SIRASI: Önce bu oturumdaki en güncel kullanıcı mesajlarına bak. Sonra veritabanındaki son kullanıcı mesajlarını dikkate al. ",
+      "Bunlardan anlamlı bir bağ kurabiliyorsan konuşmanı öncelikle bunun etrafında şekillendir. ",
+      "Kullanıcının departman veya müdürlük bilgisi varsa bunu sadece bağlam kurmak için kullan; ",
+      "kullanıcının o anda ne yaptığı, hangi projede olduğu veya hangi görevi yürüttüğü hakkında varsayım uydurma.\n\n",
+      "YASAKLAR: Asla 'merhaba', 'hoş geldin', 'nasılsın' gibi yeni sohbet açan kalıplar kullanma. ",
+      "Asla 'uzun süredir görüşmedik' deme. Aynı giriş cümlesini, aynı konu başlığını veya aynı tavrı tekrar etme. ",
+      "Sunucu anonsu, eğitim videosu anlatımı, kurumsal bülten veya robotik asistan gibi konuşma.\n\n",
+      "KONU ÇERÇEVESİ: Konuşma çoğunlukla kullanıcının son mesajları, ilgi gösterdiği teknik başlıklar, çalıştığı birim bağlamı, ",
+      "uygulamanın yararlı özellikleri ve genel mühendislik çalışma pratiği etrafında dönsün. ",
+      "Bunun yanında zaman zaman iş dışı ama fazla kişisel olmayan hafif başlıklara da değinebilirsin; ",
+      "örneğin odaklanma, kısa mola, öğrenme alışkanlıkları, teknoloji merakı, günün ritmi veya zihni tazeleyen küçük rutinler. ",
+      "Özel hayat, aile, sağlık, maddi durum, siyasi görüş veya mahrem alanlara girme.\n\n",
+      "DAVRANIŞ: Tek mesajda tek ana fikir seç. Bazen kısa bir gözlem paylaş, bazen kullanıcının önceki mesajına doğal bir yorum yap, ",
+      "bazen küçük ama işe yarar bir öneri sun, bazen de düşünmeye sevk eden hafif bir soru sor. ",
+      "Her seferinde soru sormak zorunda değilsin. Ama konuşma canlı, doğal ve karşılıklıymış gibi hissettirsin.\n\n",
+      "TON: Sıcak, doğal, akıllı ve meslektaş gibi konuş. Bilgili ol ama ukala olma. Teknik ol ama jargona boğma. ",
+      "3-5 cümle ideal. Her konuşma taze ve insani olsun."
     ),
     # Varsayılan
     paste0(name_instruction, "Profesyonel ve samimi bir mesaj oluştur. 3-5 cümle ile konuş.")
@@ -457,11 +580,11 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
 
   # Konuşma tarzı talimatı
   style_instruction <- switch(talk_style %||% "profesyonel",
-    "profesyonel" = "TARZ: Profesyonel, saygılı ve bilge. Kurumsal ortama uygun, ciddi ama sıcak.",
-    "samimi" = "TARZ: Samimi ve rahat. Sanki iş arkadaşınla sohbet ediyorsun. Espritüel olabilirsin ama ölçülü ol.",
-    "motivasyonel" = "TARZ: Motivasyonel ve ilham verici. Kullanıcıyı teşvik et, olumlu enerji yay. Başarıları takdir et.",
-    "bilimsel" = "TARZ: Bilimsel ve analitik. Teknik detaylara değin, veriye dayalı konuş. Savunma teknolojileri, yapay zeka ve mühendislik konularına ağırlık ver.",
-    "TARZ: Profesyonel, saygılı ve bilge. Kurumsal ortama uygun, ciddi ama sıcak."
+    "profesyonel" = "TARZ: Profesyonel, net ve dengeli ol. Kurumsal ortama uygun kal, ama soğuk ve mesafeli durma.",
+    "samimi" = "TARZ: Daha yakın, daha konuşma dili gibi ve iş arkadaşı sıcaklığında ol. Resmiyeti azalt ama ciddiyeti bozma.",
+    "motivasyonel" = "TARZ: Yapıcı, cesaret verici ve enerji yükselten bir ton kullan. Kullanıcıyı sıkmadan motive et.",
+    "bilimsel" = "TARZ: Analitik, kavramsal ve teknik doğruluk odaklı ol. Yöntem, neden-sonuç ve mühendislik mantığını vurgula.",
+    "TARZ: Profesyonel, net ve dengeli ol. Kurumsal ortama uygun kal, ama soğuk ve mesafeli durma."
   )
 
   # Sistem istemini birleştir
@@ -469,7 +592,7 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     "Sen ", char_name, " adında bir AI asistanısın. ",
     "MERGEN Bilge uygulamasının yapay zeka uzmanı olarak kullanıcıyla sesli ve yazılı etkileşim kuruyorsun. ",
     "Türkçe konuşuyorsun. Asla İngilizce konuşma. ",
-    "Bir elektronik savunma şirketinde çalışıyorsun. ",
+    "Bu uygulama ASELSAN ve benzeri elektronik savunma, radar ve elektronik harp odaklı kurumsal bir mühendislik ortamında kullanılıyor. ",
     if (nzchar(char_style)) paste0("\nKarakter Tarzı: ", char_style, "\n") else "",
     "\n\n",
     "ÖNEMLİ KURALLAR:\n",
@@ -480,6 +603,8 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     "- Markdown formatlaması kullanma (yıldız, diyez, madde işareti vb.)\n",
     "- Sadece düz metin yaz, liste yapma\n",
     "- Bilge, rehber niteliğinde ama kibirli veya üstten konuşma\n",
+    "- Kullanıcının görevi, yaptığı iş veya o anda ne üzerinde çalıştığı hakkında bağlam dışı varsayım üretme\n",
+    "- Önce kullanıcının son mesajlarına, sohbet bağlamına ve bilinen birim bilgisine yaslan\n",
     "- Konuşman sesli olarak okunacak, bu yüzden kulağa hoş gelen, doğal bir Türkçe kullan\n",
     "- Uzun tire (em dash, en dash) kullanma, normal tire veya virgül kullan\n",
     "- Özel Unicode karakterleri kullanma (oklar, kutucuklar, semboller vb.)\n\n",
@@ -490,5 +615,5 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     if (nzchar(guide_text)) substr(guide_text, 1, 10000) else "(Rehber belgesi bulunamadı)"
   )
 
-  return(safe_trimws(prompt))
+  return(prompt)
 }

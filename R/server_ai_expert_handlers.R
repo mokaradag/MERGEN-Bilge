@@ -43,9 +43,18 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # Boşta konuşma arası (ms) - ayarlardan okunur
   IDLE_INTERVAL_MS   <- 35000   # 35 saniye (varsayılan, ayarlarla güncellenir)
-  # Karşılama sonrası ilk boşta konuşma bekleme süresi (ms)
-  FIRST_IDLE_DELAY_MS <- 20000  # 20 saniye
-
+  
+  # İlk boşta konuşma gecikmesini de sıklık ayarına bağla
+  get_first_idle_delay_ms <- function() {
+    freq <- isolate(settings_data$ai_expert_talk_frequency) %||% "orta"
+    switch(freq,
+      "az" = 30000,
+      "orta" = 20000,
+      "sik" = 12000,
+      20000
+    )
+  }
+  
   # Sıklık ayarına göre interval hesapla
   get_idle_interval <- function() {
     freq <- isolate(settings_data$ai_expert_talk_frequency) %||% "orta"
@@ -120,18 +129,24 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Yardımcı: Kullanıcı adını worker içinde çözümle ---
   resolve_user_name <- function(user_name) {
-    user_full_name <- safe_trimws(fetch_user_full_name(current_user_id))
     u_name <- safe_trimws(user_name)
 
+    # Öncelik SSO'dan gelen ilk adda olsun
+    if (safe_nzchar(u_name)) {
+      return(u_name)
+    }
+
+    # SSO ilk adı yoksa DB'deki tam addan ilk adı türet
+    user_full_name <- safe_trimws(fetch_user_full_name(current_user_id))
     if (safe_nzchar(user_full_name)) {
       parts <- strsplit(user_full_name, "\\s+")[[1]]
       first_name <- safe_trimws(parts[1] %||% "")
       if (safe_nzchar(first_name)) {
-        u_name <- first_name
+        return(first_name)
       }
     }
 
-    u_name
+    ""
   }
 
   # --- Yardımcı: Ön hazırlanan karşılama metnini al ---
@@ -166,7 +181,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     cat(sprintf("[AI_EXPERT] Karşılama metni kullanılıyor (%d karakter)\n", nchar(greeting_text)))
     ai_expert$start_speaking(greeting_text, ai_expert$COOLDOWN_GREETING)
-    schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+    schedule_idle_chat(get_first_idle_delay_ms())
 
     invisible(TRUE)
   }
@@ -203,34 +218,53 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
+    # ÖNEMLİ:
+    # future içine modül içindeki yardımcı fonksiyonları taşımıyoruz.
+    # Önce gerekli tüm küçük/düz verileri ana thread'de çözümlüyoruz,
+    # sonra worker'a sadece sade karakter/list değerleri gönderiyoruz.
+    params <- prepare_llm_params(selected_char_id = char_id)
+    u_name <- resolve_user_name(params$user_name)
+    last_login <- fetch_user_last_login(user_id)
+    user_work_context <- fetch_user_work_context(user_id)
+
+    generation_cfg <- get_ai_expert_generation_config(
+      scenario = "greeting",
+      talk_length = talk_length_val,
+      talk_style = talk_style_val
+    )
+
+    user_context <- build_ai_expert_user_context(
+      user_id,
+      user_name = u_name,
+      last_login_date = last_login,
+      include_recent_prompts = TRUE,
+      max_prompts = 5,
+      user_work_context = user_work_context
+    )
+
+    system_prompt <- build_ai_expert_system_prompt(
+      params$char_info,
+      scenario = "greeting",
+      user_name = u_name,
+      talk_length = talk_length_val,
+      talk_style = talk_style_val
+    )
+
+    model_name_val   <- params$model_name
+    api_key_val      <- params$api_key
+    endpoint_val     <- params$endpoint
+    max_tokens_val   <- generation_cfg$max_tokens
+    temperature_val  <- generation_cfg$temperature
+
     promises::future_promise({
-      params <- prepare_llm_params(selected_char_id = char_id)
-      last_login <- fetch_user_last_login(user_id)
-      u_name <- resolve_user_name(params$user_name)
-
-      user_context <- build_ai_expert_user_context(
-        user_id,
-        user_name = u_name,
-        last_login_date = last_login,
-        include_recent_prompts = TRUE,
-        max_prompts = 5
-      )
-
-      system_prompt <- build_ai_expert_system_prompt(
-        params$char_info,
-        scenario = "greeting",
-        user_name = u_name,
-        talk_length = talk_length_val,
-        talk_style = talk_style_val
-      )
-
       call_ai_expert_llm(
         system_prompt = system_prompt,
         user_context = user_context,
-        model_name = params$model_name,
-        api_key = params$api_key,
-        endpoint = params$endpoint,
-        max_tokens = 500
+        model_name = model_name_val,
+        api_key = api_key_val,
+        endpoint = endpoint_val,
+        max_tokens = max_tokens_val,
+        temperature = temperature_val
       )
     }) %...>% (function(greeting_text) {
       greeting_future_active(FALSE)
@@ -252,7 +286,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         }
       } else if (isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
         greeting_waiting_to_play(FALSE)
-        schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+        schedule_idle_chat(get_first_idle_delay_ms())
       }
     }) %...!% (function(e) {
       greeting_future_active(FALSE)
@@ -262,7 +296,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
       if (isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
         greeting_waiting_to_play(FALSE)
-        schedule_idle_chat(FIRST_IDLE_DELAY_MS)
+        schedule_idle_chat(get_first_idle_delay_ms())
       }
     })
 
@@ -372,12 +406,18 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     if (!identical(current, page)) return()
 
     # Sayfa adını Türkçe'ye çevir
+    # AI Uzman sayfa rehberliği verebileceği tüm görünür sekmeler burada tanımlanır.
     page_name_tr <- switch(page,
       "history"               = "Söyleşi Geçmişi",
       "saved_chats"           = "Kayıtlı Söyleşiler",
       "image_gallery"         = "Görsel Galerisi",
+      "claude_code"           = "Bilge Yolaç",
       "files"                 = "Dosya Yönetimi",
       "settings_yapilandirma" = "Yapılandırma",
+      "destek_yardim"         = "Yardım Merkezi",
+      "destek_geri_bildirim"  = "Geri Bildirim ve Hata Bildirimi",
+      "destek_surum"          = "Yenilikler",
+      "destek_hakkinda"       = "Hakkında",
       NULL
     )
     if (is.null(page_name_tr)) return()
@@ -391,20 +431,32 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     # GECİKMESİZ: LLM çağrısı hemen başlar
     promises::future_promise({
       u_name <- resolve_user_name(params$user_name)
+      generation_cfg <- get_ai_expert_generation_config(
+        scenario = "page_guidance",
+        talk_length = talk_length_val,
+        talk_style = talk_style_val
+      )
+
       system_prompt <- build_ai_expert_system_prompt(
         params$char_info, scenario = "page_guidance",
         page_name = page_name_tr, user_name = u_name, is_revisit = is_revisit,
         talk_length = talk_length_val, talk_style = talk_style_val
       )
+
       user_context <- sprintf(
         "Kullanıcı '%s' sayfasına geçiş yaptı. Şimdi: %s. Bu sayfayı %s ziyaret ediyor.",
         page_name_tr, format(Sys.time(), "%d %B %Y %H:%M"),
         if (is_revisit) "tekrar" else "ilk kez"
       )
+
       call_ai_expert_llm(
-        system_prompt = system_prompt, user_context = user_context,
-        model_name = params$model_name, api_key = params$api_key,
-        endpoint = params$endpoint, max_tokens = 180
+        system_prompt = system_prompt,
+        user_context = user_context,
+        model_name = params$model_name,
+        api_key = params$api_key,
+        endpoint = params$endpoint,
+        max_tokens = generation_cfg$max_tokens,
+        temperature = generation_cfg$temperature
       )
     }) %...>% (function(guidance_text) {
       if (!is.null(guidance_text) && nzchar(guidance_text)) {
@@ -452,8 +504,13 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       "history"               = "Söyleşi Geçmişi",
       "saved_chats"           = "Kayıtlı Söyleşiler",
       "image_gallery"         = "Görsel Galerisi",
+      "claude_code"           = "Bilge Yolaç",
       "files"                 = "Dosya Yönetimi",
       "settings_yapilandirma" = "Yapılandırma",
+      "destek_yardim"         = "Yardım Merkezi",
+      "destek_geri_bildirim"  = "Geri Bildirim ve Hata Bildirimi",
+      "destek_surum"          = "Yenilikler",
+      "destek_hakkinda"       = "Hakkında",
       "Ana Söyleşi"
     )
 
@@ -471,8 +528,19 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       u_name <- resolve_user_name(params$user_name)
 
       recent_prompts <- tryCatch(
-        fetch_recent_user_prompts(current_user_id, 3),
+        fetch_recent_user_prompts(current_user_id, 5),
         error = function(e) NULL
+      )
+	  
+      user_work_context <- tryCatch(
+        fetch_user_work_context(current_user_id),
+        error = function(e) NULL
+      )
+
+      generation_cfg <- get_ai_expert_generation_config(
+        scenario = "idle_chat",
+        talk_length = talk_length_val,
+        talk_style = talk_style_val
       )
 
       system_prompt <- build_ai_expert_system_prompt(
@@ -486,6 +554,24 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         "Kullanıcı şu anda '%s' sayfasında ve bir süredir etkileşimde bulunmadı.",
         page_name_tr
       ))
+	  
+      if (is.list(user_work_context)) {
+        effective_unit <- safe_trimws(user_work_context$effective_unit %||% "")
+        department <- safe_trimws(user_work_context$department %||% "")
+        mudurluk <- safe_trimws(user_work_context$mudurluk %||% "")
+
+        if (safe_nzchar(department) && safe_nzchar(mudurluk)) {
+          context_parts <- c(context_parts, sprintf(
+            "Kullanıcının departmanı: %s. Bağlı olduğu müdürlük/direktörlük: %s. Bu bilgiyi yalnızca bağlam kurmak için kullan; kullanıcının güncel işi veya görevi hakkında varsayım üretme.",
+            department, mudurluk
+          ))
+        } else if (safe_nzchar(effective_unit)) {
+          context_parts <- c(context_parts, sprintf(
+            "Kullanıcının çalıştığı birim: %s. Bu bilgiyi yalnızca bağlam kurmak için kullan; kullanıcının güncel işi veya görevi hakkında varsayım üretme.",
+            effective_unit
+          ))
+        }
+      }
 
       # Konuşma sayacı: LLM'ye bu bilgiyi ver ki tekrar etmesin
       context_parts <- c(context_parts, sprintf(
@@ -511,9 +597,13 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       user_context <- paste(context_parts, collapse = "\n\n")
 
       call_ai_expert_llm(
-        system_prompt = system_prompt, user_context = user_context,
-        model_name = params$model_name, api_key = params$api_key,
-        endpoint = params$endpoint, max_tokens = 400
+        system_prompt = system_prompt,
+        user_context = user_context,
+        model_name = params$model_name,
+        api_key = params$api_key,
+        endpoint = params$endpoint,
+        max_tokens = generation_cfg$max_tokens,
+        temperature = generation_cfg$temperature
       )
     }) %...>% (function(idle_text) {
       if (!is.null(idle_text) && nzchar(idle_text)) {
