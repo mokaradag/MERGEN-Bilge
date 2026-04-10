@@ -203,8 +203,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
 
+    # LLM parametrelerini ana süreçte hazırla (reaktif/oturum verilerine worker'da erişilemez)
+    params <- prepare_llm_params(selected_char_id = char_id)
+
     promises::future_promise({
-      params <- prepare_llm_params(selected_char_id = char_id)
       last_login <- fetch_user_last_login(user_id)
       u_name <- resolve_user_name(params$user_name)
 
@@ -243,12 +245,22 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
           created_at = Sys.time()
         ))
 
-        ai_expert$prewarm_speaking(greeting_text, selected_char_id = char_id)
+        # TTS ön ısıtma başlat (promise döndürür)
+        prewarm_promise <- ai_expert$prewarm_speaking(greeting_text, selected_char_id = char_id)
 
-        if (isTRUE(greeting_waiting_to_play()) &&
+        # Karşılama oynatma bekleniyorsa TTS hazır olduktan sonra başlat
+        # (Hemen oynatmak yerine TTS'in bitmesini bekle, böylece ön ısıtılmış ses kullanılır)
+        should_play <- isTRUE(greeting_waiting_to_play()) &&
             identical(isolate(settings_data$selected_character) %||% "mergen", char_id) &&
-            !isTRUE(greeting_done())) {
-          play_greeting_text(greeting_text)
+            !isTRUE(greeting_done())
+
+        if (should_play) {
+          prewarm_promise %...>% (function(x) {
+            if (!isTRUE(greeting_done())) play_greeting_text(greeting_text)
+          }) %...!% (function(e) {
+            # TTS başarısız olsa bile karşılamayı başlat (yavaş yol kullanılır)
+            if (!isTRUE(greeting_done())) play_greeting_text(greeting_text)
+          })
         }
       } else if (isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
         greeting_waiting_to_play(FALSE)

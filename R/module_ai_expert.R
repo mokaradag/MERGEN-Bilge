@@ -246,14 +246,14 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 
     prewarm_speaking <- function(text, selected_char_id = NULL) {
       text <- trimws(as.character(text %||% ""))
-      if (!nzchar(text)) return(invisible(FALSE))
+      if (!nzchar(text)) return(promises::promise_resolve(FALSE))
 
       tts_available <- FALSE
       tryCatch({
         tts_available <- isTRUE(tts_processor$tts_available())
       }, error = function(e) {})
 
-      if (!tts_available) return(invisible(FALSE))
+      if (!tts_available) return(promises::promise_resolve(FALSE))
 
       char_id <- selected_char_id %||% isolate(settings_data$selected_character) %||% "mergen"
       chars_data <- get_characters_data()
@@ -266,16 +266,52 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       }
 
       cached <- get_prewarmed_tts(text, char_id, voice_sel)
-      if (!is.null(cached)) return(invisible(TRUE))
+      if (!is.null(cached)) return(promises::promise_resolve(TRUE))
 
-      chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
+      # Ön ısıtma: İlk parçayı kısa tut (~100 karakter) - hızlı TTS sentezi için
+      # Kısa ilk parça sayesinde TTS çok daha hızlı yanıt verir
+      prewarm_limit <- 100
+      first_sent_end <- regexpr("[.!?\\u2026]", text)
+      if (first_sent_end > 0 && first_sent_end <= prewarm_limit) {
+        # İlk cümle kısa, doğal kırılma noktasında böl
+        fast_first <- trimws(substr(text, 1, first_sent_end))
+        rest_text <- trimws(substr(text, first_sent_end + 1, nchar(text)))
+      } else {
+        short_window <- substr(text, 1, min(prewarm_limit, nchar(text)))
+        comma_pos <- regexpr("[,;:]", short_window)
+        if (comma_pos > 30) {
+          # Virgül/noktalı virgülde böl
+          fast_first <- trimws(substr(text, 1, comma_pos))
+          rest_text <- trimws(substr(text, comma_pos + 1, nchar(text)))
+        } else {
+          # Kelime sınırında kes
+          space_locs <- gregexpr("\\s+", short_window)[[1]]
+          cut_at <- nchar(short_window)
+          if (space_locs[1] > 0) {
+            valid <- space_locs[space_locs <= prewarm_limit]
+            if (length(valid) > 0) cut_at <- tail(valid, 1) - 1
+          }
+          fast_first <- trimws(substr(text, 1, cut_at))
+          rest_text <- trimws(substr(text, cut_at + 1, nchar(text)))
+        }
+      }
+
+      # Kalan metni normal boyutlarla parçala
+      remaining_chunks <- if (nzchar(rest_text)) {
+        split_text_for_ai_expert_tts(rest_text, max_chunk_chars = 220, min_chunk_chars = 70)
+      } else {
+        list()
+      }
+      chunks <- c(list(fast_first), remaining_chunks)
+      chunks <- Filter(function(ch) nzchar(trimws(ch)), chunks)
       if (length(chunks) == 0) chunks <- list(text)
 
       cat(sprintf(
-        "[AI_EXPERT] İlk TTS parçası ön ısıtılıyor... (karakter: %s)\n",
-        char_id
+        "[AI_EXPERT] İlk TTS parçası ön ısıtılıyor... (%d karakter, karakter: %s)\n",
+        nchar(chunks[[1]]), char_id
       ))
 
+      # TTS promise'ını döndür (çağıran taraf TTS hazır olduğunda işlem yapabilsin)
       tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
         (function(res) {
           if (isTRUE(res$success) && nzchar(res$audio_src)) {
@@ -299,8 +335,6 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         (function(e) {
           cat(sprintf("[AI_EXPERT] Ön ısıtma TTS hatası: %s\n", conditionMessage(e)))
         })
-
-      invisible(TRUE)
     }
 	
     # --- Konuşmayı başlat ---
