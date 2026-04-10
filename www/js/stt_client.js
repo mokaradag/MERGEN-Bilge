@@ -78,28 +78,61 @@ window.STT_Client = (function() {
         strands = generateStrands(40);
         particles = [];
         
-        // Start Microphone
+        // Bekleme animasyonunu hemen başlat (mikrofon erişimi beklenmeden)
+        currentMode = MODES.IDLE;
+        draw();
+
+        // Güvenli bağlam ve mediaDevices kontrolü
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.error("[STT] navigator.mediaDevices mevcut değil - güvenli bağlam (HTTPS) gereklidir");
+            updateModalStatus('error', 'Mikrofon erişimi için HTTPS bağlantı gereklidir.');
+            return;
+        }
+
+        // Mikrofonu başlat
         navigator.mediaDevices.getUserMedia({ audio: true })
             .then(audioStream => {
                 stream = audioStream;
                 startVisualizer(stream);
-                
+
                 isRecordingActive = true;
                 currentMode = MODES.LISTENING;
-                
+
                 startTime = Date.now();
                 startTimer();
                 startRecordingLoop(stream, nsPrefix);
-                
-                // Start Animation Loop
-                draw(); 
+
+                // Durumu güncelle: mikrofon bağlandı
+                updateModalStatus('recording', 'Mikrofon Açık');
             })
             .catch(err => {
-                console.error("Microphone access denied:", err);
-                alert("Mikrofona erişilemedi. Lütfen tarayıcı izinlerini kontrol edin.");
+                console.error("[STT] Mikrofon erişimi reddedildi:", err);
+                updateModalStatus('error', 'Mikrofona erişilemedi. Tarayıcı izinlerini kontrol edin.');
             });
     }
-    
+
+    // Modal durumunu güncelle (mikrofon bağlantı durumu)
+    function updateModalStatus(state, message) {
+        var statusEl = document.querySelector('.stt-status');
+        if (statusEl) {
+            statusEl.textContent = message;
+            statusEl.className = 'stt-status';
+            if (state === 'recording') {
+                statusEl.classList.add('recording');
+            } else if (state === 'paused' || state === 'error') {
+                statusEl.classList.add('paused');
+            }
+        }
+        var charStatusEl = document.querySelector('.stt-char-status');
+        if (charStatusEl) {
+            if (state === 'recording') {
+                charStatusEl.textContent = 'Dinliyorum...';
+            } else if (state === 'error') {
+                charStatusEl.textContent = 'Bağlantı Hatası';
+            }
+        }
+    }
+
     function resizeCanvas() {
         if (!canvasElement || !canvasElement.parentElement) return;
         const rect = canvasElement.parentElement.getBoundingClientRect();

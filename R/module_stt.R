@@ -94,7 +94,7 @@ sttServer <- function(id, parent_session, settings) {
 				div(
                   class = "stt-char-text",
                   div(class = "stt-char-name", style = paste0("color: ", char_info$accent, ";"), char_info$display_name),
-                  div(class = "stt-char-status", "Dinliyorum...")
+                  div(class = "stt-char-status", "Başlatılıyor...")
                 )
               ),
               # Teknik veriler
@@ -106,7 +106,7 @@ sttServer <- function(id, parent_session, settings) {
             )
           ),
           
-          div(id = ns("stt_status"), class = "stt-status recording", "Mikrofon Açık"),
+          div(id = ns("stt_status"), class = "stt-status", "Bağlanıyor..."),
           
           # --- METİN ALANI ---
           div(
