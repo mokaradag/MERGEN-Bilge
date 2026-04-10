@@ -437,6 +437,16 @@
       localStorage.setItem('mergen_settings', JSON.stringify(settings));
     } catch(e) {}
 
+    // Karşılama konuşmasını seçim videosu oynarken ön hazırla
+    if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+      Shiny.setInputValue('explore_preheat_initial_greeting', {
+        mode: 'kesif',
+        character: selectedChar,
+        source: 'welcome_character_step',
+        timestamp: Date.now()
+      }, { priority: 'event' });
+    }
+
     // Seçim videosu bittiğinde geçiş yapacak fonksiyon
     // Not: Shiny bildirimi, giriş ekranı kapandıktan sonra gönderilir.
     // Bu sayede müzik ancak geçiş tamamlandığında başlar (yarış durumu önlenir).

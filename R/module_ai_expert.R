@@ -75,6 +75,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     current_page    <- reactiveVal("chat")   # Aktif sayfa
     user_is_active  <- reactiveVal(FALSE)    # Kullanıcı mesaj gönderiyor mu
     tts_vocalizing  <- reactiveVal(FALSE)    # TTS yanıt seslendirmesi aktif mi
+    prewarmed_tts   <- reactiveVal(NULL)     # Ön ısıtılmış ilk TTS parçası
+
+    PREWARM_TTL_SECS <- 90                   # Ön ısıtma önbelleği ömrü (sn)
 
     # Bekleme süreleri (saniye) - daha hızlı ve akıcı deneyim için kısa tutuldu
     COOLDOWN_AFTER_GREETING  <- 10  # Karşılama sonrası bekleme
@@ -220,6 +223,86 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       as.list(chunks)
     }
 	
+    get_prewarmed_tts <- function(text, char_id, voice_sel) {
+      cache <- isolate(prewarmed_tts())
+      if (is.null(cache)) return(NULL)
+
+      age_secs <- tryCatch(
+        as.numeric(difftime(Sys.time(), cache$created_at, units = "secs")),
+        error = function(e) Inf
+      )
+
+      if (!is.finite(age_secs) || age_secs > PREWARM_TTL_SECS) {
+        prewarmed_tts(NULL)
+        return(NULL)
+      }
+
+      if (!identical(cache$text, text)) return(NULL)
+      if (!identical(cache$char_id, char_id)) return(NULL)
+      if (!identical(cache$voice_sel, voice_sel)) return(NULL)
+
+      cache
+    }
+
+    prewarm_speaking <- function(text, selected_char_id = NULL) {
+      text <- trimws(as.character(text %||% ""))
+      if (!nzchar(text)) return(invisible(FALSE))
+
+      tts_available <- FALSE
+      tryCatch({
+        tts_available <- isTRUE(tts_processor$tts_available())
+      }, error = function(e) {})
+
+      if (!tts_available) return(invisible(FALSE))
+
+      char_id <- selected_char_id %||% isolate(settings_data$selected_character) %||% "mergen"
+      chars_data <- get_characters_data()
+      char_info <- Find(function(x) x$id == char_id, chars_data$styles)
+
+      voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
+        char_info$tts_voice
+      } else {
+        "tr-male-1"
+      }
+
+      cached <- get_prewarmed_tts(text, char_id, voice_sel)
+      if (!is.null(cached)) return(invisible(TRUE))
+
+      chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
+      if (length(chunks) == 0) chunks <- list(text)
+
+      cat(sprintf(
+        "[AI_EXPERT] İlk TTS parçası ön ısıtılıyor... (karakter: %s)\n",
+        char_id
+      ))
+
+      tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
+        (function(res) {
+          if (isTRUE(res$success) && nzchar(res$audio_src)) {
+            prewarmed_tts(list(
+              text = text,
+              char_id = char_id,
+              voice_sel = voice_sel,
+              first_chunk_text = chunks[[1]],
+              chunks = chunks,
+              audio_src = res$audio_src,
+              duration = res$duration,
+              created_at = Sys.time()
+            ))
+
+            cat(sprintf(
+              "[AI_EXPERT] Ön ısıtılmış ilk TTS parçası hazır (Süre: %.2fs).\n",
+              res$duration
+            ))
+          }
+        }) %...!%
+        (function(e) {
+          cat(sprintf("[AI_EXPERT] Ön ısıtma TTS hatası: %s\n", conditionMessage(e)))
+        })
+
+      invisible(TRUE)
+    }
+	
     # --- Konuşmayı başlat ---
     # ÖNEMLİ: Altyazı ve ses senkronizasyonu
     # TTS hazır olana kadar altyazı başlatılmaz, böylece senkronize olurlar
@@ -247,177 +330,200 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 		tts_available <- isTRUE(tts_processor$tts_available())
 	  }, error = function(e) {})
 
-	  if (tts_available) {
-		# TTS ses tonunu karakter ayarından al
-		voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
-		  char_info$tts_voice
-		} else {
-		  "tr-male-1"
-		}
+      if (tts_available) {
+        # TTS ses tonunu karakter ayarından al
+        voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
+          char_info$tts_voice
+        } else {
+          "tr-male-1"
+        }
 
-		# İlk sesi daha hızlı başlatmak için metni kısa parçalara böl
-		chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
-		if (length(chunks) == 0) chunks <- list(text)
+        # İlk sesi daha hızlı başlatmak için metni kısa parçalara böl
+        chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
+        if (length(chunks) == 0) chunks <- list(text)
 
-		cat(sprintf(
-		  "[AI_EXPERT] TTS %d parçaya bölündü (toplam: %d karakter)...\n",
-		  length(chunks), nchar(text)
-		))
+        cat(sprintf(
+          "[AI_EXPERT] TTS %d parçaya bölündü (toplam: %d karakter)...\n",
+          length(chunks), nchar(text)
+        ))
 
-		# YARIŞ DURUMU KORUMASI: İlk parça istemciye gönderildi mi?
-		# Gönderildiyse geri dönüş (fallback) yolu tam metni tekrar tetiklememeli.
-		first_chunk_dispatched <- FALSE
+        queue_remaining_chunks <- function(start_index = 2L) {
+          total_chunks <- length(chunks)
+          if (start_index > total_chunks) return(invisible(NULL))
 
-		# İlk parçayı üret ve konuşmayı hemen başlat
-		tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
-		  (function(first_res) {
-			if (!isTRUE(is_speaking())) return()
+          queue_next_chunk <- NULL
+          queue_next_chunk <- function(idx) {
+            if (!isTRUE(is_speaking())) return(invisible(NULL))
+            if (idx > total_chunks) return(invisible(NULL))
 
-			if (isTRUE(first_res$success) && nzchar(first_res$audio_src)) {
-			  cat(sprintf(
-				"[AI_EXPERT] İlk TTS parçası hazır (Süre: %.2fs). Konuşma hemen başlatılıyor.\n",
-				first_res$duration
-			  ))
+            chunk_text <- chunks[[idx]]
 
-			  # Görselleştiriciyi aktive et
-			  tts_visualizer$trigger(duration = 0)
+            cat(sprintf(
+              "[AI_EXPERT] TTS parça %d/%d sentezleniyor (%d karakter)...\n",
+              idx, total_chunks, nchar(chunk_text)
+            ))
 
-			  # İlk parça için altyazı ve ses aynı anda başlasın
-			  session$sendCustomMessage("aiExpertStartWithAudio", list(
-				text          = chunks[[1]],
-				totalChunks   = length(chunks),
-				avatarSrc     = avatar_src,
-				accentColor   = accent_color,
-				nsPrefix      = ns(""),
-				audioSrc      = first_res$audio_src,
-				audioDuration = first_res$duration,
-				fontSize      = font_size
-			  ))
+            success_callback <- local({
+              current_idx <- idx
+              current_text <- chunk_text
 
-			  # İlk parça başarıyla istemciye iletildi: geri dönüş yolu artık devre dışı
-			  first_chunk_dispatched <<- TRUE
+              function(res) {
+                if (!isTRUE(is_speaking())) return()
 
-              # Kalan parçaları SIRALI biçimde hazırla ve kuyruğa gönder
-              # ÖNEMLİ: Bazı TTS uç noktaları paralel isteklerde kararsız çalışır.
-              # Bu nedenle ilk parçadan sonraki parçalar tek tek sentezlenir.
-              if (length(chunks) > 1) {
-                total_chunks <- length(chunks)
-
-                queue_next_chunk <- NULL
-                queue_next_chunk <- function(idx) {
-                  if (!isTRUE(is_speaking())) return(invisible(NULL))
-                  if (idx > total_chunks) return(invisible(NULL))
-
-                  chunk_text <- chunks[[idx]]
-
+                if (isTRUE(res$success) && nzchar(res$audio_src)) {
                   cat(sprintf(
-                    "[AI_EXPERT] TTS parça %d/%d sentezleniyor (%d karakter)...\n",
-                    idx, total_chunks, nchar(chunk_text)
+                    "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
+                    current_idx, total_chunks, res$duration
                   ))
 
-                  # Promise callback'lerini pipe dışında oluştur.
-                  # Böylece local() çağrısına promise nesnesi yanlışlıkla
-                  # argüman olarak enjekte edilmez.
-                  success_callback <- local({
-                    current_idx <- idx
-                    current_text <- chunk_text
-
-                    function(res) {
-                      if (!isTRUE(is_speaking())) return()
-
-                      if (isTRUE(res$success) && nzchar(res$audio_src)) {
-                        cat(sprintf(
-                          "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
-                          current_idx, total_chunks, res$duration
-                        ))
-
-                        session$sendCustomMessage("aiExpertQueueAudioChunk", list(
-                          index         = current_idx - 1L,
-                          text          = current_text,
-                          audioSrc      = res$audio_src,
-                          audioDuration = res$duration,
-                          nsPrefix      = ns("")
-                        ))
-                      } else {
-                        cat(sprintf(
-                          "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
-                          current_idx, total_chunks
-                        ))
-                      }
-
-                      if (current_idx < total_chunks) {
-                        queue_next_chunk(current_idx + 1L)
-                      }
-                    }
-                  })
-
-                  error_callback <- local({
-                    current_idx <- idx
-
-                    function(e) {
-                      cat(sprintf(
-                        "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
-                        current_idx, total_chunks, conditionMessage(e)
-                      ))
-
-                      if (isTRUE(is_speaking()) && current_idx < total_chunks) {
-                        queue_next_chunk(current_idx + 1L)
-                      }
-                    }
-                  })
-
-                  tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
-                    success_callback %...!%
-                    error_callback
+                  session$sendCustomMessage("aiExpertQueueAudioChunk", list(
+                    index         = current_idx - 1L,
+                    text          = current_text,
+                    audioSrc      = res$audio_src,
+                    audioDuration = res$duration,
+                    nsPrefix      = ns("")
+                  ))
+                } else {
+                  cat(sprintf(
+                    "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
+                    current_idx, total_chunks
+                  ))
                 }
 
-                queue_next_chunk(2L)
+                if (current_idx < total_chunks) {
+                  queue_next_chunk(current_idx + 1L)
+                }
               }
-			} else {
-			  cat("[AI_EXPERT] İlk TTS parçası başarısız, sadece altyazı gösteriliyor.\n")
+            })
 
-			  session$sendCustomMessage("aiExpertStartSubtitle", list(
-				text        = text,
-				avatarSrc   = avatar_src,
-				accentColor = accent_color,
-				nsPrefix    = ns(""),
-				fontSize    = font_size
-			  ))
+            error_callback <- local({
+              current_idx <- idx
 
-			  session$sendCustomMessage("aiExpertNoAudioFallback", list(
-				textLength = nchar(text),
-				nsPrefix   = ns("")
-			  ))
-			}
-		  }) %...!%
-		  (function(e) {
-			cat(sprintf("[AI_EXPERT] TTS hatası: %s\n", conditionMessage(e)))
-			if (!isTRUE(is_speaking())) return()
+              function(e) {
+                cat(sprintf(
+                  "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
+                  current_idx, total_chunks, conditionMessage(e)
+                ))
 
-			# YARIŞ DURUMU KORUMASI: İlk parça zaten istemciye iletildiyse
-			# (ses oynatılıyor veya az önce bitti), tam metinle altyazıyı
-			# YENİDEN BAŞLATMAK yanlış olur; mevcut parça akışı çalışmaya
-			# devam etmeli. Bu geri dönüş yalnızca henüz hiçbir parça
-			# gönderilmemişse tetiklenmelidir.
-			if (isTRUE(first_chunk_dispatched)) {
-			  cat("[AI_EXPERT] İlk parça zaten gönderilmiş; tam metin geri dönüşü atlandı.\n")
-			  return()
-			}
+                if (isTRUE(is_speaking()) && current_idx < total_chunks) {
+                  queue_next_chunk(current_idx + 1L)
+                }
+              }
+            })
 
-			session$sendCustomMessage("aiExpertStartSubtitle", list(
-			  text        = text,
-			  avatarSrc   = avatar_src,
-			  accentColor = accent_color,
-			  nsPrefix    = ns(""),
-			  fontSize    = font_size
-			))
+            tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
+              success_callback %...!%
+              error_callback
+          }
 
-			session$sendCustomMessage("aiExpertNoAudioFallback", list(
-			  textLength = nchar(text),
-			  nsPrefix   = ns("")
-			))
-		  })
-	  } else {
+          queue_next_chunk(start_index)
+        }
+
+        # YARIŞ DURUMU KORUMASI: İlk parça istemciye gönderildi mi?
+        first_chunk_dispatched <- FALSE
+
+        # Önceden hazırlanmış ilk TTS parçası varsa onu kullan
+        prewarmed <- get_prewarmed_tts(text, char_id, voice_sel)
+
+        if (!is.null(prewarmed) && nzchar(prewarmed$audio_src %||% "")) {
+          chunks <- prewarmed$chunks %||% chunks
+
+          cat(sprintf(
+            "[AI_EXPERT] Ön ısıtılmış ilk TTS parçası kullanılıyor (Süre: %.2fs).\n",
+            prewarmed$duration
+          ))
+
+          tts_visualizer$trigger(duration = 0)
+
+          session$sendCustomMessage("aiExpertStartWithAudio", list(
+            text          = prewarmed$first_chunk_text %||% chunks[[1]],
+            totalChunks   = length(chunks),
+            avatarSrc     = avatar_src,
+            accentColor   = accent_color,
+            nsPrefix      = ns(""),
+            audioSrc      = prewarmed$audio_src,
+            audioDuration = prewarmed$duration,
+            fontSize      = font_size
+          ))
+
+          first_chunk_dispatched <- TRUE
+          prewarmed_tts(NULL)
+
+          if (length(chunks) > 1) {
+            queue_remaining_chunks(2L)
+          }
+
+        } else {
+          # İlk parçayı üret ve konuşmayı hemen başlat
+          tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
+            (function(first_res) {
+              if (!isTRUE(is_speaking())) return()
+
+              if (isTRUE(first_res$success) && nzchar(first_res$audio_src)) {
+                cat(sprintf(
+                  "[AI_EXPERT] İlk TTS parçası hazır (Süre: %.2fs). Konuşma hemen başlatılıyor.\n",
+                  first_res$duration
+                ))
+
+                tts_visualizer$trigger(duration = 0)
+
+                session$sendCustomMessage("aiExpertStartWithAudio", list(
+                  text          = chunks[[1]],
+                  totalChunks   = length(chunks),
+                  avatarSrc     = avatar_src,
+                  accentColor   = accent_color,
+                  nsPrefix      = ns(""),
+                  audioSrc      = first_res$audio_src,
+                  audioDuration = first_res$duration,
+                  fontSize      = font_size
+                ))
+
+                first_chunk_dispatched <<- TRUE
+
+                if (length(chunks) > 1) {
+                  queue_remaining_chunks(2L)
+                }
+              } else {
+                cat("[AI_EXPERT] İlk TTS parçası başarısız, sadece altyazı gösteriliyor.\n")
+
+                session$sendCustomMessage("aiExpertStartSubtitle", list(
+                  text        = text,
+                  avatarSrc   = avatar_src,
+                  accentColor = accent_color,
+                  nsPrefix    = ns(""),
+                  fontSize    = font_size
+                ))
+
+                session$sendCustomMessage("aiExpertNoAudioFallback", list(
+                  textLength = nchar(text),
+                  nsPrefix   = ns("")
+                ))
+              }
+            }) %...!%
+            (function(e) {
+              cat(sprintf("[AI_EXPERT] TTS hatası: %s\n", conditionMessage(e)))
+              if (!isTRUE(is_speaking())) return()
+
+              if (isTRUE(first_chunk_dispatched)) {
+                cat("[AI_EXPERT] İlk parça zaten gönderilmiş; tam metin geri dönüşü atlandı.\n")
+                return()
+              }
+
+              session$sendCustomMessage("aiExpertStartSubtitle", list(
+                text        = text,
+                avatarSrc   = avatar_src,
+                accentColor = accent_color,
+                nsPrefix    = ns(""),
+                fontSize    = font_size
+              ))
+
+              session$sendCustomMessage("aiExpertNoAudioFallback", list(
+                textLength = nchar(text),
+                nsPrefix   = ns("")
+              ))
+            })
+        }
+      } else {
 		# TTS yoksa sadece altyazı göster, süre tahminle
 		# Görselleştiriciyi sessiz bile aktive et (animasyon göster)
 		tts_visualizer$trigger(duration = 0)
@@ -495,11 +601,12 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 
     # --- Dış erişim için fonksiyonlar ---
     return(list(
-      start_speaking    = start_speaking,
-      stop_speaking     = stop_speaking,
-      is_speaking       = is_speaking,
-      can_speak         = can_speak,
-      set_page          = function(page) {
+      start_speaking     = start_speaking,
+      prewarm_speaking   = prewarm_speaking,
+      stop_speaking      = stop_speaking,
+      is_speaking        = is_speaking,
+      can_speak          = can_speak,
+      set_page           = function(page) {
         current_page(page)
         # JS tarafına sayfa bilgisini gönder (altyazı konumu ayarı için)
         session$sendCustomMessage("aiExpertSetPage", list(page = page))
