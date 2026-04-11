@@ -24,10 +24,15 @@ MERGEN_FILES_ROOT <- normalize_utf8_path(MERGEN_FILES_ROOT,
                                          mustWork = dir.exists(MERGEN_FILES_ROOT))
 
 # Kalıcı yüklemeler dizini: ./mergen_uploads (MCP_FILES_BASE ile geçersiz kılınabilir)
+# NOT: normalize_utf8_path() yerine normalize_mcp_path() kullanılır; çünkü
+# Windows VM'lerde UNC yollarında normalizePath() ve shortPathName() çağrıları
+# Türkçe karakterleri bozar (ör. "Geliştirme" → "GeliÅŸtirme").
+# normalize_mcp_path() UNC yolları için yalnızca ayırıcı temizliği yapar,
+# UNC olmayan yollarda ise normalize_utf8_path()'e düşer.
 MERGEN_UPLOADS_DIR <- file.path(getwd(), "mergen_uploads")
 dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
-MERGEN_UPLOADS_DIR <- normalize_utf8_path(MERGEN_UPLOADS_DIR,
-                                          mustWork = dir.exists(MERGEN_UPLOADS_DIR))
+MERGEN_UPLOADS_DIR <- normalize_mcp_path(MERGEN_UPLOADS_DIR,
+                                         must_exist = dir.exists(MERGEN_UPLOADS_DIR))
 
 # MCP tabanlı kalıcı yüklemeler için temel dizin
 MERGEN_MCP_BASE_DIR <- resolve_mcp_base_dir()
