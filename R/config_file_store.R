@@ -24,10 +24,13 @@ MERGEN_FILES_ROOT <- normalize_utf8_path(MERGEN_FILES_ROOT,
                                          mustWork = dir.exists(MERGEN_FILES_ROOT))
 
 # Kalıcı yüklemeler dizini: ./mergen_uploads (MCP_FILES_BASE ile geçersiz kılınabilir)
+# NOT: normalize_utf8_path() / normalizePath() KULLANMIYORUZ.
+# Windows ağ sürücüsünde normalizePath() sürücü harfini UNC yoluna çevirirken
+# Türkçe karakterleri bozabiliyor (ör. Geliştirme -> GeliÅŸtirme).
+# Plugin sistemi (resolve_app_root) ve SQL Loader ile aynı yaklaşım: getwd() bazlı yolu doğrudan kullan.
 MERGEN_UPLOADS_DIR <- file.path(getwd(), "mergen_uploads")
 dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
-MERGEN_UPLOADS_DIR <- normalize_utf8_path(MERGEN_UPLOADS_DIR,
-                                          mustWork = dir.exists(MERGEN_UPLOADS_DIR))
+MERGEN_UPLOADS_DIR <- gsub("\\\\", "/", MERGEN_UPLOADS_DIR, fixed = TRUE)
 
 # MCP tabanlı kalıcı yüklemeler için temel dizin
 MERGEN_MCP_BASE_DIR <- resolve_mcp_base_dir()
@@ -322,11 +325,12 @@ mergen_user_upload_dir <- function(user_id) {
   if (!isTRUE(created) || !isTRUE(p_exists)) {
     fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
     fs::dir_create(fallback, recurse = TRUE)
-    fallback_exists <- tryCatch(path_exists_relaxed(fallback), error = function(e) dir.exists(fallback))
-    return(normalize_mcp_path(fallback, must_exist = isTRUE(fallback_exists)))
+    # normalize_mcp_path kullanma: Türkçe karakterleri bozabiliyor
+    return(gsub("\\\\", "/", fallback, fixed = TRUE))
   }
 
-  normalize_mcp_path(p, must_exist = isTRUE(p_exists))
+  # normalize_mcp_path kullanma: Türkçe karakterleri bozabiliyor
+  gsub("\\\\", "/", p, fixed = TRUE)
 }
 
 # İndeksteki kayıtları kullanarak dosya yoluna karşılık gelen görünen adı çözümler

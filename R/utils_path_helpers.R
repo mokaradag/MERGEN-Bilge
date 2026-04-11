@@ -115,11 +115,20 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 #      ve config_file_store.R'de çağrılır.
 resolve_mcp_base_dir <- function() {
   raw <- Sys.getenv("MCP_FILES_BASE", "")
-  if (!nzchar(raw)) {
+  mcp_belirtildi <- nzchar(raw)
+
+  if (!mcp_belirtildi) {
     raw <- MERGEN_UPLOADS_DIR
   }
 
-  base <- normalize_mcp_path(raw, must_exist = FALSE)
+  # MCP_FILES_BASE belirtildiyse normalize et; değilse getwd() bazlı yolu koru.
+  # normalize_mcp_path() içindeki normalizePath() ağ sürücüsünde
+  # Türkçe karakterleri bozabiliyor (Geliştirme -> GeliÅŸtirme).
+  if (mcp_belirtildi) {
+    base <- normalize_mcp_path(raw, must_exist = FALSE)
+  } else {
+    base <- gsub("\\\\", "/", raw, fixed = TRUE)
+  }
 
   created <- tryCatch({
     fs::dir_create(base, recurse = TRUE)
@@ -132,7 +141,8 @@ resolve_mcp_base_dir <- function() {
   )
 
   if (!isTRUE(created) || !isTRUE(base_exists)) {
-    base <- MERGEN_UPLOADS_DIR
+    # Yedek: MERGEN_UPLOADS_DIR'i doğrudan kullan (normalize etme)
+    base <- gsub("\\\\", "/", MERGEN_UPLOADS_DIR, fixed = TRUE)
     tryCatch({
       fs::dir_create(base, recurse = TRUE)
     }, error = function(e) {
@@ -140,5 +150,10 @@ resolve_mcp_base_dir <- function() {
     })
   }
 
-  normalize_mcp_path(base, must_exist = TRUE)
+  if (mcp_belirtildi) {
+    normalize_mcp_path(base, must_exist = TRUE)
+  } else {
+    # getwd() bazlı yolu koru; tekrar normalize etme
+    base
+  }
 }
