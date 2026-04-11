@@ -238,6 +238,22 @@ server <- function(input, output, session) {
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
       
   stop_generation <- reactiveVal(FALSE)
+
+  # TTS-STREAM için ayrı iptal nesli tutulur.
+  # Amaç: Kullanıcı seslendirmeyi durdurduğunda kalan parçaların
+  # istemciye gönderilmesini ve zincir halinde devam etmesini engellemek.
+  tts_stream_generation <- reactiveVal(0L)
+  session$userData$tts_stream_generation <- tts_stream_generation
+
+  observeEvent(input$tts_stop_requested, {
+    next_gen <- isolate(tts_stream_generation()) + 1L
+    tts_stream_generation(next_gen)
+    cat(sprintf(
+      "[TTS-STREAM] Kullanıcı seslendirmeyi durdurdu. Aktif akış iptal edildi (nesil=%d)\n",
+      next_gen
+    ))
+  }, ignoreInit = TRUE)
+
   file_to_add <- reactiveVal(NULL)
   session_files <- reactiveVal(list())
   active_request_id <- reactiveVal(NULL)

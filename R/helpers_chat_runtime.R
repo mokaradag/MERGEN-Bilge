@@ -231,6 +231,28 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     Find(function(x) x$id == selected_char_id, chars_data$styles)
   } else NULL
 
+  # TTS-STREAM için oturum bazlı iptal nesli.
+  # Kullanıcı "Seslendirmeyi Durdur" dediğinde bu nesil ilerletilir
+  # ve eski parçaların sonucu artık geçerli sayılmaz.
+  if (is.null(session$userData$tts_stream_generation) ||
+      !is.function(session$userData$tts_stream_generation)) {
+    session$userData$tts_stream_generation <- shiny::reactiveVal(0L)
+  }
+
+  advance_tts_stream_generation <- function() {
+    gen_rv <- session$userData$tts_stream_generation
+    next_gen <- shiny::isolate(gen_rv()) + 1L
+    gen_rv(next_gen)
+    next_gen
+  }
+
+  is_current_tts_stream_generation <- function(gen_id) {
+    gen_rv <- session$userData$tts_stream_generation
+    identical(shiny::isolate(gen_rv()), gen_id)
+  }
+
+  stream_request_gen <- advance_tts_stream_generation()
+
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
   # This function runs ONLY when we are ready to show text (after audio is ready)
   start_streaming_execution <- function(audio_result = NULL) {
@@ -245,11 +267,23 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     values$typing <- FALSE
 
+    # İlk kutunun boş görünmemesi için akışın ilk küçük bölümünü hemen göster.
+    words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
+    if (length(words) == 0) words <- c(full_response)
+
+    total_words <- length(words)
+    chunk_size <- max(1, ceiling(total_words / 100))
+    initial_seed_end <- min(chunk_size, total_words)
+    initial_seed_text <- paste(words[seq_len(initial_seed_end)], collapse = "")
+
     initial_msg <- list(
       id = msg_id,
       db_id = NULL,
-      content = "",
-      html_content = '<div class="streaming-content" data-streaming="true"></div>',
+      content = initial_seed_text,
+      html_content = sprintf(
+        '<div class="streaming-content" data-streaming="true">%s</div>',
+        htmltools::htmlEscape(initial_seed_text)
+      ),
       has_code = FALSE,
       type = "ai",
       timestamp = timestamp,
@@ -284,7 +318,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
     session$sendCustomMessage("initStreamingMessage", list(
       id = msg_id,
-      content = ""
+      content = initial_seed_text
     ))
 
     push_followup_update(session, msg_id, followups, pending = TRUE)
@@ -310,15 +344,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     }
     
     # -- 4. TEXT STREAMING LOOP --
-    words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
-    if (length(words) == 0) words <- c(full_response)
-
-    total_words <- length(words)
-    chunk_size <- max(1, ceiling(total_words / 100))
-
     streaming_state <- shiny::reactiveValues(
-      accumulated = "",
-      current_index = 1,
+      accumulated = initial_seed_text,
+      current_index = initial_seed_end + 1L,
       msg_id = msg_id
     )
 
@@ -502,10 +530,13 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
     queue_next_chunk <- NULL
     queue_next_chunk <- function(idx) {
+      if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
       if (isTRUE(stop_generation())) return(invisible(NULL))
       if (idx > total_chunks) return(invisible(NULL))
 
       current_text <- chunks[[idx]]
+
+      if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
 
       cat(sprintf(
         "[TTS-STREAM] Parça %d/%d seslendiriliyor (%d karakter)\n",
@@ -514,9 +545,12 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
       tts_engine(current_text, tts_voice) %...>%
         (function(result) {
+          if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
           if (isTRUE(stop_generation())) return(invisible(NULL))
 
           if (isTRUE(result$success) && nzchar(result$audio_src %||% "")) {
+            if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
+
             cat(sprintf(
               "[TTS-STREAM] Parça %d/%d hazır (süre: %.2fs)\n",
               idx, total_chunks, result$duration %||% 0
@@ -528,25 +562,33 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               chunkIndex = idx - 1L
             ))
           } else {
+            if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
+
             cat(sprintf(
               "[TTS-STREAM] Parça %d/%d başarısız: %s\n",
               idx, total_chunks, result$error %||% "bilinmeyen hata"
             ))
           }
 
-          if (idx < total_chunks && !isTRUE(stop_generation())) {
+          if (idx < total_chunks &&
+              !isTRUE(stop_generation()) &&
+              is_current_tts_stream_generation(stream_request_gen)) {
             queue_next_chunk(idx + 1L)
           }
 
           invisible(NULL)
         }) %...!%
         (function(err) {
+          if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
+
           cat(sprintf(
             "[TTS-STREAM] Parça %d/%d promise hatası: %s\n",
             idx, total_chunks, conditionMessage(err)
           ))
 
-          if (idx < total_chunks && !isTRUE(stop_generation())) {
+          if (idx < total_chunks &&
+              !isTRUE(stop_generation()) &&
+              is_current_tts_stream_generation(stream_request_gen)) {
             queue_next_chunk(idx + 1L)
           }
 
@@ -583,6 +625,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       promises::then(
           tts_engine(tts_chunks[[1]], tts_voice),
           onFulfilled = function(result) {
+              if (!is_current_tts_stream_generation(stream_request_gen)) {
+                start_streaming_execution(NULL)
+                return(invisible(NULL))
+              }
+
               if (isTRUE(result$success)) {
                 cat(sprintf(
                   "[TTS-STREAM] İlk parça başarılı (süre: %.2fs, karakter: %d)\n",
@@ -598,13 +645,23 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
               start_streaming_execution(result)
 
-              if (!isTRUE(stop_generation()) && length(tts_chunks) > 1) {
+              if (!isTRUE(stop_generation()) &&
+                  length(tts_chunks) > 1 &&
+                  is_current_tts_stream_generation(stream_request_gen)) {
                 queue_remaining_tts_chunks(tts_chunks, start_index = 2L)
               }
+
+              invisible(NULL)
           },
           onRejected = function(err) {
+              if (!is_current_tts_stream_generation(stream_request_gen)) {
+                start_streaming_execution(NULL)
+                return(invisible(NULL))
+              }
+
               cat(sprintf("[TTS-STREAM] İlk parça promise hatası: %s\n", conditionMessage(err)))
               start_streaming_execution(NULL)
+              invisible(NULL)
           }
       )
   } else {
