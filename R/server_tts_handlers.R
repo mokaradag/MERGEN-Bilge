@@ -28,13 +28,23 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
     identical(shiny::isolate(tts_request_generation()), gen_id)
   }
 
+  # Reaktif olmayan durdurma sayacı (promise geri çağrıları için yedek kontrol)
+  tts_stop_counter <- 0L
+
   shiny::observeEvent(input$tts_stop_requested, {
     cancelled_gen <- advance_tts_generation()
+    # Reaktif olmayan sayacı da güncelle
+    tts_stop_counter <<- cancelled_gen
     cat(sprintf(
       "[TTS] Kullanıcı seslendirmeyi durdurdu. Bekleyen parçalar iptal edildi (nesil=%d)\n",
       cancelled_gen
     ))
   }, ignoreInit = TRUE)
+
+  # Promise geri çağrılarında reaktif olmayan durdurma kontrolü
+  is_tts_stopped_nr <- function(gen_id) {
+    tts_stop_counter >= gen_id
+  }
 
   tts_unavailable_reason <- function() {
     if (!isTRUE(shiny::isolate(settings_data$enable_tts_audio))) {
@@ -206,10 +216,18 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
     }
 
     request_gen <- advance_tts_generation()
+    # Reaktif olmayan sayacı senkronize et
+    tts_stop_counter <<- request_gen - 1L
+
+    # Birleşik durdurma kontrolü: hem reaktif hem reaktif olmayan bayraklar
+    is_chunk_cancelled <- function() {
+      isTRUE(is_tts_stopped_nr(request_gen)) ||
+        !is_current_tts_generation(request_gen) ||
+        isTRUE(stop_generation())
+    }
 
     send_chunk <- function(res, idx) {
-      if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
-      if (isTRUE(stop_generation())) return(invisible(NULL))
+      if (is_chunk_cancelled()) return(invisible(NULL))
 
       if (isTRUE(res$success) && nzchar(res$audio_src)) {
         cat(sprintf("[TTS] Parça %d gönderiliyor (Süre: %.2fs)\n", idx, res$duration))
@@ -238,8 +256,10 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
 
     play_next_chunk <- NULL
     play_next_chunk <- function(i) {
-      if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
-      if (isTRUE(stop_generation())) return(invisible(NULL))
+      if (is_chunk_cancelled()) {
+        cat(sprintf("[TTS] Parça %d/%d iptal edildi (durdurma algılandı)\n", i, length(chunks)))
+        return(invisible(NULL))
+      }
       if (i > length(chunks)) return(invisible(NULL))
 
       chunk_text <- chunks[[i]]
@@ -252,23 +272,27 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
 
       tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
         (function(res) {
-          if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
-          if (isTRUE(stop_generation())) return(invisible(NULL))
+          # Promise çözümlendiğinde durdurma durumunu tekrar kontrol et
+          if (is_chunk_cancelled()) {
+            cat(sprintf("[TTS] Parça %d/%d tamamlandı ama durdurma algılandı, gönderilmiyor\n", i, length(chunks)))
+            return(invisible(NULL))
+          }
 
           send_chunk(res, chunk_idx)
 
-          if (is_current_tts_generation(request_gen) && !isTRUE(stop_generation())) {
+          # Sonraki parçaya geçmeden önce son bir durdurma kontrolü
+          if (!is_chunk_cancelled()) {
             play_next_chunk(i + 1L)
           }
 
           invisible(NULL)
         }) %...!%
         (function(e) {
-          if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
+          if (is_chunk_cancelled()) return(invisible(NULL))
 
           cat(sprintf("[TTS] Parça %d hatası: %s\n", chunk_idx, conditionMessage(e)))
 
-          if (is_current_tts_generation(request_gen) && !isTRUE(stop_generation())) {
+          if (!is_chunk_cancelled()) {
             play_next_chunk(i + 1L)
           }
 

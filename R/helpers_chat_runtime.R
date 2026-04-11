@@ -253,6 +253,16 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
   stream_request_gen <- advance_tts_stream_generation()
 
+  # Reaktif olmayan (non-reactive) durdurma sayacını senkronize et.
+  # Bu sayaç, promise geri çağrılarında shiny::isolate() olmadan
+  # doğrudan okunarak durdurma sinyalinin anında algılanmasını sağlar.
+  session$userData$tts_stop_counter <- stream_request_gen
+
+  # Reaktif olmayan durdurma kontrolü - promise geri çağrılarında kullanılır
+  is_tts_stopped_nonreactive <- function() {
+    (session$userData$tts_stop_counter %||% 0L) > stream_request_gen
+  }
+
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
   # This function runs ONLY when we are ready to show text (after audio is ready)
   start_streaming_execution <- function(audio_result = NULL) {
@@ -528,15 +538,27 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     total_chunks <- length(chunks)
     if (start_index > total_chunks) return(invisible(NULL))
 
+    # Birleşik durdurma kontrolü: hem reaktif hem reaktif olmayan bayrakları kontrol et
+    is_tts_cancelled <- function() {
+      isTRUE(is_tts_stopped_nonreactive()) ||
+        !is_current_tts_stream_generation(stream_request_gen) ||
+        isTRUE(stop_generation())
+    }
+
     queue_next_chunk <- NULL
     queue_next_chunk <- function(idx) {
-      if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
-      if (isTRUE(stop_generation())) return(invisible(NULL))
+      if (is_tts_cancelled()) {
+        cat(sprintf("[TTS-STREAM] Parça %d/%d iptal edildi (durdurma algılandı)\n", idx, total_chunks))
+        return(invisible(NULL))
+      }
       if (idx > total_chunks) return(invisible(NULL))
 
       current_text <- chunks[[idx]]
 
-      if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
+      if (is_tts_cancelled()) {
+        cat(sprintf("[TTS-STREAM] Parça %d/%d iptal edildi (durdurma algılandı)\n", idx, total_chunks))
+        return(invisible(NULL))
+      }
 
       cat(sprintf(
         "[TTS-STREAM] Parça %d/%d seslendiriliyor (%d karakter)\n",
@@ -545,12 +567,13 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
       tts_engine(current_text, tts_voice) %...>%
         (function(result) {
-          if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
-          if (isTRUE(stop_generation())) return(invisible(NULL))
+          # Promise çözümlendiğinde durdurma durumunu tekrar kontrol et
+          if (is_tts_cancelled()) {
+            cat(sprintf("[TTS-STREAM] Parça %d/%d tamamlandı ama durdurma algılandı, gönderilmiyor\n", idx, total_chunks))
+            return(invisible(NULL))
+          }
 
           if (isTRUE(result$success) && nzchar(result$audio_src %||% "")) {
-            if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
-
             cat(sprintf(
               "[TTS-STREAM] Parça %d/%d hazır (süre: %.2fs)\n",
               idx, total_chunks, result$duration %||% 0
@@ -562,33 +585,28 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               chunkIndex = idx - 1L
             ))
           } else {
-            if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
-
             cat(sprintf(
               "[TTS-STREAM] Parça %d/%d başarısız: %s\n",
               idx, total_chunks, result$error %||% "bilinmeyen hata"
             ))
           }
 
-          if (idx < total_chunks &&
-              !isTRUE(stop_generation()) &&
-              is_current_tts_stream_generation(stream_request_gen)) {
+          # Sonraki parçayı kuyruklamadan önce son bir durdurma kontrolü
+          if (idx < total_chunks && !is_tts_cancelled()) {
             queue_next_chunk(idx + 1L)
           }
 
           invisible(NULL)
         }) %...!%
         (function(err) {
-          if (!is_current_tts_stream_generation(stream_request_gen)) return(invisible(NULL))
+          if (is_tts_cancelled()) return(invisible(NULL))
 
           cat(sprintf(
             "[TTS-STREAM] Parça %d/%d promise hatası: %s\n",
             idx, total_chunks, conditionMessage(err)
           ))
 
-          if (idx < total_chunks &&
-              !isTRUE(stop_generation()) &&
-              is_current_tts_stream_generation(stream_request_gen)) {
+          if (idx < total_chunks && !is_tts_cancelled()) {
             queue_next_chunk(idx + 1L)
           }
 
@@ -625,7 +643,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       promises::then(
           tts_engine(tts_chunks[[1]], tts_voice),
           onFulfilled = function(result) {
-              if (!is_current_tts_stream_generation(stream_request_gen)) {
+              if (isTRUE(is_tts_stopped_nonreactive()) ||
+                  !is_current_tts_stream_generation(stream_request_gen)) {
                 start_streaming_execution(NULL)
                 return(invisible(NULL))
               }
@@ -646,6 +665,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               start_streaming_execution(result)
 
               if (!isTRUE(stop_generation()) &&
+                  !isTRUE(is_tts_stopped_nonreactive()) &&
                   length(tts_chunks) > 1 &&
                   is_current_tts_stream_generation(stream_request_gen)) {
                 queue_remaining_tts_chunks(tts_chunks, start_index = 2L)
@@ -654,7 +674,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               invisible(NULL)
           },
           onRejected = function(err) {
-              if (!is_current_tts_stream_generation(stream_request_gen)) {
+              if (isTRUE(is_tts_stopped_nonreactive()) ||
+                  !is_current_tts_stream_generation(stream_request_gen)) {
                 start_streaming_execution(NULL)
                 return(invisible(NULL))
               }

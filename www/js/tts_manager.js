@@ -8,7 +8,15 @@ $(document).ready(function() {
     queue: [],
     isPlaying: false,
     currentAudio: null,
+    // Durdurulan mesajın kimliği - bu mesaja ait yeni parçalar reddedilir
+    stoppedForId: null,
     stop: function() {
+      // Şu an çalan veya kuyruktaki mesajın kimliğini kaydet
+      if (this.currentAudio && this.currentAudio._ttsMessageId) {
+        this.stoppedForId = this.currentAudio._ttsMessageId;
+      } else if (this.queue.length > 0) {
+        this.stoppedForId = this.queue[0].id;
+      }
       if (this.currentAudio) {
         this.currentAudio.pause();
         this.currentAudio.currentTime = 0;
@@ -31,6 +39,17 @@ $(document).ready(function() {
 
   Shiny.addCustomMessageHandler('playAudioMessage', function(message) {
     if (!message || !message.src) return;
+
+    // Durdurulan mesaja ait yeni parçaları reddet
+    if (window.mergenTTS.stoppedForId && message.id === window.mergenTTS.stoppedForId) {
+      console.log("[MERGEN TTS] Durdurulan mesaja ait parça reddedildi:", message.chunkIndex);
+      return;
+    }
+
+    // Yeni bir mesaj başlıyorsa (ilk parça), önceki durdurma bayrağını sıfırla
+    if (message.chunkIndex === 0) {
+      window.mergenTTS.stoppedForId = null;
+    }
 
     // Kuyruğa indeks ile ekle
     window.mergenTTS.queue.push({
@@ -58,6 +77,8 @@ $(document).ready(function() {
     try {
       window.mergenTTS.currentAudio = new Audio(item.src);
       const audio = window.mergenTTS.currentAudio;
+      // Mesaj kimliğini ses nesnesine bağla (durdurma sırasında kullanılır)
+      audio._ttsMessageId = item.id;
       audio.volume = 1.0;
 
 		audio.onplay = function() {
