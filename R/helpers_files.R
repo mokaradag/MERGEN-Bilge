@@ -102,7 +102,9 @@ copy_to_mcp_base <- function(upload, user_id) {
     }
   }
   if (!nzchar(base)) {
-    base <- normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
+    # normalizePath() Windows UNC yollarında Türkçe karakterleri bozar;
+    # config_file_store.R'de güvenli şekilde başlatılan MERGEN_UPLOADS_DIR kullanılır.
+    base <- MERGEN_UPLOADS_DIR
   }
 
   # Use safe local normalization

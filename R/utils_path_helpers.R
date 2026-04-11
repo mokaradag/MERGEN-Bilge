@@ -81,13 +81,19 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
 # --- MCP YOL NORMALİZASYONU ---
 # UNC, Windows ve Linux yollarını tutarlı biçime dönüştürür.
 # Baştaki tekrar eden dizin parçalarını temizler.
+# ÖNEMLİ: UNC dalında regex (grepl/sub) kullanılmaz; çünkü R'nin regex
+# motoru Windows'ta encoding dönüşümü tetikleyerek Türkçe karakterleri
+# bozabilir (ör. "Geliştirme" → "GeliÅŸtirme"). Bunun yerine yalnızca
+# substr/substring ve fixed=TRUE işlemleri kullanılır.
 normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   if (is.null(candidate) || !nzchar(candidate)) return(candidate)
 
+  # Baştaki tekrarlanan dizin çiftlerini temizle (encoding güvenli)
   dedupe_leading_pair <- function(p) {
     if (!nzchar(p)) return(p)
-    slashes <- sub("^(//)", "", p)
-    parts <- strsplit(slashes, "/", fixed = TRUE)[[1]]
+    # Baştaki // kısmını atla (substring encoding korur, regex kullanmaz)
+    govde <- substring(p, 3)
+    parts <- strsplit(govde, "/", fixed = TRUE)[[1]]
     if (length(parts) >= 4 && identical(parts[1:2], parts[3:4])) {
       return(paste0("//", paste(c(parts[1:2], parts[-(1:4)]), collapse = "/")))
     }
@@ -95,12 +101,32 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   }
 
   candidate <- as.character(candidate)
+  # Ters eğik çizgileri düz eğik çizgiye dönüştür (byte düzeyinde, encoding güvenli)
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
-  # UNC yolları: tek veya çift eğik çizgiyle başlayan ağ yollarını yakala
-  maybe_unc <- grepl("^/{1,2}[^/]+/[^/]+", candidate)
+  # UNC yol tespiti: regex yerine substr() kullanılır (encoding bozulması engellenir)
+  n <- nchar(candidate)
+  maybe_unc <- FALSE
+  if (n >= 4L) {
+    c1 <- substr(candidate, 1, 1)
+    c2 <- substr(candidate, 2, 2)
+    c3 <- substr(candidate, 3, 3)
+    if (c1 == "/" && c2 == "/" && c3 != "/") {
+      # //sunucu/paylasim formatı
+      maybe_unc <- grepl("/", substring(candidate, 3), fixed = TRUE)
+    } else if (c1 == "/" && c2 != "/") {
+      # /sunucu/paylasim formatı (tek eğik çizgiyle başlayan UNC benzeri)
+      maybe_unc <- grepl("/", substring(candidate, 2), fixed = TRUE)
+    }
+  }
+
   if (maybe_unc) {
-    cleaned <- paste0("//", sub("^/+", "", candidate))
+    # Baştaki eğik çizgileri atla, sonra // ekle (encoding güvenli, regex yok)
+    pos <- 1L
+    while (pos <= n && substr(candidate, pos, pos) == "/") {
+      pos <- pos + 1L
+    }
+    cleaned <- paste0("//", substring(candidate, pos))
     cleaned <- dedupe_leading_pair(cleaned)
     return(cleaned)
   }

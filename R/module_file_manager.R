@@ -394,11 +394,11 @@ fileManagerServer <- function(
   
   # --- NEW: persistent storage helpers -----------------------------------------
   get_user_upload_dir <- function() {
+    # normalizePath() Windows UNC yollarında Türkçe karakterleri bozar;
+    # config_file_store.R'de güvenli şekilde başlatılan MERGEN_UPLOADS_DIR kullanılır.
     base <- getOption(
       "mergen.mcp_base_dir",
-      Sys.getenv("MCP_FILES_BASE",
-                 normalizePath(file.path(getwd(), "mergen_uploads"),
-                               winslash = "/", mustWork = FALSE))
+      Sys.getenv("MCP_FILES_BASE", MERGEN_UPLOADS_DIR)
     )
     file.path(base, sprintf("user_%s", module_user_id_chr()))
   }
