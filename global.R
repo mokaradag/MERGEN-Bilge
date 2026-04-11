@@ -19,6 +19,13 @@ options(
 # Future paketinin RNG (rastgele sayı üretimi) hatalarını yoksay
 options(future.rng.onMisuse = "ignore")
 
+# TTS ve diğer asenkron görevlerin ana süreci bloke etmemesi için
+# çoklu oturum (multisession) planını etkinleştir.
+# Varsayılan plan(sequential) tüm future çağrılarını ana süreçte çalıştırır
+# ve Shiny olay döngüsünü bloke eder; bu da TTS durdurma sinyallerinin
+# işlenememesine neden olur.
+future::plan(future::multisession)
+
 # Yerel ayarları İngilizce UTF-8 olarak ayarlamayı dene (hataları gizle)
 try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
 

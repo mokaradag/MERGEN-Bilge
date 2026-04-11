@@ -245,9 +245,20 @@ server <- function(input, output, session) {
   tts_stream_generation <- reactiveVal(0L)
   session$userData$tts_stream_generation <- tts_stream_generation
 
+  # Reaktif olmayan (non-reactive) TTS durdurma sayacı.
+  # Promise geri çağrıları (callback) reaktif değişiklikleri hemen göremeyebilir
+  # çünkü Shiny olay döngüsünde girdi işleme ve promise çözümleme sırası
+  # garantili değildir. Bu düz sayaç, promise geri çağrılarından
+  # isolate() olmadan doğrudan okunabilir.
+  session$userData$tts_stop_counter <- 0L
+
   observeEvent(input$tts_stop_requested, {
     next_gen <- isolate(tts_stream_generation()) + 1L
     tts_stream_generation(next_gen)
+
+    # Reaktif olmayan sayacı da güncelle (promise geri çağrıları için)
+    session$userData$tts_stop_counter <- next_gen
+
     cat(sprintf(
       "[TTS-STREAM] Kullanıcı seslendirmeyi durdurdu. Aktif akış iptal edildi (nesil=%d)\n",
       next_gen
