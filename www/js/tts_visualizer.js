@@ -291,17 +291,22 @@ $(document).ready(function() {
         // 1. Görselleri sıfırla
         this.setIdle();
 
-        // 2. Ana TTS motorunu durdur
+        // 2. Sunucuya manuel durdurma sinyali gönder
+        try {
+          Shiny.setInputValue('tts_stop_requested', Date.now(), { priority: 'event' });
+        } catch (e) {}
+
+        // 3. Ana TTS motorunu durdur
         if (window.mergenTTS && typeof window.mergenTTS.stop === 'function') {
             window.mergenTTS.stop();
         }
 
-        // 3. AI Uzman konuşmasını da durdur (varsa)
+        // 4. AI Uzman konuşmasını da durdur (varsa)
         if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) {
             window.AIExpertManager.stopSubtitle({});
         }
 
-        // 4. Mevcut tüm ses elemanlarını zorla durdur
+        // 5. Mevcut tüm ses elemanlarını zorla durdur
         $('audio').each(function() {
             try {
                 this.pause();

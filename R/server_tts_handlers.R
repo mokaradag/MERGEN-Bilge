@@ -12,9 +12,29 @@
 #' @param tts_visualizer TTS görselleştirici modülü
 #' @param stop_generation Durdurma sinyali reactiveVal
 #' @return TTS fonksiyonlarını içeren liste
-ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_visualizer, stop_generation) {
+ttsHandlersInit <- function(input, session, values, settings_data, tts_processor, tts_visualizer, stop_generation) {
 
   tts_warning_shown <- shiny::reactiveVal(FALSE)
+
+  tts_request_generation <- shiny::reactiveVal(0L)
+
+  advance_tts_generation <- function() {
+    next_gen <- shiny::isolate(tts_request_generation()) + 1L
+    tts_request_generation(next_gen)
+    next_gen
+  }
+
+  is_current_tts_generation <- function(gen_id) {
+    identical(shiny::isolate(tts_request_generation()), gen_id)
+  }
+
+  shiny::observeEvent(input$tts_stop_requested, {
+    cancelled_gen <- advance_tts_generation()
+    cat(sprintf(
+      "[TTS] Kullanıcı seslendirmeyi durdurdu. Bekleyen parçalar iptal edildi (nesil=%d)\n",
+      cancelled_gen
+    ))
+  }, ignoreInit = TRUE)
 
   tts_unavailable_reason <- function() {
     if (!isTRUE(shiny::isolate(settings_data$enable_tts_audio))) {
@@ -80,59 +100,91 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
   }
 
   # Uzun metni cümle sınırlarında parçalara bölen yardımcı fonksiyon
-  split_text_into_chunks <- function(text, max_chunk_chars = 800) {
+  split_text_into_chunks <- function(text, max_chunk_chars = 350, min_chunk_chars = 120) {
+    text <- trimws(as.character(text %||% ""))
+    if (!nzchar(text)) return(list())
     if (nchar(text) <= max_chunk_chars) return(list(text))
 
-    chunks <- list()
-    remaining <- text
+    sentence_candidates <- unlist(strsplit(text, "(?<=[.!?…])\\s+", perl = TRUE))
+    sentence_candidates <- trimws(sentence_candidates)
+    sentence_candidates <- sentence_candidates[nzchar(sentence_candidates)]
 
-    while (nzchar(remaining)) {
-      if (nchar(remaining) <= max_chunk_chars) {
-        chunks <- c(chunks, list(remaining))
-        break
+    if (length(sentence_candidates) == 0) {
+      sentence_candidates <- text
+    }
+
+    split_long_piece <- function(piece) {
+      piece <- trimws(piece)
+      if (!nzchar(piece)) return(character(0))
+      if (nchar(piece) <= max_chunk_chars) return(piece)
+
+      comma_parts <- unlist(strsplit(piece, "(?<=[,;:])\\s+", perl = TRUE))
+      comma_parts <- trimws(comma_parts)
+      comma_parts <- comma_parts[nzchar(comma_parts)]
+
+      if (length(comma_parts) <= 1) {
+        words <- unlist(strsplit(piece, "\\s+"))
+        out <- character(0)
+        current <- ""
+
+        for (w in words) {
+          candidate <- trimws(paste(current, w))
+          if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
+            current <- candidate
+          } else {
+            out <- c(out, current)
+            current <- w
+          }
+        }
+
+        if (nzchar(current)) out <- c(out, current)
+        return(out)
       }
 
-      # max_chunk_chars sınırı içinde son cümle sonu bul
-      search_window <- substr(remaining, 1, max_chunk_chars)
+      out <- character(0)
+      current <- ""
 
-      # Öncelik 1: Cümle sonu noktalama (.!?)
-      split_pos <- -1
-      punct_positions <- gregexpr("[.!?](?=\\s|$)", search_window, perl = TRUE)[[1]]
-      if (punct_positions[1] > 0) {
-        # En son cümle sonunu tercih et
-        split_pos <- tail(punct_positions, 1)
-      }
-
-      # Öncelik 2: Virgül, noktalı virgül, iki nokta
-      if (split_pos < 10) {
-        secondary_punct <- gregexpr("[,;:](?=\\s)", search_window, perl = TRUE)[[1]]
-        if (secondary_punct[1] > 0) {
-          split_pos <- tail(secondary_punct, 1)
+      for (part in comma_parts) {
+        candidate <- trimws(paste(current, part))
+        if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
+          current <- candidate
+        } else {
+          out <- c(out, split_long_piece(current))
+          current <- part
         }
       }
 
-      # Öncelik 3: Kelime sınırı (boşluk)
-      if (split_pos < 10) {
-        spaces <- gregexpr("\\s", search_window)[[1]]
-        if (spaces[1] > 0) {
-          split_pos <- tail(spaces, 1)
+      if (nzchar(current)) out <- c(out, split_long_piece(current))
+      out
+    }
+
+    chunks <- character(0)
+    current <- ""
+
+    for (sentence in sentence_candidates) {
+      sentence_parts <- split_long_piece(sentence)
+
+      for (part in sentence_parts) {
+        candidate <- trimws(paste(current, part))
+        if (!nzchar(current)) {
+          current <- part
+        } else if (nchar(candidate) <= max_chunk_chars) {
+          current <- candidate
+        } else if (nchar(current) < min_chunk_chars) {
+          current <- candidate
+        } else {
+          chunks <- c(chunks, current)
+          current <- part
         }
-      }
-
-      # Hiçbir bölünme noktası bulunamazsa zorla böl
-      if (split_pos < 1) {
-        split_pos <- max_chunk_chars
-      }
-
-      chunk <- trimws(substr(remaining, 1, split_pos))
-      remaining <- trimws(substr(remaining, split_pos + 1, nchar(remaining)))
-
-      if (nzchar(chunk)) {
-        chunks <- c(chunks, list(chunk))
       }
     }
 
-    chunks
+    if (nzchar(current)) chunks <- c(chunks, current)
+
+    chunks <- trimws(chunks)
+    chunks <- chunks[nzchar(chunks)]
+
+    as.list(chunks)
   }
 
   trigger_tts_for_message <- function(msg_id, content) {
@@ -146,14 +198,18 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     character_data <- if (!is.null(chars_data)) {
       Find(function(x) x$id == selected_char_id, chars_data$styles)
     } else NULL
+
     voice_sel <- if (!is.null(character_data) && !is.null(character_data$tts_voice)) {
       character_data$tts_voice
     } else {
       "tr-male-1"
     }
 
+    request_gen <- advance_tts_generation()
+
     send_chunk <- function(res, idx) {
-      if (isTRUE(stop_generation())) return()
+      if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
+      if (isTRUE(stop_generation())) return(invisible(NULL))
 
       if (isTRUE(res$success) && nzchar(res$audio_src)) {
         cat(sprintf("[TTS] Parça %d gönderiliyor (Süre: %.2fs)\n", idx, res$duration))
@@ -166,26 +222,63 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
           chunkIndex = idx,
           timestamp = as.numeric(Sys.time())
         ))
+      } else {
+        cat(sprintf("[TTS] Parça %d başarısız oldu, atlanıyor.\n", idx))
       }
+
+      invisible(NULL)
     }
 
-    # Metni parçalara böl (uzun metinler için çoklu parça desteği)
-    chunks <- split_text_into_chunks(full_text, max_chunk_chars = 800)
-    cat(sprintf("[TTS] Metin %d parçaya bölündü (toplam: %d karakter)\n", length(chunks), nchar(full_text)))
+    chunks <- split_text_into_chunks(full_text, max_chunk_chars = 350, min_chunk_chars = 120)
 
-    # Her parça için TTS isteği oluştur
-    for (i in seq_along(chunks)) {
+    cat(sprintf(
+      "[TTS] Metin %d parçaya bölündü (toplam: %d karakter, nesil=%d)\n",
+      length(chunks), nchar(full_text), request_gen
+    ))
+
+    play_next_chunk <- NULL
+    play_next_chunk <- function(i) {
+      if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
+      if (isTRUE(stop_generation())) return(invisible(NULL))
+      if (i > length(chunks)) return(invisible(NULL))
+
       chunk_text <- chunks[[i]]
       chunk_idx <- i - 1L
-      local({
-        idx <- chunk_idx
-        current_text <- chunk_text
 
-        tts_processor$synthesize_speech(current_text, voice = voice_sel) %...>%
-          (function(res) send_chunk(res, idx)) %...!%
-          (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
-      })
+      cat(sprintf(
+        "[TTS] Parça %d/%d sentezleniyor (%d karakter)\n",
+        i, length(chunks), nchar(chunk_text)
+      ))
+
+      tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
+        (function(res) {
+          if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
+          if (isTRUE(stop_generation())) return(invisible(NULL))
+
+          send_chunk(res, chunk_idx)
+
+          if (is_current_tts_generation(request_gen) && !isTRUE(stop_generation())) {
+            play_next_chunk(i + 1L)
+          }
+
+          invisible(NULL)
+        }) %...!%
+        (function(e) {
+          if (!is_current_tts_generation(request_gen)) return(invisible(NULL))
+
+          cat(sprintf("[TTS] Parça %d hatası: %s\n", chunk_idx, conditionMessage(e)))
+
+          if (is_current_tts_generation(request_gen) && !isTRUE(stop_generation())) {
+            play_next_chunk(i + 1L)
+          }
+
+          invisible(NULL)
+        })
+
+      invisible(NULL)
     }
+
+    play_next_chunk(1L)
 
     invisible(NULL)
   }

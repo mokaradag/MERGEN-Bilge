@@ -407,25 +407,203 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     })
   }
 
+   # Uzun TTS metnini küçük parçalara böl
+  split_text_for_stream_tts <- function(text, max_chunk_chars = 350, min_chunk_chars = 120) {
+    text <- trimws(as.character(text %||% ""))
+    if (!nzchar(text)) return(list())
+    if (nchar(text) <= max_chunk_chars) return(list(text))
+
+    sentence_candidates <- unlist(strsplit(text, "(?<=[.!?…])\\s+", perl = TRUE))
+    sentence_candidates <- trimws(sentence_candidates)
+    sentence_candidates <- sentence_candidates[nzchar(sentence_candidates)]
+
+    if (length(sentence_candidates) == 0) {
+      sentence_candidates <- text
+    }
+
+    split_long_piece <- function(piece) {
+      piece <- trimws(piece)
+      if (!nzchar(piece)) return(character(0))
+      if (nchar(piece) <= max_chunk_chars) return(piece)
+
+      comma_parts <- unlist(strsplit(piece, "(?<=[,;:])\\s+", perl = TRUE))
+      comma_parts <- trimws(comma_parts)
+      comma_parts <- comma_parts[nzchar(comma_parts)]
+
+      if (length(comma_parts) <= 1) {
+        words <- unlist(strsplit(piece, "\\s+"))
+        out <- character(0)
+        current <- ""
+
+        for (w in words) {
+          candidate <- trimws(paste(current, w))
+          if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
+            current <- candidate
+          } else {
+            out <- c(out, current)
+            current <- w
+          }
+        }
+
+        if (nzchar(current)) out <- c(out, current)
+        return(out)
+      }
+
+      out <- character(0)
+      current <- ""
+
+      for (part in comma_parts) {
+        candidate <- trimws(paste(current, part))
+        if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
+          current <- candidate
+        } else {
+          out <- c(out, split_long_piece(current))
+          current <- part
+        }
+      }
+
+      if (nzchar(current)) out <- c(out, split_long_piece(current))
+      out
+    }
+
+    chunks <- character(0)
+    current <- ""
+
+    for (sentence in sentence_candidates) {
+      sentence_parts <- split_long_piece(sentence)
+
+      for (part in sentence_parts) {
+        candidate <- trimws(paste(current, part))
+        if (!nzchar(current)) {
+          current <- part
+        } else if (nchar(candidate) <= max_chunk_chars) {
+          current <- candidate
+        } else if (nchar(current) < min_chunk_chars) {
+          current <- candidate
+        } else {
+          chunks <- c(chunks, current)
+          current <- part
+        }
+      }
+    }
+
+    if (nzchar(current)) chunks <- c(chunks, current)
+
+    chunks <- trimws(chunks)
+    chunks <- chunks[nzchar(chunks)]
+
+    as.list(chunks)
+  }
+
+  # İlk TTS parçasından sonra kalan parçaları sırayla kuyrukla
+  queue_remaining_tts_chunks <- function(chunks, start_index = 2L) {
+    total_chunks <- length(chunks)
+    if (start_index > total_chunks) return(invisible(NULL))
+
+    queue_next_chunk <- NULL
+    queue_next_chunk <- function(idx) {
+      if (isTRUE(stop_generation())) return(invisible(NULL))
+      if (idx > total_chunks) return(invisible(NULL))
+
+      current_text <- chunks[[idx]]
+
+      cat(sprintf(
+        "[TTS-STREAM] Parça %d/%d seslendiriliyor (%d karakter)\n",
+        idx, total_chunks, nchar(current_text)
+      ))
+
+      tts_engine(current_text, tts_voice) %...>%
+        (function(result) {
+          if (isTRUE(stop_generation())) return(invisible(NULL))
+
+          if (isTRUE(result$success) && nzchar(result$audio_src %||% "")) {
+            cat(sprintf(
+              "[TTS-STREAM] Parça %d/%d hazır (süre: %.2fs)\n",
+              idx, total_chunks, result$duration %||% 0
+            ))
+
+            session$sendCustomMessage("playAudioMessage", list(
+              id = msg_id,
+              src = result$audio_src,
+              chunkIndex = idx - 1L
+            ))
+          } else {
+            cat(sprintf(
+              "[TTS-STREAM] Parça %d/%d başarısız: %s\n",
+              idx, total_chunks, result$error %||% "bilinmeyen hata"
+            ))
+          }
+
+          if (idx < total_chunks && !isTRUE(stop_generation())) {
+            queue_next_chunk(idx + 1L)
+          }
+
+          invisible(NULL)
+        }) %...!%
+        (function(err) {
+          cat(sprintf(
+            "[TTS-STREAM] Parça %d/%d promise hatası: %s\n",
+            idx, total_chunks, conditionMessage(err)
+          ))
+
+          if (idx < total_chunks && !isTRUE(stop_generation())) {
+            queue_next_chunk(idx + 1L)
+          }
+
+          invisible(NULL)
+        })
+
+      invisible(NULL)
+    }
+
+    queue_next_chunk(start_index)
+    invisible(NULL)
+  } 
+
   # -- 5. KARAR: TTS BEKLENSİN Mİ? --
   if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(full_response)) {
-      cat(sprintf("[TTS-STREAM] Seslendirme başlatılıyor (ses: %s, metin: %d karakter)\n",
-                  tts_voice %||% "varsayılan", nchar(full_response)))
-      # "Düşünüyor" animasyonu TTS hazır olana kadar görünür kalır
+      tts_chunks <- split_text_for_stream_tts(
+        full_response,
+        max_chunk_chars = 350,
+        min_chunk_chars = 120
+      )
+
+      if (length(tts_chunks) == 0) {
+        tts_chunks <- list(full_response)
+      }
+
+      cat(sprintf(
+        "[TTS-STREAM] Seslendirme başlatılıyor (ses: %s, toplam metin: %d karakter, parça sayısı: %d)\n",
+        tts_voice %||% "varsayılan",
+        nchar(full_response),
+        length(tts_chunks)
+      ))
+
+      # Yalnızca ilk parçayı bekle; metin akışı onunla birlikte başlasın
       promises::then(
-          tts_engine(full_response, tts_voice),
+          tts_engine(tts_chunks[[1]], tts_voice),
           onFulfilled = function(result) {
-              # TTS tamamlandı -> Metin akışı ve ses birlikte başlasın
               if (isTRUE(result$success)) {
-                cat(sprintf("[TTS-STREAM] Seslendirme başarılı (süre: %.2fs)\n", result$duration %||% 0))
+                cat(sprintf(
+                  "[TTS-STREAM] İlk parça başarılı (süre: %.2fs, karakter: %d)\n",
+                  result$duration %||% 0,
+                  nchar(tts_chunks[[1]])
+                ))
               } else {
-                cat(sprintf("[TTS-STREAM] Seslendirme başarısız: %s\n", result$error %||% "bilinmeyen hata"))
+                cat(sprintf(
+                  "[TTS-STREAM] İlk parça başarısız: %s\n",
+                  result$error %||% "bilinmeyen hata"
+                ))
               }
+
               start_streaming_execution(result)
+
+              if (!isTRUE(stop_generation()) && length(tts_chunks) > 1) {
+                queue_remaining_tts_chunks(tts_chunks, start_index = 2L)
+              }
           },
           onRejected = function(err) {
-              # TTS başarısız -> Metin akışı yine de başlasın
-              cat(sprintf("[TTS-STREAM] Promise hatası: %s\n", conditionMessage(err)))
+              cat(sprintf("[TTS-STREAM] İlk parça promise hatası: %s\n", conditionMessage(err)))
               start_streaming_execution(NULL)
           }
       )

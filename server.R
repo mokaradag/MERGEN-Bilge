@@ -437,36 +437,36 @@ server <- function(input, output, session) {
     }
  
     # TTS işleyicilerini başlat (modüler)
-    tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
+    tts_handlers <- ttsHandlersInit(input, session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
     trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
     attach_tts_audio <- tts_handlers$attach_tts_audio
  
-    send_message_handlers <- sendMessageInit(
-      session = session,
-      input = input,
-      output = output,
-      values = values,
-      settings_data = settings_data,
-      session_files = session_files,
-      file_manager_data = file_manager_data,
-      current_user_id = current_user_id,
-      stop_generation = stop_generation,
-      active_request_id = active_request_id,
-      quick_action_skip_mcp = quick_action_skip_mcp,
-      perf_tracker = perf_tracker,
-      ai_processor = ai_processor,
-      tts_processor = tts_processor,
-      followup_tools = followup_tools,
-      fallback_followup_tool = fallback_followup_tool,
-      api_config = api_config,
-      add_message_fn = add_message,
-      reset_chat_state_fn = reset_chat_state,
-      simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
-      cache_mcp_file_locally_fn = cache_mcp_file_locally,
-      update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
-      saved_chats_data = saved_chats_data,
-      generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
-    )
+	send_message_handlers <- sendMessageInit(
+	  session = session,
+	  input = input,
+	  output = output,
+	  values = values,
+	  settings_data = settings_data,
+	  session_files = session_files,
+	  file_manager_data = file_manager_data,
+	  current_user_id = current_user_id,
+	  stop_generation = stop_generation,
+	  active_request_id = active_request_id,
+	  quick_action_skip_mcp = quick_action_skip_mcp,
+	  perf_tracker = perf_tracker,
+	  ai_processor = ai_processor,
+	  tts_processor = tts_processor,
+	  followup_tools = followup_tools,
+	  fallback_followup_tool = fallback_followup_tool,
+	  api_config = api_config,
+	  add_message_fn = add_message,
+	  reset_chat_state_fn = reset_chat_state,
+	  simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
+	  cache_mcp_file_locally_fn = cache_mcp_file_locally,
+	  update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
+	  saved_chats_data = saved_chats_data,
+	  generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
+	)
  
     # send_message fonksiyonunu modülden al ve ortama ata
     send_message_fns$send_message <- send_message_handlers$send_message
