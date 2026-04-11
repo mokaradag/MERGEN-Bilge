@@ -90,8 +90,10 @@ ttsProcessingServer <- function(id) {
       voice_to_use <- voice %||% tts_config$default_voice %||% "tr-male-1"
       api_key      <- resolve_tts_api_key()
       model_to_use <- tts_config$model %||% "tts-1-hd"
-      timeout_val  <- as.numeric(tts_config$timeout_seconds %||% 30)
-      if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 30
+      # Uzun AI Uzman konuşmalarında son parçanın zaman aşımına düşmemesi için
+      # daha geniş bir varsayılan süre kullan.
+      timeout_val  <- as.numeric(tts_config$timeout_seconds %||% 90)
+      if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 90
 
       cat(sprintf("[TTS] İstek hazırlanıyor: URL=%s | Model=%s | Ses=%s | API Key uzunluk=%d | Metin=%d karakter\n",
                   speech_url, model_to_use, voice_to_use, nchar(api_key), nchar(speech_text)))

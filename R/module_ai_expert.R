@@ -381,72 +381,52 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           total_chunks <- length(all_chunks)
           if (start_index > total_chunks) return(invisible(NULL))
 
-          queue_next_chunk <- NULL
-          queue_next_chunk <- function(idx) {
-            if (!isTRUE(is_speaking())) return(invisible(NULL))
-            if (idx > total_chunks) return(invisible(NULL))
-
-            chunk_text <- all_chunks[[idx]]
-
-            cat(sprintf(
-              "[AI_EXPERT] TTS parça %d/%d sentezleniyor (%d karakter)...\n",
-              idx, total_chunks, nchar(chunk_text)
-            ))
-
-            success_callback <- local({
+          # Kalan parçaları seri değil, eşzamanlı başlat.
+          # Böylece son parça önceki parçaların sentezini bekleyip gecikmez.
+          for (idx in seq.int(start_index, total_chunks)) {
+            local({
               current_idx <- idx
-              current_text <- chunk_text
+              current_text <- all_chunks[[current_idx]]
 
-              function(res) {
-                if (!isTRUE(is_speaking())) return()
+              cat(sprintf(
+                "[AI_EXPERT] TTS parça %d/%d sentezleniyor (%d karakter)...\n",
+                current_idx, total_chunks, nchar(current_text)
+              ))
 
-                if (isTRUE(res$success) && nzchar(res$audio_src)) {
+              tts_processor$synthesize_speech(current_text, voice = voice_sel) %...>%
+                (function(res) {
+                  if (!isTRUE(is_speaking())) return()
+
+                  if (isTRUE(res$success) && nzchar(res$audio_src)) {
+                    cat(sprintf(
+                      "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
+                      current_idx, total_chunks, res$duration
+                    ))
+
+                    session$sendCustomMessage("aiExpertQueueAudioChunk", list(
+                      index         = current_idx - 1L,
+                      text          = current_text,
+                      audioSrc      = res$audio_src,
+                      audioDuration = res$duration,
+                      nsPrefix      = ns("")
+                    ))
+                  } else {
+                    cat(sprintf(
+                      "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
+                      current_idx, total_chunks
+                    ))
+                  }
+                }) %...!%
+                (function(e) {
                   cat(sprintf(
-                    "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
-                    current_idx, total_chunks, res$duration
+                    "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
+                    current_idx, total_chunks, conditionMessage(e)
                   ))
-
-                  session$sendCustomMessage("aiExpertQueueAudioChunk", list(
-                    index         = current_idx - 1L,
-                    text          = current_text,
-                    audioSrc      = res$audio_src,
-                    audioDuration = res$duration,
-                    nsPrefix      = ns("")
-                  ))
-                } else {
-                  cat(sprintf(
-                    "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
-                    current_idx, total_chunks
-                  ))
-                }
-
-                if (current_idx < total_chunks) {
-                  queue_next_chunk(current_idx + 1L)
-                }
-              }
+                })
             })
-
-            error_callback <- local({
-              current_idx <- idx
-
-              function(e) {
-                cat(sprintf(
-                  "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
-                  current_idx, total_chunks, conditionMessage(e)
-                ))
-
-                if (isTRUE(is_speaking()) && current_idx < total_chunks) {
-                  queue_next_chunk(current_idx + 1L)
-                }
-              }
-            })
-
-            tts_processor$synthesize_speech(chunk_text, voice = voice_sel) %...>%
-              success_callback %...!%
-              error_callback
           }
 
-          queue_next_chunk(start_index)
+          invisible(NULL)
         }
 
         # YARIŞ DURUMU KORUMASI: İlk parça istemciye gönderildi mi?
