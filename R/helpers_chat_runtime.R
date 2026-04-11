@@ -639,6 +639,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
         length(tts_chunks)
       ))
 
+      # İstemci tarafındaki durdurma bayrağını sıfırla (yeni TTS oturumu başlıyor)
+      session$sendCustomMessage("ttsResetStop", list(reset = TRUE))
+
       # Yalnızca ilk parçayı bekle; metin akışı onunla birlikte başlasın
       promises::then(
           tts_engine(tts_chunks[[1]], tts_voice),

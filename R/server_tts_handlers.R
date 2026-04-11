@@ -254,6 +254,9 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
       length(chunks), nchar(full_text), request_gen
     ))
 
+    # İstemci tarafındaki durdurma bayrağını sıfırla (yeni TTS oturumu başlıyor)
+    session$sendCustomMessage("ttsResetStop", list(reset = TRUE))
+
     play_next_chunk <- NULL
     play_next_chunk <- function(i) {
       if (is_chunk_cancelled()) {
