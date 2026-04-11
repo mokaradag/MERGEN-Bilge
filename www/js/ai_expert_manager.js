@@ -37,7 +37,7 @@ const AIExpertManager = {
     maxVisibleChars: 300,     // Ekranda görünen maksimum karakter
     wordFadeThreshold: 250,   // Eski kelimelerin solmaya başladığı eşik
     chunkPollInterval: 150,   // Sonraki ses parçasını kontrol aralığı (ms)
-    chunkWaitMaxMs: 90000     // Sonraki ses parçası için azami bekleme süresi (ms)
+    chunkWaitMaxMs: 30000     // Sonraki ses parçası için azami bekleme süresi (ms)
   },
 
   // --- BAŞLATMA (Altyazı + Ses Birlikte - Senkronize) ---

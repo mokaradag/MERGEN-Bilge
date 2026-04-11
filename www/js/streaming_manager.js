@@ -68,11 +68,6 @@ $(document).ready(function() {
                 state.renderTimer = null;
             }
 
-            // Başlangıç metnini hemen göster (boş kutu görünmesini önle)
-            if (state.accumulatedText) {
-                scheduleStreamingRender(messageDiv, true);
-            }
-
             const wrapper = document.getElementById('message_wrapper_' + data.id);
             if (wrapper) {
                 const actionButtons = wrapper.querySelectorAll('.streaming-hidden');

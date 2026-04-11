@@ -8,11 +8,7 @@ $(document).ready(function() {
     queue: [],
     isPlaying: false,
     currentAudio: null,
-    // Durdurma bayrağı: true olduğunda gelen tüm ses parçaları reddedilir.
-    // Yalnızca sunucu yeni bir TTS oturumu başlattığında (ttsResetStop) sıfırlanır.
-    stopped: false,
     stop: function() {
-      this.stopped = true;
       if (this.currentAudio) {
         this.currentAudio.pause();
         this.currentAudio.currentTime = 0;
@@ -33,20 +29,8 @@ $(document).ready(function() {
     }
   };
 
-  // Sunucu yeni bir TTS oturumu başlattığında durdurma bayrağını sıfırla.
-  // Bu, kullanıcı yeni bir istem gönderip yanıt aldığında çağrılır.
-  Shiny.addCustomMessageHandler('ttsResetStop', function(msg) {
-    window.mergenTTS.stopped = false;
-  });
-
   Shiny.addCustomMessageHandler('playAudioMessage', function(message) {
     if (!message || !message.src) return;
-
-    // Durdurma bayrağı aktifse gelen tüm ses parçalarını reddet
-    if (window.mergenTTS.stopped) {
-      console.log("[MERGEN TTS] Seslendirme durduruldu, parça reddedildi:", message.chunkIndex);
-      return;
-    }
 
     // Kuyruğa indeks ile ekle
     window.mergenTTS.queue.push({

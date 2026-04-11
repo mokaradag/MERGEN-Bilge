@@ -238,40 +238,6 @@ server <- function(input, output, session) {
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
       
   stop_generation <- reactiveVal(FALSE)
-  
-  session$userData$tts_stream_blocked <- FALSE
-  session$userData$tts_stream_active_session_id <- NULL
-
-  # TTS-STREAM için ayrı iptal nesli tutulur.
-  # Amaç: Kullanıcı seslendirmeyi durdurduğunda kalan parçaların
-  # istemciye gönderilmesini ve zincir halinde devam etmesini engellemek.
-  tts_stream_generation <- reactiveVal(0L)
-  session$userData$tts_stream_generation <- tts_stream_generation
-
-  # Reaktif olmayan (non-reactive) TTS durdurma sayacı.
-  # Promise geri çağrıları (callback) reaktif değişiklikleri hemen göremeyebilir
-  # çünkü Shiny olay döngüsünde girdi işleme ve promise çözümleme sırası
-  # garantili değildir. Bu düz sayaç, promise geri çağrılarından
-  # isolate() olmadan doğrudan okunabilir.
-  session$userData$tts_stop_counter <- 0L
-
-  observeEvent(input$tts_stop_requested, {
-    next_gen <- isolate(tts_stream_generation()) + 1L
-    tts_stream_generation(next_gen)
-
-    # Promise geri çağrıları için non-reactive sayaç
-    session$userData$tts_stop_counter <- next_gen
-
-    # Sert kapı: yeni prompt gelene kadar bu oturumdan gelen hiçbir TTS kabul edilmez
-    session$userData$tts_stream_blocked <- TRUE
-    session$userData$tts_stream_active_session_id <- NULL
-
-    cat(sprintf(
-      "[TTS-STREAM] Kullanıcı seslendirmeyi durdurdu. Aktif akış iptal edildi ve giriş kapatıldı (nesil=%d)\n",
-      next_gen
-    ))
-  }, ignoreInit = TRUE)
-
   file_to_add <- reactiveVal(NULL)
   session_files <- reactiveVal(list())
   active_request_id <- reactiveVal(NULL)
@@ -471,36 +437,36 @@ server <- function(input, output, session) {
     }
  
     # TTS işleyicilerini başlat (modüler)
-    tts_handlers <- ttsHandlersInit(input, session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
+    tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
     trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
     attach_tts_audio <- tts_handlers$attach_tts_audio
  
-	send_message_handlers <- sendMessageInit(
-	  session = session,
-	  input = input,
-	  output = output,
-	  values = values,
-	  settings_data = settings_data,
-	  session_files = session_files,
-	  file_manager_data = file_manager_data,
-	  current_user_id = current_user_id,
-	  stop_generation = stop_generation,
-	  active_request_id = active_request_id,
-	  quick_action_skip_mcp = quick_action_skip_mcp,
-	  perf_tracker = perf_tracker,
-	  ai_processor = ai_processor,
-	  tts_processor = tts_processor,
-	  followup_tools = followup_tools,
-	  fallback_followup_tool = fallback_followup_tool,
-	  api_config = api_config,
-	  add_message_fn = add_message,
-	  reset_chat_state_fn = reset_chat_state,
-	  simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
-	  cache_mcp_file_locally_fn = cache_mcp_file_locally,
-	  update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
-	  saved_chats_data = saved_chats_data,
-	  generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
-	)
+    send_message_handlers <- sendMessageInit(
+      session = session,
+      input = input,
+      output = output,
+      values = values,
+      settings_data = settings_data,
+      session_files = session_files,
+      file_manager_data = file_manager_data,
+      current_user_id = current_user_id,
+      stop_generation = stop_generation,
+      active_request_id = active_request_id,
+      quick_action_skip_mcp = quick_action_skip_mcp,
+      perf_tracker = perf_tracker,
+      ai_processor = ai_processor,
+      tts_processor = tts_processor,
+      followup_tools = followup_tools,
+      fallback_followup_tool = fallback_followup_tool,
+      api_config = api_config,
+      add_message_fn = add_message,
+      reset_chat_state_fn = reset_chat_state,
+      simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
+      cache_mcp_file_locally_fn = cache_mcp_file_locally,
+      update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
+      saved_chats_data = saved_chats_data,
+      generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
+    )
  
     # send_message fonksiyonunu modülden al ve ortama ata
     send_message_fns$send_message <- send_message_handlers$send_message

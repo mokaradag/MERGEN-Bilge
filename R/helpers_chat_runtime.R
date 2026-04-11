@@ -231,64 +231,6 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     Find(function(x) x$id == selected_char_id, chars_data$styles)
   } else NULL
 
-  # TTS-STREAM için oturum bazlı iptal nesli.
-  # Kullanıcı "Seslendirmeyi Durdur" dediğinde bu nesil ilerletilir
-  # ve eski parçaların sonucu artık geçerli sayılmaz.
-  if (is.null(session$userData$tts_stream_generation) ||
-      !is.function(session$userData$tts_stream_generation)) {
-    session$userData$tts_stream_generation <- shiny::reactiveVal(0L)
-  }
-
-  advance_tts_stream_generation <- function() {
-    gen_rv <- session$userData$tts_stream_generation
-    next_gen <- shiny::isolate(gen_rv()) + 1L
-    gen_rv(next_gen)
-    next_gen
-  }
-
-  is_current_tts_stream_generation <- function(gen_id) {
-    gen_rv <- session$userData$tts_stream_generation
-    identical(shiny::isolate(gen_rv()), gen_id)
-  }
-
-  stream_request_gen <- advance_tts_stream_generation()
-  
-  create_tts_stream_session_id <- function() {
-    paste0(
-      "tts_stream_",
-      format(Sys.time(), "%Y%m%d%H%M%OS3"),
-      "_",
-      sprintf("%06d", sample.int(1000000, 1) - 1L)
-    )
-  }
-
-  tts_stream_session_id <- create_tts_stream_session_id()
-
-  # Yeni TTS oturumu başlıyor: kapıyı tekrar aç
-  session$userData$tts_stream_blocked <- FALSE
-  session$userData$tts_stream_active_session_id <- tts_stream_session_id
-
-  # Reaktif olmayan (non-reactive) durdurma sayacını senkronize et.
-  # Bu sayaç, promise geri çağrılarında shiny::isolate() olmadan
-  # doğrudan okunarak durdurma sinyalinin anında algılanmasını sağlar.
-  session$userData$tts_stop_counter <- stream_request_gen
-
-  # Reaktif olmayan durdurma kontrolü - promise geri çağrılarında kullanılır
-  is_tts_stopped_nonreactive <- function() {
-    (session$userData$tts_stop_counter %||% 0L) > stream_request_gen
-  }
-  
-  is_active_tts_stream_session <- function() {
-    identical(
-      session$userData$tts_stream_active_session_id %||% NULL,
-      tts_stream_session_id
-    )
-  }
-
-  is_tts_stream_blocked <- function() {
-    isTRUE(session$userData$tts_stream_blocked)
-  }
-
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
   # This function runs ONLY when we are ready to show text (after audio is ready)
   start_streaming_execution <- function(audio_result = NULL) {
@@ -303,23 +245,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     values$typing <- FALSE
 
-    # İlk kutunun boş görünmemesi için akışın ilk küçük bölümünü hemen göster.
-    words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
-    if (length(words) == 0) words <- c(full_response)
-
-    total_words <- length(words)
-    chunk_size <- max(1, ceiling(total_words / 100))
-    initial_seed_end <- min(chunk_size, total_words)
-    initial_seed_text <- paste(words[seq_len(initial_seed_end)], collapse = "")
-
     initial_msg <- list(
       id = msg_id,
       db_id = NULL,
-      content = initial_seed_text,
-      html_content = sprintf(
-        '<div class="streaming-content" data-streaming="true">%s</div>',
-        htmltools::htmlEscape(initial_seed_text)
-      ),
+      content = "",
+      html_content = '<div class="streaming-content" data-streaming="true"></div>',
       has_code = FALSE,
       type = "ai",
       timestamp = timestamp,
@@ -354,7 +284,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
     session$sendCustomMessage("initStreamingMessage", list(
       id = msg_id,
-      content = initial_seed_text
+      content = ""
     ))
 
     push_followup_update(session, msg_id, followups, pending = TRUE)
@@ -362,14 +292,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     # -- 3. AUDIO TRIGGER (Concurrent with Text) --
     if (!is.null(audio_result) && isTRUE(audio_result$success) && !is.null(audio_result$audio_src)) {
         # Play audio immediately as text starts
-        if (!is_tts_stream_blocked() && is_active_tts_stream_session()) {
-          session$sendCustomMessage("playAudioMessage", list(
+        session$sendCustomMessage("playAudioMessage", list(
             id = msg_id,
             src = audio_result$audio_src,
-            chunkIndex = 0,
-            ttsSessionId = tts_stream_session_id
-          ))
-        }
+            chunkIndex = 0
+        ))
         
         # Attach to message for history
         idx <- length(values$messages)
@@ -383,9 +310,15 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     }
     
     # -- 4. TEXT STREAMING LOOP --
+    words <- unlist(strsplit(full_response, "(?<=\\s)", perl = TRUE))
+    if (length(words) == 0) words <- c(full_response)
+
+    total_words <- length(words)
+    chunk_size <- max(1, ceiling(total_words / 100))
+
     streaming_state <- shiny::reactiveValues(
-      accumulated = initial_seed_text,
-      current_index = initial_seed_end + 1L,
+      accumulated = "",
+      current_index = 1,
       msg_id = msg_id
     )
 
@@ -474,259 +407,26 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     })
   }
 
-   # Uzun TTS metnini küçük parçalara böl
-  split_text_for_stream_tts <- function(text, max_chunk_chars = 350, min_chunk_chars = 120) {
-    text <- trimws(as.character(text %||% ""))
-    if (!nzchar(text)) return(list())
-    if (nchar(text) <= max_chunk_chars) return(list(text))
-
-    sentence_candidates <- unlist(strsplit(text, "(?<=[.!?…])\\s+", perl = TRUE))
-    sentence_candidates <- trimws(sentence_candidates)
-    sentence_candidates <- sentence_candidates[nzchar(sentence_candidates)]
-
-    if (length(sentence_candidates) == 0) {
-      sentence_candidates <- text
-    }
-
-    split_long_piece <- function(piece) {
-      piece <- trimws(piece)
-      if (!nzchar(piece)) return(character(0))
-      if (nchar(piece) <= max_chunk_chars) return(piece)
-
-      comma_parts <- unlist(strsplit(piece, "(?<=[,;:])\\s+", perl = TRUE))
-      comma_parts <- trimws(comma_parts)
-      comma_parts <- comma_parts[nzchar(comma_parts)]
-
-      if (length(comma_parts) <= 1) {
-        words <- unlist(strsplit(piece, "\\s+"))
-        out <- character(0)
-        current <- ""
-
-        for (w in words) {
-          candidate <- trimws(paste(current, w))
-          if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
-            current <- candidate
-          } else {
-            out <- c(out, current)
-            current <- w
-          }
-        }
-
-        if (nzchar(current)) out <- c(out, current)
-        return(out)
-      }
-
-      out <- character(0)
-      current <- ""
-
-      for (part in comma_parts) {
-        candidate <- trimws(paste(current, part))
-        if (!nzchar(current) || nchar(candidate) <= max_chunk_chars) {
-          current <- candidate
-        } else {
-          out <- c(out, split_long_piece(current))
-          current <- part
-        }
-      }
-
-      if (nzchar(current)) out <- c(out, split_long_piece(current))
-      out
-    }
-
-    chunks <- character(0)
-    current <- ""
-
-    for (sentence in sentence_candidates) {
-      sentence_parts <- split_long_piece(sentence)
-
-      for (part in sentence_parts) {
-        candidate <- trimws(paste(current, part))
-        if (!nzchar(current)) {
-          current <- part
-        } else if (nchar(candidate) <= max_chunk_chars) {
-          current <- candidate
-        } else if (nchar(current) < min_chunk_chars) {
-          current <- candidate
-        } else {
-          chunks <- c(chunks, current)
-          current <- part
-        }
-      }
-    }
-
-    if (nzchar(current)) chunks <- c(chunks, current)
-
-    chunks <- trimws(chunks)
-    chunks <- chunks[nzchar(chunks)]
-
-    as.list(chunks)
-  }
-
-  # İlk TTS parçasından sonra kalan parçaları sırayla kuyrukla
-  queue_remaining_tts_chunks <- function(chunks, start_index = 2L) {
-    total_chunks <- length(chunks)
-    if (start_index > total_chunks) return(invisible(NULL))
-
-    # Birleşik durdurma kontrolü: hem reaktif hem reaktif olmayan bayrakları kontrol et
-    is_tts_cancelled <- function() {
-      isTRUE(is_tts_stream_blocked()) ||
-        !isTRUE(is_active_tts_stream_session()) ||
-        isTRUE(is_tts_stopped_nonreactive()) ||
-        !is_current_tts_stream_generation(stream_request_gen) ||
-        isTRUE(stop_generation())
-    }
-
-    queue_next_chunk <- NULL
-    queue_next_chunk <- function(idx) {
-      if (is_tts_cancelled()) {
-        cat(sprintf("[TTS-STREAM] Parça %d/%d iptal edildi (durdurma algılandı)\n", idx, total_chunks))
-        return(invisible(NULL))
-      }
-      if (idx > total_chunks) return(invisible(NULL))
-
-      current_text <- chunks[[idx]]
-
-      if (is_tts_cancelled()) {
-        cat(sprintf("[TTS-STREAM] Parça %d/%d iptal edildi (durdurma algılandı)\n", idx, total_chunks))
-        return(invisible(NULL))
-      }
-
-      cat(sprintf(
-        "[TTS-STREAM] Parça %d/%d seslendiriliyor (%d karakter)\n",
-        idx, total_chunks, nchar(current_text)
-      ))
-
-      tts_engine(current_text, tts_voice) %...>%
-        (function(result) {
-          # Promise çözümlendiğinde durdurma durumunu tekrar kontrol et
-          if (is_tts_cancelled()) {
-            cat(sprintf("[TTS-STREAM] Parça %d/%d tamamlandı ama durdurma algılandı, gönderilmiyor\n", idx, total_chunks))
-            return(invisible(NULL))
-          }
-
-          if (isTRUE(result$success) && nzchar(result$audio_src %||% "")) {
-            cat(sprintf(
-              "[TTS-STREAM] Parça %d/%d hazır (süre: %.2fs)\n",
-              idx, total_chunks, result$duration %||% 0
-            ))
-
-            if (!is_tts_cancelled()) {
-              session$sendCustomMessage("playAudioMessage", list(
-                id = msg_id,
-                src = result$audio_src,
-                chunkIndex = idx - 1L,
-                ttsSessionId = tts_stream_session_id
-              ))
-            }
-          } else {
-            cat(sprintf(
-              "[TTS-STREAM] Parça %d/%d başarısız: %s\n",
-              idx, total_chunks, result$error %||% "bilinmeyen hata"
-            ))
-          }
-
-          # Sonraki parçayı kuyruklamadan önce son bir durdurma kontrolü
-          if (idx < total_chunks && !is_tts_cancelled()) {
-            queue_next_chunk(idx + 1L)
-          }
-
-          invisible(NULL)
-        }) %...!%
-        (function(err) {
-          if (is_tts_cancelled()) return(invisible(NULL))
-
-          cat(sprintf(
-            "[TTS-STREAM] Parça %d/%d promise hatası: %s\n",
-            idx, total_chunks, conditionMessage(err)
-          ))
-
-          if (idx < total_chunks && !is_tts_cancelled()) {
-            queue_next_chunk(idx + 1L)
-          }
-
-          invisible(NULL)
-        })
-
-      invisible(NULL)
-    }
-
-    queue_next_chunk(start_index)
-    invisible(NULL)
-  } 
-
   # -- 5. KARAR: TTS BEKLENSİN Mİ? --
   if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(full_response)) {
-      tts_chunks <- split_text_for_stream_tts(
-        full_response,
-        max_chunk_chars = 350,
-        min_chunk_chars = 120
-      )
-
-      if (length(tts_chunks) == 0) {
-        tts_chunks <- list(full_response)
-      }
-
-      cat(sprintf(
-        "[TTS-STREAM] Seslendirme başlatılıyor (ses: %s, toplam metin: %d karakter, parça sayısı: %d)\n",
-        tts_voice %||% "varsayılan",
-        nchar(full_response),
-        length(tts_chunks)
-      ))
-
-      # İstemci tarafındaki durdurma bayrağını sıfırla (yeni TTS oturumu başlıyor)
-      session$sendCustomMessage("ttsResetStop", list(
-        reset = TRUE,
-        sessionId = tts_stream_session_id
-      ))
-
-      # Yalnızca ilk parçayı bekle; metin akışı onunla birlikte başlasın
+      cat(sprintf("[TTS-STREAM] Seslendirme başlatılıyor (ses: %s, metin: %d karakter)\n",
+                  tts_voice %||% "varsayılan", nchar(full_response)))
+      # "Düşünüyor" animasyonu TTS hazır olana kadar görünür kalır
       promises::then(
-          tts_engine(tts_chunks[[1]], tts_voice),
+          tts_engine(full_response, tts_voice),
           onFulfilled = function(result) {
-              if (isTRUE(is_tts_stream_blocked()) ||
-                  isTRUE(is_tts_stopped_nonreactive()) ||
-                  !isTRUE(is_active_tts_stream_session()) ||
-                  !is_current_tts_stream_generation(stream_request_gen)) {
-                start_streaming_execution(NULL)
-                return(invisible(NULL))
-              }
-
+              # TTS tamamlandı -> Metin akışı ve ses birlikte başlasın
               if (isTRUE(result$success)) {
-                cat(sprintf(
-                  "[TTS-STREAM] İlk parça başarılı (süre: %.2fs, karakter: %d)\n",
-                  result$duration %||% 0,
-                  nchar(tts_chunks[[1]])
-                ))
+                cat(sprintf("[TTS-STREAM] Seslendirme başarılı (süre: %.2fs)\n", result$duration %||% 0))
               } else {
-                cat(sprintf(
-                  "[TTS-STREAM] İlk parça başarısız: %s\n",
-                  result$error %||% "bilinmeyen hata"
-                ))
+                cat(sprintf("[TTS-STREAM] Seslendirme başarısız: %s\n", result$error %||% "bilinmeyen hata"))
               }
-
               start_streaming_execution(result)
-
-              if (!isTRUE(stop_generation()) &&
-                  !isTRUE(is_tts_stopped_nonreactive()) &&
-                  length(tts_chunks) > 1 &&
-                  is_current_tts_stream_generation(stream_request_gen)) {
-                queue_remaining_tts_chunks(tts_chunks, start_index = 2L)
-              }
-
-              invisible(NULL)
           },
           onRejected = function(err) {
-              if (isTRUE(is_tts_stream_blocked()) ||
-                  isTRUE(is_tts_stopped_nonreactive()) ||
-                  !isTRUE(is_active_tts_stream_session()) ||
-                  !is_current_tts_stream_generation(stream_request_gen)) {
-                start_streaming_execution(NULL)
-                return(invisible(NULL))
-              }
-
-              cat(sprintf("[TTS-STREAM] İlk parça promise hatası: %s\n", conditionMessage(err)))
+              # TTS başarısız -> Metin akışı yine de başlasın
+              cat(sprintf("[TTS-STREAM] Promise hatası: %s\n", conditionMessage(err)))
               start_streaming_execution(NULL)
-              invisible(NULL)
           }
       )
   } else {
