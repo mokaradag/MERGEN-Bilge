@@ -238,6 +238,9 @@ server <- function(input, output, session) {
     if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
       
   stop_generation <- reactiveVal(FALSE)
+  
+  session$userData$tts_stream_blocked <- FALSE
+  session$userData$tts_stream_active_session_id <- NULL
 
   # TTS-STREAM için ayrı iptal nesli tutulur.
   # Amaç: Kullanıcı seslendirmeyi durdurduğunda kalan parçaların
@@ -256,11 +259,15 @@ server <- function(input, output, session) {
     next_gen <- isolate(tts_stream_generation()) + 1L
     tts_stream_generation(next_gen)
 
-    # Reaktif olmayan sayacı da güncelle (promise geri çağrıları için)
+    # Promise geri çağrıları için non-reactive sayaç
     session$userData$tts_stop_counter <- next_gen
 
+    # Sert kapı: yeni prompt gelene kadar bu oturumdan gelen hiçbir TTS kabul edilmez
+    session$userData$tts_stream_blocked <- TRUE
+    session$userData$tts_stream_active_session_id <- NULL
+
     cat(sprintf(
-      "[TTS-STREAM] Kullanıcı seslendirmeyi durdurdu. Aktif akış iptal edildi (nesil=%d)\n",
+      "[TTS-STREAM] Kullanıcı seslendirmeyi durdurdu. Aktif akış iptal edildi ve giriş kapatıldı (nesil=%d)\n",
       next_gen
     ))
   }, ignoreInit = TRUE)

@@ -17,6 +17,17 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
   tts_warning_shown <- shiny::reactiveVal(FALSE)
 
   tts_request_generation <- shiny::reactiveVal(0L)
+  
+  tts_active_session_id <- shiny::reactiveVal(NULL)
+
+  create_tts_session_id <- function() {
+    paste0(
+      "tts_",
+      format(Sys.time(), "%Y%m%d%H%M%OS3"),
+      "_",
+      sprintf("%06d", sample.int(1000000, 1) - 1L)
+    )
+  }
 
   advance_tts_generation <- function() {
     next_gen <- shiny::isolate(tts_request_generation()) + 1L
@@ -32,12 +43,16 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
   tts_stop_counter <- 0L
 
   shiny::observeEvent(input$tts_stop_requested, {
+    cancelled_session <- shiny::isolate(tts_active_session_id())
     cancelled_gen <- advance_tts_generation()
-    # Reaktif olmayan sayacı da güncelle
+
+    tts_active_session_id(NULL)
     tts_stop_counter <<- cancelled_gen
+
     cat(sprintf(
-      "[TTS] Kullanıcı seslendirmeyi durdurdu. Bekleyen parçalar iptal edildi (nesil=%d)\n",
-      cancelled_gen
+      "[TTS] Kullanıcı seslendirmeyi durdurdu. Bekleyen parçalar iptal edildi (nesil=%d, oturum=%s)\n",
+      cancelled_gen,
+      cancelled_session %||% "yok"
     ))
   }, ignoreInit = TRUE)
 
@@ -216,12 +231,19 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
     }
 
     request_gen <- advance_tts_generation()
+    request_session_id <- create_tts_session_id()
+    tts_active_session_id(request_session_id)
+
     # Reaktif olmayan sayacı senkronize et
     tts_stop_counter <<- request_gen - 1L
 
     # Birleşik durdurma kontrolü: hem reaktif hem reaktif olmayan bayraklar
     is_chunk_cancelled <- function() {
-      isTRUE(is_tts_stopped_nr(request_gen)) ||
+      active_session_id <- shiny::isolate(tts_active_session_id())
+
+      is.null(active_session_id) ||
+        !identical(active_session_id, request_session_id) ||
+        isTRUE(is_tts_stopped_nr(request_gen)) ||
         !is_current_tts_generation(request_gen) ||
         isTRUE(stop_generation())
     }
@@ -238,7 +260,8 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
           id = msg_id,
           src = res$audio_src,
           chunkIndex = idx,
-          timestamp = as.numeric(Sys.time())
+          timestamp = as.numeric(Sys.time()),
+          ttsSessionId = request_session_id
         ))
       } else {
         cat(sprintf("[TTS] Parça %d başarısız oldu, atlanıyor.\n", idx))
@@ -250,12 +273,15 @@ ttsHandlersInit <- function(input, session, values, settings_data, tts_processor
     chunks <- split_text_into_chunks(full_text, max_chunk_chars = 350, min_chunk_chars = 120)
 
     cat(sprintf(
-      "[TTS] Metin %d parçaya bölündü (toplam: %d karakter, nesil=%d)\n",
-      length(chunks), nchar(full_text), request_gen
+      "[TTS] Metin %d parçaya bölündü (toplam: %d karakter, nesil=%d, oturum=%s)\n",
+      length(chunks), nchar(full_text), request_gen, request_session_id
     ))
 
     # İstemci tarafındaki durdurma bayrağını sıfırla (yeni TTS oturumu başlıyor)
-    session$sendCustomMessage("ttsResetStop", list(reset = TRUE))
+    session$sendCustomMessage("ttsResetStop", list(
+      reset = TRUE,
+      sessionId = request_session_id
+    ))
 
     play_next_chunk <- NULL
     play_next_chunk <- function(i) {

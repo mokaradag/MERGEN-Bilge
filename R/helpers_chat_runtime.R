@@ -252,6 +252,21 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   }
 
   stream_request_gen <- advance_tts_stream_generation()
+  
+  create_tts_stream_session_id <- function() {
+    paste0(
+      "tts_stream_",
+      format(Sys.time(), "%Y%m%d%H%M%OS3"),
+      "_",
+      sprintf("%06d", sample.int(1000000, 1) - 1L)
+    )
+  }
+
+  tts_stream_session_id <- create_tts_stream_session_id()
+
+  # Yeni TTS oturumu başlıyor: kapıyı tekrar aç
+  session$userData$tts_stream_blocked <- FALSE
+  session$userData$tts_stream_active_session_id <- tts_stream_session_id
 
   # Reaktif olmayan (non-reactive) durdurma sayacını senkronize et.
   # Bu sayaç, promise geri çağrılarında shiny::isolate() olmadan
@@ -261,6 +276,17 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   # Reaktif olmayan durdurma kontrolü - promise geri çağrılarında kullanılır
   is_tts_stopped_nonreactive <- function() {
     (session$userData$tts_stop_counter %||% 0L) > stream_request_gen
+  }
+  
+  is_active_tts_stream_session <- function() {
+    identical(
+      session$userData$tts_stream_active_session_id %||% NULL,
+      tts_stream_session_id
+    )
+  }
+
+  is_tts_stream_blocked <- function() {
+    isTRUE(session$userData$tts_stream_blocked)
   }
 
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
@@ -336,11 +362,14 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     # -- 3. AUDIO TRIGGER (Concurrent with Text) --
     if (!is.null(audio_result) && isTRUE(audio_result$success) && !is.null(audio_result$audio_src)) {
         # Play audio immediately as text starts
-        session$sendCustomMessage("playAudioMessage", list(
+        if (!is_tts_stream_blocked() && is_active_tts_stream_session()) {
+          session$sendCustomMessage("playAudioMessage", list(
             id = msg_id,
             src = audio_result$audio_src,
-            chunkIndex = 0
-        ))
+            chunkIndex = 0,
+            ttsSessionId = tts_stream_session_id
+          ))
+        }
         
         # Attach to message for history
         idx <- length(values$messages)
@@ -540,7 +569,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
     # Birleşik durdurma kontrolü: hem reaktif hem reaktif olmayan bayrakları kontrol et
     is_tts_cancelled <- function() {
-      isTRUE(is_tts_stopped_nonreactive()) ||
+      isTRUE(is_tts_stream_blocked()) ||
+        !isTRUE(is_active_tts_stream_session()) ||
+        isTRUE(is_tts_stopped_nonreactive()) ||
         !is_current_tts_stream_generation(stream_request_gen) ||
         isTRUE(stop_generation())
     }
@@ -579,11 +610,14 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               idx, total_chunks, result$duration %||% 0
             ))
 
-            session$sendCustomMessage("playAudioMessage", list(
-              id = msg_id,
-              src = result$audio_src,
-              chunkIndex = idx - 1L
-            ))
+            if (!is_tts_cancelled()) {
+              session$sendCustomMessage("playAudioMessage", list(
+                id = msg_id,
+                src = result$audio_src,
+                chunkIndex = idx - 1L,
+                ttsSessionId = tts_stream_session_id
+              ))
+            }
           } else {
             cat(sprintf(
               "[TTS-STREAM] Parça %d/%d başarısız: %s\n",
@@ -640,13 +674,18 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       ))
 
       # İstemci tarafındaki durdurma bayrağını sıfırla (yeni TTS oturumu başlıyor)
-      session$sendCustomMessage("ttsResetStop", list(reset = TRUE))
+      session$sendCustomMessage("ttsResetStop", list(
+        reset = TRUE,
+        sessionId = tts_stream_session_id
+      ))
 
       # Yalnızca ilk parçayı bekle; metin akışı onunla birlikte başlasın
       promises::then(
           tts_engine(tts_chunks[[1]], tts_voice),
           onFulfilled = function(result) {
-              if (isTRUE(is_tts_stopped_nonreactive()) ||
+              if (isTRUE(is_tts_stream_blocked()) ||
+                  isTRUE(is_tts_stopped_nonreactive()) ||
+                  !isTRUE(is_active_tts_stream_session()) ||
                   !is_current_tts_stream_generation(stream_request_gen)) {
                 start_streaming_execution(NULL)
                 return(invisible(NULL))
@@ -677,7 +716,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
               invisible(NULL)
           },
           onRejected = function(err) {
-              if (isTRUE(is_tts_stopped_nonreactive()) ||
+              if (isTRUE(is_tts_stream_blocked()) ||
+                  isTRUE(is_tts_stopped_nonreactive()) ||
+                  !isTRUE(is_active_tts_stream_session()) ||
                   !is_current_tts_stream_generation(stream_request_gen)) {
                 start_streaming_execution(NULL)
                 return(invisible(NULL))
