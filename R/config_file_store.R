@@ -24,15 +24,12 @@ MERGEN_FILES_ROOT <- normalize_utf8_path(MERGEN_FILES_ROOT,
                                          mustWork = dir.exists(MERGEN_FILES_ROOT))
 
 # Kalıcı yüklemeler dizini: ./mergen_uploads (MCP_FILES_BASE ile geçersiz kılınabilir)
-# NOT: normalize_utf8_path() yerine normalize_mcp_path() kullanılır; çünkü
-# Windows VM'lerde UNC yollarında normalizePath() ve shortPathName() çağrıları
-# Türkçe karakterleri bozar (ör. "Geliştirme" → "GeliÅŸtirme").
-# normalize_mcp_path() UNC yolları için yalnızca ayırıcı temizliği yapar,
-# UNC olmayan yollarda ise normalize_utf8_path()'e düşer.
+# ÖNEMLİ: Hiçbir normalizasyon (normalizePath, shortPathName, normalize_mcp_path)
+# çağrılmaz. Windows VM'lerde UNC yollarında bu fonksiyonlar Türkçe karakterleri
+# bozar (ör. "Geliştirme" → "GeliÅŸtirme"). Eklenti sistemiyle aynı yaklaşım:
+# getwd() yolunu file.path() ile olduğu gibi kullan.
 MERGEN_UPLOADS_DIR <- file.path(getwd(), "mergen_uploads")
 dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
-MERGEN_UPLOADS_DIR <- normalize_mcp_path(MERGEN_UPLOADS_DIR,
-                                         must_exist = dir.exists(MERGEN_UPLOADS_DIR))
 
 # MCP tabanlı kalıcı yüklemeler için temel dizin
 MERGEN_MCP_BASE_DIR <- resolve_mcp_base_dir()
@@ -312,6 +309,8 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
 # ==============================================================================
 
 # Kullanıcıya özel yükleme dizinini döndürür (yoksa oluşturur)
+# NOT: normalize_mcp_path() çağrılmaz — Windows UNC yollarında
+# Türkçe karakterlerin bozulmasını engeller.
 mergen_user_upload_dir <- function(user_id) {
   base <- resolve_mcp_base_dir()
   p <- file.path(base, sprintf("user_%s", as.character(user_id)))
@@ -319,19 +318,21 @@ mergen_user_upload_dir <- function(user_id) {
     fs::dir_create(p, recurse = TRUE)
     TRUE
   }, error = function(e) {
-    log_warn("[INDEX] Kullanıcı klasörü oluşturulamadı ({conditionMessage(e)}); varsayılan dizine düşülüyor")
+    log_warn(paste0("[INDEX] Kullanıcı klasörü oluşturulamadı (", conditionMessage(e), "); varsayılan dizine düşülüyor"))
     FALSE
   })
 
   p_exists <- tryCatch(path_exists_relaxed(p), error = function(e) dir.exists(p))
   if (!isTRUE(created) || !isTRUE(p_exists)) {
     fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
-    fs::dir_create(fallback, recurse = TRUE)
-    fallback_exists <- tryCatch(path_exists_relaxed(fallback), error = function(e) dir.exists(fallback))
-    return(normalize_mcp_path(fallback, must_exist = isTRUE(fallback_exists)))
+    tryCatch(
+      fs::dir_create(fallback, recurse = TRUE),
+      error = function(e) dir.create(fallback, showWarnings = FALSE, recursive = TRUE)
+    )
+    return(fallback)
   }
 
-  normalize_mcp_path(p, must_exist = isTRUE(p_exists))
+  p
 }
 
 # İndeksteki kayıtları kullanarak dosya yoluna karşılık gelen görünen adı çözümler
@@ -510,7 +511,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   }
 
   if (!isTRUE(dir_ok)) {
-    log_info("[INDEX] user={uid} için klasör bulunamadı: {dir}")
+    log_info(paste0("[INDEX] user=", uid, " icin klasor bulunamadi: ", dir))
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
   
@@ -546,7 +547,7 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
 
   paths <- list_user_files_relaxed(dir)
   if (!length(paths)) {
-    log_info("[INDEX] user={uid} klasörü boş: {dir}")
+    log_info(paste0("[INDEX] user=", uid, " klasoru bos: ", dir))
     return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
   }
 

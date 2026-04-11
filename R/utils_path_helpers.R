@@ -139,12 +139,23 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 # başarısız olursa MERGEN_UPLOADS_DIR'e düşer.
 # NOT: Bu fonksiyon MERGEN_UPLOADS_DIR global değişkenine bağımlıdır
 #      ve config_file_store.R'de çağrılır.
+# ÖNEMLİ: MERGEN_UPLOADS_DIR kullanılırken normalize_mcp_path() çağrılmaz.
+# Windows UNC yollarında normalizasyon Türkçe karakterleri bozar.
+# Eklenti sistemiyle aynı yaklaşım: getwd() tabanlı yolu olduğu gibi kullan.
 resolve_mcp_base_dir <- function() {
   raw <- Sys.getenv("MCP_FILES_BASE", "")
+
+  # MCP_FILES_BASE ayarlanmadığında MERGEN_UPLOADS_DIR'i olduğu gibi kullan
   if (!nzchar(raw)) {
-    raw <- MERGEN_UPLOADS_DIR
+    base <- MERGEN_UPLOADS_DIR
+    tryCatch(
+      fs::dir_create(base, recurse = TRUE),
+      error = function(e) dir.create(base, showWarnings = FALSE, recursive = TRUE)
+    )
+    return(base)
   }
 
+  # MCP_FILES_BASE ayarlanmışsa normalize et (harici yol)
   base <- normalize_mcp_path(raw, must_exist = FALSE)
 
   created <- tryCatch({
@@ -159,12 +170,11 @@ resolve_mcp_base_dir <- function() {
 
   if (!isTRUE(created) || !isTRUE(base_exists)) {
     base <- MERGEN_UPLOADS_DIR
-    tryCatch({
-      fs::dir_create(base, recurse = TRUE)
-    }, error = function(e) {
-      dir.create(base, showWarnings = FALSE, recursive = TRUE)
-    })
+    tryCatch(
+      fs::dir_create(base, recurse = TRUE),
+      error = function(e) dir.create(base, showWarnings = FALSE, recursive = TRUE)
+    )
   }
 
-  normalize_mcp_path(base, must_exist = TRUE)
+  base
 }
