@@ -95,6 +95,110 @@ get_claude_code_document_support_dir <- function(user_id = NULL) {
   normalizePath(hedef, winslash = "/", mustWork = FALSE)
 }
 
+# ------------------------------------------------------------------------------
+# GÜVENLİ ÇALIŞMA DİZİNİ AYNASI
+#
+# Amaç: Claude Code CLI'nin PDF/XLS/XLSX gibi ikili dosyaları Read aracıyla
+# okumaya çalışmasını ENGELLEMEK. CLI ikili dosyayı okuduğunda:
+#   (1) Thinking modeller için "document" tipinde base64 bloklar üretir;
+#       yerel LLM ara katmanı bu blokları reddedip API 400 hatası döner
+#       ('Input should be a valid string' Pydantic doğrulama hatası).
+#   (2) Non-thinking modellerde Node.js 24 + Windows libuv kombinasyonu
+#       "Assertion failed ... src\\win\\async.c" çökmesine yol açabilir.
+#
+# Çözüm: CLI'yi yalnızca metin dosyaları içeren bir ayna dizine yönlendirmek.
+# Bu dizinde:
+#   - Kaynak dizindeki ikili olmayan tüm dosyalar aynen bulunur.
+#   - İkili dokümanlar için önceden üretilmiş .txt sidecar'lar yer alır.
+#   - Yönlendirme manifesti bulunur.
+# Orijinal ikili dosyalar bu dizine KOPYALANMAZ, böylece CLI'nin görüş
+# alanından tamamen çıkar.
+# ------------------------------------------------------------------------------
+build_claude_code_safe_workdir <- function(support_dir,
+                                           source_workdir,
+                                           prepared_files = list(),
+                                           manifest_path = "") {
+  if (is.null(support_dir) || !nzchar(support_dir)) return("")
+  if (is.null(source_workdir) || !nzchar(source_workdir) ||
+      !dir.exists(source_workdir)) {
+    return("")
+  }
+
+  guvenli_dizin <- file.path(support_dir, "safe_workdir")
+
+  if (dir.exists(guvenli_dizin)) {
+    unlink(guvenli_dizin, recursive = TRUE, force = TRUE)
+  }
+
+  dir.create(guvenli_dizin, recursive = TRUE, showWarnings = FALSE)
+
+  ikili_uzantilar <- get_claude_code_binary_doc_extensions()
+
+  # 1) Kaynak dizindeki ikili OLMAYAN dosyaları aynen kopyala
+  tum_ogeler <- tryCatch(
+    list.files(
+      source_workdir,
+      full.names   = TRUE,
+      recursive    = FALSE,
+      all.files    = FALSE,
+      include.dirs = FALSE
+    ),
+    error = function(e) character(0)
+  )
+
+  for (oge in tum_ogeler) {
+    uzanti <- tolower(tools::file_ext(oge))
+
+    # İkili doküman uzantılarını atla; yerine .txt sidecar gelecek
+    if (nzchar(uzanti) && uzanti %in% ikili_uzantilar) next
+
+    tryCatch(
+      file.copy(
+        from      = oge,
+        to        = file.path(guvenli_dizin, basename(oge)),
+        overwrite = TRUE
+      ),
+      error = function(e) NULL
+    )
+  }
+
+  # 2) İkili dokümanlar için önceden hazırlanmış metin çıkarımlarını
+  #    orijinal dosya adı + ".txt" olarak güvenli dizine yerleştir
+  for (oge in prepared_files) {
+    if (is.null(oge$text_path) || !nzchar(oge$text_path)) next
+    if (!file.exists(oge$text_path)) next
+
+    orijinal_ad <- basename(oge$source_path %||% oge$text_path %||% "dokuman")
+    taban_ad    <- tools::file_path_sans_ext(orijinal_ad)
+    hedef_yol   <- file.path(guvenli_dizin, paste0(taban_ad, ".txt"))
+
+    # Aynı isim zaten kopyalandıysa çakışmayı önle
+    if (file.exists(hedef_yol)) {
+      hedef_yol <- file.path(guvenli_dizin, paste0(taban_ad, "_sidecar.txt"))
+    }
+
+    tryCatch(
+      file.copy(from = oge$text_path, to = hedef_yol, overwrite = TRUE),
+      error = function(e) NULL
+    )
+  }
+
+  # 3) Yönlendirme manifestini de güvenli dizine kopyala ki CLI
+  #    göreli adla da erişebilsin
+  if (nzchar(manifest_path) && file.exists(manifest_path)) {
+    tryCatch(
+      file.copy(
+        from      = manifest_path,
+        to        = file.path(guvenli_dizin, basename(manifest_path)),
+        overwrite = TRUE
+      ),
+      error = function(e) NULL
+    )
+  }
+
+  normalizePath(guvenli_dizin, winslash = "/", mustWork = FALSE)
+}
+
 extract_pdf_text_for_claude <- function(dosya_yolu,
                                         max_sayfa = 25L,
                                         max_karakter = 120000L) {
@@ -405,16 +509,23 @@ prepare_claude_code_document_context <- function(prompt,
 
   kontrol_dizini <- source_workdir %||% runtime_workdir
 
-  dokuman_gorevi <- isTRUE(prompt_mentions_binary_document_type(prompt)) ||
-    (
-      isTRUE(prompt_requests_document_operation(prompt)) &&
-        isTRUE(
-          workdir_has_binary_documents(
-            kontrol_dizini,
-            get_claude_code_binary_doc_extensions()
-          )
-        )
+  # Çalışma dizininde ikili doküman bulunması, tek başına hazırlık için
+  # yeterli tetikleyicidir. Türkçe ek/çekim nedeniyle "okuyup", "özetleyebilir"
+  # gibi kelimeler mevcut \\boku\\b / \\bözetle\\b kelime-sınırı desenleriyle
+  # eşleşmiyor. Bu yüzden promptu beklemek yerine dizin içeriğine bakıyoruz.
+  # Savunmacı yaklaşım hem thinking modellerdeki "document bloğu" API 400
+  # hatasını hem de non-thinking modellerdeki Node.js 24 libuv çökmelerini
+  # önler, çünkü CLI her iki durumda da ikili dosyaları hiç görmez.
+  workdir_binary_var <- isTRUE(
+    workdir_has_binary_documents(
+      kontrol_dizini,
+      get_claude_code_binary_doc_extensions()
     )
+  )
+
+  dokuman_gorevi <- workdir_binary_var ||
+    isTRUE(prompt_mentions_binary_document_type(prompt)) ||
+    isTRUE(prompt_requests_document_operation(prompt))
 
   if (!isTRUE(dokuman_gorevi)) {
     return(sonuc)
@@ -479,12 +590,23 @@ prepare_claude_code_document_context <- function(prompt,
     reader_template_path = reader_template_path
   )
 
+  # CLI'nin ikili dosyaları hiç görmemesi için güvenli çalışma dizini
+  # aynası oluştur. module_claude_code.R bu dizini effective_workdir
+  # üzerinden otomatik olarak CLI'ye yönlendirecek.
+  safe_workdir <- build_claude_code_safe_workdir(
+    support_dir    = destek_dizini,
+    source_workdir = kontrol_dizini,
+    prepared_files = hazir_dosyalar,
+    manifest_path  = manifest_path
+  )
+
   sonuc$prepared_files <- hazir_dosyalar
   sonuc$unsupported_files <- unique(unsupported_files)
   sonuc$text_sidecars_ready <- length(hazir_dosyalar) > 0
   sonuc$manifest_path <- manifest_path
   sonuc$reader_template_path <- reader_template_path
   sonuc$support_dir <- destek_dizini
+  sonuc$effective_workdir <- safe_workdir
   sonuc$prompt <- build_claude_code_document_prompt(
     orijinal_prompt = prompt,
     manifest_path = manifest_path,
