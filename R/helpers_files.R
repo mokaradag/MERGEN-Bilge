@@ -23,35 +23,86 @@ resolve_readable_path <- function(path) {
 }
 
 # Relaxed file.exists for UNC + long paths + Encoding variants
+# KRİTİK: Türkçe karakter içeren yollarda Windows encoding yorumlama
+# farkları yüzünden file.exists() FALSE dönebiliyor. Bu yüzden yolu
+# BİRÇOK farklı encoding varyantı ile denemek gerekiyor. Ayrıca son çare
+# olarak Windows shortPathName (8.3 kısa yol) de denenir.
 path_exists_relaxed <- function(path) {
   if (is.null(path) || length(path) == 0) return(FALSE)
 
   candidate <- as.character(path[1])
   if (!nzchar(candidate)) return(FALSE)
 
-  # Generate variants: Slashes, Backslashes, UNC
+  # --- Slash/UNC temel varyantları ---
   cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
-  
-  variants <- unique(trimws(Filter(nzchar, c(
+
+  base_variants <- unique(trimws(Filter(nzchar, c(
     candidate,
     cand_slash,
-    # UNC repairs
     sub("^//\\?/UNC", "//", cand_slash, perl = TRUE),
     sub("^//\\?/", "//", cand_slash, perl = TRUE),
-    # Fix missing leading slash for UNC (common R issue on Windows)
     if (grepl("^/[^/]", cand_slash)) paste0("/", cand_slash) else NULL,
     gsub("/", "\\\\", cand_slash, fixed = TRUE)
   ))))
 
-  for (chk in variants) {
-    # 1. Check as is
-    if (tryCatch(isTRUE(file.exists(chk)), error=function(e) FALSE)) return(TRUE)
-    if (tryCatch(isTRUE(fs::file_exists(chk)), error=function(e) FALSE)) return(TRUE)
-    
-    # 2. Check UTF-8 encoded (for Turkish chars)
-    chk_utf8 <- tryCatch(enc2utf8(chk), error=function(e) chk)
-    if (tryCatch(isTRUE(file.exists(chk_utf8)), error=function(e) FALSE)) return(TRUE)
-    if (tryCatch(isTRUE(fs::file_exists(chk_utf8)), error=function(e) FALSE)) return(TRUE)
+  # --- Her taban varyantı için encoding varyantları üret ---
+  make_encoding_variants <- function(p) {
+    out <- list(p)
+    # UTF-8 etiketli (bytes olduğu gibi)
+    v <- p; tryCatch(Encoding(v) <- "UTF-8", error = function(e) NULL)
+    out[[length(out) + 1L]] <- v
+    # Unknown/native etiketli
+    v <- p; tryCatch(Encoding(v) <- "unknown", error = function(e) NULL)
+    out[[length(out) + 1L]] <- v
+    # enc2utf8 dönüşümü
+    v <- tryCatch(enc2utf8(p), error = function(e) NULL)
+    if (!is.null(v) && nzchar(v)) out[[length(out) + 1L]] <- v
+    # enc2native dönüşümü (Windows CP1254 için)
+    v <- tryCatch(enc2native(p), error = function(e) NULL)
+    if (!is.null(v) && nzchar(v)) out[[length(out) + 1L]] <- v
+    unique(out)
+  }
+
+  var_mi <- function(chk) {
+    if (tryCatch(isTRUE(file.exists(chk)), error = function(e) FALSE)) return(TRUE)
+    if (tryCatch(isTRUE(fs::file_exists(chk)), error = function(e) FALSE)) return(TRUE)
+    FALSE
+  }
+
+  for (base in base_variants) {
+    for (chk in make_encoding_variants(base)) {
+      if (var_mi(chk)) return(TRUE)
+    }
+  }
+
+  # --- SON ÇARE: Windows 8.3 kısa yolu ---
+  # shortPathName Windows wide-char API'sini kullandığı için encoding
+  # sorunlarına karşı dayanıklıdır ve Türkçe karakteri içermeyen bir yol
+  # döndürür. Önce üst dizinin short path'ini al, sonra basename ekle.
+  # Üst dizinin her encoding varyantını dene; birisi Windows wide-char
+  # API'sini doğru besler.
+  if (.Platform$OS.type == "windows") {
+    for (base in base_variants) {
+      parent <- dirname(base)
+      leaf   <- basename(base)
+      if (!nzchar(parent) || identical(parent, base)) next
+
+      for (parent_v in make_encoding_variants(parent)) {
+        parent_back <- gsub("/", "\\\\", parent_v, fixed = TRUE)
+        short_parent <- tryCatch(utils::shortPathName(parent_back),
+                                 error = function(e) NA_character_)
+        if (is.na(short_parent) || !nzchar(short_parent)) next
+
+        short_parent_fwd <- gsub("\\\\", "/", short_parent, fixed = TRUE)
+
+        # Short parent + leaf olarak direkt dene
+        if (var_mi(file.path(short_parent_fwd, leaf))) return(TRUE)
+        # leaf'i de native/utf8 varyantlarıyla dene
+        for (leaf_v in make_encoding_variants(leaf)) {
+          if (var_mi(file.path(short_parent_fwd, leaf_v))) return(TRUE)
+        }
+      }
+    }
   }
 
   FALSE

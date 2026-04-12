@@ -121,36 +121,91 @@ resolve_mcp_base_dir <- function() {
     raw <- MERGEN_UPLOADS_DIR
   }
 
-  # KRİTİK: normalize_mcp_path() / normalizePath() KULLANMIYORUZ.
-  # Windows ağ sürücüsünde normalizePath() sürücü harfini UNC yoluna
-  # çevirirken Türkçe karakterleri bozuyor (Geliştirme -> GeliÅŸtirme).
-  # Plugin sistemi (resolve_app_root) ve SQL Loader ile aynı yaklaşım:
-  # yolu doğrudan kullan, yalnızca ters eğik çizgileri düzelt.
+  # Ters eğik çizgileri düzelt, UNC baştaki tek slash'ı çift slash yap.
   base <- gsub("\\\\", "/", raw, fixed = TRUE)
-
-  # UNC yolları için tek baştaki slash'ı çift slash'a çevir (//server/share)
   if (grepl("^/[^/]", base)) {
     base <- paste0("/", base)
   }
 
-  created <- tryCatch({
-    fs::dir_create(base, recurse = TRUE)
-    TRUE
-  }, error = function(e) FALSE)
+  # --- ENCODING VARYANTI ÜRETİMİ ---
+  # .Renviron farklı encoding'lerde (UTF-8 BOM'lu, UTF-8 BOM'suz, ANSI CP1254)
+  # yazılmış olabilir. Sys.getenv() bunu yorumlama biçimi R sürümüne göre değişir.
+  # Bu yüzden dizin oluşturmayı ve var olma kontrolünü birden fazla encoding
+  # işaretiyle deniyoruz ki HANGİSİ doğruysa o varyant başarıyla çalışsın.
+  encoding_varyantlari <- function(p) {
+    varyantlar <- list(p)
+    eklemek_dene <- function(deneme) {
+      if (!is.null(deneme) && nzchar(deneme)) {
+        varyantlar[[length(varyantlar) + 1L]] <<- deneme
+      }
+    }
+    # UTF-8 etiketli (bytes olduğu gibi)
+    v <- p; tryCatch(Encoding(v) <- "UTF-8", error = function(e) NULL); eklemek_dene(v)
+    # Native/unknown etiketli
+    v <- p; tryCatch(Encoding(v) <- "unknown", error = function(e) NULL); eklemek_dene(v)
+    # enc2utf8 ile dönüştürülmüş
+    eklemek_dene(tryCatch(enc2utf8(p), error = function(e) NULL))
+    # enc2native ile dönüştürülmüş (Windows CP1254 için)
+    eklemek_dene(tryCatch(enc2native(p), error = function(e) NULL))
+    unique(varyantlar)
+  }
 
-  base_exists <- tryCatch(
-    isTRUE(dir.exists(base)) || isTRUE(fs::dir_exists(base)),
-    error = function(e) FALSE
-  )
+  dizin_var_mi <- function(p) {
+    tryCatch(
+      isTRUE(dir.exists(p)) || isTRUE(fs::dir_exists(p)),
+      error = function(e) FALSE
+    )
+  }
 
-  if (!isTRUE(created) || !isTRUE(base_exists)) {
-    # Yedek: MERGEN_UPLOADS_DIR'i doğrudan kullan (normalize etme)
+  dizin_olustur_dene <- function(p) {
+    olustu <- tryCatch({ fs::dir_create(p, recurse = TRUE); TRUE },
+                       error = function(e) FALSE)
+    if (!isTRUE(olustu)) {
+      olustu <- tryCatch({ dir.create(p, showWarnings = FALSE, recursive = TRUE); TRUE },
+                         error = function(e) FALSE)
+    }
+    isTRUE(olustu) && dizin_var_mi(p)
+  }
+
+  # Dizini oluştur: her encoding varyantını dene, ilk çalışan kazansın
+  secilen_base <- NULL
+  for (v in encoding_varyantlari(base)) {
+    if (dizin_var_mi(v) || dizin_olustur_dene(v)) {
+      secilen_base <- v
+      break
+    }
+  }
+  if (!is.null(secilen_base)) {
+    base <- secilen_base
+  }
+
+  # --- KRİTİK: WINDOWS 8.3 KISA YOLU ---
+  # Dizin oluşturulduktan sonra Windows'un shortPathName() fonksiyonu ile
+  # 8.3 kısa yolu (örn. //rehisds/.../GELIST~1/MERGEN~1) alıyoruz. Bu yol
+  # yalnızca ASCII karakter içerir; Türkçe karakter içeren path bileşenleri
+  # tamamen elenir. Böylece hiçbir mojibake senaryosu mümkün olmaz ve bütün
+  # dosya işlemleri (file.exists, list.files, fs::*) sorunsuz çalışır.
+  # shortPathName Windows'un wide-character API'sini kullandığından encoding
+  # yorumlama sorunlarına karşı dayanıklıdır.
+  if (.Platform$OS.type == "windows" && dizin_var_mi(base)) {
+    base_backslash <- gsub("/", "\\\\", base, fixed = TRUE)
+    kisa_yol <- tryCatch(
+      utils::shortPathName(base_backslash),
+      error = function(e) NA_character_
+    )
+    if (!is.na(kisa_yol) && nzchar(kisa_yol)) {
+      kisa_yol_slash <- gsub("\\\\", "/", kisa_yol, fixed = TRUE)
+      # Kısa yolun GERÇEKTEN çalıştığını doğrula
+      if (dizin_var_mi(kisa_yol_slash)) {
+        base <- kisa_yol_slash
+      }
+    }
+  }
+
+  # Yedek: dizin hiçbir varyantta oluşturulamadıysa MERGEN_UPLOADS_DIR'e düş
+  if (!dizin_var_mi(base)) {
     base <- gsub("\\\\", "/", MERGEN_UPLOADS_DIR, fixed = TRUE)
-    tryCatch({
-      fs::dir_create(base, recurse = TRUE)
-    }, error = function(e) {
-      dir.create(base, showWarnings = FALSE, recursive = TRUE)
-    })
+    dizin_olustur_dene(base)
   }
 
   base

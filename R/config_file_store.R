@@ -69,7 +69,11 @@ MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
       readLines(MERGEN_INDEX_PATH, warn = FALSE, encoding = "UTF-8"),
       collapse = "\n"
     )
-    jsonlite::fromJSON(json_txt, simplifyVector = TRUE)
+    idx <- jsonlite::fromJSON(json_txt, simplifyVector = TRUE)
+    # KRİTİK: JSON UTF-8'dir; okunan string'lerin Encoding bayrağını
+    # "UTF-8" olarak işaretle. Aksi hâlde R, bytes'ı native encoding
+    # sanıp downstream'de yanlış yorumluyor (Geliştirme -> GeliÅŸtirme).
+    .mark_utf8(idx)
   } else {
     list()
   }
