@@ -26,6 +26,8 @@ MERGEN_FILES_ROOT <- normalize_utf8_path(MERGEN_FILES_ROOT,
 # Kalıcı yüklemeler dizini: ./mergen_uploads (MCP_FILES_BASE ile geçersiz kılınabilir)
 MERGEN_UPLOADS_DIR <- file.path(getwd(), "mergen_uploads")
 dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
+# CERRAHİ DÜZELTME: getwd()'den gelen yolu UTF-8 olarak işaretle, mojibake önlenir
+Encoding(MERGEN_UPLOADS_DIR) <- "UTF-8"
 MERGEN_UPLOADS_DIR <- normalize_utf8_path(MERGEN_UPLOADS_DIR,
                                           mustWork = dir.exists(MERGEN_UPLOADS_DIR))
 
@@ -321,6 +323,8 @@ mergen_user_upload_dir <- function(user_id) {
   p_exists <- tryCatch(path_exists_relaxed(p), error = function(e) dir.exists(p))
   if (!isTRUE(created) || !isTRUE(p_exists)) {
     fallback <- file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", as.character(user_id)))
+    # CERRAHİ DÜZELTME: Fallback yolunda UTF-8 encoding garantisi
+    Encoding(fallback) <- "UTF-8"
     fs::dir_create(fallback, recurse = TRUE)
     fallback_exists <- tryCatch(path_exists_relaxed(fallback), error = function(e) dir.exists(fallback))
     return(normalize_mcp_path(fallback, must_exist = isTRUE(fallback_exists)))
@@ -587,11 +591,21 @@ mergen_clear_user_bucket <- function(user_id) {
   uid <- as.character(user_id)
   user_folder_name <- sprintf("user_%s", uid)
 
-  # Olası tüm dizin adaylarını topla (UNC, yerel, MCP)
+   # Olası tüm dizin adaylarını topla (UNC, yerel, MCP)
   candidate_dirs <- unique(c(
     tryCatch(mergen_user_upload_dir(user_id), error = function(e) NULL),
-    file.path(MERGEN_UPLOADS_DIR, user_folder_name),
-    file.path(MERGEN_MCP_BASE_DIR, user_folder_name)
+    {
+      # CERRAHİ DÜZELTME: MERGEN_UPLOADS_DIR ile oluşturulan yolda UTF-8 encoding garantisi
+      p <- file.path(MERGEN_UPLOADS_DIR, user_folder_name)
+      Encoding(p) <- "UTF-8"
+      p
+    },
+    {
+      # CERRAHİ DÜZELTME: MERGEN_MCP_BASE_DIR ile oluşturulan yolda UTF-8 encoding garantisi
+      p <- file.path(MERGEN_MCP_BASE_DIR, user_folder_name)
+      Encoding(p) <- "UTF-8"
+      p
+    }
   ))
   candidate_dirs <- candidate_dirs[!vapply(candidate_dirs, is.null, logical(1))]
 

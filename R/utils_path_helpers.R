@@ -13,6 +13,8 @@
 # değilse erken bir yedek sağlar.
 if (!exists("MERGEN_UPLOADS_DIR")) {
   MERGEN_UPLOADS_DIR <- file.path(getwd(), "mergen_uploads")
+  # CERRAHİ DÜZELTME: getwd()'den gelen yolu UTF-8 olarak işaretle, mojibake önlenir
+  Encoding(MERGEN_UPLOADS_DIR) <- "UTF-8"
 }
 
 # --- WINDOWS KISA YOL (8.3) DÖNÜŞTÜRÜCÜ ---
@@ -56,12 +58,18 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     return(candidate)
   }
 
+  # CERRAHİ DÜZELTME: normalizePath() öncesinde encoding UTF-8 olarak işaretle
+  Encoding(candidate) <- "UTF-8"
+  
   normalized <- tryCatch(
     normalizePath(candidate, winslash = "/", mustWork = mustWork),
     error = function(e) candidate
   )
 
   normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
+  
+  # CERRAHİ DÜZELTME: normalizePath() sonrası da UTF-8 encoding garantisi
+  Encoding(normalized) <- "UTF-8"
 
   exists_now <- tryCatch(
     isTRUE(file.exists(normalized)) ||
@@ -95,6 +103,8 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   }
 
   candidate <- as.character(candidate)
+  # CERRAHİ DÜZELTME: Gerekçe: Windows'ta native encoding UTF-8 olmayabilir
+  Encoding(candidate) <- "UTF-8"
   candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
   # UNC yolları: tek veya çift eğik çizgiyle başlayan ağ yollarını yakala
@@ -102,6 +112,8 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
   if (maybe_unc) {
     cleaned <- paste0("//", sub("^/+", "", candidate))
     cleaned <- dedupe_leading_pair(cleaned)
+    # CERRAHİ DÜZELTME: UNC yol dönüşümü sonrası UTF-8 encoding garantisi
+    Encoding(cleaned) <- "UTF-8"
     return(cleaned)
   }
 
@@ -115,6 +127,14 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 #      ve config_file_store.R'de çağrılır.
 resolve_mcp_base_dir <- function() {
   raw <- Sys.getenv("MCP_FILES_BASE", "")
+  
+  # CERRAHİ DÜZELTME: Windows'ta Sys.getenv() native encoding (CP1254) döner.
+  # Türkçe karakterlerin mojibake (ş -> ÅŸ) olmaması için UTF-8'e çeviriyoruz.
+  # bilge_yolac_plugins doğru çalışıyor çünkü normalizePath() kullanıyor.
+  if (nzchar(raw)) {
+    Encoding(raw) <- "UTF-8"
+  }
+  
   if (!nzchar(raw)) {
     raw <- MERGEN_UPLOADS_DIR
   }
@@ -133,6 +153,8 @@ resolve_mcp_base_dir <- function() {
 
   if (!isTRUE(created) || !isTRUE(base_exists)) {
     base <- MERGEN_UPLOADS_DIR
+    # CERRAHİ DÜZELTME: Fallback durumunda da UTF-8 encoding garantisi
+    Encoding(base) <- "UTF-8"
     tryCatch({
       fs::dir_create(base, recurse = TRUE)
     }, error = function(e) {

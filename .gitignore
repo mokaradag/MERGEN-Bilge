@@ -1,45 +1,27 @@
-# History files
+```
+# R-specific build artifacts
+*.Rproj.user/
 .Rhistory
-.Rapp.history
-
-# Session Data
 .RData
-.Ruserdata
+.Ruserdata/
 
-# User-specific files
-.Rproj.user/
-
-# Secrets and environment variables
-.Renviron
-.Renviron.local
-
-# R-Studio files
-.rstudio-desktop
-
-# Shiny-specific files
-rsconnect/
-manifest.json
-shiny_cache/
-
-# Package management directories
+# Dependencies
 renv/
+library/
 packrat/
 
-# Log files
+# Logs and temp files
 *.log
-*.log.*
+*.tmp
+*.swp
 
-# macOS specific files
-.DS_Store
-.AppleDouble
-.LSOverride
+# Environment
+.env
+.env.local
+*.env.*
 
-# Thumbs.db and Desktop.ini files (Windows)
-Thumbs.db
-ehthumbs.db
-ehthumbs_vista.db
-Desktop.ini
-
-# R temporary files
-*.utf8.md
-*.knit.md
+# Editors
+.vscode/
+.idea/
+*.Rproj
+```
