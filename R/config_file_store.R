@@ -209,8 +209,9 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
   if (is.null(requested) || !(is.character(requested) && length(requested) > 0 && nzchar(requested[1]))) return(NULL)
 
   if (path_exists_relaxed(requested[1])) {
-    p <- tryCatch(normalize_mcp_path(requested[1], must_exist = TRUE),
-                 error = function(e) normalizePath(requested[1], winslash = "/", mustWork = TRUE))
+    # Dosya var: yolu olduğu gibi koru. normalize_mcp_path()/normalizePath()
+    # Windows ağ sürücüsünde Türkçe karakterleri bozabiliyor.
+    p <- gsub("\\\\", "/", as.character(requested[1]), fixed = TRUE)
     log_info("resolve_uploaded_file(): doğrudan mevcut dosya bulundu -> {p}")
     return(p)
   }
@@ -234,7 +235,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
           ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
           ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
           if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
-            p <- normalize_mcp_path(ent_path, must_exist = FALSE)
+            p <- gsub("\\\\", "/", as.character(ent_path), fixed = TRUE)
             log_info("resolve_uploaded_file(): kullanıcı kovasında TAM adla bulundu -> {p}")
             return(p)
           }
@@ -245,7 +246,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
       hit <- bucket[[key]]
       if (is.list(hit) && !is.null(hit$path)) hit <- hit$path  # yeni yapı
       if (!is.null(hit) && path_exists_relaxed(hit)) {
-        p <- normalize_mcp_path(hit, must_exist = FALSE)
+        p <- gsub("\\\\", "/", as.character(hit), fixed = TRUE)
         log_info("resolve_uploaded_file(): kullanıcı kovasında basename ile bulundu -> {p}")
         return(p)
       } else {
@@ -268,7 +269,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
           ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
           ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
           if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
-            p <- normalize_mcp_path(ent_path, must_exist = FALSE)
+            p <- gsub("\\\\", "/", as.character(ent_path), fixed = TRUE)
             log_info("resolve_uploaded_file(): display ile kovalar arasında bulundu (bucket='{bucket_name}') -> {p}")
             return(p)
           }
@@ -281,7 +282,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
   hit <- idx[[key]]
   if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
   if (!is.null(hit) && path_exists_relaxed(hit)) {
-    p <- normalize_mcp_path(hit, must_exist = FALSE)
+    p <- gsub("\\\\", "/", as.character(hit), fixed = TRUE)
     log_info("resolve_uploaded_file(): legacy haritada (basename) bulundu -> {p}")
     return(p)
   }
@@ -293,7 +294,7 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
         hit <- bucket[[key]]
         if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
         if (!is.null(hit) && path_exists_relaxed(hit)) {
-          p <- normalize_mcp_path(hit, must_exist = FALSE)
+          p <- gsub("\\\\", "/", as.character(hit), fixed = TRUE)
           log_info("resolve_uploaded_file(): çapraz kovada (basename) bulundu (bucket='{bucket_name}') -> {p}")
           return(p)
         }
@@ -418,9 +419,13 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   if (!is.null(bucket) && length(bucket) > 0) {
     entries <- lapply(names(bucket), function(key) {
       val <- bucket[[key]]
+      # KRİTİK: İndekse zaten UTF-8 olarak yazılan yolu olduğu gibi koru.
+      # normalize_utf8_path() -> normalizePath() Windows ağ sürücüsünde
+      # Türkçe karakterleri bozabiliyor (Geliştirme -> GeliÅŸtirme).
+      ham_yol <- if (is.list(val) && !is.null(val$path)) val$path else as.character(val)
       list(
         key = key,
-        path = normalize_utf8_path(if (is.list(val) && !is.null(val$path)) val$path else as.character(val), mustWork = FALSE),
+        path = gsub("\\\\", "/", as.character(ham_yol), fixed = TRUE),
         name = {
           disp <- if (is.list(val) && !is.null(val$display)) as.character(val$display) else NA_character_
           disp <- disp %||% NA_character_
@@ -444,8 +449,10 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
 
       if (!exists_now) {
         alt <- tryCatch({
+          # mergen_user_upload_dir() zaten güvenli yolu döndürüyor;
+          # tekrar normalize_mcp_path() çağırma, Türkçe karakterleri bozabilir.
           candidate <- file.path(mergen_user_upload_dir(user_id), basename(p %||% df$name[i]))
-          normalize_mcp_path(candidate, must_exist = dir.exists(dirname(candidate)))
+          gsub("\\\\", "/", as.character(candidate), fixed = TRUE)
         }, error = function(e) NULL)
 
         if (!is.null(alt) && path_exists_relaxed(alt)) {
@@ -551,8 +558,10 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
 
   idx_cache <- .load_index()
 
+  # KRİTİK: list.files() / fs::dir_ls() çıktısını olduğu gibi koru.
+  # normalize_utf8_path() Türkçe karakterleri bozabiliyor.
   out <- data.frame(
-    path = vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE),
+    path = vapply(paths, function(p) gsub("\\\\", "/", as.character(p), fixed = TRUE), character(1)),
     name = vapply(
       paths,
       function(p) mergen_resolve_display_name(

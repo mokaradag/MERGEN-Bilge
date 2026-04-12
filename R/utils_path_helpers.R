@@ -121,13 +121,16 @@ resolve_mcp_base_dir <- function() {
     raw <- MERGEN_UPLOADS_DIR
   }
 
-  # MCP_FILES_BASE belirtildiyse normalize et; değilse getwd() bazlı yolu koru.
-  # normalize_mcp_path() içindeki normalizePath() ağ sürücüsünde
-  # Türkçe karakterleri bozabiliyor (Geliştirme -> GeliÅŸtirme).
-  if (mcp_belirtildi) {
-    base <- normalize_mcp_path(raw, must_exist = FALSE)
-  } else {
-    base <- gsub("\\\\", "/", raw, fixed = TRUE)
+  # KRİTİK: normalize_mcp_path() / normalizePath() KULLANMIYORUZ.
+  # Windows ağ sürücüsünde normalizePath() sürücü harfini UNC yoluna
+  # çevirirken Türkçe karakterleri bozuyor (Geliştirme -> GeliÅŸtirme).
+  # Plugin sistemi (resolve_app_root) ve SQL Loader ile aynı yaklaşım:
+  # yolu doğrudan kullan, yalnızca ters eğik çizgileri düzelt.
+  base <- gsub("\\\\", "/", raw, fixed = TRUE)
+
+  # UNC yolları için tek baştaki slash'ı çift slash'a çevir (//server/share)
+  if (grepl("^/[^/]", base)) {
+    base <- paste0("/", base)
   }
 
   created <- tryCatch({
@@ -150,10 +153,5 @@ resolve_mcp_base_dir <- function() {
     })
   }
 
-  if (mcp_belirtildi) {
-    normalize_mcp_path(base, must_exist = TRUE)
-  } else {
-    # getwd() bazlı yolu koru; tekrar normalize etme
-    base
-  }
+  base
 }

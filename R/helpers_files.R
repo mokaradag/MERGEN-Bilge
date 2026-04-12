@@ -86,23 +86,26 @@ copy_to_mcp_base <- function(upload, user_id) {
      p
   }
 
-  # KRİTİK: Önce config_file_store.R'de normalizePath() ile çözümlenen
-  # seçeneği kullan (Türkçe karakter encoding'i doğru). Sys.getenv() ham
-  # baytlar döndürerek Windows'ta dosya yolunu bozabiliyor
-  # (Geliştirme -> GeliAYtirme gibi).
+  # KRİTİK: config_file_store.R'de güvenli biçimde hazırlanan
+  # mergen.mcp_base_dir seçeneğini kullan. normalizePath() KULLANMIYORUZ:
+  # Windows ağ sürücüsünde sürücü harfini UNC yoluna çevirirken Türkçe
+  # karakterleri bozuyor (Geliştirme -> GeliÅŸtirme). Plugin sistemi ve
+  # SQL Loader ile aynı yaklaşım: yolu doğrudan kullan, yalnızca ters
+  # eğik çizgileri düzelt.
   base <- getOption("mergen.mcp_base_dir", "")
   if (!nzchar(base)) {
     raw_env <- Sys.getenv("MCP_FILES_BASE", "")
     if (nzchar(raw_env)) {
-      # normalizePath ile encoding'i düzelt
-      base <- tryCatch(
-        normalizePath(raw_env, winslash = "/", mustWork = FALSE),
-        error = function(e) raw_env
-      )
+      base <- gsub("\\\\", "/", raw_env, fixed = TRUE)
     }
   }
   if (!nzchar(base)) {
-    base <- normalizePath(file.path(getwd(), "mergen_uploads"), winslash = "/", mustWork = FALSE)
+    # MERGEN_UPLOADS_DIR config_file_store.R'de güvenli olarak ayarlanmıştır
+    base <- if (exists("MERGEN_UPLOADS_DIR")) {
+      MERGEN_UPLOADS_DIR
+    } else {
+      gsub("\\\\", "/", file.path(getwd(), "mergen_uploads"), fixed = TRUE)
+    }
   }
 
   # Use safe local normalization

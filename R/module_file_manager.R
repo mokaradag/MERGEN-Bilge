@@ -393,22 +393,22 @@ fileManagerServer <- function(
 	})
   
   # --- NEW: persistent storage helpers -----------------------------------------
+  # KRİTİK: Bu yardımcılar eskiden normalizePath() ile kendi yolunu çözüyordu.
+  # Windows ağ sürücüsünde normalizePath() sürücü harfini UNC yoluna çevirirken
+  # Türkçe karakterleri bozuyor (Geliştirme -> GeliÅŸtirme). Plugin sistemi ve
+  # SQL Loader ile aynı yaklaşım: config_file_store.R'de güvenli biçimde
+  # hazırlanan mergen_user_upload_dir() ve mergen.mcp_base_dir seçeneğini kullan.
   get_user_upload_dir <- function() {
-    base <- getOption(
-      "mergen.mcp_base_dir",
-      Sys.getenv("MCP_FILES_BASE",
-                 normalizePath(file.path(getwd(), "mergen_uploads"),
-                               winslash = "/", mustWork = FALSE))
-    )
-    file.path(base, sprintf("user_%s", module_user_id_chr()))
+    mergen_user_upload_dir(module_user_id_chr())
   }
-  
+
   is_under_mcp_base <- function(p) {
     if (is.null(p) || !nzchar(p)) return(FALSE)
-    base <- getOption("mergen.mcp_base_dir", Sys.getenv("MCP_FILES_BASE", ""))
+    base <- getOption("mergen.mcp_base_dir", "")
     if (!nzchar(base)) return(FALSE)
-    np <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
-    nb <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
+    # normalizePath() kullanma: Türkçe karakterleri bozabiliyor.
+    np <- gsub("\\\\", "/", as.character(p), fixed = TRUE)
+    nb <- gsub("\\\\", "/", as.character(base), fixed = TRUE)
     startsWith(tolower(np), tolower(paste0(nb, "/"))) || identical(tolower(np), tolower(nb))
   }
     
