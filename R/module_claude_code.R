@@ -872,6 +872,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       # Boş kontrolü
       if (is.null(prompt) || !nzchar(prompt)) return()
+      kullanici_prompt <- prompt
+      calistirma_promptu <- prompt
 
       # Çift tıklama koruması
       if (isTRUE(rv$is_running)) return()
@@ -956,10 +958,48 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       calisma_dizini <- runtime_dizin$runtime_workdir %||% calisma_dizini
       mirror_kullanildi <- isTRUE(runtime_dizin$mirrored)
 
+      dokuman_baglami <- prepare_claude_code_document_context(
+        prompt = kullanici_prompt,
+        runtime_workdir = calisma_dizini,
+        source_workdir = kaynak_calisma_dizini,
+        user_id = effective_user_id
+      )
+
+      calistirma_promptu <- dokuman_baglami$prompt %||% kullanici_prompt
+
+      if (isTRUE(dokuman_baglami$text_sidecars_ready)) {
+        calisma_dizini <- dokuman_baglami$effective_workdir %||% calisma_dizini
+
+        # Doküman destek dizini yalnızca geçici okuma bağlamı olduğu için
+        # kaynak klasöre geri senkronlama yapılmamalı.
+        mirror_kullanildi <- FALSE
+
+        showNotification(
+          paste0(
+            length(dokuman_baglami$prepared_files %||% list()),
+            " doküman için yerel metin çıkarımı hazırlandı."
+          ),
+          type = "message",
+          duration = 5
+        )
+
+        log_info(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Doküman görevi için yerel metin çıkarımları hazırlandı.",
+          "Hazır dosya sayısı:",
+          length(dokuman_baglami$prepared_files %||% list()),
+          "| Rehber:",
+          dokuman_baglami$manifest_path %||% "",
+          "| Etkin çalışma dizini:",
+          calisma_dizini
+        ))
+      }
+
       model_cozumu <- resolve_claude_code_execution_model(
         selected_model = model,
-        prompt = prompt,
-        workdir = kaynak_calisma_dizini %||% calisma_dizini
+        prompt = kullanici_prompt,
+        workdir = kaynak_calisma_dizini %||% calisma_dizini,
+        document_context = dokuman_baglami
       )
 
       if (!isTRUE(model_cozumu$allow_run)) {
@@ -1030,7 +1070,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       # Konuşma bağlamına ekle
       rv$conversation_context <- c(rv$conversation_context, list(
-        list(role = "user", content = prompt)
+        list(role = "user", content = kullanici_prompt)
       ))
 
       # Oturum kimliğini yakala
@@ -1042,7 +1082,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         message = list(
           target = ns("output_area"),
           type = "user",
-          content = htmltools::htmlEscape(prompt),
+          content = htmltools::htmlEscape(kullanici_prompt),
           timestamp = format(Sys.time(), "%H:%M:%S"),
           senderName = ad,
           welcomeId = ns("welcome_screen")
@@ -1076,6 +1116,132 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       # Zaman damgası (akış mesajları için)
       zaman_damgasi <- format(Sys.time(), "%H:%M:%S")
+	  
+      dokuman_gorevi_tek_sefer_modu <- isTRUE(.Platform$OS.type == "windows") &&
+        isTRUE(dokuman_baglami$text_sidecars_ready)
+
+      if (isTRUE(dokuman_gorevi_tek_sefer_modu)) {
+        promises::future_promise({
+          run_claude_code(
+            prompt = calistirma_promptu,
+            workdir = calisma_dizini,
+            model = model,
+            timeout_sec = zaman_asimi,
+            session_id = oturum_id,
+            cli_path = cli_yolu
+          )
+        }) |>
+          promises::then(function(sonuc) {
+            sure <- sonuc$duration %||% NA_real_
+
+            if (isTRUE(sonuc$success)) {
+              if (!is.null(sonuc$session_id) && nzchar(sonuc$session_id %||% "")) {
+                rv$cli_session_id <- sonuc$session_id
+              }
+
+              rv$conversation_context <- c(
+                rv$conversation_context,
+                list(list(role = "assistant", content = sonuc$output %||% ""))
+              )
+
+              session$sendCustomMessage(
+                type = "cc-add-message",
+                message = list(
+                  target = ns("output_area"),
+                  type = "assistant",
+                  content = format_claude_code_output(sonuc$output %||% ""),
+                  timestamp = format(Sys.time(), "%H:%M:%S"),
+                  accentColor = karakter_renk,
+                  characterName = karakter$display_name,
+                  welcomeId = ns("welcome_screen")
+                )
+              )
+
+              rv$last_result <- sonuc
+
+              finalize_streaming(
+                "Tamamlandı",
+                "check-circle",
+                "#81C784",
+                sure
+              )
+            } else {
+              rv$last_result <- sonuc
+
+              session$sendCustomMessage(
+                type = "cc-add-message",
+                message = list(
+                  target = ns("output_area"),
+                  type = "error",
+                  content = htmltools::htmlEscape(sonuc$error %||% "Bilinmeyen hata"),
+                  timestamp = format(Sys.time(), "%H:%M:%S"),
+                  welcomeId = ns("welcome_screen")
+                )
+              )
+
+              finalize_streaming(
+                "Hata",
+                "exclamation-triangle",
+                "#E57373",
+                sure
+              )
+            }
+
+            rv$output_history <- c(
+              rv$output_history,
+              list(list(
+                prompt = kullanici_prompt,
+                result = rv$last_result,
+                timestamp = Sys.time(),
+                character = karakter_id
+              ))
+            )
+
+            observe_dir_contents(
+              dizin = kaynak_calisma_dizini %||% calisma_dizini
+            )
+
+            NULL
+          }) |>
+          promises::catch(function(e) {
+            hata_metni <- conditionMessage(e)
+
+            rv$last_result <- list(
+              success = FALSE,
+              output = "",
+              error = hata_metni,
+              duration = NA_real_,
+              tool_uses = list(),
+              session_id = NULL
+            )
+
+            session$sendCustomMessage(
+              type = "cc-add-message",
+              message = list(
+                target = ns("output_area"),
+                type = "error",
+                content = htmltools::htmlEscape(hata_metni),
+                timestamp = format(Sys.time(), "%H:%M:%S"),
+                welcomeId = ns("welcome_screen")
+              )
+            )
+
+            finalize_streaming(
+              "Hata",
+              "exclamation-triangle",
+              "#E57373",
+              NULL
+            )
+
+            observe_dir_contents(
+              dizin = kaynak_calisma_dizini %||% calisma_dizini
+            )
+
+            NULL
+          })
+
+        return()
+      }
 
       # -----------------------------------------------------------------------
       # CANLI AKIŞ: processx süreci başlat, akış durumunu rv'ye kaydet.
@@ -1092,7 +1258,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       stream_env$karakter_adi <- karakter$display_name
       stream_env$karakter_id <- karakter_id
       stream_env$zaman_damgasi <- zaman_damgasi
-      stream_env$prompt <- prompt
+      stream_env$prompt <- kullanici_prompt
       stream_env$calisma_dizini <- calisma_dizini
       stream_env$kaynak_calisma_dizini <- kaynak_calisma_dizini
       stream_env$mirror_kullanildi <- mirror_kullanildi
@@ -1118,7 +1284,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       if (!is.null(oturum_id) && nzchar(oturum_id)) {
         cli_args <- c(cli_args, "--resume", oturum_id)
       }
-      cli_args <- c(cli_args, prompt)
+      cli_args <- c(cli_args, calistirma_promptu)
 
       # Süreci başlat
       tryCatch({

@@ -14,6 +14,7 @@ This plugin includes ready-to-use R helper files in the `templates/` directory. 
 | `templates/xlsx_helpers.R` | XLSX | openxlsx | Excel spreadsheets: data tables, financial reports |
 | `templates/pptx_helpers.R` | PPTX | officer | PowerPoint presentations: slides, charts |
 | `templates/pdf_helpers.R` | PDF | grDevices (built-in) | PDF: charts, text reports, tables |
+| `templates/document_readers.R` | PDF/XLS/XLSX | pdftools + readxl | Mevcut dokümanlardan metin çıkarma ve özetleme hazırlığı |
 
 ### How to Use
 
@@ -30,6 +31,42 @@ docx_kaydet(doc, "rapor.docx")
 ```
 
 ---
+
+## Reading Existing Documents
+
+When the task is to read, analyze, or summarize existing PDF/XLS/XLSX files in the working directory:
+
+1. Do **not** rely on the generic `Read` tool directly for binary PDF/XLS/XLSX files.
+2. First source `templates/document_readers.R`.
+3. Convert the binary file to plain text.
+4. Then analyze or summarize the extracted text.
+
+### Example: Read a PDF
+
+```r
+source("bilge_yolac_plugins/office/templates/document_readers.R")
+
+metin <- office_dokuman_metin_cikar("rapor.pdf")
+cat(metin)
+```
+
+### Example: Read an Excel File
+
+```r
+source("bilge_yolac_plugins/office/templates/document_readers.R")
+
+metin <- office_dokuman_metin_cikar("veri.xlsx")
+cat(metin)
+```
+
+### Example: List Supported Documents in the Current Directory
+
+```r
+source("bilge_yolac_plugins/office/templates/document_readers.R")
+
+dosyalar <- office_dizin_dokumanlarini_listele(".")
+print(dosyalar)
+```
 
 ## DOCX Helper Functions Reference
 

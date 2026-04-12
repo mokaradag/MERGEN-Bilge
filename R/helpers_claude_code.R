@@ -239,10 +239,34 @@ get_claude_code_model_capabilities <- function() {
   )
 }
 
-is_claude_code_thinking_model <- function(model_id) {
-  if (is.null(model_id) || !nzchar(model_id)) return(FALSE)
+get_claude_code_runtime_model_capabilities <- function(model_id = NULL) {
+  model_id <- as.character(model_id %||% "")[1]
 
-  model_id %in% (get_claude_code_model_capabilities()$thinking_models %||% character(0))
+  env_caps <- get_claude_code_model_capabilities()
+
+  local_caps <- tryCatch(
+    get_local_model_capabilities(model_id, api_config),
+    error = function(e) list()
+  )
+
+  list(
+    thinking = isTRUE(local_caps$thinking) ||
+      (
+        nzchar(model_id) &&
+          model_id %in% (env_caps$thinking_models %||% character(0))
+      ),
+    omit_temperature = isTRUE(local_caps$omit_temperature),
+    stream_reasoning = isTRUE(local_caps$stream_reasoning),
+    allow_reasoning_fallback = isTRUE(local_caps$allow_reasoning_fallback)
+  )
+}
+
+is_claude_code_thinking_model <- function(model_id) {
+  if (is.null(model_id) || !nzchar(model_id)) {
+    return(FALSE)
+  }
+
+  isTRUE(get_claude_code_runtime_model_capabilities(model_id)$thinking)
 }
 
 prompt_mentions_binary_document_type <- function(prompt) {
@@ -328,7 +352,10 @@ workdir_has_binary_documents <- function(workdir, extensions = NULL) {
   any(nzchar(uzantilar) & uzantilar %in% extensions)
 }
 
-resolve_claude_code_execution_model <- function(selected_model, prompt = "", workdir = "") {
+resolve_claude_code_execution_model <- function(selected_model,
+                                                prompt = "",
+                                                workdir = "",
+                                                document_context = NULL) {
   sonuc <- list(
     allow_run = TRUE,
     model = selected_model %||% "",
@@ -347,13 +374,34 @@ resolve_claude_code_execution_model <- function(selected_model, prompt = "", wor
     return(sonuc)
   }
 
-  ikili_dokuman_gorevi <- isTRUE(prompt_mentions_binary_document_type(prompt)) ||
-    (
-      isTRUE(prompt_requests_document_operation(prompt)) &&
-      isTRUE(workdir_has_binary_documents(workdir, yetenekler$binary_doc_extensions))
-    )
+  ikili_dokuman_gorevi <- FALSE
+  metin_on_hazirlama_basarili <- FALSE
+
+  if (is.list(document_context) && length(document_context) > 0) {
+    ikili_dokuman_gorevi <- isTRUE(document_context$has_binary_docs)
+    metin_on_hazirlama_basarili <- isTRUE(document_context$text_sidecars_ready)
+  } else {
+    ikili_dokuman_gorevi <- isTRUE(prompt_mentions_binary_document_type(prompt)) ||
+      (
+        isTRUE(prompt_requests_document_operation(prompt)) &&
+          isTRUE(
+            workdir_has_binary_documents(
+              workdir,
+              yetenekler$binary_doc_extensions
+            )
+          )
+      )
+  }
 
   if (!isTRUE(ikili_dokuman_gorevi)) {
+    return(sonuc)
+  }
+
+  if (isTRUE(metin_on_hazirlama_basarili)) {
+    sonuc$reason <- paste(
+      "İkili dokümanlar önceden düz metne dönüştürüldü.",
+      "Seçili düşünme modeli korunuyor."
+    )
     return(sonuc)
   }
 
@@ -362,14 +410,14 @@ resolve_claude_code_execution_model <- function(selected_model, prompt = "", wor
   fallback_adaylari <- unique(unname(ayarlar$models))
   fallback_adaylari <- fallback_adaylari[nzchar(fallback_adaylari)]
   fallback_adaylari <- fallback_adaylari[
-    !(fallback_adaylari %in% (yetenekler$thinking_models %||% character(0)))
+    !vapply(fallback_adaylari, is_claude_code_thinking_model, logical(1))
   ]
 
   if (!length(fallback_adaylari)) {
     sonuc$allow_run <- FALSE
     sonuc$reason <- paste(
-      "Seçili model düşünen bir model ve PDF/Excel benzeri ikili doküman akışı için",
-      "düşünmeyen bir yedek model tanımlı değil."
+      "Seçili model düşünen bir model ve ikili doküman görevi için",
+      "kullanılabilir düşünmeyen yedek model bulunamadı."
     )
     return(sonuc)
   }
@@ -379,8 +427,8 @@ resolve_claude_code_execution_model <- function(selected_model, prompt = "", wor
 
   if (isTRUE(sonuc$fallback_used)) {
     sonuc$reason <- paste(
-      "Seçili düşünen model PDF/Excel benzeri ikili doküman akışında hata",
-      "üretebildiği için düşünmeyen modele geçildi."
+      "İkili dokümanlar için ön metin çıkarımı hazır değil.",
+      "Bu nedenle düşünmeyen modele geçildi."
     )
   }
 
