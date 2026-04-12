@@ -302,20 +302,30 @@ prompt_requests_document_operation <- function(prompt) {
   metin <- tolower(enc2utf8(paste(as.character(prompt %||% ""), collapse = " ")))
   if (!nzchar(metin)) return(FALSE)
 
+  # Türkçe çekimli fiilleri ve yaygın varyasyonları daha toleranslı yakala
   islem_deseni <- paste(
     c(
-      "\\boku\\b",
-      "\\bincele\\b",
-      "\\bözetle\\b",
-      "\\bozetle\\b",
-      "\\banaliz\\b",
-      "\\byorumla\\b",
-      "\\bkarşılaştır\\b",
-      "\\bkarsilastir\\b",
-      "\\blistele\\b",
+      "\\bok[a-zçğıöşü]*\\b",
+      "\\bokuy[a-zçğıöşü]*\\b",
+      "\\bincele[a-zçğıöşü]*\\b",
+      "\\bözet[a-zçğıöşü]*\\b",
+      "\\bozet[a-zçğıöşü]*\\b",
+      "\\banaliz[a-zçğıöşü]*\\b",
+      "\\byorumla[a-zçğıöşü]*\\b",
+      "\\bkarşılaştır[a-zçğıöşü]*\\b",
+      "\\bkarsilastir[a-zçğıöşü]*\\b",
+      "\\blistele[a-zçğıöşü]*\\b",
+      "\\bpdf\\b",
+      "\\bexcel\\b",
+      "\\bxlsx\\b",
+      "\\bxls\\b",
+      "\\bdosya[a-zçğıöşü]*\\b",
+      "\\bdizin[a-zçğıöşü]*\\b",
+      "\\bklasör[a-zçğıöşü]*\\b",
+      "\\bklasor[a-zçğıöşü]*\\b",
       "\\bread\\b",
-      "\\bsummarize\\b",
-      "\\banalyze\\b",
+      "\\bsummariz[a-z]*\\b",
+      "\\banaly[sz][a-z]*\\b",
       "\\bcompare\\b",
       "\\blist\\b"
     ),

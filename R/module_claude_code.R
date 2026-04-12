@@ -965,13 +965,33 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         user_id = effective_user_id
       )
 
+      log_info(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "[DOC_DEBUG_1] Doküman bağlamı oluşturuldu.",
+        "document_task_detected =", isTRUE(dokuman_baglami$document_task_detected),
+        "| has_binary_docs =", isTRUE(dokuman_baglami$has_binary_docs),
+        "| text_sidecars_ready =", isTRUE(dokuman_baglami$text_sidecars_ready),
+        "| prepared_files =", length(dokuman_baglami$prepared_files %||% list()),
+        "| support_dir =", dokuman_baglami$support_dir %||% "",
+        "| effective_workdir =", dokuman_baglami$effective_workdir %||% "",
+        "| extraction_errors =",
+        if (length(dokuman_baglami$extraction_errors %||% character(0))) {
+          paste(dokuman_baglami$extraction_errors, collapse = " || ")
+        } else {
+          "(yok)"
+        }
+      ))
+
       calistirma_promptu <- dokuman_baglami$prompt %||% kullanici_prompt
 
       if (isTRUE(dokuman_baglami$text_sidecars_ready)) {
-        calisma_dizini <- dokuman_baglami$effective_workdir %||% calisma_dizini
+        calisma_dizini <- dokuman_baglami$effective_workdir %||%
+          dokuman_baglami$support_dir %||%
+          calisma_dizini
 
-        # Doküman destek dizini yalnızca geçici okuma bağlamı olduğu için
-        # kaynak klasöre geri senkronlama yapılmamalı.
+        # Doküman destek dizini yalnızca düz metin çıkarımları içerir.
+        # Modelin orijinal ikili dosyalara dönmemesi için çalışma dizini burada tutulur.
+        # Bu nedenle kaynak klasöre geri senkronlama yapılmamalı.
         mirror_kullanildi <- FALSE
 
         showNotification(
@@ -995,12 +1015,22 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         ))
       }
 
-      model_cozumu <- resolve_claude_code_execution_model(
-        selected_model = model,
-        prompt = kullanici_prompt,
-        workdir = kaynak_calisma_dizini %||% calisma_dizini,
-        document_context = dokuman_baglami
-      )
+      if (isTRUE(dokuman_baglami$has_binary_docs)) {
+        model_cozumu <- list(
+          allow_run = TRUE,
+          model = model,
+          fallback_used = FALSE,
+          reason = "",
+          selected_model = model
+        )
+      } else {
+        model_cozumu <- resolve_claude_code_execution_model(
+          selected_model = model,
+          prompt = kullanici_prompt,
+          workdir = kaynak_calisma_dizini %||% calisma_dizini,
+          document_context = dokuman_baglami
+        )
+      }
 
       if (!isTRUE(model_cozumu$allow_run)) {
         rv$is_running <- FALSE
@@ -1117,28 +1147,85 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Zaman damgası (akış mesajları için)
       zaman_damgasi <- format(Sys.time(), "%H:%M:%S")
 	  
-      dokuman_gorevi_tek_sefer_modu <- isTRUE(.Platform$OS.type == "windows") &&
-        isTRUE(dokuman_baglami$text_sidecars_ready)
+      dokuman_gorevi_yerel_ozet_modu <- isTRUE(dokuman_baglami$has_binary_docs)
 
-      if (isTRUE(dokuman_gorevi_tek_sefer_modu)) {
+      if (isTRUE(dokuman_gorevi_yerel_ozet_modu)) {
+        # Doküman görevlerinde Claude Code CLI oturumu kesinlikle kullanılmaz.
+        # Eski --resume oturumu veya araç bağlamı bu akışa taşınmaz.
+        rv$cli_session_id <- NULL
+        rv$conversation_context <- list()
+        rv$current_runtime_model <- model
+
+        if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
+          cikarma_detayi <- paste(
+            c(
+              "Doküman görevi algılandı ancak yerel metin çıkarımı hazırlanamadı.",
+              if (length(dokuman_baglami$extraction_errors %||% character(0))) {
+                "Çıkarma hataları:"
+              } else {
+                NULL
+              },
+              dokuman_baglami$extraction_errors %||% character(0)
+            ),
+            collapse = "\n"
+          )
+
+          log_error(paste(
+            CLAUDE_CODE_LOG_PREFIX,
+            "Doküman görevi CLI'a düşmeden durduruldu.",
+            gsub("[{}]", "", cikarma_detayi)
+          ))
+
+          session$sendCustomMessage(
+            type = "cc-add-message",
+            message = list(
+              target = ns("output_area"),
+              type = "error",
+              content = htmltools::htmlEscape(cikarma_detayi),
+              timestamp = format(Sys.time(), "%H:%M:%S"),
+              welcomeId = ns("welcome_screen")
+            )
+          )
+
+          finalize_streaming(
+            "Hata",
+            "exclamation-triangle",
+            "#E57373",
+            NULL
+          )
+
+          observe_dir_contents(
+            dizin = kaynak_calisma_dizini %||% calisma_dizini
+          )
+
+          return()
+        }
+
+        log_info(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Doküman görevi yerel özetleme yoluna yönlendirildi.",
+          "Model:", model,
+          "| Hazır dosya sayısı:", length(dokuman_baglami$prepared_files %||% list()),
+          "| Destek dizini:", dokuman_baglami$effective_workdir %||% ""
+        ))
+
+        dokuman_api_key <- tryCatch(
+          as.character(session$userData$ai_api_key %||% "")[1],
+          error = function(e) ""
+        )
+
         promises::future_promise({
-          run_claude_code(
-            prompt = calistirma_promptu,
-            workdir = calisma_dizini,
-            model = model,
-            timeout_sec = zaman_asimi,
-            session_id = oturum_id,
-            cli_path = cli_yolu
+          summarize_claude_code_documents_with_local_llm(
+            document_context = dokuman_baglami,
+            model_id = model,
+            api_key = dokuman_api_key,
+            request_timeout_sec = zaman_asimi
           )
         }) |>
           promises::then(function(sonuc) {
             sure <- sonuc$duration %||% NA_real_
 
             if (isTRUE(sonuc$success)) {
-              if (!is.null(sonuc$session_id) && nzchar(sonuc$session_id %||% "")) {
-                rv$cli_session_id <- sonuc$session_id
-              }
-
               rv$conversation_context <- c(
                 rv$conversation_context,
                 list(list(role = "assistant", content = sonuc$output %||% ""))

@@ -295,7 +295,7 @@ build_claude_code_document_inline_payload <- function(hazir_dosyalar,
 
   parcalar <- c(
     "AŞAĞIDA DİZİNDEKİ DOSYALARDAN ÖNCEDEN ÇIKARILMIŞ METİNLER VARDIR.",
-    "BU GÖREV İÇİN AYRICA ARAÇ KULLANMA.",
+    "BU GÖREV İÇİN GLOB, READ, GREP VEYA BAŞKA BİR ARAÇ KULLANMA.",
     "DOĞRUDAN BU METİNLERİ OKUYUP ÖZETLE.",
     ""
   )
@@ -342,12 +342,15 @@ build_claude_code_document_inline_payload <- function(hazir_dosyalar,
 build_claude_code_document_prompt <- function(orijinal_prompt,
                                               manifest_path = "",
                                               reader_template_path = "",
-                                              unsupported_files = character(0)) {
+                                              unsupported_files = character(0),
+                                              inline_payload = "") {
   satirlar <- c(
     "SİSTEM ÇALIŞMA NOTU:",
     "Bu görev ikili ofis dokümanları içeriyor.",
     "PDF/XLS/XLSX dosyalarını doğrudan ikili içerik olarak Read etme.",
-    "Yalnızca düz metin çıkarımlarıyla çalış."
+    "Yalnızca düz metin çıkarımlarıyla çalış.",
+    "Bu görev için Glob, Read, Grep veya başka bir araç çağırma.",
+    "Gerekli içerik rehber dosyasında ve aşağıdaki hazır metin bloklarında zaten var."
   )
 
   if (nzchar(manifest_path)) {
@@ -380,6 +383,20 @@ build_claude_code_document_prompt <- function(orijinal_prompt,
   satirlar <- c(
     satirlar,
     "Araç sonuçlarında yalnız metin döndür; binary document blokları üretme.",
+    "Yanıtını yalnız hazır metin çıkarımlarına dayanarak ver."
+  )
+
+  if (nzchar(inline_payload)) {
+    satirlar <- c(
+      satirlar,
+      "",
+      "HAZIR METIN CIKARIMLARI:",
+      inline_payload
+    )
+  }
+
+  satirlar <- c(
+    satirlar,
     "",
     "KULLANICININ ASIL İSTEĞİ:",
     enc2utf8(orijinal_prompt %||% "")
@@ -394,33 +411,54 @@ prepare_claude_code_document_context <- function(prompt,
                                                  user_id = NULL) {
   sonuc <- list(
     prompt = prompt,
+    document_task_detected = FALSE,
     has_binary_docs = FALSE,
     text_sidecars_ready = FALSE,
     prepared_files = list(),
     unsupported_files = character(0),
+    extraction_errors = character(0),
     manifest_path = "",
     reader_template_path = "",
-    support_dir = ""
+    support_dir = "",
+    effective_workdir = runtime_workdir,
+    inline_payload = ""
   )
 
-  kontrol_dizini <- source_workdir %||% runtime_workdir
+  binary_exts <- get_claude_code_binary_doc_extensions()
+
+  # Önce yerel aynalanmış çalışma dizinini kontrol et
+  runtime_dokuman_var <- isTRUE(
+    workdir_has_binary_documents(runtime_workdir, binary_exts)
+  )
+
+  # Kaynak dizin sadece yedek amaçlı kontrol edilir
+  source_dokuman_var <- isTRUE(
+    workdir_has_binary_documents(source_workdir, binary_exts)
+  )
 
   dokuman_gorevi <- isTRUE(prompt_mentions_binary_document_type(prompt)) ||
     (
       isTRUE(prompt_requests_document_operation(prompt)) &&
-        isTRUE(
-          workdir_has_binary_documents(
-            kontrol_dizini,
-            get_claude_code_binary_doc_extensions()
-          )
-        )
+        isTRUE(runtime_dokuman_var || source_dokuman_var)
     )
 
   if (!isTRUE(dokuman_gorevi)) {
     return(sonuc)
   }
 
-  dokumanlar <- list_claude_code_binary_documents(kontrol_dizini)
+  sonuc$document_task_detected <- TRUE
+
+  # Dokümanları mümkünse runtime_workdir içinden al
+  dokuman_kaynak_dizini <- if (isTRUE(runtime_dokuman_var)) {
+    runtime_workdir
+  } else {
+    source_workdir %||% runtime_workdir
+  }
+
+  dokumanlar <- list_claude_code_binary_documents(
+    dokuman_kaynak_dizini,
+    extensions = binary_exts
+  )
 
   if (!length(dokumanlar)) {
     return(sonuc)
@@ -433,6 +471,7 @@ prepare_claude_code_document_context <- function(prompt,
 
   hazir_dosyalar <- list()
   unsupported_files <- character(0)
+  extraction_errors <- character(0)
   desteklenen_uzantilar <- get_claude_code_text_extractable_extensions()
 
   for (i in seq_along(dokumanlar)) {
@@ -453,10 +492,27 @@ prepare_claude_code_document_context <- function(prompt,
       )
     )
 
-    metin <- tryCatch(
-      extract_supported_document_text_for_claude(dosya_yolu),
-      error = function(e) ""
+    cikarma_sonucu <- tryCatch(
+      list(
+        text = extract_supported_document_text_for_claude(dosya_yolu),
+        error = ""
+      ),
+      error = function(e) {
+        list(
+          text = "",
+          error = conditionMessage(e)
+        )
+      }
     )
+
+    metin <- enc2utf8(cikarma_sonucu$text %||% "")
+
+    if (nzchar(cikarma_sonucu$error %||% "")) {
+      extraction_errors <- c(
+        extraction_errors,
+        paste0(basename(dosya_yolu), ": ", cikarma_sonucu$error)
+      )
+    }
 
     if (!nzchar(metin)) {
       unsupported_files <- c(unsupported_files, basename(dosya_yolu))
@@ -472,6 +528,22 @@ prepare_claude_code_document_context <- function(prompt,
     )
   }
 
+  sonuc$prepared_files <- hazir_dosyalar
+  sonuc$unsupported_files <- unique(unsupported_files)
+  sonuc$extraction_errors <- unique(extraction_errors)
+  sonuc$reader_template_path <- reader_template_path
+  sonuc$support_dir <- destek_dizini
+  sonuc$effective_workdir <- destek_dizini
+
+  if (!length(hazir_dosyalar)) {
+    log_error(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Doküman görevi algılandı ancak metin çıkarımı hazırlanamadı.",
+      paste(sonuc$extraction_errors %||% character(0), collapse = " | ")
+    ))
+    return(sonuc)
+  }
+
   manifest_path <- write_claude_code_document_manifest(
     hedef_yol = file.path(destek_dizini, "BILGE_YOLAC_DOKUMAN_REHBERI.md"),
     hazir_dosyalar = hazir_dosyalar,
@@ -479,18 +551,222 @@ prepare_claude_code_document_context <- function(prompt,
     reader_template_path = reader_template_path
   )
 
-  sonuc$prepared_files <- hazir_dosyalar
-  sonuc$unsupported_files <- unique(unsupported_files)
-  sonuc$text_sidecars_ready <- length(hazir_dosyalar) > 0
+  inline_payload <- build_claude_code_document_inline_payload(
+    hazir_dosyalar = hazir_dosyalar
+  )
+
+  sonuc$text_sidecars_ready <- TRUE
   sonuc$manifest_path <- manifest_path
-  sonuc$reader_template_path <- reader_template_path
-  sonuc$support_dir <- destek_dizini
+  sonuc$inline_payload <- inline_payload
   sonuc$prompt <- build_claude_code_document_prompt(
     orijinal_prompt = prompt,
     manifest_path = manifest_path,
     reader_template_path = reader_template_path,
-    unsupported_files = sonuc$unsupported_files
+    unsupported_files = sonuc$unsupported_files,
+    inline_payload = inline_payload
   )
 
   sonuc
+}
+
+#' Kullanıcı prompt'undan doküman özetleme detay seviyesini çıkarır
+#'
+#' @param prompt Kullanıcı prompt'u
+#' @return "kisa", "orta" veya "detayli"
+resolve_claude_code_document_detail_level <- function(prompt) {
+  metin <- tolower(enc2utf8(paste(as.character(prompt %||% ""), collapse = " ")))
+
+  if (!nzchar(metin)) {
+    return("orta")
+  }
+
+  detay_deseni <- paste(
+    c(
+      "detay",
+      "ayrıntı",
+      "ayrinti",
+      "çok detay",
+      "cok detay",
+      "derinlemesine",
+      "kapsamlı",
+      "kapsamli",
+      "ayrıntılı",
+      "ayrintili",
+      "tam",
+      "tamamını",
+      "tamamini",
+      "satır satır",
+      "madde madde",
+      "tek tek",
+      "geniş",
+      "genis"
+    ),
+    collapse = "|"
+  )
+
+  kisa_deseni <- paste(
+    c(
+      "kısa",
+      "kisa",
+      "özet geç",
+      "ozet gec",
+      "kısaca",
+      "kisaca",
+      "kısa özet",
+      "kisa ozet"
+    ),
+    collapse = "|"
+  )
+
+  if (grepl(detay_deseni, metin, perl = TRUE)) {
+    return("detayli")
+  }
+
+  if (grepl(kisa_deseni, metin, perl = TRUE)) {
+    return("kisa")
+  }
+
+  "orta"
+}
+
+#' Bilge Yolaç doküman özetleme mesajlarını oluşturur
+#'
+#' @param document_context prepare_claude_code_document_context çıktısı
+#' @return LLM mesaj listesi
+build_claude_code_document_summary_messages <- function(document_context) {
+  kullanici_icerigi <- enc2utf8(
+    paste(as.character(document_context$prompt %||% ""), collapse = "\n")
+  )
+
+  detay_seviyesi <- resolve_claude_code_document_detail_level(
+    document_context$prompt %||% ""
+  )
+
+  detay_yonergesi <- switch(
+    detay_seviyesi,
+    "kisa" = c(
+      "Kısa ve yoğun bir özet ver.",
+      "Gereksiz ayrıntılara girme.",
+      "Dosya bazlı özetleri kısa tut."
+    ),
+    "detayli" = c(
+      "Kullanıcı ayrıntılı anlatım istiyor.",
+      "Özeti kısa tutma; kapsamlı ve açıklayıcı yaz.",
+      "Her önemli bölüm veya konu başlığını tek tek açıkla.",
+      "Dosya bazlı özetleri kısa değil, ayrıntılı ver.",
+      "Önemli kavramları, kararları, bulguları ve ilişkileri aç.",
+      "Metindeki sayısal/verisel noktaları mümkün olduğunca koru.",
+      "Gerekirse başlıklar ve alt başlıklarla yapılandır."
+    ),
+    c(
+      "Dengeli ayrıntı düzeyi kullan.",
+      "Ne çok kısa ne gereksiz uzun yaz."
+    )
+  )
+
+  sistem_icerigi <- paste(
+    c(
+      "Sen MERGEN Bilge içindeki Bilge Yolaç doküman özetleme yardımcısısın.",
+      "Sana yalnızca yerel olarak çıkarılmış düz metin doküman içerikleri verilir.",
+      "Yanıtını yalnızca bu metinlere dayandır.",
+      "Binary dosya, tool_result, document bloğu veya harici araç kullanımı üretme.",
+      "Metinlerde olmayan bir bilgiyi varmış gibi söyleme.",
+      "Yanıtını Türkçe ver.",
+      detay_yonergesi,
+      "Birden çok dosya varsa şu sırayı kullan:",
+      "1. Genel özet",
+      "2. Dosya bazlı özetler",
+      "3. Önemli bulgular",
+      "4. Dikkat çeken sayısal/verisel noktalar",
+      "5. Gerekirse kritik ayrıntılar ve yorumlanması gereken kısımlar"
+    ),
+    collapse = "\n"
+  )
+
+  list(
+    list(role = "system", content = sistem_icerigi),
+    list(role = "user", content = kullanici_icerigi)
+  )
+}
+
+#' Bilge Yolaç dokümanlarını doğrudan yerel LLM ile özetler
+#'
+#' @param document_context prepare_claude_code_document_context çıktısı
+#' @param model_id Kullanılacak model kimliği
+#' @param api_key Kullanıcı API anahtarı (varsa)
+#' @param request_timeout_sec Zaman aşımı süresi
+#' @return run_claude_code benzeri sonuç listesi
+summarize_claude_code_documents_with_local_llm <- function(document_context,
+                                                           model_id,
+                                                           api_key = "",
+                                                           request_timeout_sec = 600L) {
+  baslangic <- Sys.time()
+
+  if (!is.list(document_context) || !isTRUE(document_context$text_sidecars_ready)) {
+    return(list(
+      success = FALSE,
+      output = "",
+      error = "Hazır doküman metin çıkarımı bulunamadı.",
+      duration = 0,
+      tool_uses = list(),
+      session_id = NULL
+    ))
+  }
+
+  mesajlar <- build_claude_code_document_summary_messages(document_context)
+
+  detay_seviyesi <- resolve_claude_code_document_detail_level(
+    document_context$prompt %||% ""
+  )
+
+  max_output_tokens_val <- switch(
+    detay_seviyesi,
+    "kisa" = 4000L,
+    "detayli" = 12000L,
+    7000L
+  )
+
+  ayarlar <- list(
+    model_selection = as.character(model_id %||% "")[1],
+    api_key = as.character(api_key %||% "")[1],
+    request_timeout_sec = as.numeric(request_timeout_sec %||% 600),
+    max_output_tokens = max_output_tokens_val
+  )
+
+  tryCatch({
+    sonuc <- call_local_llm(
+      chat_history = mesajlar,
+      current_settings = ayarlar
+    )
+
+    cikti <- as.character(sonuc$content %||% "")[1]
+    sure <- round(
+      as.numeric(sonuc$duration %||% difftime(Sys.time(), baslangic, units = "secs")),
+      1
+    )
+
+    if (!nzchar(cikti)) {
+      stop("Yerel LLM doküman özeti boş döndü.")
+    }
+
+    list(
+      success = TRUE,
+      output = cikti,
+      error = "",
+      duration = sure,
+      tool_uses = list(),
+      session_id = NULL
+    )
+  }, error = function(e) {
+    sure <- round(as.numeric(difftime(Sys.time(), baslangic, units = "secs")), 1)
+
+    list(
+      success = FALSE,
+      output = "",
+      error = paste0("Doküman özeti oluşturulamadı: ", conditionMessage(e)),
+      duration = sure,
+      tool_uses = list(),
+      session_id = NULL
+    )
+  })
 }
