@@ -297,6 +297,7 @@ Bilge Yolaç eklenti dizini. Her alt klasör bağımsız bir eklentidir. `plugin
 - `api_keys/`
 - `mergen_uploads/`
 - `destek_uploads/`
+- `bilge_yolac_downloads/` - Bilge Yolaç tarafından üretilen dosyaların tarayıcıdan indirilebilir olarak sunulduğu dizin. `global.R` tarafından `bilge_yolac_downloads` kaynak yolu olarak kaydedilir.
 
 ---
 
@@ -360,6 +361,7 @@ Bilge Yolaç, proje içinde ayrı bir ürün katmanı gibi düşünülebilir. Kl
 ### Bileşenleri
 - CLI yapılandırması
 - klasör seçici modülü
+- yerel klasör kopyalama (seçilen klasör çalışma alanına kopyalanır, yalnızca yüklenmez)
 - canlı akış modülü
 - araç kullanımı HTML biçimlendirme katmanı
 - özel JS/CSS görünümü
@@ -367,6 +369,9 @@ Bilge Yolaç, proje içinde ayrı bir ürün katmanı gibi düşünülebilir. Kl
 - model katmanları
 - senaryo şablonları
 - eklenti yönetim paneli (sol kenar çubuğunda daraltılabilir)
+- PDF / XLS / XLSX / DOCX yerel metin çıkarımı ve özetleme (`.doc` desteklenmez)
+- `dosya_aciklamalari.txt` otomatik üretimi
+- üretilen dosyalar için indirilebilir bağlantı kartları (`bilge_yolac_downloads/` üzerinden)
 
 ### Model katmanları
 - Hızlı
@@ -441,6 +446,7 @@ bilge_yolac_plugins/<eklenti-adı>/
 - `bilge_yolac_plugins/office/templates/xlsx_helpers.R` - openxlsx tabanlı Excel yardımcıları
 - `bilge_yolac_plugins/office/templates/pptx_helpers.R` - officer tabanlı PowerPoint yardımcıları
 - `bilge_yolac_plugins/office/templates/pdf_helpers.R` - yerleşik grDevices ile PDF (ek paket gerekmez)
+- `bilge_yolac_plugins/office/templates/document_readers.R` - PDF, XLS/XLSX ve DOCX dosyalarından çevrimdışı metin çıkarım yardımcıları (`.doc` desteklenmez)
 
 Bu şablonlar Shiny uygulamasına `source()` ile yüklenmez. Bilge Yolaç oturumunda ajan tarafından ihtiyaç duyuldukça çağrılacak bağımsız R betikleridir. Endişelerin ayrımı şu şekildedir:
 - `skills/main.md` - ne zaman ve neden kullanılacağı bilgisi
