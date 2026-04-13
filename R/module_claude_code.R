@@ -89,7 +89,7 @@ claudeCodeUI <- function(id) {
                 label = NULL,
                 icon = icon("laptop"),
                 class = "cc-browse-btn",
-                title = "Yerel bilgisayardan klasör yükle",
+                title = "Yerel klasörü Bilge Yolaç çalışma alanına kopyala",
                 onclick = sprintf(
                   "document.getElementById('%s').click();",
                   ns("yerel_klasor")
@@ -1219,7 +1219,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             document_context = dokuman_baglami,
             model_id = model,
             api_key = dokuman_api_key,
-            request_timeout_sec = zaman_asimi
+            request_timeout_sec = zaman_asimi,
+            output_dir = kaynak_calisma_dizini %||% calisma_dizini,
+            user_id = effective_user_id,
+            session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
           )
         }) |>
           promises::then(function(sonuc) {
@@ -1231,12 +1234,34 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
                 list(list(role = "assistant", content = sonuc$output %||% ""))
               )
 
+              assistant_html <- paste0(
+                format_claude_code_output(sonuc$output %||% ""),
+                sonuc$generated_downloads_html %||% "",
+                if (!nzchar(sonuc$generated_downloads_html %||% "") &&
+                    nzchar(sonuc$generated_summary_path %||% "")) {
+                  paste0(
+                    '<div class="cc-generated-files">',
+                    '<div class="cc-generated-files-title">',
+                    '<i class="fas fa-file-alt"></i> Oluşturulan Dosya',
+                    '</div>',
+                    '<div class="cc-tool-content">',
+                    '<span class="cc-tool-path">',
+                    htmltools::htmlEscape(sonuc$generated_summary_path),
+                    '</span>',
+                    '</div>',
+                    '</div>'
+                  )
+                } else {
+                  ""
+                }
+              )
+
               session$sendCustomMessage(
                 type = "cc-add-message",
                 message = list(
                   target = ns("output_area"),
                   type = "assistant",
-                  content = format_claude_code_output(sonuc$output %||% ""),
+                  content = assistant_html,
                   timestamp = format(Sys.time(), "%H:%M:%S"),
                   accentColor = karakter_renk,
                   characterName = karakter$display_name,
@@ -1349,6 +1374,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       stream_env$calisma_dizini <- calisma_dizini
       stream_env$kaynak_calisma_dizini <- kaynak_calisma_dizini
       stream_env$mirror_kullanildi <- mirror_kullanildi
+      stream_env$user_id <- effective_user_id
+      stream_env$session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
       stream_env$tum_satirlar <- character(0)
       stream_env$durduruldu <- FALSE
       stream_env$oturum_id <- NULL  # stream-json olaylarından gelecek
@@ -1559,10 +1586,22 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             list(role = "assistant", content = ayristirma$text_output)
           ))
 
+          # Üretilen dosyaları yerel indirme bağlantılarına dönüştür
+          olusan_dosyalar <- collect_claude_code_generated_downloads(
+            tool_uses = ayristirma$tool_uses,
+            runtime_workdir = env$calisma_dizini,
+            source_workdir = env$kaynak_calisma_dizini,
+            user_id = env$user_id,
+            session_token = env$session_token
+          )
+
           # Akış mesajını sonlandır
           # stream-json modunda metin zaten anlık gösterildiği için
           # finalContent yalnızca yedek olarak gönderilir
-          son_icerik <- format_claude_code_output(ayristirma$text_output)
+          son_icerik <- paste0(
+            format_claude_code_output(ayristirma$text_output),
+            format_claude_code_generated_downloads_html(olusan_dosyalar)
+          )
 
           session$sendCustomMessage(
             type = "cc-stream-end",
@@ -1577,10 +1616,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
           # Sonucu sakla
           rv$last_result <- list(
-            success = TRUE, output = ayristirma$text_output,
-            error = "", duration = sure,
+            success = TRUE,
+            output = ayristirma$text_output,
+            error = "",
+            duration = sure,
             tool_uses = ayristirma$tool_uses,
-            session_id = oturum_id
+            session_id = oturum_id,
+            generated_downloads = olusan_dosyalar
           )
 
           finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure)

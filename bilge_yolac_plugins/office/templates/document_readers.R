@@ -1,8 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: bilge_yolac_plugins/office/templates/document_readers.R
-# Açıklama: PDF ve Excel dosyalarını metne dönüştüren çevrimdışı yardımcılar.
-#           Bilge Yolaç içinde mevcut ofis dokümanlarını okumak ve özetleme
-#           öncesi metin çıkarmak için kullanılır.
+# Açıklama: PDF, Excel ve DOCX dosyalarını metne dönüştüren çevrimdışı
+#           yardımcılar. Bilge Yolaç içinde mevcut ofis dokümanlarını okumak
+#           ve özetleme öncesi metin çıkarmak için kullanılır.
 # ==============================================================================
 
 office_metin_kisalt <- function(metin, max_karakter = 120000L) {
@@ -121,6 +121,72 @@ office_excel_metin_cikar <- function(dosya_yolu,
   )
 }
 
+office_docx_metin_cikar <- function(dosya_yolu,
+                                    max_paragraf = 500L,
+                                    max_karakter = 120000L) {
+  gecici_dizin <- file.path(
+    tempdir(),
+    paste0(
+      "office_docx_",
+      format(Sys.time(), "%Y%m%d%H%M%S"),
+      "_",
+      sprintf("%06d", sample.int(999999L, 1))
+    )
+  )
+
+  dir.create(gecici_dizin, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(gecici_dizin, recursive = TRUE, force = TRUE), add = TRUE)
+
+  tryCatch(
+    utils::unzip(dosya_yolu, files = "word/document.xml", exdir = gecici_dizin),
+    error = function(e) {
+      stop(paste("DOCX açılamadı:", conditionMessage(e)))
+    }
+  )
+
+  xml_yolu <- file.path(gecici_dizin, "word", "document.xml")
+
+  if (!file.exists(xml_yolu)) {
+    stop("DOCX içindeki word/document.xml bulunamadı.")
+  }
+
+  doc <- xml2::read_xml(xml_yolu)
+  ns <- xml2::xml_ns(doc)
+
+  paragraflar <- xml2::xml_find_all(doc, ".//w:p", ns = ns)
+
+  metinler <- vapply(
+    paragraflar,
+    function(paragraf) {
+      dugumler <- xml2::xml_find_all(paragraf, ".//w:t", ns = ns)
+
+      if (!length(dugumler)) {
+        return("")
+      }
+
+      paste(xml2::xml_text(dugumler), collapse = "")
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  metinler <- trimws(enc2utf8(metinler))
+  metinler <- metinler[nzchar(metinler)]
+
+  if (!length(metinler)) {
+    return("")
+  }
+
+  if (length(metinler) > max_paragraf) {
+    metinler <- metinler[seq_len(max_paragraf)]
+  }
+
+  office_metin_kisalt(
+    paste(c("=== DOCX METNI ===", metinler), collapse = "\n\n"),
+    max_karakter = max_karakter
+  )
+}
+
 office_dokuman_metin_cikar <- function(dosya_yolu, ...) {
   uzanti <- tolower(tools::file_ext(dosya_yolu))
 
@@ -132,11 +198,19 @@ office_dokuman_metin_cikar <- function(dosya_yolu, ...) {
     return(office_excel_metin_cikar(dosya_yolu, ...))
   }
 
+  if (identical(uzanti, "docx")) {
+    return(office_docx_metin_cikar(dosya_yolu, ...))
+  }
+
+  if (identical(uzanti, "doc")) {
+    stop("Eski .doc biçimi bu çevrimdışı şablonda desteklenmiyor. Lütfen .docx biçimine dönüştürün.")
+  }
+
   stop(paste("Desteklenmeyen doküman uzantısı:", uzanti))
 }
 
 office_dizin_dokumanlarini_listele <- function(dizin,
-                                               uzantilar = c("pdf", "xlsx", "xls")) {
+                                               uzantilar = c("pdf", "xlsx", "xls", "docx")) {
   if (!dir.exists(dizin)) {
     return(character(0))
   }

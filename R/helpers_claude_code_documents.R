@@ -6,17 +6,24 @@
 # ==============================================================================
 
 get_claude_code_binary_doc_extensions <- function() {
+  varsayilan_extler <- c("pdf", "xlsx", "xls", "docx", "doc")
+
   exts <- tryCatch(
     get_claude_code_model_capabilities()$binary_doc_extensions,
-    error = function(e) c("pdf", "xlsx", "xls")
+    error = function(e) varsayilan_extler
   )
 
-  exts <- unique(tolower(as.character(exts %||% c("pdf", "xlsx", "xls"))))
-  exts[nzchar(exts)]
+  exts <- unique(c(
+    tolower(as.character(exts %||% character(0))),
+    varsayilan_extler
+  ))
+
+  exts <- exts[nzchar(exts)]
+  unique(exts)
 }
 
 get_claude_code_text_extractable_extensions <- function() {
-  c("pdf", "xlsx", "xls")
+  c("pdf", "xlsx", "xls", "docx")
 }
 
 sanitize_claude_doc_cache_name <- function(x) {
@@ -205,6 +212,72 @@ extract_excel_text_for_claude <- function(dosya_yolu,
   )
 }
 
+extract_docx_text_for_claude <- function(dosya_yolu,
+                                         max_paragraf = 500L,
+                                         max_karakter = 120000L) {
+  gecici_dizin <- file.path(
+    tempdir(),
+    paste0(
+      "claude_docx_",
+      format(Sys.time(), "%Y%m%d%H%M%S"),
+      "_",
+      sprintf("%06d", sample.int(999999L, 1))
+    )
+  )
+
+  dir.create(gecici_dizin, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(gecici_dizin, recursive = TRUE, force = TRUE), add = TRUE)
+
+  tryCatch(
+    utils::unzip(dosya_yolu, files = "word/document.xml", exdir = gecici_dizin),
+    error = function(e) {
+      stop(paste("DOCX açılamadı:", conditionMessage(e)))
+    }
+  )
+
+  xml_yolu <- file.path(gecici_dizin, "word", "document.xml")
+
+  if (!file.exists(xml_yolu)) {
+    stop("DOCX içindeki word/document.xml bulunamadı.")
+  }
+
+  doc <- xml2::read_xml(xml_yolu)
+  ns <- xml2::xml_ns(doc)
+
+  paragraflar <- xml2::xml_find_all(doc, ".//w:p", ns = ns)
+
+  metinler <- vapply(
+    paragraflar,
+    function(paragraf) {
+      dugumler <- xml2::xml_find_all(paragraf, ".//w:t", ns = ns)
+
+      if (!length(dugumler)) {
+        return("")
+      }
+
+      paste(xml2::xml_text(dugumler), collapse = "")
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  metinler <- trimws(enc2utf8(metinler))
+  metinler <- metinler[nzchar(metinler)]
+
+  if (!length(metinler)) {
+    return("")
+  }
+
+  if (length(metinler) > max_paragraf) {
+    metinler <- metinler[seq_len(max_paragraf)]
+  }
+
+  truncate_claude_doc_text(
+    paste(c("=== DOCX METNI ===", metinler), collapse = "\n\n"),
+    max_karakter = max_karakter
+  )
+}
+
 extract_supported_document_text_for_claude <- function(dosya_yolu) {
   uzanti <- tolower(tools::file_ext(dosya_yolu))
 
@@ -214,6 +287,14 @@ extract_supported_document_text_for_claude <- function(dosya_yolu) {
 
   if (uzanti %in% c("xlsx", "xls")) {
     return(extract_excel_text_for_claude(dosya_yolu))
+  }
+
+  if (identical(uzanti, "docx")) {
+    return(extract_docx_text_for_claude(dosya_yolu))
+  }
+
+  if (identical(uzanti, "doc")) {
+    stop("Eski .doc biçimi çevrimdışı yerel çıkarımda henüz desteklenmiyor. Lütfen .docx biçimine dönüştürün.")
   }
 
   stop(paste("Desteklenmeyen doküman uzantısı:", uzanti))
@@ -629,6 +710,23 @@ resolve_claude_code_document_detail_level <- function(prompt) {
   "orta"
 }
 
+write_claude_code_document_summary_file <- function(summary_text,
+                                                    output_dir,
+                                                    file_name = "dosya_aciklamalari.txt") {
+  output_dir <- as.character(output_dir %||% "")[1]
+  summary_text <- enc2utf8(paste(as.character(summary_text %||% ""), collapse = "\n"))
+
+  if (!nzchar(output_dir) || !dir.exists(output_dir) || !nzchar(summary_text)) {
+    return("")
+  }
+
+  hedef_yol <- file.path(output_dir, file_name)
+
+  writeLines(summary_text, hedef_yol, useBytes = TRUE)
+
+  normalizePath(hedef_yol, winslash = "/", mustWork = FALSE)
+}
+
 #' Bilge Yolaç doküman özetleme mesajlarını oluşturur
 #'
 #' @param document_context prepare_claude_code_document_context çıktısı
@@ -672,6 +770,9 @@ build_claude_code_document_summary_messages <- function(document_context) {
       "Binary dosya, tool_result, document bloğu veya harici araç kullanımı üretme.",
       "Metinlerde olmayan bir bilgiyi varmış gibi söyleme.",
       "Yanıtını Türkçe ver.",
+	  "Özet metni uygulama tarafından ayrıca .txt dosyasına kaydedilecektir.",
+	  "Kullanıcıdan metni kopyalayıp dosyaya yapıştırmasını isteme.",
+	  "'şu isimle kaydedin' gibi manuel kayıt yönergeleri verme.",
       detay_yonergesi,
       "Birden çok dosya varsa şu sırayı kullan:",
       "1. Genel özet",
@@ -699,7 +800,10 @@ build_claude_code_document_summary_messages <- function(document_context) {
 summarize_claude_code_documents_with_local_llm <- function(document_context,
                                                            model_id,
                                                            api_key = "",
-                                                           request_timeout_sec = 600L) {
+                                                           request_timeout_sec = 600L,
+                                                           output_dir = "",
+                                                           user_id = 0L,
+                                                           session_token = "") {
   baslangic <- Sys.time()
 
   if (!is.list(document_context) || !isTRUE(document_context$text_sidecars_ready)) {
@@ -749,13 +853,58 @@ summarize_claude_code_documents_with_local_llm <- function(document_context,
       stop("Yerel LLM doküman özeti boş döndü.")
     }
 
+    ozet_dosya_yolu <- write_claude_code_document_summary_file(
+      summary_text = cikti,
+      output_dir = output_dir,
+      file_name = "dosya_aciklamalari.txt"
+    )
+
+    arac_kullanimlari <- list()
+    generated_downloads <- list()
+    generated_downloads_html <- ""
+
+    if (nzchar(ozet_dosya_yolu)) {
+      arac_kullanimlari <- list(
+        list(
+          name = "file_write",
+          input = list(
+            path = ozet_dosya_yolu,
+            content = cikti
+          ),
+          result = "Doküman özeti dosyası oluşturuldu."
+        )
+      )
+
+      if (exists("collect_claude_code_generated_downloads", mode = "function") &&
+          exists("format_claude_code_generated_downloads_html", mode = "function")) {
+        generated_downloads <- tryCatch(
+          collect_claude_code_generated_downloads(
+            tool_uses = arac_kullanimlari,
+            runtime_workdir = output_dir,
+            source_workdir = output_dir,
+            user_id = user_id,
+            session_token = session_token
+          ),
+          error = function(e) list()
+        )
+
+        generated_downloads_html <- tryCatch(
+          format_claude_code_generated_downloads_html(generated_downloads),
+          error = function(e) ""
+        )
+      }
+    }
+
     list(
       success = TRUE,
       output = cikti,
       error = "",
       duration = sure,
-      tool_uses = list(),
-      session_id = NULL
+      tool_uses = arac_kullanimlari,
+      session_id = NULL,
+      generated_summary_path = ozet_dosya_yolu,
+      generated_downloads = generated_downloads,
+      generated_downloads_html = generated_downloads_html
     )
   }, error = function(e) {
     sure <- round(as.numeric(difftime(Sys.time(), baslangic, units = "secs")), 1)

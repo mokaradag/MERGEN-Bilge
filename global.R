@@ -111,6 +111,14 @@ if (dir.exists(destek_uploads_dir)) {
   shiny::addResourcePath("destek_uploads", destek_uploads_dir)
 }
 
+# Bilge Yolaç tarafından üretilen dosyaları yerel indirme bağlantısı olarak sun
+bilge_yolac_downloads_dir <- file.path(getwd(), "bilge_yolac_downloads")
+if (!dir.exists(bilge_yolac_downloads_dir)) {
+  dir.create(bilge_yolac_downloads_dir, recursive = TRUE, showWarnings = FALSE)
+}
+options(mergen.claude_code_download_root = bilge_yolac_downloads_dir)
+try(shiny::addResourcePath("bilge_yolac_downloads", bilge_yolac_downloads_dir), silent = TRUE)
+
 # ==============================================================================
 # BAĞIMLILIK YÜKLEME MANİFESTİ
 # ==============================================================================
@@ -174,6 +182,7 @@ safe_source("R/helpers_ai_expert.R",             encoding = "UTF-8")  # AI Uzman
 safe_source("R/helpers_claude_code.R",           encoding = "UTF-8")  # Claude Code CLI yardımcıları
 safe_source("R/helpers_claude_code_streaming.R", encoding = "UTF-8")  # Claude Code canlı akış desteği
 safe_source("R/helpers_claude_code_formatters.R", encoding = "UTF-8") # Claude Code HTML biçimlendiriciler
+safe_source("R/helpers_claude_code_downloads.R", encoding = "UTF-8")  # Claude Code üretilen dosya indirme yardımcıları
 safe_source("R/helpers_claude_code_plugins.R", encoding = "UTF-8") # Claude Code Plugin CLI yardımcıları
 safe_source("R/helpers_claude_code_documents.R", encoding = "UTF-8") # Bilge Yolaç doküman çıkarım yardımcıları
 
