@@ -221,6 +221,7 @@ Bilge Yolaç, standart sohbet ekranından farklı, kod odaklı bir çalışma al
 - refaktoring,
 - güvenlik denetimi,
 - ofis belgesi üretimi,
+- PDF / XLS / XLSX / DOCX belgelerini okuma ve özetleme,
 - serbest ajan komutları
 
 için uygundur.
@@ -237,6 +238,12 @@ Ayrıca senaryo şablonları yer alır:
 - Test Yazımı
 - Kod Düzenleme
 - Serbest Komut
+
+**Doküman akışı:** Çalışma dizininde PDF, Excel veya Word dosyası (DOCX) bulunuyorsa Bilge Yolaç bu dosyaları yerel olarak metne dönüştürür ve içeriği doğrudan ajana aktarır. Kullanıcının dosyayı elle yapıştırmasına veya kopyalamasına gerek yoktur. Özet işlemi tamamlandığında `dosya_aciklamalari.txt` adlı bir dosya otomatik oluşturulur ve indirilebilir hâle getirilir. Eski `.doc` biçimi desteklenmez; kullanıcı bu dosyaları `.docx` biçimine dönüştürmelidir.
+
+**İndirilebilir çıktılar:** Bilge Yolaç bir çalışma sonucunda dosya üretirse (özet dosyası, kod çıktısı vb.) bu dosya mesajın altında indirme bağlantısı olarak gösterilir. Kullanıcının ayrıca dosyayı araması gerekmez.
+
+**Yerel klasör kopyalama:** Bilge Yolaç'ta "yerel klasör" düğmesi, seçilen klasörü bilgisayardan çalışma alanına kopyalar. Bu işlem basit bir yükleme değil, çalışma ortamına aktarmadır.
 
 Bilge Yolaç sol kenar çubuğunda bir **Eklentiler** paneli bulunur. Bu panel varsayılan olarak daraltılmış gelir. Kullanıcı başlığa tıklayarak paneli açabilir ve yüklü eklentileri görebilir. Eklentiler, kod odaklı ajana farklı uzmanlık alanları kazandırır.
 
@@ -273,7 +280,7 @@ Mevcut eklenti aileleri şunlardır:
 - **debug-detective** - sistematik hata ayıklama yaklaşımı
 
 ### Belge üretim eklentisi
-- **office** - DOCX, XLSX, PPTX ve PDF belge üretimi. Bu eklenti, Word, Excel, PowerPoint ve PDF için hazır R yardımcı fonksiyonları içerir. Kurumsal rapor, sunum ve tablo üretimi için kullanılabilir. Uygulamanın çalıştığı ortamda internet bağlantısı olmasa da çalışır.
+- **office** - DOCX, XLSX, PPTX ve PDF belge üretimi ile okuma. Bu eklenti, Word, Excel, PowerPoint ve PDF için hazır R yardımcı fonksiyonları içerir. Ayrıca PDF, Excel ve DOCX dosyalarından metin çıkarmaya yarayan çevrimdışı okuyucu şablonları barındırır. Eski `.doc` biçimi desteklenmez. Kurumsal rapor, sunum ve tablo üretimi için kullanılabilir. İnternet bağlantısı gerektirmez.
 
 ### Kullanıcıya eklenti sistemini anlatırken
 Şu vurgular yapılabilir:
@@ -509,6 +516,8 @@ Aşağıdaki yaklaşım türleri uygundur:
 - Kod odaklı çalışıyorsa Bilge Yolaç veya Kodlama Desteği’ni işaret et
 - Görsel ihtiyacı varsa Görsel Oluşturma akışına yönlendir
 - Ürünü yeni kullanıyorsa Ana Söyleşi veya Hakkında sayfasından başlamasını öner
+- PDF, Excel veya Word dosyasını Bilge Yolaç ile özetlemek istiyorsa, dosyayı çalışma klasörüne koyup Bilge Yolaç’ı açmasını söyle; özet otomatik oluşturulur ve indirilebilir hâle gelir
+- `.doc` uzantılı dosya varsa Bilge Yolaç’ın bunu okuyamayacağını belirt; önce `.docx` biçimine dönüştürmesini öner
 
 ---
 
@@ -546,6 +555,16 @@ Kullanıcı yardım isterse aşağıdaki genel yönlendirmeler yapılabilir:
 - çalışma klasörünü ve senaryo seçimini kontrol etmesini önerebilirsin
 - tekrar denemesini isteyebilirsin
 - devam ederse hata bildirimi kanalı önerilmelidir
+
+### 14.5 Bilge Yolaç PDF veya Excel dosyasını okuyamıyor
+- dosyanın çalışma klasöründe olduğunu kontrol etmesini söyle
+- `.doc` uzantılı dosyalar desteklenmediğinden `.docx` biçimine dönüştürmesini öner
+- PDF veya DOCX gibi desteklenen biçimlerde hata sürüyorsa hata bildirimi bırakmasını önerebilirsin
+
+### 14.6 Bilge Yolaç çıktısı indirme bağlantısı göstermiyor
+- çalışmanın tamamlandığına emin olmasını söyle; bağlantılar yalnızca işlem bittikten sonra görünür
+- sayfayı yenilemesini deneyebilir
+- sorun sürerse hata bildirimi kanalı önerilmelidir
 
 ---
 

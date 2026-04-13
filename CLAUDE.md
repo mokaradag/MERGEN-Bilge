@@ -246,6 +246,7 @@ If one is missing, startup stops with an explicit error.
 - `R/` - all application R modules, helpers, and configuration files
 - `www/` - static assets (CSS, JS, CodeMirror, images, fonts)
 - `bilge_yolac_plugins/` - Bilge Yolaç auto-discovered plugin directory. Each subdirectory is one plugin with `plugin.json` and optional `skills/`, `commands/`, `agents/`, `hooks/`, `mcp/`, `templates/`. No CLI, no internet required.
+- `bilge_yolac_downloads/` - Bilge Yolaç tarafından üretilen dosyaların (doküman özetleri, ajan çıktıları vb.) indirilebilir bağlantı olarak sunulduğu kalıcı dizin. `global.R` tarafından `bilge_yolac_downloads` resource path adıyla Shiny'e kaydedilir. `.gitkeep` dosyasıyla boş olarak repoya dahil edilir.
 
 ---
 
@@ -305,7 +306,9 @@ Shared utilities used across modules:
 - `R/helpers_claude_code.R`
 - `R/helpers_claude_code_streaming.R`
 - `R/helpers_claude_code_formatters.R`
+- `R/helpers_claude_code_downloads.R`
 - `R/helpers_claude_code_plugins.R`
+- `R/helpers_claude_code_documents.R`
 
 ### Group 5 - LLM Integration Layer
 Model calls, tool formatting, SSE, worker execution:
@@ -794,7 +797,9 @@ Core files:
 - `R/helpers_claude_code.R`
 - `R/helpers_claude_code_streaming.R`
 - `R/helpers_claude_code_formatters.R`
+- `R/helpers_claude_code_downloads.R`
 - `R/helpers_claude_code_plugins.R`
+- `R/helpers_claude_code_documents.R`
 - `R/module_claude_code.R`
 - `R/module_claude_code_klasor.R`
 - `R/module_claude_code_akis.R`
@@ -813,12 +818,43 @@ It includes:
 
 - folder browsing,
 - workdir selection,
+- local folder copy-to-working-area (the "Yerel klasörü Bilge Yolaç çalışma alanına kopyala" button copies the selected folder into the runtime working directory; it does **not** simply upload files),
 - model tiers,
 - tool-use rendering,
 - streaming shell/file activity,
 - themed welcome/game experience,
 - connection tests,
-- scenario templates.
+- scenario templates,
+- offline PDF/XLS/XLSX/DOCX text extraction and local LLM summarization,
+- auto-generated `dosya_aciklamalari.txt` summary file in the working directory,
+- downloadable generated file links rendered after each run.
+
+### Document extraction and download flow
+
+When the user's prompt or the working directory contains binary office documents (PDF, XLS, XLSX, DOCX), the pipeline in `R/helpers_claude_code_documents.R` intercepts the request before it reaches the Claude Code process:
+
+1. `prepare_claude_code_document_context()` detects binary documents in the working directory via `list_claude_code_binary_documents()`.
+2. For each supported file, text is extracted locally:
+   - **PDF** → `pdftools::pdf_text()`, page-by-page, max 25 pages
+   - **XLS/XLSX** → `readxl::read_excel()`, up to 5 sheets × 60 rows
+   - **DOCX** → unzip + `xml2` parse of `word/document.xml`, max 500 paragraphs
+   - **DOC** → **not supported**; user is instructed to convert to `.docx`
+3. Extracted texts are written as `.txt` sidecar files in a temporary `document_support/` subdirectory.
+4. A manifest file `BILGE_YOLAC_DOKUMAN_REHBERI.md` is written listing all sidecar paths.
+5. The original prompt is replaced with an enriched prompt containing the extracted text inline so Claude can answer without invoking any file-reading tools.
+6. For document summarization tasks, `summarize_claude_code_documents_with_local_llm()` calls the local LLM directly and writes the summary to `dosya_aciklamalari.txt` in the output directory.
+
+After a run completes (both document-summary and standard streaming paths), `collect_claude_code_generated_downloads()` scans tool uses for written files, copies them into `bilge_yolac_downloads/`, and `format_claude_code_generated_downloads_html()` renders them as clickable download cards (`.cc-generated-file-card` CSS class) appended to the assistant message.
+
+### bilge_yolac_downloads/ directory
+
+`bilge_yolac_downloads/` at the repository root holds files that Bilge Yolaç has written and that the user should be able to download directly from the browser. Key facts:
+
+- Created at startup if missing (in `global.R`).
+- Registered with `shiny::addResourcePath("bilge_yolac_downloads", ...)` so files are accessible at `/bilge_yolac_downloads/<filename>` without exposing the full server path.
+- The path is stored in `getOption("mergen.claude_code_download_root")`.
+- Committed to the repo as an empty directory with `.gitkeep`.
+- Do **not** source or process files inside this directory; it is purely a static serving endpoint.
 
 ### Model tiers
 Defined in `R/config_claude_code.R`:
@@ -918,6 +954,7 @@ The `office` plugin is the only one that currently ships with a `templates/` dir
 - `bilge_yolac_plugins/office/templates/xlsx_helpers.R` - openxlsx-based XLSX helpers
 - `bilge_yolac_plugins/office/templates/pptx_helpers.R` - officer-based PPTX helpers
 - `bilge_yolac_plugins/office/templates/pdf_helpers.R` - grDevices-based PDF helpers (no extra packages)
+- `bilge_yolac_plugins/office/templates/document_readers.R` - offline text extraction helpers for PDF (`pdftools`), XLS/XLSX (`readxl`) and DOCX (unzip + `xml2`). `.doc` format is explicitly unsupported; the user is prompted to convert to `.docx`. This file mirrors the extraction logic in `R/helpers_claude_code_documents.R` but is provided as a standalone template that Claude Code can `source()` inside a session when additional extraction is needed.
 
 These helpers are NOT sourced into the Shiny app. They are standalone R files that Claude Code references via `source()` inside Bilge Yolaç sessions. The separation of concerns is:
 - `skills/main.md` - domain knowledge (when and why to use each format)
