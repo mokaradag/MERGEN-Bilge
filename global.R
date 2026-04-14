@@ -183,6 +183,7 @@ safe_source("R/helpers_claude_code.R",           encoding = "UTF-8")  # Claude C
 safe_source("R/helpers_claude_code_streaming.R", encoding = "UTF-8")  # Claude Code canlı akış desteği
 safe_source("R/helpers_claude_code_formatters.R", encoding = "UTF-8") # Claude Code HTML biçimlendiriciler
 safe_source("R/helpers_claude_code_downloads.R", encoding = "UTF-8")  # Claude Code üretilen dosya indirme yardımcıları
+safe_source("R/helpers_claude_code_workdir_snapshot.R", encoding = "UTF-8") # Çalışma dizini snapshot + .txt kodlama düzeltme
 safe_source("R/helpers_claude_code_plugins.R", encoding = "UTF-8") # Claude Code Plugin CLI yardımcıları
 safe_source("R/helpers_claude_code_documents.R", encoding = "UTF-8") # Bilge Yolaç doküman çıkarım yardımcıları
 

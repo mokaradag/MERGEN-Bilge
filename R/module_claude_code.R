@@ -1379,6 +1379,15 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       stream_env$tum_satirlar <- character(0)
       stream_env$durduruldu <- FALSE
       stream_env$oturum_id <- NULL  # stream-json olaylarından gelecek
+
+      # Çalıştırma öncesi çalışma dizini anlık görüntüsü
+      # (Claude Code'un ürettiği .docx/.xlsx gibi dosyaları bash yoluyla
+      # oluştursa bile tespit edebilmek için)
+      stream_env$workdir_snapshot <- tryCatch(
+        snapshot_claude_code_workdir_files(calisma_dizini),
+        error = function(e) list()
+      )
+
       rv$stream_env <- stream_env
       rv$poll_state <- stream_env
 
@@ -1586,8 +1595,14 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             list(role = "assistant", content = ayristirma$text_output)
           ))
 
-          # Üretilen dosyaları yerel indirme bağlantılarına dönüştür
-          olusan_dosyalar <- collect_claude_code_generated_downloads(
+          # Üretilen dosyaları yerel indirme bağlantılarına dönüştür.
+          # Çalıştırma öncesi snapshot ile dizin farkını alarak Claude Code'un
+          # Bash aracılığıyla python-docx / openpyxl / officer gibi yollarla
+          # oluşturduğu .docx ve .xlsx dosyalarını da yakalar. Ayrıca üretilen
+          # .txt dosyalarının Türkçe karakter kodlamasını UTF-8 BOM olarak
+          # normalize eder (Windows Notepad mojibake düzeltmesi).
+          olusan_dosyalar <- collect_claude_code_workdir_changes_downloads(
+            before_snapshot = env$workdir_snapshot,
             tool_uses = ayristirma$tool_uses,
             runtime_workdir = env$calisma_dizini,
             source_workdir = env$kaynak_calisma_dizini,
