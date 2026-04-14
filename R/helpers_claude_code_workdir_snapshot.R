@@ -11,6 +11,169 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
+# NİYET TESPİTİ: İKİLİ DOKÜMAN ÜRETME / MEVCUTU OKUMA
+# Bilge Yolaç doküman modu, çalışma dizinindeki mevcut .docx/.xlsx/.pdf
+# dosyalarını yerel metin çıkarımıyla işler ve Claude'a "ikili üretim yasak"
+# talimatı enjekte eder. Ancak kullanıcı YENİ bir ikili doküman oluşturmak
+# istiyorsa bu kısıtlama .docx/.xlsx üretimini engeller. Bu yardımcılar
+# üretme niyetini okuma niyetinden ayırır.
+# ------------------------------------------------------------------------------
+
+#' Kullanıcının ikili doküman ÜRETME niyeti olup olmadığını tespit et
+#'
+#' @param prompt Kullanıcı metni
+#' @return TRUE/FALSE
+prompt_requests_binary_document_creation <- function(prompt) {
+  metin <- tolower(enc2utf8(paste(as.character(prompt %||% ""), collapse = " ")))
+  if (!nzchar(metin)) return(FALSE)
+
+  # Türkçe + İngilizce üretme/yazma/kaydetme fiilleri
+  uretme_deseni <- paste(
+    c(
+      "olu\u015ftur",       # oluştur
+      "olustur",
+      "yarat",
+      "\u00fcret",          # üret
+      "uret",
+      "haz\u0131rla",       # hazırla
+      "hazirla",
+      "yaz\u0131l",         # yazıl
+      "yazil",
+      "kaydet",
+      "d\u00f6n\u00fc\u015ft\u00fcr",  # dönüştür
+      "donustur",
+      "ekspor",
+      "export",
+      "generate",
+      "create",
+      "write",
+      "produce",
+      "save"
+    ),
+    collapse = "|"
+  )
+
+  if (!grepl(uretme_deseni, metin, perl = TRUE)) return(FALSE)
+
+  # Üretim fiilinin yanında ikili doküman uzantısı veya adı geçmeli
+  ikili_deseni <- paste(
+    c(
+      "\\.docx",
+      "\\.doc\\b",
+      "\\.xlsx",
+      "\\.xls\\b",
+      "\\.pdf",
+      "\\.pptx",
+      "\\.ppt\\b",
+      "\\bdocx\\b",
+      "\\bxlsx\\b",
+      "\\bpdf\\b",
+      "\\bpptx\\b",
+      "\\bword\\b",
+      "\\bexcel\\b",
+      "\\bpowerpoint\\b"
+    ),
+    collapse = "|"
+  )
+
+  grepl(ikili_deseni, metin, perl = TRUE)
+}
+
+#' Kullanıcının MEVCUT ikili dokümanı OKUMA niyetini tespit et
+#'
+#' @param prompt Kullanıcı metni
+#' @return TRUE/FALSE
+prompt_requests_existing_document_reading <- function(prompt) {
+  metin <- tolower(enc2utf8(paste(as.character(prompt %||% ""), collapse = " ")))
+  if (!nzchar(metin)) return(FALSE)
+
+  okuma_deseni <- paste(
+    c(
+      "\\bokuy",            # oku / okuy...
+      "\\boku\\b",
+      "incele",
+      "\u00f6zetle",        # özetle
+      "ozetle",
+      "\u00f6zet\u00e7",    # özetç...
+      "\u00e7\u0131kar",    # çıkar (metni çıkar)
+      "cikar",
+      "i\u00e7eri\u011fi",  # içeriği
+      "icerigi",
+      "summari",
+      "\\bread\\b",
+      "\\bextract"
+    ),
+    collapse = "|"
+  )
+
+  grepl(okuma_deseni, metin, perl = TRUE)
+}
+
+# ------------------------------------------------------------------------------
+# YOL KANONİKLEŞTİRME
+# Windows 8.3 kısa dosya adlarını (R_HELP~1.TXT gibi) uzun kanonik forma
+# çevirir. Aynı dosyanın hem uzun hem kısa formda indirme listesine
+# eklenmesini engeller.
+# ------------------------------------------------------------------------------
+
+#' Dosya yolunu kanonik (uzun, mutlak) forma çevir
+#'
+#' @param path Ham dosya yolu
+#' @return Kanonik yol veya orijinal değer
+canonicalize_claude_code_file_path <- function(path) {
+  path <- as.character(path %||% "")[1]
+  if (!nzchar(path)) return("")
+
+  # Dosya diskte mevcutsa mustWork = TRUE ile Windows 8.3 kısa adları uzun
+  # forma çözümle. normalizePath(mustWork = TRUE) Windows'ta bu çözümü yapar.
+  sonuc <- tryCatch(
+    normalizePath(path, winslash = "/", mustWork = TRUE),
+    error = function(e) NA_character_
+  )
+
+  if (is.na(sonuc) || !nzchar(sonuc)) {
+    sonuc <- tryCatch(
+      normalizePath(path, winslash = "/", mustWork = FALSE),
+      error = function(e) path
+    )
+  }
+
+  if (is.na(sonuc) || !nzchar(sonuc)) {
+    return(path)
+  }
+
+  sonuc
+}
+
+#' Birden çok dosya yolunu kanonikleştir ve tekrarları kaldır
+#'
+#' Windows'ta büyük/küçük harf farkı olabileceği için karşılaştırmayı da
+#' küçük harfe göre yapar; gerçek yolun kanonik hali korunur.
+#'
+#' @param paths Dosya yolları
+#' @return Tekrarsız kanonik yol vektörü
+deduplicate_claude_code_file_paths <- function(paths) {
+  paths <- unique(Filter(nzchar, as.character(paths %||% character(0))))
+  if (!length(paths)) return(character(0))
+
+  kanonikler <- vapply(
+    paths,
+    canonicalize_claude_code_file_path,
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  kanonikler <- kanonikler[nzchar(kanonikler)]
+  if (!length(kanonikler)) return(character(0))
+
+  # Windows'ta büyük/küçük harf farkını da yok say
+  anahtarlar <- tolower(kanonikler)
+  ilk_gorunumler <- !duplicated(anahtarlar)
+
+  kanonikler[ilk_gorunumler]
+}
+
+# ------------------------------------------------------------------------------
 # ÇALIŞMA DİZİNİ ANLIK GÖRÜNTÜSÜ
 # Claude Code çalıştırılmadan önce dizindeki tüm dosyaların (mtime + boyut)
 # haritasını çıkarır. Çalıştırma bittiğinde karşılaştırma yapılır ve
@@ -66,15 +229,19 @@ snapshot_claude_code_workdir_files <- function(workdir,
   sonuc <- list()
 
   for (i in seq_along(ogeler)) {
-    yol_norm <- tryCatch(
-      normalizePath(ogeler[i], winslash = "/", mustWork = FALSE),
-      error = function(e) ogeler[i]
-    )
+    # Windows 8.3 kısa adları uzun kanonik forma çevir
+    yol_norm <- canonicalize_claude_code_file_path(ogeler[i])
+
+    if (!nzchar(yol_norm)) next
 
     mtime_val <- suppressWarnings(as.numeric(bilgi$mtime[i]))
     size_val <- suppressWarnings(as.numeric(bilgi$size[i]))
 
-    sonuc[[yol_norm]] <- list(
+    # Anahtarı küçük harfe çevir (Windows case-insensitive)
+    anahtar <- tolower(yol_norm)
+
+    sonuc[[anahtar]] <- list(
+      path = yol_norm,
       mtime = if (is.finite(mtime_val)) mtime_val else NA_real_,
       size = if (is.finite(size_val)) size_val else NA_real_
     )
@@ -112,12 +279,16 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
 
   yeni_veya_degisen <- character(0)
 
-  for (yol in names(sonraki)) {
-    eski <- once[[yol]]
-    yeni <- sonraki[[yol]]
+  for (anahtar in names(sonraki)) {
+    eski <- once[[anahtar]]
+    yeni <- sonraki[[anahtar]]
+
+    # Kanonik yolu liste girdisinden al (eski sürümler sadece key tutuyor olabilir)
+    yeni_yol <- yeni$path %||% anahtar
+    if (!nzchar(yeni_yol)) next
 
     if (is.null(eski)) {
-      yeni_veya_degisen <- c(yeni_veya_degisen, yol)
+      yeni_veya_degisen <- c(yeni_veya_degisen, yeni_yol)
       next
     }
 
@@ -132,7 +303,7 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
     }
 
     if (isTRUE(degisti)) {
-      yeni_veya_degisen <- c(yeni_veya_degisen, yol)
+      yeni_veya_degisen <- c(yeni_veya_degisen, yeni_yol)
     }
   }
 
@@ -150,17 +321,116 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
     ]
   }
 
-  unique(yeni_veya_degisen)
+  # Kanonik form üzerinden tekrar dedup (emniyet kemeri)
+  deduplicate_claude_code_file_paths(yeni_veya_degisen)
 }
 
 # ------------------------------------------------------------------------------
 # TÜRKÇE .TXT KODLAMA NORMALİZASYONU
-# Claude Code CLI, Windows VM üzerinde bazen Türkçe karakterleri UTF-8
-# olarak yazmayabilir veya BOM üretmediği için Notepad dosyayı CP1254 olarak
-# yorumlayarak mojibake gösterir. Bu yardımcı dosyayı güvenli biçimde
-# yeniden okur, geçerli UTF-8 değilse WINDOWS-1254 olarak yorumlar, ardından
-# UTF-8 (BOM ile) olarak geri yazar.
+# Claude Code CLI, Windows VM üzerinde Türkçe içerikli .txt dosyalarını
+# aşağıdaki kodlamalardan biriyle yazabilir:
+#   * UTF-8 (BOM'suz) -> Notepad CP1254 sanar -> mojibake
+#   * WINDOWS-1254     -> Windows Türkçe ANSI (GUI araçları)
+#   * CP857            -> Windows Türkçe OEM (cmd.exe echo çıktıları)
+#   * CP850 / CP437    -> Eski cmd.exe Latin OEM
+#   * CP1252           -> Batı Avrupa ANSI
+# Bu yardımcı dosyayı güvenli biçimde okur, her aday kodlama için Türkçe
+# karakter sayısından mojibake örüntü cezasını çıkararak en iyi adayı seçer,
+# ardından UTF-8 (BOM ile) olarak geri yazar.
 # ------------------------------------------------------------------------------
+
+#' Aday kodlamaları Türkçe karakter yoğunluğuna göre puanla
+#'
+#' @param aday Çözülmüş metin
+#' @return Puan: Türkçe karakter sayısı - (mojibake örüntü sayısı * 10)
+score_turkish_decoding_candidate <- function(aday) {
+  if (is.null(aday) || is.na(aday) || !nzchar(aday)) return(-1L)
+
+  # Türkçe ayırt edici karakterler
+  tr_deseni <- "[\u00e7\u011f\u0131\u0130\u00f6\u015f\u00fc\u00c7\u011e\u00d6\u015e\u00dc]"
+
+  tr_sayisi <- tryCatch(
+    {
+      eslesmeler <- gregexpr(tr_deseni, aday, perl = TRUE)[[1]]
+      if (length(eslesmeler) == 1 && eslesmeler[1] == -1L) 0L
+      else length(eslesmeler)
+    },
+    error = function(e) 0L
+  )
+
+  # UTF-8 baytlarının WINDOWS-1254/1252 olarak yorumlanmasından doğan
+  # tipik mojibake sekansları
+  mojibake_deseni <- paste(
+    c(
+      "\u00c3[\u00a7\u0178\u00bc\u00b6\u00b1\u00bd]",  # Ã§, ÃŸ, Ã¼, Ã¶, Ã±, Ã½
+      "\u00c5[\u0178\u009e]",                            # ÅŸ, Åž
+      "\u00c4\u00b1",                                     # Ä±
+      "\u00ef\u00bf\u00bd",                               # U+FFFD replacement
+      "\u00c2[\u00a0-\u00bf]"                             # Â followed by control
+    ),
+    collapse = "|"
+  )
+
+  mojibake_sayisi <- tryCatch(
+    {
+      eslesmeler <- gregexpr(mojibake_deseni, aday, perl = TRUE)[[1]]
+      if (length(eslesmeler) == 1 && eslesmeler[1] == -1L) 0L
+      else length(eslesmeler)
+    },
+    error = function(e) 0L
+  )
+
+  as.integer(tr_sayisi) - (as.integer(mojibake_sayisi) * 10L)
+}
+
+#' Ham baytlardan en iyi Türkçe kodlama adayını seç
+#'
+#' @param icerik_ham Raw vektör
+#' @return En iyi UTF-8 metin (veya NA)
+pick_best_turkish_decoding <- function(icerik_ham) {
+  if (!length(icerik_ham)) return(NA_character_)
+
+  # Windows kodlamaları ilk sırada — Bilge Yolaç çoğunlukla bu ortamda üretir
+  denemeler <- c(
+    "WINDOWS-1254",
+    "CP857",
+    "CP1254",
+    "CP1252",
+    "CP850",
+    "CP437",
+    "latin5",
+    "latin1"
+  )
+
+  en_iyi_metin <- NA_character_
+  en_iyi_skor <- -1L
+
+  ham_metin_tabani <- tryCatch(rawToChar(icerik_ham), error = function(e) NA_character_)
+  if (is.na(ham_metin_tabani)) return(NA_character_)
+
+  for (kod in denemeler) {
+    aday <- tryCatch(
+      {
+        s <- ham_metin_tabani
+        Encoding(s) <- "unknown"
+        donusum <- iconv(s, from = kod, to = "UTF-8", sub = NA)
+        donusum
+      },
+      error = function(e) NA_character_
+    )
+
+    if (is.na(aday) || !nzchar(aday)) next
+
+    skor <- score_turkish_decoding_candidate(aday)
+
+    if (skor > en_iyi_skor) {
+      en_iyi_skor <- skor
+      en_iyi_metin <- aday
+    }
+  }
+
+  en_iyi_metin
+}
 
 #' Türkçe metin dosyasını UTF-8 (BOM ile) olarak normalize et
 #'
@@ -219,35 +489,25 @@ normalize_claude_code_text_file_to_utf8 <- function(file_path) {
   }
 
   if (!isTRUE(utf8_gecerli)) {
-    # Windows Türkçe kod sayfası (CP1254) ve yedek kodlamalar
-    denemeler <- c("WINDOWS-1254", "CP1254", "latin5", "latin1")
-
-    metin_utf8 <- NA_character_
-
-    for (kod in denemeler) {
-      aday <- tryCatch(
-        {
-          ham_metin <- rawToChar(icerik_ham)
-          Encoding(ham_metin) <- "unknown"
-          donusum <- iconv(
-            ham_metin,
-            from = kod,
-            to = "UTF-8",
-            sub = NA
-          )
-          donusum
-        },
-        error = function(e) NA_character_
-      )
-
-      if (!is.na(aday) && nzchar(aday)) {
-        metin_utf8 <- aday
-        break
-      }
-    }
+    # Geçersiz UTF-8: aday kodlamaları Türkçe karakter puanına göre dene
+    metin_utf8 <- pick_best_turkish_decoding(icerik_ham)
 
     if (is.na(metin_utf8) || !nzchar(metin_utf8)) {
       return(FALSE)
+    }
+  } else {
+    # UTF-8 geçerli olsa bile, UTF-8 baytlarının WINDOWS-1254 olarak yorumlanmış
+    # olma olasılığını kontrol et. Mojibake örüntüsü varsa Türkçe puanına göre
+    # daha iyi bir aday kodlama varsa ona geç.
+    mevcut_skor <- score_turkish_decoding_candidate(metin_utf8)
+
+    if (mevcut_skor < 0) {
+      aday <- pick_best_turkish_decoding(icerik_ham)
+      aday_skor <- score_turkish_decoding_candidate(aday)
+
+      if (!is.na(aday) && nzchar(aday) && aday_skor > mevcut_skor) {
+        metin_utf8 <- aday
+      }
     }
   }
 
@@ -355,8 +615,10 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
     error = function(e) character(0)
   )
 
-  tum_yollar <- unique(c(yeni_dosyalar, arac_yollari))
-  tum_yollar <- tum_yollar[nzchar(tum_yollar)]
+  # Windows 8.3 kısa adlarıyla uzun adları birleştir ve büyük/küçük harf
+  # farklılıklarını kaldır. Aksi halde aynı dosya hem "R_helpers_..._summary.txt"
+  # hem de "R_HELP~1.TXT" olarak iki indirme kartı olarak görünür.
+  tum_yollar <- deduplicate_claude_code_file_paths(c(yeni_dosyalar, arac_yollari))
 
   if (!length(tum_yollar)) return(list())
 
