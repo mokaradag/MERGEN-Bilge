@@ -473,10 +473,20 @@
 
     // İçerik (mojibake düzeltmesi: R/Shiny çift kodlama sorunu)
     var content = data.content || '';
-    if (data.type !== 'user' && typeof window.ccFixMojibake === 'function') {
+    if (data.type !== 'user') {
       // Asistan/hata mesajlarında HTML içindeki mojibake'yi düzelt
       content = content.replace(/>([^<]+)</g, function(match, txt) {
-        return '>' + window.ccFixMojibake(txt) + '<';
+        var fixed = txt;
+
+        if (typeof window.ccFixMojibake === 'function') {
+          fixed = window.ccFixMojibake(fixed);
+        }
+
+        if (typeof window.ccFixMojibakeText === 'function') {
+          fixed = window.ccFixMojibakeText(fixed);
+        }
+
+        return '>' + fixed + '<';
       });
     }
     var bodyHtml = '<div class="cc-message-body">';
@@ -540,6 +550,12 @@
     var target = document.getElementById(data.target);
     if (target) target.innerHTML = '';
 
+    var statusEl = document.getElementById(data.statusId);
+    if (statusEl) statusEl.innerHTML = '';
+
+    var durationEl = document.getElementById(data.durationId);
+    if (durationEl) durationEl.textContent = '';
+
     if (data.welcomeId) {
       var welcome = document.getElementById(data.welcomeId);
       if (welcome) {
@@ -557,6 +573,7 @@
     var overlay = document.getElementById(data.overlayId);
     var textEl = document.getElementById(data.textId);
     var statusEl = document.getElementById(data.statusId);
+    var durationEl = document.getElementById(data.durationId);
 
     if (overlay) overlay.classList.remove('cc-hidden');
 
@@ -568,6 +585,26 @@
     if (statusEl) {
       statusEl.innerHTML = '<i class="fas fa-spinner fa-spin" style="color:#64B5F6;"></i> <span style="color:#64B5F6;">Çalışıyor...</span>';
     }
+
+    // Canlı süre sayacını başlat
+    if (window.ccDurationInterval) {
+      clearInterval(window.ccDurationInterval);
+      window.ccDurationInterval = null;
+    }
+
+    window.ccDurationStart = Date.now();
+
+    if (durationEl) {
+      durationEl.textContent = '0 sn';
+    }
+
+    window.ccDurationInterval = setInterval(function() {
+      var currentDurationEl = document.getElementById(data.durationId);
+      if (!currentDurationEl) return;
+
+      var elapsedSec = Math.floor((Date.now() - window.ccDurationStart) / 1000);
+      currentDurationEl.textContent = elapsedSec + ' sn';
+    }, 1000);
 
     startMiniAnimation(data.canvasId, data.characterId || 'mergen');
 
@@ -599,6 +636,12 @@
     if (window.ccThinkingInterval) {
       clearInterval(window.ccThinkingInterval);
       window.ccThinkingInterval = null;
+    }
+
+    // Canlı süre sayacını durdur
+    if (window.ccDurationInterval) {
+      clearInterval(window.ccDurationInterval);
+      window.ccDurationInterval = null;
     }
   });
 
@@ -711,9 +754,16 @@
   document.addEventListener('click', function(e) {
     var runBtn = e.target.closest('.cc-run-btn');
     if (runBtn && !runBtn.disabled) {
-      // Prompt değerini hemen Shiny'ye gönder
+      // Önce önceki durum çubuğunu temizle
       var container = runBtn.closest('.cc-terminal-panel') || runBtn.closest('.claude-code-container');
       if (container) {
+        var statusEl = container.querySelector('.cc-status-text');
+        if (statusEl) statusEl.innerHTML = '';
+
+        var durationEl = container.querySelector('.cc-duration-text');
+        if (durationEl) durationEl.textContent = '';
+
+        // Prompt değerini hemen Shiny'ye gönder
         var textarea = container.querySelector('.cc-prompt-input');
         if (textarea) {
           var ns = textarea.id.replace(/prompt_input$/, '');
@@ -722,7 +772,7 @@
         }
       }
     }
-  }, true); // capture phase - düğme tıklamasından önce çalışır
+  }, true);
 
   // Ctrl+Enter veya Shift+Enter ile gönder
   document.addEventListener('keydown', function(e) {

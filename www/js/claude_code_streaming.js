@@ -70,6 +70,7 @@
 
   // Diğer JS dosyalarından erişim için global yap
   window.ccFixMojibake = fixMojibake;
+  window.ccFixMojibakeText = fixMojibakeText;
 
   // HTML içindeki metin düğümlerindeki mojibake'yi düzelt
   // HTML etiketlerine dokunmaz, sadece metin kısımlarını düzeltir
@@ -78,6 +79,7 @@
     // HTML etiketlerini koruyarak sadece metin kısımlarını düzelt
     return html.replace(/>([^<]+)</g, function(match, textContent) {
       var fixed = fixMojibake(textContent);
+      fixed = fixMojibakeText(fixed);
       return '>' + fixed + '<';
     });
   }
@@ -307,6 +309,17 @@
       .forEach(function(bad) {
         out = out.split(bad).join(MOJIBAKE_MAP[bad]);
       });
+
+    // Büyük/küçük Ş için birleşik karakter varyasyonlarını toparla
+    out = out
+      .replace(/S\u0327/g, '\u015E')
+      .replace(/s\u0327/g, '\u015F')
+      .replace(/S\u0326/g, '\u015E')
+      .replace(/s\u0326/g, '\u015F');
+
+    try {
+      out = out.normalize('NFC');
+    } catch (e) {}
 
     return out;
   }
@@ -659,7 +672,7 @@
 
     // Metni birikimli olarak ekle
     var currentText = body.getAttribute('data-raw-text') || '';
-    currentText += (data.html || '');
+    currentText += fixMojibake(data.html || '');
     body.setAttribute('data-raw-text', currentText);
 
     body.innerHTML = simpleMarkdownToHtml(currentText);
@@ -748,12 +761,12 @@
         }
       }
 
-      // Mesaj gövdesini son içerikle güncelle (Markdown dönüştürme dahil)
-      // fixHtmlMojibake: R/Shiny'de oluşan çift kodlamayı düzeltir
+      // Mesaj gövdesini son içerikle güncelle
+      // HTML içindeki metin düğümlerinde mojibake düzeltmesi uygula
       if (data.finalContent) {
         var body = streamingMsg.querySelector('.cc-message-body');
         if (body) {
-          body.innerHTML = fixMojibakeText(data.finalContent);
+          body.innerHTML = fixHtmlMojibake(data.finalContent);
           body.removeAttribute('data-raw-text');
         }
       }

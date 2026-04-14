@@ -243,7 +243,7 @@ $(function(){
               tags$textarea(
                 id = ns("prompt_input"),
                 class = "cc-prompt-input",
-                placeholder = "Claude Code'a bir komut yazın...",
+                placeholder = "Bilge Yolaç'a bir komut yazın...",
                 rows = 3
               ),
               div(
@@ -842,7 +842,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         type = "cc-clear-output",
         message = list(
           target = ns("output_area"),
-          welcomeId = ns("welcome_screen")
+          welcomeId = ns("welcome_screen"),
+          statusId = ns("status_text"),
+          durationId = ns("duration_text")
         )
       )
     })
@@ -1127,6 +1129,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           textId = ns("thinking_text"),
           canvasId = ns("pixel_canvas"),
           statusId = ns("status_text"),
+          durationId = ns("duration_text"),
           message = dusunme_mesaji,
           characterId = karakter_id,
           accentColor = karakter_renk
