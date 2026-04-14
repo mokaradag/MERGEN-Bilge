@@ -527,6 +527,26 @@ prepare_claude_code_document_context <- function(prompt,
     return(sonuc)
   }
 
+  # Kullanıcı mevcut ikili dokümanı OKUMAK değil YENİ bir ikili doküman
+  # ÜRETMEK istiyorsa doküman modunu (metne düşürme yolunu) devre dışı bırak.
+  # Aksi halde Claude Code'a "binary üretimi yasaktır" yönergesi enjekte
+  # ediliyor ve .docx/.xlsx üretimi engelleniyor.
+  if (exists("prompt_requests_binary_document_creation", mode = "function")) {
+    olusturma_niyeti <- tryCatch(
+      isTRUE(prompt_requests_binary_document_creation(prompt)),
+      error = function(e) FALSE
+    )
+
+    okuma_niyeti_belirgin <- tryCatch(
+      isTRUE(prompt_requests_existing_document_reading(prompt)),
+      error = function(e) FALSE
+    )
+
+    if (isTRUE(olusturma_niyeti) && !isTRUE(okuma_niyeti_belirgin)) {
+      return(sonuc)
+    }
+  }
+
   sonuc$document_task_detected <- TRUE
 
   # Dokümanları mümkünse runtime_workdir içinden al
