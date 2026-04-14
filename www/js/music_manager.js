@@ -324,7 +324,23 @@ const MusicManager = {
           self.state.phase = 'waiting_character';
           self._requestPlaylist('karakter');
         });
+        return;
       }
+
+      // Müzik açık kalmasına rağmen aktif akış yoksa karakter müziğini yeniden besle
+      if (enabled) {
+        var karakterMuzigiYenidenBaslatilsin =
+          !this._audio ||
+          this.state.phase === 'idle' ||
+          ((this.state.phase === 'character' || this.state.phase === 'waiting_character') &&
+           this._characterPlaylist.length === 0);
+
+        if (karakterMuzigiYenidenBaslatilsin) {
+          console.log('[MUSIC] Aynı açık duruma geçildi, karakter müziği akışı yeniden başlatılıyor');
+          this._startCharacterMusic();
+        }
+      }
+
       return;
     }
 
