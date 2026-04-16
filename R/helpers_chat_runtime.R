@@ -56,7 +56,10 @@ chat_add_message <- function(session, values, settings_data, output,
                              content, type = "user", html = NULL,
                              current_user_id,
                              followups = NULL, audio_src = NULL,
-                             audio_voice = NULL) {
+                             audio_voice = NULL,
+                             persist_to_db = TRUE,
+                             add_to_saved_chats = TRUE,
+                             include_in_context = TRUE) {
   if (isTRUE(values$show_welcome)) {
     removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
     values$show_welcome <- FALSE
@@ -83,14 +86,15 @@ chat_add_message <- function(session, values, settings_data, output,
     id = message_id, db_id = NULL, content = content,
     html_content = processed$html, has_code = processed$has_code,
     type = type, timestamp = timestamp,
-    audio_src = audio_src, audio_voice = audio_voice
+    audio_src = audio_src, audio_voice = audio_voice,
+    include_in_context = !isFALSE(include_in_context)
   )
   
   if (!is.null(followups) && length(followups) > 0) {
     new_message$followups <- followups
   }
 
-  if (!is.null(values$current_chat_id)) {
+  if (isTRUE(persist_to_db) && !is.null(values$current_chat_id)) {
     tryCatch({
       msg_to_persist <- new_message
       if (is.character(msg_to_persist$content) && nchar(msg_to_persist$content) > 19900) {
@@ -109,7 +113,7 @@ chat_add_message <- function(session, values, settings_data, output,
 
   values$messages <- append(values$messages, list(new_message))
   
-  if (!is.null(values$current_chat_id)) {
+  if (isTRUE(add_to_saved_chats) && !is.null(values$current_chat_id)) {
     chat_store_message_in_saved_chats(values, new_message)
   }
 

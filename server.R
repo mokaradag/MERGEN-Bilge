@@ -246,8 +246,17 @@ server <- function(input, output, session) {
   # ============================================================================
   # BÖLÜM 8: GÖZLEMCİLER VE UI BAĞLANTILARI
   # ============================================================================
-  quickActionsInit(input, session, values, settings_data,
-                   session_files, send_message, quick_action_skip_mcp)
+  quickActionsInit(
+    input = input,
+    session = session,
+    values = values,
+    settings_data = settings_data,
+    session_files = session_files,
+    quick_action_skip_mcp = quick_action_skip_mcp,
+    output = output,
+    current_user_id = current_user_id
+  )
+  
   settingsObserversInit(input, session, values, settings_data)
 
     sessionTimeoutServer(

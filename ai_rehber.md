@@ -149,6 +149,27 @@ Güncel hızlı eylem kartları şunlardır:
 
 Bu kartlar, kullanıcıyı doğrudan belirli bir kullanım senaryosuna taşımak için kullanılır. AI Uzman veya Yardım Asistanı bu kartlardan söz ederken onları bir başlangıç kolaylaştırıcısı olarak tarif etmelidir.
 
+## Hızlı Eylem Kartlarının Güncel Davranışı
+
+Ana Söyleşi hoş geldin ekranındaki hızlı eylem kartları, ilgili çalışma modunu hızlıca etkinleştirmek için kullanılır.
+
+Bir hızlı eylem kartına tıklandığında:
+- uygun araç modu seçilir,
+- gerekirse ilgili model etkinleştirilir,
+- kullanıcı sohbet alanına alınır,
+- sistem hazır bir yönlendirme mesajı gösterir.
+
+Önemli:
+- bu aşamada otomatik bir yapay zeka isteği başlatılmaz,
+- analiz veya üretim işlemi hemen başlamaz,
+- asıl işlem, kullanıcı ilk gerçek istemini yazdığında başlar.
+
+Örnek kullanım:
+1. Kullanıcı “Excel Analizi” kartına tıklar.
+2. Sistem Excel analizi modunun hazır olduğunu belirten kısa bir mesaj gösterir.
+3. Kullanıcı dosya, sayfa, sütun veya istediği analiz türünü yazar.
+4. Gerçek analiz o anda başlar.
+
 ---
 
 ## 7. Uygulama Sayfaları

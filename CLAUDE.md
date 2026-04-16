@@ -309,6 +309,7 @@ Shared utilities used across modules:
 - `R/helpers_claude_code_downloads.R`
 - `R/helpers_claude_code_plugins.R`
 - `R/helpers_claude_code_documents.R`
+- `R/helpers_quick_action_intro_messages.R`
 
 ### Group 5 - LLM Integration Layer
 Model calls, tool formatting, SSE, worker execution:
@@ -533,19 +534,26 @@ Each action includes:
 
 - id
 - title
-- seed message
 - description
 - icon
 - theme color
 - model value
 
-### Important rule
-Quick actions are not just decorative. They are tied to:
+Quick actions no longer auto-send a seed prompt to the LLM.
 
-- prompt injection,
-- tool-family behavior,
-- model switching,
-- context preparation.
+Current behavior:
+- the welcome card click sends only the action identity and model metadata,
+- `R/module_quick_actions.R` activates the relevant tool mode,
+- model selection is updated when needed,
+- the chat view is opened,
+- a prebuilt assistant-style intro message is inserted locally,
+- the real LLM pipeline starts only after the user submits an actual prompt.
+
+These intro messages are:
+- generated from local prepared text variants,
+- not produced by the LLM,
+- intentionally excluded from persistent history and prompt context,
+- personalized with `first_name` when available from session user data.
 
 Treat quick-action logic as behavioral infrastructure.
 
@@ -1183,6 +1191,16 @@ Be careful with:
 ### 5) Quick-action tool switching
 Quick actions are tied to model/tool behavior. Regressions can make a tool appear active while another tool-family actually handles the request.
 
+### 5A) Quick-action intro message behavior
+
+Quick-action intro messages must remain assistant-style (`type = "ai"`) rather than system-style in order to preserve normal left-aligned chat rendering.
+
+If editing the prepared intro message helper:
+- keep emoji escapes valid in R strings,
+- use single-backslash Unicode escapes such as `\U0001F44B` where escape form is preferred,
+- prefer `first_name` over full display name for greeting personalization,
+- keep these intro messages out of DB persistence and LLM conversation context unless explicitly changing product behavior.
+
 ### 6) Saved-chat restore
 Loading a saved chat can accidentally route the user back into a stale welcome state if observers are wired incorrectly.
 
@@ -1202,6 +1220,7 @@ Follow this checklist:
 5. Verify namespace consistency.
 6. Verify Turkish strings remain UTF-8 safe.
 7. Test both local mode and, if relevant, SSO-sensitive flow assumptions.
+8. For welcome quick actions, prefer local UI-side prepared guidance over automatic LLM kickoff unless the product requirement explicitly says otherwise.
 
 ---
 

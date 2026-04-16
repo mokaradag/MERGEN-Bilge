@@ -16,13 +16,14 @@
 #' @param values Ana reaktif değerler listesi (messages, show_welcome, vb.)
 #' @param settings_data Ayarlar modülünden dönen reaktif değerler
 #' @param session_files Oturum dosyalarını tutan reaktif değer fonksiyonu
-#' @param send_message_fn Mesaj gönderme fonksiyonu
-#' @param quick_action_skip_mcp MCP atlaması için reaktif değer fonksiyonu
+#' @param quick_action_skip_mcp Hızlı işlem sonrası bir sonraki istekte MCP atlaması için kullanılan reaktif değer fonksiyonu
+#' @param output Sohbet mesajı kutularını eklemek için kullanılan Shiny output nesnesi
+#' @param current_user_id Geçerli kullanıcı kimliği; oturum içinden çözümlenemediğinde yedek olarak kullanılır
 #'
 #' @return NULL (observer'lar kaydedilir)
 quickActionsInit <- function(input, session, values, settings_data,
-                              session_files, send_message_fn,
-                              quick_action_skip_mcp) {
+                              session_files, quick_action_skip_mcp,
+                              output = NULL, current_user_id = NULL) {
   
   # ---------------------------------------------------------------------------
   # Yardımcı: Welcome ekranını gizle ve sohbet alanını göster
@@ -98,11 +99,56 @@ quickActionsInit <- function(input, session, values, settings_data,
     session$sendCustomMessage("saveSettings", settings_list)
   }
   
+  resolve_effective_user_id <- function() {
+    effective_user_id <- suppressWarnings(
+      as.integer(session$userData$user_id %||% current_user_id %||% 0L)
+    )
+
+    if (is.na(effective_user_id) || effective_user_id < 0L) {
+      effective_user_id <- 0L
+    }
+
+    effective_user_id
+  }
+
+  show_quick_action_intro <- function(action_id) {
+    if (is.null(output)) {
+      return(invisible(NULL))
+    }
+
+    intro_text <- build_quick_action_intro_message(
+      action_id = action_id,
+      user_name = resolve_quick_action_user_name(
+        session = session,
+        settings_data = settings_data
+      )
+    )
+
+    if (!nzchar(intro_text)) {
+      return(invisible(NULL))
+    }
+
+    chat_add_message(
+      session = session,
+      values = values,
+      settings_data = settings_data,
+      output = output,
+      content = intro_text,
+      type = "ai",
+      current_user_id = resolve_effective_user_id(),
+      persist_to_db = FALSE,
+      add_to_saved_chats = FALSE,
+      include_in_context = FALSE
+    )
+
+    invisible(NULL)
+  }
+  
   # ---------------------------------------------------------------------------
   # Yardımcı: Tam eylem işleyicisi (model + araç + mesaj)
   # ---------------------------------------------------------------------------
   handle_tool_action <- function(action_id, tool_name, toast_message,
-                                  template_model, template_text) {
+                                  template_model) {
     cat("[QUICK_TEMPLATE]", action_id, "isteği tespit edildi\n")
 
     tool_cfg <- get_tool_mode_config(action_id, by = "quick_action_id")
@@ -158,11 +204,9 @@ quickActionsInit <- function(input, session, values, settings_data,
     
     # 5. Bildirim göster
     showToast(session, toast_message, "success")
-    
-    # 6. Mesaj varsa gönder
-    if (nzchar(template_text)) {
-      shinyjs::delay(300, { send_message_fn(template_text) })
-    }
+
+    # 6. LLM çağrısı yapmadan hazır yönlendirme mesajı göster
+    show_quick_action_intro(action_id)
   }
   
   # ===========================================================================
@@ -195,8 +239,7 @@ quickActionsInit <- function(input, session, values, settings_data,
         action_id = "coding-support",
         tool_name = "enable_coding_tools",
         toast_message = "Kod Uzmanı modu aktif edildi. Kodlama konusunda size yardımcı olmaya hazırım!",
-        template_model = template_model,
-        template_text = template_text
+        template_model = template_model
       )
       return()
     }
@@ -209,8 +252,7 @@ quickActionsInit <- function(input, session, values, settings_data,
         action_id = "project-process",
         tool_name = "enable_process_tools",
         toast_message = "Süreç Yönetimi modu aktif edildi. Kurumsal süreç ve dokümanlar hakkında size yardımcı olmaya hazırım!",
-        template_model = template_model,
-        template_text = template_text
+        template_model = template_model
       )
       return()
     }
@@ -223,8 +265,7 @@ quickActionsInit <- function(input, session, values, settings_data,
         action_id = "app-expert",
         tool_name = "enable_app_expert_tools",
         toast_message = "Uygulama Uzmanı modu aktif edildi. Uygulama mimarisi konusunda size yardımcı olmaya hazırım!",
-        template_model = template_model,
-        template_text = template_text
+        template_model = template_model
       )
       return()
     }
@@ -237,8 +278,7 @@ quickActionsInit <- function(input, session, values, settings_data,
         action_id = "resource-analysis",
         tool_name = "enable_rdata_tools",
         toast_message = "Proje ve Kaynak Analizi modu aktif edildi. Veri analizi konusunda size yardımcı olmaya hazırım!",
-        template_model = template_model,
-        template_text = template_text
+        template_model = template_model
       )
       return()
     }
@@ -251,8 +291,7 @@ quickActionsInit <- function(input, session, values, settings_data,
         action_id = "excel-analysis",
         tool_name = "enable_mcp_tools",
         toast_message = "Excel Analizi modu aktif edildi. Excel dosyalarınızı analiz etmeye hazırım!",
-        template_model = template_model,
-        template_text = template_text
+        template_model = template_model
       )
       return()
     }
@@ -265,8 +304,7 @@ quickActionsInit <- function(input, session, values, settings_data,
         action_id = "image-creation",
         tool_name = "enable_image_tools",
         toast_message = "Görsel Uzmanı modu aktif edildi. Görsel oluşturma konusunda size yardımcı olmaya hazırım!",
-        template_model = template_model,
-        template_text = template_text
+        template_model = template_model
       )
       return()
     }
@@ -274,7 +312,7 @@ quickActionsInit <- function(input, session, values, settings_data,
     # -------------------------------------------------------------------------
     # EYLEM: Dosya Özetleme
     # -------------------------------------------------------------------------
-    if (identical(template_text, "__SUMMARIZATION_REQUEST__")) {
+    if (identical(template_action_id, "summarization")) {
       cat("[QUICK_TEMPLATE] Özetleme isteği tespit edildi\n")
 
       change_model_if_provided(template_model)
@@ -289,6 +327,8 @@ quickActionsInit <- function(input, session, values, settings_data,
       session$sendCustomMessage("toggleImageMode", list(active = FALSE))
 
       cat("[QUICK_TEMPLATE] Özetleme modu aktif edildi\n")
+	  
+      show_quick_action_intro("summarization")
       
       current_files <- isolate(session_files())
       
@@ -328,18 +368,22 @@ quickActionsInit <- function(input, session, values, settings_data,
         
         remaining_files <- setdiff(names(current_files), excel_files)
         if (length(remaining_files) > 0) {
-          cat("[QUICK_TEMPLATE] Kalan dosyalar (", length(remaining_files), 
-              " adet), özetleme başlatılıyor...\n", sep = "")
-          shinyjs::delay(300, { send_message_fn("") })
+          cat("[QUICK_TEMPLATE] Kalan dosyalar (", length(remaining_files),
+              " adet), hazır bilgilendirme gösteriliyor...\n", sep = "")
+          showToast(
+            session,
+            "Özetleme modu hazır. Şimdi nasıl bir özet istediğinizi yazabilirsiniz.",
+            "success"
+          )
         } else {
-          showToast(session, 
-            "Tüm seçili dosyalar Excel formatındaydı ve kaldırıldı. Lütfen desteklenen formatta dosya seçin (DOC, DOCX, PDF, TXT).", 
+          showToast(session,
+            "Tüm seçili dosyalar Excel formatındaydı ve kaldırıldı. Lütfen desteklenen formatta dosya seçin (DOC, DOCX, PDF, TXT).",
             "info")
         }
       } else {
         cat("[QUICK_TEMPLATE] Dosya yok, bilgilendirme gösteriliyor\n")
-        showToast(session, 
-          "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", 
+        showToast(session,
+          "Lütfen önce Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",
           "info")
       }
       return()
@@ -412,13 +456,12 @@ quickActionsInit <- function(input, session, values, settings_data,
       "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",
       "success")
     
-    # Dosyalar varsa özetlemeyi başlat
+    show_quick_action_intro("summarization")
+
     current_files <- isolate(session_files())
-    if (length(current_files) > 0) {
-      shinyjs::delay(500, { send_message_fn("") })
-    } else {
-      showToast(session, 
-        "Dosya Özetleme modu aktif edildi. Lütfen Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.", 
+    if (!length(current_files)) {
+      showToast(session,
+        "Dosya Özetleme modu aktif edildi. Lütfen Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",
         "info")
     }
   }, ignoreInit = TRUE)

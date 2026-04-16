@@ -355,20 +355,12 @@ $(document).ready(function() {
   // Mesaj metni Base64 ile kodlanmış data attribute'den okunur
   window._handleQuickAction = function(btn) {
     if (!btn) return;
-    var msgB64 = btn.getAttribute('data-action-message') || '';
+
     var model = btn.getAttribute('data-action-model') || '';
     var actionId = btn.getAttribute('data-action-id') || '';
 
-    // Base64 kodunu çöz
-    var text = '';
-    try {
-      text = decodeURIComponent(escape(atob(msgB64)));
-    } catch(e) {
-      try { text = atob(msgB64); } catch(e2) { text = ''; }
-    }
-
     Shiny.setInputValue('quick_template', {
-      text: text,
+      text: '',
       model: model,
       action_id: actionId
     }, {priority: 'event'});

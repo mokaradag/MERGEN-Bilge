@@ -233,7 +233,11 @@ sendMessageInit <- function(
     recent_history_limit <- if ((identical(tool_family, "none") || identical(tool_family, "coding")) &&
                                 uploaded_count == 0) 3 else 5
 
-    recent_messages <- tail(isolate(values$messages), recent_history_limit)
+    context_messages <- Filter(function(m) {
+      !isFALSE(m$include_in_context %||% TRUE)
+    }, isolate(values$messages))
+
+    recent_messages <- tail(context_messages, recent_history_limit)
     recent_messages <- Filter(function(m) {
       is.null(m$content) || !grepl("[ Toplam Dosya Sayısı:", m$content, fixed = TRUE)
     }, recent_messages)
