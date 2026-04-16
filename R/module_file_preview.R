@@ -241,7 +241,7 @@ filePreviewServer <- function(id) {
                                   jsonlite::toJSON(pdf_url, auto_unbox = TRUE)))
 
           } else {
-            # --- KÜÇÜK PDF (≤ 1.5 MB): iframe + base64 önbellek yaklaşımı ---
+            # --- KÜÇÜK PDF (< 1.5 MB): iframe + base64 önbellek yaklaşımı ---
             showModal(modalDialog(
               title = modalTitle,
               tags$iframe(
