@@ -74,6 +74,9 @@ filePreviewServer <- function(id) {
     # Senkron/asenkron base64 kodlama eşiği (10 MB altı dosyalar senkron işlenir)
     SYNC_B64_THRESHOLD <- 10 * 1024 * 1024
 
+    # 1.5 MB üzeri PDF dosyaları yeni sekmede açılır (base64 data URI yerine doğrudan sunulur)
+    PDF_NEWTAB_THRESHOLD <- 1.5 * 1024 * 1024
+
     # Dosya yolunu çözümleyip base64 kodlayan yardımcı (senkron)
     encode_file_base64_sync <- function(path) {
       dp <- if (exists("resolve_readable_path", mode = "function")) {
@@ -164,43 +167,112 @@ filePreviewServer <- function(id) {
 
         if (file_ext == "pdf") {
           # PDF dosyaları için önizleme
-          showModal(modalDialog(
-            title = modalTitle,
-            tags$iframe(
-              id = ns("pdf_iframe"),
-              src = "about:blank",
-              width = "100%",
-              height = "500px",
-              style = "border: none;"
-            ),
-            size = "l", easyClose = TRUE, footer = footer
-          ))
+          fsize <- tryCatch(file.info(datapath)$size, error = function(e) NA_real_)
 
-          # İframe içine PDF verisini yerleştirir
-          set_pdf_iframe_src <- function(b64_value) {
-            pdf_src <- paste0("data:application/pdf;base64,", b64_value)
+          if (!is.na(fsize) && fsize > PDF_NEWTAB_THRESHOLD) {
+            # --- BÜYÜK PDF (> 1.5 MB): tarayıcının yerel PDF görüntüleyicisinde yeni sekmede aç ---
+            # base64 kodlama yerine dosyayı doğrudan Shiny oturumu üzerinden sun
+            pdf_obj_name <- paste0("pdf_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
+            pdf_url <- session$registerDataObj(
+              name  = pdf_obj_name,
+              data  = list(path = datapath, fname = file_storage$preview_file$name),
+              filterFunc = function(data, req) {
+                fpath <- data$path
+                if (!file.exists(fpath)) {
+                  return(shiny::httpResponse(
+                    status = 404L,
+                    content_type = "text/plain; charset=UTF-8",
+                    content = "Dosya bulunamadi"
+                  ))
+                }
+                raw_bytes <- readBin(fpath, "raw", file.info(fpath)$size)
+                shiny::httpResponse(
+                  status  = 200L,
+                  content_type = "application/pdf",
+                  headers = list(
+                    "Content-Disposition" = paste0('inline; filename="', data$fname, '"')
+                  ),
+                  content = raw_bytes
+                )
+              }
+            )
 
-            shinyjs::runjs(sprintf(
-              "setTimeout(function(){
-                 var el = document.getElementById('%s');
-                 if (el) { el.src = %s; }
-               }, 50);",
-              ns("pdf_iframe"),
-              jsonlite::toJSON(pdf_src, auto_unbox = TRUE)
+            # Bilgi modalı göster (İndir butonu devre dışı — dosya zaten yeni sekmede)
+            showModal(modalDialog(
+              title = modalTitle,
+              div(
+                style = "text-align: center; padding: 30px;",
+                tags$i(class = "fas fa-external-link-alt fa-3x",
+                       style = "color: #a5b4fc; margin-bottom: 15px; display: block;"),
+                tags$h4(
+                  "PDF yeni sekmede açıldı",
+                  style = "color: #e5e7eb;"
+                ),
+                tags$p(
+                  sprintf(
+                    "Bu dosya (%.1f MB) boyutu nedeniyle tarayıcınızın PDF görüntüleyicisinde açıldı.",
+                    fsize / (1024 * 1024)
+                  ),
+                  style = "color: #9ca3af; font-size: 14px;"
+                ),
+                tags$p(
+                  tags$a(
+                    href = pdf_url, target = "_blank",
+                    style = "color: #a5b4fc; text-decoration: underline;",
+                    "Sekme açılmadıysa buraya tıklayın"
+                  ),
+                  style = "margin-top: 10px; font-size: 13px;"
+                )
+              ),
+              size = "m", easyClose = TRUE,
+              footer = tagList(
+                tags$button(
+                  class = "btn btn-modern btn-primary",
+                  disabled = "disabled",
+                  style = "opacity: 0.5; cursor: not-allowed;",
+                  tags$i(class = "fas fa-download"), " İndir"
+                ),
+                modalButton("Kapat")
+              )
             ))
-          }
 
-          cached_pdf <- get_cached_base64(datapath)
+            # Yeni sekmede aç
+            shinyjs::runjs(sprintf("window.open(%s, '_blank');",
+                                  jsonlite::toJSON(pdf_url, auto_unbox = TRUE)))
 
-          if (!is.null(cached_pdf)) {
-            # Önbellekte var; hemen göster
-            set_pdf_iframe_src(cached_pdf)
           } else {
-            # Dosya boyutuna göre senkron veya asenkron kodla
-            fsize <- tryCatch(file.info(datapath)$size, error = function(e) NA_real_)
+            # --- KÜÇÜK PDF (≤ 1.5 MB): iframe + base64 önbellek yaklaşımı ---
+            showModal(modalDialog(
+              title = modalTitle,
+              tags$iframe(
+                id = ns("pdf_iframe"),
+                src = "about:blank",
+                width = "100%",
+                height = "500px",
+                style = "border: none;"
+              ),
+              size = "l", easyClose = TRUE, footer = footer
+            ))
 
-            if (!is.na(fsize) && fsize <= SYNC_B64_THRESHOLD) {
-              # Küçük dosya: senkron kodlama (future işçi başlatma yükünden kaçınır)
+            # iframe içine PDF verisini yerleştirir
+            set_pdf_iframe_src <- function(b64_value) {
+              pdf_src <- paste0("data:application/pdf;base64,", b64_value)
+              shinyjs::runjs(sprintf(
+                "setTimeout(function(){
+                   var el = document.getElementById('%s');
+                   if (el) { el.src = %s; }
+                 }, 50);",
+                ns("pdf_iframe"),
+                jsonlite::toJSON(pdf_src, auto_unbox = TRUE)
+              ))
+            }
+
+            cached_pdf <- get_cached_base64(datapath)
+            if (!is.null(cached_pdf)) {
+              # Önbellekte var; hemen göster
+              set_pdf_iframe_src(cached_pdf)
+            } else {
+              # Küçük dosya: senkron kodlama
               tryCatch({
                 b64 <- encode_file_base64_sync(datapath)
                 if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
@@ -210,20 +282,6 @@ filePreviewServer <- function(id) {
                   showToast(session, "PDF içeriği hazırlanamadı.", "error")
                 }
               }, error = function(e) {
-                showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
-              })
-            } else {
-              # Büyük dosya (>10 MB): asenkron kodlama
-              future::future({
-                encode_file_base64_sync(datapath)
-              }) %...>% (function(b64){
-                if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-                  store_cached_base64(datapath, b64[1])
-                  set_pdf_iframe_src(b64[1])
-                } else {
-                  showToast(session, "PDF içeriği hazırlanamadı.", "error")
-                }
-              }) %...!% (function(e){
                 showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
               })
             }
