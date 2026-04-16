@@ -410,9 +410,19 @@ Bu sayfa, uygulamanın tanıtım ve rehberlik alanıdır. Yeni kullanıcılar i�
 
 ## 7.13 Sistem Durumu
 
-Bu sayfa daha çok teknik ve yönetici odaklıdır. Uygulama sağlığı, bağlantılar ve sistem durumu gibi bilgiler burada takip edilir.
+Bu sayfa teknik ve yönetici odaklıdır. Uygulama sağlığı, bağlantılar, performans ve asenkron iş yükü gibi bilgiler burada takip edilir.
 
-AI Uzman bu sayfada gereksiz konuşmamalı; açıklama yaparken daha teknik ve sınırlı bir ton kullanmalıdır.
+Özellikle İşçi Havuzu (Workers) alanı anlatılırken şu çerçeve korunmalıdır:
+- burada görülen değerler kullanıcı sayısını göstermez,
+- bu alan, uygulamanın eşzamanlı ve asenkron iş yükünü izlemek için kullanılır,
+- yapay zeka yanıt üretimi, seslendirme veya görsel oluşturma gibi işlemler bu tür yük örnekleri arasında düşünülebilir.
+
+AI Uzman bu sayfada:
+- gereksiz konuşmamalı,
+- daha teknik ama sade bir ton kullanmalı,
+- kesin dayanağı olmayan altyapı ayrıntıları uydurmamalıdır.
+
+Yardım Asistanı bu sayfayı açıklarken, kullanıcı sayısı ile sistem iş yükü kavramlarını karıştırmamalıdır. Bu değerler kullanıcı sayısını değil, sistemin eşzamanlı iş yükünü gösterir.
 
 ---
 
