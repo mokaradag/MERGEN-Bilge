@@ -72,6 +72,9 @@ server <- function(input, output, session) {
       ui <- resolveUserIdentity(sso_claims = claims)
       uname <- ui$username
       uid <- get_or_create_user(uname, sso_claims = claims)
+	  
+      # Aktif oturum defterini gerçek kullanıcı kimliği ile güncelle
+      try(perf_tracker$touch_session(uid), silent = TRUE)
 
       session$userData$user_identity   <- ui
       session$userData$user_first_name <- ui$first_name
@@ -118,7 +121,7 @@ server <- function(input, output, session) {
   # ============================================================================
   # BÖLÜM 3: PERFORMANS, SAĞLIK VE DESTEK MODÜLLERİ
   # ============================================================================
-  perf_tracker <- performanceStatsServer("perf_stats", current_user_id)
+  perf_tracker <- performanceStatsServer("perf_stats", current_user_id_provider)
   healthServer("health_module", perf_tracker = perf_tracker)
   destekServer("destek_module", current_user_id = current_user_id_provider)
 

@@ -44,13 +44,36 @@ normalize_db_params <- function(params) {
   lapply(params, normalize_db_value)
 }
 
-# Get pool statistics
+# Veritabanı bağlantı durumunu gerçekten test et
 get_pool_info <- function() {
-  return(list(
-    valid = TRUE,
-    mode = "Direct Connections",
-    note = "Doğrudan bağlantı modu kullanılıyor (havuz devre dışı)"
-  ))
+  start_time <- Sys.time()
+  conn_info <- NULL
+
+  tryCatch({
+    conn_info <- get_connection()
+
+    # Hafif bir test sorgusu çalıştır
+    DBI::dbGetQuery(conn_info$conn, "SELECT 1 AS ok")
+
+    elapsed_ms <- round(as.numeric(difftime(Sys.time(), start_time, units = "secs")) * 1000)
+    mode_text <- if (isTRUE(conn_info$pooled)) "Bağlantı Havuzu" else "Doğrudan Bağlantı"
+
+    list(
+      valid = TRUE,
+      mode = mode_text,
+      note = sprintf("Veritabanı erişim testi başarılı (%d ms)", elapsed_ms),
+      response_ms = elapsed_ms
+    )
+  }, error = function(e) {
+    list(
+      valid = FALSE,
+      mode = "Doğrudan Bağlantı",
+      note = "Veritabanı erişim testi başarısız",
+      error = conditionMessage(e)
+    )
+  }, finally = {
+    release_connection(conn_info)
+  })
 }
 
 get_connection <- function(target = "primary") {

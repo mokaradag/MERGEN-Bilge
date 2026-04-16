@@ -39,7 +39,7 @@ healthUI <- function(id) {
             class = "health-column",
             div(
               class = "settings-card health-card",
-              h3(tagList(icon("database"), " Veritabanı Bağlantı Havuzu"), class = "settings-title"),
+			  h3(tagList(icon("database"), " Veritabanı Bağlantısı"), class = "settings-title"),
               div(class = "health-content", uiOutput(ns("health_db_pool")))
             ),
             div(
@@ -121,24 +121,11 @@ healthServer <- function(id, perf_tracker) {
       }
     })
     
-    output$health_workers <- renderUI({
-      health_refresh_trigger()
-      worker_info <- monitor_workers()
-      active_workers <- worker_info$total_workers - worker_info$free_workers
-      usage_pct <- (active_workers / worker_info$total_workers) * 100
-      HTML(sprintf(
-        '<div style="line-height: 2;">
-          <span style="color: #60a5fa;">Toplam İşçi:</span> <span style="color: #fff;">%d</span><br>
-          <span style="color: #60a5fa;">Boş İşçi:</span> <span style="color: #fff;">%d</span><br>
-          <span style="color: #60a5fa;">Aktif İşçi:</span> <span style="color: #fff;">%d</span><br>
-          <span style="color: #60a5fa;">Kullanım Oranı:</span> <span style="color: #fff;">%.1f%%</span>
-        </div>',
-        worker_info$total_workers,
-        worker_info$free_workers,
-        active_workers,
-        usage_pct
-      ))
-    })
+	output$health_workers <- renderUI({
+	  health_refresh_trigger()
+	  worker_info <- get_worker_monitor_info()
+	  render_worker_health_html(worker_info)
+	})
     
     output$health_performance <- renderUI({
       health_refresh_trigger()
@@ -190,20 +177,21 @@ healthServer <- function(id, perf_tracker) {
       global_count <- length(active_global)
       global_usage_pct <- (global_count / global_rate_limiter$max_total_requests) * 100
       
-      HTML(sprintf(
-        '<div style="line-height: 2;">
-          <span style="color: #a78bfa; font-weight: bold;">Kullanıcı Başına Limit:</span><br>
-          <span style="color: #60a5fa; margin-left: 10px;">Limit:</span> <span style="color: #fff;">%d istek / %d saniye</span><br>
-          <span style="color: #60a5fa; margin-left: 10px;">Aktif Kullanıcı:</span> <span style="color: #fff;">%d</span><br><br>
-          <span style="color: #a78bfa; font-weight: bold;">Genel Limit:</span><br>
-          <span style="color: #60a5fa; margin-left: 10px;">Limit:</span> <span style="color: #fff;">%d istek / %d saniye</span><br>
-          <span style="color: #60a5fa; margin-left: 10px;">Aktif İstek:</span> <span style="color: #fff;">%d</span><br>
-          <span style="color: #60a5fa; margin-left: 10px;">Kullanım:</span> <span style="color: #fff;">%.1f%%</span>
-        </div>',
-        rate_limiter$max_requests_per_user, rate_limiter$window_size, active_user_count,
-        global_rate_limiter$max_total_requests, global_rate_limiter$window_size,
-        global_count, global_usage_pct
-      ))
+		HTML(sprintf(
+		  '<div style="line-height: 2;">
+			<span style="color: #a78bfa; font-weight: bold;">Kullanıcı Başına Limit:</span><br>
+			<span style="color: #60a5fa; margin-left: 10px;">Limit:</span> <span style="color: #fff;">%d istek / %d saniye</span><br>
+			<span style="color: #60a5fa; margin-left: 10px;">Son %d sn içinde istek atan kullanıcı:</span> <span style="color: #fff;">%d</span><br><br>
+			<span style="color: #a78bfa; font-weight: bold;">Genel Limit:</span><br>
+			<span style="color: #60a5fa; margin-left: 10px;">Limit:</span> <span style="color: #fff;">%d istek / %d saniye</span><br>
+			<span style="color: #60a5fa; margin-left: 10px;">Penceredeki istek:</span> <span style="color: #fff;">%d</span><br>
+			<span style="color: #60a5fa; margin-left: 10px;">Kullanım:</span> <span style="color: #fff;">%.1f%%</span>
+		  </div>',
+		  rate_limiter$max_requests_per_user, rate_limiter$window_size,
+		  rate_limiter$window_size, active_user_count,
+		  global_rate_limiter$max_total_requests, global_rate_limiter$window_size,
+		  global_count, global_usage_pct
+		))
     })
 	
 	# Sistem kaynaklarını göster (disk, bellek, oturum bilgisi)
@@ -273,10 +261,17 @@ healthServer <- function(id, perf_tracker) {
 		"N/A"
 	  })
 	  
-	  # Oturum bilgisi
-	  session_count <- tryCatch({
-		length(ls(envir = .GlobalEnv, pattern = "^session"))
-	  }, error = function(e) { 1 })
+		# Gerçek aktif oturum sayısını performans modülünden al
+		session_count <- tryCatch({
+		  if (!is.null(perf_tracker$get_active_session_count) &&
+			  is.function(perf_tracker$get_active_session_count)) {
+			perf_tracker$get_active_session_count()
+		  } else {
+			1L
+		  }
+		}, error = function(e) {
+		  1L
+		})
 	  
 	  r_version <- paste0(R.version$major, ".", R.version$minor)
 	  

@@ -376,16 +376,21 @@ handle_true_streaming_mode <- function(ctx) {
     as.numeric(difftime(future_submit_time, istek_baslangici, units = "secs"))
   ))
 
-  sse_promise <- promises::future_promise(
-    {
-      call_local_llm_sse_worker(
-        chat_history = chat_history_for_sse,
-        current_settings = settings_for_sse,
-        stream_file = stream_file_for_sse,
-        stop_file = stop_file_for_sse
-      )
-    },
-    globals = list(
+sse_promise <- tracked_future_promise(
+  task_fn = function() {
+    call_local_llm_sse_worker(
+      chat_history = chat_history_for_sse,
+      current_settings = settings_for_sse,
+      stream_file = stream_file_for_sse,
+      stop_file = stop_file_for_sse
+    )
+  },
+  task_type = "llm_true_streaming",
+  session_token = session$token,
+  meta = list(
+    model = ctx$model_selected
+  ),
+  globals = list(
       chat_history_for_sse = chat_history_for_sse,
       settings_for_sse = settings_for_sse,
       stream_file_for_sse = stream_file_for_sse,

@@ -67,18 +67,25 @@ aiProcessingServer <- function(id) {
 	  settings_copy$model_selection <- model_selected
       
       # Create future promise for async processing
-      p <- future_promise({
-        start_time_worker <- Sys.time()
-        
-        library(httr)
-        library(jsonlite)
-        
-        # Call LLM in worker thread
-        ai_text <- call_llm_worker(history_copy, settings_copy, api_endpoint, api_key_val)
-        duration <- as.numeric(difftime(Sys.time(), start_time_worker, units = "secs"))
-        
-        list(ai_text = ai_text, duration = duration)
-      })
+		p <- tracked_future_promise(
+		  task_fn = function() {
+			start_time_worker <- Sys.time()
+
+			library(httr)
+			library(jsonlite)
+
+			# Worker içinde LLM çağrısı
+			ai_text <- call_llm_worker(history_copy, settings_copy, api_endpoint, api_key_val)
+			duration <- as.numeric(difftime(Sys.time(), start_time_worker, units = "secs"))
+
+			list(ai_text = ai_text, duration = duration)
+		  },
+		  task_type = "llm_non_streaming",
+		  session_token = session$token,
+		  meta = list(
+			model = model_selected
+		  )
+		)
       
       # Transform promise to standardized format
       promises::then(p,
@@ -212,15 +219,22 @@ aiProcessingServer <- function(id) {
 	}
       
       # Create future promise
-      p <- future_promise({
-        tryCatch({
-          ai_text <- call_llm_with_retry(history_copy, settings_for_llm)
-          duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-          list(ai_text = ai_text, duration = duration, error = FALSE)
-        }, error = function(e) {
-          list(error = TRUE, message = e$message)
-        })
-      })
+		p <- tracked_future_promise(
+		  task_fn = function() {
+			tryCatch({
+			  ai_text <- call_llm_with_retry(history_copy, settings_for_llm)
+			  duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+			  list(ai_text = ai_text, duration = duration, error = FALSE)
+			}, error = function(e) {
+			  list(error = TRUE, message = e$message)
+			})
+		  },
+		  task_type = "llm_streaming",
+		  session_token = session$token,
+		  meta = list(
+			model = model_selected
+		  )
+		)
       
       # Transform to standardized format
       promises::then(

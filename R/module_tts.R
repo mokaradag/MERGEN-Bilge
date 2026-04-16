@@ -106,8 +106,9 @@ ttsProcessingServer <- function(id) {
       if (!file.exists(dirname(debug_log_file))) dir.create(dirname(debug_log_file), recursive = TRUE)
 
       # --- ASENKRON ÇALIŞTIRICI (WORKER) BAŞLANGICI ---
-      future_promise({
-        start_time <- Sys.time()
+		tracked_future_promise(
+		  task_fn = function() {
+			start_time <- Sys.time()
         
         # -- Worker Tarafı Log Yardımcısı --
         worker_log <- function(msg) {
@@ -231,7 +232,14 @@ ttsProcessingServer <- function(id) {
           list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                duration = 0, error = paste("TTS hata:", err_msg))
         }
-      }) %...!% (function(e) {
+      },
+      task_type = "tts",
+      session_token = session$token,
+      meta = list(
+        voice = voice_to_use,
+        model = model_to_use
+      )
+    ) %...!% (function(e) {
         # İşlenmemiş istisnaları (exception) logla
         cat(sprintf("[TTS] Worker hatası: %s\n", conditionMessage(e)))
         try({

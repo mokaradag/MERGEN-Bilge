@@ -133,8 +133,9 @@ try(shiny::addResourcePath("bilge_yolac_downloads", bilge_yolac_downloads_dir), 
 safe_source("R/config_packages.R",    encoding = "UTF-8")  # Paket yüklemeleri
 safe_source("R/utils_common.R",       encoding = "UTF-8")  # Ortak yardımcı fonksiyonlar (%||%, safe_nzchar, vb.)
 safe_source("R/config_logging.R",     encoding = "UTF-8")  # Loglama altyapısı
-safe_source("R/utils_rate_limiter.R", encoding = "UTF-8")  # Hız sınırlama + işçi havuzu
-safe_source("R/utils_path_helpers.R", encoding = "UTF-8")  # Yol normalizasyon yardımcıları
+safe_source("R/utils_rate_limiter.R",   encoding = "UTF-8")  # Hız sınırlama + işçi havuzu
+safe_source("R/helpers_worker_monitor.R", encoding = "UTF-8")  # Asenkron iş/işçi izleme defteri
+safe_source("R/utils_path_helpers.R",   encoding = "UTF-8")  # Yol normalizasyon yardımcıları
 safe_source("R/utils_file_index.R",   encoding = "UTF-8")  # Önbellekli dosya indeks mekanizması
 safe_source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yardımcıları
 
@@ -268,6 +269,7 @@ safe_source("R/module_admin_analytics.R",             encoding = "UTF-8")
 safe_source("R/module_admin_geri_bildirim.R",         encoding = "UTF-8")
 safe_source("R/module_admin_hata_analizi.R",          encoding = "UTF-8")
 safe_source("R/module_admin_yanit_analizi.R",         encoding = "UTF-8")
+safe_source("R/module_health_worker_metrics.R",       encoding = "UTF-8")
 safe_source("R/module_health.R",                      encoding = "UTF-8")
 safe_source("R/module_chartlab.R",                    encoding = "UTF-8")
 

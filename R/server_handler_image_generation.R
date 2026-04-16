@@ -60,16 +60,24 @@ handle_image_generation_mode <- function(ctx) {
   image_quality_local <- image_quality
   api_key_local <- api_key_for_image
 
-  future_promise({
-    generate_image(
-      prompt = user_prompt_local,
-      api_key = api_key_local,
-      size = image_size_local,
-      quality = image_quality_local,
-      user_id = current_user_id_local,
-      chat_id = current_chat_id_local
-    )
-  }) %...>% (function(result) {
+	tracked_future_promise(
+	  task_fn = function() {
+		generate_image(
+		  prompt = user_prompt_local,
+		  api_key = api_key_local,
+		  size = image_size_local,
+		  quality = image_quality_local,
+		  user_id = current_user_id_local,
+		  chat_id = current_chat_id_local
+		)
+	  },
+	  task_type = "image_generation",
+	  session_token = ctx$session$token,
+	  meta = list(
+		size = image_size_local,
+		quality = image_quality_local
+	  )
+	) %...>% (function(result) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
 

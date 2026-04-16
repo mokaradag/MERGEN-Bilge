@@ -98,10 +98,7 @@ if (!exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
 plan(cluster, workers = get(".mergen_future_cluster", envir = .GlobalEnv), persistent = TRUE)
 
 # İşçi havuzu izleme fonksiyonu
+# Geriye dönük uyumluluk için korunur
 monitor_workers <- function() {
-  list(
-    n_workers     = nbrOfWorkers(),
-    free_workers  = nbrOfWorkers(),
-    total_workers = nbrOfWorkers()
-  )
+  get_worker_monitor_info()
 }
