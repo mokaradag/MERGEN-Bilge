@@ -70,6 +70,13 @@ Do not answer vaguely.
 ### 7) Preserve existing UX wording
 User-facing strings are mostly Turkish and intentionally stylized. Avoid rewriting labels unless required.
 
+### 8) Async jobs visible in health metrics must use tracked wrapper
+For application-monitored async flows, do not use raw `future_promise(...)` directly.
+
+Use `tracked_future_promise(task_fn = function() { ... }, task_type = "...", session_token = session$token)` with a meaningful `task_type`.
+
+Do not pass raw expression blocks as positional `expr`; `tracked_future_promise()` now expects `task_fn`.
+
 ---
 
 ## What MERGEN Bilge Is
@@ -261,6 +268,7 @@ Loaded first, no application-layer assumptions:
 - `R/utils_common.R`
 - `R/config_logging.R`
 - `R/utils_rate_limiter.R`
+- `R/helpers_worker_monitor.R`
 - `R/utils_path_helpers.R`
 - `R/utils_file_index.R`
 - `R/utils_excel_reader.R`
@@ -390,6 +398,7 @@ User-facing and system-facing modules.
 - `R/module_admin_hata_analizi.R`
 - `R/module_admin_yanit_analizi.R`
 - `R/module_health.R`
+- `R/module_health_worker_metrics.R`
 - `R/module_chartlab.R`
 
 ### Group 7 - Server-side Handlers and Observers
@@ -1024,7 +1033,83 @@ Admin area includes:
 - response feedback analytics,
 - health monitoring.
 
+Health worker metrics here are **application-level async occupancy metrics** and should not be described as logged-in user count or literal OS-level worker telemetry.
+
 This area is role-sensitive and should not accidentally leak into normal-user flow.
+
+---
+
+## Worker Monitoring and Async Task Tracking
+
+The admin health screen now includes application-level worker/task monitoring.
+
+### What these metrics mean
+The worker card does **not** show logged-in user count. It shows async workload occupancy derived from the app’s own task registry.
+
+Displayed values are based on:
+- configured future cluster size
+- tracked active async jobs
+- inferred free/busy worker counts
+- queued work beyond cluster capacity
+
+### Source files
+- `R/helpers_worker_monitor.R`
+- `R/module_health_worker_metrics.R`
+
+### Operational rule
+If you add a new async flow that should appear in the health screen, do **not** use raw `future_promise(...)` directly.
+
+Use:
+
+```r
+tracked_future_promise(
+  task_fn = function() {
+    # async work
+  },
+  task_type = "meaningful_task_type",
+  session_token = session$token
+)
+```
+
+Important: `tracked_future_promise()` expects `task_fn`, not a raw expr block.
+
+Incorrect:
+
+```r
+future_promise({
+  some_async_work(...)
+})
+```
+
+Also incorrect:
+
+```r
+tracked_future_promise({
+  some_async_work(...)
+})
+```
+
+Correct:
+
+```r
+tracked_future_promise(
+  task_fn = function() {
+    some_async_work(...)
+  },
+  task_type = "llm_non_streaming",
+  session_token = session$token
+)
+```
+
+### Current tracked async families
+At minimum, health metrics are expected to include these async flows when present:
+- non-streaming LLM
+- streaming LLM
+- true streaming SSE worker
+- TTS
+- image generation
+
+If a new future-based path is added without the tracked wrapper, the health page will under-report worker usage.
 
 ---
 

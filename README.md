@@ -92,7 +92,7 @@ Yetkili kullanıcılar için:
 - yanıt geri bildirimi analizi,
 - sistem durumu
 
-ekranları sunulur.
+ekranları sunulur. Sistem Durumu içindeki İşçi Havuzu kartı artık yalnızca sabit cluster boyutunu değil, uygulama düzeyindeki asenkron görev doluluğunu da gösterir.
 
 ---
 
@@ -203,8 +203,9 @@ Sunucu mantığının birleşim noktasıdır. Şunları koordine eder:
 - paketler
 - ortak yardımcılar
 - loglama
-- yol ve dosya yardımcıları
 - rate limiter
+- worker monitor helper
+- yol ve dosya yardımcıları
 - Excel okuyucu
 
 ### 2. Yapılandırma
@@ -245,6 +246,7 @@ Sunucu mantığının birleşim noktasıdır. Şunları koordine eder:
 - SSO ve oturum modülleri
 - destek modülleri
 - admin modülleri
+- worker health metric helpers
 - Bilge Yolaç modülleri
 
 ### 7. Sunucu işleyicileri ve observer katmanı
@@ -256,6 +258,29 @@ Sunucu mantığının birleşim noktasıdır. Şunları koordine eder:
 - welcome handlers
 - observer dosyaları
 - output ve download işleyicileri
+
+---
+
+## İşçi Havuzu ve Asenkron Görev İzleme
+
+Yönetici Paneli > Sistem Durumu > İşçi Havuzu (Workers) kartı artık yalnızca sabit cluster boyutunu göstermemektedir. Bu kart, uygulamanın future tabanlı asenkron iş yükünü uygulama düzeyinde izler.
+
+### Gösterilen metriklerin anlamı
+- **Toplam İşçi**: Future cluster içinde yapılandırılmış toplam worker sayısıdır.
+- **Aktif İşçi**: O anda aktif iş yükü taşıdığı varsayılan worker sayısıdır.
+- **Boş İşçi**: O anda aktif iş yükü taşımayan worker sayısıdır.
+- **Aktif İş**: Uygulamanın izlediği aktif asenkron görev sayısıdır.
+- **Kuyruktaki İş**: Aktif görev sayısı worker kapasitesini aştığında bekleyen iş yükünü temsil eder.
+- **Kullanım Oranı**: Aktif işçi / toplam işçi oranıdır.
+
+### Önemli not
+Bu metrikler **kullanıcı sayısını göstermez**. Bunlar; LLM çağrısı, TTS, görsel üretimi ve true streaming gibi uygulama tarafından başlatılan asenkron görevlerin izleme görünümüdür.
+
+### İlgili dosyalar
+- `R/helpers_worker_monitor.R`
+- `R/module_health_worker_metrics.R`
+
+İzleme uygulaması `tracked_future_promise(...)` sarmalayıcısı ile yürütülür. Asenkron çalışan yeni bir akış eklenirse, sağlık ekranında doğru görünmesi için ilgili future çağrısının izlemeli sarmalayıcı üzerinden başlatılması gerekir.
 
 ---
 
@@ -694,6 +719,9 @@ Kontrol edin:
 - `www/js/claude_code_streaming.js`
 - Unicode semboller
 - canlı akışlı parça birleştirme mantığı
+
+### İşçi Havuzu değerleri kullanıcı sayısı ile uyuşmuyor
+Bu beklenen bir durumdur. İşçi metrikleri giriş yapan kullanıcı sayısını değil, uygulamadaki asenkron iş yükünü gösterir. Kullanıcı sayısı ile worker/task doluluğu ayrı metrikler olarak yorumlanmalıdır.
 
 ---
 
