@@ -16,6 +16,61 @@ filePreviewServer <- function(id) {
     # Önizlenen dosyanın bilgilerini saklayan reaktif liste
     file_storage <- reactiveValues(preview_file = NULL)
 
+    # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
+    preview_b64_cache <- reactiveVal(list())
+
+    # Dosya yolu + boyut + değişiklik zamanına göre önbellek anahtarı üretir
+    build_preview_cache_key <- function(path) {
+      dp <- if (exists("resolve_readable_path", mode = "function")) {
+        resolve_readable_path(path)
+      } else {
+        path
+      }
+
+      finfo <- tryCatch(file.info(dp), error = function(e) NULL)
+
+      size_txt <- if (!is.null(finfo) && !is.na(finfo$size[1])) {
+        as.character(finfo$size[1])
+      } else {
+        "nosize"
+      }
+
+      mtime_txt <- if (!is.null(finfo) && !is.na(finfo$mtime[1])) {
+        format(finfo$mtime[1], "%Y%m%d%H%M%S")
+      } else {
+        "nomtime"
+      }
+
+      paste(dp, size_txt, mtime_txt, sep = "||")
+    }
+
+    # Önbellekten base64 değeri getirir
+    get_cached_base64 <- function(path) {
+      cache_key <- build_preview_cache_key(path)
+      cache <- preview_b64_cache()
+      val <- cache[[cache_key]]
+
+      if (is.character(val) && length(val) > 0 && nzchar(val[1])) {
+        return(val[1])
+      }
+
+      NULL
+    }
+
+    # Yeni base64 değerini önbelleğe yazar
+    store_cached_base64 <- function(path, b64_value) {
+      if (!is.character(b64_value) || length(b64_value) == 0 || !nzchar(b64_value[1])) {
+        return(invisible(FALSE))
+      }
+
+      cache_key <- build_preview_cache_key(path)
+      cache <- preview_b64_cache()
+      cache[[cache_key]] <- b64_value[1]
+      preview_b64_cache(cache)
+
+      invisible(TRUE)
+    }
+
     # Excel verilerini DataTables kullanarak render eden çıktı
     output$preview_excel_table <- DT::renderDT({
       req(preview_data())
@@ -95,37 +150,56 @@ filePreviewServer <- function(id) {
         )
 
         if (file_ext == "pdf") {
-          # PDF Dosyaları İçin Önizleme
-          # Modal hemen açılsın, src daha sonra ayarlansın
+          # PDF dosyaları için önizleme
           showModal(modalDialog(
             title = modalTitle,
             tags$iframe(
               id = ns("pdf_iframe"),
               src = "about:blank",
-              width = "100%", height = "500px", style = "border: none;"
+              width = "100%",
+              height = "500px",
+              style = "border: none;"
             ),
             size = "l", easyClose = TRUE, footer = footer
           ))
 
-          # PDF'i arka planda base64'e çevir ve iframe src değerini ayarla
-          future::future({
-            # UNC yollarında base R file() başarısız olabilir; çalışan varyantı bul
-            dp <- if (exists("resolve_readable_path", mode = "function")) {
-              resolve_readable_path(datapath)
-            } else datapath
-            base64enc::base64encode(dp)
-          }) %...>% (function(b64){
-            if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-              shinyjs::runjs(sprintf(
-                "var el=document.getElementById('%s'); if(el){ el.src='data:application/pdf;base64,%s'; }",
-                ns("pdf_iframe"), b64[1]
-              ))
-            } else {
-              showToast(session, "PDF içeriği hazırlanamadı.", "error")
-            }
-          }) %...!% (function(e){
-            showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
-          })
+          # İframe içine PDF verisini yerleştirir
+          set_pdf_iframe_src <- function(b64_value) {
+            pdf_src <- paste0("data:application/pdf;base64,", b64_value)
+
+            shinyjs::runjs(sprintf(
+              "setTimeout(function(){
+                 var el = document.getElementById('%s');
+                 if (el) { el.src = %s; }
+               }, 50);",
+              ns("pdf_iframe"),
+              jsonlite::toJSON(pdf_src, auto_unbox = TRUE)
+            ))
+          }
+
+          cached_pdf <- get_cached_base64(datapath)
+
+          if (!is.null(cached_pdf)) {
+            set_pdf_iframe_src(cached_pdf)
+          } else {
+            future::future({
+              dp <- if (exists("resolve_readable_path", mode = "function")) {
+                resolve_readable_path(datapath)
+              } else {
+                datapath
+              }
+              base64enc::base64encode(dp)
+            }) %...>% (function(b64){
+              if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                store_cached_base64(datapath, b64[1])
+                set_pdf_iframe_src(b64[1])
+              } else {
+                showToast(session, "PDF içeriği hazırlanamadı.", "error")
+              }
+            }) %...!% (function(e){
+              showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
+            })
+          }
 
         } else if (file_ext %in% c("xlsx", "xls")) {
           # Excel Dosyaları İçin Önizleme
@@ -157,19 +231,27 @@ filePreviewServer <- function(id) {
           # Modal iskeleti (boş hedef; JS mesajı ile doldurulacak)
           showModal(modalDialog(
             title = modalTitle,
-            # Tek dikey kaydırma modal gövdesine \U2014 iç kapsayıcı kaydırmasız
-            tags$head(tags$style(HTML("
-              /* Modal gövdesi tek kaydırma alanı olsun */
-              .modal-body { max-height: 80vh; overflow-y: auto; }
-              /* İçerik kapsayıcısında kaydırma olmasın */
-              .modal-body #", ns("docx_preview_container"), " { overflow: visible !important; }
-              /* İframe içinde kaydırma kapalı \u2014 içeriği iframe yüksekliği kadar göster */
-              .modal-body #", ns("docx_preview_container"), " iframe { display:block; width:100%; border:0; overflow:hidden; }
-            "))),
+            # Tek dikey kaydırma modal gövdesine — iç kapsayıcı kaydırmasız
+            tags$head(
+              # Mammoth'u modal açılırken doğrudan sayfaya yükle
+              # Sürüm eki, tarayıcı önbelleğinde kalmış eski/başarısız yanıtları kırar
+              tags$script(
+                src = "lib/mammoth/mammoth.browser.min.js?v=20260416",
+                id = ns("docx_mammoth_script")
+              ),
+              tags$style(HTML("
+                /* Modal gövdesi tek kaydırma alanı olsun */
+                .modal-body { max-height: 80vh; overflow-y: auto; }
+                /* İçerik kapsayıcısında kaydırma olmasın */
+                .modal-body #", ns("docx_preview_container"), " { overflow: visible !important; }
+                /* İframe içinde kaydırma kapalı — içeriği iframe yüksekliği kadar göster */
+                .modal-body #", ns("docx_preview_container"), " iframe { display:block; width:100%; border:0; overflow:hidden; }
+              "))
+            ),
             tags$div(
               id = ns("docx_preview_container"),
               style = "overflow: visible; background: white; padding: 20px; border-radius: 8px;",
-              HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor\U2026</div>")
+              HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor…</div>")
             ),
             size = "l", easyClose = TRUE, footer = footer
           ))

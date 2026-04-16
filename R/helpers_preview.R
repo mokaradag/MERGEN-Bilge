@@ -3,49 +3,42 @@
 init_docx_preview_js <- function(session) {
   shinyjs::runjs("
     (function(){
+      // Aynı sayfada ikinci kez handler kaydetme
       if (window.__docxPreviewInit) return;
       window.__docxPreviewInit = true;
 
-      // mammoth'u yükle (önce yerel, olmazsa sessizce vazgeç - çevrimdışı isek zaten yerel gelecek)
-      function loadScript(src, ok, fail){
-        var s = document.createElement('script');
-        s.src = src;
-        s.async = true;
-        s.defer = true;
-        s.onload = function(){ ok && ok(); };
-        s.onerror = function(){ fail && fail(); };
-        document.head.appendChild(s);
-      }
-
       function ensureMammoth(cb, onFail){
-        // mammoth zaten varsa tekrar yükleme
-        if (window.mammoth) { cb && cb(); return; }
-        var done = false;
-        var localSrc = '/lib/mammoth/mammoth.browser.min.js';
-        var success = function(){ if (!done) { done = true; cb && cb(); } };
-        var fail    = function(){ if (!done) { done = true; onFail && onFail(); } };
-        loadScript(localSrc, success, fail);
+        if (window.mammoth) {
+          cb && cb();
+          return;
+        }
 
-        // güvenlik için üst sınır
-        setTimeout(function(){
-          if (!done && !window.mammoth) fail();
-        }, 5000);
+        // Mammoth modal açılırken sayfaya script olarak eklenecek.
+        // Burada yalnızca hazır olmasını bekliyoruz.
+        var startedAt = Date.now();
+        var timer = setInterval(function(){
+          if (window.mammoth) {
+            clearInterval(timer);
+            cb && cb();
+            return;
+          }
+
+          if ((Date.now() - startedAt) >= 5000) {
+            clearInterval(timer);
+            onFail && onFail();
+          }
+        }, 100);
       }
-
-      // Uygulama açılır açılmaz mammoth'u ısındır (ilk tıklamada gecikmeyi azaltır)
-      setTimeout(function(){ ensureMammoth(); }, 0);
 
       // base64 -> ArrayBuffer çevirimi
       function b64ToArrayBuffer(b64) {
-        // not: atob büyük dosyalarda nispeten hızlıdır
         var binary = atob(b64), len = binary.length, bytes = new Uint8Array(len);
         for (var i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
         return bytes.buffer;
       }
 
-      // iframe için minimal tema (uygulama CSS'inden izole)
+      // iframe için minimal tema
       var DOCX_CSS = [
-        // not: iç belge kaydırma yapmasın \u2014 yalnız modal gövdesi kayacak
         'html,body{margin:0;padding:16px;background:#fff;color:#111;font:14px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden;}',
         'p{margin:0 0 8px 0;} h1,h2,h3,h4,h5,h6{color:#111;margin:12px 0 8px 0;}',
         'ul,ol{margin:6px 0 8px 26px;} li{margin:4px 0;}',
@@ -56,13 +49,10 @@ init_docx_preview_js <- function(session) {
       ].join('\\n');
 
       function renderIntoIframe(target, html) {
-        // hedefte tek bir iframe tut (yeniden kullan)
         var iframe = target.__docxFrame;
         if (!iframe) {
           iframe = document.createElement('iframe');
-          // İzolasyon: üst sayfanın CSS/JS'i etkilenmesin
           iframe.setAttribute('sandbox','allow-same-origin');
-          // not: iç çubukları tamamen kapat \u2014 sadece modal gövdesi kayacak
           iframe.setAttribute('scrolling','no');
           iframe.style.overflow = 'hidden';
           iframe.style.width = '100%';
@@ -72,12 +62,12 @@ init_docx_preview_js <- function(session) {
           target.appendChild(iframe);
           target.__docxFrame = iframe;
         }
+
         var doc = iframe.contentDocument;
-        // hızlı yazım: srcdoc yerine doğrudan document.write
         doc.open();
         doc.write('<!doctype html><html><head><meta charset=\"utf-8\"><style>' + DOCX_CSS + '</style></head><body>' + html + '</body></html>');
         doc.close();
-        // yükseklik ayarı (içerik kadar)
+
         setTimeout(function(){
           try{
             var h = Math.max(iframe.contentDocument.body.scrollHeight, 500);
@@ -91,19 +81,18 @@ init_docx_preview_js <- function(session) {
         var target = document.getElementById(targetId);
         if (!target) return;
 
-        // kullanıcıya net bir geri bildirim
-        target.innerHTML = '<div style=\"padding:8px;font-size:12px;opacity:.7\">Yükleniyor\U2026</div>';
+        target.innerHTML = '<div style=\"padding:8px;font-size:12px;opacity:.7\">Yükleniyor…</div>';
 
         ensureMammoth(function(){
           try{
             var opts = {
-              // Görselleri base64 olarak satıra göm (tek istek, hızlı)
-              convertImage: mammoth.images.inline(function(elem){ return elem.read('base64').then(function(image){ return {src: 'data:'+image.contentType+';base64,'+image.data}; }); }),
-              // Varsayılan stil eşlemesini de kat
+              convertImage: mammoth.images.inline(function(elem){
+                return elem.read('base64').then(function(image){
+                  return {src: 'data:' + image.contentType + ';base64,' + image.data};
+                });
+              }),
               includeDefaultStyleMap: true,
-              // Bazı öğe eşleştirmeleri (bullets/num, başlıklar vb.) güvence
               styleMap: [
-                // paragraflar ve başlıklar zaten iyi haritalanır, bu sadece örnek
                 'p[style-name=\"Normal\"] => p:fresh',
                 'table => table',
                 'r[style-name=\"Hyperlink\"] => a',
@@ -111,10 +100,9 @@ init_docx_preview_js <- function(session) {
                 'p[style-name=\"Heading 2\"] => h2:fresh'
               ]
             };
+
             mammoth.convertToHtml({ arrayBuffer: b64ToArrayBuffer(payload.base64) }, opts)
               .then(function(result){
-                // Mammoth bazı Word özelliklerini desteklemez (özellikle header/footer yerleşimi),
-                // buna rağmen içeriği görünür kılalım.
                 renderIntoIframe(target, result.value);
               })
               .catch(function(err){
