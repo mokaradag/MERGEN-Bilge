@@ -7,6 +7,15 @@ init_docx_preview_js <- function(session) {
       if (window.__docxPreviewInit) return;
       window.__docxPreviewInit = true;
 
+      // Mammoth kütüphanesini oturum başlangıcında önceden yükle
+      // (ilk DOCX önizlemede bekleme süresini ortadan kaldırır)
+      if (!window.mammoth && !document.getElementById('mammoth_preload_script')) {
+        var _s = document.createElement('script');
+        _s.id = 'mammoth_preload_script';
+        _s.src = 'lib/mammoth/mammoth.browser.min.js?v=20260416';
+        document.head.appendChild(_s);
+      }
+
       function ensureMammoth(cb, onFail){
         if (window.mammoth) {
           cb && cb();
