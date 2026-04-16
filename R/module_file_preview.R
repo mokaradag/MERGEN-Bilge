@@ -71,6 +71,19 @@ filePreviewServer <- function(id) {
       invisible(TRUE)
     }
 
+    # Senkron/asenkron base64 kodlama eşiği (10 MB altı dosyalar senkron işlenir)
+    SYNC_B64_THRESHOLD <- 10 * 1024 * 1024
+
+    # Dosya yolunu çözümleyip base64 kodlayan yardımcı (senkron)
+    encode_file_base64_sync <- function(path) {
+      dp <- if (exists("resolve_readable_path", mode = "function")) {
+        resolve_readable_path(path)
+      } else {
+        path
+      }
+      base64enc::base64encode(dp)
+    }
+
     # Excel verilerini DataTables kullanarak render eden çıktı
     output$preview_excel_table <- DT::renderDT({
       req(preview_data())
@@ -180,25 +193,40 @@ filePreviewServer <- function(id) {
           cached_pdf <- get_cached_base64(datapath)
 
           if (!is.null(cached_pdf)) {
+            # Önbellekte var; hemen göster
             set_pdf_iframe_src(cached_pdf)
           } else {
-            future::future({
-              dp <- if (exists("resolve_readable_path", mode = "function")) {
-                resolve_readable_path(datapath)
-              } else {
-                datapath
-              }
-              base64enc::base64encode(dp)
-            }) %...>% (function(b64){
-              if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-                store_cached_base64(datapath, b64[1])
-                set_pdf_iframe_src(b64[1])
-              } else {
-                showToast(session, "PDF içeriği hazırlanamadı.", "error")
-              }
-            }) %...!% (function(e){
-              showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
-            })
+            # Dosya boyutuna göre senkron veya asenkron kodla
+            fsize <- tryCatch(file.info(datapath)$size, error = function(e) NA_real_)
+
+            if (!is.na(fsize) && fsize <= SYNC_B64_THRESHOLD) {
+              # Küçük dosya: senkron kodlama (future işçi başlatma yükünden kaçınır)
+              tryCatch({
+                b64 <- encode_file_base64_sync(datapath)
+                if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                  store_cached_base64(datapath, b64[1])
+                  set_pdf_iframe_src(b64[1])
+                } else {
+                  showToast(session, "PDF içeriği hazırlanamadı.", "error")
+                }
+              }, error = function(e) {
+                showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
+              })
+            } else {
+              # Büyük dosya (>10 MB): asenkron kodlama
+              future::future({
+                encode_file_base64_sync(datapath)
+              }) %...>% (function(b64){
+                if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                  store_cached_base64(datapath, b64[1])
+                  set_pdf_iframe_src(b64[1])
+                } else {
+                  showToast(session, "PDF içeriği hazırlanamadı.", "error")
+                }
+              }) %...!% (function(e){
+                showToast(session, paste("PDF okunamadı:", conditionMessage(e)), "error")
+              })
+            }
           }
 
         } else if (file_ext %in% c("xlsx", "xls")) {
@@ -256,24 +284,54 @@ filePreviewServer <- function(id) {
             size = "l", easyClose = TRUE, footer = footer
           ))
 
-          # İçeriği base64 olarak arka planda hazırla; modal hemen açılmış olacak
-          future::future({
-            dp <- if (exists("resolve_readable_path", mode = "function")) {
-              resolve_readable_path(datapath)
-            } else datapath
-            base64enc::base64encode(dp)
-          }) %...>% (function(b64){
-            if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-              session$sendCustomMessage(
-                "openDocxPreview",
-                list(base64 = b64, targetId = ns("docx_preview_container"))
-              )
+          # Önbellekten kontrol et; varsa doğrudan göster
+          cached_docx <- get_cached_base64(datapath)
+
+          if (!is.null(cached_docx)) {
+            # Önbellekte var; hemen mammoth'a gönder
+            session$sendCustomMessage(
+              "openDocxPreview",
+              list(base64 = cached_docx, targetId = ns("docx_preview_container"))
+            )
+          } else {
+            # Dosya boyutuna göre senkron veya asenkron kodla
+            fsize <- tryCatch(file.info(datapath)$size, error = function(e) NA_real_)
+
+            if (!is.na(fsize) && fsize <= SYNC_B64_THRESHOLD) {
+              # Küçük dosya: senkron kodlama (future işçi başlatma yükünden kaçınır)
+              tryCatch({
+                b64 <- encode_file_base64_sync(datapath)
+                if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                  store_cached_base64(datapath, b64[1])
+                  session$sendCustomMessage(
+                    "openDocxPreview",
+                    list(base64 = b64, targetId = ns("docx_preview_container"))
+                  )
+                } else {
+                  showToast(session, "DOCX içeriği hazırlanamadı.", "error")
+                }
+              }, error = function(e) {
+                showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
+              })
             } else {
-              showToast(session, "DOCX içeriği hazırlanamadı.", "error")
+              # Büyük dosya (>10 MB): asenkron kodlama
+              future::future({
+                encode_file_base64_sync(datapath)
+              }) %...>% (function(b64){
+                if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                  store_cached_base64(datapath, b64[1])
+                  session$sendCustomMessage(
+                    "openDocxPreview",
+                    list(base64 = b64, targetId = ns("docx_preview_container"))
+                  )
+                } else {
+                  showToast(session, "DOCX içeriği hazırlanamadı.", "error")
+                }
+              }) %...!% (function(e){
+                showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
+              })
             }
-          }) %...!% (function(e){
-            showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
-          })
+          }
 
         } else if (file_ext %in% c("txt", "csv", "json", "log", "md", "r", "py", "js", "html", "css")) {
           # Metin ve Kod Dosyaları İçin Önizleme
