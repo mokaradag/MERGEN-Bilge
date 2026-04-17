@@ -252,22 +252,19 @@ handle_true_streaming_mode <- function(ctx) {
       final_hascode <- final_processed$has_code
     }
 
-    # Düşünen modeller için biriken akıl yürütme metni, yanıtın başına
-    # daraltılabilir bir panel olarak gömülür; böylece geçmişten açıldığında
-    # da düşünce akışı kalıcı biçimde ulaşılabilir kalır.
+    # Düşünen modeller için biriken akıl yürütme metni ayrı bir alan olarak
+    # tutulur. Canlı panel istemci tarafında görünür kalır; DB'de ise ayrı
+    # bir sütunda (MB_Messages.ReasoningContent) saklanır ve geçmişten
+    # yüklenen mesajlarda <details> arşivi olarak geri üretilir.
     reasoning_trace <- stream_env$accumulated_reasoning %||% ""
-    if (nzchar(reasoning_trace)) {
-      final_html <- paste0(
-        build_reasoning_details_block(reasoning_trace),
-        final_html
-      )
-    }
+    reasoning_trace_value <- if (nzchar(reasoning_trace)) reasoning_trace else NULL
 
     values$messages[[idx]]$content <- final_text
     values$messages[[idx]]$html_content <- final_html
     values$messages[[idx]]$has_code <- final_hascode
     values$messages[[idx]]$is_streaming <- FALSE
-    values$messages[[idx]]$reasoning_trace <- if (nzchar(reasoning_trace)) reasoning_trace else NULL
+    values$messages[[idx]]$reasoning_trace <- reasoning_trace_value
+    values$messages[[idx]]$reasoning_content <- reasoning_trace_value
 
     if (!is.null(followups) && length(followups) > 0) {
       values$messages[[idx]]$followups <- followups

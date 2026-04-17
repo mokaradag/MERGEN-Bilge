@@ -342,8 +342,6 @@
     }
 
     if (state === "streaming" || state === "live" || state === "preparing") {
-      // Başarılı veya başarısız fark etmez; sunucu gerçek html_content içinde
-      // arşiv <details> bloğunu üretir. Canlı paneli daralt ve arşive bırak.
       if (state === "streaming") {
         markCompleted(panel);
       } else {
@@ -351,12 +349,25 @@
       }
     }
 
-    // Canlı panel artık gereksiz; sunucudan gelecek <details> arşivi onu
-    // değiştirecek. finalizeStreamingMessage handler'ı inner HTML'i
-    // yenilerken canlı panel zaten ayrı bir sibling olduğu için doğrudan
-    // kaldırılmalı. Kısa bir fade-out sonra kaldır.
-    fadeOutAndRemove(panel);
+    // Canlı paneli kaldırma: kullanıcı tamamlanmış düşünce akışına sonradan
+    // bakabilmeli. Panel, "completed"/"interrupted" durumunda kalır,
+    // daraltılabilir başlığıyla asistan balonunun içinde görünür kalır.
+    // Kalıcı DB arşivi ayrı bir sütunda (MB_Messages.ReasoningContent) saklanır
+    // ve geçmişten yüklenen mesajlar için arka planda <details> olarak üretilir.
     state = "idle";
+    // Gelecek mesajlar için yalnızca zamanlayıcı/ön-kabuk temizliği yap;
+    // mevcut panel DOM'u olduğu gibi bırakılır.
+    if (shellTimeoutId) {
+      clearTimeout(shellTimeoutId);
+      shellTimeoutId = null;
+    }
+    var h = getHost();
+    if (h) h.classList.remove("rp-host");
+    reasoningBuffer = "";
+    firstReasoningAt = null;
+    startedAt = null;
+    userScrolledReasoningUp = false;
+    panelScrollHandlerAttached = false;
   }
 
   function markCompleted(panel) {
