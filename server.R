@@ -257,7 +257,8 @@ server <- function(input, output, session) {
     session_files = session_files,
     quick_action_skip_mcp = quick_action_skip_mcp,
     output = output,
-    current_user_id = current_user_id
+    current_user_id = current_user_id,
+    send_message_fn = send_message
   )
   
   settingsObserversInit(input, session, values, settings_data)

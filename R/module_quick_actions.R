@@ -23,7 +23,8 @@
 #' @return NULL (observer'lar kaydedilir)
 quickActionsInit <- function(input, session, values, settings_data,
                               session_files, quick_action_skip_mcp,
-                              output = NULL, current_user_id = NULL) {
+                              output = NULL, current_user_id = NULL,
+                              send_message_fn = NULL) {
   
   # ---------------------------------------------------------------------------
   # Yardımcı: Welcome ekranını gizle ve sohbet alanını göster
@@ -393,6 +394,12 @@ quickActionsInit <- function(input, session, values, settings_data,
     # VARSAYILAN: Normal şablon mesajı
     # -------------------------------------------------------------------------
     if (nzchar(template_text)) {
+      if (!is.function(send_message_fn)) {
+        showToast(session, "Mesaj gönderme fonksiyonu henüz hazır değil.", "warning")
+        cat("[QUICK_TEMPLATE] UYARI: send_message_fn hazır değil, normal template gönderilmedi\n")
+        return()
+      }
+
       if (!is.null(template_model) && nzchar(template_model)) {
         cat("[QUICK_TEMPLATE] Normal template için model değiştiriliyor:", template_model, "\n")
         
