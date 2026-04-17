@@ -597,6 +597,11 @@ Kullanıcı yardım isterse aşağıdaki genel yönlendirmeler yapılabilir:
 - sayfayı yenilemesini deneyebilir
 - sorun sürerse hata bildirimi kanalı önerilmelidir
 
+### 14.7 Belirli bir analiz veya üretim aracı hiç başlamıyor
+- önce istemini daha açık yazarak tekrar denemesini önerebilirsin
+- ilgili dosya veya sayfa bağlamının doğru seçildiğini kontrol etmesini söyleyebilirsin
+- sorun sürüyorsa hata bildirimi bırakmasını önerebilirsin
+
 ---
 
 ## 15. Destek İletişim Bilgileri
