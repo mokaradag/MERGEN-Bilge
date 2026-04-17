@@ -1,0 +1,336 @@
+/* =============================================================
+ * premium_reasoning.css
+ * "Akıl Yürütme" — thinking-capable modeller için premium
+ * karanlık temalı akıl yürütme kartı ve durum geçiş stilleri.
+ * ============================================================= */
+
+/* Ana barındırıcı (prc-host), var olan #typing-animation-wrapper'ın
+ * üzerine özel sınıf eklendiğinde etkinleşir. */
+#typing-animation-wrapper.prc-host {
+  padding: 18px 16px !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+/* Premium kart gösterilirken klasik Düşünüyorum içerikleri gizlenir. */
+#typing-animation-wrapper.prc-host > *:not(.premium-reasoning-card) {
+  display: none !important;
+}
+
+/* Ana kart kabı */
+.premium-reasoning-card {
+  width: min(640px, 94%);
+  position: relative;
+  padding: 18px 22px 16px;
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(99, 102, 241, 0.08), transparent 60%),
+    linear-gradient(145deg, rgba(22, 22, 32, 0.92), rgba(14, 14, 22, 0.94));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #e6e8ef;
+  font-family: inherit;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: prc-card-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* İnce ışıltılı üst kenar */
+.premium-reasoning-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(99, 102, 241, 0.6),
+    rgba(139, 92, 246, 0.55),
+    transparent
+  );
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+/* Durum: düşünme - dış nefes alan parıltı */
+.premium-reasoning-card[data-state="thinking"] {
+  animation: prc-card-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+             prc-breathe 4.2s ease-in-out 320ms infinite;
+}
+
+/* Üst satır: rozet ve zaman sayacı */
+.prc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.prc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.10);
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #c7caff;
+  font-weight: 600;
+}
+
+.prc-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.85);
+  animation: prc-dot-pulse 1.6s ease-in-out infinite;
+}
+
+.prc-timer {
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  font-size: 12px;
+  color: rgba(230, 232, 239, 0.72);
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+/* Kart gövdesi */
+.prc-body {
+  position: relative;
+  z-index: 1;
+}
+
+.prc-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #f2f3f9;
+  margin-bottom: 4px;
+}
+
+.prc-phase {
+  font-size: 13px;
+  color: rgba(230, 232, 239, 0.76);
+  min-height: 18px;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.prc-phase.prc-phase-fading {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+
+.prc-model {
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: rgba(230, 232, 239, 0.42);
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+}
+
+/* Alt sinyal çizgisi - taramalı ışık efekti */
+.prc-wave {
+  position: relative;
+  margin-top: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.prc-wave-line {
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(99, 102, 241, 0.9),
+    rgba(139, 92, 246, 0.75),
+    transparent
+  );
+  animation: prc-scan 2.4s ease-in-out infinite;
+}
+
+/* Durum: akışa geçiş - sakin tonlar */
+.premium-reasoning-card[data-state="streaming"] {
+  animation: prc-card-settle 360ms ease forwards;
+}
+
+.premium-reasoning-card[data-state="streaming"]::before {
+  opacity: 0.4;
+}
+
+.premium-reasoning-card[data-state="streaming"] .prc-badge {
+  background: rgba(34, 197, 94, 0.10);
+  border-color: rgba(34, 197, 94, 0.32);
+  color: #b9f6ca;
+}
+
+.premium-reasoning-card[data-state="streaming"] .prc-badge-dot {
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
+}
+
+.premium-reasoning-card[data-state="streaming"] .prc-wave-line {
+  animation-duration: 1.6s;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(34, 197, 94, 0.75),
+    transparent
+  );
+}
+
+/* Durum: durduruldu */
+.premium-reasoning-card[data-state="interrupted"] {
+  animation: prc-card-settle 260ms ease forwards;
+  border-color: rgba(234, 179, 8, 0.32);
+}
+
+.premium-reasoning-card[data-state="interrupted"] .prc-badge {
+  background: rgba(234, 179, 8, 0.10);
+  border-color: rgba(234, 179, 8, 0.32);
+  color: #fde68a;
+}
+
+.premium-reasoning-card[data-state="interrupted"] .prc-badge-dot {
+  background: #eab308;
+  box-shadow: none;
+  animation: none;
+}
+
+.premium-reasoning-card[data-state="interrupted"] .prc-wave-line,
+.premium-reasoning-card[data-state="error"] .prc-wave-line {
+  animation: none;
+  opacity: 0;
+}
+
+.premium-reasoning-card[data-state="interrupted"]::before,
+.premium-reasoning-card[data-state="error"]::before {
+  opacity: 0;
+}
+
+/* Durum: hata */
+.premium-reasoning-card[data-state="error"] {
+  animation: prc-card-settle 260ms ease forwards;
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+.premium-reasoning-card[data-state="error"] .prc-badge {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.34);
+  color: #fecaca;
+}
+
+.premium-reasoning-card[data-state="error"] .prc-badge-dot {
+  background: #ef4444;
+  box-shadow: none;
+  animation: none;
+}
+
+/* Durum: kompakt şerit (akış sürerken minik görünüm) */
+.premium-reasoning-card[data-state="compact"] {
+  padding: 8px 14px;
+  border-radius: 12px;
+}
+
+.premium-reasoning-card[data-state="compact"] .prc-title,
+.premium-reasoning-card[data-state="compact"] .prc-model,
+.premium-reasoning-card[data-state="compact"] .prc-wave {
+  display: none;
+}
+
+.premium-reasoning-card[data-state="compact"] .prc-header {
+  margin-bottom: 0;
+}
+
+.premium-reasoning-card[data-state="compact"] .prc-phase {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* Son kaybolma (tamamlandı veya iptal sonrası) */
+.premium-reasoning-card.prc-fading {
+  animation: prc-card-exit 280ms ease forwards;
+}
+
+/* ----------------- Anahtar kareler ----------------- */
+
+@keyframes prc-card-enter {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes prc-card-settle {
+  0% { box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45); }
+  100% { box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32); }
+}
+
+@keyframes prc-card-exit {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-4px) scale(0.985); }
+}
+
+@keyframes prc-breathe {
+  0%, 100% {
+    box-shadow:
+      0 18px 48px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 0 0 1px rgba(99, 102, 241, 0.10);
+  }
+  50% {
+    box-shadow:
+      0 18px 48px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 0 0 1px rgba(139, 92, 246, 0.28);
+  }
+}
+
+@keyframes prc-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.25); opacity: 0.75; }
+}
+
+@keyframes prc-scan {
+  0%   { left: -45%; }
+  100% { left: 105%; }
+}
+
+/* Hareket tercihini azaltan kullanıcılar için statik görünüm */
+@media (prefers-reduced-motion: reduce) {
+  .premium-reasoning-card,
+  .premium-reasoning-card[data-state="thinking"] {
+    animation: prc-card-enter 200ms ease forwards !important;
+  }
+  .prc-wave-line,
+  .prc-badge-dot {
+    animation: none !important;
+  }
+}
+
+/* Daha dar ekranlar için küçük ölçek */
+@media (max-width: 640px) {
+  .premium-reasoning-card {
+    width: 96%;
+    padding: 14px 16px;
+  }
+  .prc-title { font-size: 14px; }
+  .prc-phase { font-size: 12px; }
+  .prc-badge { font-size: 10px; }
+}

@@ -6,6 +6,11 @@ chat_reset_state <- function(session, values) {
   values$is_sending <- FALSE
   values$typing <- FALSE
 
+  # Premium akıl yürütme kartı aktifse kendi iç durumuna göre temizlensin
+  # (durduruldu / hata / tamamlandı). removeUI çağrısından önce tetiklenir ki
+  # kart "kesildi" görünümünü kısaca gösterebilsin.
+  shinyjs::runjs("if (window.PremiumReasoning && window.PremiumReasoning.isActive && window.PremiumReasoning.isActive()) { window.PremiumReasoning.onResetChatState(); }")
+
   removeUI(selector = "#typing-animation-wrapper")
 
   shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-paper-plane');")
