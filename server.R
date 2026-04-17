@@ -130,21 +130,14 @@ server <- function(input, output, session) {
   # ============================================================================
   settings_data <- settingsInit(session = session, parent_session = session)
 
-  # İleri referanslar: Bu fonksiyonlar daha sonra tanımlanacak ama şimdiden observer'lara geçirilmeli
-  # Sarmalayıcılar kullanarak gecikmeli bağlama sağlanır
-  welcome_fns <- new.env(parent = emptyenv())
-  render_welcome_screen <- function(...) {
-    fn <- welcome_fns$render_welcome_screen
-    if (is.function(fn)) fn(...) else invisible(NULL)
-  }
-  start_new_chat <- function(...) {
-    fn <- welcome_fns$start_new_chat
-    if (is.function(fn)) fn(...) else invisible(NULL)
-  }
+  # İleri referans sarmalayıcılarını başlat
+  forward_refs <- serverInitForwardRefs(session)
 
-  # send_message için ileri referans (R/server_send_message.R modülünden atanacak)
-  send_message_fns <- new.env(parent = emptyenv())
-  send_message <- function(...) send_message_fns$send_message(...)
+  welcome_fns <- forward_refs$welcome_fns
+  render_welcome_screen <- forward_refs$render_welcome_screen
+  start_new_chat <- forward_refs$start_new_chat
+  send_message_fns <- forward_refs$send_message_fns
+  send_message <- forward_refs$send_message
     
   # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
   claudeCodeServer("claude_code_module",
@@ -186,65 +179,27 @@ server <- function(input, output, session) {
   
   init_docx_preview_js(session)
   
-  # SSO akışında gerçek kullanıcı kimliği başlangıçta hazır olmayabilir.
-  # Bu yüzden ilk değerleri boş başlatıp kimlik doğrulama tamamlanınca yükle.
-  initial_feedback <- list(
-    liked = character(0),
-    disliked = character(0)
-  )
-  
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
   # ============================================================================
-    values <- reactiveValues(
-      messages = list(),
-      saved_chats = list(),
-      show_welcome = TRUE,
-      current_chat_id = NULL,
-      last_request_time = NULL,
-      is_sending = FALSE,
-      typing = FALSE,
-      liked_messages = initial_feedback$liked,
-      disliked_messages = initial_feedback$disliked,
-      current_font_size = "medium",
-      temp_files = list()
-    )
+  state_bundle <- serverInitSessionState(
+    session = session,
+    resolve_current_user_id = resolve_current_user_id,
+    sso_state = sso_state
+  )
 
-    session$userData$welcome_screen_attached <- FALSE
+  values <- state_bundle$values
+  stop_generation <- state_bundle$stop_generation
+  file_to_add <- state_bundle$file_to_add
+  session_files <- state_bundle$session_files
+  active_request_id <- state_bundle$active_request_id
+  quick_action_skip_mcp <- state_bundle$quick_action_skip_mcp
 
-    # Geri bildirimleri gerçek kullanıcı kimliği ile yeniden yükle.
-    sync_feedback_from_db <- function() {
-      effective_user_id <- resolve_current_user_id()
-      if (effective_user_id <= 0) {
-        return(invisible(NULL))
-      }
+  # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
+  chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name)
 
-      all_feedback <- load_feedback_from_db(effective_user_id)
-      values$liked_messages <- all_feedback$liked
-      values$disliked_messages <- all_feedback$disliked
-      invisible(NULL)
-    }
-
-    if (isTRUE(SSO_ENABLED)) {
-      observeEvent(sso_state$authenticated, {
-        req(isTRUE(sso_state$authenticated), isTRUE(session$userData$auth_initialized))
-        sync_feedback_from_db()
-      }, ignoreInit = TRUE, once = TRUE)
-    } else {
-      sync_feedback_from_db()
-    }
-        
-    # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
-    chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name)
-
-    # Chartlab referanslarını çözümlemek için grafik deposu
-    if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
-      
-  stop_generation <- reactiveVal(FALSE)
-  file_to_add <- reactiveVal(NULL)
-  session_files <- reactiveVal(list())
-  active_request_id <- reactiveVal(NULL)
-  quick_action_skip_mcp <- reactiveVal(FALSE)
+  # Chartlab referanslarını çözümlemek için grafik deposu
+  if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
   
   # ============================================================================
   # BÖLÜM 8: GÖZLEMCİLER VE UI BAĞLANTILARI
@@ -370,20 +325,21 @@ server <- function(input, output, session) {
     # ==========================================================================
     # BÖLÜM 9: SOHBET MOTORU VE LLM ENTEGRASYONU
     # ==========================================================================
-    reset_chat_state <- function() chat_reset_state(session, values)
- 
-    add_message <- function(content, type = "user", html = NULL, followups = NULL,
-                            audio_src = NULL, audio_voice = NULL) {
-      effective_user_id <- resolve_current_user_id()
+    chat_runtime <- serverInitChatRuntime(
+      session = session,
+      values = values,
+      settings_data = settings_data,
+      output = output,
+      resolve_current_user_id = resolve_current_user_id,
+      stop_generation = stop_generation
+    )
 
-      chat_add_message(
-            session, values, settings_data, output,
-            content, type, html, effective_user_id,
-            followups = followups,
-            audio_src = audio_src,
-            audio_voice = audio_voice
-      )
-    }
+    reset_chat_state <- chat_runtime$reset_chat_state
+    add_message <- chat_runtime$add_message
+
+    # TTS işleyicisi gerçek fonksiyon atanmadan önce güvenli bir yer tutucu tanımla.
+    # Böylece gelecekte llmResponseHandlersInit içinde erken zorlama olursa kırılma yaşanmaz.
+    trigger_tts_for_message <- function(...) invisible(NULL)
     
     # LLM yanıt işleyicilerini başlat (modüler)
     llm_handlers <- llmResponseHandlersInit(
@@ -429,25 +385,8 @@ server <- function(input, output, session) {
     feedback_modal       = feedback_modal
   )
                                                      
-    generate_title_from_prompt <- function(prompt, max_len = 60) {
-      chat_generate_title_from_prompt(prompt, max_len)
-    }
- 
-    simulate_streaming_stoppable <- function(full_response, followups = NULL, on_complete = NULL, on_start = NULL, tts_engine = NULL, tts_voice = NULL) {
-      chat_simulate_streaming(
-        full_response,
-        session,
-        values,
-        settings_data,
-        output,
-        stop_generation,
-        followups = followups,
-        on_complete = on_complete,
-        on_start = on_start,
-        tts_engine = tts_engine,
-        tts_voice = tts_voice
-      )
-    }
+    generate_title_from_prompt <- chat_runtime$generate_title_from_prompt
+    simulate_streaming_stoppable <- chat_runtime$simulate_streaming_stoppable
  
     # TTS işleyicilerini başlat (modüler)
     tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)

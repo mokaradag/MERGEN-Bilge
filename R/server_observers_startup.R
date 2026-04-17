@@ -58,17 +58,22 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
   }
   
-  initial_saved_chats_loaded <- reactiveVal(FALSE)
+  startup_state <- new.env(parent = emptyenv())
+  startup_state$initial_saved_chats_loaded <- FALSE
 
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
-    req(!is.na(effective_user_id), effective_user_id > 0)
 
-    if (isTRUE(initial_saved_chats_loaded())) {
+    if (is.na(effective_user_id) || effective_user_id <= 0) {
+      cat("[STARTUP] Geçerli kullanıcı kimliği yok, kayıtlı sohbet yüklemesi atlandı\n")
+      return(invisible(NULL))
+    }
+
+    if (isTRUE(startup_state$initial_saved_chats_loaded)) {
       cat("[STARTUP] İlk kayıtlı sohbet yüklemesi zaten yapıldı, tekrar atlanıyor\n")
       return(invisible(NULL))
     }
-    initial_saved_chats_loaded(TRUE)
+    startup_state$initial_saved_chats_loaded <- TRUE
 
 	refresh_welcome_if_needed <- function(chats) {
 	  if (!isTRUE(session$userData$deep_space_dismissed)) {
