@@ -181,7 +181,9 @@ Arayüzün omurgasıdır. Şunları tanımlar:
 - gizli yardımcı input/output alanları
 
 ### `server.R`
-Sunucu mantığının birleşim noktasıdır. Şunları koordine eder:
+Sunucu mantığının ana birleşim ve bağlama noktasıdır. Ancak artık tüm kurulum ayrıntılarını tek başına taşımaz; bazı başlangıç ve yardımcı kurulumları `R/server_init_*.R` dosyalarına ayrılmıştır.
+
+`server.R` başlıca şunları koordine eder:
 - oturum başlatma
 - SSO / yerel kimlik çözümü
 - ayarlar
@@ -192,6 +194,9 @@ Sunucu mantığının birleşim noktasıdır. Şunları koordine eder:
 - sohbet motoru
 - kayıtlı söyleşi ve galeri akışları
 - LLM çağrı zinciri
+- modüller arası bağlama ve son fonksiyon kayıtları
+
+Amaç, `server.R` dosyasını iş mantığının tek sahibi yapmak değil; uygulamanın **composition root** katmanı olarak temiz ve okunabilir tutmaktır.
 
 ---
 
@@ -249,7 +254,13 @@ Sunucu mantığının birleşim noktasıdır. Şunları koordine eder:
 - worker health metric helpers
 - Bilge Yolaç modülleri
 
-### 7. Sunucu işleyicileri ve observer katmanı
+### 7. Sunucu işleyicileri, init yardımcıları ve observer katmanı
+Bu katman, `server.R` içindeki bağlama yükünü azaltmak için kullanılan yardımcı kurulum dosyalarını, işleyicileri ve observer kayıtlarını içerir.
+
+- `R/server_session_cache.R`
+- `R/server_init_forward_refs.R`
+- `R/server_init_session_state.R`
+- `R/server_init_chat_runtime.R`
 - session cache
 - chat handlers
 - image/summarization handlers
@@ -693,6 +704,15 @@ Geniş refaktör yerine hedefe yönelik düzeltmeler tercih edilir.
 ### 3. `global.R` yükleme sırasına saygı
 Yeni bir modül/yardımcı eklenirse doğru gruba eklenmelidir.
 
+### 3A. `server.R` temiz kalmalı
+Yeni özellik eklerken mümkün olduğunda iş mantığını uygun `module_*`, `helper_*`, `server_handler_*`, `server_observers_*` veya `server_init_*` dosyalarına yerleştirin.
+
+Tercih edilen yaklaşım:
+- `server.R` dosyasını composition root olarak tutmak
+- oturum-yerel başlangıç kurulumlarını `server_init_*` dosyalarına ayırmak
+- iş mantığını doğrudan `server.R` içine gömmemek
+- geniş ve riskli refaktör yerine küçük, kontrollü ayırmalar yapmak
+
 ### 4. Kod yorumları Türkçe olmalı
 Koda yorum eklenecekse Türkçe yazılmalıdır.
 
@@ -733,6 +753,13 @@ Kontrol edin:
 - kullanıcı oturumunun auth sonrası kurulma zamanı
 - UTF-8 / Türkçe alanlar
 - auth sonrası dosya yükleme/yenileme akışları
+
+### Yerelde açılıyor / SSO'da açılıyor ama diğer modda davranış farklı
+Kontrol edin:
+- `SSO_ENABLED=FALSE` ve `SSO_ENABLED=TRUE` akışlarının aynı başlangıç yardımcılarını farklı bağlamlarda çağırabildiğini
+- başlangıç korumalarında gereksiz reaktif bağımlılık kurulup kurulmadığını
+- startup guard yapılarında `reactiveVal()` yerine düz oturum-yerel durumun daha uygun olup olmadığını
+- özellikle `R/server_observers_startup.R` içindeki başlangıç yükleme korumalarını
 
 ### Bilge Yolaç akışı bozuk
 Kontrol edin:
