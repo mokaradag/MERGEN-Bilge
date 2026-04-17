@@ -108,19 +108,14 @@ fileManagerServer <- function(
   moduleServer(id, function(input, output, session) {
   ns <- session$ns
   
-  # Settings_data'yı daha güvenli şekilde al
+  # Settings_data yalnızca oturumdan gelen parametre üzerinden kullanılmalıdır.
+  # Global environment fallback'i çok kullanıcılı oturumlarda çapraz sızıntı riski yaratır.
   safe_settings_data <- reactive({
-    # 1. Önce fonksiyon parametresinden al
-    if (!is.null(settings_data)) return(settings_data)
-    
-    # 2. Sonra global environment'ten dene
-    if (exists("settings_data", envir = .GlobalEnv)) {
-      tryCatch({
-        return(get("settings_data", envir = .GlobalEnv))
-      }, error = function(e) NULL)
+    if (!is.null(settings_data)) {
+      return(settings_data)
     }
-    
-    # 3. Son çare: NULL döndür
+
+    fm_debug("settings_missing", "settings_data parametresi verilmedi; NULL kullanılacak")
     NULL
   })
 

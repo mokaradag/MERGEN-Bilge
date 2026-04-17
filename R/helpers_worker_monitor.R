@@ -163,6 +163,36 @@ tracked_future_promise <- function(task_fn,
   )
 
   promise_globals <- globals %||% list()
+
+  # İşçi fonksiyonunun gövdesindeki serbest değişkenleri ve bağlı paketleri
+  # otomatik olarak tespit et. Böylece call_llm_worker(), generate_image()
+  # gibi global yardımcılar worker tarafına her çağrıda taşınır.
+  detected_future_deps <- tryCatch({
+    gp <- future::getGlobalsAndPackages(
+      expr = body(task_fn),
+      envir = environment(task_fn),
+      globals = TRUE
+    )
+
+    list(
+      globals = if (!is.null(gp$globals)) as.list(gp$globals) else list(),
+      packages = gp$packages %||% character(0)
+    )
+  }, error = function(e) {
+    list(
+      globals = list(),
+      packages = character(0)
+    )
+  })
+
+  # Çağıran taraftan açıkça verilen globals öncelikli kalsın.
+  if (length(detected_future_deps$globals) > 0) {
+    for (nm in names(detected_future_deps$globals)) {
+      if (!nzchar(nm) || nm %in% names(promise_globals)) next
+      promise_globals[[nm]] <- detected_future_deps$globals[[nm]]
+    }
+  }
+
   promise_globals$task_fn <- task_fn
 
   p <- tryCatch({
@@ -170,7 +200,8 @@ tracked_future_promise <- function(task_fn,
       {
         task_fn()
       },
-      globals = promise_globals
+      globals = promise_globals,
+      packages = unique(detected_future_deps$packages)
     )
   }, error = function(e) {
     finish_worker_task(task_id)
