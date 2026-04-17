@@ -57,10 +57,18 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
     session_uid <- session$userData$user_id %||% NULL
     suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
   }
+  
+  initial_saved_chats_loaded <- reactiveVal(FALSE)
 
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
     req(!is.na(effective_user_id), effective_user_id > 0)
+
+    if (isTRUE(initial_saved_chats_loaded())) {
+      cat("[STARTUP] İlk kayıtlı sohbet yüklemesi zaten yapıldı, tekrar atlanıyor\n")
+      return(invisible(NULL))
+    }
+    initial_saved_chats_loaded(TRUE)
 
 	refresh_welcome_if_needed <- function(chats) {
 	  if (!isTRUE(session$userData$deep_space_dismissed)) {
