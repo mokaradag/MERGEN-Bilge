@@ -550,6 +550,7 @@ sendMessageInit <- function(
       if (!nzchar(api_key_val)) {
         removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
         values$typing <- FALSE
+        reset_chat_state_fn()
         showToast(session,
           "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
           "error"
@@ -967,7 +968,8 @@ sendMessageInit <- function(
         user_prompt_msg,
         chat_id_val,
         model_selected,
-        last_user_text = user_message_text
+        last_user_text = user_message_text,
+        current_user_id = effective_user_id
       )
     }
 
