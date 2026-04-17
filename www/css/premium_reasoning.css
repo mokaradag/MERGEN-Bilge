@@ -1,34 +1,46 @@
 /* =============================================================
  * premium_reasoning.css
- * "Akıl Yürütme" — thinking-capable modeller için premium
- * karanlık temalı akıl yürütme kartı ve durum geçiş stilleri.
+ * "Düşünce Akışı" — thinking-capable modeller için canlı
+ * düşünce akışı paneli ve kalıcı arşiv bloğu stilleri.
+ * Karanlık, cam benzeri (glassmorphism), sade ve modern.
  * ============================================================= */
 
-/* Ana barındırıcı (prc-host), var olan #typing-animation-wrapper'ın
- * üzerine özel sınıf eklendiğinde etkinleşir. */
-#typing-animation-wrapper.prc-host {
-  padding: 18px 16px !important;
+/* ------------------------------------------------------------
+ * 1. Canlı panel barındırıcı (typing-animation-wrapper içinde
+ *    görünürken) — düşünce paneli orta şeritte hizalanır.
+ * ------------------------------------------------------------ */
+#typing-animation-wrapper.rp-host {
+  padding: 14px 14px !important;
   display: flex !important;
   justify-content: center !important;
 }
 
-/* Premium kart gösterilirken klasik Düşünüyorum içerikleri gizlenir. */
-#typing-animation-wrapper.prc-host > *:not(.premium-reasoning-card) {
+/* Canlı panel gösterilirken klasik "Düşünüyorum" içerikleri gizlenir. */
+#typing-animation-wrapper.rp-host > *:not(.reasoning-panel) {
   display: none !important;
 }
 
-/* Ana kart kabı */
-.premium-reasoning-card {
-  width: min(640px, 94%);
+/* Mesaj balonu içine taşındıktan sonra balon içinde doğal akar. */
+.ai-message .reasoning-panel.rp-live {
+  margin: 4px 0 12px 0;
+  width: 100%;
+}
+
+/* ------------------------------------------------------------
+ * 2. Ana panel — cam efektli, karanlık, yumuşak sınırlı
+ * ------------------------------------------------------------ */
+.reasoning-panel.rp-live {
   position: relative;
-  padding: 18px 22px 16px;
-  border-radius: 18px;
+  box-sizing: border-box;
+  width: min(760px, 100%);
+  padding: 0;
+  border-radius: 14px;
   background:
     radial-gradient(120% 140% at 0% 0%, rgba(99, 102, 241, 0.08), transparent 60%),
-    linear-gradient(145deg, rgba(22, 22, 32, 0.92), rgba(14, 14, 22, 0.94));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+    linear-gradient(155deg, rgba(22, 22, 32, 0.90), rgba(14, 14, 22, 0.94));
+  border: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow:
-    0 18px 48px rgba(0, 0, 0, 0.45),
+    0 14px 38px rgba(0, 0, 0, 0.38),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -36,301 +48,545 @@
   font-family: inherit;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(6px);
-  animation: prc-card-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform: translateY(4px);
+  animation: rp-enter 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transition:
+    border-color 260ms ease,
+    box-shadow 260ms ease,
+    opacity 260ms ease,
+    transform 260ms ease;
 }
 
-/* İnce ışıltılı üst kenar */
-.premium-reasoning-card::before {
+/* İnce ışıltılı üst çizgi (accent) */
+.reasoning-panel.rp-live::before {
   content: "";
   position: absolute;
   top: 0;
-  left: 12%;
-  right: 12%;
+  left: 10%;
+  right: 10%;
   height: 1px;
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(99, 102, 241, 0.6),
-    rgba(139, 92, 246, 0.55),
+    rgba(99, 102, 241, 0.55),
+    rgba(139, 92, 246, 0.50),
     transparent
   );
   opacity: 0.9;
   pointer-events: none;
+  transition: opacity 260ms ease;
 }
 
-/* Durum: düşünme - dış nefes alan parıltı */
-.premium-reasoning-card[data-state="thinking"] {
-  animation: prc-card-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
-             prc-breathe 4.2s ease-in-out 320ms infinite;
+/* Canlı durumda panelde nefes alan yumuşak parıltı */
+.reasoning-panel.rp-live[data-state="live"] {
+  animation:
+    rp-enter 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    rp-breathe 4.4s ease-in-out 320ms infinite;
 }
 
-/* Üst satır: rozet ve zaman sayacı */
-.prc-header {
+/* ------------------------------------------------------------
+ * 3. Başlık çubuğu
+ * ------------------------------------------------------------ */
+.rp-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.00)
+  );
 }
 
-.prc-badge {
+.rp-title-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px 4px 8px;
-  border-radius: 999px;
-  background: rgba(99, 102, 241, 0.10);
-  border: 1px solid rgba(99, 102, 241, 0.28);
-  font-size: 11px;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: #c7caff;
-  font-weight: 600;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.prc-badge-dot {
-  width: 7px;
-  height: 7px;
+/* Nabız ışığı — canlı durumu simgeler */
+.rp-pulse {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: #8b5cf6;
   box-shadow: 0 0 10px rgba(139, 92, 246, 0.85);
-  animation: prc-dot-pulse 1.6s ease-in-out infinite;
+  animation: rp-pulse 1.6s ease-in-out infinite;
 }
 
-.prc-timer {
-  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
-  font-size: 12px;
-  color: rgba(230, 232, 239, 0.72);
-  letter-spacing: 0.4px;
+.rp-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #f2f3f9;
   white-space: nowrap;
 }
 
-/* Kart gövdesi */
-.prc-body {
-  position: relative;
-  z-index: 1;
-}
-
-.prc-title {
-  font-size: 15px;
-  font-weight: 600;
+.rp-subtitle {
+  font-size: 12px;
+  color: rgba(230, 232, 239, 0.62);
   letter-spacing: 0.2px;
-  color: #f2f3f9;
-  margin-bottom: 4px;
-}
-
-.prc-phase {
-  font-size: 13px;
-  color: rgba(230, 232, 239, 0.76);
-  min-height: 18px;
-  transition: opacity 220ms ease, transform 220ms ease;
-}
-
-.prc-phase.prc-phase-fading {
-  opacity: 0;
-  transform: translateY(-3px);
-}
-
-.prc-model {
-  margin-top: 8px;
-  font-size: 11px;
-  letter-spacing: 0.4px;
-  color: rgba(230, 232, 239, 0.42);
-  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
-}
-
-/* Alt sinyal çizgisi - taramalı ışık efekti */
-.prc-wave {
-  position: relative;
-  margin-top: 14px;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  margin-left: 2px;
+  transition: color 220ms ease;
 }
 
-.prc-wave-line {
-  position: absolute;
-  top: 0;
-  left: -40%;
-  width: 40%;
-  height: 100%;
-  border-radius: 2px;
+/* Sağ grup: model etiketi, sayaç ve aç/kapa butonu */
+.rp-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.rp-model {
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  color: rgba(230, 232, 239, 0.48);
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rp-timer {
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  font-size: 11.5px;
+  color: rgba(230, 232, 239, 0.70);
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  min-width: 38px;
+  text-align: right;
+}
+
+/* Aç/kapa butonu */
+.rp-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: rgba(230, 232, 239, 0.75);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.rp-toggle:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.rp-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+}
+
+.rp-toggle:active {
+  transform: scale(0.96);
+}
+
+/* Caret (ok) — açıkken aşağı bakar, kapalıyken yukarı */
+.rp-caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
+  transition: transform 240ms ease;
+}
+
+.reasoning-panel.rp-live.rp-collapsed .rp-caret {
+  transform: rotate(180deg);
+}
+
+/* ------------------------------------------------------------
+ * 4. Gövde — iç kaydırmalı düşünce akışı alanı
+ * ------------------------------------------------------------ */
+.rp-body {
+  position: relative;
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 16px 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.12),
+    rgba(0, 0, 0, 0.22)
+  );
+  transition: max-height 320ms ease, padding 220ms ease, opacity 220ms ease;
+}
+
+/* Kaydırma çubuğu sadeleştirmesi */
+.rp-body::-webkit-scrollbar {
+  width: 8px;
+}
+.rp-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rp-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+.rp-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Akış metni — sabit genişlikli font, doğal satır sarımı */
+.rp-stream {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(230, 232, 239, 0.86);
+  letter-spacing: 0.1px;
+}
+
+/* Boşken hafif yer tutucu görünüm (metin gelene kadar) */
+.rp-stream:empty::before {
+  content: "…";
+  color: rgba(230, 232, 239, 0.30);
+  font-size: 14px;
+}
+
+/* ------------------------------------------------------------
+ * 5. Katlanmış durum — gövde gizlenir
+ * ------------------------------------------------------------ */
+.reasoning-panel.rp-live.rp-collapsed .rp-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------
+ * 6. Durum çeşitleri (data-state)
+ * ------------------------------------------------------------ */
+
+/* Hazırlanıyor / preparing — nabız hafif */
+.reasoning-panel.rp-live[data-state="preparing"] .rp-pulse {
+  animation-duration: 2.2s;
+  opacity: 0.8;
+}
+
+/* Yanıt akışına geçti — yeşilimsi ton */
+.reasoning-panel.rp-live[data-state="streaming"] {
+  border-color: rgba(34, 197, 94, 0.22);
+}
+.reasoning-panel.rp-live[data-state="streaming"]::before {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(99, 102, 241, 0.9),
-    rgba(139, 92, 246, 0.75),
+    rgba(34, 197, 94, 0.55),
     transparent
   );
-  animation: prc-scan 2.4s ease-in-out infinite;
 }
-
-/* Durum: akışa geçiş - sakin tonlar */
-.premium-reasoning-card[data-state="streaming"] {
-  animation: prc-card-settle 360ms ease forwards;
-}
-
-.premium-reasoning-card[data-state="streaming"]::before {
-  opacity: 0.4;
-}
-
-.premium-reasoning-card[data-state="streaming"] .prc-badge {
-  background: rgba(34, 197, 94, 0.10);
-  border-color: rgba(34, 197, 94, 0.32);
-  color: #b9f6ca;
-}
-
-.premium-reasoning-card[data-state="streaming"] .prc-badge-dot {
+.reasoning-panel.rp-live[data-state="streaming"] .rp-pulse {
   background: #22c55e;
   box-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
 }
-
-.premium-reasoning-card[data-state="streaming"] .prc-wave-line {
-  animation-duration: 1.6s;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(34, 197, 94, 0.75),
-    transparent
-  );
+.reasoning-panel.rp-live[data-state="streaming"] .rp-subtitle {
+  color: rgba(185, 246, 202, 0.82);
 }
 
-/* Durum: durduruldu */
-.premium-reasoning-card[data-state="interrupted"] {
-  animation: prc-card-settle 260ms ease forwards;
-  border-color: rgba(234, 179, 8, 0.32);
+/* Tamamlandı — sakin, soluklaşmış */
+.reasoning-panel.rp-live[data-state="completed"] {
+  animation: rp-settle 260ms ease forwards;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.reasoning-panel.rp-live[data-state="completed"]::before {
+  opacity: 0.25;
+}
+.reasoning-panel.rp-live[data-state="completed"] .rp-pulse {
+  background: rgba(148, 163, 184, 0.8);
+  box-shadow: none;
+  animation: none;
+}
+.reasoning-panel.rp-live[data-state="completed"] .rp-subtitle {
+  color: rgba(230, 232, 239, 0.55);
 }
 
-.premium-reasoning-card[data-state="interrupted"] .prc-badge {
-  background: rgba(234, 179, 8, 0.10);
-  border-color: rgba(234, 179, 8, 0.32);
-  color: #fde68a;
+/* Durduruldu */
+.reasoning-panel.rp-live[data-state="interrupted"] {
+  animation: rp-settle 260ms ease forwards;
+  border-color: rgba(234, 179, 8, 0.28);
 }
-
-.premium-reasoning-card[data-state="interrupted"] .prc-badge-dot {
+.reasoning-panel.rp-live[data-state="interrupted"]::before {
+  opacity: 0;
+}
+.reasoning-panel.rp-live[data-state="interrupted"] .rp-pulse {
   background: #eab308;
   box-shadow: none;
   animation: none;
 }
+.reasoning-panel.rp-live[data-state="interrupted"] .rp-subtitle {
+  color: rgba(253, 230, 138, 0.80);
+}
 
-.premium-reasoning-card[data-state="interrupted"] .prc-wave-line,
-.premium-reasoning-card[data-state="error"] .prc-wave-line {
-  animation: none;
+/* Hata */
+.reasoning-panel.rp-live[data-state="error"] {
+  animation: rp-settle 260ms ease forwards;
+  border-color: rgba(239, 68, 68, 0.30);
+}
+.reasoning-panel.rp-live[data-state="error"]::before {
   opacity: 0;
 }
-
-.premium-reasoning-card[data-state="interrupted"]::before,
-.premium-reasoning-card[data-state="error"]::before {
-  opacity: 0;
-}
-
-/* Durum: hata */
-.premium-reasoning-card[data-state="error"] {
-  animation: prc-card-settle 260ms ease forwards;
-  border-color: rgba(239, 68, 68, 0.32);
-}
-
-.premium-reasoning-card[data-state="error"] .prc-badge {
-  background: rgba(239, 68, 68, 0.10);
-  border-color: rgba(239, 68, 68, 0.34);
-  color: #fecaca;
-}
-
-.premium-reasoning-card[data-state="error"] .prc-badge-dot {
+.reasoning-panel.rp-live[data-state="error"] .rp-pulse {
   background: #ef4444;
   box-shadow: none;
   animation: none;
 }
-
-/* Durum: kompakt şerit (akış sürerken minik görünüm) */
-.premium-reasoning-card[data-state="compact"] {
-  padding: 8px 14px;
-  border-radius: 12px;
+.reasoning-panel.rp-live[data-state="error"] .rp-subtitle {
+  color: rgba(254, 202, 202, 0.85);
 }
 
-.premium-reasoning-card[data-state="compact"] .prc-title,
-.premium-reasoning-card[data-state="compact"] .prc-model,
-.premium-reasoning-card[data-state="compact"] .prc-wave {
+/* ------------------------------------------------------------
+ * 7. Kapanış animasyonu — panel kaybolurken
+ * ------------------------------------------------------------ */
+.reasoning-panel.rp-live.rp-fading {
+  animation: rp-exit 320ms ease forwards;
+}
+
+/* ------------------------------------------------------------
+ * 8. Kalıcı arşiv bloğu (<details class="reasoning-block">)
+ * - DB'ye kaydedilen düşünce akışının yeniden yüklenirken
+ *   gösterimi. Canlı panelle görsel sürekliliği korur.
+ * ------------------------------------------------------------ */
+.ai-message details.reasoning-block {
+  margin: 6px 0 12px 0;
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(99, 102, 241, 0.06), transparent 60%),
+    linear-gradient(155deg, rgba(22, 22, 32, 0.88), rgba(14, 14, 22, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  color: #e6e8ef;
+  transition: border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.ai-message details.reasoning-block[open] {
+  border-color: rgba(99, 102, 241, 0.22);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+}
+
+/* Varsayılan işaretçiyi sıfırla */
+.ai-message details.reasoning-block > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: rgba(230, 232, 239, 0.82);
+  user-select: none;
+  transition: background 180ms ease, color 180ms ease;
+}
+.ai-message details.reasoning-block > summary::-webkit-details-marker {
   display: none;
 }
-
-.premium-reasoning-card[data-state="compact"] .prc-header {
-  margin-bottom: 0;
+.ai-message details.reasoning-block > summary:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #ffffff;
 }
 
-.premium-reasoning-card[data-state="compact"] .prc-phase {
+.reasoning-summary-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.75);
+  box-shadow: 0 0 6px rgba(148, 163, 184, 0.35);
+}
+
+.ai-message details.reasoning-block[open] .reasoning-summary-dot {
+  background: #8b5cf6;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.7);
+}
+
+.reasoning-summary-text {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: inherit;
+}
+
+.reasoning-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(230, 232, 239, 0.45);
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  letter-spacing: 0.3px;
+}
+
+.reasoning-summary-caret {
   font-size: 12px;
-  margin-top: 2px;
+  color: rgba(230, 232, 239, 0.55);
+  transition: transform 240ms ease;
+  margin-left: 6px;
 }
 
-/* Son kaybolma (tamamlandı veya iptal sonrası) */
-.premium-reasoning-card.prc-fading {
-  animation: prc-card-exit 280ms ease forwards;
+.ai-message details.reasoning-block[open] .reasoning-summary-caret {
+  transform: rotate(180deg);
+  color: rgba(230, 232, 239, 0.85);
 }
 
-/* ----------------- Anahtar kareler ----------------- */
+/* Arşiv gövdesi — canlı paneldeki gövdeyle aynı his */
+.reasoning-archive-body {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 14px 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.12),
+    rgba(0, 0, 0, 0.22)
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
 
-@keyframes prc-card-enter {
-  0% { opacity: 0; transform: translateY(6px); }
+.reasoning-archive-body::-webkit-scrollbar {
+  width: 8px;
+}
+.reasoning-archive-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.reasoning-archive-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+.reasoning-archive-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.reasoning-archive-text {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(230, 232, 239, 0.86);
+  letter-spacing: 0.1px;
+}
+
+/* ------------------------------------------------------------
+ * 9. Anahtar kareler
+ * ------------------------------------------------------------ */
+@keyframes rp-enter {
+  0%   { opacity: 0; transform: translateY(4px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes prc-card-settle {
-  0% { box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45); }
-  100% { box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32); }
-}
-
-@keyframes prc-card-exit {
-  0% { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes rp-exit {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
   100% { opacity: 0; transform: translateY(-4px) scale(0.985); }
 }
 
-@keyframes prc-breathe {
+@keyframes rp-settle {
+  0%   { box-shadow: 0 14px 38px rgba(0, 0, 0, 0.38); }
+  100% { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28); }
+}
+
+@keyframes rp-breathe {
   0%, 100% {
     box-shadow:
-      0 18px 48px rgba(0, 0, 0, 0.45),
+      0 14px 38px rgba(0, 0, 0, 0.38),
       inset 0 1px 0 rgba(255, 255, 255, 0.04),
       0 0 0 1px rgba(99, 102, 241, 0.10);
   }
   50% {
     box-shadow:
-      0 18px 48px rgba(0, 0, 0, 0.45),
+      0 14px 38px rgba(0, 0, 0, 0.38),
       inset 0 1px 0 rgba(255, 255, 255, 0.04),
-      0 0 0 1px rgba(139, 92, 246, 0.28);
+      0 0 0 1px rgba(139, 92, 246, 0.26);
   }
 }
 
-@keyframes prc-dot-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50%      { transform: scale(1.25); opacity: 0.75; }
+@keyframes rp-pulse {
+  0%, 100% { transform: scale(1);    opacity: 1;    }
+  50%      { transform: scale(1.25); opacity: 0.72; }
 }
 
-@keyframes prc-scan {
-  0%   { left: -45%; }
-  100% { left: 105%; }
-}
-
-/* Hareket tercihini azaltan kullanıcılar için statik görünüm */
+/* ------------------------------------------------------------
+ * 10. Erişilebilirlik ve küçük ekranlar
+ * ------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
-  .premium-reasoning-card,
-  .premium-reasoning-card[data-state="thinking"] {
-    animation: prc-card-enter 200ms ease forwards !important;
+  .reasoning-panel.rp-live,
+  .reasoning-panel.rp-live[data-state="live"] {
+    animation: rp-enter 180ms ease forwards !important;
   }
-  .prc-wave-line,
-  .prc-badge-dot {
+  .rp-pulse,
+  .rp-caret,
+  .reasoning-summary-caret {
     animation: none !important;
+    transition: none !important;
+  }
+  .rp-body,
+  .reasoning-archive-body {
+    transition: none !important;
   }
 }
 
-/* Daha dar ekranlar için küçük ölçek */
 @media (max-width: 640px) {
-  .premium-reasoning-card {
-    width: 96%;
-    padding: 14px 16px;
+  .reasoning-panel.rp-live {
+    width: 100%;
+    border-radius: 12px;
   }
-  .prc-title { font-size: 14px; }
-  .prc-phase { font-size: 12px; }
-  .prc-badge { font-size: 10px; }
+  .rp-header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .rp-title { font-size: 12px; }
+  .rp-subtitle { font-size: 11px; }
+  .rp-model { display: none; }
+  .rp-body {
+    max-height: 200px;
+    padding: 10px 12px 12px;
+  }
+  .rp-stream,
+  .reasoning-archive-text {
+    font-size: 12px;
+  }
+  .ai-message details.reasoning-block > summary {
+    padding: 9px 12px;
+    font-size: 12px;
+  }
+  .reasoning-archive-body {
+    max-height: 240px;
+    padding: 10px 12px 12px;
+  }
 }

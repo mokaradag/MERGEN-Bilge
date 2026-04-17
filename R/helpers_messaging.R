@@ -1,5 +1,42 @@
 # R/helpers_messaging.R
 
+# Düşünen modellerin akıl yürütme metnini, yanıt balonunun üstünde
+# daraltılabilir bir "Düşünce Akışı" paneli olarak render eder.
+# Mesaj DB'ye kaydedildiğinde panel de birlikte kalır; geçmişten
+# açıldığında kullanıcı <details> denetimiyle açıp kapatabilir.
+build_reasoning_details_block <- function(reasoning_text,
+                                          title = "Düşünce Akışı") {
+  if (is.null(reasoning_text) || !nzchar(trimws(as.character(reasoning_text)[1]))) {
+    return("")
+  }
+
+  text_utf8 <- enc2utf8(as.character(reasoning_text)[1])
+  escaped <- gsub("&", "&amp;", text_utf8, fixed = TRUE)
+  escaped <- gsub("<", "&lt;", escaped, fixed = TRUE)
+  escaped <- gsub(">", "&gt;", escaped, fixed = TRUE)
+
+  char_count <- nchar(text_utf8)
+  meta <- if (char_count > 0) {
+    sprintf("<span class=\"reasoning-meta\">%d karakter</span>", char_count)
+  } else {
+    ""
+  }
+
+  paste0(
+    '<details class="reasoning-block" data-role="reasoning-archive">',
+      '<summary class="reasoning-summary">',
+        '<span class="reasoning-summary-dot"></span>',
+        '<span class="reasoning-summary-text">', title, '</span>',
+        meta,
+        '<span class="reasoning-summary-caret" aria-hidden="true">\u25BE</span>',
+      '</summary>',
+      '<div class="reasoning-archive-body">',
+        '<pre class="reasoning-archive-text">', escaped, '</pre>',
+      '</div>',
+    '</details>'
+  )
+}
+
 #' Create HTML for a Code Block
 #'
 #' Generates a complete HTML structure for a syntax-highlighted code block,
