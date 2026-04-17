@@ -170,6 +170,8 @@ Bir hızlı eylem kartına tıklandığında:
 3. Kullanıcı dosya, sayfa, sütun veya istediği analiz türünü yazar.
 4. Gerçek analiz o anda başlar.
 
+Bu yüzden hızlı eylem kartları, sonucu otomatik üreten düğmeler değil; doğru çalışma modunu hızlıca hazırlayan başlangıç kısayollarıdır.
+
 ---
 
 ## 7. Uygulama Sayfaları
@@ -601,6 +603,11 @@ Kullanıcı yardım isterse aşağıdaki genel yönlendirmeler yapılabilir:
 - önce istemini daha açık yazarak tekrar denemesini önerebilirsin
 - ilgili dosya veya sayfa bağlamının doğru seçildiğini kontrol etmesini söyleyebilirsin
 - sorun sürüyorsa hata bildirimi bırakmasını önerebilirsin
+
+### 14.8 Yerel kullanım ile kurumsal oturum davranışı farklı görünüyor
+- yerel kullanım ve kurumsal oturum açma akışları aynı görünse de açılış adımları farklı olabilir
+- kullanıcıya önce sayfayı yenilemesini ve işlemi tekrar denemesini önerebilirsin
+- sorun yalnızca belirli ortamda sürüyorsa hata bildirimi bırakmasını isteyebilirsin
 
 ---
 

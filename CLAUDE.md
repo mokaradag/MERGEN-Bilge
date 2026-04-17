@@ -424,6 +424,9 @@ User-facing and system-facing modules.
 Wiring and runtime flow:
 
 - `R/server_session_cache.R`
+- `R/server_init_forward_refs.R`
+- `R/server_init_session_state.R`
+- `R/server_init_chat_runtime.R`
 - `R/server_outputs_chat.R`
 - `R/server_llm_response_handlers.R`
 - `R/server_handler_summarization.R`
@@ -498,7 +501,22 @@ The UI loads a large amount of static assets from `www/`:
 
 ## Server Flow
 
-`server.R` is the main integration point.
+`server.R` is the main **composition root** of the application.
+
+It should remain the central wiring layer, but not become a dumping ground for every startup helper, reactive flag definition, or wrapper closure. Recent cleanup moved some of that responsibility into dedicated `R/server_init_*.R` files so that `server.R` stays readable while behavior remains unchanged.
+
+### Current `server_init_*` helper layer
+
+The following files exist specifically to reduce orchestration coupling in `server.R`:
+
+- `R/server_init_forward_refs.R` - delayed binding wrappers for welcome and send-message flows
+- `R/server_init_session_state.R` - session-local reactive state and startup feedback loading
+- `R/server_init_chat_runtime.R` - chat runtime helper closures such as reset/add-message/streaming wrappers
+
+Rule:
+- keep `server.R` as the wiring/composition layer
+- put reusable startup/setup helpers into `server_init_*`
+- do not move business logic into `server_init_*`
 
 At a high level it performs:
 
@@ -1247,6 +1265,24 @@ This section reflects how work in this repo is usually requested.
 - introducing English comments into Turkish-heavy files,
 - changing visible labels unless needed.
 
+### `server.R` editing rule
+
+When changing `server.R`, prefer this order of decisions:
+
+1. Can this stay as wiring only?
+2. Can the helper be moved into an existing `server_handler_*`, `server_observers_*`, or `server_init_*` file?
+3. Is a new file really justified?
+
+Preferred:
+- smaller `server.R`
+- explicit helper bundles returned as lists
+- session-local setup extracted cleanly
+- no hidden dependencies on object creation order
+
+Avoid:
+- adding more inline helper closures to `server.R` unless truly necessary
+- mixing business logic with startup orchestration
+
 ---
 
 ## Sensitive / Regression-Prone Areas
@@ -1322,6 +1358,15 @@ Streaming ve non-streaming akışlar aynı şekilde davranmayabilir. Bir akış 
 - gerekli bağımlılıklar worker'a taşınmalı
 - reaktif nesneler önceden düz değerlere indirgenmeli
 - VM + SSO + Ctrl+Enter senaryosu düşünülmelidir
+
+### 8A) Startup guards must match their execution context
+
+Some startup helpers run inside reactive consumers in SSO flows, but may also run as plain function calls in local (`SSO_ENABLED=FALSE`) startup.
+
+Practical rule:
+- do not introduce `reactiveVal()` or `req()` into a startup guard unless that code is guaranteed to run inside a reactive context
+- for one-time startup flags, prefer plain session-local state (for example, a local environment flag) unless reactive invalidation is truly needed
+- `R/server_observers_startup.R` is especially sensitive here
 
 ---
 
