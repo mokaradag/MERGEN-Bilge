@@ -77,6 +77,25 @@ Use `tracked_future_promise(task_fn = function() { ... }, task_type = "...", ses
 
 Do not pass raw expression blocks as positional `expr`; `tracked_future_promise()` now expects `task_fn`.
 
+### 8A) tracked_future_promise() aynı zamanda worker bağımlılık sarmalayıcısıdır
+
+Bu repoda `tracked_future_promise(...)` yalnızca izleme/metrik amacıyla kullanılmaz. Aynı zamanda `task_fn` içinde kullanılan global fonksiyonları ve gerekli paketleri worker tarafına güvenli biçimde taşımak için standart giriş kapısıdır.
+
+Pratik sonuç:
+- Yeni bir async akışta ham `future_promise(...)` kullanmak yasak kabul edilmelidir.
+- `tracked_future_promise(...)` mümkün olduğunda `task_fn` içindeki bağımlılıkları otomatik türetir.
+- Özel akışlarda `globals = list(...)` ile açık bağımlılık geçirmek yine doğru yaklaşımdır.
+
+Özellikle şu tip hatalar genellikle source sırası problemi değil, worker bağımlılık aktarımı problemidir:
+- `call_llm_worker fonksiyonu bulunamadı`
+- `generate_image fonksiyonu bulunamadı`
+
+Bu tür hatalar özellikle şu koşullarda daha görünür olabilir:
+- `SSO_ENABLED=TRUE`
+- Windows VM
+- `app.R` dosyasının tamamını `Ctrl+Enter` ile çalıştırma
+- persistent cluster worker kullanımı
+
 ---
 
 ## What MERGEN Bilge Is
@@ -1101,6 +1120,8 @@ tracked_future_promise(
 )
 ```
 
+`tracked_future_promise(...)` kullanımının ikinci kritik amacı worker bağımlılıklarının güvenli biçimde taşınmasıdır. Bu repo için “izleme” ve “worker export güvenliği” aynı sarmalayıcıda birleşmiştir. Bu nedenle async path yazarken wrapper'ı atlamak yalnızca health ekranını eksik bırakmaz; worker içinde fonksiyon bulunamadı türü çalışma zamanı hatalarına da yol açabilir.
+
 ### Current tracked async families
 At minimum, health metrics are expected to include these async flows when present:
 - non-streaming LLM
@@ -1291,6 +1312,16 @@ Loading a saved chat can accidentally route the user back into a stale welcome s
 
 ### 7) Streaming handlers
 The chat stream and Bilge Yolaç stream both have fragile incremental rendering paths. Small output-format changes can break UI rendering.
+
+### 8) Async worker dependency export
+
+Streaming ve non-streaming akışlar aynı şekilde davranmayabilir. Bir akış çalışıyor diye diğer async akışların da güvenli olduğu varsayılmamalıdır.
+
+Özellikle non-streaming LLM, görsel üretimi ve benzeri worker tabanlı akışlarda:
+- `tracked_future_promise(...)` kullanılmalı
+- gerekli bağımlılıklar worker'a taşınmalı
+- reaktif nesneler önceden düz değerlere indirgenmeli
+- VM + SSO + Ctrl+Enter senaryosu düşünülmelidir
 
 ---
 

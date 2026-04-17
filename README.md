@@ -282,6 +282,27 @@ Bu metrikler **kullanıcı sayısını göstermez**. Bunlar; LLM çağrısı, TT
 
 İzleme uygulaması `tracked_future_promise(...)` sarmalayıcısı ile yürütülür. Asenkron çalışan yeni bir akış eklenirse, sağlık ekranında doğru görünmesi için ilgili future çağrısının izlemeli sarmalayıcı üzerinden başlatılması gerekir.
 
+### tracked_future_promise() neden zorunlu?
+
+Bu projede `tracked_future_promise(...)` yalnızca sağlık ekranı için metrik üretmez. Aynı zamanda worker üzerinde çalışan görevlerin ihtiyaç duyduğu global fonksiyonları ve paket bağımlılıklarını güvenli biçimde taşıyan standart sarmalayıcıdır.
+
+Bu özellikle şu senaryolarda kritiktir:
+- `SSO_ENABLED=TRUE`
+- Windows VM üzerinde çalışma
+- `app.R` dosyasının tamamını seçip `Ctrl+Enter` ile başlatma
+- persistent future cluster kullanımı
+
+Özellikle non-streaming araç akışlarında (`Excel Analizi`, `Proje ve Kaynak Analizi`, `Görsel Oluşturma` gibi), worker tarafında kullanılan yardımcı fonksiyonlar doğrudan görünmeyebilir. Bu nedenle yeni bir asenkron akış eklenirken ham `future_promise(...)` yerine `tracked_future_promise(...)` kullanılmalıdır.
+
+Aksi halde worker tarafında aşağıdaki türde hatalar görülebilir:
+- `call_llm_worker` fonksiyonu bulunamadı
+- `generate_image` fonksiyonu bulunamadı
+
+Kural:
+- Asenkron iş başlatırken varsayılan tercih `tracked_future_promise(...)` olmalıdır.
+- Gerekli bağımlılıklar mümkün olduğunda `task_fn` içinden türetilir.
+- Özel durumlarda `globals = list(...)` ile açık bağımlılık geçmek hâlâ geçerli bir yaklaşımdır.
+
 ---
 
 ## Önemli Dizinler ve Dosyalar
@@ -722,6 +743,13 @@ Kontrol edin:
 
 ### İşçi Havuzu değerleri kullanıcı sayısı ile uyuşmuyor
 Bu beklenen bir durumdur. İşçi metrikleri giriş yapan kullanıcı sayısını değil, uygulamadaki asenkron iş yükünü gösterir. Kullanıcı sayısı ile worker/task doluluğu ayrı metrikler olarak yorumlanmalıdır.
+
+### Belirli araçlar prompt sonrası çalışmıyor ama streaming akışlar çalışıyor
+Kontrol edin:
+- ilgili akış `tracked_future_promise(...)` ile mi başlatılıyor
+- worker tarafına gerekli fonksiyonlar taşınıyor mu
+- ham `future_promise(...)` kullanımı kalmış mı
+- özellikle `SSO_ENABLED=TRUE` ve VM ortamında persistent cluster davranışı test edildi mi
 
 ---
 
