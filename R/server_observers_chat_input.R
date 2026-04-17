@@ -25,10 +25,9 @@ chatInputObserversInit <- function(input, session, values, settings_data,
                                     session_files, file_to_add, stt_data) {
   
   observeEvent(input$send_stop_btn, {
-    if (values$is_sending == TRUE) {
+    if (isTRUE(values$is_sending) || isTRUE(values$typing)) {
       stop_generation(TRUE)
       active_request_id(paste0("cancelled_", as.integer(Sys.time())))
-      reset_chat_state()
     }
   }, ignoreInit = TRUE)
   
@@ -56,7 +55,7 @@ chatInputObserversInit <- function(input, session, values, settings_data,
   })
   
   observeEvent(stop_generation(), {
-    if (stop_generation() == TRUE) {
+    if (isTRUE(stop_generation()) && (isTRUE(values$is_sending) || isTRUE(values$typing))) {
       reset_chat_state()
       showToast(session, "Yanıt oluşturma durduruldu.", "warning")
     }
