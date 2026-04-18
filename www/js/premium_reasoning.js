@@ -25,6 +25,12 @@
   var timerId = null;
   var shellTimeoutId = null;
 
+  // Düşünmeyen modeller için panel aynı kabukla gösterilir ama içerik
+  // sunucudan gelmez; aşağıdaki "sahte faz" motoru kullanılır.
+  var simulatedMode = false;
+  var simulatedPhaseTimer = null;
+  var simulatedPhaseIndex = 0;
+
   // Kullanıcı panel içinde veya dış sohbet akışında yukarı kaydırırsa
   // otomatik alta kaydırma devre dışı bırakılır.
   var userScrolledReasoningUp = false;
@@ -38,6 +44,17 @@
   var DONE_SUBTITLE = "Tamamlandı";
   var INTERRUPT_SUBTITLE = "Durduruldu";
   var ERROR_SUBTITLE = "Hata oluştu";
+
+  // Sahte faz metinleri: düşünmeyen modeller için "Düşünüyorum" yerine
+  // aynı panelde sıralı olarak görünür. Her faz ~1.8 sn sonra eklenir.
+  var SIMULATED_PHASES = [
+    "Soru çözümleniyor",
+    "Bağlam toplanıyor",
+    "Yanıt planlanıyor",
+    "Cevap yazılıyor"
+  ];
+  var SIMULATED_PHASE_INTERVAL_MS = 1800;
+  var SIMULATED_SUBTITLE = "Hazırlanıyor";
 
   function escapeHtml(s) {
     if (s === null || s === undefined) return "";
@@ -231,12 +248,62 @@
     firstReasoningAt = null;
     userScrolledReasoningUp = false;
     model = (config && config.model) || "";
+    simulatedMode = !!(config && config.simulated);
+    simulatedPhaseIndex = 0;
     startedAt = Date.now();
 
     // Paneli hemen göster: gerçek içerik gelene kadar tek satırlık sakin
     // bir "Çözüm hazırlanıyor" alt başlığı taşır.
-    ensurePrePanel();
+    var panel = ensurePrePanel();
     startTimer();
+
+    if (simulatedMode) {
+      // Sahte faz motorunu başlat; ilk fazı anında yaz, kalanları zamanlayıcıyla.
+      if (panel) {
+        setSubtitle(SIMULATED_SUBTITLE);
+      }
+      runSimulatedPhaseStep();
+      simulatedPhaseTimer = setInterval(runSimulatedPhaseStep, SIMULATED_PHASE_INTERVAL_MS);
+    }
+  }
+
+  function runSimulatedPhaseStep() {
+    if (!simulatedMode) return;
+    if (simulatedPhaseIndex >= SIMULATED_PHASES.length) {
+      // Tüm fazlar yazıldıysa zamanlayıcıyı durdur; panel akış başlayana
+      // veya sıfırlanana kadar son hali ile kalır.
+      stopSimulatedPhases();
+      return;
+    }
+
+    // Panel DOM'dan kaldırıldıysa (örn. yanıt akışı başladı ve sunucu
+    // #typing-animation-wrapper'ı kaldırdı) sessizce dur: aksi halde
+    // ensurePrePanel() sürekli yeniden denemeye sokulur.
+    var panel = getActivePanel();
+    if (!panel) {
+      stopSimulatedPhases();
+      return;
+    }
+
+    var phrase = SIMULATED_PHASES[simulatedPhaseIndex];
+    simulatedPhaseIndex += 1;
+
+    var line = (reasoningBuffer.length > 0 ? "\n" : "") + "\u2192 " + phrase + "\u2026";
+    reasoningBuffer += line;
+
+    var stream = panel.querySelector('[data-role="stream"]');
+    if (stream) {
+      stream.appendChild(document.createTextNode(line));
+    }
+    autoScrollPanel(panel);
+    autoScrollOuter();
+  }
+
+  function stopSimulatedPhases() {
+    if (simulatedPhaseTimer) {
+      clearInterval(simulatedPhaseTimer);
+      simulatedPhaseTimer = null;
+    }
   }
 
   function onReasoningDelta(payload) {
@@ -318,6 +385,23 @@
     // Düşünen model değilse bu handler zaten anlamsız; panel yoksa sessizce çık.
     if (state === "idle") return;
 
+    // Sahte fazlı (düşünmeyen) modellerde yanıt akışı başladığı an panel
+    // görevini tamamlamıştır: balona taşımadan tamamen sönümlenerek kaldırılır.
+    if (simulatedMode) {
+      stopSimulatedPhases();
+      stopTimer();
+      var shellPanel = getActivePanel();
+      if (shellPanel) {
+        fadeOutAndRemove(shellPanel);
+      }
+      simulatedMode = false;
+      simulatedPhaseIndex = 0;
+      reasoningBuffer = "";
+      state = "idle";
+      msgId = id || null;
+      return;
+    }
+
     // Yanıt akışı başladı: paneli balonun içine taşı ve durumu güncelle.
     var panel = migrateToBubble(id);
     if (!panel) {
@@ -332,8 +416,30 @@
   function onResetChatState() {
     // Normal tamamlanma, durdurma ve hata yollarının tamamında çağrılır.
     stopTimer();
+    stopSimulatedPhases();
 
     var panel = getActivePanel();
+
+    // Sahte fazlı (düşünmeyen) modellerde panel kalıcı değildir: arşivlenecek
+    // gerçek bir düşünce metni olmadığı için tamamen sönümlenerek kaldırılır.
+    if (simulatedMode) {
+      if (panel) {
+        fadeOutAndRemove(panel);
+      }
+      simulatedMode = false;
+      simulatedPhaseIndex = 0;
+      state = "idle";
+      if (shellTimeoutId) { clearTimeout(shellTimeoutId); shellTimeoutId = null; }
+      var hSim = getHost();
+      if (hSim) hSim.classList.remove("rp-host");
+      reasoningBuffer = "";
+      firstReasoningAt = null;
+      startedAt = null;
+      userScrolledReasoningUp = false;
+      panelScrollHandlerAttached = false;
+      return;
+    }
+
     if (!panel) {
       // Hiç panel yoksa sessizce temizle.
       cleanup(false);
@@ -403,8 +509,17 @@
 
   function onError(payload) {
     stopTimer();
+    stopSimulatedPhases();
     var panel = getActivePanel();
     if (!panel) {
+      cleanup(false);
+      state = "idle";
+      return;
+    }
+    // Sahte fazlı panelde hata mesajı için ayrı bir durum tutmuyoruz;
+    // panel sönümlenerek kaldırılır.
+    if (simulatedMode) {
+      fadeOutAndRemove(panel);
       cleanup(false);
       state = "idle";
       return;
@@ -415,6 +530,7 @@
 
   function cleanup(keepBuffer) {
     stopTimer();
+    stopSimulatedPhases();
     if (shellTimeoutId) {
       clearTimeout(shellTimeoutId);
       shellTimeoutId = null;
@@ -425,6 +541,8 @@
       startedAt = null;
       userScrolledReasoningUp = false;
       panelScrollHandlerAttached = false;
+      simulatedMode = false;
+      simulatedPhaseIndex = 0;
     }
     // Ön-kabuk stilini her temizlemede geri al.
     var h = getHost();
