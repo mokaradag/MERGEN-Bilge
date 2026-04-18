@@ -40,6 +40,11 @@ chatActionsInit <- function(input, session, values,
       db_id <- as.integer(actual$db_id)
       if (db_id %in% as.integer(values$liked_messages)) {
         effective_user_id <- resolve_current_user_id()
+        if (is.na(effective_user_id) || effective_user_id <= 0) {
+          showToast(session, "Kullanıcı oturumu henüz hazır değil. Lütfen tekrar deneyin.", "warning")
+          return()
+        }
+
         values$liked_messages <- setdiff(values$liked_messages, as.character(db_id))
         remove_feedback_from_db(effective_user_id, db_id)
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_like"))
@@ -73,6 +78,11 @@ chatActionsInit <- function(input, session, values,
       db_id <- as.integer(actual$db_id)
       if (db_id %in% as.integer(values$disliked_messages)) {
         effective_user_id <- resolve_current_user_id()
+        if (is.na(effective_user_id) || effective_user_id <= 0) {
+          showToast(session, "Kullanıcı oturumu henüz hazır değil. Lütfen tekrar deneyin.", "warning")
+          return()
+        }
+
         values$disliked_messages <- setdiff(values$disliked_messages, as.character(db_id))
         remove_feedback_from_db(effective_user_id, db_id)
         session$sendCustomMessage("updateFeedback", list(messageId = msg_id, action = "remove_dislike"))

@@ -146,6 +146,13 @@ feedbackServer <- function(id, current_user_id) {
       
       tryCatch({
         effective_user_id <- resolve_current_user_id()
+        if (is.na(effective_user_id) || effective_user_id <= 0) {
+          session$sendCustomMessage("showToast", list(
+            message = "Kullanıcı oturumu henüz hazır değil. Lütfen tekrar deneyin.",
+            type = "warning"
+          ))
+          return()
+        }
 
         save_feedback_to_db_extended(
           user_id = effective_user_id,

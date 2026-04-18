@@ -298,6 +298,10 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     current_chat_deleted <- identical(as.character(values$current_chat_id), as.character(chat_id))
     
     effective_user_id <- resolve_current_user_id()
+    if (is.na(effective_user_id) || effective_user_id <= 0) {
+      showToast(session, "Kullanıcı oturumu henüz hazır değil. Lütfen tekrar deneyin.", "warning")
+      return()
+    }
 
     delete_chat_from_db(chat_id, effective_user_id)
     
@@ -367,6 +371,10 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   observeEvent(saved_chats_data$clear_all_chats_trigger(), {
     if (saved_chats_data$clear_all_chats_trigger() > 0) {
       effective_user_id <- resolve_current_user_id()
+      if (is.na(effective_user_id) || effective_user_id <= 0) {
+        showToast(session, "Kullanıcı oturumu henüz hazır değil. Lütfen tekrar deneyin.", "warning")
+        return()
+      }
 
       clear_all_chats_from_db(effective_user_id)
       values$saved_chats <- list()
