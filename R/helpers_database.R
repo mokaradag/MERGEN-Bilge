@@ -820,7 +820,7 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   )
 }
 
-load_chat_messages_batch <- function(chat_ids) {
+load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
   if (is.null(chat_ids) || length(chat_ids) == 0) {
     return(list())
   }
@@ -846,24 +846,52 @@ load_chat_messages_batch <- function(chat_ids) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query_with_reasoning <- paste0(
-    "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
-    "       m.MessageID, m.MessageContent, m.MessageType,",
-    "       m.MessageTimestamp, m.MessageOrder, m.ReasoningContent",
-    "  FROM MB_Chats c",
-    "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
-    " WHERE c.ChatID IN (", placeholder, ")",
-    " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
-  )
-  query_legacy <- paste0(
-    "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
-    "       m.MessageID, m.MessageContent, m.MessageType,",
-    "       m.MessageTimestamp, m.MessageOrder",
-    "  FROM MB_Chats c",
-    "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
-    " WHERE c.ChatID IN (", placeholder, ")",
-    " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
-  )
+  if (is.null(user_id)) {
+    query_with_reasoning <- paste0(
+      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
+      "       m.MessageID, m.MessageContent, m.MessageType,",
+      "       m.MessageTimestamp, m.MessageOrder, m.ReasoningContent",
+      "  FROM MB_Chats c",
+      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
+      " WHERE c.ChatID IN (", placeholder, ")",
+      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
+    )
+    query_legacy <- paste0(
+      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
+      "       m.MessageID, m.MessageContent, m.MessageType,",
+      "       m.MessageTimestamp, m.MessageOrder",
+      "  FROM MB_Chats c",
+      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
+      " WHERE c.ChatID IN (", placeholder, ")",
+      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
+    )
+  } else {
+    safe_user_id <- suppressWarnings(as.integer(user_id))
+    if (is.na(safe_user_id) || safe_user_id <= 0) {
+      stop("Geçersiz user_id ile toplu sohbet yükleme denendi.")
+    }
+
+    query_with_reasoning <- paste0(
+      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
+      "       m.MessageID, m.MessageContent, m.MessageType,",
+      "       m.MessageTimestamp, m.MessageOrder, m.ReasoningContent",
+      "  FROM MB_Chats c",
+      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
+      " WHERE c.ChatID IN (", placeholder, ") AND c.UserID = ?",
+      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
+    )
+    query_legacy <- paste0(
+      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
+      "       m.MessageID, m.MessageContent, m.MessageType,",
+      "       m.MessageTimestamp, m.MessageOrder",
+      "  FROM MB_Chats c",
+      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
+      " WHERE c.ChatID IN (", placeholder, ") AND c.UserID = ?",
+      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
+    )
+
+    param_values <- c(param_values, list(safe_user_id))
+  }
 
   result <- safe_select_messages_with_reasoning(
     conn, query_with_reasoning, query_legacy, params = param_values
