@@ -111,8 +111,10 @@ Bu codebase'te düşünme kabiliyeti olan modeller için yanıt öncesi/yanıt s
 - `local_model_capabilities[[model]]$thinking == TRUE` ise klasik typing animasyonu yerine premium reasoning card gösterilir.
 - Kart, mevcut `#typing-animation-wrapper` konteynerini yeniden kullanır; hem düşünen hem düşünmeyen model yolunda `premiumReasoningStart` ile birlikte açılır.
 - Sunucu tarafı başlangıçta `premiumReasoningStart`, stream aşamasında `premiumReasoningStreamStart`, bitiş/hata tarafında `premiumReasoningReset` veya `premiumReasoningError` mesajları gönderir.
-- Düşünmeyen modeller için `simulated` bayrağı (`thinking_model_active` terslenmiş) taşınır; gerçek `reasoning_delta` yoksa istemci tarafında sahte faz metinleri sıralı gösterilir.
-- Klasik "Düşünüyorum" halkası yerine panel kabuğu `data-panel-takeover="true"` ile boş içerikli eklenir.
+- Eski "Düşünüyorum" yılan animasyonu tamamen kaldırılmıştır (`typing-indicator.css`, `typing_animation.js`, `ui.R` kaydı ve `app_core.js` temizliği dahil).
+- Düşünmeyen modeller için `simulated` bayrağı (`thinking_model_active` terslenmiş) yalnızca akışın reasoning taşımayacağı durumlarda taşınır; gerçek `reasoning_delta` yoksa istemci tarafında sahte faz metinleri sıralı gösterilir.
+- Klasik halka yerine panel kabuğu `data-panel-takeover="true"` ile boş içerikli eklenir.
+- Kodlama Desteği/Excel Analizi gibi düşünme modeline bağlı araçlarda panel modeli `tool-resolved model` üzerinden hesaplanmalıdır.
 
 ### UI/JS ilkeleri
 - Durum makinesi: `idle → preparing → thinking → streaming → interrupted/error`
@@ -126,6 +128,7 @@ Bu codebase'te düşünme kabiliyeti olan modeller için yanıt öncesi/yanıt s
 ### Canlı düşünce paneli ve kalıcılık
 - Düşünce içeriği token-token canlı panelde gösterilir, yanıt bitince kaybolmaz; `completed/interrupted` durumunda daraltılabilir biçimde kalır.
 - Kalıcılık DB tabanlıdır: `MB_Messages.ReasoningContent`.
+- Non-streaming yolunda da reasoning içeriği worker çıktısından message persistence katmanına kadar taşınmalı ve düşünen model yanıtlarında `MB_Messages.ReasoningContent` boş bırakılmamalıdır.
 - Geçmiş sohbet render’ında arşiv bloğu tek noktadan üretilmelidir; canlı panel ve arşivin çift katmanlı görünmesine izin verilmez.
 - Simulated (gerçek reasoning metni olmayan) akışlar balona taşınmaz; yanıt akışı başlar başlamaz panel sönümlenerek kaldırılır ve arşive yazılmaz.
 
@@ -133,6 +136,8 @@ Bu codebase'te düşünme kabiliyeti olan modeller için yanıt öncesi/yanıt s
 - `.reasoning-panel.rp-live` temel durumda görünür (`opacity: 1`, `transform: translateY(0)`) kalmalıdır.
 - Giriş animasyonu `rp-enter` keyframe’in `0%` karesinden ve `both` fill mode ile başlamalıdır.
 - Aksi halde `data-state="completed"` gibi durum geçişlerinde panel opaklığı tekrar 0’a düşerek kaybolabilir.
+- Panel başlığında `[object Object]` regressions için istemci tarafında `sanitizeModelLabel()` benzeri savunma zorunludur.
+- Alt kenar mor shimmer (`rp-shimmer`) yalnızca aktif düşünme/akış safhasında çalışmalı; `completed`, `interrupted/stopped`, `error` durumlarında ve `prefers-reduced-motion` altında kapanmalıdır.
 
 
 ## What MERGEN Bilge Is
