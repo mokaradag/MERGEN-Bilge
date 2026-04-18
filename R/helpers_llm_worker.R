@@ -944,6 +944,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     )
 
     ai2 <- ayristirilmis_yanit2$content
+    reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
         
     if (!(is.character(ai2) && length(ai2) > 0 && nzchar(ai2[1]))) {
       fb <- format_answer_from_tool_results(tool_results_raw)
@@ -976,14 +977,15 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     return(list(
       content  = ai2,
       duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-      chart_store = charts_to_store
+      chart_store = charts_to_store,
+      reasoning_content = if (nzchar(reasoning2)) reasoning2 else NULL
     ))
 
     } else {
     mergen_debug_cat("[MCP] No tool calls detected (structured or textual)\n")
       }
     }
-    
+
     mergen_debug_cat("[SUCCESS] Returning response\n")
     mergen_debug_cat("========================================\n\n")
 
@@ -992,10 +994,16 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
   # Model araç çağırmadıysa ve grafik niyeti varsa yedek grafik bloğu ekle
   ai_content <- add_fallback_chart(ai_content)
 
+  # Düşünen modellerin non-streaming yanıtlarında gelen akıl yürütme metnini
+  # üst katmana aktar; Excel (MCP) gibi non-streaming yollarda bu metin
+  # kayıt için MB_Messages.ReasoningContent sütununa yazılır.
+  reasoning1 <- ayristirilmis_yanit$reasoning %||% ""
+
   return(list(
     content = ai_content,
     duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-    chart_store = charts_to_store
+    chart_store = charts_to_store,
+    reasoning_content = if (nzchar(reasoning1)) reasoning1 else NULL
   ))
     
   }, error = function(e) {

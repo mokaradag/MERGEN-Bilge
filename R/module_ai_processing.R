@@ -120,12 +120,21 @@ aiProcessingServer <- function(id) {
 			  result$duration
 			}
 
+			# Düşünen modellerin non-streaming yanıtlarında akıl yürütme metni
+			# varsa, üst katmana aktarılarak MB_Messages.ReasoningContent
+			# sütununa kaydedilmesi sağlanır.
+			reasoning_from_worker <- if (is.list(result$ai_text)) result$ai_text$reasoning_content else NULL
+			if (is.null(reasoning_from_worker) || !nzchar(as.character(reasoning_from_worker)[1] %||% "")) {
+			  reasoning_from_worker <- NULL
+			}
+
 			return(list(
 			  content = ai_content,
 			  duration = response_duration,
 			  success = TRUE,
 			  error = NULL,
-			  chart_store = charts_from_worker %||% list()
+			  chart_store = charts_from_worker %||% list(),
+			  reasoning_content = reasoning_from_worker
 			))
         },
 		onRejected = function(error) {

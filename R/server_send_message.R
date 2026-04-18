@@ -199,22 +199,44 @@ sendMessageInit <- function(
     user_prompt_msg <- add_message_fn(display_text, "user")
 
     values$typing <- TRUE
+    # Araç ailesine göre gerçekte kullanılacak modeli şimdiden çöz; böylece
+    # (örn. Kodlama Desteği veya Excel Analizi'nde kullanıcının seçtiği
+    # varsayılan model yerine araca bağlı "düşünen" model devrede olduğunda)
+    # panel "simulated" yerine gerçek akıl yürütme kipinde başlar.
+    panel_model_id <- tryCatch(
+      resolve_tool_model_for_family(tool_family, fallback_model = settings_data$model_selection),
+      error = function(e) settings_data$model_selection
+    )
+    panel_model_id <- tryCatch(as.character(panel_model_id %||% "")[1], error = function(e) "")
+    if (is.na(panel_model_id)) panel_model_id <- ""
+
     # Düşünen modellerde gerçek akıl yürütme paneli; düşünmeyen modellerde
     # aynı kabukla sahte faz (simulated) paneli gösterilir.
     thinking_model_active <- tryCatch(
-      is_thinking_model(settings_data$model_selection),
+      is_thinking_model(panel_model_id),
       error = function(e) FALSE
     )
+    # Gerçek reasoning_delta yalnızca "true streaming" yolunda yayılır.
+    # Excel (MCP), özetleme, görsel, SQL analizi ve TTS açık akışlar
+    # non-streaming veya tam metin döndüren yolları kullanır; bu yollarda
+    # panel sahte faz kipinde başlatılır ve akıl yürütme metni (varsa)
+    # yanıt tamamlandığında arşiv olarak kaydedilir.
+    reasoning_will_stream <- isTRUE(settings_data$enable_streaming) &&
+                             !identical(tool_family, "mcp_excel") &&
+                             !identical(tool_family, "sql_analysis") &&
+                             !identical(tool_family, "image") &&
+                             !identical(tool_family, "summarization") &&
+                             !isTRUE(settings_data$enable_tts_audio)
+    panel_simulated <- !isTRUE(thinking_model_active) || !isTRUE(reasoning_will_stream)
     classic_indicator_requested <- isTRUE(settings_data$enable_typing_indicator)
     show_thinking_wrapper <- thinking_model_active || classic_indicator_requested
 
     if (show_thinking_wrapper) {
       removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
 
-      # Panel kabuğu (düşünen veya sahte fazlı düşünmeyen modeller için)
-      # kullanılacağından klasik "Düşünüyorum" halkasını atla: MutationObserver
-      # data-panel-takeover="true" işaretini gördüğünde TypingAnimationManager
-      # devreye girmez ve kabuk boş kalır; istemci tarafı paneli ekler.
+      # Yeni akışta eski halka/snake animasyonu kaldırıldı; burada yalnızca
+      # premium akıl yürütme panelinin yerleşeceği boş bir kabuk oluşturulur.
+      # İstemci tarafı bu kabuğa paneli yerleştirir ve yanıt geldiğinde siler.
       insertUI(
         selector = "#chat_content_container",
         where = "beforeEnd",
@@ -238,9 +260,9 @@ sendMessageInit <- function(
       # simulated=TRUE ise istemci tarafı sahte faz metinleri döndürür ve
       # yanıt akışı başladığı an paneli sönümleyerek kaldırır (DB arşivi yok).
       session$sendCustomMessage("premiumReasoningStart", list(
-        model = settings_data$model_selection %||% "",
+        model = panel_model_id,
         classicFallback = classic_indicator_requested,
-        simulated = !isTRUE(thinking_model_active)
+        simulated = panel_simulated
       ))
     }
 

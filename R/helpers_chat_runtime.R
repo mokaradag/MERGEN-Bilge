@@ -64,7 +64,8 @@ chat_add_message <- function(session, values, settings_data, output,
                              audio_voice = NULL,
                              persist_to_db = TRUE,
                              add_to_saved_chats = TRUE,
-                             include_in_context = TRUE) {
+                             include_in_context = TRUE,
+                             reasoning_content = NULL) {
   if (isTRUE(values$show_welcome)) {
     removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
     values$show_welcome <- FALSE
@@ -97,6 +98,18 @@ chat_add_message <- function(session, values, settings_data, output,
   
   if (!is.null(followups) && length(followups) > 0) {
     new_message$followups <- followups
+  }
+
+  # Akıl yürütme (reasoning) metnini mesaja iliştir; böylece veritabanındaki
+  # MB_Messages.ReasoningContent sütununa düşünen modellerin dahili çıktısı
+  # da yazılabilir (save_message_to_db zaten bu alanı okuyor).
+  if (!is.null(reasoning_content)) {
+    reasoning_txt <- tryCatch(as.character(reasoning_content)[1], error = function(e) "")
+    if (is.character(reasoning_txt) && length(reasoning_txt) == 1 &&
+        !is.na(reasoning_txt) && nzchar(reasoning_txt)) {
+      new_message$reasoning_content <- reasoning_txt
+      new_message$reasoning_trace <- reasoning_txt
+    }
   }
 
   if (isTRUE(persist_to_db) && !is.null(values$current_chat_id)) {
