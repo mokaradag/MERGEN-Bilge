@@ -481,6 +481,19 @@ safe_select_messages_with_reasoning <- function(conn, query_with_reasoning, quer
   tryCatch({
     dbGetQuery(conn, query_with_reasoning, params = params)
   }, error = function(e) {
+    hata <- conditionMessage(e)
+
+    yalnizca_sema_uyumsuzlugu <- grepl(
+      "ReasoningContent|Invalid column name|unknown column|no such column",
+      hata,
+      ignore.case = TRUE
+    )
+
+    if (!isTRUE(yalnizca_sema_uyumsuzlugu)) {
+      stop(e)
+    }
+
+    log_warn("ReasoningContent sütunu bulunamadı; legacy sorguya düşülüyor.")
     dbGetQuery(conn, query_legacy, params = params)
   })
 }
