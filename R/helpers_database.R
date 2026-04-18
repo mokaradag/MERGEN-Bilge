@@ -1160,7 +1160,20 @@ save_message_to_db <- function(chat_id, msg) {
       ))
     )
   }, error = function(e) {
-    # ReasoningContent sütunu henüz eklenmemiş olabilir; eski şemaya düş.
+    hata <- conditionMessage(e)
+
+    yalnizca_sema_uyumsuzlugu <- grepl(
+      "ReasoningContent|Invalid column name|unknown column|no such column",
+      hata,
+      ignore.case = TRUE
+    )
+
+    if (!isTRUE(yalnizca_sema_uyumsuzlugu)) {
+      stop(e)
+    }
+
+    log_warn("ReasoningContent sütunu bulunamadı; legacy mesaj kaydına düşülüyor.")
+
     dbGetQuery(
       conn,
       query_legacy,
