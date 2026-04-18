@@ -734,37 +734,63 @@ format_chat_messages <- function(chat_df) {
   })
 }
 
-load_chat_messages_from_db <- function(chat_id) {
+load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   stopifnot(!is.null(chat_id))
 
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query_with_reasoning <- "
-    SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-           m.MessageType, m.MessageTimestamp, m.MessageOrder, m.ReasoningContent
-    FROM MB_Chats c
-    LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-    WHERE c.ChatID = ?
-    ORDER BY m.MessageOrder ASC
-  "
-  query_legacy <- "
-    SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-           m.MessageType, m.MessageTimestamp, m.MessageOrder
-    FROM MB_Chats c
-    LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-    WHERE c.ChatID = ?
-    ORDER BY m.MessageOrder ASC
-  "
-
   chat_param <- suppressWarnings(as.integer(chat_id))
   if (is.na(chat_param)) {
     chat_param <- chat_id
   }
 
+  if (is.null(user_id)) {
+    query_with_reasoning <- "
+      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+             m.MessageType, m.MessageTimestamp, m.MessageOrder, m.ReasoningContent
+      FROM MB_Chats c
+      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+      WHERE c.ChatID = ?
+      ORDER BY m.MessageOrder ASC
+    "
+    query_legacy <- "
+      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+             m.MessageType, m.MessageTimestamp, m.MessageOrder
+      FROM MB_Chats c
+      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+      WHERE c.ChatID = ?
+      ORDER BY m.MessageOrder ASC
+    "
+    query_params <- list(chat_param)
+  } else {
+    safe_user_id <- suppressWarnings(as.integer(user_id))
+    if (is.na(safe_user_id) || safe_user_id <= 0) {
+      stop("Geçersiz user_id ile sohbet yükleme denendi.")
+    }
+
+    query_with_reasoning <- "
+      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+             m.MessageType, m.MessageTimestamp, m.MessageOrder, m.ReasoningContent
+      FROM MB_Chats c
+      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+      WHERE c.ChatID = ? AND c.UserID = ?
+      ORDER BY m.MessageOrder ASC
+    "
+    query_legacy <- "
+      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+             m.MessageType, m.MessageTimestamp, m.MessageOrder
+      FROM MB_Chats c
+      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+      WHERE c.ChatID = ? AND c.UserID = ?
+      ORDER BY m.MessageOrder ASC
+    "
+    query_params <- list(chat_param, safe_user_id)
+  }
+
   chat_df <- safe_select_messages_with_reasoning(
-    conn, query_with_reasoning, query_legacy, params = list(chat_param)
+    conn, query_with_reasoning, query_legacy, params = query_params
   )
   if (nrow(chat_df) == 0) {
     return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
