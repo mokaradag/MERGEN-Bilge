@@ -65,11 +65,13 @@ MERGEN Bilge aşağıdaki ana yeteneklere sahiptir:
 ### 3.1 Akıllı Sohbet
 Kullanıcı doğal dilde soru sorabilir, açıklama isteyebilir, içerik ürettirebilir ve bir konuşmayı adım adım derinleştirebilir. Yanıtlar gerçek zamanlı akışla gösterilebilir.
 
-Thinking desteği olan modellerde (thinking=TRUE), klasik "yazıyor" göstergesi yerine premium akıl yürütme kartı kullanılır. Bu kartta modelin düşünme durumu, faz geçişleri ve geçen süre daha anlaşılır biçimde sunulur. Akış çıktısı başladığında kart yumuşak biçimde streaming durumuna geçer.
+Thinking desteği olan modellerde (thinking=TRUE), premium akıl yürütme kartı kullanılır. Eski "Düşünüyorum" yılan animasyonu kaldırılmıştır. Bu kartta modelin düşünme durumu, faz geçişleri ve geçen süre daha anlaşılır biçimde sunulur. Akış çıktısı başladığında kart yumuşak biçimde streaming durumuna geçer.
 
-Thinking desteği olmayan modellerde de aynı premium panel kabuğu açılır; ancak sunucudan gerçek `reasoning_delta` gelmediği için istemci tarafında 1.8 saniye aralıklarla sıralı faz metinleri gösterilir: “Soru çözümleniyor”, “Bağlam toplanıyor”, “Yanıt planlanıyor”, “Cevap yazılıyor”.
+Kodlama Desteği ve Excel Analizi gibi düşünme modeline bağlı araçlarda panelde görülen model etiketi, doğrudan seçili modelden değil `tool-resolved model` sonucundan belirlenir.
 
-Canlı düşünce akışı paneli etkin olduğunda, kullanıcı thinking destekli modelin gerçek reasoning metnini token-token takip edebilir. Bu panel daraltılabilir yapıdadır ve yanıt tamamlandığında kaybolmak yerine konuşma balonu içinde arşivlenmiş halde kalabilir. Simulated akışta gerçek düşünce metni olmadığı için panel yanıt akışı başlar başlamaz balona taşınmadan sönümlenerek kaldırılır ve arşive dönmez.
+Thinking desteği olmayan modellerde de aynı premium panel kabuğu açılır; ancak simulated davranış yalnızca akışta gerçek reasoning taşınmayacaksa devreye girer. Sunucudan gerçek `reasoning_delta` gelmediği durumlarda istemci tarafında 1.8 saniye aralıklarla sıralı faz metinleri gösterilir: “Soru çözümleniyor”, “Bağlam toplanıyor”, “Yanıt planlanıyor”, “Cevap yazılıyor”.
+
+Canlı düşünce akışı paneli etkin olduğunda, kullanıcı thinking destekli modelin gerçek reasoning metnini token-token takip edebilir. Bu panel daraltılabilir yapıdadır ve yanıt tamamlandığında kaybolmak yerine konuşma balonu içinde arşivlenmiş halde kalabilir. Non-streaming yolda da reasoning metni worker’dan mesaj kaydına kadar iletilir; bu yüzden düşünen model yanıtlarında `MB_Messages.ReasoningContent` alanı dolu saklanır. Simulated akışta gerçek düşünce metni olmadığı için panel yanıt akışı başlar başlamaz balona taşınmadan sönümlenerek kaldırılır ve arşive dönmez.
 
 ### 3.2 Dosya Analizi
 Excel, PDF, Word, CSV, metin dosyaları ve benzeri içerikler yüklenebilir. Uygulama bu dosyaları:
@@ -200,7 +202,9 @@ Yeni reasoning deneyiminde kullanıcı, düşünme kabiliyetli modellerde iki ka
 - üstte premium reasoning kartı (durum + süre + faz),
 - altta (etkinse) canlı düşünce paneli.
 
-Yeni akışta panel kabuğu hem düşünen hem düşünmeyen model yolunda ortak açılır; klasik "Düşünüyorum" halkası yerine premium panel takeover davranışı kullanılır. `data-panel-takeover="true"` işaretli kabuklarda istemci tarafı klasik typing animasyon üretimini atlar ve flicker engellenir.
+Yeni akışta panel kabuğu hem düşünen hem düşünmeyen model yolunda ortak açılır; premium panel takeover davranışı kullanılır. `data-panel-takeover="true"` işaretli kabuklarda istemci tarafı klasik typing animasyon üretimini atlar ve flicker engellenir. İstemci tarafındaki `sanitizeModelLabel()` savunması panel başlığında `[object Object]` görünmesini engeller.
+
+Panelin alt kenarında sola-sağa akan mor shimmer (`rp-shimmer`) animasyonu aktif durumlarda görünür; tamamlandı/durduruldu/hata durumlarında ve `prefers-reduced-motion` tercihinde otomatik kapanır.
 
 Yanıt tamamlandığında yalnızca gerçek reasoning metni olan içerikler geçmiş yüklemelerinde tekrar görülebilmesi için sistem tarafından kalıcı olarak saklanabilir; simulated faz metinleri kalıcı arşive yazılmaz.
 

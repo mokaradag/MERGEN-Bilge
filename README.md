@@ -159,7 +159,7 @@ Varsayılan karakter **Mergen**’dir.
 
 ## Akıl Yürütme Deneyimi (Thinking=TRUE Modeller)
 
-Thinking yeteneği açık olan modellerde klasik "Düşünüyorum" animasyonu yerine premium bir akıl yürütme katmanı devreye alınır.
+Thinking yeteneği açık olan modellerde premium bir akıl yürütme katmanı devreye alınır. Eski "Düşünüyorum" yılan animasyonu akıştan tamamen kaldırılmıştır (`typing-indicator.css`, `typing_animation.js`, `ui.R` kaydı ve `app_core.js` içindeki eski MutationObserver temizliği).
 
 ### Premium Reasoning Card
 - `premium_reasoning.js` ile yönetilen durum makinesi: `idle → preparing → thinking → streaming → interrupted/error`
@@ -168,7 +168,8 @@ Thinking yeteneği açık olan modellerde klasik "Düşünüyorum" animasyonu ye
 - `FLICKER_GUARD_MS=420` ve `MIN_VISIBLE_MS=1200` kuralları ile hızlı yanıt titremesinin engellenmesi
 - düşünmeden akışa geçerken yumuşak durum geçişi (`premiumReasoningStreamStart`)
 - hata ve durdurma durumlarında ayrı görsel sinyal
-- **`simulated` modu**: Düşünmeyen modellerde de aynı panel kabuğu açılır; sunucudan `reasoning_delta` gelmediği için istemci tarafında 1.8 sn aralıklarla sıralı sahte faz metinleri gösterilir: *Soru çözümleniyor → Bağlam toplanıyor → Yanıt planlanıyor → Cevap yazılıyor*.
+- **Panel model çözümü**: Kodlama Desteği ve Excel Analizi gibi düşünme modeline bağlı araçlarda panelin model etiketi, istemci tarafında doğrudan seçili modelden değil `tool-resolved model` sonucundan hesaplanır.
+- **`simulated` modu**: Yalnızca akışın gerçek reasoning içeriği taşımayacağı senaryolarda devreye girer. Düşünmeyen model akışlarında sunucudan `reasoning_delta` gelmediğinde istemci tarafında 1.8 sn aralıklarla sıralı sahte faz metinleri gösterilir: *Soru çözümleniyor → Bağlam toplanıyor → Yanıt planlanıyor → Cevap yazılıyor*.
 
 ### Canlı Düşünce Akışı Paneli
 - Sahte durum cümleleri yerine modelin gerçek düşünce akışının token-token aktarımı
@@ -178,6 +179,7 @@ Thinking yeteneği açık olan modellerde klasik "Düşünüyorum" animasyonu ye
 
 ### Kalıcılık ve Geçmiş Sohbetler
 - Akıl yürütme metni artık yalnızca yanıt HTML’ine gömülmez; `MB_Messages.ReasoningContent` sütununda da saklanır
+- Non-streaming yolunda da reasoning metni worker çıktısından mesaj kaydına kadar taşınır; düşünen model yanıtlarında `MB_Messages.ReasoningContent` artık dolu kaydedilir
 - Geçmişten yüklenen mesajlarda `ReasoningContent` varsa arşiv bloğu (`<details class="reasoning-block">`) otomatik render edilir
 - Eski şema ile uyumluluk için sütun yoksa sessiz geri dönüş (fallback) korunur
 - Veritabanı geri dönüş davranışı `ReasoningContent` için daha dar ve kontrollü tutulur; kullanıcı bazlı geçmiş yükleme akışları da daha sağlamlaştırılmıştır
@@ -188,6 +190,12 @@ Thinking yeteneği açık olan modellerde klasik "Düşünüyorum" animasyonu ye
 - Sunucudan `simulated` bayrağı (`thinking_model_active` terslenmiş değer) istemciye taşınır
 - Klasik "Düşünüyorum" halkası yerine premium panel devreye girsin diye kabuk `data-panel-takeover="true"` ile işaretlenir ve boş içerikle eklenir
 - `app_core.js` içindeki `MutationObserver`, `data-panel-takeover="true"` işaretli kabukta `TypingAnimationManager.create(...)` çağrısını atlayarak flicker oluşumunu engeller
+- İstemci tarafında `sanitizeModelLabel()` savunması ile panel başlığında `[object Object]` gibi bozuk model etiketleri engellenir
+
+### Görsel Durum Geri Bildirimi (Shimmer)
+- Panel alt kenarındaki sola-sağa akan mor shimmer animasyonu (`rp-shimmer`) yeniden etkinleştirilmiştir
+- Shimmer; `completed`, `interrupted/stopped` ve `error` durumlarında otomatik kapanır
+- `prefers-reduced-motion` tercihinde shimmer devre dışı kalır
 
 ### Şema Geçişi
 ```sql
