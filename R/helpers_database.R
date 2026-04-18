@@ -1083,9 +1083,22 @@ save_message_to_db <- function(chat_id, msg) {
 
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
-  max_order_query <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
-  max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
-  next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
+  next_order_query <- "
+    SELECT ISNULL(MAX(MessageOrder), 0) + 1 AS next_order
+    FROM MB_Messages WITH (UPDLOCK, HOLDLOCK)
+    WHERE ChatID = ?
+  "
+
+  DBI::dbBegin(conn)
+  committed <- FALSE
+  on.exit({
+    if (!committed) {
+      try(DBI::dbRollback(conn), silent = TRUE)
+    }
+  }, add = TRUE)
+
+  next_order <- dbGetQuery(conn, next_order_query, params = list(chat_id))$next_order[1]
+  next_order <- as.integer(next_order %||% 1L)
 
   query_with_reasoning <- "
     INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder, ReasoningContent)
@@ -1118,6 +1131,10 @@ save_message_to_db <- function(chat_id, msg) {
   })
 
   if (nrow(res) == 0) stop("Failed to save message to DB.")
+
+  DBI::dbCommit(conn)
+  committed <- TRUE
+
   return(as.integer(res$MessageID[1]))
 }
 
@@ -1291,10 +1308,27 @@ worker_save_assistant_response <- function(chat_id, response_text,
   })
 
   # compute next order safely
-  max_order_q <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
-  max_order <- tryCatch(DBI::dbGetQuery(conn, max_order_q, params = list(chat_id))$maxord[1],
-                        error = function(e) NA)
-  next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
+  next_order_q <- "
+    SELECT ISNULL(MAX(MessageOrder), 0) + 1 AS next_order
+    FROM MB_Messages WITH (UPDLOCK, HOLDLOCK)
+    WHERE ChatID = ?
+  "
+
+  DBI::dbBegin(conn)
+  committed <- FALSE
+  on.exit({
+    if (!committed) {
+      try(DBI::dbRollback(conn), silent = TRUE)
+    }
+    tryCatch(DBI::dbDisconnect(conn), error = function(e) NULL)
+  })
+
+  next_order <- tryCatch(
+    DBI::dbGetQuery(conn, next_order_q, params = list(chat_id))$next_order[1],
+    error = function(e) NA_integer_
+  )
+  if (is.na(next_order)) next_order <- 1L
+  next_order <- as.integer(next_order)
 
   # FIX: Add 3 hours to timestamp for GMT+3
   timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
@@ -1306,6 +1340,8 @@ worker_save_assistant_response <- function(chat_id, response_text,
   "
   res <- DBI::dbGetQuery(conn, insert_q, params = normalize_db_params(list(chat_id, response_text, message_type, timestamp_gmt3, next_order)))
   response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_
+  DBI::dbCommit(conn)
+  committed <- TRUE
 
   if (isTRUE(log_usage)) {
     tryCatch({
