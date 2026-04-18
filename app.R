@@ -7,38 +7,52 @@
 # Önce mevcut ve çalışan source() yolunu dener.
 # Yalnızca kaynak yükleme encoding/parse hatası verirse kontrollü bir yedek
 # çözüm devreye girer ve dosya farklı kodlamalarla okunup parse edilmeye çalışılır.
+required_boot_files <- c(
+  "R/utils_safe_source.R",
+  "global.R",
+  "ui.R",
+  "server.R"
+)
+
+missing_boot_files <- required_boot_files[!file.exists(required_boot_files)]
+if (length(missing_boot_files) > 0) {
+  stop(sprintf(
+    "Başlatma durduruldu. Eksik dosyalar: %s",
+    paste(missing_boot_files, collapse = ", ")
+  ))
+}
+
 source("R/utils_safe_source.R", encoding = "UTF-8", local = globalenv())
 
-# 1. Global yapılandırmayı ve tüm yardımcı/modül dosyalarını yükle.
-#    Böylece tüm kütüphaneler, fonksiyonlar ve modül tanımları kullanılabilir olur.
-#    global.R ayrıca dokümantasyonun açık olması için safe_source() fonksiyonunu
-#    (aynı kopya) tekrar tanımlar.
 safe_source("global.R", encoding = "UTF-8")
-
-# 2. Kullanıcı arayüzü tanımını yükle.
-#    Bu işlem `ui` nesnesini yükler.
 safe_source("ui.R", encoding = "UTF-8")
-
-# 3. Sunucu (server) mantığını yükle.
-#    Bu işlem `server` fonksiyonunu yükler.
 safe_source("server.R", encoding = "UTF-8")
 
-# 4. www/ alt klasörlerini kaynak yolu olarak kaydet.
-#    "Run App" butonu runApp(appDir) kullanır ve www/ otomatik sunulur.
-#    Ancak Ctrl+Enter ile çalıştırıldığında shinyApp(ui, server) uygulama
-#    dizinini bilmez; bu yüzden www/ kaynakları bulunamaz.
-#    runApp(".") kullanılamaz çünkü:
-#      - app.R'ı tekrar source ederek özyineleme yaratır
-#      - normalizePath ile uzun yolları (>260 karakter) çözemez (Windows VM sorunu)
-#    Çözüm: Her www/ alt klasörünü kendi adıyla kaydet.
-#    Örn: addResourcePath("css", "www/css") → /css/style.css URL'si çalışır.
-for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
-  addResourcePath(subdir, file.path("www", subdir))
+safe_add_resource_path <- function(prefix, directory) {
+  if (!dir.exists(directory)) {
+    warning(sprintf("Kaynak yolu atlandı; klasör bulunamadı: %s", directory))
+    return(invisible(FALSE))
+  }
+
+  withCallingHandlers({
+    shiny::addResourcePath(prefix, directory)
+  }, warning = function(w) {
+    if (grepl("already", conditionMessage(w), ignore.case = TRUE)) {
+      invokeRestart("muffleWarning")
+    }
+  })
+
+  invisible(TRUE)
 }
-# www/ kök dizinindeki dosyalar (mergen_avatar.png, company_logo.png vb.)
-# boş prefix ile kaydedilemez. "img" prefix'i ile www/ kök dizinini kaydet.
-# Kodda bu dosyalar "img/dosya.png" şeklinde referans edilir.
-addResourcePath("img", "www")
+
+if (dir.exists("www")) {
+  for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
+    safe_add_resource_path(subdir, file.path("www", subdir))
+  }
+  safe_add_resource_path("img", "www")
+} else {
+  warning("www klasörü bulunamadı; statik kaynaklar kaydedilmedi.")
+}
 
 # 5. Uygulamayı çalıştır.
 runApp(shinyApp(ui = ui, server = server),
