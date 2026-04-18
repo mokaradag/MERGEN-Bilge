@@ -67,10 +67,10 @@ feedbackServer <- function(id, current_user_id) {
 
     # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
     resolve_current_user_id <- function() {
-      session_uid <- session$userData$user_id %||% NULL
-      uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
-      if (is.na(uid)) uid <- 0L
-      uid
+      resolve_effective_user_id(
+        session = session,
+        current_user_id = current_user_id
+      )
     }
     
     # Hızlı seçim etiketleri

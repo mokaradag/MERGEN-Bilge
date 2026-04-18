@@ -54,8 +54,10 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
   # SSO akışında başlangıçta current_user_id=0 gelebilir.
   # Bu nedenle kullanıcı ID'sini her yükleme anında oturumdan çöz.
   resolve_current_user_id <- function() {
-    session_uid <- session$userData$user_id %||% NULL
-    suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
+    resolve_effective_user_id(
+      session = session,
+      current_user_id = current_user_id
+    )
   }
   
   startup_state <- new.env(parent = emptyenv())

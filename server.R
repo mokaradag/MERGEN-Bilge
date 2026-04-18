@@ -142,7 +142,7 @@ server <- function(input, output, session) {
   # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
 	claudeCodeServer(
 	  "claude_code_module",
-	  current_user_id = current_user_id,
+	  current_user_id = current_user_id_provider,
 	  settings_data = settings_data,
 	  user_first_name = function() {
 		session$userData$user_first_name %||%
@@ -163,7 +163,7 @@ server <- function(input, output, session) {
   # ============================================================================
   # BÖLÜM 5: MEDYA MODÜLLERİ (YZ İŞLEME, TTS, STT, MÜZİK)
   # ============================================================================
-  feedback_modal <- feedbackServer("feedback_module", current_user_id)
+  feedback_modal <- feedbackServer("feedback_module", current_user_id_provider)
   ai_processor <- aiProcessingServer("ai_proc")
   tts_processor <- ttsProcessingServer("tts_proc")
   tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
@@ -268,7 +268,13 @@ server <- function(input, output, session) {
   navigationObserversInit(input, session, values, render_welcome_screen)
   
   # Başlangıç ve oturum ilk yükleme gözlemcilerini başlat (modüler)
-  startupObserversInit(input, session, values, render_welcome_screen, current_user_id)
+	startupObserversInit(
+	  input,
+	  session,
+	  values,
+	  render_welcome_screen,
+	  current_user_id_provider
+	)
 
   # Derin uzay giriş ekranı gözlemcilerini başlat (modüler)
   startupScreenObserversInit(input, session, settings_data)
@@ -293,8 +299,16 @@ server <- function(input, output, session) {
   saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
 
   # Kayıtlı sohbet gözlemcilerini başlat (saved_chats_data artık mevcut)
-  savedChatsObserversInit(input, output, session, values, settings_data,
-                           saved_chats_data, current_user_id, load_chat_in_progress)
+	savedChatsObserversInit(
+	  input,
+	  output,
+	  session,
+	  values,
+	  settings_data,
+	  saved_chats_data,
+	  current_user_id_provider,
+	  load_chat_in_progress
+	)
 
   # Söyleşi içerik arama modülünü başlat
   chatSearchInit(input, session, current_user_id_provider, function(chat_id) {
@@ -409,14 +423,14 @@ server <- function(input, output, session) {
   )
   
   # Sohbet eylemi bağlantıları (beğen/beğenme/yeniden oluştur/düzenle)
-  chatActionsInit(
-    input, session, values,
-    current_user_id      = current_user_id,
-    send_message_fn      = send_message,
-    stop_generation      = stop_generation,
-    reset_chat_state     = reset_chat_state,
-    feedback_modal       = feedback_modal
-  )
+	chatActionsInit(
+	  input, session, values,
+	  current_user_id      = current_user_id_provider,
+	  send_message_fn      = send_message,
+	  stop_generation      = stop_generation,
+	  reset_chat_state     = reset_chat_state,
+	  feedback_modal       = feedback_modal
+	)
                                                      
     generate_title_from_prompt <- chat_runtime$generate_title_from_prompt
     simulate_streaming_stoppable <- chat_runtime$simulate_streaming_stoppable
