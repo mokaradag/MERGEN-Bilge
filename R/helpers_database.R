@@ -703,22 +703,17 @@ format_chat_messages <- function(chat_df) {
       ts_tz <- "UTC"
     }
 
-    # Düşünen modeller için saklanan akıl yürütme metni varsa, geçmişten
-    # açıldığında daraltılabilir <details> arşiv bloğu olarak yanıtın
-    # başına eklenir. Sütun yoksa (eski şema) sessizce atlanır.
-    html_with_reasoning <- processed$html
+    # Düşünen modeller için saklanan akıl yürütme metni ayrı alan olarak
+    # mesaj nesnesine taşınır. <details> arşiv bloğu artık tek noktada,
+    # `render_message_bubble_ui()` içinde oluşturulur. Böylece hem DB'den
+    # yüklenen eski sohbetler hem de aynı oturumda cache'ten yeniden
+    # render edilen mesajlar aynı davranışı paylaşır.
     reasoning_text_saved <- NULL
     if ("ReasoningContent" %in% names(row)) {
       rc_val <- row$ReasoningContent
       if (!is.null(rc_val) && length(rc_val) == 1 &&
           !is.na(rc_val) && nzchar(rc_val)) {
         reasoning_text_saved <- as.character(rc_val)
-        if (exists("build_reasoning_details_block", mode = "function")) {
-          html_with_reasoning <- paste0(
-            build_reasoning_details_block(reasoning_text_saved),
-            html_with_reasoning
-          )
-        }
       }
     }
 
@@ -726,7 +721,7 @@ format_chat_messages <- function(chat_df) {
       id = as.character(row$MessageID),
       db_id = as.integer(row$MessageID),
       content = row$MessageContent,
-      html_content = html_with_reasoning,
+      html_content = processed$html,
       has_code = processed$has_code,
       type = row$MessageType,
       timestamp = format(timestamp_val, "%d.%m.%Y - %H:%M", tz = ts_tz)

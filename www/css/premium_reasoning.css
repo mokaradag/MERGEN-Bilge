@@ -47,9 +47,12 @@
   color: #e6e8ef;
   font-family: inherit;
   overflow: hidden;
-  opacity: 0;
-  transform: translateY(4px);
-  animation: rp-enter 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  /* Başlangıç opaklık/konumu sadece rp-enter keyframe'in 0% karesinde
+     tanımlanır; böylece state değişiminde (örn. "completed" → rp-settle)
+     animation özelliği geçersiz kılındığında panel yok olmaz. */
+  opacity: 1;
+  transform: translateY(0);
+  animation: rp-enter 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
   transition:
     border-color 260ms ease,
     box-shadow 260ms ease,
