@@ -80,6 +80,41 @@
   transition: opacity 260ms ease;
 }
 
+/* Alt kenarda sola-sağa akan mor ışıltı (shimmer) — düşünce süreci canlıyken
+   panelin "çalışıyor" hissini güçlendirir. Hem gerçek (thinking model) hem
+   sahte fazlı (simulated) kullanımda aynı estetiği verir. */
+.reasoning-panel.rp-live::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(139, 92, 246, 0.00) 0%,
+    rgba(139, 92, 246, 0.15) 20%,
+    rgba(167, 139, 250, 0.85) 50%,
+    rgba(139, 92, 246, 0.15) 80%,
+    rgba(139, 92, 246, 0.00) 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: rp-shimmer 2.2s linear infinite;
+  opacity: 0.92;
+  transition: opacity 320ms ease;
+  z-index: 1;
+}
+
+/* Tamamlandı / durduruldu / hata durumlarında shimmer'ı kapat */
+.reasoning-panel.rp-live[data-state="completed"]::after,
+.reasoning-panel.rp-live[data-state="interrupted"]::after,
+.reasoning-panel.rp-live[data-state="error"]::after {
+  animation: none;
+  opacity: 0;
+}
+
 /* Canlı durumda panelde nefes alan yumuşak parıltı */
 .reasoning-panel.rp-live[data-state="live"] {
   animation:
@@ -544,6 +579,12 @@
   50%      { transform: scale(1.25); opacity: 0.72; }
 }
 
+/* Alt shimmer barı için sola-sağa kayan arkaplan pozisyonu */
+@keyframes rp-shimmer {
+  0%   { background-position: -110% 0; }
+  100% { background-position: 110% 0;  }
+}
+
 /* ------------------------------------------------------------
  * 10. Erişilebilirlik ve küçük ekranlar
  * ------------------------------------------------------------ */
@@ -551,6 +592,10 @@
   .reasoning-panel.rp-live,
   .reasoning-panel.rp-live[data-state="live"] {
     animation: rp-enter 180ms ease forwards !important;
+  }
+  .reasoning-panel.rp-live::after {
+    animation: none !important;
+    opacity: 0.35 !important;
   }
   .rp-pulse,
   .rp-caret,

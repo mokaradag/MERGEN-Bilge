@@ -19,7 +19,8 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
   # Oturumun etkin kullanıcı kimliği ile mesaj ekleyen yardımcı
   # ---------------------------------------------------------------------------
   add_message <- function(content, type = "user", html = NULL, followups = NULL,
-                          audio_src = NULL, audio_voice = NULL) {
+                          audio_src = NULL, audio_voice = NULL,
+                          reasoning_content = NULL) {
 
     effective_user_id <- resolve_current_user_id()
 
@@ -34,7 +35,8 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
       current_user_id = effective_user_id,
       followups = followups,
       audio_src = audio_src,
-      audio_voice = audio_voice
+      audio_voice = audio_voice,
+      reasoning_content = reasoning_content
     )
   }
 

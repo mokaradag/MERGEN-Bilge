@@ -71,21 +71,14 @@ $(document).ready(function() {
         if (!(node instanceof HTMLElement)) return;
 
         if (node.id === 'typing-animation-wrapper') {
-          // Panel kabuğu devralacaksa klasik "Düşünüyorum" animasyonunu atla.
-          if (node.getAttribute('data-panel-takeover') !== 'true') {
-            TypingAnimationManager.create(node);
-          }
+          // Yeni tasarımda "typing-animation-wrapper" yalnızca premium
+          // akıl yürütme panelinin yerleşeceği kabuk olarak kullanılır;
+          // klasik halka/snake animasyonu tamamen kaldırıldı.
           shouldScroll = true;
         } else if (node.classList.contains('message-bubble')) {
           const wrapper = node.closest('[id^="message_wrapper_"]');
           if (wrapper) updateMessageWrappersForWidescreen(wrapper);
           shouldScroll = true;
-        }
-      });
-
-      m.removedNodes && m.removedNodes.forEach(node => {
-        if (node instanceof HTMLElement && node.id === 'typing-animation-wrapper') {
-          TypingAnimationManager.destroy();
         }
       });
     });
@@ -145,7 +138,6 @@ $(document).ready(function() {
       globalMessageObserver.disconnect();
       globalMessageObserver = null;
     }
-    TypingAnimationManager.destroy();
     if (window.pendingTimeouts) {
       window.pendingTimeouts.forEach(clearTimeout);
     }

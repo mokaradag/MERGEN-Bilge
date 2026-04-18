@@ -182,9 +182,23 @@ llmResponseHandlersInit <- function(
             fallback_followup_tool
           )
  
+          # Worker tarafında toplanan akıl yürütme (reasoning) metnini çıkar;
+          # MB_Messages.ReasoningContent sütununa düşen veri bu alandır.
+          reasoning_for_db <- tryCatch({
+            raw_reason <- result$reasoning_content
+            if (is.null(raw_reason)) {
+              NULL
+            } else {
+              txt <- as.character(raw_reason)[1]
+              if (is.na(txt) || !nzchar(txt)) NULL else txt
+            }
+          }, error = function(e) NULL)
+
           # AI mesajını ekle
           tryCatch({
-            ai_msg <- add_message_fn(result$content, "ai", followups = followup_questions)
+            ai_msg <- add_message_fn(result$content, "ai",
+                                     followups = followup_questions,
+                                     reasoning_content = reasoning_for_db)
           }, error = function(e) {
             cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
             cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")

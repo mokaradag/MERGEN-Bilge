@@ -240,6 +240,36 @@
     return panel;
   }
 
+  // Sunucudan gelebilecek karmaşık yapıların (ör. liste/obje) "[object Object]"
+  // olarak görünmesini engelleyen savunmacı bir coerce fonksiyonu. Düşünce Akışı
+  // başlığında yalnızca düz metin model etiketi gösterilir.
+  function sanitizeModelLabel(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") {
+      var trimmed = value.trim();
+      if (!trimmed || trimmed === "[object Object]") return "";
+      return trimmed;
+    }
+    if (Array.isArray(value)) {
+      return sanitizeModelLabel(value[0]);
+    }
+    if (typeof value === "object") {
+      // Yaygın adlandırmaları kontrol et.
+      if (typeof value.name === "string") return sanitizeModelLabel(value.name);
+      if (typeof value.label === "string") return sanitizeModelLabel(value.label);
+      if (typeof value.value === "string") return sanitizeModelLabel(value.value);
+      if (typeof value.id === "string") return sanitizeModelLabel(value.id);
+      return "";
+    }
+    try {
+      var coerced = String(value);
+      if (coerced === "[object Object]") return "";
+      return coerced;
+    } catch (e) {
+      return "";
+    }
+  }
+
   function start(config) {
     cleanup(true);
     state = "preparing";
@@ -247,7 +277,7 @@
     reasoningBuffer = "";
     firstReasoningAt = null;
     userScrolledReasoningUp = false;
-    model = (config && config.model) || "";
+    model = sanitizeModelLabel(config && config.model);
     simulatedMode = !!(config && config.simulated);
     simulatedPhaseIndex = 0;
     startedAt = Date.now();

@@ -154,6 +154,7 @@ normalize_llm_scalar_content <- function(ai_content) {
 extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
   text_bundle <- extract_llm_text_bundle(response_content)
   ai_content <- text_bundle$content
+  reasoning_text <- text_bundle$reasoning %||% ""
   sources_list <- NULL
 
   if (!nzchar(ai_content) && should_allow_reasoning_fallback(model_id)) {
@@ -227,7 +228,8 @@ extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
 
   list(
     content = normalize_llm_scalar_content(ai_content),
-    sources = sources_list
+    sources = sources_list,
+    reasoning = enc2utf8(reasoning_text %||% "")
   )
 }
 
