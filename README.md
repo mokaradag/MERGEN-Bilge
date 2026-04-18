@@ -61,11 +61,15 @@ Ana sohbet ekranıdır. Kullanıcı burada:
 - sesli giriş kullanabilir,
 - görsel üretim, özetleme veya analiz odaklı kontrolleri aktif olarak kullanabilir.
 
+Ana Söyleşi hoş geldin ekranında ayrıca **Son Konuşmalar** bölümü bulunur. Bu bölüm, en son **aktif olan** 3 söyleşiyi gösterir; kullanıcı "Yeni Söyleşi" ile yeni akışa geçtiğinde az önce tamamlanan söyleşi hoş geldin ekranına dönüldüğünde beklemeden bu listede görünür. Sıralama, oluşturulma zamanından ziyade söyleşi aktivitesine göre yapılır.
+
 ### Söyleşi Yönetimi
 Üç alt bölümden oluşur:
 - **Söyleşi Geçmişi**
 - **Kayıtlı Söyleşiler**
 - **Görsel Galerisi**
+
+Bu akışlar kullanıcı bazlı veri ayrımıyla çalışır. Eski bir söyleşi yeniden aktif kullanıldığında, son aktiviteye göre son listelere tekrar yukarı taşınabilir.
 
 ### Bilge Yolaç
 Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfasıdır. Klasör seçimi, senaryo şablonları, model katmanları ve canlı akışlı araç kullanım görünümü içerir.
@@ -174,6 +178,7 @@ Thinking yeteneği açık olan modellerde klasik "Düşünüyorum" animasyonu ye
 - Akıl yürütme metni artık yalnızca yanıt HTML’ine gömülmez; `MB_Messages.ReasoningContent` sütununda da saklanır
 - Geçmişten yüklenen mesajlarda `ReasoningContent` varsa arşiv bloğu (`<details class="reasoning-block">`) otomatik render edilir
 - Eski şema ile uyumluluk için sütun yoksa sessiz geri dönüş (fallback) korunur
+- Veritabanı geri dönüş davranışı `ReasoningContent` için daha dar ve kontrollü tutulur; kullanıcı bazlı geçmiş yükleme akışları da daha sağlamlaştırılmıştır
 
 ### Şema Geçişi
 ```sql
@@ -209,7 +214,7 @@ Arayüzün omurgasıdır. Şunları tanımlar:
 - gizli yardımcı input/output alanları
 
 ### `server.R`
-Sunucu mantığının ana birleşim ve bağlama noktasıdır. Ancak artık tüm kurulum ayrıntılarını tek başına taşımaz; bazı başlangıç ve yardımcı kurulumları `R/server_init_*.R` dosyalarına ayrılmıştır.
+Sunucu mantığının ana birleşim ve bağlama noktasıdır. Ancak artık tüm kurulum ayrıntılarını tek başına taşımaz; bazı başlangıç ve yardımcı kurulumları `R/server_init_*.R` dosyalarına ayrılmıştır. Sohbet sıfırlama/geçiş akışlarında hoş geldin ekranı yeniden çizilmeden önce kayıtlı söyleşi meta verisinin yenilenmesi, Son Konuşmalar listesinin güncel kalması için korunur.
 
 `server.R` başlıca şunları koordine eder:
 - oturum başlatma
@@ -225,6 +230,7 @@ Sunucu mantığının ana birleşim ve bağlama noktasıdır. Ancak artık tüm 
 - modüller arası bağlama ve son fonksiyon kayıtları
 
 Amaç, `server.R` dosyasını iş mantığının tek sahibi yapmak değil; uygulamanın **composition root** katmanı olarak temiz ve okunabilir tutmaktır.
+Recency odaklı UI bileşenlerinde uygun olduğunda çıplak oluşturulma zamanı yerine `last_message_timestamp` önceliklendirilir (`timestamp` yalnızca geri dönüş alanıdır).
 
 ---
 
@@ -283,7 +289,7 @@ Amaç, `server.R` dosyasını iş mantığının tek sahibi yapmak değil; uygul
 - Bilge Yolaç modülleri
 
 ### 7. Sunucu işleyicileri, init yardımcıları ve observer katmanı
-Bu katman, `server.R` içindeki bağlama yükünü azaltmak için kullanılan yardımcı kurulum dosyalarını, işleyicileri ve observer kayıtlarını içerir.
+Bu katman, `server.R` içindeki bağlama yükünü azaltmak için kullanılan yardımcı kurulum dosyalarını, işleyicileri ve observer kayıtlarını içerir. Özellikle sohbetten hoş geldin ekranına dönüşlerde kayıtlı söyleşi metadatası önce yenilenir, ardından ekran yeniden çizilir; böylece Son Konuşmalar görünümü stale kalmaz ve "bir adım geriden gelme" problemi önlenir.
 
 - `R/server_session_cache.R`
 - `R/server_init_forward_refs.R`
