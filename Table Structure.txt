@@ -44,6 +44,7 @@ Bu ana tablo, tüm konuşmalardaki kullanıcı ve yapay zeka tarafından oluştu
 | `MessageType` | `NVARCHAR(50)` | Mesajın türü, örn. 'user', 'ai', 'system'. | |
 | `MessageTimestamp`| `DATETIME` | Mesajın oluşturulduğu zaman damgası. | |
 | `MessageOrder` | `INT` | Bir sohbet içindeki mesajların doğru sırasını korumak için bir numara. | Konuşmaları yeniden oluşturmak için gereklidir. |
+| `ReasoningContent` | `NVARCHAR(MAX)` | Thinking modellerinde üretilen akıl yürütme/düşünce akışının kalıcı içeriği. | Opsiyonel, NULL olabilir. Canlı panel ve geçmiş arşiv render’ı için kullanılır. |
 
 #### 4. `MB_Feedback`
 Bu tablo, belirli yapay zeka mesajlarına kullanıcılar tarafından yapılan geri bildirimleri (beğenme/beğenmeme) izler. Genişletilmiş sürüm etiket, yorum ve zaman damgası bilgilerini de içerir.
@@ -129,3 +130,16 @@ Tablolar mantıksal bir hiyerarşi içinde birbirine bağlıdır:
 * **`MB_Messages`** `1` <--> `1` **`MB_Usage_Log`** (Bir kullanıcı istemi mesajı, bir yapay zeka kullanım günlüğü girdisiyle sonuçlanır).
 * **`MB_Users`** `1` <--> `*` **`MB_Destek_Geri_Bildirim`** (Bir kullanıcı birden fazla geri bildirim gönderebilir).
 * **`MB_Users`** `1` <--> `*` **`MB_Destek_Hata_Bildir`** (Bir kullanıcı birden fazla hata bildirimi yapabilir).
+
+---
+### Şema Geçiş Notu (Reasoning Kalıcılığı)
+
+Thinking modellerinde reasoning içeriğinin mesajdan bağımsız kalıcı tutulması için aşağıdaki DDL uygulanmalıdır:
+
+```sql
+ALTER TABLE MB_Messages ADD ReasoningContent NVARCHAR(MAX) NULL;
+```
+
+Geriye dönük uyumluluk yaklaşımı:
+- `ReasoningContent` olmayan eski şemalarda uygulama sessiz fallback ile çalışmaya devam etmelidir.
+- Yeni kayıtlarda canlı düşünce akışı tamamlandığında içerik bu sütuna yazılır.

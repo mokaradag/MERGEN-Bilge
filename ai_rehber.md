@@ -65,6 +65,10 @@ MERGEN Bilge aşağıdaki ana yeteneklere sahiptir:
 ### 3.1 Akıllı Sohbet
 Kullanıcı doğal dilde soru sorabilir, açıklama isteyebilir, içerik ürettirebilir ve bir konuşmayı adım adım derinleştirebilir. Yanıtlar gerçek zamanlı akışla gösterilebilir.
 
+Thinking desteği olan modellerde (thinking=TRUE), klasik "yazıyor" göstergesi yerine premium akıl yürütme kartı kullanılır. Bu kartta modelin düşünme durumu, faz geçişleri ve geçen süre daha anlaşılır biçimde sunulur. Akış çıktısı başladığında kart yumuşak biçimde streaming durumuna geçer.
+
+Canlı düşünce akışı paneli etkin olduğunda, kullanıcı modelin gerçek reasoning metnini token-token takip edebilir. Bu panel daraltılabilir yapıdadır ve yanıt tamamlandığında kaybolmak yerine konuşma balonu içinde arşivlenmiş halde kalabilir.
+
 ### 3.2 Dosya Analizi
 Excel, PDF, Word, CSV, metin dosyaları ve benzeri içerikler yüklenebilir. Uygulama bu dosyaları:
 - özetleyebilir,
@@ -189,6 +193,12 @@ Bu sayfada ayrıca bazı araçlara özel küçük kontrol alanları bulunabilir:
 - görsel oluşturma için boyut ve HD seçenekleri,
 - özetleme için detay seviyesi ve odak modu,
 - analiz için derin düşünme ve detay seçimi.
+
+Yeni reasoning deneyiminde kullanıcı, düşünme kabiliyetli modellerde iki katman görür:
+- üstte premium reasoning kartı (durum + süre + faz),
+- altta (etkinse) canlı düşünce paneli.
+
+Yanıt tamamlandığında düşünce içeriği geçmiş yüklemelerinde de tekrar görülebilmesi için sistem tarafından kalıcı olarak saklanabilir.
 
 AI Uzman bu sayfayı anlatırken, kullanıcının yalnızca soru sormakla sınırlı olmadığını; dosya, model ve araç temelli kullanım biçimlerine de sahip olduğunu vurgulamalıdır.
 
