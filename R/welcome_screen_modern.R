@@ -124,13 +124,29 @@ create_modern_preview_button <- function(chat_data) {
 }
 
 createModernRecentChatsSection <- function(saved_chats) {
+
+  resolve_recent_chat_timestamp <- function(chat) {
+    stamp <- chat$last_message_timestamp %||% chat$timestamp %||% NA
+
+    if (inherits(stamp, "POSIXt")) {
+      return(as.POSIXct(stamp))
+    }
+
+    if (is.character(stamp) && nzchar(stamp)) {
+      parsed <- suppressWarnings(as.POSIXct(stamp, tz = "UTC"))
+      if (!is.na(parsed)) {
+        return(parsed)
+      }
+    }
+
+    as.POSIXct(NA)
+  }
+
   recent_chats <- if (length(saved_chats) > 0) {
     sorted_chats <- Filter(Negate(is.null), saved_chats)
     if (length(sorted_chats) > 0) {
-      timestamps <- sapply(sorted_chats, function(x) {
-        if (inherits(x$timestamp, "POSIXct")) x$timestamp else as.POSIXct(NA)
-      })
-      sorted_chats[order(timestamps, decreasing = TRUE)]
+      timestamps <- sapply(sorted_chats, resolve_recent_chat_timestamp)
+      sorted_chats[order(timestamps, decreasing = TRUE, na.last = TRUE)]
     } else {
       list()
     }
@@ -159,8 +175,9 @@ createModernRecentChatsSection <- function(saved_chats) {
       }
 
       time_text <- tryCatch({
-        if (inherits(chat$timestamp, "POSIXct")) {
-          format(chat$timestamp, "%d.%m.%Y")
+        recent_stamp <- resolve_recent_chat_timestamp(chat)
+        if (inherits(recent_stamp, "POSIXt") && !is.na(recent_stamp)) {
+          format(recent_stamp, "%d.%m.%Y")
         } else {
           "..."
         }

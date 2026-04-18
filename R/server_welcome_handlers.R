@@ -33,6 +33,13 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 
     deger %||% ""
   }
+  
+  resolve_current_user_id <- function() {
+    resolve_effective_user_id(
+      session = session,
+      current_user_id = current_user_id
+    )
+  }
  
   # Hoş geldin ekranını render et
   # Bu fonksiyon welcome ekranını oluşturur ve animasyonları başlatır
@@ -143,15 +150,37 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
     # Welcome ekranını aktif et
     values$show_welcome <- TRUE
     values$messages <- list()
- 
+
+    # Welcome ekranına dönmeden hemen önce kayıtlı sohbet listesini
+    # veritabanından yeniden al. Böylece son tamamlanan sohbet
+    # "Son Konuşmalar" bölümünde eksiksiz görünür.
+    effective_user_id <- resolve_current_user_id()
+
+    if (!is.na(effective_user_id) && effective_user_id > 0) {
+      latest_saved_chats <- tryCatch(
+        load_chats_from_db(effective_user_id, include_messages = FALSE),
+        error = function(e) {
+          log_warn("[WELCOME] Kayıtlı sohbetler yenilenemedi: {e$message}")
+          values$saved_chats %||% list()
+        }
+      )
+
+      if (is.list(latest_saved_chats)) {
+        values$saved_chats <- latest_saved_chats
+      }
+    }
+
     # Tamamen temizle ve yeniden render et
     shinyjs::runjs("
       $('#welcome_fullscreen_container').empty().removeClass('hidden').show();
       $('#chat_content_container').empty().hide();
     ")
- 
-    # Yeni welcome ekranını render et
+
+    # Yeni welcome ekranını güncel sohbet listesi ile render et
     render_welcome_screen(values$saved_chats, replace_existing = TRUE)
+
+    # Kayıtlı Söyleşiler modülünün kendi görünümünü de taze tut
+    try(saved_chats_data$refresh(), silent = TRUE)
  
     # Müzik bağlam geçişi kaldırıldı - yeni mimaride müzik kesintisiz çalar
   }
