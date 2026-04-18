@@ -41,8 +41,21 @@ historyUI <- function(id) {
   )
 }
 
-historyServer <- function(id, all_messages) {
+historyServer <- function(id, all_messages, current_user_id = NULL) {
   moduleServer(id, function(input, output, session) {
+  
+    resolve_current_user_id <- function() {
+      uid <- if (is.function(current_user_id)) {
+        tryCatch(current_user_id(), error = function(e) NULL)
+      } else {
+        current_user_id
+      }
+
+      session_uid <- session$userData$user_id %||% NULL
+      uid <- suppressWarnings(as.integer(session_uid %||% uid %||% 0L))
+      if (is.na(uid)) uid <- 0L
+      uid
+    }
     
     trigger_refresh <- reactiveVal(0)
 	messages_cache <- reactiveVal(list())
@@ -118,7 +131,14 @@ historyServer <- function(id, all_messages) {
       }
 
       if (length(to_fetch) > 0) {
-        fetched <- try(load_history_rows_batch(to_fetch), silent = TRUE)
+        fetched <- try(
+          load_history_rows_batch(
+            to_fetch,
+            user_id = resolve_current_user_id()
+          ),
+          silent = TRUE
+        )
+		
         if (inherits(fetched, "try-error") || length(fetched) == 0) {
           for (chat_id in to_fetch) {
             cache[[chat_id]] <- list(rows = list(), stamp = stamp_map[[chat_id]])

@@ -935,7 +935,7 @@ load_chat_messages_batch <- function(chat_ids) {
 }
 
 # Lightweight history fetch: return paired user/assistant rows per chat
-load_history_rows_batch <- function(chat_ids) {
+load_history_rows_batch <- function(chat_ids, user_id = NULL) {
   if (is.null(chat_ids) || length(chat_ids) == 0) {
     return(list())
   }
@@ -957,36 +957,76 @@ load_history_rows_batch <- function(chat_ids) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query <- paste0(
-    "WITH filtered AS (",
-    "  SELECT c.ChatID, c.ChatTitle, m.MessageID, m.MessageContent, m.MessageType, ",
-    "         m.MessageTimestamp, m.MessageOrder ",
-    "    FROM MB_Chats c ",
-    "    INNER JOIN MB_Messages m ON c.ChatID = m.ChatID ",
-    "   WHERE c.ChatID IN (", placeholder, ")",
-    "), ",
-    "user_msgs AS (",
-    "  SELECT ChatID, ChatTitle, MessageContent, MessageTimestamp, ",
-    "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
-    "    FROM filtered ",
-    "   WHERE MessageType = 'user'",
-    "), ",
-    "assistant_msgs AS (",
-    "  SELECT ChatID, MessageContent, ",
-    "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
-    "    FROM filtered ",
-    "   WHERE MessageType IN ('ai', 'assistant')",
-    ") ",
-    "SELECT u.ChatID, u.ChatTitle, u.MessageTimestamp, ",
-    "       LEFT(u.MessageContent, 100) AS Soru, ",
-    "       LEFT(a.MessageContent, 100) AS Cevap, ",
-    "       u.rn AS PairOrder ",
-    "  FROM user_msgs u ",
-    "  INNER JOIN assistant_msgs a ",
-    "          ON a.ChatID = u.ChatID ",
-    "         AND a.rn = u.rn ",
-    " ORDER BY u.ChatID ASC, u.rn ASC"
-  )
+  if (is.null(user_id)) {
+    query <- paste0(
+      "WITH filtered AS (",
+      "  SELECT c.ChatID, c.ChatTitle, m.MessageID, m.MessageContent, m.MessageType, ",
+      "         m.MessageTimestamp, m.MessageOrder ",
+      "    FROM MB_Chats c ",
+      "    INNER JOIN MB_Messages m ON c.ChatID = m.ChatID ",
+      "   WHERE c.ChatID IN (", placeholder, ")",
+      "), ",
+      "user_msgs AS (",
+      "  SELECT ChatID, ChatTitle, MessageContent, MessageTimestamp, ",
+      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
+      "    FROM filtered ",
+      "   WHERE MessageType = 'user'",
+      "), ",
+      "assistant_msgs AS (",
+      "  SELECT ChatID, MessageContent, ",
+      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
+      "    FROM filtered ",
+      "   WHERE MessageType IN ('ai', 'assistant')",
+      ") ",
+      "SELECT u.ChatID, u.ChatTitle, u.MessageTimestamp, ",
+      "       LEFT(u.MessageContent, 100) AS Soru, ",
+      "       LEFT(a.MessageContent, 100) AS Cevap, ",
+      "       u.rn AS PairOrder ",
+      "  FROM user_msgs u ",
+      "  INNER JOIN assistant_msgs a ",
+      "          ON a.ChatID = u.ChatID ",
+      "         AND a.rn = u.rn ",
+      " ORDER BY u.ChatID ASC, u.rn ASC"
+    )
+  } else {
+    safe_user_id <- suppressWarnings(as.integer(user_id))
+    if (is.na(safe_user_id) || safe_user_id <= 0) {
+      stop("Geçersiz user_id ile geçmiş yükleme denendi.")
+    }
+
+    query <- paste0(
+      "WITH filtered AS (",
+      "  SELECT c.ChatID, c.ChatTitle, m.MessageID, m.MessageContent, m.MessageType, ",
+      "         m.MessageTimestamp, m.MessageOrder ",
+      "    FROM MB_Chats c ",
+      "    INNER JOIN MB_Messages m ON c.ChatID = m.ChatID ",
+      "   WHERE c.ChatID IN (", placeholder, ") AND c.UserID = ?",
+      "), ",
+      "user_msgs AS (",
+      "  SELECT ChatID, ChatTitle, MessageContent, MessageTimestamp, ",
+      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
+      "    FROM filtered ",
+      "   WHERE MessageType = 'user'",
+      "), ",
+      "assistant_msgs AS (",
+      "  SELECT ChatID, MessageContent, ",
+      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
+      "    FROM filtered ",
+      "   WHERE MessageType IN ('ai', 'assistant')",
+      ") ",
+      "SELECT u.ChatID, u.ChatTitle, u.MessageTimestamp, ",
+      "       LEFT(u.MessageContent, 100) AS Soru, ",
+      "       LEFT(a.MessageContent, 100) AS Cevap, ",
+      "       u.rn AS PairOrder ",
+      "  FROM user_msgs u ",
+      "  INNER JOIN assistant_msgs a ",
+      "          ON a.ChatID = u.ChatID ",
+      "         AND a.rn = u.rn ",
+      " ORDER BY u.ChatID ASC, u.rn ASC"
+    )
+
+    param_values <- c(param_values, list(safe_user_id))
+  }
 
   result <- dbGetQuery(conn, query, params = param_values)
 
