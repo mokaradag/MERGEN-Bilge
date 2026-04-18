@@ -70,6 +70,11 @@ Do not answer vaguely.
 ### 7) Preserve existing UX wording
 User-facing strings are mostly Turkish and intentionally stylized. Avoid rewriting labels unless required.
 
+### 7A) Prefer canonical identity resolution helpers
+When resolving effective user/session identity, prefer shared canonical helpers (for example `resolve_effective_user_id(...)`) instead of copy-pasted local resolver variants.
+
+Avoid re-implementing local `resolve_current_user_id()` snippets unless there is a compelling, scoped reason. In this repo, SSO timing regressions often come from duplicated identity-resolution code paths drifting apart.
+
 ### 8) Async jobs visible in health metrics must use tracked wrapper
 For application-monitored async flows, do not use raw `future_promise(...)` directly.
 
@@ -448,7 +453,7 @@ User-facing and system-facing modules.
 - `R/module_chartlab.R`
 
 ### Group 7 - Server-side Handlers and Observers
-Wiring and runtime flow:
+Wiring and runtime flow. Welcome recency correctness depends on **both** refresh timing (saved chats refreshed before welcome re-render) and recency sorting semantics (`last_message_timestamp` preference):
 
 - `R/server_session_cache.R`
 - `R/server_init_forward_refs.R`
@@ -1373,6 +1378,14 @@ If editing the prepared intro message helper:
 ### 6) Saved-chat restore
 Loading a saved chat can accidentally route the user back into a stale welcome state if observers are wired incorrectly.
 
+### 6A) Welcome recency invariants
+- Welcome recent list represents most-recent **activity**, not just creation time.
+- On transitions like `Yeni Söyleşi`, saved chat state must be refreshed before welcome re-render.
+- Recency ordering should prefer `last_message_timestamp` and use creation timestamp only as fallback.
+
+### 6B) Saved-chat state freshness regressions
+Watch for divergence between in-memory `values$saved_chats` and DB-backed truth. This is a known source of top-3 recent chat regressions and the welcome screen being “one behind” when refresh ordering is changed incorrectly.
+
 ### 7) Streaming handlers
 The chat stream and Bilge Yolaç stream both have fragile incremental rendering paths. Small output-format changes can break UI rendering.
 
@@ -1500,6 +1513,7 @@ After changing anything non-trivial, test:
 - stream response,
 - follow-up actions render,
 - export/copy still works.
+- regression check: finish a chat, click `Yeni Söyleşi`, and verify the just-finished chat appears immediately in welcome recent top-3 without manual refresh.
 
 ### Audio
 - TTS still plays,

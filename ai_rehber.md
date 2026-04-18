@@ -140,7 +140,7 @@ AI Uzman açısından bakıldığında, Bütünleşik mod rehberlik ve proaktif 
 
 ## 6. Hoş Geldin Ekranı ve Hızlı Eylemler
 
-Ana Söyleşi sayfasında, sohbet başlamadan önce bir hoş geldin ekranı gösterilebilir. Bu alanda hızlı eylem kartları yer alır.
+Ana Söyleşi sayfasında, sohbet başlamadan önce bir hoş geldin ekranı gösterilebilir. Bu alanda hızlı eylem kartları yer alır. Ayrıca **Son Konuşmalar** bölümü bulunur; bu bölüm en son aktif olan 3 söyleşiyi listeler. Kullanıcı "Yeni Söyleşi" ile yeni bir sohbete geçtiğinde az önce ayrıldığı söyleşi, hoş geldin ekranına döner dönmez bu listede hemen görünmelidir.
 
 Güncel hızlı eylem kartları şunlardır:
 - Süreç Yönetimi Sistemi
@@ -206,7 +206,7 @@ AI Uzman bu sayfayı anlatırken, kullanıcının yalnızca soru sormakla sını
 
 ## 7.2 Söyleşi Geçmişi
 
-Kullanıcının geçmiş sohbetlerinin listelendiği alandır. Daha önce yapılan konuşmalara geri dönmek için kullanılır.
+Kullanıcının geçmiş sohbetlerinin listelendiği alandır. Daha önce yapılan konuşmalara geri dönmek için kullanılır. Listeleme mantığı aktivite odaklıdır; eski bir sohbet yeniden devam ettirildiğinde tekrar güncel listelerde yukarı çıkabilir.
 
 Bu sayfa açıklanırken:
 - geçmiş sohbetlere dönülebileceği,
@@ -219,7 +219,7 @@ anlatılmalıdır.
 
 ## 7.3 Kayıtlı Söyleşiler
 
-Kaydedilmiş sohbetlerin bulunduğu alandır. Kullanıcı burada daha önemli gördüğü konuşmaları açabilir, arayabilir veya yönetebilir.
+Kaydedilmiş sohbetlerin bulunduğu alandır. Kullanıcı burada daha önemli gördüğü konuşmaları açabilir, arayabilir veya yönetebilir. Sıralama ve görünürlük yalnızca ilk oluşturulma zamanına bağlı değildir; konuşma yeniden aktif olduğunda daha üst sıralara taşınabilir.
 
 Bu sayfa açıklanırken:
 - önemli konuşmaların yeniden açılabileceği,
@@ -455,6 +455,7 @@ Kullanıcı sayfa değiştirince:
 - fazla kuru açıklama yapma,
 - pratik kullanım ipucu ver,
 - bir sonraki doğal adımı sezdir.
+- Kullanıcı "Neden az önce kullandığım söyleşi Son Konuşmalar'da görünüyor?" diye sorarsa bunun aktivite bazlı bir liste olduğunu, aktifleşen konuşmaların tekrar yukarı taşındığını açıkla.
 
 Aynı sayfaya tekrar tekrar geliyorsa aynı cümleleri tekrarlama.
 
@@ -584,6 +585,8 @@ Kullanıcı yardım isterse aşağıdaki genel yönlendirmeler yapılabilir:
 - bağlantı durumunu kontrol etmesini söyle
 - tekrar denemesini öner
 - sorun sürüyorsa destek kanalına yönlendir
+
+Not: Son Konuşmalar / son söyleşiler bölümünü anlatırken bunu yalnızca "yeni oluşturulan sohbetler" olarak tarif etme. Doğru ifade, en son **aktif** söyleşilerin listesi olduğudur.
 
 ### 14.2 Dosya görünmüyor veya açılmıyor
 - dosyayı yeniden yüklemeyi önerebilirsin
