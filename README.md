@@ -168,17 +168,26 @@ Thinking yeteneği açık olan modellerde klasik "Düşünüyorum" animasyonu ye
 - `FLICKER_GUARD_MS=420` ve `MIN_VISIBLE_MS=1200` kuralları ile hızlı yanıt titremesinin engellenmesi
 - düşünmeden akışa geçerken yumuşak durum geçişi (`premiumReasoningStreamStart`)
 - hata ve durdurma durumlarında ayrı görsel sinyal
+- **`simulated` modu**: Düşünmeyen modellerde de aynı panel kabuğu açılır; sunucudan `reasoning_delta` gelmediği için istemci tarafında 1.8 sn aralıklarla sıralı sahte faz metinleri gösterilir: *Soru çözümleniyor → Bağlam toplanıyor → Yanıt planlanıyor → Cevap yazılıyor*.
 
 ### Canlı Düşünce Akışı Paneli
 - Sahte durum cümleleri yerine modelin gerçek düşünce akışının token-token aktarımı
 - Daraltılabilir ve iç kaydırmalı panel yapısı
 - `completed/interrupted` sonrasında panelin balon içinde kalıcı görünümü
+- Düşünmeyen modelde yanıt akışı başlar başlamaz panel balona taşınmaz; sönümlenerek kaldırılır
 
 ### Kalıcılık ve Geçmiş Sohbetler
 - Akıl yürütme metni artık yalnızca yanıt HTML’ine gömülmez; `MB_Messages.ReasoningContent` sütununda da saklanır
 - Geçmişten yüklenen mesajlarda `ReasoningContent` varsa arşiv bloğu (`<details class="reasoning-block">`) otomatik render edilir
 - Eski şema ile uyumluluk için sütun yoksa sessiz geri dönüş (fallback) korunur
 - Veritabanı geri dönüş davranışı `ReasoningContent` için daha dar ve kontrollü tutulur; kullanıcı bazlı geçmiş yükleme akışları da daha sağlamlaştırılmıştır
+- Gerçek düşünce metni olmayan `simulated` akışlar kalıcılığa yazılmaz ve geçmişte reasoning arşivi olarak dönmez
+
+### Düşünme Kabuğunun Ortak Açılması ve Flicker Koruması
+- `server_send_message.R`, hem düşünen hem düşünmeyen model yolunda `#typing-animation-wrapper` kabuğunu `premiumReasoningStart` ile birlikte açar
+- Sunucudan `simulated` bayrağı (`thinking_model_active` terslenmiş değer) istemciye taşınır
+- Klasik "Düşünüyorum" halkası yerine premium panel devreye girsin diye kabuk `data-panel-takeover="true"` ile işaretlenir ve boş içerikle eklenir
+- `app_core.js` içindeki `MutationObserver`, `data-panel-takeover="true"` işaretli kabukta `TypingAnimationManager.create(...)` çağrısını atlayarak flicker oluşumunu engeller
 
 ### Şema Geçişi
 ```sql

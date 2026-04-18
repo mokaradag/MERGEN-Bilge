@@ -67,7 +67,9 @@ Kullanıcı doğal dilde soru sorabilir, açıklama isteyebilir, içerik üretti
 
 Thinking desteği olan modellerde (thinking=TRUE), klasik "yazıyor" göstergesi yerine premium akıl yürütme kartı kullanılır. Bu kartta modelin düşünme durumu, faz geçişleri ve geçen süre daha anlaşılır biçimde sunulur. Akış çıktısı başladığında kart yumuşak biçimde streaming durumuna geçer.
 
-Canlı düşünce akışı paneli etkin olduğunda, kullanıcı modelin gerçek reasoning metnini token-token takip edebilir. Bu panel daraltılabilir yapıdadır ve yanıt tamamlandığında kaybolmak yerine konuşma balonu içinde arşivlenmiş halde kalabilir.
+Thinking desteği olmayan modellerde de aynı premium panel kabuğu açılır; ancak sunucudan gerçek `reasoning_delta` gelmediği için istemci tarafında 1.8 saniye aralıklarla sıralı faz metinleri gösterilir: “Soru çözümleniyor”, “Bağlam toplanıyor”, “Yanıt planlanıyor”, “Cevap yazılıyor”.
+
+Canlı düşünce akışı paneli etkin olduğunda, kullanıcı thinking destekli modelin gerçek reasoning metnini token-token takip edebilir. Bu panel daraltılabilir yapıdadır ve yanıt tamamlandığında kaybolmak yerine konuşma balonu içinde arşivlenmiş halde kalabilir. Simulated akışta gerçek düşünce metni olmadığı için panel yanıt akışı başlar başlamaz balona taşınmadan sönümlenerek kaldırılır ve arşive dönmez.
 
 ### 3.2 Dosya Analizi
 Excel, PDF, Word, CSV, metin dosyaları ve benzeri içerikler yüklenebilir. Uygulama bu dosyaları:
@@ -198,7 +200,9 @@ Yeni reasoning deneyiminde kullanıcı, düşünme kabiliyetli modellerde iki ka
 - üstte premium reasoning kartı (durum + süre + faz),
 - altta (etkinse) canlı düşünce paneli.
 
-Yanıt tamamlandığında düşünce içeriği geçmiş yüklemelerinde de tekrar görülebilmesi için sistem tarafından kalıcı olarak saklanabilir.
+Yeni akışta panel kabuğu hem düşünen hem düşünmeyen model yolunda ortak açılır; klasik "Düşünüyorum" halkası yerine premium panel takeover davranışı kullanılır. `data-panel-takeover="true"` işaretli kabuklarda istemci tarafı klasik typing animasyon üretimini atlar ve flicker engellenir.
+
+Yanıt tamamlandığında yalnızca gerçek reasoning metni olan içerikler geçmiş yüklemelerinde tekrar görülebilmesi için sistem tarafından kalıcı olarak saklanabilir; simulated faz metinleri kalıcı arşive yazılmaz.
 
 AI Uzman bu sayfayı anlatırken, kullanıcının yalnızca soru sormakla sınırlı olmadığını; dosya, model ve araç temelli kullanım biçimlerine de sahip olduğunu vurgulamalıdır.
 
