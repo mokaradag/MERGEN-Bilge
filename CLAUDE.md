@@ -109,20 +109,25 @@ Bu codebase'te düşünme kabiliyeti olan modeller için yanıt öncesi/yanıt s
 
 ### Premium reasoning card davranışı
 - `local_model_capabilities[[model]]$thinking == TRUE` ise klasik typing animasyonu yerine premium reasoning card gösterilir.
-- Kart, mevcut `#typing-animation-wrapper` konteynerini yeniden kullanır; böylece mevcut `removeUI()` ve cleanup yolları bozulmadan çalışır.
+- Kart, mevcut `#typing-animation-wrapper` konteynerini yeniden kullanır; hem düşünen hem düşünmeyen model yolunda `premiumReasoningStart` ile birlikte açılır.
 - Sunucu tarafı başlangıçta `premiumReasoningStart`, stream aşamasında `premiumReasoningStreamStart`, bitiş/hata tarafında `premiumReasoningReset` veya `premiumReasoningError` mesajları gönderir.
+- Düşünmeyen modeller için `simulated` bayrağı (`thinking_model_active` terslenmiş) taşınır; gerçek `reasoning_delta` yoksa istemci tarafında sahte faz metinleri sıralı gösterilir.
+- Klasik "Düşünüyorum" halkası yerine panel kabuğu `data-panel-takeover="true"` ile boş içerikli eklenir.
 
 ### UI/JS ilkeleri
 - Durum makinesi: `idle → preparing → thinking → streaming → interrupted/error`
 - Faz rotasyonu: 2.6 sn
+- Simulated faz metin ritmi: 1.8 sn
 - Flicker guard: 420 ms
 - Minimum görünürlük: 1200 ms
 - Model adı ve hata metinleri HTML escape edilmelidir (XSS önlemi).
+- `app_core.js` içindeki `MutationObserver`, `data-panel-takeover="true"` etiketli kabukta `TypingAnimationManager.create(...)` çağrısını atlayarak çift animasyon/flicker üretimini engellemelidir.
 
 ### Canlı düşünce paneli ve kalıcılık
 - Düşünce içeriği token-token canlı panelde gösterilir, yanıt bitince kaybolmaz; `completed/interrupted` durumunda daraltılabilir biçimde kalır.
 - Kalıcılık DB tabanlıdır: `MB_Messages.ReasoningContent`.
 - Geçmiş sohbet render’ında arşiv bloğu tek noktadan üretilmelidir; canlı panel ve arşivin çift katmanlı görünmesine izin verilmez.
+- Simulated (gerçek reasoning metni olmayan) akışlar balona taşınmaz; yanıt akışı başlar başlamaz panel sönümlenerek kaldırılır ve arşive yazılmaz.
 
 ### CSS regressions için kritik not
 - `.reasoning-panel.rp-live` temel durumda görünür (`opacity: 1`, `transform: translateY(0)`) kalmalıdır.
