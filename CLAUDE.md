@@ -98,6 +98,33 @@ Bu tür hatalar özellikle şu koşullarda daha görünür olabilir:
 
 ---
 
+## Thinking=TRUE Modeller İçin Akıl Yürütme Akışı (Yeni Standart)
+
+Bu codebase'te düşünme kabiliyeti olan modeller için yanıt öncesi/yanıt sırası deneyimi güncellenmiştir.
+
+### Premium reasoning card davranışı
+- `local_model_capabilities[[model]]$thinking == TRUE` ise klasik typing animasyonu yerine premium reasoning card gösterilir.
+- Kart, mevcut `#typing-animation-wrapper` konteynerini yeniden kullanır; böylece mevcut `removeUI()` ve cleanup yolları bozulmadan çalışır.
+- Sunucu tarafı başlangıçta `premiumReasoningStart`, stream aşamasında `premiumReasoningStreamStart`, bitiş/hata tarafında `premiumReasoningReset` veya `premiumReasoningError` mesajları gönderir.
+
+### UI/JS ilkeleri
+- Durum makinesi: `idle → preparing → thinking → streaming → interrupted/error`
+- Faz rotasyonu: 2.6 sn
+- Flicker guard: 420 ms
+- Minimum görünürlük: 1200 ms
+- Model adı ve hata metinleri HTML escape edilmelidir (XSS önlemi).
+
+### Canlı düşünce paneli ve kalıcılık
+- Düşünce içeriği token-token canlı panelde gösterilir, yanıt bitince kaybolmaz; `completed/interrupted` durumunda daraltılabilir biçimde kalır.
+- Kalıcılık DB tabanlıdır: `MB_Messages.ReasoningContent`.
+- Geçmiş sohbet render’ında arşiv bloğu tek noktadan üretilmelidir; canlı panel ve arşivin çift katmanlı görünmesine izin verilmez.
+
+### CSS regressions için kritik not
+- `.reasoning-panel.rp-live` temel durumda görünür (`opacity: 1`, `transform: translateY(0)`) kalmalıdır.
+- Giriş animasyonu `rp-enter` keyframe’in `0%` karesinden ve `both` fill mode ile başlamalıdır.
+- Aksi halde `data-state="completed"` gibi durum geçişlerinde panel opaklığı tekrar 0’a düşerek kaybolabilir.
+
+
 ## What MERGEN Bilge Is
 
 **MERGEN Bilge** is a Turkish-language AI assistant platform built on **Shiny** and **shinydashboard** for internal/corporate usage.

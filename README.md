@@ -14,6 +14,7 @@ MERGEN adı, Türk ve Altay mitolojisinde bilgeliği, isabetli düşünceyi ve y
 - Kod bloklarında sözdizimi vurgulama
 - Takip soruları ve mesaj eylemleri
 - Farklı model ve araç aileleriyle çalışma
+- Düşünebilen modeller (`thinking=TRUE`) için premium akıl yürütme kartı ve canlı düşünce akışı paneli
 
 ### Dosya ve veri odaklı çalışma
 - Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
@@ -151,6 +152,33 @@ Varsayılan karakter **Mergen**’dir.
 ---
 
 ## Mimari Özet
+
+## Akıl Yürütme Deneyimi (Thinking=TRUE Modeller)
+
+Thinking yeteneği açık olan modellerde klasik "Düşünüyorum" animasyonu yerine premium bir akıl yürütme katmanı devreye alınır.
+
+### Premium Reasoning Card
+- `premium_reasoning.js` ile yönetilen durum makinesi: `idle → preparing → thinking → streaming → interrupted/error`
+- 5 fazlı döngüsel akıl yürütme animasyonu
+- `MM:SS` formatında geçen süre sayacı
+- `FLICKER_GUARD_MS=420` ve `MIN_VISIBLE_MS=1200` kuralları ile hızlı yanıt titremesinin engellenmesi
+- düşünmeden akışa geçerken yumuşak durum geçişi (`premiumReasoningStreamStart`)
+- hata ve durdurma durumlarında ayrı görsel sinyal
+
+### Canlı Düşünce Akışı Paneli
+- Sahte durum cümleleri yerine modelin gerçek düşünce akışının token-token aktarımı
+- Daraltılabilir ve iç kaydırmalı panel yapısı
+- `completed/interrupted` sonrasında panelin balon içinde kalıcı görünümü
+
+### Kalıcılık ve Geçmiş Sohbetler
+- Akıl yürütme metni artık yalnızca yanıt HTML’ine gömülmez; `MB_Messages.ReasoningContent` sütununda da saklanır
+- Geçmişten yüklenen mesajlarda `ReasoningContent` varsa arşiv bloğu (`<details class="reasoning-block">`) otomatik render edilir
+- Eski şema ile uyumluluk için sütun yoksa sessiz geri dönüş (fallback) korunur
+
+### Şema Geçişi
+```sql
+ALTER TABLE MB_Messages ADD ReasoningContent NVARCHAR(MAX) NULL;
+```
 
 Uygulama, klasik tek-dosya Shiny yaklaşımından daha modüler bir yapıya sahiptir. Ana yapı aşağıdaki gibidir:
 
