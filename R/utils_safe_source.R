@@ -20,20 +20,27 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
       stop(e)
     }
 
-    raw_size <- file.info(file)$size
-    if (is.na(raw_size) || raw_size <= 0) {
-      stop(e)
+    if (!file.exists(file)) {
+      stop(sprintf("Kaynak dosya bulunamadı: %s", file))
     }
 
-    raw_content <- readBin(file, what = "raw", n = raw_size)
+    read_text_with_encoding <- function(path, encoding_name) {
+      paste(
+        readLines(path, warn = FALSE, encoding = encoding_name),
+        collapse = "\n"
+      )
+    }
 
     denenecek_kodlamalar <- c("UTF-8", "WINDOWS-1254", "latin1")
     son_hata <- NULL
 
     for (kodlama in denenecek_kodlamalar) {
       metin <- tryCatch(
-        iconv(list(raw_content), from = kodlama, to = "UTF-8")[[1]],
-        error = function(err) NA_character_
+        read_text_with_encoding(file, kodlama),
+        error = function(err) {
+          son_hata <<- err
+          NA_character_
+        }
       )
 
       if (is.na(metin) || !nzchar(metin)) next
