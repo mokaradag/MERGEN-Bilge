@@ -18,7 +18,7 @@
 #' @param pool Veritabanı bağlantı havuzu
 miscObserversInit <- function(input, output, session, values, 
                                file_manager_data, filePreview, add_message,
-                               api_key, user_config, pool) {
+                               api_key, user_config, pool = NULL) {
   
   admin_modulleri_baslatildi <- reactiveVal(FALSE)
   

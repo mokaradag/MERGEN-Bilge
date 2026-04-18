@@ -395,11 +395,17 @@ server <- function(input, output, session) {
     session_files, file_to_add, stt_data
   )
   
-  # Çeşitli UI observer'larını başlat (modüler)
+  # Çeşitli UI observer'larını başlat (modüler) 
+  admin_pool <- if (exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
+    get("pool", envir = .GlobalEnv, inherits = FALSE)
+  } else {
+    NULL
+  }
+  
   miscObserversInit(
     input, output, session, values,
     file_manager_data, filePreview, add_message,
-    api_key, user_config_rv, pool
+    api_key, user_config_rv, admin_pool
   )
   
   # Sohbet eylemi bağlantıları (beğen/beğenme/yeniden oluştur/düzenle)
