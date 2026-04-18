@@ -140,10 +140,16 @@ server <- function(input, output, session) {
   send_message <- forward_refs$send_message
     
   # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
-  claudeCodeServer("claude_code_module",
-                   current_user_id = current_user_id,
-                   settings_data = settings_data,
-                   user_first_name = session$userData$user_first_name)
+	claudeCodeServer(
+	  "claude_code_module",
+	  current_user_id = current_user_id,
+	  settings_data = settings_data,
+	  user_first_name = function() {
+		session$userData$user_first_name %||%
+		  session$userData$user_config$first_name %||%
+		  ""
+	  }
+	)
 
   # Görsel ayarları senkronizasyonunu başlat (Sohbet → Ayarlar, modüler)
   visualSettingsSyncInit(input, settings_data)

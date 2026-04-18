@@ -581,8 +581,16 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     kullanici_adi <- reactive({
       # Önce parametre olarak gelen adı dene
       if (!is.null(user_first_name)) {
-        ad <- if (is.reactive(user_first_name)) user_first_name() else user_first_name
-        if (!is.null(ad) && nzchar(ad)) return(ad)
+        ad <- if (is.function(user_first_name)) {
+          tryCatch(user_first_name(), error = function(e) NULL)
+        } else if (is.reactive(user_first_name)) {
+          user_first_name()
+        } else {
+          user_first_name
+        }
+
+        ad <- as.character(ad %||% "")[1]
+        if (nzchar(ad)) return(ad)
       }
       # session$userData'dan dene
       ad <- session$userData$user_first_name
