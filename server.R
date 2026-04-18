@@ -196,7 +196,17 @@ server <- function(input, output, session) {
   quick_action_skip_mcp <- state_bundle$quick_action_skip_mcp
 
   # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
-  chatExportInit(input, output, session, values, user_display_name = session$userData$user_config$name)
+	chatExportInit(
+	  input,
+	  output,
+	  session,
+	  values,
+	  user_display_name = function() {
+		session$userData$user_config$name %||%
+		  session$userData$user_first_name %||%
+		  "Kullanıcı"
+	  }
+	)
 
   # Chartlab referanslarını çözümlemek için grafik deposu
   if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()

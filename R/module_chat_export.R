@@ -3,10 +3,27 @@
 
 chatExportInit <- function(input, output, session, values, user_display_name) {
 
+  resolve_user_display_name <- function() {
+    deger <- if (is.function(user_display_name)) {
+      tryCatch(user_display_name(), error = function(e) NULL)
+    } else {
+      user_display_name
+    }
+
+    deger <- as.character(
+      deger %||%
+        session$userData$user_config$name %||%
+        session$userData$user_first_name %||%
+        "Kullanıcı"
+    )[1]
+
+    if (!nzchar(deger %||% "")) "Kullanıcı" else deger
+  }
+
   shiny::observeEvent(input$copy_chat_btn, {
     req(length(values$messages) > 0)
     chat_text <- vapply(values$messages, function(msg) {
-      author <- if (identical(msg$type, "user")) user_display_name else "MERGEN Bilge"
+      author <- if (identical(msg$type, "user")) resolve_user_display_name() else "MERGEN Bilge"
       sprintf("[%s] %s:\n%s", msg$timestamp, author, msg$content)
     }, "", USE.NAMES = FALSE)
     full <- paste(chat_text, collapse = "\n\n--------------------------------\n\n")
@@ -28,7 +45,7 @@ chatExportInit <- function(input, output, session, values, user_display_name) {
     },
     content = function(file) {
       chat_text <- vapply(values$messages, function(msg) {
-        author <- if (identical(msg$type, "user")) user_display_name else "MERGEN Bilge"
+        author <- if (identical(msg$type, "user")) resolve_user_display_name() else "MERGEN Bilge"
         sprintf("[%s] %s:\n%s\n", msg$timestamp, author, msg$content)
       }, "", USE.NAMES = FALSE)
       writeLines(paste(chat_text, collapse = "\n--------------------------------\n"), file)
