@@ -33,12 +33,14 @@ sendMessageInit <- function(
   saved_chats_data,
   generate_non_streaming_stoppable_fn
 ) {
-  resolve_current_user_id <- function() {
-    session_uid <- session$userData$user_id %||% NULL
-    uid <- suppressWarnings(as.integer(session_uid %||% current_user_id %||% 0L))
-    if (is.na(uid)) uid <- 0L
-    uid
-  }
+	resolve_current_user_id <- function() {
+	  uid <- resolve_effective_user_id(
+		session = session,
+		current_user_id = current_user_id
+	  )
+	  if (is.na(uid)) uid <- 0L
+	  uid
+	}
 
   # Ana mesaj gönderme fonksiyonu
   send_message <- function(prompt_text, is_summarization_request = FALSE) {

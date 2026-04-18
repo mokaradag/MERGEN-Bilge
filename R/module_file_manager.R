@@ -119,11 +119,12 @@ fileManagerServer <- function(
     NULL
   })
 
-    get_effective_user_id <- function() {
-      session_uid <- session$userData$user_id %||% NULL
-      uid <- session_uid %||% user_id %||% "unknown"
-      as.character(uid %||% "unknown")
-    }
+	get_effective_user_id <- function() {
+	  session_uid  <- session$userData$user_id %||% NULL
+	  provided_uid <- resolve_runtime_value(user_id)
+	  uid <- session_uid %||% provided_uid %||% "unknown"
+	  as.character(uid %||% "unknown")
+	}
 
     module_user_id_chr <- function() {
       get_effective_user_id()

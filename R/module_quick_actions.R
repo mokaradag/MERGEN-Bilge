@@ -100,17 +100,18 @@ quickActionsInit <- function(input, session, values, settings_data,
     session$sendCustomMessage("saveSettings", settings_list)
   }
   
-  resolve_effective_user_id <- function() {
-    effective_user_id <- suppressWarnings(
-      as.integer(session$userData$user_id %||% current_user_id %||% 0L)
-    )
+	resolve_quick_action_user_id <- function() {
+	  effective_user_id <- resolve_effective_user_id(
+		session = session,
+		current_user_id = current_user_id
+	  )
 
-    if (is.na(effective_user_id) || effective_user_id < 0L) {
-      effective_user_id <- 0L
-    }
+	  if (is.na(effective_user_id) || effective_user_id < 0L) {
+		effective_user_id <- 0L
+	  }
 
-    effective_user_id
-  }
+	  effective_user_id
+	}
 
   show_quick_action_intro <- function(action_id) {
     if (is.null(output)) {
@@ -136,7 +137,7 @@ quickActionsInit <- function(input, session, values, settings_data,
       output = output,
       content = intro_text,
       type = "ai",
-      current_user_id = resolve_effective_user_id(),
+      current_user_id = resolve_quick_action_user_id(),
       persist_to_db = FALSE,
       add_to_saved_chats = FALSE,
       include_in_context = FALSE

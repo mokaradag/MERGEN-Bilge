@@ -220,17 +220,17 @@ server <- function(input, output, session) {
   # ============================================================================
   # BÖLÜM 8: GÖZLEMCİLER VE UI BAĞLANTILARI
   # ============================================================================
-  quickActionsInit(
-    input = input,
-    session = session,
-    values = values,
-    settings_data = settings_data,
-    session_files = session_files,
-    quick_action_skip_mcp = quick_action_skip_mcp,
-    output = output,
-    current_user_id = current_user_id,
-    send_message_fn = send_message
-  )
+	quickActionsInit(
+	  input = input,
+	  session = session,
+	  values = values,
+	  settings_data = settings_data,
+	  session_files = session_files,
+	  quick_action_skip_mcp = quick_action_skip_mcp,
+	  output = output,
+	  current_user_id = current_user_id_provider,
+	  send_message_fn = send_message
+	)
   
   settingsObserversInit(input, session, values, settings_data)
 
@@ -241,14 +241,14 @@ server <- function(input, output, session) {
     )
                 
     # Geçici dosya (temp_files) erişimi için 'values' reaktif nesnesini dosya yöneticisine ilet
-    file_manager_data <- fileManagerServer(
-      "file_manager_module",
-      new_file_trigger = reactive({ file_to_add() }),
-      session_files_reactive = session_files,
-      mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
-      user_id = current_user_id,
-      settings_data = settings_data
-    )
+	file_manager_data <- fileManagerServer(
+	  "file_manager_module",
+	  new_file_trigger = reactive({ file_to_add() }),
+	  session_files_reactive = session_files,
+	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
+	  user_id = current_user_id_provider,
+	  settings_data = settings_data
+	)
 
     # SSO doğrulaması tamamlandığında kullanıcı dosyalarını tek sefer yükle
     observeEvent(sso_state$authenticated, {
@@ -336,15 +336,15 @@ server <- function(input, output, session) {
 
   # Hoş geldin ekranı işleyicilerini başlat (modüler)
   # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır
-	welcome_handlers <- welcomeHandlersInit(
-	  session, values, saved_chats_data, session_files,
-	  filePreview, current_user_id, file_manager_data,
-	  user_first_name = function() {
-		session$userData$user_first_name %||%
-		  session$userData$user_config$first_name %||%
-		  ""
-	  }
-	)
+welcome_handlers <- welcomeHandlersInit(
+  session, values, saved_chats_data, session_files,
+  filePreview, current_user_id_provider, file_manager_data,
+  user_first_name = function() {
+    session$userData$user_first_name %||%
+    session$userData$user_config$first_name %||%
+    ""
+  }
+)
 
   welcome_fns$render_welcome_screen <- welcome_handlers$render_welcome_screen
   welcome_fns$start_new_chat <- welcome_handlers$start_new_chat
@@ -401,13 +401,13 @@ server <- function(input, output, session) {
     generate_non_streaming_stoppable <- llm_handlers$generate_non_streaming_stoppable
     
   # Sohbet giriş observer'larını başlat (modüler)
-  chatInputObserversInit(
-    input, session, values, settings_data,
-    stop_generation, active_request_id,
-    reset_chat_state, send_message,
-    current_user_id, file_manager_data,
-    session_files, file_to_add, stt_data
-  )
+	chatInputObserversInit(
+	  input, session, values, settings_data,
+	  stop_generation, active_request_id,
+	  reset_chat_state, send_message,
+	  current_user_id_provider, file_manager_data,
+	  session_files, file_to_add, stt_data
+	)
   
   # Çeşitli UI observer'larını başlat (modüler) 
   admin_pool <- if (exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
@@ -440,32 +440,32 @@ server <- function(input, output, session) {
     trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
     attach_tts_audio <- tts_handlers$attach_tts_audio
  
-    send_message_handlers <- sendMessageInit(
-      session = session,
-      input = input,
-      output = output,
-      values = values,
-      settings_data = settings_data,
-      session_files = session_files,
-      file_manager_data = file_manager_data,
-      current_user_id = current_user_id,
-      stop_generation = stop_generation,
-      active_request_id = active_request_id,
-      quick_action_skip_mcp = quick_action_skip_mcp,
-      perf_tracker = perf_tracker,
-      ai_processor = ai_processor,
-      tts_processor = tts_processor,
-      followup_tools = followup_tools,
-      fallback_followup_tool = fallback_followup_tool,
-      api_config = api_config,
-      add_message_fn = add_message,
-      reset_chat_state_fn = reset_chat_state,
-      simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
-      cache_mcp_file_locally_fn = cache_mcp_file_locally,
-      update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
-      saved_chats_data = saved_chats_data,
-      generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
-    )
+	send_message_handlers <- sendMessageInit(
+	  session = session,
+	  input = input,
+	  output = output,
+	  values = values,
+	  settings_data = settings_data,
+	  session_files = session_files,
+	  file_manager_data = file_manager_data,
+	  current_user_id = current_user_id_provider,
+	  stop_generation = stop_generation,
+	  active_request_id = active_request_id,
+	  quick_action_skip_mcp = quick_action_skip_mcp,
+	  perf_tracker = perf_tracker,
+	  ai_processor = ai_processor,
+	  tts_processor = tts_processor,
+	  followup_tools = followup_tools,
+	  fallback_followup_tool = fallback_followup_tool,
+	  api_config = api_config,
+	  add_message_fn = add_message,
+	  reset_chat_state_fn = reset_chat_state,
+	  simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
+	  cache_mcp_file_locally_fn = cache_mcp_file_locally,
+	  update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
+	  saved_chats_data = saved_chats_data,
+	  generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
+	)
  
     # send_message fonksiyonunu modülden al ve ortama ata
     send_message_fns$send_message <- send_message_handlers$send_message
