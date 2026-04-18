@@ -88,8 +88,12 @@ get_connection <- function(target = "primary") {
   
   # 2. Pooling Kontrolü (Sadece Ana Veritabanı için ve pool aktifse)
   # Şu an kullanmıyor, ama performans için kapıyı açık bırakıldı.
-  if (target == "primary" && exists("pool", envir = .GlobalEnv)) {
-    pool_obj <- get("pool", envir = .GlobalEnv)
+  if (target == "primary" && exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
+    pool_obj <- tryCatch(
+      get("pool", envir = .GlobalEnv, inherits = FALSE),
+      error = function(e) NULL
+    )
+
     if (!is.null(pool_obj) && inherits(pool_obj, "Pool")) {
       return(list(conn = pool_obj, pooled = TRUE, pool = pool_obj))
     }
