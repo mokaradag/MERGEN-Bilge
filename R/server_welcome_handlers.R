@@ -16,6 +16,23 @@
 welcomeHandlersInit <- function(session, values, saved_chats_data, session_files,
                                  filePreview, current_user_id, file_manager_data,
                                  user_first_name = NULL) {
+								 
+  resolve_user_first_name <- function() {
+    deger <- if (is.function(user_first_name)) {
+      tryCatch(user_first_name(), error = function(e) NULL)
+    } else {
+      user_first_name
+    }
+
+    deger <- as.character(
+      deger %||%
+        session$userData$user_first_name %||%
+        session$userData$user_config$first_name %||%
+        ""
+    )[1]
+
+    deger %||% ""
+  }
  
   # Hoş geldin ekranını render et
   # Bu fonksiyon welcome ekranını oluşturur ve animasyonları başlatır
@@ -92,9 +109,9 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 
 		# Kişiselleştirilmiş karşılama animasyonunu başlat
 		shinyjs::delay(80, {
-		  session$sendCustomMessage("initPersonalGreeting", list(
-			first_name = user_first_name %||% ""
-		  ))
+          session$sendCustomMessage("initPersonalGreeting", list(
+            first_name = resolve_user_first_name()
+          ))
 		})
 	  })
 	}

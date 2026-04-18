@@ -316,11 +316,16 @@ server <- function(input, output, session) {
 
   # Hoş geldin ekranı işleyicilerini başlat (modüler)
   # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır
-  welcome_handlers <- welcomeHandlersInit(
-    session, values, saved_chats_data, session_files,
-    filePreview, current_user_id, file_manager_data,
-    user_first_name = session$userData$user_first_name
-  )
+	welcome_handlers <- welcomeHandlersInit(
+	  session, values, saved_chats_data, session_files,
+	  filePreview, current_user_id, file_manager_data,
+	  user_first_name = function() {
+		session$userData$user_first_name %||%
+		  session$userData$user_config$first_name %||%
+		  ""
+	  }
+	)
+
   welcome_fns$render_welcome_screen <- welcome_handlers$render_welcome_screen
   welcome_fns$start_new_chat <- welcome_handlers$start_new_chat
 
