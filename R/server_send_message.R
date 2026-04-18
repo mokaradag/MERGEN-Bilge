@@ -199,15 +199,25 @@ sendMessageInit <- function(
     user_prompt_msg <- add_message_fn(display_text, "user")
 
     values$typing <- TRUE
-    if (isTRUE(settings_data$enable_typing_indicator)) {
+    # Düşünen modeller için premium akıl yürütme kartı; aksi halde klasik Düşünüyorum.
+    thinking_model_active <- tryCatch(
+      is_thinking_model(settings_data$model_selection),
+      error = function(e) FALSE
+    )
+    classic_indicator_requested <- isTRUE(settings_data$enable_typing_indicator)
+    show_thinking_wrapper <- thinking_model_active || classic_indicator_requested
+
+    if (show_thinking_wrapper) {
       removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+
+      wrapper_classes <- if (thinking_model_active) "message-bubble prc-host" else "message-bubble"
 
       insertUI(
         selector = "#chat_content_container",
         where = "beforeEnd",
         ui = div(
           id = "typing-animation-wrapper",
-          class = "message-bubble",
+          class = wrapper_classes,
           style = "display: flex; justify-content: center; padding: 20px;",
           div(class = "ring", "Düşünüyorum", span())
         ),
@@ -220,6 +230,13 @@ sendMessageInit <- function(
           $('#typing-animation-wrapper').show();
         }, 10);
       ")
+
+      if (isTRUE(thinking_model_active)) {
+        session$sendCustomMessage("premiumReasoningStart", list(
+          model = settings_data$model_selection %||% "",
+          classicFallback = classic_indicator_requested
+        ))
+      }
     }
 
     # Durdur butonunu göster

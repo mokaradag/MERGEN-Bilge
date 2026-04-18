@@ -170,6 +170,42 @@ append_stream_delta_line <- function(stream_file, text_value, stream_con = NULL)
   invisible(NULL)
 }
 
+# Düşünen modellerde akıl yürütme akışı ana yanıt akışından ayrı kanalla
+# aktarılır. Aynı dosyaya "type":"reasoning_delta" satırları yazılır.
+append_stream_reasoning_line <- function(stream_file, text_value, stream_con = NULL) {
+  if ((!nzchar(stream_file %||% "")) && is.null(stream_con)) {
+    return(invisible(NULL))
+  }
+
+  if (!nzchar(text_value %||% "")) {
+    return(invisible(NULL))
+  }
+
+  text_utf8 <- enc2utf8(text_value)
+  text_b64 <- base64enc::base64encode(charToRaw(text_utf8))
+
+  payload <- jsonlite::toJSON(
+    list(type = "reasoning_delta", text_b64 = text_b64),
+    auto_unbox = TRUE,
+    null = "null"
+  )
+
+  payload_line <- paste0(payload, "\n")
+
+  if (!is.null(stream_con)) {
+    writeBin(charToRaw(payload_line), stream_con)
+    flush(stream_con)
+    return(invisible(NULL))
+  }
+
+  con <- file(stream_file, open = "ab")
+  on.exit(close(con), add = TRUE)
+
+  writeBin(charToRaw(payload_line), con)
+  flush(con)
+  invisible(NULL)
+}
+
 decode_stream_delta_payload <- function(payload) {
   if (is.null(payload)) {
     return("")
@@ -347,16 +383,20 @@ call_local_llm_sse_worker <- function(chat_history,
       delta_text <- enc2utf8(delta_bundle$content)
       reasoning_text <- enc2utf8(delta_bundle$reasoning)
 
+      # Akıl yürütme akışı ayrı kanalla yayınlanır; yanıt metnine karışmaz.
       if (nzchar(reasoning_text)) {
         accumulated_reasoning <<- paste0(accumulated_reasoning, reasoning_text)
+
+        if (isTRUE(stream_reasoning)) {
+          append_stream_reasoning_line(
+            stream_file = NULL,
+            text_value = reasoning_text,
+            stream_con = stream_con
+          )
+        }
       }
 
-      emit_text <- delta_text
-      if (!nzchar(emit_text) && isTRUE(stream_reasoning)) {
-        emit_text <- reasoning_text
-      }
-
-      if (nzchar(emit_text)) {
+      if (nzchar(delta_text)) {
         if (!nzchar(accumulated_text)) {
           log_info(sprintf(
             "[CHAT PERF] SSE işçide ilk delta alındı - %.3f sn",
@@ -364,10 +404,10 @@ call_local_llm_sse_worker <- function(chat_history,
           ))
         }
 
-        accumulated_text <<- paste0(accumulated_text, emit_text)
+        accumulated_text <<- paste0(accumulated_text, delta_text)
         append_stream_delta_line(
           stream_file = NULL,
-          text_value = emit_text,
+          text_value = delta_text,
           stream_con = stream_con
         )
       }

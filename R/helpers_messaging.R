@@ -1,5 +1,42 @@
 # R/helpers_messaging.R
 
+# Düşünen modellerin akıl yürütme metnini, yanıt balonunun üstünde
+# daraltılabilir bir "Düşünce Akışı" paneli olarak render eder.
+# Mesaj DB'ye kaydedildiğinde panel de birlikte kalır; geçmişten
+# açıldığında kullanıcı <details> denetimiyle açıp kapatabilir.
+build_reasoning_details_block <- function(reasoning_text,
+                                          title = "Düşünce Akışı") {
+  if (is.null(reasoning_text) || !nzchar(trimws(as.character(reasoning_text)[1]))) {
+    return("")
+  }
+
+  text_utf8 <- enc2utf8(as.character(reasoning_text)[1])
+  escaped <- gsub("&", "&amp;", text_utf8, fixed = TRUE)
+  escaped <- gsub("<", "&lt;", escaped, fixed = TRUE)
+  escaped <- gsub(">", "&gt;", escaped, fixed = TRUE)
+
+  char_count <- nchar(text_utf8)
+  meta <- if (char_count > 0) {
+    sprintf("<span class=\"reasoning-meta\">%d karakter</span>", char_count)
+  } else {
+    ""
+  }
+
+  paste0(
+    '<details class="reasoning-block" data-role="reasoning-archive">',
+      '<summary class="reasoning-summary">',
+        '<span class="reasoning-summary-dot"></span>',
+        '<span class="reasoning-summary-text">', title, '</span>',
+        meta,
+        '<span class="reasoning-summary-caret" aria-hidden="true">\u25BE</span>',
+      '</summary>',
+      '<div class="reasoning-archive-body">',
+        '<pre class="reasoning-archive-text">', escaped, '</pre>',
+      '</div>',
+    '</details>'
+  )
+}
+
 #' Create HTML for a Code Block
 #'
 #' Generates a complete HTML structure for a syntax-highlighted code block,
@@ -320,6 +357,27 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
       if (!is.null(msg$audio_src) && nzchar(msg$audio_src)) {
         audio_block <- build_tts_audio_ui(msg$id, msg$audio_src, msg$audio_voice %||% NULL)
       }
+
+      # Akış bitmişse ve akıl yürütme metni saklanmışsa, geçmişten açıldığında
+      # veya kayıtlı sohbet cache'inden yeniden render edildiğinde yanıtın
+      # başına daraltılabilir <details class="reasoning-block"> arşivi eklenir.
+      # Aynı html_content içinde zaten mevcutsa çifte eklenmez.
+      reasoning_archive_html <- ""
+      reasoning_text_for_archive <- msg$reasoning_content %||% msg$reasoning_trace %||% NULL
+      if (!is_streaming &&
+          !is.null(reasoning_text_for_archive) &&
+          length(reasoning_text_for_archive) == 1 &&
+          !is.na(reasoning_text_for_archive) &&
+          nzchar(trimws(as.character(reasoning_text_for_archive)))) {
+        already_has_archive <- grepl(
+          "class=\"reasoning-block\"",
+          msg$html_content %||% "",
+          fixed = TRUE
+        )
+        if (!already_has_archive && exists("build_reasoning_details_block", mode = "function")) {
+          reasoning_archive_html <- build_reasoning_details_block(reasoning_text_for_archive)
+        }
+      }
 	  
       div(
         class = "message-bubble animate-fadeIn",
@@ -398,7 +456,7 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
               charToRaw(enc2utf8(as.character(msg$content %||% "")[1]))
             ),
             `data-streaming` = if(is_streaming) "true" else "false",
-            HTML(msg$html_content)
+            HTML(paste0(reasoning_archive_html, msg$html_content))
           ),
           if (!is.null(audio_block)) audio_block,
           build_followup_container(

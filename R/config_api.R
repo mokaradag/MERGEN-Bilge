@@ -195,7 +195,7 @@ api_config <- list(
     "technical name 3" = list(
       thinking = TRUE,
       omit_temperature = TRUE,
-      stream_reasoning = FALSE,
+      stream_reasoning = TRUE,
       allow_reasoning_fallback = TRUE
     ),
     "technical name 4" = list(

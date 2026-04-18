@@ -55,6 +55,8 @@ handle_true_streaming_mode <- function(ctx) {
   stream_env$stop_file <- tempfile(pattern = paste0("llm_sse_stop_", req_id, "_"), fileext = ".flag")
   stream_env$processed_line_count <- 0L
   stream_env$accumulated_text <- ""
+  stream_env$accumulated_reasoning <- ""
+  stream_env$reasoning_stream_started <- FALSE
   stream_env$result <- NULL
   stream_env$resolved <- FALSE
   stream_env$finalized <- FALSE
@@ -177,6 +179,11 @@ handle_true_streaming_mode <- function(ctx) {
       immediate = TRUE
     )
 
+    # Premium akıl yürütme kartı aktifse sakin bir geçişle akış durumuna alınır.
+    session$sendCustomMessage("premiumReasoningStreamStart", list(
+      id = stream_env$msg_id
+    ))
+
     session$sendCustomMessage("initStreamingMessage", list(
       id = stream_env$msg_id,
       content = ""
@@ -245,10 +252,19 @@ handle_true_streaming_mode <- function(ctx) {
       final_hascode <- final_processed$has_code
     }
 
+    # Düşünen modeller için biriken akıl yürütme metni ayrı bir alan olarak
+    # tutulur. Canlı panel istemci tarafında görünür kalır; DB'de ise ayrı
+    # bir sütunda (MB_Messages.ReasoningContent) saklanır ve geçmişten
+    # yüklenen mesajlarda <details> arşivi olarak geri üretilir.
+    reasoning_trace <- stream_env$accumulated_reasoning %||% ""
+    reasoning_trace_value <- if (nzchar(reasoning_trace)) reasoning_trace else NULL
+
     values$messages[[idx]]$content <- final_text
     values$messages[[idx]]$html_content <- final_html
     values$messages[[idx]]$has_code <- final_hascode
     values$messages[[idx]]$is_streaming <- FALSE
+    values$messages[[idx]]$reasoning_trace <- reasoning_trace_value
+    values$messages[[idx]]$reasoning_content <- reasoning_trace_value
 
     if (!is.null(followups) && length(followups) > 0) {
       values$messages[[idx]]$followups <- followups
@@ -414,6 +430,7 @@ sse_promise <- tracked_future_promise(
       extract_llm_delta_text = extract_llm_delta_text,
       extract_llm_event_sources = extract_llm_event_sources,
       append_stream_delta_line = append_stream_delta_line,
+      append_stream_reasoning_line = append_stream_reasoning_line,
       log_info = log_info,
       log_warn = log_warn,
       api_config = api_config
@@ -460,6 +477,7 @@ sse_promise <- tracked_future_promise(
         stream_env$processed_line_count <- length(satirlar)
 
         delta_batch <- character(0)
+        reasoning_batch <- character(0)
 
         for (satir in yeni_satirlar) {
           payload <- tryCatch(
@@ -471,7 +489,9 @@ sse_promise <- tracked_future_promise(
             next
           }
 
-          if (identical(payload$type %||% "", "delta")) {
+          payload_type <- as.character(payload$type %||% "")
+
+          if (identical(payload_type, "delta")) {
             delta_text <- decode_stream_delta_payload(payload)
             if (!nzchar(delta_text)) {
               next
@@ -487,7 +507,25 @@ sse_promise <- tracked_future_promise(
                 as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
               ))
             }
+          } else if (identical(payload_type, "reasoning_delta")) {
+            reasoning_text <- decode_stream_delta_payload(payload)
+            if (!nzchar(reasoning_text)) {
+              next
+            }
+
+            stream_env$accumulated_reasoning <- paste0(stream_env$accumulated_reasoning, reasoning_text)
+            reasoning_batch <- c(reasoning_batch, reasoning_text)
           }
+        }
+
+        # Düşünce akışı parçalarını ayrı kanalla istemciye ilet.
+        if (length(reasoning_batch) > 0) {
+          session$sendCustomMessage("streamingReasoningDelta", list(
+            id = stream_env$msg_id,
+            delta = paste0(reasoning_batch, collapse = ""),
+            started = !isTRUE(stream_env$reasoning_stream_started)
+          ))
+          stream_env$reasoning_stream_started <- TRUE
         }
 
         if (length(delta_batch) > 0) {

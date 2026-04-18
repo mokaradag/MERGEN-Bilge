@@ -422,7 +422,16 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     return(formatted)
   }
 
-  query <- "
+  query_with_reasoning <- "
+    SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,
+           m.MessageID, m.MessageContent, m.MessageType, m.MessageTimestamp, m.MessageOrder,
+           m.ReasoningContent
+    FROM MB_Chats c
+    JOIN MB_Messages m ON c.ChatID = m.ChatID
+    WHERE c.UserID = ? AND c.IsDeleted = 0
+    ORDER BY c.CreateTimestamp DESC, m.MessageOrder ASC
+  "
+  query_legacy <- "
     SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,
            m.MessageID, m.MessageContent, m.MessageType, m.MessageTimestamp, m.MessageOrder
     FROM MB_Chats c
@@ -430,7 +439,9 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     WHERE c.UserID = ? AND c.IsDeleted = 0
     ORDER BY c.CreateTimestamp DESC, m.MessageOrder ASC
   "
-  all_data <- dbGetQuery(conn, query, params = list(user_id))
+  all_data <- safe_select_messages_with_reasoning(
+    conn, query_with_reasoning, query_legacy, params = list(user_id)
+  )
   if (nrow(all_data) == 0) return(list())
 
   # Preserve the CreateTimestamp DESC order from the SQL query
@@ -460,6 +471,18 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
   # Reorder the list to match the original CreateTimestamp DESC order
   formatted_chats <- formatted_chats[as.character(unique_chat_ids)]
   return(formatted_chats)
+}
+
+# Düşünen modeller için ReasoningContent sütununu içeren SELECT'i dener;
+# sütun şemaya henüz eklenmemişse sessizce eski sütun kümesine düşer.
+# query_with_reasoning: ReasoningContent içeren tam SELECT
+# query_legacy:        Eski (ReasoningContent'sız) SELECT
+safe_select_messages_with_reasoning <- function(conn, query_with_reasoning, query_legacy, params = list()) {
+  tryCatch({
+    dbGetQuery(conn, query_with_reasoning, params = params)
+  }, error = function(e) {
+    dbGetQuery(conn, query_legacy, params = params)
+  })
 }
 
 format_chat_messages <- function(chat_df) {
@@ -680,7 +703,21 @@ format_chat_messages <- function(chat_df) {
       ts_tz <- "UTC"
     }
 
-    list(
+    # Düşünen modeller için saklanan akıl yürütme metni ayrı alan olarak
+    # mesaj nesnesine taşınır. <details> arşiv bloğu artık tek noktada,
+    # `render_message_bubble_ui()` içinde oluşturulur. Böylece hem DB'den
+    # yüklenen eski sohbetler hem de aynı oturumda cache'ten yeniden
+    # render edilen mesajlar aynı davranışı paylaşır.
+    reasoning_text_saved <- NULL
+    if ("ReasoningContent" %in% names(row)) {
+      rc_val <- row$ReasoningContent
+      if (!is.null(rc_val) && length(rc_val) == 1 &&
+          !is.na(rc_val) && nzchar(rc_val)) {
+        reasoning_text_saved <- as.character(rc_val)
+      }
+    }
+
+    base_msg <- list(
       id = as.character(row$MessageID),
       db_id = as.integer(row$MessageID),
       content = row$MessageContent,
@@ -689,6 +726,11 @@ format_chat_messages <- function(chat_df) {
       type = row$MessageType,
       timestamp = format(timestamp_val, "%d.%m.%Y - %H:%M", tz = ts_tz)
     )
+    if (!is.null(reasoning_text_saved)) {
+      base_msg$reasoning_content <- reasoning_text_saved
+      base_msg$reasoning_trace   <- reasoning_text_saved
+    }
+    base_msg
   })
 }
 
@@ -699,7 +741,15 @@ load_chat_messages_from_db <- function(chat_id) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query <- "
+  query_with_reasoning <- "
+    SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
+           m.MessageType, m.MessageTimestamp, m.MessageOrder, m.ReasoningContent
+    FROM MB_Chats c
+    LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
+    WHERE c.ChatID = ?
+    ORDER BY m.MessageOrder ASC
+  "
+  query_legacy <- "
     SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
            m.MessageType, m.MessageTimestamp, m.MessageOrder
     FROM MB_Chats c
@@ -713,7 +763,9 @@ load_chat_messages_from_db <- function(chat_id) {
     chat_param <- chat_id
   }
 
-  chat_df <- dbGetQuery(conn, query, params = list(chat_param))
+  chat_df <- safe_select_messages_with_reasoning(
+    conn, query_with_reasoning, query_legacy, params = list(chat_param)
+  )
   if (nrow(chat_df) == 0) {
     return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
   }
@@ -755,7 +807,16 @@ load_chat_messages_batch <- function(chat_ids) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query <- paste0(
+  query_with_reasoning <- paste0(
+    "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
+    "       m.MessageID, m.MessageContent, m.MessageType,",
+    "       m.MessageTimestamp, m.MessageOrder, m.ReasoningContent",
+    "  FROM MB_Chats c",
+    "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
+    " WHERE c.ChatID IN (", placeholder, ")",
+    " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
+  )
+  query_legacy <- paste0(
     "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
     "       m.MessageID, m.MessageContent, m.MessageType,",
     "       m.MessageTimestamp, m.MessageOrder",
@@ -765,7 +826,9 @@ load_chat_messages_batch <- function(chat_ids) {
     " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
   )
 
-  result <- dbGetQuery(conn, query, params = param_values)
+  result <- safe_select_messages_with_reasoning(
+    conn, query_with_reasoning, query_legacy, params = param_values
+  )
 
   if (nrow(result) == 0) {
     empty <- stats::setNames(vector("list", length(ids)), ids)
@@ -971,19 +1034,50 @@ save_message_to_db <- function(chat_id, msg) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query <- "
-    INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
-    OUTPUT INSERTED.MessageID AS MessageID
-    VALUES (?, ?, ?, ?, ?)
-  "
-  
+  # Düşünen modeller için biriken akıl yürütme metni, ReasoningContent
+  # sütununda saklanır. Sütun yoksa (eski şema) sessizce yalnızca eski
+  # alanlar yazılır; böylece geriye dönük uyumluluk korunur.
+  reasoning_content <- msg$reasoning_content %||% msg$reasoning_trace
+  if (is.null(reasoning_content) || !nzchar(reasoning_content)) {
+    reasoning_content <- NA_character_
+  }
+
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
   max_order_query <- "SELECT MAX(MessageOrder) AS maxord FROM MB_Messages WHERE ChatID = ?"
   max_order <- dbGetQuery(conn, max_order_query, params = list(chat_id))$maxord[1]
   next_order <- if (is.na(max_order)) 1L else as.integer(max_order) + 1L
 
-  res <- dbGetQuery(conn, query, params = normalize_db_params(list(chat_id, msg$content, msg$type, ts, next_order)))
+  query_with_reasoning <- "
+    INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder, ReasoningContent)
+    OUTPUT INSERTED.MessageID AS MessageID
+    VALUES (?, ?, ?, ?, ?, ?)
+  "
+  query_legacy <- "
+    INSERT INTO MB_Messages (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
+    OUTPUT INSERTED.MessageID AS MessageID
+    VALUES (?, ?, ?, ?, ?)
+  "
+
+  res <- tryCatch({
+    dbGetQuery(
+      conn,
+      query_with_reasoning,
+      params = normalize_db_params(list(
+        chat_id, msg$content, msg$type, ts, next_order, reasoning_content
+      ))
+    )
+  }, error = function(e) {
+    # ReasoningContent sütunu henüz eklenmemiş olabilir; eski şemaya düş.
+    dbGetQuery(
+      conn,
+      query_legacy,
+      params = normalize_db_params(list(
+        chat_id, msg$content, msg$type, ts, next_order
+      ))
+    )
+  })
+
   if (nrow(res) == 0) stop("Failed to save message to DB.")
   return(as.integer(res$MessageID[1]))
 }
