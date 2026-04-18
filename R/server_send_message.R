@@ -199,7 +199,8 @@ sendMessageInit <- function(
     user_prompt_msg <- add_message_fn(display_text, "user")
 
     values$typing <- TRUE
-    # Düşünen modeller için premium akıl yürütme kartı; aksi halde klasik Düşünüyorum.
+    # Düşünen modellerde gerçek akıl yürütme paneli; düşünmeyen modellerde
+    # aynı kabukla sahte faz (simulated) paneli gösterilir.
     thinking_model_active <- tryCatch(
       is_thinking_model(settings_data$model_selection),
       error = function(e) FALSE
@@ -210,16 +211,18 @@ sendMessageInit <- function(
     if (show_thinking_wrapper) {
       removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
 
-      wrapper_classes <- if (thinking_model_active) "message-bubble prc-host" else "message-bubble"
-
+      # Panel kabuğu (düşünen veya sahte fazlı düşünmeyen modeller için)
+      # kullanılacağından klasik "Düşünüyorum" halkasını atla: MutationObserver
+      # data-panel-takeover="true" işaretini gördüğünde TypingAnimationManager
+      # devreye girmez ve kabuk boş kalır; istemci tarafı paneli ekler.
       insertUI(
         selector = "#chat_content_container",
         where = "beforeEnd",
         ui = div(
           id = "typing-animation-wrapper",
-          class = wrapper_classes,
-          style = "display: flex; justify-content: center; padding: 20px;",
-          div(class = "ring", "Düşünüyorum", span())
+          class = "message-bubble",
+          `data-panel-takeover` = "true",
+          style = "display: flex; justify-content: center; padding: 20px;"
         ),
         immediate = TRUE
       )
@@ -231,12 +234,14 @@ sendMessageInit <- function(
         }, 10);
       ")
 
-      if (isTRUE(thinking_model_active)) {
-        session$sendCustomMessage("premiumReasoningStart", list(
-          model = settings_data$model_selection %||% "",
-          classicFallback = classic_indicator_requested
-        ))
-      }
+      # Hem düşünen hem de düşünmeyen modellerde aynı panel kabuğu gösterilir;
+      # simulated=TRUE ise istemci tarafı sahte faz metinleri döndürür ve
+      # yanıt akışı başladığı an paneli sönümleyerek kaldırır (DB arşivi yok).
+      session$sendCustomMessage("premiumReasoningStart", list(
+        model = settings_data$model_selection %||% "",
+        classicFallback = classic_indicator_requested,
+        simulated = !isTRUE(thinking_model_active)
+      ))
     }
 
     # Durdur butonunu göster

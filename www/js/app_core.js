@@ -71,7 +71,10 @@ $(document).ready(function() {
         if (!(node instanceof HTMLElement)) return;
 
         if (node.id === 'typing-animation-wrapper') {
-          TypingAnimationManager.create(node);
+          // Panel kabuğu devralacaksa klasik "Düşünüyorum" animasyonunu atla.
+          if (node.getAttribute('data-panel-takeover') !== 'true') {
+            TypingAnimationManager.create(node);
+          }
           shouldScroll = true;
         } else if (node.classList.contains('message-bubble')) {
           const wrapper = node.closest('[id^="message_wrapper_"]');
