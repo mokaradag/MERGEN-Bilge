@@ -893,32 +893,151 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         })
 
         messages_payload2 <- merge_system_messages_to_front(messages_payload2)
-        
+
+        # Düşünen modellerde non-streaming ikinci geçiş, bazı uç noktalarda
+        # "message.reasoning_content" alanını boş döndürebilir. Bu nedenle
+        # ikinci geçişi SSE ile akıtıp hem içerik hem akıl yürütme metnini
+        # delta parçalarından toplarız. Non-thinking modellerde davranış
+        # değişmez: klasik stream=FALSE yanıt kullanılır.
+        use_sse_second_pass <- isTRUE(is_thinking_model(selected_model))
+
         body2 <- list(
           model = selected_model,
           messages = messages_payload2,
-          stream = FALSE
+          stream = isTRUE(use_sse_second_pass)
         )
 
         if (!should_omit_temperature(selected_model)) {
           body2$temperature <- temp_value
         }
-        
+
         hdrs2 <- list(`Content-Type` = "application/json")
         if (!is.null(api_key) && nzchar(api_key)) {
           hdrs2$Authorization <- paste("Bearer", api_key)
         }
-        
-        response2 <- httr::POST(
-          api_endpoint,
-          do.call(httr::add_headers, hdrs2),
-          body = jsonlite::toJSON(body2, auto_unbox = TRUE),
-          encode = "raw",
-          httr::timeout(300)
-        )
-        
-    status2 <- httr::status_code(response2)
-    if (status2 != 200) {
+
+        ai2 <- ""
+        reasoning2 <- ""
+        sse_error <- NULL
+        status2 <- 200L
+
+        if (isTRUE(use_sse_second_pass)) {
+          # SSE ikinci geçiş: içerik ve akıl yürütme parçalarını topla
+          second_pass_buffer <- ""
+          second_pass_content <- ""
+          second_pass_reasoning <- ""
+          second_pass_status <- 200L
+
+          process_second_pass_event <- function(parsed_event) {
+            if (is.null(parsed_event)) {
+              return(invisible(NULL))
+            }
+            if (isTRUE(parsed_event$done)) {
+              return(invisible(NULL))
+            }
+            event_obj <- parsed_event$data
+            if (is.null(event_obj)) {
+              return(invisible(NULL))
+            }
+            delta_bundle <- extract_llm_delta_bundle(event_obj)
+            dt <- enc2utf8(delta_bundle$content %||% "")
+            rt <- enc2utf8(delta_bundle$reasoning %||% "")
+            if (nzchar(dt)) {
+              second_pass_content <<- paste0(second_pass_content, dt)
+            }
+            if (nzchar(rt)) {
+              second_pass_reasoning <<- paste0(second_pass_reasoning, rt)
+            }
+            invisible(NULL)
+          }
+
+          process_second_pass_buffer <- function(force = FALSE) {
+            normalized <- gsub("\r\n", "\n", second_pass_buffer, fixed = TRUE)
+            normalized <- gsub("\r", "\n", normalized, fixed = TRUE)
+            repeat {
+              delimiter_pos <- regexpr("\n\n", normalized, fixed = TRUE)[1]
+              if (delimiter_pos < 0) break
+              event_text <- substr(normalized, 1, delimiter_pos - 1)
+              remainder <- substr(normalized, delimiter_pos + 2, nchar(normalized))
+              parsed_event <- parse_llm_sse_event(event_text)
+              process_second_pass_event(parsed_event)
+              normalized <- remainder
+            }
+            if (isTRUE(force) && nzchar(trimws(normalized))) {
+              parsed_event <- parse_llm_sse_event(normalized)
+              process_second_pass_event(parsed_event)
+              normalized <- ""
+            }
+            second_pass_buffer <<- normalized
+            invisible(NULL)
+          }
+
+          tryCatch({
+            h2 <- curl::new_handle()
+            hdrs2_vec <- unlist(hdrs2)
+            curl::handle_setheaders(h2, .list = as.list(hdrs2_vec))
+            curl::handle_setopt(
+              h2,
+              post = TRUE,
+              postfields = jsonlite::toJSON(body2, auto_unbox = TRUE, null = "null"),
+              timeout_ms = 300000
+            )
+
+            meta2 <- curl::curl_fetch_stream(
+              api_endpoint,
+              fun = function(raw_chunk) {
+                chunk_text <- tryCatch(decode_utf8_raw_chunk(raw_chunk), error = function(e) "")
+                if (!nzchar(chunk_text)) return(invisible(NULL))
+                second_pass_buffer <<- paste0(second_pass_buffer, chunk_text)
+                process_second_pass_buffer(force = FALSE)
+                invisible(NULL)
+              },
+              handle = h2
+            )
+
+            process_second_pass_buffer(force = TRUE)
+
+            if (!is.null(meta2$status_code)) {
+              second_pass_status <- as.integer(meta2$status_code)
+            }
+          }, error = function(e) {
+            sse_error <<- conditionMessage(e)
+          })
+
+          status2 <- second_pass_status
+          ai2 <- second_pass_content
+          reasoning2 <- second_pass_reasoning
+
+          # Düşünen modellerde bazı uçlar sadece reasoning döndürüp içerik
+          # kanalını boş bırakabilir; bu durumda reasoning metnini içerik
+          # olarak kullanmaya izin ver (fallback).
+          if (!nzchar(ai2) &&
+              isTRUE(should_allow_reasoning_fallback(selected_model)) &&
+              nzchar(reasoning2)) {
+            ai2 <- reasoning2
+          }
+        } else {
+          response2 <- httr::POST(
+            api_endpoint,
+            do.call(httr::add_headers, hdrs2),
+            body = jsonlite::toJSON(body2, auto_unbox = TRUE),
+            encode = "raw",
+            httr::timeout(300)
+          )
+
+          status2 <- httr::status_code(response2)
+          if (status2 == 200) {
+            rc2 <- httr::content(response2, "parsed")
+            ayristirilmis_yanit2 <- extract_llm_content_and_sources(
+              rc2,
+              model_id = selected_model
+            )
+            ai2 <- ayristirilmis_yanit2$content
+            reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
+          }
+        }
+
+    if (status2 != 200 || !is.null(sse_error)) {
       fb <- format_answer_from_tool_results(tool_results_raw)
       if (!(is.character(fb) && length(fb) > 0 && nzchar(trimws(fb[1])))) {
       fb <- "Araç çıktıları alındı ancak yanıt üretilemedi."
@@ -932,19 +1051,10 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       return(list(
       content  = fb,
       duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-      chart_store = charts_to_store
+      chart_store = charts_to_store,
+      reasoning_content = if (nzchar(reasoning2)) reasoning2 else NULL
       ))
     }
-
-    rc2 <- httr::content(response2, "parsed")
-
-    ayristirilmis_yanit2 <- extract_llm_content_and_sources(
-      rc2,
-      model_id = selected_model
-    )
-
-    ai2 <- ayristirilmis_yanit2$content
-    reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
         
     if (!(is.character(ai2) && length(ai2) > 0 && nzchar(ai2[1]))) {
       fb <- format_answer_from_tool_results(tool_results_raw)
