@@ -17,6 +17,8 @@ The repository is an R/Shiny application with a dark-theme, multimedia-heavy, Tu
 
 This file should be read before touching the code.
 
+Documentation note: `README.md` gives the product-level feature overview, while `ai_rehber.md` defines user-facing assistant behavior; this guide remains the primary reference for repository-safe implementation practices.
+
 ---
 
 ## Non-Negotiable Repo Rules

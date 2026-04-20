@@ -4,6 +4,8 @@ MERGEN Bilge, Türkçe odaklı, kurumsal kullanım için tasarlanmış, R/Shiny 
 
 MERGEN adı, Türk ve Altay mitolojisinde bilgeliği, isabetli düşünceyi ve yol göstericiliği çağrıştırır. Uygulamadaki karakter sistemi de bu mitolojik temadan beslenir ve kullanıcı deneyimine hem görsel hem davranışsal bir katman ekler.
 
+Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst seviye bir özet sunar; ayrıntılı operasyonel kurallar ve asistan davranış ilkeleri için sırasıyla `CLAUDE.md` ve `ai_rehber.md` dosyalarına başvurulmalıdır.
+
 ---
 
 ## Genel Özellikler
