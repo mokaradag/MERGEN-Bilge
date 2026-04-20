@@ -1386,13 +1386,20 @@ worker_save_assistant_response <- function(chat_id, response_text,
                                            user_id = NULL,
                                            model_used = "<local-llm>",
                                            duration = 0.0) {
-  # create fresh worker connection
   conn <- worker_db_connect()
-  on.exit({
-    tryCatch(DBI::dbDisconnect(conn), error = function(e) NULL)
-  })
+  committed <- FALSE
 
-  # compute next order safely
+  on.exit({
+    if (!committed) {
+      try(DBI::dbRollback(conn), silent = TRUE)
+    }
+    tryCatch({
+      if (DBI::dbIsValid(conn)) {
+        DBI::dbDisconnect(conn)
+      }
+    }, error = function(e) NULL)
+  }, add = TRUE)
+
   next_order_q <- "
     SELECT ISNULL(MAX(MessageOrder), 0) + 1 AS next_order
     FROM MB_Messages WITH (UPDLOCK, HOLDLOCK)
@@ -1400,13 +1407,6 @@ worker_save_assistant_response <- function(chat_id, response_text,
   "
 
   DBI::dbBegin(conn)
-  committed <- FALSE
-  on.exit({
-    if (!committed) {
-      try(DBI::dbRollback(conn), silent = TRUE)
-    }
-    tryCatch(DBI::dbDisconnect(conn), error = function(e) NULL)
-  })
 
   next_order <- tryCatch(
     DBI::dbGetQuery(conn, next_order_q, params = list(chat_id))$next_order[1],
@@ -1415,7 +1415,6 @@ worker_save_assistant_response <- function(chat_id, response_text,
   if (is.na(next_order)) next_order <- 1L
   next_order <- as.integer(next_order)
 
-  # FIX: Add 3 hours to timestamp for GMT+3
   timestamp_gmt3 <- format(timestamp, "%Y-%m-%d %H:%M:%S", tz = "Europe/Istanbul")
 
   insert_q <- "
@@ -1423,21 +1422,40 @@ worker_save_assistant_response <- function(chat_id, response_text,
     OUTPUT INSERTED.MessageID AS MessageID
     VALUES (?, ?, ?, ?, ?)
   "
-  res <- DBI::dbGetQuery(conn, insert_q, params = normalize_db_params(list(chat_id, response_text, message_type, timestamp_gmt3, next_order)))
+
+  res <- DBI::dbGetQuery(
+    conn,
+    insert_q,
+    params = normalize_db_params(list(
+      chat_id, response_text, message_type, timestamp_gmt3, next_order
+    ))
+  )
+
   response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_
+
   DBI::dbCommit(conn)
   committed <- TRUE
 
-  if (isTRUE(log_usage)) {
+  if (isTRUE(log_usage) && !is.na(response_message_id)) {
     tryCatch({
-      log_q <- "INSERT INTO MB_Usage_Log (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess) VALUES (?, ?, ?, ?, ?, ?)"
-      DBI::dbExecute(conn, log_q, params = normalize_db_params(list(chat_id, response_message_id, user_id, model_used, duration, 1)))
+      log_q <- "
+        INSERT INTO MB_Usage_Log
+          (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess)
+        VALUES (?, ?, ?, ?, ?, ?)
+      "
+      DBI::dbExecute(
+        conn,
+        log_q,
+        params = normalize_db_params(list(
+          chat_id, response_message_id, user_id, model_used, duration, 1
+        ))
+      )
     }, error = function(e) {
-      # ignore logging errors
+      log_warn("Worker usage log yazılamadı: {e$message}")
     })
   }
 
-  return(response_message_id)
+  response_message_id
 }
 
 # Genişletilmiş geri bildirim kaydetme
