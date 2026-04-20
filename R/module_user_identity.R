@@ -148,15 +148,25 @@ extractFirstName <- function(full_name) {
 #' @description Metnin baş harfini büyük, geri kalanını küçük yapar.
 #' @param text Metin
 #' @return Baş harfi büyük metin
+turkish_toupper <- function(text) {
+  out <- toupper(text)
+  chartr("iışğüöç", "İIŞĞÜÖÇ", out)
+}
+
+turkish_tolower <- function(text) {
+  out <- tolower(text)
+  chartr("İIŞĞÜÖÇ", "iışğüöç", out)
+}
+
 capitalizeFirst <- function(text) {
   if (is.null(text) || !nzchar(text)) return("")
 
-  text <- trimws(text)
+  text <- fixTurkishEncoding(trimws(text))
   first_char <- substring(text, 1, 1)
   rest <- substring(text, 2)
 
   paste0(
-    toupper(first_char),
-    tolower(rest)
+    turkish_toupper(first_char),
+    turkish_tolower(rest)
   )
 }
