@@ -427,6 +427,16 @@ fileManagerServer <- function(
 	  fm_debug("refresh_start", sprintf("trigger=%s", trigger))
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
+	  previously_attached_names <- unique(vapply(
+		names(module_values$files_in_context),
+		function(fid) {
+		  entry <- module_values$file_contents[[fid]]
+		  if (is.null(entry) || is.null(entry$name)) "" else as.character(entry$name)
+		},
+		character(1)
+	  ))
+	  previously_attached_names <- previously_attached_names[nzchar(previously_attached_names)]
+
 	  module_values$files <- empty_files_df()
 	  module_values$file_contents <- list()
 	  module_values$files_in_context <- list()
@@ -508,6 +518,18 @@ fileManagerServer <- function(
 			}
 	  }
 	  
+		if (length(previously_attached_names) > 0) {
+		  for (fid in names(module_values$file_contents)) {
+			entry <- module_values$file_contents[[fid]]
+			if (is.null(entry) || is.null(entry$name)) next
+			if (!entry$name %in% previously_attached_names) next
+
+			module_values$files_in_context[[fid]] <- TRUE
+			attach_in_parent(entry)
+			session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = TRUE))
+		  }
+		}
+
 		fm_debug("refresh_done", sprintf("table rows=%d", nrow(module_values$files)))
 	}
 
