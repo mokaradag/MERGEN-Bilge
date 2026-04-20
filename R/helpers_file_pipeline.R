@@ -1,8 +1,15 @@
 # R/helpers_file_pipeline.R
 
+as_llm_settings_list <- function(settings) {
+  if (is.null(settings)) return(list())
+  if (is.list(settings)) return(settings)
+  tryCatch(reactiveValuesToList(settings), error = function(e) list())
+}
+
 summarize_file_with_llm <- function(file_text, filename, settings) {
   snippet <- substr(file_text %||% "", 1, 60000)
-chat <- list(
+  settings_list <- as_llm_settings_list(settings)
+  chat <- list(
     list(type = "system",
          content = "Türkçe yanıtla. ÖNEMLİ: Bu bir 'özet' görevi DEĞİLDİR. Görevin, dosyanın içeriğini kapsamlı bir şekilde 'ÇIKARTMAK' ve raporlamaktır. \
 Asla yüzeysel geçme. Dosyadaki her ana başlığı, alt başlığı, istatistiksel veriyi, sayısal değerleri ve teknik detayları koruyarak uzun ve ayrıntılı bir içerik dökümü hazırla. \
@@ -14,8 +21,8 @@ Eksik bilgi bırakma. İçeriği maddeler halinde, hiyerarşik ve okunabilir şe
   )
   tryCatch({
     warn_msgs <- character(0)
-    res <- withCallingHandlers(
-      call_llm_with_retry(chat, reactiveValuesToList(settings), max_retries = 2),
+	res <- withCallingHandlers(
+	  call_llm_with_retry(chat, settings_list, max_retries = 2),
       warning = function(w) {
         warn_msgs <<- c(warn_msgs, conditionMessage(w))
         invokeRestart("muffleWarning")
