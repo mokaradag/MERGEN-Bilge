@@ -331,8 +331,8 @@ server <- function(input, output, session) {
 
   # Görsel galerisi gözlemcilerini başlat
   imageGalleryObserversInit(input, session, values, settings_data,
-                             gallery_data, saved_chats_data,
-                             current_user_id, load_chat_in_progress)
+                           gallery_data, saved_chats_data,
+                           current_user_id_provider, load_chat_in_progress)
 
   # Hoş geldin ekranı işleyicilerini başlat (modüler)
   # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır
@@ -350,7 +350,7 @@ welcome_handlers <- welcomeHandlersInit(
   welcome_fns$start_new_chat <- welcome_handlers$start_new_chat
 
   # İndirme ve dosya gösterge çıktılarını başlat (modüler)
-  downloadOutputsInit(output, session, session_files, current_user_id)
+  downloadOutputsInit(output, session, session_files, current_user_id_provider)
   
 	historyServer(
 	  "history_module",
