@@ -118,6 +118,23 @@ fileManagerServer <- function(
     fm_debug("settings_missing", "settings_data parametresi verilmedi; NULL kullanılacak")
     NULL
   })
+  
+	get_summarization_mode <- function() {
+	  settings_obj <- safe_settings_data()
+	  if (is.null(settings_obj)) {
+		return(FALSE)
+	  }
+
+	  if (is.reactivevalues(settings_obj)) {
+		return(isTRUE(settings_obj$enable_summarization_tools))
+	  }
+
+	  if (is.list(settings_obj)) {
+		return(isTRUE(settings_obj$enable_summarization_tools))
+	  }
+
+	  FALSE
+	}
 
 	get_effective_user_id <- function() {
 	  session_uid  <- session$userData$user_id %||% NULL
@@ -302,14 +319,7 @@ fileManagerServer <- function(
 	  # Summarization modu için dosya formatı kontrolü
 	  if (checked) {
 		# Summarization modunu güvenli şekilde kontrol et
-		settings_obj <- safe_settings_data()
-		if (!is.null(settings_obj)) {
-		  if (is.reactivevalues(settings_obj)) {
-			summarization_mode <- isTRUE(settings_obj$enable_summarization_tools)
-		  } else if (is.list(settings_obj)) {
-			summarization_mode <- isTRUE(settings_obj$enable_summarization_tools)
-		  }
-		}
+		summarization_mode <- get_summarization_mode()
 		
 		if (summarization_mode) {
 		  # Summarization modunda sadece belirli formatlara izin ver
@@ -709,17 +719,7 @@ fileManagerServer <- function(
 	  normal_allowed <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
 	  
 	  # Summarization modunu güvenli şekilde kontrol et
-	  summarization_mode <- FALSE
-	  
-	  # safe_settings_data kullan
-	  settings_obj <- safe_settings_data()
-	  if (!is.null(settings_obj)) {
-		if (is.reactivevalues(settings_obj)) {
-		  summarization_mode <- isTRUE(settings_obj$enable_summarization_tools)
-		} else if (is.list(settings_obj)) {
-		  summarization_mode <- isTRUE(settings_obj$enable_summarization_tools)
-		}
-	  }
+	  summarization_mode <- get_summarization_mode()
 	  
 	  # Uygun format listesini seç
 	  # NOT: generate_message = FALSE ise mevcut dosyalar yenileniyor demektir (refresh).
