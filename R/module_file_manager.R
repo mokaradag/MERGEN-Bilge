@@ -135,6 +135,33 @@ fileManagerServer <- function(
 
 	  FALSE
 	}
+	
+	build_attach_rule_hint_text <- function(mcp_enabled = FALSE,
+											summarization_mode = FALSE,
+											allow_summarization_text = FALSE) {
+	  if (isTRUE(mcp_enabled)) {
+		return("Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir.")
+	  }
+
+	  if (isTRUE(allow_summarization_text) && isTRUE(summarization_mode)) {
+		return("Seçim kuralı: Dosya Özetleme modunda birden fazla dosya seçebilirsiniz.")
+	  }
+
+	  "Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
+	}
+
+	update_attach_rule_hint <- function(summarization_mode = FALSE,
+										allow_summarization_text = FALSE) {
+	  shinyjs::html(
+		id = "attach_rule_hint",
+		html = build_attach_rule_hint_text(
+		  mcp_enabled = isTRUE(mcp_enabled_reactive()),
+		  summarization_mode = isTRUE(summarization_mode),
+		  allow_summarization_text = isTRUE(allow_summarization_text)
+		),
+		add = FALSE
+	  )
+	}
 
 	get_effective_user_id <- function() {
 	  session_uid  <- session$userData$user_id %||% NULL
@@ -234,6 +261,58 @@ fileManagerServer <- function(
     )
     paste0(ico, toupper(e))
   }
+  
+	get_summarization_allowed_extensions <- function() {
+	  c("doc", "docx", "pdf", "txt")
+	}
+
+	get_normal_allowed_extensions <- function() {
+	  c("txt", "pdf", "docx", "xlsx", "xls", "csv", "json", "r", "py", "md", "log", "xml", "html")
+	}
+
+	resolve_allowed_extensions <- function(generate_message, summarization_mode) {
+	  summarization_allowed <- get_summarization_allowed_extensions()
+	  normal_allowed <- get_normal_allowed_extensions()
+
+	  if (!isTRUE(generate_message)) {
+		return(normal_allowed)
+	  }
+
+	  if (isTRUE(summarization_mode)) {
+		return(summarization_allowed)
+	  }
+
+	  normal_allowed
+	}
+
+	show_unsupported_extension_toast <- function(file_ext, summarization_mode) {
+	  summarization_allowed <- get_summarization_allowed_extensions()
+	  normal_allowed <- get_normal_allowed_extensions()
+
+	  if (isTRUE(summarization_mode)) {
+		showToast(
+		  session,
+		  sprintf(
+			"Dosya Özetleme modunda sadece şu formatlar desteklenir: %s.",
+			paste(toupper(summarization_allowed), collapse = ", ")
+		  ),
+		  "warning"
+		)
+		return(invisible(TRUE))
+	  }
+
+	  showToast(
+		session,
+		sprintf(
+		  "'%s' uzantılı dosya desteklenmiyor. Desteklenen türler: %s.",
+		  toupper(file_ext),
+		  paste(toupper(normal_allowed), collapse = ", ")
+		),
+		"warning"
+	  )
+
+	  invisible(TRUE)
+	}
   
 	# Get (id -> file object)
 	get_file_by_id <- function(fid) {
@@ -378,24 +457,14 @@ fileManagerServer <- function(
 		showToast(session, paste0("'", fname, "' model bağlamından çıkarıldı."), "info")
 	  }
 	  
-	  # Update the hint text dynamically
-	  txt <- if (isTRUE(mcp_enabled_reactive())) {
-		"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
-	  } else if (summarization_mode) {
-		"Seçim kuralı: Dosya Özetleme modunda birden fazla dosya seçebilirsiniz."
-	  } else {
-		"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
-	  }
-	  shinyjs::html(id = "attach_rule_hint", html = txt, add = FALSE)
+	  update_attach_rule_hint(
+		summarization_mode = summarization_mode,
+		allow_summarization_text = TRUE
+	  )
 	}, ignoreInit = TRUE)
 
 	observe({
-	  txt <- if (isTRUE(mcp_enabled_reactive())) {
-			"Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir."
-	  } else {
-			"Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
-	  }
-	  shinyjs::html(id = "attach_rule_hint", html = txt, add = FALSE)
+	  update_attach_rule_hint()
 	})
   
   # --- NEW: persistent storage helpers -----------------------------------------
@@ -655,6 +724,76 @@ fileManagerServer <- function(
         session_files_reactive(update_fn(cur))
       }, silent = TRUE)
     }
+	
+	build_file_actions_html <- function(file_id) {
+	  hidden_dl <- as.character(
+		tags$span(
+		  style = "display:none;",
+		  shiny::downloadLink(outputId = ns(paste0("download_", file_id)), label = "")
+		)
+	  )
+
+	  as.character(tags$div(
+		class = "file-actions",
+		tags$button(
+		  class = "file-action-btn file-view js-file-action",
+		  title = "Görüntüle",
+		  `data-action` = "view",
+		  `data-file-id` = file_id,
+		  icon("eye")
+		),
+		tags$button(
+		  class = "file-action-btn file-download js-download-btn",
+		  title = "İndir",
+		  `data-download-id` = file_id,
+		  icon("download")
+		),
+		tags$button(
+		  class = "file-action-btn file-delete js-file-action",
+		  title = "Sil",
+		  `data-action` = "delete",
+		  `data-file-id` = file_id,
+		  icon("trash")
+		),
+		HTML(hidden_dl)
+	  ))
+	}
+
+	build_attach_cell_html <- function(file_id, file_name) {
+	  as.character(tags$div(
+		class = "attach-cell",
+		tags$input(
+		  id = ns(paste0("attach_", file_id)),
+		  type = "checkbox",
+		  class = "attach-checkbox",
+		  `data-file-id` = file_id,
+		  `data-filename` = file_name,
+		  title = "Bu dosyayı model bağlamına ekle/çıkar",
+		  `aria-label` = "Model bağlamına ekle veya çıkar"
+		)
+	  ))
+	}
+
+	append_uploaded_file_row <- function(file_name, file_size, file_info, file_id) {
+	  ext <- tolower(tools::file_ext(file_name))
+	  actions <- build_file_actions_html(file_id)
+	  attach_cell <- build_attach_cell_html(file_id, file_name)
+
+	  module_values$files <- rbind(
+		module_values$files,
+		data.frame(
+		  Dosya_Adi = file_name,
+		  Boyut = paste(round((file_size %||% 0) / 1024, 2), "KB"),
+		  Tur = ext_icon_html(ext),
+		  Yuklenme_Tarihi = format_timestamp(file_info$datapath),
+		  Islemler = actions,
+		  Model_Baglam = attach_cell,
+		  stringsAsFactors = FALSE
+		)
+	  )
+
+	  invisible(TRUE)
+	}
 
     # Helper to remove a file by its display name (invoked from the chat's close button)
     remove_file_by_name <- function(filename, quiet = FALSE) {
@@ -712,52 +851,20 @@ fileManagerServer <- function(
 	  # Validate type - ÖZEL: Eğer Dosya Özetleme modu açıksa sadece belirli formatları kabul et
 	  file_ext <- tolower(tools::file_ext(file_name))
 	  
-	  # Summarization modu için izin verilen formatlar
-	  summarization_allowed <- c("doc", "docx", "pdf", "txt")
-	  
-	  # Normal mod için izin verilen formatlar
-	  normal_allowed <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
-	  
-	  # Summarization modunu güvenli şekilde kontrol et
 	  summarization_mode <- get_summarization_mode()
-	  
-	  # Uygun format listesini seç
-	  # NOT: generate_message = FALSE ise mevcut dosyalar yenileniyor demektir (refresh).
-	  # Bu durumda summarization_mode'dan bağımsız olarak tüm normal formatlar kabul edilmeli,
-	  # çünkü bu dosyalar daha önce başarıyla yüklenmiş dosyalardır.
-	  allowed_extensions <- if (!generate_message) {
-		# Mevcut dosyaları yenilerken tüm formatları kabul et
-		normal_allowed
-	  } else if (summarization_mode) {
-		# Yeni yükleme + summarization modu aktif: sadece özetlenebilir formatlar
-		summarization_allowed
-	  } else {
-		# Yeni yükleme + normal mod: tüm desteklenen formatlar
-		normal_allowed
-	  }
-	  
+	  allowed_extensions <- resolve_allowed_extensions(
+		generate_message = generate_message,
+		summarization_mode = summarization_mode
+	  )
+
 	  if (!file_ext %in% allowed_extensions) {
-		if (summarization_mode) {
-		  showToast(
-			session,
-			sprintf("Dosya Özetleme modunda sadece şu formatlar desteklenir: %s.",
-					paste(toupper(summarization_allowed), collapse = ", ")),
-			"warning"
-		  )
-		} else {
-		  showToast(
-			session,
-			sprintf(
-			  "'%s' uzantılı dosya desteklenmiyor. Desteklenen türler: %s.",
-			  toupper(file_ext),
-			  paste(toupper(normal_allowed), collapse = ", ")
-			),
-			"warning"
-		  )
-		}
-        fm_debug("process_abort", sprintf("unsupported extension: %s", file_ext))
+		show_unsupported_extension_toast(
+		  file_ext = file_ext,
+		  summarization_mode = summarization_mode
+		)
+		fm_debug("process_abort", sprintf("unsupported extension: %s", file_ext))
 		return(NULL)
-      }
+	  }
 
       # ALWAYS use a stable “display id” for the table; do not depend on a temp copy
       file_id <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
@@ -790,53 +897,12 @@ fileManagerServer <- function(
       module_values$file_contents[[file_id]] <- saved
       session$userData$temp_files[[file_id]] <- NULL  # no temp we own here
     
-      hidden_dl <- as.character(
-        tags$span(
-          style = "display:none;",
-          shiny::downloadLink(outputId = ns(paste0("download_", file_id)), label = "")
-        )
+      append_uploaded_file_row(
+        file_name = file_name,
+        file_size = file_size,
+        file_info = file_info,
+        file_id = file_id
       )
-    
-		actions <- as.character(tags$div(
-		  class = "file-actions",
-		  tags$button(class = "file-action-btn file-view js-file-action",
-					  title = "Görüntüle", `data-action` = "view", `data-file-id` = file_id, icon("eye")),
-		  tags$button(class = "file-action-btn file-download js-download-btn",
-					  title = "İndir", `data-download-id` = file_id, icon("download")),
-		  tags$button(class = "file-action-btn file-delete js-file-action",
-					  title = "Sil", `data-action` = "delete", `data-file-id` = file_id, icon("trash")),
-		  HTML(hidden_dl)
-		))
-		
-		attach_cell <- as.character(tags$div(
-		  class = "attach-cell",
-		  tags$input(
-			id = ns(paste0("attach_", file_id)),
-			type = "checkbox",
-			class = "attach-checkbox",
-			`data-file-id` = file_id,
-			`data-filename` = file_name,
-			title = "Bu dosyayı model bağlamına ekle/çıkar",
-			`aria-label` = "Model bağlamına ekle veya çıkar"
-		  )
-		))
-
-		# Uzantıyı küçük harfe çevir (ikon eşlemesi için)
-		ext <- tolower(tools::file_ext(file_name))
-
-		module_values$files <- rbind(
-		  module_values$files,
-		  data.frame(
-			Dosya_Adi       = file_name,
-			Boyut           = paste(round((file_size %||% 0) / 1024, 2), "KB"),
-			# Tür sütunu: ikon + etiket
-			Tur             = ext_icon_html(ext),
-			Yuklenme_Tarihi = format_timestamp(file_info$datapath),
-			Islemler        = actions,
-			Model_Baglam    = attach_cell,
-			stringsAsFactors = FALSE
-		  )
-		)
     
       if (isTRUE(generate_message)) {
 		html_message <- sprintf(
