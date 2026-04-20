@@ -579,10 +579,10 @@
   50%      { transform: scale(1.25); opacity: 0.72; }
 }
 
-/* Alt shimmer barı için sola-sağa kayan arkaplan pozisyonu */
+/* Alt shimmer barı için soldan sağa kayan arkaplan pozisyonu */
 @keyframes rp-shimmer {
-  0%   { background-position: -110% 0; }
-  100% { background-position: 110% 0;  }
+  0%   { background-position: 110% 0;  }
+  100% { background-position: -110% 0; }
 }
 
 /* ------------------------------------------------------------
