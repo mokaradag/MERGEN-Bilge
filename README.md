@@ -206,15 +206,15 @@ Uygulama, klasik tek-dosya Shiny yaklaşımından daha modüler bir yapıya sahi
 
 ### `app.R`
 Gerçek giriş noktasıdır. Şunları yapar:
-- `safe_source()` tanımlar,
-- `global.R`, `ui.R`, `server.R` dosyalarını yükler,
+- önce zorunlu boot dosyalarının varlığını doğrular (`R/utils_safe_source.R`, `global.R`, `ui.R`, `server.R`),
+- `R/utils_safe_source.R` dosyasını yükler,
+- ortak `safe_source()` ile sırasıyla `global.R`, `ui.R`, `server.R` dosyalarını çağırır,
 - `www/` alt klasörlerini resource path olarak kaydeder,
 - uygulamayı başlatır.
 
 ### `global.R`
 Küresel yapılandırma ve yükleme sırasını yönetir. Şunları içerir:
 - UTF-8 ve locale ayarları
-- `safe_source()` tanımı
 - zorunlu ortam değişkeni kontrolü
 - dosya deposu altyapısı
 - paket yüklemeleri
@@ -254,6 +254,8 @@ Recency odaklı UI bileşenlerinde uygun olduğunda çıplak oluşturulma zaman�
 ## Yükleme Sırası ve Modüler Yapı
 
 `global.R` içindeki yükleme sırası bilinçli olarak katmanlara ayrılmıştır:
+
+Not: Ortak `safe_source()` helper’ı (`R/utils_safe_source.R`) normal `source()` çağrısı başarısız olursa ham bayt çözümü yerine `readLines()` ile çoklu kodlama (UTF-8 / WINDOWS-1254 / latin1) denemesi yapar; uygun metin parse/eval edilerek yükleme tamamlanır.
 
 ### 1. Temel altyapı
 - paketler
@@ -417,9 +419,20 @@ Dosya depolama sistemi `R/config_file_store.R` içinde merkezi olarak tanımlan�
 - Kullanıcı bazlı klasör yapısı
 - Kalıcı yükleme dizini
 - JSON indeks dosyası
-- Dosya adı ile gerçek saklama adı ayrımı
+- Kullanıcıya görünen ad (display name) ile iç saklama adı ayrımı
+- İndeks yazımlarında atomik güncelleme (geçici dosya + taşıma/kopyalama)
+- Boş/bozuk indeks durumunda güvenli boş duruma düşme
+- Bozuk indeks için `.corrupt_<timestamp>` yedeği alma
+- Fallback listede gerektiğinde zaman damgalı/rastgele saklama önekini temizleyerek display name kurtarma
 - Eksik indeks kayıtları için fallback dosya sistemi taraması
 - Periyodik garbage collection
+- GC zamanlayıcısında tek-seferlik başlatma koruması (aynı R oturumunda yeniden source/app restart ile döngü çoğaltmama)
+
+### Dosya Yönetimi yenileme dayanıklılığı
+Dosya Yönetimi yenileme akışı kullanıcı açısından rollback-safe olacak şekilde korunur: yenileme/rehydrate adımı hata verirse önceki bellek içi dosya durumu silinmez; başarılı yenilemede daha önce bağlama eklenmiş dosyalar yeniden işaretlenerek geri yüklenir.
+
+### Son bakım notu (mimari)
+Son bakım turunda özellikle dosya yöneticisi tarafında davranış değiştirmeden tekrar eden politika metinleri azaltılmış, izinli uzantı/politika yardımcıları merkezileştirilmiş ve tekrar eden satır/aksiyon/bağlama-ekle hücre üretimleri küçük yardımcı yapılarla ayrıştırılmıştır.
 
 ### Önemli yollar
 - `MERGEN_FILES_ROOT`

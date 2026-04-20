@@ -101,6 +101,13 @@ Bu tür hatalar özellikle şu koşullarda daha görünür olabilir:
 - `app.R` dosyasının tamamını `Ctrl+Enter` ile çalıştırma
 - persistent cluster worker kullanımı
 
+### 8B) Source-time side effects must be guarded
+Source-time background loops/timers must always use a once-only guard pattern.
+
+Repository convention:
+- periodic GC scheduling is started through a once-only guard (`start_gc_scheduler_once()` pattern),
+- do not reintroduce unguarded source-time scheduling that can stack duplicate loops when files are sourced repeatedly in the same R session.
+
 ---
 
 ## Thinking=TRUE Modeller İçin Akıl Yürütme Akışı (Yeni Standart)
@@ -179,13 +186,14 @@ The application is designed for a polished, immersive experience:
 
 It does the following:
 
-1. defines `safe_source()` before anything else,
-2. loads `global.R`,
-3. loads `ui.R`,
-4. loads `server.R`,
-5. registers `www/` subdirectories with `addResourcePath()`,
-6. registers `www/` root under the `img` prefix,
-7. starts the app with `runApp(shinyApp(ui, server), ...)`.
+1. validates required boot files (`R/utils_safe_source.R`, `global.R`, `ui.R`, `server.R`),
+2. sources `R/utils_safe_source.R`,
+3. loads `global.R` via `safe_source()`,
+4. loads `ui.R` via `safe_source()`,
+5. loads `server.R` via `safe_source()`,
+6. registers `www/` subdirectories with `addResourcePath()`,
+7. registers `www/` root under the `img` prefix,
+8. starts the app with `runApp(shinyApp(ui, server), ...)`.
 
 ### Why `app.R` matters
 This repo intentionally avoids relying on plain `runApp(".")` logic inside the app because:
@@ -200,17 +208,18 @@ If startup or missing asset issues appear, check `app.R` first.
 
 ## Encoding and Safe Sourcing
 
-Both `app.R` and `global.R` define `safe_source()`.
+The canonical `safe_source()` helper lives in `R/utils_safe_source.R`.
 
-This function:
+`app.R` sources that file first, then calls `safe_source()` for `global.R`, `ui.R`, and `server.R`.
+
+Fallback behavior is intentionally text-based (not raw-byte decoding):
 
 - tries standard `source(..., encoding = "UTF-8")`,
-- falls back to raw-byte reading,
-- tries decoding with `UTF-8`, `WINDOWS-1254`, and `latin1`,
-- parses text manually,
-- evaluates expressions into the target environment.
+- on encoding/parse failures, retries by reading text with `readLines()`,
+- attempts `UTF-8`, `WINDOWS-1254`, and `latin1`,
+- then runs parse/eval recovery in the target environment.
 
-This is not accidental duplication. It exists because this codebase has had real encoding sensitivity, especially on Windows and SSO-enabled VM environments.
+This design exists because this codebase has had real encoding sensitivity, especially on Windows and SSO-enabled VM environments.
 
 ### Practical rule
 If you add a new R file, it should be source-safe and UTF-8 safe.
@@ -769,15 +778,21 @@ This subsystem provides:
 - `mergen_clear_user_bucket()`
 
 ### Practical behavior
-Physical file names may be timestamped/uniquified, while user-facing display names are preserved in the index.
+- Index writes are atomic (write temp file, then move/copy into place).
+- Empty/corrupt `index.json` must degrade safely to an empty state instead of crashing file flows.
+- Corrupt index files are backed up with a `.corrupt_<timestamp>` suffix before fallback.
+- Physical file names may be timestamped/uniquified, while user-facing display names stay separate and preserved.
+- Fallback display-name recovery may strip timestamp/randomized storage prefixes when needed.
+- File-manager refresh is intentionally rollback-safe: on rebuild failure, previous in-memory file state is preserved; on success, previously attached files are restored.
 
 If the UI shows the wrong filename or files disappear after refresh, investigate:
 
-- index write path,
-- display-name persistence,
+- index write path and atomic replacement,
+- display-name persistence/recovery,
 - user bucket resolution,
 - filesystem fallback listing,
-- encoding at JSON write/read boundaries.
+- encoding at JSON write/read boundaries,
+- refresh rollback behavior.
 
 ---
 
@@ -1371,6 +1386,8 @@ Be careful with:
 - index rehydration,
 - Excel persistence after restart,
 - user-bucket scanning.
+
+For large modules (especially `R/module_file_manager.R`), prefer tiny local helper extractions for repeated UI hint text, allowed-extension policy resolution, and repeated HTML row/action builders. Preserve behavior, reduce duplication, avoid broad rewrites.
 
 ### 5) Quick-action tool switching
 Quick actions are tied to model/tool behavior. Regressions can make a tool appear active while another tool-family actually handles the request.
