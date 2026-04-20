@@ -707,13 +707,29 @@ options(
 gc_scheduler <- function() {
   tryCatch({
     gc(verbose = FALSE)
-    later::later(gc_scheduler, delay = 300)  # Her 5 dakikada bir çalıştır
+    later::later(gc_scheduler, delay = 300)
   }, error = function(e) {
-    # Hata durumunda bile tekrar planla
-    later::later(gc_scheduler, delay = 600)  # Hata sonrası 10 dakika bekle
+    later::later(gc_scheduler, delay = 600)
   })
 }
-gc_scheduler()
+
+start_gc_scheduler_once <- function() {
+  flag_name <- ".mergen_gc_scheduler_started"
+
+  already_started <- isTRUE(
+    get0(flag_name, envir = .GlobalEnv, inherits = FALSE, ifnotfound = FALSE)
+  )
+
+  if (already_started) {
+    return(invisible(FALSE))
+  }
+
+  assign(flag_name, TRUE, envir = .GlobalEnv)
+  gc_scheduler()
+  invisible(TRUE)
+}
+
+start_gc_scheduler_once()
 
 # Veritabanı bağlantı havuzu (server.R'de başlatılır)
 pool <- NULL
