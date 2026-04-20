@@ -61,7 +61,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
   }
   
   startup_state <- new.env(parent = emptyenv())
-  startup_state$initial_saved_chats_loaded <- FALSE
+  startup_state$initial_saved_chats_status <- "idle"
 
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
@@ -71,11 +71,14 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
       return(invisible(NULL))
     }
 
-    if (isTRUE(startup_state$initial_saved_chats_loaded)) {
-      cat("[STARTUP] İlk kayıtlı sohbet yüklemesi zaten yapıldı, tekrar atlanıyor\n")
-      return(invisible(NULL))
-    }
-    startup_state$initial_saved_chats_loaded <- TRUE
+	if (!identical(startup_state$initial_saved_chats_status, "idle")) {
+	  cat(sprintf(
+		"[STARTUP] İlk kayıtlı sohbet yükleme durumu=%s, tekrar atlanıyor\n",
+		startup_state$initial_saved_chats_status
+	  ))
+	  return(invisible(NULL))
+	}
+	startup_state$initial_saved_chats_status <- "loading"
 
 	refresh_welcome_if_needed <- function(chats) {
 	  if (!isTRUE(session$userData$deep_space_dismissed)) {
@@ -105,23 +108,30 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
       refresh_welcome_if_needed(preview_chats)
     }
 
-    session$userData$initial_saved_chats_promise <- promises::then(
-      promises::future_promise({
-        load_chats_from_db(effective_user_id, include_messages = FALSE)
-      }),
-      onFulfilled = function(chats) {
-        chats <- chats %||% list()
-        values$saved_chats <- chats
+	session$userData$initial_saved_chats_promise <- promises::then(
+	  tracked_future_promise(
+		task_fn = function() {
+		  load_chats_from_db(effective_user_id, include_messages = FALSE)
+		},
+		task_type = "startup_saved_chats",
+		session_token = session$token
+	  ),
+	  onFulfilled = function(chats) {
+		startup_state$initial_saved_chats_status <- "done"
 
-        # Tam liste geldiğinde karşılama ekranını güncelle.
-        refresh_welcome_if_needed(chats)
-        NULL
-      },
-      onRejected = function(err) {
-        warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
-        NULL
-      }
-    )
+		chats <- chats %||% list()
+		values$saved_chats <- chats
+
+		# Tam liste geldiğinde karşılama ekranını güncelle.
+		refresh_welcome_if_needed(chats)
+		NULL
+	  },
+	  onRejected = function(err) {
+		startup_state$initial_saved_chats_status <- "idle"
+		warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
+		NULL
+	  }
+	)
   }
 
   if (isTRUE(session$userData$sso_active)) {
