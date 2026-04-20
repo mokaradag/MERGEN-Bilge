@@ -42,6 +42,25 @@ sendMessageInit <- function(
 	  uid
 	}
 
+	cleanup_send_message <- function(remove_typing_wrapper = TRUE) {
+	  mergen_cleanup_send_message(
+		values = values,
+		reset_chat_state_fn = reset_chat_state_fn,
+		remove_typing_wrapper = remove_typing_wrapper
+	  )
+	}
+
+	abort_send_message <- function(message = NULL, type = "warning", remove_typing_wrapper = TRUE) {
+	  mergen_abort_send_message(
+		session = session,
+		values = values,
+		reset_chat_state_fn = reset_chat_state_fn,
+		toast_message = message,
+		toast_type = type,
+		remove_typing_wrapper = remove_typing_wrapper
+	  )
+	}
+
   # Ana mesaj gönderme fonksiyonu
   send_message <- function(prompt_text, is_summarization_request = FALSE) {
     if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
@@ -115,38 +134,20 @@ sendMessageInit <- function(
 
     current_settings <- reactiveValuesToList(settings_data)
 
-    cfg_excel_on <- isTRUE(settings_data$enable_mcp_tools)
-    cfg_sql_analysis_on <- isTRUE(settings_data$enable_rdata_tools)
-    cfg_summarization_on <- isTRUE(settings_data$enable_summarization_tools)
-    cfg_coding_on <- isTRUE(settings_data$enable_coding_tools)
-
     skip_mcp_once <- isTRUE(quick_action_skip_mcp())
     if (skip_mcp_once) quick_action_skip_mcp(FALSE)
 
-    excel_allowed <- cfg_excel_on && uploaded_count > 0
+    routing_info <- mergen_determine_tool_family(
+      settings_data = settings_data,
+      uploaded_count = uploaded_count,
+      skip_mcp_once = skip_mcp_once,
+      current_settings = current_settings
+    )
 
-    # Araç ailesini belirle
-    if (skip_mcp_once) {
-      tool_family <- "none"
-    } else if (cfg_sql_analysis_on) {
-      tool_family <- "sql_analysis"
-      current_settings$max_output_tokens <- 4096
-    } else if (excel_allowed) {
-      tool_family <- "mcp_excel"
-    } else if (cfg_summarization_on) {
-      tool_family <- "summarization"
-    } else if (cfg_coding_on) {
-      tool_family <- "coding"
-      current_settings$max_output_tokens <- 4096
-    } else if (isTRUE(settings_data$enable_process_tools)) {
-      tool_family <- "process"
-    } else if (isTRUE(settings_data$enable_app_expert_tools)) {
-      tool_family <- "app_expert"
-    } else if (isTRUE(settings_data$enable_image_tools)) {
-      tool_family <- "image"
-    } else {
-      tool_family <- "none"
-    }
+    tool_family <- routing_info$tool_family
+    current_settings <- routing_info$current_settings
+    cfg_excel_on <- routing_info$cfg_excel_on
+    cfg_sql_analysis_on <- routing_info$cfg_sql_analysis_on
 
     log_info(sprintf(
       "[CHAT PERF] Yol seçildi - araç=%s, dosya=%d, gecen=%.3f sn",
@@ -304,9 +305,7 @@ sendMessageInit <- function(
       }
 
       if (isTRUE(stop_generation())) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
-        reset_chat_state_fn()
+        cleanup_send_message()
         return(invisible(NULL))
       }
 
@@ -325,19 +324,15 @@ sendMessageInit <- function(
       })
 
       if (is.character(analiz_result)) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
+        cleanup_send_message()
         add_message_fn(analiz_result, "ai")
-        reset_chat_state_fn()
-        return()
+        return(invisible(NULL))
 
       } else if (is.list(analiz_result)) {
         if (identical(analiz_result$type, "error_message")) {
-          removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-          values$typing <- FALSE
+          cleanup_send_message()
           add_message_fn(analiz_result$content, "ai")
-          reset_chat_state_fn()
-          return()
+          return(invisible(NULL))
         }
 
         log_debug("[SERVER] SQL Analizi başarılı. Veriler LLM bağlamına ekleniyor... (Derin: {deep_thinking_active})")
@@ -594,12 +589,9 @@ sendMessageInit <- function(
     {
       api_key_val <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
       if (!nzchar(api_key_val)) {
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
-        reset_chat_state_fn()
-        showToast(session,
-          "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
-          "error"
+        abort_send_message(
+          message = "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
+          type = "error"
         )
         return(invisible(NULL))
       }
@@ -615,164 +607,29 @@ sendMessageInit <- function(
 
     current_settings$model_selection <- model_selected
 
-    # MCP snapshot hazırla
-    mcp_snapshot <- session$userData$mcp_registry_snapshot %||% (session$userData$current_session_files %||% list())
-
     current_settings$current_user_id <- effective_user_id
-    current_settings$mcp_registry_snapshot <- mcp_snapshot
-
     current_settings$tool_family <- tool_family
 
     # Yalnızca gerçek MCP araç çağrısı için MCP aktif edilir
     current_settings$enable_mcp_tools <- identical(tool_family, "mcp_excel")
 
-    current_settings$temperature     <- temperature_value
-    current_settings$uploaded_files  <- uploaded_names
-    current_settings$shiny_session   <- session
+    current_settings$temperature      <- temperature_value
+    current_settings$uploaded_files   <- uploaded_names
+    current_settings$shiny_session    <- session
     current_settings$api_key_override <- api_key_val
 
-    log_debug("[MODE] Araç ailesi: {tool_family}, SQL Analizi: {cfg_sql_analysis_on}, Excel MCP: {cfg_excel_on}")
+    mcp_registry_info <- mergen_prepare_mcp_session_files(
+      session = session,
+      file_manager_data = file_manager_data,
+      uploaded_names = uploaded_names,
+      effective_user_id = effective_user_id,
+      current_settings = current_settings,
+      cache_mcp_file_locally_fn = cache_mcp_file_locally_fn,
+      update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot_fn,
+      tool_family = tool_family
+    )
 
-    if (!is.null(session$userData$current_session_files) && length(session$userData$current_session_files) > 0) {
-      log_debug("[MCP] Mevcut dosya sayısı: {length(session$userData$current_session_files)}")
-
-      if (!is.null(session$userData$current_session_files)) {
-        for (key in names(session$userData$current_session_files)) {
-          obj <- session$userData$current_session_files[[key]]
-          log_debug("[MCP] Anahtar: {key} | Ad: {obj$name %||% '?'} | Yol: {obj$path %||% obj$datapath %||% '?'}")
-        }
-      }
-
-      for (fname in names(session$userData$current_session_files)) {
-        fobj <- session$userData$current_session_files[[fname]]
-        if (is.list(fobj)) {
-          fpath <- fobj$datapath %||% fobj$path
-          log_debug("[MCP] {fname} -> {fpath} (mevcut: {path_exists_relaxed(fpath)})")
-        }
-      }
-    } else {
-      log_debug("[MCP] Oturumda dosya yok — MCP çalışmayacak")
-    }
-
-    # Excel modunda dosyaları MCP tabanına kopyala
-    if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
-      fm_files <- file_manager_data$file_contents()
-
-      resolve_from_manager <- function(target_name) {
-        if (!length(fm_files)) return(NULL)
-        for (fid in names(fm_files)) {
-          obj <- fm_files[[fid]]
-          nm  <- obj$name %||% basename(obj$datapath %||% obj$path %||% "")
-          if (identical(nm, target_name)) {
-            return(list(info = obj, id = fid))
-          }
-        }
-        NULL
-      }
-
-      pick_existing_path <- function(info) {
-        candidates <- c(info$persisted_path, info$path, info$datapath)
-        candidates <- candidates[!vapply(candidates, function(x) is.null(x) || !nzchar(as.character(x)[1]), logical(1))]
-        for (cand in candidates) {
-          c0 <- as.character(cand)[1]
-          if (nzchar(c0) && path_exists_relaxed(c0)) return(c0)
-        }
-        NULL
-      }
-
-      csf <- list()
-      for (fname in uploaded_names) {
-        fm_hit <- resolve_from_manager(fname)
-        finfo  <- fm_hit$info %||% list(name = fname)
-        fid    <- fm_hit$id %||% NULL
-
-        path_now <- pick_existing_path(finfo)
-        if (is.null(path_now) || !nzchar(path_now)) {
-          resolved <- try(resolve_uploaded_file(fname, effective_user_id), silent = TRUE)
-          if (!inherits(resolved, "try-error") && nzchar(resolved) && path_exists_relaxed(resolved)) {
-            path_now <- resolved
-          }
-        }
-
-        if (is.null(path_now) || !nzchar(path_now) || !path_exists_relaxed(path_now)) {
-          log_debug("[FILE STORE] {fname} için yol bulunamadı — atlanıyor")
-          next
-        }
-
-        path_now <- tryCatch(normalizePath(path_now, winslash = "/", mustWork = TRUE), error = function(e) path_now)
-        path_now <- safe_windows_short_path(path_now, must_exist = path_exists_relaxed(path_now))
-
-        path_original <- path_now
-        tryCatch({
-          if (!is_under_mcp_base(path_now) && isTRUE(current_settings$enable_mcp_tools)) {
-            copied <- copy_to_mcp_base(list(name = fname, datapath = path_now), effective_user_id)
-            if (nzchar(copied) && path_exists_relaxed(copied)) path_now <- copied
-          }
-        }, error = function(e) {
-          log_warn("[FILE STORE] copy_to_mcp_base başarısız: {e$message}")
-        })
-
-        cached_path <- cache_mcp_file_locally_fn(path_now)
-        if (is.null(cached_path) || !nzchar(cached_path)) {
-          cached_path <- path_now
-        } else if (!identical(cached_path, path_now)) {
-          log_debug("[FILE STORE] Yerel MCP önbelleği hazırlandı: {cached_path}")
-        }
-        cached_path <- safe_windows_short_path(cached_path, must_exist = path_exists_relaxed(cached_path))
-
-        file_obj <- list(
-          name = fname,
-          datapath = cached_path,
-          path = cached_path,
-          source_path = path_original
-        )
-        csf[[fname]] <- file_obj
-        if (!is.null(fid)) csf[[fid]] <- file_obj
-      }
-
-      session$userData$current_session_files <- csf
-      mcp_snapshot <- update_mcp_registry_snapshot_fn(csf)
-      if (
-        exists("helpers_mcp_tools", inherits = TRUE) &&
-        is.function(helpers_mcp_tools$reset_session_file_registry) &&
-        is.function(helpers_mcp_tools$register_uploaded_file)
-      ) {
-        helpers_mcp_tools$reset_session_file_registry(session)
-        registered_keys <- character()
-        for (key in names(csf)) {
-          obj <- csf[[key]]
-          if (!is.list(obj)) next
-          path_reg <- obj$path %||% obj$datapath
-          if (is.null(path_reg) || !nzchar(path_reg) || !path_exists_relaxed(path_reg)) next
-          display <- obj$name %||% key
-          tokens <- unique(c(key, display))
-          for (tk in tokens) {
-            if (!nzchar(tk) || tk %in% registered_keys) next
-            try(helpers_mcp_tools$register_uploaded_file(
-              session = session,
-              token = tk,
-              abs_path = path_reg,
-              display_name = display
-            ), silent = TRUE)
-            registered_keys <- c(registered_keys, tk)
-          }
-        }
-      }
-      if (length(csf)) {
-        unique_names <- unique(vapply(csf, function(x) x$name %||% "", character(1)))
-        log_debug("[FILE STORE] MCP dosyaları (seçili): {paste(unique_names[nzchar(unique_names)], collapse = ', ')}")
-      } else {
-        log_debug("[FILE STORE] Filtreleme sonrasında geçerli MCP dosyası yok")
-      }
-    } else {
-      session$userData$current_session_files <- list()
-      mcp_snapshot <- update_mcp_registry_snapshot_fn(list())
-    }
-
-    if (!exists("mcp_snapshot", inherits = FALSE)) {
-      mcp_snapshot <- update_mcp_registry_snapshot_fn()
-    }
-
+    mcp_snapshot <- mcp_registry_info$mcp_snapshot
     current_settings$mcp_registry_snapshot <- mcp_snapshot
 
     # Dosya yollarını Excel modunda ilet
@@ -800,21 +657,12 @@ sendMessageInit <- function(
 	is_thinking_model <- grepl("(?i)(think|reason|qwen3\\.5)", model_selected, perl = TRUE)
 	force_non_streaming_sql <- identical(tool_family, "sql_analysis") && is_thinking_model
 
-    stream_profile <- list(
-      label = "standard",
-      use_delta_transport = FALSE,
-      poll_interval_ms = 50L
+    stream_profile <- mergen_build_stream_profile(
+      tool_family = tool_family,
+      uploaded_count = uploaded_count,
+      settings_data = settings_data,
+      force_non_streaming_sql = force_non_streaming_sql
     )
-
-    # Düz sohbet ve kodlama için daha hafif akış profili
-    if ((identical(tool_family, "none") || identical(tool_family, "coding")) &&
-        uploaded_count == 0 &&
-        !isTRUE(settings_data$enable_tts_audio) &&
-        !isTRUE(force_non_streaming_sql)) {
-      stream_profile$label <- if (identical(tool_family, "coding")) "coding_fast" else "plain_fast"
-      stream_profile$use_delta_transport <- TRUE
-      stream_profile$poll_interval_ms <- 15L
-    }
 
     log_debug("Mesaj gönderiliyor, model: {model_selected}")
 	if (isTRUE(force_non_streaming_sql)) {
@@ -906,10 +754,7 @@ sendMessageInit <- function(
           if (!res$success) {
             log_warn("[AI MODULE] Streaming isteği başarısız")
             perf_tracker$track_error()
-            removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-            values$typing <- FALSE
-            showToast(session, res$error, "error")
-            reset_chat_state_fn()
+            abort_send_message(message = res$error, type = "error")
             return(invisible(NULL))
           }
 
@@ -924,9 +769,7 @@ sendMessageInit <- function(
           if (isTRUE(stop_generation()) || !identical(active_request_id(), res$req_id)) {
             try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                              model_selected, res$duration, FALSE), silent = TRUE)
-            removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-            values$typing <- FALSE
-            reset_chat_state_fn()
+            cleanup_send_message()
             return(invisible(NULL))
           }
 
@@ -972,8 +815,6 @@ sendMessageInit <- function(
         onRejected = function(err) {
           log_warn("[MONITORING] Streaming isteği BAŞARISIZ")
           perf_tracker$track_error()
-          removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-          values$typing <- FALSE
 
           duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
           try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
@@ -983,9 +824,11 @@ sendMessageInit <- function(
             msg <- as.character(conditionMessage(err))
             msg <- sub("^[A-Z_]+:\\s*", "", msg)
             if (!nzchar(msg)) msg <- "Beklenmeyen bir hata oluştu."
-            showToast(session, msg, "error")
+            abort_send_message(message = msg, type = "error")
+            return(invisible(NULL))
           }
-          reset_chat_state_fn()
+
+          cleanup_send_message()
           invisible(NULL)
         }
       )
@@ -993,12 +836,13 @@ sendMessageInit <- function(
       p <- p %...!% (function(e) {
         log_warn("[STREAM_CHAIN] Hata yakalandı: {conditionMessage(e)}")
         perf_tracker$track_error()
-        removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-        values$typing <- FALSE
+
         if (!isTRUE(stop_generation())) {
-          showToast(session, "Beklenmeyen bir hata oluştu.", "error")
+          abort_send_message(message = "Beklenmeyen bir hata oluştu.", type = "error")
+          return(invisible(NULL))
         }
-        reset_chat_state_fn()
+
+        cleanup_send_message()
         invisible(NULL)
       })
 
