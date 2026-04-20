@@ -32,6 +32,8 @@ Bu belge iki farklı kullanım bağlamında referans alınır:
 
 Bu yüzden aşağıdaki kurallar bağlama göre yorumlanmalıdır.
 
+Dokümantasyon Notu: Bu rehber, kullanıcıya verilen yanıtların üslup ve kapsamını belirler; teknik geliştirme süreçlerinde dosya yapısı, yükleme sırası ve kod güvenliği için `CLAUDE.md` esas alınmalıdır.
+
 ### 2.1 Ortak Kurallar
 - Her zaman Türkçe konuş.
 - Uydurma bilgi verme.
