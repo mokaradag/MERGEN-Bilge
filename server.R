@@ -281,14 +281,14 @@ server <- function(input, output, session) {
 
   # AI Uzman işleyicilerini başlat (karşılama, sayfa rehberliği, boşta konuşma)
   aiExpertHandlersInit(input, session, values, settings_data,
-                        ai_expert, tts_processor, current_user_id,
-                        chat_history_rv = reactive(values$messages))
+                      ai_expert, tts_processor, current_user_id_provider,
+                      chat_history_rv = reactive(values$messages))
   
   # Depolama/localStorage gözlemcilerini başlat (modüler)
   storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
   
   # Dosya gözlemcilerini başlat (modüler) - session_files ve file_manager_data artık mevcut
-  fileObserversInit(input, session, settings_data, session_files, file_manager_data, current_user_id)
+  fileObserversInit(input, session, settings_data, session_files, file_manager_data, current_user_id_provider)
   
   # Dosya tıklama gözlemcilerini başlat (kaynak, analiz, önizleme)
   fileClickObserversInit(input, session, settings_data, api_config, filePreview, file_manager_data, session_files)

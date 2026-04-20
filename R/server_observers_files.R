@@ -13,6 +13,13 @@
 #' @param current_user_id Mevcut kullanıcı ID'si
 fileObserversInit <- function(input, session, settings_data, session_files, 
                                file_manager_data, current_user_id) {
+
+  resolve_runtime_user_id <- function() {
+    uid <- if (is.function(current_user_id)) current_user_id() else current_user_id
+    uid <- suppressWarnings(as.integer(session$userData$user_id %||% uid %||% 0L))
+    if (is.na(uid) || uid < 0L) uid <- 0L
+    uid
+  }
   
   observeEvent(settings_data$enable_mcp_tools, {
     if (isTRUE(settings_data$enable_mcp_tools)) {
@@ -52,10 +59,7 @@ fileObserversInit <- function(input, session, settings_data, session_files,
   
     # SSO modunda current_user_id başlangıçta 0L olabilir;
     # oturumdaki gerçek kullanıcı kimliğini çözümle
-    effective_uid <- suppressWarnings(as.integer(
-      session$userData$user_id %||% current_user_id %||% 0L
-    ))
-    if (is.na(effective_uid)) effective_uid <- 0L
+    effective_uid <- resolve_runtime_user_id()
 
     processed_count <- 0
     for (file_info in files_to_add) {

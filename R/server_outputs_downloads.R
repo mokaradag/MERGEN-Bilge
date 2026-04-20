@@ -10,6 +10,13 @@
 #' @param session_files Oturum dosyaları reaktif değeri
 #' @param current_user_id Mevcut kullanıcı ID'si
 downloadOutputsInit <- function(output, session, session_files, current_user_id) {
+
+  resolve_runtime_user_id <- function() {
+    uid <- if (is.function(current_user_id)) current_user_id() else current_user_id
+    uid <- suppressWarnings(as.integer(session$userData$user_id %||% uid %||% 0L))
+    if (is.na(uid) || uid < 0L) uid <- 0L
+    uid
+  }
   
   # Ekli dosya göstergesi UI'ı
   output$file_prompt_indicator_ui <- renderUI({
@@ -46,7 +53,7 @@ downloadOutputsInit <- function(output, session, session_files, current_user_id)
       paste0("chat_logs_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
-      logs_df <- fetch_user_activity_logs(current_user_id)
+	  logs_df <- fetch_user_activity_logs(resolve_runtime_user_id())
       write.csv(logs_df, file, row.names = FALSE, fileEncoding = "UTF-8")
     }
   )

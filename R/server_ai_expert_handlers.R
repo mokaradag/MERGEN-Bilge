@@ -44,12 +44,13 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # SSO akışında başlangıçtaki current_user_id değeri 0 olabilir.
   # Bu yüzden AI Uzman tarafında kullanıcı kimliğini her kullanım anında
   # oturumdan yeniden çözmek gerekir.
-  resolve_ai_expert_user_id <- function() {
-    uid <- session$userData$user_id %||% current_user_id %||% 0L
-    uid <- suppressWarnings(as.integer(uid))
-    if (is.na(uid) || uid < 0) uid <- 0L
-    uid
-  }
+	resolve_ai_expert_user_id <- function() {
+	  uid_source <- if (is.function(current_user_id)) current_user_id() else current_user_id
+	  uid <- session$userData$user_id %||% uid_source %||% 0L
+	  uid <- suppressWarnings(as.integer(uid))
+	  if (is.na(uid) || uid < 0) uid <- 0L
+	  uid
+	}
 
   # Boşta konuşma arası (ms) - ayarlardan okunur
   IDLE_INTERVAL_MS   <- 35000   # 35 saniye (varsayılan, ayarlarla güncellenir)
