@@ -206,6 +206,11 @@ server <- function(input, output, session) {
   session_files <- state_bundle$session_files
   active_request_id <- state_bundle$active_request_id
   quick_action_skip_mcp <- state_bundle$quick_action_skip_mcp
+  
+	session$onEnded(function() {
+	  try(stop_generation(TRUE), silent = TRUE)
+	  try(cleanup_worker_tasks_for_session(session$token), silent = TRUE)
+	})
 
   # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
 	chatExportInit(
@@ -275,11 +280,12 @@ server <- function(input, output, session) {
   
   # Başlangıç ve oturum ilk yükleme gözlemcilerini başlat (modüler)
 	startupObserversInit(
-	  input,
-	  session,
-	  values,
-	  render_welcome_screen,
-	  current_user_id_provider
+	  input = input,
+	  session = session,
+	  values = values,
+	  render_welcome_screen = render_welcome_screen,
+	  current_user_id = current_user_id_provider,
+	  sso_state = sso_state
 	)
 
   # Derin uzay giriş ekranı gözlemcilerini başlat (modüler)

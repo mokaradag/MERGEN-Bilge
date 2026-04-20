@@ -220,3 +220,24 @@ tracked_future_promise <- function(task_fn,
     }
   )
 }
+
+cleanup_worker_tasks_for_session <- function(session_token) {
+  if (is.null(session_token) || !nzchar(session_token)) {
+    return(invisible(NULL))
+  }
+
+  monitor_env <- init_worker_monitor()
+  task_ids <- ls(envir = monitor_env$tasks)
+
+  for (task_id in task_ids) {
+    item <- tryCatch(monitor_env$tasks[[task_id]], error = function(e) NULL)
+
+    if (is.null(item)) next
+
+    if (identical(item$session_token, session_token)) {
+      try(rm(list = task_id, envir = monitor_env$tasks), silent = TRUE)
+    }
+  }
+
+  invisible(NULL)
+}

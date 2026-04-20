@@ -11,7 +11,7 @@
 #' @param values Ana reaktif değerler
 #' @param render_welcome_screen Karşılama ekranı render fonksiyonu
 #' @param current_user_id Mevcut kullanıcı ID'si
-startupObserversInit <- function(input, session, values, render_welcome_screen, current_user_id) {
+startupObserversInit <- function(input, session, values, render_welcome_screen, current_user_id, sso_state = NULL) {
   
   # Karşılama ekranını başlat (widget bağımlılıkları ui.R'de statik olarak tanımlı)
   observeEvent(TRUE, {
@@ -134,24 +134,14 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
 	)
   }
 
-  if (isTRUE(session$userData$sso_active)) {
-    # session$userData$auth_initialized reaktif olmadığı için
-    # kısa aralıkla kontrol ederek kimlik hazır olunca tek sefer yükle.
-    auth_wait_observer <- NULL
-	auth_wait_observer <- observe({
-	  if (!isTRUE(session$userData$auth_initialized)) {
-		invalidateLater(50, session)
-		return(invisible(NULL))
-	  }
+	if (isTRUE(session$userData$sso_active)) {
+	  observeEvent(sso_state$authenticated, {
+		req(isTRUE(sso_state$authenticated))
+		load_initial_saved_chats()
+	  }, ignoreInit = TRUE, once = TRUE)
+	} else {
 	  load_initial_saved_chats()
-	  if (!is.null(auth_wait_observer)) {
-		auth_wait_observer$destroy()
-	  }
-	  invisible(NULL)
-	})
-  } else {
-    load_initial_saved_chats()
-  }
+	}
   
   invisible(NULL)
 }

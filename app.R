@@ -55,9 +55,34 @@ if (dir.exists("www")) {
 }
 
 # 5. Uygulamayı çalıştır.
-runApp(shinyApp(ui = ui, server = server),
-  host = "0.0.0.0",
-  port = 8000,
-  launch.browser = TRUE,
+create_mergen_app <- function() {
+  shiny::shinyApp(ui = ui, server = server)
+}
+
+run_mergen_app <- function(
+  host = Sys.getenv("MERGEN_HOST", "0.0.0.0"),
+  port = suppressWarnings(as.integer(Sys.getenv("MERGEN_PORT", "8009"))),
+  launch.browser = interactive(),
   quiet = TRUE
+) {
+  if (is.na(port) || port <= 0L) {
+    port <- 8009L
+  }
+
+  shiny::runApp(
+    create_mergen_app(),
+    host = host,
+    port = port,
+    launch.browser = launch.browser,
+    quiet = quiet
+  )
+}
+
+auto_run <- Sys.getenv(
+  "MERGEN_RUN_APP",
+  if (interactive()) "true" else "false"
 )
+
+if (!identical(tolower(auto_run), "false")) {
+  run_mergen_app()
+}

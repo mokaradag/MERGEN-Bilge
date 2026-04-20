@@ -4,46 +4,45 @@
 # global.R tarafından en başta source() ile çağrılır.
 # ==============================================================================
 
-library(arrow)
-library(base64enc)
-library(cellranger)
-library(cli)
-library(commonmark)
-library(curl)
-library(data.table)
-library(DBI)
-library(dplyr)
-library(DT)
-library(duckdb)
-library(fastmatch)
-library(future)
-library(glue)
-library(htmltools)
-library(httr)
-library(jsonlite)
-library(later)
-library(lubridate)
-library(markdown)
-library(odbc)
-library(openssl)
-library(pdftools)
-library(pool)
-library(promises)
-library(purrr)
-library(readr)
-library(readxl)
-library(shiny)
-library(shinyBS)
-library(shinycssloaders)
-library(shinydashboard)
-library(shinyjs)
-library(shinyWidgets)
-library(stringdist)
-library(stringi)
-library(stringr)
-library(tibble)
-library(tidyr)
-library(urltools)
-library(writexl)
-library(xml2)
-library(av)
+required_packages <- c(
+  "arrow", "base64enc", "cellranger", "cli", "commonmark", "curl",
+  "data.table", "DBI", "dplyr", "DT", "duckdb", "fastmatch",
+  "future", "glue", "htmltools", "httr", "jsonlite", "later",
+  "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
+  "promises", "purrr", "readr", "readxl", "shiny", "shinyBS",
+  "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets",
+  "stringdist", "stringi", "stringr", "tibble", "tidyr", "urltools",
+  "writexl", "xml2", "av"
+)
+
+validate_required_packages <- function(
+  packages = required_packages,
+  namespace_checker = function(pkg) requireNamespace(pkg, quietly = TRUE)
+) {
+  packages[!vapply(packages, namespace_checker, logical(1))]
+}
+
+attach_required_packages <- function(packages = required_packages) {
+  invisible(lapply(packages, function(pkg) {
+    library(pkg, character.only = TRUE)
+  }))
+}
+
+missing_packages <- validate_required_packages()
+
+if (length(missing_packages) > 0) {
+  stop(
+    sprintf(
+      paste(
+        "Eksik R paketleri: %s",
+        "Kurulum için şu komutu çalıştırın:",
+        "install.packages(c(%s), dependencies = TRUE)",
+        sep = "\n"
+      ),
+      paste(missing_packages, collapse = ", "),
+      paste(sprintf('\"%s\"', missing_packages), collapse = ", ")
+    )
+  )
+}
+
+attach_required_packages()

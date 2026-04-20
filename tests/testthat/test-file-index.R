@@ -1,0 +1,27 @@
+test_that("search_file_in_folder basename ile dosyayı bulur", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+
+  nested_dir <- file.path(base_dir, "alt")
+  dir.create(nested_dir, recursive = TRUE)
+
+  target_file <- file.path(nested_dir, "rapor.docx")
+  writeLines("ornek", target_file)
+
+  found <- search_file_in_folder(base_dir, "rapor.docx")
+  expect_equal(normalizePath(found, winslash = "/"), normalizePath(target_file, winslash = "/"))
+})
+
+test_that("search_file_in_folder ipucu ile dosyayı bulur", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+
+  nested_dir <- file.path(base_dir, "projeA", "mart")
+  dir.create(nested_dir, recursive = TRUE)
+
+  target_file <- file.path(nested_dir, "butce.xlsx")
+  writeLines("ornek", target_file)
+
+  found <- search_file_in_folder(base_dir, "projeA&&mart&&butce.xlsx")
+  expect_equal(normalizePath(found, winslash = "/"), normalizePath(target_file, winslash = "/"))
+})

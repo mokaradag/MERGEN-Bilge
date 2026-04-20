@@ -85,20 +85,65 @@ check_rate_limit <- function(user_id) {
 
 # --- PARALEL İŞÇİ HAVUZU YAPILANDIRMASI ---
 # Sistem kapasitesine göre işçi sayısını belirle (en az 1, en fazla 10)
-n_workers <- max(1, min(parallelly::availableCores() - 1, 10))
+resolve_mergen_worker_count <- function() {
+  configured <- suppressWarnings(as.integer(Sys.getenv("MERGEN_WORKERS", NA_character_)))
+  auto_count <- max(1L, min(as.integer(parallelly::availableCores()) - 1L, 10L))
 
-if (!exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
-  .mergen_future_cluster <- parallelly::makeClusterPSOCK(
-    workers = n_workers,
-    outfile = ""
-  )
-  assign(".mergen_future_cluster", .mergen_future_cluster, envir = .GlobalEnv)
+  if (is.na(configured) || configured < 1L) {
+    return(auto_count)
+  }
+
+  min(configured, auto_count)
 }
 
-plan(cluster, workers = get(".mergen_future_cluster", envir = .GlobalEnv), persistent = TRUE)
+stop_future_cluster <- function() {
+  if (!exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
+    return(invisible(NULL))
+  }
 
-# İşçi havuzu izleme fonksiyonu
-# Geriye dönük uyumluluk için korunur
+  cluster <- get(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)
+  try(parallel::stopCluster(cluster), silent = TRUE)
+  rm(".mergen_future_cluster", envir = .GlobalEnv)
+
+  future::plan(future::sequential)
+  invisible(NULL)
+}
+
+init_future_cluster <- function(force = FALSE) {
+  futures_disabled <- identical(
+    tolower(Sys.getenv("MERGEN_DISABLE_FUTURES", "false")),
+    "true"
+  )
+
+  if (isTRUE(futures_disabled)) {
+    future::plan(future::sequential)
+    return(invisible(NULL))
+  }
+
+  if (isTRUE(force)) {
+    stop_future_cluster()
+  }
+
+  if (!exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
+    worker_count <- resolve_mergen_worker_count()
+
+    cluster <- parallelly::makeClusterPSOCK(
+      workers = worker_count,
+      outfile = ""
+    )
+
+    assign(".mergen_future_cluster", cluster, envir = .GlobalEnv)
+  }
+
+  future::plan(
+    future::cluster,
+    workers = get(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE),
+    persistent = TRUE
+  )
+
+  invisible(get(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE))
+}
+
 monitor_workers <- function() {
   get_worker_monitor_info()
 }
