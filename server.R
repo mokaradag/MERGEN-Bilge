@@ -74,7 +74,13 @@ server <- function(input, output, session) {
       uid <- get_or_create_user(uname, sso_claims = claims)
 	  
       # Aktif oturum defterini gerçek kullanıcı kimliği ile güncelle
-      try(perf_tracker$touch_session(uid), silent = TRUE)
+      try({
+        if (exists("perf_tracker", inherits = FALSE) &&
+            is.list(perf_tracker) &&
+            is.function(perf_tracker$touch_session)) {
+          perf_tracker$touch_session(uid)
+        }
+      }, silent = TRUE)
 
       session$userData$user_identity   <- ui
       session$userData$user_first_name <- ui$first_name

@@ -843,9 +843,13 @@ fileManagerServer <- function(
         session$userData$temp_files[[fid]] <- NULL
       }
     
+      # Önce bağlam/ek durumunu temizle; aksi halde hayalet dosya kalabilir
+      module_values$files_in_context[[fid]] <- NULL
+      detach_in_parent(filename)
+
       # Drop from module state
       module_values$file_contents[[fid]] <- NULL
-	  unregister_session_file(filename)
+      unregister_session_file(filename)
     
       # Remove the row in the datatable (by id or by name as fallback)
       rm_idx <- which(
@@ -1161,10 +1165,13 @@ fileManagerServer <- function(
         session$userData$temp_files[[file_id]] <- NULL
       }
     
-      # 3) Clean module state / table row
+      # 3) Clean selection + module state / table row
+      module_values$files_in_context[[file_id]] <- NULL
+      detach_in_parent(info$name)
+
       file_removed(info)  # -> parent observers
       module_values$file_contents[[file_id]] <- NULL
-      unregister_session_file(info$name)      
+      unregister_session_file(info$name)	    
 	  idx <- which(grepl(paste0('data-file-id=\"', file_id, '\"'), module_values$files$Islemler))
       if (length(idx) > 0) module_values$files <- module_values$files[-idx, , drop = FALSE]
     
