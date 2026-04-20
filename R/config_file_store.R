@@ -55,21 +55,79 @@ MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
 }
 
 .save_index <- function(idx) {
-  # Native encoding (ör. CP1254) baytlarını UTF-8'e çevir, yoksa JSON bozulur
   idx <- .convert_to_utf8(idx)
-  jsonlite::write_json(idx, MERGEN_INDEX_PATH, auto_unbox = TRUE, pretty = TRUE)
+
+  dir.create(dirname(MERGEN_INDEX_PATH), recursive = TRUE, showWarnings = FALSE)
+
+  tmp_path <- tempfile(
+    pattern = "index_",
+    tmpdir = dirname(MERGEN_INDEX_PATH),
+    fileext = ".json"
+  )
+
+  on.exit({
+    if (file.exists(tmp_path)) {
+      unlink(tmp_path, force = TRUE)
+    }
+  }, add = TRUE)
+
+  jsonlite::write_json(idx, tmp_path, auto_unbox = TRUE, pretty = TRUE)
+
+  tmp_info <- suppressWarnings(file.info(tmp_path))
+  if (!file.exists(tmp_path) || is.na(tmp_info$size[1]) || tmp_info$size[1] <= 0) {
+    stop("İndeks geçici dosyası oluşturulamadı veya boş kaldı.")
+  }
+
+  moved <- suppressWarnings(file.rename(tmp_path, MERGEN_INDEX_PATH))
+  if (!isTRUE(moved)) {
+    moved <- isTRUE(file.copy(tmp_path, MERGEN_INDEX_PATH, overwrite = TRUE))
+    if (isTRUE(moved)) {
+      unlink(tmp_path, force = TRUE)
+    }
+  }
+
+  if (!isTRUE(moved)) {
+    stop("İndeks dosyası atomik olarak güncellenemedi.")
+  }
+
+  invisible(TRUE)
 }
 
 .load_index <- function() {
-  if (file.exists(MERGEN_INDEX_PATH)) {
-    json_txt <- paste(
+  if (!file.exists(MERGEN_INDEX_PATH)) {
+    return(list())
+  }
+
+  json_txt <- tryCatch(
+    paste(
       readLines(MERGEN_INDEX_PATH, warn = FALSE, encoding = "UTF-8"),
       collapse = "\n"
-    )
-    jsonlite::fromJSON(json_txt, simplifyVector = TRUE)
-  } else {
-    list()
+    ),
+    error = function(e) NA_character_
+  )
+
+  if (is.na(json_txt) || !nzchar(trimws(json_txt))) {
+    log_warn("[INDEX] İndeks dosyası boş veya okunamadı; boş listeye düşülüyor.")
+    return(list())
   }
+
+  parsed <- tryCatch(
+    jsonlite::fromJSON(json_txt, simplifyVector = TRUE),
+    error = function(e) e
+  )
+
+  if (inherits(parsed, "error")) {
+    backup_path <- paste0(
+      MERGEN_INDEX_PATH,
+      ".corrupt_",
+      format(Sys.time(), "%Y%m%d%H%M%S")
+    )
+    try(file.copy(MERGEN_INDEX_PATH, backup_path, overwrite = TRUE), silent = TRUE)
+    log_error("[INDEX] İndeks JSON bozuk; yedek alındı ve boş listeye düşüldü.")
+    return(list())
+  }
+
+  .mark_utf8(parsed)
 }
 
 # ==============================================================================
