@@ -492,6 +492,35 @@ fileManagerServer <- function(
     if (!dir.exists(udir)) return(character(0))
     list.files(udir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
   }
+
+  ensure_persisted_upload_index <- function(abs_path, display_name, uid) {
+    if (is.null(abs_path) || !nzchar(abs_path) || !path_exists_relaxed(abs_path)) {
+      return(invisible(FALSE))
+    }
+
+    if (is.null(uid) || !nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
+      return(invisible(FALSE))
+    }
+
+    ok <- tryCatch({
+      mergen_register_uploaded_file(
+        src_path = abs_path,
+        as_name = display_name,
+        user_id = uid,
+        persist_under_mcp_base = TRUE
+      )
+      TRUE
+    }, error = function(e) {
+      fm_debug("index_sync_error", sprintf("%s -> %s", display_name, conditionMessage(e)))
+      FALSE
+    })
+
+    if (isTRUE(ok)) {
+      fm_debug("index_sync", sprintf("%s -> %s", display_name, abs_path))
+    }
+
+    invisible(ok)
+  }
   
 	refresh_from_user_folder <- function(trigger = "manual") {
 	  uid <- module_user_id_chr()
@@ -1026,7 +1055,15 @@ fileManagerServer <- function(
               }
             }
 
+            final_persisted_path <- as.character(upload_row$datapath[1] %||% "")
+            ensure_persisted_upload_index(
+              abs_path = final_persisted_path,
+              display_name = upload_name,
+              uid = uid
+            )
+
             result <- process_uploaded_file(upload_row, generate_message = FALSE)
+			
             if (!is.null(result)) {
               saved_infos[[length(saved_infos) + 1]] <- result
             }
