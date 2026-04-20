@@ -65,13 +65,11 @@ MERGEN Bilge aşağıdaki ana yeteneklere sahiptir:
 ### 3.1 Akıllı Sohbet
 Kullanıcı doğal dilde soru sorabilir, açıklama isteyebilir, içerik ürettirebilir ve bir konuşmayı adım adım derinleştirebilir. Yanıtlar gerçek zamanlı akışla gösterilebilir.
 
-Thinking desteği olan modellerde (thinking=TRUE), premium akıl yürütme kartı kullanılır. Eski "Düşünüyorum" yılan animasyonu kaldırılmıştır. Bu kartta modelin düşünme durumu, faz geçişleri ve geçen süre daha anlaşılır biçimde sunulur. Akış çıktısı başladığında kart yumuşak biçimde streaming durumuna geçer.
+Düşünme destekli modellerde daha gelişmiş bir akıl yürütme kartı gösterilir. Bu kartta hazırlık ve düşünme süreci kullanıcıya daha anlaşılır biçimde sunulur; yanıt üretimi başladığında görünüm doğal biçimde konuşmaya bağlanır.
 
-Kodlama Desteği ve Excel Analizi gibi düşünme modeline bağlı araçlarda panelde görülen model etiketi, doğrudan seçili modelden değil `tool-resolved model` sonucundan belirlenir.
+Bazı durumlarda kullanıcı, modelin düşünme akışını daha okunabilir bir panelde takip edebilir. Standart modellerde ise hazırlık/gösterim davranışı daha sade kalır.
 
-Thinking desteği olmayan modellerde de aynı premium panel kabuğu açılır; ancak simulated davranış yalnızca akışta gerçek reasoning taşınmayacaksa devreye girer. Sunucudan gerçek `reasoning_delta` gelmediği durumlarda istemci tarafında 1.8 saniye aralıklarla sıralı faz metinleri gösterilir: “Soru çözümleniyor”, “Bağlam toplanıyor”, “Yanıt planlanıyor”, “Cevap yazılıyor”.
-
-Canlı düşünce akışı paneli etkin olduğunda, kullanıcı thinking destekli modelin gerçek reasoning metnini token-token takip edebilir. Bu panel daraltılabilir yapıdadır ve yanıt tamamlandığında kaybolmak yerine konuşma balonu içinde arşivlenmiş halde kalabilir. Non-streaming yolda da reasoning metni worker’dan mesaj kaydına kadar iletilir; bu yüzden düşünen model yanıtlarında `MB_Messages.ReasoningContent` alanı dolu saklanır. Simulated akışta gerçek düşünce metni olmadığı için panel yanıt akışı başlar başlamaz balona taşınmadan sönümlenerek kaldırılır ve arşive dönmez.
+Düşünce kartı tamamlandığında içerik konuşma içinde okunabilir şekilde kalabilir; böylece kullanıcı yanıtı takip ederken bağlamı kaybetmez.
 
 ### 3.2 Dosya Analizi
 Excel, PDF, Word, CSV, metin dosyaları ve benzeri içerikler yüklenebilir. Uygulama bu dosyaları:
@@ -198,15 +196,11 @@ Bu sayfada ayrıca bazı araçlara özel küçük kontrol alanları bulunabilir:
 - özetleme için detay seviyesi ve odak modu,
 - analiz için derin düşünme ve detay seçimi.
 
-Yeni reasoning deneyiminde kullanıcı, düşünme kabiliyetli modellerde iki katman görür:
-- üstte premium reasoning kartı (durum + süre + faz),
-- altta (etkinse) canlı düşünce paneli.
+Yeni akıl yürütme deneyiminde kullanıcı, düşünme destekli modellerde daha zengin bir hazırlık ve düşünme görünümü görebilir.
 
-Yeni akışta panel kabuğu hem düşünen hem düşünmeyen model yolunda ortak açılır; premium panel takeover davranışı kullanılır. `data-panel-takeover="true"` işaretli kabuklarda istemci tarafı klasik typing animasyon üretimini atlar ve flicker engellenir. İstemci tarafındaki `sanitizeModelLabel()` savunması panel başlığında `[object Object]` görünmesini engeller.
+Bazı akışlarda düşünce adımları daha okunabilir bir kartta ilerler; standart akışlarda ise daha sade bir hazırlık davranışı izlenir.
 
-Panelin alt kenarında sola-sağa akan mor shimmer (`rp-shimmer`) animasyonu aktif durumlarda görünür; tamamlandı/durduruldu/hata durumlarında ve `prefers-reduced-motion` tercihinde otomatik kapanır.
-
-Yanıt tamamlandığında yalnızca gerçek reasoning metni olan içerikler geçmiş yüklemelerinde tekrar görülebilmesi için sistem tarafından kalıcı olarak saklanabilir; simulated faz metinleri kalıcı arşive yazılmaz.
+Yanıt tamamlandığında, kullanıcıya yardımcı olan düşünce özeti konuşma içinde okunabilir biçimde kalabilir.
 
 AI Uzman bu sayfayı anlatırken, kullanıcının yalnızca soru sormakla sınırlı olmadığını; dosya, model ve araç temelli kullanım biçimlerine de sahip olduğunu vurgulamalıdır.
 
@@ -280,7 +274,7 @@ Ayrıca senaryo şablonları yer alır:
 - Kod Düzenleme
 - Serbest Komut
 
-**Doküman akışı:** Çalışma dizininde PDF, Excel veya Word dosyası (DOCX) bulunuyorsa Bilge Yolaç bu dosyaları yerel olarak metne dönüştürür ve içeriği doğrudan ajana aktarır. Kullanıcının dosyayı elle yapıştırmasına veya kopyalamasına gerek yoktur. Özet işlemi tamamlandığında `dosya_aciklamalari.txt` adlı bir dosya otomatik oluşturulur ve indirilebilir hâle getirilir. Eski `.doc` biçimi desteklenmez; kullanıcı bu dosyaları `.docx` biçimine dönüştürmelidir.
+**Doküman akışı:** Bilge Yolaç içinde PDF, Excel veya Word (DOCX) belgeleriyle çalışılabilir; sistem bu belgeleri okuyup özetleme akışına dahil edebilir. Özet veya çalışma çıktıları tamamlandığında indirilebilir dosya olarak sunulabilir. Eski `.doc` biçimi desteklenmez; bu dosyalar önce `.docx` biçimine dönüştürülmelidir.
 
 **İndirilebilir çıktılar:** Bilge Yolaç bir çalışma sonucunda dosya üretirse (özet dosyası, kod çıktısı vb.) bu dosya mesajın altında indirme bağlantısı olarak gösterilir. Kullanıcının ayrıca dosyayı araması gerekmez.
 
@@ -350,6 +344,8 @@ Bu sayfa anlatılırken özellikle şu noktalara değinilebilir:
 - belge özetleme için iyi bir başlangıç noktası olduğu,
 - Excel ve benzeri veri dosyaları için güçlü bir hazırlık alanı sunduğu.
 
+Ayrıca kullanıcıya, yüklenen dosyalar ve seçilen bağlamın sayfa yenileme/yeniden açma sonrasında daha tutarlı davranmasının hedeflendiği kısa ve güven verici bir dille aktarılabilir. Geçici bir aksaklıkta Dosya Yönetimi üzerinden yeniden deneme veya sayfayı yeniden açma önerilebilir.
+
 ---
 
 ## 7.7 Ayarlar - Kişiselleştirme
@@ -411,7 +407,7 @@ Bu sayfa anlatılırken, ürünün iyileştirilmesi için kullanıcı katkısın
 
 ## 7.11 Destek - Yenilikler
 
-Bu sayfa sürüm geçmişini gösterir. İçerik `version_history.md` dosyasından beslenir.
+Bu sayfa sürüm geçmişini gösterir.
 
 Kullanıcıya anlatırken:
 - son sürümlerde nelerin değiştiğini takip edebileceği,
