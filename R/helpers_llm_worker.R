@@ -271,21 +271,107 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     if (!is.null(api_key) && nzchar(api_key)) {
       hdrs$Authorization <- paste("Bearer", api_key)
     }
-    
-  response <- httr::POST(
-    api_endpoint,
-    do.call(httr::add_headers, hdrs),
-    body = jsonlite::toJSON(body, auto_unbox = TRUE),
-      encode = "raw",
-      httr::timeout(300)
+
+    # Yapılandırmada tanımlı tüm uç noktalar adaydır: birincil seçim başta,
+    # bağlantı/5xx hatasında yedekler. Değerler api_config'ten türediği için
+    # URL veya model adı sabit kodlanmaz.
+    call_targets <- tryCatch(
+      llm_call_targets(
+        current_endpoint = api_endpoint,
+        current_api_key = api_key,
+        model_id = selected_model
+      ),
+      error = function(e) list(list(url = api_endpoint, api_key = api_key %||% ""))
     )
+    if (!length(call_targets)) {
+      call_targets <- list(list(url = api_endpoint, api_key = api_key %||% ""))
+    }
 
-  status <- httr::status_code(response)
+    response <- NULL
+    status <- NA_integer_
+    resp_txt <- ""
+    last_target_err <- NULL
+    used_endpoint <- api_endpoint
+    used_api_key <- api_key
 
-  if (status != 200) {
-    resp_txt_raw <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)
-    resp_txt <- if (!inherits(resp_txt_raw, "try-error") && is.character(resp_txt_raw) && length(resp_txt_raw) > 0) resp_txt_raw[[1]] else ""
+    for (target_idx in seq_along(call_targets)) {
+      target <- call_targets[[target_idx]]
+      target_url <- as.character(target$url %||% "")[1]
+      target_key <- as.character(target$api_key %||% "")[1]
+      if (!nzchar(target_url)) next
 
+      # Her hedef için başlıkları yeniden kur (anahtar değişebilir)
+      hdrs_try <- list(`Content-Type` = "application/json")
+      if (nzchar(target_key)) {
+        hdrs_try$Authorization <- paste("Bearer", target_key)
+      }
+
+      resp_try <- tryCatch(
+        httr::POST(
+          target_url,
+          do.call(httr::add_headers, hdrs_try),
+          body = jsonlite::toJSON(body, auto_unbox = TRUE),
+          encode = "raw",
+          httr::timeout(300)
+        ),
+        error = function(e) structure(list(error = conditionMessage(e)), class = "mergen_llm_conn_err")
+      )
+
+      if (inherits(resp_try, "mergen_llm_conn_err")) {
+        # Ağ seviyesinde bağlantı hatası: yedek uç noktaya geç
+        last_target_err <- resp_try$error
+        mergen_debug_cat("[ENDPOINT FALLBACK] ", target_url, " baglanti hatasi: ",
+                         last_target_err, "\n", sep = "")
+        next
+      }
+
+      status_try <- httr::status_code(resp_try)
+      if (status_try >= 500) {
+        resp_txt_try_raw <- try(httr::content(resp_try, "text", encoding = "UTF-8"), silent = TRUE)
+        resp_txt_try <- if (!inherits(resp_txt_try_raw, "try-error") &&
+                             is.character(resp_txt_try_raw) &&
+                             length(resp_txt_try_raw) > 0) resp_txt_try_raw[[1]] else ""
+        last_target_err <- sprintf("HTTP %d: %s", status_try, substr(resp_txt_try, 1, 300))
+        mergen_debug_cat("[ENDPOINT FALLBACK] ", target_url, " 5xx yaniti (",
+                         status_try, "); yedege geciliyor\n", sep = "")
+        # Son elde edilen yanıtı sakla; hiçbir uç nokta başarılı olmazsa kullanılır
+        response <- resp_try
+        status <- status_try
+        resp_txt <- resp_txt_try
+        used_endpoint <- target_url
+        used_api_key <- target_key
+        next
+      }
+
+      # 2xx/3xx/4xx: bu yanıtı kullan (4xx yedek uç noktayla düzelmez)
+      response <- resp_try
+      status <- status_try
+      used_endpoint <- target_url
+      used_api_key <- target_key
+      resp_txt_raw <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)
+      resp_txt <- if (!inherits(resp_txt_raw, "try-error") &&
+                      is.character(resp_txt_raw) &&
+                      length(resp_txt_raw) > 0) resp_txt_raw[[1]] else ""
+      break
+    }
+
+    # Hiçbir uç nokta yanıt üretemediyse ağ hatası olarak raporla
+    if (is.null(response)) {
+      stop(sprintf(
+        "SERVER_ERROR: Tum LLM uc noktalarina ulasilamadi. Son hata: %s",
+        last_target_err %||% "bilinmiyor"
+      ), call. = FALSE)
+    }
+
+    # Sonraki kodun güncel uç nokta/anahtarı kullanması için değişkenleri güncelle
+    api_endpoint <- used_endpoint
+    api_key <- used_api_key
+    hdrs <- list(`Content-Type` = "application/json")
+    if (nzchar(api_key %||% "")) {
+      hdrs$Authorization <- paste("Bearer", api_key)
+    }
+
+    if (status != 200) {
     # Ollama 'tools' desteklemiyorsa (400 hatası), şemasız tekrar dene
     if (status == 400 && mcp_enabled_now && isTRUE(attach_tool_schema) &&
       grepl("does not support tools|tool", tolower(resp_txt))) {
@@ -911,130 +997,199 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           body2$temperature <- temp_value
         }
 
-        hdrs2 <- list(`Content-Type` = "application/json")
-        if (!is.null(api_key) && nzchar(api_key)) {
-          hdrs2$Authorization <- paste("Bearer", api_key)
+        # İkinci geçiş için de uç nokta yedekleme uygula: aynı yapılandırmadaki
+        # tüm uç noktalar sırayla denenir; 5xx veya bağlantı hatasında diğerine
+        # geçilir.
+        call_targets2 <- tryCatch(
+          llm_call_targets(
+            current_endpoint = api_endpoint,
+            current_api_key = api_key,
+            model_id = selected_model
+          ),
+          error = function(e) list(list(url = api_endpoint, api_key = api_key %||% ""))
+        )
+        if (!length(call_targets2)) {
+          call_targets2 <- list(list(url = api_endpoint, api_key = api_key %||% ""))
         }
 
         ai2 <- ""
         reasoning2 <- ""
         sse_error <- NULL
-        status2 <- 200L
+        status2 <- NA_integer_
+        last_target_err2 <- NULL
 
-        if (isTRUE(use_sse_second_pass)) {
-          # SSE ikinci geçiş: içerik ve akıl yürütme parçalarını topla
-          second_pass_buffer <- ""
-          second_pass_content <- ""
-          second_pass_reasoning <- ""
-          second_pass_status <- 200L
+        for (target_idx2 in seq_along(call_targets2)) {
+          target2 <- call_targets2[[target_idx2]]
+          target_url2 <- as.character(target2$url %||% "")[1]
+          target_key2 <- as.character(target2$api_key %||% "")[1]
+          if (!nzchar(target_url2)) next
 
-          process_second_pass_event <- function(parsed_event) {
-            if (is.null(parsed_event)) {
-              return(invisible(NULL))
-            }
-            if (isTRUE(parsed_event$done)) {
-              return(invisible(NULL))
-            }
-            event_obj <- parsed_event$data
-            if (is.null(event_obj)) {
-              return(invisible(NULL))
-            }
-            delta_bundle <- extract_llm_delta_bundle(event_obj)
-            dt <- enc2utf8(delta_bundle$content %||% "")
-            rt <- enc2utf8(delta_bundle$reasoning %||% "")
-            if (nzchar(dt)) {
-              second_pass_content <<- paste0(second_pass_content, dt)
-            }
-            if (nzchar(rt)) {
-              second_pass_reasoning <<- paste0(second_pass_reasoning, rt)
-            }
-            invisible(NULL)
+          hdrs2 <- list(`Content-Type` = "application/json")
+          if (nzchar(target_key2)) {
+            hdrs2$Authorization <- paste("Bearer", target_key2)
           }
 
-          process_second_pass_buffer <- function(force = FALSE) {
-            normalized <- gsub("\r\n", "\n", second_pass_buffer, fixed = TRUE)
-            normalized <- gsub("\r", "\n", normalized, fixed = TRUE)
-            repeat {
-              delimiter_pos <- regexpr("\n\n", normalized, fixed = TRUE)[1]
-              if (delimiter_pos < 0) break
-              event_text <- substr(normalized, 1, delimiter_pos - 1)
-              remainder <- substr(normalized, delimiter_pos + 2, nchar(normalized))
-              parsed_event <- parse_llm_sse_event(event_text)
-              process_second_pass_event(parsed_event)
-              normalized <- remainder
-            }
-            if (isTRUE(force) && nzchar(trimws(normalized))) {
-              parsed_event <- parse_llm_sse_event(normalized)
-              process_second_pass_event(parsed_event)
-              normalized <- ""
-            }
-            second_pass_buffer <<- normalized
-            invisible(NULL)
-          }
+          if (isTRUE(use_sse_second_pass)) {
+            # SSE ikinci geçiş: içerik ve akıl yürütme parçalarını topla
+            second_pass_buffer <- ""
+            second_pass_content <- ""
+            second_pass_reasoning <- ""
+            second_pass_status <- 200L
+            local_sse_err <- NULL
 
-          tryCatch({
-            h2 <- curl::new_handle()
-            hdrs2_vec <- unlist(hdrs2)
-            curl::handle_setheaders(h2, .list = as.list(hdrs2_vec))
-            curl::handle_setopt(
-              h2,
-              post = TRUE,
-              postfields = jsonlite::toJSON(body2, auto_unbox = TRUE, null = "null"),
-              timeout_ms = 300000
+            process_second_pass_event <- function(parsed_event) {
+              if (is.null(parsed_event)) {
+                return(invisible(NULL))
+              }
+              if (isTRUE(parsed_event$done)) {
+                return(invisible(NULL))
+              }
+              event_obj <- parsed_event$data
+              if (is.null(event_obj)) {
+                return(invisible(NULL))
+              }
+              delta_bundle <- extract_llm_delta_bundle(event_obj)
+              dt <- enc2utf8(delta_bundle$content %||% "")
+              rt <- enc2utf8(delta_bundle$reasoning %||% "")
+              if (nzchar(dt)) {
+                second_pass_content <<- paste0(second_pass_content, dt)
+              }
+              if (nzchar(rt)) {
+                second_pass_reasoning <<- paste0(second_pass_reasoning, rt)
+              }
+              invisible(NULL)
+            }
+
+            process_second_pass_buffer <- function(force = FALSE) {
+              normalized <- gsub("\r\n", "\n", second_pass_buffer, fixed = TRUE)
+              normalized <- gsub("\r", "\n", normalized, fixed = TRUE)
+              repeat {
+                delimiter_pos <- regexpr("\n\n", normalized, fixed = TRUE)[1]
+                if (delimiter_pos < 0) break
+                event_text <- substr(normalized, 1, delimiter_pos - 1)
+                remainder <- substr(normalized, delimiter_pos + 2, nchar(normalized))
+                parsed_event <- parse_llm_sse_event(event_text)
+                process_second_pass_event(parsed_event)
+                normalized <- remainder
+              }
+              if (isTRUE(force) && nzchar(trimws(normalized))) {
+                parsed_event <- parse_llm_sse_event(normalized)
+                process_second_pass_event(parsed_event)
+                normalized <- ""
+              }
+              second_pass_buffer <<- normalized
+              invisible(NULL)
+            }
+
+            tryCatch({
+              h2 <- curl::new_handle()
+              hdrs2_vec <- unlist(hdrs2)
+              curl::handle_setheaders(h2, .list = as.list(hdrs2_vec))
+              curl::handle_setopt(
+                h2,
+                post = TRUE,
+                postfields = jsonlite::toJSON(body2, auto_unbox = TRUE, null = "null"),
+                timeout_ms = 300000
+              )
+
+              meta2 <- curl::curl_fetch_stream(
+                target_url2,
+                fun = function(raw_chunk) {
+                  chunk_text <- tryCatch(decode_utf8_raw_chunk(raw_chunk), error = function(e) "")
+                  if (!nzchar(chunk_text)) return(invisible(NULL))
+                  second_pass_buffer <<- paste0(second_pass_buffer, chunk_text)
+                  process_second_pass_buffer(force = FALSE)
+                  invisible(NULL)
+                },
+                handle = h2
+              )
+
+              process_second_pass_buffer(force = TRUE)
+
+              if (!is.null(meta2$status_code)) {
+                second_pass_status <- as.integer(meta2$status_code)
+              }
+            }, error = function(e) {
+              local_sse_err <<- conditionMessage(e)
+            })
+
+            if (!is.null(local_sse_err)) {
+              # Bağlantı hatası: sıradaki uç noktayı dene
+              last_target_err2 <- local_sse_err
+              mergen_debug_cat("[ENDPOINT FALLBACK 2nd] ", target_url2,
+                               " SSE baglanti hatasi: ", local_sse_err,
+                               "\n", sep = "")
+              next
+            }
+
+            if (!is.na(second_pass_status) && second_pass_status >= 500) {
+              last_target_err2 <- sprintf("HTTP %d", second_pass_status)
+              mergen_debug_cat("[ENDPOINT FALLBACK 2nd] ", target_url2,
+                               " SSE 5xx (", second_pass_status,
+                               "); yedege geciliyor\n", sep = "")
+              # Sonraki uç noktayı dene
+              next
+            }
+
+            status2 <- second_pass_status
+            ai2 <- second_pass_content
+            reasoning2 <- second_pass_reasoning
+
+            # Düşünen modellerde bazı uçlar sadece reasoning döndürüp içerik
+            # kanalını boş bırakabilir; bu durumda reasoning metnini içerik
+            # olarak kullanmaya izin ver (fallback).
+            if (!nzchar(ai2) &&
+                isTRUE(should_allow_reasoning_fallback(selected_model)) &&
+                nzchar(reasoning2)) {
+              ai2 <- reasoning2
+            }
+            break
+          } else {
+            response2 <- tryCatch(
+              httr::POST(
+                target_url2,
+                do.call(httr::add_headers, hdrs2),
+                body = jsonlite::toJSON(body2, auto_unbox = TRUE),
+                encode = "raw",
+                httr::timeout(300)
+              ),
+              error = function(e) structure(list(error = conditionMessage(e)), class = "mergen_llm_conn_err")
             )
 
-            meta2 <- curl::curl_fetch_stream(
-              api_endpoint,
-              fun = function(raw_chunk) {
-                chunk_text <- tryCatch(decode_utf8_raw_chunk(raw_chunk), error = function(e) "")
-                if (!nzchar(chunk_text)) return(invisible(NULL))
-                second_pass_buffer <<- paste0(second_pass_buffer, chunk_text)
-                process_second_pass_buffer(force = FALSE)
-                invisible(NULL)
-              },
-              handle = h2
-            )
-
-            process_second_pass_buffer(force = TRUE)
-
-            if (!is.null(meta2$status_code)) {
-              second_pass_status <- as.integer(meta2$status_code)
+            if (inherits(response2, "mergen_llm_conn_err")) {
+              last_target_err2 <- response2$error
+              mergen_debug_cat("[ENDPOINT FALLBACK 2nd] ", target_url2,
+                               " baglanti hatasi: ", last_target_err2,
+                               "\n", sep = "")
+              next
             }
-          }, error = function(e) {
-            sse_error <<- conditionMessage(e)
-          })
 
-          status2 <- second_pass_status
-          ai2 <- second_pass_content
-          reasoning2 <- second_pass_reasoning
+            status2 <- httr::status_code(response2)
+            if (status2 >= 500) {
+              last_target_err2 <- sprintf("HTTP %d", status2)
+              mergen_debug_cat("[ENDPOINT FALLBACK 2nd] ", target_url2,
+                               " 5xx (", status2,
+                               "); yedege geciliyor\n", sep = "")
+              next
+            }
 
-          # Düşünen modellerde bazı uçlar sadece reasoning döndürüp içerik
-          # kanalını boş bırakabilir; bu durumda reasoning metnini içerik
-          # olarak kullanmaya izin ver (fallback).
-          if (!nzchar(ai2) &&
-              isTRUE(should_allow_reasoning_fallback(selected_model)) &&
-              nzchar(reasoning2)) {
-            ai2 <- reasoning2
+            if (status2 == 200) {
+              rc2 <- httr::content(response2, "parsed")
+              ayristirilmis_yanit2 <- extract_llm_content_and_sources(
+                rc2,
+                model_id = selected_model
+              )
+              ai2 <- ayristirilmis_yanit2$content
+              reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
+            }
+            break
           }
-        } else {
-          response2 <- httr::POST(
-            api_endpoint,
-            do.call(httr::add_headers, hdrs2),
-            body = jsonlite::toJSON(body2, auto_unbox = TRUE),
-            encode = "raw",
-            httr::timeout(300)
-          )
+        }
 
-          status2 <- httr::status_code(response2)
-          if (status2 == 200) {
-            rc2 <- httr::content(response2, "parsed")
-            ayristirilmis_yanit2 <- extract_llm_content_and_sources(
-              rc2,
-              model_id = selected_model
-            )
-            ai2 <- ayristirilmis_yanit2$content
-            reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
-          }
+        # Hiç uç nokta başarılı olmadıysa sse_error üzerinden yedek dalına düş
+        if (is.na(status2)) {
+          status2 <- 503L
+          sse_error <- last_target_err2 %||% "Tum LLM uc noktalarina ulasilamadi"
         }
 
     if (status2 != 200 || !is.null(sse_error)) {

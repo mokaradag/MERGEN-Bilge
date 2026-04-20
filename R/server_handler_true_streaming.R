@@ -422,6 +422,7 @@ sse_promise <- tracked_future_promise(
       `%||%` = `%||%`,
       resolve_local_llm_endpoint = resolve_local_llm_endpoint,
       resolve_local_llm_credentials = resolve_local_llm_credentials,
+      llm_call_targets = llm_call_targets,
       extract_llm_content_and_sources = extract_llm_content_and_sources,
       normalize_llm_scalar_content = normalize_llm_scalar_content,
       strip_planner_text = strip_planner_text,

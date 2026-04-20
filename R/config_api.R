@@ -360,6 +360,69 @@ resolve_local_llm_endpoint <- function(model_id = NULL, config = api_config) {
   default_endpoint
 }
 
+# Bir LLM çağrısı için denenebilecek uç nokta hedeflerinin (url + api_key)
+# sıralı, tekilleştirilmiş listesini üret. Çağıranın verdiği (zaten model için
+# çözümlenmiş) URL/anahtar başa konur; ardından yapılandırmadaki
+# (api_config$local_llm_endpoints) diğer boş olmayan uç noktalar kendi
+# yapılandırılmış anahtarlarıyla eklenir. Bu sayede bir uç nokta 5xx veya
+# bağlantı hatası döndürdüğünde çağıranlar sıradaki uç noktaya sessizce geçiş
+# yapabilir. Değerler tamamen yapılandırmadan türediği için hiçbir URL/model
+# adı sabit kodlanmaz.
+llm_call_targets <- function(current_endpoint = NULL,
+                             current_api_key = NULL,
+                             model_id = NULL,
+                             config = api_config) {
+  endpoints_cfg <- config$local_llm_endpoints %||% list()
+  key_map <- config$local_llm_endpoint_keys %||% list()
+  user_flags <- config$local_llm_endpoint_user_managed %||% logical()
+
+  targets <- list()
+
+  add_target <- function(url, api_key) {
+    if (is.null(url)) return(invisible(NULL))
+    url_val <- as.character(url)[1]
+    if (is.na(url_val) || !nzchar(url_val)) return(invisible(NULL))
+    existing_urls <- vapply(targets, function(t) t$url %||% "", character(1))
+    if (url_val %in% existing_urls) return(invisible(NULL))
+    key_val <- if (is.null(api_key)) "" else as.character(api_key)[1]
+    if (is.na(key_val)) key_val <- ""
+    targets[[length(targets) + 1L]] <<- list(url = url_val, api_key = key_val)
+    invisible(NULL)
+  }
+
+  # Öncelik: çağıranın zaten çözdüğü URL ve anahtar
+  add_target(current_endpoint, current_api_key)
+
+  # Çağıran URL vermediyse modelden çöz
+  if (!length(targets) && !is.null(model_id) && nzchar(as.character(model_id)[1])) {
+    primary_creds <- tryCatch(resolve_local_llm_credentials(model_id, config),
+                              error = function(e) NULL)
+    if (!is.null(primary_creds)) {
+      add_target(primary_creds$endpoint, current_api_key %||% primary_creds$default_api_key)
+    }
+  }
+
+  # Yapılandırmadaki diğer uç noktaları kendi anahtarlarıyla sıraya ekle
+  if (length(endpoints_cfg)) {
+    for (nm in names(endpoints_cfg)) {
+      url <- endpoints_cfg[[nm]]
+      if (is.null(url) || !nzchar(as.character(url)[1])) next
+      default_key <- key_map[[nm]] %||% ""
+      allow_user <- isTRUE(user_flags[[nm]])
+      # Kullanıcı yönetimli uç noktalarda çağıranın anahtarı öncelikli; aksi
+      # halde yapılandırmanın (ör. .Renviron) tanımladığı varsayılan anahtar
+      api_key <- if (allow_user) {
+        current_api_key %||% default_key
+      } else {
+        default_key
+      }
+      add_target(url, api_key)
+    }
+  }
+
+  targets
+}
+
 # Verilen model için hem uç noktayı hem varsayılan API anahtarını çözümle
 resolve_local_llm_credentials <- function(model_id = NULL, config = api_config) {
   endpoints <- config$local_llm_endpoints %||% list()

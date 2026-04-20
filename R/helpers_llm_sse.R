@@ -299,6 +299,21 @@ call_local_llm_sse_worker <- function(chat_history,
       stop("AUTH_MISSING_KEY: Kullanıcı API anahtarı bulunamadı. Lütfen Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.")
     }
 
+    # Yapılandırmadaki tüm uç noktaları adaydır: 5xx veya bağlantı hatasında
+    # sıradaki uç noktaya sessizce geçilir. URL/anahtarlar api_config'ten
+    # türediği için hiçbir değer sabit kodlanmaz.
+    call_targets_sse <- tryCatch(
+      llm_call_targets(
+        current_endpoint = api_url,
+        current_api_key = api_key,
+        model_id = selected_model
+      ),
+      error = function(e) list(list(url = api_url, api_key = api_key %||% ""))
+    )
+    if (!length(call_targets_sse)) {
+      call_targets_sse <- list(list(url = api_url, api_key = api_key %||% ""))
+    }
+
     messages_payload <- lapply(chat_history, function(msg) {
       role_val <- NULL
       if (!is.null(msg$type)) {
@@ -448,46 +463,116 @@ call_local_llm_sse_worker <- function(chat_history,
       invisible(NULL)
     }
 
-    h <- curl::new_handle()
-    curl::handle_setheaders(h, .list = as.list(headers))
-    curl::handle_setopt(
-      h,
-      post = TRUE,
-      postfields = jsonlite::toJSON(body, auto_unbox = TRUE, null = "null"),
-      timeout_ms = 300000
-    )
+    response_meta <- NULL
+    sse_last_err <- NULL
+    sse_user_aborted <- FALSE
 
-    response_meta <- curl::curl_fetch_stream(
-      api_url,
-      fun = function(raw_chunk) {
-        if (!is.null(stop_file) && file.exists(stop_file)) {
-          stop("STREAM_ABORTED_BY_USER")
+    for (sse_target_idx in seq_along(call_targets_sse)) {
+      sse_target <- call_targets_sse[[sse_target_idx]]
+      sse_target_url <- as.character(sse_target$url %||% "")[1]
+      sse_target_key <- as.character(sse_target$api_key %||% "")[1]
+      if (!nzchar(sse_target_url)) next
+
+      # Yeni hedef denemesinden önce akış dosyasını ve tamponları sıfırla
+      try(close(stream_con), silent = TRUE)
+      if (file.exists(stream_file)) {
+        unlink(stream_file, force = TRUE)
+      }
+      file.create(stream_file)
+      stream_con <- file(stream_file, open = "ab")
+      event_buffer <- ""
+      accumulated_text <- ""
+      accumulated_reasoning <- ""
+      accumulated_sources <- NULL
+
+      sse_headers <- c("Content-Type" = "application/json")
+      if (nzchar(sse_target_key)) {
+        sse_headers <- c(sse_headers, "Authorization" = paste("Bearer", sse_target_key))
+      }
+
+      h <- curl::new_handle()
+      curl::handle_setheaders(h, .list = as.list(sse_headers))
+      curl::handle_setopt(
+        h,
+        post = TRUE,
+        postfields = jsonlite::toJSON(body, auto_unbox = TRUE, null = "null"),
+        timeout_ms = 300000
+      )
+
+      attempt_meta <- tryCatch(
+        curl::curl_fetch_stream(
+          sse_target_url,
+          fun = function(raw_chunk) {
+            if (!is.null(stop_file) && file.exists(stop_file)) {
+              stop("STREAM_ABORTED_BY_USER")
+            }
+
+            chunk_text <- tryCatch(
+              decode_utf8_raw_chunk(raw_chunk),
+              error = function(e) ""
+            )
+
+            if (!nzchar(chunk_text)) {
+              return(invisible(NULL))
+            }
+
+            if (!nzchar(accumulated_text)) {
+              log_info(sprintf(
+                "[CHAT PERF] SSE işçide ilk ham HTTP parçası alındı - %.3f sn",
+                as.numeric(difftime(Sys.time(), llm_start_time, units = "secs"))
+              ))
+            }
+
+            event_buffer <<- paste0(event_buffer, chunk_text)
+            process_event_buffer(force = FALSE)
+            invisible(NULL)
+          },
+          handle = h
+        ),
+        error = function(e) structure(list(error = conditionMessage(e)), class = "mergen_sse_conn_err")
+      )
+
+      if (inherits(attempt_meta, "mergen_sse_conn_err")) {
+        err_msg <- attempt_meta$error %||% ""
+        if (identical(err_msg, "STREAM_ABORTED_BY_USER")) {
+          sse_user_aborted <- TRUE
+          sse_last_err <- err_msg
+          break
         }
+        sse_last_err <- err_msg
+        log_warn(sprintf(
+          "[ENDPOINT FALLBACK SSE] %s baglanti hatasi: %s",
+          sse_target_url,
+          err_msg
+        ))
+        next
+      }
 
-        chunk_text <- tryCatch(
-          decode_utf8_raw_chunk(raw_chunk),
-          error = function(e) ""
-        )
+      process_event_buffer(force = TRUE)
 
-        if (!nzchar(chunk_text)) {
-          return(invisible(NULL))
-        }
+      if (!is.null(attempt_meta$status_code) && attempt_meta$status_code >= 500) {
+        sse_last_err <- sprintf("HTTP %d", attempt_meta$status_code)
+        log_warn(sprintf(
+          "[ENDPOINT FALLBACK SSE] %s 5xx (%d); yedege geciliyor",
+          sse_target_url,
+          attempt_meta$status_code
+        ))
+        next
+      }
 
-        if (!nzchar(accumulated_text)) {
-          log_info(sprintf(
-            "[CHAT PERF] SSE işçide ilk ham HTTP parçası alındı - %.3f sn",
-            as.numeric(difftime(Sys.time(), llm_start_time, units = "secs"))
-          ))
-        }
+      # 2xx/3xx/4xx: bu yanıtı kullan (4xx yedekle düzelmez)
+      response_meta <- attempt_meta
+      api_url <- sse_target_url
+      break
+    }
 
-        event_buffer <<- paste0(event_buffer, chunk_text)
-        process_event_buffer(force = FALSE)
-        invisible(NULL)
-      },
-      handle = h
-    )
+    if (isTRUE(sse_user_aborted)) {
+      stop("STREAM_ABORTED_BY_USER")
+    }
 
-    process_event_buffer(force = TRUE)
+    if (is.null(response_meta)) {
+      stop(sprintf("API_HTTP_ERROR_503: %s", sse_last_err %||% "Tum LLM uc noktalarina ulasilamadi"))
+    }
 
     if (!is.null(response_meta$status_code) && response_meta$status_code >= 400) {
       stop(sprintf("API_HTTP_ERROR_%d", response_meta$status_code))
