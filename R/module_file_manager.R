@@ -416,108 +416,115 @@ fileManagerServer <- function(
   
 	refresh_from_user_folder <- function(trigger = "manual") {
 	  uid <- module_user_id_chr()
-      if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
-        fm_debug("refresh_skip", sprintf("trigger=%s, auth henüz tamamlanmadı", trigger))
-        return(invisible(NULL))
-      }
-      if (!nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
-        fm_debug("refresh_skip", sprintf("trigger=%s, geçersiz user_id=%s", trigger, uid))
-        return(invisible(NULL))
-      }
+
+	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
+		fm_debug("refresh_skip", sprintf("trigger=%s, auth henüz tamamlanmadı", trigger))
+		return(invisible(NULL))
+	  }
+
+	  if (!nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
+		fm_debug("refresh_skip", sprintf("trigger=%s, geçersiz user_id=%s", trigger, uid))
+		return(invisible(NULL))
+	  }
+
 	  fm_debug("refresh_start", sprintf("trigger=%s", trigger))
+
+	  ensure_session_registry()
+
+	  previous_state <- list(
+		files = module_values$files,
+		file_contents = module_values$file_contents,
+		files_in_context = module_values$files_in_context,
+		session_registry = session$userData$current_session_files
+	  )
+
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 
+	  if (inherits(df, "try-error")) {
+		cond <- attr(df, "condition")
+		msg <- if (inherits(cond, "condition")) conditionMessage(cond) else as.character(df)
+		fm_debug("refresh_error", msg)
+		fm_debug("refresh_restore", "önceki durum korunuyor")
+		return(invisible(NULL))
+	  }
+
+	  source_tag <- attr(df, "source") %||% "unknown"
+
+	  if (is.null(df) || nrow(df) == 0) {
+		fm_debug("refresh_skip", sprintf("empty result (source=%s), mevcut durum korunuyor", source_tag))
+		return(invisible(NULL))
+	  }
+
 	  previously_attached_names <- unique(vapply(
-		names(module_values$files_in_context),
+		names(previous_state$files_in_context),
 		function(fid) {
-		  entry <- module_values$file_contents[[fid]]
+		  entry <- previous_state$file_contents[[fid]]
 		  if (is.null(entry) || is.null(entry$name)) "" else as.character(entry$name)
 		},
 		character(1)
 	  ))
 	  previously_attached_names <- previously_attached_names[nzchar(previously_attached_names)]
 
-	  module_values$files <- empty_files_df()
-	  module_values$file_contents <- list()
-	  module_values$files_in_context <- list()
-	  ensure_session_registry()
-	  session$userData$current_session_files <- list()
+	  tryCatch({
+		module_values$files <- empty_files_df()
+		module_values$file_contents <- list()
+		module_values$files_in_context <- list()
+		session$userData$current_session_files <- list()
 
-	  if (inherits(df, "try-error")) {
-			cond <- attr(df, "condition")
-			msg <- if (inherits(cond, "condition")) conditionMessage(cond) else as.character(df)
-			fm_debug("refresh_error", msg)
-			return(invisible(NULL))
-	  }
-	  
-      source_tag <- attr(df, "source") %||% "unknown"
+		fm_debug("refresh_found", sprintf("%d candidate file(s) (source=%s)", nrow(df), source_tag))
 
-	  if (is.null(df) || nrow(df) == 0) {
-		fm_debug("refresh_done", sprintf("no persisted files found (source=%s)", source_tag))
-		return(invisible(NULL))
-	  }
+		for (i in seq_len(nrow(df))) {
+		  p <- df$path[i]
+		  display_name <- df$name[i]
+		  exists_now <- path_exists_relaxed(p)
 
-	  fm_debug("refresh_found", sprintf("%d candidate file(s) (source=%s)", nrow(df), source_tag))
-		  
-	  for (i in seq_len(nrow(df))) {
-			p <- df$path[i]
-			display_name <- df$name[i]
-			exists_now <- path_exists_relaxed(p)
-			fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
-			if (!exists_now) {
-			  fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
-			  next
+		  fm_debug("refresh_file", sprintf("%s -> %s exists=%s", display_name, p, exists_now))
+
+		  if (!exists_now) {
+			fm_debug("refresh_skip", sprintf("skipping %s (missing on disk)", display_name))
+			next
+		  }
+
+		  p_fixed <- gsub("\\\\", "/", p)
+
+		  if (!file.exists(p_fixed) && !fs::file_exists(p_fixed)) {
+			if (grepl("^/[^/]", p_fixed)) {
+			  p_unc <- paste0("/", p_fixed)
+			  if (file.exists(p_unc) || fs::file_exists(p_unc)) {
+				p_fixed <- p_unc
+			  }
 			}
-			
-			# Windows UNC yolları (\\server\share) veritabanından tek slash (/server/share) olarak gelebilir.
-            # Bu durumda R dosyayı bulamaz. Eğer dosya bu haliyle erişilemiyorsa, başına slash ekleyip (//server/share) 
-            # UNC formatına çevirerek deniyoruz.
-            
-            # 1. Tüm ters slash'leri R standardı olan düz slash'e çevir
-            p_fixed <- gsub("\\\\", "/", p)
-            
-            # 2. Eğer dosya bu haliyle doğrudan bulunamıyorsa onarmayı dene
-            if (!file.exists(p_fixed) && !fs::file_exists(p_fixed)) {
-              
-              # 3. Eğer yol tek slash ile başlıyorsa (örn: /rehisds/...) ama çift slash değilse
-              if (grepl("^/[^/]", p_fixed)) {
-                 p_unc <- paste0("/", p_fixed) # Başına slash ekle -> //rehisds/...
-                 # Eğer bu UNC varyasyonu diskte varsa, yolu güncelle
-                 if (file.exists(p_unc) || fs::file_exists(p_unc)) {
-                    p_fixed <- p_unc
-                 }
-              }
-            }
-            # 4. Onarılmış yolu ana değişkene ata
-            p <- p_fixed
+		  }
 
-            # CHANGE: Robust size calculation that handles NA/errors gracefully
-			f_size <- tryCatch({
-               s <- fs::file_info(p)$size
-               if (is.na(s)) stop("NA size")
-               as.numeric(s)
-            }, error = function(e) {
-               s <- suppressWarnings(file.info(p)$size)
-               if (is.na(s)) 0 else as.numeric(s)
-            })
+		  p <- p_fixed
 
-			finfo <- list(
-			  name     = display_name,
-			  datapath = p,
-			  size     = f_size,
-			  type     = mime::guess_type(p) %||% tools::file_ext(display_name)
-			)
+		  f_size <- tryCatch({
+			s <- fs::file_info(p)$size
+			if (is.na(s)) stop("NA size")
+			as.numeric(s)
+		  }, error = function(e) {
+			s <- suppressWarnings(file.info(p)$size)
+			if (is.na(s)) 0 else as.numeric(s)
+		  })
 
-			saved <- process_uploaded_file(finfo, generate_message = FALSE)
-			if (!is.null(saved$id) && !is.null(module_values$file_contents[[saved$id]])) {
-			  module_values$file_contents[[saved$id]]$persisted_path <- p
-			  module_values$file_contents[[saved$id]]$datapath <- p
-			  fm_debug("refresh_file", sprintf("restored entry id=%s", saved$id))
-			} else {
-			  fm_debug("refresh_file", sprintf("process skipped for %s", display_name))
-			}
-	  }
-	  
+		  finfo <- list(
+			name = display_name,
+			datapath = p,
+			size = f_size,
+			type = mime::guess_type(p) %||% tools::file_ext(display_name)
+		  )
+
+		  saved <- process_uploaded_file(finfo, generate_message = FALSE)
+
+		  if (!is.null(saved$id) && !is.null(module_values$file_contents[[saved$id]])) {
+			module_values$file_contents[[saved$id]]$persisted_path <- p
+			module_values$file_contents[[saved$id]]$datapath <- p
+			fm_debug("refresh_file", sprintf("restored entry id=%s", saved$id))
+		  } else {
+			fm_debug("refresh_file", sprintf("process skipped for %s", display_name))
+		  }
+		}
+
 		if (length(previously_attached_names) > 0) {
 		  for (fid in names(module_values$file_contents)) {
 			entry <- module_values$file_contents[[fid]]
@@ -531,6 +538,16 @@ fileManagerServer <- function(
 		}
 
 		fm_debug("refresh_done", sprintf("table rows=%d", nrow(module_values$files)))
+	  }, error = function(e) {
+		module_values$files <- previous_state$files
+		module_values$file_contents <- previous_state$file_contents
+		module_values$files_in_context <- previous_state$files_in_context
+		session$userData$current_session_files <- previous_state$session_registry
+
+		fm_debug("refresh_error", conditionMessage(e))
+		fm_debug("refresh_restore", "yenileme başarısız; önceki durum geri yüklendi")
+		invisible(NULL)
+	  })
 	}
 
     # ---------- STATE ----------
