@@ -97,30 +97,34 @@ processAndSummarizeFile <- function(file_info,
   dest_safe <- tryCatch(enc2utf8(as.character(dest)), error = function(e) as.character(dest))
   file_name_safe <- tryCatch(enc2utf8(as.character(file_info$name)), error = function(e) as.character(file_info$name))
 
-  promises::future_promise({
-    file_ext <- tolower(tools::file_ext(file_name_safe))
+	tracked_future_promise(
+	  task_fn = function() {
+		file_ext <- tolower(tools::file_ext(file_name_safe))
 
-    # Özet çıkarma - hata durumunda basit bilgi döndür
-    digest <- tryCatch({
-      switch(file_ext,
-        "xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
-        {
-          txt <- readFileContentToString(list(name = file_name_safe, datapath = dest_safe, size = file.info(dest_safe)$size))
-          substr(txt, 1, 50000)
-        }
-      )
-    }, error = function(e) {
-      # Özet çıkarılamadı - basit bir açıklama döndür
-      sprintf("Dosya: %s\nBoyut: %s bayt\nTip: %s\n(Detaylı içerik okunamadı: %s)",
-              file_name_safe,
-              file.info(dest_safe)$size %||% "bilinmiyor",
-              file_ext,
-              conditionMessage(e))
-    })
+		# Özet çıkarma - hata durumunda basit bilgi döndür
+		digest <- tryCatch({
+		  switch(file_ext,
+			"xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
+			{
+			  txt <- readFileContentToString(list(name = file_name_safe, datapath = dest_safe, size = file.info(dest_safe)$size))
+			  substr(txt, 1, 50000)
+			}
+		  )
+		}, error = function(e) {
+		  # Özet çıkarılamadı - basit bir açıklama döndür
+		  sprintf("Dosya: %s\nBoyut: %s bayt\nTip: %s\n(Detaylı içerik okunamadı: %s)",
+				  file_name_safe,
+				  file.info(dest_safe)$size %||% "bilinmiyor",
+				  file_ext,
+				  conditionMessage(e))
+		})
 
-    summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
-    list(summary = summary_text, dest = dest_safe, ext = file_ext)
-  }) %...>%
+		summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
+		list(summary = summary_text, dest = dest_safe, ext = file_ext)
+	  },
+	  task_type = "file_summary",
+	  session_token = session$token
+	) %...>%
     (function(res) {
       if (isTRUE(auto_attach)) {
         current_files <- session_files_reactive() %||% list()
