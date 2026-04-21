@@ -1,0 +1,114 @@
+name: R tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testthat:
+    runs-on: ubuntu-latest
+    name: R ${{ matrix.r }} testthat
+
+    strategy:
+      fail-fast: false
+      matrix:
+        r: ["4.4"]
+
+    env:
+      # MERGEN paralel cluster ve gc scheduler gibi arka plan kancaları
+      # testlerde devre dışı bırakılır. helper_bootstrap.R bu bayrağı zaten
+      # ayarlar; CI ortamında explicit olması da netlik sağlar.
+      MERGEN_DISABLE_FUTURES: "true"
+      MERGEN_RUN_APP: "false"
+      # config_file_store.R bu üç değişkeni zorunlu sayar; CI içinde sadece
+      # placeholder değerler verilir. Gerçek sırları kullanmazlar.
+      LOCAL_LLM_ENDPOINT: "http://test.local/v1"
+      DB_DSN: "test-dsn"
+      AI_KEYS_MASTER: "test-master-key-ci-placeholder"
+      # DOCX/XLSX/PDF sidecar testleri için gerekli değil ama bootstrap güvenli
+      # tarafta kalsın diye system-level sistem paketlerini yüklenmesi beklenir.
+      R_KEEP_PKG_SOURCE: "yes"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R ${{ matrix.r }}
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r }}
+          use-public-rspm: true
+
+      - name: Setup Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev \
+            unixodbc-dev
+
+      - name: Install R package dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::testthat
+            any::fs
+            any::jsonlite
+            any::base64enc
+            any::future
+            any::promises
+            any::later
+            any::codetools
+            any::glue
+            any::logger
+            any::DBI
+            any::odbc
+            any::pool
+          needs: check
+
+      - name: Parse sanity check (safe_source helper)
+        shell: Rscript {0}
+        run: |
+          # Tüm R/ dosyaları en azından parse edilebilmelidir. Bu, sözdizim
+          # hatalarını CI'de erken yakalar.
+          r_files <- list.files("R", pattern = "\\.R$", full.names = TRUE, recursive = TRUE)
+          parse_errors <- character(0)
+          for (f in r_files) {
+            ok <- tryCatch({
+              parse(file = f, keep.source = FALSE, encoding = "UTF-8")
+              TRUE
+            }, error = function(e) {
+              parse_errors[[f]] <<- conditionMessage(e)
+              FALSE
+            })
+          }
+          if (length(parse_errors) > 0) {
+            for (f in names(parse_errors)) {
+              cat(sprintf("[PARSE ERROR] %s: %s\n", f, parse_errors[[f]]))
+            }
+            stop(sprintf("%d dosyada parse hatası var.", length(parse_errors)))
+          }
+          cat(sprintf("%d R dosyası parse edildi.\n", length(r_files)))
+
+      - name: Run testthat
+        shell: Rscript {0}
+        run: |
+          # Repo kökünden çalıştırılır; tests/testthat.R ana giriş noktasıdır.
+          source("tests/testthat.R", encoding = "UTF-8")

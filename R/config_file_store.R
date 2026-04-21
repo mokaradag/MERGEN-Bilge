@@ -729,7 +729,12 @@ start_gc_scheduler_once <- function() {
   invisible(TRUE)
 }
 
-start_gc_scheduler_once()
+# Test/bootstrap modunda later::later tabanlı arka plan döngüsü açılmaz.
+if (isTRUE(as.logical(Sys.getenv("MERGEN_DISABLE_FUTURES", "false")))) {
+  message("MERGEN_DISABLE_FUTURES aktif - gc scheduler atlandı (test/bootstrap modu).")
+} else {
+  start_gc_scheduler_once()
+}
 
 # Veritabanı bağlantı havuzu (server.R'de başlatılır)
 pool <- NULL

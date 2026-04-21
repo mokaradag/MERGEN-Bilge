@@ -232,6 +232,19 @@ decode_stream_delta_payload <- function(payload) {
 }
 
 # ------------------------------------------------------------------------------
+# KULLANICI DURDURMA SİNYALİ KONTROLÜ
+# ------------------------------------------------------------------------------
+# Akış sırasında kullanıcı "Durdur" butonuna bastığında ilgili stop_file dosyası
+# oluşturulur. Worker bu bayrağı periyodik olarak kontrol eder. Bu yardımcı,
+# kontrol mantığını tek noktada toplar ve birim test edilebilir kılar.
+streaming_should_stop <- function(stop_file) {
+  if (is.null(stop_file)) return(FALSE)
+  candidate <- tryCatch(as.character(stop_file)[1], error = function(e) "")
+  if (!nzchar(candidate) || is.na(candidate)) return(FALSE)
+  isTRUE(file.exists(candidate))
+}
+
+# ------------------------------------------------------------------------------
 # İŞÇİ TARAFINDA GERÇEK SSE ÇAĞRISI ÇALIŞTIR
 # ------------------------------------------------------------------------------
 
@@ -460,7 +473,7 @@ call_local_llm_sse_worker <- function(chat_history,
     response_meta <- curl::curl_fetch_stream(
       api_url,
       fun = function(raw_chunk) {
-        if (!is.null(stop_file) && file.exists(stop_file)) {
+        if (streaming_should_stop(stop_file)) {
           stop("STREAM_ABORTED_BY_USER")
         }
 

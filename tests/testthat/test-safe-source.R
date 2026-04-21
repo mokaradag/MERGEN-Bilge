@@ -30,3 +30,21 @@ test_that("safe_source eksik dosyada hata verir", {
     "bulunamadı"
   )
 })
+
+# BOM işaretli UTF-8 dosyası da sorunsuz yüklenmelidir. Windows ortamında
+# bazı editörler BOM yazabilir; safe_source bu duruma dayanıklı olmalıdır.
+test_that("safe_source BOM işaretli UTF-8 dosyayı yükler", {
+  temp_file <- tempfile(fileext = ".R")
+  # UTF-8 BOM: EF BB BF
+  bom <- as.raw(c(0xEF, 0xBB, 0xBF))
+  icerik <- "bomlu_deger <- 'İzmir'\n"
+  con <- file(temp_file, open = "wb")
+  writeBin(bom, con)
+  writeBin(charToRaw(enc2utf8(icerik)), con)
+  close(con)
+
+  target_env <- new.env(parent = baseenv())
+  safe_source(temp_file, envir = target_env)
+
+  expect_equal(enc2utf8(target_env$bomlu_deger), "İzmir")
+})

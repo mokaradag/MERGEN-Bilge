@@ -10,6 +10,19 @@ Sys.setenv(
   MERGEN_RUN_APP = "false"
 )
 
+# config_file_store.R zorunlu ortam değişkenlerini aradığı için test koşumunda
+# sadece placeholder değerler ayarlanır. Gerçek değer gerektiren testler bu
+# değişkenleri kendi scope'unda tekrar ayarlayabilir.
+.set_env_if_missing <- function(name, value) {
+  if (!nzchar(Sys.getenv(name))) {
+    args <- setNames(list(value), name)
+    do.call(Sys.setenv, args)
+  }
+}
+.set_env_if_missing("LOCAL_LLM_ENDPOINT", "http://test.local/v1")
+.set_env_if_missing("DB_DSN",             "test-dsn")
+.set_env_if_missing("AI_KEYS_MASTER",     "test-master-key-0123456789")
+
 # Testlerde kullanılan yardımcılar global ortamda tutulur.
 .test_global <- globalenv()
 
@@ -29,6 +42,7 @@ register_test_stub("%||%", function(x, y) {
 register_test_stub("log_info", function(...) invisible(NULL))
 register_test_stub("log_warn", function(...) invisible(NULL))
 register_test_stub("log_error", function(...) invisible(NULL))
+register_test_stub("log_debug", function(...) invisible(NULL))
 
 # Dosya/klasör varlığını gevşek şekilde kontrol eden yardımcı fonksiyon.
 if (!exists("path_exists_relaxed", envir = .test_global, inherits = FALSE)) {

@@ -82,7 +82,14 @@ safe_source("R/utils_rate_limiter.R",   encoding = "UTF-8")  # Hız sınırlama 
 safe_source("R/helpers_worker_monitor.R", encoding = "UTF-8")  # Asenkron iş/işçi izleme defteri
 
 tryCatch({
-  init_future_cluster()
+  # Test/bootstrap ortamında paralel işçi başlatılmaz; sequential plana düşülür.
+  # Böylece testthat oturumu gereksiz yere cluster ayağa kaldırmaz.
+  if (isTRUE(as.logical(Sys.getenv("MERGEN_DISABLE_FUTURES", "false")))) {
+    log_info("MERGEN_DISABLE_FUTURES aktif - future cluster atlandı, sequential plan kullanılıyor.")
+    future::plan(future::sequential)
+  } else {
+    init_future_cluster()
+  }
 }, error = function(e) {
   log_error("Future cluster başlatılamadı: {conditionMessage(e)}")
   future::plan(future::sequential)

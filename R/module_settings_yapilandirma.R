@@ -993,12 +993,18 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
                   icon("spinner", class = "fa-spin"), "Test ediliyor...")
       })
 
-      future_promise({
-        test_claude_code_connection(
-          cli_path = cli_yolu,
-          workdir = tempdir()
-        )
-      }) %...>% (function(sonuc) {
+      # Worker tarafına bağımlılık aktarımı ve sağlık metrikleri için
+      # doğrudan future_promise yerine tracked_future_promise kullanılır.
+      tracked_future_promise(
+        task_fn = function() {
+          test_claude_code_connection(
+            cli_path = cli_yolu,
+            workdir = tempdir()
+          )
+        },
+        task_type = "claude_code_connection_test",
+        session_token = session$token
+      ) %...>% (function(sonuc) {
         # Sonucu Claude Code sayfasına da ilet
         settings$claude_code_connection_ok <- sonuc$success
 
