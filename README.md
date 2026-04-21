@@ -257,7 +257,7 @@ Recency odaklı UI bileşenlerinde uygun olduğunda çıplak oluşturulma zaman�
 
 `global.R` içindeki yükleme sırası bilinçli olarak katmanlara ayrılmıştır:
 
-Not: Ortak `safe_source()` helper’ı (`R/utils_safe_source.R`) normal `source()` çağrısı başarısız olursa ham bayt çözümü yerine `readLines()` ile çoklu kodlama (UTF-8 / WINDOWS-1254 / latin1) denemesi yapar; uygun metin parse/eval edilerek yükleme tamamlanır.
+Not: Ortak `safe_source()` helper’ı (`R/utils_safe_source.R`) önce normal `source(..., encoding = "UTF-8")` yolunu dener. Kodlama/BOM kaynaklı hata veya uyarı alırsa dosyayı ham bayt olarak okuyup UTF-8 BOM işaretini temizleyerek çoklu kodlama (UTF-8 / WINDOWS-1254 / latin1) ile yeniden çözmeyi dener; ardından metni parse/eval ederek hedef environment içine yükler. Bu davranış özellikle Windows VM ve BOM işaretli UTF-8 dosyalarında dayanıklılık sağlamak içindir.
 
 ### 1. Temel altyapı
 - paketler
@@ -762,12 +762,14 @@ Bu repodaki test altyapısı `testthat` tabanlıdır. Ana çalıştırıcı dosy
 
 Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - `safe_source`
+- BOM işaretli UTF-8 dosyalarının `safe_source()` ile güvenli yüklenmesi
+- `tracked_future_promise` görev defteri temizleme davranışı
 - DB doğrulama yardımcıları
 - dosya indeksleme yardımcıları
 - worker monitor yardımcıları
 - `send_message` çekirdeğindeki araç ailesi / akış profili kararları
 
-Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
+Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. Promise/later tabanlı testlerde tek bir `later::run_now()` çağrısının her zaman yeterli olmayabileceği unutulmamalı; testler gerekiyorsa later kuyruğunu birkaç tur tüketerek kararlı son durumu beklemelidir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
 
 ### Tüm testleri çalıştırma
 ```r

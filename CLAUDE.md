@@ -113,7 +113,7 @@ Repository convention:
 ---
 
 ### 9) Bug fix varsa mümkünse test de olmalı
-Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğunda birim test de eklenmelidir. Bir kez yaşanmış regresyonlar testsiz bırakılmamalıdır. Test ekleri repo stiline uyumlu, küçük ve cerrahi olmalıdır.
+Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğunda birim test de eklenmelidir. Bir kez yaşanmış regresyonlar testsiz bırakılmamalıdır. Test ekleri repo stiline uyumlu, küçük ve cerrahi olmalıdır. Özellikle encoding/BOM ve promise cleanup gibi daha önce regresyon üretmiş helper davranışlarında, test beklentileri event-loop zamanlamasını ve Windows VM farklılıklarını dikkate alacak kadar dayanıklı yazılmalıdır.
 
 ---
 
@@ -123,10 +123,14 @@ Bu repoda test suite’in ana çalıştırıcısı `tests/testthat.R` dosyasıd�
 
 Testler her zaman repository root dizininden çalıştırılmalıdır. Windows VM üzerinde test çalıştırırken mümkünse temiz bir R oturumu tercih edilmelidir. `summary` reporter çıktısının açık bir PASS satırı olmadan `== DONE ==` ile bitmesi normaldir.
 
+For promise/later-based tests, do not assume a single `later::run_now()` flush is always sufficient. When validating cleanup/final state, prefer a small bounded drain helper that consumes the later queue until the expected stable condition is reached.
+
 Testlerde kullanılan helper stub’ları, source edilen helper fonksiyonlarıyla aynı ortamda görünür olmalıdır. Test kapsamı olan helper dosyalarında değişiklik yapıldığında ilgili test dosyaları da birlikte güncellenmelidir.
 
 ### Current baseline coverage
 - `safe_source`
+- BOM-marked UTF-8 safe_source loading behavior
+- tracked_future_promise task-registry cleanup behavior
 - database validation helpers
 - file indexing helpers
 - worker monitor helpers
@@ -236,14 +240,16 @@ The canonical `safe_source()` helper lives in `R/utils_safe_source.R`.
 
 `app.R` sources that file first, then calls `safe_source()` for `global.R`, `ui.R`, and `server.R`.
 
-Fallback behavior is intentionally text-based (not raw-byte decoding):
+Fallback behavior is intentionally defensive and BOM-aware:
 
-- tries standard `source(..., encoding = "UTF-8")`,
-- on encoding/parse failures, retries by reading text with `readLines()`,
+- first tries standard `source(..., encoding = "UTF-8")`,
+- if it encounters encoding/BOM-related errors or warnings, it falls back,
+- reads the file as raw bytes,
+- strips UTF-8 BOM when present,
 - attempts `UTF-8`, `WINDOWS-1254`, and `latin1`,
 - then runs parse/eval recovery in the target environment.
 
-This design exists because this codebase has had real encoding sensitivity, especially on Windows and SSO-enabled VM environments.
+This design exists because this codebase has had real encoding sensitivity, especially on Windows and SSO-enabled VM environments, including BOM-marked UTF-8 files.
 
 ### Practical rule
 If you add a new R file, it should be source-safe and UTF-8 safe.
