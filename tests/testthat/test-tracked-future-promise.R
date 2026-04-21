@@ -6,6 +6,21 @@
 # sequential olur; bu sayede testler dış süreç başlatmaz.
 # ==============================================================================
 
+# Later kuyruğunu hedef aktif iş sayısına dönene kadar tüketir.
+drain_later_until_active_jobs <- function(expected_active_jobs, max_iter = 20L) {
+  hedef <- as.integer(expected_active_jobs)
+
+  for (i in seq_len(max_iter)) {
+    later::run_now()
+
+    if (identical(get_worker_monitor_info()$active_jobs, hedef)) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
 # Fonksiyon dışında bir task_fn verildiğinde net bir hata üretir.
 test_that("tracked_future_promise fonksiyon olmayan task_fn reddeder", {
   expect_error(tracked_future_promise(task_fn = "metin"), "task_fn")
@@ -23,10 +38,11 @@ test_that("tracked_future_promise başarılı tamamlanmada görev defterini boş
     session_token = "sess_test_ok"
   )
 
-  # Sequential planda promise hemen çözülür; later kuyruğunu boşaltalım.
-  later::run_now()
+  # Promise zinciri birkaç later turunda tamamlanabilir; kuyruğu sabırla tüket.
+  temizlendi_mi <- drain_later_until_active_jobs(onceki_aktif)
 
   sonraki_aktif <- get_worker_monitor_info()$active_jobs
+  expect_true(temizlendi_mi)
   expect_equal(sonraki_aktif, onceki_aktif)
 })
 
@@ -43,8 +59,11 @@ test_that("tracked_future_promise hata durumunda görev defterini boşaltır", {
 
   # Reddedilen promise'ı bastırarak yakala (uyarı üretmesin diye).
   promises::then(p, onRejected = function(err) NULL)
-  later::run_now()
+
+  # Promise zinciri birkaç later turunda tamamlanabilir; kuyruğu sabırla tüket.
+  temizlendi_mi <- drain_later_until_active_jobs(onceki_aktif)
 
   sonraki_aktif <- get_worker_monitor_info()$active_jobs
+  expect_true(temizlendi_mi)
   expect_equal(sonraki_aktif, onceki_aktif)
 })

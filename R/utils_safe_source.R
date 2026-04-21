@@ -8,67 +8,106 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
     stop(sprintf("Kaynak dosya bulunamadı: %s", file))
   }
 
-  tryCatch({
-    source(file, encoding = encoding, local = envir)
-    invisible(NULL)
-  }, error = function(e) {
-    hata_metni <- conditionMessage(e)
-
-    encoding_hatasi_mi <- grepl(
-      "INCOMPLETE_STRING|invalid multibyte|unexpected input|EOF within quoted string|nul character|invalid input",
-      hata_metni,
+  # Kodlama/BOM kaynaklı hata ve uyarıları tespit eder.
+  is_encoding_issue <- function(message) {
+    grepl(
+      "INCOMPLETE_STRING|invalid multibyte|unexpected input|EOF within quoted string|nul character|invalid input|geçersiz giriş|beklenmeyen giriş|çok baytlı|eksik dize|byte order mark|bom",
+      message,
       ignore.case = TRUE
     )
+  }
 
-    if (!isTRUE(encoding_hatasi_mi)) {
-      stop(e)
+  # Dosyayı ham bayt olarak okuyup UTF-8 metne çevirir.
+  read_text_with_encoding <- function(path, encoding_name) {
+    con <- file(path, open = "rb")
+    on.exit(close(con), add = TRUE)
+
+    raw_data <- readBin(con, what = "raw", n = file.info(path)$size)
+
+    # UTF-8 BOM varsa temizler.
+    if (length(raw_data) >= 3L &&
+        identical(as.integer(raw_data[1:3]), c(239L, 187L, 191L))) {
+      raw_data <- raw_data[-(1:3)]
     }
 
-    if (!file.exists(file)) {
-      stop(sprintf("Kaynak dosya bulunamadı: %s", file))
+    if (!length(raw_data)) {
+      return("")
     }
 
-    read_text_with_encoding <- function(path, encoding_name) {
-      paste(
-        readLines(path, warn = FALSE, encoding = encoding_name),
-        collapse = "\n"
-      )
+    metin <- rawToChar(raw_data)
+
+    metin_utf8 <- iconv(
+      metin,
+      from = encoding_name,
+      to = "UTF-8",
+      sub = "byte"
+    )
+
+    if (is.na(metin_utf8)) {
+      stop(sprintf(
+        "Dosya metni '%s' kodlamasıyla UTF-8'e çevrilemedi.",
+        encoding_name
+      ))
     }
 
-    denenecek_kodlamalar <- c("UTF-8", "WINDOWS-1254", "latin1")
-    son_hata <- NULL
+    enc2utf8(metin_utf8)
+  }
 
-    for (kodlama in denenecek_kodlamalar) {
-      metin <- tryCatch(
-        read_text_with_encoding(file, kodlama),
-        error = function(err) {
-          son_hata <<- err
-          NA_character_
+  # Önce normal source() yolunu dener; kodlama uyarılarını da hata gibi ele alır.
+  birincil_sonuc <- tryCatch(
+    withCallingHandlers(
+      {
+        source(file, encoding = encoding, local = envir)
+        invisible(NULL)
+      },
+      warning = function(w) {
+        warning_text <- conditionMessage(w)
+
+        if (isTRUE(is_encoding_issue(warning_text))) {
+          stop(warning_text, call. = FALSE)
         }
-      )
+      }
+    ),
+    error = function(e) e
+  )
 
-      if (is.na(metin) || !nzchar(metin)) next
+  if (!inherits(birincil_sonuc, "error")) {
+    return(invisible(NULL))
+  }
 
-      metin <- sub("^\\ufeff", "", metin, perl = TRUE)
+  hata_metni <- conditionMessage(birincil_sonuc)
 
-      exprs <- tryCatch(
-        parse(text = metin, keep.source = FALSE, encoding = "UTF-8"),
-        error = function(err) {
-          son_hata <<- err
-          NULL
-        }
-      )
+  if (!isTRUE(is_encoding_issue(hata_metni))) {
+    stop(birincil_sonuc)
+  }
 
-      if (is.null(exprs)) next
+  denenecek_kodlamalar <- c("UTF-8", "WINDOWS-1254", "latin1")
+  son_hata <- birincil_sonuc
 
-      eval(exprs, envir = envir)
-      return(invisible(NULL))
-    }
+  for (kodlama in denenecek_kodlamalar) {
+    metin <- tryCatch(
+      read_text_with_encoding(file, kodlama),
+      error = function(err) {
+        son_hata <<- err
+        NA_character_
+      }
+    )
 
-    if (!is.null(son_hata)) {
-      stop(son_hata)
-    }
+    if (is.na(metin) || !nzchar(metin)) next
 
-    stop(e)
-  })
+    exprs <- tryCatch(
+      parse(text = metin, keep.source = FALSE, encoding = "UTF-8"),
+      error = function(err) {
+        son_hata <<- err
+        NULL
+      }
+    )
+
+    if (is.null(exprs)) next
+
+    eval(exprs, envir = envir)
+    return(invisible(NULL))
+  }
+
+  stop(son_hata)
 }
