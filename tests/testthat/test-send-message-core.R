@@ -1,3 +1,10 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-send-message-core.R
+# Açıklama: send_message çekirdeğindeki araç ailesi seçimi ve akış profili
+# üretimi kararlarını doğrulayan birim testlerini içerir.
+# ==============================================================================
+
+# SQL analizi aktifken araç ailesi önceliğinin doğru belirlendiğini doğrular.
 test_that("mergen_determine_tool_family SQL modunu önceliklendirir", {
   settings_data <- list(
     enable_mcp_tools = TRUE,
@@ -22,6 +29,7 @@ test_that("mergen_determine_tool_family SQL modunu önceliklendirir", {
   expect_identical(result$current_settings$max_output_tokens, 4096)
 })
 
+# MCP modunun yalnızca dosya yüklemesi olduğunda seçildiğini doğrular.
 test_that("mergen_determine_tool_family MCP modunu sadece dosya varsa seçer", {
   settings_data <- list(
     enable_mcp_tools = TRUE,
@@ -51,6 +59,7 @@ test_that("mergen_determine_tool_family MCP modunu sadece dosya varsa seçer", {
   expect_identical(result_with_file$tool_family, "mcp_excel")
 })
 
+# Quick action skip işaretinde tüm araç kararlarının bypass edildiğini doğrular.
 test_that("mergen_determine_tool_family quick action skip durumunda none döndürür", {
   settings_data <- list(
     enable_mcp_tools = TRUE,
@@ -72,6 +81,7 @@ test_that("mergen_determine_tool_family quick action skip durumunda none döndü
   expect_identical(result$tool_family, "none")
 })
 
+# Basit sohbet koşullarında hızlı akış profilinin seçildiğini doğrular.
 test_that("mergen_build_stream_profile basit sohbet için plain_fast döndürür", {
   settings_data <- list(enable_tts_audio = FALSE)
 
@@ -87,6 +97,7 @@ test_that("mergen_build_stream_profile basit sohbet için plain_fast döndürür
   expect_identical(result$poll_interval_ms, 15L)
 })
 
+# Zorunlu non-streaming bayrağında standard profilin korunduğunu doğrular.
 test_that("mergen_build_stream_profile zorunlu non-streaming durumda standard kalır", {
   settings_data <- list(enable_tts_audio = FALSE)
 
