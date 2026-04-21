@@ -756,6 +756,36 @@ RStudio veya benzeri bir ortamda `app.R` dosyasının tamamını seçip çalış
 
 ---
 
+## Test Altyapısı ve Çalıştırma
+
+Bu repodaki test altyapısı `testthat` tabanlıdır. Ana çalıştırıcı dosya `tests/testthat.R`, test bağlamı/bootstrap helper dosyası ise `tests/testthat/helper_bootstrap.R` olarak konumlanır.
+
+Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
+- `safe_source`
+- DB doğrulama yardımcıları
+- dosya indeksleme yardımcıları
+- worker monitor yardımcıları
+- `send_message` çekirdeğindeki araç ailesi / akış profili kararları
+
+Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
+
+### Tüm testleri çalıştırma
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+```
+
+### `test_dir` ile doğrudan çalıştırma
+```r
+testthat::test_dir("tests/testthat", reporter = "summary")
+```
+
+### Tek bir test dosyasını çalıştırma
+```r
+testthat::test_file("tests/testthat/test-safe-source.R")
+```
+
+---
+
 ## Geliştirme İlkeleri
 
 ### 1. UTF-8 güvenliği
@@ -819,6 +849,13 @@ Kontrol edin:
 - kullanıcı oturumunun auth sonrası kurulma zamanı
 - UTF-8 / Türkçe alanlar
 - auth sonrası dosya yükleme/yenileme akışları
+
+### Testler Windows VM'de beklenmedik şekilde hata veriyor
+Kontrol edin:
+- çalışma dizininin repo kökü olup olmadığını
+- testlerin, uygulama ile kirlenmiş aynı R oturumunda çalıştırılıp çalıştırılmadığını
+- helper bootstrap’ın repo kökünü doğru çözüp çözmediğini
+- mümkünse temiz bir R oturumunda yeniden deneme yapmayı
 
 ### Yerelde açılıyor / SSO'da açılıyor ama diğer modda davranış farklı
 Kontrol edin:
