@@ -16,7 +16,7 @@ test_that("safe_source UTF-8 dosyayı hedef environment içine yükler", {
     useBytes = TRUE
   )
 
-  target_env <- new.env(parent = emptyenv())
+  target_env <- new.env(parent = baseenv())
   safe_source(temp_file, envir = target_env)
 
   expect_equal(target_env$ornek_sayi, 42L)

@@ -4,6 +4,10 @@
 # ==============================================================================
 
 safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
+  if (!file.exists(file)) {
+    stop(sprintf("Kaynak dosya bulunamadı: %s", file))
+  }
+
   tryCatch({
     source(file, encoding = encoding, local = envir)
     invisible(NULL)
