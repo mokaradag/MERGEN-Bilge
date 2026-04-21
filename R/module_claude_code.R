@@ -1225,17 +1225,23 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           error = function(e) ""
         )
 
-        promises::future_promise({
-          summarize_claude_code_documents_with_local_llm(
-            document_context = dokuman_baglami,
-            model_id = model,
-            api_key = dokuman_api_key,
-            request_timeout_sec = zaman_asimi,
-            output_dir = kaynak_calisma_dizini %||% calisma_dizini,
-            user_id = effective_user_id,
-            session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
-          )
-        }) |>
+        # Worker tarafına bağımlılık aktarımı ve sağlık metrikleri için
+        # doğrudan future_promise yerine tracked_future_promise kullanılır.
+        tracked_future_promise(
+          task_fn = function() {
+            summarize_claude_code_documents_with_local_llm(
+              document_context = dokuman_baglami,
+              model_id = model,
+              api_key = dokuman_api_key,
+              request_timeout_sec = zaman_asimi,
+              output_dir = kaynak_calisma_dizini %||% calisma_dizini,
+              user_id = effective_user_id,
+              session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+            )
+          },
+          task_type = "claude_code_document_summary",
+          session_token = session$token
+        ) |>
           promises::then(function(sonuc) {
             sure <- sonuc$duration %||% NA_real_
 

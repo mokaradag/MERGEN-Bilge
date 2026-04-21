@@ -112,3 +112,47 @@ test_that("mergen_build_stream_profile zorunlu non-streaming durumda standard ka
   expect_identical(result$use_delta_transport, FALSE)
   expect_identical(result$poll_interval_ms, 50L)
 })
+
+# Kodlama Desteği aracı aktif + dosya yok senaryosunda tool_family 'coding'.
+test_that("mergen_determine_tool_family coding aracı seçildiğinde 'coding' döner", {
+  settings_data <- list(
+    enable_mcp_tools         = FALSE,
+    enable_rdata_tools       = FALSE,
+    enable_summarization_tools = FALSE,
+    enable_coding_tools      = TRUE,
+    enable_process_tools     = FALSE,
+    enable_app_expert_tools  = FALSE,
+    enable_image_tools       = FALSE
+  )
+
+  result <- mergen_determine_tool_family(
+    settings_data = settings_data,
+    uploaded_count = 0,
+    skip_mcp_once = FALSE,
+    current_settings = list()
+  )
+
+  expect_identical(result$tool_family, "coding")
+})
+
+# Görsel üretim aracı aktifken image tool family seçilmelidir.
+test_that("mergen_determine_tool_family görsel aracı aktifken image tool_family döner", {
+  settings_data <- list(
+    enable_mcp_tools         = FALSE,
+    enable_rdata_tools       = FALSE,
+    enable_summarization_tools = FALSE,
+    enable_coding_tools      = FALSE,
+    enable_process_tools     = FALSE,
+    enable_app_expert_tools  = FALSE,
+    enable_image_tools       = TRUE
+  )
+
+  result <- mergen_determine_tool_family(
+    settings_data = settings_data,
+    uploaded_count = 0,
+    skip_mcp_once = FALSE,
+    current_settings = list()
+  )
+
+  expect_identical(result$tool_family, "image")
+})
