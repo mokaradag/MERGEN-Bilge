@@ -74,7 +74,7 @@ aiProcessingServer <- function(id) {
 			library(httr)
 			library(jsonlite)
 
-			# Worker içinde LLM çağrısı
+			# Future işçisine gerekli nesneleri açıkça taşı
 			ai_text <- call_llm_worker(history_copy, settings_copy, api_endpoint, api_key_val)
 			duration <- as.numeric(difftime(Sys.time(), start_time_worker, units = "secs"))
 
@@ -84,6 +84,13 @@ aiProcessingServer <- function(id) {
 		  session_token = session$token,
 		  meta = list(
 			model = model_selected
+		  ),
+		  globals = list(
+			call_llm_worker = call_llm_worker,
+			history_copy = history_copy,
+			settings_copy = settings_copy,
+			api_endpoint = api_endpoint,
+			api_key_val = api_key_val
 		  )
 		)
       
