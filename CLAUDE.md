@@ -112,6 +112,28 @@ Repository convention:
 
 ---
 
+### 9) Bug fix varsa mümkünse test de olmalı
+Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğunda birim test de eklenmelidir. Bir kez yaşanmış regresyonlar testsiz bırakılmamalıdır. Test ekleri repo stiline uyumlu, küçük ve cerrahi olmalıdır.
+
+---
+
+## Test Suite ve Çalıştırma Kuralları
+
+Bu repoda test suite’in ana çalıştırıcısı `tests/testthat.R` dosyasıdır. `tests/testthat/helper_bootstrap.R`, test bağlamını kuran bootstrap helper olarak kullanılmalıdır.
+
+Testler her zaman repository root dizininden çalıştırılmalıdır. Windows VM üzerinde test çalıştırırken mümkünse temiz bir R oturumu tercih edilmelidir. `summary` reporter çıktısının açık bir PASS satırı olmadan `== DONE ==` ile bitmesi normaldir.
+
+Testlerde kullanılan helper stub’ları, source edilen helper fonksiyonlarıyla aynı ortamda görünür olmalıdır. Test kapsamı olan helper dosyalarında değişiklik yapıldığında ilgili test dosyaları da birlikte güncellenmelidir.
+
+### Current baseline coverage
+- `safe_source`
+- database validation helpers
+- file indexing helpers
+- worker monitor helpers
+- send-message core tool-family / stream-profile decisions
+
+---
+
 ## Thinking=TRUE Modeller İçin Akıl Yürütme Akışı (Yeni Standart)
 
 Bu codebase'te düşünme kabiliyeti olan modeller için yanıt öncesi/yanıt sırası deneyimi güncellenmiştir.
@@ -1543,6 +1565,15 @@ After changing anything non-trivial, test:
 - follow-up actions render,
 - export/copy still works.
 - regression check: finish a chat, click `Yeni Söyleşi`, and verify the just-finished chat appears immediately in welcome recent top-3 without manual refresh.
+
+### Unit tests (helper / decision-logic changes)
+For helper or decision-logic patches, run the unit test suite from repository root. Minimum command:
+
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+```
+
+If needed, rerun only the target file with `testthat::test_file(...)`.
 
 ### Audio
 - TTS still plays,
