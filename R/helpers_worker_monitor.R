@@ -185,12 +185,85 @@ tracked_future_promise <- function(task_fn,
     )
   })
 
+  # Bir fonksiyon worker'a global olarak taşınıyorsa, o fonksiyonun
+  # global ortamdan kullandığı yardımcıları da özyinelemeli olarak topla.
+  collect_nested_function_globals <- function(fn_obj, seen = character()) {
+    if (!is.function(fn_obj)) {
+      return(list())
+    }
+
+    fn_global_names <- tryCatch(
+      codetools::findGlobals(fn_obj, merge = TRUE),
+      error = function(e) character(0)
+    )
+
+    if (!length(fn_global_names)) {
+      return(list())
+    }
+
+    available_names <- intersect(
+      fn_global_names,
+      ls(envir = .GlobalEnv, all.names = TRUE)
+    )
+    available_names <- setdiff(available_names, seen)
+
+    if (!length(available_names)) {
+      return(list())
+    }
+
+    collected <- mget(available_names, envir = .GlobalEnv, inherits = TRUE)
+    next_seen <- unique(c(seen, available_names))
+
+    nested <- list()
+    for (nm in names(collected)) {
+      obj <- collected[[nm]]
+      if (!is.function(obj)) next
+
+      deeper <- collect_nested_function_globals(obj, seen = next_seen)
+      if (!length(deeper)) next
+
+      for (deep_nm in names(deeper)) {
+        if (!deep_nm %in% names(collected) && !deep_nm %in% names(nested)) {
+          nested[[deep_nm]] <- deeper[[deep_nm]]
+        }
+      }
+    }
+
+    c(collected, nested)
+  }
+
   # Çağıran taraftan açıkça verilen globals öncelikli kalsın.
   if (length(detected_future_deps$globals) > 0) {
     for (nm in names(detected_future_deps$globals)) {
       if (!nzchar(nm) || nm %in% names(promise_globals)) next
       promise_globals[[nm]] <- detected_future_deps$globals[[nm]]
     }
+  }
+
+  # Açıkça verilen veya otomatik yakalanan fonksiyonların kullandığı
+  # yardımcıları da worker'a ekle.
+  expanded_globals <- list()
+  base_global_names <- names(promise_globals)
+
+  for (nm in base_global_names) {
+    obj <- promise_globals[[nm]]
+    if (!is.function(obj)) next
+
+    nested <- collect_nested_function_globals(
+      obj,
+      seen = unique(c(base_global_names, names(expanded_globals)))
+    )
+
+    for (nested_nm in names(nested)) {
+      if (!nested_nm %in% names(promise_globals) &&
+          !nested_nm %in% names(expanded_globals)) {
+        expanded_globals[[nested_nm]] <- nested[[nested_nm]]
+      }
+    }
+  }
+
+  if (length(expanded_globals) > 0) {
+    promise_globals <- c(promise_globals, expanded_globals)
   }
 
   promise_globals$task_fn <- task_fn
