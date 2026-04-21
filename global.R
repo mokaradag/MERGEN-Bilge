@@ -96,6 +96,10 @@ tryCatch({
 })
 
 safe_source("R/utils_path_helpers.R",   encoding = "UTF-8")  # Yol normalizasyon yardımcıları
+safe_source("R/utils_safe_path.R",      encoding = "UTF-8")  # Path traversal güvenli join yardımcısı
+safe_source("R/utils_atomic_write.R",   encoding = "UTF-8")  # Atomik dosya/JSON yazımı
+safe_source("R/utils_upload_validator.R", encoding = "UTF-8")  # Dosya yüklemesi güvenlik doğrulaması
+safe_source("R/utils_log_redact.R",     encoding = "UTF-8")  # Log metinlerinde hassas içerik maskeleme
 safe_source("R/utils_file_index.R",   encoding = "UTF-8")  # Önbellekli dosya indeks mekanizması
 safe_source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yardımcıları
 

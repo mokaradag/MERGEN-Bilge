@@ -33,6 +33,13 @@ if (!exists("mergen_register_uploaded_file", envir = globalenv(), inherits = FAL
     local = globalenv()
   )
 
+  # config_file_store.R içindeki .save_index artık atomic_write_json kullanır.
+  source(
+    file.path(repo_root_for_tests, "R", "utils_atomic_write.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
   # config_file_store.R gc scheduler'ı MERGEN_DISABLE_FUTURES=true iken
   # başlatmaz; helper_bootstrap.R bu değişkeni zaten ayarlamıştır.
   source(
