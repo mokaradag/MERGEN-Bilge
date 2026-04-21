@@ -1,3 +1,10 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-file-index.R
+# Açıklama: Dosya indeksleme yardımcılarının, hem doğrudan dosya adıyla hem de
+# ipucu (hiyerarşik parça) formatıyla doğru dosyayı bulmasını test eder.
+# ==============================================================================
+
+# Basit basename aramasında hedef dosyanın doğru bulunduğunu doğrular.
 test_that("search_file_in_folder basename ile dosyayı bulur", {
   base_dir <- tempfile()
   dir.create(base_dir, recursive = TRUE)
@@ -12,6 +19,7 @@ test_that("search_file_in_folder basename ile dosyayı bulur", {
   expect_equal(normalizePath(found, winslash = "/"), normalizePath(target_file, winslash = "/"))
 })
 
+# `&&` ile verilen klasör ipuçları kullanıldığında doğru dosyanın bulunduğunu doğrular.
 test_that("search_file_in_folder ipucu ile dosyayı bulur", {
   base_dir <- tempfile()
   dir.create(base_dir, recursive = TRUE)

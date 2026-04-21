@@ -1,3 +1,10 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-worker-monitor.R
+# Açıklama: Worker görev izleme yardımcılarının oturum bazlı temizleme ve
+# worker sayısı çözümleme davranışını doğrulayan testleri içerir.
+# ==============================================================================
+
+# Oturum bazlı temizliğin yalnızca hedef oturumun görevlerini sildiğini doğrular.
 test_that("session bazlı görev temizliği yalnızca ilgili oturumu temizler", {
   before_count <- get_worker_monitor_info()$active_jobs
 
@@ -16,6 +23,7 @@ test_that("session bazlı görev temizliği yalnızca ilgili oturumu temizler", 
   expect_equal(get_worker_monitor_info()$active_jobs, before_count)
 })
 
+# Worker sayısı çözümleyicisinin her durumda pozitif bir sayı döndürdüğünü doğrular.
 test_that("resolve_mergen_worker_count pozitif sayı döndürür", {
   Sys.setenv(MERGEN_WORKERS = "2")
   expect_gte(resolve_mergen_worker_count(), 1L)
