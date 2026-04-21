@@ -57,39 +57,10 @@ MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
 .save_index <- function(idx) {
   idx <- .convert_to_utf8(idx)
 
-  dir.create(dirname(MERGEN_INDEX_PATH), recursive = TRUE, showWarnings = FALSE)
-
-  tmp_path <- tempfile(
-    pattern = "index_",
-    tmpdir = dirname(MERGEN_INDEX_PATH),
-    fileext = ".json"
-  )
-
-  on.exit({
-    if (file.exists(tmp_path)) {
-      unlink(tmp_path, force = TRUE)
-    }
-  }, add = TRUE)
-
-  jsonlite::write_json(idx, tmp_path, auto_unbox = TRUE, pretty = TRUE)
-
-  tmp_info <- suppressWarnings(file.info(tmp_path))
-  if (!file.exists(tmp_path) || is.na(tmp_info$size[1]) || tmp_info$size[1] <= 0) {
-    stop("İndeks geçici dosyası oluşturulamadı veya boş kaldı.")
-  }
-
-  moved <- suppressWarnings(file.rename(tmp_path, MERGEN_INDEX_PATH))
-  if (!isTRUE(moved)) {
-    moved <- isTRUE(file.copy(tmp_path, MERGEN_INDEX_PATH, overwrite = TRUE))
-    if (isTRUE(moved)) {
-      unlink(tmp_path, force = TRUE)
-    }
-  }
-
-  if (!isTRUE(moved)) {
-    stop("İndeks dosyası atomik olarak güncellenemedi.")
-  }
-
+  # Atomik yazım ortak utils_atomic_write.R yardımcısı üzerinden yapılır.
+  # Bu sayede aynı pattern başka dosyalarda kopyalanmaz ve Windows VM üzerinde
+  # file.rename fallback davranışı tek yerde evrimleşir.
+  atomic_write_json(idx, MERGEN_INDEX_PATH, pretty = TRUE, auto_unbox = TRUE)
   invisible(TRUE)
 }
 

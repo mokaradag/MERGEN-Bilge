@@ -759,7 +759,10 @@ save_user_api_key <- function(system_username, key_plain) {
     enc = enc,
     created_utc = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
   )
-  jsonlite::write_json(rec, f, auto_unbox = TRUE, pretty = TRUE)
+  # API anahtarı kayıt dosyası kısmi yazıma karşı kritiktir; atomik yardımcıdan
+  # geçirilir (tmp -> rename) ve Windows VM'de kilitli dosya durumunda kopya
+  # fallback davranışı korunur.
+  atomic_write_json(rec, f, pretty = TRUE, auto_unbox = TRUE)
   normalizePath(f, winslash = "/", mustWork = FALSE)
 }
 
