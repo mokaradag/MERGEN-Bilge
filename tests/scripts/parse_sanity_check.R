@@ -27,12 +27,13 @@ all_files <- unique(c(root_files, r_files))
 
 is_encoding_issue <- function(message) {
   msg <- if (is.null(message) || length(message) == 0) "" else as.character(message)[1]
+  msg <- tolower(msg)
 
   patterns <- c(
-    "INCOMPLETE_STRING",
+    "incomplete_string",
     "invalid multibyte",
     "unexpected input",
-    "EOF within quoted string",
+    "eof within quoted string",
     "nul character",
     "invalid input",
     "byte order mark",
@@ -42,16 +43,21 @@ is_encoding_issue <- function(message) {
 
   any(vapply(
     patterns,
-    function(p) grepl(p, msg, ignore.case = TRUE, fixed = TRUE),
+    function(p) grepl(p, msg, fixed = TRUE),
     logical(1)
   ))
 }
 
 read_text_with_encoding <- function(path, encoding_name) {
+  raw_size <- file.info(path)$size
+  if (is.na(raw_size) || raw_size <= 0) {
+    return("")
+  }
+
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)
 
-  raw_data <- readBin(con, what = "raw", n = file.info(path)$size)
+  raw_data <- readBin(con, what = "raw", n = raw_size)
 
   # UTF-8 BOM temizliği
   if (length(raw_data) >= 3L &&
@@ -63,12 +69,9 @@ read_text_with_encoding <- function(path, encoding_name) {
     return("")
   }
 
-  text_raw <- rawToChar(raw_data)
-  text_utf8 <- iconv(
-    text_raw,
-    from = encoding_name,
-    to = "UTF-8",
-    sub = "byte"
+  text_utf8 <- tryCatch(
+    iconv(list(raw_data), from = encoding_name, to = "UTF-8", sub = NA)[[1]],
+    error = function(e) NA_character_
   )
 
   if (is.na(text_utf8)) {
@@ -78,6 +81,7 @@ read_text_with_encoding <- function(path, encoding_name) {
     ))
   }
 
+  text_utf8 <- gsub("\r\n?|\r", "\n", text_utf8, perl = TRUE)
   enc2utf8(text_utf8)
 }
 

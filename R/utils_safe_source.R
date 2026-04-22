@@ -11,12 +11,13 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
   # Kodlama/BOM kaynaklı hata ve uyarıları tespit eder.
   is_encoding_issue <- function(message) {
     msg <- if (is.null(message) || length(message) == 0) "" else as.character(message)[1]
+    msg <- tolower(msg)
 
     patterns <- c(
-      "INCOMPLETE_STRING",
+      "incomplete_string",
       "invalid multibyte",
       "unexpected input",
-      "EOF within quoted string",
+      "eof within quoted string",
       "nul character",
       "invalid input",
       "byte order mark",
@@ -26,17 +27,22 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
 
     any(vapply(
       patterns,
-      function(p) grepl(p, msg, ignore.case = TRUE, fixed = TRUE),
+      function(p) grepl(p, msg, fixed = TRUE),
       logical(1)
     ))
   }
 
   # Dosyayı ham bayt olarak okuyup UTF-8 metne çevirir.
   read_text_with_encoding <- function(path, encoding_name) {
+    raw_size <- file.info(path)$size
+    if (is.na(raw_size) || raw_size <= 0) {
+      return("")
+    }
+
     con <- file(path, open = "rb")
     on.exit(close(con), add = TRUE)
 
-    raw_data <- readBin(con, what = "raw", n = file.info(path)$size)
+    raw_data <- readBin(con, what = "raw", n = raw_size)
 
     # UTF-8 BOM varsa temizler.
     if (length(raw_data) >= 3L &&
@@ -48,13 +54,9 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
       return("")
     }
 
-    metin <- rawToChar(raw_data)
-
-    metin_utf8 <- iconv(
-      metin,
-      from = encoding_name,
-      to = "UTF-8",
-      sub = "byte"
+    metin_utf8 <- tryCatch(
+      iconv(list(raw_data), from = encoding_name, to = "UTF-8", sub = NA)[[1]],
+      error = function(e) NA_character_
     )
 
     if (is.na(metin_utf8)) {
@@ -64,6 +66,7 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
       ))
     }
 
+    metin_utf8 <- gsub("\r\n?|\r", "\n", metin_utf8, perl = TRUE)
     enc2utf8(metin_utf8)
   }
 
