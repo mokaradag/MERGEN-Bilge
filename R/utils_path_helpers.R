@@ -83,15 +83,36 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     return(candidate)
   }
 
-  normalized <- tryCatch(
-    normalizePath(candidate, winslash = "/", mustWork = mustWork),
-    error = function(e) candidate
-  )
+  candidate_utf8 <- tryCatch(enc2utf8(candidate), error = function(e) candidate)
+  candidate_native <- tryCatch(enc2native(candidate_utf8), error = function(e) candidate_utf8)
 
-  normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
-  exists_now <- .path_exists_any(normalized)
+  variants <- unique(c(
+    candidate,
+    candidate_utf8,
+    candidate_native,
+    gsub("/", "\\\\", candidate, fixed = TRUE),
+    gsub("/", "\\\\", candidate_utf8, fixed = TRUE),
+    gsub("/", "\\\\", candidate_native, fixed = TRUE)
+  ))
 
-  safe_windows_short_path(normalized, must_exist = exists_now)
+  variants <- variants[nzchar(variants)]
+
+  for (v in variants) {
+    normalized <- tryCatch(
+      normalizePath(v, winslash = "/", mustWork = mustWork),
+      error = function(e) NA_character_,
+      warning = function(w) NA_character_
+    )
+
+    if (!is.na(normalized) && nzchar(normalized)) {
+      normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
+      exists_now <- .path_exists_any(normalized)
+      return(safe_windows_short_path(normalized, must_exist = exists_now))
+    }
+  }
+
+  fallback <- gsub("\\\\", "/", candidate_utf8, fixed = TRUE)
+  safe_windows_short_path(fallback, must_exist = .path_exists_any(fallback))
 }
 
 # --- MCP YOL NORMALİZASYONU ---

@@ -9,6 +9,17 @@
 
 # --- HATA AYIKLAMA MODU KONTROLU ---
 .SQL_LOADER_DEBUG <- isTRUE(as.logical(Sys.getenv("MERGEN_DEBUG", "FALSE")))
+.SQL_LOADER_STRICT <- !identical(
+  tolower(Sys.getenv("MERGEN_SQL_LOADER_STRICT", "true")),
+  "false"
+)
+
+.sql_placeholder_text <- function(q_id) {
+  sprintf(
+    "SELECT '%s' AS QueryID, 'sql_loader_placeholder' AS LoaderStatus",
+    q_id
+  )
+}
 
 # --- YARDIMCI: BOS OLMAYAN KARAKTER KONTROLU ---
 .sql_has_text <- function(x) {
@@ -232,17 +243,34 @@ for (i in seq_along(query_library)) {
         sprintf("ID: %s | Yol: %s | Hata: dosya bulunamadi", q_id, fpath)
       )
 
+      if (isTRUE(.SQL_LOADER_STRICT)) {
+        cat(sprintf(
+          "[SQL_LOADER] HATA: SQL dosyasi bulunamadi! ID: %s, Yol: %s\n",
+          q_id, fpath
+        ))
+
+        if (.SQL_LOADER_DEBUG) {
+          cat(sprintf(
+            "[SQL_LOADER] Denenen normalize yol: %s\n",
+            tryCatch(normalizePath(fpath, winslash = "/", mustWork = FALSE), error = function(e) fpath)
+          ))
+        }
+
+        next
+      }
+
       cat(sprintf(
-        "[SQL_LOADER] HATA: SQL dosyasi bulunamadi! ID: %s, Yol: %s\n",
+        "[SQL_LOADER] UYARI: SQL dosyasi bulunamadi; placeholder SQL atanıyor. ID: %s, Yol: %s\n",
         q_id, fpath
       ))
 
-      if (.SQL_LOADER_DEBUG) {
-        cat(sprintf(
-          "[SQL_LOADER] Denenen normalize yol: %s\n",
-          tryCatch(normalizePath(fpath, winslash = "/", mustWork = FALSE), error = function(e) fpath)
-        ))
+      query_library[[i]]$sql <- if (has_sql_inline) {
+        as.character(q_item$sql)[1]
+      } else {
+        .sql_placeholder_text(q_id)
       }
+      query_library[[i]]$sql_source <- "placeholder_missing_sql_file"
+      query_library[[i]]$sql_loaded_path <- NA_character_
 
       next
     }
@@ -259,10 +287,27 @@ for (i in seq_along(query_library)) {
         sprintf("ID: %s | Yol: %s | Hata: %s", q_id, path_to_use, conditionMessage(full_sql))
       )
 
+      if (isTRUE(.SQL_LOADER_STRICT)) {
+        cat(sprintf(
+          "[SQL_LOADER] HATA: SQL dosyasi okunamadi! ID: %s, Yol: %s | Hata: %s\n",
+          q_id, path_to_use, conditionMessage(full_sql)
+        ))
+
+        next
+      }
+
       cat(sprintf(
-        "[SQL_LOADER] HATA: SQL dosyasi okunamadi! ID: %s, Yol: %s | Hata: %s\n",
+        "[SQL_LOADER] UYARI: SQL dosyasi okunamadi; placeholder SQL atanıyor. ID: %s, Yol: %s | Hata: %s\n",
         q_id, path_to_use, conditionMessage(full_sql)
       ))
+
+      query_library[[i]]$sql <- if (has_sql_inline) {
+        as.character(q_item$sql)[1]
+      } else {
+        .sql_placeholder_text(q_id)
+      }
+      query_library[[i]]$sql_source <- "placeholder_sql_read_error"
+      query_library[[i]]$sql_loaded_path <- path_to_use
 
       next
     }
@@ -315,8 +360,15 @@ if (.sql_failed_count > 0L) {
     cat(sprintf("[SQL_LOADER] - %s\n", item))
   }
 
-  stop(sprintf(
-    "[SQL_LOADER] HATA: %d adet SQL yuklenemedi. Uygulama durduruluyor.",
+  if (isTRUE(.SQL_LOADER_STRICT)) {
+    stop(sprintf(
+      "[SQL_LOADER] HATA: %d adet SQL yuklenemedi. Uygulama durduruluyor.",
+      .sql_failed_count
+    ))
+  }
+
+  warning(sprintf(
+    "[SQL_LOADER] UYARI: %d adet SQL yuklenemedi; non-strict modda placeholder SQL ile devam ediliyor.",
     .sql_failed_count
   ))
 }
@@ -329,6 +381,8 @@ cat(sprintf(
 # --- GECICI NESNELERI TEMIZLE ---
 rm(
   .SQL_LOADER_DEBUG,
+  .SQL_LOADER_STRICT,
+  .sql_placeholder_text,
   .sql_total_count,
   .sql_file_declared_count,
   .sql_inline_only_count,

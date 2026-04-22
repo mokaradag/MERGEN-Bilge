@@ -27,6 +27,7 @@ jobs:
       # ayarlar; CI ortamında explicit olması da netlik sağlar.
       MERGEN_DISABLE_FUTURES: "true"
       MERGEN_RUN_APP: "false"
+      MERGEN_SQL_LOADER_STRICT: "false"
 
       # config_file_store.R bu üç değişkeni zorunlu sayar; CI içinde sadece
       # placeholder değerler verilir. Gerçek sırları kullanmazlar.

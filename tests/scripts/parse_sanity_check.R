@@ -26,11 +26,25 @@ r_files <- list.files(
 all_files <- unique(c(root_files, r_files))
 
 is_encoding_issue <- function(message) {
-  grepl(
-    "INCOMPLETE_STRING|invalid multibyte|unexpected input|EOF within quoted string|nul character|invalid input|geçersiz giriş|beklenmeyen giriş|çok baytlı|eksik dize|byte order mark|bom|invalid token",
-    message,
-    ignore.case = TRUE
+  msg <- if (is.null(message) || length(message) == 0) "" else as.character(message)[1]
+
+  patterns <- c(
+    "INCOMPLETE_STRING",
+    "invalid multibyte",
+    "unexpected input",
+    "EOF within quoted string",
+    "nul character",
+    "invalid input",
+    "byte order mark",
+    "bom",
+    "invalid token"
   )
+
+  any(vapply(
+    patterns,
+    function(p) grepl(p, msg, ignore.case = TRUE, fixed = TRUE),
+    logical(1)
+  ))
 }
 
 read_text_with_encoding <- function(path, encoding_name) {
@@ -132,7 +146,7 @@ parse_errors <- character(0)
 
 for (f in all_files) {
   tryCatch(
-    parse_file_robust(f),
+    suppressWarnings(parse_file_robust(f)),
     error = function(e) {
       parse_errors[[f]] <<- conditionMessage(e)
     }

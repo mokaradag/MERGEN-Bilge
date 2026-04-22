@@ -17,7 +17,8 @@ if (length(missing_vars) > 0) {
 
 Sys.setenv(
   MERGEN_DISABLE_FUTURES = "true",
-  MERGEN_RUN_APP = "false"
+  MERGEN_RUN_APP = "false",
+  MERGEN_SQL_LOADER_STRICT = "true"
 )
 
 source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")

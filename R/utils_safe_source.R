@@ -10,11 +10,25 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
 
   # Kodlama/BOM kaynaklı hata ve uyarıları tespit eder.
   is_encoding_issue <- function(message) {
-    grepl(
-      "INCOMPLETE_STRING|invalid multibyte|unexpected input|EOF within quoted string|nul character|invalid input|geçersiz giriş|beklenmeyen giriş|çok baytlı|eksik dize|byte order mark|bom",
-      message,
-      ignore.case = TRUE
+    msg <- if (is.null(message) || length(message) == 0) "" else as.character(message)[1]
+
+    patterns <- c(
+      "INCOMPLETE_STRING",
+      "invalid multibyte",
+      "unexpected input",
+      "EOF within quoted string",
+      "nul character",
+      "invalid input",
+      "byte order mark",
+      "bom",
+      "invalid token"
     )
+
+    any(vapply(
+      patterns,
+      function(p) grepl(p, msg, ignore.case = TRUE, fixed = TRUE),
+      logical(1)
+    ))
   }
 
   # Dosyayı ham bayt olarak okuyup UTF-8 metne çevirir.

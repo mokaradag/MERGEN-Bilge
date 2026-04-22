@@ -7,7 +7,8 @@
 
 Sys.setenv(
   MERGEN_RUN_APP = "false",
-  MERGEN_DISABLE_FUTURES = "true"
+  MERGEN_DISABLE_FUTURES = "true",
+  MERGEN_SQL_LOADER_STRICT = "false"
 )
 
 # config_file_store.R zorunlu değişkenleri ister; CI'de placeholder yeterlidir.

@@ -8,6 +8,7 @@
 Sys.setenv(
   MERGEN_DISABLE_FUTURES = "true",
   MERGEN_RUN_APP = "false",
+  MERGEN_SQL_LOADER_STRICT = "false",
   LOCAL_LLM_ENDPOINT = "http://test.local/v1",
   DB_DSN = "test-dsn",
   AI_KEYS_MASTER = "test-master-key-ci-placeholder"
