@@ -54,9 +54,33 @@ if (dir.exists("www")) {
   warning("www klasörü bulunamadı; statik kaynaklar kaydedilmedi.")
 }
 
+validate_boot_state <- function() {
+  if (!exists("safe_source", mode = "function", inherits = FALSE)) {
+    stop("Boot doğrulaması başarısız: safe_source yüklenmedi.")
+  }
+
+  if (!exists("ui", inherits = FALSE)) {
+    stop("Boot doğrulaması başarısız: ui nesnesi yüklenmedi.")
+  }
+
+  if (!exists("server", mode = "function", inherits = FALSE)) {
+    stop("Boot doğrulaması başarısız: server fonksiyonu yüklenmedi.")
+  }
+
+  invisible(TRUE)
+}
+
 # 5. Uygulamayı çalıştır.
 create_mergen_app <- function() {
-  shiny::shinyApp(ui = ui, server = server)
+  validate_boot_state()
+
+  shiny::shinyApp(
+    ui = ui,
+    server = server,
+    onStart = function() {
+      validate_boot_state()
+    }
+  )
 }
 
 run_mergen_app <- function(
@@ -65,6 +89,8 @@ run_mergen_app <- function(
   launch.browser = interactive(),
   quiet = TRUE
 ) {
+  validate_boot_state()
+
   if (is.na(port) || port <= 0L) {
     port <- 8009L
   }
