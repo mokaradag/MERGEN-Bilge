@@ -90,22 +90,32 @@ normalize_excel_path <- function(path) {
 safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
   path_prepared <- normalize_excel_path(path)
 
-  if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
-    path_prepared <- tryCatch(
-      get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(path_prepared),
-      error = function(e) path_prepared
+  readable_path_fn <- function(p) {
+    if (exists("resolve_readable_path", inherits = TRUE)) {
+      return(tryCatch(resolve_readable_path(p), error = function(e) p))
+    }
+    p
+  }
+
+  relaxed_exists_fn <- function(p) {
+    if (exists("path_exists_relaxed", inherits = TRUE)) {
+      return(tryCatch(isTRUE(path_exists_relaxed(p)), error = function(e) FALSE))
+    }
+
+    tryCatch(
+      isTRUE(file.exists(p)) || isTRUE(fs::file_exists(p)),
+      error = function(e) FALSE
     )
   }
 
-  prepared_exists <- tryCatch(path_exists_relaxed(path_prepared), error = function(e) FALSE)
-  original_exists <- tryCatch(path_exists_relaxed(path), error = function(e) FALSE)
+  path_prepared <- readable_path_fn(path_prepared)
+
+  prepared_exists <- relaxed_exists_fn(path_prepared)
+  original_exists <- relaxed_exists_fn(path)
 
   if (!prepared_exists) {
     if (original_exists) {
-      path_prepared <- tryCatch(
-        get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(path),
-        error = function(e) path
-      )
+      path_prepared <- readable_path_fn(path)
     } else {
       stop(sprintf("Dosya bulunamadı (Yol: %s)", path_prepared))
     }

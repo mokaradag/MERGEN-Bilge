@@ -24,6 +24,40 @@ if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE))
   }
 }
 
+# Araç yardımcıları bazı worker / ayrı yürütme bağlamlarında global ortama
+# beklenen sırayla gelmeyebilir. Bu nedenle kritik yol yardımcıları için
+# burada yerel ve kendine yeterli yedek tanımlar sağlanır.
+if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
+  helpers_mcp_tools$path_exists_relaxed <- function(path) {
+    if (is.null(path) || length(path) == 0) return(FALSE)
+
+    candidate <- as.character(path[1])
+    if (!nzchar(candidate)) return(FALSE)
+
+    cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
+
+    variants <- unique(trimws(Filter(nzchar, c(
+      candidate,
+      cand_slash,
+      sub("^//\\?/UNC", "//", cand_slash, perl = TRUE),
+      sub("^//\\?/", "//", cand_slash, perl = TRUE),
+      if (grepl("^/[^/]", cand_slash)) paste0("/", cand_slash) else NULL,
+      gsub("/", "\\\\", cand_slash, fixed = TRUE)
+    ))))
+
+    for (chk in variants) {
+      if (tryCatch(isTRUE(file.exists(chk)), error = function(e) FALSE)) return(TRUE)
+      if (tryCatch(isTRUE(fs::file_exists(chk)), error = function(e) FALSE)) return(TRUE)
+
+      chk_utf8 <- tryCatch(enc2utf8(chk), error = function(e) chk)
+      if (tryCatch(isTRUE(file.exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
+      if (tryCatch(isTRUE(fs::file_exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
+    }
+
+    FALSE
+  }
+}
+
 # Pull helper utilities from the global env when available (workers inherit them)
 if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
   assign(
@@ -31,6 +65,38 @@ if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
     get("normalize_excel_path", envir = globalenv(), inherits = TRUE),
     envir = helpers_mcp_tools
   )
+}
+
+if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
+  assign(
+    "resolve_readable_path",
+    get("resolve_readable_path", envir = globalenv(), inherits = TRUE),
+    envir = helpers_mcp_tools
+  )
+}
+
+if (!exists("resolve_readable_path", envir = helpers_mcp_tools, inherits = FALSE)) {
+  helpers_mcp_tools$resolve_readable_path <- function(path) {
+    if (is.null(path) || !nzchar(path)) return(path)
+
+    p <- as.character(path[1])
+
+    if (tryCatch(isTRUE(file.exists(p)), error = function(e) FALSE)) return(p)
+
+    p_bs <- gsub("/", "\\\\", p, fixed = TRUE)
+    if (tryCatch(isTRUE(file.exists(p_bs)), error = function(e) FALSE)) return(p_bs)
+
+    p_fwd <- gsub("\\\\", "/", p, fixed = TRUE)
+    if (grepl("^/[^/]", p_fwd)) {
+      p_unc <- paste0("/", p_fwd)
+      if (tryCatch(isTRUE(file.exists(p_unc)), error = function(e) FALSE)) return(p_unc)
+
+      p_unc_bs <- gsub("/", "\\\\", p_unc, fixed = TRUE)
+      if (tryCatch(isTRUE(file.exists(p_unc_bs)), error = function(e) FALSE)) return(p_unc_bs)
+    }
+
+    p
+  }
 }
 
 # Try to copy the global function into our tools env
@@ -285,6 +351,15 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   }
 
   cat("[RESOLVE] Looking for:", arg, "\n")
+  
+  cat(
+    "[RESOLVE][env] has_path_exists_relaxed=",
+    exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE),
+    " has_resolve_readable_path=",
+    exists("resolve_readable_path", envir = helpers_mcp_tools, inherits = FALSE),
+    "\n",
+    sep = ""
+  )
 
   resolve_existing_candidate <- function(candidate) {
     if (is.null(candidate) || !nzchar(candidate)) return(NULL)
@@ -298,40 +373,31 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       gsub("/", "\\\\", cand, fixed = TRUE)
     )))
 
-    if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
-      readable_variants <- unique(vapply(
-        variants,
-        function(v) {
-          tryCatch(
-            get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(v),
-            error = function(e) v
-          )
-        },
-        character(1)
-      ))
-      variants <- unique(c(variants, readable_variants))
-    }
+    readable_variants <- unique(vapply(
+      variants,
+      function(v) {
+        tryCatch(
+          helpers_mcp_tools$resolve_readable_path(v),
+          error = function(e) v
+        )
+      },
+      character(1)
+    ))
+    variants <- unique(c(variants, readable_variants))
 
     for (v in variants) {
-      relaxed_ok <- tryCatch({
-        if (exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
-          isTRUE(helpers_mcp_tools$path_exists_relaxed(v))
-        } else if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
-          isTRUE(get("path_exists_relaxed", envir = globalenv(), inherits = TRUE)(v))
-        } else {
-          FALSE
-        }
-      }, error = function(e) FALSE)
+      relaxed_ok <- tryCatch(
+        isTRUE(helpers_mcp_tools$path_exists_relaxed(v)),
+        error = function(e) FALSE
+      )
 
       if (!relaxed_ok) next
 
-      if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
-        v2 <- tryCatch(
-          get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(v),
-          error = function(e) v
-        )
-        if (!is.null(v2) && nzchar(v2)) return(v2)
-      }
+      v2 <- tryCatch(
+        helpers_mcp_tools$resolve_readable_path(v),
+        error = function(e) v
+      )
+      if (!is.null(v2) && nzchar(v2)) return(v2)
 
       return(v)
     }
