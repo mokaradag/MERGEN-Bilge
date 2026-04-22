@@ -1,7 +1,7 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-safe-path.R
 # Açıklama: safe_join_path() fonksiyonunun path traversal reddi, mutlak yol
-# kaçışı reddi, NUL bayt reddi, Windows backslash ve Türkçe karakter
+# kaçışı reddi, tek nokta segment reddi, Windows backslash ve Türkçe karakter
 # desteğini doğrulayan birim testleri.
 # ==============================================================================
 
@@ -50,12 +50,16 @@ test_that("safe_join_path mutlak yol girişini reddeder", {
   expect_null(safe_join_path(base, "c:\\Windows\\regedit.exe"))
 })
 
-test_that("safe_join_path NUL bayt içeren segmenti reddeder", {
+test_that("safe_join_path tek nokta ve bosluklu nokta segmentlerini reddeder", {
   base <- .make_temp_base()
   on.exit(unlink(base, recursive = TRUE, force = TRUE))
 
-  kotu <- paste0("dosya", rawToChar(as.raw(0L)), ".txt")
-  expect_null(safe_join_path(base, kotu))
+  # R character tipi icinde gomulu NUL bayti guvenilir bicimde uretilemedigi icin
+  # bu durum birim testte saglikli sekilde dogrulanamiyor. Bunun yerine ayni
+  # savunma hattindaki tek nokta ve bosluklu nokta segmentleri dogrulaniyor.
+  expect_null(safe_join_path(base, "./dosya.txt"))
+  expect_null(safe_join_path(base, "alt/./dosya.txt"))
+  expect_null(safe_join_path(base, "alt/ . /dosya.txt"))
 })
 
 test_that("safe_join_path NULL/boş/NA girişi reddeder", {

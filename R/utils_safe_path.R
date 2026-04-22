@@ -12,8 +12,8 @@
 #   - user_segment NULL, boş, NA, NUL içeren, ".." içeren veya mutlak yol ise NULL
 #     döner. Böylece çağıran taraf basit bir is.null() kontrolüyle güvenliği
 #     denetleyebilir.
-#   - Normalize sonrası yol gerçekten base_dir'in altında değilse de NULL döner.
-#   - Güvenli durumda normalize edilmiş mutlak yol döner.
+#   - Son birleşik yol denetimi base_dir'in altında değilse NULL döner.
+#   - Güvenli durumda base_dir altında kurulmuş mutlak yol döner.
 safe_join_path <- function(base_dir, user_segment) {
   if (is.null(base_dir) || !is.character(base_dir) || length(base_dir) != 1L || !nzchar(base_dir)) {
     return(NULL)
@@ -48,23 +48,24 @@ safe_join_path <- function(base_dir, user_segment) {
   # ".", "..", " " gibi özel isimler rezerve olabilir).
   if (any(grepl("^\\s*\\.+\\s*$", parcalar))) return(NULL)
 
-  birlesim <- file.path(base_dir, paste(parcalar, collapse = "/"))
+  # Güvenli göreli yolu tek tip ayraçla yeniden kur.
+  goreli_yol <- paste(parcalar, collapse = "/")
 
-  # Normalize. mustWork = FALSE: hedef henüz oluşturulmamış da olabilir.
+  # Sadece mevcut taban dizini normalize et. Windows'ta henüz var olmayan alt
+  # yol üzerinde normalizePath() çağrısı güvenli girdileri gereksiz yere NULL'a
+  # düşürebilir.
   base_norm <- tryCatch(
     normalizePath(base_dir, winslash = "/", mustWork = FALSE),
     error = function(e) NULL
   )
-  hedef_norm <- tryCatch(
-    normalizePath(birlesim, winslash = "/", mustWork = FALSE),
-    error = function(e) NULL
-  )
-  if (is.null(base_norm) || is.null(hedef_norm)) return(NULL)
+  if (is.null(base_norm) || !nzchar(base_norm)) return(NULL)
 
-  # base_norm'un sonunda '/' yoksa ekle ki startsWith doğru eşleşsin.
-  base_bitis <- if (endsWith(base_norm, "/")) base_norm else paste0(base_norm, "/")
+  # Sonda fazla slash kalırsa temizle ve hedef yolu string düzeyinde kur.
+  base_bitis <- sub("/+$", "", base_norm)
+  hedef_norm <- paste0(base_bitis, "/", goreli_yol)
 
-  if (!startsWith(paste0(hedef_norm, "/"), base_bitis)) {
+  # Son savunma hattı: hedef mutlaka normalize edilmiş tabanın altında kalmalı.
+  if (!startsWith(paste0(hedef_norm, "/"), paste0(base_bitis, "/"))) {
     return(NULL)
   }
 
