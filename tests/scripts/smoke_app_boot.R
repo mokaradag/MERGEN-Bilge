@@ -25,6 +25,18 @@ if (!nzchar(Sys.getenv("AI_KEYS_MASTER", ""))) {
 
 source("app.R", encoding = "UTF-8")
 
+if (!exists("safe_source", envir = globalenv(), mode = "function", inherits = FALSE)) {
+  stop("Smoke test başarısız: safe_source() tanımlanmadı.")
+}
+
+if (!exists("ui", envir = globalenv(), inherits = FALSE)) {
+  stop("Smoke test başarısız: ui nesnesi tanımlanmadı.")
+}
+
+if (!exists("server", envir = globalenv(), mode = "function", inherits = FALSE)) {
+  stop("Smoke test başarısız: server fonksiyonu tanımlanmadı.")
+}
+
 if (!exists("create_mergen_app", envir = globalenv(), mode = "function", inherits = FALSE)) {
   stop("Smoke test başarısız: create_mergen_app() tanımlanmadı.")
 }
