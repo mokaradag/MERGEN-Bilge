@@ -863,11 +863,12 @@ helpers_mcp_tools$get_column_statistics <- function(file_name, column, session =
     top5 <- head(tb, 10) 
     
     stats_df <- data.frame(
-      Değer = names(top5),
+      Deger = names(top5),
       Adet = as.numeric(top5),
       Oran = sprintf("%.1f%%", 100 * as.numeric(top5) / length(vec)),
       stringsAsFactors = FALSE
     )
+    names(stats_df) <- c("De\u011fer", "Adet", "Oran")
     
     summary_text <- sprintf(
       "- **Benzersiz Değer Sayısı:** %d\n- **Boş Değer Sayısı:** %d",
@@ -1461,7 +1462,7 @@ helpers_mcp_tools$analyze_and_visualize <- function(
       summary_rows <- lapply(num_cols, function(cn) {
         vals <- dt[[cn]]
         data.frame(
-          Sütun = cn,
+          Sutun = cn,
           Ortalama = round(mean(vals, na.rm = TRUE), 2),
           Medyan = round(median(vals, na.rm = TRUE), 2),
           Min = round(min(vals, na.rm = TRUE), 2),
@@ -1471,6 +1472,7 @@ helpers_mcp_tools$analyze_and_visualize <- function(
         )
       })
       summary_df <- do.call(rbind, summary_rows)
+      names(summary_df)[1] <- "S\u00fctun"
       result_text <- paste0(result_text,
         sprintf("### Dosya Özeti: %s\n", display_name),
         sprintf("- **Toplam Satır:** %d\n", nrow(dt)),
@@ -1530,9 +1532,10 @@ helpers_mcp_tools$analyze_and_visualize <- function(
 
     chart_data <- data.frame(
       Metrik = stat_label,
-      Değer = stat_value,
+      Deger = stat_value,
       stringsAsFactors = FALSE
     )
+    names(chart_data)[2] <- "De\u011fer"
 
   } else if (analysis_type == "grouped_stats") {
     # Türkçe: Gruplandırılmış istatistik (örn: departman bazında ortalama)

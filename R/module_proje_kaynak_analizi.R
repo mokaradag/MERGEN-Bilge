@@ -487,18 +487,18 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     grepl(pattern, prompt_lower, fixed = TRUE)
   }))
   
-  # Spesifik varlık belirtilmiş mi? (kod, isim, departman)
-  spesifik_varlık_var <- grepl("\\b[A-Z][0-9]{3,}\\b|\\b[A-Z]{1,3}[0-9]{1,}\\b", user_prompt, perl = TRUE) || # P123, M1 gibi kodlar
-                          grepl("[A-ZÜĞIŞÖÇ][a-züğışöç]+ [A-ZÜĞIŞÖÇ][a-züğışöç]+", user_prompt, perl = TRUE) # İsim Soyisim
-  
-  # KARAR: Genel soruysa VE spesifik varlık yoksa, filtreleri GEÇERSİZ KIL
-  if (genel_soru_mu && !spesifik_varlık_var && (is.null(filters) || length(filters) == 0)) {
+  # Spesifik varlik belirtilmis mi? (kod, isim, departman)
+  spesifik_varlik_var <- grepl("\\b[A-Z][0-9]{3,}\\b|\\b[A-Z]{1,3}[0-9]{1,}\\b", user_prompt, perl = TRUE) || # P123, M1 gibi kodlar
+                         grepl("[A-ZÜĞIŞÖÇ][a-züğışöç]+ [A-ZÜĞIŞÖÇ][a-züğışöç]+", user_prompt, perl = TRUE) # İsim Soyisim
+
+  # KARAR: Genel soruysa VE spesifik varlik yoksa, filtreleri GECERSIZ KIL
+  if (genel_soru_mu && !spesifik_varlik_var && (is.null(filters) || length(filters) == 0)) {
     cat("[SMART_FILTER] GENEL SORU tespit edildi, filtre UYGULANMAYACAK.\n")
     filters <- list() # Filtreleri temizle
   }
   
-  cat(sprintf("[SMART_FILTER] Filtre sayisi: %d (Genel soru: %s, Spesifik varlık: %s)\n", 
-              length(filters %||% list()), genel_soru_mu, spesifik_varlık_var))
+  cat(sprintf("[SMART_FILTER] Filtre sayisi: %d (Genel soru: %s, Spesifik varlik: %s)\n", 
+              length(filters %||% list()), genel_soru_mu, spesifik_varlik_var))
   
   cat(sprintf("[SMART_FILTER] Filtre sayisi: %d\n", length(filters %||% list())))
   if (length(filters) > 0) {
