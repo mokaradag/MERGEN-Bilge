@@ -764,6 +764,7 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - `safe_source`
 - BOM işaretli UTF-8 dosyalarının `safe_source()` ile güvenli yüklenmesi
 - `tracked_future_promise` görev defteri temizleme davranışı
+- `register_session_cleanup_on_end()` ve `safe_unlink_if_exists()` yardımcılarının oturum kapanışı/temizlik davranışı; sahte test oturumlarının `list` yanında `environment` biçiminde de gelebilmesi
 - DB doğrulama yardımcıları
 - dosya indeksleme yardımcıları
 - worker monitor yardımcıları
@@ -773,6 +774,8 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. Promise/later tabanlı testlerde tek bir `later::run_now()` çağrısının her zaman yeterli olmayabileceği unutulmamalı; testler gerekiyorsa later kuyruğunu birkaç tur tüketerek kararlı son durumu beklemelidir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
 
 Windows VM ortamında gömülü NUL bayt içeren karakter dizileri normal R stringleri içinde güvenilir biçimde temsil edilemediği için bu durum doğrudan birim testte bire bir doğrulanmaz. Buna rağmen `safe_join_path()` içindeki çalışma zamanı NUL koruması korunur. Test stratejisi bunun yerine Windows üzerinde güvenilir biçimde doğrulanabilen güvenlik kurallarına odaklanır.
+
+`register_session_cleanup_on_end()` yardımcısında test ve Shiny benzeri sahte oturum nesnelerinin `environment` olarak gelebileceği dikkate alınmalıdır. Bu nedenle helper yalnızca `list` değil, `onSessionEnded` metodu taşıyan `environment` oturum nesneleriyle de uyumlu kalmalıdır; ilgili regresyon `tests/testthat/test-session-cleanup.R` altında korunmaktadır.
 
 ### Tüm testleri çalıştırma
 ```r
