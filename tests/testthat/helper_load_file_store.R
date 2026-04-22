@@ -16,7 +16,7 @@ if (!exists("mergen_register_uploaded_file", envir = globalenv(), inherits = FAL
   # config_packages.R kısmen sourece edilmiş olabilir; yardımcı paketler
   # doğrudan require edilmeden config_file_store.R kendi sourcing sırasında
   # fs ve jsonlite kullanır. Test ortamında bu paketler mevcut olmalı.
-  required_pkgs <- c("fs", "jsonlite")
+  required_pkgs <- c("fs", "jsonlite", "openssl", "later")
   for (pkg in required_pkgs) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop(sprintf(
