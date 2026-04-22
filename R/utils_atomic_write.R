@@ -10,6 +10,10 @@
 # Verilen içeriği aynı dizinde geçici dosyaya yazar, ardından file.rename ile
 # hedefe taşır. Başarısızlık durumunda kopya+silme ile fallback yapar ve
 # kalıcı hata üretir. final_path üzerinde kısmi yazım kalması engellenir.
+# ÖNEMLİ:
+# - Yazım BINARY modda yapılır.
+# - Böylece Windows VM native codepage'e (örn. CP1254) düşmez.
+# - Diske her zaman gerçek UTF-8 baytları yazılır.
 atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
   if (!is.character(final_path) || length(final_path) != 1L || !nzchar(final_path)) {
     stop("atomic_write_text: 'final_path' tek elemanli, bos olmayan karakter olmali.")
@@ -33,17 +37,22 @@ atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
     }
   }, add = TRUE)
 
-  # UTF-8 metni text-connection ile yaz.
-  # writeBin(charToRaw(...)) bazı Windows VM ortamlarında native codepage benzeri
-  # bozuk baytlar bırakabiliyor; burada explicit UTF-8 text write kullanılır.
+  # Icerigi tek metne indir ve UTF-8'e zorla.
+  # writeLines(..., encoding=...) Windows VM'de native codepage yazabiliyor.
+  # Bu nedenle dogrudan UTF-8 baytlarini binary olarak yaziyoruz.
   icerik_utf8 <- enc2utf8(paste(content, collapse = "\n"))
+  icerik_raw <- charToRaw(icerik_utf8)
 
-  con <- file(tmp_path, open = "w", encoding = encoding)
-  tryCatch({
-    writeLines(icerik_utf8, con = con, sep = "")
-  }, finally = {
-    close(con)
-  })
+  con <- file(tmp_path, open = "wb")
+  tryCatch(
+    {
+      writeBin(icerik_raw, con)
+      flush(con)
+    },
+    finally = {
+      close(con)
+    }
+  )
 
   tmp_info <- suppressWarnings(file.info(tmp_path))
   if (!file.exists(tmp_path) || is.na(tmp_info$size[1])) {
@@ -52,6 +61,8 @@ atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
 
   moved <- suppressWarnings(file.rename(tmp_path, final_path))
   if (!isTRUE(moved)) {
+    # Windows VM'de kilitli dosya senaryolarinda file.rename basarisiz olabilir;
+    # kopya+silme fallback'i ile atomiklige en yakin davranis korunur.
     moved <- isTRUE(file.copy(tmp_path, final_path, overwrite = TRUE))
     if (isTRUE(moved)) {
       try(unlink(tmp_path, force = TRUE), silent = TRUE)
@@ -79,5 +90,10 @@ atomic_write_json <- function(data,
     auto_unbox = auto_unbox,
     null = null
   )
-  atomic_write_text(as.character(json_metni), final_path)
+
+  atomic_write_text(
+    as.character(json_metni),
+    final_path = final_path,
+    encoding = "UTF-8"
+  )
 }
