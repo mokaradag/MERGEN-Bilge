@@ -1030,6 +1030,37 @@ fileManagerServer <- function(
               next
             }
 
+            # Ek güvenlik kontrolü: boyut sınırı, path traversal ve UTF-8 güvenliği.
+            # Uzantı kontrolü process_uploaded_file() içinde ayrıca yapıldığı için
+            # burada allowed_ext geçilmez. Sınır 100 MB; daha düşük ihtiyaç
+            # olursa getOption("mergen.upload_max_mb") ile geçilebilir.
+            if (exists("validate_uploaded_file", envir = globalenv(), inherits = FALSE)) {
+              max_mb <- suppressWarnings(as.integer(getOption("mergen.upload_max_mb", 100L)))
+              if (is.na(max_mb) || max_mb <= 0L) max_mb <- 100L
+
+              dogrulama <- validate_uploaded_file(
+                path = upload_path,
+                filename = upload_name,
+                max_size_mb = max_mb,
+                allowed_ext = NULL
+              )
+
+              if (!isTRUE(dogrulama$ok)) {
+                fm_debug("upload_validation_reject",
+                         sprintf("%s -> %s (%s)", upload_name,
+                                 dogrulama$code %||% "unknown",
+                                 dogrulama$error %||% ""))
+                showToast(
+                  session,
+                  sprintf("Dosya reddedildi: %s - %s",
+                          upload_name,
+                          dogrulama$error %||% "bilinmeyen doğrulama hatası"),
+                  "error"
+                )
+                next
+              }
+            }
+
             if (!is_under_mcp_base(upload_path)) {
               persisted_path <- tryCatch({
                 copy_to_mcp_base(
