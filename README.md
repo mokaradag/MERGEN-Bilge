@@ -214,6 +214,8 @@ Gerçek giriş noktasıdır. Şunları yapar:
 - `www/` alt klasörlerini resource path olarak kaydeder,
 - uygulamayı başlatır.
 
+Son hardening güncellemeleriyle `app.R` tarafında açık boot doğrulaması uygulanır: `validate_boot_state()` ile `safe_source`, `ui` ve `server` yükleri doğrulanır; beklenen durum sağlanmazsa başlangıç fail-fast mantığıyla durdurulur. Kod akışında `create_mergen_app()` ve `run_mergen_app()` yardımcılarının davranış/sözleşmesi korunmalıdır.
+
 ### `global.R`
 Küresel yapılandırma ve yükleme sırasını yönetir. Şunları içerir:
 - UTF-8 ve locale ayarları
@@ -441,6 +443,8 @@ Son bakım turunda özellikle dosya yöneticisi tarafında davranış değiştir
 - `MERGEN_UPLOADS_DIR`
 - `MERGEN_MCP_BASE_DIR`
 - `MERGEN_INDEX_PATH`
+
+Not: Dosya deposu kökleri artık ortam değişkenleriyle override edilebilir yapıdadır (`MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`) ve testlerde izole geçici dizinlerle (temp sandbox) doğrulanacak şekilde özellikle test edilebilir tutulur.
 
 ### Zorunlu ortam değişkeni kontrolü
 Uygulama açılışta şu değişkenleri kontrol eder:
@@ -777,6 +781,16 @@ Windows VM ortamında gömülü NUL bayt içeren karakter dizileri normal R stri
 
 `register_session_cleanup_on_end()` yardımcısında test ve Shiny benzeri sahte oturum nesnelerinin `environment` olarak gelebileceği dikkate alınmalıdır. Bu nedenle helper yalnızca `list` değil, `onSessionEnded` metodu taşıyan `environment` oturum nesneleriyle de uyumlu kalmalıdır; ilgili regresyon `tests/testthat/test-session-cleanup.R` altında korunmaktadır.
 
+### `tests/scripts/` doğrulama akışı
+- `tests/scripts/parse_sanity_check.R`: repo kökünden UTF-8 parse/syntax için hızlı bir sanity kontrolü yapar.
+- `tests/scripts/smoke_app_boot.R`: tam uygulamayı ayağa kaldırmadan `app.R` dosyasını source eder; `safe_source`, `ui`, `server`, `create_mergen_app()` varlığını doğrular ve `shiny.appobj` üretilebildiğini kontrol eder.
+- `tests/scripts/run_ci_local.R`: GitHub CI akışının yerel eşdeğeridir; parse/smoke adımlarından sonra oturum kirlenmesini önlemek için `tests/testthat.R` çalıştırmasını CLEAN CHILD R SESSION içinde yapar.
+- `tests/scripts/run_vm_preflight_real.R`: gerçek on-prem Windows VM üzerinde, gerçek ortam değişkenleriyle production-benzeri preflight kontrolü için kullanılır.
+
+Not: GitHub CI ve `run_ci_local.R` gerçek on-prem DB/LLM bağlantısına gitmez; yalnızca placeholder env değişkenleriyle boot/yapı/test doğrulaması yapar. Gerçek VM tarafı entegrasyon varsayımları `run_vm_preflight_real.R` ile sınanmalıdır.
+
+GitHub Actions iş akışı Ubuntu ve Windows üzerinde, R 4.4 ve R 4.5 kombinasyonlarında sırasıyla (1) parse sanity check, (2) app boot smoke, (3) testthat adımlarını çalıştırır. Bu CI hattı bilinçli olarak altyapıdan bağımsızdır ve gerçek kurum içi LLM/DB sistemlerine bağlanmaz.
+
 ### Tüm testleri çalıştırma
 ```r
 source("tests/testthat.R", encoding = "UTF-8")
@@ -865,6 +879,7 @@ Kontrol edin:
 - helper bootstrap’ın repo kökünü doğru çözüp çözmediğini
 - mümkünse temiz bir R oturumunda yeniden deneme yapmayı
 - Windows VM’de bazı düşük seviye string uç durumlarında (özellikle gömülü NUL beklentilerinde) farklılık olabileceğini ve helper testlerinde base R stringlerinde bayt-birebir kurulum zorlaması yerine repodaki Windows uyumlu test stratejisinin izlenmesi gerektiğini
+- Windows VM üzerinde helper/test script çalıştırırken code-page regresyonlarını izole ederek incelemeyi; kullanıcıya görünen Türkçe metinlerin UTF-8 kalmasını, yeni eklenen kod sembollerinin/identifier adlarının ise mümkün olduğunda ASCII-safe tutulmasını
 
 ### Yerelde açılıyor / SSO'da açılıyor ama diğer modda davranış farklı
 Kontrol edin:
