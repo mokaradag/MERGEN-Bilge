@@ -289,13 +289,31 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   # Helper to check existence via base or fs
   path_ok_robust <- function(candidate) {
     if (is.null(candidate) || !nzchar(candidate)) return(FALSE)
+
+    relaxed_ok <- tryCatch({
+      if (exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
+        isTRUE(helpers_mcp_tools$path_exists_relaxed(candidate))
+      } else if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
+        isTRUE(get("path_exists_relaxed", envir = globalenv(), inherits = TRUE)(candidate))
+      } else {
+        FALSE
+      }
+    }, error = function(e) FALSE)
+
+    if (relaxed_ok) return(TRUE)
+
     if (isTRUE(file.exists(candidate))) return(TRUE)
-    if (requireNamespace("fs", quietly = TRUE) && fs::file_exists(candidate)) return(TRUE)
+    if (requireNamespace("fs", quietly = TRUE) && isTRUE(fs::file_exists(candidate))) return(TRUE)
+
+    candidate_utf8 <- tryCatch(enc2utf8(candidate), error = function(e) candidate)
+    if (isTRUE(file.exists(candidate_utf8))) return(TRUE)
+    if (requireNamespace("fs", quietly = TRUE) && isTRUE(fs::file_exists(candidate_utf8))) return(TRUE)
+
     FALSE
   }
 
   path_ok <- function(candidate) {
-     path_ok_robust(candidate)
+    path_ok_robust(candidate)
   }
   
   # --- NEW: 0) Absolute path fast-path -------------------------------
@@ -335,11 +353,50 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       base_dir <- getOption("mergen.mcp_base_dir") %||% Sys.getenv("MCP_FILES_BASE", "")
       if (!is.null(uid) && nzchar(base_dir)) {
         user_dir <- file.path(base_dir, sprintf("user_%s", uid))
+
         for (tok in tokens) {
           candidate <- file.path(user_dir, basename(tok))
           if (path_ok(candidate)) {
             cat("[RESOLVE] Missing path recovered via MCP base dir ->", candidate, "\n")
             return(candidate)
+          }
+        }
+
+        user_files <- tryCatch(
+          list.files(user_dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+          error = function(e) character(0)
+        )
+
+        if (length(user_files) > 0) {
+          for (tok in tokens) {
+            tok_base <- tolower(basename(tok))
+            suffix_hits <- user_files[
+              tolower(basename(user_files)) == tok_base |
+              endsWith(tolower(basename(user_files)), paste0("_", tok_base))
+            ]
+
+            if (length(suffix_hits) > 0) {
+              recovered <- suffix_hits[1]
+              if (path_ok(recovered)) {
+                cat("[RESOLVE] Missing path recovered via user_dir suffix match ->", recovered, "\n")
+                return(recovered)
+              }
+            }
+          }
+
+          for (tok in tokens) {
+            tok_ext <- tolower(tools::file_ext(tok))
+            if (!nzchar(tok_ext)) next
+
+            ext_hits <- user_files[tolower(tools::file_ext(user_files)) == tok_ext]
+
+            if (length(ext_hits) == 1) {
+              recovered <- ext_hits[1]
+              if (path_ok(recovered)) {
+                cat("[RESOLVE] Missing path recovered via unique extension match ->", recovered, "\n")
+                return(recovered)
+              }
+            }
           }
         }
       }

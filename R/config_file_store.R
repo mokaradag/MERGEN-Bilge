@@ -483,7 +483,7 @@ mergen_resolve_display_name <- function(file_path, user_id = NULL, idx = NULL) {
 
 recover_display_name_from_storage_name <- function(file_path) {
   base_name <- basename(file_path %||% "")
-  cleaned <- sub("^\\d{14}_[0-9A-Za-z]+_", "", base_name, perl = TRUE)
+  cleaned <- sub("^\\d{8}(?:-?\\d{6})_[0-9A-Za-z]+_", "", base_name, perl = TRUE)
 
   if (nzchar(cleaned) && !identical(cleaned, base_name)) {
     return(cleaned)

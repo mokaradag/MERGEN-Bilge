@@ -150,13 +150,22 @@ copy_to_mcp_base <- function(upload, user_id) {
   ext <- tools::file_ext(upload$name)
   unique_tag <- digest::digest(file = upload$datapath, algo = "xxhash64")
 
+  safe_display_name <- basename(upload$name %||% "")
+  safe_display_name <- gsub("[/\\\\]+", "_", safe_display_name)
+  safe_display_name <- gsub("[[:cntrl:]]+", "_", safe_display_name)
+  safe_display_name <- trimws(safe_display_name)
+
+  if (!nzchar(safe_display_name)) {
+    safe_display_name <- if (nzchar(ext)) paste0("dosya.", ext) else "dosya"
+  }
+
   dest <- fs::path(
     user_dir,
     sprintf(
-      "%s_%s%s",
+      "%s_%s_%s",
       format(Sys.time(), "%Y%m%d-%H%M%S"),
       unique_tag,
-      if (nzchar(ext)) paste0(".", ext) else ""
+      safe_display_name
     )
   )
 
