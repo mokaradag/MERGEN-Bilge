@@ -58,9 +58,22 @@ safe_windows_short_path <- function(path, must_exist = FALSE) {
     return(candidate)
   }
 
-  candidate_fs <- gsub("/", "\\\\", candidate, fixed = TRUE)
+  candidate_norm <- gsub("\\\\", "/", candidate, fixed = TRUE)
+
+  # UNC ağ paylaşımı için shortPathName kullanma.
+  # Bu çağrı bazı Windows/SMB ortamlarda baştaki çift eğik çizgiyi bozup
+  # //sunucu/paylasim/... yolunu /sunucu/paylasim/... haline getirebiliyor.
+  # Excel tarafındaki "Exists: FALSE" hatasının ana nedeni budur.
+  is_unc <- grepl("^//[^/]+/[^/]+", candidate_norm)
+
+  if (is_unc) {
+    unc_fixed <- paste0("//", sub("^/+", "", candidate_norm))
+    return(unc_fixed)
+  }
+
+  candidate_fs <- gsub("/", "\\\\", candidate_norm, fixed = TRUE)
   if (isTRUE(must_exist) && !.path_exists_any(candidate_fs)) {
-    return(candidate)
+    return(candidate_norm)
   }
 
   short_raw <- tryCatch(
@@ -72,7 +85,8 @@ safe_windows_short_path <- function(path, must_exist = FALSE) {
     short_raw <- candidate_fs
   }
 
-  gsub("\\\\", "/", short_raw, fixed = TRUE)
+  short_norm <- gsub("\\\\", "/", short_raw, fixed = TRUE)
+  short_norm
 }
 
 # --- UTF-8 YOL NORMALİZASYONU ---
