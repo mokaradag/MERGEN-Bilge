@@ -121,32 +121,10 @@ jobs:
             any::av
           needs: check
 
-      - name: Parse sanity check (safe_source helper)
+      - name: Parse sanity check
         shell: Rscript {0}
         run: |
-          # Tüm R/ dosyaları en azından parse edilebilmelidir. Bu, sözdizim
-          # hatalarını CI'de erken yakalar.
-          r_files <- list.files("R", pattern = "\\.R$", full.names = TRUE, recursive = TRUE)
-          parse_errors <- character(0)
-
-          for (f in r_files) {
-            ok <- tryCatch({
-              parse(file = f, keep.source = FALSE, encoding = "UTF-8")
-              TRUE
-            }, error = function(e) {
-              parse_errors[[f]] <<- conditionMessage(e)
-              FALSE
-            })
-          }
-
-          if (length(parse_errors) > 0) {
-            for (f in names(parse_errors)) {
-              cat(sprintf("[PARSE ERROR] %s: %s\n", f, parse_errors[[f]]))
-            }
-            stop(sprintf("%d dosyada parse hatası var.", length(parse_errors)))
-          }
-
-          cat(sprintf("%d R dosyası parse edildi.\n", length(r_files)))
+          source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")
 
       - name: App boot smoke
         shell: Rscript {0}

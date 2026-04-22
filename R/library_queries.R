@@ -131,5 +131,5 @@ query_library <- list(
       masraf_yeri_col = "MasrafYeri",
       proje_kodu_col = "ProjeKodu"
     )
-  ),
+  )
 )
