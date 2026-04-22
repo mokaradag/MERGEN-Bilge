@@ -12,13 +12,14 @@ permissions:
 
 jobs:
   testthat:
-    runs-on: ubuntu-latest
-    name: R ${{ matrix.r }} testthat
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / R ${{ matrix.r }}
 
     strategy:
       fail-fast: false
       matrix:
-        r: ["4.4"]
+        os: [ubuntu-latest, windows-latest]
+        r: ["4.4", "4.5"]
 
     env:
       # MERGEN paralel cluster ve gc scheduler gibi arka plan kancaları
@@ -26,13 +27,15 @@ jobs:
       # ayarlar; CI ortamında explicit olması da netlik sağlar.
       MERGEN_DISABLE_FUTURES: "true"
       MERGEN_RUN_APP: "false"
+
       # config_file_store.R bu üç değişkeni zorunlu sayar; CI içinde sadece
       # placeholder değerler verilir. Gerçek sırları kullanmazlar.
       LOCAL_LLM_ENDPOINT: "http://test.local/v1"
       DB_DSN: "test-dsn"
       AI_KEYS_MASTER: "test-master-key-ci-placeholder"
-      # DOCX/XLSX/PDF sidecar testleri için gerekli değil ama bootstrap güvenli
-      # tarafta kalsın diye system-level sistem paketlerini yüklenmesi beklenir.
+
+      # Test ve smoke akışlarında dosya sistemi çakışmalarını önlemek için
+      # CI içinde izole çalışma dizinleri kullanılabilir.
       R_KEEP_PKG_SOURCE: "yes"
 
     steps:
@@ -49,6 +52,7 @@ jobs:
         uses: r-lib/actions/setup-pandoc@v2
 
       - name: System dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -69,18 +73,52 @@ jobs:
         with:
           packages: |
             any::testthat
-            any::fs
-            any::jsonlite
+            any::withr
+            any::arrow
             any::base64enc
-            any::future
-            any::promises
-            any::later
-            any::codetools
-            any::glue
-            any::logger
+            any::cellranger
+            any::cli
+            any::commonmark
+            any::curl
+            any::data.table
             any::DBI
+            any::dplyr
+            any::DT
+            any::duckdb
+            any::fastmatch
+            any::fs
+            any::future
+            any::glue
+            any::htmltools
+            any::httr
+            any::jsonlite
+            any::later
+            any::logger
+            any::lubridate
+            any::markdown
             any::odbc
+            any::openssl
+            any::pdftools
             any::pool
+            any::promises
+            any::purrr
+            any::readr
+            any::readxl
+            any::shiny
+            any::shinyBS
+            any::shinycssloaders
+            any::shinydashboard
+            any::shinyjs
+            any::shinyWidgets
+            any::stringdist
+            any::stringi
+            any::stringr
+            any::tibble
+            any::tidyr
+            any::urltools
+            any::writexl
+            any::xml2
+            any::av
           needs: check
 
       - name: Parse sanity check (safe_source helper)
@@ -90,6 +128,7 @@ jobs:
           # hatalarını CI'de erken yakalar.
           r_files <- list.files("R", pattern = "\\.R$", full.names = TRUE, recursive = TRUE)
           parse_errors <- character(0)
+
           for (f in r_files) {
             ok <- tryCatch({
               parse(file = f, keep.source = FALSE, encoding = "UTF-8")
@@ -99,21 +138,23 @@ jobs:
               FALSE
             })
           }
+
           if (length(parse_errors) > 0) {
             for (f in names(parse_errors)) {
               cat(sprintf("[PARSE ERROR] %s: %s\n", f, parse_errors[[f]]))
             }
             stop(sprintf("%d dosyada parse hatası var.", length(parse_errors)))
           }
+
           cat(sprintf("%d R dosyası parse edildi.\n", length(r_files)))
+
+      - name: App boot smoke
+        shell: Rscript {0}
+        run: |
+          source("tests/scripts/smoke_app_boot.R", encoding = "UTF-8")
 
       - name: Run testthat
         shell: Rscript {0}
         run: |
           # Repo kökünden çalıştırılır; tests/testthat.R ana giriş noktasıdır.
           source("tests/testthat.R", encoding = "UTF-8")
-
-      - name: App boot smoke
-        shell: Rscript {0}
-        run: |
-          source("tests/scripts/smoke_app_boot.R", encoding = "UTF-8")
