@@ -95,11 +95,35 @@ tryCatch({
   future::plan(future::sequential)
 })
 
+# ------------------------------------------------------------------------------
+# GRACEFUL SHUTDOWN: Shiny süreci kapanırken future cluster'ı temiz indir.
+# shiny::onStop mevcut oturum-dışı teardown sırasında tetiklenir. Üretimde
+# shiny-server bazen process'i SIGTERM ile sonlandırır; bu hook kayıtlı olsa
+# bile her zaman tetiklenmez, ancak tetiklendiğinde paralel worker'ların
+# arkada kalmasını engeller. .cleanup_once bayrağı sayesinde global.R yeniden
+# source edildiğinde (Ctrl+Enter) çift kayıt olmaz.
+# ------------------------------------------------------------------------------
+if (requireNamespace("shiny", quietly = TRUE) &&
+    !isTRUE(getOption("mergen.onstop_registered", FALSE)) &&
+    !isTRUE(as.logical(Sys.getenv("MERGEN_DISABLE_FUTURES", "false")))) {
+
+  shiny::onStop(function() {
+    try({
+      log_info("onStop tetiklendi; future cluster kapatılıyor.")
+      future::plan(future::sequential)
+    }, silent = TRUE)
+  })
+
+  options(mergen.onstop_registered = TRUE)
+}
+
 safe_source("R/utils_path_helpers.R",   encoding = "UTF-8")  # Yol normalizasyon yardımcıları
 safe_source("R/utils_safe_path.R",      encoding = "UTF-8")  # Path traversal güvenli join yardımcısı
 safe_source("R/utils_atomic_write.R",   encoding = "UTF-8")  # Atomik dosya/JSON yazımı
 safe_source("R/utils_upload_validator.R", encoding = "UTF-8")  # Dosya yüklemesi güvenlik doğrulaması
 safe_source("R/utils_log_redact.R",     encoding = "UTF-8")  # Log metinlerinde hassas içerik maskeleme
+safe_source("R/utils_session_cleanup.R", encoding = "UTF-8")  # Oturum sonu kaynak temizliği
+safe_source("R/utils_safe_worker_run.R", encoding = "UTF-8")  # Arka plan görev hata sınırı sarmalayıcısı
 safe_source("R/utils_file_index.R",   encoding = "UTF-8")  # Önbellekli dosya indeks mekanizması
 safe_source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yardımcıları
 

@@ -76,6 +76,38 @@ get_pool_info <- function() {
   })
 }
 
+# ------------------------------------------------------------------------------
+# HAFİF BOOLEAN HAVUZ SAĞLIK PROBU
+# ------------------------------------------------------------------------------
+# get_pool_info() zengin liste döner ve caller'a parse etme yükü getirir.
+# db_pool_healthy() yalnızca TRUE/FALSE döndürerek "veritabanı hazır mı?"
+# sorusunu tek satırda yanıtlar. Circuit-breaker benzeri desenlerde ve
+# "bağlantı yoksa UI özelliğini gizle" gibi dallarda tercih edilir.
+#
+# Not: ODBC sürücüsünde ağ tarafı bloklanması durumunda setTimeLimit() R
+# yorumlayıcı düzeyinde çalıştığı için her daim etkili değildir; üretim
+# ortamında DSN Connection Timeout ayarı ile desteklenmelidir. Bu fonksiyon
+# yine de R tarafı thenable/retry kodunun donmasını engelleyen ek bir
+# katmandır.
+db_pool_healthy <- function(timeout_sec = 5) {
+  basla <- Sys.time()
+
+  info <- tryCatch({
+    setTimeLimit(elapsed = as.numeric(timeout_sec), transient = TRUE)
+    on.exit(setTimeLimit(elapsed = Inf, transient = TRUE), add = TRUE)
+    get_pool_info()
+  }, error = function(e) {
+    list(valid = FALSE, error = conditionMessage(e))
+  })
+
+  sure <- as.numeric(difftime(Sys.time(), basla, units = "secs"))
+  if (sure > as.numeric(timeout_sec)) {
+    return(FALSE)
+  }
+
+  isTRUE(info$valid)
+}
+
 get_connection <- function(target = "primary") {
   
   # 1. Hangi Veritabanı? (.Renviron içindeki değişkeni seçiyoruz)
