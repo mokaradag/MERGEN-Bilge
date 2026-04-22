@@ -18,7 +18,8 @@
 # Ek callback'ler extra_cleanup = list(function() {...}, function() {...})
 # olarak geçilebilir.
 register_session_cleanup_on_end <- function(session, extra_cleanup = list()) {
-  if (is.null(session) || !is.list(session)) {
+  # Shiny session nesnesi list veya environment biçiminde gelebilir.
+  if (is.null(session) || !(is.list(session) || is.environment(session))) {
     return(invisible(FALSE))
   }
 
