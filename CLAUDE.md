@@ -127,6 +127,8 @@ For promise/later-based tests, do not assume a single `later::run_now()` flush i
 
 Testlerde kullanılan helper stub’ları, source edilen helper fonksiyonlarıyla aynı ortamda görünür olmalıdır. Test kapsamı olan helper dosyalarında değişiklik yapıldığında ilgili test dosyaları da birlikte güncellenmelidir.
 
+Do not unit-test embedded NUL-byte behavior by forcing normal R character strings on Windows VM. In this repository, keep the runtime NUL guard in the helper, but write Windows-compatible tests around reliably representable path-safety rules. Avoid brittle tests that depend on platform-specific character construction behavior.
+
 ### Current baseline coverage
 - `safe_source`
 - BOM-marked UTF-8 safe_source loading behavior
@@ -135,6 +137,7 @@ Testlerde kullanılan helper stub’ları, source edilen helper fonksiyonlarıyl
 - file indexing helpers
 - worker monitor helpers
 - send-message core tool-family / stream-profile decisions
+- `safe_join_path` path-safety behavior on Windows-compatible test inputs
 
 ---
 
@@ -1424,6 +1427,11 @@ Quick actions are tied to model/tool behavior. Regressions can make a tool appea
 
 ### 5A) Quick-action intro message behavior
 
+### 8B) Path helper edge cases
+- `safe_join_path()` must accept safe descendant paths on Windows VM and must not regress into false negatives for non-existing but valid child paths.
+- Preserve defenses against traversal, absolute paths, and dot-only suspicious segments.
+- Do not reintroduce brittle embedded-NUL tests that rely on normal R string construction on Windows.
+
 Quick-action intro messages must remain assistant-style (`type = "ai"`) rather than system-style in order to preserve normal left-aligned chat rendering.
 
 If editing the prepared intro message helper:
@@ -1580,6 +1588,8 @@ source("tests/testthat.R", encoding = "UTF-8")
 ```
 
 If needed, rerun only the target file with `testthat::test_file(...)`.
+
+If a patch touches path-validation helpers, confirm behavior with Windows-style separators and Turkish-character file names, and avoid platform-brittle assertions for embedded NUL character construction.
 
 ### Audio
 - TTS still plays,
