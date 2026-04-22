@@ -4,19 +4,29 @@
 # fonksiyonları ve testlerde kullanılan R yardımcı dosyalarını yükler.
 # ==============================================================================
 
-# Testlerde paralel/uygulama ayağa kaldırma davranışını devre dışı bırakır.
-Sys.setenv(
-  MERGEN_DISABLE_FUTURES = "true",
-  MERGEN_RUN_APP = "false"
+# Test ortamı değişkenlerini yalnızca test koşumu süresince uygular.
+.testthat_teardown_env <- testthat::teardown_env()
+
+withr::local_envvar(
+  c(
+    MERGEN_DISABLE_FUTURES = "true",
+    MERGEN_RUN_APP = "false"
+  ),
+  .local_envir = .testthat_teardown_env
 )
 
 # config_file_store.R zorunlu ortam değişkenlerini aradığı için test koşumunda
 # sadece placeholder değerler ayarlanır. Gerçek değer gerektiren testler bu
 # değişkenleri kendi scope'unda tekrar ayarlayabilir.
 .set_env_if_missing <- function(name, value) {
-  if (!nzchar(Sys.getenv(name))) {
-    args <- setNames(list(value), name)
-    do.call(Sys.setenv, args)
+  mevcut_deger <- Sys.getenv(name, unset = NA_character_)
+  deger_var_mi <- !is.na(mevcut_deger) && nzchar(mevcut_deger)
+
+  if (!deger_var_mi) {
+    withr::local_envvar(
+      stats::setNames(value, name),
+      .local_envir = .testthat_teardown_env
+    )
   }
 }
 .set_env_if_missing("LOCAL_LLM_ENDPOINT", "http://test.local/v1")
