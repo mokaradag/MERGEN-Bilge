@@ -5,4 +5,15 @@
 # ==============================================================================
 
 library(testthat)
-testthat::test_dir("tests/testthat", reporter = "summary")
+
+Sys.setenv(TZ = "UTC")
+testthat::local_edition(3)
+
+results <- testthat::test_dir(
+  "tests/testthat",
+  reporter = "summary",
+  stop_on_failure = TRUE,
+  stop_on_warning = TRUE
+)
+
+invisible(results)
