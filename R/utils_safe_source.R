@@ -1,17 +1,16 @@
 # ==============================================================================
 # Dosya Yolu: R/utils_safe_source.R
-# Açıklama: Kaynak dosyaları UTF-8 güvenli şekilde yüklemek için ortak helper.
+# Açıklama: Kaynak dosyalari UTF-8 guvenli sekilde yuklemek icin ortak helper.
 # ==============================================================================
-
 safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
   if (!file.exists(file)) {
-    stop(sprintf("Kaynak dosya bulunamadı: %s", file))
+    stop(sprintf("Kaynak dosya bulunamadi: %s", file))
   }
 
-  # Kodlama/BOM kaynaklı hata ve uyarıları tespit eder.
+  # Kodlama/BOM kaynakli hata ve uyarilari tespit eder.
   is_encoding_issue <- function(message) {
     msg <- if (is.null(message) || length(message) == 0) "" else as.character(message)[1]
-    msg <- tolower(msg)
+    msg <- tolower(enc2utf8(msg))
 
     patterns <- c(
       "incomplete_string",
@@ -37,44 +36,45 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
     ))
   }
 
-  # Dosyayı ham bayt olarak okuyup UTF-8 metne çevirir.
+  # Dosyayi ham bayt olarak okuyup secilen kodlama ile UTF-8 metne cevirir.
   read_text_with_encoding <- function(path, encoding_name) {
-    lines <- tryCatch(
-      suppressWarnings(
-        readLines(
-          path,
-          warn = FALSE,
-          encoding = encoding_name,
-          skipNul = TRUE
-        )
-      ),
-      error = function(e) e
-    )
-
-    if (inherits(lines, "error")) {
-      stop(sprintf(
-        "Dosya metni '%s' kodlamasıyla okunamadı: %s",
-        encoding_name,
-        conditionMessage(lines)
-      ))
-    }
-
-    if (!length(lines)) {
+    size <- suppressWarnings(file.info(path)$size[1])
+    if (is.na(size) || size <= 0) {
       return("")
     }
 
-    metin_utf8 <- paste(lines, collapse = "\n")
+    con <- file(path, open = "rb")
+    on.exit(close(con), add = TRUE)
 
-    bom_char <- intToUtf8(65279L)
-    if (startsWith(metin_utf8, bom_char)) {
-      metin_utf8 <- substring(metin_utf8, 2L)
+    raw_data <- readBin(con, what = "raw", n = size)
+
+    # UTF-8 BOM temizligi
+    if (length(raw_data) >= 3L &&
+        identical(as.integer(raw_data[1:3]), c(239L, 187L, 191L))) {
+      raw_data <- raw_data[-(1:3)]
     }
 
-    metin_utf8 <- gsub("\r\n?|\r", "\n", metin_utf8, perl = TRUE)
-    enc2utf8(metin_utf8)
+    if (!length(raw_data)) {
+      return("")
+    }
+
+    txt <- tryCatch(
+      iconv(list(raw_data), from = encoding_name, to = "UTF-8", sub = NA)[[1]],
+      error = function(e) NA_character_
+    )
+
+    if (is.na(txt)) {
+      stop(sprintf(
+        "Dosya metni '%s' kodlamasiyla UTF-8'e cevrilemedi.",
+        encoding_name
+      ))
+    }
+
+    txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
+    enc2utf8(txt)
   }
 
-  # Önce normal source() yolunu dener; kodlama uyarılarını da hata gibi ele alır.
+  # Once normal source() yolunu dene.
   birincil_sonuc <- tryCatch(
     withCallingHandlers(
       {
@@ -83,7 +83,6 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
       },
       warning = function(w) {
         warning_text <- conditionMessage(w)
-
         if (isTRUE(is_encoding_issue(warning_text))) {
           stop(warning_text, call. = FALSE)
         }
@@ -114,7 +113,9 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
       }
     )
 
-    if (is.na(metin) || !nzchar(metin)) next
+    if (is.na(metin) || !nzchar(metin)) {
+      next
+    }
 
     exprs <- tryCatch(
       parse(text = metin, keep.source = FALSE, encoding = "UTF-8"),
@@ -124,7 +125,9 @@ safe_source <- function(file, encoding = "UTF-8", envir = globalenv()) {
       }
     )
 
-    if (is.null(exprs)) next
+    if (is.null(exprs)) {
+      next
+    }
 
     eval(exprs, envir = envir)
     return(invisible(NULL))

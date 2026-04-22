@@ -12,10 +12,10 @@
 # kalıcı hata üretir. final_path üzerinde kısmi yazım kalması engellenir.
 atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
   if (!is.character(final_path) || length(final_path) != 1L || !nzchar(final_path)) {
-    stop("atomic_write_text: 'final_path' tek elemanlı, boş olmayan karakter olmalı.")
+    stop("atomic_write_text: 'final_path' tek elemanli, bos olmayan karakter olmali.")
   }
   if (!is.character(content)) {
-    stop("atomic_write_text: 'content' karakter vektörü olmalı.")
+    stop("atomic_write_text: 'content' karakter vektoru olmali.")
   }
 
   dir_path <- dirname(final_path)
@@ -33,24 +33,25 @@ atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
     }
   }, add = TRUE)
 
-  # writeLines varsayılan olarak satır sonu ekler; tam kontrol için writeBin kullanılır.
+  # UTF-8 metni text-connection ile yaz.
+  # writeBin(charToRaw(...)) bazı Windows VM ortamlarında native codepage benzeri
+  # bozuk baytlar bırakabiliyor; burada explicit UTF-8 text write kullanılır.
   icerik_utf8 <- enc2utf8(paste(content, collapse = "\n"))
-  con <- file(tmp_path, open = "wb")
+
+  con <- file(tmp_path, open = "w", encoding = encoding)
   tryCatch({
-    writeBin(charToRaw(icerik_utf8), con)
+    writeLines(icerik_utf8, con = con, sep = "")
   }, finally = {
     close(con)
   })
 
   tmp_info <- suppressWarnings(file.info(tmp_path))
   if (!file.exists(tmp_path) || is.na(tmp_info$size[1])) {
-    stop("atomic_write_text: geçici dosya oluşturulamadı.")
+    stop("atomic_write_text: gecici dosya olusturulamadi.")
   }
 
   moved <- suppressWarnings(file.rename(tmp_path, final_path))
   if (!isTRUE(moved)) {
-    # Windows VM'de kilitli dosya senaryolarında file.rename başarısız olabilir;
-    # kopya+silme fallback'i ile atomikliğe en yakın davranış korunur.
     moved <- isTRUE(file.copy(tmp_path, final_path, overwrite = TRUE))
     if (isTRUE(moved)) {
       try(unlink(tmp_path, force = TRUE), silent = TRUE)
@@ -58,7 +59,7 @@ atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
   }
 
   if (!isTRUE(moved)) {
-    stop(sprintf("atomic_write_text: hedefe taşıma başarısız: %s", final_path))
+    stop(sprintf("atomic_write_text: hedefe tasima basarisiz: %s", final_path))
   }
 
   invisible(TRUE)
