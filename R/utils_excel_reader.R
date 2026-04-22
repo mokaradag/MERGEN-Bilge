@@ -90,9 +90,25 @@ normalize_excel_path <- function(path) {
 safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols = 2) {
   path_prepared <- normalize_excel_path(path)
 
-  if (!file.exists(path_prepared) && !fs::file_exists(path_prepared)) {
-    if (file.exists(path)) path_prepared <- path
-    else stop(sprintf("Dosya bulunamadı (Yol: %s)", path_prepared))
+  if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
+    path_prepared <- tryCatch(
+      get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(path_prepared),
+      error = function(e) path_prepared
+    )
+  }
+
+  prepared_exists <- tryCatch(path_exists_relaxed(path_prepared), error = function(e) FALSE)
+  original_exists <- tryCatch(path_exists_relaxed(path), error = function(e) FALSE)
+
+  if (!prepared_exists) {
+    if (original_exists) {
+      path_prepared <- tryCatch(
+        get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(path),
+        error = function(e) path
+      )
+    } else {
+      stop(sprintf("Dosya bulunamadı (Yol: %s)", path_prepared))
+    }
   }
 
   # Doğru okuyucuyu seç (xlsx vs xls) - dosya imzasına göre

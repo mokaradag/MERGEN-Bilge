@@ -217,11 +217,24 @@ copy_to_mcp_base <- function(upload, user_id) {
   # Burada enc2utf8 uygulamak UNC + Türkçe karakterli yollarda
   # Geliştirme -> GeliÅŸtirme gibi bozulmaya yol açabiliyor.
   dest_chr <- gsub("\\\\", "/", as.character(dest), fixed = TRUE)
-  if (path_exists_relaxed(dest_chr)) {
-    return(dest_chr)
+
+  if (.Platform$OS.type == "windows" && grepl("^/[^/]", dest_chr)) {
+    dest_unc <- paste0("/", dest_chr)
+    if (path_exists_relaxed(dest_unc)) {
+      dest_chr <- dest_unc
+    }
   }
 
-  safe_windows_short_path(dest_chr, must_exist = TRUE)
+  dest_readable <- tryCatch(
+    resolve_readable_path(dest_chr),
+    error = function(e) dest_chr
+  )
+
+  if (path_exists_relaxed(dest_readable)) {
+    return(gsub("\\\\", "/", as.character(dest_readable), fixed = TRUE))
+  }
+
+  safe_windows_short_path(dest_readable, must_exist = TRUE)
 }
 
 # Is path under MCP base?

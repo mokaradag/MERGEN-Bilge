@@ -285,31 +285,63 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   }
 
   cat("[RESOLVE] Looking for:", arg, "\n")
+
+  resolve_existing_candidate <- function(candidate) {
+    if (is.null(candidate) || !nzchar(candidate)) return(NULL)
+
+    cand <- as.character(candidate[1])
+
+    variants <- unique(Filter(nzchar, c(
+      cand,
+      tryCatch(enc2utf8(cand), error = function(e) cand),
+      gsub("\\\\", "/", cand, fixed = TRUE),
+      gsub("/", "\\\\", cand, fixed = TRUE)
+    )))
+
+    if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
+      readable_variants <- unique(vapply(
+        variants,
+        function(v) {
+          tryCatch(
+            get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(v),
+            error = function(e) v
+          )
+        },
+        character(1)
+      ))
+      variants <- unique(c(variants, readable_variants))
+    }
+
+    for (v in variants) {
+      relaxed_ok <- tryCatch({
+        if (exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
+          isTRUE(helpers_mcp_tools$path_exists_relaxed(v))
+        } else if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
+          isTRUE(get("path_exists_relaxed", envir = globalenv(), inherits = TRUE)(v))
+        } else {
+          FALSE
+        }
+      }, error = function(e) FALSE)
+
+      if (!relaxed_ok) next
+
+      if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
+        v2 <- tryCatch(
+          get("resolve_readable_path", envir = globalenv(), inherits = TRUE)(v),
+          error = function(e) v
+        )
+        if (!is.null(v2) && nzchar(v2)) return(v2)
+      }
+
+      return(v)
+    }
+
+    NULL
+  }
   
   # Helper to check existence via base or fs
   path_ok_robust <- function(candidate) {
-    if (is.null(candidate) || !nzchar(candidate)) return(FALSE)
-
-    relaxed_ok <- tryCatch({
-      if (exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
-        isTRUE(helpers_mcp_tools$path_exists_relaxed(candidate))
-      } else if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
-        isTRUE(get("path_exists_relaxed", envir = globalenv(), inherits = TRUE)(candidate))
-      } else {
-        FALSE
-      }
-    }, error = function(e) FALSE)
-
-    if (relaxed_ok) return(TRUE)
-
-    if (isTRUE(file.exists(candidate))) return(TRUE)
-    if (requireNamespace("fs", quietly = TRUE) && isTRUE(fs::file_exists(candidate))) return(TRUE)
-
-    candidate_utf8 <- tryCatch(enc2utf8(candidate), error = function(e) candidate)
-    if (isTRUE(file.exists(candidate_utf8))) return(TRUE)
-    if (requireNamespace("fs", quietly = TRUE) && isTRUE(fs::file_exists(candidate_utf8))) return(TRUE)
-
-    FALSE
+    !is.null(resolve_existing_candidate(candidate))
   }
 
   path_ok <- function(candidate) {
@@ -321,8 +353,8 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   is_abs <- grepl("^([A-Za-z]:)?[\\/]", arg)
   if (is_abs) {
     # Use the robust normalizer immediately to handle UNC/Encoding
-    p <- try(helpers_mcp_tools$normalize_excel_path(arg), silent = TRUE)
-    if (!inherits(p, "try-error") && path_ok(p)) {
+    p <- resolve_existing_candidate(arg)
+    if (!is.null(p)) {
       cat("[RESOLVE] Absolute path exists ->", p, "\n")
       return(list(ok = TRUE, path = p, display = basename(p)))
     }
@@ -420,17 +452,18 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       ))
       if (!matched) next
 
-      cat("[RESOLVE] Match ->", path_to_check, "Exists:", path_ok(path_to_check), "\n")
+      existing_path <- resolve_existing_candidate(path_to_check)
+      cat("[RESOLVE] Match ->", path_to_check, "Exists:", !is.null(existing_path), "\n")
       resolved_path <- NULL
 
-	  if (!is.null(path_to_check) && path_ok(path_to_check)) {
-        # FOUND: Return as-is. Do NOT re-normalize, as it breaks UNC/Encoding on Windows.
-        resolved_path <- path_to_check
+      if (!is.null(existing_path)) {
+        resolved_path <- existing_path
       } else {
         cat("[RESOLVE] Stored path missing for", nm %||% key, "- attempting rehydrate\n")
         recovered <- rehydrate_missing_path(c(nm, key, arg, base_arg, path_base))
-        if (!is.null(recovered) && path_ok(recovered)) {
-          resolved_path <- helpers_mcp_tools$normalize_excel_path(recovered)
+        recovered_existing <- resolve_existing_candidate(recovered)
+        if (!is.null(recovered_existing)) {
+          resolved_path <- recovered_existing
           helpers_mcp_tools$update_session_file_path(session, c(key, nm), resolved_path)
           file_obj$path <- resolved_path
           file_obj$datapath <- resolved_path
@@ -475,7 +508,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
         if (!is.null(entry$path)) p <- entry$path   # NEW: unwrap {path, display}
       }
       if (!is.null(p) && path_ok(p)) {
-        resolved_path <- helpers_mcp_tools$normalize_excel_path(p)
+        resolved_path <- resolve_existing_candidate(p) %||% p
         display_val <- disp %||% basename(p)
         return(list(ok = TRUE, path = resolved_path, display = display_val))
       }
@@ -488,7 +521,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       if (!is.null(p2$path)) p2 <- p2$path  # NEW
     }
     if (!is.null(p2) && path_ok(p2)) {
-      resolved_path <- helpers_mcp_tools$normalize_excel_path(p2)
+      resolved_path <- resolve_existing_candidate(p2) %||% p2
       return(list(ok = TRUE, path = resolved_path, display = disp2 %||% basename(p2)))
     }
     # 2c) cross-bucket (first match)
@@ -503,7 +536,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
             if (!is.null(p3$path)) p3 <- p3$path  # NEW
           }
           if (!is.null(p3) && path_ok(p3)) {
-            resolved_path <- helpers_mcp_tools$normalize_excel_path(p3)
+            resolved_path <- resolve_existing_candidate(p3) %||% p3
             return(list(ok = TRUE, path = resolved_path, display = disp3 %||% basename(p3)))
           }
         }
@@ -541,7 +574,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     p <- try(global_lookup_file(base_arg), silent = TRUE)
     if (!inherits(p, "try-error") && is.character(p) && nzchar(p) && path_ok(p)) {
       cat("[RESOLVE] Global registry hit ->", p, "\n")
-      resolved_path <- helpers_mcp_tools$normalize_excel_path(p)
+      resolved_path <- resolve_existing_candidate(p) %||% p
       return(list(ok = TRUE, path = resolved_path, display = basename(p)))
     }
   }
