@@ -18,22 +18,41 @@ have_plotly_gg   <- (requireNamespace("plotly", quietly = TRUE) &&
 # ==============================================================================
 # PAYLAŞIMLI DOSYA DEPOSU (ana süreç + worker'lar için ortak)
 # ==============================================================================
-MERGEN_FILES_ROOT <- tools::R_user_dir("mergen", which = "data")
-dir.create(MERGEN_FILES_ROOT, showWarnings = FALSE, recursive = TRUE)
-MERGEN_FILES_ROOT <- normalize_utf8_path(MERGEN_FILES_ROOT,
-                                         mustWork = dir.exists(MERGEN_FILES_ROOT))
+env_or_default_path <- function(env_name, default_path) {
+  env_value <- Sys.getenv(env_name, "")
+  chosen <- if (nzchar(env_value)) env_value else default_path
+  normalize_utf8_path(chosen, mustWork = FALSE)
+}
 
-# Kalıcı yüklemeler dizini: ./mergen_uploads (MCP_FILES_BASE ile geçersiz kılınabilir)
-MERGEN_UPLOADS_DIR <- file.path(getwd(), "mergen_uploads")
+MERGEN_FILES_ROOT <- env_or_default_path(
+  "MERGEN_FILES_ROOT",
+  tools::R_user_dir("mergen", which = "data")
+)
+dir.create(MERGEN_FILES_ROOT, showWarnings = FALSE, recursive = TRUE)
+MERGEN_FILES_ROOT <- normalize_utf8_path(
+  MERGEN_FILES_ROOT,
+  mustWork = dir.exists(MERGEN_FILES_ROOT)
+)
+
+# Kalıcı yüklemeler dizini: ./mergen_uploads
+MERGEN_UPLOADS_DIR <- env_or_default_path(
+  "MERGEN_UPLOADS_DIR",
+  file.path(getwd(), "mergen_uploads")
+)
 dir.create(MERGEN_UPLOADS_DIR, showWarnings = FALSE, recursive = TRUE)
-MERGEN_UPLOADS_DIR <- normalize_utf8_path(MERGEN_UPLOADS_DIR,
-                                          mustWork = dir.exists(MERGEN_UPLOADS_DIR))
+MERGEN_UPLOADS_DIR <- normalize_utf8_path(
+  MERGEN_UPLOADS_DIR,
+  mustWork = dir.exists(MERGEN_UPLOADS_DIR)
+)
 
 # MCP tabanlı kalıcı yüklemeler için temel dizin
 MERGEN_MCP_BASE_DIR <- resolve_mcp_base_dir()
 
 # Kayıt defteri (indeks) dosya yolu; kullanıcı bazlı kovalar destekler
-MERGEN_INDEX_PATH <- file.path(MERGEN_FILES_ROOT, "index.json")
+MERGEN_INDEX_PATH <- env_or_default_path(
+  "MERGEN_INDEX_PATH",
+  file.path(MERGEN_FILES_ROOT, "index.json")
+)
 
 # --- İNDEKS YARDIMCILARI (ana süreç ve worker'lar tarafından kullanılır) ---
 
