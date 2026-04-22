@@ -768,8 +768,11 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - dosya indeksleme yardımcıları
 - worker monitor yardımcıları
 - `send_message` çekirdeğindeki araç ailesi / akış profili kararları
+- `safe_join_path` güvenli yol birleştirme davranışı (path traversal reddi, mutlak yol reddi, Windows ayraç normalizasyonu ve Türkçe karakterli güvenli yollar)
 
 Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. Promise/later tabanlı testlerde tek bir `later::run_now()` çağrısının her zaman yeterli olmayabileceği unutulmamalı; testler gerekiyorsa later kuyruğunu birkaç tur tüketerek kararlı son durumu beklemelidir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
+
+Windows VM ortamında gömülü NUL bayt içeren karakter dizileri normal R stringleri içinde güvenilir biçimde temsil edilemediği için bu durum doğrudan birim testte bire bir doğrulanmaz. Buna rağmen `safe_join_path()` içindeki çalışma zamanı NUL koruması korunur. Test stratejisi bunun yerine Windows üzerinde güvenilir biçimde doğrulanabilen güvenlik kurallarına odaklanır.
 
 ### Tüm testleri çalıştırma
 ```r
@@ -858,6 +861,7 @@ Kontrol edin:
 - testlerin, uygulama ile kirlenmiş aynı R oturumunda çalıştırılıp çalıştırılmadığını
 - helper bootstrap’ın repo kökünü doğru çözüp çözmediğini
 - mümkünse temiz bir R oturumunda yeniden deneme yapmayı
+- Windows VM’de bazı düşük seviye string uç durumlarında (özellikle gömülü NUL beklentilerinde) farklılık olabileceğini ve helper testlerinde base R stringlerinde bayt-birebir kurulum zorlaması yerine repodaki Windows uyumlu test stratejisinin izlenmesi gerektiğini
 
 ### Yerelde açılıyor / SSO'da açılıyor ama diğer modda davranış farklı
 Kontrol edin:
