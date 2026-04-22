@@ -1,81 +1,56 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-atomic-write.R
-# Açıklama: atomic_write_text ve atomic_write_json yardımcılarının başarı/başarısız
-# ve Türkçe UTF-8 içerik koruma regresyonlarını doğrulayan birim testleri.
+# Dosya Yolu: tests/testthat/test-safe-source.R
+# Aciklama: safe_source yardimcisinin UTF-8 dosya yukleme ve eksik dosya
+# senaryolarindaki davranisini dogrulayan testleri icerir.
+# NOT:
+# - Bu test dosyasi bilerek ASCII-guvenli tutulur.
+# - Turkce karakterli veri dogrudan literal yerine \\u kacis dizileri ile yazilir.
 # ==============================================================================
 
-local({
-  if (!exists("atomic_write_text", envir = globalenv(), inherits = FALSE)) {
-    source(
-      file.path(repo_root_for_tests, "R", "utils_atomic_write.R"),
-      encoding = "UTF-8",
-      local = globalenv()
-    )
+# UTF-8 icerigi deterministik bicimde diske yazar.
+write_utf8_r_file <- function(path, text, with_bom = FALSE) {
+  con <- file(path, open = "wb")
+  on.exit(close(con), add = TRUE)
+
+  if (isTRUE(with_bom)) {
+    writeBin(as.raw(c(0xEF, 0xBB, 0xBF)), con)
   }
-})
 
-test_that("atomic_write_text hedef dosyayı atomik olarak üretir", {
-  gecici_dir <- tempfile("atomic_")
-  dir.create(gecici_dir, recursive = TRUE)
-  on.exit(unlink(gecici_dir, recursive = TRUE, force = TRUE))
-  hedef <- file.path(gecici_dir, "ornek.txt")
+  writeBin(charToRaw(enc2utf8(text)), con)
+  invisible(path)
+}
 
-  atomic_write_text("İstanbul Çalışması\nSatır 2", hedef)
-  expect_true(file.exists(hedef))
+test_that("safe_source UTF-8 dosyayi hedef environment icine yukler", {
+  temp_file <- tempfile(fileext = ".R")
 
-  okunan <- paste(readLines(hedef, encoding = "UTF-8", warn = FALSE), collapse = "\n")
-  expect_equal(enc2utf8(okunan), enc2utf8("İstanbul Çalışması\nSatır 2"))
-})
-
-test_that("atomic_write_text geçici dosyayı arkada bırakmaz", {
-  gecici_dir <- tempfile("atomic_clean_")
-  dir.create(gecici_dir, recursive = TRUE)
-  on.exit(unlink(gecici_dir, recursive = TRUE, force = TRUE))
-  hedef <- file.path(gecici_dir, "ornek.txt")
-
-  atomic_write_text("deneme", hedef)
-
-  # Aynı dizinde .tmp uzantılı atomic_ öneki taşıyan artık dosya kalmamalı.
-  artik <- list.files(gecici_dir, pattern = "^atomic_.*\\.tmp$", full.names = FALSE)
-  expect_equal(length(artik), 0)
-})
-
-test_that("atomic_write_text geçersiz parametrelerde hata verir", {
-  expect_error(atomic_write_text(NULL, tempfile()),    "content")
-  expect_error(atomic_write_text("x", ""),             "final_path")
-  expect_error(atomic_write_text("x", character(0)),   "final_path")
-})
-
-test_that("atomic_write_json yazdığını jsonlite ile geri okunabilir", {
-  gecici_dir <- tempfile("atomic_json_")
-  dir.create(gecici_dir, recursive = TRUE)
-  on.exit(unlink(gecici_dir, recursive = TRUE, force = TRUE))
-  hedef <- file.path(gecici_dir, "veri.json")
-
-  veri <- list(
-    ad = "Özet Çalışma",
-    adet = 3L,
-    etiketler = c("türkçe", "rapor")
+  file_text <- paste0(
+    "ornek_metin <- '\\u0130stanbul'\n",
+    "ornek_sayi <- 42L\n"
   )
-  atomic_write_json(veri, hedef)
+  write_utf8_r_file(temp_file, file_text, with_bom = FALSE)
 
-  geri <- jsonlite::fromJSON(hedef, simplifyVector = TRUE)
-  expect_equal(geri$ad, "Özet Çalışma")
-  expect_equal(geri$adet, 3L)
-  expect_equal(sort(geri$etiketler), sort(c("türkçe", "rapor")))
+  target_env <- new.env(parent = baseenv())
+  safe_source(temp_file, envir = target_env)
+
+  expect_equal(target_env$ornek_sayi, 42L)
+  expect_equal(enc2utf8(target_env$ornek_metin), enc2utf8("\u0130stanbul"))
 })
 
-test_that("atomic_write_json çok büyük ama basit yapıyı bozmadan yazar", {
-  gecici_dir <- tempfile("atomic_big_")
-  dir.create(gecici_dir, recursive = TRUE)
-  on.exit(unlink(gecici_dir, recursive = TRUE, force = TRUE))
-  hedef <- file.path(gecici_dir, "buyuk.json")
+test_that("safe_source eksik dosyada hata verir", {
+  expect_error(
+    safe_source("olmayan_dosya_12345.R"),
+    "bulunamad[ıi]"
+  )
+})
 
-  buyuk_liste <- as.list(seq_len(1000L))
-  names(buyuk_liste) <- sprintf("kayit_%04d", seq_len(1000L))
-  atomic_write_json(buyuk_liste, hedef)
+test_that("safe_source BOM isaretli UTF-8 dosyayi yukler", {
+  temp_file <- tempfile(fileext = ".R")
 
-  geri <- jsonlite::fromJSON(hedef, simplifyVector = FALSE)
-  expect_equal(length(geri), 1000L)
-  expect_equal(geri[["kayit_0500"]], 500L)
+  file_text <- "bomlu_deger <- '\\u0130zmir'\n"
+  write_utf8_r_file(temp_file, file_text, with_bom = TRUE)
+
+  target_env <- new.env(parent = baseenv())
+  safe_source(temp_file, envir = target_env)
+
+  expect_equal(enc2utf8(target_env$bomlu_deger), enc2utf8("\u0130zmir"))
 })

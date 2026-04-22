@@ -1,50 +1,56 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-safe-source.R
-# Açıklama: safe_source yardımcı fonksiyonunun UTF-8 dosya yükleme ve hatalı
-# dosya yolu senaryolarındaki davranışını doğrulayan testleri içerir.
+# Aciklama: safe_source yardimcisinin UTF-8 dosya yukleme ve eksik dosya
+# senaryolarindaki davranisini dogrulayan testleri icerir.
+# NOT:
+# - Bu test dosyasi bilerek ASCII-guvenli tutulur.
+# - Turkce karakterli veri dogrudan literal yerine \\u kacis dizileri ile yazilir.
 # ==============================================================================
 
-# UTF-8 içerik üreten bir R dosyasının hedef environment'a yüklendiğini doğrular.
-test_that("safe_source UTF-8 dosyayı hedef environment içine yükler", {
+# UTF-8 icerigi deterministik bicimde diske yazar.
+write_utf8_r_file <- function(path, text, with_bom = FALSE) {
+  con <- file(path, open = "wb")
+  on.exit(close(con), add = TRUE)
+
+  if (isTRUE(with_bom)) {
+    writeBin(as.raw(c(0xEF, 0xBB, 0xBF)), con)
+  }
+
+  writeBin(charToRaw(enc2utf8(text)), con)
+  invisible(path)
+}
+
+test_that("safe_source UTF-8 dosyayi hedef environment icine yukler", {
   temp_file <- tempfile(fileext = ".R")
-  writeLines(
-    c(
-      "ornek_metin <- 'İstanbul'",
-      "ornek_sayi <- 42L"
-    ),
-    temp_file,
-    useBytes = TRUE
+
+  file_text <- paste0(
+    "ornek_metin <- '\\u0130stanbul'\n",
+    "ornek_sayi <- 42L\n"
   )
+  write_utf8_r_file(temp_file, file_text, with_bom = FALSE)
 
   target_env <- new.env(parent = baseenv())
   safe_source(temp_file, envir = target_env)
 
   expect_equal(target_env$ornek_sayi, 42L)
-  expect_equal(enc2utf8(target_env$ornek_metin), "İstanbul")
+  expect_equal(enc2utf8(target_env$ornek_metin), enc2utf8("\u0130stanbul"))
 })
 
-# Mevcut olmayan dosya verildiğinde anlamlı bir hata üretildiğini doğrular.
 test_that("safe_source eksik dosyada hata verir", {
   expect_error(
     safe_source("olmayan_dosya_12345.R"),
-    "bulunamadı"
+    "bulunamad[ıi]"
   )
 })
 
-# BOM işaretli UTF-8 dosyası da sorunsuz yüklenmelidir. Windows ortamında
-# bazı editörler BOM yazabilir; safe_source bu duruma dayanıklı olmalıdır.
-test_that("safe_source BOM işaretli UTF-8 dosyayı yükler", {
+test_that("safe_source BOM isaretli UTF-8 dosyayi yukler", {
   temp_file <- tempfile(fileext = ".R")
-  # UTF-8 BOM: EF BB BF
-  bom <- as.raw(c(0xEF, 0xBB, 0xBF))
-  icerik <- "bomlu_deger <- 'İzmir'\n"
-  con <- file(temp_file, open = "wb")
-  writeBin(bom, con)
-  writeBin(charToRaw(enc2utf8(icerik)), con)
-  close(con)
+
+  file_text <- "bomlu_deger <- '\\u0130zmir'\n"
+  write_utf8_r_file(temp_file, file_text, with_bom = TRUE)
 
   target_env <- new.env(parent = baseenv())
   safe_source(temp_file, envir = target_env)
 
-  expect_equal(enc2utf8(target_env$bomlu_deger), "İzmir")
+  expect_equal(enc2utf8(target_env$bomlu_deger), enc2utf8("\u0130zmir"))
 })
