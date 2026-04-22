@@ -38,7 +38,12 @@ is_encoding_issue <- function(message) {
     "invalid input",
     "byte order mark",
     "bom",
-    "invalid token"
+    "invalid token",
+    "geçersiz giriş",
+    "beklenmeyen giriş",
+    "çok baytlı",
+    "çokbaytlı",
+    "eksik dize"
   )
 
   any(vapply(
@@ -49,36 +54,35 @@ is_encoding_issue <- function(message) {
 }
 
 read_text_with_encoding <- function(path, encoding_name) {
-  raw_size <- file.info(path)$size
-  if (is.na(raw_size) || raw_size <= 0) {
-    return("")
-  }
-
-  con <- file(path, open = "rb")
-  on.exit(close(con), add = TRUE)
-
-  raw_data <- readBin(con, what = "raw", n = raw_size)
-
-  # UTF-8 BOM temizliği
-  if (length(raw_data) >= 3L &&
-      identical(as.integer(raw_data[1:3]), c(239L, 187L, 191L))) {
-    raw_data <- raw_data[-(1:3)]
-  }
-
-  if (!length(raw_data)) {
-    return("")
-  }
-
-  text_utf8 <- tryCatch(
-    iconv(list(raw_data), from = encoding_name, to = "UTF-8", sub = NA)[[1]],
-    error = function(e) NA_character_
+  lines <- tryCatch(
+    suppressWarnings(
+      readLines(
+        path,
+        warn = FALSE,
+        encoding = encoding_name,
+        skipNul = TRUE
+      )
+    ),
+    error = function(e) e
   )
 
-  if (is.na(text_utf8)) {
+  if (inherits(lines, "error")) {
     stop(sprintf(
-      "Dosya metni '%s' kodlamasıyla UTF-8'e çevrilemedi.",
-      encoding_name
+      "Dosya metni '%s' kodlamasıyla okunamadı: %s",
+      encoding_name,
+      conditionMessage(lines)
     ))
+  }
+
+  if (!length(lines)) {
+    return("")
+  }
+
+  text_utf8 <- paste(lines, collapse = "\n")
+
+  bom_char <- intToUtf8(65279L)
+  if (startsWith(text_utf8, bom_char)) {
+    text_utf8 <- substring(text_utf8, 2L)
   }
 
   text_utf8 <- gsub("\r\n?|\r", "\n", text_utf8, perl = TRUE)
