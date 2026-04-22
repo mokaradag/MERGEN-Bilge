@@ -112,3 +112,8 @@ jobs:
         run: |
           # Repo kökünden çalıştırılır; tests/testthat.R ana giriş noktasıdır.
           source("tests/testthat.R", encoding = "UTF-8")
+
+      - name: App boot smoke
+        shell: Rscript {0}
+        run: |
+          source("tests/scripts/smoke_app_boot.R", encoding = "UTF-8")

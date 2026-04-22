@@ -54,16 +54,16 @@ if (dir.exists("www")) {
   warning("www klasörü bulunamadı; statik kaynaklar kaydedilmedi.")
 }
 
-validate_boot_state <- function() {
-  if (!exists("safe_source", mode = "function", inherits = FALSE)) {
+validate_boot_state <- function(app_env = globalenv()) {
+  if (!exists("safe_source", envir = app_env, mode = "function", inherits = FALSE)) {
     stop("Boot doğrulaması başarısız: safe_source yüklenmedi.")
   }
 
-  if (!exists("ui", inherits = FALSE)) {
+  if (!exists("ui", envir = app_env, inherits = FALSE)) {
     stop("Boot doğrulaması başarısız: ui nesnesi yüklenmedi.")
   }
 
-  if (!exists("server", mode = "function", inherits = FALSE)) {
+  if (!exists("server", envir = app_env, mode = "function", inherits = FALSE)) {
     stop("Boot doğrulaması başarısız: server fonksiyonu yüklenmedi.")
   }
 
