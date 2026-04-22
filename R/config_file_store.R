@@ -83,72 +83,36 @@ MERGEN_INDEX_PATH <- env_or_default_path(
   invisible(TRUE)
 }
 
-.read_utf8_text_file <- function(path) {
-  if (!file.exists(path)) {
-    return(NA_character_)
-  }
-
-  size <- suppressWarnings(file.info(path)$size[1])
-  if (is.na(size) || size <= 0) {
-    return("")
-  }
-
-  con <- file(path, open = "rb")
-  on.exit(close(con), add = TRUE)
-
-  raw_data <- readBin(con, what = "raw", n = size)
-
-  # UTF-8 BOM temizliği
-  if (length(raw_data) >= 3L &&
-      identical(as.integer(raw_data[1:3]), c(239L, 187L, 191L))) {
-    raw_data <- raw_data[-(1:3)]
-  }
-
-  if (!length(raw_data)) {
-    return("")
-  }
-
-  txt <- tryCatch(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = NA)[[1]],
-    error = function(e) NA_character_
-  )
-
-  if (is.na(txt)) {
-    txt <- tryCatch(
-      iconv(list(raw_data), from = "WINDOWS-1254", to = "UTF-8", sub = NA)[[1]],
-      error = function(e) NA_character_
-    )
-  }
-
-  if (is.na(txt)) {
-    return(NA_character_)
-  }
-
-  enc2utf8(txt)
-}
-
 .load_index <- function() {
   if (!file.exists(MERGEN_INDEX_PATH)) {
     return(list())
   }
 
   json_txt <- tryCatch(
-    .read_utf8_text_file(MERGEN_INDEX_PATH),
+    paste(
+      readLines(
+        MERGEN_INDEX_PATH,
+        warn = FALSE,
+        encoding = "UTF-8",
+        skipNul = TRUE
+      ),
+      collapse = "\n"
+    ),
     error = function(e) NA_character_
   )
 
   if (is.na(json_txt)) {
-    log_warn("[INDEX] Indeks dosyasi UTF-8 olarak okunamadi; bos listeye dusuluyor.")
+    log_warn("[INDEX] İndeks dosyası UTF-8 olarak okunamadı; boş listeye düşülüyor.")
     return(list())
   }
 
   json_txt_trim <- tryCatch(
-    trimws(enc2utf8(json_txt)),
+    trimws(json_txt),
     error = function(e) ""
   )
 
   if (!nzchar(json_txt_trim)) {
-    log_warn("[INDEX] Indeks dosyasi bos veya okunamadi; bos listeye dusuluyor.")
+    log_warn("[INDEX] İndeks dosyası boş veya okunamadı; boş listeye düşülüyor.")
     return(list())
   }
 
@@ -164,11 +128,38 @@ MERGEN_INDEX_PATH <- env_or_default_path(
       format(Sys.time(), "%Y%m%d%H%M%S")
     )
     try(file.copy(MERGEN_INDEX_PATH, backup_path, overwrite = TRUE), silent = TRUE)
-    log_error("[INDEX] Indeks JSON bozuk; yedek alindi ve bos listeye dusuldu.")
+    log_error("[INDEX] İndeks JSON bozuk; yedek alındı ve boş listeye düşüldü.")
     return(list())
   }
 
   .mark_utf8(parsed)
+}
+
+repair_index_display_names_from_path <- function() {
+  idx <- .load_index()
+
+  fix_node <- function(node) {
+    if (is.list(node) && !is.null(node$path)) {
+      path_value <- as.character(node$path)[1]
+      node$path <- path_value
+      node$display <- recover_display_name_from_storage_name(path_value)
+      return(node)
+    }
+
+    if (is.list(node)) {
+      for (nm in names(node)) {
+        node[[nm]] <- fix_node(node[[nm]])
+      }
+      return(node)
+    }
+
+    node
+  }
+
+  idx_fixed <- fix_node(idx)
+  .save_index(idx_fixed)
+
+  invisible(idx_fixed)
 }
 
 # ==============================================================================
