@@ -29,9 +29,34 @@ withr::local_envvar(
     )
   }
 }
+
 .set_env_if_missing("LOCAL_LLM_ENDPOINT", "http://test.local/v1")
 .set_env_if_missing("DB_DSN",             "test-dsn")
 .set_env_if_missing("AI_KEYS_MASTER",     "test-master-key-0123456789")
+
+.test_temp_root <- withr::local_tempdir(
+  pattern = "mergen-tests-",
+  .local_envir = .testthat_teardown_env
+)
+
+.test_files_root <- file.path(.test_temp_root, "files_root")
+.test_uploads_dir <- file.path(.test_temp_root, "mergen_uploads")
+.test_mcp_base_dir <- file.path(.test_temp_root, "mcp_base")
+.test_index_path <- file.path(.test_files_root, "index.json")
+
+dir.create(.test_files_root, recursive = TRUE, showWarnings = FALSE)
+dir.create(.test_uploads_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(.test_mcp_base_dir, recursive = TRUE, showWarnings = FALSE)
+
+withr::local_envvar(
+  c(
+    MERGEN_FILES_ROOT = .test_files_root,
+    MERGEN_UPLOADS_DIR = .test_uploads_dir,
+    MERGEN_INDEX_PATH = .test_index_path,
+    MERGEN_MCP_BASE_DIR = .test_mcp_base_dir
+  ),
+  .local_envir = .testthat_teardown_env
+)
 
 # Testlerde kullanılan yardımcılar global ortamda tutulur.
 .test_global <- globalenv()
