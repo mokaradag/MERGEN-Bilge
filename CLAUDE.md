@@ -115,6 +115,8 @@ Repository convention:
 ### 9) Bug fix varsa mümkünse test de olmalı
 Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğunda birim test de eklenmelidir. Bir kez yaşanmış regresyonlar testsiz bırakılmamalıdır. Test ekleri repo stiline uyumlu, küçük ve cerrahi olmalıdır. Özellikle encoding/BOM ve promise cleanup gibi daha önce regresyon üretmiş helper davranışlarında, test beklentileri event-loop zamanlamasını ve Windows VM farklılıklarını dikkate alacak kadar dayanıklı yazılmalıdır.
 
+For session-lifecycle helpers, keep testability in mind: repository tests may use fake Shiny-like session objects implemented either as `list` or as `environment`. Do not over-constrain helper inputs if the real contract is “has a usable `onSessionEnded` callback”.
+
 ---
 
 ## Test Suite ve Çalıştırma Kuralları
@@ -133,6 +135,7 @@ Do not unit-test embedded NUL-byte behavior by forcing normal R character string
 - `safe_source`
 - BOM-marked UTF-8 safe_source loading behavior
 - tracked_future_promise task-registry cleanup behavior
+- `register_session_cleanup_on_end()` / `safe_unlink_if_exists()` session-end cleanup behavior, including fake session compatibility for both `list` and `environment`-style test doubles
 - database validation helpers
 - file indexing helpers
 - worker monitor helpers
