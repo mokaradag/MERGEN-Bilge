@@ -34,6 +34,9 @@ Always assume:
 
 If you touch file reading, file writing, `.Renviron`, DB writes, JSON writes, or browser-rendered text, be extra careful.
 
+### 1A) Keep new code identifiers ASCII-safe when practical
+Preserve Turkish text integrity in user-facing strings, docs, comments, DB text, JSON text, and rendered UI. However, for Windows VM parser robustness, **new code identifiers** should be ASCII-only where practical (variable/helper names, unquoted `data.frame(...)` column names, `$field_name` accessors, and similar code symbols that can become mojibake-sensitive). This is **not** permission to Latinize visible product text; it applies only to code symbols/identifiers.
+
 ### 2) Comments added to code must be in Turkish
 If you add comments in code, write them in Turkish.
 
@@ -142,6 +145,14 @@ Do not unit-test embedded NUL-byte behavior by forcing normal R character string
 - send-message core tool-family / stream-profile decisions
 - `safe_join_path` path-safety behavior on Windows-compatible test inputs
 
+### Scripted validation flow (`tests/scripts/`)
+- `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
+- `tests/scripts/smoke_app_boot.R`: boot smoke for `app.R` without launching full runtime; verifies `safe_source`, `ui`, `server`, and `create_mergen_app()`, then confirms a `shiny.appobj` can be created.
+- `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
+- `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation.
+
+CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration checks must run on Windows VM via `run_vm_preflight_real.R`.
+
 ---
 
 ## Thinking=TRUE Modeller İçin Akıl Yürütme Akışı (Yeni Standart)
@@ -237,6 +248,8 @@ This repo intentionally avoids relying on plain `runApp(".")` logic inside the a
 - static asset resolution can break if resource paths are not explicitly registered.
 
 If startup or missing asset issues appear, check `app.R` first.
+
+Boot hardening note: `app.R` now includes explicit boot validation and fail-fast checks; coding agents must preserve `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()` names/behaviors because smoke validation depends on them.
 
 ---
 
@@ -803,6 +816,8 @@ This subsystem provides:
 - `MERGEN_UPLOADS_DIR`
 - `MERGEN_MCP_BASE_DIR`
 - `MERGEN_INDEX_PATH`
+
+File-store roots are now environment-overridable and intentionally testable (`MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`); tests may sandbox these paths with temp directories, and coding agents must preserve this behavior.
 
 ### Key helpers
 - `mergen_register_uploaded_file()`
