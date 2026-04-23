@@ -17,11 +17,13 @@ local({
   }
 })
 
-read_utf8_text_strict <- function(path) {
-  paste(
-    readLines(path, encoding = "UTF-8", warn = FALSE),
-    collapse = "\n"
-  )
+read_file_raw <- function(path) {
+  boyut <- file.info(path)$size
+  if (is.na(boyut)) {
+    stop(sprintf("Dosya boyutu okunamadi: %s", path))
+  }
+
+  readBin(path, what = "raw", n = boyut)
 }
 
 test_that("atomic_write_text hedef dosyayi atomik olarak uretir", {
@@ -39,9 +41,10 @@ test_that("atomic_write_text hedef dosyayi atomik olarak uretir", {
   atomic_write_text(beklenen, hedef)
   expect_true(file.exists(hedef))
 
-  okunan <- read_utf8_text_strict(hedef)
+  okunan_raw <- read_file_raw(hedef)
+  beklenen_raw <- charToRaw(enc2utf8(beklenen))
 
-  expect_equal(enc2utf8(okunan), enc2utf8(beklenen))
+  expect_equal(okunan_raw, beklenen_raw)
 })
 
 test_that("atomic_write_text gecici dosyayi arkada birakmaz", {

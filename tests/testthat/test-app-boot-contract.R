@@ -2,8 +2,8 @@
 # Dosya Yolu: tests/testthat/test-app-boot-contract.R
 # Açıklama: app.R giris noktasi icin boot sozlesmelerini, resource-path
 # yardimcisini ve run_mergen_app() port fallback davranisini korur.
-# Bu test dosyasi app boot islemini yukledikten sonra test ortamindaki log
-# stub'larini geri yukleyerek suite'in kalanini kirletmemeye dikkat eder.
+# Bu test dosyasi app boot sonrasinda test ortamindaki log stub'larini geri
+# yukler ve Windows VM'deki "was built under R version" uyarilarini susturur.
 # ==============================================================================
 
 restore_test_log_stubs <- function() {
@@ -11,6 +11,19 @@ restore_test_log_stubs <- function() {
   assign("log_warn",  function(...) invisible(NULL), envir = globalenv())
   assign("log_error", function(...) invisible(NULL), envir = globalenv())
   assign("log_debug", function(...) invisible(NULL), envir = globalenv())
+}
+
+source_app_safely_for_tests <- function() {
+  withCallingHandlers(
+    source("app.R", encoding = "UTF-8", local = globalenv()),
+    warning = function(w) {
+      msg <- conditionMessage(w)
+
+      if (grepl("was built under R version", msg, fixed = TRUE)) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
 }
 
 load_app_entrypoint_for_tests <- local({
@@ -33,7 +46,7 @@ load_app_entrypoint_for_tests <- local({
       )
     )
 
-    source("app.R", encoding = "UTF-8", local = globalenv())
+    source_app_safely_for_tests()
 
     # App boot sonrasi gercek logger fonksiyonlari test suite'ine sizmasin.
     restore_test_log_stubs()

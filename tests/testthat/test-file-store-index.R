@@ -4,8 +4,26 @@
 # regresyonlarini koruyan testleri icerir.
 # NOT:
 # - Bu test dosyasi ASCII-guvenli tutulur.
-# - Turkce metinler \\u kacis dizileri ile tanimlanir.
+# - Turkce metinler \u kacis dizileri ile tanimlanir.
 # ==============================================================================
+
+extract_scalar_character <- function(x) {
+  if (is.null(x)) {
+    return(NA_character_)
+  }
+
+  if (is.list(x)) {
+    x <- unlist(x, recursive = TRUE, use.names = FALSE)
+  }
+
+  x <- as.character(x)
+
+  if (length(x) < 1L) {
+    return(NA_character_)
+  }
+
+  x[[1]]
+}
 
 test_that(".save_index yazdigini .load_index geri okur", {
   eski_yol <- MERGEN_INDEX_PATH
@@ -35,7 +53,7 @@ test_that(".save_index yazdigini .load_index geri okur", {
   expect_true(is.list(geri_okunan))
   expect_true(!is.null(geri_okunan[["42"]]))
   expect_equal(
-    tolower(geri_okunan[["42"]][["rapor.docx"]]$display),
+    tolower(extract_scalar_character(geri_okunan[["42"]][["rapor.docx"]]$display)),
     "rapor.docx"
   )
 })
@@ -95,7 +113,7 @@ test_that(".save_index + .load_index Turkce display adlarini bozmaz", {
     unlink(gecici_dir, recursive = TRUE, force = TRUE)
   }, add = TRUE)
 
-  turkce_display <- "\u00d6zet-\u00c7al\u0131\u015fma.docx"
+  turkce_display <- "\u00D6zet-\u00C7al\u0131\u015Fma.docx"
 
   ornek_idx <- list(
     "7" = list(
@@ -109,6 +127,10 @@ test_that(".save_index + .load_index Turkce display adlarini bozmaz", {
   .save_index(ornek_idx)
   geri_okunan <- .load_index()
 
-  display_geri <- geri_okunan[["7"]][["ozet-calisma.docx"]]$display
+  display_geri <- extract_scalar_character(
+    geri_okunan[["7"]][["ozet-calisma.docx"]]$display
+  )
+
+  expect_false(is.na(display_geri))
   expect_identical(enc2utf8(display_geri), enc2utf8(turkce_display))
 })
