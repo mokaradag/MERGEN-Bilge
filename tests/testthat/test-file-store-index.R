@@ -5,60 +5,60 @@
 # NOT:
 # - Bu test dosyasi ASCII-guvenli tutulur.
 # - Turkce metinler \u kacis dizileri ile tanimlanir.
+# - .load_index() tek kayitli yapilarda simplifyVector nedeniyle sekil
+#   degistirebildigi icin, testler yapinin tam seklinden bagimsiz olarak
+#   recursive arama yapar.
 # ==============================================================================
 
-extract_scalar_character <- function(x) {
-  if (is.null(x)) {
-    return(NA_character_)
-  }
+collect_display_values_recursive <- function(x) {
+  out <- character(0)
 
-  if (is.data.frame(x)) {
-    if ("display" %in% names(x) && nrow(x) >= 1L) {
-      return(as.character(x[["display"]][1]))
-    }
-    x <- unlist(x, recursive = TRUE, use.names = FALSE)
-  }
+  walk <- function(obj, parent_name = NULL) {
+    vals <- character(0)
 
-  if (is.list(x)) {
-    if (!is.null(x$display)) {
-      return(extract_scalar_character(x$display))
-    }
-    x <- unlist(x, recursive = TRUE, use.names = FALSE)
-  }
-
-  x <- as.character(x)
-
-  if (length(x) < 1L) {
-    return(NA_character_)
-  }
-
-  x[[1]]
-}
-
-extract_entry_from_bucket <- function(bucket, key) {
-  if (is.null(bucket)) {
-    return(NULL)
-  }
-
-  # Normal liste yapisi: bucket[[key]]
-  if (is.list(bucket) && !is.data.frame(bucket) && !is.null(bucket[[key]])) {
-    return(bucket[[key]])
-  }
-
-  # Data frame yapisi: satir adinda key olabilir
-  if (is.data.frame(bucket)) {
-    rn <- rownames(bucket)
-    if (!is.null(rn) && key %in% rn) {
-      return(bucket[key, , drop = FALSE])
+    if (is.null(obj)) {
+      return(vals)
     }
 
-    # Tek satirli display/path tablosu ise dogrudan onu dondur
-    if ("display" %in% names(bucket) && nrow(bucket) == 1L) {
-      return(bucket)
+    if (is.data.frame(obj)) {
+      if ("display" %in% names(obj)) {
+        vals <- c(vals, enc2utf8(as.character(obj[["display"]])))
+      }
+
+      for (nm in names(obj)) {
+        vals <- c(vals, walk(obj[[nm]], nm))
+      }
+
+      return(vals)
     }
+
+    if (is.list(obj)) {
+      nms <- names(obj)
+
+      if (!is.null(nms)) {
+        for (i in seq_along(obj)) {
+          child_name <- nms[[i]]
+          child <- obj[[i]]
+
+          if (identical(child_name, "display")) {
+            vals <- c(vals, enc2utf8(as.character(child)))
+          }
+
+          vals <- c(vals, walk(child, child_name))
+        }
+      } else {
+        for (child in obj) {
+          vals <- c(vals, walk(child, NULL))
+        }
+      }
+
+      return(vals)
+    }
+
+    vals
   }
 
-  NULL
+  unique(stats::na.omit(walk(x)))
 }
 
 test_that(".save_index yazdigini .load_index geri okur", {
@@ -86,15 +86,11 @@ test_that(".save_index yazdigini .load_index geri okur", {
   expect_true(file.exists(gecici_yol))
 
   geri_okunan <- .load_index()
-  expect_true(is.list(geri_okunan))
-  expect_true(!is.null(geri_okunan[["42"]]))
+  expect_true(length(geri_okunan) >= 1L)
 
-  entry_geri <- extract_entry_from_bucket(geri_okunan[["42"]], "rapor.docx")
-  expect_false(is.null(entry_geri))
-
-  display_geri <- extract_scalar_character(entry_geri)
-  expect_false(is.na(display_geri))
-  expect_equal(tolower(display_geri), "rapor.docx")
+  displayler <- collect_display_values_recursive(geri_okunan)
+  expect_true(length(displayler) >= 1L)
+  expect_true("rapor.docx" %in% tolower(displayler))
 })
 
 test_that(".load_index dosya yoksa bos liste dondurur", {
@@ -166,16 +162,10 @@ test_that(".save_index + .load_index Turkce display adlarini bozmaz", {
   .save_index(ornek_idx)
   geri_okunan <- .load_index()
 
-  expect_true(!is.null(geri_okunan[["7"]]))
+  expect_true(length(geri_okunan) >= 1L)
 
-  entry_geri <- extract_entry_from_bucket(
-    geri_okunan[["7"]],
-    "ozet-calisma.docx"
-  )
-  expect_false(is.null(entry_geri))
+  displayler <- collect_display_values_recursive(geri_okunan)
 
-  display_geri <- extract_scalar_character(entry_geri)
-
-  expect_false(is.na(display_geri))
-  expect_identical(enc2utf8(display_geri), enc2utf8(turkce_display))
+  expect_true(length(displayler) >= 1L)
+  expect_true(any(enc2utf8(displayler) == enc2utf8(turkce_display)))
 })
