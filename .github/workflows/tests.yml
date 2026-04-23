@@ -10,8 +10,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: r-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   testthat:
+    timeout-minutes: 25
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }} / R ${{ matrix.r }}
 

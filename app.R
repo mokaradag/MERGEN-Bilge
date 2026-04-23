@@ -22,11 +22,33 @@ if (length(missing_boot_files) > 0) {
   ))
 }
 
-source("R/utils_safe_source.R", encoding = "UTF-8", local = globalenv())
+boot_step <- function(step_name, expr) {
+  tryCatch(
+    force(expr),
+    error = function(e) {
+      stop(
+        sprintf("Boot adımı başarısız [%s]: %s", step_name, conditionMessage(e)),
+        call. = FALSE
+      )
+    }
+  )
+}
 
-safe_source("global.R", encoding = "UTF-8")
-safe_source("ui.R", encoding = "UTF-8")
-safe_source("server.R", encoding = "UTF-8")
+boot_step("utils_safe_source", {
+  source("R/utils_safe_source.R", encoding = "UTF-8", local = globalenv())
+})
+
+boot_step("global.R", {
+  safe_source("global.R", encoding = "UTF-8")
+})
+
+boot_step("ui.R", {
+  safe_source("ui.R", encoding = "UTF-8")
+})
+
+boot_step("server.R", {
+  safe_source("server.R", encoding = "UTF-8")
+})
 
 safe_add_resource_path <- function(prefix, directory) {
   if (!dir.exists(directory)) {
@@ -61,6 +83,11 @@ validate_boot_state <- function(app_env = globalenv()) {
 
   if (!exists("ui", envir = app_env, inherits = FALSE)) {
     stop("Boot doğrulaması başarısız: ui nesnesi yüklenmedi.")
+  }
+
+  ui_obj <- get("ui", envir = app_env, inherits = FALSE)
+  if (!inherits(ui_obj, c("shiny.tag", "shiny.tag.list", "html"))) {
+    stop("Boot doğrulaması başarısız: ui nesnesi geçerli bir Shiny UI değil.")
   }
 
   if (!exists("server", envir = app_env, mode = "function", inherits = FALSE)) {
