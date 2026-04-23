@@ -6,16 +6,49 @@
 # ==============================================================================
 
 # --- LOG DİZİNİ OLUŞTURMA ---
-if (!dir.exists("logs")) {
-  dir.create("logs", recursive = TRUE)
+resolve_mergen_log_dir <- function(default = "logs") {
+  log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", default))
+  if (!nzchar(log_dir)) {
+    log_dir <- default
+  }
+  normalizePath(log_dir, winslash = "/", mustWork = FALSE)
+}
+
+resolve_mergen_log_threshold <- function(default = logger::INFO) {
+  level <- tolower(trimws(Sys.getenv("MERGEN_LOG_THRESHOLD", "info")))
+
+  switch(
+    level,
+    trace   = logger::TRACE,
+    debug   = logger::DEBUG,
+    info    = logger::INFO,
+    warn    = logger::WARN,
+    warning = logger::WARN,
+    error   = logger::ERROR,
+    fatal   = logger::FATAL,
+    default
+  )
+}
+
+mergen_log_dir <- resolve_mergen_log_dir()
+
+if (!dir.exists(mergen_log_dir)) {
+  dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
+}
+
+if (!dir.exists(mergen_log_dir)) {
+  stop(sprintf("Log dizini oluşturulamadı: %s", mergen_log_dir))
 }
 
 # --- LOGGER YAPILANDIRMASI ---
 library(logger)
-log_threshold(INFO)
+log_threshold(resolve_mergen_log_threshold())
 
 # Hem konsola hem dosyaya log yaz
-log_file_path <- file.path("logs", sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
+log_file_path <- file.path(
+  mergen_log_dir,
+  sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
+)
 
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı
@@ -100,7 +133,11 @@ shiny_error_handler <- function(e = NULL) {
 options(shiny.error = shiny_error_handler)
 
 # --- DEBUG DUMPER (logs/ai_debug_YYYYMMDD.log) ---
-dbg_log_path <- file.path("logs", sprintf("ai_debug_%s.log", format(Sys.Date(), "%Y%m%d")))
+dbg_log_path <- file.path(
+  mergen_log_dir,
+  sprintf("ai_debug_%s.log", format(Sys.Date(), "%Y%m%d"))
+)
+
 dbg_dump <- function(label, payload) {
   try({
     payload_json <- jsonlite::toJSON(

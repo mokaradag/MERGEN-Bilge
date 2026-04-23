@@ -71,10 +71,28 @@ check_writable_dir <- function(dir_path, label) {
   cat(sprintf("OK: %s yazılabilir: %s\n", label, dir_path))
 }
 
-check_writable_dir("logs", "log dizini")
+active_log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", "logs"))
+if (!nzchar(active_log_dir)) {
+  active_log_dir <- "logs"
+}
+
+check_writable_dir(active_log_dir, "aktif log dizini")
 check_writable_dir("mergen_uploads", "MERGEN yükleme dizini")
 check_writable_dir("destek_uploads", "destek yükleme dizini")
 check_writable_dir("bilge_yolac_downloads", "Bilge Yolaç indirme dizini")
+
+if (nzchar(Sys.getenv("MERGEN_FILES_ROOT", ""))) {
+  check_writable_dir(Sys.getenv("MERGEN_FILES_ROOT"), "MERGEN files root")
+}
+
+if (nzchar(Sys.getenv("MERGEN_MCP_BASE_DIR", ""))) {
+  check_writable_dir(Sys.getenv("MERGEN_MCP_BASE_DIR"), "MERGEN MCP base dir")
+}
+
+active_index_path <- Sys.getenv("MERGEN_INDEX_PATH", "")
+if (nzchar(active_index_path)) {
+  check_writable_dir(dirname(active_index_path), "MERGEN index parent dizini")
+}
 
 if (exists("atomic_write_text", envir = globalenv(), mode = "function", inherits = FALSE)) {
   atomic_probe <- file.path("logs", "preflight_atomic_write_probe.json")
