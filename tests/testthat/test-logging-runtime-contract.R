@@ -19,6 +19,18 @@ resolve_rscript_for_tests <- function() {
   rscript_bin
 }
 
+read_text_file_relaxed <- function(path) {
+  if (!file.exists(path)) {
+    return("")
+  }
+
+  lines <- suppressWarnings(
+    readLines(path, warn = FALSE, encoding = "unknown")
+  )
+
+  paste(enc2utf8(lines), collapse = "\n")
+}
+
 run_logging_probe <- function(log_dir, log_threshold = "debug") {
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -36,6 +48,7 @@ run_logging_probe <- function(log_dir, log_threshold = "debug") {
 
   runner_lines <- c(
     sprintf("setwd(%s)", dQuote(normalized_repo)),
+    "options(encoding = 'UTF-8')",
     sprintf(
       "Sys.setenv(MERGEN_LOG_DIR = %s, MERGEN_LOG_THRESHOLD = %s)",
       dQuote(normalized_log_dir),
@@ -46,7 +59,8 @@ run_logging_probe <- function(log_dir, log_threshold = "debug") {
     "  function(x) gsub('secret-[0-9]+', '[REDACTED]', x),",
     "  envir = .GlobalEnv",
     ")",
-    "source('R/config_logging.R', encoding = 'UTF-8')",
+    "source('R/utils_safe_source.R', encoding = 'UTF-8')",
+    "safe_source('R/config_logging.R', encoding = 'UTF-8')",
     "log_info('token={token}', token = 'secret-123')",
     "dbg_dump('probe', list(token = 'secret-999'))",
     "shiny_error_handler(simpleError('boom-321'))",
@@ -64,8 +78,8 @@ run_logging_probe <- function(log_dir, log_threshold = "debug") {
 
   list(
     status = exit_status,
-    stdout = paste(readLines(child_stdout_log, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
-    stderr = paste(readLines(child_stderr_log, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
+    stdout = read_text_file_relaxed(child_stdout_log),
+    stderr = read_text_file_relaxed(child_stderr_log),
     log_file = file.path(log_dir, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))),
     dbg_file = file.path(log_dir, sprintf("ai_debug_%s.log", format(Sys.Date(), "%Y%m%d")))
   )
@@ -86,8 +100,8 @@ test_that("config_logging hassas degerleri redakte eder", {
 
   expect_identical(probe$status, 0L, info = paste(probe$stdout, probe$stderr, sep = "\n"))
 
-  log_text <- paste(readLines(probe$log_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-  dbg_text <- paste(readLines(probe$dbg_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  log_text <- read_text_file_relaxed(probe$log_file)
+  dbg_text <- read_text_file_relaxed(probe$dbg_file)
 
   expect_false(grepl("secret-123", log_text, fixed = TRUE))
   expect_false(grepl("secret-999", dbg_text, fixed = TRUE))
@@ -101,6 +115,6 @@ test_that("config_logging global hata yakalayıcıyı dosya loguna düşürür",
 
   expect_identical(probe$status, 0L, info = paste(probe$stdout, probe$stderr, sep = "\n"))
 
-  log_text <- paste(readLines(probe$log_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  log_text <- read_text_file_relaxed(probe$log_file)
   expect_true(grepl("boom-321", log_text, fixed = TRUE))
 })

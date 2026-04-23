@@ -18,6 +18,18 @@ resolve_rscript_for_tests <- function() {
   rscript_bin
 }
 
+read_text_file_relaxed <- function(path) {
+  if (!file.exists(path)) {
+    return("")
+  }
+
+  lines <- suppressWarnings(
+    readLines(path, warn = FALSE, encoding = "unknown")
+  )
+
+  paste(enc2utf8(lines), collapse = "\n")
+}
+
 run_preflight_missing_env_probe <- function() {
   runner_file <- tempfile(pattern = "vm_preflight_probe_", fileext = ".R")
   child_stdout_log <- tempfile(pattern = "vm_preflight_stdout_", fileext = ".log")
@@ -32,8 +44,10 @@ run_preflight_missing_env_probe <- function() {
 
   runner_lines <- c(
     sprintf("setwd(%s)", dQuote(normalized_repo)),
+    "options(encoding = 'UTF-8')",
+    "source('R/utils_safe_source.R', encoding = 'UTF-8')",
     "Sys.unsetenv(c('LOCAL_LLM_ENDPOINT', 'DB_DSN', 'AI_KEYS_MASTER'))",
-    "source('tests/scripts/run_vm_preflight_real.R', encoding = 'UTF-8')"
+    "safe_source('tests/scripts/run_vm_preflight_real.R', encoding = 'UTF-8')"
   )
 
   writeLines(enc2utf8(runner_lines), runner_file, useBytes = TRUE)
@@ -47,8 +61,8 @@ run_preflight_missing_env_probe <- function() {
 
   list(
     status = exit_status,
-    stdout = paste(readLines(child_stdout_log, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
-    stderr = paste(readLines(child_stderr_log, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+    stdout = read_text_file_relaxed(child_stdout_log),
+    stderr = read_text_file_relaxed(child_stderr_log)
   )
 }
 
