@@ -45,7 +45,24 @@ safe_worker_run <- function(task_fn,
       )
     },
     error = function(e) {
-      mesaj <- tryCatch(conditionMessage(e), error = function(err) "<bilinmeyen hata>")
+      ham_mesaj <- tryCatch(
+        conditionMessage(e),
+        error = function(err) "<bilinmeyen hata>"
+      )
+
+      mesaj <- ham_mesaj
+      if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+        mesaj <- tryCatch(
+          redact_sensitive_text(ham_mesaj),
+          error = function(err) ham_mesaj
+        )
+
+        if (is.character(mesaj) && length(mesaj) > 0L) {
+          mesaj <- mesaj[1]
+        } else {
+          mesaj <- ham_mesaj
+        }
+      }
 
       kod <- if (is.function(error_code_fn)) {
         tryCatch({

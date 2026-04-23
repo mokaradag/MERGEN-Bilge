@@ -97,6 +97,37 @@ validate_boot_state <- function(app_env = globalenv()) {
   invisible(TRUE)
 }
 
+.env_flag_is_true <- function(value, default = FALSE) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(default)
+  }
+
+  norm <- tolower(trimws(as.character(value[1])))
+  if (!nzchar(norm)) {
+    return(default)
+  }
+
+  if (norm %in% c("1", "true", "t", "yes", "y", "on")) {
+    return(TRUE)
+  }
+
+  if (norm %in% c("0", "false", "f", "no", "n", "off")) {
+    return(FALSE)
+  }
+
+  default
+}
+
+.normalize_mergen_port <- function(value, default = 8009L) {
+  port <- suppressWarnings(as.integer(trimws(as.character(value[1]))))
+
+  if (is.na(port) || port < 1L || port > 65535L) {
+    return(as.integer(default))
+  }
+
+  as.integer(port)
+}
+
 # 5. Uygulamayı çalıştır.
 create_mergen_app <- function() {
   validate_boot_state()
@@ -112,15 +143,11 @@ create_mergen_app <- function() {
 
 run_mergen_app <- function(
   host = Sys.getenv("MERGEN_HOST", "0.0.0.0"),
-  port = suppressWarnings(as.integer(Sys.getenv("MERGEN_PORT", "8009"))),
+  port = .normalize_mergen_port(Sys.getenv("MERGEN_PORT", "8009")),
   launch.browser = interactive(),
   quiet = TRUE
 ) {
   validate_boot_state()
-
-  if (is.na(port) || port <= 0L) {
-    port <- 8009L
-  }
 
   shiny::runApp(
     create_mergen_app(),
@@ -131,11 +158,11 @@ run_mergen_app <- function(
   )
 }
 
-auto_run <- Sys.getenv(
-  "MERGEN_RUN_APP",
-  if (interactive()) "true" else "false"
+auto_run <- .env_flag_is_true(
+  Sys.getenv("MERGEN_RUN_APP", if (interactive()) "true" else "false"),
+  default = interactive()
 )
 
-if (!identical(tolower(auto_run), "false")) {
+if (isTRUE(auto_run)) {
   run_mergen_app()
 }
