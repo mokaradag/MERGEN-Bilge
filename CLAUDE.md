@@ -171,7 +171,7 @@ Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions
 - `safe_join_path` path-safety behavior on Windows-compatible test inputs
 - MCP Excel session-registry path resolution and helper-environment availability
 - `config_logging.R` redaction wrappers and `dbg_dump()` behavior, including preservation of caller-frame `logger` glue evaluation
-- `app.R` boot-contract coverage for `boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()`
+- `app.R` boot-contract coverage for `boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()`, including strict `MERGEN_RUN_APP` autorun-flag parsing and explicit invalid `run_mergen_app(port = ...)` normalization fallback to `8009`
 - caller-frame logging-wrapper behavior under Windows-safe test setup
 - parse-based quality-gate coverage for `app.R`, `tests/testthat.R`, and `tests/scripts/*`
 - Windows-safe file-store index regression coverage with shape-agnostic checks, including Turkish display-name edge handling
@@ -281,7 +281,7 @@ This repo intentionally avoids relying on plain `runApp(".")` logic inside the a
 
 If startup or missing asset issues appear, check `app.R` first.
 
-Boot hardening note: `app.R` now includes explicit boot validation and fail-fast checks; coding agents must preserve `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()` names/behaviors because smoke validation depends on them. Boot-contract tests intentionally restore test stubs and isolate side effects after sourcing `app.R`, so entrypoint verification does not contaminate the remaining suite.
+Boot hardening note: `app.R` now includes explicit boot validation and fail-fast checks; coding agents must preserve `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()` names/behaviors because smoke validation depends on them. `MERGEN_RUN_APP` autorun decisions now rely on explicit truthy/falsy normalization, and `run_mergen_app()` must re-normalize explicit call-time `port` inputs (not only env-derived defaults); invalid/missing/non-numeric/out-of-range values must deterministically fall back to `8009`. Boot-contract tests intentionally restore test stubs and isolate side effects after sourcing `app.R`, so entrypoint verification does not contaminate the remaining suite.
 
 ---
 
