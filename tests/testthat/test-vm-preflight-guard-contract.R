@@ -40,10 +40,7 @@ run_preflight_missing_env_probe <- function() {
     add = TRUE
   )
 
-  normalized_repo <- normalizePath(repo_root_for_tests, winslash = "/", mustWork = TRUE)
-
   runner_lines <- c(
-    sprintf("setwd(%s)", dQuote(normalized_repo)),
     "options(encoding = 'UTF-8')",
     "source('R/utils_safe_source.R', encoding = 'UTF-8')",
     "Sys.unsetenv(c('LOCAL_LLM_ENDPOINT', 'DB_DSN', 'AI_KEYS_MASTER'))",
@@ -52,11 +49,14 @@ run_preflight_missing_env_probe <- function() {
 
   writeLines(enc2utf8(runner_lines), runner_file, useBytes = TRUE)
 
-  exit_status <- system2(
-    resolve_rscript_for_tests(),
-    args = c("--vanilla", runner_file),
-    stdout = child_stdout_log,
-    stderr = child_stderr_log
+  exit_status <- withr::with_dir(
+    repo_root_for_tests,
+    system2(
+      resolve_rscript_for_tests(),
+      args = c("--vanilla", runner_file),
+      stdout = child_stdout_log,
+      stderr = child_stderr_log
+    )
   )
 
   list(

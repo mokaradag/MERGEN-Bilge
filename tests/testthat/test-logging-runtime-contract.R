@@ -43,11 +43,9 @@ run_logging_probe <- function(log_dir, log_threshold = "debug") {
     add = TRUE
   )
 
-  normalized_repo <- normalizePath(repo_root_for_tests, winslash = "/", mustWork = TRUE)
   normalized_log_dir <- normalizePath(log_dir, winslash = "/", mustWork = FALSE)
 
   runner_lines <- c(
-    sprintf("setwd(%s)", dQuote(normalized_repo)),
     "options(encoding = 'UTF-8')",
     sprintf(
       "Sys.setenv(MERGEN_LOG_DIR = %s, MERGEN_LOG_THRESHOLD = %s)",
@@ -69,11 +67,14 @@ run_logging_probe <- function(log_dir, log_threshold = "debug") {
 
   writeLines(enc2utf8(runner_lines), runner_file, useBytes = TRUE)
 
-  exit_status <- system2(
-    resolve_rscript_for_tests(),
-    args = c("--vanilla", runner_file),
-    stdout = child_stdout_log,
-    stderr = child_stderr_log
+  exit_status <- withr::with_dir(
+    repo_root_for_tests,
+    system2(
+      resolve_rscript_for_tests(),
+      args = c("--vanilla", runner_file),
+      stdout = child_stdout_log,
+      stderr = child_stderr_log
+    )
   )
 
   list(
