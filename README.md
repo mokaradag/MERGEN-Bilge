@@ -287,11 +287,15 @@ Not: Ortak `safe_source()` helper’ı (`R/utils_safe_source.R`) önce normal `s
 - dil yardımcıları
 - mesaj biçimlendirme
 - MCP araçları
+- yol ve dosya yardımcıları
 - dosya pipeline
+- Excel okuyucu
 - önizleme
 - görsel galeri
 - AI Uzman yardımcıları
 - Bilge Yolaç yardımcıları
+
+Not: MCP Excel yol çözümleme davranışı `utils_path_helpers`, `helpers_files`, `utils_excel_reader`, `helpers_mcp_tools` ve `helpers_send_message_core` yardımcılarının koordineli çalışmasına bağlıdır.
 
 ### 5. LLM entegrasyon katmanı
 - araç formatlayıcıları
@@ -434,6 +438,13 @@ Dosya depolama sistemi `R/config_file_store.R` içinde merkezi olarak tanımlan�
 
 ### Dosya Yönetimi yenileme dayanıklılığı
 Dosya Yönetimi yenileme akışı kullanıcı açısından rollback-safe olacak şekilde korunur: yenileme/rehydrate adımı hata verirse önceki bellek içi dosya durumu silinmez; başarılı yenilemede daha önce bağlama eklenmiş dosyalar yeniden işaretlenerek geri yüklenir.
+
+### Excel Analizi / MCP yol çözümleme dayanıklılığı
+- Excel Analizi aracında, oturum dosya kayıt defteri ile fiziksel dosya yolu çözümleme zinciri güçlendirilmiştir.
+- Özellikle Windows VM / SSO / MCP akışlarında `helpers_mcp_tools`, `helpers_files`, `utils_path_helpers`, `utils_excel_reader` ve `helpers_send_message_core` üzerinden dosya yolu yardımcıları daha dayanıklı çalışacak şekilde hizalanmıştır.
+- Kritik yardımcılar (`path_exists_relaxed`, `resolve_readable_path`) araç ortamında güvenli biçimde erişilebilir tutulur; böylece aynı dosyanın Dosya Yönetimi’nde görünmesine rağmen Excel aracında “dosya bulunamadı” hatası üretilmesi engellenir.
+- Windows kısa yol (8.3) davranışı nedeniyle fiziksel path basename’i her zaman kullanıcı dostu/orijinal dosya adıyla aynı olmayabilir; kullanıcıya görünen ad için `display`/`display_name` alanı esas alınmalıdır.
+- Bu davranış için küçük bir regresyon testi eklendi: MCP Excel çözümleme zincirinde helper ortamı ve session registry tabanlı dosya bulma yeniden test kapsamına alınmıştır.
 
 ### Son bakım notu (mimari)
 Son bakım turunda özellikle dosya yöneticisi tarafında davranış değiştirmeden tekrar eden politika metinleri azaltılmış, izinli uzantı/politika yardımcıları merkezileştirilmiş ve tekrar eden satır/aksiyon/bağlama-ekle hücre üretimleri küçük yardımcı yapılarla ayrıştırılmıştır.
