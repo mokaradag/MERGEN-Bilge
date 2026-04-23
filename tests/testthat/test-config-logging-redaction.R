@@ -38,7 +38,10 @@ test_that("config_logging log sarmalayicilari ve dbg_dump hassas metni redakte e
   expect_true(exists("dbg_dump", envir = log_env, inherits = FALSE))
 
   log_env$log_info("AI anahtari: {secret}", secret = "supersekretkey_abcdef1234")
-  log_env$log_error("Authorization: Bearer abc123def456ghi789")
+  log_env$log_info(
+    "Authorization: {auth_header}",
+    auth_header = "Bearer abc123def456ghi789"
+  )
   log_env$dbg_dump(
     "ornek_debug",
     list(

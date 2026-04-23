@@ -28,7 +28,10 @@ log_layout(layout_glue_colors, index = 2)
 
 # --- GÜVENLİ LOG SARICILARI ---
 # Tüm uygulama logları bu sarmalayıcılardan geçer.
-# Böylece redact_sensitive_text() varsa hassas metinler dosyaya düşmeden önce maskelenir.
+# ÖNEMLİ:
+# - logger içindeki { ... } glue ifadeleri ÇAĞIRAN ortamda çözülmelidir.
+# - Bu nedenle do.call(..., envir = caller_env) ile orijinal çağıran çerçeve korunur.
+# - Önce msg ve ... içindeki doğrudan karakter veriler redakte edilir; sonra logger'a verilir.
 .sanitize_log_value <- function(x) {
   if (is.null(x)) return(x)
 
@@ -43,27 +46,32 @@ log_layout(layout_glue_colors, index = 2)
   x
 }
 
-.dispatch_log <- function(level, msg, ...) {
+.forward_log_call <- function(log_fun, msg, ..., .caller_env = parent.frame()) {
   clean_msg <- .sanitize_log_value(msg)
   clean_args <- lapply(list(...), .sanitize_log_value)
 
-  log_fun <- switch(
-    tolower(level),
-    info = logger::log_info,
-    warn = logger::log_warn,
-    warning = logger::log_warn,
-    error = logger::log_error,
-    debug = logger::log_debug,
-    logger::log_info
+  do.call(
+    what = log_fun,
+    args = c(list(clean_msg), clean_args),
+    envir = .caller_env
   )
-
-  do.call(log_fun, c(list(clean_msg), clean_args))
 }
 
-log_info  <- function(msg, ...) .dispatch_log("info",  msg, ...)
-log_warn  <- function(msg, ...) .dispatch_log("warn",  msg, ...)
-log_error <- function(msg, ...) .dispatch_log("error", msg, ...)
-log_debug <- function(msg, ...) .dispatch_log("debug", msg, ...)
+log_info <- function(msg, ...) {
+  .forward_log_call(logger::log_info, msg, ..., .caller_env = parent.frame())
+}
+
+log_warn <- function(msg, ...) {
+  .forward_log_call(logger::log_warn, msg, ..., .caller_env = parent.frame())
+}
+
+log_error <- function(msg, ...) {
+  .forward_log_call(logger::log_error, msg, ..., .caller_env = parent.frame())
+}
+
+log_debug <- function(msg, ...) {
+  .forward_log_call(logger::log_debug, msg, ..., .caller_env = parent.frame())
+}
 
 log_info("Application starting up...")
 
