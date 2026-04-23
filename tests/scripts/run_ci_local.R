@@ -38,7 +38,13 @@ if (!file.exists(rscript_bin)) {
 }
 
 test_runner_file <- tempfile(pattern = "run_testthat_clean_", fileext = ".R")
-on.exit(unlink(test_runner_file, force = TRUE), add = TRUE)
+child_stdout_log <- tempfile(pattern = "run_testthat_stdout_", fileext = ".log")
+child_stderr_log <- tempfile(pattern = "run_testthat_stderr_", fileext = ".log")
+
+on.exit(
+  unlink(c(test_runner_file, child_stdout_log, child_stderr_log), force = TRUE),
+  add = TRUE
+)
 
 runner_lines <- c(
   "Sys.setenv(",
@@ -58,13 +64,31 @@ writeLines(enc2utf8(runner_lines), test_runner_file, useBytes = TRUE)
 
 exit_status <- system2(
   rscript_bin,
-  args = c(test_runner_file),
-  stdout = "",
-  stderr = ""
+  args = c("--vanilla", test_runner_file),
+  stdout = child_stdout_log,
+  stderr = child_stderr_log
 )
 
 if (!identical(exit_status, 0L)) {
-  stop(sprintf("run_ci_local: testthat child session basarisiz oldu (exit code: %s).", exit_status))
+  child_stdout <- tryCatch(
+    paste(readLines(child_stdout_log, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
+    error = function(e) ""
+  )
+  child_stderr <- tryCatch(
+    paste(readLines(child_stderr_log, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
+    error = function(e) ""
+  )
+
+  stop(sprintf(
+    paste0(
+      "run_ci_local: testthat child session basarisiz oldu (exit code: %s).\n",
+      "--- CHILD STDOUT ---\n%s\n",
+      "--- CHILD STDERR ---\n%s"
+    ),
+    exit_status,
+    child_stdout,
+    child_stderr
+  ))
 }
 
 cat("OK: Yerel CI eşdeğeri başarıyla tamamlandı.\n")

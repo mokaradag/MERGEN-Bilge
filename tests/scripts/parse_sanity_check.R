@@ -20,14 +20,30 @@ root_files <- c(
 
 root_files <- root_files[file.exists(root_files)]
 
-r_files <- list.files(
-  "R",
-  pattern = "\\.R$",
-  full.names = TRUE,
-  recursive = TRUE
-)
+list_r_files <- function(dir_path) {
+  if (!dir.exists(dir_path)) return(character(0))
 
-all_files <- unique(c(root_files, r_files))
+  list.files(
+    dir_path,
+    pattern = "\\.R$",
+    full.names = TRUE,
+    recursive = TRUE
+  )
+}
+
+r_files <- list_r_files("R")
+test_files <- list_r_files("tests/testthat")
+script_files <- list_r_files("tests/scripts")
+
+all_files <- unique(c(
+  root_files,
+  r_files,
+  test_files,
+  script_files,
+  file.path("tests", "testthat.R")
+))
+
+all_files <- all_files[file.exists(all_files)]
 
 parse_errors <- character(0)
 

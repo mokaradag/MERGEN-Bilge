@@ -26,6 +26,45 @@ log_layout(layout_glue, index = 1)
 log_appender(appender_console, index = 2)
 log_layout(layout_glue_colors, index = 2)
 
+# --- GÜVENLİ LOG SARICILARI ---
+# Tüm uygulama logları bu sarmalayıcılardan geçer.
+# Böylece redact_sensitive_text() varsa hassas metinler dosyaya düşmeden önce maskelenir.
+.sanitize_log_value <- function(x) {
+  if (is.null(x)) return(x)
+
+  if (!exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+    return(x)
+  }
+
+  if (is.character(x)) {
+    return(redact_sensitive_text(x))
+  }
+
+  x
+}
+
+.dispatch_log <- function(level, msg, ...) {
+  clean_msg <- .sanitize_log_value(msg)
+  clean_args <- lapply(list(...), .sanitize_log_value)
+
+  log_fun <- switch(
+    tolower(level),
+    info = logger::log_info,
+    warn = logger::log_warn,
+    warning = logger::log_warn,
+    error = logger::log_error,
+    debug = logger::log_debug,
+    logger::log_info
+  )
+
+  do.call(log_fun, c(list(clean_msg), clean_args))
+}
+
+log_info  <- function(msg, ...) .dispatch_log("info",  msg, ...)
+log_warn  <- function(msg, ...) .dispatch_log("warn",  msg, ...)
+log_error <- function(msg, ...) .dispatch_log("error", msg, ...)
+log_debug <- function(msg, ...) .dispatch_log("debug", msg, ...)
+
 log_info("Application starting up...")
 
 # --- GLOBAL HATA YAKALAYICI ---
@@ -56,9 +95,18 @@ options(shiny.error = shiny_error_handler)
 dbg_log_path <- file.path("logs", sprintf("ai_debug_%s.log", format(Sys.Date(), "%Y%m%d")))
 dbg_dump <- function(label, payload) {
   try({
+    payload_json <- jsonlite::toJSON(
+      payload,
+      auto_unbox = TRUE,
+      null = "null",
+      pretty = TRUE
+    )
+    payload_json <- .sanitize_log_value(payload_json)
+    label <- .sanitize_log_value(as.character(label))
+
     cat(
       sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
-      jsonlite::toJSON(payload, auto_unbox = TRUE, null = "null", pretty = TRUE),
+      payload_json,
       "\n---\n",
       file = dbg_log_path, append = TRUE
     )

@@ -24,17 +24,11 @@ Sys.setenv(
 source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")
 source("app.R", encoding = "UTF-8")
 
-if (!exists("safe_source", envir = globalenv(), mode = "function", inherits = FALSE)) {
-  stop("VM preflight başarısız: safe_source() tanımlanmadı.")
+if (!exists("validate_boot_state", envir = globalenv(), mode = "function", inherits = FALSE)) {
+  stop("VM preflight başarısız: validate_boot_state() tanımlanmadı.")
 }
 
-if (!exists("ui", envir = globalenv(), inherits = FALSE)) {
-  stop("VM preflight başarısız: ui nesnesi tanımlanmadı.")
-}
-
-if (!exists("server", envir = globalenv(), mode = "function", inherits = FALSE)) {
-  stop("VM preflight başarısız: server fonksiyonu tanımlanmadı.")
-}
+validate_boot_state()
 
 if (!exists("create_mergen_app", envir = globalenv(), mode = "function", inherits = FALSE)) {
   stop("VM preflight başarısız: create_mergen_app() tanımlanmadı.")
@@ -46,7 +40,7 @@ if (!inherits(app_obj, "shiny.appobj")) {
   stop("VM preflight başarısız: create_mergen_app() shiny.appobj döndürmedi.")
 }
 
-cat("OK: app.R source edildi ve shiny.appobj oluşturuldu.\n")
+cat("OK: app.R source edildi, validate_boot_state() geçti ve shiny.appobj oluşturuldu.\n")
 
 # ----------------------------------------------------------------------
 # Gerçek DB sağlık kontrolü
@@ -83,21 +77,43 @@ if (!nzchar(llm_url)) {
 if (!requireNamespace("curl", quietly = TRUE)) {
   warning("curl paketi bulunamadı; LLM endpoint erişilebilirlik kontrolü atlandı.")
 } else {
-  llm_probe_ok <- tryCatch({
-    handle <- curl::new_handle(
-      nobody = TRUE,
-      customrequest = "HEAD",
-      timeout = 5
-    )
+  probe_llm_endpoint <- function(url) {
+    head_ok <- tryCatch({
+      handle <- curl::new_handle(
+        nobody = TRUE,
+        customrequest = "HEAD",
+        connecttimeout = 3,
+        timeout = 5
+      )
 
-    res <- curl::curl_fetch_memory(llm_url, handle = handle)
+      res <- curl::curl_fetch_memory(url, handle = handle)
+      is.list(res) && !is.null(res$status_code)
+    }, error = function(e) {
+      cat(sprintf("[LLM CHECK HEAD ERROR] %s\n", conditionMessage(e)))
+      FALSE
+    })
 
-    # Herhangi bir HTTP yanıtı almak erişilebilirlik için yeterlidir.
-    is.list(res) && !is.null(res$status_code)
-  }, error = function(e) {
-    cat(sprintf("[LLM CHECK ERROR] %s\n", conditionMessage(e)))
-    FALSE
-  })
+    if (isTRUE(head_ok)) {
+      return(TRUE)
+    }
+
+    tryCatch({
+      handle <- curl::new_handle(
+        customrequest = "GET",
+        range = "0-0",
+        connecttimeout = 3,
+        timeout = 5
+      )
+
+      res <- curl::curl_fetch_memory(url, handle = handle)
+      is.list(res) && !is.null(res$status_code)
+    }, error = function(e) {
+      cat(sprintf("[LLM CHECK GET ERROR] %s\n", conditionMessage(e)))
+      FALSE
+    })
+  }
+
+  llm_probe_ok <- probe_llm_endpoint(llm_url)
 
   if (!isTRUE(llm_probe_ok)) {
     stop("VM preflight başarısız: gerçek LLM endpoint erişilebilirlik kontrolü başarısız.")
