@@ -12,7 +12,17 @@ extract_scalar_character <- function(x) {
     return(NA_character_)
   }
 
+  if (is.data.frame(x)) {
+    if ("display" %in% names(x) && nrow(x) >= 1L) {
+      return(as.character(x[["display"]][1]))
+    }
+    x <- unlist(x, recursive = TRUE, use.names = FALSE)
+  }
+
   if (is.list(x)) {
+    if (!is.null(x$display)) {
+      return(extract_scalar_character(x$display))
+    }
     x <- unlist(x, recursive = TRUE, use.names = FALSE)
   }
 
@@ -23,6 +33,32 @@ extract_scalar_character <- function(x) {
   }
 
   x[[1]]
+}
+
+extract_entry_from_bucket <- function(bucket, key) {
+  if (is.null(bucket)) {
+    return(NULL)
+  }
+
+  # Normal liste yapisi: bucket[[key]]
+  if (is.list(bucket) && !is.data.frame(bucket) && !is.null(bucket[[key]])) {
+    return(bucket[[key]])
+  }
+
+  # Data frame yapisi: satir adinda key olabilir
+  if (is.data.frame(bucket)) {
+    rn <- rownames(bucket)
+    if (!is.null(rn) && key %in% rn) {
+      return(bucket[key, , drop = FALSE])
+    }
+
+    # Tek satirli display/path tablosu ise dogrudan onu dondur
+    if ("display" %in% names(bucket) && nrow(bucket) == 1L) {
+      return(bucket)
+    }
+  }
+
+  NULL
 }
 
 test_that(".save_index yazdigini .load_index geri okur", {
@@ -52,10 +88,13 @@ test_that(".save_index yazdigini .load_index geri okur", {
   geri_okunan <- .load_index()
   expect_true(is.list(geri_okunan))
   expect_true(!is.null(geri_okunan[["42"]]))
-  expect_equal(
-    tolower(extract_scalar_character(geri_okunan[["42"]][["rapor.docx"]]$display)),
-    "rapor.docx"
-  )
+
+  entry_geri <- extract_entry_from_bucket(geri_okunan[["42"]], "rapor.docx")
+  expect_false(is.null(entry_geri))
+
+  display_geri <- extract_scalar_character(entry_geri)
+  expect_false(is.na(display_geri))
+  expect_equal(tolower(display_geri), "rapor.docx")
 })
 
 test_that(".load_index dosya yoksa bos liste dondurur", {
@@ -127,9 +166,15 @@ test_that(".save_index + .load_index Turkce display adlarini bozmaz", {
   .save_index(ornek_idx)
   geri_okunan <- .load_index()
 
-  display_geri <- extract_scalar_character(
-    geri_okunan[["7"]][["ozet-calisma.docx"]]$display
+  expect_true(!is.null(geri_okunan[["7"]]))
+
+  entry_geri <- extract_entry_from_bucket(
+    geri_okunan[["7"]],
+    "ozet-calisma.docx"
   )
+  expect_false(is.null(entry_geri))
+
+  display_geri <- extract_scalar_character(entry_geri)
 
   expect_false(is.na(display_geri))
   expect_identical(enc2utf8(display_geri), enc2utf8(turkce_display))
