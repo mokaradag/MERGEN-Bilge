@@ -2,7 +2,16 @@
 # Dosya Yolu: tests/testthat/test-app-boot-contract.R
 # Açıklama: app.R giris noktasi icin boot sozlesmelerini, resource-path
 # yardimcisini ve run_mergen_app() port fallback davranisini korur.
+# Bu test dosyasi app boot islemini yukledikten sonra test ortamindaki log
+# stub'larini geri yukleyerek suite'in kalanini kirletmemeye dikkat eder.
 # ==============================================================================
+
+restore_test_log_stubs <- function() {
+  assign("log_info",  function(...) invisible(NULL), envir = globalenv())
+  assign("log_warn",  function(...) invisible(NULL), envir = globalenv())
+  assign("log_error", function(...) invisible(NULL), envir = globalenv())
+  assign("log_debug", function(...) invisible(NULL), envir = globalenv())
+}
 
 load_app_entrypoint_for_tests <- local({
   loaded <- FALSE
@@ -25,6 +34,10 @@ load_app_entrypoint_for_tests <- local({
     )
 
     source("app.R", encoding = "UTF-8", local = globalenv())
+
+    # App boot sonrasi gercek logger fonksiyonlari test suite'ine sizmasin.
+    restore_test_log_stubs()
+
     loaded <<- TRUE
     invisible(TRUE)
   }
@@ -68,7 +81,11 @@ test_that("safe_add_resource_path eksik klasorde FALSE dondurur", {
 
   missing_dir <- file.path(tempdir(), "olmayan_klasor_123456")
   expect_false(dir.exists(missing_dir))
-  expect_false(safe_add_resource_path("olmayan_prefix", missing_dir))
+
+  expect_warning(
+    expect_false(safe_add_resource_path("olmayan_prefix", missing_dir)),
+    "Kaynak yolu atlandı"
+  )
 })
 
 test_that("safe_add_resource_path duplicate warning durumunda sessiz kalir", {

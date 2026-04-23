@@ -2,12 +2,11 @@
 # Dosya Yolu: tests/testthat/test-config-logging-caller-frame.R
 # Açıklama: config_logging.R icindeki log sarmalayicilarinin glue ifadelerini
 # cagirici frame'de cozmeye devam ettigini dogrular.
+# Onemli nokta: working directory degisikligi helper icinde degil, test scope'u
+# icinde tutulur; boylece relative logs/ yolu test boyunca gecerli kalir.
 # ==============================================================================
 
 load_logging_env_for_tests <- function() {
-  tmp_root <- withr::local_tempdir(pattern = "mergen-log-caller-frame-")
-  withr::local_dir(tmp_root)
-
   log_env <- new.env(parent = globalenv())
 
   source(
@@ -30,6 +29,10 @@ read_utf8_text <- function(path) {
 }
 
 test_that("log sarmalayicisi cagirici frame degiskenini cozer", {
+  tmp_root <- withr::local_tempdir(pattern = "mergen-log-caller-frame-")
+  withr::local_dir(tmp_root)
+  dir.create("logs", recursive = TRUE, showWarnings = FALSE)
+
   log_env <- load_logging_env_for_tests()
 
   nested_log_call <- function() {
@@ -48,6 +51,10 @@ test_that("log sarmalayicisi cagirici frame degiskenini cozer", {
 })
 
 test_that("log sarmalayicisi wrapper fonksiyon parametresini de cozer", {
+  tmp_root <- withr::local_tempdir(pattern = "mergen-log-caller-frame-")
+  withr::local_dir(tmp_root)
+  dir.create("logs", recursive = TRUE, showWarnings = FALSE)
+
   log_env <- load_logging_env_for_tests()
 
   log_with_user <- function(user_id) {
