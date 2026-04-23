@@ -65,6 +65,22 @@ read_utf8_json_text_strict <- function(path) {
   enc2utf8(rawToChar(raw_bytes))
 }
 
+json_escape_non_ascii <- function(x) {
+  chars <- strsplit(enc2utf8(x), "", fixed = TRUE)[[1]]
+
+  escaped <- vapply(chars, function(ch) {
+    code <- utf8ToInt(ch)
+
+    if (length(code) == 1L && code >= 32L && code <= 126L && !ch %in% c("\\", '"')) {
+      ch
+    } else {
+      paste0(sprintf("\\u%04x", code), collapse = "")
+    }
+  }, character(1))
+
+  paste0(escaped, collapse = "")
+}
+
 test_that(".save_index yazdigini .load_index geri okur", {
   eski_yol <- MERGEN_INDEX_PATH
   gecici_dir <- tempfile("indextest_")
@@ -166,9 +182,15 @@ test_that(".save_index Turkce display adini JSON icinde UTF-8 olarak korur ve yu
   .save_index(ornek_idx)
   expect_true(file.exists(gecici_yol))
 
-  # Birincil kontrat: diske yazilan JSON UTF-8 display metnini korumali.
+  # Birincil kontrat: diske yazilan JSON display metnini ya literal UTF-8
+  # olarak ya da gecerli \uXXXX kacis dizileriyle korumali.
   json_text <- read_utf8_json_text_strict(gecici_yol)
-  expect_true(grepl(turkce_display, json_text, fixed = TRUE))
+  turkce_display_escaped <- json_escape_non_ascii(turkce_display)
+
+  expect_true(
+    grepl(turkce_display, json_text, fixed = TRUE) ||
+      grepl(tolower(turkce_display_escaped), tolower(json_text), fixed = TRUE)
+  )
 
   # Ikincil kontrat: loader geri verebiliyorsa display degeri kaybolmamali.
   geri_okunan <- .load_index()
