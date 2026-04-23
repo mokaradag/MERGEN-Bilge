@@ -120,6 +120,8 @@ Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğu
 
 For session-lifecycle helpers, keep testability in mind: repository tests may use fake Shiny-like session objects implemented either as `list` or as `environment`. Do not over-constrain helper inputs if the real contract is “has a usable `onSessionEnded` callback”.
 
+On Windows VM, contract tests should prioritize stable behavioral invariants over rigid assumptions about serialized JSON shape, exact raw-text rendering, or platform-sensitive loader output. If the test targets a real repository contract, avoid locking to a single internal representation when equivalent forms are valid.
+
 ### 9A) MCP Excel yol çözümleme zincirini parçalama
 - `helpers_mcp_tools`, `helpers_files`, `utils_path_helpers`, `utils_excel_reader` ve `helpers_send_message_core` birlikte çalışan bir zincirdir.
 - Bu alanlarda yapılan küçük değişiklikler bile özellikle Windows VM / SSO / MCP akışında regresyon üretebilir.
@@ -132,6 +134,8 @@ For session-lifecycle helpers, keep testability in mind: repository tests may us
 - `{nchar(token)}` gibi ifadeler, log çağrısının yapıldığı gerçek çağıran ortamda çözülmeye devam etmelidir (ör. SSO observer scope'u).
 - `logger::log_*` çağrılarını generic bir dispatch helper içine taşıyıp çağıran frame'i kaybetmek bu repoda gerçek VM/SSO runtime regression üretir.
 - Eğer bir log wrapper eklenecekse veya değiştirilecekse, caller environment açıkça korunmalı; yalnızca secret masking test etmek yeterli sayılmamalıdır.
+- Caller-frame logging tests should keep working-directory control inside the test scope because `config_logging.R` writes into relative `logs/` paths.
+- After sourcing `app.R`, test setup should not leak real logging side effects into the rest of the suite.
 
 ---
 
@@ -147,7 +151,13 @@ Testlerde kullanılan helper stub’ları, source edilen helper fonksiyonlarıyl
 
 MCP Excel regresyon testlerinde fiziksel Windows short-path basename’ine göre doğrulama yapmak kırılgan olabilir. Bu tür testlerde öncelik sırasıyla helper erişilebilirliği, session registry üzerinden çözüm başarısı, `display` değeri ve dosyanın gerçekten okunabilmesi olmalıdır.
 
+For single-record Turkish JSON/index edge cases on Windows VM, validate at contract level and tolerate equivalent serialized forms or loader-shape differences instead of treating them as product regressions.
+
 Do not unit-test embedded NUL-byte behavior by forcing normal R character strings on Windows VM. In this repository, keep the runtime NUL guard in the helper, but write Windows-compatible tests around reliably representable path-safety rules. Avoid brittle tests that depend on platform-specific character construction behavior.
+
+Quality-gate tests for repository scripts and entrypoint contracts should prefer parse-based inspection over fragile raw UTF-8 text scanning when possible; parse-based checks are more resilient on Windows VM.
+
+Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions instead of locale-dependent `readLines()` comparisons on Windows VM.
 
 ### Current baseline coverage
 - `safe_source`
@@ -161,6 +171,11 @@ Do not unit-test embedded NUL-byte behavior by forcing normal R character string
 - `safe_join_path` path-safety behavior on Windows-compatible test inputs
 - MCP Excel session-registry path resolution and helper-environment availability
 - `config_logging.R` redaction wrappers and `dbg_dump()` behavior, including preservation of caller-frame `logger` glue evaluation
+- `app.R` boot-contract coverage for `boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()`
+- caller-frame logging-wrapper behavior under Windows-safe test setup
+- parse-based quality-gate coverage for `app.R`, `tests/testthat.R`, and `tests/scripts/*`
+- Windows-safe file-store index regression coverage with shape-agnostic checks, including Turkish display-name edge handling
+- Windows-safe atomic-write UTF-8 verification strategy
 
 ### Scripted validation flow (`tests/scripts/`)
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
@@ -266,7 +281,7 @@ This repo intentionally avoids relying on plain `runApp(".")` logic inside the a
 
 If startup or missing asset issues appear, check `app.R` first.
 
-Boot hardening note: `app.R` now includes explicit boot validation and fail-fast checks; coding agents must preserve `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()` names/behaviors because smoke validation depends on them.
+Boot hardening note: `app.R` now includes explicit boot validation and fail-fast checks; coding agents must preserve `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()` names/behaviors because smoke validation depends on them. Boot-contract tests intentionally restore test stubs and isolate side effects after sourcing `app.R`, so entrypoint verification does not contaminate the remaining suite.
 
 ---
 
