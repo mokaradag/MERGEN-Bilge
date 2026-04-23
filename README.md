@@ -419,6 +419,8 @@ Bilge Yolaç eklenti dizini. Her alt klasör bağımsız bir eklentidir. `plugin
 - `destek_uploads/`
 - `bilge_yolac_downloads/` - Bilge Yolaç tarafından üretilen dosyaların tarayıcıdan indirilebilir olarak sunulduğu dizin. `global.R` tarafından `bilge_yolac_downloads` kaynak yolu olarak kaydedilir.
 
+Not: Aktif log dizini sabit `logs/` varsayımına bağlı değildir; `R/config_logging.R` üzerinden `MERGEN_LOG_DIR` ile override edilebilir. Log ayrıntı seviyesi de `MERGEN_LOG_THRESHOLD` ile çalışma anında yönetilebilir. Bu yaklaşım özellikle Windows VM üretim hazırlığı ve testlerde temp-sandbox izolasyonu için kullanılır.
+
 ---
 
 ## Dosya Depolama Altyapısı
@@ -456,6 +458,8 @@ Son bakım turunda özellikle dosya yöneticisi tarafında davranış değiştir
 - `MERGEN_UPLOADS_DIR`
 - `MERGEN_MCP_BASE_DIR`
 - `MERGEN_INDEX_PATH`
+- `MERGEN_LOG_DIR`
+- `MERGEN_LOG_THRESHOLD`
 
 Not: Dosya deposu kökleri artık ortam değişkenleriyle override edilebilir yapıdadır (`MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`) ve testlerde izole geçici dizinlerle (temp sandbox) doğrulanacak şekilde özellikle test edilebilir tutulur.
 
@@ -777,6 +781,8 @@ RStudio veya benzeri bir ortamda `app.R` dosyasının tamamını seçip çalış
 
 Bu repodaki test altyapısı `testthat` tabanlıdır. Ana çalıştırıcı dosya `tests/testthat.R`, test bağlamı/bootstrap helper dosyası ise `tests/testthat/helper_bootstrap.R` olarak konumlanır.
 
+`helper_bootstrap.R`, testlerde dosya sistemi ve log yollarını temp sandbox ortam değişkenleriyle izole edecek şekilde kurgulanmıştır; özellikle `MERGEN_LOG_DIR` ve dosya-deposu köklerinin (`MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`) sözleşmesi bu izolasyona uyumlu kalmalıdır.
+
 Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - `safe_source`
 - BOM işaretli UTF-8 dosyalarının `safe_source()` ile güvenli yüklenmesi
@@ -789,7 +795,7 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - `safe_join_path` güvenli yol birleştirme davranışı (path traversal reddi, mutlak yol reddi, Windows ayraç normalizasyonu ve Türkçe karakterli güvenli yollar)
 - `config_logging.R` güvenli log sarmalayıcıları ve `dbg_dump()` redaksiyon davranışı; ayrıca `logger` glue ifadelerinin çağıran ortamda güvenli çözülmesi
 - `app.R` giriş noktası için boot sözleşmeleri (`boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, `run_mergen_app()`) artık test kapsamındadır ve Windows VM uyumlu kurgulanmıştır; bu kapsam `MERGEN_RUN_APP` için sıkı autorun-flag ayrıştırmasını ve açık `run_mergen_app(port = ...)` geçersiz girişlerinde `8009` fallback sözleşmesini de korur
-- `config_logging.R` log wrapper regresyon testleri, çağıran frame’de glue çözümlemesinin korunmasını doğrular; `logs/` göreli yol olduğu için çalışma dizini kontrolü test scope’u içinde tutulur
+- `config_logging.R` log wrapper regresyon testleri, çağıran frame’de glue çözümlemesinin korunmasını ve aktif log dizini davranışını doğrular; log/debug dosyaları `MERGEN_LOG_DIR` (yoksa varsayılan aktif dizin) altında ele alınır
 - repo quality-gate testleri kırılgan ham `readLines(..., encoding = "UTF-8")` taraması yerine script/entrypoint sözleşmelerini parse-tabanlı doğrulamayla sınar; bu yaklaşım Windows VM’de daha dayanıklıdır
 - `test-atomic-write.R`, UTF-8 doğruluğunu locale kırılgan metin okumaları yerine ham-bayt/deterministik UTF-8 güvenli beklentilerle sınar
 - file-store index testleri Windows-safe, shape-agnostic beklentiler kullanır; Windows VM’de tek kayıtlı Türkçe display-name kenar durumunda JSON sadeleştirme/yükleyici şekil farklarının yanlış negatif üretmesini engelleyip stabil sözleşmeyi doğrular
@@ -804,7 +810,7 @@ Windows VM ortamında gömülü NUL bayt içeren karakter dizileri normal R stri
 - `tests/scripts/parse_sanity_check.R`: repo kökünden UTF-8 parse/syntax için hızlı bir sanity kontrolü yapar.
 - `tests/scripts/smoke_app_boot.R`: tam uygulamayı ayağa kaldırmadan `app.R` dosyasını source eder; `safe_source`, `ui`, `server`, `create_mergen_app()` varlığını doğrular ve `shiny.appobj` üretilebildiğini kontrol eder.
 - `tests/scripts/run_ci_local.R`: GitHub CI akışının yerel eşdeğeridir; parse/smoke adımlarından sonra oturum kirlenmesini önlemek için `tests/testthat.R` çalıştırmasını CLEAN CHILD R SESSION içinde yapar.
-- `tests/scripts/run_vm_preflight_real.R`: gerçek on-prem Windows VM üzerinde, gerçek ortam değişkenleriyle production-benzeri preflight kontrolü için kullanılır.
+- `tests/scripts/run_vm_preflight_real.R`: gerçek on-prem Windows VM üzerinde, gerçek ortam değişkenleriyle production-benzeri preflight kontrolü için kullanılır; önce zorunlu env guard (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) çalışır, sonra aktif yapılandırılmış yazılabilir yollar (aktif log dizini dahil) ve boot doğrulamaları yapılır.
 
 Not: GitHub CI ve `run_ci_local.R` gerçek on-prem DB/LLM bağlantısına gitmez; yalnızca placeholder env değişkenleriyle boot/yapı/test doğrulaması yapar. Gerçek VM tarafı entegrasyon varsayımları `run_vm_preflight_real.R` ile sınanmalıdır.
 

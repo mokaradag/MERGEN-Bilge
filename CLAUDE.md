@@ -134,7 +134,8 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 - `{nchar(token)}` gibi ifadeler, log çağrısının yapıldığı gerçek çağıran ortamda çözülmeye devam etmelidir (ör. SSO observer scope'u).
 - `logger::log_*` çağrılarını generic bir dispatch helper içine taşıyıp çağıran frame'i kaybetmek bu repoda gerçek VM/SSO runtime regression üretir.
 - Eğer bir log wrapper eklenecekse veya değiştirilecekse, caller environment açıkça korunmalı; yalnızca secret masking test etmek yeterli sayılmamalıdır.
-- Caller-frame logging tests should keep working-directory control inside the test scope because `config_logging.R` writes into relative `logs/` paths.
+- `MERGEN_LOG_DIR` and `MERGEN_LOG_THRESHOLD` are now part of the repository contract; do not hardcode `logs/` in code/tests/scripts when active logging paths are environment-configurable.
+- Caller-frame logging tests should keep working-directory control inside the test scope and assert against the active configured log directory (from `MERGEN_LOG_DIR` or fallback default).
 - After sourcing `app.R`, test setup should not leak real logging side effects into the rest of the suite.
 
 ---
@@ -142,6 +143,8 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 ## Test Suite ve Çalıştırma Kuralları
 
 Bu repoda test suite’in ana çalıştırıcısı `tests/testthat.R` dosyasıdır. `tests/testthat/helper_bootstrap.R`, test bağlamını kuran bootstrap helper olarak kullanılmalıdır.
+
+`helper_bootstrap.R` may sandbox filesystem and log paths via temp env vars (`MERGEN_LOG_DIR`, `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`); contract tests must respect these env-driven paths instead of fixed repository-relative assumptions.
 
 Testler her zaman repository root dizininden çalıştırılmalıdır. Windows VM üzerinde test çalıştırırken mümkünse temiz bir R oturumu tercih edilmelidir. `summary` reporter çıktısının açık bir PASS satırı olmadan `== DONE ==` ile bitmesi normaldir.
 
@@ -158,6 +161,12 @@ Do not unit-test embedded NUL-byte behavior by forcing normal R character string
 Quality-gate tests for repository scripts and entrypoint contracts should prefer parse-based inspection over fragile raw UTF-8 text scanning when possible; parse-based checks are more resilient on Windows VM.
 
 Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions instead of locale-dependent `readLines()` comparisons on Windows VM.
+
+Windows-safe child-session test authoring rules:
+- Avoid embedding non-ASCII repository paths directly into generated child-R scripts when this can be avoided.
+- Prefer setting env vars in the parent test process and relying on inherited environment in child sessions.
+- Prefer `withr::with_dir(...)` (or equivalent parent-side working-directory control) over serializing `setwd("...")` lines that may contain Turkish characters.
+- For early-stop guard contracts (for example required-env preflight guards), prefer stable in-process `expect_error(...)` assertions over fragile child stdout/stderr capture.
 
 ### Current baseline coverage
 - `safe_source`
@@ -181,9 +190,9 @@ Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
 - `tests/scripts/smoke_app_boot.R`: boot smoke for `app.R` without launching full runtime; verifies `safe_source`, `ui`, `server`, and `create_mergen_app()`, then confirms a `shiny.appobj` can be created.
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
-- `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation.
+- `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 
-CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration checks must run on Windows VM via `run_vm_preflight_real.R`.
+CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration/preflight checks must run on Windows VM via `run_vm_preflight_real.R`, including writable-path probes against active configured directories (active log dir from `MERGEN_LOG_DIR` or fallback default).
 
 ---
 
