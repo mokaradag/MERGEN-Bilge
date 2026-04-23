@@ -788,6 +788,11 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - `send_message` çekirdeğindeki araç ailesi / akış profili kararları
 - `safe_join_path` güvenli yol birleştirme davranışı (path traversal reddi, mutlak yol reddi, Windows ayraç normalizasyonu ve Türkçe karakterli güvenli yollar)
 - `config_logging.R` güvenli log sarmalayıcıları ve `dbg_dump()` redaksiyon davranışı; ayrıca `logger` glue ifadelerinin çağıran ortamda güvenli çözülmesi
+- `app.R` giriş noktası için boot sözleşmeleri (`boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, `run_mergen_app()`) artık test kapsamındadır ve Windows VM uyumlu kurgulanmıştır
+- `config_logging.R` log wrapper regresyon testleri, çağıran frame’de glue çözümlemesinin korunmasını doğrular; `logs/` göreli yol olduğu için çalışma dizini kontrolü test scope’u içinde tutulur
+- repo quality-gate testleri kırılgan ham `readLines(..., encoding = "UTF-8")` taraması yerine script/entrypoint sözleşmelerini parse-tabanlı doğrulamayla sınar; bu yaklaşım Windows VM’de daha dayanıklıdır
+- `test-atomic-write.R`, UTF-8 doğruluğunu locale kırılgan metin okumaları yerine ham-bayt/deterministik UTF-8 güvenli beklentilerle sınar
+- file-store index testleri Windows-safe, shape-agnostic beklentiler kullanır; Windows VM’de tek kayıtlı Türkçe display-name kenar durumunda JSON sadeleştirme/yükleyici şekil farklarının yanlış negatif üretmesini engelleyip stabil sözleşmeyi doğrular
 
 Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. Promise/later tabanlı testlerde tek bir `later::run_now()` çağrısının her zaman yeterli olmayabileceği unutulmamalı; testler gerekiyorsa later kuyruğunu birkaç tur tüketerek kararlı son durumu beklemelidir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
 
@@ -894,6 +899,7 @@ Kontrol edin:
 - mümkünse temiz bir R oturumunda yeniden deneme yapmayı
 - Windows VM’de bazı düşük seviye string uç durumlarında (özellikle gömülü NUL beklentilerinde) farklılık olabileceğini ve helper testlerinde base R stringlerinde bayt-birebir kurulum zorlaması yerine repodaki Windows uyumlu test stratejisinin izlenmesi gerektiğini
 - Windows VM üzerinde helper/test script çalıştırırken code-page regresyonlarını izole ederek incelemeyi; kullanıcıya görünen Türkçe metinlerin UTF-8 kalmasını, yeni eklenen kod sembollerinin/identifier adlarının ise mümkün olduğunda ASCII-safe tutulmasını
+- Windows VM’de ham JSON metni veya tek kayıtlı Türkçe display-name yapısı etrafındaki hataların her zaman uygulama regresyonu olmayabileceğini; önce test şekli/encoding kaynaklı farklılıkları elemek ve katı iç-shape yerine sözleşme düzeyi doğrulama tercih etmek gerektiğini
 
 ### Yerelde açılıyor / SSO'da açılıyor ama diğer modda davranış farklı
 Kontrol edin:
