@@ -47,11 +47,6 @@ run_logging_probe <- function(log_dir, log_threshold = "debug") {
 
   runner_lines <- c(
     "options(encoding = 'UTF-8')",
-    sprintf(
-      "Sys.setenv(MERGEN_LOG_DIR = %s, MERGEN_LOG_THRESHOLD = %s)",
-      dQuote(normalized_log_dir),
-      dQuote(log_threshold)
-    ),
     "assign(",
     "  'redact_sensitive_text',",
     "  function(x) gsub('secret-[0-9]+', '[REDACTED]', x),",
@@ -67,13 +62,19 @@ run_logging_probe <- function(log_dir, log_threshold = "debug") {
 
   writeLines(enc2utf8(runner_lines), runner_file, useBytes = TRUE)
 
-  exit_status <- withr::with_dir(
-    repo_root_for_tests,
-    system2(
-      resolve_rscript_for_tests(),
-      args = c("--vanilla", runner_file),
-      stdout = child_stdout_log,
-      stderr = child_stderr_log
+  exit_status <- withr::with_envvar(
+    c(
+      MERGEN_LOG_DIR = normalized_log_dir,
+      MERGEN_LOG_THRESHOLD = log_threshold
+    ),
+    withr::with_dir(
+      repo_root_for_tests,
+      system2(
+        resolve_rscript_for_tests(),
+        args = c("--vanilla", runner_file),
+        stdout = child_stdout_log,
+        stderr = child_stderr_log
+      )
     )
   )
 
