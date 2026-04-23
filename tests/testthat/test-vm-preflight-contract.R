@@ -39,9 +39,11 @@ test_that("run_vm_preflight_real kritik kontrolleri korur", {
   expect_true(grepl("curl::new_handle", txt, fixed = TRUE))
 
   expect_true(grepl("check_writable_dir <- function", txt, fixed = TRUE))
-  expect_true(grepl('check_writable_dir\\("logs"', txt))
+  expect_true(grepl('active_log_dir <- trimws\\(Sys.getenv\\("MERGEN_LOG_DIR", "logs"\\)\\)', txt))
+  expect_true(grepl('check_writable_dir\\(active_log_dir, "aktif log dizini"\\)', txt))
   expect_true(grepl('check_writable_dir\\("mergen_uploads"', txt))
   expect_true(grepl('check_writable_dir\\("destek_uploads"', txt))
   expect_true(grepl('check_writable_dir\\("bilge_yolac_downloads"', txt))
+  expect_true(grepl('atomic_probe <- file.path\\(active_log_dir, "preflight_atomic_write_probe.json"\\)', txt))
   expect_true(grepl("atomic_write_text\\(", txt))
 })

@@ -6,8 +6,15 @@
 # icinde tutulur; boylece relative logs/ yolu test boyunca gecerli kalir.
 # ==============================================================================
 
-load_logging_env_for_tests <- function() {
+load_logging_env_for_tests <- function(log_dir) {
   log_env <- new.env(parent = globalenv())
+
+  withr::local_envvar(c(
+    MERGEN_LOG_DIR = log_dir,
+    MERGEN_LOG_THRESHOLD = "info"
+  ))
+
+  dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
 
   source(
     file.path(repo_root_for_tests, "R", "utils_log_redact.R"),
@@ -31,9 +38,9 @@ read_utf8_text <- function(path) {
 test_that("log sarmalayicisi cagirici frame degiskenini cozer", {
   tmp_root <- withr::local_tempdir(pattern = "mergen-log-caller-frame-")
   withr::local_dir(tmp_root)
-  dir.create("logs", recursive = TRUE, showWarnings = FALSE)
 
-  log_env <- load_logging_env_for_tests()
+  test_log_dir <- file.path(tmp_root, "logs-case-1")
+  log_env <- load_logging_env_for_tests(test_log_dir)
 
   nested_log_call <- function() {
     ic_deger <- "caller-frame-ok"
@@ -53,9 +60,9 @@ test_that("log sarmalayicisi cagirici frame degiskenini cozer", {
 test_that("log sarmalayicisi wrapper fonksiyon parametresini de cozer", {
   tmp_root <- withr::local_tempdir(pattern = "mergen-log-caller-frame-")
   withr::local_dir(tmp_root)
-  dir.create("logs", recursive = TRUE, showWarnings = FALSE)
 
-  log_env <- load_logging_env_for_tests()
+  test_log_dir <- file.path(tmp_root, "logs-case-2")
+  log_env <- load_logging_env_for_tests(test_log_dir)
 
   log_with_user <- function(user_id) {
     log_env$log_warn("Kullanici={user_id}")

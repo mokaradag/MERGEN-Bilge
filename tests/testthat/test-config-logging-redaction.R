@@ -4,6 +4,31 @@
 # yardımcısının hassas metni dosyaya yazmadan önce redakte ettiğini doğrular.
 # ==============================================================================
 
+load_logging_env_for_redaction_tests <- function(log_dir) {
+  log_env <- new.env(parent = globalenv())
+
+  withr::local_envvar(c(
+    MERGEN_LOG_DIR = log_dir,
+    MERGEN_LOG_THRESHOLD = "info"
+  ))
+
+  dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+
+  source(
+    file.path(repo_root_for_tests, "R", "utils_log_redact.R"),
+    encoding = "UTF-8",
+    local = log_env
+  )
+
+  source(
+    file.path(repo_root_for_tests, "R", "config_logging.R"),
+    encoding = "UTF-8",
+    local = log_env
+  )
+
+  log_env
+}
+
 test_that("config_logging log sarmalayicilari ve dbg_dump hassas metni redakte eder", {
   tmp_root <- withr::local_tempdir(pattern = "mergen-log-redaction-")
   withr::local_dir(tmp_root)
@@ -19,19 +44,8 @@ test_that("config_logging log sarmalayicilari ve dbg_dump hassas metni redakte e
 
   Sys.setenv(AI_KEYS_MASTER = "supersekretkey_abcdef1234")
 
-  log_env <- new.env(parent = globalenv())
-
-  source(
-    file.path(repo_root_for_tests, "R", "utils_log_redact.R"),
-    encoding = "UTF-8",
-    local = log_env
-  )
-
-  source(
-    file.path(repo_root_for_tests, "R", "config_logging.R"),
-    encoding = "UTF-8",
-    local = log_env
-  )
+  test_log_dir <- file.path(tmp_root, "logs-redaction")
+  log_env <- load_logging_env_for_redaction_tests(test_log_dir)
 
   expect_true(exists("log_info", envir = log_env, inherits = FALSE))
   expect_true(exists("log_error", envir = log_env, inherits = FALSE))

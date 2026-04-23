@@ -95,7 +95,7 @@ if (nzchar(active_index_path)) {
 }
 
 if (exists("atomic_write_text", envir = globalenv(), mode = "function", inherits = FALSE)) {
-  atomic_probe <- file.path("logs", "preflight_atomic_write_probe.json")
+  atomic_probe <- file.path(active_log_dir, "preflight_atomic_write_probe.json")
 
   tryCatch({
     atomic_write_text('{"ok":true}', atomic_probe)
