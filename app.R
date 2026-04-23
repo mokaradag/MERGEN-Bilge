@@ -143,11 +143,13 @@ create_mergen_app <- function() {
 
 run_mergen_app <- function(
   host = Sys.getenv("MERGEN_HOST", "0.0.0.0"),
-  port = .normalize_mergen_port(Sys.getenv("MERGEN_PORT", "8009")),
+  port = Sys.getenv("MERGEN_PORT", "8009"),
   launch.browser = interactive(),
   quiet = TRUE
 ) {
   validate_boot_state()
+
+  port <- .normalize_mergen_port(port)
 
   shiny::runApp(
     create_mergen_app(),
