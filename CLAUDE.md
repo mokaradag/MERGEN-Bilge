@@ -120,6 +120,12 @@ Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğu
 
 For session-lifecycle helpers, keep testability in mind: repository tests may use fake Shiny-like session objects implemented either as `list` or as `environment`. Do not over-constrain helper inputs if the real contract is “has a usable `onSessionEnded` callback”.
 
+### 9A) MCP Excel yol çözümleme zincirini parçalama
+- `helpers_mcp_tools`, `helpers_files`, `utils_path_helpers`, `utils_excel_reader` ve `helpers_send_message_core` birlikte çalışan bir zincirdir.
+- Bu alanlarda yapılan küçük değişiklikler bile özellikle Windows VM / SSO / MCP akışında regresyon üretebilir.
+- `path_exists_relaxed` ve `resolve_readable_path` gibi yardımcıların yalnızca global ortamda var olduğunu varsaymak güvenli değildir; araç/worker bağlamında erişilebilirlik korunmalıdır.
+- Windows’ta kısa yol (8.3) path basename’i orijinal dosya adından farklı olabilir; testlerde fiziksel basename yerine `display` / okunabilirlik / gerçek çözüm başarısı tercih edilmelidir.
+
 ---
 
 ## Test Suite ve Çalıştırma Kuralları
@@ -131,6 +137,8 @@ Testler her zaman repository root dizininden çalıştırılmalıdır. Windows V
 For promise/later-based tests, do not assume a single `later::run_now()` flush is always sufficient. When validating cleanup/final state, prefer a small bounded drain helper that consumes the later queue until the expected stable condition is reached.
 
 Testlerde kullanılan helper stub’ları, source edilen helper fonksiyonlarıyla aynı ortamda görünür olmalıdır. Test kapsamı olan helper dosyalarında değişiklik yapıldığında ilgili test dosyaları da birlikte güncellenmelidir.
+
+MCP Excel regresyon testlerinde fiziksel Windows short-path basename’ine göre doğrulama yapmak kırılgan olabilir. Bu tür testlerde öncelik sırasıyla helper erişilebilirliği, session registry üzerinden çözüm başarısı, `display` değeri ve dosyanın gerçekten okunabilmesi olmalıdır.
 
 Do not unit-test embedded NUL-byte behavior by forcing normal R character strings on Windows VM. In this repository, keep the runtime NUL guard in the helper, but write Windows-compatible tests around reliably representable path-safety rules. Avoid brittle tests that depend on platform-specific character construction behavior.
 
@@ -144,6 +152,7 @@ Do not unit-test embedded NUL-byte behavior by forcing normal R character string
 - worker monitor helpers
 - send-message core tool-family / stream-profile decisions
 - `safe_join_path` path-safety behavior on Windows-compatible test inputs
+- MCP Excel session-registry path resolution and helper-environment availability
 
 ### Scripted validation flow (`tests/scripts/`)
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
