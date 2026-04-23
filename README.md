@@ -270,6 +270,8 @@ Not: Ortak `safe_source()` helper’ı (`R/utils_safe_source.R`) önce normal `s
 - yol ve dosya yardımcıları
 - Excel okuyucu
 
+Not: `R/config_logging.R` içindeki güvenli log sarmalayıcıları (`log_info`, `log_warn`, `log_error`, `log_debug`) hassas karakter verilerini redakte edecek şekilde korunur. Ancak `logger` içindeki `{ ... }` glue ifadelerinin çağıran ortamda çözülmesi bozulmamalıdır. Özellikle SSO akışlarında `{nchar(token)}` gibi ifadeler, generic bir ara wrapper içinde çağıran frame kaybedilerek çalıştırılırsa VM üzerinde gerçek runtime hatası üretebilir.
+
 ### 2. Yapılandırma
 - SSO
 - dosya deposu
@@ -785,6 +787,7 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - worker monitor yardımcıları
 - `send_message` çekirdeğindeki araç ailesi / akış profili kararları
 - `safe_join_path` güvenli yol birleştirme davranışı (path traversal reddi, mutlak yol reddi, Windows ayraç normalizasyonu ve Türkçe karakterli güvenli yollar)
+- `config_logging.R` güvenli log sarmalayıcıları ve `dbg_dump()` redaksiyon davranışı; ayrıca `logger` glue ifadelerinin çağıran ortamda güvenli çözülmesi
 
 Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. Promise/later tabanlı testlerde tek bir `later::run_now()` çağrısının her zaman yeterli olmayabileceği unutulmamalı; testler gerekiyorsa later kuyruğunu birkaç tur tüketerek kararlı son durumu beklemelidir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
 
