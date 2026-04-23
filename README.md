@@ -214,7 +214,7 @@ Gerçek giriş noktasıdır. Şunları yapar:
 - `www/` alt klasörlerini resource path olarak kaydeder,
 - uygulamayı başlatır.
 
-Son hardening güncellemeleriyle `app.R` tarafında açık boot doğrulaması uygulanır: `validate_boot_state()` ile `safe_source`, `ui` ve `server` yükleri doğrulanır; beklenen durum sağlanmazsa başlangıç fail-fast mantığıyla durdurulur. Kod akışında `create_mergen_app()` ve `run_mergen_app()` yardımcılarının davranış/sözleşmesi korunmalıdır.
+Son hardening güncellemeleriyle `app.R` tarafında açık boot doğrulaması uygulanır: `validate_boot_state()` ile `safe_source`, `ui` ve `server` yükleri doğrulanır; beklenen durum sağlanmazsa başlangıç fail-fast mantığıyla durdurulur. Kod akışında `create_mergen_app()` ve `run_mergen_app()` yardımcılarının davranış/sözleşmesi korunmalıdır. Ayrıca `MERGEN_RUN_APP` artık gevşek "false dışı her şey" yaklaşımı yerine açık truthy/falsy normalizasyonuyla yorumlanır; `run_mergen_app()` yalnızca env’den gelen değeri değil, çağrıdaki açık `port` girdisini de yeniden normalize eder ve geçersiz/boş/sayısal olmayan/aralık dışı portları deterministik olarak `8009`a düşürür.
 
 ### `global.R`
 Küresel yapılandırma ve yükleme sırasını yönetir. Şunları içerir:
@@ -788,7 +788,7 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - `send_message` çekirdeğindeki araç ailesi / akış profili kararları
 - `safe_join_path` güvenli yol birleştirme davranışı (path traversal reddi, mutlak yol reddi, Windows ayraç normalizasyonu ve Türkçe karakterli güvenli yollar)
 - `config_logging.R` güvenli log sarmalayıcıları ve `dbg_dump()` redaksiyon davranışı; ayrıca `logger` glue ifadelerinin çağıran ortamda güvenli çözülmesi
-- `app.R` giriş noktası için boot sözleşmeleri (`boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, `run_mergen_app()`) artık test kapsamındadır ve Windows VM uyumlu kurgulanmıştır
+- `app.R` giriş noktası için boot sözleşmeleri (`boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, `run_mergen_app()`) artık test kapsamındadır ve Windows VM uyumlu kurgulanmıştır; bu kapsam `MERGEN_RUN_APP` için sıkı autorun-flag ayrıştırmasını ve açık `run_mergen_app(port = ...)` geçersiz girişlerinde `8009` fallback sözleşmesini de korur
 - `config_logging.R` log wrapper regresyon testleri, çağıran frame’de glue çözümlemesinin korunmasını doğrular; `logs/` göreli yol olduğu için çalışma dizini kontrolü test scope’u içinde tutulur
 - repo quality-gate testleri kırılgan ham `readLines(..., encoding = "UTF-8")` taraması yerine script/entrypoint sözleşmelerini parse-tabanlı doğrulamayla sınar; bu yaklaşım Windows VM’de daha dayanıklıdır
 - `test-atomic-write.R`, UTF-8 doğruluğunu locale kırılgan metin okumaları yerine ham-bayt/deterministik UTF-8 güvenli beklentilerle sınar
