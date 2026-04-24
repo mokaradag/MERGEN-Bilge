@@ -198,12 +198,20 @@ api_config <- list(
       stream_reasoning = TRUE,
       allow_reasoning_fallback = TRUE
     ),
-    "technical name 4" = list(
-      thinking = FALSE,
-      omit_temperature = FALSE,
-      stream_reasoning = FALSE,
-      allow_reasoning_fallback = FALSE
-    ),
+	"technical name 4" = list(
+	  thinking = TRUE,
+	  omit_temperature = TRUE,
+	  stream_reasoning = TRUE,
+	  allow_reasoning_fallback = TRUE,
+
+	  # Gemma endpoint'i reasoning'i otomatik ayırmıyorsa thinking template'i
+	  # açıkça etkinleştir. Bu alan ham HTTP body içine top-level olarak eklenir.
+	  request_overrides = list(
+		chat_template_kwargs = list(
+		  enable_thinking = TRUE
+		)
+	  )
+	),
     "technical name 5" = list(
       thinking = FALSE,
       omit_temperature = FALSE,
@@ -253,12 +261,17 @@ try({
 
 # Model capability'lerini çözümle
 get_local_model_capabilities <- function(model_id = NULL, config = api_config) {
-  defaults <- list(
-    thinking = FALSE,
-    omit_temperature = FALSE,
-    stream_reasoning = FALSE,
-    allow_reasoning_fallback = FALSE
-  )
+	defaults <- list(
+	  thinking = FALSE,
+	  omit_temperature = FALSE,
+	  stream_reasoning = FALSE,
+	  allow_reasoning_fallback = FALSE,
+
+	  # Model bazlı OpenAI-uyumlu ek istek alanları.
+	  # Örn. bazı thinking modeller reasoning üretmek için
+	  # chat_template_kwargs$enable_thinking = TRUE bekler.
+	  request_overrides = list()
+	)
 
   model_id <- as.character(model_id %||% "")[1]
   if (is.na(model_id)) {
@@ -295,6 +308,40 @@ get_local_model_capabilities <- function(model_id = NULL, config = api_config) {
   }
 
   utils::modifyList(defaults, caps, keep.null = TRUE)
+}
+
+# ------------------------------------------------------------------------------
+# MODEL BAZLI LLM İSTEK OVERRIDE YARDIMCISI
+# ------------------------------------------------------------------------------
+# Bazı OpenAI-uyumlu yerel uçlar, reasoning/thinking üretmek için model bazlı
+# ek gövde alanları ister. Bu fonksiyon yalnızca config'te açıkça tanımlanmış
+# request_overrides alanlarını body içine güvenli şekilde ekler.
+merge_named_list_deep <- function(x, y) {
+  if (!is.list(x)) x <- list()
+  if (!is.list(y) || length(y) == 0) return(x)
+
+  for (nm in names(y)) {
+    if (!nzchar(nm)) next
+
+    if (is.list(x[[nm]]) && is.list(y[[nm]])) {
+      x[[nm]] <- merge_named_list_deep(x[[nm]], y[[nm]])
+    } else {
+      x[[nm]] <- y[[nm]]
+    }
+  }
+
+  x
+}
+
+apply_model_request_overrides <- function(body, model_id = NULL, config = api_config) {
+  caps <- get_local_model_capabilities(model_id, config)
+  overrides <- caps$request_overrides %||% list()
+
+  if (!is.list(overrides) || length(overrides) == 0) {
+    return(body)
+  }
+
+  merge_named_list_deep(body, overrides)
 }
 
 is_thinking_model <- function(model_id = NULL, config = api_config) {
