@@ -1164,6 +1164,70 @@ sanitize_input <- function(text) {
   return(text)
 }
 
+# ------------------------------------------------------------------------------
+# MESAJ REASONINGCONTENT GÜNCELLEME YARDIMCISI
+# ------------------------------------------------------------------------------
+# Not: save_message_to_db() eski şemalarla uyumlu kalabilir. Bu yardımcı,
+# ReasoningContent sütunu varsa kaydı güvenli şekilde sonradan günceller.
+update_message_reasoning_content <- function(message_id, reasoning_content) {
+  if (is.null(message_id) || is.na(message_id)) {
+    return(invisible(FALSE))
+  }
+
+  reasoning_text <- tryCatch(
+    enc2utf8(as.character(reasoning_content %||% "")[1]),
+    error = function(e) ""
+  )
+
+  if (!nzchar(reasoning_text)) {
+    return(invisible(FALSE))
+  }
+
+  conn_info <- NULL
+
+  tryCatch({
+    conn_info <- get_connection()
+    conn <- conn_info$conn
+
+    has_column <- tryCatch({
+      cols <- DBI::dbGetQuery(
+        conn,
+        "
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'MB_Messages'
+          AND COLUMN_NAME = 'ReasoningContent'
+        "
+      )
+      nrow(cols) > 0
+    }, error = function(e) {
+      FALSE
+    })
+
+    if (!isTRUE(has_column)) {
+      log_warn("MB_Messages.ReasoningContent sütunu bulunamadı; reasoning kaydı atlandı.")
+      return(invisible(FALSE))
+    }
+
+    DBI::dbExecute(
+      conn,
+      "
+      UPDATE MB_Messages
+      SET ReasoningContent = ?
+      WHERE MessageID = ?
+      ",
+      params = normalize_db_params(list(reasoning_text, message_id))
+    )
+
+    invisible(TRUE)
+  }, error = function(e) {
+    log_warn("ReasoningContent güncellenemedi (MessageID={message_id}): {conditionMessage(e)}")
+    invisible(FALSE)
+  }, finally = {
+    release_connection(conn_info)
+  })
+}
+
 # Save message (synchronous/main process or worker-safe if get_connection created a worker conn)
 # msg is a list: list(content=..., type="user"/"assistant", timestamp=POSIXct or formatted string)
 save_message_to_db <- function(chat_id, msg) {

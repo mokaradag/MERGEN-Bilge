@@ -121,9 +121,14 @@ chat_add_message <- function(session, values, settings_data, output,
           "\n\n[Not: Mesaj çok uzun olduğu için yalnızca veritabanına kaydedilen kısım kısaltıldı. Ekrandaki içerik tamdır.]"
         )
       }
-      new_db_id <- save_message_safely(values$current_chat_id, msg_to_persist, current_user_id)
-      new_message$db_id <- new_db_id
-      new_message$id <- as.character(new_db_id)
+		new_db_id <- save_message_safely(values$current_chat_id, msg_to_persist, current_user_id)
+		new_message$db_id <- new_db_id
+		new_message$id <- as.character(new_db_id)
+
+		if (!is.null(new_message$reasoning_content) &&
+			exists("update_message_reasoning_content", mode = "function", inherits = TRUE)) {
+		  try(update_message_reasoning_content(new_db_id, new_message$reasoning_content), silent = TRUE)
+		}
     }, error = function(e) {
       showToast(session, paste("Mesaj kaydedilemedi:", e$message), "error")
     })

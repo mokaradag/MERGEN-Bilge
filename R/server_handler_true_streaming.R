@@ -315,8 +315,13 @@ handle_true_streaming_mode <- function(ctx) {
 
     tryCatch({
       if (!is.null(values$current_chat_id)) {
-        new_db_id <- save_message_to_db(values$current_chat_id, values$messages[[idx]])
-        values$messages[[idx]]$db_id <- new_db_id
+		new_db_id <- save_message_to_db(values$current_chat_id, values$messages[[idx]])
+		values$messages[[idx]]$db_id <- new_db_id
+
+		if (!is.null(reasoning_trace_value) &&
+			exists("update_message_reasoning_content", mode = "function", inherits = TRUE)) {
+		  try(update_message_reasoning_content(new_db_id, reasoning_trace_value), silent = TRUE)
+		}
       }
       chat_store_message_in_saved_chats(values, values$messages[[idx]])
       try(ctx$saved_chats_data$refresh(), silent = TRUE)
@@ -576,9 +581,48 @@ sse_promise <- tracked_future_promise(
       return(invisible(NULL))
     }
 
-    base_final_text <- enc2utf8(normalize_llm_scalar_content(result$content))
-    base_final_text <- strip_planner_text(base_final_text)
-    base_final_text <- append_clickable_sources(base_final_text, result$sources)
+	# Worker dönüşünde reasoning alanı varsa ama polling sırasında stream_env'e
+	# düşmemişse burada geri kazan. Bu özellikle reasoning'in final chunk'ta geldiği
+	# veya <think> ayrıştırmasının worker tarafında tamamlandığı uçlarda DB NULL
+	# kalmasını engeller.
+	result_reasoning <- enc2utf8(normalize_llm_scalar_content(result$reasoning %||% ""))
+
+	if (nzchar(result_reasoning)) {
+	  mevcut_reasoning <- enc2utf8(stream_env$accumulated_reasoning %||% "")
+
+	  if (!nzchar(mevcut_reasoning)) {
+		stream_env$accumulated_reasoning <- result_reasoning
+
+		session$sendCustomMessage("streamingReasoningDelta", list(
+		  id = stream_env$msg_id,
+		  delta = result_reasoning,
+		  started = !isTRUE(stream_env$reasoning_stream_started)
+		))
+		stream_env$reasoning_stream_started <- TRUE
+
+	  } else if (!identical(mevcut_reasoning, result_reasoning) &&
+				 startsWith(result_reasoning, mevcut_reasoning)) {
+		eksik_parca <- substr(
+		  result_reasoning,
+		  nchar(mevcut_reasoning) + 1L,
+		  nchar(result_reasoning)
+		)
+
+		if (nzchar(eksik_parca)) {
+		  stream_env$accumulated_reasoning <- result_reasoning
+
+		  session$sendCustomMessage("streamingReasoningDelta", list(
+			id = stream_env$msg_id,
+			delta = eksik_parca,
+			started = FALSE
+		  ))
+		}
+	  }
+	}
+
+	base_final_text <- enc2utf8(normalize_llm_scalar_content(result$content))
+	base_final_text <- strip_planner_text(base_final_text)
+	base_final_text <- append_clickable_sources(base_final_text, result$sources)
 
     followup_questions <- build_followup_suggestions(
       ctx$user_message_text,

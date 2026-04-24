@@ -87,12 +87,24 @@ extract_llm_delta_bundle <- function(event_obj) {
         first_choice$text
       )
 
-      reasoning_text <- extract_first_nonempty_llm_text(
-        delta_obj$reasoning_content,
-        delta_obj$reasoning,
-        message_obj$reasoning_content,
-        message_obj$reasoning
-      )
+		reasoning_text <- extract_first_nonempty_llm_text(
+		  delta_obj$reasoning_content,
+		  delta_obj$reasoning,
+		  delta_obj$reasoning_text,
+		  delta_obj$thinking,
+		  delta_obj$thought,
+		  delta_obj$reasoning$content,
+		  delta_obj$reasoning$text,
+		  delta_obj$reasoning$summary,
+		  message_obj$reasoning_content,
+		  message_obj$reasoning,
+		  message_obj$reasoning_text,
+		  message_obj$thinking,
+		  message_obj$thought,
+		  message_obj$reasoning$content,
+		  message_obj$reasoning$text,
+		  message_obj$reasoning$summary
+		)
     }
   }
 
@@ -105,12 +117,24 @@ extract_llm_delta_bundle <- function(event_obj) {
   }
 
   if (!nzchar(reasoning_text)) {
-    reasoning_text <- extract_first_nonempty_llm_text(
-      event_obj$delta$reasoning_content,
-      event_obj$delta$reasoning,
-      event_obj$reasoning_content,
-      event_obj$reasoning
-    )
+	reasoning_text <- extract_first_nonempty_llm_text(
+	  event_obj$delta$reasoning_content,
+	  event_obj$delta$reasoning,
+	  event_obj$delta$reasoning_text,
+	  event_obj$delta$thinking,
+	  event_obj$delta$thought,
+	  event_obj$delta$reasoning$content,
+	  event_obj$delta$reasoning$text,
+	  event_obj$delta$reasoning$summary,
+	  event_obj$reasoning_content,
+	  event_obj$reasoning,
+	  event_obj$reasoning_text,
+	  event_obj$thinking,
+	  event_obj$thought,
+	  event_obj$reasoning$content,
+	  event_obj$reasoning$text,
+	  event_obj$reasoning$summary
+	)
   }
 
   list(
@@ -371,10 +395,75 @@ call_local_llm_sse_worker <- function(chat_history,
     stream_con <- file(stream_file, open = "ab")
     on.exit(try(close(stream_con), silent = TRUE), add = TRUE)
 
-    event_buffer <- ""
-    accumulated_text <- ""
-    accumulated_reasoning <- ""
-    accumulated_sources <- NULL
+	event_buffer <- ""
+	accumulated_text <- ""
+	accumulated_reasoning <- ""
+	accumulated_sources <- NULL
+
+	# Bazı OpenAI-uyumlu yerel uçlar reasoning_content yerine Qwen tarzı
+	# <think>...</think> bloklarını normal delta$content içinde yayınlar.
+	# Bu yardımcı, görünür yanıt ile modelin açıkça yayınladığı düşünce akışını ayırır.
+	inside_think_block <- FALSE
+
+	split_think_tag_delta <- function(delta_text) {
+	  text <- enc2utf8(as.character(delta_text %||% "")[1])
+	  if (!nzchar(text)) {
+		return(list(content = "", reasoning = ""))
+	  }
+
+	  content_parts <- character(0)
+	  reasoning_parts <- character(0)
+	  remaining <- text
+
+	  find_tag <- function(x, tag) {
+		pos <- regexpr(tag, x, fixed = TRUE, ignore.case = TRUE, useBytes = TRUE)[1]
+		if (is.na(pos) || pos < 0) -1L else as.integer(pos)
+	  }
+
+	  repeat {
+		if (!nzchar(remaining)) {
+		  break
+		}
+
+		if (isTRUE(inside_think_block)) {
+		  close_pos <- find_tag(remaining, "</think>")
+
+		  if (close_pos < 0L) {
+			reasoning_parts <- c(reasoning_parts, remaining)
+			remaining <- ""
+			break
+		  }
+
+		  if (close_pos > 1L) {
+			reasoning_parts <- c(reasoning_parts, substr(remaining, 1L, close_pos - 1L))
+		  }
+
+		  remaining <- substr(remaining, close_pos + nchar("</think>"), nchar(remaining))
+		  inside_think_block <<- FALSE
+		  next
+		}
+
+		open_pos <- find_tag(remaining, "<think>")
+
+		if (open_pos < 0L) {
+		  content_parts <- c(content_parts, remaining)
+		  remaining <- ""
+		  break
+		}
+
+		if (open_pos > 1L) {
+		  content_parts <- c(content_parts, substr(remaining, 1L, open_pos - 1L))
+		}
+
+		remaining <- substr(remaining, open_pos + nchar("<think>"), nchar(remaining))
+		inside_think_block <<- TRUE
+	  }
+
+	  list(
+		content = enc2utf8(paste0(content_parts, collapse = "")),
+		reasoning = enc2utf8(paste0(reasoning_parts, collapse = ""))
+	  )
+	}
 
     log_info(sprintf("[CHAT PERF] SSE işçi HTTP isteği başladı - model=%s", selected_model))
 
@@ -392,9 +481,17 @@ call_local_llm_sse_worker <- function(chat_history,
         return(invisible(NULL))
       }
 
-      delta_bundle <- extract_llm_delta_bundle(event_obj)
-      delta_text <- enc2utf8(delta_bundle$content)
-      reasoning_text <- enc2utf8(delta_bundle$reasoning)
+		delta_bundle <- extract_llm_delta_bundle(event_obj)
+
+		raw_delta_text <- enc2utf8(delta_bundle$content)
+		reasoning_text <- enc2utf8(delta_bundle$reasoning)
+
+		think_split <- split_think_tag_delta(raw_delta_text)
+		delta_text <- enc2utf8(think_split$content)
+
+		if (nzchar(think_split$reasoning)) {
+		  reasoning_text <- paste0(reasoning_text, think_split$reasoning)
+		}
 
       # Akıl yürütme akışı ayrı kanalla yayınlanır; yanıt metnine karışmaz.
       if (nzchar(reasoning_text)) {
@@ -513,24 +610,26 @@ call_local_llm_sse_worker <- function(chat_history,
       final_content <- enc2utf8(normalize_llm_scalar_content(accumulated_reasoning))
     }
 
-    list(
-      success = TRUE,
-      aborted = FALSE,
-      content = final_content,
-      sources = accumulated_sources,
-      duration = as.numeric(difftime(Sys.time(), llm_start_time, units = "secs")),
-      error = NULL
-    )
+	list(
+	  success = TRUE,
+	  aborted = FALSE,
+	  content = final_content,
+	  reasoning = enc2utf8(normalize_llm_scalar_content(accumulated_reasoning)),
+	  sources = accumulated_sources,
+	  duration = as.numeric(difftime(Sys.time(), llm_start_time, units = "secs")),
+	  error = NULL
+	)
   }, error = function(e) {
     hata_mesaji <- conditionMessage(e)
 
-    list(
-      success = FALSE,
-      aborted = identical(hata_mesaji, "STREAM_ABORTED_BY_USER"),
-      content = "",
-      sources = NULL,
-      duration = as.numeric(difftime(Sys.time(), llm_start_time, units = "secs")),
-      error = hata_mesaji
-    )
+	list(
+	  success = FALSE,
+	  aborted = identical(hata_mesaji, "STREAM_ABORTED_BY_USER"),
+	  content = "",
+	  reasoning = enc2utf8(normalize_llm_scalar_content(accumulated_reasoning)),
+	  sources = NULL,
+	  duration = as.numeric(difftime(Sys.time(), llm_start_time, units = "secs")),
+	  error = hata_mesaji
+	)
   })
 }
