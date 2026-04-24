@@ -90,10 +90,11 @@ healthServer <- function(id, perf_tracker) {
     health_last_update <- reactiveVal(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
 
     # İlk render tamamlandığında üst sağdaki zaman damgasını hemen doldur.
+    # onFlushed callback'i reactive consumer değildir; reactiveVal okumaları isolate içinde yapılmalıdır.
     session$onFlushed(function() {
       session$sendCustomMessage("updateHealthTimestamp", list(
         id = ns("last_update_time"),
-        time = health_last_update()
+        time = isolate(health_last_update())
       ))
       session$sendCustomMessage("initHealthTooltips", list())
     }, once = TRUE)
@@ -134,7 +135,6 @@ healthServer <- function(id, perf_tracker) {
       checks <- checks_data()
       tab <- input$health_tabs %||% "overview"
       admin_init_tooltips(session)
-      session$sendCustomMessage("initHealthTooltips", list())
 
       switch(tab,
         overview = health_overview_ui(checks, health_last_update()),
@@ -145,6 +145,15 @@ healthServer <- function(id, perf_tracker) {
         diagnostics = health_diagnostics_ui(checks),
         health_overview_ui(checks, health_last_update())
       )
+    })
+
+    observe({
+      # Sekme değişimi veya manuel/otomatik yenileme sonrasında yeni DOM için tooltip'leri tekrar bağla.
+      input$health_tabs
+      health_refresh_trigger()
+      session$onFlushed(function() {
+        session$sendCustomMessage("initHealthTooltips", list())
+      }, once = TRUE)
     })
 
     observeEvent(input$refresh_health, {
