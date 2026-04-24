@@ -496,23 +496,31 @@ sse_promise <- tracked_future_promise(
 
           payload_type <- as.character(payload$type %||% "")
 
-          if (identical(payload_type, "delta")) {
-            delta_text <- decode_stream_delta_payload(payload)
-            if (!nzchar(delta_text)) {
-              next
-            }
+			if (identical(payload_type, "stream_debug")) {
+			  debug_text <- decode_stream_delta_payload(payload)
+			  if (nzchar(debug_text)) {
+				log_info(debug_text)
+			  }
+			  next
 
-            stream_env$accumulated_text <- paste0(stream_env$accumulated_text, delta_text)
-            delta_batch <- c(delta_batch, delta_text)
+			} else if (identical(payload_type, "delta")) {
+			  delta_text <- decode_stream_delta_payload(payload)
+			  if (!nzchar(delta_text)) {
+				next
+			  }
 
-            if (!isTRUE(stream_env$first_delta_logged)) {
-              stream_env$first_delta_logged <- TRUE
-              log_info(sprintf(
-                "[CHAT PERF] İlk delta gözlendi - %.3f sn",
-                as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
-              ))
-            }
-          } else if (identical(payload_type, "reasoning_delta")) {
+			  stream_env$accumulated_text <- paste0(stream_env$accumulated_text, delta_text)
+			  delta_batch <- c(delta_batch, delta_text)
+
+			  if (!isTRUE(stream_env$first_delta_logged)) {
+				stream_env$first_delta_logged <- TRUE
+				log_info(sprintf(
+				  "[CHAT PERF] İlk delta gözlendi - %.3f sn",
+				  as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+				))
+			  }
+
+			} else if (identical(payload_type, "reasoning_delta")) {
             reasoning_text <- decode_stream_delta_payload(payload)
             if (!nzchar(reasoning_text)) {
               next

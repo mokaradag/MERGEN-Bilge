@@ -66,80 +66,178 @@ parse_llm_sse_event <- function(event_text) {
 # ------------------------------------------------------------------------------
 
 extract_llm_delta_bundle <- function(event_obj) {
+  # OpenAI uyumlu uçlar her zaman aynı JSON şeklini döndürmüyor:
+  # - choices[[1]]$delta$content
+  # - choices[[1]]$delta$reasoning_content
+  # - delta$content
+  # - content
+  # Bazı uçlarda ara düğümler atomic vector olabiliyor. Bu nedenle hiçbir yerde
+  # doğrudan iç içe $ erişimi kullanmıyoruz.
+
+  safe_get <- function(x, path) {
+    current <- x
+
+    for (key in path) {
+      if (is.null(current) || !is.list(current)) {
+        return(NULL)
+      }
+
+      if (is.numeric(key)) {
+        idx <- as.integer(key)[1]
+        if (is.na(idx) || idx < 1L || length(current) < idx) {
+          return(NULL)
+        }
+        current <- current[[idx]]
+      } else {
+        key <- as.character(key)[1]
+        if (is.na(key) || !nzchar(key)) {
+          return(NULL)
+        }
+        if (is.null(names(current)) || !(key %in% names(current))) {
+          return(NULL)
+        }
+        current <- current[[key]]
+      }
+    }
+
+    current
+  }
+
+  split_content_node <- function(node) {
+    if (is.null(node)) {
+      return(list(content = "", reasoning = ""))
+    }
+
+    if (!is.list(node)) {
+      return(list(
+        content = enc2utf8(normalize_llm_text_node(node)),
+        reasoning = ""
+      ))
+    }
+
+    content_parts <- character(0)
+    reasoning_parts <- character(0)
+
+    for (part in node) {
+      if (is.null(part)) {
+        next
+      }
+
+      if (!is.list(part)) {
+        txt <- enc2utf8(normalize_llm_text_node(part))
+        if (nzchar(txt)) {
+          content_parts <- c(content_parts, txt)
+        }
+        next
+      }
+
+      part_type <- tolower(as.character(
+        safe_get(part, list("type")) %||%
+          safe_get(part, list("kind")) %||%
+          safe_get(part, list("role")) %||%
+          ""
+      )[1])
+
+      part_text <- extract_first_nonempty_llm_text(
+        safe_get(part, list("text")),
+        safe_get(part, list("content")),
+        safe_get(part, list("value")),
+        safe_get(part, list("reasoning_content")),
+        safe_get(part, list("reasoning")),
+        safe_get(part, list("thinking")),
+        safe_get(part, list("thought"))
+      )
+
+      if (!nzchar(part_text)) {
+        next
+      }
+
+      if (grepl("reason|thinking|thought", part_type, ignore.case = TRUE, perl = TRUE)) {
+        reasoning_parts <- c(reasoning_parts, part_text)
+      } else {
+        content_parts <- c(content_parts, part_text)
+      }
+    }
+
+    list(
+      content = enc2utf8(paste0(content_parts, collapse = "")),
+      reasoning = enc2utf8(paste0(reasoning_parts, collapse = ""))
+    )
+  }
+
   if (!is.list(event_obj)) {
     return(list(content = "", reasoning = ""))
   }
 
-  content_text <- ""
-  reasoning_text <- ""
+  content_node <- extract_first_nonempty_llm_text(
+    safe_get(event_obj, list("choices", 1L, "delta", "content")),
+    safe_get(event_obj, list("choices", 1L, "delta", "text")),
+    safe_get(event_obj, list("choices", 1L, "message", "content")),
+    safe_get(event_obj, list("choices", 1L, "text")),
+    safe_get(event_obj, list("delta", "content")),
+    safe_get(event_obj, list("delta", "text")),
+    safe_get(event_obj, list("content")),
+    safe_get(event_obj, list("text"))
+  )
 
-  if (!is.null(event_obj$choices) && length(event_obj$choices) > 0) {
-    first_choice <- event_obj$choices[[1]]
+  reasoning_text <- extract_first_nonempty_llm_text(
+    safe_get(event_obj, list("choices", 1L, "delta", "reasoning_content")),
+    safe_get(event_obj, list("choices", 1L, "delta", "reasoning")),
+    safe_get(event_obj, list("choices", 1L, "delta", "reasoning_text")),
+    safe_get(event_obj, list("choices", 1L, "delta", "thinking")),
+    safe_get(event_obj, list("choices", 1L, "delta", "thought")),
+    safe_get(event_obj, list("choices", 1L, "delta", "reasoning", "content")),
+    safe_get(event_obj, list("choices", 1L, "delta", "reasoning", "text")),
+    safe_get(event_obj, list("choices", 1L, "delta", "reasoning", "summary")),
+    safe_get(event_obj, list("choices", 1L, "message", "reasoning_content")),
+    safe_get(event_obj, list("choices", 1L, "message", "reasoning")),
+    safe_get(event_obj, list("choices", 1L, "message", "reasoning_text")),
+    safe_get(event_obj, list("choices", 1L, "message", "thinking")),
+    safe_get(event_obj, list("choices", 1L, "message", "thought")),
+    safe_get(event_obj, list("choices", 1L, "message", "reasoning", "content")),
+    safe_get(event_obj, list("choices", 1L, "message", "reasoning", "text")),
+    safe_get(event_obj, list("choices", 1L, "message", "reasoning", "summary")),
+    safe_get(event_obj, list("delta", "reasoning_content")),
+    safe_get(event_obj, list("delta", "reasoning")),
+    safe_get(event_obj, list("delta", "reasoning_text")),
+    safe_get(event_obj, list("delta", "thinking")),
+    safe_get(event_obj, list("delta", "thought")),
+    safe_get(event_obj, list("reasoning_content")),
+    safe_get(event_obj, list("reasoning")),
+    safe_get(event_obj, list("reasoning_text")),
+    safe_get(event_obj, list("thinking")),
+    safe_get(event_obj, list("thought"))
+  )
 
-    if (is.list(first_choice)) {
-      delta_obj <- first_choice$delta %||% list()
-      message_obj <- first_choice$message %||% list()
+  # Bazı uçlar content'i multimodal/list parçaları olarak döndürebilir.
+  # Eğer düz content boşsa list node'u ayrıştırmayı dene.
+  if (!nzchar(content_node)) {
+    split_a <- split_content_node(safe_get(event_obj, list("choices", 1L, "delta", "content")))
+    split_b <- split_content_node(safe_get(event_obj, list("choices", 1L, "message", "content")))
+    split_c <- split_content_node(safe_get(event_obj, list("delta", "content")))
+    split_d <- split_content_node(safe_get(event_obj, list("content")))
 
-      content_text <- extract_first_nonempty_llm_text(
-        delta_obj$content,
-        delta_obj$text,
-        message_obj$content,
-        first_choice$text
+    content_node <- extract_first_nonempty_llm_text(
+      split_a$content,
+      split_b$content,
+      split_c$content,
+      split_d$content
+    )
+
+    reasoning_text <- paste0(
+      reasoning_text,
+      extract_first_nonempty_llm_text(
+        split_a$reasoning,
+        split_b$reasoning,
+        split_c$reasoning,
+        split_d$reasoning
       )
-
-		reasoning_text <- extract_first_nonempty_llm_text(
-		  delta_obj$reasoning_content,
-		  delta_obj$reasoning,
-		  delta_obj$reasoning_text,
-		  delta_obj$thinking,
-		  delta_obj$thought,
-		  delta_obj$reasoning$content,
-		  delta_obj$reasoning$text,
-		  delta_obj$reasoning$summary,
-		  message_obj$reasoning_content,
-		  message_obj$reasoning,
-		  message_obj$reasoning_text,
-		  message_obj$thinking,
-		  message_obj$thought,
-		  message_obj$reasoning$content,
-		  message_obj$reasoning$text,
-		  message_obj$reasoning$summary
-		)
-    }
-  }
-
-  if (!nzchar(content_text)) {
-    content_text <- extract_first_nonempty_llm_text(
-      event_obj$delta$content,
-      event_obj$delta$text,
-      event_obj$content
     )
   }
 
-  if (!nzchar(reasoning_text)) {
-	reasoning_text <- extract_first_nonempty_llm_text(
-	  event_obj$delta$reasoning_content,
-	  event_obj$delta$reasoning,
-	  event_obj$delta$reasoning_text,
-	  event_obj$delta$thinking,
-	  event_obj$delta$thought,
-	  event_obj$delta$reasoning$content,
-	  event_obj$delta$reasoning$text,
-	  event_obj$delta$reasoning$summary,
-	  event_obj$reasoning_content,
-	  event_obj$reasoning,
-	  event_obj$reasoning_text,
-	  event_obj$thinking,
-	  event_obj$thought,
-	  event_obj$reasoning$content,
-	  event_obj$reasoning$text,
-	  event_obj$reasoning$summary
-	)
-  }
-
   list(
-    content = enc2utf8(content_text),
-    reasoning = enc2utf8(reasoning_text)
+    content = enc2utf8(content_node %||% ""),
+    reasoning = enc2utf8(reasoning_text %||% "")
   )
 }
 
@@ -392,8 +490,64 @@ call_local_llm_sse_worker <- function(chat_history,
     }
     file.create(stream_file)
 
-    stream_con <- file(stream_file, open = "ab")
-    on.exit(try(close(stream_con), silent = TRUE), add = TRUE)
+	stream_con <- file(stream_file, open = "ab")
+	on.exit(try(close(stream_con), silent = TRUE), add = TRUE)
+
+	append_stream_debug_line_local <- function(message) {
+	  debug_text <- enc2utf8(as.character(message %||% "")[1])
+	  if (!nzchar(debug_text)) {
+		return(invisible(NULL))
+	  }
+
+	  debug_b64 <- base64enc::base64encode(charToRaw(debug_text))
+
+	  payload <- jsonlite::toJSON(
+		list(type = "stream_debug", text_b64 = debug_b64),
+		auto_unbox = TRUE,
+		null = "null"
+	  )
+
+	  writeBin(charToRaw(paste0(payload, "\n")), stream_con)
+	  flush(stream_con)
+	  invisible(NULL)
+	}
+
+	summarize_sse_event_shape <- function(event_obj) {
+	  safe_names <- function(x) {
+		if (is.list(x) && !is.null(names(x))) {
+		  paste(names(x), collapse = ",")
+		} else {
+		  paste0("<", paste(class(x), collapse = "/"), ">")
+		}
+	  }
+
+	  first_choice <- NULL
+	  if (is.list(event_obj) &&
+		  !is.null(event_obj$choices) &&
+		  is.list(event_obj$choices) &&
+		  length(event_obj$choices) > 0) {
+		first_choice <- event_obj$choices[[1]]
+	  }
+
+	  delta_obj <- if (is.list(first_choice) && !is.null(first_choice$delta)) {
+		first_choice$delta
+	  } else {
+		NULL
+	  }
+
+	  message_obj <- if (is.list(first_choice) && !is.null(first_choice$message)) {
+		first_choice$message
+	  } else {
+		NULL
+	  }
+
+	  paste0(
+		"top=[", safe_names(event_obj), "] ",
+		"choice=[", safe_names(first_choice), "] ",
+		"delta=[", safe_names(delta_obj), "] ",
+		"message=[", safe_names(message_obj), "]"
+	  )
+	}
 
 	event_buffer <- ""
 	accumulated_text <- ""
@@ -506,25 +660,32 @@ call_local_llm_sse_worker <- function(chat_history,
 		if (reasoning_debug_event_count <= 20L) {
 		  has_reasoning_now <- nzchar(reasoning_text)
 		  has_content_now <- nzchar(delta_text)
+		  has_raw_now <- nzchar(raw_delta_text)
 		  has_think_tag_now <- grepl("<think>|</think>", raw_delta_text, ignore.case = TRUE, perl = TRUE)
+
+		  event_shape <- tryCatch(
+			summarize_sse_event_shape(event_obj),
+			error = function(e) paste("shape_error=", conditionMessage(e))
+		  )
+
+		  append_stream_debug_line_local(sprintf(
+			"[REASONING DEBUG] event=%d content=%s reasoning=%s raw=%s think_tag=%s raw_chars=%d reasoning_chars=%d model=%s | %s",
+			reasoning_debug_event_count,
+			if (has_content_now) "TRUE" else "FALSE",
+			if (has_reasoning_now) "TRUE" else "FALSE",
+			if (has_raw_now) "TRUE" else "FALSE",
+			if (has_think_tag_now) "TRUE" else "FALSE",
+			nchar(raw_delta_text %||% ""),
+			nchar(reasoning_text %||% ""),
+			selected_model,
+			event_shape
+		  ))
 
 		  if (isTRUE(has_reasoning_now) && !isTRUE(reasoning_debug_seen)) {
 			reasoning_debug_seen <<- TRUE
-			log_info(sprintf(
+			append_stream_debug_line_local(sprintf(
 			  "[REASONING DEBUG] İlk reasoning parçası yakalandı - chars=%d, model=%s",
 			  nchar(reasoning_text),
-			  selected_model
-			))
-		  }
-
-		  if (reasoning_debug_event_count %in% c(1L, 5L, 10L, 20L)) {
-			log_info(sprintf(
-			  "[REASONING DEBUG] event=%d content=%s reasoning=%s think_tag=%s raw_chars=%d model=%s",
-			  reasoning_debug_event_count,
-			  if (has_content_now) "TRUE" else "FALSE",
-			  if (has_reasoning_now) "TRUE" else "FALSE",
-			  if (has_think_tag_now) "TRUE" else "FALSE",
-			  nchar(raw_delta_text %||% ""),
 			  selected_model
 			))
 		  }
@@ -580,8 +741,15 @@ call_local_llm_sse_worker <- function(chat_history,
 
         event_text <- substr(normalized, 1, delimiter_pos - 1)
         remainder <- substr(normalized, delimiter_pos + 2, nchar(normalized))
-        parsed_event <- parse_llm_sse_event(event_text)
-        process_single_event(parsed_event)
+		parsed_event <- parse_llm_sse_event(event_text)
+		if (is.null(parsed_event) && reasoning_debug_event_count < 20L) {
+		  append_stream_debug_line_local(sprintf(
+			"[REASONING DEBUG] parse_null event_text_chars=%d preview=%s",
+			nchar(event_text %||% ""),
+			substr(gsub("[\r\n\t]+", " ", event_text %||% ""), 1, 220)
+		  ))
+		}
+		process_single_event(parsed_event)
 
         normalized <- remainder
       }
