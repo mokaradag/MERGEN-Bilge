@@ -8,7 +8,11 @@ health_status_levels <- c("ok", "warning", "critical", "unknown", "not_configure
 health_severity_rank <- c(ok = 0L, not_configured = 1L, unknown = 2L, warning = 3L, critical = 4L)
 
 health_normalize_status <- function(status) {
-  status <- tolower(trimws(as.character(status %||% "unknown")[1]))
+  status <- as.character(status %||% "unknown")[1]
+  if (is.na(status) || !nzchar(trimws(status))) {
+    status <- "unknown"
+  }
+  status <- tolower(trimws(status))
   aliases <- c(
     healthy = "ok", success = "ok", pass = "ok", passed = "ok",
     warn = "warning", error = "critical", fail = "critical", failed = "critical",
