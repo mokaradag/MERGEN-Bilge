@@ -499,7 +499,16 @@ call_local_llm_sse_worker <- function(chat_history,
 	stream_con <- file(stream_file, open = "ab")
 	on.exit(try(close(stream_con), silent = TRUE), add = TRUE)
 
+	# Üretimde reasoning debug çıktıları kapalıdır.
+	# Geçici teşhis gerektiğinde:
+	# Sys.setenv(MERGEN_REASONING_DEBUG = "TRUE")
+	reasoning_debug_enabled <- isTRUE(as.logical(Sys.getenv("MERGEN_REASONING_DEBUG", "FALSE")))
+
 	append_stream_debug_line_local <- function(message) {
+	  if (!isTRUE(reasoning_debug_enabled)) {
+		return(invisible(NULL))
+	  }
+
 	  debug_text <- enc2utf8(as.character(message %||% "")[1])
 	  if (!nzchar(debug_text)) {
 		return(invisible(NULL))
@@ -663,7 +672,7 @@ call_local_llm_sse_worker <- function(chat_history,
 		
 		reasoning_debug_event_count <<- reasoning_debug_event_count + 1L
 
-		if (reasoning_debug_event_count <= 20L) {
+		if (isTRUE(reasoning_debug_enabled) && reasoning_debug_event_count <= 20L) {
 		  has_reasoning_now <- nzchar(reasoning_text)
 		  has_content_now <- nzchar(delta_text)
 		  has_raw_now <- nzchar(raw_delta_text)
@@ -748,7 +757,9 @@ call_local_llm_sse_worker <- function(chat_history,
         event_text <- substr(normalized, 1, delimiter_pos - 1)
         remainder <- substr(normalized, delimiter_pos + 2, nchar(normalized))
 		parsed_event <- parse_llm_sse_event(event_text)
-		if (is.null(parsed_event) && reasoning_debug_event_count < 20L) {
+		if (isTRUE(reasoning_debug_enabled) &&
+			is.null(parsed_event) &&
+			reasoning_debug_event_count < 20L) {
 		  append_stream_debug_line_local(sprintf(
 			"[REASONING DEBUG] parse_null event_text_chars=%d preview=%s",
 			nchar(event_text %||% ""),
