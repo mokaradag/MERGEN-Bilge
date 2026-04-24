@@ -1,0 +1,385 @@
+# ==============================================================================
+# Dosya Yolu: R/helpers_health_checks.R
+# Açıklama: Sistem Durumu paneli için güvenli, yan etkisiz ve test edilebilir
+#            sağlık kontrol fonksiyonlarını içerir.
+# ==============================================================================
+
+.health_app_start_time <- Sys.time()
+
+health_check_app_boot <- function() {
+  health_result(
+    id = "app.boot",
+    label = "Uygulama Başlangıcı",
+    status = "ok",
+    value = "Çalışıyor",
+    detail = "Shiny süreci sağlık kontrolü üretebiliyor.",
+    duration_ms = 0,
+    remediation = "Başlangıç hatası varsa global.R ve son log kayıtlarını kontrol edin."
+  )
+}
+
+health_check_env_var <- function(name, required = TRUE) {
+  start <- Sys.time()
+  value <- Sys.getenv(name, "")
+  configured <- nzchar(value)
+  status <- if (configured) "ok" else if (required) "critical" else "not_configured"
+  health_result(
+    id = paste0("env.", name),
+    label = name,
+    status = status,
+    value = health_env_display_value(name, value),
+    detail = if (configured) "Ortam değişkeni tanımlı." else "Ortam değişkeni tanımlı değil.",
+    duration_ms = health_ms(start),
+    remediation = if (!configured && required) paste0(".Renviron içinde ", name, " değerini tanımlayın.") else ""
+  )
+}
+
+health_check_env_contract <- function(required = c("LOCAL_LLM_ENDPOINT", "DB_DSN", "AI_KEYS_MASTER"),
+                                      optional = c("DB_DSN_2", "DB_DSN_3", "LOCAL_TTS_ENDPOINT", "LOCAL_STT_ENDPOINT",
+                                                   "IMAGE_GEN_ENDPOINT", "MERGEN_FILES_ROOT", "MERGEN_UPLOADS_DIR",
+                                                   "MERGEN_INDEX_PATH", "MERGEN_MCP_BASE_DIR")) {
+  do.call(rbind, c(
+    lapply(required, health_check_env_var, required = TRUE),
+    lapply(optional, health_check_env_var, required = FALSE)
+  ))
+}
+
+health_check_path_writable <- function(id, label, path, create_if_missing = FALSE, expect_file = FALSE) {
+  health_safe_check(id, label, {
+    start <- Sys.time()
+    path <- as.character(path %||% "")
+    if (!nzchar(path)) {
+      return(health_result(id, label, "not_configured", "Tanımlı değil", "Yol boş.", health_ms(start), remediation = "İlgili ortam değişkenini tanımlayın."))
+    }
+
+    target_dir <- if (expect_file) dirname(path) else path
+    if (!dir.exists(target_dir) && isTRUE(create_if_missing)) {
+      dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    if (!dir.exists(target_dir)) {
+      return(health_result(id, label, "critical", path, "Klasör bulunamadı.", health_ms(start), remediation = "Klasörü oluşturun veya yapılandırma yolunu düzeltin."))
+    }
+
+    probe <- tempfile(pattern = ".health-", tmpdir = target_dir)
+    ok <- tryCatch({
+      writeLines("ok", probe, useBytes = TRUE)
+      file.exists(probe) && unlink(probe, force = TRUE) == 0
+    }, error = function(e) FALSE)
+
+    health_result(
+      id, label,
+      status = if (ok) "ok" else "critical",
+      value = normalizePath(path, winslash = "/", mustWork = FALSE),
+      detail = if (ok) "Yazma testi başarılı." else "Yazma testi başarısız.",
+      duration_ms = health_ms(start),
+      remediation = if (ok) "" else "Windows klasör izinlerini ve servis kullanıcısını kontrol edin."
+    )
+  })
+}
+
+health_check_index_json <- function(path = Sys.getenv("MERGEN_INDEX_PATH", "")) {
+  health_safe_check("storage.index_json", "Index JSON Okuma/Yazma", {
+    start <- Sys.time()
+    if (!nzchar(path %||% "")) {
+      return(health_result("storage.index_json", "Index JSON Okuma/Yazma", "not_configured", "Tanımlı değil", "MERGEN_INDEX_PATH boş.", health_ms(start), remediation = "MERGEN_INDEX_PATH değerini tanımlayın."))
+    }
+
+    parent <- dirname(path)
+    if (!dir.exists(parent)) {
+      return(health_result("storage.index_json", "Index JSON Okuma/Yazma", "critical", path, "Üst klasör bulunamadı.", health_ms(start), remediation = "Index üst klasörünü oluşturun."))
+    }
+
+    readable <- if (file.exists(path)) file.access(path, 4) == 0 else TRUE
+    probe <- tempfile(pattern = ".index-health-", tmpdir = parent, fileext = ".json")
+    writable <- tryCatch({
+      writeLines("{}", probe, useBytes = TRUE)
+      unlink(probe, force = TRUE) == 0
+    }, error = function(e) FALSE)
+
+    status <- if (readable && writable) "ok" else "critical"
+    detail <- paste(
+      if (readable) "Okuma uygun." else "Okuma başarısız.",
+      if (writable) "Yazma uygun." else "Yazma başarısız."
+    )
+    health_result("storage.index_json", "Index JSON Okuma/Yazma", status, path, detail, health_ms(start),
+                  remediation = if (status == "ok") "" else "Index dosyası ve klasör izinlerini kontrol edin.")
+  })
+}
+
+health_check_disk_free <- function(path = getwd(), id = "storage.disk_free", label = "Disk Boş Alan") {
+  health_safe_check(id, label, {
+    start <- Sys.time()
+    path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+    free_bytes <- NA_real_
+    detail <- "Disk bilgisi alınamadı."
+
+    if (.Platform$OS.type == "windows") {
+      drive <- substr(path, 1, 2)
+      cmd <- sprintf('wmic logicaldisk where "DeviceID=\'%s\'" get Size,FreeSpace /format:list', drive)
+      out <- suppressWarnings(system(cmd, intern = TRUE, ignore.stderr = TRUE))
+      free_bytes <- suppressWarnings(as.numeric(sub("FreeSpace=", "", grep("FreeSpace=", out, value = TRUE)[1])))
+      total_bytes <- suppressWarnings(as.numeric(sub("Size=", "", grep("Size=", out, value = TRUE)[1])))
+      if (!is.na(free_bytes) && !is.na(total_bytes)) detail <- paste("Toplam:", health_format_bytes(total_bytes))
+    } else {
+      out <- suppressWarnings(system(sprintf("df -k '%s' 2>/dev/null | tail -1", path), intern = TRUE))
+      parts <- unlist(strsplit(trimws(out[1] %||% ""), "\\s+"))
+      if (length(parts) >= 4) {
+        free_bytes <- suppressWarnings(as.numeric(parts[4]) * 1024)
+        total_bytes <- suppressWarnings(as.numeric(parts[2]) * 1024)
+        detail <- paste("Toplam:", health_format_bytes(total_bytes))
+      }
+    }
+
+    status <- if (is.na(free_bytes)) "unknown" else if (free_bytes < 1024^3) "warning" else "ok"
+    health_result(id, label, status, health_format_bytes(free_bytes), detail, health_ms(start),
+                  remediation = if (status == "warning") "Diskte en az birkaç GB boş alan bırakın." else "")
+  })
+}
+
+health_check_db_connection <- function(target = "primary", env_name = "DB_DSN", label = "DB Primary") {
+  health_safe_check(paste0("db.", target), label, {
+    start <- Sys.time()
+    dsn <- Sys.getenv(env_name, "")
+    if (!nzchar(dsn)) {
+      return(health_result(paste0("db.", target), label, "not_configured", env_name, "DSN tanımlı değil.", health_ms(start), remediation = paste0(env_name, " değerini .Renviron içinde tanımlayın.")))
+    }
+    if (!exists("get_connection", mode = "function") || !exists("release_connection", mode = "function")) {
+      return(health_result(paste0("db.", target), label, "unknown", "Bağlantı yardımcısı yok", "get_connection/release_connection bulunamadı.", health_ms(start), remediation = "helpers_database.R yükleme sırasını kontrol edin."))
+    }
+    conn_info <- NULL
+    tryCatch({
+      conn_info <- get_connection(target)
+      DBI::dbGetQuery(conn_info$conn, "SELECT 1 AS ok")
+      health_result(paste0("db.", target), label, "ok", paste0(env_name, " configured"), "SELECT 1 başarılı.", health_ms(start), remediation = "")
+    }, error = function(e) {
+      health_result(paste0("db.", target), label, "critical", paste0(env_name, " configured"), conditionMessage(e), health_ms(start), remediation = "DSN, ODBC Driver 17 ve SQL Server erişimini kontrol edin.")
+    }, finally = {
+      try(release_connection(conn_info), silent = TRUE)
+    })
+  })
+}
+
+health_check_db_schema <- function() {
+  health_safe_check("db.schema", "DB Şema Hazırlığı", {
+    start <- Sys.time()
+    if (!nzchar(Sys.getenv("DB_DSN", "")) || !exists("get_connection", mode = "function")) {
+      return(health_result("db.schema", "DB Şema Hazırlığı", "unknown", "Kontrol atlandı", "Ana veritabanı bağlantısı hazır değil.", health_ms(start), remediation = "Önce DB_DSN bağlantısını doğrulayın."))
+    }
+    conn_info <- NULL
+    tryCatch({
+      conn_info <- get_connection("primary")
+      required <- data.frame(
+        table = c("MB_Users", "MB_Chats", "MB_Messages", "MB_Messages", "MB_Users", "MB_Chats"),
+        column = c(NA, NA, NA, "ReasoningContent", "UserID", "IsDeleted"),
+        stringsAsFactors = FALSE
+      )
+      missing <- character()
+      for (i in seq_len(nrow(required))) {
+        tbl <- required$table[i]
+        col <- required$column[i]
+        if (is.na(col)) {
+          q <- "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?"
+          n <- DBI::dbGetQuery(conn_info$conn, q, params = list(tbl))$n[1]
+          if (is.na(n) || n < 1) missing <- c(missing, tbl)
+        } else {
+          q <- "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?"
+          n <- DBI::dbGetQuery(conn_info$conn, q, params = list(tbl, col))$n[1]
+          if (is.na(n) || n < 1) missing <- c(missing, paste0(tbl, ".", col))
+        }
+      }
+      status <- if (length(missing)) "warning" else "ok"
+      health_result("db.schema", "DB Şema Hazırlığı", status,
+                    if (length(missing)) paste(length(missing), "eksik") else "Hazır",
+                    if (length(missing)) paste("Eksik:", paste(missing, collapse = ", ")) else "Kritik tablo ve sütunlar mevcut.",
+                    health_ms(start), remediation = if (length(missing)) "DB migration/DDL adımlarını kontrol edin." else "")
+    }, error = function(e) {
+      health_result("db.schema", "DB Şema Hazırlığı", "unknown", "Kontrol başarısız", conditionMessage(e), health_ms(start), remediation = "INFORMATION_SCHEMA erişimini ve kullanıcı yetkisini kontrol edin.")
+    }, finally = {
+      try(release_connection(conn_info), silent = TRUE)
+    })
+  })
+}
+
+health_derive_models_url <- function(endpoint) {
+  endpoint <- sub("\\?.*$", "", as.character(endpoint %||% ""))
+  endpoint <- sub("/+$", "", endpoint)
+  if (!nzchar(endpoint)) return("")
+  if (grepl("/v1/", endpoint, fixed = TRUE)) sub("(/v1/).*", "\\1models", endpoint) else paste0(endpoint, "/v1/models")
+}
+
+health_is_public_url <- function(url) {
+  url <- tolower(as.character(url %||% ""))
+  if (!grepl("^https?://", url)) return(FALSE)
+  host <- sub("^https?://([^/:]+).*$", "\\1", url)
+  !(host %in% c("localhost", "127.0.0.1", "::1") || grepl("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.)", host))
+}
+
+health_check_http_endpoint <- function(id, label, endpoint, configured_required = FALSE, timeout_sec = 2, expect_json = FALSE) {
+  health_safe_check(id, label, {
+    start <- Sys.time()
+    endpoint <- as.character(endpoint %||% "")
+    if (!nzchar(endpoint)) {
+      status <- if (configured_required) "critical" else "not_configured"
+      return(health_result(id, label, status, "Tanımlı değil", "Uç nokta yapılandırılmamış.", health_ms(start), remediation = "Gerekliyse ilgili LOCAL_*_ENDPOINT değerini tanımlayın."))
+    }
+    if (health_is_public_url(endpoint)) {
+      return(health_result(id, label, "warning", "Atlandı", "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.", health_ms(start), remediation = "On-prem yerel uç nokta kullanın."))
+    }
+    if (!requireNamespace("httr", quietly = TRUE)) {
+      return(health_result(id, label, "unknown", endpoint, "httr paketi yok.", health_ms(start), remediation = "httr paket kurulumunu kontrol edin."))
+    }
+    res <- try(httr::GET(endpoint, httr::timeout(timeout_sec)), silent = TRUE)
+    if (inherits(res, "try-error")) {
+      return(health_result(id, label, "warning", endpoint, "Uç noktaya erişilemedi veya timeout oluştu.", health_ms(start), remediation = "Servisin çalıştığını ve VM firewall ayarlarını kontrol edin."))
+    }
+    sc <- httr::status_code(res)
+    status <- if (sc >= 200 && sc < 500) "ok" else "warning"
+    health_result(id, label, status, paste("HTTP", sc), "Hafif erişim kontrolü tamamlandı.", health_ms(start), remediation = if (status == "ok") "" else "Servis loglarını kontrol edin.")
+  })
+}
+
+health_check_llm_endpoint <- function() {
+  endpoint <- ""
+  model <- ""
+  if (exists("api_config", inherits = TRUE)) {
+    model <- as.character(api_config$local_models[1] %||% "")
+    endpoint <- if (exists("resolve_local_llm_endpoint", mode = "function")) resolve_local_llm_endpoint(model) else api_config$local_llm_endpoint %||% ""
+  } else {
+    endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
+  }
+  health_check_http_endpoint("llm.endpoint", "LLM Endpoint", health_derive_models_url(endpoint), configured_required = TRUE, timeout_sec = 2)
+}
+
+health_check_reasoning_readiness <- function() {
+  health_safe_check("llm.reasoning", "Reasoning Model Hazırlığı", {
+    start <- Sys.time()
+    if (!exists("apply_model_request_overrides", mode = "function")) {
+      return(health_result("llm.reasoning", "Reasoning Model Hazırlığı", "critical", "Fonksiyon yok", "apply_model_request_overrides bulunamadı.", health_ms(start), remediation = "config_api.R yükleme sırasını kontrol edin."))
+    }
+    cfg <- if (exists("api_config", inherits = TRUE)) api_config else list(local_model_capabilities = list())
+    caps <- cfg$local_model_capabilities %||% list()
+    thinking <- names(caps)[vapply(caps, function(x) isTRUE(x$thinking), logical(1))]
+    missing_override <- thinking[vapply(thinking, function(m) {
+      x <- caps[[m]]$request_overrides$chat_template_kwargs$enable_thinking
+      is.null(x) || !isTRUE(x)
+    }, logical(1))]
+    status <- if (length(thinking) == 0) "not_configured" else if (length(missing_override)) "warning" else "ok"
+    detail <- if (length(thinking) == 0) "Thinking model tanımı yok." else if (length(missing_override)) paste("enable_thinking eksik olabilir:", paste(missing_override, collapse = ", ")) else "Thinking modellerde request_overrides uygun."
+    health_result("llm.reasoning", "Reasoning Model Hazırlığı", status, paste(length(thinking), "thinking model"), detail, health_ms(start), remediation = if (status == "warning") "İlgili model capability request_overrides alanını kontrol edin." else "")
+  })
+}
+
+health_check_runtime_info <- function(perf_tracker = NULL) {
+  start <- Sys.time()
+  uptime <- difftime(Sys.time(), .health_app_start_time, units = "secs")
+  session_count <- tryCatch({
+    if (!is.null(perf_tracker) && is.function(perf_tracker$get_active_session_count)) perf_tracker$get_active_session_count() else NA_integer_
+  }, error = function(e) NA_integer_)
+  mem <- tryCatch({
+    if (requireNamespace("pryr", quietly = TRUE)) health_format_bytes(as.numeric(pryr::mem_used())) else "N/A"
+  }, error = function(e) "N/A")
+  do.call(rbind, list(
+    health_result("runtime.uptime", "Uygulama Uptime", "ok", paste(round(as.numeric(uptime) / 60, 1), "dk"), "Süreç başlangıcından beri geçen süre.", health_ms(start)),
+    health_result("runtime.r_version", "R Sürümü", "ok", paste(R.version$major, R.version$minor, sep = "."), R.version$platform, health_ms(start)),
+    health_result("runtime.memory", "R Bellek Kullanımı", if (identical(mem, "N/A")) "unknown" else "ok", mem, "Yaklaşık R bellek kullanımı.", health_ms(start)),
+    health_result("runtime.sessions", "Aktif Oturum", if (is.na(session_count)) "unknown" else "ok", ifelse(is.na(session_count), "N/A", session_count), "Performans izleyiciden alınır.", health_ms(start))
+  ))
+}
+
+health_check_worker_info <- function() {
+  health_safe_check("runtime.workers", "İşçi Havuzu", {
+    start <- Sys.time()
+    if (!exists("get_worker_monitor_info", mode = "function")) {
+      return(health_result("runtime.workers", "İşçi Havuzu", "unknown", "N/A", "get_worker_monitor_info bulunamadı.", health_ms(start), remediation = "helpers_worker_monitor.R yükleme sırasını kontrol edin."))
+    }
+    info <- get_worker_monitor_info()
+    total <- info$total_workers %||% info$total %||% NA
+    active <- info$active_workers %||% info$active %||% NA
+    queued <- info$queued_jobs %||% info$queued %||% NA
+    health_result("runtime.workers", "İşçi Havuzu", "ok", paste0("Toplam: ", total, " / Aktif: ", active, " / Kuyruk: ", queued), "Worker monitor bilgisi alındı.", health_ms(start))
+  })
+}
+
+health_check_package_sanity <- function(pkgs = c("shiny", "DBI", "odbc", "pool", "jsonlite", "httr", "future", "promises", "DT")) {
+  health_safe_check("runtime.packages", "Kritik Paketler", {
+    start <- Sys.time()
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    health_result("runtime.packages", "Kritik Paketler", if (length(missing)) "critical" else "ok",
+                  if (length(missing)) paste(length(missing), "eksik") else "Hazır",
+                  if (length(missing)) paste("Eksik:", paste(missing, collapse = ", ")) else "Kritik paketler yüklenebilir.",
+                  health_ms(start), remediation = if (length(missing)) "Eksik paketleri offline paket deposundan kurun." else "")
+  })
+}
+
+health_check_windows_info <- function() {
+  start <- Sys.time()
+  user <- Sys.info()[["user"]] %||% Sys.getenv("USERNAME", Sys.getenv("USER", ""))
+  do.call(rbind, list(
+    health_result("runtime.os", "İşletim Sistemi", "ok", Sys.info()[["sysname"]] %||% .Platform$OS.type, paste(Sys.info()[["release"]] %||% "", Sys.info()[["version"]] %||% ""), health_ms(start)),
+    health_result("runtime.hostname", "Hostname", "ok", Sys.info()[["nodename"]] %||% Sys.getenv("COMPUTERNAME", ""), "R sürecinin çalıştığı makine.", health_ms(start)),
+    health_result("runtime.process_user", "R Süreç Kullanıcısı", if (nzchar(user)) "ok" else "unknown", user, "Hassas olmayan süreç kullanıcı adı.", health_ms(start)),
+    health_result("runtime.clock", "Sunucu Saati", "ok", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), paste("TZ:", Sys.timezone()), health_ms(start))
+  ))
+}
+
+health_check_sso_mode <- function() {
+  val <- Sys.getenv("SSO_ENABLED", "FALSE")
+  enabled <- isTRUE(as.logical(val))
+  health_result("security.sso", "SSO Modu", "ok", if (enabled) "SSO açık" else "Lokal/non-SSO", paste("SSO_ENABLED=", val), 0)
+}
+
+health_check_git_version <- function() {
+  start <- Sys.time()
+  version <- getOption("mergen.version", Sys.getenv("MERGEN_APP_VERSION", "N/A"))
+  commit <- Sys.getenv("GIT_COMMIT", Sys.getenv("MERGEN_GIT_COMMIT", "N/A"))
+  health_result("app.version", "Sürüm / Git Commit", "ok", paste("Sürüm:", version), paste("Commit:", commit), health_ms(start))
+}
+
+health_check_bilge_yolac <- function() {
+  health_safe_check("runtime.bilge_yolac", "Bilge Yolaç CLI/Workdir", {
+    start <- Sys.time()
+    cli <- Sys.getenv("CLAUDE_CODE_CLI_PATH", Sys.getenv("BILGE_YOLAC_CLI_PATH", ""))
+    wd <- Sys.getenv("CLAUDE_CODE_DEFAULT_WORKDIR", Sys.getenv("BILGE_YOLAC_DEFAULT_WORKDIR", ""))
+    cli_ok <- !nzchar(cli) || file.exists(cli)
+    wd_ok <- !nzchar(wd) || (dir.exists(wd) && file.access(wd, 2) == 0)
+    status <- if (!nzchar(cli) && !nzchar(wd)) "not_configured" else if (cli_ok && wd_ok) "ok" else "warning"
+    health_result("runtime.bilge_yolac", "Bilge Yolaç CLI/Workdir", status,
+                  if (status == "not_configured") "Tanımlı değil" else "Yapılandırılmış",
+                  paste("CLI:", if (nzchar(cli)) cli else "—", "| Workdir:", if (nzchar(wd)) wd else "—"),
+                  health_ms(start), remediation = if (status == "warning") "CLI yolu ve çalışma dizini izinlerini kontrol edin." else "")
+  })
+}
+
+health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
+  checks <- list(
+    health_check_app_boot(),
+    health_check_git_version(),
+    health_check_sso_mode(),
+    health_check_env_contract(),
+    health_check_db_connection("primary", "DB_DSN", "DB Primary"),
+    health_check_db_connection("secondary", "DB_DSN_2", "DB Secondary"),
+    health_check_db_connection("tertiary", "DB_DSN_3", "DB Tertiary"),
+    health_check_db_schema(),
+    health_check_llm_endpoint(),
+    health_check_reasoning_readiness(),
+    health_check_http_endpoint("tts.endpoint", "TTS Endpoint", Sys.getenv("LOCAL_TTS_ENDPOINT", ""), FALSE, 2),
+    health_check_http_endpoint("stt.endpoint", "STT Endpoint", Sys.getenv("LOCAL_STT_ENDPOINT", ""), FALSE, 2),
+    health_check_http_endpoint("image.endpoint", "Görsel Üretim Endpoint", Sys.getenv("IMAGE_GEN_ENDPOINT", Sys.getenv("LOCAL_IMAGE_ENDPOINT", "")), FALSE, 2),
+    health_check_path_writable("storage.files_root", "MERGEN_FILES_ROOT", Sys.getenv("MERGEN_FILES_ROOT", getwd()), FALSE),
+    health_check_path_writable("storage.uploads_root", "MERGEN_UPLOADS_DIR", Sys.getenv("MERGEN_UPLOADS_DIR", file.path(getwd(), "mergen_uploads")), TRUE),
+    health_check_path_writable("storage.log_dir", "Log Dizini", Sys.getenv("MERGEN_LOG_DIR", file.path(getwd(), "logs")), TRUE),
+    health_check_path_writable("storage.mcp_base", "MERGEN_MCP_BASE_DIR", Sys.getenv("MERGEN_MCP_BASE_DIR", ""), FALSE),
+    health_check_index_json(),
+    health_check_disk_free(getwd(), "storage.disk_free", "Uygulama Diski"),
+    health_check_disk_free(Sys.getenv("MERGEN_UPLOADS_DIR", getwd()), "storage.upload_disk_free", "Upload Root Boş Alan"),
+    health_check_worker_info(),
+    health_check_runtime_info(perf_tracker),
+    health_check_package_sanity(),
+    health_check_windows_info(),
+    health_check_bilge_yolac()
+  )
+  out <- do.call(rbind, checks)
+  rownames(out) <- NULL
+  out
+}
