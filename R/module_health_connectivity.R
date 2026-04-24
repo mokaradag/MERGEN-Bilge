@@ -10,11 +10,16 @@ health_connectivity_ui <- function(checks) {
   tagList(
     div(
       class = "health-metrics-grid",
-      health_metric_tile("DB Primary", subset$status[match("db.primary", subset$id)] %||% "unknown", "database", subset$status[match("db.primary", subset$id)] %||% "unknown"),
-      health_metric_tile("DB Secondary", subset$status[match("db.secondary", subset$id)] %||% "unknown", "database", subset$status[match("db.secondary", subset$id)] %||% "unknown"),
-      health_metric_tile("DB Tertiary", subset$status[match("db.tertiary", subset$id)] %||% "unknown", "database", subset$status[match("db.tertiary", subset$id)] %||% "unknown"),
-      health_metric_tile("LLM", subset$status[match("llm.endpoint", subset$id)] %||% "unknown", "robot", subset$status[match("llm.endpoint", subset$id)] %||% "unknown")
+      health_metric_tile("DB Primary", subset$status[match("db.primary", subset$id)] %||% "unknown", "database", subset$status[match("db.primary", subset$id)] %||% "unknown", "Ana SQL Server DSN bağlantısı ve gecikme kontrolü"),
+      health_metric_tile("DB Secondary", subset$status[match("db.secondary", subset$id)] %||% "unknown", "database", subset$status[match("db.secondary", subset$id)] %||% "unknown", "İkincil DSN yapılandırılmışsa hafif bağlantı kontrolü"),
+      health_metric_tile("DB Tertiary", subset$status[match("db.tertiary", subset$id)] %||% "unknown", "database", subset$status[match("db.tertiary", subset$id)] %||% "unknown", "Üçüncül DSN yapılandırılmışsa hafif bağlantı kontrolü"),
+      health_metric_tile("LLM", subset$status[match("llm.endpoint", subset$id)] %||% "unknown", "robot", subset$status[match("llm.endpoint", subset$id)] %||% "unknown", "Yerel OpenAI uyumlu LLM model listesi erişim kontrolü")
     ),
-    health_section_card("Bağlantı Kontrolleri", "plug", health_checks_table(subset))
+    health_section_card(
+      "Bağlantı Kontrolleri",
+      "plug",
+      health_checks_table(subset, max_height = 420),
+      tooltip = "DB, LLM ve opsiyonel TTS/STT/Görsel servislerinin kısa timeout ile yapılan güvenli kontrolleri."
+    )
   )
 }
