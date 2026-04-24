@@ -95,6 +95,7 @@ healthServer <- function(id, perf_tracker) {
         id = ns("last_update_time"),
         time = health_last_update()
       ))
+      session$sendCustomMessage("initHealthTooltips", list())
     }, once = TRUE)
 
     observe({
@@ -133,6 +134,7 @@ healthServer <- function(id, perf_tracker) {
       checks <- checks_data()
       tab <- input$health_tabs %||% "overview"
       admin_init_tooltips(session)
+      session$sendCustomMessage("initHealthTooltips", list())
 
       switch(tab,
         overview = health_overview_ui(checks, health_last_update()),
@@ -153,6 +155,7 @@ healthServer <- function(id, perf_tracker) {
         id = ns("last_update_time"),
         time = health_last_update()
       ))
+      session$sendCustomMessage("initHealthTooltips", list())
       showToast(session, "Sistem durumu güncellendi", "success")
     })
   })
