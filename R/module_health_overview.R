@@ -16,7 +16,9 @@ health_overview_ui <- function(checks, last_update) {
   tagList(
     div(
       class = paste("health-hero", health_status_class(overall)),
-      div(class = "health-score-ring", span(score), small("/100")),
+      `data-toggle` = "tooltip",
+      title = "Genel skor; kritik ve uyarı seviyesindeki kontrollerin ağırlıklı özetidir.",
+      div(class = "health-score-ring", span(score), tags$small("/100")),
       div(class = "health-hero-copy",
           h2("Sistem Durumu"),
           p("MERGEN Bilge on-prem çalışma ortamı için özet sağlık görünümü."),
@@ -28,11 +30,11 @@ health_overview_ui <- function(checks, last_update) {
     ),
     div(
       class = "health-metrics-grid",
-      health_metric_tile("Kritik", critical_count, "times-circle", if (critical_count > 0) "critical" else "ok"),
-      health_metric_tile("Uyarı", warning_count, "exclamation-triangle", if (warning_count > 0) "warning" else "ok"),
-      health_metric_tile("Bilinmeyen/Tanımsız", unknown_count, "question-circle", if (unknown_count > 0) "unknown" else "ok"),
-      health_metric_tile("Uptime", if (nrow(uptime)) uptime$value[1] else "N/A", "stopwatch", "ok"),
-      health_metric_tile("Sürüm", if (nrow(version)) version$value[1] else "N/A", "tag", "ok")
+      health_metric_tile("Kritik", critical_count, "times-circle", if (critical_count > 0) "critical" else "ok", "Acil müdahale gerektiren kontroller"),
+      health_metric_tile("Uyarı", warning_count, "exclamation-triangle", if (warning_count > 0) "warning" else "ok", "Yakından izlenmesi gereken kontroller"),
+      health_metric_tile("Bilinmeyen/Tanımsız", unknown_count, "question-circle", if (unknown_count > 0) "unknown" else "ok", "Çalıştırılamayan veya opsiyonel kontroller"),
+      health_metric_tile("Çalışma Süresi", if (nrow(uptime)) uptime$value[1] else "N/A", "stopwatch", "ok", "Uygulama sürecinin açık kalma süresi"),
+      health_metric_tile("Sürüm", if (nrow(version)) version$value[1] else "N/A", "tag", "ok", "Uygulama sürümü ve commit bilgisi")
     ),
     fluidRow(
       column(
@@ -40,7 +42,8 @@ health_overview_ui <- function(checks, last_update) {
         health_section_card(
           "Kritik Kontroller",
           "shield-alt",
-          health_checks_table(checks[checks$status %in% c("critical", "warning"), , drop = FALSE])
+          health_checks_table(checks[checks$status %in% c("critical", "warning"), , drop = FALSE], max_height = 320),
+          tooltip = "Kritik ve uyarı seviyesindeki kontroller burada özetlenir."
         )
       ),
       column(
@@ -53,7 +56,8 @@ health_overview_ui <- function(checks, last_update) {
               div(strong("LLM Endpoint:"), health_status_pill(checks$status[match("llm.endpoint", checks$id)] %||% "unknown")),
               div(strong("Upload Root:"), health_status_pill(checks$status[match("storage.uploads_root", checks$id)] %||% "unknown")),
               div(strong("Index JSON:"), health_status_pill(checks$status[match("storage.index_json", checks$id)] %||% "unknown")),
-              div(strong("Worker:"), health_status_pill(checks$status[match("runtime.workers", checks$id)] %||% "unknown")))
+              div(strong("Worker:"), health_status_pill(checks$status[match("runtime.workers", checks$id)] %||% "unknown"))),
+          tooltip = "Yöneticinin ilk bakışta görmesi gereken temel sağlık sinyalleri."
         )
       )
     )
