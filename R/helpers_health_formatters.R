@@ -12,6 +12,7 @@ health_normalize_status <- function(status) {
   if (is.na(status) || !nzchar(trimws(status))) {
     status <- "unknown"
   }
+
   status <- tolower(trimws(status))
   aliases <- c(
     healthy = "ok", success = "ok", pass = "ok", passed = "ok",
@@ -19,7 +20,13 @@ health_normalize_status <- function(status) {
     missing = "critical", unconfigured = "not_configured", disabled = "not_configured",
     na = "unknown", unavailable = "unknown"
   )
-  status <- aliases[[status]] %||% status
+
+  # R'de named vector üzerinde [["olmayan_isim"]] hata fırlatır.
+  # Bu nedenle önce isim varlığını kontrol ederiz; bilinmeyen değerler unknown'a düşer.
+  if (status %in% names(aliases)) {
+    status <- unname(aliases[status])
+  }
+
   if (!status %in% health_status_levels) "unknown" else status
 }
 
@@ -48,7 +55,8 @@ health_status_class <- function(status) {
 }
 
 health_status_severity <- function(status) {
-  unname(health_severity_rank[[health_normalize_status(status)]] %||% health_severity_rank[["unknown"]])
+  normalized <- health_normalize_status(status)
+  unname(health_severity_rank[normalized])
 }
 
 health_escape <- function(x) {
@@ -128,7 +136,8 @@ health_safe_check <- function(id, label, expr, remediation = "Kontrol sırasınd
 health_overall_status <- function(checks) {
   if (is.null(checks) || !nrow(checks)) return("unknown")
   worst <- max(checks$severity %||% 2L, na.rm = TRUE)
-  names(health_severity_rank)[match(worst, health_severity_rank)] %||% "unknown"
+  matched <- names(health_severity_rank)[match(worst, health_severity_rank)]
+  if (length(matched) == 0 || is.na(matched[1]) || !nzchar(matched[1])) "unknown" else matched[1]
 }
 
 health_score <- function(checks) {
