@@ -16,6 +16,15 @@ if (!file.exists(file.path(repo_root, "app.R")) ||
 }
 
 Sys.setenv(TZ = "UTC")
+
+# Test koşumu hiçbir durumda Shiny uygulamasını veya paralel worker cluster'ını
+# başlatmamalıdır. Bu bayraklar helper_bootstrap.R'de de var; burada tekrar
+# edilmesi test giriş noktasını kendi başına güvenli yapar.
+Sys.setenv(
+  MERGEN_RUN_APP = "false",
+  MERGEN_DISABLE_FUTURES = "true"
+)
+
 testthat::local_edition(3)
 
 results <- testthat::test_dir(

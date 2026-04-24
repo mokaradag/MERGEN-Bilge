@@ -31,9 +31,29 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
       return(.FILE_INDEX_CACHE[[key]])
     }
     log_info("[INDEX] Taranıyor (TTL {FILE_INDEX_TTL_MIN}dk): {base_path}")
-    # Yalnızca yaygın belge türleri
-    all_files <- list.files(base_path, pattern = pattern, full.names = TRUE,
-                            recursive = TRUE, include.dirs = FALSE, ignore.case = TRUE)
+
+    # Yalnızca yaygın belge türleri.
+    # Windows VM / UNC klasörlerinde geçici erişim hataları tüm uygulamayı
+    # düşürmemeli; indeks boş döner ve sonraki TTL döngüsünde tekrar denenir.
+    all_files <- tryCatch(
+      list.files(
+        base_path,
+        pattern = pattern,
+        full.names = TRUE,
+        recursive = TRUE,
+        include.dirs = FALSE,
+        ignore.case = TRUE
+      ),
+      error = function(e) {
+        log_warn("[INDEX] Klasör taraması başarısız: {base_path} | {conditionMessage(e)}")
+        character(0)
+      }
+    )
+
+    all_files <- enc2utf8(as.character(all_files))
+    all_files <- gsub("\\", "/", all_files, fixed = TRUE)
+    all_files <- sort(unique(all_files[nzchar(all_files)]))
+
     # basename -> tam yol listesi (aynı ad birden fazlaysa liste tut)
     map <- split(all_files, tolower(basename(all_files)))
     .FILE_INDEX_CACHE[[key]] <- list(ts = now, map = map)

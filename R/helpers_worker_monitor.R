@@ -18,13 +18,44 @@ init_worker_monitor <- function() {
   get(".mergen_worker_monitor", envir = .GlobalEnv)
 }
 
-# Tekil görev kimliği üret
+# Tekil görev sıra numarası üretir.
+# Not: Bellek içi sayaç yalnızca bu R süreci içindir; PID + zaman + random parça
+# ile birlikte kullanıldığında görev kimliği çakışma ihtimali pratikte sıfıra iner.
+.next_worker_task_sequence <- local({
+  counter <- 0L
+
+  function() {
+    counter <<- counter + 1L
+    if (counter >= .Machine$integer.max) {
+      counter <<- 1L
+    }
+    counter
+  }
+})
+
+# Tekil görev kimliği üret.
+# Üretim VM'inde aynı milisaniyede çok sayıda future işi oluştuğunda bile
+# sessiz çakışma/overwrite riskini azaltır.
 create_worker_task_id <- function(task_type = "generic") {
+  raw_type <- as.character(task_type %||% "generic")[1]
+  raw_type <- enc2utf8(raw_type)
+
+  # Görev tipini log/dosya/HTML açısından güvenli ASCII etikete indir.
+  safe_type <- iconv(raw_type, from = "", to = "ASCII//TRANSLIT", sub = "")
+  safe_type <- gsub("[^A-Za-z0-9_.-]+", "_", safe_type, perl = TRUE)
+  safe_type <- gsub("^_+|_+$", "", safe_type, perl = TRUE)
+  if (!nzchar(safe_type)) {
+    safe_type <- "generic"
+  }
+
+  random_part <- paste(sample(c(0:9, letters), 8, replace = TRUE), collapse = "")
+
   paste0(
-    task_type, "_",
-    format(Sys.time(), "%Y%m%d%H%M%OS3"),
-    "_",
-    sample(1000:9999, 1)
+    safe_type, "_",
+    format(Sys.time(), "%Y%m%d%H%M%OS6"),
+    "_pid", Sys.getpid(),
+    "_seq", .next_worker_task_sequence(),
+    "_", random_part
   )
 }
 
@@ -34,6 +65,13 @@ register_worker_task <- function(task_id,
                                  session_token = NULL,
                                  meta = list()) {
   monitor_env <- init_worker_monitor()
+
+  if (exists(task_id, envir = monitor_env$tasks, inherits = FALSE)) {
+    stop(
+      sprintf("Worker görev kimliği zaten kayıtlı: %s", task_id),
+      call. = FALSE
+    )
+  }
 
   monitor_env$tasks[[task_id]] <- list(
     task_id = task_id,
