@@ -4,51 +4,82 @@
 #            yardımcılarını sekmeli yönetici paneli olarak koordine eder.
 # ==============================================================================
 
+health_source_optional <- function(path) {
+  if (!file.exists(path)) {
+    return(invisible(FALSE))
+  }
+
+  if (exists("safe_source", mode = "function")) {
+    safe_source(path, encoding = "UTF-8")
+  } else {
+    source(path, encoding = "UTF-8", local = globalenv())
+  }
+
+  invisible(TRUE)
+}
+
+# global.R kaynak sırası güncel değilse bile modül kendi bağımlılıklarını güvenli yükler.
+if (!exists("health_collect_checks", mode = "function") ||
+    !exists("health_status_pill", mode = "function")) {
+  health_source_optional("R/helpers_health_formatters.R")
+  health_source_optional("R/helpers_health_checks.R")
+}
+
+# Sekme yardımcıları R/module_health.R içinde büyük HTML blokları oluşmasını engeller.
+health_source_optional("R/module_health_overview.R")
+health_source_optional("R/module_health_connectivity.R")
+health_source_optional("R/module_health_storage.R")
+health_source_optional("R/module_health_runtime.R")
+health_source_optional("R/module_health_security.R")
+health_source_optional("R/module_health_diagnostics.R")
+
 healthUI <- function(id) {
   ns <- NS(id)
 
-  admin_page_layout(
-    ns = ns,
-    page_title = "Sistem Durumu",
-    page_icon = "heartbeat",
-    refresh_btn_id = "refresh_health",
-    last_update_id = "last_update_time",
-    tabs_id = "health_tabs",
-    content_output_id = "health_tab_content",
-    tab_panels = list(
-      tabPanel(
-        title = tags$span(title = "Genel sistem sağlık özeti", tagList(icon("tachometer-alt"), " Genel Bakış")),
-        value = "overview"
-      ),
-      tabPanel(
-        title = tags$span(title = "DB ve servis bağlantıları", tagList(icon("plug"), " Bağlantılar")),
-        value = "connectivity"
-      ),
-      tabPanel(
-        title = tags$span(title = "Dosya sistemi ve disk kontrolleri", tagList(icon("folder-open"), " Depolama")),
-        value = "storage"
-      ),
-      tabPanel(
-        title = tags$span(title = "Worker, bellek ve süreç bilgileri", tagList(icon("server"), " Çalışma Zamanı")),
-        value = "runtime"
-      ),
-      tabPanel(
-        title = tags$span(title = "SSO, ortam değişkenleri ve şema", tagList(icon("shield-alt"), " Güvenlik & Yapılandırma")),
-        value = "security"
-      ),
-      tabPanel(
-        title = tags$span(title = "Detaylı sağlık kayıtları", tagList(icon("clipboard-list"), " Tanılama")),
-        value = "diagnostics"
+  tagList(
+    tags$head(
+      tags$link(rel = "stylesheet", type = "text/css", href = "css/health_dashboard.css"),
+      tags$script(src = "js/health_dashboard.js")
+    ),
+    div(
+      class = "health-dashboard-container",
+      admin_page_layout(
+        ns = ns,
+        page_title = "Sistem Durumu",
+        page_icon = "heartbeat",
+        refresh_btn_id = "refresh_health",
+        last_update_id = "last_update_time",
+        tabs_id = "health_tabs",
+        content_output_id = "health_tab_content",
+        tab_panels = list(
+          tabPanel(
+            title = tags$span(title = "Genel sistem sağlık özeti", tagList(icon("tachometer-alt"), " Genel Bakış")),
+            value = "overview"
+          ),
+          tabPanel(
+            title = tags$span(title = "DB ve servis bağlantıları", tagList(icon("plug"), " Bağlantılar")),
+            value = "connectivity"
+          ),
+          tabPanel(
+            title = tags$span(title = "Dosya sistemi ve disk kontrolleri", tagList(icon("folder-open"), " Depolama")),
+            value = "storage"
+          ),
+          tabPanel(
+            title = tags$span(title = "Worker, bellek ve süreç bilgileri", tagList(icon("server"), " Çalışma Zamanı")),
+            value = "runtime"
+          ),
+          tabPanel(
+            title = tags$span(title = "SSO, ortam değişkenleri ve şema", tagList(icon("shield-alt"), " Güvenlik & Yapılandırma")),
+            value = "security"
+          ),
+          tabPanel(
+            title = tags$span(title = "Detaylı sağlık kayıtları", tagList(icon("clipboard-list"), " Tanılama")),
+            value = "diagnostics"
+          )
+        )
       )
     )
-  ) %>%
-    tagAppendChildren(
-      tags$head(
-        tags$link(rel = "stylesheet", type = "text/css", href = "css/health_dashboard.css"),
-        tags$script(src = "js/health_dashboard.js")
-      )
-    ) %>%
-    tagAppendAttributes(class = "health-dashboard-container")
+  )
 }
 
 healthServer <- function(id, perf_tracker) {
