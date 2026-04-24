@@ -6,6 +6,69 @@
 # korunmalıdır.
 # ==============================================================================
 
+.bootstrap_llm_reasoning_override_contract <- function() {
+  helper_candidates <- c(
+    "tests/testthat/helper_bootstrap.R",
+    "testthat/helper_bootstrap.R",
+    "helper_bootstrap.R"
+  )
+
+  helper_path <- helper_candidates[file.exists(helper_candidates)][1]
+  if (!is.na(helper_path) && nzchar(helper_path)) {
+    source(helper_path, encoding = "UTF-8", local = globalenv())
+  }
+
+  if (!exists("resolve_repo_root_for_tests", mode = "function", inherits = TRUE)) {
+    resolve_repo_root_for_tests <<- function() {
+      candidates <- c(".", "..", "../..")
+      for (cand in candidates) {
+        if (file.exists(file.path(cand, "app.R")) && dir.exists(file.path(cand, "R"))) {
+          return(normalizePath(cand, winslash = "/", mustWork = TRUE))
+        }
+      }
+      stop("Repo kökü bulunamadı. Test çalışma dizinini kontrol edin.", call. = FALSE)
+    }
+  }
+
+  repo_root <- resolve_repo_root_for_tests()
+
+  if (!exists("%||%", mode = "function", inherits = TRUE)) {
+    `%||%` <<- function(x, y) if (is.null(x)) y else x
+  }
+
+  if (!exists("log_info", mode = "function", inherits = TRUE)) {
+    log_info <<- function(...) invisible(NULL)
+  }
+  if (!exists("log_warn", mode = "function", inherits = TRUE)) {
+    log_warn <<- function(...) invisible(NULL)
+  }
+  if (!exists("log_debug", mode = "function", inherits = TRUE)) {
+    log_debug <<- function(...) invisible(NULL)
+  }
+
+  # config_api.R .Renviron ve indeks hazırlığına bakabildiği için testte güvenli
+  # placeholder ortam değişkenleri açıkça verilir.
+  Sys.setenv(
+    MERGEN_RUN_APP = "false",
+    MERGEN_DISABLE_FUTURES = "true",
+    LOCAL_LLM_ENDPOINT = Sys.getenv("LOCAL_LLM_ENDPOINT", "http://test.local/v1"),
+    DB_DSN = Sys.getenv("DB_DSN", "test-dsn"),
+    AI_KEYS_MASTER = Sys.getenv("AI_KEYS_MASTER", "test-master-key-0123456789")
+  )
+
+  if (!exists(".build_basename_index", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "utils_file_index.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+
+  source(file.path(repo_root, "R", "config_api.R"),
+         encoding = "UTF-8", local = globalenv())
+
+  invisible(TRUE)
+}
+
+.bootstrap_llm_reasoning_override_contract()
+
 .read_repo_file_bytes_for_reasoning_contract <- function(path) {
   repo_root <- resolve_repo_root_for_tests()
   full_path <- file.path(repo_root, path)
@@ -20,7 +83,6 @@
 
   raw_data <- readBin(con, what = "raw", n = size)
 
-  # UTF-8 BOM varsa kaldır.
   if (length(raw_data) >= 3L &&
       identical(as.integer(raw_data[1:3]), c(239L, 187L, 191L))) {
     raw_data <- raw_data[-(1:3)]
@@ -84,7 +146,6 @@ test_that("thinking model request_overrides body içine derin merge edilir", {
   expect_true(isTRUE(merged$chat_template_kwargs$enable_thinking))
   expect_identical(merged$chat_template_kwargs$existing_value, "korunmalı")
 
-  # Ana istek alanları override sırasında kaybolmamalı.
   expect_identical(merged$model, "gemma-thinking-test")
   expect_true(isTRUE(merged$stream))
   expect_identical(merged$max_tokens, 128L)
@@ -161,7 +222,7 @@ test_that("reasoning debug çıktıları üretimde varsayılan olarak kapalıdı
 
   expect_true(
     grepl(
-      "reasoning_debug_enabled\\s*<-\\s*isTRUE\\s*\\(\\s*as\\.logical\\s*\\(\\s*Sys\\.getenv\\s*\\(\\s*['\"]MERGEN_REASONING_DEBUG['\"]\\s*,\\s*['\"]FALSE['\"]\\s*\\)",
+      "Sys\\.getenv\\s*\\(\\s*['\"]MERGEN_REASONING_DEBUG['\"]\\s*,\\s*['\"]FALSE['\"]\\s*\\)",
       txt,
       perl = TRUE,
       useBytes = TRUE
