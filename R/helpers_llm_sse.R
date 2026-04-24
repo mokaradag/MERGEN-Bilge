@@ -400,6 +400,9 @@ call_local_llm_sse_worker <- function(chat_history,
 	accumulated_reasoning <- ""
 	accumulated_sources <- NULL
 
+	reasoning_debug_event_count <- 0L
+	reasoning_debug_seen <- FALSE
+
 	# Bazı OpenAI-uyumlu yerel uçlar reasoning_content yerine Qwen tarzı
 	# <think>...</think> bloklarını normal delta$content içinde yayınlar.
 	# Bu yardımcı, görünür yanıt ile modelin açıkça yayınladığı düşünce akışını ayırır.
@@ -415,10 +418,15 @@ call_local_llm_sse_worker <- function(chat_history,
 	  reasoning_parts <- character(0)
 	  remaining <- text
 
-	  find_tag <- function(x, tag) {
-		pos <- regexpr(tag, x, fixed = TRUE, ignore.case = TRUE, useBytes = TRUE)[1]
-		if (is.na(pos) || pos < 0) -1L else as.integer(pos)
-	  }
+		find_tag <- function(x, tag) {
+		  # fixed=TRUE ile ignore.case birlikte kullanılamaz; Windows VM konsolunda
+		  # her SSE parçasında uyarı üretmemesi için iki tarafı da küçük harfe indir.
+		  x_lower <- tolower(enc2utf8(x %||% ""))
+		  tag_lower <- tolower(enc2utf8(tag %||% ""))
+
+		  pos <- regexpr(tag_lower, x_lower, fixed = TRUE, useBytes = TRUE)[1]
+		  if (is.na(pos) || pos < 0) -1L else as.integer(pos)
+		}
 
 	  repeat {
 		if (!nzchar(remaining)) {
@@ -492,19 +500,49 @@ call_local_llm_sse_worker <- function(chat_history,
 		if (nzchar(think_split$reasoning)) {
 		  reasoning_text <- paste0(reasoning_text, think_split$reasoning)
 		}
+		
+		reasoning_debug_event_count <<- reasoning_debug_event_count + 1L
+
+		if (reasoning_debug_event_count <= 20L) {
+		  has_reasoning_now <- nzchar(reasoning_text)
+		  has_content_now <- nzchar(delta_text)
+		  has_think_tag_now <- grepl("<think>|</think>", raw_delta_text, ignore.case = TRUE, perl = TRUE)
+
+		  if (isTRUE(has_reasoning_now) && !isTRUE(reasoning_debug_seen)) {
+			reasoning_debug_seen <<- TRUE
+			log_info(sprintf(
+			  "[REASONING DEBUG] İlk reasoning parçası yakalandı - chars=%d, model=%s",
+			  nchar(reasoning_text),
+			  selected_model
+			))
+		  }
+
+		  if (reasoning_debug_event_count %in% c(1L, 5L, 10L, 20L)) {
+			log_info(sprintf(
+			  "[REASONING DEBUG] event=%d content=%s reasoning=%s think_tag=%s raw_chars=%d model=%s",
+			  reasoning_debug_event_count,
+			  if (has_content_now) "TRUE" else "FALSE",
+			  if (has_reasoning_now) "TRUE" else "FALSE",
+			  if (has_think_tag_now) "TRUE" else "FALSE",
+			  nchar(raw_delta_text %||% ""),
+			  selected_model
+			))
+		  }
+		}
 
       # Akıl yürütme akışı ayrı kanalla yayınlanır; yanıt metnine karışmaz.
-      if (nzchar(reasoning_text)) {
-        accumulated_reasoning <<- paste0(accumulated_reasoning, reasoning_text)
+		if (nzchar(reasoning_text)) {
+		  accumulated_reasoning <<- paste0(accumulated_reasoning, reasoning_text)
 
-        if (isTRUE(stream_reasoning)) {
-          append_stream_reasoning_line(
-            stream_file = NULL,
-            text_value = reasoning_text,
-            stream_con = stream_con
-          )
-        }
-      }
+		  # Reasoning metni gerçekten çıkarıldıysa artık capability bayrağına takılmadan
+		  # UI kanalına yaz. Capability bayrağı panelin nasıl başlayacağını belirler;
+		  # fakat model gerçekten reasoning alanı yayıyorsa bunu bastırmak hatalıdır.
+		  append_stream_reasoning_line(
+			stream_file = NULL,
+			text_value = reasoning_text,
+			stream_con = stream_con
+		  )
+		}
 
       if (nzchar(delta_text)) {
         if (!nzchar(accumulated_text)) {
