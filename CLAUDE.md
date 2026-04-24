@@ -160,6 +160,8 @@ Do not unit-test embedded NUL-byte behavior by forcing normal R character string
 
 Quality-gate tests for repository scripts and entrypoint contracts should prefer parse-based inspection over fragile raw UTF-8 text scanning when possible; parse-based checks are more resilient on Windows VM.
 
+Reasoning/SSE contract tests must remain runnable both through `source("tests/testthat.R", encoding = "UTF-8")` and individually via `testthat::test_file(...)`. If a test directly exercises helpers from `R/config_api.R`, `R/helpers_llm_response_postprocess.R`, or `R/helpers_llm_sse.R`, it must explicitly bootstrap/source those dependencies or use the established test bootstrap pattern.
+
 Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions instead of locale-dependent `readLines()` comparisons on Windows VM.
 
 Windows-safe child-session test authoring rules:
@@ -185,6 +187,11 @@ Windows-safe child-session test authoring rules:
 - parse-based quality-gate coverage for `app.R`, `tests/testthat.R`, and `tests/scripts/*`
 - Windows-safe file-store index regression coverage with shape-agnostic checks, including Turkish display-name edge handling
 - Windows-safe atomic-write UTF-8 verification strategy
+- thinking/reasoning model request_overrides contract coverage, including deep merge of chat_template_kwargs$enable_thinking
+- true SSE request-body override coverage for apply_model_request_overrides(body, selected_model)
+- future worker globals contract coverage for apply_model_request_overrides
+- SSE delta reasoning parser coverage for delta$content, delta$reasoning, delta$reasoning_content, and atomic delta/message edge cases
+- production-default reasoning debug gate coverage via MERGEN_REASONING_DEBUG=FALSE
 
 ### Scripted validation flow (`tests/scripts/`)
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
@@ -196,41 +203,64 @@ CI guidance: GitHub CI is intentionally infra-independent. It does **not** acces
 
 ---
 
-## Thinking=TRUE Modeller İçin Akıl Yürütme Akışı (Yeni Standart)
+## Reasoning Flow for Thinking=TRUE Models (New Standard)
 
-Bu codebase'te düşünme kabiliyeti olan modeller için yanıt öncesi/yanıt sırası deneyimi güncellenmiştir.
+In this codebase, the pre-response/in-response experience for models with thinking capability has been updated.
 
-### Premium reasoning card davranışı
-- `local_model_capabilities[[model]]$thinking == TRUE` ise klasik typing animasyonu yerine premium reasoning card gösterilir.
-- Kart, mevcut `#typing-animation-wrapper` konteynerini yeniden kullanır; hem düşünen hem düşünmeyen model yolunda `premiumReasoningStart` ile birlikte açılır.
-- Sunucu tarafı başlangıçta `premiumReasoningStart`, stream aşamasında `premiumReasoningStreamStart`, bitiş/hata tarafında `premiumReasoningReset` veya `premiumReasoningError` mesajları gönderir.
-- Eski "Düşünüyorum" yılan animasyonu tamamen kaldırılmıştır (`typing-indicator.css`, `typing_animation.js`, `ui.R` kaydı ve `app_core.js` temizliği dahil).
-- Düşünmeyen modeller için `simulated` bayrağı (`thinking_model_active` terslenmiş) yalnızca akışın reasoning taşımayacağı durumlarda taşınır; gerçek `reasoning_delta` yoksa istemci tarafında sahte faz metinleri sıralı gösterilir.
-- Klasik halka yerine panel kabuğu `data-panel-takeover="true"` ile boş içerikli eklenir.
-- Kodlama Desteği/Excel Analizi gibi düşünme modeline bağlı araçlarda panel modeli `tool-resolved model` üzerinden hesaplanmalıdır.
+### Premium reasoning card behavior
+- If `local_model_capabilities[[model]]$thinking == TRUE`, show the premium reasoning card instead of the classic typing animation.
+- The card reuses the existing `#typing-animation-wrapper` container; it is opened with `premiumReasoningStart` on both thinking and non-thinking model paths.
+- On the server side, send `premiumReasoningStart` at the beginning, `premiumReasoningStreamStart` during streaming, and `premiumReasoningReset` or `premiumReasoningError` on completion/error.
+- The old “Düşünüyorum” snake animation has been fully removed (including `typing-indicator.css`, `typing_animation.js`, `ui.R` registration, and `app_core.js` cleanup).
+- For non-thinking models, the `simulated` flag (inverse of `thinking_model_active`) is sent only when reasoning content is not expected; if real `reasoning_delta` is absent, synthetic phase text is shown sequentially on the client.
+- Instead of the classic ring, insert an empty panel shell with `data-panel-takeover="true"`.
+- In tools that depend on a thinking model (such as Coding Support/Excel Analysis), the panel model label must be derived from the `tool-resolved model`.
 
-### UI/JS ilkeleri
-- Durum makinesi: `idle → preparing → thinking → streaming → interrupted/error`
-- Faz rotasyonu: 2.6 sn
-- Simulated faz metin ritmi: 1.8 sn
-- Flicker guard: 420 ms
-- Minimum görünürlük: 1200 ms
-- Model adı ve hata metinleri HTML escape edilmelidir (XSS önlemi).
-- `app_core.js` içindeki `MutationObserver`, `data-panel-takeover="true"` etiketli kabukta `TypingAnimationManager.create(...)` çağrısını atlayarak çift animasyon/flicker üretimini engellemelidir.
+### UI/JS principles
+- State machine: `idle → preparing → thinking → streaming → interrupted/error`
+- Phase rotation: 2.6s
+- Simulated phase text cadence: 1.8s
+- Flicker guard: 420ms
+- Minimum visibility: 1200ms
+- Model names and error text must be HTML-escaped (XSS prevention).
+- The `MutationObserver` in `app_core.js` must skip `TypingAnimationManager.create(...)` for shells marked with `data-panel-takeover="true"` to prevent duplicate animation/flicker.
 
-### Canlı düşünce paneli ve kalıcılık
-- Düşünce içeriği token-token canlı panelde gösterilir, yanıt bitince kaybolmaz; `completed/interrupted` durumunda daraltılabilir biçimde kalır.
-- Kalıcılık DB tabanlıdır: `MB_Messages.ReasoningContent`.
-- Non-streaming yolunda da reasoning içeriği worker çıktısından message persistence katmanına kadar taşınmalı ve düşünen model yanıtlarında `MB_Messages.ReasoningContent` boş bırakılmamalıdır.
-- Geçmiş sohbet render’ında arşiv bloğu tek noktadan üretilmelidir; canlı panel ve arşivin çift katmanlı görünmesine izin verilmez.
-- Simulated (gerçek reasoning metni olmayan) akışlar balona taşınmaz; yanıt akışı başlar başlamaz panel sönümlenerek kaldırılır ve arşive yazılmaz.
+### Live reasoning panel and persistence
+- Reasoning content is streamed token-by-token in the live panel and does not disappear when the answer finishes; it remains collapsible in `completed/interrupted` states.
+- Persistence is DB-backed via `MB_Messages.ReasoningContent`.
+- On non-streaming paths, reasoning content must also be carried from worker output through message persistence, and `MB_Messages.ReasoningContent` must not be empty for thinking-model responses.
+- In chat-history rendering, the archive block must be produced from a single source of truth; do not allow a duplicated live-panel + archive layered view.
+- Simulated flows (without real reasoning text) must not be persisted to the bubble/archive; the panel should fade out as soon as answer streaming starts.
 
-### CSS regressions için kritik not
-- `.reasoning-panel.rp-live` temel durumda görünür (`opacity: 1`, `transform: translateY(0)`) kalmalıdır.
-- Giriş animasyonu `rp-enter` keyframe’in `0%` karesinden ve `both` fill mode ile başlamalıdır.
-- Aksi halde `data-state="completed"` gibi durum geçişlerinde panel opaklığı tekrar 0’a düşerek kaybolabilir.
-- Panel başlığında `[object Object]` regressions için istemci tarafında `sanitizeModelLabel()` benzeri savunma zorunludur.
-- Alt kenar mor shimmer (`rp-shimmer`) yalnızca aktif düşünme/akış safhasında çalışmalı; `completed`, `interrupted/stopped`, `error` durumlarında ve `prefers-reduced-motion` altında kapanmalıdır.
+### Model-specific request_overrides contract
+For thinking/reasoning models, `thinking = TRUE` alone must not be treated as sufficient; some local OpenAI-compatible endpoints require extra request fields to emit reasoning.
+The `local_model_capabilities[[model]]$request_overrides` field in `R/config_api.R` must be preserved.
+
+For Gemma-style models, use the following override when needed to enable reasoning flow:
+
+```r
+request_overrides = list(
+  chat_template_kwargs = list(
+    enable_thinking = TRUE
+  )
+)
+```
+`apply_model_request_overrides(body, selected_model)` must be applied after constructing the true SSE streaming body and before sending the HTTP request.
+The same helper must also be applied on non-streaming LLM paths; otherwise streaming and non-streaming behavior diverges.
+For helper visibility on the true streaming future worker side, keep `apply_model_request_overrides = apply_model_request_overrides` in `tracked_future_promise(..., globals = list(...))` within `R/server_handler_true_streaming.R`.
+Kimi-style models may send reasoning as `delta$reasoning`; Gemma-style models may fall back to normal `delta$content` streaming with empty `ReasoningContent` when the override is missing.
+
+### Reasoning debug log policy
+`[REASONING DEBUG]` lines must remain disabled by default in production.
+Debug should be enabled only for temporary diagnostics via `MERGEN_REASONING_DEBUG=TRUE`.
+A production-behavior patch must not leave debug output permanently enabled.
+
+### Critical note for CSS regressions
+- `.reasoning-panel.rp-live` must remain visible in the base state (`opacity: 1`, `transform: translateY(0)`).
+- The entry animation must start from the `0%` frame of `rp-enter` with `both` fill mode.
+- Otherwise, opacity can drop back to 0 during state transitions such as `data-state="completed"`, causing the panel to disappear.
+- To prevent `[object Object]` regressions in the panel title, a client-side defense such as `sanitizeModelLabel()` is mandatory.
+- The purple bottom-edge shimmer (`rp-shimmer`) should run only during active thinking/streaming phases and must be disabled in `completed`, `interrupted/stopped`, and `error` states, as well as under `prefers-reduced-motion`.
 
 
 ## What MERGEN Bilge Is
