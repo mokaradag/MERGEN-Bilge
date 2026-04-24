@@ -179,6 +179,21 @@ Thinking yeteneği açık olan modellerde premium bir akıl yürütme katmanı d
 - `completed/interrupted` sonrasında panelin balon içinde kalıcı görünümü
 - Düşünmeyen modelde yanıt akışı başlar başlamaz panel balona taşınmaz; sönümlenerek kaldırılır
 
+### Model Bazlı Reasoning Request Overrides
+- Bazı OpenAI-uyumlu yerel uçlar reasoning akışını kendiliğinden ayrı `delta$reasoning` alanında üretirken, bazı thinking modeller açık istek alanı bekleyebilir.
+- Bu nedenle `R/config_api.R` içindeki `local_model_capabilities[[model]]$request_overrides` alanı üretim sözleşmesinin parçasıdır.
+- Gemma tarzı thinking modeller için gerekli olduğunda istek gövdesine şu alan eklenir:
+  ```r
+  request_overrides = list(
+    chat_template_kwargs = list(
+      enable_thinking = TRUE
+    )
+  )
+  ```
+Bu override `apply_model_request_overrides(...)` ile hem true SSE streaming yoluna hem de non-streaming LLM çağrılarına uygulanır.
+True streaming future worker içinde de aynı davranışın korunması için `apply_model_request_overrides` fonksiyonu worker globals listesine taşınmalıdır.
+Kimi tarzı modellerde reasoning ayrı `delta$reasoning` alanından gelebilir; Gemma tarzı modellerde ise `enable_thinking` gönderilmezse akış yalnızca normal `delta$content` olarak dönebilir ve `MB_Messages.ReasoningContent` boş kalabilir.
+
 ### Kalıcılık ve Geçmiş Sohbetler
 - Akıl yürütme metni artık yalnızca yanıt HTML’ine gömülmez; `MB_Messages.ReasoningContent` sütununda da saklanır
 - Non-streaming yolunda da reasoning metni worker çıktısından mesaj kaydına kadar taşınır; düşünen model yanıtlarında `MB_Messages.ReasoningContent` artık dolu kaydedilir
@@ -186,6 +201,12 @@ Thinking yeteneği açık olan modellerde premium bir akıl yürütme katmanı d
 - Eski şema ile uyumluluk için sütun yoksa sessiz geri dönüş (fallback) korunur
 - Veritabanı geri dönüş davranışı `ReasoningContent` için daha dar ve kontrollü tutulur; kullanıcı bazlı geçmiş yükleme akışları da daha sağlamlaştırılmıştır
 - Gerçek düşünce metni olmayan `simulated` akışlar kalıcılığa yazılmaz ve geçmişte reasoning arşivi olarak dönmez
+
+#### Üretim Debug Davranışı
+Reasoning stream teşhis çıktıları üretimde varsayılan olarak kapalıdır.
+Geçici teşhis gerektiğinde `MERGEN_REASONING_DEBUG=TRUE` ayarlanarak `[REASONING DEBUG]` satırları yeniden etkinleştirilebilir.
+Normal üretim koşumunda bu değişken kapalı kalmalıdır; aksi halde SSE akışında gereksiz console/log gürültüsü oluşur.
+
 
 ### Düşünme Kabuğunun Ortak Açılması ve Flicker Koruması
 - `server_send_message.R`, hem düşünen hem düşünmeyen model yolunda `#typing-animation-wrapper` kabuğunu `premiumReasoningStart` ile birlikte açar
@@ -799,6 +820,12 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - repo quality-gate testleri kırılgan ham `readLines(..., encoding = "UTF-8")` taraması yerine script/entrypoint sözleşmelerini parse-tabanlı doğrulamayla sınar; bu yaklaşım Windows VM’de daha dayanıklıdır
 - `test-atomic-write.R`, UTF-8 doğruluğunu locale kırılgan metin okumaları yerine ham-bayt/deterministik UTF-8 güvenli beklentilerle sınar
 - file-store index testleri Windows-safe, shape-agnostic beklentiler kullanır; Windows VM’de tek kayıtlı Türkçe display-name kenar durumunda JSON sadeleştirme/yükleyici şekil farklarının yanlış negatif üretmesini engelleyip stabil sözleşmeyi doğrular
+- thinking/reasoning modeller için `request_overrides` sözleşmesi
+- true SSE yolunda `apply_model_request_overrides(...)` kullanımının korunması
+- future worker globals içinde `apply_model_request_overrides` taşınması
+- SSE delta ayrıştırıcısının `content`, `reasoning`, `reasoning_content` ve atomic delta/message edge-case davranışı
+- `MERGEN_REASONING_DEBUG` varsayılanının üretimde kapalı kalması
+- Bu davranış için regresyon kapsamı `tests/testthat/test-llm-reasoning-request-overrides.R` ve `tests/testthat/test-llm-sse-delta-reasoning-contract.R` dosyalarında tutulur.
 
 Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. Promise/later tabanlı testlerde tek bir `later::run_now()` çağrısının her zaman yeterli olmayabileceği unutulmamalı; testler gerekiyorsa later kuyruğunu birkaç tur tüketerek kararlı son durumu beklemelidir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
 
