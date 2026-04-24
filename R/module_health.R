@@ -89,8 +89,17 @@ healthServer <- function(id, perf_tracker) {
     health_refresh_trigger <- reactiveVal(0)
     health_last_update <- reactiveVal(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
 
+    # İlk render tamamlandığında üst sağdaki zaman damgasını hemen doldur.
+    session$onFlushed(function() {
+      session$sendCustomMessage("updateHealthTimestamp", list(
+        id = ns("last_update_time"),
+        time = health_last_update()
+      ))
+    }, once = TRUE)
+
     observe({
-      invalidateLater(30000)
+      # Sağlık kontrolleri DB/endpoint probe içerebildiği için otomatik yenileme seyrek tutulur.
+      invalidateLater(120000)
       isolate({
         health_refresh_trigger(health_refresh_trigger() + 1)
         health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
@@ -113,7 +122,7 @@ healthServer <- function(id, perf_tracker) {
             exists("render_worker_health_html", mode = "function")) {
           render_worker_health_html(get_worker_monitor_info())
         } else {
-          div(class = "health-empty", "Worker monitor yardımcıları bulunamadı.")
+          div(class = "health-empty", "Worker izleyici yardımcıları bulunamadı.")
         }
       }, error = function(e) {
         div(class = "health-empty", paste("Worker bilgisi alınamadı:", conditionMessage(e)))
