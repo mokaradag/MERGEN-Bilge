@@ -153,14 +153,45 @@ health_status_pill <- function(status, label = NULL) {
   status <- health_normalize_status(status)
   tags$span(
     class = paste("health-pill", health_status_class(status)),
+    `data-toggle` = "tooltip",
+    `data-placement` = "top",
+    title = paste("Durum:", health_status_label(status)),
     icon(health_status_icon(status)),
     label %||% health_status_label(status)
   )
 }
 
+health_render_value <- function(value, id = "") {
+  value <- as.character(value %||% "")
+  id <- as.character(id %||% "")
+  normalized <- health_normalize_status(value)
+  if (tolower(value) %in% health_status_levels) {
+    return(health_status_pill(normalized))
+  }
+
+  path_like <- startsWith(value, "/") || grepl(":", value, fixed = TRUE) || grepl("storage", id, fixed = TRUE)
+  if (isTRUE(path_like) && nzchar(value) && !tolower(value) %in% c("configured", "missing", "tanımlı değil")) {
+    return(tags$a(
+      href = paste0("file:///", gsub("\\\\", "/", value)),
+      target = "_blank",
+      class = "health-path-link",
+      `data-toggle` = "tooltip",
+      title = "Dosya yolunu yeni pencerede açmayı dener. Tarayıcı güvenlik ayarları file:// bağlantılarını engelleyebilir.",
+      icon("external-link-alt"),
+      health_escape(value)
+    ))
+  }
+
+  health_escape(value)
+}
+
 health_metric_tile <- function(title, value, icon_name = "info-circle", status = "unknown", subtitle = NULL) {
+  status <- health_normalize_status(status)
   div(
     class = paste("health-metric-tile", health_status_class(status)),
+    `data-toggle` = "tooltip",
+    `data-placement` = "top",
+    title = subtitle %||% paste(title, "sağlık göstergesi"),
     div(class = "health-metric-icon", icon(icon_name)),
     div(class = "health-metric-body",
         span(class = "health-metric-value", health_safe_value(value)),
@@ -169,16 +200,23 @@ health_metric_tile <- function(title, value, icon_name = "info-circle", status =
   )
 }
 
-health_section_card <- function(title, icon_name, ..., class = NULL) {
+health_section_card <- function(title, icon_name, ..., class = NULL, tooltip = NULL) {
   div(
     class = paste("analytics-card health-section-card", class %||% ""),
     div(class = "card-title-row",
-        h3(class = "card-title", icon(icon_name), title)),
+        h3(class = "card-title", icon(icon_name), title),
+        if (!is.null(tooltip)) tags$span(
+          class = "info-btn",
+          `data-toggle` = "tooltip",
+          `data-placement` = "top",
+          title = tooltip,
+          icon("info-circle")
+        )),
     ...
   )
 }
 
-health_checks_table <- function(checks) {
+health_checks_table <- function(checks, max_height = 420) {
   if (is.null(checks) || !nrow(checks)) {
     return(div(class = "health-empty", "Gösterilecek kontrol sonucu yok."))
   }
@@ -187,7 +225,7 @@ health_checks_table <- function(checks) {
     tags$tr(
       tags$td(health_status_pill(row$status)),
       tags$td(strong(health_escape(row$label)), tags$div(class = "health-check-id", health_escape(row$id))),
-      tags$td(health_escape(row$value)),
+      tags$td(health_render_value(row$value, row$id)),
       tags$td(health_escape(row$detail)),
       tags$td(ifelse(is.na(row$duration_ms), "—", paste0(row$duration_ms, " ms"))),
       tags$td(health_escape(row$checked_at)),
@@ -196,6 +234,10 @@ health_checks_table <- function(checks) {
   })
   div(
     class = "health-table-wrap",
+    style = paste0("max-height:", as.integer(max_height), "px;"),
+    `data-toggle` = "tooltip",
+    `data-placement` = "top",
+    title = "Tablo başlığı sabittir; çok satırlı sonuçlarda tablo içinde kaydırma yapılır.",
     tags$table(
       class = "health-table",
       tags$thead(tags$tr(
