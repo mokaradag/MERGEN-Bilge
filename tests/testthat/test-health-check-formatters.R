@@ -40,6 +40,8 @@ test_that("durum normalizasyonu eş anlamlı değerleri destekler", {
   expect_identical(health_normalize_status("failed"), "critical")
   expect_identical(health_normalize_status("disabled"), "not_configured")
   expect_identical(health_normalize_status("beklenmeyen"), "unknown")
+  expect_identical(health_normalize_status(NA_character_), "unknown")
+  expect_identical(health_status_class(NA_character_), "health-status-unknown")
 })
 
 test_that("severity sıralaması kritik değeri en yüksekte tutar", {
