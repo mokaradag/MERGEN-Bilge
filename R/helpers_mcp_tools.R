@@ -379,7 +379,10 @@ helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_
   normalized_path <- normalize_for_registry(abs_path)
   
   if (!helpers_mcp_tools$path_exists_relaxed(normalized_path)) {
-    cat("[RESOLVE] Skip registry; path missing ->", normalized_path, "\n")
+	helpers_mcp_tools$mcp_debug_log(
+	  "[RESOLVE] Skip registry; path missing -> ",
+	  normalized_path
+	)
     return(invisible(FALSE))
   }
   
@@ -387,7 +390,12 @@ helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_
     path = normalized_path,
     name = display_name %||% basename(abs_path)
   )
-  cat("[RESOLVE] registry token", token, "->", normalized_path, "\n")
+	helpers_mcp_tools$mcp_debug_log(
+	  "[RESOLVE] registry token ",
+	  token,
+	  " -> ",
+	  normalized_path
+	)
   invisible(TRUE)
 }
 
@@ -510,7 +518,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
         for (tok in tokens) {
           recovered <- try(resolve_uploaded_file(tok, user_id = uid), silent = TRUE)
           if (!inherits(recovered, "try-error") && path_ok(recovered)) {
-            cat("[RESOLVE] Missing path recovered via resolve_uploaded_file ->", recovered, "\n")
+			helpers_mcp_tools$mcp_debug_log(
+			  "[RESOLVE] Missing path recovered via resolve_uploaded_file -> ",
+			  recovered
+			)
             return(recovered)
           }
         }
@@ -523,7 +534,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
         for (tok in tokens) {
           candidate <- file.path(user_dir, basename(tok))
           if (path_ok(candidate)) {
-            cat("[RESOLVE] Missing path recovered via MCP base dir ->", candidate, "\n")
+			helpers_mcp_tools$mcp_debug_log(
+			  "[RESOLVE] Missing path recovered via MCP base dir -> ",
+			  candidate
+			)
             return(candidate)
           }
         }
@@ -544,7 +558,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
             if (length(suffix_hits) > 0) {
               recovered <- suffix_hits[1]
               if (path_ok(recovered)) {
-                cat("[RESOLVE] Missing path recovered via user_dir suffix match ->", recovered, "\n")
+				helpers_mcp_tools$mcp_debug_log(
+				  "[RESOLVE] Missing path recovered via user_dir suffix match -> ",
+				  recovered
+				)
                 return(recovered)
               }
             }
@@ -559,7 +576,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
             if (length(ext_hits) == 1) {
               recovered <- ext_hits[1]
               if (path_ok(recovered)) {
-                cat("[RESOLVE] Missing path recovered via unique extension match ->", recovered, "\n")
+				helpers_mcp_tools$mcp_debug_log(
+				  "[RESOLVE] Missing path recovered via unique extension match -> ",
+				  recovered
+				)
                 return(recovered)
               }
             }
@@ -598,7 +618,11 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       if (!is.null(existing_path)) {
         resolved_path <- existing_path
       } else {
-        cat("[RESOLVE] Stored path missing for", nm %||% key, "- attempting rehydrate\n")
+		helpers_mcp_tools$mcp_debug_log(
+		  "[RESOLVE] Stored path missing for ",
+		  nm %||% key,
+		  " - attempting rehydrate"
+		)
         recovered <- rehydrate_missing_path(c(nm, key, arg, base_arg, path_base))
         recovered_existing <- resolve_existing_candidate(recovered)
         if (!is.null(recovered_existing)) {
@@ -608,7 +632,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
           file_obj$datapath <- resolved_path
           all_files[[key]] <- file_obj
         } else {
-          cat("[RESOLVE] Path rehydrate failed for", nm %||% key, "\n")
+			helpers_mcp_tools$mcp_debug_log(
+			  "[RESOLVE] Path rehydrate failed for ",
+			  nm %||% key
+			)
         }
       }
 
@@ -620,7 +647,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       }
     }
   } else {
-    cat("[RESOLVE] No files in session registry!\n")
+	helpers_mcp_tools$mcp_debug_log("[RESOLVE] No files in session registry!")
   }
 
   # --- 2) Global registry (per-user) ---------------------------------------
@@ -712,7 +739,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   if (exists("global_lookup_file", mode = "function")) {
     p <- try(global_lookup_file(base_arg), silent = TRUE)
     if (!inherits(p, "try-error") && is.character(p) && nzchar(p) && path_ok(p)) {
-      cat("[RESOLVE] Global registry hit ->", p, "\n")
+		helpers_mcp_tools$mcp_debug_log(
+		  "[RESOLVE] Global registry hit -> ",
+		  p
+		)
       resolved_path <- resolve_existing_candidate(p) %||% p
       return(list(ok = TRUE, path = resolved_path, display = basename(p)))
     }
