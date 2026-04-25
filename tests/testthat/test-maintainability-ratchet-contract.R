@@ -65,8 +65,8 @@
 
   # Windows/UNC edge case:
   # normalizePath() bazı ağ yollarında repo kökü ile dosya yolunu farklı
-  # biçimlerde döndürebilir. Bu durumda R klasöründen itibaren güvenli
-  # göreli yol üretmeye çalışıyoruz.
+  # biçimlerde döndürebilir. Bu durumda R klasöründen itibaren göreli yol
+  # üretmeye çalışıyoruz.
   r_match <- regexpr("(^|/)R/[^:]+\\.R$", path_norm, perl = TRUE)
   if (!identical(r_match[1], -1L)) {
     rel <- substring(path_norm, r_match[1])
@@ -75,9 +75,9 @@
   }
 
   root_files <- c("app.R", "global.R", "ui.R", "server.R", "welcome_screen.R")
-  base <- basename(path_norm)
-  if (base %in% root_files) {
-    return(base)
+  base_name <- basename(path_norm)
+  if (base_name %in% root_files) {
+    return(base_name)
   }
 
   path_norm
@@ -86,7 +86,7 @@
 .collect_runtime_report_maintainability <- function(repo_root) {
   repo_root <- .normalize_path_maintainability(repo_root)
 
-  runtime_files <- c(
+  runtime_paths <- c(
     file.path(repo_root, "app.R"),
     file.path(repo_root, "global.R"),
     file.path(repo_root, "ui.R"),
@@ -100,17 +100,17 @@
     )
   )
 
-  runtime_files <- unique(runtime_files[file.exists(runtime_files)])
+  runtime_paths <- unique(runtime_paths[file.exists(runtime_paths)])
 
-  rows <- lapply(runtime_files, function(path) {
+  rows <- lapply(runtime_paths, function(path) {
     rel_path <- .relative_repo_path_maintainability(path, repo_root)
 
     txt <- .read_repo_text_maintainability(path)
-    lines <- strsplit(txt, "\n", fixed = TRUE)[[1]]
+    split_lines <- strsplit(txt, "\n", fixed = TRUE)[[1]]
 
     data.frame(
-      file = rel_path,
-      lines = length(lines),
+      path = rel_path,
+      lines = length(split_lines),
       functions = .count_functions_maintainability(txt),
       stringsAsFactors = FALSE
     )
@@ -118,20 +118,28 @@
 
   report <- do.call(rbind, rows)
 
-  # Path biçimini tekrar normalize et: Windows/UNC mutlak yol kaçarsa burada
-  # yakalanır ve baseline ile karşılaştırma deterministik kalır.
-  report$file <- gsub("\\\\", "/", report$file)
-  report$file <- sub("^/+", "", report$file)
-  report$file <- enc2utf8(report$file)
+  if (is.null(report) || nrow(report) == 0L) {
+    return(data.frame(
+      path = character(0),
+      lines = integer(0),
+      functions = integer(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  report$path <- gsub("\\\\", "/", report$path)
+  report$path <- sub("^/+", "", report$path)
+  report$path <- enc2utf8(report$path)
 
   # library_queries.R bilgi tabanı olduğu için ratchet kapsamına alınmaz.
-  report <- subset(report, !grepl("(^|/)library_queries\\.R$", file, perl = TRUE))
+  keep <- !grepl("(^|/)library_queries\\.R$", report$path, perl = TRUE)
+  report <- report[keep, , drop = FALSE]
 
-  report[order(report$lines, decreasing = TRUE), ]
+  report[order(report$lines, decreasing = TRUE), , drop = FALSE]
 }
 
 .maintainability_baseline <- data.frame(
-  file = c(
+  path = c(
     "R/helpers_mcp_tools.R",
     "R/module_claude_code.R",
     "R/helpers_claude_code.R",
@@ -243,18 +251,25 @@ test_that("mevcut büyük dosyalar kontrolsüz şekilde büyümüyor", {
   merged <- merge(
     .maintainability_baseline,
     current,
-    by = "file",
+    by = "path",
     all.x = TRUE
   )
 
   # Bir dosya refactor edilip küçültülmüş/taşınmış olabilir; bu iyi bir şeydir.
   merged <- merged[!is.na(merged$lines), , drop = FALSE]
 
-  line_limit <- merged$baseline_lines + pmax(25L, ceiling(merged$baseline_lines * 0.05))
-  function_limit <- merged$baseline_functions + pmax(3L, ceiling(merged$baseline_functions * 0.10))
+  line_limit <- merged$baseline_lines + pmax(
+    25L,
+    ceiling(merged$baseline_lines * 0.05)
+  )
 
-  line_violations <- merged$file[merged$lines > line_limit]
-  function_violations <- merged$file[merged$functions > function_limit]
+  function_limit <- merged$baseline_functions + pmax(
+    3L,
+    ceiling(merged$baseline_functions * 0.10)
+  )
+
+  line_violations <- merged$path[merged$lines > line_limit]
+  function_violations <- merged$path[merged$functions > function_limit]
 
   expect_equal(
     line_violations,
@@ -279,17 +294,19 @@ test_that("yeni büyük monolit dosya eklenmiyor", {
   repo_root <- resolve_repo_root_for_tests()
   current <- .collect_runtime_report_maintainability(repo_root)
 
-  known_files <- .maintainability_baseline$file
-  new_files <- subset(current, !(file %in% known_files))
+  known_paths <- .maintainability_baseline$path
+  is_new <- !(current$path %in% known_paths)
+  new_paths <- current[is_new, , drop = FALSE]
 
-  new_large_files <- subset(new_files, lines >= 800L | functions >= 25L)
+  is_large <- new_paths$lines >= 800L | new_paths$functions >= 25L
+  new_large_paths <- new_paths[is_large, , drop = FALSE]
 
   expect_equal(
-    new_large_files$file,
+    new_large_paths$path,
     character(0),
     info = paste(
       "Yeni büyük/monolit aday dosyalar:",
-      paste(new_large_files$file, collapse = ", ")
+      paste(new_large_paths$path, collapse = ", ")
     )
   )
 })
