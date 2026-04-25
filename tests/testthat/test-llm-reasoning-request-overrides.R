@@ -230,3 +230,21 @@ test_that("reasoning debug çıktıları üretimde varsayılan olarak kapalıdı
     info = "Reasoning debug varsayılanı FALSE olmalı."
   )
 })
+
+test_that("non-streaming LLM path model request_overrides fonksiyonunu kullanır", {
+  txt <- .read_repo_file_bytes_for_reasoning_contract("R/helpers_llm_api.R")
+
+  expect_true(
+    grepl(
+      "apply_model_request_overrides\\s*\\(\\s*body\\s*,\\s*selected_model",
+      txt,
+      perl = TRUE,
+      useBytes = TRUE
+    ),
+    info = paste(
+      "R/helpers_llm_api.R içinde non-streaming body'ye",
+      "apply_model_request_overrides(body, selected_model) uygulanmalı.",
+      "Aksi halde Thinking modeller SSE ve non-streaming yollarda farklı davranır."
+    )
+  )
+})

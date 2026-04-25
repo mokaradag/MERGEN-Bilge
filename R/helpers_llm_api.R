@@ -99,6 +99,13 @@ call_local_llm <- function(chat_history, current_settings) {
     body$temperature <- temp_value
   }
 
+  # Model bazlı ek istek alanlarını non-streaming yola da uygula.
+  # Örn. gemma benzeri uçlarda chat_template_kwargs$enable_thinking = TRUE
+  # gönderilmezse reasoning içeriği ayrı alana düşmeyebilir.
+  if (exists("apply_model_request_overrides", mode = "function", inherits = TRUE)) {
+    body <- apply_model_request_overrides(body, selected_model)
+  }
+
   # Yerel uçlarda boş Authorization başlığını GÖNDERME
   hds <- list(`Content-Type` = "application/json")
   if (nzchar(api_key)) hds$Authorization <- paste("Bearer", api_key)
