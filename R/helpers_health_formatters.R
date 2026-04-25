@@ -161,6 +161,23 @@ health_status_pill <- function(status, label = NULL) {
   )
 }
 
+health_is_openable_path <- function(value, id = "") {
+  value <- as.character(value %||% "")[1]
+  id <- as.character(id %||% "")[1]
+  if (!nzchar(value)) return(FALSE)
+  if (tolower(value) %in% c("n/a", "na", "configured", "missing", "tanımlı değil")) return(FALSE)
+  if (tolower(value) %in% health_status_levels) return(FALSE)
+
+  allowed_ids <- c(
+    "storage.files_root", "storage.uploads_root", "storage.index_json",
+    "storage.log_dir", "storage.mcp_base"
+  )
+  if (!(id %in% allowed_ids || startsWith(id, "storage.path."))) return(FALSE)
+
+  path <- normalizePath(value, winslash = "\\", mustWork = FALSE)
+  file.exists(path) || dir.exists(path)
+}
+
 health_render_value <- function(value, id = "") {
   value <- as.character(value %||% "")
   id <- as.character(id %||% "")
@@ -169,16 +186,16 @@ health_render_value <- function(value, id = "") {
     return(health_status_pill(normalized))
   }
 
-  path_like <- startsWith(value, "/") || grepl(":", value, fixed = TRUE) || grepl("storage", id, fixed = TRUE)
-  if (isTRUE(path_like) && nzchar(value) && !tolower(value) %in% c("configured", "missing", "tanımlı değil")) {
-    return(tags$a(
-      href = paste0("file:///", gsub("\\\\", "/", value)),
-      target = "_blank",
-      class = "health-path-link",
+  if (health_is_openable_path(value, id)) {
+    return(tags$button(
+      type = "button",
+      class = "health-path-open-btn",
+      `data-health-path` = value,
       `data-toggle` = "tooltip",
-      title = "Dosya yolunu yeni pencerede açmayı dener. Tarayıcı güvenlik ayarları file:// bağlantılarını engelleyebilir.",
-      icon("external-link-alt"),
-      health_escape(value)
+      `data-placement` = "top",
+      title = "Bu yolu Windows Dosya Gezgini ile aç.",
+      icon("folder-open"),
+      tags$span(health_escape(value))
     ))
   }
 
@@ -187,6 +204,9 @@ health_render_value <- function(value, id = "") {
 
 health_metric_tile <- function(title, value, icon_name = "info-circle", status = "unknown", subtitle = NULL) {
   status <- health_normalize_status(status)
+  raw_value <- as.character(value %||% "")
+  display_value <- if (tolower(raw_value) %in% health_status_levels) health_status_label(raw_value) else health_safe_value(value)
+
   div(
     class = paste("health-metric-tile", health_status_class(status)),
     `data-toggle` = "tooltip",
@@ -194,7 +214,7 @@ health_metric_tile <- function(title, value, icon_name = "info-circle", status =
     title = subtitle %||% paste(title, "sağlık göstergesi"),
     div(class = "health-metric-icon", icon(icon_name)),
     div(class = "health-metric-body",
-        span(class = "health-metric-value", health_safe_value(value)),
+        span(class = "health-metric-value", display_value),
         span(class = "health-metric-title", title),
         if (!is.null(subtitle)) span(class = "health-metric-subtitle", subtitle))
   )
