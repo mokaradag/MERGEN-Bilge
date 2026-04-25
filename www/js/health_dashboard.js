@@ -52,6 +52,14 @@
     });
   }
 
+  function resolveHealthPathInputId(buttonElement) {
+    var container = buttonElement.closest(".health-dashboard-container");
+    if (container && container.getAttribute("data-health-path-input-id")) {
+      return container.getAttribute("data-health-path-input-id");
+    }
+    return "health_module-open_health_path";
+  }
+
   function bindHealthPathButtons() {
     if (!window.jQuery) {
       return;
@@ -65,8 +73,9 @@
         removeHealthTooltips();
 
         var path = this.getAttribute("data-health-path") || "";
-        if (path && window.Shiny && Shiny.setInputValue) {
-          Shiny.setInputValue("health_module-open_health_path", {
+        var inputId = resolveHealthPathInputId(this);
+        if (path && inputId && window.Shiny && Shiny.setInputValue) {
+          Shiny.setInputValue(inputId, {
             path: path,
             nonce: Date.now()
           }, { priority: "event" });
@@ -80,9 +89,13 @@
     }
 
     jQuery(document)
-      .off("click.healthTooltipCleanup shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip")
+      .off("click.healthTooltipCleanup shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip mouseleave.healthTooltip")
       .on("click.healthTooltipCleanup", ".sidebar-menu a, .nav-tabs a, .nav-pills a, .health-dashboard-container button", function() {
         removeHealthTooltips();
+      })
+      .on("mouseleave.healthTooltip", ".health-dashboard-container [data-toggle='tooltip']", function() {
+        jQuery(this).tooltip("hide");
+        jQuery(".tooltip").remove();
       })
       .on("shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip", "a[data-toggle='tab']", function() {
         removeHealthTooltips();
