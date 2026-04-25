@@ -4,9 +4,40 @@
 #           varsayılan test koşumunda doğrular. Uygulamayı başlatmaz.
 # ==============================================================================
 
+.normalize_repo_path_for_offline_contract <- function(path) {
+  repo_root <- normalizePath(
+    resolve_repo_root_for_tests(),
+    winslash = "/",
+    mustWork = TRUE
+  )
+
+  candidate <- gsub("\\\\", "/", as.character(path)[1])
+
+  if (grepl("^[A-Za-z]:/", candidate) || grepl("^/", candidate)) {
+    return(normalizePath(candidate, winslash = "/", mustWork = FALSE))
+  }
+
+  normalizePath(file.path(repo_root, candidate), winslash = "/", mustWork = FALSE)
+}
+
+.repo_relative_path_for_offline_contract <- function(path) {
+  repo_root <- normalizePath(
+    resolve_repo_root_for_tests(),
+    winslash = "/",
+    mustWork = TRUE
+  )
+
+  full_path <- .normalize_repo_path_for_offline_contract(path)
+  sub(
+    paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"),
+    "",
+    full_path,
+    perl = TRUE
+  )
+}
+
 .read_repo_text_for_offline_contract <- function(path) {
-  repo_root <- resolve_repo_root_for_tests()
-  full_path <- file.path(repo_root, path)
+  full_path <- .normalize_repo_path_for_offline_contract(path)
 
   size <- suppressWarnings(file.info(full_path)$size[1])
   if (is.na(size) || size <= 0) {
@@ -25,30 +56,53 @@
 
   raw_data <- raw_data[raw_data != as.raw(0)]
 
-  txt <- rawToChar(raw_data, multiple = FALSE)
-  Encoding(txt) <- "UTF-8"
-  txt <- enc2utf8(txt)
-  txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
 
-  txt
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
+  enc2utf8(txt)
+}
+
+.contains_fixed_ignore_case_no_warning <- function(text, pattern) {
+  text_norm <- tolower(enc2utf8(text %||% ""))
+  pattern_norm <- tolower(enc2utf8(pattern %||% ""))
+
+  grepl(
+    pattern_norm,
+    text_norm,
+    fixed = TRUE,
+    useBytes = TRUE
+  )
 }
 
 test_that("runtime kodu varsayılan koşumda açık CDN/public asset bağımlılığı içermez", {
-  repo_root <- resolve_repo_root_for_tests()
+  repo_root <- normalizePath(
+    resolve_repo_root_for_tests(),
+    winslash = "/",
+    mustWork = TRUE
+  )
 
   runtime_files <- c(
-    "app.R",
-    "global.R",
-    "ui.R",
-    "server.R",
-    "welcome_screen.R",
+    file.path(repo_root, "app.R"),
+    file.path(repo_root, "global.R"),
+    file.path(repo_root, "ui.R"),
+    file.path(repo_root, "server.R"),
+    file.path(repo_root, "welcome_screen.R"),
     list.files(file.path(repo_root, "R"), pattern = "\\.R$", recursive = TRUE, full.names = TRUE),
     list.files(file.path(repo_root, "www", "js"), pattern = "\\.js$", recursive = TRUE, full.names = TRUE),
     list.files(file.path(repo_root, "www", "css"), pattern = "\\.css$", recursive = TRUE, full.names = TRUE)
   )
 
-  runtime_files <- unique(runtime_files)
-  runtime_files <- runtime_files[file.exists(runtime_files) | file.exists(file.path(repo_root, runtime_files))]
+  runtime_files <- unique(normalizePath(
+    runtime_files[file.exists(runtime_files)],
+    winslash = "/",
+    mustWork = FALSE
+  ))
 
   banned_patterns <- c(
     "cdn.jsdelivr.net",
@@ -64,19 +118,13 @@ test_that("runtime kodu varsayılan koşumda açık CDN/public asset bağımlıl
 
   violations <- character(0)
 
-  for (path in runtime_files) {
-    full_path <- if (file.exists(path)) path else file.path(repo_root, path)
-    rel_path <- gsub("\\\\", "/", sub(
-      paste0("^", gsub("\\\\", "/", repo_root), "/?"),
-      "",
-      gsub("\\\\", "/", full_path)
-    ))
-
-    txt <- .read_repo_text_for_offline_contract(rel_path)
+  for (full_path in runtime_files) {
+    rel_path <- .repo_relative_path_for_offline_contract(full_path)
+    txt <- .read_repo_text_for_offline_contract(full_path)
 
     matched <- banned_patterns[vapply(
       banned_patterns,
-      function(pattern) grepl(pattern, txt, fixed = TRUE, ignore.case = TRUE, useBytes = TRUE),
+      function(pattern) .contains_fixed_ignore_case_no_warning(txt, pattern),
       logical(1)
     )]
 
