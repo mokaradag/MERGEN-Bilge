@@ -179,7 +179,8 @@ healthServer <- function(id, perf_tracker) {
 
       tryCatch({
         if (.Platform$OS.type == "windows") {
-          shell.exec(open_target)
+          # shell.exec bazı Shiny/VM oturumlarında sessiz kalabildiği için doğrudan explorer.exe çağırılır.
+          system2("explorer.exe", args = shQuote(open_target), wait = FALSE, invisible = TRUE)
         } else {
           utils::browseURL(open_target)
         }
