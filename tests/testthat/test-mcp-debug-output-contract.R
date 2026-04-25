@@ -37,7 +37,11 @@
 
 .extract_function_block <- function(txt, start_marker, end_marker) {
   start <- regexpr(start_marker, txt, fixed = TRUE, useBytes = TRUE)
-  expect_gt(as.integer(start[1]), 0L, info = paste("Başlangıç işareti bulunamadı:", start_marker))
+
+  expect_true(
+    as.integer(start[1]) > 0L,
+    info = paste("Başlangıç işareti bulunamadı:", start_marker)
+  )
 
   after_start <- substr(txt, start[1], nchar(txt, type = "bytes"))
   end <- regexpr(end_marker, after_start, fixed = TRUE, useBytes = TRUE)
