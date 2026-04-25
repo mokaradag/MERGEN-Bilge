@@ -153,6 +153,8 @@ Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM ü
 
 Son MCP/loglama sertleştirme güncellemeleriyle dosya çözümleme hattı daha güvenli hâle getirilmiştir. `helpers_mcp_tools$get_session_user_id()` artık yalnızca scalar kullanıcı kimliği döndürür ve dosya kayıt defteri olan `current_session_files` alanını kullanıcı kimliği gibi kullanmaz. MCP path çözümleme tarafında `normalize_excel_path` için yerel fallback korunur; böylece worker veya izole test bağlamlarında global helper eksikliği geç hata üretmez. Ayrıca `[RESOLVE]` debug çıktıları üretimde raw `cat()` ile konsola basılmaz; `MERGEN_MCP_DEBUG=true` veya `options(mergen.mcp.debug = TRUE)` ile geçici olarak açılabilen kontrollü debug logger üzerinden geçer. Windows VM üretim loglarında ANSI renk kodlarının karışmasını önlemek için konsol renkleri de varsayılan kapalıdır (`MERGEN_LOG_CONSOLE_COLORS=false`).
 
+Son üretim sertleştirme kontrolleri kapsamında `global.R` kaynak yükleme manifesti, secret/token sızıntısı, runtime public URL/CDN bağımlılığı ve kritik üretim dosyalarının UTF-8 parse edilebilirliği ayrı sözleşme testleriyle korunur. Runtime network-boundary testi R yorumlarını (parse/deparse), JS/CSS yorumlarını, SVG namespace adresini (`http://www.w3.org/2000/svg`), `example.com/.org/.net` dokümantasyon adreslerini ve kurum içi/intranet uçlarını (`localhost`, `test.local`, `korykos`, `mergen`, `wiki.sirket.com`, `.local/.lan/.intra/.internal`) yanlış pozitif saymaz. Offline olarak repoya alınmış `www/js/highlight.min.js` ve `www/css/all.min.css` dosyaları vendored asset kabul edildiği için içlerindeki upstream lisans/proje URL’leri runtime internet bağımlılığı olarak değerlendirilmez. Kuruma özel ek iç URL desenleri gerekiyorsa `MERGEN_ALLOWED_INTERNAL_URL_REGEX` test ortamında opsiyonel allowlist olarak kullanılabilir.
+
 ---
 
 ## Hızlı Eylem Kartları
@@ -933,6 +935,10 @@ testthat::test_file("tests/testthat/test-safe-source-encoding-contract.R")
 testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-production-env-policy-contract.R")
 testthat::test_file("tests/testthat/test-llm-reasoning-request-overrides.R")
+testthat::test_file("tests/testthat/test-source-manifest-contract.R")
+testthat::test_file("tests/testthat/test-secret-leak-contract.R")
+testthat::test_file("tests/testthat/test-runtime-network-boundary-contract.R")
+testthat::test_file("tests/testthat/test-production-contracts.R")
 ```
 
 ---

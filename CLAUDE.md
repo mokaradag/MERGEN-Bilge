@@ -296,6 +296,10 @@ Windows-safe child-session test authoring rules:
 - upload-size policy coverage for the 25 MB default and >25 MB rejection path
 - file-manager client-side upload guard coverage via `test-file-manager-upload-limit-ui.R`
 - strict test runner compatibility for `source("tests/testthat.R", encoding = "UTF-8")`
+- source manifest contract coverage for `global.R` `safe_source(...)` existence/order/duplicate protection (`test-source-manifest-contract.R`)
+- secret leak contract coverage across runtime files/tests with masking for known fake redaction fixtures (`test-secret-leak-contract.R`)
+- runtime network-boundary contract coverage for accidental public URL/CDN dependencies with comment stripping, SVG namespace/example placeholders/internal host allow rules, optional `MERGEN_ALLOWED_INTERNAL_URL_REGEX`, and vendored offline asset skips for `www/js/highlight.min.js` + `www/css/all.min.css` (`test-runtime-network-boundary-contract.R`)
+- expanded production parse contract coverage for additional high-risk runtime files (`test-production-contracts.R`)
 
 ### Scripted validation flow (`tests/scripts/`)
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
@@ -311,6 +315,10 @@ Windows-safe child-session test authoring rules:
   testthat::test_file("tests/testthat/test-mcp-path-fallback-contract.R")
   testthat::test_file("tests/testthat/test-mcp-debug-output-contract.R")
   testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
+  testthat::test_file("tests/testthat/test-source-manifest-contract.R")
+  testthat::test_file("tests/testthat/test-secret-leak-contract.R")
+  testthat::test_file("tests/testthat/test-runtime-network-boundary-contract.R")
+  testthat::test_file("tests/testthat/test-production-contracts.R")
   ```
 
 CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration/preflight checks must run on Windows VM via `run_vm_preflight_real.R`, including writable-path probes against active configured directories (active log dir from `MERGEN_LOG_DIR` or fallback default).
@@ -1802,7 +1810,13 @@ testthat::test_file("tests/testthat/test-safe-source-encoding-contract.R")
 testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-production-env-policy-contract.R")
 testthat::test_file("tests/testthat/test-llm-reasoning-request-overrides.R")
+testthat::test_file("tests/testthat/test-source-manifest-contract.R")
+testthat::test_file("tests/testthat/test-secret-leak-contract.R")
+testthat::test_file("tests/testthat/test-runtime-network-boundary-contract.R")
+testthat::test_file("tests/testthat/test-production-contracts.R")
 ```
+
+Recent production-hardening coverage adds focused contract tests for source manifest integrity, secret leakage, runtime network boundaries, and expanded UTF-8 parse coverage of high-risk production files. The runtime network-boundary test is intended to catch accidental public internet/CDN dependencies in executable runtime code, not harmless documentation/license references: it strips R/JS/CSS comments, allows SVG namespace URLs, `example.*` placeholders, known internal/intranet hosts, and skips vendored offline assets such as `www/js/highlight.min.js` and `www/css/all.min.css`. Use `MERGEN_ALLOWED_INTERNAL_URL_REGEX` only for additional organization-specific internal URL allowlisting.
 
 If a patch touches path-validation helpers, confirm behavior with Windows-style separators and Turkish-character file names, and avoid platform-brittle assertions for embedded NUL character construction.
 
