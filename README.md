@@ -101,6 +101,33 @@ Yetkili kullanıcılar için:
 
 ekranları sunulur. Sistem Durumu içindeki İşçi Havuzu kartı artık yalnızca sabit cluster boyutunu değil, uygulama düzeyindeki asenkron görev doluluğunu da gösterir.
 
+### Sistem Durumu Sağlık Paneli
+
+MERGEN Bilge, on-prem Windows VM dağıtımlarında yöneticilerin uygulama durumunu hızlıca değerlendirebilmesi için modüler ve offline-uyumlu bir “Sistem Durumu” sağlık paneli içerir. Panel yerel CSS/JS ile çalışır; CDN veya public internet bağımlılığı yoktur.
+
+Panel sekmeleri:
+- **Genel Bakış**
+- **Bağlantılar**
+- **Depolama**
+- **Çalışma Zamanı**
+- **Güvenlik & Yapılandırma**
+- **Tanılama**
+
+Panelde gizli değerler (API anahtarı/parola/token vb.) açık gösterilmez; yalnızca tanımlı/eksik durum bilgisi sunulur. Depolama yolu düğmeleri klasör açmayı denemek yerine tam yolu panoya kopyalar; kullanıcı bu yolu Windows Dosya Gezgini adres çubuğuna yapıştırıp Enter ile açar.
+
+Sağlık kontrolleri güvenli, hafif ve yan etkisiz olacak şekilde tasarlanmıştır; public internet endpoint çağrısı gerektirmez. Otomatik yenileme yaklaşık 120 saniye aralığında tutulur ve sayfa yenileme düğmesiyle manuel yenileme desteklenir.
+
+İlgili odak testleri:
+
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+
+testthat::test_file("tests/testthat/test-health-check-formatters.R")
+testthat::test_file("tests/testthat/test-health-check-paths.R")
+testthat::test_file("tests/testthat/test-health-check-env-contract.R")
+testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
+```
+
 ---
 
 ## Hızlı Eylem Kartları
