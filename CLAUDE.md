@@ -61,6 +61,29 @@ A new helper/module is not “done” unless:
 - dependencies are loaded before it,
 - `ui.R` / `server.R` wiring is updated where necessary.
 
+### Database helper modularization contract
+The database layer is now intentionally split into smaller responsibility-focused helpers. Preserve this source order:
+
+```r
+safe_source("R/helpers_db_connection.R", encoding = "UTF-8")
+safe_source("R/helpers_db_validation.R", encoding = "UTF-8")
+safe_source("R/helpers_chat_message_formatting.R", encoding = "UTF-8")
+safe_source("R/helpers_database.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_db_connection.R`: DB connection, release, health probe, worker-side DB connection, and DB parameter encoding normalization.
+* `R/helpers_db_validation.R`: validation helpers such as `validate_username()`, `validate_chat_title()`, and `validate_message_content()`.
+* `R/helpers_chat_message_formatting.R`: conversion of DB message rows into app message objects, including generated-image HTML, Chartlab rendering, markdown fallback, timestamps, and `ReasoningContent` propagation.
+* `R/helpers_database.R`: user/chat/message persistence and DB operations.
+
+Do not move connection, validation, or message-formatting functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R` and `test-chat-message-formatting-refactor-contract.R`.
+
+When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
+
+For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
+
 ### 6) When the user asks for exact patches, be exact
 The user often wants:
 
@@ -295,6 +318,9 @@ Windows-safe child-session test authoring rules:
 - production contract coverage for critical boot/runtime entry files without warning-prone broad recursive scans
 - upload-size policy coverage for the 25 MB default and >25 MB rejection path
 - file-manager client-side upload guard coverage via `test-file-manager-upload-limit-ui.R`
+- DB helper modularization contract coverage for `helpers_db_connection.R`, `helpers_db_validation.R`, and `helpers_database.R` source ordering (`test-db-refactor-contract.R`)
+- chat message formatting refactor coverage for `helpers_chat_message_formatting.R`, including normal message formatting, empty data handling, and `ReasoningContent` propagation (`test-chat-message-formatting-refactor-contract.R`)
+- maintainability report support via `tests/scripts/maintainability_report.R` for tracking large files, line counts, and function counts without making the report itself a failing test gate
 - strict test runner compatibility for `source("tests/testthat.R", encoding = "UTF-8")`
 - source manifest contract coverage for `global.R` `safe_source(...)` existence/order/duplicate protection (`test-source-manifest-contract.R`)
 - secret leak contract coverage across runtime files/tests with masking for known fake redaction fixtures (`test-secret-leak-contract.R`)
@@ -306,6 +332,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/smoke_app_boot.R`: boot smoke for `app.R` without launching full runtime; verifies `safe_source`, `ui`, `server`, and `create_mergen_app()`, then confirms a `shiny.appobj` can be created.
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
+- `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
 - Focused hardening checks can be run directly with:
   ```r
   testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
