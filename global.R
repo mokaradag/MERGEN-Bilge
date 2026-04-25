@@ -382,6 +382,10 @@ if (exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
         "extract_llm_delta_text",
         "extract_llm_event_sources",
         "append_stream_delta_line",
+        "append_stream_reasoning_line",
+        "streaming_should_stop",
+        "apply_model_request_overrides",
+        "merge_named_list_deep",
         "call_local_llm_sse_worker"
       ),
       envir = globalenv()
