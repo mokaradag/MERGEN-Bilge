@@ -137,6 +137,8 @@ Son üretim sertleştirme kapsamında aşağıdaki testler ana test koşumuyla u
 source("tests/testthat.R", encoding = "UTF-8")
 
 testthat::test_file("tests/testthat/test-production-contracts.R")
+testthat::test_file("tests/testthat/test-db-refactor-contract.R")
+testthat::test_file("tests/testthat/test-chat-message-formatting-refactor-contract.R")
 testthat::test_file("tests/testthat/test-upload-size-policy.R")
 testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
@@ -150,6 +152,8 @@ testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
 
 `tests/testthat.R` ana koşucusu sıkı modda kalmalıdır: `stop_on_failure = TRUE` ve `stop_on_warning = TRUE`. Bu nedenle üretim sözleşmesi testleri geniş, uyarı üretebilecek recursive kaynak taramalarından kaçınmalı; kritik boot/runtime sözleşmelerini deterministik ve warning-safe biçimde doğrulamalıdır.
 Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM üretim profili için temel offline sözleşmeyi varsayılan test koşumunda doğrular. Test, runtime R/CSS/JS dosyalarında açık CDN/public asset bağımlılığı arar ve `stop_on_warning = TRUE` ile uyumlu kalması için warning-safe metin tarama yaklaşımı kullanır. Daha geniş offline tarama hâlâ `MERGEN_STRICT_OFFLINE_TESTS=true` ile opsiyonel olarak çalıştırılır.
+
+Bakım yapılabilirlik takibi için `tests/scripts/maintainability_report.R` script’i repo kökünden çalıştırılabilir. Bu script test koşucusunu değiştirmez; büyük dosyaları, yaklaşık satır sayılarını ve fonksiyon sayılarını raporlayarak kontrollü refactor kararlarını destekler. `library_queries.R`, sorgu bilgi tabanı niteliğinde olduğu için bu raporda ayrıca değerlendirilmelidir.
 
 Son MCP/loglama sertleştirme güncellemeleriyle dosya çözümleme hattı daha güvenli hâle getirilmiştir. `helpers_mcp_tools$get_session_user_id()` artık yalnızca scalar kullanıcı kimliği döndürür ve dosya kayıt defteri olan `current_session_files` alanını kullanıcı kimliği gibi kullanmaz. MCP path çözümleme tarafında `normalize_excel_path` için yerel fallback korunur; böylece worker veya izole test bağlamlarında global helper eksikliği geç hata üretmez. Ayrıca `[RESOLVE]` debug çıktıları üretimde raw `cat()` ile konsola basılmaz; `MERGEN_MCP_DEBUG=true` veya `options(mergen.mcp.debug = TRUE)` ile geçici olarak açılabilen kontrollü debug logger üzerinden geçer. Windows VM üretim loglarında ANSI renk kodlarının karışmasını önlemek için konsol renkleri de varsayılan kapalıdır (`MERGEN_LOG_CONSOLE_COLORS=false`).
 
@@ -360,9 +364,14 @@ Konsol renkli loglama üretimde varsayılan kapalıdır; gerekirse yalnızca ge�
 - Bilge Yolaç yapılandırması
 
 ### 3. Veritabanı ve SQL
-- veritabanı bağlantıları
-- sorgu kütüphanesi
-- SQL yükleyici
+- `R/helpers_db_connection.R`: DB bağlantısı, bağlantı bırakma, havuz sağlık kontrolü, worker tarafı DB bağlantısı ve DB parametre kodlama normalizasyonu
+- `R/helpers_db_validation.R`: kullanıcı adı, sohbet başlığı ve mesaj içeriği doğrulama yardımcıları
+- `R/helpers_chat_message_formatting.R`: veritabanından okunan mesajların uygulama içi mesaj nesnesine dönüştürülmesi; görsel mesaj, Chartlab, markdown, zaman damgası ve reasoning alanı biçimlendirmesi
+- `R/helpers_database.R`: kullanıcı, sohbet, mesaj ve kalıcı kayıt veritabanı işlemleri
+- `R/library_queries.R`: Proje ve Kaynak Analizi için hazır sorgu bilgi tabanı
+- `R/config_sql_loader.R`: SQL dosyası yükleme ve sorgu yapılandırma altyapısı
+
+Son modülerleşme güncellemeleriyle `helpers_database.R` içindeki bağlantı, doğrulama ve mesaj biçimlendirme sorumlulukları ayrı dosyalara taşınmıştır. Bu değişiklik davranış değiştirmeden bakım yapılabilirliği artırmak için yapılmıştır; `format_chat_messages()` gibi geriye dönük uyumluluk gerektiren fonksiyon adları korunmuştur. Source sırası kritik olduğu için `helpers_db_connection.R`, `helpers_db_validation.R` ve `helpers_chat_message_formatting.R`, `helpers_database.R` dosyasından önce yüklenmelidir.
 
 ### 4. Çekirdek yardımcılar
 - dil yardımcıları
