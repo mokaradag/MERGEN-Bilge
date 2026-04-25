@@ -233,6 +233,7 @@ Thinking yeteneği açık olan modellerde premium bir akıl yürütme katmanı d
   )
   ```
 Bu override `apply_model_request_overrides(...)` ile hem true SSE streaming yoluna hem de non-streaming LLM çağrılarına uygulanır.
+`R/helpers_llm_api.R` içindeki non-streaming LLM yolunda da istek gövdesi kurulduktan (ve sıcaklık/temperature işlemleri tamamlandıktan) sonra `apply_model_request_overrides(body, selected_model)` uygulanır; böylece thinking/reasoning modellerde SSE streaming ile non-streaming/tool/fallback akışları aynı davranış sözleşmesini korur.
 True streaming future worker içinde de aynı davranışın korunması için `apply_model_request_overrides` fonksiyonu worker globals listesine taşınmalıdır.
 Kimi tarzı modellerde reasoning ayrı `delta$reasoning` alanından gelebilir; Gemma tarzı modellerde ise `enable_thinking` gönderilmezse akış yalnızca normal `delta$content` olarak dönebilir ve `MB_Messages.ReasoningContent` boş kalabilir.
 
@@ -876,6 +877,7 @@ Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
 - SSE delta ayrıştırıcısının `content`, `reasoning`, `reasoning_content` ve atomic delta/message edge-case davranışı
 - `MERGEN_REASONING_DEBUG` varsayılanının üretimde kapalı kalması
 - Bu davranış için regresyon kapsamı `tests/testthat/test-llm-reasoning-request-overrides.R` ve `tests/testthat/test-llm-sse-delta-reasoning-contract.R` dosyalarında tutulur.
+- Yeni/sertleştirilen sözleşme testleri: `test-safe-source-encoding-contract.R`, `test-global-source-manifest-contract.R`, `test-production-env-policy-contract.R` ve güncellenen `test-llm-reasoning-request-overrides.R`; bu kapsam UTF-8 BOM + Türkçe `safe_source()` yükleme davranışını, `safe_source()` içinde gerçek syntax hatalarının yutulmamasını, `global.R` kritik source sırasını, testte future cluster kapatma/sequential güvenliğini, `MERGEN_RUN_APP` sıkı truthy/falsy ayrıştırmasını, üretimde 25 MB upload üst sınırı sözleşmesini ve non-streaming `request_overrides` paritesini doğrular.
 
 Testler repo kök dizininden çalıştırılmalıdır. Özellikle Windows VM ortamında testleri mümkünse temiz bir R oturumunda çalıştırmak tercih edilir. Promise/later tabanlı testlerde tek bir `later::run_now()` çağrısının her zaman yeterli olmayabileceği unutulmamalı; testler gerekiyorsa later kuyruğunu birkaç tur tüketerek kararlı son durumu beklemelidir. `summary` reporter ile başarılı koşuda yalnızca dosya adları, noktalar ve `== DONE ==` görülebilir; bu normaldir. Fail durumunda genellikle `Failed`, `Error`, `Warnings` veya `Test failures` benzeri bloklar görünür.
 
@@ -906,6 +908,16 @@ testthat::test_dir("tests/testthat", reporter = "summary")
 ### Tek bir test dosyasını çalıştırma
 ```r
 testthat::test_file("tests/testthat/test-safe-source.R")
+```
+
+### Sertleştirme sözleşmelerini hızlı doğrulama
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+
+testthat::test_file("tests/testthat/test-safe-source-encoding-contract.R")
+testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")
+testthat::test_file("tests/testthat/test-production-env-policy-contract.R")
+testthat::test_file("tests/testthat/test-llm-reasoning-request-overrides.R")
 ```
 
 ---

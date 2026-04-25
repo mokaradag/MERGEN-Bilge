@@ -250,6 +250,11 @@ Windows-safe child-session test authoring rules:
 - For early-stop guard contracts (for example required-env preflight guards), prefer stable in-process `expect_error(...)` assertions over fragile child stdout/stderr capture.
 
 ### Current baseline coverage
+- `safe_source` UTF-8 BOM + Turkish-character contract coverage (`test-safe-source-encoding-contract.R`)
+- `safe_source` syntax-error passthrough coverage (real syntax errors must not be swallowed)
+- `global.R` critical source-manifest ordering contract coverage (`test-global-source-manifest-contract.R`)
+- production env policy contract coverage for strict `MERGEN_RUN_APP` parsing and the 25 MB upload cap (`test-production-env-policy-contract.R`)
+- non-streaming LLM request-override parity coverage via `test-llm-reasoning-request-overrides.R`
 - `safe_source`
 - BOM-marked UTF-8 safe_source loading behavior
 - tracked_future_promise task-registry cleanup behavior
@@ -330,6 +335,7 @@ request_overrides = list(
 ```
 `apply_model_request_overrides(body, selected_model)` must be applied after constructing the true SSE streaming body and before sending the HTTP request.
 The same helper must also be applied on non-streaming LLM paths; otherwise streaming and non-streaming behavior diverges.
+`R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Thinking/reasoning models.
 For helper visibility on the true streaming future worker side, keep `apply_model_request_overrides = apply_model_request_overrides` in `tracked_future_promise(..., globals = list(...))` within `R/server_handler_true_streaming.R`.
 Kimi-style models may send reasoning as `delta$reasoning`; Gemma-style models may fall back to normal `delta$content` streaming with empty `ReasoningContent` when the override is missing.
 
@@ -1760,6 +1766,17 @@ source("tests/testthat.R", encoding = "UTF-8")
 ```
 
 If needed, rerun only the target file with `testthat::test_file(...)`.
+
+Contract-focused validation snippet:
+
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+
+testthat::test_file("tests/testthat/test-safe-source-encoding-contract.R")
+testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")
+testthat::test_file("tests/testthat/test-production-env-policy-contract.R")
+testthat::test_file("tests/testthat/test-llm-reasoning-request-overrides.R")
+```
 
 If a patch touches path-validation helpers, confirm behavior with Windows-style separators and Turkish-character file names, and avoid platform-brittle assertions for embedded NUL character construction.
 
