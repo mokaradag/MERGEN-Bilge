@@ -1,190 +1,238 @@
-# ==============================================================================
-# Dosya Yolu: run_mergen_prod.R
-# Açıklama: MERGEN Bilge üretim başlatma betiği.
-#
-# Kullanım:
-#   Rscript run_mergen_prod.R
-#
-# Not:
-# - Üretimde app.R doğrudan seçilip Ctrl+Enter ile çalıştırılmamalıdır.
-# - Bu dosya repo kökünü bulur, .Renviron dosyasını yükler, app.R'ı güvenli
-#   biçimde source eder ve uygulamayı run_mergen_app() üzerinden başlatır.
-# ==============================================================================
+@echo off
+setlocal EnableExtensions
 
-# ------------------------------------------------------------------------------
-# 1. Script / repo kökünü güvenli tespit et
-# ------------------------------------------------------------------------------
+REM ==============================================================================
+REM Dosya Yolu: run_mergen_prod.bat
+REM Açıklama: MERGEN Bilge uretim baslatma komutu.
+REM
+REM Not:
+REM - Repo UNC/network path uzerindeyse cd /d kullanmayin.
+REM - pushd, UNC yolu gecici bir surucu harfine map eder.
+REM - Rscript yolu gerekirse asagida sabitlenmelidir.
+REM ==============================================================================
 
-resolve_script_dir <- function() {
-  cmd_args <- commandArgs(trailingOnly = FALSE)
+REM ------------------------------------------------------------------------------
+REM 0) Konsol kod sayfasi
+REM ------------------------------------------------------------------------------
 
-  file_arg <- grep("^--file=", cmd_args, value = TRUE)
-  if (length(file_arg) > 0L) {
-    script_path <- sub("^--file=", "", file_arg[[1]])
-    return(dirname(normalizePath(script_path, winslash = "/", mustWork = TRUE)))
-  }
+chcp 65001 >nul
 
-  frames <- sys.frames()
-  ofiles <- vapply(
-    frames,
-    function(frame) {
-      if (!is.null(frame$ofile)) {
-        return(as.character(frame$ofile)[1])
-      }
-      NA_character_
-    },
-    character(1)
-  )
+REM ------------------------------------------------------------------------------
+REM 1) Repo klasorune gec
+REM    UNC path icin cd /d guvenilir degildir; pushd kullanilir.
+REM ------------------------------------------------------------------------------
 
-  ofiles <- ofiles[!is.na(ofiles) & nzchar(ofiles)]
-
-  if (length(ofiles) > 0L) {
-    return(dirname(normalizePath(ofiles[[length(ofiles)]], winslash = "/", mustWork = TRUE)))
-  }
-
-  normalizePath(getwd(), winslash = "/", mustWork = TRUE)
-}
-
-repo_root <- resolve_script_dir()
-
-required_paths <- c(
-  "app.R",
-  "global.R",
-  "ui.R",
-  "server.R",
-  "R",
-  "www"
+pushd "%~dp0"
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Could not enter repository folder:
+    echo %~dp0
+    echo.
+    pause
+    exit /b 1
 )
 
-missing_paths <- required_paths[!file.exists(file.path(repo_root, required_paths))]
+REM ------------------------------------------------------------------------------
+REM 2) Uretim host/port varsayilanlari
+REM ------------------------------------------------------------------------------
 
-if (length(missing_paths) > 0L) {
-  stop(
-    sprintf(
-      "MERGEN Bilge üretim başlatması durduruldu. Eksik dosya/klasör: %s\nRepo kökü: %s",
-      paste(missing_paths, collapse = ", "),
-      repo_root
-    ),
-    call. = FALSE
-  )
-}
+if "%MERGEN_HOST%"=="" set "MERGEN_HOST=0.0.0.0"
+if "%MERGEN_PORT%"=="" set "MERGEN_PORT=8009"
 
-setwd(repo_root)
+REM ------------------------------------------------------------------------------
+REM 3) Rscript yolu
+REM
+REM ONEMLI:
+REM - RStudio/interactive R baska, Rscript baska R kurulumunu kullaniyorsa
+REM   paketler gorunmeyebilir.
+REM - Bu nedenle production icin Rscript yolunu mumkunse sabitleyin.
+REM - R 4.5.1 kullaniyorsaniz asagidaki yol dogru olmalidir.
+REM ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# 2. Üretim ortamını sabitle
-# ------------------------------------------------------------------------------
+if "%RSCRIPT%"=="" set "RSCRIPT=C:\Program Files\R\R-4.5.1\bin\Rscript.exe"
 
-options(
-  encoding = "UTF-8",
-  shiny.autoreload = FALSE,
-  future.rng.onMisuse = "ignore"
+REM Eger yukaridaki Rscript yoksa PATH uzerindeki Rscript'e dus.
+if not exist "%RSCRIPT%" (
+    echo [WARN] Fixed Rscript path not found:
+    echo        %RSCRIPT%
+    echo [WARN] Falling back to Rscript from PATH.
+    set "RSCRIPT=Rscript"
 )
 
-Sys.setenv(
-  # app.R source edilirken otomatik runApp tetiklenmesin.
-  MERGEN_RUN_APP = "false",
+REM ------------------------------------------------------------------------------
+REM 4) Istege bagli sabit R paket kutuphanesi
+REM
+REM Paketleri ozel bir production library altina kurduysaniz asagidaki satiri
+REM acip kendi yolunuza gore duzenleyin.
+REM
+REM Ornek:
+REM set "R_LIBS_USER=D:\MERGEN_R_LIBS\R-4.5.1"
+REM ------------------------------------------------------------------------------
 
-  # Üretimde future/worker altyapısı açık kalsın.
-  MERGEN_DISABLE_FUTURES = "false",
+REM set "R_LIBS_USER=D:\MERGEN_R_LIBS\R-4.5.1"
 
-  # Log ve zaman davranışı tutarlı olsun.
-  TZ = Sys.getenv("TZ", "Europe/Istanbul")
+if not "%R_LIBS_USER%"=="" (
+    if not exist "%R_LIBS_USER%" mkdir "%R_LIBS_USER%" >nul 2>nul
 )
 
-# Windows VM üzerinde Türkçe karakter davranışını iyileştirmek için en iyi çaba.
-try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE)
-try(suppressWarnings(Sys.setlocale("LC_COLLATE", "Turkish_Turkey.UTF-8")), silent = TRUE)
+REM ------------------------------------------------------------------------------
+REM 5) Log klasoru ve log dosyasi
+REM ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# 3. Repo .Renviron dosyasını çalışma dizini ayarlandıktan sonra elle yükle
-# ------------------------------------------------------------------------------
+if not exist "logs" mkdir "logs"
 
-renviron_path <- file.path(repo_root, ".Renviron")
+set "RUN_LOG=logs\run_mergen_prod_console.log"
+set "PREFLIGHT_R=logs\run_mergen_prod_preflight.R"
 
-if (file.exists(renviron_path)) {
-  readRenviron(renviron_path)
-} else {
-  warning(
-    sprintf(
-      ".Renviron bulunamadı. Ortam değişkenlerinin sistem/user seviyesinde tanımlı olduğu varsayılıyor. Beklenen konum: %s",
-      renviron_path
-    ),
-    call. = FALSE
-  )
-}
+echo ============================================================ > "%RUN_LOG%"
+echo MERGEN Bilge production startup >> "%RUN_LOG%"
+echo Date: %DATE% %TIME% >> "%RUN_LOG%"
+echo Working directory: %CD% >> "%RUN_LOG%"
+echo Host: %MERGEN_HOST% >> "%RUN_LOG%"
+echo Port: %MERGEN_PORT% >> "%RUN_LOG%"
+echo Rscript: %RSCRIPT% >> "%RUN_LOG%"
+echo R_LIBS_USER: %R_LIBS_USER% >> "%RUN_LOG%"
+echo ============================================================ >> "%RUN_LOG%"
+echo. >> "%RUN_LOG%"
 
-# ------------------------------------------------------------------------------
-# 4. Port/host ayarlarını normalize et
-# ------------------------------------------------------------------------------
+REM ------------------------------------------------------------------------------
+REM 6) Rscript var mi kontrol et
+REM ------------------------------------------------------------------------------
 
-normalize_prod_port <- function(value, default = 8009L) {
-  port <- suppressWarnings(as.integer(trimws(as.character(value[1]))))
+if exist "%RSCRIPT%" goto RSCRIPT_OK
 
-  if (is.na(port) || port < 1L || port > 65535L) {
-    return(as.integer(default))
-  }
-
-  as.integer(port)
-}
-
-prod_host <- Sys.getenv("MERGEN_HOST", "0.0.0.0")
-prod_port <- normalize_prod_port(Sys.getenv("MERGEN_PORT", "8009"), default = 8009L)
-
-# ------------------------------------------------------------------------------
-# 5. Kritik ortam değişkenleri için erken, anlaşılır kontrol
-# ------------------------------------------------------------------------------
-
-required_env <- c(
-  "DB_DSN",
-  "LOCAL_LLM_ENDPOINT"
+where "%RSCRIPT%" >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Rscript was not found.
+    echo Current RSCRIPT value:
+    echo %RSCRIPT%
+    echo.
+    echo Fix:
+    echo   Edit run_mergen_prod.bat and set RSCRIPT to the real Rscript.exe path.
+    echo   Example:
+    echo   set "RSCRIPT=C:\Program Files\R\R-4.5.1\bin\Rscript.exe"
+    echo.
+    echo Full log:
+    echo %CD%\%RUN_LOG%
+    echo [ERROR] Rscript was not found: %RSCRIPT% >> "%RUN_LOG%"
+    pause
+    popd
+    exit /b 1
 )
 
-missing_env <- required_env[!nzchar(Sys.getenv(required_env, unset = ""))]
+:RSCRIPT_OK
 
-if (length(missing_env) > 0L) {
-  stop(
-    sprintf(
-      "MERGEN Bilge üretim başlatması durduruldu. Eksik zorunlu ortam değişkenleri: %s",
-      paste(missing_env, collapse = ", ")
-    ),
-    call. = FALSE
-  )
-}
+REM ------------------------------------------------------------------------------
+REM 7) R paket preflight script'i olustur
+REM ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# 6. app.R güvenli biçimde yüklenir; app.R otomatik çalışmaz
-# ------------------------------------------------------------------------------
+> "%PREFLIGHT_R%" echo options(encoding = "UTF-8")
+>> "%PREFLIGHT_R%" echo cat("R.version.string:\n")
+>> "%PREFLIGHT_R%" echo cat(R.version.string, "\n\n")
+>> "%PREFLIGHT_R%" echo cat(".libPaths():\n")
+>> "%PREFLIGHT_R%" echo print(.libPaths())
+>> "%PREFLIGHT_R%" echo cat("\n")
+>> "%PREFLIGHT_R%" echo required_packages ^<- c(
+>> "%PREFLIGHT_R%" echo   "arrow",
+>> "%PREFLIGHT_R%" echo   "duckdb",
+>> "%PREFLIGHT_R%" echo   "fastmatch",
+>> "%PREFLIGHT_R%" echo   "pdftools",
+>> "%PREFLIGHT_R%" echo   "pool",
+>> "%PREFLIGHT_R%" echo   "shinyBS",
+>> "%PREFLIGHT_R%" echo   "stringdist",
+>> "%PREFLIGHT_R%" echo   "writexl",
+>> "%PREFLIGHT_R%" echo   "av"
+>> "%PREFLIGHT_R%" echo )
+>> "%PREFLIGHT_R%" echo installed ^<- rownames(installed.packages())
+>> "%PREFLIGHT_R%" echo status ^<- data.frame(
+>> "%PREFLIGHT_R%" echo   package = required_packages,
+>> "%PREFLIGHT_R%" echo   installed = required_packages %%in%% installed,
+>> "%PREFLIGHT_R%" echo   stringsAsFactors = FALSE
+>> "%PREFLIGHT_R%" echo )
+>> "%PREFLIGHT_R%" echo cat("Required package status:\n")
+>> "%PREFLIGHT_R%" echo print(status, row.names = FALSE)
+>> "%PREFLIGHT_R%" echo missing ^<- status$package[!status$installed]
+>> "%PREFLIGHT_R%" echo if (length(missing) ^> 0L) {
+>> "%PREFLIGHT_R%" echo   cat("\nERROR: Missing R packages:\n")
+>> "%PREFLIGHT_R%" echo   cat(paste(missing, collapse = ", "), "\n\n")
+>> "%PREFLIGHT_R%" echo   cat("Install these packages into the library used by this Rscript.\n")
+>> "%PREFLIGHT_R%" echo   cat("If the VM is offline, install from local Windows binary .zip files or an internal CRAN mirror.\n")
+>> "%PREFLIGHT_R%" echo   quit(status = 10L, save = "no")
+>> "%PREFLIGHT_R%" echo }
+>> "%PREFLIGHT_R%" echo cat("\nPackage preflight OK.\n")
 
-message("MERGEN Bilge üretim başlatması hazırlanıyor...")
-message(sprintf("Repo kökü : %s", repo_root))
-message(sprintf("Host      : %s", prod_host))
-message(sprintf("Port      : %s", prod_port))
-message(sprintf("TZ        : %s", Sys.getenv("TZ")))
-message("app.R source ediliyor...")
+REM ------------------------------------------------------------------------------
+REM 8) Rscript ve paket preflight
+REM ------------------------------------------------------------------------------
 
-source("app.R", encoding = "UTF-8", local = globalenv())
+echo Running Rscript/package preflight...
+echo Running Rscript/package preflight... >> "%RUN_LOG%"
+echo. >> "%RUN_LOG%"
 
-if (!exists("run_mergen_app", envir = globalenv(), mode = "function")) {
-  stop(
-    "Boot tamamlanamadı: run_mergen_app() bulunamadı. app.R beklenen üretim API'sini yüklememiş görünüyor.",
-    call. = FALSE
-  )
-}
+"%RSCRIPT%" "%CD%\%PREFLIGHT_R%" 1>> "%RUN_LOG%" 2>>&1
 
-if (exists("validate_boot_state", envir = globalenv(), mode = "function")) {
-  validate_boot_state()
-}
+set "PREFLIGHT_EXIT=%ERRORLEVEL%"
 
-# ------------------------------------------------------------------------------
-# 7. Uygulamayı başlat
-# ------------------------------------------------------------------------------
-
-message("MERGEN Bilge üretim modunda başlatılıyor...")
-
-run_mergen_app(
-  host = prod_host,
-  port = prod_port,
-  launch.browser = FALSE,
-  quiet = FALSE
+if not "%PREFLIGHT_EXIT%"=="0" (
+    echo.
+    echo [ERROR] R package preflight failed. Exit code: %PREFLIGHT_EXIT%
+    echo.
+    echo Last log lines:
+    echo ------------------------------------------------------------
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -LiteralPath '%CD%\%RUN_LOG%' -Tail 120"
+    echo ------------------------------------------------------------
+    echo.
+    echo Full log:
+    echo %CD%\%RUN_LOG%
+    echo.
+    pause
+    popd
+    exit /b %PREFLIGHT_EXIT%
 )
+
+REM ------------------------------------------------------------------------------
+REM 9) Uretim baslatma
+REM ------------------------------------------------------------------------------
+
+echo.
+echo Starting MERGEN Bilge...
+echo Repo: %CD%
+echo Log : %CD%\%RUN_LOG%
+echo.
+
+echo. >> "%RUN_LOG%"
+echo Starting run_mergen_prod.R... >> "%RUN_LOG%"
+echo. >> "%RUN_LOG%"
+
+"%RSCRIPT%" "%CD%\run_mergen_prod.R" 1>> "%RUN_LOG%" 2>>&1
+
+set "EXIT_CODE=%ERRORLEVEL%"
+
+if not "%EXIT_CODE%"=="0" (
+    echo.
+    echo [ERROR] MERGEN Bilge failed to start. Exit code: %EXIT_CODE%
+    echo.
+    echo Last log lines:
+    echo ------------------------------------------------------------
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -LiteralPath '%CD%\%RUN_LOG%' -Tail 120"
+    echo ------------------------------------------------------------
+    echo.
+    echo Full log:
+    echo %CD%\%RUN_LOG%
+    echo.
+    pause
+    popd
+    exit /b %EXIT_CODE%
+)
+
+REM Normalde Shiny calisiyorsa bu noktaya ancak uygulama kapandiginda gelinir.
+echo.
+echo MERGEN Bilge stopped. Exit code: %EXIT_CODE%
+echo Full log:
+echo %CD%\%RUN_LOG%
+echo.
+pause
+
+popd
+exit /b 0
