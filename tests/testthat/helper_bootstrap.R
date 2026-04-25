@@ -111,6 +111,8 @@ repo_root_for_tests <- resolve_repo_root_for_tests()
 # Testlerde kullanılan yardımcı fonksiyon ve dosyaları global ortama yükler.
 source(file.path(repo_root_for_tests, "R", "utils_safe_source.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_worker_monitor.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_db_connection.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_db_validation.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_database.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "utils_file_index.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "utils_rate_limiter.R"), encoding = "UTF-8", local = .test_global)

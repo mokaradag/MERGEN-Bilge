@@ -200,9 +200,11 @@ safe_source("R/config_claude_code_plugins.R", encoding = "UTF-8")  # Claude Code
 # GRUP 3: Veritabanı ve Sorgu Altyapısı
 # Yapılandırma dosyalarına bağımlıdır, modüller tarafından kullanılır.
 # ------------------------------------------------------------------------------
-safe_source("R/helpers_database.R",   encoding = "UTF-8")  # Veritabanı bağlantı yönetimi
-safe_source("R/library_queries.R",    encoding = "UTF-8")  # Hazır SQL sorguları
-safe_source("R/config_sql_loader.R",  encoding = "UTF-8")  # SQL yükleme yapılandırması
+safe_source("R/helpers_db_connection.R", encoding = "UTF-8")  # DB bağlantı, havuz ve worker bağlantısı
+safe_source("R/helpers_db_validation.R", encoding = "UTF-8")  # DB giriş doğrulama yardımcıları
+safe_source("R/helpers_database.R",      encoding = "UTF-8")  # Kullanıcı, sohbet ve mesaj DB işlemleri
+safe_source("R/library_queries.R",       encoding = "UTF-8")  # Hazır SQL sorguları
+safe_source("R/config_sql_loader.R",     encoding = "UTF-8")  # SQL yükleme yapılandırması
 
 # ------------------------------------------------------------------------------
 # GRUP 4: Çekirdek Yardımcı Fonksiyonlar
