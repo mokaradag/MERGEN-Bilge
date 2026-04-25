@@ -79,6 +79,7 @@ User-facing strings are mostly Turkish and intentionally stylized. Avoid rewriti
 When resolving effective user/session identity, prefer shared canonical helpers (for example `resolve_effective_user_id(...)`) instead of copy-pasted local resolver variants.
 
 Avoid re-implementing local `resolve_current_user_id()` snippets unless there is a compelling, scoped reason. In this repo, SSO timing regressions often come from duplicated identity-resolution code paths drifting apart.
+In SSO flows, do not pass the startup `current_user_id` snapshot into user-scoped modules. The startup value may temporarily be `0L`. Pass a live provider such as `current_user_id_provider` / `resolve_current_user_id()` so modules resolve the effective user at use time. This protects saved chats, history, file manager, gallery, support, and performance flows from SSO user-ID drift.
 
 ### 8) Async jobs visible in health metrics must use tracked wrapper
 For application-monitored async flows, do not use raw `future_promise(...)` directly.
@@ -99,6 +100,7 @@ Pratik sonuç:
 Özellikle şu tip hatalar genellikle source sırası problemi değil, worker bağımlılık aktarımı problemidir:
 - `call_llm_worker fonksiyonu bulunamadı`
 - `generate_image fonksiyonu bulunamadı`
+For true SSE streaming, keep the worker prewarm/export contract aligned with the `tracked_future_promise(..., globals = list(...))` contract in `R/server_handler_true_streaming.R`. Reasoning deltas, stop-file checks, and model-specific request overrides require helpers such as `append_stream_reasoning_line`, `streaming_should_stop`, `apply_model_request_overrides`, and `merge_named_list_deep` to remain visible on the worker side.
 
 Bu tür hatalar özellikle şu koşullarda daha görünür olabilir:
 - `SSO_ENABLED=TRUE`
@@ -240,6 +242,7 @@ stop_on_warning = TRUE
 ```
 
 Do not weaken the main runner to hide warnings. If a test produces noisy warnings only during full `test_dir()` execution, fix the test so it is deterministic and warning-safe. Source-inspection tests should avoid broad warning-prone recursive scans inside the main suite. Prefer targeted contract checks over scanning the whole repository when the test is part of the strict default runner.
+Default-suite source-inspection tests must be warning-safe on Windows. Avoid warning-prone combinations such as `grepl(..., fixed = TRUE, ignore.case = TRUE, useBytes = TRUE)` inside broad scan loops. Prefer normalizing text/patterns first (for example lowercasing both) and then using fixed byte matching without `ignore.case`.
 
 Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions instead of locale-dependent `readLines()` comparisons on Windows VM.
 
@@ -274,6 +277,10 @@ Windows-safe child-session test authoring rules:
 - thinking/reasoning model request_overrides contract coverage, including deep merge of chat_template_kwargs$enable_thinking
 - true SSE request-body override coverage for apply_model_request_overrides(body, selected_model)
 - future worker globals contract coverage for apply_model_request_overrides
+- true SSE worker export/globals contract coverage for reasoning deltas, stop-file checks, and request overrides
+- SSO live user-id provider contract coverage to prevent startup current_user_id snapshot drift
+- default offline baseline contract coverage for CDN/public asset dependency detection in runtime R/CSS/JS files
+- warning-safe source-inspection strategy for strict stop_on_warning test runs
 - SSE delta reasoning parser coverage for delta$content, delta$reasoning, delta$reasoning_content, and atomic delta/message edge cases
 - production-default reasoning debug gate coverage via MERGEN_REASONING_DEBUG=FALSE
 - production contract coverage for critical boot/runtime entry files without warning-prone broad recursive scans
@@ -286,6 +293,12 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/smoke_app_boot.R`: boot smoke for `app.R` without launching full runtime; verifies `safe_source`, `ui`, `server`, and `create_mergen_app()`, then confirms a `shiny.appobj` can be created.
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
+- Focused hardening checks can be run directly with:
+  ```r
+  testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+  testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+  testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
+  ```
 
 CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration/preflight checks must run on Windows VM via `run_vm_preflight_real.R`, including writable-path probes against active configured directories (active log dir from `MERGEN_LOG_DIR` or fallback default).
 
