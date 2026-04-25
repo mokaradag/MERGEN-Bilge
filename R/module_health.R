@@ -89,13 +89,17 @@ healthServer <- function(id, perf_tracker) {
     health_refresh_trigger <- reactiveVal(0)
     health_last_update <- reactiveVal(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
 
+    send_health_timestamp <- function() {
+      current_time <- isolate(health_last_update())
+      payload <- list(id = ns("last_update_time"), time = current_time)
+      session$sendCustomMessage("updateHealthTimestamp", payload)
+      session$sendCustomMessage("updateAdminTimestamp", payload)
+    }
+
     # İlk render tamamlandığında üst sağdaki zaman damgasını hemen doldur.
     # onFlushed callback'i reactive consumer değildir; reactiveVal okumaları isolate içinde yapılmalıdır.
     session$onFlushed(function() {
-      session$sendCustomMessage("updateHealthTimestamp", list(
-        id = ns("last_update_time"),
-        time = isolate(health_last_update())
-      ))
+      send_health_timestamp()
       session$sendCustomMessage("initHealthTooltips", list())
     }, once = TRUE)
 
@@ -105,10 +109,7 @@ healthServer <- function(id, perf_tracker) {
       isolate({
         health_refresh_trigger(health_refresh_trigger() + 1)
         health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
-        session$sendCustomMessage("updateHealthTimestamp", list(
-          id = ns("last_update_time"),
-          time = health_last_update()
-        ))
+        send_health_timestamp()
       })
     })
 
@@ -152,18 +153,47 @@ healthServer <- function(id, perf_tracker) {
       input$health_tabs
       health_refresh_trigger()
       session$onFlushed(function() {
+        session$sendCustomMessage("removeHealthTooltips", list())
         session$sendCustomMessage("initHealthTooltips", list())
+        send_health_timestamp()
       }, once = TRUE)
     })
 
+    observeEvent(input$open_health_path, {
+      path <- input$open_health_path$path %||% ""
+      path <- as.character(path)[1]
+
+      if (!nzchar(path)) {
+        showToast(session, "Açılacak klasör yolu boş.", "warning")
+        return(invisible(NULL))
+      }
+
+      normalized_path <- normalizePath(path, winslash = "\\", mustWork = FALSE)
+      open_target <- if (file.exists(normalized_path) && !dir.exists(normalized_path)) dirname(normalized_path) else normalized_path
+
+      if (!dir.exists(open_target)) {
+        showToast(session, "Klasör bulunamadı veya erişilemiyor.", "error")
+        return(invisible(NULL))
+      }
+
+      tryCatch({
+        if (.Platform$OS.type == "windows") {
+          shell.exec(open_target)
+        } else {
+          utils::browseURL(open_target)
+        }
+        showToast(session, "Klasör Windows Dosya Gezgini ile açıldı.", "success")
+      }, error = function(e) {
+        showToast(session, paste("Klasör açılamadı:", conditionMessage(e)), "error")
+      })
+    }, ignoreInit = TRUE)
+
     observeEvent(input$refresh_health, {
+      session$sendCustomMessage("removeHealthTooltips", list())
       shinyjs::runjs("$('.tooltip').remove();")
       health_refresh_trigger(health_refresh_trigger() + 1)
       health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
-      session$sendCustomMessage("updateHealthTimestamp", list(
-        id = ns("last_update_time"),
-        time = health_last_update()
-      ))
+      send_health_timestamp()
       session$sendCustomMessage("initHealthTooltips", list())
       showToast(session, "Sistem durumu güncellendi", "success")
     })
