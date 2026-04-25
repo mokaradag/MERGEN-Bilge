@@ -43,6 +43,7 @@ healthUI <- function(id) {
     ),
     div(
       class = "health-dashboard-container",
+      `data-health-path-input-id` = ns("open_health_path"),
       admin_page_layout(
         ns = ns,
         page_title = "Sistem Durumu",
