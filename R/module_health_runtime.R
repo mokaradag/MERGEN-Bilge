@@ -3,19 +3,29 @@
 # Açıklama: Sistem Durumu panelinin Çalışma Zamanı sekmesi için UI yardımcıları.
 # ==============================================================================
 
+health_pick_int <- function(values, index, fallback) {
+  value <- suppressWarnings(as.integer(values[index]))
+  if (length(value) == 0 || is.na(value)) fallback else value
+}
+
 health_parse_worker_counts <- function(worker_value) {
   worker_value <- as.character(worker_value %||% "")
   nums <- regmatches(worker_value, gregexpr("[0-9]+", worker_value))[[1]]
   nums <- suppressWarnings(as.integer(nums))
   nums <- nums[!is.na(nums)]
 
-  total <- nums[1] %||% parallel::detectCores(logical = TRUE) %||% 1L
-  active <- nums[2] %||% 0L
-  queued <- nums[3] %||% 0L
+  detected_cores <- suppressWarnings(as.integer(parallel::detectCores(logical = TRUE)))
+  if (length(detected_cores) == 0 || is.na(detected_cores) || detected_cores < 1L) {
+    detected_cores <- 1L
+  }
 
-  total <- max(1L, as.integer(total))
-  active <- max(0L, min(as.integer(active), total))
-  queued <- max(0L, as.integer(queued))
+  total <- health_pick_int(nums, 1L, detected_cores)
+  active <- health_pick_int(nums, 2L, 0L)
+  queued <- health_pick_int(nums, 3L, 0L)
+
+  total <- max(1L, as.integer(total), na.rm = TRUE)
+  active <- max(0L, min(as.integer(active), total, na.rm = TRUE), na.rm = TRUE)
+  queued <- max(0L, as.integer(queued), na.rm = TRUE)
 
   list(total = total, active = active, queued = queued)
 }
@@ -41,7 +51,7 @@ health_worker_core_visual <- function(worker_value) {
     div(
       class = "health-cpu-orb",
       div(class = "health-cpu-orb-ring"),
-      div(class = "health-cpu-orb-inner", span(paste0(pct, "%")), small("aktif kullanım"))
+      div(class = "health-cpu-orb-inner", span(paste0(pct, "%")), tags$small("aktif kullanım"))
     ),
     div(
       class = "health-core-grid",
