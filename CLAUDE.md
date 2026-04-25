@@ -115,6 +115,64 @@ Repository convention:
 
 ---
 
+## Health Dashboard Architecture
+
+The “Sistem Durumu” page is a modular, offline-compatible health dashboard for on-prem Windows VM deployments. Keep the public Shiny module API stable and backward compatible:
+
+```r
+healthUI(id)
+healthServer(id, perf_tracker)
+```
+
+Do not break existing callers of these functions.
+
+Implementation split (keep responsibilities scoped):
+- `R/helpers_health_checks.R`: pure/safe health-check logic without Shiny UI coupling.
+- `R/helpers_health_formatters.R`: status/severity normalization, secret-safe formatting, path-copy helpers, shared rendering helpers.
+- `R/module_health_overview.R`: overview tab helpers.
+- `R/module_health_connectivity.R`: DB/LLM/TTS/STT/image connectivity helpers.
+- `R/module_health_storage.R`: storage/path/index/log/disk helpers.
+- `R/module_health_runtime.R`: worker/runtime/memory/session/package/OS/CPU-core helpers.
+- `R/module_health_security.R`: SSO/env/secret-redaction/DB-schema-readiness helpers.
+- `R/module_health_diagnostics.R`: diagnostics table/remediation helpers.
+- `R/module_health.R`: stable coordinator module.
+- `www/css/health_dashboard.css` and `www/js/health_dashboard.js`: local-only dashboard assets.
+
+Health checks must remain safe, non-destructive, lightweight, and offline-compatible. They must not mutate production data and must not call public internet endpoints. Optional integrations should degrade to `not_configured` or `unknown` without unhandled errors.
+
+Secrets must always be redacted: never print raw credentials, tokens, or API keys.
+
+Path actions intentionally copy full paths to clipboard instead of attempting direct folder open; users then paste into Windows File Explorer and press Enter.
+
+Health tooltips use CSS-only `data-health-tooltip`. Do **not** reintroduce Bootstrap tooltip initialization for health dashboard elements; it previously caused frozen tooltip artifacts during refresh/navigation.
+
+Every new health check should return a structured result contract:
+
+```r
+id
+label
+status
+severity
+value
+detail
+duration_ms
+checked_at
+remediation
+```
+
+Focused health validation:
+
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+
+testthat::test_file("tests/testthat/test-health-check-formatters.R")
+testthat::test_file("tests/testthat/test-health-check-paths.R")
+testthat::test_file("tests/testthat/test-health-check-env-contract.R")
+testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
+```
+
+---
+
 ### 9) Bug fix varsa mümkünse test de olmalı
 Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğunda birim test de eklenmelidir. Bir kez yaşanmış regresyonlar testsiz bırakılmamalıdır. Test ekleri repo stiline uyumlu, küçük ve cerrahi olmalıdır. Özellikle encoding/BOM ve promise cleanup gibi daha önce regresyon üretmiş helper davranışlarında, test beklentileri event-loop zamanlamasını ve Windows VM farklılıklarını dikkate alacak kadar dayanıklı yazılmalıdır.
 
