@@ -79,6 +79,8 @@ Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfası
 ### Dosya Yönetimi
 Kullanıcının yüklediği dosyaları yönettiği merkezdir. Yükleme, önizleme, listeleme ve söyleşiye bağlama işlemleri burada yapılır.
 
+Dosya Yönetimi ekranında dosya başına varsayılan yükleme sınırı 25 MB’tır. Bu sınır yalnızca sunucu tarafında değil, tarayıcı tarafında da kontrol edilir; böylece büyük dosyalar Shiny upload süreci başlamadan önce reddedilir ve kullanıcıya anında uyarı gösterilir. Bu katmanlı yaklaşım, özellikle on-prem Windows VM üzerinde büyük PDF/Word/Excel dosyalarının arayüzü kilitlemesini veya geç yanıt veren upload akışları oluşturmasını önlemek için kullanılır.
+
 ### Ayarlar
 İki alt sayfa içerir:
 - **Kişiselleştirme**
@@ -127,6 +129,19 @@ testthat::test_file("tests/testthat/test-health-check-paths.R")
 testthat::test_file("tests/testthat/test-health-check-env-contract.R")
 testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
 ```
+
+### Üretim Sertleştirme ve Upload Testleri
+Son üretim sertleştirme kapsamında aşağıdaki testler ana test koşumuyla uyumlu hâle getirilmiştir:
+
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+
+testthat::test_file("tests/testthat/test-production-contracts.R")
+testthat::test_file("tests/testthat/test-upload-size-policy.R")
+testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
+```
+
+`tests/testthat.R` ana koşucusu sıkı modda kalmalıdır: `stop_on_failure = TRUE` ve `stop_on_warning = TRUE`. Bu nedenle üretim sözleşmesi testleri geniş, uyarı üretebilecek recursive kaynak taramalarından kaçınmalı; kritik boot/runtime sözleşmelerini deterministik ve warning-safe biçimde doğrulamalıdır.
 
 ---
 
@@ -490,6 +505,14 @@ Dosya depolama sistemi `R/config_file_store.R` içinde merkezi olarak tanımlan�
 
 ### Dosya Yönetimi yenileme dayanıklılığı
 Dosya Yönetimi yenileme akışı kullanıcı açısından rollback-safe olacak şekilde korunur: yenileme/rehydrate adımı hata verirse önceki bellek içi dosya durumu silinmez; başarılı yenilemede daha önce bağlama eklenmiş dosyalar yeniden işaretlenerek geri yüklenir.
+
+### Dosya Boyutu Sınırı ve Katmanlı Doğrulama
+Yükleme güvenliği üç katmanlıdır:
+- Tarayıcı tarafı kontrol: `module_file_manager.R` içindeki istemci tarafı kontrol, dosya boyutunu Shiny upload başlamadan önce denetler.
+- Shiny/request sınırı: `shiny.maxRequestSize`, HTTP upload düzeyinde üst sınır sağlar.
+- Sunucu tarafı doğrulama: `validate_uploaded_file()` dosya varlığı, okunabilirlik, uzantı, güvenli dosya adı ve boyut sınırı gibi kontrolleri yapar.
+
+Varsayılan üretim politikası dosya başına 25 MB’tır. Bu değer `MERGEN_UPLOAD_MAX_MB` / `mergen.upload_max_mb` hattı üzerinden yönetilir; ancak üretim davranışında büyük dosyaların UI’ı kilitlememesi için tarayıcı tarafı erken ret mekanizması temel güvenlik katmanı olarak korunmalıdır.
 
 ### Excel Analizi / MCP yol çözümleme dayanıklılığı
 - Excel Analizi aracında, oturum dosya kayıt defteri ile fiziksel dosya yolu çözümleme zinciri güçlendirilmiştir.

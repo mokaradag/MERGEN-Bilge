@@ -113,6 +113,15 @@ Repository convention:
 - periodic GC scheduling is started through a once-only guard (`start_gc_scheduler_once()` pattern),
 - do not reintroduce unguarded source-time scheduling that can stack duplicate loops when files are sourced repeatedly in the same R session.
 
+### Upload-size policy and client-side guard
+File upload size enforcement is layered and must remain that way:
+
+* browser/client-side guard in `R/module_file_manager.R` rejects files above the configured limit before Shiny upload starts,
+* `shiny.maxRequestSize` provides request-level protection,
+* `validate_uploaded_file()` provides the final server-side trust boundary.
+
+The default production policy is 25 MB per file. Do not remove the browser-side guard. Without it, large files may still make the Dosya Yönetimi page appear frozen because Shiny begins uploading immediately when a user selects or drops a file, before server-side validation can show a toast.
+
 ---
 
 ## Health Dashboard Architecture
@@ -220,6 +229,18 @@ Quality-gate tests for repository scripts and entrypoint contracts should prefer
 
 Reasoning/SSE contract tests must remain runnable both through `source("tests/testthat.R", encoding = "UTF-8")` and individually via `testthat::test_file(...)`. If a test directly exercises helpers from `R/config_api.R`, `R/helpers_llm_response_postprocess.R`, or `R/helpers_llm_sse.R`, it must explicitly bootstrap/source those dependencies or use the established test bootstrap pattern.
 
+Individual tests passing is not enough; tests that inspect source files must also pass when run through the full `source("tests/testthat.R", encoding = "UTF-8")` suite, because the full suite runs in a shared R session and is more sensitive to leaked warnings.
+
+### Strict test runner rule
+`tests/testthat.R` is a strict gate and should keep:
+
+```r
+stop_on_failure = TRUE
+stop_on_warning = TRUE
+```
+
+Do not weaken the main runner to hide warnings. If a test produces noisy warnings only during full `test_dir()` execution, fix the test so it is deterministic and warning-safe. Source-inspection tests should avoid broad warning-prone recursive scans inside the main suite. Prefer targeted contract checks over scanning the whole repository when the test is part of the strict default runner.
+
 Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions instead of locale-dependent `readLines()` comparisons on Windows VM.
 
 Windows-safe child-session test authoring rules:
@@ -250,6 +271,10 @@ Windows-safe child-session test authoring rules:
 - future worker globals contract coverage for apply_model_request_overrides
 - SSE delta reasoning parser coverage for delta$content, delta$reasoning, delta$reasoning_content, and atomic delta/message edge cases
 - production-default reasoning debug gate coverage via MERGEN_REASONING_DEBUG=FALSE
+- production contract coverage for critical boot/runtime entry files without warning-prone broad recursive scans
+- upload-size policy coverage for the 25 MB default and >25 MB rejection path
+- file-manager client-side upload guard coverage via `test-file-manager-upload-limit-ui.R`
+- strict test runner compatibility for `source("tests/testthat.R", encoding = "UTF-8")`
 
 ### Scripted validation flow (`tests/scripts/`)
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
