@@ -196,6 +196,9 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 - Bu alanlarda yapılan küçük değişiklikler bile özellikle Windows VM / SSO / MCP akışında regresyon üretebilir.
 - `path_exists_relaxed` ve `resolve_readable_path` gibi yardımcıların yalnızca global ortamda var olduğunu varsaymak güvenli değildir; araç/worker bağlamında erişilebilirlik korunmalıdır.
 - Windows’ta kısa yol (8.3) path basename’i orijinal dosya adından farklı olabilir; testlerde fiziksel basename yerine `display` / okunabilirlik / gerçek çözüm başarısı tercih edilmelidir.
+- `helpers_mcp_tools$get_session_user_id()` must remain scalar and must never fall back to `session$userData$current_session_files`; that object is a file registry, not an identity source.
+- MCP/file resolver helpers should not assume path helpers are available only from `globalenv()`. Keep local fallbacks such as `helpers_mcp_tools$normalize_excel_path()` for worker and isolated-test contexts.
+- Resolver diagnostics must go through `helpers_mcp_tools$mcp_debug_log(...)`; do not reintroduce raw `cat("[RESOLVE] ...")` output inside `resolve_file_argument()`. Production debug output must stay off by default and be enabled only through `MERGEN_MCP_DEBUG=true` or `options(mergen.mcp.debug = TRUE)`.
 
 ### 9B) Logging wrappers must preserve caller-frame glue evaluation
 
@@ -206,6 +209,8 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 - `MERGEN_LOG_DIR` and `MERGEN_LOG_THRESHOLD` are now part of the repository contract; do not hardcode `logs/` in code/tests/scripts when active logging paths are environment-configurable.
 - Caller-frame logging tests should keep working-directory control inside the test scope and assert against the active configured log directory (from `MERGEN_LOG_DIR` or fallback default).
 - After sourcing `app.R`, test setup should not leak real logging side effects into the rest of the suite.
+- Console color logging is opt-in. Keep `MERGEN_LOG_CONSOLE_COLORS=false` as the production default so ANSI color escape sequences do not leak into Windows VM/service logs.
+- Do not replace this with unconditional `layout_glue_colors` for console logs. Local colored console output may be enabled temporarily with `MERGEN_LOG_CONSOLE_COLORS=true`.
 
 ---
 
@@ -269,6 +274,10 @@ Windows-safe child-session test authoring rules:
 - `safe_join_path` path-safety behavior on Windows-compatible test inputs
 - MCP Excel session-registry path resolution and helper-environment availability
 - `config_logging.R` redaction wrappers and `dbg_dump()` behavior, including preservation of caller-frame `logger` glue evaluation
+- MCP session user-id contract coverage ensuring file registries are not used as user identity (`test-mcp-session-user-id-contract.R`)
+- MCP path fallback contract coverage for worker/isolated helper contexts (`test-mcp-path-fallback-contract.R`)
+- MCP resolver debug-output contract coverage preventing raw `cat("[RESOLVE] ...")` production output (`test-mcp-debug-output-contract.R`)
+- production console-color logging policy coverage (`test-logging-console-color-policy.R`)
 - `app.R` boot-contract coverage for `boot_step(...)`, `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()`, including strict `MERGEN_RUN_APP` autorun-flag parsing and explicit invalid `run_mergen_app(port = ...)` normalization fallback to `8009`
 - caller-frame logging-wrapper behavior under Windows-safe test setup
 - parse-based quality-gate coverage for `app.R`, `tests/testthat.R`, and `tests/scripts/*`
@@ -298,6 +307,10 @@ Windows-safe child-session test authoring rules:
   testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
   testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
   testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
+  testthat::test_file("tests/testthat/test-mcp-session-user-id-contract.R")
+  testthat::test_file("tests/testthat/test-mcp-path-fallback-contract.R")
+  testthat::test_file("tests/testthat/test-mcp-debug-output-contract.R")
+  testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
   ```
 
 CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration/preflight checks must run on Windows VM via `run_vm_preflight_real.R`, including writable-path probes against active configured directories (active log dir from `MERGEN_LOG_DIR` or fallback default).
