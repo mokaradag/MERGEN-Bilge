@@ -142,10 +142,16 @@ testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
+testthat::test_file("tests/testthat/test-mcp-session-user-id-contract.R")
+testthat::test_file("tests/testthat/test-mcp-path-fallback-contract.R")
+testthat::test_file("tests/testthat/test-mcp-debug-output-contract.R")
+testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
 ```
 
 `tests/testthat.R` ana koşucusu sıkı modda kalmalıdır: `stop_on_failure = TRUE` ve `stop_on_warning = TRUE`. Bu nedenle üretim sözleşmesi testleri geniş, uyarı üretebilecek recursive kaynak taramalarından kaçınmalı; kritik boot/runtime sözleşmelerini deterministik ve warning-safe biçimde doğrulamalıdır.
 Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM üretim profili için temel offline sözleşmeyi varsayılan test koşumunda doğrular. Test, runtime R/CSS/JS dosyalarında açık CDN/public asset bağımlılığı arar ve `stop_on_warning = TRUE` ile uyumlu kalması için warning-safe metin tarama yaklaşımı kullanır. Daha geniş offline tarama hâlâ `MERGEN_STRICT_OFFLINE_TESTS=true` ile opsiyonel olarak çalıştırılır.
+
+Son MCP/loglama sertleştirme güncellemeleriyle dosya çözümleme hattı daha güvenli hâle getirilmiştir. `helpers_mcp_tools$get_session_user_id()` artık yalnızca scalar kullanıcı kimliği döndürür ve dosya kayıt defteri olan `current_session_files` alanını kullanıcı kimliği gibi kullanmaz. MCP path çözümleme tarafında `normalize_excel_path` için yerel fallback korunur; böylece worker veya izole test bağlamlarında global helper eksikliği geç hata üretmez. Ayrıca `[RESOLVE]` debug çıktıları üretimde raw `cat()` ile konsola basılmaz; `MERGEN_MCP_DEBUG=true` veya `options(mergen.mcp.debug = TRUE)` ile geçici olarak açılabilen kontrollü debug logger üzerinden geçer. Windows VM üretim loglarında ANSI renk kodlarının karışmasını önlemek için konsol renkleri de varsayılan kapalıdır (`MERGEN_LOG_CONSOLE_COLORS=false`).
 
 ---
 
@@ -341,6 +347,7 @@ Not: Ortak `safe_source()` helper’ı (`R/utils_safe_source.R`) önce normal `s
 - Excel okuyucu
 
 Not: `R/config_logging.R` içindeki güvenli log sarmalayıcıları (`log_info`, `log_warn`, `log_error`, `log_debug`) hassas karakter verilerini redakte edecek şekilde korunur. Ancak `logger` içindeki `{ ... }` glue ifadelerinin çağıran ortamda çözülmesi bozulmamalıdır. Özellikle SSO akışlarında `{nchar(token)}` gibi ifadeler, generic bir ara wrapper içinde çağıran frame kaybedilerek çalıştırılırsa VM üzerinde gerçek runtime hatası üretebilir.
+Konsol renkli loglama üretimde varsayılan kapalıdır; gerekirse yalnızca geçici yerel teşhis için `MERGEN_LOG_CONSOLE_COLORS=true` ile açılmalıdır.
 
 ### 2. Yapılandırma
 - SSO
@@ -368,6 +375,8 @@ Not: `R/config_logging.R` içindeki güvenli log sarmalayıcıları (`log_info`,
 - Bilge Yolaç yardımcıları
 
 Not: MCP Excel yol çözümleme davranışı `utils_path_helpers`, `helpers_files`, `utils_excel_reader`, `helpers_mcp_tools` ve `helpers_send_message_core` yardımcılarının koordineli çalışmasına bağlıdır.
+
+Not: MCP dosya çözümleme zincirinde kullanıcı kimliği, dosya kayıt defteriyle karıştırılmamalıdır. `current_session_files` yalnızca oturum dosyalarını temsil eder; kullanıcı kapsamı için scalar kullanıcı kimliği kullanılmalıdır. Araç/worker bağlamlarında path yardımcılarının eksik kalmaması için `helpers_mcp_tools` kendi güvenli fallback’lerini taşımalıdır.
 
 ### 5. LLM entegrasyon katmanı
 - araç formatlayıcıları
