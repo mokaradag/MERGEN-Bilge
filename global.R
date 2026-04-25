@@ -78,19 +78,48 @@ DB_TARGETS <- list(
 # Yorumlu yanıtlara izin ver (LLM'in ikinci yazım geçişi açık kalsın)
 options(mergen.ai.strict_data_only = FALSE)
 
+# ------------------------------------------------------------------------------
+# GÜVENLİ / TEKRARLANABİLİR RESOURCE PATH KAYDI
+# ------------------------------------------------------------------------------
+# global.R Ctrl+Enter, test, smoke boot veya Shiny process yenilemelerinde birden
+# fazla source edilebilir. addResourcePath aynı prefix için uyarı üretebildiğinden
+# opsiyonel statik klasör kayıtlarını idempotent hale getiriyoruz.
+# ------------------------------------------------------------------------------
+register_global_resource_path <- function(prefix, directory, create = FALSE) {
+  if (isTRUE(create) && !dir.exists(directory)) {
+    dir.create(directory, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  if (!dir.exists(directory)) {
+    return(invisible(FALSE))
+  }
+
+  withCallingHandlers(
+    {
+      shiny::addResourcePath(prefix, directory)
+    },
+    warning = function(w) {
+      if (grepl("already", conditionMessage(w), ignore.case = TRUE)) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+
+  invisible(TRUE)
+}
+
 # Destek ek dosyalarını sunmak için kaynak yolu tanımla
 destek_uploads_dir <- file.path(getwd(), "destek_uploads")
-if (dir.exists(destek_uploads_dir)) {
-  shiny::addResourcePath("destek_uploads", destek_uploads_dir)
-}
+register_global_resource_path("destek_uploads", destek_uploads_dir)
 
 # Bilge Yolaç tarafından üretilen dosyaları yerel indirme bağlantısı olarak sun
 bilge_yolac_downloads_dir <- file.path(getwd(), "bilge_yolac_downloads")
-if (!dir.exists(bilge_yolac_downloads_dir)) {
-  dir.create(bilge_yolac_downloads_dir, recursive = TRUE, showWarnings = FALSE)
-}
 options(mergen.claude_code_download_root = bilge_yolac_downloads_dir)
-try(shiny::addResourcePath("bilge_yolac_downloads", bilge_yolac_downloads_dir), silent = TRUE)
+register_global_resource_path(
+  "bilge_yolac_downloads",
+  bilge_yolac_downloads_dir,
+  create = TRUE
+)
 
 # ==============================================================================
 # BAĞIMLILIK YÜKLEME MANİFESTİ

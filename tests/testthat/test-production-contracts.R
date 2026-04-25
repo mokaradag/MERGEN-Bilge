@@ -72,17 +72,50 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
       "ui.R",
       "server.R",
       "welcome_screen.R",
+
+      # Temel altyapı
       "R/utils_safe_source.R",
       "R/utils_common.R",
-      "R/utils_upload_validator.R",
       "R/utils_safe_path.R",
       "R/utils_atomic_write.R",
+      "R/utils_upload_validator.R",
       "R/utils_log_redact.R",
       "R/utils_session_cleanup.R",
       "R/utils_safe_worker_run.R",
-      "R/helpers_worker_monitor.R",
+      "R/utils_file_index.R",
+      "R/utils_excel_reader.R",
+
+      # Yapılandırma ve DB
       "R/config_file_store.R",
-      "R/module_file_manager.R"
+      "R/config_logging.R",
+      "R/config_sso.R",
+      "R/config_api.R",
+      "R/helpers_database.R",
+      "R/library_queries.R",
+      "R/config_sql_loader.R",
+
+      # LLM / SSE / worker hattı
+      "R/helpers_worker_monitor.R",
+      "R/helpers_llm_response_postprocess.R",
+      "R/helpers_llm_api.R",
+      "R/helpers_llm_sse.R",
+      "R/helpers_llm_worker.R",
+      "R/server_handler_true_streaming.R",
+      "R/server_send_message.R",
+
+      # Dosya, MCP, özetleme, proje analizi
+      "R/helpers_mcp_tools.R",
+      "R/helpers_files.R",
+      "R/helpers_send_message_core.R",
+      "R/module_file_manager.R",
+      "R/module_summarization.R",
+      "R/module_proje_kaynak_analizi.R",
+
+      # Bilge Yolaç / health
+      "R/module_claude_code.R",
+      "R/helpers_claude_code.R",
+      "R/module_health.R",
+      "R/helpers_health_checks.R"
     )
   )
 
