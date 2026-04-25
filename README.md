@@ -139,9 +139,13 @@ source("tests/testthat.R", encoding = "UTF-8")
 testthat::test_file("tests/testthat/test-production-contracts.R")
 testthat::test_file("tests/testthat/test-upload-size-policy.R")
 testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
+testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
 ```
 
 `tests/testthat.R` ana koşucusu sıkı modda kalmalıdır: `stop_on_failure = TRUE` ve `stop_on_warning = TRUE`. Bu nedenle üretim sözleşmesi testleri geniş, uyarı üretebilecek recursive kaynak taramalarından kaçınmalı; kritik boot/runtime sözleşmelerini deterministik ve warning-safe biçimde doğrulamalıdır.
+Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM üretim profili için temel offline sözleşmeyi varsayılan test koşumunda doğrular. Test, runtime R/CSS/JS dosyalarında açık CDN/public asset bağımlılığı arar ve `stop_on_warning = TRUE` ile uyumlu kalması için warning-safe metin tarama yaklaşımı kullanır. Daha geniş offline tarama hâlâ `MERGEN_STRICT_OFFLINE_TESTS=true` ile opsiyonel olarak çalıştırılır.
 
 ---
 
@@ -236,6 +240,7 @@ Bu override `apply_model_request_overrides(...)` ile hem true SSE streaming yolu
 `R/helpers_llm_api.R` içindeki non-streaming LLM yolunda da istek gövdesi kurulduktan (ve sıcaklık/temperature işlemleri tamamlandıktan) sonra `apply_model_request_overrides(body, selected_model)` uygulanır; böylece thinking/reasoning modellerde SSE streaming ile non-streaming/tool/fallback akışları aynı davranış sözleşmesini korur.
 True streaming future worker içinde de aynı davranışın korunması için `apply_model_request_overrides` fonksiyonu worker globals listesine taşınmalıdır.
 Kimi tarzı modellerde reasoning ayrı `delta$reasoning` alanından gelebilir; Gemma tarzı modellerde ise `enable_thinking` gönderilmezse akış yalnızca normal `delta$content` olarak dönebilir ve `MB_Messages.ReasoningContent` boş kalabilir.
+True SSE streaming akışında worker prewarm/export listesi ile `tracked_future_promise(..., globals = list(...))` sözleşmesi aynı kritik yardımcıları taşımalıdır. Özellikle reasoning delta, stop-file kontrolü ve model bazlı request override davranışı için `append_stream_reasoning_line`, `streaming_should_stop`, `apply_model_request_overrides` ve ilgili yardımcıların worker tarafında görünür kalması gerekir. Bu sözleşme `test-sse-worker-export-contract.R` ile korunur.
 
 ### Kalıcılık ve Geçmiş Sohbetler
 - Akıl yürütme metni artık yalnızca yanıt HTML’ine gömülmez; `MB_Messages.ReasoningContent` sütununda da saklanır
@@ -316,6 +321,7 @@ Sunucu mantığının ana birleşim ve bağlama noktasıdır. Ancak artık tüm 
 
 Amaç, `server.R` dosyasını iş mantığının tek sahibi yapmak değil; uygulamanın **composition root** katmanı olarak temiz ve okunabilir tutmaktır.
 Recency odaklı UI bileşenlerinde uygun olduğunda çıplak oluşturulma zamanı yerine `last_message_timestamp` önceliklendirilir (`timestamp` yalnızca geri dönüş alanıdır).
+SSO modunda kullanıcı kimliği başlangıçta geçici `0L` olabilir; bu nedenle kullanıcıya özel modüllere startup snapshot yerine canlı `current_user_id_provider` fonksiyonu geçirilmelidir. Dosya, kayıtlı söyleşi, geçmiş, galeri, destek ve performans gibi kullanıcı kapsamlı akışlar bu provider üzerinden gerçek kullanıcı kimliğini kullanım anında çözmelidir. Bu sözleşme `test-server-live-user-provider-contract.R` ile korunur.
 
 ---
 
