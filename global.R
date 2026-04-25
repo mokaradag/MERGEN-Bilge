@@ -37,6 +37,11 @@ if (is.na(mergen_upload_max_mb) || mergen_upload_max_mb <= 0L) {
   mergen_upload_max_mb <- 25L
 }
 
+# Üretim politikası: varsayılan ve üst sınır 25 MB.
+# Yanlışlıkla .Renviron içinde MERGEN_UPLOAD_MAX_MB=30/50/100 kalsa bile
+# bu uygulama profili 25 MB üstüne çıkmaz.
+mergen_upload_max_mb <- min(mergen_upload_max_mb, 25L)
+
 options(
   mergen.upload_max_mb = mergen_upload_max_mb,
   shiny.maxRequestSize = mergen_upload_max_mb * 1024^2

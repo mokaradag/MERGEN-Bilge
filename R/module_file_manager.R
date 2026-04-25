@@ -7,6 +7,11 @@
 #' @return A UI definition for the file manager tab.
 fileManagerUI <- function(id) {
   ns <- NS(id)
+
+  # Dosya yükleme boyut sınırı UI tarafında da kullanılacak.
+  upload_limit_mb <- suppressWarnings(as.integer(getOption("mergen.upload_max_mb", 25L)))
+  if (is.na(upload_limit_mb) || upload_limit_mb <= 0L) upload_limit_mb <- 25L
+  upload_limit_bytes <- upload_limit_mb * 1024^2
   
 tagList(
     # 32\U00D732 attach checkbox + center it in its cell
@@ -36,6 +41,73 @@ tagList(
         }
       });
     ")),
+
+    # Büyük dosyaları Shiny upload başlamadan önce tarayıcı tarafında reddet.
+    tags$script(HTML(sprintf("
+      (function() {
+        var inputId = %s;
+        var maxBytes = %d;
+        var maxMb = %d;
+        var messageInputId = %s;
+
+        function formatMb(bytes) {
+          return (bytes / 1024 / 1024).toFixed(1);
+        }
+
+        function clearFileInput(input) {
+          try {
+            input.value = '';
+          } catch (e) {}
+
+          try {
+            var $wrap = $(input).closest('.form-group');
+            $wrap.find('.progress').remove();
+          } catch (e) {}
+        }
+
+        $(document).off('change.mergenUploadLimit', '#' + inputId);
+        $(document).on('change.mergenUploadLimit', '#' + inputId, function(evt) {
+          var input = evt.target;
+          var files = input.files || [];
+          var rejected = [];
+
+          for (var i = 0; i < files.length; i++) {
+            if (files[i].size > maxBytes) {
+              rejected.push({
+                name: files[i].name,
+                size: files[i].size
+              });
+            }
+          }
+
+          if (rejected.length > 0) {
+            clearFileInput(input);
+
+            if (window.Shiny && Shiny.setInputValue) {
+              Shiny.setInputValue(messageInputId, {
+                nonce: Math.random(),
+                max_mb: maxMb,
+                files: rejected.map(function(f) {
+                  return {
+                    name: f.name,
+                    size_mb: formatMb(f.size)
+                  };
+                })
+              }, {priority: 'event'});
+            }
+
+            alert('Dosya yüklenmedi. Dosya başına en fazla ' + maxMb + ' MB yükleyebilirsiniz.');
+            return false;
+          }
+        });
+      })();
+    ",
+    jsonlite::toJSON(ns("bulk_upload"), auto_unbox = TRUE),
+    upload_limit_bytes,
+    upload_limit_mb,
+    jsonlite::toJSON(ns("bulk_upload_client_error"), auto_unbox = TRUE)
+    ))),
+
 	div(
       class = "content-container",
       # Header matching "Ayarlar" page style
@@ -70,10 +142,15 @@ tagList(
                 accept = c(".txt", ".pdf", ".docx", ".xlsx", ".xls", ".csv", ".json", ".R", ".r", ".py", ".md", ".log", ".xml", ".html")
               )
             ),
-            p(class = "upload-hint", "Birden fazla dosya seçebilirsiniz"),
-            p(class = "upload-hint", 
-              style = "margin-top: 8px; font-size: 12px;",
-              "Desteklenen dosya türleri: TXT, PDF, DOCX, XLSX, XLS, CSV, JSON, R, PY, MD, LOG, XML, HTML"),
+			p(class = "upload-hint", "Birden fazla dosya seçebilirsiniz"),
+			p(
+			  class = "upload-hint",
+			  style = "margin-top: 8px; font-size: 12px;",
+			  sprintf("Dosya başına en fazla %d MB yükleyebilirsiniz.", upload_limit_mb)
+			),
+			p(class = "upload-hint",
+			  style = "margin-top: 8px; font-size: 12px;",
+			  "Desteklenen dosya türleri: TXT, PDF, DOCX, XLSX, XLS, CSV, JSON, R, PY, MD, LOG, XML, HTML"),
             div(
               id = ns("execute_bulk_upload_container"),
               style = "display: none; margin-top: 20px;"
@@ -698,6 +775,36 @@ fileManagerServer <- function(
     message_data    <- reactiveVal(NULL)
 
     files_added_to_context <- reactiveVal(NULL)   # -> parent
+
+    # Tarayıcı tarafında boyut sınırına takılan dosyalar için kullanıcıya toast göster.
+    observeEvent(input$bulk_upload_client_error, {
+      bilgi <- input$bulk_upload_client_error
+      max_mb <- bilgi$max_mb %||% getOption("mergen.upload_max_mb", 25L)
+
+      dosya_ozeti <- ""
+      if (!is.null(bilgi$files) && length(bilgi$files) > 0L) {
+        dosya_ozeti <- paste(
+          vapply(bilgi$files, function(x) {
+            sprintf(
+              "%s (%.1f MB)",
+              x$name %||% "dosya",
+              as.numeric(x$size_mb %||% 0)
+            )
+          }, character(1)),
+          collapse = ", "
+        )
+      }
+
+      showToast(
+        session,
+        sprintf(
+          "Dosya yüklenmedi. Dosya başına en fazla %s MB yükleyebilirsiniz. %s",
+          max_mb,
+          dosya_ozeti
+        ),
+        "error"
+      )
+    }, ignoreInit = TRUE)
 
     sync_file_to_context <- function(filename, summary = NULL, persisted_path = NULL) {
       if (!length(module_values$file_contents)) return(invisible(FALSE))

@@ -1,8 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-upload-size-policy.R
 # Açıklama: Üretim dosya yükleme boyut sınırının 25 MB varsayılanını doğrular.
-# Büyük dosya gerçek içerikle oluşturulmaz; sparse binary yazım yerine dosya
-# bağlantısında seek kullanılarak hızlı ve düşük maliyetli test yapılır.
+# Büyük dosya gerçek içerikle oluşturulmaz; dosya bağlantısında seek kullanılarak
+# hızlı ve düşük maliyetli test yapılır.
 # ==============================================================================
 
 .find_repo_root <- function() {
@@ -36,6 +36,13 @@ if (!exists("validate_uploaded_file", envir = globalenv(), inherits = FALSE)) {
   )
 }
 
+.with_options <- function(new_options, code) {
+  eski <- options()
+  on.exit(options(eski), add = TRUE)
+  do.call(options, new_options)
+  force(code)
+}
+
 .create_file_with_size <- function(path, size_bytes) {
   con <- file(path, open = "wb")
   on.exit(close(con), add = TRUE)
@@ -47,39 +54,39 @@ if (!exists("validate_uploaded_file", envir = globalenv(), inherits = FALSE)) {
 }
 
 test_that("varsayılan upload sınırı 25 MB olarak ayarlanabilir", {
-  local_options(mergen.upload_max_mb = 25L)
-
-  expect_equal(getOption("mergen.upload_max_mb"), 25L)
+  .with_options(list(mergen.upload_max_mb = 25L), {
+    expect_equal(getOption("mergen.upload_max_mb"), 25L)
+  })
 })
 
 test_that("25 MB altındaki dosya kabul edilir", {
-  local_options(mergen.upload_max_mb = 25L)
+  .with_options(list(mergen.upload_max_mb = 25L), {
+    path <- tempfile(fileext = ".txt")
+    .create_file_with_size(path, 24L * 1024L * 1024L)
 
-  path <- tempfile(fileext = ".txt")
-  .create_file_with_size(path, 24L * 1024L * 1024L)
+    sonuc <- validate_uploaded_file(
+      path = path,
+      filename = "kabul.txt",
+      allowed_ext = "txt"
+    )
 
-  sonuc <- validate_uploaded_file(
-    path = path,
-    filename = "kabul.txt",
-    allowed_ext = "txt"
-  )
-
-  expect_true(sonuc$ok)
-  expect_null(sonuc$code)
+    expect_true(sonuc$ok)
+    expect_null(sonuc$code)
+  })
 })
 
 test_that("25 MB üstündeki dosya reddedilir", {
-  local_options(mergen.upload_max_mb = 25L)
+  .with_options(list(mergen.upload_max_mb = 25L), {
+    path <- tempfile(fileext = ".txt")
+    .create_file_with_size(path, 26L * 1024L * 1024L)
 
-  path <- tempfile(fileext = ".txt")
-  .create_file_with_size(path, 26L * 1024L * 1024L)
+    sonuc <- validate_uploaded_file(
+      path = path,
+      filename = "buyuk.txt",
+      allowed_ext = "txt"
+    )
 
-  sonuc <- validate_uploaded_file(
-    path = path,
-    filename = "buyuk.txt",
-    allowed_ext = "txt"
-  )
-
-  expect_false(sonuc$ok)
-  expect_equal(sonuc$code, "too_large")
+    expect_false(sonuc$ok)
+    expect_equal(sonuc$code, "too_large")
+  })
 })

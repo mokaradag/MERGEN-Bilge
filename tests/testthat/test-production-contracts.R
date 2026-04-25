@@ -36,13 +36,6 @@
   x[!grepl("^\\s*#", x)]
 }
 
-.fail_unless <- function(condition, message) {
-  if (!isTRUE(condition)) {
-    testthat::fail(message)
-  }
-  invisible(TRUE)
-}
-
 test_that("tüm temel R dosyaları UTF-8 ile parse edilebilir", {
   r_files <- c(
     list.files(
@@ -56,12 +49,9 @@ test_that("tüm temel R dosyaları UTF-8 ile parse edilebilir", {
 
   r_files <- unique(r_files[file.exists(r_files)])
 
-  .fail_unless(
-    length(r_files) > 10L,
-    sprintf("Parse testi için beklenenden az R dosyası bulundu: %d", length(r_files))
-  )
+  expect_gt(length(r_files), 10L)
 
-  parse_errors <- list()
+  parse_errors <- character(0)
 
   for (f in r_files) {
     err <- tryCatch(
@@ -74,21 +64,22 @@ test_that("tüm temel R dosyaları UTF-8 ile parse edilebilir", {
     )
 
     if (!is.null(err)) {
-      parse_errors[[length(parse_errors) + 1L]] <- sprintf(
-        "%s\n  -> %s",
-        normalizePath(f, winslash = "/", mustWork = FALSE),
-        conditionMessage(err)
+      parse_errors <- c(
+        parse_errors,
+        sprintf(
+          "%s\n  -> %s",
+          normalizePath(f, winslash = "/", mustWork = FALSE),
+          conditionMessage(err)
+        )
       )
     }
   }
 
-  if (length(parse_errors) > 0L) {
-    testthat::fail(paste(
-      "Aşağıdaki R dosyaları UTF-8 parse kontrolünden geçemedi:",
-      paste(parse_errors, collapse = "\n\n"),
-      sep = "\n"
-    ))
-  }
+  expect_equal(
+    parse_errors,
+    character(0),
+    label = paste(parse_errors, collapse = "\n\n")
+  )
 })
 
 test_that("global.R üretim sertleştirme helper'larını manifestte yüklüyor", {
@@ -104,19 +95,16 @@ test_that("global.R üretim sertleştirme helper'larını manifestte yüklüyor"
     'safe_source("R/helpers_worker_monitor.R"'
   )
 
-  eksikler <- beklenenler[!vapply(
+  bulunanlar <- vapply(
     beklenenler,
     function(beklenen) grepl(beklenen, global_text, fixed = TRUE),
     logical(1)
-  )]
+  )
 
-  if (length(eksikler) > 0L) {
-    testthat::fail(paste(
-      "global.R manifestinde eksik üretim helper source kayıtları:",
-      paste(eksikler, collapse = "\n"),
-      sep = "\n"
-    ))
-  }
+  expect_true(
+    all(bulunanlar),
+    label = paste("Eksik source kayıtları:", paste(beklenenler[!bulunanlar], collapse = ", "))
+  )
 })
 
 test_that("app.R doğrudan source edildiğinde otomatik çalışma kapısı korunuyor", {
@@ -131,19 +119,16 @@ test_that("app.R doğrudan source edildiğinde otomatik çalışma kapısı koru
     "if (isTRUE(auto_run))"
   )
 
-  eksikler <- beklenenler[!vapply(
+  bulunanlar <- vapply(
     beklenenler,
     function(beklenen) grepl(beklenen, app_text, fixed = TRUE),
     logical(1)
-  )]
+  )
 
-  if (length(eksikler) > 0L) {
-    testthat::fail(paste(
-      "app.R boot sözleşmesinde eksik kayıtlar:",
-      paste(eksikler, collapse = "\n"),
-      sep = "\n"
-    ))
-  }
+  expect_true(
+    all(bulunanlar),
+    label = paste("Eksik app.R boot kayıtları:", paste(beklenenler[!bulunanlar], collapse = ", "))
+  )
 })
 
 test_that("ham future_promise kullanımı merkezi tracked_future_promise arkasında kalıyor", {
@@ -176,22 +161,17 @@ test_that("ham future_promise kullanımı merkezi tracked_future_promise arkası
 
   ihlaller <- unique(ihlaller)
 
-  if (length(ihlaller) > 0L) {
-    testthat::fail(paste(
-      "future_promise doğrudan kullanılmamalı; tracked_future_promise kullanın:",
-      paste(ihlaller, collapse = "\n"),
-      sep = "\n"
-    ))
-  }
+  expect_equal(
+    ihlaller,
+    character(0),
+    label = paste("Doğrudan future_promise kullanan dosyalar:", paste(ihlaller, collapse = ", "))
+  )
 })
 
 test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içeriyor", {
   runner_path <- file.path(.repo_root, "tests", "testthat.R")
 
-  .fail_unless(
-    file.exists(runner_path),
-    sprintf("tests/testthat.R bulunamadı: %s", runner_path)
-  )
+  expect_true(file.exists(runner_path))
 
   runner_text <- paste(.read_utf8(runner_path), collapse = "\n")
 
@@ -202,17 +182,14 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
     "stop_on_warning = TRUE"
   )
 
-  eksikler <- beklenenler[!vapply(
+  bulunanlar <- vapply(
     beklenenler,
     function(beklenen) grepl(beklenen, runner_text, fixed = TRUE),
     logical(1)
-  )]
+  )
 
-  if (length(eksikler) > 0L) {
-    testthat::fail(paste(
-      "tests/testthat.R üretim güvenliği sözleşmesinde eksik kayıtlar:",
-      paste(eksikler, collapse = "\n"),
-      sep = "\n"
-    ))
-  }
+  expect_true(
+    all(bulunanlar),
+    label = paste("Eksik test runner güvenlik kayıtları:", paste(beklenenler[!bulunanlar], collapse = ", "))
+  )
 })
