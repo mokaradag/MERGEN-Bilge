@@ -7,8 +7,9 @@ REM Açıklama: MERGEN Bilge üretim console log dosyasını canlı izler.
 REM
 REM Not:
 REM - Bu dosya loga yazmaz, yalnızca okur.
-REM - App çalışırken güvenle açık tutulabilir.
-REM - UNC path için pushd kullanılır.
+REM - Startup / Rscript / stdout / stderr çıktısını gösterir.
+REM - Normal runtime app logları için view_latest_mergen_app_log.bat kullanılır.
+REM - Türkçe karakterler için PowerShell tarafında UTF-8 okuma zorlanır.
 REM ==============================================================================
 
 chcp 65001 >nul
@@ -43,12 +44,15 @@ echo Watching MERGEN Bilge production console log:
 echo %LOG_FILE%
 echo.
 echo Press CTRL+C to stop watching. This will NOT stop the app.
+echo Normal runtime app logs are in logs\mergen_YYYYMMDD.log
 echo ------------------------------------------------------------
 echo.
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false);" ^
+  "$OutputEncoding = New-Object System.Text.UTF8Encoding($false);" ^
   "$path = '%LOG_FILE%';" ^
-  "Get-Content -LiteralPath $path -Tail 120 -Wait"
+  "Get-Content -LiteralPath $path -Encoding UTF8 -Tail 120 -Wait"
 
 popd
 exit /b 0
