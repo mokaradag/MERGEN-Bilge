@@ -16,8 +16,7 @@ health_overview_ui <- function(checks, last_update) {
   tagList(
     div(
       class = paste("health-hero", health_status_class(overall)),
-      `data-toggle` = "tooltip",
-      title = "Genel skor; kritik ve uyarı seviyesindeki kontrollerin ağırlıklı özetidir.",
+      `data-health-tooltip` = "Genel skor; kritik ve uyarı seviyesindeki kontrollerin ağırlıklı özetidir.",
       div(class = "health-score-ring", span(score), tags$small("/100")),
       div(class = "health-hero-copy",
           h2("Sistem Durumu"),

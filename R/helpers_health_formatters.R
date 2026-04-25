@@ -153,15 +153,13 @@ health_status_pill <- function(status, label = NULL) {
   status <- health_normalize_status(status)
   tags$span(
     class = paste("health-pill", health_status_class(status)),
-    `data-toggle` = "tooltip",
-    `data-placement` = "top",
-    title = paste("Durum:", health_status_label(status)),
+    `data-health-tooltip` = paste("Durum:", health_status_label(status)),
     icon(health_status_icon(status)),
     label %||% health_status_label(status)
   )
 }
 
-health_is_openable_path <- function(value, id = "") {
+health_is_copyable_path <- function(value, id = "") {
   value <- as.character(value %||% "")[1]
   id <- as.character(id %||% "")[1]
   if (!nzchar(value)) return(FALSE)
@@ -186,15 +184,13 @@ health_render_value <- function(value, id = "") {
     return(health_status_pill(normalized))
   }
 
-  if (health_is_openable_path(value, id)) {
+  if (health_is_copyable_path(value, id)) {
     return(tags$button(
       type = "button",
-      class = "health-path-open-btn",
+      class = "health-path-copy-btn",
       `data-health-path` = value,
-      `data-toggle` = "tooltip",
-      `data-placement` = "top",
-      title = "Bu yolu Windows Dosya Gezgini ile aç.",
-      icon("folder-open"),
+      `data-health-tooltip` = "Bu tam yolu panoya kopyala. Windows Dosya Gezgini adres çubuğuna yapıştırıp Enter'a basın.",
+      icon("copy"),
       tags$span(health_escape(value))
     ))
   }
@@ -209,9 +205,7 @@ health_metric_tile <- function(title, value, icon_name = "info-circle", status =
 
   div(
     class = paste("health-metric-tile", health_status_class(status)),
-    `data-toggle` = "tooltip",
-    `data-placement` = "top",
-    title = subtitle %||% paste(title, "sağlık göstergesi"),
+    `data-health-tooltip` = subtitle %||% paste(title, "sağlık göstergesi"),
     div(class = "health-metric-icon", icon(icon_name)),
     div(class = "health-metric-body",
         span(class = "health-metric-value", display_value),
@@ -227,9 +221,7 @@ health_section_card <- function(title, icon_name, ..., class = NULL, tooltip = N
         h3(class = "card-title", icon(icon_name), title),
         if (!is.null(tooltip)) tags$span(
           class = "info-btn",
-          `data-toggle` = "tooltip",
-          `data-placement` = "top",
-          title = tooltip,
+          `data-health-tooltip` = tooltip,
           icon("info-circle")
         )),
     ...
@@ -255,9 +247,7 @@ health_checks_table <- function(checks, max_height = 420) {
   div(
     class = "health-table-wrap",
     style = paste0("max-height:", as.integer(max_height), "px;"),
-    `data-toggle` = "tooltip",
-    `data-placement` = "top",
-    title = "Tablo başlığı sabittir; çok satırlı sonuçlarda tablo içinde kaydırma yapılır.",
+    `data-health-tooltip` = "Tablo başlığı sabittir; çok satırlı sonuçlarda tablo içinde kaydırma yapılır.",
     tags$table(
       class = "health-table",
       tags$thead(tags$tr(

@@ -5,9 +5,7 @@
 
 health_storage_path_item <- function(name, value, tooltip) {
   div(
-    `data-toggle` = "tooltip",
-    `data-placement` = "top",
-    title = tooltip,
+    `data-health-tooltip` = tooltip,
     strong(name),
     span(health_render_value(value, paste0("storage.path.", name)))
   )

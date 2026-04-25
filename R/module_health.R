@@ -43,7 +43,6 @@ healthUI <- function(id) {
     ),
     div(
       class = "health-dashboard-container",
-      `data-health-path-input-id` = ns("open_health_path"),
       admin_page_layout(
         ns = ns,
         page_title = "Sistem Durumu",
@@ -136,7 +135,6 @@ healthServer <- function(id, perf_tracker) {
     output$health_tab_content <- renderUI({
       checks <- checks_data()
       tab <- input$health_tabs %||% "overview"
-      admin_init_tooltips(session)
 
       switch(tab,
         overview = health_overview_ui(checks, health_last_update()),
@@ -159,36 +157,6 @@ healthServer <- function(id, perf_tracker) {
         send_health_timestamp()
       }, once = TRUE)
     })
-
-    observeEvent(input$open_health_path, {
-      path <- input$open_health_path$path %||% ""
-      path <- as.character(path)[1]
-
-      if (!nzchar(path)) {
-        showToast(session, "Açılacak klasör yolu boş.", "warning")
-        return(invisible(NULL))
-      }
-
-      normalized_path <- normalizePath(path, winslash = "\\", mustWork = FALSE)
-      open_target <- if (file.exists(normalized_path) && !dir.exists(normalized_path)) dirname(normalized_path) else normalized_path
-
-      if (!dir.exists(open_target)) {
-        showToast(session, "Klasör bulunamadı veya erişilemiyor.", "error")
-        return(invisible(NULL))
-      }
-
-      tryCatch({
-        if (.Platform$OS.type == "windows") {
-          # shell.exec bazı Shiny/VM oturumlarında sessiz kalabildiği için doğrudan explorer.exe çağırılır.
-          system2("explorer.exe", args = shQuote(open_target), wait = FALSE, invisible = TRUE)
-        } else {
-          utils::browseURL(open_target)
-        }
-        showToast(session, "Klasör Windows Dosya Gezgini ile açıldı.", "success")
-      }, error = function(e) {
-        showToast(session, paste("Klasör açılamadı:", conditionMessage(e)), "error")
-      })
-    }, ignoreInit = TRUE)
 
     observeEvent(input$refresh_health, {
       session$sendCustomMessage("removeHealthTooltips", list())
