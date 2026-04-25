@@ -64,8 +64,16 @@ validate_uploaded_file <- function(path,
     return(list(ok = FALSE, error = "Yol parametresi boş veya geçersiz.", code = "missing_path"))
   }
 
-  if (is.null(filename) || !nzchar(filename)) {
+  # filename parametresi Shiny/file input dışından testlerde veya yardımcı
+  # çağrılarda character(0), NA veya vektör olarak gelebilir. Tek, güvenli
+  # görünen ada indir; boş/NA ise fiziksel yolun basename değerine düş.
+  if (is.null(filename) ||
+      length(filename) == 0L ||
+      is.na(filename[1]) ||
+      !nzchar(as.character(filename[1]))) {
     filename <- basename(path)
+  } else {
+    filename <- as.character(filename[1])
   }
 
   if (!file.exists(path)) {
@@ -94,15 +102,28 @@ validate_uploaded_file <- function(path,
 
   # Boyut sınırı.
   if (!is.null(max_size_mb)) {
+    max_size_mb <- suppressWarnings(as.numeric(max_size_mb[1]))
+
+    if (is.na(max_size_mb) || max_size_mb <= 0) {
+      return(list(
+        ok = FALSE,
+        error = "Dosya boyutu sınırı geçersiz.",
+        code = "bad_max_size"
+      ))
+    }
+
     finfo <- suppressWarnings(file.info(path))
     size_bytes <- as.numeric(finfo$size[1])
     if (is.na(size_bytes)) size_bytes <- 0
+
     if (size_bytes > .upload_mb_to_bytes(max_size_mb)) {
       return(list(
         ok = FALSE,
-        error = sprintf("Dosya boyutu sınırı aşıldı (%.1f MB > %.0f MB).",
-                        size_bytes / (1024 * 1024),
-                        as.numeric(max_size_mb)),
+        error = sprintf(
+          "Dosya boyutu sınırı aşıldı (%.1f MB > %.0f MB).",
+          size_bytes / (1024 * 1024),
+          max_size_mb
+        ),
         code = "too_large"
       ))
     }

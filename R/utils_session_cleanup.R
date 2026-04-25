@@ -29,6 +29,20 @@ register_session_cleanup_on_end <- function(session, extra_cleanup = list()) {
     return(invisible(FALSE))
   }
 
+  # Aynı oturum için temizlik callback'i birden fazla kez kaydedilmesin.
+  # Büyük Shiny uygulamalarında modül yeniden bağlama / Ctrl+Enter / testServer
+  # senaryoları çift kayıt oluşturabilir. Bu da aynı temizlik işinin gereksiz
+  # tekrarına ve yanıltıcı sayaçlara yol açar.
+  if (is.null(session$userData) || !is.environment(session$userData)) {
+    session$userData <- new.env(parent = emptyenv())
+  }
+
+  if (isTRUE(session$userData$mergen_session_cleanup_registered)) {
+    return(invisible(TRUE))
+  }
+
+  session$userData$mergen_session_cleanup_registered <- TRUE
+
   session_token <- session$token %||% NA_character_
 
   session$onSessionEnded(function() {
