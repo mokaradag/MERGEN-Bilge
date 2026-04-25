@@ -1,7 +1,34 @@
-# R/helpers_mcp_tools.R
+# ==============================================================================
+# Dosya Yolu: R/helpers_mcp_tools.R
+# Açıklama: MCP araçları, dosya çözümleme, tablo okuma ve analiz yardımcıları.
+#           Worker bağlamlarında çalışabilmesi için kendi helper ortamını kullanır.
+# ==============================================================================
 
 # Create a private env to avoid scoping problems (e.g., futures)
 helpers_mcp_tools <- new.env(parent = globalenv())
+
+helpers_mcp_tools$mcp_debug_enabled <- function() {
+  env_value <- tolower(trimws(Sys.getenv("MERGEN_MCP_DEBUG", "false")))
+  isTRUE(getOption("mergen.mcp.debug", FALSE)) ||
+    env_value %in% c("1", "true", "t", "yes", "y", "on")
+}
+
+helpers_mcp_tools$mcp_debug_log <- function(...) {
+  if (!isTRUE(helpers_mcp_tools$mcp_debug_enabled())) {
+    return(invisible(NULL))
+  }
+
+  msg <- paste(..., collapse = "")
+  msg <- enc2utf8(msg)
+
+  if (exists("log_debug", mode = "function", inherits = TRUE)) {
+    log_debug(msg)
+  } else {
+    message(msg)
+  }
+
+  invisible(NULL)
+}
 
 # Ensure shared filesystem helpers exist inside this environment
 if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
@@ -93,6 +120,36 @@ if (!exists("resolve_readable_path", envir = helpers_mcp_tools, inherits = FALSE
 
       p_unc_bs <- gsub("/", "\\\\", p_unc, fixed = TRUE)
       if (tryCatch(isTRUE(file.exists(p_unc_bs)), error = function(e) FALSE)) return(p_unc_bs)
+    }
+
+    p
+  }
+}
+
+if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
+  helpers_mcp_tools$normalize_excel_path <- function(path, must_exist = FALSE) {
+    if (is.null(path) || length(path) == 0L) {
+      return("")
+    }
+
+    p <- as.character(path[1])
+    if (!nzchar(p)) {
+      return("")
+    }
+
+    p <- enc2utf8(gsub("\\\\", "/", p, fixed = TRUE))
+
+    if (isTRUE(must_exist)) {
+      resolved <- tryCatch(
+        helpers_mcp_tools$resolve_readable_path(p),
+        error = function(e) p
+      )
+
+      if (!isTRUE(helpers_mcp_tools$path_exists_relaxed(resolved))) {
+        stop(sprintf("Dosya bulunamadı: %s", p), call. = FALSE)
+      }
+
+      p <- resolved
     }
 
     p
@@ -265,13 +322,26 @@ helpers_mcp_tools$reset_session_file_registry <- function(session = NULL) {
 }
 
 helpers_mcp_tools$get_session_user_id <- function(session = NULL) {
-  if (is.null(session)) return(NULL)
-  session$userData$user_id %||%
-    session$userData$current_session_files %||%
+  if (is.null(session) || is.null(session$userData)) {
+    return(NULL)
+  }
+
+  candidate <- session$userData$user_id %||%
     session$userData$userId %||%
     session$userData$id %||%
     session$userData$userID %||%
     NULL
+
+  if (is.null(candidate) || length(candidate) == 0L) {
+    return(NULL)
+  }
+
+  candidate <- as.character(candidate[1])
+  if (!nzchar(candidate)) {
+    return(NULL)
+  }
+
+  candidate
 }
 
 helpers_mcp_tools$update_session_file_path <- function(session = NULL, tokens = NULL, new_path = NULL) {
@@ -350,16 +420,14 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     return(list(ok = FALSE, error = "file_name parameter is empty"))
   }
 
-  cat("[RESOLVE] Looking for:", arg, "\n")
+  helpers_mcp_tools$mcp_debug_log("[RESOLVE] Looking for: ", arg)
   
-  cat(
-    "[RESOLVE][env] has_path_exists_relaxed=",
-    exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE),
-    " has_resolve_readable_path=",
-    exists("resolve_readable_path", envir = helpers_mcp_tools, inherits = FALSE),
-    "\n",
-    sep = ""
-  )
+	helpers_mcp_tools$mcp_debug_log(
+	  "[RESOLVE][env] has_path_exists_relaxed=",
+	  exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE),
+	  " has_resolve_readable_path=",
+	  exists("resolve_readable_path", envir = helpers_mcp_tools, inherits = FALSE)
+	)
 
   resolve_existing_candidate <- function(candidate) {
     if (is.null(candidate) || !nzchar(candidate)) return(NULL)
@@ -421,7 +489,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     # Use the robust normalizer immediately to handle UNC/Encoding
     p <- resolve_existing_candidate(arg)
     if (!is.null(p)) {
-      cat("[RESOLVE] Absolute path exists ->", p, "\n")
+	  helpers_mcp_tools$mcp_debug_log("[RESOLVE] Absolute path exists -> ", p)
       return(list(ok = TRUE, path = p, display = basename(p)))
     }
   }
@@ -431,7 +499,7 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   base_arg  <- basename(arg)  # NEW: support basename matching
 
   if (!is.null(all_files) && length(all_files) > 0) {
-    cat("[RESOLVE] Checking", length(all_files), "files in session\n")
+	helpers_mcp_tools$mcp_debug_log("[RESOLVE] Checking ", length(all_files), " files in session")
 
     rehydrate_missing_path <- function(preferred_tokens) {
       tokens <- unique(Filter(nzchar, as.character(preferred_tokens %||% character(0))))
@@ -519,7 +587,12 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       if (!matched) next
 
       existing_path <- resolve_existing_candidate(path_to_check)
-      cat("[RESOLVE] Match ->", path_to_check, "Exists:", !is.null(existing_path), "\n")
+		helpers_mcp_tools$mcp_debug_log(
+		  "[RESOLVE] Match -> ",
+		  path_to_check,
+		  " Exists: ",
+		  !is.null(existing_path)
+		)
       resolved_path <- NULL
 
       if (!is.null(existing_path)) {
@@ -650,7 +723,10 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     unique(vapply(all_files, function(x) x$name %||% "?", character(1)))
   } else character(0)
 
-  cat("[RESOLVE] NOT FOUND! Available files:", paste(known, collapse = ", "), "\n")
+	helpers_mcp_tools$mcp_debug_log(
+	  "[RESOLVE] NOT FOUND! Available files: ",
+	  paste(known, collapse = ", ")
+	)
   list(
     ok = FALSE,
     error = sprintf("Dosya '%s' bulunamadı.\nMevcut dosyalar: %s",

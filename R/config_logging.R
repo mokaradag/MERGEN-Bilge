@@ -55,9 +55,18 @@ log_file_path <- file.path(
 log_appender(appender_file(log_file_path), index = 1)
 log_layout(layout_glue, index = 1)
 
-# Konsol logu renkli kalabilir
+# Konsol renkleri üretimde varsayılan kapalıdır.
+# Windows servis/VM koşullarında ANSI escape dizilerinin loglara karışmasını önler.
+use_console_colors <- tolower(trimws(Sys.getenv("MERGEN_LOG_CONSOLE_COLORS", "false"))) %in%
+  c("1", "true", "t", "yes", "y", "on")
+
 log_appender(appender_console, index = 2)
-log_layout(layout_glue_colors, index = 2)
+
+if (isTRUE(use_console_colors)) {
+  log_layout(layout_glue_colors, index = 2)
+} else {
+  log_layout(layout_glue, index = 2)
+}
 
 # --- GÜVENLİ LOG SARICILARI ---
 # Tüm uygulama logları bu sarmalayıcılardan geçer.
