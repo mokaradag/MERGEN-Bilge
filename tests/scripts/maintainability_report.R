@@ -74,7 +74,41 @@ report <- report[order(report$lines, decreasing = TRUE), ]
 print(utils::head(report, 30), row.names = FALSE)
 
 cat("\nRefactor adayları:\n")
-candidates <- subset(report, lines >= 800 | functions >= 25)
+
+# library_queries.R bilgi tabanı niteliğinde olduğu için maintainability
+# skorundan hariç tutulur; bu dosya bilinçli olarak büyük kalabilir.
+score_report <- subset(report, !grepl("(^|/)library_queries\\.R$", file, perl = TRUE))
+
+candidates <- subset(score_report, lines >= 800 | functions >= 25)
 print(candidates, row.names = FALSE)
+
+total_files <- nrow(score_report)
+large_files <- sum(score_report$lines >= 800)
+large_function_files <- sum(score_report$functions >= 25)
+very_large_files <- sum(score_report$lines >= 1500)
+max_lines <- max(score_report$lines, na.rm = TRUE)
+max_functions <- max(score_report$functions, na.rm = TRUE)
+
+# 100 üzerinden basit, izlenebilir ve tartışılabilir bir bakım skoru.
+# Amaç mutlak kaliteyi ölçmek değil; refactor yönünün iyileşip iyileşmediğini
+# her koşumda görünür hale getirmektir.
+maintainability_score <- 100 -
+  (large_files * 3) -
+  (large_function_files * 2) -
+  (very_large_files * 5)
+
+maintainability_score <- max(0, min(100, maintainability_score))
+
+cat("\nMaintainability özeti:\n")
+cat(sprintf("- Skor: %d/100\n", maintainability_score))
+cat(sprintf("- Değerlendirilen dosya sayısı: %d\n", total_files))
+cat(sprintf("- 800+ satır dosya sayısı: %d\n", large_files))
+cat(sprintf("- 25+ fonksiyon dosya sayısı: %d\n", large_function_files))
+cat(sprintf("- 1500+ satır dosya sayısı: %d\n", very_large_files))
+cat(sprintf("- En büyük dosya satırı: %d\n", max_lines))
+cat(sprintf("- En yüksek fonksiyon sayısı: %d\n", max_functions))
+
+attr(report, "maintainability_score") <- maintainability_score
+attr(report, "score_report") <- score_report
 
 invisible(report)

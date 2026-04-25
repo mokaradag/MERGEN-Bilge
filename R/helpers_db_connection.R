@@ -13,16 +13,35 @@ library(pool)
 .DEFAULT_DB_NAME_ENCODING <- getOption("mergen.db.name_encoding", .DEFAULT_DB_CLIENT_ENCODING)
 
 normalize_db_value <- function(x) {
-  if (is.null(x) || is.na(x) || !is.character(x)) {
+  # DBI parametreleri çoğunlukla skaler gelir; yine de bu yardımcı vektör,
+  # NA ve boş karakter girdilerinde uyarı üretmemelidir. Strict test runner
+  # stop_on_warning = TRUE kullandığı için burada warning-free davranış kritiktir.
+  if (is.null(x) || !is.character(x)) {
     return(x)
   }
 
-  out_utf8 <- tryCatch(enc2utf8(x), error = function(e) x)
+  if (length(x) == 0L) {
+    return(x)
+  }
+
+  out_utf8 <- tryCatch(
+    enc2utf8(x),
+    error = function(e) x
+  )
+
+  out_utf8[is.na(x)] <- NA_character_
+
   if (isTRUE(l10n_info()[["UTF-8"]])) {
     return(out_utf8)
   }
 
-  tryCatch(enc2native(out_utf8), error = function(e) out_utf8)
+  out_native <- tryCatch(
+    enc2native(out_utf8),
+    error = function(e) out_utf8
+  )
+
+  out_native[is.na(x)] <- NA_character_
+  out_native
 }
 
 normalize_db_params <- function(params) {
