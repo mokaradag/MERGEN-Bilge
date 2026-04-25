@@ -4,18 +4,24 @@
 // ==============================================================================
 
 (function() {
+  var healthTooltipGuard = null;
+
   function removeHealthTooltips() {
-    if (!window.jQuery || !jQuery.fn || !jQuery.fn.tooltip) {
+    if (!window.jQuery) {
       return;
     }
 
     try {
-      jQuery(".health-dashboard-container [data-toggle='tooltip']").tooltip("hide").tooltip("dispose");
-      jQuery(".tooltip").remove();
-      jQuery("body").removeClass("tooltip-open");
+      if (jQuery.fn && jQuery.fn.tooltip) {
+        jQuery("[data-toggle='tooltip']").tooltip("hide");
+        jQuery(".health-dashboard-container [data-toggle='tooltip']").tooltip("dispose");
+      }
     } catch (e) {
-      jQuery(".tooltip").remove();
+      // Tooltip temizliği en iyi çaba ile yapılır; hata UI akışını durdurmamalıdır.
     }
+
+    jQuery(".tooltip, .tooltip.show, .tooltip.fade").remove();
+    jQuery("body").removeClass("tooltip-open");
   }
 
   function updateHealthTimestamp(message) {
@@ -23,9 +29,8 @@
     var targetId = message && message.id ? message.id : "last_update_time";
     var target = document.getElementById(targetId) || document.getElementById("last_update_time");
 
-    if (!target && targetId.indexOf("-") !== -1) {
-      var suffix = targetId.split("-").pop();
-      var candidates = document.querySelectorAll("span[id$='" + suffix + "']");
+    if (!target) {
+      var candidates = document.querySelectorAll("span[id$='last_update_time']");
       if (candidates.length > 0) {
         target = candidates[0];
       }
@@ -44,8 +49,8 @@
     removeHealthTooltips();
     jQuery(".health-dashboard-container [data-toggle='tooltip']").tooltip({
       container: "body",
-      trigger: "hover focus",
-      delay: { show: 120, hide: 120 },
+      trigger: "hover",
+      delay: { show: 120, hide: 80 },
       placement: function(tip, element) {
         return jQuery(element).attr("data-placement") || "top";
       }
@@ -58,6 +63,17 @@
       return container.getAttribute("data-health-path-input-id");
     }
     return "health_module-open_health_path";
+  }
+
+  function sendHealthPath(path, inputId) {
+    if (!path || !window.Shiny || !Shiny.setInputValue) {
+      return;
+    }
+
+    Shiny.setInputValue(inputId, {
+      path: path,
+      nonce: Date.now()
+    }, { priority: "event" });
   }
 
   function bindHealthPathButtons() {
@@ -74,12 +90,7 @@
 
         var path = this.getAttribute("data-health-path") || "";
         var inputId = resolveHealthPathInputId(this);
-        if (path && inputId && window.Shiny && Shiny.setInputValue) {
-          Shiny.setInputValue(inputId, {
-            path: path,
-            nonce: Date.now()
-          }, { priority: "event" });
-        }
+        sendHealthPath(path, inputId);
       });
   }
 
@@ -89,36 +100,69 @@
     }
 
     jQuery(document)
-      .off("click.healthTooltipCleanup shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip mouseleave.healthTooltip")
-      .on("click.healthTooltipCleanup", ".sidebar-menu a, .nav-tabs a, .nav-pills a, .health-dashboard-container button", function() {
+      .off("click.healthTooltipCleanup shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip mouseleave.healthTooltip mouseenter.healthTooltip")
+      .on("click.healthTooltipCleanup", ".sidebar-menu a, .nav-tabs a, .nav-pills a, .health-dashboard-container button, .nav a", function() {
+        removeHealthTooltips();
+      })
+      .on("mouseenter.healthTooltip", ".health-dashboard-container [data-toggle='tooltip']", function() {
         removeHealthTooltips();
       })
       .on("mouseleave.healthTooltip", ".health-dashboard-container [data-toggle='tooltip']", function() {
-        jQuery(this).tooltip("hide");
-        jQuery(".tooltip").remove();
-      })
-      .on("shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip", "a[data-toggle='tab']", function() {
         removeHealthTooltips();
-        window.setTimeout(initHealthTooltips, 120);
+      })
+      .on("shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip", "a[data-toggle='tab'], a[data-toggle='pill']", function() {
+        removeHealthTooltips();
+        window.setTimeout(initHealthTooltips, 140);
       });
+  }
+
+  function startTooltipGuard() {
+    if (healthTooltipGuard) {
+      window.clearInterval(healthTooltipGuard);
+    }
+
+    healthTooltipGuard = window.setInterval(function() {
+      if (!document.querySelector(".health-dashboard-container")) {
+        removeHealthTooltips();
+        return;
+      }
+
+      var openTooltip = document.querySelector(".tooltip.show, .tooltip.in");
+      var hoveredHealthElement = document.querySelector(".health-dashboard-container [data-toggle='tooltip']:hover");
+      if (openTooltip && !hoveredHealthElement) {
+        removeHealthTooltips();
+      }
+    }, 900);
+  }
+
+  function bootstrapHealthDashboard() {
+    bindHealthPathButtons();
+    bindTooltipCleanup();
+    startTooltipGuard();
+    window.setTimeout(initHealthTooltips, 250);
   }
 
   if (window.Shiny && Shiny.addCustomMessageHandler) {
     Shiny.addCustomMessageHandler("updateHealthTimestamp", updateHealthTimestamp);
     Shiny.addCustomMessageHandler("updateAdminTimestamp", updateHealthTimestamp);
     Shiny.addCustomMessageHandler("initHealthTooltips", function() {
-      window.setTimeout(initHealthTooltips, 80);
+      window.setTimeout(function() {
+        bindHealthPathButtons();
+        bindTooltipCleanup();
+        initHealthTooltips();
+      }, 80);
     });
     Shiny.addCustomMessageHandler("removeHealthTooltips", function() {
       removeHealthTooltips();
     });
   }
 
-  document.addEventListener("DOMContentLoaded", function() {
-    bindHealthPathButtons();
-    bindTooltipCleanup();
-    window.setTimeout(initHealthTooltips, 250);
-  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootstrapHealthDashboard);
+  } else {
+    bootstrapHealthDashboard();
+  }
 
   window.addEventListener("beforeunload", removeHealthTooltips);
+  window.addEventListener("blur", removeHealthTooltips);
 })();
