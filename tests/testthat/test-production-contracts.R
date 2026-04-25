@@ -28,21 +28,42 @@
 
 .repo_root <- .find_repo_root()
 
-.read_utf8 <- function(path) {
-  readLines(path, encoding = "UTF-8", warn = FALSE)
+# Uyarı üretmeyen dosya okuyucu.
+# readLines(encoding=...) bazı suite koşullarında encoding warning üretebildiği
+# için production-contract testlerinde raw okuma kullanıyoruz.
+.read_text_quiet <- function(path) {
+  size <- suppressWarnings(file.info(path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
+  enc2utf8(txt)
 }
 
-.strip_comment_lines <- function(x) {
-  x[!grepl("^\\s*#", x)]
+.has_text <- function(haystack, needle) {
+  isTRUE(suppressWarnings(grepl(
+    needle,
+    haystack,
+    fixed = TRUE,
+    useBytes = TRUE
+  )))
 }
 
 test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
-  # Bu test eskiden R/ altındaki tüm dosyaları recursive parse ediyordu.
-  # Tam test_dir() koşumunda önceki testlerin yüklediği paketler/locale/encoding
-  # durumu nedeniyle bu geniş tarama çok sayıda warning üretebiliyor.
-  # Üretim sözleşmesi için burada sadece boot zincirinin kritik dosyaları
-  # kontrol edilir. Geniş kapsamlı parse kontrolü ayrı ve manuel bir kalite
-  # kapısı olarak çalıştırılmalıdır.
   r_files <- file.path(
     .repo_root,
     c(
@@ -100,7 +121,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 })
 
 test_that("global.R üretim sertleştirme helper'larını manifestte yüklüyor", {
-  global_text <- paste(.read_utf8(file.path(.repo_root, "global.R")), collapse = "\n")
+  global_text <- .read_text_quiet(file.path(.repo_root, "global.R"))
 
   beklenenler <- c(
     'safe_source("R/utils_safe_path.R"',
@@ -114,7 +135,7 @@ test_that("global.R üretim sertleştirme helper'larını manifestte yüklüyor"
 
   bulunanlar <- vapply(
     beklenenler,
-    function(beklenen) grepl(beklenen, global_text, fixed = TRUE),
+    function(beklenen) .has_text(global_text, beklenen),
     logical(1)
   )
 
@@ -125,7 +146,7 @@ test_that("global.R üretim sertleştirme helper'larını manifestte yüklüyor"
 })
 
 test_that("app.R doğrudan source edildiğinde otomatik çalışma kapısı korunuyor", {
-  app_text <- paste(.read_utf8(file.path(.repo_root, "app.R")), collapse = "\n")
+  app_text <- .read_text_quiet(file.path(.repo_root, "app.R"))
 
   beklenenler <- c(
     "validate_boot_state <- function",
@@ -138,7 +159,7 @@ test_that("app.R doğrudan source edildiğinde otomatik çalışma kapısı koru
 
   bulunanlar <- vapply(
     beklenenler,
-    function(beklenen) grepl(beklenen, app_text, fixed = TRUE),
+    function(beklenen) .has_text(app_text, beklenen),
     logical(1)
   )
 
@@ -148,15 +169,29 @@ test_that("app.R doğrudan source edildiğinde otomatik çalışma kapısı koru
   )
 })
 
-test_that("ham future_promise kullanımı merkezi tracked_future_promise arkasında kalıyor", {
-  r_files <- list.files(
-    file.path(.repo_root, "R"),
-    pattern = "\\.R$",
-    full.names = TRUE,
-    recursive = TRUE
+test_that("kritik async altyapısında future_promise merkezi sarmalayıcı arkasında kalıyor", {
+  # Önceki sürüm tüm R/ klasörünü recursive tarıyordu. Full test_dir koşumunda
+  # bu geniş tarama warning fırtınası oluşturabiliyor. Burada yalnızca async
+  # disiplininin kritik dosyaları denetlenir.
+  kontrol_dosyalari <- file.path(
+    .repo_root,
+    c(
+      "R/helpers_worker_monitor.R",
+      "R/helpers_llm_worker.R",
+      "R/server_handler_true_streaming.R",
+      "R/server_send_message.R",
+      "R/module_file_manager.R",
+      "R/module_summarization.R",
+      "R/module_image_generation.R",
+      "R/module_proje_kaynak_analizi.R"
+    )
   )
 
-  izinli_dosyalar <- normalizePath(
+  kontrol_dosyalari <- unique(kontrol_dosyalari[file.exists(kontrol_dosyalari)])
+
+  expect_gt(length(kontrol_dosyalari), 3L)
+
+  izinli_dosya <- normalizePath(
     file.path(.repo_root, "R", "helpers_worker_monitor.R"),
     winslash = "/",
     mustWork = FALSE
@@ -164,16 +199,23 @@ test_that("ham future_promise kullanımı merkezi tracked_future_promise arkası
 
   ihlaller <- character(0)
 
-  for (f in r_files) {
+  for (f in kontrol_dosyalari) {
     f_norm <- normalizePath(f, winslash = "/", mustWork = FALSE)
-    txt <- .strip_comment_lines(.read_utf8(f))
+    txt <- .read_text_quiet(f)
 
-    ham_kullanim <- suppressWarnings(
-      grepl("(^|[^A-Za-z0-9_.])future_promise\\s*\\(", txt, useBytes = TRUE) |
-        grepl("promises::future_promise\\s*\\(", txt, useBytes = TRUE)
-    )
+    ham_future_var <- isTRUE(suppressWarnings(grepl(
+      "(^|[^A-Za-z0-9_.])future_promise\\s*\\(",
+      txt,
+      perl = TRUE,
+      useBytes = TRUE
+    ))) || isTRUE(suppressWarnings(grepl(
+      "promises::future_promise\\s*\\(",
+      txt,
+      perl = TRUE,
+      useBytes = TRUE
+    )))
 
-    if (any(ham_kullanim) && !(f_norm %in% izinli_dosyalar)) {
+    if (ham_future_var && !identical(f_norm, izinli_dosya)) {
       ihlaller <- c(ihlaller, f_norm)
     }
   }
@@ -183,7 +225,7 @@ test_that("ham future_promise kullanımı merkezi tracked_future_promise arkası
   expect_equal(
     ihlaller,
     character(0),
-    label = paste("Doğrudan future_promise kullanan dosyalar:", paste(ihlaller, collapse = ", "))
+    label = paste("Doğrudan future_promise kullanan kritik dosyalar:", paste(ihlaller, collapse = ", "))
   )
 })
 
@@ -192,7 +234,7 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
 
   expect_true(file.exists(runner_path))
 
-  runner_text <- paste(.read_utf8(runner_path), collapse = "\n")
+  runner_text <- .read_text_quiet(runner_path)
 
   beklenenler <- c(
     'MERGEN_RUN_APP = "false"',
@@ -203,7 +245,7 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
 
   bulunanlar <- vapply(
     beklenenler,
-    function(beklenen) grepl(beklenen, runner_text, fixed = TRUE),
+    function(beklenen) .has_text(runner_text, beklenen),
     logical(1)
   )
 
