@@ -3,56 +3,51 @@ setlocal EnableExtensions
 
 REM ==============================================================================
 REM Dosya Yolu: view_mergen_prod_console_log.bat
-REM Açıklama: MERGEN Bilge üretim console log dosyasını canlı izler.
+REM Aciklama: PowerShell tabanli console log izleyicisini baslatir.
 REM
-REM Not:
-REM - Bu dosya loga yazmaz, yalnızca okur.
-REM - Startup / Rscript / stdout / stderr çıktısını gösterir.
-REM - Normal runtime app logları için view_latest_mergen_app_log.bat kullanılır.
-REM - Türkçe karakterler için PowerShell tarafında UTF-8 okuma zorlanır.
+REM IMPORTANT:
+REM - Keep this BAT in the app root folder.
+REM - Do NOT copy this BAT to Desktop.
+REM - Put only a Desktop shortcut to this BAT.
+REM - Turkish UI text is printed by the UTF-8 PowerShell script, not by CMD.
 REM ==============================================================================
-
-chcp 65001 >nul
 
 pushd "%~dp0"
 if errorlevel 1 (
     echo.
-    echo [ERROR] Could not enter repository folder:
+    echo [ERROR] Could not enter script folder:
     echo %~dp0
     echo.
     pause
     exit /b 1
 )
 
-set "LOG_FILE=%CD%\logs\run_mergen_prod_console.log"
-
-if not exist "%LOG_FILE%" (
+if not exist "run_mergen_prod.R" (
     echo.
-    echo [ERROR] Log file not found:
-    echo %LOG_FILE%
+    echo [ERROR] This BAT is not running from the MERGEN Bilge app root.
+    echo Current folder:
+    echo %CD%
     echo.
-    echo Start MERGEN Bilge first by running:
-    echo run_mergen_prod.bat
+    echo Fix:
+    echo Keep the real BAT in the app root folder.
+    echo Put only a shortcut to the BAT on Desktop.
     echo.
     pause
     popd
     exit /b 1
 )
 
-echo.
-echo Watching MERGEN Bilge production console log:
-echo %LOG_FILE%
-echo.
-echo Press CTRL+C to stop watching. This will NOT stop the app.
-echo Normal runtime app logs are in logs\mergen_YYYYMMDD.log
-echo ------------------------------------------------------------
-echo.
+if not exist "view_mergen_prod_console_log.ps1" (
+    echo.
+    echo [ERROR] Missing file:
+    echo %CD%\view_mergen_prod_console_log.ps1
+    echo.
+    pause
+    popd
+    exit /b 1
+)
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false);" ^
-  "$OutputEncoding = New-Object System.Text.UTF8Encoding($false);" ^
-  "$path = '%LOG_FILE%';" ^
-  "Get-Content -LiteralPath $path -Encoding UTF8 -Tail 120 -Wait"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\view_mergen_prod_console_log.ps1"
 
 popd
-exit /b 0
+exit /b %ERRORLEVEL%
