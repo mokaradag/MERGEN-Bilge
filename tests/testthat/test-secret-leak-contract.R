@@ -27,20 +27,43 @@
   enc2utf8(txt)
 }
 
+.normalize_path_secret_contract <- function(path) {
+  out <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  gsub("\\\\", "/", out)
+}
+
 .repo_relative_secret_contract <- function(repo_root, path) {
+  repo_root_norm <- .normalize_path_secret_contract(repo_root)
+  path_norm <- .normalize_path_secret_contract(path)
+
+  escaped_root <- gsub(
+    "([\\^$.|?*+(){}\\[\\]\\\\])",
+    "\\\\\\1",
+    repo_root_norm
+  )
+
   sub(
-    paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"),
+    paste0("^", escaped_root, "/?"),
     "",
-    normalizePath(path, winslash = "/", mustWork = FALSE),
+    path_norm,
     perl = TRUE
   )
 }
 
+.is_allowed_secret_fixture_file <- function(rel_path) {
+  rel_norm <- gsub("\\\\", "/", rel_path)
+  rel_norm <- sub("^/+", "", rel_norm)
+
+  identical(rel_norm, "tests/testthat/test-config-logging-redaction.R") ||
+    grepl("/tests/testthat/test-config-logging-redaction\\.R$", rel_norm, perl = TRUE)
+}
+
 .strip_allowed_secret_fixtures <- function(text, rel_path) {
   # Bu dosya gerçek secret sızıntısını değil, log redaction davranışını test eder.
-  # İçindeki sahte değerler bilerek uzun tutulmuştur; secret taramasında yanlış
-  # pozitif üretmemeleri için sadece bu bilinen fixture değerleri maskelenir.
-  if (identical(rel_path, "tests/testthat/test-config-logging-redaction.R")) {
+  # İçindeki sahte değerler bilerek uzun tutulmuştur. UNC / network path altında
+  # relative path çözümü farklı dönebildiği için hem exact hem suffix kontrolü
+  # kullanılır.
+  if (.is_allowed_secret_fixture_file(rel_path)) {
     text <- gsub(
       "supersekretkey_abcdef1234",
       "<allowed-redaction-fixture>",
@@ -77,10 +100,8 @@ test_that("repo gerçek API anahtarı veya bearer token içermiyor", {
     list.files(file.path(repo_root, "www", "js"), pattern = "\\.js$", recursive = TRUE, full.names = TRUE)
   )
 
-  scan_files <- unique(normalizePath(
-    scan_files[file.exists(scan_files)],
-    winslash = "/",
-    mustWork = FALSE
+  scan_files <- unique(.normalize_path_secret_contract(
+    scan_files[file.exists(scan_files)]
   ))
 
   forbidden_regex <- c(
@@ -135,10 +156,8 @@ test_that("repo kişisel mutlak Windows kullanıcı yolu içermiyor", {
     list.files(file.path(repo_root, "tests"), pattern = "\\.R$", recursive = TRUE, full.names = TRUE)
   )
 
-  scan_files <- unique(normalizePath(
-    scan_files[file.exists(scan_files)],
-    winslash = "/",
-    mustWork = FALSE
+  scan_files <- unique(.normalize_path_secret_contract(
+    scan_files[file.exists(scan_files)]
   ))
 
   violations <- character(0)
