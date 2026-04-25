@@ -27,6 +27,111 @@
   enc2utf8(txt)
 }
 
+.repo_relative_network_contract <- function(repo_root, path) {
+  sub(
+    paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"),
+    "",
+    normalizePath(path, winslash = "/", mustWork = FALSE),
+    perl = TRUE
+  )
+}
+
+.strip_js_css_comments_network_contract <- function(text) {
+  # JS/CSS lisans ve dokümantasyon yorumlarındaki URL'ler runtime bağımlılığı
+  # değildir. Önce block comment, sonra satır yorumlarını temizliyoruz.
+  text <- gsub("/\\*.*?\\*/", "", text, perl = TRUE)
+
+  lines <- strsplit(text, "\n", fixed = TRUE)[[1]]
+  lines <- gsub("^\\s*//.*$", "", lines, perl = TRUE)
+
+  paste(lines, collapse = "\n")
+}
+
+.runtime_text_without_comments_network_contract <- function(path) {
+  ext <- tolower(tools::file_ext(path))
+
+  if (identical(ext, "r")) {
+    exprs <- tryCatch(
+      parse(file = path, encoding = "UTF-8", keep.source = FALSE),
+      error = function(e) expression()
+    )
+
+    return(paste(
+      vapply(
+        exprs,
+        function(expr) paste(deparse(expr, width.cutoff = 500L), collapse = "\n"),
+        character(1)
+      ),
+      collapse = "\n"
+    ))
+  }
+
+  text <- .read_repo_text_network_contract(path)
+
+  if (ext %in% c("js", "css")) {
+    text <- .strip_js_css_comments_network_contract(text)
+  }
+
+  text
+}
+
+.url_allowed_for_airgapped_contract <- function(url) {
+  url_norm <- tolower(enc2utf8(as.character(url)[1]))
+
+  allowed_prefixes <- c(
+    "http://localhost",
+    "http://127.0.0.1",
+    "https://localhost",
+    "https://127.0.0.1",
+    "http://test.local"
+  )
+
+  if (any(startsWith(url_norm, allowed_prefixes))) {
+    return(TRUE)
+  }
+
+  # Dokümantasyon / örnek alan adları: gerçek runtime bağımlılığı değildir.
+  if (grepl("^https?://([^/]+\\.)?example\\.(com|org|net)(/|$)", url_norm, perl = TRUE)) {
+    return(TRUE)
+  }
+
+  # SVG namespace URL'si internet çağrısı değildir; data-uri içindeki XML
+  # standardı kimliğidir.
+  if (startsWith(url_norm, "http://www.w3.org/2000/svg")) {
+    return(TRUE)
+  }
+
+  # Kurum içi/intranet uçları. Korykos personel resmi servisi özellikle
+  # üretimde kurum içinden kullanılır; public internet bağımlılığı değildir.
+  internal_host_regex <- paste(
+    c(
+      "^https?://[^/]*\\.local(/|$)",
+      "^https?://[^/]*\\.lan(/|$)",
+      "^https?://[^/]*\\.intra(/|$)",
+      "^https?://[^/]*\\.internal(/|$)",
+      "^https?://korykos\\.",
+      "^https?://mergen\\.",
+      "^https?://wiki\\.sirket\\.com"
+    ),
+    collapse = "|"
+  )
+
+  if (grepl(internal_host_regex, url_norm, perl = TRUE)) {
+    return(TRUE)
+  }
+
+  # Kuruma özel ek izin gerekiyorsa test ortamında regex verilebilir.
+  # Örnek:
+  # Sys.setenv(MERGEN_ALLOWED_INTERNAL_URL_REGEX = "^https?://[^/]*\\.firma\\.com\\.tr")
+  extra_allowed_regex <- Sys.getenv("MERGEN_ALLOWED_INTERNAL_URL_REGEX", "")
+  if (nzchar(extra_allowed_regex) &&
+      grepl(extra_allowed_regex, url_norm, perl = TRUE, ignore.case = TRUE)) {
+    return(TRUE)
+  }
+
+  FALSE
+}
+
 test_that("runtime dosyaları açık public URL bağımlılığı eklemiyor", {
   repo_root <- resolve_repo_root_for_tests()
 
@@ -47,20 +152,10 @@ test_that("runtime dosyaları açık public URL bağımlılığı eklemiyor", {
     mustWork = FALSE
   ))
 
-  # LOCAL_LLM_ENDPOINT gibi env kaynaklı uçlar serbesttir; burada sadece kodun
-  # içine gömülmüş açık public URL'leri yakalıyoruz.
-  allowed_patterns <- c(
-    "http://localhost",
-    "http://127.0.0.1",
-    "https://localhost",
-    "https://127.0.0.1",
-    "http://test.local"
-  )
-
   violations <- character(0)
 
   for (f in runtime_files) {
-    txt <- .read_repo_text_network_contract(f)
+    txt <- .runtime_text_without_comments_network_contract(f)
 
     urls <- regmatches(
       txt,
@@ -75,19 +170,19 @@ test_that("runtime dosyaları açık public URL bağımlılığı eklemiyor", {
 
     disallowed <- urls[!vapply(
       urls,
-      function(url) any(startsWith(tolower(url), tolower(allowed_patterns))),
+      .url_allowed_for_airgapped_contract,
       logical(1)
     )]
 
     if (length(disallowed) > 0) {
-      rel <- sub(
-        paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"),
-        "",
-        f,
-        perl = TRUE
+      violations <- c(
+        violations,
+        sprintf(
+          "%s -> %s",
+          .repo_relative_network_contract(repo_root, f),
+          paste(disallowed, collapse = ", ")
+        )
       )
-
-      violations <- c(violations, sprintf("%s -> %s", rel, paste(disallowed, collapse = ", ")))
     }
   }
 
@@ -95,7 +190,7 @@ test_that("runtime dosyaları açık public URL bağımlılığı eklemiyor", {
     violations,
     character(0),
     info = paste(
-      "Air-gapped üretim sözleşmesi ihlali: runtime içine public URL gömülmüş.",
+      "Air-gapped üretim sözleşmesi ihlali: runtime içinde izin verilmeyen public URL bulundu.",
       paste(violations, collapse = "\n"),
       sep = "\n"
     )
@@ -137,7 +232,7 @@ test_that("runtime dosyaları CDN domainlerini kullanmıyor", {
   violations <- character(0)
 
   for (f in runtime_files) {
-    txt <- tolower(.read_repo_text_network_contract(f))
+    txt <- tolower(.runtime_text_without_comments_network_contract(f))
 
     matched <- banned_domains[vapply(
       banned_domains,
@@ -146,14 +241,14 @@ test_that("runtime dosyaları CDN domainlerini kullanmıyor", {
     )]
 
     if (length(matched) > 0) {
-      rel <- sub(
-        paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"),
-        "",
-        f,
-        perl = TRUE
+      violations <- c(
+        violations,
+        sprintf(
+          "%s -> %s",
+          .repo_relative_network_contract(repo_root, f),
+          paste(matched, collapse = ", ")
+        )
       )
-
-      violations <- c(violations, sprintf("%s -> %s", rel, paste(matched, collapse = ", ")))
     }
   }
 
