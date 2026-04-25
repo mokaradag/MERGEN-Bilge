@@ -297,6 +297,34 @@ Gerçek giriş noktasıdır. Şunları yapar:
 
 Son hardening güncellemeleriyle `app.R` tarafında açık boot doğrulaması uygulanır: `validate_boot_state()` ile `safe_source`, `ui` ve `server` yükleri doğrulanır; beklenen durum sağlanmazsa başlangıç fail-fast mantığıyla durdurulur. Kod akışında `create_mergen_app()` ve `run_mergen_app()` yardımcılarının davranış/sözleşmesi korunmalıdır. Ayrıca `MERGEN_RUN_APP` artık gevşek "false dışı her şey" yaklaşımı yerine açık truthy/falsy normalizasyonuyla yorumlanır; `run_mergen_app()` yalnızca env’den gelen değeri değil, çağrıdaki açık `port` girdisini de yeniden normalize eder ve geçersiz/boş/sayısal olmayan/aralık dışı portları deterministik olarak `8009`a düşürür.
 
+#### Üretim Başlatma Sözleşmesi
+
+Üretim başlatıcı dosyaları uygulama kök dizininde tutulmalıdır. Özellikle `run_mergen_prod.bat` dosyası UNC/ağ yolu üzerinde çalışan gerçek uygulama klasöründe kalmalı; Windows VM masaüstüne yalnızca bu dosyaya kısayol konulmalıdır. BAT dosyasının masaüstüne kopyalanması, `%~dp0` nedeniyle çalışma dizininin yanlışlıkla masaüstüne dönmesine ve logların/başlatmanın yanlış klasörden yapılmasına yol açabilir.
+
+`run_mergen_prod.bat`, UNC yol sorunlarını aşmak için `cd /d` yerine `pushd "%~dp0"` kullanır. Böylece Windows, ağ yolunu geçici bir sürücü harfine map eder ve uygulama kök dizini güvenli biçimde çalışma dizini olur. Başlatma sırasında Rscript ve paket görünürlüğü de kontrol edilir; eksik paket varsa uygulama başlatılmaz ve ayrıntı `logs/run_mergen_prod_console.log` dosyasına yazılır.
+
+`run_mergen_prod.bat`, başlatma çıktısını `logs/run_mergen_prod_console.log` dosyasına yazar. Bu dosya esas olarak Rscript, paket preflight, boot ve startup hata teşhisi içindir. BAT, uygulama başlamadan önce gerekli R paketlerinin görünür olup olmadığını kontrol eder; eksik paket varsa uygulamayı başlatmadan durur ve hangi paketlerin eksik olduğunu loga yazar.
+
+Normal uygulama çalışma zamanı loglarını canlı izlemek için `view_latest_mergen_app_log.bat` kullanılmalıdır. `view_mergen_prod_console_log.bat` ve `view_mergen_prod_console_log.ps1` dosyaları artık kullanılmaz; üretim klasörünü sade tutmak için kaldırılmıştır.
+
+Başlatma:
+    run_mergen_prod.bat
+
+Canlı uygulama log izleme:
+    view_latest_mergen_app_log.bat
+
+#### Üretim Log İzleme
+
+Üretim ortamında iki farklı log kullanımı ayrılmalıdır:
+
+- `logs/run_mergen_prod_console.log`: üretim başlatıcının stdout/stderr, Rscript, paket preflight ve boot çıktılarıdır. Uygulama başlatılamadığında teşhis için kullanılır.
+- `logs/mergen_YYYYMMDD.log`: uygulamanın normal çalışma zamanı loglarıdır.
+
+Normal kullanımda canlı log izleme için `view_latest_mergen_app_log.bat` çalıştırılmalıdır. Bu dosya `logs` klasöründeki en güncel `mergen_*.log` dosyasını salt-okunur biçimde izler; loga yazmaz, uygulamayı durdurmaz ve kullanıcı işlemlerini etkilemez. Notepad/Notepad++ ile log açmak yalnızca anlık inceleme için uygundur; canlı takip için `view_latest_mergen_app_log.bat` tercih edilmelidir.
+
+Daha önce denenen `view_mergen_prod_console_log.bat` ve `view_mergen_prod_console_log.ps1` dosyaları artık üretim akışının parçası değildir. Console log canlı izleyicisi gereksiz olduğu ve klasik `cmd.exe` üzerinde Türkçe karakter/mojibake sorunları üretebildiği için kaldırılmıştır. Startup hatalarında doğrudan `logs/run_mergen_prod_console.log` dosyası incelenmelidir.
+
+
 ### `global.R`
 Küresel yapılandırma ve yükleme sırasını yönetir. Şunları içerir:
 - UTF-8 ve locale ayarları

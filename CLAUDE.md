@@ -326,6 +326,8 @@ Windows-safe child-session test authoring rules:
 - secret leak contract coverage across runtime files/tests with masking for known fake redaction fixtures (`test-secret-leak-contract.R`)
 - runtime network-boundary contract coverage for accidental public URL/CDN dependencies with comment stripping, SVG namespace/example placeholders/internal host allow rules, optional `MERGEN_ALLOWED_INTERNAL_URL_REGEX`, and vendored offline asset skips for `www/js/highlight.min.js` + `www/css/all.min.css` (`test-runtime-network-boundary-contract.R`)
 - expanded production parse contract coverage for additional high-risk runtime files (`test-production-contracts.R`)
+- production BAT startup contract for UNC-safe `pushd`, app-root execution, Rscript/package preflight, and startup diagnostics through `logs/run_mergen_prod_console.log`
+- runtime log-viewing contract via `view_latest_mergen_app_log.bat`, with the redundant console-log viewer files intentionally removed
 
 ### Scripted validation flow (`tests/scripts/`)
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
@@ -349,6 +351,18 @@ Windows-safe child-session test authoring rules:
   ```
 
 CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration/preflight checks must run on Windows VM via `run_vm_preflight_real.R`, including writable-path probes against active configured directories (active log dir from `MERGEN_LOG_DIR` or fallback default).
+
+### Production operation
+```bat
+run_mergen_prod.bat
+view_latest_mergen_app_log.bat
+```
+
+Startup failure diagnostics:
+
+```text
+logs/run_mergen_prod_console.log
+```
 
 ---
 
@@ -471,6 +485,24 @@ This repo intentionally avoids relying on plain `runApp(".")` logic inside the a
 If startup or missing asset issues appear, check `app.R` first.
 
 Boot hardening note: `app.R` now includes explicit boot validation and fail-fast checks; coding agents must preserve `validate_boot_state()`, `create_mergen_app()`, and `run_mergen_app()` names/behaviors because smoke validation depends on them. `MERGEN_RUN_APP` autorun decisions now rely on explicit truthy/falsy normalization, and `run_mergen_app()` must re-normalize explicit call-time `port` inputs (not only env-derived defaults); invalid/missing/non-numeric/out-of-range values must deterministically fall back to `8009`. Boot-contract tests intentionally restore test stubs and isolate side effects after sourcing `app.R`, so entrypoint verification does not contaminate the remaining suite.
+
+### Production runtime entrypoint contract
+
+Keep the real `run_mergen_prod.bat` in the application root. If operators need a Desktop launcher, create a Desktop shortcut to the root BAT; do not copy the BAT to Desktop. The BAT relies on `%~dp0` to locate the app root, so a copied Desktop BAT will incorrectly run from Desktop and may create Desktop-local `logs/` output.
+
+The BAT must continue using `pushd "%~dp0"` rather than `cd /d "%~dp0"` because production may run from a UNC/network path. `pushd` temporarily maps the UNC path to a drive letter and prevents the classic CMD error “CMD does not support UNC paths as current directories.”
+
+`run_mergen_prod.bat` must keep writing startup/preflight/stdout/stderr diagnostics to `logs/run_mergen_prod_console.log` and must continue doing an Rscript/package preflight before app launch. Missing required packages should fail fast before startup. Optional `R_LIBS_USER` may be set for a fixed production package library on the Windows VM.
+
+Do not reintroduce a dedicated live console-log viewer unless there is a clear operational need.
+
+### Production log viewing contract
+
+Runtime log viewing should use `view_latest_mergen_app_log.bat`. This viewer tails the newest `logs/mergen_*.log` file in read-only mode and can remain open while users interact with the app. It must not write to logs or stop the app.
+
+`logs/run_mergen_prod_console.log` should be treated as a startup diagnostic log for Rscript, package preflight, boot messages, stdout, and stderr. It does not need a live viewer in normal operation.
+
+The removed files `view_mergen_prod_console_log.bat` and `view_mergen_prod_console_log.ps1` should not be reintroduced casually. They were redundant for normal operations and were prone to Turkish mojibake in classic `cmd.exe`. If startup diagnostics are needed, inspect `logs/run_mergen_prod_console.log` directly or rely on `run_mergen_prod.bat` printing the last log lines on failure.
 
 ---
 
