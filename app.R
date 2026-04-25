@@ -77,21 +77,25 @@ if (dir.exists("www")) {
 }
 
 validate_boot_state <- function(app_env = globalenv()) {
+  if (!requireNamespace("shiny", quietly = TRUE)) {
+    stop("Boot doğrulaması başarısız: shiny paketi yüklü değil.", call. = FALSE)
+  }
+
   if (!exists("safe_source", envir = app_env, mode = "function", inherits = FALSE)) {
-    stop("Boot doğrulaması başarısız: safe_source yüklenmedi.")
+    stop("Boot doğrulaması başarısız: safe_source yüklenmedi.", call. = FALSE)
   }
 
   if (!exists("ui", envir = app_env, inherits = FALSE)) {
-    stop("Boot doğrulaması başarısız: ui nesnesi yüklenmedi.")
+    stop("Boot doğrulaması başarısız: ui nesnesi yüklenmedi.", call. = FALSE)
   }
 
   ui_obj <- get("ui", envir = app_env, inherits = FALSE)
   if (!inherits(ui_obj, c("shiny.tag", "shiny.tag.list", "html"))) {
-    stop("Boot doğrulaması başarısız: ui nesnesi geçerli bir Shiny UI değil.")
+	stop("Boot doğrulaması başarısız: ui nesnesi geçerli bir Shiny UI değil.", call. = FALSE)
   }
 
   if (!exists("server", envir = app_env, mode = "function", inherits = FALSE)) {
-    stop("Boot doğrulaması başarısız: server fonksiyonu yüklenmedi.")
+	stop("Boot doğrulaması başarısız: server fonksiyonu yüklenmedi.", call. = FALSE)
   }
 
   invisible(TRUE)
