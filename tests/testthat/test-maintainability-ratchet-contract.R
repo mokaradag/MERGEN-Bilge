@@ -41,7 +41,51 @@
   length(hits)
 }
 
+.normalize_path_maintainability <- function(path) {
+  out <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  out <- gsub("\\\\", "/", out)
+  out <- gsub("/+", "/", out)
+  out <- sub("/+$", "", out)
+  enc2utf8(out)
+}
+
+.relative_repo_path_maintainability <- function(path, repo_root) {
+  repo_norm <- .normalize_path_maintainability(repo_root)
+  path_norm <- .normalize_path_maintainability(path)
+
+  if (identical(path_norm, repo_norm)) {
+    return("")
+  }
+
+  prefix <- paste0(repo_norm, "/")
+
+  if (startsWith(path_norm, prefix)) {
+    return(substring(path_norm, nchar(prefix) + 1L))
+  }
+
+  # Windows/UNC edge case:
+  # normalizePath() bazı ağ yollarında repo kökü ile dosya yolunu farklı
+  # biçimlerde döndürebilir. Bu durumda R klasöründen itibaren güvenli
+  # göreli yol üretmeye çalışıyoruz.
+  r_match <- regexpr("(^|/)R/[^:]+\\.R$", path_norm, perl = TRUE)
+  if (!identical(r_match[1], -1L)) {
+    rel <- substring(path_norm, r_match[1])
+    rel <- sub("^/", "", rel)
+    return(rel)
+  }
+
+  root_files <- c("app.R", "global.R", "ui.R", "server.R", "welcome_screen.R")
+  base <- basename(path_norm)
+  if (base %in% root_files) {
+    return(base)
+  }
+
+  path_norm
+}
+
 .collect_runtime_report_maintainability <- function(repo_root) {
+  repo_root <- .normalize_path_maintainability(repo_root)
+
   runtime_files <- c(
     file.path(repo_root, "app.R"),
     file.path(repo_root, "global.R"),
@@ -59,16 +103,7 @@
   runtime_files <- unique(runtime_files[file.exists(runtime_files)])
 
   rows <- lapply(runtime_files, function(path) {
-    rel_path <- sub(
-      paste0(
-        "^",
-        gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root),
-        "/?"
-      ),
-      "",
-      normalizePath(path, winslash = "/", mustWork = TRUE),
-      perl = TRUE
-    )
+    rel_path <- .relative_repo_path_maintainability(path, repo_root)
 
     txt <- .read_repo_text_maintainability(path)
     lines <- strsplit(txt, "\n", fixed = TRUE)[[1]]
@@ -82,6 +117,12 @@
   })
 
   report <- do.call(rbind, rows)
+
+  # Path biçimini tekrar normalize et: Windows/UNC mutlak yol kaçarsa burada
+  # yakalanır ve baseline ile karşılaştırma deterministik kalır.
+  report$file <- gsub("\\\\", "/", report$file)
+  report$file <- sub("^/+", "", report$file)
+  report$file <- enc2utf8(report$file)
 
   # library_queries.R bilgi tabanı olduğu için ratchet kapsamına alınmaz.
   report <- subset(report, !grepl("(^|/)library_queries\\.R$", file, perl = TRUE))
@@ -112,6 +153,7 @@
     "R/module_startup_screen.R",
     "R/module_ai_expert.R",
     "R/helpers_claude_code_workdir_snapshot.R",
+    "R/module_claude_code_workdir_snapshots.R",
     "R/server_handler_true_streaming.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_ai_expert.R",
@@ -119,7 +161,9 @@
     "R/helpers_language.R",
     "ui.R",
     "R/module_chartlab.R",
-    "R/helpers_chat_runtime.R"
+    "R/helpers_chat_runtime.R",
+    "R/helpers_health_checks.R",
+    "R/helpers_files.R"
   ),
   baseline_lines = c(
     2378L,
@@ -144,13 +188,16 @@
     686L,
     662L,
     662L,
+    662L,
     627L,
     619L,
     577L,
     572L,
     539L,
     532L,
-    523L
+    523L,
+    385L,
+    341L
   ),
   baseline_functions = c(
     99L,
@@ -174,6 +221,7 @@
     5L,
     22L,
     31L,
+    31L,
     17L,
     12L,
     19L,
@@ -181,7 +229,9 @@
     3L,
     0L,
     20L,
-    14L
+    14L,
+    27L,
+    32L
   ),
   stringsAsFactors = FALSE
 )
