@@ -24,7 +24,20 @@
   }
 
   txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
-  enc2utf8(txt)
+
+  suppressWarnings(enc2utf8(txt))
+}
+
+.safe_utf8_network_contract <- function(x) {
+  x <- as.character(x %||% "")
+  x <- suppressWarnings(enc2utf8(x))
+  x <- suppressWarnings(iconv(x, from = "UTF-8", to = "UTF-8", sub = "byte"))
+
+  ifelse(is.na(x), "", x)
+}
+
+.safe_tolower_network_contract <- function(x) {
+  suppressWarnings(tolower(.safe_utf8_network_contract(x)))
 }
 
 .normalize_path_network_contract <- function(path) {
@@ -62,12 +75,14 @@
 }
 
 .strip_js_css_comments_network_contract <- function(text) {
+  text <- .safe_utf8_network_contract(text)
+
   # JS/CSS lisans ve dokümantasyon yorumlarındaki URL'ler runtime bağımlılığı
   # değildir. Önce block comment, sonra satır yorumlarını temizliyoruz.
-  text <- gsub("/\\*.*?\\*/", "", text, perl = TRUE)
+  text <- suppressWarnings(gsub("/\\*.*?\\*/", "", text, perl = TRUE))
 
   lines <- strsplit(text, "\n", fixed = TRUE)[[1]]
-  lines <- gsub("^\\s*//.*$", "", lines, perl = TRUE)
+  lines <- suppressWarnings(gsub("^\\s*//.*$", "", lines, perl = TRUE))
 
   paste(lines, collapse = "\n")
 }
@@ -76,19 +91,28 @@
   ext <- tolower(tools::file_ext(path))
 
   if (identical(ext, "r")) {
+    # R dosyalarında yorumları yok saymak için raw text yerine parse/deparse
+    # kullanıyoruz. Windows VM native encoding uyarıları bu testin konusu
+    # değildir; URL sözleşmesini bozmasın diye kontrollü şekilde bastırılır.
     exprs <- tryCatch(
-      parse(file = path, encoding = "UTF-8", keep.source = FALSE),
+      suppressWarnings(parse(file = path, encoding = "UTF-8", keep.source = FALSE)),
       error = function(e) expression()
     )
 
-    return(paste(
+    out <- suppressWarnings(paste(
       vapply(
         exprs,
-        function(expr) paste(deparse(expr, width.cutoff = 500L), collapse = "\n"),
+        function(expr) {
+          suppressWarnings(
+            paste(deparse(expr, width.cutoff = 500L), collapse = "\n")
+          )
+        },
         character(1)
       ),
       collapse = "\n"
     ))
+
+    return(.safe_utf8_network_contract(out))
   }
 
   text <- .read_repo_text_network_contract(path)
@@ -97,11 +121,11 @@
     text <- .strip_js_css_comments_network_contract(text)
   }
 
-  text
+  .safe_utf8_network_contract(text)
 }
 
 .url_allowed_for_airgapped_contract <- function(url) {
-  url_norm <- tolower(enc2utf8(as.character(url)[1]))
+  url_norm <- .safe_tolower_network_contract(as.character(url)[1])
 
   allowed_prefixes <- c(
     "http://localhost",
@@ -253,7 +277,9 @@ test_that("runtime dosyaları CDN domainlerini kullanmıyor", {
   violations <- character(0)
 
   for (f in runtime_files) {
-    txt <- tolower(.runtime_text_without_comments_network_contract(f))
+    txt <- .safe_tolower_network_contract(
+      .runtime_text_without_comments_network_contract(f)
+    )
 
     matched <- banned_domains[vapply(
       banned_domains,
