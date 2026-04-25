@@ -19,6 +19,29 @@ options(
 # Future paketinin RNG (rastgele sayı üretimi) hatalarını yoksay
 options(future.rng.onMisuse = "ignore")
 
+# ------------------------------------------------------------------------------
+# ÜRETİM DOSYA YÜKLEME SINIRI
+# ------------------------------------------------------------------------------
+# Büyük dosyalar Windows VM üzerinde Shiny upload, önizleme, özetleme ve dosya
+# indeksleme hattını ağırlaştırabilir. Varsayılan sınır 25 MB'tır.
+# .Renviron içinde MERGEN_UPLOAD_MAX_MB=... ile kontrollü şekilde değiştirilebilir.
+# shiny.maxRequestSize, Shiny'nin HTTP upload seviyesinde erken reddetmesini sağlar.
+# mergen.upload_max_mb ise uygulama içi validate_uploaded_file() kararlarında
+# kullanılan merkezi sınırdır.
+# ------------------------------------------------------------------------------
+mergen_upload_max_mb <- suppressWarnings(
+  as.integer(Sys.getenv("MERGEN_UPLOAD_MAX_MB", "25"))
+)
+
+if (is.na(mergen_upload_max_mb) || mergen_upload_max_mb <= 0L) {
+  mergen_upload_max_mb <- 25L
+}
+
+options(
+  mergen.upload_max_mb = mergen_upload_max_mb,
+  shiny.maxRequestSize = mergen_upload_max_mb * 1024^2
+)
+
 # Yerel ayarları İngilizce UTF-8 olarak ayarlamayı dene (hataları gizle)
 try(suppressWarnings(Sys.setlocale("LC_ALL", "en_US.UTF-8")), silent = TRUE)
 

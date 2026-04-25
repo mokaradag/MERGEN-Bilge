@@ -1030,13 +1030,11 @@ fileManagerServer <- function(
               next
             }
 
-            # Ek güvenlik kontrolü: boyut sınırı, path traversal ve UTF-8 güvenliği.
-            # Uzantı kontrolü process_uploaded_file() içinde ayrıca yapıldığı için
-            # burada allowed_ext geçilmez. Sınır 100 MB; daha düşük ihtiyaç
-            # olursa getOption("mergen.upload_max_mb") ile geçilebilir.
+			# Varsayılan sınır 25 MB; daha düşük/yüksek ihtiyaç olursa
+			# getOption("mergen.upload_max_mb") veya MERGEN_UPLOAD_MAX_MB ile geçilebilir.
             if (exists("validate_uploaded_file", envir = globalenv(), inherits = FALSE)) {
-              max_mb <- suppressWarnings(as.integer(getOption("mergen.upload_max_mb", 100L)))
-              if (is.na(max_mb) || max_mb <= 0L) max_mb <- 100L
+			  max_mb <- suppressWarnings(as.integer(getOption("mergen.upload_max_mb", 25L)))
+			  if (is.na(max_mb) || max_mb <= 0L) max_mb <- 25L
 
               dogrulama <- validate_uploaded_file(
                 path = upload_path,

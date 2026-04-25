@@ -58,7 +58,7 @@
 #                 "bad_encoding", "ext_not_allowed"
 validate_uploaded_file <- function(path,
                                    filename = NULL,
-                                   max_size_mb = 50L,
+                                   max_size_mb = getOption("mergen.upload_max_mb", 25L),
                                    allowed_ext = NULL) {
   if (is.null(path) || !is.character(path) || length(path) != 1L || !nzchar(path)) {
     return(list(ok = FALSE, error = "Yol parametresi boş veya geçersiz.", code = "missing_path"))
