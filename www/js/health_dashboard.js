@@ -4,24 +4,19 @@
 // ==============================================================================
 
 (function() {
-  var healthTooltipGuard = null;
-
   function removeHealthTooltips() {
-    if (!window.jQuery) {
-      return;
-    }
-
-    try {
-      if (jQuery.fn && jQuery.fn.tooltip) {
-        jQuery("[data-toggle='tooltip']").tooltip("hide");
-        jQuery(".health-dashboard-container [data-toggle='tooltip']").tooltip("dispose");
+    if (window.jQuery) {
+      try {
+        if (jQuery.fn && jQuery.fn.tooltip) {
+          jQuery(".health-dashboard-container [data-toggle='tooltip']").tooltip("hide").tooltip("dispose");
+          jQuery(".health-dashboard-container [title]").removeAttr("data-original-title");
+        }
+      } catch (e) {
+        // Tooltip temizliği en iyi çaba ile yapılır.
       }
-    } catch (e) {
-      // Tooltip temizliği en iyi çaba ile yapılır; hata UI akışını durdurmamalıdır.
+      jQuery(".tooltip, .tooltip.show, .tooltip.fade, .tooltip.in").remove();
+      jQuery("body").removeClass("tooltip-open");
     }
-
-    jQuery(".tooltip, .tooltip.show, .tooltip.fade").remove();
-    jQuery("body").removeClass("tooltip-open");
   }
 
   function updateHealthTimestamp(message) {
@@ -42,38 +37,63 @@
   }
 
   function initHealthTooltips() {
-    if (!window.jQuery || !jQuery.fn || !jQuery.fn.tooltip) {
-      return;
-    }
-
+    // Sağlık sayfasında Bootstrap tooltip yerine CSS tabanlı data-health-tooltip kullanılır.
+    // Böylece otomatik yenileme sırasında body üzerinde kalan donmuş .tooltip düğümleri oluşmaz.
     removeHealthTooltips();
-    jQuery(".health-dashboard-container [data-toggle='tooltip']").tooltip({
-      container: "body",
-      trigger: "hover",
-      delay: { show: 120, hide: 80 },
-      placement: function(tip, element) {
-        return jQuery(element).attr("data-placement") || "top";
-      }
-    });
   }
 
-  function resolveHealthPathInputId(buttonElement) {
-    var container = buttonElement.closest(".health-dashboard-container");
-    if (container && container.getAttribute("data-health-path-input-id")) {
-      return container.getAttribute("data-health-path-input-id");
-    }
-    return "health_module-open_health_path";
+  function showCopyToast(message, type) {
+    var toast = document.createElement("div");
+    toast.className = "health-copy-toast " + (type || "success");
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    window.setTimeout(function() {
+      toast.classList.add("show");
+    }, 20);
+
+    window.setTimeout(function() {
+      toast.classList.remove("show");
+      window.setTimeout(function() {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 260);
+    }, 2400);
   }
 
-  function sendHealthPath(path, inputId) {
-    if (!path || !window.Shiny || !Shiny.setInputValue) {
-      return;
+  function fallbackCopyText(text) {
+    var textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.setAttribute("readonly", "readonly");
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    var ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (e) {
+      ok = false;
     }
 
-    Shiny.setInputValue(inputId, {
-      path: path,
-      nonce: Date.now()
-    }, { priority: "event" });
+    document.body.removeChild(textArea);
+    return ok;
+  }
+
+  function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function() {
+        return true;
+      }).catch(function() {
+        return fallbackCopyText(text);
+      });
+    }
+
+    return Promise.resolve(fallbackCopyText(text));
   }
 
   function bindHealthPathButtons() {
@@ -82,15 +102,25 @@
     }
 
     jQuery(document)
-      .off("click.healthPath", ".health-path-open-btn")
-      .on("click.healthPath", ".health-path-open-btn", function(event) {
+      .off("click.healthPath", ".health-path-copy-btn")
+      .on("click.healthPath", ".health-path-copy-btn", function(event) {
         event.preventDefault();
         event.stopPropagation();
         removeHealthTooltips();
 
         var path = this.getAttribute("data-health-path") || "";
-        var inputId = resolveHealthPathInputId(this);
-        sendHealthPath(path, inputId);
+        if (!path) {
+          showCopyToast("Kopyalanacak yol bulunamadı.", "error");
+          return;
+        }
+
+        copyTextToClipboard(path).then(function(ok) {
+          if (ok) {
+            showCopyToast("Klasör yolu panoya kopyalandı. Windows Dosya Gezgini adres çubuğuna yapıştırıp Enter'a basın.", "success");
+          } else {
+            showCopyToast("Yol otomatik kopyalanamadı. Lütfen yolu elle seçip kopyalayın.", "error");
+          }
+        });
       });
   }
 
@@ -100,46 +130,32 @@
     }
 
     jQuery(document)
-      .off("click.healthTooltipCleanup shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip mouseleave.healthTooltip mouseenter.healthTooltip")
-      .on("click.healthTooltipCleanup", ".sidebar-menu a, .nav-tabs a, .nav-pills a, .health-dashboard-container button, .nav a", function() {
+      .off("click.healthTooltipCleanup mouseleave.healthTooltip mouseenter.healthTooltip shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip")
+      .on("click.healthTooltipCleanup", ".sidebar-menu a, .nav-tabs a, .nav-pills a, .nav a, .health-dashboard-container button", function() {
         removeHealthTooltips();
       })
-      .on("mouseenter.healthTooltip", ".health-dashboard-container [data-toggle='tooltip']", function() {
+      .on("mouseenter.healthTooltip", ".health-dashboard-container [data-health-tooltip]", function() {
         removeHealthTooltips();
       })
-      .on("mouseleave.healthTooltip", ".health-dashboard-container [data-toggle='tooltip']", function() {
+      .on("mouseleave.healthTooltip", ".health-dashboard-container [data-health-tooltip]", function() {
         removeHealthTooltips();
       })
       .on("shown.bs.tab.healthTooltip hidden.bs.tab.healthTooltip", "a[data-toggle='tab'], a[data-toggle='pill']", function() {
         removeHealthTooltips();
-        window.setTimeout(initHealthTooltips, 140);
       });
   }
 
   function startTooltipGuard() {
-    if (healthTooltipGuard) {
-      window.clearInterval(healthTooltipGuard);
-    }
-
-    healthTooltipGuard = window.setInterval(function() {
-      if (!document.querySelector(".health-dashboard-container")) {
-        removeHealthTooltips();
-        return;
-      }
-
-      var openTooltip = document.querySelector(".tooltip.show, .tooltip.in");
-      var hoveredHealthElement = document.querySelector(".health-dashboard-container [data-toggle='tooltip']:hover");
-      if (openTooltip && !hoveredHealthElement) {
-        removeHealthTooltips();
-      }
-    }, 900);
+    window.setInterval(function() {
+      removeHealthTooltips();
+    }, 1500);
   }
 
   function bootstrapHealthDashboard() {
     bindHealthPathButtons();
     bindTooltipCleanup();
     startTooltipGuard();
-    window.setTimeout(initHealthTooltips, 250);
+    removeHealthTooltips();
   }
 
   if (window.Shiny && Shiny.addCustomMessageHandler) {
