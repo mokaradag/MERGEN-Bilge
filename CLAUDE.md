@@ -302,6 +302,8 @@ Windows-safe child-session test authoring rules:
 - `global.R` critical source-manifest ordering contract coverage (`test-global-source-manifest-contract.R`)
 - production env policy contract coverage for strict `MERGEN_RUN_APP` parsing and the 25 MB upload cap (`test-production-env-policy-contract.R`)
 - non-streaming LLM request-override parity coverage via `test-llm-reasoning-request-overrides.R`
+- LLM content/reasoning fallback contract coverage via `test-llm-content-reasoning-fallback.R`
+- maintainability ratchet coverage via `test-maintainability-ratchet.R`, including baseline score/count regression protection and Windows VM `testthat` compatibility through `expect_true(..., info = ...)`
 - `safe_source`
 - BOM-marked UTF-8 safe_source loading behavior
 - tracked_future_promise task-registry cleanup behavior
@@ -354,6 +356,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor.
 - Focused hardening checks can be run directly with:
   ```r
   testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
@@ -363,6 +366,8 @@ Windows-safe child-session test authoring rules:
   testthat::test_file("tests/testthat/test-mcp-path-fallback-contract.R")
   testthat::test_file("tests/testthat/test-mcp-debug-output-contract.R")
   testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
+  testthat::test_file("tests/testthat/test-llm-content-reasoning-fallback.R")
+  testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
   testthat::test_file("tests/testthat/test-source-manifest-contract.R")
   testthat::test_file("tests/testthat/test-secret-leak-contract.R")
   testthat::test_file("tests/testthat/test-runtime-network-boundary-contract.R")
@@ -505,6 +510,12 @@ The same helper must also be applied on non-streaming LLM paths; otherwise strea
 `R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Thinking/reasoning models.
 For helper visibility on the true streaming future worker side, keep `apply_model_request_overrides = apply_model_request_overrides` in `tracked_future_promise(..., globals = list(...))` within `R/server_handler_true_streaming.R`.
 Kimi-style models may send reasoning as `delta$reasoning`; Gemma-style models may fall back to normal `delta$content` streaming with empty `ReasoningContent` when the override is missing.
+
+### LLM content/reasoning fallback contract
+- For thinking/reasoning models, empty `message$content` or `delta$content` must not overwrite usable `reasoning` / `reasoning_content`.
+- `extract_llm_content_and_sources()` must only replace `ai_content` with non-empty candidates.
+- Reasoning fallback should be applied after all normal content extraction attempts.
+- This contract is protected by `tests/testthat/test-llm-content-reasoning-fallback.R`.
 
 ### Reasoning debug log policy
 `[REASONING DEBUG]` lines must remain disabled by default in production.
