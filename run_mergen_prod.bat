@@ -3,7 +3,7 @@ setlocal EnableExtensions
 
 REM ==============================================================================
 REM Dosya Yolu: run_mergen_prod.bat
-REM Aciklama: MERGEN Bilge uretim baslatma komutu.
+REM Açıklama: MERGEN Bilge uretim baslatma komutu.
 REM
 REM Not:
 REM - Repo UNC/network path uzerindeyse cd /d kullanmayin.
@@ -133,7 +133,33 @@ REM ----------------------------------------------------------------------------
 >> "%PREFLIGHT_R%" echo cat(".libPaths():\n")
 >> "%PREFLIGHT_R%" echo print(.libPaths())
 >> "%PREFLIGHT_R%" echo cat("\n")
->> "%PREFLIGHT_R%" echo source("R/config_packages.R", encoding = "UTF-8")
+>> "%PREFLIGHT_R%" echo required_packages ^<- c(
+>> "%PREFLIGHT_R%" echo   "arrow",
+>> "%PREFLIGHT_R%" echo   "duckdb",
+>> "%PREFLIGHT_R%" echo   "fastmatch",
+>> "%PREFLIGHT_R%" echo   "pdftools",
+>> "%PREFLIGHT_R%" echo   "pool",
+>> "%PREFLIGHT_R%" echo   "shinyBS",
+>> "%PREFLIGHT_R%" echo   "stringdist",
+>> "%PREFLIGHT_R%" echo   "writexl",
+>> "%PREFLIGHT_R%" echo   "av"
+>> "%PREFLIGHT_R%" echo )
+>> "%PREFLIGHT_R%" echo installed ^<- rownames(installed.packages())
+>> "%PREFLIGHT_R%" echo status ^<- data.frame(
+>> "%PREFLIGHT_R%" echo   package = required_packages,
+>> "%PREFLIGHT_R%" echo   installed = required_packages %%in%% installed,
+>> "%PREFLIGHT_R%" echo   stringsAsFactors = FALSE
+>> "%PREFLIGHT_R%" echo )
+>> "%PREFLIGHT_R%" echo cat("Required package status:\n")
+>> "%PREFLIGHT_R%" echo print(status, row.names = FALSE)
+>> "%PREFLIGHT_R%" echo missing ^<- status$package[!status$installed]
+>> "%PREFLIGHT_R%" echo if (length(missing) ^> 0L) {
+>> "%PREFLIGHT_R%" echo   cat("\nERROR: Missing R packages:\n")
+>> "%PREFLIGHT_R%" echo   cat(paste(missing, collapse = ", "), "\n\n")
+>> "%PREFLIGHT_R%" echo   cat("Install these packages into the library used by this Rscript.\n")
+>> "%PREFLIGHT_R%" echo   cat("If the VM is offline, install from local Windows binary .zip files or an internal CRAN mirror.\n")
+>> "%PREFLIGHT_R%" echo   quit(status = 10L, save = "no")
+>> "%PREFLIGHT_R%" echo }
 >> "%PREFLIGHT_R%" echo cat("\nPackage preflight OK.\n")
 
 REM ------------------------------------------------------------------------------
