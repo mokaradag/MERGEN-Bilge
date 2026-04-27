@@ -1,40 +1,24 @@
-# ==============================================================================
-# MERGEN Bilge Production Launcher Self-Test
-# File: C:\MergenLauncher\test_mergen_prod_launcher.ps1
-# ==============================================================================
-
 $ErrorActionPreference = "Stop"
 
-# ------------------------------------------------------------------------------
-# Configuration
-# ------------------------------------------------------------------------------
+# ASCII-only MERGEN launcher self-test.
+# This script avoids Turkish path literals and avoids fragile R -e quoting.
 
 $Share = "\\rehisds\uygulamalar"
 $Drive = "T:"
-$AppRel = "Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
+$SearchRootRel = "Primavera\PYB"
+$ExpectedAppFolderName = "MERGEN Bilge"
 $ExpectedPort = 8009
 
-$RequiredPackages = @(
-    "arrow",
-    "duckdb",
-    "fastmatch",
-    "pdftools",
-    "pool",
-    "shinyBS",
-    "stringdist",
-    "writexl",
-    "av"
-)
+$RequiredPackagesCsv = "arrow,duckdb,fastmatch,pdftools,pool,shinyBS,stringdist,writexl,av"
+$RequiredEnvVarsCsv = "DB_DSN,LOCAL_LLM_ENDPOINT"
 
-$RequiredEnvVars = @(
-    "DB_DSN",
-    "LOCAL_LLM_ENDPOINT"
-)
+$LauncherDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $LauncherDir) {
+    $LauncherDir = "C:\MergenLauncher"
+}
 
-$LauncherDir = "C:\MergenLauncher"
 $LogDir = Join-Path $LauncherDir "test_logs"
-
-if (-not (Test-Path $LogDir)) {
+if (-not (Test-Path -LiteralPath $LogDir)) {
     New-Item -ItemType Directory -Path $LogDir | Out-Null
 }
 
@@ -43,12 +27,19 @@ $LogFile = Join-Path $LogDir "mergen_launcher_selftest_$Timestamp.log"
 
 $Failures = New-Object System.Collections.Generic.List[string]
 $Warnings = New-Object System.Collections.Generic.List[string]
+
 $MappedByThisScript = $false
+$AppDir = $null
+$RunBat = $null
+$RunR = $null
+$AppR = $null
+$LogViewerBat = $null
+$Rscript = $null
 
 function Write-Line {
     param([string]$Text = "")
     Write-Host $Text
-    Add-Content -Path $LogFile -Value $Text -Encoding UTF8
+    Add-Content -LiteralPath $LogFile -Value $Text -Encoding UTF8
 }
 
 function Pass {
@@ -58,13 +49,13 @@ function Pass {
 
 function Warn {
     param([string]$Text)
-    $Warnings.Add($Text) | Out-Null
+    $script:Warnings.Add($Text) | Out-Null
     Write-Line "[WARN] $Text"
 }
 
 function Fail {
     param([string]$Text)
-    $Failures.Add($Text) | Out-Null
+    $script:Failures.Add($Text) | Out-Null
     Write-Line "[FAIL] $Text"
 }
 
@@ -87,15 +78,32 @@ function Test-Step {
     }
 }
 
+function Invoke-RScriptFile {
+    param(
+        [string]$RCode
+    )
+
+    $TempR = Join-Path $env:TEMP ("mergen_selftest_" + [guid]::NewGuid().ToString("N") + ".R")
+
+    try {
+        Set-Content -LiteralPath $TempR -Value $RCode -Encoding ASCII
+        $output = & $script:Rscript $TempR 2>&1
+        Add-Content -LiteralPath $LogFile -Value ($output | Out-String) -Encoding UTF8
+        $output | ForEach-Object { Write-Host $_ }
+        return $LASTEXITCODE
+    }
+    finally {
+        if (Test-Path -LiteralPath $TempR) {
+            Remove-Item -LiteralPath $TempR -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Write-Line "============================================================"
 Write-Line "MERGEN Bilge Production Launcher Self-Test"
 Write-Line "Started : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Line "Log file: $LogFile"
 Write-Line "============================================================"
-
-# ------------------------------------------------------------------------------
-# 1. Map network share to test drive
-# ------------------------------------------------------------------------------
 
 Test-Step "Network share mapping" {
     Write-Line "Share: $Share"
@@ -104,65 +112,91 @@ Test-Step "Network share mapping" {
     & net.exe use $Drive /delete /y | Out-Null 2>&1
 
     $mapOutput = & net.exe use $Drive $Share /persistent:no 2>&1
-    Add-Content -Path $LogFile -Value ($mapOutput | Out-String) -Encoding UTF8
+    Add-Content -LiteralPath $LogFile -Value ($mapOutput | Out-String) -Encoding UTF8
 
     if ($LASTEXITCODE -ne 0) {
         throw "Could not map $Share to $Drive. net use exit code: $LASTEXITCODE"
     }
 
-    $MappedByThisScript = $true
+    $script:MappedByThisScript = $true
 
-    if (-not (Test-Path "$Drive\")) {
+    if (-not (Test-Path -LiteralPath "$Drive\")) {
         throw "Mapped drive is not accessible: $Drive\"
     }
 
     Pass "Network share mapped successfully."
 }
 
-$AppDir = Join-Path "$Drive\" $AppRel
-$RunBat = Join-Path $AppDir "run_mergen_prod.bat"
-$RunR = Join-Path $AppDir "run_mergen_prod.R"
-$AppR = Join-Path $AppDir "app.R"
-$LogViewerBat = Join-Path $AppDir "view_latest_mergen_app_log.bat"
+Test-Step "Discover MERGEN Bilge app folder" {
+    $SearchRoot = Join-Path "$Drive\" $SearchRootRel
 
-# ------------------------------------------------------------------------------
-# 2. Check app folder and required files
-# ------------------------------------------------------------------------------
+    Write-Line "Search root: $SearchRoot"
 
-Test-Step "Application folder and required files" {
-    Write-Line "AppDir: $AppDir"
-
-    if (-not (Test-Path $AppDir)) {
-        throw "Application folder not found: $AppDir"
+    if (-not (Test-Path -LiteralPath $SearchRoot)) {
+        throw "Search root not found: $SearchRoot"
     }
 
-    $requiredFiles = @(
-        $RunBat,
-        $RunR,
-        $AppR
-    )
+    $allCandidates = Get-ChildItem -LiteralPath $SearchRoot -Recurse -Filter "run_mergen_prod.bat" -File -ErrorAction SilentlyContinue
 
-    foreach ($file in $requiredFiles) {
-        if (-not (Test-Path $file)) {
+    if (-not $allCandidates -or $allCandidates.Count -eq 0) {
+        throw "No run_mergen_prod.bat file found under $SearchRoot"
+    }
+
+    $candidates = $allCandidates | Where-Object {
+        $parent = Split-Path -Parent $_.FullName
+        $leaf = Split-Path -Leaf $parent
+        $leaf -eq $ExpectedAppFolderName
+    } | Sort-Object FullName
+
+    if (-not $candidates -or $candidates.Count -eq 0) {
+        Write-Line "Found run_mergen_prod.bat files, but none under folder named '$ExpectedAppFolderName'. Candidates:"
+        foreach ($item in ($allCandidates | Select-Object -First 30)) {
+            Write-Line "  $($item.FullName)"
+        }
+        throw "MERGEN Bilge app folder could not be discovered."
+    }
+
+    if ($candidates.Count -gt 1) {
+        Warn "Multiple candidates found. Using the first one."
+        foreach ($item in $candidates) {
+            Write-Line "  Candidate: $($item.FullName)"
+        }
+    }
+
+    $script:RunBat = $candidates[0].FullName
+    $script:AppDir = Split-Path -Parent $script:RunBat
+    $script:RunR = Join-Path $script:AppDir "run_mergen_prod.R"
+    $script:AppR = Join-Path $script:AppDir "app.R"
+    $script:LogViewerBat = Join-Path $script:AppDir "view_latest_mergen_app_log.bat"
+
+    Write-Line "Discovered AppDir:"
+    Write-Line $script:AppDir
+
+    Pass "MERGEN Bilge app folder discovered successfully."
+}
+
+Test-Step "Application folder and required files" {
+    if (-not (Test-Path -LiteralPath $script:AppDir)) {
+        throw "Application folder not found: $script:AppDir"
+    }
+
+    foreach ($file in @($script:RunBat, $script:RunR, $script:AppR)) {
+        if (-not (Test-Path -LiteralPath $file)) {
             throw "Required file missing: $file"
         }
         Pass "Found: $file"
     }
 
-    if (Test-Path $LogViewerBat) {
-        Pass "Found: $LogViewerBat"
+    if (Test-Path -LiteralPath $script:LogViewerBat) {
+        Pass "Found: $script:LogViewerBat"
     }
     else {
-        Warn "Log viewer file not found: $LogViewerBat"
+        Warn "Log viewer file not found: $script:LogViewerBat"
     }
 }
 
-# ------------------------------------------------------------------------------
-# 3. Static checks for run_mergen_prod.bat
-# ------------------------------------------------------------------------------
-
 Test-Step "run_mergen_prod.bat static safety checks" {
-    $bat = Get-Content -LiteralPath $RunBat -Raw -Encoding UTF8
+    $bat = Get-Content -LiteralPath $script:RunBat -Raw
 
     if ($bat -match 'pushd\s+"%APP_DIR%\."') {
         Fail 'Unsafe pattern found: pushd "%APP_DIR%."'
@@ -191,30 +225,15 @@ Test-Step "run_mergen_prod.bat static safety checks" {
     else {
         Pass "No direct shiny::runApp call found in run_mergen_prod.bat."
     }
-
-    $dangerousEchoLines = Select-String -LiteralPath $RunBat -Pattern '^\s*echo .*[()]' -Encoding UTF8
-    if ($dangerousEchoLines) {
-        Warn "Potentially risky echo lines with parentheses were found. These can break CMD inside IF blocks."
-        foreach ($line in $dangerousEchoLines) {
-            Write-Line "       Line $($line.LineNumber): $($line.Line)"
-        }
-    }
-    else {
-        Pass "No risky echo lines with parentheses found."
-    }
 }
 
-# ------------------------------------------------------------------------------
-# 4. Static checks for view_latest_mergen_app_log.bat
-# ------------------------------------------------------------------------------
-
 Test-Step "view_latest_mergen_app_log.bat static safety checks" {
-    if (-not (Test-Path $LogViewerBat)) {
+    if (-not (Test-Path -LiteralPath $script:LogViewerBat)) {
         Warn "Skipping log viewer checks because file does not exist."
         return
     }
 
-    $bat = Get-Content -LiteralPath $LogViewerBat -Raw -Encoding UTF8
+    $bat = Get-Content -LiteralPath $script:LogViewerBat -Raw
 
     if ($bat -match 'pushd\s+"%~dp0"') {
         Fail 'Log viewer still uses UNC-sensitive pattern: pushd "%~dp0"'
@@ -231,26 +250,20 @@ Test-Step "view_latest_mergen_app_log.bat static safety checks" {
     }
 }
 
-# ------------------------------------------------------------------------------
-# 5. Detect newest installed R
-# ------------------------------------------------------------------------------
-
-$Rscript = $null
-
 Test-Step "Dynamic Rscript detection" {
     $RRoot = "C:\Program Files\R"
 
-    if (-not (Test-Path $RRoot)) {
+    if (-not (Test-Path -LiteralPath $RRoot)) {
         throw "R root folder not found: $RRoot"
     }
 
-    $found = Get-ChildItem -Path $RRoot -Directory -Filter "R-*" |
+    $found = Get-ChildItem -LiteralPath $RRoot -Directory -Filter "R-*" |
         ForEach-Object {
             $verText = $_.Name -replace '^R-', ''
             try {
                 $ver = [version]$verText
                 $candidate = Join-Path $_.FullName "bin\Rscript.exe"
-                if (Test-Path $candidate) {
+                if (Test-Path -LiteralPath $candidate) {
                     [pscustomobject]@{
                         Version = $ver
                         Path = $candidate
@@ -258,7 +271,6 @@ Test-Step "Dynamic Rscript detection" {
                 }
             }
             catch {
-                # Ignore folders that are not valid R version folders.
             }
         } |
         Sort-Object Version -Descending |
@@ -274,80 +286,65 @@ Test-Step "Dynamic Rscript detection" {
     Pass "Newest Rscript detected successfully."
 }
 
-# ------------------------------------------------------------------------------
-# 6. R diagnostics
-# ------------------------------------------------------------------------------
-
 Test-Step "R diagnostics and library paths" {
-    $cmd = @"
-cat('R.home = ', R.home(), '\n', sep='')
-cat('R.version = ', R.version.string, '\n', sep='')
-cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep='')
-cat('Library paths:\n')
+    $rcode = @'
+cat("R.home = ", R.home(), "\n", sep = "")
+cat("R.version = ", R.version.string, "\n", sep = "")
+cat("R_LIBS_USER = ", Sys.getenv("R_LIBS_USER"), "\n", sep = "")
+cat("Library paths:\n")
 print(.libPaths())
-"@
+'@
 
-    $output = & $Rscript -e $cmd 2>&1
-    Add-Content -Path $LogFile -Value ($output | Out-String) -Encoding UTF8
-    $output | ForEach-Object { Write-Host $_ }
+    $code = Invoke-RScriptFile $rcode
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "R diagnostics failed. Exit code: $LASTEXITCODE"
+    if ($code -ne 0) {
+        throw "R diagnostics failed. Exit code: $code"
     }
 
     Pass "R diagnostics completed successfully."
 }
 
-# ------------------------------------------------------------------------------
-# 7. Required R package installation check
-# ------------------------------------------------------------------------------
-
 Test-Step "Required R package visibility" {
-    $pkgList = ($RequiredPackages | ForEach-Object { '"' + $_ + '"' }) -join ", "
+    $env:MERGEN_TEST_REQUIRED_PACKAGES = $RequiredPackagesCsv
 
-    $cmd = @"
-pkgs <- c($pkgList)
+    $rcode = @'
+pkgs <- strsplit(Sys.getenv("MERGEN_TEST_REQUIRED_PACKAGES"), ",", fixed = TRUE)[[1]]
+pkgs <- trimws(pkgs)
 ip <- rownames(installed.packages())
 miss <- setdiff(pkgs, ip)
+
 if (length(miss)) {
-  cat('Missing installed packages:\n')
-  cat(paste(miss, collapse = ', '), '\n')
+  cat("Missing installed packages:\n")
+  cat(paste(miss, collapse = ", "), "\n")
   quit(status = 10)
 }
-cat('All required packages are installed and visible.\n')
-"@
 
-    $output = & $Rscript -e $cmd 2>&1
-    Add-Content -Path $LogFile -Value ($output | Out-String) -Encoding UTF8
-    $output | ForEach-Object { Write-Host $_ }
+cat("All required packages are installed and visible.\n")
+'@
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Required package check failed. Exit code: $LASTEXITCODE"
+    $code = Invoke-RScriptFile $rcode
+
+    if ($code -ne 0) {
+        throw "Required package check failed. Exit code: $code"
     }
 
     Pass "All required R packages are visible."
 }
 
-# ------------------------------------------------------------------------------
-# 8. R syntax parse checks
-# ------------------------------------------------------------------------------
-
 Test-Step "R startup file parse checks" {
-    Push-Location $AppDir
+    Push-Location -LiteralPath $script:AppDir
 
     try {
-        $cmd = @"
-parse(file = 'run_mergen_prod.R')
-parse(file = 'app.R')
-cat('R startup files parsed successfully.\n')
-"@
+        $rcode = @'
+parse(file = "run_mergen_prod.R")
+parse(file = "app.R")
+cat("R startup files parsed successfully.\n")
+'@
 
-        $output = & $Rscript -e $cmd 2>&1
-        Add-Content -Path $LogFile -Value ($output | Out-String) -Encoding UTF8
-        $output | ForEach-Object { Write-Host $_ }
+        $code = Invoke-RScriptFile $rcode
 
-        if ($LASTEXITCODE -ne 0) {
-            throw "R parse check failed. Exit code: $LASTEXITCODE"
+        if ($code -ne 0) {
+            throw "R parse check failed. Exit code: $code"
         }
 
         Pass "run_mergen_prod.R and app.R parsed successfully."
@@ -357,40 +354,40 @@ cat('R startup files parsed successfully.\n')
     }
 }
 
-# ------------------------------------------------------------------------------
-# 9. .Renviron and required environment variables
-# ------------------------------------------------------------------------------
-
 Test-Step ".Renviron and required environment variables" {
-    Push-Location $AppDir
+    Push-Location -LiteralPath $script:AppDir
 
     try {
-        $envList = ($RequiredEnvVars | ForEach-Object { '"' + $_ + '"' }) -join ", "
+        $env:MERGEN_TEST_REQUIRED_ENV_VARS = $RequiredEnvVarsCsv
 
-        $cmd = @"
-renv <- file.path(getwd(), '.Renviron')
+        $rcode = @'
+renv <- file.path(getwd(), ".Renviron")
+
 if (file.exists(renv)) {
   readRenviron(renv)
-  cat('.Renviron loaded from: ', renv, '\n', sep = '')
+  cat(".Renviron loaded from: ", renv, "\n", sep = "")
 } else {
-  cat('.Renviron not found. Checking system/user environment only.\n')
+  cat(".Renviron not found. Checking system/user environment only.\n")
 }
-required <- c($envList)
-missing <- required[!nzchar(Sys.getenv(required, unset = ''))]
+
+required <- strsplit(Sys.getenv("MERGEN_TEST_REQUIRED_ENV_VARS"), ",", fixed = TRUE)[[1]]
+required <- trimws(required)
+
+missing <- required[!nzchar(Sys.getenv(required, unset = ""))]
+
 if (length(missing)) {
-  cat('Missing required environment variables:\n')
-  cat(paste(missing, collapse = ', '), '\n')
+  cat("Missing required environment variables:\n")
+  cat(paste(missing, collapse = ", "), "\n")
   quit(status = 10)
 }
-cat('Required environment variables are available.\n')
-"@
 
-        $output = & $Rscript -e $cmd 2>&1
-        Add-Content -Path $LogFile -Value ($output | Out-String) -Encoding UTF8
-        $output | ForEach-Object { Write-Host $_ }
+cat("Required environment variables are available.\n")
+'@
 
-        if ($LASTEXITCODE -ne 0) {
-            throw "Environment variable check failed. Exit code: $LASTEXITCODE"
+        $code = Invoke-RScriptFile $rcode
+
+        if ($code -ne 0) {
+            throw "Environment variable check failed. Exit code: $code"
         }
 
         Pass "Required environment variables are available."
@@ -400,15 +397,12 @@ cat('Required environment variables are available.\n')
     }
 }
 
-# ------------------------------------------------------------------------------
-# 10. Port check
-# ------------------------------------------------------------------------------
-
 Test-Step "Port 8009 check" {
     $listeners = Get-NetTCPConnection -LocalPort $ExpectedPort -State Listen -ErrorAction SilentlyContinue
 
     if ($listeners) {
         Warn "Port $ExpectedPort is already listening. This is OK if MERGEN Bilge is already running."
+
         foreach ($listener in $listeners) {
             Write-Line "       LocalAddress=$($listener.LocalAddress), OwningProcess=$($listener.OwningProcess)"
         }
@@ -428,10 +422,6 @@ Test-Step "Port 8009 check" {
     }
 }
 
-# ------------------------------------------------------------------------------
-# Cleanup
-# ------------------------------------------------------------------------------
-
 Write-Line ""
 Write-Line "------------------------------------------------------------"
 Write-Line "[CLEANUP]"
@@ -441,10 +431,6 @@ if ($MappedByThisScript) {
     & net.exe use $Drive /delete /y | Out-Null 2>&1
     Write-Line "Unmapped test drive: $Drive"
 }
-
-# ------------------------------------------------------------------------------
-# Summary
-# ------------------------------------------------------------------------------
 
 Write-Line ""
 Write-Line "============================================================"
