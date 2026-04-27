@@ -126,23 +126,20 @@ test_that("global.R sources PK core before module_proje_kaynak_analizi.R", {
   helper_pos <- regexpr(helper_pattern, global_txt, fixed = TRUE)[1]
   module_pos <- regexpr(module_pattern, global_txt, fixed = TRUE)[1]
 
-  expect_gt(
-    helper_pos,
-    0,
-    info = "global.R içinde R/helpers_pk_analysis_core.R source edilmelidir."
-  )
+	expect_true(
+	  helper_pos > 0,
+	  info = "global.R içinde R/helpers_pk_analysis_core.R source edilmelidir."
+	)
 
-  expect_gt(
-    module_pos,
-    0,
-    info = "global.R içinde R/module_proje_kaynak_analizi.R source edilmelidir."
-  )
+	expect_true(
+	  module_pos > 0,
+	  info = "global.R içinde R/module_proje_kaynak_analizi.R source edilmelidir."
+	)
 
-  expect_lt(
-    helper_pos,
-    module_pos,
-    info = "PK core helper, module_proje_kaynak_analizi.R dosyasından önce yüklenmelidir."
-  )
+	expect_true(
+	  helper_pos < module_pos,
+	  info = "PK core helper, module_proje_kaynak_analizi.R dosyasından önce yüklenmelidir."
+	)
 })
 
 test_that("module_proje_kaynak_analizi.R no longer owns extracted pure helpers", {

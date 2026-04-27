@@ -62,48 +62,44 @@
 test_that("module_proje_kaynak_analizi.R crosses below the next maintainability thresholds", {
   metrics <- .file_metrics_pk("R/module_proje_kaynak_analizi.R")
 
-  expect_lt(
-    metrics$lines,
-    1500L,
-    info = paste(
-      "R/module_proje_kaynak_analizi.R 1500+ satır eşiğinin altına düşmeli.",
-      "Bu, maintainability_score için gerçek +5 puan etkisi yaratır.",
-      sprintf("Mevcut satır: %d", metrics$lines)
-    )
-  )
+	expect_true(
+	  metrics$lines < 1500L,
+	  info = paste(
+		"R/module_proje_kaynak_analizi.R 1500+ satır eşiğinin altına düşmeli.",
+		"Bu, maintainability_score için gerçek +5 puan etkisi yaratır.",
+		sprintf("Mevcut satır: %d", metrics$lines)
+	  )
+	)
 
-  expect_lt(
-    metrics$functions,
-    25L,
-    info = paste(
-      "R/module_proje_kaynak_analizi.R 25+ fonksiyon eşiğinin altına düşmeli.",
-      "Bu, maintainability_score için gerçek +2 puan etkisi yaratır.",
-      sprintf("Mevcut fonksiyon: %d", metrics$functions)
-    )
-  )
+	expect_true(
+	  metrics$functions < 25L,
+	  info = paste(
+		"R/module_proje_kaynak_analizi.R 25+ fonksiyon eşiğinin altına düşmeli.",
+		"Bu, maintainability_score için gerçek +2 puan etkisi yaratır.",
+		sprintf("Mevcut fonksiyon: %d", metrics$functions)
+	  )
+	)
 })
 
 test_that("helpers_pk_analysis_core.R remains intentionally small and side-effect-light", {
   metrics <- .file_metrics_pk("R/helpers_pk_analysis_core.R")
   txt <- .read_repo_text_pk_metric("R/helpers_pk_analysis_core.R")
 
-  expect_lt(
-    metrics$lines,
-    300L,
-    info = sprintf(
-      "R/helpers_pk_analysis_core.R küçük kalmalıdır. Mevcut satır: %d",
-      metrics$lines
-    )
-  )
+	expect_true(
+	  metrics$lines < 300L,
+	  info = sprintf(
+		"R/helpers_pk_analysis_core.R küçük kalmalıdır. Mevcut satır: %d",
+		metrics$lines
+	  )
+	)
 
-  expect_lte(
-    metrics$functions,
-    6L,
-    info = sprintf(
-      "R/helpers_pk_analysis_core.R sadece çıkarılan saf helperları içermelidir. Mevcut fonksiyon: %d",
-      metrics$functions
-    )
-  )
+	expect_true(
+	  metrics$functions <= 6L,
+	  info = sprintf(
+		"R/helpers_pk_analysis_core.R sadece çıkarılan saf helperları içermelidir. Mevcut fonksiyon: %d",
+		metrics$functions
+	  )
+	)
 
   expect_false(
     grepl("call_local_llm\\s*\\(", txt, perl = TRUE),
