@@ -21,13 +21,7 @@ REM Enter application folder
 REM ============================================================
 
 pushd "%APP_DIR%"
-if errorlevel 1 (
-    echo [ERROR] Could not enter repository folder:
-    echo %APP_DIR%
-    echo.
-    pause
-    exit /b 1
-)
+if errorlevel 1 goto ERR_APP_DIR
 
 echo [INFO] Current folder:
 cd
@@ -42,6 +36,7 @@ set "RSCRIPT_EXE="
 REM Optional manual override.
 REM Example:
 REM set MERGEN_RSCRIPT=C:\Program Files\R\R-4.5.1\bin\Rscript.exe
+
 if defined MERGEN_RSCRIPT (
     if exist "%MERGEN_RSCRIPT%" (
         set "RSCRIPT_EXE=%MERGEN_RSCRIPT%"
@@ -61,13 +56,7 @@ if "%RSCRIPT_EXE%"=="" (
     )
 )
 
-if "%RSCRIPT_EXE%"=="" (
-    echo [ERROR] Rscript.exe could not be found.
-    echo.
-    pause
-    popd
-    exit /b 1
-)
+if "%RSCRIPT_EXE%"=="" goto ERR_RSCRIPT_NOT_FOUND
 
 echo [INFO] Rscript:
 echo %RSCRIPT_EXE%
@@ -81,9 +70,9 @@ set "SSO_ENABLED=TRUE"
 
 REM run_mergen_prod.R uses these.
 set "MERGEN_HOST=0.0.0.0"
-set "MERGEN_PORT=3838"
+set "MERGEN_PORT=8009"
 
-REM Keep these for older paths too.
+REM Backward compatibility.
 set "SHINY_HOST=%MERGEN_HOST%"
 set "SHINY_PORT=%MERGEN_PORT%"
 
@@ -97,17 +86,10 @@ REM R diagnostics
 REM ============================================================
 
 echo [INFO] R session diagnostics:
-"%RSCRIPT_EXE%" -e "cat('R.home() = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('.libPaths() =\n'); print(.libPaths())"
+"%RSCRIPT_EXE%" -e "cat('R.home = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('Library paths:\n'); print(.libPaths())"
 
 set "R_DIAG_CODE=%ERRORLEVEL%"
-if not "%R_DIAG_CODE%"=="0" (
-    echo.
-    echo [ERROR] R diagnostics failed. Exit code: %R_DIAG_CODE%
-    echo.
-    pause
-    popd
-    exit /b %R_DIAG_CODE%
-)
+if not "%R_DIAG_CODE%"=="0" goto ERR_R_DIAG
 
 echo.
 
@@ -115,52 +97,19 @@ REM ============================================================
 REM Check startup files
 REM ============================================================
 
-if not exist "run_mergen_prod.R" (
-    echo [ERROR] run_mergen_prod.R was not found in:
-    cd
-    echo.
-    pause
-    popd
-    exit /b 1
-)
-
-if not exist "app.R" (
-    echo [ERROR] app.R was not found in:
-    cd
-    echo.
-    pause
-    popd
-    exit /b 1
-)
+if not exist "run_mergen_prod.R" goto ERR_NO_RUN_PROD_R
+if not exist "app.R" goto ERR_NO_APP_R
 
 REM ============================================================
 REM Package installation diagnostic
 REM ============================================================
-REM Use installed.packages() here instead of requireNamespace().
-REM requireNamespace() loads package DLLs and can fail/hang/crash before
-REM giving us a readable message. app.R can still do the deeper runtime check.
-REM ============================================================
 
 echo [INFO] Checking required package installation from this Rscript session...
 
-"%RSCRIPT_EXE%" -e "pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in .libPaths().\n') }"
+"%RSCRIPT_EXE%" -e "pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in the active R library paths.\n') }"
 
 set "PKG_CHECK_CODE=%ERRORLEVEL%"
-
-if not "%PKG_CHECK_CODE%"=="0" (
-    echo.
-    echo [ERROR] Package diagnostic failed. Exit code: %PKG_CHECK_CODE%
-    echo.
-    echo [DIAGNOSTIC] The Rscript path is:
-    echo %RSCRIPT_EXE%
-    echo.
-    echo [DIAGNOSTIC] If packages are installed in RStudio but not visible here,
-    echo compare .libPaths() from this console with .libPaths() in RStudio.
-    echo.
-    pause
-    popd
-    exit /b %PKG_CHECK_CODE%
-)
+if not "%PKG_CHECK_CODE%"=="0" goto ERR_PKG_CHECK
 
 echo.
 
@@ -179,6 +128,77 @@ echo.
 echo [INFO] MERGEN Bilge exited with code: %EXITCODE%
 echo.
 
-pause
+goto FINISH
+
+
+REM ============================================================
+REM Error handlers
+REM ============================================================
+
+:ERR_APP_DIR
+echo [ERROR] Could not enter repository folder:
+echo %APP_DIR%
+echo.
+set "EXITCODE=1"
+goto FINISH_NO_POPD
+
+:ERR_RSCRIPT_NOT_FOUND
+echo [ERROR] Rscript.exe could not be found.
+echo.
+echo [DIAGNOSTIC] Expected something like:
+echo C:\Program Files\R\R-4.5.1\bin\Rscript.exe
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_R_DIAG
+echo.
+echo [ERROR] R diagnostics failed. Exit code: %R_DIAG_CODE%
+echo.
+set "EXITCODE=%R_DIAG_CODE%"
+goto FINISH
+
+:ERR_NO_RUN_PROD_R
+echo [ERROR] run_mergen_prod.R was not found in:
+cd
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_NO_APP_R
+echo [ERROR] app.R was not found in:
+cd
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_PKG_CHECK
+echo.
+echo [ERROR] Package diagnostic failed. Exit code: %PKG_CHECK_CODE%
+echo.
+echo [DIAGNOSTIC] The Rscript path is:
+echo %RSCRIPT_EXE%
+echo.
+echo [DIAGNOSTIC] Compare the library paths printed above with the library paths in RStudio.
+echo In RStudio on the VM, run:
+echo R.home()
+echo file.path(R.home("bin"), "Rscript.exe")
+echo .libPaths()
+echo.
+set "EXITCODE=%PKG_CHECK_CODE%"
+goto FINISH
+
+
+REM ============================================================
+REM Finish
+REM ============================================================
+
+:FINISH
 popd
+
+:FINISH_NO_POPD
+echo.
+echo [INFO] Final launcher exit code: %EXITCODE%
+echo.
+pause
 exit /b %EXITCODE%

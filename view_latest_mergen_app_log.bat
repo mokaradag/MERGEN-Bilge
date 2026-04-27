@@ -1,28 +1,37 @@
 @echo off
-setlocal EnableExtensions
-
-REM ==============================================================================
-REM Dosya Yolu: view_latest_mergen_app_log.bat
-REM Açıklama: logs klasöründeki en güncel mergen_*.log dosyasını canlı izler.
-REM
-REM Not:
-REM - Bu dosya loga yazmaz, yalnızca okur.
-REM - Uygulama çalışırken güvenle açık tutulabilir.
-REM - Türkçe karakterler için PowerShell tarafında UTF-8 okuma zorlanır.
-REM - UNC path için pushd kullanılır.
-REM ==============================================================================
-
+setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 
-pushd "%~dp0"
+REM ============================================================
+REM MERGEN Bilge - Latest Log Viewer
+REM ============================================================
+
+set "DRIVE=L:"
+set "SHARE=\\rehisds\uygulamalar"
+set "APP_REL=Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
+set "APP_DIR=%DRIVE%\%APP_REL%"
+set "MAPPED_BY_THIS_SCRIPT=0"
+
+echo [INFO] Preparing log viewer...
+echo.
+
+net use %DRIVE% >nul 2>&1
 if errorlevel 1 (
+    echo [INFO] Mapping network share for log viewer...
+    echo %SHARE%  --^>  %DRIVE%
     echo.
-    echo [HATA] Repo klasörüne geçilemedi:
-    echo %~dp0
-    echo.
-    pause
-    exit /b 1
+
+    net use %DRIVE% "%SHARE%" /persistent:no
+    if errorlevel 1 goto ERR_MAP
+
+    set "MAPPED_BY_THIS_SCRIPT=1"
 )
+
+if not exist "%APP_DIR%" goto ERR_APP_DIR
+if not exist "%APP_DIR%\logs" goto ERR_LOG_DIR
+
+pushd "%APP_DIR%"
+if errorlevel 1 goto ERR_PUSHD
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false);" ^
@@ -38,5 +47,46 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Write-Host '------------------------------------------------------------';" ^
   "Get-Content -LiteralPath $latest.FullName -Encoding UTF8 -Tail 120 -Wait"
 
+set "EXITCODE=%ERRORLEVEL%"
 popd
-exit /b 0
+goto FINISH
+
+
+:ERR_MAP
+echo [ERROR] Could not map network share:
+echo %SHARE%
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_APP_DIR
+echo [ERROR] App folder was not found:
+echo %APP_DIR%
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_LOG_DIR
+echo [ERROR] logs folder was not found:
+echo %APP_DIR%\logs
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_PUSHD
+echo [ERROR] Could not enter app folder:
+echo %APP_DIR%
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:FINISH
+if "%MAPPED_BY_THIS_SCRIPT%"=="1" (
+    net use %DRIVE% /delete /y >nul 2>&1
+)
+
+echo.
+echo [INFO] Log viewer exited with code: %EXITCODE%
+echo.
+pause
+exit /b %EXITCODE%
