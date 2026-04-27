@@ -296,8 +296,9 @@ safe_source("R/module_user_identity.R",    encoding = "UTF-8")
 safe_source("R/module_startup_screen.R",   encoding = "UTF-8")
 safe_source("R/module_quick_actions.R",    encoding = "UTF-8")
 safe_source("R/module_claude_code_plugins.R", encoding = "UTF-8")  # Claude Code Plugin yönetim modülü
-safe_source("R/module_claude_code_akis.R",   encoding = "UTF-8")
-safe_source("R/module_claude_code.R",        encoding = "UTF-8")
+safe_source("R/module_claude_code_ui.R",      encoding = "UTF-8")  # Bilge Yolaç UI tanımı
+safe_source("R/module_claude_code_akis.R",    encoding = "UTF-8")
+safe_source("R/module_claude_code.R",         encoding = "UTF-8")
 
 # -- Proje Analiz Modülleri --
 safe_source("R/module_proje_kaynak_analizi.R", encoding = "UTF-8")
