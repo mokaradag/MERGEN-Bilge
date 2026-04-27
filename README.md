@@ -299,30 +299,121 @@ Son hardening güncellemeleriyle `app.R` tarafında açık boot doğrulaması uy
 
 #### Üretim Başlatma Sözleşmesi
 
-Üretim başlatıcı dosyaları uygulama kök dizininde tutulmalıdır. Özellikle `run_mergen_prod.bat` dosyası UNC/ağ yolu üzerinde çalışan gerçek uygulama klasöründe kalmalı; Windows VM masaüstüne yalnızca bu dosyaya kısayol konulmalıdır. BAT dosyasının masaüstüne kopyalanması, `%~dp0` nedeniyle çalışma dizininin yanlışlıkla masaüstüne dönmesine ve logların/başlatmanın yanlış klasörden yapılmasına yol açabilir.
+Windows VM üretim başlatma akışı iki katmanlıdır:
 
-`run_mergen_prod.bat`, UNC yol sorunlarını aşmak için `cd /d` yerine `pushd "%~dp0"` kullanır. Böylece Windows, ağ yolunu geçici bir sürücü harfine map eder ve uygulama kök dizini güvenli biçimde çalışma dizini olur. Başlatma sırasında Rscript ve paket görünürlüğü de kontrol edilir; eksik paket varsa uygulama başlatılmaz ve ayrıntı `logs/run_mergen_prod_console.log` dosyasına yazılır.
+1. VM üzerindeki yerel başlatıcı:
+   - `C:\MergenLauncher\start_mergen_prod.bat`
 
-`run_mergen_prod.bat`, başlatma çıktısını `logs/run_mergen_prod_console.log` dosyasına yazar. Bu dosya esas olarak Rscript, paket preflight, boot ve startup hata teşhisi içindir. BAT, uygulama başlamadan önce gerekli R paketlerinin görünür olup olmadığını kontrol eder; eksik paket varsa uygulamayı başlatmadan durur ve hangi paketlerin eksik olduğunu loga yazar.
+2. Uygulama klasöründeki gerçek üretim başlatıcısı:
+   - `run_mergen_prod.bat`
 
-Normal uygulama çalışma zamanı loglarını canlı izlemek için `view_latest_mergen_app_log.bat` kullanılmalıdır. `view_mergen_prod_console_log.bat` ve `view_mergen_prod_console_log.ps1` dosyaları artık kullanılmaz; üretim klasörünü sade tutmak için kaldırılmıştır.
+Ağ paylaşımı doğrudan `cmd.exe` çalışma dizini yapılamadığı için kısayollar doğrudan UNC path üzerindeki `run_mergen_prod.bat` dosyasını hedeflememelidir. Bunun yerine VM’deki yerel başlatıcı kullanılmalıdır. Yerel başlatıcı `\\rehisds\uygulamalar` paylaşımını geçici olarak bir sürücü harfine map eder ve gerçek uygulama başlatıcısını mapped-drive yolu üzerinden çağırır.
+
+Önerilen üretim kısayolu:
+
+```text
+Target:
+C:\MergenLauncher\start_mergen_prod.bat
+
+Start in:
+C:\MergenLauncher
+```
+
+`run_mergen_prod.bat`, uygulama kök dizininde kalır ve mapped-drive üzerinden çağrıldığında `%~dp0` ile gerçek uygulama klasörünü bulur. Başlatma sırasında:
+
+* `MERGEN_HOST=0.0.0.0`
+* `MERGEN_PORT=8009`
+* `SSO_ENABLED=TRUE`
+
+değerleri üretim profili olarak ayarlanır.
+
+`run_mergen_prod.bat`, Rscript yolunu sabit bir R sürümüne bağlamaz. `C:\Program Files\R` altında bulunan en yeni `R-*` klasörünü dinamik olarak seçer; örneğin `C:\Program Files\R\R-4.5.1\bin\Rscript.exe`. Böylece ileride daha yeni bir R sürümü kurulduğunda başlatıcı elle güncellenmeden en yeni Rscript’i kullanabilir.
+
+Başlatıcı, uygulamayı doğrudan `shiny::runApp('.')` ile değil, üretim giriş noktası olan `run_mergen_prod.R` üzerinden çalıştırmalıdır. Bu sayede `.Renviron` yükleme, repo kökü çözümleme, ortam değişkeni kontrolleri, `MERGEN_RUN_APP` davranışı ve `run_mergen_app()` üretim sözleşmesi korunur.
+
+Başlatma öncesinde R oturumu tanılaması ve paket görünürlüğü kontrol edilir. Özellikle şu hata sınıfı için bu kontrol önemlidir: RStudio’da uygulama çalışırken `.bat` dosyasından başlatıldığında paketlerin eksik görünmesi. Bu durum genellikle farklı `Rscript.exe` veya farklı `.libPaths()` kullanılmasından kaynaklanır. Başlatıcı artık kullanılan Rscript’i, R sürümünü ve `.libPaths()` değerlerini konsola basar.
+
+UNC path ve Türkçe karakter kaynaklı kırılganlığı azaltmak için üretim başlatma akışında şu ilkeler korunmalıdır:
+
+* Kısayol doğrudan `\\rehisds\...` altındaki `.bat` dosyasını hedeflememelidir.
+* Yerel VM başlatıcısı mapped-drive yolu üretmelidir.
+* `run_mergen_prod.bat` içinde `pushd "%APP_DIR%."` kullanılmamalıdır; gerekiyorsa `pushd "%APP_DIR%"` tercih edilmelidir.
+* Büyük `if (...)` blokları içinde parantez içeren `echo` satırları kullanılmamalıdır; CMD parse hatalarını önlemek için gerekirse `goto` tabanlı hata blokları tercih edilmelidir.
+* Üretim portu `8009` olarak korunmalıdır.
 
 Başlatma:
-    run_mergen_prod.bat
 
-Canlı uygulama log izleme:
-    view_latest_mergen_app_log.bat
+```bat
+C:\MergenLauncher\start_mergen_prod.bat
+```
+
+Uygulama klasöründeki gerçek üretim başlatıcı:
+
+```bat
+run_mergen_prod.bat
+```
+
+Üretim R giriş noktası:
+
+```r
+run_mergen_prod.R
+```
 
 #### Üretim Log İzleme
 
+Normal uygulama çalışma zamanı loglarını canlı izlemek için `view_latest_mergen_app_log.bat` kullanılmalıdır. Bu dosya `logs` klasöründeki en güncel `mergen_*.log` dosyasını salt-okunur biçimde izler; loga yazmaz, uygulamayı durdurmaz ve kullanıcı işlemlerini etkilemez.
+
+`view_latest_mergen_app_log.bat` de UNC path sorunu yaşamayacak şekilde mapped-drive mantığıyla çalışmalıdır. Dosya doğrudan UNC çalışma dizini varsayımına dayanmamalı ve `pushd "%~dp0"` gibi UNC-kırılgan bir kalıba geri dönmemelidir.
+
 Üretim ortamında iki farklı log kullanımı ayrılmalıdır:
 
-- `logs/run_mergen_prod_console.log`: üretim başlatıcının stdout/stderr, Rscript, paket preflight ve boot çıktılarıdır. Uygulama başlatılamadığında teşhis için kullanılır.
-- `logs/mergen_YYYYMMDD.log`: uygulamanın normal çalışma zamanı loglarıdır.
+* `logs/run_mergen_prod_console.log` veya başlatıcı konsol çıktısı: üretim başlatıcının Rscript, paket preflight, boot ve startup hata teşhisi için kullanılır.
+* `logs/mergen_YYYYMMDD.log`: uygulamanın normal çalışma zamanı loglarıdır.
 
-Normal kullanımda canlı log izleme için `view_latest_mergen_app_log.bat` çalıştırılmalıdır. Bu dosya `logs` klasöründeki en güncel `mergen_*.log` dosyasını salt-okunur biçimde izler; loga yazmaz, uygulamayı durdurmaz ve kullanıcı işlemlerini etkilemez. Notepad/Notepad++ ile log açmak yalnızca anlık inceleme için uygundur; canlı takip için `view_latest_mergen_app_log.bat` tercih edilmelidir.
+Canlı uygulama log izleme:
 
-Daha önce denenen `view_mergen_prod_console_log.bat` ve `view_mergen_prod_console_log.ps1` dosyaları artık üretim akışının parçası değildir. Console log canlı izleyicisi gereksiz olduğu ve klasik `cmd.exe` üzerinde Türkçe karakter/mojibake sorunları üretebildiği için kaldırılmıştır. Startup hatalarında doğrudan `logs/run_mergen_prod_console.log` dosyası incelenmelidir.
+```bat
+view_latest_mergen_app_log.bat
+```
+
+Notepad/Notepad++ ile log açmak yalnızca anlık inceleme için uygundur; canlı takip için `view_latest_mergen_app_log.bat` tercih edilmelidir.
+
+#### Üretim Başlatıcı Self-Test
+
+VM üzerinde üretim başlatma zincirinin tekrar bozulmaması için yerel bir self-test bulunur:
+
+```bat
+C:\MergenLauncher\test_mergen_prod_launcher.bat
+```
+
+Bu test uygulamayı başlatmaz. Yalnızca üretim başlatma ortamını doğrular:
+
+* `\\rehisds\uygulamalar` paylaşımının mapped-drive ile erişilebilirliği
+* gerçek `MERGEN Bilge` uygulama klasörünün keşfi
+* `run_mergen_prod.bat`, `run_mergen_prod.R`, `app.R` dosyalarının varlığı
+* `run_mergen_prod.bat` içinde `MERGEN_PORT=8009` sözleşmesi
+* UNC-kırılgan `pushd "%APP_DIR%."` kullanımının bulunmaması
+* `view_latest_mergen_app_log.bat` dosyasının UNC-kırılgan `pushd "%~dp0"` kalıbına dönmemesi
+* en yeni Rscript’in `C:\Program Files\R\R-*` altından dinamik bulunması
+* R `.libPaths()` ve gerekli paket görünürlüğü
+* `.Renviron` / zorunlu ortam değişkenleri
+* `8009` portunun durumu
+
+Self-test, Türkçe karakter mojibake sorunlarını azaltmak için `Geliştirme` gibi path parçalarını hard-code etmemeli; mapped-drive altında `run_mergen_prod.bat` dosyasını arayarak gerçek uygulama klasörünü keşfetmelidir. Paket listesi ve ortam değişkeni listesi R’ye doğrudan kırılgan `-e` quoting ile değil, ASCII-safe geçici R script yaklaşımıyla aktarılmalıdır.
+
+Çalıştırma:
+
+```bat
+C:\MergenLauncher\test_mergen_prod_launcher.bat
+```
+
+Açılan pencerenin kapanmaması için alternatif:
+
+```bat
+cmd /k "C:\MergenLauncher\test_mergen_prod_launcher.bat"
+```
+
+Başarılı sonuçta test özeti `[RESULT] PASSED` göstermelidir.
 
 
 ### `global.R`
