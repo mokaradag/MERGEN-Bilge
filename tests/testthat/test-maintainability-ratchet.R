@@ -58,9 +58,8 @@ test_that("maintainability skoru mevcut taban çizgisinin altına düşmez", {
 
   min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 19L)
 
-  expect_gte(
-    score,
-    min_score,
+  expect_true(
+    score >= min_score,
     info = sprintf(
       "Maintainability skoru geriledi: %s/100 < minimum %s/100.",
       score,
@@ -101,33 +100,48 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   actual_max_lines <- max(score_report$lines, na.rm = TRUE)
   actual_max_functions <- max(score_report$functions, na.rm = TRUE)
 
-  expect_lte(
-    actual_large_files,
-    max_large_files,
-    info = sprintf("800+ satır dosya sayısı arttı: %d > %d.", actual_large_files, max_large_files)
+  expect_true(
+    actual_large_files <= max_large_files,
+    info = sprintf(
+      "800+ satır dosya sayısı arttı: %d > %d.",
+      actual_large_files,
+      max_large_files
+    )
   )
 
-  expect_lte(
-    actual_function_heavy_files,
-    max_function_heavy_files,
-    info = sprintf("25+ fonksiyon dosya sayısı arttı: %d > %d.", actual_function_heavy_files, max_function_heavy_files)
+  expect_true(
+    actual_function_heavy_files <= max_function_heavy_files,
+    info = sprintf(
+      "25+ fonksiyon dosya sayısı arttı: %d > %d.",
+      actual_function_heavy_files,
+      max_function_heavy_files
+    )
   )
 
-  expect_lte(
-    actual_very_large_files,
-    max_very_large_files,
-    info = sprintf("1500+ satır dosya sayısı arttı: %d > %d.", actual_very_large_files, max_very_large_files)
+  expect_true(
+    actual_very_large_files <= max_very_large_files,
+    info = sprintf(
+      "1500+ satır dosya sayısı arttı: %d > %d.",
+      actual_very_large_files,
+      max_very_large_files
+    )
   )
 
-  expect_lte(
-    actual_max_lines,
-    max_file_lines,
-    info = sprintf("En büyük dosya satırı arttı: %d > %d.", actual_max_lines, max_file_lines)
+  expect_true(
+    actual_max_lines <= max_file_lines,
+    info = sprintf(
+      "En büyük dosya satırı arttı: %d > %d.",
+      actual_max_lines,
+      max_file_lines
+    )
   )
 
-  expect_lte(
-    actual_max_functions,
-    max_file_functions,
-    info = sprintf("En yüksek fonksiyon sayısı arttı: %d > %d.", actual_max_functions, max_file_functions)
+  expect_true(
+    actual_max_functions <= max_file_functions,
+    info = sprintf(
+      "En yüksek fonksiyon sayısı arttı: %d > %d.",
+      actual_max_functions,
+      max_file_functions
+    )
   )
 })
