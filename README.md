@@ -150,12 +150,16 @@ testthat::test_file("tests/testthat/test-mcp-session-user-id-contract.R")
 testthat::test_file("tests/testthat/test-mcp-path-fallback-contract.R")
 testthat::test_file("tests/testthat/test-mcp-debug-output-contract.R")
 testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
+testthat::test_file("tests/testthat/test-llm-content-reasoning-fallback.R")
+testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
 ```
 
 `tests/testthat.R` ana koşucusu sıkı modda kalmalıdır: `stop_on_failure = TRUE` ve `stop_on_warning = TRUE`. Bu nedenle üretim sözleşmesi testleri geniş, uyarı üretebilecek recursive kaynak taramalarından kaçınmalı; kritik boot/runtime sözleşmelerini deterministik ve warning-safe biçimde doğrulamalıdır.
 Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM üretim profili için temel offline sözleşmeyi varsayılan test koşumunda doğrular. Test, runtime R/CSS/JS dosyalarında açık CDN/public asset bağımlılığı arar ve `stop_on_warning = TRUE` ile uyumlu kalması için warning-safe metin tarama yaklaşımı kullanır. Daha geniş offline tarama hâlâ `MERGEN_STRICT_OFFLINE_TESTS=true` ile opsiyonel olarak çalıştırılır.
 
 Bakım yapılabilirlik takibi için `tests/scripts/maintainability_report.R` script’i repo kökünden çalıştırılabilir. Bu script test koşucusunu değiştirmez; büyük dosyaları, yaklaşık satır sayılarını ve fonksiyon sayılarını raporlayarak kontrollü refactor kararlarını destekler. `library_queries.R`, sorgu bilgi tabanı niteliğinde olduğu için bu raporda ayrıca değerlendirilmelidir.
+
+`test-maintainability-ratchet.R`, bu raporu varsayılan test koşumunda regresyon korumasına dönüştürür: hedef ani bir büyük refactor zorlamak değil, mevcut tabanın kötüleşmesini engellemektir. Varsayılan ratchet eşikleri (minimum maintainability score: 19, max 800+ line files: 14, max 25+ function files: 12, max 1500+ line files: 3, max file lines: 2378, max file functions: 99) gerektiğinde `MERGEN_TEST_MIN_MAINTAINABILITY_SCORE`, `MERGEN_TEST_MAX_800_LINE_FILES`, `MERGEN_TEST_MAX_25_FUNCTION_FILES`, `MERGEN_TEST_MAX_1500_LINE_FILES`, `MERGEN_TEST_MAX_FILE_LINES` ve `MERGEN_TEST_MAX_FILE_FUNCTIONS` ile bilinçli olarak sıkılaştırılabilir. Windows VM’de yüklü `testthat` sürümüyle uyumluluk için testte sayısal helperlar yerine `expect_true(..., info = ...)` kullanılır.
 
 Bilge Yolaç doküman işleme hattında extractor sorumlulukları ayrı dosyaya taşınmıştır. `R/helpers_claude_code_document_extractors.R`; ikili doküman uzantı politikası, PDF/Excel/DOCX metin çıkarımı, destek dizini hazırlığı, cache adı temizleme ve yerel office reader template yolu çözümleme işlerinden sorumludur. `R/helpers_claude_code_documents.R` ise rehber/manifest üretimi, inline payload oluşturma, doküman prompt’u hazırlama, doküman bağlamı kurma ve doküman özetleme yardımcılarına odaklanır. Bu ayrım `global.R` kaynak sırasında extractor dosyasının `helpers_claude_code_documents.R` öncesinde yüklenmesini gerektirir.
 
@@ -257,6 +261,8 @@ Bu override `apply_model_request_overrides(...)` ile hem true SSE streaming yolu
 True streaming future worker içinde de aynı davranışın korunması için `apply_model_request_overrides` fonksiyonu worker globals listesine taşınmalıdır.
 Kimi tarzı modellerde reasoning ayrı `delta$reasoning` alanından gelebilir; Gemma tarzı modellerde ise `enable_thinking` gönderilmezse akış yalnızca normal `delta$content` olarak dönebilir ve `MB_Messages.ReasoningContent` boş kalabilir.
 True SSE streaming akışında worker prewarm/export listesi ile `tracked_future_promise(..., globals = list(...))` sözleşmesi aynı kritik yardımcıları taşımalıdır. Özellikle reasoning delta, stop-file kontrolü ve model bazlı request override davranışı için `append_stream_reasoning_line`, `streaming_should_stop`, `apply_model_request_overrides` ve ilgili yardımcıların worker tarafında görünür kalması gerekir. Bu sözleşme `test-sse-worker-export-contract.R` ile korunur.
+
+Thinking/reasoning modellerinde bazı yanıtlarda `content` alanı boş gelirken kullanılabilir metin `reasoning` veya `reasoning_content` içinde bulunabilir. Güncel çıkarım sözleşmesi, boş `content` alanlarının kullanılabilir fallback metnini ezmesini engeller; normal içerik, reasoning fallback açık/kapalı ve delta tarzı reasoning yanıtları `test-llm-content-reasoning-fallback.R` ile korunur.
 
 ### Kalıcılık ve Geçmiş Sohbetler
 - Akıl yürütme metni artık yalnızca yanıt HTML’ine gömülmez; `MB_Messages.ReasoningContent` sütununda da saklanır
