@@ -82,6 +82,22 @@ Do not move connection, validation, or message-formatting functions back into `R
 
 When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
 
+### Bilge Yolaç document extractor modularization contract
+
+The Bilge Yolaç document-processing layer now has a focused extractor split. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_claude_code_document_extractors.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_documents.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_claude_code_document_extractors.R`: binary-document extension policy, cache-name sanitization, text truncation, binary document discovery, temporary document-support directory creation, PDF/Excel/DOCX text extraction, supported-document dispatch, and office reader template path resolution.
+* `R/helpers_claude_code_documents.R`: document manifest generation, inline payload construction, document prompt construction, document context preparation, summary detail-level detection, summary messages, and summary file output.
+
+Do not move extractor helpers back into `R/helpers_claude_code_documents.R`. Keep the fallback source guard in `helpers_claude_code_documents.R` so the file can still be sourced directly in isolated tests/debug sessions. The split is protected by `test-claude-code-document-extractors-refactor-contract.R` and `test-claude-code-document-extractors-maintainability-contract.R`.
+
 For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
 
 ### 6) When the user asks for exact patches, be exact
@@ -320,6 +336,8 @@ Windows-safe child-session test authoring rules:
 - file-manager client-side upload guard coverage via `test-file-manager-upload-limit-ui.R`
 - DB helper modularization contract coverage for `helpers_db_connection.R`, `helpers_db_validation.R`, and `helpers_database.R` source ordering (`test-db-refactor-contract.R`)
 - chat message formatting refactor coverage for `helpers_chat_message_formatting.R`, including normal message formatting, empty data handling, and `ReasoningContent` propagation (`test-chat-message-formatting-refactor-contract.R`)
+- Bilge Yolaç document extractor refactor coverage for `helpers_claude_code_document_extractors.R` source ordering and public extractor helper availability (`test-claude-code-document-extractors-refactor-contract.R`)
+- Bilge Yolaç document maintainability ratchet coverage ensuring `helpers_claude_code_documents.R` stays below the intended extractor-refactor thresholds (`test-claude-code-document-extractors-maintainability-contract.R`)
 - maintainability report support via `tests/scripts/maintainability_report.R` for tracking large files, line counts, and function counts without making the report itself a failing test gate
 - strict test runner compatibility for `source("tests/testthat.R", encoding = "UTF-8")`
 - source manifest contract coverage for `global.R` `safe_source(...)` existence/order/duplicate protection (`test-source-manifest-contract.R`)
@@ -349,6 +367,8 @@ Windows-safe child-session test authoring rules:
   testthat::test_file("tests/testthat/test-secret-leak-contract.R")
   testthat::test_file("tests/testthat/test-runtime-network-boundary-contract.R")
   testthat::test_file("tests/testthat/test-production-contracts.R")
+  testthat::test_file("tests/testthat/test-claude-code-document-extractors-refactor-contract.R")
+  testthat::test_file("tests/testthat/test-claude-code-document-extractors-maintainability-contract.R")
   ```
 
 CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration/preflight checks must run on Windows VM via `run_vm_preflight_real.R`, including writable-path probes against active configured directories (active log dir from `MERGEN_LOG_DIR` or fallback default).
