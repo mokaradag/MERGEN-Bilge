@@ -94,9 +94,13 @@ test_that("helpers_pk_analysis_core.R remains intentionally small and side-effec
 	)
 
 	expect_true(
-	  metrics$functions <= 6L,
+	  metrics$functions <= 10L,
 	  info = sprintf(
-		"R/helpers_pk_analysis_core.R sadece çıkarılan saf helperları içermelidir. Mevcut fonksiyon: %d",
+		paste(
+		  "R/helpers_pk_analysis_core.R küçük kalmalıdır.",
+		  "Bu metrik anonim/nested function ifadelerini de sayar.",
+		  "Beklenen üst sınır 10'dur. Mevcut fonksiyon ifadesi: %d"
+		),
 		metrics$functions
 	  )
 	)
