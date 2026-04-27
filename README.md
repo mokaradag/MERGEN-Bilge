@@ -139,6 +139,8 @@ source("tests/testthat.R", encoding = "UTF-8")
 testthat::test_file("tests/testthat/test-production-contracts.R")
 testthat::test_file("tests/testthat/test-db-refactor-contract.R")
 testthat::test_file("tests/testthat/test-chat-message-formatting-refactor-contract.R")
+testthat::test_file("tests/testthat/test-claude-code-document-extractors-refactor-contract.R")
+testthat::test_file("tests/testthat/test-claude-code-document-extractors-maintainability-contract.R")
 testthat::test_file("tests/testthat/test-upload-size-policy.R")
 testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
@@ -154,6 +156,8 @@ testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
 Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM üretim profili için temel offline sözleşmeyi varsayılan test koşumunda doğrular. Test, runtime R/CSS/JS dosyalarında açık CDN/public asset bağımlılığı arar ve `stop_on_warning = TRUE` ile uyumlu kalması için warning-safe metin tarama yaklaşımı kullanır. Daha geniş offline tarama hâlâ `MERGEN_STRICT_OFFLINE_TESTS=true` ile opsiyonel olarak çalıştırılır.
 
 Bakım yapılabilirlik takibi için `tests/scripts/maintainability_report.R` script’i repo kökünden çalıştırılabilir. Bu script test koşucusunu değiştirmez; büyük dosyaları, yaklaşık satır sayılarını ve fonksiyon sayılarını raporlayarak kontrollü refactor kararlarını destekler. `library_queries.R`, sorgu bilgi tabanı niteliğinde olduğu için bu raporda ayrıca değerlendirilmelidir.
+
+Bilge Yolaç doküman işleme hattında extractor sorumlulukları ayrı dosyaya taşınmıştır. `R/helpers_claude_code_document_extractors.R`; ikili doküman uzantı politikası, PDF/Excel/DOCX metin çıkarımı, destek dizini hazırlığı, cache adı temizleme ve yerel office reader template yolu çözümleme işlerinden sorumludur. `R/helpers_claude_code_documents.R` ise rehber/manifest üretimi, inline payload oluşturma, doküman prompt’u hazırlama, doküman bağlamı kurma ve doküman özetleme yardımcılarına odaklanır. Bu ayrım `global.R` kaynak sırasında extractor dosyasının `helpers_claude_code_documents.R` öncesinde yüklenmesini gerektirir.
 
 Son MCP/loglama sertleştirme güncellemeleriyle dosya çözümleme hattı daha güvenli hâle getirilmiştir. `helpers_mcp_tools$get_session_user_id()` artık yalnızca scalar kullanıcı kimliği döndürür ve dosya kayıt defteri olan `current_session_files` alanını kullanıcı kimliği gibi kullanmaz. MCP path çözümleme tarafında `normalize_excel_path` için yerel fallback korunur; böylece worker veya izole test bağlamlarında global helper eksikliği geç hata üretmez. Ayrıca `[RESOLVE]` debug çıktıları üretimde raw `cat()` ile konsola basılmaz; `MERGEN_MCP_DEBUG=true` veya `options(mergen.mcp.debug = TRUE)` ile geçici olarak açılabilen kontrollü debug logger üzerinden geçer. Windows VM üretim loglarında ANSI renk kodlarının karışmasını önlemek için konsol renkleri de varsayılan kapalıdır (`MERGEN_LOG_CONSOLE_COLORS=false`).
 
