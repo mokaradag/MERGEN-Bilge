@@ -328,6 +328,7 @@ Windows-safe child-session test authoring rules:
 - expanded production parse contract coverage for additional high-risk runtime files (`test-production-contracts.R`)
 - production BAT startup contract for UNC-safe `pushd`, app-root execution, Rscript/package preflight, and startup diagnostics through `logs/run_mergen_prod_console.log`
 - runtime log-viewing contract via `view_latest_mergen_app_log.bat`, with the redundant console-log viewer files intentionally removed
+- local Windows VM launcher self-test coverage for mapped-drive startup, dynamic Rscript selection, package visibility, UNC-safe log viewing, `MERGEN_PORT=8009`, and Turkish-path mojibake resistance
 
 ### Scripted validation flow (`tests/scripts/`)
 - `tests/scripts/parse_sanity_check.R`: parse-only UTF-8 syntax sanity check from repo root.
@@ -353,15 +354,86 @@ Windows-safe child-session test authoring rules:
 CI guidance: GitHub CI is intentionally infra-independent. It does **not** access the real on-prem DB or the real local LLM; placeholder env vars are only used to satisfy startup guards and validate repository boot/structure/isolated tests. Real integration/preflight checks must run on Windows VM via `run_vm_preflight_real.R`, including writable-path probes against active configured directories (active log dir from `MERGEN_LOG_DIR` or fallback default).
 
 ### Production operation
+Production startup on the Windows VM uses a two-layer launcher flow.
+
+Local VM launcher:
+
+```bat
+C:\MergenLauncher\start_mergen_prod.bat
+```
+
+Repository/app-folder launcher:
+
 ```bat
 run_mergen_prod.bat
+```
+
+Do not point a Windows shortcut directly at the UNC-path copy of `run_mergen_prod.bat`. `cmd.exe` cannot reliably use UNC paths as current directories. The shortcut should target the local VM launcher under `C:\MergenLauncher`, and the local launcher should temporarily map `\\rehisds\uygulamalar` to a drive letter before calling the real app-folder launcher.
+
+Production launcher contract:
+
+* `MERGEN_PORT` must remain `8009`.
+* `MERGEN_HOST` should remain `0.0.0.0` for the VM production profile.
+* `SSO_ENABLED` should be `TRUE` for the production VM profile.
+* `run_mergen_prod.bat` must call `run_mergen_prod.R`, not bypass it with a direct `shiny::runApp('.')` call.
+* `run_mergen_prod.bat` should dynamically select the newest `Rscript.exe` under `C:\Program Files\R\R-*`.
+* Do not reintroduce fixed-only R version checks that fall back to the wrong `Rscript.exe` while a newer R is installed.
+* The launcher should print R diagnostics, including `R.home()`, R version, `R_LIBS_USER`, and `.libPaths()`.
+* Package visibility checks should use the same Rscript session that will launch production.
+* Avoid `pushd "%APP_DIR%."`; use `pushd "%APP_DIR%"` if entering the app folder is needed.
+* Avoid fragile parenthesized `if (...)` blocks containing `echo` lines with literal parentheses; this has caused CMD parse errors such as `from was unexpected at this time`.
+
+Runtime log viewer:
+
+```bat
 view_latest_mergen_app_log.bat
 ```
 
-Startup failure diagnostics:
+The log viewer must remain UNC-safe. It should not depend on launching directly from a UNC current directory and must not regress to a plain `pushd "%~dp0"` pattern. It should use mapped-drive logic or another UNC-safe equivalent.
+
+Startup failure diagnostics should be read from the launcher console output and/or:
 
 ```text
 logs/run_mergen_prod_console.log
+```
+
+Normal runtime logs are:
+
+```text
+logs/mergen_YYYYMMDD.log
+```
+
+### Production launcher self-test
+
+The Windows VM has a local self-test for the production launcher chain:
+
+```bat
+C:\MergenLauncher\test_mergen_prod_launcher.bat
+```
+
+This self-test must not start the Shiny app. It validates the launch environment only.
+
+It should check:
+
+* mapping `\\rehisds\uygulamalar` to a temporary drive,
+* discovering the real `MERGEN Bilge` app folder without hard-coding Turkish path segments such as `Geliştirme`,
+* presence of `run_mergen_prod.bat`, `run_mergen_prod.R`, and `app.R`,
+* `MERGEN_PORT=8009` in `run_mergen_prod.bat`,
+* absence of the unsafe `pushd "%APP_DIR%."` pattern,
+* absence of UNC-fragile `pushd "%~dp0"` behavior in the log viewer,
+* dynamic newest-Rscript detection under `C:\Program Files\R\R-*`,
+* R library paths and required package visibility,
+* required `.Renviron` / environment variables,
+* port 8009 status.
+
+The PowerShell self-test should be ASCII-safe where possible. Do not hard-code Turkish path components in the test. It should discover the app folder by searching under the mapped drive for `run_mergen_prod.bat` inside a folder named `MERGEN Bilge`.
+
+For R snippets inside the PowerShell test, prefer writing temporary ASCII R scripts and executing those scripts instead of passing complex package vectors through fragile `Rscript -e` quoting. This prevents errors such as R interpreting `arrow` as an object instead of the string `"arrow"`.
+
+Expected successful result:
+
+```text
+[RESULT] PASSED
 ```
 
 ---
