@@ -32,7 +32,7 @@ if (is.null(maint_score) || is.na(maint_score)) {
   )
 }
 
-min_score_raw <- Sys.getenv("MERGEN_MIN_MAINTAINABILITY_SCORE", "14")
+min_score_raw <- Sys.getenv("MERGEN_MIN_MAINTAINABILITY_SCORE", "19")
 min_score <- suppressWarnings(as.integer(min_score_raw))
 
 if (is.na(min_score) || min_score < 0L || min_score > 100L) {

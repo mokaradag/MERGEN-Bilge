@@ -153,19 +153,24 @@ normalize_llm_scalar_content <- function(ai_content) {
 
 extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
   text_bundle <- extract_llm_text_bundle(response_content)
-  ai_content <- text_bundle$content
-  reasoning_text <- text_bundle$reasoning %||% ""
+  ai_content <- normalize_llm_scalar_content(text_bundle$content %||% "")
+  reasoning_text <- enc2utf8(text_bundle$reasoning %||% "")
   sources_list <- NULL
 
-  if (!nzchar(ai_content) && should_allow_reasoning_fallback(model_id)) {
-    ai_content <- text_bundle$reasoning
+  set_ai_content_if_nonempty <- function(candidate) {
+    txt <- normalize_llm_scalar_content(candidate)
+    if (nzchar(txt)) {
+      ai_content <<- txt
+      return(TRUE)
+    }
+    FALSE
   }
-  sources_list <- NULL
 
   if (!is.list(response_content)) {
     return(list(
       content = normalize_llm_scalar_content(response_content),
-      sources = NULL
+      sources = NULL,
+      reasoning = ""
     ))
   }
 
@@ -173,57 +178,50 @@ extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
     first_choice <- response_content$choices[[1]]
 
     if (is.list(first_choice)) {
-      if (!is.null(first_choice$message) && !is.null(first_choice$message$content)) {
-        ai_content <- normalize_llm_scalar_content(first_choice$message$content)
-      } else if (!is.null(first_choice$delta) && !is.null(first_choice$delta$content)) {
-        delta_content <- first_choice$delta$content
+      message_obj <- first_choice$message %||% list()
+      delta_obj <- first_choice$delta %||% list()
 
-        if (is.character(delta_content)) {
-          ai_content <- paste(delta_content, collapse = "")
-        } else if (is.list(delta_content)) {
-          delta_parts <- vapply(delta_content, function(part) {
-            if (is.character(part)) {
-              return(paste(part, collapse = ""))
-            }
-            if (is.list(part) && !is.null(part$text)) {
-              return(as.character(part$text %||% ""))
-            }
-            ""
-          }, character(1))
-          ai_content <- paste(delta_parts, collapse = "")
+      if (is.list(message_obj)) {
+        set_ai_content_if_nonempty(message_obj$content)
+
+        if (!is.null(message_obj$sources)) {
+          sources_list <- message_obj$sources
         }
-      } else if (!is.null(first_choice$text)) {
-        ai_content <- normalize_llm_scalar_content(first_choice$text)
       }
 
-      if (!is.null(first_choice$message) && !is.null(first_choice$message$sources)) {
-        sources_list <- first_choice$message$sources
-      } else if (!is.null(first_choice$delta) && !is.null(first_choice$delta$sources)) {
-        sources_list <- first_choice$delta$sources
-      } else if (!is.null(first_choice$sources)) {
+      if (is.list(delta_obj)) {
+        set_ai_content_if_nonempty(delta_obj$content)
+        set_ai_content_if_nonempty(delta_obj$text)
+
+        if (is.null(sources_list) && !is.null(delta_obj$sources)) {
+          sources_list <- delta_obj$sources
+        }
+      }
+
+      set_ai_content_if_nonempty(first_choice$text)
+
+      if (is.null(sources_list) && !is.null(first_choice$sources)) {
         sources_list <- first_choice$sources
       }
     }
   }
 
-  if (!nzchar(ai_content) && !is.null(response_content$content)) {
-    ai_content <- normalize_llm_scalar_content(response_content$content)
-  }
+  set_ai_content_if_nonempty(response_content$content)
 
-  if (!nzchar(ai_content) &&
-      !is.null(response_content$message) &&
-      !is.null(response_content$message$content)) {
-    ai_content <- normalize_llm_scalar_content(response_content$message$content)
+  if (!is.null(response_content$message) && is.list(response_content$message)) {
+    set_ai_content_if_nonempty(response_content$message$content)
+
+    if (is.null(sources_list) && !is.null(response_content$message$sources)) {
+      sources_list <- response_content$message$sources
+    }
   }
 
   if (is.null(sources_list) && !is.null(response_content$sources)) {
     sources_list <- response_content$sources
   }
 
-  if (is.null(sources_list) &&
-      !is.null(response_content$message) &&
-      !is.null(response_content$message$sources)) {
-    sources_list <- response_content$message$sources
+  if (!nzchar(ai_content) && should_allow_reasoning_fallback(model_id)) {
+    ai_content <- normalize_llm_scalar_content(reasoning_text)
   }
 
   list(
