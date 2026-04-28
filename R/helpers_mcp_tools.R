@@ -4,31 +4,43 @@
 #           Worker bağlamlarında çalışabilmesi için kendi helper ortamını kullanır.
 # ==============================================================================
 
-# Create a private env to avoid scoping problems (e.g., futures)
-helpers_mcp_tools <- new.env(parent = globalenv())
-
-helpers_mcp_tools$mcp_debug_enabled <- function() {
-  env_value <- tolower(trimws(Sys.getenv("MERGEN_MCP_DEBUG", "false")))
-  isTRUE(getOption("mergen.mcp.debug", FALSE)) ||
-    env_value %in% c("1", "true", "t", "yes", "y", "on")
+# MCP context/bootstrap helpers are intentionally kept in a small file.
+# Böylece debug kapısı ve kullanıcı kimliği çözümleme mantığı bu büyük araç
+# dosyasına geri taşınmaz.
+.mcp_context_ready <- FALSE
+if (exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) {
+  helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
+  .mcp_context_ready <- is.environment(helpers_mcp_tools) &&
+    exists("mcp_debug_log", envir = helpers_mcp_tools, inherits = FALSE) &&
+    exists("get_session_user_id", envir = helpers_mcp_tools, inherits = FALSE)
 }
 
-helpers_mcp_tools$mcp_debug_log <- function(...) {
-  if (!isTRUE(helpers_mcp_tools$mcp_debug_enabled())) {
-    return(invisible(NULL))
+if (!isTRUE(.mcp_context_ready)) {
+  .mcp_context_path <- file.path("R", "helpers_mcp_context.R")
+
+  if (!file.exists(.mcp_context_path)) {
+    stop(
+      "R/helpers_mcp_context.R bulunamadı; helpers_mcp_tools.R yüklenemiyor.",
+      call. = FALSE
+    )
   }
 
-  msg <- paste(..., collapse = "")
-  msg <- enc2utf8(msg)
-
-  if (exists("log_debug", mode = "function", inherits = TRUE)) {
-    log_debug(msg)
-  } else {
-    message(msg)
-  }
-
-  invisible(NULL)
+  source(.mcp_context_path, encoding = "UTF-8", local = globalenv())
 }
+
+if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
+    !is.environment(get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE))) {
+  stop("MCP helper ortamı başlatılamadı.", call. = FALSE)
+}
+
+helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
+
+if (!exists("mcp_debug_log", envir = helpers_mcp_tools, inherits = FALSE) ||
+    !exists("get_session_user_id", envir = helpers_mcp_tools, inherits = FALSE)) {
+  stop("MCP context helper sözleşmesi eksik.", call. = FALSE)
+}
+
+rm(.mcp_context_ready)
 
 # Ensure shared filesystem helpers exist inside this environment
 if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
@@ -321,28 +333,7 @@ helpers_mcp_tools$reset_session_file_registry <- function(session = NULL) {
   invisible(TRUE)
 }
 
-helpers_mcp_tools$get_session_user_id <- function(session = NULL) {
-  if (is.null(session) || is.null(session$userData)) {
-    return(NULL)
-  }
-
-  candidate <- session$userData$user_id %||%
-    session$userData$userId %||%
-    session$userData$id %||%
-    session$userData$userID %||%
-    NULL
-
-  if (is.null(candidate) || length(candidate) == 0L) {
-    return(NULL)
-  }
-
-  candidate <- as.character(candidate[1])
-  if (!nzchar(candidate)) {
-    return(NULL)
-  }
-
-  candidate
-}
+# helpers_mcp_tools$get_session_user_id() R/helpers_mcp_context.R içinde tanımlıdır.
 
 helpers_mcp_tools$update_session_file_path <- function(session = NULL, tokens = NULL, new_path = NULL) {
   if (is.null(session) || is.null(new_path) || !nzchar(new_path)) return(invisible(FALSE))
@@ -651,15 +642,12 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
   }
 
   # --- 2) Global registry (per-user) ---------------------------------------
-  # Look into the JSON index created by global_register_file()
+  # Look into the JSON index created by global_register_file().
+  # SSO başlangıcındaki 0/unknown placeholder kimlikleri gerçek kullanıcı gibi
+  # kullanma; global current_user_id fallback'i çok kullanıcılı oturumlarda
+  # çapraz oturum sızıntısı riski yaratır.
   idx_path <- getOption("mergen.index_path")
-  uid <- NULL
-  if (!is.null(session) && !is.null(session$userData$user_id)) {
-    uid <- as.character(session$userData$user_id)
-  } else if (exists("current_user_id", envir = .GlobalEnv)) {
-    # fallback if available in global env
-    uid <- as.character(get("current_user_id", envir = .GlobalEnv))
-  }
+  uid <- helpers_mcp_tools$get_session_user_id(session)
 
   if (!is.null(idx_path) && file.exists(idx_path)) {
     idx <- jsonlite::read_json(idx_path, simplifyVector = TRUE)

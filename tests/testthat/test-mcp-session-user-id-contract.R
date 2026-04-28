@@ -36,8 +36,22 @@
   gsub("\\r\\n?|\\r", "\\n", txt, perl = TRUE)
 }
 
+local({
+  repo_root <- if (exists("resolve_repo_root_for_tests", mode = "function")) {
+    resolve_repo_root_for_tests()
+  } else {
+    normalizePath(".", winslash = "/", mustWork = TRUE)
+  }
+
+  source(
+    file.path(repo_root, "R", "helpers_mcp_context.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+})
+
 test_that("MCP kullanıcı kimliği dosya listesi üzerinden çözülmez", {
-  txt <- .read_repo_text_quiet_mcp_user("R/helpers_mcp_tools.R")
+  txt <- .read_repo_text_quiet_mcp_user("R/helpers_mcp_context.R")
 
   expect_true(
     grepl(
@@ -63,12 +77,12 @@ test_that("MCP kullanıcı kimliği dosya listesi üzerinden çözülmez", {
 })
 
 test_that("MCP kullanıcı kimliği scalar karakter değere indirgenir", {
-  txt <- .read_repo_text_quiet_mcp_user("R/helpers_mcp_tools.R")
+  txt <- .read_repo_text_quiet_mcp_user("R/helpers_mcp_context.R")
 
   beklenenler <- c(
-    "candidate <- session$userData$user_id %||%",
-    "candidate <- as.character(candidate[1])",
-    "if (!nzchar(candidate))"
+    "helpers_mcp_tools$get_session_user_id <- function(session = NULL)",
+    "candidate <- trimws(as.character(candidate[1]))",
+    'tolower(candidate) %in% c("0", "unknown", "null", "na", "nan")'
   )
 
   bulunanlar <- vapply(
@@ -81,4 +95,21 @@ test_that("MCP kullanıcı kimliği scalar karakter değere indirgenir", {
     all(bulunanlar),
     info = paste("Eksik scalar user_id korumaları:", paste(beklenenler[!bulunanlar], collapse = ", "))
   )
+})
+
+test_that("MCP kullanıcı kimliği SSO placeholder değerlerini yok sayar", {
+  session <- new.env(parent = emptyenv())
+  session$userData <- new.env(parent = emptyenv())
+  session$userData$current_session_files <- list(
+    "dummy.xlsx" = list(name = "dummy.xlsx", path = "dummy.xlsx")
+  )
+
+  session$userData$user_id <- 0L
+  expect_null(helpers_mcp_tools$get_session_user_id(session))
+
+  session$userData$user_id <- "unknown"
+  expect_null(helpers_mcp_tools$get_session_user_id(session))
+
+  session$userData$user_id <- 42L
+  expect_equal(helpers_mcp_tools$get_session_user_id(session), "42")
 })

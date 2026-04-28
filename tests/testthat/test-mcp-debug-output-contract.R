@@ -54,7 +54,7 @@
 }
 
 test_that("MCP debug helper tanımlıdır ve env/option ile kapatılabilir", {
-  txt <- .read_repo_text_quiet_mcp_debug("R/helpers_mcp_tools.R")
+  txt <- .read_repo_text_quiet_mcp_debug("R/helpers_mcp_context.R")
 
   beklenenler <- c(
     "helpers_mcp_tools$mcp_debug_enabled <- function()",
