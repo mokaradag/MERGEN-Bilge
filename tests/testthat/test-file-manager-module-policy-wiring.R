@@ -30,11 +30,13 @@
   enc2utf8(txt)
 }
 
-test_that("file manager modülü upload limit kararını helper üzerinden alıyor", {
-  txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+test_that("file manager UI ve server upload limit kararını helper üzerinden alıyor", {
+  ui_txt <- .read_repo_text_file_manager_module("R/module_file_manager_ui.R")
+  server_txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
 
-  expect_true(grepl("fm_upload_limit_mb\\(\\)", txt, perl = TRUE))
-  expect_true(grepl("fm_upload_limit_bytes\\(upload_limit_mb\\)", txt, perl = TRUE))
+  expect_true(grepl("fm_upload_limit_mb\\(\\)", ui_txt, perl = TRUE))
+  expect_true(grepl("fm_upload_limit_bytes\\(upload_limit_mb\\)", ui_txt, perl = TRUE))
+  expect_true(grepl("max_mb <- fm_upload_limit_mb\\(\\)", server_txt, perl = TRUE))
 })
 
 test_that("file manager modülü attach ve uzantı policy kararlarını helper üzerinden alıyor", {
