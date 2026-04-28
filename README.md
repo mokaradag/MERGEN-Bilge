@@ -83,6 +83,8 @@ Kullanıcının yüklediği dosyaları yönettiği merkezdir. Yükleme, önizlem
 
 Dosya Yönetimi ekranında dosya başına varsayılan yükleme sınırı 25 MB’tır. Bu sınır yalnızca sunucu tarafında değil, tarayıcı tarafında da kontrol edilir; böylece büyük dosyalar Shiny upload süreci başlamadan önce reddedilir ve kullanıcıya anında uyarı gösterilir. Bu katmanlı yaklaşım, özellikle on-prem Windows VM üzerinde büyük PDF/Word/Excel dosyalarının arayüzü kilitlemesini veya geç yanıt veren upload akışları oluşturmasını önlemek için kullanılır.
 
+Dosya Yönetimi yapısı bakım yapılabilirliği artırmak için iki parçaya ayrılmıştır: `R/module_file_manager_ui.R` yalnızca `fileManagerUI()` arayüzünü ve tarayıcı tarafı upload sınırı kontrolünü içerir; `R/module_file_manager.R` ise `fileManagerServer()` tarafındaki yükleme, silme, bağlama, kalıcı dosya yenileme ve oturum durumu işlemlerine odaklanır. Ortak seçim/uzantı/yükleme politikaları `R/helpers_file_manager_policy.R` içinde tutulur. Kalıcı dosya yenileme akışında eskiyen refresh isteklerinin yeni dosya durumunu ezmesini önlemek için request-token tabanlı koruma uygulanır.
+
 ### Ayarlar
 İki alt sayfa içerir:
 - **Kişiselleştirme**
@@ -144,6 +146,9 @@ testthat::test_file("tests/testthat/test-chat-message-formatting-refactor-contra
 testthat::test_file("tests/testthat/test-claude-code-document-extractors-refactor-contract.R")
 testthat::test_file("tests/testthat/test-claude-code-document-extractors-maintainability-contract.R")
 testthat::test_file("tests/testthat/test-upload-size-policy.R")
+testthat::test_file("tests/testthat/test-file-manager-policy-contract.R")
+testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
+testthat::test_file("tests/testthat/test-file-manager-ui-refactor-contract.R")
 testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
@@ -163,7 +168,7 @@ Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM ü
 
 Bakım yapılabilirlik takibi için `tests/scripts/maintainability_report.R` script’i repo kökünden çalıştırılabilir. Bu script test koşucusunu değiştirmez; büyük dosyaları, yaklaşık satır sayılarını ve fonksiyon sayılarını raporlayarak kontrollü refactor kararlarını destekler. `library_queries.R`, sorgu bilgi tabanı niteliğinde olduğu için bu raporda ayrıca değerlendirilmelidir.
 
-`test-maintainability-ratchet.R`, bu raporu varsayılan test koşumunda regresyon korumasına dönüştürür: hedef ani bir büyük refactor zorlamak değil, mevcut tabanın kötüleşmesini engellemektir. Son Bilge Yolaç UI ve model/config refactor’ları sonrasında varsayılan ratchet eşikleri bilinçli olarak sıkılaştırılmıştır (minimum maintainability score: 29, max 800+ line files: 14, max 25+ function files: 12, max 1500+ line files: 1, max file lines: 2378, max file functions: 99). Bu değerler gerektiğinde `MERGEN_TEST_MIN_MAINTAINABILITY_SCORE`, `MERGEN_TEST_MAX_800_LINE_FILES`, `MERGEN_TEST_MAX_25_FUNCTION_FILES`, `MERGEN_TEST_MAX_1500_LINE_FILES`, `MERGEN_TEST_MAX_FILE_LINES` ve `MERGEN_TEST_MAX_FILE_FUNCTIONS` ile bilinçli olarak sıkılaştırılabilir. Windows VM’de yüklü `testthat` sürümüyle uyumluluk için testte sayısal helperlar yerine `expect_true(..., info = ...)` kullanılır.
+`test-maintainability-ratchet.R`, bu raporu varsayılan test koşumunda regresyon korumasına dönüştürür: hedef ani bir büyük refactor zorlamak değil, mevcut tabanın kötüleşmesini engellemektir. Dosya Yönetimi tarafındaki `fileManagerUI()` ayrımı, büyük dosyaları kademeli olarak küçültme yaklaşımının örneklerinden biridir; bu ayrım hem kaynak sırası sözleşmeleriyle hem de bakım yapılabilirlik ratchet testiyle korunur. Son Bilge Yolaç UI ve model/config refactor’ları sonrasında varsayılan ratchet eşikleri bilinçli olarak sıkılaştırılmıştır (minimum maintainability score: 29, max 800+ line files: 14, max 25+ function files: 12, max 1500+ line files: 1, max file lines: 2378, max file functions: 99). Bu değerler gerektiğinde `MERGEN_TEST_MIN_MAINTAINABILITY_SCORE`, `MERGEN_TEST_MAX_800_LINE_FILES`, `MERGEN_TEST_MAX_25_FUNCTION_FILES`, `MERGEN_TEST_MAX_1500_LINE_FILES`, `MERGEN_TEST_MAX_FILE_LINES` ve `MERGEN_TEST_MAX_FILE_FUNCTIONS` ile bilinçli olarak sıkılaştırılabilir. Windows VM’de yüklü `testthat` sürümüyle uyumluluk için testte sayısal helperlar yerine `expect_true(..., info = ...)` kullanılır.
 
 Bilge Yolaç doküman işleme hattında extractor sorumlulukları ayrı dosyaya taşınmıştır. `R/helpers_claude_code_document_extractors.R`; ikili doküman uzantı politikası, PDF/Excel/DOCX metin çıkarımı, destek dizini hazırlığı, cache adı temizleme ve yerel office reader template yolu çözümleme işlerinden sorumludur. `R/helpers_claude_code_documents.R` ise rehber/manifest üretimi, inline payload oluşturma, doküman prompt’u hazırlama, doküman bağlamı kurma ve doküman özetleme yardımcılarına odaklanır. Bu ayrım `global.R` kaynak sırasında extractor dosyasının `helpers_claude_code_documents.R` öncesinde yüklenmesini gerektirir.
 
