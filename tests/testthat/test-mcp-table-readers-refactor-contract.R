@@ -76,7 +76,12 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
 
   expect_false(
     any(tools_has_defs),
-    info = "MCP tablo okuyucu fonksiyonları helpers_mcp_tools.R içine geri taşınmamalıdır."
+    info = "MCP tablo okuyucu fonksiyon tanımları helpers_mcp_tools.R içine geri taşınmamalıdır."
+  )
+
+  expect_true(
+    grepl("R/helpers_mcp_table_readers.R", tools_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_tools.R tablo okuyucu dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
   )
 
   expect_true(

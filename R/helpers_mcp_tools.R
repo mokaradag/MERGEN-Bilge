@@ -169,6 +169,35 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
 }
 
 # MCP tablo okuyucuları R/helpers_mcp_table_readers.R içinde tanımlıdır.
+# Bu dosya tek başına source edildiğinde de aşağıdaki MCP fonksiyonları
+# tablo okuyucu bağlamına ihtiyaç duyabildiği için burada güvenli şekilde
+# yüklenir. global.R içinde ayrıca source edilmesi idempotenttir.
+if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE) ||
+    !exists("safe_read_table_generic", envir = helpers_mcp_tools, inherits = FALSE) ||
+    !exists("create_md_table", envir = helpers_mcp_tools, inherits = FALSE)) {
+
+  .mcp_table_readers_path <- file.path("R", "helpers_mcp_table_readers.R")
+
+  if (!file.exists(.mcp_table_readers_path)) {
+    stop(
+      "R/helpers_mcp_table_readers.R bulunamadı; helpers_mcp_tools.R yüklenemiyor.",
+      call. = FALSE
+    )
+  }
+
+  source(.mcp_table_readers_path, encoding = "UTF-8", local = globalenv())
+}
+
+if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE) ||
+    !is.function(helpers_mcp_tools$safe_read_excel_table) ||
+    !exists("safe_read_table_generic", envir = helpers_mcp_tools, inherits = FALSE) ||
+    !is.function(helpers_mcp_tools$safe_read_table_generic) ||
+    !exists("create_md_table", envir = helpers_mcp_tools, inherits = FALSE) ||
+    !is.function(helpers_mcp_tools$create_md_table)) {
+  stop("MCP tablo okuyucu sözleşmesi eksik.", call. = FALSE)
+}
+
+rm(.mcp_table_readers_path)
 
 # ============================
 # Session file registry helpers

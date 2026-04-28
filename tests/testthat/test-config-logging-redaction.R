@@ -4,6 +4,36 @@
 # yardımcısının hassas metni dosyaya yazmadan önce redakte ettiğini doğrular.
 # ==============================================================================
 
+reset_logger_appenders_after_redaction_tests <- function() {
+  if (!requireNamespace("logger", quietly = TRUE)) {
+    return(invisible(FALSE))
+  }
+
+  safe_log_dir <- Sys.getenv("MERGEN_LOG_DIR", unset = "")
+
+  if (!nzchar(safe_log_dir)) {
+    safe_log_dir <- file.path(tempdir(), "mergen-test-logs")
+  }
+
+  dir.create(safe_log_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (!dir.exists(safe_log_dir)) {
+    return(invisible(FALSE))
+  }
+
+  safe_log_file <- file.path(
+    safe_log_dir,
+    sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
+  )
+
+  logger::log_appender(logger::appender_file(safe_log_file), index = 1)
+  logger::log_layout(logger::layout_glue, index = 1)
+  logger::log_appender(logger::appender_console, index = 2)
+  logger::log_layout(logger::layout_glue, index = 2)
+
+  invisible(TRUE)
+}
+
 load_logging_env_for_redaction_tests <- function(log_dir) {
   log_env <- new.env(parent = globalenv())
 
@@ -31,6 +61,7 @@ load_logging_env_for_redaction_tests <- function(log_dir) {
 
 test_that("config_logging log sarmalayicilari ve dbg_dump hassas metni redakte eder", {
   tmp_root <- withr::local_tempdir(pattern = "mergen-log-redaction-")
+  withr::defer(reset_logger_appenders_after_redaction_tests())
   withr::local_dir(tmp_root)
 
   old_ai_key <- Sys.getenv("AI_KEYS_MASTER", unset = NA_character_)
