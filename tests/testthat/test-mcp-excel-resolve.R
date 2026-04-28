@@ -13,7 +13,8 @@ local({
     file.path(repo_root_for_tests, "R", "helpers_files.R"),
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R")
+    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R")
   )
 
   for (dosya in gerekli_dosyalar) {

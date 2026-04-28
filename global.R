@@ -215,6 +215,7 @@ safe_source("R/helpers_language.R",              encoding = "UTF-8")  # Dil ara�
 safe_source("R/helpers_messaging.R",             encoding = "UTF-8")  # Mesaj biçimlendirme
 safe_source("R/helpers_mcp_context.R",           encoding = "UTF-8")  # MCP araç ortamı, debug kapısı ve kullanıcı kimliği
 safe_source("R/helpers_mcp_tools.R",             encoding = "UTF-8")  # MCP araç tanımları
+safe_source("R/helpers_mcp_table_readers.R",     encoding = "UTF-8")  # MCP Excel/genel tablo okuyucuları
 safe_source("R/helpers_chartlab.R",              encoding = "UTF-8")  # Grafik özellikleri
 safe_source("R/helpers_image_gallery.R",         encoding = "UTF-8")  # Görsel galeri işlemleri
 safe_source("R/helpers_preview.R",               encoding = "UTF-8")  # Dosya önizleme

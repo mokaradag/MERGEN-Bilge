@@ -296,7 +296,8 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 
 ### 9A) MCP Excel yol çözümleme zincirini parçalama
 - MCP context/bootstrap sorumlulukları `R/helpers_mcp_context.R` içinde tutulmalıdır. Bu dosya `helpers_mcp_tools` ortamını, MCP debug kapısını (`mcp_debug_enabled` / `mcp_debug_log`) ve scalar kullanıcı kimliği çözümlemeyi (`get_session_user_id`) sağlar.
-- `global.R` içinde `R/helpers_mcp_context.R`, `R/helpers_mcp_tools.R` öncesinde yüklenmelidir.
+- MCP tablo okuyucu sorumlulukları `R/helpers_mcp_table_readers.R` içinde tutulmalıdır. Bu dosya `helpers_mcp_tools$safe_read_excel_table`, `helpers_mcp_tools$safe_read_table_generic` ve `helpers_mcp_tools$create_md_table` tanımlarını sağlar.
+- `global.R` içinde MCP kaynak sırası şu şekilde korunmalıdır: `R/helpers_mcp_context.R` → `R/helpers_mcp_tools.R` → `R/helpers_mcp_table_readers.R`.
 - `helpers_mcp_tools$get_session_user_id()` SSO başlangıç placeholder değerlerini (`0`, `unknown`, `null`, `NA`, `NaN`) gerçek kullanıcı kimliği gibi kullanmamalıdır. MCP dosya çözümleme akışında global `current_user_id` fallback'i tekrar eklenmemelidir.
 - `helpers_mcp_tools`, `helpers_files`, `utils_path_helpers`, `utils_excel_reader` ve `helpers_send_message_core` birlikte çalışan bir zincirdir.
 - Bu alanlarda yapılan küçük değişiklikler bile özellikle Windows VM / SSO / MCP akışında regresyon üretebilir.
