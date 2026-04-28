@@ -298,8 +298,11 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 - MCP context/bootstrap sorumlulukları `R/helpers_mcp_context.R` içinde tutulmalıdır. Bu dosya `helpers_mcp_tools` ortamını, MCP debug kapısını (`mcp_debug_enabled` / `mcp_debug_log`) ve scalar kullanıcı kimliği çözümlemeyi (`get_session_user_id`) sağlar.
 - MCP tablo okuyucu sorumlulukları `R/helpers_mcp_table_readers.R` içinde tutulmalıdır. Bu dosya `helpers_mcp_tools$safe_read_excel_table`, `helpers_mcp_tools$safe_read_table_generic` ve `helpers_mcp_tools$create_md_table` tanımlarını sağlar.
 - `global.R` içinde MCP kaynak sırası şu şekilde korunmalıdır: `R/helpers_mcp_context.R` → `R/helpers_mcp_tools.R` → `R/helpers_mcp_table_readers.R`.
+- `helpers_mcp_tools.R` doğrudan source edildiğinde de çalışabilmelidir. Bu nedenle `R/helpers_mcp_table_readers.R` için working-directory bağımsız fallback source köprüsü korunmalıdır. Bu köprü yalnızca repo kökünün `getwd()` olduğunu varsaymamalı; `repo_root_for_tests`, `MERGEN_REPO_ROOT`, `getwd()` ve üst dizin adaylarını güvenli biçimde denemelidir.
+- Source-time geçici değişken temizliği warning üretmemelidir. Örneğin `.mcp_table_readers_path` gibi değişkenler yalnızca `exists(..., inherits = FALSE)` kontrolünden sonra `rm()` edilmelidir. `tests/testthat.R` `stop_on_warning = TRUE` ile çalıştığı için source-time cleanup warning’leri suite’i kırar.
+- MCP tablo okuyucu fonksiyon tanımları `R/helpers_mcp_table_readers.R` içinde kalmalı; ancak `helpers_mcp_tools.R` tekil test/debug/app-boot bağlamlarında bu dosyayı güvenli şekilde yükleyebilmelidir. Bu sözleşme `test-mcp-table-readers-refactor-contract.R` ile korunmalıdır.
 - `helpers_mcp_tools$get_session_user_id()` SSO başlangıç placeholder değerlerini (`0`, `unknown`, `null`, `NA`, `NaN`) gerçek kullanıcı kimliği gibi kullanmamalıdır. MCP dosya çözümleme akışında global `current_user_id` fallback'i tekrar eklenmemelidir.
-- `helpers_mcp_tools`, `helpers_files`, `utils_path_helpers`, `utils_excel_reader` ve `helpers_send_message_core` birlikte çalışan bir zincirdir.
+- `helpers_mcp_tools`, `helpers_files`, `utils_path_helpers`, `utils_excel_reader`, `helpers_mcp_table_readers` ve `helpers_send_message_core` birlikte çalışan bir zincirdir.
 - Bu alanlarda yapılan küçük değişiklikler bile özellikle Windows VM / SSO / MCP akışında regresyon üretebilir.
 - `path_exists_relaxed` ve `resolve_readable_path` gibi yardımcıların yalnızca global ortamda var olduğunu varsaymak güvenli değildir; araç/worker bağlamında erişilebilirlik korunmalıdır.
 - Windows’ta kısa yol (8.3) path basename’i orijinal dosya adından farklı olabilir; testlerde fiziksel basename yerine `display` / okunabilirlik / gerçek çözüm başarısı tercih edilmelidir.
@@ -344,6 +347,8 @@ Quality-gate tests for repository scripts and entrypoint contracts should prefer
 Reasoning/SSE contract tests must remain runnable both through `source("tests/testthat.R", encoding = "UTF-8")` and individually via `testthat::test_file(...)`. If a test directly exercises helpers from `R/config_api.R`, `R/helpers_llm_response_postprocess.R`, or `R/helpers_llm_sse.R`, it must explicitly bootstrap/source those dependencies or use the established test bootstrap pattern.
 
 Individual tests passing is not enough; tests that inspect source files must also pass when run through the full `source("tests/testthat.R", encoding = "UTF-8")` suite, because the full suite runs in a shared R session and is more sensitive to leaked warnings.
+
+When a refactor introduces a new helper file that is also loaded indirectly by another helper, test both paths: direct `source("R/new_helper.R", ...)` and indirect source through the older public entry file. In this repo, isolated tests often source helper files before `global.R`; fallback source guards must therefore be working-directory independent and warning-free.
 
 ### Strict test runner rule
 `tests/testthat.R` is a strict gate and should keep:
