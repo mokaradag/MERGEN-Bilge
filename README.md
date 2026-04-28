@@ -76,6 +76,8 @@ Bu akışlar kullanıcı bazlı veri ayrımıyla çalışır. Eski bir söyleşi
 ### Bilge Yolaç
 Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfasıdır. Klasör seçimi, senaryo şablonları, model katmanları ve canlı akışlı araç kullanım görünümü içerir.
 
+Bilge Yolaç yapısı son bakım refactor’larıyla daha ayrık hâle getirilmiştir. Sayfa UI tanımı `R/module_claude_code_ui.R` içinde, sunucu mantığı ise `R/module_claude_code.R` içinde tutulur. Model/settings karar yardımcıları `R/helpers_claude_code_model_config.R` dosyasına taşınmış; süreç/CLI çalıştırma yardımcıları `R/helpers_claude_code.R` içinde bırakılmıştır. Bu ayrımlar, büyük dosyaları tek seferde yeniden yazmadan kontrollü bakım yapılabilirlik artışı sağlamak için uygulanmıştır.
+
 ### Dosya Yönetimi
 Kullanıcının yüklediği dosyaları yönettiği merkezdir. Yükleme, önizleme, listeleme ve söyleşiye bağlama işlemleri burada yapılır.
 
@@ -152,6 +154,8 @@ testthat::test_file("tests/testthat/test-mcp-debug-output-contract.R")
 testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
 testthat::test_file("tests/testthat/test-llm-content-reasoning-fallback.R")
 testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+testthat::test_file("tests/testthat/test-claude-code-ui-refactor-contract.R")
+testthat::test_file("tests/testthat/test-claude-code-model-config-refactor-contract.R")
 ```
 
 `tests/testthat.R` ana koşucusu sıkı modda kalmalıdır: `stop_on_failure = TRUE` ve `stop_on_warning = TRUE`. Bu nedenle üretim sözleşmesi testleri geniş, uyarı üretebilecek recursive kaynak taramalarından kaçınmalı; kritik boot/runtime sözleşmelerini deterministik ve warning-safe biçimde doğrulamalıdır.
@@ -159,9 +163,11 @@ Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM ü
 
 Bakım yapılabilirlik takibi için `tests/scripts/maintainability_report.R` script’i repo kökünden çalıştırılabilir. Bu script test koşucusunu değiştirmez; büyük dosyaları, yaklaşık satır sayılarını ve fonksiyon sayılarını raporlayarak kontrollü refactor kararlarını destekler. `library_queries.R`, sorgu bilgi tabanı niteliğinde olduğu için bu raporda ayrıca değerlendirilmelidir.
 
-`test-maintainability-ratchet.R`, bu raporu varsayılan test koşumunda regresyon korumasına dönüştürür: hedef ani bir büyük refactor zorlamak değil, mevcut tabanın kötüleşmesini engellemektir. Varsayılan ratchet eşikleri (minimum maintainability score: 19, max 800+ line files: 14, max 25+ function files: 12, max 1500+ line files: 3, max file lines: 2378, max file functions: 99) gerektiğinde `MERGEN_TEST_MIN_MAINTAINABILITY_SCORE`, `MERGEN_TEST_MAX_800_LINE_FILES`, `MERGEN_TEST_MAX_25_FUNCTION_FILES`, `MERGEN_TEST_MAX_1500_LINE_FILES`, `MERGEN_TEST_MAX_FILE_LINES` ve `MERGEN_TEST_MAX_FILE_FUNCTIONS` ile bilinçli olarak sıkılaştırılabilir. Windows VM’de yüklü `testthat` sürümüyle uyumluluk için testte sayısal helperlar yerine `expect_true(..., info = ...)` kullanılır.
+`test-maintainability-ratchet.R`, bu raporu varsayılan test koşumunda regresyon korumasına dönüştürür: hedef ani bir büyük refactor zorlamak değil, mevcut tabanın kötüleşmesini engellemektir. Son Bilge Yolaç UI ve model/config refactor’ları sonrasında varsayılan ratchet eşikleri bilinçli olarak sıkılaştırılmıştır (minimum maintainability score: 29, max 800+ line files: 14, max 25+ function files: 12, max 1500+ line files: 1, max file lines: 2378, max file functions: 99). Bu değerler gerektiğinde `MERGEN_TEST_MIN_MAINTAINABILITY_SCORE`, `MERGEN_TEST_MAX_800_LINE_FILES`, `MERGEN_TEST_MAX_25_FUNCTION_FILES`, `MERGEN_TEST_MAX_1500_LINE_FILES`, `MERGEN_TEST_MAX_FILE_LINES` ve `MERGEN_TEST_MAX_FILE_FUNCTIONS` ile bilinçli olarak sıkılaştırılabilir. Windows VM’de yüklü `testthat` sürümüyle uyumluluk için testte sayısal helperlar yerine `expect_true(..., info = ...)` kullanılır.
 
 Bilge Yolaç doküman işleme hattında extractor sorumlulukları ayrı dosyaya taşınmıştır. `R/helpers_claude_code_document_extractors.R`; ikili doküman uzantı politikası, PDF/Excel/DOCX metin çıkarımı, destek dizini hazırlığı, cache adı temizleme ve yerel office reader template yolu çözümleme işlerinden sorumludur. `R/helpers_claude_code_documents.R` ise rehber/manifest üretimi, inline payload oluşturma, doküman prompt’u hazırlama, doküman bağlamı kurma ve doküman özetleme yardımcılarına odaklanır. Bu ayrım `global.R` kaynak sırasında extractor dosyasının `helpers_claude_code_documents.R` öncesinde yüklenmesini gerektirir.
+
+Bilge Yolaç’ın ana UI ve model/config katmanları da aynı ratcheted refactor yaklaşımıyla ayrılmıştır. `R/module_claude_code_ui.R`, `claudeCodeUI()` tanımını içerir ve `R/module_claude_code.R` dosyasının sunucu sorumluluklarına odaklanmasını sağlar. `R/helpers_claude_code_model_config.R` ise CLI yolu çözümleme, `settings.json` okuma, model katman eşleştirme, düşünme modeli yetenekleri ve ikili doküman görevlerinde model fallback kararlarını içerir. Bu ayrımlar sırasıyla `test-claude-code-ui-refactor-contract.R` ve `test-claude-code-model-config-refactor-contract.R` ile korunur.
 
 Son MCP/loglama sertleştirme güncellemeleriyle dosya çözümleme hattı daha güvenli hâle getirilmiştir. `helpers_mcp_tools$get_session_user_id()` artık yalnızca scalar kullanıcı kimliği döndürür ve dosya kayıt defteri olan `current_session_files` alanını kullanıcı kimliği gibi kullanmaz. MCP path çözümleme tarafında `normalize_excel_path` için yerel fallback korunur; böylece worker veya izole test bağlamlarında global helper eksikliği geç hata üretmez. Ayrıca `[RESOLVE]` debug çıktıları üretimde raw `cat()` ile konsola basılmaz; `MERGEN_MCP_DEBUG=true` veya `options(mergen.mcp.debug = TRUE)` ile geçici olarak açılabilen kontrollü debug logger üzerinden geçer. Windows VM üretim loglarında ANSI renk kodlarının karışmasını önlemek için konsol renkleri de varsayılan kapalıdır (`MERGEN_LOG_CONSOLE_COLORS=false`).
 

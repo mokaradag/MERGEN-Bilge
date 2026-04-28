@@ -100,6 +100,41 @@ Do not move extractor helpers back into `R/helpers_claude_code_documents.R`. Kee
 
 For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
 
+### Bilge Yolaç UI and model/config modularization contract
+
+Bilge Yolaç is now split into smaller responsibility-focused files. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_claude_code_model_config.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code.R", encoding = "UTF-8")
+```
+
+For the module UI/server split, preserve this order around the Bilge Yolaç module files:
+
+```r
+safe_source("R/module_claude_code_plugins.R", encoding = "UTF-8")
+safe_source("R/module_claude_code_ui.R", encoding = "UTF-8")
+safe_source("R/module_claude_code_akis.R", encoding = "UTF-8")
+safe_source("R/module_claude_code.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/module_claude_code_ui.R`: `claudeCodeUI()` and Bilge Yolaç page UI layout.
+* `R/module_claude_code.R`: `claudeCodeServer()` and server/runtime logic for the Bilge Yolaç page.
+* `R/helpers_claude_code_model_config.R`: Claude CLI path resolution, `settings.json` reading, model-tier mapping, model capability helpers, thinking-model detection, binary-document prompt detection, and execution-model fallback decisions.
+* `R/helpers_claude_code.R`: process/CLI execution helpers, processx command construction, runtime command handling, output parsing, workspace helpers, and remaining Claude Code runtime helpers.
+
+Do not move `claudeCodeUI()` back into `R/module_claude_code.R`.
+Do not move model/settings helper functions back into `R/helpers_claude_code.R`.
+
+The split is protected by:
+
+* `tests/testthat/test-claude-code-ui-refactor-contract.R`
+* `tests/testthat/test-claude-code-model-config-refactor-contract.R`
+
+For future maintainability refactors, keep using the ratcheted approach: extract one coherent responsibility, preserve public function names, update `global.R`, add a focused contract test, run the full strict test suite, then tighten `test-maintainability-ratchet.R` only after `tests/scripts/maintainability_report.R` confirms the new baseline.
+
 ### 6) When the user asks for exact patches, be exact
 The user often wants:
 
@@ -304,6 +339,8 @@ Windows-safe child-session test authoring rules:
 - non-streaming LLM request-override parity coverage via `test-llm-reasoning-request-overrides.R`
 - LLM content/reasoning fallback contract coverage via `test-llm-content-reasoning-fallback.R`
 - maintainability ratchet coverage via `test-maintainability-ratchet.R`, including baseline score/count regression protection and Windows VM `testthat` compatibility through `expect_true(..., info = ...)`
+- Bilge Yolaç UI/server split contract coverage ensuring `claudeCodeUI()` remains in `R/module_claude_code_ui.R`, `claudeCodeServer()` remains in `R/module_claude_code.R`, and the source order stays correct (`test-claude-code-ui-refactor-contract.R`)
+- Bilge Yolaç model/config helper split contract coverage ensuring model/settings helpers remain in `R/helpers_claude_code_model_config.R`, process/runtime helpers remain in `R/helpers_claude_code.R`, source order stays correct, and core helper behavior is preserved (`test-claude-code-model-config-refactor-contract.R`)
 - `safe_source`
 - BOM-marked UTF-8 safe_source loading behavior
 - tracked_future_promise task-registry cleanup behavior
@@ -356,7 +393,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required.
 - Focused hardening checks can be run directly with:
   ```r
   testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
@@ -368,6 +405,8 @@ Windows-safe child-session test authoring rules:
   testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
   testthat::test_file("tests/testthat/test-llm-content-reasoning-fallback.R")
   testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+  testthat::test_file("tests/testthat/test-claude-code-ui-refactor-contract.R")
+  testthat::test_file("tests/testthat/test-claude-code-model-config-refactor-contract.R")
   testthat::test_file("tests/testthat/test-source-manifest-contract.R")
   testthat::test_file("tests/testthat/test-secret-leak-contract.R")
   testthat::test_file("tests/testthat/test-runtime-network-boundary-contract.R")
