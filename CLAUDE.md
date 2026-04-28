@@ -135,6 +135,35 @@ The split is protected by:
 
 For future maintainability refactors, keep using the ratcheted approach: extract one coherent responsibility, preserve public function names, update `global.R`, add a focused contract test, run the full strict test suite, then tighten `test-maintainability-ratchet.R` only after `tests/scripts/maintainability_report.R` confirms the new baseline.
 
+### File Manager modularization contract
+
+The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_file_manager_policy.R", encoding = "UTF-8")
+safe_source("R/module_file_manager_ui.R", encoding = "UTF-8")
+safe_source("R/module_file_manager.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_file_manager_policy.R`: pure File Manager policy helpers such as upload-size normalization, upload-size byte conversion, summarization/normal allowed extension policy, and attach-rule hint text.
+* `R/module_file_manager_ui.R`: public `fileManagerUI(id)` definition, File Manager UI layout, and browser-side upload-size guard.
+* `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, file table state, attach/detach behavior, persisted file refresh, deletion/clear operations, and parent-session synchronization.
+
+Do not move `fileManagerUI()` back into `R/module_file_manager.R`. Do not duplicate upload-size, allowed-extension, or attach-rule text decisions inside the module when the helper already owns that policy.
+
+The persisted-file refresh path uses a request-generation guard (`refresh_request_seq`, `next_refresh_request_id()`, `is_latest_refresh_request(...)`) so stale refreshes cannot overwrite newer file state. Preserve that guard when editing `refresh_from_user_folder(...)`.
+
+This split is protected by:
+
+* `test-file-manager-policy-contract.R`
+* `test-file-manager-module-policy-wiring.R`
+* `test-file-manager-ui-refactor-contract.R`
+* `test-file-manager-upload-limit-ui.R`
+* `test-source-manifest-contract.R`
+* `test-maintainability-ratchet.R`
+
 ### 6) When the user asks for exact patches, be exact
 The user often wants:
 
@@ -196,7 +225,7 @@ File upload size enforcement is layered and must remain that way:
 * `shiny.maxRequestSize` provides request-level protection,
 * `validate_uploaded_file()` provides the final server-side trust boundary.
 
-The default production policy is 25 MB per file. Do not remove the browser-side guard. Without it, large files may still make the Dosya Yönetimi page appear frozen because Shiny begins uploading immediately when a user selects or drops a file, before server-side validation can show a toast.
+The default production policy is 25 MB per file. Do not remove the browser-side guard. The browser-side guard is implemented in `R/module_file_manager_ui.R`; keep it there unless the File Manager UI split is intentionally redesigned. Without it, large files may still make the Dosya Yönetimi page appear frozen because Shiny begins uploading immediately when a user selects or drops a file, before server-side validation can show a toast.
 
 ---
 
@@ -373,6 +402,9 @@ Windows-safe child-session test authoring rules:
 - production contract coverage for critical boot/runtime entry files without warning-prone broad recursive scans
 - upload-size policy coverage for the 25 MB default and >25 MB rejection path
 - file-manager client-side upload guard coverage via `test-file-manager-upload-limit-ui.R`
+- File Manager policy helper contract coverage for upload limits, allowed extensions, and attach-rule hint text (`test-file-manager-policy-contract.R`)
+- File Manager UI/server split coverage preserving `fileManagerUI(id)` in `R/module_file_manager_ui.R` and `fileManagerServer(...)` in `R/module_file_manager.R` (`test-file-manager-ui-refactor-contract.R`)
+- File Manager module wiring coverage for policy-helper usage and persisted refresh stale-request protection (`test-file-manager-module-policy-wiring.R`)
 - DB helper modularization contract coverage for `helpers_db_connection.R`, `helpers_db_validation.R`, and `helpers_database.R` source ordering (`test-db-refactor-contract.R`)
 - chat message formatting refactor coverage for `helpers_chat_message_formatting.R`, including normal message formatting, empty data handling, and `ReasoningContent` propagation (`test-chat-message-formatting-refactor-contract.R`)
 - Bilge Yolaç document extractor refactor coverage for `helpers_claude_code_document_extractors.R` source ordering and public extractor helper availability (`test-claude-code-document-extractors-refactor-contract.R`)
@@ -404,6 +436,10 @@ Windows-safe child-session test authoring rules:
   testthat::test_file("tests/testthat/test-mcp-debug-output-contract.R")
   testthat::test_file("tests/testthat/test-logging-console-color-policy.R")
   testthat::test_file("tests/testthat/test-llm-content-reasoning-fallback.R")
+  testthat::test_file("tests/testthat/test-file-manager-policy-contract.R")
+  testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
+  testthat::test_file("tests/testthat/test-file-manager-ui-refactor-contract.R")
+  testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
   testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
   testthat::test_file("tests/testthat/test-claude-code-ui-refactor-contract.R")
   testthat::test_file("tests/testthat/test-claude-code-model-config-refactor-contract.R")
