@@ -202,10 +202,20 @@ helpers_mcp_tools$create_md_table <- function(df) {
 assign("helpers_mcp_tools", helpers_mcp_tools, envir = helpers_mcp_tools)
 
 for (.mcp_reader_fn in c("safe_read_excel_table", "safe_read_table_generic", "create_md_table")) {
-  if (exists(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE) &&
-      is.function(get(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE))) {
-    environment(get(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE)) <- helpers_mcp_tools
+  if (exists(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE)) {
+    .mcp_reader_fun <- get(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE)
+
+    if (is.function(.mcp_reader_fun)) {
+      environment(.mcp_reader_fun) <- helpers_mcp_tools
+      assign(.mcp_reader_fn, .mcp_reader_fun, envir = helpers_mcp_tools)
+    }
   }
 }
 
-rm(.mcp_reader_fn)
+if (exists(".mcp_reader_fn", inherits = FALSE)) {
+  rm(.mcp_reader_fn)
+}
+
+if (exists(".mcp_reader_fun", inherits = FALSE)) {
+  rm(.mcp_reader_fun)
+}

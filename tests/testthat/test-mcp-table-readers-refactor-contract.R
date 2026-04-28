@@ -94,6 +94,16 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
     info = "helpers_mcp_tools.R .mcp_table_readers_path temizliğini değişken varsa yapmalıdır."
   )
 
+  expect_false(
+    grepl("environment(get(", table_txt, fixed = TRUE, useBytes = TRUE),
+    info = "Fonksiyon environment ataması get(...) sol tarafına yapılmamalıdır; bu R'de get<- hatası üretir."
+  )
+
+  expect_true(
+    grepl("assign(.mcp_reader_fn, .mcp_reader_fun, envir = helpers_mcp_tools)", table_txt, fixed = TRUE, useBytes = TRUE),
+    info = "MCP reader environment ataması geçici fonksiyon nesnesi üzerinden yapılıp geri assign edilmelidir."
+  )
+
   expect_true(
     all(table_has_defs),
     info = paste("Eksik MCP tablo okuyucu tanımları:", paste(expected_defs[!table_has_defs], collapse = ", "))
