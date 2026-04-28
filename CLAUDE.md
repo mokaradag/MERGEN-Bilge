@@ -147,11 +147,11 @@ safe_source("R/module_file_manager.R", encoding = "UTF-8")
 
 Responsibilities:
 
-* `R/helpers_file_manager_policy.R`: pure File Manager policy helpers such as upload-size normalization, upload-size byte conversion, summarization/normal allowed extension policy, and attach-rule hint text.
+* `R/helpers_file_manager_policy.R`: pure File Manager policy/helpers such as upload-size normalization, upload-size byte conversion, summarization/normal allowed extension policy, attach-rule hint text, File Manager user-id normalization, file-extension icon HTML, and file timestamp formatting.
 * `R/module_file_manager_ui.R`: public `fileManagerUI(id)` definition, File Manager UI layout, and browser-side upload-size guard.
-* `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, file table state, attach/detach behavior, persisted file refresh, deletion/clear operations, and parent-session synchronization.
+* `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, file table state, attach/detach behavior, persisted file refresh, deletion/clear operations, and parent-session synchronization. Small pure decisions should delegate to `R/helpers_file_manager_policy.R` instead of being reimplemented inline.
 
-Do not move `fileManagerUI()` back into `R/module_file_manager.R`. Do not duplicate upload-size, allowed-extension, or attach-rule text decisions inside the module when the helper already owns that policy.
+Do not move `fileManagerUI()` back into `R/module_file_manager.R`. Do not duplicate upload-size, allowed-extension, attach-rule text, user-id placeholder handling, file-extension icon HTML, or file timestamp formatting decisions inside the module when the helper already owns that policy.
 
 The persisted-file refresh path uses a request-generation guard (`refresh_request_seq`, `next_refresh_request_id()`, `is_latest_refresh_request(...)`) so stale refreshes cannot overwrite newer file state. Preserve that guard when editing `refresh_from_user_folder(...)`.
 
@@ -182,7 +182,7 @@ User-facing strings are mostly Turkish and intentionally stylized. Avoid rewriti
 When resolving effective user/session identity, prefer shared canonical helpers (for example `resolve_effective_user_id(...)`) instead of copy-pasted local resolver variants.
 
 Avoid re-implementing local `resolve_current_user_id()` snippets unless there is a compelling, scoped reason. In this repo, SSO timing regressions often come from duplicated identity-resolution code paths drifting apart.
-In SSO flows, do not pass the startup `current_user_id` snapshot into user-scoped modules. The startup value may temporarily be `0L`. Pass a live provider such as `current_user_id_provider` / `resolve_current_user_id()` so modules resolve the effective user at use time. This protects saved chats, history, file manager, gallery, support, and performance flows from SSO user-ID drift.
+In SSO flows, do not pass the startup `current_user_id` snapshot into user-scoped modules. The startup value may temporarily be `0L`. Pass a live provider such as `current_user_id_provider` / `resolve_current_user_id()` so modules resolve the effective user at use time. `resolve_effective_user_id(...)` must treat placeholder/invalid session IDs such as `0`, `NA`, and non-numeric values as missing, then fall back to the live provider before returning `0L`. This protects saved chats, history, file manager, gallery, support, and performance flows from SSO user-ID drift.
 
 ### 8) Async jobs visible in health metrics must use tracked wrapper
 For application-monitored async flows, do not use raw `future_promise(...)` directly.
@@ -382,6 +382,8 @@ Windows-safe child-session test authoring rules:
 - non-streaming LLM request-override parity coverage via `test-llm-reasoning-request-overrides.R`
 - LLM content/reasoning fallback contract coverage via `test-llm-content-reasoning-fallback.R`
 - maintainability ratchet coverage via `test-maintainability-ratchet.R`, including baseline score/count regression protection and Windows VM `testthat` compatibility through `expect_true(..., info = ...)`
+- canonical effective user-id resolver coverage via `test-effective-user-id.R`, including SSO placeholder `0L` fallback to the live provider
+- File Manager policy/helper wiring coverage via `test-file-manager-policy-contract.R` and `test-file-manager-module-policy-wiring.R`, including delegated user-id normalization, icon HTML, timestamp formatting, and persisted refresh stale-request guards
 - Bilge Yolaç UI/server split contract coverage ensuring `claudeCodeUI()` remains in `R/module_claude_code_ui.R`, `claudeCodeServer()` remains in `R/module_claude_code.R`, and the source order stays correct (`test-claude-code-ui-refactor-contract.R`)
 - Bilge Yolaç model/config helper split contract coverage ensuring model/settings helpers remain in `R/helpers_claude_code_model_config.R`, process/runtime helpers remain in `R/helpers_claude_code.R`, source order stays correct, and core helper behavior is preserved (`test-claude-code-model-config-refactor-contract.R`)
 - `safe_source`

@@ -83,7 +83,7 @@ Kullanıcının yüklediği dosyaları yönettiği merkezdir. Yükleme, önizlem
 
 Dosya Yönetimi ekranında dosya başına varsayılan yükleme sınırı 25 MB’tır. Bu sınır yalnızca sunucu tarafında değil, tarayıcı tarafında da kontrol edilir; böylece büyük dosyalar Shiny upload süreci başlamadan önce reddedilir ve kullanıcıya anında uyarı gösterilir. Bu katmanlı yaklaşım, özellikle on-prem Windows VM üzerinde büyük PDF/Word/Excel dosyalarının arayüzü kilitlemesini veya geç yanıt veren upload akışları oluşturmasını önlemek için kullanılır.
 
-Dosya Yönetimi yapısı bakım yapılabilirliği artırmak için iki parçaya ayrılmıştır: `R/module_file_manager_ui.R` yalnızca `fileManagerUI()` arayüzünü ve tarayıcı tarafı upload sınırı kontrolünü içerir; `R/module_file_manager.R` ise `fileManagerServer()` tarafındaki yükleme, silme, bağlama, kalıcı dosya yenileme ve oturum durumu işlemlerine odaklanır. Ortak seçim/uzantı/yükleme politikaları `R/helpers_file_manager_policy.R` içinde tutulur. Kalıcı dosya yenileme akışında eskiyen refresh isteklerinin yeni dosya durumunu ezmesini önlemek için request-token tabanlı koruma uygulanır.
+Dosya Yönetimi yapısı bakım yapılabilirliği artırmak için iki parçaya ayrılmıştır: `R/module_file_manager_ui.R` yalnızca `fileManagerUI()` arayüzünü ve tarayıcı tarafı upload sınırı kontrolünü içerir; `R/module_file_manager.R` ise `fileManagerServer()` tarafındaki yükleme, silme, bağlama, kalıcı dosya yenileme ve oturum durumu işlemlerine odaklanır. Ortak seçim/uzantı/yükleme politikaları, kullanıcı kimliği normalizasyonu ve küçük saf biçimlendirme yardımcıları `R/helpers_file_manager_policy.R` içinde tutulur. SSO akışında geçici `0` kullanıcı kimliği gerçek kullanıcı sağlayıcısını maskelemez. Kalıcı dosya yenileme akışında eskiyen refresh isteklerinin yeni dosya durumunu ezmesini önlemek için request-token tabanlı koruma uygulanır.
 
 ### Ayarlar
 İki alt sayfa içerir:
@@ -152,6 +152,7 @@ testthat::test_file("tests/testthat/test-file-manager-ui-refactor-contract.R")
 testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+testthat::test_file("tests/testthat/test-effective-user-id.R")
 testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
 testthat::test_file("tests/testthat/test-mcp-session-user-id-contract.R")
 testthat::test_file("tests/testthat/test-mcp-path-fallback-contract.R")
