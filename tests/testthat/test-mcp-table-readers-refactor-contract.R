@@ -95,13 +95,43 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
   )
 
   expect_false(
-    grepl("environment(get(", table_txt, fixed = TRUE, useBytes = TRUE),
-    info = "Fonksiyon environment ataması get(...) sol tarafına yapılmamalıdır; bu R'de get<- hatası üretir."
+    grepl(
+      "environment(get(.mcp_reader_fn",
+      table_txt,
+      fixed = TRUE,
+      useBytes = TRUE
+    ),
+    info = "Fonksiyon environment ataması doğrudan get(.mcp_reader_fn, ...) sol tarafına yapılmamalıdır; bu R'de get<- hatası üretir."
   )
 
   expect_true(
-    grepl("assign(.mcp_reader_fn, .mcp_reader_fun, envir = helpers_mcp_tools)", table_txt, fixed = TRUE, useBytes = TRUE),
-    info = "MCP reader environment ataması geçici fonksiyon nesnesi üzerinden yapılıp geri assign edilmelidir."
+    grepl(
+      ".mcp_reader_fun <- get(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE)",
+      table_txt,
+      fixed = TRUE,
+      useBytes = TRUE
+    ),
+    info = "MCP reader önce geçici fonksiyon nesnesine alınmalıdır."
+  )
+
+  expect_true(
+    grepl(
+      "environment(.mcp_reader_fun) <- helpers_mcp_tools",
+      table_txt,
+      fixed = TRUE,
+      useBytes = TRUE
+    ),
+    info = "MCP reader environment ataması geçici fonksiyon nesnesi üzerinden yapılmalıdır."
+  )
+
+  expect_true(
+    grepl(
+      "assign(.mcp_reader_fn, .mcp_reader_fun, envir = helpers_mcp_tools)",
+      table_txt,
+      fixed = TRUE,
+      useBytes = TRUE
+    ),
+    info = "MCP reader environment ataması sonrası fonksiyon helpers_mcp_tools ortamına geri assign edilmelidir."
   )
 
   expect_true(
