@@ -77,12 +77,18 @@ test_that("MCP debug helper tanımlıdır ve env/option ile kapatılabilir", {
 })
 
 test_that("resolve_file_argument raw cat() ile konsola yazmaz", {
-  txt <- .read_repo_text_quiet_mcp_debug("R/helpers_mcp_tools.R")
+  tools_txt <- .read_repo_text_quiet_mcp_debug("R/helpers_mcp_tools.R")
+  resolver_txt <- .read_repo_text_quiet_mcp_debug("R/helpers_mcp_file_resolver.R")
+
+  expect_true(
+    grepl("R/helpers_mcp_file_resolver.R", tools_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_tools.R, izole source bağlamlarında dosya çözümleyici helper dosyasını yüklemelidir."
+  )
 
   block <- .extract_function_block(
-    txt,
+    resolver_txt,
     "helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL)",
-    "# ============================"
+    ".mcp_file_resolver_fns <- c("
   )
 
   expect_false(
