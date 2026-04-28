@@ -60,7 +60,7 @@
 }
 
 test_that("file manager UI istemci tarafı upload boyut kontrolü içeriyor", {
-  path <- file.path(.repo_root, "R", "module_file_manager.R")
+  path <- file.path(.repo_root, "R", "module_file_manager_ui.R")
   txt <- .read_text_quiet(path)
 
   expect_true(.has_text(txt, "bulk_upload_client_error"))
