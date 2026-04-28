@@ -270,6 +270,7 @@ safe_source("R/module_chat_export.R",       encoding = "UTF-8")
 safe_source("R/module_feedback.R",          encoding = "UTF-8")
 
 # -- Dosya ve Medya Modülleri --
+safe_source("R/module_file_manager_ui.R",   encoding = "UTF-8")
 safe_source("R/module_file_manager.R",      encoding = "UTF-8")
 safe_source("R/module_file_preview.R",      encoding = "UTF-8")
 safe_source("R/module_image_generation.R",  encoding = "UTF-8")

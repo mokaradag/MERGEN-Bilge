@@ -115,13 +115,16 @@ test_that("kritik yardımcılar modüllerden önce yükleniyor", {
   expect_lt(pos("R/helpers_health_checks.R"), pos("R/module_health.R"))
 })
 
-test_that("file manager policy yardımcıları dosya yöneticisi modülünden önce yükleniyor", {
+test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu modülünden önce yükleniyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
   paths <- .extract_safe_source_paths(global_text)
 
   pos <- function(path) match(path, paths)
 
   expect_false(is.na(pos("R/helpers_file_manager_policy.R")))
+  expect_false(is.na(pos("R/module_file_manager_ui.R")))
+
   expect_lt(pos("R/helpers_files.R"), pos("R/helpers_file_manager_policy.R"))
-  expect_lt(pos("R/helpers_file_manager_policy.R"), pos("R/module_file_manager.R"))
+  expect_lt(pos("R/helpers_file_manager_policy.R"), pos("R/module_file_manager_ui.R"))
+  expect_lt(pos("R/module_file_manager_ui.R"), pos("R/module_file_manager.R"))
 })
