@@ -111,10 +111,12 @@ test_that("kritik yardımcılar modüllerden önce yükleniyor", {
 
   expect_false(is.na(pos("R/helpers_mcp_context.R")))
   expect_false(is.na(pos("R/helpers_mcp_table_readers.R")))
+  expect_false(is.na(pos("R/helpers_mcp_file_resolver.R")))
   expect_lt(pos("R/helpers_database.R"), pos("R/module_chat_history.R"))
   expect_lt(pos("R/helpers_mcp_context.R"), pos("R/helpers_mcp_tools.R"))
   expect_lt(pos("R/helpers_mcp_tools.R"), pos("R/helpers_mcp_table_readers.R"))
-  expect_lt(pos("R/helpers_mcp_table_readers.R"), pos("R/module_summarization.R"))
+  expect_lt(pos("R/helpers_mcp_table_readers.R"), pos("R/helpers_mcp_file_resolver.R"))
+  expect_lt(pos("R/helpers_mcp_file_resolver.R"), pos("R/module_summarization.R"))
   expect_lt(pos("R/helpers_send_message_core.R"), pos("R/server_send_message.R"))
   expect_lt(pos("R/helpers_health_checks.R"), pos("R/module_health.R"))
 })

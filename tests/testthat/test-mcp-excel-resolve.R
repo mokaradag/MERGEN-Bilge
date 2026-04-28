@@ -14,7 +14,8 @@ local({
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R")
+    file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_file_resolver.R")
   )
 
   for (dosya in gerekli_dosyalar) {
@@ -146,4 +147,57 @@ test_that("MCP Excel okuyucu global normalize_excel_path bağımlılığına dü
   expect_s3_class(okunan, "data.frame")
   expect_equal(names(okunan), c("CalisanID", "Departman", "Maas"))
   expect_equal(nrow(okunan), 2)
+})
+
+test_that("resolve_file_argument varsayılan olarak başka kullanıcı bucket'ına düşmez", {
+  temp_dir <- withr::local_tempdir()
+  other_user_file <- file.path(temp_dir, "shared_name.csv")
+  writeLines(c("a,b", "1,2"), other_user_file, useBytes = TRUE)
+
+  index_path <- file.path(temp_dir, "index.json")
+  jsonlite::write_json(
+    list(
+      "999" = list(
+        "shared_name.csv" = list(
+          path = other_user_file,
+          display = "shared_name.csv"
+        )
+      )
+    ),
+    index_path,
+    auto_unbox = TRUE
+  )
+
+  session <- .make_mock_session(user_id = 1L)
+
+  withr::local_options(list(
+    mergen.index_path = index_path,
+    mergen.mcp.allow_cross_bucket_lookup = FALSE
+  ))
+
+  sonuc <- helpers_mcp_tools$resolve_file_argument(
+    arg = "shared_name.csv",
+    session = session
+  )
+
+  expect_false(
+    isTRUE(sonuc$ok),
+    info = "MCP dosya çözümleme varsayılan olarak başka kullanıcı bucket'ındaki aynı adlı dosyayı döndürmemelidir."
+  )
+
+  withr::local_options(list(
+    mergen.index_path = index_path,
+    mergen.mcp.allow_cross_bucket_lookup = TRUE
+  ))
+
+  opt_in_sonuc <- helpers_mcp_tools$resolve_file_argument(
+    arg = "shared_name.csv",
+    session = session
+  )
+
+  expect_true(
+    isTRUE(opt_in_sonuc$ok),
+    info = "Geçiş/migrasyon için cross-bucket lookup yalnızca açık opt-in ile çalışmalıdır."
+  )
+  expect_equal(opt_in_sonuc$display, "shared_name.csv")
 })
