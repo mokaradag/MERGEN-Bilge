@@ -9,9 +9,8 @@ fileManagerUI <- function(id) {
   ns <- NS(id)
 
   # Dosya yükleme boyut sınırı UI tarafında da kullanılacak.
-  upload_limit_mb <- suppressWarnings(as.integer(getOption("mergen.upload_max_mb", 25L)))
-  if (is.na(upload_limit_mb) || upload_limit_mb <= 0L) upload_limit_mb <- 25L
-  upload_limit_bytes <- upload_limit_mb * 1024^2
+  upload_limit_mb <- fm_upload_limit_mb()
+  upload_limit_bytes <- fm_upload_limit_bytes(upload_limit_mb)
   
 tagList(
     # 32\U00D732 attach checkbox + center it in its cell
@@ -216,15 +215,11 @@ fileManagerServer <- function(
 	build_attach_rule_hint_text <- function(mcp_enabled = FALSE,
 											summarization_mode = FALSE,
 											allow_summarization_text = FALSE) {
-	  if (isTRUE(mcp_enabled)) {
-		return("Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir.")
-	  }
-
-	  if (isTRUE(allow_summarization_text) && isTRUE(summarization_mode)) {
-		return("Seçim kuralı: Dosya Özetleme modunda birden fazla dosya seçebilirsiniz.")
-	  }
-
-	  "Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
+	  fm_attach_rule_hint_text(
+		mcp_enabled = mcp_enabled,
+		summarization_mode = summarization_mode,
+		allow_summarization_text = allow_summarization_text
+	  )
 	}
 
 	update_attach_rule_hint <- function(summarization_mode = FALSE,
@@ -340,26 +335,18 @@ fileManagerServer <- function(
   }
   
 	get_summarization_allowed_extensions <- function() {
-	  c("doc", "docx", "pdf", "txt")
+	  fm_summarization_allowed_extensions()
 	}
 
 	get_normal_allowed_extensions <- function() {
-	  c("txt", "pdf", "docx", "xlsx", "xls", "csv", "json", "r", "py", "md", "log", "xml", "html")
+	  fm_normal_allowed_extensions()
 	}
 
 	resolve_allowed_extensions <- function(generate_message, summarization_mode) {
-	  summarization_allowed <- get_summarization_allowed_extensions()
-	  normal_allowed <- get_normal_allowed_extensions()
-
-	  if (!isTRUE(generate_message)) {
-		return(normal_allowed)
-	  }
-
-	  if (isTRUE(summarization_mode)) {
-		return(summarization_allowed)
-	  }
-
-	  normal_allowed
+	  fm_resolve_allowed_extensions(
+		generate_message = generate_message,
+		summarization_mode = summarization_mode
+	  )
 	}
 
 	show_unsupported_extension_toast <- function(file_ext, summarization_mode) {
@@ -470,7 +457,7 @@ fileManagerServer <- function(
 	  
 	  # Define summarization_mode BEFORE the conditional block
 	  summarization_mode <- FALSE
-	  summarization_allowed <- c("doc", "docx", "pdf", "txt")
+	  summarization_allowed <- get_summarization_allowed_extensions()
 	  
 	  # Summarization modu için dosya formatı kontrolü
 	  if (checked) {
@@ -569,6 +556,19 @@ fileManagerServer <- function(
     if (!dir.exists(udir)) return(character(0))
     list.files(udir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
   }
+  
+  # Aynı oturumda arka arkaya tetiklenen dosya yenilemelerinde eski istek
+  # daha sonra tamamlanırsa yeni state'i ezmesin.
+  refresh_request_seq <- 0L
+
+  next_refresh_request_id <- function() {
+    refresh_request_seq <<- refresh_request_seq + 1L
+    refresh_request_seq
+  }
+
+  is_latest_refresh_request <- function(request_id) {
+    identical(as.integer(request_id), as.integer(refresh_request_seq))
+  }
 
   ensure_persisted_upload_index <- function(abs_path, display_name, uid) {
     if (is.null(abs_path) || !nzchar(abs_path) || !path_exists_relaxed(abs_path)) {
@@ -612,7 +612,9 @@ fileManagerServer <- function(
 		return(invisible(NULL))
 	  }
 
-	  fm_debug("refresh_start", sprintf("trigger=%s", trigger))
+	  request_id <- next_refresh_request_id()
+
+	  fm_debug("refresh_start", sprintf("trigger=%s request_id=%s", trigger, request_id))
 
 	  ensure_session_registry()
 
@@ -624,6 +626,15 @@ fileManagerServer <- function(
 	  )
 
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
+	  
+	  if (!is_latest_refresh_request(request_id)) {
+		fm_debug("refresh_skip", sprintf(
+		  "trigger=%s request_id=%s eski kaldı; yeni yenileme isteği uygulanacak",
+		  trigger,
+		  request_id
+		))
+		return(invisible(NULL))
+	  }
 
 	  if (inherits(df, "try-error")) {
 		cond <- attr(df, "condition")
@@ -651,6 +662,15 @@ fileManagerServer <- function(
 	  previously_attached_names <- previously_attached_names[nzchar(previously_attached_names)]
 
 	  tryCatch({
+		if (!is_latest_refresh_request(request_id)) {
+		  fm_debug("refresh_skip", sprintf(
+			"trigger=%s request_id=%s state uygulanmadan eski kaldı",
+			trigger,
+			request_id
+		  ))
+		  return(invisible(NULL))
+		}
+
 		module_values$files <- empty_files_df()
 		module_values$file_contents <- list()
 		module_values$files_in_context <- list()
@@ -724,6 +744,16 @@ fileManagerServer <- function(
 
 		fm_debug("refresh_done", sprintf("table rows=%d", nrow(module_values$files)))
 	  }, error = function(e) {
+		if (!is_latest_refresh_request(request_id)) {
+		  fm_debug("refresh_error_stale", sprintf(
+			"trigger=%s request_id=%s hata verdi ama eski kaldığı için state restore edilmedi: %s",
+			trigger,
+			request_id,
+			conditionMessage(e)
+		  ))
+		  return(invisible(NULL))
+		}
+
 		module_values$files <- previous_state$files
 		module_values$file_contents <- previous_state$file_contents
 		module_values$files_in_context <- previous_state$files_in_context
@@ -1140,8 +1170,7 @@ fileManagerServer <- function(
 			# Varsayılan sınır 25 MB; daha düşük/yüksek ihtiyaç olursa
 			# getOption("mergen.upload_max_mb") veya MERGEN_UPLOAD_MAX_MB ile geçilebilir.
             if (exists("validate_uploaded_file", envir = globalenv(), inherits = FALSE)) {
-			  max_mb <- suppressWarnings(as.integer(getOption("mergen.upload_max_mb", 25L)))
-			  if (is.na(max_mb) || max_mb <= 0L) max_mb <- 25L
+			  max_mb <- fm_upload_limit_mb()
 
               dogrulama <- validate_uploaded_file(
                 path = upload_path,
