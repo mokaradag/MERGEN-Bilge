@@ -117,13 +117,13 @@ helpers_mcp_tools$find_matching_column <- function(search_term, available_column
   # 4. Normalize edilmiş eşleşme (alt çizgi, tire, boşluk yok say)
   normalize <- function(s) {
     s <- tolower(s)
-    s <- gsub("[_\\-\\s]+", "", s)
-    s <- gsub("ı", "i", s)
-    s <- gsub("ğ", "g", s)
-    s <- gsub("ü", "u", s)
-    s <- gsub("ş", "s", s)
-    s <- gsub("ö", "o", s)
-    s <- gsub("ç", "c", s)
+    s <- gsub("[_\\-\\s]+", "", s, perl = TRUE)
+    s <- gsub("ı", "i", s, fixed = TRUE)
+    s <- gsub("ğ", "g", s, fixed = TRUE)
+    s <- gsub("ü", "u", s, fixed = TRUE)
+    s <- gsub("ş", "s", s, fixed = TRUE)
+    s <- gsub("ö", "o", s, fixed = TRUE)
+    s <- gsub("ç", "c", s, fixed = TRUE)
     s
   }
 

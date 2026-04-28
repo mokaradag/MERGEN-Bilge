@@ -188,6 +188,11 @@ test_that("MCP argüman ve kolon yardımcılarının temel davranışı korunur"
     helpers_mcp_tools$find_matching_column("maaş", cols),
     "Maas_TL"
   )
+  
+  expect_identical(
+    helpers_mcp_tools$find_matching_column("maas", cols),
+    "Maas_TL"
+  )
 
   df <- data.frame(
     Maas_TL = c(100, 120),
@@ -195,8 +200,9 @@ test_that("MCP argüman ve kolon yardımcılarının temel davranışı korunur"
     stringsAsFactors = FALSE
   )
 
-  matches <- helpers_mcp_tools$find_columns_by_context(df, c("maaş", "departman"))
+  matches <- helpers_mcp_tools$find_columns_by_context(df, c("maaş", "maas", "departman"))
 
   expect_identical(matches[["maaş"]], "Maas_TL")
+  expect_identical(matches[["maas"]], "Maas_TL")
   expect_identical(matches[["departman"]], "Departman")
 })
