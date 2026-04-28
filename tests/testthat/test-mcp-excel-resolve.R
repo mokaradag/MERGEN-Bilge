@@ -122,3 +122,28 @@ test_that("resolve_file_argument file_id alias ile de aynı Excel dosyasını ç
   expect_equal(nrow(okunan), 2)
   expect_equal(names(okunan), c("CalisanID", "Departman", "Maas"))
 })
+
+test_that("MCP Excel okuyucu global normalize_excel_path bağımlılığına düşmeden çalışır", {
+  skip_if_not_installed("openxlsx")
+
+  temp_dir <- withr::local_tempdir()
+  excel_path <- file.path(temp_dir, "reader_env_test.xlsx")
+
+  openxlsx::write.xlsx(
+    data.frame(
+      CalisanID = 1:2,
+      Departman = c("IT", "IK"),
+      Maas = c(100, 120),
+      stringsAsFactors = FALSE
+    ),
+    excel_path
+  )
+
+  expect_identical(environment(helpers_mcp_tools$safe_read_excel_table), helpers_mcp_tools)
+
+  okunan <- helpers_mcp_tools$safe_read_excel_table(excel_path)
+
+  expect_s3_class(okunan, "data.frame")
+  expect_equal(names(okunan), c("CalisanID", "Departman", "Maas"))
+  expect_equal(nrow(okunan), 2)
+})

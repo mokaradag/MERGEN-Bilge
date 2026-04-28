@@ -105,6 +105,34 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
   )
 })
 
+test_that("MCP Excel okuyucu worker ortamında normalize_excel_path yardımcısını bulabilir", {
+  expect_true(exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE))
+  expect_true(is.function(helpers_mcp_tools$safe_read_excel_table))
+
+  reader_env <- environment(helpers_mcp_tools$safe_read_excel_table)
+
+  expect_identical(
+    reader_env,
+    helpers_mcp_tools,
+    info = "safe_read_excel_table MCP/worker bağlamında helpers_mcp_tools ortamında çalışmalıdır."
+  )
+
+  expect_true(
+    exists("normalize_excel_path", envir = reader_env, inherits = TRUE),
+    info = "safe_read_excel_table çalışırken normalize_excel_path görünür olmalıdır."
+  )
+
+  expect_true(
+    exists("resolve_readable_path", envir = reader_env, inherits = TRUE),
+    info = "safe_read_excel_table çalışırken resolve_readable_path görünür olmalıdır."
+  )
+
+  expect_true(
+    exists("path_exists_relaxed", envir = reader_env, inherits = TRUE),
+    info = "safe_read_excel_table çalışırken path_exists_relaxed görünür olmalıdır."
+  )
+})
+
 test_that("MCP genel tablo okuyucu CSV dosyasını data.table olarak okur", {
   skip_if_not_installed("data.table")
 

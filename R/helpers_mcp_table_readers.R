@@ -28,12 +28,27 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
 }
 
 # Global sağlam Excel okuyucu varsa MCP ortamına taşı; yoksa yerel fallback kullan.
+# Önemli: utils_excel_reader.R içindeki safe_read_excel_table(), normalize_excel_path()
+# gibi yardımcıları unqualified çağırır. MCP/tool/worker bağlamında bu fonksiyonun
+# globalenv() yerine helpers_mcp_tools ortamında çalışması gerekir.
 if (exists("safe_read_excel_table", envir = globalenv(), inherits = TRUE)) {
-  assign(
+  .global_safe_read_excel_table <- get(
     "safe_read_excel_table",
-    get("safe_read_excel_table", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
+    envir = globalenv(),
+    inherits = TRUE
   )
+
+  if (is.function(.global_safe_read_excel_table)) {
+    environment(.global_safe_read_excel_table) <- helpers_mcp_tools
+
+    assign(
+      "safe_read_excel_table",
+      .global_safe_read_excel_table,
+      envir = helpers_mcp_tools
+    )
+  }
+
+  rm(.global_safe_read_excel_table)
 }
 
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE)) {
@@ -180,3 +195,17 @@ helpers_mcp_tools$create_md_table <- function(df) {
 
   paste(c(header, sep, rows), collapse = "\n")
 }
+
+# Worker ve MCP araç bağlamlarında fonksiyonlar kendi helper ortamlarını taşımalıdır.
+# Özellikle safe_read_excel_table(), normalize_excel_path() gibi yardımcıları
+# unqualified çağırabildiği için environment helpers_mcp_tools olmalıdır.
+assign("helpers_mcp_tools", helpers_mcp_tools, envir = helpers_mcp_tools)
+
+for (.mcp_reader_fn in c("safe_read_excel_table", "safe_read_table_generic", "create_md_table")) {
+  if (exists(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE) &&
+      is.function(get(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE))) {
+    environment(get(.mcp_reader_fn, envir = helpers_mcp_tools, inherits = FALSE)) <- helpers_mcp_tools
+  }
+}
+
+rm(.mcp_reader_fn)
