@@ -83,6 +83,16 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
     grepl("R/helpers_mcp_table_readers.R", tools_txt, fixed = TRUE, useBytes = TRUE),
     info = "helpers_mcp_tools.R tablo okuyucu dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
   )
+  
+  expect_true(
+    grepl(".mcp_find_support_file", tools_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_tools.R tablo okuyucu dosyasını working-directory bağımsız çözmelidir."
+  )
+
+  expect_true(
+    grepl('exists(".mcp_table_readers_path"', tools_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_tools.R .mcp_table_readers_path temizliğini değişken varsa yapmalıdır."
+  )
 
   expect_true(
     all(table_has_defs),

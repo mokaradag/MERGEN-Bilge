@@ -172,15 +172,54 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
 # Bu dosya tek başına source edildiğinde de aşağıdaki MCP fonksiyonları
 # tablo okuyucu bağlamına ihtiyaç duyabildiği için burada güvenli şekilde
 # yüklenir. global.R içinde ayrıca source edilmesi idempotenttir.
+.mcp_find_support_file <- function(relative_path) {
+  relative_path <- gsub("\\\\", "/", relative_path, fixed = TRUE)
+
+  candidate_roots <- c(
+    getwd(),
+    dirname(getwd()),
+    dirname(dirname(getwd())),
+    Sys.getenv("MERGEN_REPO_ROOT", unset = ""),
+    if (exists("repo_root_for_tests", envir = globalenv(), inherits = TRUE)) {
+      get("repo_root_for_tests", envir = globalenv(), inherits = TRUE)
+    } else {
+      ""
+    }
+  )
+
+  candidate_roots <- unique(candidate_roots[nzchar(candidate_roots)])
+
+  candidates <- unique(c(
+    relative_path,
+    file.path(candidate_roots, relative_path)
+  ))
+
+  for (candidate in candidates) {
+    candidate <- tryCatch(
+      normalizePath(candidate, winslash = "/", mustWork = FALSE),
+      error = function(e) candidate
+    )
+
+    if (file.exists(candidate)) {
+      return(candidate)
+    }
+  }
+
+  ""
+}
+
 if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE) ||
     !exists("safe_read_table_generic", envir = helpers_mcp_tools, inherits = FALSE) ||
     !exists("create_md_table", envir = helpers_mcp_tools, inherits = FALSE)) {
 
-  .mcp_table_readers_path <- file.path("R", "helpers_mcp_table_readers.R")
+  .mcp_table_readers_path <- .mcp_find_support_file("R/helpers_mcp_table_readers.R")
 
-  if (!file.exists(.mcp_table_readers_path)) {
+  if (!nzchar(.mcp_table_readers_path)) {
     stop(
-      "R/helpers_mcp_table_readers.R bulunamadı; helpers_mcp_tools.R yüklenemiyor.",
+      sprintf(
+        "R/helpers_mcp_table_readers.R bulunamadı; helpers_mcp_tools.R yüklenemiyor. Çalışma dizini: %s",
+        getwd()
+      ),
       call. = FALSE
     )
   }
@@ -197,7 +236,10 @@ if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE
   stop("MCP tablo okuyucu sözleşmesi eksik.", call. = FALSE)
 }
 
-rm(.mcp_table_readers_path)
+rm(.mcp_find_support_file)
+if (exists(".mcp_table_readers_path", inherits = FALSE)) {
+  rm(.mcp_table_readers_path)
+}
 
 # ============================
 # Session file registry helpers
