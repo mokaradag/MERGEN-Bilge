@@ -63,3 +63,83 @@ fm_attach_rule_hint_text <- function(mcp_enabled = FALSE,
 
   "Seçim kuralı: MCP kapalıyken birden fazla dosya seçebilirsiniz."
 }
+
+fm_normalize_user_id <- function(user_id, invalid = "unknown") {
+  invalid_chr <- if (is.null(invalid) || length(invalid) == 0L || is.na(invalid[1])) {
+    "unknown"
+  } else {
+    trimws(as.character(invalid[1]))
+  }
+
+  if (!nzchar(invalid_chr)) {
+    invalid_chr <- "unknown"
+  }
+
+  if (is.null(user_id) || length(user_id) == 0L || is.na(user_id[1])) {
+    return(invalid_chr)
+  }
+
+  uid <- trimws(as.character(user_id[1]))
+  if (!nzchar(uid)) {
+    return(invalid_chr)
+  }
+
+  uid_lower <- tolower(uid)
+  if (uid_lower %in% c("0", "unknown", "null", "na", "nan")) {
+    return(invalid_chr)
+  }
+
+  uid
+}
+
+fm_valid_user_id <- function(user_id) {
+  !identical(fm_normalize_user_id(user_id), "unknown")
+}
+
+fm_file_ext_icon_html <- function(ext) {
+  e <- if (is.null(ext) || length(ext) == 0L || is.na(ext[1])) {
+    ""
+  } else {
+    tolower(as.character(ext[1]))
+  }
+
+  ico <- switch(
+    e,
+    "pdf"  = "<i class='fa-regular fa-file-pdf' style='margin-right:6px;color:#c00'></i>",
+    "doc"  = "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>",
+    "docx" = "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>",
+    "xls"  = "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#217346'></i>",
+    "xlsx" = "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#217346'></i>",
+    "csv"  = "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#217346'></i>",
+    "json" = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
+    "xml"  = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
+    "html" = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
+    "r"    = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
+    "py"   = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
+    "md"   = "<i class='fa-regular fa-file-lines' style='margin-right:6px;'></i>",
+    "log"  = "<i class='fa-regular fa-file-lines' style='margin-right:6px;'></i>",
+    "txt"  = "<i class='fa-regular fa-file-lines' style='margin-right:6px;'></i>",
+    "<i class='fa-regular fa-file' style='margin-right:6px;'></i>"
+  )
+
+  paste0(ico, toupper(e))
+}
+
+fm_format_file_timestamp <- function(path = NULL, fallback_time = Sys.time()) {
+  ts <- fallback_time
+
+  path_chr <- if (is.null(path) || length(path) == 0L || is.na(path[1])) {
+    ""
+  } else {
+    as.character(path[1])
+  }
+
+  if (nzchar(path_chr) && file.exists(path_chr)) {
+    info <- tryCatch(file.info(path_chr), error = function(e) NULL)
+    if (!is.null(info) && !is.na(info$mtime[1])) {
+      ts <- info$mtime[1]
+    }
+  }
+
+  format(ts, "%Y-%m-%d %H:%M")
+}

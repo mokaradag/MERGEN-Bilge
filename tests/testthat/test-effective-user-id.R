@@ -35,6 +35,17 @@ test_that("resolve_effective_user_id fonksiyonel fallback destekler", {
   expect_equal(sonuc, 33L)
 })
 
+test_that("resolve_effective_user_id SSO placeholder 0 yerine canlı fallback kullanır", {
+  fallback_fn <- function() 77L
+
+  sonuc <- resolve_effective_user_id(
+    session = list(userData = list(user_id = 0L)),
+    current_user_id = fallback_fn
+  )
+
+  expect_equal(sonuc, 77L)
+})
+
 # Her iki kaynak da NULL/0 ise 0 dönmelidir.
 test_that("resolve_effective_user_id tanımsız kimliklerde 0 döner", {
   sonuc <- resolve_effective_user_id(

@@ -56,6 +56,22 @@ test_that("file manager modülü attach ve uzantı policy kararlarını helper �
   )
 })
 
+test_that("file manager kimlik ve saf biçimlendirme kararlarını helper üzerinden alıyor", {
+  txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+
+  expect_true(grepl("resolve_effective_user_id\\(", txt, perl = TRUE))
+  expect_true(grepl("fm_normalize_user_id\\(", txt, perl = TRUE))
+  expect_true(grepl("fm_valid_user_id\\(uid\\)", txt, perl = TRUE))
+  expect_true(grepl("fm_file_ext_icon_html\\(ext\\)", txt, perl = TRUE))
+  expect_true(grepl("fm_format_file_timestamp\\(", txt, perl = TRUE))
+
+  expect_false(grepl(
+    "session_uid\\s+<-\\s+session\\$userData\\$user_id\\s*%\\|\\|%",
+    txt,
+    perl = TRUE
+  ))
+})
+
 test_that("file manager persisted refresh eski istekleri state'e uygulamıyor", {
   txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
 

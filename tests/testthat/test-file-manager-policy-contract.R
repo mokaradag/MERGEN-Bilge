@@ -98,3 +98,30 @@ test_that("file manager upload limiti sayısal ve deterministiktir", {
   withr::local_options(list(mergen.upload_max_mb = "gecersiz"))
   expect_equal(env$fm_upload_limit_mb(default = 25L), 25L)
 })
+
+test_that("file manager kullanıcı kimliği normalizasyonu placeholder değerleri reddeder", {
+  env <- .load_file_manager_policy_helpers()
+
+  expect_equal(env$fm_normalize_user_id(NULL), "unknown")
+  expect_equal(env$fm_normalize_user_id(0L), "unknown")
+  expect_equal(env$fm_normalize_user_id(" unknown "), "unknown")
+  expect_equal(env$fm_normalize_user_id("NaN"), "unknown")
+  expect_equal(env$fm_normalize_user_id(42L), "42")
+
+  expect_true(env$fm_valid_user_id(42L))
+  expect_false(env$fm_valid_user_id("0"))
+})
+
+test_that("file manager saf biçimlendirme yardımcıları modülden bağımsızdır", {
+  env <- .load_file_manager_policy_helpers()
+
+  expect_true(grepl("fa-file-pdf", env$fm_file_ext_icon_html("PDF"), fixed = TRUE))
+  expect_true(grepl("PDF", env$fm_file_ext_icon_html("PDF"), fixed = TRUE))
+  expect_true(grepl("fa-file", env$fm_file_ext_icon_html("bilinmeyen"), fixed = TRUE))
+
+  fallback_time <- as.POSIXct("2024-01-02 03:04:05", tz = "UTC")
+  expect_equal(
+    env$fm_format_file_timestamp(path = NULL, fallback_time = fallback_time),
+    "2024-01-02 03:04"
+  )
+})

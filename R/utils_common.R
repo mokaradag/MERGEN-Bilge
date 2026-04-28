@@ -77,10 +77,25 @@ resolve_effective_user_id <- function(session = NULL, current_user_id = NULL) {
 
   fallback_uid <- resolve_runtime_value(current_user_id)
 
-  uid <- suppressWarnings(as.integer(session_uid %||% fallback_uid %||% 0L))
-  if (is.na(uid)) uid <- 0L
+  normalize_uid <- function(value) {
+    uid <- suppressWarnings(as.integer(value %||% 0L))
+    if (is.na(uid) || uid <= 0L) {
+      return(0L)
+    }
+    uid
+  }
 
-  uid
+  session_uid_int <- normalize_uid(session_uid)
+  if (session_uid_int > 0L) {
+    return(session_uid_int)
+  }
+
+  fallback_uid_int <- normalize_uid(fallback_uid)
+  if (fallback_uid_int > 0L) {
+    return(fallback_uid_int)
+  }
+
+  0L
 }
 
 # --- ZAMAN DAMGASI BİÇİMLENDİRİCİ ---

@@ -63,10 +63,33 @@ fileManagerServer <- function(
 	}
 
 	get_effective_user_id <- function() {
-	  session_uid  <- session$userData$user_id %||% NULL
-	  provided_uid <- resolve_runtime_value(user_id)
-	  uid <- session_uid %||% provided_uid %||% "unknown"
-	  as.character(uid %||% "unknown")
+	  if (exists("resolve_effective_user_id", mode = "function", inherits = TRUE)) {
+		resolved_uid <- resolve_effective_user_id(
+		  session = session,
+		  current_user_id = user_id
+		)
+		return(fm_normalize_user_id(resolved_uid))
+	  }
+
+	  session_uid <- fm_normalize_user_id(session$userData$user_id)
+	  if (fm_valid_user_id(session_uid)) {
+		return(session_uid)
+	  }
+
+	  provided_raw <- if (exists("resolve_runtime_value", mode = "function", inherits = TRUE)) {
+		resolve_runtime_value(user_id)
+	  } else if (is.function(user_id)) {
+		tryCatch(user_id(), error = function(e) NULL)
+	  } else {
+		user_id
+	  }
+
+	  provided_uid <- fm_normalize_user_id(provided_raw)
+	  if (fm_valid_user_id(provided_uid)) {
+		return(provided_uid)
+	  }
+
+	  "unknown"
 	}
 
     module_user_id_chr <- function() {
@@ -134,32 +157,9 @@ fileManagerServer <- function(
     }
   
     # Dosya uzantısına göre ikon + etiket HTML'i üretir
-  ext_icon_html <- function(ext) {
-    e <- tolower(ext %||% "")
-    ico <- switch(
-      e,
-      "pdf"  = "<i class='fa-regular fa-file-pdf' style='margin-right:6px;color:#c00'></i>",
-      "doc"  = "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>",
-      "docx" = "<i class='fa-regular fa-file-word' style='margin-right:6px;color:#2b579a'></i>",
-      "xls"  = "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#217346'></i>",
-      "xlsx" = "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#217346'></i>",
-      # Not: csv için Excel ikonunu kullanıyoruz (geniş uyumluluk)
-      "csv"  = "<i class='fa-regular fa-file-excel' style='margin-right:6px;color:#217346'></i>",
-      # Kod/biçimlendirilmiş metin türleri
-      "json" = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
-      "xml"  = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
-      "html" = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
-      "r"    = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
-      "py"   = "<i class='fa-regular fa-file-code' style='margin-right:6px;'></i>",
-      # Düz metin türleri
-      "md"   = "<i class='fa-regular fa-file-lines' style='margin-right:6px;'></i>",
-      "log"  = "<i class='fa-regular fa-file-lines' style='margin-right:6px;'></i>",
-      "txt"  = "<i class='fa-regular fa-file-lines' style='margin-right:6px;'></i>",
-      # Varsayılan
-      "<i class='fa-regular fa-file' style='margin-right:6px;'></i>"
-    )
-    paste0(ico, toupper(e))
-  }
+	ext_icon_html <- function(ext) {
+	  fm_file_ext_icon_html(ext)
+	}
   
 	get_summarization_allowed_extensions <- function() {
 	  fm_summarization_allowed_extensions()
@@ -434,7 +434,7 @@ fileManagerServer <- function(
 		return(invisible(NULL))
 	  }
 
-	  if (!nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
+	  if (!fm_valid_user_id(uid)) {
 		fm_debug("refresh_skip", sprintf("trigger=%s, geçersiz user_id=%s", trigger, uid))
 		return(invisible(NULL))
 	  }
@@ -698,16 +698,7 @@ fileManagerServer <- function(
 
     # ---------- HELPERS ----------
     format_timestamp <- function(path = NULL, fallback_time = Sys.time()) {
-      ts <- fallback_time
-
-      if (!is.null(path) && nzchar(path) && file.exists(path)) {
-        info <- tryCatch(file.info(path), error = function(e) NULL)
-        if (!is.null(info) && !is.na(info$mtime[1])) {
-          ts <- info$mtime[1]
-        }
-      }
-
-      format(ts, "%Y-%m-%d %H:%M")
+      fm_format_file_timestamp(path = path, fallback_time = fallback_time)
     }
 
     update_session_files <- function(update_fn) {
