@@ -111,6 +111,7 @@ test_that("Claude Code model/settings yardımcıları ayrı dosyaya taşınmış
   repo_root <- resolve_repo_root_for_tests()
 
   expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code_model_config.R")))
+  expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code_session_context.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code.R")))
 
   model_config_text <- .read_repo_text_cc_model_config_contract(
@@ -152,6 +153,41 @@ test_that("Claude Code model/settings yardımcıları ayrı dosyaya taşınmış
     grepl("resolve_node_path\\s*<-\\s*function\\s*\\(", old_text, perl = TRUE),
     info = "Process/CLI çalışma yardımcıları R/helpers_claude_code.R içinde kalmalıdır."
   )
+
+  session_context_text <- .read_repo_text_cc_model_config_contract(
+    "R/helpers_claude_code_session_context.R"
+  )
+  module_text <- .read_repo_text_cc_model_config_contract(
+    "R/module_claude_code.R"
+  )
+
+  expect_true(
+    grepl(
+      "cc_create_active_character_reactive\\s*<-\\s*function\\s*\\(",
+      session_context_text,
+      perl = TRUE
+    ),
+    info = "Aktif karakter bağlamı helper dosyasında tanımlı olmalıdır."
+  )
+
+  expect_true(
+    grepl(
+      "cc_create_user_first_name_reactive\\s*<-\\s*function\\s*\\(",
+      session_context_text,
+      perl = TRUE
+    ),
+    info = "Kullanıcı adı bağlamı helper dosyasında tanımlı olmalıdır."
+  )
+
+  expect_false(
+    grepl("get_active_character\\s*<-\\s*reactive\\s*\\(", module_text, perl = TRUE),
+    info = "Aktif karakter reactive bloğu module_claude_code.R içine geri taşınmamalıdır."
+  )
+
+  expect_false(
+    grepl("kullanici_adi\\s*<-\\s*reactive\\s*\\(", module_text, perl = TRUE),
+    info = "Kullanıcı adı reactive bloğu module_claude_code.R içine geri taşınmamalıdır."
+  )
 })
 
 test_that("Claude Code model/config source sırası korunuyor", {
@@ -161,6 +197,7 @@ test_that("Claude Code model/config source sırası korunuyor", {
   pos <- function(path) match(path, paths)
 
   expect_false(is.na(pos("R/helpers_claude_code_model_config.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_session_context.R")))
   expect_false(is.na(pos("R/helpers_claude_code.R")))
   expect_false(is.na(pos("R/helpers_claude_code_streaming.R")))
 
@@ -171,6 +208,11 @@ test_that("Claude Code model/config source sırası korunuyor", {
 
   expect_lt(
     pos("R/helpers_claude_code_model_config.R"),
+    pos("R/helpers_claude_code_session_context.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code_session_context.R"),
     pos("R/helpers_claude_code.R")
   )
 
@@ -185,6 +227,11 @@ test_that("Claude Code model/config dosyaları parse edilebilir kalır", {
 
   expect_silent(parse(
     file.path(repo_root, "R", "helpers_claude_code_model_config.R"),
+    encoding = "UTF-8"
+  ))
+  
+  expect_silent(parse(
+    file.path(repo_root, "R", "helpers_claude_code_session_context.R"),
     encoding = "UTF-8"
   ))
 

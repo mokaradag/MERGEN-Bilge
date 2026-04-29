@@ -116,6 +116,12 @@ create_akis_yardimcilari <- function(session, ns, rv) {
   # Akış tamamlandığında, hata oluştuğunda veya durdurulduğunda çağrılır.
   # UI öğelerini (düğmeler, düşünme animasyonu, durum çubuğu) günceller.
   finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL) {
+    if (!isTRUE(rv$is_running) &&
+        is.null(rv$active_process) &&
+        is.null(rv$stream_env)) {
+      return(invisible(FALSE))
+    }
+
     rv$is_running <- FALSE
     rv$active_process <- NULL
     rv$stream_env <- NULL
@@ -151,6 +157,8 @@ create_akis_yardimcilari <- function(session, ns, rv) {
         duration = if (!is.null(sure)) paste0(sure, " sn") else ""
       )
     )
+
+    invisible(TRUE)
   }
 
   # Yardımcı fonksiyonları döndür

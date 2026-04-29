@@ -107,6 +107,7 @@ Bilge Yolaç is now split into smaller responsibility-focused files. Preserve th
 ```r
 safe_source("R/helpers_claude_code_upload_folder.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_model_config.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_session_context.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code.R", encoding = "UTF-8")
 ```
 
@@ -125,6 +126,7 @@ Responsibilities:
 * `R/module_claude_code.R`: `claudeCodeServer()` and server/runtime logic for the Bilge Yolaç page.
 * `R/helpers_claude_code_upload_folder.R`: Bilge Yolaç upload-folder resolution helpers, including relaxed directory checks, candidate folder scoring, explicit session file registry handling, and placeholder user-id rejection.
 * `R/helpers_claude_code_model_config.R`: Claude CLI path resolution, `settings.json` reading, model-tier mapping, model capability helpers, thinking-model detection, binary-document prompt detection, and execution-model fallback decisions.
+* `R/helpers_claude_code_session_context.R`: Bilge Yolaç active-character and user first-name reactive context helpers used by `R/module_claude_code.R`.
 * `R/helpers_claude_code.R`: process/CLI execution helpers, processx command construction, runtime command handling, output parsing, workspace helpers, and remaining Claude Code runtime helpers.
 
 Do not move `claudeCodeUI()` back into `R/module_claude_code.R`.
