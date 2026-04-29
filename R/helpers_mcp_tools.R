@@ -4,175 +4,10 @@
 #           Worker bağlamlarında çalışabilmesi için kendi helper ortamını kullanır.
 # ==============================================================================
 
-# MCP context/bootstrap helpers are intentionally kept in a small file.
-# Böylece debug kapısı ve kullanıcı kimliği çözümleme mantığı bu büyük araç
-# dosyasına geri taşınmaz.
-.mcp_context_ready <- FALSE
-if (exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) {
-  helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
-  .mcp_context_ready <- is.environment(helpers_mcp_tools) &&
-    exists("mcp_debug_log", envir = helpers_mcp_tools, inherits = FALSE) &&
-    exists("get_session_user_id", envir = helpers_mcp_tools, inherits = FALSE)
-}
-
-if (!isTRUE(.mcp_context_ready)) {
-  .mcp_context_path <- file.path("R", "helpers_mcp_context.R")
-
-  if (!file.exists(.mcp_context_path)) {
-    stop(
-      "R/helpers_mcp_context.R bulunamadı; helpers_mcp_tools.R yüklenemiyor.",
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_context_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
-    !is.environment(get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE))) {
-  stop("MCP helper ortamı başlatılamadı.", call. = FALSE)
-}
-
-helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
-
-if (!exists("mcp_debug_log", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("get_session_user_id", envir = helpers_mcp_tools, inherits = FALSE)) {
-  stop("MCP context helper sözleşmesi eksik.", call. = FALSE)
-}
-
-rm(.mcp_context_ready)
-
-# Ensure shared filesystem helpers exist inside this environment
-if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "path_exists_relaxed",
-    get("path_exists_relaxed", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
-}
-
-# helpers_files.R'deki tanımı kullan (daha kapsamlı)
-if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
-  # Global ortamdaki fonksiyonu kullan
-  if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
-    assign(
-      "path_exists_relaxed",
-      get("path_exists_relaxed", envir = globalenv(), inherits = TRUE),
-      envir = helpers_mcp_tools
-    )
-  }
-}
-
-# Araç yardımcıları bazı worker / ayrı yürütme bağlamlarında global ortama
-# beklenen sırayla gelmeyebilir. Bu nedenle kritik yol yardımcıları için
-# burada yerel ve kendine yeterli yedek tanımlar sağlanır.
-if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
-  helpers_mcp_tools$path_exists_relaxed <- function(path) {
-    if (is.null(path) || length(path) == 0) return(FALSE)
-
-    candidate <- as.character(path[1])
-    if (!nzchar(candidate)) return(FALSE)
-
-    cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
-
-    variants <- unique(trimws(Filter(nzchar, c(
-      candidate,
-      cand_slash,
-      sub("^//\\?/UNC", "//", cand_slash, perl = TRUE),
-      sub("^//\\?/", "//", cand_slash, perl = TRUE),
-      if (grepl("^/[^/]", cand_slash)) paste0("/", cand_slash) else NULL,
-      gsub("/", "\\\\", cand_slash, fixed = TRUE)
-    ))))
-
-    for (chk in variants) {
-      if (tryCatch(isTRUE(file.exists(chk)), error = function(e) FALSE)) return(TRUE)
-      if (tryCatch(isTRUE(fs::file_exists(chk)), error = function(e) FALSE)) return(TRUE)
-
-      chk_utf8 <- tryCatch(enc2utf8(chk), error = function(e) chk)
-      if (tryCatch(isTRUE(file.exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
-      if (tryCatch(isTRUE(fs::file_exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
-    }
-
-    FALSE
-  }
-}
-
-# Pull helper utilities from the global env when available (workers inherit them)
-if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "normalize_excel_path",
-    get("normalize_excel_path", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
-}
-
-if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "resolve_readable_path",
-    get("resolve_readable_path", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
-}
-
-if (!exists("resolve_readable_path", envir = helpers_mcp_tools, inherits = FALSE)) {
-  helpers_mcp_tools$resolve_readable_path <- function(path) {
-    if (is.null(path) || !nzchar(path)) return(path)
-
-    p <- as.character(path[1])
-
-    if (tryCatch(isTRUE(file.exists(p)), error = function(e) FALSE)) return(p)
-
-    p_bs <- gsub("/", "\\\\", p, fixed = TRUE)
-    if (tryCatch(isTRUE(file.exists(p_bs)), error = function(e) FALSE)) return(p_bs)
-
-    p_fwd <- gsub("\\\\", "/", p, fixed = TRUE)
-    if (grepl("^/[^/]", p_fwd)) {
-      p_unc <- paste0("/", p_fwd)
-      if (tryCatch(isTRUE(file.exists(p_unc)), error = function(e) FALSE)) return(p_unc)
-
-      p_unc_bs <- gsub("/", "\\\\", p_unc, fixed = TRUE)
-      if (tryCatch(isTRUE(file.exists(p_unc_bs)), error = function(e) FALSE)) return(p_unc_bs)
-    }
-
-    p
-  }
-}
-
-if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
-  helpers_mcp_tools$normalize_excel_path <- function(path, must_exist = FALSE) {
-    if (is.null(path) || length(path) == 0L) {
-      return("")
-    }
-
-    p <- as.character(path[1])
-    if (!nzchar(p)) {
-      return("")
-    }
-
-    p <- enc2utf8(gsub("\\\\", "/", p, fixed = TRUE))
-
-    if (isTRUE(must_exist)) {
-      resolved <- tryCatch(
-        helpers_mcp_tools$resolve_readable_path(p),
-        error = function(e) p
-      )
-
-      if (!isTRUE(helpers_mcp_tools$path_exists_relaxed(resolved))) {
-        stop(sprintf("Dosya bulunamadı: %s", p), call. = FALSE)
-      }
-
-      p <- resolved
-    }
-
-    p
-  }
-}
-
-# MCP tablo okuyucuları R/helpers_mcp_table_readers.R içinde tanımlıdır.
-# Bu dosya tek başına source edildiğinde de aşağıdaki MCP fonksiyonları
-# tablo okuyucu bağlamına ihtiyaç duyabildiği için burada güvenli şekilde
-# yüklenir. global.R içinde ayrıca source edilmesi idempotenttir.
-.mcp_find_support_file <- function(relative_path) {
+# MCP bootstrap/source-order yardımcıları ayrı dosyada tutulur.
+# helpers_mcp_tools.R tek başına source edildiğinde de eski davranışı korumak için
+# burada çalışma dizini bağımsız fallback source uygulanır.
+.mcp_find_bootstrap_file <- function(relative_path) {
   relative_path <- gsub("\\\\", "/", relative_path, fixed = TRUE)
 
   candidate_roots <- c(
@@ -208,163 +43,37 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
   ""
 }
 
-if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("safe_read_table_generic", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("create_md_table", envir = helpers_mcp_tools, inherits = FALSE)) {
+if (!exists("mcp_tools_bootstrap_ready", mode = "function", inherits = TRUE) ||
+    !isTRUE(mcp_tools_bootstrap_ready())) {
 
-  .mcp_table_readers_path <- .mcp_find_support_file("R/helpers_mcp_table_readers.R")
+  .mcp_bootstrap_path <- .mcp_find_bootstrap_file("R/helpers_mcp_bootstrap.R")
 
-  if (!nzchar(.mcp_table_readers_path)) {
+  if (!nzchar(.mcp_bootstrap_path)) {
     stop(
       sprintf(
-        "R/helpers_mcp_table_readers.R bulunamadı; helpers_mcp_tools.R yüklenemiyor. Çalışma dizini: %s",
+        "R/helpers_mcp_bootstrap.R bulunamadı; helpers_mcp_tools.R yüklenemiyor. Çalışma dizini: %s",
         getwd()
       ),
       call. = FALSE
     )
   }
 
-  source(.mcp_table_readers_path, encoding = "UTF-8", local = globalenv())
+  source(.mcp_bootstrap_path, encoding = "UTF-8", local = globalenv())
 }
 
-if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$safe_read_excel_table) ||
-    !exists("safe_read_table_generic", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$safe_read_table_generic) ||
-    !exists("create_md_table", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$create_md_table)) {
-  stop("MCP tablo okuyucu sözleşmesi eksik.", call. = FALSE)
+if (exists(".mcp_bootstrap_path", inherits = FALSE)) {
+  rm(.mcp_bootstrap_path)
 }
 
-# MCP dosya kayıt defteri ve çözümleme yardımcıları
-# R/helpers_mcp_file_resolver.R içinde tutulur. Bu dosya tek başına
-# source edildiğinde de resolve_file_argument gibi public yardımcıların
-# görünür kalması için burada güvenli fallback source uygulanır.
-if (!exists("ensure_session_file_registry", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("register_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("resolve_file_argument", envir = helpers_mcp_tools, inherits = FALSE)) {
+rm(.mcp_find_bootstrap_file)
 
-  .mcp_file_resolver_path <- .mcp_find_support_file("R/helpers_mcp_file_resolver.R")
-
-  if (!nzchar(.mcp_file_resolver_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_file_resolver.R bulunamadı; helpers_mcp_tools.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_file_resolver_path, encoding = "UTF-8", local = globalenv())
+if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
+    !is.environment(get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) ||
+    !isTRUE(mcp_tools_bootstrap_ready())) {
+  stop("MCP bootstrap helper sözleşmesi eksik.", call. = FALSE)
 }
 
-if (!exists("ensure_session_file_registry", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$ensure_session_file_registry) ||
-    !exists("register_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$register_uploaded_file) ||
-    !exists("resolve_file_argument", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$resolve_file_argument)) {
-  stop("MCP dosya çözümleyici sözleşmesi eksik.", call. = FALSE)
-}
-
-# MCP dosya şeması, kolon eşleştirme ve argüman yardımcıları
-# R/helpers_mcp_schema_helpers.R içinde tutulur. helpers_mcp_tools.R tek başına
-# source edildiğinde de public yardımcılar görünür kalsın diye burada güvenli
-# fallback source uygulanır.
-if (!exists("extract_mcp_file_schema", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("find_matching_column", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("normalize_args", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("normalize_chart_type", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("prettify_column_name", envir = helpers_mcp_tools, inherits = FALSE)) {
-
-  .mcp_schema_helpers_path <- .mcp_find_support_file("R/helpers_mcp_schema_helpers.R")
-
-  if (!nzchar(.mcp_schema_helpers_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_schema_helpers.R bulunamadı; helpers_mcp_tools.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_schema_helpers_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("extract_mcp_file_schema", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$extract_mcp_file_schema) ||
-    !exists("find_matching_column", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$find_matching_column) ||
-    !exists("normalize_args", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$normalize_args) ||
-    !exists("normalize_chart_type", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$normalize_chart_type) ||
-    !exists("prettify_column_name", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$prettify_column_name)) {
-  stop("MCP şema/kolon helper sözleşmesi eksik.", call. = FALSE)
-}
-
-if (exists(".mcp_table_readers_path", inherits = FALSE)) {
-  rm(.mcp_table_readers_path)
-}
-
-if (exists(".mcp_file_resolver_path", inherits = FALSE)) {
-  rm(.mcp_file_resolver_path)
-}
-
-if (exists(".mcp_schema_helpers_path", inherits = FALSE)) {
-  rm(.mcp_schema_helpers_path)
-}
-
-# ============================
-# MCP temel araçları
-# ============================
-
-# Temel dosya/istatistik/SQL araçları R/helpers_mcp_basic_tools.R içinde tutulur.
-# helpers_mcp_tools.R tek başına source edildiğinde de public araçlar görünür kalsın
-# diye burada güvenli fallback source uygulanır.
-if (!exists("analyze_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("get_column_statistics", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("sql_query_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("safe_has_duckdb", envir = helpers_mcp_tools, inherits = FALSE)) {
-
-  .mcp_basic_tools_path <- .mcp_find_support_file("R/helpers_mcp_basic_tools.R")
-
-  if (!nzchar(.mcp_basic_tools_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_basic_tools.R bulunamadı; helpers_mcp_tools.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_basic_tools_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("analyze_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$analyze_uploaded_file) ||
-    !exists("get_column_statistics", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$get_column_statistics) ||
-    !exists("sql_query_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$sql_query_uploaded_file) ||
-    !exists("safe_has_duckdb", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$safe_has_duckdb)) {
-  stop("MCP temel araç sözleşmesi eksik.", call. = FALSE)
-}
-
-if (exists(".mcp_basic_tools_path", inherits = FALSE)) {
-  rm(.mcp_basic_tools_path)
-}
-
-rm(.mcp_find_support_file)
-
-# ============================
-# MCP dosya şeması / kolon / argüman yardımcıları
-# ============================
+helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
 
 # Bu helper ailesi R/helpers_mcp_schema_helpers.R içinde tanımlıdır.
 # Geriye dönük uyumluluk için dotted alias korunur.

@@ -214,6 +214,7 @@ safe_source("R/config_sql_loader.R",              encoding = "UTF-8")  # SQL yü
 safe_source("R/helpers_language.R",              encoding = "UTF-8")  # Dil araçları ve çeviri
 safe_source("R/helpers_messaging.R",             encoding = "UTF-8")  # Mesaj biçimlendirme
 safe_source("R/helpers_mcp_context.R",           encoding = "UTF-8")  # MCP araç ortamı, debug kapısı ve kullanıcı kimliği
+safe_source("R/helpers_mcp_bootstrap.R",         encoding = "UTF-8")  # MCP fallback source ve sözleşme doğrulama
 safe_source("R/helpers_mcp_tools.R",             encoding = "UTF-8")  # MCP araç tanımları
 safe_source("R/helpers_mcp_table_readers.R",     encoding = "UTF-8")  # MCP Excel/genel tablo okuyucuları
 safe_source("R/helpers_mcp_file_resolver.R",     encoding = "UTF-8")  # MCP oturum dosya kayıt defteri ve dosya çözümleme
