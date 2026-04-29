@@ -169,6 +169,7 @@ The File Manager layer is intentionally split to keep the large runtime module f
 safe_source("R/helpers_file_manager_policy.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_table.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_refresh_guard.R", encoding = "UTF-8")
+safe_source("R/helpers_file_manager_session_registry.R", encoding = "UTF-8")
 safe_source("R/module_file_manager_ui.R", encoding = "UTF-8")
 safe_source("R/module_file_manager.R", encoding = "UTF-8")
 ```
@@ -178,10 +179,11 @@ Responsibilities:
 * `R/helpers_file_manager_policy.R`: pure File Manager policy/helpers such as upload-size normalization, upload-size byte conversion, summarization/normal allowed extension policy, attach-rule hint text, File Manager user-id normalization, file-extension icon HTML, and file timestamp formatting.
 * `R/helpers_file_manager_table.R`: pure File Manager table helpers such as empty table schema, action button HTML, model-context checkbox HTML, and single-row table construction. This file must not mutate Shiny reactive state.
 * `R/helpers_file_manager_refresh_guard.R`: pure File Manager persisted-refresh request generation guard. This file owns the monotonically increasing request token used to prevent stale refreshes from applying older file state.
+* `R/helpers_file_manager_session_registry.R`: pure-ish File Manager session file registry helpers. This file owns `session$userData$current_session_files` entry shape, registry initialization, register/unregister behavior, and registry path normalization.
 * `R/module_file_manager_ui.R`: public `fileManagerUI(id)` definition, File Manager UI layout, and browser-side upload-size guard.
 * `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, file table state mutation, attach/detach behavior, persisted file refresh, deletion/clear operations, and parent-session synchronization. Small pure decisions should delegate to File Manager helper files instead of being reimplemented inline.
 
-Do not move `fileManagerUI()` back into `R/module_file_manager.R`. Do not duplicate upload-size, allowed-extension, attach-rule text, user-id placeholder handling, file-extension icon HTML, file timestamp formatting, empty file-table schema, file action HTML, or attach-cell HTML decisions inside the module when the helper already owns that policy.
+Do not move `fileManagerUI()` back into `R/module_file_manager.R`. Do not duplicate upload-size, allowed-extension, attach-rule text, user-id placeholder handling, file-extension icon HTML, file timestamp formatting, or session file registry path/entry decisions inside the module when the helper already owns that policy.
 
 The persisted-file refresh path uses a request-generation guard from `fm_create_refresh_request_guard()` (`refresh_guard$next_id()` and `refresh_guard$is_latest(...)`) so stale refreshes cannot overwrite newer file state. Preserve that guard when editing `refresh_from_user_folder(...)`.
 

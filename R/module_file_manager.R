@@ -111,49 +111,28 @@ fileManagerServer <- function(
     fm_debug("init", sprintf("module booting (ns=%s)", ns("")))
 
     ensure_session_registry <- function() {
-      if (is.null(session$userData$current_session_files) ||
-          !is.list(session$userData$current_session_files)) {
-        session$userData$current_session_files <- list()
+      initialized <- fm_ensure_session_registry(session)
+      if (isTRUE(initialized)) {
         fm_debug("ensure_registry", "session registry initialized")
       }
+      invisible(TRUE)
     }
 
 	register_session_file <- function(filename, fpath) {
-      ensure_session_registry()
       fname <- as.character(filename %||% "")
-      if (!nzchar(fname)) return(invisible(FALSE))
-			  
-      # CHANGE: Absolute trust in path_exists_relaxed. 
-      # If the path exists as is, DO NOT touch it with normalizePath.
-      # This fixes the //rehisds/... -> /rehisds/uygulamalar/rehisds/... doubling.
-      norm_path <- if (path_exists_relaxed(fpath)) {
-         # Ensure slashes are consistent for the registry
-         gsub("\\\\", "/", as.character(fpath))
-      } else {
-        tryCatch(
-          normalize_mcp_path(fpath, must_exist = FALSE),
-          error = function(e) as.character(fpath %||% "")
-        )
+      ok <- fm_register_session_file(session, filename, fpath)
+
+      if (isTRUE(ok)) {
+        entry <- session$userData$current_session_files[[fname]]
+        fm_debug("register", sprintf("%s -> %s", fname, entry$datapath %||% ""))
       }
-      
-      if (!nzchar(norm_path)) return(invisible(FALSE))
-	
-      session$userData$current_session_files[[fname]] <- list(
-        name = fname,
-        datapath = norm_path,
-        path = norm_path,
-        persisted_path = norm_path
-      )
-      fm_debug("register", sprintf("%s -> %s", fname, norm_path))
-      invisible(TRUE)
+
+      invisible(ok)
     }
 
     unregister_session_file <- function(filename) {
-      ensure_session_registry()
-      fname <- as.character(filename %||% "")
-      if (!nzchar(fname)) return(invisible(FALSE))
-      session$userData$current_session_files[[fname]] <- NULL
-      invisible(TRUE)
+      ok <- fm_unregister_session_file(session, filename)
+      invisible(ok)
     }
   
     # Dosya uzantısına göre ikon + etiket HTML'i üretir
