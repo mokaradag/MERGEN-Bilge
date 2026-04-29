@@ -227,6 +227,7 @@ safe_source("R/helpers_file_pipeline.R",         encoding = "UTF-8")  # Dosya i�
 safe_source("R/helpers_files.R",                 encoding = "UTF-8")  # Dosya yardımcıları
 safe_source("R/helpers_file_manager_policy.R",   encoding = "UTF-8")  # Dosya Yönetimi seçim/yükleme politika yardımcıları
 safe_source("R/helpers_file_manager_table.R",    encoding = "UTF-8")  # Dosya Yönetimi tablo satırı yardımcıları
+safe_source("R/helpers_file_manager_refresh_guard.R", encoding = "UTF-8")  # Dosya Yönetimi refresh istek nesli koruması
 safe_source("R/helpers_chat_runtime.R",          encoding = "UTF-8")  # Sohbet çalışma zamanı
 safe_source("R/helpers_send_message_core.R",     encoding = "UTF-8")  # Mesaj yönlendirme + cleanup + MCP hazırlık yardımcıları
 safe_source("R/helpers_quick_action_intro_messages.R", encoding = "UTF-8")  # Hızlı işlem karşılama mesajları

@@ -386,16 +386,7 @@ fileManagerServer <- function(
   
   # Aynı oturumda arka arkaya tetiklenen dosya yenilemelerinde eski istek
   # daha sonra tamamlanırsa yeni state'i ezmesin.
-  refresh_request_seq <- 0L
-
-  next_refresh_request_id <- function() {
-    refresh_request_seq <<- refresh_request_seq + 1L
-    refresh_request_seq
-  }
-
-  is_latest_refresh_request <- function(request_id) {
-    identical(as.integer(request_id), as.integer(refresh_request_seq))
-  }
+  refresh_guard <- fm_create_refresh_request_guard()
 
   ensure_persisted_upload_index <- function(abs_path, display_name, uid) {
     if (is.null(abs_path) || !nzchar(abs_path) || !path_exists_relaxed(abs_path)) {
@@ -439,7 +430,7 @@ fileManagerServer <- function(
 		return(invisible(NULL))
 	  }
 
-	  request_id <- next_refresh_request_id()
+	  request_id <- refresh_guard$next_id()
 
 	  fm_debug("refresh_start", sprintf("trigger=%s request_id=%s", trigger, request_id))
 
@@ -454,7 +445,7 @@ fileManagerServer <- function(
 
 	  df <- try(mergen_list_user_files(uid), silent = TRUE)
 	  
-	  if (!is_latest_refresh_request(request_id)) {
+	  if (!refresh_guard$is_latest(request_id)) {
 		fm_debug("refresh_skip", sprintf(
 		  "trigger=%s request_id=%s eski kaldı; yeni yenileme isteği uygulanacak",
 		  trigger,

@@ -84,11 +84,15 @@ test_that("file manager tablo satırı üretimini helper dosyasına devreder", {
 
 test_that("file manager persisted refresh eski istekleri state'e uygulamıyor", {
   txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+  guard_txt <- .read_repo_text_file_manager_module("R/helpers_file_manager_refresh_guard.R")
 
-  expect_true(grepl("refresh_request_seq <- 0L", txt, fixed = TRUE))
-  expect_true(grepl("next_refresh_request_id <- function", txt, fixed = TRUE))
-  expect_true(grepl("is_latest_refresh_request <- function", txt, fixed = TRUE))
-  expect_true(grepl("request_id <- next_refresh_request_id\\(\\)", txt, perl = TRUE))
-  expect_true(grepl("!is_latest_refresh_request\\(request_id\\)", txt, perl = TRUE))
+  expect_true(grepl("fm_create_refresh_request_guard <- function", guard_txt, fixed = TRUE))
+  expect_true(grepl("refresh_guard <- fm_create_refresh_request_guard\\(\\)", txt, perl = TRUE))
+  expect_true(grepl("request_id <- refresh_guard\\$next_id\\(\\)", txt, perl = TRUE))
+  expect_true(grepl("!refresh_guard\\$is_latest\\(request_id\\)", txt, perl = TRUE))
   expect_true(grepl("refresh_error_stale", txt, fixed = TRUE))
+
+  expect_false(grepl("refresh_request_seq <- 0L", txt, fixed = TRUE))
+  expect_false(grepl("next_refresh_request_id <- function", txt, fixed = TRUE))
+  expect_false(grepl("is_latest_refresh_request <- function", txt, fixed = TRUE))
 })
