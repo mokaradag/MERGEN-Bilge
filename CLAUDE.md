@@ -137,6 +137,30 @@ The split is protected by:
 
 For future maintainability refactors, keep using the ratcheted approach: extract one coherent responsibility, preserve public function names, update `global.R`, add a focused contract test, run the full strict test suite, then tighten `test-maintainability-ratchet.R` only after `tests/scripts/maintainability_report.R` confirms the new baseline.
 
+### Proje/Kaynak Analizi filter modularization contract
+
+The Proje/Kaynak Analizi layer now has a focused filter-helper split. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_pk_analysis_core.R",      encoding = "UTF-8")
+safe_source("R/helpers_pk_analysis_filters.R",   encoding = "UTF-8")
+safe_source("R/module_proje_kaynak_analizi.R",   encoding = "UTF-8")
+```r
+
+Responsibilities:
+
+R/helpers_pk_analysis_core.R: pure PK analysis helpers such as column summaries, date conversion, UTF-8 normalization, SQL Unicode execution, and SQL Server identifier normalization.
+R/helpers_pk_analysis_filters.R: AI filter criteria extraction, stop-after-LLM guard, JSON filter parsing, smart dataframe filtering, and aggregation.
+R/module_proje_kaynak_analizi.R: Proje/Kaynak Analizi runtime orchestration, RLS, DB/query execution, module behavior, and fallback helper loading.
+
+Do not move extract_filter_criteria_from_prompt() or apply_smart_filters() back into R/module_proje_kaynak_analizi.R. Preserve their public function names because R/helpers_deep_analysis.R calls them directly.
+
+The split is protected by:
+
+tests/testthat/test-pk-analysis-filters-refactor-contract.R
+tests/testthat/test-pk-analysis-core-refactor-contract.R
+tests/testthat/test-pk-analysis-maintainability-contract.R
+
 ### File Manager modularization contract
 
 The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `global.R`:
