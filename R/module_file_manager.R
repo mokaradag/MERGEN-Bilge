@@ -498,7 +498,7 @@ fileManagerServer <- function(
 		  return(invisible(NULL))
 		}
 
-		module_values$files <- empty_files_df()
+		module_values$files <- fm_empty_files_df()
 		module_values$file_contents <- list()
 		module_values$files_in_context <- list()
 		session$userData$current_session_files <- list()
@@ -593,20 +593,8 @@ fileManagerServer <- function(
 	}
 
     # ---------- STATE ----------
-	empty_files_df <- function() {
-	  data.frame(
-		Dosya_Adi = character(0),
-		Boyut = character(0),
-		Tur = character(0),
-		Yuklenme_Tarihi = character(0),
-		Islemler = character(0),
-		Model_Baglam = character(0),   # NEW COLUMN (renders the checkbox)
-		stringsAsFactors = FALSE
-	  )
-	}
-		
     module_values <- reactiveValues(
-      files = empty_files_df(),
+      files = fm_empty_files_df(),
       file_contents = list(),
       file_id_to_delete = NULL,
       files_in_context = list()
@@ -709,70 +697,15 @@ fileManagerServer <- function(
       }, silent = TRUE)
     }
 	
-	build_file_actions_html <- function(file_id) {
-	  hidden_dl <- as.character(
-		tags$span(
-		  style = "display:none;",
-		  shiny::downloadLink(outputId = ns(paste0("download_", file_id)), label = "")
-		)
-	  )
-
-	  as.character(tags$div(
-		class = "file-actions",
-		tags$button(
-		  class = "file-action-btn file-view js-file-action",
-		  title = "Görüntüle",
-		  `data-action` = "view",
-		  `data-file-id` = file_id,
-		  icon("eye")
-		),
-		tags$button(
-		  class = "file-action-btn file-download js-download-btn",
-		  title = "İndir",
-		  `data-download-id` = file_id,
-		  icon("download")
-		),
-		tags$button(
-		  class = "file-action-btn file-delete js-file-action",
-		  title = "Sil",
-		  `data-action` = "delete",
-		  `data-file-id` = file_id,
-		  icon("trash")
-		),
-		HTML(hidden_dl)
-	  ))
-	}
-
-	build_attach_cell_html <- function(file_id, file_name) {
-	  as.character(tags$div(
-		class = "attach-cell",
-		tags$input(
-		  id = ns(paste0("attach_", file_id)),
-		  type = "checkbox",
-		  class = "attach-checkbox",
-		  `data-file-id` = file_id,
-		  `data-filename` = file_name,
-		  title = "Bu dosyayı model bağlamına ekle/çıkar",
-		  `aria-label` = "Model bağlamına ekle veya çıkar"
-		)
-	  ))
-	}
-
 	append_uploaded_file_row <- function(file_name, file_size, file_info, file_id) {
-	  ext <- tolower(tools::file_ext(file_name))
-	  actions <- build_file_actions_html(file_id)
-	  attach_cell <- build_attach_cell_html(file_id, file_name)
-
 	  module_values$files <- rbind(
 		module_values$files,
-		data.frame(
-		  Dosya_Adi = file_name,
-		  Boyut = paste(round((file_size %||% 0) / 1024, 2), "KB"),
-		  Tur = ext_icon_html(ext),
-		  Yuklenme_Tarihi = format_timestamp(file_info$datapath),
-		  Islemler = actions,
-		  Model_Baglam = attach_cell,
-		  stringsAsFactors = FALSE
+		fm_build_file_table_row(
+		  file_name = file_name,
+		  file_size = file_size,
+		  file_info = file_info,
+		  file_id = file_id,
+		  ns = ns
 		)
 	  )
 

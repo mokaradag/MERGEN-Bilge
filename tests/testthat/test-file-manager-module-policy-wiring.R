@@ -72,6 +72,16 @@ test_that("file manager kimlik ve saf biçimlendirme kararlarını helper üzeri
   ))
 })
 
+test_that("file manager tablo satırı üretimini helper dosyasına devreder", {
+  txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+
+  expect_true(grepl("fm_empty_files_df\\(\\)", txt, perl = TRUE))
+  expect_true(grepl("fm_build_file_table_row\\(", txt, perl = TRUE))
+  expect_false(grepl("build_file_actions_html <- function", txt, fixed = TRUE))
+  expect_false(grepl("build_attach_cell_html <- function", txt, fixed = TRUE))
+  expect_false(grepl("Dosya_Adi = character\\(0\\)", txt, perl = TRUE))
+})
+
 test_that("file manager persisted refresh eski istekleri state'e uygulamıyor", {
   txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
 
