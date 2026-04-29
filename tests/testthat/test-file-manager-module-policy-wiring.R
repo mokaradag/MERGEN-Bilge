@@ -95,4 +95,5 @@ test_that("file manager persisted refresh eski istekleri state'e uygulamıyor", 
   expect_false(grepl("refresh_request_seq <- 0L", txt, fixed = TRUE))
   expect_false(grepl("next_refresh_request_id <- function", txt, fixed = TRUE))
   expect_false(grepl("is_latest_refresh_request <- function", txt, fixed = TRUE))
+  expect_false(grepl("is_latest_refresh_request\\s*\\(", txt, perl = TRUE))
 })

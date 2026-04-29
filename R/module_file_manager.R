@@ -479,8 +479,8 @@ fileManagerServer <- function(
 	  ))
 	  previously_attached_names <- previously_attached_names[nzchar(previously_attached_names)]
 
-	  tryCatch({
-		if (!is_latest_refresh_request(request_id)) {
+	tryCatch({
+		if (!refresh_guard$is_latest(request_id)) {
 		  fm_debug("refresh_skip", sprintf(
 			"trigger=%s request_id=%s state uygulanmadan eski kaldı",
 			trigger,
@@ -562,7 +562,7 @@ fileManagerServer <- function(
 
 		fm_debug("refresh_done", sprintf("table rows=%d", nrow(module_values$files)))
 	  }, error = function(e) {
-		if (!is_latest_refresh_request(request_id)) {
+		if (!refresh_guard$is_latest(request_id)) {
 		  fm_debug("refresh_error_stale", sprintf(
 			"trigger=%s request_id=%s hata verdi ama eski kaldığı için state restore edilmedi: %s",
 			trigger,
