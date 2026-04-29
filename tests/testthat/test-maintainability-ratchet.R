@@ -91,7 +91,7 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 14L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 12L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 1468L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 1404L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 52L)
 
   actual_large_files <- sum(score_report$lines >= 800)
