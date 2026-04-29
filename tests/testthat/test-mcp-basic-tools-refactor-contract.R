@@ -58,6 +58,7 @@ local({
 
 test_that("MCP temel araçları ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_basic("R/helpers_mcp_tools.R")
+  bootstrap_txt <- .read_repo_text_quiet_mcp_basic("R/helpers_mcp_bootstrap.R")
   basic_txt <- .read_repo_text_quiet_mcp_basic("R/helpers_mcp_basic_tools.R")
   global_txt <- .read_repo_text_quiet_mcp_basic("global.R")
 
@@ -91,8 +92,13 @@ test_that("MCP temel araçları ayrı dosyada tutulur", {
   )
 
   expect_true(
-    grepl("R/helpers_mcp_basic_tools.R", tools_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_tools.R temel araç dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
+    grepl("R/helpers_mcp_bootstrap.R", tools_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_tools.R tekil source/test bağlamları için MCP bootstrap dosyasını güvenli şekilde yüklemelidir."
+  )
+
+  expect_true(
+    grepl("R/helpers_mcp_basic_tools.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_bootstrap.R temel araç dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
   )
 
   expect_true(

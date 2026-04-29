@@ -42,6 +42,7 @@ local({
     file.path(repo_root_for_tests, "R", "helpers_files.R"),
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_bootstrap.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_file_resolver.R")
@@ -54,6 +55,7 @@ local({
 
 test_that("MCP dosya çözümleyici ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_resolver("R/helpers_mcp_tools.R")
+  bootstrap_txt <- .read_repo_text_quiet_mcp_resolver("R/helpers_mcp_bootstrap.R")
   resolver_txt <- .read_repo_text_quiet_mcp_resolver("R/helpers_mcp_file_resolver.R")
   global_txt <- .read_repo_text_quiet_mcp_resolver("global.R")
 
@@ -89,8 +91,13 @@ test_that("MCP dosya çözümleyici ayrı dosyada tutulur", {
   )
 
   expect_true(
-    grepl("R/helpers_mcp_file_resolver.R", tools_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_tools.R izole source bağlamları için resolver dosyasını güvenli şekilde yüklemelidir."
+    grepl("R/helpers_mcp_bootstrap.R", tools_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_tools.R izole source bağlamları için MCP bootstrap dosyasını güvenli şekilde yüklemelidir."
+  )
+
+  expect_true(
+    grepl("R/helpers_mcp_file_resolver.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_bootstrap.R izole source bağlamları için resolver dosyasını güvenli şekilde yüklemelidir."
   )
 
   expect_true(

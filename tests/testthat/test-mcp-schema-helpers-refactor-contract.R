@@ -42,6 +42,7 @@ local({
     file.path(repo_root_for_tests, "R", "helpers_files.R"),
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_bootstrap.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_file_resolver.R"),
@@ -55,6 +56,7 @@ local({
 
 test_that("MCP şema ve argüman yardımcıları ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_tools.R")
+  bootstrap_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_bootstrap.R")
   schema_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_schema_helpers.R")
   global_txt <- .read_repo_text_quiet_mcp_schema("global.R")
 
@@ -91,17 +93,23 @@ test_that("MCP şema ve argüman yardımcıları ayrı dosyada tutulur", {
   )
 
   expect_true(
-    grepl("R/helpers_mcp_schema_helpers.R", tools_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_tools.R şema helper dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
+    grepl("R/helpers_mcp_bootstrap.R", tools_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_tools.R tekil source/test bağlamları için MCP bootstrap dosyasını güvenli şekilde yüklemelidir."
   )
 
   expect_true(
-    grepl('exists(".mcp_schema_helpers_path"', tools_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_tools.R .mcp_schema_helpers_path temizliğini değişken varsa yapmalıdır."
+    grepl("R/helpers_mcp_schema_helpers.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_bootstrap.R şema helper dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
+  )
+
+  expect_true(
+    grepl('exists(".mcp_schema_helpers_path"', bootstrap_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_bootstrap.R .mcp_schema_helpers_path temizliğini değişken varsa yapmalıdır."
   )
 
   source_order <- c(
     'safe_source("R/helpers_mcp_context.R"',
+    'safe_source("R/helpers_mcp_bootstrap.R"',
     'safe_source("R/helpers_mcp_tools.R"',
     'safe_source("R/helpers_mcp_table_readers.R"',
     'safe_source("R/helpers_mcp_file_resolver.R"',
@@ -121,7 +129,7 @@ test_that("MCP şema ve argüman yardımcıları ayrı dosyada tutulur", {
 
   expect_true(
     all(diff(positions) > 0L),
-    info = "global.R MCP source sırası context -> tools -> table_readers -> file_resolver -> schema_helpers olmalıdır."
+    info = "global.R MCP source sırası context -> bootstrap -> tools -> table_readers -> file_resolver -> schema_helpers olmalıdır."
   )
 })
 
