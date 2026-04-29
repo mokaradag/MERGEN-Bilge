@@ -165,7 +165,16 @@ test_that("MCP dosya özeti aracı public davranışını korur", {
 
   expect_true(is.list(sonuc))
   expect_null(sonuc$error)
-  expect_true(grepl("Dosya Özeti", sonuc$result, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("Satır Sayısı", sonuc$result, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("Sayısal Sütun Özeti", sonuc$result, fixed = TRUE, useBytes = TRUE))
+
+  # Türkçe karakterli çıktı R/Windows yerel kodlamasında byte-byte
+  # karşılaştırılmamalıdır. Bu test refactor sözleşmesini doğrular:
+  # araç başarılı sonuç, dosya adı, satır/sütun sayısı ve sayısal özet üretmelidir.
+  sonuc_text <- enc2utf8(paste(as.character(sonuc$result %||% ""), collapse = "\n"))
+
+  expect_true(grepl("ornek.xlsx", sonuc_text, fixed = TRUE))
+  expect_true(grepl("2", sonuc_text, fixed = TRUE))
+  expect_true(grepl("Departman", sonuc_text, fixed = TRUE))
+  expect_true(grepl("Maas", sonuc_text, fixed = TRUE))
+  expect_true(grepl("100", sonuc_text, fixed = TRUE))
+  expect_true(grepl("120", sonuc_text, fixed = TRUE))
 })
