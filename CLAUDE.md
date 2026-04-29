@@ -169,9 +169,12 @@ The File Manager layer is intentionally split to keep the large runtime module f
 
 ```r
 safe_source("R/helpers_file_manager_policy.R", encoding = "UTF-8")
+safe_source("R/helpers_file_manager_context_policy.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_table.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_refresh_guard.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_session_registry.R", encoding = "UTF-8")
+safe_source("R/helpers_file_manager_runtime.R", encoding = "UTF-8")
+safe_source("R/helpers_file_manager_storage.R", encoding = "UTF-8")
 safe_source("R/module_file_manager_ui.R", encoding = "UTF-8")
 safe_source("R/module_file_manager.R", encoding = "UTF-8")
 ```
@@ -179,11 +182,14 @@ safe_source("R/module_file_manager.R", encoding = "UTF-8")
 Responsibilities:
 
 * `R/helpers_file_manager_policy.R`: pure File Manager policy/helpers such as upload-size normalization, upload-size byte conversion, summarization/normal allowed extension policy, attach-rule hint text, File Manager user-id normalization, file-extension icon HTML, and file timestamp formatting.
+* `R/helpers_file_manager_context_policy.R`: pure File Manager model-context cleanup planning, including stale selection IDs, MCP Excel-only enforcement, and single-Excel selection planning.
 * `R/helpers_file_manager_table.R`: pure File Manager table helpers such as empty table schema, action button HTML, model-context checkbox HTML, and single-row table construction. This file must not mutate Shiny reactive state.
 * `R/helpers_file_manager_refresh_guard.R`: pure File Manager persisted-refresh request generation guard. This file owns the monotonically increasing request token used to prevent stale refreshes from applying older file state.
 * `R/helpers_file_manager_session_registry.R`: pure-ish File Manager session file registry helpers. This file owns `session$userData$current_session_files` entry shape, registry initialization, register/unregister behavior, and registry path normalization.
+* `R/helpers_file_manager_runtime.R`: File Manager server runtime helper factory. It preserves local helper names used by `fileManagerServer()` while keeping settings resolution, effective user-id resolution, debug logging, registry wrappers, parent attach/detach synchronization, and extension/toast helpers outside the server module body.
+* `R/helpers_file_manager_storage.R`: File Manager persistent storage helper factory. It owns user upload folder resolution, MCP-base path checks, user-folder listing, and persisted upload index synchronization.
 * `R/module_file_manager_ui.R`: public `fileManagerUI(id)` definition, File Manager UI layout, and browser-side upload-size guard.
-* `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, file table state mutation, attach/detach behavior, persisted file refresh, deletion/clear operations, and parent-session synchronization. Small pure decisions should delegate to File Manager helper files instead of being reimplemented inline.
+* `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, file table state mutation, attach/detach orchestration, persisted file refresh, deletion/clear operations, and parent-session synchronization. Small pure decisions should delegate to File Manager helper files instead of being reimplemented inline.
 
 Do not move `fileManagerUI()` back into `R/module_file_manager.R`. Do not duplicate upload-size, allowed-extension, attach-rule text, user-id placeholder handling, file-extension icon HTML, file timestamp formatting, or session file registry path/entry decisions inside the module when the helper already owns that policy.
 
@@ -192,6 +198,7 @@ The persisted-file refresh path uses a request-generation guard from `fm_create_
 This split is protected by:
 
 * `test-file-manager-policy-contract.R`
+* `test-file-manager-context-policy-contract.R`
 * `test-file-manager-table-contract.R`
 * `test-file-manager-refresh-guard-contract.R`
 * `test-file-manager-module-policy-wiring.R`

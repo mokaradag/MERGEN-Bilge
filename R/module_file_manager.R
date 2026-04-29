@@ -10,245 +10,77 @@ fileManagerServer <- function(
 ) {
   moduleServer(id, function(input, output, session) {
   ns <- session$ns
-  
-  # Settings_data yalnızca oturumdan gelen parametre üzerinden kullanılmalıdır.
-  # Global environment fallback'i çok kullanıcılı oturumlarda çapraz sızıntı riski yaratır.
-  safe_settings_data <- reactive({
-    if (!is.null(settings_data)) {
-      return(settings_data)
-    }
 
-    fm_debug("settings_missing", "settings_data parametresi verilmedi; NULL kullanılacak")
-    NULL
-  })
-  
-	get_summarization_mode <- function() {
-	  settings_obj <- safe_settings_data()
-	  if (is.null(settings_obj)) {
-		return(FALSE)
-	  }
+  runtime_helpers <- fm_create_server_runtime_helpers(
+    session = session,
+    user_id = user_id,
+    settings_data = settings_data,
+    session_files_reactive = session_files_reactive,
+    mcp_enabled_reactive = mcp_enabled_reactive,
+    ns = ns,
+    module_values_provider = function() module_values
+  )
 
-	  if (is.reactivevalues(settings_obj)) {
-		return(isTRUE(settings_obj$enable_summarization_tools))
-	  }
+  safe_settings_data <- runtime_helpers$safe_settings_data
+  get_summarization_mode <- runtime_helpers$get_summarization_mode
+  build_attach_rule_hint_text <- runtime_helpers$build_attach_rule_hint_text
+  update_attach_rule_hint <- runtime_helpers$update_attach_rule_hint
+  get_effective_user_id <- runtime_helpers$get_effective_user_id
+  module_user_id_chr <- runtime_helpers$module_user_id_chr
+  fm_debug <- runtime_helpers$fm_debug
+  ensure_session_registry <- runtime_helpers$ensure_session_registry
+  register_session_file <- runtime_helpers$register_session_file
+  unregister_session_file <- runtime_helpers$unregister_session_file
+  ext_icon_html <- runtime_helpers$ext_icon_html
+  get_summarization_allowed_extensions <- runtime_helpers$get_summarization_allowed_extensions
+  get_normal_allowed_extensions <- runtime_helpers$get_normal_allowed_extensions
+  resolve_allowed_extensions <- runtime_helpers$resolve_allowed_extensions
+  show_unsupported_extension_toast <- runtime_helpers$show_unsupported_extension_toast
+  get_file_by_id <- runtime_helpers$get_file_by_id
+  update_session_files <- runtime_helpers$update_session_files
+  attach_in_parent <- runtime_helpers$attach_in_parent
+  detach_in_parent <- runtime_helpers$detach_in_parent
+  format_timestamp <- runtime_helpers$format_timestamp
 
-	  if (is.list(settings_obj)) {
-		return(isTRUE(settings_obj$enable_summarization_tools))
-	  }
-
-	  FALSE
-	}
-	
-	build_attach_rule_hint_text <- function(mcp_enabled = FALSE,
-											summarization_mode = FALSE,
-											allow_summarization_text = FALSE) {
-	  fm_attach_rule_hint_text(
-		mcp_enabled = mcp_enabled,
-		summarization_mode = summarization_mode,
-		allow_summarization_text = allow_summarization_text
-	  )
-	}
-
-	update_attach_rule_hint <- function(summarization_mode = FALSE,
-										allow_summarization_text = FALSE) {
-	  shinyjs::html(
-		id = "attach_rule_hint",
-		html = build_attach_rule_hint_text(
-		  mcp_enabled = isTRUE(mcp_enabled_reactive()),
-		  summarization_mode = isTRUE(summarization_mode),
-		  allow_summarization_text = isTRUE(allow_summarization_text)
-		),
-		add = FALSE
-	  )
-	}
-
-	get_effective_user_id <- function() {
-	  if (exists("resolve_effective_user_id", mode = "function", inherits = TRUE)) {
-		resolved_uid <- resolve_effective_user_id(
-		  session = session,
-		  current_user_id = user_id
-		)
-		return(fm_normalize_user_id(resolved_uid))
-	  }
-
-	  session_uid <- fm_normalize_user_id(session$userData$user_id)
-	  if (fm_valid_user_id(session_uid)) {
-		return(session_uid)
-	  }
-
-	  provided_raw <- if (exists("resolve_runtime_value", mode = "function", inherits = TRUE)) {
-		resolve_runtime_value(user_id)
-	  } else if (is.function(user_id)) {
-		tryCatch(user_id(), error = function(e) NULL)
-	  } else {
-		user_id
-	  }
-
-	  provided_uid <- fm_normalize_user_id(provided_raw)
-	  if (fm_valid_user_id(provided_uid)) {
-		return(provided_uid)
-	  }
-
-	  "unknown"
-	}
-
-    module_user_id_chr <- function() {
-      get_effective_user_id()
-    }
-
-    fm_debug <- function(event, ...) {
-      parts <- vapply(list(...), function(x) {
-        if (length(x) == 0) return("")
-        paste(as.character(x), collapse = " ")
-      }, character(1))
-      msg <- trimws(paste(parts, collapse = " "))
-      cat(sprintf("[FILE_MANAGER][user:%s][%s] %s\n",
-                  module_user_id_chr() %||% "unknown",
-                  event %||% "event",
-                  if (nzchar(msg)) msg else "(no details)"))
-    }
-
-    fm_debug("init", sprintf("module booting (ns=%s)", ns("")))
-
-    ensure_session_registry <- function() {
-      initialized <- fm_ensure_session_registry(session)
-      if (isTRUE(initialized)) {
-        fm_debug("ensure_registry", "session registry initialized")
-      }
-      invisible(TRUE)
-    }
-
-	register_session_file <- function(filename, fpath) {
-      fname <- as.character(filename %||% "")
-      ok <- fm_register_session_file(session, filename, fpath)
-
-      if (isTRUE(ok)) {
-        entry <- session$userData$current_session_files[[fname]]
-        fm_debug("register", sprintf("%s -> %s", fname, entry$datapath %||% ""))
-      }
-
-      invisible(ok)
-    }
-
-    unregister_session_file <- function(filename) {
-      ok <- fm_unregister_session_file(session, filename)
-      invisible(ok)
-    }
-  
-    # Dosya uzantısına göre ikon + etiket HTML'i üretir
-	ext_icon_html <- function(ext) {
-	  fm_file_ext_icon_html(ext)
-	}
-  
-	get_summarization_allowed_extensions <- function() {
-	  fm_summarization_allowed_extensions()
-	}
-
-	get_normal_allowed_extensions <- function() {
-	  fm_normal_allowed_extensions()
-	}
-
-	resolve_allowed_extensions <- function(generate_message, summarization_mode) {
-	  fm_resolve_allowed_extensions(
-		generate_message = generate_message,
-		summarization_mode = summarization_mode
-	  )
-	}
-
-	show_unsupported_extension_toast <- function(file_ext, summarization_mode) {
-	  summarization_allowed <- get_summarization_allowed_extensions()
-	  normal_allowed <- get_normal_allowed_extensions()
-
-	  if (isTRUE(summarization_mode)) {
-		showToast(
-		  session,
-		  sprintf(
-			"Dosya Özetleme modunda sadece şu formatlar desteklenir: %s.",
-			paste(toupper(summarization_allowed), collapse = ", ")
-		  ),
-		  "warning"
-		)
-		return(invisible(TRUE))
-	  }
-
-	  showToast(
-		session,
-		sprintf(
-		  "'%s' uzantılı dosya desteklenmiyor. Desteklenen türler: %s.",
-		  toupper(file_ext),
-		  paste(toupper(normal_allowed), collapse = ", ")
-		),
-		"warning"
-	  )
-
-	  invisible(TRUE)
-	}
-  
-	# Get (id -> file object)
-	get_file_by_id <- function(fid) {
-	  module_values$file_contents[[fid]] %||% NULL
-	}
-
-	# Update parent session_files using the bridge we were given
-	attach_in_parent <- function(file_obj) {
-	  if (is.null(session_files_reactive)) return(invisible())
-	  update_session_files(function(cur) {
-			cur <- cur %||% list()
-			# Minimal payload is OK for Ekli Dosyalar badge; summary will arrive later
-			cur[[file_obj$name]] <- cur[[file_obj$name]] %||% list(name = file_obj$name)
-			cur
-	  })
-	  fm_debug("attach", sprintf("added %s to session context", file_obj$name))
-	}
-
-	detach_in_parent <- function(file_name) {
-	  if (is.null(session_files_reactive)) return(invisible())
-	  update_session_files(function(cur) {
-			cur <- cur %||% list()
-			cur[[file_name]] <- NULL
-			cur
-	  })
-	  fm_debug("detach", sprintf("removed %s from session context", file_name))
-	}
+  fm_debug("init", sprintf("module booting (ns=%s)", ns("")))
 	
 	# MCP ayarı değiştiğinde (Örn: Excel modu açıldığında) mevcut seçimleri doğrula
     observeEvent(mcp_enabled_reactive(), {
       if (isTRUE(mcp_enabled_reactive())) {
-        # 1. Mevcut seçili dosyaları kontrol et
-        attached_ids <- names(module_values$files_in_context)
-        removed_any <- FALSE
-        
-        for (fid in attached_ids) {
-           info <- module_values$file_contents[[fid]]
-           if (is.null(info)) next
-           
-           ext <- tolower(tools::file_ext(info$name))
-           # Excel değilse kaldır
-           if (!ext %in% c("xls", "xlsx")) {
-              module_values$files_in_context[[fid]] <- NULL
-              detach_in_parent(info$name)
-              # Arayüzdeki tiki kaldır
-              session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
-              removed_any <- TRUE
-           }
+        cleanup_plan <- fm_plan_mcp_context_cleanup(
+          file_contents = module_values$file_contents,
+          files_in_context = module_values$files_in_context
+        )
+
+        if (length(cleanup_plan$remove_ids) > 0L) {
+          for (fid in cleanup_plan$remove_ids) {
+            module_values$files_in_context[[fid]] <- NULL
+          }
+
+          for (fname in cleanup_plan$detached_names) {
+            detach_in_parent(fname)
+          }
+
+          session$sendCustomMessage(
+            ns("setAttachState"),
+            list(ids = cleanup_plan$remove_ids, checked = FALSE)
+          )
         }
-        
-        if (removed_any) {
-           showToast(session, "MCP Excel modu açıldığı için uyumsuz dosyalar seçimden kaldırıldı.", "warning")
+
+        if (length(cleanup_plan$non_excel_ids) > 0L) {
+          showToast(
+            session,
+            "MCP Excel modu açıldığı için uyumsuz dosyalar seçimden kaldırıldı.",
+            "warning"
+          )
         }
-        
-        # 2. Eğer birden fazla Excel dosyası seçiliyse, sadece birini bırak (MCP kuralı)
-        remaining <- names(module_values$files_in_context)
-        if (length(remaining) > 1) {
-           # İlkini tut, diğerlerini kaldır
-           to_remove <- remaining[-1]
-           for (fid in to_remove) {
-              module_values$files_in_context[[fid]] <- NULL
-              info <- module_values$file_contents[[fid]]
-              detach_in_parent(info$name)
-              session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
-           }
-           showToast(session, "MCP Excel modu tek dosya destekler. Fazla seçimler kaldırıldı.", "warning")
+
+        if (length(cleanup_plan$excess_ids) > 0L) {
+          showToast(
+            session,
+            "MCP Excel modu tek dosya destekler. Fazla seçimler kaldırıldı.",
+            "warning"
+          )
         }
       }
     }, ignoreInit = TRUE)
@@ -338,63 +170,19 @@ fileManagerServer <- function(
 	})
   
   # --- NEW: persistent storage helpers -----------------------------------------
-  get_user_upload_dir <- function() {
-    base <- getOption(
-      "mergen.mcp_base_dir",
-      Sys.getenv("MCP_FILES_BASE",
-                 normalizePath(file.path(getwd(), "mergen_uploads"),
-                               winslash = "/", mustWork = FALSE))
-    )
-    file.path(base, sprintf("user_%s", module_user_id_chr()))
-  }
-  
-  is_under_mcp_base <- function(p) {
-    if (is.null(p) || !nzchar(p)) return(FALSE)
-    base <- getOption("mergen.mcp_base_dir", Sys.getenv("MCP_FILES_BASE", ""))
-    if (!nzchar(base)) return(FALSE)
-    np <- tryCatch(normalizePath(p, winslash = "/", mustWork = FALSE), error = function(e) p)
-    nb <- tryCatch(normalizePath(base, winslash = "/", mustWork = FALSE), error = function(e) base)
-    startsWith(tolower(np), tolower(paste0(nb, "/"))) || identical(tolower(np), tolower(nb))
-  }
-    
-  list_user_folder_files <- function() {
-    udir <- get_user_upload_dir()
-    if (!dir.exists(udir)) return(character(0))
-    list.files(udir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE)
-  }
+  storage_helpers <- fm_create_server_storage_helpers(
+    module_user_id_chr = module_user_id_chr,
+    fm_debug = fm_debug
+  )
+
+  get_user_upload_dir <- storage_helpers$get_user_upload_dir
+  is_under_mcp_base <- storage_helpers$is_under_mcp_base
+  list_user_folder_files <- storage_helpers$list_user_folder_files
+  ensure_persisted_upload_index <- storage_helpers$ensure_persisted_upload_index
   
   # Aynı oturumda arka arkaya tetiklenen dosya yenilemelerinde eski istek
   # daha sonra tamamlanırsa yeni state'i ezmesin.
   refresh_guard <- fm_create_refresh_request_guard()
-
-  ensure_persisted_upload_index <- function(abs_path, display_name, uid) {
-    if (is.null(abs_path) || !nzchar(abs_path) || !path_exists_relaxed(abs_path)) {
-      return(invisible(FALSE))
-    }
-
-    if (is.null(uid) || !nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
-      return(invisible(FALSE))
-    }
-
-    ok <- tryCatch({
-      mergen_register_uploaded_file(
-        src_path = abs_path,
-        as_name = display_name,
-        user_id = uid,
-        persist_under_mcp_base = TRUE
-      )
-      TRUE
-    }, error = function(e) {
-      fm_debug("index_sync_error", sprintf("%s -> %s", display_name, conditionMessage(e)))
-      FALSE
-    })
-
-    if (isTRUE(ok)) {
-      fm_debug("index_sync", sprintf("%s -> %s", display_name, abs_path))
-    }
-
-    invisible(ok)
-  }
   
 	refresh_from_user_folder <- function(trigger = "manual") {
 	  uid <- module_user_id_chr()
@@ -655,18 +443,6 @@ fileManagerServer <- function(
     }
 
     # ---------- HELPERS ----------
-    format_timestamp <- function(path = NULL, fallback_time = Sys.time()) {
-      fm_format_file_timestamp(path = path, fallback_time = fallback_time)
-    }
-
-    update_session_files <- function(update_fn) {
-      if (is.null(session_files_reactive)) return(invisible())
-      try({
-        cur <- session_files_reactive()
-        session_files_reactive(update_fn(cur))
-      }, silent = TRUE)
-    }
-	
 	append_uploaded_file_row <- function(file_name, file_size, file_info, file_id) {
 	  module_values$files <- rbind(
 		module_values$files,

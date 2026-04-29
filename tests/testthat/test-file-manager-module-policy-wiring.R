@@ -97,3 +97,17 @@ test_that("file manager persisted refresh eski istekleri state'e uygulamıyor", 
   expect_false(grepl("is_latest_refresh_request <- function", txt, fixed = TRUE))
   expect_false(grepl("is_latest_refresh_request\\s*\\(", txt, perl = TRUE))
 })
+
+test_that("file manager context ve runtime sorumluluklarını helper dosyalarına devreder", {
+  txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+
+  expect_true(grepl("fm_create_server_runtime_helpers\\(", txt, perl = TRUE))
+  expect_true(grepl("fm_create_server_storage_helpers\\(", txt, perl = TRUE))
+  expect_true(grepl("fm_plan_mcp_context_cleanup\\(", txt, perl = TRUE))
+
+  expect_false(grepl("get_summarization_mode <- function", txt, fixed = TRUE))
+  expect_false(grepl("get_effective_user_id <- function", txt, fixed = TRUE))
+  expect_false(grepl("ensure_persisted_upload_index <- function", txt, fixed = TRUE))
+  expect_false(grepl("format_timestamp <- function", txt, fixed = TRUE))
+  expect_false(grepl("update_session_files <- function", txt, fixed = TRUE))
+})
