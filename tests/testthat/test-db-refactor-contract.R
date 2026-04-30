@@ -36,11 +36,13 @@
   if (is.na(pos) || pos < 0L) NA_integer_ else as.integer(pos)
 }
 
-test_that("DB bağlantı ve doğrulama dosyaları repoda var", {
+test_that("DB bağlantı, doğrulama ve sohbet okuma dosyaları repoda var", {
   repo_root <- resolve_repo_root_for_tests()
 
   expect_true(file.exists(file.path(repo_root, "R", "helpers_db_connection.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_db_validation.R")))
+  expect_true(file.exists(file.path(repo_root, "R", "helpers_chat_message_formatting.R")))
+  expect_true(file.exists(file.path(repo_root, "R", "helpers_db_chat_readers.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_database.R")))
 })
 
@@ -50,6 +52,8 @@ test_that("global.R DB dosyalarını doğru sırada source eder", {
   expected_order <- c(
     'safe_source("R/helpers_db_connection.R"',
     'safe_source("R/helpers_db_validation.R"',
+    'safe_source("R/helpers_chat_message_formatting.R"',
+    'safe_source("R/helpers_db_chat_readers.R"',
     'safe_source("R/helpers_database.R"',
     'safe_source("R/library_queries.R"',
     'safe_source("R/config_sql_loader.R"'
@@ -85,6 +89,8 @@ test_that("test bootstrap DB dosyalarını üretim sırasına uyumlu yükler", {
   expected_order <- c(
     '"helpers_db_connection.R"',
     '"helpers_db_validation.R"',
+    '"helpers_chat_message_formatting.R"',
+    '"helpers_db_chat_readers.R"',
     '"helpers_database.R"'
   )
 
@@ -161,6 +167,47 @@ test_that("helpers_db_validation.R beklenen doğrulama yardımcılarını içeri
   )
 })
 
+test_that("helpers_db_chat_readers.R beklenen sohbet okuma yardımcılarını içerir", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_chat_readers.R")
+
+  expected <- c(
+    "load_chats_preview_from_db <- function",
+    "load_chats_from_db <- function",
+    "safe_select_messages_with_reasoning <- function",
+    "load_chat_messages_from_db <- function",
+    "load_chat_messages_batch <- function",
+    "load_history_rows_batch <- function"
+  )
+
+  found <- vapply(
+    expected,
+    function(pattern) grepl(pattern, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )
+
+  expect_true(
+    all(found),
+    info = paste(
+      "helpers_db_chat_readers.R içinde eksik sohbet okuma fonksiyonları:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+})
+
+test_that("helpers_db_chat_readers.R etkinlik zamanına göre sohbet sıralama sözleşmesini korur", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_chat_readers.R")
+
+  expect_true(
+    grepl("COALESCE(MAX(m.MessageTimestamp), c.CreateTimestamp) DESC", txt, fixed = TRUE, useBytes = TRUE),
+    info = "Sohbet listeleme sorguları son etkinlik zamanına göre sıralanmalıdır."
+  )
+
+  expect_true(
+    grepl("last_message_timestamp %||% chat$timestamp", txt, fixed = TRUE, useBytes = TRUE),
+    info = "Toplu hidratasyon sıralaması last_message_timestamp değerini kullanmalıdır."
+  )
+})
+
 test_that("helpers_database.R bağlantı/doğrulama monolitini geri almıyor", {
   txt <- .read_repo_text_db_refactor_contract("R/helpers_database.R")
 
@@ -185,6 +232,34 @@ test_that("helpers_database.R bağlantı/doğrulama monolitini geri almıyor", {
     character(0),
     info = paste(
       "helpers_database.R içine taşınmış olması gereken fonksiyonlar geri dönmüş:",
+      paste(matched, collapse = ", ")
+    )
+  )
+})
+
+test_that("helpers_database.R sohbet okuma monolitini geri almıyor", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_database.R")
+
+  forbidden <- c(
+    "load_chats_preview_from_db <- function",
+    "load_chats_from_db <- function",
+    "safe_select_messages_with_reasoning <- function",
+    "load_chat_messages_from_db <- function",
+    "load_chat_messages_batch <- function",
+    "load_history_rows_batch <- function"
+  )
+
+  matched <- forbidden[vapply(
+    forbidden,
+    function(pattern) grepl(pattern, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    matched,
+    character(0),
+    info = paste(
+      "helpers_database.R içine sohbet okuma fonksiyonları geri dönmüş:",
       paste(matched, collapse = ", ")
     )
   )

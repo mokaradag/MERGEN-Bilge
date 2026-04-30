@@ -203,6 +203,7 @@ safe_source("R/config_claude_code_plugins.R", encoding = "UTF-8")  # Claude Code
 safe_source("R/helpers_db_connection.R",          encoding = "UTF-8")  # DB bağlantı, havuz ve worker bağlantısı
 safe_source("R/helpers_db_validation.R",          encoding = "UTF-8")  # DB giriş doğrulama yardımcıları
 safe_source("R/helpers_chat_message_formatting.R", encoding = "UTF-8") # DB mesajlarını UI mesaj nesnesine dönüştürme
+safe_source("R/helpers_db_chat_readers.R",        encoding = "UTF-8")  # Sohbet listeleme ve mesaj okuma DB işlemleri
 safe_source("R/helpers_database.R",               encoding = "UTF-8")  # Kullanıcı, sohbet ve mesaj DB işlemleri
 safe_source("R/library_queries.R",                encoding = "UTF-8")  # Hazır SQL sorguları
 safe_source("R/config_sql_loader.R",              encoding = "UTF-8")  # SQL yükleme yapılandırması

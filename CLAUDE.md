@@ -68,6 +68,7 @@ The database layer is now intentionally split into smaller responsibility-focuse
 safe_source("R/helpers_db_connection.R", encoding = "UTF-8")
 safe_source("R/helpers_db_validation.R", encoding = "UTF-8")
 safe_source("R/helpers_chat_message_formatting.R", encoding = "UTF-8")
+safe_source("R/helpers_db_chat_readers.R", encoding = "UTF-8")
 safe_source("R/helpers_database.R", encoding = "UTF-8")
 ```
 
@@ -76,9 +77,10 @@ Responsibilities:
 * `R/helpers_db_connection.R`: DB connection, release, health probe, worker-side DB connection, and DB parameter encoding normalization.
 * `R/helpers_db_validation.R`: validation helpers such as `validate_username()`, `validate_chat_title()`, and `validate_message_content()`.
 * `R/helpers_chat_message_formatting.R`: conversion of DB message rows into app message objects, including generated-image HTML, Chartlab rendering, markdown fallback, timestamps, and `ReasoningContent` propagation.
-* `R/helpers_database.R`: user/chat/message persistence and DB operations.
+* `R/helpers_db_chat_readers.R`: chat list loading, chat message hydration, reasoning-column fallback SELECTs, batch chat hydration, and lightweight history row reads. Chat list reads must preserve latest-activity ordering using message timestamps when available.
+* `R/helpers_database.R`: user/chat/message persistence, DB write/mutation operations, feedback operations, delete/clear/update helpers, and remaining DB orchestration.
 
-Do not move connection, validation, or message-formatting functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R` and `test-chat-message-formatting-refactor-contract.R`.
+Do not move connection, validation, message-formatting, or chat-reader functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R` and `test-chat-message-formatting-refactor-contract.R`.
 
 When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
 
