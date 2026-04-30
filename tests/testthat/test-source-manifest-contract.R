@@ -143,6 +143,9 @@ test_that("kritik yardımcılar modüllerden önce yükleniyor", {
   expect_lt(pos("R/helpers_mcp_chart_tools.R"), pos("R/helpers_chartlab.R"))
   expect_lt(pos("R/helpers_mcp_file_resolver.R"), pos("R/module_summarization.R"))
   expect_lt(pos("R/helpers_send_message_core.R"), pos("R/server_send_message.R"))
+  expect_false(is.na(pos("R/helpers_health_runtime_checks.R")))
+  expect_lt(pos("R/helpers_health_formatters.R"), pos("R/helpers_health_runtime_checks.R"))
+  expect_lt(pos("R/helpers_health_runtime_checks.R"), pos("R/helpers_health_checks.R"))
   expect_lt(pos("R/helpers_health_checks.R"), pos("R/module_health.R"))
 })
 

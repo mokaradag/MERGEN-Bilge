@@ -12,10 +12,28 @@
   }
   repo_root <- resolve_repo_root_for_tests()
   source(file.path(repo_root, "R", "helpers_health_formatters.R"), encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "helpers_health_runtime_checks.R"), encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_health_checks.R"), encoding = "UTF-8", local = globalenv())
 }
 
 .bootstrap_health_runtime_tests()
+
+test_that("runtime sağlık kontrol yardımcıları ayrı dosyadan public adlarla yüklenir", {
+  expected <- c(
+    "health_check_runtime_info",
+    "health_check_worker_info",
+    "health_check_package_sanity",
+    "health_check_windows_info",
+    "health_check_sso_mode",
+    "health_check_git_version",
+    "health_check_bilge_yolac"
+  )
+
+  expect_true(
+    all(vapply(expected, exists, logical(1), mode = "function")),
+    info = "Runtime sağlık kontrol fonksiyonları public adlarıyla yüklenmelidir."
+  )
+})
 
 test_that("runtime kontrolleri zorunlu alanları döndürür", {
   fake_perf <- list(get_active_session_count = function() 3L)

@@ -20,8 +20,10 @@ health_source_optional <- function(path) {
 
 # global.R kaynak sırası güncel değilse bile modül kendi bağımlılıklarını güvenli yükler.
 if (!exists("health_collect_checks", mode = "function") ||
-    !exists("health_status_pill", mode = "function")) {
+    !exists("health_status_pill", mode = "function") ||
+    !exists("health_check_runtime_info", mode = "function")) {
   health_source_optional("R/helpers_health_formatters.R")
+  health_source_optional("R/helpers_health_runtime_checks.R")
   health_source_optional("R/helpers_health_checks.R")
 }
 

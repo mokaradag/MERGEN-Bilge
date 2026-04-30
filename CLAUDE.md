@@ -317,8 +317,9 @@ healthServer(id, perf_tracker)
 Do not break existing callers of these functions.
 
 Implementation split (keep responsibilities scoped):
-- `R/helpers_health_checks.R`: pure/safe health-check logic without Shiny UI coupling.
 - `R/helpers_health_formatters.R`: status/severity normalization, secret-safe formatting, path-copy helpers, shared rendering helpers.
+- `R/helpers_health_runtime_checks.R`: runtime, SSO, paket, işletim sistemi/süreç, worker ve Bilge Yolaç sağlık kontrolleri.
+- `R/helpers_health_checks.R`: environment, storage, DB, LLM/service endpoint kontrolleri ve genel sağlık kontrol orkestrasyonu; Shiny UI coupling içermez.
 - `R/module_health_overview.R`: overview tab helpers.
 - `R/module_health_connectivity.R`: DB/LLM/TTS/STT/image connectivity helpers.
 - `R/module_health_storage.R`: storage/path/index/log/disk helpers.
