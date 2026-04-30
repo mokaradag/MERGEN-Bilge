@@ -188,9 +188,11 @@ safe_source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yard�
 # GRUP 2: Yapılandırma Dosyaları
 # Temel altyapıya bağımlıdır, uygulama genelinde kullanılan sabitleri tanımlar.
 # ------------------------------------------------------------------------------
-safe_source("R/config_sso.R",              encoding = "UTF-8")  # SSO yapılandırması ve küresel mod anahtarı
-safe_source("R/config_file_store.R",       encoding = "UTF-8")  # Dosya deposu altyapısı
-safe_source("R/config_characters.R",       encoding = "UTF-8")  # Karakter/persona tanımları
+safe_source("R/config_sso.R",                      encoding = "UTF-8")  # SSO yapılandırması ve küresel mod anahtarı
+safe_source("R/config_file_store.R",               encoding = "UTF-8")  # Dosya deposu temel altyapısı
+safe_source("R/config_file_store_index_mutation.R", encoding = "UTF-8") # Dosya deposu indeks mutasyonları
+safe_source("R/config_file_store_registry.R",      encoding = "UTF-8")  # Dosya deposu kayıt/çözümleme yardımcıları
+safe_source("R/config_characters.R",               encoding = "UTF-8")  # Karakter/persona tanımları
 safe_source("R/config_version_history.R",  encoding = "UTF-8")  # Sürüm geçmişi
 safe_source("R/config_api.R",              encoding = "UTF-8")  # API yapılandırması ve uç noktaları
 safe_source("R/config_claude_code.R",      encoding = "UTF-8")  # Claude Code yapılandırması

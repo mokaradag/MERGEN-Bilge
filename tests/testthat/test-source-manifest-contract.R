@@ -103,6 +103,22 @@ test_that("LLM/SSE/worker yükleme sırası korunuyor", {
   expect_lt(pos("R/server_handler_true_streaming.R"), pos("R/server_send_message.R"))
 })
 
+test_that("file store indeks/registry yardımcıları config dosyasından sonra yükleniyor", {
+  global_text <- .read_repo_text_manifest_contract("global.R")
+  paths <- .extract_safe_source_paths(global_text)
+
+  pos <- function(path) match(path, paths)
+
+  expect_false(is.na(pos("R/config_file_store.R")))
+  expect_false(is.na(pos("R/config_file_store_index_mutation.R")))
+  expect_false(is.na(pos("R/config_file_store_registry.R")))
+  expect_false(is.na(pos("R/config_characters.R")))
+
+  expect_lt(pos("R/config_file_store.R"), pos("R/config_file_store_index_mutation.R"))
+  expect_lt(pos("R/config_file_store_index_mutation.R"), pos("R/config_file_store_registry.R"))
+  expect_lt(pos("R/config_file_store_registry.R"), pos("R/config_characters.R"))
+})
+
 test_that("kritik yardımcılar modüllerden önce yükleniyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
   paths <- .extract_safe_source_paths(global_text)

@@ -84,6 +84,22 @@ Do not move connection, validation, message-formatting, or chat-reader functions
 
 When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
 
+### File Store registry/index modularization contract
+
+The file-store layer is split so that path/root initialization stays separate from upload registry mutation and lookup behavior. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/config_file_store.R",                encoding = "UTF-8")
+safe_source("R/config_file_store_index_mutation.R", encoding = "UTF-8")
+safe_source("R/config_file_store_registry.R",       encoding = "UTF-8")
+```
+
+Responsibilities:
+
+R/config_file_store.R: file-store root paths, low-level UTF-8 index load/save helpers, environment validation, memory management, and scheduler-related configuration.
+R/config_file_store_index_mutation.R: index write/mutation guard, upload registration, display-name repair, storage-name recovery, public global_register_file() wrapper, and index removal.
+R/config_file_store_registry.R: uploaded-file resolution, user upload directory resolution, display-name lookup, user file listing, stale index pruning, and filesystem fallback listing.
+
 ### Bilge Yolaç document extractor modularization contract
 
 The Bilge Yolaç document-processing layer now has a focused extractor split. Preserve this source order in `global.R`:
