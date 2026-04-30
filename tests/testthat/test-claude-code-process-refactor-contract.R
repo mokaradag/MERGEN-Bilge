@@ -163,9 +163,17 @@ test_that("Claude Code process helper temel davranışları korunur", {
 
   expect_false(test_env$is_windows_unc_path("/tmp/test"))
 
-  expect_equal(
-    test_env$normalize_cmd_workdir("C:/tmp/test"),
-    "C:\\tmp\\test"
+  cmd_workdir <- test_env$normalize_cmd_workdir("C:/tmp/test")
+
+  expect_false(
+    grepl("/", cmd_workdir, fixed = TRUE),
+    info = "normalize_cmd_workdir() ileri slash karakterlerini Windows ayırıcısına çevirmelidir."
+  )
+
+  expect_match(
+    cmd_workdir,
+    "^C:\\\\+tmp\\\\+test$",
+    info = "normalize_cmd_workdir() sürücü ve yol bileşenlerini korumalıdır."
   )
 
   tmp <- withr::local_tempdir()

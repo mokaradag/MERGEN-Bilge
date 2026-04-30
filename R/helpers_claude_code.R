@@ -11,6 +11,170 @@
 # --output-format json ile araç kullanımı ve kabuk komutlarını ayrıştırır
 # ------------------------------------------------------------------------------
 
+#' Claude Code CLI komutunu arka planda çalıştır
+#'
+#' @param prompt Kullanıcının gönderdiği komut/soru metni
+#' @param workdir Çalışma dizini (proje klasörü)
+#' @param model Kullanılacak model adı (boş ise varsayılan kullanılır)
+#' @param timeout_sec Zaman aşımı süresi (saniye)
+#' @param session_id Oturum kimliği (izolasyon için)
+#' @param cli_path Claude Code CLI çalıştırılabilir dosya yolu
+#' @return Liste: success, output, error, duration, tool_uses (araç kullanımları)
+run_claude_code <- function(prompt,
+                            workdir = getwd(),
+                            model = NULL,
+                            timeout_sec = 300L,
+                            session_id = NULL,
+                            cli_path = NULL) {
+
+  baslangic <- Sys.time()
+
+  # Girdi doğrulaması
+  if (!nzchar(trimws(prompt))) {
+    return(list(
+      success = FALSE,
+      output = "",
+      error = "Komut metni boş olamaz.",
+      duration = 0,
+      tool_uses = list(),
+      session_id = NULL
+    ))
+  }
+
+  # CLI yolunu çözümle (verilmediyse otomatik tespit et)
+  if (is.null(cli_path) || !nzchar(cli_path)) {
+    cli_path <- resolve_claude_cli_path(claude_code_config$cli_path)
+  }
+  if (is.null(cli_path)) {
+    return(list(
+      success = FALSE,
+      output = "",
+      error = "Claude Code CLI bulunamadı. Lütfen CLI yolunu kontrol edin.",
+      duration = 0,
+      tool_uses = list(),
+      session_id = NULL
+    ))
+  }
+
+  # Çalışma dizini kontrolü
+  if (!dir.exists(workdir)) {
+    return(list(
+      success = FALSE,
+      output = "",
+      error = paste0("Çalışma dizini bulunamadı: ", workdir),
+      duration = 0,
+      tool_uses = list(),
+      session_id = NULL
+    ))
+  }
+
+  # CLI argümanları oluştur
+  args <- c(
+    "--print",
+    "--output-format", "json",
+    "--dangerously-skip-permissions"
+  )
+
+  if (!is.null(model) && nzchar(model)) {
+    args <- c(args, "--model", model)
+  }
+
+  if (!is.null(session_id) && nzchar(session_id)) {
+    args <- c(args, "--resume", session_id)
+  }
+
+  args <- c(args, prompt)
+
+  komut <- build_processx_command(cli_path, args, workdir = workdir)
+
+  tryCatch({
+    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI çalıştırılıyor:",
+                   cli_path, paste(args[1:min(3, length(args))], collapse = " "), "..."))
+
+    proc <- processx::process$new(
+      command = komut$command,
+      args = komut$args,
+      env = komut$env,
+      wd = komut$wd %||% workdir,
+      stdout = "|",
+      stderr = "|",
+      cleanup = TRUE,
+      cleanup_tree = TRUE
+    )
+
+    proc$wait(timeout = timeout_sec * 1000)
+
+    if (proc$is_alive()) {
+      tryCatch(proc$kill(), error = function(e) NULL)
+      sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+      log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Zaman aşımı:", timeout_sec, "sn"))
+      return(list(
+        success = FALSE,
+        output = "",
+        error = paste0(
+          "İşlem zaman aşımına uğradı (", timeout_sec, " saniye). ",
+          "Daha kısa bir komut deneyin veya zaman aşımı süresini artırın."
+        ),
+        duration = round(sure, 1),
+        tool_uses = list(),
+        session_id = NULL
+      ))
+    }
+
+    stdout_metin <- ensure_utf8(proc$read_all_output())
+    stderr_metin <- ensure_utf8(proc$read_all_error())
+    cikis_kodu <- proc$get_exit_status()
+
+    sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+
+    if (identical(cikis_kodu, 0L)) {
+      log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Başarılı - Süre:",
+                     round(sure, 1), "sn"))
+
+      ayristirma <- parse_claude_code_json_output(stdout_metin)
+
+      list(
+        success = TRUE,
+        output = ayristirma$text_output,
+        error = "",
+        duration = round(sure, 1),
+        tool_uses = ayristirma$tool_uses,
+        session_id = ayristirma$session_id
+      )
+    } else {
+      hata_mesaji <- if (nzchar(stderr_metin)) stderr_metin else stdout_metin
+      temiz_log <- gsub("[{}]", "", substr(hata_mesaji, 1, 200))
+      log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "Hata kodu:", cikis_kodu,
+                     "- Mesaj:", temiz_log))
+
+      list(
+        success = FALSE,
+        output = stdout_metin,
+        error = hata_mesaji,
+        duration = round(sure, 1),
+        tool_uses = list(),
+        session_id = NULL
+      )
+    }
+
+  }, error = function(e) {
+    sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+    hata_metni <- conditionMessage(e)
+
+    temiz_hata <- gsub("[{}]", "", hata_metni)
+    log_error(paste(CLAUDE_CODE_LOG_PREFIX, "CLI hatası:", temiz_hata))
+
+    list(
+      success = FALSE,
+      output = "",
+      error = paste0("Claude Code çalıştırılırken hata oluştu: ", hata_metni),
+      duration = round(sure, 1),
+      tool_uses = list(),
+      session_id = NULL
+    )
+  })
+}
+
 #' Claude Code CLI'nin kurulu ve erişilebilir olup olmadığını kontrol eder
 #'
 #' @param cli_path Claude Code CLI yolu (NULL ise otomatik tespit)
