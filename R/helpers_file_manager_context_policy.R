@@ -30,8 +30,8 @@ fm_plan_mcp_context_cleanup <- function(file_contents,
   selected_ids <- names(files_in_context)
   selected_ids <- selected_ids[nzchar(selected_ids)]
 
-  excel_extensions <- tolower(.fm_context_chr(excel_extensions, default = ""))
-  excel_extensions <- unique(excel_extensions[nzchar(excel_extensions)])
+  excel_extensions <- trimws(tolower(as.character(excel_extensions)))
+  excel_extensions <- unique(excel_extensions[!is.na(excel_extensions) & nzchar(excel_extensions)])
   if (!length(excel_extensions)) {
     excel_extensions <- c("xls", "xlsx")
   }

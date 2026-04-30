@@ -39,35 +39,39 @@ test_that("file manager UI ve server upload limit kararını helper üzerinden a
   expect_true(grepl("max_mb <- fm_upload_limit_mb\\(\\)", server_txt, perl = TRUE))
 })
 
-test_that("file manager modülü attach ve uzantı policy kararlarını helper üzerinden alıyor", {
-  txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+test_that("file manager modülü attach ve uzantı policy kararlarını runtime helper üzerinden alıyor", {
+  server_txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+  runtime_txt <- .read_repo_text_file_manager_module("R/helpers_file_manager_runtime.R")
 
-  expect_true(grepl("fm_attach_rule_hint_text\\(", txt, perl = TRUE))
-  expect_true(grepl("fm_summarization_allowed_extensions\\(\\)", txt, perl = TRUE))
-  expect_true(grepl("fm_normal_allowed_extensions\\(\\)", txt, perl = TRUE))
-  expect_true(grepl("fm_resolve_allowed_extensions\\(", txt, perl = TRUE))
+  expect_true(grepl("fm_create_server_runtime_helpers\\(", server_txt, perl = TRUE))
+  expect_true(grepl("fm_attach_rule_hint_text\\(", runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_summarization_allowed_extensions\\(\\)", runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_normal_allowed_extensions\\(\\)", runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_resolve_allowed_extensions\\(", runtime_txt, perl = TRUE))
 
   expect_false(
     grepl(
       "build_attach_rule_hint_text[\\s\\S]*Seçim kuralı: MCP açıkken yalnızca 1 dosya eklenebilir\\.",
-      txt,
+      server_txt,
       perl = TRUE
     )
   )
 })
 
-test_that("file manager kimlik ve saf biçimlendirme kararlarını helper üzerinden alıyor", {
-  txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+test_that("file manager kimlik ve saf biçimlendirme kararlarını runtime helper üzerinden alıyor", {
+  server_txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+  runtime_txt <- .read_repo_text_file_manager_module("R/helpers_file_manager_runtime.R")
 
-  expect_true(grepl("resolve_effective_user_id\\(", txt, perl = TRUE))
-  expect_true(grepl("fm_normalize_user_id\\(", txt, perl = TRUE))
-  expect_true(grepl("fm_valid_user_id\\(uid\\)", txt, perl = TRUE))
-  expect_true(grepl("fm_file_ext_icon_html\\(ext\\)", txt, perl = TRUE))
-  expect_true(grepl("fm_format_file_timestamp\\(", txt, perl = TRUE))
+  expect_true(grepl("fm_create_server_runtime_helpers\\(", server_txt, perl = TRUE))
+  expect_true(grepl("resolve_effective_user_id\\(", runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_normalize_user_id\\(", runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_valid_user_id\\(", runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_file_ext_icon_html\\(ext\\)", runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_format_file_timestamp\\(", runtime_txt, perl = TRUE))
 
   expect_false(grepl(
     "session_uid\\s+<-\\s+session\\$userData\\$user_id\\s*%\\|\\|%",
-    txt,
+    server_txt,
     perl = TRUE
   ))
 })
