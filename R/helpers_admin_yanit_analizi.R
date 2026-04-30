@@ -543,21 +543,21 @@ admin_yanit_zaman_ui <- function(ns) {
           ),
           highcharter::highchartOutput(ns("ya_saatlik_chart"), height = "320px")
         )
-      )
-    ),
-    column(
-      width = 6,
-      div(
-        class = "analytics-card",
-        style = "min-height: 400px;",
+      ),
+      column(
+        width = 6,
         div(
-          class = "card-title-row",
-          h4(class = "card-title", icon("users"), " Kullanıcı Bazlı Geri Bildirim"),
-          admin_create_info_button("En çok geri bildirim veren kullanıcılar ve beğeni oranları.")
-        ),
-        div(
-          class = "table-container scrollable-table-equal",
-          DT::DTOutput(ns("ya_kullanici_tablo"))
+          class = "analytics-card",
+          style = "min-height: 400px;",
+          div(
+            class = "card-title-row",
+            h4(class = "card-title", icon("users"), " Kullanıcı Bazlı Geri Bildirim"),
+            admin_create_info_button("En çok geri bildirim veren kullanıcılar ve beğeni oranları.")
+          ),
+          div(
+            class = "table-container scrollable-table-equal",
+            DT::DTOutput(ns("ya_kullanici_tablo"))
+          )
         )
       )
     )

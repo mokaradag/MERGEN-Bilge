@@ -127,26 +127,47 @@ test_that("Yanıt analizi veri ve UI yardımcıları modül dosyasına geri taş
 
 test_that("Yanıt analizi UI sözleşmesi Türkçe metinleri ve output ID'lerini korur", {
   helper_text <- .read_admin_yanit_refactor_text("R/helpers_admin_yanit_analizi.R")
+  module_text <- .read_admin_yanit_refactor_text("R/module_admin_yanit_analizi.R")
 
-  expected_texts <- c(
+  expected_helper_texts <- c(
     "Toplam Geri Bildirim",
     "Beğeni Oranı",
     "Beğenmeme",
-    "Etiket & Yorum Analizi",
+    "Etiket Dağılımı (Ağaç Haritası)",
     "Saat × Gün Isı Haritası",
     "Kullanıcı Bazlı Geri Bildirim"
   )
 
-  missing_texts <- expected_texts[
-    !vapply(expected_texts, function(pattern) {
+  missing_helper_texts <- expected_helper_texts[
+    !vapply(expected_helper_texts, function(pattern) {
       grepl(pattern, helper_text, fixed = TRUE)
     }, logical(1))
   ]
 
   expect_equal(
-    missing_texts,
+    missing_helper_texts,
     character(0),
-    info = paste("Yanıt Analizi helper dosyasında beklenen Türkçe UI metinleri eksik:", paste(missing_texts, collapse = ", "))
+    info = paste("Yanıt Analizi helper dosyasında beklenen Türkçe UI metinleri eksik:", paste(missing_helper_texts, collapse = ", "))
+  )
+
+  expected_public_ui_texts <- c(
+    "Yanıt Geri Bildirimi Analizi",
+    "Genel Bakış",
+    "Model Performansı",
+    "Etiket & Yorum Analizi",
+    "Zaman & Kullanıcı Analizi"
+  )
+
+  missing_public_ui_texts <- expected_public_ui_texts[
+    !vapply(expected_public_ui_texts, function(pattern) {
+      grepl(pattern, module_text, fixed = TRUE)
+    }, logical(1))
+  ]
+
+  expect_equal(
+    missing_public_ui_texts,
+    character(0),
+    info = paste("Yanıt Analizi public modül UI metinleri eksik:", paste(missing_public_ui_texts, collapse = ", "))
   )
 
   expected_output_ids <- c(
