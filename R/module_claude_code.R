@@ -111,27 +111,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     })
 
     # --- Aktif karakter bilgisini al ---
-    get_active_character <- reactive({
-      karakter_id <- "mergen"
-      if (!is.null(settings_data) && !is.null(settings_data$selected_character)) {
-        secili <- settings_data$selected_character
-        if (!is.null(secili) && nzchar(secili)) {
-          karakter_id <- secili
-        }
-      }
-
-      # Karakter verilerinden renk bilgisini al
-      karakterler <- get_characters_data()
-      secili <- NULL
-      for (s in karakterler$styles) {
-        if (s$id == karakter_id) {
-          secili <- s
-          break
-        }
-      }
-      if (is.null(secili)) secili <- karakterler$styles[[1]]
-      secili
-    })
+    get_active_character <- cc_create_active_character_reactive(settings_data)
 
     # --- Karakter değiştiğinde temayı güncelle ---
     observe({
@@ -160,30 +140,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     })
 
     # --- Kullanıcı adını belirle ---
-    kullanici_adi <- reactive({
-      # Önce parametre olarak gelen adı dene
-      if (!is.null(user_first_name)) {
-        ad <- if (is.function(user_first_name)) {
-          tryCatch(user_first_name(), error = function(e) NULL)
-        } else if (is.reactive(user_first_name)) {
-          user_first_name()
-        } else {
-          user_first_name
-        }
-
-        ad <- as.character(ad %||% "")[1]
-        if (nzchar(ad)) return(ad)
-      }
-      # session$userData'dan dene
-      ad <- session$userData$user_first_name
-      if (!is.null(ad) && nzchar(ad)) return(ad)
-      # user_config'den dene
-      uc <- session$userData$user_config
-      if (!is.null(uc) && !is.null(uc$first_name) && nzchar(uc$first_name)) return(uc$first_name)
-      if (!is.null(uc) && !is.null(uc$name) && nzchar(uc$name)) return(uc$name)
-      # Varsayılan
-      "Siz"
-    })
+    kullanici_adi <- cc_create_user_first_name_reactive(
+      session = session,
+      user_first_name = user_first_name
+    )
 
     # --- Bağlantı Durumu Rozeti ---
     output$connection_status_badge <- renderUI({
