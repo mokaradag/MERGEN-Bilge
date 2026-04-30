@@ -31,8 +31,15 @@
 }
 
 .file_store_has_definition <- function(txt, name) {
-  pattern <- paste0("(^|\\n)", name, "\\s*<-\\s*function\\s*\\(")
-  grepl(pattern, txt, perl = TRUE)
+  txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
+
+  pattern <- paste0(
+    "(?:^|\\n)\\s*",
+    name,
+    "\\s*<-\\s*function\\s*\\("
+  )
+
+  isTRUE(grepl(pattern, txt, perl = TRUE, useBytes = TRUE))
 }
 
 .file_store_function_count <- function(txt) {
