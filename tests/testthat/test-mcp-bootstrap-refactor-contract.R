@@ -43,7 +43,8 @@ local({
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_bootstrap.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R")
+    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_chart_tools.R")
   )
 
   for (dosya in gerekli_dosyalar) {
@@ -127,7 +128,8 @@ test_that("MCP bootstrap source edildiğinde worker ortamı sözleşmesi hazır 
     "analyze_uploaded_file",
     "get_column_statistics",
     "sql_query_uploaded_file",
-    "safe_has_duckdb"
+    "safe_has_duckdb",
+    "prepare_chart_data"
   )
 
   for (fn in expected_functions) {

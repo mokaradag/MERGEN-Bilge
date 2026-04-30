@@ -334,6 +334,31 @@ if (exists(".mcp_basic_tools_path", inherits = FALSE)) {
   rm(.mcp_basic_tools_path)
 }
 
+if (!exists("prepare_chart_data", envir = helpers_mcp_tools, inherits = FALSE)) {
+  .mcp_chart_tools_path <- mcp_tools_find_support_file("R/helpers_mcp_chart_tools.R")
+
+  if (!nzchar(.mcp_chart_tools_path)) {
+    stop(
+      sprintf(
+        "R/helpers_mcp_chart_tools.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
+        getwd()
+      ),
+      call. = FALSE
+    )
+  }
+
+  source(.mcp_chart_tools_path, encoding = "UTF-8", local = globalenv())
+}
+
+if (!exists("prepare_chart_data", envir = helpers_mcp_tools, inherits = FALSE) ||
+    !is.function(helpers_mcp_tools$prepare_chart_data)) {
+  stop("MCP grafik aracı sözleşmesi eksik.", call. = FALSE)
+}
+
+if (exists(".mcp_chart_tools_path", inherits = FALSE)) {
+  rm(.mcp_chart_tools_path)
+}
+
 mcp_tools_bootstrap_ready <- function() {
   if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) {
     return(FALSE)
@@ -364,7 +389,8 @@ mcp_tools_bootstrap_ready <- function() {
     "analyze_uploaded_file",
     "get_column_statistics",
     "sql_query_uploaded_file",
-    "safe_has_duckdb"
+    "safe_has_duckdb",
+    "prepare_chart_data"
   )
 
   all(vapply(required_functions, function(fn) {

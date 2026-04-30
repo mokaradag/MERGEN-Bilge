@@ -220,6 +220,7 @@ safe_source("R/helpers_mcp_table_readers.R",     encoding = "UTF-8")  # MCP Exce
 safe_source("R/helpers_mcp_file_resolver.R",     encoding = "UTF-8")  # MCP oturum dosya kayıt defteri ve dosya çözümleme
 safe_source("R/helpers_mcp_schema_helpers.R",    encoding = "UTF-8")  # MCP dosya şeması, kolon eşleştirme ve argüman yardımcıları
 safe_source("R/helpers_mcp_basic_tools.R",       encoding = "UTF-8")  # MCP temel dosya/istatistik/SQL araçları
+safe_source("R/helpers_mcp_chart_tools.R",       encoding = "UTF-8")  # MCP grafik veri hazırlama aracı
 safe_source("R/helpers_chartlab.R",              encoding = "UTF-8")  # Grafik özellikleri
 safe_source("R/helpers_image_gallery.R",         encoding = "UTF-8")  # Görsel galeri işlemleri
 safe_source("R/helpers_preview.R",               encoding = "UTF-8")  # Dosya önizleme
