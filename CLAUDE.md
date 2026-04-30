@@ -143,9 +143,9 @@ The split is protected by:
 
 For future maintainability refactors, keep using the ratcheted approach: extract one coherent responsibility, preserve public function names, update `global.R`, add a focused contract test, run the full strict test suite, then tighten `test-maintainability-ratchet.R` only after `tests/scripts/maintainability_report.R` confirms the new baseline.
 
-### Project/Resource Analysis filter modularization contract
+### Proje/Kaynak Analizi filter modularization contract
 
-The Project/Resource Analysis layer now has a focused filter-helper split. Preserve this source order in `global.R`:
+The Proje/Kaynak Analizi layer now has a focused filter-helper split. Preserve this source order in `global.R`:
 
 ```r
 safe_source("R/helpers_pk_analysis_core.R",      encoding = "UTF-8")
@@ -157,7 +157,7 @@ Responsibilities:
 
 R/helpers_pk_analysis_core.R: pure PK analysis helpers such as column summaries, date conversion, UTF-8 normalization, SQL Unicode execution, and SQL Server identifier normalization.
 R/helpers_pk_analysis_filters.R: AI filter criteria extraction, stop-after-LLM guard, JSON filter parsing, smart dataframe filtering, and aggregation.
-R/module_proje_kaynak_analizi.R: Project/Resource Analysis runtime orchestration, RLS, DB/query execution, module behavior, and fallback helper loading.
+R/module_proje_kaynak_analizi.R: Proje/Kaynak Analizi runtime orchestration, RLS, DB/query execution, module behavior, and fallback helper loading.
 
 Do not move extract_filter_criteria_from_prompt() or apply_smart_filters() back into R/module_proje_kaynak_analizi.R. Preserve their public function names because R/helpers_deep_analysis.R calls them directly.
 
@@ -272,7 +272,7 @@ File upload size enforcement is layered and must remain that way:
 * `shiny.maxRequestSize` provides request-level protection,
 * `validate_uploaded_file()` provides the final server-side trust boundary.
 
-The default production policy is 25 MB per file. Do not remove the browser-side guard. The browser-side guard is implemented in `R/module_file_manager_ui.R`; keep it there unless the File Manager UI split is intentionally redesigned. Without it, large files may still make the File Management page appear frozen because Shiny begins uploading immediately when a user selects or drops a file, before server-side validation can show a toast.
+The default production policy is 25 MB per file. Do not remove the browser-side guard. The browser-side guard is implemented in `R/module_file_manager_ui.R`; keep it there unless the File Manager UI split is intentionally redesigned. Without it, large files may still make the Dosya Yönetimi page appear frozen because Shiny begins uploading immediately when a user selects or drops a file, before server-side validation can show a toast.
 
 ---
 
@@ -605,7 +605,7 @@ Expected successful result:
 
 ---
 
-## Reasoning Flow for Thinking=TRUE Models (New Standard)
+## Reasoning Flow for Düşünüyorum=TRUE Models (New Standard)
 
 In this codebase, the pre-response/in-response experience for models with thinking capability has been updated.
 
@@ -613,10 +613,10 @@ In this codebase, the pre-response/in-response experience for models with thinki
 - If `local_model_capabilities[[model]]$thinking == TRUE`, show the premium reasoning card instead of the classic typing animation.
 - The card reuses the existing `#typing-animation-wrapper` container; it is opened with `premiumReasoningStart` on both thinking and non-thinking model paths.
 - On the server side, send `premiumReasoningStart` at the beginning, `premiumReasoningStreamStart` during streaming, and `premiumReasoningReset` or `premiumReasoningError` on completion/error.
-- The old “Thinking” snake animation has been fully removed (including `typing-indicator.css`, `typing_animation.js`, `ui.R` registration, and `app_core.js` cleanup).
+- The old “Düşünüyorum” snake animation has been fully removed (including `typing-indicator.css`, `typing_animation.js`, `ui.R` registration, and `app_core.js` cleanup).
 - For non-thinking models, the `simulated` flag (inverse of `thinking_model_active`) is sent only when reasoning content is not expected; if real `reasoning_delta` is absent, synthetic phase text is shown sequentially on the client.
 - Instead of the classic ring, insert an empty panel shell with `data-panel-takeover="true"`.
-- In tools that depend on a thinking model (such as Coding Support/Excel Analysis), the panel model label must be derived from the `tool-resolved model`.
+- In tools that depend on a thinking model (such as Kodlama Desteği/Excel Analizi), the panel model label must be derived from the `tool-resolved model`.
 
 ### UI/JS principles
 - State machine: `idle → preparing → thinking → streaming → interrupted/error`
@@ -649,7 +649,7 @@ request_overrides = list(
 ```
 `apply_model_request_overrides(body, selected_model)` must be applied after constructing the true SSE streaming body and before sending the HTTP request.
 The same helper must also be applied on non-streaming LLM paths; otherwise streaming and non-streaming behavior diverges.
-`R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Thinking/reasoning models.
+`R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Düşünüyorum/reasoning models.
 For helper visibility on the true streaming future worker side, keep `apply_model_request_overrides = apply_model_request_overrides` in `tracked_future_promise(..., globals = list(...))` within `R/server_handler_true_streaming.R`.
 Kimi-style models may send reasoning as `delta$reasoning`; Gemma-style models may fall back to normal `delta$content` streaming with empty `ReasoningContent` when the override is missing.
 
@@ -1057,21 +1057,21 @@ Wiring and runtime flow. Welcome recency correctness depends on **both** refresh
 `ui.R` defines the main sidebar and tab structure.
 
 ### Main navigation
-- `Main Chat`
-- `Chat Management`
-  - `Chat History`
-  - `Saved Chats`
-  - `Image Gallery`
+- `Ana Söyleşi`
+- `Söyleşi Yönetimi`
+  - `Söyleşi Geçmişi`
+  - `Kayıtlı Söyleşiler`
+  - `Görsel Galerisi`
 - `Bilge Yolaç`
-- `File Management`
+- `Dosya Yönetimi`
 - `Ayarlar`
-  - `Personalization`
-  - `Configuration`
+  - `Kişiselleştirme`
+  - `Yapılandırma`
 - `Destek`
-  - `Help Center`
+  - `Yardım Merkezi`
   - `Geri Bildirim & Hata`
   - `Yenilikler`
-  - `About`
+  - `Hakkında`
 - dynamic admin menu for authorized users
 
 ### UI assets
@@ -1168,11 +1168,11 @@ Current quick actions:
 
 - `Process Management System`
 - `Application Expert`
-- `Project and Resource Analysis`
-- `Excel Analysis`
-- `Image Generation`
-- `Coding Assistance`
-- `Summarization Assistance`
+- `Proje ve Kaynak Analizi`
+- `Excel Analizi`
+- `Görsel Oluşturma`
+- `Kodlama Desteği`
+- `Özetleme Desteği`
 
 Each action includes:
 
@@ -1351,10 +1351,10 @@ Support area is coordinated by `R/module_destek.R`.
 
 Subpages:
 
-- `Help Center` - `R/module_destek_yardim.R`
+- `Yardım Merkezi` - `R/module_destek_yardim.R`
 - `Geri Bildirim & Hata` - `R/module_destek_geri_bildirim.R` and `R/module_destek_hata_bildir.R`
 - `Yenilikler` - `R/module_destek_surum.R`
-- `About` - `R/module_destek_hakkinda.R`
+- `Hakkında` - `R/module_destek_hakkinda.R`
 
 ### Knowledge base
 `ai_rehber.md` is used as the help knowledge base and as AI Expert reference material.
@@ -1519,9 +1519,9 @@ After a run completes (both document-summary and standard streaming paths), `col
 ### Model tiers
 Defined in `R/config_claude_code.R`:
 
-- `Fast`
+- `Hızlı`
 - `Dengeli`
-- `Powerful`
+- `Güçlü`
 
 ### Streaming notes
 The streaming UI renders:
@@ -1574,8 +1574,8 @@ Each plugin lives in `bilge_yolac_plugins/<plugin-name>/` and follows this layou
 | `agents/` | `agents` | Ajanlar |
 | `skills/` | `skills` | Yetenekler |
 | `hooks/` | `hooks` | Kancalar |
-| `mcp/` | `mcp_servers` | MCP Servers |
-| `templates/` | `templates` | Templates |
+| `mcp/` | `mcp_servers` | MCP Sunucuları |
+| `templates/` | `templates` | Şablonlar |
 
 If a new component type is added, update BOTH:
 1. `claude_code_plugin_bilesenler` in `R/config_claude_code_plugins.R`
@@ -1845,7 +1845,7 @@ Feedback and bug reporting.
 Version / release notes.
 
 ### `destek_hakkinda`
-About page / user guide.
+Hakkında page / user guide.
 
 ### `health`
 Health monitor, admin-facing.
@@ -1961,7 +1961,7 @@ Loading a saved chat can accidentally route the user back into a stale welcome s
 
 ### 6A) Welcome recency invariants
 - Welcome recent list represents most-recent **activity**, not just creation time.
-- On transitions like `New Chat`, saved chat state must be refreshed before welcome re-render.
+- On transitions like `Yeni Söyleşi`, saved chat state must be refreshed before welcome re-render.
 - Recency ordering should prefer `last_message_timestamp` and use creation timestamp only as fallback.
 
 ### 6B) Saved-chat state freshness regressions
@@ -1975,10 +1975,10 @@ The chat stream and Bilge Yolaç stream both have fragile incremental rendering 
 Streaming and non-streaming flows may not behave identically. Do not assume other async flows are safe just because one flow works.
 
 Especially in non-streaming LLM, image-generation, and similar worker-based flows:
-- `tracked_future_promise(...)` kullanılmalı
-- gerekli bağımlılıklar worker'a taşınmalı
-- reaktif nesneler önceden düz değerlere indirgenmeli
-- VM + SSO + Ctrl+Enter senaryosu düşünülmelidir
+- `tracked_future_promise(...)` should be used
+- required dependencies should be transferred to the worker
+- reactive objects should be reduced to plain values beforehand
+- the VM + SSO + Ctrl+Enter scenario should be considered
 
 ### 8A) Startup guards must match their execution context
 
@@ -2094,7 +2094,7 @@ After changing anything non-trivial, test:
 - stream response,
 - follow-up actions render,
 - export/copy still works.
-- regression check: finish a chat, click `New Chat`, and verify the just-finished chat appears immediately in welcome recent top-3 without manual refresh.
+- regression check: finish a chat, click `Yeni Söyleşi`, and verify the just-finished chat appears immediately in welcome recent top-3 without manual refresh.
 
 ### Unit tests (helper / decision-logic changes)
 For helper or decision-logic patches, run the unit test suite from repository root. Minimum command:
