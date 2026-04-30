@@ -250,6 +250,7 @@ safe_source("R/helpers_ai_expert.R",             encoding = "UTF-8")  # AI Uzman
 safe_source("R/helpers_claude_code_upload_folder.R", encoding = "UTF-8") # Bilge Yolaç yükleme klasörü yardımcıları
 safe_source("R/helpers_claude_code_model_config.R", encoding = "UTF-8") # Bilge Yolaç model/settings yardımcıları
 safe_source("R/helpers_claude_code_session_context.R", encoding = "UTF-8") # Bilge Yolaç oturum bağlamı yardımcıları
+safe_source("R/helpers_claude_code_process.R",   encoding = "UTF-8")  # Bilge Yolaç processx/UTF-8/JSON yardımcıları
 safe_source("R/helpers_claude_code.R",           encoding = "UTF-8")  # Claude Code CLI yardımcıları
 safe_source("R/helpers_claude_code_streaming.R", encoding = "UTF-8")  # Claude Code canlı akış desteği
 safe_source("R/helpers_claude_code_formatters.R", encoding = "UTF-8") # Claude Code HTML biçimlendiriciler

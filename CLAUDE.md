@@ -108,6 +108,7 @@ Bilge Yolaç is now split into smaller responsibility-focused files. Preserve th
 safe_source("R/helpers_claude_code_upload_folder.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_model_config.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_session_context.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_process.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code.R", encoding = "UTF-8")
 ```
 
@@ -127,7 +128,8 @@ Responsibilities:
 * `R/helpers_claude_code_upload_folder.R`: Bilge Yolaç upload-folder resolution helpers, including relaxed directory checks, candidate folder scoring, explicit session file registry handling, and placeholder user-id rejection.
 * `R/helpers_claude_code_model_config.R`: Claude CLI path resolution, `settings.json` reading, model-tier mapping, model capability helpers, thinking-model detection, binary-document prompt detection, and execution-model fallback decisions.
 * `R/helpers_claude_code_session_context.R`: Bilge Yolaç active-character and user first-name reactive context helpers used by `R/module_claude_code.R`.
-* `R/helpers_claude_code.R`: process/CLI execution helpers, processx command construction, runtime command handling, output parsing, workspace helpers, and remaining Claude Code runtime helpers.
+* `R/helpers_claude_code_process.R`: Node/CLI process path resolution, processx command construction, Windows `.cmd`/UNC handling, process output UTF-8 normalization, non-ASCII escaping, Claude Code JSON/JSONL output parsing, and safe CLI workdir selection.
+* `R/helpers_claude_code.R`: Claude Code CLI execution orchestration, status checks, runtime command handling, workspace helpers, and remaining Claude Code runtime helpers.
 
 Do not move `claudeCodeUI()` back into `R/module_claude_code.R`.
 Do not move model/settings helper functions back into `R/helpers_claude_code.R`.
@@ -136,6 +138,8 @@ The split is protected by:
 
 * `tests/testthat/test-claude-code-ui-refactor-contract.R`
 * `tests/testthat/test-claude-code-model-config-refactor-contract.R`
+* `tests/testthat/test-claude-code-process-refactor-contract.R`
+* `tests/testthat/test-claude-code-stream-finalize-contract.R`
 
 For future maintainability refactors, keep using the ratcheted approach: extract one coherent responsibility, preserve public function names, update `global.R`, add a focused contract test, run the full strict test suite, then tighten `test-maintainability-ratchet.R` only after `tests/scripts/maintainability_report.R` confirms the new baseline.
 

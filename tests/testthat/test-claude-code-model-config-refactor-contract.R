@@ -112,13 +112,19 @@ test_that("Claude Code model/settings yardımcıları ayrı dosyaya taşınmış
 
   expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code_model_config.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code_session_context.R")))
+  expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code_process.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code.R")))
 
   model_config_text <- .read_repo_text_cc_model_config_contract(
     "R/helpers_claude_code_model_config.R"
   )
+  
   old_text <- .read_repo_text_cc_model_config_contract(
     "R/helpers_claude_code.R"
+  )
+  
+  process_text <- .read_repo_text_cc_model_config_contract(
+    "R/helpers_claude_code_process.R"
   )
 
   moved_functions <- c(
@@ -149,10 +155,30 @@ test_that("Claude Code model/settings yardımcıları ayrı dosyaya taşınmış
     )
   }
 
-  expect_true(
-    grepl("resolve_node_path\\s*<-\\s*function\\s*\\(", old_text, perl = TRUE),
-    info = "Process/CLI çalışma yardımcıları R/helpers_claude_code.R içinde kalmalıdır."
+  process_functions <- c(
+    "resolve_node_path",
+    "escape_non_ascii",
+    "ensure_utf8",
+    "is_windows_unc_path",
+    "normalize_cmd_workdir",
+    "build_processx_command",
+    "parse_claude_code_json_output",
+    "get_safe_claude_cli_workdir"
   )
+
+  for (fn in process_functions) {
+    pattern <- paste0(fn, "\\s*<-\\s*function\\s*\\(")
+
+    expect_true(
+      grepl(pattern, process_text, perl = TRUE),
+      info = sprintf("%s yeni process helper dosyasında tanımlı olmalıdır.", fn)
+    )
+
+    expect_false(
+      grepl(pattern, old_text, perl = TRUE),
+      info = sprintf("%s R/helpers_claude_code.R içine geri taşınmamalıdır.", fn)
+    )
+  }
 
   session_context_text <- .read_repo_text_cc_model_config_contract(
     "R/helpers_claude_code_session_context.R"
@@ -198,6 +224,7 @@ test_that("Claude Code model/config source sırası korunuyor", {
 
   expect_false(is.na(pos("R/helpers_claude_code_model_config.R")))
   expect_false(is.na(pos("R/helpers_claude_code_session_context.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_process.R")))
   expect_false(is.na(pos("R/helpers_claude_code.R")))
   expect_false(is.na(pos("R/helpers_claude_code_streaming.R")))
 
@@ -213,6 +240,11 @@ test_that("Claude Code model/config source sırası korunuyor", {
 
   expect_lt(
     pos("R/helpers_claude_code_session_context.R"),
+    pos("R/helpers_claude_code_process.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code_process.R"),
     pos("R/helpers_claude_code.R")
   )
 
@@ -232,6 +264,11 @@ test_that("Claude Code model/config dosyaları parse edilebilir kalır", {
   
   expect_silent(parse(
     file.path(repo_root, "R", "helpers_claude_code_session_context.R"),
+    encoding = "UTF-8"
+  ))
+  
+  expect_silent(parse(
+    file.path(repo_root, "R", "helpers_claude_code_process.R"),
     encoding = "UTF-8"
   ))
 

@@ -124,6 +124,7 @@ create_akis_yardimcilari <- function(session, ns, rv) {
 
     rv$is_running <- FALSE
     rv$active_process <- NULL
+    rv$poll_state <- NULL
     rv$stream_env <- NULL
 
     # Düğmeleri güncelle
