@@ -302,6 +302,7 @@ safe_source("R/module_summarization.R",     encoding = "UTF-8")
 
 # -- Yapılandırma ve Ayar Modülleri --
 safe_source("R/module_settings_kisisel.R",       encoding = "UTF-8")
+safe_source("R/module_settings_yapilandirma_ui.R", encoding = "UTF-8")
 safe_source("R/module_settings_yapilandirma.R",  encoding = "UTF-8")
 safe_source("R/module_settings.R",               encoding = "UTF-8")
 safe_source("R/module_api_key.R",                encoding = "UTF-8")

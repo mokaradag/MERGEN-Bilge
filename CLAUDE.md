@@ -240,7 +240,43 @@ This split is protected by:
 * `test-source-manifest-contract.R`
 * `test-maintainability-ratchet.R`
 
-### 6) When the user asks for exact patches, be exact
+### Settings Yapılandırma UI modularization contract
+
+The Yapılandırma settings page is split so that the large UI layout does not grow inside the runtime server module. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/module_settings_kisisel.R", encoding = "UTF-8")
+safe_source("R/module_settings_yapilandirma_ui.R", encoding = "UTF-8")
+safe_source("R/module_settings_yapilandirma.R", encoding = "UTF-8")
+safe_source("R/module_settings.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+R/module_settings_yapilandirma_ui.R: settingsYapilandirmaUIImpl(id) and the Yapılandırma page UI cards/layout only.
+R/module_settings_yapilandirma.R: public settingsYapilandirmaUI(id) wrapper, settingsYapilandirmaServer(...), temporary settings state, save/reset triggers, runtime outputs, and observer logic.
+R/module_settings.R: central settings coordinator, localStorage restore, save/reset orchestration, and cross-module synchronization.
+
+Do not move the large Yapılandırma UI card layout back into R/module_settings_yapilandirma.R. Do not move runtime observers, reactiveVal(...), moduleServer(...), or session$sendCustomMessage(...) into R/module_settings_yapilandirma_ui.R.
+
+This split is protected by:
+
+tests/testthat/test-settings-yapilandirma-ui-refactor-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+
+# 6) When the user asks for exact patches, be exact
+
+---
+
+# 7. Automated validation commands
+
+Run from repo root:
+
+```r
+source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
+```
+
 The user often wants:
 
 - full replacement blocks,
