@@ -1,8 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-db-user-scope-contract.R
 # Açıklama: Sohbet geçmişi/veri görünürlüğü sorgularında UserID ve IsDeleted
-# filtrelerinin korunmasını statik sözleşme olarak doğrular. Gerçek veritabanına
-# bağlanmaz.
+#           filtrelerinin sohbet okuma yardımcılarında korunmasını statik sözleşme
+#           olarak doğrular. Gerçek veritabanına bağlanmaz.
 # ==============================================================================
 
 # Windows VM'de bazı kaynak dosyaları tam suite içinde UTF-8 olarak işaretlenirken
@@ -51,7 +51,7 @@
 }
 
 test_that("sohbet önizleme sorgusu kullanıcı ve soft-delete filtresini korur", {
-  txt <- .read_repo_file_bytes_for_db_contract("R/helpers_database.R")
+  txt <- .read_repo_file_bytes_for_db_contract("R/helpers_db_chat_readers.R")
 
   fn_pos <- regexpr(
     "load_chats_preview_from_db",
@@ -62,7 +62,7 @@ test_that("sohbet önizleme sorgusu kullanıcı ve soft-delete filtresini korur"
 
   expect_true(
     fn_pos > 0L,
-    info = "load_chats_preview_from_db fonksiyonu bulunmalı."
+    info = "load_chats_preview_from_db fonksiyonu helpers_db_chat_readers.R içinde bulunmalı."
   )
 
   filter_positions <- .byte_fixed_positions(
@@ -77,7 +77,7 @@ test_that("sohbet önizleme sorgusu kullanıcı ve soft-delete filtresini korur"
 })
 
 test_that("sohbet yükleme sorguları kullanıcı ve soft-delete filtresini korur", {
-  txt <- .read_repo_file_bytes_for_db_contract("R/helpers_database.R")
+  txt <- .read_repo_file_bytes_for_db_contract("R/helpers_db_chat_readers.R")
 
   fn_pos <- regexpr(
     "load_chats_from_db",
@@ -88,7 +88,7 @@ test_that("sohbet yükleme sorguları kullanıcı ve soft-delete filtresini koru
 
   expect_true(
     fn_pos > 0L,
-    info = "load_chats_from_db fonksiyonu bulunmalı."
+    info = "load_chats_from_db fonksiyonu helpers_db_chat_readers.R içinde bulunmalı."
   )
 
   filter_positions <- .byte_fixed_positions(
@@ -108,6 +108,6 @@ test_that("sohbet yükleme sorguları kullanıcı ve soft-delete filtresini koru
 
   expect_true(
     filter_count >= 3L,
-    info = "helpers_database.R içinde chat sorguları için beklenen UserID/IsDeleted filtre sayısı az görünüyor."
+    info = "helpers_db_chat_readers.R içinde chat sorguları için beklenen UserID/IsDeleted filtre sayısı az görünüyor."
   )
 })
