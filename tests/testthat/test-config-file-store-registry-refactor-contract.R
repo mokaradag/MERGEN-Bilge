@@ -30,16 +30,21 @@
   enc2utf8(txt)
 }
 
-.file_store_has_definition <- function(txt, name) {
+.file_store_has_definition <- function(name, txt) {
   txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
 
-  pattern <- paste0(
-    "(?:^|\\n)\\s*",
-    name,
-    "\\s*<-\\s*function\\s*\\("
+  definition_variants <- c(
+    paste0(name, " <- function"),
+    paste0(name, "<- function")
   )
 
-  isTRUE(grepl(pattern, txt, perl = TRUE, useBytes = TRUE))
+  any(vapply(
+    definition_variants,
+    function(pattern) {
+      isTRUE(grepl(pattern, txt, fixed = TRUE, useBytes = TRUE))
+    },
+    logical(1)
+  ))
 }
 
 .file_store_function_count <- function(txt) {
