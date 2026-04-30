@@ -238,25 +238,25 @@ Use `tracked_future_promise(task_fn = function() { ... }, task_type = "...", ses
 
 Do not pass raw expression blocks as positional `expr`; `tracked_future_promise()` now expects `task_fn`.
 
-### 8A) tracked_future_promise() aynı zamanda worker bağımlılık sarmalayıcısıdır
+### 8A) tracked_future_promise() is also a worker dependency wrapper
 
-Bu repoda `tracked_future_promise(...)` yalnızca izleme/metrik amacıyla kullanılmaz. Aynı zamanda `task_fn` içinde kullanılan global fonksiyonları ve gerekli paketleri worker tarafına güvenli biçimde taşımak için standart giriş kapısıdır.
+In this repository, `tracked_future_promise(...)` is not used only for tracking/metrics. It is also the standard entry point for safely transferring global functions and required packages used in `task_fn` to the worker side.
 
-Pratik sonuç:
-- Yeni bir async akışta ham `future_promise(...)` kullanmak yasak kabul edilmelidir.
-- `tracked_future_promise(...)` mümkün olduğunda `task_fn` içindeki bağımlılıkları otomatik türetir.
-- Özel akışlarda `globals = list(...)` ile açık bağımlılık geçirmek yine doğru yaklaşımdır.
+Practical result:
+- In a new async flow, using raw `future_promise(...)` should be considered prohibited.
+- `tracked_future_promise(...)` automatically derives dependencies inside `task_fn` when possible.
+- In special flows, explicitly passing dependencies with `globals = list(...)` is still a correct approach.
 
-Özellikle şu tip hatalar genellikle source sırası problemi değil, worker bağımlılık aktarımı problemidir:
-- `call_llm_worker fonksiyonu bulunamadı`
-- `generate_image fonksiyonu bulunamadı`
+In particular, the following errors are usually not a source-order issue, but a worker dependency transfer issue:
+- `call_llm_worker function not found`
+- `generate_image function not found`
 For true SSE streaming, keep the worker prewarm/export contract aligned with the `tracked_future_promise(..., globals = list(...))` contract in `R/server_handler_true_streaming.R`. Reasoning deltas, stop-file checks, and model-specific request overrides require helpers such as `append_stream_reasoning_line`, `streaming_should_stop`, `apply_model_request_overrides`, and `merge_named_list_deep` to remain visible on the worker side.
 
-Bu tür hatalar özellikle şu koşullarda daha görünür olabilir:
+These errors can be more visible especially under these conditions:
 - `SSO_ENABLED=TRUE`
 - Windows VM
-- `app.R` dosyasının tamamını `Ctrl+Enter` ile çalıştırma
-- persistent cluster worker kullanımı
+- Running the entire `app.R` file with `Ctrl+Enter`
+- Use of persistent cluster workers
 
 ### 8B) Source-time side effects must be guarded
 Source-time background loops/timers must always use a once-only guard pattern.
@@ -334,14 +334,14 @@ testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
 
 ---
 
-### 9) Bug fix varsa mümkünse test de olmalı
-Helper ve karar mantığı (decision-logic) değişikliklerinde mümkün olduğunda birim test de eklenmelidir. Bir kez yaşanmış regresyonlar testsiz bırakılmamalıdır. Test ekleri repo stiline uyumlu, küçük ve cerrahi olmalıdır. Özellikle encoding/BOM ve promise cleanup gibi daha önce regresyon üretmiş helper davranışlarında, test beklentileri event-loop zamanlamasını ve Windows VM farklılıklarını dikkate alacak kadar dayanıklı yazılmalıdır.
+### 9) If there is a bug fix, include a test when possible
+Unit tests should be added when possible for helper and decision-logic changes. Previously observed regressions should not be left untested. Test additions should be aligned with repo style, small, and surgical. Especially for helper behaviors that previously caused regressions such as encoding/BOM and promise cleanup, test expectations should be resilient enough to account for event-loop timing and Windows VM differences.
 
 For session-lifecycle helpers, keep testability in mind: repository tests may use fake Shiny-like session objects implemented either as `list` or as `environment`. Do not over-constrain helper inputs if the real contract is “has a usable `onSessionEnded` callback”.
 
 On Windows VM, contract tests should prioritize stable behavioral invariants over rigid assumptions about serialized JSON shape, exact raw-text rendering, or platform-sensitive loader output. If the test targets a real repository contract, avoid locking to a single internal representation when equivalent forms are valid.
 
-### 9A) MCP Excel yol çözümleme zincirini parçalama
+### 9A) Decomposing the MCP Excel path-resolution chain
 - MCP context sorumlulukları `R/helpers_mcp_context.R` içinde tutulmalıdır. Bu dosya `helpers_mcp_tools` ortamını, MCP debug kapısını (`mcp_debug_enabled` / `mcp_debug_log`) ve scalar kullanıcı kimliği çözümlemeyi (`get_session_user_id`) sağlar.
 - MCP bootstrap/fallback source sorumlulukları `R/helpers_mcp_bootstrap.R` içinde tutulmalıdır. Bu dosya worker/izole test bağlamlarında kritik MCP yardımcılarını `helpers_mcp_tools` ortamında hazırlar, destek dosyalarını çalışma dizininden bağımsız bulur ve bootstrap sözleşmesini doğrular.
 - MCP tablo okuyucu sorumlulukları `R/helpers_mcp_table_readers.R` içinde tutulmalıdır. Bu dosya `helpers_mcp_tools$safe_read_excel_table`, `helpers_mcp_tools$safe_read_table_generic` ve `helpers_mcp_tools$create_md_table` tanımlarını sağlar.
@@ -354,8 +354,8 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 - Source-time geçici değişken temizliği warning üretmemelidir. Örneğin `.mcp_table_readers_path`, `.mcp_file_resolver_path`, `.mcp_schema_helpers_path` ve `.mcp_basic_tools_path` gibi değişkenler yalnızca `exists(..., inherits = FALSE)` kontrolünden sonra `rm()` edilmelidir. Bu temizlik sözleşmesi artık `R/helpers_mcp_bootstrap.R` içinde korunur. `tests/testthat.R` `stop_on_warning = TRUE` ile çalıştığı için source-time cleanup warning’leri suite’i kırar.
 - MCP tablo okuyucu fonksiyon tanımları `R/helpers_mcp_table_readers.R` içinde kalmalı; ancak bu dosyanın tekil test/debug/app-boot bağlamlarında güvenli yüklenmesi `R/helpers_mcp_bootstrap.R` üzerinden yapılmalıdır. `helpers_mcp_tools.R` doğrudan source edildiğinde önce bootstrap dosyasını yükleyerek bu dolaylı sözleşmeyi korur. Bu sözleşme `test-mcp-bootstrap-refactor-contract.R` ve `test-mcp-table-readers-refactor-contract.R` ile korunmalıdır.
 - `R/helpers_mcp_table_readers.R`, `helpers_mcp_tools$safe_read_excel_table`, `helpers_mcp_tools$safe_read_table_generic` ve `helpers_mcp_tools$create_md_table` fonksiyonlarının environment değerini `helpers_mcp_tools` olarak korumalıdır. Bu özellikle worker/MCP araç bağlamlarında `normalize_excel_path`, `resolve_readable_path` ve `path_exists_relaxed` gibi yardımcıların görünür kalması için gereklidir.
-- Fonksiyon environment ataması kesinlikle `environment(get(...)) <- ...` biçiminde yapılmamalıdır. R bunu `get<-` replacement çağrısı gibi yorumlar ve app boot/test zincirini `"get<-" fonksiyonu bulunamadı` hatasıyla kırar. Önce fonksiyonu geçici değişkene alın, environment değerini değiştirin, sonra `assign(...)` ile geri yazın.
-- `utils_excel_reader.R` içindeki global `safe_read_excel_table()` MCP ortamına kopyalanırsa environment değeri `helpers_mcp_tools` olarak yeniden bağlanmalıdır; aksi halde runtime’da `"normalize_excel_path" fonksiyonu bulunamadı` hatası tekrar oluşabilir.
+- Fonksiyon environment ataması kesinlikle `environment(get(...)) <- ...` biçiminde yapılmamalıdır. R bunu `get<-` replacement çağrısı gibi yorumlar ve app boot/test zincirini `"get<-" function not found` hatasıyla kırar. Önce fonksiyonu geçici değişkene alın, environment değerini değiştirin, sonra `assign(...)` ile geri yazın.
+- `utils_excel_reader.R` içindeki global `safe_read_excel_table()` MCP ortamına kopyalanırsa environment değeri `helpers_mcp_tools` olarak yeniden bağlanmalıdır; aksi halde runtime’da `"normalize_excel_path" function not found` hatası tekrar oluşabilir.
 - `helpers_mcp_tools$get_session_user_id()` SSO başlangıç placeholder değerlerini (`0`, `unknown`, `null`, `NA`, `NaN`) gerçek kullanıcı kimliği gibi kullanmamalıdır. MCP dosya çözümleme akışında global `current_user_id` fallback'i tekrar eklenmemelidir.
 - `helpers_mcp_file_resolver.R` içindeki cross-bucket index lookup üretimde varsayılan kapalı kalmalıdır. Aynı dosya adı başka kullanıcı bucket'ında bulunuyorsa bu yol yalnızca geçiş/migrasyon amaçlı açık opt-in ile çalışmalıdır: `options(mergen.mcp.allow_cross_bucket_lookup = TRUE)` veya `MERGEN_MCP_ALLOW_CROSS_BUCKET_LOOKUP=true`.
 - `helpers_mcp_tools`, `helpers_files`, `utils_path_helpers`, `utils_excel_reader`, `helpers_mcp_table_readers` ve `helpers_send_message_core` birlikte çalışan bir zincirdir.
@@ -380,19 +380,19 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 
 ---
 
-## Test Suite ve Çalıştırma Kuralları
+## Test Suite and Execution Rules
 
-Bu repoda test suite’in ana çalıştırıcısı `tests/testthat.R` dosyasıdır. `tests/testthat/helper_bootstrap.R`, test bağlamını kuran bootstrap helper olarak kullanılmalıdır.
+In this repository, the main test suite runner is `tests/testthat.R`. `tests/testthat/helper_bootstrap.R` should be used as the bootstrap helper that initializes test context.
 
 `helper_bootstrap.R` may sandbox filesystem and log paths via temp env vars (`MERGEN_LOG_DIR`, `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`); contract tests must respect these env-driven paths instead of fixed repository-relative assumptions.
 
-Testler her zaman repository root dizininden çalıştırılmalıdır. Windows VM üzerinde test çalıştırırken mümkünse temiz bir R oturumu tercih edilmelidir. `summary` reporter çıktısının açık bir PASS satırı olmadan `== DONE ==` ile bitmesi normaldir.
+Tests should always be run from the repository root directory. When running tests on Windows VM, prefer a clean R session when possible. It is normal for the `summary` reporter output to end with `== DONE ==` without an explicit PASS line.
 
 For promise/later-based tests, do not assume a single `later::run_now()` flush is always sufficient. When validating cleanup/final state, prefer a small bounded drain helper that consumes the later queue until the expected stable condition is reached.
 
-Testlerde kullanılan helper stub’ları, source edilen helper fonksiyonlarıyla aynı ortamda görünür olmalıdır. Test kapsamı olan helper dosyalarında değişiklik yapıldığında ilgili test dosyaları da birlikte güncellenmelidir.
+Helper stubs used in tests must be visible in the same environment as the sourced helper functions. When changing helper files covered by tests, related test files should also be updated together.
 
-MCP Excel regresyon testlerinde fiziksel Windows short-path basename’ine göre doğrulama yapmak kırılgan olabilir. Bu tür testlerde öncelik sırasıyla helper erişilebilirliği, session registry üzerinden çözüm başarısı, `display` değeri ve dosyanın gerçekten okunabilmesi olmalıdır.
+In MCP Excel regression tests, validating based on physical Windows short-path basename can be fragile. In such tests, prioritize helper accessibility, resolution success via session registry, the `display` value, and whether the file can truly be read.
 
 For single-record Turkish JSON/index edge cases on Windows VM, validate at contract level and tolerate equivalent serialized forms or loader-shape differences instead of treating them as product regressions.
 
@@ -605,7 +605,7 @@ Expected successful result:
 
 ---
 
-## Reasoning Flow for Thinking=TRUE Models (New Standard)
+## Reasoning Flow for Düşünüyorum=TRUE Models (New Standard)
 
 In this codebase, the pre-response/in-response experience for models with thinking capability has been updated.
 
@@ -616,7 +616,7 @@ In this codebase, the pre-response/in-response experience for models with thinki
 - The old “Düşünüyorum” snake animation has been fully removed (including `typing-indicator.css`, `typing_animation.js`, `ui.R` registration, and `app_core.js` cleanup).
 - For non-thinking models, the `simulated` flag (inverse of `thinking_model_active`) is sent only when reasoning content is not expected; if real `reasoning_delta` is absent, synthetic phase text is shown sequentially on the client.
 - Instead of the classic ring, insert an empty panel shell with `data-panel-takeover="true"`.
-- In tools that depend on a thinking model (such as Coding Support/Excel Analysis), the panel model label must be derived from the `tool-resolved model`.
+- In tools that depend on a thinking model (such as Kodlama Desteği/Excel Analizi), the panel model label must be derived from the `tool-resolved model`.
 
 ### UI/JS principles
 - State machine: `idle → preparing → thinking → streaming → interrupted/error`
@@ -649,7 +649,7 @@ request_overrides = list(
 ```
 `apply_model_request_overrides(body, selected_model)` must be applied after constructing the true SSE streaming body and before sending the HTTP request.
 The same helper must also be applied on non-streaming LLM paths; otherwise streaming and non-streaming behavior diverges.
-`R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Thinking/reasoning models.
+`R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Düşünüyorum/reasoning models.
 For helper visibility on the true streaming future worker side, keep `apply_model_request_overrides = apply_model_request_overrides` in `tracked_future_promise(..., globals = list(...))` within `R/server_handler_true_streaming.R`.
 Kimi-style models may send reasoning as `delta$reasoning`; Gemma-style models may fall back to normal `delta$content` streaming with empty `ReasoningContent` when the override is missing.
 
@@ -870,7 +870,7 @@ If one is missing, startup stops with an explicit error.
 - `R/` - all application R modules, helpers, and configuration files
 - `www/` - static assets (CSS, JS, CodeMirror, images, fonts)
 - `bilge_yolac_plugins/` - Bilge Yolaç auto-discovered plugin directory. Each subdirectory is one plugin with `plugin.json` and optional `skills/`, `commands/`, `agents/`, `hooks/`, `mcp/`, `templates/`. No CLI, no internet required.
-- `bilge_yolac_downloads/` - Bilge Yolaç tarafından üretilen dosyaların (doküman özetleri, ajan çıktıları vb.) indirilebilir bağlantı olarak sunulduğu kalıcı dizin. `global.R` tarafından `bilge_yolac_downloads` resource path adıyla Shiny'e kaydedilir. `.gitkeep` dosyasıyla boş olarak repoya dahil edilir.
+- `bilge_yolac_downloads/` - persistent directory where files generated by Bilge Yolaç (document summaries, agent outputs, etc.) are exposed as downloadable links. It is registered by `global.R` into Shiny with the `bilge_yolac_downloads` resource path name. It is included in the repository as empty via `.gitkeep`.
 
 ---
 
@@ -1166,8 +1166,8 @@ If anything “works locally but not on VM”, SSO and encoding are the first th
 
 Current quick actions:
 
-- `Süreç Yönetimi Sistemi`
-- `Uygulama Uzmanı`
+- `Process Management System`
+- `Application Expert`
 - `Proje ve Kaynak Analizi`
 - `Excel Analizi`
 - `Görsel Oluşturma`
@@ -1478,7 +1478,7 @@ It includes:
 
 - folder browsing,
 - workdir selection,
-- local folder copy-to-working-area (the "Yerel klasörü Bilge Yolaç çalışma alanına kopyala" button copies the selected folder into the runtime working directory; it does **not** simply upload files),
+- local folder copy-to-working-area (the "Copy local folder to Bilge Yolaç workspace" button copies the selected folder into the runtime working directory; it does **not** simply upload files),
 - model tiers,
 - tool-use rendering,
 - streaming shell/file activity,
@@ -1744,7 +1744,7 @@ tracked_future_promise(
 )
 ```
 
-`tracked_future_promise(...)` kullanımının ikinci kritik amacı worker bağımlılıklarının güvenli biçimde taşınmasıdır. Bu repo için “izleme” ve “worker export güvenliği” aynı sarmalayıcıda birleşmiştir. Bu nedenle async path yazarken wrapper'ı atlamak yalnızca health ekranını eksik bırakmaz; worker içinde fonksiyon bulunamadı türü çalışma zamanı hatalarına da yol açabilir.
+The second critical purpose of `tracked_future_promise(...)` usage is safe transfer of worker dependencies. In this repo, “tracking” and “worker export safety” are combined in the same wrapper. Therefore, skipping the wrapper while writing async paths does not only leave the health screen incomplete; it can also cause runtime errors such as function-not-found inside workers.
 
 ### Current tracked async families
 At minimum, health metrics are expected to include these async flows when present:
@@ -1845,7 +1845,7 @@ Feedback and bug reporting.
 Version / release notes.
 
 ### `destek_hakkinda`
-About page / user guide.
+Hakkında page / user guide.
 
 ### `health`
 Health monitor, admin-facing.
@@ -1972,13 +1972,13 @@ The chat stream and Bilge Yolaç stream both have fragile incremental rendering 
 
 ### 8) Async worker dependency export
 
-Streaming ve non-streaming akışlar aynı şekilde davranmayabilir. Bir akış çalışıyor diye diğer async akışların da güvenli olduğu varsayılmamalıdır.
+Streaming and non-streaming flows may not behave identically. Do not assume other async flows are safe just because one flow works.
 
-Özellikle non-streaming LLM, görsel üretimi ve benzeri worker tabanlı akışlarda:
-- `tracked_future_promise(...)` kullanılmalı
-- gerekli bağımlılıklar worker'a taşınmalı
-- reaktif nesneler önceden düz değerlere indirgenmeli
-- VM + SSO + Ctrl+Enter senaryosu düşünülmelidir
+Especially in non-streaming LLM, image-generation, and similar worker-based flows:
+- `tracked_future_promise(...)` should be used
+- required dependencies should be transferred to the worker
+- reactive objects should be reduced to plain values beforehand
+- the VM + SSO + Ctrl+Enter scenario should be considered
 
 ### 8A) Startup guards must match their execution context
 
