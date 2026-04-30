@@ -96,9 +96,19 @@ safe_source("R/config_file_store_registry.R",       encoding = "UTF-8")
 
 Responsibilities:
 
-R/config_file_store.R: file-store root paths, low-level UTF-8 index load/save helpers, environment validation, memory management, and scheduler-related configuration.
-R/config_file_store_index_mutation.R: index write/mutation guard, upload registration, display-name repair, storage-name recovery, public global_register_file() wrapper, and index removal.
-R/config_file_store_registry.R: uploaded-file resolution, user upload directory resolution, display-name lookup, user file listing, stale index pruning, and filesystem fallback listing.
+* `R/config_file_store.R`: file-store root paths, low-level UTF-8 index load/save helpers, environment validation, memory management, and scheduler-related configuration.
+* `R/config_file_store_index_mutation.R`: index write/mutation guard, upload registration, display-name repair, storage-name recovery, public `global_register_file()` wrapper, and index removal.
+* `R/config_file_store_registry.R`: uploaded-file resolution, user upload directory resolution, display-name lookup, user file listing, stale index pruning, and filesystem fallback listing.
+
+Do not move `mergen_register_uploaded_file()`, `global_register_file()`, `resolve_uploaded_file()`, `mergen_user_upload_dir()`, `mergen_resolve_display_name()`, `recover_display_name_from_storage_name()`, `mergen_list_user_files()`, or `mergen_remove_from_index()` back into `R/config_file_store.R`.
+
+The split is protected by:
+
+* `tests/testthat/test-config-file-store-registry-refactor-contract.R`
+* `tests/testthat/test-source-manifest-contract.R`
+* `tests/testthat/test-maintainability-ratchet.R`
+
+The index mutation path must keep a guard around read-modify-write operations so delayed file refresh or stale prune operations cannot overwrite a newer upload index entry.
 
 ### Bilge Yolaç document extractor modularization contract
 
@@ -526,6 +536,7 @@ Windows-safe child-session test authoring rules:
   testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
   testthat::test_file("tests/testthat/test-file-manager-ui-refactor-contract.R")
   testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
+  testthat::test_file("tests/testthat/test-config-file-store-registry-refactor-contract.R")
   testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
   testthat::test_file("tests/testthat/test-claude-code-ui-refactor-contract.R")
   testthat::test_file("tests/testthat/test-claude-code-model-config-refactor-contract.R")
