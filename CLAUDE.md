@@ -265,6 +265,30 @@ tests/testthat/test-settings-yapilandirma-ui-refactor-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-maintainability-ratchet.R
 
+### Admin Yanıt Analizi modularization contract
+
+Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı dosyaya bölünmüştür. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_admin_yanit_analizi.R", encoding = "UTF-8")
+safe_source("R/module_admin_yanit_analizi.R",  encoding = "UTF-8")
+```
+
+Responsibilities:
+
+R/helpers_admin_yanit_analizi.R: MB_Feedback odaklı sorgu paketi, yanıt geri bildirim etiket çözümleme mantığı ve Yanıt Analizi sekme UI helperları.
+
+R/module_admin_yanit_analizi.R: public adminYanitAnaliziUI()/adminYanitAnaliziServer() API'si, Shiny refresh/reactive orkestrasyonu, chart/table output render fonksiyonları ve modül wiring.
+
+Do not move admin_yanit_collect_data(), admin_yanit_tag_counts(), admin_yanit_overview_ui(), admin_yanit_model_ui(), admin_yanit_etiket_ui() or admin_yanit_zaman_ui() back into R/module_admin_yanit_analizi.R.
+
+This split is protected by:
+
+tests/testthat/test-admin-yanit-analizi-refactor-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+
+
 # 6) When the user asks for exact patches, be exact
 
 ---
