@@ -136,6 +136,7 @@ Bilge Yolaç is now split into smaller responsibility-focused files. Preserve th
 safe_source("R/helpers_claude_code_upload_folder.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_model_config.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_session_context.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_dir_ui.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_process.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code.R", encoding = "UTF-8")
 ```

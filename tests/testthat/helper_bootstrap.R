@@ -125,3 +125,4 @@ source(file.path(repo_root_for_tests, "R", "helpers_file_manager_session_registr
 source(file.path(repo_root_for_tests, "R", "helpers_file_manager_runtime.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_file_manager_storage.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_claude_code_session_context.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_claude_code_dir_ui.R"), encoding = "UTF-8", local = .test_global)

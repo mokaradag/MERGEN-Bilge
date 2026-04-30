@@ -41,6 +41,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       poll_state = NULL,              # Yoklama durumu (ortam değişkeni, durdurma için)
       stream_env = NULL               # Akış durumu (yoklama gözlemcisi için)
     )
+	
+    dir_refresh_guard <- cc_create_dir_refresh_guard()
 
     # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
     observe({
@@ -269,9 +271,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     # dizin parametresi: later::later gibi reaktif olmayan bağlamlardan
     # çağrıldığında input$workdir yerine kullanılır.
     observe_dir_contents <- function(dizin = NULL) {
+      refresh_id <- dir_refresh_guard$next_id()
       yol <- dizin %||% isolate(input$workdir)
+
       if (is.null(yol) || !nzchar(yol)) {
         output$dir_contents_ui <- renderUI({
+          if (!dir_refresh_guard$is_latest(refresh_id)) return(NULL)
           tags$p(class = "cc-dir-empty", "Proje dizini belirtilmedi.")
         })
         return()
@@ -281,7 +286,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         yol,
         user_id = resolve_current_user_id()
       )
-	  
+
+      if (!dir_refresh_guard$is_latest(refresh_id)) {
+        return(invisible(FALSE))
+      }
+
       resolved_yol <- icerik$resolved_path %||% yol
 
       # Mevcut dizin yolunu güncelle
@@ -296,60 +305,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       )
 
       output$dir_contents_ui <- renderUI({
-        if (!icerik$success) {
-          tags$p(class = "cc-dir-error", icerik$error)
-        } else if (length(icerik$items) == 0) {
-          tags$p(class = "cc-dir-empty", "Dizin boş.")
-        } else {
-          tags$div(
-            class = "cc-dir-list",
-            if (icerik$toplam > length(icerik$items)) {
-              tags$small(class = "cc-dir-count",
-                         paste0(icerik$toplam, " ögeden ilk ",
-                                length(icerik$items), " tanesi"))
-            },
-            lapply(icerik$items, function(oge) {
-              ikon <- if (oge$tip == "klasor") "folder" else "file"
-              boyut_text <- if (!is.na(oge$boyut)) {
-                if (oge$boyut < 1024) paste0(oge$boyut, " B")
-                else if (oge$boyut < 1048576) paste0(round(oge$boyut / 1024, 1), " KB")
-                else paste0(round(oge$boyut / 1048576, 1), " MB")
-              } else ""
-
-              gorunen_ad <- oge$gorunen_ad %||% oge$ad
-
-              oge_ipucu <- if (!identical(gorunen_ad, oge$ad)) {
-                paste0(
-                  "Yüklenen ad: ", gorunen_ad,
-                  "\nSistem adı: ", oge$ad,
-                  "\nYol: ", oge$yol
-                )
-              } else {
-                oge$yol
-              }
-
-              # Klasörlere tıklanabilirlik ekle
-              ek_sinif <- if (oge$tip == "klasor") " cc-dir-clickable" else ""
-              ek_olay <- if (oge$tip == "klasor") {
-                sprintf(
-                  "Shiny.setInputValue('%s', '%s', {priority: 'event'});",
-                  ns("dir_navigate"),
-                  gsub("'", "\\\\'", oge$yol)
-                )
-              } else NULL
-
-              tags$div(
-                class = paste0("cc-dir-item cc-dir-", oge$tip, ek_sinif),
-                onclick = ek_olay,
-                title = oge_ipucu,
-                icon(ikon),
-                tags$span(class = "cc-dir-name", gorunen_ad),
-                tags$span(class = "cc-dir-size", boyut_text)
-              )
-            })
-          )
-        }
+        if (!dir_refresh_guard$is_latest(refresh_id)) return(NULL)
+        cc_build_dir_contents_ui(icerik, ns = ns)
       })
+
+      invisible(TRUE)
     }
 
     # Dizin gezgini: klasöre tıklama
