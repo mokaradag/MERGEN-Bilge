@@ -145,3 +145,46 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
     )
   )
 })
+
+test_that("helpers_mcp_tools.R refactor kazanımı geri alınmaz", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  mcp_row <- report[grepl("(^|/)R/helpers_mcp_tools\\.R$", report$file, perl = TRUE), , drop = FALSE]
+
+  expect_equal(
+    nrow(mcp_row),
+    1L,
+    info = "R/helpers_mcp_tools.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_mcp_lines <- .as_int_env("MERGEN_TEST_MAX_MCP_TOOLS_LINES", 903L)
+  max_mcp_functions <- .as_int_env("MERGEN_TEST_MAX_MCP_TOOLS_FUNCTIONS", 29L)
+
+  expect_true(
+    mcp_row$lines[1] <= max_mcp_lines,
+    info = sprintf(
+      "helpers_mcp_tools.R satır sayısı refactor sonrası taban çizgisini aştı: %d > %d.",
+      mcp_row$lines[1],
+      max_mcp_lines
+    )
+  )
+
+  expect_true(
+    mcp_row$functions[1] <= max_mcp_functions,
+    info = sprintf(
+      "helpers_mcp_tools.R fonksiyon sayısı refactor sonrası taban çizgisini aştı: %d > %d.",
+      mcp_row$functions[1],
+      max_mcp_functions
+    )
+  )
+})
