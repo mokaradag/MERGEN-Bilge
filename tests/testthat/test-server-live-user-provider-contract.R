@@ -34,14 +34,15 @@
   txt
 }
 
-test_that("server.R canlı current_user_id_provider sözleşmesini UserSessionContext üzerinden korur", {
+test_that("server.R canlı current_user_id_provider sözleşmesini ServerRuntimeContext üzerinden korur", {
   server_text <- .read_repo_text_for_user_provider_contract("server.R")
 
   expected <- c(
     "user_session <- serverInitUserSession(",
-    "user_config_rv <- user_session$user_config_rv",
-    "resolve_current_user_id <- user_session$resolve_current_user_id",
-    "current_user_id_provider <- user_session$current_user_id_provider"
+    "runtime_ctx <- serverRuntimeContextInit(",
+    "user_config_rv <- runtime_ctx$identity$user_config_rv",
+    "resolve_current_user_id <- runtime_ctx$identity$resolve_current_user_id",
+    "current_user_id_provider <- runtime_ctx$identity$current_user_id_provider"
   )
 
   found <- vapply(
@@ -53,7 +54,7 @@ test_that("server.R canlı current_user_id_provider sözleşmesini UserSessionCo
   expect_true(
     all(found),
     info = paste(
-      "server.R UserSessionContext canlı kullanıcı kimliği sözleşmesi eksik:",
+      "server.R ServerRuntimeContext canlı kullanıcı kimliği sözleşmesi eksik:",
       paste(expected[!found], collapse = ", ")
     )
   )
