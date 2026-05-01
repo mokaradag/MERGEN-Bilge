@@ -62,70 +62,62 @@ server <- function(input, output, session) {
   # ============================================================================
   # BÖLÜM 3: PERFORMANS, SAĞLIK VE DESTEK MODÜLLERİ
   # ============================================================================
-  perf_tracker <- performanceStatsServer("perf_stats", current_user_id_provider)
-  healthServer("health_module", perf_tracker = perf_tracker)
-  destekServer("destek_module", current_user_id = current_user_id_provider)
+  service_modules <- serverBindServiceModules(
+    current_user_id_provider = current_user_id_provider
+  )
+
+  perf_tracker <- service_modules$perf_tracker
 
   # ============================================================================
   # BÖLÜM 4: AYARLAR VE İLERİ REFERANSLAR
   # ============================================================================
-  settings_data <- settingsInit(session = session, parent_session = session)
+  settings_bundle <- serverBindSettingsAndRefs(
+    input = input,
+    output = output,
+    session = session,
+    runtime_ctx = runtime_ctx,
+    current_user_id_provider = current_user_id_provider,
+    user_first_name_fn = function(default = "") {
+      current_user_first_name(default = default)
+    }
+  )
 
-	# İleri referans sarmalayıcılarını başlat ve runtime sözleşmesine bağla
-	runtime_ctx <- serverRuntimeAttachForwardRefs(
-	  runtime_ctx,
-	  serverInitForwardRefs(session)
-	)
-
-	welcome_fns <- runtime_ctx$refs$welcome_fns
-	render_welcome_screen <- runtime_ctx$refs$render_welcome_screen
-	start_new_chat <- runtime_ctx$refs$start_new_chat
-	send_message_fns <- runtime_ctx$refs$send_message_fns
-	send_message <- runtime_ctx$refs$send_message
-    
-  # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
-	claudeCodeServer(
-	  "claude_code_module",
-	  current_user_id = current_user_id_provider,
-	  settings_data = settings_data,
-	  user_first_name = function() {
-		current_user_first_name(default = "")
-	  }
-	)
-
-  # Görsel ayarları senkronizasyonunu başlat (Sohbet → Ayarlar, modüler)
-  visualSettingsSyncInit(input, settings_data)
-  
-  # load_chat_in_progress tanımı burada kalabilir
-  load_chat_in_progress <- reactiveVal(FALSE)
-  
-  # Sohbet header çıktılarını başlat (modüler) - sadece settings_data kullanıyor
-  chatOutputsInit(output, settings_data)
+  runtime_ctx <- settings_bundle$runtime_ctx
+  settings_data <- settings_bundle$settings_data
+  welcome_fns <- settings_bundle$welcome_fns
+  render_welcome_screen <- settings_bundle$render_welcome_screen
+  start_new_chat <- settings_bundle$start_new_chat
+  send_message_fns <- settings_bundle$send_message_fns
+  send_message <- settings_bundle$send_message
+  load_chat_in_progress <- settings_bundle$load_chat_in_progress
   
   # ============================================================================
   # BÖLÜM 5: MEDYA MODÜLLERİ (YZ İŞLEME, TTS, STT, MÜZİK)
   # ============================================================================
-  feedback_modal <- feedbackServer("feedback_module", current_user_id_provider)
-  ai_processor <- aiProcessingServer("ai_proc")
-  tts_processor <- ttsProcessingServer("tts_proc")
-  tts_visualizer <- ttsVisualizerServer("tts_viz", settings_data)
-  musicHandlersInit(input, session, settings_data)
-  ai_expert <- aiExpertServer("ai_expert_module", settings_data, tts_processor, tts_visualizer)
-  stt_data <- sttServer("stt_module", parent_session = session, settings = settings_data)
+  media_modules <- serverBindMediaModules(
+    input = input,
+    session = session,
+    settings_data = settings_data,
+    current_user_id_provider = current_user_id_provider
+  )
+
+  feedback_modal <- media_modules$feedback_modal
+  ai_processor <- media_modules$ai_processor
+  tts_processor <- media_modules$tts_processor
+  tts_visualizer <- media_modules$tts_visualizer
+  ai_expert <- media_modules$ai_expert
+  stt_data <- media_modules$stt_data
 
   # ============================================================================
   # BÖLÜM 6: DOSYA YÖNETİMİ VE ÖNİZLEME
   # ============================================================================
-  filePreview <- filePreviewServer("file_preview")
+  file_prelude_modules <- serverBindFilePreludeModules(
+    session = session
+  )
 
-  # Hafif sıklet takip sorusu önerisi oluşturucu
-  fallback_followup_tool <- create_followup_suggestions_tool()
-  followup_tools <- followupSuggestionsServer("followup_module")
-  if (is.null(followup_tools) || is.null(followup_tools$generate)) {
-    followup_tools <- fallback_followup_tool
-  }
-  
-  init_docx_preview_js(session)
+  filePreview <- file_prelude_modules$filePreview
+  fallback_followup_tool <- file_prelude_modules$fallback_followup_tool
+  followup_tools <- file_prelude_modules$followup_tools
   
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
