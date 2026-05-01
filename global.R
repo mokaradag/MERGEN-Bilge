@@ -373,6 +373,7 @@ safe_source("R/server_session_cache.R",      encoding = "UTF-8")
 # -- Server başlatma yardımcıları --
 safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
 safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
+safe_source("R/server_runtime_context.R",    encoding = "UTF-8")
 safe_source("R/server_init_session_state.R", encoding = "UTF-8")
 safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 

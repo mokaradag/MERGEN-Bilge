@@ -12,9 +12,6 @@ server <- function(input, output, session) {
   # BÖLÜM 1: OTURUM ÖN BELLEKLEME VE ALTYAPI
   # ============================================================================
   session_cache <- sessionCacheInit(session)
-  mcp_saved_path <- session_cache$mcp_saved_path
-  cache_mcp_file_locally <- session_cache$cache_mcp_file_locally
-  update_mcp_registry_snapshot <- session_cache$update_mcp_registry_snapshot
 
   # Widget bağımlılık çıktılarını başlat (modüler)
   widgetDependencyOutputsInit(output)
@@ -44,9 +41,16 @@ server <- function(input, output, session) {
 	  }
 	)
 
-	user_config_rv <- user_session$user_config_rv
-	resolve_current_user_id <- user_session$resolve_current_user_id
-	current_user_id_provider <- user_session$current_user_id_provider
+	runtime_ctx <- serverRuntimeContextInit(
+	  session = session,
+	  session_cache = session_cache,
+	  sso_state = sso_state,
+	  user_session = user_session
+	)
+
+	user_config_rv <- runtime_ctx$identity$user_config_rv
+	resolve_current_user_id <- runtime_ctx$identity$resolve_current_user_id
+	current_user_id_provider <- runtime_ctx$identity$current_user_id_provider
 
   # API anahtarı modülünü bağla
   api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
@@ -63,14 +67,17 @@ server <- function(input, output, session) {
   # ============================================================================
   settings_data <- settingsInit(session = session, parent_session = session)
 
-  # İleri referans sarmalayıcılarını başlat
-  forward_refs <- serverInitForwardRefs(session)
+	# İleri referans sarmalayıcılarını başlat ve runtime sözleşmesine bağla
+	runtime_ctx <- serverRuntimeAttachForwardRefs(
+	  runtime_ctx,
+	  serverInitForwardRefs(session)
+	)
 
-  welcome_fns <- forward_refs$welcome_fns
-  render_welcome_screen <- forward_refs$render_welcome_screen
-  start_new_chat <- forward_refs$start_new_chat
-  send_message_fns <- forward_refs$send_message_fns
-  send_message <- forward_refs$send_message
+	welcome_fns <- runtime_ctx$refs$welcome_fns
+	render_welcome_screen <- runtime_ctx$refs$render_welcome_screen
+	start_new_chat <- runtime_ctx$refs$start_new_chat
+	send_message_fns <- runtime_ctx$refs$send_message_fns
+	send_message <- runtime_ctx$refs$send_message
     
   # Claude Code modülü (settings_data hazır olduktan sonra başlatılır)
 	claudeCodeServer(
@@ -121,18 +128,21 @@ server <- function(input, output, session) {
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
   # ============================================================================
-  state_bundle <- serverInitSessionState(
-    session = session,
-    resolve_current_user_id = resolve_current_user_id,
-    sso_state = sso_state
-  )
+	runtime_ctx <- serverRuntimeAttachState(
+	  runtime_ctx,
+	  serverInitSessionState(
+		session = session,
+		resolve_current_user_id = resolve_current_user_id,
+		sso_state = sso_state
+	  )
+	)
 
-  values <- state_bundle$values
-  stop_generation <- state_bundle$stop_generation
-  file_to_add <- state_bundle$file_to_add
-  session_files <- state_bundle$session_files
-  active_request_id <- state_bundle$active_request_id
-  quick_action_skip_mcp <- state_bundle$quick_action_skip_mcp
+	values <- runtime_ctx$state$values
+	stop_generation <- runtime_ctx$state$stop_generation
+	file_to_add <- runtime_ctx$state$file_to_add
+	session_files <- runtime_ctx$state$session_files
+	active_request_id <- runtime_ctx$state$active_request_id
+	quick_action_skip_mcp <- runtime_ctx$state$quick_action_skip_mcp
   
 	session$onEnded(function() {
 	  try(stop_generation(TRUE), silent = TRUE)
@@ -305,17 +315,19 @@ welcome_handlers <- welcomeHandlersInit(
     # ==========================================================================
     # BÖLÜM 9: SOHBET MOTORU VE LLM ENTEGRASYONU
     # ==========================================================================
-    chat_runtime <- serverInitChatRuntime(
-      session = session,
-      values = values,
-      settings_data = settings_data,
-      output = output,
-      resolve_current_user_id = resolve_current_user_id,
-      stop_generation = stop_generation
-    )
+	chat_runtime <- serverInitChatRuntime(
+	  session = session,
+	  values = values,
+	  settings_data = settings_data,
+	  output = output,
+	  resolve_current_user_id = resolve_current_user_id,
+	  stop_generation = stop_generation
+	)
 
-    reset_chat_state <- chat_runtime$reset_chat_state
-    add_message <- chat_runtime$add_message
+	runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, chat_runtime)
+
+	reset_chat_state <- runtime_ctx$chat$reset_chat_state
+	add_message <- runtime_ctx$chat$add_message
 
     # TTS işleyicisi gerçek fonksiyon atanmadan önce güvenli bir yer tutucu tanımla.
     # Böylece gelecekte llmResponseHandlersInit içinde erken zorlama olursa kırılma yaşanmaz.
@@ -400,8 +412,8 @@ welcome_handlers <- welcomeHandlersInit(
 	  add_message_fn = add_message,
 	  reset_chat_state_fn = reset_chat_state,
 	  simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
-	  cache_mcp_file_locally_fn = cache_mcp_file_locally,
-	  update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot,
+	  cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally,
+	  update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot,
 	  saved_chats_data = saved_chats_data,
 	  generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
 	)

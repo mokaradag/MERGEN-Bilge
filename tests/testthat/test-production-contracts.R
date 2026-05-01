@@ -101,6 +101,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 	  "R/helpers_llm_sse.R",
 	  "R/helpers_llm_worker.R",
 	  "R/server_init_user_session.R",
+	  "R/server_runtime_context.R",
 	  "R/server_handler_true_streaming.R",
 	  "R/server_send_message.R",
 
@@ -286,5 +287,96 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
   expect_true(
     all(bulunanlar),
     label = paste("Eksik test runner güvenlik kayıtları:", paste(beklenenler[!bulunanlar], collapse = ", "))
+  )
+})
+
+test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağlar", {
+  server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
+
+  beklenenler <- c(
+    "runtime_ctx <- serverRuntimeContextInit(",
+    "runtime_ctx <- serverRuntimeAttachForwardRefs(",
+    "runtime_ctx <- serverRuntimeAttachState(",
+    "runtime_ctx <- serverRuntimeAttachChat(",
+    "current_user_id_provider <- runtime_ctx$identity$current_user_id_provider",
+    "cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally",
+    "update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot"
+  )
+
+  bulunanlar <- vapply(
+    beklenenler,
+    function(beklenen) .has_text(server_text, beklenen),
+    logical(1)
+  )
+
+  expect_true(
+    all(bulunanlar),
+    label = paste(
+      "server.R runtime context sözleşmesi eksik:",
+      paste(beklenenler[!bulunanlar], collapse = ", ")
+    )
+  )
+})
+
+test_that("server.R kullanıcı kimliğini doğrudan 0 veya session$userData$user_id ile yönetmez", {
+  server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
+
+  yasaklar <- c(
+    "session$userData$user_id <-",
+    "current_user_id <- 0L",
+    "current_user_id <- 0",
+    "user_id = 0L",
+    "user_id = 0"
+  )
+
+  ihlaller <- yasaklar[vapply(
+    yasaklar,
+    function(yasak) .has_text(server_text, yasak),
+    logical(1)
+  )]
+
+  expect_equal(
+    ihlaller,
+    character(0),
+    label = paste(
+      "server.R içinde doğrudan/geçersiz user_id yönetimi bulundu:",
+      paste(ihlaller, collapse = ", ")
+    )
+  )
+
+  expect_true(
+    .has_text(server_text, "user_id = current_user_id_provider"),
+    label = "fileManagerServer gibi modüllere user_id provider verilmelidir."
+  )
+})
+
+test_that("server.R doğrudan DB/HTTP/future işi yapmaz", {
+  server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
+
+  yasaklar <- c(
+    "DBI::dbGetQuery(",
+    "pool::dbGetQuery(",
+    "dbGetQuery(",
+    "future_promise(",
+    "promises::future_promise(",
+    "httr::",
+    "httr2::",
+    "curl::curl_fetch",
+    "curl_fetch_memory("
+  )
+
+  ihlaller <- yasaklar[vapply(
+    yasaklar,
+    function(yasak) .has_text(server_text, yasak),
+    logical(1)
+  )]
+
+  expect_equal(
+    ihlaller,
+    character(0),
+    label = paste(
+      "server.R içinde doğrudan DB/HTTP/future çağrısı bulundu:",
+      paste(ihlaller, collapse = ", ")
+    )
   )
 })
