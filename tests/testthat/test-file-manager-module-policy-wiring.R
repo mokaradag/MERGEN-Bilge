@@ -120,6 +120,7 @@ test_that("file manager auth readiness kararını provider üzerinden alıyor", 
   server_txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
   runtime_txt <- .read_repo_text_file_manager_module("R/helpers_file_manager_runtime.R")
   root_server_txt <- .read_repo_text_file_manager_module("server.R")
+  wiring_txt <- .read_repo_text_file_manager_module("R/server_module_wiring.R")
 
   expect_true(grepl("auth_ready_provider = NULL", server_txt, fixed = TRUE))
   expect_true(grepl("auth_ready_provider = auth_ready_provider", server_txt, fixed = TRUE))
@@ -129,9 +130,11 @@ test_that("file manager auth readiness kararını provider üzerinden alıyor", 
   expect_true(grepl("auth_ready_provider = NULL", runtime_txt, fixed = TRUE))
   expect_true(grepl("is_auth_ready <- function", runtime_txt, fixed = TRUE))
 
+  # server.R artık doğrudan fileManagerServer çağırmaz; wiring helper'a delege eder.
+  expect_true(grepl("serverBindFileManagerRuntime(", root_server_txt, fixed = TRUE))
   expect_true(grepl(
     "auth_ready_provider = runtime_ctx$identity$is_auth_ready",
-    root_server_txt,
+    wiring_txt,
     fixed = TRUE
   ))
 

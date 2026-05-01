@@ -335,7 +335,10 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     "runtime_ctx <- serverRuntimeAttachState(",
     "identity = runtime_ctx$identity",
     "runtime_ctx <- serverRuntimeAttachChat(",
-    "auth_ready_provider = runtime_ctx$identity$is_auth_ready",
+    "file_manager_runtime <- serverBindFileManagerRuntime(",
+    "runtime_ctx <- file_manager_runtime$runtime_ctx",
+    "gallery_runtime <- serverBindImageGalleryRuntime(",
+    "runtime_ctx <- gallery_runtime$runtime_ctx",
     "cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally",
     "update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot"
   )
@@ -357,7 +360,11 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
   wiring_beklenenler <- c(
     "serverBindSettingsAndRefs <- function(",
     "runtime_ctx <- serverRuntimeAttachForwardRefs(",
-    "forward_refs_init_fn(session)"
+    "forward_refs_init_fn(session)",
+    "serverBindFileManagerRuntime <- function(",
+    "auth_ready_provider = runtime_ctx$identity$is_auth_ready",
+    "serverBindImageGalleryRuntime <- function(",
+    "serverRuntimeAttachRefreshableModule("
   )
 
   wiring_bulunanlar <- vapply(

@@ -69,8 +69,9 @@ test_that("kullanıcıya özel modüller current_user_id snapshot'ı yerine prov
     "service_modules <- serverBindServiceModules(",
     "current_user_id_provider = current_user_id_provider",
     "current_user_id = current_user_id_provider",
-    "user_id = current_user_id_provider",
-    "imageGalleryServer(\"image_gallery_module\", current_user_id_provider)",
+    "user_id_provider = current_user_id_provider",
+    "serverBindFileManagerRuntime(",
+    "serverBindImageGalleryRuntime(",
     "downloadOutputsInit(output, session, session_files, current_user_id_provider)"
   )
 
@@ -95,7 +96,14 @@ test_that("kullanıcıya özel modüller current_user_id snapshot'ı yerine prov
     "current_user_id_provider",
     "destek_server_fn(",
     "\"destek_module\",",
-    "current_user_id = current_user_id_provider"
+    "current_user_id = current_user_id_provider",
+    "serverBindFileManagerRuntime <- function(",
+    "user_id_provider",
+    "user_id = user_id_provider",
+    "serverBindImageGalleryRuntime <- function(",
+    "image_gallery_server_fn(",
+    "\"image_gallery_module\",",
+    "current_user_id_provider"
   )
 
   wiring_found <- vapply(
