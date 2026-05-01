@@ -167,3 +167,14 @@ test_that("serverInitUserSession runtime identity accessor sözleşmesini sağla
   expect_equal(user_session$resolve_current_user_id(), 42L)
   expect_equal(cache_uid, 42L)
 })
+
+test_that("server_init_user_session Shiny reactiveVal kullanımını namespace ile yapar", {
+  repo_root <- resolve_repo_root_for_tests()
+  txt <- paste(
+    readLines(file.path(repo_root, "R", "server_init_user_session.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_true(grepl("shiny::reactiveVal(NULL)", txt, fixed = TRUE))
+  expect_false(grepl("user_config_rv <- reactiveVal(NULL)", txt, fixed = TRUE))
+})

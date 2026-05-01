@@ -81,7 +81,7 @@ serverInitUserSession <- function(session,
                                   resolve_identity_fn = resolveUserIdentity,
                                   get_or_create_user_fn = get_or_create_user,
                                   touch_session_fn = NULL) {
-  user_config_rv <- reactiveVal(NULL)
+  user_config_rv <- shiny::reactiveVal(NULL)
   current_user_id <- 0L
   auth_ready <- FALSE
   last_cache_dir <- NULL
