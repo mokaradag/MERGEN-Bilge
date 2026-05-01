@@ -156,6 +156,8 @@ testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-boundary-contract.R")
+testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-effective-user-id.R")
 testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
@@ -261,6 +263,8 @@ Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_ru
 
 SSO akışında `sso_state$authenticated` gibi Shiny reaktif alanları init sırasında doğrudan okunmamalıdır. Bu değerler yalnızca `shiny::observeEvent(...)`, `shiny::observe(...)`, `shiny::reactive(...)` veya güvenli `shiny::isolate(...)` bağlamlarında okunmalıdır. Bu kural, SSO girişinden hemen sonra oluşabilecek “Can't access reactive value outside of reactive consumer” hatalarını önler.
 
+SSO sonrasında tek sefer çalışması gereken modül yenilemeleri de artık `server.R` içinde tekrar eden doğrudan `observeEvent(sso_state$authenticated, ...)` bloklarıyla çoğaltılmamalıdır. Bu akış için `R/server_runtime_context.R` içindeki `serverRuntimeOnSsoAuthReady(runtime_ctx, ...)` yardımcı sözleşmesi kullanılmalıdır. Dosya Yönetimi kalıcı dosya yenilemesi ve Görsel Galerisi yenilemesi bu yardımcı üzerinden, `serverRuntimeAttachModule(...)` ile `runtime_ctx$modules` altına kaydedilen modül dönüş nesneleri kullanılarak tetiklenir. Bu yaklaşım SSO hazır olma zamanlamasını tek bir doğrulanabilir sınıra toplar ve `sso_state$authenticated` değerinin init sırasında yanlışlıkla okunmasını engeller.
+
 ```r
 identity <- runtime_ctx$identity
 
@@ -278,6 +282,8 @@ Dosya Yönetimi tarafında auth-ready kararı artık `session$userData$auth_init
 ```r
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-boundary-contract.R")
+testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-effective-user-id.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")
@@ -295,15 +301,18 @@ Bu bağlam şu nesneleri kapsar:
 - `forward_refs`
 - `state_bundle`
 - `chat_runtime`
+- sınırlı modül dönüş nesnesi kayıtları (`runtime_ctx$modules`)
+- SSO sonrası auth-ready callback kayıtları (`serverRuntimeOnSsoAuthReady(...)`)
 
 `server.R` içinde bu nesneler hâlâ aynı sırayla oluşturulur; ancak eksik fonksiyon veya yanlış başlatma sırası artık daha erken ve daha anlaşılır hata üretir. Bu yaklaşım, strict `global.R` kaynak sırası ve `server.R` orkestrasyon bağımlılığını kademeli olarak azaltmak için uygulanmıştır.
 
-Bu bağlam bir servis bulucuya dönüştürülmemelidir. Yeni alanlar yalnızca `server.R` içinde zaten oluşturulan, birden fazla alt modüle taşınan ve açık required-function sözleşmesiyle doğrulanabilen erken boot nesneleri için eklenmelidir. Kimlik ve auth-ready alanları bu nedenle `runtime_ctx$identity` altında tutulur.
+Bu bağlam bir servis bulucuya dönüştürülmemelidir. Yeni alanlar yalnızca `server.R` içinde zaten oluşturulan, birden fazla alt modüle taşınan ve açık required-function sözleşmesiyle doğrulanabilen erken boot nesneleri için eklenmelidir. Kimlik ve auth-ready alanları bu nedenle `runtime_ctx$identity` altında tutulur. `runtime_ctx$modules` da genel amaçlı global kayıt defteri değildir; yalnızca File Manager ve Görsel Galerisi gibi, SSO auth-ready sonrası güvenli şekilde yenilenmesi gereken modül dönüş nesneleri için dar kapsamlı kullanılmalıdır.
 
 Korunan ana sözleşmeler:
 
 ```r
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-boundary-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
