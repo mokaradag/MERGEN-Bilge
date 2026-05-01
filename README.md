@@ -156,6 +156,7 @@ testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-session-user-data-store.R")
 testthat::test_file("tests/testthat/test-server-boundary-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
@@ -284,6 +285,14 @@ testthat::test_file("tests/testthat/test-production-contracts.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 ```
+
+### Oturum Yerel Liste Depoları
+
+Oturum içinde `session$userData` altında tutulan liste tabanlı ortak durumlar artık doğrudan dağınık atamalarla yönetilmez. `current_session_files`, `file_summaries`, `chart_store` ve `mcp_registry_snapshot` gibi oturum-yerel depolar `R/utils_session_cleanup.R` içindeki küçük yardımcılarla okunur, yazılır ve temizlenir.
+
+Bu yardımcılar, dosya bağlamı ve MCP kayıt defteri gibi kritik akışlarda “önce hangi modül bu listeyi oluşturdu?” bağımlılığını azaltır. Başlangıç listeleri `R/server_init_session_state.R` içinde hazırlanır; dosya yükleme/özetleme hattı, dosya tıklama observer’ları, yeni söyleşi temizliği ve MCP registry snapshot güncellemesi aynı merkezi liste-store sözleşmesini kullanır.
+
+Bu davranış `tests/testthat/test-session-user-data-store.R` ile korunur.
 
 
 SSO akışında `sso_state$authenticated` gibi Shiny reaktif alanları init sırasında doğrudan okunmamalıdır. Bu değerler yalnızca `shiny::observeEvent(...)`, `shiny::observe(...)`, `shiny::reactive(...)` veya güvenli `shiny::isolate(...)` bağlamlarında okunmalıdır. Bu kural, SSO girişinden hemen sonra oluşabilecek “Can't access reactive value outside of reactive consumer” hatalarını önler.
