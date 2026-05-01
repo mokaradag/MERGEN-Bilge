@@ -12,7 +12,6 @@ server <- function(input, output, session) {
   # BÖLÜM 1: OTURUM ÖN BELLEKLEME VE ALTYAPI
   # ============================================================================
   session_cache <- sessionCacheInit(session)
-  user_config_rv <- reactiveVal(NULL)
   mcp_saved_path <- session_cache$mcp_saved_path
   cache_mcp_file_locally <- session_cache$cache_mcp_file_locally
   update_mcp_registry_snapshot <- session_cache$update_mcp_registry_snapshot
@@ -24,102 +23,30 @@ server <- function(input, output, session) {
   # BÖLÜM 2: KİMLİK DOĞRULAMA VE KULLANICI OTURUMU (SSO DESTEKLİ)
   # ============================================================================
 
-  # SSO modülünü başlat (SSO_ENABLED=FALSE ise otomatik geçiş yapar)
-  sso_state <- ssoAuthServer("sso_module")
+	# SSO modülünü başlat (SSO_ENABLED=FALSE ise otomatik geçiş yapar)
+	sso_state <- ssoAuthServer("sso_module")
 
-  # --- Kimlik çözümleme ve oturum kurulumu ---
-  # SSO kapalı (yerel geliştirme): Senkron akış, mevcut davranış korunur
-  # SSO aktif (Keycloak): Token doğrulandıktan sonra observer ile güncellenir
-  if (!isTRUE(SSO_ENABLED)) {
-    # ===== YEREL GELİŞTİRME MODU =====
-    user_identity <- resolveUserIdentity()
-    system_username <- user_identity$username
-    current_user_id <- get_or_create_user(system_username)
+	# Kullanıcı kimliği, user_config_rv ve canlı current_user_id provider tek
+	# initialization object üzerinden kurulur. Böylece server.R doğrudan
+	# session$userData kimlik alanlarını elle yönetmez.
+	user_session <- serverInitUserSession(
+	  session = session,
+	  session_cache = session_cache,
+	  sso_state = sso_state,
+	  base_user_config = user_config,
+	  sso_enabled = SSO_ENABLED,
+	  touch_session_fn = function(uid) {
+		if (exists("perf_tracker", inherits = FALSE) &&
+			is.list(perf_tracker) &&
+			is.function(perf_tracker$touch_session)) {
+		  perf_tracker$touch_session(uid)
+		}
+	  }
+	)
 
-    session$userData$user_identity   <- user_identity
-    session$userData$user_first_name <- user_identity$first_name
-    session$userData$system_username  <- system_username
-    session$userData$user_id         <- current_user_id
-    session$userData$sso_active      <- FALSE
-    session$userData$auth_source     <- "local"
-    session$userData$auth_initialized <- TRUE
-
-    session$userData$user_config <- list(
-      name             = user_identity$full_name,
-      icon             = user_config$icon,
-      userId           = as.character(current_user_id),
-      auth_level       = user_config$auth_level,
-      sicil            = NULL, email = NULL, first_name = user_identity$first_name,
-      last_name        = NULL, sektor = NULL, department = NULL,
-      mudurluk         = NULL, masraf_yeri_kodu = NULL
-    )
-    user_config_rv(session$userData$user_config)
-
-    cache_dir <- session_cache$setup_user_session(current_user_id)
-  } else {
-    # ===== SSO (KEYCLOAK) MODU =====
-    # Geçici değerler: Modüller bu değerlerle başlatılır,
-    # token doğrulandığında observer gerçek değerlerle günceller
-    current_user_id <- 0L
-    session$userData$auth_initialized <- FALSE
-    session$userData$sso_active <- TRUE
-
-    # Token doğrulandığında oturum bilgilerini kur
-    observeEvent(sso_state$authenticated, {
-      req(isTRUE(sso_state$authenticated))
-      claims <- sso_state$user_claims
-
-      ui <- resolveUserIdentity(sso_claims = claims)
-      uname <- ui$username
-      uid <- get_or_create_user(uname, sso_claims = claims)
-	  
-      # Aktif oturum defterini gerçek kullanıcı kimliği ile güncelle
-      try({
-        if (exists("perf_tracker", inherits = FALSE) &&
-            is.list(perf_tracker) &&
-            is.function(perf_tracker$touch_session)) {
-          perf_tracker$touch_session(uid)
-        }
-      }, silent = TRUE)
-
-      session$userData$user_identity   <- ui
-      session$userData$user_first_name <- ui$first_name
-      session$userData$system_username  <- uname
-      session$userData$user_id         <- uid
-      session$userData$auth_source     <- "keycloak"
-
-      session$userData$user_config <- list(
-        name             = ui$full_name,
-        icon             = user_config$icon,
-        userId           = ui$sicil %||% as.character(uid),
-        auth_level       = ui$auth_level %||% user_config$auth_level,
-        sicil            = ui$sicil, email = ui$email,
-        first_name       = ui$first_name, last_name = ui$last_name,
-        sektor           = ui$sektor, department = ui$department,
-        mudurluk         = ui$mudurluk, masraf_yeri_kodu = ui$masraf_yeri_kodu
-      )
-      user_config_rv(session$userData$user_config)
-
-      session_cache$setup_user_session(uid)
-      session$userData$auth_initialized <- TRUE
-
-      log_info("SSO oturum kuruldu: kullanıcı={uname}, id={uid}, yetki={ui$auth_level}")
-    }, ignoreInit = TRUE, once = TRUE)
-  }
-
-  # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
-  # SSO akışında başlangıçta 0L gelebilir; doğrulama tamamlanınca
-  # session$userData$user_id gerçek değeri taşır.
-  resolve_current_user_id <- function() {
-    resolve_effective_user_id(
-      session = session,
-      current_user_id = current_user_id
-    )
-  }
-
-  current_user_id_provider <- function() {
-    resolve_current_user_id()
-  }
+	user_config_rv <- user_session$user_config_rv
+	resolve_current_user_id <- user_session$resolve_current_user_id
+	current_user_id_provider <- user_session$current_user_id_provider
 
   # API anahtarı modülünü bağla
   api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)

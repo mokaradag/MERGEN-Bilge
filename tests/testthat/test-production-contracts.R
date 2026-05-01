@@ -94,14 +94,15 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
       "R/library_queries.R",
       "R/config_sql_loader.R",
 
-      # LLM / SSE / worker hattı
-      "R/helpers_worker_monitor.R",
-      "R/helpers_llm_response_postprocess.R",
-      "R/helpers_llm_api.R",
-      "R/helpers_llm_sse.R",
-      "R/helpers_llm_worker.R",
-      "R/server_handler_true_streaming.R",
-      "R/server_send_message.R",
+	  # LLM / SSE / worker hattı
+	  "R/helpers_worker_monitor.R",
+	  "R/helpers_llm_response_postprocess.R",
+	  "R/helpers_llm_api.R",
+	  "R/helpers_llm_sse.R",
+	  "R/helpers_llm_worker.R",
+	  "R/server_init_user_session.R",
+	  "R/server_handler_true_streaming.R",
+	  "R/server_send_message.R",
 
       # Dosya, MCP, özetleme, proje analizi
       "R/helpers_mcp_tools.R",

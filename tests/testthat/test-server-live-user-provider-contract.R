@@ -34,15 +34,14 @@
   txt
 }
 
-test_that("server.R canlı current_user_id_provider sözleşmesini korur", {
+test_that("server.R canlı current_user_id_provider sözleşmesini UserSessionContext üzerinden korur", {
   server_text <- .read_repo_text_for_user_provider_contract("server.R")
 
   expected <- c(
-    "resolve_current_user_id <- function()",
-    "current_user_id_provider <- function()",
-    "resolve_effective_user_id(",
-    "session = session",
-    "current_user_id = current_user_id"
+    "user_session <- serverInitUserSession(",
+    "user_config_rv <- user_session$user_config_rv",
+    "resolve_current_user_id <- user_session$resolve_current_user_id",
+    "current_user_id_provider <- user_session$current_user_id_provider"
   )
 
   found <- vapply(
@@ -54,7 +53,7 @@ test_that("server.R canlı current_user_id_provider sözleşmesini korur", {
   expect_true(
     all(found),
     info = paste(
-      "server.R canlı kullanıcı kimliği çözümleme sözleşmesi eksik:",
+      "server.R UserSessionContext canlı kullanıcı kimliği sözleşmesi eksik:",
       paste(expected[!found], collapse = ", ")
     )
   )
@@ -108,6 +107,34 @@ test_that("server.R içinde riskli current_user_id snapshot geçişleri yeniden 
     character(0),
     info = paste(
       "SSO drift riski: canlı provider yerine current_user_id snapshot'ı geçirilmiş olabilir.",
+      paste(matched, collapse = "\n"),
+      sep = "\n"
+    )
+  )
+})
+
+test_that("server.R kimlik session$userData alanlarını doğrudan yazmaz", {
+  server_text <- .read_repo_text_for_user_provider_contract("server.R")
+
+  forbidden_identity_writes <- c(
+    "session$userData$user_identity   <-",
+    "session$userData$user_first_name <-",
+    "session$userData$system_username  <-",
+    "session$userData$user_id         <-",
+    "session$userData$user_config <- list("
+  )
+
+  matched <- forbidden_identity_writes[vapply(
+    forbidden_identity_writes,
+    function(item) grepl(item, server_text, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    matched,
+    character(0),
+    info = paste(
+      "Kimlik oturum alanları server.R içine geri taşınmış olabilir:",
       paste(matched, collapse = "\n"),
       sep = "\n"
     )
