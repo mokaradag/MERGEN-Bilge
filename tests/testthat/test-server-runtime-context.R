@@ -283,6 +283,59 @@ test_that("serverRuntimeRefreshModuleOnSsoAuthReady modül yenilemeyi tek yardı
   expect_identical(refreshed_reason, "auth_ready")
 })
 
+test_that("serverRuntimeAttachRefreshableModule attach, refresh ve oturum uyumluluk yazımını tek yerden yapar", {
+  session <- .fake_runtime_session()
+
+  ctx <- serverRuntimeContextInit(
+    session = session,
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = TRUE),
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = TRUE)
+  )
+
+  refreshed_reason <- NULL
+  registered <- FALSE
+
+  file_manager_data <- list(
+    refresh_persisted_files = function(reason = NULL) {
+      refreshed_reason <<- reason
+    },
+    file_contents = function(...) list()
+  )
+
+  fake_observe_event <- function(eventExpr,
+                                 handlerExpr,
+                                 ignoreInit = TRUE,
+                                 once = TRUE) {
+    registered <<- TRUE
+    force(handlerExpr)
+
+    list(
+      ignoreInit = ignoreInit,
+      once = once
+    )
+  }
+
+  out <- serverRuntimeAttachRefreshableModule(
+    ctx = ctx,
+    name = "file_manager",
+    value = file_manager_data,
+    required_functions = c("refresh_persisted_files", "file_contents"),
+    refresh_function = "refresh_persisted_files",
+    refresh_args = list("auth_ready"),
+    label = "file_manager_refresh",
+    expose_session_key = "file_manager_data",
+    observe_event_fn = fake_observe_event,
+    req_fn = function(...) NULL
+  )
+
+  expect_identical(out, ctx)
+  expect_identical(ctx$modules$file_manager, file_manager_data)
+  expect_identical(session$userData$file_manager_data, file_manager_data)
+  expect_true(registered)
+  expect_identical(refreshed_reason, "auth_ready")
+})
+
 test_that("serverRuntimeRefreshModuleOnSsoAuthReady eksik modülü SSO modunda erken yakalar", {
   ctx <- serverRuntimeContextInit(
     session = .fake_runtime_session(),
@@ -374,4 +427,27 @@ test_that("serverRuntimeOnSsoAuthReady SSO durum sözleşmesini erken doğrular"
 	  ),
 	  "SSO modunda sso_state gereklidir"
 	)
+})
+
+test_that("server.R refresh edilebilir modülleri merkezi runtime yardımcısı ile bağlar", {
+  repo_root <- resolve_repo_root_for_tests()
+  server_path <- file.path(repo_root, "server.R")
+  server_text <- paste(readLines(server_path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_true(
+    grepl("serverRuntimeAttachRefreshableModule(", server_text, fixed = TRUE),
+    info = "server.R içinde refresh edilebilir modüller merkezi runtime yardımcısı ile bağlanmalıdır."
+  )
+
+  expect_true(
+    grepl('name = "file_manager"', server_text, fixed = TRUE) &&
+      grepl('expose_session_key = "file_manager_data"', server_text, fixed = TRUE),
+    info = "file_manager geçici oturum uyumluluk yazımı açık parametreyle korunmalıdır."
+  )
+
+  expect_true(
+    grepl('name = "image_gallery"', server_text, fixed = TRUE) &&
+      grepl('refresh_function = "refresh"', server_text, fixed = TRUE),
+    info = "image_gallery SSO sonrası yenileme sözleşmesi runtime yardımcısı üzerinden korunmalıdır."
+  )
 })

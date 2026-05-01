@@ -420,3 +420,57 @@ serverRuntimeRefreshModuleOnSsoAuthReady <- function(ctx,
     }
   )
 }
+
+serverRuntimeAttachRefreshableModule <- function(ctx,
+                                                 name,
+                                                 value,
+                                                 required_functions = character(0),
+                                                 refresh_function = NULL,
+                                                 refresh_args = list(),
+                                                 label = NULL,
+                                                 expose_session_key = NULL,
+                                                 overwrite_session_key = TRUE,
+                                                 once = TRUE,
+                                                 ignore_init = TRUE,
+                                                 observe_event_fn = shiny::observeEvent,
+                                                 req_fn = shiny::req) {
+  .server_runtime_require_context(ctx)
+
+  if (!is.list(refresh_args)) {
+    .server_runtime_stop(
+      "serverRuntimeAttachRefreshableModule: refresh_args liste olmalıdır."
+    )
+  }
+
+  ctx <- serverRuntimeAttachModule(
+    ctx = ctx,
+    name = name,
+    value = value,
+    required_functions = required_functions
+  )
+
+  if (!is.null(expose_session_key)) {
+    ctx <- serverRuntimeExposeSessionData(
+      ctx = ctx,
+      key = expose_session_key,
+      value = value,
+      overwrite = overwrite_session_key
+    )
+  }
+
+  if (!is.null(refresh_function)) {
+    serverRuntimeRefreshModuleOnSsoAuthReady(
+      ctx = ctx,
+      module_name = name,
+      refresh_function = refresh_function,
+      refresh_args = refresh_args,
+      label = label,
+      once = once,
+      ignore_init = ignore_init,
+      observe_event_fn = observe_event_fn,
+      req_fn = req_fn
+    )
+  }
+
+  invisible(ctx)
+}
