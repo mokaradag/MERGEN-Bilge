@@ -104,7 +104,7 @@ Identity accessors must be safe outside reactive consumers. When reading `user_c
 
 Never read `sso_state$authenticated` directly during initialization checks such as `is.null(sso_state$authenticated)`. In production SSO, that field is reactive and direct reads can crash the app with “Can't access reactive value outside of reactive consumer.” Watch it with `shiny::observeEvent(sso_state$authenticated, ...)` and read it only inside a reactive consumer/handler.
 
-Post-auth module refreshes must use `serverRuntimeOnSsoAuthReady(runtime_ctx, ...)` from `R/server_runtime_context.R`. Do not add new ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R` for one-time SSO-ready refreshes. The File Manager persisted-file refresh and Image Gallery refresh are registered through this helper after their module return objects are attached with `serverRuntimeAttachModule(...)`. The helper itself must not pre-check `ctx$sso_state$authenticated` with `is.null(...)` or any other direct read outside a reactive consumer.
+Post-auth module refreshes must use `serverRuntimeRefreshModuleOnSsoAuthReady(...)` from `R/server_runtime_context.R` when the goal is to refresh a registered module after SSO becomes ready. Do not add new ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R` for one-time SSO-ready module refreshes. The File Manager persisted-file refresh and Image Gallery refresh are registered through this helper after their module return objects are attached with `serverRuntimeAttachModule(...)`. The helper delegates auth-ready timing to `serverRuntimeOnSsoAuthReady(...)` internally and must not pre-check `ctx$sso_state$authenticated` with `is.null(...)` or any other direct read outside a reactive consumer. In `server.R`, do not directly read `ctx$modules$...` for these post-auth refreshes; use the runtime-context helper contract.
 
 File Manager auth readiness must be injected through `auth_ready_provider = runtime_ctx$identity$is_auth_ready`. Do not reintroduce direct File Manager checks against `session$userData$auth_initialized`; that couples persisted-file refresh to SSO timing and can bring back user-id `0` refresh regressions.
 
@@ -135,9 +135,11 @@ It currently covers only:
 - `state_bundle`
 - `chat_runtime`
 - narrowly registered module return objects in `runtime_ctx$modules`
-- SSO auth-ready callback registration through `serverRuntimeOnSsoAuthReady(...)`
+- SSO auth-ready callback registration through `serverRuntimeOnSsoAuthReady(...)`, plus registered-module refresh wiring through `serverRuntimeRefreshModuleOnSsoAuthReady(...)`
 
 Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules. `runtime_ctx$modules` is not a general global registry; use it narrowly for module return objects that need a validated runtime contract, such as File Manager and Image Gallery post-auth refresh wiring.
+
+When code needs to read a registered module from the context, prefer `serverRuntimeGetModule(...)` over direct `ctx$modules$...` access. This keeps missing-module and missing-function failures explicit and testable. In `server.R`, post-auth module refreshes should normally use `serverRuntimeRefreshModuleOnSsoAuthReady(...)` rather than custom callbacks that manually inspect `ctx$modules`.
 
 Expected attach sequence in `server.R`:
 
@@ -158,14 +160,16 @@ runtime_ctx <- serverRuntimeAttachModule(
   required_functions = c("refresh_persisted_files", "file_contents")
 )
 
-serverRuntimeOnSsoAuthReady(
-  runtime_ctx,
-  label = "file_manager_refresh",
-  callback = function(ctx) {
-    ctx$modules$file_manager$refresh_persisted_files("auth_ready")
-  }
+serverRuntimeRefreshModuleOnSsoAuthReady(
+  ctx = runtime_ctx,
+  module_name = "file_manager",
+  refresh_function = "refresh_persisted_files",
+  refresh_args = list("auth_ready"),
+  label = "file_manager_refresh"
 )
 ```
+
+Legacy `session$userData` exports should also be explicit. If a downstream module still requires a compatibility value such as `file_manager_data`, expose it through `serverRuntimeExposeSessionData(...)` instead of adding loose `session$userData$... <- ...` assignments in `server.R`.
 
 Keep `runtime_ctx$identity` as the single early boot identity boundary in `server.R`. Do not mix direct `user_session$...` reads or direct identity-related `session$userData$...` reads back into `server.R`.
 
@@ -186,6 +190,7 @@ resolve_current_user_id <- user_session$resolve_current_user_id
 current_user_id_provider <- user_session$current_user_id_provider
 current_user_first_name <- session$userData$user_first_name
 current_user_display_name <- session$userData$user_config$name
+session$userData$file_manager_data <- file_manager_data
 auth_ready <- session$userData$auth_initialized
 ```
 
