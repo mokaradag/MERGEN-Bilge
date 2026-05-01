@@ -174,6 +174,15 @@ test_that("serverRuntimeAttachModule modül fonksiyon sözleşmesini isteğe ba�
   )
 
   expect_identical(ctx$modules$image_gallery, module_value)
+  expect_identical(
+    serverRuntimeGetModule(ctx, "image_gallery", required_functions = "refresh"),
+    module_value
+  )
+
+  expect_error(
+    serverRuntimeGetModule(ctx, "missing_module"),
+    "kayıtlı değil"
+  )
 
   expect_error(
     serverRuntimeAttachModule(
@@ -183,6 +192,113 @@ test_that("serverRuntimeAttachModule modül fonksiyon sözleşmesini isteğe ba�
       required_functions = "refresh"
     ),
     "runtime module 'broken_module' eksik zorunlu fonksiyon"
+  )
+})
+
+test_that("serverRuntimeExposeSessionData oturum verisini açık sözleşmeyle yazar", {
+  session <- .fake_runtime_session()
+
+  ctx <- serverRuntimeContextInit(
+    session = session,
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session()
+  )
+
+  file_manager_data <- list(
+    file_contents = function(...) list()
+  )
+
+  out <- serverRuntimeExposeSessionData(
+    ctx = ctx,
+    key = "file_manager_data",
+    value = file_manager_data
+  )
+
+  expect_identical(out, ctx)
+  expect_identical(session$userData$file_manager_data, file_manager_data)
+
+  expect_error(
+    serverRuntimeExposeSessionData(
+      ctx = ctx,
+      key = "file_manager_data",
+      value = list(),
+      overwrite = FALSE
+    ),
+    "zaten mevcut"
+  )
+})
+
+test_that("serverRuntimeRefreshModuleOnSsoAuthReady modül yenilemeyi tek yardımcıyla kurar", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = TRUE),
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = TRUE)
+  )
+
+  refreshed_reason <- NULL
+  registered <- FALSE
+
+  file_manager_data <- list(
+    refresh_persisted_files = function(reason = NULL) {
+      refreshed_reason <<- reason
+    },
+    file_contents = function(...) list()
+  )
+
+  serverRuntimeAttachModule(
+    ctx,
+    name = "file_manager",
+    value = file_manager_data,
+    required_functions = c("refresh_persisted_files", "file_contents")
+  )
+
+  fake_observe_event <- function(eventExpr,
+                                 handlerExpr,
+                                 ignoreInit = TRUE,
+                                 once = TRUE) {
+    registered <<- TRUE
+    force(handlerExpr)
+
+    list(
+      ignoreInit = ignoreInit,
+      once = once
+    )
+  }
+
+  observer <- serverRuntimeRefreshModuleOnSsoAuthReady(
+    ctx = ctx,
+    module_name = "file_manager",
+    refresh_function = "refresh_persisted_files",
+    refresh_args = list("auth_ready"),
+    label = "file_manager_refresh",
+    observe_event_fn = fake_observe_event,
+    req_fn = function(...) NULL
+  )
+
+  expect_true(registered)
+  expect_true(isTRUE(observer$ignoreInit))
+  expect_true(isTRUE(observer$once))
+  expect_identical(refreshed_reason, "auth_ready")
+})
+
+test_that("serverRuntimeRefreshModuleOnSsoAuthReady eksik modülü SSO modunda erken yakalar", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = FALSE)
+  )
+
+  expect_error(
+    serverRuntimeRefreshModuleOnSsoAuthReady(
+      ctx = ctx,
+      module_name = "file_manager",
+      refresh_function = "refresh_persisted_files",
+      observe_event_fn = function(...) NULL
+    ),
+    "kayıtlı değil"
   )
 })
 

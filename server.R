@@ -205,20 +205,20 @@ server <- function(input, output, session) {
 	  required_functions = c("refresh_persisted_files", "file_contents")
 	)
 
-	serverRuntimeOnSsoAuthReady(
-	  runtime_ctx,
-	  label = "file_manager_refresh",
-	  callback = function(ctx) {
-	    file_manager <- ctx$modules$file_manager
-
-	    if (is.function(file_manager$refresh_persisted_files)) {
-	      file_manager$refresh_persisted_files("auth_ready")
-	    }
-	  }
+	serverRuntimeRefreshModuleOnSsoAuthReady(
+	  ctx = runtime_ctx,
+	  module_name = "file_manager",
+	  refresh_function = "refresh_persisted_files",
+	  refresh_args = list("auth_ready"),
+	  label = "file_manager_refresh"
 	)
-    
-  # Özetleme modülü erişimi için dosya yöneticisi verilerini oturumda sakla
-  session$userData$file_manager_data <- file_manager_data
+
+  # Özetleme modülü için geçici geriye uyumluluk: dosya yöneticisi oturumdan okunuyor.
+  runtime_ctx <- serverRuntimeExposeSessionData(
+    ctx = runtime_ctx,
+    key = "file_manager_data",
+    value = file_manager_data
+  )
   
   # Sohbet UI gözlemcilerini başlat (values artık mevcut)
   chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
@@ -288,16 +288,11 @@ server <- function(input, output, session) {
 	  required_functions = "refresh"
 	)
 
-	serverRuntimeOnSsoAuthReady(
-	  runtime_ctx,
-	  label = "image_gallery_refresh",
-	  callback = function(ctx) {
-	    gallery <- ctx$modules$image_gallery
-
-	    if (is.function(gallery$refresh)) {
-	      gallery$refresh()
-	    }
-	  }
+	serverRuntimeRefreshModuleOnSsoAuthReady(
+	  ctx = runtime_ctx,
+	  module_name = "image_gallery",
+	  refresh_function = "refresh",
+	  label = "image_gallery_refresh"
 	)
 
   # Görsel galerisi gözlemcilerini başlat

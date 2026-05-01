@@ -237,6 +237,71 @@ serverRuntimeAttachModule <- function(ctx,
   invisible(ctx)
 }
 
+serverRuntimeGetModule <- function(ctx,
+                                   name,
+                                   required_functions = character(0)) {
+  .server_runtime_require_context(ctx)
+
+  if (is.null(name) || length(name) != 1L || !nzchar(as.character(name))) {
+    .server_runtime_stop(
+      "serverRuntimeGetModule: Geçerli bir modül adı bekleniyor."
+    )
+  }
+
+  name <- as.character(name)
+  module_value <- ctx$modules[[name]]
+
+  if (is.null(module_value)) {
+    .server_runtime_stop(sprintf(
+      "serverRuntimeGetModule: '%s' modülü runtime context içinde kayıtlı değil.",
+      name
+    ))
+  }
+
+  if (length(required_functions) > 0L) {
+    .server_runtime_require_functions(
+      module_value,
+      required_functions,
+      sprintf("runtime module '%s'", name)
+    )
+  }
+
+  module_value
+}
+
+serverRuntimeExposeSessionData <- function(ctx,
+                                           key,
+                                           value,
+                                           overwrite = TRUE) {
+  .server_runtime_require_context(ctx)
+
+  if (is.null(key) || length(key) != 1L || !nzchar(as.character(key))) {
+    .server_runtime_stop(
+      "serverRuntimeExposeSessionData: Geçerli bir oturum anahtarı bekleniyor."
+    )
+  }
+
+  if (is.null(ctx$session) || is.null(ctx$session$userData)) {
+    .server_runtime_stop(
+      "serverRuntimeExposeSessionData: session$userData bulunamadı."
+    )
+  }
+
+  key <- as.character(key)
+  already_exists <- exists(key, envir = ctx$session$userData, inherits = FALSE)
+
+  if (isTRUE(already_exists) && !isTRUE(overwrite)) {
+    .server_runtime_stop(sprintf(
+      "serverRuntimeExposeSessionData: '%s' oturum verisi zaten mevcut.",
+      key
+    ))
+  }
+
+  ctx$session$userData[[key]] <- value
+
+  invisible(ctx)
+}
+
 serverRuntimeOnSsoAuthReady <- function(ctx,
                                         callback,
                                         label = "auth_ready",
@@ -286,4 +351,72 @@ serverRuntimeOnSsoAuthReady <- function(ctx,
   }, ignoreInit = ignore_init, once = once)
 
   invisible(observer)
+}
+
+serverRuntimeRefreshModuleOnSsoAuthReady <- function(ctx,
+                                                     module_name,
+                                                     refresh_function,
+                                                     refresh_args = list(),
+                                                     label = NULL,
+                                                     once = TRUE,
+                                                     ignore_init = TRUE,
+                                                     observe_event_fn = shiny::observeEvent,
+                                                     req_fn = shiny::req) {
+  .server_runtime_require_context(ctx)
+
+  if (is.null(module_name) ||
+      length(module_name) != 1L ||
+      !nzchar(as.character(module_name))) {
+    .server_runtime_stop(
+      "serverRuntimeRefreshModuleOnSsoAuthReady: Geçerli bir modül adı bekleniyor."
+    )
+  }
+
+  if (is.null(refresh_function) ||
+      length(refresh_function) != 1L ||
+      !nzchar(as.character(refresh_function))) {
+    .server_runtime_stop(
+      "serverRuntimeRefreshModuleOnSsoAuthReady: Geçerli bir yenileme fonksiyonu adı bekleniyor."
+    )
+  }
+
+  if (!is.list(refresh_args)) {
+    .server_runtime_stop(
+      "serverRuntimeRefreshModuleOnSsoAuthReady: refresh_args liste olmalıdır."
+    )
+  }
+
+  module_name <- as.character(module_name)
+  refresh_function <- as.character(refresh_function)
+
+  if (is.null(label) || length(label) != 1L || !nzchar(as.character(label))) {
+    label <- paste0(module_name, "_", refresh_function, "_auth_ready")
+  }
+
+  # SSO modunda eksik modül/fonksiyon sözleşmesini observer çalışmadan önce yakala.
+  if (isTRUE(ctx$identity$is_sso_active())) {
+    serverRuntimeGetModule(
+      ctx,
+      module_name,
+      required_functions = refresh_function
+    )
+  }
+
+  serverRuntimeOnSsoAuthReady(
+    ctx = ctx,
+    label = label,
+    once = once,
+    ignore_init = ignore_init,
+    observe_event_fn = observe_event_fn,
+    req_fn = req_fn,
+    callback = function(ctx) {
+      module_value <- serverRuntimeGetModule(
+        ctx,
+        module_name,
+        required_functions = refresh_function
+      )
+
+      do.call(module_value[[refresh_function]], refresh_args)
+    }
+  )
 }
