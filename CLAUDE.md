@@ -68,19 +68,91 @@ Preserve this source order in `global.R`:
 ```r
 safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
 safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
+safe_source("R/server_runtime_context.R",    encoding = "UTF-8")
 safe_source("R/server_init_session_state.R", encoding = "UTF-8")
 safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 ```
 
-R/server_init_user_session.R owns local/SSO user identity setup, user_config_rv creation, compatibility writes to identity-related session$userData keys, live effective-user provider creation, and user-session cache setup.
+`R/server_init_user_session.R` owns local/SSO user identity setup, `user_config_rv` creation, compatibility writes to identity-related `session$userData` keys, live effective-user provider creation, and user-session cache setup.
+
+`R/server_runtime_context.R` owns the early server boot contract that carries identity, cache, forward references, session state, and chat runtime into `server.R` through one explicit context object.
+
+In `server.R`, do not read identity values directly from `user_session` anymore. The expected contract is:
+
+```r
+runtime_ctx <- serverRuntimeContextInit(
+  session = session,
+  session_cache = session_cache,
+  sso_state = sso_state,
+  user_session = user_session
+)
+
+user_config_rv <- runtime_ctx$identity$user_config_rv
+resolve_current_user_id <- runtime_ctx$identity$resolve_current_user_id
+current_user_id_provider <- runtime_ctx$identity$current_user_id_provider
+```
 
 Protected by:
 
+```text
 tests/testthat/test-server-user-session-context.R
+tests/testthat/test-server-runtime-context.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-effective-user-id.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-production-contracts.R
+```
+
+### ServerRuntimeContext contract
+
+`R/server_runtime_context.R` is a small boot-time context boundary, not a broad application framework.
+
+Its purpose is to reduce loose boot-state leakage in `server.R` and fail early when required boot objects are missing or malformed.
+
+It currently covers only:
+
+- `session_cache`
+- `user_session` / live current-user providers
+- `forward_refs`
+- `state_bundle`
+- `chat_runtime`
+
+Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules.
+
+Expected attach sequence in `server.R`:
+
+```r
+runtime_ctx <- serverRuntimeContextInit(...)
+runtime_ctx <- serverRuntimeAttachForwardRefs(runtime_ctx, ...)
+runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
+runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
+```
+
+Send-message wiring should use cache functions from the context:
+
+```r
+cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally
+update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot
+```
+
+Do not reintroduce loose early aliases such as:
+
+```r
+cache_mcp_file_locally <- session_cache$cache_mcp_file_locally
+update_mcp_registry_snapshot <- session_cache$update_mcp_registry_snapshot
+user_config_rv <- user_session$user_config_rv
+resolve_current_user_id <- user_session$resolve_current_user_id
+current_user_id_provider <- user_session$current_user_id_provider
+```
+
+The context contract is protected by:
+
+```text
+tests/testthat/test-server-runtime-context.R
+tests/testthat/test-server-live-user-provider-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-production-contracts.R
+```
 
 ### Database helper modularization contract
 The database layer is now intentionally split into smaller responsibility-focused helpers. Preserve this source order:
@@ -201,21 +273,21 @@ The Proje/Kaynak Analizi layer now has a focused filter-helper split. Preserve t
 safe_source("R/helpers_pk_analysis_core.R",      encoding = "UTF-8")
 safe_source("R/helpers_pk_analysis_filters.R",   encoding = "UTF-8")
 safe_source("R/module_proje_kaynak_analizi.R",   encoding = "UTF-8")
-```r
+```
 
 Responsibilities:
 
-R/helpers_pk_analysis_core.R: pure PK analysis helpers such as column summaries, date conversion, UTF-8 normalization, SQL Unicode execution, and SQL Server identifier normalization.
-R/helpers_pk_analysis_filters.R: AI filter criteria extraction, stop-after-LLM guard, JSON filter parsing, smart dataframe filtering, and aggregation.
-R/module_proje_kaynak_analizi.R: Proje/Kaynak Analizi runtime orchestration, RLS, DB/query execution, module behavior, and fallback helper loading.
+* `R/helpers_pk_analysis_core.R`: pure PK analysis helpers such as column summaries, date conversion, UTF-8 normalization, SQL Unicode execution, and SQL Server identifier normalization.
+* `R/helpers_pk_analysis_filters.R`: AI filter criteria extraction, stop-after-LLM guard, JSON filter parsing, smart dataframe filtering, and aggregation.
+* `R/module_proje_kaynak_analizi.R`: Proje/Kaynak Analizi runtime orchestration, RLS, DB/query execution, module behavior, and fallback helper loading.
 
-Do not move extract_filter_criteria_from_prompt() or apply_smart_filters() back into R/module_proje_kaynak_analizi.R. Preserve their public function names because R/helpers_deep_analysis.R calls them directly.
+Do not move `extract_filter_criteria_from_prompt()` or `apply_smart_filters()` back into `R/module_proje_kaynak_analizi.R`. Preserve their public function names because `R/helpers_deep_analysis.R` calls them directly.
 
 The split is protected by:
 
-tests/testthat/test-pk-analysis-filters-refactor-contract.R
-tests/testthat/test-pk-analysis-core-refactor-contract.R
-tests/testthat/test-pk-analysis-maintainability-contract.R
+* `tests/testthat/test-pk-analysis-filters-refactor-contract.R`
+* `tests/testthat/test-pk-analysis-core-refactor-contract.R`
+* `tests/testthat/test-pk-analysis-maintainability-contract.R`
 
 ### File Manager modularization contract
 
@@ -274,17 +346,17 @@ safe_source("R/module_settings.R", encoding = "UTF-8")
 
 Responsibilities:
 
-R/module_settings_yapilandirma_ui.R: settingsYapilandirmaUIImpl(id) and the Yapılandırma page UI cards/layout only.
-R/module_settings_yapilandirma.R: public settingsYapilandirmaUI(id) wrapper, settingsYapilandirmaServer(...), temporary settings state, save/reset triggers, runtime outputs, and observer logic.
-R/module_settings.R: central settings coordinator, localStorage restore, save/reset orchestration, and cross-module synchronization.
+* `R/module_settings_yapilandirma_ui.R`: `settingsYapilandirmaUIImpl(id)` and the Yapılandırma page UI cards/layout only.
+* `R/module_settings_yapilandirma.R`: public `settingsYapilandirmaUI(id)` wrapper, `settingsYapilandirmaServer(...)`, temporary settings state, save/reset triggers, runtime outputs, and observer logic.
+* `R/module_settings.R`: central settings coordinator, localStorage restore, save/reset orchestration, and cross-module synchronization.
 
-Do not move the large Yapılandırma UI card layout back into R/module_settings_yapilandirma.R. Do not move runtime observers, reactiveVal(...), moduleServer(...), or session$sendCustomMessage(...) into R/module_settings_yapilandirma_ui.R.
+Do not move the large Yapılandırma UI card layout back into `R/module_settings_yapilandirma.R`. Do not move runtime observers, `reactiveVal(...)`, `moduleServer(...)`, or `session$sendCustomMessage(...)` into `R/module_settings_yapilandirma_ui.R`.
 
 This split is protected by:
 
-tests/testthat/test-settings-yapilandirma-ui-refactor-contract.R
-tests/testthat/test-source-manifest-contract.R
-tests/testthat/test-maintainability-ratchet.R
+* `tests/testthat/test-settings-yapilandirma-ui-refactor-contract.R`
+* `tests/testthat/test-source-manifest-contract.R`
+* `tests/testthat/test-maintainability-ratchet.R`
 
 ### Admin Yanıt Analizi modularization contract
 
@@ -297,18 +369,18 @@ safe_source("R/module_admin_yanit_analizi.R",  encoding = "UTF-8")
 
 Responsibilities:
 
-R/helpers_admin_yanit_analizi.R: MB_Feedback odaklı sorgu paketi, yanıt geri bildirim etiket çözümleme mantığı ve Yanıt Analizi sekme UI helperları.
+* `R/helpers_admin_yanit_analizi.R`: MB_Feedback odaklı sorgu paketi, yanıt geri bildirim etiket çözümleme mantığı ve Yanıt Analizi sekme UI helperları.
+* `R/module_admin_yanit_analizi.R`: public `adminYanitAnaliziUI()` / `adminYanitAnaliziServer()` API'si, Shiny refresh/reactive orkestrasyonu, chart/table output render fonksiyonları ve modül wiring.
 
-R/module_admin_yanit_analizi.R: public adminYanitAnaliziUI()/adminYanitAnaliziServer() API'si, Shiny refresh/reactive orkestrasyonu, chart/table output render fonksiyonları ve modül wiring.
-
-Do not move admin_yanit_collect_data(), admin_yanit_tag_counts(), admin_yanit_overview_ui(), admin_yanit_model_ui(), admin_yanit_etiket_ui() or admin_yanit_zaman_ui() back into R/module_admin_yanit_analizi.R.
+Do not move `admin_yanit_collect_data()`, `admin_yanit_tag_counts()`, `admin_yanit_overview_ui()`, `admin_yanit_model_ui()`, `admin_yanit_etiket_ui()` or `admin_yanit_zaman_ui()` back into `R/module_admin_yanit_analizi.R`.
 
 This split is protected by:
 
-tests/testthat/test-admin-yanit-analizi-refactor-contract.R
-tests/testthat/test-source-manifest-contract.R
-tests/testthat/test-maintainability-ratchet.R
+* `tests/testthat/test-admin-yanit-analizi-refactor-contract.R`
+* `tests/testthat/test-source-manifest-contract.R`
+* `tests/testthat/test-maintainability-ratchet.R`
 
+---
 
 # 6) When the user asks for exact patches, be exact
 
@@ -320,6 +392,22 @@ Run from repo root:
 
 ```r
 source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
+```
+
+Focused validation for the current server runtime architecture boundary:
+
+```r
+testthat::test_file("tests/testthat/test-server-user-session-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+testthat::test_file("tests/testthat/test-source-manifest-contract.R")
+testthat::test_file("tests/testthat/test-production-contracts.R")
+```
+
+Then run the full strict suite:
+
+```r
+source("tests/testthat.R", encoding = "UTF-8")
 ```
 
 The user often wants:
@@ -339,10 +427,31 @@ User-facing strings are mostly Turkish and intentionally stylized. Avoid rewriti
 When resolving effective user/session identity, prefer shared canonical helpers (for example `resolve_effective_user_id(...)`) instead of copy-pasted local resolver variants.
 
 Avoid re-implementing local `resolve_current_user_id()` snippets unless there is a compelling, scoped reason. In this repo, SSO timing regressions often come from duplicated identity-resolution code paths drifting apart.
-In SSO flows, do not pass the startup `current_user_id` snapshot into user-scoped modules. The startup value may temporarily be `0L`. Pass a live provider such as `current_user_id_provider` / `resolve_current_user_id()` so modules resolve the effective user at use time. `resolve_effective_user_id(...)` must treat placeholder/invalid session IDs such as `0`, `NA`, and non-numeric values as missing, then fall back to the live provider before returning `0L`. This protects saved chats, history, file manager, gallery, support, and performance flows from SSO user-ID drift.
-User/session bootstrap is now centralized in `R/server_init_user_session.R`. Do not move local/SSO identity setup logic back into `server.R`. `server.R` should obtain `user_config_rv`, `resolve_current_user_id`, and `current_user_id_provider` from `serverInitUserSession(...)`.
 
-Do not pass startup `current_user_id` snapshots to user-scoped modules. In SSO mode, the startup value may temporarily be `0L`; use the live provider returned by `serverInitUserSession(...)`.
+In SSO flows, do not pass the startup `current_user_id` snapshot into user-scoped modules. The startup value may temporarily be `0L`. Pass a live provider such as `current_user_id_provider` / `resolve_current_user_id()` so modules resolve the effective user at use time. `resolve_effective_user_id(...)` must treat placeholder/invalid session IDs such as `0`, `NA`, and non-numeric values as missing, then fall back to the live provider before returning `0L`. This protects saved chats, history, file manager, gallery, support, and performance flows from SSO user-ID drift.
+
+User/session bootstrap is centralized in `R/server_init_user_session.R`. Do not move local/SSO identity setup logic back into `server.R`.
+
+`server.R` should initialize `user_session` with `serverInitUserSession(...)`, then pass it into `serverRuntimeContextInit(...)`. Downstream aliases must come from `runtime_ctx$identity`, not directly from `user_session`.
+
+Expected pattern:
+
+```r
+user_session <- serverInitUserSession(...)
+
+runtime_ctx <- serverRuntimeContextInit(
+  session = session,
+  session_cache = session_cache,
+  sso_state = sso_state,
+  user_session = user_session
+)
+
+user_config_rv <- runtime_ctx$identity$user_config_rv
+resolve_current_user_id <- runtime_ctx$identity$resolve_current_user_id
+current_user_id_provider <- runtime_ctx$identity$current_user_id_provider
+```
+
+Do not pass startup `current_user_id` snapshots to user-scoped modules. In SSO mode, the startup value may temporarily be `0L`; use the live provider exposed through `runtime_ctx$identity$current_user_id_provider`.
 
 ### 8) Async jobs visible in health metrics must use tracked wrapper
 For application-monitored async flows, do not use raw `future_promise(...)` directly.
@@ -363,6 +472,7 @@ Practical result:
 In particular, the following errors are usually not a source-order issue, but a worker dependency transfer issue:
 - `call_llm_worker function not found`
 - `generate_image function not found`
+
 For true SSE streaming, keep the worker prewarm/export contract aligned with the `tracked_future_promise(..., globals = list(...))` contract in `R/server_handler_true_streaming.R`. Reasoning deltas, stop-file checks, and model-specific request overrides require helpers such as `append_stream_reasoning_line`, `streaming_should_stop`, `apply_model_request_overrides`, and `merge_named_list_deep` to remain visible on the worker side.
 
 These errors can be more visible especially under these conditions:
@@ -381,7 +491,7 @@ Repository convention:
 ### Upload-size policy and client-side guard
 File upload size enforcement is layered and must remain that way:
 
-* browser/client-side guard in `R/module_file_manager.R` rejects files above the configured limit before Shiny upload starts,
+* browser/client-side guard in `R/module_file_manager_ui.R` rejects files above the configured limit before Shiny upload starts,
 * `shiny.maxRequestSize` provides request-level protection,
 * `validate_uploaded_file()` provides the final server-side trust boundary.
 
@@ -530,6 +640,7 @@ stop_on_warning = TRUE
 ```
 
 Do not weaken the main runner to hide warnings. If a test produces noisy warnings only during full `test_dir()` execution, fix the test so it is deterministic and warning-safe. Source-inspection tests should avoid broad warning-prone recursive scans inside the main suite. Prefer targeted contract checks over scanning the whole repository when the test is part of the strict default runner.
+
 Default-suite source-inspection tests must be warning-safe on Windows. Avoid warning-prone combinations such as `grepl(..., fixed = TRUE, ignore.case = TRUE, useBytes = TRUE)` inside broad scan loops. Prefer normalizing text/patterns first (for example lowercasing both) and then using fixed byte matching without `ignore.case`.
 
 Atomic-write tests should prefer deterministic UTF-8-safe or raw-byte assertions instead of locale-dependent `readLines()` comparisons on Windows VM.
@@ -549,6 +660,9 @@ Windows-safe child-session test authoring rules:
 - LLM content/reasoning fallback contract coverage via `test-llm-content-reasoning-fallback.R`
 - maintainability ratchet coverage via `test-maintainability-ratchet.R`, including baseline score/count regression protection and Windows VM `testthat` compatibility through `expect_true(..., info = ...)`
 - canonical effective user-id resolver coverage via `test-effective-user-id.R`, including SSO placeholder `0L` fallback to the live provider
+- Server user-session context coverage via `test-server-user-session-context.R`, including local/SSO identity config construction and live provider fallback behavior
+- Server runtime context coverage via `test-server-runtime-context.R`, including early boot contract validation for cache, identity, forward refs, state, chat runtime, and optional module attachments
+- SSO live user-id provider contract coverage via `test-server-live-user-provider-contract.R`, ensuring `server.R` obtains live identity providers through `runtime_ctx$identity` and does not regress to startup snapshots
 - File Manager policy/helper wiring coverage via `test-file-manager-policy-contract.R` and `test-file-manager-module-policy-wiring.R`, including delegated user-id normalization, icon HTML, timestamp formatting, and persisted refresh stale-request guards
 - Bilge Yolaç UI/server split contract coverage ensuring `claudeCodeUI()` remains in `R/module_claude_code_ui.R`, `claudeCodeServer()` remains in `R/module_claude_code.R`, and the source order stays correct (`test-claude-code-ui-refactor-contract.R`)
 - Bilge Yolaç model/config helper split contract coverage ensuring model/settings helpers remain in `R/helpers_claude_code_model_config.R`, process/runtime helpers remain in `R/helpers_claude_code.R`, source order stays correct, and core helper behavior is preserved (`test-claude-code-model-config-refactor-contract.R`)
@@ -572,15 +686,14 @@ Windows-safe child-session test authoring rules:
 - parse-based quality-gate coverage for `app.R`, `tests/testthat.R`, and `tests/scripts/*`
 - Windows-safe file-store index regression coverage with shape-agnostic checks, including Turkish display-name edge handling
 - Windows-safe atomic-write UTF-8 verification strategy
-- thinking/reasoning model request_overrides contract coverage, including deep merge of chat_template_kwargs$enable_thinking
-- true SSE request-body override coverage for apply_model_request_overrides(body, selected_model)
-- future worker globals contract coverage for apply_model_request_overrides
+- thinking/reasoning model request_overrides contract coverage, including deep merge of `chat_template_kwargs$enable_thinking`
+- true SSE request-body override coverage for `apply_model_request_overrides(body, selected_model)`
+- future worker globals contract coverage for `apply_model_request_overrides`
 - true SSE worker export/globals contract coverage for reasoning deltas, stop-file checks, and request overrides
-- SSO live user-id provider contract coverage to prevent startup current_user_id snapshot drift
 - default offline baseline contract coverage for CDN/public asset dependency detection in runtime R/CSS/JS files
-- warning-safe source-inspection strategy for strict stop_on_warning test runs
-- SSE delta reasoning parser coverage for delta$content, delta$reasoning, delta$reasoning_content, and atomic delta/message edge cases
-- production-default reasoning debug gate coverage via MERGEN_REASONING_DEBUG=FALSE
+- warning-safe source-inspection strategy for strict `stop_on_warning` test runs
+- SSE delta reasoning parser coverage for `delta$content`, `delta$reasoning`, `delta$reasoning_content`, and atomic delta/message edge cases
+- production-default reasoning debug gate coverage via `MERGEN_REASONING_DEBUG=FALSE`
 - production contract coverage for critical boot/runtime entry files without warning-prone broad recursive scans
 - upload-size policy coverage for the 25 MB default and >25 MB rejection path
 - file-manager client-side upload guard coverage via `test-file-manager-upload-limit-ui.R`
@@ -610,8 +723,10 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required.
 - Focused hardening checks can be run directly with:
   ```r
-  testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+  testthat::test_file("tests/testthat/test-server-user-session-context.R")
+  testthat::test_file("tests/testthat/test-server-runtime-context.R")
   testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+  testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
   testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
   testthat::test_file("tests/testthat/test-mcp-session-user-id-contract.R")
   testthat::test_file("tests/testthat/test-mcp-path-fallback-contract.R")
@@ -763,6 +878,7 @@ request_overrides = list(
   )
 )
 ```
+
 `apply_model_request_overrides(body, selected_model)` must be applied after constructing the true SSE streaming body and before sending the HTTP request.
 The same helper must also be applied on non-streaming LLM paths; otherwise streaming and non-streaming behavior diverges.
 `R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Düşünüyorum/reasoning models.
@@ -787,6 +903,7 @@ A production-behavior patch must not leave debug output permanently enabled.
 - To prevent `[object Object]` regressions in the panel title, a client-side defense such as `sanitizeModelLabel()` is mandatory.
 - The purple bottom-edge shimmer (`rp-shimmer`) should run only during active thinking/streaming phases and must be disabled in `completed`, `interrupted/stopped`, and `error` states, as well as under `prefers-reduced-motion`.
 
+---
 
 ## What MERGEN Bilge Is
 
@@ -1003,6 +1120,12 @@ Loaded first, no application-layer assumptions:
 - `R/utils_rate_limiter.R`
 - `R/helpers_worker_monitor.R`
 - `R/utils_path_helpers.R`
+- `R/utils_safe_path.R`
+- `R/utils_atomic_write.R`
+- `R/utils_upload_validator.R`
+- `R/utils_log_redact.R`
+- `R/utils_session_cleanup.R`
+- `R/utils_safe_worker_run.R`
 - `R/utils_file_index.R`
 - `R/utils_excel_reader.R`
 
@@ -1011,6 +1134,8 @@ Defines application-wide configuration:
 
 - `R/config_sso.R`
 - `R/config_file_store.R`
+- `R/config_file_store_index_mutation.R`
+- `R/config_file_store_registry.R`
 - `R/config_characters.R`
 - `R/config_version_history.R`
 - `R/config_api.R`
@@ -1020,6 +1145,10 @@ Defines application-wide configuration:
 ### Group 3 - Database and SQL
 Core persistence and DB access:
 
+- `R/helpers_db_connection.R`
+- `R/helpers_db_validation.R`
+- `R/helpers_chat_message_formatting.R`
+- `R/helpers_db_chat_readers.R`
 - `R/helpers_database.R`
 - `R/library_queries.R`
 - `R/config_sql_loader.R`
@@ -1029,28 +1158,56 @@ Shared utilities used across modules:
 
 - `R/helpers_language.R`
 - `R/helpers_messaging.R`
+- `R/helpers_mcp_context.R`
+- `R/helpers_mcp_bootstrap.R`
 - `R/helpers_mcp_tools.R`
+- `R/helpers_mcp_table_readers.R`
+- `R/helpers_mcp_file_resolver.R`
+- `R/helpers_mcp_schema_helpers.R`
+- `R/helpers_mcp_basic_tools.R`
+- `R/helpers_mcp_chart_tools.R`
+- `R/helpers_mcp_analyze_visualize.R`
 - `R/helpers_chartlab.R`
 - `R/helpers_image_gallery.R`
 - `R/helpers_preview.R`
 - `R/helpers_file_pipeline.R`
 - `R/helpers_files.R`
+- `R/helpers_file_manager_policy.R`
+- `R/helpers_file_manager_context_policy.R`
+- `R/helpers_file_manager_table.R`
+- `R/helpers_file_manager_refresh_guard.R`
+- `R/helpers_file_manager_session_registry.R`
+- `R/helpers_file_manager_runtime.R`
+- `R/helpers_file_manager_storage.R`
 - `R/helpers_chat_runtime.R`
+- `R/helpers_send_message_core.R`
+- `R/helpers_quick_action_intro_messages.R`
 - `R/helpers_summarization_modes.R`
 - `R/helpers_summarization_prompts.R`
 - `R/helpers_followup_questions.R`
 - `R/helpers_deep_analysis.R`
+- `R/helpers_pk_analysis_core.R`
+- `R/helpers_pk_analysis_filters.R`
 - `R/helpers_sso.R`
 - `R/helpers_destek_database.R`
 - `R/helpers_admin_analytics.R`
+- `R/helpers_health_formatters.R`
+- `R/helpers_health_runtime_checks.R`
+- `R/helpers_health_checks.R`
 - `R/helpers_ai_expert.R`
+- `R/helpers_claude_code_upload_folder.R`
+- `R/helpers_claude_code_model_config.R`
+- `R/helpers_claude_code_session_context.R`
+- `R/helpers_claude_code_dir_ui.R`
+- `R/helpers_claude_code_process.R`
 - `R/helpers_claude_code.R`
 - `R/helpers_claude_code_streaming.R`
 - `R/helpers_claude_code_formatters.R`
 - `R/helpers_claude_code_downloads.R`
+- `R/helpers_claude_code_workdir_snapshot.R`
 - `R/helpers_claude_code_plugins.R`
+- `R/helpers_claude_code_document_extractors.R`
 - `R/helpers_claude_code_documents.R`
-- `R/helpers_quick_action_intro_messages.R`
 
 ### Group 5 - LLM Integration Layer
 Model calls, tool formatting, SSE, worker execution:
@@ -1075,6 +1232,7 @@ User-facing and system-facing modules.
 - `R/module_feedback.R`
 
 #### Files and media
+- `R/module_file_manager_ui.R`
 - `R/module_file_manager.R`
 - `R/module_file_preview.R`
 - `R/module_image_generation.R`
@@ -1083,6 +1241,7 @@ User-facing and system-facing modules.
 
 #### Settings
 - `R/module_settings_kisisel.R`
+- `R/module_settings_yapilandirma_ui.R`
 - `R/module_settings_yapilandirma.R`
 - `R/module_settings.R`
 - `R/module_api_key.R`
@@ -1102,9 +1261,9 @@ User-facing and system-facing modules.
 - `R/module_user_identity.R`
 - `R/module_startup_screen.R`
 - `R/module_quick_actions.R`
-- `R/module_claude_code_klasor.R`
-- `R/module_claude_code_akis.R`
 - `R/module_claude_code_plugins.R`
+- `R/module_claude_code_ui.R`
+- `R/module_claude_code_akis.R`
 - `R/module_claude_code.R`
 
 #### Analysis
@@ -1127,11 +1286,19 @@ User-facing and system-facing modules.
 - `R/module_admin_zaman_analizi.R`
 - `R/module_admin_gelismis_analizler.R`
 - `R/module_admin_analytics.R`
+- `R/helpers_admin_geri_bildirim.R`
 - `R/module_admin_geri_bildirim.R`
 - `R/module_admin_hata_analizi.R`
+- `R/helpers_admin_yanit_analizi.R`
 - `R/module_admin_yanit_analizi.R`
-- `R/module_health.R`
 - `R/module_health_worker_metrics.R`
+- `R/module_health_overview.R`
+- `R/module_health_connectivity.R`
+- `R/module_health_storage.R`
+- `R/module_health_runtime.R`
+- `R/module_health_security.R`
+- `R/module_health_diagnostics.R`
+- `R/module_health.R`
 - `R/module_chartlab.R`
 
 ### Group 7 - Server-side Handlers and Observers
@@ -1139,6 +1306,8 @@ Wiring and runtime flow. Welcome recency correctness depends on **both** refresh
 
 - `R/server_session_cache.R`
 - `R/server_init_forward_refs.R`
+- `R/server_init_user_session.R`
+- `R/server_runtime_context.R`
 - `R/server_init_session_state.R`
 - `R/server_init_chat_runtime.R`
 - `R/server_outputs_chat.R`
@@ -1217,39 +1386,44 @@ The UI loads a large amount of static assets from `www/`:
 
 `server.R` is the main **composition root** of the application.
 
-It should remain the central wiring layer, but not become a dumping ground for every startup helper, reactive flag definition, or wrapper closure. Recent cleanup moved some of that responsibility into dedicated `R/server_init_*.R` files so that `server.R` stays readable while behavior remains unchanged.
+It should remain the central wiring layer, but not become a dumping ground for every startup helper, reactive flag definition, or wrapper closure. Recent cleanup moved some of that responsibility into dedicated `R/server_init_*.R` files and the early `ServerRuntimeContext` boundary so that `server.R` stays readable while behavior remains unchanged.
 
-### Current `server_init_*` helper layer
+### Current server initialization helper layer
 
 The following files exist specifically to reduce orchestration coupling in `server.R`:
 
 - `R/server_init_forward_refs.R` - delayed binding wrappers for welcome and send-message flows
+- `R/server_init_user_session.R` - local/SSO identity setup, user config, live current-user provider, and compatibility session writes
+- `R/server_runtime_context.R` - early boot contract object for cache, identity, forward refs, state, and chat runtime
 - `R/server_init_session_state.R` - session-local reactive state and startup feedback loading
 - `R/server_init_chat_runtime.R` - chat runtime helper closures such as reset/add-message/streaming wrappers
 
 Rule:
 - keep `server.R` as the wiring/composition layer
-- put reusable startup/setup helpers into `server_init_*`
+- put reusable startup/setup helpers into `server_init_*` or a small context helper when there is a clear boot contract
 - do not move business logic into `server_init_*`
+- do not use `ServerRuntimeContext` as a broad service locator
 
 At a high level it performs:
 
 1. session cache initialization,
 2. SSO/local auth setup,
-3. API key module wiring,
-4. performance and health module startup,
-5. support module startup,
-6. settings initialization,
-7. Bilge Yolaç startup,
-8. media stack initialization,
-9. file manager / preview wiring,
-10. chat state initialization,
-11. observers and navigation,
-12. welcome handlers,
-13. gallery / saved chat / history wiring,
-14. chat engine / LLM response pipeline,
-15. TTS handlers,
-16. final `send_message` function registration.
+3. server runtime context initialization,
+4. API key module wiring,
+5. performance and health module startup,
+6. support module startup,
+7. settings initialization,
+8. forward-reference attachment to runtime context,
+9. Bilge Yolaç startup,
+10. media stack initialization,
+11. file manager / preview wiring,
+12. chat state initialization and attachment to runtime context,
+13. observers and navigation,
+14. welcome handlers,
+15. gallery / saved chat / history wiring,
+16. chat engine / LLM response pipeline and chat runtime attachment,
+17. TTS handlers,
+18. final `send_message` function registration.
 
 ### SSO behavior
 The application supports two auth flows:
@@ -1411,7 +1585,11 @@ This repo is highly sensitive to reactive-scope mistakes.
 
 ## 4) File Storage and Indexing
 
-Core file: `R/config_file_store.R`
+Core files:
+
+- `R/config_file_store.R`
+- `R/config_file_store_index_mutation.R`
+- `R/config_file_store_registry.R`
 
 This subsystem provides:
 
@@ -1570,16 +1748,23 @@ Core files:
 
 - `R/config_claude_code.R`
 - `R/config_claude_code_plugins.R`
+- `R/helpers_claude_code_upload_folder.R`
+- `R/helpers_claude_code_model_config.R`
+- `R/helpers_claude_code_session_context.R`
+- `R/helpers_claude_code_dir_ui.R`
+- `R/helpers_claude_code_process.R`
 - `R/helpers_claude_code.R`
 - `R/helpers_claude_code_streaming.R`
 - `R/helpers_claude_code_formatters.R`
 - `R/helpers_claude_code_downloads.R`
+- `R/helpers_claude_code_workdir_snapshot.R`
 - `R/helpers_claude_code_plugins.R`
+- `R/helpers_claude_code_document_extractors.R`
 - `R/helpers_claude_code_documents.R`
-- `R/module_claude_code.R`
-- `R/module_claude_code_klasor.R`
+- `R/module_claude_code_ui.R`
 - `R/module_claude_code_akis.R`
 - `R/module_claude_code_plugins.R`
+- `R/module_claude_code.R`
 - `www/js/claude_code.js`
 - `www/js/claude_code_streaming.js`
 - `www/js/claude_code_plugins.js`
@@ -1669,7 +1854,7 @@ Bilge Yolaç has a dedicated, offline-friendly plugin system. Plugins live under
 #### Plugin directory layout
 Each plugin lives in `bilge_yolac_plugins/<plugin-name>/` and follows this layout:
 
-```
+```text
 <plugin-name>/
 ├── plugin.json          # Required: name, description, version
 ├── skills/              # Optional: knowledge files for Claude
@@ -1757,6 +1942,8 @@ Core files:
 - `R/config_sso.R`
 - `R/helpers_sso.R`
 - `R/module_sso.R`
+- `R/server_init_user_session.R`
+- `R/server_runtime_context.R`
 - `www/js/sso_auth.js`
 - `www/css/sso_auth.css`
 
@@ -1769,6 +1956,7 @@ If a bug appears only when `SSO_ENABLED=TRUE`, check:
 - encoding of claim text,
 - auth-initialization timing,
 - delayed session setup,
+- live current-user provider propagation through `runtime_ctx$identity`,
 - user-specific file loading after auth.
 
 ---
@@ -1993,17 +2181,21 @@ When changing `server.R`, prefer this order of decisions:
 
 1. Can this stay as wiring only?
 2. Can the helper be moved into an existing `server_handler_*`, `server_observers_*`, or `server_init_*` file?
-3. Is a new file really justified?
+3. Is the dependency part of the early boot contract and therefore appropriate for `ServerRuntimeContext`?
+4. Is a new file really justified?
 
 Preferred:
 - smaller `server.R`
 - explicit helper bundles returned as lists
 - session-local setup extracted cleanly
 - no hidden dependencies on object creation order
+- live identity and cache providers accessed through `runtime_ctx$identity` and `runtime_ctx$cache`
 
 Avoid:
 - adding more inline helper closures to `server.R` unless truly necessary
 - mixing business logic with startup orchestration
+- reintroducing direct `user_session$...` identity aliases in `server.R`
+- reintroducing direct `session_cache$...` cache aliases when `runtime_ctx$cache` already owns the contract
 
 ---
 
@@ -2059,11 +2251,6 @@ Quick actions are tied to model/tool behavior. Regressions can make a tool appea
 
 ### 5A) Quick-action intro message behavior
 
-### 8B) Path helper edge cases
-- `safe_join_path()` must accept safe descendant paths on Windows VM and must not regress into false negatives for non-existing but valid child paths.
-- Preserve defenses against traversal, absolute paths, and dot-only suspicious segments.
-- Do not reintroduce brittle embedded-NUL tests that rely on normal R string construction on Windows.
-
 Quick-action intro messages must remain assistant-style (`type = "ai"`) rather than system-style in order to preserve normal left-aligned chat rendering.
 
 If editing the prepared intro message helper:
@@ -2104,6 +2291,18 @@ Practical rule:
 - do not introduce `reactiveVal()` or `req()` into a startup guard unless that code is guaranteed to run inside a reactive context
 - for one-time startup flags, prefer plain session-local state (for example, a local environment flag) unless reactive invalidation is truly needed
 - `R/server_observers_startup.R` is especially sensitive here
+
+### 8B) Path helper edge cases
+- `safe_join_path()` must accept safe descendant paths on Windows VM and must not regress into false negatives for non-existing but valid child paths.
+- Preserve defenses against traversal, absolute paths, and dot-only suspicious segments.
+- Do not reintroduce brittle embedded-NUL tests that rely on normal R string construction on Windows.
+
+### 8C) ServerRuntimeContext and identity/cache drift
+- `server.R` should obtain user identity aliases from `runtime_ctx$identity`, not directly from `user_session`.
+- `server.R` should pass send-message cache functions from `runtime_ctx$cache`, not from loose `session_cache` aliases.
+- `ServerRuntimeContext` should remain small and focused on early boot objects.
+- Do not add arbitrary downstream modules to `runtime_ctx` unless they have a clear repeated server boot contract and required-function validation.
+- If full-suite tests fail after a runtime-context edit but individual tests pass, inspect stale static contract tests first. They may still be checking older `user_session$...` or `session_cache$...` patterns.
 
 ---
 
@@ -2230,6 +2429,9 @@ testthat::test_file("tests/testthat/test-safe-source-encoding-contract.R")
 testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-production-env-policy-contract.R")
 testthat::test_file("tests/testthat/test-llm-reasoning-request-overrides.R")
+testthat::test_file("tests/testthat/test-server-user-session-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-secret-leak-contract.R")
 testthat::test_file("tests/testthat/test-runtime-network-boundary-contract.R")
@@ -2264,17 +2466,22 @@ If you are new to the repo, read in this order:
 2. `global.R`
 3. `ui.R`
 4. `server.R`
-5. `welcome_screen.R`
-6. `R/config_file_store.R`
-7. `R/config_api.R`
-8. `R/config_sso.R`
-9. `R/config_characters.R`
-10. `R/helpers_ai_expert.R`
-11. `R/module_claude_code.R`
-12. `R/module_claude_code_plugins.R`
-13. `R/helpers_claude_code_plugins.R`
-14. `R/module_destek_yardim.R`
-15. `bilge_yolac_plugins/` (skim plugin layout and `office/templates/` as an example)
+5. `R/server_init_user_session.R`
+6. `R/server_runtime_context.R`
+7. `R/server_init_forward_refs.R`
+8. `R/server_init_session_state.R`
+9. `R/server_init_chat_runtime.R`
+10. `welcome_screen.R`
+11. `R/config_file_store.R`
+12. `R/config_api.R`
+13. `R/config_sso.R`
+14. `R/config_characters.R`
+15. `R/helpers_ai_expert.R`
+16. `R/module_claude_code.R`
+17. `R/module_claude_code_plugins.R`
+18. `R/helpers_claude_code_plugins.R`
+19. `R/module_destek_yardim.R`
+20. `bilge_yolac_plugins/` (skim plugin layout and `office/templates/` as an example)
 
 ---
 
@@ -2298,6 +2505,7 @@ When in doubt:
 - patch surgically,
 - wire modules carefully,
 - respect `global.R` load order,
+- keep `ServerRuntimeContext` small and explicit,
 - test encoding-sensitive paths,
 - and do not treat `ai_rehber.md` or `version_history.md` as passive docs.
 

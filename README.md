@@ -154,6 +154,8 @@ testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
 testthat::test_file("tests/testthat/test-file-manager-ui-refactor-contract.R")
 testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+testthat::test_file("tests/testthat/test-server-user-session-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-effective-user-id.R")
 testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
@@ -255,12 +257,38 @@ Kullanıcı kimliği ve oturum kurulumu artık doğrudan `server.R` içinde dağ
 
 Amaç, `server.R` içindeki kimlik doğrulama orkestrasyonunu azaltmak, SSO başlangıcındaki geçici `0L` kullanıcı kimliğinin kullanıcıya özel modüllere sızmasını önlemek ve `current_user_id_provider` / `resolve_current_user_id()` yaklaşımını tek noktadan korumaktır. Mevcut `session$userData` alanları geriye dönük uyumluluk için korunur.
 
+Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_runtime_context.R` üzerinden `server.R` içine taşınır. `server.R`, kullanıcı kimliğiyle ilgili `user_config_rv`, `resolve_current_user_id` ve `current_user_id_provider` değerlerini doğrudan `user_session` nesnesinden değil, `runtime_ctx$identity` üzerinden alır. Böylece kimlik, önbellek, ileri referanslar, reaktif oturum durumu ve sohbet çalışma zamanı tek bir açık başlatma sözleşmesiyle korunur.
+
 İlgili testler:
 
 ```r
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-effective-user-id.R")
+```
+
+### Server Runtime Context
+
+`R/server_runtime_context.R`, `server.R` içindeki erken başlatma nesneleri için küçük ve açık sözleşmeli bir çalışma zamanı bağlamı sağlar. Bu katmanın amacı yeni bir framework oluşturmak değil; daha önce ayrı ayrı taşınan kritik boot nesnelerini doğrulanabilir bir sınır altında toplamaktır.
+
+Bu bağlam şu nesneleri kapsar:
+
+- `session_cache`
+- `user_session` / canlı kullanıcı kimliği sağlayıcıları
+- `forward_refs`
+- `state_bundle`
+- `chat_runtime`
+
+`server.R` içinde bu nesneler hâlâ aynı sırayla oluşturulur; ancak eksik fonksiyon veya yanlış başlatma sırası artık daha erken ve daha anlaşılır hata üretir. Bu yaklaşım, strict `global.R` kaynak sırası ve `server.R` orkestrasyon bağımlılığını kademeli olarak azaltmak için uygulanmıştır.
+
+Korunan ana sözleşmeler:
+
+```r
+testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-source-manifest-contract.R")
+testthat::test_file("tests/testthat/test-production-contracts.R")
+testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 ```
 
 ## Akıl Yürütme Deneyimi (Thinking=TRUE Modeller)
