@@ -102,6 +102,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 	  "R/helpers_llm_worker.R",
 	  "R/server_init_user_session.R",
 	  "R/server_runtime_context.R",
+	  "R/server_module_wiring.R",
 	  "R/server_handler_true_streaming.R",
 	  "R/server_send_message.R",
 
@@ -321,14 +322,16 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
 
 test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağlar", {
   server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
+  wiring_text <- .read_text_quiet(file.path(.repo_root, "R", "server_module_wiring.R"))
 
-  beklenenler <- c(
+  server_beklenenler <- c(
     "runtime_ctx <- serverRuntimeContextInit(",
     "identity <- runtime_ctx$identity",
     "current_user_id_provider <- identity$current_user_id_provider",
     "current_user_first_name <- identity$get_first_name",
     "current_user_display_name <- identity$get_display_name",
-    "runtime_ctx <- serverRuntimeAttachForwardRefs(",
+    "settings_bundle <- serverBindSettingsAndRefs(",
+    "runtime_ctx <- settings_bundle$runtime_ctx",
     "runtime_ctx <- serverRuntimeAttachState(",
     "identity = runtime_ctx$identity",
     "runtime_ctx <- serverRuntimeAttachChat(",
@@ -337,17 +340,37 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     "update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot"
   )
 
-  bulunanlar <- vapply(
-    beklenenler,
+  server_bulunanlar <- vapply(
+    server_beklenenler,
     function(beklenen) .has_text(server_text, beklenen),
     logical(1)
   )
 
   expect_true(
-    all(bulunanlar),
+    all(server_bulunanlar),
     label = paste(
-      "server.R runtime context sözleşmesi eksik:",
-      paste(beklenenler[!bulunanlar], collapse = ", ")
+      "server.R runtime context/delegasyon sözleşmesi eksik:",
+      paste(server_beklenenler[!server_bulunanlar], collapse = ", ")
+    )
+  )
+
+  wiring_beklenenler <- c(
+    "serverBindSettingsAndRefs <- function(",
+    "runtime_ctx <- serverRuntimeAttachForwardRefs(",
+    "forward_refs_init_fn(session)"
+  )
+
+  wiring_bulunanlar <- vapply(
+    wiring_beklenenler,
+    function(beklenen) .has_text(wiring_text, beklenen),
+    logical(1)
+  )
+
+  expect_true(
+    all(wiring_bulunanlar),
+    label = paste(
+      "server_module_wiring.R forward-ref runtime context sözleşmesi eksik:",
+      paste(wiring_beklenenler[!wiring_bulunanlar], collapse = ", ")
     )
   )
 })

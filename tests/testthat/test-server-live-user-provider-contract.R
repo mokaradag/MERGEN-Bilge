@@ -63,27 +63,52 @@ test_that("server.R canlı current_user_id_provider sözleşmesini ServerRuntime
 
 test_that("kullanıcıya özel modüller current_user_id snapshot'ı yerine provider alır", {
   server_text <- .read_repo_text_for_user_provider_contract("server.R")
+  wiring_text <- .read_repo_text_for_user_provider_contract("R/server_module_wiring.R")
 
-  expected_provider_calls <- c(
-    "performanceStatsServer(\"perf_stats\", current_user_id_provider)",
-    "destekServer(\"destek_module\", current_user_id = current_user_id_provider)",
+  expected_server_provider_calls <- c(
+    "service_modules <- serverBindServiceModules(",
+    "current_user_id_provider = current_user_id_provider",
     "current_user_id = current_user_id_provider",
     "user_id = current_user_id_provider",
     "imageGalleryServer(\"image_gallery_module\", current_user_id_provider)",
     "downloadOutputsInit(output, session, session_files, current_user_id_provider)"
   )
 
-  found <- vapply(
-    expected_provider_calls,
+  server_found <- vapply(
+    expected_server_provider_calls,
     function(item) grepl(item, server_text, fixed = TRUE, useBytes = TRUE),
     logical(1)
   )
 
   expect_true(
-    all(found),
+    all(server_found),
     info = paste(
-      "Bazı kullanıcıya özel server bağlantıları canlı provider kullanmıyor olabilir:",
-      paste(expected_provider_calls[!found], collapse = ", ")
+      "Bazı server.R kullanıcı provider delegasyonları eksik olabilir:",
+      paste(expected_server_provider_calls[!server_found], collapse = ", ")
+    )
+  )
+
+  expected_wiring_provider_calls <- c(
+    "serverBindServiceModules <- function(current_user_id_provider,",
+    "performance_stats_server_fn(",
+    "\"perf_stats\",",
+    "current_user_id_provider",
+    "destek_server_fn(",
+    "\"destek_module\",",
+    "current_user_id = current_user_id_provider"
+  )
+
+  wiring_found <- vapply(
+    expected_wiring_provider_calls,
+    function(item) grepl(item, wiring_text, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )
+
+  expect_true(
+    all(wiring_found),
+    info = paste(
+      "server_module_wiring.R kullanıcı provider sözleşmesi eksik olabilir:",
+      paste(expected_wiring_provider_calls[!wiring_found], collapse = ", ")
     )
   )
 })
