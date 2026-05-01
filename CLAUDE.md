@@ -104,6 +104,8 @@ Identity accessors must be safe outside reactive consumers. When reading `user_c
 
 Never read `sso_state$authenticated` directly during initialization checks such as `is.null(sso_state$authenticated)`. In production SSO, that field is reactive and direct reads can crash the app with “Can't access reactive value outside of reactive consumer.” Watch it with `shiny::observeEvent(sso_state$authenticated, ...)` and read it only inside a reactive consumer/handler.
 
+Post-auth module refreshes must use `serverRuntimeOnSsoAuthReady(runtime_ctx, ...)` from `R/server_runtime_context.R`. Do not add new ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R` for one-time SSO-ready refreshes. The File Manager persisted-file refresh and Image Gallery refresh are registered through this helper after their module return objects are attached with `serverRuntimeAttachModule(...)`. The helper itself must not pre-check `ctx$sso_state$authenticated` with `is.null(...)` or any other direct read outside a reactive consumer.
+
 File Manager auth readiness must be injected through `auth_ready_provider = runtime_ctx$identity$is_auth_ready`. Do not reintroduce direct File Manager checks against `session$userData$auth_initialized`; that couples persisted-file refresh to SSO timing and can bring back user-id `0` refresh regressions.
 
 Protected by:
@@ -111,6 +113,7 @@ Protected by:
 ```text
 tests/testthat/test-server-user-session-context.R
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-effective-user-id.R
 tests/testthat/test-source-manifest-contract.R
@@ -131,8 +134,10 @@ It currently covers only:
 - `forward_refs`
 - `state_bundle`
 - `chat_runtime`
+- narrowly registered module return objects in `runtime_ctx$modules`
+- SSO auth-ready callback registration through `serverRuntimeOnSsoAuthReady(...)`
 
-Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules.
+Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules. `runtime_ctx$modules` is not a general global registry; use it narrowly for module return objects that need a validated runtime contract, such as File Manager and Image Gallery post-auth refresh wiring.
 
 Expected attach sequence in `server.R`:
 
@@ -141,6 +146,25 @@ runtime_ctx <- serverRuntimeContextInit(...)
 runtime_ctx <- serverRuntimeAttachForwardRefs(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
+```
+
+For SSO-ready one-time module refreshes, attach the module return object first, then register the auth-ready callback through the runtime context:
+
+```r
+runtime_ctx <- serverRuntimeAttachModule(
+  ctx = runtime_ctx,
+  name = "file_manager",
+  value = file_manager_data,
+  required_functions = c("refresh_persisted_files", "file_contents")
+)
+
+serverRuntimeOnSsoAuthReady(
+  runtime_ctx,
+  label = "file_manager_refresh",
+  callback = function(ctx) {
+    ctx$modules$file_manager$refresh_persisted_files("auth_ready")
+  }
+)
 ```
 
 Keep `runtime_ctx$identity` as the single early boot identity boundary in `server.R`. Do not mix direct `user_session$...` reads or direct identity-related `session$userData$...` reads back into `server.R`.
@@ -169,6 +193,7 @@ The context contract is protected by:
 
 ```text
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-production-contracts.R
