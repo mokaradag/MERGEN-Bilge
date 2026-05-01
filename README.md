@@ -261,6 +261,31 @@ Amaç, `server.R` içindeki kimlik doğrulama orkestrasyonunu azaltmak, SSO baş
 
 Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_runtime_context.R` üzerinden `server.R` içine taşınır. `server.R`, önce `identity <- runtime_ctx$identity` alias’ını oluşturur; ardından `user_config_rv`, `resolve_current_user_id`, `current_user_id_provider`, `current_user_first_name` ve `current_user_display_name` değerlerini bu açık kimlik sözleşmesi üzerinden alır. Böylece kullanıcı kimliği, kullanıcı görünen adı, SSO hazır olma durumu, önbellek, ileri referanslar, reaktif oturum durumu ve sohbet çalışma zamanı tek bir doğrulanabilir başlatma sınırıyla korunur.
 
+### Sunucu Modül Bağlama Sınırı
+
+`server.R` içindeki orta seviye modül bağlama yükü kademeli olarak azaltılmıştır. Performans/sağlık/destek modülleri, ayarlar ve ileri referans kurulumu, Bilge Yolaç başlangıç bağlantısı, medya modülleri ve dosya önizleme/takip sorusu ön hazırlığı artık `R/server_module_wiring.R` içinde küçük ve açık bağımlılık alan yardımcılarla bağlanır.
+
+Bu ayrım `server.R` dosyasının iş mantığına dönmesini engeller; `server.R` artık ilgili modül ailesini doğrudan tek tek başlatmak yerine aşağıdaki üst seviye yardımcıları çağırır:
+
+```r
+service_modules <- serverBindServiceModules(...)
+settings_bundle <- serverBindSettingsAndRefs(...)
+media_modules <- serverBindMediaModules(...)
+file_prelude_modules <- serverBindFilePreludeModules(...)
+```
+
+Bu yardımcılar mevcut modül ID’lerini, mevcut başlatma sırasını ve canlı `current_user_id_provider` kullanımını korur. Amaç davranış değiştirmek değil, kaynak sırası ve state orkestrasyonu riskini azaltmaktır.
+
+Bu sınır aşağıdaki testlerle korunur:
+
+```r
+testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
+testthat::test_file("tests/testthat/test-production-contracts.R")
+testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+testthat::test_file("tests/testthat/test-source-manifest-contract.R")
+```
+
+
 SSO akışında `sso_state$authenticated` gibi Shiny reaktif alanları init sırasında doğrudan okunmamalıdır. Bu değerler yalnızca `shiny::observeEvent(...)`, `shiny::observe(...)`, `shiny::reactive(...)` veya güvenli `shiny::isolate(...)` bağlamlarında okunmalıdır. Bu kural, SSO girişinden hemen sonra oluşabilecek “Can't access reactive value outside of reactive consumer” hatalarını önler.
 
 SSO sonrasında tek sefer çalışması gereken modül yenilemeleri `server.R` içinde tekrar eden doğrudan `observeEvent(sso_state$authenticated, ...)` bloklarıyla çoğaltılmamalıdır. Refresh edilebilir modüller için tercih edilen üst seviye sözleşme `R/server_runtime_context.R` içindeki `serverRuntimeAttachRefreshableModule(...)` yardımcısıdır. Bu yardımcı, modül dönüş nesnesini `serverRuntimeAttachModule(...)` ile runtime context içine kaydeder, gerekiyorsa SSO sonrası yenilemeyi `serverRuntimeRefreshModuleOnSsoAuthReady(...)` üzerinden bağlar ve geçici geriye uyumluluk gerektiren oturum verilerini `serverRuntimeExposeSessionData(...)` ile açık parametre üzerinden yazar. Dosya Yönetimi kalıcı dosya yenilemesi ve Görsel Galerisi yenilemesi artık bu tek yardımcı üzerinden bağlanır. Böylece `server.R` içinde attach + refresh + session$userData uyumluluk yazımı kalıbı tekrar etmez; eksik modül/fonksiyon sözleşmeleri erken yakalanır ve SSO hazır olma zamanlaması tek bir doğrulanabilir sınıra toplanır.

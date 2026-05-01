@@ -69,6 +69,7 @@ Preserve this source order in `global.R`:
 safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
 safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
 safe_source("R/server_runtime_context.R",    encoding = "UTF-8")
+safe_source("R/server_module_wiring.R",      encoding = "UTF-8")
 safe_source("R/server_init_session_state.R", encoding = "UTF-8")
 safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 ```
@@ -80,6 +81,8 @@ safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 - Auth readiness should come from `identity$is_auth_ready`.
 
 `R/server_runtime_context.R` owns the early server boot contract that carries identity, cache, forward references, session state, and chat runtime into `server.R` through one explicit context object.
+
+`R/server_module_wiring.R` owns medium-level server module wiring that used to be directly expanded in `server.R`. It binds service modules, settings/forward references/Bilge Yolaç startup wiring, media modules, and the file-preview/follow-up prelude through small explicit helper functions. Keep this helper sourced after `R/server_runtime_context.R` and before session/chat runtime initialization.
 
 In `server.R`, do not read identity values directly from `user_session` anymore. The expected contract is:
 
@@ -113,6 +116,7 @@ Protected by:
 ```text
 tests/testthat/test-server-user-session-context.R
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-server-module-wiring-contract.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-effective-user-id.R
@@ -145,7 +149,14 @@ Expected attach sequence in `server.R`:
 
 ```r
 runtime_ctx <- serverRuntimeContextInit(...)
-runtime_ctx <- serverRuntimeAttachForwardRefs(runtime_ctx, ...)
+
+settings_bundle <- serverBindSettingsAndRefs(
+  ...,
+  runtime_ctx = runtime_ctx,
+  ...
+)
+
+runtime_ctx <- settings_bundle$runtime_ctx
 runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
 ```
@@ -201,6 +212,64 @@ tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-production-contracts.R
 tests/testthat/test-file-manager-module-policy-wiring.R
+```
+
+
+
+### Server module wiring contract
+
+`R/server_module_wiring.R` is a narrow wiring boundary for medium-level server module setup. It is not a new framework and should not become a general service locator.
+
+It currently owns these helper entry points:
+
+```r
+serverBindServiceModules(...)
+serverBindSettingsAndRefs(...)
+serverBindMediaModules(...)
+serverBindFilePreludeModules(...)
+```
+
+Responsibilities:
+
+* `serverBindServiceModules(...)`: binds performance stats, health, and support modules while preserving the live `current_user_id_provider`.
+* `serverBindSettingsAndRefs(...)`: binds settings, forward references, Bilge Yolaç startup wiring, visual settings sync, chat output headers, and `load_chat_in_progress`.
+* `serverBindMediaModules(...)`: binds feedback, AI processing, TTS, TTS visualizer, music handlers, AI Expert, and STT.
+* `serverBindFilePreludeModules(...)`: binds file preview, fallback follow-up tools, follow-up module tools, and DOCX preview JavaScript.
+
+Do not move these direct calls back into `server.R`:
+
+```r
+performanceStatsServer(...)
+healthServer(...)
+destekServer(...)
+settingsInit(...)
+serverInitForwardRefs(...)
+claudeCodeServer(...)
+visualSettingsSyncInit(...)
+chatOutputsInit(...)
+feedbackServer(...)
+aiProcessingServer(...)
+ttsProcessingServer(...)
+ttsVisualizerServer(...)
+musicHandlersInit(...)
+aiExpertServer(...)
+sttServer(...)
+filePreviewServer(...)
+create_followup_suggestions_tool(...)
+followupSuggestionsServer(...)
+init_docx_preview_js(...)
+```
+
+`server.R` should delegate to the wiring helpers and then unpack only the returned handles it needs. The helper must preserve existing module IDs, current initialization order, and user/provider behavior. In particular, user-scoped service bindings must keep using the live provider rather than a startup user-id snapshot.
+
+Protected by:
+
+```text
+tests/testthat/test-server-module-wiring-contract.R
+tests/testthat/test-production-contracts.R
+tests/testthat/test-server-live-user-provider-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-server-boundary-contract.R
 ```
 
 ### Database helper modularization contract
@@ -448,6 +517,7 @@ Focused validation for the current server runtime architecture boundary:
 ```r
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")
