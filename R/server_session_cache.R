@@ -70,7 +70,11 @@ sessionCacheInit <- function(session) {
     }
     dest_norm <- tryCatch(normalizePath(dest, winslash = "/", mustWork = FALSE), error = function(e) dest)
     if (path_exists_relaxed(dest_norm)) {
-      dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
+      if (!grepl("^//[^/]+/[^/]+", gsub("\\\\", "/", dest_norm, fixed = TRUE))) {
+        dest_norm <- safe_windows_short_path(dest_norm, must_exist = TRUE)
+      } else {
+        dest_norm <- paste0("//", sub("^/+", "", gsub("\\\\", "/", dest_norm, fixed = TRUE)))
+      }
     }
     dest_norm
   }
@@ -78,16 +82,22 @@ sessionCacheInit <- function(session) {
   # MCP kayıt defteri anlık görüntüsünü güncelle
   update_mcp_registry_snapshot <- function(files_snapshot = NULL) {
     if (is.null(files_snapshot)) {
-      files_snapshot <- session$userData$current_session_files %||% list()
+      files_snapshot <- session_user_data_get_list(session, "current_session_files")
     }
-    session$userData$mcp_registry_snapshot <- files_snapshot %||% list()
-    session$userData$mcp_registry_snapshot
+
+    session_user_data_set_list(
+      session,
+      "mcp_registry_snapshot",
+      files_snapshot %||% list()
+    )
   }
  
   # Başlangıçta anlık görüntü nesnesini oluştur
-  if (is.null(session$userData$mcp_registry_snapshot)) {
-    session$userData$mcp_registry_snapshot <- session$userData$current_session_files %||% list()
-  }
+  session_user_data_set_list(
+    session,
+    "mcp_registry_snapshot",
+    session_user_data_get_list(session, "current_session_files")
+  )
  
   # Fonksiyonları döndür
   list(

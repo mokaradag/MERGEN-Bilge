@@ -537,10 +537,13 @@ sendMessageInit <- function(
       total_budget <- 120000
       per_file_cap <- max(4000, floor(total_budget / max(1, uploaded_count)))
 
+      summary_store <- session_user_data_get_list(session, "file_summaries")
+      current_file_store <- session_user_data_get_list(session, "current_session_files")
+
       for (fname in uploaded_names) {
-        sumtxt <- session$userData$file_summaries[[fname]] %||% ""
+        sumtxt <- summary_store[[fname]] %||% ""
         if (!is.character(sumtxt) || !nzchar(sumtxt[1])) {
-          fobj <- session$userData$current_session_files[[fname]] %||% NULL
+          fobj <- current_file_store[[fname]] %||% NULL
           if (is.list(fobj)) {
             fpath <- fobj$datapath %||% fobj$path %||% ""
             if (nzchar(fpath) && path_exists_relaxed(fpath)) {
@@ -635,7 +638,7 @@ sendMessageInit <- function(
     # Dosya yollarını Excel modunda ilet
     current_settings$file_paths <- list()
     if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
-      registry_paths <- session$userData$current_session_files %||% list()
+      registry_paths <- session_user_data_get_list(session, "current_session_files")
       for (fname in uploaded_names) {
         file_obj <- registry_paths[[fname]]
         if (!is.list(file_obj)) next

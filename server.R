@@ -154,8 +154,7 @@ server <- function(input, output, session) {
 	  }
 	)
 
-  # Chartlab referanslarını çözümlemek için grafik deposu
-  if (is.null(session$userData$chart_store)) session$userData$chart_store <- list()
+  # Chartlab deposu serverInitSessionState içinde merkezi olarak hazırlanır.
   
   # ============================================================================
   # BÖLÜM 8: GÖZLEMCİLER VE UI BAĞLANTILARI
@@ -234,8 +233,7 @@ server <- function(input, output, session) {
   # Dosya tıklama gözlemcilerini başlat (kaynak, analiz, önizleme)
   fileClickObserversInit(input, session, settings_data, api_config, filePreview, file_manager_data, session_files)
     
-  # Uygulamada görünen dosyaları (+ özetleri) saklamak için merkezi yer
-  if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
+  # Dosya özet deposu serverInitSessionState içinde merkezi olarak hazırlanır.
   
   saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
 

@@ -12,6 +12,107 @@
 # fonksiyonu (global.R Grup 1'de önce yüklenir).
 # ==============================================================================
 
+.session_user_data_normalize_key <- function(key, owner) {
+  if (is.null(key) || length(key) != 1L || !nzchar(as.character(key))) {
+    stop(sprintf("%s: Geçerli bir session$userData anahtarı bekleniyor.", owner), call. = FALSE)
+  }
+
+  as.character(key)
+}
+
+session_user_data_env <- function(session, owner = "session_user_data_env") {
+  if (is.null(session) || !(is.list(session) || is.environment(session))) {
+    stop(sprintf("%s: Geçerli bir Shiny session nesnesi bekleniyor.", owner), call. = FALSE)
+  }
+
+  if (is.null(session$userData) || !is.environment(session$userData)) {
+    stop(sprintf("%s: session$userData environment olmalıdır.", owner), call. = FALSE)
+  }
+
+  session$userData
+}
+
+session_user_data_get_list <- function(session, key, default = list(), create = TRUE) {
+  key <- .session_user_data_normalize_key(key, "session_user_data_get_list")
+  user_data <- session_user_data_env(session, "session_user_data_get_list")
+
+  value <- user_data[[key]]
+
+  if (is.null(value)) {
+    if (is.null(default)) {
+      default <- list()
+    }
+
+    if (!is.list(default)) {
+      stop("session_user_data_get_list: default liste olmalıdır.", call. = FALSE)
+    }
+
+    if (isTRUE(create)) {
+      user_data[[key]] <- default
+    }
+
+    return(default)
+  }
+
+  if (!is.list(value)) {
+    stop(sprintf("session_user_data_get_list: '%s' alanı liste olmalıdır.", key), call. = FALSE)
+  }
+
+  value
+}
+
+session_user_data_set_list <- function(session, key, value = list()) {
+  key <- .session_user_data_normalize_key(key, "session_user_data_set_list")
+  user_data <- session_user_data_env(session, "session_user_data_set_list")
+
+  if (is.null(value)) {
+    value <- list()
+  }
+
+  if (!is.list(value)) {
+    stop(sprintf("session_user_data_set_list: '%s' için liste bekleniyor.", key), call. = FALSE)
+  }
+
+  user_data[[key]] <- value
+  user_data[[key]]
+}
+
+session_user_data_put_list_item <- function(session, key, item_name, value) {
+  key <- .session_user_data_normalize_key(key, "session_user_data_put_list_item")
+
+  if (is.null(item_name) || length(item_name) != 1L || !nzchar(as.character(item_name))) {
+    stop("session_user_data_put_list_item: Geçerli bir öğe adı bekleniyor.", call. = FALSE)
+  }
+
+  items <- session_user_data_get_list(session, key)
+  items[[as.character(item_name)]] <- value
+  session_user_data_set_list(session, key, items)
+}
+
+session_user_data_remove_list_item <- function(session, key, item_name) {
+  key <- .session_user_data_normalize_key(key, "session_user_data_remove_list_item")
+
+  if (is.null(item_name) || length(item_name) != 1L || !nzchar(as.character(item_name))) {
+    return(invisible(session_user_data_get_list(session, key)))
+  }
+
+  items <- session_user_data_get_list(session, key)
+  items[[as.character(item_name)]] <- NULL
+  session_user_data_set_list(session, key, items)
+}
+
+session_user_data_reset_lists <- function(session, keys) {
+  if (is.null(keys) || length(keys) == 0L) {
+    return(invisible(FALSE))
+  }
+
+  for (key in as.character(keys)) {
+    session_user_data_set_list(session, key, list())
+  }
+
+  invisible(TRUE)
+}
+
 # Bir Shiny oturumu sonlandığında tetiklenecek temizlik setini tek çağrı ile
 # kaydeder. Çağrı idempotent değildir: aynı oturum için iki kez çağrılırsa
 # iki callback birikir. Modüller bu yüzden oturum başına bir kez çağırmalı.

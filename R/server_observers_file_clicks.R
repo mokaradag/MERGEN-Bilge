@@ -103,7 +103,11 @@ fileClickObserversInit <- function(input, session, settings_data, api_config,
         session_files(current_files)
         showToast(session, paste("Dosya AI bağlamından kaldırıldı:", removed_file$name), "info")
         
-        session$userData$file_summaries[[removed_file$name]] <- NULL
+        session_user_data_remove_list_item(
+          session,
+          "file_summaries",
+          removed_file$name
+        )
       }
     }
   }, ignoreInit = TRUE)
@@ -111,7 +115,7 @@ fileClickObserversInit <- function(input, session, settings_data, api_config,
   observeEvent(file_manager_data$all_files_cleared(), {
     if (isTRUE(file_manager_data$all_files_cleared())) {
       session_files(list())
-      session$userData$file_summaries <- list()
+      session_user_data_set_list(session, "file_summaries", list())
       showToast(session, "Tüm dosyalar AI bağlamından temizlendi.", "info")
     }
   }, ignoreInit = TRUE)

@@ -473,8 +473,12 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   values$current_chat_id <- NULL
   values$show_welcome <- TRUE
   session_files(list())
-  session$userData$current_session_files <- list()
-  session$userData$file_summaries <- list()
+
+  # Yeni söyleşide dosya bağlamı ve MCP anlık görüntüsü temiz başlar.
+  session_user_data_reset_lists(
+    session,
+    c("current_session_files", "file_summaries", "mcp_registry_snapshot")
+  )
 
   if (exists("file_store", where = .GlobalEnv)) {
     file_store <<- list()

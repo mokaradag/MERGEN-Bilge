@@ -90,10 +90,12 @@ processAndSummarizeFile <- function(file_info,
     cat("[FILE PIPELINE] İndeks kaydı başarısız:", conditionMessage(e), "\n")
   })
   
-  # Keep in session for MCP tools
-  if (is.null(session$userData$current_session_files)) session$userData$current_session_files <- list()
-  session$userData$current_session_files[[file_info$name]] <- list(
-    name = file_info$name, datapath = dest, path = dest
+  # MCP araçları için oturum dosya kayıt defterini merkezi helper ile güncelle
+  session_user_data_put_list_item(
+    session,
+    "current_session_files",
+    file_info$name,
+    list(name = file_info$name, datapath = dest, path = dest)
   )
 
   # Snapshot settings once
@@ -144,8 +146,12 @@ processAndSummarizeFile <- function(file_info,
         session_files_reactive(current_files)
       }
 
-      if (is.null(session$userData$file_summaries)) session$userData$file_summaries <- list()
-      session$userData$file_summaries[[file_info$name]] <- res$summary
+      session_user_data_put_list_item(
+        session,
+        "file_summaries",
+        file_info$name,
+        res$summary
+      )
 
       if (!is.null(file_manager_data$sync_file_to_context)) {
         file_manager_data$sync_file_to_context(
