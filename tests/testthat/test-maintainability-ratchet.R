@@ -188,3 +188,83 @@ test_that("helpers_mcp_tools.R refactor kazanımı geri alınmaz", {
     )
   )
 })
+
+test_that("module_admin_geri_bildirim.R refactor kazanımı geri alınmaz", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  gb_row <- report[grepl("(^|/)R/module_admin_geri_bildirim\\.R$", report$file, perl = TRUE), , drop = FALSE]
+
+  expect_equal(
+    nrow(gb_row),
+    1L,
+    info = "R/module_admin_geri_bildirim.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_gb_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES", 1000L)
+  max_gb_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS", 8L)
+
+  expect_true(
+    gb_row$lines[1] <= max_gb_lines,
+    info = sprintf(
+      "module_admin_geri_bildirim.R satır sayısı refactor sonrası taban çizgisini aştı: %d > %d.",
+      gb_row$lines[1],
+      max_gb_lines
+    )
+  )
+
+  expect_true(
+    gb_row$functions[1] <= max_gb_functions,
+    info = sprintf(
+      "module_admin_geri_bildirim.R fonksiyon sayısı refactor sonrası taban çizgisini aştı: %d > %d.",
+      gb_row$functions[1],
+      max_gb_functions
+    )
+  )
+})
+
+test_that("module_admin_yanit_analizi.R refactor kazanımı geri alınmaz", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  yanit_row <- report[
+    grepl("(^|/)R/module_admin_yanit_analizi\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  expect_equal(
+    nrow(yanit_row),
+    1L,
+    info = "R/module_admin_yanit_analizi.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_yanit_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_YANIT_ANALIZI_LINES", 799L)
+
+  expect_true(
+    yanit_row$lines[1] <= max_yanit_lines,
+    info = sprintf(
+      "module_admin_yanit_analizi.R refactor sonrası 800 satır altı kalmalıdır: %d > %d.",
+      yanit_row$lines[1],
+      max_yanit_lines
+    )
+  )
+})
