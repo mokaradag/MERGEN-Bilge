@@ -179,26 +179,17 @@ server <- function(input, output, session) {
       activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
     )
                 
-	file_manager_data <- fileManagerServer(
-	  "file_manager_module",
+	file_manager_runtime <- serverBindFileManagerRuntime(
+	  runtime_ctx = runtime_ctx,
 	  new_file_trigger = reactive({ file_to_add() }),
 	  session_files_reactive = session_files,
 	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
-	  user_id = current_user_id_provider,
 	  settings_data = settings_data,
-	  auth_ready_provider = runtime_ctx$identity$is_auth_ready
+	  user_id_provider = current_user_id_provider
 	)
 
-	runtime_ctx <- serverRuntimeAttachRefreshableModule(
-	  ctx = runtime_ctx,
-	  name = "file_manager",
-	  value = file_manager_data,
-	  required_functions = c("refresh_persisted_files", "file_contents"),
-	  refresh_function = "refresh_persisted_files",
-	  refresh_args = list("auth_ready"),
-	  label = "file_manager_refresh",
-	  expose_session_key = "file_manager_data"
-	)
+	runtime_ctx <- file_manager_runtime$runtime_ctx
+	file_manager_data <- file_manager_runtime$file_manager_data
   
   # Sohbet UI gözlemcilerini başlat (values artık mevcut)
   chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
@@ -258,16 +249,13 @@ server <- function(input, output, session) {
   })
 
   # Görsel galerisi modülünü başlat
-  gallery_data <- imageGalleryServer("image_gallery_module", current_user_id_provider)
+  gallery_runtime <- serverBindImageGalleryRuntime(
+    runtime_ctx = runtime_ctx,
+    current_user_id_provider = current_user_id_provider
+  )
 
-	runtime_ctx <- serverRuntimeAttachRefreshableModule(
-	  ctx = runtime_ctx,
-	  name = "image_gallery",
-	  value = gallery_data,
-	  required_functions = "refresh",
-	  refresh_function = "refresh",
-	  label = "image_gallery_refresh"
-	)
+  runtime_ctx <- gallery_runtime$runtime_ctx
+  gallery_data <- gallery_runtime$gallery_data
 
   # Görsel galerisi gözlemcilerini başlat
   imageGalleryObserversInit(input, session, values, settings_data,

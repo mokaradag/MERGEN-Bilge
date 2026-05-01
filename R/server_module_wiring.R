@@ -214,3 +214,89 @@ serverBindFilePreludeModules <- function(session,
     followup_tools = followup_tools
   )
 }
+
+serverBindFileManagerRuntime <- function(runtime_ctx,
+                                         new_file_trigger,
+                                         session_files_reactive,
+                                         mcp_enabled_reactive,
+                                         settings_data,
+                                         user_id_provider,
+                                         file_manager_server_fn = fileManagerServer,
+                                         observe_event_fn = shiny::observeEvent,
+                                         req_fn = shiny::req) {
+  .server_wiring_require_context(runtime_ctx, "serverBindFileManagerRuntime")
+
+  .server_wiring_require_functions(list(
+    new_file_trigger = new_file_trigger,
+    session_files_reactive = session_files_reactive,
+    mcp_enabled_reactive = mcp_enabled_reactive,
+    user_id_provider = user_id_provider,
+    file_manager_server_fn = file_manager_server_fn
+  ))
+
+  .server_wiring_require_functions(list(
+    auth_ready_provider = runtime_ctx$identity$is_auth_ready
+  ))
+
+  file_manager_data <- file_manager_server_fn(
+    "file_manager_module",
+    new_file_trigger = new_file_trigger,
+    session_files_reactive = session_files_reactive,
+    mcp_enabled_reactive = mcp_enabled_reactive,
+    user_id = user_id_provider,
+    settings_data = settings_data,
+    auth_ready_provider = runtime_ctx$identity$is_auth_ready
+  )
+
+  runtime_ctx <- serverRuntimeAttachRefreshableModule(
+    ctx = runtime_ctx,
+    name = "file_manager",
+    value = file_manager_data,
+    required_functions = c("refresh_persisted_files", "file_contents"),
+    refresh_function = "refresh_persisted_files",
+    refresh_args = list("auth_ready"),
+    label = "file_manager_refresh",
+    expose_session_key = "file_manager_data",
+    observe_event_fn = observe_event_fn,
+    req_fn = req_fn
+  )
+
+  list(
+    runtime_ctx = runtime_ctx,
+    file_manager_data = file_manager_data
+  )
+}
+
+serverBindImageGalleryRuntime <- function(runtime_ctx,
+                                          current_user_id_provider,
+                                          image_gallery_server_fn = imageGalleryServer,
+                                          observe_event_fn = shiny::observeEvent,
+                                          req_fn = shiny::req) {
+  .server_wiring_require_context(runtime_ctx, "serverBindImageGalleryRuntime")
+
+  .server_wiring_require_functions(list(
+    current_user_id_provider = current_user_id_provider,
+    image_gallery_server_fn = image_gallery_server_fn
+  ))
+
+  gallery_data <- image_gallery_server_fn(
+    "image_gallery_module",
+    current_user_id_provider
+  )
+
+  runtime_ctx <- serverRuntimeAttachRefreshableModule(
+    ctx = runtime_ctx,
+    name = "image_gallery",
+    value = gallery_data,
+    required_functions = "refresh",
+    refresh_function = "refresh",
+    label = "image_gallery_refresh",
+    observe_event_fn = observe_event_fn,
+    req_fn = req_fn
+  )
+
+  list(
+    runtime_ctx = runtime_ctx,
+    gallery_data = gallery_data
+  )
+}
