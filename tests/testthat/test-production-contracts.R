@@ -204,6 +204,35 @@ test_that("app.R doğrudan source edildiğinde otomatik çalışma kapısı koru
   )
 })
 
+test_that("serverInitSessionState SSO reactiveValues alanını init sırasında doğrudan okumaz", {
+  txt <- .read_text_quiet(file.path(.repo_root, "R", "server_init_session_state.R"))
+
+  forbidden <- c(
+    "is.null(sso_state$authenticated)",
+    "!is.null(sso_state$authenticated)"
+  )
+
+  matched <- forbidden[vapply(
+    forbidden,
+    function(item) .has_text(txt, item),
+    logical(1)
+  )]
+
+  expect_equal(
+    matched,
+    character(0),
+    label = paste(
+      "serverInitSessionState SSO reactiveValues alanını reactive context dışında okuyor:",
+      paste(matched, collapse = ", ")
+    )
+  )
+
+  expect_true(
+    .has_text(txt, "shiny::observeEvent(sso_state$authenticated"),
+    label = "sso_state$authenticated yalnızca observeEvent eventExpr içinde izlenmelidir."
+  )
+})
+
 test_that("kritik async altyapısında future_promise merkezi sarmalayıcı arkasında kalıyor", {
   # Önceki sürüm tüm R/ klasörünü recursive tarıyordu. Full test_dir koşumunda
   # bu geniş tarama warning fırtınası oluşturabiliyor. Burada yalnızca async

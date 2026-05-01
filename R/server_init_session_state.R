@@ -27,7 +27,7 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
   # ---------------------------------------------------------------------------
   # Ana reaktif durum nesnesi
   # ---------------------------------------------------------------------------
-  values <- reactiveValues(
+  values <- shiny::reactiveValues(
     messages = list(),
     saved_chats = list(),
     show_welcome = TRUE,
@@ -47,11 +47,11 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
   # ---------------------------------------------------------------------------
   # Yardımcı reaktif bayraklar
   # ---------------------------------------------------------------------------
-  stop_generation <- reactiveVal(FALSE)
-  file_to_add <- reactiveVal(NULL)
-  session_files <- reactiveVal(list())
-  active_request_id <- reactiveVal(NULL)
-  quick_action_skip_mcp <- reactiveVal(FALSE)
+  stop_generation <- shiny::reactiveVal(FALSE)
+  file_to_add <- shiny::reactiveVal(NULL)
+  session_files <- shiny::reactiveVal(list())
+  active_request_id <- shiny::reactiveVal(NULL)
+  quick_action_skip_mcp <- shiny::reactiveVal(FALSE)
 
   # ---------------------------------------------------------------------------
   # Veritabanından geri bildirimleri yükle
@@ -74,15 +74,15 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
   # SSO veya yerel mod için geri bildirim yükleme akışı
   # ---------------------------------------------------------------------------
   if (isTRUE(identity$is_sso_active())) {
-    if (is.null(sso_state) || is.null(sso_state$authenticated)) {
+    if (is.null(sso_state)) {
       stop(
-        "serverInitSessionState: SSO modunda sso_state$authenticated gereklidir.",
+        "serverInitSessionState: SSO modunda sso_state gereklidir.",
         call. = FALSE
       )
     }
 
-    observeEvent(sso_state$authenticated, {
-      req(isTRUE(sso_state$authenticated), isTRUE(identity$is_auth_ready()))
+    shiny::observeEvent(sso_state$authenticated, {
+      shiny::req(isTRUE(sso_state$authenticated), isTRUE(identity$is_auth_ready()))
       sync_feedback_from_db()
     }, ignoreInit = TRUE, once = TRUE)
   } else {
