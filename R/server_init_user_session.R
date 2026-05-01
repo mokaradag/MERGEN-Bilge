@@ -176,7 +176,10 @@ serverInitUserSession <- function(session,
   }
 
   get_user_config <- function(default = NULL) {
-    cfg <- user_config_rv()
+    cfg <- tryCatch(
+      shiny::isolate(user_config_rv()),
+      error = function(e) NULL
+    )
 
     if (!is.null(cfg)) {
       return(cfg)

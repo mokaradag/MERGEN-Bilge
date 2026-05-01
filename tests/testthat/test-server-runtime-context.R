@@ -39,6 +39,15 @@ source(
     resolve_current_user_id = function() user_id,
     current_user_id_provider = function() user_id,
     is_auth_ready = function() TRUE,
+    is_sso_active = function() FALSE,
+    get_auth_source = function(default = NULL) "local",
+    get_user_config = function(default = NULL) list(
+      name = "Test User",
+      first_name = "Test",
+      userId = as.character(user_id)
+    ),
+    get_first_name = function(default = "") "Test",
+    get_display_name = function(default = "Kullanıcı") "Test User",
     get_current_user_id_snapshot = function() user_id,
     get_cache_dir = function() tempdir()
   )
