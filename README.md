@@ -263,7 +263,20 @@ Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_ru
 
 SSO akışında `sso_state$authenticated` gibi Shiny reaktif alanları init sırasında doğrudan okunmamalıdır. Bu değerler yalnızca `shiny::observeEvent(...)`, `shiny::observe(...)`, `shiny::reactive(...)` veya güvenli `shiny::isolate(...)` bağlamlarında okunmalıdır. Bu kural, SSO girişinden hemen sonra oluşabilecek “Can't access reactive value outside of reactive consumer” hatalarını önler.
 
-SSO sonrasında tek sefer çalışması gereken modül yenilemeleri `server.R` içinde tekrar eden doğrudan `observeEvent(sso_state$authenticated, ...)` bloklarıyla çoğaltılmamalıdır. Bu akış için `R/server_runtime_context.R` içindeki `serverRuntimeRefreshModuleOnSsoAuthReady(...)` yardımcı sözleşmesi kullanılmalıdır. Dosya Yönetimi kalıcı dosya yenilemesi ve Görsel Galerisi yenilemesi bu yardımcı üzerinden, önce `serverRuntimeAttachModule(...)` ile kayıt altına alınan modül dönüş nesneleri kullanılarak tetiklenir. Modül erişimi gerektiğinde doğrudan `ctx$modules$...` yerine `serverRuntimeGetModule(...)` kullanılmalıdır. Geriye dönük uyumluluk için zorunlu oturum veri paylaşımları ise doğrudan `session$userData$... <- ...` atamalarıyla değil, `serverRuntimeExposeSessionData(...)` üzerinden açık biçimde yapılmalıdır. Bu yaklaşım SSO hazır olma zamanlamasını tek bir doğrulanabilir sınıra toplar, eksik modül/fonksiyon sözleşmelerini erken yakalar ve `server.R` içindeki gizli orkestrasyon yükünü azaltır.
+SSO sonrasında tek sefer çalışması gereken modül yenilemeleri `server.R` içinde tekrar eden doğrudan `observeEvent(sso_state$authenticated, ...)` bloklarıyla çoğaltılmamalıdır. Refresh edilebilir modüller için tercih edilen üst seviye sözleşme `R/server_runtime_context.R` içindeki `serverRuntimeAttachRefreshableModule(...)` yardımcısıdır. Bu yardımcı, modül dönüş nesnesini `serverRuntimeAttachModule(...)` ile runtime context içine kaydeder, gerekiyorsa SSO sonrası yenilemeyi `serverRuntimeRefreshModuleOnSsoAuthReady(...)` üzerinden bağlar ve geçici geriye uyumluluk gerektiren oturum verilerini `serverRuntimeExposeSessionData(...)` ile açık parametre üzerinden yazar. Dosya Yönetimi kalıcı dosya yenilemesi ve Görsel Galerisi yenilemesi artık bu tek yardımcı üzerinden bağlanır. Böylece `server.R` içinde attach + refresh + session$userData uyumluluk yazımı kalıbı tekrar etmez; eksik modül/fonksiyon sözleşmeleri erken yakalanır ve SSO hazır olma zamanlaması tek bir doğrulanabilir sınıra toplanır.
+
+```r
+runtime_ctx <- serverRuntimeAttachRefreshableModule(
+  ctx = runtime_ctx,
+  name = "file_manager",
+  value = file_manager_data,
+  required_functions = c("refresh_persisted_files", "file_contents"),
+  refresh_function = "refresh_persisted_files",
+  refresh_args = list("auth_ready"),
+  label = "file_manager_refresh",
+  expose_session_key = "file_manager_data"
+)
+```
 
 ```r
 identity <- runtime_ctx$identity
