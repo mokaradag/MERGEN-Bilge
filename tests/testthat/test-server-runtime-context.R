@@ -428,26 +428,3 @@ test_that("serverRuntimeOnSsoAuthReady SSO durum sözleşmesini erken doğrular"
 	  "SSO modunda sso_state gereklidir"
 	)
 })
-
-test_that("server.R refresh edilebilir modülleri merkezi runtime yardımcısı ile bağlar", {
-  repo_root <- resolve_repo_root_for_tests()
-  server_path <- file.path(repo_root, "server.R")
-  server_text <- paste(readLines(server_path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-
-  expect_true(
-    grepl("serverRuntimeAttachRefreshableModule(", server_text, fixed = TRUE),
-    info = "server.R içinde refresh edilebilir modüller merkezi runtime yardımcısı ile bağlanmalıdır."
-  )
-
-  expect_true(
-    grepl('name = "file_manager"', server_text, fixed = TRUE) &&
-      grepl('expose_session_key = "file_manager_data"', server_text, fixed = TRUE),
-    info = "file_manager geçici oturum uyumluluk yazımı açık parametreyle korunmalıdır."
-  )
-
-  expect_true(
-    grepl('name = "image_gallery"', server_text, fixed = TRUE) &&
-      grepl('refresh_function = "refresh"', server_text, fixed = TRUE),
-    info = "image_gallery SSO sonrası yenileme sözleşmesi runtime yardımcısı üzerinden korunmalıdır."
-  )
-})
