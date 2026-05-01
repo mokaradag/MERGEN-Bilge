@@ -249,6 +249,20 @@ Varsayılan karakter **Mergen**’dir.
 
 ## Mimari Özet
 
+### Kullanıcı Oturumu Başlatma Sınırı
+
+Kullanıcı kimliği ve oturum kurulumu artık doğrudan `server.R` içinde dağınık şekilde yönetilmez; bu sorumluluk `R/server_init_user_session.R` içine taşınmıştır. Bu katman, yerel geliştirme modu (`SSO_ENABLED=FALSE`) ve Keycloak/SSO modu (`SSO_ENABLED=TRUE`) için aynı oturum sözleşmesini korur.
+
+Amaç, `server.R` içindeki kimlik doğrulama orkestrasyonunu azaltmak, SSO başlangıcındaki geçici `0L` kullanıcı kimliğinin kullanıcıya özel modüllere sızmasını önlemek ve `current_user_id_provider` / `resolve_current_user_id()` yaklaşımını tek noktadan korumaktır. Mevcut `session$userData` alanları geriye dönük uyumluluk için korunur.
+
+İlgili testler:
+
+```r
+testthat::test_file("tests/testthat/test-server-user-session-context.R")
+testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+testthat::test_file("tests/testthat/test-effective-user-id.R")
+```
+
 ## Akıl Yürütme Deneyimi (Thinking=TRUE Modeller)
 
 Thinking yeteneği açık olan modellerde premium bir akıl yürütme katmanı devreye alınır. Eski "Düşünüyorum" yılan animasyonu akıştan tamamen kaldırılmıştır (`typing-indicator.css`, `typing_animation.js`, `ui.R` kaydı ve `app_core.js` içindeki eski MutationObserver temizliği).

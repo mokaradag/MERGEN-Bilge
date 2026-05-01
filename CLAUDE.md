@@ -61,6 +61,27 @@ A new helper/module is not “done” unless:
 - dependencies are loaded before it,
 - `ui.R` / `server.R` wiring is updated where necessary.
 
+### User session initialization contract
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
+safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
+safe_source("R/server_init_session_state.R", encoding = "UTF-8")
+safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
+```
+
+R/server_init_user_session.R owns local/SSO user identity setup, user_config_rv creation, compatibility writes to identity-related session$userData keys, live effective-user provider creation, and user-session cache setup.
+
+Protected by:
+
+tests/testthat/test-server-user-session-context.R
+tests/testthat/test-server-live-user-provider-contract.R
+tests/testthat/test-effective-user-id.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-production-contracts.R
+
 ### Database helper modularization contract
 The database layer is now intentionally split into smaller responsibility-focused helpers. Preserve this source order:
 
@@ -319,6 +340,9 @@ When resolving effective user/session identity, prefer shared canonical helpers 
 
 Avoid re-implementing local `resolve_current_user_id()` snippets unless there is a compelling, scoped reason. In this repo, SSO timing regressions often come from duplicated identity-resolution code paths drifting apart.
 In SSO flows, do not pass the startup `current_user_id` snapshot into user-scoped modules. The startup value may temporarily be `0L`. Pass a live provider such as `current_user_id_provider` / `resolve_current_user_id()` so modules resolve the effective user at use time. `resolve_effective_user_id(...)` must treat placeholder/invalid session IDs such as `0`, `NA`, and non-numeric values as missing, then fall back to the live provider before returning `0L`. This protects saved chats, history, file manager, gallery, support, and performance flows from SSO user-ID drift.
+User/session bootstrap is now centralized in `R/server_init_user_session.R`. Do not move local/SSO identity setup logic back into `server.R`. `server.R` should obtain `user_config_rv`, `resolve_current_user_id`, and `current_user_id_provider` from `serverInitUserSession(...)`.
+
+Do not pass startup `current_user_id` snapshots to user-scoped modules. In SSO mode, the startup value may temporarily be `0L`; use the live provider returned by `serverInitUserSession(...)`.
 
 ### 8) Async jobs visible in health metrics must use tracked wrapper
 For application-monitored async flows, do not use raw `future_promise(...)` directly.
