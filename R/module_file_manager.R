@@ -6,7 +6,8 @@ fileManagerServer <- function(
   session_files_reactive = NULL,
   mcp_enabled_reactive = reactive({ FALSE }),
   user_id = NULL,
-  settings_data = NULL  # YENİ: Settings modülünden gelen veri
+  settings_data = NULL,
+  auth_ready_provider = NULL
 ) {
   moduleServer(id, function(input, output, session) {
   ns <- session$ns
@@ -18,7 +19,8 @@ fileManagerServer <- function(
     session_files_reactive = session_files_reactive,
     mcp_enabled_reactive = mcp_enabled_reactive,
     ns = ns,
-    module_values_provider = function() module_values
+    module_values_provider = function() module_values,
+    auth_ready_provider = auth_ready_provider
   )
 
   safe_settings_data <- runtime_helpers$safe_settings_data
@@ -27,6 +29,7 @@ fileManagerServer <- function(
   update_attach_rule_hint <- runtime_helpers$update_attach_rule_hint
   get_effective_user_id <- runtime_helpers$get_effective_user_id
   module_user_id_chr <- runtime_helpers$module_user_id_chr
+  is_auth_ready <- runtime_helpers$is_auth_ready
   fm_debug <- runtime_helpers$fm_debug
   ensure_session_registry <- runtime_helpers$ensure_session_registry
   register_session_file <- runtime_helpers$register_session_file
@@ -187,10 +190,10 @@ fileManagerServer <- function(
 	refresh_from_user_folder <- function(trigger = "manual") {
 	  uid <- module_user_id_chr()
 
-	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
-		fm_debug("refresh_skip", sprintf("trigger=%s, auth henüz tamamlanmadı", trigger))
-		return(invisible(NULL))
-	  }
+		if (isTRUE(SSO_ENABLED) && !is_auth_ready()) {
+		  fm_debug("refresh_skip", sprintf("trigger=%s, auth henüz tamamlanmadı", trigger))
+		  return(invisible(NULL))
+		}
 
 	  if (!fm_valid_user_id(uid)) {
 		fm_debug("refresh_skip", sprintf("trigger=%s, geçersiz user_id=%s", trigger, uid))
@@ -358,12 +361,11 @@ fileManagerServer <- function(
       files_in_context = list()
     )
 
-    # --- NEW: initial population from the user's persistent folder
-	observeEvent(TRUE, {
-	  # SSO açıkken doğrulama tamamlanmadan erken tarama yapma
-	  if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) return()
-	  refresh_from_user_folder("initial")
-	}, once = TRUE, ignoreNULL = TRUE)
+    observeEvent(TRUE, {
+      # SSO açıkken doğrulama tamamlanmadan erken tarama yapma
+      if (isTRUE(SSO_ENABLED) && !is_auth_ready()) return()
+      refresh_from_user_folder("initial")
+    }, once = TRUE, ignoreNULL = TRUE)
 
     # Not: SSO sonrası tetikleme server.R tarafından tek sefer yönetilir
 

@@ -7,6 +7,9 @@
 repo_root <- resolve_repo_root_for_tests()
 
 source(file.path(repo_root, "R", "utils_common.R"), encoding = "UTF-8", local = globalenv())
+
+reactiveVal <- shiny::reactiveVal
+
 source(file.path(repo_root, "R", "server_init_user_session.R"), encoding = "UTF-8", local = globalenv())
 
 .test_base_user_config <- list(
@@ -116,4 +119,51 @@ test_that("make_current_user_id_provider SSO placeholder 0 iken canlı fallback 
   )
 
   expect_equal(provider_bundle$resolve_current_user_id(), 55L)
+})
+
+test_that("serverInitUserSession runtime identity accessor sözleşmesini sağlar", {
+  fake_session <- list(userData = new.env(parent = emptyenv()))
+
+  cache_uid <- NULL
+  fake_cache <- list(
+    setup_user_session = function(uid) {
+      cache_uid <<- uid
+      paste0("cache/user_", uid)
+    }
+  )
+
+  user_session <- serverInitUserSession(
+    session = fake_session,
+    session_cache = fake_cache,
+    sso_state = NULL,
+    base_user_config = .test_base_user_config,
+    sso_enabled = FALSE,
+    resolve_identity_fn = function(...) .test_identity("local"),
+    get_or_create_user_fn = function(username, ...) 42L
+  )
+
+  required_fns <- c(
+    "resolve_current_user_id",
+    "current_user_id_provider",
+    "is_auth_ready",
+    "is_sso_active",
+    "get_auth_source",
+    "get_user_config",
+    "get_first_name",
+    "get_display_name",
+    "get_current_user_id_snapshot",
+    "get_cache_dir"
+  )
+
+  expect_true(all(vapply(required_fns, function(nm) {
+    is.function(user_session[[nm]])
+  }, logical(1))))
+
+  expect_true(user_session$is_auth_ready())
+  expect_false(user_session$is_sso_active())
+  expect_equal(user_session$get_auth_source(), "local")
+  expect_equal(user_session$get_first_name(), "Test")
+  expect_equal(user_session$get_display_name(), "Test User")
+  expect_equal(user_session$resolve_current_user_id(), 42L)
+  expect_equal(cache_uid, 42L)
 })

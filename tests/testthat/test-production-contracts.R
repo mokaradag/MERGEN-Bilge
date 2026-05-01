@@ -295,10 +295,15 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
 
   beklenenler <- c(
     "runtime_ctx <- serverRuntimeContextInit(",
+    "identity <- runtime_ctx$identity",
+    "current_user_id_provider <- identity$current_user_id_provider",
+    "current_user_first_name <- identity$get_first_name",
+    "current_user_display_name <- identity$get_display_name",
     "runtime_ctx <- serverRuntimeAttachForwardRefs(",
     "runtime_ctx <- serverRuntimeAttachState(",
+    "identity = runtime_ctx$identity",
     "runtime_ctx <- serverRuntimeAttachChat(",
-    "current_user_id_provider <- runtime_ctx$identity$current_user_id_provider",
+    "auth_ready_provider = runtime_ctx$identity$is_auth_ready",
     "cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally",
     "update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot"
   )
@@ -376,6 +381,31 @@ test_that("server.R doğrudan DB/HTTP/future işi yapmaz", {
     character(0),
     label = paste(
       "server.R içinde doğrudan DB/HTTP/future çağrısı bulundu:",
+      paste(ihlaller, collapse = ", ")
+    )
+  )
+})
+
+test_that("server.R kimlik gösterim alanlarını session$userData üzerinden okumaz", {
+  server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
+
+  yasaklar <- c(
+    "session$userData$user_first_name",
+    "session$userData$user_config$first_name",
+    "session$userData$user_config$name"
+  )
+
+  ihlaller <- yasaklar[vapply(
+    yasaklar,
+    function(yasak) .has_text(server_text, yasak),
+    logical(1)
+  )]
+
+  expect_equal(
+    ihlaller,
+    character(0),
+    label = paste(
+      "server.R kimlik gösterim alanlarını runtime_ctx$identity yerine doğrudan okuyor:",
       paste(ihlaller, collapse = ", ")
     )
   )

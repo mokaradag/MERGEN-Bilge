@@ -48,9 +48,13 @@ server <- function(input, output, session) {
 	  user_session = user_session
 	)
 
-	user_config_rv <- runtime_ctx$identity$user_config_rv
-	resolve_current_user_id <- runtime_ctx$identity$resolve_current_user_id
-	current_user_id_provider <- runtime_ctx$identity$current_user_id_provider
+	identity <- runtime_ctx$identity
+
+	user_config_rv <- identity$user_config_rv
+	resolve_current_user_id <- identity$resolve_current_user_id
+	current_user_id_provider <- identity$current_user_id_provider
+	current_user_first_name <- identity$get_first_name
+	current_user_display_name <- identity$get_display_name
 
   # API anahtarı modülünü bağla
   api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
@@ -85,9 +89,7 @@ server <- function(input, output, session) {
 	  current_user_id = current_user_id_provider,
 	  settings_data = settings_data,
 	  user_first_name = function() {
-		session$userData$user_first_name %||%
-		  session$userData$user_config$first_name %||%
-		  ""
+		current_user_first_name(default = "")
 	  }
 	)
 
@@ -132,7 +134,7 @@ server <- function(input, output, session) {
 	  runtime_ctx,
 	  serverInitSessionState(
 		session = session,
-		resolve_current_user_id = resolve_current_user_id,
+		identity = runtime_ctx$identity,
 		sso_state = sso_state
 	  )
 	)
@@ -156,9 +158,7 @@ server <- function(input, output, session) {
 	  session,
 	  values,
 	  user_display_name = function() {
-		session$userData$user_config$name %||%
-		  session$userData$user_first_name %||%
-		  "Kullanıcı"
+		current_user_display_name(default = "Kullanıcı")
 	  }
 	)
 
@@ -195,7 +195,8 @@ server <- function(input, output, session) {
 	  session_files_reactive = session_files,
 	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
 	  user_id = current_user_id_provider,
-	  settings_data = settings_data
+	  settings_data = settings_data,
+	  auth_ready_provider = runtime_ctx$identity$is_auth_ready
 	)
 
     # SSO doğrulaması tamamlandığında kullanıcı dosyalarını tek sefer yükle
@@ -289,9 +290,7 @@ welcome_handlers <- welcomeHandlersInit(
   session, values, saved_chats_data, session_files,
   filePreview, current_user_id_provider, file_manager_data,
   user_first_name = function() {
-    session$userData$user_first_name %||%
-    session$userData$user_config$first_name %||%
-    ""
+    current_user_first_name(default = "")
   }
 )
 

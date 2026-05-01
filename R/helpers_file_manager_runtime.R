@@ -13,7 +13,8 @@ fm_create_server_runtime_helpers <- function(session,
                                              session_files_reactive,
                                              mcp_enabled_reactive,
                                              ns,
-                                             module_values_provider) {
+                                             module_values_provider,
+                                             auth_ready_provider = NULL) {
   safe_settings_data <- shiny::reactive({
     if (!is.null(settings_data)) {
       return(settings_data)
@@ -220,6 +221,17 @@ fm_create_server_runtime_helpers <- function(session,
   format_timestamp <- function(path = NULL, fallback_time = Sys.time()) {
     fm_format_file_timestamp(path = path, fallback_time = fallback_time)
   }
+  
+  is_auth_ready <- function() {
+    if (is.function(auth_ready_provider)) {
+      return(isTRUE(tryCatch(
+        auth_ready_provider(),
+        error = function(e) FALSE
+      )))
+    }
+
+    isTRUE(session$userData$auth_initialized)
+  }
 
   list(
     safe_settings_data = safe_settings_data,
@@ -228,6 +240,7 @@ fm_create_server_runtime_helpers <- function(session,
     update_attach_rule_hint = update_attach_rule_hint,
     get_effective_user_id = get_effective_user_id,
     module_user_id_chr = module_user_id_chr,
+    is_auth_ready = is_auth_ready,
     fm_debug = fm_debug,
     ensure_session_registry = ensure_session_registry,
     register_session_file = register_session_file,

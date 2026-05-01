@@ -175,11 +175,64 @@ serverInitUserSession <- function(session,
     }, ignoreInit = TRUE, once = TRUE)
   }
 
+  get_user_config <- function(default = NULL) {
+    cfg <- user_config_rv()
+
+    if (!is.null(cfg)) {
+      return(cfg)
+    }
+
+    session$userData$user_config %||% default
+  }
+
+  get_first_name <- function(default = "") {
+    cfg <- get_user_config()
+
+    value <- cfg$first_name %||%
+      session$userData$user_first_name %||%
+      default
+
+    value <- as.character(value %||% default)
+
+    if (!nzchar(value)) {
+      return(default)
+    }
+
+    value
+  }
+
+  get_display_name <- function(default = "Kullanıcı") {
+    cfg <- get_user_config()
+
+    value <- cfg$name %||%
+      get_first_name(default = default) %||%
+      default
+
+    value <- as.character(value %||% default)
+
+    if (!nzchar(value)) {
+      return(default)
+    }
+
+    value
+  }
+
+  get_auth_source <- function(default = NULL) {
+    session$userData$auth_source %||%
+      default %||%
+      if (isTRUE(sso_enabled)) "keycloak" else "local"
+  }
+
   list(
     user_config_rv = user_config_rv,
     resolve_current_user_id = user_id_provider_bundle$resolve_current_user_id,
     current_user_id_provider = user_id_provider_bundle$current_user_id_provider,
     is_auth_ready = function() isTRUE(auth_ready),
+    is_sso_active = function() isTRUE(sso_enabled),
+    get_auth_source = get_auth_source,
+    get_user_config = get_user_config,
+    get_first_name = get_first_name,
+    get_display_name = get_display_name,
     get_current_user_id_snapshot = function() current_user_id,
     get_cache_dir = function() last_cache_dir
   )

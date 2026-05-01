@@ -4,7 +4,17 @@
 #           bildirim yükleme akışını kurar.
 # ==============================================================================
 
-serverInitSessionState <- function(session, resolve_current_user_id, sso_state = NULL) {
+serverInitSessionState <- function(session, identity, sso_state = NULL) {
+
+  if (is.null(identity) ||
+      !is.function(identity$resolve_current_user_id) ||
+      !is.function(identity$is_sso_active) ||
+      !is.function(identity$is_auth_ready)) {
+    stop(
+      "serverInitSessionState: identity sözleşmesi eksik veya geçersiz.",
+      call. = FALSE
+    )
+  }
 
   # ---------------------------------------------------------------------------
   # Başlangıç geri bildirim durumu
@@ -47,7 +57,7 @@ serverInitSessionState <- function(session, resolve_current_user_id, sso_state =
   # Veritabanından geri bildirimleri yükle
   # ---------------------------------------------------------------------------
   sync_feedback_from_db <- function() {
-    effective_user_id <- resolve_current_user_id()
+    effective_user_id <- identity$resolve_current_user_id()
 
     if (effective_user_id <= 0) {
       return(invisible(NULL))
@@ -63,9 +73,16 @@ serverInitSessionState <- function(session, resolve_current_user_id, sso_state =
   # ---------------------------------------------------------------------------
   # SSO veya yerel mod için geri bildirim yükleme akışı
   # ---------------------------------------------------------------------------
-  if (isTRUE(session$userData$sso_active)) {
+  if (isTRUE(identity$is_sso_active())) {
+    if (is.null(sso_state) || is.null(sso_state$authenticated)) {
+      stop(
+        "serverInitSessionState: SSO modunda sso_state$authenticated gereklidir.",
+        call. = FALSE
+      )
+    }
+
     observeEvent(sso_state$authenticated, {
-      req(isTRUE(sso_state$authenticated), isTRUE(session$userData$auth_initialized))
+      req(isTRUE(sso_state$authenticated), isTRUE(identity$is_auth_ready()))
       sync_feedback_from_db()
     }, ignoreInit = TRUE, once = TRUE)
   } else {
