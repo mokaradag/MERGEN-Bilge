@@ -188,7 +188,6 @@ server <- function(input, output, session) {
       activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
     )
                 
-    # Geçici dosya (temp_files) erişimi için 'values' reaktif nesnesini dosya yöneticisine ilet
 	file_manager_data <- fileManagerServer(
 	  "file_manager_module",
 	  new_file_trigger = reactive({ file_to_add() }),
@@ -199,13 +198,24 @@ server <- function(input, output, session) {
 	  auth_ready_provider = runtime_ctx$identity$is_auth_ready
 	)
 
-    # SSO doğrulaması tamamlandığında kullanıcı dosyalarını tek sefer yükle
-    observeEvent(sso_state$authenticated, {
-      req(isTRUE(sso_state$authenticated))
-      if (is.function(file_manager_data$refresh_persisted_files)) {
-        file_manager_data$refresh_persisted_files("auth_ready")
-      }
-    }, ignoreInit = TRUE, once = TRUE)
+	runtime_ctx <- serverRuntimeAttachModule(
+	  ctx = runtime_ctx,
+	  name = "file_manager",
+	  value = file_manager_data,
+	  required_functions = c("refresh_persisted_files", "file_contents")
+	)
+
+	serverRuntimeOnSsoAuthReady(
+	  runtime_ctx,
+	  label = "file_manager_refresh",
+	  callback = function(ctx) {
+	    file_manager <- ctx$modules$file_manager
+
+	    if (is.function(file_manager$refresh_persisted_files)) {
+	      file_manager$refresh_persisted_files("auth_ready")
+	    }
+	  }
+	)
     
   # Özetleme modülü erişimi için dosya yöneticisi verilerini oturumda sakla
   session$userData$file_manager_data <- file_manager_data
@@ -270,14 +280,25 @@ server <- function(input, output, session) {
 
   # Görsel galerisi modülünü başlat
   gallery_data <- imageGalleryServer("image_gallery_module", current_user_id_provider)
-  
-  observeEvent(sso_state$authenticated, {
-    req(isTRUE(sso_state$authenticated))
 
-    if (is.function(gallery_data$refresh)) {
-      gallery_data$refresh()
-    }
-  }, ignoreInit = TRUE, once = TRUE)
+	runtime_ctx <- serverRuntimeAttachModule(
+	  ctx = runtime_ctx,
+	  name = "image_gallery",
+	  value = gallery_data,
+	  required_functions = "refresh"
+	)
+
+	serverRuntimeOnSsoAuthReady(
+	  runtime_ctx,
+	  label = "image_gallery_refresh",
+	  callback = function(ctx) {
+	    gallery <- ctx$modules$image_gallery
+
+	    if (is.function(gallery$refresh)) {
+	      gallery$refresh()
+	    }
+	  }
+	)
 
   # Görsel galerisi gözlemcilerini başlat
   imageGalleryObserversInit(input, session, values, settings_data,

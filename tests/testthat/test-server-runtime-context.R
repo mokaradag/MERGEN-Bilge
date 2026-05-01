@@ -33,14 +33,18 @@ source(
   )
 }
 
-.fake_user_session <- function(user_id = 42L) {
+.fake_user_session <- function(user_id = 42L,
+                               sso_active = FALSE,
+                               auth_ready = TRUE) {
   list(
     user_config_rv = function(...) NULL,
     resolve_current_user_id = function() user_id,
     current_user_id_provider = function() user_id,
-    is_auth_ready = function() TRUE,
-    is_sso_active = function() FALSE,
-    get_auth_source = function(default = NULL) "local",
+    is_auth_ready = function() isTRUE(auth_ready),
+    is_sso_active = function() isTRUE(sso_active),
+    get_auth_source = function(default = NULL) {
+      if (isTRUE(sso_active)) "keycloak" else "local"
+    },
     get_user_config = function(default = NULL) list(
       name = "Test User",
       first_name = "Test",
@@ -180,4 +184,78 @@ test_that("serverRuntimeAttachModule modül fonksiyon sözleşmesini isteğe ba�
     ),
     "runtime module 'broken_module' eksik zorunlu fonksiyon"
   )
+})
+
+test_that("serverRuntimeOnSsoAuthReady yerel modda mevcut akışı değiştirmez", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session(sso_active = FALSE, auth_ready = TRUE)
+  )
+
+  called <- FALSE
+
+  out <- serverRuntimeOnSsoAuthReady(
+    ctx,
+    label = "local_noop",
+    callback = function(ctx) {
+      called <<- TRUE
+    }
+  )
+
+  expect_false(isTRUE(out))
+  expect_false(called)
+})
+
+test_that("serverRuntimeOnSsoAuthReady SSO observer kaydını tek sözleşmeden yapar", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = FALSE)
+  )
+
+  registered <- FALSE
+
+  fake_observe_event <- function(eventExpr,
+                                 handlerExpr,
+                                 ignoreInit = TRUE,
+                                 once = TRUE) {
+    registered <<- TRUE
+
+    list(
+      ignoreInit = ignoreInit,
+      once = once
+    )
+  }
+
+  observer <- serverRuntimeOnSsoAuthReady(
+    ctx,
+    label = "sso_registration",
+    callback = function(ctx) NULL,
+    observe_event_fn = fake_observe_event
+  )
+
+  expect_true(registered)
+  expect_true(isTRUE(observer$ignoreInit))
+  expect_true(isTRUE(observer$once))
+})
+
+test_that("serverRuntimeOnSsoAuthReady SSO durum sözleşmesini erken doğrular", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = NULL,
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = FALSE)
+  )
+
+	expect_error(
+	  serverRuntimeOnSsoAuthReady(
+		ctx,
+		label = "missing_sso_state",
+		callback = function(ctx) NULL
+	  ),
+	  "SSO modunda sso_state gereklidir"
+	)
 })

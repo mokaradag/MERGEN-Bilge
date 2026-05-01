@@ -236,3 +236,54 @@ serverRuntimeAttachModule <- function(ctx,
 
   invisible(ctx)
 }
+
+serverRuntimeOnSsoAuthReady <- function(ctx,
+                                        callback,
+                                        label = "auth_ready",
+                                        once = TRUE,
+                                        ignore_init = TRUE,
+                                        observe_event_fn = shiny::observeEvent,
+                                        req_fn = shiny::req) {
+  .server_runtime_require_context(ctx)
+
+  if (is.null(label) || length(label) != 1L || !nzchar(as.character(label))) {
+    label <- "auth_ready"
+  }
+  label <- as.character(label)
+
+  if (!is.function(callback)) {
+    .server_runtime_stop(sprintf(
+      "serverRuntimeOnSsoAuthReady[%s]: callback fonksiyon olmalıdır.",
+      label
+    ))
+  }
+
+  .server_runtime_require_functions(
+    ctx$identity,
+    c("is_sso_active", "is_auth_ready"),
+    "runtime identity"
+  )
+
+  # Yerel modda mevcut başlangıç akışını değiştirme; bu yardımcı yalnızca SSO sonrası işler içindir.
+  if (!isTRUE(ctx$identity$is_sso_active())) {
+    return(invisible(FALSE))
+  }
+
+  if (is.null(ctx$sso_state)) {
+    .server_runtime_stop(sprintf(
+      "serverRuntimeOnSsoAuthReady[%s]: SSO modunda sso_state gereklidir.",
+      label
+    ))
+  }
+
+  observer <- observe_event_fn(ctx$sso_state$authenticated, {
+    req_fn(
+      isTRUE(ctx$sso_state$authenticated),
+      isTRUE(ctx$identity$is_auth_ready())
+    )
+
+    callback(ctx)
+  }, ignoreInit = ignore_init, once = once)
+
+  invisible(observer)
+}
