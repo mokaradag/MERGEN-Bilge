@@ -73,7 +73,11 @@ safe_source("R/server_init_session_state.R", encoding = "UTF-8")
 safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 ```
 
-`R/server_init_user_session.R` owns local/SSO user identity setup, `user_config_rv` creation, compatibility writes to identity-related `session$userData` keys, live effective-user provider creation, and user-session cache setup.
+- `R/server_init_user_session.R` owns local/SSO identity setup.
+- It also owns identity-related compatibility writes to `session$userData`.
+- Runtime code should prefer accessors exposed through `runtime_ctx$identity`.
+- Identity display values should come from `identity$get_first_name` and `identity$get_display_name` rather than direct `session$userData` reads in `server.R`.
+- Auth readiness should come from `identity$is_auth_ready`.
 
 `R/server_runtime_context.R` owns the early server boot contract that carries identity, cache, forward references, session state, and chat runtime into `server.R` through one explicit context object.
 
@@ -87,10 +91,20 @@ runtime_ctx <- serverRuntimeContextInit(
   user_session = user_session
 )
 
-user_config_rv <- runtime_ctx$identity$user_config_rv
-resolve_current_user_id <- runtime_ctx$identity$resolve_current_user_id
-current_user_id_provider <- runtime_ctx$identity$current_user_id_provider
+identity <- runtime_ctx$identity
+
+user_config_rv <- identity$user_config_rv
+resolve_current_user_id <- identity$resolve_current_user_id
+current_user_id_provider <- identity$current_user_id_provider
+current_user_first_name <- identity$get_first_name
+current_user_display_name <- identity$get_display_name
 ```
+
+Identity accessors must be safe outside reactive consumers. When reading `user_config_rv` inside helper accessors, use `shiny::isolate(...)` or another explicit Shiny-safe pattern. Do not introduce unqualified Shiny calls in init/helper files when a namespaced call is practical; prefer `shiny::reactiveVal`, `shiny::reactiveValues`, `shiny::observeEvent`, `shiny::req`, and `shiny::isolate`.
+
+Never read `sso_state$authenticated` directly during initialization checks such as `is.null(sso_state$authenticated)`. In production SSO, that field is reactive and direct reads can crash the app with “Can't access reactive value outside of reactive consumer.” Watch it with `shiny::observeEvent(sso_state$authenticated, ...)` and read it only inside a reactive consumer/handler.
+
+File Manager auth readiness must be injected through `auth_ready_provider = runtime_ctx$identity$is_auth_ready`. Do not reintroduce direct File Manager checks against `session$userData$auth_initialized`; that couples persisted-file refresh to SSO timing and can bring back user-id `0` refresh regressions.
 
 Protected by:
 
@@ -101,6 +115,7 @@ tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-effective-user-id.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-production-contracts.R
+tests/testthat/test-file-manager-module-policy-wiring.R
 ```
 
 ### ServerRuntimeContext contract
@@ -112,7 +127,7 @@ Its purpose is to reduce loose boot-state leakage in `server.R` and fail early w
 It currently covers only:
 
 - `session_cache`
-- `user_session` / live current-user providers
+- `user_session` / live current-user providers / identity display accessors / auth-readiness provider
 - `forward_refs`
 - `state_bundle`
 - `chat_runtime`
@@ -127,6 +142,8 @@ runtime_ctx <- serverRuntimeAttachForwardRefs(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
 ```
+
+Keep `runtime_ctx$identity` as the single early boot identity boundary in `server.R`. Do not mix direct `user_session$...` reads or direct identity-related `session$userData$...` reads back into `server.R`.
 
 Send-message wiring should use cache functions from the context:
 
@@ -143,6 +160,9 @@ update_mcp_registry_snapshot <- session_cache$update_mcp_registry_snapshot
 user_config_rv <- user_session$user_config_rv
 resolve_current_user_id <- user_session$resolve_current_user_id
 current_user_id_provider <- user_session$current_user_id_provider
+current_user_first_name <- session$userData$user_first_name
+current_user_display_name <- session$userData$user_config$name
+auth_ready <- session$userData$auth_initialized
 ```
 
 The context contract is protected by:
@@ -152,6 +172,7 @@ tests/testthat/test-server-runtime-context.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-production-contracts.R
+tests/testthat/test-file-manager-module-policy-wiring.R
 ```
 
 ### Database helper modularization contract
@@ -446,10 +467,16 @@ runtime_ctx <- serverRuntimeContextInit(
   user_session = user_session
 )
 
-user_config_rv <- runtime_ctx$identity$user_config_rv
-resolve_current_user_id <- runtime_ctx$identity$resolve_current_user_id
-current_user_id_provider <- runtime_ctx$identity$current_user_id_provider
+identity <- runtime_ctx$identity
+
+user_config_rv <- identity$user_config_rv
+resolve_current_user_id <- identity$resolve_current_user_id
+current_user_id_provider <- identity$current_user_id_provider
+current_user_first_name <- identity$get_first_name
+current_user_display_name <- identity$get_display_name
 ```
+
+For auth-sensitive modules, pass `identity$is_auth_ready` as a provider rather than checking `session$userData$auth_initialized` directly.
 
 Do not pass startup `current_user_id` snapshots to user-scoped modules. In SSO mode, the startup value may temporarily be `0L`; use the live provider exposed through `runtime_ctx$identity$current_user_id_provider`.
 

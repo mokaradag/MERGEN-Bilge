@@ -257,7 +257,21 @@ Kullanıcı kimliği ve oturum kurulumu artık doğrudan `server.R` içinde dağ
 
 Amaç, `server.R` içindeki kimlik doğrulama orkestrasyonunu azaltmak, SSO başlangıcındaki geçici `0L` kullanıcı kimliğinin kullanıcıya özel modüllere sızmasını önlemek ve `current_user_id_provider` / `resolve_current_user_id()` yaklaşımını tek noktadan korumaktır. Mevcut `session$userData` alanları geriye dönük uyumluluk için korunur.
 
-Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_runtime_context.R` üzerinden `server.R` içine taşınır. `server.R`, kullanıcı kimliğiyle ilgili `user_config_rv`, `resolve_current_user_id` ve `current_user_id_provider` değerlerini doğrudan `user_session` nesnesinden değil, `runtime_ctx$identity` üzerinden alır. Böylece kimlik, önbellek, ileri referanslar, reaktif oturum durumu ve sohbet çalışma zamanı tek bir açık başlatma sözleşmesiyle korunur.
+Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_runtime_context.R` üzerinden `server.R` içine taşınır. `server.R`, önce `identity <- runtime_ctx$identity` alias’ını oluşturur; ardından `user_config_rv`, `resolve_current_user_id`, `current_user_id_provider`, `current_user_first_name` ve `current_user_display_name` değerlerini bu açık kimlik sözleşmesi üzerinden alır. Böylece kullanıcı kimliği, kullanıcı görünen adı, SSO hazır olma durumu, önbellek, ileri referanslar, reaktif oturum durumu ve sohbet çalışma zamanı tek bir doğrulanabilir başlatma sınırıyla korunur.
+
+SSO akışında `sso_state$authenticated` gibi Shiny reaktif alanları init sırasında doğrudan okunmamalıdır. Bu değerler yalnızca `shiny::observeEvent(...)`, `shiny::observe(...)`, `shiny::reactive(...)` veya güvenli `shiny::isolate(...)` bağlamlarında okunmalıdır. Bu kural, SSO girişinden hemen sonra oluşabilecek “Can't access reactive value outside of reactive consumer” hatalarını önler.
+
+```r
+identity <- runtime_ctx$identity
+
+user_config_rv <- identity$user_config_rv
+resolve_current_user_id <- identity$resolve_current_user_id
+current_user_id_provider <- identity$current_user_id_provider
+current_user_first_name <- identity$get_first_name
+current_user_display_name <- identity$get_display_name
+```
+
+Dosya Yönetimi tarafında auth-ready kararı artık `session$userData$auth_initialized` alanına doğrudan bakarak değil, `auth_ready_provider = runtime_ctx$identity$is_auth_ready` sağlayıcısı üzerinden verilir. Bu yaklaşım, SSO sırasında geçici `0` kullanıcı kimliğinin kalıcı dosya yenileme akışını erken tetiklemesini engeller.
 
 İlgili testler:
 
@@ -266,6 +280,8 @@ testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-effective-user-id.R")
+testthat::test_file("tests/testthat/test-production-contracts.R")
+testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
 ```
 
 ### Server Runtime Context
@@ -281,6 +297,8 @@ Bu bağlam şu nesneleri kapsar:
 - `chat_runtime`
 
 `server.R` içinde bu nesneler hâlâ aynı sırayla oluşturulur; ancak eksik fonksiyon veya yanlış başlatma sırası artık daha erken ve daha anlaşılır hata üretir. Bu yaklaşım, strict `global.R` kaynak sırası ve `server.R` orkestrasyon bağımlılığını kademeli olarak azaltmak için uygulanmıştır.
+
+Bu bağlam bir servis bulucuya dönüştürülmemelidir. Yeni alanlar yalnızca `server.R` içinde zaten oluşturulan, birden fazla alt modüle taşınan ve açık required-function sözleşmesiyle doğrulanabilen erken boot nesneleri için eklenmelidir. Kimlik ve auth-ready alanları bu nedenle `runtime_ctx$identity` altında tutulur.
 
 Korunan ana sözleşmeler:
 
