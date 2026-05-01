@@ -116,6 +116,7 @@ Protected by:
 ```text
 tests/testthat/test-server-user-session-context.R
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-session-user-data-store.R
 tests/testthat/test-server-module-wiring-contract.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
@@ -183,6 +184,52 @@ Legacy `session$userData` exports should also be explicit. If a refreshable modu
 Keep `runtime_ctx$identity` as the single early boot identity boundary in `server.R`. Do not mix direct `user_session$...` reads or direct identity-related `session$userData$...` reads back into `server.R`.
 
 Send-message wiring should use cache functions from the context:
+
+### Session userData list-store contract
+
+Session-local list stores under `session$userData` are now centralized through small helpers in `R/utils_session_cleanup.R`.
+
+These helpers own the safe read/write/reset contract for list-shaped session stores:
+
+```r
+session_user_data_get_list(...)
+session_user_data_set_list(...)
+session_user_data_put_list_item(...)
+session_user_data_remove_list_item(...)
+session_user_data_reset_lists(...)
+```
+
+Use these helpers for list stores such as:
+
+* `current_session_files`
+* `file_summaries`
+* `chart_store`
+* `mcp_registry_snapshot`
+
+Do not add new loose assignments in `server.R` such as:
+
+```r
+session$userData$current_session_files <- list()
+session$userData$file_summaries <- list()
+session$userData$chart_store <- list()
+session$userData$mcp_registry_snapshot <- list()
+```
+
+The expected initialization boundary is `R/server_init_session_state.R`. That file prepares the session-local list stores when the server session state is created.
+
+The file upload/summary pipeline, file-click observers, new-chat cleanup, and MCP registry snapshot refresh should use the centralized helpers instead of assuming that another module already created the list.
+
+This prevents hidden source-order and state-orchestration coupling around file context, MCP Excel, summaries, and chart storage.
+
+Protected by:
+
+```text
+tests/testthat/test-session-user-data-store.R
+tests/testthat/test-server-runtime-context.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-server-boundary-contract.R
+```
+
 
 ```r
 cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally
@@ -517,6 +564,7 @@ Focused validation for the current server runtime architecture boundary:
 ```r
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-session-user-data-store.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
