@@ -40,7 +40,7 @@ test_that("server.R canlı current_user_id_provider sözleşmesini ServerRuntime
   expected <- c(
     "user_session <- serverInitUserSession(",
     "runtime_ctx <- serverRuntimeContextInit(",
-    "identity <- runtime_ctx$identity",
+    "identity <- serverRuntimeRequireIdentity(",
     "user_config_rv <- identity$user_config_rv",
     "resolve_current_user_id <- identity$resolve_current_user_id",
     "current_user_id_provider <- identity$current_user_id_provider"

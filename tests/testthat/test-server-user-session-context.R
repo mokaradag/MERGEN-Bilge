@@ -8,6 +8,12 @@ repo_root <- resolve_repo_root_for_tests()
 
 source(file.path(repo_root, "R", "utils_common.R"), encoding = "UTF-8", local = globalenv())
 
+source(
+  file.path(repo_root, "R", "helpers_user_session_identity.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 reactiveVal <- shiny::reactiveVal
 
 source(file.path(repo_root, "R", "server_init_user_session.R"), encoding = "UTF-8", local = globalenv())

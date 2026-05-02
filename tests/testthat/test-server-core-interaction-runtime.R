@@ -297,6 +297,6 @@ test_that("serverBindCoreInteractionRuntime eksik state sözleşmesini erken yak
       user_first_name_fn = function(default = "") default,
       reactive_fn = .fake_core_reactive
     ),
-    "runtime_ctx\\$state"
+    "eksik zorunlu alan.*state"
   )
 })

@@ -150,7 +150,12 @@ test_that("file manager auth readiness kararını provider üzerinden alıyor", 
     fixed = TRUE
   ))
   expect_true(grepl(
-    "auth_ready_provider = runtime_ctx$identity$is_auth_ready",
+    "identity <- serverRuntimeRequireIdentity(",
+    wiring_txt,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "auth_ready_provider = identity$is_auth_ready",
     wiring_txt,
     fixed = TRUE
   ))
