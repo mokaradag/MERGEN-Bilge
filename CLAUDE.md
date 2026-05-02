@@ -699,6 +699,7 @@ safe_source("R/helpers_file_manager_refresh_guard.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_session_registry.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_runtime.R", encoding = "UTF-8")
 safe_source("R/helpers_file_manager_storage.R", encoding = "UTF-8")
+safe_source("R/helpers_file_manager_state_runtime.R", encoding = "UTF-8")
 safe_source("R/module_file_manager_ui.R", encoding = "UTF-8")
 safe_source("R/module_file_manager.R", encoding = "UTF-8")
 ```
@@ -712,8 +713,34 @@ Responsibilities:
 * `R/helpers_file_manager_session_registry.R`: pure-ish File Manager session file registry helpers. This file owns `session$userData$current_session_files` entry shape, registry initialization, register/unregister behavior, and registry path normalization.
 * `R/helpers_file_manager_runtime.R`: File Manager server runtime helper factory. It preserves local helper names used by `fileManagerServer()` while keeping settings resolution, effective user-id resolution, debug logging, registry wrappers, parent attach/detach synchronization, and extension/toast helpers outside the server module body.
 * `R/helpers_file_manager_storage.R`: File Manager persistent storage helper factory. It owns user upload folder resolution, MCP-base path checks, user-folder listing, and persisted upload index synchronization.
+* `R/helpers_file_manager_state_runtime.R`: focused File Manager state/action helper factory and persisted refresh construction (`fm_create_file_action_helpers(...)`, `fm_create_refresh_from_user_folder(...)`) extracted from the module runtime body.
 * `R/module_file_manager_ui.R`: public `fileManagerUI(id)` definition, File Manager UI layout, and browser-side upload-size guard.
-* `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, file table state mutation, attach/detach orchestration, persisted file refresh, deletion/clear operations, and parent-session synchronization. Small pure decisions should delegate to File Manager helper files instead of being reimplemented inline.
+* `R/module_file_manager.R`: public `fileManagerServer(...)` definition, server-side upload processing, attach/detach orchestration, deletion/clear operations, and parent-session synchronization while delegating File Manager state mutation and persisted file refresh construction to dedicated helpers. Small pure decisions should delegate to File Manager helper files instead of being reimplemented inline.
+
+### File Manager state runtime extraction contract
+
+The File Manager state mutation and persisted-folder refresh runtime are intentionally extracted into `R/helpers_file_manager_state_runtime.R`. Keep this file sourced after `R/helpers_file_manager_storage.R` and before `R/module_file_manager_ui.R` / `R/module_file_manager.R`.
+
+Responsibilities:
+- `R/module_file_manager.R`: Shiny module orchestration, observer wiring, UI event handling, and delegation to helper factories.
+- `R/helpers_file_manager_state_runtime.R`: focused File Manager state/action helpers and persisted refresh construction, including `fm_create_file_action_helpers(...)` and `fm_create_refresh_from_user_folder(...)`.
+- `R/helpers_file_manager_refresh_guard.R`: pure request-token guard that prevents stale persisted refreshes from overwriting newer File Manager state.
+- `R/helpers_file_manager_table.R`: file table schema and row HTML construction.
+
+Do not move `sync_file_to_context`, `append_uploaded_file_row`, `remove_file_by_name`, `process_uploaded_file`, or `fm_create_refresh_from_user_folder()` back into `R/module_file_manager.R`. New File Manager state mutation helpers should either belong in `R/helpers_file_manager_state_runtime.R` or in a narrower helper if a clearly separate responsibility emerges.
+
+Bulk upload must not mutate persisted File Manager state before SSO/auth identity is ready. Keep the auth-readiness guard in the upload path and keep File Manager auth readiness injected through the validated identity provider rather than direct `session$userData$auth_initialized` checks.
+
+Protected by:
+```text
+tests/testthat/test-file-manager-state-runtime-contract.R
+tests/testthat/test-file-manager-module-policy-wiring.R
+tests/testthat/test-file-manager-refresh-guard-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
+
+This extraction reduced `R/module_file_manager.R` below the 800-line threshold and raised the maintainability baseline to 70/100.
 
 Do not move `fileManagerUI()` back into `R/module_file_manager.R`. Do not duplicate upload-size, allowed-extension, attach-rule text, user-id placeholder handling, file-extension icon HTML, file timestamp formatting, or session file registry path/entry decisions inside the module when the helper already owns that policy.
 
@@ -726,6 +753,7 @@ This split is protected by:
 * `test-file-manager-table-contract.R`
 * `test-file-manager-refresh-guard-contract.R`
 * `test-file-manager-module-policy-wiring.R`
+* `test-file-manager-state-runtime-contract.R`
 * `test-file-manager-ui-refactor-contract.R`
 * `test-file-manager-upload-limit-ui.R`
 * `test-source-manifest-contract.R`
@@ -1166,7 +1194,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 67, max 800+ line files: 7, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1024, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 70, max 800+ line files: 6, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1004, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951. The latest File Manager state runtime extraction is the reason for the current 70/100 baseline, 6-file 800+ line cap, and 1004 max-line cap.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
