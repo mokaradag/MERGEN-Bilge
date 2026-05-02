@@ -224,6 +224,21 @@ test_that("admin geri bildirim helper dosyası modülden önce yükleniyor", {
   )
 })
 
+test_that("admin hata analizi helper dosyası modülden önce yükleniyor", {
+  global_text <- .read_repo_text_manifest_contract("global.R")
+  paths <- .extract_safe_source_paths(global_text)
+
+  pos <- function(path) match(path, paths)
+
+  expect_false(is.na(pos("R/helpers_admin_hata_analizi.R")))
+  expect_false(is.na(pos("R/module_admin_hata_analizi.R")))
+
+  expect_lt(
+    pos("R/helpers_admin_hata_analizi.R"),
+    pos("R/module_admin_hata_analizi.R")
+  )
+})
+
 test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu modülünden önce yükleniyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
   paths <- .extract_safe_source_paths(global_text)

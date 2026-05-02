@@ -316,6 +316,76 @@ test_that("module_admin_geri_bildirim.R refactor kazanımı geri alınmaz", {
   )
 })
 
+test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınmaz", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  hata_row <- report[
+    grepl("(^|/)R/module_admin_hata_analizi\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  expect_equal(
+    nrow(hata_row),
+    1L,
+    info = "R/module_admin_hata_analizi.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_hata_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_ANALIZI_LINES", 799L)
+
+  expect_true(
+    hata_row$lines[1] <= max_hata_lines,
+    info = sprintf(
+      "module_admin_hata_analizi.R helper extraction sonrası 800 satır altı kalmalıdır: %d > %d.",
+      hata_row$lines[1],
+      max_hata_lines
+    )
+  )
+
+  helper_row <- report[
+    grepl("(^|/)R/helpers_admin_hata_analizi\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  expect_equal(
+    nrow(helper_row),
+    1L,
+    info = "R/helpers_admin_hata_analizi.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HELPER_LINES", 799L)
+  max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HELPER_FUNCTIONS", 20L)
+
+  expect_true(
+    helper_row$lines[1] <= max_helper_lines,
+    info = sprintf(
+      "helpers_admin_hata_analizi.R 800 satır altı kalmalıdır: %d > %d.",
+      helper_row$lines[1],
+      max_helper_lines
+    )
+  )
+
+  expect_true(
+    helper_row$functions[1] <= max_helper_functions,
+    info = sprintf(
+      "helpers_admin_hata_analizi.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
+      helper_row$functions[1],
+      max_helper_functions
+    )
+  )
+})
+
 test_that("module_admin_yanit_analizi.R refactor kazanımı geri alınmaz", {
   repo_root <- .find_repo_root_maint_ratchet()
   old_wd <- getwd()
