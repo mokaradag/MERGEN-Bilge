@@ -126,20 +126,25 @@ session_runtime_store_key <- function(name) {
   }
 
   name <- as.character(name)
-  key <- SESSION_RUNTIME_STORE_KEYS[[name]]
 
-  if (is.null(key) && name %in% unname(SESSION_RUNTIME_STORE_KEYS)) {
-    key <- name
+  # Bilinen adlar hem sembolik ad hem de gerçek session$userData anahtarı
+  # olarak kabul edilir. Bilinmeyen adlarda R'nin alt indis hatası yerine
+  # açık sözleşme hatası üretilir.
+  named_index <- match(name, names(SESSION_RUNTIME_STORE_KEYS))
+  value_index <- match(name, unname(SESSION_RUNTIME_STORE_KEYS))
+
+  if (!is.na(named_index)) {
+    return(unname(SESSION_RUNTIME_STORE_KEYS[[named_index]]))
   }
 
-  if (is.null(key)) {
-    stop(sprintf(
-      "session_runtime_store_key: Bilinen store adı bekleniyor: %s",
-      paste(names(SESSION_RUNTIME_STORE_KEYS), collapse = ", ")
-    ), call. = FALSE)
+  if (!is.na(value_index)) {
+    return(name)
   }
 
-  key
+  stop(sprintf(
+    "session_runtime_store_key: Bilinen store adı bekleniyor: %s",
+    paste(names(SESSION_RUNTIME_STORE_KEYS), collapse = ", ")
+  ), call. = FALSE)
 }
 
 session_runtime_store_keys <- function(include_mcp = TRUE) {

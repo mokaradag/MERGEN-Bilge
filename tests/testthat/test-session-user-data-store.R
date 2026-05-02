@@ -32,7 +32,29 @@ source(
     stop(sprintf("Dosya bulunamadı: %s", rel_path), call. = FALSE)
   }
 
-  txt <- paste(readLines(path, encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  size <- suppressWarnings(file.info(path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  if (length(raw_data) >= 3L &&
+      identical(as.integer(raw_data[1:3]), c(239L, 187L, 191L))) {
+    raw_data <- raw_data[-(1:3)]
+  }
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
   txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
 }
