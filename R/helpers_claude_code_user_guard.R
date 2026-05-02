@@ -4,7 +4,7 @@
 #           kontrollerini saf/test edilebilir yardımcılar halinde toplar.
 # ==============================================================================
 
-cc_normalize_positive_user_id <- function(value) {
+cc_normalize_ready_user_id <- function(value) {
   value <- value %||% 0L
   if (length(value) == 0L) {
     return(0L)
@@ -60,7 +60,7 @@ cc_require_ready_user_id <- function(session = NULL,
     ))
   }
 
-  uid <- cc_normalize_positive_user_id(
+  uid <- cc_normalize_ready_user_id(
     cc_resolve_effective_user_id(
       session = session,
       current_user_id = current_user_id

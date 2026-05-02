@@ -74,7 +74,7 @@ test_that("Claude Code dizin gezgini yardımcıları ayrı dosyada tutulur", {
   expect_true(file.exists(file.path(repo_root, "R", "helpers_claude_code_dir_ui.R")))
 
   helper_text <- .read_repo_text_cc_dir_ui_contract("R/helpers_claude_code_dir_ui.R")
-  module_text <- .read_repo_text_cc_dir_ui_contract("R/module_claude_code.R")
+  setup_text <- .read_repo_text_cc_dir_ui_contract("R/helpers_claude_code_server_setup.R")
 
   moved_functions <- c(
     "cc_create_dir_refresh_guard",
@@ -94,13 +94,13 @@ test_that("Claude Code dizin gezgini yardımcıları ayrı dosyada tutulur", {
   }
 
   expect_true(
-    grepl("cc_build_dir_contents_ui\\(icerik,\\s*ns\\s*=\\s*ns\\)", module_text, perl = TRUE),
-    info = "module_claude_code.R dizin içeriği markup üretimini helper'a devretmelidir."
+    grepl("cc_build_dir_contents_ui\\(icerik,\\s*ns\\s*=\\s*ns\\)", setup_text, perl = TRUE),
+    info = "helpers_claude_code_server_setup.R dizin içeriği markup üretimini helper'a devretmelidir."
   )
 
   expect_true(
-    grepl("dir_refresh_guard\\$is_latest\\(refresh_id\\)", module_text, perl = TRUE),
-    info = "module_claude_code.R stale dizin refresh sonuçlarını uygulamadan önce token kontrolü yapmalıdır."
+    grepl("dir_refresh_guard\\$is_latest\\(refresh_id\\)", setup_text, perl = TRUE),
+    info = "helpers_claude_code_server_setup.R stale dizin refresh sonuçlarını uygulamadan önce token kontrolü yapmalıdır."
   )
 })
 

@@ -134,7 +134,21 @@ test_that("Claude Code server setup helper ve module wiring sözleşmesi korunur
   )
 
   expect_true(
-    grepl("ensure_ready_user_id\\(\"komut çalıştırma\"\\)", module_text, fixed = TRUE),
+    grepl("ensure_ready_user_id\\s*\\(\\s*\"komut çalıştırma\"\\s*\\)", module_text, perl = TRUE),
     info = "Ana komut çalıştırma akışı user_id hazır değilken devam etmemelidir."
+  )
+  
+  user_guard_text <- .read_repo_text_cc_user_guard_contract(
+    "R/helpers_claude_code_user_guard.R"
+  )
+
+  expect_true(
+    grepl("cc_normalize_ready_user_id\\s*<-\\s*function\\s*\\(", user_guard_text, perl = TRUE),
+    info = "User guard integer kimlik normalizasyonu upload-folder helper adıyla çakışmamalıdır."
+  )
+
+  expect_false(
+    grepl("cc_normalize_positive_user_id\\s*<-\\s*function\\s*\\(", user_guard_text, perl = TRUE),
+    info = "helpers_claude_code_user_guard.R upload-folder'daki cc_normalize_positive_user_id adını tekrar tanımlamamalıdır."
   )
 })

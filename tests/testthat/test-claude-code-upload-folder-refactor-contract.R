@@ -98,6 +98,9 @@ test_that("Claude Code upload-folder yardımcıları ayrı dosyaya taşınmışt
   module_text <- .read_repo_text_cc_upload_folder_contract(
     "R/module_claude_code.R"
   )
+  setup_text <- .read_repo_text_cc_upload_folder_contract(
+    "R/helpers_claude_code_server_setup.R"
+  )
 
   moved_functions <- c(
     "cc_normalize_positive_user_id",
@@ -131,8 +134,13 @@ test_that("Claude Code upload-folder yardımcıları ayrı dosyaya taşınmışt
   }
 
   expect_true(
-    grepl("cc_resolve_real_upload_folder\\(", module_text, perl = TRUE),
-    info = "module_claude_code.R yeni upload-folder helper'ı çağırmalıdır."
+    grepl("cc_bind_server_setup\\s*\\(", module_text, perl = TRUE),
+    info = "module_claude_code.R Bilge Yolaç setup sorumluluğunu helper'a devretmelidir."
+  )
+
+  expect_true(
+    grepl("cc_resolve_real_upload_folder\\(", setup_text, perl = TRUE),
+    info = "helpers_claude_code_server_setup.R yeni upload-folder helper'ı çağırmalıdır."
   )
 })
 
