@@ -56,7 +56,7 @@ test_that("maintainability skoru mevcut taban çizgisinin altına düşmez", {
     info = "maintainability_report.R attr(..., 'maintainability_score') üretmelidir."
   )
 
-  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 59L)
+  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 64L)
 
   expect_true(
     score >= min_score,
@@ -257,7 +257,7 @@ test_that("module_admin_geri_bildirim.R refactor kazanımı geri alınmaz", {
     info = "R/module_admin_geri_bildirim.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_gb_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES", 1000L)
+  max_gb_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES", 951L)
   max_gb_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS", 8L)
 
   expect_true(
