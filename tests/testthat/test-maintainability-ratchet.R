@@ -230,6 +230,75 @@ test_that("helpers_llm_sse.R akış I/O ayrımı sonrası ince kalır", {
   )
 })
 
+test_that("helpers_llm_worker.R payload extraction kazanımı geri alınmaz", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  worker_row <- report[
+    grepl("(^|/)R/helpers_llm_worker\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  payload_row <- report[
+    grepl("(^|/)R/helpers_llm_worker_payload\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  expect_equal(
+    nrow(worker_row),
+    1L,
+    info = "R/helpers_llm_worker.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  expect_equal(
+    nrow(payload_row),
+    1L,
+    info = "R/helpers_llm_worker_payload.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_worker_lines <- .as_int_env("MERGEN_TEST_MAX_LLM_WORKER_LINES", 940L)
+  max_payload_lines <- .as_int_env("MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_LINES", 260L)
+  max_payload_functions <- .as_int_env("MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_FUNCTIONS", 12L)
+
+  expect_true(
+    worker_row$lines[1] <= max_worker_lines,
+    info = sprintf(
+      "helpers_llm_worker.R payload extraction sonrası küçülmüş kalmalıdır: %d > %d.",
+      worker_row$lines[1],
+      max_worker_lines
+    )
+  )
+
+  expect_true(
+    payload_row$lines[1] <= max_payload_lines,
+    info = sprintf(
+      "helpers_llm_worker_payload.R küçük saf helper dosyası olarak kalmalıdır: %d > %d.",
+      payload_row$lines[1],
+      max_payload_lines
+    )
+  )
+
+  expect_true(
+    payload_row$functions[1] <= max_payload_functions,
+    info = sprintf(
+      "helpers_llm_worker_payload.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
+      payload_row$functions[1],
+      max_payload_functions
+    )
+  )
+})
+
 test_that("helpers_mcp_tools.R refactor kazanımı geri alınmaz", {
   repo_root <- .find_repo_root_maint_ratchet()
   old_wd <- getwd()

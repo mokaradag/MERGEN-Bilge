@@ -278,6 +278,7 @@ safe_source("R/helpers_llm_response_postprocess.R", encoding = "UTF-8")  # LLM y
 safe_source("R/helpers_llm_api.R",                  encoding = "UTF-8")  # LLM API istek oluşturma
 safe_source("R/helpers_llm_stream_io.R",            encoding = "UTF-8")  # SSE akış dosyası satır protokolü
 safe_source("R/helpers_llm_sse.R",                  encoding = "UTF-8")  # Gerçek SSE akışı yardımcıları
+safe_source("R/helpers_llm_worker_payload.R",       encoding = "UTF-8")  # LLM worker mesaj/grafik yardımcıları
 safe_source("R/helpers_llm_worker.R",               encoding = "UTF-8")  # Arka plan LLM çağrıları
 
 # ------------------------------------------------------------------------------

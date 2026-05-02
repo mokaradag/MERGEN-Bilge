@@ -101,85 +101,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     mergen_debug_cat("========================================\n")
     
     # Sohbet geçmişini API formatına (role/content) dönüştür
-    messages_payload <- lapply(chat_history, function(msg) {
-      role_val <- if (!is.null(msg$type)) {
-        if (identical(msg$type, "user")) "user"
-        else if (identical(msg$type, "system")) "system"
-        else "assistant"
-      } else if (!is.null(msg$role)) {
-        tolower(as.character(msg$role))
-      } else {
-        "user"
-      }
-      
-      content_val <- msg$content %||% msg$message %||% as.character(msg)
-      list(role = role_val, content = content_val)
-    })
-
-    # Tüm system mesajlarını en başta tek bir system mesajında birleştir
-    merge_system_messages_to_front <- function(messages) {
-      if (!length(messages)) return(messages)
-
-      roles <- vapply(messages, function(m) {
-        tolower(as.character(m$role %||% "user"))[1]
-      }, character(1))
-
-      system_idx <- which(roles == "system")
-      if (!length(system_idx)) return(messages)
-
-      system_text <- paste(
-        vapply(messages[system_idx], function(m) {
-          as.character(m$content %||% "")[1]
-        }, character(1)),
-        collapse = "\n\n"
-      )
-      system_text <- trimws(system_text)
-
-      non_system_messages <- messages[roles != "system"]
-
-      c(
-        list(list(role = "system", content = system_text)),
-        non_system_messages
-      )
-    }
+    messages_payload <- llm_worker_chat_history_to_messages(chat_history)
   
   # --- Grafik niyeti algılayıcı + zorunlu yedek oluşturucu --------------------
   # Metin içinde grafik isteği türünü (bar, line, vb.) algıla
-  detect_chart_type_from_text <- function(text) {
-    if (!is.character(text) || length(text) == 0 || !nzchar(text[1])) return("auto")
-    txt <- tolower(text[1])
-    if (grepl("\\b(histogram|histogramı|histogramını|dağılım grafiği)\\b", txt, perl = TRUE)) return("hist")
-    if (grepl("\\b(çizgi|line|trend|zaman serisi|time series|eğilim)\\b", txt, perl = TRUE)) return("line")
-    if (grepl("\\b(bar|çubuk|sütun|column|karşılaştır)\\b", txt, perl = TRUE)) return("bar")
-    if (grepl("\\b(pie|pasta|dilim|pay)\\b", txt, perl = TRUE)) return("pie")
-    if (grepl("\\b(donut|halka)\\b", txt, perl = TRUE)) return("donut")
-    if (grepl("\\b(area|alan)\\b", txt, perl = TRUE)) return("area")
-    if (grepl("\\b(pareto)\\b", txt, perl = TRUE)) return("pareto")
-    if (grepl("\\b(scatter|saçılım|nokta|dağılım|serpilme)\\b", txt, perl = TRUE)) return("scatter")
-    "auto"
-  }
-
-  chart_intent_flag <- FALSE
-    try({
-      last_user_txt <- NULL
-    if (length(chat_history) > 0) {
-    for (i in seq_along(chat_history)) {
-      msg <- chat_history[[i]]
-      role_val <- tolower(as.character(msg$type %||% msg$role %||% ""))
-      if (identical(role_val, "user")) {
-      last_user_txt <- as.character(msg$content %||% msg$message %||% "")  # son user içeriği
-      }
-    }
-    }
-    # Son kullanıcı mesajında grafik çizim niyeti var mı?
-    if (is.character(last_user_txt) && length(last_user_txt) > 0 && nzchar(last_user_txt[1])) {
-    chart_intent_flag <- grepl(
-      "(?i)\\b(grafik|grafikleri|grafiğini|görselleştir|gorsellestir|görselleştirme|gorsellestirme|plot|chart|chartlab|figure|graph|viz|visualize|visualise|çiz|çizelge|histogram|bar|çubuk|line|çizgi|trend|dağılım|scatter|pie|pasta|donut|pareto|area|spline|boxplot)\\b",
-      last_user_txt[1],
-      perl = TRUE
-    )
-    }
-  }, silent = TRUE)
+  detect_chart_type_from_text <- llm_worker_detect_chart_type_from_text
+  chart_intent_flag <- llm_worker_has_chart_intent(chat_history)
   
   # Grafiklerin toplanacağı depo (erken başlat)
   charts_to_store <- list()
@@ -189,10 +116,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
   # 1) 1 grafik isteğine 3 grafik dönüyordu
   # 2) Yanlış eksen seçimleri
   # 3) İstenmeyen grafik kombinasyonları
-  add_fallback_chart <- function(original_text) {
-    # Fallback devre dışı - orijinal metni olduğu gibi döndür
-    return(original_text %||% "")
-  }
+  add_fallback_chart <- llm_worker_add_fallback_chart
     
   # --- Seçilen aileye göre araç yönergesi (prompt) enjekte et ---
   if (isTRUE(enable_tools)) {
@@ -240,19 +164,25 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     }
   }
 
-    messages_payload <- merge_system_messages_to_front(messages_payload)
+    messages_payload <- llm_worker_merge_system_messages_to_front(messages_payload)
 
     temp_value <- if (!is.null(settings$temperature)) settings$temperature else 0.4
 
-    body <- list(
-      model = selected_model,
-      messages = messages_payload,
-      stream = FALSE
-    )
+	body <- list(
+	  model = selected_model,
+	  messages = messages_payload,
+	  stream = FALSE
+	)
 
-    if (!should_omit_temperature(selected_model)) {
-      body$temperature <- temp_value
-    }
+	if (!should_omit_temperature(selected_model)) {
+	  body$temperature <- temp_value
+	}
+
+	# Model bazlı ek istek alanlarını uygula.
+	# Streaming dışı yollarda da thinking davranışı tutarlı kalsın.
+	if (exists("apply_model_request_overrides", mode = "function", inherits = TRUE)) {
+	  body <- apply_model_request_overrides(body, selected_model)
+	}
 
     # Tüm uç noktalar OpenAI uyumlu kabul edilir; araç şemasını ekle
     if (mcp_enabled_now) {
@@ -452,119 +382,10 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     }, silent = TRUE)
 
     # Grafik verisinden otomatik özet/içgörü metni oluştur
-    build_chart_summary <- function(raw_chart) {
-      chart <- raw_chart$chart %||% raw_chart
-      if (is.null(chart) || !is.list(chart)) {
-      return("Grafik hazırlandı; veri kısa süreli özetlendi.")
-      }
-
-      desc_parts <- c()
-      chart_type <- chart$type %||% chart$chart_type %||% ""
-      if (nzchar(chart_type)) desc_parts <- c(desc_parts, paste0("Tür: ", chart_type))
-
-      mapping <- chart$mapping %||% list()
-      axes <- c()
-      if (nzchar(mapping$x %||% "")) axes <- c(axes, paste0("X=", mapping$x))
-      if (nzchar(mapping$y %||% "")) axes <- c(axes, paste0("Y=", mapping$y))
-      if (nzchar(mapping$group %||% "")) axes <- c(axes, paste0("Gruplama=", mapping$group))
-      if (length(axes)) desc_parts <- c(desc_parts, paste(axes, collapse = ", "))
-
-      df <- chart$data
-      row_hint <- chart$n %||% if (is.data.frame(df)) nrow(df) else NULL
-      if (is.finite(row_hint)) desc_parts <- c(desc_parts, paste0("Örnek satır sayısı: ", row_hint))
-
-      summary_line <- if (length(desc_parts)) paste(desc_parts, collapse = " | ") else "Dosyadaki verilerden üretildi"
-
-      # Hızlı içgörü: sayısal eksen varsa dağılımı özetle
-      quick_observation <- NULL
-      if (is.data.frame(df)) {
-      num_candidate <- NULL
-      if (nzchar(mapping$y %||% "") && is.numeric(df[[mapping$y]])) num_candidate <- df[[mapping$y]]
-      if (is.null(num_candidate) && nzchar(mapping$x %||% "") && is.numeric(df[[mapping$x]])) num_candidate <- df[[mapping$x]]
-
-      if (!is.null(num_candidate)) {
-        num_candidate <- suppressWarnings(as.numeric(num_candidate))
-        num_candidate <- num_candidate[is.finite(num_candidate)]
-        if (length(num_candidate)) {
-                        med_val <- stats::median(num_candidate)
-                        q1 <- stats::quantile(num_candidate, 0.25, na.rm = TRUE)
-                        q3 <- stats::quantile(num_candidate, 0.75, na.rm = TRUE)
-                        mn <- min(num_candidate)
-                        mx <- max(num_candidate)
-                        iqr_span <- q3 - q1
-                        tail_hint <- if (med_val > mean(c(q1, q3))) "üst" else "alt"
-                        quick_observation <- paste(
-                          sprintf("Ortanca %.2f (Q1=%.2f, Q3=%.2f), min %.2f, max %.2f.", med_val, q1, q3, mn, mx),
-                          sprintf("Değerler %s kuyrukta yoğunlaşıyor; dışa taşan uçlar için kutu yaylarını inceleyebilirsin.", tail_hint),
-                          sprintf("IQR %.2f olduğundan veri yayılımı %s; bu aralık grafik üzerinde renk/yoğunluk olarak hissedilir.", iqr_span, if (iqr_span > 0) "belirgin" else "düşük")
-        )
-        }
-      } else if (nzchar(mapping$x %||% "") && !is.numeric(df[[mapping$x]])) {
-        top_levels <- sort(table(df[[mapping$x]]), decreasing = TRUE)
-        top_levels <- head(top_levels, 3)
-        top_share <- round(as.numeric(top_levels) / sum(top_levels) * 100, 1)
-        quick_observation <- paste0(
-        "En sık kategoriler: ",
-        paste(sprintf("%s (%d, %s%%)", names(top_levels), as.integer(top_levels), format(top_share, nsmall = 1)), collapse = ", "),
-        ". Yoğunluğun bu gruplarda toplandığını vurgula; kalan uzun kuyruğu da kısaca hatırlat."
-        )
-      }
-      }
-
-      base_line <- paste0("Grafik hazırlandı: ", summary_line, ".")
-      if (nzchar(quick_observation)) {
-      paste(base_line, quick_observation, "Eksenlerdeki deseni iki cümleyle anlat ve kullanıcının aklında net bir tablo oluşmasını sağla.")
-      } else {
-      paste(base_line, "Veri dağılımını ve olası uç değerleri kısaca betimleyip okuyucuya yol gösterici bir paragraf ekle.")
-      }
-    }
+    build_chart_summary <- llm_worker_build_chart_summary
 
     # Sonuçlardan (tablo/grafik) hızlı içgörü üret
-    build_auto_insight <- function(raw_results) {
-      # 1) Grafik varsa öne al
-      chart_pick <- Filter(function(x) is.list(x) && (!is.null(x[["chart"]]) || isTRUE(x[["__mcp_plot"]])), raw_results)
-      if (length(chart_pick)) {
-      return(build_chart_summary(chart_pick[[1]]))
-      }
-
-      # 2) DataFrame önizlemesi varsa kısa özet çıkar
-      for (rr in raw_results) {
-      df <- rr$`sonuç_önizleme` %||% rr$preview
-      if (is.data.frame(df) && nrow(df) > 0) {
-        num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
-        if (length(num_cols)) {
-        vals <- suppressWarnings(as.numeric(df[[num_cols[1]]]))
-        vals <- vals[is.finite(vals)]
-        if (length(vals)) {
-          avg  <- mean(vals)
-          med  <- stats::median(vals)
-          mn   <- min(vals)
-          mx   <- max(vals)
-          sdv  <- stats::sd(vals)
-          return(sprintf(
-          paste(
-            "İçgörü: %d satırın %s sütunu min %.2f, medyan %.2f, ortalama %.2f, max %.2f.",
-            "Standart sapma %.2f; dağılımın genişliği ve olası uç noktalar üzerine birkaç cümle kur.",
-            "Kısa, öğretici bir paragrafla kullanıcının görebileceği trendleri ve aksiyon önerilerini anlat."
-          ),
-          nrow(df), num_cols[1], mn, med, avg, mx, sdv
-          ))
-        }
-        }
-
-        head_cols <- paste(head(colnames(df), 3), collapse = ", ")
-        return(sprintf(
-        paste(
-          "İçgörü: İlk %d satırda öne çıkan sütunlar %s; satır örneklerini kullanarak eğilimleri anlat.",
-          "Okuyucuya rehberlik edecek 4-5 cümlelik bir paragraf yaz; hangi kolonların dikkat çektiğini ve neden önemli olabileceğini açıkla."
-        ),
-        nrow(df), head_cols
-        ))
-      }
-      }
-
-      "İçgörü: Sonuçlar yukarıda; dağılımı, beklenmedik değerleri ve olası aksiyonları birkaç cümleyle rehber gibi açıkla."
-    }
+    build_auto_insight <- llm_worker_build_auto_insight
             
         # Herhangi bir araç hata döndürdüyse toparla ve işlemi kes
         errs <- vapply(tool_results_raw, function(r) if (is.list(r) && !is.null(r$error)) r$error else "", "")
