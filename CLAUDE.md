@@ -69,6 +69,7 @@ Preserve this source order in `global.R`:
 safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
 safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
 safe_source("R/server_runtime_context.R",    encoding = "UTF-8")
+safe_source("R/server_runtime_function_slot.R", encoding = "UTF-8")
 safe_source("R/server_module_wiring.R",      encoding = "UTF-8")
 safe_source("R/server_init_session_state.R", encoding = "UTF-8")
 safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
@@ -82,7 +83,7 @@ safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 
 `R/server_runtime_context.R` owns the early server boot contract that carries identity, cache, forward references, session state, and chat runtime into `server.R` through one explicit context object.
 
-`R/server_module_wiring.R` owns medium-level server module wiring that used to be directly expanded in `server.R`. It binds service modules, settings/forward references/Bilge Yolaç startup wiring, media modules, the file-preview/follow-up prelude, and refreshable content modules such as File Manager and Image Gallery through small explicit helper functions. Keep this helper sourced after `R/server_runtime_context.R` and before session/chat runtime initialization.
+`R/server_module_wiring.R` owns medium-level server module wiring that used to be directly expanded in `server.R`, including the chat engine wiring boundary. It binds service modules, settings/forward references/Bilge Yolaç startup wiring, media modules, the file-preview/follow-up prelude, and refreshable content modules such as File Manager and Image Gallery through small explicit helper functions. Keep this helper sourced after `R/server_runtime_context.R` and before session/chat runtime initialization.
 
 In `server.R`, do not read identity values directly from `user_session` anymore. The expected contract is:
 
@@ -119,6 +120,7 @@ tests/testthat/test-server-runtime-context.R
 tests/testthat/test-session-user-data-store.R
 tests/testthat/test-server-module-wiring-contract.R
 tests/testthat/test-server-module-wiring-runtime-bindings.R
+tests/testthat/test-server-module-wiring-chat-engine.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-server-chat-persistence-wiring-contract.R
@@ -142,6 +144,7 @@ It currently covers only:
 - `state_bundle`
 - file runtime objects in `runtime_ctx$file`, including file preview/follow-up prelude handles and the File Manager module handle
 - `chat_runtime`
+- late-bound runtime function slots are intentionally kept in `R/server_runtime_function_slot.R` instead of this file, to avoid growing `R/server_runtime_context.R` into a broader service locator
 - narrowly registered module return objects in `runtime_ctx$modules`
 - SSO auth-ready callback registration through `serverRuntimeOnSsoAuthReady(...)`, registered-module refresh wiring through `serverRuntimeRefreshModuleOnSsoAuthReady(...)`, and the higher-level refreshable-module wiring helper `serverRuntimeAttachRefreshableModule(...)`
 
@@ -178,7 +181,15 @@ file_runtime <- serverRuntimeRequireFileRuntime(
 )
 
 runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
-runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
+
+chat_engine <- serverBindChatEngineRuntime(
+  ...,
+  runtime_ctx = runtime_ctx,
+  send_message_fns = send_message_fns,
+  send_message_proxy = send_message
+)
+
+runtime_ctx <- chat_engine$runtime_ctx
 ```
 
 For File Manager and chat-persistence-related modules, `server.R` should not call `serverRuntimeAttachRefreshableModule(...)` directly. It should delegate to the focused wiring helpers and unpack the returned runtime context plus module handle:
@@ -285,6 +296,7 @@ Protected by:
 ```text
 tests/testthat/test-session-user-data-store.R
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-server-module-wiring-chat-engine.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-server-boundary-contract.R
 ```
@@ -337,6 +349,7 @@ serverBindFilePreludeModules(...)
 serverBindFileManagerRuntime(...)
 serverBindImageGalleryRuntime(...)
 serverBindChatPersistenceModules(...)
+serverBindChatEngineRuntime(...)
 ```
 
 Responsibilities:
@@ -348,6 +361,7 @@ Responsibilities:
 * `serverBindFileManagerRuntime(...)`: binds `fileManagerServer(...)`, injects the live user-id provider and auth-readiness provider, registers the module through `ServerRuntimeContext`, attaches `file_manager_data` to the focused FileRuntime boundary, wires one-time SSO-ready persisted-file refresh, and preserves the explicit `session$userData$file_manager_data` compatibility export.
 * `serverBindImageGalleryRuntime(...)`: binds `imageGalleryServer(...)` with the live user-id provider and registers the gallery refresh function through `ServerRuntimeContext`.
 * `serverBindChatPersistenceModules(...)`: binds saved chats, saved-chat observers, chat content search, image gallery runtime and observers, welcome handlers, download outputs, history, and message search while preserving the live `current_user_id_provider`, explicit user-config provider, and explicit user-first-name provider.
+* `serverBindChatEngineRuntime(...)`: binds chat runtime, LLM response handlers, chat input observers, miscellaneous chat/UI observers, chat actions, TTS handlers, and `sendMessageInit(...)`; it also assigns the final `send_message_fns$send_message` implementation and uses `serverRuntimeCreateFunctionSlot(...)` to avoid fragile TTS placeholder reassignment in `server.R`.
 
 Do not move these direct calls back into `server.R`:
 
@@ -381,11 +395,22 @@ welcomeHandlersInit(...)
 downloadOutputsInit(...)
 historyServer(...)
 messageSearchInit(...)
+serverInitChatRuntime(...)
+llmResponseHandlersInit(...)
+chatInputObserversInit(...)
+miscObserversInit(...)
+chatActionsInit(...)
+ttsHandlersInit(...)
+sendMessageInit(...)
 ```
 
 `server.R` should delegate to the wiring helpers and then unpack only the returned handles it needs. The helper must preserve existing module IDs, current initialization order, and user/provider behavior. In particular, user-scoped service bindings must keep using the live provider rather than a startup user-id snapshot.
 
 For chat persistence, `server.R` should unpack only `runtime_ctx` and `saved_chats_data` from `serverBindChatPersistenceModules(...)`; the helper owns gallery data, welcome handler binding, history wiring, downloads, and message search setup.
+
+Do not re-expand the chat runtime, LLM handler, TTS handler, chat action, miscellaneous observer, or send-message wiring back into `server.R`; keep that cluster behind `serverBindChatEngineRuntime(...)`.
+
+`R/server_runtime_function_slot.R` must stay sourced after `R/server_runtime_context.R` and before `R/server_module_wiring.R`, because it uses the runtime stop helper and is consumed by chat engine wiring.
 
 For file-related wiring, prefer `serverRuntimeRequireFileRuntime(...)` after the relevant wiring helper has attached file prelude or File Manager objects. Do not reintroduce direct `filePreview <- ...`, `followup_tools <- ...`, or `file_manager_data <- ...` propagation patterns when the value is already available through `runtime_ctx$file`.
 
@@ -394,6 +419,7 @@ Protected by:
 ```text
 tests/testthat/test-server-module-wiring-contract.R
 tests/testthat/test-server-module-wiring-runtime-bindings.R
+tests/testthat/test-server-module-wiring-chat-engine.R
 tests/testthat/test-production-contracts.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-server-chat-persistence-wiring-contract.R
