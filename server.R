@@ -242,68 +242,29 @@ server <- function(input, output, session) {
     
   # Dosya özet deposu serverInitSessionState içinde merkezi olarak hazırlanır.
   
-  saved_chats_data <- savedChatsServer("saved_chats_module", saved_chats = reactive(values$saved_chats))
-
-  # Kayıtlı sohbet gözlemcilerini başlat (saved_chats_data artık mevcut)
-	savedChatsObserversInit(
-	  input,
-	  output,
-	  session,
-	  values,
-	  settings_data,
-	  saved_chats_data,
-	  current_user_id_provider,
-	  load_chat_in_progress
-	)
-
-  # Söyleşi içerik arama modülünü başlat
-  chatSearchInit(input, session, current_user_id_provider, function(chat_id) {
-    shinyjs::runjs(sprintf(
-      "Shiny.setInputValue('welcome_load_chat_id', '%s', {priority: 'event'});",
-      chat_id
-    ))
-  })
-
-  # Görsel galerisi modülünü başlat
-  gallery_runtime <- serverBindImageGalleryRuntime(
+  chat_persistence <- serverBindChatPersistenceModules(
+    input = input,
+    output = output,
+    session = session,
     runtime_ctx = runtime_ctx,
-    current_user_id_provider = current_user_id_provider
+    values = values,
+    settings_data = settings_data,
+    load_chat_in_progress = load_chat_in_progress,
+    session_files = session_files,
+    filePreview = filePreview,
+    file_manager_data = file_manager_data,
+    current_user_id_provider = current_user_id_provider,
+    user_config_provider = function(default = NULL) {
+      runtime_ctx$identity$get_user_config(default = default)
+    },
+    user_first_name_fn = function(default = "") {
+      current_user_first_name(default = default)
+    },
+    welcome_fns = welcome_fns
   )
 
-  runtime_ctx <- gallery_runtime$runtime_ctx
-  gallery_data <- gallery_runtime$gallery_data
-
-  # Görsel galerisi gözlemcilerini başlat
-  imageGalleryObserversInit(input, session, values, settings_data,
-                           gallery_data, saved_chats_data,
-                           current_user_id_provider, load_chat_in_progress)
-
-  # Hoş geldin ekranı işleyicilerini başlat (modüler)
-  # Gerçek fonksiyonlar welcome_fns ortamına atanır, sarmalayıcılar bunları çağırır
-welcome_handlers <- welcomeHandlersInit(
-  session, values, saved_chats_data, session_files,
-  filePreview, current_user_id_provider, file_manager_data,
-  user_first_name = function() {
-    current_user_first_name(default = "")
-  }
-)
-
-  welcome_fns$render_welcome_screen <- welcome_handlers$render_welcome_screen
-  welcome_fns$start_new_chat <- welcome_handlers$start_new_chat
-
-  # İndirme ve dosya gösterge çıktılarını başlat (modüler)
-  downloadOutputsInit(output, session, session_files, current_user_id_provider)
-  
-	historyServer(
-	  "history_module",
-	  all_messages = reactive(values$saved_chats),
-	  current_user_id = function() {
-		resolve_current_user_id()
-	  }
-	)
-    
-  # Mesaj arama bağlantıları
-  messageSearchInit(input, session, values, reactive(values$messages))
+  runtime_ctx <- chat_persistence$runtime_ctx
+  saved_chats_data <- chat_persistence$saved_chats_data
                 
     # ==========================================================================
     # BÖLÜM 9: SOHBET MOTORU VE LLM ENTEGRASYONU

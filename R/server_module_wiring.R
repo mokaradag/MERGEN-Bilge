@@ -320,3 +320,146 @@ serverBindImageGalleryRuntime <- function(runtime_ctx,
     gallery_data = gallery_data
   )
 }
+
+serverBindChatPersistenceModules <- function(input,
+                                             output,
+                                             session,
+                                             runtime_ctx,
+                                             values,
+                                             settings_data,
+                                             load_chat_in_progress,
+                                             session_files,
+                                             filePreview,
+                                             file_manager_data,
+                                             current_user_id_provider,
+                                             user_config_provider,
+                                             user_first_name_fn,
+                                             welcome_fns,
+                                             saved_chats_server_fn = savedChatsServer,
+                                             saved_chats_observers_init_fn = savedChatsObserversInit,
+                                             chat_search_init_fn = chatSearchInit,
+                                             image_gallery_runtime_fn = serverBindImageGalleryRuntime,
+                                             image_gallery_observers_init_fn = imageGalleryObserversInit,
+                                             welcome_handlers_init_fn = welcomeHandlersInit,
+                                             download_outputs_init_fn = downloadOutputsInit,
+                                             history_server_fn = historyServer,
+                                             message_search_init_fn = messageSearchInit,
+                                             reactive_fn = shiny::reactive,
+                                             js_run_fn = shinyjs::runjs) {
+  .server_wiring_require_context(runtime_ctx, "serverBindChatPersistenceModules")
+
+  .server_wiring_require_functions(list(
+    current_user_id_provider = current_user_id_provider,
+    user_config_provider = user_config_provider,
+    user_first_name_fn = user_first_name_fn,
+    saved_chats_server_fn = saved_chats_server_fn,
+    saved_chats_observers_init_fn = saved_chats_observers_init_fn,
+    chat_search_init_fn = chat_search_init_fn,
+    image_gallery_runtime_fn = image_gallery_runtime_fn,
+    image_gallery_observers_init_fn = image_gallery_observers_init_fn,
+    welcome_handlers_init_fn = welcome_handlers_init_fn,
+    download_outputs_init_fn = download_outputs_init_fn,
+    history_server_fn = history_server_fn,
+    message_search_init_fn = message_search_init_fn,
+    reactive_fn = reactive_fn,
+    js_run_fn = js_run_fn
+  ))
+
+  .server_wiring_require_functions(list(
+    file_manager_refresh_persisted_files = file_manager_data$refresh_persisted_files,
+    file_manager_file_contents = file_manager_data$file_contents
+  ))
+
+  if (!is.environment(welcome_fns)) {
+    .server_wiring_stop(
+      "serverBindChatPersistenceModules: welcome_fns ortam olmalıdır."
+    )
+  }
+
+  saved_chats_data <- saved_chats_server_fn(
+    "saved_chats_module",
+    saved_chats = reactive_fn(values$saved_chats)
+  )
+
+  saved_chats_observers_init_fn(
+    input,
+    output,
+    session,
+    values,
+    settings_data,
+    saved_chats_data,
+    current_user_id_provider,
+    load_chat_in_progress,
+    user_config_provider = user_config_provider,
+    user_first_name_fn = user_first_name_fn
+  )
+
+  chat_search_init_fn(input, session, current_user_id_provider, function(chat_id) {
+    js_run_fn(sprintf(
+      "Shiny.setInputValue('welcome_load_chat_id', '%s', {priority: 'event'});",
+      chat_id
+    ))
+  })
+
+  gallery_runtime <- image_gallery_runtime_fn(
+    runtime_ctx = runtime_ctx,
+    current_user_id_provider = current_user_id_provider
+  )
+
+  runtime_ctx <- gallery_runtime$runtime_ctx
+  gallery_data <- gallery_runtime$gallery_data
+
+  image_gallery_observers_init_fn(
+    input,
+    session,
+    values,
+    settings_data,
+    gallery_data,
+    saved_chats_data,
+    current_user_id_provider,
+    load_chat_in_progress
+  )
+
+  welcome_handlers <- welcome_handlers_init_fn(
+    session,
+    values,
+    saved_chats_data,
+    session_files,
+    filePreview,
+    current_user_id_provider,
+    file_manager_data,
+    user_first_name = function() {
+      user_first_name_fn(default = "")
+    }
+  )
+
+  welcome_fns$render_welcome_screen <- welcome_handlers$render_welcome_screen
+  welcome_fns$start_new_chat <- welcome_handlers$start_new_chat
+
+  download_outputs_init_fn(
+    output,
+    session,
+    session_files,
+    current_user_id_provider
+  )
+
+  history_server_fn(
+    "history_module",
+    all_messages = reactive_fn(values$saved_chats),
+    current_user_id = current_user_id_provider
+  )
+
+  message_search_init_fn(
+    input,
+    session,
+    values,
+    reactive_fn(values$messages)
+  )
+
+  list(
+    runtime_ctx = runtime_ctx,
+    saved_chats_data = saved_chats_data,
+    gallery_data = gallery_data,
+    welcome_handlers = welcome_handlers
+  )
+}

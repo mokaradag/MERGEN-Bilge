@@ -14,8 +14,10 @@
 #' @param current_user_id Mevcut kullanıcı ID'si
 #' @param load_chat_in_progress Sohbet yükleme kilit reaktif değeri
 savedChatsObserversInit <- function(input, output, session, values, settings_data,
-                                    saved_chats_data, current_user_id, 
-                                    load_chat_in_progress) {
+                                    saved_chats_data, current_user_id,
+                                    load_chat_in_progress,
+                                    user_config_provider = NULL,
+                                    user_first_name_fn = NULL) {
   
   # Son silinen sohbet ID'sini takip et (silme sonrası yanlış yüklemeyi engellemek için)
   last_deleted_chat_id <- reactiveVal(NULL)
@@ -26,6 +28,39 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       session = session,
       current_user_id = current_user_id
     )
+  }
+
+  resolve_user_config <- function(default = NULL) {
+    cfg <- NULL
+
+    if (is.function(user_config_provider)) {
+      cfg <- tryCatch(
+        user_config_provider(default = default),
+        error = function(e) NULL
+      )
+    }
+
+    cfg %||% session$userData$user_config %||% default
+  }
+
+  resolve_user_first_name <- function(default = "") {
+    value <- NULL
+
+    if (is.function(user_first_name_fn)) {
+      value <- tryCatch(
+        user_first_name_fn(default = default),
+        error = function(e) NULL
+      )
+    }
+
+    value <- value %||% session$userData$user_first_name %||% default
+    value <- as.character(value %||% default)
+
+    if (!nzchar(value)) {
+      return(default)
+    }
+
+    value
   }
   
   # -------------------------------------------------------------------------
@@ -117,9 +152,13 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     
     values$messages <- chat_to_load$messages %||% list()
     # Geri yüklenen sohbetlerde kullanıcı başlığı/avatarı doğru görünsün diye
-    # oturum-yerel user_config'i settings içine enjekte et.
-    if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
-      settings_data$user_config <- session$userData$user_config
+    # kimlik bağlamından gelen user_config'i settings içine enjekte et.
+    if (is.null(settings_data$user_config)) {
+      session_user_config <- resolve_user_config(default = NULL)
+
+      if (!is.null(session_user_config)) {
+        settings_data$user_config <- session_user_config
+      }
     }
 	
     effective_user_id <- resolve_current_user_id()
@@ -359,7 +398,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
           # Kişiselleştirilmiş karşılama animasyonunu başlat
           shinyjs::delay(400, {
             session$sendCustomMessage("initPersonalGreeting", list(
-              first_name = session$userData$user_first_name %||% ""
+              first_name = resolve_user_first_name(default = "")
             ))
           })
         })
@@ -430,9 +469,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
             
             # Kişiselleştirilmiş karşılama animasyonunu başlat
             shinyjs::delay(400, {
-              session$sendCustomMessage("initPersonalGreeting", list(
-                first_name = session$userData$user_first_name %||% ""
-              ))
+				session$sendCustomMessage("initPersonalGreeting", list(
+				  first_name = resolve_user_first_name(default = "")
+				))
             })
           })
         })
