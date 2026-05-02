@@ -82,7 +82,7 @@ safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 
 `R/server_runtime_context.R` owns the early server boot contract that carries identity, cache, forward references, session state, and chat runtime into `server.R` through one explicit context object.
 
-`R/server_module_wiring.R` owns medium-level server module wiring that used to be directly expanded in `server.R`. It binds service modules, settings/forward references/Bilge Yolaç startup wiring, media modules, and the file-preview/follow-up prelude through small explicit helper functions. Keep this helper sourced after `R/server_runtime_context.R` and before session/chat runtime initialization.
+`R/server_module_wiring.R` owns medium-level server module wiring that used to be directly expanded in `server.R`. It binds service modules, settings/forward references/Bilge Yolaç startup wiring, media modules, the file-preview/follow-up prelude, and refreshable content modules such as File Manager and Image Gallery through small explicit helper functions. Keep this helper sourced after `R/server_runtime_context.R` and before session/chat runtime initialization.
 
 In `server.R`, do not read identity values directly from `user_session` anymore. The expected contract is:
 
@@ -107,7 +107,7 @@ Identity accessors must be safe outside reactive consumers. When reading `user_c
 
 Never read `sso_state$authenticated` directly during initialization checks such as `is.null(sso_state$authenticated)`. In production SSO, that field is reactive and direct reads can crash the app with “Can't access reactive value outside of reactive consumer.” Watch it with `shiny::observeEvent(sso_state$authenticated, ...)` and read it only inside a reactive consumer/handler.
 
-Post-auth refreshable modules should now be wired through `serverRuntimeAttachRefreshableModule(...)` from `R/server_runtime_context.R` when the module needs a validated runtime registration plus optional one-time SSO-ready refresh. Do not add new ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R` for this pattern. The helper centralizes three operations that were previously repeated in `server.R`: `serverRuntimeAttachModule(...)`, optional `serverRuntimeRefreshModuleOnSsoAuthReady(...)`, and optional `serverRuntimeExposeSessionData(...)`. File Manager persisted-file refresh and Image Gallery refresh are wired through this helper. The lower-level helpers remain valid inside the runtime-context layer, but `server.R` should prefer the combined helper for refreshable module wiring.
+Post-auth refreshable modules should use the `ServerRuntimeContext` refreshable-module contract instead of ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R`. The low-level combined helper remains `serverRuntimeAttachRefreshableModule(...)`, but File Manager and Image Gallery must be wired through `serverBindFileManagerRuntime(...)` and `serverBindImageGalleryRuntime(...)` in `R/server_module_wiring.R`. Those wiring helpers internally perform validated module attachment, optional SSO-ready refresh registration, and optional compatibility exposure.
 
 File Manager auth readiness must be injected through `auth_ready_provider = runtime_ctx$identity$is_auth_ready`. Do not reintroduce direct File Manager checks against `session$userData$auth_initialized`; that couples persisted-file refresh to SSO timing and can bring back user-id `0` refresh regressions.
 
@@ -118,6 +118,7 @@ tests/testthat/test-server-user-session-context.R
 tests/testthat/test-server-runtime-context.R
 tests/testthat/test-session-user-data-store.R
 tests/testthat/test-server-module-wiring-contract.R
+tests/testthat/test-server-module-wiring-runtime-bindings.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-effective-user-id.R
@@ -162,20 +163,31 @@ runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
 ```
 
-For SSO-ready one-time refreshable modules, prefer the combined helper in `server.R`:
+For File Manager and Image Gallery, `server.R` should not call `serverRuntimeAttachRefreshableModule(...)` directly. It should delegate to the focused wiring helpers and unpack the returned runtime context plus module handle:
 
 ```r
-runtime_ctx <- serverRuntimeAttachRefreshableModule(
-  ctx = runtime_ctx,
-  name = "file_manager",
-  value = file_manager_data,
-  required_functions = c("refresh_persisted_files", "file_contents"),
-  refresh_function = "refresh_persisted_files",
-  refresh_args = list("auth_ready"),
-  label = "file_manager_refresh",
-  expose_session_key = "file_manager_data"
+file_manager_runtime <- serverBindFileManagerRuntime(
+  runtime_ctx = runtime_ctx,
+  new_file_trigger = reactive({ file_to_add() }),
+  session_files_reactive = session_files,
+  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
+  settings_data = settings_data,
+  user_id_provider = current_user_id_provider
 )
+
+runtime_ctx <- file_manager_runtime$runtime_ctx
+file_manager_data <- file_manager_runtime$file_manager_data
+
+gallery_runtime <- serverBindImageGalleryRuntime(
+  runtime_ctx = runtime_ctx,
+  current_user_id_provider = current_user_id_provider
+)
+
+runtime_ctx <- gallery_runtime$runtime_ctx
+gallery_data <- gallery_runtime$gallery_data
 ```
+
+Use `serverRuntimeAttachRefreshableModule(...)` directly only inside runtime/wiring helper layers or for a genuinely new refreshable module pattern that does not fit an existing wiring helper.
 
 Use the lower-level `serverRuntimeAttachModule(...)`, `serverRuntimeRefreshModuleOnSsoAuthReady(...)`, and `serverRuntimeExposeSessionData(...)` helpers only when the combined helper does not fit the case. Do not re-expand the File Manager or Image Gallery wiring back into separate attach/refresh/expose blocks in `server.R`.
 
@@ -274,6 +286,8 @@ serverBindServiceModules(...)
 serverBindSettingsAndRefs(...)
 serverBindMediaModules(...)
 serverBindFilePreludeModules(...)
+serverBindFileManagerRuntime(...)
+serverBindImageGalleryRuntime(...)
 ```
 
 Responsibilities:
@@ -282,6 +296,8 @@ Responsibilities:
 * `serverBindSettingsAndRefs(...)`: binds settings, forward references, Bilge Yolaç startup wiring, visual settings sync, chat output headers, and `load_chat_in_progress`.
 * `serverBindMediaModules(...)`: binds feedback, AI processing, TTS, TTS visualizer, music handlers, AI Expert, and STT.
 * `serverBindFilePreludeModules(...)`: binds file preview, fallback follow-up tools, follow-up module tools, and DOCX preview JavaScript.
+* `serverBindFileManagerRuntime(...)`: binds `fileManagerServer(...)`, injects the live user-id provider and auth-readiness provider, registers the module through `ServerRuntimeContext`, wires one-time SSO-ready persisted-file refresh, and preserves the explicit `session$userData$file_manager_data` compatibility export.
+* `serverBindImageGalleryRuntime(...)`: binds `imageGalleryServer(...)` with the live user-id provider and registers the gallery refresh function through `ServerRuntimeContext`.
 
 Do not move these direct calls back into `server.R`:
 
@@ -305,6 +321,8 @@ filePreviewServer(...)
 create_followup_suggestions_tool(...)
 followupSuggestionsServer(...)
 init_docx_preview_js(...)
+fileManagerServer(...)
+imageGalleryServer(...)
 ```
 
 `server.R` should delegate to the wiring helpers and then unpack only the returned handles it needs. The helper must preserve existing module IDs, current initialization order, and user/provider behavior. In particular, user-scoped service bindings must keep using the live provider rather than a startup user-id snapshot.
@@ -313,6 +331,7 @@ Protected by:
 
 ```text
 tests/testthat/test-server-module-wiring-contract.R
+tests/testthat/test-server-module-wiring-runtime-bindings.R
 tests/testthat/test-production-contracts.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-source-manifest-contract.R
@@ -564,6 +583,7 @@ Focused validation for the current server runtime architecture boundary:
 ```r
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-session-user-data-store.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
@@ -898,6 +918,7 @@ Windows-safe child-session test authoring rules:
   ```r
   testthat::test_file("tests/testthat/test-server-user-session-context.R")
   testthat::test_file("tests/testthat/test-server-runtime-context.R")
+  testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
   testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
   testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
   testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
@@ -2604,6 +2625,7 @@ testthat::test_file("tests/testthat/test-production-env-policy-contract.R")
 testthat::test_file("tests/testthat/test-llm-reasoning-request-overrides.R")
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-secret-leak-contract.R")

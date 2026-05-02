@@ -156,6 +156,7 @@ testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-session-user-data-store.R")
 testthat::test_file("tests/testthat/test-server-boundary-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
@@ -273,14 +274,19 @@ service_modules <- serverBindServiceModules(...)
 settings_bundle <- serverBindSettingsAndRefs(...)
 media_modules <- serverBindMediaModules(...)
 file_prelude_modules <- serverBindFilePreludeModules(...)
+file_manager_runtime <- serverBindFileManagerRuntime(...)
+gallery_runtime <- serverBindImageGalleryRuntime(...)
 ```
 
 Bu yardımcılar mevcut modül ID’lerini, mevcut başlatma sırasını ve canlı `current_user_id_provider` kullanımını korur. Amaç davranış değiştirmek değil, kaynak sırası ve state orkestrasyonu riskini azaltmaktır.
+
+Dosya Yönetimi ve Görsel Galerisi gibi SSO sonrası yenilenmesi gereken içerik modülleri de artık bu sınırın parçasıdır. `serverBindFileManagerRuntime()` dosya yöneticisini oluşturur, `runtime_ctx` içine doğrulanmış modül olarak kaydeder, SSO hazır olduğunda kalıcı dosya yenilemesini bağlar ve geriye dönük uyumluluk için `session$userData$file_manager_data` değerini kontrollü biçimde açık eder. `serverBindImageGalleryRuntime()` ise görsel galerisini aynı runtime-context sözleşmesiyle bağlar ve SSO sonrası galeri yenilemesini merkezi helper üzerinden kurar. Böylece `server.R` içinde doğrudan `fileManagerServer()` / `imageGalleryServer()` çağrıları ve elle yazılmış refresh orkestrasyonu tekrar birikmez.
 
 Bu sınır aşağıdaki testlerle korunur:
 
 ```r
 testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
+testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
