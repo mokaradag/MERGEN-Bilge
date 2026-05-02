@@ -463,3 +463,249 @@ serverBindChatPersistenceModules <- function(input,
     welcome_handlers = welcome_handlers
   )
 }
+
+serverBindChatEngineRuntime <- function(input,
+                                        output,
+                                        session,
+                                        runtime_ctx,
+                                        settings_data,
+                                        api_key,
+                                        user_config_rv,
+                                        perf_tracker,
+                                        ai_processor,
+                                        tts_processor,
+                                        tts_visualizer,
+                                        stt_data,
+                                        saved_chats_data,
+                                        send_message_fns,
+                                        send_message_proxy,
+                                        api_config,
+                                        admin_pool = NULL,
+                                        chat_runtime_init_fn = serverInitChatRuntime,
+                                        llm_response_handlers_init_fn = llmResponseHandlersInit,
+                                        chat_input_observers_init_fn = chatInputObserversInit,
+                                        misc_observers_init_fn = miscObserversInit,
+                                        chat_actions_init_fn = chatActionsInit,
+                                        tts_handlers_init_fn = ttsHandlersInit,
+                                        send_message_init_fn = sendMessageInit) {
+  .server_wiring_require_context(runtime_ctx, "serverBindChatEngineRuntime")
+
+  if (is.null(runtime_ctx$state)) {
+    .server_wiring_stop(
+      "serverBindChatEngineRuntime: runtime_ctx$state henüz kurulmadı."
+    )
+  }
+
+  if (!is.environment(send_message_fns)) {
+    .server_wiring_stop(
+      "serverBindChatEngineRuntime: send_message_fns ortam olmalıdır."
+    )
+  }
+
+  state <- runtime_ctx$state
+  identity <- runtime_ctx$identity
+  cache <- runtime_ctx$cache
+
+  file_runtime <- serverRuntimeRequireFileRuntime(
+    runtime_ctx,
+    require_prelude = TRUE,
+    require_manager = TRUE
+  )
+
+  .server_wiring_require_functions(list(
+    resolve_current_user_id = identity$resolve_current_user_id,
+    current_user_id_provider = identity$current_user_id_provider,
+    stop_generation = state$stop_generation,
+    file_to_add = state$file_to_add,
+    session_files = state$session_files,
+    active_request_id = state$active_request_id,
+    quick_action_skip_mcp = state$quick_action_skip_mcp,
+    cache_mcp_file_locally_fn = cache$cache_mcp_file_locally,
+    update_mcp_registry_snapshot_fn = cache$update_mcp_registry_snapshot,
+    send_message_proxy = send_message_proxy,
+    chat_runtime_init_fn = chat_runtime_init_fn,
+    llm_response_handlers_init_fn = llm_response_handlers_init_fn,
+    chat_input_observers_init_fn = chat_input_observers_init_fn,
+    misc_observers_init_fn = misc_observers_init_fn,
+    chat_actions_init_fn = chat_actions_init_fn,
+    tts_handlers_init_fn = tts_handlers_init_fn,
+    send_message_init_fn = send_message_init_fn
+  ))
+
+  .server_wiring_require_functions(list(
+    perf_tracker_track_error = perf_tracker$track_error,
+    perf_tracker_track_request = perf_tracker$track_request,
+    ai_processor_call_llm_non_streaming = ai_processor$call_llm_non_streaming,
+    file_manager_refresh_persisted_files = file_runtime$file_manager_data$refresh_persisted_files,
+    file_manager_file_contents = file_runtime$file_manager_data$file_contents
+  ))
+
+  values <- state$values
+
+  chat_runtime <- chat_runtime_init_fn(
+    session = session,
+    values = values,
+    settings_data = settings_data,
+    output = output,
+    resolve_current_user_id = identity$resolve_current_user_id,
+    stop_generation = state$stop_generation
+  )
+
+  runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, chat_runtime)
+
+  reset_chat_state <- runtime_ctx$chat$reset_chat_state
+  add_message <- runtime_ctx$chat$add_message
+  generate_title_from_prompt <- runtime_ctx$chat$generate_title_from_prompt
+  simulate_streaming_stoppable <- runtime_ctx$chat$simulate_streaming_stoppable
+
+  tts_trigger_slot <- serverRuntimeCreateFunctionSlot(
+    "trigger_tts_for_message"
+  )
+
+  llm_handlers <- llm_response_handlers_init_fn(
+    session = session,
+    values = values,
+    settings_data = settings_data,
+    ai_processor = ai_processor,
+    perf_tracker = perf_tracker,
+    active_request_id = state$active_request_id,
+    stop_generation = state$stop_generation,
+    reset_chat_state_fn = reset_chat_state,
+    add_message_fn = add_message,
+    trigger_tts_fn = tts_trigger_slot$call,
+    followup_tools = file_runtime$followup_tools,
+    fallback_followup_tool = file_runtime$fallback_followup_tool,
+    api_config = api_config
+  )
+
+  .server_wiring_require_functions(list(
+    generate_non_streaming_stoppable = llm_handlers$generate_non_streaming_stoppable
+  ))
+
+  chat_input_observers_init_fn(
+    input,
+    session,
+    values,
+    settings_data,
+    state$stop_generation,
+    state$active_request_id,
+    reset_chat_state,
+    send_message_proxy,
+    identity$current_user_id_provider,
+    file_runtime$file_manager_data,
+    state$session_files,
+    state$file_to_add,
+    stt_data
+  )
+
+  misc_observers_init_fn(
+    input,
+    output,
+    session,
+    values,
+    file_runtime$file_manager_data,
+    file_runtime$filePreview,
+    add_message,
+    api_key,
+    user_config_rv,
+    admin_pool
+  )
+
+  chat_actions_init_fn(
+    input,
+    session,
+    values,
+    current_user_id = identity$current_user_id_provider,
+    send_message_fn = send_message_proxy,
+    stop_generation = state$stop_generation,
+    reset_chat_state = reset_chat_state,
+    feedback_modal = NULL
+  )
+
+  tts_handlers <- tts_handlers_init_fn(
+    session,
+    values,
+    settings_data,
+    tts_processor,
+    tts_visualizer,
+    state$stop_generation
+  )
+
+  .server_wiring_require_functions(list(
+    trigger_tts_for_message = tts_handlers$trigger_tts_for_message,
+    attach_tts_audio = tts_handlers$attach_tts_audio
+  ))
+
+  tts_trigger_slot$set(tts_handlers$trigger_tts_for_message)
+
+  send_message_handlers <- send_message_init_fn(
+    session = session,
+    input = input,
+    output = output,
+    values = values,
+    settings_data = settings_data,
+    session_files = state$session_files,
+    file_manager_data = file_runtime$file_manager_data,
+    current_user_id = identity$current_user_id_provider,
+    stop_generation = state$stop_generation,
+    active_request_id = state$active_request_id,
+    quick_action_skip_mcp = state$quick_action_skip_mcp,
+    perf_tracker = perf_tracker,
+    ai_processor = ai_processor,
+    tts_processor = tts_processor,
+    followup_tools = file_runtime$followup_tools,
+    fallback_followup_tool = file_runtime$fallback_followup_tool,
+    api_config = api_config,
+    add_message_fn = add_message,
+    reset_chat_state_fn = reset_chat_state,
+    simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
+    cache_mcp_file_locally_fn = cache$cache_mcp_file_locally,
+    update_mcp_registry_snapshot_fn = cache$update_mcp_registry_snapshot,
+    saved_chats_data = saved_chats_data,
+    generate_non_streaming_stoppable_fn = llm_handlers$generate_non_streaming_stoppable
+  )
+
+  .server_wiring_require_functions(list(
+    send_message = send_message_handlers$send_message
+  ))
+
+  send_message_fns$send_message <- send_message_handlers$send_message
+
+  chat_engine <- list(
+    chat_runtime = chat_runtime,
+    llm_handlers = llm_handlers,
+    tts_handlers = tts_handlers,
+    send_message_handlers = send_message_handlers,
+    tts_trigger_slot = tts_trigger_slot,
+    reset_chat_state = reset_chat_state,
+    add_message = add_message,
+    generate_title_from_prompt = generate_title_from_prompt,
+    simulate_streaming_stoppable = simulate_streaming_stoppable,
+    trigger_tts_for_message = tts_trigger_slot$call,
+    send_message = send_message_handlers$send_message
+  )
+
+  runtime_ctx <- serverRuntimeAttachModule(
+    ctx = runtime_ctx,
+    name = "chat_engine",
+    value = chat_engine,
+    required_functions = c(
+      "reset_chat_state",
+      "add_message",
+      "trigger_tts_for_message",
+      "send_message"
+    )
+  )
+
+  list(
+    runtime_ctx = runtime_ctx,
+    chat_engine = chat_engine,
+    reset_chat_state = reset_chat_state,
+    add_message = add_message,
+    generate_title_from_prompt = generate_title_from_prompt,
+    simulate_streaming_stoppable = simulate_streaming_stoppable,
+    trigger_tts_for_message = tts_trigger_slot$call,
+    attach_tts_audio = tts_handlers$attach_tts_audio,
+    send_message = send_message_handlers$send_message
+  )
+}

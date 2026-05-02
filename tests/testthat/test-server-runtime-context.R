@@ -304,6 +304,34 @@ test_that("serverRuntimeExposeSessionData oturum verisini açık sözleşmeyle y
   )
 })
 
+test_that("serverRuntimeCreateFunctionSlot geç bağlanan fonksiyonu güncel hedefe yönlendirir", {
+  slot <- serverRuntimeCreateFunctionSlot("trigger_tts_for_message")
+
+  expect_false(slot$is_bound())
+  expect_null(slot$call("ai_1", "ilk içerik"))
+
+  called <- NULL
+
+  slot$set(function(message_id, content) {
+    called <<- list(
+      message_id = message_id,
+      content = content
+    )
+
+    "tamam"
+  })
+
+  expect_true(slot$is_bound())
+  expect_identical(slot$call("ai_2", "son içerik"), "tamam")
+  expect_identical(called$message_id, "ai_2")
+  expect_identical(called$content, "son içerik")
+
+  expect_error(
+    slot$set(NULL),
+    "fonksiyon olmalıdır"
+  )
+})
+
 test_that("serverRuntimeRefreshModuleOnSsoAuthReady modül yenilemeyi tek yardımcıyla kurar", {
   ctx <- serverRuntimeContextInit(
     session = .fake_runtime_session(),

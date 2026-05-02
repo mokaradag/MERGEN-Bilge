@@ -269,109 +269,32 @@ server <- function(input, output, session) {
     # ==========================================================================
     # BÖLÜM 9: SOHBET MOTORU VE LLM ENTEGRASYONU
     # ==========================================================================
-	chat_runtime <- serverInitChatRuntime(
-	  session = session,
-	  values = values,
-	  settings_data = settings_data,
-	  output = output,
-	  resolve_current_user_id = resolve_current_user_id,
-	  stop_generation = stop_generation
-	)
 
-	runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, chat_runtime)
-
-	reset_chat_state <- runtime_ctx$chat$reset_chat_state
-	add_message <- runtime_ctx$chat$add_message
-
-    # TTS işleyicisi gerçek fonksiyon atanmadan önce güvenli bir yer tutucu tanımla.
-    # Böylece gelecekte llmResponseHandlersInit içinde erken zorlama olursa kırılma yaşanmaz.
-    trigger_tts_for_message <- function(...) invisible(NULL)
-    
-    # LLM yanıt işleyicilerini başlat (modüler)
-    llm_handlers <- llmResponseHandlersInit(
-      session = session,
-      values = values,
-      settings_data = settings_data,
-      ai_processor = ai_processor,
-      perf_tracker = perf_tracker,
-      active_request_id = active_request_id,
-      stop_generation = stop_generation,
-      reset_chat_state_fn = reset_chat_state,
-      add_message_fn = add_message,
-      trigger_tts_fn = trigger_tts_for_message,
-      followup_tools = followup_tools,
-      fallback_followup_tool = fallback_followup_tool,
-      api_config = api_config
-    )
-    generate_non_streaming_stoppable <- llm_handlers$generate_non_streaming_stoppable
-    
-  # Sohbet giriş observer'larını başlat (modüler)
-	chatInputObserversInit(
-	  input, session, values, settings_data,
-	  stop_generation, active_request_id,
-	  reset_chat_state, send_message,
-	  current_user_id_provider, file_manager_data,
-	  session_files, file_to_add, stt_data
-	)
-  
-  # Çeşitli UI observer'larını başlat (modüler) 
   admin_pool <- if (exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
     get("pool", envir = .GlobalEnv, inherits = FALSE)
   } else {
     NULL
   }
-  
-  miscObserversInit(
-    input, output, session, values,
-    file_manager_data, filePreview, add_message,
-    api_key, user_config_rv, admin_pool
+
+  chat_engine <- serverBindChatEngineRuntime(
+    input = input,
+    output = output,
+    session = session,
+    runtime_ctx = runtime_ctx,
+    settings_data = settings_data,
+    api_key = api_key,
+    user_config_rv = user_config_rv,
+    perf_tracker = perf_tracker,
+    ai_processor = ai_processor,
+    tts_processor = tts_processor,
+    tts_visualizer = tts_visualizer,
+    stt_data = stt_data,
+    saved_chats_data = saved_chats_data,
+    send_message_fns = send_message_fns,
+    send_message_proxy = send_message,
+    api_config = api_config,
+    admin_pool = admin_pool
   )
-  
-  # Sohbet eylemi bağlantıları (beğen/beğenme/yeniden oluştur/düzenle)
-	chatActionsInit(
-	  input, session, values,
-	  current_user_id      = current_user_id_provider,
-	  send_message_fn      = send_message,
-	  stop_generation      = stop_generation,
-	  reset_chat_state     = reset_chat_state,
-	  feedback_modal       = feedback_modal
-	)
-                                                     
-    generate_title_from_prompt <- chat_runtime$generate_title_from_prompt
-    simulate_streaming_stoppable <- chat_runtime$simulate_streaming_stoppable
- 
-    # TTS işleyicilerini başlat (modüler)
-    tts_handlers <- ttsHandlersInit(session, values, settings_data, tts_processor, tts_visualizer, stop_generation)
-    trigger_tts_for_message <- tts_handlers$trigger_tts_for_message
-    attach_tts_audio <- tts_handlers$attach_tts_audio
- 
-	send_message_handlers <- sendMessageInit(
-	  session = session,
-	  input = input,
-	  output = output,
-	  values = values,
-	  settings_data = settings_data,
-	  session_files = session_files,
-	  file_manager_data = file_manager_data,
-	  current_user_id = current_user_id_provider,
-	  stop_generation = stop_generation,
-	  active_request_id = active_request_id,
-	  quick_action_skip_mcp = quick_action_skip_mcp,
-	  perf_tracker = perf_tracker,
-	  ai_processor = ai_processor,
-	  tts_processor = tts_processor,
-	  followup_tools = followup_tools,
-	  fallback_followup_tool = fallback_followup_tool,
-	  api_config = api_config,
-	  add_message_fn = add_message,
-	  reset_chat_state_fn = reset_chat_state,
-	  simulate_streaming_stoppable_fn = simulate_streaming_stoppable,
-	  cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally,
-	  update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot,
-	  saved_chats_data = saved_chats_data,
-	  generate_non_streaming_stoppable_fn = generate_non_streaming_stoppable
-	)
- 
-    # send_message fonksiyonunu modülden al ve ortama ata
-    send_message_fns$send_message <- send_message_handlers$send_message
+
+  runtime_ctx <- chat_engine$runtime_ctx
 }
