@@ -67,6 +67,7 @@ Preserve this source order in `global.R`:
 
 ```r
 safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
+safe_source("R/helpers_user_session_identity.R", encoding = "UTF-8")
 safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
 safe_source("R/server_runtime_context.R",    encoding = "UTF-8")
 safe_source("R/server_runtime_function_slot.R", encoding = "UTF-8")
@@ -77,13 +78,16 @@ safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 
 `R/server_core_interaction_runtime.R` is sourced later in `global.R`, after observer/output helpers such as `R/server_outputs_downloads.R`. This is intentional: the core interaction binder depends on concrete observer/output functions and should not rely on forward placeholders.
 
-- `R/server_init_user_session.R` owns local/SSO identity setup.
-- It also owns identity-related compatibility writes to `session$userData`.
+- `R/helpers_user_session_identity.R` owns pure user-session identity helpers: `build_user_session_config()`, `apply_user_session_identity()`, and `make_current_user_id_provider()`.
+- `R/server_init_user_session.R` owns local/SSO identity setup orchestration and must be sourced after `R/helpers_user_session_identity.R`.
+- Identity-related compatibility writes to `session$userData` must flow through `apply_user_session_identity()` rather than new ad hoc assignments.
 - Runtime code should prefer accessors exposed through `runtime_ctx$identity`.
 - Identity display values should come from `identity$get_first_name` and `identity$get_display_name` rather than direct `session$userData` reads in `server.R`.
 - Auth readiness should come from `identity$is_auth_ready`.
 
 `R/server_runtime_context.R` owns the early server boot contract that carries identity, cache, forward references, session state, and chat runtime into `server.R` through one explicit context object.
+
+The source-order contract is intentional: `R/helpers_user_session_identity.R` must load before `R/server_init_user_session.R`, and `R/server_init_user_session.R` must load before `R/server_runtime_context.R`. Do not collapse the helper back into the initializer unless a future refactor replaces it with an equally explicit and tested boundary.
 
 `R/server_module_wiring.R` owns medium-level server module wiring through focused helper functions. It binds service modules, settings/forward references/Bilge Yolaç startup wiring, media modules, the file-preview/follow-up prelude, and the chat engine wiring boundary. Keep this helper sourced after `R/server_runtime_context.R` and before session/chat runtime initialization.
 
@@ -110,6 +114,8 @@ current_user_display_name <- identity$get_display_name
 
 Identity accessors must be safe outside reactive consumers. When reading `user_config_rv` inside helper accessors, use `shiny::isolate(...)` or another explicit Shiny-safe pattern. Do not introduce unqualified Shiny calls in init/helper files when a namespaced call is practical; prefer `shiny::reactiveVal`, `shiny::reactiveValues`, `shiny::observeEvent`, `shiny::req`, and `shiny::isolate`.
 
+Keep `R/helpers_user_session_identity.R` pure. It should not create Shiny observers, call the database, read Keycloak state directly, or depend on module wiring. It is a small testable boundary for identity/config shaping and live user-id provider construction. If identity orchestration changes are needed, make them in `R/server_init_user_session.R`; if only config shaping or compatibility writes change, keep them in the helper and update `tests/testthat/test-user-session-identity-contract.R`.
+
 Never read `sso_state$authenticated` directly during initialization checks such as `is.null(sso_state$authenticated)`. In production SSO, that field is reactive and direct reads can crash the app with “Can't access reactive value outside of reactive consumer.” Watch it with `shiny::observeEvent(sso_state$authenticated, ...)` and read it only inside a reactive consumer/handler.
 
 Post-auth refreshable modules should use the `ServerRuntimeContext` refreshable-module contract instead of ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R`. The low-level combined helper remains `serverRuntimeAttachRefreshableModule(...)`. File Manager is still wired through `serverBindFileManagerRuntime(...)`, and chat-persistence-related modules are still wired through `serverBindChatPersistenceModules(...)`; however, `server.R` should reach both through `serverBindCoreInteractionRuntime(...)`, not by calling them directly.
@@ -120,6 +126,7 @@ Protected by:
 
 ```text
 tests/testthat/test-server-user-session-context.R
+tests/testthat/test-user-session-identity-contract.R
 tests/testthat/test-server-runtime-context.R
 tests/testthat/test-server-core-interaction-runtime.R
 tests/testthat/test-session-user-data-store.R
@@ -299,6 +306,7 @@ The context contract is protected by:
 
 ```text
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-user-session-identity-contract.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
 tests/testthat/test-server-chat-persistence-wiring-contract.R
