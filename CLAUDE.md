@@ -541,6 +541,38 @@ Do not move extractor helpers back into `R/helpers_claude_code_documents.R`. Kee
 
 For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
 
+### LLM SSE stream I/O contract
+
+The true-streaming LLM layer keeps the stream-file JSONL protocol separate from SSE parsing and worker orchestration. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_llm_tool_formatters.R",      encoding = "UTF-8")
+safe_source("R/helpers_llm_response_postprocess.R", encoding = "UTF-8")
+safe_source("R/helpers_llm_api.R",                  encoding = "UTF-8")
+safe_source("R/helpers_llm_stream_io.R",            encoding = "UTF-8")
+safe_source("R/helpers_llm_sse.R",                  encoding = "UTF-8")
+safe_source("R/helpers_llm_worker.R",               encoding = "UTF-8")
+```
+
+Responsibilities:
+
+R/helpers_llm_stream_io.R: stream JSONL delta/reasoning line writing, base64 payload decoding, and stop-file cancellation checks.
+
+R/helpers_llm_sse.R: SSE event parsing, delta/reasoning extraction, HTTP stream handling, and worker orchestration.
+
+
+Do not move append_stream_delta_line(), append_stream_reasoning_line(), decode_stream_delta_payload(), or streaming_should_stop() back into R/helpers_llm_sse.R.
+
+streaming_should_stop() must treat only a real file as a stop flag. A directory, empty string, NULL, or NA must not abort a stream.
+
+Protected by:
+
+tests/testthat/test-llm-stream-io-contract.R
+tests/testthat/test-streaming-should-stop.R
+tests/testthat/test-sse-worker-export-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+
 ### Bilge Yolaç UI and model/config modularization contract
 
 Bilge Yolaç is now split into smaller responsibility-focused files. Preserve this source order in `global.R`:
@@ -1060,7 +1092,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions and LLM SSE stream I/O refactor, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 64, max 800+ line files: 8, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1254, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
 - Focused hardening checks can be run directly with:
   ```r
   testthat::test_file("tests/testthat/test-server-user-session-context.R")
