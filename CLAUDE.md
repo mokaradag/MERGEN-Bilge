@@ -578,12 +578,14 @@ tests/testthat/test-maintainability-ratchet.R
 Bilge Yolaç is now split into smaller responsibility-focused files. Preserve this source order in `global.R`:
 
 ```r
+safe_source("R/helpers_claude_code_user_guard.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_upload_folder.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_model_config.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_session_context.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_dir_ui.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_process.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_server_setup.R", encoding = "UTF-8")
 ```
 
 For the module UI/server split, preserve this order around the Bilge Yolaç module files:
@@ -601,9 +603,22 @@ Responsibilities:
 * `R/module_claude_code.R`: `claudeCodeServer()` and server/runtime logic for the Bilge Yolaç page.
 * `R/helpers_claude_code_upload_folder.R`: Bilge Yolaç upload-folder resolution helpers, including relaxed directory checks, candidate folder scoring, explicit session file registry handling, and placeholder user-id rejection.
 * `R/helpers_claude_code_model_config.R`: Claude CLI path resolution, `settings.json` reading, model-tier mapping, model capability helpers, thinking-model detection, binary-document prompt detection, and execution-model fallback decisions.
+* `R/helpers_claude_code_user_guard.R`: owns the Bilge Yolaç auth/user readiness contract. It checks SSO readiness and resolves a positive live user id before user-scoped workspace, upload-folder, directory listing, or command execution paths continue.
+* `R/helpers_claude_code_server_setup.R`: owns the Bilge Yolaç server setup/observer binding cluster, including CLI path probing, connection badge updates, character/theme/font sync, upload-folder navigation, local folder upload, model-change session reset, scenario buttons, directory refresh, clear-output handling, and thinking tick updates.
 * `R/helpers_claude_code_session_context.R`: Bilge Yolaç active-character and user first-name reactive context helpers used by `R/module_claude_code.R`.
 * `R/helpers_claude_code_process.R`: Node/CLI process path resolution, processx command construction, Windows `.cmd`/UNC handling, process output UTF-8 normalization, non-ASCII escaping, Claude Code JSON/JSONL output parsing, and safe CLI workdir selection.
 * `R/helpers_claude_code.R`: Claude Code CLI execution orchestration, status checks, runtime command handling, workspace helpers, and remaining Claude Code runtime helpers.
+
+Do not move the setup observer cluster back into `R/module_claude_code.R`. That file should keep the public `claudeCodeServer()`entry point and the main command/streaming runtime flow, while setup and user/workspace readiness behavior remains behind`cc_bind_server_setup(...)`and`cc_require_ready_user_id(...)`. User-scoped Bilge Yolaç actions must not proceed with unresolved `user_id = 0`, especially in SSO startup timing windows.
+
+Naming note: `R/helpers_claude_code_upload_folder.R`intentionally keeps its existing string-returning`cc_normalize_positive_user_id()`helper for upload-folder compatibility.`R/helpers_claude_code_user_guard.R`must use`cc_normalize_ready_user_id()`for integer readiness checks. Do not reintroduce a second`cc_normalize_positive_user_id()` definition in the user-guard file, because source order would make the two helpers collide.
+
+When adding future Bilge Yolaç behavior:
+- add pure/testable helpers for user-id readiness or setup decisions instead of new ad hoc observer logic in `R/module_claude_code.R`;
+- preserve the live user-id provider pattern instead of capturing a startup user id;
+- keep stale directory refresh protection through `cc_create_dir_refresh_guard()` / `dir_refresh_guard$is_latest(...)`;
+- update `test-source-manifest-contract.R` whenever a new helper file is introduced;
+- keep `tests/testthat.R` strict with `stop_on_failure = TRUE` and `stop_on_warning = TRUE`.
 
 Do not move `claudeCodeUI()` back into `R/module_claude_code.R`.
 Do not move model/settings helper functions back into `R/helpers_claude_code.R`.
@@ -613,7 +628,12 @@ The split is protected by:
 * `tests/testthat/test-claude-code-ui-refactor-contract.R`
 * `tests/testthat/test-claude-code-model-config-refactor-contract.R`
 * `tests/testthat/test-claude-code-process-refactor-contract.R`
+* `tests/testthat/test-claude-code-user-guard-contract.R`
+* `tests/testthat/test-claude-code-dir-ui-refactor-contract.R`
+* `tests/testthat/test-claude-code-upload-folder-refactor-contract.R`
 * `tests/testthat/test-claude-code-stream-finalize-contract.R`
+* `tests/testthat/test-source-manifest-contract.R`
+* `tests/testthat/test-maintainability-ratchet.R`
 
 For future maintainability refactors, keep using the ratcheted approach: extract one coherent responsibility, preserve public function names, update `global.R`, add a focused contract test, run the full strict test suite, then tighten `test-maintainability-ratchet.R` only after `tests/scripts/maintainability_report.R` confirms the new baseline.
 
@@ -1092,7 +1112,9 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions and LLM SSE stream I/O refactor, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 64, max 800+ line files: 8, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1254, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions and LLM SSE stream I/O refactor, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 64, max 800+ line files: 8, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1225, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
+
+The Bilge Yolaç setup extraction is also protected by a file-specific ratchet: `R/module_claude_code.R`should remain at or below`MERGEN_TEST_MAX_CLAUDE_CODE_LINES = 980`by default. The latest maintainability report after the extraction shows`R/module_claude_code.R` at 954 lines, down from 1254 lines. Only tighten this threshold when a new maintainability report proves a lower stable baseline; do not loosen it to hide unrelated growth.
 - Focused hardening checks can be run directly with:
   ```r
   testthat::test_file("tests/testthat/test-server-user-session-context.R")
