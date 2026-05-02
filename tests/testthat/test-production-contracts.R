@@ -334,11 +334,12 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     "runtime_ctx <- settings_bundle$runtime_ctx",
     "runtime_ctx <- serverRuntimeAttachState(",
     "identity = runtime_ctx$identity",
-    "runtime_ctx <- serverRuntimeAttachChat(",
     "file_manager_runtime <- serverBindFileManagerRuntime(",
     "runtime_ctx <- file_manager_runtime$runtime_ctx",
-    "gallery_runtime <- serverBindImageGalleryRuntime(",
-    "runtime_ctx <- gallery_runtime$runtime_ctx",
+    "chat_persistence <- serverBindChatPersistenceModules(",
+    "runtime_ctx <- chat_persistence$runtime_ctx",
+    "saved_chats_data <- chat_persistence$saved_chats_data",
+    "runtime_ctx <- serverRuntimeAttachChat(",
     "cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally",
     "update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot"
   )
@@ -364,6 +365,11 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     "serverBindFileManagerRuntime <- function(",
     "auth_ready_provider = runtime_ctx$identity$is_auth_ready",
     "serverBindImageGalleryRuntime <- function(",
+    "serverBindChatPersistenceModules <- function(",
+    "image_gallery_runtime_fn = serverBindImageGalleryRuntime",
+    "download_outputs_init_fn = downloadOutputsInit",
+    "history_server_fn = historyServer",
+    "message_search_init_fn = messageSearchInit",
     "serverRuntimeAttachRefreshableModule("
   )
 
