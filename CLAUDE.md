@@ -551,6 +551,7 @@ safe_source("R/helpers_llm_response_postprocess.R", encoding = "UTF-8")
 safe_source("R/helpers_llm_api.R",                  encoding = "UTF-8")
 safe_source("R/helpers_llm_stream_io.R",            encoding = "UTF-8")
 safe_source("R/helpers_llm_sse.R",                  encoding = "UTF-8")
+safe_source("R/helpers_llm_worker_payload.R",       encoding = "UTF-8")
 safe_source("R/helpers_llm_worker.R",               encoding = "UTF-8")
 ```
 
@@ -559,6 +560,31 @@ Responsibilities:
 R/helpers_llm_stream_io.R: stream JSONL delta/reasoning line writing, base64 payload decoding, and stop-file cancellation checks.
 
 R/helpers_llm_sse.R: SSE event parsing, delta/reasoning extraction, HTTP stream handling, and worker orchestration.
+
+### LLM worker payload helper contract
+
+`R/helpers_llm_worker_payload.R` owns pure helper logic used by `R/helpers_llm_worker.R`:
+
+- chat history to OpenAI-compatible message payload conversion,
+- system-message merging,
+- chart intent and chart type detection,
+- disabled fallback chart passthrough,
+- chart summary generation,
+- automatic insight generation from tool results.
+
+Keep this file free of Shiny session access, reactive reads, filesystem writes, HTTP calls, database calls, and mutable runtime state. It must remain safe to source in isolated tests and worker contexts.
+
+`R/helpers_llm_worker.R` should keep orchestration responsibilities: API request construction, model request overrides, MCP tool schema handling, tool execution, second-pass logic, chart block collection, response post-processing, and error handling.
+
+Keep the compatibility wrapper `merge_system_messages_to_front()` unless every old second-pass/recursive call path has been removed and tests prove that removal is safe. New code should call the canonical `llm_worker_merge_system_messages_to_front()` helper.
+
+Protected by:
+
+```text
+tests/testthat/test-llm-worker-payload-refactor-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
 
 
 Do not move append_stream_delta_line(), append_stream_reasoning_line(), decode_stream_delta_payload(), or streaming_should_stop() back into R/helpers_llm_sse.R.
@@ -1140,11 +1166,13 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 67, max 800+ line files: 7, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1027, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 67, max 800+ line files: 7, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1024, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
-The Bilge Yolaç setup extraction is also protected by a file-specific ratchet: `R/module_claude_code.R`should remain at or below`MERGEN_TEST_MAX_CLAUDE_CODE_LINES = 980`by default. The latest maintainability report after the extraction shows`R/module_claude_code.R` at 954 lines, down from 1254 lines. Only tighten this threshold when a new maintainability report proves a lower stable baseline; do not loosen it to hide unrelated growth.
+The Bilge Yolaç setup extraction is also protected by a file-specific ratchet: `R/module_claude_code.R`should remain at or below`MERGEN_TEST_MAX_CLAUDE_CODE_LINES = 960`by default. The latest maintainability report after the extraction shows`R/module_claude_code.R` at 954 lines, down from 1254 lines. Only tighten this threshold when a new maintainability report proves a lower stable baseline; do not loosen it to hide unrelated growth.
+
+The LLM worker payload extraction is also protected by file-specific ratchets: `MERGEN_TEST_MAX_LLM_WORKER_LINES = 860`, `MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_LINES = 320`, and `MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_FUNCTIONS = 12`.
 - Focused hardening checks can be run directly with:
   ```r
   testthat::test_file("tests/testthat/test-server-user-session-context.R")
