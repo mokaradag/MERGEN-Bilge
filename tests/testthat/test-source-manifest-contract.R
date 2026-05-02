@@ -254,6 +254,7 @@ test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu mo
   expect_false(is.na(pos("R/helpers_file_manager_session_registry.R")))
   expect_false(is.na(pos("R/helpers_file_manager_runtime.R")))
   expect_false(is.na(pos("R/helpers_file_manager_storage.R")))
+  expect_false(is.na(pos("R/helpers_file_manager_state_runtime.R")))
   expect_false(is.na(pos("R/module_file_manager_ui.R")))
 
   expect_lt(pos("R/helpers_files.R"), pos("R/helpers_file_manager_policy.R"))
@@ -263,6 +264,7 @@ test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu mo
   expect_lt(pos("R/helpers_file_manager_refresh_guard.R"), pos("R/helpers_file_manager_session_registry.R"))
   expect_lt(pos("R/helpers_file_manager_session_registry.R"), pos("R/helpers_file_manager_runtime.R"))
   expect_lt(pos("R/helpers_file_manager_runtime.R"), pos("R/helpers_file_manager_storage.R"))
-  expect_lt(pos("R/helpers_file_manager_storage.R"), pos("R/module_file_manager_ui.R"))
+  expect_lt(pos("R/helpers_file_manager_storage.R"), pos("R/helpers_file_manager_state_runtime.R"))
+  expect_lt(pos("R/helpers_file_manager_state_runtime.R"), pos("R/module_file_manager_ui.R"))
   expect_lt(pos("R/module_file_manager_ui.R"), pos("R/module_file_manager.R"))
 })

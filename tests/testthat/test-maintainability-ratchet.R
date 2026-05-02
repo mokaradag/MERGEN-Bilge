@@ -56,7 +56,7 @@ test_that("maintainability skoru mevcut taban çizgisinin altına düşmez", {
     info = "maintainability_report.R attr(..., 'maintainability_score') üretmelidir."
   )
 
-  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 67L)
+  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 70L)
 
   expect_true(
     score >= min_score,
@@ -88,10 +88,10 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
     info = "maintainability_report.R attr(..., 'score_report') üretmelidir."
   )
 
-  max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 7L)
+  max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 6L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 6L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 1024L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 1004L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 44L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -179,6 +179,75 @@ test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {
       "module_claude_code.R setup extraction sonrası küçülmüş kalmalıdır: %d > %d.",
       cc_row$lines[1],
       max_cc_lines
+    )
+  )
+})
+
+test_that("module_file_manager.R state runtime extraction sonrası 800 satır altı kalır", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  fm_row <- report[
+    grepl("(^|/)R/module_file_manager\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  helper_row <- report[
+    grepl("(^|/)R/helpers_file_manager_state_runtime\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  expect_equal(
+    nrow(fm_row),
+    1L,
+    info = "R/module_file_manager.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  expect_equal(
+    nrow(helper_row),
+    1L,
+    info = "R/helpers_file_manager_state_runtime.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_fm_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_LINES", 799L)
+  max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_LINES", 450L)
+  max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_FUNCTIONS", 10L)
+
+  expect_true(
+    fm_row$lines[1] <= max_fm_lines,
+    info = sprintf(
+      "module_file_manager.R state runtime extraction sonrası 800 satır altı kalmalıdır: %d > %d.",
+      fm_row$lines[1],
+      max_fm_lines
+    )
+  )
+
+  expect_true(
+    helper_row$lines[1] <= max_helper_lines,
+    info = sprintf(
+      "helpers_file_manager_state_runtime.R küçük runtime helper dosyası olarak kalmalıdır: %d > %d.",
+      helper_row$lines[1],
+      max_helper_lines
+    )
+  )
+
+  expect_true(
+    helper_row$functions[1] <= max_helper_functions,
+    info = sprintf(
+      "helpers_file_manager_state_runtime.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
+      helper_row$functions[1],
+      max_helper_functions
     )
   )
 })
