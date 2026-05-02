@@ -266,6 +266,14 @@ Amaç, `server.R` içindeki kimlik doğrulama orkestrasyonunu azaltmak, SSO baş
 
 Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_runtime_context.R` üzerinden `server.R` içine taşınır. `server.R`, önce `identity <- runtime_ctx$identity` alias’ını oluşturur; ardından `user_config_rv`, `resolve_current_user_id`, `current_user_id_provider`, `current_user_first_name` ve `current_user_display_name` değerlerini bu açık kimlik sözleşmesi üzerinden alır. Böylece kullanıcı kimliği, kullanıcı görünen adı, SSO hazır olma durumu, önbellek, ileri referanslar, reaktif oturum durumu ve sohbet çalışma zamanı tek bir doğrulanabilir başlatma sınırıyla korunur.
 
+### Oturum Runtime Store Sözleşmesi
+
+Oturum içi liste biçimli `session$userData` depoları artık dağınık anahtar yazımlarıyla değil, `R/utils_session_cleanup.R` içindeki küçük `SessionRuntimeStore` sözleşmesiyle yönetilir. Bu sözleşme; `current_session_files`, `file_summaries`, `chart_store` ve `mcp_registry_snapshot` alanlarını tek noktadan adlandırır, sıfırlar, okur/yazar ve MCP kayıt defteri anlık görüntüsünü günceller.
+
+`R/server_init_session_state.R`, ortak oturum depolarını `session_runtime_store_reset(session)` ile hazırlar. `R/server_session_cache.R` ise MCP kayıt defteri senkronizasyonunu `session_runtime_store_snapshot_mcp(...)` üzerinden yapar. Böylece dosya bağlamı, özet deposu, grafik deposu ve MCP Excel dosya görünürlüğü için gizli source-order/state bağımlılığı azaltılır.
+
+Bu sözleşme `tests/testthat/test-session-user-data-store.R` ve `tests/testthat/test-source-manifest-contract.R` ile korunur. Yeni kod, bu ortak depolar için doğrudan `session$userData$... <- list()` veya boot dosyalarında ham `session_user_data_*` anahtar orkestrasyonu eklemek yerine `session_runtime_store_*` yardımcılarını kullanmalıdır.
+
 ### Sunucu Modül Bağlama Sınırı
 
 `server.R` içindeki orta seviye modül bağlama yükü kademeli olarak azaltılmıştır. Performans/sağlık/destek modülleri, ayarlar ve ileri referans kurulumu, Bilge Yolaç başlangıç bağlantısı, medya modülleri ve dosya önizleme/takip sorusu ön hazırlığı artık `R/server_module_wiring.R` içinde küçük ve açık bağımlılık alan yardımcılarla bağlanır.

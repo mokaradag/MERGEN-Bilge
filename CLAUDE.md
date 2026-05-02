@@ -233,9 +233,9 @@ Send-message wiring should use cache functions from the context:
 
 ### Session userData list-store contract
 
-Session-local list stores under `session$userData` are now centralized through small helpers in `R/utils_session_cleanup.R`.
+Session-local list-shaped stores under `session$userData` are centralized through a small SessionRuntimeStore facade in `R/utils_session_cleanup.R`.
 
-These helpers own the safe read/write/reset contract for list-shaped session stores:
+The low-level list helpers still own safe list access:
 
 ```r
 session_user_data_get_list(...)
@@ -245,7 +245,7 @@ session_user_data_remove_list_item(...)
 session_user_data_reset_lists(...)
 ```
 
-Use these helpers for list stores such as:
+Use the SessionRuntimeStore facade for list stores such as:
 
 * `current_session_files`
 * `file_summaries`
@@ -261,22 +261,20 @@ session$userData$chart_store <- list()
 session$userData$mcp_registry_snapshot <- list()
 ```
 
-The expected initialization boundary is `R/server_init_session_state.R`. That file prepares the session-local list stores when the server session state is created.
+The expected initialization boundary is `R/server_init_session_state.R`, which prepares shared stores through `session_runtime_store_reset(session)`.
 
-The file upload/summary pipeline, file-click observers, new-chat cleanup, and MCP registry snapshot refresh should use the centralized helpers instead of assuming that another module already created the list.
+MCP registry snapshot synchronization in `R/server_session_cache.R` should flow through `session_runtime_store_snapshot_mcp(session, files_snapshot)`.
 
-This prevents hidden source-order and state-orchestration coupling around file context, MCP Excel, summaries, and chart storage.
+The file upload/summary pipeline, file-click observers, and new-chat cleanup should use `session_runtime_store_*` helpers instead of assuming another module already created the list.
+
+This prevents hidden source-order and state-orchestration coupling around file context, MCP Excel visibility, summaries, and chart storage.
 
 Protected by:
 
 ```text
 tests/testthat/test-session-user-data-store.R
-tests/testthat/test-server-runtime-context.R
-tests/testthat/test-server-module-wiring-chat-engine.R
 tests/testthat/test-source-manifest-contract.R
-tests/testthat/test-server-boundary-contract.R
 ```
-
 
 ```r
 cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally
