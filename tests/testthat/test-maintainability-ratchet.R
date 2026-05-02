@@ -146,6 +146,53 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   )
 })
 
+test_that("helpers_llm_sse.R akış I/O ayrımı sonrası ince kalır", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  sse_row <- report[
+    grepl("(^|/)R/helpers_llm_sse\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  expect_equal(
+    nrow(sse_row),
+    1L,
+    info = "R/helpers_llm_sse.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_sse_lines <- .as_int_env("MERGEN_TEST_MAX_LLM_SSE_LINES", 799L)
+  max_sse_functions <- .as_int_env("MERGEN_TEST_MAX_LLM_SSE_FUNCTIONS", 24L)
+
+  expect_true(
+    sse_row$lines[1] <= max_sse_lines,
+    info = sprintf(
+      "helpers_llm_sse.R stream I/O ayrımı sonrası 800 satır altı kalmalıdır: %d > %d.",
+      sse_row$lines[1],
+      max_sse_lines
+    )
+  )
+
+  expect_true(
+    sse_row$functions[1] <= max_sse_functions,
+    info = sprintf(
+      "helpers_llm_sse.R fonksiyon sayısı stream I/O ayrımı sonrası 25 altı kalmalıdır: %d > %d.",
+      sse_row$functions[1],
+      max_sse_functions
+    )
+  )
+})
+
 test_that("helpers_mcp_tools.R refactor kazanımı geri alınmaz", {
   repo_root <- .find_repo_root_maint_ratchet()
   old_wd <- getwd()

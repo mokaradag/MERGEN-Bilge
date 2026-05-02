@@ -5,11 +5,11 @@
 # içindeki duran akış protokolü bu tek noktadan kontrol edilir.
 # ==============================================================================
 
-# helpers_llm_sse.R yalnızca bu yardımcı için yüklenir.
+# helpers_llm_stream_io.R yalnızca bu yardımcı için yüklenir.
 local({
   if (!exists("streaming_should_stop", envir = globalenv(), inherits = FALSE)) {
     source(
-      file.path(repo_root_for_tests, "R", "helpers_llm_sse.R"),
+      file.path(repo_root_for_tests, "R", "helpers_llm_stream_io.R"),
       encoding = "UTF-8",
       local = globalenv()
     )
@@ -41,4 +41,12 @@ test_that("streaming_should_stop boş/geçersiz değerde FALSE döndürür", {
   expect_false(streaming_should_stop(""))
   expect_false(streaming_should_stop(NA_character_))
   expect_false(streaming_should_stop(character(0)))
+})
+
+test_that("streaming_should_stop klasörü stop bayrağı saymaz", {
+  gecici_dizin <- tempfile("stopflag_dir_")
+  dir.create(gecici_dizin)
+  on.exit(try(unlink(gecici_dizin, recursive = TRUE, force = TRUE), silent = TRUE), add = TRUE)
+
+  expect_false(streaming_should_stop(gecici_dizin))
 })

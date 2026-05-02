@@ -5,6 +5,15 @@
 #           JSON satırları olarak geçici dosyaya yazar ve nihai sonucu döndürür.
 # ==============================================================================
 
+# Akış dosyası satır protokolü ayrı dosyadadır. Bu küçük fallback,
+# helpers_llm_sse.R dosyasının izole test/debug source kullanımını korur.
+.helpers_llm_sse_stream_io_path <- file.path("R", "helpers_llm_stream_io.R")
+if (!exists("append_stream_delta_line", mode = "function", inherits = TRUE) &&
+    file.exists(.helpers_llm_sse_stream_io_path)) {
+  source(.helpers_llm_sse_stream_io_path, encoding = "UTF-8", local = globalenv())
+}
+rm(.helpers_llm_sse_stream_io_path)
+
 # ------------------------------------------------------------------------------
 # RAW PARÇAYI UTF-8 OLARAK ÇÖZ
 # ------------------------------------------------------------------------------
@@ -255,116 +264,11 @@ extract_llm_event_sources <- function(event_obj) {
 }
 
 # ------------------------------------------------------------------------------
-# AKIŞ DOSYASINA DELTA SATIRI EKLE
+# AKIŞ DOSYASI SATIR PROTOKOLÜ
 # ------------------------------------------------------------------------------
-
-append_stream_delta_line <- function(stream_file, text_value, stream_con = NULL) {
-  if ((!nzchar(stream_file %||% "")) && is.null(stream_con)) {
-    return(invisible(NULL))
-  }
-
-  if (!nzchar(text_value %||% "")) {
-    return(invisible(NULL))
-  }
-
-  text_utf8 <- enc2utf8(text_value)
-  text_b64 <- base64enc::base64encode(charToRaw(text_utf8))
-
-  payload <- jsonlite::toJSON(
-    list(type = "delta", text_b64 = text_b64),
-    auto_unbox = TRUE,
-    null = "null"
-  )
-
-  payload_line <- paste0(payload, "\n")
-
-  if (!is.null(stream_con)) {
-    writeBin(charToRaw(payload_line), stream_con)
-    flush(stream_con)
-    return(invisible(NULL))
-  }
-
-  con <- file(stream_file, open = "ab")
-  on.exit(close(con), add = TRUE)
-
-  writeBin(charToRaw(payload_line), con)
-  flush(con)
-  invisible(NULL)
-}
-
-# Düşünen modellerde akıl yürütme akışı ana yanıt akışından ayrı kanalla
-# aktarılır. Aynı dosyaya "type":"reasoning_delta" satırları yazılır.
-append_stream_reasoning_line <- function(stream_file, text_value, stream_con = NULL) {
-  if ((!nzchar(stream_file %||% "")) && is.null(stream_con)) {
-    return(invisible(NULL))
-  }
-
-  if (!nzchar(text_value %||% "")) {
-    return(invisible(NULL))
-  }
-
-  text_utf8 <- enc2utf8(text_value)
-  text_b64 <- base64enc::base64encode(charToRaw(text_utf8))
-
-  payload <- jsonlite::toJSON(
-    list(type = "reasoning_delta", text_b64 = text_b64),
-    auto_unbox = TRUE,
-    null = "null"
-  )
-
-  payload_line <- paste0(payload, "\n")
-
-  if (!is.null(stream_con)) {
-    writeBin(charToRaw(payload_line), stream_con)
-    flush(stream_con)
-    return(invisible(NULL))
-  }
-
-  con <- file(stream_file, open = "ab")
-  on.exit(close(con), add = TRUE)
-
-  writeBin(charToRaw(payload_line), con)
-  flush(con)
-  invisible(NULL)
-}
-
-decode_stream_delta_payload <- function(payload) {
-  if (is.null(payload)) {
-    return("")
-  }
-
-  if (!is.null(payload$text_b64) && nzchar(as.character(payload$text_b64 %||% ""))) {
-    decoded_raw <- tryCatch(
-      base64enc::base64decode(as.character(payload$text_b64)[1]),
-      error = function(e) NULL
-    )
-
-    if (!is.null(decoded_raw) && length(decoded_raw) > 0) {
-      decoded_text <- tryCatch(rawToChar(decoded_raw), error = function(e) "")
-      Encoding(decoded_text) <- "UTF-8"
-      return(enc2utf8(decoded_text))
-    }
-  }
-
-  if (!is.null(payload$text)) {
-    return(enc2utf8(as.character(payload$text %||% "")))
-  }
-
-  ""
-}
-
-# ------------------------------------------------------------------------------
-# KULLANICI DURDURMA SİNYALİ KONTROLÜ
-# ------------------------------------------------------------------------------
-# Akış sırasında kullanıcı "Durdur" butonuna bastığında ilgili stop_file dosyası
-# oluşturulur. Worker bu bayrağı periyodik olarak kontrol eder. Bu yardımcı,
-# kontrol mantığını tek noktada toplar ve birim test edilebilir kılar.
-streaming_should_stop <- function(stop_file) {
-  if (is.null(stop_file)) return(FALSE)
-  candidate <- tryCatch(as.character(stop_file)[1], error = function(e) "")
-  if (!nzchar(candidate) || is.na(candidate)) return(FALSE)
-  isTRUE(file.exists(candidate))
-}
+# append_stream_delta_line(), append_stream_reasoning_line(),
+# decode_stream_delta_payload() ve streaming_should_stop() yardımcıları
+# R/helpers_llm_stream_io.R içinde tutulur.
 
 # ------------------------------------------------------------------------------
 # İŞÇİ TARAFINDA GERÇEK SSE ÇAĞRISI ÇALIŞTIR

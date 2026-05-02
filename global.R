@@ -274,6 +274,7 @@ safe_source("R/helpers_claude_code_documents.R", encoding = "UTF-8") # Bilge Yol
 safe_source("R/helpers_llm_tool_formatters.R",      encoding = "UTF-8")  # Araç şeması biçimlendirme
 safe_source("R/helpers_llm_response_postprocess.R", encoding = "UTF-8")  # LLM yanıt son işleme ve Kaynakça yardımcıları
 safe_source("R/helpers_llm_api.R",                  encoding = "UTF-8")  # LLM API istek oluşturma
+safe_source("R/helpers_llm_stream_io.R",            encoding = "UTF-8")  # SSE akış dosyası satır protokolü
 safe_source("R/helpers_llm_sse.R",                  encoding = "UTF-8")  # Gerçek SSE akışı yardımcıları
 safe_source("R/helpers_llm_worker.R",               encoding = "UTF-8")  # Arka plan LLM çağrıları
 
