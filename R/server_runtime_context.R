@@ -59,6 +59,117 @@ is_server_runtime_context <- function(ctx) {
   invisible(TRUE)
 }
 
+serverRuntimeRequireIdentity <- function(ctx,
+                                         required_values = character(0),
+                                         required_functions = character(0),
+                                         owner = "runtime identity") {
+  .server_runtime_require_context(ctx)
+
+  .server_runtime_require_values(
+    ctx,
+    c("identity"),
+    "server_runtime_context"
+  )
+
+  if (!is.list(ctx$identity)) {
+    .server_runtime_stop(
+      "serverRuntimeRequireIdentity: runtime_ctx$identity liste olmalıdır."
+    )
+  }
+
+  if (length(required_values) > 0L) {
+    .server_runtime_require_values(
+      ctx$identity,
+      required_values,
+      owner
+    )
+  }
+
+  if (length(required_functions) > 0L) {
+    .server_runtime_require_functions(
+      ctx$identity,
+      required_functions,
+      owner
+    )
+  }
+
+  ctx$identity
+}
+
+serverRuntimeRequireState <- function(ctx,
+                                      required_values = character(0),
+                                      required_functions = character(0),
+                                      owner = "runtime state") {
+  .server_runtime_require_context(ctx)
+
+  .server_runtime_require_values(
+    ctx,
+    c("state"),
+    "server_runtime_context"
+  )
+
+  if (!is.list(ctx$state)) {
+    .server_runtime_stop(
+      "serverRuntimeRequireState: runtime_ctx$state liste olmalıdır."
+    )
+  }
+
+  if (length(required_values) > 0L) {
+    .server_runtime_require_values(
+      ctx$state,
+      required_values,
+      owner
+    )
+  }
+
+  if (length(required_functions) > 0L) {
+    .server_runtime_require_functions(
+      ctx$state,
+      required_functions,
+      owner
+    )
+  }
+
+  ctx$state
+}
+
+serverRuntimeRequireCache <- function(ctx,
+                                      required_values = character(0),
+                                      required_functions = character(0),
+                                      owner = "runtime cache") {
+  .server_runtime_require_context(ctx)
+
+  .server_runtime_require_values(
+    ctx,
+    c("cache"),
+    "server_runtime_context"
+  )
+
+  if (!is.list(ctx$cache)) {
+    .server_runtime_stop(
+      "serverRuntimeRequireCache: runtime_ctx$cache liste olmalıdır."
+    )
+  }
+
+  if (length(required_values) > 0L) {
+    .server_runtime_require_values(
+      ctx$cache,
+      required_values,
+      owner
+    )
+  }
+
+  if (length(required_functions) > 0L) {
+    .server_runtime_require_functions(
+      ctx$cache,
+      required_functions,
+      owner
+    )
+  }
+
+  ctx$cache
+}
+
 serverRuntimeContextInit <- function(session,
                                      session_cache,
                                      sso_state,

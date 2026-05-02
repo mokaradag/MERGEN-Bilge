@@ -249,9 +249,11 @@ serverBindFileManagerRuntime <- function(runtime_ctx,
     file_manager_server_fn = file_manager_server_fn
   ))
 
-  .server_wiring_require_functions(list(
-    auth_ready_provider = runtime_ctx$identity$is_auth_ready
-  ))
+  identity <- serverRuntimeRequireIdentity(
+    runtime_ctx,
+    required_functions = c("is_auth_ready"),
+    owner = "serverBindFileManagerRuntime identity"
+  )
 
   file_manager_data <- file_manager_server_fn(
     "file_manager_module",
@@ -260,7 +262,7 @@ serverBindFileManagerRuntime <- function(runtime_ctx,
     mcp_enabled_reactive = mcp_enabled_reactive,
     user_id = user_id_provider,
     settings_data = settings_data,
-    auth_ready_provider = runtime_ctx$identity$is_auth_ready
+    auth_ready_provider = identity$is_auth_ready
   )
 
   runtime_ctx <- serverRuntimeAttachRefreshableModule(
@@ -490,21 +492,42 @@ serverBindChatEngineRuntime <- function(input,
                                         send_message_init_fn = sendMessageInit) {
   .server_wiring_require_context(runtime_ctx, "serverBindChatEngineRuntime")
 
-  if (is.null(runtime_ctx$state)) {
-    .server_wiring_stop(
-      "serverBindChatEngineRuntime: runtime_ctx$state henüz kurulmadı."
-    )
-  }
-
   if (!is.environment(send_message_fns)) {
     .server_wiring_stop(
       "serverBindChatEngineRuntime: send_message_fns ortam olmalıdır."
     )
   }
 
-  state <- runtime_ctx$state
-  identity <- runtime_ctx$identity
-  cache <- runtime_ctx$cache
+  state <- serverRuntimeRequireState(
+    runtime_ctx,
+    required_values = c("values"),
+    required_functions = c(
+      "stop_generation",
+      "file_to_add",
+      "session_files",
+      "active_request_id",
+      "quick_action_skip_mcp"
+    ),
+    owner = "serverBindChatEngineRuntime state"
+  )
+
+  identity <- serverRuntimeRequireIdentity(
+    runtime_ctx,
+    required_functions = c(
+      "resolve_current_user_id",
+      "current_user_id_provider"
+    ),
+    owner = "serverBindChatEngineRuntime identity"
+  )
+
+  cache <- serverRuntimeRequireCache(
+    runtime_ctx,
+    required_functions = c(
+      "cache_mcp_file_locally",
+      "update_mcp_registry_snapshot"
+    ),
+    owner = "serverBindChatEngineRuntime cache"
+  )
 
   file_runtime <- serverRuntimeRequireFileRuntime(
     runtime_ctx,

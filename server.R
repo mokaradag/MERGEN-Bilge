@@ -48,7 +48,17 @@ server <- function(input, output, session) {
 	  user_session = user_session
 	)
 
-	identity <- runtime_ctx$identity
+	identity <- serverRuntimeRequireIdentity(
+	  runtime_ctx,
+	  required_values = c("user_config_rv"),
+	  required_functions = c(
+	    "resolve_current_user_id",
+	    "current_user_id_provider",
+	    "get_first_name",
+	    "get_display_name"
+	  ),
+	  owner = "server.R identity"
+	)
 
 	user_config_rv <- identity$user_config_rv
 	resolve_current_user_id <- identity$resolve_current_user_id
@@ -135,17 +145,30 @@ server <- function(input, output, session) {
 	  runtime_ctx,
 	  serverInitSessionState(
 		session = session,
-		identity = runtime_ctx$identity,
+		identity = identity,
 		sso_state = sso_state
 	  )
 	)
 
-	values <- runtime_ctx$state$values
-	stop_generation <- runtime_ctx$state$stop_generation
-	file_to_add <- runtime_ctx$state$file_to_add
-	session_files <- runtime_ctx$state$session_files
-	active_request_id <- runtime_ctx$state$active_request_id
-	quick_action_skip_mcp <- runtime_ctx$state$quick_action_skip_mcp
+	state <- serverRuntimeRequireState(
+	  runtime_ctx,
+	  required_values = c("values"),
+	  required_functions = c(
+	    "stop_generation",
+	    "file_to_add",
+	    "session_files",
+	    "active_request_id",
+	    "quick_action_skip_mcp"
+	  ),
+	  owner = "server.R state"
+	)
+
+	values <- state$values
+	stop_generation <- state$stop_generation
+	file_to_add <- state$file_to_add
+	session_files <- state$session_files
+	active_request_id <- state$active_request_id
+	quick_action_skip_mcp <- state$quick_action_skip_mcp
   
 	session$onEnded(function() {
 	  try(stop_generation(TRUE), silent = TRUE)

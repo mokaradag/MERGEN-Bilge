@@ -86,32 +86,27 @@ serverBindCoreInteractionRuntime <- function(input,
                                              reactive_fn = shiny::reactive) {
   .server_core_interaction_require_context(runtime_ctx)
 
-  if (is.null(runtime_ctx$state)) {
-    .server_core_interaction_stop(
-      "serverBindCoreInteractionRuntime: runtime_ctx$state henüz kurulmadı."
-    )
-  }
-
-  if (!is.environment(welcome_fns)) {
-    .server_core_interaction_stop(
-      "serverBindCoreInteractionRuntime: welcome_fns ortam olmalıdır."
-    )
-  }
-
-  state <- runtime_ctx$state
-  identity <- runtime_ctx$identity
-  values <- state$values
-
-  .server_core_interaction_require_values(
-    state,
-    c(
-      "values",
+  state <- serverRuntimeRequireState(
+    runtime_ctx,
+    required_values = c("values"),
+    required_functions = c(
       "file_to_add",
       "session_files",
       "quick_action_skip_mcp"
     ),
-    "runtime_ctx$state"
+    owner = "serverBindCoreInteractionRuntime state"
   )
+
+  identity <- serverRuntimeRequireIdentity(
+    runtime_ctx,
+    required_functions = c(
+      "current_user_id_provider",
+      "get_display_name"
+    ),
+    owner = "serverBindCoreInteractionRuntime identity"
+  )
+
+  values <- state$values
 
   .server_core_interaction_require_values(
     media_modules,
