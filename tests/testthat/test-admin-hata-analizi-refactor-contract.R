@@ -7,6 +7,32 @@
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
 
+  # Bu test helper dosyasını izole environment içinde source eder.
+  # Runtime'da bu fonksiyonlar global.R üzerinden admin ortak helperlarından gelir;
+  # testte ise UI router sözleşmesini DB/ana admin bağımlılıklarından bağımsız
+  # doğrulamak için küçük stub'lar sağlanır.
+  env$admin_format_number <- function(x) {
+    as.character(x)
+  }
+
+  env$admin_create_metric_card <- function(title, value, icon_name, color, tooltip = NULL) {
+    shiny::div(
+      class = paste("metric-card", color),
+      title = tooltip %||% "",
+      shiny::span(class = "metric-title", title),
+      shiny::span(class = "metric-value", value),
+      shiny::span(class = "metric-icon", icon_name)
+    )
+  }
+
+  env$admin_create_info_button <- function(text) {
+    shiny::span(
+      class = "admin-info-button",
+      title = text,
+      "i"
+    )
+  }
+
   source(
     file.path(repo_root, "R", "helpers_admin_hata_analizi.R"),
     encoding = "UTF-8",
