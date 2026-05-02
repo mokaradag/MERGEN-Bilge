@@ -157,6 +157,7 @@ testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-user-session-identity-contract.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context-accessors.R")
 testthat::test_file("tests/testthat/test-server-core-interaction-runtime.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-chat-engine.R")
@@ -188,6 +189,8 @@ testthat::test_file("tests/testthat/test-claude-code-stream-finalize-contract.R"
 
 `tests/testthat.R` ana koşucusu sıkı modda kalmalıdır: `stop_on_failure = TRUE` ve `stop_on_warning = TRUE`. Bu nedenle üretim sözleşmesi testleri geniş, uyarı üretebilecek recursive kaynak taramalarından kaçınmalı; kritik boot/runtime sözleşmelerini deterministik ve warning-safe biçimde doğrulamalıdır.
 Bu kapsamda eklenen `test-offline-baseline-contract.R`, air-gapped Windows VM üretim profili için temel offline sözleşmeyi varsayılan test koşumunda doğrular. Test, runtime R/CSS/JS dosyalarında açık CDN/public asset bağımlılığı arar ve `stop_on_warning = TRUE` ile uyumlu kalması için warning-safe metin tarama yaklaşımı kullanır. Daha geniş offline tarama hâlâ `MERGEN_STRICT_OFFLINE_TESTS=true` ile opsiyonel olarak çalıştırılır.
+
+Runtime context accessor sözleşmesi `test-server-runtime-context-accessors.R`, `test-production-contracts.R`, `test-server-core-interaction-runtime.R`, `test-server-live-user-provider-contract.R` ve `test-file-manager-module-policy-wiring.R` ile korunur; bu testler eski ham `runtime_ctx$...` erişimini geri getirmek yerine doğrulanmış accessor kullanımını bekler.
 
 Bakım yapılabilirlik takibi için `tests/scripts/maintainability_report.R` script’i repo kökünden çalıştırılabilir. Bu script test koşucusunu değiştirmez; büyük dosyaları, yaklaşık satır sayılarını ve fonksiyon sayılarını raporlayarak kontrollü refactor kararlarını destekler. `library_queries.R`, sorgu bilgi tabanı niteliğinde olduğu için bu raporda ayrıca değerlendirilmelidir.
 
@@ -265,7 +268,9 @@ Kullanıcı kimliği ve oturum kurulumu artık doğrudan `server.R` içinde dağ
 
 Amaç, `server.R` içindeki kimlik doğrulama orkestrasyonunu azaltmak, SSO başlangıcındaki geçici `0L` kullanıcı kimliğinin kullanıcıya özel modüllere sızmasını önlemek ve `current_user_id_provider` / `resolve_current_user_id()` yaklaşımını tek noktadan korumaktır. Mevcut `session$userData` alanları geriye dönük uyumluluk için korunur.
 
-Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_runtime_context.R` üzerinden `server.R` içine taşınır. `server.R`, önce `identity <- runtime_ctx$identity` alias’ını oluşturur; ardından `user_config_rv`, `resolve_current_user_id`, `current_user_id_provider`, `current_user_first_name` ve `current_user_display_name` değerlerini bu açık kimlik sözleşmesi üzerinden alır. Böylece kullanıcı kimliği, kullanıcı görünen adı, SSO hazır olma durumu, önbellek, ileri referanslar, reaktif oturum durumu ve sohbet çalışma zamanı tek bir doğrulanabilir başlatma sınırıyla korunur.
+Bu oturum sözleşmesi artık erken sunucu başlatma bağlamı olan `R/server_runtime_context.R` üzerinden `server.R` içine taşınır. `server.R`, kimlik bölümünü doğrudan `runtime_ctx$identity` üzerinden okumak yerine `serverRuntimeRequireIdentity(...)` ile doğrulanmış bir kimlik sözleşmesi olarak alır. Ardından `user_config_rv`, `resolve_current_user_id`, `current_user_id_provider`, `current_user_first_name` ve `current_user_display_name` değerlerini bu doğrulanmış kimlik sınırı üzerinden kullanır. Oturum durumu da `serverRuntimeRequireState(...)` ile doğrulanır; böylece kullanıcı kimliği, kullanıcı görünen adı, SSO hazır olma durumu, önbellek, ileri referanslar, reaktif oturum durumu ve sohbet çalışma zamanı tek bir doğrulanabilir başlatma sınırıyla korunur.
+
+Son runtime context güncellemesiyle `R/server_runtime_context.R`, `serverRuntimeRequireIdentity(...)`, `serverRuntimeRequireState(...)` ve `serverRuntimeRequireCache(...)` yardımcılarını da içerir. Bu yardımcılar, orta seviye wiring katmanlarının eksik veya yanlış başlatılmış runtime bölümleriyle ilerlemesini engeller. Amaç yeni bir servis lokatörü kurmak değil; mevcut küçük `ServerRuntimeContext` sınırını daha açık ve test edilebilir hâle getirmektir.
 
 Kullanıcı oturumu kimlik yardımcıları ayrıca `R/helpers_user_session_identity.R` içine ayrılmıştır. Bu dosya; SSO/local kullanıcı yapılandırmasını oluşturan `build_user_session_config()`, geriye dönük uyumluluk için `session$userData` kimlik alanlarını tek noktadan yazan `apply_user_session_identity()` ve canlı kullanıcı kimliği sağlayıcısını kuran `make_current_user_id_provider()` yardımcılarını içerir. `R/server_init_user_session.R` artık bu saf yardımcıları kullanarak Shiny/SSO orkestrasyonuna odaklanır. Bu ayrım, kullanıcı kimliği biçimlendirme kurallarını test edilebilir hâle getirirken mevcut SSO/non-SSO davranışını korur.
 
@@ -323,6 +328,7 @@ Bu sınır aşağıdaki testlerle korunur:
 ```r
 testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context-accessors.R")
 testthat::test_file("tests/testthat/test-server-core-interaction-runtime.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")
@@ -373,6 +379,7 @@ Dosya Yönetimi tarafında auth-ready kararı artık `session$userData$auth_init
 ```r
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context-accessors.R")
 testthat::test_file("tests/testthat/test-server-boundary-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
@@ -405,6 +412,7 @@ Korunan ana sözleşmeler:
 
 ```r
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-runtime-context-accessors.R")
 testthat::test_file("tests/testthat/test-server-boundary-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")

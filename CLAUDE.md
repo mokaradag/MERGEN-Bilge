@@ -103,7 +103,17 @@ runtime_ctx <- serverRuntimeContextInit(
   user_session = user_session
 )
 
-identity <- runtime_ctx$identity
+identity <- serverRuntimeRequireIdentity(
+  runtime_ctx,
+  required_values = c("user_config_rv"),
+  required_functions = c(
+    "resolve_current_user_id",
+    "current_user_id_provider",
+    "get_first_name",
+    "get_display_name"
+  ),
+  owner = "server.R identity"
+)
 
 user_config_rv <- identity$user_config_rv
 resolve_current_user_id <- identity$resolve_current_user_id
@@ -120,7 +130,7 @@ Never read `sso_state$authenticated` directly during initialization checks such 
 
 Post-auth refreshable modules should use the `ServerRuntimeContext` refreshable-module contract instead of ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R`. The low-level combined helper remains `serverRuntimeAttachRefreshableModule(...)`. File Manager is still wired through `serverBindFileManagerRuntime(...)`, and chat-persistence-related modules are still wired through `serverBindChatPersistenceModules(...)`; however, `server.R` should reach both through `serverBindCoreInteractionRuntime(...)`, not by calling them directly.
 
-File Manager auth readiness must be injected through `auth_ready_provider = runtime_ctx$identity$is_auth_ready`. Do not reintroduce direct File Manager checks against `session$userData$auth_initialized`; that couples persisted-file refresh to SSO timing and can bring back user-id `0` refresh regressions.
+File Manager auth readiness must be injected through a validated identity section, not raw context access. In `serverBindFileManagerRuntime(...)`, use `identity <- serverRuntimeRequireIdentity(...)` and pass `auth_ready_provider = identity$is_auth_ready`. Do not reintroduce direct File Manager checks against `session$userData$auth_initialized`; that couples persisted-file refresh to SSO timing and can bring back user-id `0` refresh regressions.
 
 Protected by:
 
@@ -128,6 +138,7 @@ Protected by:
 tests/testthat/test-server-user-session-context.R
 tests/testthat/test-user-session-identity-contract.R
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-server-runtime-context-accessors.R
 tests/testthat/test-server-core-interaction-runtime.R
 tests/testthat/test-session-user-data-store.R
 tests/testthat/test-server-module-wiring-contract.R
@@ -146,6 +157,8 @@ tests/testthat/test-file-manager-module-policy-wiring.R
 
 `R/server_runtime_context.R` is a small boot-time context boundary, not a broad application framework.
 
+The context now exposes typed section accessors: `serverRuntimeRequireIdentity(...)`, `serverRuntimeRequireState(...)`, and `serverRuntimeRequireCache(...)`. Prefer these accessors in server wiring code when a helper needs a validated context section. They should fail early on missing or malformed boot sections and keep orchestration code from depending on undocumented `runtime_ctx$...` shape.
+
 Its purpose is to reduce loose boot-state leakage in `server.R` and fail early when required boot objects are missing or malformed.
 
 It currently covers only:
@@ -154,6 +167,7 @@ It currently covers only:
 - `user_session` / live current-user providers / identity display accessors / auth-readiness provider
 - `forward_refs`
 - `state_bundle`
+- typed section accessors for identity, state, and cache contracts: `serverRuntimeRequireIdentity(...)`, `serverRuntimeRequireState(...)`, and `serverRuntimeRequireCache(...)`
 - file runtime objects in `runtime_ctx$file`, including file preview/follow-up prelude handles and the File Manager module handle
 - `chat_runtime`
 - late-bound runtime function slots are intentionally kept in `R/server_runtime_function_slot.R` instead of this file, to avoid growing `R/server_runtime_context.R` into a broader service locator
@@ -170,6 +184,14 @@ Expected attach sequence in `server.R`:
 
 ```r
 runtime_ctx <- serverRuntimeContextInit(...)
+
+identity <- serverRuntimeRequireIdentity(...)
+
+user_config_rv <- identity$user_config_rv
+resolve_current_user_id <- identity$resolve_current_user_id
+current_user_id_provider <- identity$current_user_id_provider
+current_user_first_name <- identity$get_first_name
+current_user_display_name <- identity$get_display_name
 
 settings_bundle <- serverBindSettingsAndRefs(
   ...,
@@ -193,6 +215,8 @@ file_runtime <- serverRuntimeRequireFileRuntime(
 )
 
 runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
+
+state <- serverRuntimeRequireState(...)
 
 core_interaction <- serverBindCoreInteractionRuntime(
   ...,
@@ -234,7 +258,7 @@ Use the lower-level `serverRuntimeAttachModule(...)`, `serverRuntimeRefreshModul
 
 Legacy `session$userData` exports should also be explicit. If a refreshable module still requires a compatibility value such as `file_manager_data`, prefer `expose_session_key = "file_manager_data"` in `serverRuntimeAttachRefreshableModule(...)`. For non-refreshable cases, expose compatibility values through `serverRuntimeExposeSessionData(...)` instead of adding loose `session$userData$... <- ...` assignments in `server.R`.
 
-Keep `runtime_ctx$identity` as the single early boot identity boundary in `server.R`. Do not mix direct `user_session$...` reads or direct identity-related `session$userData$...` reads back into `server.R`.
+Keep the validated identity section from `serverRuntimeRequireIdentity(...)` as the single early boot identity boundary in `server.R`. Do not mix direct `user_session$...` reads, raw `runtime_ctx$identity` assumptions, or direct identity-related `session$userData$...` reads back into `server.R`.
 
 Send-message wiring should use cache functions from the context:
 
@@ -284,8 +308,10 @@ tests/testthat/test-source-manifest-contract.R
 ```
 
 ```r
-cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally
-update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot
+cache <- serverRuntimeRequireCache(...)
+
+cache_mcp_file_locally_fn = cache$cache_mcp_file_locally
+update_mcp_registry_snapshot_fn = cache$update_mcp_registry_snapshot
 ```
 
 Do not reintroduce loose early aliases such as:
@@ -300,12 +326,17 @@ current_user_first_name <- session$userData$user_first_name
 current_user_display_name <- session$userData$user_config$name
 session$userData$file_manager_data <- file_manager_data
 auth_ready <- session$userData$auth_initialized
+auth_ready_provider = runtime_ctx$identity$is_auth_ready
+cache <- runtime_ctx$cache
+state <- runtime_ctx$state
+identity <- runtime_ctx$identity
 ```
 
 The context contract is protected by:
 
 ```text
 tests/testthat/test-server-runtime-context.R
+tests/testthat/test-server-runtime-context-accessors.R
 tests/testthat/test-user-session-identity-contract.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
@@ -373,10 +404,10 @@ Responsibilities:
 * `serverBindSettingsAndRefs(...)`: binds settings, forward references, Bilge Yolaç startup wiring, visual settings sync, chat output headers, and `load_chat_in_progress`.
 * `serverBindMediaModules(...)`: binds feedback, AI processing, TTS, TTS visualizer, music handlers, AI Expert, and STT.
 * `serverBindFilePreludeModules(...)`: binds file preview, fallback follow-up tools, follow-up module tools, DOCX preview JavaScript, and optionally attaches these prelude handles to `runtime_ctx$file` when a runtime context is supplied.
-* `serverBindFileManagerRuntime(...)`: binds `fileManagerServer(...)`, injects the live user-id provider and auth-readiness provider, registers the module through `ServerRuntimeContext`, attaches `file_manager_data` to the focused FileRuntime boundary, wires one-time SSO-ready persisted-file refresh, and preserves the explicit `session$userData$file_manager_data` compatibility export.
+* `serverBindFileManagerRuntime(...)`: binds `fileManagerServer(...)`, injects the live user-id provider and the auth-readiness provider from `serverRuntimeRequireIdentity(...)`, registers the module through `ServerRuntimeContext`, attaches `file_manager_data` to the focused FileRuntime boundary, wires one-time SSO-ready persisted-file refresh, and preserves the explicit `session$userData$file_manager_data` compatibility export.
 * `serverBindImageGalleryRuntime(...)`: binds `imageGalleryServer(...)` with the live user-id provider and registers the gallery refresh function through `ServerRuntimeContext`.
 * `serverBindChatPersistenceModules(...)`: binds saved chats, saved-chat observers, chat content search, image gallery runtime and observers, welcome handlers, download outputs, history, and message search while preserving the live `current_user_id_provider`, explicit user-config provider, and explicit user-first-name provider.
-* `serverBindChatEngineRuntime(...)`: binds chat runtime, LLM response handlers, chat input observers, miscellaneous chat/UI observers, chat actions, TTS handlers, and `sendMessageInit(...)`; it also assigns the final `send_message_fns$send_message` implementation and uses `serverRuntimeCreateFunctionSlot(...)` to avoid fragile TTS placeholder reassignment in `server.R`.
+* `serverBindChatEngineRuntime(...)`: binds chat runtime, LLM response handlers, chat input observers, miscellaneous chat/UI observers, chat actions, TTS handlers, and `sendMessageInit(...)`; it also assigns the final `send_message_fns$send_message` implementation and uses `serverRuntimeCreateFunctionSlot(...)` to avoid fragile TTS placeholder reassignment in `server.R`. It should read identity, state, and cache through `serverRuntimeRequireIdentity(...)`, `serverRuntimeRequireState(...)`, and `serverRuntimeRequireCache(...)` rather than assuming raw `runtime_ctx$...` shape.
 
 Do not move these direct calls back into `server.R`:
 
@@ -739,7 +770,17 @@ runtime_ctx <- serverRuntimeContextInit(
   user_session = user_session
 )
 
-identity <- runtime_ctx$identity
+identity <- serverRuntimeRequireIdentity(
+  runtime_ctx,
+  required_values = c("user_config_rv"),
+  required_functions = c(
+    "resolve_current_user_id",
+    "current_user_id_provider",
+    "get_first_name",
+    "get_display_name"
+  ),
+  owner = "server.R identity"
+)
 
 user_config_rv <- identity$user_config_rv
 resolve_current_user_id <- identity$resolve_current_user_id
