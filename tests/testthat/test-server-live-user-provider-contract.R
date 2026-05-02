@@ -63,15 +63,15 @@ test_that("server.R canlı current_user_id_provider sözleşmesini ServerRuntime
 
 test_that("kullanıcıya özel modüller current_user_id snapshot'ı yerine provider alır", {
   server_text <- .read_repo_text_for_user_provider_contract("server.R")
+  core_text <- .read_repo_text_for_user_provider_contract(
+    "R/server_core_interaction_runtime.R"
+  )
   wiring_text <- .read_repo_text_for_user_provider_contract("R/server_module_wiring.R")
 
   expected_server_provider_calls <- c(
     "service_modules <- serverBindServiceModules(",
     "current_user_id_provider = current_user_id_provider",
-    "current_user_id = current_user_id_provider",
-    "user_id_provider = current_user_id_provider",
-    "serverBindFileManagerRuntime(",
-    "chat_persistence <- serverBindChatPersistenceModules(",
+    "core_interaction <- serverBindCoreInteractionRuntime(",
     "user_config_provider = function(default = NULL)",
     "user_first_name_fn = function(default = \"\")"
   )
@@ -87,6 +87,29 @@ test_that("kullanıcıya özel modüller current_user_id snapshot'ı yerine prov
     info = paste(
       "Bazı server.R kullanıcı provider delegasyonları eksik olabilir:",
       paste(expected_server_provider_calls[!server_found], collapse = ", ")
+    )
+  )
+
+  expected_core_provider_calls <- c(
+    "file_manager_runtime_fn = serverBindFileManagerRuntime",
+    "chat_persistence_modules_fn = serverBindChatPersistenceModules",
+    "user_id_provider = identity$current_user_id_provider",
+    "current_user_id_provider = identity$current_user_id_provider",
+    "user_config_provider = user_config_provider",
+    "user_first_name_fn = user_first_name_fn"
+  )
+
+  core_found <- vapply(
+    expected_core_provider_calls,
+    function(item) grepl(item, core_text, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )
+
+  expect_true(
+    all(core_found),
+    info = paste(
+      "server_core_interaction_runtime.R kullanıcı provider delegasyonu eksik olabilir:",
+      paste(expected_core_provider_calls[!core_found], collapse = ", ")
     )
   )
 

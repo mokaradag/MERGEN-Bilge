@@ -31,13 +31,43 @@
   enc2utf8(txt)
 }
 
-test_that("server.R sohbet kalıcılığı bağlamasını tek yardımcıya devreder", {
+test_that("server.R sohbet kalıcılığı bağlamasını çekirdek etkileşim helper'ına devreder", {
   server_text <- .read_repo_text_chat_persistence_contract("server.R")
+  core_text <- .read_repo_text_chat_persistence_contract(
+    "R/server_core_interaction_runtime.R"
+  )
 
   expect_true(
     grepl(
-      "serverBindChatPersistenceModules(",
+      "serverBindCoreInteractionRuntime(",
       server_text,
+      fixed = TRUE,
+      useBytes = TRUE
+    )
+  )
+
+  expect_true(
+    grepl(
+      "chat_persistence_modules_fn = serverBindChatPersistenceModules",
+      core_text,
+      fixed = TRUE,
+      useBytes = TRUE
+    )
+  )
+
+  expect_true(
+    grepl(
+      "chat_persistence <- chat_persistence_modules_fn(",
+      core_text,
+      fixed = TRUE,
+      useBytes = TRUE
+    )
+  )
+
+  expect_true(
+    grepl(
+      "current_user_id_provider = identity$current_user_id_provider",
+      core_text,
       fixed = TRUE,
       useBytes = TRUE
     )

@@ -104,6 +104,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 	  "R/server_runtime_context.R",
 	  "R/server_runtime_function_slot.R",
 	  "R/server_module_wiring.R",
+	  "R/server_core_interaction_runtime.R",
 	  "R/server_handler_true_streaming.R",
 	  "R/server_send_message.R",
 
@@ -323,6 +324,7 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
 
 test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağlar", {
   server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
+  core_text <- .read_text_quiet(file.path(.repo_root, "R", "server_core_interaction_runtime.R"))
   wiring_text <- .read_text_quiet(file.path(.repo_root, "R", "server_module_wiring.R"))
 
   server_beklenenler <- c(
@@ -335,11 +337,10 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     "runtime_ctx <- settings_bundle$runtime_ctx",
     "runtime_ctx <- serverRuntimeAttachState(",
     "identity = runtime_ctx$identity",
-    "file_manager_runtime <- serverBindFileManagerRuntime(",
-    "runtime_ctx <- file_manager_runtime$runtime_ctx",
-    "chat_persistence <- serverBindChatPersistenceModules(",
-    "runtime_ctx <- chat_persistence$runtime_ctx",
-    "saved_chats_data <- chat_persistence$saved_chats_data",
+    "core_interaction <- serverBindCoreInteractionRuntime(",
+    "runtime_ctx <- core_interaction$runtime_ctx",
+    "saved_chats_data <- core_interaction$saved_chats_data",
+    "file_manager_data <- core_interaction$file_manager_data",
     "chat_engine <- serverBindChatEngineRuntime(",
     "runtime_ctx <- chat_engine$runtime_ctx"
   )
@@ -355,6 +356,33 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     label = paste(
       "server.R runtime context/delegasyon sözleşmesi eksik:",
       paste(server_beklenenler[!server_bulunanlar], collapse = ", ")
+    )
+  )
+
+  core_beklenenler <- c(
+    "serverBindCoreInteractionRuntime <- function(",
+    "file_manager_runtime_fn = serverBindFileManagerRuntime",
+    "chat_persistence_modules_fn = serverBindChatPersistenceModules",
+    "file_manager_runtime <- file_manager_runtime_fn(",
+    "runtime_ctx <- file_manager_runtime$runtime_ctx",
+    "chat_persistence <- chat_persistence_modules_fn(",
+    "runtime_ctx <- chat_persistence$runtime_ctx",
+    "saved_chats_data = chat_persistence$saved_chats_data",
+    "user_id_provider = identity$current_user_id_provider",
+    "current_user_id_provider = identity$current_user_id_provider"
+  )
+
+  core_bulunanlar <- vapply(
+    core_beklenenler,
+    function(beklenen) .has_text(core_text, beklenen),
+    logical(1)
+  )
+
+  expect_true(
+    all(core_bulunanlar),
+    label = paste(
+      "server_core_interaction_runtime.R çekirdek delegasyon sözleşmesi eksik:",
+      paste(core_beklenenler[!core_bulunanlar], collapse = ", ")
     )
   )
 
@@ -419,9 +447,23 @@ test_that("server.R kullanıcı kimliğini doğrudan 0 veya session$userData$use
     )
   )
 
+  core_text <- .read_text_quiet(
+    file.path(.repo_root, "R", "server_core_interaction_runtime.R")
+  )
+
   expect_true(
-    .has_text(server_text, "user_id = current_user_id_provider"),
-    label = "fileManagerServer gibi modüllere user_id provider verilmelidir."
+    .has_text(server_text, "core_interaction <- serverBindCoreInteractionRuntime("),
+    label = "server.R kullanıcıya özel alt modülleri çekirdek etkileşim helper'ına devretmelidir."
+  )
+
+  expect_true(
+    .has_text(core_text, "user_id_provider = identity$current_user_id_provider"),
+    label = "Dosya yöneticisine canlı user_id provider server_core_interaction_runtime.R üzerinden verilmelidir."
+  )
+
+  expect_true(
+    .has_text(core_text, "current_user_id_provider = identity$current_user_id_provider"),
+    label = "Kalıcılık/geçmiş/galeri modüllerine canlı current_user_id provider verilmelidir."
   )
 })
 
