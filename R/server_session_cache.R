@@ -81,23 +81,11 @@ sessionCacheInit <- function(session) {
  
   # MCP kayıt defteri anlık görüntüsünü güncelle
   update_mcp_registry_snapshot <- function(files_snapshot = NULL) {
-    if (is.null(files_snapshot)) {
-      files_snapshot <- session_user_data_get_list(session, "current_session_files")
-    }
-
-    session_user_data_set_list(
-      session,
-      "mcp_registry_snapshot",
-      files_snapshot %||% list()
-    )
+    session_runtime_store_snapshot_mcp(session, files_snapshot)
   }
  
   # Başlangıçta anlık görüntü nesnesini oluştur
-  session_user_data_set_list(
-    session,
-    "mcp_registry_snapshot",
-    session_user_data_get_list(session, "current_session_files")
-  )
+  session_runtime_store_snapshot_mcp(session)
  
   # Fonksiyonları döndür
   list(

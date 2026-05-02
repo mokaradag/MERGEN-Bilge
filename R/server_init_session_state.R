@@ -44,17 +44,8 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
   # Karşılama ekranının oturum içi bağlanma durumu
   session$userData$welcome_screen_attached <- FALSE
 
-  # Oturum-yerel ortak listeler tek noktadan hazırlanır.
-  session_user_data_reset_lists(
-    session,
-    c("current_session_files", "file_summaries", "chart_store")
-  )
-
-  session_user_data_set_list(
-    session,
-    "mcp_registry_snapshot",
-    session_user_data_get_list(session, "current_session_files")
-  )
+  # Oturum-yerel ortak depolar tek sözleşmeden hazırlanır.
+  session_runtime_store_reset(session)
 
   # ---------------------------------------------------------------------------
   # Yardımcı reaktif bayraklar

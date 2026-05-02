@@ -113,6 +113,93 @@ session_user_data_reset_lists <- function(session, keys) {
   invisible(TRUE)
 }
 
+SESSION_RUNTIME_STORE_KEYS <- c(
+  current_session_files = "current_session_files",
+  file_summaries = "file_summaries",
+  chart_store = "chart_store",
+  mcp_registry_snapshot = "mcp_registry_snapshot"
+)
+
+session_runtime_store_key <- function(name) {
+  if (is.null(name) || length(name) != 1L || !nzchar(as.character(name))) {
+    stop("session_runtime_store_key: Geçerli bir store adı bekleniyor.", call. = FALSE)
+  }
+
+  name <- as.character(name)
+  key <- SESSION_RUNTIME_STORE_KEYS[[name]]
+
+  if (is.null(key) && name %in% unname(SESSION_RUNTIME_STORE_KEYS)) {
+    key <- name
+  }
+
+  if (is.null(key)) {
+    stop(sprintf(
+      "session_runtime_store_key: Bilinen store adı bekleniyor: %s",
+      paste(names(SESSION_RUNTIME_STORE_KEYS), collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  key
+}
+
+session_runtime_store_keys <- function(include_mcp = TRUE) {
+  keys <- unname(SESSION_RUNTIME_STORE_KEYS)
+
+  if (!isTRUE(include_mcp)) {
+    keys <- keys[keys != SESSION_RUNTIME_STORE_KEYS[["mcp_registry_snapshot"]]]
+  }
+
+  keys
+}
+
+session_runtime_store_get <- function(session,
+                                      store,
+                                      default = list(),
+                                      create = TRUE) {
+  session_user_data_get_list(
+    session = session,
+    key = session_runtime_store_key(store),
+    default = default,
+    create = create
+  )
+}
+
+session_runtime_store_set <- function(session, store, value = list()) {
+  session_user_data_set_list(
+    session = session,
+    key = session_runtime_store_key(store),
+    value = value
+  )
+}
+
+session_runtime_store_snapshot_mcp <- function(session, files_snapshot = NULL) {
+  if (is.null(files_snapshot)) {
+    files_snapshot <- session_runtime_store_get(
+      session,
+      "current_session_files",
+      default = list(),
+      create = TRUE
+    )
+  }
+
+  session_runtime_store_set(
+    session,
+    "mcp_registry_snapshot",
+    files_snapshot %||% list()
+  )
+}
+
+session_runtime_store_reset <- function(session) {
+  session_user_data_reset_lists(
+    session,
+    session_runtime_store_keys(include_mcp = FALSE)
+  )
+
+  session_runtime_store_snapshot_mcp(session)
+
+  invisible(TRUE)
+}
+
 # Bir Shiny oturumu sonlandığında tetiklenecek temizlik setini tek çağrı ile
 # kaydeder. Çağrı idempotent değildir: aynı oturum için iki kez çağrılırsa
 # iki callback birikir. Modüller bu yüzden oturum başına bir kez çağırmalı.

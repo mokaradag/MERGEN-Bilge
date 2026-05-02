@@ -25,6 +25,18 @@ source(
   )
 }
 
+.read_session_store_contract_text <- function(rel_path) {
+  path <- file.path(repo_root, rel_path)
+
+  if (!file.exists(path)) {
+    stop(sprintf("Dosya bulunamadı: %s", rel_path), call. = FALSE)
+  }
+
+  txt <- paste(readLines(path, encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
+  enc2utf8(txt)
+}
+
 test_that("session_user_data_get_list eksik listeyi güvenli şekilde oluşturur", {
   session <- .fake_session_user_data_store()
 
@@ -92,6 +104,70 @@ test_that("session_user_data_reset_lists birden fazla store alanını temizler",
   expect_identical(session$userData$mcp_registry_snapshot, list())
 })
 
+test_that("session_runtime_store_reset ortak dosya depolarını tek sözleşmeden kurar", {
+  session <- .fake_session_user_data_store()
+
+  session_user_data_put_list_item(
+    session,
+    "current_session_files",
+    "rapor.xlsx",
+    list(path = "rapor.xlsx")
+  )
+  session_user_data_put_list_item(session, "file_summaries", "rapor.xlsx", "özet")
+  session_user_data_put_list_item(session, "chart_store", "grafik_1", list(type = "bar"))
+
+  session_runtime_store_reset(session)
+
+  expect_identical(session$userData$current_session_files, list())
+  expect_identical(session$userData$file_summaries, list())
+  expect_identical(session$userData$chart_store, list())
+  expect_identical(session$userData$mcp_registry_snapshot, list())
+})
+
+test_that("session_runtime_store_snapshot_mcp mevcut oturum dosyalarını yansıtır", {
+  session <- .fake_session_user_data_store()
+
+  current_files <- list(
+    "rapor.xlsx" = list(
+      name = "rapor.xlsx",
+      path = "tmp/rapor.xlsx"
+    )
+  )
+
+  session_runtime_store_set(session, "current_session_files", current_files)
+  session_runtime_store_snapshot_mcp(session)
+
+  expect_identical(session$userData$mcp_registry_snapshot, current_files)
+
+  explicit_snapshot <- list(
+    "secili.docx" = list(
+      name = "secili.docx",
+      path = "tmp/secili.docx"
+    )
+  )
+
+  session_runtime_store_snapshot_mcp(session, explicit_snapshot)
+
+  expect_identical(session$userData$mcp_registry_snapshot, explicit_snapshot)
+})
+
+test_that("session_runtime_store_key yalnızca bilinen store adlarını kabul eder", {
+  expect_identical(
+    session_runtime_store_key("current_session_files"),
+    "current_session_files"
+  )
+
+  expect_identical(
+    session_runtime_store_key("mcp_registry_snapshot"),
+    "mcp_registry_snapshot"
+  )
+
+  expect_error(
+    session_runtime_store_key("rastgele_store"),
+    "Bilinen store adı"
+  )
+})
+
 test_that("session_user_data_get_list liste olmayan mevcut alanı erken yakalar", {
   session <- .fake_session_user_data_store()
   session$userData$file_summaries <- "yanlış tip"
@@ -99,5 +175,37 @@ test_that("session_user_data_get_list liste olmayan mevcut alanı erken yakalar"
   expect_error(
     session_user_data_get_list(session, "file_summaries"),
     "liste olmalıdır"
+  )
+})
+
+test_that("boot dosyaları MCP store anahtarlarını doğrudan yönetmez", {
+  boot_texts <- c(
+    server_session_cache = .read_session_store_contract_text("R/server_session_cache.R"),
+    server_init_session_state = .read_session_store_contract_text("R/server_init_session_state.R")
+  )
+
+  forbidden_patterns <- c(
+    'session_user_data_set_list\\s*\\(\\s*session\\s*,\\s*"mcp_registry_snapshot"',
+    'session_user_data_get_list\\s*\\(\\s*session\\s*,\\s*"current_session_files"',
+    'session_user_data_reset_lists\\s*\\(\\s*session\\s*,\\s*c\\s*\\('
+  )
+
+  violations <- character(0)
+
+  for (file_name in names(boot_texts)) {
+    for (pattern in forbidden_patterns) {
+      if (grepl(pattern, boot_texts[[file_name]], perl = TRUE)) {
+        violations <- c(violations, paste(file_name, pattern, sep = " -> "))
+      }
+    }
+  }
+
+  expect_equal(
+    violations,
+    character(0),
+    info = paste(
+      "Boot dosyaları session_runtime_store_* yardımcılarını kullanmalıdır:",
+      paste(violations, collapse = ", ")
+    )
   )
 })
