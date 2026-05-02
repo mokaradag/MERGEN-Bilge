@@ -11,6 +11,12 @@ source(
   local = globalenv()
 )
 
+source(
+  file.path(repo_root, "R", "server_runtime_function_slot.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 .fake_runtime_session <- function() {
   list(
     userData = new.env(parent = emptyenv()),

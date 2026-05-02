@@ -102,6 +102,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 	  "R/helpers_llm_worker.R",
 	  "R/server_init_user_session.R",
 	  "R/server_runtime_context.R",
+	  "R/server_runtime_function_slot.R",
 	  "R/server_module_wiring.R",
 	  "R/server_handler_true_streaming.R",
 	  "R/server_send_message.R",
@@ -339,9 +340,8 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     "chat_persistence <- serverBindChatPersistenceModules(",
     "runtime_ctx <- chat_persistence$runtime_ctx",
     "saved_chats_data <- chat_persistence$saved_chats_data",
-    "runtime_ctx <- serverRuntimeAttachChat(",
-    "cache_mcp_file_locally_fn = runtime_ctx$cache$cache_mcp_file_locally",
-    "update_mcp_registry_snapshot_fn = runtime_ctx$cache$update_mcp_registry_snapshot"
+    "chat_engine <- serverBindChatEngineRuntime(",
+    "runtime_ctx <- chat_engine$runtime_ctx"
   )
 
   server_bulunanlar <- vapply(
@@ -370,7 +370,12 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     "download_outputs_init_fn = downloadOutputsInit",
     "history_server_fn = historyServer",
     "message_search_init_fn = messageSearchInit",
-    "serverRuntimeAttachRefreshableModule("
+    "serverRuntimeAttachRefreshableModule(",
+    "serverBindChatEngineRuntime <- function(",
+    "runtime_ctx <- serverRuntimeAttachChat(",
+    "serverRuntimeCreateFunctionSlot(",
+    "cache_mcp_file_locally_fn = cache$cache_mcp_file_locally",
+    "update_mcp_registry_snapshot_fn = cache$update_mcp_registry_snapshot"
   )
 
   wiring_bulunanlar <- vapply(
