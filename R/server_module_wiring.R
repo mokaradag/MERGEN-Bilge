@@ -186,6 +186,7 @@ serverBindMediaModules <- function(input,
 }
 
 serverBindFilePreludeModules <- function(session,
+                                         runtime_ctx = NULL,
                                          file_preview_server_fn = filePreviewServer,
                                          create_followup_tool_fn = create_followup_suggestions_tool,
                                          followup_suggestions_server_fn = followupSuggestionsServer,
@@ -208,11 +209,25 @@ serverBindFilePreludeModules <- function(session,
 
   init_docx_preview_js_fn(session)
 
-  list(
+  result <- list(
     filePreview = filePreview,
     fallback_followup_tool = fallback_followup_tool,
     followup_tools = followup_tools
   )
+
+  if (!is.null(runtime_ctx)) {
+    .server_wiring_require_context(
+      runtime_ctx,
+      "serverBindFilePreludeModules"
+    )
+
+    result$runtime_ctx <- serverRuntimeAttachFilePrelude(
+      runtime_ctx,
+      result
+    )
+  }
+
+  result
 }
 
 serverBindFileManagerRuntime <- function(runtime_ctx,
@@ -259,6 +274,11 @@ serverBindFileManagerRuntime <- function(runtime_ctx,
     expose_session_key = "file_manager_data",
     observe_event_fn = observe_event_fn,
     req_fn = req_fn
+  )
+
+  runtime_ctx <- serverRuntimeAttachFileManager(
+    ctx = runtime_ctx,
+    file_manager_data = file_manager_data
   )
 
   list(

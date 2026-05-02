@@ -136,6 +136,81 @@ test_that("serverRuntimeAttachState reaktif durum sözleşmesini doğrular", {
   expect_identical(ctx$state, state_bundle)
 })
 
+test_that("serverRuntimeAttachFilePrelude dosya ön hazırlık sözleşmesini doğrular", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session()
+  )
+
+  file_prelude <- list(
+    filePreview = list(id = "file_preview"),
+    fallback_followup_tool = list(generate = function(...) list()),
+    followup_tools = list(generate = function(...) list())
+  )
+
+  out <- serverRuntimeAttachFilePrelude(ctx, file_prelude)
+
+  expect_identical(out, ctx)
+
+  file_runtime <- serverRuntimeRequireFileRuntime(
+    ctx,
+    require_prelude = TRUE,
+    require_manager = FALSE
+  )
+
+  expect_identical(file_runtime$filePreview, file_prelude$filePreview)
+  expect_true(is.function(file_runtime$fallback_followup_tool$generate))
+  expect_true(is.function(file_runtime$followup_tools$generate))
+
+  expect_error(
+    serverRuntimeRequireFileRuntime(
+      ctx,
+      require_prelude = TRUE,
+      require_manager = TRUE
+    ),
+    "file_manager_data"
+  )
+})
+
+test_that("serverRuntimeAttachFileManager dosya yöneticisi sözleşmesini doğrular", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session()
+  )
+
+  file_manager_data <- list(
+    refresh_persisted_files = function(reason = NULL) reason,
+    file_contents = function(...) list()
+  )
+
+  out <- serverRuntimeAttachFileManager(
+    ctx,
+    file_manager_data = file_manager_data
+  )
+
+  expect_identical(out, ctx)
+
+  file_runtime <- serverRuntimeRequireFileRuntime(
+    ctx,
+    require_prelude = FALSE,
+    require_manager = TRUE
+  )
+
+  expect_identical(file_runtime$file_manager_data, file_manager_data)
+
+  expect_error(
+    serverRuntimeAttachFileManager(
+      ctx,
+      file_manager_data = list(file_contents = function(...) list())
+    ),
+    "refresh_persisted_files"
+  )
+})
+
 test_that("serverRuntimeAttachChat sohbet runtime sözleşmesini doğrular", {
   ctx <- serverRuntimeContextInit(
     session = .fake_runtime_session(),

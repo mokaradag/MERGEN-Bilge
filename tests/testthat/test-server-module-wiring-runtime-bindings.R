@@ -80,6 +80,53 @@ source(
   )
 }
 
+test_that("serverBindFilePreludeModules dosya ön hazırlığını runtime context'e bağlar", {
+  session <- .fake_wiring_session()
+  runtime_ctx <- .fake_wiring_runtime_context(session = session)
+
+  init_called <- FALSE
+
+  fake_file_preview_server <- function(id) {
+    list(id = id)
+  }
+
+  fake_create_followup_tool <- function() {
+    list(generate = function(...) list(source = "fallback"))
+  }
+
+  fake_followup_suggestions_server <- function(id) {
+    list(generate = function(...) list(source = id))
+  }
+
+  fake_init_docx_preview_js <- function(session) {
+    init_called <<- TRUE
+    invisible(TRUE)
+  }
+
+  out <- serverBindFilePreludeModules(
+    session = session,
+    runtime_ctx = runtime_ctx,
+    file_preview_server_fn = fake_file_preview_server,
+    create_followup_tool_fn = fake_create_followup_tool,
+    followup_suggestions_server_fn = fake_followup_suggestions_server,
+    init_docx_preview_js_fn = fake_init_docx_preview_js
+  )
+
+  expect_true(init_called)
+  expect_true(is_server_runtime_context(out$runtime_ctx))
+  expect_identical(out$filePreview, runtime_ctx$file$filePreview)
+  expect_identical(out$followup_tools, runtime_ctx$file$followup_tools)
+
+  file_runtime <- serverRuntimeRequireFileRuntime(
+    out$runtime_ctx,
+    require_prelude = TRUE,
+    require_manager = FALSE
+  )
+
+  expect_identical(file_runtime$filePreview$id, "file_preview")
+  expect_true(is.function(file_runtime$followup_tools$generate))
+})
+
 test_that("serverBindFileManagerRuntime dosya yöneticisini runtime context'e bağlar", {
   session <- .fake_wiring_session()
   runtime_ctx <- .fake_wiring_runtime_context(session = session)
@@ -126,9 +173,18 @@ test_that("serverBindFileManagerRuntime dosya yöneticisini runtime context'e ba
   expect_true(called)
   expect_true(is_server_runtime_context(out$runtime_ctx))
   expect_identical(out$file_manager_data, runtime_ctx$modules$file_manager)
+  expect_identical(out$file_manager_data, out$runtime_ctx$file$file_manager_data)
   expect_identical(session$userData$file_manager_data, out$file_manager_data)
   expect_true(is.function(out$file_manager_data$refresh_persisted_files))
   expect_true(is.function(out$file_manager_data$file_contents))
+
+  file_runtime <- serverRuntimeRequireFileRuntime(
+    out$runtime_ctx,
+    require_prelude = FALSE,
+    require_manager = TRUE
+  )
+
+  expect_identical(file_runtime$file_manager_data, out$file_manager_data)
 })
 
 test_that("serverBindFileManagerRuntime eksik dosya yöneticisi sözleşmesini erken yakalar", {

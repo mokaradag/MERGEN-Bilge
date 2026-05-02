@@ -140,6 +140,7 @@ serverRuntimeContextInit <- function(session,
 
   ctx$refs <- NULL
   ctx$state <- NULL
+  ctx$file <- NULL
   ctx$chat <- NULL
   ctx$modules <- list()
 
@@ -191,6 +192,104 @@ serverRuntimeAttachState <- function(ctx, state_bundle) {
   ctx$state <- state_bundle
 
   invisible(ctx)
+}
+
+serverRuntimeAttachFilePrelude <- function(ctx, file_prelude) {
+  .server_runtime_require_context(ctx)
+
+  .server_runtime_require_values(
+    file_prelude,
+    c("filePreview", "fallback_followup_tool", "followup_tools"),
+    "file_prelude"
+  )
+
+  .server_runtime_require_functions(
+    file_prelude$fallback_followup_tool,
+    c("generate"),
+    "file_prelude$fallback_followup_tool"
+  )
+
+  .server_runtime_require_functions(
+    file_prelude$followup_tools,
+    c("generate"),
+    "file_prelude$followup_tools"
+  )
+
+  if (is.null(ctx$file)) {
+    ctx$file <- list()
+  }
+
+  ctx$file$filePreview <- file_prelude$filePreview
+  ctx$file$fallback_followup_tool <- file_prelude$fallback_followup_tool
+  ctx$file$followup_tools <- file_prelude$followup_tools
+
+  invisible(ctx)
+}
+
+serverRuntimeAttachFileManager <- function(ctx, file_manager_data) {
+  .server_runtime_require_context(ctx)
+
+  .server_runtime_require_functions(
+    file_manager_data,
+    c("refresh_persisted_files", "file_contents"),
+    "file_manager_data"
+  )
+
+  if (is.null(ctx$file)) {
+    ctx$file <- list()
+  }
+
+  ctx$file$file_manager_data <- file_manager_data
+
+  invisible(ctx)
+}
+
+serverRuntimeRequireFileRuntime <- function(ctx,
+                                            require_prelude = TRUE,
+                                            require_manager = FALSE) {
+  .server_runtime_require_context(ctx)
+
+  if (is.null(ctx$file)) {
+    .server_runtime_stop(
+      "serverRuntimeRequireFileRuntime: Dosya runtime bağlamı henüz kurulmadı."
+    )
+  }
+
+  if (isTRUE(require_prelude)) {
+    .server_runtime_require_values(
+      ctx$file,
+      c("filePreview", "fallback_followup_tool", "followup_tools"),
+      "file_runtime"
+    )
+
+    .server_runtime_require_functions(
+      ctx$file$fallback_followup_tool,
+      c("generate"),
+      "file_runtime$fallback_followup_tool"
+    )
+
+    .server_runtime_require_functions(
+      ctx$file$followup_tools,
+      c("generate"),
+      "file_runtime$followup_tools"
+    )
+  }
+
+  if (isTRUE(require_manager)) {
+    .server_runtime_require_values(
+      ctx$file,
+      c("file_manager_data"),
+      "file_runtime"
+    )
+
+    .server_runtime_require_functions(
+      ctx$file$file_manager_data,
+      c("refresh_persisted_files", "file_contents"),
+      "file_runtime$file_manager_data"
+    )
+  }
+
+  ctx$file
 }
 
 serverRuntimeAttachChat <- function(ctx, chat_runtime) {

@@ -112,12 +112,21 @@ server <- function(input, output, session) {
   # BÖLÜM 6: DOSYA YÖNETİMİ VE ÖNİZLEME
   # ============================================================================
   file_prelude_modules <- serverBindFilePreludeModules(
-    session = session
+    session = session,
+    runtime_ctx = runtime_ctx
   )
 
-  filePreview <- file_prelude_modules$filePreview
-  fallback_followup_tool <- file_prelude_modules$fallback_followup_tool
-  followup_tools <- file_prelude_modules$followup_tools
+  runtime_ctx <- file_prelude_modules$runtime_ctx
+
+  file_runtime <- serverRuntimeRequireFileRuntime(
+    runtime_ctx,
+    require_prelude = TRUE,
+    require_manager = FALSE
+  )
+
+  filePreview <- file_runtime$filePreview
+  fallback_followup_tool <- file_runtime$fallback_followup_tool
+  followup_tools <- file_runtime$followup_tools
   
   # ============================================================================
   # BÖLÜM 7: ÇEKİRDEK REAKTİF DEĞERLER VE DURUM YÖNETİMİ
@@ -189,7 +198,14 @@ server <- function(input, output, session) {
 	)
 
 	runtime_ctx <- file_manager_runtime$runtime_ctx
-	file_manager_data <- file_manager_runtime$file_manager_data
+
+	file_runtime <- serverRuntimeRequireFileRuntime(
+	  runtime_ctx,
+	  require_prelude = TRUE,
+	  require_manager = TRUE
+	)
+
+	file_manager_data <- file_runtime$file_manager_data
   
   # Sohbet UI gözlemcilerini başlat (values artık mevcut)
   chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
