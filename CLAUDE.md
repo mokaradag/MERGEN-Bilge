@@ -139,11 +139,14 @@ It currently covers only:
 - `user_session` / live current-user providers / identity display accessors / auth-readiness provider
 - `forward_refs`
 - `state_bundle`
+- file runtime objects in `runtime_ctx$file`, including file preview/follow-up prelude handles and the File Manager module handle
 - `chat_runtime`
 - narrowly registered module return objects in `runtime_ctx$modules`
 - SSO auth-ready callback registration through `serverRuntimeOnSsoAuthReady(...)`, registered-module refresh wiring through `serverRuntimeRefreshModuleOnSsoAuthReady(...)`, and the higher-level refreshable-module wiring helper `serverRuntimeAttachRefreshableModule(...)`
 
 Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules. `runtime_ctx$modules` is not a general global registry; use it narrowly for module return objects that need a validated runtime contract, such as File Manager and Image Gallery post-auth refresh wiring.
+
+The file subsystem now has a focused FileRuntime boundary under `runtime_ctx$file`. Use `serverRuntimeAttachFilePrelude(...)`, `serverRuntimeAttachFileManager(...)`, and `serverRuntimeRequireFileRuntime(...)` for file prelude and File Manager handles instead of passing those objects through ad hoc local variables or direct `session$userData` reads. This boundary is intentionally narrow: it is for file-preview/follow-up prelude objects and `file_manager_data`, not a general registry for every file-related helper.
 
 When code needs to read a registered module from the context, prefer `serverRuntimeGetModule(...)` over direct `ctx$modules$...` access. This keeps missing-module and missing-function failures explicit and testable. In `server.R`, post-auth module refreshes should normally use `serverRuntimeRefreshModuleOnSsoAuthReady(...)` rather than custom callbacks that manually inspect `ctx$modules`.
 
@@ -159,6 +162,20 @@ settings_bundle <- serverBindSettingsAndRefs(
 )
 
 runtime_ctx <- settings_bundle$runtime_ctx
+
+file_prelude_modules <- serverBindFilePreludeModules(
+  session = session,
+  runtime_ctx = runtime_ctx
+)
+
+runtime_ctx <- file_prelude_modules$runtime_ctx
+
+file_runtime <- serverRuntimeRequireFileRuntime(
+  runtime_ctx,
+  require_prelude = TRUE,
+  require_manager = FALSE
+)
+
 runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
 ```
@@ -176,7 +193,14 @@ file_manager_runtime <- serverBindFileManagerRuntime(
 )
 
 runtime_ctx <- file_manager_runtime$runtime_ctx
-file_manager_data <- file_manager_runtime$file_manager_data
+
+file_runtime <- serverRuntimeRequireFileRuntime(
+  runtime_ctx,
+  require_prelude = TRUE,
+  require_manager = TRUE
+)
+
+file_manager_data <- file_runtime$file_manager_data
 
 gallery_runtime <- serverBindImageGalleryRuntime(
   runtime_ctx = runtime_ctx,
@@ -186,6 +210,8 @@ gallery_runtime <- serverBindImageGalleryRuntime(
 runtime_ctx <- gallery_runtime$runtime_ctx
 gallery_data <- gallery_runtime$gallery_data
 ```
+
+Keep the compatibility exports intact unless a later refactor explicitly removes them. `serverBindFileManagerRuntime(...)` still registers File Manager in `runtime_ctx$modules$file_manager` and exposes `session$userData$file_manager_data` for older downstream code, while `runtime_ctx$file$file_manager_data` is the preferred boundary for new server wiring.
 
 Use `serverRuntimeAttachRefreshableModule(...)` directly only inside runtime/wiring helper layers or for a genuinely new refreshable module pattern that does not fit an existing wiring helper.
 
@@ -295,8 +321,8 @@ Responsibilities:
 * `serverBindServiceModules(...)`: binds performance stats, health, and support modules while preserving the live `current_user_id_provider`.
 * `serverBindSettingsAndRefs(...)`: binds settings, forward references, Bilge Yolaç startup wiring, visual settings sync, chat output headers, and `load_chat_in_progress`.
 * `serverBindMediaModules(...)`: binds feedback, AI processing, TTS, TTS visualizer, music handlers, AI Expert, and STT.
-* `serverBindFilePreludeModules(...)`: binds file preview, fallback follow-up tools, follow-up module tools, and DOCX preview JavaScript.
-* `serverBindFileManagerRuntime(...)`: binds `fileManagerServer(...)`, injects the live user-id provider and auth-readiness provider, registers the module through `ServerRuntimeContext`, wires one-time SSO-ready persisted-file refresh, and preserves the explicit `session$userData$file_manager_data` compatibility export.
+* `serverBindFilePreludeModules(...)`: binds file preview, fallback follow-up tools, follow-up module tools, DOCX preview JavaScript, and optionally attaches these prelude handles to `runtime_ctx$file` when a runtime context is supplied.
+* `serverBindFileManagerRuntime(...)`: binds `fileManagerServer(...)`, injects the live user-id provider and auth-readiness provider, registers the module through `ServerRuntimeContext`, attaches `file_manager_data` to the focused FileRuntime boundary, wires one-time SSO-ready persisted-file refresh, and preserves the explicit `session$userData$file_manager_data` compatibility export.
 * `serverBindImageGalleryRuntime(...)`: binds `imageGalleryServer(...)` with the live user-id provider and registers the gallery refresh function through `ServerRuntimeContext`.
 
 Do not move these direct calls back into `server.R`:
@@ -326,6 +352,8 @@ imageGalleryServer(...)
 ```
 
 `server.R` should delegate to the wiring helpers and then unpack only the returned handles it needs. The helper must preserve existing module IDs, current initialization order, and user/provider behavior. In particular, user-scoped service bindings must keep using the live provider rather than a startup user-id snapshot.
+
+For file-related wiring, prefer `serverRuntimeRequireFileRuntime(...)` after the relevant wiring helper has attached file prelude or File Manager objects. Do not reintroduce direct `filePreview <- ...`, `followup_tools <- ...`, or `file_manager_data <- ...` propagation patterns when the value is already available through `runtime_ctx$file`.
 
 Protected by:
 

@@ -282,10 +282,13 @@ Bu yardımcılar mevcut modül ID’lerini, mevcut başlatma sırasını ve canl
 
 Dosya Yönetimi ve Görsel Galerisi gibi SSO sonrası yenilenmesi gereken içerik modülleri de artık bu sınırın parçasıdır. `serverBindFileManagerRuntime()` dosya yöneticisini oluşturur, `runtime_ctx` içine doğrulanmış modül olarak kaydeder, SSO hazır olduğunda kalıcı dosya yenilemesini bağlar ve geriye dönük uyumluluk için `session$userData$file_manager_data` değerini kontrollü biçimde açık eder. `serverBindImageGalleryRuntime()` ise görsel galerisini aynı runtime-context sözleşmesiyle bağlar ve SSO sonrası galeri yenilemesini merkezi helper üzerinden kurar. Böylece `server.R` içinde doğrudan `fileManagerServer()` / `imageGalleryServer()` çağrıları ve elle yazılmış refresh orkestrasyonu tekrar birikmez.
 
+Son runtime-context güncellemesiyle Dosya Yönetimi hattı ayrıca açık bir **FileRuntime** sınırına alınmıştır. `serverBindFilePreludeModules()` dosya önizleme, fallback takip sorusu aracı ve takip sorusu modülünü `runtime_ctx$file` altına bağlayabilir; `serverBindFileManagerRuntime()` ise `file_manager_data` nesnesini aynı FileRuntime sınırına ekler. `server.R`, dosya ön hazırlığı ve Dosya Yönetimi nesnelerini artık doğrudan dağınık yerel değişkenlerden değil, `serverRuntimeRequireFileRuntime(...)` sözleşmesi üzerinden alır. Geriye dönük uyumluluk için `runtime_ctx$modules$file_manager` ve `session$userData$file_manager_data` açıkları korunmuştur; amaç davranış değiştirmek değil, dosya alt sistemindeki gizli başlatma sırası ve state yayılımı riskini azaltmaktır.
+
 Bu sınır aşağıdaki testlerle korunur:
 
 ```r
 testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
+testthat::test_file("tests/testthat/test-server-runtime-context.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
