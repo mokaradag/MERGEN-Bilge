@@ -170,6 +170,45 @@ test_that("kritik yardımcılar modüllerden önce yükleniyor", {
   expect_lt(pos("R/helpers_health_checks.R"), pos("R/module_health.R"))
 })
 
+test_that("Bilge Yolaç user guard ve server setup yardımcıları modülden önce yükleniyor", {
+  global_text <- .read_repo_text_manifest_contract("global.R")
+  paths <- .extract_safe_source_paths(global_text)
+
+  pos <- function(path) match(path, paths)
+
+  expect_false(is.na(pos("R/helpers_claude_code_user_guard.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_upload_folder.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_dir_ui.R")))
+  expect_false(is.na(pos("R/helpers_claude_code.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_server_setup.R")))
+  expect_false(is.na(pos("R/module_claude_code.R")))
+
+  expect_lt(
+    pos("R/helpers_claude_code_user_guard.R"),
+    pos("R/helpers_claude_code_server_setup.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code_upload_folder.R"),
+    pos("R/helpers_claude_code_server_setup.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code_dir_ui.R"),
+    pos("R/helpers_claude_code_server_setup.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code.R"),
+    pos("R/helpers_claude_code_server_setup.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code_server_setup.R"),
+    pos("R/module_claude_code.R")
+  )
+})
+
 test_that("admin geri bildirim helper dosyası modülden önce yükleniyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
   paths <- .extract_safe_source_paths(global_text)

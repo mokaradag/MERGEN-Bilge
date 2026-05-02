@@ -146,6 +146,43 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   )
 })
 
+test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  cc_row <- report[
+    grepl("(^|/)R/module_claude_code\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
+  expect_equal(
+    nrow(cc_row),
+    1L,
+    info = "R/module_claude_code.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_cc_lines <- .as_int_env("MERGEN_TEST_MAX_CLAUDE_CODE_LINES", 1050L)
+
+  expect_true(
+    cc_row$lines[1] <= max_cc_lines,
+    info = sprintf(
+      "module_claude_code.R setup extraction sonrası küçülmüş kalmalıdır: %d > %d.",
+      cc_row$lines[1],
+      max_cc_lines
+    )
+  )
+})
+
 test_that("helpers_llm_sse.R akış I/O ayrımı sonrası ince kalır", {
   repo_root <- .find_repo_root_maint_ratchet()
   old_wd <- getwd()

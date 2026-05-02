@@ -14,13 +14,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Etkin kullanıcı kimliğini her kullanım anında oturumdan çöz.
-    resolve_current_user_id <- function() {
-      resolve_effective_user_id(
-        session = session,
-        current_user_id = current_user_id
-      )
-    }
+    # Etkin kullanıcı kimliği Bilge Yolaç setup yardımcıları içinde canlı
+    # sağlayıcıyla çözülür; SSO hazır olmadan user_id=0 ile devam edilmez.
 
     # Kullanıcının gerçek yükleme klasörünü çözme sorumluluğu
     # R/helpers_claude_code_upload_folder.R içinde tutulur.
@@ -43,337 +38,24 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     )
 	
     dir_refresh_guard <- cc_create_dir_refresh_guard()
-
-    # --- Uygulama başladığında CLI yolunu otomatik tespit et ---
-    observe({
-      yol <- resolve_claude_cli_path(claude_code_config$cli_path)
-      rv$cli_path_resolved <- yol
-    }, priority = 100)
-
-    # --- SSO modunda varsayılan çalışma dizinini kullanıcının profiline ayarla ---
-    observe({
-      req(isTRUE(SSO_ENABLED))
-      # Yapılandırmada açıkça bir yol belirtilmemişse kullanıcı profilini kullan
-      if (nzchar(claude_code_config$default_workdir)) return()
-      kullanici <- session$userData$system_username
-      req(!is.null(kullanici), nzchar(kullanici))
-      if (.Platform$OS.type == "windows") {
-        profil <- file.path("C:/Users", kullanici)
-      } else {
-        profil <- file.path("/home", kullanici)
-      }
-      if (dir.exists(profil)) {
-        updateTextInput(session, "workdir", value = normalizePath(profil, winslash = "/"))
-      }
-    }, priority = 90)
-
-    # --- Otomatik bağlantı testi (sayfa görüntülendiğinde, başlangıçta değil) ---
-    # Uygulama başlangıcını yavaşlatmamak için sadece CLI durumunu kontrol et,
-    # tam bağlantı testini kullanıcı sayfayı görüntülediğinde çalıştır.
-    observe({
-      req(is.null(rv$connection_ok))
-      cli_yolu <- rv$cli_path_resolved
-      if (is.null(cli_yolu)) {
-        rv$connection_ok <- FALSE
-        return()
-      }
-      # Sadece CLI erişilebilirliğini kontrol et (hızlı, --version ile)
-      durum <- tryCatch({
-        check_claude_code_status(cli_yolu)
-      }, error = function(e) {
-        list(installed = FALSE)
-      })
-      if (durum$installed) {
-        rv$connection_ok <- TRUE
-        log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI erişilebilir:", durum$version))
-      } else {
-        rv$connection_ok <- FALSE
-        temiz_hata <- gsub("[{}]", "", durum$error %||% "")
-        log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "CLI erişilemez:", temiz_hata))
-      }
-    }, priority = 50)
-
-    # --- Yapılandırma sayfasından bağlantı testi sonucunu dinle ---
-    observe({
-      req(!is.null(settings_data))
-      # Yapılandırma sayfasında test başarılı olduysa güncelle
-      zaman_asimi <- settings_data$claude_code_timeout
-      if (!is.null(zaman_asimi)) {
-        # Zaman aşımı ayarı değiştiğinde not al (iletişim aktif)
-      }
-    })
-
-    # --- Yapılandırma sayfasından bağlantı testi sonucu geldiğinde güncelle ---
-    observe({
-      req(!is.null(settings_data))
-      yapilandirma_sonucu <- settings_data$claude_code_connection_ok
-      if (!is.null(yapilandirma_sonucu)) {
-        rv$connection_ok <- yapilandirma_sonucu
-      }
-    })
-
-    # --- Aktif karakter bilgisini al ---
-    get_active_character <- cc_create_active_character_reactive(settings_data)
-
-    # --- Karakter değiştiğinde temayı güncelle ---
-    observe({
-      karakter <- get_active_character()
-      session$sendCustomMessage(
-        type = "cc-update-theme",
-        message = list(
-          characterId = karakter$id,
-          accentColor = karakter$accent,
-          accentHover = karakter$accent_hover %||% karakter$accent,
-          displayName = karakter$display_name
-        )
-      )
-    })
-
-    # --- Yazı tipi boyutu değiştiğinde Claude Code sayfasına uygula ---
-    observe({
-      req(!is.null(settings_data))
-      boyut <- settings_data$font_size
-      if (!is.null(boyut) && nzchar(boyut)) {
-        session$sendCustomMessage(
-          type = "cc-update-font-size",
-          message = list(size = boyut)
-        )
-      }
-    })
-
-    # --- Kullanıcı adını belirle ---
-    kullanici_adi <- cc_create_user_first_name_reactive(
+	
+    server_setup <- cc_bind_server_setup(
+      input = input,
+      output = output,
       session = session,
-      user_first_name = user_first_name
+      ns = ns,
+      rv = rv,
+      current_user_id = current_user_id,
+      settings_data = settings_data,
+      user_first_name = user_first_name,
+      dir_refresh_guard = dir_refresh_guard
     )
 
-    # --- Bağlantı Durumu Rozeti ---
-    output$connection_status_badge <- renderUI({
-      durum <- rv$connection_ok
-      if (is.null(durum)) {
-        tags$span(class = "cc-status-badge cc-status-checking",
-                  icon("spinner", class = "fa-spin"), "Kontrol ediliyor...")
-      } else if (isTRUE(durum)) {
-        tags$span(class = "cc-status-badge cc-status-ok",
-                  icon("check-circle"), "Bağlı")
-      } else {
-        tags$span(class = "cc-status-badge cc-status-error",
-                  icon("times-circle"), "Bağlantı Yok")
-      }
-    })
-
-    # --- Aktif Karakter Göstergesi ---
-    output$active_character_indicator <- renderUI({
-      karakter <- get_active_character()
-      tags$span(
-        class = "cc-character-badge",
-        style = paste0("background-color: ", karakter$accent, ";"),
-        karakter$display_name
-      )
-    })
-
-    # --- Kullanıcının yükleme klasörüne yönlendirme ---
-    observeEvent(input$go_upload_folder, {
-      user_id <- resolve_current_user_id()
-      yukle_dizin <- cc_resolve_real_upload_folder(
-        user_id,
-        session_file_registry = session$userData$current_session_files
-      )
-
-      if (is.null(yukle_dizin) || !nzchar(yukle_dizin)) {
-        showNotification(
-          "Kullanıcının yükleme klasörü bulunamadı.",
-          type = "warning",
-          duration = 5
-        )
-        return()
-      }
-
-      updateTextInput(session, "workdir", value = yukle_dizin)
-
-      log_info(paste(
-        CLAUDE_CODE_LOG_PREFIX,
-        "Yükleme klasörüne gidildi:",
-        yukle_dizin,
-        "(user_id=", user_id, ")"
-      ))
-    })
-
-    # --- Yerel klasör yükleme (kullanıcının kendi bilgisayarından) ---
-    observeEvent(input$yerel_klasor, {
-      dosyalar <- input$yerel_klasor
-      req(nrow(dosyalar) > 0)
-
-      # Göreceli yolları JavaScript'ten al
-      yollar_json <- input$yerel_klasor_yollar
-      yollar <- if (!is.null(yollar_json) && nzchar(yollar_json)) {
-        tryCatch(jsonlite::fromJSON(yollar_json), error = function(e) NULL)
-      }
-
-      # Kullanıcıya özel çalışma alanı oluştur
-      user_id <- resolve_current_user_id()
-      calisma_alani <- get_user_workspace(user_id)
-
-      # Dosyaları dizin yapısını koruyarak kopyala
-      dosya_sayisi <- 0L
-      for (i in seq_len(nrow(dosyalar))) {
-        # webkitRelativePath varsa kullan, yoksa düz dosya adı
-        goreceli <- if (!is.null(yollar) && length(yollar) >= i) {
-          yollar[i]
-        } else {
-          dosyalar$name[i]
-        }
-
-        hedef <- file.path(calisma_alani, goreceli)
-        hedef_dizin <- dirname(hedef)
-        if (!dir.exists(hedef_dizin)) dir.create(hedef_dizin, recursive = TRUE, showWarnings = FALSE)
-        file.copy(dosyalar$datapath[i], hedef, overwrite = TRUE)
-        dosya_sayisi <- dosya_sayisi + 1L
-      }
-
-      # Çalışma dizinini güncelle
-      updateTextInput(session, "workdir", value = normalizePath(calisma_alani, winslash = "/"))
-      showNotification(
-        paste0(dosya_sayisi, " dosya yerel bilgisayardan yüklendi."),
-        type = "message", duration = 5
-      )
-      log_info(paste(CLAUDE_CODE_LOG_PREFIX, dosya_sayisi, "dosya yerel klasörden yüklendi:", calisma_alani))
-    })
-
-    # --- Model değiştiğinde oturumu sıfırla ---
-    # Farklı bir modele geçildiğinde önceki oturumun bağlamı geçersiz olur.
-    # Yeni model ile temiz bir oturum başlatılmalıdır.
-    observeEvent(input$model, {
-      if (!is.null(rv$current_model) && !identical(rv$current_model, input$model)) {
-        rv$cli_session_id <- NULL
-        rv$conversation_context <- list()
-        log_info(paste(CLAUDE_CODE_LOG_PREFIX,
-                       "Model değişti, oturum sıfırlandı. Yeni model:", input$model))
-      }
-      rv$current_model <- input$model
-    }, ignoreInit = TRUE)
-
-    # --- Senaryo Düğmeleri ---
-    lapply(claude_code_scenarios, function(senaryo) {
-      observeEvent(input[[paste0("scenario_", senaryo$id)]], {
-        if (nzchar(senaryo$sablon)) {
-          # textarea güncelleme (JavaScript ile)
-          shinyjs::runjs(sprintf(
-            "var el = document.getElementById('%s'); if(el) { el.value = %s; el.focus(); }",
-            ns("prompt_input"),
-            jsonlite::toJSON(senaryo$sablon, auto_unbox = TRUE)
-          ))
-        }
-      })
-    })
-
-    # --- Dizin İçeriğini Göster (tıklanabilir klasörlerle) ---
-    # dizin parametresi: later::later gibi reaktif olmayan bağlamlardan
-    # çağrıldığında input$workdir yerine kullanılır.
-    observe_dir_contents <- function(dizin = NULL) {
-      refresh_id <- dir_refresh_guard$next_id()
-      yol <- dizin %||% isolate(input$workdir)
-
-      if (is.null(yol) || !nzchar(yol)) {
-        output$dir_contents_ui <- renderUI({
-          if (!dir_refresh_guard$is_latest(refresh_id)) return(NULL)
-          tags$p(class = "cc-dir-empty", "Proje dizini belirtilmedi.")
-        })
-        return()
-      }
-
-      icerik <- list_directory_contents(
-        yol,
-        user_id = resolve_current_user_id()
-      )
-
-      if (!dir_refresh_guard$is_latest(refresh_id)) {
-        return(invisible(FALSE))
-      }
-
-      resolved_yol <- icerik$resolved_path %||% yol
-
-      # Mevcut dizin yolunu güncelle
-      # Not: shinyjs::runjs yerine sendCustomMessage kullanılır,
-      # çünkü bu fonksiyon later::later bağlamından da çağrılabilir.
-      session$sendCustomMessage(
-        type = "cc-update-element-text",
-        message = list(
-          elementId = ns("dir_current_path"),
-          text = resolved_yol
-        )
-      )
-
-      output$dir_contents_ui <- renderUI({
-        if (!dir_refresh_guard$is_latest(refresh_id)) return(NULL)
-        cc_build_dir_contents_ui(icerik, ns = ns)
-      })
-
-      invisible(TRUE)
-    }
-
-    # Dizin gezgini: klasöre tıklama
-    observeEvent(input$dir_navigate, {
-      req(input$dir_navigate)
-      yeni_yol <- input$dir_navigate
-      if (dir.exists(yeni_yol)) {
-        updateTextInput(session, "workdir",
-                        value = normalizePath(yeni_yol, winslash = "/", mustWork = FALSE))
-      }
-    })
-
-    # Üst dizine git düğmesi
-    observeEvent(input$dir_go_up, {
-      yol <- input$workdir
-      if (!is.null(yol) && nzchar(yol)) {
-        ust <- dirname(yol)
-        if (dir.exists(ust) && ust != yol) {
-          updateTextInput(session, "workdir",
-                          value = normalizePath(ust, winslash = "/", mustWork = FALSE))
-        }
-      }
-    })
-
-    observeEvent(input$refresh_dir, {
-      observe_dir_contents()
-    })
-
-    observeEvent(input$workdir, {
-      # Çalışma dizini değiştiğinde oturumu sıfırla
-      rv$cli_session_id <- NULL
-      rv$conversation_context <- list()
-      observe_dir_contents()
-    }, ignoreInit = TRUE)
-
-    # --- Çıktıyı Temizle ---
-    observeEvent(input$clear_output, {
-      rv$output_history <- list()
-      rv$has_messages <- FALSE
-      rv$conversation_context <- list()
-      rv$cli_session_id <- NULL
-      session$sendCustomMessage(
-        type = "cc-clear-output",
-        message = list(
-          target = ns("output_area"),
-          welcomeId = ns("welcome_screen"),
-          statusId = ns("status_text"),
-          durationId = ns("duration_text")
-        )
-      )
-    })
-
-    # --- Düşünme mesajı güncelleme ---
-    observeEvent(input$thinking_tick, {
-      karakter <- get_active_character()
-      yeni_mesaj <- get_thinking_message(karakter$id)
-      session$sendCustomMessage(
-        type = "cc-update-thinking-text",
-        message = list(
-          textId = ns("thinking_text"),
-          message = yeni_mesaj
-        )
-      )
-    })
+    resolve_current_user_id <- server_setup$resolve_current_user_id
+    ensure_ready_user_id <- server_setup$ensure_ready_user_id
+    get_active_character <- server_setup$get_active_character
+    kullanici_adi <- server_setup$kullanici_adi
+    observe_dir_contents <- server_setup$observe_dir_contents
 
     # --- Ana Komut Çalıştırma (Canlı Akış Destekli) ---
     observeEvent(input$run_command, {
@@ -440,7 +122,25 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       }
 
       # Çalışma dizini yoksa gerçek kullanıcı kimliği ile kullanıcı çalışma alanını kullan.
-      effective_user_id <- resolve_current_user_id()
+      user_check <- ensure_ready_user_id("komut çalıştırma")
+      if (!isTRUE(user_check$ok)) {
+        rv$is_running <- FALSE
+
+        session$sendCustomMessage(
+          type = "cc-add-message",
+          message = list(
+            target = ns("output_area"),
+            type = "error",
+            content = user_check$message,
+            timestamp = format(Sys.time(), "%H:%M:%S"),
+            welcomeId = ns("welcome_screen")
+          )
+        )
+
+        return()
+      }
+
+      effective_user_id <- user_check$user_id
 
       if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
         if (effective_user_id > 0) {
