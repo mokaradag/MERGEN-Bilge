@@ -107,7 +107,7 @@ Identity accessors must be safe outside reactive consumers. When reading `user_c
 
 Never read `sso_state$authenticated` directly during initialization checks such as `is.null(sso_state$authenticated)`. In production SSO, that field is reactive and direct reads can crash the app with “Can't access reactive value outside of reactive consumer.” Watch it with `shiny::observeEvent(sso_state$authenticated, ...)` and read it only inside a reactive consumer/handler.
 
-Post-auth refreshable modules should use the `ServerRuntimeContext` refreshable-module contract instead of ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R`. The low-level combined helper remains `serverRuntimeAttachRefreshableModule(...)`, but File Manager and Image Gallery must be wired through `serverBindFileManagerRuntime(...)` and `serverBindImageGalleryRuntime(...)` in `R/server_module_wiring.R`. Those wiring helpers internally perform validated module attachment, optional SSO-ready refresh registration, and optional compatibility exposure.
+Post-auth refreshable modules should use the `ServerRuntimeContext` refreshable-module contract instead of ad hoc `observeEvent(sso_state$authenticated, ...)` blocks in `server.R`. The low-level combined helper remains `serverRuntimeAttachRefreshableModule(...)`, but File Manager must be wired through `serverBindFileManagerRuntime(...)`, and chat-persistence-related modules must be wired through `serverBindChatPersistenceModules(...)` in `R/server_module_wiring.R`. The chat-persistence helper internally delegates image gallery runtime wiring through `serverBindImageGalleryRuntime(...)` and keeps saved chats, history, gallery refresh, welcome handlers, download outputs, and message search behind one explicit dependency boundary.
 
 File Manager auth readiness must be injected through `auth_ready_provider = runtime_ctx$identity$is_auth_ready`. Do not reintroduce direct File Manager checks against `session$userData$auth_initialized`; that couples persisted-file refresh to SSO timing and can bring back user-id `0` refresh regressions.
 
@@ -121,6 +121,7 @@ tests/testthat/test-server-module-wiring-contract.R
 tests/testthat/test-server-module-wiring-runtime-bindings.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
+tests/testthat/test-server-chat-persistence-wiring-contract.R
 tests/testthat/test-effective-user-id.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-production-contracts.R
@@ -180,7 +181,7 @@ runtime_ctx <- serverRuntimeAttachState(runtime_ctx, ...)
 runtime_ctx <- serverRuntimeAttachChat(runtime_ctx, ...)
 ```
 
-For File Manager and Image Gallery, `server.R` should not call `serverRuntimeAttachRefreshableModule(...)` directly. It should delegate to the focused wiring helpers and unpack the returned runtime context plus module handle:
+For File Manager and chat-persistence-related modules, `server.R` should not call `serverRuntimeAttachRefreshableModule(...)` directly. It should delegate to the focused wiring helpers and unpack the returned runtime context plus module handle:
 
 ```r
 file_manager_runtime <- serverBindFileManagerRuntime(
@@ -202,18 +203,38 @@ file_runtime <- serverRuntimeRequireFileRuntime(
 
 file_manager_data <- file_runtime$file_manager_data
 
-gallery_runtime <- serverBindImageGalleryRuntime(
+For saved chats, history, image gallery, welcome reload, downloads, and message search, `server.R` should delegate to the chat-persistence wiring helper:
+
+chat_persistence <- serverBindChatPersistenceModules(
+  input = input,
+  output = output,
+  session = session,
   runtime_ctx = runtime_ctx,
-  current_user_id_provider = current_user_id_provider
+  values = values,
+  settings_data = settings_data,
+  load_chat_in_progress = load_chat_in_progress,
+  session_files = session_files,
+  filePreview = filePreview,
+  file_manager_data = file_manager_data,
+  current_user_id_provider = current_user_id_provider,
+  user_config_provider = function(default = NULL) {
+    runtime_ctx$identity$get_user_config(default = default)
+  },
+  user_first_name_fn = function(default = "") {
+    current_user_first_name(default = default)
+  },
+  welcome_fns = welcome_fns
 )
 
-runtime_ctx <- gallery_runtime$runtime_ctx
-gallery_data <- gallery_runtime$gallery_data
+runtime_ctx <- chat_persistence$runtime_ctx
+saved_chats_data <- chat_persistence$saved_chats_data
 ```
 
 Keep the compatibility exports intact unless a later refactor explicitly removes them. `serverBindFileManagerRuntime(...)` still registers File Manager in `runtime_ctx$modules$file_manager` and exposes `session$userData$file_manager_data` for older downstream code, while `runtime_ctx$file$file_manager_data` is the preferred boundary for new server wiring.
 
 Use `serverRuntimeAttachRefreshableModule(...)` directly only inside runtime/wiring helper layers or for a genuinely new refreshable module pattern that does not fit an existing wiring helper.
+
+Do not re-expand the saved chats, history, image gallery, welcome handlers, download outputs, or message search wiring back into `server.R`; keep that cluster behind `serverBindChatPersistenceModules(...)`.
 
 Use the lower-level `serverRuntimeAttachModule(...)`, `serverRuntimeRefreshModuleOnSsoAuthReady(...)`, and `serverRuntimeExposeSessionData(...)` helpers only when the combined helper does not fit the case. Do not re-expand the File Manager or Image Gallery wiring back into separate attach/refresh/expose blocks in `server.R`.
 
@@ -294,6 +315,7 @@ The context contract is protected by:
 tests/testthat/test-server-runtime-context.R
 tests/testthat/test-server-boundary-contract.R
 tests/testthat/test-server-live-user-provider-contract.R
+tests/testthat/test-server-chat-persistence-wiring-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-production-contracts.R
 tests/testthat/test-file-manager-module-policy-wiring.R
@@ -314,6 +336,7 @@ serverBindMediaModules(...)
 serverBindFilePreludeModules(...)
 serverBindFileManagerRuntime(...)
 serverBindImageGalleryRuntime(...)
+serverBindChatPersistenceModules(...)
 ```
 
 Responsibilities:
@@ -324,6 +347,7 @@ Responsibilities:
 * `serverBindFilePreludeModules(...)`: binds file preview, fallback follow-up tools, follow-up module tools, DOCX preview JavaScript, and optionally attaches these prelude handles to `runtime_ctx$file` when a runtime context is supplied.
 * `serverBindFileManagerRuntime(...)`: binds `fileManagerServer(...)`, injects the live user-id provider and auth-readiness provider, registers the module through `ServerRuntimeContext`, attaches `file_manager_data` to the focused FileRuntime boundary, wires one-time SSO-ready persisted-file refresh, and preserves the explicit `session$userData$file_manager_data` compatibility export.
 * `serverBindImageGalleryRuntime(...)`: binds `imageGalleryServer(...)` with the live user-id provider and registers the gallery refresh function through `ServerRuntimeContext`.
+* `serverBindChatPersistenceModules(...)`: binds saved chats, saved-chat observers, chat content search, image gallery runtime and observers, welcome handlers, download outputs, history, and message search while preserving the live `current_user_id_provider`, explicit user-config provider, and explicit user-first-name provider.
 
 Do not move these direct calls back into `server.R`:
 
@@ -349,9 +373,19 @@ followupSuggestionsServer(...)
 init_docx_preview_js(...)
 fileManagerServer(...)
 imageGalleryServer(...)
+savedChatsServer(...)
+savedChatsObserversInit(...)
+chatSearchInit(...)
+imageGalleryObserversInit(...)
+welcomeHandlersInit(...)
+downloadOutputsInit(...)
+historyServer(...)
+messageSearchInit(...)
 ```
 
 `server.R` should delegate to the wiring helpers and then unpack only the returned handles it needs. The helper must preserve existing module IDs, current initialization order, and user/provider behavior. In particular, user-scoped service bindings must keep using the live provider rather than a startup user-id snapshot.
+
+For chat persistence, `server.R` should unpack only `runtime_ctx` and `saved_chats_data` from `serverBindChatPersistenceModules(...)`; the helper owns gallery data, welcome handler binding, history wiring, downloads, and message search setup.
 
 For file-related wiring, prefer `serverRuntimeRequireFileRuntime(...)` after the relevant wiring helper has attached file prelude or File Manager objects. Do not reintroduce direct `filePreview <- ...`, `followup_tools <- ...`, or `file_manager_data <- ...` propagation patterns when the value is already available through `runtime_ctx$file`.
 
@@ -362,6 +396,7 @@ tests/testthat/test-server-module-wiring-contract.R
 tests/testthat/test-server-module-wiring-runtime-bindings.R
 tests/testthat/test-production-contracts.R
 tests/testthat/test-server-live-user-provider-contract.R
+tests/testthat/test-server-chat-persistence-wiring-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-server-boundary-contract.R
 ```

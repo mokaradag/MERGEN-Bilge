@@ -161,6 +161,7 @@ testthat::test_file("tests/testthat/test-session-user-data-store.R")
 testthat::test_file("tests/testthat/test-server-boundary-contract.R")
 testthat::test_file("tests/testthat/test-source-manifest-contract.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
+testthat::test_file("tests/testthat/test-server-chat-persistence-wiring-contract.R")
 testthat::test_file("tests/testthat/test-effective-user-id.R")
 testthat::test_file("tests/testthat/test-offline-baseline-contract.R")
 testthat::test_file("tests/testthat/test-mcp-session-user-id-contract.R")
@@ -275,12 +276,12 @@ settings_bundle <- serverBindSettingsAndRefs(...)
 media_modules <- serverBindMediaModules(...)
 file_prelude_modules <- serverBindFilePreludeModules(...)
 file_manager_runtime <- serverBindFileManagerRuntime(...)
-gallery_runtime <- serverBindImageGalleryRuntime(...)
+chat_persistence <- serverBindChatPersistenceModules(...)
 ```
 
 Bu yardımcılar mevcut modül ID’lerini, mevcut başlatma sırasını ve canlı `current_user_id_provider` kullanımını korur. Amaç davranış değiştirmek değil, kaynak sırası ve state orkestrasyonu riskini azaltmaktır.
 
-Dosya Yönetimi ve Görsel Galerisi gibi SSO sonrası yenilenmesi gereken içerik modülleri de artık bu sınırın parçasıdır. `serverBindFileManagerRuntime()` dosya yöneticisini oluşturur, `runtime_ctx` içine doğrulanmış modül olarak kaydeder, SSO hazır olduğunda kalıcı dosya yenilemesini bağlar ve geriye dönük uyumluluk için `session$userData$file_manager_data` değerini kontrollü biçimde açık eder. `serverBindImageGalleryRuntime()` ise görsel galerisini aynı runtime-context sözleşmesiyle bağlar ve SSO sonrası galeri yenilemesini merkezi helper üzerinden kurar. Böylece `server.R` içinde doğrudan `fileManagerServer()` / `imageGalleryServer()` çağrıları ve elle yazılmış refresh orkestrasyonu tekrar birikmez.
+Dosya Yönetimi ve sohbet kalıcılığına bağlı içerik modülleri de artık bu sınırın parçasıdır. `serverBindFileManagerRuntime()` dosya yöneticisini oluşturur, `runtime_ctx` içine doğrulanmış modül olarak kaydeder, SSO hazır olduğunda kalıcı dosya yenilemesini bağlar ve geriye dönük uyumluluk için `session$userData$file_manager_data` değerini kontrollü biçimde açık eder. `serverBindChatPersistenceModules()` ise kayıtlı sohbetler, söyleşi geçmişi, içerik arama, görsel galerisi, hoş geldin ekranı işleyicileri, indirme çıktıları ve mesaj arama bağlantılarını tek bir açık bağımlılık sınırı altında toplar. Böylece `server.R` içinde doğrudan `savedChatsServer()`, `historyServer()`, `imageGalleryObserversInit()`, `welcomeHandlersInit()` veya `downloadOutputsInit()` çağrıları tekrar birikmez; canlı `current_user_id_provider`, kullanıcı yapılandırması sağlayıcısı ve kullanıcı adı sağlayıcısı bu katmana açık olarak geçirilir.
 
 Son runtime-context güncellemesiyle Dosya Yönetimi hattı ayrıca açık bir **FileRuntime** sınırına alınmıştır. `serverBindFilePreludeModules()` dosya önizleme, fallback takip sorusu aracı ve takip sorusu modülünü `runtime_ctx$file` altına bağlayabilir; `serverBindFileManagerRuntime()` ise `file_manager_data` nesnesini aynı FileRuntime sınırına ekler. `server.R`, dosya ön hazırlığı ve Dosya Yönetimi nesnelerini artık doğrudan dağınık yerel değişkenlerden değil, `serverRuntimeRequireFileRuntime(...)` sözleşmesi üzerinden alır. Geriye dönük uyumluluk için `runtime_ctx$modules$file_manager` ve `session$userData$file_manager_data` açıkları korunmuştur; amaç davranış değiştirmek değil, dosya alt sistemindeki gizli başlatma sırası ve state yayılımı riskini azaltmaktır.
 
