@@ -67,10 +67,12 @@ test_that("system mesajları sırayı koruyarak tek system mesajında öne alın
   )
 
   out <- llm_worker_merge_system_messages_to_front(messages)
+  compat_out <- merge_system_messages_to_front(messages)
 
   expect_equal(out[[1]]$role, "system")
   expect_equal(out[[1]]$content, "Kural 1\n\nKural 2")
   expect_equal(vapply(out[-1], `[[`, character(1), "role"), c("user", "assistant"))
+  expect_identical(compat_out, out)
 })
 
 test_that("grafik niyeti Türkçe ve İngilizce anahtarlarla algılanır", {

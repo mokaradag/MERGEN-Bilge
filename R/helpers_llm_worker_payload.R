@@ -55,6 +55,13 @@ llm_worker_merge_system_messages_to_front <- function(messages) {
   )
 }
 
+# Geriye dönük uyumluluk:
+# helpers_llm_worker.R içindeki eski ikinci-geçiş/recursive yollar bu kısa adı
+# çağırıyorsa runtime'da kırılmasın. Yeni kod canonical llm_worker_* adını kullanır.
+merge_system_messages_to_front <- function(messages) {
+  llm_worker_merge_system_messages_to_front(messages)
+}
+
 llm_worker_detect_chart_type_from_text <- function(text) {
   if (!llm_worker_scalar_nzchar(text)) return("auto")
 

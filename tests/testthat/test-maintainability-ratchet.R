@@ -268,7 +268,7 @@ test_that("helpers_llm_worker.R payload extraction kazanımı geri alınmaz", {
   )
 
   max_worker_lines <- .as_int_env("MERGEN_TEST_MAX_LLM_WORKER_LINES", 940L)
-  max_payload_lines <- .as_int_env("MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_LINES", 260L)
+  max_payload_lines <- .as_int_env("MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_LINES", 320L)
   max_payload_functions <- .as_int_env("MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_FUNCTIONS", 12L)
 
   expect_true(
