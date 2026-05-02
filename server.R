@@ -152,119 +152,37 @@ server <- function(input, output, session) {
 	  try(cleanup_worker_tasks_for_session(session$token), silent = TRUE)
 	})
 
-  # Sohbet dışa aktarma bağlantıları (kopyala & dışa aktar)
-	chatExportInit(
-	  input,
-	  output,
-	  session,
-	  values,
-	  user_display_name = function() {
-		current_user_display_name(default = "Kullanıcı")
-	  }
-	)
-
   # Chartlab deposu serverInitSessionState içinde merkezi olarak hazırlanır.
-  
-  # ============================================================================
-  # BÖLÜM 8: GÖZLEMCİLER VE UI BAĞLANTILARI
-  # ============================================================================
-	quickActionsInit(
-	  input = input,
-	  session = session,
-	  values = values,
-	  settings_data = settings_data,
-	  session_files = session_files,
-	  quick_action_skip_mcp = quick_action_skip_mcp,
-	  output = output,
-	  current_user_id = current_user_id_provider,
-	  send_message_fn = send_message
-	)
-  
-  settingsObserversInit(input, session, values, settings_data)
-
-    sessionTimeoutServer(
-      "session_timeout",
-      idle_minutes    = 30,
-      activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
-    )
-                
-	file_manager_runtime <- serverBindFileManagerRuntime(
-	  runtime_ctx = runtime_ctx,
-	  new_file_trigger = reactive({ file_to_add() }),
-	  session_files_reactive = session_files,
-	  mcp_enabled_reactive = reactive({ isTRUE(settings_data$enable_mcp_tools) }),
-	  settings_data = settings_data,
-	  user_id_provider = current_user_id_provider
-	)
-
-	runtime_ctx <- file_manager_runtime$runtime_ctx
-
-	file_runtime <- serverRuntimeRequireFileRuntime(
-	  runtime_ctx,
-	  require_prelude = TRUE,
-	  require_manager = TRUE
-	)
-
-	file_manager_data <- file_runtime$file_manager_data
-  
-  # Sohbet UI gözlemcilerini başlat (values artık mevcut)
-  chatUIObserversInit(input, session, values, start_new_chat, send_message, render_welcome_screen, settings_data)
-  
-  # Navigasyon/sekme değişikliği gözlemcilerini başlat (modüler)
-  navigationObserversInit(input, session, values, render_welcome_screen)
-  
-  # Başlangıç ve oturum ilk yükleme gözlemcilerini başlat (modüler)
-	startupObserversInit(
-	  input = input,
-	  session = session,
-	  values = values,
-	  render_welcome_screen = render_welcome_screen,
-	  current_user_id = current_user_id_provider,
-	  sso_state = sso_state
-	)
-
-  # Derin uzay giriş ekranı gözlemcilerini başlat (modüler)
-  startupScreenObserversInit(input, session, settings_data)
-
-  # AI Uzman işleyicilerini başlat (karşılama, sayfa rehberliği, boşta konuşma)
-  aiExpertHandlersInit(input, session, values, settings_data,
-                      ai_expert, tts_processor, current_user_id_provider,
-                      chat_history_rv = reactive(values$messages))
-  
-  # Depolama/localStorage gözlemcilerini başlat (modüler)
-  storageObserversInit(input, session, output, values, settings_data, chat_rebind_all_charts)
-  
-  # Dosya gözlemcilerini başlat (modüler) - session_files ve file_manager_data artık mevcut
-  fileObserversInit(input, session, settings_data, session_files, file_manager_data, current_user_id_provider)
-  
-  # Dosya tıklama gözlemcilerini başlat (kaynak, analiz, önizleme)
-  fileClickObserversInit(input, session, settings_data, api_config, filePreview, file_manager_data, session_files)
-    
   # Dosya özet deposu serverInitSessionState içinde merkezi olarak hazırlanır.
   
-  chat_persistence <- serverBindChatPersistenceModules(
+  # ============================================================================
+  # BÖLÜM 8: GÖZLEMCİLER, DOSYA YÖNETİMİ VE SOHBET KALICILIĞI
+  # ============================================================================
+  core_interaction <- serverBindCoreInteractionRuntime(
     input = input,
     output = output,
     session = session,
     runtime_ctx = runtime_ctx,
-    values = values,
     settings_data = settings_data,
+    api_config = api_config,
+    media_modules = media_modules,
+    render_welcome_screen = render_welcome_screen,
+    start_new_chat = start_new_chat,
+    send_message = send_message,
     load_chat_in_progress = load_chat_in_progress,
-    session_files = session_files,
-    filePreview = filePreview,
-    file_manager_data = file_manager_data,
-    current_user_id_provider = current_user_id_provider,
+    welcome_fns = welcome_fns,
     user_config_provider = function(default = NULL) {
       runtime_ctx$identity$get_user_config(default = default)
     },
     user_first_name_fn = function(default = "") {
       current_user_first_name(default = default)
-    },
-    welcome_fns = welcome_fns
+    }
   )
 
-  runtime_ctx <- chat_persistence$runtime_ctx
-  saved_chats_data <- chat_persistence$saved_chats_data
+  runtime_ctx <- core_interaction$runtime_ctx
+  saved_chats_data <- core_interaction$saved_chats_data
+  file_manager_data <- core_interaction$file_manager_data
+  filePreview <- core_interaction$filePreview
                 
     # ==========================================================================
     # BÖLÜM 9: SOHBET MOTORU VE LLM ENTEGRASYONU

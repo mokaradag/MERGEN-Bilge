@@ -415,6 +415,9 @@ safe_source("R/server_observers_misc.R",           encoding = "UTF-8")
 # -- Çıktılar ve İndirmeler --
 safe_source("R/server_outputs_downloads.R", encoding = "UTF-8")
 
+# -- Üst Seviye Server Bağlayıcıları --
+safe_source("R/server_core_interaction_runtime.R", encoding = "UTF-8")
+
 # Hızlı SSE işçilerini önceden ısıt
 if (exists(".mergen_future_cluster", envir = .GlobalEnv, inherits = FALSE)) {
   try({
