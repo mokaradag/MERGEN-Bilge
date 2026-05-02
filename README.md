@@ -156,6 +156,7 @@ testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
 testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
 testthat::test_file("tests/testthat/test-server-user-session-context.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-core-interaction-runtime.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-chat-engine.R")
 testthat::test_file("tests/testthat/test-session-user-data-store.R")
@@ -276,14 +277,31 @@ service_modules <- serverBindServiceModules(...)
 settings_bundle <- serverBindSettingsAndRefs(...)
 media_modules <- serverBindMediaModules(...)
 file_prelude_modules <- serverBindFilePreludeModules(...)
-file_manager_runtime <- serverBindFileManagerRuntime(...)
-chat_persistence <- serverBindChatPersistenceModules(...)
+
+core_interaction <- serverBindCoreInteractionRuntime(
+  ...,
+  runtime_ctx = runtime_ctx,
+  media_modules = media_modules,
+  user_config_provider = function(default = NULL) {
+    runtime_ctx$identity$get_user_config(default = default)
+  },
+  user_first_name_fn = function(default = "") {
+    current_user_first_name(default = default)
+  }
+)
+
+runtime_ctx <- core_interaction$runtime_ctx
+saved_chats_data <- core_interaction$saved_chats_data
+file_manager_data <- core_interaction$file_manager_data
+
 chat_engine <- serverBindChatEngineRuntime(...)
 ```
 
-Bu yardımcılar mevcut modül ID’lerini, mevcut başlatma sırasını ve canlı `current_user_id_provider` kullanımını korur. Amaç davranış değiştirmek değil, kaynak sırası ve state orkestrasyonu riskini azaltmaktır.
+`serverBindCoreInteractionRuntime(...)`, `server.R` içindeki çekirdek etkileşim orkestrasyonunu küçük bir sınıra taşır. Bu sınır; hızlı eylemler, ayar gözlemcileri, oturum zaman aşımı, File Manager runtime, sohbet UI/navigasyon/startup gözlemcileri, AI Uzman işleyicileri, depolama gözlemcileri, dosya gözlemcileri, dosya tıklama gözlemcileri ve sohbet kalıcılığı bağlantısını tek açık bağımlılık kümesiyle kurar. File Manager ve sohbet kalıcılığı hâlâ `R/server_module_wiring.R` içindeki odak helper’lar üzerinden bağlanır; sadece bu bağlama artık `server.R` yerine `R/server_core_interaction_runtime.R` üzerinden yapılır.
 
-Dosya Yönetimi ve sohbet kalıcılığına bağlı içerik modülleri de artık bu sınırın parçasıdır. `serverBindFileManagerRuntime()` dosya yöneticisini oluşturur, `runtime_ctx` içine doğrulanmış modül olarak kaydeder, SSO hazır olduğunda kalıcı dosya yenilemesini bağlar ve geriye dönük uyumluluk için `session$userData$file_manager_data` değerini kontrollü biçimde açık eder. `serverBindChatPersistenceModules()` ise kayıtlı sohbetler, söyleşi geçmişi, içerik arama, görsel galerisi, hoş geldin ekranı işleyicileri, indirme çıktıları ve mesaj arama bağlantılarını tek bir açık bağımlılık sınırı altında toplar. Böylece `server.R` içinde doğrudan `savedChatsServer()`, `historyServer()`, `imageGalleryObserversInit()`, `welcomeHandlersInit()` veya `downloadOutputsInit()` çağrıları tekrar birikmez; canlı `current_user_id_provider`, kullanıcı yapılandırması sağlayıcısı ve kullanıcı adı sağlayıcısı bu katmana açık olarak geçirilir.
+Bu yardımcılar mevcut modül ID’lerini, mevcut başlatma sırasını ve canlı `current_user_id_provider` kullanımını korur. Amaç davranış değiştirmek değil, kaynak sırası ve state orkestrasyonu riskini azaltmaktır. `serverBindCoreInteractionRuntime(...)` `R/server_core_interaction_runtime.R` içinde yer alır ve önce Dosya Yönetimi bağlantısını `serverBindFileManagerRuntime(...)` ile, ardından kayıtlı sohbetler/geçmiş/galeri/hoş geldin/indirme/mesaj arama bağlantılarını `serverBindChatPersistenceModules(...)` ile delege eder.
+
+Bu dosya `global.R` içinde observer/output yardımcılarından sonra kaynaklanır; böylece `serverBindCoreInteractionRuntime(...)` somut observer fonksiyonlarına geriye dönük placeholder kullanmadan erişir.
 
 Sohbet motoru bağlantısı da aynı sınır içine alınmıştır. `serverBindChatEngineRuntime()`; sohbet çalışma zamanı, LLM yanıt işleyicileri, sohbet giriş gözlemcileri, çeşitli UI gözlemcileri, sohbet eylemleri, TTS işleyicileri ve `sendMessageInit()` bağlantısını tek bir açık bağımlılık sınırı altında toplar. Böylece `server.R` içinde `trigger_tts_for_message` için geçici yer tutucu tanımlama ve sonra yeniden atama deseni kullanılmaz; bunun yerine `R/server_runtime_function_slot.R` içindeki `serverRuntimeCreateFunctionSlot()` ile geç bağlanan, test edilebilir bir fonksiyon slotu kullanılır. Bu yardımcı ayrı dosyada tutulur; amaç `R/server_runtime_context.R` dosyasını yeni bir monolite dönüştürmeden kaynak sırası ve TTS tetikleme zamanlaması riskini azaltmaktır.
 
@@ -294,6 +312,7 @@ Bu sınır aşağıdaki testlerle korunur:
 ```r
 testthat::test_file("tests/testthat/test-server-module-wiring-contract.R")
 testthat::test_file("tests/testthat/test-server-runtime-context.R")
+testthat::test_file("tests/testthat/test-server-core-interaction-runtime.R")
 testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
 testthat::test_file("tests/testthat/test-production-contracts.R")
 testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")
