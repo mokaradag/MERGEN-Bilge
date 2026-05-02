@@ -17,12 +17,8 @@ fm_create_file_action_helpers <- function(
   message_trigger,
   fm_debug
 ) {
-  get_module_values <- function() {
-    module_values_provider()
-  }
-
   sync_file_to_context <- function(filename, summary = NULL, persisted_path = NULL) {
-    module_values <- get_module_values()
+    module_values <- module_values_provider()
     if (!length(module_values$file_contents)) return(invisible(FALSE))
 
     updated <- FALSE
@@ -57,7 +53,7 @@ fm_create_file_action_helpers <- function(
   }
 
   append_uploaded_file_row <- function(file_name, file_size, file_info, file_id) {
-    module_values <- get_module_values()
+    module_values <- module_values_provider()
 
     module_values$files <- rbind(
       module_values$files,
@@ -74,7 +70,7 @@ fm_create_file_action_helpers <- function(
   }
 
   remove_file_by_name <- function(filename, quiet = FALSE) {
-    module_values <- get_module_values()
+    module_values <- module_values_provider()
     if (!length(module_values$file_contents)) return(invisible(FALSE))
 
     fid <- NULL
@@ -115,7 +111,7 @@ fm_create_file_action_helpers <- function(
   }
 
   process_uploaded_file <- function(file_info, generate_message = TRUE) {
-    module_values <- get_module_values()
+    module_values <- module_values_provider()
 
     file_name <- as.character(file_info$name %||% "")
     file_size <- as.numeric(file_info$size %||% NA_real_)
