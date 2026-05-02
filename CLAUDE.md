@@ -730,6 +730,34 @@ This split is protected by:
 * `tests/testthat/test-source-manifest-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
 
+### Admin Hata Analizi modularization contract
+
+`R/module_admin_hata_analizi.R` has been reduced by extracting pure/query/UI helper responsibilities into `R/helpers_admin_hata_analizi.R`.
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_admin_hata_analizi.R", encoding = "UTF-8")
+safe_source("R/module_admin_hata_analizi.R",  encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_admin_hata_analizi.R`: Admin Hata Analizi SQL query bundle, Turkish category/priority/status labels, category counting, tab UI router, and tab UI builders.
+* `R/module_admin_hata_analizi.R`: public Shiny module API, refresh/reactive orchestration, chart/table rendering, attachment/status modal handling, and event logic.
+
+Do not move the helper responsibilities back into `R/module_admin_hata_analizi.R`. Keep the public module names unchanged.
+
+Protected by:
+
+```text
+tests/testthat/test-admin-hata-analizi-refactor-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
+
+Important: if isolated tests source `R/helpers_admin_hata_analizi.R` directly, keep test-only stubs local to the test file instead of sourcing broad runtime modules.
+
 ### Admin Yanıt Analizi modularization contract
 
 Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı dosyaya bölünmüştür. Preserve this source order in `global.R`:
@@ -1112,7 +1140,9 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions and LLM SSE stream I/O refactor, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 64, max 800+ line files: 8, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1225, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 67, max 800+ line files: 7, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1027, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951.
+
+The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
 The Bilge Yolaç setup extraction is also protected by a file-specific ratchet: `R/module_claude_code.R`should remain at or below`MERGEN_TEST_MAX_CLAUDE_CODE_LINES = 980`by default. The latest maintainability report after the extraction shows`R/module_claude_code.R` at 954 lines, down from 1254 lines. Only tighten this threshold when a new maintainability report proves a lower stable baseline; do not loosen it to hide unrelated growth.
 - Focused hardening checks can be run directly with:
