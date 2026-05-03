@@ -18,6 +18,12 @@ source(
   local = globalenv()
 )
 
+source(
+  file.path(project_root, "R", "helpers_send_message_request_lifecycle.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 # Send message çekirdek yardımcılarını testlerin erişimine açar.
 source(
   file.path(project_root, "R", "helpers_send_message_core.R"),
