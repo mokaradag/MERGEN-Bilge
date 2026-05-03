@@ -1,4 +1,4 @@
-# ==============================================================================
+# ============================================================================== 
 # Dosya Yolu: R/server_send_message.R
 # Açıklama: Ana mesaj gönderme fonksiyonunu içerir. Kullanıcı mesajlarını işler,
 #           araç ailesini belirler (özetleme, görsel, MCP Excel, SQL analizi),
@@ -74,27 +74,7 @@ sendMessageInit <- function(
       return(invisible(NULL))
     }
 
-    # Hoş geldin ekranını tamamen temizle ve sohbet içeriğini göster
-    if (isTRUE(values$show_welcome)) {
-      values$show_welcome <- FALSE
-      shinyjs::runjs("
-        $('#welcome_fullscreen_container').addClass('hidden').empty();
-        $('#chat_content_container').show();
-        if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-          window.WelcomeVideoPlayer.destroy();
-        }
-        if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-          window.WelcomeNeuralNetwork.destroy();
-        }
-        if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-          window.WelcomeGreeting.destroy();
-        }
-        if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
-          window.WelcomePersonalGreeting.destroy();
-        }
-      ")
-      removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
-    }
+    mergen_clear_welcome_for_send_message(session, values)
 
     # Performans izleme için istek başlangıç zamanını kaydet
     request_start_time <- Sys.time()
@@ -116,16 +96,15 @@ sendMessageInit <- function(
     }
     values$last_request_time <- Sys.time()
 
-    # Hem nesne hem de string girişlerini işle
-    if (is.list(prompt_text) && !is.null(prompt_text$text)) {
-      prompt_text <- prompt_text$text
-    }
+    prompt_snapshot <- mergen_build_send_message_prompt_snapshot(
+      prompt_text = prompt_text,
+      session_files = function() isolate(session_files())
+    )
 
-    user_message_text <- trimws(prompt_text %||% "")
-
-    current_session_files <- isolate(session_files())
-    uploaded_names <- if (length(current_session_files) > 0) names(current_session_files) else character(0)
-    uploaded_count <- length(uploaded_names)
+    user_message_text <- prompt_snapshot$user_message_text
+    current_session_files <- prompt_snapshot$current_session_files
+    uploaded_names <- prompt_snapshot$uploaded_names
+    uploaded_count <- prompt_snapshot$uploaded_count
 
     if (nchar(user_message_text) == 0 && uploaded_count == 0) {
       showToast(session, "Lütfen bir mesaj yazın.", "warning")
@@ -158,116 +137,40 @@ sendMessageInit <- function(
 
     pending_chat_title <- NULL
     defer_chat_creation <- is.null(values$current_chat_id) &&
-      (tool_family %in% c("none", "coding")) &&
-      uploaded_count == 0 &&
-      isTRUE(current_settings$enable_streaming) &&
-      !isTRUE(settings_data$enable_tts_audio)
+      mergen_should_defer_chat_creation(
+        tool_family = tool_family,
+        uploaded_count = uploaded_count,
+        current_settings = current_settings,
+        settings_data = settings_data
+      )
 
-    # Yeni sohbet oluştur
-    if (is.null(values$current_chat_id)) {
-      title_prompt <- if (nchar(user_message_text) > 0) user_message_text else "Dosya Analizi"
-      chat_title <- generate_title_from_prompt(title_prompt, max_len = 60)
+    chat_prepare <- mergen_prepare_send_message_chat(
+      session = session,
+      values = values,
+      user_message_text = user_message_text,
+      tool_family = tool_family,
+      effective_user_id = effective_user_id,
+      request_start_time = request_start_time,
+      defer_chat_creation = defer_chat_creation,
+      generate_title_from_prompt = generate_title_from_prompt
+    )
 
-      if (isTRUE(defer_chat_creation)) {
-        pending_chat_title <- chat_title
-
-        log_info(sprintf(
-          "[CHAT PERF] Yeni sohbet kaydı ertelendi - araç=%s, gecen=%.3f sn",
-          tool_family,
-          as.numeric(difftime(Sys.time(), request_start_time, units = "secs"))
-        ))
-      } else {
-        new_chat_id <- tryCatch({
-          create_new_chat_in_db(effective_user_id, initial_title = chat_title)
-        }, error = function(e) {
-          showToast(session, paste("Yeni sohbet oluşturulamadı:", e$message), "error")
-          NULL
-        })
-
-        if (is.null(new_chat_id)) {
-          return(invisible(NULL))
-        }
-
-        values$current_chat_id <- new_chat_id
-
-        log_info(sprintf(
-          "[CHAT PERF] Yeni sohbet kaydı oluşturuldu - gecen=%.3f sn",
-          as.numeric(difftime(Sys.time(), request_start_time, units = "secs"))
-        ))
-      }
+    if (!isTRUE(chat_prepare$ok)) {
+      return(invisible(NULL))
     }
+
+    pending_chat_title <- chat_prepare$pending_chat_title
 
     # Kullanıcı mesajını ekle
     display_text <- if (nchar(user_message_text) > 0) user_message_text else "Seçili dosyaların özeti istendi."
     user_prompt_msg <- add_message_fn(display_text, "user")
 
     values$typing <- TRUE
-    # Araç ailesine göre gerçekte kullanılacak modeli şimdiden çöz; böylece
-    # (örn. Kodlama Desteği veya Excel Analizi'nde kullanıcının seçtiği
-    # varsayılan model yerine araca bağlı "düşünen" model devrede olduğunda)
-    # panel "simulated" yerine gerçek akıl yürütme kipinde başlar.
-    panel_model_id <- tryCatch(
-      resolve_tool_model_for_family(tool_family, fallback_model = settings_data$model_selection),
-      error = function(e) settings_data$model_selection
+    thinking_panel_plan <- mergen_build_thinking_panel_plan(
+      tool_family = tool_family,
+      settings_data = settings_data
     )
-    panel_model_id <- tryCatch(as.character(panel_model_id %||% "")[1], error = function(e) "")
-    if (is.na(panel_model_id)) panel_model_id <- ""
-
-    # Düşünen modellerde gerçek akıl yürütme paneli; düşünmeyen modellerde
-    # aynı kabukla sahte faz (simulated) paneli gösterilir.
-    thinking_model_active <- tryCatch(
-      is_thinking_model(panel_model_id),
-      error = function(e) FALSE
-    )
-    # Gerçek reasoning_delta yalnızca "true streaming" yolunda yayılır.
-    # Excel (MCP), özetleme, görsel, SQL analizi ve TTS açık akışlar
-    # non-streaming veya tam metin döndüren yolları kullanır; bu yollarda
-    # panel sahte faz kipinde başlatılır ve akıl yürütme metni (varsa)
-    # yanıt tamamlandığında arşiv olarak kaydedilir.
-    reasoning_will_stream <- isTRUE(settings_data$enable_streaming) &&
-                             !identical(tool_family, "mcp_excel") &&
-                             !identical(tool_family, "sql_analysis") &&
-                             !identical(tool_family, "image") &&
-                             !identical(tool_family, "summarization") &&
-                             !isTRUE(settings_data$enable_tts_audio)
-    panel_simulated <- !isTRUE(thinking_model_active) || !isTRUE(reasoning_will_stream)
-    classic_indicator_requested <- isTRUE(settings_data$enable_typing_indicator)
-    show_thinking_wrapper <- thinking_model_active || classic_indicator_requested
-
-    if (show_thinking_wrapper) {
-      removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-
-      # Yeni akışta eski halka/snake animasyonu kaldırıldı; burada yalnızca
-      # premium akıl yürütme panelinin yerleşeceği boş bir kabuk oluşturulur.
-      # İstemci tarafı bu kabuğa paneli yerleştirir ve yanıt geldiğinde siler.
-      insertUI(
-        selector = "#chat_content_container",
-        where = "beforeEnd",
-        ui = div(
-          id = "typing-animation-wrapper",
-          class = "message-bubble",
-          `data-panel-takeover` = "true",
-          style = "display: flex; justify-content: center; padding: 20px;"
-        ),
-        immediate = TRUE
-      )
-
-      shinyjs::runjs("
-        setTimeout(() => {
-          window.smartScrollToBottom();
-          $('#typing-animation-wrapper').show();
-        }, 10);
-      ")
-
-      # Hem düşünen hem de düşünmeyen modellerde aynı panel kabuğu gösterilir;
-      # simulated=TRUE ise istemci tarafı sahte faz metinleri döndürür ve
-      # yanıt akışı başladığı an paneli sönümleyerek kaldırır (DB arşivi yok).
-      session$sendCustomMessage("premiumReasoningStart", list(
-        model = panel_model_id,
-        classicFallback = classic_indicator_requested,
-        simulated = panel_simulated
-      ))
-    }
+    mergen_show_send_message_thinking_wrapper(session, thinking_panel_plan)
 
     # Durdur butonunu göster
     shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-stop');")
@@ -735,7 +638,7 @@ sendMessageInit <- function(
       settings_for_llm <- current_settings
       settings_for_llm$model_selection <- model_selected
 
-      req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
+      req_id <- mergen_new_send_message_request_id()
       active_request_id(req_id)
       stop_generation(FALSE)
       values$is_sending <- TRUE
@@ -754,6 +657,16 @@ sendMessageInit <- function(
       p <- promises::then(
         p,
         onFulfilled = function(res) {
+          request_state <- mergen_send_message_request_state(active_request_id, res$req_id, stop_generation)
+          if (!identical(request_state, "current")) {
+            try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
+                             model_selected, res$duration, FALSE), silent = TRUE)
+            if (identical(request_state, "stopped")) {
+              cleanup_send_message()
+            }
+            return(invisible(NULL))
+          }
+
           if (!res$success) {
             log_warn("[AI MODULE] Streaming isteği başarısız")
             perf_tracker$track_error()
@@ -768,13 +681,6 @@ sendMessageInit <- function(
           ))
 
           perf_tracker$track_request(res$duration)
-
-          if (isTRUE(stop_generation()) || !identical(active_request_id(), res$req_id)) {
-            try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
-                             model_selected, res$duration, FALSE), silent = TRUE)
-            cleanup_send_message()
-            return(invisible(NULL))
-          }
 
           try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                            model_selected, res$duration, TRUE), silent = TRUE)
@@ -823,7 +729,8 @@ sendMessageInit <- function(
           try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
                            model_selected, duration, FALSE), silent = TRUE)
 
-          if (!isTRUE(stop_generation())) {
+          request_state <- mergen_send_message_request_state(active_request_id, req_id, stop_generation)
+          if (identical(request_state, "current")) {
             msg <- as.character(conditionMessage(err))
             msg <- sub("^[A-Z_]+:\\s*", "", msg)
             if (!nzchar(msg)) msg <- "Beklenmeyen bir hata oluştu."
@@ -831,7 +738,9 @@ sendMessageInit <- function(
             return(invisible(NULL))
           }
 
-          cleanup_send_message()
+          if (identical(request_state, "stopped")) {
+            cleanup_send_message()
+          }
           invisible(NULL)
         }
       )
@@ -840,12 +749,15 @@ sendMessageInit <- function(
         log_warn("[STREAM_CHAIN] Hata yakalandı: {conditionMessage(e)}")
         perf_tracker$track_error()
 
-        if (!isTRUE(stop_generation())) {
+        request_state <- mergen_send_message_request_state(active_request_id, req_id, stop_generation)
+        if (identical(request_state, "current")) {
           abort_send_message(message = "Beklenmeyen bir hata oluştu.", type = "error")
           return(invisible(NULL))
         }
 
-        cleanup_send_message()
+        if (identical(request_state, "stopped")) {
+          cleanup_send_message()
+        }
         invisible(NULL)
       })
 
