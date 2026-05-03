@@ -1,9 +1,13 @@
-# ==============================================================================
+# ============================================================================== 
 # Dosya Yolu: R/helpers_send_message_core.R
 # Açıklama: send_message hattındaki yönlendirme, cleanup ve MCP hazırlık
 # yardımcılarını tek yerde toplar. Amaç davranışı değiştirmeden
 # server_send_message.R dosyasındaki merkezi baskıyı azaltmaktır.
 # ==============================================================================
+
+if (!exists("mergen_new_send_message_request_id", mode = "function", inherits = TRUE)) {
+  safe_source("R/helpers_send_message_request_lifecycle.R", encoding = "UTF-8")
+}
 
 mergen_determine_tool_family <- function(settings_data, uploaded_count, skip_mcp_once, current_settings) {
   cfg_excel_on <- isTRUE(settings_data$enable_mcp_tools)
@@ -170,10 +174,10 @@ mergen_prepare_mcp_session_files <- function(
       error = function(e) path_now
     )
 
-    if (!grepl("^//[^/]+/[^/]+", gsub("\\\\", "/", path_now, fixed = TRUE))) {
+    if (!grepl("^//[^/]+/[^/]+", gsub("\\", "/", path_now, fixed = TRUE))) {
       path_now <- safe_windows_short_path(path_now, must_exist = path_exists_relaxed(path_now))
     } else {
-      path_now <- paste0("//", sub("^/+", "", gsub("\\\\", "/", path_now, fixed = TRUE)))
+      path_now <- paste0("//", sub("^/+", "", gsub("\\", "/", path_now, fixed = TRUE)))
     }
 
     path_original <- path_now
@@ -193,10 +197,10 @@ mergen_prepare_mcp_session_files <- function(
       log_debug("[FILE STORE] Yerel MCP önbelleği hazırlandı: {cached_path}")
     }
 	
-    if (!grepl("^//[^/]+/[^/]+", gsub("\\\\", "/", cached_path, fixed = TRUE))) {
+    if (!grepl("^//[^/]+/[^/]+", gsub("\\", "/", cached_path, fixed = TRUE))) {
       cached_path <- safe_windows_short_path(cached_path, must_exist = path_exists_relaxed(cached_path))
     } else {
-      cached_path <- paste0("//", sub("^/+", "", gsub("\\\\", "/", cached_path, fixed = TRUE)))
+      cached_path <- paste0("//", sub("^/+", "", gsub("\\", "/", cached_path, fixed = TRUE)))
     }
 
     file_obj <- list(
