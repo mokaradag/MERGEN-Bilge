@@ -489,13 +489,47 @@ Responsibilities:
 
 * `R/helpers_db_connection.R`: DB connection, release, health probe, worker-side DB connection, and DB parameter encoding normalization.
 * `R/helpers_db_validation.R`: validation helpers such as `validate_username()`, `validate_chat_title()`, and `validate_message_content()`.
-* `R/helpers_chat_message_formatting.R`: conversion of DB message rows into app message objects, including generated-image HTML, Chartlab rendering, markdown fallback, timestamps, and `ReasoningContent` propagation.
+* `R/helpers_chat_message_formatting.R`: conversion of DB message rows into app message objects, including generated-image HTML, ChartLab saved-chat placeholder regeneration, markdown fallback, timestamps, and `ReasoningContent` propagation.
 * `R/helpers_db_chat_readers.R`: chat list loading, chat message hydration, reasoning-column fallback SELECTs, batch chat hydration, and lightweight history row reads. Chat list reads must preserve latest-activity ordering using message timestamps when available.
 * `R/helpers_database.R`: user/chat/message persistence, DB write/mutation operations, feedback operations, delete/clear/update helpers, and remaining DB orchestration.
 
 Do not move connection, validation, message-formatting, or chat-reader functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R` and `test-chat-message-formatting-refactor-contract.R`.
 
 When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
+
+### ChartLab rendering and saved-chat hydration contract
+
+ChartLab rendering is intentionally split between pure chart-spec helpers and Shiny output wiring.
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_mcp_chart_tools.R",       encoding = "UTF-8")
+safe_source("R/helpers_mcp_analyze_visualize.R", encoding = "UTF-8")
+safe_source("R/helpers_chartlab_spec.R",         encoding = "UTF-8")
+safe_source("R/helpers_chartlab.R",              encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_chartlab_spec.R`: pure ChartLab helpers for chart type normalization, mapping value normalization, missing/invalid axis guessing, and shared aggregation behavior.
+* `R/helpers_chartlab.R`: parsing `chartlab ...` message blocks, producing Shiny chart output placeholders, and wiring those placeholders through `wire_chart_output(...)`.
+* `R/helpers_chat_message_formatting.R`: when DB messages are hydrated, ChartLab content must be converted back into the same Shiny output placeholder shape used by live messages.
+* `chat_rebind_all_charts(...)`: after saved-chat UI is inserted, chart outputs must be rebound after Shiny flush via `session$onFlushed(..., once = TRUE)` and loop variables must be captured with `local(...)`.
+
+Do not reintroduce a separate static JS-only rendering path as the primary saved-chat ChartLab recovery mechanism. Saved and browser-refreshed chats should use the same server-side Shiny output identity contract as live ChartLab messages.
+
+Do not move chart type aliasing, mapping guessing, or aggregation helpers back into `R/helpers_chartlab.R`.
+
+Protected by:
+
+```text
+tests/testthat/test-chartlab-spec-refactor-contract.R
+tests/testthat/test-chat-message-formatting-refactor-contract.R
+tests/testthat/test-mcp-chart-tools-refactor-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
 
 ### File Store registry/index modularization contract
 
@@ -1294,7 +1328,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 82, max 800+ line files: 2, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 866, and max file functions: 44. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 84, max 800+ line files: 2, max 25+ function files: 5, max 1500+ line files: 0, max file lines: 866, and max file functions: 39. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
