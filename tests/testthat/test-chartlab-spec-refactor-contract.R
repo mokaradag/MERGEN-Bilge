@@ -122,3 +122,22 @@ test_that("ChartLab agregasyon helper'ı mevcut motor davranışını korur", {
   expect_equal(chartlab_aggregate_values(values, "count"), 3)
   expect_equal(chartlab_aggregate_values(values, "bilinmeyen"), 7)
 })
+
+test_that("saved chat ChartLab rebind işlemi UI flush sonrasına ertelenir", {
+  txt <- .read_chartlab_refactor_text("R/helpers_chat_runtime.R")
+
+  start <- regexpr("chat_rebind_all_charts <- function", txt, fixed = TRUE, useBytes = TRUE)[1]
+  expect_true(start > 0L, info = "chat_rebind_all_charts fonksiyonu bulunmalıdır.")
+
+  block <- substr(txt, start, nchar(txt))
+
+  expect_true(
+    grepl("session$onFlushed(function()", block, fixed = TRUE, useBytes = TRUE),
+    info = "Saved chat chart output bağlama işlemi insertUI flush sonrasına ertelenmelidir."
+  )
+
+  expect_true(
+    grepl("local_r <- r", block, fixed = TRUE, useBytes = TRUE),
+    info = "Chart renderer loop değişkeni local() ile güvenli capture edilmelidir."
+  )
+})

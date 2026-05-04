@@ -216,3 +216,51 @@ test_that("format_chat_messages ReasoningContent alanını mesaj nesnesine taş�
   expect_equal(out[[1]]$reasoning_content, "Kısa reasoning özeti")
   expect_equal(out[[1]]$reasoning_trace, "Kısa reasoning özeti")
 })
+
+test_that("format_chat_messages assistant ChartLab mesajlarını grafik placeholder olarak biçimlendirir", {
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_chartlab_spec.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_chartlab.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
+  chart_spec <- list(
+    type = "bar",
+    data = data.frame(
+      Kategori = c("A", "B"),
+      Deger = c(10, 20),
+      stringsAsFactors = FALSE
+    ),
+    mapping = list(x = "Kategori", y = "Deger"),
+    params = list()
+  )
+
+  chart_json <- jsonlite::toJSON(
+    chart_spec,
+    auto_unbox = TRUE,
+    dataframe = "rows",
+    null = "null"
+  )
+
+  msg_df <- data.frame(
+    MessageID = 3L,
+    MessageContent = paste0("Grafik:\n\n```chartlab\n", chart_json, "\n```"),
+    MessageType = "assistant",
+    MessageTimestamp = as.POSIXct("2026-04-25 14:00:00", tz = "UTC"),
+    stringsAsFactors = FALSE
+  )
+
+  out <- format_chat_messages(msg_df)
+
+  expect_type(out, "list")
+  expect_length(out, 1L)
+  expect_equal(out[[1]]$type, "assistant")
+  expect_false(out[[1]]$has_code)
+  expect_true(grepl("data-chartlab-spec", out[[1]]$html_content, fixed = TRUE))
+  expect_true(grepl("chartlab-placeholder", out[[1]]$html_content, fixed = TRUE))
+})

@@ -142,7 +142,7 @@ db_message_render_image_html <- function(image_path, description, message_id) {
 db_message_process_text_content <- function(content_text, msg_type, message_id) {
   has_chartlab <- grepl("```chartlab", content_text, fixed = TRUE)
 
-  if (has_chartlab && identical(msg_type, "ai")) {
+  if (has_chartlab && msg_type %in% c("ai", "assistant")) {
     chart_fn <- tryCatch(
       get("build_chartlab_message_static", envir = globalenv(), mode = "function"),
       error = function(e) NULL

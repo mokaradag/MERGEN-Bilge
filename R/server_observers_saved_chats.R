@@ -97,7 +97,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         identical(m$type %||% "", "user")
       }, logical(1)))
       has_ai <- stored_len > 0 && any(vapply(msgs, function(m) {
-        m$type %||% "" %in% c("ai", "assistant")
+        (m$type %||% "") %in% c("ai", "assistant")
       }, logical(1)))
       
       needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
