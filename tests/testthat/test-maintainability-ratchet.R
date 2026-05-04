@@ -183,6 +183,53 @@ test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {
   )
 })
 
+test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce büyümez", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  assert_file_budget <- function(path, max_lines, max_functions) {
+    row <- report[
+      grepl(paste0("(^|/)", gsub("([.])", "\\\\\\1", path), "$"), report$file, perl = TRUE),
+      ,
+      drop = FALSE
+    ]
+
+    expect_equal(
+      nrow(row),
+      1L,
+      info = sprintf("%s maintainability raporunda tek satır olarak görünmelidir.", path)
+    )
+
+    expect_true(
+      row$lines[1] <= max_lines,
+      info = sprintf("%s satır bütçesini aştı: %d > %d.", path, row$lines[1], max_lines)
+    )
+
+    expect_true(
+      row$functions[1] <= max_functions,
+      info = sprintf("%s fonksiyon bütçesini aştı: %d > %d.", path, row$functions[1], max_functions)
+    )
+  }
+
+  assert_file_budget("R/module_admin_geri_bildirim.R", 951L, 6L)
+  assert_file_budget("R/config_api.R", 866L, 26L)
+  assert_file_budget("R/helpers_llm_worker.R", 842L, 8L)
+  assert_file_budget("R/helpers_claude_code.R", 799L, 39L)
+  assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 662L, 31L)
+  assert_file_budget("R/helpers_database.R", 587L, 29L)
+  assert_file_budget("R/helpers_chartlab.R", 577L, 44L)
+  assert_file_budget("R/helpers_files.R", 341L, 32L)
+})
+
 test_that("module_file_manager.R state runtime extraction sonrası 800 satır altı kalır", {
   repo_root <- .find_repo_root_maint_ratchet()
   old_wd <- getwd()
