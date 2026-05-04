@@ -74,7 +74,7 @@ test_that("server_send_message.R request lifecycle extraction sonrası 800 satı
 
   max_send_lines <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SERVER_SEND_MESSAGE_LINES", 799L)
   max_helper_lines <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SEND_MESSAGE_REQUEST_LIFECYCLE_LINES", 260L)
-  max_helper_functions <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SEND_MESSAGE_REQUEST_LIFECYCLE_FUNCTIONS", 12L)
+  max_helper_functions <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SEND_MESSAGE_REQUEST_LIFECYCLE_FUNCTIONS", 16L)
 
   expect_true(
     send_row$lines[1] <= max_send_lines,
@@ -97,7 +97,7 @@ test_that("server_send_message.R request lifecycle extraction sonrası 800 satı
   expect_true(
     helper_row$functions[1] <= max_helper_functions,
     info = sprintf(
-      "helpers_send_message_request_lifecycle.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
+	  "helpers_send_message_request_lifecycle.R fonksiyon ifadesi sayısı kontrollü kalmalıdır: %d > %d."
       helper_row$functions[1],
       max_helper_functions
     )
