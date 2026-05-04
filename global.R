@@ -247,6 +247,7 @@ safe_source("R/helpers_summarization_prompts.R", encoding = "UTF-8")  # Özetlem
 safe_source("R/helpers_followup_questions.R",    encoding = "UTF-8")  # Takip sorusu üretimi
 safe_source("R/helpers_deep_analysis.R",         encoding = "UTF-8")  # Derin analiz yardımcıları
 safe_source("R/helpers_pk_analysis_core.R",      encoding = "UTF-8")  # Proje/Kaynak Analizi saf yardımcıları
+safe_source("R/helpers_pk_analysis_security_summary.R", encoding = "UTF-8")  # Proje/Kaynak Analizi RLS ve istatistik özet yardımcıları
 safe_source("R/helpers_pk_analysis_filters.R",   encoding = "UTF-8")  # Proje/Kaynak Analizi filtre çıkarımı ve uygulama yardımcıları
 safe_source("R/helpers_sso.R",                   encoding = "UTF-8")  # SSO yardımcı fonksiyonları (JWT, token doğrulama)
 safe_source("R/helpers_destek_database.R",       encoding = "UTF-8")  # Destek sayfası veritabanı işlemleri
