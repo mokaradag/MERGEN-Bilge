@@ -350,33 +350,66 @@ build_chartlab_message_static <- function(raw_text, message_id) {
 
   parts <- list()
   remaining <- txt
+
   while (TRUE) {
     open <- regexpr("```chartlab\\s*", remaining, perl = TRUE)
-    if (open[1] == -1) { parts <- append(parts, list(list(kind="text", value=remaining))); break }
-    pre <- substr(remaining, 1, open[1]-1)
-    parts <- append(parts, list(list(kind="text", value=pre)))
-    rest <- substr(remaining, open[1] + attr(open,"match.length"), nchar(remaining))
+
+    if (open[1] == -1) {
+      parts <- append(parts, list(list(kind = "text", value = remaining)))
+      break
+    }
+
+    pre <- substr(remaining, 1, open[1] - 1)
+    parts <- append(parts, list(list(kind = "text", value = pre)))
+
+    rest <- substr(
+      remaining,
+      open[1] + attr(open, "match.length"),
+      nchar(remaining)
+    )
+
     close <- regexpr("```", rest, perl = TRUE)
-    if (close[1] == -1) { parts <- append(parts, list(list(kind="text", value=paste0("```chartlab\n", rest)))); break }
-    json_block <- substr(rest, 1, close[1]-1)
-    parts <- append(parts, list(list(kind="chart", value=json_block)))
-    remaining <- substr(rest, close[1]+attr(close,"match.length"), nchar(rest))
+
+    if (close[1] == -1) {
+      parts <- append(
+        parts,
+        list(list(kind = "text", value = paste0("```chartlab\n", rest)))
+      )
+      break
+    }
+
+    json_block <- substr(rest, 1, close[1] - 1)
+    parts <- append(parts, list(list(kind = "chart", value = json_block)))
+
+    remaining <- substr(
+      rest,
+      close[1] + attr(close, "match.length"),
+      nchar(rest)
+    )
   }
 
   html_chunks <- list()
-  chart_counter <- 0
   renderers <- list()
+  chart_counter <- 0L
 
   for (p in parts) {
     if (identical(p$kind, "text")) {
       if (nzchar(trimws(p$value))) {
         html_chunks <- append(
           html_chunks,
-          commonmark::markdown_html(p$value, hardbreaks = TRUE, extensions = c("strikethrough", "table"))
+          commonmark::markdown_html(
+            p$value,
+            hardbreaks = TRUE,
+            extensions = c("strikethrough", "table")
+          )
         )
       }
-    } else if (identical(p$kind, "chart")) {
-      chart_counter <- chart_counter + 1
+
+      next
+    }
+
+    if (identical(p$kind, "chart")) {
+      chart_counter <- chart_counter + 1L
       out_id <- paste0("chart_", message_id, "_", chart_counter)
 
       spec <- NULL
@@ -388,17 +421,30 @@ build_chartlab_message_static <- function(raw_text, message_id) {
           '<div class="chart-card"><div style="color:#f87171">Grafik tanımı çözümlenemedi.</div></div>'
         )
       } else {
-        container_html <- sprintf(
-          '<div class="chart-card" data-chartlab-spec="%s" data-chart-id="%s"><div class="chartlab-placeholder" id="%s" style="min-height:380px;display:flex;align-items:center;justify-content:center;"><span style="color:#9ca3af;">Grafik yükleniyor...</span></div></div>',
-          htmltools::htmlEscape(p$value, attribute = TRUE),
-          out_id,
-          out_id
+        container_html <- if (requireNamespace("highcharter", quietly = TRUE)) {
+          as.character(highcharter::highchartOutput(out_id, height = "380px"))
+        } else if (requireNamespace("plotly", quietly = TRUE) &&
+                   requireNamespace("ggplot2", quietly = TRUE)) {
+          as.character(plotly::plotlyOutput(out_id, height = "380px"))
+        } else {
+          as.character(shiny::uiOutput(out_id, height = "380px"))
+        }
+
+        html_chunks <- append(
+          html_chunks,
+          sprintf('<div class="chart-card">%s</div>', container_html)
         )
-        html_chunks <- append(html_chunks, container_html)
-        renderers <- append(renderers, list(list(output_id = out_id, spec = spec)))
+        renderers <- append(
+          renderers,
+          list(list(output_id = out_id, spec = spec))
+        )
       }
     }
   }
 
-  list(found = (chart_counter > 0), html = paste(html_chunks, collapse = ""), renderers = renderers)
+  list(
+    found = chart_counter > 0L,
+    html = paste(html_chunks, collapse = ""),
+    renderers = renderers
+  )
 }

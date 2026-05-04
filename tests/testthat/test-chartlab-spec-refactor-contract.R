@@ -123,21 +123,51 @@ test_that("ChartLab agregasyon helper'ı mevcut motor davranışını korur", {
   expect_equal(chartlab_aggregate_values(values, "bilinmeyen"), 7)
 })
 
-test_that("saved chat ChartLab rebind işlemi UI flush sonrasına ertelenir", {
-  txt <- .read_chartlab_refactor_text("R/helpers_chat_runtime.R")
-
-  start <- regexpr("chat_rebind_all_charts <- function", txt, fixed = TRUE, useBytes = TRUE)[1]
-  expect_true(start > 0L, info = "chat_rebind_all_charts fonksiyonu bulunmalıdır.")
-
-  block <- substr(txt, start, nchar(txt))
-
-  expect_true(
-    grepl("session$onFlushed(function()", block, fixed = TRUE, useBytes = TRUE),
-    info = "Saved chat chart output bağlama işlemi insertUI flush sonrasına ertelenmelidir."
+test_that("saved chat ChartLab HTML statik JS renderer yerine Shiny output kullanır", {
+  source(
+    file.path(.chartlab_refactor_repo_root(), "R", "helpers_chartlab_spec.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+  source(
+    file.path(.chartlab_refactor_repo_root(), "R", "helpers_chartlab.R"),
+    encoding = "UTF-8",
+    local = globalenv()
   )
 
+  chart_spec <- list(
+    type = "line",
+    data = data.frame(
+      Tarih = as.Date(c("2026-01-01", "2026-01-02")),
+      Deger = c(1, 2)
+    ),
+    mapping = list(x = "Tarih", y = "Deger"),
+    params = list()
+  )
+
+  chart_json <- jsonlite::toJSON(
+    chart_spec,
+    auto_unbox = TRUE,
+    dataframe = "rows",
+    null = "null"
+  )
+
+  result <- build_chartlab_message_static(
+    paste0("Grafik:\n\n```chartlab\n", chart_json, "\n```"),
+    message_id = "42"
+  )
+
+  expect_true(result$found)
+  expect_length(result$renderers, 1L)
+  expect_equal(result$renderers[[1]]$output_id, "chart_42_1")
+
   expect_true(
-    grepl("local_r <- r", block, fixed = TRUE, useBytes = TRUE),
-    info = "Chart renderer loop değişkeni local() ile güvenli capture edilmelidir."
+    grepl('id="chart_42_1"', result$html, fixed = TRUE),
+    info = "Static DB formatter, server rebind ile aynı output id'yi üretmelidir."
+  )
+
+  expect_false(
+    grepl("data-chartlab-spec", result$html, fixed = TRUE),
+    info = "Saved chat ChartLab HTML ayrı istemci renderer'a bağımlı olmamalıdır."
   )
 })

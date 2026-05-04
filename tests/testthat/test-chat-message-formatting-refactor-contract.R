@@ -217,7 +217,7 @@ test_that("format_chat_messages ReasoningContent alanını mesaj nesnesine taş�
   expect_equal(out[[1]]$reasoning_trace, "Kısa reasoning özeti")
 })
 
-test_that("format_chat_messages assistant ChartLab mesajlarını grafik placeholder olarak biçimlendirir", {
+test_that("format_chat_messages assistant ChartLab mesajlarını Shiny grafik output placeholder olarak biçimlendirir", {
   source(
     file.path(resolve_repo_root_for_tests(), "R", "helpers_chartlab_spec.R"),
     encoding = "UTF-8",
@@ -261,6 +261,19 @@ test_that("format_chat_messages assistant ChartLab mesajlarını grafik placehol
   expect_length(out, 1L)
   expect_equal(out[[1]]$type, "assistant")
   expect_false(out[[1]]$has_code)
-  expect_true(grepl("data-chartlab-spec", out[[1]]$html_content, fixed = TRUE))
-  expect_true(grepl("chartlab-placeholder", out[[1]]$html_content, fixed = TRUE))
+
+  expect_true(
+    grepl('id="chart_3_1"', out[[1]]$html_content, fixed = TRUE),
+    info = "Geri yüklenen ChartLab mesajı aynı output id ile Shiny placeholder üretmelidir."
+  )
+
+  expect_true(
+    grepl("shiny", out[[1]]$html_content, ignore.case = TRUE),
+    info = "Geri yüklenen ChartLab mesajı statik data attribute yerine Shiny output placeholder kullanmalıdır."
+  )
+
+  expect_false(
+    grepl("data-chartlab-spec", out[[1]]$html_content, fixed = TRUE),
+    info = "Saved chat ChartLab render yolu ayrı JS renderer'a bağımlı kalmamalıdır."
+  )
 })
