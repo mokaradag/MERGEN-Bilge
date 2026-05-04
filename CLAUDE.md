@@ -542,6 +542,43 @@ Do not move extractor helpers back into `R/helpers_claude_code_documents.R`. Kee
 For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
 
 
+
+### Project/Resource Analysis security-summary helper contract
+
+Project/Resource Analysis keeps RLS, identity-readiness, and statistical-summary helper logic outside the main Shiny module.
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_pk_analysis_core.R",      encoding = "UTF-8")
+safe_source("R/helpers_pk_analysis_security_summary.R", encoding = "UTF-8")
+safe_source("R/helpers_pk_analysis_filters.R",   encoding = "UTF-8")
+safe_source("R/module_proje_kaynak_analizi.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+R/helpers_pk_analysis_core.R: low-side-effect core helpers such as column summaries, date conversion, SQL Server identifier normalization, UTF-8 dataframe normalization, and Unicode SQL execution.
+
+R/helpers_pk_analysis_security_summary.R: resolve_pk_analysis_username(), get_user_rls_info(), apply_rls_to_data(), and generate_statistical_summary().
+
+R/helpers_pk_analysis_filters.R: AI-driven filter extraction and smart dataframe filtering.
+
+R/module_proje_kaynak_analizi.R: request orchestration, query selection, SQL execution flow, filtering flow, LLM handoff, and stop-check handling.
+
+
+Do not move the RLS helpers, SSO readiness resolver, or statistical-summary generator back into R/module_proje_kaynak_analizi.R.
+
+resolve_pk_analysis_username() is a production safety boundary. In Windows VM SSO mode, Project/Resource Analysis must not proceed to RLS/DB lookup with username "Unknown" while session$userData$auth_initialized is still false. If identity is not ready, the analysis path should return the existing user-facing "identity/authentication is preparing" message instead of opening a DB connection.
+
+The public helper names must remain stable unless compatibility wrappers are preserved.
+
+Protected by:
+
+tests/testthat/test-pk-analysis-security-summary-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+
 ### Send-message request lifecycle contract
 
 `R/helpers_send_message_request_lifecycle.R` owns the focused helper boundary for `sendMessageInit(...)` request lifecycle behavior. Keep it sourced before `R/helpers_send_message_core.R`, `R/server_handler_true_streaming.R`, and `R/server_send_message.R`.
@@ -1222,7 +1259,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 73, max 800+ line files: 5, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1004, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951. The latest File Manager state runtime extraction and send-message lifecycle extraction set the current 73/100 baseline, 5-file 800+ line cap, and 1004 max-line cap. The send-message lifecycle extraction lowered `R/server_send_message.R` below the 800-line threshold, so the global ratchet now preserves the 73/100 score and 5-file 800+ baseline.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis, Admin Error Analysis, and Project/Resource Analysis security-summary refactors, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score = 76, max 800+ line files = 4, max 25+ function files = 6, max 1500+ line files = 0, max file lines = 954, and max file functions = 44. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
@@ -1248,6 +1285,7 @@ The LLM worker payload extraction is also protected by file-specific ratchets: `
   testthat::test_file("tests/testthat/test-file-manager-upload-limit-ui.R")
   testthat::test_file("tests/testthat/test-config-file-store-registry-refactor-contract.R")
   testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+  testthat::test_file("tests/testthat/test-pk-analysis-security-summary-contract.R")
   testthat::test_file("tests/testthat/test-claude-code-ui-refactor-contract.R")
   testthat::test_file("tests/testthat/test-claude-code-model-config-refactor-contract.R")
   testthat::test_file("tests/testthat/test-source-manifest-contract.R")
