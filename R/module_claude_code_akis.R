@@ -115,7 +115,11 @@ create_akis_yardimcilari <- function(session, ns, rv) {
   # --- Akış sonlandırma ---
   # Akış tamamlandığında, hata oluştuğunda veya durdurulduğunda çağrılır.
   # UI öğelerini (düğmeler, düşünme animasyonu, durum çubuğu) günceller.
-  finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL) {
+  finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL, request_id = NULL) {
+    if (!cc_is_active_run(rv, request_id)) {
+      return(invisible(FALSE))
+    }
+
     if (!isTRUE(rv$is_running) &&
         is.null(rv$active_process) &&
         is.null(rv$stream_env)) {
@@ -126,6 +130,7 @@ create_akis_yardimcilari <- function(session, ns, rv) {
     rv$active_process <- NULL
     rv$poll_state <- NULL
     rv$stream_env <- NULL
+    rv$active_request_id <- NULL
 
     # Düğmeleri güncelle
     session$sendCustomMessage(

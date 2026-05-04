@@ -56,7 +56,7 @@ test_that("maintainability skoru mevcut taban çizgisinin altına düşmez", {
     info = "maintainability_report.R attr(..., 'maintainability_score') üretmelidir."
   )
 
-  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 76L)
+  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 79L)
 
   expect_true(
     score >= min_score,
@@ -88,10 +88,10 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
     info = "maintainability_report.R attr(..., 'score_report') üretmelidir."
   )
 
-  max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 4L)
+  max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 3L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 6L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 954L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 951L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 44L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -171,7 +171,7 @@ test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {
     info = "R/module_claude_code.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_cc_lines <- .as_int_env("MERGEN_TEST_MAX_CLAUDE_CODE_LINES", 960L)
+  max_cc_lines <- .as_int_env("MERGEN_TEST_MAX_CLAUDE_CODE_LINES", 799L)
 
   expect_true(
     cc_row$lines[1] <= max_cc_lines,

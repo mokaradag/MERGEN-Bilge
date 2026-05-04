@@ -51,6 +51,11 @@ test_that("Claude Code streaming finalization poll state temizler", {
     grepl("!isTRUE\\(rv\\$is_running\\)", block, perl = TRUE),
     info = "finalize_streaming() idempotent erken dönüş korumasını korumalıdır."
   )
+  
+  expect_true(
+    grepl("cc_is_active_run\\(rv, request_id\\)", block, perl = TRUE),
+    info = "finalize_streaming() stale request finalize çağrılarını reddetmelidir."
+  )
 
   expect_true(
     grepl("rv\\$active_process\\s*<-\\s*NULL", block, perl = TRUE),
@@ -65,5 +70,10 @@ test_that("Claude Code streaming finalization poll state temizler", {
   expect_true(
     grepl("rv\\$stream_env\\s*<-\\s*NULL", block, perl = TRUE),
     info = "finalize_streaming() stream_env temizlemelidir."
+  )
+  
+  expect_true(
+    grepl("rv\\$active_request_id\\s*<-\\s*NULL", block, perl = TRUE),
+    info = "finalize_streaming() aktif request kimliğini temizlemelidir."
   )
 })

@@ -34,7 +34,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       current_runtime_model = NULL,   # Gerçekte çalıştırılan model takibi
       active_process = NULL,          # Aktif processx süreci (durdurma için)
       poll_state = NULL,              # Yoklama durumu (ortam değişkeni, durdurma için)
-      stream_env = NULL               # Akış durumu (yoklama gözlemcisi için)
+      stream_env = NULL,              # Akış durumu (yoklama gözlemcisi için)
+      active_request_id = NULL        # Async/poll callback'leri için aktif çalışma kimliği
     )
 	
     dir_refresh_guard <- cc_create_dir_refresh_guard()
@@ -74,6 +75,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       # Çift tıklama koruması
       if (isTRUE(rv$is_running)) return()
+      run_request_id <- cc_next_run_request_id()
+      cc_mark_active_run(rv, run_request_id)
       rv$is_running <- TRUE
 
       # Ayarları al
@@ -366,213 +369,24 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       dokuman_gorevi_yerel_ozet_modu <- isTRUE(dokuman_baglami$has_binary_docs)
 
       if (isTRUE(dokuman_gorevi_yerel_ozet_modu)) {
-        # Doküman görevlerinde Claude Code CLI oturumu kesinlikle kullanılmaz.
-        # Eski --resume oturumu veya araç bağlamı bu akışa taşınmaz.
-        rv$cli_session_id <- NULL
-        rv$conversation_context <- list()
-        rv$current_runtime_model <- model
-
-        if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
-          cikarma_detayi <- paste(
-            c(
-              "Doküman görevi algılandı ancak yerel metin çıkarımı hazırlanamadı.",
-              if (length(dokuman_baglami$extraction_errors %||% character(0))) {
-                "Çıkarma hataları:"
-              } else {
-                NULL
-              },
-              dokuman_baglami$extraction_errors %||% character(0)
-            ),
-            collapse = "\n"
-          )
-
-          log_error(paste(
-            CLAUDE_CODE_LOG_PREFIX,
-            "Doküman görevi CLI'a düşmeden durduruldu.",
-            gsub("[{}]", "", cikarma_detayi)
-          ))
-
-          session$sendCustomMessage(
-            type = "cc-add-message",
-            message = list(
-              target = ns("output_area"),
-              type = "error",
-              content = htmltools::htmlEscape(cikarma_detayi),
-              timestamp = format(Sys.time(), "%H:%M:%S"),
-              welcomeId = ns("welcome_screen")
-            )
-          )
-
-          finalize_streaming(
-            "Hata",
-            "exclamation-triangle",
-            "#E57373",
-            NULL
-          )
-
-          observe_dir_contents(
-            dizin = kaynak_calisma_dizini %||% calisma_dizini
-          )
-
-          return()
-        }
-
-        log_info(paste(
-          CLAUDE_CODE_LOG_PREFIX,
-          "Doküman görevi yerel özetleme yoluna yönlendirildi.",
-          "Model:", model,
-          "| Hazır dosya sayısı:", length(dokuman_baglami$prepared_files %||% list()),
-          "| Destek dizini:", dokuman_baglami$effective_workdir %||% ""
-        ))
-
-        dokuman_api_key <- tryCatch(
-          as.character(session$userData$ai_api_key %||% "")[1],
-          error = function(e) ""
+        cc_handle_document_summary_run(
+          session = session,
+          ns = ns,
+          rv = rv,
+          run_request_id = run_request_id,
+          dokuman_baglami = dokuman_baglami,
+          model = model,
+          zaman_asimi = zaman_asimi,
+          kaynak_calisma_dizini = kaynak_calisma_dizini,
+          calisma_dizini = calisma_dizini,
+          effective_user_id = effective_user_id,
+          kullanici_prompt = kullanici_prompt,
+          karakter = karakter,
+          karakter_id = karakter_id,
+          karakter_renk = karakter_renk,
+          finalize_streaming = finalize_streaming,
+          observe_dir_contents = observe_dir_contents
         )
-
-        # Worker tarafına bağımlılık aktarımı ve sağlık metrikleri için
-        # doğrudan future_promise yerine tracked_future_promise kullanılır.
-        tracked_future_promise(
-          task_fn = function() {
-            summarize_claude_code_documents_with_local_llm(
-              document_context = dokuman_baglami,
-              model_id = model,
-              api_key = dokuman_api_key,
-              request_timeout_sec = zaman_asimi,
-              output_dir = kaynak_calisma_dizini %||% calisma_dizini,
-              user_id = effective_user_id,
-              session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
-            )
-          },
-          task_type = "claude_code_document_summary",
-          session_token = session$token
-        ) |>
-          promises::then(function(sonuc) {
-            sure <- sonuc$duration %||% NA_real_
-
-            if (isTRUE(sonuc$success)) {
-              rv$conversation_context <- c(
-                rv$conversation_context,
-                list(list(role = "assistant", content = sonuc$output %||% ""))
-              )
-
-              assistant_html <- paste0(
-                format_claude_code_output(sonuc$output %||% ""),
-                sonuc$generated_downloads_html %||% "",
-                if (!nzchar(sonuc$generated_downloads_html %||% "") &&
-                    nzchar(sonuc$generated_summary_path %||% "")) {
-                  paste0(
-                    '<div class="cc-generated-files">',
-                    '<div class="cc-generated-files-title">',
-                    '<i class="fas fa-file-alt"></i> Oluşturulan Dosya',
-                    '</div>',
-                    '<div class="cc-tool-content">',
-                    '<span class="cc-tool-path">',
-                    htmltools::htmlEscape(sonuc$generated_summary_path),
-                    '</span>',
-                    '</div>',
-                    '</div>'
-                  )
-                } else {
-                  ""
-                }
-              )
-
-              session$sendCustomMessage(
-                type = "cc-add-message",
-                message = list(
-                  target = ns("output_area"),
-                  type = "assistant",
-                  content = assistant_html,
-                  timestamp = format(Sys.time(), "%H:%M:%S"),
-                  accentColor = karakter_renk,
-                  characterName = karakter$display_name,
-                  welcomeId = ns("welcome_screen")
-                )
-              )
-
-              rv$last_result <- sonuc
-
-              finalize_streaming(
-                "Tamamlandı",
-                "check-circle",
-                "#81C784",
-                sure
-              )
-            } else {
-              rv$last_result <- sonuc
-
-              session$sendCustomMessage(
-                type = "cc-add-message",
-                message = list(
-                  target = ns("output_area"),
-                  type = "error",
-                  content = htmltools::htmlEscape(sonuc$error %||% "Bilinmeyen hata"),
-                  timestamp = format(Sys.time(), "%H:%M:%S"),
-                  welcomeId = ns("welcome_screen")
-                )
-              )
-
-              finalize_streaming(
-                "Hata",
-                "exclamation-triangle",
-                "#E57373",
-                sure
-              )
-            }
-
-            rv$output_history <- c(
-              rv$output_history,
-              list(list(
-                prompt = kullanici_prompt,
-                result = rv$last_result,
-                timestamp = Sys.time(),
-                character = karakter_id
-              ))
-            )
-
-            observe_dir_contents(
-              dizin = kaynak_calisma_dizini %||% calisma_dizini
-            )
-
-            NULL
-          }) |>
-          promises::catch(function(e) {
-            hata_metni <- conditionMessage(e)
-
-            rv$last_result <- list(
-              success = FALSE,
-              output = "",
-              error = hata_metni,
-              duration = NA_real_,
-              tool_uses = list(),
-              session_id = NULL
-            )
-
-            session$sendCustomMessage(
-              type = "cc-add-message",
-              message = list(
-                target = ns("output_area"),
-                type = "error",
-                content = htmltools::htmlEscape(hata_metni),
-                timestamp = format(Sys.time(), "%H:%M:%S"),
-                welcomeId = ns("welcome_screen")
-              )
-            )
-
-            finalize_streaming(
-              "Hata",
-              "exclamation-triangle",
-              "#E57373",
-              NULL
-            )
-
-            observe_dir_contents(
-              dizin = kaynak_calisma_dizini %||% calisma_dizini
-            )
-
-            NULL
-          })
 
         return()
       }
@@ -598,6 +412,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       stream_env$mirror_kullanildi <- mirror_kullanildi
       stream_env$user_id <- effective_user_id
       stream_env$session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+      stream_env$request_id <- run_request_id
       stream_env$tum_satirlar <- character(0)
       stream_env$durduruldu <- FALSE
       stream_env$oturum_id <- NULL  # stream-json olaylarından gelecek
@@ -655,6 +470,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       }, error = function(e) {
         rv$is_running <- FALSE
+        if (cc_is_active_run(rv, run_request_id)) {
+          rv$active_request_id <- NULL
+        }
 
         session$sendCustomMessage(
           type = "cc-finalize-ui",
@@ -734,7 +552,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Durdurma isteği kontrolü
       if (isTRUE(env$durduruldu)) {
         tryCatch(proc$kill(), error = function(e) NULL)
-        finalize_streaming("Durduruldu", "stop-circle", "#FFB74D")
+        finalize_streaming("Durduruldu", "stop-circle", "#FFB74D", request_id = env$request_id)
         return()
       }
 
@@ -753,7 +571,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             welcomeId = ns("welcome_screen")
           )
         )
-        finalize_streaming("Zaman Aşımı", "clock", "#FFB74D")
+        finalize_streaming("Zaman Aşımı", "clock", "#FFB74D", request_id = env$request_id)
         return()
       }
 
