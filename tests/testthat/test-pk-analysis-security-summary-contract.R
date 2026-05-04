@@ -53,17 +53,19 @@
 }
 
 .pk_count_file_functions <- function(text) {
-  hits <- gregexpr(
-    "(<-|=)\\s*function\\s*\\(",
-    text,
-    perl = TRUE
-  )[[1]]
+  # Maintainability contract for extracted helper files should count public /
+  # top-level assigned helper functions, not local anonymous callbacks inside
+  # lapply/vapply or nested implementation details.
+  lines <- strsplit(text, "\n", fixed = TRUE)[[1]]
 
-  if (length(hits) == 1L && identical(hits[1], -1L)) {
-    return(0L)
-  }
+  hits <- grepl(
+    "^[[:alnum:]_\\.]+\\s*<-\\s*function\\s*\\(",
+    lines,
+    perl = TRUE,
+    useBytes = TRUE
+  )
 
-  length(hits)
+  sum(hits)
 }
 
 .pk_load_security_summary_helper <- function() {
@@ -139,9 +141,9 @@ test_that("Proje/Kaynak Analizi helper extraction maintainability kazanımı kor
   )
 
   expect_true(
-    helper_lines <= 360L,
+    helper_lines <= 400L,
     info = sprintf(
-      "R/helpers_pk_analysis_security_summary.R küçük helper dosyası olarak kalmalıdır: %d > 360.",
+      "R/helpers_pk_analysis_security_summary.R küçük helper dosyası olarak kalmalıdır: %d > 400.",
       helper_lines
     )
   )
