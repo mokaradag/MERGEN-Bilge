@@ -128,3 +128,45 @@ test_that("module_claude_code.R doküman özetleme akışını lifecycle helper'
     info = "Streaming env aktif request kimliğini taşımalıdır."
   )
 })
+
+test_that("Bilge Yolaç stop observer UI finalization'ı poll observer'a bırakmaz", {
+  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
+
+  m <- regexpr(
+    "observeEvent\\(input\\$stop_command, \\{[\\s\\S]+?\\n    \\}\\)",
+    txt,
+    perl = TRUE
+  )
+
+  expect_true(
+    m[1] > 0,
+    info = "input$stop_command observer bloğu bulunmalıdır."
+  )
+
+  block <- regmatches(txt, m)[[1]]
+
+  expect_true(
+    grepl("finalize_streaming\\(", block, perl = TRUE),
+    info = "Stop observer, poll observer'a güvenmeden finalize_streaming() çağırmalıdır."
+  )
+
+  expect_true(
+    grepl("\"Durduruldu\"", block, fixed = TRUE),
+    info = "Stop observer kullanıcıya Durduruldu durumunu göndermelidir."
+  )
+
+  expect_true(
+    grepl("cc-stream-end", block, fixed = TRUE),
+    info = "Stop observer istemcide açık stream mesajını kapatmalıdır."
+  )
+
+  expect_false(
+    grepl("rv\\$active_process\\s*<-\\s*NULL", block, perl = TRUE),
+    info = "Stop observer active_process'i elle NULL yapmamalı; state temizliği finalize_streaming() içinde kalmalıdır."
+  )
+
+  expect_true(
+    grepl("request_id\\s*=\\s*request_id", block, perl = TRUE),
+    info = "Stop observer stale finalize koruması için request_id ile finalize etmelidir."
+  )
+})

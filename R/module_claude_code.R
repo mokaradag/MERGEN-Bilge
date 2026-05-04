@@ -743,19 +743,42 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
     # --- Durdur düğmesi ---
     observeEvent(input$stop_command, {
       if (isTRUE(rv$is_running)) {
-        # Yoklama döngüsüne durdurma sinyali gönder (ortam değişkeni ile)
-        if (!is.null(rv$poll_state)) {
-          rv$poll_state$durduruldu <- TRUE
+        env <- rv$stream_env %||% rv$poll_state
+        request_id <- if (!is.null(env)) {
+          env$request_id %||% rv$active_request_id
+        } else {
+          rv$active_request_id
         }
 
-        # Aktif süreci sonlandır
-        if (!is.null(rv$active_process)) {
+        # Yoklama döngüsüne durdurma sinyali gönder (ortam değişkeni ile)
+        if (!is.null(env)) {
+          env$durduruldu <- TRUE
+        }
+
+        # Aktif süreci sonlandır. active_process burada elle NULL yapılmaz;
+        # finalize_streaming() tek noktadan UI ve state temizliği yapar.
+        proc <- rv$active_process
+        if (!is.null(proc)) {
           tryCatch({
-            rv$active_process$kill()
+            proc$kill()
             log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Süreç kullanıcı tarafından durduruldu"))
           }, error = function(e) NULL)
-          rv$active_process <- NULL
         }
+
+        # Poll observer artık active_process=NULL nedeniyle stop branch'e
+        # ulaşamayabileceği için UI finalize işlemini stop observer içinde
+        # idempotent olarak tamamla.
+        session$sendCustomMessage(
+          type = "cc-stream-end",
+          message = list(target = ns("output_area"))
+        )
+
+        finalize_streaming(
+          "Durduruldu",
+          "stop-circle",
+          "#FFB74D",
+          request_id = request_id
+        )
       }
     })
 
