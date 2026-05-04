@@ -1294,9 +1294,40 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis, Admin Error Analysis, and Project/Resource Analysis security-summary refactors, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score = 79, max 800+ line files = 3, max 25+ function files = 6, max 1500+ line files = 0, max file lines = 951, and max file functions = 44. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 82, max 800+ line files: 2, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 866, and max file functions: 44. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
+
+Admin Feedback Analysis is now protected by `MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 799`and`MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS = 5`. The extracted SQL helper file `R/helpers_admin_geri_bildirim_queries.R` is protected with a 260-line and 3-function budget.
+
+### Admin Feedback Analysis modularization contract
+
+Admin Feedback Analysis is intentionally split across a small UI/data-helper boundary, a SQL-query boundary, and the Shiny server module.
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_admin_geri_bildirim.R",         encoding = "UTF-8")
+safe_source("R/helpers_admin_geri_bildirim_queries.R", encoding = "UTF-8")
+safe_source("R/module_admin_geri_bildirim.R",          encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_admin_geri_bildirim.R`: public `adminGeriBildirimUI()`, tab UI helpers, and pure tag-counting/data-presentation helpers. It should not create Shiny observers or query the database.
+* `R/helpers_admin_geri_bildirim_queries.R`: `admin_gb_feedback_queries()` and `admin_gb_fetch_data()`. This file owns the feedback SQL query package and the injectable query function boundary so tests can validate the contract without touching the database.
+* `R/module_admin_geri_bildirim.R`: Shiny server orchestration, refresh/reactive flow, tab routing, and chart/table render functions.
+
+Do not move the SQL query list or the public UI shell back into `R/module_admin_geri_bildirim.R`. The module should remain below the 800-line threshold.
+
+Protected by:
+
+```text
+tests/testthat/test-admin-geri-bildirim-refactor-contract.R
+tests/testthat/test-admin-geri-bildirim-query-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
 
 The Bilge Yolaç setup and run-lifecycle extraction is also protected by a file-specific ratchet: `R/module_claude_code.R` should remain at or below `MERGEN_TEST_MAX_CLAUDE_CODE_LINES = 799` by default. The latest maintainability report after the extraction shows `R/module_claude_code.R` at 799 lines, down from 1254 lines. Only tighten this threshold when a new maintainability report proves a lower stable baseline; do not loosen it to hide unrelated growth.
 
