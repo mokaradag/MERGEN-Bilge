@@ -38,6 +38,7 @@ test_that("admin geri bildirim helper dosyası saf helper fonksiyonlarını taş
   helper_text <- .read_repo_text_admin_gb("R/helpers_admin_geri_bildirim.R")
 
   expected_functions <- c(
+    "adminGeriBildirimUI",
     "admin_gb_count_tags",
     "admin_gb_tab_ui",
     "admin_gb_overview_ui",
@@ -97,6 +98,36 @@ test_that("admin geri bildirim modülü çıkarılan tab UI helper'ını kullan�
       info = paste("Çıkarılan nested UI helper modül içinde kalmamalıdır:", fn)
     )
   }
+})
+
+test_that("admin geri bildirim modülü public UI ve SQL sorgu paketini helperlara taşır", {
+  module_text <- .read_repo_text_admin_gb("R/module_admin_geri_bildirim.R")
+  query_helper_text <- .read_repo_text_admin_gb("R/helpers_admin_geri_bildirim_queries.R")
+
+  expect_false(
+    grepl("\\n\\s*adminGeriBildirimUI\\s*<-\\s*function\\s*\\(", module_text, perl = TRUE),
+    info = "adminGeriBildirimUI public adı saf UI helper dosyasına taşınmış kalmalıdır."
+  )
+
+  expect_true(
+    grepl("admin_gb_fetch_data\\s*\\(", module_text, perl = TRUE),
+    info = "module_admin_geri_bildirim.R SQL sorgu paketini admin_gb_fetch_data() üzerinden kullanmalıdır."
+  )
+
+  expect_true(
+    grepl("admin_gb_feedback_queries\\s*<-\\s*function\\s*\\(", query_helper_text, perl = TRUE),
+    info = "SQL sorgu listesi admin_gb_feedback_queries() içinde tutulmalıdır."
+  )
+
+  expect_true(
+    grepl("admin_gb_fetch_data\\s*<-\\s*function\\s*\\(", query_helper_text, perl = TRUE),
+    info = "Veri çekimi enjekte edilebilir admin_gb_fetch_data() helper'ı ile yapılmalıdır."
+  )
+
+  expect_false(
+    grepl("reactive\\s*\\(|observeEvent\\s*\\(|moduleServer\\s*\\(", query_helper_text, perl = TRUE),
+    info = "SQL helper dosyası Shiny reactive/observer/server yan etkisi içermemelidir."
+  )
 })
 
 test_that("admin_gb_count_tags Türkçe etiket çevirisini ve sayımı korur", {

@@ -4,6 +4,46 @@
 #           yardımcıları. Yan etki, observer veya DB erişimi içermez.
 # ==============================================================================
 
+adminGeriBildirimUI <- function(id) {
+  ns <- NS(id)
+
+  admin_page_layout(
+    ns = ns,
+    page_title = "Geri Bildirim Analizi",
+    page_icon = "comment-dots",
+    tab_panels = list(
+      tabPanel(
+        title = tags$span(
+          title = "Genel geri bildirim metrikleri ve özet göstergeler",
+          tagList(icon("chart-line"), " Genel Bakış")
+        ),
+        value = "gb_overview"
+      ),
+      tabPanel(
+        title = tags$span(
+          title = "Memnuniyet puanı dağılımı ve trend analizi",
+          tagList(icon("face-smile"), " Memnuniyet Analizi")
+        ),
+        value = "gb_memnuniyet"
+      ),
+      tabPanel(
+        title = tags$span(
+          title = "Net Promoter Score analizi ve segmentasyon",
+          tagList(icon("gauge-high"), " NPS Analizi")
+        ),
+        value = "gb_nps"
+      ),
+      tabPanel(
+        title = tags$span(
+          title = "Etiket dağılımı ve kullanıcı yorumları detaylı analiz",
+          tagList(icon("tags"), " Etiket & İçerik")
+        ),
+        value = "gb_icerik"
+      )
+    )
+  )
+}
+
 admin_gb_count_tags <- function(ham) {
   if (is.null(ham) || !is.data.frame(ham) || nrow(ham) == 0) {
     return(data.frame(etiket = character(0), cnt = integer(0)))

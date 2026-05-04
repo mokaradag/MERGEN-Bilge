@@ -56,7 +56,7 @@ test_that("maintainability skoru mevcut taban çizgisinin altına düşmez", {
     info = "maintainability_report.R attr(..., 'maintainability_score') üretmelidir."
   )
 
-  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 79L)
+  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 82L)
 
   expect_true(
     score >= min_score,
@@ -88,10 +88,10 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
     info = "maintainability_report.R attr(..., 'score_report') üretmelidir."
   )
 
-  max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 3L)
+  max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 2L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 6L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 951L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 866L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 44L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -220,7 +220,8 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
     )
   }
 
-  assert_file_budget("R/module_admin_geri_bildirim.R", 951L, 6L)
+  assert_file_budget("R/module_admin_geri_bildirim.R", 799L, 5L)
+  assert_file_budget("R/helpers_admin_geri_bildirim_queries.R", 260L, 3L)
   assert_file_budget("R/config_api.R", 866L, 26L)
   assert_file_budget("R/helpers_llm_worker.R", 842L, 8L)
   assert_file_budget("R/helpers_claude_code.R", 799L, 39L)
@@ -479,8 +480,8 @@ test_that("module_admin_geri_bildirim.R refactor kazanımı geri alınmaz", {
     info = "R/module_admin_geri_bildirim.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_gb_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES", 951L)
-  max_gb_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS", 8L)
+  max_gb_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES", 799L)
+  max_gb_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS", 5L)
 
   expect_true(
     gb_row$lines[1] <= max_gb_lines,

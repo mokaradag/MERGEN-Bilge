@@ -232,17 +232,23 @@ test_that("Bilge Yolaç user guard ve server setup yardımcıları modülden ön
   )
 })
 
-test_that("admin geri bildirim helper dosyası modülden önce yükleniyor", {
+test_that("admin geri bildirim helper dosyaları modülden önce yükleniyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
   paths <- .extract_safe_source_paths(global_text)
 
   pos <- function(path) match(path, paths)
 
   expect_false(is.na(pos("R/helpers_admin_geri_bildirim.R")))
+  expect_false(is.na(pos("R/helpers_admin_geri_bildirim_queries.R")))
   expect_false(is.na(pos("R/module_admin_geri_bildirim.R")))
 
   expect_lt(
     pos("R/helpers_admin_geri_bildirim.R"),
+    pos("R/helpers_admin_geri_bildirim_queries.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_admin_geri_bildirim_queries.R"),
     pos("R/module_admin_geri_bildirim.R")
   )
 })
