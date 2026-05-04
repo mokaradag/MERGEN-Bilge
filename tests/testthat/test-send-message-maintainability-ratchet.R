@@ -97,7 +97,7 @@ test_that("server_send_message.R request lifecycle extraction sonrası 800 satı
   expect_true(
     helper_row$functions[1] <= max_helper_functions,
     info = sprintf(
-	  "helpers_send_message_request_lifecycle.R fonksiyon ifadesi sayısı kontrollü kalmalıdır: %d > %d."
+	  "helpers_send_message_request_lifecycle.R fonksiyon ifadesi sayısı kontrollü kalmalıdır: %d > %d.",
       helper_row$functions[1],
       max_helper_functions
     )
