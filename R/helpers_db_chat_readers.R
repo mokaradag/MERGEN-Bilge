@@ -6,7 +6,7 @@
 # Not:
 # - Bağlantı yardımcıları R/helpers_db_connection.R içindedir.
 # - Mesaj satırı biçimlendirme R/helpers_chat_message_formatting.R içindedir.
-# - Yazma/mutasyon işlemleri R/helpers_database.R içinde kalır.
+# - Yazma/mutasyon işlemleri R/helpers_db_chat_mutations.R içindedir.
 # ==============================================================================
 
 .db_chat_valid_user_id <- function(user_id) {

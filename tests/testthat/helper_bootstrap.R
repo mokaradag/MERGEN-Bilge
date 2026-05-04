@@ -115,6 +115,7 @@ source(file.path(repo_root_for_tests, "R", "helpers_db_connection.R"), encoding 
 source(file.path(repo_root_for_tests, "R", "helpers_db_validation.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_chat_message_formatting.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_db_chat_readers.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_db_chat_mutations.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_database.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "utils_file_index.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_file_manager_policy.R"), encoding = "UTF-8", local = .test_global)
