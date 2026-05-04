@@ -23,7 +23,7 @@ handle_true_streaming_mode <- function(ctx) {
     poll_interval_ms <- 50L
   }
 
-  req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
+  req_id <- mergen_new_send_message_request_id()
 
   active_request_id(req_id)
   stop_generation(FALSE)
@@ -128,6 +128,11 @@ handle_true_streaming_mode <- function(ctx) {
 
     later::later(function() {
       stream_env$chat_persist_scheduled <- FALSE
+
+      if (!mergen_should_run_deferred_stream_persist(active_request_id, stream_env$req_id, stream_env)) {
+        return(invisible(NULL))
+      }
+
       try(ensure_chat_ready(), silent = TRUE)
     }, delay = persist_delay)
   }
