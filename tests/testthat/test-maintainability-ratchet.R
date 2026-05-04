@@ -227,7 +227,8 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_claude_code.R", 799L, 39L)
   assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 662L, 31L)
   assert_file_budget("R/helpers_database.R", 587L, 29L)
-  assert_file_budget("R/helpers_chartlab.R", 577L, 44L)
+  assert_file_budget("R/helpers_chartlab.R", 577L, 24L)
+  assert_file_budget("R/helpers_chartlab_spec.R", 220L, 12L)
   assert_file_budget("R/helpers_files.R", 341L, 32L)
 })
 

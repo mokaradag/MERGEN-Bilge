@@ -1,7 +1,10 @@
-# R/helpers_chartlab.R
+# ==============================================================================
+# Dosya Yolu: R/helpers_chartlab.R
+# Açıklama: Mesaj içindeki ```chartlab ...``` bloklarını ayrıştırır; bu blokları
+#           Shiny içinde gösterilecek grafik yer tutucularına dönüştürür ve
+#           uygun grafik motoru ile çıktı üretimini bağlar.
+# ==============================================================================
 
-# Detect and convert ```chartlab ...``` into inline widget placeholders
-# Returns list(found=<bool>, html=<html>, renderers=list(list(output_id, spec)))
 build_chartlab_message <- function(raw_text, message_id, session) {
   txt <- as.character(raw_text %||% "")
   if (!grepl("```chartlab", txt, fixed = TRUE)) {
@@ -42,7 +45,7 @@ build_chartlab_message <- function(raw_text, message_id, session) {
       spec <- NULL
       try(spec <- jsonlite::fromJSON(p$value, simplifyVector = TRUE), silent = TRUE)
 
-      # Prefer inline data if present; otherwise resolve ref from chart_store
+      # Gömülü veri varsa doğrudan kullanılır; yoksa chart_store içindeki referans çözülür.
       if (!is.null(spec) && is.null(spec$data) && !is.null(spec$ref) &&
           !is.null(session$userData$chart_store) && is.list(session$userData$chart_store)) {
         stored <- session$userData$chart_store[[as.character(spec$ref)]]
@@ -71,167 +74,17 @@ build_chartlab_message <- function(raw_text, message_id, session) {
   list(found = (chart_counter > 0), html = paste(html_chunks, collapse = ""), renderers = renderers)
 }
 
-# Render one chart output id from a chart spec
+# Tek bir grafik çıktı kimliğini verilen grafik tanımına göre üretir.
 wire_chart_output <- function(output, out_id, spec) {
-  is_num <- function(v) is.numeric(v) || inherits(v, c("Date","POSIXct","POSIXt"))
-  first_or_null <- function(x) if (length(x)) x[[1]] else NULL
-
-  normalize_chart_type <- function(chart_type) {
-    chart_type <- tolower(trimws(as.character(chart_type %||% "")))
-
-    aliases <- list(
-      line = c("line", "line graph", "line chart", "çizgi", "çizgi grafiği", "trend", "trend graph", "trend chart", "zaman serisi", "time series"),
-      scatter = c("scatter", "scatter plot", "scatter graph", "saçılım", "saçılım grafiği"),
-      area = c("area", "area graph", "area chart", "alan", "alan grafiği"),
-      pareto = c("pareto", "pareto graph", "pareto chart", "pareto grafiği"),
-      bar = c("bar", "bar graph", "bar chart", "column", "column chart", "çubuk", "çubuk grafiği", "sütun", "sütun grafiği"),
-      pie = c("pie", "pie chart", "pie graph", "pasta", "pasta grafiği"),
-      donut = c("donut", "doughnut", "donut chart", "doughnut chart", "halka", "halka grafiği"),
-      hist = c("hist", "histogram", "histogram chart", "dağılım")
-    )
-
-    for (nm in names(aliases)) {
-      if (chart_type %in% aliases[[nm]]) return(nm)
-    }
-
-    if (chart_type %in% c("box", "boxplot", "box_plot", "bx")) return("hist")
-
-    chart_type
-  }
-
-  # -------- auto guess missing mapping/type + sanitize mapping ----------
-  # Türkçe: Geliştirilmiş eksen tahmini ve hata kontrolü
-  auto_guess <- function(sp) {
-    sp$type <- normalize_chart_type(sp$type)
-    sp$mapping <- sp$mapping %||% list()
- 
-    df <- sp$data
-    if (is.null(df) || !is.data.frame(df)) return(sp)
- 
-    # Türkçe: Yardımcı fonksiyonlar
-    is_num <- function(v) is.numeric(v)
-    is_date <- function(v) inherits(v, c("Date","POSIXct","POSIXt"))
-    first_or_null <- function(x) if (length(x)) x[[1]] else NULL
- 
-    # Türkçe: Sütun tiplerini daha hassas ayır
-    date_cols <- names(df)[vapply(df, is_date, logical(1))]
-    num_cols  <- names(df)[vapply(df, is_num, logical(1))]
-    cat_cols  <- names(df)[vapply(df, function(x) is.character(x) || is.factor(x), logical(1))]
- 
-    # Türkçe: String formatında tarih varsa yakala (genişletilmiş kalıp)
-    if (length(date_cols) == 0 && length(cat_cols) > 0) {
-      date_pattern <- "date|tarih|zaman|time|yil|year|month|ay|period|donem|gun|day|hafta|week"
-      candidates <- grep(date_pattern, tolower(cat_cols), value = TRUE)
-      if (length(candidates) > 0) {
-        date_cols <- candidates
-        cat_cols <- setdiff(cat_cols, candidates)
-      }
-    }
- 
-    # Türkçe: Mapping normalizasyonu (geçersiz sütunları temizle)
-    norm_map <- function(v) {
-      if (is.null(v)) return(NULL)
-      vv <- as.character(v)
-      vv <- trimws(vv)
-      vv <- vv[nzchar(vv)]
-      if (!length(vv)) return(NULL)
-      vv[[1]]
-    }
- 
-    x_ex <- norm_map(sp$mapping$x)
-    y_ex <- norm_map(sp$mapping$y)
-    g_ex <- norm_map(sp$mapping$group)
- 
-    # Türkçe: KRİTİK - Belirtilen sütunlar gerçekten var mı kontrol et
-    all_cols <- names(df)
-    if (!is.null(x_ex) && !(x_ex %in% all_cols)) {
-      cat("[CHARTLAB] UYARI: x='", x_ex, "' sütunu yok, otomatik seçilecek\n", sep = "")
-      x_ex <- NULL
-    }
-    if (!is.null(y_ex) && !(y_ex %in% all_cols)) {
-      cat("[CHARTLAB] UYARI: y='", y_ex, "' sütunu yok, otomatik seçilecek\n", sep = "")
-      y_ex <- NULL
-    }
-    if (!is.null(g_ex) && !(g_ex %in% all_cols)) {
-      cat("[CHARTLAB] UYARI: group='", g_ex, "' sütunu yok, görmezden geliniyor\n", sep = "")
-      g_ex <- NULL
-    }
- 
-    known <- c("scatter","line","bar","hist","area","pie","donut","pareto")
- 
-    # 1. Grafik Türü Tahmini
-    if (!nzchar(sp$type) || !(sp$type %in% known)) {
-      if (length(date_cols) > 0 && length(num_cols) > 0) {
-        sp$type <- "line"
-      } else if (length(num_cols) >= 2 && length(cat_cols) == 0) {
-        sp$type <- "scatter"
-      } else if (length(cat_cols) > 0 && length(num_cols) > 0) {
-        sp$type <- "bar"
-      } else if (length(num_cols) >= 1) {
-        sp$type <- "hist"
-      } else {
-        sp$type <- "bar"
-      }
-      cat("[CHARTLAB] Grafik türü otomatik seçildi: ", sp$type, "\n", sep = "")
-    }
- 
-    x <- x_ex; y <- y_ex; g <- g_ex
- 
-    # 2. Eksen Tahmini (geliştirilmiş)
-    if (sp$type %in% c("line", "area")) {
-      if (is.null(x)) x <- first_or_null(date_cols)
-      if (is.null(x)) x <- first_or_null(num_cols)
-      if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
-      if (is.null(g) && length(cat_cols) > 0) g <- first_or_null(cat_cols)
- 
-    } else if (sp$type %in% c("bar", "column")) {
-      if (is.null(x)) x <- first_or_null(cat_cols)
-      if (is.null(x)) x <- first_or_null(date_cols)
-      if (is.null(x)) x <- names(df)[1]  # Türkçe: Son çare - ilk sütun
-      if (is.null(y)) y <- first_or_null(num_cols)
- 
-    } else if (sp$type %in% c("pie", "donut")) {
-      if (is.null(x)) x <- first_or_null(cat_cols)
-      if (is.null(x)) x <- names(df)[1]  # Türkçe: Son çare
-      if (is.null(y)) y <- first_or_null(num_cols)
- 
-    } else if (sp$type == "pareto") {
-      if (is.null(x)) x <- first_or_null(cat_cols)
-      if (is.null(y)) y <- first_or_null(num_cols)
- 
-    } else if (sp$type == "scatter") {
-      if (is.null(x)) x <- first_or_null(num_cols)
-      if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
-      if (is.null(g) && length(cat_cols) > 0) g <- first_or_null(cat_cols)
- 
-    } else if (sp$type == "hist") {
-      if (is.null(x)) x <- first_or_null(num_cols)
-      y <- NULL  # Türkçe: Histogram için y ekseni olmamalı
-    }
- 
-    # Türkçe: Final kontrol - hâlâ eksik mi?
-    if (is.null(x) && sp$type != "hist") {
-      cat("[CHARTLAB] UYARI: x ekseni bulunamadı, ilk sütun kullanılıyor\n")
-      x <- names(df)[1]
-    }
- 
-    sp$mapping$x <- x
-    sp$mapping$y <- y
-    sp$mapping$group <- g
- 
-    cat("[CHARTLAB] Final mapping: x=", x %||% "NULL", ", y=", y %||% "NULL", ", group=", g %||% "NULL", "\n", sep = "")
-    sp
-  }
-
-  # ---------- normalize spec ----------
-  spec <- auto_guess(spec)
+  # ---------- Grafik tanımını standartlaştır ----------
+  spec <- chartlab_auto_guess_spec(spec)
   type   <- tolower(spec$type %||% "bar")
   map    <- spec$mapping %||% list()
   params <- spec$params  %||% list()
   df     <- tryCatch(as.data.frame(spec$data, stringsAsFactors = FALSE), error = function(e) NULL)
 
   if (!is.null(df)) {
-    num_cols <- names(df)[vapply(df, is_num, logical(1))]
+    num_cols <- names(df)[vapply(df, chartlab_is_numeric_or_date, logical(1))]
     if (length(num_cols)) for (cn in num_cols) df[[cn]] <- ifelse(is.finite(df[[cn]]), df[[cn]], NA_real_)
   }
 
@@ -240,13 +93,13 @@ wire_chart_output <- function(output, out_id, spec) {
   agg   <- params$agg   %||% NULL
   topn  <- params$top_n %||% NA_integer_
 
-  # Kutu grafik devre dışıysa güvenli görselleştirmeye düş (hist -> bar)
+  # Kutu grafik devre dışıysa güvenli görselleştirmeye düşülür.
   if (identical(type, "box")) {
-    # Türkçe yorum: x ekseni için sayısal kolonu, yoksa kategorik kolonu kullan
+    # x ekseni için sayısal kolon, yoksa kategorik kolon kullanılır.
     type <- "hist"
   }
 
-  # ---------- engines ----------
+  # ---------- Grafik motorları ----------
   if (requireNamespace("highcharter", quietly = TRUE)) {
     output[[out_id]] <- highcharter::renderHighchart({
       tryCatch({
@@ -264,22 +117,9 @@ wire_chart_output <- function(output, out_id, spec) {
         )
         hc <- highchart() %>% hc_exporting(enabled = TRUE) %>% hc_add_theme(custom_theme)
 
-        aggfun <- function(z, f) {
-          f <- tolower(f %||% "sum")
-          fun <- switch(
-            f,
-            sum = function(v) sum(v, na.rm = TRUE),
-            mean = function(v) mean(v, na.rm = TRUE),
-            median = function(v) median(v, na.rm = TRUE),
-            min = function(v) min(v, na.rm = TRUE),
-            max = function(v) max(v, na.rm = TRUE),
-            count = function(v) sum(!is.na(v)),
-            function(v) sum(v, na.rm = TRUE)
-          )
-          fun(z)
-        }
+        aggfun <- chartlab_aggregate_values
 
-        # Validate mapping vs available columns; gracefully fall back instead of blank widgets
+        # Mapping alanları mevcut sütunlarla karşılaştırılır; eksik sütun varsa boş widget yerine anlamlı hata üretilir.
         required_cols <- unique(stats::na.omit(c(x, y, grp)))
         missing_cols <- setdiff(required_cols, names(df))
         if (length(missing_cols)) {
@@ -400,20 +240,7 @@ wire_chart_output <- function(output, out_id, spec) {
     output[[out_id]] <- plotly::renderPlotly({
       tryCatch({
         library(ggplot2); library(plotly)
-        aggfun <- function(z, f) {
-          f <- tolower(f %||% "sum")
-          fun <- switch(
-            f,
-            sum = function(v) sum(v, na.rm = TRUE),
-            mean = function(v) mean(v, na.rm = TRUE),
-            median = function(v) median(v, na.rm = TRUE),
-            min = function(v) min(v, na.rm = TRUE),
-            max = function(v) max(v, na.rm = TRUE),
-            count = function(v) sum(!is.na(v)),
-            function(v) sum(v, na.rm = TRUE)
-          )
-          fun(z)
-        }
+        aggfun <- chartlab_aggregate_values
         p <- NULL
         if (identical(type,"hist")) {
           req(x); p <- ggplot(df, aes(x = .data[[x]])) + geom_histogram(bins = ifelse(isTRUE(!is.na(bins)), bins, 30))

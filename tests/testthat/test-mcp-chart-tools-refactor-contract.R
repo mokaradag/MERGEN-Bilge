@@ -94,12 +94,15 @@ test_that("MCP chart helper source sırası temel araçlardan sonra ChartLab'den
 
   basic_pos <- pos('safe_source("R/helpers_mcp_basic_tools.R"')
   chart_pos <- pos('safe_source("R/helpers_mcp_chart_tools.R"')
+  chartlab_spec_pos <- pos('safe_source("R/helpers_chartlab_spec.R"')
   chartlab_pos <- pos('safe_source("R/helpers_chartlab.R"')
 
   expect_false(is.na(basic_pos), info = "helpers_mcp_basic_tools.R manifestte olmalıdır.")
   expect_false(is.na(chart_pos), info = "helpers_mcp_chart_tools.R manifestte olmalıdır.")
+  expect_false(is.na(chartlab_spec_pos), info = "helpers_chartlab_spec.R manifestte olmalıdır.")
   expect_false(is.na(chartlab_pos), info = "helpers_chartlab.R manifestte olmalıdır.")
 
   expect_lt(basic_pos, chart_pos)
-  expect_lt(chart_pos, chartlab_pos)
+  expect_lt(chart_pos, chartlab_spec_pos)
+  expect_lt(chartlab_spec_pos, chartlab_pos)
 })
