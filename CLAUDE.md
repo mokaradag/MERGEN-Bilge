@@ -541,6 +541,34 @@ Do not move extractor helpers back into `R/helpers_claude_code_documents.R`. Kee
 
 For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
 
+
+### Send-message request lifecycle contract
+
+`R/helpers_send_message_request_lifecycle.R` owns the focused helper boundary for `sendMessageInit(...)` request lifecycle behavior. Keep it sourced before `R/helpers_send_message_core.R`, `R/server_handler_true_streaming.R`, and `R/server_send_message.R`.
+
+Responsibilities:
+
+- request id generation through `mergen_new_send_message_request_id()`,
+- current/stale/stopped request-state checks through `mergen_send_message_request_state(...)`,
+- prompt snapshotting before routing,
+- deferred chat creation decisions and chat preparation,
+- welcome-screen cleanup for message send,
+- thinking-panel planning and wrapper insertion,
+- true-streaming deferred persistence guard through `mergen_should_run_deferred_stream_persist(...)`.
+
+`R/server_send_message.R` should remain focused on orchestration, routing, mode dispatch, and LLM handoff. Do not move the extracted request lifecycle, prompt snapshot, welcome cleanup, thinking panel, or deferred chat preparation blocks back into `R/server_send_message.R`.
+
+`R/server_handler_true_streaming.R` must use `mergen_new_send_message_request_id()` for request ids. Any delayed `later::later(...)` callback that can create or persist a chat for an active stream must check `mergen_should_run_deferred_stream_persist(active_request_id, stream_env$req_id, stream_env)` before calling `ensure_chat_ready()`. This prevents stale true-streaming callbacks from mutating `values$current_chat_id` after a stop, finalized stream, or newer request.
+
+Protected by:
+
+```text
+tests/testthat/test-send-message-request-lifecycle-contract.R
+tests/testthat/test-send-message-maintainability-ratchet.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
+
 ### LLM SSE stream I/O contract
 
 The true-streaming LLM layer keeps the stream-file JSONL protocol separate from SSE parsing and worker orchestration. Preserve this source order in `global.R`:
@@ -1194,7 +1222,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 70, max 800+ line files: 6, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1004, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951. The latest File Manager state runtime extraction is the reason for the current 70/100 baseline, 6-file 800+ line cap, and 1004 max-line cap.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the Bilge Yolaç UI and model/config extractions, LLM SSE stream I/O refactor, and Admin Hata Analizi extraction, the ratchet baseline was intentionally tightened to the current maintainability report; do not loosen it unless a deliberate rollback is required. Current baseline: minimum maintainability score: 73, max 800+ line files: 5, max 25+ function files: 6, max 1500+ line files: 0, max file lines: 1004, max file functions: 44, MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 951. The latest File Manager state runtime extraction and send-message lifecycle extraction set the current 73/100 baseline, 5-file 800+ line cap, and 1004 max-line cap. The send-message lifecycle extraction lowered `R/server_send_message.R` below the 800-line threshold, so the global ratchet now preserves the 73/100 score and 5-file 800+ baseline.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
