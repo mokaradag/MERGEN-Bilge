@@ -523,6 +523,40 @@ The split is protected by:
 
 The index mutation path must keep a guard around read-modify-write operations so delayed file refresh or stale prune operations cannot overwrite a newer upload index entry.
 
+### Bilge Yolaç run lifecycle and stop-finalization contract
+
+Bilge Yolaç command execution now has a focused run-lifecycle boundary in `R/helpers_claude_code_run_lifecycle.R`.
+
+Responsibilities:
+
+- active run request-id generation,
+- active/stale run checks,
+- stale async/promise callback protection,
+- document-summary async result finalization guards,
+- safe directory refresh after async completion,
+- compatibility wrappers for request-id-aware finalization.
+
+`R/module_claude_code.R` should remain focused on Shiny orchestration, command dispatch, process startup, and polling. Do not move the extracted async document-summary promise callback logic back into `R/module_claude_code.R`.
+
+Stop handling is intentionally finalized directly inside the `input$stop_command` observer. When the user presses `Durdur`, the process may be killed and `active_process` may no longer be available to the polling observer. Therefore, the stop observer must not rely on the poll observer to reach the `env$durduruldu` branch. It must send the stream-end/finalization path itself so that the second counter, thinking animation, stop button, and disabled `Çalıştır` button are reset immediately.
+
+Keep this behavior intact:
+
+- `input$stop_command` should mark the environment as stopped when available.
+- It may kill the active process.
+- It should not manually clear all runtime state with ad hoc assignments.
+- It should call `finalize_streaming("Durduruldu", ...)` with the active request id.
+- `finalize_streaming(...)` remains the single state/UI cleanup boundary for run button, stop button, thinking overlay, status text, `rv$is_running`, `rv$active_process`, `rv$poll_state`, `rv$stream_env`, and `rv$active_request_id`.
+
+Protected by:
+
+```text
+tests/testthat/test-claude-code-run-lifecycle-contract.R
+tests/testthat/test-claude-code-stream-finalize-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
+
 ### Bilge Yolaç document extractor modularization contract
 
 The Bilge Yolaç document-processing layer now has a focused extractor split. Preserve this source order in `global.R`:
@@ -722,6 +756,7 @@ The split is protected by:
 * `tests/testthat/test-claude-code-user-guard-contract.R`
 * `tests/testthat/test-claude-code-dir-ui-refactor-contract.R`
 * `tests/testthat/test-claude-code-upload-folder-refactor-contract.R`
+* `tests/testthat/test-claude-code-run-lifecycle-contract.R`
 * `tests/testthat/test-claude-code-stream-finalize-contract.R`
 * `tests/testthat/test-source-manifest-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
@@ -1259,11 +1294,11 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis, Admin Error Analysis, and Project/Resource Analysis security-summary refactors, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score = 76, max 800+ line files = 4, max 25+ function files = 6, max 1500+ line files = 0, max file lines = 954, and max file functions = 44. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis, Admin Error Analysis, and Project/Resource Analysis security-summary refactors, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score = 79, max 800+ line files = 3, max 25+ function files = 6, max 1500+ line files = 0, max file lines = 951, and max file functions = 44. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
-The Bilge Yolaç setup extraction is also protected by a file-specific ratchet: `R/module_claude_code.R`should remain at or below`MERGEN_TEST_MAX_CLAUDE_CODE_LINES = 960`by default. The latest maintainability report after the extraction shows`R/module_claude_code.R` at 954 lines, down from 1254 lines. Only tighten this threshold when a new maintainability report proves a lower stable baseline; do not loosen it to hide unrelated growth.
+The Bilge Yolaç setup and run-lifecycle extraction is also protected by a file-specific ratchet: `R/module_claude_code.R` should remain at or below `MERGEN_TEST_MAX_CLAUDE_CODE_LINES = 799` by default. The latest maintainability report after the extraction shows `R/module_claude_code.R` at 799 lines, down from 1254 lines. Only tighten this threshold when a new maintainability report proves a lower stable baseline; do not loosen it to hide unrelated growth.
 
 The LLM worker payload extraction is also protected by file-specific ratchets: `MERGEN_TEST_MAX_LLM_WORKER_LINES = 860`, `MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_LINES = 320`, and `MERGEN_TEST_MAX_LLM_WORKER_PAYLOAD_FUNCTIONS = 12`.
 - Focused hardening checks can be run directly with:
