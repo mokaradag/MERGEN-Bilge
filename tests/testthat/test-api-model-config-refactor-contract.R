@@ -226,7 +226,7 @@ test_that("tool mode model çözümleme ve ana aksiyon verisi korunur", {
   )
 
   actions <- build_main_actions_data_from_config(fake_config)
-  action_ids <- vapply(actions, `[[`, character(1), "id")
+  action_ids <- unname(vapply(actions, `[[`, character(1), "id"))
 
   expect_identical(action_ids, c("summarization", "project-process"))
   expect_identical(actions[[1]]$model_value, "summary-model")

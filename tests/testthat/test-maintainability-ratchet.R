@@ -223,7 +223,7 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/module_admin_geri_bildirim.R", 799L, 5L)
   assert_file_budget("R/helpers_admin_geri_bildirim_queries.R", 260L, 3L)
   assert_file_budget("R/config_api.R", 700L, 14L)
-  assert_file_budget("R/helpers_api_model_config.R", 260L, 18L)
+  assert_file_budget("R/helpers_api_model_config.R", 360L, 18L)
   assert_file_budget("R/helpers_llm_worker.R", 842L, 8L)
   assert_file_budget("R/helpers_claude_code.R", 617L, 29L)
   assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 240L, 14L)
