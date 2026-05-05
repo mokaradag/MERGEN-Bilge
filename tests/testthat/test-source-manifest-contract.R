@@ -124,6 +124,24 @@ test_that("file store indeks/registry yardımcıları config dosyasından sonra 
   expect_lt(pos("R/config_file_store_registry.R"), pos("R/config_characters.R"))
 })
 
+test_that("API model/uç nokta yardımcıları config_api sonrasında ve LLM katmanından önce yükleniyor", {
+  global_text <- .read_repo_text_manifest_contract("global.R")
+  paths <- .extract_safe_source_paths(global_text)
+
+  pos <- function(path) match(path, paths)
+
+  expect_false(is.na(pos("R/config_api.R")))
+  expect_false(is.na(pos("R/helpers_api_model_config.R")))
+  expect_false(is.na(pos("R/helpers_llm_api.R")))
+  expect_false(is.na(pos("R/helpers_llm_sse.R")))
+  expect_false(is.na(pos("R/helpers_llm_worker.R")))
+
+  expect_lt(pos("R/config_api.R"), pos("R/helpers_api_model_config.R"))
+  expect_lt(pos("R/helpers_api_model_config.R"), pos("R/helpers_llm_api.R"))
+  expect_lt(pos("R/helpers_api_model_config.R"), pos("R/helpers_llm_sse.R"))
+  expect_lt(pos("R/helpers_api_model_config.R"), pos("R/helpers_llm_worker.R"))
+})
+
 test_that("kritik yardımcılar modüllerden önce yükleniyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
   paths <- .extract_safe_source_paths(global_text)

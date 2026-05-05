@@ -195,6 +195,7 @@ safe_source("R/config_file_store_registry.R",      encoding = "UTF-8")  # Dosya 
 safe_source("R/config_characters.R",               encoding = "UTF-8")  # Karakter/persona tanımları
 safe_source("R/config_version_history.R",  encoding = "UTF-8")  # Sürüm geçmişi
 safe_source("R/config_api.R",              encoding = "UTF-8")  # API yapılandırması ve uç noktaları
+safe_source("R/helpers_api_model_config.R", encoding = "UTF-8") # API model/uç nokta çözümleme yardımcıları
 safe_source("R/config_claude_code.R",      encoding = "UTF-8")  # Claude Code yapılandırması
 safe_source("R/config_claude_code_plugins.R", encoding = "UTF-8")  # Claude Code Plugin yapılandırması
 

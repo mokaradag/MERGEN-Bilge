@@ -63,6 +63,8 @@
 
   source(file.path(repo_root, "R", "config_api.R"),
          encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "helpers_api_model_config.R"),
+         encoding = "UTF-8", local = globalenv())
 
   invisible(TRUE)
 }
