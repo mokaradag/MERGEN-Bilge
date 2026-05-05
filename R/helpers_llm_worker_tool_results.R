@@ -41,8 +41,8 @@ llm_worker_format_single_tool_result <- function(raw,
 
     if (nrow(df) > 0) {
       # Türkçe karakterlerin düzgün görünmesi için UTF-8 dönüşümü.
-      # Not: Burada tryCatch(error = function(...)) kullanmıyoruz; maintainability
-      # raporu anonim error handler'ları fonksiyon sayısına dahil eder.
+      # Not: Burada tryCatch hata yakalayıcısı kullanmıyoruz; maintainability
+      # raporu bu tür anonim handler'ları fonksiyon sayısına dahil eder.
       df <- as.data.frame(df, stringsAsFactors = FALSE)
       df[] <- lapply(df, function(col) enc2utf8(as.character(col)))
       colnames(df) <- enc2utf8(colnames(df))
