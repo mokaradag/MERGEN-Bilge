@@ -61,6 +61,58 @@ A new helper/module is not “done” unless:
 - dependencies are loaded before it,
 - `ui.R` / `server.R` wiring is updated where necessary.
 
+### API model configuration contract
+
+API model/endpoint/tool-mode helper logic is intentionally split from the main API configuration file.
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/config_api.R",               encoding = "UTF-8")
+safe_source("R/helpers_api_model_config.R", encoding = "UTF-8")
+safe_source("R/config_claude_code.R",       encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/config_api.R`: environment loading, global API configuration objects, `api_config`, TTS/STT configuration, and API-key validation orchestration.
+* `R/helpers_api_model_config.R`: pure model capability, request override, endpoint credential, validation-target, tool-mode, and main-action model resolution helpers.
+
+`R/helpers_api_model_config.R` owns these public helper functions:
+
+```text
+get_local_model_capabilities()
+merge_named_list_deep()
+apply_model_request_overrides()
+is_thinking_model()
+should_omit_temperature()
+should_stream_reasoning()
+should_allow_reasoning_fallback()
+resolve_local_llm_endpoint()
+resolve_local_llm_credentials()
+determine_api_key_validation_target()
+get_tool_mode_config()
+resolve_tool_model_for_family()
+resolve_tool_model_for_flag()
+build_main_actions_data_from_config()
+```
+
+Do not move these helpers back into `R/config_api.R`. The split keeps `R/config_api.R` below the 800-line maintainability threshold while preserving existing public function names.
+
+The LLM, SSE, non-streaming API, and future-worker paths rely on `apply_model_request_overrides()`, `merge_named_list_deep()`, `should_omit_temperature()`, and the endpoint-resolution helpers being loaded before the LLM helper layer. If a future refactor changes this boundary, update both the `global.R` source order and the contract tests.
+
+Protected by:
+
+```text
+tests/testthat/test-api-model-config-refactor-contract.R
+tests/testthat/test-llm-reasoning-request-overrides.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-sse-worker-export-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
+
+Current maintainability ratchet baseline after the API model configuration extraction is: score `95/100`, at most `1` 800+ line file, at most `1` 25+ function file, `0` 1500+ line files, maximum file length `842`, and maximum function count `29`. Do not loosen these limits without an explicit reason. The next preferred maintainability target is `R/helpers_llm_worker.R`, because it is now the only remaining 800+ line runtime file.
+
 ### User session initialization contract
 
 Preserve this source order in `global.R`:
