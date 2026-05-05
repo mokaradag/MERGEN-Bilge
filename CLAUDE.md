@@ -482,6 +482,7 @@ safe_source("R/helpers_db_connection.R", encoding = "UTF-8")
 safe_source("R/helpers_db_validation.R", encoding = "UTF-8")
 safe_source("R/helpers_chat_message_formatting.R", encoding = "UTF-8")
 safe_source("R/helpers_db_chat_readers.R", encoding = "UTF-8")
+safe_source("R/helpers_db_chat_mutations.R", encoding = "UTF-8")
 safe_source("R/helpers_database.R", encoding = "UTF-8")
 ```
 
@@ -491,9 +492,12 @@ Responsibilities:
 * `R/helpers_db_validation.R`: validation helpers such as `validate_username()`, `validate_chat_title()`, and `validate_message_content()`.
 * `R/helpers_chat_message_formatting.R`: conversion of DB message rows into app message objects, including generated-image HTML, ChartLab saved-chat placeholder regeneration, markdown fallback, timestamps, and `ReasoningContent` propagation.
 * `R/helpers_db_chat_readers.R`: chat list loading, chat message hydration, reasoning-column fallback SELECTs, batch chat hydration, and lightweight history row reads. Chat list reads must preserve latest-activity ordering using message timestamps when available.
-* `R/helpers_database.R`: user/chat/message persistence, DB write/mutation operations, feedback operations, delete/clear/update helpers, and remaining DB orchestration.
+* `R/helpers_db_chat_mutations.R`: chat/message write-side mutations, including chat creation, message save/update, reasoning-content update, title update, delete/clear chat helpers, worker-safe assistant response persistence, and `sanitize_input()` compatibility.
+* `R/helpers_database.R`: user creation/update, SSO field update, feedback operations, usage logging, and remaining DB orchestration.
 
-Do not move connection, validation, message-formatting, or chat-reader functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R` and `test-chat-message-formatting-refactor-contract.R`.
+MessageOrder race protection in `save_message_to_db()` and `worker_save_assistant_response()` must keep the `UPDLOCK/HOLDLOCK` query contract.
+
+Do not move connection, validation, message-formatting, chat-reader, or chat/message mutation functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R`, `test-chat-message-formatting-refactor-contract.R`, `test-source-manifest-contract.R`, and `test-maintainability-ratchet.R`.
 
 When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
 
@@ -1328,7 +1332,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 84, max 800+ line files: 2, max 25+ function files: 5, max 1500+ line files: 0, max file lines: 866, and max file functions: 39. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 86, max 800+ line files: 2, max 25+ function files: 4, max 1500+ line files: 0, max file lines: 866, and max file functions: 39. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
