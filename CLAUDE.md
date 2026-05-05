@@ -111,7 +111,43 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the API model configuration extraction is: score `95/100`, at most `1` 800+ line file, at most `1` 25+ function file, `0` 1500+ line files, maximum file length `842`, and maximum function count `29`. Do not loosen these limits without an explicit reason. The next preferred maintainability target is `R/helpers_llm_worker.R`, because it is now the only remaining 800+ line runtime file.
+Current maintainability ratchet baseline after the Bilge Yolaç directory-listing extraction is: score `97/100`, at most `1` 800+ line file, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `842`, and maximum function count `24`. Do not loosen these limits without an explicit reason. The next preferred maintainability target remains `R/helpers_llm_worker.R`, because it is now the only remaining 800+ line runtime file.
+
+### Bilge Yolaç directory-listing contract
+
+Bilge Yolaç directory listing is intentionally split from the broad CLI helper file.
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_claude_code_process.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_runtime_workdir.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_directory_listing.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_server_setup.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_claude_code_directory_listing.R`: directory path variant generation, relaxed directory listing, persistent storage display-name resolution, directory entry normalization, and the public-compatible `list_directory_contents()` helper.
+* `R/helpers_claude_code.R`: Claude Code CLI run orchestration, CLI status/connection checks, output formatting, tool-use HTML formatting, and thinking-message selection.
+
+Do not move `list_directory_contents()` or its directory display-name/path-variant logic back into `R/helpers_claude_code.R`. Keeping this boundary prevents `R/helpers_claude_code.R` from returning to the 25+ function maintainability threshold.
+
+Race-condition contracts:
+
+* Directory listing must not run before the SSO/user identity readiness check in `R/helpers_claude_code_server_setup.R`.
+* Directory refresh results must remain protected by `dir_refresh_guard$is_latest(refresh_id)` so stale refreshes cannot overwrite newer UI state.
+* Display-name resolution must continue to use persistent file-store metadata so timestamp/hash storage names do not leak into the Bilge Yolaç directory UI.
+
+Protected by:
+
+```text
+tests/testthat/test-claude-code-directory-listing-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-claude-code-dir-ui-refactor-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
 
 ### User session initialization contract
 
