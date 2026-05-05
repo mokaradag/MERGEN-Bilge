@@ -56,7 +56,7 @@ test_that("maintainability skoru mevcut taban çizgisinin altına düşmez", {
     info = "maintainability_report.R attr(..., 'maintainability_score') üretmelidir."
   )
 
-  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 86L)
+  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 88L)
 
   expect_true(
     score >= min_score,
@@ -89,7 +89,7 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   )
 
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 2L)
-  max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 4L)
+  max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 3L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
   max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 866L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 39L)
@@ -230,7 +230,8 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_database.R", 320L, 12L)
   assert_file_budget("R/helpers_chartlab.R", 577L, 24L)
   assert_file_budget("R/helpers_chartlab_spec.R", 220L, 12L)
-  assert_file_budget("R/helpers_files.R", 341L, 32L)
+  assert_file_budget("R/helpers_files_path.R", 220L, 18L)
+  assert_file_budget("R/helpers_files.R", 260L, 24L)
 })
 
 test_that("module_file_manager.R state runtime extraction sonrası 800 satır altı kalır", {

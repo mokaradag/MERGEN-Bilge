@@ -231,6 +231,7 @@ safe_source("R/helpers_chartlab.R",              encoding = "UTF-8")  # Grafik �
 safe_source("R/helpers_image_gallery.R",         encoding = "UTF-8")  # Görsel galeri işlemleri
 safe_source("R/helpers_preview.R",               encoding = "UTF-8")  # Dosya önizleme
 safe_source("R/helpers_file_pipeline.R",         encoding = "UTF-8")  # Dosya işleme hattı
+safe_source("R/helpers_files_path.R",            encoding = "UTF-8")  # Dosya yolu/UNC/karşılaştırma yardımcıları
 safe_source("R/helpers_files.R",                 encoding = "UTF-8")  # Dosya yardımcıları
 safe_source("R/helpers_file_manager_policy.R",   encoding = "UTF-8")  # Dosya Yönetimi seçim/yükleme politika yardımcıları
 safe_source("R/helpers_file_manager_context_policy.R", encoding = "UTF-8")  # Dosya Yönetimi model-bağlam seçim temizleme politikası

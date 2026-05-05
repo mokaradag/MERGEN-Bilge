@@ -276,6 +276,7 @@ test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu mo
 
   pos <- function(path) match(path, paths)
 
+  expect_false(is.na(pos("R/helpers_files_path.R")))
   expect_false(is.na(pos("R/helpers_file_manager_policy.R")))
   expect_false(is.na(pos("R/helpers_file_manager_context_policy.R")))
   expect_false(is.na(pos("R/helpers_file_manager_table.R")))
@@ -286,6 +287,7 @@ test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu mo
   expect_false(is.na(pos("R/helpers_file_manager_state_runtime.R")))
   expect_false(is.na(pos("R/module_file_manager_ui.R")))
 
+  expect_lt(pos("R/helpers_files_path.R"), pos("R/helpers_files.R"))
   expect_lt(pos("R/helpers_files.R"), pos("R/helpers_file_manager_policy.R"))
   expect_lt(pos("R/helpers_file_manager_policy.R"), pos("R/helpers_file_manager_context_policy.R"))
   expect_lt(pos("R/helpers_file_manager_context_policy.R"), pos("R/helpers_file_manager_table.R"))
