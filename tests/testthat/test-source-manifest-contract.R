@@ -189,6 +189,9 @@ test_that("Bilge Yolaç user guard ve server setup yardımcıları modülden ön
   expect_false(is.na(pos("R/helpers_claude_code_process.R")))
   expect_false(is.na(pos("R/helpers_claude_code_runtime_workdir.R")))
   expect_false(is.na(pos("R/helpers_claude_code.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_downloads.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_workdir_scan.R")))
+  expect_false(is.na(pos("R/helpers_claude_code_workdir_snapshot.R")))
   expect_false(is.na(pos("R/helpers_claude_code_documents.R")))
   expect_false(is.na(pos("R/helpers_claude_code_run_lifecycle.R")))
   expect_false(is.na(pos("R/helpers_claude_code_server_setup.R")))
@@ -218,6 +221,21 @@ test_that("Bilge Yolaç user guard ve server setup yardımcıları modülden ön
   expect_lt(
     pos("R/helpers_claude_code.R"),
     pos("R/helpers_claude_code_server_setup.R")
+  )
+  
+  expect_lt(
+    pos("R/helpers_claude_code_downloads.R"),
+    pos("R/helpers_claude_code_workdir_scan.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code_workdir_scan.R"),
+    pos("R/helpers_claude_code_workdir_snapshot.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_claude_code_workdir_snapshot.R"),
+    pos("R/helpers_claude_code_documents.R")
   )
   
   expect_lt(

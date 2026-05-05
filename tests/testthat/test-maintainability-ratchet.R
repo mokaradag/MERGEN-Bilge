@@ -56,7 +56,7 @@ test_that("maintainability skoru mevcut taban çizgisinin altına düşmez", {
     info = "maintainability_report.R attr(..., 'maintainability_score') üretmelidir."
   )
 
-  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 88L)
+  min_score <- .as_int_env("MERGEN_TEST_MIN_MAINTAINABILITY_SCORE", 90L)
 
   expect_true(
     score >= min_score,
@@ -89,10 +89,10 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   )
 
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 2L)
-  max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 3L)
+  max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 2L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
   max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 866L)
-  max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 31L)
+  max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 29L)
 
   actual_large_files <- sum(score_report$lines >= 800)
   actual_function_heavy_files <- sum(score_report$functions >= 25)
@@ -226,7 +226,8 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_llm_worker.R", 842L, 8L)
   assert_file_budget("R/helpers_claude_code.R", 617L, 29L)
   assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 240L, 14L)
-  assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 662L, 31L)
+  assert_file_budget("R/helpers_claude_code_workdir_scan.R", 360L, 10L)
+  assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 450L, 24L)
   assert_file_budget("R/helpers_db_chat_mutations.R", 420L, 24L)
   assert_file_budget("R/helpers_database.R", 320L, 12L)
   assert_file_budget("R/helpers_chartlab.R", 577L, 24L)
