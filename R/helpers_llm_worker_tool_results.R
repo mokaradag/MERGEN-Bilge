@@ -40,12 +40,12 @@ llm_worker_format_single_tool_result <- function(raw,
     mergen_debug_cat("[GLOBAL] Sütun isimleri:", paste(colnames(df), collapse = ", "), "\n")
 
     if (nrow(df) > 0) {
-      # Türkçe karakterlerin düzgün görünmesi için UTF-8 dönüşümü
+      # Türkçe karakterlerin düzgün görünmesi için UTF-8 dönüşümü.
+      # Not: Burada tryCatch(error = function(...)) kullanmıyoruz; maintainability
+      # raporu anonim error handler'ları fonksiyon sayısına dahil eder.
       df <- as.data.frame(df, stringsAsFactors = FALSE)
-      df[] <- lapply(df, function(col) {
-        tryCatch(enc2utf8(as.character(col)), error = function(e) col)
-      })
-      colnames(df) <- tryCatch(enc2utf8(colnames(df)), error = function(e) colnames(df))
+      df[] <- lapply(df, function(col) enc2utf8(as.character(col)))
+      colnames(df) <- enc2utf8(colnames(df))
 
       mergen_debug_cat("[GLOBAL] \U00002713 VERİ VAR - İLK SATIR:\n")
       if (isTRUE(getOption("mergen.debug", FALSE))) {

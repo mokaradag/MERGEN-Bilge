@@ -61,13 +61,13 @@ mergen_debug_cat <- function(...) invisible(NULL)
 source(
   file.path(repo_root_llm_worker_tool_results, "R", "helpers_llm_worker_payload.R"),
   encoding = "UTF-8",
-  local = globalenv()
+  local = environment()
 )
 
 source(
   file.path(repo_root_llm_worker_tool_results, "R", "helpers_llm_worker_tool_results.R"),
   encoding = "UTF-8",
-  local = globalenv()
+  local = environment()
 )
 
 test_that("araç sonucu data frame olarak LLM prompt metnine davranış korunarak çevrilir", {
