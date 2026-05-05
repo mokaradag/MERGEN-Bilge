@@ -565,6 +565,10 @@ The index mutation path must keep a guard around read-modify-write operations so
 
 Bilge Yolaç command execution now has a focused run-lifecycle boundary in `R/helpers_claude_code_run_lifecycle.R`.
 
+Bilge Yolaç runtime workdir mirroring has a separate helper boundary in `R/helpers_claude_code_runtime_workdir.R`. This file owns user workspace creation and the Windows/UNC/Unicode workdir mirroring helpers: `get_user_workspace()`, `is_problematic_windows_workdir()`, `mirror_directory_to_local_workspace()`, `prepare_claude_runtime_workdir()`, and `sync_claude_runtime_workdir_back()`. Keep it sourced after `R/helpers_claude_code_process.R` and before `R/helpers_claude_code.R`.
+
+Do not restore the old shared `active_dir` runtime folder pattern. Mirrored runtime workdirs must be per run, using the active `run_request_id` as the runtime token when `R/module_claude_code.R` calls `prepare_claude_runtime_workdir(...)`. This prevents rapid sequential or overlapping Bilge Yolaç runs for the same user from deleting each other’s mirrored workdir while snapshot comparison, generated-download collection, process polling, or sync-back is still using it.
+
 Responsibilities:
 
 - active run request-id generation,
@@ -590,6 +594,7 @@ Protected by:
 
 ```text
 tests/testthat/test-claude-code-run-lifecycle-contract.R
+tests/testthat/test-claude-code-runtime-workdir-contract.R
 tests/testthat/test-claude-code-stream-finalize-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-maintainability-ratchet.R
@@ -747,6 +752,7 @@ safe_source("R/helpers_claude_code_model_config.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_session_context.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_dir_ui.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_process.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_runtime_workdir.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_server_setup.R", encoding = "UTF-8")
 ```
@@ -1332,7 +1338,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 86, max 800+ line files: 2, max 25+ function files: 4, max 1500+ line files: 0, max file lines: 866, and max file functions: 39. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 86, max 800+ line files: 2, max 25+ function files: 4, max 1500+ line files: 0, max file lines: 866, and max file functions: 31. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
