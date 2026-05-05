@@ -113,7 +113,20 @@ fm_create_file_action_helpers <- function(
   process_uploaded_file <- function(file_info, generate_message = TRUE) {
     module_values <- module_values_provider()
 
-    file_name <- as.character(file_info$name %||% "")
+    raw_file_name <- as.character(file_info$name %||% "")
+    file_name <- raw_file_name
+
+    if (exists("recover_display_name_from_storage_name", mode = "function", inherits = TRUE)) {
+      file_name <- tryCatch(
+        recover_display_name_from_storage_name(raw_file_name),
+        error = function(e) raw_file_name
+      )
+    }
+
+    if (!is.na(file_name) && nzchar(file_name)) {
+      file_info$name <- file_name
+    }
+
     file_size <- as.numeric(file_info$size %||% NA_real_)
     in_path <- as.character(file_info$datapath %||% file_info$path %||% "")
 

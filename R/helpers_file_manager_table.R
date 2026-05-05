@@ -15,6 +15,36 @@ fm_empty_files_df <- function() {
   )
 }
 
+fm_clean_file_display_name <- function(file_name, file_info = NULL) {
+  explicit_display <- ""
+
+  if (is.list(file_info)) {
+    explicit_display <- file_info$display_name %||%
+      file_info$display %||%
+      file_info$original_name %||%
+      ""
+  }
+
+  explicit_display <- as.character(explicit_display %||% "")[1]
+  if (!is.na(explicit_display) && nzchar(explicit_display)) {
+    return(explicit_display)
+  }
+
+  display_name <- as.character(file_name %||% "")[1]
+  if (is.na(display_name)) {
+    display_name <- ""
+  }
+
+  if (exists("recover_display_name_from_storage_name", mode = "function", inherits = TRUE)) {
+    display_name <- tryCatch(
+      recover_display_name_from_storage_name(display_name),
+      error = function(e) display_name
+    )
+  }
+
+  display_name
+}
+
 fm_build_file_actions_html <- function(file_id, ns) {
   hidden_dl <- as.character(
     htmltools::tags$span(
@@ -65,18 +95,19 @@ fm_build_attach_cell_html <- function(file_id, file_name, ns) {
 }
 
 fm_build_file_table_row <- function(file_name, file_size, file_info, file_id, ns) {
-  ext <- tolower(tools::file_ext(file_name))
+  display_name <- fm_clean_file_display_name(file_name, file_info)
+  ext <- tolower(tools::file_ext(display_name))
   datapath <- if (is.null(file_info)) NULL else file_info$datapath
 
   data.frame(
-    Dosya_Adi = file_name,
+    Dosya_Adi = display_name,
     Boyut = paste(round((file_size %||% 0) / 1024, 2), "KB"),
     Tur = fm_file_ext_icon_html(ext),
     Yuklenme_Tarihi = fm_format_file_timestamp(path = datapath),
     Islemler = fm_build_file_actions_html(file_id = file_id, ns = ns),
     Model_Baglam = fm_build_attach_cell_html(
       file_id = file_id,
-      file_name = file_name,
+      file_name = display_name,
       ns = ns
     ),
     stringsAsFactors = FALSE

@@ -62,10 +62,28 @@
 
 recover_display_name_from_storage_name <- function(file_path) {
   base_name <- basename(file_path %||% "")
-  cleaned <- sub("^\\d{8}(?:-?\\d{6})_[0-9A-Za-z]+_", "", base_name, perl = TRUE)
+  if (!nzchar(base_name)) {
+    return(base_name)
+  }
 
-  if (nzchar(cleaned) && !identical(cleaned, base_name)) {
-    return(cleaned)
+  # Kalıcı depolama adları kullanıcıya gösterilmemelidir.
+  # Desteklenen iç storage prefix örnekleri:
+  # - 20260505-120545_abcd1234_orijinal.pdf
+  # - 20260505120545_1234_orijinal.pdf
+  # - 20260505120545839_abcd1234_ef567890_orijinal.pdf
+  # Son örnek, aynı dosya aynı anda/çok hızlı yüklendiğinde hedef çakışmasını
+  # önlemek için eklenen ikinci benzersiz token'ı içerir.
+  storage_prefix_patterns <- c(
+    "^\\d{15,20}_[0-9A-Fa-f]{4,64}_[0-9A-Fa-f]{4,64}_",
+    "^\\d{8}-?\\d{6}_[0-9A-Za-z]{4,64}_"
+  )
+
+  for (pattern in storage_prefix_patterns) {
+    cleaned <- sub(pattern, "", base_name, perl = TRUE)
+
+    if (nzchar(cleaned) && !identical(cleaned, base_name)) {
+      return(cleaned)
+    }
   }
 
   base_name
