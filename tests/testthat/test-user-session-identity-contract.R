@@ -43,6 +43,44 @@ source(
   )
 }
 
+test_that("make_user_session_data_accessors kimlik alanlarını tek sözleşmeyle yönetir", {
+  session <- list(userData = new.env(parent = emptyenv()))
+  session_data <- make_user_session_data_accessors(session)
+
+  session_data$set_auth_placeholder(
+    sso_active = TRUE,
+    auth_source = "keycloak"
+  )
+
+  expect_equal(session_data$get_user_id(), 0L)
+  expect_true(session$userData$sso_active)
+  expect_false(session$userData$auth_initialized)
+  expect_equal(session_data$get_auth_source(), "keycloak")
+
+  user_identity <- .make_user_session_identity_test_identity("keycloak")
+  app_user_config <- build_user_session_config(
+    user_identity = user_identity,
+    user_id = 42L,
+    base_user_config = .make_user_session_identity_test_base_config(),
+    auth_source = "keycloak"
+  )
+
+  sonuc <- session_data$write_identity(
+    user_identity = user_identity,
+    user_id = 42L,
+    app_user_config = app_user_config,
+    sso_active = TRUE,
+    auth_source = "keycloak",
+    auth_initialized = TRUE
+  )
+
+  expect_identical(sonuc, app_user_config)
+  expect_equal(session_data$get_user_id(), 42L)
+  expect_equal(session_data$get_first_name(), "Onur")
+  expect_equal(session_data$get_user_config(), app_user_config)
+  expect_true(session$userData$auth_initialized)
+})
+
 test_that("build_user_session_config yerel modda sayısal kullanıcı id değerini kullanır", {
   config <- build_user_session_config(
     user_identity = .make_user_session_identity_test_identity("local"),

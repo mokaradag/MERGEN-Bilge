@@ -8,7 +8,8 @@ local({
   gerekli_kimlik_yardimcilari <- c(
     "build_user_session_config",
     "apply_user_session_identity",
-    "make_current_user_id_provider"
+    "make_current_user_id_provider",
+    "make_user_session_data_accessors"
   )
 
   eksik_kimlik_yardimcilari <- gerekli_kimlik_yardimcilari[!vapply(
@@ -43,12 +44,15 @@ serverInitUserSession <- function(session,
   current_user_id <- 0L
   auth_ready <- FALSE
   last_cache_dir <- NULL
+  session_data <- make_user_session_data_accessors(session)
 
   set_current_user_id <- function(user_id) {
-    uid <- suppressWarnings(as.integer(user_id %||% 0L))
-    if (is.na(uid) || uid < 0L) uid <- 0L
-    current_user_id <<- uid
-    invisible(uid)
+    current_user_id <<- .normalize_user_session_id(
+      user_id,
+      allow_zero = TRUE
+    )
+
+    invisible(current_user_id)
   }
 
   user_id_provider_bundle <- make_current_user_id_provider(
@@ -109,8 +113,10 @@ serverInitUserSession <- function(session,
     )
   } else {
     set_current_user_id(0L)
-    session$userData$auth_initialized <- FALSE
-    session$userData$sso_active <- TRUE
+    session_data$set_auth_placeholder(
+      sso_active = TRUE,
+      auth_source = "keycloak"
+    )
 
     observeEvent(sso_state$authenticated, {
       req(isTRUE(sso_state$authenticated))
@@ -143,14 +149,14 @@ serverInitUserSession <- function(session,
       return(cfg)
     }
 
-    session$userData$user_config %||% default
+    session_data$get_user_config(default = default)
   }
 
   get_first_name <- function(default = "") {
     cfg <- get_user_config()
 
     value <- cfg$first_name %||%
-      session$userData$user_first_name %||%
+      session_data$get_first_name(default = NULL) %||%
       default
 
     value <- as.character(value %||% default)
@@ -179,9 +185,10 @@ serverInitUserSession <- function(session,
   }
 
   get_auth_source <- function(default = NULL) {
-    session$userData$auth_source %||%
-      default %||%
+    fallback_source <- default %||%
       if (isTRUE(sso_enabled)) "keycloak" else "local"
+
+    session_data$get_auth_source(default = fallback_source)
   }
 
   list(
