@@ -117,10 +117,13 @@ fm_create_file_action_helpers <- function(
     file_name <- raw_file_name
 
     if (exists("recover_display_name_from_storage_name", mode = "function", inherits = TRUE)) {
-      file_name <- tryCatch(
-        recover_display_name_from_storage_name(raw_file_name),
-        error = function(e) raw_file_name
-      )
+      recovered_name <- try(recover_display_name_from_storage_name(raw_file_name), silent = TRUE)
+
+      if (!inherits(recovered_name, "try-error") &&
+          !is.na(recovered_name) &&
+          nzchar(recovered_name)) {
+        file_name <- recovered_name
+      }
     }
 
     if (!is.na(file_name) && nzchar(file_name)) {
