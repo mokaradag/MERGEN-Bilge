@@ -267,6 +267,7 @@ safe_source("R/helpers_claude_code_session_context.R", encoding = "UTF-8") # Bil
 safe_source("R/helpers_claude_code_dir_ui.R",     encoding = "UTF-8")  # Bilge Yolaç dizin gezgini UI ve refresh koruması
 safe_source("R/helpers_claude_code_process.R",   encoding = "UTF-8")  # Bilge Yolaç processx/UTF-8/JSON yardımcıları
 safe_source("R/helpers_claude_code_runtime_workdir.R", encoding = "UTF-8") # Bilge Yolaç çalışma dizini aynalama yardımcıları
+safe_source("R/helpers_claude_code_directory_listing.R", encoding = "UTF-8") # Bilge Yolaç dizin listeleme yardımcıları
 safe_source("R/helpers_claude_code.R",           encoding = "UTF-8")  # Claude Code CLI yardımcıları
 safe_source("R/helpers_claude_code_server_setup.R", encoding = "UTF-8") # Bilge Yolaç server setup/observer bağlayıcıları
 safe_source("R/helpers_claude_code_streaming.R", encoding = "UTF-8")  # Claude Code canlı akış desteği
