@@ -111,7 +111,45 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the Bilge Yolaç directory-listing extraction is: score `97/100`, at most `1` 800+ line file, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `842`, and maximum function count `24`. Do not loosen these limits without an explicit reason. The next preferred maintainability target remains `R/helpers_llm_worker.R`, because it is now the only remaining 800+ line runtime file.
+Current maintainability ratchet baseline after the LLM worker tool-result extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `796`, and maximum function count `24`. Do not loosen these limits without an explicit reason. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
+
+### LLM worker tool-result formatting contract
+
+The non-streaming LLM worker is intentionally split across three helper layers. Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_llm_worker_payload.R",       encoding = "UTF-8")
+safe_source("R/helpers_llm_worker_tool_results.R", encoding = "UTF-8")
+safe_source("R/helpers_llm_worker.R",               encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_llm_worker_payload.R`: chat-history-to-message conversion, system-message merging, chart intent detection, fallback chart hooks, chart summaries, and automatic insight text helpers.
+* `R/helpers_llm_worker_tool_results.R`: MCP tool-result logging, dataframe/chart/plain-text result formatting, dataframe-to-markdown conversion for second-pass prompts, and aggregation of formatted tool results.
+* `R/helpers_llm_worker.R`: public `call_llm_worker(...)` runtime API, model/request assembly, MCP tool schema selection, API call handling, MCP tool execution orchestration, strict-data-only handling, second-pass orchestration, and final error normalization.
+
+Do not move MCP tool-result formatting back into `R/helpers_llm_worker.R`; doing so can bring the worker back to the 800+ line threshold and blur the runtime orchestration boundary.
+
+Race-condition contract:
+
+* `call_llm_worker(...)` may prepare a `session_obj` from `settings$mcp_registry_snapshot` when the live Shiny session is missing or no longer has the needed file registry.
+* MCP tool execution must use that prepared `session_obj`.
+* Do not reintroduce `current_session <- if (!is.null(settings$shiny_session)) settings$shiny_session else NULL` in the MCP execution path. That bypasses the snapshot guard and can make async workers resolve files from stale or empty live session state.
+
+Maintainability note:
+
+* `tests/scripts/maintainability_report.R` counts simple `function(` patterns, including anonymous handlers in code and misleading examples in comments. Keep new helper files small, avoid unnecessary anonymous handlers in ratcheted files, and avoid comment text that accidentally contains patterns such as `= function(` unless truly needed.
+
+Protected by:
+
+```text
+tests/testthat/test-llm-worker-payload-refactor-contract.R
+tests/testthat/test-llm-worker-tool-results-refactor-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
+
 
 ### Bilge Yolaç directory-listing contract
 
