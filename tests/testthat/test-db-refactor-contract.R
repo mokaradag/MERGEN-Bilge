@@ -240,9 +240,8 @@ test_that("helpers_db_chat_mutations.R mesaj sıralama yarış korumasını koru
 
   lock_count <- if (length(lock_hits) == 1L && lock_hits[1] == -1L) 0L else length(lock_hits)
 
-  expect_gte(
-    lock_count,
-    2L,
+  expect_true(
+    lock_count >= 2L,
     info = paste(
       "save_message_to_db() ve worker_save_assistant_response()",
       "MessageOrder üretiminde UPDLOCK/HOLDLOCK yarış korumasını korumalıdır."
