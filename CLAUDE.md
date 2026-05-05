@@ -569,6 +569,36 @@ Bilge Yolaç runtime workdir mirroring has a separate helper boundary in `R/help
 
 Do not restore the old shared `active_dir` runtime folder pattern. Mirrored runtime workdirs must be per run, using the active `run_request_id` as the runtime token when `R/module_claude_code.R` calls `prepare_claude_runtime_workdir(...)`. This prevents rapid sequential or overlapping Bilge Yolaç runs for the same user from deleting each other’s mirrored workdir while snapshot comparison, generated-download collection, process polling, or sync-back is still using it.
 
+
+### Bilge Yolaç workdir scan and generated-download contract
+
+Bilge Yolaç workdir scanning is intentionally split from generated-download staging.
+
+Responsibilities:
+
+- `R/helpers_claude_code_workdir_scan.R` owns prompt intent detection for binary document creation/read flows, canonical file path normalization, duplicate path removal, workdir snapshot creation, snapshot diffing, and the short generated-file stability guard `wait_for_stable_claude_code_file_paths(...)`.
+- `R/helpers_claude_code_workdir_snapshot.R` owns Turkish text encoding normalization and generated-download collection/staging orchestration through `collect_claude_code_workdir_changes_downloads(...)`.
+
+Preserve this source order in `global.R`:
+
+```r
+safe_source("R/helpers_claude_code_downloads.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_workdir_scan.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_workdir_snapshot.R", encoding = "UTF-8")
+```
+
+Do not move scan/diff/path helpers back into `R/helpers_claude_code_workdir_snapshot.R`. That file should remain focused on text encoding normalization and generated-download staging.
+
+`collect_claude_code_workdir_changes_downloads(...)` must keep calling `wait_for_stable_claude_code_file_paths(...)` before text normalization or staging. This is a Windows VM race-condition guard: Claude Code or child processes may have just produced a file, and size/mtime can still change briefly after the process appears complete. The guard reduces partial copy and premature `.txt` normalization risk while preserving best-effort generated-file collection.
+
+Protected by:
+
+```text
+tests/testthat/test-claude-code-workdir-scan-contract.R
+tests/testthat/test-source-manifest-contract.R
+tests/testthat/test-maintainability-ratchet.R
+```
+
 Responsibilities:
 
 - active run request-id generation,
@@ -595,6 +625,7 @@ Protected by:
 ```text
 tests/testthat/test-claude-code-run-lifecycle-contract.R
 tests/testthat/test-claude-code-runtime-workdir-contract.R
+tests/testthat/test-claude-code-workdir-scan-contract.R
 tests/testthat/test-claude-code-stream-finalize-contract.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-maintainability-ratchet.R
@@ -1338,9 +1369,13 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 86, max 800+ line files: 2, max 25+ function files: 4, max 1500+ line files: 0, max file lines: 866, and max file functions: 31. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 90, max 800+ line files: 2, max 25+ function files: 2, max 1500+ line files: 0, max file lines: 866, and max file functions: 29. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
+
+`R/helpers_claude_code_workdir_scan.R` is budgeted at 423 lines and 14 functions.
+`R/helpers_claude_code_workdir_snapshot.R` is budgeted at 450 lines and 24 functions.
+`R/helpers_claude_code.R` remains budgeted at 617 lines and 29 functions.
 
 Admin Feedback Analysis is now protected by `MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 799`and`MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS = 5`. The extracted SQL helper file `R/helpers_admin_geri_bildirim_queries.R` is protected with a 260-line and 3-function budget.
 
