@@ -92,7 +92,7 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 3L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
   max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 866L)
-  max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 39L)
+  max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 31L)
 
   actual_large_files <- sum(score_report$lines >= 800)
   actual_function_heavy_files <- sum(score_report$functions >= 25)
@@ -224,7 +224,8 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_admin_geri_bildirim_queries.R", 260L, 3L)
   assert_file_budget("R/config_api.R", 866L, 26L)
   assert_file_budget("R/helpers_llm_worker.R", 842L, 8L)
-  assert_file_budget("R/helpers_claude_code.R", 799L, 39L)
+  assert_file_budget("R/helpers_claude_code.R", 700L, 30L)
+  assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 240L, 14L)
   assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 662L, 31L)
   assert_file_budget("R/helpers_db_chat_mutations.R", 420L, 24L)
   assert_file_budget("R/helpers_database.R", 320L, 12L)

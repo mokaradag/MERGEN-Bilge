@@ -169,7 +169,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # gerekirse yerel ASCII çalışma alanına aynala.
       runtime_dizin <- prepare_claude_runtime_workdir(
         calisma_dizini,
-        user_id = effective_user_id
+        user_id = effective_user_id,
+        runtime_token = run_request_id
       )
 
       kaynak_calisma_dizini <- runtime_dizin$source_workdir %||% calisma_dizini
