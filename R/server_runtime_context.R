@@ -96,6 +96,53 @@ serverRuntimeRequireIdentity <- function(ctx,
   ctx$identity
 }
 
+serverRuntimeBuildIdentityPorts <- function(ctx,
+                                            owner = "runtime identity ports") {
+  identity <- serverRuntimeRequireIdentity(
+    ctx,
+    required_values = c("user_config_rv"),
+    required_functions = c(
+      "resolve_current_user_id",
+      "current_user_id_provider",
+      "is_auth_ready",
+      "is_sso_active",
+      "get_auth_source",
+      "get_user_config",
+      "get_first_name",
+      "get_display_name",
+      "get_current_user_id_snapshot",
+      "get_cache_dir"
+    ),
+    owner = owner
+  )
+
+  # server.R ve modül bağlama katmanı artık kimlik alanlarını tek sözleşmeden alır.
+  # Böylece current_user_id/user_config/get_first_name gibi alanlar ayrı ayrı
+  # yerel alias olarak yayılmaz.
+  list(
+    user_config_rv = identity$user_config_rv,
+    resolve_current_user_id = identity$resolve_current_user_id,
+    current_user_id_provider = identity$current_user_id_provider,
+    is_auth_ready = identity$is_auth_ready,
+    is_sso_active = identity$is_sso_active,
+    get_auth_source = identity$get_auth_source,
+    get_user_config = identity$get_user_config,
+    get_first_name = identity$get_first_name,
+    get_display_name = identity$get_display_name,
+    get_current_user_id_snapshot = identity$get_current_user_id_snapshot,
+    get_cache_dir = identity$get_cache_dir,
+    user_config_provider = function(default = NULL) {
+      identity$get_user_config(default = default)
+    },
+    user_first_name_fn = function(default = "") {
+      identity$get_first_name(default = default)
+    },
+    user_display_name_fn = function(default = "Kullanıcı") {
+      identity$get_display_name(default = default)
+    }
+  )
+}
+
 serverRuntimeRequireState <- function(ctx,
                                       required_values = character(0),
                                       required_functions = character(0),

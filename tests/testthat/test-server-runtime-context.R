@@ -81,6 +81,54 @@ test_that("serverRuntimeContextInit cache ve identity sözleşmesini kurar", {
   expect_equal(ctx$identity$current_user_id_provider(), 77L)
 })
 
+test_that("serverRuntimeBuildIdentityPorts kimlik sözleşmesini tek port listesine indirir", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session(77L)
+  )
+
+  ports <- serverRuntimeBuildIdentityPorts(
+    ctx,
+    owner = "test identity ports"
+  )
+
+  expect_true(is.list(ports))
+  expect_true(is.function(ports$current_user_id_provider))
+  expect_true(is.function(ports$user_config_provider))
+  expect_true(is.function(ports$user_first_name_fn))
+  expect_true(is.function(ports$is_auth_ready))
+  expect_true(is.function(ports$is_sso_active))
+
+  expect_equal(ports$current_user_id_provider(), 77L)
+  expect_equal(ports$resolve_current_user_id(), 77L)
+  expect_equal(ports$user_first_name_fn(default = ""), "Test")
+  expect_equal(ports$get_first_name(default = ""), "Test")
+  expect_equal(ports$user_config_provider()$userId, "77")
+  expect_true(ports$is_auth_ready())
+  expect_false(ports$is_sso_active())
+})
+
+test_that("serverRuntimeBuildIdentityPorts eksik accessor alanını erken yakalar", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = FALSE),
+    user_session = .fake_user_session(77L)
+  )
+
+  ctx$identity$get_user_config <- NULL
+
+  expect_error(
+    serverRuntimeBuildIdentityPorts(
+      ctx,
+      owner = "test identity ports"
+    ),
+    "test identity ports eksik zorunlu fonksiyon"
+  )
+})
+
 test_that("serverRuntimeContextInit eksik provider alanını erken yakalar", {
   bad_user_session <- .fake_user_session()
   bad_user_session$current_user_id_provider <- NULL

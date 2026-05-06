@@ -37,6 +37,45 @@
   paste(lines, collapse = "\n")
 }
 
+test_that("server.R kimlik portlarını tek sözleşme üzerinden kullanır", {
+  server_text <- .strip_comments_for_server_boundary_contract(
+    .read_repo_text_server_boundary_contract("server.R")
+  )
+
+  expect_true(
+    grepl(
+      "identity_ports <- serverRuntimeBuildIdentityPorts(",
+      server_text,
+      fixed = TRUE,
+      useBytes = TRUE
+    ),
+    info = "server.R kimlik erişimini serverRuntimeBuildIdentityPorts() üzerinden kurmalıdır."
+  )
+
+  forbidden_patterns <- c(
+    "user_config_rv <- identity$user_config_rv",
+    "resolve_current_user_id <- identity$resolve_current_user_id",
+    "current_user_id_provider <- identity$current_user_id_provider",
+    "current_user_first_name <- identity$get_first_name",
+    "current_user_display_name <- identity$get_display_name"
+  )
+
+  matched <- forbidden_patterns[vapply(
+    forbidden_patterns,
+    function(pattern) grepl(pattern, server_text, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    matched,
+    character(0),
+    info = paste(
+      "server.R içinde kimlik alanlarını dağıtan yerel alias bulundu:",
+      paste(matched, collapse = ", ")
+    )
+  )
+})
+
 test_that("server.R doğrudan veritabanı sorgusu çalıştırmaz", {
   server_text <- .strip_comments_for_server_boundary_contract(
     .read_repo_text_server_boundary_contract("server.R")
