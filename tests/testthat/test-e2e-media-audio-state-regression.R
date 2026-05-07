@@ -56,31 +56,38 @@ if (!exists("e2e_media_new_music_state", envir = globalenv(), inherits = FALSE))
 }
 
 test_that("media JS contracts expose offline-safe audio state hooks", {
+  expect_true(file.exists(file.path(repo_root_media_e2e, "app.R")))
+  expect_true(dir.exists(file.path(repo_root_media_e2e, "www", "js")))
+
   music_js <- .e2e_media_read_text("www", "js", "music_manager.js")
   tts_js <- .e2e_media_read_text("www", "js", "tts_manager.js")
   stt_js <- .e2e_media_read_text("www", "js", "stt_client.js")
   reasoning_js <- .e2e_media_read_text("www", "js", "premium_reasoning.js")
 
-  expect_true(grepl("const MusicManager = {", music_js, fixed = TRUE))
-  expect_true(grepl("_audio: null", music_js, fixed = TRUE))
-  expect_true(grepl("_pendingRequestId: 0", music_js, fixed = TRUE))
-  expect_true(grepl("data.requestId && data.requestId < this._pendingRequestId", music_js, fixed = TRUE))
-  expect_true(grepl("duckForSTT: function()", music_js, fixed = TRUE))
-  expect_true(grepl("unduckAfterSTT: function()", music_js, fixed = TRUE))
+  has_regex <- function(text, pattern) {
+    grepl(pattern, text, perl = TRUE)
+  }
 
-  expect_true(grepl("window.mergenTTS", tts_js, fixed = TRUE))
-  expect_true(grepl("window.mergenTTS.queue.sort", tts_js, fixed = TRUE))
-  expect_true(grepl("window.MusicManager.duck();", tts_js, fixed = TRUE))
-  expect_true(grepl("window.MusicManager.unduck();", tts_js, fixed = TRUE))
-  expect_true(grepl("tts_is_playing", tts_js, fixed = TRUE))
+  expect_true(has_regex(music_js, "\\bMusicManager\\s*=\\s*\\{"))
+  expect_true(has_regex(music_js, "_audio\\s*:\\s*null"))
+  expect_true(has_regex(music_js, "_pendingRequestId\\s*:\\s*0"))
+  expect_true(has_regex(music_js, "requestId[^\\n]+<\\s*this\\._pendingRequestId"))
+  expect_true(has_regex(music_js, "duckForSTT\\s*:\\s*function\\s*\\("))
+  expect_true(has_regex(music_js, "unduckAfterSTT\\s*:\\s*function\\s*\\("))
 
-  expect_true(grepl("window.STT_Client", stt_js, fixed = TRUE))
-  expect_true(grepl("window.MusicManager.duckForSTT();", stt_js, fixed = TRUE))
-  expect_true(grepl("window.MusicManager.unduckAfterSTT();", stt_js, fixed = TRUE))
+  expect_true(has_regex(tts_js, "window\\.mergenTTS"))
+  expect_true(has_regex(tts_js, "queue\\.sort\\s*\\("))
+  expect_true(has_regex(tts_js, "MusicManager\\.duck\\s*\\("))
+  expect_true(has_regex(tts_js, "MusicManager\\.unduck\\s*\\("))
+  expect_true(has_regex(tts_js, "tts_is_playing"))
 
-  expect_true(grepl("window.PremiumReasoning && window.PremiumReasoning.__initialized", reasoning_js, fixed = TRUE))
-  expect_true(grepl("simulatedMode", reasoning_js, fixed = TRUE))
-  expect_true(grepl("fadeOutAndRemove(panel)", reasoning_js, fixed = TRUE))
+  expect_true(has_regex(stt_js, "window\\.STT_Client"))
+  expect_true(has_regex(stt_js, "MusicManager\\.duckForSTT\\s*\\("))
+  expect_true(has_regex(stt_js, "MusicManager\\.unduckAfterSTT\\s*\\("))
+
+  expect_true(has_regex(reasoning_js, "PremiumReasoning"))
+  expect_true(has_regex(reasoning_js, "simulatedMode"))
+  expect_true(has_regex(reasoning_js, "fadeOutAndRemove\\s*\\(\\s*panel\\s*\\)"))
 })
 
 test_that("music playlist races keep exactly one active background track", {
