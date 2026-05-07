@@ -285,6 +285,8 @@ tests/testthat/test-file-manager-module-policy-wiring.R
 
 `R/server_runtime_context.R` is a small boot-time context boundary, not a broad application framework.
 
+Current accepted identity boundary: keep `server.R` using `identity <- serverRuntimeRequireIdentity(...)` followed by the existing local aliases (`user_config_rv`, `resolve_current_user_id`, `current_user_id_provider`, `current_user_first_name`, and `current_user_display_name`). Do not introduce `serverRuntimeBuildIdentityPorts()` or an `identity_ports` wrapper unless a future refactor removes an equal or greater amount of complexity and keeps the maintainability ratchet at or above the current baseline.
+
 The context now exposes typed section accessors: `serverRuntimeRequireIdentity(...)`, `serverRuntimeRequireState(...)`, and `serverRuntimeRequireCache(...)`. Prefer these accessors in server wiring code when a helper needs a validated context section. They should fail early on missing or malformed boot sections and keep orchestration code from depending on undocumented `runtime_ctx$...` shape.
 
 Its purpose is to reduce loose boot-state leakage in `server.R` and fail early when required boot objects are missing or malformed.
@@ -302,7 +304,7 @@ It currently covers only:
 - narrowly registered module return objects in `runtime_ctx$modules`
 - SSO auth-ready callback registration through `serverRuntimeOnSsoAuthReady(...)`, registered-module refresh wiring through `serverRuntimeRefreshModuleOnSsoAuthReady(...)`, and the higher-level refreshable-module wiring helper `serverRuntimeAttachRefreshableModule(...)`
 
-Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules. `runtime_ctx$modules` is not a general global registry; use it narrowly for module return objects that need a validated runtime contract, such as File Manager and Image Gallery post-auth refresh wiring.
+Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules. `runtime_ctx$modules` is not a general global registry; use it narrowly for module return objects that need a validated runtime contract, such as File Manager and Image Gallery post-auth refresh wiring. This file is also close to the function-count ratchet, so adding new public helpers here must be offset by removing or extracting comparable complexity; otherwise the 25-function threshold can regress.
 
 The file subsystem now has a focused FileRuntime boundary under `runtime_ctx$file`. Use `serverRuntimeAttachFilePrelude(...)`, `serverRuntimeAttachFileManager(...)`, and `serverRuntimeRequireFileRuntime(...)` for file prelude and File Manager handles instead of passing those objects through ad hoc local variables or direct `session$userData` reads. This boundary is intentionally narrow: it is for file-preview/follow-up prelude objects and `file_manager_data`, not a general registry for every file-related helper.
 
@@ -464,6 +466,8 @@ cache <- runtime_ctx$cache
 state <- runtime_ctx$state
 identity <- runtime_ctx$identity
 ```
+
+* Do not replace the accepted `identity <- serverRuntimeRequireIdentity(...)` pattern with `identity_ports <- serverRuntimeBuildIdentityPorts(...)`; the current tests intentionally protect the existing runtime-context identity contract.
 
 The context contract is protected by:
 
@@ -1502,7 +1506,7 @@ Windows-safe child-session test authoring rules:
 - `tests/scripts/run_ci_local.R`: local equivalent of GitHub CI; intentionally runs `tests/testthat.R` in a **CLEAN CHILD R SESSION** to avoid global/session contamination after parse/smoke/bootstrap steps.
 - `tests/scripts/run_vm_preflight_real.R`: real Windows VM preflight using real on-prem environment assumptions for production-like validation; it must check required env guards (`LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`) before deeper boot/integration validation.
 - `tests/scripts/maintainability_report.R`: non-failing maintainability report that lists large runtime files, approximate line counts, and function counts; use it to guide incremental refactors without changing the strict test runner.
-- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: minimum maintainability score: 90, max 800+ line files: 2, max 25+ function files: 2, max 1500+ line files: 0, max file lines: 866, and max file functions: 29. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
+- `tests/scripts/maintainability_report.R` remains the reporting tool, while `tests/testthat/test-maintainability-ratchet.R` is the default-suite regression guard; the ratchet is intended to prevent backsliding, not force a big-bang refactor. After the File Manager, Bilge Yolaç process/streaming, LLM SSE stream I/O, MCP analyze/visualize, Admin Response Analysis, Admin Feedback Analysis SQL query extraction, Admin Error Analysis, and Project/Resource Analysis security-summary refactors plus the related maintainability-ratchet update, the default maintainability ratchet baseline has been intentionally tightened: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `796`, and maximum function count `24`. Tighten these global values only when the maintainability report shows a real improvement in the corresponding global metric.
 
 The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module_admin_hata_analizi.R` must remain below 800 lines, and `R/helpers_admin_hata_analizi.R` must remain below the helper size/function thresholds enforced by `test-maintainability-ratchet.R`.
 
