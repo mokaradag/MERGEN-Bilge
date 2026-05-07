@@ -162,6 +162,13 @@ Son medya/ses yarış durumu dilimi de aynı test mimarisine eklenmiştir:
 - `tests/testthat/helper_e2e_media_audio_harness.R`
 - `tests/testthat/test-e2e-media-audio-state-regression.R`
 
+Son dosya bağlamı ve yenileme yarış durumu dilimi de aynı deterministik test mimarisine eklenmiştir:
+
+- `tests/testthat/helper_e2e_file_context_harness.R`
+- `tests/testthat/test-e2e-file-context-regression.R`
+
+Bu dosya bağlamı dilimi; gerçek DB, gerçek kalıcı dosya deposu, gerçek LLM veya tarayıcı otomasyonu gerektirmeden Dosya Yönetimi yükleme/bağlama durumunu, özetleme modu uzantı kısıtlarını, MCP Excel-only ve tek Excel dosyası kuralını, geçersiz/erken kullanıcı kimliğiyle refresh atlamayı, stale refresh sonuçlarının yeni state’i ezmemesini ve tarayıcı yenilemesi sonrası stale attachment ID’lerinin güvenle yok sayılmasını sınar. Türkçe dosya adları bu akışta özellikle korunur.
+
 Bu medya dilimi; gerçek tarayıcı `Audio`, mikrofon, TTS/STT endpoint’i, DB, LLM veya public internet gerektirmeden TTS kuyruğu, STT modal sessize alma/geri yükleme davranışı ve arka plan müziği tek ses kaynağı sözleşmesini deterministik olarak sınar. Windows VM üzerinde JS dosyalarındaki Türkçe yorumlardan kaynaklanabilecek native/ANSI kodlama farkları için JS sözleşme testi byte-safe okuma kullanır; test yalnızca ASCII hook/adlandırma sözleşmelerini arar ve invalid UTF-8 uyarısı üretmemelidir.
 
 Bu ilk regresyon dilimi özellikle hızlı eylemler ve gerçek SSE akış yaşam döngüsü etrafındaki sistemik riskleri hedefler:
@@ -192,10 +199,23 @@ Medya/ses regresyon dilimi ayrıca şu sözleşmeleri korur:
 - sayfa geçişi veya yeni söyleşi sırasında stale TTS/STT/müzik durumunun kalmaması,
 - `music_manager.js`, `tts_manager.js`, `stt_client.js` ve `premium_reasoning.js` içinde beklenen JS hook sözleşmelerinin korunması.
 
+Dosya bağlamı regresyon dilimi ayrıca şu sözleşmeleri korur:
+
+- desteklenen dosya yüklendiğinde Dosya Yönetimi state’inde ve tabloda görünmesi,
+- `Model Bağlamı` seçiminin parent oturum dosya bağlamını güncellemesi,
+- özetleme modunda yalnızca desteklenen belge türlerinin bağlama alınması,
+- MCP/Excel modunda Excel dışı dosyaların ve fazla Excel seçimlerinin kaldırılması,
+- MCP/Excel modunda aynı anda yalnızca tek Excel dosyasının bağlamda kalması,
+- SSO kimliği hazır değilken veya kullanıcı kimliği geçersizken refresh’in mevcut dosya state’ini silmemesi,
+- request-token tabanlı stale refresh korumasının yeni refresh sonucunu koruması,
+- tarayıcı yenilemesi veya eski client state geri yüklemesinde ghost attachment ID’lerinin bağlamı bozmaması,
+- `module_file_manager.R` ile `file_handlers.js` arasındaki upload, file action, attach toggle ve silent attach-state hook sözleşmelerinin korunması.
+
 Odak test koşumu:
 
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
 
 İlgili destekleyici kontrat testleri:
 
@@ -203,12 +223,19 @@ Odak test koşumu:
     testthat::test_file("tests/testthat/test-llm-stream-io-contract.R")
     testthat::test_file("tests/testthat/test-streaming-should-stop.R")
     testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-context-policy-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-refresh-guard-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
+    testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
     testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
     source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
 
 Tam sıkı koşum:
 
     source("tests/testthat.R", encoding = "UTF-8")
+
+Ayrıca `tests/testthat/test-resolve-uploaded-file.R` bireysel çalıştırıldığında da kendi gerekli File Store kaynak zincirini yükleyecek şekilde güçlendirilmiştir. Böylece bu test yalnızca tam suite içinde önceki testlerin global ortamda bıraktığı fonksiyonlara bağlı kalmaz.
 
 Bu testler yalnızca test dosyaları altında bulunduğu için çalışma zamanı bakım yapılabilirlik ratchet’ini değiştirmez; `maintainability_report.R` çalışma zamanı dosyalarını değerlendirmeye devam eder.
 
