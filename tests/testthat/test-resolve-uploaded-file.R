@@ -4,6 +4,59 @@
 # basename ve hatalı senaryolarda doğru davrandığını doğrulayan testleri içerir.
 # ==============================================================================
 
+.find_repo_root_resolve_uploaded_file <- function() {
+  candidates <- unique(normalizePath(
+    c(
+      getwd(),
+      file.path(getwd(), ".."),
+      file.path(getwd(), "..", "..")
+    ),
+    winslash = "/",
+    mustWork = FALSE
+  ))
+
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "app.R")) &&
+        dir.exists(file.path(candidate, "tests", "testthat"))) {
+      return(candidate)
+    }
+  }
+
+  stop("resolve_uploaded_file testi repo kökünü bulamadı.", call. = FALSE)
+}
+
+repo_root_resolve_uploaded_file <- .find_repo_root_resolve_uploaded_file()
+
+if (!exists("resolve_repo_root_for_tests", envir = globalenv(), inherits = FALSE)) {
+  source(
+    file.path(repo_root_resolve_uploaded_file, "tests", "testthat", "helper_bootstrap.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+}
+
+repo_root_resolve_uploaded_file <- resolve_repo_root_for_tests()
+
+.resolve_uploaded_file_required_sources <- c(
+  "R/utils_path_helpers.R",
+  "R/utils_atomic_write.R",
+  "R/config_file_store.R",
+  "R/config_file_store_index_mutation.R",
+  "R/config_file_store_registry.R"
+)
+
+for (source_file in .resolve_uploaded_file_required_sources) {
+  source(
+    file.path(repo_root_resolve_uploaded_file, source_file),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+}
+
+if (!exists("resolve_uploaded_file", envir = globalenv(), mode = "function", inherits = FALSE)) {
+  stop("resolve_uploaded_file() test bootstrap sonrası bulunamadı.", call. = FALSE)
+}
+
 # Geçerli fiziksel yol verildiğinde fonksiyon doğrudan çözümleyebilmelidir.
 test_that("resolve_uploaded_file var olan fiziksel yolu doğrudan döndürür", {
   gecici_dir <- tempfile("uploadtest_")
