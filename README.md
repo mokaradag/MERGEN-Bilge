@@ -149,6 +149,23 @@ testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
 ```
 
 ### Üretim Sertleştirme ve Upload Testleri
+Son Windows VM gerçek preflight sertleştirmesinde tests/scripts/run_vm_preflight_real.R betiği SSO üretim yapılandırmasını varsayılan olarak zorunlu doğrulayacak şekilde güçlendirilmiştir. Gerçek VM koşumunda MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE varsayılandır; bu durumda SSO_ENABLED=TRUE olmalı ve SSO_KEYCLOAK_URL tanımlı bulunmalıdır. LOCAL_LLM_ENDPOINT, DB_DSN ve AI_KEYS_MASTER gibi zorunlu ortam değişkenleri eksikse preflight uygulama boot etmeden önce hızlı ve açık bir hata ile durur. app.R yüklendikten sonra SSO_CONFIG içindeki issuer_url, auth_endpoint, logout_endpoint, token_endpoint, client_id ve realm alanları da doğrulanır. Böylece Windows VM üzerinde uygulamanın yanlışlıkla lokal/non-SSO kimlik modunda açılıp kullanıcı bazlı sohbet, dosya, geçmiş ve galeri akışlarını yanlış kullanıcı bağlamında test etmesi engellenir.
+
+Lokal veya non-SSO smoke koşumu gerektiğinde bu kontrol açıkça devre dışı bırakılabilir:
+
+    Sys.setenv(MERGEN_PREFLIGHT_REQUIRE_SSO = "FALSE")
+    source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")
+
+Windows VM üretim-benzeri koşumda beklenen kullanım:
+
+    Sys.setenv(MERGEN_PREFLIGHT_REQUIRE_SSO = "TRUE")
+    source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")
+
+Bu preflight sözleşmesi aşağıdaki odak testlerle korunur:
+
+    testthat::test_file("tests/testthat/test-vm-preflight-contract.R")
+    testthat::test_file("tests/testthat/test-vm-preflight-guard-contract.R")
+
 Son üretim sertleştirme kapsamında aşağıdaki testler ana test koşumuyla uyumlu hâle getirilmiştir:
 
 ```r
