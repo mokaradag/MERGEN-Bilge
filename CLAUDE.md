@@ -132,7 +132,16 @@ Additional file-context and refresh race files:
 - `tests/testthat/helper_e2e_file_context_harness.R`
 - `tests/testthat/test-e2e-file-context-regression.R`
 
+Additional saved-chat/history/gallery race files:
+
+- `tests/testthat/helper_e2e_chat_persistence_harness.R`
+- `tests/testthat/test-e2e-chat-persistence-regression.R`
+
+The saved-chat/history/gallery slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real LLM, real image-generation endpoint, TTS/STT endpoint, or public internet. It models saved-chat ordering, final-answer persistence idempotency, stale delete/load events, loaded-chat TTS suppression, history refresh cache safety, and user-scoped image gallery refresh behavior through local state stubs.
+
 The file-context slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real persistent file store, real LLM, TTS/STT endpoint, image endpoint, or public internet. It models File Manager upload/context state, summarization-mode extension restrictions, MCP Excel-only attachment behavior, single-Excel enforcement, invalid or early user-id refresh skips, stale refresh request protection, and browser/client restore with stale attachment IDs through local state stubs.
+
+The saved-chat/history/gallery slice intentionally stays browserless. It protects the server-side state and wiring contracts that are most likely to regress before a manual VM/browser run: saved chat ordering after a final answer, exactly-once persistence for a request, stale load suppression after delete, no TTS autoplay when loading old chats, invalid or early user-id refresh skips for history/gallery, and user-scoped gallery cache replacement.
 
 The media/audio slice follows the same deterministic `testthat` strategy. It must not require a real browser, real `Audio`, microphone access, DB, LLM, TTS/STT endpoint, image endpoint, or public internet. It models TTS queueing, STT modal audio suppression, and background-music exclusivity with local state stubs, and it also checks that the key JS hook contracts remain present in `music_manager.js`, `tts_manager.js`, `stt_client.js`, and `premium_reasoning.js`.
 
@@ -181,11 +190,24 @@ The file-context slice protects these contracts:
 - browser/client restore must ignore ghost attachment IDs safely,
 - static File Manager JS/server hook contracts must continue to expose upload, file action, attach toggle, and silent attach-state behavior.
 
+The saved-chat/history/gallery slice protects these contracts:
+
+- saved chat ordering must follow last activity after a new final answer,
+- stream/finalization persistence must be idempotent for the same request id,
+- loading an old saved chat must not trigger TTS autoplay,
+- deleting the current chat must return safely to the welcome state,
+- stale load events for a just-deleted chat must be ignored,
+- history refresh attempts with invalid or early user ids must not wipe the last valid cache,
+- image gallery refresh must remain user-scoped,
+- invalid gallery refresh attempts must not wipe the last valid user cache,
+- static contracts in `server_observers_saved_chats.R`, `module_saved_chats.R`, `module_chat_history.R`, `module_image_gallery.R`, and `server_module_wiring.R` must remain present.
+
 Focused validation:
 
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
     testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-chat-persistence-regression.R")
 
 Related focused tests:
 
@@ -198,6 +220,7 @@ Related focused tests:
     testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")
     testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
     testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
+    testthat::test_file("tests/testthat/test-server-chat-persistence-wiring-contract.R")
     testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
     source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
 
@@ -206,6 +229,8 @@ Full strict validation remains:
     source("tests/testthat.R", encoding = "UTF-8")
 
 `tests/testthat/test-resolve-uploaded-file.R` must remain safe to run individually with `testthat::test_file(...)`. It should explicitly bootstrap the minimal File Store source chain it tests instead of relying on full-suite side effects or functions left in the global environment by earlier tests. This protects diagnostic workflows where a single resolver/file-store test is run after an E2E failure.
+
+The saved-chat/history/gallery E2E slice is also test-only and must remain under `tests/testthat/`. It should not require updates to `global.R`, should not be sourced by runtime code, and should not affect the runtime maintainability ratchet because `tests/scripts/maintainability_report.R` evaluates runtime files only.
 
 Do not replace this foundation with Playwright, Cypress, shinytest2, or another browser-level dependency unless the dependency is explicitly available in the offline/on-prem deployment environment or vendored/installed through an approved offline process. Browser-level tests may be added later as a separate layer, but they should not weaken or remove these deterministic contract tests.
 

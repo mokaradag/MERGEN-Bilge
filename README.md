@@ -167,6 +167,13 @@ Son dosya bağlamı ve yenileme yarış durumu dilimi de aynı deterministik tes
 - `tests/testthat/helper_e2e_file_context_harness.R`
 - `tests/testthat/test-e2e-file-context-regression.R`
 
+Son kayıtlı söyleşi, geçmiş ve görsel galeri yarış durumu dilimi de aynı deterministik test mimarisine eklenmiştir:
+
+- `tests/testthat/helper_e2e_chat_persistence_harness.R`
+- `tests/testthat/test-e2e-chat-persistence-regression.R`
+
+Bu kayıtlı söyleşi/geçmiş/galeri dilimi; gerçek DB, gerçek LLM, gerçek görsel üretim endpoint’i veya tarayıcı otomasyonu gerektirmeden kayıtlı söyleşi sıralamasını, aynı request için final yanıtın yalnızca bir kez kalıcılaştırılmasını, eski kayıtlı söyleşi yüklenirken TTS’in otomatik tetiklenmemesini, mevcut söyleşi silindikten sonra stale load olayının yoksayılmasını, geçersiz/erken kullanıcı kimliğiyle geçmiş ve galeri refresh akışlarının mevcut geçerli state’i silmemesini ve galeri yenilemenin kullanıcı kapsamını korumasını sınar. Türkçe başlık ve içerikler bu test diliminde özellikle korunur.
+
 Bu dosya bağlamı dilimi; gerçek DB, gerçek kalıcı dosya deposu, gerçek LLM veya tarayıcı otomasyonu gerektirmeden Dosya Yönetimi yükleme/bağlama durumunu, özetleme modu uzantı kısıtlarını, MCP Excel-only ve tek Excel dosyası kuralını, geçersiz/erken kullanıcı kimliğiyle refresh atlamayı, stale refresh sonuçlarının yeni state’i ezmemesini ve tarayıcı yenilemesi sonrası stale attachment ID’lerinin güvenle yok sayılmasını sınar. Türkçe dosya adları bu akışta özellikle korunur.
 
 Bu medya dilimi; gerçek tarayıcı `Audio`, mikrofon, TTS/STT endpoint’i, DB, LLM veya public internet gerektirmeden TTS kuyruğu, STT modal sessize alma/geri yükleme davranışı ve arka plan müziği tek ses kaynağı sözleşmesini deterministik olarak sınar. Windows VM üzerinde JS dosyalarındaki Türkçe yorumlardan kaynaklanabilecek native/ANSI kodlama farkları için JS sözleşme testi byte-safe okuma kullanır; test yalnızca ASCII hook/adlandırma sözleşmelerini arar ve invalid UTF-8 uyarısı üretmemelidir.
@@ -211,11 +218,24 @@ Dosya bağlamı regresyon dilimi ayrıca şu sözleşmeleri korur:
 - tarayıcı yenilemesi veya eski client state geri yüklemesinde ghost attachment ID’lerinin bağlamı bozmaması,
 - `module_file_manager.R` ile `file_handlers.js` arasındaki upload, file action, attach toggle ve silent attach-state hook sözleşmelerinin korunması.
 
+Kayıtlı söyleşi/geçmiş/galeri regresyon dilimi ayrıca şu sözleşmeleri korur:
+
+- yeni tamamlanan yanıt sonrasında kayıtlı söyleşi sıralamasının son aktiviteye göre güncellenmesi,
+- aynı request için stream/finalization sonucu iki kez kaydedilmemesi,
+- kayıtlı eski bir söyleşi yüklenirken TTS’in otomatik başlamaması,
+- mevcut söyleşi silindiğinde hoş geldin ekranına güvenli şekilde dönülmesi,
+- silinen söyleşiye ait gecikmiş/stale yükleme olaylarının yeni UI state’ini ezmemesi,
+- geçmiş yenilemede geçersiz veya erken kullanıcı kimliğinin mevcut geçerli cache’i temizlememesi,
+- görsel galeri yenilemesinin kullanıcı kapsamını koruması,
+- geçersiz kullanıcı kimliğiyle galeri refresh denemesinin önceki geçerli kullanıcı cache’ini silmemesi,
+- `server_observers_saved_chats.R`, `module_saved_chats.R`, `module_chat_history.R`, `module_image_gallery.R` ve `server_module_wiring.R` içindeki kritik wiring/race sözleşmelerinin korunması.
+
 Odak test koşumu:
 
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
     testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-chat-persistence-regression.R")
 
 İlgili destekleyici kontrat testleri:
 
@@ -228,6 +248,7 @@ Odak test koşumu:
     testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")
     testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
     testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
+    testthat::test_file("tests/testthat/test-server-chat-persistence-wiring-contract.R")
     testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
     source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
 
@@ -237,7 +258,7 @@ Tam sıkı koşum:
 
 Ayrıca `tests/testthat/test-resolve-uploaded-file.R` bireysel çalıştırıldığında da kendi gerekli File Store kaynak zincirini yükleyecek şekilde güçlendirilmiştir. Böylece bu test yalnızca tam suite içinde önceki testlerin global ortamda bıraktığı fonksiyonlara bağlı kalmaz.
 
-Bu testler yalnızca test dosyaları altında bulunduğu için çalışma zamanı bakım yapılabilirlik ratchet’ini değiştirmez; `maintainability_report.R` çalışma zamanı dosyalarını değerlendirmeye devam eder.
+Bu testler yalnızca test dosyaları altında bulunduğu için çalışma zamanı bakım yapılabilirlik ratchet’ini değiştirmez; `maintainability_report.R` çalışma zamanı dosyalarını değerlendirmeye devam eder. Kayıtlı söyleşi/geçmiş/galeri dilimi de bu kurala uyar; yeni yardımcı ve test dosyaları `tests/testthat/` altında kalır ve runtime dosya satır/fonksiyon eşiklerini etkilemez.
 
 ### Üretim Sertleştirme ve Upload Testleri
 Son Windows VM gerçek preflight sertleştirmesinde tests/scripts/run_vm_preflight_real.R betiği SSO üretim yapılandırmasını varsayılan olarak zorunlu doğrulayacak şekilde güçlendirilmiştir. Gerçek VM koşumunda MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE varsayılandır; bu durumda SSO_ENABLED=TRUE olmalı ve SSO_KEYCLOAK_URL tanımlı bulunmalıdır. LOCAL_LLM_ENDPOINT, DB_DSN ve AI_KEYS_MASTER gibi zorunlu ortam değişkenleri eksikse preflight uygulama boot etmeden önce hızlı ve açık bir hata ile durur. app.R yüklendikten sonra SSO_CONFIG içindeki issuer_url, auth_endpoint, logout_endpoint, token_endpoint, client_id ve realm alanları da doğrulanır. Böylece Windows VM üzerinde uygulamanın yanlışlıkla lokal/non-SSO kimlik modunda açılıp kullanıcı bazlı sohbet, dosya, geçmiş ve galeri akışlarını yanlış kullanıcı bağlamında test etmesi engellenir.
