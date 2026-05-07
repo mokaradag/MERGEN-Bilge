@@ -532,3 +532,98 @@ vm_preflight_check_live_user_id_provider_contract <- function() {
   cat("OK: Live current_user_id provider kontratı başarılı.\n")
   invisible(TRUE)
 }
+
+vm_preflight_check_sso_auth_ready_refresh_contract <- function() {
+  vm_preflight_required_functions(
+    c(
+      "serverRuntimeContextInit",
+      "serverRuntimeAttachModule",
+      "serverRuntimeRefreshModuleOnSsoAuthReady"
+    ),
+    label = "SSO auth-ready refresh preflight"
+  )
+
+  fake_session <- list(
+    userData = new.env(parent = emptyenv()),
+    token = "vm-preflight-token"
+  )
+
+  fake_session_cache <- list(
+    mcp_saved_path = function(...) NULL,
+    cache_root = tempdir(),
+    setup_user_session = function(user_id) tempdir(),
+    cache_mcp_file_locally = function(path) path,
+    update_mcp_registry_snapshot = function(files_snapshot = NULL) files_snapshot,
+    get_cache_dir = function() tempdir()
+  )
+
+  fake_user_session <- list(
+    user_config_rv = function(...) NULL,
+    resolve_current_user_id = function() 123L,
+    current_user_id_provider = function() 123L,
+    is_auth_ready = function() TRUE,
+    is_sso_active = function() TRUE,
+    get_auth_source = function(default = NULL) "keycloak",
+    get_user_config = function(default = NULL) list(
+      name = "VM Preflight",
+      first_name = "VM",
+      userId = "123"
+    ),
+    get_first_name = function(default = "") "VM",
+    get_display_name = function(default = "Kullanıcı") "VM Preflight",
+    get_current_user_id_snapshot = function() 123L,
+    get_cache_dir = function() tempdir()
+  )
+
+  ctx <- serverRuntimeContextInit(
+    session = fake_session,
+    session_cache = fake_session_cache,
+    sso_state = list(authenticated = TRUE),
+    user_session = fake_user_session
+  )
+
+  refreshed <- FALSE
+  registered_observer <- FALSE
+
+  module_value <- list(
+    refresh = function(reason = NULL) {
+      refreshed <<- identical(reason, "auth_ready")
+      invisible(TRUE)
+    }
+  )
+
+  serverRuntimeAttachModule(
+    ctx = ctx,
+    name = "preflight_refresh_module",
+    value = module_value,
+    required_functions = "refresh"
+  )
+
+  result <- serverRuntimeRefreshModuleOnSsoAuthReady(
+    ctx = ctx,
+    module_name = "preflight_refresh_module",
+    refresh_function = "refresh",
+    refresh_args = list("auth_ready"),
+    label = "preflight_refresh",
+    observe_event_fn = function(...) {
+      registered_observer <<- TRUE
+      list()
+    },
+    req_fn = function(...) NULL
+  )
+
+  if (!isTRUE(result) || !isTRUE(refreshed) || isTRUE(registered_observer)) {
+    vm_preflight_stop(sprintf(
+      paste(
+        "VM preflight başarısız: SSO auth-ready refresh kontratı bozuldu.",
+        "result=%s refreshed=%s observer_registered=%s"
+      ),
+      as.character(isTRUE(result)),
+      as.character(isTRUE(refreshed)),
+      as.character(isTRUE(registered_observer))
+    ))
+  }
+
+  cat("OK: SSO auth-ready immediate refresh kontratı başarılı.\n")
+  invisible(TRUE)
+}

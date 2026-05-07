@@ -217,6 +217,7 @@ if (isTRUE(preflight_check_file_store)) {
 }
 
 vm_preflight_check_live_user_id_provider_contract()
+vm_preflight_check_sso_auth_ready_refresh_contract()
 
 # ----------------------------------------------------------------------
 # Gerçek DB sağlık kontrolü

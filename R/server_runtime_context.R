@@ -512,11 +512,44 @@ serverRuntimeExposeSessionData <- function(ctx,
   invisible(ctx)
 }
 
+.server_runtime_sso_auth_ready_now <- function(ctx) {
+  .server_runtime_require_context(ctx)
+
+  if (!isTRUE(ctx$identity$is_sso_active())) {
+    return(FALSE)
+  }
+
+  if (is.null(ctx$sso_state)) {
+    return(FALSE)
+  }
+
+  authenticated <- tryCatch(
+    shiny::isolate(isTRUE(ctx$sso_state$authenticated)),
+    error = function(e) FALSE
+  )
+
+  isTRUE(authenticated) && isTRUE(ctx$identity$is_auth_ready())
+}
+
+.server_runtime_invoke_auth_ready_callback <- function(ctx, callback, label) {
+  tryCatch(
+    callback(ctx),
+    error = function(e) {
+      .server_runtime_stop(sprintf(
+        "serverRuntimeOnSsoAuthReady[%s]: callback başarısız: %s",
+        label,
+        conditionMessage(e)
+      ))
+    }
+  )
+}
+
 serverRuntimeOnSsoAuthReady <- function(ctx,
                                         callback,
                                         label = "auth_ready",
                                         once = TRUE,
                                         ignore_init = TRUE,
+                                        run_if_ready = TRUE,
                                         observe_event_fn = shiny::observeEvent,
                                         req_fn = shiny::req) {
   .server_runtime_require_context(ctx)
@@ -550,6 +583,11 @@ serverRuntimeOnSsoAuthReady <- function(ctx,
       label
     ))
   }
+  
+  if (isTRUE(run_if_ready) && isTRUE(.server_runtime_sso_auth_ready_now(ctx))) {
+    .server_runtime_invoke_auth_ready_callback(ctx, callback, label)
+    return(invisible(TRUE))
+  }
 
   observer <- observe_event_fn(ctx$sso_state$authenticated, {
     req_fn(
@@ -557,7 +595,7 @@ serverRuntimeOnSsoAuthReady <- function(ctx,
       isTRUE(ctx$identity$is_auth_ready())
     )
 
-    callback(ctx)
+    .server_runtime_invoke_auth_ready_callback(ctx, callback, label)
   }, ignoreInit = ignore_init, once = once)
 
   invisible(observer)

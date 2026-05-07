@@ -338,7 +338,7 @@ test_that("serverRuntimeCreateFunctionSlot geç bağlanan fonksiyonu güncel hed
   )
 })
 
-test_that("serverRuntimeRefreshModuleOnSsoAuthReady modül yenilemeyi tek yardımcıyla kurar", {
+test_that("serverRuntimeRefreshModuleOnSsoAuthReady auth hazırsa observer beklemeden yeniler", {
   ctx <- serverRuntimeContextInit(
     session = .fake_runtime_session(),
     session_cache = .fake_session_cache(),
@@ -368,15 +368,10 @@ test_that("serverRuntimeRefreshModuleOnSsoAuthReady modül yenilemeyi tek yardı
                                  ignoreInit = TRUE,
                                  once = TRUE) {
     registered <<- TRUE
-    force(handlerExpr)
-
-    list(
-      ignoreInit = ignoreInit,
-      once = once
-    )
+    stop("Auth hazır olduğunda observer kaydı beklenmez.", call. = FALSE)
   }
 
-  observer <- serverRuntimeRefreshModuleOnSsoAuthReady(
+  result <- serverRuntimeRefreshModuleOnSsoAuthReady(
     ctx = ctx,
     module_name = "file_manager",
     refresh_function = "refresh_persisted_files",
@@ -386,13 +381,12 @@ test_that("serverRuntimeRefreshModuleOnSsoAuthReady modül yenilemeyi tek yardı
     req_fn = function(...) NULL
   )
 
-  expect_true(registered)
-  expect_true(isTRUE(observer$ignoreInit))
-  expect_true(isTRUE(observer$once))
+  expect_true(isTRUE(result))
+  expect_false(registered)
   expect_identical(refreshed_reason, "auth_ready")
 })
 
-test_that("serverRuntimeAttachRefreshableModule attach, refresh ve oturum uyumluluk yazımını tek yerden yapar", {
+test_that("serverRuntimeAttachRefreshableModule auth hazırsa refresh'i observer beklemeden yapar", {
   session <- .fake_runtime_session()
 
   ctx <- serverRuntimeContextInit(
@@ -417,12 +411,7 @@ test_that("serverRuntimeAttachRefreshableModule attach, refresh ve oturum uyumlu
                                  ignoreInit = TRUE,
                                  once = TRUE) {
     registered <<- TRUE
-    force(handlerExpr)
-
-    list(
-      ignoreInit = ignoreInit,
-      once = once
-    )
+    stop("Auth hazır olduğunda observer kaydı beklenmez.", call. = FALSE)
   }
 
   out <- serverRuntimeAttachRefreshableModule(
@@ -441,7 +430,7 @@ test_that("serverRuntimeAttachRefreshableModule attach, refresh ve oturum uyumlu
   expect_identical(out, ctx)
   expect_identical(ctx$modules$file_manager, file_manager_data)
   expect_identical(session$userData$file_manager_data, file_manager_data)
-  expect_true(registered)
+  expect_false(registered)
   expect_identical(refreshed_reason, "auth_ready")
 })
 
@@ -462,6 +451,34 @@ test_that("serverRuntimeRefreshModuleOnSsoAuthReady eksik modülü SSO modunda e
     ),
     "kayıtlı değil"
   )
+})
+
+test_that("serverRuntimeOnSsoAuthReady auth zaten hazırsa callback'i hemen çalıştırır", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = TRUE),
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = TRUE)
+  )
+
+  called <- FALSE
+  registered <- FALSE
+
+  result <- serverRuntimeOnSsoAuthReady(
+    ctx,
+    label = "already_ready",
+    callback = function(ctx) {
+      called <<- TRUE
+    },
+    observe_event_fn = function(...) {
+      registered <<- TRUE
+      stop("Auth zaten hazır olduğunda observer kaydı beklenmez.", call. = FALSE)
+    }
+  )
+
+  expect_true(isTRUE(result))
+  expect_true(called)
+  expect_false(registered)
 })
 
 test_that("serverRuntimeOnSsoAuthReady yerel modda mevcut akışı değiştirmez", {
