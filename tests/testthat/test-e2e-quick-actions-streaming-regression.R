@@ -5,9 +5,32 @@
 #           gerektirmez.
 # ==============================================================================
 
+.find_e2e_repo_root <- function() {
+  candidates <- unique(normalizePath(
+    c(
+      getwd(),
+      file.path(getwd(), ".."),
+      file.path(getwd(), "..", "..")
+    ),
+    winslash = "/",
+    mustWork = FALSE
+  ))
+
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "app.R")) &&
+        dir.exists(file.path(candidate, "tests", "testthat"))) {
+      return(candidate)
+    }
+  }
+
+  stop("E2E test repo kökünü bulamadı. Testi repo kökünden çalıştırın.", call. = FALSE)
+}
+
+repo_root_e2e <- .find_e2e_repo_root()
+
 if (!exists("resolve_repo_root_for_tests", envir = globalenv(), inherits = FALSE)) {
   source(
-    file.path("tests", "testthat", "helper_bootstrap.R"),
+    file.path(repo_root_e2e, "tests", "testthat", "helper_bootstrap.R"),
     encoding = "UTF-8",
     local = globalenv()
   )
