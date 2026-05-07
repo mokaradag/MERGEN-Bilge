@@ -113,6 +113,48 @@ tests/testthat/test-maintainability-ratchet.R
 
 Current maintainability ratchet baseline after the LLM worker tool-result extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `796`, and maximum function count `24`. Do not loosen these limits without an explicit reason. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
 
+### E2E/race regression test foundation contract
+
+The repository now has a deterministic E2E-style regression foundation for quick actions and true-streaming request lifecycle behavior. It intentionally uses `testthat` plus local state/service stubs instead of adding a browser automation dependency. This keeps the suite compatible with offline/on-prem Windows VM environments and avoids real DB, real LLM, TTS/STT, image endpoint, or public internet requirements.
+
+Current files:
+
+- `tests/testthat/helper_e2e_race_harness.R`
+- `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
+
+The first slice protects these contracts:
+
+- quick-action clicks select the expected tool/model mode,
+- quick-action clicks hide the welcome state and show a ready-made intro message,
+- quick-action clicks must not trigger an LLM request by themselves,
+- quick-action intro messages must not be persisted to DB, added to saved chats, or included in model context,
+- rapid quick-action clicks must converge to one active tool mode,
+- a prompt sent immediately after a quick-action click must produce exactly one user request,
+- SSE visible deltas and reasoning deltas must remain separate,
+- stream finalization must be idempotent for a request,
+- stale request finalization must not update the newer active request,
+- stop-generation state must be request-scoped and must not poison the next request,
+- simulated reasoning phases must not be persisted as real reasoning.
+
+Focused validation:
+
+    testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
+
+Related focused tests:
+
+    testthat::test_file("tests/testthat/test-send-message-request-lifecycle-contract.R")
+    testthat::test_file("tests/testthat/test-llm-stream-io-contract.R")
+    testthat::test_file("tests/testthat/test-streaming-should-stop.R")
+    testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+    testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+    source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
+
+Full strict validation remains:
+
+    source("tests/testthat.R", encoding = "UTF-8")
+
+Do not replace this foundation with Playwright, Cypress, shinytest2, or another browser-level dependency unless the dependency is explicitly available in the offline/on-prem deployment environment or vendored/installed through an approved offline process. Browser-level tests may be added later as a separate layer, but they should not weaken or remove these deterministic contract tests.
+
 ### LLM worker tool-result formatting contract
 
 The non-streaming LLM worker is intentionally split across three helper layers. Preserve this source order in `global.R`:

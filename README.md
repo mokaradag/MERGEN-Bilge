@@ -148,6 +148,48 @@ testthat::test_file("tests/testthat/test-health-check-env-contract.R")
 testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
 ```
 
+### E2E ve Yarış Durumu Regresyon Testleri
+
+Son test güncellemesiyle, gerçek DB, gerçek LLM, TTS/STT, görsel üretim endpoint’i veya public internet gerektirmeyen deterministik bir E2E/yariş durumu regresyon temeli eklenmiştir. Bu temel, tarayıcı otomasyonu veya yeni offline kurulumu zor bir bağımlılık eklemeden `testthat` içinde çalışır.
+
+Eklenen test altyapısı:
+
+- `tests/testthat/helper_e2e_race_harness.R`
+- `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
+
+Bu ilk regresyon dilimi özellikle hızlı eylemler ve gerçek SSE akış yaşam döngüsü etrafındaki sistemik riskleri hedefler:
+
+- hızlı eylem tıklamasının doğru araç/model modunu seçmesi,
+- hoş geldin ekranının kapanması ve hazır yönlendirme mesajının gösterilmesi,
+- hızlı eylem tıklamasının kendiliğinden LLM çağrısı başlatmaması,
+- hızlı eylem intro mesajının DB’ye, kayıtlı söyleşilere veya model bağlamına eklenmemesi,
+- hızlı çift tıklamada tek aktif araç moduna yakınsama,
+- hızlı eylemin hemen ardından gönderilen kullanıcı isteminin yalnızca tek LLM isteği üretmesi,
+- SSE görünür delta metni ile reasoning delta metninin ayrı kalması,
+- aynı istek için stream finalization işleminin yalnızca bir kez gerçekleşmesi,
+- stale async/finalization callback’lerinin yeni isteği ezmemesi,
+- stop-generation bayrağının bir sonraki isteğe sızmaması,
+- simulated reasoning fazlarının gerçek reasoning olarak kalıcılaştırılmaması.
+
+Odak test koşumu:
+
+    testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
+
+İlgili destekleyici kontrat testleri:
+
+    testthat::test_file("tests/testthat/test-send-message-request-lifecycle-contract.R")
+    testthat::test_file("tests/testthat/test-llm-stream-io-contract.R")
+    testthat::test_file("tests/testthat/test-streaming-should-stop.R")
+    testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+    testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+    source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
+
+Tam sıkı koşum:
+
+    source("tests/testthat.R", encoding = "UTF-8")
+
+Bu testler yalnızca test dosyaları altında bulunduğu için çalışma zamanı bakım yapılabilirlik ratchet’ini değiştirmez; `maintainability_report.R` çalışma zamanı dosyalarını değerlendirmeye devam eder.
+
 ### Üretim Sertleştirme ve Upload Testleri
 Son Windows VM gerçek preflight sertleştirmesinde tests/scripts/run_vm_preflight_real.R betiği SSO üretim yapılandırmasını varsayılan olarak zorunlu doğrulayacak şekilde güçlendirilmiştir. Gerçek VM koşumunda MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE varsayılandır; bu durumda SSO_ENABLED=TRUE olmalı ve SSO_KEYCLOAK_URL tanımlı bulunmalıdır. LOCAL_LLM_ENDPOINT, DB_DSN ve AI_KEYS_MASTER gibi zorunlu ortam değişkenleri eksikse preflight uygulama boot etmeden önce hızlı ve açık bir hata ile durur. app.R yüklendikten sonra SSO_CONFIG içindeki issuer_url, auth_endpoint, logout_endpoint, token_endpoint, client_id ve realm alanları da doğrulanır. Böylece Windows VM üzerinde uygulamanın yanlışlıkla lokal/non-SSO kimlik modunda açılıp kullanıcı bazlı sohbet, dosya, geçmiş ve galeri akışlarını yanlış kullanıcı bağlamında test etmesi engellenir.
 
