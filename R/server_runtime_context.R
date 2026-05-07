@@ -512,25 +512,6 @@ serverRuntimeExposeSessionData <- function(ctx,
   invisible(ctx)
 }
 
-.server_runtime_sso_auth_ready_now <- function(ctx) {
-  .server_runtime_require_context(ctx)
-
-  if (!isTRUE(ctx$identity$is_sso_active())) {
-    return(FALSE)
-  }
-
-  if (is.null(ctx$sso_state)) {
-    return(FALSE)
-  }
-
-  authenticated <- tryCatch(
-    shiny::isolate(isTRUE(ctx$sso_state$authenticated)),
-    error = function(e) FALSE
-  )
-
-  isTRUE(authenticated) && isTRUE(ctx$identity$is_auth_ready())
-}
-
 .server_runtime_invoke_auth_ready_callback <- function(ctx, callback, label) {
   tryCatch(
     callback(ctx),
@@ -584,8 +565,35 @@ serverRuntimeOnSsoAuthReady <- function(ctx,
     ))
   }
   
-  if (isTRUE(run_if_ready) && isTRUE(.server_runtime_sso_auth_ready_now(ctx))) {
-    .server_runtime_invoke_auth_ready_callback(ctx, callback, label)
+  authenticated_now <- try(
+    shiny::isolate(isTRUE(ctx$sso_state$authenticated)),
+    silent = TRUE
+  )
+
+  if (inherits(authenticated_now, "try-error")) {
+    authenticated_now <- FALSE
+  }
+
+  if (isTRUE(run_if_ready) &&
+      isTRUE(authenticated_now) &&
+      isTRUE(ctx$identity$is_auth_ready())) {
+    callback_result <- try(callback(ctx), silent = TRUE)
+
+    if (inherits(callback_result, "try-error")) {
+      callback_condition <- attr(callback_result, "condition")
+      callback_message <- if (inherits(callback_condition, "condition")) {
+        conditionMessage(callback_condition)
+      } else {
+        as.character(callback_result)
+      }
+
+      .server_runtime_stop(sprintf(
+        "serverRuntimeOnSsoAuthReady[%s]: callback başarısız: %s",
+        label,
+        callback_message
+      ))
+    }
+
     return(invisible(TRUE))
   }
 
@@ -595,7 +603,22 @@ serverRuntimeOnSsoAuthReady <- function(ctx,
       isTRUE(ctx$identity$is_auth_ready())
     )
 
-    .server_runtime_invoke_auth_ready_callback(ctx, callback, label)
+    callback_result <- try(callback(ctx), silent = TRUE)
+
+    if (inherits(callback_result, "try-error")) {
+      callback_condition <- attr(callback_result, "condition")
+      callback_message <- if (inherits(callback_condition, "condition")) {
+        conditionMessage(callback_condition)
+      } else {
+        as.character(callback_result)
+      }
+
+      .server_runtime_stop(sprintf(
+        "serverRuntimeOnSsoAuthReady[%s]: callback başarısız: %s",
+        label,
+        callback_message
+      ))
+    }
   }, ignoreInit = ignore_init, once = once)
 
   invisible(observer)
