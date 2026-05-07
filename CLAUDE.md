@@ -187,6 +187,34 @@ tests/testthat/test-claude-code-dir-ui-refactor-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
+### Windows VM real preflight SSO contract
+
+tests/scripts/run_vm_preflight_real.R is the production-like Windows VM preflight entry point. It must not silently pass when the VM is accidentally running in local/non-SSO identity mode, and it must fail early when mandatory production environment variables are missing.
+
+Current contract:
+
+- MERGEN_PREFLIGHT_REQUIRE_SSO defaults to TRUE.
+- When MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE, the preflight must fail unless SSO_ENABLED=TRUE.
+- Local or developer smoke runs may explicitly set MERGEN_PREFLIGHT_REQUIRE_SSO=FALSE.
+- LOCAL_LLM_ENDPOINT, DB_DSN, and AI_KEYS_MASTER are mandatory for the real preflight.
+- When SSO is enabled, SSO_KEYCLOAK_URL is also mandatory.
+- Missing mandatory environment variables must fail fast before app boot with a clear error message.
+- After app.R is sourced and validate_boot_state() passes, the preflight must verify that SSO_ENABLED is active and that SSO_CONFIG contains usable keycloak_base_url, issuer_url, auth_endpoint, logout_endpoint, token_endpoint, client_id, and realm values.
+- Derived SSO URL fields must remain valid http:// or https:// URLs.
+- Do not weaken this preflight into a generic boot-only check. Boot, DB, storage, atomic-write, and LLM endpoint checks are necessary but not sufficient for the Windows VM production profile.
+
+This contract prevents a real VM validation run from passing while the app is actually using the local process user instead of the authenticated SSO user. That failure mode can mask user-scoped saved-chat, history, gallery, file-manager, and DB persistence regressions.
+
+Focused guard behavior:
+
+- tests/testthat/test-vm-preflight-guard-contract.R keeps the missing-env-var failure path isolated from the SSO guard by setting MERGEN_PREFLIGHT_REQUIRE_SSO=FALSE.
+- Keep that test focused on missing mandatory env vars. Do not make it depend on child-process stdout/stderr parsing.
+
+Protected by:
+
+    tests/testthat/test-vm-preflight-contract.R
+    tests/testthat/test-vm-preflight-guard-contract.R
+
 ### User session initialization contract
 
 Preserve this source order in `global.R`:
