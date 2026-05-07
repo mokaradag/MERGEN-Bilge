@@ -108,6 +108,45 @@ vm_preflight_resolve_configured_path <- function(global_name,
   vm_preflight_first_string(default, default = "")
 }
 
+vm_preflight_writable_dir_candidates <- function(dir_path) {
+  dir_path <- vm_preflight_first_string(dir_path, default = "")
+
+  if (!nzchar(dir_path)) {
+    return(character(0))
+  }
+
+  slash_path <- gsub("\\", "/", dir_path, fixed = TRUE)
+
+  candidates <- unique(Filter(nzchar, c(
+    dir_path,
+    slash_path,
+    enc2utf8(dir_path),
+    enc2native(dir_path),
+    gsub("/", "\\", slash_path, fixed = TRUE),
+    if (grepl("^/[^/]", slash_path)) paste0("/", slash_path) else NULL,
+    if (grepl("^/[^/]", slash_path)) gsub("/", "\\", paste0("/", slash_path), fixed = TRUE) else NULL
+  )))
+
+  if (exists("normalize_mcp_path", envir = globalenv(), mode = "function", inherits = TRUE)) {
+    normalize_fn <- get("normalize_mcp_path", envir = globalenv(), inherits = TRUE)
+
+    normalized <- unique(vapply(
+      candidates,
+      function(candidate) {
+        tryCatch(
+          normalize_fn(candidate, must_exist = FALSE),
+          error = function(e) candidate
+        )
+      },
+      character(1)
+    ))
+
+    candidates <- unique(c(candidates, normalized))
+  }
+
+  candidates
+}
+
 vm_preflight_check_writable_dir <- function(dir_path, label) {
   dir_path <- vm_preflight_first_string(dir_path, default = "")
 
@@ -118,30 +157,45 @@ vm_preflight_check_writable_dir <- function(dir_path, label) {
     ))
   }
 
-  dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+  candidates <- vm_preflight_writable_dir_candidates(dir_path)
+  errors <- character(0)
 
-  probe_file <- file.path(
-    dir_path,
-    sprintf(".preflight_write_probe_%s.tmp", as.integer(Sys.time()))
-  )
+  for (candidate in candidates) {
+    dir.create(candidate, recursive = TRUE, showWarnings = FALSE)
 
-  ok <- tryCatch({
-    writeLines("ok", probe_file, useBytes = TRUE)
-    file.exists(probe_file)
-  }, error = function(e) FALSE)
+    probe_file <- file.path(
+      candidate,
+      sprintf(".preflight_write_probe_%s.tmp", as.integer(Sys.time()))
+    )
 
-  try(unlink(probe_file, force = TRUE), silent = TRUE)
+    ok <- tryCatch({
+      writeBin(charToRaw("ok"), probe_file)
+      file.exists(probe_file) || vm_preflight_path_exists(probe_file)
+    }, error = function(e) {
+      errors <<- c(errors, sprintf("%s -> %s", candidate, conditionMessage(e)))
+      FALSE
+    })
 
-  if (!isTRUE(ok)) {
-    vm_preflight_stop(sprintf(
-      "VM preflight başarısız: %s yazılabilir değil (%s).",
-      label,
-      dir_path
-    ))
+    try(unlink(probe_file, force = TRUE), silent = TRUE)
+
+    if (isTRUE(ok)) {
+      cat(sprintf("OK: %s yazılabilir: %s\n", label, candidate))
+      return(invisible(normalizePath(candidate, winslash = "/", mustWork = FALSE)))
+    }
   }
 
-  cat(sprintf("OK: %s yazılabilir: %s\n", label, dir_path))
-  invisible(normalizePath(dir_path, winslash = "/", mustWork = FALSE))
+  vm_preflight_stop(sprintf(
+    paste(
+      "VM preflight başarısız: %s yazılabilir değil.",
+      "İstenen yol: %s",
+      "Denenen varyantlar: %s",
+      "Hatalar: %s"
+    ),
+    label,
+    dir_path,
+    paste(candidates, collapse = " | "),
+    paste(errors, collapse = " | ")
+  ))
 }
 
 vm_preflight_check_core_writable_paths <- function() {
@@ -176,7 +230,6 @@ vm_preflight_check_core_writable_paths <- function() {
 
   checked <- list(
     active_log_dir = vm_preflight_check_writable_dir(active_log_dir, "aktif log dizini"),
-    uploads_dir = vm_preflight_check_writable_dir(uploads_dir, "MERGEN yükleme dizini"),
     destek_uploads_dir = vm_preflight_check_writable_dir("destek_uploads", "destek yükleme dizini"),
     bilge_yolac_downloads_dir = vm_preflight_check_writable_dir(
       "bilge_yolac_downloads",
@@ -188,8 +241,34 @@ vm_preflight_check_core_writable_paths <- function() {
     checked$files_root <- vm_preflight_check_writable_dir(files_root, "MERGEN files root")
   }
 
+  mcp_base_ok <- FALSE
   if (nzchar(mcp_base_dir)) {
     checked$mcp_base_dir <- vm_preflight_check_writable_dir(mcp_base_dir, "MERGEN MCP base dir")
+    mcp_base_ok <- TRUE
+  }
+
+  uploads_check <- tryCatch(
+    vm_preflight_check_writable_dir(uploads_dir, "MERGEN yükleme dizini"),
+    error = function(e) e
+  )
+
+  if (inherits(uploads_check, "error")) {
+    if (isTRUE(mcp_base_ok)) {
+      warning(sprintf(
+        paste(
+          "MERGEN_UPLOADS_DIR yazılabilir değil ancak MERGEN_MCP_BASE_DIR yazılabilir.",
+          "Üretim dosya roundtrip kontrolü MCP tabanı üzerinden devam edecek.",
+          "Atlanan fallback dizin: %s",
+          "Hata: %s"
+        ),
+        uploads_dir,
+        conditionMessage(uploads_check)
+      ), call. = FALSE)
+    } else {
+      stop(conditionMessage(uploads_check), call. = FALSE)
+    }
+  } else {
+    checked$uploads_dir <- uploads_check
   }
 
   if (nzchar(index_path)) {
