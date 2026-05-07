@@ -151,6 +151,8 @@ testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
 ### Üretim Sertleştirme ve Upload Testleri
 Son Windows VM gerçek preflight sertleştirmesinde tests/scripts/run_vm_preflight_real.R betiği SSO üretim yapılandırmasını varsayılan olarak zorunlu doğrulayacak şekilde güçlendirilmiştir. Gerçek VM koşumunda MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE varsayılandır; bu durumda SSO_ENABLED=TRUE olmalı ve SSO_KEYCLOAK_URL tanımlı bulunmalıdır. LOCAL_LLM_ENDPOINT, DB_DSN ve AI_KEYS_MASTER gibi zorunlu ortam değişkenleri eksikse preflight uygulama boot etmeden önce hızlı ve açık bir hata ile durur. app.R yüklendikten sonra SSO_CONFIG içindeki issuer_url, auth_endpoint, logout_endpoint, token_endpoint, client_id ve realm alanları da doğrulanır. Böylece Windows VM üzerinde uygulamanın yanlışlıkla lokal/non-SSO kimlik modunda açılıp kullanıcı bazlı sohbet, dosya, geçmiş ve galeri akışlarını yanlış kullanıcı bağlamında test etmesi engellenir.
 
+Son Windows VM preflight güncellemesiyle gerçek üretim kontrolü iki katmana ayrılmıştır. Varsayılan koşum; uygulama boot doğrulaması, SSO yapılandırması, temel yazılabilir dizinler, atomik yazım, UTF-8 yaz/oku roundtrip, canlı `current_user_id` provider sözleşmesi, gerçek DB sağlık kontrolü ve yerel LLM endpoint erişilebilirlik kontrolünü kapsar. Gerçek paylaşımlı/indexli dosya deposuna dokunan File Store roundtrip kontrolü ise daha ağır ve ortama duyarlı bir tanılama olduğu için varsayılan olarak kapalıdır; gerektiğinde `MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE` ile açıkça çalıştırılır. Preflight betiği kendi ayarladığı `MERGEN_DISABLE_FUTURES`, `MERGEN_RUN_APP` ve `MERGEN_SQL_LOADER_STRICT` değerlerini çıkışta geri yükler; böylece aynı R oturumunda daha sonra çalıştırılan `testthat` koşumları preflight strict ortamından etkilenmez.
+
 Lokal veya non-SSO smoke koşumu gerektiğinde bu kontrol açıkça devre dışı bırakılabilir:
 
     Sys.setenv(MERGEN_PREFLIGHT_REQUIRE_SSO = "FALSE")
@@ -161,10 +163,18 @@ Windows VM üretim-benzeri koşumda beklenen kullanım:
     Sys.setenv(MERGEN_PREFLIGHT_REQUIRE_SSO = "TRUE")
     source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")
 
+Opsiyonel File Store roundtrip tanılaması gerektiğinde:
+
+    Sys.setenv(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE")
+    source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")
+
+Bu kontrol, gerçek dosya deposu/index/display-name çözümleme hattına dokunduğu için günlük hızlı VM preflight koşumunun parçası değildir. Dosya yükleme akışı normal çalışıyor ancak kalıcı indeks, görünen ad veya path çözümleme davranışı özel olarak incelenecekse kullanılmalıdır.
+
 Bu preflight sözleşmesi aşağıdaki odak testlerle korunur:
 
     testthat::test_file("tests/testthat/test-vm-preflight-contract.R")
     testthat::test_file("tests/testthat/test-vm-preflight-guard-contract.R")
+    testthat::test_file("tests/testthat/test-vm-preflight-helper-contract.R")
 
 Son üretim sertleştirme kapsamında aşağıdaki testler ana test koşumuyla uyumlu hâle getirilmiştir:
 

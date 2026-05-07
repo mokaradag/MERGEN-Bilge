@@ -201,6 +201,11 @@ Current contract:
 - Missing mandatory environment variables must fail fast before app boot with a clear error message.
 - After app.R is sourced and validate_boot_state() passes, the preflight must verify that SSO_ENABLED is active and that SSO_CONFIG contains usable keycloak_base_url, issuer_url, auth_endpoint, logout_endpoint, token_endpoint, client_id, and realm values.
 - Derived SSO URL fields must remain valid http:// or https:// URLs.
+- The preflight sources `tests/scripts/helpers_vm_preflight_checks.R` for reusable VM checks instead of keeping every probe inline in `run_vm_preflight_real.R`.
+- The default VM preflight includes core writable path checks, atomic-write probe, UTF-8 file write/read roundtrip, live `current_user_id` provider contract, real DB health check, and local LLM endpoint reachability.
+- `run_vm_preflight_real.R` must restore any process-wide environment variables it changes on exit. In particular, it must not leak `MERGEN_DISABLE_FUTURES`, `MERGEN_RUN_APP`, or `MERGEN_SQL_LOADER_STRICT` into later tests or developer commands in the same R session.
+- File Store roundtrip validation is optional and must remain disabled by default. It should run only when `MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE` is explicitly set, because it touches real shared/indexed file storage and is a deeper diagnostic rather than the normal fast VM preflight path.
+- Expected preflight degradations that should not fail the run should be printed as `INFO:` or `WARN:` console lines, not emitted through `warning()`, because the strict suite uses `stop_on_warning = TRUE`.
 - Do not weaken this preflight into a generic boot-only check. Boot, DB, storage, atomic-write, and LLM endpoint checks are necessary but not sufficient for the Windows VM production profile.
 
 This contract prevents a real VM validation run from passing while the app is actually using the local process user instead of the authenticated SSO user. That failure mode can mask user-scoped saved-chat, history, gallery, file-manager, and DB persistence regressions.
@@ -210,10 +215,13 @@ Focused guard behavior:
 - tests/testthat/test-vm-preflight-guard-contract.R keeps the missing-env-var failure path isolated from the SSO guard by setting MERGEN_PREFLIGHT_REQUIRE_SSO=FALSE.
 - Keep that test focused on missing mandatory env vars. Do not make it depend on child-process stdout/stderr parsing.
 
+The helper contract test must stay static and fast. It should inspect the helper/preflight script contracts without sourcing `app.R`, running the real VM preflight, touching the real DB, contacting the LLM endpoint, or performing the optional File Store roundtrip.
+
 Protected by:
 
     tests/testthat/test-vm-preflight-contract.R
     tests/testthat/test-vm-preflight-guard-contract.R
+    tests/testthat/test-vm-preflight-helper-contract.R
 
 ### User session initialization contract
 
