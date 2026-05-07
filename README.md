@@ -137,6 +137,8 @@ Panelde gizli değerler (API anahtarı/parola/token vb.) açık gösterilmez; ya
 
 Sağlık kontrolleri güvenli, hafif ve yan etkisiz olacak şekilde tasarlanmıştır; public internet endpoint çağrısı gerektirmez. Otomatik yenileme yaklaşık 120 saniye aralığında tutulur ve sayfa yenileme düğmesiyle manuel yenileme desteklenir.
 
+Yeni sağlık paneli E2E/yariş durumu regresyon dilimi, gerçek DB, gerçek LLM, gerçek TTS/STT, gerçek görsel üretim endpoint’i, tarayıcı otomasyonu veya public internet gerektirmeden panelin kritik çalışma sözleşmelerini deterministik olarak sınar. Bu dilim; gizli ortam değişkenlerinin ham değer olarak sızmamasını, public endpoint’lerin ağ çağrısı yapılmadan uyarı/atlandı durumuna düşmesini, manuel/otomatik refresh sonuçlarının idempotent uygulanmasını, stale refresh sonuçlarının yeni panel durumunu ezmemesini ve sağlık paneli timestamp/tooltip temizleme hook’larının korunmasını denetler.
+
 İlgili odak testleri:
 
 ```r
@@ -146,6 +148,7 @@ testthat::test_file("tests/testthat/test-health-check-formatters.R")
 testthat::test_file("tests/testthat/test-health-check-paths.R")
 testthat::test_file("tests/testthat/test-health-check-env-contract.R")
 testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
+testthat::test_file("tests/testthat/test-e2e-health-dashboard-regression.R")
 ```
 
 ### E2E ve Yarış Durumu Regresyon Testleri
@@ -172,7 +175,14 @@ Son kayıtlı söyleşi, geçmiş ve görsel galeri yarış durumu dilimi de ayn
 - `tests/testthat/helper_e2e_chat_persistence_harness.R`
 - `tests/testthat/test-e2e-chat-persistence-regression.R`
 
+Son sağlık paneli yarış durumu dilimi de aynı deterministik test mimarisine eklenmiştir:
+
+- `tests/testthat/helper_e2e_health_dashboard_harness.R`
+- `tests/testthat/test-e2e-health-dashboard-regression.R`
+
 Bu kayıtlı söyleşi/geçmiş/galeri dilimi; gerçek DB, gerçek LLM, gerçek görsel üretim endpoint’i veya tarayıcı otomasyonu gerektirmeden kayıtlı söyleşi sıralamasını, aynı request için final yanıtın yalnızca bir kez kalıcılaştırılmasını, eski kayıtlı söyleşi yüklenirken TTS’in otomatik tetiklenmemesini, mevcut söyleşi silindikten sonra stale load olayının yoksayılmasını, geçersiz/erken kullanıcı kimliğiyle geçmiş ve galeri refresh akışlarının mevcut geçerli state’i silmemesini ve galeri yenilemenin kullanıcı kapsamını korumasını sınar. Türkçe başlık ve içerikler bu test diliminde özellikle korunur.
+
+Bu sağlık paneli dilimi; gerçek DB, gerçek LLM, gerçek TTS/STT, gerçek görsel üretim endpoint’i, tarayıcı otomasyonu veya public internet gerektirmeden Sistem Durumu panelinin offline ve güvenli refresh sözleşmelerini sınar. Panel çıktılarında gizli değerlerin yalnızca tanımlı/eksik biçiminde gösterilmesini, public endpoint yapılandırmalarında ağ çağrısı yapılmadan uyarı/atlandı sonucuna dönülmesini, aynı refresh sonucunun ikinci kez uygulanmamasını, eski refresh sonuçlarının yeni panel durumunu ezmemesini ve `R/helpers_health_checks.R`, `R/module_health.R`, `ui.R`, `www/js/health_dashboard.js` içindeki kritik health dashboard wiring/hook sözleşmelerinin korunmasını denetler.
 
 Bu dosya bağlamı dilimi; gerçek DB, gerçek kalıcı dosya deposu, gerçek LLM veya tarayıcı otomasyonu gerektirmeden Dosya Yönetimi yükleme/bağlama durumunu, özetleme modu uzantı kısıtlarını, MCP Excel-only ve tek Excel dosyası kuralını, geçersiz/erken kullanıcı kimliğiyle refresh atlamayı, stale refresh sonuçlarının yeni state’i ezmemesini ve tarayıcı yenilemesi sonrası stale attachment ID’lerinin güvenle yok sayılmasını sınar. Türkçe dosya adları bu akışta özellikle korunur.
 
@@ -230,12 +240,24 @@ Kayıtlı söyleşi/geçmiş/galeri regresyon dilimi ayrıca şu sözleşmeleri 
 - geçersiz kullanıcı kimliğiyle galeri refresh denemesinin önceki geçerli kullanıcı cache’ini silmemesi,
 - `server_observers_saved_chats.R`, `module_saved_chats.R`, `module_chat_history.R`, `module_image_gallery.R` ve `server_module_wiring.R` içindeki kritik wiring/race sözleşmelerinin korunması.
 
+Sağlık paneli regresyon dilimi ayrıca şu sözleşmeleri korur:
+
+- gizli ortam değişkenleri ve token/parola/API anahtarı benzeri değerler ham biçimde sağlık çıktısına veya render edilmiş sekme metnine sızmamalıdır,
+- public internet endpoint’leri sağlık panelinden doğrudan çağrılmamalı; ağ denemesi yapılmadan uyarı/atlandı durumuna düşmelidir,
+- yerel/on-prem endpoint kontrolleri testlerde stub ile temsil edilir ve public internet gerektirmez,
+- aynı refresh isteğinin sonucu yalnızca bir kez uygulanmalıdır,
+- daha eski refresh sonuçları yeni panel durumunu ezmemelidir,
+- timestamp ve tooltip temizleme custom message sözleşmeleri korunmalıdır,
+- sağlık paneli JS dosyası public URL bağımlılığı taşımamalıdır,
+- `R/helpers_health_checks.R`, `R/module_health.R`, `ui.R` ve `www/js/health_dashboard.js` içindeki offline refresh, public URL guard ve cleanup hook sözleşmeleri korunmalıdır.
+
 Odak test koşumu:
 
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
     testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
     testthat::test_file("tests/testthat/test-e2e-chat-persistence-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-health-dashboard-regression.R")
 
 İlgili destekleyici kontrat testleri:
 
@@ -249,6 +271,10 @@ Odak test koşumu:
     testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
     testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
     testthat::test_file("tests/testthat/test-server-chat-persistence-wiring-contract.R")
+    testthat::test_file("tests/testthat/test-health-check-formatters.R")
+    testthat::test_file("tests/testthat/test-health-check-paths.R")
+    testthat::test_file("tests/testthat/test-health-check-env-contract.R")
+    testthat::test_file("tests/testthat/test-health-check-runtime-contract.R")
     testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
     source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
 
