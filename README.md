@@ -153,6 +153,8 @@ Son Windows VM gerçek preflight sertleştirmesinde tests/scripts/run_vm_preflig
 
 Son Windows VM preflight güncellemesiyle gerçek üretim kontrolü iki katmana ayrılmıştır. Varsayılan koşum; uygulama boot doğrulaması, SSO yapılandırması, temel yazılabilir dizinler, atomik yazım, UTF-8 yaz/oku roundtrip, canlı `current_user_id` provider sözleşmesi, gerçek DB sağlık kontrolü ve yerel LLM endpoint erişilebilirlik kontrolünü kapsar. Gerçek paylaşımlı/indexli dosya deposuna dokunan File Store roundtrip kontrolü ise daha ağır ve ortama duyarlı bir tanılama olduğu için varsayılan olarak kapalıdır; gerektiğinde `MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE` ile açıkça çalıştırılır. Preflight betiği kendi ayarladığı `MERGEN_DISABLE_FUTURES`, `MERGEN_RUN_APP` ve `MERGEN_SQL_LOADER_STRICT` değerlerini çıkışta geri yükler; böylece aynı R oturumunda daha sonra çalıştırılan `testthat` koşumları preflight strict ortamından etkilenmez.
 
+Son SSO yenileme sertleştirmesinde `ServerRuntimeContext` içindeki auth-ready refresh sözleşmesi güçlendirilmiştir. SSO kimlik doğrulaması ve kullanıcı kimliği hazır olma durumu, File Manager veya Görsel Galeri gibi refreshable modüllerin observer kaydından önce tamamlanmışsa `serverRuntimeOnSsoAuthReady(...)` callback’i artık observer olayını beklemeden güvenli biçimde hemen çalıştırır. Böylece Windows VM SSO akışında ilk kalıcı dosya/galeri yenilemesinin kaçırılması ve modüllerin manuel yenilemeye kadar boş kalması riski azaltılmıştır. Bu koruma, yeni üst seviye helper fonksiyon eklemeden mevcut runtime fonksiyonu içinde tutulduğu için bakım yapılabilirlik ratchet’i `100/100`, 25+ fonksiyon dosyası sayısı `0` ve en yüksek fonksiyon sayısı `24` taban çizgisinde kalır.
+
 Lokal veya non-SSO smoke koşumu gerektiğinde bu kontrol açıkça devre dışı bırakılabilir:
 
     Sys.setenv(MERGEN_PREFLIGHT_REQUIRE_SSO = "FALSE")
@@ -175,6 +177,12 @@ Bu preflight sözleşmesi aşağıdaki odak testlerle korunur:
     testthat::test_file("tests/testthat/test-vm-preflight-contract.R")
     testthat::test_file("tests/testthat/test-vm-preflight-guard-contract.R")
     testthat::test_file("tests/testthat/test-vm-preflight-helper-contract.R")
+
+SSO auth-ready refresh sözleşmesi ayrıca aşağıdaki odak testlerle korunur:
+
+    testthat::test_file("tests/testthat/test-server-runtime-context.R")
+    testthat::test_file("tests/testthat/test-server-module-wiring-runtime-bindings.R")
+    source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")
 
 Son üretim sertleştirme kapsamında aşağıdaki testler ana test koşumuyla uyumlu hâle getirilmiştir:
 
