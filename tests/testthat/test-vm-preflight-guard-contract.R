@@ -8,6 +8,7 @@
 
 test_that("run_vm_preflight_real eksik zorunlu ortam değişkenlerinde hızlı ve net fail verir", {
   withr::local_envvar(c(
+    MERGEN_PREFLIGHT_REQUIRE_SSO = "FALSE",
     LOCAL_LLM_ENDPOINT = NA_character_,
     DB_DSN = NA_character_,
     AI_KEYS_MASTER = NA_character_
@@ -18,6 +19,6 @@ test_that("run_vm_preflight_real eksik zorunlu ortam değişkenlerinde hızlı v
       repo_root_for_tests,
       source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")
     ),
-    "Eksik ortam değişkenleri"
+    "Eksik.*ortam değişkenleri"
   )
 })
