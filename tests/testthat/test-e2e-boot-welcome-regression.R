@@ -310,7 +310,7 @@ test_that("client boot wiring keeps quick action, prompt send and restore paths 
       "id = \"welcome_fullscreen_container\"",
       "id = \"chat_content_container\"",
       "id = \"user_input\"",
-      "id = \"send_stop_btn\"",
+      "inputId = \"send_stop_btn\"",
       "src = \"js/shiny_message_handlers.js\"",
       "src = \"js/streaming_manager.js\"",
       "src = \"js/premium_reasoning.js\"",
