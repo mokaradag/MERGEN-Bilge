@@ -48,10 +48,23 @@ server <- function(input, output, session) {
 	  user_session = user_session
 	)
 
-	identity_ports <- serverRuntimeBuildIdentityPorts(
+	identity <- serverRuntimeRequireIdentity(
 	  runtime_ctx,
-	  owner = "server.R identity ports"
+	  required_values = c("user_config_rv"),
+	  required_functions = c(
+	    "resolve_current_user_id",
+	    "current_user_id_provider",
+	    "get_first_name",
+	    "get_display_name"
+	  ),
+	  owner = "server.R identity"
 	)
+
+	user_config_rv <- identity$user_config_rv
+	resolve_current_user_id <- identity$resolve_current_user_id
+	current_user_id_provider <- identity$current_user_id_provider
+	current_user_first_name <- identity$get_first_name
+	current_user_display_name <- identity$get_display_name
 
   # API anahtarı modülünü bağla
   api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
@@ -60,21 +73,20 @@ server <- function(input, output, session) {
   # BÖLÜM 3: PERFORMANS, SAĞLIK VE DESTEK MODÜLLERİ
   # ============================================================================
   service_modules <- serverBindServiceModules(
-    current_user_id_provider = identity_ports$current_user_id_provider
+    current_user_id_provider = current_user_id_provider
   )
 
   perf_tracker <- service_modules$perf_tracker
 
-  # ============================================================================
-  # BÖLÜM 4: AYARLAR VE İLERİ REFERANSLAR
-  # ============================================================================
   settings_bundle <- serverBindSettingsAndRefs(
     input = input,
     output = output,
     session = session,
     runtime_ctx = runtime_ctx,
-    current_user_id_provider = identity_ports$current_user_id_provider,
-    user_first_name_fn = identity_ports$user_first_name_fn
+    current_user_id_provider = current_user_id_provider,
+    user_first_name_fn = function(default = "") {
+      current_user_first_name(default = default)
+    }
   )
 
   runtime_ctx <- settings_bundle$runtime_ctx
@@ -86,14 +98,11 @@ server <- function(input, output, session) {
   send_message <- settings_bundle$send_message
   load_chat_in_progress <- settings_bundle$load_chat_in_progress
   
-  # ============================================================================
-  # BÖLÜM 5: MEDYA MODÜLLERİ (YZ İŞLEME, TTS, STT, MÜZİK)
-  # ============================================================================
   media_modules <- serverBindMediaModules(
     input = input,
     session = session,
     settings_data = settings_data,
-    current_user_id_provider = identity_ports$current_user_id_provider
+    current_user_id_provider = current_user_id_provider
   )
 
   feedback_modal <- media_modules$feedback_modal
@@ -130,7 +139,7 @@ server <- function(input, output, session) {
 	  runtime_ctx,
 	  serverInitSessionState(
 		session = session,
-		identity = identity_ports,
+		identity = identity,
 		sso_state = sso_state
 	  )
 	)
@@ -179,24 +188,18 @@ server <- function(input, output, session) {
     send_message = send_message,
     load_chat_in_progress = load_chat_in_progress,
     welcome_fns = welcome_fns,
-    user_config_provider = identity_ports$user_config_provider,
-    user_first_name_fn = identity_ports$user_first_name_fn
+    user_config_provider = function(default = NULL) {
+      runtime_ctx$identity$get_user_config(default = default)
+    },
+    user_first_name_fn = function(default = "") {
+      current_user_first_name(default = default)
+    }
   )
 
   runtime_ctx <- core_interaction$runtime_ctx
   saved_chats_data <- core_interaction$saved_chats_data
   file_manager_data <- core_interaction$file_manager_data
   filePreview <- core_interaction$filePreview
-                
-    # ==========================================================================
-    # BÖLÜM 9: SOHBET MOTORU VE LLM ENTEGRASYONU
-    # ==========================================================================
-
-  admin_pool <- if (exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
-    get("pool", envir = .GlobalEnv, inherits = FALSE)
-  } else {
-    NULL
-  }
 
   chat_engine <- serverBindChatEngineRuntime(
     input = input,
@@ -205,7 +208,7 @@ server <- function(input, output, session) {
     runtime_ctx = runtime_ctx,
     settings_data = settings_data,
     api_key = api_key,
-    user_config_rv = identity_ports$user_config_rv,
+    user_config_rv = user_config_rv,
     perf_tracker = perf_tracker,
     ai_processor = ai_processor,
     tts_processor = tts_processor,
