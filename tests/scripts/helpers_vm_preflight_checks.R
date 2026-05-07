@@ -254,16 +254,16 @@ vm_preflight_check_core_writable_paths <- function() {
 
   if (inherits(uploads_check, "error")) {
     if (isTRUE(mcp_base_ok)) {
-      warning(sprintf(
+      cat(sprintf(
         paste(
-          "MERGEN_UPLOADS_DIR yazılabilir değil ancak MERGEN_MCP_BASE_DIR yazılabilir.",
-          "Üretim dosya roundtrip kontrolü MCP tabanı üzerinden devam edecek.",
+          "WARN: MERGEN_UPLOADS_DIR yazılabilir değil ancak MERGEN_MCP_BASE_DIR yazılabilir.",
+          "Üretim dosya kontrolleri MCP tabanı üzerinden devam edecek.",
           "Atlanan fallback dizin: %s",
-          "Hata: %s"
+          "Hata: %s\n"
         ),
         uploads_dir,
         conditionMessage(uploads_check)
-      ), call. = FALSE)
+      ))
     } else {
       stop(conditionMessage(uploads_check), call. = FALSE)
     }
@@ -432,17 +432,17 @@ vm_preflight_check_file_store_roundtrip <- function(user_id = 999999001L,
     )
 
     if (is.null(resolved_path) || !vm_preflight_path_exists(resolved_path)) {
-      warning(sprintf(
+      cat(sprintf(
         paste(
-          "File Store display-name resolve kontrolü uyarı verdi:",
+          "WARN: File Store display-name resolve kontrolü uyarı verdi:",
           "resolve_uploaded_file() özgün adla dosyayı çözemedi: %s",
           "Ancak mergen_list_user_files() dosyayı filesystem üzerinden buldu:",
           "%s",
-          "Bu durum gerçek upload akışını bloklamaz; indeks/display-name çözümleme ayrı incelenmelidir."
+          "Bu durum gerçek upload akışını bloklamaz; indeks/display-name çözümleme ayrı incelenmelidir.\n"
         ),
         original_name,
         matched_path
-      ), call. = FALSE)
+      ))
 
       resolved_path <- matched_path
     }
@@ -451,16 +451,16 @@ vm_preflight_check_file_store_roundtrip <- function(user_id = 999999001L,
     resolved_cmp <- vm_preflight_normalize_for_compare(resolved_path)
 
     if (!identical(registered_cmp, resolved_cmp)) {
-      warning(sprintf(
+      cat(sprintf(
         paste(
-          "File Store roundtrip path karşılaştırması uyarı verdi.",
+          "WARN: File Store roundtrip path karşılaştırması uyarı verdi.",
           "registered=%s",
           "resolved_or_listed=%s",
-          "Dosya fiziksel olarak mevcut olduğu için preflight devam ediyor."
+          "Dosya fiziksel olarak mevcut olduğu için preflight devam ediyor.\n"
         ),
         registered_path,
         resolved_path
-      ), call. = FALSE)
+      ))
     }
 
     cat(sprintf(

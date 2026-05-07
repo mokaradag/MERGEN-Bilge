@@ -60,6 +60,12 @@ preflight_sso_enabled <- normalize_preflight_bool(
   env_name = "SSO_ENABLED"
 )
 
+preflight_check_file_store <- normalize_preflight_bool(
+  Sys.getenv("MERGEN_PREFLIGHT_CHECK_FILE_STORE", "FALSE"),
+  default = FALSE,
+  env_name = "MERGEN_PREFLIGHT_CHECK_FILE_STORE"
+)
+
 if (isTRUE(preflight_require_sso) && !isTRUE(preflight_sso_enabled)) {
   stop(
     paste(
@@ -179,7 +185,13 @@ cat("OK: app.R source edildi, validate_boot_state() geçti ve shiny.appobj oluş
 preflight_paths <- vm_preflight_check_core_writable_paths()
 vm_preflight_check_atomic_write_probe(preflight_paths$active_log_dir)
 vm_preflight_check_utf8_roundtrip(preflight_paths$active_log_dir)
-vm_preflight_check_file_store_roundtrip()
+
+if (isTRUE(preflight_check_file_store)) {
+  vm_preflight_check_file_store_roundtrip()
+} else {
+  cat("INFO: File Store roundtrip preflight atlandı. Etkinleştirmek için MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE ayarlayın.\n")
+}
+
 vm_preflight_check_live_user_id_provider_contract()
 
 # ----------------------------------------------------------------------

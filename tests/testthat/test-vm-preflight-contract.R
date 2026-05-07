@@ -34,6 +34,8 @@ test_that("run_vm_preflight_real kritik kontrolleri korur", {
   expect_true(grepl("require_preflight_env_vars <- function", txt, fixed = TRUE))
   expect_true(grepl("MERGEN_PREFLIGHT_REQUIRE_SSO", txt, fixed = TRUE))
   expect_true(grepl("preflight_sso_enabled <- normalize_preflight_bool", txt, fixed = TRUE))
+  expect_true(grepl("preflight_check_file_store <- normalize_preflight_bool", txt, fixed = TRUE))
+  expect_true(grepl("MERGEN_PREFLIGHT_CHECK_FILE_STORE", txt, fixed = TRUE))
   expect_true(grepl('required_env_vars <- c\\("LOCAL_LLM_ENDPOINT", "DB_DSN", "AI_KEYS_MASTER"\\)', txt))
   expect_true(grepl('"SSO_KEYCLOAK_URL"', txt, fixed = TRUE))
   expect_true(grepl("required_sso_config_fields <- c", txt, fixed = TRUE))
