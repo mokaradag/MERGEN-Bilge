@@ -52,7 +52,25 @@ if (!exists("e2e_media_new_music_state", envir = globalenv(), inherits = FALSE))
     stop(sprintf("Beklenen dosya bulunamadı: %s", path), call. = FALSE)
   }
 
-  enc2utf8(paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n"))
+  size <- suppressWarnings(file.info(path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  # Windows VM üzerinde bazı JS dosyalarındaki Türkçe yorumlar native/ANSI
+  # olarak okunabiliyor. Bu test yalnızca ASCII hook isimlerini aradığı için
+  # non-ASCII baytları boşluğa çevirerek grepl'in UTF-8 uyarılarını önler.
+  raw_data[raw_data == as.raw(0L)] <- as.raw(0x20)
+  raw_data[as.integer(raw_data) > 127L] <- as.raw(0x20)
+
+  txt <- rawToChar(raw_data)
+  Encoding(txt) <- "UTF-8"
+  txt
 }
 
 test_that("media JS contracts expose offline-safe audio state hooks", {
