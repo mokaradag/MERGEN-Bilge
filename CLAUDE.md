@@ -202,13 +202,15 @@ Current contract:
 - After app.R is sourced and validate_boot_state() passes, the preflight must verify that SSO_ENABLED is active and that SSO_CONFIG contains usable keycloak_base_url, issuer_url, auth_endpoint, logout_endpoint, token_endpoint, client_id, and realm values.
 - Derived SSO URL fields must remain valid http:// or https:// URLs.
 - The preflight sources `tests/scripts/helpers_vm_preflight_checks.R` for reusable VM checks instead of keeping every probe inline in `run_vm_preflight_real.R`.
-- The default VM preflight includes core writable path checks, atomic-write probe, UTF-8 file write/read roundtrip, live `current_user_id` provider contract, real DB health check, and local LLM endpoint reachability.
+- The default VM preflight includes core writable path checks, atomic-write probe, UTF-8 file write/read roundtrip, live `current_user_id` provider contract, SSO auth-ready immediate refresh contract, real DB health check, and local LLM endpoint reachability.
 - `run_vm_preflight_real.R` must restore any process-wide environment variables it changes on exit. In particular, it must not leak `MERGEN_DISABLE_FUTURES`, `MERGEN_RUN_APP`, or `MERGEN_SQL_LOADER_STRICT` into later tests or developer commands in the same R session.
 - File Store roundtrip validation is optional and must remain disabled by default. It should run only when `MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE` is explicitly set, because it touches real shared/indexed file storage and is a deeper diagnostic rather than the normal fast VM preflight path.
 - Expected preflight degradations that should not fail the run should be printed as `INFO:` or `WARN:` console lines, not emitted through `warning()`, because the strict suite uses `stop_on_warning = TRUE`.
 - Do not weaken this preflight into a generic boot-only check. Boot, DB, storage, atomic-write, and LLM endpoint checks are necessary but not sufficient for the Windows VM production profile.
 
 This contract prevents a real VM validation run from passing while the app is actually using the local process user instead of the authenticated SSO user. That failure mode can mask user-scoped saved-chat, history, gallery, file-manager, and DB persistence regressions.
+
+The VM preflight also protects the post-auth refresh timing contract. If SSO authentication and identity readiness are already complete before a refreshable module registers its auth-ready observer, `serverRuntimeOnSsoAuthReady(...)` must run the callback immediately instead of waiting for an event that has already happened. This prevents File Manager, Image Gallery, and similar refreshable modules from missing their first user-scoped refresh after SSO login.
 
 Focused guard behavior:
 
@@ -340,11 +342,13 @@ It currently covers only:
 - narrowly registered module return objects in `runtime_ctx$modules`
 - SSO auth-ready callback registration through `serverRuntimeOnSsoAuthReady(...)`, registered-module refresh wiring through `serverRuntimeRefreshModuleOnSsoAuthReady(...)`, and the higher-level refreshable-module wiring helper `serverRuntimeAttachRefreshableModule(...)`
 
-Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules. `runtime_ctx$modules` is not a general global registry; use it narrowly for module return objects that need a validated runtime contract, such as File Manager and Image Gallery post-auth refresh wiring. This file is also close to the function-count ratchet, so adding new public helpers here must be offset by removing or extracting comparable complexity; otherwise the 25-function threshold can regress.
+Do not expand it casually into a large service locator. Add to it only when a server boot object is already created in `server.R`, has a clear required-function contract, and is passed across multiple downstream modules. `runtime_ctx$modules` is not a general global registry; use it narrowly for module return objects that need a validated runtime contract, such as File Manager and Image Gallery post-auth refresh wiring. This file is also close to the function-count ratchet, so adding new public helpers here must be offset by removing or extracting comparable complexity; otherwise the 25-function threshold can regress. The accepted SSO auth-ready refresh hardening intentionally kept the immediate-ready guard inline inside `serverRuntimeOnSsoAuthReady(...)` instead of adding new top-level helper functions, preserving the maintainability ratchet baseline of score `100/100`, `0` 25+ function files, and maximum function count `24`.
 
 The file subsystem now has a focused FileRuntime boundary under `runtime_ctx$file`. Use `serverRuntimeAttachFilePrelude(...)`, `serverRuntimeAttachFileManager(...)`, and `serverRuntimeRequireFileRuntime(...)` for file prelude and File Manager handles instead of passing those objects through ad hoc local variables or direct `session$userData` reads. This boundary is intentionally narrow: it is for file-preview/follow-up prelude objects and `file_manager_data`, not a general registry for every file-related helper.
 
 When code needs to read a registered module from the context, prefer `serverRuntimeGetModule(...)` over direct `ctx$modules$...` access. This keeps missing-module and missing-function failures explicit and testable. In `server.R`, post-auth module refreshes should normally use `serverRuntimeRefreshModuleOnSsoAuthReady(...)` rather than custom callbacks that manually inspect `ctx$modules`.
+
+`serverRuntimeOnSsoAuthReady(...)` has an important race-condition contract: in SSO mode, if `ctx$sso_state$authenticated` is already true and `identity$is_auth_ready()` is already true when the helper is called, the callback must run immediately and the helper should not register an unnecessary observer. This covers the case where authentication finishes before File Manager, Image Gallery, or another refreshable module attaches its post-auth refresh hook.
 
 Expected attach sequence in `server.R`:
 
