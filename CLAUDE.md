@@ -127,6 +127,13 @@ Additional media/audio race files:
 - `tests/testthat/helper_e2e_media_audio_harness.R`
 - `tests/testthat/test-e2e-media-audio-state-regression.R`
 
+Additional file-context and refresh race files:
+
+- `tests/testthat/helper_e2e_file_context_harness.R`
+- `tests/testthat/test-e2e-file-context-regression.R`
+
+The file-context slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real persistent file store, real LLM, TTS/STT endpoint, image endpoint, or public internet. It models File Manager upload/context state, summarization-mode extension restrictions, MCP Excel-only attachment behavior, single-Excel enforcement, invalid or early user-id refresh skips, stale refresh request protection, and browser/client restore with stale attachment IDs through local state stubs.
+
 The media/audio slice follows the same deterministic `testthat` strategy. It must not require a real browser, real `Audio`, microphone access, DB, LLM, TTS/STT endpoint, image endpoint, or public internet. It models TTS queueing, STT modal audio suppression, and background-music exclusivity with local state stubs, and it also checks that the key JS hook contracts remain present in `music_manager.js`, `tts_manager.js`, `stt_client.js`, and `premium_reasoning.js`.
 
 Because Windows VM environments can expose JS comments or other text as native/ANSI rather than valid UTF-8, the media JS contract test reads JS files as raw bytes and normalizes non-ASCII bytes before searching for ASCII hook names. Do not replace this byte-safe reader with plain `readLines(..., encoding = "UTF-8")` or `grepl(..., perl = TRUE)` over unnormalized text; that can reintroduce invalid UTF-8 warnings and false-negative contract failures on the VM.
@@ -159,10 +166,26 @@ The media/audio slice protects these contracts:
 - navigation or new-chat cleanup must not leave stale TTS, STT, or music state behind,
 - static JS contracts must continue to expose the expected audio/reasoning hooks.
 
+The file-context slice protects these contracts:
+
+- supported uploads must appear in File Manager table/state,
+- Model Context attachment toggles must update the parent session context,
+- summarization mode must reject unsupported file types and keep supported document types,
+- MCP/Excel mode must reject non-Excel files,
+- MCP/Excel mode must keep only one Excel file attached,
+- switching MCP/Excel mode on must remove non-Excel and excess Excel selections,
+- invalid user IDs such as `0`, `unknown`, empty, or `NULL` must not wipe existing File Manager state during refresh,
+- SSO-not-ready refresh attempts must skip safely without mutating current file state,
+- stale refresh results must not overwrite a newer refresh result,
+- refresh restore must preserve previously attached files by display name,
+- browser/client restore must ignore ghost attachment IDs safely,
+- static File Manager JS/server hook contracts must continue to expose upload, file action, attach toggle, and silent attach-state behavior.
+
 Focused validation:
 
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
 
 Related focused tests:
 
@@ -170,12 +193,19 @@ Related focused tests:
     testthat::test_file("tests/testthat/test-llm-stream-io-contract.R")
     testthat::test_file("tests/testthat/test-streaming-should-stop.R")
     testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-context-policy-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-refresh-guard-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")
+    testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")
+    testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
     testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
     source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
 
 Full strict validation remains:
 
     source("tests/testthat.R", encoding = "UTF-8")
+
+`tests/testthat/test-resolve-uploaded-file.R` must remain safe to run individually with `testthat::test_file(...)`. It should explicitly bootstrap the minimal File Store source chain it tests instead of relying on full-suite side effects or functions left in the global environment by earlier tests. This protects diagnostic workflows where a single resolver/file-store test is run after an E2E failure.
 
 Do not replace this foundation with Playwright, Cypress, shinytest2, or another browser-level dependency unless the dependency is explicitly available in the offline/on-prem deployment environment or vendored/installed through an approved offline process. Browser-level tests may be added later as a separate layer, but they should not weaken or remove these deterministic contract tests.
 
