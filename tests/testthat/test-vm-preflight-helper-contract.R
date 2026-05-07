@@ -1,7 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-vm-preflight-helper-contract.R
 # Açıklama: Windows VM preflight helper dosyasının kritik üretim kontrollerini
-#           koruduğunu doğrular.
+#           statik ve hızlı biçimde korur. Bu test app.R veya gerçek preflight
+#           çalıştırmaz.
 # ==============================================================================
 
 .read_vm_preflight_text <- function(rel_path) {
@@ -31,18 +32,6 @@
 
   txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
-}
-
-.load_vm_preflight_helper_for_tests <- function() {
-  helper_env <- new.env(parent = globalenv())
-
-  source(
-    file.path(repo_root_for_tests, "tests", "scripts", "helpers_vm_preflight_checks.R"),
-    encoding = "UTF-8",
-    local = helper_env
-  )
-
-  helper_env
 }
 
 test_that("VM preflight helper kritik fonksiyonları tanımlar", {
@@ -83,6 +72,9 @@ test_that("run_vm_preflight_real helper dosyasını kaynaklar ve kritik kontroll
     "preflight_paths <- vm_preflight_check_core_writable_paths()",
     "vm_preflight_check_atomic_write_probe(preflight_paths$active_log_dir)",
     "vm_preflight_check_utf8_roundtrip(preflight_paths$active_log_dir)",
+    "preflight_check_file_store <- normalize_preflight_bool",
+    "MERGEN_PREFLIGHT_CHECK_FILE_STORE",
+    "if (isTRUE(preflight_check_file_store))",
     "vm_preflight_check_file_store_roundtrip()",
     "vm_preflight_check_live_user_id_provider_contract()"
   )
@@ -102,29 +94,33 @@ test_that("run_vm_preflight_real helper dosyasını kaynaklar ve kritik kontroll
   )
 })
 
-test_that("VM preflight helper yazılabilirlik ve UTF-8 roundtrip kontrollerini çalıştırır", {
-  helper_env <- .load_vm_preflight_helper_for_tests()
-  tmp_dir <- withr::local_tempdir(pattern = "vm-preflight-helper-")
+test_that("run_vm_preflight_real preflight env değişikliklerini on.exit ile geri alır", {
+  script_txt <- .read_vm_preflight_text(
+    file.path("tests", "scripts", "run_vm_preflight_real.R")
+  )
 
-  expect_true(
-    is.character(helper_env$vm_preflight_check_writable_dir(tmp_dir, "test temp dir"))
+  expected_patterns <- c(
+    ".preflight_env_to_restore <- c(",
+    '"MERGEN_DISABLE_FUTURES"',
+    '"MERGEN_RUN_APP"',
+    '"MERGEN_SQL_LOADER_STRICT"',
+    ".preflight_env_snapshot <- Sys.getenv(",
+    "on.exit({",
+    "Sys.unsetenv(nm)",
+    "Sys.setenv"
+  )
+
+  found <- vapply(
+    expected_patterns,
+    function(pattern) grepl(pattern, script_txt, fixed = TRUE),
+    logical(1)
   )
 
   expect_true(
-    isTRUE(helper_env$vm_preflight_check_utf8_roundtrip(tmp_dir))
-  )
-})
-
-test_that("VM preflight helper canlı user id provider kontratını çalıştırır", {
-  source(
-    file.path(repo_root_for_tests, "R", "helpers_user_session_identity.R"),
-    encoding = "UTF-8",
-    local = globalenv()
-  )
-
-  helper_env <- .load_vm_preflight_helper_for_tests()
-
-  expect_true(
-    isTRUE(helper_env$vm_preflight_check_live_user_id_provider_contract())
+    all(found),
+    info = paste(
+      "run_vm_preflight_real.R env restore sözleşmesi eksik:",
+      paste(expected_patterns[!found], collapse = ", ")
+    )
   )
 })

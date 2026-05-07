@@ -85,6 +85,30 @@ if (isTRUE(preflight_sso_enabled)) {
 }
 
 require_preflight_env_vars(required_env_vars)
+
+.preflight_env_to_restore <- c(
+  "MERGEN_DISABLE_FUTURES",
+  "MERGEN_RUN_APP",
+  "MERGEN_SQL_LOADER_STRICT"
+)
+
+.preflight_env_snapshot <- Sys.getenv(
+  .preflight_env_to_restore,
+  unset = NA_character_
+)
+
+on.exit({
+  for (nm in names(.preflight_env_snapshot)) {
+    old_value <- .preflight_env_snapshot[[nm]]
+
+    if (is.na(old_value)) {
+      Sys.unsetenv(nm)
+    } else {
+      do.call(Sys.setenv, stats::setNames(list(old_value), nm))
+    }
+  }
+}, add = TRUE)
+
 Sys.setenv(
   MERGEN_DISABLE_FUTURES = "true",
   MERGEN_RUN_APP = "false",
