@@ -142,9 +142,15 @@ Additional health dashboard race files:
 - `tests/testthat/helper_e2e_health_dashboard_harness.R`
 - `tests/testthat/test-e2e-health-dashboard-regression.R`
 
+Additional boot/welcome regression file:
+
+- `tests/testthat/test-e2e-boot-welcome-regression.R`
+
 The saved-chat/history/gallery slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real LLM, real image-generation endpoint, TTS/STT endpoint, or public internet. It models saved-chat ordering, final-answer persistence idempotency, stale delete/load events, loaded-chat TTS suppression, history refresh cache safety, and user-scoped image gallery refresh behavior through local state stubs.
 
 The health dashboard slice follows the same deterministic testthat strategy. It must not require a real browser, real production DB, real LLM, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models rendered health tab snapshots, secret redaction, public endpoint skip behavior before network probing, idempotent refresh application, stale refresh suppression, timestamp/tooltip cleanup message contracts, and static wiring contracts for R/helpers_health_checks.R, R/module_health.R, ui.R, and www/js/health_dashboard.js.
+
+The boot/welcome slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real LLM, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models non-SSO test boot safety, `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` guard behavior, valid `create_mergen_app()` construction, modern welcome-screen rendering, quick-action button wiring, recent-chat ordering, prompt-send separation, browser/localStorage restore wiring, and the requirement that loading old chat state must not trigger TTS or music side effects. It also protects UTF-8 Turkish text in rendered welcome HTML and static client contracts.
 
 The file-context slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real persistent file store, real LLM, TTS/STT endpoint, image endpoint, or public internet. It models File Manager upload/context state, summarization-mode extension restrictions, MCP Excel-only attachment behavior, single-Excel enforcement, invalid or early user-id refresh skips, stale refresh request protection, and browser/client restore with stale attachment IDs through local state stubs.
 
@@ -220,8 +226,22 @@ The health dashboard slice protects these contracts:
 - health dashboard JavaScript must not introduce public URL dependencies,
 - offline refresh, public URL guard, and cleanup hook contracts must remain present in R/helpers_health_checks.R, R/module_health.R, ui.R, and www/js/health_dashboard.js.
 
+The boot/welcome slice protects these contracts:
+
+- app.R can be sourced in non-SSO test mode without launching the Shiny app,
+- test boot must keep future execution disabled or sequential,
+- `validate_boot_state()` and `create_mergen_app()` must remain valid,
+- the modern welcome screen must render the expected root, greeting, quick-action, and recent-chat anchors,
+- quick-action buttons must preserve `data-action-id`, `data-action-model`, and `_handleQuickAction` wiring,
+- recent chats on the welcome screen must remain ordered by latest activity,
+- quick-action input and normal prompt-send input must remain separate,
+- browser/localStorage restore must route through `load_chat_from_storage`,
+- browser/localStorage restore must not trigger TTS, audio, or music side effects for old chats,
+- Turkish characters must remain intact in welcome HTML and static JS/R contract checks.
+
 Focused validation:
 
+    testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
     testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
