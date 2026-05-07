@@ -5,16 +5,80 @@
 # veritabanı sağlık kontrolü ve LLM endpoint erişilebilirlik kontrolü içerir.
 # ==============================================================================
 
-required_env_vars <- c("LOCAL_LLM_ENDPOINT", "DB_DSN", "AI_KEYS_MASTER")
-missing_vars <- required_env_vars[!nzchar(Sys.getenv(required_env_vars, ""))]
+normalize_preflight_bool <- function(value,
+                                     default = FALSE,
+                                     env_name = "value") {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(default)
+  }
 
-if (length(missing_vars) > 0) {
+  norm <- tolower(trimws(as.character(value[1])))
+
+  if (!nzchar(norm)) {
+    return(default)
+  }
+
+  if (norm %in% c("true", "t")) {
+    return(TRUE)
+  }
+
+  if (norm %in% c("false", "f")) {
+    return(FALSE)
+  }
+
   stop(sprintf(
-    "VM preflight durduruldu. Eksik ortam değişkenleri: %s",
-    paste(missing_vars, collapse = ", ")
-  ))
+    "VM preflight durduruldu. %s geçersiz: %s. TRUE/FALSE kullanın.",
+    env_name,
+    as.character(value[1])
+  ), call. = FALSE)
 }
 
+require_preflight_env_vars <- function(vars, label = "zorunlu ortam değişkenleri") {
+  vars <- unique(as.character(vars))
+  missing_vars <- vars[!nzchar(trimws(Sys.getenv(vars, "")))]
+
+  if (length(missing_vars) > 0) {
+    stop(sprintf(
+      "VM preflight durduruldu. Eksik %s: %s",
+      label,
+      paste(missing_vars, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+
+preflight_require_sso <- normalize_preflight_bool(
+  Sys.getenv("MERGEN_PREFLIGHT_REQUIRE_SSO", "TRUE"),
+  default = TRUE,
+  env_name = "MERGEN_PREFLIGHT_REQUIRE_SSO"
+)
+
+preflight_sso_enabled <- normalize_preflight_bool(
+  Sys.getenv("SSO_ENABLED", "FALSE"),
+  default = FALSE,
+  env_name = "SSO_ENABLED"
+)
+
+if (isTRUE(preflight_require_sso) && !isTRUE(preflight_sso_enabled)) {
+  stop(
+    paste(
+      "VM preflight durduruldu.",
+      "Bu gerçek VM preflight koşumu varsayılan olarak SSO ister.",
+      "SSO_ENABLED=TRUE ayarlayın.",
+      "Yerel/non-SSO smoke koşumu için MERGEN_PREFLIGHT_REQUIRE_SSO=FALSE kullanın."
+    ),
+    call. = FALSE
+  )
+}
+
+required_env_vars <- c("LOCAL_LLM_ENDPOINT", "DB_DSN", "AI_KEYS_MASTER")
+
+if (isTRUE(preflight_sso_enabled)) {
+  required_env_vars <- c(required_env_vars, "SSO_KEYCLOAK_URL")
+}
+
+require_preflight_env_vars(required_env_vars)
 Sys.setenv(
   MERGEN_DISABLE_FUTURES = "true",
   MERGEN_RUN_APP = "false",
@@ -29,6 +93,72 @@ if (!exists("validate_boot_state", envir = globalenv(), mode = "function", inher
 }
 
 validate_boot_state()
+
+if (isTRUE(preflight_sso_enabled)) {
+  if (!exists("SSO_ENABLED", envir = globalenv(), inherits = FALSE)) {
+    stop("VM preflight başarısız: SSO_ENABLED global değeri yüklenmedi.", call. = FALSE)
+  }
+
+  if (!isTRUE(SSO_ENABLED)) {
+    stop(
+      "VM preflight başarısız: SSO_ENABLED=TRUE bekleniyordu ancak app.R sonrası aktif değil.",
+      call. = FALSE
+    )
+  }
+
+  if (!exists("SSO_CONFIG", envir = globalenv(), inherits = FALSE) ||
+      !is.list(SSO_CONFIG)) {
+    stop("VM preflight başarısız: SSO_CONFIG yüklenmedi veya liste değil.", call. = FALSE)
+  }
+
+  required_sso_config_fields <- c(
+    "keycloak_base_url",
+    "issuer_url",
+    "auth_endpoint",
+    "logout_endpoint",
+    "token_endpoint",
+    "client_id",
+    "realm"
+  )
+
+  missing_sso_config_fields <- required_sso_config_fields[!vapply(
+    required_sso_config_fields,
+    function(nm) {
+      value <- SSO_CONFIG[[nm]]
+      !is.null(value) && nzchar(trimws(as.character(value[1])))
+    },
+    logical(1)
+  )]
+
+  if (length(missing_sso_config_fields) > 0L) {
+    stop(sprintf(
+      "VM preflight başarısız: SSO_CONFIG eksik alan(lar): %s",
+      paste(missing_sso_config_fields, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  sso_url_fields <- c("issuer_url", "auth_endpoint", "logout_endpoint", "token_endpoint")
+  bad_sso_urls <- sso_url_fields[!vapply(
+    sso_url_fields,
+    function(nm) {
+      grepl("^https?://", as.character(SSO_CONFIG[[nm]][1]))
+    },
+    logical(1)
+  )]
+
+  if (length(bad_sso_urls) > 0L) {
+    stop(sprintf(
+      "VM preflight başarısız: SSO_CONFIG URL alanları geçersiz: %s",
+      paste(bad_sso_urls, collapse = ", ")
+    ), call. = FALSE)
+  }
+
+  cat(sprintf(
+    "OK: SSO preflight yapılandırması doğrulandı. issuer=%s, client_id=%s\n",
+    SSO_CONFIG$issuer_url,
+    SSO_CONFIG$client_id
+  ))
+}
 
 if (!exists("create_mergen_app", envir = globalenv(), mode = "function", inherits = FALSE)) {
   stop("VM preflight başarısız: create_mergen_app() tanımlanmadı.")

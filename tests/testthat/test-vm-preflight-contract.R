@@ -30,7 +30,20 @@ parse_repo_code_text_vm <- function(rel_path) {
 test_that("run_vm_preflight_real kritik kontrolleri korur", {
   txt <- parse_repo_code_text_vm(file.path("tests", "scripts", "run_vm_preflight_real.R"))
 
+  expect_true(grepl("normalize_preflight_bool <- function", txt, fixed = TRUE))
+  expect_true(grepl("require_preflight_env_vars <- function", txt, fixed = TRUE))
+  expect_true(grepl("MERGEN_PREFLIGHT_REQUIRE_SSO", txt, fixed = TRUE))
+  expect_true(grepl("preflight_sso_enabled <- normalize_preflight_bool", txt, fixed = TRUE))
   expect_true(grepl('required_env_vars <- c\\("LOCAL_LLM_ENDPOINT", "DB_DSN", "AI_KEYS_MASTER"\\)', txt))
+  expect_true(grepl('"SSO_KEYCLOAK_URL"', txt, fixed = TRUE))
+  expect_true(grepl("required_sso_config_fields <- c", txt, fixed = TRUE))
+  expect_true(grepl('"issuer_url"', txt, fixed = TRUE))
+  expect_true(grepl('"auth_endpoint"', txt, fixed = TRUE))
+  expect_true(grepl('"logout_endpoint"', txt, fixed = TRUE))
+  expect_true(grepl('"token_endpoint"', txt, fixed = TRUE))
+  expect_true(grepl("bad_sso_urls", txt, fixed = TRUE))
+  expect_true(grepl("SSO preflight", txt, fixed = TRUE))
+
   expect_true(grepl('source\\("tests/scripts/parse_sanity_check\\.R"', txt))
   expect_true(grepl('source\\("app\\.R"', txt))
   expect_true(grepl("validate_boot_state\\(", txt))
