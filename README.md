@@ -157,6 +157,13 @@ Eklenen test altyapısı:
 - `tests/testthat/helper_e2e_race_harness.R`
 - `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
 
+Son medya/ses yarış durumu dilimi de aynı test mimarisine eklenmiştir:
+
+- `tests/testthat/helper_e2e_media_audio_harness.R`
+- `tests/testthat/test-e2e-media-audio-state-regression.R`
+
+Bu medya dilimi; gerçek tarayıcı `Audio`, mikrofon, TTS/STT endpoint’i, DB, LLM veya public internet gerektirmeden TTS kuyruğu, STT modal sessize alma/geri yükleme davranışı ve arka plan müziği tek ses kaynağı sözleşmesini deterministik olarak sınar. Windows VM üzerinde JS dosyalarındaki Türkçe yorumlardan kaynaklanabilecek native/ANSI kodlama farkları için JS sözleşme testi byte-safe okuma kullanır; test yalnızca ASCII hook/adlandırma sözleşmelerini arar ve invalid UTF-8 uyarısı üretmemelidir.
+
 Bu ilk regresyon dilimi özellikle hızlı eylemler ve gerçek SSE akış yaşam döngüsü etrafındaki sistemik riskleri hedefler:
 
 - hızlı eylem tıklamasının doğru araç/model modunu seçmesi,
@@ -171,9 +178,24 @@ Bu ilk regresyon dilimi özellikle hızlı eylemler ve gerçek SSE akış yaşam
 - stop-generation bayrağının bir sonraki isteğe sızmaması,
 - simulated reasoning fazlarının gerçek reasoning olarak kalıcılaştırılmaması.
 
+Medya/ses regresyon dilimi ayrıca şu sözleşmeleri korur:
+
+- arka plan müziğinde aynı anda yalnızca tek aktif ses kaynağı bulunması,
+- gecikmiş/eski playlist yanıtlarının yeni müzik durumunu ezmemesi,
+- karakter veya mod değişiminde eski parçanın temizlenip yeni akışa geçilmesi,
+- TTS parçalarının indeks sırasına göre kuyruklanması,
+- TTS konuşurken arka plan müziğinin kısılması ve kuyruk tamamen bitmeden geri yükselmemesi,
+- TTS durdurulduğunda kuyruk, aktif ses ve `tts_is_playing` durumunun temizlenmesi,
+- STT modalı açıkken müziğin tam sessize alınması,
+- STT aktifken normal TTS/music unduck çağrılarının müziği erken geri getirmemesi,
+- STT modalı kapandığında müzik durumunun güvenli biçimde geri yüklenmesi,
+- sayfa geçişi veya yeni söyleşi sırasında stale TTS/STT/müzik durumunun kalmaması,
+- `music_manager.js`, `tts_manager.js`, `stt_client.js` ve `premium_reasoning.js` içinde beklenen JS hook sözleşmelerinin korunması.
+
 Odak test koşumu:
 
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
 
 İlgili destekleyici kontrat testleri:
 

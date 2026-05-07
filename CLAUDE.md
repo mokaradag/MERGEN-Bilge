@@ -122,6 +122,15 @@ Current files:
 - `tests/testthat/helper_e2e_race_harness.R`
 - `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
 
+Additional media/audio race files:
+
+- `tests/testthat/helper_e2e_media_audio_harness.R`
+- `tests/testthat/test-e2e-media-audio-state-regression.R`
+
+The media/audio slice follows the same deterministic `testthat` strategy. It must not require a real browser, real `Audio`, microphone access, DB, LLM, TTS/STT endpoint, image endpoint, or public internet. It models TTS queueing, STT modal audio suppression, and background-music exclusivity with local state stubs, and it also checks that the key JS hook contracts remain present in `music_manager.js`, `tts_manager.js`, `stt_client.js`, and `premium_reasoning.js`.
+
+Because Windows VM environments can expose JS comments or other text as native/ANSI rather than valid UTF-8, the media JS contract test reads JS files as raw bytes and normalizes non-ASCII bytes before searching for ASCII hook names. Do not replace this byte-safe reader with plain `readLines(..., encoding = "UTF-8")` or `grepl(..., perl = TRUE)` over unnormalized text; that can reintroduce invalid UTF-8 warnings and false-negative contract failures on the VM.
+
 The first slice protects these contracts:
 
 - quick-action clicks select the expected tool/model mode,
@@ -136,9 +145,24 @@ The first slice protects these contracts:
 - stop-generation state must be request-scoped and must not poison the next request,
 - simulated reasoning phases must not be persisted as real reasoning.
 
+The media/audio slice protects these contracts:
+
+- background music must have at most one active audio source,
+- stale playlist responses must not overwrite newer music state,
+- character or mode changes must stop the previous track before starting the next flow,
+- TTS chunks must be queued and played in chunk-index order,
+- TTS playback must duck background music and must not unduck it until the queue drains,
+- TTS stop must clear the queue, current audio, and reported playing state,
+- STT start must fully duck/silence background music,
+- ordinary TTS/music unduck calls must not restore music while STT is active,
+- STT cleanup must restore music state safely,
+- navigation or new-chat cleanup must not leave stale TTS, STT, or music state behind,
+- static JS contracts must continue to expose the expected audio/reasoning hooks.
+
 Focused validation:
 
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
 
 Related focused tests:
 
