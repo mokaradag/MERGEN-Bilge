@@ -86,6 +86,7 @@ Sys.setenv(
 )
 
 source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")
+source("tests/scripts/helpers_vm_preflight_checks.R", encoding = "UTF-8")
 source("app.R", encoding = "UTF-8")
 
 if (!exists("validate_boot_state", envir = globalenv(), mode = "function", inherits = FALSE)) {
@@ -173,77 +174,13 @@ if (!inherits(app_obj, "shiny.appobj")) {
 cat("OK: app.R source edildi, validate_boot_state() geçti ve shiny.appobj oluşturuldu.\n")
 
 # ----------------------------------------------------------------------
-# Dosya sistemi / yazilabilirlik on kontrolleri
+# Dosya sistemi / yazılabilirlik / UTF-8 / File Store / canlı kimlik on kontrolleri
 # ----------------------------------------------------------------------
-check_writable_dir <- function(dir_path, label) {
-  dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-
-  probe_file <- file.path(
-    dir_path,
-    sprintf(".preflight_write_probe_%s.tmp", as.integer(Sys.time()))
-  )
-
-  ok <- tryCatch({
-    writeLines("ok", probe_file, useBytes = TRUE)
-    file.exists(probe_file)
-  }, error = function(e) FALSE)
-
-  try(unlink(probe_file, force = TRUE), silent = TRUE)
-
-  if (!isTRUE(ok)) {
-    stop(sprintf(
-      "VM preflight başarısız: %s yazılabilir değil (%s).",
-      label,
-      dir_path
-    ))
-  }
-
-  cat(sprintf("OK: %s yazılabilir: %s\n", label, dir_path))
-}
-
-active_log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", "logs"))
-if (!nzchar(active_log_dir)) {
-  active_log_dir <- "logs"
-}
-
-check_writable_dir(active_log_dir, "aktif log dizini")
-check_writable_dir("mergen_uploads", "MERGEN yükleme dizini")
-check_writable_dir("destek_uploads", "destek yükleme dizini")
-check_writable_dir("bilge_yolac_downloads", "Bilge Yolaç indirme dizini")
-
-if (nzchar(Sys.getenv("MERGEN_FILES_ROOT", ""))) {
-  check_writable_dir(Sys.getenv("MERGEN_FILES_ROOT"), "MERGEN files root")
-}
-
-if (nzchar(Sys.getenv("MERGEN_MCP_BASE_DIR", ""))) {
-  check_writable_dir(Sys.getenv("MERGEN_MCP_BASE_DIR"), "MERGEN MCP base dir")
-}
-
-active_index_path <- Sys.getenv("MERGEN_INDEX_PATH", "")
-if (nzchar(active_index_path)) {
-  check_writable_dir(dirname(active_index_path), "MERGEN index parent dizini")
-}
-
-if (exists("atomic_write_text", envir = globalenv(), mode = "function", inherits = FALSE)) {
-  atomic_probe <- file.path(active_log_dir, "preflight_atomic_write_probe.json")
-
-  tryCatch({
-    atomic_write_text('{"ok":true}', atomic_probe)
-    if (!file.exists(atomic_probe)) {
-      stop("atomic write probe dosyasi olusmadi.")
-    }
-    cat("OK: atomic_write_text probe başarılı.\n")
-  }, error = function(e) {
-    stop(sprintf(
-      "VM preflight başarısız: atomic_write_text probe başarısız: %s",
-      conditionMessage(e)
-    ))
-  }, finally = {
-    try(unlink(atomic_probe, force = TRUE), silent = TRUE)
-  })
-} else {
-  warning("atomic_write_text() bulunamadı; atomic write probe atlandı.")
-}
+preflight_paths <- vm_preflight_check_core_writable_paths()
+vm_preflight_check_atomic_write_probe(preflight_paths$active_log_dir)
+vm_preflight_check_utf8_roundtrip(preflight_paths$active_log_dir)
+vm_preflight_check_file_store_roundtrip()
+vm_preflight_check_live_user_id_provider_contract()
 
 # ----------------------------------------------------------------------
 # Gerçek DB sağlık kontrolü
