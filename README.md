@@ -89,6 +89,8 @@ Son Bilge Yolaç dizin listeleme bakım refactor’ında klasör içeriklerini l
 
 Son Bilge Yolaç akış sonlandırma güvenliği güncellemesinde normal başarılı ve hatalı canlı akış bitişleri de aktif çalışma kimliği (`env$request_id`) ile `finalize_streaming()` çağıracak şekilde sıkılaştırılmıştır. Böylece eski bir poll/callback sonucunun daha yeni bir Bilge Yolaç çalışmasının UI ve runtime durumunu temizlemesi engellenir. Bu davranış `test-claude-code-run-lifecycle-contract.R` içindeki request-id korumalı normal finalization sözleşmesiyle, yakın sınıra gelmiş runtime dosyalarının mevcut baş boşluğu ise `test-maintainability-ratchet.R` içindeki near-limit bütçe kontrolleriyle korunur.
 
+Son Bilge Yolaç erken-abort yaşam döngüsü güncellemesinde, canlı akış başlamadan önce durdurulan çalıştırma girişimleri de aynı request-id güvenlik sınırına alınmıştır. CLI bulunamaması, SSO/kimlik hazır olmaması, kullanıcı çalışma alanı oluşturulamaması, modelin çalıştırmaya kapalı olması veya process başlatma öncesi hata alınması gibi durumlarda `cc_abort_run_before_streaming()` yalnızca hâlâ aktif olan isteğin `rv$is_running` ve `rv$active_request_id` durumunu temizler. Kullanıcıya gösterilen ortak engelleme mesajları `cc_send_run_blocked_message()` üzerinden üretilir. Böylece başlamadan iptal edilen eski bir Bilge Yolaç çalıştırması, sonraki geçerli çalışmanın durumunu kirletecek stale request state bırakmaz. Bu davranış `test-claude-code-run-lifecycle-contract.R` ve `test-maintainability-ratchet.R` ile korunur.
+
 ### Dosya Yönetimi
 Kullanıcının yüklediği dosyaları yönettiği merkezdir. Yükleme, önizleme, listeleme ve söyleşiye bağlama işlemleri burada yapılır.
 
