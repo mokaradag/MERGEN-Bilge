@@ -259,109 +259,17 @@ sendMessageInit <- function(
       }
     }
 
-    # Karakter verilerini al
-    selected_char_id <- settings_data$selected_character %||% "mergen"
-    chars_data <- get_characters_data()
-    character_data <- if (!is.null(chars_data)) {
-      Find(function(x) x$id == selected_char_id, chars_data$styles)
-    } else NULL
+    prompt_plan <- mergen_prepare_send_message_prompting(
+      tool_family = tool_family,
+      uploaded_count = uploaded_count,
+      settings_data = settings_data,
+      messages_to_process = messages_to_process
+    )
 
-    # Karakter sistem promptunu kullan
-    base_instruction <- if (!is.null(character_data)) {
-      character_data$system_prompt_en
-    } else {
-      "Be a balanced, pragmatic assistant. Provide clear, actionable responses."
-    }
-
-    # Kaynak gösterimi zorunluluğu
-    citation_instruction <- if (uploaded_count > 0) {
-      paste0(
-        "\n\nMANDATORY CITATION RULE: ",
-        "Your response MUST end with a 'Kaynakça:' section listing the source filenames. ",
-        "This is REQUIRED and NON-NEGOTIABLE. ",
-        "Do NOT add any other 'Sources' sections. ",
-        "Do NOT use inline [Source: ...] citations. ",
-        "Example:\nKaynakça:\n1) document.docx\n2) file.pdf"
-      )
-    } else {
-      paste0(
-        "\n\nCRITICAL CITATION REQUIREMENT: ",
-        "If you reference any sources, include a 'Kaynakça:' section at the end. ",
-        "Do NOT use inline [Source: ...] citations. "
-      )
-    }
-
-    # Mod bazlı sistem promptu oluştur
-    if (identical(tool_family, "summarization") && uploaded_count > 0) {
-      style_instruction <- build_summarization_system_prompt(
-        file_count = uploaded_count,
-        total_chars = 0
-      )
-    } else if (isTRUE(settings_data$enable_coding_tools)) {
-      coding_system_prompt <- paste0(
-        base_instruction,
-        "\n\nKODLAMA UZMANI MODU AKTİF:\n",
-        "You are an expert software development assistant specializing in code optimization, debugging, and best practices.\n\n",
-        "YOUR CAPABILITIES:\n",
-        "- Code review and optimization across multiple languages (Python, R, JavaScript, Java, C++, Go, etc.)\n",
-        "- Algorithm design and complexity analysis\n",
-        "- Debugging and error resolution\n",
-        "- Performance optimization and refactoring\n",
-        "- Best practices and design patterns\n",
-        "- Unit testing and test-driven development\n",
-        "- Code documentation and maintainability\n\n",
-        "YOUR APPROACH:\n",
-        "- Provide clean, efficient, production-ready code\n",
-        "- Explain your reasoning and trade-offs\n",
-        "- Suggest multiple solutions when applicable\n",
-        "- Follow language-specific conventions and style guides\n",
-        "- Prioritize readability, maintainability, and performance\n",
-        "- Include inline comments for complex logic\n",
-        "- Consider edge cases and error handling\n\n",
-        "RESPONSE FORMAT:\n",
-        "- Use proper markdown code blocks with language specification\n",
-        "- Provide clear explanations before and after code\n",
-        "- Highlight key improvements or changes\n",
-        "- Suggest testing strategies when relevant",
-        citation_instruction
-      )
-      style_instruction <- coding_system_prompt
-    } else if (isTRUE(settings_data$enable_image_tools)) {
-      style_instruction <- paste0(
-        base_instruction,
-        "\n\nGÖRSEL OLUŞTURMA MODU:\n",
-        "Kullanıcının isteğine göre görsel oluşturulacak.",
-        citation_instruction
-      )
-    } else {
-      style_instruction <- paste0(base_instruction, citation_instruction)
-    }
-
-    # Sıcaklık değerini karakterden al
-    temperature_value <- if (!is.null(character_data) && !is.null(character_data$parameters$temperature)) {
-      character_data$parameters$temperature
-    } else {
-      0.4
-    }
-
-    # SQL analizinde ikinci system mesajı üretme
-    system_msg <- list(type = "system", content = style_instruction)
-
-    if (identical(tool_family, "sql_analysis") &&
-        length(messages_to_process) > 0 &&
-        identical(
-          tolower(as.character(messages_to_process[[1]]$role %||% messages_to_process[[1]]$type %||% "")),
-          "system"
-        )) {
-
-      mevcut_system_icerik <- as.character(messages_to_process[[1]]$content %||% "")
-      messages_to_process[[1]]$content <- paste0(style_instruction, "\n\n", mevcut_system_icerik)
-      messages_to_process[[1]]$type <- "system"
-      messages_to_process[[1]]$role <- "system"
-
-    } else {
-      messages_to_process <- c(list(system_msg), messages_to_process)
-    }
+    messages_to_process <- prompt_plan$messages_to_process
+    system_msg <- prompt_plan$system_msg
+    selected_char_id <- prompt_plan$selected_char_id
+    temperature_value <- prompt_plan$temperature_value
 
     log_debug("[STYLE] Karakter: {selected_char_id} (sıcaklık: {sprintf('%.2f', temperature_value)})")
 
@@ -406,90 +314,18 @@ sendMessageInit <- function(
       handle_image_generation_mode(image_ctx)
       return(invisible(NULL))
 
-    } else if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
-      # MCP EXCEL MODU
-      file_list_text <- paste0(
-        "\n\nDOSYA BİLGİSİ:\n",
-        "Toplam ", uploaded_count, " dosya yüklü:\n",
-        paste(paste0("- ", uploaded_names), collapse = "\n"),
-        "\n\nÖNEMLİ: Bu dosyaları analiz etmek için MUTLAKA 'analyze_uploaded_file' veya 'get_column_statistics' veya 'sql_query_uploaded_file' araçlarını kullan. ",
-        "Dosya içeriğini TAHMİN ETME, araçları kullan!"
-      )
-
-      user_question <- tail(recent_messages, 1)[[1]]$content
-      citation_files_list <- paste(sapply(seq_along(uploaded_names), function(i) paste0(i, ") ", uploaded_names[i])), collapse = "\n")
-
-      final_context_prompt <- list(
-        type = "user",
-        content = paste0(
-          "Aşağıdaki dosya bağlamını kullanarak soruyu yanıtla.\n\n",
-          "[ Toplam Dosya Sayısı: ", uploaded_count, " ]\n",
-          file_list_text,
-          "\n\n--- BAĞLAM SONU ---\n\n",
-          "ZORUNLU TALİMAT: Yanıtının EN SONUNDA aşağıdaki formatı AYNEN kullan:\n\n",
-          "Kaynakça:\n",
-          citation_files_list,
-          "\n\nSoru: ", user_question
-        )
-      )
-
-      messages_to_process <- c(list(system_msg), head(recent_messages, -1), list(final_context_prompt))
-
-    } else if (identical(tool_family, "none") && uploaded_count > 0) {
-      # MCP kapalı ise seçili dosyaların özetini bağlama ekle
-      file_blocks <- character(0)
-      total_budget <- 120000
-      per_file_cap <- max(4000, floor(total_budget / max(1, uploaded_count)))
-
-      summary_store <- session_user_data_get_list(session, "file_summaries")
-      current_file_store <- session_user_data_get_list(session, "current_session_files")
-
-      for (fname in uploaded_names) {
-        sumtxt <- summary_store[[fname]] %||% ""
-        if (!is.character(sumtxt) || !nzchar(sumtxt[1])) {
-          fobj <- current_file_store[[fname]] %||% NULL
-          if (is.list(fobj)) {
-            fpath <- fobj$datapath %||% fobj$path %||% ""
-            if (nzchar(fpath) && path_exists_relaxed(fpath)) {
-              rawtxt <- readFileContentToString(list(
-                name = fname,
-                datapath = fpath,
-                size = file.info(fpath)$size
-              ))
-              sumtxt <- substr(rawtxt %||% "", 1, per_file_cap)
-            }
-          }
-        } else {
-          sumtxt <- as.character(sumtxt[1])
-          if (nchar(sumtxt) > per_file_cap) sumtxt <- substr(sumtxt, 1, per_file_cap)
-        }
-
-        block <- paste0("### ", fname, "\n", sumtxt)
-        file_blocks <- c(file_blocks, block)
-      }
-
-      citation_files_list <- paste(sapply(seq_along(uploaded_names), function(i) paste0(i, ") ", uploaded_names[i])), collapse = "\n")
-      user_question <- tail(recent_messages, 1)[[1]]$content
-
-      final_context_prompt <- list(
-        type = "user",
-        content = paste0(
-          "Aşağıdaki dosya özetlerini ve/veya alıntılarını kullanarak isteği yanıtla. Araç KULLANILMAYACAKTIR (MCP kapalı).\n\n",
-          paste(file_blocks, collapse = "\n\n"),
-          "\n\nSoru: ", user_question,
-          "\n\nKaynakça:\n", citation_files_list
-        )
-      )
-
-      messages_to_process <- c(list(system_msg), head(recent_messages, -1), list(final_context_prompt))
-
     } else {
-      # Standart sohbet modu veya SQL analizi
-      if (identical(tool_family, "sql_analysis")) {
-        # messages_to_process zaten hazır
-      } else {
-        messages_to_process <- c(list(system_msg), recent_messages)
-      }
+      context_plan <- mergen_build_uploaded_files_context_messages(
+        tool_family = tool_family,
+        uploaded_count = uploaded_count,
+        uploaded_names = uploaded_names,
+        recent_messages = recent_messages,
+        system_msg = system_msg,
+        session = session,
+        messages_to_process = messages_to_process
+      )
+
+      messages_to_process <- context_plan$messages_to_process
     }
 
     # API anahtarı kontrolü
@@ -561,8 +397,8 @@ sendMessageInit <- function(
     }
 
 	# Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır
-	is_thinking_model <- grepl("(?i)(think|reason|qwen3\\.5)", model_selected, perl = TRUE)
-	force_non_streaming_sql <- identical(tool_family, "sql_analysis") && is_thinking_model
+	thinking_model_detected <- grepl("(?i)(think|reason|qwen3\\.5)", model_selected, perl = TRUE)
+	force_non_streaming_sql <- identical(tool_family, "sql_analysis") && thinking_model_detected
 
     stream_profile <- mergen_build_stream_profile(
       tool_family = tool_family,

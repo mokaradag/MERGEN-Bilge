@@ -35,7 +35,7 @@
   value
 }
 
-test_that("server_send_message.R request lifecycle extraction sonrası 800 satır altı kalır", {
+test_that("server_send_message.R helper extraction sonrası güvenli baş boşluğu korur", {
   repo_root <- .find_repo_root_send_message_ratchet()
   old_wd <- getwd()
   on.exit(setwd(old_wd), add = TRUE)
@@ -60,6 +60,12 @@ test_that("server_send_message.R request lifecycle extraction sonrası 800 satı
     drop = FALSE
   ]
 
+  prompting_row <- report[
+    grepl("(^|/)R/helpers_send_message_prompting\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
   expect_equal(
     nrow(send_row),
     1L,
@@ -72,14 +78,22 @@ test_that("server_send_message.R request lifecycle extraction sonrası 800 satı
     info = "R/helpers_send_message_request_lifecycle.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_send_lines <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SERVER_SEND_MESSAGE_LINES", 799L)
+  expect_equal(
+    nrow(prompting_row),
+    1L,
+    info = "R/helpers_send_message_prompting.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_send_lines <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SERVER_SEND_MESSAGE_LINES", 760L)
   max_helper_lines <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SEND_MESSAGE_REQUEST_LIFECYCLE_LINES", 260L)
   max_helper_functions <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SEND_MESSAGE_REQUEST_LIFECYCLE_FUNCTIONS", 16L)
+  max_prompting_lines <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SEND_MESSAGE_PROMPTING_LINES", 260L)
+  max_prompting_functions <- .as_int_env_send_message_ratchet("MERGEN_TEST_MAX_SEND_MESSAGE_PROMPTING_FUNCTIONS", 8L)
 
   expect_true(
     send_row$lines[1] <= max_send_lines,
     info = sprintf(
-      "server_send_message.R request lifecycle extraction sonrası 800 satır altı kalmalıdır: %d > %d.",
+      "server_send_message.R prompt/context extraction sonrası güvenli baş boşluğu korumalıdır: %d > %d.",
       send_row$lines[1],
       max_send_lines
     )
@@ -100,6 +114,24 @@ test_that("server_send_message.R request lifecycle extraction sonrası 800 satı
 	  "helpers_send_message_request_lifecycle.R fonksiyon ifadesi sayısı kontrollü kalmalıdır: %d > %d.",
       helper_row$functions[1],
       max_helper_functions
+    )
+  )
+
+  expect_true(
+    prompting_row$lines[1] <= max_prompting_lines,
+    info = sprintf(
+      "helpers_send_message_prompting.R küçük prompt/context helper dosyası olarak kalmalıdır: %d > %d.",
+      prompting_row$lines[1],
+      max_prompting_lines
+    )
+  )
+
+  expect_true(
+    prompting_row$functions[1] <= max_prompting_functions,
+    info = sprintf(
+      "helpers_send_message_prompting.R fonksiyon ifadesi sayısı kontrollü kalmalıdır: %d > %d.",
+      prompting_row$functions[1],
+      max_prompting_functions
     )
   )
 })

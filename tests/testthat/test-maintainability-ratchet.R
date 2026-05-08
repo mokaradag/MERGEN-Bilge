@@ -188,7 +188,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   }
 
   assert_current_budget("R/module_claude_code.R", 780L, 11L)
-  assert_current_budget("R/server_send_message.R", 794L, 14L)
+  assert_current_budget("R/server_send_message.R", 760L, 14L)
   assert_current_budget("R/module_admin_hata_analizi.R", 792L, 9L)
   assert_current_budget("R/module_image_generation.R", 765L, 22L)
   assert_current_budget("R/helpers_llm_sse.R", 762L, 20L)
