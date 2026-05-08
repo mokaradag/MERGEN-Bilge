@@ -111,7 +111,7 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the LLM worker tool-result extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `796`, and maximum function count `24`. Do not loosen these limits without an explicit reason. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
+Current maintainability ratchet baseline after the server runtime contract helper extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `796`, and maximum function count `24`. Do not loosen these limits without an explicit reason. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
 
 ### E2E/race regression test foundation contract
 
@@ -465,12 +465,28 @@ Preserve this source order in `global.R`:
 safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
 safe_source("R/helpers_user_session_identity.R", encoding = "UTF-8")
 safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
+safe_source("R/helpers_server_runtime_contracts.R", encoding = "UTF-8")
 safe_source("R/server_runtime_context.R",    encoding = "UTF-8")
 safe_source("R/server_runtime_function_slot.R", encoding = "UTF-8")
 safe_source("R/server_module_wiring.R",      encoding = "UTF-8")
 safe_source("R/server_init_session_state.R", encoding = "UTF-8")
 safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 ```
+
+Server runtime contract helper split:
+
+- R/helpers_server_runtime_contracts.R owns the low-level runtime validation and error helpers used by the server runtime context layer.
+- R/server_runtime_context.R owns runtime context orchestration, context attach/require helpers, refreshable module registration, and SSO auth-ready refresh behavior.
+- Do not move is_server_runtime_context(), .server_runtime_stop(), .server_runtime_require_context(), .server_runtime_require_values(), .server_runtime_require_functions(), or .server_runtime_invoke_auth_ready_callback() back into R/server_runtime_context.R.
+- serverRuntimeOnSsoAuthReady() must keep the already-auth-ready path and the observer-fired path on the same .server_runtime_invoke_auth_ready_callback() helper. This prevents immediate SSO refresh behavior and delayed observer refresh behavior from drifting apart.
+- This boundary creates maintainability headroom under the 25-function file threshold without changing public runtime APIs.
+
+Protected by:
+
+- tests/testthat/test-server-runtime-context.R
+- tests/testthat/test-source-manifest-contract.R
+- tests/testthat/test-maintainability-ratchet.R
+- tests/testthat/test-e2e-sso-identity-readiness-regression.R
 
 `R/server_core_interaction_runtime.R` is sourced later in `global.R`, after observer/output helpers such as `R/server_outputs_downloads.R`. This is intentional: the core interaction binder depends on concrete observer/output functions and should not rely on forward placeholders.
 
