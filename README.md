@@ -66,6 +66,8 @@ Ana sohbet ekranıdır. Kullanıcı burada:
 
 Ana Söyleşi hoş geldin ekranında ayrıca **Son Konuşmalar** bölümü bulunur. Bu bölüm, en son **aktif olan** 3 söyleşiyi gösterir; kullanıcı "Yeni Söyleşi" ile yeni akışa geçtiğinde az önce tamamlanan söyleşi hoş geldin ekranına dönüldüğünde beklemeden bu listede görünür. Sıralama, oluşturulma zamanından ziyade söyleşi aktivitesine göre yapılır.
 
+Ana Söyleşi mesaj gönderme hattı son bakım güncellemesiyle daha ayrık hâle getirilmiştir. `R/server_send_message.R` artık istek yaşam döngüsü, araç yönlendirme, model/API hazırlığı ve streaming/non-streaming dispatch akışına odaklanır. Karakter stili, kaynakça talimatı, sistem promptu birleştirme ve yüklü dosya bağlamı hazırlığı `R/helpers_send_message_prompting.R` içine taşınmıştır. Bu ayrım, kullanıcıya görünen davranışı değiştirmeden mesaj gönderme yolunda bakım baş boşluğu oluşturur ve SQL analizi, MCP Excel ve MCP kapalı dosya bağlamı sözleşmelerini odak testlerle korur.
+
 ### Söyleşi Yönetimi
 Üç alt bölümden oluşur:
 - **Söyleşi Geçmişi**
@@ -198,6 +200,7 @@ Son premium reasoning / thinking UI regresyon dilimi de aynı deterministik test
 Son streaming istemci request-id güvenliği regresyon dilimi de aynı deterministik test mimarisine eklenmiştir:
 
 - `tests/testthat/test-e2e-streaming-client-request-id-regression.R`
+- `tests/testthat/test-send-message-prompting-contract.R`
 
 Son SSO kimlik hazır olma ve refreshable modül yarış durumu dilimi de aynı deterministik test mimarisine eklenmiştir:
 
@@ -213,6 +216,8 @@ Bu boot/karşılama dilimi; gerçek DB, gerçek LLM, gerçek TTS/STT, gerçek g�
 Bu premium reasoning / thinking UI dilimi; gerçek tarayıcı DOM’u, gerçek LLM, gerçek SSE endpoint’i, gerçek DB veya public internet gerektirmeden düşünen modellerin canlı akıl yürütme paneli yaşam döngüsünü deterministik olarak sınar. Testler; panelin aynı istek için yinelenmemesini, yeni istek başladığında eski reasoning callback’lerinin yoksayılmasını, stream başlangıcında panelin doğru mesaj balonuna taşınmasını, reset/finalization akışının idempotent kalmasını, simulated reasoning fazlarının gerçek reasoning olarak kalıcılaştırılmamasını ve görünür yanıt içeriği ile reasoning izinin birbirine karışmamasını korur. Windows VM üzerinde kodlama uyarılarını önlemek için statik JS/R sözleşme kontrolleri ASCII-safe/byte-safe yaklaşımı izler.
 
 Bu streaming istemci request-id güvenliği dilimi; gerçek tarayıcı DOM’u, gerçek LLM, gerçek SSE endpoint’i, gerçek DB veya public internet gerektirmeden true SSE ve premium reasoning istemci mesajlarının aynı istek kimliğiyle korunmasını sınar. Testler; `premiumReasoningStart`, `premiumReasoningStreamStart`, `initStreamingMessage`, `streamingReasoningDelta`, `streamingDelta`, `streamingUpdate` ve `finalizeStreamingMessage` mesajlarında `requestId` sözleşmesinin korunmasını, eski/stale callback’lerin yeni aktif isteği kirletmemesini ve istemci tarafı finalization işleminin aynı istek için yinelenmemesini denetler. Bu dilim, server tarafındaki request-id/finalization korumalarını tarayıcı mesaj katmanına bağlayan statik ve byte-safe sözleşme kontrolüdür.
+
+Bu send_message prompt bağlamı sözleşmesi; gerçek DB, gerçek LLM, gerçek SSE endpoint’i veya tarayıcı otomasyonu gerektirmeden karakter/system prompt hazırlığını, kaynakça talimatlarını, SQL system prompt birleştirmesini, MCP Excel dosya bağlamı talimatlarını ve MCP kapalı dosya özet bağlamını sınar. Böylece `R/helpers_send_message_prompting.R` içine taşınan davranışların `R/server_send_message.R` içine geri dağılması veya kullanıcıya görünen prompt sözleşmelerinin bozulması erken yakalanır.
 
 Bilge Yolaç sunucu tarafı akış yaşam döngüsü için eklenen sözleşme de aynı yaklaşımı izler: normal `Tamamlandı` ve `Hata` finalization yolları request-id parametresiz kalamaz. Böylece durdurma ve zaman aşımı yollarında zaten kullanılan stale-run koruması, normal süreç tamamlanması ve hata bitişleri için de zorunlu hale gelir.
 
