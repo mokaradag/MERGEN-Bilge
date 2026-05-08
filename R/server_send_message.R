@@ -166,17 +166,12 @@ sendMessageInit <- function(
     user_prompt_msg <- add_message_fn(display_text, "user")
 
     req_id <- mergen_new_send_message_request_id()
-
     values$typing <- TRUE
     thinking_panel_plan <- mergen_build_thinking_panel_plan(
       tool_family = tool_family,
       settings_data = settings_data
     )
-    mergen_show_send_message_thinking_wrapper(
-      session,
-      thinking_panel_plan,
-      request_id = req_id
-    )
+    mergen_show_send_message_thinking_wrapper(session, thinking_panel_plan, request_id = req_id)
 
     # Durdur butonunu göster
     shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-stop');")
