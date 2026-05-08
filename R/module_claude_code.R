@@ -93,33 +93,23 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       # CLI yolu yoksa hata ver
       if (is.null(cli_yolu)) {
-        rv$is_running <- FALSE
-        session$sendCustomMessage(
-          type = "cc-add-message",
-          message = list(
-            target = ns("output_area"),
-            type = "error",
-            content = "Claude Code CLI bulunamadı. Lütfen npm ile kurulu olduğundan emin olun.",
-            timestamp = format(Sys.time(), "%H:%M:%S"),
-            welcomeId = ns("welcome_screen")
-          )
+        cc_abort_run_before_streaming(rv, run_request_id)
+        cc_send_run_blocked_message(
+          session = session,
+          ns = ns,
+          message = "Claude Code CLI bulunamadı. Lütfen npm ile kurulu olduğundan emin olun."
         )
         return()
       }
 
       # SSO akışında kimlik doğrulama tamamlanmadan komut çalıştırma.
       if (isTRUE(SSO_ENABLED) && !isTRUE(session$userData$auth_initialized)) {
-        rv$is_running <- FALSE
+        cc_abort_run_before_streaming(rv, run_request_id)
 
-        session$sendCustomMessage(
-          type = "cc-add-message",
-          message = list(
-            target = ns("output_area"),
-            type = "error",
-            content = "Kimlik doğrulama tamamlanmadan komut çalıştırılamaz.",
-            timestamp = format(Sys.time(), "%H:%M:%S"),
-            welcomeId = ns("welcome_screen")
-          )
+        cc_send_run_blocked_message(
+          session = session,
+          ns = ns,
+          message = "Kimlik doğrulama tamamlanmadan komut çalıştırılamaz."
         )
         return()
       }
@@ -127,17 +117,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Çalışma dizini yoksa gerçek kullanıcı kimliği ile kullanıcı çalışma alanını kullan.
       user_check <- ensure_ready_user_id("komut çalıştırma")
       if (!isTRUE(user_check$ok)) {
-        rv$is_running <- FALSE
+        cc_abort_run_before_streaming(rv, run_request_id)
 
-        session$sendCustomMessage(
-          type = "cc-add-message",
-          message = list(
-            target = ns("output_area"),
-            type = "error",
-            content = user_check$message,
-            timestamp = format(Sys.time(), "%H:%M:%S"),
-            welcomeId = ns("welcome_screen")
-          )
+        cc_send_run_blocked_message(
+          session = session,
+          ns = ns,
+          message = user_check$message
         )
 
         return()
@@ -149,17 +134,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         if (effective_user_id > 0) {
           calisma_dizini <- get_user_workspace(effective_user_id)
         } else {
-          rv$is_running <- FALSE
+          cc_abort_run_before_streaming(rv, run_request_id)
 
-          session$sendCustomMessage(
-            type = "cc-add-message",
-            message = list(
-              target = ns("output_area"),
-              type = "error",
-              content = "Kullanıcı çalışma alanı oluşturulamadı. Lütfen sayfayı yenileyin.",
-              timestamp = format(Sys.time(), "%H:%M:%S"),
-              welcomeId = ns("welcome_screen")
-            )
+          cc_send_run_blocked_message(
+            session = session,
+            ns = ns,
+            message = "Kullanıcı çalışma alanı oluşturulamadı. Lütfen sayfayı yenileyin."
           )
           return()
         }
@@ -252,17 +232,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       }
 
       if (!isTRUE(model_cozumu$allow_run)) {
-        rv$is_running <- FALSE
+        cc_abort_run_before_streaming(rv, run_request_id)
 
-        session$sendCustomMessage(
-          type = "cc-add-message",
-          message = list(
-            target = ns("output_area"),
-            type = "error",
-            content = htmltools::htmlEscape(model_cozumu$reason),
-            timestamp = format(Sys.time(), "%H:%M:%S"),
-            welcomeId = ns("welcome_screen")
-          )
+        cc_send_run_blocked_message(
+          session = session,
+          ns = ns,
+          message = model_cozumu$reason
         )
 
         return()
@@ -470,10 +445,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         # rv$is_running zaten TRUE - yoklama gözlemcisi otomatik başlayacak
 
       }, error = function(e) {
-        rv$is_running <- FALSE
-        if (cc_is_active_run(rv, run_request_id)) {
-          rv$active_request_id <- NULL
-        }
+        cc_abort_run_before_streaming(rv, run_request_id)
 
         session$sendCustomMessage(
           type = "cc-finalize-ui",

@@ -105,6 +105,83 @@ test_that("cc_finalize_if_active stale finalize çağrısını yoksayar", {
   expect_identical(rv$last_finalize_request_id, "newer-request")
 })
 
+test_that("cc_abort_run_before_streaming yalnızca aktif request state'ini temizler", {
+  env <- .source_cc_run_lifecycle_for_test()
+
+  rv <- new.env(parent = emptyenv())
+  env$cc_mark_active_run(rv, "active-run")
+  rv$is_running <- TRUE
+
+  expect_true(env$cc_abort_run_before_streaming(rv, "active-run"))
+  expect_false(isTRUE(rv$is_running))
+  expect_null(rv$active_request_id)
+
+  env$cc_mark_active_run(rv, "newer-run")
+  rv$is_running <- TRUE
+
+  expect_false(env$cc_abort_run_before_streaming(rv, "older-run"))
+  expect_true(isTRUE(rv$is_running))
+  expect_identical(rv$active_request_id, "newer-run")
+})
+
+test_that("cc_send_run_blocked_message ortak hata payload'ını güvenli üretir", {
+  env <- .source_cc_run_lifecycle_for_test()
+
+  sent <- list()
+  fake_session <- new.env(parent = emptyenv())
+  fake_session$sendCustomMessage <- function(type, message) {
+    sent[[length(sent) + 1L]] <<- list(type = type, message = message)
+    invisible(TRUE)
+  }
+
+  ns <- function(x) paste0("cc-", x)
+
+  expect_true(env$cc_send_run_blocked_message(
+    session = fake_session,
+    ns = ns,
+    message = "<deneme>"
+  ))
+
+  expect_equal(length(sent), 1L)
+  expect_equal(sent[[1]]$type, "cc-add-message")
+  expect_equal(sent[[1]]$message$target, "cc-output_area")
+  expect_equal(sent[[1]]$message$type, "error")
+  expect_equal(sent[[1]]$message$welcomeId, "cc-welcome_screen")
+  expect_true(grepl("&lt;deneme&gt;", sent[[1]]$message$content, fixed = TRUE))
+})
+
+test_that("module_claude_code.R erken abortları lifecycle helper ile temizler", {
+  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
+
+  expect_true(
+    grepl("cc_send_run_blocked_message\\(", txt, perl = TRUE),
+    info = "Bilge Yolaç erken hata mesajları ortak helper üzerinden gönderilmelidir."
+  )
+
+  hits <- gregexpr(
+    "cc_abort_run_before_streaming\\(rv, run_request_id\\)",
+    txt,
+    perl = TRUE
+  )[[1]]
+
+  hit_count <- if (length(hits) == 1L && hits[1] == -1L) 0L else length(hits)
+
+  expect_gte(
+    hit_count,
+    6L,
+    info = "Erken abort ve process başlatma hatası aktif request state'ini temizlemelidir."
+  )
+
+  expect_false(
+    grepl(
+      "content\\s*=\\s*htmltools::htmlEscape\\(model_cozumu\\$reason\\)",
+      txt,
+      perl = TRUE
+    ),
+    info = "Model engelleme mesajı modül içinde tekrar eden özel payload ile gönderilmemelidir."
+  )
+})
+
 test_that("module_claude_code.R doküman özetleme akışını lifecycle helper'a delege eder", {
   txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
 

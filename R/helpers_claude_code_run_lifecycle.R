@@ -52,6 +52,41 @@ cc_is_active_run <- function(rv, request_id = NULL) {
   !is.na(active) && nzchar(active) && identical(active, request_id)
 }
 
+cc_abort_run_before_streaming <- function(rv, request_id = NULL) {
+  if (!cc_is_active_run(rv, request_id)) {
+    return(invisible(FALSE))
+  }
+
+  rv$is_running <- FALSE
+  rv$active_request_id <- NULL
+
+  invisible(TRUE)
+}
+
+cc_send_run_blocked_message <- function(session, ns, message, escape = TRUE) {
+  msg <- as.character(message %||% "")[1]
+  if (is.na(msg)) msg <- ""
+
+  content <- if (isTRUE(escape)) {
+    htmltools::htmlEscape(msg)
+  } else {
+    msg
+  }
+
+  session$sendCustomMessage(
+    type = "cc-add-message",
+    message = list(
+      target = ns("output_area"),
+      type = "error",
+      content = content,
+      timestamp = format(Sys.time(), "%H:%M:%S"),
+      welcomeId = ns("welcome_screen")
+    )
+  )
+
+  invisible(TRUE)
+}
+
 cc_finalize_if_active <- function(rv,
                                   request_id = NULL,
                                   finalize_streaming,

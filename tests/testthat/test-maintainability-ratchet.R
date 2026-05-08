@@ -187,7 +187,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
     )
   }
 
-  assert_current_budget("R/module_claude_code.R", 796L, 11L)
+  assert_current_budget("R/module_claude_code.R", 780L, 11L)
   assert_current_budget("R/server_send_message.R", 794L, 14L)
   assert_current_budget("R/module_admin_hata_analizi.R", 792L, 9L)
   assert_current_budget("R/module_image_generation.R", 765L, 22L)
@@ -227,7 +227,7 @@ test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {
     info = "R/module_claude_code.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_cc_lines <- .as_int_env("MERGEN_TEST_MAX_CLAUDE_CODE_LINES", 796L)
+  max_cc_lines <- .as_int_env("MERGEN_TEST_MAX_CLAUDE_CODE_LINES", 780L)
 
   expect_true(
     cc_row$lines[1] <= max_cc_lines,
