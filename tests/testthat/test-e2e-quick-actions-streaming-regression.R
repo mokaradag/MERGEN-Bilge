@@ -52,6 +52,44 @@ source(file.path(repo_root_e2e, "R", "helpers_quick_action_intro_messages.R"), e
 source(file.path(repo_root_e2e, "R", "helpers_llm_stream_io.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e, "R", "helpers_send_message_request_lifecycle.R"), encoding = "UTF-8", local = globalenv())
 
+.e2e_quick_read_ascii <- function(...) {
+  path <- file.path(repo_root_e2e, ...)
+  if (!file.exists(path)) {
+    stop(sprintf("Beklenen dosya bulunamadi: %s", path), call. = FALSE)
+  }
+
+  size <- suppressWarnings(file.info(path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+  raw_data[raw_data == as.raw(0L)] <- as.raw(0x20)
+  raw_data[as.integer(raw_data) > 127L] <- as.raw(0x20)
+
+  txt <- rawToChar(raw_data)
+  Encoding(txt) <- "UTF-8"
+  txt
+}
+
+.e2e_quick_expect_tokens <- function(text, tokens, label) {
+  found <- vapply(
+    tokens,
+    function(token) {
+      isTRUE(grepl(token, text, fixed = TRUE, useBytes = TRUE))
+    },
+    logical(1)
+  )
+
+  expect_true(
+    all(found),
+    info = paste(label, paste(tokens[!found], collapse = ", "))
+  )
+}
+
 test_that("quick action config exposes every first-slice journey action", {
   config <- e2e_regression_config()
   actions <- build_main_actions_data_from_config(config)
@@ -128,6 +166,118 @@ test_that("rapid quick action clicks converge to one active mode without sending
 
   expect_true(all(intro_messages_are_safe))
   expect_lte(length(state$values$messages), 3L)
+})
+
+test_that("quick action client gate suppresses same rapid double click before Shiny event", {
+  guard <- e2e_new_quick_action_client_guard(debounce_ms = 600L)
+
+  guard <- e2e_record_quick_action_client_click(
+    guard,
+    action_id = "resource-analysis",
+    model = "technical name 3",
+    timestamp_ms = 1000
+  )
+
+  guard <- e2e_record_quick_action_client_click(
+    guard,
+    action_id = "resource-analysis",
+    model = "technical name 3",
+    timestamp_ms = 1200
+  )
+
+  guard <- e2e_record_quick_action_client_click(
+    guard,
+    action_id = "excel-analysis",
+    model = "technical name 4",
+    timestamp_ms = 1300
+  )
+
+  guard <- e2e_record_quick_action_client_click(
+    guard,
+    action_id = "resource-analysis",
+    model = "technical name 3",
+    timestamp_ms = 1801
+  )
+
+  expect_identical(guard$suppressed, 1L)
+  expect_equal(length(guard$forwarded), 3L)
+
+  forwarded_ids <- vapply(guard$forwarded, `[[`, character(1), "action_id")
+  expect_identical(
+    forwarded_ids,
+    c("resource-analysis", "excel-analysis", "resource-analysis")
+  )
+
+  state <- e2e_new_quick_action_state()
+  for (event in guard$forwarded) {
+    state <- e2e_apply_quick_action(
+      state,
+      action_id = event$action_id,
+      user_name = "İdil"
+    )
+  }
+
+  expect_identical(state$llm_calls, 0L)
+  expect_identical(e2e_active_flags(state), "enable_rdata_tools")
+  expect_identical(state$settings$model_selection, "technical name 3")
+  expect_equal(length(state$values$messages), 3L)
+
+  intro_messages_are_safe <- vapply(
+    state$values$messages,
+    function(msg) {
+      identical(msg$type, "ai") &&
+        isFALSE(msg$persist_to_db) &&
+        isFALSE(msg$add_to_saved_chats) &&
+        isFALSE(msg$include_in_context)
+    },
+    logical(1)
+  )
+
+  expect_true(all(intro_messages_are_safe))
+})
+
+test_that("quick action browser handler keeps duplicate-click debounce before Shiny event", {
+  js <- .e2e_quick_read_ascii("www", "js", "shiny_message_handlers.js")
+
+  .e2e_quick_expect_tokens(
+    js,
+    c(
+      "QUICK_ACTION_DEBOUNCE_MS",
+      "lastQuickActionSignature",
+      "lastQuickActionAt",
+      "resetQuickActionButton",
+      "var signature = actionId + '|' + model",
+      "lastQuickActionSignature === signature",
+      "now - lastQuickActionAt",
+      "btn.disabled = true",
+      "btn.setAttribute('aria-disabled', 'true')",
+      "window.setTimeout(function()",
+      "resetQuickActionButton(btn)",
+      "Shiny.setInputValue('quick_template'"
+    ),
+    "shiny_message_handlers.js hizli islem debounce sozlesmesi eksik:"
+  )
+
+  guard_pos <- regexpr(
+    "lastQuickActionSignature === signature",
+    js,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  send_pos <- regexpr(
+    "Shiny.setInputValue('quick_template'",
+    js,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  expect_true(guard_pos > 0L)
+  expect_true(send_pos > 0L)
+  expect_true(
+    guard_pos < send_pos,
+    info = "Ayni hizli islem debounce kontrolu Shiny olayindan once yapilmalidir."
+  )
 })
 
 test_that("quick action followed immediately by prompt sends exactly one user request", {

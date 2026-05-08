@@ -352,12 +352,41 @@ $(document).ready(function() {
   });
 
   // Hızlı eylem butonları için güvenli işleyici (inline JS söz dizimi hatasını önler)
-  // Mesaj metni Base64 ile kodlanmış data attribute'den okunur
-  window._handleQuickAction = function(btn) {
+  // Aynı butona hızlı çift tıklama Shiny tarafında yinelenen hızlı işlem olayı üretmemelidir.
+  var QUICK_ACTION_DEBOUNCE_MS = 600;
+  var lastQuickActionSignature = '';
+  var lastQuickActionAt = 0;
+
+  function resetQuickActionButton(btn) {
     if (!btn) return;
+    btn.disabled = false;
+    btn.removeAttribute('aria-disabled');
+  }
+
+  window._handleQuickAction = function(btn) {
+    if (!btn) return false;
 
     var model = btn.getAttribute('data-action-model') || '';
     var actionId = btn.getAttribute('data-action-id') || '';
+
+    if (!actionId) {
+      return false;
+    }
+
+    var now = Date.now ? Date.now() : new Date().getTime();
+    var signature = actionId + '|' + model;
+
+    if (lastQuickActionSignature === signature &&
+        (now - lastQuickActionAt) < QUICK_ACTION_DEBOUNCE_MS) {
+      $('.custom-tooltip').remove();
+      return false;
+    }
+
+    lastQuickActionSignature = signature;
+    lastQuickActionAt = now;
+
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
 
     Shiny.setInputValue('quick_template', {
       text: '',
@@ -365,8 +394,14 @@ $(document).ready(function() {
       action_id: actionId
     }, {priority: 'event'});
 
+    window.setTimeout(function() {
+      resetQuickActionButton(btn);
+    }, QUICK_ACTION_DEBOUNCE_MS);
+
     $('.custom-tooltip').remove();
     $('#welcome_fullscreen_container').fadeOut(300);
+
+    return false;
   };
 
 });

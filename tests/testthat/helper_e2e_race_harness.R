@@ -202,6 +202,53 @@ e2e_send_prompt_after_quick_action <- function(state, prompt) {
   state
 }
 
+e2e_new_quick_action_client_guard <- function(debounce_ms = 600L) {
+  list(
+    debounce_ms = as.numeric(debounce_ms),
+    last_signature = "",
+    last_at = -Inf,
+    forwarded = list(),
+    suppressed = 0L
+  )
+}
+
+e2e_record_quick_action_client_click <- function(guard,
+                                                 action_id,
+                                                 model = "",
+                                                 timestamp_ms = 0L) {
+  action_id <- enc2utf8(as.character(action_id %||% "")[1])
+  model <- enc2utf8(as.character(model %||% "")[1])
+  timestamp_ms <- as.numeric(timestamp_ms)
+
+  if (!nzchar(action_id)) {
+    guard$suppressed <- guard$suppressed + 1L
+    return(guard)
+  }
+
+  signature <- paste(action_id, model, sep = "|")
+  elapsed <- timestamp_ms - guard$last_at
+
+  if (identical(guard$last_signature, signature) &&
+      is.finite(elapsed) &&
+      elapsed < guard$debounce_ms) {
+    guard$suppressed <- guard$suppressed + 1L
+    return(guard)
+  }
+
+  guard$last_signature <- signature
+  guard$last_at <- timestamp_ms
+  guard$forwarded <- append(
+    guard$forwarded,
+    list(list(
+      action_id = action_id,
+      model = model,
+      timestamp_ms = timestamp_ms
+    ))
+  )
+
+  guard
+}
+
 e2e_collect_stream_payloads <- function(stream_file) {
   raw_lines <- readLines(stream_file, warn = FALSE, encoding = "UTF-8")
 
