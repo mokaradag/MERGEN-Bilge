@@ -166,10 +166,12 @@ test_that("module_claude_code.R erken abortları lifecycle helper ile temizler",
 
   hit_count <- if (length(hits) == 1L && hits[1] == -1L) 0L else length(hits)
 
-  expect_gte(
-    hit_count,
-    6L,
-    info = "Erken abort ve process başlatma hatası aktif request state'ini temizlemelidir."
+  expect_true(
+    hit_count >= 6L,
+    info = sprintf(
+      "Erken abort ve process başlatma hatası aktif request state'ini temizlemelidir. Bulunan çağrı sayısı: %d",
+      hit_count
+    )
   )
 
   expect_false(
