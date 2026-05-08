@@ -6,6 +6,12 @@
 repo_root <- resolve_repo_root_for_tests()
 
 source(
+  file.path(repo_root, "R", "helpers_server_runtime_contracts.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+source(
   file.path(repo_root, "R", "server_runtime_context.R"),
   encoding = "UTF-8",
   local = globalenv()
@@ -62,6 +68,35 @@ source(
     get_cache_dir = function() tempdir()
   )
 }
+
+test_that("server runtime contract helpers validation semantics are preserved", {
+  expect_error(
+    .server_runtime_require_values(
+      list(existing = TRUE),
+      c("existing", "missing"),
+      "unit_owner"
+    ),
+    "unit_owner eksik zorunlu alan"
+  )
+
+  expect_error(
+    .server_runtime_require_functions(
+      list(ok = function(...) NULL, broken = NULL),
+      c("ok", "broken"),
+      "function_owner"
+    ),
+    "function_owner eksik zorunlu fonksiyon"
+  )
+
+  expect_error(
+    .server_runtime_invoke_auth_ready_callback(
+      ctx = list(),
+      callback = function(ctx) stop("boom", call. = FALSE),
+      label = "unit_auth"
+    ),
+    "serverRuntimeOnSsoAuthReady\\[unit_auth\\]: callback başarısız: boom"
+  )
+})
 
 test_that("serverRuntimeContextInit cache ve identity sözleşmesini kurar", {
   session <- .fake_runtime_session()
@@ -481,6 +516,27 @@ test_that("serverRuntimeOnSsoAuthReady auth zaten hazırsa callback'i hemen çal
   expect_false(registered)
 })
 
+test_that("serverRuntimeOnSsoAuthReady hazır callback hatasını tek sözleşmeyle raporlar", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = TRUE),
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = TRUE)
+  )
+
+  expect_error(
+    serverRuntimeOnSsoAuthReady(
+      ctx,
+      label = "ready_callback_error",
+      callback = function(ctx) stop("boom", call. = FALSE),
+      observe_event_fn = function(...) {
+        stop("Auth hazır olduğunda observer kaydı beklenmez.", call. = FALSE)
+      }
+    ),
+    "serverRuntimeOnSsoAuthReady\\[ready_callback_error\\]: callback başarısız: boom"
+  )
+})
+
 test_that("serverRuntimeOnSsoAuthReady yerel modda mevcut akışı değiştirmez", {
   ctx <- serverRuntimeContextInit(
     session = .fake_runtime_session(),
@@ -535,6 +591,34 @@ test_that("serverRuntimeOnSsoAuthReady SSO observer kaydını tek sözleşmeden 
   expect_true(registered)
   expect_true(isTRUE(observer$ignoreInit))
   expect_true(isTRUE(observer$once))
+})
+
+test_that("serverRuntimeOnSsoAuthReady observer callback hatasını aynı sözleşmeyle raporlar", {
+  ctx <- serverRuntimeContextInit(
+    session = .fake_runtime_session(),
+    session_cache = .fake_session_cache(),
+    sso_state = list(authenticated = TRUE),
+    user_session = .fake_user_session(sso_active = TRUE, auth_ready = TRUE)
+  )
+
+  fake_observe_event <- function(eventExpr,
+                                 handlerExpr,
+                                 ignoreInit = TRUE,
+                                 once = TRUE) {
+    eval(substitute(handlerExpr), envir = parent.frame())
+  }
+
+  expect_error(
+    serverRuntimeOnSsoAuthReady(
+      ctx,
+      label = "observer_callback_error",
+      callback = function(ctx) stop("boom", call. = FALSE),
+      run_if_ready = FALSE,
+      observe_event_fn = fake_observe_event,
+      req_fn = function(...) NULL
+    ),
+    "serverRuntimeOnSsoAuthReady\\[observer_callback_error\\]: callback başarısız: boom"
+  )
 })
 
 test_that("serverRuntimeOnSsoAuthReady SSO durum sözleşmesini erken doğrular", {

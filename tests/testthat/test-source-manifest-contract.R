@@ -99,12 +99,14 @@ test_that("LLM/SSE/worker yükleme sırası korunuyor", {
 
   expect_false(is.na(pos("R/helpers_llm_stream_io.R")))
   expect_false(is.na(pos("R/helpers_llm_worker_payload.R")))
+  expect_false(is.na(pos("R/helpers_llm_worker_tool_results.R")))
 
   expect_lt(pos("R/helpers_llm_response_postprocess.R"), pos("R/helpers_llm_api.R"))
   expect_lt(pos("R/helpers_llm_api.R"), pos("R/helpers_llm_stream_io.R"))
   expect_lt(pos("R/helpers_llm_stream_io.R"), pos("R/helpers_llm_sse.R"))
   expect_lt(pos("R/helpers_llm_sse.R"), pos("R/helpers_llm_worker_payload.R"))
-  expect_lt(pos("R/helpers_llm_worker_payload.R"), pos("R/helpers_llm_worker.R"))
+  expect_lt(pos("R/helpers_llm_worker_payload.R"), pos("R/helpers_llm_worker_tool_results.R"))
+  expect_lt(pos("R/helpers_llm_worker_tool_results.R"), pos("R/helpers_llm_worker.R"))
   expect_lt(pos("R/server_handler_true_streaming.R"), pos("R/server_send_message.R"))
 })
 
@@ -173,6 +175,7 @@ test_that("kritik yardımcılar modüllerden önce yükleniyor", {
   expect_lt(pos("R/helpers_send_message_core.R"), pos("R/server_send_message.R"))
   expect_false(is.na(pos("R/helpers_user_session_identity.R")))
   expect_false(is.na(pos("R/server_init_user_session.R")))
+  expect_false(is.na(pos("R/helpers_server_runtime_contracts.R")))
   expect_false(is.na(pos("R/server_runtime_context.R")))
   expect_false(is.na(pos("R/server_runtime_function_slot.R")))
   expect_false(is.na(pos("R/server_module_wiring.R")))
@@ -184,7 +187,8 @@ test_that("kritik yardımcılar modüllerden önce yükleniyor", {
   expect_lt(pos("R/module_user_identity.R"), pos("R/helpers_user_session_identity.R"))
   expect_lt(pos("R/helpers_user_session_identity.R"), pos("R/server_init_user_session.R"))
   expect_lt(pos("R/server_init_forward_refs.R"), pos("R/server_init_user_session.R"))
-  expect_lt(pos("R/server_init_user_session.R"), pos("R/server_runtime_context.R"))
+  expect_lt(pos("R/server_init_user_session.R"), pos("R/helpers_server_runtime_contracts.R"))
+  expect_lt(pos("R/helpers_server_runtime_contracts.R"), pos("R/server_runtime_context.R"))
   expect_lt(pos("R/server_runtime_context.R"), pos("R/server_runtime_function_slot.R"))
   expect_lt(pos("R/server_runtime_function_slot.R"), pos("R/server_module_wiring.R"))
   expect_lt(pos("R/server_module_wiring.R"), pos("R/server_init_session_state.R"))

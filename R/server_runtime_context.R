@@ -5,59 +5,12 @@
 #           yayılımını azaltmak ve eksik/yanlış init sırasını erken yakalamaktır.
 # ==============================================================================
 
-is_server_runtime_context <- function(ctx) {
-  is.environment(ctx) && inherits(ctx, "mergen_server_runtime_context")
+.server_runtime_contracts_path <- file.path("R", "helpers_server_runtime_contracts.R")
+if (!exists("is_server_runtime_context", mode = "function", inherits = TRUE) &&
+    file.exists(.server_runtime_contracts_path)) {
+  source(.server_runtime_contracts_path, encoding = "UTF-8", local = globalenv())
 }
-
-.server_runtime_stop <- function(message) {
-  stop(message, call. = FALSE)
-}
-
-.server_runtime_require_context <- function(ctx) {
-  if (!is_server_runtime_context(ctx)) {
-    .server_runtime_stop(
-      "server_runtime_context: Geçerli bir mergen_server_runtime_context bekleniyor."
-    )
-  }
-
-  invisible(TRUE)
-}
-
-.server_runtime_require_values <- function(x, names, owner) {
-  missing <- names[vapply(
-    names,
-    function(nm) is.null(x[[nm]]),
-    logical(1)
-  )]
-
-  if (length(missing) > 0L) {
-    .server_runtime_stop(sprintf(
-      "%s eksik zorunlu alan(lar): %s",
-      owner,
-      paste(missing, collapse = ", ")
-    ))
-  }
-
-  invisible(TRUE)
-}
-
-.server_runtime_require_functions <- function(x, names, owner) {
-  missing <- names[!vapply(
-    names,
-    function(nm) is.function(x[[nm]]),
-    logical(1)
-  )]
-
-  if (length(missing) > 0L) {
-    .server_runtime_stop(sprintf(
-      "%s eksik zorunlu fonksiyon(lar): %s",
-      owner,
-      paste(missing, collapse = ", ")
-    ))
-  }
-
-  invisible(TRUE)
-}
+rm(.server_runtime_contracts_path)
 
 serverRuntimeRequireIdentity <- function(ctx,
                                          required_values = character(0),
@@ -512,19 +465,6 @@ serverRuntimeExposeSessionData <- function(ctx,
   invisible(ctx)
 }
 
-.server_runtime_invoke_auth_ready_callback <- function(ctx, callback, label) {
-  tryCatch(
-    callback(ctx),
-    error = function(e) {
-      .server_runtime_stop(sprintf(
-        "serverRuntimeOnSsoAuthReady[%s]: callback başarısız: %s",
-        label,
-        conditionMessage(e)
-      ))
-    }
-  )
-}
-
 serverRuntimeOnSsoAuthReady <- function(ctx,
                                         callback,
                                         label = "auth_ready",
@@ -577,22 +517,7 @@ serverRuntimeOnSsoAuthReady <- function(ctx,
   if (isTRUE(run_if_ready) &&
       isTRUE(authenticated_now) &&
       isTRUE(ctx$identity$is_auth_ready())) {
-    callback_result <- try(callback(ctx), silent = TRUE)
-
-    if (inherits(callback_result, "try-error")) {
-      callback_condition <- attr(callback_result, "condition")
-      callback_message <- if (inherits(callback_condition, "condition")) {
-        conditionMessage(callback_condition)
-      } else {
-        as.character(callback_result)
-      }
-
-      .server_runtime_stop(sprintf(
-        "serverRuntimeOnSsoAuthReady[%s]: callback başarısız: %s",
-        label,
-        callback_message
-      ))
-    }
+    .server_runtime_invoke_auth_ready_callback(ctx, callback, label)
 
     return(invisible(TRUE))
   }
@@ -603,22 +528,7 @@ serverRuntimeOnSsoAuthReady <- function(ctx,
       isTRUE(ctx$identity$is_auth_ready())
     )
 
-    callback_result <- try(callback(ctx), silent = TRUE)
-
-    if (inherits(callback_result, "try-error")) {
-      callback_condition <- attr(callback_result, "condition")
-      callback_message <- if (inherits(callback_condition, "condition")) {
-        conditionMessage(callback_condition)
-      } else {
-        as.character(callback_result)
-      }
-
-      .server_runtime_stop(sprintf(
-        "serverRuntimeOnSsoAuthReady[%s]: callback başarısız: %s",
-        label,
-        callback_message
-      ))
-    }
+    .server_runtime_invoke_auth_ready_callback(ctx, callback, label)
   }, ignoreInit = ignore_init, once = once)
 
   invisible(observer)

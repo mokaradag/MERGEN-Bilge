@@ -233,6 +233,8 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 450L, 24L)
   assert_file_budget("R/helpers_db_chat_mutations.R", 420L, 24L)
   assert_file_budget("R/helpers_database.R", 320L, 12L)
+  assert_file_budget("R/helpers_server_runtime_contracts.R", 160L, 7L)
+  assert_file_budget("R/server_runtime_context.R", 690L, 18L)
   assert_file_budget("R/helpers_chartlab.R", 577L, 24L)
   assert_file_budget("R/helpers_chartlab_spec.R", 220L, 12L)
   assert_file_budget("R/helpers_files_path.R", 220L, 18L)
