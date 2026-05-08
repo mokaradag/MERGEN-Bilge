@@ -23,7 +23,7 @@ handle_true_streaming_mode <- function(ctx) {
     poll_interval_ms <- 50L
   }
 
-  req_id <- mergen_new_send_message_request_id()
+  req_id <- ctx$request_id %||% mergen_new_send_message_request_id()
 
   active_request_id(req_id)
   stop_generation(FALSE)
@@ -186,12 +186,14 @@ handle_true_streaming_mode <- function(ctx) {
 
     # Premium akıl yürütme kartı aktifse sakin bir geçişle akış durumuna alınır.
     session$sendCustomMessage("premiumReasoningStreamStart", list(
-      id = stream_env$msg_id
+      id = stream_env$msg_id,
+      requestId = stream_env$req_id
     ))
 
     session$sendCustomMessage("initStreamingMessage", list(
       id = stream_env$msg_id,
-      content = ""
+      content = "",
+      requestId = stream_env$req_id
     ))
 
     invisible(NULL)
@@ -279,7 +281,8 @@ handle_true_streaming_mode <- function(ctx) {
       id = stream_env$msg_id,
       html = final_html,
       hasCode = final_hascode,
-      enableActions = TRUE
+      enableActions = TRUE,
+      requestId = stream_env$req_id
     ))
 
     if (!is.null(followups) && length(followups) > 0) {
@@ -320,13 +323,13 @@ handle_true_streaming_mode <- function(ctx) {
 
     tryCatch({
       if (!is.null(values$current_chat_id)) {
-		new_db_id <- save_message_to_db(values$current_chat_id, values$messages[[idx]])
-		values$messages[[idx]]$db_id <- new_db_id
+        new_db_id <- save_message_to_db(values$current_chat_id, values$messages[[idx]])
+        values$messages[[idx]]$db_id <- new_db_id
 
-		if (!is.null(reasoning_trace_value) &&
-			exists("update_message_reasoning_content", mode = "function", inherits = TRUE)) {
-		  try(update_message_reasoning_content(new_db_id, reasoning_trace_value), silent = TRUE)
-		}
+        if (!is.null(reasoning_trace_value) &&
+            exists("update_message_reasoning_content", mode = "function", inherits = TRUE)) {
+          try(update_message_reasoning_content(new_db_id, reasoning_trace_value), silent = TRUE)
+        }
       }
       chat_store_message_in_saved_chats(values, values$messages[[idx]])
       try(ctx$saved_chats_data$refresh(), silent = TRUE)
@@ -402,30 +405,30 @@ handle_true_streaming_mode <- function(ctx) {
     as.numeric(difftime(future_submit_time, istek_baslangici, units = "secs"))
   ))
 
-sse_promise <- tracked_future_promise(
-  task_fn = function() {
-    call_local_llm_sse_worker(
-      chat_history = chat_history_for_sse,
-      current_settings = settings_for_sse,
-      stream_file = stream_file_for_sse,
-      stop_file = stop_file_for_sse
-    )
-  },
-  task_type = "llm_true_streaming",
-  session_token = session$token,
-  meta = list(
-    model = ctx$model_selected
-  ),
-  globals = list(
+  sse_promise <- tracked_future_promise(
+    task_fn = function() {
+      call_local_llm_sse_worker(
+        chat_history = chat_history_for_sse,
+        current_settings = settings_for_sse,
+        stream_file = stream_file_for_sse,
+        stop_file = stop_file_for_sse
+      )
+    },
+    task_type = "llm_true_streaming",
+    session_token = session$token,
+    meta = list(
+      model = ctx$model_selected
+    ),
+    globals = list(
       chat_history_for_sse = chat_history_for_sse,
       settings_for_sse = settings_for_sse,
       stream_file_for_sse = stream_file_for_sse,
       stop_file_for_sse = stop_file_for_sse,
       call_local_llm_sse_worker = call_local_llm_sse_worker,
-	  get_local_model_capabilities = get_local_model_capabilities,
-	  should_omit_temperature = should_omit_temperature,
-	  should_allow_reasoning_fallback = should_allow_reasoning_fallback,
-	  apply_model_request_overrides = apply_model_request_overrides,
+      get_local_model_capabilities = get_local_model_capabilities,
+      should_omit_temperature = should_omit_temperature,
+      should_allow_reasoning_fallback = should_allow_reasoning_fallback,
+      apply_model_request_overrides = apply_model_request_overrides,
       normalize_llm_text_node = normalize_llm_text_node,
       extract_first_nonempty_llm_text = extract_first_nonempty_llm_text,
       extract_llm_text_bundle = extract_llm_text_bundle,
@@ -502,31 +505,31 @@ sse_promise <- tracked_future_promise(
 
           payload_type <- as.character(payload$type %||% "")
 
-			if (identical(payload_type, "stream_debug")) {
-			  debug_text <- decode_stream_delta_payload(payload)
-			  if (nzchar(debug_text)) {
-				log_info(debug_text)
-			  }
-			  next
+          if (identical(payload_type, "stream_debug")) {
+            debug_text <- decode_stream_delta_payload(payload)
+            if (nzchar(debug_text)) {
+              log_info(debug_text)
+            }
+            next
 
-			} else if (identical(payload_type, "delta")) {
-			  delta_text <- decode_stream_delta_payload(payload)
-			  if (!nzchar(delta_text)) {
-				next
-			  }
+          } else if (identical(payload_type, "delta")) {
+            delta_text <- decode_stream_delta_payload(payload)
+            if (!nzchar(delta_text)) {
+              next
+            }
 
-			  stream_env$accumulated_text <- paste0(stream_env$accumulated_text, delta_text)
-			  delta_batch <- c(delta_batch, delta_text)
+            stream_env$accumulated_text <- paste0(stream_env$accumulated_text, delta_text)
+            delta_batch <- c(delta_batch, delta_text)
 
-			  if (!isTRUE(stream_env$first_delta_logged)) {
-				stream_env$first_delta_logged <- TRUE
-				log_info(sprintf(
-				  "[CHAT PERF] İlk delta gözlendi - %.3f sn",
-				  as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
-				))
-			  }
+            if (!isTRUE(stream_env$first_delta_logged)) {
+              stream_env$first_delta_logged <- TRUE
+              log_info(sprintf(
+                "[CHAT PERF] İlk delta gözlendi - %.3f sn",
+                as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+              ))
+            }
 
-			} else if (identical(payload_type, "reasoning_delta")) {
+          } else if (identical(payload_type, "reasoning_delta")) {
             reasoning_text <- decode_stream_delta_payload(payload)
             if (!nzchar(reasoning_text)) {
               next
@@ -542,7 +545,8 @@ sse_promise <- tracked_future_promise(
           session$sendCustomMessage("streamingReasoningDelta", list(
             id = stream_env$msg_id,
             delta = paste0(reasoning_batch, collapse = ""),
-            started = !isTRUE(stream_env$reasoning_stream_started)
+            started = !isTRUE(stream_env$reasoning_stream_started),
+            requestId = stream_env$req_id
           ))
           stream_env$reasoning_stream_started <- TRUE
         }
@@ -560,13 +564,15 @@ sse_promise <- tracked_future_promise(
           if (isTRUE(use_delta_transport)) {
             session$sendCustomMessage("streamingDelta", list(
               id = stream_env$msg_id,
-              delta = paste0(delta_batch, collapse = "")
+              delta = paste0(delta_batch, collapse = ""),
+              requestId = stream_env$req_id
             ))
           } else {
             session$sendCustomMessage("streamingUpdate", list(
               id = stream_env$msg_id,
               text = stream_env$accumulated_text,
-              isPartial = TRUE
+              isPartial = TRUE,
+              requestId = stream_env$req_id
             ))
           }
 
@@ -595,48 +601,50 @@ sse_promise <- tracked_future_promise(
       return(invisible(NULL))
     }
 
-	# Worker dönüşünde reasoning alanı varsa ama polling sırasında stream_env'e
-	# düşmemişse burada geri kazan. Bu özellikle reasoning'in final chunk'ta geldiği
-	# veya <think> ayrıştırmasının worker tarafında tamamlandığı uçlarda DB NULL
-	# kalmasını engeller.
-	result_reasoning <- enc2utf8(normalize_llm_scalar_content(result$reasoning %||% ""))
+    # Worker dönüşünde reasoning alanı varsa ama polling sırasında stream_env'e
+    # düşmemişse burada geri kazan. Bu özellikle reasoning'in final chunk'ta geldiği
+    # veya <think> ayrıştırmasının worker tarafında tamamlandığı uçlarda DB NULL
+    # kalmasını engeller.
+    result_reasoning <- enc2utf8(normalize_llm_scalar_content(result$reasoning %||% ""))
 
-	if (nzchar(result_reasoning)) {
-	  mevcut_reasoning <- enc2utf8(stream_env$accumulated_reasoning %||% "")
+    if (nzchar(result_reasoning)) {
+      mevcut_reasoning <- enc2utf8(stream_env$accumulated_reasoning %||% "")
 
-	  if (!nzchar(mevcut_reasoning)) {
-		stream_env$accumulated_reasoning <- result_reasoning
+      if (!nzchar(mevcut_reasoning)) {
+        stream_env$accumulated_reasoning <- result_reasoning
 
-		session$sendCustomMessage("streamingReasoningDelta", list(
-		  id = stream_env$msg_id,
-		  delta = result_reasoning,
-		  started = !isTRUE(stream_env$reasoning_stream_started)
-		))
-		stream_env$reasoning_stream_started <- TRUE
+        session$sendCustomMessage("streamingReasoningDelta", list(
+          id = stream_env$msg_id,
+          delta = result_reasoning,
+          started = !isTRUE(stream_env$reasoning_stream_started),
+          requestId = stream_env$req_id
+        ))
+        stream_env$reasoning_stream_started <- TRUE
 
-	  } else if (!identical(mevcut_reasoning, result_reasoning) &&
-				 startsWith(result_reasoning, mevcut_reasoning)) {
-		eksik_parca <- substr(
-		  result_reasoning,
-		  nchar(mevcut_reasoning) + 1L,
-		  nchar(result_reasoning)
-		)
+      } else if (!identical(mevcut_reasoning, result_reasoning) &&
+                 startsWith(result_reasoning, mevcut_reasoning)) {
+        eksik_parca <- substr(
+          result_reasoning,
+          nchar(mevcut_reasoning) + 1L,
+          nchar(result_reasoning)
+        )
 
-		if (nzchar(eksik_parca)) {
-		  stream_env$accumulated_reasoning <- result_reasoning
+        if (nzchar(eksik_parca)) {
+          stream_env$accumulated_reasoning <- result_reasoning
 
-		  session$sendCustomMessage("streamingReasoningDelta", list(
-			id = stream_env$msg_id,
-			delta = eksik_parca,
-			started = FALSE
-		  ))
-		}
-	  }
-	}
+          session$sendCustomMessage("streamingReasoningDelta", list(
+            id = stream_env$msg_id,
+            delta = eksik_parca,
+            started = FALSE,
+            requestId = stream_env$req_id
+          ))
+        }
+      }
+    }
 
-	base_final_text <- enc2utf8(normalize_llm_scalar_content(result$content))
-	base_final_text <- strip_planner_text(base_final_text)
-	base_final_text <- append_clickable_sources(base_final_text, result$sources)
+    base_final_text <- enc2utf8(normalize_llm_scalar_content(result$content))
+    base_final_text <- strip_planner_text(base_final_text)
+    base_final_text <- append_clickable_sources(base_final_text, result$sources)
 
     followup_questions <- build_followup_suggestions(
       ctx$user_message_text,

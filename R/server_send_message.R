@@ -165,12 +165,18 @@ sendMessageInit <- function(
     display_text <- if (nchar(user_message_text) > 0) user_message_text else "Seçili dosyaların özeti istendi."
     user_prompt_msg <- add_message_fn(display_text, "user")
 
+    req_id <- mergen_new_send_message_request_id()
+
     values$typing <- TRUE
     thinking_panel_plan <- mergen_build_thinking_panel_plan(
       tool_family = tool_family,
       settings_data = settings_data
     )
-    mergen_show_send_message_thinking_wrapper(session, thinking_panel_plan)
+    mergen_show_send_message_thinking_wrapper(
+      session,
+      thinking_panel_plan,
+      request_id = req_id
+    )
 
     # Durdur butonunu göster
     shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-stop');")
@@ -622,7 +628,8 @@ sendMessageInit <- function(
         followup_tools = followup_tools,
         fallback_followup_tool = fallback_followup_tool,
         request_start_time = request_start_time,
-        stream_profile = stream_profile
+        stream_profile = stream_profile,
+        request_id = req_id
       )
 
       handle_true_streaming_mode(true_stream_ctx)
@@ -638,7 +645,6 @@ sendMessageInit <- function(
       settings_for_llm <- current_settings
       settings_for_llm$model_selection <- model_selected
 
-      req_id <- mergen_new_send_message_request_id()
       active_request_id(req_id)
       stop_generation(FALSE)
       values$is_sending <- TRUE

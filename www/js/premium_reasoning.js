@@ -18,6 +18,7 @@
   // idle | preparing | live | streaming | completed | interrupted | error
   var state = "idle";
   var msgId = null;
+  var requestId = null;
   var model = "";
   var reasoningBuffer = "";
   var startedAt = null;
@@ -101,6 +102,17 @@
   function cssEscape(s) {
     if (window.CSS && window.CSS.escape) return window.CSS.escape(s);
     return String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+  }
+
+  function sanitizeRequestId(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).trim();
+  }
+
+  function payloadMatchesActiveRequest(payload) {
+    var payloadRequestId = sanitizeRequestId(payload && payload.requestId);
+    if (!payloadRequestId || !requestId) return true;
+    return payloadRequestId === requestId;
   }
 
   function buildPanelHtml(opts) {
@@ -274,6 +286,7 @@
     cleanup(true);
     state = "preparing";
     msgId = null;
+    requestId = sanitizeRequestId(config && config.requestId);
     reasoningBuffer = "";
     firstReasoningAt = null;
     userScrolledReasoningUp = false;
@@ -337,7 +350,7 @@
   }
 
   function onReasoningDelta(payload) {
-    if (!payload) return;
+    if (!payload || !payloadMatchesActiveRequest(payload)) return;
     var text = (payload.delta != null) ? String(payload.delta) : "";
     if (!text) return;
 
@@ -411,6 +424,8 @@
   }
 
   function onStreamStart(payload) {
+    if (!payloadMatchesActiveRequest(payload)) return;
+
     var id = payload && payload.id ? payload.id : null;
     // Düşünen model değilse bu handler zaten anlamsız; panel yoksa sessizce çık.
     if (state === "idle") return;
@@ -427,6 +442,7 @@
       simulatedMode = false;
       simulatedPhaseIndex = 0;
       reasoningBuffer = "";
+      requestId = null;
       state = "idle";
       msgId = id || null;
       return;
@@ -463,6 +479,7 @@
       var hSim = getHost();
       if (hSim) hSim.classList.remove("rp-host");
       reasoningBuffer = "";
+      requestId = null;
       firstReasoningAt = null;
       startedAt = null;
       userScrolledReasoningUp = false;
@@ -500,6 +517,7 @@
     var h = getHost();
     if (h) h.classList.remove("rp-host");
     reasoningBuffer = "";
+    requestId = null;
     firstReasoningAt = null;
     startedAt = null;
     userScrolledReasoningUp = false;
@@ -567,6 +585,7 @@
     }
     if (!keepBuffer) {
       reasoningBuffer = "";
+      requestId = null;
       firstReasoningAt = null;
       startedAt = null;
       userScrolledReasoningUp = false;

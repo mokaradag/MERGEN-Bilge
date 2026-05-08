@@ -6,10 +6,21 @@ $(document).ready(function() {
         if (!messageDiv.__streamingState) {
             messageDiv.__streamingState = {
                 accumulatedText: '',
-                renderTimer: null
+                renderTimer: null,
+                requestId: '',
+                finalized: false
             };
         }
         return messageDiv.__streamingState;
+    }
+
+    function normalizeRequestId(value) {
+        return (typeof value === 'string') ? value : '';
+    }
+
+    function isStaleStreamingPayload(state, data) {
+        const payloadRequestId = normalizeRequestId(data && data.requestId);
+        return !!(state.requestId && payloadRequestId && state.requestId !== payloadRequestId);
     }
 
     function getStreamingContentDiv(messageDiv) {
@@ -63,6 +74,8 @@ $(document).ready(function() {
 
             const state = getStreamingState(messageDiv);
             state.accumulatedText = data.content || '';
+            state.requestId = normalizeRequestId(data.requestId);
+            state.finalized = false;
             if (state.renderTimer) {
                 clearTimeout(state.renderTimer);
                 state.renderTimer = null;
@@ -84,6 +97,8 @@ $(document).ready(function() {
         if (!messageDiv) return;
 
         const state = getStreamingState(messageDiv);
+        if (state.finalized || isStaleStreamingPayload(state, data)) return;
+
         const delta = typeof data.delta === 'string' ? data.delta : '';
 
         if (!delta.length) return;
@@ -98,6 +113,8 @@ $(document).ready(function() {
         if (!messageDiv) return;
 
         const state = getStreamingState(messageDiv);
+        if (state.finalized || isStaleStreamingPayload(state, data)) return;
+
         state.accumulatedText = typeof data.text === 'string' ? data.text : (state.accumulatedText || '');
 
         if (data.isPartial) {
@@ -128,6 +145,10 @@ $(document).ready(function() {
         if (!messageDiv) return;
 
         const state = getStreamingState(messageDiv);
+        if (isStaleStreamingPayload(state, data) || state.finalized) return;
+
+        state.finalized = true;
+
         if (state.renderTimer) {
             clearTimeout(state.renderTimer);
             state.renderTimer = null;

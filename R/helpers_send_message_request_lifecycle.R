@@ -173,7 +173,9 @@ mergen_build_thinking_panel_plan <- function(tool_family, settings_data) {
   )
 }
 
-mergen_show_send_message_thinking_wrapper <- function(session, panel_plan) {
+mergen_show_send_message_thinking_wrapper <- function(session,
+                                                      panel_plan,
+                                                      request_id = NULL) {
   if (!isTRUE(panel_plan$show_thinking_wrapper)) {
     return(invisible(FALSE))
   }
@@ -202,7 +204,8 @@ mergen_show_send_message_thinking_wrapper <- function(session, panel_plan) {
   session$sendCustomMessage("premiumReasoningStart", list(
     model = panel_plan$panel_model_id,
     classicFallback = panel_plan$classic_indicator_requested,
-    simulated = panel_plan$panel_simulated
+    simulated = panel_plan$panel_simulated,
+    requestId = request_id
   ))
 
   invisible(TRUE)
