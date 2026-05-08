@@ -129,6 +129,46 @@ test_that("module_claude_code.R doküman özetleme akışını lifecycle helper'
   )
 })
 
+test_that("module_claude_code.R normal streaming finalization request id ile korunur", {
+  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
+
+  expect_true(
+    grepl(
+      'finalize_streaming\\(\\s*"Tamamlandı"\\s*,\\s*"check-circle"\\s*,\\s*"#81C784"\\s*,\\s*sure\\s*,\\s*request_id\\s*=\\s*env\\$request_id',
+      txt,
+      perl = TRUE
+    ),
+    info = "Normal başarılı streaming finalization stale poll callback'lere karşı env$request_id ile korunmalıdır."
+  )
+
+  expect_true(
+    grepl(
+      'finalize_streaming\\(\\s*"Hata"\\s*,\\s*"exclamation-triangle"\\s*,\\s*"#E57373"\\s*,\\s*sure\\s*,\\s*request_id\\s*=\\s*env\\$request_id',
+      txt,
+      perl = TRUE
+    ),
+    info = "Normal hata streaming finalization stale poll callback'lere karşı env$request_id ile korunmalıdır."
+  )
+
+  expect_false(
+    grepl(
+      'finalize_streaming\\(\\s*"Tamamlandı"\\s*,\\s*"check-circle"\\s*,\\s*"#81C784"\\s*,\\s*sure\\s*\\)',
+      txt,
+      perl = TRUE
+    ),
+    info = "Başarılı streaming finalization request_id parametresiz kalmamalıdır."
+  )
+
+  expect_false(
+    grepl(
+      'finalize_streaming\\(\\s*"Hata"\\s*,\\s*"exclamation-triangle"\\s*,\\s*"#E57373"\\s*,\\s*sure\\s*\\)',
+      txt,
+      perl = TRUE
+    ),
+    info = "Hata streaming finalization request_id parametresiz kalmamalıdır."
+  )
+})
+
 test_that("Bilge Yolaç stop observer UI finalization'ı poll observer'a bırakmaz", {
   txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
 

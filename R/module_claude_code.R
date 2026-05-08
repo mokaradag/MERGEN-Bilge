@@ -681,7 +681,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             generated_downloads = olusan_dosyalar
           )
 
-          finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure)
+          finalize_streaming("Tamamlandı", "check-circle", "#81C784", sure, request_id = env$request_id)
         } else {
           # Hata durumu
           stderr_metin <- tryCatch(ensure_utf8(proc$read_all_error()), error = function(e) "")
@@ -706,7 +706,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             )
           )
 
-          finalize_streaming("Hata", "exclamation-triangle", "#E57373", sure)
+          finalize_streaming("Hata", "exclamation-triangle", "#E57373", sure, request_id = env$request_id)
         }
 
         # Geçmişe ekle

@@ -146,6 +146,62 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   )
 })
 
+test_that("near-limit runtime files do not silently consume remaining headroom", {
+  repo_root <- .find_repo_root_maint_ratchet()
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(repo_root)
+
+  maint_env <- new.env(parent = globalenv())
+  report <- source(
+    "tests/scripts/maintainability_report.R",
+    encoding = "UTF-8",
+    local = maint_env
+  )$value
+
+  assert_current_budget <- function(path, max_lines, max_functions) {
+    row <- report[
+      grepl(
+        paste0("(^|/)", gsub("([.])", "\\\\\\1", path), "$"),
+        report$file,
+        perl = TRUE
+      ),
+      ,
+      drop = FALSE
+    ]
+
+    expect_equal(
+      nrow(row),
+      1L,
+      info = sprintf("%s maintainability raporunda tek satır olarak görünmelidir.", path)
+    )
+
+    expect_true(
+      row$lines[1] <= max_lines,
+      info = sprintf("%s mevcut satır baş boşluğunu tüketti: %d > %d.", path, row$lines[1], max_lines)
+    )
+
+    expect_true(
+      row$functions[1] <= max_functions,
+      info = sprintf("%s mevcut fonksiyon baş boşluğunu tüketti: %d > %d.", path, row$functions[1], max_functions)
+    )
+  }
+
+  assert_current_budget("R/module_claude_code.R", 796L, 11L)
+  assert_current_budget("R/server_send_message.R", 794L, 14L)
+  assert_current_budget("R/module_admin_hata_analizi.R", 792L, 9L)
+  assert_current_budget("R/module_image_generation.R", 765L, 22L)
+  assert_current_budget("R/helpers_llm_sse.R", 762L, 20L)
+  assert_current_budget("R/module_admin_geri_bildirim.R", 760L, 5L)
+  assert_current_budget("R/module_admin_yanit_analizi.R", 753L, 4L)
+  assert_current_budget("R/server_module_wiring.R", 735L, 14L)
+  assert_current_budget("R/server_ai_expert_handlers.R", 726L, 23L)
+  assert_current_budget("R/module_file_manager.R", 725L, 13L)
+  assert_current_budget("R/module_ai_expert.R", 686L, 22L)
+  assert_current_budget("R/helpers_mcp_tools.R", 535L, 20L)
+  assert_current_budget("R/module_chartlab.R", 532L, 20L)
+})
+
 test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {
   repo_root <- .find_repo_root_maint_ratchet()
   old_wd <- getwd()
