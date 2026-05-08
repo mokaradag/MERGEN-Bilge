@@ -160,6 +160,8 @@ Eklenen test altyapısı:
 - `tests/testthat/helper_e2e_race_harness.R`
 - `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
 
+Son hızlı eylem istemci güvenliği güncellemesi de aynı dilimin kapsamındadır. Karşılama ekranındaki hızlı eylem düğmeleri, aynı eylem/model çiftine çok kısa aralıkla yapılan çift tıklamaları Shiny olayına dönüştürmeden istemci tarafında bastırır; farklı bir hızlı eyleme geçiş ise engellenmez. Bu davranış `www/js/shiny_message_handlers.js` içindeki `_handleQuickAction` işleyicisinin debounce sözleşmesi ve `tests/testthat/test-e2e-quick-actions-streaming-regression.R` içindeki deterministik istemci koruması testleriyle korunur.
+
 Son medya/ses yarış durumu dilimi de aynı test mimarisine eklenmiştir:
 
 - `tests/testthat/helper_e2e_media_audio_harness.R`
@@ -214,6 +216,8 @@ Bu ilk regresyon dilimi özellikle hızlı eylemler ve gerçek SSE akış yaşam
 - hızlı eylem tıklamasının kendiliğinden LLM çağrısı başlatmaması,
 - hızlı eylem intro mesajının DB’ye, kayıtlı söyleşilere veya model bağlamına eklenmemesi,
 - hızlı çift tıklamada tek aktif araç moduna yakınsama,
+- aynı hızlı eylem/model çiftine yapılan çok hızlı çift tıklamanın tarayıcı tarafında Shiny olayına dönüşmeden bastırılması,
+- farklı hızlı eyleme hızlı geçişin korunması ve son seçilen araç/model durumunun geçerli kalması,
 - hızlı eylemin hemen ardından gönderilen kullanıcı isteminin yalnızca tek LLM isteği üretmesi,
 - SSE görünür delta metni ile reasoning delta metninin ayrı kalması,
 - aynı istek için stream finalization işleminin yalnızca bir kez gerçekleşmesi,

@@ -122,6 +122,8 @@ Current files:
 - `tests/testthat/helper_e2e_race_harness.R`
 - `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
 
+The quick-action/streaming slice also protects the browser-side duplicate-click boundary for welcome quick-action buttons. `www/js/shiny_message_handlers.js` must debounce the same action/model pair before calling `Shiny.setInputValue('quick_template', ...)`, temporarily disable the clicked button with `aria-disabled`, and then restore it after the debounce window. The deterministic harness in `helper_e2e_race_harness.R` models this client gate, and `test-e2e-quick-actions-streaming-regression.R` checks both the state behavior and the static JS token order so the debounce guard remains before the Shiny event.
+
 Additional media/audio race files:
 
 - `tests/testthat/helper_e2e_media_audio_harness.R`
@@ -180,6 +182,8 @@ The first slice protects these contracts:
 - quick-action clicks must not trigger an LLM request by themselves,
 - quick-action intro messages must not be persisted to DB, added to saved chats, or included in model context,
 - rapid quick-action clicks must converge to one active tool mode,
+- the same quick-action/model pair double-clicked within the client debounce window must be suppressed before it becomes a Shiny event,
+- rapidly switching to a different quick action must still be allowed and the last selected tool/model state must win,
 - a prompt sent immediately after a quick-action click must produce exactly one user request,
 - SSE visible deltas and reasoning deltas must remain separate,
 - stream finalization must be idempotent for a request,
