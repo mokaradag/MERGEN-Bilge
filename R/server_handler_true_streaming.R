@@ -185,16 +185,8 @@ handle_true_streaming_mode <- function(ctx) {
     )
 
     # Premium akıl yürütme kartı aktifse sakin bir geçişle akış durumuna alınır.
-    session$sendCustomMessage("premiumReasoningStreamStart", list(
-      id = stream_env$msg_id,
-      requestId = stream_env$req_id
-    ))
-
-    session$sendCustomMessage("initStreamingMessage", list(
-      id = stream_env$msg_id,
-      content = "",
-      requestId = stream_env$req_id
-    ))
+    session$sendCustomMessage("premiumReasoningStreamStart", list(id = stream_env$msg_id, requestId = stream_env$req_id))
+    session$sendCustomMessage("initStreamingMessage", list(id = stream_env$msg_id, content = "", requestId = stream_env$req_id))
 
     invisible(NULL)
   }
