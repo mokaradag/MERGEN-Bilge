@@ -189,6 +189,10 @@ Son premium reasoning / thinking UI regresyon dilimi de aynı deterministik test
 - `tests/testthat/helper_e2e_reasoning_ui_harness.R`
 - `tests/testthat/test-e2e-premium-reasoning-ui-regression.R`
 
+Son streaming istemci request-id güvenliği regresyon dilimi de aynı deterministik test mimarisine eklenmiştir:
+
+- `tests/testthat/test-e2e-streaming-client-request-id-regression.R`
+
 Bu kayıtlı söyleşi/geçmiş/galeri dilimi; gerçek DB, gerçek LLM, gerçek görsel üretim endpoint’i veya tarayıcı otomasyonu gerektirmeden kayıtlı söyleşi sıralamasını, aynı request için final yanıtın yalnızca bir kez kalıcılaştırılmasını, eski kayıtlı söyleşi yüklenirken TTS’in otomatik tetiklenmemesini, mevcut söyleşi silindikten sonra stale load olayının yoksayılmasını, geçersiz/erken kullanıcı kimliğiyle geçmiş ve galeri refresh akışlarının mevcut geçerli state’i silmemesini ve galeri yenilemenin kullanıcı kapsamını korumasını sınar. Türkçe başlık ve içerikler bu test diliminde özellikle korunur.
 
 Bu sağlık paneli dilimi; gerçek DB, gerçek LLM, gerçek TTS/STT, gerçek görsel üretim endpoint’i, tarayıcı otomasyonu veya public internet gerektirmeden Sistem Durumu panelinin offline ve güvenli refresh sözleşmelerini sınar. Panel çıktılarında gizli değerlerin yalnızca tanımlı/eksik biçiminde gösterilmesini, public endpoint yapılandırmalarında ağ çağrısı yapılmadan uyarı/atlandı sonucuna dönülmesini, aynı refresh sonucunun ikinci kez uygulanmamasını, eski refresh sonuçlarının yeni panel durumunu ezmemesini ve `R/helpers_health_checks.R`, `R/module_health.R`, `ui.R`, `www/js/health_dashboard.js` içindeki kritik health dashboard wiring/hook sözleşmelerinin korunmasını denetler.
@@ -196,6 +200,8 @@ Bu sağlık paneli dilimi; gerçek DB, gerçek LLM, gerçek TTS/STT, gerçek gö
 Bu boot/karşılama dilimi; gerçek DB, gerçek LLM, gerçek TTS/STT, gerçek görsel üretim endpoint’i, tarayıcı otomasyonu veya public internet gerektirmeden uygulamanın non-SSO test modunda güvenli biçimde source edilebilmesini, `MERGEN_RUN_APP=false` ve `MERGEN_DISABLE_FUTURES=true` kapılarının korunmasını, `create_mergen_app()` çıktısının geçerli Shiny uygulaması olmasını, modern karşılama ekranının hızlı işlem kartları ve son konuşmalarla render edilmesini, hızlı işlem/prompt gönderim/client restore yollarının birbirinden ayrık kalmasını ve browser/localStorage restore akışının eski sohbet yüklerken TTS veya müzik tetiklememesini sınar. Türkçe karakterlerin karşılama HTML’i ve statik JS/R sözleşmelerinde bozulmadan kalması bu dilimde özellikle korunur.
 
 Bu premium reasoning / thinking UI dilimi; gerçek tarayıcı DOM’u, gerçek LLM, gerçek SSE endpoint’i, gerçek DB veya public internet gerektirmeden düşünen modellerin canlı akıl yürütme paneli yaşam döngüsünü deterministik olarak sınar. Testler; panelin aynı istek için yinelenmemesini, yeni istek başladığında eski reasoning callback’lerinin yoksayılmasını, stream başlangıcında panelin doğru mesaj balonuna taşınmasını, reset/finalization akışının idempotent kalmasını, simulated reasoning fazlarının gerçek reasoning olarak kalıcılaştırılmamasını ve görünür yanıt içeriği ile reasoning izinin birbirine karışmamasını korur. Windows VM üzerinde kodlama uyarılarını önlemek için statik JS/R sözleşme kontrolleri ASCII-safe/byte-safe yaklaşımı izler.
+
+Bu streaming istemci request-id güvenliği dilimi; gerçek tarayıcı DOM’u, gerçek LLM, gerçek SSE endpoint’i, gerçek DB veya public internet gerektirmeden true SSE ve premium reasoning istemci mesajlarının aynı istek kimliğiyle korunmasını sınar. Testler; `premiumReasoningStart`, `premiumReasoningStreamStart`, `initStreamingMessage`, `streamingReasoningDelta`, `streamingDelta`, `streamingUpdate` ve `finalizeStreamingMessage` mesajlarında `requestId` sözleşmesinin korunmasını, eski/stale callback’lerin yeni aktif isteği kirletmemesini ve istemci tarafı finalization işleminin aynı istek için yinelenmemesini denetler. Bu dilim, server tarafındaki request-id/finalization korumalarını tarayıcı mesaj katmanına bağlayan statik ve byte-safe sözleşme kontrolüdür.
 
 Bu dosya bağlamı dilimi; gerçek DB, gerçek kalıcı dosya deposu, gerçek LLM veya tarayıcı otomasyonu gerektirmeden Dosya Yönetimi yükleme/bağlama durumunu, özetleme modu uzantı kısıtlarını, MCP Excel-only ve tek Excel dosyası kuralını, geçersiz/erken kullanıcı kimliğiyle refresh atlamayı, stale refresh sonuçlarının yeni state’i ezmemesini ve tarayıcı yenilemesi sonrası stale attachment ID’lerinin güvenle yok sayılmasını sınar. Türkçe dosya adları bu akışta özellikle korunur.
 
@@ -268,6 +274,7 @@ Odak test koşumu:
 
     testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")
     testthat::test_file("tests/testthat/test-e2e-premium-reasoning-ui-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-streaming-client-request-id-regression.R")
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
     testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")

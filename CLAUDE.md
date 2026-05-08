@@ -151,6 +151,10 @@ Additional premium reasoning / thinking UI race files:
 - `tests/testthat/helper_e2e_reasoning_ui_harness.R`
 - `tests/testthat/test-e2e-premium-reasoning-ui-regression.R`
 
+Additional streaming client request-id safety file:
+
+- `tests/testthat/test-e2e-streaming-client-request-id-regression.R`
+
 The saved-chat/history/gallery slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real LLM, real image-generation endpoint, TTS/STT endpoint, or public internet. It models saved-chat ordering, final-answer persistence idempotency, stale delete/load events, loaded-chat TTS suppression, history refresh cache safety, and user-scoped image gallery refresh behavior through local state stubs.
 
 The health dashboard slice follows the same deterministic testthat strategy. It must not require a real browser, real production DB, real LLM, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models rendered health tab snapshots, secret redaction, public endpoint skip behavior before network probing, idempotent refresh application, stale refresh suppression, timestamp/tooltip cleanup message contracts, and static wiring contracts for R/helpers_health_checks.R, R/module_health.R, ui.R, and www/js/health_dashboard.js.
@@ -158,6 +162,8 @@ The health dashboard slice follows the same deterministic testthat strategy. It 
 The boot/welcome slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real LLM, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models non-SSO test boot safety, `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` guard behavior, valid `create_mergen_app()` construction, modern welcome-screen rendering, quick-action button wiring, recent-chat ordering, prompt-send separation, browser/localStorage restore wiring, and the requirement that loading old chat state must not trigger TTS or music side effects. It also protects UTF-8 Turkish text in rendered welcome HTML and static client contracts.
 
 The premium reasoning / thinking UI slice follows the same deterministic `testthat` strategy. It must not require a real browser DOM, real production DB, real LLM, real SSE endpoint, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models PremiumReasoning-style request-scoped panel lifecycle behavior through local state stubs and protects duplicate/flicker prevention, stale reasoning callback suppression, stream-start migration into the assistant bubble, idempotent reset/finalization, simulated reasoning cleanup, and strict separation between visible answer text and persisted reasoning traces.
+
+The streaming client request-id safety slice follows the same deterministic `testthat` strategy. It must not require a real browser DOM, real production DB, real LLM, real SSE endpoint, real TTS/STT endpoint, real image-generation endpoint, or public internet. It protects the wiring between server-side request ids and browser custom-message handlers by checking that `premiumReasoningStart`, `premiumReasoningStreamStart`, `initStreamingMessage`, `streamingReasoningDelta`, `streamingDelta`, `streamingUpdate`, and `finalizeStreamingMessage` carry or honor `requestId` where required. It also protects client-side stale callback suppression and duplicate finalization guards so old async stream/reasoning callbacks cannot contaminate a newer active request.
 
 The file-context slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real persistent file store, real LLM, TTS/STT endpoint, image endpoint, or public internet. It models File Manager upload/context state, summarization-mode extension restrictions, MCP Excel-only attachment behavior, single-Excel enforcement, invalid or early user-id refresh skips, stale refresh request protection, and browser/client restore with stale attachment IDs through local state stubs.
 
@@ -260,10 +266,21 @@ The premium reasoning / thinking UI slice protects these contracts:
 - visible answer text and reasoning trace text must remain separate through finalization,
 - static JS/R wiring contracts for `premiumReasoningStart`, `premiumReasoningStreamStart`, `streamingReasoningDelta`, `finalizeStreamingMessage`, `reasoning_content`, and `reasoning_trace_value` must remain present.
 
+The streaming client request-id safety slice protects these contracts:
+
+- `send_message()` must create one request id and pass it into both the reasoning shell and true-streaming path,
+- `handle_true_streaming_mode()` must prefer `ctx$request_id` and only generate a new request id as a fallback,
+- true-streaming browser messages must include `requestId` for `premiumReasoningStreamStart`, `initStreamingMessage`, `streamingReasoningDelta`, `streamingDelta`, `streamingUpdate`, and `finalizeStreamingMessage`,
+- `www/js/streaming_manager.js` must store the active message request id, ignore stale streaming payloads, and finalize a message at most once,
+- `www/js/premium_reasoning.js` must track the active reasoning request id and ignore stale reasoning deltas or stream-start callbacks,
+- server-side request lifecycle guards and client-side stale callback guards must remain aligned,
+- maintainability ratchet limits must remain strict; do not loosen thresholds to make these checks pass.
+
 Focused validation:
 
     testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")
     testthat::test_file("tests/testthat/test-e2e-premium-reasoning-ui-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-streaming-client-request-id-regression.R")
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
     testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
