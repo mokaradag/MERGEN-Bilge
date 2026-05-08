@@ -479,6 +479,7 @@ serverBindChatEngineRuntime <- function(input,
                                         tts_visualizer,
                                         stt_data,
                                         saved_chats_data,
+                                        feedback_modal = NULL,
                                         send_message_fns,
                                         send_message_proxy,
                                         api_config,
@@ -642,7 +643,7 @@ serverBindChatEngineRuntime <- function(input,
     send_message_fn = send_message_proxy,
     stop_generation = state$stop_generation,
     reset_chat_state = reset_chat_state,
-    feedback_modal = NULL
+    feedback_modal = feedback_modal
   )
 
   tts_handlers <- tts_handlers_init_fn(

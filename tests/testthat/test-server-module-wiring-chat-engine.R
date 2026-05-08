@@ -117,8 +117,13 @@ test_that("serverBindChatEngineRuntime sohbet motorunu tek sözleşmeden bağlar
   observed$chat_actions <- FALSE
   observed$send_message_init <- FALSE
   observed$tts_called <- NULL
+  observed$feedback_modal <- NULL
 
   send_message_fns <- new.env(parent = emptyenv())
+  
+  fake_feedback_modal <- list(
+    open = function(...) "opened"
+  )
 
   chat_runtime_init_fn <- function(...) {
     list(
@@ -152,7 +157,9 @@ test_that("serverBindChatEngineRuntime sohbet motorunu tek sözleşmeden bağlar
   }
 
   chat_actions_init_fn <- function(...) {
+    args <- list(...)
     observed$chat_actions <- TRUE
+    observed$feedback_modal <- args$feedback_modal
     invisible(NULL)
   }
 
@@ -197,6 +204,7 @@ test_that("serverBindChatEngineRuntime sohbet motorunu tek sözleşmeden bağlar
     tts_visualizer = list(),
     stt_data = list(),
     saved_chats_data = list(),
+    feedback_modal = fake_feedback_modal,
     send_message_fns = send_message_fns,
     send_message_proxy = function(...) "proxy",
     api_config = list(),
@@ -215,6 +223,8 @@ test_that("serverBindChatEngineRuntime sohbet motorunu tek sözleşmeden bağlar
   expect_true(observed$misc)
   expect_true(observed$chat_actions)
   expect_true(observed$send_message_init)
+  
+  expect_identical(observed$feedback_modal, fake_feedback_modal)
 
   expect_true(is.function(result$send_message))
   expect_identical(send_message_fns$send_message, result$send_message)
