@@ -111,7 +111,7 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the server runtime contract helper extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `796`, and maximum function count `24`. Do not loosen these limits without an explicit reason. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
+Current maintainability ratchet baseline after the latest race-condition hardening is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum file length `796`, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
 
 ### E2E/race regression test foundation contract
 
@@ -382,6 +382,32 @@ tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
+
+### Bilge Yolaç streaming finalization request-id contract
+
+Bilge Yolaç normal streaming finalization must remain request-scoped. `R/module_claude_code.R` creates a `run_request_id`, stores it in `rv$active_request_id`, and carries it through `stream_env$request_id`. Any normal streaming completion path that calls `finalize_streaming()` for `Tamamlandı` or `Hata` must pass `request_id = env$request_id`.
+
+This requirement is not cosmetic. `finalize_streaming()` intentionally accepts a request id so stale poll/callback results cannot clear the runtime state of a newer active Bilge Yolaç run. Do not reintroduce request-id-less normal completion or error finalization calls such as `finalize_streaming("Tamamlandı", ...)` or `finalize_streaming("Hata", ...)` without the request id.
+
+The stop and timeout paths must also remain request-scoped. The normal success/error paths now follow the same stale-run safety boundary.
+
+Protected by:
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation:
+- `testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")`
+- `source("tests/testthat.R", encoding = "UTF-8")`
+
+Validation after edits:
+- These are documentation-only changes.
+- Ensure README.md remains Turkish and UTF-8.
+- Ensure CLAUDE.md remains English and UTF-8.
+- Run a diff and confirm only README.md and CLAUDE.md changed.
+- Do not run or change runtime code.
+- Do not delete any existing documentation content.
 
 ### Bilge Yolaç directory-listing contract
 
