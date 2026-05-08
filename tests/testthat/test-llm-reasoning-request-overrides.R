@@ -32,6 +32,24 @@
 
   repo_root <- resolve_repo_root_for_tests()
 
+  inherited_log_dir <- Sys.getenv("MERGEN_LOG_DIR", unset = "")
+  if (nzchar(inherited_log_dir)) {
+    dir.create(inherited_log_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  test_logs_dir <- file.path(tempdir(), "mergen-reasoning-override-logs")
+  dir.create(test_logs_dir, recursive = TRUE, showWarnings = FALSE)
+
+  if (requireNamespace("logger", quietly = TRUE)) {
+    logger::log_appender(
+      logger::appender_file(file.path(
+        test_logs_dir,
+        sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
+      )),
+      index = 1
+    )
+  }
+
   if (!exists("%||%", mode = "function", inherits = TRUE)) {
     `%||%` <<- function(x, y) if (is.null(x)) y else x
   }
@@ -51,6 +69,7 @@
   Sys.setenv(
     MERGEN_RUN_APP = "false",
     MERGEN_DISABLE_FUTURES = "true",
+    MERGEN_LOG_DIR = test_logs_dir,
     LOCAL_LLM_ENDPOINT = Sys.getenv("LOCAL_LLM_ENDPOINT", "http://test.local/v1"),
     DB_DSN = Sys.getenv("DB_DSN", "test-dsn"),
     AI_KEYS_MASTER = Sys.getenv("AI_KEYS_MASTER", "test-master-key-0123456789")
