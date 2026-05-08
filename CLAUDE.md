@@ -157,6 +157,11 @@ Additional streaming client request-id safety file:
 
 - `tests/testthat/test-e2e-streaming-client-request-id-regression.R`
 
+Additional SSO identity readiness race files:
+
+- `tests/testthat/helper_e2e_sso_identity_harness.R`
+- `tests/testthat/test-e2e-sso-identity-readiness-regression.R`
+
 The saved-chat/history/gallery slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real LLM, real image-generation endpoint, TTS/STT endpoint, or public internet. It models saved-chat ordering, final-answer persistence idempotency, stale delete/load events, loaded-chat TTS suppression, history refresh cache safety, and user-scoped image gallery refresh behavior through local state stubs.
 
 The health dashboard slice follows the same deterministic testthat strategy. It must not require a real browser, real production DB, real LLM, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models rendered health tab snapshots, secret redaction, public endpoint skip behavior before network probing, idempotent refresh application, stale refresh suppression, timestamp/tooltip cleanup message contracts, and static wiring contracts for R/helpers_health_checks.R, R/module_health.R, ui.R, and www/js/health_dashboard.js.
@@ -166,6 +171,8 @@ The boot/welcome slice follows the same deterministic `testthat` strategy. It mu
 The premium reasoning / thinking UI slice follows the same deterministic `testthat` strategy. It must not require a real browser DOM, real production DB, real LLM, real SSE endpoint, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models PremiumReasoning-style request-scoped panel lifecycle behavior through local state stubs and protects duplicate/flicker prevention, stale reasoning callback suppression, stream-start migration into the assistant bubble, idempotent reset/finalization, simulated reasoning cleanup, and strict separation between visible answer text and persisted reasoning traces.
 
 The streaming client request-id safety slice follows the same deterministic `testthat` strategy. It must not require a real browser DOM, real production DB, real LLM, real SSE endpoint, real TTS/STT endpoint, real image-generation endpoint, or public internet. It protects the wiring between server-side request ids and browser custom-message handlers by checking that `premiumReasoningStart`, `premiumReasoningStreamStart`, `initStreamingMessage`, `streamingReasoningDelta`, `streamingDelta`, `streamingUpdate`, and `finalizeStreamingMessage` carry or honor `requestId` where required. It also protects client-side stale callback suppression and duplicate finalization guards so old async stream/reasoning callbacks cannot contaminate a newer active request.
+
+The SSO identity readiness slice follows the same deterministic `testthat` strategy. It must not require a real browser, real Keycloak server, real production DB, real LLM, real TTS/STT endpoint, real image-generation endpoint, or public internet. It models refreshable File Manager and Image Gallery module wiring while the session still has a temporary `user_id = 0`, verifies that user-scoped refresh happens only after SSO authentication and identity readiness are complete, verifies that already-ready SSO sessions refresh immediately without waiting for a stale observer event, and verifies that local non-SSO mode is not changed by the SSO auth-ready hook.
 
 The file-context slice follows the same deterministic `testthat` strategy. It must not require a real browser, real production DB, real persistent file store, real LLM, TTS/STT endpoint, image endpoint, or public internet. It models File Manager upload/context state, summarization-mode extension restrictions, MCP Excel-only attachment behavior, single-Excel enforcement, invalid or early user-id refresh skips, stale refresh request protection, and browser/client restore with stale attachment IDs through local state stubs.
 
@@ -280,11 +287,23 @@ The streaming client request-id safety slice protects these contracts:
 - server-side request lifecycle guards and client-side stale callback guards must remain aligned,
 - maintainability ratchet limits must remain strict; do not loosen thresholds to make these checks pass.
 
+The SSO identity readiness slice protects these contracts:
+
+- refreshable modules must not run user-scoped refresh work with temporary or invalid user ids such as `0`, empty, `unknown`, or `NULL`,
+- File Manager must receive `auth_ready_provider = identity$is_auth_ready` before being attached as a refreshable module,
+- File Manager and Image Gallery refresh hooks must wait for SSO authentication and identity readiness when SSO is still in progress,
+- if SSO authentication and identity readiness are already complete before observer registration, the refresh callback must run immediately instead of waiting for an event that already happened,
+- local non-SSO mode must remain a no-op for SSO auth-ready refresh hooks,
+- `R/server_module_wiring.R` must keep the File Manager and Image Gallery auth-ready refresh wiring visible and testable,
+- the slice must remain test-only under `tests/testthat/` and must not require updates to `global.R` or runtime source order,
+- maintainability ratchet limits must remain strict; do not loosen thresholds to make these checks pass.
+
 Focused validation:
 
     testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")
     testthat::test_file("tests/testthat/test-e2e-premium-reasoning-ui-regression.R")
     testthat::test_file("tests/testthat/test-e2e-streaming-client-request-id-regression.R")
+    testthat::test_file("tests/testthat/test-e2e-sso-identity-readiness-regression.R")
     testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
     testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")
     testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
@@ -321,6 +340,8 @@ Full strict validation remains:
 The saved-chat/history/gallery E2E slice is also test-only and must remain under `tests/testthat/`. It should not require updates to `global.R`, should not be sourced by runtime code, and should not affect the runtime maintainability ratchet because `tests/scripts/maintainability_report.R` evaluates runtime files only.
 
 The health dashboard E2E slice is also test-only and must remain under tests/testthat/. It should not require updates to global.R, should not be sourced by runtime code, and should not affect the runtime maintainability ratchet because tests/scripts/maintainability_report.R evaluates runtime files only.
+
+The SSO identity readiness E2E slice is also test-only and must remain under `tests/testthat/`. It should not require updates to `global.R`, should not be sourced by runtime code, and should not affect the runtime maintainability ratchet because `tests/scripts/maintainability_report.R` evaluates runtime files only.
 
 Do not replace this foundation with Playwright, Cypress, shinytest2, or another browser-level dependency unless the dependency is explicitly available in the offline/on-prem deployment environment or vendored/installed through an approved offline process. Browser-level tests may be added later as a separate layer, but they should not weaken or remove these deterministic contract tests.
 
