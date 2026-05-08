@@ -111,7 +111,55 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the latest Bilge Yolaç lifecycle hardening is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `794` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
+Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
+
+### send_message prompting and file-context contract
+
+The central send_message runtime path is intentionally split so `R/server_send_message.R` does not become the owner of every prompt, style, and uploaded-file context detail.
+
+Preserve this source order in `global.R`:
+
+    safe_source("R/helpers_send_message_request_lifecycle.R", encoding = "UTF-8")
+    safe_source("R/helpers_send_message_core.R",              encoding = "UTF-8")
+    safe_source("R/helpers_send_message_prompting.R",         encoding = "UTF-8")
+
+Responsibilities:
+
+* `R/helpers_send_message_request_lifecycle.R`: request ids, stale/current/stopped request checks, prompt snapshots, deferred chat creation decisions, welcome cleanup, and thinking-panel shell setup.
+* `R/helpers_send_message_core.R`: tool-family routing, send-message cleanup/abort helpers, stream profile selection, and MCP session-file preparation.
+* `R/helpers_send_message_prompting.R`: citation instruction construction, character/style/system prompt assembly, SQL system prompt merging, MCP Excel uploaded-file context prompts, and MCP-disabled uploaded-file context prompts.
+* `R/server_send_message.R`: request orchestration, SSO/user guards, chat/message lifecycle, mode dispatch, API/model setup, and streaming/non-streaming handoff.
+
+Do not move prompt/style/file-context assembly back into `R/server_send_message.R`. Keeping this boundary creates maintainability headroom below the 800-line threshold and reduces the risk that future prompt changes accidentally alter request lifecycle or streaming state.
+
+Race-condition and behavior contracts:
+
+* `send_message()` must continue to create a single request id and pass it to both the thinking/reasoning shell and the true-streaming path.
+* SQL analysis must merge the style instruction into an existing system message instead of adding a second competing system message.
+* MCP Excel prompts must continue to require file tools such as `analyze_uploaded_file`, `get_column_statistics`, or `sql_query_uploaded_file` instead of letting the model guess file contents.
+* MCP-disabled uploaded-file prompts must continue to use stored summaries or safe file excerpts and must still end with a Turkish `Kaynakça:` section.
+* The helper extraction must not change user-visible Turkish text, filename display behavior, citation behavior, or source-order contracts.
+* Avoid introducing local variables that shadow globally important helpers such as `is_thinking_model()` in the send-message runtime path.
+
+Protected by:
+
+    tests/testthat/test-send-message-prompting-contract.R
+    tests/testthat/test-send-message-request-lifecycle-contract.R
+    tests/testthat/test-send-message-maintainability-ratchet.R
+    tests/testthat/test-source-manifest-contract.R
+    tests/testthat/test-maintainability-ratchet.R
+    tests/testthat/test-e2e-quick-actions-streaming-regression.R
+    tests/testthat/test-e2e-streaming-client-request-id-regression.R
+
+Focused validation:
+
+    testthat::test_file("tests/testthat/test-send-message-prompting-contract.R")
+    testthat::test_file("tests/testthat/test-send-message-request-lifecycle-contract.R")
+    testthat::test_file("tests/testthat/test-send-message-maintainability-ratchet.R")
+    testthat::test_file("tests/testthat/test-source-manifest-contract.R")
+    testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+    source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
+    source("tests/testthat.R", encoding = "UTF-8")
 
 ### E2E/race regression test foundation contract
 
@@ -313,6 +361,7 @@ Focused validation:
 Related focused tests:
 
     testthat::test_file("tests/testthat/test-send-message-request-lifecycle-contract.R")
+    testthat::test_file("tests/testthat/test-send-message-prompting-contract.R")
     testthat::test_file("tests/testthat/test-llm-stream-io-contract.R")
     testthat::test_file("tests/testthat/test-streaming-should-stop.R")
     testthat::test_file("tests/testthat/test-sse-worker-export-contract.R")
