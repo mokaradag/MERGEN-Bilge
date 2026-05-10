@@ -61,6 +61,39 @@ A new helper/module is not “done” unless:
 - dependencies are loaded before it,
 - `ui.R` / `server.R` wiring is updated where necessary.
 
+### Source manifest validation contract
+
+`global.R` remains the runtime source manifest, and the existing `safe_source(..., encoding = "UTF-8")` load order is intentionally preserved. A manifest validation layer now runs before the first manifest `safe_source()` call and fails early with clear boot errors when it detects:
+
+- missing source files,
+- unintended duplicate source entries,
+- critical source-order regressions.
+
+The validation helpers intentionally read `global.R` with raw-byte/UTF-8-safe logic so Windows VM and SSO deployments do not regress on Turkish text or mojibake-sensitive environments. Do not replace this with a broad `lapply(source(...))` rewrite, automatic directory sourcing, alphabetical sourcing, package-style discovery, or any runtime source-order inference.
+
+When adding, moving, or splitting a runtime file:
+
+- keep the existing `safe_source()` style and explicit order,
+- add the file to the correct manifest layer,
+- update `source_manifest_required_order` only for genuinely critical dependency boundaries,
+- keep comments added to R code in Turkish,
+- preserve `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` test boot behavior.
+
+Protected by:
+
+- `tests/testthat/test-source-manifest-contract.R`
+- `tests/testthat/test-e2e-boot-welcome-regression.R`
+- `tests/testthat/test-production-contracts.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+- `testthat::test_file("tests/testthat/test-production-contracts.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")`
+
 ### API model configuration contract
 
 API model/endpoint/tool-mode helper logic is intentionally split from the main API configuration file.

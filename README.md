@@ -68,6 +68,8 @@ Ana Söyleşi hoş geldin ekranında ayrıca **Son Konuşmalar** bölümü bulun
 
 Ana Söyleşi mesaj gönderme hattı son bakım güncellemesiyle daha ayrık hâle getirilmiştir. `R/server_send_message.R` artık istek yaşam döngüsü, araç yönlendirme, model/API hazırlığı ve streaming/non-streaming dispatch akışına odaklanır. Karakter stili, kaynakça talimatı, sistem promptu birleştirme ve yüklü dosya bağlamı hazırlığı `R/helpers_send_message_prompting.R` içine taşınmıştır. Bu ayrım, kullanıcıya görünen davranışı değiştirmeden mesaj gönderme yolunda bakım baş boşluğu oluşturur ve SQL analizi, MCP Excel ve MCP kapalı dosya bağlamı sözleşmelerini odak testlerle korur.
 
+Son kaynak manifesti güvenliği güncellemesinde `global.R` içindeki mevcut `safe_source()` yükleme sırası değiştirilmeden korunmuş; ancak manifest, ilk uygulama kaynak zinciri çalışmadan önce erken doğrulama katmanına alınmıştır. Bu doğrulama eksik dosyaları, yinelenen kaynak kayıtlarını ve kritik kaynak sırası bozulmalarını kullanıcı arayüzü kısmen açılmadan açık hata mesajlarıyla yakalar. UTF-8 güvenli okuma ve `safe_source()` yedek kodlama davranışı korunur; Windows VM/SSO uyumluluğu ile `MERGEN_RUN_APP=false` ve `MERGEN_DISABLE_FUTURES=true` test boot davranışı değişmez. Bu sözleşme `tests/testthat/test-source-manifest-contract.R`, `tests/testthat/test-e2e-boot-welcome-regression.R` ve `tests/testthat/test-production-contracts.R` ile korunur.
+
 ### Söyleşi Yönetimi
 Üç alt bölümden oluşur:
 - **Söyleşi Geçmişi**
