@@ -6,11 +6,31 @@
 # ==============================================================================
 
 .server_runtime_contracts_path <- file.path("R", "helpers_server_runtime_contracts.R")
-if (!exists("is_server_runtime_context", mode = "function", inherits = TRUE) &&
+.server_runtime_contract_helpers <- c(
+  "is_server_runtime_context",
+  ".server_runtime_stop",
+  ".server_runtime_require_context",
+  ".server_runtime_require_values",
+  ".server_runtime_require_functions",
+  ".server_runtime_invoke_auth_ready_callback"
+)
+
+.server_runtime_missing_contract_helpers <- .server_runtime_contract_helpers[!vapply(
+  .server_runtime_contract_helpers,
+  function(fn_name) exists(fn_name, mode = "function", inherits = TRUE),
+  logical(1)
+)]
+
+if (length(.server_runtime_missing_contract_helpers) > 0L &&
     file.exists(.server_runtime_contracts_path)) {
   source(.server_runtime_contracts_path, encoding = "UTF-8", local = globalenv())
 }
-rm(.server_runtime_contracts_path)
+
+rm(
+  .server_runtime_contracts_path,
+  .server_runtime_contract_helpers,
+  .server_runtime_missing_contract_helpers
+)
 
 serverRuntimeRequireIdentity <- function(ctx,
                                          required_values = character(0),
