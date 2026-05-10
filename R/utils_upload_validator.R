@@ -23,7 +23,7 @@
 # ".." ile kaçış yapılmaya çalışılmıştır.
 .upload_has_traversal <- function(name) {
   if (!nzchar(name)) return(TRUE)
-  if (grepl("\\x00", name, useBytes = TRUE)) return(TRUE)
+  if (grepl("[[:cntrl:]]", name, useBytes = TRUE)) return(TRUE)
   if (grepl("\\.\\.", name, fixed = FALSE)) return(TRUE)
   if (grepl("/", name, fixed = TRUE)) return(TRUE)
   if (grepl("\\\\", name, fixed = FALSE)) return(TRUE)
