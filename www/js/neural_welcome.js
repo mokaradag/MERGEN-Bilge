@@ -163,14 +163,14 @@ window.NeuralWelcomeAnimation = {
   }
 };
 
-// Hoşgeldin ekranı göründüğünde sinir ağı animasyonunu başlat
-if (window.Shiny) {
-  Shiny.addCustomMessageHandler('showNeuralAnimation', function(message) {
-    setTimeout(() => {
-      if (window.NeuralWelcomeAnimation) window.NeuralWelcomeAnimation.init();
-    }, 120);
-  });
-}
+// Hoşgeldin ekranı göründüğünde sinir ağı animasyonunu başlatan ortak yardımcı.
+window.startNeuralWelcomeAnimation = function(message) {
+  setTimeout(() => {
+    if (window.NeuralWelcomeAnimation && typeof window.NeuralWelcomeAnimation.init === 'function') {
+      window.NeuralWelcomeAnimation.init();
+    }
+  }, 120);
+};
 
 // Sohbet mesajlarını izle ve sohbet başladığında animasyonu sonlandır
 document.addEventListener('DOMContentLoaded', function() {

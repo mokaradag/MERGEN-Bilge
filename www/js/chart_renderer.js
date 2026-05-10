@@ -141,8 +141,13 @@ $(document).ready(function() {
         window.renderChartTimeout = setTimeout(() => {
              // Sohbet kapsayıcısı içindeki çizilmemiş grafikleri çiz
              if (window.renderSavedCharts) {
-               window.renderSavedCharts('chat_content_container'); 
-               window.renderSavedCharts('chat_content_wrapper'); // Yedek kapsayıcı
+               var chartRoot = document.getElementById('chat_content_container') ||
+                               document.querySelector('.chat-container');
+               if (chartRoot && chartRoot.id) {
+                 window.renderSavedCharts(chartRoot.id);
+               } else if (chartRoot && chartRoot.classList && chartRoot.classList.contains('chat-container')) {
+                 window.renderSavedCharts('chat-container');
+               }
              }
         }, 100);
       }

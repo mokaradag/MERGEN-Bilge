@@ -154,6 +154,10 @@ $(document).ready(function() {
   // Burada tekrar tanımlamıyoruz, çünkü Shiny her mesaj tipi için yalnızca bir işleyici destekler.
 
   Shiny.addCustomMessageHandler('showNeuralAnimation', function(message) {
+    if (typeof window.startNeuralWelcomeAnimation === 'function') {
+      window.startNeuralWelcomeAnimation(message || {});
+      return;
+    }
     setTimeout(function() {
       if (window.NeuralWelcomeAnimation && typeof window.NeuralWelcomeAnimation.init === 'function') {
         window.NeuralWelcomeAnimation.init();
