@@ -82,9 +82,13 @@ window.checkScrollPosition = function() {
 
 // Karakter sayacını güncelle
 window.updateCharCounter = function() {
-  const chatInputEl = document.getElementById('user_input') ||
-                     document.querySelector('.chat-input') ||
-                     document.querySelector('textarea[name="user_input"]');
+  const chatInputEl = (typeof window.getMergenChatInputElement === 'function')
+    ? window.getMergenChatInputElement()
+    : (
+      document.getElementById('user_input') ||
+      document.querySelector('.chat-input') ||
+      document.querySelector('textarea[name="user_input"]')
+    );
   const counterEl = document.getElementById('char_counter');
   if (!counterEl) return;
 

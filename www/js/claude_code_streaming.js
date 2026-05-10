@@ -466,12 +466,25 @@
   // ARAÇ SONUCU GÜNCELLEME
   // Mevcut araç bloğunun sonuç alanını günceller.
   // ---------------------------------------------------------------------------
+  function findToolBlockById(target, toolId) {
+    if (!target || !toolId) return null;
+
+    var blocks = target.querySelectorAll('.cc-tool-block[data-tool-id]');
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].getAttribute('data-tool-id') === toolId) {
+        return blocks[i];
+      }
+    }
+
+    return null;
+  }
+
   function handleToolResultChunk(target, data) {
     var aracId = data.toolId || '';
     if (!aracId) return;
 
     // Araç bloğunu ID ile bul
-    var block = target.querySelector('.cc-tool-block[data-tool-id="' + aracId + '"]');
+    var block = findToolBlockById(target, aracId);
     if (!block) return;
 
     // Durum ikonunu güncelle (çalışıyor -> tamamlandı)

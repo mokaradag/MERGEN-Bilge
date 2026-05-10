@@ -166,6 +166,28 @@ $(document).ready(function() {
   });
 
   // Diğer fonksiyonlar
+  function getCapabilityChatInput() {
+    if (typeof window.getMergenChatInputElement === 'function') {
+      return window.getMergenChatInputElement();
+    }
+    return document.querySelector(
+      window.MERGEN_CHAT_INPUT_SELECTOR || '#user_input, .chat-input, textarea[name="user_input"]'
+    );
+  }
+
+  function submitCapabilityMessage(message) {
+    const inputEl = getCapabilityChatInput();
+    if (!inputEl) return;
+
+    inputEl.value = message;
+    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const sendBtn = document.getElementById('send_stop_btn');
+    if (sendBtn) {
+      sendBtn.click();
+    }
+  }
+
 	window.sendCapabilityMessage = function(message, model) {
 	  if (model) {
 		console.log('Setting model to:', model);
@@ -177,28 +199,13 @@ $(document).ready(function() {
 		  });
 
 		  setTimeout(function() {
-			if (document.getElementById('user_input')) {
-			  document.getElementById('user_input').value = message;
-			  document.getElementById('user_input').dispatchEvent(new Event('input'));
-
-			  setTimeout(function() {
-				if (document.getElementById('send_stop_btn')) {
-				  document.getElementById('send_stop_btn').click();
-				}
-			  }, 100);
-			}
+        submitCapabilityMessage(message);
 		  }, 200);
 		} else {
 		  console.warn('Shiny is not available yet');
 		}
 	  } else {
-		if (document.getElementById('user_input')) {
-		  document.getElementById('user_input').value = message;
-		  document.getElementById('user_input').dispatchEvent(new Event('input'));
-		  if (document.getElementById('send_stop_btn')) {
-			document.getElementById('send_stop_btn').click();
-		  }
-		}
+      submitCapabilityMessage(message);
 	  }
 	};
   

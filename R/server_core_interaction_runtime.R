@@ -176,7 +176,7 @@ serverBindCoreInteractionRuntime <- function(input,
   session_timeout_server_fn(
     "session_timeout",
     idle_minutes    = 30,
-    activity_inputs = c("user_input", "send_btn", "send_prompt_from_js")
+    activity_inputs = c("user_input", "send_stop_btn", "send_prompt_from_js")
   )
 
   file_manager_runtime <- file_manager_runtime_fn(

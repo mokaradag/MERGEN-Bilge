@@ -12,6 +12,11 @@ $(document).ready(function() {
     return document.querySelector(CHAT_INPUT_SELECTOR);
   }
 
+  window.MERGEN_CHAT_INPUT_SELECTOR = CHAT_INPUT_SELECTOR;
+  window.getMergenChatInputElement = function(context) {
+    return getChatInputElement(context);
+  };
+
   function getChatInputValue($input) {
     if (!$input || !$input.length) return '';
     return $input.val() || '';
