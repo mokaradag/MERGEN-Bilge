@@ -197,6 +197,9 @@ Do not move prompt/style/file-context assembly back into `R/server_send_message.
 Race-condition and behavior contracts:
 
 * `send_message()` must continue to create a single request id and pass it to both the thinking/reasoning shell and the true-streaming path.
+* Send-message cleanup and abort paths must remain request-scoped when a request id is available. A stale async callback must not remove a newer request’s `#typing-animation-wrapper`.
+* `mergen_remove_typing_wrapper_if_safe()` is the focused helper for this guard. Keep it injectable in tests through its remove-UI function argument and do not replace it with unconditional `removeUI("#typing-animation-wrapper")`.
+* `send_message()` must bind cleanup/abort closures to the request id created for that invocation before later async paths can call cleanup.
 * SQL analysis must merge the style instruction into an existing system message instead of adding a second competing system message.
 * MCP Excel prompts must continue to require file tools such as `analyze_uploaded_file`, `get_column_statistics`, or `sql_query_uploaded_file` instead of letting the model guess file contents.
 * MCP-disabled uploaded-file prompts must continue to use stored summaries or safe file excerpts and must still end with a Turkish `Kaynakça:` section.
@@ -227,12 +230,23 @@ Focused validation:
 
 The repository now has a deterministic E2E-style regression foundation for quick actions and true-streaming request lifecycle behavior. It intentionally uses `testthat` plus local state/service stubs instead of adding a browser automation dependency. This keeps the suite compatible with offline/on-prem Windows VM environments and avoids real DB, real LLM, TTS/STT, image endpoint, or public internet requirements.
 
+The latest behavioral coverage pass also adds focused unit/integration checks for quick-action routing, LLM response parsing, request-scoped send-message cleanup, File Manager storage policy, Bilge Yolaç document-summary context reset, and SSO runtime bootstrap isolation. These tests are intentionally fast, deterministic, and service-free: they must not require a real DB, real LLM endpoint, real SSO/Keycloak server, browser automation, API keys, or internet access.
+
 Current files:
 
 - `tests/testthat/helper_e2e_race_harness.R`
 - `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
 
 The quick-action/streaming slice also protects the browser-side duplicate-click boundary for welcome quick-action buttons. `www/js/shiny_message_handlers.js` must debounce the same action/model pair before calling `Shiny.setInputValue('quick_template', ...)`, temporarily disable the clicked button with `aria-disabled`, and then restore it after the debounce window. The deterministic harness in `helper_e2e_race_harness.R` models this client gate, and `test-e2e-quick-actions-streaming-regression.R` checks both the state behavior and the static JS token order so the debounce guard remains before the Shiny event.
+
+Additional behavioral contract tests:
+
+- `tests/testthat/test-quick-action-routing.R`: verifies every quick-action id resolves to the expected tool family, setting flag, and configured model, and that applying an action leaves only one tool flag active.
+- `tests/testthat/test-llm-content-reasoning-fallback.R`: verifies `message$content`, `delta$content`, `text`, nested text nodes, `reasoning_content`, and reasoning fallback enabled/disabled behavior.
+- `tests/testthat/test-send-message-request-lifecycle-contract.R`: verifies current/stale/stopped request states and request-scoped typing-wrapper cleanup.
+- `tests/testthat/test-file-manager-policy-contract.R`: verifies upload policy helpers, user id normalization, user-specific upload folder derivation, and invalid-user persistence prevention.
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`: verifies stale/active Bilge Yolaç finalization and document-summary CLI context reset.
+- `tests/testthat/test-e2e-sso-identity-readiness-regression.R`: verifies refreshable modules wait for SSO identity readiness and can be run individually without depending on full-suite bootstrap side effects.
 
 Additional media/audio race files:
 
@@ -405,6 +419,7 @@ The SSO identity readiness slice protects these contracts:
 - if SSO authentication and identity readiness are already complete before observer registration, the refresh callback must run immediately instead of waiting for an event that already happened,
 - local non-SSO mode must remain a no-op for SSO auth-ready refresh hooks,
 - `R/server_module_wiring.R` must keep the File Manager and Image Gallery auth-ready refresh wiring visible and testable,
+- `R/server_runtime_context.R` must bootstrap all helper functions from `R/helpers_server_runtime_contracts.R`, not only `is_server_runtime_context()`. Individually run tests must not depend on helper functions left in the global environment by earlier full-suite tests.
 - the slice must remain test-only under `tests/testthat/` and must not require updates to `global.R` or runtime source order,
 - maintainability ratchet limits must remain strict; do not loosen thresholds to make these checks pass.
 
@@ -423,6 +438,10 @@ Focused validation:
 Related focused tests:
 
     testthat::test_file("tests/testthat/test-send-message-request-lifecycle-contract.R")
+    testthat::test_file("tests/testthat/test-quick-action-routing.R")
+    testthat::test_file("tests/testthat/test-llm-content-reasoning-fallback.R")
+    testthat::test_file("tests/testthat/test-file-manager-policy-contract.R")
+    testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")
     testthat::test_file("tests/testthat/test-send-message-prompting-contract.R")
     testthat::test_file("tests/testthat/test-llm-stream-io-contract.R")
     testthat::test_file("tests/testthat/test-streaming-should-stop.R")
@@ -1469,6 +1488,8 @@ Responsibilities:
 Do not move `sync_file_to_context`, `append_uploaded_file_row`, `remove_file_by_name`, `process_uploaded_file`, or `fm_create_refresh_from_user_folder()` back into `R/module_file_manager.R`. New File Manager state mutation helpers should either belong in `R/helpers_file_manager_state_runtime.R` or in a narrower helper if a clearly separate responsibility emerges.
 
 Bulk upload must not mutate persisted File Manager state before SSO/auth identity is ready. Keep the auth-readiness guard in the upload path and keep File Manager auth readiness injected through the validated identity provider rather than direct `session$userData$auth_initialized` checks.
+
+File Manager storage policy tests now cover the user-specific upload directory and invalid-user persistence boundary. `fm_create_server_storage_helpers()` should keep deriving upload folders under the configured MCP base as `user_<id>`, while `ensure_persisted_upload_index()` must return without registering files for invalid user ids such as `0`, `unknown`, empty, or NULL. Do not weaken this guard to make refresh or upload flows appear successful.
 
 Protected by:
 ```text
@@ -3062,6 +3083,8 @@ When the user's prompt or the working directory contains binary office documents
 6. For document summarization tasks, `summarize_claude_code_documents_with_local_llm()` calls the local LLM directly and writes the summary to `dosya_aciklamalari.txt` in the output directory.
 
 After a run completes (both document-summary and standard streaming paths), `collect_claude_code_generated_downloads()` scans tool uses for written files, copies them into `bilge_yolac_downloads/`, and `format_claude_code_generated_downloads_html()` renders them as clickable download cards (`.cc-generated-file-card` CSS class) appended to the assistant message.
+
+Document-summary runs must not resume or inherit Claude Code CLI session context. `cc_reset_document_summary_session_context()` clears `rv$cli_session_id`, resets `rv$conversation_context`, and sets `rv$current_runtime_model` before the local document-summary path starts. Keep this behavior separate from normal CLI streaming/resume behavior and protected by `tests/testthat/test-claude-code-run-lifecycle-contract.R`.
 
 ### bilge_yolac_downloads/ directory
 
