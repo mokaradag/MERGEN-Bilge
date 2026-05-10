@@ -18,12 +18,20 @@
   as.numeric(mb) * 1024 * 1024
 }
 
+# Dosya adında ASCII denetim baytı olup olmadığını bayt düzeyinde denetler.
+# POSIX [[:cntrl:]] + useBytes bazı Windows/R yerellerinde geçerli UTF-8 Türkçe
+# karakterleri yanlışlıkla riskli sayabildiği için burada ham bayt kontrolü yapılır.
+.upload_has_control_bytes <- function(name) {
+  bytes <- charToRaw(as.character(name)[1])
+  any(as.integer(bytes) %in% c(0:31, 127))
+}
+
 # Dosya adını normalleştirerek path traversal denemesi olup olmadığını anlar.
 # Beklenen: basename(name) ile birebir eşleşmesi. Aksi takdirde "/", "\" veya
 # ".." ile kaçış yapılmaya çalışılmıştır.
 .upload_has_traversal <- function(name) {
   if (!nzchar(name)) return(TRUE)
-  if (grepl("[[:cntrl:]]", name, useBytes = TRUE)) return(TRUE)
+  if (.upload_has_control_bytes(name)) return(TRUE)
   if (grepl("\\.\\.", name, fixed = FALSE)) return(TRUE)
   if (grepl("/", name, fixed = TRUE)) return(TRUE)
   if (grepl("\\\\", name, fixed = FALSE)) return(TRUE)
