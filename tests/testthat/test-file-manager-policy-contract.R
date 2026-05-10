@@ -30,7 +30,31 @@
   helper_env <- new.env(parent = globalenv())
 
   source(
+    file.path(repo_root, "R", "utils_common.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
+  source(
+    file.path(repo_root, "R", "utils_upload_validator.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
+  source(
     file.path(repo_root, "R", "helpers_file_manager_policy.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
+  source(
+    file.path(repo_root, "R", "helpers_file_manager_context_policy.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
+  source(
+    file.path(repo_root, "R", "helpers_file_manager_refresh_guard.R"),
     encoding = "UTF-8",
     local = helper_env
   )
@@ -92,6 +116,86 @@ test_that("file manager uzantı politikası korunur", {
 
   expect_true(all(c("xlsx", "xls", "csv", "json", "py", "html") %in%
                     env$fm_normal_allowed_extensions()))
+})
+
+test_that("özetleme upload politikası Excel dosyasını reddeder ve UTF-8 belge adını kabul eder", {
+  env <- .load_file_manager_policy_helpers()
+  allowed <- env$fm_resolve_allowed_extensions(
+    generate_message = TRUE,
+    summarization_mode = TRUE
+  )
+
+  expect_false("xlsx" %in% allowed)
+  expect_false("xls" %in% allowed)
+
+  xlsx_file <- tempfile("fm_summary_", fileext = ".xlsx")
+  writeLines("x", xlsx_file, useBytes = TRUE)
+  on.exit(unlink(xlsx_file, force = TRUE), add = TRUE)
+
+  rejected <- env$validate_uploaded_file(
+    xlsx_file,
+    filename = "bütçe.xlsx",
+    allowed_ext = allowed
+  )
+
+  expect_false(rejected$ok)
+  expect_equal(rejected$code, "ext_not_allowed")
+
+  pdf_file <- tempfile("fm_summary_", fileext = ".pdf")
+  writeLines("x", pdf_file, useBytes = TRUE)
+  on.exit(unlink(pdf_file, force = TRUE), add = TRUE)
+
+  accepted <- env$validate_uploaded_file(
+    pdf_file,
+    filename = "İğdır_özeti.pdf",
+    allowed_ext = allowed
+  )
+
+  expect_true(accepted$ok)
+  expect_null(accepted$code)
+})
+
+test_that("MCP Excel bağlam temizliği non-Excel ve fazla Excel seçimlerini kaldırır", {
+  env <- .load_file_manager_policy_helpers()
+
+  file_contents <- list(
+    pdf1 = list(name = "notlar.pdf"),
+    xlsx1 = list(name = "veri.xlsx"),
+    xls1 = list(name = "plan.xls")
+  )
+
+  files_in_context <- list(
+    pdf1 = TRUE,
+    xlsx1 = TRUE,
+    xls1 = TRUE,
+    ghost = TRUE
+  )
+
+  plan <- env$fm_plan_mcp_context_cleanup(
+    file_contents = file_contents,
+    files_in_context = files_in_context
+  )
+
+  expect_identical(plan$keep_ids, "xlsx1")
+  expect_setequal(plan$stale_ids, "ghost")
+  expect_setequal(plan$non_excel_ids, "pdf1")
+  expect_setequal(plan$excess_ids, "xls1")
+  expect_setequal(plan$remove_ids, c("ghost", "pdf1", "xls1"))
+  expect_true(plan$removed_any)
+  expect_true(plan$excess_removed)
+})
+
+test_that("file manager refresh guard eski refresh sonucunun yeni state'i ezmesini engeller", {
+  env <- .load_file_manager_policy_helpers()
+
+  guard <- env$fm_create_refresh_request_guard()
+  old_request <- guard$next_id()
+  new_request <- guard$next_id()
+
+  expect_false(guard$is_latest(old_request))
+  expect_true(guard$is_latest(new_request))
+  expect_false(guard$is_latest(NA_integer_))
+  expect_false(guard$is_latest("gecersiz"))
 })
 
 test_that("file manager upload limiti sayısal ve deterministiktir", {

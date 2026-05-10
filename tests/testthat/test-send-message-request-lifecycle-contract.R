@@ -75,6 +75,39 @@ test_that("typing wrapper cleanup stale istekte yeni wrapper'ı kaldırmaz", {
   expect_identical(removed_selectors, "#typing-animation-wrapper")
 })
 
+test_that("stale cleanup yeni request wrapper'ını kaldırmadan state temizler", {
+  values <- new.env(parent = emptyenv())
+  values$typing <- TRUE
+
+  reset_count <- 0L
+  remove_count <- 0L
+
+  active_request_id <- function() "req_newer"
+
+  reset_chat_state_fn <- function() {
+    reset_count <<- reset_count + 1L
+    invisible(TRUE)
+  }
+
+  remove_ui_fn <- function(selector, immediate = FALSE) {
+    remove_count <<- remove_count + 1L
+    invisible(TRUE)
+  }
+
+  mergen_cleanup_send_message(
+    values = values,
+    reset_chat_state_fn = reset_chat_state_fn,
+    remove_typing_wrapper = TRUE,
+    active_request_id = active_request_id,
+    req_id = "req_old",
+    remove_ui_fn = remove_ui_fn
+  )
+
+  expect_false(values$typing)
+  expect_identical(reset_count, 1L)
+  expect_identical(remove_count, 0L)
+})
+
 test_that("aktif isteğin cleanup akışı typing durumunu temizler ve wrapper'ı kaldırır", {
   values <- new.env(parent = emptyenv())
   values$typing <- TRUE

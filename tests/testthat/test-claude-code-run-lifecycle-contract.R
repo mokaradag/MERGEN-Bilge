@@ -105,6 +105,37 @@ test_that("cc_finalize_if_active stale finalize çağrısını yoksayar", {
   expect_identical(rv$last_finalize_request_id, "newer-request")
 })
 
+test_that("cc_observe_dir_if_active stale dizin yenilemesini yoksayar", {
+  env <- .source_cc_run_lifecycle_for_test()
+
+  rv <- new.env(parent = emptyenv())
+  env$cc_mark_active_run(rv, "active-run")
+
+  observed_dirs <- character(0)
+  observe_dir_contents <- function(dizin) {
+    observed_dirs <<- c(observed_dirs, dizin)
+    invisible(TRUE)
+  }
+
+  expect_false(env$cc_observe_dir_if_active(
+    rv = rv,
+    request_id = "stale-run",
+    observe_dir_contents = observe_dir_contents,
+    dizin = "eski"
+  ))
+
+  expect_identical(observed_dirs, character(0))
+
+  expect_true(env$cc_observe_dir_if_active(
+    rv = rv,
+    request_id = "active-run",
+    observe_dir_contents = observe_dir_contents,
+    dizin = "guncel"
+  ))
+
+  expect_identical(observed_dirs, "guncel")
+})
+
 test_that("doküman özetleme yolu CLI oturum bağlamını temizler", {
   env <- .source_cc_run_lifecycle_for_test()
 

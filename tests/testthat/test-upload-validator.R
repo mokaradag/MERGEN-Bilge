@@ -102,3 +102,22 @@ test_that("validate_uploaded_file Türkçe dosya adını korur", {
   )
   expect_true(sonuc$ok)
 })
+
+test_that("validate_uploaded_file geçersiz UTF-8 dosya adını reddeder", {
+  f <- .make_dummy_file(size_bytes = 64L, filename = "normal.txt")
+  on.exit(unlink(dirname(f), recursive = TRUE, force = TRUE))
+
+  bad_byte <- rawToChar(as.raw(0xff))
+  Encoding(bad_byte) <- "UTF-8"
+  bad_name <- paste0(bad_byte, ".txt")
+  Encoding(bad_name) <- "UTF-8"
+
+  sonuc <- validate_uploaded_file(
+    f,
+    filename = bad_name,
+    allowed_ext = c("txt")
+  )
+
+  expect_false(sonuc$ok)
+  expect_equal(sonuc$code, "bad_encoding")
+})

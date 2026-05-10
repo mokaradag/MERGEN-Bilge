@@ -174,3 +174,33 @@ test_that("her hızlı işlem uygulandığında yalnızca tek araç bayrağı ak
     expect_identical(state$llm_calls, 0L)
   }
 })
+
+test_that("hızlı işlem config içinde yinelenen id, aile veya araç bayrağı yoktur", {
+  config <- e2e_regression_config()
+  all_cfg <- config$tool_mode_config
+  expected <- .quick_action_expected_routes()
+
+  collect_field <- function(field) {
+    vapply(all_cfg, function(cfg) cfg[[field]] %||% "", character(1))
+  }
+
+  quick_action_ids <- collect_field("quick_action_id")
+  families <- collect_field("family")
+  setting_flags <- collect_field("setting_flag")
+  model_ids <- collect_field("model_id")
+
+  expect_false(anyDuplicated(quick_action_ids[nzchar(quick_action_ids)]) > 0L)
+  expect_false(anyDuplicated(families[nzchar(families)]) > 0L)
+  expect_false(anyDuplicated(setting_flags[nzchar(setting_flags)]) > 0L)
+
+  expect_setequal(quick_action_ids, expected$action_id)
+  expect_setequal(families, expected$family)
+  expect_setequal(setting_flags, expected$setting_flag)
+
+  for (model_id in model_ids) {
+    expect_true(
+      model_id %in% unname(config$local_models) || identical(model_id, "dall-e-3"),
+      info = sprintf("Beklenmeyen hızlı işlem modeli: %s", model_id)
+    )
+  }
+})

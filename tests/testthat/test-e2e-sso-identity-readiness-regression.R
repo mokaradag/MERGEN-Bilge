@@ -118,6 +118,44 @@ test_that("SSO refreshable modules wait for real user id before first refresh", 
   expect_identical(refresh_log$reasons(), c("auth_ready", "refresh"))
 })
 
+test_that("SSO authenticated olsa bile auth_ready olmadan refresh çalışmaz", {
+  runtime <- e2e_sso_new_runtime_context(
+    user_id = 0L,
+    auth_ready = FALSE,
+    authenticated = TRUE,
+    sso_active = TRUE
+  )
+
+  observer_probe <- e2e_sso_new_observer_probe()
+  refresh_log <- e2e_sso_new_refresh_log()
+
+  fm_runtime <- serverBindFileManagerRuntime(
+    runtime_ctx = runtime$ctx,
+    new_file_trigger = function() NULL,
+    session_files_reactive = function() list(),
+    mcp_enabled_reactive = function() FALSE,
+    settings_data = list(),
+    user_id_provider = runtime$ctx$identity$current_user_id_provider,
+    file_manager_server_fn = e2e_sso_file_manager_server_stub(refresh_log),
+    observe_event_fn = observer_probe$observe_event,
+    req_fn = e2e_sso_req
+  )
+
+  runtime$ctx <- fm_runtime$runtime_ctx
+
+  expect_identical(observer_probe$count(), 1L)
+  expect_identical(refresh_log$count(), 0L)
+
+  expect_error(
+    observer_probe$trigger_all(),
+    "e2e_sso_req_failed",
+    fixed = TRUE
+  )
+
+  expect_identical(refresh_log$count(), 0L)
+  expect_identical(runtime$ctx$identity$current_user_id_provider(), 0L)
+})
+
 test_that("already-ready SSO refreshes immediately without stale observer registration", {
   runtime <- e2e_sso_new_runtime_context(
     user_id = 5151L,

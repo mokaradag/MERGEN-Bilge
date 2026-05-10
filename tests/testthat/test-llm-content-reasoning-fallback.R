@@ -234,3 +234,18 @@ test_that("liste tabanlı metin düğümleri tek UTF-8 cevaba indirilir", {
     expect_identical(out$reasoning, "")
   })
 })
+
+test_that("üst düzey message$content alanı choices yokken de görünür cevap olur", {
+  response <- list(
+    message = list(
+      content = "Üst düzey message içeriği."
+    )
+  )
+
+  .with_reasoning_fallback_stub(FALSE, {
+    out <- extract_llm_content_and_sources(response, model_id = "plain-model")
+
+    expect_identical(out$content, "Üst düzey message içeriği.")
+    expect_identical(out$reasoning, "")
+  })
+})
