@@ -47,40 +47,67 @@ source_manifest_read_file_with_encoding <- function(path, encoding_name) {
   enc2utf8(txt)
 }
 
-source_manifest_read_self <- function(path = "global.R") {
-  if (!file.exists(path)) {
-    source_manifest_stop(sprintf("manifest dosyası okunamadı: %s", path))
-  }
-
-  txt <- source_manifest_read_file_with_encoding(path, "UTF-8")
-
-  if (is.na(txt) || !nzchar(txt)) {
-    source_manifest_stop(sprintf("manifest metni UTF-8 olarak okunamadı: %s", path))
-  }
-
-  txt
-}
-
-source_manifest_extract_safe_source_paths <- function(text) {
-  matches <- gregexpr(
-    'safe_source\\("([^"]+)"\\s*,\\s*encoding\\s*=\\s*"UTF-8"',
-    text,
-    perl = TRUE,
-    useBytes = TRUE
+source_manifest_validate_config_objects <- function(envir = globalenv()) {
+  required_objects <- c(
+    "source_manifest_group_1_paths",
+    "source_manifest_after_future_paths",
+    "source_manifest_runtime_paths"
   )
 
-  hits <- regmatches(text, matches)[[1]]
-  if (length(hits) == 0L || identical(hits, character(0))) {
-    source_manifest_stop("safe_source kayıtları bulunamadı.")
+  missing_objects <- required_objects[!vapply(
+    required_objects,
+    exists,
+    logical(1),
+    envir = envir,
+    inherits = FALSE
+  )]
+
+  if (length(missing_objects) > 0L) {
+    source_manifest_stop(sprintf(
+      "kaynak manifesti nesne(leri) bulunamadı: %s",
+      paste(missing_objects, collapse = ", ")
+    ))
   }
 
-  sub(
-    '.*safe_source\\("([^"]+)".*',
-    "\\1",
-    hits,
-    perl = TRUE,
-    useBytes = TRUE
-  )
+  get_paths <- function(object_name) {
+    paths <- get(object_name, envir = envir, inherits = FALSE)
+
+    if (!is.character(paths) || length(paths) == 0L) {
+      source_manifest_stop(sprintf(
+        "kaynak manifesti nesnesi geçersiz veya boş: %s",
+        object_name
+      ))
+    }
+
+    paths <- enc2utf8(paths)
+    invalid_mask <- is.na(paths) | !nzchar(trimws(ifelse(is.na(paths), "", paths)))
+
+    if (any(invalid_mask)) {
+      source_manifest_stop(sprintf(
+        "kaynak manifesti nesnesi içinde boş dosya yolu var: %s",
+        object_name
+      ))
+    }
+
+    paths
+  }
+
+  group_1_paths <- get_paths("source_manifest_group_1_paths")
+  after_future_paths <- get_paths("source_manifest_after_future_paths")
+  runtime_paths <- get_paths("source_manifest_runtime_paths")
+  expected_runtime_paths <- c(group_1_paths, after_future_paths)
+
+  if (!identical(runtime_paths, expected_runtime_paths)) {
+    source_manifest_stop(
+      "source_manifest_runtime_paths, source_manifest_group_1_paths ve source_manifest_after_future_paths birleşimiyle aynı değil."
+    )
+  }
+
+  invisible(list(
+    group_1_paths = group_1_paths,
+    after_future_paths = after_future_paths,
+    runtime_paths = runtime_paths
+  ))
 }
 
 source_manifest_validate_files <- function(paths, repo_root = getwd()) {
@@ -257,15 +284,22 @@ source_manifest_load <- function(paths, encoding = "UTF-8") {
 
 source_manifest_validate <- function(order_rules,
                                      repo_root = getwd(),
-                                     source_file = "global.R",
+                                     source_file = NULL,
                                      validate_parse = TRUE,
                                      paths = NULL) {
-  if (is.null(paths)) {
-    manifest_text <- source_manifest_read_self(source_file)
-    paths <- source_manifest_extract_safe_source_paths(manifest_text)
-  } else {
-    paths <- enc2utf8(paths)
+  if (!is.null(source_file)) {
+    source_manifest_stop(
+      "source_file parametresi artık desteklenmez; kaynak yolları R/config_source_manifest.R üzerinden açıkça verilmelidir."
+    )
   }
+
+  if (is.null(paths)) {
+    source_manifest_stop(
+      "doğrulanacak kaynak yolları açıkça verilmelidir; global.R içinden safe_source listesi çıkarılmaz."
+    )
+  }
+
+  paths <- enc2utf8(paths)
 
   source_manifest_validate_files(paths, repo_root = repo_root)
 

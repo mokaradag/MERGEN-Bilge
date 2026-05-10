@@ -40,6 +40,7 @@ test_that("global.R manifest bootstrap ve güvenli yükleme kapısını korur", 
   expected_tokens <- c(
     'safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")',
     'safe_source("R/config_source_manifest.R", encoding = "UTF-8")',
+    "source_manifest_validate_config_objects()",
     "source_manifest_current_paths <- source_manifest_get_runtime_paths()",
     "source_manifest_validate(",
     "source_manifest_load(source_manifest_group_1_paths)",

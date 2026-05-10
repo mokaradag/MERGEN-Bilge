@@ -135,6 +135,7 @@ if (!exists("source_manifest_validate", mode = "function") ||
 
 safe_source("R/config_source_manifest.R", encoding = "UTF-8")
 
+source_manifest_validate_config_objects()
 source_manifest_current_paths <- source_manifest_get_runtime_paths()
 
 source_manifest_validate(
