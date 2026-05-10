@@ -70,6 +70,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_file_manager_runtime.R",
   "R/helpers_file_manager_storage.R",
   "R/helpers_file_manager_state_runtime.R",
+  "R/helpers_file_manager_attach_client.R",
   "R/helpers_chat_runtime.R",
   "R/helpers_send_message_request_lifecycle.R",
   "R/helpers_send_message_core.R",
