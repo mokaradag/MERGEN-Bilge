@@ -57,31 +57,51 @@ This repo already has a lot of modules. New files should only be introduced when
 A new helper/module is not “done” unless:
 
 - it is placed in the correct layer,
-- it is sourced in `global.R`,
+- it is listed in `R/config_source_manifest.R`,
 - dependencies are loaded before it,
 - `ui.R` / `server.R` wiring is updated where necessary.
 
 ### Source manifest validation contract
 
-`global.R` remains the explicit runtime source manifest, and the existing `safe_source(..., encoding = "UTF-8")` load order is intentionally preserved. The manifest-validation helpers and critical order rules live in `R/bootstrap_source_manifest.R`, a small dedicated bootstrap helper. `app.R` loads this bootstrap helper before `global.R`; if `global.R` is sourced directly, it safely loads the same bootstrap helper when the manifest helpers/order rules are not already available. The validation layer still runs before the first runtime manifest `safe_source()` call and fails early with clear Turkish boot errors when it detects:
+The runtime source order is now owned by `R/config_source_manifest.R`, not by a long `safe_source()` list inside `global.R`.
 
-- missing source files,
-- unintended duplicate source entries,
-- critical source-order regressions.
+`global.R` must remain a high-level boot orchestrator. It is responsible for UTF-8 options, upload limits, resource-path registration, bootstrap loading, manifest validation, future/test-mode setup, and calling the manifest loader. It must not grow back into a giant order-dependent source manifest.
 
-The bootstrap validation helpers intentionally read `global.R` and source files with raw-byte/UTF-8-safe logic so Windows VM and SSO deployments do not regress on Turkish text or mojibake-sensitive environments. Do not move these helpers back into `global.R`, and do not replace this design with a broad `lapply(source(...))` rewrite, automatic directory sourcing, alphabetical sourcing, package-style discovery, or any runtime source-order inference.
+The current source-manifest layers are:
+
+- `R/utils_safe_source.R`: defines UTF-8-safe `safe_source()` and preserves the Windows/VM fallback behavior.
+- `R/bootstrap_source_manifest.R`: defines manifest validation helpers, critical order rules, parse/file checks, and `source_manifest_load()`.
+- `R/config_source_manifest.R`: defines the explicit runtime source order through `source_manifest_group_1_paths`, `source_manifest_after_future_paths`, and `source_manifest_runtime_paths`.
+- `global.R`: validates the manifest and loads files through `safe_source()` without owning the full list inline.
 
 When adding, moving, or splitting a runtime file:
 
-- keep the existing `safe_source()` style and explicit order in `global.R`,
-- add the file to the correct runtime manifest position,
+- add the file to the correct position in `R/config_source_manifest.R`,
+- keep dependency order explicit and reviewable,
+- keep loading through `safe_source()`; do not replace it with plain `source()`,
 - update `source_manifest_required_order` in `R/bootstrap_source_manifest.R` only for genuinely critical dependency boundaries,
-- keep `R/bootstrap_source_manifest.R` small, bootstrap-only, and free of application feature loading,
-- keep comments added to R code in Turkish,
-- preserve `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` test boot behavior.
+- keep `R/bootstrap_source_manifest.R` small, bootstrap-only, and free of feature/module loading,
+- do not add automatic directory sourcing, alphabetical sourcing, package-style discovery, or runtime source-order inference,
+- preserve `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` boot safety,
+- keep comments added to R code in Turkish.
+
+Source-order tests must read `R/config_source_manifest.R` as the source of truth. Do not write new tests that scrape `global.R` for every runtime `safe_source("R/...")` entry. Use the shared manifest test helper in `tests/testthat/helper_source_manifest_contract.R`, especially:
+
+- `source_manifest_paths_for_tests()`
+- `expect_source_manifest_contains_for_tests()`
+- `expect_source_manifest_order_for_tests()`
+
+The validation layer should continue to fail early with clear Turkish boot errors when it detects:
+
+- missing source files,
+- unintended duplicate source entries,
+- unparseable source files,
+- critical source-order regressions.
 
 Protected by:
 
+- `tests/testthat/helper_source_manifest_contract.R`
+- `tests/testthat/test-global-source-manifest-contract.R`
 - `tests/testthat/test-source-manifest-contract.R`
 - `tests/testthat/test-e2e-boot-welcome-regression.R`
 - `tests/testthat/test-production-contracts.R`
@@ -89,17 +109,19 @@ Protected by:
 
 Focused validation:
 
+- `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
 - `testthat::test_file("tests/testthat/test-production-contracts.R")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 - `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")`
+- `source("tests/testthat.R", encoding = "UTF-8")`
 
 ### API model configuration contract
 
 API model/endpoint/tool-mode helper logic is intentionally split from the main API configuration file.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/config_api.R",               encoding = "UTF-8")
@@ -151,7 +173,7 @@ Current maintainability ratchet baseline after the latest send_message prompting
 
 The central send_message runtime path is intentionally split so `R/server_send_message.R` does not become the owner of every prompt, style, and uploaded-file context detail.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
     safe_source("R/helpers_send_message_request_lifecycle.R", encoding = "UTF-8")
     safe_source("R/helpers_send_message_core.R",              encoding = "UTF-8")
@@ -430,7 +452,7 @@ Do not replace this foundation with Playwright, Cypress, shinytest2, or another 
 
 ### LLM worker tool-result formatting contract
 
-The non-streaming LLM worker is intentionally split across three helper layers. Preserve this source order in `global.R`:
+The non-streaming LLM worker is intentionally split across three helper layers. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_llm_worker_payload.R",       encoding = "UTF-8")
@@ -498,7 +520,7 @@ Validation after edits:
 
 Bilge Yolaç directory listing is intentionally split from the broad CLI helper file.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_claude_code_process.R", encoding = "UTF-8")
@@ -570,7 +592,7 @@ Protected by:
 
 ### User session initialization contract
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/server_init_forward_refs.R",  encoding = "UTF-8")
@@ -1041,7 +1063,7 @@ When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order alig
 
 ChartLab rendering is intentionally split between pure chart-spec helpers and Shiny output wiring.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_mcp_chart_tools.R",       encoding = "UTF-8")
@@ -1073,7 +1095,7 @@ tests/testthat/test-maintainability-ratchet.R
 
 ### File Store registry/index modularization contract
 
-The file-store layer is split so that path/root initialization stays separate from upload registry mutation and lookup behavior. Preserve this source order in `global.R`:
+The file-store layer is split so that path/root initialization stays separate from upload registry mutation and lookup behavior. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/config_file_store.R",                encoding = "UTF-8")
@@ -1115,7 +1137,7 @@ Responsibilities:
 - `R/helpers_claude_code_workdir_scan.R` owns prompt intent detection for binary document creation/read flows, canonical file path normalization, duplicate path removal, workdir snapshot creation, snapshot diffing, and the short generated-file stability guard `wait_for_stable_claude_code_file_paths(...)`.
 - `R/helpers_claude_code_workdir_snapshot.R` owns Turkish text encoding normalization and generated-download collection/staging orchestration through `collect_claude_code_workdir_changes_downloads(...)`.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_claude_code_downloads.R", encoding = "UTF-8")
@@ -1169,7 +1191,7 @@ tests/testthat/test-maintainability-ratchet.R
 
 ### Bilge Yolaç document extractor modularization contract
 
-The Bilge Yolaç document-processing layer now has a focused extractor split. Preserve this source order in `global.R`:
+The Bilge Yolaç document-processing layer now has a focused extractor split. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_claude_code_document_extractors.R", encoding = "UTF-8")
@@ -1191,7 +1213,7 @@ For maintainability refactors, prefer extracting one clear responsibility at a t
 
 Project/Resource Analysis keeps RLS, identity-readiness, and statistical-summary helper logic outside the main Shiny module.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_pk_analysis_core.R",      encoding = "UTF-8")
@@ -1252,7 +1274,7 @@ tests/testthat/test-maintainability-ratchet.R
 
 ### LLM SSE stream I/O contract
 
-The true-streaming LLM layer keeps the stream-file JSONL protocol separate from SSE parsing and worker orchestration. Preserve this source order in `global.R`:
+The true-streaming LLM layer keeps the stream-file JSONL protocol separate from SSE parsing and worker orchestration. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_llm_tool_formatters.R",      encoding = "UTF-8")
@@ -1310,7 +1332,7 @@ tests/testthat/test-maintainability-ratchet.R
 
 ### Bilge Yolaç UI and model/config modularization contract
 
-Bilge Yolaç is now split into smaller responsibility-focused files. Preserve this source order in `global.R`:
+Bilge Yolaç is now split into smaller responsibility-focused files. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_claude_code_user_guard.R", encoding = "UTF-8")
@@ -1376,7 +1398,7 @@ For future maintainability refactors, keep using the ratcheted approach: extract
 
 ### Proje/Kaynak Analizi filter modularization contract
 
-The Proje/Kaynak Analizi layer now has a focused filter-helper split. Preserve this source order in `global.R`:
+The Proje/Kaynak Analizi layer now has a focused filter-helper split. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_pk_analysis_core.R",      encoding = "UTF-8")
@@ -1400,7 +1422,7 @@ The split is protected by:
 
 ### File Manager modularization contract
 
-The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `global.R`:
+The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_file_manager_policy.R", encoding = "UTF-8")
@@ -1472,7 +1494,7 @@ This split is protected by:
 
 ### Settings Yapılandırma UI modularization contract
 
-The Yapılandırma settings page is split so that the large UI layout does not grow inside the runtime server module. Preserve this source order in `global.R`:
+The Yapılandırma settings page is split so that the large UI layout does not grow inside the runtime server module. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/module_settings_kisisel.R", encoding = "UTF-8")
@@ -1499,7 +1521,7 @@ This split is protected by:
 
 `R/module_admin_hata_analizi.R` has been reduced by extracting pure/query/UI helper responsibilities into `R/helpers_admin_hata_analizi.R`.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_admin_hata_analizi.R", encoding = "UTF-8")
@@ -1525,7 +1547,7 @@ Important: if isolated tests source `R/helpers_admin_hata_analizi.R` directly, k
 
 ### Admin Yanıt Analizi modularization contract
 
-Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı dosyaya bölünmüştür. Preserve this source order in `global.R`:
+Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı dosyaya bölünmüştür. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_admin_yanit_analizi.R", encoding = "UTF-8")
@@ -1919,7 +1941,7 @@ Admin Feedback Analysis is now protected by `MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM
 
 Admin Feedback Analysis is intentionally split across a small UI/data-helper boundary, a SQL-query boundary, and the Shiny server module.
 
-Preserve this source order in `global.R`:
+Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_admin_geri_bildirim.R",         encoding = "UTF-8")
