@@ -108,6 +108,23 @@ test_that("stale cleanup yeni request wrapper'ını kaldırmadan state temizler"
   expect_identical(remove_count, 0L)
 })
 
+test_that("active_request_id hata verdiğinde typing wrapper güvenli şekilde korunur", {
+  removed_selectors <- character(0)
+
+  remove_ui_fn <- function(selector, immediate = FALSE) {
+    removed_selectors <<- c(removed_selectors, selector)
+    invisible(TRUE)
+  }
+
+  expect_false(mergen_remove_typing_wrapper_if_safe(
+    active_request_id = function() stop("aktif istek okunamadı", call. = FALSE),
+    req_id = "req_active",
+    remove_ui_fn = remove_ui_fn
+  ))
+
+  expect_identical(removed_selectors, character(0))
+})
+
 test_that("aktif isteğin cleanup akışı typing durumunu temizler ve wrapper'ı kaldırır", {
   values <- new.env(parent = emptyenv())
   values$typing <- TRUE

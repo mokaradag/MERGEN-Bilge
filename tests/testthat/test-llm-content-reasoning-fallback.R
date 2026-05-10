@@ -213,6 +213,19 @@ test_that("choice text alanı görünür cevap olarak ayrıştırılır", {
   })
 })
 
+test_that("üst düzey text alanı choices yokken de görünür cevap olur", {
+  response <- list(
+    text = "Üst düzey text yanıtı."
+  )
+
+  .with_reasoning_fallback_stub(FALSE, {
+    out <- extract_llm_content_and_sources(response, model_id = "plain-model")
+
+    expect_identical(out$content, "Üst düzey text yanıtı.")
+    expect_identical(out$reasoning, "")
+  })
+})
+
 test_that("liste tabanlı metin düğümleri tek UTF-8 cevaba indirilir", {
   response <- list(
     choices = list(

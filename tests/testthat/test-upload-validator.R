@@ -83,6 +83,33 @@ test_that("validate_uploaded_file path traversal girişini reddeder", {
   }
 })
 
+test_that("validate_uploaded_file NUL bayt içeren dosya adını reddeder", {
+  f <- .make_dummy_file(size_bytes = 64L, filename = "normal.txt")
+  on.exit(unlink(dirname(f), recursive = TRUE, force = TRUE))
+
+  sonuc <- validate_uploaded_file(
+    f,
+    filename = paste0("guvenli", rawToChar(as.raw(0x00)), ".txt")
+  )
+
+  expect_false(sonuc$ok)
+  expect_equal(sonuc$code, "bad_filename")
+})
+
+test_that("validate_uploaded_file beyaz liste uzantılarını noktalı ve büyük harfli kabul eder", {
+  f <- .make_dummy_file(size_bytes = 64L, filename = "normal.txt")
+  on.exit(unlink(dirname(f), recursive = TRUE, force = TRUE))
+
+  sonuc <- validate_uploaded_file(
+    f,
+    filename = "Özet-Rapor.PDF",
+    allowed_ext = c(".pdf", ".docx")
+  )
+
+  expect_true(sonuc$ok)
+  expect_null(sonuc$code)
+})
+
 test_that("validate_uploaded_file boyut sınırı NULL olunca atlar", {
   f <- .make_dummy_file(size_bytes = 10L * 1024L * 1024L, filename = "orta.bin")
   on.exit(unlink(dirname(f), recursive = TRUE, force = TRUE))

@@ -100,6 +100,7 @@ extract_llm_text_bundle <- function(response_content) {
         delta_obj$content,
         delta_obj$text,
         first_choice$text,
+        response_content$text,
         response_content$content,
         response_content$message$content
       )
@@ -206,6 +207,7 @@ extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
     }
   }
 
+  set_ai_content_if_nonempty(response_content$text)
   set_ai_content_if_nonempty(response_content$content)
 
   if (!is.null(response_content$message) && is.list(response_content$message)) {

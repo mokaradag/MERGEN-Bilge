@@ -68,6 +68,18 @@ source(
   local = globalenv()
 )
 
+source(
+  file.path(repo_root_quick_action_routing, "R", "helpers_send_message_request_lifecycle.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+source(
+  file.path(repo_root_quick_action_routing, "R", "helpers_send_message_core.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 .quick_action_expected_routes <- function() {
   data.frame(
     action_id = c(
@@ -173,6 +185,62 @@ test_that("her hızlı işlem uygulandığında yalnızca tek araç bayrağı ak
     expect_false(state$values$show_welcome)
     expect_identical(state$llm_calls, 0L)
   }
+})
+
+test_that("send_message araç ailesi gerçek hızlı işlem bayraklarından doğru çözülür", {
+  expected <- .quick_action_expected_routes()
+
+  for (i in seq_len(nrow(expected))) {
+    row <- expected[i, , drop = FALSE]
+    settings_data <- as.list(stats::setNames(
+      rep(FALSE, length(e2e_tool_flags())),
+      e2e_tool_flags()
+    ))
+    settings_data[[row$setting_flag]] <- TRUE
+
+    uploaded_count <- if (identical(row$family, "mcp_excel")) 1L else 0L
+
+    routing <- mergen_determine_tool_family(
+      settings_data = settings_data,
+      uploaded_count = uploaded_count,
+      skip_mcp_once = FALSE,
+      current_settings = list(max_output_tokens = 1000L)
+    )
+
+    expect_identical(
+      routing$tool_family,
+      row$family,
+      info = sprintf("%s -> %s", row$action_id, row$family)
+    )
+  }
+})
+
+test_that("MCP Excel bayrağı dosya yokken araca dönüşmez ve skip_mcp_once önceliklidir", {
+  settings_data <- as.list(stats::setNames(
+    rep(FALSE, length(e2e_tool_flags())),
+    e2e_tool_flags()
+  ))
+  settings_data$enable_mcp_tools <- TRUE
+
+  no_file_route <- mergen_determine_tool_family(
+    settings_data = settings_data,
+    uploaded_count = 0L,
+    skip_mcp_once = FALSE,
+    current_settings = list(max_output_tokens = 1000L)
+  )
+
+  expect_identical(no_file_route$tool_family, "none")
+  expect_false(no_file_route$excel_allowed)
+
+  skipped_route <- mergen_determine_tool_family(
+    settings_data = settings_data,
+    uploaded_count = 1L,
+    skip_mcp_once = TRUE,
+    current_settings = list(max_output_tokens = 1000L)
+  )
+
+  expect_identical(skipped_route$tool_family, "none")
+  expect_true(skipped_route$excel_allowed)
 })
 
 test_that("hızlı işlem config içinde yinelenen id, aile veya araç bayrağı yoktur", {
