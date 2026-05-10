@@ -122,30 +122,27 @@ register_global_resource_path(
 )
 
 # ------------------------------------------------------------------------------
-# KAYNAK MANİFESTİ DOĞRULAMA BOOTSTRAP'I
+# KAYNAK MANİFESTİ DOĞRULAMA VE YÜKLEME
 # ------------------------------------------------------------------------------
-# Manifest doğrulama yardımcıları küçük bir bootstrap dosyasında tutulur.
-# app.R normal boot sırasında bu dosyayı önceden yükler; global.R doğrudan
-# source edilirse aynı koruma burada güvenli şekilde tamamlanır.
+# Manifest doğrulama yardımcıları bootstrap dosyasında, çalışma zamanı kaynak
+# listesi ise config_source_manifest.R içinde tutulur. Böylece global.R yüksek
+# seviyeli boot akışını korur; kaynak sırası yine açık ve gözden geçirilebilirdir.
 # ------------------------------------------------------------------------------
 if (!exists("source_manifest_validate", mode = "function") ||
     !exists("source_manifest_required_order", inherits = FALSE)) {
   safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")
 }
 
-source_manifest_current_paths <- source_manifest_validate(
-  order_rules = source_manifest_required_order
+safe_source("R/config_source_manifest.R", encoding = "UTF-8")
+
+source_manifest_current_paths <- source_manifest_get_runtime_paths()
+
+source_manifest_validate(
+  order_rules = source_manifest_required_order,
+  paths = source_manifest_current_paths
 )
 
-# ------------------------------------------------------------------------------
-# GRUP 1: Temel Altyapı (paketler, yardımcılar, loglama)
-# Hiçbir uygulama koduna bağımlı değildir, diğer her şeyden önce yüklenir.
-# ------------------------------------------------------------------------------
-safe_source("R/config_packages.R",    encoding = "UTF-8")  # Paket yüklemeleri
-safe_source("R/utils_common.R",       encoding = "UTF-8")  # Ortak yardımcı fonksiyonlar (%||%, safe_nzchar, vb.)
-safe_source("R/config_logging.R",     encoding = "UTF-8")  # Loglama altyapısı
-safe_source("R/utils_rate_limiter.R",   encoding = "UTF-8")  # Hız sınırlama + işçi havuzu
-safe_source("R/helpers_worker_monitor.R", encoding = "UTF-8")  # Asenkron iş/işçi izleme defteri
+source_manifest_load(source_manifest_group_1_paths)
 
 tryCatch({
   # Test/bootstrap ortamında paralel işçi başlatılmaz; sequential plana düşülür.
@@ -183,15 +180,7 @@ if (requireNamespace("shiny", quietly = TRUE) &&
   options(mergen.onstop_registered = TRUE)
 }
 
-safe_source("R/utils_path_helpers.R",   encoding = "UTF-8")  # Yol normalizasyon yardımcıları
-safe_source("R/utils_safe_path.R",      encoding = "UTF-8")  # Path traversal güvenli join yardımcısı
-safe_source("R/utils_atomic_write.R",   encoding = "UTF-8")  # Atomik dosya/JSON yazımı
-safe_source("R/utils_upload_validator.R", encoding = "UTF-8")  # Dosya yüklemesi güvenlik doğrulaması
-safe_source("R/utils_log_redact.R",     encoding = "UTF-8")  # Log metinlerinde hassas içerik maskeleme
-safe_source("R/utils_session_cleanup.R", encoding = "UTF-8")  # Oturum sonu kaynak temizliği
-safe_source("R/utils_safe_worker_run.R", encoding = "UTF-8")  # Arka plan görev hata sınırı sarmalayıcısı
-safe_source("R/utils_file_index.R",   encoding = "UTF-8")  # Önbellekli dosya indeks mekanizması
-safe_source("R/utils_excel_reader.R", encoding = "UTF-8")  # Excel okuyucu yardımcıları
+source_manifest_load(source_manifest_after_future_paths)
 
 # ------------------------------------------------------------------------------
 # GRUP 2: Yapılandırma Dosyaları

@@ -30,32 +30,32 @@
   enc2utf8(txt)
 }
 
-.extract_safe_source_paths <- function(text) {
-  m <- gregexpr(
-    'safe_source\\("([^"]+)"\\s*,\\s*encoding\\s*=\\s*"UTF-8"',
-    text,
-    perl = TRUE,
-    useBytes = TRUE
+.load_source_manifest_paths_for_contract <- function() {
+  repo_root <- resolve_repo_root_for_tests()
+  manifest_env <- new.env(parent = globalenv())
+
+  source(
+    file.path(repo_root, "R", "config_source_manifest.R"),
+    encoding = "UTF-8",
+    local = manifest_env
   )
 
-  hits <- regmatches(text, m)[[1]]
-  if (length(hits) == 0 || identical(hits, character(0))) {
-    return(character(0))
+  if (!exists("source_manifest_runtime_paths", envir = manifest_env, inherits = FALSE)) {
+    stop("Test manifesti source_manifest_runtime_paths nesnesini bulamadı.", call. = FALSE)
   }
 
-  sub(
-    '.*safe_source\\("([^"]+)".*',
-    "\\1",
-    hits,
-    perl = TRUE,
-    useBytes = TRUE
-  )
+  paths <- get("source_manifest_runtime_paths", envir = manifest_env, inherits = FALSE)
+
+  if (!is.character(paths) || length(paths) == 0L) {
+    stop("Test manifesti boş veya geçersiz.", call. = FALSE)
+  }
+
+  enc2utf8(paths)
 }
 
-test_that("global.R safe_source manifestindeki dosyalar repoda gerçekten var", {
+test_that("config_source_manifest.R manifestindeki dosyalar repoda gerçekten var", {
   repo_root <- resolve_repo_root_for_tests()
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   expect_gt(length(paths), 50L)
 
@@ -71,9 +71,8 @@ test_that("global.R safe_source manifestindeki dosyalar repoda gerçekten var", 
   )
 })
 
-test_that("global.R manifestinde aynı R dosyası yanlışlıkla tekrar tekrar yüklenmiyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+test_that("config_source_manifest.R manifestinde aynı R dosyası yanlışlıkla tekrar tekrar yüklenmiyor", {
+  paths <- .load_source_manifest_paths_for_contract()
 
   duplicate_paths <- unique(paths[duplicated(paths)])
 
@@ -92,12 +91,14 @@ test_that("global.R manifestinde aynı R dosyası yanlışlıkla tekrar tekrar y
 })
 
 test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzerinden runtime source zincirinden önce çalıştırıyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  bootstrap_text <- .read_repo_text_manifest_contract("R/bootstrap_source_manifest.R")
+  paths <- .load_source_manifest_paths_for_contract()
 
   global_expected_tokens <- c(
     'safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")',
-    "source_manifest_current_paths <- source_manifest_validate"
+    'safe_source("R/config_source_manifest.R", encoding = "UTF-8")',
+    "source_manifest_current_paths <- source_manifest_get_runtime_paths",
+    "source_manifest_validate(",
+    "source_manifest_load(source_manifest_group_1_paths)"
   )
 
   global_found <- vapply(
@@ -128,6 +129,8 @@ test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzer
     "source_manifest_validate_files <- function",
     "source_manifest_validate_parse <- function",
     "source_manifest_validate_order <- function",
+    "source_manifest_get_runtime_paths <- function",
+    "source_manifest_load <- function",
     "source_manifest_validate <- function",
     "source_manifest_required_order <- list"
   )
@@ -168,9 +171,9 @@ test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzer
   )[[1]]
 
   first_manifest_source_pos <- regexpr(
-    'safe_source\\("R/config_packages.R"',
+    "source_manifest_load(source_manifest_group_1_paths)",
     global_text,
-    perl = TRUE,
+    fixed = TRUE,
     useBytes = TRUE
   )[[1]]
 
@@ -211,8 +214,7 @@ test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzer
 })
 
 test_that("LLM/SSE/worker yükleme sırası korunuyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
@@ -230,8 +232,7 @@ test_that("LLM/SSE/worker yükleme sırası korunuyor", {
 })
 
 test_that("file store indeks/registry yardımcıları config dosyasından sonra yükleniyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
@@ -246,8 +247,7 @@ test_that("file store indeks/registry yardımcıları config dosyasından sonra 
 })
 
 test_that("API model/uç nokta yardımcıları config_api sonrasında ve LLM katmanından önce yükleniyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
@@ -264,8 +264,7 @@ test_that("API model/uç nokta yardımcıları config_api sonrasında ve LLM kat
 })
 
 test_that("kritik yardımcılar modüllerden önce yükleniyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
@@ -322,8 +321,7 @@ test_that("kritik yardımcılar modüllerden önce yükleniyor", {
 })
 
 test_that("Bilge Yolaç user guard ve server setup yardımcıları modülden önce yükleniyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
@@ -410,8 +408,7 @@ test_that("Bilge Yolaç user guard ve server setup yardımcıları modülden ön
 })
 
 test_that("admin geri bildirim helper dosyaları modülden önce yükleniyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
@@ -431,8 +428,7 @@ test_that("admin geri bildirim helper dosyaları modülden önce yükleniyor", {
 })
 
 test_that("admin hata analizi helper dosyası modülden önce yükleniyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
@@ -446,8 +442,7 @@ test_that("admin hata analizi helper dosyası modülden önce yükleniyor", {
 })
 
 test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu modülünden önce yükleniyor", {
-  global_text <- .read_repo_text_manifest_contract("global.R")
-  paths <- .extract_safe_source_paths(global_text)
+  paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 

@@ -205,12 +205,67 @@ source_manifest_validate_order <- function(paths, order_rules) {
   invisible(TRUE)
 }
 
+source_manifest_get_runtime_paths <- function(manifest_object = "source_manifest_runtime_paths",
+                                              envir = globalenv()) {
+  if (!exists(manifest_object, envir = envir, inherits = FALSE)) {
+    source_manifest_stop(sprintf(
+      "kaynak manifesti nesnesi bulunamadı: %s",
+      manifest_object
+    ))
+  }
+
+  paths <- get(manifest_object, envir = envir, inherits = FALSE)
+
+  if (!is.character(paths) || length(paths) == 0L) {
+    source_manifest_stop(sprintf(
+      "kaynak manifesti nesnesi geçersiz veya boş: %s",
+      manifest_object
+    ))
+  }
+
+  enc2utf8(paths)
+}
+
+source_manifest_load <- function(paths, encoding = "UTF-8") {
+  if (!exists("safe_source", mode = "function")) {
+    source_manifest_stop("safe_source fonksiyonu yüklenmeden kaynak yükleme başlatılamaz.")
+  }
+
+  if (!is.character(paths) || length(paths) == 0L) {
+    source_manifest_stop("yüklenecek kaynak manifesti boş veya karakter vektörü değil.")
+  }
+
+  source_manifest_validate_files(paths)
+
+  for (path in paths) {
+    tryCatch(
+      {
+        safe_source(path, encoding = encoding)
+      },
+      error = function(e) {
+        source_manifest_stop(sprintf(
+          "kaynak dosya yüklenemedi: %s -> %s",
+          path,
+          conditionMessage(e)
+        ))
+      }
+    )
+  }
+
+  invisible(TRUE)
+}
+
 source_manifest_validate <- function(order_rules,
                                      repo_root = getwd(),
                                      source_file = "global.R",
-                                     validate_parse = TRUE) {
-  manifest_text <- source_manifest_read_self(source_file)
-  paths <- source_manifest_extract_safe_source_paths(manifest_text)
+                                     validate_parse = TRUE,
+                                     paths = NULL) {
+  if (is.null(paths)) {
+    manifest_text <- source_manifest_read_self(source_file)
+    paths <- source_manifest_extract_safe_source_paths(manifest_text)
+  } else {
+    paths <- enc2utf8(paths)
+  }
 
   source_manifest_validate_files(paths, repo_root = repo_root)
 

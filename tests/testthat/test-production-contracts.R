@@ -76,6 +76,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
       # Temel altyapı
       "R/utils_safe_source.R",
       "R/bootstrap_source_manifest.R",
+      "R/config_source_manifest.R",
       "R/utils_common.R",
       "R/utils_safe_path.R",
       "R/utils_atomic_write.R",
@@ -159,29 +160,53 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
   )
 })
 
-test_that("global.R üretim sertleştirme helper'larını manifestte yüklüyor", {
+test_that("global.R bootstrap'i ve config_source_manifest.R üretim helper manifestini yüklüyor", {
   global_text <- .read_text_quiet(file.path(.repo_root, "global.R"))
+  manifest_text <- .read_text_quiet(file.path(.repo_root, "R", "config_source_manifest.R"))
 
-  beklenenler <- c(
+  global_beklenenler <- c(
     'safe_source("R/bootstrap_source_manifest.R"',
-    'safe_source("R/utils_safe_path.R"',
-    'safe_source("R/utils_atomic_write.R"',
-    'safe_source("R/utils_upload_validator.R"',
-    'safe_source("R/utils_log_redact.R"',
-    'safe_source("R/utils_session_cleanup.R"',
-    'safe_source("R/utils_safe_worker_run.R"',
-    'safe_source("R/helpers_worker_monitor.R"'
+    'safe_source("R/config_source_manifest.R"',
+    "source_manifest_load(source_manifest_group_1_paths)",
+    "source_manifest_load(source_manifest_after_future_paths)"
   )
 
-  bulunanlar <- vapply(
-    beklenenler,
+  manifest_beklenenler <- c(
+    '"R/helpers_worker_monitor.R"',
+    '"R/utils_safe_path.R"',
+    '"R/utils_atomic_write.R"',
+    '"R/utils_upload_validator.R"',
+    '"R/utils_log_redact.R"',
+    '"R/utils_session_cleanup.R"',
+    '"R/utils_safe_worker_run.R"'
+  )
+
+  global_bulunanlar <- vapply(
+    global_beklenenler,
     function(beklenen) .has_text(global_text, beklenen),
     logical(1)
   )
 
+  manifest_bulunanlar <- vapply(
+    manifest_beklenenler,
+    function(beklenen) .has_text(manifest_text, beklenen),
+    logical(1)
+  )
+
   expect_true(
-    all(bulunanlar),
-    label = paste("Eksik source kayıtları:", paste(beklenenler[!bulunanlar], collapse = ", "))
+    all(global_bulunanlar),
+    label = paste(
+      "Eksik global.R bootstrap kayıtları:",
+      paste(global_beklenenler[!global_bulunanlar], collapse = ", ")
+    )
+  )
+
+  expect_true(
+    all(manifest_bulunanlar),
+    label = paste(
+      "Eksik manifest kayıtları:",
+      paste(manifest_beklenenler[!manifest_bulunanlar], collapse = ", ")
+    )
   )
 })
 
