@@ -45,16 +45,33 @@
 test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   ui_text <- .read_repo_text_frontend_selector_contract("ui.R")
   input_js <- .read_repo_text_frontend_selector_contract("www/js/input_handlers.js")
+  app_core_js <- .read_repo_text_frontend_selector_contract("www/js/app_core.js")
   shiny_handlers_js <- .read_repo_text_frontend_selector_contract("www/js/shiny_message_handlers.js")
   file_handlers_js <- .read_repo_text_frontend_selector_contract("www/js/file_handlers.js")
   file_manager_table_r <- .read_repo_text_frontend_selector_contract("R/helpers_file_manager_table.R")
   file_manager_module_r <- .read_repo_text_frontend_selector_contract("R/module_file_manager.R")
+  file_manager_attach_client_r <- .read_repo_text_frontend_selector_contract("R/helpers_file_manager_attach_client.R")
   stt_module_r <- .read_repo_text_frontend_selector_contract("R/module_stt.R")
   claude_ui_r <- .read_repo_text_frontend_selector_contract("R/module_claude_code_ui.R")
   claude_js <- .read_repo_text_frontend_selector_contract("www/js/claude_code.js")
   claude_streaming_js <- .read_repo_text_frontend_selector_contract("www/js/claude_code_streaming.js")
 
+  js_paths <- list.files(
+    file.path(resolve_repo_root_for_tests(), "www", "js"),
+    pattern = "\\.js$",
+    full.names = FALSE
+  )
+  js_text <- paste(
+    vapply(
+      file.path("www/js", js_paths),
+      .read_repo_text_frontend_selector_contract,
+      character(1)
+    ),
+    collapse = "\n"
+  )
+
   expect_true(.frontend_selector_has_text(ui_text, 'id = "user_input"'))
+  expect_true(.frontend_selector_lacks_text(js_text, "message_input"))
   expect_true(.frontend_selector_lacks_text(input_js, "message_input"))
   expect_true(.frontend_selector_has_text(input_js, "#user_input, .chat-input"))
   expect_true(.frontend_selector_has_text(ui_text, 'inputId = "send_stop_btn"'))
@@ -63,20 +80,28 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   expect_true(.frontend_selector_has_text(ui_text, 'id = "welcome_fullscreen_container"'))
   expect_true(.frontend_selector_has_text(shiny_handlers_js, "#welcome_fullscreen_container"))
   expect_true(.frontend_selector_has_text(ui_text, 'id = "chat_content_container"'))
+  expect_true(.frontend_selector_has_text(app_core_js, "#chat_content_container"))
+  expect_true(.frontend_selector_lacks_text(app_core_js, "#_content_container"))
+  expect_true(.frontend_selector_has_text(app_core_js, "codeMirrorObserver.disconnect()"))
 
   expect_true(.frontend_selector_has_text(ui_text, 'id = "chat_input_wrapper"'))
   expect_true(.frontend_selector_has_text(file_handlers_js, "#chat_input_wrapper"))
+  expect_true(.frontend_selector_has_text(file_handlers_js, "getChatWrapper()"))
   expect_true(.frontend_selector_has_text(ui_text, 'id = "drop_zone"'))
   expect_true(.frontend_selector_has_text(file_handlers_js, "#drop_zone"))
   expect_true(.frontend_selector_has_text(ui_text, 'fileInput("file_upload"'))
   expect_true(.frontend_selector_has_text(file_handlers_js, "document.getElementById('file_upload')"))
   expect_true(.frontend_selector_has_text(ui_text, 'id = "file_btn_container"'))
   expect_true(.frontend_selector_has_text(file_handlers_js, "#file_btn_container"))
+  expect_true(.frontend_selector_has_text(file_handlers_js, "getFileManagerDropZone()"))
 
   expect_true(.frontend_selector_has_text(file_manager_table_r, 'class = "attach-checkbox"'))
   expect_true(.frontend_selector_has_text(file_manager_module_r, "input$attach_toggled"))
   expect_true(.frontend_selector_has_text(file_manager_module_r, "change.attach"))
   expect_true(.frontend_selector_has_text(file_manager_module_r, "drawCallback"))
+  expect_true(.frontend_selector_has_text(file_manager_module_r, "fm_register_attach_state_client_handler(session = session, ns = ns)"))
+  expect_true(.frontend_selector_lacks_text(file_manager_module_r, "Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState'"))
+  expect_true(.frontend_selector_has_text(file_manager_attach_client_r, "Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState'"))
   expect_true(.frontend_selector_has_text(shiny_handlers_js, "input.attach-checkbox[data-filename]"))
 
   expect_true(.frontend_selector_has_text(stt_module_r, 'canvasId = ns("visualizer_canvas")'))

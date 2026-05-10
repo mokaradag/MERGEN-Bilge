@@ -10,9 +10,12 @@ fm_register_attach_state_client_handler <- function(session, ns) {
       (function(){
         window.__attachHandlerInit = window.__attachHandlerInit || {};
         var nsPrefix = '%s';
+        if (!window.__attachHandlerInit.__initAttachHandlerOnce) {
+          window.__attachHandlerInit.__initAttachHandlerOnce = true;
+          Shiny.addCustomMessageHandler('initAttachHandlerOnce', function(x){ /* no-op; gate */ });
+        }
         if (window.__attachHandlerInit[nsPrefix]) return;
         window.__attachHandlerInit[nsPrefix] = true;
-        Shiny.addCustomMessageHandler('initAttachHandlerOnce', function(x){ /* no-op; gate */ });
         Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState', function(msg){
           var ids = Array.isArray(msg.ids) ? msg.ids : [msg.ids];
           ids.forEach(function(fid){

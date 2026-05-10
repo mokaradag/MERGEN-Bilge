@@ -650,25 +650,7 @@ fileManagerServer <- function(
 	  session$sendCustomMessage("initAttachHandlerOnce", list(ns_prefix = ns("")))
 	}, once = TRUE)
 
-	# register client-side handler
-	session$onFlushed(function(){
-	  shinyjs::runjs(sprintf("
-		(function(){
-		  window.__attachHandlerInit = window.__attachHandlerInit || {};
-		  var nsPrefix = '%s';
-		  if (window.__attachHandlerInit[nsPrefix]) return;
-		  window.__attachHandlerInit[nsPrefix] = true;
-		  Shiny.addCustomMessageHandler('initAttachHandlerOnce', function(x){ /* tek seferlik kapı */ });
-		  Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState', function(msg){
-			var ids = Array.isArray(msg.ids) ? msg.ids : [msg.ids];
-			ids.forEach(function(fid){
-			  var el = document.getElementById(nsPrefix + 'attach_' + fid);
-			  if(el){ el.checked = !!msg.checked; }
-			});
-		  });
-		})();
-	  ", ns("")))
-	})
+	fm_register_attach_state_client_handler(session = session, ns = ns)
 
     session$onSessionEnded(function() {
       tf <- session$userData$temp_files

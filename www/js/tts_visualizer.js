@@ -335,6 +335,7 @@ $(document).ready(function() {
   // TTS durumunu (konuşma/durma) R'dan gelen verilere göre güncelle
   Shiny.addCustomMessageHandler('updateTTSVisualizer', function(message) {
       mountVisualizerInHeader();
+      if (!visualizer || !window.ttsVisualizerState) return;
       if (message.color) visualizer.setColor(message.color);
       
       if (message.state === 'talking') {

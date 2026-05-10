@@ -6,20 +6,23 @@ $(document).ready(function() {
   let dragCounterChat = 0;
   let dragCounterFM = 0;
   let chatFileTimeout = null;
-  const $chatWrapper = $('#chat_input_wrapper');
+
+  function getChatWrapper() {
+    return $('#chat_input_wrapper');
+  }
 
   // --- Sohbet Penceresi Dosya Sürükle-Bırak İşlemleri ---
   
   $(document).on('dragenter', '#chat_input_wrapper, #chat_input_wrapper *', function (e) {
     e.preventDefault(); e.stopPropagation();
     dragCounterChat++;
-    if (dragCounterChat === 1) { $('#drop_zone').removeClass('hidden'); $chatWrapper.addClass('dragging'); }
+    if (dragCounterChat === 1) { $('#drop_zone').removeClass('hidden'); getChatWrapper().addClass('dragging'); }
   });
   
   $(document).on('dragleave', '#chat_input_wrapper, #chat_input_wrapper *', function (e) {
     e.preventDefault(); e.stopPropagation();
     dragCounterChat--;
-    if (dragCounterChat <= 0) { dragCounterChat = 0; $('#drop_zone').addClass('hidden'); $chatWrapper.removeClass('dragging'); }
+    if (dragCounterChat <= 0) { dragCounterChat = 0; $('#drop_zone').addClass('hidden'); getChatWrapper().removeClass('dragging'); }
   });
   
   $(document).on('dragover', '#chat_input_wrapper, #chat_input_wrapper *', function (e) { 
@@ -31,7 +34,7 @@ $(document).ready(function() {
     e.preventDefault(); e.stopPropagation();
     dragCounterChat = 0; 
     $('#drop_zone').addClass('hidden'); 
-    $chatWrapper.removeClass('dragging');
+    getChatWrapper().removeClass('dragging');
 
     const files = (e.originalEvent && e.originalEvent.dataTransfer && e.originalEvent.dataTransfer.files) ? 
                   e.originalEvent.dataTransfer.files : null;
@@ -73,22 +76,25 @@ $(document).ready(function() {
 
   // --- Dosya Yöneticisi Sürükle-Bırak İşlemleri ---
   
-  const $fmDrop = $('#file_manager_module-main_drop_zone');
+  function getFileManagerDropZone() {
+    return $('#file_manager_module-main_drop_zone');
+  }
+
   $(document).on('dragenter', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) {
     e.preventDefault(); e.stopPropagation();
     dragCounterFM++;
-    if (dragCounterFM === 1) $fmDrop.addClass('dragging');
+    if (dragCounterFM === 1) getFileManagerDropZone().addClass('dragging');
   });
   $(document).on('dragleave', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) {
     e.preventDefault(); e.stopPropagation();
     dragCounterFM--;
-    if (dragCounterFM <= 0) { dragCounterFM = 0; $fmDrop.removeClass('dragging'); }
+    if (dragCounterFM <= 0) { dragCounterFM = 0; getFileManagerDropZone().removeClass('dragging'); }
   });
   $(document).on('dragover', '#file_manager_module-main_drop_zone, #file_manager_module-main_drop_zone *', function (e) { e.preventDefault(); e.stopPropagation(); });
   
   $(document).on('drop', '#file_manager_module-main_drop_zone', function (e) {
     e.preventDefault(); e.stopPropagation();
-    dragCounterFM = 0; $fmDrop.removeClass('dragging');
+    dragCounterFM = 0; getFileManagerDropZone().removeClass('dragging');
   
     const files = (e.originalEvent && e.originalEvent.dataTransfer && e.originalEvent.dataTransfer.files)
                     ? e.originalEvent.dataTransfer.files : null;

@@ -99,8 +99,15 @@ $(document).ready(function() {
 
   // CodeMirror observer fonksiyonunu tanımla (tekrar kullanılabilir)
   // NOT: Önceden iki ayrı yerde aynı kod vardı, şimdi tek fonksiyona çıkarıldı
+  let codeMirrorObserver = null;
+
+  function getChatContentRoot() {
+    return document.querySelector('#chat_content_container') ||
+           document.querySelector('.chat-container');
+  }
+
   function attachCMObserver(isReconnection = false) {
-    const root = document.querySelector('#chat_content_container, #_content_container, .chat-container');
+    const root = getChatContentRoot();
     if (!root) {
       console.warn('[MERGEN] CM observer: root not found');
       return;
@@ -111,7 +118,12 @@ $(document).ready(function() {
         window.initializeCodeMirrorInElement(wrapper.id);
       }
     };
-    const obs = new MutationObserver(muts => {
+
+    if (codeMirrorObserver) {
+      codeMirrorObserver.disconnect();
+    }
+
+    codeMirrorObserver = new MutationObserver(muts => {
       muts.forEach(m => {
         m.addedNodes && m.addedNodes.forEach(node => {
           if (!(node instanceof HTMLElement)) return;
@@ -120,7 +132,7 @@ $(document).ready(function() {
         });
       });
     });
-    obs.observe(root, {
+    codeMirrorObserver.observe(root, {
       childList: true,
       subtree: true
     });
@@ -137,6 +149,10 @@ $(document).ready(function() {
     if (globalMessageObserver) {
       globalMessageObserver.disconnect();
       globalMessageObserver = null;
+    }
+    if (codeMirrorObserver) {
+      codeMirrorObserver.disconnect();
+      codeMirrorObserver = null;
     }
     if (window.pendingTimeouts) {
       window.pendingTimeouts.forEach(clearTimeout);
