@@ -42,8 +42,8 @@ test_that("global.R manifest bootstrap ve güvenli yükleme kapısını korur", 
     'safe_source("R/config_source_manifest.R", encoding = "UTF-8")',
     "source_manifest_current_paths <- source_manifest_get_runtime_paths()",
     "source_manifest_validate(",
-    "source_manifest_remaining_paths <- source_manifest_current_paths",
-    "source_manifest_load(source_manifest_remaining_paths)"
+    "source_manifest_load(source_manifest_group_1_paths)",
+    "source_manifest_load(source_manifest_after_future_paths)"
   )
 
   found <- vapply(

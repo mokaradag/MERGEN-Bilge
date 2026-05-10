@@ -142,13 +142,7 @@ source_manifest_validate(
   paths = source_manifest_current_paths
 )
 
-# Statik sözleşme belirteci: source_manifest_load(source_manifest_group_1_paths)
-# Aşağıdaki kritik ilk kaynaklar bilerek açık safe_source çağrılarıyla korunur.
-safe_source("R/config_packages.R", encoding = "UTF-8")
-safe_source("R/utils_common.R", encoding = "UTF-8")
-safe_source("R/config_logging.R", encoding = "UTF-8")
-safe_source("R/utils_rate_limiter.R", encoding = "UTF-8")
-safe_source("R/helpers_worker_monitor.R", encoding = "UTF-8")
+source_manifest_load(source_manifest_group_1_paths)
 
 tryCatch({
   # Test/bootstrap ortamında paralel işçi başlatılmaz; sequential plana düşülür.
@@ -186,33 +180,4 @@ if (requireNamespace("shiny", quietly = TRUE) &&
   options(mergen.onstop_registered = TRUE)
 }
 
-# Statik sözleşme belirteci: source_manifest_load(source_manifest_after_future_paths)
-# Future planı belirlendikten sonra yüklenmesi gereken kritik yardımcılar.
-safe_source("R/utils_path_helpers.R", encoding = "UTF-8")
-safe_source("R/utils_safe_path.R", encoding = "UTF-8")
-safe_source("R/utils_atomic_write.R", encoding = "UTF-8")
-safe_source("R/utils_upload_validator.R", encoding = "UTF-8")
-safe_source("R/utils_log_redact.R", encoding = "UTF-8")
-safe_source("R/utils_session_cleanup.R", encoding = "UTF-8")
-safe_source("R/utils_safe_worker_run.R", encoding = "UTF-8")
-safe_source("R/utils_file_index.R", encoding = "UTF-8")
-safe_source("R/utils_excel_reader.R", encoding = "UTF-8")
-
-source_manifest_loaded_paths <- c(
-  source_manifest_group_1_paths,
-  "R/utils_path_helpers.R",
-  "R/utils_safe_path.R",
-  "R/utils_atomic_write.R",
-  "R/utils_upload_validator.R",
-  "R/utils_log_redact.R",
-  "R/utils_session_cleanup.R",
-  "R/utils_safe_worker_run.R",
-  "R/utils_file_index.R",
-  "R/utils_excel_reader.R"
-)
-
-source_manifest_remaining_paths <- source_manifest_current_paths[
-  !(source_manifest_current_paths %in% source_manifest_loaded_paths)
-]
-
-source_manifest_load(source_manifest_remaining_paths)
+source_manifest_load(source_manifest_after_future_paths)

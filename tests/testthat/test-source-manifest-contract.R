@@ -179,11 +179,20 @@ test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzer
     useBytes = TRUE
   )[[1]]
 
+  after_future_manifest_source_pos <- regexpr(
+    "source_manifest_load(source_manifest_after_future_paths)",
+    global_text,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
   expect_true(bootstrap_source_pos > 0L)
   expect_true(validation_call_pos > 0L)
   expect_true(first_manifest_source_pos > 0L)
+  expect_true(after_future_manifest_source_pos > 0L)
   expect_lt(bootstrap_source_pos, validation_call_pos)
   expect_lt(validation_call_pos, first_manifest_source_pos)
+  expect_lt(first_manifest_source_pos, after_future_manifest_source_pos)
 
   critical_rules <- c(
     'c("R/bootstrap_source_manifest.R", "R/config_packages.R")',
