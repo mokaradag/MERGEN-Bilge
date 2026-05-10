@@ -230,7 +230,7 @@ Focused validation:
 
 The repository now has a deterministic E2E-style regression foundation for quick actions and true-streaming request lifecycle behavior. It intentionally uses `testthat` plus local state/service stubs instead of adding a browser automation dependency. This keeps the suite compatible with offline/on-prem Windows VM environments and avoids real DB, real LLM, TTS/STT, image endpoint, or public internet requirements.
 
-The latest behavioral coverage pass also adds focused unit/integration checks for quick-action routing, LLM response parsing, request-scoped send-message cleanup, File Manager storage policy, Bilge Yolaç document-summary context reset, and SSO runtime bootstrap isolation. These tests are intentionally fast, deterministic, and service-free: they must not require a real DB, real LLM endpoint, real SSO/Keycloak server, browser automation, API keys, or internet access.
+The latest behavioral coverage pass also strengthens focused unit/integration checks for quick-action routing, duplicate quick-action configuration protection, LLM response parsing, request-scoped send-message cleanup, File Manager storage and upload policy, MCP Excel context cleanup, refresh guard behavior, Bilge Yolaç stale finalization and directory observation, document-summary CLI context reset, and SSO identity readiness. These tests are intentionally fast, deterministic, and service-free: they must not require a real DB, real LLM endpoint, real SSO/Keycloak server, browser automation, API keys, or internet access.
 
 Current files:
 
@@ -241,12 +241,13 @@ The quick-action/streaming slice also protects the browser-side duplicate-click 
 
 Additional behavioral contract tests:
 
-- `tests/testthat/test-quick-action-routing.R`: verifies every quick-action id resolves to the expected tool family, setting flag, and configured model, and that applying an action leaves only one tool flag active.
-- `tests/testthat/test-llm-content-reasoning-fallback.R`: verifies `message$content`, `delta$content`, `text`, nested text nodes, `reasoning_content`, and reasoning fallback enabled/disabled behavior.
-- `tests/testthat/test-send-message-request-lifecycle-contract.R`: verifies current/stale/stopped request states and request-scoped typing-wrapper cleanup.
-- `tests/testthat/test-file-manager-policy-contract.R`: verifies upload policy helpers, user id normalization, user-specific upload folder derivation, and invalid-user persistence prevention.
-- `tests/testthat/test-claude-code-run-lifecycle-contract.R`: verifies stale/active Bilge Yolaç finalization and document-summary CLI context reset.
-- `tests/testthat/test-e2e-sso-identity-readiness-regression.R`: verifies refreshable modules wait for SSO identity readiness and can be run individually without depending on full-suite bootstrap side effects.
+- `tests/testthat/test-quick-action-routing.R`: verifies every quick-action id resolves to the expected tool family, setting flag, and configured model, verifies applying an action leaves only one tool flag active, and protects against duplicate quick-action ids, duplicate families, duplicate setting flags, and unexpected model ids.
+- `tests/testthat/test-llm-content-reasoning-fallback.R`: verifies `message$content`, top-level `message$content`, `delta$content`, `text`, nested text nodes, `reasoning_content`, and reasoning fallback enabled/disabled behavior.
+- `tests/testthat/test-send-message-request-lifecycle-contract.R`: verifies current/stale/stopped request states, request-scoped typing-wrapper cleanup, and stale cleanup paths that must not remove a newer request’s wrapper.
+- `tests/testthat/test-file-manager-policy-contract.R`: verifies upload policy helpers, user id normalization, user-specific upload folder derivation, invalid-user persistence prevention, summarization-mode Excel rejection, MCP Excel cleanup, and stale refresh guard behavior.
+- `tests/testthat/test-upload-validator.R`: verifies too-large file rejection, unsafe filename rejection, unsupported extension rejection when a whitelist exists, valid UTF-8 Turkish filename acceptance, and invalid UTF-8 filename rejection.
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`: verifies stale/active Bilge Yolaç finalization, stale directory observation suppression, early-abort cleanup, blocked-message payload safety, stop finalization, and document-summary CLI context reset.
+- `tests/testthat/test-e2e-sso-identity-readiness-regression.R`: verifies refreshable modules wait for SSO identity readiness, do not refresh while `authenticated=TRUE` but `auth_ready=FALSE`, refresh immediately when already ready, preserve local non-SSO behavior, and can be run individually without depending on full-suite bootstrap side effects.
 
 Additional media/audio race files:
 
@@ -338,6 +339,10 @@ The media/audio slice protects these contracts:
 
 The file-context slice protects these contracts:
 
+- summarization upload validation must reject Excel files while accepting valid UTF-8 Turkish document filenames,
+- MCP Excel context cleanup must remove non-Excel files, stale selection ids, and excess Excel files,
+- refresh request guards must reject invalid or stale request ids before applying refreshed file state,
+- upload validation must reject invalid UTF-8 filenames in addition to path traversal, unsupported extensions, and oversized files.
 - supported uploads must appear in File Manager table/state,
 - Model Context attachment toggles must update the parent session context,
 - summarization mode must reject unsupported file types and keep supported document types,
@@ -413,6 +418,7 @@ The streaming client request-id safety slice protects these contracts:
 
 The SSO identity readiness slice protects these contracts:
 
+- authenticated SSO sessions must still wait for `auth_ready = TRUE`; `authenticated = TRUE` alone must not trigger user-scoped refresh with temporary user ids.
 - refreshable modules must not run user-scoped refresh work with temporary or invalid user ids such as `0`, empty, `unknown`, or `NULL`,
 - File Manager must receive `auth_ready_provider = identity$is_auth_ready` before being attached as a refreshable module,
 - File Manager and Image Gallery refresh hooks must wait for SSO authentication and identity readiness when SSO is still in progress,
@@ -441,6 +447,7 @@ Related focused tests:
     testthat::test_file("tests/testthat/test-quick-action-routing.R")
     testthat::test_file("tests/testthat/test-llm-content-reasoning-fallback.R")
     testthat::test_file("tests/testthat/test-file-manager-policy-contract.R")
+    testthat::test_file("tests/testthat/test-upload-validator.R")
     testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")
     testthat::test_file("tests/testthat/test-send-message-prompting-contract.R")
     testthat::test_file("tests/testthat/test-llm-stream-io-contract.R")
