@@ -91,6 +91,88 @@ test_that("global.R manifestinde aynı R dosyası yanlışlıkla tekrar tekrar y
   )
 })
 
+test_that("global.R manifest doğrulamasını runtime source zincirinden önce çalıştırıyor", {
+  global_text <- .read_repo_text_manifest_contract("global.R")
+
+  expected_tokens <- c(
+    "source_manifest_stop <- function",
+    "source_manifest_read_self <- function",
+    "source_manifest_extract_safe_source_paths <- function",
+    "source_manifest_validate_files <- function",
+    "source_manifest_validate_order <- function",
+    "source_manifest_validate <- function",
+    "source_manifest_required_order <- list",
+    "source_manifest_current_paths <- source_manifest_validate"
+  )
+
+  found <- vapply(
+    expected_tokens,
+    function(token) {
+      isTRUE(suppressWarnings(grepl(
+        token,
+        global_text,
+        fixed = TRUE,
+        useBytes = TRUE
+      )))
+    },
+    logical(1)
+  )
+
+  expect_true(
+    all(found),
+    info = paste(
+      "global.R manifest doğrulama helper/kayıtları eksik:",
+      paste(expected_tokens[!found], collapse = ", ")
+    )
+  )
+
+  validation_call_pos <- regexpr(
+    "source_manifest_current_paths <- source_manifest_validate",
+    global_text,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  first_manifest_source_pos <- regexpr(
+    'safe_source\\("R/config_packages.R"',
+    global_text,
+    perl = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  expect_true(validation_call_pos > 0L)
+  expect_true(first_manifest_source_pos > 0L)
+  expect_lt(validation_call_pos, first_manifest_source_pos)
+
+  critical_rules <- c(
+    'c("R/config_api.R", "R/helpers_api_model_config.R")',
+    'c("R/helpers_send_message_request_lifecycle.R", "R/helpers_send_message_core.R")',
+    'c("R/helpers_llm_worker_payload.R", "R/helpers_llm_worker_tool_results.R")',
+    'c("R/server_handler_true_streaming.R", "R/server_send_message.R")'
+  )
+
+  rules_found <- vapply(
+    critical_rules,
+    function(rule) {
+      isTRUE(suppressWarnings(grepl(
+        rule,
+        global_text,
+        fixed = TRUE,
+        useBytes = TRUE
+      )))
+    },
+    logical(1)
+  )
+
+  expect_true(
+    all(rules_found),
+    info = paste(
+      "global.R manifest doğrulama sıra kuralı eksik:",
+      paste(critical_rules[!rules_found], collapse = ", ")
+    )
+  )
+})
+
 test_that("LLM/SSE/worker yükleme sırası korunuyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
   paths <- .extract_safe_source_paths(global_text)
