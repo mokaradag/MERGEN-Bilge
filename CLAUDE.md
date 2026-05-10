@@ -241,11 +241,11 @@ The quick-action/streaming slice also protects the browser-side duplicate-click 
 
 Additional behavioral contract tests:
 
-- `tests/testthat/test-quick-action-routing.R`: verifies every quick-action id resolves to the expected tool family, setting flag, and configured model, verifies applying an action leaves only one tool flag active, and protects against duplicate quick-action ids, duplicate families, duplicate setting flags, and unexpected model ids.
-- `tests/testthat/test-llm-content-reasoning-fallback.R`: verifies `message$content`, top-level `message$content`, `delta$content`, `text`, nested text nodes, `reasoning_content`, and reasoning fallback enabled/disabled behavior.
-- `tests/testthat/test-send-message-request-lifecycle-contract.R`: verifies current/stale/stopped request states, request-scoped typing-wrapper cleanup, and stale cleanup paths that must not remove a newer request’s wrapper.
+- `tests/testthat/test-quick-action-routing.R`: verifies every quick-action id resolves to the expected tool family, setting flag, and configured model; applying an action leaves only one tool flag active; the real `mergen_determine_tool_family()` routing helper is covered; MCP Excel without files does not route to `mcp_excel`; and `skip_mcp_once` has precedence, while duplicate ids/families/flags and unexpected model ids remain protected.
+- `tests/testthat/test-llm-content-reasoning-fallback.R`: verifies `message$content`, top-level `message$content`, `delta$content`, choice `text`, top-level `response$text`, nested text nodes, `reasoning_content`, and reasoning fallback enabled/disabled behavior.
+- `tests/testthat/test-send-message-request-lifecycle-contract.R`: verifies current/stale/stopped request states, request-scoped typing-wrapper cleanup, stale cleanup paths that must not remove a newer request’s wrapper, and cleanup that fails closed when `active_request_id` cannot be read.
 - `tests/testthat/test-file-manager-policy-contract.R`: verifies upload policy helpers, user id normalization, user-specific upload folder derivation, invalid-user persistence prevention, summarization-mode Excel rejection, MCP Excel cleanup, and stale refresh guard behavior.
-- `tests/testthat/test-upload-validator.R`: verifies too-large file rejection, unsafe filename rejection, unsupported extension rejection when a whitelist exists, valid UTF-8 Turkish filename acceptance, and invalid UTF-8 filename rejection.
+- `tests/testthat/test-upload-validator.R`: verifies too-large file rejection, unsafe filename rejection, ASCII control-byte filename rejection, unsupported extension rejection when a whitelist exists, dotted whitelist entries and uppercase visible extensions, valid UTF-8 Turkish filename acceptance, and invalid UTF-8 filename rejection.
 - `tests/testthat/test-claude-code-run-lifecycle-contract.R`: verifies stale/active Bilge Yolaç finalization, stale directory observation suppression, early-abort cleanup, blocked-message payload safety, stop finalization, and document-summary CLI context reset.
 - `tests/testthat/test-e2e-sso-identity-readiness-regression.R`: verifies refreshable modules wait for SSO identity readiness, do not refresh while `authenticated=TRUE` but `auth_ready=FALSE`, refresh immediately when already ready, preserve local non-SSO behavior, and can be run individually without depending on full-suite bootstrap side effects.
 
@@ -342,7 +342,10 @@ The file-context slice protects these contracts:
 - summarization upload validation must reject Excel files while accepting valid UTF-8 Turkish document filenames,
 - MCP Excel context cleanup must remove non-Excel files, stale selection ids, and excess Excel files,
 - refresh request guards must reject invalid or stale request ids before applying refreshed file state,
-- upload validation must reject invalid UTF-8 filenames in addition to path traversal, unsupported extensions, and oversized files.
+- upload validation must reject invalid UTF-8 filenames and ASCII control-byte filenames in addition to path traversal, unsupported extensions, and oversized files, while accepting valid UTF-8 Turkish filenames.
+
+Use raw-byte checks for ASCII control characters in filenames; do not replace them with `grepl("[[:cntrl:]]", ..., useBytes = TRUE)`, because that can misclassify valid UTF-8 Turkish characters on Windows/R locales.
+
 - supported uploads must appear in File Manager table/state,
 - Model Context attachment toggles must update the parent session context,
 - summarization mode must reject unsupported file types and keep supported document types,
