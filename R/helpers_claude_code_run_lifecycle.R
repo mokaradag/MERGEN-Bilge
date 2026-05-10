@@ -121,6 +121,14 @@ cc_observe_dir_if_active <- function(rv,
   invisible(TRUE)
 }
 
+cc_reset_document_summary_session_context <- function(rv, model) {
+  rv$cli_session_id <- NULL
+  rv$conversation_context <- list()
+  rv$current_runtime_model <- model
+
+  invisible(TRUE)
+}
+
 cc_handle_document_summary_run <- function(session,
                                            ns,
                                            rv,
@@ -139,9 +147,7 @@ cc_handle_document_summary_run <- function(session,
                                            observe_dir_contents) {
   # Doküman görevlerinde Claude Code CLI oturumu kesinlikle kullanılmaz.
   # Eski --resume oturumu veya araç bağlamı bu akışa taşınmaz.
-  rv$cli_session_id <- NULL
-  rv$conversation_context <- list()
-  rv$current_runtime_model <- model
+  cc_reset_document_summary_session_context(rv, model)
 
   target_dir <- kaynak_calisma_dizini %||% calisma_dizini
 

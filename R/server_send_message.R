@@ -166,6 +166,39 @@ sendMessageInit <- function(
     user_prompt_msg <- add_message_fn(display_text, "user")
 
     req_id <- mergen_new_send_message_request_id()
+    active_request_id(req_id)
+
+    cleanup_send_message <- local({
+      request_id <- req_id
+
+      function(remove_typing_wrapper = TRUE) {
+        mergen_cleanup_send_message(
+          values = values,
+          reset_chat_state_fn = reset_chat_state_fn,
+          remove_typing_wrapper = remove_typing_wrapper,
+          active_request_id = active_request_id,
+          req_id = request_id
+        )
+      }
+    })
+
+    abort_send_message <- local({
+      request_id <- req_id
+
+      function(message = NULL, type = "warning", remove_typing_wrapper = TRUE) {
+        mergen_abort_send_message(
+          session = session,
+          values = values,
+          reset_chat_state_fn = reset_chat_state_fn,
+          toast_message = message,
+          toast_type = type,
+          remove_typing_wrapper = remove_typing_wrapper,
+          active_request_id = active_request_id,
+          req_id = request_id
+        )
+      }
+    })
+
     values$typing <- TRUE
     thinking_panel_plan <- mergen_build_thinking_panel_plan(
       tool_family = tool_family,

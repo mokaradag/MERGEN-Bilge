@@ -105,6 +105,23 @@ test_that("cc_finalize_if_active stale finalize çağrısını yoksayar", {
   expect_identical(rv$last_finalize_request_id, "newer-request")
 })
 
+test_that("doküman özetleme yolu CLI oturum bağlamını temizler", {
+  env <- .source_cc_run_lifecycle_for_test()
+
+  rv <- new.env(parent = emptyenv())
+  rv$cli_session_id <- "resume-edilmemesi-gereken-eski-session"
+  rv$conversation_context <- list(
+    list(role = "assistant", content = "Eski CLI bağlamı")
+  )
+  rv$current_runtime_model <- "old-model"
+
+  expect_true(env$cc_reset_document_summary_session_context(rv, "summary-model"))
+
+  expect_null(rv$cli_session_id)
+  expect_identical(rv$conversation_context, list())
+  expect_identical(rv$current_runtime_model, "summary-model")
+})
+
 test_that("cc_abort_run_before_streaming yalnızca aktif request state'ini temizler", {
   env <- .source_cc_run_lifecycle_for_test()
 

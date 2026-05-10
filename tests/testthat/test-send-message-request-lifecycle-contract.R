@@ -11,6 +11,12 @@ source(
   local = globalenv()
 )
 
+source(
+  file.path(repo_root_send_message_lifecycle, "R/helpers_send_message_core.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 test_that("send message request state current, stopped ve stale ayrımını korur", {
   current_id <- "req_current"
   active_request_id <- function(value) {
@@ -33,6 +39,74 @@ test_that("send message request state current, stopped ve stale ayrımını koru
   )
 
   expect_false(mergen_is_current_request(active_request_id, "req_old", function() FALSE))
+})
+
+test_that("typing wrapper cleanup stale istekte yeni wrapper'ı kaldırmaz", {
+  current_id <- "req_new"
+  removed_selectors <- character(0)
+
+  active_request_id <- function(value) {
+    if (missing(value)) {
+      current_id
+    } else {
+      current_id <<- value
+    }
+  }
+
+  remove_ui_fn <- function(selector, immediate = FALSE) {
+    removed_selectors <<- c(removed_selectors, selector)
+    invisible(TRUE)
+  }
+
+  expect_false(mergen_remove_typing_wrapper_if_safe(
+    active_request_id = active_request_id,
+    req_id = "req_old",
+    remove_ui_fn = remove_ui_fn
+  ))
+
+  expect_identical(removed_selectors, character(0))
+
+  expect_true(mergen_remove_typing_wrapper_if_safe(
+    active_request_id = active_request_id,
+    req_id = "req_new",
+    remove_ui_fn = remove_ui_fn
+  ))
+
+  expect_identical(removed_selectors, "#typing-animation-wrapper")
+})
+
+test_that("aktif isteğin cleanup akışı typing durumunu temizler ve wrapper'ı kaldırır", {
+  values <- new.env(parent = emptyenv())
+  values$typing <- TRUE
+
+  reset_count <- 0L
+  remove_count <- 0L
+
+  active_request_id <- function() "req_active"
+
+  reset_chat_state_fn <- function() {
+    reset_count <<- reset_count + 1L
+    invisible(TRUE)
+  }
+
+  remove_ui_fn <- function(selector, immediate = FALSE) {
+    expect_identical(selector, "#typing-animation-wrapper")
+    remove_count <<- remove_count + 1L
+    invisible(TRUE)
+  }
+
+  mergen_cleanup_send_message(
+    values = values,
+    reset_chat_state_fn = reset_chat_state_fn,
+    remove_typing_wrapper = TRUE,
+    active_request_id = active_request_id,
+    req_id = "req_active",
+    remove_ui_fn = remove_ui_fn
+  )
+
+  expect_false(values$typing)
+  expect_identical(reset_count, 1L)
+  expect_identical(remove_count, 1L)
 })
 
 test_that("deferred stream persist sadece aktif ve finalize edilmemiş istek için çalışır", {

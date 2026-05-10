@@ -69,9 +69,41 @@ mergen_build_stream_profile <- function(tool_family, uploaded_count, settings_da
   stream_profile
 }
 
-mergen_cleanup_send_message <- function(values, reset_chat_state_fn, remove_typing_wrapper = TRUE) {
+mergen_remove_typing_wrapper_if_safe <- function(active_request_id = NULL,
+                                                 req_id = NULL,
+                                                 remove_ui_fn = removeUI) {
+  if (!is.function(remove_ui_fn)) {
+    return(invisible(FALSE))
+  }
+
+  if (!is.null(req_id) &&
+      length(req_id) > 0L &&
+      nzchar(as.character(req_id)[1]) &&
+      is.function(active_request_id)) {
+    request_id <- as.character(req_id)[1]
+    current_id <- tryCatch(active_request_id(), error = function(e) NULL)
+
+    if (!identical(current_id, request_id)) {
+      return(invisible(FALSE))
+    }
+  }
+
+  try(remove_ui_fn(selector = "#typing-animation-wrapper", immediate = TRUE), silent = TRUE)
+  invisible(TRUE)
+}
+
+mergen_cleanup_send_message <- function(values,
+                                        reset_chat_state_fn,
+                                        remove_typing_wrapper = TRUE,
+                                        active_request_id = NULL,
+                                        req_id = NULL,
+                                        remove_ui_fn = removeUI) {
   if (isTRUE(remove_typing_wrapper)) {
-    try(removeUI(selector = "#typing-animation-wrapper", immediate = TRUE), silent = TRUE)
+    mergen_remove_typing_wrapper_if_safe(
+      active_request_id = active_request_id,
+      req_id = req_id,
+      remove_ui_fn = remove_ui_fn
+    )
   }
 
   values$typing <- FALSE
@@ -85,12 +117,18 @@ mergen_abort_send_message <- function(
   reset_chat_state_fn,
   toast_message = NULL,
   toast_type = "warning",
-  remove_typing_wrapper = TRUE
+  remove_typing_wrapper = TRUE,
+  active_request_id = NULL,
+  req_id = NULL,
+  remove_ui_fn = removeUI
 ) {
   mergen_cleanup_send_message(
     values = values,
     reset_chat_state_fn = reset_chat_state_fn,
-    remove_typing_wrapper = remove_typing_wrapper
+    remove_typing_wrapper = remove_typing_wrapper,
+    active_request_id = active_request_id,
+    req_id = req_id,
+    remove_ui_fn = remove_ui_fn
   )
 
   msg <- tryCatch(as.character(toast_message %||% "")[1], error = function(e) "")

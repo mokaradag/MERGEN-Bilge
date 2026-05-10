@@ -35,6 +35,12 @@
     local = helper_env
   )
 
+  source(
+    file.path(repo_root, "R", "helpers_file_manager_storage.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
   helper_env
 }
 
@@ -110,6 +116,69 @@ test_that("file manager kullanıcı kimliği normalizasyonu placeholder değerle
 
   expect_true(env$fm_valid_user_id(42L))
   expect_false(env$fm_valid_user_id("0"))
+})
+
+test_that("file manager kullanıcıya özel yükleme klasörünü deterministik türetir", {
+  env <- .load_file_manager_policy_helpers()
+
+  base_dir <- normalizePath(tempdir(), winslash = "/", mustWork = TRUE)
+  withr::local_options(list(mergen.mcp_base_dir = base_dir))
+
+  helpers <- env$fm_create_server_storage_helpers(
+    module_user_id_chr = function() "42",
+    fm_debug = function(...) invisible(NULL)
+  )
+
+  expect_equal(
+    normalizePath(helpers$get_user_upload_dir(), winslash = "/", mustWork = FALSE),
+    normalizePath(file.path(base_dir, "user_42"), winslash = "/", mustWork = FALSE)
+  )
+})
+
+test_that("file manager geçersiz kullanıcı kimliğiyle kalıcı indeks yazmaz", {
+  env <- .load_file_manager_policy_helpers()
+
+  calls <- new.env(parent = emptyenv())
+  calls$n <- 0L
+
+  env$path_exists_relaxed <- function(path) file.exists(path)
+  env$mergen_register_uploaded_file <- function(src_path,
+                                                as_name,
+                                                user_id,
+                                                persist_under_mcp_base = TRUE) {
+    calls$n <- calls$n + 1L
+    invisible(TRUE)
+  }
+
+  tmp_file <- tempfile("fm_policy_", fileext = ".txt")
+  writeLines("deneme", tmp_file, useBytes = TRUE)
+  on.exit(unlink(tmp_file, force = TRUE), add = TRUE)
+
+  helpers <- env$fm_create_server_storage_helpers(
+    module_user_id_chr = function() "42",
+    fm_debug = function(...) invisible(NULL)
+  )
+
+  expect_false(isTRUE(helpers$ensure_persisted_upload_index(
+    abs_path = tmp_file,
+    display_name = "güvenli.txt",
+    uid = "0"
+  )))
+  expect_identical(calls$n, 0L)
+
+  expect_false(isTRUE(helpers$ensure_persisted_upload_index(
+    abs_path = tmp_file,
+    display_name = "güvenli.txt",
+    uid = "unknown"
+  )))
+  expect_identical(calls$n, 0L)
+
+  expect_true(isTRUE(helpers$ensure_persisted_upload_index(
+    abs_path = tmp_file,
+    display_name = "güvenli.txt",
+    uid = "42"
+  )))
+  expect_identical(calls$n, 1L)
 })
 
 test_that("file manager saf biçimlendirme yardımcıları modülden bağımsızdır", {

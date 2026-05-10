@@ -156,3 +156,81 @@ test_that("delta$content boş olsa bile delta$reasoning_content fallback olabili
     expect_identical(out$reasoning, "Delta reasoning fallback metni.")
   })
 })
+
+test_that("OpenAI uyumlu message$content normal cevap olarak ayrıştırılır", {
+  response <- list(
+    choices = list(
+      list(
+        message = list(
+          content = "Normal OpenAI uyumlu yanıt.",
+          reasoning_content = "Bu iç reasoning metnidir."
+        )
+      )
+    )
+  )
+
+  .with_reasoning_fallback_stub(TRUE, {
+    out <- extract_llm_content_and_sources(response, model_id = "thinking-model")
+
+    expect_identical(out$content, "Normal OpenAI uyumlu yanıt.")
+    expect_identical(out$reasoning, "Bu iç reasoning metnidir.")
+  })
+})
+
+test_that("streaming delta$content görünür cevap olarak ayrıştırılır", {
+  response <- list(
+    choices = list(
+      list(
+        delta = list(
+          content = "Canlı delta yanıtı."
+        )
+      )
+    )
+  )
+
+  .with_reasoning_fallback_stub(TRUE, {
+    out <- extract_llm_content_and_sources(response, model_id = "thinking-model")
+
+    expect_identical(out$content, "Canlı delta yanıtı.")
+    expect_identical(out$reasoning, "")
+  })
+})
+
+test_that("choice text alanı görünür cevap olarak ayrıştırılır", {
+  response <- list(
+    choices = list(
+      list(
+        text = "Text alanından gelen yanıt."
+      )
+    )
+  )
+
+  .with_reasoning_fallback_stub(FALSE, {
+    out <- extract_llm_content_and_sources(response, model_id = "plain-model")
+
+    expect_identical(out$content, "Text alanından gelen yanıt.")
+    expect_identical(out$reasoning, "")
+  })
+})
+
+test_that("liste tabanlı metin düğümleri tek UTF-8 cevaba indirilir", {
+  response <- list(
+    choices = list(
+      list(
+        message = list(
+          content = list(
+            list(text = "İlk "),
+            list(content = "parça")
+          )
+        )
+      )
+    )
+  )
+
+  .with_reasoning_fallback_stub(FALSE, {
+    out <- extract_llm_content_and_sources(response, model_id = "plain-model")
+
+    expect_identical(out$content, "İlk parça")
+    expect_identical(out$reasoning, "")
+  })
+})
