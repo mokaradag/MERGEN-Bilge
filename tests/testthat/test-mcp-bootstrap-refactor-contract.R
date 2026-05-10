@@ -56,7 +56,6 @@ local({
 test_that("MCP bootstrap sorumluluğu ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_bootstrap("R/helpers_mcp_tools.R")
   bootstrap_txt <- .read_repo_text_quiet_mcp_bootstrap("R/helpers_mcp_bootstrap.R")
-  global_txt <- .read_repo_text_quiet_mcp_bootstrap("global.R")
 
   moved_defs <- c(
     "mcp_tools_find_support_file <- function",
@@ -99,9 +98,9 @@ test_that("MCP bootstrap sorumluluğu ayrı dosyada tutulur", {
     info = "MCP bootstrap/yol fallback tanımları helpers_mcp_tools.R içine geri taşınmamalıdır."
   )
 
-  expect_true(
-    grepl('safe_source("R/helpers_mcp_bootstrap.R"', global_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R global.R manifestinde açıkça yüklenmelidir."
+  expect_source_manifest_contains_for_tests(
+    "R/helpers_mcp_bootstrap.R",
+    label = "helpers_mcp_bootstrap.R runtime manifestinde açıkça yüklenmelidir:"
   )
 })
 

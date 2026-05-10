@@ -97,30 +97,22 @@
   helper_env
 }
 
-test_that("Proje/Kaynak Analizi security-summary helper global.R içinde doğru sırada yüklenir", {
-  global_text <- .pk_read_repo_text("global.R")
-  paths <- .pk_extract_safe_source_paths(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_pk_analysis_core.R")))
-  expect_false(is.na(pos("R/helpers_pk_analysis_security_summary.R")))
-  expect_false(is.na(pos("R/helpers_pk_analysis_filters.R")))
-  expect_false(is.na(pos("R/module_proje_kaynak_analizi.R")))
-
-  expect_lt(
-    pos("R/helpers_pk_analysis_core.R"),
-    pos("R/helpers_pk_analysis_security_summary.R")
+test_that("Proje/Kaynak Analizi security-summary helper manifest içinde doğru sırada yüklenir", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_pk_analysis_core.R",
+      "R/helpers_pk_analysis_security_summary.R",
+      "R/helpers_pk_analysis_filters.R"
+    ),
+    label = "PK analysis core/security/filters source sırası bozulmuş:"
   )
 
-  expect_lt(
-    pos("R/helpers_pk_analysis_security_summary.R"),
-    pos("R/helpers_pk_analysis_filters.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_pk_analysis_security_summary.R"),
-    pos("R/module_proje_kaynak_analizi.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_pk_analysis_security_summary.R",
+      "R/module_proje_kaynak_analizi.R"
+    ),
+    label = "PK security-summary/module source sırası bozulmuş:"
   )
 })
 

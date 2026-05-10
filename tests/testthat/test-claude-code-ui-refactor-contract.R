@@ -85,24 +85,20 @@ test_that("Bilge Yolaç UI ayrı dosyaya taşınmıştır", {
 })
 
 test_that("Bilge Yolaç UI source sırası korunuyor", {
-  global_text <- .read_repo_text_cc_ui_contract("global.R")
-  paths <- .extract_safe_source_paths_cc_ui(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/module_claude_code_plugins.R")))
-  expect_false(is.na(pos("R/module_claude_code_ui.R")))
-  expect_false(is.na(pos("R/module_claude_code_akis.R")))
-  expect_false(is.na(pos("R/module_claude_code.R")))
-
-  expect_lt(
-    pos("R/module_claude_code_plugins.R"),
-    pos("R/module_claude_code_ui.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/module_claude_code_plugins.R",
+      "R/module_claude_code_ui.R"
+    ),
+    label = "Bilge Yolaç plugin/UI source sırası bozulmuş:"
   )
 
-  expect_lt(
-    pos("R/module_claude_code_ui.R"),
-    pos("R/module_claude_code.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/module_claude_code_ui.R",
+      "R/module_claude_code.R"
+    ),
+    label = "Bilge Yolaç UI/server source sırası bozulmuş:"
   )
 })
 

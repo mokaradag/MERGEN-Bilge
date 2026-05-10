@@ -123,29 +123,14 @@ test_that("Claude Code runtime workdir yardımcıları ayrı dosyaya taşınmı�
 })
 
 test_that("Claude Code runtime workdir helper source sırası korunur", {
-  global_text <- .read_repo_text_cc_runtime_workdir_contract("global.R")
-  paths <- .extract_safe_source_paths_cc_runtime_workdir(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_claude_code_process.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_runtime_workdir.R")))
-  expect_false(is.na(pos("R/helpers_claude_code.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_server_setup.R")))
-
-  expect_lt(
-    pos("R/helpers_claude_code_process.R"),
-    pos("R/helpers_claude_code_runtime_workdir.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_runtime_workdir.R"),
-    pos("R/helpers_claude_code.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code.R"),
-    pos("R/helpers_claude_code_server_setup.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_process.R",
+      "R/helpers_claude_code_runtime_workdir.R",
+      "R/helpers_claude_code.R",
+      "R/helpers_claude_code_server_setup.R"
+    ),
+    label = "Claude Code runtime workdir source sırası bozulmuş:"
   )
 })
 

@@ -217,40 +217,16 @@ test_that("Claude Code model/settings yardımcıları ayrı dosyaya taşınmış
 })
 
 test_that("Claude Code model/config source sırası korunuyor", {
-  global_text <- .read_repo_text_cc_model_config_contract("global.R")
-  paths <- .extract_safe_source_paths_cc_model_config(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_claude_code_model_config.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_session_context.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_process.R")))
-  expect_false(is.na(pos("R/helpers_claude_code.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_streaming.R")))
-
-  expect_lt(
-    pos("R/config_claude_code.R"),
-    pos("R/helpers_claude_code_model_config.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_model_config.R"),
-    pos("R/helpers_claude_code_session_context.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_session_context.R"),
-    pos("R/helpers_claude_code_process.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_process.R"),
-    pos("R/helpers_claude_code.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code.R"),
-    pos("R/helpers_claude_code_streaming.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/config_claude_code.R",
+      "R/helpers_claude_code_model_config.R",
+      "R/helpers_claude_code_session_context.R",
+      "R/helpers_claude_code_process.R",
+      "R/helpers_claude_code.R",
+      "R/helpers_claude_code_streaming.R"
+    ),
+    label = "Claude Code model/config source sırası bozulmuş:"
   )
 })
 

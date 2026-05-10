@@ -60,7 +60,6 @@ test_that("MCP temel araçları ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_basic("R/helpers_mcp_tools.R")
   bootstrap_txt <- .read_repo_text_quiet_mcp_basic("R/helpers_mcp_bootstrap.R")
   basic_txt <- .read_repo_text_quiet_mcp_basic("R/helpers_mcp_basic_tools.R")
-  global_txt <- .read_repo_text_quiet_mcp_basic("global.R")
 
   expected_defs <- c(
     "helpers_mcp_tools$safe_has_duckdb <- function",
@@ -101,9 +100,9 @@ test_that("MCP temel araçları ayrı dosyada tutulur", {
     info = "helpers_mcp_bootstrap.R temel araç dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
   )
 
-  expect_true(
-    grepl('safe_source("R/helpers_mcp_basic_tools.R"', global_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_basic_tools.R global.R manifestinde açıkça yüklenmelidir."
+  expect_source_manifest_contains_for_tests(
+    "R/helpers_mcp_basic_tools.R",
+    label = "helpers_mcp_basic_tools.R runtime manifestinde açıkça yüklenmelidir:"
   )
 })
 

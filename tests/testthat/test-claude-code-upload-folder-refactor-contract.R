@@ -145,29 +145,21 @@ test_that("Claude Code upload-folder yardımcıları ayrı dosyaya taşınmışt
 })
 
 test_that("Claude Code upload-folder source sırası korunuyor", {
-  global_text <- .read_repo_text_cc_upload_folder_contract("global.R")
-  paths <- .extract_safe_source_paths_cc_upload_folder(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_claude_code_upload_folder.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_model_config.R")))
-  expect_false(is.na(pos("R/helpers_claude_code.R")))
-  expect_false(is.na(pos("R/module_claude_code.R")))
-
-  expect_lt(
-    pos("R/helpers_ai_expert.R"),
-    pos("R/helpers_claude_code_upload_folder.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_ai_expert.R",
+      "R/helpers_claude_code_upload_folder.R",
+      "R/helpers_claude_code_model_config.R"
+    ),
+    label = "Claude Code upload-folder/model-config source sırası bozulmuş:"
   )
 
-  expect_lt(
-    pos("R/helpers_claude_code_upload_folder.R"),
-    pos("R/helpers_claude_code_model_config.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_upload_folder.R"),
-    pos("R/module_claude_code.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_upload_folder.R",
+      "R/module_claude_code.R"
+    ),
+    label = "Claude Code upload-folder/module source sırası bozulmuş:"
   )
 })
 

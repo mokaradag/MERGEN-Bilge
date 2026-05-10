@@ -117,29 +117,14 @@ test_that("Bilge Yolaç workdir scan yardımcıları ayrı dosyaya taşınmışt
 })
 
 test_that("Bilge Yolaç workdir scan helper source sırası korunur", {
-  global_text <- .read_repo_text_cc_workdir_scan_contract("global.R")
-  paths <- .extract_safe_source_paths_cc_workdir_scan(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_claude_code_downloads.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_workdir_scan.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_workdir_snapshot.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_documents.R")))
-
-  expect_lt(
-    pos("R/helpers_claude_code_downloads.R"),
-    pos("R/helpers_claude_code_workdir_scan.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_workdir_scan.R"),
-    pos("R/helpers_claude_code_workdir_snapshot.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_workdir_snapshot.R"),
-    pos("R/helpers_claude_code_documents.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_downloads.R",
+      "R/helpers_claude_code_workdir_scan.R",
+      "R/helpers_claude_code_workdir_snapshot.R",
+      "R/helpers_claude_code_documents.R"
+    ),
+    label = "Bilge Yolaç workdir scan source sırası bozulmuş:"
   )
 })
 

@@ -53,7 +53,6 @@ local({
 test_that("dosya yolu yardımcıları helpers_files_path.R içinde tutulur", {
   path_txt <- .read_repo_text_quiet_helpers_files_path("R/helpers_files_path.R")
   files_txt <- .read_repo_text_quiet_helpers_files_path("R/helpers_files.R")
-  global_txt <- .read_repo_text_quiet_helpers_files_path("global.R")
 
   moved_defs <- c(
     "resolve_readable_path <- function",
@@ -84,9 +83,9 @@ test_that("dosya yolu yardımcıları helpers_files_path.R içinde tutulur", {
     info = "Yol/UNC helper tanımları helpers_files.R içine geri taşınmamalıdır."
   )
 
-  expect_true(
-    grepl('safe_source("R/helpers_files_path.R"', global_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_files_path.R global.R manifestinde açıkça yüklenmelidir."
+  expect_source_manifest_contains_for_tests(
+    "R/helpers_files_path.R",
+    label = "helpers_files_path.R runtime manifestinde açıkça yüklenmelidir:"
   )
 })
 

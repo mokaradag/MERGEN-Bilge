@@ -105,28 +105,21 @@ test_that("Claude Code dizin gezgini yardımcıları ayrı dosyada tutulur", {
 })
 
 test_that("Claude Code dizin helper source sırası korunur", {
-  paths <- source_manifest_paths_for_tests()
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_claude_code_session_context.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_dir_ui.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_process.R")))
-  expect_false(is.na(pos("R/module_claude_code.R")))
-
-  expect_lt(
-    pos("R/helpers_claude_code_session_context.R"),
-    pos("R/helpers_claude_code_dir_ui.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_session_context.R",
+      "R/helpers_claude_code_dir_ui.R",
+      "R/helpers_claude_code_process.R"
+    ),
+    label = "Claude Code dizin helper source sırası bozulmuş:"
   )
 
-  expect_lt(
-    pos("R/helpers_claude_code_dir_ui.R"),
-    pos("R/helpers_claude_code_process.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_dir_ui.R"),
-    pos("R/module_claude_code.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_dir_ui.R",
+      "R/module_claude_code.R"
+    ),
+    label = "Claude Code dizin helper/module source sırası bozulmuş:"
   )
 })
 

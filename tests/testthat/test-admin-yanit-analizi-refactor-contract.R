@@ -53,19 +53,16 @@
 
 test_that("Yanıt analizi helper dosyası modülden önce source ediliyor", {
   repo_root <- resolve_repo_root_for_tests()
-  paths <- source_manifest_paths_for_tests()
 
   expect_true(file.exists(file.path(repo_root, "R/helpers_admin_yanit_analizi.R")))
   expect_true(file.exists(file.path(repo_root, "R/module_admin_yanit_analizi.R")))
 
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_admin_yanit_analizi.R")))
-  expect_false(is.na(pos("R/module_admin_yanit_analizi.R")))
-
-  expect_lt(
-    pos("R/helpers_admin_yanit_analizi.R"),
-    pos("R/module_admin_yanit_analizi.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_admin_yanit_analizi.R",
+      "R/module_admin_yanit_analizi.R"
+    ),
+    label = "Yanıt analizi helper/module source sırası bozulmuş:"
   )
 })
 

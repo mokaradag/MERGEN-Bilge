@@ -53,17 +53,14 @@
 }
 
 test_that("server modül bağlama yardımcısı doğru manifest sırasındadır", {
-  global_text <- .read_repo_text_server_module_wiring_contract("global.R")
-  paths <- .extract_safe_source_paths_server_module_wiring_contract(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/server_runtime_context.R")))
-  expect_false(is.na(pos("R/server_module_wiring.R")))
-  expect_false(is.na(pos("R/server_init_session_state.R")))
-
-  expect_lt(pos("R/server_runtime_context.R"), pos("R/server_module_wiring.R"))
-  expect_lt(pos("R/server_module_wiring.R"), pos("R/server_init_session_state.R"))
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/server_runtime_context.R",
+      "R/server_module_wiring.R",
+      "R/server_init_session_state.R"
+    ),
+    label = "Server module wiring source sırası bozulmuş:"
+  )
 })
 
 test_that("server.R orta seviye modül bağlamayı helper dosyasına devreder", {

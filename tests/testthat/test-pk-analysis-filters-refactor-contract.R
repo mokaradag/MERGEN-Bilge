@@ -94,24 +94,14 @@ test_that("helpers_pk_analysis_filters.R exists and exposes extracted public hel
   }
 })
 
-test_that("global.R sources PK filter helpers after core and before module", {
-  global_txt <- .read_repo_text_pk_filters("global.R")
-
-  core_pattern <- 'safe_source("R/helpers_pk_analysis_core.R"'
-  filters_pattern <- 'safe_source("R/helpers_pk_analysis_filters.R"'
-  module_pattern <- 'safe_source("R/module_proje_kaynak_analizi.R"'
-
-  core_pos <- regexpr(core_pattern, global_txt, fixed = TRUE)[1]
-  filters_pos <- regexpr(filters_pattern, global_txt, fixed = TRUE)[1]
-  module_pos <- regexpr(module_pattern, global_txt, fixed = TRUE)[1]
-
-  expect_true(core_pos > 0, info = "global.R içinde PK core helper source edilmelidir.")
-  expect_true(filters_pos > 0, info = "global.R içinde PK filter helper source edilmelidir.")
-  expect_true(module_pos > 0, info = "global.R içinde PK module source edilmelidir.")
-
-  expect_true(
-    core_pos < filters_pos && filters_pos < module_pos,
-    info = "Kaynak sırası core -> filters -> module olmalıdır."
+test_that("runtime manifest sources PK filter helpers after core and before module", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_pk_analysis_core.R",
+      "R/helpers_pk_analysis_filters.R",
+      "R/module_proje_kaynak_analizi.R"
+    ),
+    label = "Kaynak sırası core -> filters -> module olmalıdır:"
   )
 })
 

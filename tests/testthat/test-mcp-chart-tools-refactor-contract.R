@@ -40,7 +40,6 @@ test_that("MCP chart tool ayrı dosyada tutulur", {
   chart_txt <- .read_repo_text_quiet_mcp_chart("R/helpers_mcp_chart_tools.R")
   tools_txt <- .read_repo_text_quiet_mcp_chart("R/helpers_mcp_tools.R")
   bootstrap_txt <- .read_repo_text_quiet_mcp_chart("R/helpers_mcp_bootstrap.R")
-  global_txt <- .read_repo_text_quiet_mcp_chart("global.R")
 
   expect_true(
     grepl("helpers_mcp_tools\\$prepare_chart_data <-", chart_txt, perl = TRUE, useBytes = TRUE),
@@ -57,9 +56,9 @@ test_that("MCP chart tool ayrı dosyada tutulur", {
     info = "helpers_mcp_bootstrap.R chart helper dosyasını izole/worker bağlamında yüklemelidir."
   )
 
-  expect_true(
-    grepl('safe_source("R/helpers_mcp_chart_tools.R"', global_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_chart_tools.R global.R manifestinde açıkça yüklenmelidir."
+  expect_source_manifest_contains_for_tests(
+    "R/helpers_mcp_chart_tools.R",
+    label = "helpers_mcp_chart_tools.R runtime manifestinde açıkça yüklenmelidir:"
   )
 })
 
@@ -83,26 +82,13 @@ test_that("MCP chart tool üretim loglarını raw cat ile kirletmez", {
 })
 
 test_that("MCP chart helper source sırası temel araçlardan sonra ChartLab'den önce gelir", {
-  global_txt <- .read_repo_text_quiet_mcp_chart("global.R")
-  lines <- strsplit(global_txt, "\n", fixed = TRUE)[[1]]
-
-  pos <- function(needle) {
-    hit <- grep(needle, lines, fixed = TRUE, useBytes = TRUE)
-    if (length(hit) == 0L) return(NA_integer_)
-    hit[1]
-  }
-
-  basic_pos <- pos('safe_source("R/helpers_mcp_basic_tools.R"')
-  chart_pos <- pos('safe_source("R/helpers_mcp_chart_tools.R"')
-  chartlab_spec_pos <- pos('safe_source("R/helpers_chartlab_spec.R"')
-  chartlab_pos <- pos('safe_source("R/helpers_chartlab.R"')
-
-  expect_false(is.na(basic_pos), info = "helpers_mcp_basic_tools.R manifestte olmalıdır.")
-  expect_false(is.na(chart_pos), info = "helpers_mcp_chart_tools.R manifestte olmalıdır.")
-  expect_false(is.na(chartlab_spec_pos), info = "helpers_chartlab_spec.R manifestte olmalıdır.")
-  expect_false(is.na(chartlab_pos), info = "helpers_chartlab.R manifestte olmalıdır.")
-
-  expect_lt(basic_pos, chart_pos)
-  expect_lt(chart_pos, chartlab_spec_pos)
-  expect_lt(chartlab_spec_pos, chartlab_pos)
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_mcp_basic_tools.R",
+      "R/helpers_mcp_chart_tools.R",
+      "R/helpers_chartlab_spec.R",
+      "R/helpers_chartlab.R"
+    ),
+    label = "MCP chart helper source sırası bozulmuş:"
+  )
 })

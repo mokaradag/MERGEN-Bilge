@@ -58,7 +58,6 @@ test_that("MCP şema ve argüman yardımcıları ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_tools.R")
   bootstrap_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_bootstrap.R")
   schema_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_schema_helpers.R")
-  global_txt <- .read_repo_text_quiet_mcp_schema("global.R")
 
   expected_defs <- c(
     "helpers_mcp_tools$extract_mcp_file_schema <- function",
@@ -107,29 +106,16 @@ test_that("MCP şema ve argüman yardımcıları ayrı dosyada tutulur", {
     info = "helpers_mcp_bootstrap.R .mcp_schema_helpers_path temizliğini değişken varsa yapmalıdır."
   )
 
-  source_order <- c(
-    'safe_source("R/helpers_mcp_context.R"',
-    'safe_source("R/helpers_mcp_bootstrap.R"',
-    'safe_source("R/helpers_mcp_tools.R"',
-    'safe_source("R/helpers_mcp_table_readers.R"',
-    'safe_source("R/helpers_mcp_file_resolver.R"',
-    'safe_source("R/helpers_mcp_schema_helpers.R"'
-  )
-
-  positions <- vapply(
-    source_order,
-    function(x) regexpr(x, global_txt, fixed = TRUE, useBytes = TRUE)[1],
-    integer(1)
-  )
-
-  expect_false(
-    any(positions < 0L),
-    info = paste("global.R içinde eksik MCP source kayıtları:", paste(source_order[positions < 0L], collapse = ", "))
-  )
-
-  expect_true(
-    all(diff(positions) > 0L),
-    info = "global.R MCP source sırası context -> bootstrap -> tools -> table_readers -> file_resolver -> schema_helpers olmalıdır."
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_mcp_context.R",
+      "R/helpers_mcp_bootstrap.R",
+      "R/helpers_mcp_tools.R",
+      "R/helpers_mcp_table_readers.R",
+      "R/helpers_mcp_file_resolver.R",
+      "R/helpers_mcp_schema_helpers.R"
+    ),
+    label = "MCP source sırası context -> bootstrap -> tools -> table_readers -> file_resolver -> schema_helpers olmalıdır:"
   )
 })
 

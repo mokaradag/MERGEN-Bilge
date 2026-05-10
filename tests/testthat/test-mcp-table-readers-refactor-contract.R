@@ -56,7 +56,6 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_table("R/helpers_mcp_tools.R")
   bootstrap_txt <- .read_repo_text_quiet_mcp_table("R/helpers_mcp_bootstrap.R")
   table_txt <- .read_repo_text_quiet_mcp_table("R/helpers_mcp_table_readers.R")
-  global_txt <- .read_repo_text_quiet_mcp_table("global.R")
 
   expected_defs <- c(
     "helpers_mcp_tools$safe_read_excel_table <- function",
@@ -146,9 +145,9 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
     info = paste("Eksik MCP tablo okuyucu tanımları:", paste(expected_defs[!table_has_defs], collapse = ", "))
   )
 
-  expect_true(
-    grepl('safe_source("R/helpers_mcp_table_readers.R"', global_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_table_readers.R global.R manifestinde açıkça yüklenmelidir."
+  expect_source_manifest_contains_for_tests(
+    "R/helpers_mcp_table_readers.R",
+    label = "helpers_mcp_table_readers.R runtime manifestinde açıkça yüklenmelidir:"
   )
 })
 

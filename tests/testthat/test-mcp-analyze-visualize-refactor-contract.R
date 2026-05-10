@@ -40,7 +40,6 @@ test_that("MCP analyze/visualize tool ayrı dosyada tutulur", {
   analyze_txt <- .read_repo_text_quiet_mcp_analyze("R/helpers_mcp_analyze_visualize.R")
   tools_txt <- .read_repo_text_quiet_mcp_analyze("R/helpers_mcp_tools.R")
   bootstrap_txt <- .read_repo_text_quiet_mcp_analyze("R/helpers_mcp_bootstrap.R")
-  global_txt <- .read_repo_text_quiet_mcp_analyze("global.R")
 
   expect_true(
     grepl("helpers_mcp_tools\\$analyze_and_visualize <-", analyze_txt, perl = TRUE, useBytes = TRUE),
@@ -62,9 +61,9 @@ test_that("MCP analyze/visualize tool ayrı dosyada tutulur", {
     info = "mcp_tools_bootstrap_ready() analyze_and_visualize public fonksiyonunu doğrulamalıdır."
   )
 
-  expect_true(
-    grepl('safe_source("R/helpers_mcp_analyze_visualize.R"', global_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_analyze_visualize.R global.R manifestinde açıkça yüklenmelidir."
+  expect_source_manifest_contains_for_tests(
+    "R/helpers_mcp_analyze_visualize.R",
+    label = "helpers_mcp_analyze_visualize.R runtime manifestinde açıkça yüklenmelidir:"
   )
 })
 
@@ -88,26 +87,13 @@ test_that("MCP analyze/visualize tool raw SMART_MATCH cat çıktısı üretmez",
 })
 
 test_that("MCP analyze/visualize helper kaynak sırası chart aracından sonra ChartLab'den önce gelir", {
-  global_txt <- .read_repo_text_quiet_mcp_analyze("global.R")
-  lines <- strsplit(global_txt, "\n", fixed = TRUE)[[1]]
-
-  pos <- function(needle) {
-    hit <- grep(needle, lines, fixed = TRUE, useBytes = TRUE)
-    if (length(hit) == 0L) return(NA_integer_)
-    hit[1]
-  }
-
-  basic_pos <- pos('safe_source("R/helpers_mcp_basic_tools.R"')
-  chart_pos <- pos('safe_source("R/helpers_mcp_chart_tools.R"')
-  analyze_pos <- pos('safe_source("R/helpers_mcp_analyze_visualize.R"')
-  chartlab_pos <- pos('safe_source("R/helpers_chartlab.R"')
-
-  expect_false(is.na(basic_pos), info = "helpers_mcp_basic_tools.R manifestte olmalıdır.")
-  expect_false(is.na(chart_pos), info = "helpers_mcp_chart_tools.R manifestte olmalıdır.")
-  expect_false(is.na(analyze_pos), info = "helpers_mcp_analyze_visualize.R manifestte olmalıdır.")
-  expect_false(is.na(chartlab_pos), info = "helpers_chartlab.R manifestte olmalıdır.")
-
-  expect_lt(basic_pos, chart_pos)
-  expect_lt(chart_pos, analyze_pos)
-  expect_lt(analyze_pos, chartlab_pos)
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_mcp_basic_tools.R",
+      "R/helpers_mcp_chart_tools.R",
+      "R/helpers_mcp_analyze_visualize.R",
+      "R/helpers_chartlab.R"
+    ),
+    label = "MCP analyze/visualize source sırası bozulmuş:"
+  )
 })

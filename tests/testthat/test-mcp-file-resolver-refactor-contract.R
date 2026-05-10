@@ -58,7 +58,6 @@ test_that("MCP dosya çözümleyici ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_resolver("R/helpers_mcp_tools.R")
   bootstrap_txt <- .read_repo_text_quiet_mcp_resolver("R/helpers_mcp_bootstrap.R")
   resolver_txt <- .read_repo_text_quiet_mcp_resolver("R/helpers_mcp_file_resolver.R")
-  global_txt <- .read_repo_text_quiet_mcp_resolver("global.R")
 
   expected_defs <- c(
     "helpers_mcp_tools$ensure_session_file_registry <- function",
@@ -101,9 +100,9 @@ test_that("MCP dosya çözümleyici ayrı dosyada tutulur", {
     info = "helpers_mcp_bootstrap.R izole source bağlamları için resolver dosyasını güvenli şekilde yüklemelidir."
   )
 
-  expect_true(
-    grepl('safe_source("R/helpers_mcp_file_resolver.R"', global_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_file_resolver.R global.R manifestinde açıkça yüklenmelidir."
+  expect_source_manifest_contains_for_tests(
+    "R/helpers_mcp_file_resolver.R",
+    label = "helpers_mcp_file_resolver.R runtime manifestinde açıkça yüklenmelidir:"
   )
 })
 

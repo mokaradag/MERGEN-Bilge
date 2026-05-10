@@ -117,29 +117,14 @@ test_that("PK core helper behavior remains stable for summaries, dates and SQL i
   expect_match(fixed_sql, "\"Aktivite Türü\"", fixed = TRUE)
 })
 
-test_that("global.R sources PK core before module_proje_kaynak_analizi.R", {
-  global_txt <- .read_repo_text_pk_core("global.R")
-
-  helper_pattern <- 'safe_source("R/helpers_pk_analysis_core.R"'
-  module_pattern <- 'safe_source("R/module_proje_kaynak_analizi.R"'
-
-  helper_pos <- regexpr(helper_pattern, global_txt, fixed = TRUE)[1]
-  module_pos <- regexpr(module_pattern, global_txt, fixed = TRUE)[1]
-
-	expect_true(
-	  helper_pos > 0,
-	  info = "global.R içinde R/helpers_pk_analysis_core.R source edilmelidir."
-	)
-
-	expect_true(
-	  module_pos > 0,
-	  info = "global.R içinde R/module_proje_kaynak_analizi.R source edilmelidir."
-	)
-
-	expect_true(
-	  helper_pos < module_pos,
-	  info = "PK core helper, module_proje_kaynak_analizi.R dosyasından önce yüklenmelidir."
-	)
+test_that("runtime manifest sources PK core before module_proje_kaynak_analizi.R", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_pk_analysis_core.R",
+      "R/module_proje_kaynak_analizi.R"
+    ),
+    label = "PK core helper, module_proje_kaynak_analizi.R dosyasından önce yüklenmelidir:"
+  )
 })
 
 test_that("module_proje_kaynak_analizi.R no longer owns extracted pure helpers", {

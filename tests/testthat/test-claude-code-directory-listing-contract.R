@@ -125,35 +125,15 @@ test_that("Claude Code dizin listeleme yardımcıları ayrı dosyada tutulur", {
 })
 
 test_that("Claude Code dizin listeleme helper source sırası korunur", {
-  global_text <- .read_repo_text_cc_dir_listing_contract("global.R")
-  paths <- .extract_safe_source_paths_cc_dir_listing(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/helpers_claude_code_runtime_workdir.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_directory_listing.R")))
-  expect_false(is.na(pos("R/helpers_claude_code.R")))
-  expect_false(is.na(pos("R/helpers_claude_code_server_setup.R")))
-  expect_false(is.na(pos("R/module_claude_code.R")))
-
-  expect_lt(
-    pos("R/helpers_claude_code_runtime_workdir.R"),
-    pos("R/helpers_claude_code_directory_listing.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_directory_listing.R"),
-    pos("R/helpers_claude_code.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_directory_listing.R"),
-    pos("R/helpers_claude_code_server_setup.R")
-  )
-
-  expect_lt(
-    pos("R/helpers_claude_code_server_setup.R"),
-    pos("R/module_claude_code.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_runtime_workdir.R",
+      "R/helpers_claude_code_directory_listing.R",
+      "R/helpers_claude_code.R",
+      "R/helpers_claude_code_server_setup.R",
+      "R/module_claude_code.R"
+    ),
+    label = "Claude Code dizin listeleme source sırası bozulmuş:"
   )
 })
 

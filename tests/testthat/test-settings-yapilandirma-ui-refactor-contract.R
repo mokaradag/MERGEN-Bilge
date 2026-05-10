@@ -75,23 +75,13 @@
 }
 
 test_that("Yapılandırma UI dosyası sunucu modülünden önce yüklenir", {
-  global_text <- .read_repo_text_settings_ui_refactor("global.R")
-  paths <- .extract_safe_source_paths_settings_ui_refactor(global_text)
-
-  pos <- function(path) match(path, paths)
-
-  expect_false(is.na(pos("R/module_settings_yapilandirma_ui.R")))
-  expect_false(is.na(pos("R/module_settings_yapilandirma.R")))
-  expect_false(is.na(pos("R/module_settings.R")))
-
-  expect_lt(
-    pos("R/module_settings_yapilandirma_ui.R"),
-    pos("R/module_settings_yapilandirma.R")
-  )
-
-  expect_lt(
-    pos("R/module_settings_yapilandirma.R"),
-    pos("R/module_settings.R")
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/module_settings_yapilandirma_ui.R",
+      "R/module_settings_yapilandirma.R",
+      "R/module_settings.R"
+    ),
+    label = "Yapılandırma UI/server source sırası bozulmuş:"
   )
 })
 

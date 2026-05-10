@@ -5,8 +5,34 @@
 #           sözleşmeleri R/config_source_manifest.R üzerinden okunmalıdır.
 # ==============================================================================
 
+source_manifest_contract_repo_root <- function() {
+  if (exists("resolve_repo_root_for_tests", mode = "function")) {
+    return(resolve_repo_root_for_tests())
+  }
+
+  candidates <- unique(normalizePath(
+    c(
+      getwd(),
+      file.path(getwd(), ".."),
+      file.path(getwd(), "..", "..")
+    ),
+    winslash = "/",
+    mustWork = FALSE
+  ))
+
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "app.R")) &&
+        dir.exists(file.path(candidate, "R")) &&
+        dir.exists(file.path(candidate, "tests", "testthat"))) {
+      return(candidate)
+    }
+  }
+
+  stop("Manifest test helper repo kökünü bulamadı.", call. = FALSE)
+}
+
 source_manifest_paths_for_tests <- function() {
-  repo_root <- resolve_repo_root_for_tests()
+  repo_root <- source_manifest_contract_repo_root()
   manifest_env <- new.env(parent = globalenv())
 
   source(
@@ -29,10 +55,6 @@ source_manifest_paths_for_tests <- function() {
   }
 
   enc2utf8(paths)
-}
-
-source_manifest_pos_for_tests <- function(path, paths = source_manifest_paths_for_tests()) {
-  match(path, paths)
 }
 
 expect_source_manifest_contains_for_tests <- function(required_paths,
