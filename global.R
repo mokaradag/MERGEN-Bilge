@@ -133,6 +133,11 @@ if (!exists("source_manifest_validate", mode = "function") ||
   safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")
 }
 
+source_manifest_validate(
+  order_rules = list(),
+  paths = "R/config_source_manifest.R"
+)
+
 safe_source("R/config_source_manifest.R", encoding = "UTF-8")
 
 source_manifest_validate_config_objects()

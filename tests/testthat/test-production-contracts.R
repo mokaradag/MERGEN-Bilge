@@ -166,6 +166,7 @@ test_that("global.R bootstrap'i ve config_source_manifest.R üretim helper manif
 
   global_beklenenler <- c(
     'safe_source("R/bootstrap_source_manifest.R"',
+    'paths = "R/config_source_manifest.R"',
     'safe_source("R/config_source_manifest.R"',
     "source_manifest_validate_config_objects()",
     "source_manifest_load(source_manifest_group_1_paths)",
@@ -216,6 +217,7 @@ test_that("app.R doğrudan source edildiğinde otomatik çalışma kapısı koru
 
   beklenenler <- c(
     "validate_boot_state <- function",
+    '"R/config_source_manifest.R"',
     "create_mergen_app <- function",
     "run_mergen_app <- function",
     "MERGEN_RUN_APP",

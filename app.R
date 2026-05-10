@@ -10,6 +10,7 @@
 required_boot_files <- c(
   "R/utils_safe_source.R",
   "R/bootstrap_source_manifest.R",
+  "R/config_source_manifest.R",
   "global.R",
   "ui.R",
   "server.R"

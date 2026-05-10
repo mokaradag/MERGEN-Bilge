@@ -97,6 +97,7 @@ test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzer
 
   global_expected_tokens <- c(
     'safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")',
+    'paths = "R/config_source_manifest.R"',
     'safe_source("R/config_source_manifest.R", encoding = "UTF-8")',
     "source_manifest_validate_config_objects()",
     "source_manifest_current_paths <- source_manifest_get_runtime_paths",
