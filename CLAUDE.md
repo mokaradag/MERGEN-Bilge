@@ -63,19 +63,20 @@ A new helper/module is not “done” unless:
 
 ### Source manifest validation contract
 
-`global.R` remains the runtime source manifest, and the existing `safe_source(..., encoding = "UTF-8")` load order is intentionally preserved. A manifest validation layer now runs before the first manifest `safe_source()` call and fails early with clear boot errors when it detects:
+`global.R` remains the explicit runtime source manifest, and the existing `safe_source(..., encoding = "UTF-8")` load order is intentionally preserved. The manifest-validation helpers and critical order rules live in `R/bootstrap_source_manifest.R`, a small dedicated bootstrap helper. `app.R` loads this bootstrap helper before `global.R`; if `global.R` is sourced directly, it safely loads the same bootstrap helper when the manifest helpers/order rules are not already available. The validation layer still runs before the first runtime manifest `safe_source()` call and fails early with clear Turkish boot errors when it detects:
 
 - missing source files,
 - unintended duplicate source entries,
 - critical source-order regressions.
 
-The validation helpers intentionally read `global.R` with raw-byte/UTF-8-safe logic so Windows VM and SSO deployments do not regress on Turkish text or mojibake-sensitive environments. Do not replace this with a broad `lapply(source(...))` rewrite, automatic directory sourcing, alphabetical sourcing, package-style discovery, or any runtime source-order inference.
+The bootstrap validation helpers intentionally read `global.R` and source files with raw-byte/UTF-8-safe logic so Windows VM and SSO deployments do not regress on Turkish text or mojibake-sensitive environments. Do not move these helpers back into `global.R`, and do not replace this design with a broad `lapply(source(...))` rewrite, automatic directory sourcing, alphabetical sourcing, package-style discovery, or any runtime source-order inference.
 
 When adding, moving, or splitting a runtime file:
 
-- keep the existing `safe_source()` style and explicit order,
-- add the file to the correct manifest layer,
-- update `source_manifest_required_order` only for genuinely critical dependency boundaries,
+- keep the existing `safe_source()` style and explicit order in `global.R`,
+- add the file to the correct runtime manifest position,
+- update `source_manifest_required_order` in `R/bootstrap_source_manifest.R` only for genuinely critical dependency boundaries,
+- keep `R/bootstrap_source_manifest.R` small, bootstrap-only, and free of application feature loading,
 - keep comments added to R code in Turkish,
 - preserve `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` test boot behavior.
 
