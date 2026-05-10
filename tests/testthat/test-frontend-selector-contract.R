@@ -36,7 +36,7 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   expect_true(grepl('id = "drop_zone"', ui_text, fixed = TRUE))
   expect_true(grepl("#drop_zone", file_handlers_js, fixed = TRUE))
   expect_true(grepl('fileInput("file_upload"', ui_text, fixed = TRUE))
-  expect_true(grepl("#file_upload", file_handlers_js, fixed = TRUE))
+  expect_true(grepl("document.getElementById('file_upload')", file_handlers_js, fixed = TRUE))
   expect_true(grepl('id = "file_btn_container"', ui_text, fixed = TRUE))
   expect_true(grepl("#file_btn_container", file_handlers_js, fixed = TRUE))
 
