@@ -65,21 +65,21 @@ A new helper/module is not “done” unless:
 
 The runtime source order is now owned by `R/config_source_manifest.R`, not by a long `safe_source()` list inside `global.R`.
 
-`global.R` must remain a high-level boot orchestrator. It is responsible for UTF-8 options, upload limits, resource-path registration, bootstrap loading, manifest object validation, manifest file/order/parse validation, future/test-mode setup, and calling the manifest loader. It must not grow back into a giant order-dependent source manifest, and it must not reintroduce duplicated inline `safe_source()` blocks for the manifest groups. The expected runtime loading shape is `source_manifest_validate_config_objects()`, `source_manifest_load(source_manifest_group_1_paths)`, then future/test-mode setup, then `source_manifest_load(source_manifest_after_future_paths)`.
+`global.R` must remain a high-level boot orchestrator. It is responsible for UTF-8 options, upload limits, resource-path registration, bootstrap loading, manifest-file validation, manifest object validation, manifest file/order/parse validation, future/test-mode setup, and calling the manifest loader. It must not grow back into a giant order-dependent source manifest, and it must not reintroduce duplicated inline `safe_source()` blocks for the manifest groups. `app.R` must keep `R/config_source_manifest.R` in `required_boot_files` so a missing manifest fails before the rest of the app boot proceeds. The expected runtime loading shape is: validate `R/config_source_manifest.R` itself with `source_manifest_validate(order_rules = list(), paths = "R/config_source_manifest.R")`, load it with `safe_source("R/config_source_manifest.R", encoding = "UTF-8")`, call `source_manifest_validate_config_objects()`, call `source_manifest_load(source_manifest_group_1_paths)`, run future/test-mode setup, then call `source_manifest_load(source_manifest_after_future_paths)`.
 
 The current source-manifest layers are:
 
 - `R/utils_safe_source.R`: defines UTF-8-safe `safe_source()` and preserves the Windows/VM fallback behavior.
 - `R/bootstrap_source_manifest.R`: defines manifest object-shape validation, critical order rules, parse/file checks, explicit-path validation, and `source_manifest_load()`.
 - `R/config_source_manifest.R`: defines the explicit runtime source order through `source_manifest_group_1_paths`, `source_manifest_after_future_paths`, and `source_manifest_runtime_paths`.
-- `global.R`: validates the manifest objects, validates runtime paths, and loads files through `safe_source()` without owning or reconstructing the full list inline.
+- `global.R`: validates `R/config_source_manifest.R` before sourcing it, validates the manifest objects, validates runtime paths, and loads files through `safe_source()` without owning or reconstructing the full list inline.
 
 When adding, moving, or splitting a runtime file:
 
 - add the file to the correct position in `R/config_source_manifest.R`,
 - keep dependency order explicit and reviewable,
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
-- keep `global.R` loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,
+- keep `global.R` validating `R/config_source_manifest.R` before sourcing it and loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,
 - keep `source_manifest_runtime_paths` exactly equal to `c(source_manifest_group_1_paths, source_manifest_after_future_paths)`; do not maintain a separate divergent runtime list,
 - update `source_manifest_required_order` in `R/bootstrap_source_manifest.R` only for genuinely critical dependency boundaries,
 - keep `R/bootstrap_source_manifest.R` small, bootstrap-only, and free of feature/module loading,
@@ -88,7 +88,7 @@ When adding, moving, or splitting a runtime file:
 - preserve `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` boot safety,
 - keep comments added to R code in Turkish.
 
-Source-order tests must read `R/config_source_manifest.R` as the source of truth. Do not write new tests that scrape `global.R` for every runtime `safe_source("R/...")` entry. Static `global.R` tests should only protect the bootstrap contract, the manifest object validation call `source_manifest_validate_config_objects()`, and the two high-level manifest loading calls: `source_manifest_load(source_manifest_group_1_paths)` and `source_manifest_load(source_manifest_after_future_paths)`. Use the shared manifest test helper in `tests/testthat/helper_source_manifest_contract.R`, especially:
+Source-order tests must read `R/config_source_manifest.R` as the source of truth. Do not write new tests that scrape `global.R` for every runtime `safe_source("R/...")` entry. Static `global.R` tests should only protect the bootstrap contract, the explicit pre-source validation of `R/config_source_manifest.R`, the manifest object validation call `source_manifest_validate_config_objects()`, and the two high-level manifest loading calls: `source_manifest_load(source_manifest_group_1_paths)` and `source_manifest_load(source_manifest_after_future_paths)`. Use the shared manifest test helper in `tests/testthat/helper_source_manifest_contract.R`, especially:
 
 - `source_manifest_paths_for_tests()`
 - `expect_source_manifest_contains_for_tests()`
@@ -96,11 +96,11 @@ Source-order tests must read `R/config_source_manifest.R` as the source of truth
 
 The validation layer should continue to fail early with clear Turkish boot errors when it detects:
 
-- missing source files,
+- missing source files, including a missing `R/config_source_manifest.R` during the app boot-file check,
 - missing or invalid manifest objects,
 - divergence between `source_manifest_runtime_paths` and the two explicit manifest groups,
 - unintended duplicate source entries,
-- unparseable source files,
+- unparseable source files, including an unparseable `R/config_source_manifest.R` before it is sourced,
 - unsupported attempts to validate by scraping `global.R`,
 - critical source-order regressions.
 
