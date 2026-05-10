@@ -46,37 +46,15 @@ test_that("chat mesaj biçimlendirme helper dosyası repoda var", {
   )))
 })
 
-test_that("global.R chat mesaj biçimlendirme dosyasını helpers_database.R öncesinde source eder", {
-  global_text <- .read_repo_text_chat_format_contract("global.R")
-
-  expected_order <- c(
-    'safe_source("R/helpers_db_connection.R"',
-    'safe_source("R/helpers_db_validation.R"',
-    'safe_source("R/helpers_chat_message_formatting.R"',
-    'safe_source("R/helpers_database.R"'
-  )
-
-  positions <- vapply(
-    expected_order,
-    .byte_pos_chat_format_contract,
-    integer(1),
-    text = global_text
-  )
-
-  expect_false(
-    any(is.na(positions)),
-    info = paste(
-      "global.R içinde eksik source kayıtları:",
-      paste(expected_order[is.na(positions)], collapse = ", ")
-    )
-  )
-
-  expect_true(
-    all(diff(positions) > 0L),
-    info = paste(
-      "global.R source sırası bozulmuş:",
-      paste(expected_order, collapse = " -> ")
-    )
+test_that("runtime manifest chat mesaj biçimlendirme dosyasını helpers_database.R öncesinde source eder", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_db_connection.R",
+      "R/helpers_db_validation.R",
+      "R/helpers_chat_message_formatting.R",
+      "R/helpers_database.R"
+    ),
+    label = "Runtime manifest chat mesaj biçimlendirme source sırası bozulmuş:"
   )
 })
 

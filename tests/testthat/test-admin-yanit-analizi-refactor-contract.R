@@ -53,8 +53,7 @@
 
 test_that("Yanıt analizi helper dosyası modülden önce source ediliyor", {
   repo_root <- resolve_repo_root_for_tests()
-  global_text <- .read_admin_yanit_refactor_text("global.R")
-  paths <- .extract_admin_yanit_safe_source_paths(global_text)
+  paths <- source_manifest_paths_for_tests()
 
   expect_true(file.exists(file.path(repo_root, "R/helpers_admin_yanit_analizi.R")))
   expect_true(file.exists(file.path(repo_root, "R/module_admin_yanit_analizi.R")))

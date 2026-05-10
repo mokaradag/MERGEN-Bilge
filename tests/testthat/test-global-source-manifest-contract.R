@@ -1,7 +1,7 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-global-source-manifest-contract.R
-# Açıklama: global.R source manifestinin kritik üretim yardımcılarını doğru sırada
-# yüklediğini doğrular. Uygulamayı başlatmaz; statik ve warning-safe çalışır.
+# Açıklama: global.R boot sözleşmesini ve manifest tabanlı kritik kaynak sırasını
+#           doğrular. Uygulamayı başlatmaz; statik ve warning-safe çalışır.
 # ==============================================================================
 
 .read_repo_file_bytes_for_manifest_contract <- function(path) {
@@ -34,47 +34,65 @@
   txt
 }
 
-.byte_pos <- function(pattern, txt) {
-  pos <- regexpr(pattern, txt, fixed = TRUE, useBytes = TRUE)[1]
-  if (is.na(pos) || pos < 0L) NA_integer_ else as.integer(pos)
-}
-
-test_that("global.R kritik helper'ları beklenen sırada source eder", {
+test_that("global.R manifest bootstrap ve güvenli yükleme kapısını korur", {
   txt <- .read_repo_file_bytes_for_manifest_contract("global.R")
 
-  expected_order <- c(
-    'safe_source("R/config_packages.R"',
-    'safe_source("R/utils_common.R"',
-    'safe_source("R/config_logging.R"',
-    'safe_source("R/utils_rate_limiter.R"',
-    'safe_source("R/helpers_worker_monitor.R"',
-    'safe_source("R/utils_path_helpers.R"',
-    'safe_source("R/utils_safe_path.R"',
-    'safe_source("R/utils_atomic_write.R"',
-    'safe_source("R/utils_upload_validator.R"',
-    'safe_source("R/utils_log_redact.R"',
-    'safe_source("R/utils_session_cleanup.R"',
-    'safe_source("R/utils_safe_worker_run.R"',
-    'safe_source("R/utils_file_index.R"',
-    'safe_source("R/utils_excel_reader.R"'
+  expected_tokens <- c(
+    'safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")',
+    'safe_source("R/config_source_manifest.R", encoding = "UTF-8")',
+    "source_manifest_current_paths <- source_manifest_get_runtime_paths()",
+    "source_manifest_validate(",
+    "source_manifest_remaining_paths <- source_manifest_current_paths",
+    "source_manifest_load(source_manifest_remaining_paths)"
   )
 
-  positions <- vapply(expected_order, .byte_pos, integer(1), txt = txt)
-
-  expect_false(
-    any(is.na(positions)),
-    info = paste(
-      "global.R içinde eksik source kayıtları:",
-      paste(expected_order[is.na(positions)], collapse = ", ")
-    )
+  found <- vapply(
+    expected_tokens,
+    function(token) grepl(token, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
   )
 
   expect_true(
-    all(diff(positions) > 0L),
+    all(found),
     info = paste(
-      "global.R kritik helper source sırası bozulmuş görünüyor:",
-      paste(expected_order, collapse = " -> ")
+      "global.R manifest boot/yükleme sözleşmesi eksik:",
+      paste(expected_tokens[!found], collapse = ", ")
     )
+  )
+})
+
+test_that("runtime manifest kritik helper'ları beklenen sırada içerir", {
+  expected_order <- c(
+    "R/config_packages.R",
+    "R/utils_common.R",
+    "R/config_logging.R",
+    "R/utils_rate_limiter.R",
+    "R/helpers_worker_monitor.R",
+    "R/utils_path_helpers.R",
+    "R/utils_safe_path.R",
+    "R/utils_atomic_write.R",
+    "R/utils_upload_validator.R",
+    "R/utils_log_redact.R",
+    "R/utils_session_cleanup.R",
+    "R/utils_safe_worker_run.R",
+    "R/utils_file_index.R",
+    "R/utils_excel_reader.R"
+  )
+
+  expect_source_manifest_order_for_tests(
+    expected_order,
+    label = "Runtime manifest kritik helper source sırası bozulmuş:"
+  )
+})
+
+test_that("runtime manifest welcome ekranı kaynaklarını server_welcome_handlers öncesinde içerir", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "welcome_screen.R",
+      "R/welcome_screen_modern.R",
+      "R/server_welcome_handlers.R"
+    ),
+    label = "Welcome screen kaynak sırası bozulmuş:"
   )
 })
 

@@ -205,6 +205,8 @@ source_manifest_after_future_paths <- c(
   "R/server_core_interaction_runtime.R",
   "R/server_outputs_chat.R",
   "R/server_outputs_downloads.R",
+  "welcome_screen.R",
+  "R/welcome_screen_modern.R",
   "R/server_welcome_handlers.R",
   "R/server_observers_startup.R",
   "R/server_observers_navigation.R",

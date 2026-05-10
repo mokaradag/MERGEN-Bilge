@@ -105,8 +105,7 @@ test_that("Claude Code dizin gezgini yardımcıları ayrı dosyada tutulur", {
 })
 
 test_that("Claude Code dizin helper source sırası korunur", {
-  global_text <- .read_repo_text_cc_dir_ui_contract("global.R")
-  paths <- .extract_safe_source_paths_cc_dir_ui(global_text)
+  paths <- source_manifest_paths_for_tests()
 
   pos <- function(path) match(path, paths)
 
