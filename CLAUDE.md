@@ -235,11 +235,15 @@ Frontend JavaScript must stay aligned with the actual UI IDs and classes. Do not
 
 The chat content root contract is now explicit. CodeMirror observers must attach only to current real chat roots such as `#chat_content_container` or `.chat-container`; do not reintroduce the stale `#_content_container` fallback. Any MutationObserver that is re-established after Shiny reconnects must disconnect the previous observer first, and disconnect cleanup must run on `shiny:disconnected`. This prevents duplicate observers, stale DOM references, and hidden repeated CodeMirror initialization after reconnects or page refreshes.
 
+Chart rendering must follow the same chat-root contract. `www/js/chart_renderer.js` must not reintroduce stale roots such as `chat_content_wrapper`; saved ChartLab rendering should resolve the current real chat root through `#chat_content_container` or `.chat-container` before calling `window.renderSavedCharts(...)`. Avoid falling back to broad document/body scans when a current chat root exists, because that can hide selector drift and initialize charts outside the intended chat surface.
+
 Dynamic drag/drop handlers must not cache Shiny-rendered DOM nodes at document-ready time when the node can be redrawn later. For chat upload and File Manager upload surfaces, keep delegated event handlers, but resolve `#chat_input_wrapper` and `#file_manager_module-main_drop_zone` at use time through small getter helpers. This preserves behavior while avoiding stale jQuery object references after tab switches, redraws, or UI refreshes.
 
 Server-side activity and browser-side send/stop wiring must refer to the real `send_stop_btn` input. Do not reintroduce the stale `send_btn` identifier for the main chat send button. If timeout/activity tracking or JavaScript send helpers are changed, update the UI contract and `tests/testthat/test-frontend-selector-contract.R` together.
 
 The TTS visualizer can receive Shiny messages before its delayed browser-side initializer has completed. `updateTTSVisualizer` must guard against a missing visualizer/state object and return safely rather than throwing null-init errors. This is a lifecycle guard only; it must not change the visual appearance or placement behavior of the visualizer.
+
+The welcome neural animation message contract must remain single-owner. `showNeuralAnimation` should be registered as a Shiny custom message handler only in `www/js/shiny_message_handlers.js`. `www/js/neural_welcome.js` should expose `window.startNeuralWelcomeAnimation(...)` and own the animation implementation, but it must not register another `Shiny.addCustomMessageHandler('showNeuralAnimation', ...)`. This prevents load-order-dependent behavior when deferred welcome scripts initialize after the synchronous Shiny message handler layer.
 
 High-risk frontend anchors are protected by `tests/testthat/test-frontend-selector-contract.R`. This test covers:
 
@@ -256,6 +260,8 @@ High-risk frontend anchors are protected by `tests/testthat/test-frontend-select
 - Bilge Yolaç prompt, output, welcome, and streaming anchors.
 - stale selector regression scanning across all `www/js/*.js` files,
 - CodeMirror chat-root and observer cleanup contracts,
+- ChartLab rendering through current chat roots only, with stale `chat_content_wrapper` regression protection,
+- single-owner `showNeuralAnimation` Shiny handler wiring with `window.startNeuralWelcomeAnimation(...)` delegated animation startup,
 - dynamic drag/drop getter usage for chat upload and File Manager upload surfaces,
 - centralized File Manager attach-state handler registration.
 
@@ -267,7 +273,7 @@ The same rule applies to Bilge Yolaç streaming tool identifiers. Do not interpo
 
 The File Manager attach-state browser handler must remain centralized in `R/helpers_file_manager_attach_client.R`. Do not move the inline JavaScript registration back into `R/module_file_manager.R`, and do not duplicate `Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState', ...)` inside the module. The global `initAttachHandlerOnce` no-op handler should be registered once, while namespace-specific `setAttachState` handlers remain scoped by module namespace.
 
-Because some JS files can contain invalid UTF-8 byte sequences in Windows VM environments, selector-contract tests that scan JS files must use the binary-safe reader pattern with `readBin(...)`, `iconv(..., sub = "byte")`, and byte-safe fixed matching. Do not replace this with plain `readLines(..., encoding = "UTF-8")` plus ordinary `grepl()` over unnormalized text. The selector contract test should continue to scan every `www/js/*.js` file for stale `message_input` references and should keep explicit checks that `app_core.js` does not reintroduce `#_content_container`.
+Because some JS files can contain invalid UTF-8 byte sequences in Windows VM environments, selector-contract tests that scan JS files must use the binary-safe reader pattern with `readBin(...)`, `iconv(..., sub = "byte")`, and byte-safe fixed matching. Do not replace this with plain `readLines(..., encoding = "UTF-8")` plus ordinary `grepl()` over unnormalized text. The selector contract test should continue to scan every `www/js/*.js` file for stale `message_input` references and should keep explicit checks that `app_core.js` does not reintroduce `#_content_container`. The same selector-contract scan must continue to reject stale `chat_content_wrapper` references across `www/js/*.js` and must keep the `showNeuralAnimation` handler centralized.
 
 ### E2E/race regression test foundation contract
 
