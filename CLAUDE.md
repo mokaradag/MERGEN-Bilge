@@ -233,6 +233,12 @@ Focused validation:
 
 Frontend JavaScript must stay aligned with the actual UI IDs and classes. Do not reintroduce stale chat input selectors such as `#message_input`. The current chat input contract is `#user_input`, `.chat-input`, and `textarea[name="user_input"]`, centralized in `www/js/input_handlers.js`. Send, Enter, Shift+Enter, Escape, character counter, textarea resize, and stop-mode behavior should continue to use that shared selector path.
 
+The chat content root contract is now explicit. CodeMirror observers must attach only to current real chat roots such as `#chat_content_container` or `.chat-container`; do not reintroduce the stale `#_content_container` fallback. Any MutationObserver that is re-established after Shiny reconnects must disconnect the previous observer first, and disconnect cleanup must run on `shiny:disconnected`. This prevents duplicate observers, stale DOM references, and hidden repeated CodeMirror initialization after reconnects or page refreshes.
+
+Dynamic drag/drop handlers must not cache Shiny-rendered DOM nodes at document-ready time when the node can be redrawn later. For chat upload and File Manager upload surfaces, keep delegated event handlers, but resolve `#chat_input_wrapper` and `#file_manager_module-main_drop_zone` at use time through small getter helpers. This preserves behavior while avoiding stale jQuery object references after tab switches, redraws, or UI refreshes.
+
+The TTS visualizer can receive Shiny messages before its delayed browser-side initializer has completed. `updateTTSVisualizer` must guard against a missing visualizer/state object and return safely rather than throwing null-init errors. This is a lifecycle guard only; it must not change the visual appearance or placement behavior of the visualizer.
+
 High-risk frontend anchors are protected by `tests/testthat/test-frontend-selector-contract.R`. This test covers:
 
 - chat input and send/stop wiring,
@@ -241,12 +247,18 @@ High-risk frontend anchors are protected by `tests/testthat/test-frontend-select
 - File Manager attach checkbox and silent attach-state contracts,
 - STT visualizer anchors,
 - Bilge Yolaç prompt, output, welcome, and streaming anchors.
+- stale selector regression scanning across all `www/js/*.js` files,
+- CodeMirror chat-root and observer cleanup contracts,
+- dynamic drag/drop getter usage for chat upload and File Manager upload surfaces,
+- centralized File Manager attach-state handler registration.
 
 When changing UI IDs/classes or JS selectors, update the actual UI, the JS handler, and the selector contract test together. Prefer robust delegated handlers for dynamic UI such as DataTables redraws. Do not remove working fallback selectors unless the UI contract has been verified.
 
 File names must not be interpolated directly into CSS attribute selectors. For File Manager attach checkboxes, compare `data-filename` as a plain string after selecting `input.attach-checkbox[data-filename]`. This avoids hidden browser selector errors for filenames containing quotes, brackets, backslashes, or other selector-sensitive characters.
 
-Because some JS files can contain invalid UTF-8 byte sequences in Windows VM environments, selector-contract tests that scan JS files must use the binary-safe reader pattern with `readBin(...)`, `iconv(..., sub = "byte")`, and byte-safe fixed matching. Do not replace this with plain `readLines(..., encoding = "UTF-8")` plus ordinary `grepl()` over unnormalized text.
+The File Manager attach-state browser handler must remain centralized in `R/helpers_file_manager_attach_client.R`. Do not move the inline JavaScript registration back into `R/module_file_manager.R`, and do not duplicate `Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState', ...)` inside the module. The global `initAttachHandlerOnce` no-op handler should be registered once, while namespace-specific `setAttachState` handlers remain scoped by module namespace.
+
+Because some JS files can contain invalid UTF-8 byte sequences in Windows VM environments, selector-contract tests that scan JS files must use the binary-safe reader pattern with `readBin(...)`, `iconv(..., sub = "byte")`, and byte-safe fixed matching. Do not replace this with plain `readLines(..., encoding = "UTF-8")` plus ordinary `grepl()` over unnormalized text. The selector contract test should continue to scan every `www/js/*.js` file for stale `message_input` references and should keep explicit checks that `app_core.js` does not reintroduce `#_content_container`.
 
 ### E2E/race regression test foundation contract
 
