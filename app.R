@@ -9,6 +9,7 @@
 # çözüm devreye girer ve dosya farklı kodlamalarla okunup parse edilmeye çalışılır.
 required_boot_files <- c(
   "R/utils_safe_source.R",
+  "R/bootstrap_source_manifest.R",
   "global.R",
   "ui.R",
   "server.R"
@@ -36,6 +37,10 @@ boot_step <- function(step_name, expr) {
 
 boot_step("utils_safe_source", {
   source("R/utils_safe_source.R", encoding = "UTF-8", local = globalenv())
+})
+
+boot_step("bootstrap_source_manifest", {
+  safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")
 })
 
 boot_step("global.R", {

@@ -91,22 +91,17 @@ test_that("global.R manifestinde aynı R dosyası yanlışlıkla tekrar tekrar y
   )
 })
 
-test_that("global.R manifest doğrulamasını runtime source zincirinden önce çalıştırıyor", {
+test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzerinden runtime source zincirinden önce çalıştırıyor", {
   global_text <- .read_repo_text_manifest_contract("global.R")
+  bootstrap_text <- .read_repo_text_manifest_contract("R/bootstrap_source_manifest.R")
 
-  expected_tokens <- c(
-    "source_manifest_stop <- function",
-    "source_manifest_read_self <- function",
-    "source_manifest_extract_safe_source_paths <- function",
-    "source_manifest_validate_files <- function",
-    "source_manifest_validate_order <- function",
-    "source_manifest_validate <- function",
-    "source_manifest_required_order <- list",
+  global_expected_tokens <- c(
+    'safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")',
     "source_manifest_current_paths <- source_manifest_validate"
   )
 
-  found <- vapply(
-    expected_tokens,
+  global_found <- vapply(
+    global_expected_tokens,
     function(token) {
       isTRUE(suppressWarnings(grepl(
         token,
@@ -119,12 +114,51 @@ test_that("global.R manifest doğrulamasını runtime source zincirinden önce �
   )
 
   expect_true(
-    all(found),
+    all(global_found),
     info = paste(
-      "global.R manifest doğrulama helper/kayıtları eksik:",
-      paste(expected_tokens[!found], collapse = ", ")
+      "global.R manifest bootstrap/doğrulama kayıtları eksik:",
+      paste(global_expected_tokens[!global_found], collapse = ", ")
     )
   )
+
+  bootstrap_expected_tokens <- c(
+    "source_manifest_stop <- function",
+    "source_manifest_read_self <- function",
+    "source_manifest_extract_safe_source_paths <- function",
+    "source_manifest_validate_files <- function",
+    "source_manifest_validate_parse <- function",
+    "source_manifest_validate_order <- function",
+    "source_manifest_validate <- function",
+    "source_manifest_required_order <- list"
+  )
+
+  bootstrap_found <- vapply(
+    bootstrap_expected_tokens,
+    function(token) {
+      isTRUE(suppressWarnings(grepl(
+        token,
+        bootstrap_text,
+        fixed = TRUE,
+        useBytes = TRUE
+      )))
+    },
+    logical(1)
+  )
+
+  expect_true(
+    all(bootstrap_found),
+    info = paste(
+      "bootstrap_source_manifest.R manifest helper/kayıtları eksik:",
+      paste(bootstrap_expected_tokens[!bootstrap_found], collapse = ", ")
+    )
+  )
+
+  bootstrap_source_pos <- regexpr(
+    'safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")',
+    global_text,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
 
   validation_call_pos <- regexpr(
     "source_manifest_current_paths <- source_manifest_validate",
@@ -140,11 +174,14 @@ test_that("global.R manifest doğrulamasını runtime source zincirinden önce �
     useBytes = TRUE
   )[[1]]
 
+  expect_true(bootstrap_source_pos > 0L)
   expect_true(validation_call_pos > 0L)
   expect_true(first_manifest_source_pos > 0L)
+  expect_lt(bootstrap_source_pos, validation_call_pos)
   expect_lt(validation_call_pos, first_manifest_source_pos)
 
   critical_rules <- c(
+    'c("R/bootstrap_source_manifest.R", "R/config_packages.R")',
     'c("R/config_api.R", "R/helpers_api_model_config.R")',
     'c("R/helpers_send_message_request_lifecycle.R", "R/helpers_send_message_core.R")',
     'c("R/helpers_llm_worker_payload.R", "R/helpers_llm_worker_tool_results.R")',
@@ -156,7 +193,7 @@ test_that("global.R manifest doğrulamasını runtime source zincirinden önce �
     function(rule) {
       isTRUE(suppressWarnings(grepl(
         rule,
-        global_text,
+        bootstrap_text,
         fixed = TRUE,
         useBytes = TRUE
       )))
@@ -167,7 +204,7 @@ test_that("global.R manifest doğrulamasını runtime source zincirinden önce �
   expect_true(
     all(rules_found),
     info = paste(
-      "global.R manifest doğrulama sıra kuralı eksik:",
+      "bootstrap_source_manifest.R manifest doğrulama sıra kuralı eksik:",
       paste(critical_rules[!rules_found], collapse = ", ")
     )
   )

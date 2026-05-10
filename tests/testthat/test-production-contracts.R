@@ -75,6 +75,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 
       # Temel altyapı
       "R/utils_safe_source.R",
+      "R/bootstrap_source_manifest.R",
       "R/utils_common.R",
       "R/utils_safe_path.R",
       "R/utils_atomic_write.R",
@@ -162,6 +163,7 @@ test_that("global.R üretim sertleştirme helper'larını manifestte yüklüyor"
   global_text <- .read_text_quiet(file.path(.repo_root, "global.R"))
 
   beklenenler <- c(
+    'safe_source("R/bootstrap_source_manifest.R"',
     'safe_source("R/utils_safe_path.R"',
     'safe_source("R/utils_atomic_write.R"',
     'safe_source("R/utils_upload_validator.R"',
