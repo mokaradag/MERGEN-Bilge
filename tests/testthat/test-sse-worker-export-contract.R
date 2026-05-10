@@ -51,22 +51,20 @@
   )
 }
 
-test_that("global.R SSE worker prewarm export listesi reasoning/stop/override helper'larını içerir", {
-  global_text <- .read_repo_text_for_sse_contract("global.R")
-
-  expected_exports <- c(
-    '"append_stream_delta_line"',
-    '"append_stream_reasoning_line"',
-    '"streaming_should_stop"',
-    '"apply_model_request_overrides"',
-    '"merge_named_list_deep"',
-    '"call_local_llm_sse_worker"'
-  )
-
-  .expect_text_contains_all(
-    global_text,
-    expected_exports,
-    "global.R clusterExport varlist sözleşmesi bozuldu."
+test_that("runtime manifest SSE worker yardımcılarını true streaming handler öncesinde yükler", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_worker_monitor.R",
+      "R/helpers_llm_response_postprocess.R",
+      "R/helpers_llm_api.R",
+      "R/helpers_llm_stream_io.R",
+      "R/helpers_llm_sse.R",
+      "R/helpers_llm_worker_payload.R",
+      "R/helpers_llm_worker_tool_results.R",
+      "R/helpers_llm_worker.R",
+      "R/server_handler_true_streaming.R"
+    ),
+    label = "SSE worker/helper source sırası bozuldu:"
   )
 })
 

@@ -138,28 +138,13 @@ test_that("extractor helpers preserve extension, cache-name and truncation behav
   )
 })
 
-test_that("global.R sources document extractors before document context helpers", {
-  global_txt <- .read_repo_text_claude_doc_refactor("global.R")
-
-  extractor_pattern <- 'safe_source("R/helpers_claude_code_document_extractors.R"'
-  documents_pattern <- 'safe_source("R/helpers_claude_code_documents.R"'
-
-  extractor_pos <- regexpr(extractor_pattern, global_txt, fixed = TRUE)[1]
-  documents_pos <- regexpr(documents_pattern, global_txt, fixed = TRUE)[1]
-
-  expect_true(
-    extractor_pos > 0,
-    info = "global.R içinde R/helpers_claude_code_document_extractors.R source edilmelidir."
-  )
-
-  expect_true(
-    documents_pos > 0,
-    info = "global.R içinde R/helpers_claude_code_documents.R source edilmelidir."
-  )
-
-  expect_true(
-    extractor_pos < documents_pos,
-    info = "Extractor helper, helpers_claude_code_documents.R dosyasından önce yüklenmelidir."
+test_that("runtime manifest sources document extractors before document context helpers", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_document_extractors.R",
+      "R/helpers_claude_code_documents.R"
+    ),
+    label = "Extractor helper, helpers_claude_code_documents.R dosyasından önce yüklenmelidir:"
   )
 })
 
