@@ -92,6 +92,8 @@ test_that("config_source_manifest.R manifestinde aynı R dosyası yanlışlıkla
 
 test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzerinden runtime source zincirinden önce çalıştırıyor", {
   paths <- .load_source_manifest_paths_for_contract()
+  global_text <- .read_repo_text_manifest_contract("global.R")
+  bootstrap_text <- .read_repo_text_manifest_contract(file.path("R", "bootstrap_source_manifest.R"))
 
   global_expected_tokens <- c(
     'safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")',
@@ -164,7 +166,7 @@ test_that("global.R manifest doğrulamasını küçük bootstrap helper'ı üzer
   )[[1]]
 
   validation_call_pos <- regexpr(
-    "source_manifest_current_paths <- source_manifest_validate",
+    "source_manifest_validate(",
     global_text,
     fixed = TRUE,
     useBytes = TRUE

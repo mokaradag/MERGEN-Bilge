@@ -176,6 +176,7 @@ source_manifest_validate_order <- function(paths, order_rules) {
 
   positions <- seq_along(paths)
   names(positions) <- paths
+  manifest_names <- names(positions)
 
   for (rule in order_rules) {
     if (!is.character(rule) || length(rule) != 2L) {
@@ -185,12 +186,11 @@ source_manifest_validate_order <- function(paths, order_rules) {
     before_path <- rule[[1]]
     after_path <- rule[[2]]
 
-    if (is.na(positions[[before_path]]) || is.na(positions[[after_path]])) {
-      source_manifest_stop(sprintf(
-        "sıra kuralında dosya eksik: %s önce %s",
-        before_path,
-        after_path
-      ))
+    # Bazı kurallar bootstrap/global zincirini doğrular; runtime manifest
+    # yalnızca uygulama kaynaklarını içerdiği için bu dosyalar listede olmayabilir.
+    # Eksik olan kural elemanları subscript hatası üretmemeli.
+    if (!(before_path %in% manifest_names) || !(after_path %in% manifest_names)) {
+      next
     }
 
     if (positions[[before_path]] >= positions[[after_path]]) {

@@ -261,11 +261,12 @@ createModernWelcomeScreen <- function(saved_chats, main_actions) {
                     ),
                     div(class = "modern-welcome-greeting-box",
                         div(class = "modern-welcome-greeting-container",
-                            p(class = "modern-welcome-greeting-text",
-                              span(class = "modern-welcome-greeting-dot"),
-                              span(id = "dynamic-greeting-text", ""),
-                              span(class = "modern-welcome-greeting-cursor")
-                            )
+							tags$p(
+							  class = "modern-welcome-greeting-text",
+							  span(class = "modern-welcome-greeting-dot"),
+							  span(id = "dynamic-greeting-text", ""),
+							  span(class = "modern-welcome-greeting-cursor")
+							)
                         )
                     )
                 ),
