@@ -231,17 +231,24 @@ Focused validation:
 
 ### Frontend selector and DOM contract
 
-Frontend JavaScript must stay aligned with the actual UI IDs and classes. Do not reintroduce stale chat input selectors such as `#message_input`. The current chat input contract is `#user_input`, `.chat-input`, and `textarea[name="user_input"]`, centralized in `www/js/input_handlers.js`. Send, Enter, Shift+Enter, Escape, character counter, textarea resize, and stop-mode behavior should continue to use that shared selector path.
+Frontend JavaScript must stay aligned with the actual UI IDs and classes. Do not reintroduce stale chat input selectors such as `#message_input`. The current chat input contract is `#user_input`, `.chat-input`, and `textarea[name="user_input"]`, centralized in `www/js/input_handlers.js` and exposed through `window.MERGEN_CHAT_INPUT_SELECTOR` plus `window.getMergenChatInputElement()`. Send, Enter, Shift+Enter, Escape, character counter, textarea resize, capability-message submission, and stop-mode behavior should continue to use that shared selector path or a safe fallback with the same selector set. Programmatic input events that are intended to trigger delegated handlers must bubble.
 
 The chat content root contract is now explicit. CodeMirror observers must attach only to current real chat roots such as `#chat_content_container` or `.chat-container`; do not reintroduce the stale `#_content_container` fallback. Any MutationObserver that is re-established after Shiny reconnects must disconnect the previous observer first, and disconnect cleanup must run on `shiny:disconnected`. This prevents duplicate observers, stale DOM references, and hidden repeated CodeMirror initialization after reconnects or page refreshes.
 
 Dynamic drag/drop handlers must not cache Shiny-rendered DOM nodes at document-ready time when the node can be redrawn later. For chat upload and File Manager upload surfaces, keep delegated event handlers, but resolve `#chat_input_wrapper` and `#file_manager_module-main_drop_zone` at use time through small getter helpers. This preserves behavior while avoiding stale jQuery object references after tab switches, redraws, or UI refreshes.
+
+Server-side activity and browser-side send/stop wiring must refer to the real `send_stop_btn` input. Do not reintroduce the stale `send_btn` identifier for the main chat send button. If timeout/activity tracking or JavaScript send helpers are changed, update the UI contract and `tests/testthat/test-frontend-selector-contract.R` together.
 
 The TTS visualizer can receive Shiny messages before its delayed browser-side initializer has completed. `updateTTSVisualizer` must guard against a missing visualizer/state object and return safely rather than throwing null-init errors. This is a lifecycle guard only; it must not change the visual appearance or placement behavior of the visualizer.
 
 High-risk frontend anchors are protected by `tests/testthat/test-frontend-selector-contract.R`. This test covers:
 
 - chat input and send/stop wiring,
+- centralized chat-input helper export and reuse by adjacent JS,
+- stale `send_btn` regression protection for the main chat send/stop contract,
+- quick-action button DOM wiring,
+- TTS visualizer anchors and null-init guard,
+- Bilge Yolaç dynamic tool-block lookup without unsafe selector interpolation.
 - welcome and chat content containers,
 - file upload, drag/drop, and file button selectors,
 - File Manager attach checkbox and silent attach-state contracts,
@@ -255,6 +262,8 @@ High-risk frontend anchors are protected by `tests/testthat/test-frontend-select
 When changing UI IDs/classes or JS selectors, update the actual UI, the JS handler, and the selector contract test together. Prefer robust delegated handlers for dynamic UI such as DataTables redraws. Do not remove working fallback selectors unless the UI contract has been verified.
 
 File names must not be interpolated directly into CSS attribute selectors. For File Manager attach checkboxes, compare `data-filename` as a plain string after selecting `input.attach-checkbox[data-filename]`. This avoids hidden browser selector errors for filenames containing quotes, brackets, backslashes, or other selector-sensitive characters.
+
+The same rule applies to Bilge Yolaç streaming tool identifiers. Do not interpolate streamed `toolId` values directly into CSS attribute selectors. Use a helper that selects `.cc-tool-block[data-tool-id]` elements and compares `data-tool-id` as a plain string. This prevents hidden `querySelector()` syntax failures when streamed tool IDs contain quotes, brackets, backslashes, or other selector-sensitive characters.
 
 The File Manager attach-state browser handler must remain centralized in `R/helpers_file_manager_attach_client.R`. Do not move the inline JavaScript registration back into `R/module_file_manager.R`, and do not duplicate `Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState', ...)` inside the module. The global `initAttachHandlerOnce` no-op handler should be registered once, while namespace-specific `setAttachState` handlers remain scoped by module namespace.
 
