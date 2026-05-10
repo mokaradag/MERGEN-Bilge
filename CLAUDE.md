@@ -65,7 +65,7 @@ A new helper/module is not “done” unless:
 
 The runtime source order is now owned by `R/config_source_manifest.R`, not by a long `safe_source()` list inside `global.R`.
 
-`global.R` must remain a high-level boot orchestrator. It is responsible for UTF-8 options, upload limits, resource-path registration, bootstrap loading, manifest validation, future/test-mode setup, and calling the manifest loader. It must not grow back into a giant order-dependent source manifest.
+`global.R` must remain a high-level boot orchestrator. It is responsible for UTF-8 options, upload limits, resource-path registration, bootstrap loading, manifest validation, future/test-mode setup, and calling the manifest loader. It must not grow back into a giant order-dependent source manifest, and it must not reintroduce duplicated inline `safe_source()` blocks for the manifest groups. The expected runtime loading shape is `source_manifest_load(source_manifest_group_1_paths)`, then future/test-mode setup, then `source_manifest_load(source_manifest_after_future_paths)`.
 
 The current source-manifest layers are:
 
@@ -79,13 +79,14 @@ When adding, moving, or splitting a runtime file:
 - add the file to the correct position in `R/config_source_manifest.R`,
 - keep dependency order explicit and reviewable,
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
+- keep `global.R` loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,
 - update `source_manifest_required_order` in `R/bootstrap_source_manifest.R` only for genuinely critical dependency boundaries,
 - keep `R/bootstrap_source_manifest.R` small, bootstrap-only, and free of feature/module loading,
 - do not add automatic directory sourcing, alphabetical sourcing, package-style discovery, or runtime source-order inference,
 - preserve `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` boot safety,
 - keep comments added to R code in Turkish.
 
-Source-order tests must read `R/config_source_manifest.R` as the source of truth. Do not write new tests that scrape `global.R` for every runtime `safe_source("R/...")` entry. Use the shared manifest test helper in `tests/testthat/helper_source_manifest_contract.R`, especially:
+Source-order tests must read `R/config_source_manifest.R` as the source of truth. Do not write new tests that scrape `global.R` for every runtime `safe_source("R/...")` entry. Static `global.R` tests should only protect the bootstrap contract and the two high-level manifest loading calls: `source_manifest_load(source_manifest_group_1_paths)` and `source_manifest_load(source_manifest_after_future_paths)`. Use the shared manifest test helper in `tests/testthat/helper_source_manifest_contract.R`, especially:
 
 - `source_manifest_paths_for_tests()`
 - `expect_source_manifest_contains_for_tests()`
@@ -155,7 +156,7 @@ build_main_actions_data_from_config()
 
 Do not move these helpers back into `R/config_api.R`. The split keeps `R/config_api.R` below the 800-line maintainability threshold while preserving existing public function names.
 
-The LLM, SSE, non-streaming API, and future-worker paths rely on `apply_model_request_overrides()`, `merge_named_list_deep()`, `should_omit_temperature()`, and the endpoint-resolution helpers being loaded before the LLM helper layer. If a future refactor changes this boundary, update both the `global.R` source order and the contract tests.
+The LLM, SSE, non-streaming API, and future-worker paths rely on `apply_model_request_overrides()`, `merge_named_list_deep()`, `should_omit_temperature()`, and the endpoint-resolution helpers being loaded before the LLM helper layer. If a future refactor changes this boundary, update `R/config_source_manifest.R`, any genuinely critical order rules in `R/bootstrap_source_manifest.R`, and the contract tests; do not move this ordering back into inline `global.R` source calls.
 
 Protected by:
 
