@@ -41,6 +41,55 @@ test_that("send message request state current, stopped ve stale ayrımını koru
   expect_false(mergen_is_current_request(active_request_id, "req_old", function() FALSE))
 })
 
+test_that("stopped request cleanup aktif isteğin wrapper ve typing state'ini temizler", {
+  current_id <- "req_stop"
+  removed_selectors <- character(0)
+  reset_count <- 0L
+
+  values <- new.env(parent = emptyenv())
+  values$typing <- TRUE
+
+  active_request_id <- function(value) {
+    if (missing(value)) {
+      current_id
+    } else {
+      current_id <<- value
+    }
+  }
+
+  remove_ui_fn <- function(selector, immediate = FALSE) {
+    removed_selectors <<- c(removed_selectors, selector)
+    invisible(TRUE)
+  }
+
+  reset_chat_state_fn <- function() {
+    reset_count <<- reset_count + 1L
+    invisible(TRUE)
+  }
+
+  expect_identical(
+    mergen_send_message_request_state(
+      active_request_id,
+      "req_stop",
+      function() TRUE
+    ),
+    "stopped"
+  )
+
+  mergen_cleanup_send_message(
+    values = values,
+    reset_chat_state_fn = reset_chat_state_fn,
+    remove_typing_wrapper = TRUE,
+    active_request_id = active_request_id,
+    req_id = "req_stop",
+    remove_ui_fn = remove_ui_fn
+  )
+
+  expect_false(values$typing)
+  expect_identical(reset_count, 1L)
+  expect_identical(removed_selectors, "#typing-animation-wrapper")
+})
+
 test_that("typing wrapper cleanup stale istekte yeni wrapper'ı kaldırmaz", {
   current_id <- "req_new"
   removed_selectors <- character(0)

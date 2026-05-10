@@ -262,3 +262,23 @@ test_that("üst düzey message$content alanı choices yokken de görünür cevap
     expect_identical(out$reasoning, "")
   })
 })
+
+test_that("choices olmayan thinking yanıtında üst düzey reasoning_content fallback davranışı korunur", {
+  response <- list(
+    reasoning_content = "Üst düzey reasoning fallback metni."
+  )
+
+  .with_reasoning_fallback_stub(TRUE, {
+    out <- extract_llm_content_and_sources(response, model_id = "thinking-model")
+
+    expect_identical(out$content, "Üst düzey reasoning fallback metni.")
+    expect_identical(out$reasoning, "Üst düzey reasoning fallback metni.")
+  })
+
+  .with_reasoning_fallback_stub(FALSE, {
+    out <- extract_llm_content_and_sources(response, model_id = "plain-model")
+
+    expect_identical(out$content, "")
+    expect_identical(out$reasoning, "Üst düzey reasoning fallback metni.")
+  })
+})

@@ -80,6 +80,18 @@ source(
   local = globalenv()
 )
 
+source(
+  file.path(repo_root_quick_action_routing, "R", "helpers_file_manager_policy.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+source(
+  file.path(repo_root_quick_action_routing, "R", "helpers_file_manager_context_policy.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 .quick_action_expected_routes <- function() {
   data.frame(
     action_id = c(
@@ -241,6 +253,52 @@ test_that("MCP Excel bayrağı dosya yokken araca dönüşmez ve skip_mcp_once �
 
   expect_identical(skipped_route$tool_family, "none")
   expect_true(skipped_route$excel_allowed)
+})
+
+test_that("özetleme ve MCP Excel hızlı işlemleri dosya politika yardımcılarıyla uyumlu kalır", {
+  config <- e2e_regression_config()
+
+  summarization_cfg <- get_tool_mode_config(
+    "summarization",
+    by = "quick_action_id",
+    config = config
+  )
+
+  excel_cfg <- get_tool_mode_config(
+    "excel-analysis",
+    by = "quick_action_id",
+    config = config
+  )
+
+  expect_identical(summarization_cfg$family, "summarization")
+  expect_identical(summarization_cfg$setting_flag, "enable_summarization_tools")
+
+  allowed_summary_ext <- fm_summarization_allowed_extensions()
+  expect_setequal(allowed_summary_ext, c("doc", "docx", "pdf", "txt"))
+  expect_false(any(c("xls", "xlsx") %in% allowed_summary_ext))
+
+  expect_identical(excel_cfg$family, "mcp_excel")
+  expect_identical(excel_cfg$setting_flag, "enable_mcp_tools")
+
+  cleanup_plan <- fm_plan_mcp_context_cleanup(
+    file_contents = list(
+      pdf1 = list(name = "notlar.pdf"),
+      xlsx1 = list(name = "veri.xlsx"),
+      xls1 = list(name = "ikinci_plan.xls")
+    ),
+    files_in_context = list(
+      pdf1 = TRUE,
+      xlsx1 = TRUE,
+      xls1 = TRUE
+    )
+  )
+
+  expect_identical(cleanup_plan$keep_ids, "xlsx1")
+  expect_setequal(cleanup_plan$non_excel_ids, "pdf1")
+  expect_setequal(cleanup_plan$excess_ids, "xls1")
+  expect_setequal(cleanup_plan$remove_ids, c("pdf1", "xls1"))
+  expect_true(cleanup_plan$removed_any)
+  expect_true(cleanup_plan$excess_removed)
 })
 
 test_that("hızlı işlem config içinde yinelenen id, aile veya araç bayrağı yoktur", {
