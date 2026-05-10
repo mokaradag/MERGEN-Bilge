@@ -2,22 +2,88 @@
 // Bu dosya kullanıcı girdilerini, klavye kısayollarını ve gönderme butonunu yönetir.
 
 $(document).ready(function() {
-  // Textarea için otomatik yeniden boyutlandırma ayarı
-  const messageInput = document.getElementById('message_input');
-  if (messageInput) {
-    messageInput.addEventListener('input', function() {
-      this.style.height = 'auto';
-      this.style.height = Math.min(this.scrollHeight, 150) + 'px';
-    });
+  // Sohbet giriş seçicilerini tek yerde tut.
+  const CHAT_INPUT_SELECTOR = '#user_input, .chat-input, textarea[name="user_input"]';
+
+  function getChatInputElement(context) {
+    if (context && context.matches && context.matches(CHAT_INPUT_SELECTOR)) {
+      return context;
+    }
+    return document.querySelector(CHAT_INPUT_SELECTOR);
+  }
+
+  function getChatInputValue($input) {
+    if (!$input || !$input.length) return '';
+    return $input.val() || '';
+  }
+
+  function hasFilePromptContext() {
+    return $('#file_prompt_indicator_ui').children().length > 0;
+  }
+
+  function refreshChatInput(inputEl) {
+    if (inputEl && typeof window.adjustTextareaHeight === 'function') {
+      window.adjustTextareaHeight(inputEl);
+    }
+    if (typeof window.updateCharCounter === 'function') {
+      window.updateCharCounter();
+    }
+  }
+
+  function clearChatInput($input) {
+    $input.val('');
+    refreshChatInput($input[0]);
+  }
+
+  function sendPromptFromInput(inputEl) {
+    if ($('#send_stop_btn').hasClass('stop-mode')) {
+      return false;
+    }
+
+    const $input = $(getChatInputElement(inputEl));
+    const promptText = getChatInputValue($input);
+
+    if (promptText.trim().length === 0 && !hasFilePromptContext()) {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Lütfen bir mesaj yazın.', 'warning');
+      }
+      return false;
+    }
+
+    if (typeof Shiny === 'undefined' || typeof Shiny.setInputValue !== 'function') {
+      if (typeof window.showToast === 'function') {
+        window.showToast('Gönderim için Shiny bağlantısı henüz hazır değil.', 'warning');
+      }
+      return false;
+    }
+
+    Shiny.setInputValue("send_prompt_from_js", {
+      text: promptText,
+      nonce: Math.random()
+    }, { priority: "event" });
+
+    clearChatInput($input);
+    $input.focus();
+
+    setTimeout(() => {
+        if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
+    }, 50);
+
+    return true;
+  }
+
+  // Textarea başlangıç durumunu gerçek UI sözleşmesine göre hazırla.
+  const chatInput = getChatInputElement();
+  if (chatInput) {
+    refreshChatInput(chatInput);
   }
 
   // Gecikmeli (Debounced) giriş işleyicisi
   const debouncedInputHandler = (typeof debounce === 'function') ? debounce(function(element) {
-      if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(element);
-      if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
+      refreshChatInput(element);
   }, 300) : function() {};
   
-  $(document).on('input', '.chat-input', function() { 
+  $(document).on('input', CHAT_INPUT_SELECTOR, function() { 
       debouncedInputHandler(this);
   });
 
@@ -27,68 +93,18 @@ $(document).ready(function() {
       return;
     }
     event.preventDefault();
-
-    const textarea = $('.chat-input');
-    const promptText = textarea.val() || '';
-
-    if (promptText.trim().length === 0 && $('#file_prompt_indicator_ui').children().length === 0) {
-      if (typeof window.showToast === 'function') {
-        window.showToast('Lütfen bir mesaj yazın.', 'warning');
-      }
-      return;
-    }
-
-    Shiny.setInputValue("send_prompt_from_js", {
-      text: promptText,
-      nonce: Math.random()
-    }, { priority: "event" });
-
-    textarea.val('');
-    if (textarea[0] && typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(textarea[0]);
-    if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
-    textarea.focus();
-
-    setTimeout(() => {
-        if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
-    }, 50);
+    sendPromptFromInput(getChatInputElement());
   });
 
   // Sohbet giriş alanı tuşları
-  $(document).on('keyup', function(e) {
-    const chatInput = $(e.target);
-
-    if (chatInput.is('.chat-input')) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        const promptText = chatInput.val() || '';
-
-        if (promptText.trim().length === 0 && $('#file_prompt_indicator_ui').children().length === 0) {
-          if (typeof window.showToast === 'function') {
-            window.showToast('Lütfen bir mesaj yazın.', 'warning');
-          }
-          return;
-        }
-
-        Shiny.setInputValue("send_prompt_from_js", {
-          text: promptText,
-          nonce: Math.random()
-        }, { priority: "event" });
-
-        chatInput.val('');
-        if (chatInput[0] && typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(chatInput[0]);
-        if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
-        setTimeout(() => {
-            if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
-        }, 50);
-
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.target.value = '';
-        if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
-        if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(e.target);
-      }
-
-      return;
+  $(document).on('keyup', CHAT_INPUT_SELECTOR, function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendPromptFromInput(this);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this.value = '';
+      refreshChatInput(this);
     }
   });
 
@@ -140,7 +156,7 @@ $(document).ready(function() {
     }
   });
 
-  $(document).on('keydown', '.chat-input', function(e) {
+  $(document).on('keydown', CHAT_INPUT_SELECTOR, function(e) {
     if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
   });
 

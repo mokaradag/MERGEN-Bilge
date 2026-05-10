@@ -335,7 +335,13 @@ $(document).ready(function() {
   Shiny.addCustomMessageHandler('removeExcelFromContext', function(msg) {
     var filenames = msg.filenames || [];
     filenames.forEach(function(fname) {
-      var checkboxes = document.querySelectorAll('input.attach-checkbox[data-filename="' + fname + '"]');
+      var checkboxes = Array.prototype.filter.call(
+        document.querySelectorAll('input.attach-checkbox[data-filename]'),
+        function(cb) {
+          return cb.getAttribute('data-filename') === fname;
+        }
+      );
+
       checkboxes.forEach(function(cb) {
         if (cb.checked) {
           cb.checked = false;

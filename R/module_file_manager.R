@@ -654,18 +654,20 @@ fileManagerServer <- function(
 	session$onFlushed(function(){
 	  shinyjs::runjs(sprintf("
 		(function(){
-		  if (window.__attachHandlerInit) return;
-		  window.__attachHandlerInit = true;
-		  Shiny.addCustomMessageHandler('initAttachHandlerOnce', function(x){ /* no-op; gate */ });
-		  Shiny.addCustomMessageHandler('%ssetAttachState', function(msg){
+		  window.__attachHandlerInit = window.__attachHandlerInit || {};
+		  var nsPrefix = '%s';
+		  if (window.__attachHandlerInit[nsPrefix]) return;
+		  window.__attachHandlerInit[nsPrefix] = true;
+		  Shiny.addCustomMessageHandler('initAttachHandlerOnce', function(x){ /* tek seferlik kapı */ });
+		  Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState', function(msg){
 			var ids = Array.isArray(msg.ids) ? msg.ids : [msg.ids];
 			ids.forEach(function(fid){
-			  var el = document.getElementById('%s' + 'attach_' + fid);
+			  var el = document.getElementById(nsPrefix + 'attach_' + fid);
 			  if(el){ el.checked = !!msg.checked; }
 			});
 		  });
 		})();
-	  ", ns(""), ns("")))
+	  ", ns("")))
 	})
 
     session$onSessionEnded(function() {
