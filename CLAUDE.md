@@ -88,6 +88,8 @@ When adding, moving, or splitting a runtime file:
 - preserve `MERGEN_RUN_APP=false` and `MERGEN_DISABLE_FUTURES=true` boot safety,
 - keep comments added to R code in Turkish.
 
+The File Manager attach-state browser handler is intentionally split into `R/helpers_file_manager_attach_client.R`. Keep this helper listed in `R/config_source_manifest.R` after `R/helpers_file_manager_state_runtime.R` and before `R/module_file_manager.R`. Do not move the inline JavaScript registration back into `R/module_file_manager.R`; that module is protected by near-limit maintainability ratchet checks and should remain focused on Shiny orchestration.
+
 Source-order tests must read `R/config_source_manifest.R` as the source of truth. Do not write new tests that scrape `global.R` for every runtime `safe_source("R/...")` entry. Static `global.R` tests should only protect the bootstrap contract, the explicit pre-source validation of `R/config_source_manifest.R`, the manifest object validation call `source_manifest_validate_config_objects()`, and the two high-level manifest loading calls: `source_manifest_load(source_manifest_group_1_paths)` and `source_manifest_load(source_manifest_after_future_paths)`. Use the shared manifest test helper in `tests/testthat/helper_source_manifest_contract.R`, especially:
 
 - `source_manifest_paths_for_tests()`
@@ -173,7 +175,7 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing.
+Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing. Small helper extraction is preferred when a near-limit runtime file would otherwise consume remaining headroom; the File Manager attach-state client helper is an example of this pattern.
 
 ### send_message prompting and file-context contract
 
@@ -223,8 +225,28 @@ Focused validation:
     testthat::test_file("tests/testthat/test-send-message-maintainability-ratchet.R")
     testthat::test_file("tests/testthat/test-source-manifest-contract.R")
     testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+    testthat::test_file("tests/testthat/test-frontend-selector-contract.R")
     source("tests/scripts/maintainability_report.R", encoding = "UTF-8")
     source("tests/testthat.R", encoding = "UTF-8")
+
+### Frontend selector and DOM contract
+
+Frontend JavaScript must stay aligned with the actual UI IDs and classes. Do not reintroduce stale chat input selectors such as `#message_input`. The current chat input contract is `#user_input`, `.chat-input`, and `textarea[name="user_input"]`, centralized in `www/js/input_handlers.js`. Send, Enter, Shift+Enter, Escape, character counter, textarea resize, and stop-mode behavior should continue to use that shared selector path.
+
+High-risk frontend anchors are protected by `tests/testthat/test-frontend-selector-contract.R`. This test covers:
+
+- chat input and send/stop wiring,
+- welcome and chat content containers,
+- file upload, drag/drop, and file button selectors,
+- File Manager attach checkbox and silent attach-state contracts,
+- STT visualizer anchors,
+- Bilge Yolaç prompt, output, welcome, and streaming anchors.
+
+When changing UI IDs/classes or JS selectors, update the actual UI, the JS handler, and the selector contract test together. Prefer robust delegated handlers for dynamic UI such as DataTables redraws. Do not remove working fallback selectors unless the UI contract has been verified.
+
+File names must not be interpolated directly into CSS attribute selectors. For File Manager attach checkboxes, compare `data-filename` as a plain string after selecting `input.attach-checkbox[data-filename]`. This avoids hidden browser selector errors for filenames containing quotes, brackets, backslashes, or other selector-sensitive characters.
+
+Because some JS files can contain invalid UTF-8 byte sequences in Windows VM environments, selector-contract tests that scan JS files must use the binary-safe reader pattern with `readBin(...)`, `iconv(..., sub = "byte")`, and byte-safe fixed matching. Do not replace this with plain `readLines(..., encoding = "UTF-8")` plus ordinary `grepl()` over unnormalized text.
 
 ### E2E/race regression test foundation contract
 
