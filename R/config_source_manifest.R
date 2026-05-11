@@ -34,6 +34,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_api_model_config.R",
   "R/config_claude_code.R",
   "R/config_claude_code_plugins.R",
+  "R/config_ui_assets.R",
 
   "R/helpers_db_connection.R",
   "R/helpers_db_validation.R",
