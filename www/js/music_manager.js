@@ -19,6 +19,11 @@ const MusicManager = {
   // Sunucudan gelen çalma listeleri
   _themePlaylist: [],
   _characterPlaylist: [],
+
+  // Hatalı parça koruması: aynı bozuk URL sonsuz denenmesin
+  _failedTrackUrls: {},
+  _consecutiveTrackErrors: 0,
+
   // Bekleyen istek sayacı (gecikmeli yanıtları yönetir)
   _pendingRequestId: 0,
   // Bekleyen istek tipi: 'tema' | 'karakter' | null
@@ -31,7 +36,11 @@ const MusicManager = {
   config: {
     fadeTime: 1500,
     crossfadeTime: 1200,      // Karakter geçişi için çapraz solma süresi
-    duckedVolumeRatio: 0.15   // Kısılmış ses seviyesi oranı (normalVolume * bu oran)
+    duckedVolumeRatio: 0.15,  // Kısılmış ses seviyesi oranı (normalVolume * bu oran)
+
+    // Kritik güvenlik: hatalı playlist tarayıcıyı kilitlemesin
+    maxConsecutiveTrackErrors: 5,
+    errorRetryDelay: 500
   },
 
   // ─── BAŞLATMA ───
@@ -53,8 +62,10 @@ const MusicManager = {
     // Önce her şeyi temizle
     this._stopAudio();
     this.state.phase = 'idle';
-    this._themePlaylist = [];
-    this._characterPlaylist = [];
+	this._themePlaylist = [];
+	this._characterPlaylist = [];
+	this._failedTrackUrls = {};
+	this._consecutiveTrackErrors = 0;
 
     // Ana tema daha önce çalındıysa doğrudan karakter müziğine geç
     if (this._themePlayedOnce) {
@@ -67,11 +78,13 @@ const MusicManager = {
   },
 
   // ─── SADECE KARAKTER MÜZİĞİNİ BAŞLAT (tema olmadan) ───
-  _startCharacterMusic: function() {
-    this._characterPlaylist = [];
-    this.state.phase = 'waiting_character';
-    this._requestPlaylist('karakter');
-  },
+	_startCharacterMusic: function() {
+	  this._characterPlaylist = [];
+	  this._failedTrackUrls = {};
+	  this._consecutiveTrackErrors = 0;
+	  this.state.phase = 'waiting_character';
+	  this._requestPlaylist('karakter');
+	},
 
   // ─── SUNUCUDAN PLAYLIST İSTE ───
 	_requestPlaylist: function(type) {
@@ -136,16 +149,27 @@ const MusicManager = {
   },
 
   // ─── RASTGELE PARÇA ÇAL ───
-  _playRandomFrom: function(playlist) {
-    if (!this.state.enabled || !playlist || playlist.length === 0) {
-      console.warn('[MUSIC] Çalınacak parça yok');
-      return;
-    }
+	_playRandomFrom: function(playlist) {
+	  if (!this.state.enabled || !playlist || playlist.length === 0) {
+		console.warn('[MUSIC] Çalınacak parça yok');
+		return;
+	  }
 
-    var index = Math.floor(Math.random() * playlist.length);
-    var src = playlist[index];
-    this._playTrack(src);
-  },
+	  var available = playlist.filter(function(src) {
+		return !MusicManager._failedTrackUrls[src];
+	  });
+
+	  if (available.length === 0) {
+		console.error('[MUSIC] Playlist içindeki tüm parçalar hatalı görünüyor. Sonsuz deneme engellendi.');
+		this._stopAudio();
+		this.state.phase = 'waiting_character';
+		return;
+	  }
+
+	  var index = Math.floor(Math.random() * available.length);
+	  var src = available[index];
+	  this._playTrack(src);
+	},
 
   // ─── TEK PARÇA ÇAL (Tek Audio nesnesi) ───
   _playTrack: function(src) {
@@ -188,14 +212,45 @@ const MusicManager = {
       self._handleTrackEnded();
     }, { once: true });
 
-    audio.addEventListener('error', function(e) {
-      // Kasıtlı durdurma sırasında hata olaylarını bastır
-      if (self._intentionalStop) return;
-      // Artık aktif değilse yoksay
-      if (self._audio !== audio) return;
-      console.warn('[MUSIC] Ses yükleme hatası, sonraki parçaya geçiliyor');
-      self._handleTrackEnded();
-    }, { once: true });
+	audio.addEventListener('error', function(e) {
+	  // Kasıtlı durdurma sırasında hata olaylarını bastır
+	  if (self._intentionalStop) return;
+
+	  // Artık aktif değilse yoksay
+	  if (self._audio !== audio) return;
+
+	  self._failedTrackUrls[src] = true;
+	  self._consecutiveTrackErrors++;
+
+	  var fileName = src.split('/').pop();
+	  try {
+		fileName = decodeURIComponent(fileName);
+	  } catch (decodeErr) {
+		// Bozuk yüzde-encoding varsa log bile çökmesin
+	  }
+
+	  console.warn(
+		'[MUSIC] Ses yükleme hatası:',
+		fileName,
+		'| Ardışık hata:',
+		self._consecutiveTrackErrors,
+		'| URL:',
+		src
+	  );
+
+	  if (self._consecutiveTrackErrors >= self.config.maxConsecutiveTrackErrors) {
+		console.error('[MUSIC] Çok fazla ardışık ses hatası. Tarayıcı kilitlenmesini önlemek için müzik döngüsü durduruldu.');
+		self._stopAudio();
+		self.state.phase = 'waiting_character';
+		return;
+	  }
+
+	  setTimeout(function() {
+		if (!self.state.enabled) return;
+		if (self._audio !== audio) return;
+		self._handleTrackEnded();
+	  }, self.config.errorRetryDelay);
+	}, { once: true });
 
     audio.load();
   },

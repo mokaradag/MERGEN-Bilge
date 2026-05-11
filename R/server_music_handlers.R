@@ -57,7 +57,12 @@ musicHandlersInit <- function(input, session, settings_data) {
     base_path <- file.path("www", "music")
     request_type <- msg$type %||% "tema"
     request_id <- msg$requestId %||% 0
-    character_name <- msg$character %||% shiny::isolate(settings_data$selected_character) %||% "mergen"
+	character_name <- msg$character %||% shiny::isolate(settings_data$selected_character) %||% "mergen"
+	character_name <- tolower(trimws(enc2utf8(character_name)))
+
+	if (identical(character_name, "umay ana")) {
+	  character_name <- "umay"
+	}
 
     target_sub <- NULL
     playlist_type <- request_type
@@ -94,10 +99,25 @@ musicHandlersInit <- function(input, session, settings_data) {
       if (length(files) > 0) {
         clean_sub <- gsub("\\\\", "/", target_sub)
 
-        file_urls <- vapply(files, function(f) {
-          full_rel_path <- paste0("music/", clean_sub, "/", f)
-          utils::URLencode(full_rel_path)
-        }, character(1), USE.NAMES = FALSE)
+		file_urls <- vapply(files, function(f) {
+		  full_rel_path <- paste0("music/", clean_sub, "/", f)
+
+		  # Keep "/" as path separator, encode unsafe characters in filename/path.
+		  utils::URLencode(full_rel_path, reserved = FALSE)
+		}, character(1), USE.NAMES = FALSE)
+
+		cat(sprintf(
+		  "[MUSIC] Playlist detay: type=%s | character=%s | folder=%s | files=%s\n",
+		  playlist_type,
+		  character_name,
+		  full_dir,
+		  paste(files, collapse = " | ")
+		))
+
+		cat(sprintf(
+		  "[MUSIC] Playlist URL detay: %s\n",
+		  paste(file_urls, collapse = " | ")
+		))
 
         cat(sprintf("[MUSIC] Playlist gönderiliyor: %s | Karakter: %s | %d parça\n", playlist_type, character_name, length(file_urls)))
 
