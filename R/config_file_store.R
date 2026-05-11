@@ -190,9 +190,12 @@ options(mergen.files_root   = MERGEN_FILES_ROOT,
         mergen.mcp_base_dir = MERGEN_MCP_BASE_DIR)
 
 # Bellek yönetimi ayarları
+# Upload sınırı global.R tarafından merkezi olarak belirlenir.
+upload_max_mb <- getOption("mergen.upload_max_mb", 25L)
+
 options(
-  shiny.maxRequestSize   = 30 * 1024^2,   # 30MB maks yükleme
-  future.globals.maxSize = 200 * 1024^2    # 200MB future işlemleri için
+  shiny.maxRequestSize = upload_max_mb * 1024^2,
+  future.globals.maxSize = 200 * 1024^2
 )
 
 # --- ÇÖP TOPLAMA ZAMANLAYICISI (hata korumalı) ---
