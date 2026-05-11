@@ -10,16 +10,77 @@
 # Kullanıcı kovasını önceliklendirir.
 # ==============================================================================
 
-resolve_uploaded_file <- function(requested, user_id = NULL) {
-  log_debug("resolve_uploaded_file(): requested='{requested}', user_id='{user_id}'")
-  if (is.null(requested) || !(is.character(requested) && length(requested) > 0 && nzchar(requested[1]))) return(NULL)
+resolve_uploaded_file <- function(requested,
+                                  user_id = NULL,
+                                  allow_direct_path = FALSE,
+                                  allow_cross_bucket = FALSE,
+                                  trusted_roots = character(0)) {
+	log_debug("resolve_uploaded_file(): requested='{requested}', user_id='{user_id}'")
+	if (is.null(requested) || !(is.character(requested) && length(requested) > 0 && nzchar(requested[1]))) return(NULL)
 
-  if (path_exists_relaxed(requested[1])) {
-    p <- tryCatch(normalize_mcp_path(requested[1], must_exist = TRUE),
-                 error = function(e) normalizePath(requested[1], winslash = "/", mustWork = TRUE))
-    log_info("resolve_uploaded_file(): doğrudan mevcut dosya bulundu -> {p}")
-    return(p)
-  }
+	requested_chr <- as.character(requested[1])
+	uid <- if (!is.null(user_id) && nzchar(as.character(user_id)[1])) {
+	  as.character(user_id)[1]
+	} else {
+	  NULL
+	}
+
+	is_valid_uid <- function(x) {
+	  !is.null(x) &&
+		nzchar(x) &&
+		!(tolower(x) %in% c("0", "unknown", "null", "na"))
+	}
+
+	safe_norm <- function(p) {
+	  normalize_for_path_compare(normalize_utf8_path(p, mustWork = FALSE))
+	}
+
+	path_is_under_root <- function(path, root) {
+	  path_norm <- safe_norm(path)
+	  root_norm <- safe_norm(root)
+
+	  identical(path_norm, root_norm) ||
+		startsWith(path_norm, paste0(root_norm, "/")) ||
+		startsWith(path_norm, paste0(root_norm, "\\"))
+	}
+
+	user_allowed_roots <- function(uid) {
+	  if (!is_valid_uid(uid)) {
+		return(character(0))
+	  }
+
+	  unique(Filter(nzchar, c(
+		tryCatch(mergen_user_upload_dir(uid), error = function(e) ""),
+		file.path(MERGEN_UPLOADS_DIR, sprintf("user_%s", uid)),
+		file.path(MERGEN_MCP_BASE_DIR, sprintf("user_%s", uid))
+	  )))
+	}
+
+	path_is_allowed_for_user <- function(path, uid) {
+	  roots <- user_allowed_roots(uid)
+	  any(vapply(roots, function(root) path_is_under_root(path, root), logical(1)))
+	}
+
+	path_is_under_trusted_root <- function(path, trusted_roots) {
+	  trusted_roots <- as.character(trusted_roots %||% character(0))
+	  trusted_roots <- trusted_roots[nzchar(trusted_roots)]
+
+	  if (!length(trusted_roots)) {
+		return(FALSE)
+	  }
+
+	  any(vapply(trusted_roots, function(root) path_is_under_root(path, root), logical(1)))
+	}
+
+	safe_return_path <- function(path, reason) {
+	  if (is.null(path) || !nzchar(as.character(path)[1]) || !path_exists_relaxed(path)) {
+		return(NULL)
+	  }
+
+	  p <- normalize_mcp_path(path, must_exist = FALSE)
+	  log_info("resolve_uploaded_file(): {reason} -> {p}")
+	  p
+	}
 
   full_key <- tolower(as.character(requested))
   key      <- tolower(basename(requested))
@@ -36,64 +97,86 @@ resolve_uploaded_file <- function(requested, user_id = NULL) {
           ent <- bucket[[nm]]
           ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
           ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
-          if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
-            p <- normalize_mcp_path(ent_path, must_exist = FALSE)
-            log_info("resolve_uploaded_file(): kullanıcı kovasında TAM adla bulundu -> {p}")
-            return(p)
-          }
+			if (!is.null(ent_path) &&
+				path_exists_relaxed(ent_path) &&
+				identical(ent_disp, full_key) &&
+				path_is_allowed_for_user(ent_path, uid)) {
+			  return(safe_return_path(ent_path, "kullanıcı kovasında TAM adla bulundu"))
+			}
         }
       }
 
       hit <- bucket[[key]]
       if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
-      if (!is.null(hit) && path_exists_relaxed(hit)) {
-        p <- normalize_mcp_path(hit, must_exist = FALSE)
-        log_info("resolve_uploaded_file(): kullanıcı kovasında basename ile bulundu -> {p}")
-        return(p)
-      } else {
-        log_debug("resolve_uploaded_file(): kullanıcı kovasında eşleşme yok (display/basename)")
-      }
+		if (!is.null(hit) &&
+			path_exists_relaxed(hit) &&
+			path_is_allowed_for_user(hit, uid)) {
+		  return(safe_return_path(hit, "kullanıcı kovasında basename ile bulundu"))
+		} else {
+		  log_debug("resolve_uploaded_file(): kullanıcı kovasında eşleşme yok (display/basename)")
+		}
     } else {
       log_debug("resolve_uploaded_file(): kullanıcı kovası yok: user_id='{uid}'")
     }
   }
 
-  if (length(idx)) {
-    for (bucket_name in names(idx)) {
-      bucket <- idx[[bucket_name]]
-      if (is.list(bucket)) {
-        for (nm in names(bucket)) {
-          ent <- bucket[[nm]]
-          ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
-          ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
-          if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
-            p <- normalize_mcp_path(ent_path, must_exist = FALSE)
-            log_info("resolve_uploaded_file(): display ile kovalar arasında bulundu (bucket='{bucket_name}') -> {p}")
-            return(p)
+  if (isTRUE(allow_direct_path) && path_exists_relaxed(requested_chr)) {
+    direct_allowed <- FALSE
+
+    if (is_valid_uid(uid) && path_is_allowed_for_user(requested_chr, uid)) {
+      direct_allowed <- TRUE
+    }
+
+    if (path_is_under_trusted_root(requested_chr, trusted_roots)) {
+      direct_allowed <- TRUE
+    }
+
+    if (isTRUE(direct_allowed)) {
+      return(safe_return_path(requested_chr, "izinli doğrudan yol bulundu"))
+    }
+
+    log_warn("resolve_uploaded_file(): doğrudan yol reddedildi; kullanıcı kovası veya trusted_roots altında değil")
+    return(NULL)
+  }
+
+  if (isTRUE(allow_cross_bucket)) {
+    if (length(idx)) {
+      for (bucket_name in names(idx)) {
+        bucket <- idx[[bucket_name]]
+        if (is.list(bucket)) {
+          for (nm in names(bucket)) {
+            ent <- bucket[[nm]]
+            ent_path <- if (is.list(ent) && !is.null(ent$path)) ent$path else as.character(ent)
+            ent_disp <- if (is.list(ent) && !is.null(ent$display)) tolower(as.character(ent$display)) else tolower(nm)
+            if (!is.null(ent_path) && path_exists_relaxed(ent_path) && identical(ent_disp, full_key)) {
+              p <- normalize_mcp_path(ent_path, must_exist = FALSE)
+              log_info("resolve_uploaded_file(): display ile kovalar arasında bulundu (bucket='{bucket_name}') -> {p}")
+              return(p)
+            }
           }
         }
       }
     }
-  }
 
-  hit <- idx[[key]]
-  if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
-  if (!is.null(hit) && path_exists_relaxed(hit)) {
-    p <- normalize_mcp_path(hit, must_exist = FALSE)
-    log_info("resolve_uploaded_file(): legacy haritada (basename) bulundu -> {p}")
-    return(p)
-  }
+    hit <- idx[[key]]
+    if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
+    if (!is.null(hit) && path_exists_relaxed(hit)) {
+      p <- normalize_mcp_path(hit, must_exist = FALSE)
+      log_info("resolve_uploaded_file(): legacy haritada (basename) bulundu -> {p}")
+      return(p)
+    }
 
-  if (length(idx)) {
-    for (bucket_name in names(idx)) {
-      bucket <- idx[[bucket_name]]
-      if (is.list(bucket)) {
-        hit <- bucket[[key]]
-        if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
-        if (!is.null(hit) && path_exists_relaxed(hit)) {
-          p <- normalize_mcp_path(hit, must_exist = FALSE)
-          log_info("resolve_uploaded_file(): çapraz kovada (basename) bulundu (bucket='{bucket_name}') -> {p}")
-          return(p)
+    if (length(idx)) {
+      for (bucket_name in names(idx)) {
+        bucket <- idx[[bucket_name]]
+        if (is.list(bucket)) {
+          hit <- bucket[[key]]
+          if (is.list(hit) && !is.null(hit$path)) hit <- hit$path
+          if (!is.null(hit) && path_exists_relaxed(hit)) {
+            p <- normalize_mcp_path(hit, must_exist = FALSE)
+            log_info("resolve_uploaded_file(): çapraz kovada (basename) bulundu (bucket='{bucket_name}') -> {p}")
+            return(p)
+          }
         }
       }
     }
