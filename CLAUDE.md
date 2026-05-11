@@ -295,6 +295,24 @@ The TTS visualizer can receive Shiny messages before its delayed browser-side in
 
 The welcome neural animation message contract must remain single-owner. `showNeuralAnimation` should be registered as a Shiny custom message handler only in `www/js/shiny_message_handlers.js`. `www/js/neural_welcome.js` should expose `window.startNeuralWelcomeAnimation(...)` and own the animation implementation, but it must not register another `Shiny.addCustomMessageHandler('showNeuralAnimation', ...)`. This prevents load-order-dependent behavior when deferred welcome scripts initialize after the synchronous Shiny message handler layer.
 
+#### Follow-up suggestions contract
+
+Follow-up suggestions are controlled by the Yapılandırma setting `enable_followups`. This setting must be read through the tolerant server-side resolution path so logical, numeric, and string-like truthy values do not silently disable the feature. Keep the helper boundary around `coerce_followup_flag()` and `resolve_followup_enabled()` intact unless replacing it with an equally tolerant and tested path.
+
+`build_followup_suggestions()` must not depend exclusively on an additional AI call. Local/deterministic suggestions and safe default suggestions are the reliability baseline; AI-generated suggestions may override them only when they are valid and non-empty. If the AI follow-up generator fails, returns malformed JSON, or returns too few suggestions, the UI should still receive usable follow-up suggestions whenever `enable_followups` is enabled.
+
+Streaming messages may render the initial AI bubble before follow-up suggestions are known. The browser-side `updateFollowupSuggestions` handler must therefore continue to create `#followup_container_<message_id>` on demand when the container was not rendered by R. Do not assume the container always exists at initial message render time.
+
+`push_followup_update()` should continue to send only non-empty cleaned suggestions and keep lightweight diagnostic logging for payload dispatch. Do not remove this logging unless an equivalent regression diagnostic is added elsewhere.
+
+Protected by:
+- `tests/testthat/test-followup-suggestions-regression.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+
+Focused validation:
+- `testthat::test_file("tests/testthat/test-followup-suggestions-regression.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+
 ### UI asset manifest contract
 
 The frontend CSS/JS loading surface is now owned by `R/config_ui_assets.R`, not by a long inline asset list inside `ui.R`.
