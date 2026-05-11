@@ -127,8 +127,11 @@ filePreviewServer <- function(id) {
     open <- function(file_info) {
       tryCatch({
         # Dosya yolunu belirle veya doğrula
-        datapath <- file_info$datapath %||% file_info$path %||%
-          resolve_uploaded_file(file_info$name, session$userData$user_id)
+		datapath <- file_info$datapath %||% file_info$path %||%
+		  resolve_uploaded_file(
+			file_info$name,
+			user_id = session$userData$user_id
+		  )
 
         # Dosya yolunun geçerliliğini kontrol et
         if (is.null(datapath) || !nzchar(datapath) || !path_exists_relaxed(datapath)) {

@@ -504,12 +504,19 @@ fileManagerServer <- function(
 
       # Doğrudan yol bulunamazsa resolve ile dene
       if (!deleted_physical) {
-        persisted <- try(resolve_uploaded_file(info$name, uid), silent = TRUE)
-        if (!inherits(persisted, "try-error") && !is.null(persisted) && path_exists_relaxed(persisted)) {
-          try(unlink(persisted, force = TRUE), silent = TRUE)
-          deleted_physical <- TRUE
-          fm_debug("delete_physical", sprintf("resolve ile silindi: %s", persisted))
-        }
+		persisted <- tryCatch(
+		  resolve_uploaded_file(
+			info$name,
+			user_id = uid
+		  ),
+		  error = function(e) NULL
+		)
+
+		if (!is.null(persisted) && path_exists_relaxed(persisted)) {
+		  try(unlink(persisted, force = TRUE), silent = TRUE)
+		  deleted_physical <- TRUE
+		  fm_debug("delete_physical", sprintf("resolve ile silindi: %s", persisted))
+		}
       }
 
       # Son çare: kullanıcı klasöründe basename ile ara

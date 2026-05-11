@@ -215,14 +215,12 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     path_ok_robust(candidate)
   }
 
-  is_abs <- grepl("^([A-Za-z]:)?[\\/]", arg)
-  if (is_abs) {
-    p <- resolve_existing_candidate(arg)
-    if (!is.null(p)) {
-      helpers_mcp_tools$mcp_debug_log("[RESOLVE] Absolute path exists -> ", p)
-      return(list(ok = TRUE, path = p, display = basename(p)))
-    }
-  }
+	is_abs <- grepl("^([A-Za-z]:)?[\\/]", arg)
+	if (is_abs) {
+	  helpers_mcp_tools$mcp_debug_log(
+		"[RESOLVE] Absolute path argument ignored; resolving through session registry/user bucket only."
+	  )
+	}
 
   all_files <- session$userData$current_session_files
   base_arg <- basename(arg)
@@ -238,7 +236,13 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
 
       if (exists("resolve_uploaded_file", mode = "function")) {
         for (tok in tokens) {
-          recovered <- try(resolve_uploaded_file(tok, user_id = uid), silent = TRUE)
+			recovered <- try(
+			  resolve_uploaded_file(
+				tok,
+				user_id = uid
+			  ),
+			  silent = TRUE
+			)
 
           if (!inherits(recovered, "try-error") && path_ok(recovered)) {
             helpers_mcp_tools$mcp_debug_log(

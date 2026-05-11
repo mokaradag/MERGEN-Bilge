@@ -225,12 +225,24 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
   uid <- session$userData$user_id %||% NULL
   if (!is.null(uid)) {
     log_debug("[SRC_CLICK] (a) kullanıcı kovası aranıyor\U2026 user_id={uid}")
-    cand_user_full <- try(resolve_uploaded_file(filename_full, user_id = uid), silent = TRUE)
+	cand_user_full <- try(
+	  resolve_uploaded_file(
+		filename_full,
+		user_id = uid
+	  ),
+	  silent = TRUE
+	)
     if (!inherits(cand_user_full, "try-error") && !is.null(cand_user_full) && path_exists_relaxed(cand_user_full)) {
       found_path <- normalizePath(cand_user_full, winslash = "/", mustWork = FALSE)
       log_info("[SRC_CLICK] kullanıcı kovasında (TAM ad) bulundu -> {found_path}")
     } else {
-      cand_user_base <- try(resolve_uploaded_file(filename_base, user_id = uid), silent = TRUE)
+		cand_user_base <- try(
+		  resolve_uploaded_file(
+			filename_base,
+			user_id = uid
+		  ),
+		  silent = TRUE
+		)
       if (!inherits(cand_user_base, "try-error") && !is.null(cand_user_base) && path_exists_relaxed(cand_user_base)) {
         found_path <- normalizePath(cand_user_base, winslash = "/", mustWork = FALSE)
         log_info("[SRC_CLICK] kullanıcı kovasında (basename) bulundu -> {found_path}")
@@ -276,23 +288,11 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
     }
   }
 
-  # (c) Önbellek (genel index) - en son başvur
-  if (is.null(found_path)) {
-    log_debug("[SRC_CLICK] (c) genel index üzerinden çözümleme deneniyor\U2026")
-
-    # Tam ipucu -> sonra basename
-    cand_global_full <- try(resolve_uploaded_file(raw_hint, user_id = NULL), silent = TRUE)
-    if (!inherits(cand_global_full, "try-error") && !is.null(cand_global_full) && path_exists_relaxed(cand_global_full)) {
-      found_path <- normalizePath(cand_global_full, winslash = "/", mustWork = FALSE)
-      log_info("[SRC_CLICK] genel indexte (TAM) bulundu -> {found_path}")
-    } else {
-      cand_global <- try(resolve_uploaded_file(filename_base, user_id = NULL), silent = TRUE)
-      if (!inherits(cand_global, "try-error") && !is.null(cand_global) && path_exists_relaxed(cand_global)) {
-        found_path <- normalizePath(cand_global, winslash = "/", mustWork = FALSE)
-        log_info("[SRC_CLICK] genel indexte (basename) bulundu -> {found_path}")
-      }
-    }
-  }
+	# (c) Genel index / çapraz kullanıcı çözümleme güvenlik nedeniyle kapalıdır.
+	# Kaynak dosya ya kullanıcının kendi kovasında ya da model baz klasörlerinde bulunmalıdır.
+	if (is.null(found_path)) {
+	  log_debug("[SRC_CLICK] genel index fallback atlandı; cross-user dosya çözümleme kapalı.")
+	}
 
   # Son durum: bulunamadıysa kullanıcıya bildir
   if (is.null(found_path)) {

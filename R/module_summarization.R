@@ -116,15 +116,23 @@ prepare_summarization_request <- function(
     if (is.null(fpath)) {
       user_id <- session$userData$user_id %||% session$userData$system_username %||% NULL
       if (!is.null(user_id)) {
-        resolved <- tryCatch(resolve_uploaded_file(fname, user_id), silent = TRUE)
-        if (!inherits(resolved, "try-error") && !is.null(resolved) && nzchar(resolved)) {
-          exists_ok <- tryCatch(path_exists_relaxed(resolved), error = function(e) FALSE)
-          if (!isTRUE(exists_ok)) exists_ok <- file.exists(resolved)
-          if (isTRUE(exists_ok)) {
-            fpath <- resolved
-            log_info("[SUMMARIZATION] resolve_uploaded_file ile yol bulundu: {resolved}")
-          }
-        }
+		resolved <- tryCatch(
+		  resolve_uploaded_file(
+			fname,
+			user_id = user_id
+		  ),
+		  error = function(e) NULL
+		)
+
+		if (!is.null(resolved) && nzchar(resolved)) {
+		  exists_ok <- tryCatch(path_exists_relaxed(resolved), error = function(e) FALSE)
+		  if (!isTRUE(exists_ok)) exists_ok <- file.exists(resolved)
+
+		  if (isTRUE(exists_ok)) {
+			fpath <- resolved
+			log_info("[SUMMARIZATION] resolve_uploaded_file ile yol bulundu: {resolved}")
+		  }
+		}
       }
     }
 

@@ -196,10 +196,17 @@ mergen_prepare_mcp_session_files <- function(
 
     path_now <- pick_existing_path(finfo)
     if (is.null(path_now) || !nzchar(path_now)) {
-      resolved <- try(resolve_uploaded_file(fname, effective_user_id), silent = TRUE)
-      if (!inherits(resolved, "try-error") && nzchar(resolved) && path_exists_relaxed(resolved)) {
-        path_now <- resolved
-      }
+		resolved <- tryCatch(
+		  resolve_uploaded_file(
+			fname,
+			user_id = effective_user_id
+		  ),
+		  error = function(e) NULL
+		)
+
+		if (!is.null(resolved) && nzchar(resolved) && path_exists_relaxed(resolved)) {
+		  path_now <- resolved
+		}
     }
 
     if (is.null(path_now) || !nzchar(path_now) || !path_exists_relaxed(path_now)) {
