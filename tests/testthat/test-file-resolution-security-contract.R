@@ -12,11 +12,25 @@
     return("")
   }
 
-  txt <- paste(
-    readLines(full_path, warn = FALSE, encoding = "UTF-8"),
-    collapse = "\n"
+  size <- suppressWarnings(file.info(full_path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
   )
 
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
 }
 
@@ -24,27 +38,27 @@ test_that("resolve_uploaded_file güvenli varsayılanlarla tanımlıdır", {
   txt <- .read_security_contract_text("R/config_file_store_registry.R")
 
   expect_true(
-    grepl("allow_direct_path = FALSE", txt, fixed = TRUE),
+    grepl("allow_direct_path\\s*=\\s*FALSE", txt, perl = TRUE),
     info = "resolve_uploaded_file() doğrudan path çözümlemeyi varsayılan olarak kapalı tutmalıdır."
   )
 
   expect_true(
-    grepl("allow_cross_bucket = FALSE", txt, fixed = TRUE),
+    grepl("allow_cross_bucket\\s*=\\s*FALSE", txt, perl = TRUE),
     info = "resolve_uploaded_file() çapraz kullanıcı/kova çözümlemeyi varsayılan olarak kapalı tutmalıdır."
   )
 
   expect_true(
-    grepl("trusted_roots = character(0)", txt, fixed = TRUE),
+    grepl("trusted_roots\\s*=\\s*character\\(0\\)", txt, perl = TRUE),
     info = "Doğrudan path çözümleme sadece açık trusted_roots ile mümkün olmalıdır."
   )
 
   expect_true(
-    grepl("if (isTRUE(allow_direct_path)", txt, fixed = TRUE),
+    grepl("if\\s*\\(\\s*isTRUE\\s*\\(\\s*allow_direct_path\\s*\\)", txt, perl = TRUE),
     info = "Doğrudan path çözümleme explicit allow_direct_path kontrolü arkasında olmalıdır."
   )
 
   expect_true(
-    grepl("if (isTRUE(allow_cross_bucket))", txt, fixed = TRUE),
+    grepl("if\\s*\\(\\s*isTRUE\\s*\\(\\s*allow_cross_bucket\\s*\\)\\s*\\)", txt, perl = TRUE),
     info = "Çapraz bucket fallback explicit allow_cross_bucket kontrolü arkasında olmalıdır."
   )
 })
@@ -75,14 +89,14 @@ test_that("runtime çağrı noktaları user_id=NULL ile resolve_uploaded_file ku
     }
   }
 
-  expect_length(
-    offenders,
-    0,
-    info = paste(
-      "Runtime dosyalarında resolve_uploaded_file(..., user_id = NULL) kullanılmamalıdır:",
-      paste(offenders, collapse = ", ")
-    )
-  )
+	expect_equal(
+	  length(offenders),
+	  0L,
+	  info = paste(
+		"Runtime dosyalarında resolve_uploaded_file(..., user_id = NULL) kullanılmamalıdır:",
+		paste(offenders, collapse = ", ")
+	  )
+	)
 })
 
 test_that("runtime çağrı noktaları güvenlik bayraklarını açmaz", {
@@ -107,14 +121,14 @@ test_that("runtime çağrı noktaları güvenlik bayraklarını açmaz", {
     }
   }
 
-  expect_length(
-    offenders,
-    0,
-    info = paste(
-      "Normal runtime akışları allow_direct_path=TRUE veya allow_cross_bucket=TRUE kullanmamalıdır:",
-      paste(offenders, collapse = ", ")
-    )
-  )
+	expect_equal(
+	  length(offenders),
+	  0L,
+	  info = paste(
+		"Normal runtime akışları allow_direct_path=TRUE veya allow_cross_bucket=TRUE kullanmamalıdır:",
+		paste(offenders, collapse = ", ")
+	  )
+	)
 })
 
 test_that("MCP resolver mutlak path argümanını doğrudan kabul etmez", {

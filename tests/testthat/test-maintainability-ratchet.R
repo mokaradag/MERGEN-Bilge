@@ -196,7 +196,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/module_admin_yanit_analizi.R", 753L, 4L)
   assert_current_budget("R/server_module_wiring.R", 735L, 14L)
   assert_current_budget("R/server_ai_expert_handlers.R", 726L, 23L)
-  assert_current_budget("R/module_file_manager.R", 725L, 13L)
+  assert_current_budget("R/module_file_manager.R", 725L, 14L)
   assert_current_budget("R/module_ai_expert.R", 686L, 22L)
   assert_current_budget("R/helpers_mcp_tools.R", 535L, 20L)
   assert_current_budget("R/module_chartlab.R", 532L, 20L)

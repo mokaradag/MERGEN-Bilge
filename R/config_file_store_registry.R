@@ -120,6 +120,50 @@ resolve_uploaded_file <- function(requested,
     }
   }
 
+  # İndeks eksik/bozuk/boş olsa bile yalnızca kullanıcının kendi fiziksel
+  # klasöründe güvenli fallback ara. Bu cross-bucket değildir.
+  if (is_valid_uid(uid)) {
+    own_roots <- user_allowed_roots(uid)
+
+    for (root in own_roots) {
+      root_ok <- tryCatch(path_exists_relaxed(root), error = function(e) FALSE)
+      if (!isTRUE(root_ok)) next
+
+      user_files <- tryCatch(
+        list.files(root, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
+        error = function(e) character(0)
+      )
+
+      if (!length(user_files)) {
+        next
+      }
+
+      file_bases <- tolower(basename(user_files))
+
+      matched_files <- user_files[
+        file_bases == key |
+          endsWith(file_bases, paste0("_", key))
+      ]
+
+      if (length(matched_files) > 0) {
+        matched_files <- matched_files[
+          vapply(
+            matched_files,
+            function(p) path_exists_relaxed(p) && path_is_allowed_for_user(p, uid),
+            logical(1)
+          )
+        ]
+      }
+
+      if (length(matched_files) > 0) {
+        return(safe_return_path(
+          matched_files[1],
+          "kullanıcının kendi klasöründe filesystem fallback ile bulundu"
+        ))
+      }
+    }
+  }
+
   if (isTRUE(allow_direct_path) && path_exists_relaxed(requested_chr)) {
     direct_allowed <- FALSE
 

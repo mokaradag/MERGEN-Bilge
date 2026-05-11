@@ -413,22 +413,24 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
       }
     }
 
-    p2 <- idx[[tolower(base_arg)]]
-    disp2 <- NULL
-
-    if (is.list(p2)) {
-      disp2 <- p2$display
-      if (!is.null(p2$path)) p2 <- p2$path
-    }
-
-    if (!is.null(p2) && path_ok(p2)) {
-      resolved_path <- resolve_existing_candidate(p2) %||% p2
-      return(list(ok = TRUE, path = resolved_path, display = disp2 %||% basename(p2)))
-    }
-
     allow_cross_bucket_lookup <- isTRUE(getOption("mergen.mcp.allow_cross_bucket_lookup", FALSE)) ||
       tolower(trimws(Sys.getenv("MERGEN_MCP_ALLOW_CROSS_BUCKET_LOOKUP", "false"))) %in%
         c("1", "true", "t", "yes", "y", "on")
+
+    if (isTRUE(allow_cross_bucket_lookup)) {
+      p2 <- idx[[tolower(base_arg)]]
+      disp2 <- NULL
+
+      if (is.list(p2)) {
+        disp2 <- p2$display
+        if (!is.null(p2$path)) p2 <- p2$path
+      }
+
+      if (!is.null(p2) && path_ok(p2)) {
+        resolved_path <- resolve_existing_candidate(p2) %||% p2
+        return(list(ok = TRUE, path = resolved_path, display = disp2 %||% basename(p2)))
+      }
+    }
 
     if (isTRUE(allow_cross_bucket_lookup) && length(idx)) {
       for (bucket_name in names(idx)) {

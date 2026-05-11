@@ -39,6 +39,7 @@ repo_root_resolve_uploaded_file <- resolve_repo_root_for_tests()
 
 .resolve_uploaded_file_required_sources <- c(
   "R/utils_path_helpers.R",
+  "R/helpers_files_path.R",
   "R/utils_atomic_write.R",
   "R/config_file_store.R",
   "R/config_file_store_index_mutation.R",
