@@ -216,6 +216,10 @@ if (isTRUE(preflight_check_file_store)) {
   cat("INFO: File Store roundtrip preflight atlandı. Etkinleştirmek için MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE ayarlayın.\n")
 }
 
+if (isTRUE(preflight_check_file_store)) {
+  vm_preflight_check_file_resolution_isolation()
+}
+
 vm_preflight_check_live_user_id_provider_contract()
 vm_preflight_check_sso_auth_ready_refresh_contract()
 

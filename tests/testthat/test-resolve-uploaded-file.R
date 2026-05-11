@@ -57,80 +57,243 @@ if (!exists("resolve_uploaded_file", envir = globalenv(), mode = "function", inh
   stop("resolve_uploaded_file() test bootstrap sonrası bulunamadı.", call. = FALSE)
 }
 
-# Geçerli fiziksel yol verildiğinde fonksiyon doğrudan çözümleyebilmelidir.
-test_that("resolve_uploaded_file var olan fiziksel yolu doğrudan döndürür", {
-  gecici_dir <- tempfile("uploadtest_")
+test_that("resolve_uploaded_file doğrudan fiziksel yolu varsayılan olarak reddeder", {
+  gecici_dir <- tempfile("uploadtest_direct_deny_")
   dir.create(gecici_dir, recursive = TRUE)
+
   gecici_dosya <- file.path(gecici_dir, "direk.docx")
   writeLines("ornek", gecici_dosya, useBytes = TRUE)
-  on.exit(unlink(gecici_dir, recursive = TRUE, force = TRUE))
 
-  sonuc <- resolve_uploaded_file(gecici_dosya, user_id = 1L)
-  expect_false(is.null(sonuc))
-  expect_equal(normalizePath(sonuc, winslash = "/"),
-               normalizePath(gecici_dosya, winslash = "/"))
+  on.exit(unlink(gecici_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  sonuc <- resolve_uploaded_file(
+    gecici_dosya,
+    user_id = 1L
+  )
+
+  expect_null(
+    sonuc,
+    info = "Doğrudan fiziksel path, allow_direct_path=FALSE iken çözümlenmemelidir."
+  )
+})
+
+test_that("resolve_uploaded_file doğrudan yolu sadece trusted_roots altında izinliyse çözer", {
+  gecici_dir <- tempfile("uploadtest_trusted_root_")
+  dir.create(gecici_dir, recursive = TRUE)
+
+  trusted_dir <- file.path(gecici_dir, "trusted")
+  outside_dir <- file.path(gecici_dir, "outside")
+
+  dir.create(trusted_dir, recursive = TRUE)
+  dir.create(outside_dir, recursive = TRUE)
+
+  trusted_file <- file.path(trusted_dir, "izinli.xlsx")
+  outside_file <- file.path(outside_dir, "reddedilen.xlsx")
+
+  writeLines("ok", trusted_file, useBytes = TRUE)
+  writeLines("no", outside_file, useBytes = TRUE)
+
+  on.exit(unlink(gecici_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  sonuc_trusted <- resolve_uploaded_file(
+    trusted_file,
+    user_id = 1L,
+    allow_direct_path = TRUE,
+    trusted_roots = trusted_dir
+  )
+
+  expect_false(is.null(sonuc_trusted))
+  expect_equal(
+    normalizePath(sonuc_trusted, winslash = "/", mustWork = FALSE),
+    normalizePath(trusted_file, winslash = "/", mustWork = FALSE)
+  )
+
+  sonuc_outside <- resolve_uploaded_file(
+    outside_file,
+    user_id = 1L,
+    allow_direct_path = TRUE,
+    trusted_roots = trusted_dir
+  )
+
+  expect_null(
+    sonuc_outside,
+    info = "allow_direct_path=TRUE olsa bile trusted_roots dışındaki path reddedilmelidir."
+  )
 })
 
 # Display adı ile kullanıcı kovasında kayıtlı dosya bulunur.
 test_that("resolve_uploaded_file kullanıcı kovasında display adı ile bulur", {
-  eski_yol <- MERGEN_INDEX_PATH
+  eski_index_yol <- MERGEN_INDEX_PATH
+  eski_uploads_dir <- MERGEN_UPLOADS_DIR
+  eski_mcp_base_dir <- MERGEN_MCP_BASE_DIR
+
   gecici_dir <- tempfile("uploadidx_")
   dir.create(gecici_dir, recursive = TRUE)
-  gercek_dosya <- file.path(gecici_dir, "20240101120000_0001_Rapor.docx")
+
+  test_uploads_dir <- file.path(gecici_dir, "uploads")
+  test_mcp_base_dir <- file.path(gecici_dir, "mcp")
+  user_dir <- file.path(test_mcp_base_dir, "user_9")
+
+  dir.create(user_dir, recursive = TRUE)
+
+  gercek_dosya <- file.path(user_dir, "20240101120000_0001_Rapor.docx")
   writeLines("ornek", gercek_dosya, useBytes = TRUE)
 
   gecici_idx <- file.path(gecici_dir, "index.json")
+
   assign("MERGEN_INDEX_PATH", gecici_idx, envir = globalenv())
+  assign("MERGEN_UPLOADS_DIR", test_uploads_dir, envir = globalenv())
+  assign("MERGEN_MCP_BASE_DIR", test_mcp_base_dir, envir = globalenv())
+
   on.exit({
-    assign("MERGEN_INDEX_PATH", eski_yol, envir = globalenv())
+    assign("MERGEN_INDEX_PATH", eski_index_yol, envir = globalenv())
+    assign("MERGEN_UPLOADS_DIR", eski_uploads_dir, envir = globalenv())
+    assign("MERGEN_MCP_BASE_DIR", eski_mcp_base_dir, envir = globalenv())
     unlink(gecici_dir, recursive = TRUE, force = TRUE)
-  })
+  }, add = TRUE)
 
   idx <- list(
     "9" = list(
       "rapor.docx" = list(
-        path    = gercek_dosya,
+        path = gercek_dosya,
         display = "Rapor.docx"
       )
     )
   )
+
   .save_index(idx)
 
-  # Display adıyla arama
-  sonuc_display <- resolve_uploaded_file("Rapor.docx", user_id = 9L)
-  expect_false(is.null(sonuc_display))
-  expect_equal(normalizePath(sonuc_display, winslash = "/"),
-               normalizePath(gercek_dosya, winslash = "/"))
+  sonuc_display <- resolve_uploaded_file(
+    "Rapor.docx",
+    user_id = 9L
+  )
 
-  # Basename anahtarı ile arama da çalışmalı
-  sonuc_base <- resolve_uploaded_file("rapor.docx", user_id = 9L)
+  expect_false(is.null(sonuc_display))
+  expect_equal(
+    normalizePath(sonuc_display, winslash = "/", mustWork = FALSE),
+    normalizePath(gercek_dosya, winslash = "/", mustWork = FALSE)
+  )
+
+  sonuc_base <- resolve_uploaded_file(
+    "rapor.docx",
+    user_id = 9L
+  )
+
   expect_false(is.null(sonuc_base))
 })
 
-# Kovalar arası legacy harita ile çapraz eşleşme bulunabilir.
-test_that("resolve_uploaded_file user_id verilmediğinde legacy haritada arar", {
+test_that("resolve_uploaded_file user_id NULL iken legacy haritayı varsayılan olarak kullanmaz", {
   eski_yol <- MERGEN_INDEX_PATH
-  gecici_dir <- tempfile("uploadlegacy_")
+
+  gecici_dir <- tempfile("uploadlegacy_deny_")
   dir.create(gecici_dir, recursive = TRUE)
+
   gercek_dosya <- file.path(gecici_dir, "legacy.xlsx")
   writeLines("ornek", gercek_dosya, useBytes = TRUE)
 
   gecici_idx <- file.path(gecici_dir, "index.json")
   assign("MERGEN_INDEX_PATH", gecici_idx, envir = globalenv())
+
   on.exit({
     assign("MERGEN_INDEX_PATH", eski_yol, envir = globalenv())
     unlink(gecici_dir, recursive = TRUE, force = TRUE)
-  })
+  }, add = TRUE)
 
   idx <- list(
-    "legacy.xlsx" = list(path = gercek_dosya, display = "legacy.xlsx")
+    "legacy.xlsx" = list(
+      path = gercek_dosya,
+      display = "legacy.xlsx"
+    )
   )
+
   .save_index(idx)
 
-  sonuc <- resolve_uploaded_file("legacy.xlsx", user_id = NULL)
-  expect_false(is.null(sonuc))
-  expect_equal(normalizePath(sonuc, winslash = "/"),
-               normalizePath(gercek_dosya, winslash = "/"))
+  sonuc_default <- resolve_uploaded_file(
+    "legacy.xlsx",
+    user_id = NULL
+  )
+
+  expect_null(
+    sonuc_default,
+    info = "user_id=NULL ve allow_cross_bucket=FALSE iken legacy harita kullanılmamalıdır."
+  )
+
+  sonuc_opt_in <- resolve_uploaded_file(
+    "legacy.xlsx",
+    user_id = NULL,
+    allow_cross_bucket = TRUE
+  )
+
+  expect_false(
+    is.null(sonuc_opt_in),
+    info = "Legacy/cross-bucket çözümleme yalnızca açık opt-in ile çalışmalıdır."
+  )
+})
+
+test_that("resolve_uploaded_file başka kullanıcının aynı adlı dosyasını varsayılan olarak döndürmez", {
+  eski_index_yol <- MERGEN_INDEX_PATH
+  eski_uploads_dir <- MERGEN_UPLOADS_DIR
+  eski_mcp_base_dir <- MERGEN_MCP_BASE_DIR
+
+  gecici_dir <- tempfile("cross_user_isolation_")
+  dir.create(gecici_dir, recursive = TRUE)
+
+  test_uploads_dir <- file.path(gecici_dir, "uploads")
+  test_mcp_base_dir <- file.path(gecici_dir, "mcp")
+
+  user_1_dir <- file.path(test_mcp_base_dir, "user_1")
+  user_2_dir <- file.path(test_mcp_base_dir, "user_2")
+
+  dir.create(user_1_dir, recursive = TRUE)
+  dir.create(user_2_dir, recursive = TRUE)
+
+  user_2_file <- file.path(user_2_dir, "shared.xlsx")
+  writeLines("user 2 secret", user_2_file, useBytes = TRUE)
+
+  gecici_idx <- file.path(gecici_dir, "index.json")
+
+  assign("MERGEN_INDEX_PATH", gecici_idx, envir = globalenv())
+  assign("MERGEN_UPLOADS_DIR", test_uploads_dir, envir = globalenv())
+  assign("MERGEN_MCP_BASE_DIR", test_mcp_base_dir, envir = globalenv())
+
+  on.exit({
+    assign("MERGEN_INDEX_PATH", eski_index_yol, envir = globalenv())
+    assign("MERGEN_UPLOADS_DIR", eski_uploads_dir, envir = globalenv())
+    assign("MERGEN_MCP_BASE_DIR", eski_mcp_base_dir, envir = globalenv())
+    unlink(gecici_dir, recursive = TRUE, force = TRUE)
+  }, add = TRUE)
+
+  idx <- list(
+    "2" = list(
+      "shared.xlsx" = list(
+        path = user_2_file,
+        display = "shared.xlsx"
+      )
+    )
+  )
+
+  .save_index(idx)
+
+  sonuc_user_1 <- resolve_uploaded_file(
+    "shared.xlsx",
+    user_id = 1L
+  )
+
+  expect_null(
+    sonuc_user_1,
+    info = "User 1, User 2 bucket içindeki aynı adlı dosyayı varsayılan olarak görememelidir."
+  )
+
+  sonuc_opt_in <- resolve_uploaded_file(
+    "shared.xlsx",
+    user_id = 1L,
+    allow_cross_bucket = TRUE
+  )
+
+  expect_false(
+    is.null(sonuc_opt_in),
+    info = "Cross-bucket çözümleme yalnızca açık opt-in ile çalışmalıdır."
+  )
 })
 
 # Hiç eşleşme yoksa NULL döner (hata fırlatmaz).

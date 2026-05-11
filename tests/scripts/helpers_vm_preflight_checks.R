@@ -627,3 +627,95 @@ vm_preflight_check_sso_auth_ready_refresh_contract <- function() {
   cat("OK: SSO auth-ready immediate refresh kontratı başarılı.\n")
   invisible(TRUE)
 }
+
+vm_preflight_check_file_resolution_isolation <- function() {
+  vm_preflight_required_functions(
+    c(
+      "resolve_uploaded_file",
+      "mergen_register_uploaded_file",
+      "mergen_remove_from_index"
+    ),
+    label = "File resolution isolation preflight"
+  )
+
+  user_a <- 999999101L
+  user_b <- 999999202L
+
+  source_dir <- file.path(
+    tempdir(),
+    sprintf("mergen_preflight_isolation_%s", format(Sys.time(), "%Y%m%d%H%M%S"))
+  )
+
+  dir.create(source_dir, recursive = TRUE, showWarnings = FALSE)
+
+  file_a <- file.path(source_dir, "shared_name.xlsx")
+  file_b <- file.path(source_dir, "shared_name_b.xlsx")
+
+  registered_a <- NULL
+  registered_b <- NULL
+
+  cleanup <- function() {
+    try(mergen_remove_from_index(user_a, "shared_name.xlsx"), silent = TRUE)
+    try(mergen_remove_from_index(user_b, "shared_name.xlsx"), silent = TRUE)
+
+    if (!is.null(registered_a)) try(unlink(registered_a, force = TRUE), silent = TRUE)
+    if (!is.null(registered_b)) try(unlink(registered_b, force = TRUE), silent = TRUE)
+
+    try(unlink(source_dir, recursive = TRUE, force = TRUE), silent = TRUE)
+  }
+
+  on.exit(cleanup(), add = TRUE)
+
+  writeBin(charToRaw("user A file"), file_a)
+  writeBin(charToRaw("user B file"), file_b)
+
+  registered_a <- mergen_register_uploaded_file(
+    src_path = file_a,
+    as_name = "shared_name.xlsx",
+    user_id = user_a,
+    persist_under_mcp_base = TRUE
+  )
+
+  registered_b <- mergen_register_uploaded_file(
+    src_path = file_b,
+    as_name = "shared_name.xlsx",
+    user_id = user_b,
+    persist_under_mcp_base = TRUE
+  )
+
+  resolved_a <- resolve_uploaded_file(
+    "shared_name.xlsx",
+    user_id = user_a
+  )
+
+  resolved_b <- resolve_uploaded_file(
+    "shared_name.xlsx",
+    user_id = user_b
+  )
+
+  if (is.null(resolved_a) || is.null(resolved_b)) {
+    vm_preflight_stop("File resolution isolation başarısız: kullanıcı dosyalarından biri çözümlenemedi.")
+  }
+
+  cmp_a <- vm_preflight_normalize_for_compare(resolved_a)
+  cmp_b <- vm_preflight_normalize_for_compare(resolved_b)
+
+  if (identical(cmp_a, cmp_b)) {
+    vm_preflight_stop(
+      "File resolution isolation başarısız: aynı display adına sahip iki farklı kullanıcı dosyası aynı path'e çözüldü."
+    )
+  }
+
+  cross_a_to_b <- resolve_uploaded_file(
+    "shared_name.xlsx",
+    user_id = user_a,
+    allow_cross_bucket = FALSE
+  )
+
+  if (is.null(cross_a_to_b)) {
+    vm_preflight_stop("File resolution isolation başarısız: user A kendi dosyasını çözemedi.")
+  }
+
+  cat("OK: File resolution isolation preflight başarılı.\\n")
+  invisible(TRUE)
+}

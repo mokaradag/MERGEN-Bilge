@@ -201,3 +201,85 @@ test_that("resolve_file_argument varsayılan olarak başka kullanıcı bucket'ı
   )
   expect_equal(opt_in_sonuc$display, "shared_name.csv")
 })
+
+test_that("resolve_file_argument mutlak path argümanını session registry yoksa reddeder", {
+  temp_dir <- withr::local_tempdir()
+  secret_path <- file.path(temp_dir, "secret.xlsx")
+
+  writeLines("secret", secret_path, useBytes = TRUE)
+  expect_true(file.exists(secret_path))
+
+  session <- .make_mock_session(user_id = 1L)
+
+  sonuc <- helpers_mcp_tools$resolve_file_argument(
+    arg = secret_path,
+    session = session
+  )
+
+  expect_false(
+    isTRUE(sonuc$ok),
+    info = "MCP resolve_file_argument doğrudan mutlak dosya yolunu kabul etmemelidir."
+  )
+})
+
+test_that("resolve_file_argument aynı mutlak path'i yalnızca session registry üzerinden çözer", {
+  temp_dir <- withr::local_tempdir()
+  excel_path <- file.path(temp_dir, "registered.xlsx")
+
+  writeLines("registered", excel_path, useBytes = TRUE)
+  expect_true(file.exists(excel_path))
+
+  session <- .make_mock_session(user_id = 1L)
+
+  helpers_mcp_tools$register_uploaded_file(
+    session = session,
+    token = "registered.xlsx",
+    abs_path = excel_path,
+    display_name = "registered.xlsx"
+  )
+
+  sonuc <- helpers_mcp_tools$resolve_file_argument(
+    arg = "registered.xlsx",
+    session = session
+  )
+
+  expect_true(isTRUE(sonuc$ok))
+  expect_equal(sonuc$display, "registered.xlsx")
+  expect_true(helpers_mcp_tools$path_exists_relaxed(sonuc$path))
+})
+
+test_that("resolve_file_argument legacy root-level index kaydını varsayılan olarak kullanmaz", {
+  temp_dir <- withr::local_tempdir()
+  legacy_file <- file.path(temp_dir, "legacy_root.csv")
+  writeLines(c("a,b", "1,2"), legacy_file, useBytes = TRUE)
+
+  index_path <- file.path(temp_dir, "index.json")
+
+  jsonlite::write_json(
+    list(
+      "legacy_root.csv" = list(
+        path = legacy_file,
+        display = "legacy_root.csv"
+      )
+    ),
+    index_path,
+    auto_unbox = TRUE
+  )
+
+  session <- .make_mock_session(user_id = 1L)
+
+  withr::local_options(list(
+    mergen.index_path = index_path,
+    mergen.mcp.allow_cross_bucket_lookup = FALSE
+  ))
+
+  sonuc <- helpers_mcp_tools$resolve_file_argument(
+    arg = "legacy_root.csv",
+    session = session
+  )
+
+  expect_false(
+    isTRUE(sonuc$ok),
+    info = "MCP resolver legacy root-level index fallback'ı varsayılan olarak kullanmamalıdır."
+  )
+})
