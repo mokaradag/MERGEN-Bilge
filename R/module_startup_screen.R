@@ -544,7 +544,8 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 	  session$userData$deep_space_dismissed <- TRUE
 
 	  # Mod ayarlarını uygula
-	  apply_experience_mode(session, settings_data, mode)
+	  # Not: Giriş ekranı akışında müzik aşağıda, deep-space kapanışından sonra tek kez başlatılır.
+	  apply_experience_mode(session, settings_data, mode, sync_music = FALSE)
 
 	  # Ayarlar sayfasındaki mod kartlarını güncelle
 	  session$sendCustomMessage("updateSettingsMode", list(mode = mode))
@@ -582,11 +583,15 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 			accent = char$accent
 		  ))
 
-		  # Müzik karakterini güncelle (modun müzik ayarına göre)
+		# Müzik karakterini güncelle (modun müzik ayarına göre)
+		# Deep-space intro müziği fade-out tamamlandıktan sonra ana müzik yöneticisini
+		# tek kez başlat. Böylece Ana Tema isteği karakter isteğiyle ezilmez.
+		shinyjs::delay(1400, {
 		  session$sendCustomMessage("toggleMusic", list(
 			enabled = isTRUE(settings_data$enable_background_music),
 			character = char_id
 		  ))
+		})
 
 		  # localStorage'a kaydet
 		  shinyjs::runjs(sprintf(
@@ -636,7 +641,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 #' @param session Shiny session nesnesi
 #' @param settings_data Ayarlar reaktif değerleri
 #' @param mode Seçilen mod (odak, denge, kesif)
-apply_experience_mode <- function(session, settings_data, mode) {
+apply_experience_mode <- function(session, settings_data, mode, sync_music = TRUE) {
   # Mod tanımları
   mode_settings <- list(
     odak = list(
@@ -678,10 +683,12 @@ apply_experience_mode <- function(session, settings_data, mode) {
   updateCheckboxInput(session, "settings_yapilandirma_module-enable_ai_expert", value = s$enable_ai_expert)
 
   # Müzik durumunu güncelle (karakter bilgisiyle birlikte)
-  session$sendCustomMessage("toggleMusic", list(
-    enabled = s$enable_background_music,
-    character = shiny::isolate(settings_data$selected_character) %||% "mergen"
-  ))
+	if (isTRUE(sync_music)) {
+	  session$sendCustomMessage("toggleMusic", list(
+		enabled = isTRUE(settings_data$enable_background_music),
+		character = settings_data$selected_character %||% "mergen"
+	  ))
+	}
 
   # Mod tercihini localStorage'a kaydet
   shinyjs::runjs(sprintf(

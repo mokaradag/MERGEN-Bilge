@@ -21,6 +21,8 @@ const MusicManager = {
   _characterPlaylist: [],
   // Bekleyen istek sayacı (gecikmeli yanıtları yönetir)
   _pendingRequestId: 0,
+  // Bekleyen istek tipi: 'tema' | 'karakter' | null
+  _pendingRequestType: null,
   // Ana tema daha önce çalındı mı (oturum boyunca bir kez)
   _themePlayedOnce: false,
   // Kasıtlı durdurma bayrağı (hata olaylarını bastırmak için)
@@ -72,18 +74,21 @@ const MusicManager = {
   },
 
   // ─── SUNUCUDAN PLAYLIST İSTE ───
-  _requestPlaylist: function(type) {
-    this._pendingRequestId++;
-    var requestId = this._pendingRequestId;
+	_requestPlaylist: function(type) {
+	  this._pendingRequestId++;
+	  this._pendingRequestType = type;
 
-    Shiny.setInputValue('get_music_playlist', {
-      type: type,
-      character: this.state.character,
-      requestId: requestId,
-      nonce: Math.random()
-    });
-    console.log('[MUSIC] Playlist isteniyor:', type, '| Karakter:', this.state.character, '| ID:', requestId);
-  },
+	  var requestId = this._pendingRequestId;
+
+	  Shiny.setInputValue('get_music_playlist', {
+		type: type,
+		character: this.state.character,
+		requestId: requestId,
+		nonce: Math.random()
+	  }, { priority: 'event' });
+
+	  console.log('[MUSIC] Playlist isteniyor:', type, '| Karakter:', this.state.character, '| ID:', requestId);
+	},
 
   // ─── SUNUCUDAN GELEN PLAYLIST'İ İŞLE ───
   receivePlaylist: function(data) {
@@ -93,14 +98,19 @@ const MusicManager = {
       return;
     }
 
-    // Eski/gecikmeli yanıtları yoksay
-    if (data.requestId && data.requestId < this._pendingRequestId) {
-      console.log('[MUSIC] Eski playlist yanıtı yoksayıldı (ID:', data.requestId, '< güncel:', this._pendingRequestId, ')');
-      return;
-    }
+	// Eski/gecikmeli yanıtları yoksay
+	if (data.requestId && data.requestId < this._pendingRequestId) {
+	  console.log('[MUSIC] Eski playlist yanıtı yoksayıldı (ID:', data.requestId, '< güncel:', this._pendingRequestId, ')');
+	  return;
+	}
 
-    var files = data.files || [];
-    var type = data.type || 'tema';
+	// Güncel yanıt geldiyse bekleyen istek tipini temizle
+	if (!data.requestId || data.requestId === this._pendingRequestId) {
+	  this._pendingRequestType = null;
+	}
+
+	var files = data.files || [];
+	var type = data.type || 'tema';
 
     console.log('[MUSIC] Playlist alındı:', type, '|', files.length, 'parça');
 
@@ -314,35 +324,60 @@ const MusicManager = {
       this.state.character = character;
     }
 
-    // Aynı duruma tekrar geçiş
-    if (this.state.enabled === enabled) {
-      // Müzik açık ve karakter değiştiyse yumuşak geçişle yeni karakter müziğine geç
-      if (enabled && characterChanged && (this.state.phase === 'character' || this.state.phase === 'waiting_character')) {
-        this._characterPlaylist = [];
-        var self = this;
-        this._fadeOutAndStop(function() {
-          self.state.phase = 'waiting_character';
-          self._requestPlaylist('karakter');
-        });
-        return;
-      }
+	// Aynı duruma tekrar geçiş
+	if (this.state.enabled === enabled) {
+	  // Müzik açık ve karakter değiştiyse yumuşak geçişle yeni karakter müziğine geç
+	  if (enabled && characterChanged && (this.state.phase === 'character' || this.state.phase === 'waiting_character')) {
+		this._characterPlaylist = [];
+		var self = this;
+		this._fadeOutAndStop(function() {
+		  self.state.phase = 'waiting_character';
+		  self._requestPlaylist('karakter');
+		});
+		return;
+	  }
 
-      // Müzik açık kalmasına rağmen aktif akış yoksa karakter müziğini yeniden besle
-      if (enabled) {
-        var karakterMuzigiYenidenBaslatilsin =
-          !this._audio ||
-          this.state.phase === 'idle' ||
-          ((this.state.phase === 'character' || this.state.phase === 'waiting_character') &&
-           this._characterPlaylist.length === 0);
+	  if (enabled) {
+		// Kritik koruma:
+		// Ana tema playlist'i henüz beklenirken ikinci toggleMusic(TRUE)
+		// gelirse karakter müziğine erken geçme.
+		var anaTemaBekleniyor =
+		  this.state.phase === 'idle' &&
+		  !this._themePlayedOnce &&
+		  this._pendingRequestType === 'tema';
 
-        if (karakterMuzigiYenidenBaslatilsin) {
-          console.log('[MUSIC] Aynı açık duruma geçildi, karakter müziği akışı yeniden başlatılıyor');
-          this._startCharacterMusic();
-        }
-      }
+		if (anaTemaBekleniyor) {
+		  console.log('[MUSIC] Ana tema playlist yanıtı bekleniyor; karakter müziğine erken geçiş engellendi');
+		  return;
+		}
 
-      return;
-    }
+		// Müzik açık ama ana tema henüz hiç çalınmadıysa yeniden tema iste.
+		if (this.state.phase === 'idle' && !this._themePlayedOnce) {
+		  console.log('[MUSIC] Ana tema akışı yeniden besleniyor');
+		  this._requestPlaylist('tema');
+		  return;
+		}
+
+		// Ana tema daha önce çalındıysa veya karakter fazındaysak karakter müziğini besle.
+		var karakterMuzigiYenidenBaslatilsin =
+		  this._themePlayedOnce &&
+		  (
+			!this._audio ||
+			this.state.phase === 'waiting_character' ||
+			(
+			  this.state.phase === 'character' &&
+			  this._characterPlaylist.length === 0
+			)
+		  );
+
+		if (karakterMuzigiYenidenBaslatilsin) {
+		  console.log('[MUSIC] Aynı açık duruma geçildi, karakter müziği akışı yeniden başlatılıyor');
+		  this._startCharacterMusic();
+		}
+	  }
+
+	  return;
+	}
 
     this.state.enabled = enabled;
 
@@ -352,10 +387,11 @@ const MusicManager = {
       // Yumuşak geçişle durdur
       var audioToStop = this._audio;
       this._audio = null;
-      this.state.phase = 'idle';
-      this._themePlaylist = [];
-      this._characterPlaylist = [];
-      this._pendingRequestId++;
+	  this.state.phase = 'idle';
+	  this._themePlaylist = [];
+	  this._characterPlaylist = [];
+	  this._pendingRequestId++;
+	  this._pendingRequestType = null;
 
       if (audioToStop) {
         var self = this;
