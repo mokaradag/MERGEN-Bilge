@@ -47,14 +47,21 @@ push_followup_update <- function(session, message_id, followups, pending = FALSE
     return(invisible(NULL))
   }
 
-  payload <- list(
-    id = message_id,
-    followups = unname(cleaned),
-    pending = isTRUE(pending)
-  )
+	payload <- list(
+	  id = message_id,
+	  followups = unname(cleaned),
+	  pending = isTRUE(pending)
+	)
 
-  try(session$sendCustomMessage("updateFollowupSuggestions", payload), silent = TRUE)
-  invisible(NULL)
+	cat(sprintf(
+	  "[FOLLOWUPS][PUSH] message_id=%s count=%d pending=%s\n",
+	  as.character(message_id),
+	  length(cleaned),
+	  isTRUE(pending)
+	))
+
+	try(session$sendCustomMessage("updateFollowupSuggestions", payload), silent = TRUE)
+	invisible(NULL)
 }
 
 chat_add_message <- function(session, values, settings_data, output,

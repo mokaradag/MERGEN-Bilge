@@ -158,51 +158,128 @@ generate_ai_followups <- function(user_text, ai_text, settings_data, session, ap
   normalize_followup_texts(parsed, limit = 3L)
 }
  
-# Ana takip sorusu oluşturucu fonksiyon
-# Önce AI ile dener, başarısız olursa fallback kullanır
-build_followup_suggestions <- function(user_text, ai_text, settings_data, session,
-                                        api_config, followup_tools, fallback_followup_tool) {
-  enabled_flag <- settings_data$enable_followups
-  if (is.null(enabled_flag)) {
-    enabled_flag <- TRUE
+# Daha toleranslı TRUE/FALSE okuma
+coerce_followup_flag <- function(x) {
+  if (is.null(x)) return(FALSE)
+
+  if (is.logical(x)) {
+    return(isTRUE(x[1]))
   }
+
+  if (is.numeric(x)) {
+    return(!is.na(x[1]) && x[1] == 1)
+  }
+
+  if (is.character(x)) {
+    val <- tolower(trimws(x[1]))
+    return(val %in% c("true", "t", "1", "yes", "evet", "aktif", "on"))
+  }
+
+  FALSE
+}
+
+resolve_followup_enabled <- function(settings_data, session = NULL) {
+  settings_val <- tryCatch({
+    shiny::isolate(settings_data$enable_followups)
+  }, error = function(e) NULL)
+
+  input_val <- tryCatch({
+    if (!is.null(session)) {
+      shiny::isolate(session$input[["settings_yapilandirma_module-enable_followups"]])
+    } else {
+      NULL
+    }
+  }, error = function(e) NULL)
+
+  isTRUE(coerce_followup_flag(settings_val)) ||
+    isTRUE(coerce_followup_flag(input_val))
+}
+
+default_followup_suggestions <- function(user_text = NULL, ai_text = NULL) {
+  base <- c(
+    "Bu yanıtı daha ayrıntılı açıklar mısın?",
+    "Bunu adım adım nasıl uygulayabilirim?",
+    "Bu konuda dikkat etmem gereken riskler nelerdir?"
+  )
+
+  normalize_followup_texts(base, limit = 3L)
+}
+
+# Ana takip sorusu oluşturucu fonksiyon
+# Önce deterministik fallback üretir; AI başarısız olsa bile boş dönmez.
+build_followup_suggestions <- function(user_text, ai_text, settings_data, session,
+                                       api_config, followup_tools, fallback_followup_tool) {
+
+  enabled_flag <- resolve_followup_enabled(settings_data, session)
+
+  cat(sprintf(
+    "[FOLLOWUPS] enabled=%s | user_len=%d | ai_len=%d\n",
+    enabled_flag,
+    nchar(user_text %||% ""),
+    nchar(ai_text %||% "")
+  ))
+
   if (!isTRUE(enabled_flag)) {
     return(NULL)
   }
- 
+
+  safe_generate <- function(fn) {
+    if (!is.function(fn)) return(NULL)
+
+    tryCatch(
+      fn(
+        user_text %||% "",
+        ai_text %||% "",
+        min_questions = 2L,
+        max_questions = 3L
+      ),
+      error = function(e) {
+        cat("[FOLLOWUPS][FALLBACK] generation failed: ", conditionMessage(e), "\n", sep = "")
+        NULL
+      }
+    )
+  }
+
+  # 1) Önce yerel/deterministik üretici: hızlı ve güvenilir
   generator <- followup_tools$generate
   if (!is.function(generator)) {
     generator <- fallback_followup_tool$generate
   }
- 
-  ai_suggestions <- generate_ai_followups(user_text, ai_text, settings_data, session, api_config)
-  if (!is.null(ai_suggestions) && length(ai_suggestions) >= 2) {
-    return(ai_suggestions)
-  }
- 
-  safe_generate <- function(fn) {
-    if (!is.function(fn)) return(NULL)
-    tryCatch(
-      fn(user_text %||% "", ai_text %||% "",
-         min_questions = 2L, max_questions = 3L),
-      error = function(e) NULL
-    )
-  }
- 
+
   suggestions <- safe_generate(generator)
-  if (is.null(suggestions) || !length(suggestions)) {
+
+  if (is.null(suggestions) || length(suggestions) < 2) {
     suggestions <- safe_generate(fallback_followup_tool$generate)
   }
- 
+
+  suggestions <- normalize_followup_texts(suggestions, limit = 3L)
+
+  # 2) Deterministik üretici başarısızsa garanti varsayılan öneriler
   if (is.null(suggestions) || !length(suggestions)) {
-    return(NULL)
+    suggestions <- default_followup_suggestions(user_text, ai_text)
   }
- 
-  suggestions <- unique(trimws(as.character(suggestions)))
-  suggestions <- suggestions[nzchar(suggestions)]
-  if (!length(suggestions)) {
-    return(NULL)
+
+  # 3) İstersen AI önerisini dene; başarılıysa deterministik önerinin yerine kullan
+  ai_suggestions <- tryCatch({
+    generate_ai_followups(user_text, ai_text, settings_data, session, api_config)
+  }, error = function(e) {
+    cat("[FOLLOWUPS][AI] skipped/failed: ", conditionMessage(e), "\n", sep = "")
+    NULL
+  })
+
+  ai_suggestions <- normalize_followup_texts(ai_suggestions, limit = 3L)
+
+  if (!is.null(ai_suggestions) && length(ai_suggestions) >= 2) {
+    suggestions <- ai_suggestions
   }
- 
-  head(suggestions, 3L)
+
+  suggestions <- normalize_followup_texts(suggestions, limit = 3L)
+
+  cat(sprintf(
+    "[FOLLOWUPS] generated_count=%d | %s\n",
+    length(suggestions %||% character(0)),
+    paste(suggestions %||% character(0), collapse = " | ")
+  ))
+
+  suggestions
 }
