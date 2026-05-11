@@ -125,6 +125,56 @@ Focused validation:
 - `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")`
 - `source("tests/testthat.R", encoding = "UTF-8")`
 
+### File resolution, upload-size, and user-isolation contract
+
+File resolution is a security-sensitive boundary. Normal runtime code must treat uploaded files as user-scoped resources, not as general filesystem paths.
+
+Current contract:
+
+- `resolve_uploaded_file()` must remain user-bucket-first.
+- Normal user flows must not call `resolve_uploaded_file(..., user_id = NULL)`.
+- Normal user flows must not pass `allow_direct_path = TRUE`.
+- Normal user flows must not pass `allow_cross_bucket = TRUE`.
+- Direct path resolution is denied by default. It may only be used by explicit admin/maintenance code, and only with a trusted root allowlist through `trusted_roots`.
+- Cross-bucket resolution is denied by default. It may only be used by explicit migration/repair/admin code.
+- Same-user filesystem fallback is allowed and intentional. It exists so files physically present in the current user's upload folder can still resolve when the JSON index is stale, empty, unreadable, or has UTF-8/display-name drift.
+- Same-user filesystem fallback must not scan other users' folders.
+- MCP file resolution must not convert arbitrary absolute path arguments into readable files.
+- MCP legacy root-level index fallback must remain opt-in only through the existing explicit cross-bucket lookup controls.
+- Do not reintroduce broad global file lookup in chat, preview, summarization, File Manager, or MCP user flows.
+
+Upload-size policy:
+
+- The central upload limit is `getOption("mergen.upload_max_mb", 25L)`.
+- `shiny.maxRequestSize` must be derived from that central option.
+- Do not reintroduce a separate hard-coded Shiny upload size such as `30 * 1024^2` in file-store configuration.
+- Browser-side upload warnings, server-side validation, and Shiny request limits should stay aligned.
+
+Protected by:
+
+- `tests/testthat/test-resolve-uploaded-file.R`
+- `tests/testthat/test-mcp-excel-resolve.R`
+- `tests/testthat/test-file-resolution-security-contract.R`
+- `tests/testthat/test-upload-size-policy.R`
+- `tests/testthat/test-upload-validator.R`
+- `tests/testthat/test-upload-validator-branches.R`
+- `tests/testthat/test-upload-validator-edge-cases.R`
+- `tests/testthat/test-file-store-index.R`
+- `tests/testthat/test-e2e-file-context-regression.R`
+- `tests/scripts/run_vm_preflight_real.R` when `MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")`
+- `testthat::test_file("tests/testthat/test-mcp-excel-resolve.R")`
+- `testthat::test_file("tests/testthat/test-file-resolution-security-contract.R")`
+- `testthat::test_file("tests/testthat/test-upload-size-policy.R")`
+- `testthat::test_file("tests/testthat/test-upload-validator.R")`
+- `testthat::test_file("tests/testthat/test-file-store-index.R")`
+- `testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")`
+- `Sys.setenv(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE")`
+- `source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")`
+
 ### API model configuration contract
 
 API model/endpoint/tool-mode helper logic is intentionally split from the main API configuration file.
@@ -175,7 +225,7 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing. Small helper extraction is preferred when a near-limit runtime file would otherwise consume remaining headroom; the File Manager attach-state client helper is an example of this pattern.
+Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing. Small helper extraction is preferred when a near-limit runtime file would otherwise consume remaining headroom; the File Manager attach-state client helper is an example of this pattern. Recent file-resolution hardening required one File Manager function-count budget update after tests passed; do not loosen additional ratchet values unless the code change genuinely changes the measured baseline and the reason is documented.
 
 ### send_message prompting and file-context contract
 
