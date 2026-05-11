@@ -108,47 +108,86 @@ $(document).ready(function() {
   // işleyicileri streaming_manager.js tarafından yönetilir.
   // Shiny her mesaj tipi için yalnızca bir işleyici desteklediğinden burada tekrar tanımlamıyoruz.
 
-  Shiny.addCustomMessageHandler('updateFollowupSuggestions', function(data) {
-    if (!data || !data.id || !data.followups) return;
-    
-    const container = document.getElementById('followup_container_' + data.id);
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    if (data.pending) {
-      container.classList.add('pending');
-    } else {
-      container.classList.remove('pending');
-    }
-    
-    var titleDiv = document.createElement('div');
-    titleDiv.className = 'followup-suggestions-title';
-    titleDiv.innerHTML = '<i class="fas fa-lightbulb"></i><span>Önerilen Takip Soruları</span>';
-    container.appendChild(titleDiv);
-    
-    var listDiv = document.createElement('div');
-    listDiv.className = 'followup-suggestions-list';
-    
-    data.followups.forEach(function(question) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'followup-option';
-      btn.setAttribute('data-question', question);
-      
-      var textSpan = document.createElement('span');
-      textSpan.textContent = question;
-      btn.appendChild(textSpan);
-      
-      var icon = document.createElement('i');
-      icon.className = 'fas fa-arrow-up-right-from-square';
-      btn.appendChild(icon);
-      
-      listDiv.appendChild(btn);
-    });
-    
-    container.appendChild(listDiv);
-  });
+	Shiny.addCustomMessageHandler('updateFollowupSuggestions', function(data) {
+	  if (!data || !data.id || !data.followups) return;
+
+	  var followups = Array.isArray(data.followups)
+		? data.followups
+		: [data.followups];
+
+	  followups = followups
+		.map(function(q) {
+		  return q == null ? '' : String(q).trim();
+		})
+		.filter(function(q) {
+		  return q.length > 0;
+		});
+
+	  if (!followups.length) return;
+
+	  var containerId = 'followup_container_' + data.id;
+	  var container = document.getElementById(containerId);
+
+	  // True streaming path: initial AI bubble is created before followups exist,
+	  // so the followup container may not have been rendered by R.
+	  if (!container) {
+		var wrapper = document.getElementById('message_wrapper_' + data.id);
+		if (!wrapper) return;
+
+		var aiMessage = wrapper.querySelector('.ai-message');
+		if (!aiMessage) return;
+
+		container = document.createElement('div');
+		container.id = containerId;
+		container.className = 'followup-suggestions-box';
+		container.setAttribute('data-has-items', 'true');
+
+		aiMessage.appendChild(container);
+	  }
+
+	  container.innerHTML = '';
+	  container.setAttribute('data-has-items', 'true');
+
+	  if (data.pending) {
+		container.classList.add('pending');
+	  } else {
+		container.classList.remove('pending');
+	  }
+
+	  var titleDiv = document.createElement('div');
+	  titleDiv.className = 'followup-suggestions-title';
+	  titleDiv.innerHTML =
+		'<i class="fas fa-lightbulb"></i><span>Önerilen Takip Soruları</span>';
+	  container.appendChild(titleDiv);
+
+	  var listDiv = document.createElement('div');
+	  listDiv.className = 'followup-suggestions-list';
+
+	  followups.forEach(function(question) {
+		var btn = document.createElement('button');
+		btn.type = 'button';
+		btn.className = 'followup-option';
+		btn.setAttribute('data-question', question);
+
+		var textSpan = document.createElement('span');
+		textSpan.textContent = question;
+		btn.appendChild(textSpan);
+
+		var icon = document.createElement('i');
+		icon.className = 'fas fa-arrow-up-right-from-square';
+		btn.appendChild(icon);
+
+		listDiv.appendChild(btn);
+	  });
+
+	  container.appendChild(listDiv);
+
+	  if (typeof window.smartScrollToBottom === 'function') {
+		setTimeout(function() {
+		  window.smartScrollToBottom();
+		}, 50);
+	  }
+	});
 
   // NOT: playAudioMessage işleyicisi tts_manager.js'deki kuyruk sistemi tarafından yönetilir.
   // Burada tekrar tanımlamıyoruz, çünkü Shiny her mesaj tipi için yalnızca bir işleyici destekler.
