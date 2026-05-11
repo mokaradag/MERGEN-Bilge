@@ -295,6 +295,59 @@ The TTS visualizer can receive Shiny messages before its delayed browser-side in
 
 The welcome neural animation message contract must remain single-owner. `showNeuralAnimation` should be registered as a Shiny custom message handler only in `www/js/shiny_message_handlers.js`. `www/js/neural_welcome.js` should expose `window.startNeuralWelcomeAnimation(...)` and own the animation implementation, but it must not register another `Shiny.addCustomMessageHandler('showNeuralAnimation', ...)`. This prevents load-order-dependent behavior when deferred welcome scripts initialize after the synchronous Shiny message handler layer.
 
+### UI asset manifest contract
+
+The frontend CSS/JS loading surface is now owned by `R/config_ui_assets.R`, not by a long inline asset list inside `ui.R`.
+
+Current contract:
+
+- `ui.R` should render frontend assets through `ui_asset_tags()`.
+- Do not reintroduce a giant inline list of `tags$link(...)` and `tags$script(...)` calls in `ui.R`.
+- Browser-facing asset paths must remain public Shiny paths such as `css/...`, `js/...`, `codemirror/...`, and `lib/threejs/...`; file existence validation must resolve them under the Shiny public asset root, normally `www/`.
+- Keep CodeMirror core, modes, and addons synchronous and ordered before CodeMirror-dependent code.
+- Keep the SSO script synchronous and before critical app scripts.
+- Keep Three.js dependencies ordered and deferred as a group.
+- Keep critical app scripts synchronous where existing client boot behavior depends on them.
+- Keep deferred feature scripts deferred unless there is a demonstrated dependency that requires synchronous loading.
+- Keep Bilge Yolaç modules in their explicit dependency order, starting with `js/bilge_yolac_motor.js`.
+- When adding, removing, renaming, or moving a frontend asset, update `R/config_ui_assets.R` and the asset manifest tests together.
+- Do not add CDN usage. The app must remain fully offline/on-prem.
+- Do not register duplicate `Shiny.addCustomMessageHandler(...)` handlers for the same message type.
+
+Protected by:
+
+- `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+- `tests/testthat/test-e2e-boot-welcome-regression.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+- `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+
+### Attached welcome-screen animation contract
+
+Returning from Kişiselleştirme to an already-attached Ana Söyleşi welcome screen must reboot the modern welcome animation stack after the welcome container is visible.
+
+Current contract:
+
+- The attached welcome-screen path in `R/server_welcome_handlers.R` must still show `#welcome_fullscreen_container`, hide `#chat_content_container`, refresh recent chats, and then send `initModernWelcome`.
+- The same path must also send `initPersonalGreeting` so the personalized greeting sequence is not skipped.
+- `www/js/character_manager.js` must not destroy and reinitialize the modern welcome neural canvas while that canvas is hidden or has zero dimensions. Hidden character changes may update stored/accent state, but visible canvas initialization should happen when the welcome screen is visible again.
+- `www/js/shiny_message_handlers.js` owns `initModernWelcome` bootstrapping and must continue to initialize the video player, modern neural canvas, and greeting text through the existing boot/retry path.
+- This behavior must preserve the existing UX: selecting a different character from Kişiselleştirme and then directly opening Ana Söyleşi should immediately show the left video, right neural animation, and dynamic greeting without requiring a quick action or Yeni Söyleşi round trip.
+
+Protected by:
+
+- `tests/testthat/test-e2e-boot-welcome-regression.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+
 High-risk frontend anchors are protected by `tests/testthat/test-frontend-selector-contract.R`. This test covers:
 
 - chat input and send/stop wiring,
