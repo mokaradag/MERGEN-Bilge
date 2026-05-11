@@ -123,11 +123,10 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   invisible(lapply(asset_env$ui_asset_js_order_rules, function(rule) {
     expect_length(rule, 2)
 
-    expect_lt(
-      .ui_asset_contract_position(js_paths, rule[[1]]),
-      .ui_asset_contract_position(js_paths, rule[[2]]),
-      info = paste(rule[[1]], "must load before", rule[[2]])
-    )
+    before_pos <- .ui_asset_contract_position(js_paths, rule[[1]])
+    after_pos <- .ui_asset_contract_position(js_paths, rule[[2]])
+
+    expect_lt(before_pos, after_pos)
   }))
 })
 
