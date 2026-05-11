@@ -2,15 +2,24 @@
 
 // Grafik çizdirme fonksiyonu (Global erişim için window'a atanır)
 // Highcharts henüz yüklenmemişse otomatik yeniden deneme mekanizması içerir
+function getChartRenderRoot(wrapperId) {
+  if (wrapperId) {
+    var wrapper = document.getElementById(wrapperId);
+    if (wrapper) return wrapper;
+  }
+
+  return document.getElementById('chat_content_container') ||
+         document.querySelector('.chat-container');
+}
+
 window.renderSavedCharts = function(wrapperId, retryCount) {
   retryCount = retryCount || 0;
   var maxRetries = 8;
   var retryDelay = 500; // Her denemede 500ms bekle
 
-  // Kapsayıcı elementi bul (ID veya Class ile)
-  var wrapper = document.getElementById(wrapperId);
-  if (!wrapper) wrapper = document.querySelector('.' + wrapperId);
-  if (!wrapper) wrapper = document.body; // Bulunamazsa body içinde ara
+  // Kapsayıcı elementi güncel sohbet köküyle sınırla
+  var wrapper = getChartRenderRoot(wrapperId);
+  if (!wrapper) return;
 
   // Henüz çizilmemiş (.rendered sınıfı olmayan) ve grafik verisi içeren kartları bul
   var chartCards = wrapper.querySelectorAll('.chart-card[data-chartlab-spec]:not(.rendered)');
@@ -141,12 +150,9 @@ $(document).ready(function() {
         window.renderChartTimeout = setTimeout(() => {
              // Sohbet kapsayıcısı içindeki çizilmemiş grafikleri çiz
              if (window.renderSavedCharts) {
-               var chartRoot = document.getElementById('chat_content_container') ||
-                               document.querySelector('.chat-container');
-               if (chartRoot && chartRoot.id) {
-                 window.renderSavedCharts(chartRoot.id);
-               } else if (chartRoot && chartRoot.classList && chartRoot.classList.contains('chat-container')) {
-                 window.renderSavedCharts('chat-container');
+               var chartRoot = getChartRenderRoot('chat_content_container');
+               if (chartRoot) {
+                 window.renderSavedCharts(chartRoot.id || 'chat_content_container');
                }
              }
         }, 100);

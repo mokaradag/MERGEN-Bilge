@@ -106,7 +106,13 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   expect_true(.frontend_selector_has_text(chart_renderer_js, "chat-container"))
   expect_true(.frontend_selector_lacks_text(js_text, "chat_content_wrapper"))
   expect_true(.frontend_selector_lacks_text(app_core_js, "#_content_container"))
+  expect_true(.frontend_selector_has_text(app_core_js, "function attachMessageObserver("))
+  expect_true(.frontend_selector_has_text(app_core_js, "attachMessageObserver(true)"))
   expect_true(.frontend_selector_has_text(app_core_js, "codeMirrorObserver.disconnect()"))
+  expect_true(.frontend_selector_has_text(app_core_js, "globalMessageObserver.disconnect()"))
+  expect_true(.frontend_selector_has_text(chart_renderer_js, "function getChartRenderRoot(wrapperId)"))
+  expect_true(.frontend_selector_lacks_text(chart_renderer_js, "document.body"))
+  expect_true(.frontend_selector_lacks_text(chart_renderer_js, "querySelector('.' + wrapperId)"))
 
   expect_true(.frontend_selector_has_text(ui_text, 'id = "chat_input_wrapper"'))
   expect_true(.frontend_selector_has_text(file_handlers_js, "#chat_input_wrapper"))

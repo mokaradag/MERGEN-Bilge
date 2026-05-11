@@ -63,7 +63,12 @@ $(document).ready(function() {
 	  }, 200);
 	});
 
-  // Mesaj gözlemcisi
+  function getChatContentRoot() {
+    return document.querySelector('#chat_content_container') ||
+           document.querySelector('.chat-container');
+  }
+
+  // Mesaj gözlemcisini güncel sohbet köküne bağla.
   const messageObserver = new MutationObserver(muts => {
     let shouldScroll = false;
     muts.forEach(m => {
@@ -85,26 +90,31 @@ $(document).ready(function() {
     if (shouldScroll) setTimeout(() => scrollToBottom(true), 10);
   });
 
-  const chatContainer = document.querySelector('.chat-container');
-  if (chatContainer) {
+  function attachMessageObserver(isReconnection = false) {
+    const root = getChatContentRoot();
+    if (!root) {
+      console.warn('[MERGEN] message observer: root not found');
+      return;
+    }
+
     if (globalMessageObserver) {
       globalMessageObserver.disconnect();
     }
+
     globalMessageObserver = messageObserver;
-    globalMessageObserver.observe(chatContainer, {
+    globalMessageObserver.observe(root, {
       childList: true,
       subtree: true
     });
+
+    if (isReconnection) {
+      console.log('[MERGEN] message observer reinitialized after reconnection');
+    }
   }
 
   // CodeMirror observer fonksiyonunu tanımla (tekrar kullanılabilir)
   // NOT: Önceden iki ayrı yerde aynı kod vardı, şimdi tek fonksiyona çıkarıldı
   let codeMirrorObserver = null;
-
-  function getChatContentRoot() {
-    return document.querySelector('#chat_content_container') ||
-           document.querySelector('.chat-container');
-  }
 
   function attachCMObserver(isReconnection = false) {
     const root = getChatContentRoot();
@@ -142,6 +152,7 @@ $(document).ready(function() {
   }
  
   // .codemirror-textarea eklendiğinde CM'yi otomatik başlat
+  attachMessageObserver(false);
   attachCMObserver(false);
  
   // Bağlantı kesildiğinde temizlik yap
@@ -162,6 +173,7 @@ $(document).ready(function() {
  
   // Shiny yeniden bağlandığında tekrar başlat
   $(document).on('shiny:connected', function(event) {
+    attachMessageObserver(true);
     attachCMObserver(true);
   });
 
