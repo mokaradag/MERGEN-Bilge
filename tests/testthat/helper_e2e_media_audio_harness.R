@@ -34,8 +34,9 @@ e2e_media_new_music_state <- function() {
     stt_active = FALSE,
     audio_token = NULL,
     track_src = NULL,
-    pending_request_id = 0L,
-    theme_playlist = character(),
+	pending_request_id = 0L,
+	pending_request_type = NULL,
+	theme_playlist = character(),
     character_playlist = character(),
     theme_played_once = FALSE,
     requests = list(),
@@ -55,7 +56,10 @@ e2e_music_stop_audio <- function(state) {
 }
 
 e2e_music_request_playlist <- function(state, type) {
+  type <- enc2utf8(as.character(type)[1])
+
   state$pending_request_id <- as.integer(state$pending_request_id) + 1L
+  state$pending_request_type <- type
 
   state$requests <- append(
     state$requests,
@@ -150,24 +154,49 @@ e2e_music_toggle <- function(state, enabled, character = NULL) {
     state$character <- next_character
   }
 
-  if (identical(isTRUE(state$enabled), enabled)) {
-    if (enabled &&
-        character_changed &&
-        state$phase %in% c("character", "waiting_character")) {
-      state <- e2e_music_stop_audio(state)
-      state$character_playlist <- character()
-      state$phase <- "waiting_character"
-      return(e2e_music_request_playlist(state, "karakter"))
-    }
+	if (identical(isTRUE(state$enabled), enabled)) {
+	  if (enabled &&
+		  character_changed &&
+		  state$phase %in% c("character", "waiting_character")) {
+		state <- e2e_music_stop_audio(state)
+		state$character_playlist <- character()
+		state$phase <- "waiting_character"
+		return(e2e_music_request_playlist(state, "karakter"))
+	  }
 
-    if (enabled &&
-        (is.null(state$audio_token) || identical(state$phase, "idle"))) {
-      state$phase <- "waiting_character"
-      return(e2e_music_request_playlist(state, "karakter"))
-    }
+	  if (enabled) {
+		ana_tema_bekleniyor <-
+		  identical(state$phase, "idle") &&
+		  !isTRUE(state$theme_played_once) &&
+		  identical(state$pending_request_type, "tema")
 
-    return(state)
-  }
+		if (ana_tema_bekleniyor) {
+		  return(e2e_media_log(state, "duplicate_toggle_ignored:theme_pending"))
+		}
+
+		if (identical(state$phase, "idle") && !isTRUE(state$theme_played_once)) {
+		  return(e2e_music_request_playlist(state, "tema"))
+		}
+
+		karakter_muzigi_yeniden_baslatilsin <-
+		  isTRUE(state$theme_played_once) &&
+		  (
+			is.null(state$audio_token) ||
+			identical(state$phase, "waiting_character") ||
+			(
+			  identical(state$phase, "character") &&
+			  length(state$character_playlist) == 0L
+			)
+		  )
+
+		if (karakter_muzigi_yeniden_baslatilsin) {
+		  state$phase <- "waiting_character"
+		  return(e2e_music_request_playlist(state, "karakter"))
+		}
+	  }
+
+	  return(state)
+	}
 
   state$enabled <- enabled
 
@@ -177,9 +206,10 @@ e2e_music_toggle <- function(state, enabled, character = NULL) {
     state <- e2e_music_stop_audio(state)
     state$phase <- "idle"
     state$theme_playlist <- character()
-    state$character_playlist <- character()
-    state$pending_request_id <- as.integer(state$pending_request_id) + 1L
-    state <- e2e_media_log(state, "music_disabled")
+	state$character_playlist <- character()
+	state$pending_request_id <- as.integer(state$pending_request_id) + 1L
+	state$pending_request_type <- NULL
+	state <- e2e_media_log(state, "music_disabled")
   }
 
   state
@@ -196,14 +226,18 @@ e2e_music_receive_playlist <- function(state, type, files, request_id) {
     return(e2e_media_log(state, "playlist_ignored:disabled"))
   }
 
-  if (request_id < as.integer(state$pending_request_id)) {
-    return(e2e_media_log(
-      state,
-      sprintf("playlist_ignored:stale:%d", request_id)
-    ))
-  }
+	if (request_id < as.integer(state$pending_request_id)) {
+	  return(e2e_media_log(
+		state,
+		sprintf("playlist_ignored:stale:%d", request_id)
+	  ))
+	}
 
-  if (is.null(files)) {
+	if (request_id == as.integer(state$pending_request_id)) {
+	  state$pending_request_type <- NULL
+	}
+
+	if (is.null(files)) {
     files <- character()
   }
   files <- enc2utf8(as.character(files))

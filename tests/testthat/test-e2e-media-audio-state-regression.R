@@ -89,6 +89,8 @@ test_that("media JS contracts expose offline-safe audio state hooks", {
   expect_true(has_regex(music_js, "\\bMusicManager\\s*=\\s*\\{"))
   expect_true(has_regex(music_js, "_audio\\s*:\\s*null"))
   expect_true(has_regex(music_js, "_pendingRequestId\\s*:\\s*0"))
+  expect_true(has_regex(music_js, "_pendingRequestType\\s*:\\s*null"))
+  expect_true(has_regex(music_js, "anaTemaBekleniyor"))
   expect_true(has_regex(music_js, "requestId[^\\n]+<\\s*this\\._pendingRequestId"))
   expect_true(has_regex(music_js, "duckForSTT\\s*:\\s*function\\s*\\("))
   expect_true(has_regex(music_js, "unduckAfterSTT\\s*:\\s*function\\s*\\("))
@@ -106,6 +108,75 @@ test_that("media JS contracts expose offline-safe audio state hooks", {
   expect_true(has_regex(reasoning_js, "PremiumReasoning"))
   expect_true(has_regex(reasoning_js, "simulatedMode"))
   expect_true(has_regex(reasoning_js, "fadeOutAndRemove\\s*\\(\\s*panel\\s*\\)"))
+})
+
+test_that("duplicate startup toggle does not skip main theme while theme playlist is pending", {
+  music <- e2e_media_new_music_state()
+
+  # Başlangıçta MusicManager initMusicManager ile kapalı gelir.
+  music <- e2e_music_init(
+    music,
+    enabled = FALSE,
+    volume = 0.4,
+    character = "mergen"
+  )
+
+  expect_false(music$enabled)
+  expect_identical(music$pending_request_id, 0L)
+  expect_null(music$pending_request_type)
+  expect_length(music$requests, 0L)
+
+  # Dinamik/Bütünleşik mod seçimi sonrası ilk toggle:
+  # Ana Tema playlist'i istenmeli.
+  music <- e2e_music_toggle(music, TRUE, character = "mergen")
+
+  expect_true(music$enabled)
+  expect_identical(music$phase, "idle")
+  expect_identical(music$pending_request_id, 1L)
+  expect_identical(music$pending_request_type, "tema")
+  expect_length(music$requests, 1L)
+  expect_identical(music$requests[[1]]$type, "tema")
+  expect_identical(e2e_media_current_track_count(music), 0L)
+
+  # Regresyonun özü:
+  # Ana Tema playlist yanıtı henüz gelmeden ikinci toggleMusic(TRUE) gelirse
+  # karakter playlist'i istenmemeli, request_id artmamalı, Ana Tema beklenmeli.
+  music <- e2e_music_toggle(music, TRUE, character = "mergen")
+
+  expect_identical(music$phase, "idle")
+  expect_identical(music$pending_request_id, 1L)
+  expect_identical(music$pending_request_type, "tema")
+  expect_length(music$requests, 1L)
+  expect_false(any(vapply(
+    music$requests,
+    function(req) identical(req$type, "karakter"),
+    logical(1)
+  )))
+  expect_true(any(grepl(
+    "duplicate_toggle_ignored:theme_pending",
+    music$events,
+    fixed = TRUE
+  )))
+  expect_identical(e2e_media_current_track_count(music), 0L)
+
+  # Ana Tema yanıtı artık stale sayılmamalı; doğrudan çalmaya başlamalı.
+  music <- e2e_music_receive_playlist(
+    music,
+    type = "tema",
+    files = "ana_tema_1.mp3",
+    request_id = 1L
+  )
+
+  expect_identical(music$phase, "theme")
+  expect_true(music$theme_played_once)
+  expect_identical(music$track_src, "ana_tema_1.mp3")
+  expect_identical(e2e_media_current_track_count(music), 1L)
+  expect_null(music$pending_request_type)
+  expect_false(any(grepl(
+    "playlist_ignored:stale:1",
+    music$events,
+    fixed = TRUE
+  )))
 })
 
 test_that("music playlist races keep exactly one active background track", {
