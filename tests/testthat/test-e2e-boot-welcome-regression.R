@@ -385,3 +385,77 @@ test_that("client boot wiring keeps quick action, prompt send and restore paths 
     "input_handlers.js normal prompt gönderim sözleşmesi eksik:"
   )
 })
+
+test_that("returning to attached welcome screen reboots modern welcome animations", {
+  welcome_handlers <- e2e_boot_read_text("R/server_welcome_handlers.R")
+  shiny_handlers <- e2e_boot_read_text(file.path("www", "js", "shiny_message_handlers.js"))
+  character_manager <- e2e_boot_read_text(file.path("www", "js", "character_manager.js"))
+
+  attached_branch_start <- regexpr(
+    "welcome_screen_attached",
+    welcome_handlers,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  expect_gt(attached_branch_start, 0L)
+
+  attached_branch <- substr(
+    welcome_handlers,
+    attached_branch_start,
+    min(
+      nchar(welcome_handlers, type = "chars", allowNA = FALSE),
+      attached_branch_start + 2200L
+    )
+  )
+
+  e2e_boot_expect_all_text(
+    attached_branch,
+    c(
+      "$('#welcome_fullscreen_container').removeClass('hidden').show();",
+      "session$sendCustomMessage(\"initModernWelcome\", list())",
+      "session$sendCustomMessage(\"initPersonalGreeting\"",
+      "return(invisible(NULL))"
+    ),
+    "Attached welcome dönüş yolu animasyon yeniden başlatma sözleşmesi eksik:"
+  )
+
+  init_pos <- regexpr(
+    "session$sendCustomMessage(\"initModernWelcome\", list())",
+    attached_branch,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  return_pos <- regexpr(
+    "return(invisible(NULL))",
+    attached_branch,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  expect_true(
+    init_pos > 0L && return_pos > 0L && init_pos < return_pos,
+    info = "initModernWelcome, attached welcome branch return etmeden önce kalmalıdır."
+  )
+
+  e2e_boot_expect_all_text(
+    character_manager,
+    c(
+      "window.MERGEN_ACTIVE_CHARACTER_ACCENT = accentBase",
+      "getBoundingClientRect()",
+      "canvasVisible",
+      "window.WelcomeNeuralNetwork.updateColor"
+    ),
+    "Karakter değişiminde gizli welcome canvas koruması eksik:"
+  )
+
+  e2e_boot_expect_all_text(
+    shiny_handlers,
+    c(
+      "window.MERGEN_ACTIVE_CHARACTER_ACCENT",
+      "window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor)"
+    ),
+    "Modern welcome init karakter aksan fallback sözleşmesi eksik:"
+  )
+})

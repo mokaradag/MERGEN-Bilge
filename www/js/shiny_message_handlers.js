@@ -229,6 +229,9 @@ $(document).ready(function() {
 
 	  if (neuralCanvas) {
 		var accentColor = message && message.accentColor ? message.accentColor : null;
+		if (!accentColor && window.MERGEN_ACTIVE_CHARACTER_ACCENT) {
+		  accentColor = window.MERGEN_ACTIVE_CHARACTER_ACCENT;
+		}
 		if (!accentColor) {
 		  var activeBtn = document.querySelector('.character-btn.active');
 		  if (activeBtn) {

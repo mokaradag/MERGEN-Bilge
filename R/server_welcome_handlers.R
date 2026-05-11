@@ -69,6 +69,20 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 		  immediate = TRUE
 		)
 
+		# Hafif yeniden gösterme yolunda da modern welcome animasyonlarını yeniden bağla.
+		# Karakter seçimi Kişiselleştirme sayfasında gizli welcome canvas'ını etkilemiş
+		# olabilir; Ana Söyleşi'ye dönünce video, neural canvas ve greeting tekrar
+		# görünür DOM ölçüleriyle başlatılmalıdır.
+		shinyjs::delay(80, {
+		  session$sendCustomMessage("initModernWelcome", list())
+
+		  shinyjs::delay(80, {
+		    session$sendCustomMessage("initPersonalGreeting", list(
+		      first_name = resolve_user_first_name()
+		    ))
+		  })
+		})
+
 		return(invisible(NULL))
 	  }
 
