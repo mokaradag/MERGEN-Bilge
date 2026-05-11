@@ -155,6 +155,7 @@ ui_asset_js_groups <- list(
     "js/cinematic_video.js",
     "js/character_typing.js",
     "js/tts_visualizer.js",
+    "js/music_manager.js",
     "js/stt_client.js",
     "js/intro_animation.js",
     "js/neural_welcome.js",
@@ -166,7 +167,6 @@ ui_asset_js_groups <- list(
     "js/character_manager.js",
     "js/shortcuts_manager.js",
     "js/feedback_modal.js",
-    "js/music_manager.js",
     "js/image_tools.js",
     "js/image_gallery.js",
     "js/summarization_tools.js",
@@ -208,6 +208,56 @@ ui_asset_js_groups <- list(
 
 ui_asset_deferred_js_groups <- c("threejs", "deferred", "bilge_yolac")
 
+# Kritik istemci tarafı bağımlılık sırası.
+# Bu kurallar kullanıcı deneyimini değiştirmez; manifest bakımında yanlış
+# sıralamayı erken yakalamak için doğrulanır.
+ui_asset_js_order_rules <- list(
+  c("codemirror/codemirror.min.js", "codemirror/mode/r.min.js"),
+  c("codemirror/codemirror.min.js", "codemirror/addon/fold/foldcode.min.js"),
+
+  c("lib/threejs/three.min.js", "lib/threejs/OrbitControls.js"),
+  c("lib/threejs/three.min.js", "lib/threejs/EffectComposer.js"),
+  c("lib/threejs/three.min.js", "lib/threejs/UnrealBloomPass.js"),
+  c("lib/threejs/ShaderPass.js", "lib/threejs/UnrealBloomPass.js"),
+  c("lib/threejs/LuminosityHighPassShader.js", "lib/threejs/UnrealBloomPass.js"),
+
+  c("js/sso_auth.js", "js/utils.js"),
+  c("js/utils.js", "js/input_handlers.js"),
+  c("js/input_handlers.js", "js/app_core.js"),
+
+  c("js/shiny_message_handlers.js", "js/neural_welcome.js"),
+  c("js/shiny_message_handlers.js", "js/welcome_video_player.js"),
+  c("js/welcome_video_player.js", "js/welcome_neural_modern.js"),
+  c("js/welcome_neural_modern.js", "js/welcome_greeting.js"),
+  c("js/welcome_greeting.js", "js/welcome_greeting_personal.js"),
+
+  c("js/streaming_manager.js", "js/claude_code_streaming.js"),
+
+  c("js/tts_visualizer.js", "js/music_manager.js"),
+  c("js/music_manager.js", "js/stt_client.js"),
+  c("js/tts_visualizer.js", "js/tts_manager.js"),
+  c("js/music_manager.js", "js/tts_manager.js"),
+
+  c("js/image_tools.js", "js/summarization_tools.js"),
+  c("js/summarization_tools.js", "js/analysis_tools.js"),
+
+  c("js/claude_code.js", "js/claude_code_streaming.js"),
+  c("js/claude_code_streaming.js", "js/claude_code_plugins.js"),
+
+  c("js/bilge_yolac_motor.js", "js/bilge_yolac_fizik.js"),
+  c("js/bilge_yolac_fizik.js", "js/bilge_yolac_varliklar.js"),
+  c("js/bilge_yolac_varliklar.js", "js/bilge_yolac_seviye.js"),
+  c("js/bilge_yolac_seviye.js", "js/bilge_yolac_dunya.js"),
+  c("js/bilge_yolac_dunya.js", "js/bilge_yolac_karakterler.js"),
+  c("js/bilge_yolac_karakterler.js", "js/bilge_yolac_cephanelik.js"),
+  c("js/bilge_yolac_cephanelik.js", "js/bilge_yolac_dusmanlar.js"),
+  c("js/bilge_yolac_dusmanlar.js", "js/bilge_yolac_efektler.js"),
+  c("js/bilge_yolac_efektler.js", "js/bilge_yolac_arayuz.js"),
+  c("js/bilge_yolac_arayuz.js", "js/bilge_yolac_etkilesim.js"),
+  c("js/bilge_yolac_etkilesim.js", "js/bilge_yolac_oyun.js"),
+  c("js/bilge_yolac_oyun.js", "js/bilge_yolac_kopru.js")
+)
+
 ui_asset_flatten_groups <- function(groups) {
   unname(unlist(groups, use.names = FALSE))
 }
@@ -218,6 +268,63 @@ ui_asset_all_css <- function() {
 
 ui_asset_all_js <- function() {
   ui_asset_flatten_groups(ui_asset_js_groups)
+}
+
+ui_asset_deferred_js_paths <- function() {
+  missing_groups <- setdiff(ui_asset_deferred_js_groups, names(ui_asset_js_groups))
+
+  if (length(missing_groups) > 0) {
+    stop(
+      "UI ertelenmiş JS grup tanımı manifestte yok: ",
+      paste(missing_groups, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  ui_asset_flatten_groups(ui_asset_js_groups[ui_asset_deferred_js_groups])
+}
+
+ui_asset_validate_js_order <- function(js_paths = ui_asset_all_js()) {
+  for (rule in ui_asset_js_order_rules) {
+    if (!is.character(rule) || length(rule) != 2) {
+      stop("UI JS sıra kuralı iki dosyadan oluşmalıdır.", call. = FALSE)
+    }
+
+    before_path <- rule[[1]]
+    after_path <- rule[[2]]
+
+    before_pos <- match(before_path, js_paths)
+    after_pos <- match(after_path, js_paths)
+
+    if (is.na(before_pos)) {
+      stop(
+        "UI JS sıra kuralının ilk dosyası manifestte yok: ",
+        before_path,
+        call. = FALSE
+      )
+    }
+
+    if (is.na(after_pos)) {
+      stop(
+        "UI JS sıra kuralının ikinci dosyası manifestte yok: ",
+        after_path,
+        call. = FALSE
+      )
+    }
+
+    if (before_pos >= after_pos) {
+      stop(
+        "UI JS varlık yükleme sırası bozuldu: ",
+        before_path,
+        " dosyası ",
+        after_path,
+        " dosyasından önce yüklenmelidir.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
 }
 
 ui_asset_duplicate_paths <- function(paths) {
@@ -255,6 +362,9 @@ ui_asset_validate <- function(root = getwd(), check_files = FALSE) {
       call. = FALSE
     )
   }
+
+  ui_asset_validate_js_order(js_paths)
+  ui_asset_deferred_js_paths()
 
   if (isTRUE(check_files)) {
     all_paths <- c(css_paths, js_paths)

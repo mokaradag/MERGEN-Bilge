@@ -111,67 +111,24 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
     )
   )
 
-  deferred_paths <- unname(unlist(
-    asset_env$ui_asset_js_groups[asset_env$ui_asset_deferred_js_groups],
-    use.names = FALSE
-  ))
+  deferred_paths <- asset_env$ui_asset_deferred_js_paths()
 
   expect_false(any(grepl("^codemirror/", deferred_paths)))
   expect_false("js/sso_auth.js" %in% deferred_paths)
   expect_false(any(asset_env$ui_asset_js_groups$critical %in% deferred_paths))
 
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "codemirror/codemirror.min.js"),
-    .ui_asset_contract_position(js_paths, "codemirror/mode/r.min.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "codemirror/codemirror.min.js"),
-    .ui_asset_contract_position(js_paths, "codemirror/addon/fold/foldcode.min.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/sso_auth.js"),
-    .ui_asset_contract_position(js_paths, "js/utils.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/utils.js"),
-    .ui_asset_contract_position(js_paths, "js/input_handlers.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/input_handlers.js"),
-    .ui_asset_contract_position(js_paths, "js/app_core.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/shiny_message_handlers.js"),
-    .ui_asset_contract_position(js_paths, "js/neural_welcome.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/streaming_manager.js"),
-    .ui_asset_contract_position(js_paths, "js/claude_code_streaming.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/tts_visualizer.js"),
-    .ui_asset_contract_position(js_paths, "js/tts_manager.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/stt_client.js"),
-    .ui_asset_contract_position(js_paths, "js/music_manager.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/image_tools.js"),
-    .ui_asset_contract_position(js_paths, "js/summarization_tools.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/summarization_tools.js"),
-    .ui_asset_contract_position(js_paths, "js/analysis_tools.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/claude_code.js"),
-    .ui_asset_contract_position(js_paths, "js/claude_code_streaming.js")
-  )
-  expect_lt(
-    .ui_asset_contract_position(js_paths, "js/claude_code_streaming.js"),
-    .ui_asset_contract_position(js_paths, "js/claude_code_plugins.js")
-  )
+  expect_true(is.list(asset_env$ui_asset_js_order_rules))
+  expect_gt(length(asset_env$ui_asset_js_order_rules), 0)
+
+  invisible(lapply(asset_env$ui_asset_js_order_rules, function(rule) {
+    expect_length(rule, 2)
+
+    expect_lt(
+      .ui_asset_contract_position(js_paths, rule[[1]]),
+      .ui_asset_contract_position(js_paths, rule[[2]]),
+      info = paste(rule[[1]], "must load before", rule[[2]])
+    )
+  }))
 })
 
 test_that("ui.R varlık listesini helper üzerinden kullanır", {
