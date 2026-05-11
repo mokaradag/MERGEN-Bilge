@@ -224,6 +224,15 @@ ui_asset_duplicate_paths <- function(paths) {
   sort(unique(paths[duplicated(paths)]))
 }
 
+ui_asset_public_root <- function(root = getwd()) {
+  if (dir.exists(file.path(root, "css")) &&
+      dir.exists(file.path(root, "js"))) {
+    return(root)
+  }
+
+  file.path(root, "www")
+}
+
 ui_asset_validate <- function(root = getwd(), check_files = FALSE) {
   css_paths <- ui_asset_all_css()
   js_paths <- ui_asset_all_js()
@@ -249,7 +258,8 @@ ui_asset_validate <- function(root = getwd(), check_files = FALSE) {
 
   if (isTRUE(check_files)) {
     all_paths <- c(css_paths, js_paths)
-    missing_paths <- all_paths[!file.exists(file.path(root, all_paths))]
+    asset_root <- ui_asset_public_root(root)
+    missing_paths <- all_paths[!file.exists(file.path(asset_root, all_paths))]
 
     if (length(missing_paths) > 0) {
       stop(

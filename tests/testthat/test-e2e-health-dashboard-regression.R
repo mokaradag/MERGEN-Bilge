@@ -176,6 +176,7 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
   health_checks_text <- e2e_health_read_repo_text("R/helpers_health_checks.R")
   health_module_text <- e2e_health_read_repo_text("R/module_health.R")
   ui_text <- e2e_health_read_repo_text("ui.R")
+  ui_asset_text <- e2e_health_read_repo_text("R/config_ui_assets.R")
   health_js_text <- e2e_health_read_repo_text("www/js/health_dashboard.js")
 
   public_guard_pos <- regexpr("health_is_public_url(endpoint)", health_checks_text, fixed = TRUE)[[1]]
@@ -230,7 +231,8 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
     info = paste("Health JS hook sözleşmesi eksik:", paste(missing_js, collapse = ", "))
   )
 
-  expect_true(grepl("css/health_check.css", ui_text, fixed = TRUE))
+  expect_true(grepl("ui_asset_tags", ui_text, fixed = TRUE))
+  expect_true(grepl("css/health_check.css", ui_asset_text, fixed = TRUE))
   expect_true(grepl("js/health_dashboard.js", health_module_text, fixed = TRUE))
   expect_false(grepl("https://", health_js_text, fixed = TRUE))
   expect_false(grepl("http://", health_js_text, fixed = TRUE))

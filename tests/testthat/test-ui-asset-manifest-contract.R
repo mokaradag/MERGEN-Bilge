@@ -70,7 +70,9 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
 
   expect_equal(asset_env$ui_asset_duplicate_paths(css_paths), character(0))
   expect_equal(asset_env$ui_asset_duplicate_paths(js_paths), character(0))
-  expect_true(all(file.exists(file.path(root, all_paths))))
+  asset_public_root <- asset_env$ui_asset_public_root(root)
+
+  expect_true(all(file.exists(file.path(asset_public_root, all_paths))))
   expect_false(any(grepl("^(https?:)?//", all_paths, perl = TRUE)))
 
   asset_env$ui_asset_validate(root = root, check_files = TRUE)

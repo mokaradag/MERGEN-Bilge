@@ -301,6 +301,7 @@ test_that("modern welcome screen renders quick actions, recent chats and Turkish
 
 test_that("client boot wiring keeps quick action, prompt send and restore paths separate", {
   ui_text <- e2e_boot_read_text("ui.R")
+  ui_asset_text <- e2e_boot_read_text("R/config_ui_assets.R")
   shiny_handlers <- e2e_boot_read_text(file.path("www", "js", "shiny_message_handlers.js"))
   input_handlers <- e2e_boot_read_text(file.path("www", "js", "input_handlers.js"))
 
@@ -311,15 +312,23 @@ test_that("client boot wiring keeps quick action, prompt send and restore paths 
       "id = \"chat_content_container\"",
       "id = \"user_input\"",
       "inputId = \"send_stop_btn\"",
-      "src = \"js/shiny_message_handlers.js\"",
-      "src = \"js/streaming_manager.js\"",
-      "src = \"js/premium_reasoning.js\"",
-      "src = \"js/file_handlers.js\"",
-      "src = \"js/tts_manager.js\"",
-      "src = \"js/stt_client.js\"",
-      "src = \"js/music_manager.js\""
+      "ui_asset_tags()"
     ),
     "Ana UI boot/welcome/client wiring sözleşmesi eksik:"
+  )
+
+  e2e_boot_expect_all_text(
+    ui_asset_text,
+    c(
+      "\"js/shiny_message_handlers.js\"",
+      "\"js/streaming_manager.js\"",
+      "\"js/premium_reasoning.js\"",
+      "\"js/file_handlers.js\"",
+      "\"js/tts_manager.js\"",
+      "\"js/stt_client.js\"",
+      "\"js/music_manager.js\""
+    ),
+    "Ana UI varlık manifesti boot/client wiring sözleşmesi eksik:"
   )
 
   e2e_boot_expect_all_text(
