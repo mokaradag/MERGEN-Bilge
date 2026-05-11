@@ -306,10 +306,17 @@ Current contract:
 - Browser-facing asset paths must remain public Shiny paths such as `css/...`, `js/...`, `codemirror/...`, and `lib/threejs/...`; file existence validation must resolve them under the Shiny public asset root, normally `www/`.
 - Keep CodeMirror core, modes, and addons synchronous and ordered before CodeMirror-dependent code.
 - Keep the SSO script synchronous and before critical app scripts.
-- Keep Three.js dependencies ordered and deferred as a group.
+- Keep Three.js dependencies ordered and deferred as a group; preserve the explicit order rules for `three.min.js`, `OrbitControls.js`, shader passes, `EffectComposer`, `RenderPass`, `UnrealBloomPass`, and `Lensflare.js`.
 - Keep critical app scripts synchronous where existing client boot behavior depends on them.
 - Keep deferred feature scripts deferred unless there is a demonstrated dependency that requires synchronous loading.
-- Keep Bilge Yolaç modules in their explicit dependency order, starting with `js/bilge_yolac_motor.js`.
+- Keep Bilge Yolaç modules in their explicit dependency order, starting with `js/bilge_yolac_motor.js` and ending with `js/bilge_yolac_kopru.js`.
+- Keep `ui_asset_js_order_rules` as the manifest-level source of truth for critical browser dependency boundaries. Do not duplicate the same ordering logic in tests as a separate hard-coded list.
+- Keep `ui_asset_validate_js_order()` wired into `ui_asset_validate(...)` so bad asset ordering fails early before the UI is rendered.
+- Keep `ui_asset_deferred_js_paths()` as the single helper for resolving deferred JS groups; do not hand-flatten deferred groups in tests or UI rendering code.
+- Keep `js/music_manager.js` before `js/stt_client.js` and `js/tts_manager.js`. STT and TTS guard for missing globals, but the maintained asset contract should load the music manager before media consumers so duck/unduck behavior remains deterministic.
+- Keep welcome startup dependencies ordered so `js/shiny_message_handlers.js` owns the boot handler and `js/welcome_video_player.js`, `js/welcome_neural_modern.js`, `js/welcome_greeting.js`, and `js/welcome_greeting_personal.js` are available through the retry-based `initModernWelcome` path.
+- Keep `js/streaming_manager.js` before `js/claude_code_streaming.js`, and keep `js/claude_code.js`, `js/claude_code_streaming.js`, and `js/claude_code_plugins.js` in that order.
+- Tests must continue to scan loaded JS files for duplicate `Shiny.addCustomMessageHandler(...)` message names.
 - When adding, removing, renaming, or moving a frontend asset, update `R/config_ui_assets.R` and the asset manifest tests together.
 - Do not add CDN usage. The app must remain fully offline/on-prem.
 - Do not register duplicate `Shiny.addCustomMessageHandler(...)` handlers for the same message type.
@@ -325,6 +332,8 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
 - `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+
+When editing the UI asset contract, run `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")` first. This test intentionally uses the manifest’s `ui_asset_js_order_rules` instead of maintaining a second independent order list. Keep expectations compatible with the project’s installed `testthat` version; avoid optional expectation arguments that are not supported in older local environments.
 
 ### Attached welcome-screen animation contract
 
