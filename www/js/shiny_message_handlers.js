@@ -3,23 +3,31 @@
 
 $(document).ready(function() {
 
-// Sistem Durumu sayfasındaki "Son Güncelleme" zamanını güncelle
-  Shiny.addCustomMessageHandler('updateHealthTimestamp', function(data) {
-    var el = document.getElementById('last_update_time');
-    if (el && data && data.time) {
-      el.textContent = 'Son Güncelleme: ' + data.time;
-    }
-  });
+  function updateNamedTimestamp(data) {
+    if (!data || !data.time) return;
 
-  // Yönetici Paneli sayfasındaki "Son Güncelleme" zamanını güncelle
-  Shiny.addCustomMessageHandler('updateAdminTimestamp', function(data) {
-    if (data && data.id && data.time) {
-      var el = document.getElementById(data.id);
-      if (el) {
-        el.textContent = 'Son Güncelleme: ' + data.time;
+    var targetId = data.id || 'last_update_time';
+    var el = document.getElementById(targetId);
+
+    if (!el && targetId !== 'last_update_time') {
+      el = document.getElementById('last_update_time');
+    }
+
+    if (!el) {
+      var candidates = document.querySelectorAll("span[id$='last_update_time']");
+      if (candidates.length > 0) {
+        el = candidates[0];
       }
     }
-  });
+
+    if (el) {
+      el.textContent = 'Son Güncelleme: ' + data.time;
+    }
+  }
+
+  // Sistem Durumu ve Yönetici Paneli zaman damgaları tek merkezden güncellenir.
+  Shiny.addCustomMessageHandler('updateHealthTimestamp', updateNamedTimestamp);
+  Shiny.addCustomMessageHandler('updateAdminTimestamp', updateNamedTimestamp);
 
   Shiny.addCustomMessageHandler('showToast', function(data) {
     if (typeof window.showToast === 'function') {

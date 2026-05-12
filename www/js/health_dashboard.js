@@ -159,8 +159,6 @@
   }
 
   if (window.Shiny && Shiny.addCustomMessageHandler) {
-    Shiny.addCustomMessageHandler("updateHealthTimestamp", updateHealthTimestamp);
-    Shiny.addCustomMessageHandler("updateAdminTimestamp", updateHealthTimestamp);
     Shiny.addCustomMessageHandler("initHealthTooltips", function() {
       window.setTimeout(function() {
         bindHealthPathButtons();

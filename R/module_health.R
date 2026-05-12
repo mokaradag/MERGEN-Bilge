@@ -39,10 +39,6 @@ healthUI <- function(id) {
   ns <- NS(id)
 
   tagList(
-    tags$head(
-      tags$link(rel = "stylesheet", type = "text/css", href = "css/health_dashboard.css"),
-      tags$script(src = "js/health_dashboard.js")
-    ),
     div(
       class = "health-dashboard-container",
       admin_page_layout(

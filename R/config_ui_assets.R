@@ -39,6 +39,7 @@ ui_asset_css_groups <- list(
     "css/history_saved_chats.css",
     "css/settings_page.css",
     "css/health_check.css",
+    "css/health_dashboard.css",
     "css/disconnect_overlay.css",
     "css/chat_header.css",
     "css/quick_templates.css",
@@ -181,6 +182,7 @@ ui_asset_js_groups <- list(
     "js/ai_expert_manager.js",
     "js/destek_form.js",
     "js/destek_yardim_chatbot.js",
+    "js/health_dashboard.js",
     "js/space_intro_music.js",
     "js/explore_character_video.js",
     "js/explore_character_step.js",
@@ -305,6 +307,7 @@ ui_asset_js_order_rules <- list(
   c("js/utils.js", "js/input_handlers.js"),
   c("js/input_handlers.js", "js/app_core.js"),
 
+  c("js/shiny_message_handlers.js", "js/health_dashboard.js"),
   c("js/shiny_message_handlers.js", "js/neural_welcome.js"),
   c("js/shiny_message_handlers.js", "js/welcome_video_player.js"),
   c("js/welcome_video_player.js", "js/welcome_neural_modern.js"),
