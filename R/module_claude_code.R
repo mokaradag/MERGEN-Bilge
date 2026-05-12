@@ -427,7 +427,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         include_partial_messages = TRUE,
         verbose = TRUE,
         user_id = effective_user_id,
-        settings_data = settings_data
+        settings_data = settings_data,
+        workdir = kaynak_calisma_dizini %||% calisma_dizini
       )
 
       # Süreci başlat

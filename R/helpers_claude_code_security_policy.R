@@ -130,18 +130,23 @@ cc_policy_permission_args <- function(settings_data = NULL) {
   args
 }
 
-cc_policy_wrap_prompt_for_workspace <- function(prompt) {
-  prompt <- as.character(prompt %||% "")[1]
-  if (is.na(prompt)) prompt <- ""
+cc_policy_workspace_system_prompt <- function(workdir = NULL) {
+  workdir_text <- cc_policy_normalize_path(workdir %||% "", must_exist = FALSE)
 
   paste0(
-    "Bilge Yolaç çalışma ilkesi:\n",
-    "- Kullanıcı bu komutu seçili çalışma dizini bağlamında verdi.\n",
+    "ÇALIŞMA ALANI TALİMATI:\n",
+    "- Bu metni kullanıcı isteği olarak yanıtlama; yalnızca davranış talimatı olarak uygula.\n",
+    "- Kullanıcının gerçek isteği CLI argümanındaki son prompt metnidir.\n",
+    "- Kullanıcı komutu seçili çalışma dizini bağlamında verilmiştir.\n",
+    if (nzchar(workdir_text)) {
+      paste0("- Seçili çalışma dizini: ", workdir_text, "\n")
+    } else {
+      ""
+    },
     "- Çalışma dizini içinde dosya okuma, dosya oluşturma ve dosya düzenleme gerekiyorsa tekrar izin/onay sorma; işlemi doğrudan yap.\n",
     "- Çalışma dizini dışındaki mutlak yollar, üst dizine kaçışlar veya açıkça riskli işlemler istenirse bunu reddet ve kısa açıklama ver.\n",
-    "- Kullanıcı basit bir dosya oluşturma/düzenleme istediyse bunu konuşmayı uzatmadan tamamla.\n\n",
-    "Kullanıcı komutu:\n",
-    prompt
+    "- Kullanıcı basit bir dosya oluşturma/düzenleme/özet kaydetme istediyse bunu konuşmayı uzatmadan tamamla.\n",
+    "- Kullanıcıdan ek onay isteme; yalnızca gerçekten eksik bilgi varsa kısa bir soru sor.\n"
   )
 }
 
@@ -401,7 +406,8 @@ cc_policy_build_cli_args <- function(prompt,
                                      include_partial_messages = FALSE,
                                      verbose = FALSE,
                                      user_id = NULL,
-                                     settings_data = NULL) {
+                                     settings_data = NULL,
+                                     workdir = NULL) {
   output_format <- match.arg(output_format)
 
   args <- c("--print")
@@ -438,7 +444,13 @@ cc_policy_build_cli_args <- function(prompt,
     ))
   }
 
-  prompt <- cc_policy_wrap_prompt_for_workspace(prompt)
+  system_prompt <- cc_policy_workspace_system_prompt(workdir = workdir)
+  if (nzchar(system_prompt)) {
+    args <- c(args, "--append-system-prompt", system_prompt)
+  }
+
+  prompt <- as.character(prompt %||% "")[1]
+  if (is.na(prompt)) prompt <- ""
 
   if (!is.null(model) && nzchar(model)) {
     args <- c(args, "--model", model)

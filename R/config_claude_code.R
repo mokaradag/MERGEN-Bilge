@@ -41,8 +41,11 @@ claude_code_config <- list(
   permission_mode = Sys.getenv("CLAUDE_CODE_PERMISSION_MODE", "acceptEdits"),
 
   # Ek izin istemeden kullanılabilecek Claude Code araçları.
-  # Varsayılan boş tutulur; acceptEdits basit dosya yazma/düzenleme UX'ini düzeltir.
-  allowed_tools = Sys.getenv("CLAUDE_CODE_ALLOWED_TOOLS", ""),
+  # Bash varsayılan değildir; gerekiyorsa .Renviron ile açıkça ekleyin.
+  allowed_tools = Sys.getenv(
+    "CLAUDE_CODE_ALLOWED_TOOLS",
+    "Read;Write;Edit;MultiEdit;Glob;Grep;LS"
+  ),
 
   # Açıkça yasaklanacak Claude Code araçları.
   disallowed_tools = Sys.getenv("CLAUDE_CODE_DISALLOWED_TOOLS", ""),

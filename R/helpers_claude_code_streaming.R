@@ -73,7 +73,8 @@ run_claude_code_streaming <- function(prompt,
     model = model,
     session_id = session_id,
     include_partial_messages = TRUE,
-    verbose = TRUE
+    verbose = TRUE,
+    workdir = workdir
   )
 
   tryCatch({

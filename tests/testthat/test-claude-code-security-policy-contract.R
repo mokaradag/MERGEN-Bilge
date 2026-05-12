@@ -20,7 +20,7 @@
     default_workdir = "",
     allow_dangerous_permissions = FALSE,
     permission_mode = "acceptEdits",
-    allowed_tools = "",
+    allowed_tools = "Read;Write;Edit;MultiEdit;Glob;Grep;LS",
     disallowed_tools = "",
     allowed_workdir_roots = "",
     allow_user_selected_workdirs = TRUE,
@@ -85,6 +85,11 @@ test_that("CLI argümanları varsayılan olarak tehlikeli izin atlama içermez",
 
   expect_true("--permission-mode" %in% args)
   expect_true("acceptEdits" %in% args)
+  expect_true("--append-system-prompt" %in% args)
+  expect_true("--allowedTools" %in% args)
+
+  expect_equal(args[length(args)], "Merhaba")
+  expect_false(grepl("Bilge Yolaç çalışma ilkesi", args[length(args)], fixed = TRUE))
 
   expect_true("--print" %in% args)
   expect_true("--verbose" %in% args)
