@@ -34,6 +34,36 @@ Always assume:
 
 If you touch file reading, file writing, `.Renviron`, DB writes, JSON writes, or browser-rendered text, be extra careful.
 
+### 1B) Text encoding and mojibake boundary contract
+Turkish text, emoji, and mojibake repair are centralized. Do not reintroduce scattered ad hoc replacement maps.
+
+Current contract:
+
+- Server-side text normalization belongs in `R/utils_text_encoding.R`.
+- Client-side defensive mojibake fallback belongs in `www/js/encoding_utils.js`.
+- `R/utils_text_encoding.R` must be loaded early through `R/config_source_manifest.R`, before logging, DB helpers, and downstream text consumers.
+- `www/js/encoding_utils.js` must be loaded through `R/config_ui_assets.R` before `www/js/shiny_message_handlers.js` and before `www/js/claude_code_streaming.js`.
+- DB write parameters, DB read/hydration paths, saved chat reloads, version-history/Yenilikler reads, uploaded-file display names, Bilge Yolaç process/stream output, JSON/text boundaries, and logs should use the shared helper path instead of local encoding fixes.
+- Logging should pass user-visible text through the shared log normalization path so Turkish text stays readable and ANSI escape sequences are not made worse.
+- Bilge Yolaç streaming must keep the browser-side fallback, but `www/js/claude_code_streaming.js` must not grow another large local mojibake map. Use `window.MergenEncoding` from `www/js/encoding_utils.js`.
+- Do not replace UTF-8-safe byte reading helpers with plain `readLines(..., encoding = "UTF-8")` in Windows/VM-sensitive paths unless the regression tests prove it is safe.
+- Be careful with R constants: use exactly `NA_character_`. A typo such as `NA_character__` can break app startup through DB parameter normalization.
+- Do not add CDN or external dependencies for encoding repair.
+
+Protected by:
+
+- `tests/testthat/test-text-encoding-utils.R`
+- `tests/testthat/test-db-normalization-contract.R`
+- `tests/testthat/test-claude-code-process-refactor-contract.R`
+- `tests/testthat/test-ui-asset-manifest-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
+- `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+
 ### 1A) Keep new code identifiers ASCII-safe when practical
 Preserve Turkish text integrity in user-facing strings, docs, comments, DB text, JSON text, and rendered UI. However, for Windows VM parser robustness, **new code identifiers** should be ASCII-only where practical (variable/helper names, unquoted `data.frame(...)` column names, `$field_name` accessors, and similar code symbols that can become mojibake-sensitive). This is **not** permission to Latinize visible product text; it applies only to code symbols/identifiers.
 
@@ -345,6 +375,7 @@ Current contract:
 - Do not let duplicate `toggleMusic(TRUE)` calls skip the main theme. If a theme playlist request is pending, another same-state enabled toggle must not issue an early character playlist request or invalidate the pending theme request.
 - Character music folders under `www/music/Karakter/` use stable lowercase character ids: `mergen`, `ulgen`, `kayra`, `erlik`, and `umay`. Do not rename these folders to visible labels such as `Ülgen` or `Umay Ana`.
 - Keep welcome startup dependencies ordered so `js/shiny_message_handlers.js` owns the boot handler and `js/welcome_video_player.js`, `js/welcome_neural_modern.js`, `js/welcome_greeting.js`, and `js/welcome_greeting_personal.js` are available through the retry-based `initModernWelcome` path.
+- Keep `js/encoding_utils.js` before `js/shiny_message_handlers.js` and before `js/claude_code_streaming.js`; both general Shiny messages and Bilge Yolaç streaming depend on the shared client-side encoding fallback.
 - Keep deferred welcome handlers resilient to first-connect timing. `www/js/welcome_neural_modern.js` must register `updateNeuralColor` idempotently even when the script loads after the initial `shiny:connected` event; do not move this handler behind a connect-only registration that can be missed until reconnect.
 - Keep `js/streaming_manager.js` before `js/claude_code_streaming.js`, and keep `js/claude_code.js`, `js/claude_code_streaming.js`, and `js/claude_code_plugins.js` in that order.
 - Tests must continue to scan loaded JS files for duplicate `Shiny.addCustomMessageHandler(...)` message names.

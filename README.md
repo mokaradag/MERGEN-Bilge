@@ -50,6 +50,12 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Sürüm bilgilendirme sayfası
 - Yönetici paneli ve analitik ekranlar
 
+### Türkçe karakter, emoji ve kodlama dayanıklılığı
+- Türkçe karakterler, emoji ve yaygın mojibake bozulmaları için sunucu ve istemci tarafında ortak normalizasyon yardımcıları kullanılır.
+- Sunucu tarafında `R/utils_text_encoding.R`; DB okuma/yazma sınırları, kayıtlı söyleşi yükleme, dosya görünen adları, sürüm geçmişi/Yenilikler metinleri, Bilge Yolaç süreç/akış çıktıları ve log metinleri için merkezi UTF-8 koruması sağlar.
+- İstemci tarafında `www/js/encoding_utils.js`; genel Shiny mesajları ve Bilge Yolaç canlı akışı için ortak mojibake düzeltme/fallback katmanı sağlar.
+- Bilge Yolaç streaming kodu büyük yerel mojibake haritaları taşımak yerine bu ortak istemci yardımcısını kullanır; böylece kullanıcı deneyimi korunurken bakım yükü azaltılır.
+
 ---
 
 ## Sayfa Haritası
@@ -99,6 +105,8 @@ Bu akışlar kullanıcı bazlı veri ayrımıyla çalışır. Eski bir söyleşi
 
 ### Bilge Yolaç
 Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfasıdır. Klasör seçimi, senaryo şablonları, model katmanları ve canlı akışlı araç kullanım görünümü içerir.
+
+Bilge Yolaç canlı akışı, Türkçe karakter ve emoji bütünlüğünü korumak için hem sunucu tarafındaki `R/utils_text_encoding.R` normalizasyon sınırından hem de istemci tarafındaki `www/js/encoding_utils.js` savunmacı fallback katmanından geçer. Bu yapı, Windows VM/SSO ortamlarında görülebilen çift kodlama ve mojibake risklerini kullanıcı deneyimini azaltmadan merkezi biçimde yönetir.
 
 Bilge Yolaç yapısı son bakım refactor’larıyla daha ayrık hâle getirilmiştir. Sayfa UI tanımı `R/module_claude_code_ui.R` içinde, sunucu mantığı ise `R/module_claude_code.R` içinde tutulur. Model/settings karar yardımcıları `R/helpers_claude_code_model_config.R` dosyasına taşınmış; süreç/CLI çalıştırma yardımcıları `R/helpers_claude_code.R` içinde bırakılmıştır. Bu ayrımlar, büyük dosyaları tek seferde yeniden yazmadan kontrollü bakım yapılabilirlik artışı sağlamak için uygulanmıştır.
 
