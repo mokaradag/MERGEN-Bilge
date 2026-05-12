@@ -27,7 +27,19 @@ claude_code_config <- list(
   max_concurrent = as.integer(Sys.getenv("CLAUDE_CODE_MAX_CONCURRENT", "5")),
 
   # Oturum geçmişini sakla
-  persist_sessions = as.logical(Sys.getenv("CLAUDE_CODE_PERSIST_SESSIONS", "TRUE"))
+  persist_sessions = as.logical(Sys.getenv("CLAUDE_CODE_PERSIST_SESSIONS", "TRUE")),
+
+  # Tehlikeli izin atlama yalnızca açık yönetici/geliştirme onayıyla etkinleşir
+  allow_dangerous_permissions = as.logical(Sys.getenv(
+    "CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS",
+    "FALSE"
+  )),
+
+  # Bilge Yolaç'ın çalışabileceği kök dizinler (; veya satır sonu ile ayrılır)
+  allowed_workdir_roots = Sys.getenv("CLAUDE_CODE_ALLOWED_WORKDIR_ROOTS", ""),
+
+  # İndirilebilir hale getirilecek çıktıların kabul edildiği kök dizinler
+  allowed_output_roots = Sys.getenv("CLAUDE_CODE_ALLOWED_OUTPUT_ROOTS", "")
 )
 
 # ------------------------------------------------------------------------------

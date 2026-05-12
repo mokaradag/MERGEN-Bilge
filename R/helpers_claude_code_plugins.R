@@ -54,9 +54,35 @@ resolve_app_root <- function() {
 #' @param plugins_dir Plugin dizini yolu (varsayılan: bilge_yolac_plugins/)
 #' @return Liste: success, plugins (liste), error
 scan_local_plugins <- function(plugins_dir = NULL) {
+  kok_dizin <- resolve_app_root()
+  guvenli_plugin_koku <- normalizePath(
+    file.path(kok_dizin, "bilge_yolac_plugins"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+
   if (is.null(plugins_dir)) {
-    kok_dizin <- resolve_app_root()
-    plugins_dir <- file.path(kok_dizin, "bilge_yolac_plugins")
+    plugins_dir <- guvenli_plugin_koku
+  }
+
+  plugins_dir <- normalizePath(plugins_dir, winslash = "/", mustWork = FALSE)
+
+  if (!cc_policy_path_inside_roots(
+    plugins_dir,
+    guvenli_plugin_koku,
+    must_exist = FALSE
+  )) {
+    log_warn(paste(
+      CLAUDE_CODE_PLUGINS_LOG_PREFIX,
+      "Plugin dizini güvenlik ilkesi tarafından engellendi:",
+      plugins_dir
+    ))
+
+    return(list(
+      success = FALSE,
+      plugins = list(),
+      error = "Plugin dizini yalnızca bilge_yolac_plugins kökü altında olabilir."
+    ))
   }
 
   if (!dir.exists(plugins_dir)) {

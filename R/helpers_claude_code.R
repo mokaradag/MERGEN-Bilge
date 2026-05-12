@@ -57,33 +57,26 @@ run_claude_code <- function(prompt,
   }
 
   # Çalışma dizini kontrolü
-  if (!dir.exists(workdir)) {
+  workdir_policy <- cc_policy_validate_workdir(workdir)
+  if (!isTRUE(workdir_policy$ok)) {
     return(list(
       success = FALSE,
       output = "",
-      error = paste0("Çalışma dizini bulunamadı: ", workdir),
+      error = workdir_policy$error,
       duration = 0,
       tool_uses = list(),
       session_id = NULL
     ))
   }
+  workdir <- workdir_policy$path
 
-  # CLI argümanları oluştur
-  args <- c(
-    "--print",
-    "--output-format", "json",
-    "--dangerously-skip-permissions"
+  # CLI argümanları merkezi güvenlik ilkesinden oluştur
+  args <- cc_policy_build_cli_args(
+    prompt = prompt,
+    output_format = "json",
+    model = model,
+    session_id = session_id
   )
-
-  if (!is.null(model) && nzchar(model)) {
-    args <- c(args, "--model", model)
-  }
-
-  if (!is.null(session_id) && nzchar(session_id)) {
-    args <- c(args, "--resume", session_id)
-  }
-
-  args <- c(args, prompt)
 
   komut <- build_processx_command(cli_path, args, workdir = workdir)
 

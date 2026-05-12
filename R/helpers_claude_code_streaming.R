@@ -52,39 +52,32 @@ run_claude_code_streaming <- function(prompt,
   }
 
   # Çalışma dizini kontrolü
-  if (!dir.exists(workdir)) {
+  workdir_policy <- cc_policy_validate_workdir(workdir)
+  if (!isTRUE(workdir_policy$ok)) {
     return(list(
       success = FALSE, output = "",
-      error = paste0("Çalışma dizini bulunamadı: ", workdir),
+      error = workdir_policy$error,
       duration = 0, tool_uses = list(), session_id = NULL
     ))
   }
+  workdir <- workdir_policy$path
 
-  # CLI argümanları (stream-json ile gerçek zamanlı çıktı)
+  # CLI argümanları merkezi güvenlik ilkesinden oluştur
   # --verbose bayrağı stream-json formatı için zorunlu
-  args <- c(
-    "--print",
-    "--verbose",
-    "--output-format", "stream-json",
-    "--include-partial-messages",
-    "--dangerously-skip-permissions"
+  args <- cc_policy_build_cli_args(
+    prompt = prompt,
+    output_format = "stream-json",
+    model = model,
+    session_id = session_id,
+    include_partial_messages = TRUE,
+    verbose = TRUE
   )
-
-  if (!is.null(model) && nzchar(model)) {
-    args <- c(args, "--model", model)
-  }
-
-  if (!is.null(session_id) && nzchar(session_id)) {
-    args <- c(args, "--resume", session_id)
-  }
-
-  args <- c(args, prompt)
 
   tryCatch({
     log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış modu ile CLI çalıştırılıyor"))
 
     # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
-    komut <- build_processx_command(cli_path, args)
+    komut <- build_processx_command(cli_path, args, workdir = workdir)
 
     proc <- processx::process$new(
       command = komut$command,

@@ -66,7 +66,8 @@ format_claude_code_download_size <- function(bytes) {
 #' @return Var olan dosya yolu veya boş metin
 resolve_claude_code_generated_path <- function(path_value,
                                                runtime_workdir = "",
-                                               source_workdir = "") {
+                                               source_workdir = "",
+                                               allowed_roots = character(0)) {
   yol <- as.character(path_value %||% "")[1]
   if (!nzchar(yol)) return("")
 
@@ -85,6 +86,16 @@ resolve_claude_code_generated_path <- function(path_value,
     )
 
     if (isTRUE(file.exists(aday_norm)) && !isTRUE(dir.exists(aday_norm))) {
+      if (length(allowed_roots) &&
+          !cc_policy_path_inside_roots(aday_norm, allowed_roots, must_exist = FALSE)) {
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Üretilen dosya izin verilen köklerin dışında bırakıldı:",
+          gsub("[{}]", "", aday_norm)
+        ))
+        next
+      }
+
       return(aday_norm)
     }
   }
@@ -100,8 +111,17 @@ resolve_claude_code_generated_path <- function(path_value,
 #' @return Dosya yolları
 list_claude_code_generated_file_paths <- function(tool_uses,
                                                   runtime_workdir = "",
-                                                  source_workdir = "") {
+                                                  source_workdir = "",
+                                                  allowed_roots = character(0),
+                                                  user_id = 0L) {
   if (!length(tool_uses)) return(character(0))
+
+  if (!length(allowed_roots)) {
+    allowed_roots <- cc_policy_allowed_output_roots(
+      user_id = user_id,
+      workdir = runtime_workdir %||% source_workdir
+    )
+  }
 
   dosyalar <- character(0)
 
@@ -120,7 +140,8 @@ list_claude_code_generated_file_paths <- function(tool_uses,
     cozulen_yol <- resolve_claude_code_generated_path(
       path_value = hedef_yol,
       runtime_workdir = runtime_workdir,
-      source_workdir = source_workdir
+      source_workdir = source_workdir,
+      allowed_roots = allowed_roots
     )
 
     if (nzchar(cozulen_yol)) {
@@ -174,8 +195,21 @@ build_claude_code_display_path <- function(file_path,
 #' @return İndirme kayıtları listesi
 stage_claude_code_downloads <- function(file_paths,
                                         user_id = 0L,
-                                        session_token = "") {
+                                        session_token = "",
+                                        allowed_roots = character(0)) {
   file_paths <- unique(Filter(nzchar, as.character(file_paths %||% character(0))))
+
+  if (!length(file_paths)) return(list())
+
+  if (!length(allowed_roots)) {
+    allowed_roots <- cc_policy_allowed_output_roots(user_id = user_id)
+  }
+
+  file_paths <- cc_policy_filter_generated_file_paths(
+    file_paths,
+    allowed_roots = allowed_roots,
+    context = "indirilecek dosya"
+  )
 
   if (!length(file_paths)) return(list())
 
@@ -276,10 +310,17 @@ collect_claude_code_generated_downloads <- function(tool_uses,
                                                     source_workdir = "",
                                                     user_id = 0L,
                                                     session_token = "") {
+  allowed_roots <- cc_policy_allowed_output_roots(
+    user_id = user_id,
+    workdir = runtime_workdir %||% source_workdir
+  )
+
   dosya_yollari <- list_claude_code_generated_file_paths(
     tool_uses = tool_uses,
     runtime_workdir = runtime_workdir,
-    source_workdir = source_workdir
+    source_workdir = source_workdir,
+    allowed_roots = allowed_roots,
+    user_id = user_id
   )
 
   if (!length(dosya_yollari)) return(list())
@@ -287,7 +328,8 @@ collect_claude_code_generated_downloads <- function(tool_uses,
   indirmeler <- stage_claude_code_downloads(
     file_paths = dosya_yollari,
     user_id = user_id,
-    session_token = session_token
+    session_token = session_token,
+    allowed_roots = allowed_roots
   )
 
   if (!length(indirmeler)) return(list())

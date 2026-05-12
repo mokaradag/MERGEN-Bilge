@@ -128,6 +128,8 @@ test_that("Claude Code process helper source sırası korunur", {
     c(
       "R/helpers_claude_code_session_context.R",
       "R/helpers_claude_code_process.R",
+      "R/helpers_claude_code_runtime_workdir.R",
+      "R/helpers_claude_code_security_policy.R",
       "R/helpers_claude_code.R",
       "R/helpers_claude_code_streaming.R"
     ),

@@ -145,6 +145,29 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         }
       }
 
+      workdir_policy <- cc_policy_validate_workdir(
+        calisma_dizini,
+        user_id = effective_user_id
+      )
+      if (!isTRUE(workdir_policy$ok)) {
+        cc_abort_run_before_streaming(rv, run_request_id)
+
+        cc_send_run_blocked_message(
+          session = session,
+          ns = ns,
+          message = workdir_policy$error
+        )
+
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Çalışma dizini güvenlik ilkesi tarafından engellendi:",
+          gsub("[{}]", "", calisma_dizini %||% "")
+        ))
+        return()
+      }
+
+      calisma_dizini <- workdir_policy$path
+
       # Windows + UNC + Türkçe karakterli dizinlerde cmd.exe kararsız çalışabildiği için
       # gerekirse yerel ASCII çalışma alanına aynala.
       runtime_dizin <- prepare_claude_runtime_workdir(
@@ -404,23 +427,19 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       rv$stream_env <- stream_env
       rv$poll_state <- stream_env
 
-      # CLI argümanlarını oluştur
+      # CLI argümanlarını merkezi güvenlik ilkesinden oluştur
       # stream-json formatı olayları gerçek zamanlı olarak satır satır verir
       # include-partial-messages ile metin parçaları da anlık gelir
-      cli_args <- c(
-        "--print",
-        "--verbose",
-        "--output-format", "stream-json",
-        "--include-partial-messages",
-        "--dangerously-skip-permissions"
+      cli_args <- cc_policy_build_cli_args(
+        prompt = calistirma_promptu,
+        output_format = "stream-json",
+        model = model,
+        session_id = oturum_id,
+        include_partial_messages = TRUE,
+        verbose = TRUE,
+        user_id = effective_user_id,
+        settings_data = settings_data
       )
-      if (!is.null(model) && nzchar(model)) {
-        cli_args <- c(cli_args, "--model", model)
-      }
-      if (!is.null(oturum_id) && nzchar(oturum_id)) {
-        cli_args <- c(cli_args, "--resume", oturum_id)
-      }
-      cli_args <- c(cli_args, calistirma_promptu)
 
       # Süreci başlat
       tryCatch({

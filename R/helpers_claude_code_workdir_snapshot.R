@@ -300,7 +300,8 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
     list_claude_code_generated_file_paths(
       tool_uses = tool_uses,
       runtime_workdir = runtime_workdir,
-      source_workdir = source_workdir
+      source_workdir = source_workdir,
+      user_id = user_id
     ),
     error = function(e) character(0)
   )
@@ -314,6 +315,17 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
   # davranış-koruyucu bir kararlılık kontrolü uygula.
   tum_yollar <- wait_for_stable_claude_code_file_paths(
     file_paths = c(yeni_dosyalar, arac_yollari)
+  )
+
+  allowed_roots <- cc_policy_allowed_output_roots(
+    user_id = user_id,
+    workdir = runtime_workdir %||% source_workdir
+  )
+
+  tum_yollar <- cc_policy_filter_generated_file_paths(
+    tum_yollar,
+    allowed_roots = allowed_roots,
+    context = "çalışma çıktısı"
   )
 
   if (!length(tum_yollar)) return(list())
@@ -335,7 +347,8 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
     stage_claude_code_downloads(
       file_paths = tum_yollar,
       user_id = user_id,
-      session_token = session_token
+      session_token = session_token,
+      allowed_roots = allowed_roots
     ),
     error = function(e) list()
   )

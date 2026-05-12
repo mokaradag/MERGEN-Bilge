@@ -1,0 +1,174 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-claude-code-security-policy-contract.R
+# Açıklama: Bilge Yolaç Claude Code güvenlik ilkesi sözleşmesini doğrular.
+# ==============================================================================
+
+.source_cc_security_policy_for_test <- function() {
+  repo_root <- resolve_repo_root_for_tests()
+  test_env <- new.env(parent = globalenv())
+
+  test_env$`%||%` <- function(x, y) {
+    if (is.null(x)) y else x
+  }
+
+  test_env$log_info <- function(...) invisible(NULL)
+  test_env$log_warn <- function(...) invisible(NULL)
+  test_env$log_error <- function(...) invisible(NULL)
+  test_env$CLAUDE_CODE_LOG_PREFIX <- "[TEST]"
+
+  test_env$claude_code_config <- list(
+    default_workdir = "",
+    allow_dangerous_permissions = FALSE,
+    allowed_workdir_roots = "",
+    allowed_output_roots = ""
+  )
+
+  test_env$get_user_workspace <- function(user_id, base_dir = NULL) {
+    kok <- file.path(
+      tempdir(),
+      "cc_security_policy_test",
+      paste0("user_", as.character(user_id %||% "default"))
+    )
+    dir.create(kok, recursive = TRUE, showWarnings = FALSE)
+    normalizePath(kok, winslash = "/", mustWork = FALSE)
+  }
+
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_security_policy.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  test_env
+}
+
+test_that("Bilge Yolaç güvenlik ilkesi helper dosyası manifestte doğru yerde yüklenir", {
+  repo_root <- resolve_repo_root_for_tests()
+
+  expect_true(file.exists(file.path(
+    repo_root,
+    "R",
+    "helpers_claude_code_security_policy.R"
+  )))
+
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_claude_code_runtime_workdir.R",
+      "R/helpers_claude_code_security_policy.R",
+      "R/helpers_claude_code.R",
+      "R/helpers_claude_code_streaming.R"
+    ),
+    label = "Bilge Yolaç güvenlik ilkesi source sırası bozulmuş:"
+  )
+})
+
+test_that("CLI argümanları varsayılan olarak tehlikeli izin atlama içermez", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  test_env$claude_code_config$allow_dangerous_permissions <- FALSE
+
+  args <- test_env$cc_policy_build_cli_args(
+    prompt = "Merhaba",
+    output_format = "stream-json",
+    include_partial_messages = TRUE,
+    verbose = TRUE
+  )
+
+  expect_false(
+    "--dangerously-skip-permissions" %in% args,
+    info = "Tehlikeli izin atlama varsayılan olarak kapalı olmalıdır."
+  )
+
+  expect_true("--print" %in% args)
+  expect_true("--verbose" %in% args)
+  expect_true("--include-partial-messages" %in% args)
+  expect_true("stream-json" %in% args)
+})
+
+test_that("açık override verildiğinde tehlikeli izin atlama argümanı eklenir", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  test_env$claude_code_config$allow_dangerous_permissions <- TRUE
+
+  args <- test_env$cc_policy_build_cli_args(
+    prompt = "Merhaba",
+    output_format = "json"
+  )
+
+  expect_true(
+    "--dangerously-skip-permissions" %in% args,
+    info = "Tehlikeli mod yalnızca açık override ile argümanlara eklenmelidir."
+  )
+})
+
+test_that("çalışma dizini yalnızca izin verilen kökler altında kabul edilir", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  root <- withr::local_tempdir()
+  allowed <- file.path(root, "allowed")
+  outside <- file.path(root, "outside")
+  dir.create(allowed, recursive = TRUE)
+  dir.create(outside, recursive = TRUE)
+
+  test_env$claude_code_config$allowed_workdir_roots <- allowed
+
+  allowed_check <- test_env$cc_policy_validate_workdir(
+    allowed,
+    user_id = 42L
+  )
+  outside_check <- test_env$cc_policy_validate_workdir(
+    outside,
+    user_id = 42L
+  )
+
+  expect_true(isTRUE(allowed_check$ok))
+  expect_false(isTRUE(outside_check$ok))
+  expect_match(outside_check$error, "güvenlik ilkesi")
+})
+
+test_that("path traversal izin verilen kökün dışına çıkamaz", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  root <- withr::local_tempdir()
+  allowed <- file.path(root, "allowed")
+  outside <- file.path(root, "outside")
+  dir.create(allowed, recursive = TRUE)
+  dir.create(outside, recursive = TRUE)
+
+  traversal <- file.path(allowed, "..", "outside")
+
+  test_env$claude_code_config$allowed_workdir_roots <- allowed
+
+  traversal_check <- test_env$cc_policy_validate_workdir(
+    traversal,
+    user_id = 42L
+  )
+
+  expect_false(isTRUE(traversal_check$ok))
+  expect_match(traversal_check$error, "güvenlik ilkesi")
+})
+
+test_that("üretilen dosya filtreleme yalnızca izinli kökteki yolları bırakır", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  root <- withr::local_tempdir()
+  allowed <- file.path(root, "allowed")
+  outside <- file.path(root, "outside")
+  dir.create(allowed, recursive = TRUE)
+  dir.create(outside, recursive = TRUE)
+
+  inside_file <- file.path(allowed, "sonuc.txt")
+  outside_file <- file.path(outside, "sonuc.txt")
+  writeLines("izinli", inside_file, useBytes = TRUE)
+  writeLines("engelli", outside_file, useBytes = TRUE)
+
+  kept <- test_env$cc_policy_filter_generated_file_paths(
+    c(inside_file, outside_file),
+    allowed_roots = allowed,
+    context = "test çıktısı"
+  )
+
+  expect_equal(length(kept), 1L)
+  expect_equal(basename(kept), "sonuc.txt")
+  expect_true(test_env$cc_policy_path_inside_roots(kept, allowed))
+})
