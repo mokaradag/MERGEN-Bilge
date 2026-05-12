@@ -332,6 +332,10 @@ Current contract:
 - Keep `ui_asset_validate_js_order()` wired into `ui_asset_validate(...)` so bad asset ordering fails early before the UI is rendered.
 - Keep `ui_asset_deferred_js_paths()` as the single helper for resolving deferred JS groups; do not hand-flatten deferred groups in tests or UI rendering code.
 - Keep `js/music_manager.js` before `js/stt_client.js` and `js/tts_manager.js`. STT and TTS guard for missing globals, but the maintained asset contract should load the music manager before media consumers so duck/unduck behavior remains deterministic.
+- Keep the background music lifecycle single-source. `MusicManager` should own one active audio element and must not allow overlapping main-theme, character-theme, TTS, STT, or intro music paths.
+- Keep the startup music sequence deterministic: intro music belongs to `SpaceIntroMusic`; after the deep-space intro is dismissed, `MusicManager` starts the main theme once and then moves to randomized character music.
+- Do not let duplicate `toggleMusic(TRUE)` calls skip the main theme. If a theme playlist request is pending, another same-state enabled toggle must not issue an early character playlist request or invalidate the pending theme request.
+- Character music folders under `www/music/Karakter/` use stable lowercase character ids: `mergen`, `ulgen`, `kayra`, `erlik`, and `umay`. Do not rename these folders to visible labels such as `Ülgen` or `Umay Ana`.
 - Keep welcome startup dependencies ordered so `js/shiny_message_handlers.js` owns the boot handler and `js/welcome_video_player.js`, `js/welcome_neural_modern.js`, `js/welcome_greeting.js`, and `js/welcome_greeting_personal.js` are available through the retry-based `initModernWelcome` path.
 - Keep `js/streaming_manager.js` before `js/claude_code_streaming.js`, and keep `js/claude_code.js`, `js/claude_code_streaming.js`, and `js/claude_code_plugins.js` in that order.
 - Tests must continue to scan loaded JS files for duplicate `Shiny.addCustomMessageHandler(...)` message names.
@@ -350,6 +354,43 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
 - `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+
+### Media and background music contract
+
+Background music is a race-sensitive and encoding-sensitive boundary. Keep the current architecture intact:
+
+- `SpaceIntroMusic` is only for the deep-space intro screen.
+- `MusicManager` owns the main application background music after the intro is dismissed.
+- The intended sequence is: main theme once, then randomized selected-character tracks.
+- The main theme must not be skipped when Dinamik or Bütünleşik mode starts music from the welcome flow.
+- Same-state duplicate `toggleMusic(TRUE)` calls must be idempotent while a theme playlist request is pending.
+- Playlist responses must remain request-id guarded so stale responses cannot overwrite a newer music state.
+- Audio load errors must remain bounded. Do not reintroduce a tight error -> next track -> error loop that can freeze the browser tab.
+- Character music URL generation must encode each path segment as UTF-8. On Windows/Turkish locale, `Ülgen` filenames must produce `%C3%9C`, not native-byte `%DC`.
+- Do not call `URLencode()` on a full native-encoded relative path for music files. Use the existing UTF-8 music URL helper path in `R/server_music_handlers.R`.
+- Keep user-visible Turkish labels separate from stable character ids. The character id `ulgen` may correspond to visible text `Ülgen`, but the filesystem folder remains `www/music/Karakter/ulgen`.
+
+Protected by:
+
+- `tests/testthat/test-e2e-media-audio-state-regression.R`
+- `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+- `tests/testthat/test-e2e-boot-welcome-regression.R`
+- `tests/testthat/test-global-source-manifest-contract.R`
+- `tests/testthat/test-source-manifest-contract.R`
+- `tests/testthat/test-production-contracts.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+- `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+- `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-production-contracts.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 
 When editing the UI asset contract, run `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")` first. This test intentionally uses the manifest’s `ui_asset_js_order_rules` instead of maintaining a second independent order list. Keep expectations compatible with the project’s installed `testthat` version; avoid optional expectation arguments that are not supported in older local environments.
 
