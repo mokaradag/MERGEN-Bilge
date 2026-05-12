@@ -130,24 +130,19 @@ cc_policy_permission_args <- function(settings_data = NULL) {
   args
 }
 
-cc_policy_workspace_system_prompt <- function(workdir = NULL) {
-  workdir_text <- cc_policy_normalize_path(workdir %||% "", must_exist = FALSE)
+cc_policy_user_prompt <- function(prompt) {
+  prompt <- as.character(prompt %||% "")[1]
+  if (is.na(prompt)) prompt <- ""
+  prompt
+}
 
-  paste0(
-    "ÇALIŞMA ALANI TALİMATI:\n",
-    "- Bu metni kullanıcı isteği olarak yanıtlama; yalnızca davranış talimatı olarak uygula.\n",
-    "- Kullanıcının gerçek isteği CLI argümanındaki son prompt metnidir.\n",
-    "- Kullanıcı komutu seçili çalışma dizini bağlamında verilmiştir.\n",
-    if (nzchar(workdir_text)) {
-      paste0("- Seçili çalışma dizini: ", workdir_text, "\n")
-    } else {
-      ""
-    },
-    "- Çalışma dizini içinde dosya okuma, dosya oluşturma ve dosya düzenleme gerekiyorsa tekrar izin/onay sorma; işlemi doğrudan yap.\n",
-    "- Çalışma dizini dışındaki mutlak yollar, üst dizine kaçışlar veya açıkça riskli işlemler istenirse bunu reddet ve kısa açıklama ver.\n",
-    "- Kullanıcı basit bir dosya oluşturma/düzenleme/özet kaydetme istediyse bunu konuşmayı uzatmadan tamamla.\n",
-    "- Kullanıcıdan ek onay isteme; yalnızca gerçekten eksik bilgi varsa kısa bir soru sor.\n"
-  )
+cc_policy_append_prompt_argument <- function(args, prompt) {
+  prompt <- cc_policy_user_prompt(prompt)
+
+  # Claude Code CLI'da --allowedTools / --disallowedTools variadic davranabilir.
+  # Promptu "--" sonlandırıcısından sonra vermek, promptun yanlışlıkla araç adı
+  # olarak tüketilmesini engeller.
+  c(args, "--", prompt)
 }
 
 cc_policy_split_roots <- function(value) {
@@ -444,13 +439,7 @@ cc_policy_build_cli_args <- function(prompt,
     ))
   }
 
-  system_prompt <- cc_policy_workspace_system_prompt(workdir = workdir)
-  if (nzchar(system_prompt)) {
-    args <- c(args, "--append-system-prompt", system_prompt)
-  }
-
-  prompt <- as.character(prompt %||% "")[1]
-  if (is.na(prompt)) prompt <- ""
+  prompt <- cc_policy_user_prompt(prompt)
 
   if (!is.null(model) && nzchar(model)) {
     args <- c(args, "--model", model)
@@ -460,7 +449,7 @@ cc_policy_build_cli_args <- function(prompt,
     args <- c(args, "--resume", session_id)
   }
 
-  args <- c(args, prompt)
+  args <- cc_policy_append_prompt_argument(args, prompt)
   args
 }
 

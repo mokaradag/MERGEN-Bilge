@@ -85,16 +85,39 @@ test_that("CLI argümanları varsayılan olarak tehlikeli izin atlama içermez",
 
   expect_true("--permission-mode" %in% args)
   expect_true("acceptEdits" %in% args)
-  expect_true("--append-system-prompt" %in% args)
   expect_true("--allowedTools" %in% args)
 
+  expect_false("--append-system-prompt" %in% args)
+  expect_equal(args[length(args) - 1L], "--")
   expect_equal(args[length(args)], "Merhaba")
-  expect_false(grepl("Bilge Yolaç çalışma ilkesi", args[length(args)], fixed = TRUE))
+  expect_false(any(grepl("Bilge Yolaç", args, fixed = TRUE)))
+  expect_false(any(grepl("çalışma ilkesi", args, fixed = TRUE)))
+  expect_false(any(grepl("ÇALIŞMA ALANI TALİMATI", args, fixed = TRUE)))
 
   expect_true("--print" %in% args)
   expect_true("--verbose" %in% args)
   expect_true("--include-partial-messages" %in% args)
   expect_true("stream-json" %in% args)
+})
+
+test_that("allowedTools prompt argümanını yutamaz", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  args <- test_env$cc_policy_build_cli_args(
+    prompt = "Bu projedeki kodları incele.",
+    output_format = "stream-json",
+    include_partial_messages = TRUE,
+    verbose = TRUE,
+    workdir = "C:/Temp/TestProject"
+  )
+
+  separator_index <- which(args == "--")
+  expect_length(separator_index, 1L)
+  expect_equal(args[separator_index + 1L], "Bu projedeki kodları incele.")
+
+  allowed_index <- which(args == "--allowedTools")
+  expect_true(length(allowed_index) >= 1L)
+  expect_true(allowed_index[1L] < separator_index)
 })
 
 test_that("permission mode bypass değerleri tehlikeli bayrağı dolaylı açamaz", {
