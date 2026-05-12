@@ -115,6 +115,41 @@ Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfası
 
 Bilge Yolaç canlı akışı, Türkçe karakter ve emoji bütünlüğünü korumak için hem sunucu tarafındaki `R/utils_text_encoding.R` normalizasyon sınırından hem de istemci tarafındaki `www/js/encoding_utils.js` savunmacı fallback katmanından geçer. Bu yapı, Windows VM/SSO ortamlarında görülebilen çift kodlama ve mojibake risklerini kullanıcı deneyimini azaltmadan merkezi biçimde yönetir.
 
+#### Bilge Yolaç güvenli CLI çalıştırma politikası
+
+Bilge Yolaç, Claude Code CLI çalıştırma davranışını merkezi bir güvenlik ilkesi üzerinden yönetir. Bu sınırın temel amacı, kullanıcı deneyimini bozmadan dosya sistemi erişimini daha denetlenebilir hâle getirmektir.
+
+Varsayılan davranış şöyledir:
+
+- `--dangerously-skip-permissions` varsayılan olarak kapalıdır.
+- Tehlikeli izin atlama modu yalnızca açık bir yönetici/geliştirme tercihiyle etkinleşebilir.
+- Normal kullanımda `--permission-mode acceptEdits` kullanılır; böylece kullanıcı seçili çalışma dizini içinde dosya okuma, oluşturma ve düzenleme istediğinde tekrar tekrar onay soruları ile karşılaşmaz.
+- Varsayılan ek izinli araçlar `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep` ve `LS` ile sınırlıdır.
+- `Bash` varsayılan izinli araç değildir; yalnızca güvenilir iç geliştirme makinelerinde açıkça yapılandırılmalıdır.
+- Kullanıcının arayüzde seçtiği mevcut çalışma dizini, `CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS=TRUE` iken yalnızca o çalışma için güvenli çalışma kökü olarak kabul edilebilir.
+- Çalışma dizinleri normalize edilir; UNC/ağ paylaşımı, Windows yolu ve Türkçe karakter içeren dizinler mevcut esnek dizin çözümleme yardımcıları üzerinden doğrulanır.
+- Üretilen ve indirilebilir hâle getirilen dosyalar yalnızca seçili çalışma dizini, runtime çalışma dizini veya açıkça izinli çıktı kökleri içindeyse sahnelenir.
+- Bilge Yolaç güvenlik ilkesi kullanıcı promptuna veya system prompta metin olarak enjekte edilmez; kullanıcının gerçek komutu Claude Code CLI’a aynen korunarak iletilir.
+- `--allowedTools` ve `--disallowedTools` gibi araç bayraklarının kullanıcı promptunu yutmaması için prompt, CLI argümanlarında `--` sonlandırıcısından sonra verilir.
+
+Önerilen güvenli `.Renviron` başlangıç ayarları:
+
+    CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS=FALSE
+    CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS=TRUE
+    CLAUDE_CODE_PERMISSION_MODE=acceptEdits
+    CLAUDE_CODE_ALLOWED_TOOLS=Read;Write;Edit;MultiEdit;Glob;Grep;LS
+    CLAUDE_CODE_DISALLOWED_TOOLS=
+
+Daha geniş araç erişimi gerekiyorsa, özellikle `Bash`, yalnızca kontrollü ve güvenilir iç geliştirme ortamlarında açıkça eklenmelidir. Bu durumda dahi `CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS=FALSE` varsayılanı korunmalıdır.
+
+Bu davranışın temel sözleşmesi aşağıdaki testlerle korunur:
+
+- `tests/testthat/test-claude-code-security-policy-contract.R`
+- `tests/testthat/test-claude-code-process-refactor-contract.R`
+- `tests/testthat/test-claude-code-runtime-workdir-contract.R`
+- `tests/testthat/test-claude-code-workdir-scan-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
 Bilge Yolaç yapısı son bakım refactor’larıyla daha ayrık hâle getirilmiştir. Sayfa UI tanımı `R/module_claude_code_ui.R` içinde, sunucu mantığı ise `R/module_claude_code.R` içinde tutulur. Model/settings karar yardımcıları `R/helpers_claude_code_model_config.R` dosyasına taşınmış; süreç/CLI çalıştırma yardımcıları `R/helpers_claude_code.R` içinde bırakılmıştır. Bu ayrımlar, büyük dosyaları tek seferde yeniden yazmadan kontrollü bakım yapılabilirlik artışı sağlamak için uygulanmıştır.
 
 Son Bilge Yolaç bakım refactor’larında başlangıç/setup observer kümesi `R/helpers_claude_code_server_setup.R` dosyasına, çalışma/akış yaşam döngüsü ise `R/helpers_claude_code_run_lifecycle.R` dosyasına ayrılmıştır. Setup helper’ı CLI yol tespiti, bağlantı rozeti, karakter/tema senkronizasyonu, kullanıcı yükleme klasörüne geçiş, yerel klasör yükleme, model değişiminde oturum sıfırlama, senaryo düğmeleri, dizin yenileme, çıktı temizleme ve düşünme mesajı güncelleme bağlayıcılarını üstlenir. Kullanıcı kimliği hazır olma sözleşmesi `R/helpers_claude_code_user_guard.R` içinde tutulur; SSO tamamlanmadan veya geçerli kullanıcı kimliği çözülmeden Bilge Yolaç’ın kullanıcıya özel çalışma alanı/dizin işlemleri `user_id = 0` ile devam etmez. Çalışma yaşam döngüsü helper’ı ise aktif çalışma kimliği üretimi, stale async/promise callback ayrımı, doküman özetleme sonucu koruması ve güvenli finalization akışını yönetir. `Durdur` düğmesi artık süreç öldürüldükten sonra poll observer’a güvenmeden UI finalization mesajlarını doğrudan gönderir; böylece saniye sayacı, düşünme animasyonu, stop düğmesi ve pasif kalan `Çalıştır` düğmesi takılı kalmaz. Bu ayrımlar `R/module_claude_code.R` dosyasını 1254 satırdan 799 satıra düşürmüş ve Bilge Yolaç sunucu modülünün çalışma zamanı orkestrasyonuna odaklanmasını sağlamıştır.
