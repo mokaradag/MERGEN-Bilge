@@ -19,8 +19,16 @@ unicode_to_win1252_byte <- function(codepoint) {
   if (codepoint < 0x80L) return(as.integer(codepoint))
   if (codepoint >= 0xA0L && codepoint <= 0xFFL) return(as.integer(codepoint))
 
-  mapped <- .text_encoding_win1252_reverse[[as.character(codepoint)]]
-  if (!is.null(mapped)) return(as.integer(mapped))
+  key <- as.character(as.integer(codepoint))
+
+  if (!key %in% names(.text_encoding_win1252_reverse)) {
+    return(-1L)
+  }
+
+  mapped <- unname(.text_encoding_win1252_reverse[key])
+  if (length(mapped) == 1L && !is.na(mapped)) {
+    return(as.integer(mapped))
+  }
 
   -1L
 }
@@ -283,7 +291,11 @@ read_text_lines_utf8 <- function(path,
       next
     }
 
-    txt <- sub("^\\ufeff", "", txt, perl = TRUE)
+    bom <- intToUtf8(0xFEFF)
+    if (startsWith(txt, bom)) {
+      txt <- substring(txt, 2L)
+    }
+
     txt <- normalize_text_utf8(txt, repair_mojibake = repair_mojibake)
 
     lines <- strsplit(txt, "\\r\\n|\\n|\\r", perl = TRUE)[[1]]
