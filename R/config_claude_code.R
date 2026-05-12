@@ -35,6 +35,18 @@ claude_code_config <- list(
     "FALSE"
   )),
 
+  # Claude Code izin modu.
+  # acceptEdits: kullanıcı zaten komutu verdiğinde dosya yazma/düzenleme için
+  # tekrar tekrar onay sormaz; dangerous skip değildir.
+  permission_mode = Sys.getenv("CLAUDE_CODE_PERMISSION_MODE", "acceptEdits"),
+
+  # Ek izin istemeden kullanılabilecek Claude Code araçları.
+  # Varsayılan boş tutulur; acceptEdits basit dosya yazma/düzenleme UX'ini düzeltir.
+  allowed_tools = Sys.getenv("CLAUDE_CODE_ALLOWED_TOOLS", ""),
+
+  # Açıkça yasaklanacak Claude Code araçları.
+  disallowed_tools = Sys.getenv("CLAUDE_CODE_DISALLOWED_TOOLS", ""),
+
   # Bilge Yolaç'ın çalışabileceği kök dizinler (; veya satır sonu ile ayrılır)
   allowed_workdir_roots = Sys.getenv("CLAUDE_CODE_ALLOWED_WORKDIR_ROOTS", ""),
 

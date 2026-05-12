@@ -19,6 +19,9 @@
   test_env$claude_code_config <- list(
     default_workdir = "",
     allow_dangerous_permissions = FALSE,
+    permission_mode = "acceptEdits",
+    allowed_tools = "",
+    disallowed_tools = "",
     allowed_workdir_roots = "",
     allow_user_selected_workdirs = TRUE,
     allowed_output_roots = ""
@@ -80,10 +83,29 @@ test_that("CLI argümanları varsayılan olarak tehlikeli izin atlama içermez",
     info = "Tehlikeli izin atlama varsayılan olarak kapalı olmalıdır."
   )
 
+  expect_true("--permission-mode" %in% args)
+  expect_true("acceptEdits" %in% args)
+
   expect_true("--print" %in% args)
   expect_true("--verbose" %in% args)
   expect_true("--include-partial-messages" %in% args)
   expect_true("stream-json" %in% args)
+})
+
+test_that("permission mode bypass değerleri tehlikeli bayrağı dolaylı açamaz", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  test_env$claude_code_config$allow_dangerous_permissions <- FALSE
+  test_env$claude_code_config$permission_mode <- "bypassPermissions"
+
+  args <- test_env$cc_policy_build_cli_args(
+    prompt = "Merhaba",
+    output_format = "json"
+  )
+
+  expect_false("--dangerously-skip-permissions" %in% args)
+  expect_true("--permission-mode" %in% args)
+  expect_true("acceptEdits" %in% args)
 })
 
 test_that("açık override verildiğinde tehlikeli izin atlama argümanı eklenir", {

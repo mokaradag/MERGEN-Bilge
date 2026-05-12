@@ -17,6 +17,134 @@ cc_policy_truthy <- function(value) {
   deger %in% c("1", "true", "yes", "y", "evet", "on", "enabled")
 }
 
+cc_policy_cli_list <- function(value) {
+  value <- as.character(value %||% character(0))
+  value <- value[nzchar(value)]
+
+  if (!length(value)) {
+    return(character(0))
+  }
+
+  parcalar <- unlist(strsplit(value, "[;,\n\r]+", perl = TRUE), use.names = FALSE)
+  unique(trimws(parcalar[nzchar(trimws(parcalar))]))
+}
+
+cc_policy_permission_mode <- function(settings_data = NULL) {
+  raw_mode <- ""
+
+  if (exists("claude_code_config", inherits = TRUE)) {
+    raw_mode <- claude_code_config$permission_mode %||% ""
+  }
+
+  env_mode <- Sys.getenv("CLAUDE_CODE_PERMISSION_MODE", "")
+  if (nzchar(env_mode)) {
+    raw_mode <- env_mode
+  }
+
+  if (!is.null(settings_data) && !is.null(settings_data$claude_code_permission_mode)) {
+    settings_mode <- as.character(settings_data$claude_code_permission_mode %||% "")[1]
+    if (!is.na(settings_mode) && nzchar(settings_mode)) {
+      raw_mode <- settings_mode
+    }
+  }
+
+  raw_mode <- trimws(as.character(raw_mode %||% "")[1])
+  if (is.na(raw_mode) || !nzchar(raw_mode)) {
+    return("")
+  }
+
+  allowed_modes <- c("default", "acceptEdits", "plan")
+  dangerous_modes <- c(
+    "bypassPermissions",
+    "bypasspermissions",
+    "bypass",
+    "dangerous",
+    "dangerously-skip-permissions"
+  )
+
+  if (raw_mode %in% dangerous_modes) {
+    log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "CLAUDE_CODE_PERMISSION_MODE tehlikeli bypass değerine ayarlanmış.",
+      "Bu yol kullanılmadı; tehlikeli mod yalnızca",
+      "CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS ile açılabilir."
+    ))
+    return("acceptEdits")
+  }
+
+  matched <- allowed_modes[tolower(allowed_modes) == tolower(raw_mode)]
+  if (length(matched)) {
+    return(matched[1])
+  }
+
+  log_warn(paste(
+    CLAUDE_CODE_LOG_PREFIX,
+    "Bilinmeyen Claude Code permission_mode değeri:",
+    raw_mode,
+    "- acceptEdits kullanılacak."
+  ))
+
+  "acceptEdits"
+}
+
+cc_policy_permission_args <- function(settings_data = NULL) {
+  mode <- cc_policy_permission_mode(settings_data = settings_data)
+  args <- character(0)
+
+  if (nzchar(mode) && !identical(mode, "default")) {
+    args <- c(args, "--permission-mode", mode)
+  }
+
+  allowed_tools <- character(0)
+  disallowed_tools <- character(0)
+
+  if (exists("claude_code_config", inherits = TRUE)) {
+    allowed_tools <- c(allowed_tools, claude_code_config$allowed_tools %||% "")
+    disallowed_tools <- c(disallowed_tools, claude_code_config$disallowed_tools %||% "")
+  }
+
+  allowed_tools <- c(allowed_tools, Sys.getenv("CLAUDE_CODE_ALLOWED_TOOLS", ""))
+  disallowed_tools <- c(disallowed_tools, Sys.getenv("CLAUDE_CODE_DISALLOWED_TOOLS", ""))
+
+  allowed_tools <- cc_policy_cli_list(allowed_tools)
+  disallowed_tools <- cc_policy_cli_list(disallowed_tools)
+
+  if (length(allowed_tools)) {
+    args <- c(args, "--allowedTools", allowed_tools)
+  }
+
+  if (length(disallowed_tools)) {
+    args <- c(args, "--disallowedTools", disallowed_tools)
+  }
+
+  log_info(paste(
+    CLAUDE_CODE_LOG_PREFIX,
+    "Claude Code izin modu:",
+    if (nzchar(mode)) mode else "CLI varsayılanı",
+    "| allowedTools:",
+    if (length(allowed_tools)) paste(allowed_tools, collapse = ",") else "(yok)",
+    "| disallowedTools:",
+    if (length(disallowed_tools)) paste(disallowed_tools, collapse = ",") else "(yok)"
+  ))
+
+  args
+}
+
+cc_policy_wrap_prompt_for_workspace <- function(prompt) {
+  prompt <- as.character(prompt %||% "")[1]
+  if (is.na(prompt)) prompt <- ""
+
+  paste0(
+    "Bilge Yolaç çalışma ilkesi:\n",
+    "- Kullanıcı bu komutu seçili çalışma dizini bağlamında verdi.\n",
+    "- Çalışma dizini içinde dosya okuma, dosya oluşturma ve dosya düzenleme gerekiyorsa tekrar izin/onay sorma; işlemi doğrudan yap.\n",
+    "- Çalışma dizini dışındaki mutlak yollar, üst dizine kaçışlar veya açıkça riskli işlemler istenirse bunu reddet ve kısa açıklama ver.\n",
+    "- Kullanıcı basit bir dosya oluşturma/düzenleme istediyse bunu konuşmayı uzatmadan tamamla.\n\n",
+    "Kullanıcı komutu:\n",
+    prompt
+  )
+}
+
 cc_policy_split_roots <- function(value) {
   value <- as.character(value %||% character(0))
   value <- value[nzchar(value)]
@@ -288,10 +416,12 @@ cc_policy_build_cli_args <- function(prompt,
     args <- c(args, "--include-partial-messages")
   }
 
-  if (cc_policy_dangerous_permissions_allowed(
+  dangerous_allowed <- cc_policy_dangerous_permissions_allowed(
     user_id = user_id,
     settings_data = settings_data
-  )) {
+  )
+
+  if (isTRUE(dangerous_allowed)) {
     args <- c(args, "--dangerously-skip-permissions")
 
     log_warn(paste(
@@ -300,11 +430,15 @@ cc_policy_build_cli_args <- function(prompt,
       "Bu yalnızca açık yönetici/geliştirme onayıyla kullanılmalıdır."
     ))
   } else {
+    args <- c(args, cc_policy_permission_args(settings_data = settings_data))
+
     log_info(paste(
       CLAUDE_CODE_LOG_PREFIX,
-      "Claude Code güvenli izin modu ile çalıştırılıyor."
+      "Claude Code güvenli izin modu ile çalıştırılıyor; tehlikeli izin atlama kapalı."
     ))
   }
+
+  prompt <- cc_policy_wrap_prompt_for_workspace(prompt)
 
   if (!is.null(model) && nzchar(model)) {
     args <- c(args, "--model", model)
