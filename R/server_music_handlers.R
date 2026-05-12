@@ -99,11 +99,39 @@ musicHandlersInit <- function(input, session, settings_data) {
       if (length(files) > 0) {
         clean_sub <- gsub("\\\\", "/", target_sub)
 
-		file_urls <- vapply(files, function(f) {
-		  full_rel_path <- paste0("music/", clean_sub, "/", f)
+		force_utf8 <- function(x) {
+		  x <- as.character(x)
 
-		  # Keep "/" as path separator, encode unsafe characters in filename/path.
-		  utils::URLencode(full_rel_path, reserved = FALSE)
+		  # If the string is native/unknown, convert using current Windows locale.
+		  y <- iconv(x, from = "", to = "UTF-8", sub = "byte")
+
+		  # Fallback
+		  ifelse(is.na(y), enc2utf8(x), y)
+		}
+
+		url_encode_segment_utf8 <- function(x) {
+		  x <- force_utf8(x)
+		  vapply(
+			x,
+			function(one) utils::URLencode(one, reserved = TRUE),
+			character(1),
+			USE.NAMES = FALSE
+		  )
+		}
+
+		url_path_utf8 <- function(...) {
+		  parts <- unlist(list(...), use.names = FALSE)
+		  parts <- parts[!is.na(parts) & nzchar(parts)]
+		  paste(url_encode_segment_utf8(parts), collapse = "/")
+		}
+
+		clean_sub <- force_utf8(gsub("\\\\", "/", target_sub))
+		sub_parts <- strsplit(clean_sub, "/", fixed = TRUE)[[1]]
+
+		files <- force_utf8(files)
+
+		file_urls <- vapply(files, function(f) {
+		  url_path_utf8(c("music", sub_parts, f))
 		}, character(1), USE.NAMES = FALSE)
 
 		cat(sprintf(
