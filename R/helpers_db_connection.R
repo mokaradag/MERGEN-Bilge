@@ -33,7 +33,7 @@ normalize_db_value <- function(x) {
     )
   }
 
-  out_utf8[is.na(x)] <- NA_character__
+  out_utf8[is.na(x)] <- NA_character_
 
   if (isTRUE(l10n_info()[["UTF-8"]])) {
     return(out_utf8)

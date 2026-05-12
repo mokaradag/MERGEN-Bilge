@@ -16,6 +16,32 @@
   test_env
 }
 
+.read_repo_text_utf8_safe <- function(path) {
+  repo_root <- resolve_repo_root_for_tests()
+  full_path <- file.path(repo_root, path)
+
+  size <- suppressWarnings(file.info(full_path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "")[[1]]
+  )
+
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
+  enc2utf8(txt)
+}
+
 .mojibake_from_utf8_for_test <- function(text) {
   win1252 <- c(
     0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
@@ -94,32 +120,9 @@ test_that("read_text_lines_utf8 UTF-8 markdown satırlarını güvenli okur", {
 test_that("client encoding helper manifest ve Bilge Yolaç sözleşmesi korunur", {
   repo_root <- resolve_repo_root_for_tests()
 
-  encoding_js <- paste(
-    readLines(
-      file.path(repo_root, "www", "js", "encoding_utils.js"),
-      warn = FALSE,
-      encoding = "UTF-8"
-    ),
-    collapse = "\n"
-  )
-
-  streaming_js <- paste(
-    readLines(
-      file.path(repo_root, "www", "js", "claude_code_streaming.js"),
-      warn = FALSE,
-      encoding = "UTF-8"
-    ),
-    collapse = "\n"
-  )
-
-  ui_manifest <- paste(
-    readLines(
-      file.path(repo_root, "R", "config_ui_assets.R"),
-      warn = FALSE,
-      encoding = "UTF-8"
-    ),
-    collapse = "\n"
-  )
+  encoding_js <- .read_repo_text_utf8_safe("www/js/encoding_utils.js")
+  streaming_js <- .read_repo_text_utf8_safe("www/js/claude_code_streaming.js")
+  ui_manifest <- .read_repo_text_utf8_safe("R/config_ui_assets.R")
 
   expect_match(encoding_js, "window\\.MergenEncoding")
   expect_match(encoding_js, "window\\.ccFixMojibake")
