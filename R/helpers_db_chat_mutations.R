@@ -26,11 +26,7 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   on.exit(release_connection(conn_info))
 
   query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, ?)"
-  res <- dbGetQuery(
-    conn,
-    query,
-    params = normalize_db_params(list(user_id, initial_title), repair_mojibake = TRUE)
-  )
+  res <- dbGetQuery(conn, query, params = normalize_db_params(list(user_id, initial_title), repair_mojibake = TRUE))
   if (nrow(res) == 0) stop("Failed to create new chat session in DB.")
   return(as.integer(res$ChatID[1]))
 }
