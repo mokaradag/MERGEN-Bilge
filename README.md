@@ -53,8 +53,12 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 ### Türkçe karakter, emoji ve kodlama dayanıklılığı
 - Türkçe karakterler, emoji ve yaygın mojibake bozulmaları için sunucu ve istemci tarafında ortak normalizasyon yardımcıları kullanılır.
 - Sunucu tarafında `R/utils_text_encoding.R`; DB okuma/yazma sınırları, kayıtlı söyleşi yükleme, dosya görünen adları, sürüm geçmişi/Yenilikler metinleri, Bilge Yolaç süreç/akış çıktıları ve log metinleri için merkezi UTF-8 koruması sağlar.
-- İstemci tarafında `www/js/encoding_utils.js`; genel Shiny mesajları ve Bilge Yolaç canlı akışı için ortak mojibake düzeltme/fallback katmanı sağlar.
+- DB sınırında kullanıcıya görünen metinler için `normalize_db_params(..., repair_mojibake = TRUE)` ve `normalize_db_value(..., repair_mojibake = TRUE)` kullanılır; varsayılan onarım kapalı kaldığı için teknik/ID benzeri parametreler gereksiz dönüştürülmez.
+- Windows VM veya UTF-8 olmayan oturumlarda `enc2native()` dönüşümü emoji gibi Unicode karakterleri kayıplı hâle getirirse DB normalizasyonu UTF-8 metni korur; böylece `🚀`, `✅` ve benzeri karakterler `<U+...>` biçimine düşmez.
+- Test ortamında da çalışma zamanı kaynak sırası korunur: `tests/testthat/helper_bootstrap.R`, DB yardımcılarından önce `R/utils_text_encoding.R` dosyasını yükler. Böylece tekil `testthat::test_file(...)` çalıştırmalarında da mojibake onarımı gerçek uygulama davranışıyla aynı kalır.
+- İstemci tarafında `www/js/encoding_utils.js`; genel Shiny mesajları, HTML metin/öznitelik onarımı ve Bilge Yolaç canlı akışı için ortak mojibake düzeltme/fallback katmanı sağlar.
 - Bilge Yolaç streaming kodu büyük yerel mojibake haritaları taşımak yerine bu ortak istemci yardımcısını kullanır; böylece kullanıcı deneyimi korunurken bakım yükü azaltılır.
+- Dosya Yönetimi görünen adları ve kalıcı dosya indeksi; Türkçe dosya adları, storage-prefix temizleme ve eski mojibake kayıtlarının okunabilir hâle getirilmesi için aynı merkezi normalizasyon hattını kullanır.
 
 ---
 
