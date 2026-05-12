@@ -200,6 +200,10 @@ test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
       auto_unbox = TRUE
     ),
     jsonlite::toJSON(
+      list(type = "text", content = "Ã‡alÄ±ÅŸma ðŸš€"),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
       list(type = "result", result = "Dünya", session_id = "abc123"),
       auto_unbox = TRUE
     ),
@@ -208,7 +212,7 @@ test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
 
   parsed <- test_env$parse_claude_code_json_output(jsonl)
 
-  expect_equal(parsed$text_output, "Merhaba ")
+  expect_equal(parsed$text_output, "Merhaba Çalışma 🚀")
   expect_equal(parsed$session_id, "abc123")
   expect_type(parsed$tool_uses, "list")
 })

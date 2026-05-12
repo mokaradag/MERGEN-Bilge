@@ -256,7 +256,15 @@ global_register_file <- function(src_path,
 # İndeksten belirli bir dosyayı kaldırır
 mergen_remove_from_index <- function(user_id, filename) {
   uid <- as.character(user_id)
-  key <- tolower(basename(filename))
+  key_name <- basename(filename)
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    key_name <- normalize_text_utf8(key_name, repair_mojibake = TRUE)
+  } else {
+    key_name <- enc2utf8(key_name)
+  }
+
+  key <- tolower(key_name)
 
   .file_store_mutate_index(function(idx) {
     if (!is.null(idx[[uid]])) {

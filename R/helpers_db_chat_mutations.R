@@ -18,7 +18,7 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   validate_chat_title(initial_title)
 
   if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    initial_title <- normalize_text_utf8(initial_title, repair_mojibake = FALSE)
+    initial_title <- normalize_text_utf8(initial_title, repair_mojibake = TRUE)
   }
   
   conn_info <- get_connection()
@@ -26,7 +26,11 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   on.exit(release_connection(conn_info))
 
   query <- "INSERT INTO MB_Chats (UserID, ChatTitle) OUTPUT INSERTED.ChatID AS ChatID VALUES (?, ?)"
-  res <- dbGetQuery(conn, query, params = normalize_db_params(list(user_id, initial_title)))
+  res <- dbGetQuery(
+    conn,
+    query,
+    params = normalize_db_params(list(user_id, initial_title), repair_mojibake = TRUE)
+  )
   if (nrow(res) == 0) stop("Failed to create new chat session in DB.")
   return(as.integer(res$ChatID[1]))
 }
@@ -46,10 +50,14 @@ update_message_reasoning_content <- function(message_id, reasoning_content) {
     return(invisible(FALSE))
   }
 
-  reasoning_text <- tryCatch(
-    enc2utf8(as.character(reasoning_content %||% "")[1]),
-    error = function(e) ""
-  )
+  reasoning_text <- tryCatch({
+    value <- as.character(reasoning_content %||% "")[1]
+    if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      normalize_text_utf8(value, repair_mojibake = TRUE)
+    } else {
+      enc2utf8(value)
+    }
+  }, error = function(e) "")
 
   if (!nzchar(reasoning_text)) {
     return(invisible(FALSE))
@@ -110,7 +118,7 @@ save_message_to_db <- function(chat_id, msg) {
   validate_message_content(msg$content)
 
   if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    msg$content <- normalize_text_utf8(msg$content, repair_mojibake = FALSE)
+    msg$content <- normalize_text_utf8(msg$content, repair_mojibake = TRUE)
     msg$type <- normalize_text_utf8(msg$type, repair_mojibake = FALSE)
   }
 
@@ -124,7 +132,7 @@ save_message_to_db <- function(chat_id, msg) {
   reasoning_content <- msg$reasoning_content %||% msg$reasoning_trace
   if (!is.null(reasoning_content) &&
       exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    reasoning_content <- normalize_text_utf8(reasoning_content, repair_mojibake = FALSE)
+    reasoning_content <- normalize_text_utf8(reasoning_content, repair_mojibake = TRUE)
   }
   if (is.null(reasoning_content) || !nzchar(reasoning_content)) {
     reasoning_content <- NA_character_
@@ -164,9 +172,10 @@ save_message_to_db <- function(chat_id, msg) {
     dbGetQuery(
       conn,
       query_with_reasoning,
-      params = normalize_db_params(list(
-        chat_id, msg$content, msg$type, ts, next_order, reasoning_content
-      ))
+      params = normalize_db_params(
+        list(chat_id, msg$content, msg$type, ts, next_order, reasoning_content),
+        repair_mojibake = TRUE
+      )
     )
   }, error = function(e) {
     hata <- conditionMessage(e)
@@ -186,9 +195,10 @@ save_message_to_db <- function(chat_id, msg) {
     dbGetQuery(
       conn,
       query_legacy,
-      params = normalize_db_params(list(
-        chat_id, msg$content, msg$type, ts, next_order
-      ))
+      params = normalize_db_params(
+        list(chat_id, msg$content, msg$type, ts, next_order),
+        repair_mojibake = TRUE
+      )
     )
   })
 
@@ -239,7 +249,14 @@ update_message_content_in_db <- function(message_id, new_content) {
   query <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
   
   # Execute the update statement
-  dbExecute(conn, query, params = normalize_db_params(list(new_content, as.integer(message_id))))
+  dbExecute(
+    conn,
+    query,
+    params = normalize_db_params(
+      list(new_content, as.integer(message_id)),
+      repair_mojibake = TRUE
+    )
+  )
 }
 
 update_chat_title_in_db <- function(chat_id, new_title) {
@@ -252,8 +269,16 @@ update_chat_title_in_db <- function(chat_id, new_title) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    new_title <- normalize_text_utf8(new_title, repair_mojibake = TRUE)
+  }
+
   query <- "UPDATE MB_Chats SET ChatTitle = ? WHERE ChatID = ?"
-  dbExecute(conn, query, params = normalize_db_params(list(new_title, chat_id)))
+  dbExecute(
+    conn,
+    query,
+    params = normalize_db_params(list(new_title, chat_id), repair_mojibake = TRUE)
+  )
 }
 
 # Chat deletion
@@ -317,7 +342,7 @@ worker_save_assistant_response <- function(chat_id, response_text,
                                            model_used = "<local-llm>",
                                            duration = 0.0) {
   if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    response_text <- normalize_text_utf8(response_text, repair_mojibake = FALSE)
+    response_text <- normalize_text_utf8(response_text, repair_mojibake = TRUE)
     message_type <- normalize_text_utf8(message_type, repair_mojibake = FALSE)
     model_used <- normalize_text_utf8(model_used, repair_mojibake = FALSE)
   }
@@ -362,9 +387,10 @@ worker_save_assistant_response <- function(chat_id, response_text,
   res <- DBI::dbGetQuery(
     conn,
     insert_q,
-    params = normalize_db_params(list(
-      chat_id, response_text, message_type, timestamp_gmt3, next_order
-    ))
+    params = normalize_db_params(
+      list(chat_id, response_text, message_type, timestamp_gmt3, next_order),
+      repair_mojibake = TRUE
+    )
   )
 
   response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_

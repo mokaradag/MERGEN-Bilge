@@ -233,6 +233,11 @@ parse_streaming_chunk <- function(satir) {
     }
 
     nesne <- jsonlite::fromJSON(satir, simplifyVector = FALSE)
+
+    if (exists("normalize_text_tree_utf8", mode = "function", inherits = TRUE)) {
+      nesne <- normalize_text_tree_utf8(nesne, repair_mojibake = TRUE)
+    }
+
     tur <- nesne$type %||% ""
 
     # --- stream-json formatı (sarmalayıcı ile) ---

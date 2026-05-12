@@ -23,6 +23,15 @@ get_or_create_user <- function(username, sso_claims = NULL) {
   # Girdi doğrulama
   validate_username(username)
 
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    username <- normalize_text_utf8(username, repair_mojibake = TRUE)
+  }
+
+  if (!is.null(sso_claims) &&
+      exists("normalize_text_tree_utf8", mode = "function", inherits = TRUE)) {
+    sso_claims <- normalize_text_tree_utf8(sso_claims, repair_mojibake = TRUE)
+  }
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
@@ -33,7 +42,16 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     kaynak_adi <- sso_claims$full_name
   } else {
     user_details_query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
-    user_details <- dbGetQuery(conn, user_details_query, params = normalize_db_params(list(username)))
+    user_details <- dbGetQuery(
+      conn,
+      user_details_query,
+      params = normalize_db_params(list(username), repair_mojibake = TRUE)
+    )
+
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      user_details <- normalize_text_frame_utf8(user_details, repair_mojibake = TRUE)
+    }
+
     if (nrow(user_details) > 0 && nzchar(user_details$KaynakAdi[1] %||% "")) {
       kaynak_adi <- user_details$KaynakAdi[1]
     }
@@ -71,6 +89,11 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 # SSO ek alanlarını MB_Users tablosunda güncelle
 # Tablo bu sütunlara sahip değilse sessizce atla
 update_sso_fields <- function(conn, user_id, sso_claims) {
+  if (!is.null(sso_claims) &&
+      exists("normalize_text_tree_utf8", mode = "function", inherits = TRUE)) {
+    sso_claims <- normalize_text_tree_utf8(sso_claims, repair_mojibake = TRUE)
+  }
+
   tryCatch({
     # Tabloda SSO sütunlarının varlığını kontrol et
     cols_query <- "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MB_Users' AND COLUMN_NAME IN ('Sicil', 'Email', 'Sektor', 'Departman', 'Mudurluk', 'MasrafYeriKodu', 'SonGirisKaynagi')"

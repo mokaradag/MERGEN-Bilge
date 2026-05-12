@@ -84,6 +84,24 @@ test_that("normalize_text_utf8 yaygın Windows mojibake bozulmasını onarır", 
   )
 })
 
+test_that("normalize_text_tree_utf8 iç içe payload metinlerini onarır", {
+  env <- .source_text_encoding_utils_for_test()
+
+  payload <- list(
+    title = "Ã‡alÄ±ÅŸma Ã¶zeti",
+    nested = list(
+      file = "ÅŸablon_gÃ¼ncelleme.pdf",
+      emoji = "ðŸš€"
+    )
+  )
+
+  repaired <- env$normalize_text_tree_utf8(payload, repair_mojibake = TRUE)
+
+  expect_equal(repaired$title, "Çalışma özeti")
+  expect_equal(repaired$nested$file, "şablon_güncelleme.pdf")
+  expect_equal(repaired$nested$emoji, "🚀")
+})
+
 test_that("normalize_text_for_log ANSI dizilerini temizler ve metni okunur tutar", {
   env <- .source_text_encoding_utils_for_test()
 
@@ -126,6 +144,7 @@ test_that("client encoding helper manifest ve Bilge Yolaç sözleşmesi korunur"
 
   expect_match(encoding_js, "window\\.MergenEncoding")
   expect_match(encoding_js, "window\\.ccFixMojibake")
+  expect_match(encoding_js, "normalizeHtmlElement")
   expect_match(streaming_js, "MergenEncoding")
   expect_false(
     grepl("var MOJIBAKE_MAP", streaming_js, fixed = TRUE),

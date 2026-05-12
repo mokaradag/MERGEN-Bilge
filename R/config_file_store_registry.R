@@ -19,6 +19,15 @@ resolve_uploaded_file <- function(requested,
 	if (is.null(requested) || !(is.character(requested) && length(requested) > 0 && nzchar(requested[1]))) return(NULL)
 
 	requested_chr <- as.character(requested[1])
+
+	if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+	  requested_chr <- normalize_text_utf8(requested_chr, repair_mojibake = TRUE)
+	} else {
+	  requested_chr <- enc2utf8(requested_chr)
+	}
+
+	requested <- requested_chr
+
 	uid <- if (!is.null(user_id) && nzchar(as.character(user_id)[1])) {
 	  as.character(user_id)[1]
 	} else {
@@ -82,8 +91,8 @@ resolve_uploaded_file <- function(requested,
 	  p
 	}
 
-  full_key <- tolower(as.character(requested))
-  key      <- tolower(basename(requested))
+  full_key <- tolower(requested_chr)
+  key      <- tolower(basename(requested_chr))
   idx <- .load_index()
   log_debug("resolve_uploaded_file(): full='{full_key}', anahtar='{key}', index kovası sayısı={length(idx)}")
 
@@ -309,7 +318,10 @@ mergen_resolve_display_name <- function(file_path, user_id = NULL, idx = NULL) {
       )
 
       if (ayni_yol || ayni_dosya) {
-        return(kayit_gorunen_ad)
+        if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+          return(normalize_text_utf8(kayit_gorunen_ad, repair_mojibake = TRUE))
+        }
+        return(enc2utf8(kayit_gorunen_ad))
       }
     }
   }

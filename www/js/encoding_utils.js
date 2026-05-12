@@ -100,6 +100,8 @@
     'â€™': '’',
     'â€˜': '‘',
     'â€œ': '“',
+    'â€�': '”',
+    'â€': '”',
     'â€“': '–',
     'â€”': '—',
     'â€¦': '…',
@@ -137,8 +139,64 @@
     return out;
   }
 
+  function normalizeHtmlElement(element) {
+    if (!element || typeof element.querySelectorAll !== 'function') return element;
+
+    var walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+
+    var textNodes = [];
+    while (walker.nextNode()) {
+      textNodes.push(walker.currentNode);
+    }
+
+    textNodes.forEach(function(node) {
+      node.nodeValue = fixMojibakeText(node.nodeValue || '');
+    });
+
+    var attrs = [
+      'title',
+      'aria-label',
+      'alt',
+      'placeholder',
+      'data-filename',
+      'data-name',
+      'data-question',
+      'data-path',
+      'data-original-name',
+      'data-display-name'
+    ];
+
+    var elements = [element].concat(
+      Array.prototype.slice.call(element.querySelectorAll('*'))
+    );
+
+    elements.forEach(function(el) {
+      attrs.forEach(function(attr) {
+        if (el.hasAttribute && el.hasAttribute(attr)) {
+          el.setAttribute(attr, fixMojibakeText(el.getAttribute(attr) || ''));
+        }
+      });
+    });
+
+    return element;
+  }
+
   function fixHtmlTextMojibake(html) {
     if (!html || typeof html !== 'string') return html;
+
+    if (typeof document !== 'undefined' && document.createElement) {
+      try {
+        var template = document.createElement('template');
+        template.innerHTML = html;
+        normalizeHtmlElement(template.content || template);
+        return template.innerHTML;
+      } catch (e) {}
+    }
 
     return html.replace(/>([^<]+)</g, function(match, textContent) {
       return '>' + fixMojibakeText(textContent) + '<';
@@ -174,7 +232,9 @@
     fixMojibakeText: fixMojibakeText,
     fixHtmlTextMojibake: fixHtmlTextMojibake,
     normalizeText: normalizeText,
-    normalizePayload: normalizePayload
+    normalizePayload: normalizePayload,
+    normalizeHtmlElement: normalizeHtmlElement,
+    normalizeElement: normalizeHtmlElement
   };
 
   // Eski Bilge Yolaç çağrı noktaları için geriye dönük uyumluluk.

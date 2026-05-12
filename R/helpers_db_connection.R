@@ -12,7 +12,7 @@ library(pool)
 .DEFAULT_DB_CLIENT_ENCODING <- getOption("mergen.db.client_encoding", "UTF-8")
 .DEFAULT_DB_NAME_ENCODING <- getOption("mergen.db.name_encoding", .DEFAULT_DB_CLIENT_ENCODING)
 
-normalize_db_value <- function(x) {
+normalize_db_value <- function(x, repair_mojibake = FALSE) {
   # DBI parametreleri çoğunlukla skaler gelir; yine de bu yardımcı vektör,
   # NA ve boş karakter girdilerinde uyarı üretmemelidir. Strict test runner
   # stop_on_warning = TRUE kullandığı için burada warning-free davranış kritiktir.
@@ -24,8 +24,10 @@ normalize_db_value <- function(x) {
     return(x)
   }
 
+  repair_mojibake <- isTRUE(repair_mojibake)
+
   out_utf8 <- if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    normalize_text_utf8(x, repair_mojibake = FALSE)
+    normalize_text_utf8(x, repair_mojibake = repair_mojibake)
   } else {
     tryCatch(
       enc2utf8(x),
@@ -48,8 +50,8 @@ normalize_db_value <- function(x) {
   out_native
 }
 
-normalize_db_params <- function(params) {
-  lapply(params, normalize_db_value)
+normalize_db_params <- function(params, repair_mojibake = FALSE) {
+  lapply(params, normalize_db_value, repair_mojibake = repair_mojibake)
 }
 
 get_pool_info <- function() {

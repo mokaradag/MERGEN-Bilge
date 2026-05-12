@@ -168,32 +168,37 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
 }
 
 # --- TÜRKÇE MOJIBAKE ONARIM YARDIMCILARI ---
-# Windows ortam değişkenlerinden gelen klasik UTF-8 bozulmalarını düzeltir.
-# Bu onarım yalnızca ortam değişkeni okuma sınırında uygulanır.
+# Ana onarım yolu R/utils_text_encoding.R içindeki ortak yardımcıdır.
+# Buradaki küçük tablo yalnızca çok erken yükleme veya test izolasyonu sırasında
+# ortak yardımcı henüz yoksa devreye giren savunmacı yedektir.
 
-.build_mojibake_pair <- function(bad_codepoints, good_codepoints) {
+.path_text_encoding_helper_available <- function() {
+  exists("normalize_text_utf8", mode = "function", inherits = TRUE)
+}
+
+.build_fallback_mojibake_pair <- function(bad_codepoints, good_codepoints) {
   list(
     bad = paste0(vapply(bad_codepoints, intToUtf8, character(1), USE.NAMES = FALSE), collapse = ""),
     good = paste0(vapply(good_codepoints, intToUtf8, character(1), USE.NAMES = FALSE), collapse = "")
   )
 }
 
-.get_turkish_mojibake_pairs <- function() {
+.get_fallback_turkish_mojibake_pairs <- function() {
   list(
-    .build_mojibake_pair(c(195L, 188L), c(252L)),   # Ã¼ -> ü
-    .build_mojibake_pair(c(195L, 156L), c(220L)),   # Ãœ -> Ü
-    .build_mojibake_pair(c(195L, 182L), c(246L)),   # Ã¶ -> ö
-    .build_mojibake_pair(c(195L, 150L), c(214L)),   # Ã– -> Ö
-    .build_mojibake_pair(c(195L, 167L), c(231L)),   # Ã§ -> ç
-    .build_mojibake_pair(c(195L, 135L), c(199L)),   # Ã‡ -> Ç
-    .build_mojibake_pair(c(196L, 177L), c(305L)),   # Ä± -> ı
-    .build_mojibake_pair(c(196L, 176L), c(304L)),   # Ä° -> İ
-    .build_mojibake_pair(c(197L, 376L), c(351L)),   # ÅŸ -> ş
-    .build_mojibake_pair(c(197L, 382L), c(350L)),   # Åž -> Ş
-    .build_mojibake_pair(c(196L, 376L), c(287L)),   # ÄŸ -> ğ
-    .build_mojibake_pair(c(196L, 382L), c(286L)),   # Äž -> Ğ
-    .build_mojibake_pair(c(194L, 160L), c(32L)),    # NBSP -> boşluk
-    .build_mojibake_pair(c(194L), integer(0))       # Yalnız kalan Â -> sil
+    .build_fallback_mojibake_pair(c(195L, 188L), c(252L)),
+    .build_fallback_mojibake_pair(c(195L, 156L), c(220L)),
+    .build_fallback_mojibake_pair(c(195L, 182L), c(246L)),
+    .build_fallback_mojibake_pair(c(195L, 150L), c(214L)),
+    .build_fallback_mojibake_pair(c(195L, 167L), c(231L)),
+    .build_fallback_mojibake_pair(c(195L, 135L), c(199L)),
+    .build_fallback_mojibake_pair(c(196L, 177L), c(305L)),
+    .build_fallback_mojibake_pair(c(196L, 176L), c(304L)),
+    .build_fallback_mojibake_pair(c(197L, 376L), c(351L)),
+    .build_fallback_mojibake_pair(c(197L, 382L), c(350L)),
+    .build_fallback_mojibake_pair(c(196L, 376L), c(287L)),
+    .build_fallback_mojibake_pair(c(196L, 382L), c(286L)),
+    .build_fallback_mojibake_pair(c(194L, 160L), c(32L)),
+    .build_fallback_mojibake_pair(c(194L), integer(0))
   )
 }
 
@@ -203,7 +208,13 @@ path_has_turkish_mojibake <- function(path) {
     return(FALSE)
   }
 
-  pairs <- .get_turkish_mojibake_pairs()
+  if (.path_text_encoding_helper_available()) {
+    repaired <- normalize_text_utf8(val, repair_mojibake = TRUE)
+    marked <- normalize_text_utf8(val, repair_mojibake = FALSE)
+    return(!identical(repaired, marked))
+  }
+
+  pairs <- .get_fallback_turkish_mojibake_pairs()
   any(vapply(pairs, function(pair) grepl(pair$bad, val, fixed = TRUE), logical(1)))
 }
 
@@ -213,8 +224,12 @@ repair_turkish_mojibake_path <- function(path) {
     return(val)
   }
 
+  if (.path_text_encoding_helper_available()) {
+    return(normalize_text_utf8(val, repair_mojibake = TRUE))
+  }
+
   fixed <- val
-  pairs <- .get_turkish_mojibake_pairs()
+  pairs <- .get_fallback_turkish_mojibake_pairs()
 
   for (pair in pairs) {
     fixed <- gsub(pair$bad, pair$good, fixed, fixed = TRUE)

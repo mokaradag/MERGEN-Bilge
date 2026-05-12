@@ -36,6 +36,13 @@ test_that("storage prefix temiz dosya adına geri çevrilir", {
 
   expect_equal(
     recover_display_name_from_storage_name(
+      "20260505-120545_ebb4c864d62182e6_Ã§alÄ±ÅŸma_Ã¶zet_Ä°ÅŸ.xlsx"
+    ),
+    "çalışma_özet_İş.xlsx"
+  )
+
+  expect_equal(
+    recover_display_name_from_storage_name(
       "20260505120545_1234_rapor.pdf"
     ),
     "rapor.pdf"

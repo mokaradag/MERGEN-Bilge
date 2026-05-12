@@ -53,6 +53,20 @@ test_that("normalize_db_value karakter vektörlerinde uzunluğu ve NA konumunu k
   }
 })
 
+test_that("normalize_db_value isteğe bağlı mojibake onarımı yapar", {
+  mojibake <- "Ã‡alÄ±ÅŸma Ã¶zeti ðŸš€"
+
+  expect_equal(
+    normalize_db_value(mojibake, repair_mojibake = TRUE),
+    "Çalışma özeti 🚀"
+  )
+
+  expect_identical(
+    normalize_db_value(mojibake, repair_mojibake = FALSE),
+    mojibake
+  )
+})
+
 test_that("normalize_db_params liste yapısını ve sıra bilgisini korur", {
   params <- list(
     "İstanbul",

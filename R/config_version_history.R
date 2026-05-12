@@ -42,7 +42,13 @@ get_version_history <- function() {
   }
 
   for (line in lines) {
-    trimmed <- enc2utf8(trimws(line))
+    trimmed <- trimws(line)
+
+    if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      trimmed <- normalize_text_utf8(trimmed, repair_mojibake = TRUE)
+    } else {
+      trimmed <- enc2utf8(trimmed)
+    }
 
     # HTML yorum bloğu takibi
     if (grepl("<!--", trimmed)) {

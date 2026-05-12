@@ -270,7 +270,7 @@
 
     // JSON parçasını biriktir
     var currentJson = lastBlock.getAttribute('data-input-json') || '';
-    currentJson += (data.html || '');
+    currentJson += normalizeMojibakeText(data.html || '');
     lastBlock.setAttribute('data-input-json', currentJson);
 
     // Komutu canlı göster (JSON tamamlanmamış olsa da)
@@ -358,7 +358,7 @@
       contentDiv.innerHTML =
         '<span class="cc-tool-path">' +
         '<i class="fas fa-file-code cc-tool-path-icon"></i> ' +
-        escapeHtml(input.path || input.file_path) +
+        escapeHtml(normalizeMojibakeText(input.path || input.file_path)) +
         '</span>';
 
     } else if (toolType === 'file_write' && (input.path || input.file_path)) {
@@ -372,10 +372,10 @@
       }
       var html = '<span class="cc-tool-path">' +
         '<i class="fas fa-pen cc-tool-path-icon"></i> ' +
-        escapeHtml(input.path || input.file_path) + '</span>';
+        escapeHtml(normalizeMojibakeText(input.path || input.file_path)) + '</span>';
 
       // Dosya içeriği önizlemesi
-      var fileContent = input.content || input.new_content || '';
+      var fileContent = normalizeMojibakeText(input.content || input.new_content || '');
       if (fileContent) {
         var lines = fileContent.split('\n');
         var preview = lines.slice(0, 10).join('\n');
@@ -402,7 +402,7 @@
       contentDiv.innerHTML =
         '<span class="cc-tool-path">' +
         '<i class="fas fa-search cc-tool-path-icon"></i> ' +
-        escapeHtml(input.pattern || input.query) + '</span>';
+        escapeHtml(normalizeMojibakeText(input.pattern || input.query)) + '</span>';
     }
     // bash komutu zaten handleToolInputDelta ile gösterildi
   }
@@ -443,11 +443,12 @@
     }
 
     // Başlık
-    var charName = data.characterName || 'Claude Code';
+    var charName = normalizeMojibakeText(data.characterName || 'Claude Code');
+    var timestamp = normalizeMojibakeText(data.timestamp || '');
     var headerHtml = '<div class="cc-message-header">' +
       '<span class="cc-message-sender" style="color:' +
       (data.accentColor || '#7C4DFF') + ';">' + charName + '</span>' +
-      '<span class="cc-message-time">' + (data.timestamp || '') + '</span>' +
+      '<span class="cc-message-time">' + timestamp + '</span>' +
       '<span class="cc-streaming-indicator"><i class="fas fa-circle-notch fa-spin"></i></span>' +
       '</div>';
 

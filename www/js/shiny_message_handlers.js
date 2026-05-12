@@ -404,12 +404,14 @@ $(document).ready(function() {
   }, 1000);
 
   Shiny.addCustomMessageHandler('removeExcelFromContext', function(msg) {
-    var filenames = msg.filenames || [];
+    msg = normalizeMessagePayload(msg || {});
+    var filenames = (msg.filenames || []).map(normalizeMessageText);
+
     filenames.forEach(function(fname) {
       var checkboxes = Array.prototype.filter.call(
         document.querySelectorAll('input.attach-checkbox[data-filename]'),
         function(cb) {
-          return cb.getAttribute('data-filename') === fname;
+          return normalizeMessageText(cb.getAttribute('data-filename')) === fname;
         }
       );
 

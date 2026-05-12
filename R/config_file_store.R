@@ -97,18 +97,24 @@ MERGEN_INDEX_PATH <- env_or_default_path(
     return(list())
   }
 
-  json_txt <- tryCatch(
-    paste(
+  json_txt <- tryCatch({
+    lines <- if (exists("read_text_lines_utf8", mode = "function", inherits = TRUE)) {
+      read_text_lines_utf8(
+        MERGEN_INDEX_PATH,
+        encodings = c("UTF-8", "WINDOWS-1254", "CP1254", "latin1"),
+        repair_mojibake = TRUE
+      )
+    } else {
       readLines(
         MERGEN_INDEX_PATH,
         warn = FALSE,
         encoding = "UTF-8",
         skipNul = TRUE
-      ),
-      collapse = "\n"
-    ),
-    error = function(e) NA_character_
-  )
+      )
+    }
+
+    paste(lines, collapse = "\n")
+  }, error = function(e) NA_character_)
 
   if (is.na(json_txt)) {
     log_warn("[INDEX] İndeks dosyası UTF-8 olarak okunamadı; boş listeye düşülüyor.")
