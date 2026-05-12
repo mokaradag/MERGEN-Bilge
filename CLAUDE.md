@@ -224,6 +224,73 @@ Focused validation:
 - `Sys.setenv(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE")`
 - `source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")`
 
+### Bilge Yolaç Claude Code execution security contract
+
+Bilge Yolaç wraps Claude Code CLI inside the Shiny UI. This is a security-sensitive and UX-sensitive boundary. Keep CLI argument construction, workdir validation, dangerous-mode decisions, and generated-file staging centralized in `R/helpers_claude_code_security_policy.R` and the existing Claude Code helper layer. Do not scatter ad hoc permission checks or CLI flags across modules.
+
+Current execution contract:
+
+- `--dangerously-skip-permissions` must remain off by default.
+- Dangerous permission bypass may only be enabled through the central policy and an explicit admin/development override such as `CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS=TRUE`.
+- When dangerous mode is enabled, it must be logged clearly.
+- Normal UX must not require repeated Claude permission prompts for ordinary in-workdir read/write/edit tasks.
+- The safe default is `--permission-mode acceptEdits`.
+- Default extra allowed tools are `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep`, and `LS`.
+- `Bash` must not be allowed by default. Add it only through explicit configuration in controlled trusted internal development environments.
+- Do not pass policy prose to Claude as part of the user prompt.
+- Do not inject Bilge Yolaç policy text through `--append-system-prompt` unless a future change explicitly proves it is safe and updates the regression tests. The current contract is no policy/system prompt injection.
+- Preserve the exact user prompt as the final prompt argument.
+- Because `--allowedTools` and `--disallowedTools` can behave like variadic CLI flags, always place the final user prompt after a `--` argument separator. This prevents the prompt from being consumed as another tool name and avoids the Claude CLI error: “Input must be provided either through stdin or as a prompt argument when using --print.”
+- Do not remove the `--` prompt separator without updating the security policy tests and manually verifying all model tiers.
+
+Workdir and output contract:
+
+- Workdir validation belongs in the central policy helper.
+- User-selected existing workdirs may be approved for the current run when `CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS=TRUE`.
+- Workdirs must be normalized before use.
+- UNC paths, Windows paths, network shares, and Turkish-character paths should use the existing relaxed directory resolver where applicable.
+- Path traversal and unintended outside-root access must remain blocked.
+- Generated/downloadable files must be staged only when they are inside the selected workdir, runtime workdir, or an explicitly allowed output root.
+- Do not silently allow unrestricted filesystem access just to improve UX.
+- Do not regress to unconditional dangerous mode.
+
+Recommended safe environment baseline:
+
+    CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS=FALSE
+    CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS=TRUE
+    CLAUDE_CODE_PERMISSION_MODE=acceptEdits
+    CLAUDE_CODE_ALLOWED_TOOLS=Read;Write;Edit;MultiEdit;Glob;Grep;LS
+    CLAUDE_CODE_DISALLOWED_TOOLS=
+
+Protected by:
+
+- `tests/testthat/test-claude-code-security-policy-contract.R`
+- `tests/testthat/test-claude-code-process-refactor-contract.R`
+- `tests/testthat/test-claude-code-runtime-workdir-contract.R`
+- `tests/testthat/test-claude-code-workdir-scan-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-claude-code-security-policy-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-workdir-scan-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+
+Manual validation after changes to this boundary:
+
+- Open Bilge Yolaç.
+- Select a normal project folder.
+- Run a harmless code-review prompt.
+- Confirm the prompt is not swallowed by `--allowedTools`.
+- Confirm there is no `--print` missing-input error.
+- Confirm the assistant does not answer or discuss Bilge Yolaç policy text.
+- Confirm ordinary file inspection works without repeated permission prompts.
+- Ask it to create a small `.txt` or `.md` file in the selected workdir and confirm the generated download link appears.
+- Ask it to write outside the selected workdir and confirm it is rejected or fails safely.
+- Confirm logs show safe mode / `acceptEdits` and do not show dangerous mode unless explicitly enabled.
+
 ### API model configuration contract
 
 API model/endpoint/tool-mode helper logic is intentionally split from the main API configuration file.
