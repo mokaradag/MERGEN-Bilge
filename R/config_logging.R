@@ -77,6 +77,11 @@ if (isTRUE(use_console_colors)) {
 .sanitize_log_value <- function(x) {
   if (is.null(x)) return(x)
 
+  if (is.character(x) &&
+      exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
+    x <- normalize_text_for_log(x)
+  }
+
   if (!exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
     return(x)
   }

@@ -17,37 +17,15 @@ get_version_history <- function() {
 
   # Dosyayı bayt düzeyinde okuyup UTF-8'e zorla çevir.
   # Bu yaklaşım Windows + SSO oturumlarında Türkçe karakter kaybını engeller.
-  read_version_lines <- function(path) {
-    raw_size <- suppressWarnings(file.info(path)$size[1])
-    if (is.na(raw_size) || raw_size <= 0) return(character(0))
-
-    raw_content <- readBin(path, what = "raw", n = raw_size)
-
-    decode_lines <- function(from) {
-      txt <- tryCatch(
-        iconv(list(raw_content), from = from, to = "UTF-8", sub = NA_character_)[[1]],
-        error = function(e) NA_character_
-      )
-
-      if (is.na(txt) || !nzchar(txt)) return(NULL)
-
-      txt <- sub("^\ufeff", "", txt, perl = TRUE)
-      txt <- enc2utf8(txt)
-      lines <- strsplit(txt, "\r\n|\n|\r", perl = TRUE)[[1]]
-      enc2utf8(lines)
-    }
-
-    for (enc in c("UTF-8", "WINDOWS-1254", "CP1254", "latin1")) {
-      lines <- decode_lines(enc)
-      if (!is.null(lines) && length(lines) > 0) {
-        return(lines)
-      }
-    }
-
-    character(0)
+  lines <- if (exists("read_text_lines_utf8", mode = "function", inherits = TRUE)) {
+    read_text_lines_utf8(
+      md_path,
+      encodings = c("UTF-8", "WINDOWS-1254", "CP1254", "latin1"),
+      repair_mojibake = TRUE
+    )
+  } else {
+    readLines(md_path, warn = FALSE, encoding = "UTF-8")
   }
-
-  lines <- read_version_lines(md_path)
 
   versions <- list()
   current_version <- NULL

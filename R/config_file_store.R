@@ -62,6 +62,10 @@ MERGEN_INDEX_PATH <- env_or_default_path(
 # JSON zaten UTF-8'dir; enc2utf8() baytları yeniden dönüştürerek çift kodlamaya neden olur,
 # Encoding()<-"UTF-8" ise mevcut baytları olduğu gibi koruyup sadece işaretler.
 .mark_utf8 <- function(x) {
+  if (exists("mark_text_tree_utf8", mode = "function", inherits = TRUE)) {
+    return(mark_text_tree_utf8(x))
+  }
+
   if (is.character(x)) { Encoding(x) <- "UTF-8"; return(x) }
   if (is.list(x)) return(lapply(x, .mark_utf8))
   x
@@ -69,6 +73,10 @@ MERGEN_INDEX_PATH <- env_or_default_path(
 
 # Kaydetmeden önce native encoding dizeleri UTF-8'e çeviren yardımcı
 .convert_to_utf8 <- function(x) {
+  if (exists("normalize_text_tree_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_tree_utf8(x, repair_mojibake = FALSE))
+  }
+
   if (is.character(x)) return(enc2utf8(x))
   if (is.list(x)) return(lapply(x, .convert_to_utf8))
   x

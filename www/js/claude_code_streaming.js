@@ -9,319 +9,52 @@
   'use strict';
 
   // ---------------------------------------------------------------------------
-  // UTF-8 ÇİFT KODLAMA DÜZELTMESİ (MOJIBAKE FIX)
-  // Windows VM'de R/Shiny, UTF-8 baytlarını Windows-1252 olarak yorumlayıp
-  // tekrar UTF-8'e kodluyor. Örnek: ç (UTF-8: C3 A7) → Ã (C3) + § (A7).
-  // ğ gibi harfler daha karmaşık: UTF-8 C4 9F → Ä (C4) + Ÿ (0x9F→U+0178).
-  // Windows-1252'nin 0x80-0x9F aralığı Latin-1'den farklı Unicode noktalarına
-  // eşlenir, bu yüzden ters dönüşüm için özel bir tablo gerekir.
+  // ORTAK KODLAMA YARDIMCISI
+  // Asıl mojibake onarımı www/js/encoding_utils.js içindedir. Bu dosyada
+  // yalnızca Bilge Yolaç'a özgü geriye uyumlu sarmalayıcılar tutulur.
   // ---------------------------------------------------------------------------
-
-  // Windows-1252 özel aralığı: Unicode kod noktası → orijinal bayt değeri
-  // 0x80-0x9F aralığındaki baytlar Windows-1252'de farklı Unicode'lara eşlenir
-  var WIN1252_REVERSE = {};
-  (function() {
-    var map = [
-      0x20AC,0x0081,0x201A,0x0192,0x201E,0x2026,0x2020,0x2021,
-      0x02C6,0x2030,0x0160,0x2039,0x0152,0x008D,0x017D,0x008F,
-      0x0090,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,
-      0x02DC,0x2122,0x0161,0x203A,0x0153,0x009D,0x017E,0x0178
-    ];
-    for (var i = 0; i < map.length; i++) {
-      WIN1252_REVERSE[map[i]] = 0x80 + i;
-    }
-  })();
-
-  // Unicode kod noktasını Windows-1252 bayt değerine çevirir
-  function unicodeToWin1252Byte(cp) {
-    if (cp < 0x80) return cp;           // ASCII: aynı
-    if (cp >= 0xA0 && cp <= 0xFF) return cp; // Latin-1 supplement: aynı
-    if (WIN1252_REVERSE[cp] !== undefined) return WIN1252_REVERSE[cp];
-    return -1; // Bu karakter Windows-1252'de yok → mojibake değil
+  function getEncodingHelper() {
+    return window.MergenEncoding || {};
   }
 
   function fixMojibake(text) {
-    if (!text || typeof text !== 'string') return text;
-
-    // Baytlara dönüştür (Windows-1252 Unicode → orijinal bayt)
-    var bytes = [];
-    for (var i = 0; i < text.length; i++) {
-      var b = unicodeToWin1252Byte(text.charCodeAt(i));
-      if (b < 0) return text; // Windows-1252 dışı karakter → mojibake değil
-      bytes.push(b);
+    var helper = getEncodingHelper();
+    if (typeof helper.fixMojibake === 'function') {
+      return helper.fixMojibake(text);
     }
-
-    // ASCII-only metin ise dönüşüm gereksiz
-    var hasHighByte = false;
-    for (var j = 0; j < bytes.length; j++) {
-      if (bytes[j] >= 0x80) { hasHighByte = true; break; }
-    }
-    if (!hasHighByte) return text;
-
-    try {
-      var decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
-      // Başarılı ve farklı ise kullan (replacement char U+FFFD yoksa)
-      if (decoded.indexOf('\uFFFD') === -1 && decoded !== text) {
-        return decoded;
-      }
-    } catch (e) {}
     return text;
   }
 
-  // Diğer JS dosyalarından erişim için global yap
-  window.ccFixMojibake = fixMojibake;
-  window.ccFixMojibakeText = fixMojibakeText;
-
-  // HTML içindeki metin düğümlerindeki mojibake'yi düzelt
-  // HTML etiketlerine dokunmaz, sadece metin kısımlarını düzeltir
-  function fixHtmlMojibake(html) {
-    if (!html || typeof html !== 'string') return html;
-    // HTML etiketlerini koruyarak sadece metin kısımlarını düzelt
-    return html.replace(/>([^<]+)</g, function(match, textContent) {
-      var fixed = fixMojibake(textContent);
-      fixed = fixMojibakeText(fixed);
-      return '>' + fixed + '<';
-    });
+  function fixMojibakeText(text) {
+    var helper = getEncodingHelper();
+    if (typeof helper.fixMojibakeText === 'function') {
+      return helper.fixMojibakeText(text);
+    }
+    return text;
   }
 
-  // ---------------------------------------------------------------------------
-  // KABUK GÖRÜNÜRLÜĞÜ DURUMU
-  // Kullanıcının kabuk komutlarını gizleyip gizlemediğini takip eder.
-  // ---------------------------------------------------------------------------
-  var shellVisible = true;
+  function normalizeMojibakeText(text) {
+    var helper = getEncodingHelper();
+    if (typeof helper.normalizeText === 'function') {
+      return helper.normalizeText(text);
+    }
+    return fixMojibakeText(fixMojibake(text));
+  }
 
-  // ---------------------------------------------------------------------------
-  // MOJIBAKE DÜZELTME HARİTASI
-  // Türkçe karakter ve sık görülen emoji bozulmalarını düzeltir.
-  // ---------------------------------------------------------------------------
-  var MOJIBAKE_MAP = {
-    "Ã§": "\u00E7",
-    "Ã‡": "\u00C7",
-    "Ã¶": "\u00F6",
-    "Ã–": "\u00D6",
-    "Ã¼": "\u00FC",
-    "Ãœ": "\u00DC",
-    "Ä±": "\u0131",
-    "Ä°": "\u0130",
-    "ÄŸ": "\u011F",
-    "Äž": "\u011E",
-    "ÅŸ": "\u015F",
-    "Åž": "\u015E",
+  // Eski çağrı noktaları için global isimleri koru.
+  window.ccFixMojibake = window.ccFixMojibake || fixMojibake;
+  window.ccFixMojibakeText = window.ccFixMojibakeText || fixMojibakeText;
 
-    "â€™": "\u2019",
-    "â€˜": "\u2018",
-    "â€œ": "\u201C",
-    "â€": "\u201D",
-    "â€“": "\u2013",
-    "â€”": "\u2014",
-    "â€¦": "\u2026",
-    "â€¢": "\u2022",
-    "â—": "\u25CF",
-    "Â©": "\u00A9",
-    "Â®": "\u00AE",
-    "Â°": "\u00B0",
-    "Â±": "\u00B1",
-    "Â·": "\u00B7",
-    "Â ": " ",
-    "Â": "",
+  function fixHtmlMojibake(html) {
+    var helper = getEncodingHelper();
+    if (typeof helper.fixHtmlTextMojibake === 'function') {
+      return helper.fixHtmlTextMojibake(html);
+    }
 
-    "ğŸ“Œ": "\uD83D\uDCCC",
-    "ðŸ“Œ": "\uD83D\uDCCC",
-    "ğŸ“": "\uD83D\uDCCD",
-    "ðŸ“": "\uD83D\uDCCD",
-    "ğŸ“Ž": "\uD83D\uDCCE",
-    "ðŸ“Ž": "\uD83D\uDCCE",
-    "ğŸ“": "\uD83D\uDCC1",
-    "ðŸ“": "\uD83D\uDCC1",
-    "ğŸ“‚": "\uD83D\uDCC2",
-    "ðŸ“‚": "\uD83D\uDCC2",
-    "ğŸ“„": "\uD83D\uDCC4",
-    "ðŸ“„": "\uD83D\uDCC4",
-    "ğŸ“‹": "\uD83D\uDCCB",
-    "ðŸ“‹": "\uD83D\uDCCB",
-    "ğŸ“": "\uD83D\uDCDD",
-    "ðŸ“": "\uD83D\uDCDD",
-    "ğŸ“Š": "\uD83D\uDCCA",
-    "ðŸ“Š": "\uD83D\uDCCA",
-    "ğŸ“ˆ": "\uD83D\uDCC8",
-    "ðŸ“ˆ": "\uD83D\uDCC8",
-    "ğŸ“‰": "\uD83D\uDCC9",
-    "ðŸ“‰": "\uD83D\uDCC9",
-    "ğŸ“¦": "\uD83D\uDCE6",
-    "ðŸ“¦": "\uD83D\uDCE6",
-    "ğŸ“¬": "\uD83D\uDCEC",
-    "ðŸ“¬": "\uD83D\uDCEC",
-    "ğŸ“­": "\uD83D\uDCED",
-    "ðŸ“­": "\uD83D\uDCED",
-    "ğŸ“ž": "\uD83D\uDCDE",
-    "ðŸ“ž": "\uD83D\uDCDE",
-    "ğŸ“±": "\uD83D\uDCF1",
-    "ðŸ“±": "\uD83D\uDCF1",
-    "ğŸ“§": "\uD83D\uDCE7",
-    "ðŸ“§": "\uD83D\uDCE7",
-    "ğŸ“¨": "\uD83D\uDCE8",
-    "ðŸ“¨": "\uD83D\uDCE8",
-    "ğŸ“©": "\uD83D\uDCE9",
-    "ðŸ“©": "\uD83D\uDCE9",
-    "ğŸ“¤": "\uD83D\uDCE4",
-    "ðŸ“¤": "\uD83D\uDCE4",
-    "ğŸ“¥": "\uD83D\uDCE5",
-    "ðŸ“¥": "\uD83D\uDCE5",
-
-    "ğŸ”": "\uD83D\uDD0D",
-    "ðŸ”": "\uD83D\uDD0D",
-    "ğŸ”Ž": "\uD83D\uDD0E",
-    "ðŸ”Ž": "\uD83D\uDD0E",
-    "ğŸ”§": "\uD83D\uDD27",
-    "ðŸ”§": "\uD83D\uDD27",
-    "ğŸ”¨": "\uD83D\uDD28",
-    "ðŸ”¨": "\uD83D\uDD28",
-    "ğŸ”¥": "\uD83D\uDD25",
-    "ðŸ”¥": "\uD83D\uDD25",
-    "ğŸ”’": "\uD83D\uDD12",
-    "ðŸ”’": "\uD83D\uDD12",
-    "ğŸ”“": "\uD83D\uDD13",
-    "ðŸ”“": "\uD83D\uDD13",
-    "ğŸ”": "\uD83D\uDD10",
-    "ðŸ”": "\uD83D\uDD10",
-    "ğŸ”‘": "\uD83D\uDD11",
-    "ðŸ”‘": "\uD83D\uDD11",
-    "ğŸ””": "\uD83D\uDD14",
-    "ðŸ””": "\uD83D\uDD14",
-    "ğŸ”•": "\uD83D\uDD15",
-    "ðŸ”•": "\uD83D\uDD15",
-    "ğŸ””": "\uD83D\uDD14",
-    "ðŸ””": "\uD83D\uDD14",
-    "ğŸ”„": "\uD83D\uDD04",
-    "ðŸ”„": "\uD83D\uDD04",
-    "ğŸ”": "\uD83D\uDD01",
-    "ðŸ”": "\uD83D\uDD01",
-    "ğŸ”ƒ": "\uD83D\uDD03",
-    "ðŸ”ƒ": "\uD83D\uDD03",
-    "ğŸ”™": "\uD83D\uDD19",
-    "ðŸ”™": "\uD83D\uDD19",
-    "ğŸ”š": "\uD83D\uDD1A",
-    "ðŸ”š": "\uD83D\uDD1A",
-    "ğŸ”›": "\uD83D\uDD1B",
-    "ðŸ”›": "\uD83D\uDD1B",
-    "ğŸ”œ": "\uD83D\uDD1C",
-    "ðŸ”œ": "\uD83D\uDD1C",
-
-    "ğŸ’¡": "\uD83D\uDCA1",
-    "ðŸ’¡": "\uD83D\uDCA1",
-    "ğŸ’¥": "\uD83D\uDCA5",
-    "ðŸ’¥": "\uD83D\uDCA5",
-    "ğŸ’£": "\uD83D\uDCA3",
-    "ðŸ’£": "\uD83D\uDCA3",
-    "ğŸ’°": "\uD83D\uDCB0",
-    "ðŸ’°": "\uD83D\uDCB0",
-    "ğŸ’¸": "\uD83D\uDCB8",
-    "ðŸ’¸": "\uD83D\uDCB8",
-    "ğŸ’¬": "\uD83D\uDCAC",
-    "ðŸ’¬": "\uD83D\uDCAC",
-    "ğŸ’­": "\uD83D\uDCAD",
-    "ðŸ’­": "\uD83D\uDCAD",
-    "ğŸ’¯": "\uD83D\uDCAF",
-    "ðŸ’¯": "\uD83D\uDCAF",
-    "ğŸ’ª": "\uD83D\uDCAA",
-    "ðŸ’ª": "\uD83D\uDCAA",
-    "ğŸ’»": "\uD83D\uDCBB",
-    "ðŸ’»": "\uD83D\uDCBB",
-    "ğŸ’¼": "\uD83D\uDCBC",
-    "ðŸ’¼": "\uD83D\uDCBC",
-
-    "ğŸš€": "\uD83D\uDE80",
-    "ðŸš€": "\uD83D\uDE80",
-    "ğŸš¨": "\uD83D\uDEA8",
-    "ðŸš¨": "\uD83D\uDEA8",
-    "ğŸš§": "\uD83D\uDEA7",
-    "ðŸš§": "\uD83D\uDEA7",
-    "ğŸš«": "\uD83D\uDEAB",
-    "ðŸš«": "\uD83D\uDEAB",
-    "ğŸš©": "\uD83D\uDEA9",
-    "ðŸš©": "\uD83D\uDEA9",
-    "ğŸšª": "\uD83D\uDEAA",
-    "ðŸšª": "\uD83D\uDEAA",
-    "ğŸ›‘": "\uD83D\uDED1",
-    "ðŸ›‘": "\uD83D\uDED1",
-    "ğŸ› ë¸": "\uD83D\uDEE1\uFE0F",
-    "ðŸ› ë¸": "\uD83D\uDEE1\uFE0F",
-    "ğŸ›¡ï¸": "\uD83D\uDEE1\uFE0F",
-    "ðŸ›¡ï¸": "\uD83D\uDEE1\uFE0F",
-    "ğŸ›¡️": "\uD83D\uDEE1\uFE0F",
-    "ðŸ›¡️": "\uD83D\uDEE1\uFE0F",
-
-    "ğŸ›": "\uD83D\uDC1B",
-    "ðŸ›": "\uD83D\uDC1B",
-    "ğŸ": "\uD83D\uDC0D",
-    "ðŸ": "\uD83D\uDC0D",
-    "ğŸ¬": "\uD83D\uDC2C",
-    "ðŸ¬": "\uD83D\uDC2C",
-    "ğŸ³": "\uD83D\uDC33",
-    "ðŸ³": "\uD83D\uDC33",
-    "ğŸº": "\uD83D\uDC3A",
-    "ðŸº": "\uD83D\uDC3A",
-
-    "âš¡": "\u26A1",
-    "âœ…": "\u2705",
-    "âŒ": "\u274C",
-    "â—": "\u2757",
-    "â•": "\u2755",
-    "â“": "\u2753",
-    "â”": "\u2754",
-    "âœ”": "\u2714",
-    "âœ–": "\u2716",
-    "âœ¨": "\u2728",
-    "â˜…": "\u2605",
-    "â˜†": "\u2606",
-    "â˜…ï¸": "\u2605",
-    "â˜Ž": "\u260E",
-    "â˜‘": "\u2611",
-    "â˜": "\u2610",
-    "â˜’": "\u2612",
-    "â˜…": "\u2605",
-    "â˜…": "\u2605",
-    "âš ": "\u26A0",
-    "âš ï¸": "\u26A0\uFE0F",
-    "â˜…": "\u2605",
-    "â˜…": "\u2605",
-    "âœˆ": "\u2708",
-    "âœˆï¸": "\u2708\uFE0F",
-    "âœ‰": "\u2709",
-    "âœ‰ï¸": "\u2709\uFE0F",
-    "â˜": "\u2601",
-    "â˜€": "\u2600",
-    "â˜€ï¸": "\u2600\uFE0F",
-    "â˜": "\u2602",
-    "â˜‚ï¸": "\u2602\uFE0F",
-    "â˜ƒ": "\u2603",
-    "â˜ƒï¸": "\u2603\uFE0F",
-
-    "ï¸": "\uFE0F"
-  };
-
-  function fixMojibakeText(text) {
-    if (!text) return text;
-
-    var out = String(text);
-    Object.keys(MOJIBAKE_MAP)
-      .sort(function(a, b) { return b.length - a.length; })
-      .forEach(function(bad) {
-        out = out.split(bad).join(MOJIBAKE_MAP[bad]);
-      });
-
-    // Büyük/küçük Ş için birleşik karakter varyasyonlarını toparla
-    out = out
-      .replace(/S\u0327/g, '\u015E')
-      .replace(/s\u0327/g, '\u015F')
-      .replace(/S\u0326/g, '\u015E')
-      .replace(/s\u0326/g, '\u015F');
-
-    try {
-      out = out.normalize('NFC');
-    } catch (e) {}
-
-    return out;
+    if (!html || typeof html !== 'string') return html;
+    return html.replace(/>([^<]+)</g, function(match, textContent) {
+      return '>' + normalizeMojibakeText(textContent) + '<';
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -437,7 +170,7 @@
     // HTML parçasını ekle
     if (data.html) {
       var wrapper = document.createElement('div');
-      wrapper.innerHTML = data.html;
+      wrapper.innerHTML = fixHtmlMojibake(data.html);
       var block = wrapper.firstElementChild;
       if (block) {
         // Kabuk gizleme durumu aktifse bloğu gizle
@@ -499,7 +232,7 @@
     var resultDiv = block.querySelector('.cc-tool-result');
     if (resultDiv && data.html) {
       resultDiv.classList.remove('cc-tool-result-pending');
-      resultDiv.innerHTML = data.html;
+      resultDiv.innerHTML = fixHtmlMojibake(data.html);
     }
   }
 
@@ -514,7 +247,7 @@
 
     // Ham metni biriktir (mojibake varsa düzelt)
     var currentText = body.getAttribute('data-raw-text') || '';
-    currentText += fixMojibake(data.html || '');
+    currentText += normalizeMojibakeText(data.html || '');
     body.setAttribute('data-raw-text', currentText);
 
     // Basit metin olarak göster (son biçimleme cc-stream-end ile yapılır)
@@ -685,7 +418,7 @@
 
     // Metni birikimli olarak ekle
     var currentText = body.getAttribute('data-raw-text') || '';
-    currentText += fixMojibake(data.html || '');
+    currentText += normalizeMojibakeText(data.html || '');
     body.setAttribute('data-raw-text', currentText);
 
     body.innerHTML = simpleMarkdownToHtml(currentText);

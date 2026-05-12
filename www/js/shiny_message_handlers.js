@@ -3,6 +3,22 @@
 
 $(document).ready(function() {
 
+  function normalizeMessagePayload(value) {
+    if (window.MergenEncoding &&
+        typeof window.MergenEncoding.normalizePayload === 'function') {
+      return window.MergenEncoding.normalizePayload(value);
+    }
+    return value;
+  }
+
+  function normalizeMessageText(value) {
+    if (window.MergenEncoding &&
+        typeof window.MergenEncoding.normalizeText === 'function') {
+      return window.MergenEncoding.normalizeText(value == null ? '' : String(value));
+    }
+    return value == null ? '' : String(value);
+  }
+
   function updateNamedTimestamp(data) {
     if (!data || !data.time) return;
 
@@ -21,7 +37,7 @@ $(document).ready(function() {
     }
 
     if (el) {
-      el.textContent = 'Son Güncelleme: ' + data.time;
+      el.textContent = 'Son Güncelleme: ' + normalizeMessageText(data.time);
     }
   }
 
@@ -31,7 +47,7 @@ $(document).ready(function() {
 
   Shiny.addCustomMessageHandler('showToast', function(data) {
     if (typeof window.showToast === 'function') {
-      window.showToast(data.message, data.type || 'info');
+      window.showToast(normalizeMessageText(data.message), data.type || 'info');
     }
   });
 
@@ -125,7 +141,7 @@ $(document).ready(function() {
 
 	  followups = followups
 		.map(function(q) {
-		  return q == null ? '' : String(q).trim();
+		  return normalizeMessageText(q).trim();
 		})
 		.filter(function(q) {
 		  return q.length > 0;
@@ -314,6 +330,7 @@ $(document).ready(function() {
 
   Shiny.addCustomMessageHandler('saveCurrentChat', function(messages) {
     try {
+      messages = normalizeMessagePayload(messages);
       if (messages && messages.length > 0) {
         localStorage.setItem('mergen_current_chat', JSON.stringify(messages));
       }
@@ -355,7 +372,7 @@ $(document).ready(function() {
           if (wrapper) {
             const id = wrapper.id.replace('message_wrapper_', '');
             const type = msg.classList.contains('user-message') ? 'user' : 'ai';
-            const content = msg.textContent || '';
+            const content = normalizeMessageText(msg.textContent || '');
             
             messageData.push({ id: id, type: type, content: content });
           }
@@ -376,7 +393,7 @@ $(document).ready(function() {
     try {
       const savedChat = localStorage.getItem('mergen_current_chat');
       if (savedChat) {
-        const messages = JSON.parse(savedChat);
+        const messages = normalizeMessagePayload(JSON.parse(savedChat));
         if (messages && messages.length > 0) {
           Shiny.setInputValue('load_chat_from_storage', messages, { priority: 'event' });
         }

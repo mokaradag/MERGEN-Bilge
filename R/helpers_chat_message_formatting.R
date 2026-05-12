@@ -182,6 +182,11 @@ db_message_format_row <- function(row) {
   content_text <- row$MessageContent %||% ""
   msg_type <- row$MessageType %||% "user"
 
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    content_text <- normalize_text_utf8(content_text, repair_mojibake = TRUE)
+    msg_type <- normalize_text_utf8(msg_type, repair_mojibake = FALSE)
+  }
+
   content_text <- trimws(content_text)
 
   is_image_message <- grepl("^\\[GÖRSEL", content_text, perl = TRUE)
@@ -248,17 +253,21 @@ db_message_format_row <- function(row) {
         length(rc_val) == 1 &&
         !is.na(rc_val) &&
         nzchar(rc_val)) {
-      reasoning_text_saved <- as.character(rc_val)
+      reasoning_text_saved <- if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+        normalize_text_utf8(as.character(rc_val), repair_mojibake = TRUE)
+      } else {
+        as.character(rc_val)
+      }
     }
   }
 
   base_msg <- list(
     id = as.character(row$MessageID),
     db_id = as.integer(row$MessageID),
-    content = row$MessageContent,
+    content = content_text,
     html_content = processed$html,
     has_code = processed$has_code,
-    type = row$MessageType,
+    type = msg_type,
     timestamp = format(timestamp_val, "%d.%m.%Y - %H:%M", tz = ts_tz)
   )
 

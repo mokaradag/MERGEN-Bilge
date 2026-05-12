@@ -86,6 +86,10 @@ load_chats_preview_from_db <- function(user_id, limit = 30L) {
     params = normalize_db_params(list(safe_user_id))
   )
 
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    preview_data <- normalize_text_frame_utf8(preview_data, repair_mojibake = TRUE)
+  }
+
   if (nrow(preview_data) == 0) return(list())
 
   chat_ids <- as.character(preview_data$ChatID)
@@ -148,6 +152,10 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
       params = normalize_db_params(list(safe_user_id))
     )
 
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      summary_data <- normalize_text_frame_utf8(summary_data, repair_mojibake = TRUE)
+    }
+
     if (nrow(summary_data) == 0) return(list())
 
     unique_chat_ids <- as.character(summary_data$ChatID)
@@ -203,6 +211,10 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     query_legacy,
     params = normalize_db_params(list(safe_user_id))
   )
+
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    all_data <- normalize_text_frame_utf8(all_data, repair_mojibake = TRUE)
+  }
 
   if (nrow(all_data) == 0) return(list())
 
@@ -326,6 +338,10 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
     params = query_params
   )
 
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    chat_df <- normalize_text_frame_utf8(chat_df, repair_mojibake = TRUE)
+  }
+
   if (nrow(chat_df) == 0) {
     return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
   }
@@ -423,6 +439,10 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
     query_legacy,
     params = normalize_db_params(param_values)
   )
+
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
+  }
 
   if (nrow(result) == 0) {
     empty <- stats::setNames(vector("list", length(ids)), ids)
@@ -589,6 +609,10 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
     query,
     params = normalize_db_params(param_values)
   )
+
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
+  }
 
   if (nrow(result) == 0) {
     empty <- stats::setNames(vector("list", length(ids)), ids)

@@ -66,6 +66,12 @@
   test_env$claude_code_config <- list(default_workdir = "")
 
   source(
+    file.path(repo_root, "R", "utils_text_encoding.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  source(
     file.path(repo_root, "R", "helpers_claude_code_process.R"),
     encoding = "UTF-8",
     local = test_env
@@ -145,6 +151,10 @@ test_that("Claude Code process helper temel davranışları korunur", {
 
   expect_equal(test_env$ensure_utf8("abc"), "abc")
   expect_equal(test_env$escape_non_ascii("abc"), "abc")
+  expect_equal(
+    test_env$ensure_utf8("Ã§ ÄŸ Ä± Ä° Ã¶ ÅŸ Ã¼"),
+    "ç ğ ı İ ö ş ü"
+  )
 
   expect_false(test_env$is_windows_unc_path("/tmp/test"))
 

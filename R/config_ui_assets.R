@@ -136,6 +136,7 @@ ui_asset_js_groups <- list(
   ),
   critical = c(
     "js/utils.js",
+    "js/encoding_utils.js",
     "js/shiny_message_handlers.js",
     "js/ui_init.js",
     "js/input_handlers.js",
@@ -304,6 +305,9 @@ ui_asset_js_order_rules <- list(
   c("lib/threejs/LuminosityHighPassShader.js", "lib/threejs/UnrealBloomPass.js"),
 
   c("js/sso_auth.js", "js/utils.js"),
+  c("js/utils.js", "js/encoding_utils.js"),
+  c("js/encoding_utils.js", "js/shiny_message_handlers.js"),
+  c("js/encoding_utils.js", "js/claude_code_streaming.js"),
   c("js/utils.js", "js/input_handlers.js"),
   c("js/input_handlers.js", "js/app_core.js"),
 

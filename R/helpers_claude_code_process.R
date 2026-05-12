@@ -91,21 +91,14 @@ escape_non_ascii <- function(metin) {
 #' @return UTF-8 etiketli metin
 ensure_utf8 <- function(metin) {
   if (is.null(metin) || !length(metin)) return(metin)
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(metin, repair_mojibake = TRUE))
+  }
+
   metin <- as.character(metin)
-
-  kodlamalar <- Encoding(metin)
-  if (all(kodlamalar == "UTF-8")) return(metin)
-
-  test <- iconv(metin, from = "UTF-8", to = "UTF-8")
-  gecerli_utf8 <- !is.na(test)
-
-  sonuc <- metin
-  if (any(gecerli_utf8)) {
-    Encoding(sonuc[gecerli_utf8]) <- "UTF-8"
-  }
-  if (any(!gecerli_utf8)) {
-    sonuc[!gecerli_utf8] <- enc2utf8(metin[!gecerli_utf8])
-  }
+  sonuc <- tryCatch(enc2utf8(metin), error = function(e) metin)
+  sonuc[is.na(metin)] <- NA_character_
   sonuc
 }
 
@@ -251,6 +244,7 @@ parse_claude_code_json_output <- function(ham_cikti) {
   arac_girdi_tamponlari <- list()
 
   for (satir in satirlar) {
+    satir <- ensure_utf8(satir)
     satir <- trimws(satir)
     if (!nzchar(satir)) next
 

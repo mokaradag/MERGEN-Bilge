@@ -82,11 +82,18 @@ recover_display_name_from_storage_name <- function(file_path) {
     cleaned <- sub(pattern, "", base_name, perl = TRUE)
 
     if (nzchar(cleaned) && !identical(cleaned, base_name)) {
-      return(cleaned)
+      if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+        return(normalize_text_utf8(cleaned, repair_mojibake = TRUE))
+      }
+      return(enc2utf8(cleaned))
     }
   }
 
-  base_name
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(base_name, repair_mojibake = TRUE))
+  }
+
+  enc2utf8(base_name)
 }
 
 repair_index_display_names_from_path <- function() {
@@ -205,8 +212,18 @@ mergen_register_uploaded_file <- function(src_path,
     }
   }
 
-  key <- tolower(basename(as_name))
-  entry <- list(path = enc2utf8(dest_norm), display = enc2utf8(basename(as_name)))
+  display_name <- basename(as_name)
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    display_name <- normalize_text_utf8(display_name, repair_mojibake = TRUE)
+    dest_norm <- normalize_text_utf8(dest_norm, repair_mojibake = FALSE)
+  } else {
+    display_name <- enc2utf8(display_name)
+    dest_norm <- enc2utf8(dest_norm)
+  }
+
+  key <- tolower(display_name)
+  entry <- list(path = dest_norm, display = display_name)
 
   .file_store_mutate_index(function(idx) {
     if (!is.null(user_id)) {

@@ -24,12 +24,16 @@ normalize_db_value <- function(x) {
     return(x)
   }
 
-  out_utf8 <- tryCatch(
-    enc2utf8(x),
-    error = function(e) x
-  )
+  out_utf8 <- if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    normalize_text_utf8(x, repair_mojibake = FALSE)
+  } else {
+    tryCatch(
+      enc2utf8(x),
+      error = function(e) x
+    )
+  }
 
-  out_utf8[is.na(x)] <- NA_character_
+  out_utf8[is.na(x)] <- NA_character__
 
   if (isTRUE(l10n_info()[["UTF-8"]])) {
     return(out_utf8)

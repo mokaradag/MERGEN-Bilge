@@ -16,6 +16,10 @@ create_new_chat_in_db <- function(user_id, initial_title = "Yeni Söyleşi") {
   
   # ADDED: Input validation
   validate_chat_title(initial_title)
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    initial_title <- normalize_text_utf8(initial_title, repair_mojibake = FALSE)
+  }
   
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -105,6 +109,11 @@ save_message_to_db <- function(chat_id, msg) {
   # Validate message content
   validate_message_content(msg$content)
 
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    msg$content <- normalize_text_utf8(msg$content, repair_mojibake = FALSE)
+    msg$type <- normalize_text_utf8(msg$type, repair_mojibake = FALSE)
+  }
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
@@ -113,6 +122,10 @@ save_message_to_db <- function(chat_id, msg) {
   # sütununda saklanır. Sütun yoksa (eski şema) sessizce yalnızca eski
   # alanlar yazılır; böylece geriye dönük uyumluluk korunur.
   reasoning_content <- msg$reasoning_content %||% msg$reasoning_trace
+  if (!is.null(reasoning_content) &&
+      exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    reasoning_content <- normalize_text_utf8(reasoning_content, repair_mojibake = FALSE)
+  }
   if (is.null(reasoning_content) || !nzchar(reasoning_content)) {
     reasoning_content <- NA_character_
   }
@@ -201,9 +214,14 @@ save_message_safely <- function(chat_id, message, user_id = NULL) {
       user_id = user_id,
       error = e$message
     )
-    cat(jsonlite::toJSON(log_entry, auto_unbox = TRUE), 
-        "\n", 
-        file = log_file, 
+    log_json <- as.character(jsonlite::toJSON(log_entry, auto_unbox = TRUE))
+    if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
+      log_json <- normalize_text_for_log(log_json)
+    }
+
+    cat(log_json,
+        "\n",
+        file = log_file,
         append = TRUE)
     warning(paste("Message save failed, logged to:", log_file))
     return(NULL)
@@ -298,6 +316,12 @@ worker_save_assistant_response <- function(chat_id, response_text,
                                            user_id = NULL,
                                            model_used = "<local-llm>",
                                            duration = 0.0) {
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    response_text <- normalize_text_utf8(response_text, repair_mojibake = FALSE)
+    message_type <- normalize_text_utf8(message_type, repair_mojibake = FALSE)
+    model_used <- normalize_text_utf8(model_used, repair_mojibake = FALSE)
+  }
+
   conn <- worker_db_connect()
   committed <- FALSE
 

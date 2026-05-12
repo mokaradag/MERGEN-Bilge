@@ -228,6 +228,10 @@ run_claude_code_streaming <- function(prompt,
 #' @return Liste: tip ve ilgili veriler, veya NULL
 parse_streaming_chunk <- function(satir) {
   tryCatch({
+    if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      satir <- normalize_text_utf8(satir, repair_mojibake = TRUE)
+    }
+
     nesne <- jsonlite::fromJSON(satir, simplifyVector = FALSE)
     tur <- nesne$type %||% ""
 
@@ -292,6 +296,13 @@ parse_streaming_chunk <- function(satir) {
 #' @param oturum_id Oturum kimliği (sarmalayıcıdan)
 #' @return Ayrıştırılmış parça listesi veya NULL
 parse_stream_event <- function(olay, oturum_id = NULL) {
+  normalize_stream_text <- function(value) {
+    if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      return(normalize_text_utf8(value, repair_mojibake = TRUE))
+    }
+    value
+  }
+
   olay_turu <- olay$type %||% ""
 
   if (olay_turu == "content_block_start") {
@@ -336,14 +347,14 @@ parse_stream_event <- function(olay, oturum_id = NULL) {
       # Metin parçası - anlık olarak gösterilecek
       return(list(
         tip = "text_delta",
-        icerik = delta$text %||% ""
+        icerik = normalize_stream_text(delta$text %||% "")
       ))
 
     } else if (delta_turu == "input_json_delta") {
       # Araç girdisi JSON parçası - biriktirmek gerekir
       return(list(
         tip = "tool_input_delta",
-        parcali_json = delta$partial_json %||% "",
+        parcali_json = normalize_stream_text(delta$partial_json %||% ""),
         blok_indeks = olay$index %||% 0
       ))
     }
@@ -376,7 +387,7 @@ parse_stream_event <- function(olay, oturum_id = NULL) {
     # Son sonuç
     return(list(
       tip = "result",
-      icerik = olay$result %||% "",
+      icerik = normalize_stream_text(olay$result %||% ""),
       session_id = oturum_id
     ))
   }
