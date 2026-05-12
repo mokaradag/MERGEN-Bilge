@@ -320,6 +320,10 @@ The frontend CSS/JS loading surface is now owned by `R/config_ui_assets.R`, not 
 Current contract:
 
 - `ui.R` should render frontend assets through `ui_asset_tags()`.
+- Page or feature modules must not silently reintroduce local `tags$head(...)` CSS/JS includes for assets that are globally owned by `R/config_ui_assets.R`.
+- The health dashboard is part of the global UI asset manifest: keep `css/health_dashboard.css` and `js/health_dashboard.js` in `R/config_ui_assets.R`, not in a local `tags$head(...)` block inside `R/module_health.R`.
+- `www/js/health_dashboard.js` owns health-dashboard-specific behavior such as `initHealthTooltips`, `removeHealthTooltips`, tooltip cleanup, path-copy button binding, and unload cleanup.
+- `updateHealthTimestamp` and `updateAdminTimestamp` are single-owned by `www/js/shiny_message_handlers.js` through the shared timestamp update helper. Do not register these message handlers again in `www/js/health_dashboard.js`.
 - Do not reintroduce a giant inline list of `tags$link(...)` and `tags$script(...)` calls in `ui.R`.
 - Browser-facing asset paths must remain public Shiny paths such as `css/...`, `js/...`, `codemirror/...`, and `lib/threejs/...`; file existence validation must resolve them under the Shiny public asset root, normally `www/`.
 - Keep CodeMirror core, modes, and addons synchronous and ordered before CodeMirror-dependent code.
@@ -344,6 +348,7 @@ Current contract:
 - Keep deferred welcome handlers resilient to first-connect timing. `www/js/welcome_neural_modern.js` must register `updateNeuralColor` idempotently even when the script loads after the initial `shiny:connected` event; do not move this handler behind a connect-only registration that can be missed until reconnect.
 - Keep `js/streaming_manager.js` before `js/claude_code_streaming.js`, and keep `js/claude_code.js`, `js/claude_code_streaming.js`, and `js/claude_code_plugins.js` in that order.
 - Tests must continue to scan loaded JS files for duplicate `Shiny.addCustomMessageHandler(...)` message names.
+- Asset-manifest tests should validate files that are intentionally loaded by the manifest. Do not require every physical file under `www/css` or `www/js` to appear in the manifest, because optional, legacy, or feature-specific public files may exist without being globally loaded.
 - When adding, removing, renaming, or moving a frontend asset, update `R/config_ui_assets.R` and the asset manifest tests together.
 - Do not add CDN usage. The app must remain fully offline/on-prem.
 - Do not register duplicate `Shiny.addCustomMessageHandler(...)` handlers for the same message type.
@@ -353,12 +358,14 @@ Protected by:
 - `tests/testthat/test-ui-asset-manifest-contract.R`
 - `tests/testthat/test-frontend-selector-contract.R`
 - `tests/testthat/test-e2e-boot-welcome-regression.R`
+- `tests/testthat/test-e2e-health-dashboard-regression.R`
 
 Focused validation:
 
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
 - `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+- `testthat::test_file("tests/testthat/test-e2e-health-dashboard-regression.R")`
 
 ### Media and background music contract
 
