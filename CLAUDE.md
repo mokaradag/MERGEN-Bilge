@@ -331,12 +331,17 @@ Current contract:
 - Keep `ui_asset_js_order_rules` as the manifest-level source of truth for critical browser dependency boundaries. Do not duplicate the same ordering logic in tests as a separate hard-coded list.
 - Keep `ui_asset_validate_js_order()` wired into `ui_asset_validate(...)` so bad asset ordering fails early before the UI is rendered.
 - Keep `ui_asset_deferred_js_paths()` as the single helper for resolving deferred JS groups; do not hand-flatten deferred groups in tests or UI rendering code.
+- Keep `ui_asset_js_render_plan` as the single render-order plan for JS groups. `ui_asset_js_tags()` must render scripts from this plan rather than duplicating another hard-coded group order.
+- Keep `ui_asset_validate_js_render_plan()` wired into `ui_asset_validate(...)`. It must fail early when a JS group is missing from the render plan, appears more than once, references a non-existent group, or disagrees with `ui_asset_deferred_js_groups`.
+- Keep `ui_asset_render_plan_groups()` and `ui_asset_render_plan_deferred()` as the shared helpers for render-plan tests. Do not hand-reconstruct the same render-plan logic inside tests.
+- When adding, removing, or renaming a JS group, update `ui_asset_js_groups`, `ui_asset_js_render_plan`, `ui_asset_deferred_js_groups` when applicable, and `tests/testthat/test-ui-asset-manifest-contract.R` together.
 - Keep `js/music_manager.js` before `js/stt_client.js` and `js/tts_manager.js`. STT and TTS guard for missing globals, but the maintained asset contract should load the music manager before media consumers so duck/unduck behavior remains deterministic.
 - Keep the background music lifecycle single-source. `MusicManager` should own one active audio element and must not allow overlapping main-theme, character-theme, TTS, STT, or intro music paths.
 - Keep the startup music sequence deterministic: intro music belongs to `SpaceIntroMusic`; after the deep-space intro is dismissed, `MusicManager` starts the main theme once and then moves to randomized character music.
 - Do not let duplicate `toggleMusic(TRUE)` calls skip the main theme. If a theme playlist request is pending, another same-state enabled toggle must not issue an early character playlist request or invalidate the pending theme request.
 - Character music folders under `www/music/Karakter/` use stable lowercase character ids: `mergen`, `ulgen`, `kayra`, `erlik`, and `umay`. Do not rename these folders to visible labels such as `Ülgen` or `Umay Ana`.
 - Keep welcome startup dependencies ordered so `js/shiny_message_handlers.js` owns the boot handler and `js/welcome_video_player.js`, `js/welcome_neural_modern.js`, `js/welcome_greeting.js`, and `js/welcome_greeting_personal.js` are available through the retry-based `initModernWelcome` path.
+- Keep deferred welcome handlers resilient to first-connect timing. `www/js/welcome_neural_modern.js` must register `updateNeuralColor` idempotently even when the script loads after the initial `shiny:connected` event; do not move this handler behind a connect-only registration that can be missed until reconnect.
 - Keep `js/streaming_manager.js` before `js/claude_code_streaming.js`, and keep `js/claude_code.js`, `js/claude_code_streaming.js`, and `js/claude_code_plugins.js` in that order.
 - Tests must continue to scan loaded JS files for duplicate `Shiny.addCustomMessageHandler(...)` message names.
 - When adding, removing, renaming, or moving a frontend asset, update `R/config_ui_assets.R` and the asset manifest tests together.
@@ -392,7 +397,7 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-production-contracts.R")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 
-When editing the UI asset contract, run `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")` first. This test intentionally uses the manifest’s `ui_asset_js_order_rules` instead of maintaining a second independent order list. Keep expectations compatible with the project’s installed `testthat` version; avoid optional expectation arguments that are not supported in older local environments.
+When editing the UI asset contract, run `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")` first. This test intentionally uses the manifest’s `ui_asset_js_order_rules` and `ui_asset_js_render_plan` helpers instead of maintaining second independent order/render lists. Keep expectations compatible with the project’s installed `testthat` version; avoid optional expectation arguments that are not supported in older local environments.
 
 ### Attached welcome-screen animation contract
 
