@@ -79,7 +79,9 @@ cc_policy_default_user_workspace <- function(user_id = NULL) {
   )
 }
 
-cc_policy_allowed_workdir_roots <- function(user_id = NULL) {
+cc_policy_allowed_workdir_roots <- function(user_id = NULL,
+                                            extra_roots = character(0),
+                                            allow_system_temp = FALSE) {
   configured <- character(0)
 
   if (exists("claude_code_config", inherits = TRUE)) {
@@ -94,8 +96,12 @@ cc_policy_allowed_workdir_roots <- function(user_id = NULL) {
     configured,
     Sys.getenv("CLAUDE_CODE_ALLOWED_WORKDIR_ROOTS", ""),
     cc_policy_default_user_workspace(user_id),
-    tempdir()
+    extra_roots
   )
+
+  if (isTRUE(allow_system_temp)) {
+    configured <- c(configured, tempdir())
+  }
 
   cc_policy_normalize_roots(configured)
 }
@@ -145,7 +151,11 @@ cc_policy_path_inside_roots <- function(path, roots, must_exist = FALSE) {
   FALSE
 }
 
-cc_policy_validate_workdir <- function(workdir, user_id = NULL) {
+cc_policy_validate_workdir <- function(workdir,
+                                       user_id = NULL,
+                                       extra_allowed_roots = character(0),
+                                       allow_system_temp = FALSE,
+                                       allow_selected_workdir = FALSE) {
   ham_yol <- as.character(workdir %||% "")[1]
 
   if (is.na(ham_yol) || !nzchar(ham_yol)) {
@@ -156,17 +166,57 @@ cc_policy_validate_workdir <- function(workdir, user_id = NULL) {
     ))
   }
 
-  yol <- cc_policy_normalize_path(ham_yol, must_exist = FALSE)
+  # UNC / Türkçe karakter / native encoding durumları için mevcut relaxed resolver'ı kullan.
+  resolved_existing <- ""
+  if (exists("cc_resolve_existing_dir_relaxed", mode = "function", inherits = TRUE)) {
+    resolved_existing <- tryCatch(
+      cc_resolve_existing_dir_relaxed(ham_yol),
+      error = function(e) ""
+    )
+  }
 
-  if (!dir.exists(yol)) {
+  if (!nzchar(resolved_existing)) {
+    aday_yol <- cc_policy_normalize_path(ham_yol, must_exist = FALSE)
+    exists_base <- tryCatch(
+      isTRUE(dir.exists(aday_yol)) || isTRUE(fs::dir_exists(aday_yol)),
+      error = function(e) FALSE
+    )
+
+    if (isTRUE(exists_base)) {
+      resolved_existing <- aday_yol
+    }
+  }
+
+  if (!nzchar(resolved_existing)) {
     return(list(
       ok = FALSE,
-      path = yol,
+      path = cc_policy_normalize_path(ham_yol, must_exist = FALSE),
       error = paste0("Çalışma dizini bulunamadı: ", ham_yol)
     ))
   }
 
-  kokler <- cc_policy_allowed_workdir_roots(user_id)
+  yol <- cc_policy_normalize_path(resolved_existing, must_exist = FALSE)
+
+  selected_roots <- character(0)
+  if (isTRUE(allow_selected_workdir)) {
+    selected_roots <- yol
+  }
+
+  kokler <- cc_policy_allowed_workdir_roots(
+    user_id = user_id,
+    extra_roots = c(extra_allowed_roots, selected_roots),
+    allow_system_temp = allow_system_temp
+  )
+
+  allowed_by_base_policy <- cc_policy_path_inside_roots(
+    yol,
+    cc_policy_allowed_workdir_roots(
+      user_id = user_id,
+      extra_roots = extra_allowed_roots,
+      allow_system_temp = allow_system_temp
+    ),
+    must_exist = TRUE
+  )
 
   if (!cc_policy_path_inside_roots(yol, kokler, must_exist = TRUE)) {
     return(list(
@@ -178,6 +228,14 @@ cc_policy_validate_workdir <- function(workdir, user_id = NULL) {
         ". İzin verilen köklerden biri içinde bir klasör seçin veya ",
         "CLAUDE_CODE_ALLOWED_WORKDIR_ROOTS ayarını açıkça yapılandırın."
       )
+    ))
+  }
+
+  if (isTRUE(allow_selected_workdir) && !isTRUE(allowed_by_base_policy)) {
+    log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Çalışma dizini kullanıcı seçimiyle bu çalışma için onaylandı:",
+      gsub("[{}]", "", yol)
     ))
   }
 

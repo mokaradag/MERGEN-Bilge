@@ -57,7 +57,10 @@ run_claude_code <- function(prompt,
   }
 
   # Çalışma dizini kontrolü
-  workdir_policy <- cc_policy_validate_workdir(workdir)
+  workdir_policy <- cc_policy_validate_workdir(
+    workdir,
+    allow_system_temp = TRUE
+  )
   if (!isTRUE(workdir_policy$ok)) {
     return(list(
       success = FALSE,

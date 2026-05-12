@@ -87,6 +87,45 @@ cc_send_run_blocked_message <- function(session, ns, message, escape = TRUE) {
   invisible(TRUE)
 }
 
+cc_validate_selected_workdir_for_run <- function(session,
+                                                 ns,
+                                                 rv,
+                                                 request_id,
+                                                 workdir,
+                                                 user_id) {
+  allow_selected <- TRUE
+
+  if (exists("claude_code_config", inherits = TRUE)) {
+    allow_selected <- cc_policy_truthy(
+      claude_code_config$allow_user_selected_workdirs %||% TRUE
+    )
+  }
+
+  workdir_policy <- cc_policy_validate_workdir(
+    workdir,
+    user_id = user_id,
+    allow_selected_workdir = allow_selected
+  )
+
+  if (!isTRUE(workdir_policy$ok)) {
+    cc_abort_run_before_streaming(rv, request_id)
+
+    cc_send_run_blocked_message(
+      session = session,
+      ns = ns,
+      message = workdir_policy$error
+    )
+
+    log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Çalışma dizini güvenlik ilkesi tarafından engellendi:",
+      gsub("[{}]", "", workdir %||% "")
+    ))
+  }
+
+  workdir_policy
+}
+
 cc_finalize_if_active <- function(rv,
                                   request_id = NULL,
                                   finalize_streaming,

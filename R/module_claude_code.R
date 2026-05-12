@@ -145,26 +145,15 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         }
       }
 
-      workdir_policy <- cc_policy_validate_workdir(
-        calisma_dizini,
+      workdir_policy <- cc_validate_selected_workdir_for_run(
+        session = session,
+        ns = ns,
+        rv = rv,
+        request_id = run_request_id,
+        workdir = calisma_dizini,
         user_id = effective_user_id
       )
-      if (!isTRUE(workdir_policy$ok)) {
-        cc_abort_run_before_streaming(rv, run_request_id)
-
-        cc_send_run_blocked_message(
-          session = session,
-          ns = ns,
-          message = workdir_policy$error
-        )
-
-        log_warn(paste(
-          CLAUDE_CODE_LOG_PREFIX,
-          "Çalışma dizini güvenlik ilkesi tarafından engellendi:",
-          gsub("[{}]", "", calisma_dizini %||% "")
-        ))
-        return()
-      }
+      if (!isTRUE(workdir_policy$ok)) return()
 
       calisma_dizini <- workdir_policy$path
 

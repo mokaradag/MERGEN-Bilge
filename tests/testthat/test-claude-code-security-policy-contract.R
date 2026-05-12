@@ -20,6 +20,7 @@
     default_workdir = "",
     allow_dangerous_permissions = FALSE,
     allowed_workdir_roots = "",
+    allow_user_selected_workdirs = TRUE,
     allowed_output_roots = ""
   )
 
@@ -146,6 +147,24 @@ test_that("path traversal izin verilen kökün dışına çıkamaz", {
 
   expect_false(isTRUE(traversal_check$ok))
   expect_match(traversal_check$error, "güvenlik ilkesi")
+})
+
+test_that("UI'da açıkça seçilen mevcut çalışma dizini çalışma kökü olarak kabul edilir", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  selected <- withr::local_tempdir()
+
+  selected_check <- test_env$cc_policy_validate_workdir(
+    selected,
+    user_id = 42L,
+    allow_selected_workdir = TRUE
+  )
+
+  expect_true(isTRUE(selected_check$ok))
+  expect_equal(
+    normalizePath(selected_check$path, winslash = "/", mustWork = TRUE),
+    normalizePath(selected, winslash = "/", mustWork = TRUE)
+  )
 })
 
 test_that("üretilen dosya filtreleme yalnızca izinli kökteki yolları bırakır", {

@@ -38,6 +38,12 @@ claude_code_config <- list(
   # Bilge Yolaç'ın çalışabileceği kök dizinler (; veya satır sonu ile ayrılır)
   allowed_workdir_roots = Sys.getenv("CLAUDE_CODE_ALLOWED_WORKDIR_ROOTS", ""),
 
+  # Kullanıcının UI'da açıkça seçtiği mevcut çalışma dizinini bu çalışma için onayla
+  allow_user_selected_workdirs = as.logical(Sys.getenv(
+    "CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS",
+    "TRUE"
+  )),
+
   # İndirilebilir hale getirilecek çıktıların kabul edildiği kök dizinler
   allowed_output_roots = Sys.getenv("CLAUDE_CODE_ALLOWED_OUTPUT_ROOTS", "")
 )
