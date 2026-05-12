@@ -9,6 +9,7 @@ local({
 
   gerekli_dosyalar <- c(
     file.path(repo_root, "R", "utils_common.R"),
+    file.path(repo_root, "R", "utils_text_encoding.R"),
     file.path(repo_root, "R", "config_file_store_index_mutation.R"),
     file.path(repo_root, "R", "helpers_file_manager_policy.R"),
     file.path(repo_root, "R", "helpers_file_manager_table.R")
@@ -34,10 +35,13 @@ test_that("storage prefix temiz dosya adına geri çevrilir", {
     "EK-U Süreç İş Akışları.pdf"
   )
 
+  bad_filename <- paste0(
+    "20260505-120545_ebb4c864d62182e6_",
+    "Ã§alÄ±ÅŸma_Ã¶zet_Ä°ÅŸ.xlsx"
+  )
+
   expect_equal(
-    recover_display_name_from_storage_name(
-      "20260505-120545_ebb4c864d62182e6_Ã§alÄ±ÅŸma_Ã¶zet_Ä°ÅŸ.xlsx"
-    ),
+    recover_display_name_from_storage_name(bad_filename),
     "çalışma_özet_İş.xlsx"
   )
 

@@ -4,6 +4,24 @@
 #           karakter dışı girdilerde uyarısız ve kayıpsız çalıştığını doğrular.
 # ==============================================================================
 
+.db_mojibake_from_utf8_for_test <- function(text) {
+  win1252 <- c(
+    0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+    0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+    0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+    0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178
+  )
+
+  raw_bytes <- as.integer(charToRaw(enc2utf8(text)))
+
+  paste0(vapply(raw_bytes, function(byte) {
+    if (byte < 0x80L || byte >= 0xA0L) {
+      return(intToUtf8(byte))
+    }
+    intToUtf8(win1252[byte - 0x7FL])
+  }, character(1), USE.NAMES = FALSE), collapse = "")
+}
+
 test_that("normalize_db_value karakter dışı girdileri değiştirmeden döndürür", {
   expect_identical(normalize_db_value(NULL), NULL)
   expect_identical(normalize_db_value(123L), 123L)
@@ -54,14 +72,15 @@ test_that("normalize_db_value karakter vektörlerinde uzunluğu ve NA konumunu k
 })
 
 test_that("normalize_db_value isteğe bağlı mojibake onarımı yapar", {
-  mojibake <- "Ã‡alÄ±ÅŸma Ã¶zeti ðŸš€"
+  expected <- paste0("Çalışma özeti ", intToUtf8(0x1F680))
+  mojibake <- .db_mojibake_from_utf8_for_test(expected)
 
   expect_equal(
     normalize_db_value(mojibake, repair_mojibake = TRUE),
-    "Çalışma özeti 🚀"
+    expected
   )
 
-  expect_identical(
+  expect_equal(
     normalize_db_value(mojibake, repair_mojibake = FALSE),
     mojibake
   )

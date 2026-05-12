@@ -47,6 +47,20 @@ normalize_db_value <- function(x, repair_mojibake = FALSE) {
   )
 
   out_native[is.na(x)] <- NA_character_
+
+  # Windows/native code pages cannot represent all Unicode characters
+  # such as emoji. If native conversion is lossy, keep UTF-8 because the
+  # ODBC connection is already opened with encoding = "UTF-8".
+  roundtrip_utf8 <- tryCatch(
+    enc2utf8(out_native),
+    error = function(e) out_utf8
+  )
+  roundtrip_utf8[is.na(x)] <- NA_character_
+
+  if (!identical(unname(roundtrip_utf8), unname(out_utf8))) {
+    return(out_utf8)
+  }
+
   out_native
 }
 
