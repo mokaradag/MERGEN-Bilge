@@ -92,7 +92,10 @@ update_message_reasoning_content <- function(message_id, reasoning_content) {
       SET ReasoningContent = ?
       WHERE MessageID = ?
       ",
-      params = normalize_db_params(list(reasoning_text, message_id))
+      params = normalize_db_params(
+        list(reasoning_text, message_id),
+        repair_mojibake = TRUE
+      )
     )
 
     invisible(TRUE)
@@ -225,10 +228,15 @@ save_message_safely <- function(chat_id, message, user_id = NULL) {
       log_json <- normalize_text_for_log(log_json)
     }
 
-    cat(log_json,
-        "\n",
-        file = log_file,
-        append = TRUE)
+    log_con <- file(log_file, open = "a", encoding = "UTF-8")
+    on.exit(try(close(log_con), silent = TRUE), add = TRUE)
+
+    cat(
+      log_json,
+      "\n",
+      file = log_con,
+      append = TRUE
+    )
     warning(paste("Message save failed, logged to:", log_file))
     return(NULL)
   })

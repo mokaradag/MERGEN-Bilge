@@ -63,7 +63,14 @@ get_or_create_user <- function(username, sso_claims = NULL) {
   if (nrow(user_id_result) > 0) {
     user_id <- as.integer(user_id_result$UserID[1])
     update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
-    dbExecute(conn, update_query, params = normalize_db_params(list(kaynak_adi, user_id)))
+    dbExecute(
+      conn,
+      update_query,
+      params = normalize_db_params(
+        list(kaynak_adi, user_id),
+        repair_mojibake = TRUE
+      )
+    )
 
     # SSO ek alanlarını güncelle (tablo destekliyorsa)
     if (!is.null(sso_claims)) {
@@ -73,7 +80,14 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     return(user_id)
   } else {
     insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, ?, GETDATE())"
-    res <- dbGetQuery(conn, insert_query, params = normalize_db_params(list(username, kaynak_adi)))
+    res <- dbGetQuery(
+      conn,
+      insert_query,
+      params = normalize_db_params(
+        list(username, kaynak_adi),
+        repair_mojibake = TRUE
+      )
+    )
     if (nrow(res) == 0) stop("Yeni kullanıcı oluşturulduktan sonra UserID alınamadı.")
     user_id <- as.integer(res$UserID[1])
 
@@ -140,7 +154,7 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
     if (length(set_parts) > 0) {
       query <- paste0("UPDATE MB_Users SET ", paste(set_parts, collapse = ", "), " WHERE UserID = ?")
       params <- c(params, list(user_id))
-      dbExecute(conn, query, params = normalize_db_params(params))
+      dbExecute(conn, query, params = normalize_db_params(params, repair_mojibake = TRUE))
     }
   }, error = function(e) {
     # SSO alanları güncellenemedi - kritik değil, sessizce devam et
@@ -220,6 +234,14 @@ save_feedback_to_db_extended <- function(user_id, message_id, feedback_type, tag
   safe_tags <- if (is.null(tags) || length(tags) == 0) NA_character_ else as.character(tags)
   safe_comment <- if (is.null(comment) || length(comment) == 0) NA_character_ else as.character(comment)
 
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    safe_tags <- normalize_text_utf8(safe_tags, repair_mojibake = TRUE)
+    safe_comment <- normalize_text_utf8(safe_comment, repair_mojibake = TRUE)
+  } else {
+    safe_tags <- enc2utf8(safe_tags)
+    safe_comment <- enc2utf8(safe_comment)
+  }
+
   query <- "
     MERGE MB_Feedback AS target
     USING (SELECT ? AS UserID, ? AS MessageID, ? AS FeedbackType, ? AS FeedbackTags, ? AS FeedbackComment) AS source
@@ -235,13 +257,16 @@ save_feedback_to_db_extended <- function(user_id, message_id, feedback_type, tag
       VALUES (source.UserID, source.MessageID, source.FeedbackType, source.FeedbackTags, source.FeedbackComment, CAST(GETDATE() AS datetime2(0)));
   "
   
-  dbExecute(conn, query, params = normalize_db_params(list(
-    user_id, 
-    as.integer(message_id), 
-    feedback_type,
-    safe_tags,
-    safe_comment
-  )))
+  dbExecute(conn, query, params = normalize_db_params(
+    list(
+      user_id,
+      as.integer(message_id),
+      feedback_type,
+      safe_tags,
+      safe_comment
+    ),
+    repair_mojibake = TRUE
+  ))
 }
 
 # Geri bildirim detaylarını yükleme
@@ -252,6 +277,10 @@ load_feedback_details_from_db <- function(user_id, message_id) {
 
   query <- "SELECT FeedbackType, FeedbackTags, FeedbackComment, FeedbackTimestamp FROM MB_Feedback WHERE UserID = ? AND MessageID = ?"
   result <- dbGetQuery(conn, query, params = list(user_id, as.integer(message_id)))
+
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
+  }
   
   if (nrow(result) == 0) return(NULL)
   as.list(result[1, ])

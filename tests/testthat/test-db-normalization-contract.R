@@ -105,3 +105,26 @@ test_that("normalize_db_params liste yapısını ve sıra bilgisini korur", {
   expect_true(is.na(sonuc[[3]]))
   expect_length(sonuc[[4]], 2L)
 })
+
+test_that("normalize_db_params kullanıcıya görünen DB metnini repair bayrağıyla onarır", {
+  expected <- c(
+    "Çalışma özeti",
+    paste0("Yönetici görüşü ", intToUtf8(0x1F680))
+  )
+
+  mojibake <- vapply(
+    expected,
+    .db_mojibake_from_utf8_for_test,
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  params <- normalize_db_params(
+    list(mojibake[1], 42L, mojibake[2]),
+    repair_mojibake = TRUE
+  )
+
+  expect_equal(params[[1]], expected[1])
+  expect_identical(params[[2]], 42L)
+  expect_equal(params[[3]], expected[2])
+})
