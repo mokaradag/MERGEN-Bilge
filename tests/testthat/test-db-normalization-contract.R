@@ -106,6 +106,29 @@ test_that("normalize_db_params liste yapısını ve sıra bilgisini korur", {
   expect_length(sonuc[[4]], 2L)
 })
 
+test_that("UTF-8 DB client encoding native Windows dönüşümüne düşmez", {
+  repo_root <- resolve_repo_root_for_tests()
+  test_env <- new.env(parent = globalenv())
+
+  test_env$normalize_text_utf8 <- normalize_text_utf8
+  test_env$l10n_info <- function() stats::setNames(list(FALSE), "UTF-8")
+
+  withr::local_options(mergen.db.client_encoding = "UTF-8")
+
+  source(
+    file.path(repo_root, "R", "helpers_db_connection.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  sample_text <- paste0("yorum açık ", intToUtf8(0x2705), " ", intToUtf8(0x1F680))
+
+  expect_equal(
+    test_env$normalize_db_value(sample_text, repair_mojibake = TRUE),
+    sample_text
+  )
+})
+
 test_that("normalize_db_params kullanıcıya görünen DB metnini repair bayrağıyla onarır", {
   expected <- c(
     "Çalışma özeti",

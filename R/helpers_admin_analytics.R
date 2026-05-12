@@ -75,7 +75,13 @@ admin_safe_query <- function(query) {
   tryCatch({
     conn_info <- get_connection()
     on.exit(release_connection(conn_info))
-    DBI::dbGetQuery(conn_info$conn, query)
+    result <- DBI::dbGetQuery(conn_info$conn, query)
+
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
+    }
+
+    result
   }, error = function(e) {
     log_error("[ADMIN] SQL Hatası: {conditionMessage(e)}")
     data.frame()

@@ -228,15 +228,7 @@ save_message_safely <- function(chat_id, message, user_id = NULL) {
       log_json <- normalize_text_for_log(log_json)
     }
 
-    log_con <- file(log_file, open = "a", encoding = "UTF-8")
-    on.exit(try(close(log_con), silent = TRUE), add = TRUE)
-
-    cat(
-      log_json,
-      "\n",
-      file = log_con,
-      append = TRUE
-    )
+    cat(log_json, "\n", file = log_file, append = TRUE, useBytes = TRUE)
     warning(paste("Message save failed, logged to:", log_file))
     return(NULL)
   })
