@@ -41,15 +41,6 @@ normalize_db_value <- function(x, repair_mojibake = FALSE) {
     return(out_utf8)
   }
 
-  db_client_encoding <- tryCatch(
-    toupper(trimws(as.character(.DEFAULT_DB_CLIENT_ENCODING[1]))),
-    error = function(e) "UTF-8"
-  )
-
-  if (db_client_encoding %in% c("UTF-8", "UTF8")) {
-    return(out_utf8)
-  }
-
   out_native <- tryCatch(
     enc2native(out_utf8),
     error = function(e) out_utf8
