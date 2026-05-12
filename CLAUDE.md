@@ -44,6 +44,11 @@ Current contract:
 - `R/utils_text_encoding.R` must be loaded early through `R/config_source_manifest.R`, before logging, DB helpers, and downstream text consumers.
 - `www/js/encoding_utils.js` must be loaded through `R/config_ui_assets.R` before `www/js/shiny_message_handlers.js` and before `www/js/claude_code_streaming.js`.
 - DB write parameters, DB read/hydration paths, saved chat reloads, version-history/Yenilikler reads, uploaded-file display names, Bilge Yolaç process/stream output, JSON/text boundaries, and logs should use the shared helper path instead of local encoding fixes.
+- DB normalization is intentionally opt-in for mojibake repair. Use `normalize_db_params(..., repair_mojibake = TRUE)` or `normalize_db_value(..., repair_mojibake = TRUE)` only at user-visible text write boundaries such as chat titles, message content, reasoning content, edited message content, worker-saved assistant responses, and SSO/user display fields. Keep the default `repair_mojibake = FALSE` for technical parameters, IDs, flags, and non-user-visible values.
+- On non-UTF-8 Windows sessions, `normalize_db_value()` must not blindly keep a lossy `enc2native()` conversion. If native conversion changes the UTF-8 round trip, preserve the UTF-8 value so emoji and other non-native Unicode characters do not become `<U+...>` strings.
+- Test bootstrap must mirror runtime encoding order. `tests/testthat/helper_bootstrap.R` should source `R/utils_text_encoding.R` before DB helpers so isolated `testthat::test_file(...)` runs exercise the same mojibake repair path as the application.
+- File Manager display-name repair depends on the shared text helper. Tests that source `R/config_file_store_index_mutation.R` in isolation must also load `R/utils_text_encoding.R`, otherwise mojibake filename fixtures can appear unchanged even though runtime behavior is correct.
+- Do not replace deterministic byte-built mojibake fixtures in tests with fragile console-dependent mojibake or emoji literals when the test must pass on Windows VM sessions.
 - Logging should pass user-visible text through the shared log normalization path so Turkish text stays readable and ANSI escape sequences are not made worse.
 - Bilge Yolaç streaming must keep the browser-side fallback, but `www/js/claude_code_streaming.js` must not grow another large local mojibake map. Use `window.MergenEncoding` from `www/js/encoding_utils.js`.
 - Do not replace UTF-8-safe byte reading helpers with plain `readLines(..., encoding = "UTF-8")` in Windows/VM-sensitive paths unless the regression tests prove it is safe.
@@ -54,6 +59,8 @@ Protected by:
 
 - `tests/testthat/test-text-encoding-utils.R`
 - `tests/testthat/test-db-normalization-contract.R`
+- `tests/testthat/test-file-manager-display-name-contract.R`
+- `tests/testthat/test-maintainability-ratchet-contract.R`
 - `tests/testthat/test-claude-code-process-refactor-contract.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
 
@@ -61,6 +68,8 @@ Focused validation:
 
 - `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
 - `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
+- `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 
