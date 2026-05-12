@@ -45,7 +45,10 @@ Current contract:
 - `www/js/encoding_utils.js` must be loaded through `R/config_ui_assets.R` before `www/js/shiny_message_handlers.js` and before `www/js/claude_code_streaming.js`.
 - DB write parameters, DB read/hydration paths, saved chat reloads, version-history/Yenilikler reads, uploaded-file display names, Bilge Yolaç process/stream output, JSON/text boundaries, and logs should use the shared helper path instead of local encoding fixes.
 - DB normalization is intentionally opt-in for mojibake repair. Use `normalize_db_params(..., repair_mojibake = TRUE)` or `normalize_db_value(..., repair_mojibake = TRUE)` only at user-visible text write boundaries such as chat titles, message content, reasoning content, edited message content, worker-saved assistant responses, and SSO/user display fields. Keep the default `repair_mojibake = FALSE` for technical parameters, IDs, flags, and non-user-visible values.
-- On non-UTF-8 Windows sessions, `normalize_db_value()` must not blindly keep a lossy `enc2native()` conversion. If native conversion changes the UTF-8 round trip, preserve the UTF-8 value so emoji and other non-native Unicode characters do not become `<U+...>` strings.
+- The SQL Server DB write boundary is production-sensitive on the Windows VM / SSO deployment. Do not force raw UTF-8 into DBI/ODBC parameter writes merely because the configured client encoding says UTF-8. That behavior can store Turkish text as mojibake across MB tables.
+- For the production VM, Turkish DB writes must preserve the stable Windows-native / `WINDOWS-1254` behavior. `DB_CLIENT_ENCODING=WINDOWS-1254` is the safe operational setting unless a live VM + SSMS validation proves otherwise.
+- Treat emoji persistence as a separate DB capability question. Before changing DB write encoding for emoji, verify the relevant SQL Server column types (`nvarchar` vs `varchar`) and run a real write/read test through the app and SSMS. Do not trade Turkish text integrity for emoji display.
+- Read-side normalization may defensively repair display of older mojibake values, but it must not be used as an excuse to allow new mojibake writes. New records in `MB_Users`, `MB_Chats`, `MB_Messages`, `MB_Feedback`, and other MB tables must be validated at rest in SQL Server.
 - Test bootstrap must mirror runtime encoding order. `tests/testthat/helper_bootstrap.R` should source `R/utils_text_encoding.R` before DB helpers so isolated `testthat::test_file(...)` runs exercise the same mojibake repair path as the application.
 - File Manager display-name repair depends on the shared text helper. Tests that source `R/config_file_store_index_mutation.R` in isolation must also load `R/utils_text_encoding.R`, otherwise mojibake filename fixtures can appear unchanged even though runtime behavior is correct.
 - Do not replace deterministic byte-built mojibake fixtures in tests with fragile console-dependent mojibake or emoji literals when the test must pass on Windows VM sessions.
@@ -72,6 +75,13 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+
+VM-only manual validation after any DB encoding change:
+- Start the app on the Windows VM with SSO enabled.
+- Create a new chat message containing: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü
+- Add feedback tags/comments containing Turkish characters.
+- Verify the new rows directly in SSMS for `MB_Users`, `MB_Chats`, `MB_Messages`, and `MB_Feedback`.
+- Reject the change if SQL Server stores values like `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, or `ÄŸ`.
 
 ### 1A) Keep new code identifiers ASCII-safe when practical
 Preserve Turkish text integrity in user-facing strings, docs, comments, DB text, JSON text, and rendered UI. However, for Windows VM parser robustness, **new code identifiers** should be ASCII-only where practical (variable/helper names, unquoted `data.frame(...)` column names, `$field_name` accessors, and similar code symbols that can become mojibake-sensitive). This is **not** permission to Latinize visible product text; it applies only to code symbols/identifiers.
