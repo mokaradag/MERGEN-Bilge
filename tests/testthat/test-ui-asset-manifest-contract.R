@@ -120,6 +120,14 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   expect_true(is.list(asset_env$ui_asset_js_order_rules))
   expect_gt(length(asset_env$ui_asset_js_order_rules), 0)
 
+  render_plan_groups <- asset_env$ui_asset_render_plan_groups()
+  expect_equal(sort(render_plan_groups), sort(names(asset_env$ui_asset_js_groups)))
+  expect_equal(sort(render_plan_groups), sort(unique(render_plan_groups)))
+  expect_identical(
+    asset_env$ui_asset_render_plan_deferred(),
+    asset_env$ui_asset_deferred_js_groups
+  )
+
   invisible(lapply(asset_env$ui_asset_js_order_rules, function(rule) {
     expect_length(rule, 2)
 

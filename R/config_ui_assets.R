@@ -208,6 +208,86 @@ ui_asset_js_groups <- list(
 
 ui_asset_deferred_js_groups <- c("threejs", "deferred", "bilge_yolac")
 
+ui_asset_js_render_plan <- list(
+  list(group = "codemirror_core", defer = FALSE),
+  list(group = "codemirror_modes", defer = FALSE),
+  list(group = "codemirror_addons", defer = FALSE),
+  list(group = "threejs", defer = TRUE),
+  list(group = "sso", defer = FALSE),
+  list(group = "critical", defer = FALSE),
+  list(group = "deferred", defer = TRUE),
+  list(group = "bilge_yolac", defer = TRUE)
+)
+
+ui_asset_render_plan_groups <- function(render_plan = ui_asset_js_render_plan) {
+  vapply(render_plan, function(item) item$group, character(1))
+}
+
+ui_asset_render_plan_deferred <- function(render_plan = ui_asset_js_render_plan) {
+  deferred <- vapply(render_plan, function(item) isTRUE(item$defer), logical(1))
+  ui_asset_render_plan_groups(render_plan)[deferred]
+}
+
+ui_asset_validate_js_render_plan <- function(render_plan = ui_asset_js_render_plan,
+                                             groups = ui_asset_js_groups) {
+  if (!is.list(render_plan) || length(render_plan) == 0) {
+    stop("UI JS render planı boş olamaz.", call. = FALSE)
+  }
+
+  for (item in render_plan) {
+    if (!is.list(item) ||
+        !is.character(item$group) ||
+        length(item$group) != 1 ||
+        !is.logical(item$defer) ||
+        length(item$defer) != 1 ||
+        is.na(item$defer)) {
+      stop(
+        "UI JS render planı her kayıt için group ve defer alanlarını içermelidir.",
+        call. = FALSE
+      )
+    }
+  }
+
+  render_groups <- ui_asset_render_plan_groups(render_plan)
+  duplicate_groups <- sort(unique(render_groups[duplicated(render_groups)]))
+
+  if (length(duplicate_groups) > 0) {
+    stop(
+      "UI JS render planında yinelenen grup var: ",
+      paste(duplicate_groups, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  missing_groups <- setdiff(names(groups), render_groups)
+  extra_groups <- setdiff(render_groups, names(groups))
+
+  if (length(missing_groups) > 0) {
+    stop(
+      "UI JS render planında eksik grup var: ",
+      paste(missing_groups, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (length(extra_groups) > 0) {
+    stop(
+      "UI JS render planında manifestte olmayan grup var: ",
+      paste(extra_groups, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (!identical(ui_asset_render_plan_deferred(render_plan), ui_asset_deferred_js_groups)) {
+    stop(
+      "UI JS render planı ile ertelenmiş grup listesi uyuşmuyor.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 # Kritik istemci tarafı bağımlılık sırası.
 # Bu kurallar kullanıcı deneyimini değiştirmez; manifest bakımında yanlış
 # sıralamayı erken yakalamak için doğrulanır.
@@ -365,6 +445,7 @@ ui_asset_validate <- function(root = getwd(), check_files = FALSE) {
 
   ui_asset_validate_js_order(js_paths)
   ui_asset_deferred_js_paths()
+  ui_asset_validate_js_render_plan()
 
   if (isTRUE(check_files)) {
     all_paths <- c(css_paths, js_paths)
@@ -404,16 +485,19 @@ ui_asset_css_tags <- function() {
 }
 
 ui_asset_js_tags <- function() {
-  htmltools::tagList(
-    lapply(ui_asset_js_groups$codemirror_core, ui_asset_script_tag),
-    lapply(ui_asset_js_groups$codemirror_modes, ui_asset_script_tag),
-    lapply(ui_asset_js_groups$codemirror_addons, ui_asset_script_tag),
-    lapply(ui_asset_js_groups$threejs, ui_asset_script_tag, defer = TRUE),
-    lapply(ui_asset_js_groups$sso, ui_asset_script_tag),
-    lapply(ui_asset_js_groups$critical, ui_asset_script_tag),
-    lapply(ui_asset_js_groups$deferred, ui_asset_script_tag, defer = TRUE),
-    lapply(ui_asset_js_groups$bilge_yolac, ui_asset_script_tag, defer = TRUE)
+  js_tags <- unlist(
+    lapply(ui_asset_js_render_plan, function(item) {
+      lapply(
+        ui_asset_js_groups[[item$group]],
+        ui_asset_script_tag,
+        defer = item$defer
+      )
+    }),
+    recursive = FALSE,
+    use.names = FALSE
   )
+
+  htmltools::tagList(js_tags)
 }
 
 ui_asset_tags <- function(root = getwd(), check_files = FALSE) {

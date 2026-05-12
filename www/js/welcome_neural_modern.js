@@ -186,13 +186,30 @@ window.WelcomeNeuralNetwork = (function() {
   };
 })();
 
-// Shiny mesaj dinleyicisi: Neural network rengini güncelle
-if (typeof Shiny !== 'undefined') {
-  $(document).on('shiny:connected', function() {
-    Shiny.addCustomMessageHandler('updateNeuralColor', function(data) {
-      if (data && data.accent && window.WelcomeNeuralNetwork) {
-        window.WelcomeNeuralNetwork.updateColor(data.accent);
-      }
-    });
+// Shiny mesaj dinleyicisi: Neural network rengini güncelle.
+// Deferred yüklemede shiny:connected olayı kaçmışsa bile handler kaybolmasın.
+(function registerNeuralColorHandler(attempt) {
+  attempt = attempt || 0;
+
+  if (window.MERGEN_UPDATE_NEURAL_COLOR_HANDLER_REGISTERED) {
+    return;
+  }
+
+  if (typeof Shiny === 'undefined' ||
+      typeof Shiny.addCustomMessageHandler !== 'function') {
+    if (attempt < 80) {
+      window.setTimeout(function() {
+        registerNeuralColorHandler(attempt + 1);
+      }, 50);
+    }
+    return;
+  }
+
+  window.MERGEN_UPDATE_NEURAL_COLOR_HANDLER_REGISTERED = true;
+
+  Shiny.addCustomMessageHandler('updateNeuralColor', function(data) {
+    if (data && data.accent && window.WelcomeNeuralNetwork) {
+      window.WelcomeNeuralNetwork.updateColor(data.accent);
+    }
   });
-}
+})(0);
