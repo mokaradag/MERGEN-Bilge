@@ -19,23 +19,6 @@
     }
   }
 
-  function updateHealthTimestamp(message) {
-    var time = message && message.time ? message.time : "--";
-    var targetId = message && message.id ? message.id : "last_update_time";
-    var target = document.getElementById(targetId) || document.getElementById("last_update_time");
-
-    if (!target) {
-      var candidates = document.querySelectorAll("span[id$='last_update_time']");
-      if (candidates.length > 0) {
-        target = candidates[0];
-      }
-    }
-
-    if (target) {
-      target.textContent = "Son Güncelleme: " + time;
-    }
-  }
-
   function initHealthTooltips() {
     // Sağlık sayfasında Bootstrap tooltip yerine CSS tabanlı data-health-tooltip kullanılır.
     // Böylece otomatik yenileme sırasında body üzerinde kalan donmuş .tooltip düğümleri oluşmaz.

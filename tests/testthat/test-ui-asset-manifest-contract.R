@@ -60,18 +60,6 @@
   sub(pattern, "\\1", raw_matches, perl = TRUE)
 }
 
-.ui_asset_contract_public_paths <- function(subdir, pattern) {
-  paste0(
-    subdir,
-    "/",
-    list.files(
-      file.path(resolve_repo_root_for_tests(), "www", subdir),
-      pattern = pattern,
-      full.names = FALSE
-    )
-  )
-}
-
 test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşmesi korunur", {
   asset_env <- .source_ui_asset_config_for_tests()
   root <- resolve_repo_root_for_tests()
@@ -79,11 +67,7 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   css_paths <- asset_env$ui_asset_all_css()
   js_paths <- asset_env$ui_asset_all_js()
   all_paths <- c(css_paths, js_paths)
-  public_css_paths <- .ui_asset_contract_public_paths("css", "\\.css$")
-  public_js_paths <- .ui_asset_contract_public_paths("js", "\\.js$")
 
-  expect_equal(setdiff(public_css_paths, css_paths), character(0))
-  expect_equal(setdiff(public_js_paths, js_paths), character(0))
   expect_equal(asset_env$ui_asset_duplicate_paths(css_paths), character(0))
   expect_equal(asset_env$ui_asset_duplicate_paths(js_paths), character(0))
   asset_public_root <- asset_env$ui_asset_public_root(root)

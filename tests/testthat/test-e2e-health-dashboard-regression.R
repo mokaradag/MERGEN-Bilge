@@ -178,6 +178,7 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
   ui_text <- e2e_health_read_repo_text("ui.R")
   ui_asset_text <- e2e_health_read_repo_text("R/config_ui_assets.R")
   health_js_text <- e2e_health_read_repo_text("www/js/health_dashboard.js")
+  shiny_handlers_text <- e2e_health_read_repo_text("www/js/shiny_message_handlers.js")
 
   public_guard_pos <- regexpr("health_is_public_url(endpoint)", health_checks_text, fixed = TRUE)[[1]]
   network_get_pos <- regexpr("httr::GET(endpoint", health_checks_text, fixed = TRUE)[[1]]
@@ -211,7 +212,6 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
   )
 
   required_js_patterns <- c(
-    "Shiny.addCustomMessageHandler(\"updateHealthTimestamp\"",
     "Shiny.addCustomMessageHandler(\"initHealthTooltips\"",
     "Shiny.addCustomMessageHandler(\"removeHealthTooltips\"",
     ".off(\"click.healthPath\"",
@@ -231,9 +231,28 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
     info = paste("Health JS hook sözleşmesi eksik:", paste(missing_js, collapse = ", "))
   )
 
+  required_timestamp_patterns <- c(
+    "function updateNamedTimestamp(data)",
+    "Shiny.addCustomMessageHandler('updateHealthTimestamp', updateNamedTimestamp)",
+    "Shiny.addCustomMessageHandler('updateAdminTimestamp', updateNamedTimestamp)"
+  )
+
+  missing_timestamp <- required_timestamp_patterns[!vapply(
+    required_timestamp_patterns,
+    function(pattern) grepl(pattern, shiny_handlers_text, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    missing_timestamp,
+    character(0),
+    info = paste("Global timestamp handler sözleşmesi eksik:", paste(missing_timestamp, collapse = ", "))
+  )
+
   expect_true(grepl("ui_asset_tags", ui_text, fixed = TRUE))
   expect_true(grepl("css/health_check.css", ui_asset_text, fixed = TRUE))
-  expect_true(grepl("js/health_dashboard.js", health_module_text, fixed = TRUE))
+  expect_true(grepl("css/health_dashboard.css", ui_asset_text, fixed = TRUE))
+  expect_true(grepl("js/health_dashboard.js", ui_asset_text, fixed = TRUE))
   expect_false(grepl("https://", health_js_text, fixed = TRUE))
   expect_false(grepl("http://", health_js_text, fixed = TRUE))
 })
