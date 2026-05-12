@@ -12,6 +12,42 @@
 #   www/music/Karakter/erlik/  -> ERLİK karakter müzikleri
 #   www/music/Karakter/umay/   -> UMAY ANA karakter müzikleri
 
+#' Native/Windows encoding değerlerini güvenli UTF-8'e çevir
+#' @description Özellikle Windows VM + Türkçe locale ortamında Ü gibi karakterlerin
+#'              URLencode tarafından %DC şeklinde native byte olarak kodlanmasını
+#'              engeller. Beklenen URL formu UTF-8 percent-encoding'dir:
+#'              Ü -> %C3%9C.
+music_force_utf8 <- function(x) {
+  x <- as.character(x)
+
+  y <- iconv(x, from = "", to = "UTF-8", sub = "byte")
+
+  ifelse(is.na(y), enc2utf8(x), y)
+}
+
+#' UTF-8 path segment URL encoder
+#' @description Her path segmentini ayrı encode eder; "/" ayraç olarak kalır.
+#'              Örn: Ülgen, Endless Skyforge (1).mp3 ->
+#'              %C3%9Clgen%2C%20Endless%20Skyforge%20%281%29.mp3
+music_url_encode_segment_utf8 <- function(x) {
+  x <- music_force_utf8(x)
+
+  vapply(
+    x,
+    function(one) utils::URLencode(one, reserved = TRUE),
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
+#' UTF-8 güvenli müzik URL yolu oluştur
+music_url_path_utf8 <- function(...) {
+  parts <- unlist(list(...), use.names = FALSE)
+  parts <- parts[!is.na(parts) & nzchar(parts)]
+
+  paste(music_url_encode_segment_utf8(parts), collapse = "/")
+}
+
 #' Müzik İşleyicilerini Başlat
 #' @description Arka plan müzik yönetimi için observer'ları kurar
 #' @param input Shiny input nesnesi
@@ -97,41 +133,14 @@ musicHandlersInit <- function(input, session, settings_data) {
       files <- list.files(full_dir, pattern = "\\.mp3$", full.names = FALSE, ignore.case = TRUE)
 
       if (length(files) > 0) {
-        clean_sub <- gsub("\\\\", "/", target_sub)
-
-		force_utf8 <- function(x) {
-		  x <- as.character(x)
-
-		  # If the string is native/unknown, convert using current Windows locale.
-		  y <- iconv(x, from = "", to = "UTF-8", sub = "byte")
-
-		  # Fallback
-		  ifelse(is.na(y), enc2utf8(x), y)
-		}
-
-		url_encode_segment_utf8 <- function(x) {
-		  x <- force_utf8(x)
-		  vapply(
-			x,
-			function(one) utils::URLencode(one, reserved = TRUE),
-			character(1),
-			USE.NAMES = FALSE
-		  )
-		}
-
-		url_path_utf8 <- function(...) {
-		  parts <- unlist(list(...), use.names = FALSE)
-		  parts <- parts[!is.na(parts) & nzchar(parts)]
-		  paste(url_encode_segment_utf8(parts), collapse = "/")
-		}
-
-		clean_sub <- force_utf8(gsub("\\\\", "/", target_sub))
+		clean_sub <- music_force_utf8(gsub("\\\\", "/", target_sub))
 		sub_parts <- strsplit(clean_sub, "/", fixed = TRUE)[[1]]
+		sub_parts <- music_force_utf8(sub_parts)
 
-		files <- force_utf8(files)
+		files <- music_force_utf8(files)
 
 		file_urls <- vapply(files, function(f) {
-		  url_path_utf8(c("music", sub_parts, f))
+		  music_url_path_utf8(c("music", sub_parts, f))
 		}, character(1), USE.NAMES = FALSE)
 
 		cat(sprintf(

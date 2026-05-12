@@ -46,6 +46,14 @@ if (!exists("e2e_media_new_music_state", envir = globalenv(), inherits = FALSE))
   )
 }
 
+if (!exists("music_url_path_utf8", envir = globalenv(), inherits = FALSE)) {
+  source(
+    file.path(repo_root_media_e2e, "R", "server_music_handlers.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+}
+
 .e2e_media_read_text <- function(...) {
   path <- file.path(repo_root_media_e2e, ...)
   if (!file.exists(path)) {
@@ -78,6 +86,7 @@ test_that("media JS contracts expose offline-safe audio state hooks", {
   expect_true(dir.exists(file.path(repo_root_media_e2e, "www", "js")))
 
   music_js <- .e2e_media_read_text("www", "js", "music_manager.js")
+  music_r <- .e2e_media_read_text("R", "server_music_handlers.R")
   tts_js <- .e2e_media_read_text("www", "js", "tts_manager.js")
   stt_js <- .e2e_media_read_text("www", "js", "stt_client.js")
   reasoning_js <- .e2e_media_read_text("www", "js", "premium_reasoning.js")
@@ -89,6 +98,9 @@ test_that("media JS contracts expose offline-safe audio state hooks", {
   expect_true(has_regex(music_js, "\\bMusicManager\\s*=\\s*\\{"))
   expect_true(has_regex(music_js, "_audio\\s*:\\s*null"))
   expect_true(has_regex(music_js, "_pendingRequestId\\s*:\\s*0"))
+  expect_true(has_regex(music_r, "music_url_path_utf8\\s*<-\\s*function"))
+  expect_true(has_regex(music_r, "iconv\\s*\\([^\\n]+to\\s*=\\s*\"UTF-8\""))
+  expect_true(has_regex(music_r, "URLencode\\s*\\([^\\n]+reserved\\s*=\\s*TRUE"))
   expect_true(has_regex(music_js, "_pendingRequestType\\s*:\\s*null"))
   expect_true(has_regex(music_js, "anaTemaBekleniyor"))
   expect_true(has_regex(music_js, "requestId[^\\n]+<\\s*this\\._pendingRequestId"))
@@ -108,6 +120,30 @@ test_that("media JS contracts expose offline-safe audio state hooks", {
   expect_true(has_regex(reasoning_js, "PremiumReasoning"))
   expect_true(has_regex(reasoning_js, "simulatedMode"))
   expect_true(has_regex(reasoning_js, "fadeOutAndRemove\\s*\\(\\s*panel\\s*\\)"))
+})
+
+test_that("music playlist URLs encode Ülgen filenames as UTF-8 percent-encoding", {
+  expect_true(exists("music_url_path_utf8", mode = "function"))
+
+  url <- music_url_path_utf8(
+    c(
+      "music",
+      "Karakter",
+      "ulgen",
+      "Ülgen, Endless Skyforge (1).mp3"
+    )
+  )
+
+  expect_true(grepl("%C3%9Clgen", url, fixed = TRUE))
+  expect_false(grepl("%DClgen", url, fixed = TRUE))
+  expect_false(grepl("%DC", url, fixed = TRUE))
+
+  expect_true(grepl("Endless%20Skyforge", url, fixed = TRUE))
+  expect_true(grepl("%281%29.mp3", url, fixed = TRUE))
+  expect_identical(
+    url,
+    "music/Karakter/ulgen/%C3%9Clgen%2C%20Endless%20Skyforge%20%281%29.mp3"
+  )
 })
 
 test_that("duplicate startup toggle does not skip main theme while theme playlist is pending", {
