@@ -104,7 +104,8 @@ testthat::test_that("welcome UX bileşenleri ve top-gap sözleşmesi korunur", {
       "modern-welcome-neural-canvas",
       "dynamic-greeting-text",
       "createModernRecentChatsSection",
-      "head(saved_chats_sorted, 3)",
+      "max_preview <- min(3, length(recent_chats))",
+      "for (i in seq_len(max_preview))",
       "data-action-model",
       "data-action-id",
       "window._handleQuickAction(this); return false;"
@@ -203,6 +204,7 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
   chat_input_r <- .ux_guard_read_text("R/server_observers_chat_input.R")
   llm_handlers_r <- .ux_guard_read_text("R/server_llm_response_handlers.R")
   messaging_r <- .ux_guard_read_text("R/helpers_messaging.R")
+  module_tts_r <- .ux_guard_read_text("R/module_tts.R")
 
   .ux_guard_expect_all(
     music_js,
@@ -269,8 +271,18 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
     messaging_r,
     c(
       "audio_block <- build_tts_audio_ui",
+      "if (!is.null(audio_block)) audio_block"
+    ),
+    "Geçmiş mesajlarda kayıtlı audio UI çağrısı sözleşmesi eksik:"
+  )
+
+  .ux_guard_expect_all(
+    module_tts_r,
+    c(
+      "build_tts_audio_ui <- function",
       "tags$audio(",
-      "controls = \"controls\""
+      "controls = \"controls\"",
+      "src = audio_src"
     ),
     "Geçmiş mesajlarda autoplay yerine kontrollü audio UI sözleşmesi eksik:"
   )
