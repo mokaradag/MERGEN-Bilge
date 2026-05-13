@@ -445,6 +445,18 @@ $(document).ready(function() {
   window._handleQuickAction = function(btn) {
     if (!btn) return false;
 
+    if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') {
+      $('.custom-tooltip').remove();
+      return false;
+    }
+
+    if (typeof Shiny === 'undefined' ||
+        typeof Shiny.setInputValue !== 'function') {
+      console.warn('[QUICK_ACTION] Shiny bağlantısı hazır değil; hızlı işlem gönderilmedi.');
+      $('.custom-tooltip').remove();
+      return false;
+    }
+
     var model = btn.getAttribute('data-action-model') || '';
     var actionId = btn.getAttribute('data-action-id') || '';
 

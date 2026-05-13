@@ -45,6 +45,12 @@ $(document).ready(function() {
     processTTSQueue();
   });
 
+  Shiny.addCustomMessageHandler('stopTTSPlayback', function(message) {
+    if (window.mergenTTS && typeof window.mergenTTS.stop === 'function') {
+      window.mergenTTS.stop();
+    }
+  });
+
   function processTTSQueue() {
     if (window.mergenTTS.isPlaying || window.mergenTTS.queue.length === 0) return;
 
@@ -134,6 +140,10 @@ $(document).ready(function() {
       if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
         window.ttsVisualizerState.setIdle();
       }
+      if (window.MusicManager) {
+        window.MusicManager.unduck();
+      }
+      try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(setErr) {}
       processTTSQueue();
     }
   }

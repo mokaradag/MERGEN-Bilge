@@ -1,4 +1,3 @@
-
 // www/js/stt_client.js
 
 window.STT_Client = (function() {
@@ -21,6 +20,13 @@ window.STT_Client = (function() {
     // Config
     const CHUNK_INTERVAL_MS = 3000;
     const SILENCE_THRESHOLD = 0.025; 
+
+    function restoreMusicAfterSTT() {
+        if (window.MusicManager &&
+            typeof window.MusicManager.unduckAfterSTT === 'function') {
+            window.MusicManager.unduckAfterSTT();
+        }
+    }
     
     let isRecordingActive = false;
     let chunkTimer = null;
@@ -66,7 +72,10 @@ window.STT_Client = (function() {
             avatarEl.style.borderColor = accentColor;
         }
         
-        if(!canvasElement) return;
+        if(!canvasElement) {
+            restoreMusicAfterSTT();
+            return;
+        }
         
         canvasCtx = canvasElement.getContext("2d");
         
@@ -96,6 +105,9 @@ window.STT_Client = (function() {
             })
             .catch(err => {
                 console.error("Microphone access denied:", err);
+                isRecordingActive = false;
+                currentMode = MODES.IDLE;
+                restoreMusicAfterSTT();
                 alert("Mikrofona erişilemedi. Lütfen tarayıcı izinlerini kontrol edin.");
             });
     }
@@ -364,9 +376,7 @@ window.STT_Client = (function() {
 		window.removeEventListener('resize', resizeCanvas);
 
 		// STT bitti: müziği yumuşak geçişle normale döndür
-		if (window.MusicManager) {
-		  window.MusicManager.unduckAfterSTT();
-		}
+		restoreMusicAfterSTT();
     }
     
     return {

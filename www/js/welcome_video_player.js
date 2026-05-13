@@ -31,10 +31,16 @@ window.WelcomeVideoPlayer = (function() {
   }
 
   function init(containerElement) {
-    if (isInitialized) return;
+    if (!containerElement) return;
+
+    // Aynı görünür konteyner zaten bağlıysa tekrar kurma; farklı/re-render edilmiş
+    // welcome DOM'u geldiyse eski instance'ı temizleyip videoyu yeniden başlat.
+    if (isInitialized && container === containerElement && document.contains(containerElement)) {
+      return;
+    }
 
     // Önceki instance'ları temizle
-    if (videoElements[0] || videoElements[1]) {
+    if (isInitialized || videoElements[0] || videoElements[1]) {
       destroy();
     }
 

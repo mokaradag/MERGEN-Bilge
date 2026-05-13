@@ -39,6 +39,7 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     if (isTRUE(values$is_sending) || isTRUE(values$typing)) {
       stop_generation(TRUE)
       active_request_id(paste0("cancelled_", as.integer(Sys.time())))
+      session$sendCustomMessage("stopTTSPlayback", list(reason = "stop_button"))
     }
   }, ignoreInit = TRUE)
 

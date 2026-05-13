@@ -69,6 +69,14 @@ window.WelcomeNeuralNetwork = (function() {
 
     width = parent.clientWidth;
     height = parent.clientHeight;
+
+    // Welcome DOM'u henüz ölçülemiyorsa 0x0 canvas ile partikül üretme.
+    // Kısa gecikmeyle tekrar ölçerek neural animasyonun boş başlamasını engelle.
+    if (width <= 0 || height <= 0) {
+      window.setTimeout(resize, 80);
+      return;
+    }
+
     canvas.width = width;
     canvas.height = height;
   }

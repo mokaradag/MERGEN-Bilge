@@ -145,6 +145,31 @@ quickActionsInit <- function(input, session, values, settings_data,
 
     invisible(NULL)
   }
+
+  last_quick_action_signature <- reactiveVal("")
+  last_quick_action_at <- reactiveVal(as.numeric(0))
+
+  is_duplicate_quick_action_event <- function(action_id, model_id) {
+    if (is.null(action_id) || !nzchar(action_id)) {
+      return(FALSE)
+    }
+
+    now_ms <- as.numeric(Sys.time()) * 1000
+    signature <- paste(action_id %||% "", model_id %||% "", sep = "|")
+
+    previous_signature <- isolate(last_quick_action_signature())
+    previous_at <- isolate(last_quick_action_at())
+
+    if (identical(previous_signature, signature) &&
+        is.finite(previous_at) &&
+        (now_ms - previous_at) < 600) {
+      return(TRUE)
+    }
+
+    last_quick_action_signature(signature)
+    last_quick_action_at(now_ms)
+    FALSE
+  }
   
   # ---------------------------------------------------------------------------
   # Yardımcı: Tam eylem işleyicisi (model + araç + mesaj)
@@ -232,6 +257,12 @@ quickActionsInit <- function(input, session, values, settings_data,
     cat("[QUICK_TEMPLATE] Gelen veri: text='", template_text, 
         "', model='", template_model, 
         "', action_id='", template_action_id, "'\n", sep = "")
+
+    if (is_duplicate_quick_action_event(template_action_id, template_model)) {
+      cat("[QUICK_TEMPLATE] Yinelenen hızlı işlem olayı yoksayıldı: ",
+          template_action_id, "\n", sep = "")
+      return()
+    }
     
     # -------------------------------------------------------------------------
     # EYLEM: Kodlama Desteği

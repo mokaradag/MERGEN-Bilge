@@ -262,8 +262,24 @@ window.WelcomePersonalGreeting = (function() {
   }
 
   // --- Shiny mesaj işleyici ---
-  function registerShinyHandler() {
-    if (typeof Shiny === 'undefined') return;
+  function registerShinyHandler(attempt) {
+    attempt = attempt || 0;
+
+    if (window.MERGEN_PERSONAL_GREETING_HANDLER_REGISTERED) {
+      return;
+    }
+
+    if (typeof Shiny === 'undefined' ||
+        typeof Shiny.addCustomMessageHandler !== 'function') {
+      if (attempt < 80) {
+        window.setTimeout(function() {
+          registerShinyHandler(attempt + 1);
+        }, 50);
+      }
+      return;
+    }
+
+    window.MERGEN_PERSONAL_GREETING_HANDLER_REGISTERED = true;
 
     Shiny.addCustomMessageHandler('initPersonalGreeting', function(data) {
       destroy();
@@ -312,9 +328,11 @@ window.WelcomePersonalGreeting = (function() {
 
   // --- Başlatma ---
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', registerShinyHandler);
+    document.addEventListener('DOMContentLoaded', function() {
+      registerShinyHandler(0);
+    });
   } else {
-    registerShinyHandler();
+    registerShinyHandler(0);
   }
 
   return {
