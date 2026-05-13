@@ -31,6 +31,12 @@ source(
   local = globalenv()
 )
 
+source(
+  file.path(repo_root, "R", "server_chat_engine_runtime.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 .fake_chat_engine_session <- function() {
   list(
     userData = new.env(parent = emptyenv()),

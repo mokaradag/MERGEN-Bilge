@@ -103,10 +103,13 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 	  "R/helpers_llm_sse.R",
 	  "R/helpers_llm_worker.R",
 	  "R/server_init_user_session.R",
+	  "R/helpers_server_runtime_contracts.R",
+	  "R/helpers_server_runtime_named_contracts.R",
 	  "R/server_runtime_context.R",
 	  "R/server_runtime_function_slot.R",
 	  "R/server_module_wiring.R",
 	  "R/server_chat_engine_dependencies.R",
+	  "R/server_chat_engine_runtime.R",
 	  "R/server_core_interaction_runtime.R",
 	  "R/server_handler_true_streaming.R",
 	  "R/server_send_message.R",
@@ -359,6 +362,7 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
   wiring_text <- paste(
     .read_text_quiet(file.path(.repo_root, "R", "server_module_wiring.R")),
     .read_text_quiet(file.path(.repo_root, "R", "server_chat_engine_dependencies.R")),
+    .read_text_quiet(file.path(.repo_root, "R", "server_chat_engine_runtime.R")),
     sep = "\n"
   )
 

@@ -200,6 +200,12 @@ server <- function(input, output, session) {
   file_manager_data <- core_interaction$file_manager_data
   filePreview <- core_interaction$filePreview
 
+  admin_pool_ref <- if (exists("admin_pool", inherits = TRUE)) {
+    get("admin_pool", inherits = TRUE)
+  } else {
+    NULL
+  }
+
   chat_engine_deps <- serverBuildChatEngineDependencyBundle(
     settings_data = settings_data,
     api_key = api_key,
@@ -210,7 +216,7 @@ server <- function(input, output, session) {
     send_message_proxy = send_message,
     api_config = api_config,
     media_modules = media_modules,
-    admin_pool = admin_pool
+    admin_pool = admin_pool_ref
   )
 
   chat_engine <- serverBindChatEngineRuntime(
