@@ -5,20 +5,16 @@
 #           yayılımını azaltmak ve eksik/yanlış init sırasını erken yakalamaktır.
 # ==============================================================================
 
-.server_runtime_contracts_paths <- c(
-  file.path("R", "helpers_server_runtime_contracts.R"),
-  file.path("R", "helpers_server_runtime_named_contracts.R")
-)
+.server_runtime_contract_sources <- file.path("R", c(
+  "helpers_server_runtime_contracts.R",
+  "helpers_server_runtime_named_contracts.R"
+))
 
 .server_runtime_contract_helpers <- c(
-  "is_server_runtime_context",
-  ".server_runtime_stop",
-  ".server_runtime_require_context",
-  ".server_runtime_require_values",
-  ".server_runtime_require_functions",
-  ".server_runtime_require_named_functions",
-  ".server_runtime_require_environment",
-  ".server_runtime_invoke_auth_ready_callback"
+  "is_server_runtime_context", ".server_runtime_stop",
+  ".server_runtime_require_context", ".server_runtime_require_values",
+  ".server_runtime_require_functions", ".server_runtime_require_named_functions",
+  ".server_runtime_require_environment", ".server_runtime_invoke_auth_ready_callback"
 )
 
 .server_runtime_missing_contract_helpers <- .server_runtime_contract_helpers[!vapply(
@@ -28,35 +24,29 @@
 )]
 
 if (length(.server_runtime_missing_contract_helpers) > 0L) {
-  for (.server_runtime_contracts_path in .server_runtime_contracts_paths) {
-    if (file.exists(.server_runtime_contracts_path)) {
-      source(.server_runtime_contracts_path, encoding = "UTF-8", local = globalenv())
-    }
+  for (.contract_source in .server_runtime_contract_sources[file.exists(.server_runtime_contract_sources)]) {
+    source(.contract_source, encoding = "UTF-8", local = globalenv())
   }
-}
 
-.server_runtime_missing_contract_helpers <- .server_runtime_contract_helpers[!vapply(
-  .server_runtime_contract_helpers,
-  function(fn_name) exists(fn_name, mode = "function", inherits = TRUE),
-  logical(1)
-)]
+  .server_runtime_missing_contract_helpers <- .server_runtime_contract_helpers[!vapply(
+    .server_runtime_contract_helpers,
+    function(fn_name) exists(fn_name, mode = "function", inherits = TRUE),
+    logical(1)
+  )]
+}
 
 if (length(.server_runtime_missing_contract_helpers) > 0L) {
-  stop(
-    sprintf(
-      "server_runtime_context: Eksik sözleşme yardımcıları: %s",
-      paste(.server_runtime_missing_contract_helpers, collapse = ", ")
-    ),
-    call. = FALSE
-  )
+  stop(sprintf(
+    "server_runtime_context: Eksik sözleşme yardımcıları: %s",
+    paste(.server_runtime_missing_contract_helpers, collapse = ", ")
+  ), call. = FALSE)
 }
 
-rm(
-  .server_runtime_contracts_paths,
-  .server_runtime_contracts_path,
-  .server_runtime_contract_helpers,
-  .server_runtime_missing_contract_helpers
-)
+rm(list = intersect(
+  c(".server_runtime_contract_sources", ".server_runtime_contract_helpers",
+    ".server_runtime_missing_contract_helpers", ".contract_source"),
+  ls()
+))
 
 serverRuntimeRequireIdentity <- function(ctx,
                                          required_values = character(0),

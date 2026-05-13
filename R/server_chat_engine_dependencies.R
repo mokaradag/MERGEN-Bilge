@@ -37,8 +37,6 @@
   )
 
   .server_wiring_require_functions(list(
-    api_key = chat_engine_deps$api_key,
-    user_config_rv = chat_engine_deps$user_config_rv,
     send_message_proxy = chat_engine_deps$send_message_proxy,
     perf_tracker_track_error = chat_engine_deps$perf_tracker$track_error,
     perf_tracker_track_request = chat_engine_deps$perf_tracker$track_request,
