@@ -127,6 +127,7 @@ When adding, moving, or splitting a runtime file:
 
 - add the file to the correct position in `R/config_source_manifest.R`,
 - keep dependency order explicit and reviewable,
+- when splitting Claude Code security helpers, preserve the order `R/helpers_claude_code_security_policy.R` before `R/helpers_claude_code_prompt_security_policy.R`, and keep both before the Claude Code runtime, process, streaming, lifecycle, and module files that call the policy helpers.
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
 - keep `global.R` validating `R/config_source_manifest.R` before sourcing it and loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,
 - keep `source_manifest_runtime_paths` exactly equal to `c(source_manifest_group_1_paths, source_manifest_after_future_paths)`; do not maintain a separate divergent runtime list,
@@ -226,7 +227,7 @@ Focused validation:
 
 ### Bilge Yolaç Claude Code execution security contract
 
-Bilge Yolaç wraps Claude Code CLI inside the Shiny UI. This is a security-sensitive and UX-sensitive boundary. Keep CLI argument construction, workdir validation, dangerous-mode decisions, and generated-file staging centralized in `R/helpers_claude_code_security_policy.R` and the existing Claude Code helper layer. Do not scatter ad hoc permission checks or CLI flags across modules.
+Bilge Yolaç wraps Claude Code CLI inside the Shiny UI. This is a security-sensitive and UX-sensitive boundary. Keep CLI argument construction, workdir validation, dangerous-mode decisions, generated-file staging, and prompt-path safety centralized in the Claude Code security helper layer. `R/helpers_claude_code_security_policy.R` owns core policy decisions such as dangerous permissions, permission args, workdir roots, output roots, and path-inside-root checks. `R/helpers_claude_code_prompt_security_policy.R` owns prompt-level path-intent checks. Do not scatter ad hoc permission checks or CLI flags across modules.
 
 Current execution contract:
 
@@ -242,6 +243,9 @@ Current execution contract:
 - Preserve the exact user prompt as the final prompt argument.
 - Because `--allowedTools` and `--disallowedTools` can behave like variadic CLI flags, always place the final user prompt after a `--` argument separator. This prevents the prompt from being consumed as another tool name and avoids the Claude CLI error: “Input must be provided either through stdin or as a prompt argument when using --print.”
 - Do not remove the `--` prompt separator without updating the security policy tests and manually verifying all model tiers.
+- Dangerous skip-permission mode must not be enabled by ordinary per-session or per-user settings alone. It must require the central admin/development override path.
+- If dangerous mode is requested from an untrusted setting path, ignore it and log a warning instead of silently enabling bypass mode.
+- The non-streaming and standalone streaming helper paths must keep a fallback prompt-path guard before process creation.
 
 Workdir and output contract:
 
@@ -250,6 +254,12 @@ Workdir and output contract:
 - Workdirs must be normalized before use.
 - UNC paths, Windows paths, network shares, and Turkish-character paths should use the existing relaxed directory resolver where applicable.
 - Path traversal and unintended outside-root access must remain blocked.
+- Prompt-level file write/edit/delete/copy/move intent checks belong in `R/helpers_claude_code_prompt_security_policy.R`.
+- Obvious requests to write, edit, delete, copy, move, rename, touch, mkdir, or remove files through absolute paths or `../` traversal outside the allowed roots must be rejected before the CLI process starts.
+- `R/module_claude_code.R` must not inline this security workflow. It should call `cc_prepare_safe_workdir_for_run()` from `R/helpers_claude_code_run_lifecycle.R`.
+- `cc_prepare_safe_workdir_for_run()` should remain the lifecycle-level coordinator for selected-workdir validation plus prompt-path safety.
+- A blocked prompt must clean the active run state, send a clear user-visible blocked-message payload, and log the blocked path.
+- Do not weaken this guard for UX convenience. Normal UX should be preserved by allowing safe in-workdir file creation and editing, not by allowing unrestricted paths.
 - Generated/downloadable files must be staged only when they are inside the selected workdir, runtime workdir, or an explicitly allowed output root.
 - Do not silently allow unrestricted filesystem access just to improve UX.
 - Do not regress to unconditional dangerous mode.
@@ -265,6 +275,7 @@ Recommended safe environment baseline:
 Protected by:
 
 - `tests/testthat/test-claude-code-security-policy-contract.R`
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`
 - `tests/testthat/test-claude-code-process-refactor-contract.R`
 - `tests/testthat/test-claude-code-runtime-workdir-contract.R`
 - `tests/testthat/test-claude-code-workdir-scan-contract.R`
@@ -273,6 +284,7 @@ Protected by:
 Focused validation:
 
 - `testthat::test_file("tests/testthat/test-claude-code-security-policy-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-workdir-scan-contract.R")`
@@ -289,6 +301,7 @@ Manual validation after changes to this boundary:
 - Confirm ordinary file inspection works without repeated permission prompts.
 - Ask it to create a small `.txt` or `.md` file in the selected workdir and confirm the generated download link appears.
 - Ask it to write outside the selected workdir and confirm it is rejected or fails safely.
+- Ask it to create `../blocked.txt` or an absolute outside-root file path and confirm the CLI does not start, the UI shows a clear blocked message, and logs mention the blocked path.
 - Confirm logs show safe mode / `acceptEdits` and do not show dangerous mode unless explicitly enabled.
 
 ### API model configuration contract
@@ -341,7 +354,7 @@ tests/testthat/test-sse-worker-export-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
 
-Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing. Small helper extraction is preferred when a near-limit runtime file would otherwise consume remaining headroom; the File Manager attach-state client helper is an example of this pattern. Recent file-resolution hardening required one File Manager function-count budget update after tests passed; do not loosen additional ratchet values unless the code change genuinely changes the measured baseline and the reason is documented.
+Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing. Small helper extraction is preferred when a near-limit runtime file would otherwise consume remaining headroom; the File Manager attach-state client helper is an example of this pattern. Recent file-resolution hardening required one File Manager function-count budget update after tests passed; do not loosen additional ratchet values unless the code change genuinely changes the measured baseline and the reason is documented. The prompt-path security split is part of this contract: keep `R/helpers_claude_code_prompt_security_policy.R` separate from the already dense core security policy helper, and keep `R/module_claude_code.R` delegating workdir/prompt safety to the lifecycle helper instead of growing inline security blocks.
 
 ### send_message prompting and file-context contract
 

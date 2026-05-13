@@ -117,7 +117,7 @@ Bilge Yolaç canlı akışı, Türkçe karakter ve emoji bütünlüğünü korum
 
 #### Bilge Yolaç güvenli CLI çalıştırma politikası
 
-Bilge Yolaç, Claude Code CLI çalıştırma davranışını merkezi bir güvenlik ilkesi üzerinden yönetir. Bu sınırın temel amacı, kullanıcı deneyimini bozmadan dosya sistemi erişimini daha denetlenebilir hâle getirmektir.
+Bilge Yolaç, Claude Code CLI çalıştırma davranışını merkezi bir güvenlik ilkesi üzerinden yönetir. Bu sınırın temel amacı, kullanıcı deneyimini bozmadan dosya sistemi erişimini daha denetlenebilir hâle getirmektir. CLI izinleri, çalışma dizini kökleri, çıktı kökleri ve tehlikeli izin kararları `R/helpers_claude_code_security_policy.R` içinde; kullanıcı promptu içindeki dış dosya yolu yazma/düzenleme/silme niyetleri ise `R/helpers_claude_code_prompt_security_policy.R` içinde izole edilmiştir.
 
 Varsayılan davranış şöyledir:
 
@@ -128,6 +128,9 @@ Varsayılan davranış şöyledir:
 - `Bash` varsayılan izinli araç değildir; yalnızca güvenilir iç geliştirme makinelerinde açıkça yapılandırılmalıdır.
 - Kullanıcının arayüzde seçtiği mevcut çalışma dizini, `CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS=TRUE` iken yalnızca o çalışma için güvenli çalışma kökü olarak kabul edilebilir.
 - Çalışma dizinleri normalize edilir; UNC/ağ paylaşımı, Windows yolu ve Türkçe karakter içeren dizinler mevcut esnek dizin çözümleme yardımcıları üzerinden doğrulanır.
+- Kullanıcı promptunda açıkça mutlak yol veya `../` benzeri traversal ile seçili çalışma dizini dışına dosya oluşturma, düzenleme, silme, taşıma veya kopyalama isteği algılanırsa CLI başlatılmadan önce çalışma güvenli biçimde engellenir.
+- Bu engel kullanıcıya açık bir hata mesajı olarak gösterilir; istek sessizce geçilmez ve tehlikeli moda düşülmez.
+- `R/module_claude_code.R`, bu doğrulamaları inline tutmaz; seçili çalışma dizini ve prompt-yol güvenliği `R/helpers_claude_code_run_lifecycle.R` içindeki `cc_prepare_safe_workdir_for_run()` yardımcısına delege edilir.
 - Üretilen ve indirilebilir hâle getirilen dosyalar yalnızca seçili çalışma dizini, runtime çalışma dizini veya açıkça izinli çıktı kökleri içindeyse sahnelenir.
 - Bilge Yolaç güvenlik ilkesi kullanıcı promptuna veya system prompta metin olarak enjekte edilmez; kullanıcının gerçek komutu Claude Code CLI’a aynen korunarak iletilir.
 - `--allowedTools` ve `--disallowedTools` gibi araç bayraklarının kullanıcı promptunu yutmaması için prompt, CLI argümanlarında `--` sonlandırıcısından sonra verilir.
@@ -145,10 +148,13 @@ Daha geniş araç erişimi gerekiyorsa, özellikle `Bash`, yalnızca kontrollü 
 Bu davranışın temel sözleşmesi aşağıdaki testlerle korunur:
 
 - `tests/testthat/test-claude-code-security-policy-contract.R`
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`
 - `tests/testthat/test-claude-code-process-refactor-contract.R`
 - `tests/testthat/test-claude-code-runtime-workdir-contract.R`
 - `tests/testthat/test-claude-code-workdir-scan-contract.R`
 - `tests/testthat/test-maintainability-ratchet.R`
+
+Bu güvenlik sertleştirmesi aynı zamanda bakım sınırlarını da korur: prompt-yol denetimi ayrı helper dosyasında, çalışma yaşam döngüsü davranışı lifecycle helper katmanında, ana Shiny modül orkestrasyonu ise `R/module_claude_code.R` içinde tutulur. Böylece güvenlik kontrolü eklenirken Bilge Yolaç sayfasının canlı akış, dizin gezgini, dosya üretme ve indirme bağlantısı deneyimi korunur.
 
 Bilge Yolaç yapısı son bakım refactor’larıyla daha ayrık hâle getirilmiştir. Sayfa UI tanımı `R/module_claude_code_ui.R` içinde, sunucu mantığı ise `R/module_claude_code.R` içinde tutulur. Model/settings karar yardımcıları `R/helpers_claude_code_model_config.R` dosyasına taşınmış; süreç/CLI çalıştırma yardımcıları `R/helpers_claude_code.R` içinde bırakılmıştır. Bu ayrımlar, büyük dosyaları tek seferde yeniden yazmadan kontrollü bakım yapılabilirlik artışı sağlamak için uygulanmıştır.
 
