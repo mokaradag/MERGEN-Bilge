@@ -202,7 +202,13 @@ const MusicManager = {
         console.warn('[MUSIC] Oynatma hatası:', e.message || e);
       });
 
-      console.log('[MUSIC] Oynatılıyor [' + self.state.phase + ']:', decodeURIComponent(src.split('/').pop()));
+      var playingFileName = src.split('/').pop();
+      try {
+        playingFileName = decodeURIComponent(playingFileName);
+      } catch (decodeErr) {
+        // Bozuk yüzde-encoding varsa oynatma logu müziği bozmasın
+      }
+      console.log('[MUSIC] Oynatılıyor [' + self.state.phase + ']:', playingFileName);
     }, { once: true });
 
     audio.addEventListener('ended', function() {

@@ -55,15 +55,21 @@ window.STT_Client = (function() {
     let smoothedFreqs = new Array(64).fill(0);
     
 	function init(config) {
+		config = config || {};
 		// STT başlatılırken müziği tamamen sessize al - mikrofon paraziti önlenir
 		if (window.MusicManager) {
 			window.MusicManager.duckForSTT();
 		}
 
-		const { canvasId, timerId, dbId, nsPrefix, color } = config;
+		const { canvasId, timerId, dbId, nsPrefix } = config;
+		if (!canvasId) {
+			restoreMusicAfterSTT();
+			return;
+		}
+
 		canvasElement = document.getElementById(canvasId);
-		timerElement = document.getElementById(timerId);
-        dbElement = document.getElementById(dbId);
+		timerElement = timerId ? document.getElementById(timerId) : null;
+        dbElement = dbId ? document.getElementById(dbId) : null;
         accentColor = config.accentColor || '#7C4DFF';
         
         // 1. Set Avatar Border Color Dynamically
@@ -121,7 +127,11 @@ window.STT_Client = (function() {
         const dpr = window.devicePixelRatio || 1;
         canvasElement.width = width * dpr;
         canvasElement.height = height * dpr;
-        canvasCtx.scale(dpr, dpr);
+        if (canvasCtx.setTransform) {
+            canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        } else {
+            canvasCtx.scale(dpr, dpr);
+        }
     }
     
     function generateStrands(count) {

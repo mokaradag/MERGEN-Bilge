@@ -10,8 +10,17 @@ $(document).ready(function() {
     currentAudio: null,
     stop: function() {
       if (this.currentAudio) {
-        this.currentAudio.pause();
-        this.currentAudio.currentTime = 0;
+        const audio = this.currentAudio;
+        audio.onplay = null;
+        audio.onpause = null;
+        audio.onended = null;
+        audio.onerror = null;
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.removeAttribute('src');
+          audio.load();
+        } catch (e) {}
         this.currentAudio = null;
       }
       this.queue = [];

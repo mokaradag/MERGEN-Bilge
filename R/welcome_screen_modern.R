@@ -50,6 +50,7 @@ create_modern_welcome_action <- function(action_data) {
   tooltip_title <- sprintf("%s\n\n%s", action_data$title, action_data$description)
   
   tags$button(
+    type = "button",
     class = "modern-welcome-action-btn",
     title = tooltip_title,
     style = sprintf("--theme-r: %d; --theme-g: %d; --theme-b: %d;", rgb[1], rgb[2], rgb[3]),

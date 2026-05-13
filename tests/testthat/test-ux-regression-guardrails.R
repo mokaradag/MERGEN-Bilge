@@ -197,6 +197,39 @@ testthat::test_that("quick action model, tool, intro ve duplicate-event sözleş
   )
 })
 
+testthat::test_that("hızlı özetleme işlemi eski analiz kontrollerini kapatır", {
+  quick_r <- .ux_guard_read_text("R/module_quick_actions.R")
+
+  summarization_start <- regexpr(
+    "if (identical(template_action_id, \"summarization\"))",
+    quick_r,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  testthat::expect_gt(summarization_start, 0L)
+
+  summarization_branch <- substr(
+    quick_r,
+    summarization_start,
+    min(
+      nchar(quick_r, type = "chars", allowNA = FALSE),
+      summarization_start + 3000L
+    )
+  )
+
+  .ux_guard_expect_all(
+    summarization_branch,
+    c(
+      "session$sendCustomMessage(\"toggleSummaryMode\", list(active = TRUE))",
+      "session$sendCustomMessage(\"toggleImageMode\", list(active = FALSE))",
+      "session$sendCustomMessage(\"toggleAnalysisMode\", list(active = FALSE))",
+      "show_quick_action_intro(\"summarization\")"
+    ),
+    "Özetleme hızlı işlemi eski analiz kontrollerini kapatma sözleşmesi eksik:"
+  )
+})
+
 testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur", {
   music_js <- .ux_guard_read_text("www/js/music_manager.js")
   tts_js <- .ux_guard_read_text("www/js/tts_manager.js")
@@ -213,6 +246,8 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
       "_audio: null",
       "_pendingRequestId",
       "_pendingRequestType",
+      "playingFileName = src.split('/').pop()",
+      "decodeErr",
       "duckForSTT",
       "unduckAfterSTT",
       "duck: function()",
@@ -228,6 +263,8 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
       "queue.sort",
       "stopTTSPlayback",
       "window.mergenTTS.stop()",
+      "audio.onplay = null",
+      "audio.removeAttribute('src')",
       "MusicManager.duck()",
       "MusicManager.unduck()",
       "tts_is_playing"
@@ -240,6 +277,9 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
     c(
       "window.STT_Client",
       "restoreMusicAfterSTT",
+      "config = config || {}",
+      "if (!canvasId)",
+      "canvasCtx.setTransform",
       "MusicManager.duckForSTT()",
       "MusicManager.unduckAfterSTT()",
       "stopAndCleanup"

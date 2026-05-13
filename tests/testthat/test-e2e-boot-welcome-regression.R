@@ -276,6 +276,16 @@ test_that("modern welcome screen renders quick actions, recent chats and Turkish
 
   expect_equal(length(model_tokens), 7L)
 
+  type_tokens <- regmatches(
+    html,
+    gregexpr("type=\"button\"", html, perl = TRUE)
+  )[[1]]
+
+  expect_true(
+    length(type_tokens) >= 7L,
+    info = "Modern welcome hızlı işlem butonları form submit etkisi üretmemek için type=\"button\" taşımalıdır."
+  )
+
   onclick_tokens <- regmatches(
     html,
     gregexpr(
