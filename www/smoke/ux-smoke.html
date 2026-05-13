@@ -253,6 +253,52 @@
     assert(!!doc.querySelector(".modern-welcome-footer-section"), "son konuşmalar alanı kırılmadan render ediliyor");
     assert(Math.abs(rect.top) <= 2, "welcome üst boşluk regresyonu yok: top=" + rect.top);
   }
+  
+	async function testOneQuickActionOnly() {
+	  // Production SSO/Keycloak routes can redirect repeated iframe reloads.
+	  // Keep browser smoke minimal here; full quick-action coverage remains in
+	  // test-ux-regression-guardrails.R and test-e2e-boot-welcome-regression.R.
+	  var app = await loadFreshApp("quick action: resource-analysis");
+	  var doc = app.doc;
+	  var actionId = "resource-analysis";
+
+	  await waitFor(function () {
+		return doc.querySelector(".modern-welcome-action-btn[data-action-id='" + actionId + "']");
+	  }, "quick action button " + actionId, 15000);
+
+	  var button = doc.querySelector(".modern-welcome-action-btn[data-action-id='" + actionId + "']");
+	  var model = button.getAttribute("data-action-model") || "";
+
+	  button.click();
+	  button.click();
+
+	  await wait(950);
+
+	  assert(
+		eventCount("quick_template", function (event) {
+		  return event.value &&
+				 event.value.action_id === actionId &&
+				 (event.value.model || "") === model;
+		}) === 1,
+		actionId + " çift tıklamada tek quick_template dispatch üretir"
+	  );
+
+	  await waitFor(function () {
+		var chat = doc.querySelector("#chat_content_container");
+		return chat && chat.textContent && chat.textContent.trim().length > 20;
+	  }, actionId + " intro mesajı", 8000);
+
+	  var chatText = (doc.querySelector("#chat_content_container") || {}).textContent || "";
+	  assert(
+		/(modu|hazır|yardımcı|analiz|özet|görsel|kod|süreç|Excel)/i.test(chatText),
+		actionId + " intro mesajı chat içinde görünüyor"
+	  );
+
+	  assert(
+		eventCount("quick_template") === 1,
+		actionId + " model/tool modu için tarayıcı olayı üretildi"
+	  );
+	}
 
   async function testQuickActions() {
     var ids = Object.keys(QUICK_ACTION_EXPECTATIONS);
@@ -513,7 +559,7 @@
       app = await loadFreshApp("reasoning");
       await testReasoning(app);
 
-      await testQuickActions();
+      await testOneQuickActionOnly();
       testConsoleNoise();
     } catch (e) {
       fail(e && e.stack ? e.stack : String(e));
