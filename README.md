@@ -96,6 +96,33 @@ Son sağlık paneli varlık bakımında, Sistem Durumu sayfasına ait `css/healt
 
 Son medya ve arka plan müziği bakımında, sinematik başlangıç ekranındaki Dinamik/Bütünleşik mod seçiminden Ana Söyleşi hoş geldin ekranına geçişte müzik yaşam döngüsü sıkılaştırılmıştır. `SpaceIntroMusic` yalnızca giriş ekranı için çalışır; ana `MusicManager` ise giriş kapanışından sonra tek ses kaynağıyla başlatılır. Ana tema müziği oturumda bir kez çalar, ardından seçili karaktere ait müzikler rastgele döngüyle devam eder. Yinelenen `toggleMusic(TRUE)` çağrılarının ana tema playlist isteğini geçersiz kılarak karakter müziğine erken atlaması engellenmiştir. Karakter müziği dosya URL’leri Windows/SSO ortamında UTF-8 path segment kodlamasıyla üretilir; özellikle Ülgen dosyalarında `Ü` karakterinin hatalı `%DC` yerine doğru `%C3%9C` biçiminde kodlanması korunur. Hatalı veya oynatılamayan ses URL’lerinde tarayıcıyı kilitleyebilecek sonsuz hızlı yeniden deneme döngüsü de sınırlandırılmıştır. Bu davranış `tests/testthat/test-e2e-media-audio-state-regression.R`, `tests/testthat/test-ui-asset-manifest-contract.R`, `tests/testthat/test-frontend-selector-contract.R`, `tests/testthat/test-e2e-boot-welcome-regression.R`, `tests/testthat/test-source-manifest-contract.R` ve `tests/testthat/test-production-contracts.R` ile korunur.
 
+### UX regresyon koruma sözleşmesi
+
+Son UX dayanıklılık bakımında, mimari, güvenlik, kaynak yükleme sırası ve bakım refactor’larının kullanıcı deneyimini sessizce azaltmaması için ek regresyon korumaları eklenmiştir. Bu korumalar özellikle Ana Söyleşi hoş geldin ekranı, hızlı işlem kartları, medya yaşam döngüsü, TTS/STT etkileşimi, stop butonu, otomatik kaydırma ve düşünce paneli sınırlarını hedefler.
+
+Korunan davranışlar şunlardır:
+
+- Hoş geldin ekranında sol sinematik video, sağ neural animasyon, kişisel karşılama metni, hızlı işlem kartları ve Son Konuşmalar alanı birlikte çalışmaya devam etmelidir.
+- Welcome ekranı yeniden bağlandığında veya Yeni Söyleşi sonrası geri geldiğinde video/neural/greeting bileşenleri eski DOM durumuna takılmadan yeniden başlatılmalıdır.
+- Welcome yerleşiminde üst boşluk regresyonu oluşmamalı; tam ekran yerleşim sözleşmesi korunmalıdır.
+- Hızlı işlem kartları doğru model ve araç modunu seçmeli, hazır yönlendirme mesajını göstermeli ve hızlı çift tıklamada yinelenen olay üretmemelidir.
+- Arka plan müziğinde aynı anda tek aktif kaynak olmalı; karakter müziği tema müziğinin üzerine binmemeli, TTS müziği geçici olarak kısmalı, STT modalı müziği duraklatıp kapandığında geri getirmelidir.
+- TTS yalnızca yeni AI yanıtları için otomatik oynatılmalı; kayıtlı/eski sohbet yükleme akışları otomatik seslendirme başlatmamalıdır.
+- Stop butonu yanıt üretimini, düşünce paneli durumunu ve aktif TTS çalmasını birlikte temizlemelidir.
+- Düşünen modellerde düşünce paneli görünmeli, otomatik kaydırma bozulmamalı ve tamamlanma/durdurma sonrasında panel yaşam döngüsü güvenli kalmalıdır.
+
+Bu sınırları korumak için hafif regresyon testleri `tests/testthat/test-ux-regression-guardrails.R` içinde toplanmıştır. İlgili değişikliklerden sonra en az şu odak testler çalıştırılmalıdır:
+
+- `tests/testthat/test-ux-regression-guardrails.R`
+- `tests/testthat/test-e2e-boot-welcome-regression.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+- `tests/testthat/test-e2e-media-audio-state-regression.R`
+- `tests/testthat/test-quick-action-intro.R`
+- `tests/testthat/test-quick-action-routing.R`
+- `tests/testthat/test-ui-asset-manifest-contract.R`
+
+Bu testler görsel tasarımın yerini almaz; ancak future refactor’ların mevcut Türkçe UX, animasyonlar, sesli etkileşimler ve hızlı işlem akışlarını yanlışlıkla azaltmasını erken yakalamak için sözleşme katmanı sağlar.
+
 Kişiselleştirme sayfasından farklı bir karakter seçildikten sonra doğrudan Ana Söyleşi sayfasına dönüldüğünde hoş geldin ekranı artık yeniden görünür DOM ölçüleriyle başlatılır. Daha önce hafif yeniden gösterme yolunda yalnızca mevcut welcome DOM’u gösteriliyor, modern welcome video/neural/greeting başlangıcı her zaman tekrar tetiklenmiyordu. `R/server_welcome_handlers.R` içindeki bağlı welcome dönüş yolu `initModernWelcome` ve `initPersonalGreeting` mesajlarını yeniden gönderir; `www/js/character_manager.js` ise gizli welcome canvas’ını sıfır ölçüyle destroy/init yapmamak için görünürlük kontrolü kullanır. Böylece karakter değişimi sonrası Ana Söyleşi’ye dönüşte sol video, sağ neural animasyon ve dinamik karşılama metni beklenen şekilde görünür.
 
 Son request lifecycle sertleştirmesinde `send_message()` içinde üretilen istek kimliği cleanup/abort akışlarına da taşınmıştır. `R/helpers_send_message_core.R` içindeki typing wrapper temizliği artık request-id kontrolüyle çalışabilir; böylece eski bir async callback veya durdurulmuş istek, daha yeni bir isteğin düşünme/typing wrapper’ını yanlışlıkla kaldırmaz. Bu davranış `tests/testthat/test-send-message-request-lifecycle-contract.R` ile doğrudan test edilir. Aktif istek kimliği okunamadığında da cleanup güvenli tarafta kalır ve yeni isteğin wrapper’ını kaldırmaz.

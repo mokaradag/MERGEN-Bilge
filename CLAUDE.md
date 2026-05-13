@@ -99,6 +99,62 @@ Preferred style:
 - minimal new abstractions,
 - preserve existing naming and structure.
 
+### 3B) Preserve UX while improving architecture and security
+
+Maintainability, source-manifest, frontend load-order, encoding, security, and Bilge Yolaç hardening work must not silently reduce the current user experience.
+
+The following UX behaviors are protected contracts:
+
+- The Ana Söyleşi welcome screen must keep the cinematic video, neural animation, personal greeting text, quick action cards, no-top-gap layout, and recent chats area.
+- Welcome video/neural/greeting components must restart safely after reconnects, new-chat returns, tab changes, and DOM redraws.
+- Quick action cards must select the correct model and tool mode, show the intro message, and avoid duplicate events on rapid double click.
+- Background music must keep one active track source at a time. Character music must not overlap theme music.
+- TTS must duck music while speaking and restore music after playback or failure.
+- STT must pause/duck music when the modal opens and restore music on cancel, submit, init failure, or microphone-denied paths.
+- TTS autoplay must be limited to new AI responses. Loading saved or old chats must not auto-play historical answers.
+- The stop button must stop generation and also clean active TTS playback.
+- Reasoning/thinking panels must not break chat scroll, must appear for thinking-capable flows, and must clean up safely after completion or stop.
+
+Implementation constraints:
+
+- Do not remove visual polish to simplify code.
+- Do not remove welcome animations.
+- Do not remove quick action intro messages.
+- Do not remove music, TTS, or STT to avoid race conditions.
+- Do not replace targeted guards with broad UI rewrites unless explicitly requested.
+- Prefer small defensive JS/R guards and lightweight contract tests.
+- No CDN or internet dependency may be added for these UX protections.
+
+The current guardrail layer includes:
+
+- `tests/testthat/test-ux-regression-guardrails.R`
+- `tests/testthat/test-e2e-boot-welcome-regression.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+- `tests/testthat/test-e2e-media-audio-state-regression.R`
+- `tests/testthat/test-quick-action-intro.R`
+- `tests/testthat/test-quick-action-routing.R`
+- `tests/testthat/test-ui-asset-manifest-contract.R`
+
+Focused validation after UX-sensitive refactors:
+
+- `testthat::test_file("tests/testthat/test-ux-regression-guardrails.R")`
+- `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+- `testthat::test_file("tests/testthat/test-e2e-media-audio-state-regression.R")`
+- `testthat::test_file("tests/testthat/test-quick-action-intro.R")`
+- `testthat::test_file("tests/testthat/test-quick-action-routing.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+
+Manual validation after touching welcome, quick actions, media, TTS, STT, stop-button, streaming, or reasoning code:
+
+- Fresh local start: confirm full welcome layout, video, neural animation, greeting text, quick action cards, and recent chats.
+- Test every quick action once: confirm model/tool switch, intro message, and no duplicate behavior on rapid double click.
+- Music: toggle background music, switch modes, start character chat, start a new chat, and navigate away from Ana Söyleşi; confirm no overlapping audio.
+- TTS: enable TTS, send a new message, confirm the new answer is spoken, then load a saved chat and confirm old answers do not auto-play.
+- STT: open modal, confirm music pauses/ducks, cancel and confirm restore, reopen and submit and confirm restore.
+- Reasoning: use a thinking-capable model, confirm the panel appears, auto-scroll works, and cleanup happens after response/stop.
+- Browser console: confirm there are no JS errors, duplicate audio warnings, or missing element errors.
+
 ### 4) Do not create unnecessary new files
 This repo already has a lot of modules. New files should only be introduced when there is a clear benefit and the sourcing order in `global.R` is updated correctly.
 
