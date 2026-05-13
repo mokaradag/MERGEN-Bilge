@@ -198,6 +198,56 @@ test_that("cc_send_run_blocked_message ortak hata payload'ını güvenli üretir
   expect_true(grepl("&lt;deneme&gt;", sent[[1]]$message$content, fixed = TRUE))
 })
 
+test_that("çalışma dizini ve prompt yol güvenliği lifecycle helper içinde birlikte tutulur", {
+  txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_lifecycle.R"
+  )
+
+  expect_true(
+    grepl("cc_prepare_safe_workdir_for_run\\s*<-\\s*function\\s*\\(", txt, perl = TRUE),
+    info = "Workdir ve prompt yol güvenliği run lifecycle helper içinde birlikte tutulmalıdır."
+  )
+
+  expect_true(
+    grepl("cc_validate_selected_workdir_for_run(", txt, fixed = TRUE),
+    info = "Lifecycle helper mevcut çalışma dizini doğrulama helper'ını kullanmalıdır."
+  )
+
+  expect_true(
+    grepl("cc_policy_validate_prompt_file_intent(", txt, fixed = TRUE),
+    info = "Lifecycle helper merkezi prompt güvenlik politikasını çağırmalıdır."
+  )
+
+  expect_true(
+    grepl("cc_send_run_blocked_message(", txt, fixed = TRUE),
+    info = "Engellenen prompt kullanıcıya ortak blocked-message helper ile gösterilmelidir."
+  )
+
+  expect_true(
+    grepl("cc_abort_run_before_streaming(", txt, fixed = TRUE),
+    info = "Engellenen prompt aktif run state'ini temizlemelidir."
+  )
+})
+
+test_that("module_claude_code.R çalışma dizini ve prompt yol güvenliğini lifecycle helper'a delege eder", {
+  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
+
+  expect_true(
+    grepl("cc_prepare_safe_workdir_for_run(", txt, fixed = TRUE),
+    info = "Module, çalışma dizini ve prompt yol güvenliğini tek lifecycle helper'a delege etmelidir."
+  )
+
+  expect_false(
+    grepl("cc_validate_prompt_file_intent_for_run(", txt, fixed = TRUE),
+    info = "Eski ara helper module içinde kullanılmamalıdır."
+  )
+
+  expect_false(
+    grepl("prompt_path_policy <- cc_policy_validate_prompt_file_intent(", txt, fixed = TRUE),
+    info = "Module içinde merkezi prompt path policy doğrudan çağrılmamalıdır."
+  )
+})
+
 test_that("module_claude_code.R erken abortları lifecycle helper ile temizler", {
   txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
 

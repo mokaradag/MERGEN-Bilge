@@ -145,13 +145,14 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         }
       }
 
-      workdir_policy <- cc_validate_selected_workdir_for_run(
+      workdir_policy <- cc_prepare_safe_workdir_for_run(
         session = session,
         ns = ns,
         rv = rv,
         request_id = run_request_id,
         workdir = calisma_dizini,
-        user_id = effective_user_id
+        user_id = effective_user_id,
+        prompt = kullanici_prompt
       )
       if (!isTRUE(workdir_policy$ok)) return()
 

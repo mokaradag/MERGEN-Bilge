@@ -73,6 +73,9 @@ run_claude_code <- function(prompt,
   }
   workdir <- workdir_policy$path
 
+  prompt_path_policy <- cc_policy_validate_prompt_file_intent(prompt, workdir = workdir)
+  if (!isTRUE(prompt_path_policy$ok)) return(list(success = FALSE, output = "", error = prompt_path_policy$error, duration = 0, tool_uses = list(), session_id = NULL))
+
   # CLI argümanları merkezi güvenlik ilkesinden oluştur
   args <- cc_policy_build_cli_args(
     prompt = prompt,

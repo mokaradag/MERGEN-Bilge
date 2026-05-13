@@ -126,6 +126,58 @@ cc_validate_selected_workdir_for_run <- function(session,
   workdir_policy
 }
 
+cc_prepare_safe_workdir_for_run <- function(session,
+                                            ns,
+                                            rv,
+                                            request_id,
+                                            workdir,
+                                            user_id,
+                                            prompt) {
+  workdir_policy <- cc_validate_selected_workdir_for_run(
+    session = session,
+    ns = ns,
+    rv = rv,
+    request_id = request_id,
+    workdir = workdir,
+    user_id = user_id
+  )
+
+  if (!isTRUE(workdir_policy$ok)) {
+    return(workdir_policy)
+  }
+
+  prompt_path_policy <- cc_policy_validate_prompt_file_intent(
+    prompt = prompt,
+    workdir = workdir_policy$path,
+    user_id = user_id
+  )
+
+  if (!isTRUE(prompt_path_policy$ok)) {
+    cc_abort_run_before_streaming(rv, request_id)
+
+    cc_send_run_blocked_message(
+      session = session,
+      ns = ns,
+      message = prompt_path_policy$error
+    )
+
+    log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Komut çalıştırma dış yol yazma isteği nedeniyle engellendi:",
+      paste(gsub("[{}]", "", prompt_path_policy$blocked_paths), collapse = ", ")
+    ))
+
+    return(list(
+      ok = FALSE,
+      path = workdir_policy$path,
+      error = prompt_path_policy$error,
+      prompt_policy = prompt_path_policy
+    ))
+  }
+
+  workdir_policy
+}
+
 cc_finalize_if_active <- function(rv,
                                   request_id = NULL,
                                   finalize_streaming,

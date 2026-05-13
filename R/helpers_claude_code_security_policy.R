@@ -383,15 +383,23 @@ cc_policy_dangerous_permissions_allowed <- function(user_id = NULL, settings_dat
     Sys.getenv("CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS", "FALSE")
   )
 
-  settings_on <- FALSE
+  settings_requested <- FALSE
   if (!is.null(settings_data) &&
       !is.null(settings_data$claude_code_allow_dangerous_permissions)) {
-    settings_on <- cc_policy_truthy(
+    settings_requested <- cc_policy_truthy(
       settings_data$claude_code_allow_dangerous_permissions
     )
   }
 
-  isTRUE(config_on || env_on || settings_on)
+  if (isTRUE(settings_requested) && !isTRUE(config_on || env_on)) {
+    log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Kullanıcı/oturum ayarından gelen tehlikeli izin isteği yok sayıldı.",
+      "Bu mod yalnızca CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS veya merkezi config ile açılabilir."
+    ))
+  }
+
+  isTRUE(config_on || env_on)
 }
 
 cc_policy_build_cli_args <- function(prompt,

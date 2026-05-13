@@ -43,6 +43,12 @@
     local = test_env
   )
 
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_prompt_security_policy.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
   test_env
 }
 
@@ -59,6 +65,7 @@ test_that("Bilge Yolaç güvenlik ilkesi helper dosyası manifestte doğru yerde
     c(
       "R/helpers_claude_code_runtime_workdir.R",
       "R/helpers_claude_code_security_policy.R",
+      "R/helpers_claude_code_prompt_security_policy.R",
       "R/helpers_claude_code.R",
       "R/helpers_claude_code_streaming.R"
     ),
@@ -240,4 +247,56 @@ test_that("üretilen dosya filtreleme yalnızca izinli kökteki yolları bırak�
   expect_equal(length(kept), 1L)
   expect_equal(basename(kept), "sonuc.txt")
   expect_true(test_env$cc_policy_path_inside_roots(kept, allowed))
+})
+
+test_that("oturum ayarı tek başına tehlikeli izin atlamayı açamaz", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  test_env$claude_code_config$allow_dangerous_permissions <- FALSE
+
+  args <- test_env$cc_policy_build_cli_args(
+    prompt = "Merhaba",
+    output_format = "json",
+    settings_data = list(
+      claude_code_allow_dangerous_permissions = TRUE
+    )
+  )
+
+  expect_false("--dangerously-skip-permissions" %in% args)
+  expect_true("--permission-mode" %in% args)
+  expect_true("acceptEdits" %in% args)
+})
+
+test_that("prompt içindeki dış yazma hedefleri CLI başlamadan engellenir", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  root <- withr::local_tempdir()
+  allowed <- file.path(root, "allowed")
+  outside <- file.path(root, "outside")
+  dir.create(allowed, recursive = TRUE)
+  dir.create(outside, recursive = TRUE)
+
+  inside_check <- test_env$cc_policy_validate_prompt_file_intent(
+    prompt = "sonuc.txt dosyasını oluştur",
+    workdir = allowed,
+    allowed_roots = allowed
+  )
+
+  traversal_check <- test_env$cc_policy_validate_prompt_file_intent(
+    prompt = "../outside/sonuc.txt dosyasını oluştur",
+    workdir = allowed,
+    allowed_roots = allowed
+  )
+
+  absolute_check <- test_env$cc_policy_validate_prompt_file_intent(
+    prompt = paste0(outside, "/sonuc.txt dosyasını oluştur"),
+    workdir = allowed,
+    allowed_roots = allowed
+  )
+
+  expect_true(isTRUE(inside_check$ok))
+  expect_false(isTRUE(traversal_check$ok))
+  expect_false(isTRUE(absolute_check$ok))
+  expect_match(traversal_check$error, "güvenlik ilkesi")
+  expect_match(absolute_check$error, "güvenlik ilkesi")
 })

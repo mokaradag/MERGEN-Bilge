@@ -100,6 +100,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_claude_code_process.R",
   "R/helpers_claude_code_runtime_workdir.R",
   "R/helpers_claude_code_security_policy.R",
+  "R/helpers_claude_code_prompt_security_policy.R",
   "R/helpers_claude_code_directory_listing.R",
   "R/helpers_claude_code.R",
   "R/helpers_claude_code_server_setup.R",
