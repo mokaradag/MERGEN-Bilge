@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>MERGEN UX Smoke</title>
+  <style>
+    body {
+      margin: 0;
+      background: #080b14;
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #runner {
+      padding: 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+      background: rgba(10, 14, 24, 0.96);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    #status {
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    #log {
+      white-space: pre-wrap;
+      font-size: 12px;
+      line-height: 1.45;
+      max-height: 32vh;
+      overflow: auto;
+      background: rgba(0,0,0,0.35);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    iframe {
+      width: 100vw;
+      height: 68vh;
+      border: 0;
+      background: #05070d;
+    }
+    .pass { color: #86efac; }
+    .fail { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div id="runner">
+    <div id="status">UX smoke hazırlanıyor...</div>
+    <div id="log"></div>
+  </div>
+  <iframe id="app-frame" title="MERGEN UX smoke target"></iframe>
+
+<script>
+(function () {
+  "use strict";
+
+  var statusEl = document.getElementById("status");
+  var logEl = document.getElementById("log");
+  var frameEl = document.getElementById("app-frame");
+  var failures = [];
+  var consoleEvents = [];
+  var shinyEvents = [];
+
+  var QUICK_ACTION_EXPECTATIONS = {
+    "project-process": "enable_process_tools",
+    "app-expert": "enable_app_expert_tools",
+    "resource-analysis": "enable_rdata_tools",
+    "excel-analysis": "enable_mcp_tools",
+    "image-creation": "enable_image_tools",
+    "coding-support": "enable_coding_tools",
+    "summarization": "enable_summarization_tools"
+  };
+
+  function log(message, kind) {
+    var line = "[" + new Date().toLocaleTimeString("tr-TR") + "] " + message;
+    var span = document.createElement("div");
+    span.textContent = line;
+    if (kind) span.className = kind;
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+    try { console.log("[UX_SMOKE]", message); } catch (e) {}
+  }
+
+  function pass(message) {
+    log("PASS: " + message, "pass");
+  }
+
+  function fail(message) {
+    failures.push(message);
+    log("FAIL: " + message, "fail");
+  }
+
+  function assert(condition, message) {
+    if (condition) pass(message);
+    else fail(message);
+  }
+
+  function wait(ms) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  async function waitFor(fn, label, timeoutMs) {
+    var started = Date.now();
+    var lastError = null;
+    while (Date.now() - started < (timeoutMs || 12000)) {
+      try {
+        if (fn()) return true;
+      } catch (e) {
+        lastError = e;
+      }
+      await wait(100);
+    }
+    fail("Zaman aşımı: " + label + (lastError ? " / " + lastError.message : ""));
+    return false;
+  }
+
+  function targetUrl() {
+    var url = new URL("./", window.location.href);
+    url.searchParams.set("ux_smoke_target", String(Date.now()));
+    return url.toString();
+  }
+
+  async function loadFreshApp(label) {
+    shinyEvents = [];
+    consoleEvents = [];
+    statusEl.textContent = "Yükleniyor: " + label;
+
+    frameEl.src = "about:blank";
+    await wait(80);
+
+    frameEl.src = targetUrl();
+
+    await new Promise(function (resolve) {
+      frameEl.onload = function () {
+        resolve();
+      };
+    });
+
+    var win = frameEl.contentWindow;
+    var doc = frameEl.contentDocument;
+
+    installConsoleProbe(win);
+    await waitFor(function () {
+      return win.Shiny && typeof win.Shiny.setInputValue === "function";
+    }, "Shiny bağlantısı hazır", 15000);
+
+    installShinyProbe(win);
+
+    await waitFor(function () {
+      return doc.querySelector("#welcome_fullscreen_container") &&
+             doc.querySelector("#chat_content_container") &&
+             doc.querySelector("#user_input") &&
+             doc.querySelector("#send_stop_btn");
+    }, "ana DOM anchor'ları hazır", 15000);
+
+    await waitFor(function () {
+      return doc.querySelector(".modern-welcome-root") ||
+             doc.querySelector(".message-bubble");
+    }, "welcome veya chat görünümü hazır", 18000);
+
+    return { win: win, doc: doc };
+  }
+
+  function installConsoleProbe(win) {
+    if (!win || win.__uxSmokeConsoleProbeInstalled) return;
+    win.__uxSmokeConsoleProbeInstalled = true;
+
+    ["error", "warn"].forEach(function (level) {
+      var original = win.console && win.console[level];
+      if (!original) return;
+      win.console[level] = function () {
+        var text = Array.prototype.slice.call(arguments).map(function (item) {
+          try {
+            return typeof item === "string" ? item : JSON.stringify(item);
+          } catch (e) {
+            return String(item);
+          }
+        }).join(" ");
+        consoleEvents.push({ level: level, text: text });
+        return original.apply(win.console, arguments);
+      };
+    });
+
+    win.addEventListener("error", function (event) {
+      consoleEvents.push({
+        level: "error",
+        text: event.message || "window error"
+      });
+    });
+
+    win.addEventListener("unhandledrejection", function (event) {
+      consoleEvents.push({
+        level: "error",
+        text: event.reason && event.reason.message ? event.reason.message : String(event.reason)
+      });
+    });
+  }
+
+  function installShinyProbe(win) {
+    if (!win || !win.Shiny || win.Shiny.__uxSmokeSetInputValueWrapped) return;
+
+    var original = win.Shiny.setInputValue.bind(win.Shiny);
+    win.Shiny.setInputValue = function (name, value, opts) {
+      shinyEvents.push({
+        name: name,
+        value: value,
+        opts: opts || {}
+      });
+      return original(name, value, opts);
+    };
+    win.Shiny.__uxSmokeSetInputValueWrapped = true;
+  }
+
+  function eventCount(name, predicate) {
+    return shinyEvents.filter(function (event) {
+      return event.name === name && (!predicate || predicate(event));
+    }).length;
+  }
+
+  async function testWelcome(app) {
+    var doc = app.doc;
+
+    await waitFor(function () {
+      return doc.querySelector(".modern-welcome-root");
+    }, "modern welcome root", 15000);
+
+    var welcome = doc.querySelector("#welcome_fullscreen_container");
+    var root = doc.querySelector(".modern-welcome-root");
+    var rect = welcome.getBoundingClientRect();
+
+    assert(!!root, "Ana Söyleşi welcome root var");
+    assert(!!doc.querySelector(".modern-welcome-video-container"), "sol video alanı var");
+    assert(!!doc.querySelector(".modern-welcome-neural-canvas"), "neural canvas var");
+    assert(!!doc.querySelector("#dynamic-greeting-text"), "dynamic greeting anchor var");
+    assert(doc.querySelectorAll(".modern-welcome-action-btn").length >= 7, "hızlı işlem kartları var");
+    assert(!!doc.querySelector(".modern-welcome-footer-section"), "son konuşmalar alanı kırılmadan render ediliyor");
+    assert(Math.abs(rect.top) <= 2, "welcome üst boşluk regresyonu yok: top=" + rect.top);
+  }
+
+  async function testQuickActions() {
+    var ids = Object.keys(QUICK_ACTION_EXPECTATIONS);
+
+    for (var i = 0; i < ids.length; i++) {
+      var actionId = ids[i];
+      var app = await loadFreshApp("quick action: " + actionId);
+      var doc = app.doc;
+
+      await waitFor(function () {
+        return doc.querySelector(".modern-welcome-action-btn[data-action-id='" + actionId + "']");
+      }, "quick action button " + actionId, 15000);
+
+      var button = doc.querySelector(".modern-welcome-action-btn[data-action-id='" + actionId + "']");
+      var model = button.getAttribute("data-action-model") || "";
+
+      button.click();
+      button.click();
+
+      await wait(950);
+
+      assert(
+        eventCount("quick_template", function (event) {
+          return event.value &&
+                 event.value.action_id === actionId &&
+                 (event.value.model || "") === model;
+        }) === 1,
+        actionId + " çift tıklamada tek quick_template dispatch üretir"
+      );
+
+      await waitFor(function () {
+        var chat = doc.querySelector("#chat_content_container");
+        return chat && chat.textContent && chat.textContent.trim().length > 20;
+      }, actionId + " intro mesajı", 8000);
+
+      var chatText = (doc.querySelector("#chat_content_container") || {}).textContent || "";
+      assert(
+        /(modu|hazır|yardımcı|analiz|özet|görsel|kod|süreç|Excel)/i.test(chatText),
+        actionId + " intro mesajı chat içinde görünüyor"
+      );
+
+      var rawSettings = app.win.localStorage.getItem("mergen_settings") || "{}";
+      var settings = {};
+      try { settings = JSON.parse(rawSettings); } catch (e) {}
+      var expectedTool = QUICK_ACTION_EXPECTATIONS[actionId];
+
+      assert(
+        settings[expectedTool] === true || eventCount("quick_template") === 1,
+        actionId + " model/tool modu için tarayıcı olayı üretildi"
+      );
+    }
+  }
+
+  async function testChatInput(app) {
+    var doc = app.doc;
+    var input = doc.querySelector("#user_input");
+    var sendButton = doc.querySelector("#send_stop_btn");
+
+    shinyEvents = [];
+
+    input.value = "Merhaba UX smoke";
+    input.dispatchEvent(new app.win.Event("input", { bubbles: true }));
+    input.dispatchEvent(new app.win.KeyboardEvent("keyup", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true
+    }));
+
+    await wait(300);
+
+    assert(
+      eventCount("send_prompt_from_js", function (event) {
+        return event.value && event.value.text === "Merhaba UX smoke";
+      }) === 1,
+      "Enter mesaj gönderir"
+    );
+
+    shinyEvents = [];
+    input.value = "Satır 1";
+    var shiftEnter = new app.win.KeyboardEvent("keydown", {
+      key: "Enter",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    input.dispatchEvent(shiftEnter);
+    if (!shiftEnter.defaultPrevented) {
+      input.value += "\n";
+      input.dispatchEvent(new app.win.Event("input", { bubbles: true }));
+    }
+
+    await wait(150);
+
+    assert(eventCount("send_prompt_from_js") === 0, "Shift+Enter mesaj göndermez");
+    assert(input.value.indexOf("\n") >= 0, "Shift+Enter yeni satır davranışını korur");
+
+    shinyEvents = [];
+    sendButton.classList.add("stop-mode");
+    sendButton.click();
+    await wait(150);
+    assert(eventCount("send_prompt_from_js") === 0, "stop-mode send click yeni mesaj göndermez");
+    sendButton.classList.remove("stop-mode");
+
+    if (typeof app.win.scrollToBottom === "function") {
+      app.win.scrollToBottom(true);
+    }
+    if (typeof app.win.smartScrollToBottom === "function") {
+      app.win.smartScrollToBottom(false);
+    }
+    await wait(150);
+    assert(typeof app.win.isNearBottom === "boolean", "auto-scroll yakınlık durumu bozulmadan kalır");
+  }
+
+  async function testMediaAndSavedChat(app) {
+    var win = app.win;
+    var doc = app.doc;
+
+    assert(!!win.MusicManager, "MusicManager global API var");
+    assert(!!win.mergenTTS, "TTS global API var");
+    assert(!!win.STT_Client, "STT global API var");
+
+    win.MusicManager.init({ enabled: false, volume: 0.6, character: "mergen" });
+    win.MusicManager.state.enabled = true;
+    win.MusicManager.state.normalVolume = 0.6;
+
+    var ttsAudio = doc.createElement("audio");
+    ttsAudio.src = "tts/smoke-test.mp3";
+    doc.body.appendChild(ttsAudio);
+
+    ttsAudio.dispatchEvent(new win.Event("play", { bubbles: true }));
+    await wait(150);
+    assert(win.MusicManager.state.isDucked === true, "TTS/play olayı müziği duck eder");
+
+    ttsAudio.dispatchEvent(new win.Event("pause", { bubbles: true }));
+    await wait(450);
+    assert(win.MusicManager.state._sttActive !== true, "TTS pause sonrası STT aktif değilse restore yolu serbest");
+
+    win.MusicManager.duckForSTT();
+    assert(win.MusicManager.state._sttActive === true, "STT müziği tam duck durumuna alır");
+    assert(win.MusicManager.state.isDucked === true, "STT duck state korunur");
+
+    win.MusicManager.unduck();
+    assert(win.MusicManager.state.isDucked === true, "STT aktifken normal unduck müziği geri getirmez");
+
+    win.MusicManager.unduckAfterSTT();
+    assert(win.MusicManager.state._sttActive === false, "STT cleanup aktif bayrağı temizler");
+    assert(win.MusicManager.state.isDucked === false, "STT cleanup müziği restore eder");
+
+    win.mergenTTS.queue = [];
+    win.mergenTTS.isPlaying = false;
+    win.localStorage.setItem("mergen_current_chat", JSON.stringify([
+      { id: "old_ai_1", type: "ai", content: "Eski kayıtlı yanıt" }
+    ]));
+
+    frameEl.src = targetUrl();
+    await new Promise(function (resolve) {
+      frameEl.onload = resolve;
+    });
+    await wait(1300);
+
+    var reloadedWin = frameEl.contentWindow;
+    installConsoleProbe(reloadedWin);
+    assert(
+      !reloadedWin.mergenTTS || reloadedWin.mergenTTS.isPlaying !== true,
+      "kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz"
+    );
+  }
+
+  async function testReasoning(app) {
+    var win = app.win;
+    var doc = app.doc;
+
+    assert(!!win.PremiumReasoning, "PremiumReasoning global API var");
+
+    var chat = doc.querySelector("#chat_content_container");
+    if (!doc.querySelector("#typing-animation-wrapper")) {
+      var typing = doc.createElement("div");
+      typing.id = "typing-animation-wrapper";
+      chat.appendChild(typing);
+    }
+
+    win.PremiumReasoning.start({
+      requestId: "ux-smoke-reasoning",
+      model: "UX Smoke Thinking",
+      simulated: false
+    });
+
+    await wait(150);
+    assert(!!doc.querySelector(".reasoning-panel.rp-live"), "thinking panel görünür");
+
+    win.PremiumReasoning.onReasoningDelta({
+      requestId: "ux-smoke-reasoning",
+      delta: "Plan hazırlanıyor.\n"
+    });
+
+    await wait(150);
+    assert(
+      (doc.querySelector(".reasoning-panel") || {}).textContent.indexOf("Plan hazırlanıyor") >= 0,
+      "reasoning delta panel içine akar"
+    );
+
+    var wrapper = doc.createElement("div");
+    wrapper.id = "message_wrapper_ux_smoke_ai";
+    wrapper.innerHTML = "<div class='message-bubble ai-message'><div class='message-content'>Yanıt</div></div>";
+    chat.appendChild(wrapper);
+
+    win.PremiumReasoning.onStreamStart({
+      requestId: "ux-smoke-reasoning",
+      id: "ux_smoke_ai"
+    });
+
+    await wait(150);
+    assert(
+      !!doc.querySelector("#message_wrapper_ux_smoke_ai .reasoning-panel"),
+      "thinking panel AI balonuna taşınır"
+    );
+
+    win.PremiumReasoning.onResetChatState();
+    await wait(150);
+
+    assert(
+      win.PremiumReasoning.getState() === "idle",
+      "reasoning stop/finish sonrası state idle olur"
+    );
+  }
+
+  function testConsoleNoise() {
+    var badPatterns = [
+      /Cannot read (properties|property)/i,
+      /is not a function/i,
+      /already has.*handler/i,
+      /duplicate.*handler/i,
+      /missing.*element/i,
+      /Unhandled promise/i
+    ];
+
+    var bad = consoleEvents.filter(function (event) {
+      return badPatterns.some(function (pattern) {
+        return pattern.test(event.text || "");
+      });
+    });
+
+    assert(bad.length === 0, "browser console smoke sırasında belirgin JS hatası yok");
+    if (bad.length > 0) {
+      bad.forEach(function (event) {
+        fail("Console: " + event.level + " / " + event.text);
+      });
+    }
+  }
+
+  async function run() {
+    try {
+      var app = await loadFreshApp("fresh welcome");
+      await testWelcome(app);
+      await testChatInput(app);
+      await testMediaAndSavedChat(app);
+
+      app = await loadFreshApp("reasoning");
+      await testReasoning(app);
+
+      await testQuickActions();
+      testConsoleNoise();
+    } catch (e) {
+      fail(e && e.stack ? e.stack : String(e));
+    }
+
+    if (failures.length === 0) {
+      statusEl.textContent = "UX_SMOKE_DONE:PASS";
+      statusEl.className = "pass";
+      log("UX_SMOKE_DONE:PASS", "pass");
+    } else {
+      statusEl.textContent = "UX_SMOKE_DONE:FAIL " + failures.length;
+      statusEl.className = "fail";
+      log("UX_SMOKE_DONE:FAIL " + failures.length, "fail");
+    }
+  }
+
+  run();
+})();
+</script>
+</body>
+</html>
