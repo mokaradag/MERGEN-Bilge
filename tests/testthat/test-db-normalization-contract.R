@@ -71,19 +71,24 @@ test_that("normalize_db_value karakter vektörlerinde uzunluğu ve NA konumunu k
   }
 })
 
-test_that("normalize_db_value isteğe bağlı mojibake onarımı yapar", {
-  expected <- paste0("Çalışma özeti ", intToUtf8(0x1F680))
-  mojibake <- .db_mojibake_from_utf8_for_test(expected)
-
-  expect_equal(
-    normalize_db_value(mojibake, repair_mojibake = TRUE),
-    expected
+test_that("DB okuma/yazma sınırı yaygın Türkçe mojibake örneklerini onarır", {
+  samples <- c(
+    "NasÄ±l yardÄ±mcÄ± olabilirim?",
+    "TÃ¼rkiye'nin baÅŸkenti Ankara'dÄ±r.",
+    "AÃ§Ä±klama ve Ã¶zet gÃ¶rÃ¼ÅŸÃ¼ hazÄ±rlandÄ±.",
+    "Ã‡alÄ±ÅŸma, Ã–lÃ§Ã¼m ve Ä°zleme"
   )
 
-  expect_equal(
-    normalize_db_value(mojibake, repair_mojibake = FALSE),
-    mojibake
+  expected <- c(
+    "Nasıl yardımcı olabilirim?",
+    "Türkiye'nin başkenti Ankara'dır.",
+    "Açıklama ve özet görüşü hazırlandı.",
+    "Çalışma, Ölçüm ve İzleme"
   )
+
+  repaired <- normalize_db_value(samples, repair_mojibake = TRUE)
+
+  expect_equal(repaired, expected)
 })
 
 test_that("normalize_db_params liste yapısını ve sıra bilgisini korur", {
@@ -106,14 +111,17 @@ test_that("normalize_db_params liste yapısını ve sıra bilgisini korur", {
   expect_length(sonuc[[4]], 2L)
 })
 
-test_that("UTF-8 DB client encoding native Windows dönüşümüne düşmez", {
+test_that("DB client encoding ortam değişkeninden okunur", {
   repo_root <- resolve_repo_root_for_tests()
   test_env <- new.env(parent = globalenv())
 
   test_env$normalize_text_utf8 <- normalize_text_utf8
   test_env$l10n_info <- function() stats::setNames(list(FALSE), "UTF-8")
 
-  withr::local_options(mergen.db.client_encoding = "UTF-8")
+  withr::local_envvar(c(
+    DB_CLIENT_ENCODING = "WINDOWS-1254",
+    DB_NAME_ENCODING = "WINDOWS-1254"
+  ))
 
   source(
     file.path(repo_root, "R", "helpers_db_connection.R"),
@@ -121,10 +129,38 @@ test_that("UTF-8 DB client encoding native Windows dönüşümüne düşmez", {
     local = test_env
   )
 
-  sample_text <- paste0("yorum açık ", intToUtf8(0x2705), " ", intToUtf8(0x1F680))
+  expect_identical(test_env$resolve_db_client_encoding(), "WINDOWS-1254")
+  expect_identical(test_env$resolve_db_name_encoding(), "WINDOWS-1254")
+  expect_identical(test_env$.DEFAULT_DB_CLIENT_ENCODING, "WINDOWS-1254")
+  expect_identical(test_env$.DEFAULT_DB_NAME_ENCODING, "WINDOWS-1254")
+})
+
+test_that("WINDOWS-1254 DB client encoding Türkçe metni UTF-8 olarak bırakmaz", {
+  repo_root <- resolve_repo_root_for_tests()
+  test_env <- new.env(parent = globalenv())
+
+  test_env$normalize_text_utf8 <- normalize_text_utf8
+  test_env$l10n_info <- function() stats::setNames(list(TRUE), "UTF-8")
+
+  withr::local_envvar(c(
+    DB_CLIENT_ENCODING = "WINDOWS-1254",
+    DB_NAME_ENCODING = "WINDOWS-1254"
+  ))
+
+  source(
+    file.path(repo_root, "R", "helpers_db_connection.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  sample_text <- "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü"
+  sonuc <- test_env$normalize_db_value(sample_text, repair_mojibake = TRUE)
+
+  expected_raw <- charToRaw(iconv(sample_text, from = "UTF-8", to = "WINDOWS-1254"))
+  expect_identical(charToRaw(sonuc), expected_raw)
 
   expect_equal(
-    test_env$normalize_db_value(sample_text, repair_mojibake = TRUE),
+    iconv(sonuc, from = "WINDOWS-1254", to = "UTF-8"),
     sample_text
   )
 })

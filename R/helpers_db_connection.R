@@ -9,8 +9,51 @@ library(odbc)
 library(pool)
 
 .DEFAULT_DSN <- Sys.getenv("DB_DSN", "TestConnection")
-.DEFAULT_DB_CLIENT_ENCODING <- getOption("mergen.db.client_encoding", "UTF-8")
-.DEFAULT_DB_NAME_ENCODING <- getOption("mergen.db.name_encoding", .DEFAULT_DB_CLIENT_ENCODING)
+
+resolve_db_client_encoding <- function() {
+  # DB istemci kodlaması üretim VM üzerinde .Renviron ile yönetilir.
+  # Ortam değişkeni yoksa test/local varsayılanı korunur.
+  env_encoding <- Sys.getenv("DB_CLIENT_ENCODING", unset = NA_character_)
+
+  if (!is.na(env_encoding) && nzchar(trimws(env_encoding))) {
+    return(trimws(as.character(env_encoding)[1]))
+  }
+
+  option_encoding <- getOption("mergen.db.client_encoding", "UTF-8")
+  option_encoding <- as.character(option_encoding)[1]
+
+  if (is.na(option_encoding) || !nzchar(trimws(option_encoding))) {
+    return("UTF-8")
+  }
+
+  trimws(option_encoding)
+}
+
+resolve_db_name_encoding <- function(client_encoding = resolve_db_client_encoding()) {
+  # Sütun/tablo adı kodlaması ayrı verilmemişse istemci kodlamasıyla aynı tutulur.
+  env_encoding <- Sys.getenv("DB_NAME_ENCODING", unset = NA_character_)
+
+  if (!is.na(env_encoding) && nzchar(trimws(env_encoding))) {
+    return(trimws(as.character(env_encoding)[1]))
+  }
+
+  option_encoding <- getOption("mergen.db.name_encoding", client_encoding)
+  option_encoding <- as.character(option_encoding)[1]
+
+  if (is.na(option_encoding) || !nzchar(trimws(option_encoding))) {
+    return(client_encoding)
+  }
+
+  trimws(option_encoding)
+}
+
+db_client_encoding_is_utf8 <- function(encoding_name) {
+  encoding_name <- toupper(gsub("[_-]", "", as.character(encoding_name %||% "")[1]))
+  identical(encoding_name, "UTF8")
+}
+
+.DEFAULT_DB_CLIENT_ENCODING <- resolve_db_client_encoding()
+.DEFAULT_DB_NAME_ENCODING <- resolve_db_name_encoding(.DEFAULT_DB_CLIENT_ENCODING)
 
 normalize_db_value <- function(x, repair_mojibake = FALSE) {
   # DBI parametreleri çoğunlukla skaler gelir; yine de bu yardımcı vektör,
@@ -37,8 +80,33 @@ normalize_db_value <- function(x, repair_mojibake = FALSE) {
 
   out_utf8[is.na(x)] <- NA_character_
 
-  if (isTRUE(l10n_info()[["UTF-8"]])) {
+  client_encoding <- resolve_db_client_encoding()
+  client_is_utf8 <- db_client_encoding_is_utf8(client_encoding)
+
+  if (isTRUE(client_is_utf8) && isTRUE(l10n_info()[["UTF-8"]])) {
     return(out_utf8)
+  }
+
+  if (!isTRUE(client_is_utf8)) {
+    out_client <- tryCatch(
+      iconv(out_utf8, from = "UTF-8", to = client_encoding, sub = NA_character_),
+      error = function(e) rep(NA_character_, length(out_utf8))
+    )
+
+    failed <- is.na(out_client) & !is.na(out_utf8)
+
+    if (any(!failed & !is.na(out_client))) {
+      Encoding(out_client[!failed & !is.na(out_client)]) <- "unknown"
+    }
+
+    # WINDOWS-1254 Türkçe karakterleri temsil eder; emoji gibi temsil edilemeyen
+    # karakterlerde değeri tamamen NA yapmamak için UTF-8 değeri koruruz.
+    if (any(failed)) {
+      out_client[failed] <- out_utf8[failed]
+    }
+
+    out_client[is.na(x)] <- NA_character_
+    return(out_client)
   }
 
   out_native <- tryCatch(
@@ -48,9 +116,6 @@ normalize_db_value <- function(x, repair_mojibake = FALSE) {
 
   out_native[is.na(x)] <- NA_character_
 
-  # Windows/native code pages cannot represent all Unicode characters
-  # such as emoji. If native conversion is lossy, keep UTF-8 because the
-  # ODBC connection is already opened with encoding = "UTF-8".
   roundtrip_utf8 <- tryCatch(
     enc2utf8(out_native),
     error = function(e) out_utf8
