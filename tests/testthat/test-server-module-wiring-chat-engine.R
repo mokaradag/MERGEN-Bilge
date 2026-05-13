@@ -25,6 +25,12 @@ source(
   local = globalenv()
 )
 
+source(
+  file.path(repo_root, "R", "server_chat_engine_dependencies.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 .fake_chat_engine_session <- function() {
   list(
     userData = new.env(parent = emptyenv()),
@@ -190,25 +196,27 @@ test_that("serverBindChatEngineRuntime sohbet motorunu tek sözleşmeden bağlar
     output = list(),
     session = session,
     runtime_ctx = runtime_ctx,
-    settings_data = list(),
-    api_key = function(...) NULL,
-    user_config_rv = function(...) list(),
-    perf_tracker = list(
-      track_error = function(...) NULL,
-      track_request = function(...) NULL
+    chat_engine_deps = serverBuildChatEngineDependencyBundle(
+      settings_data = list(),
+      api_key = function(...) NULL,
+      user_config_rv = function(...) list(),
+      perf_tracker = list(
+        track_error = function(...) NULL,
+        track_request = function(...) NULL
+      ),
+      saved_chats_data = list(),
+      send_message_fns = send_message_fns,
+      send_message_proxy = function(...) "proxy",
+      api_config = list(),
+      ai_processor = list(
+        call_llm_non_streaming = function(...) NULL
+      ),
+      tts_processor = list(),
+      tts_visualizer = list(),
+      stt_data = list(),
+      feedback_modal = fake_feedback_modal,
+      admin_pool = NULL
     ),
-    ai_processor = list(
-      call_llm_non_streaming = function(...) NULL
-    ),
-    tts_processor = list(),
-    tts_visualizer = list(),
-    stt_data = list(),
-    saved_chats_data = list(),
-    feedback_modal = fake_feedback_modal,
-    send_message_fns = send_message_fns,
-    send_message_proxy = function(...) "proxy",
-    api_config = list(),
-    admin_pool = NULL,
     chat_runtime_init_fn = chat_runtime_init_fn,
     llm_response_handlers_init_fn = llm_response_handlers_init_fn,
     chat_input_observers_init_fn = chat_input_observers_init_fn,

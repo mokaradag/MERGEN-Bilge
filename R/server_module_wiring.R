@@ -5,24 +5,29 @@
 # ==============================================================================
 
 .server_wiring_stop <- function(message) {
-  stop(message, call. = FALSE)
+  .server_runtime_stop(message)
 }
 
 .server_wiring_require_function <- function(fn, name) {
-  if (!is.function(fn)) {
-    .server_wiring_stop(sprintf(
-      "server_module_wiring: '%s' fonksiyon olmalıdır.",
-      name
-    ))
-  }
+  .server_runtime_require_named_functions(
+    stats::setNames(list(fn), name),
+    "server_module_wiring"
+  )
 
   invisible(TRUE)
 }
 
 .server_wiring_require_functions <- function(named_functions) {
-  invisible(lapply(names(named_functions), function(name) {
-    .server_wiring_require_function(named_functions[[name]], name)
-  }))
+  .server_runtime_require_named_functions(
+    named_functions,
+    "server_module_wiring"
+  )
+
+  invisible(TRUE)
+}
+
+.server_wiring_require_environment <- function(x, owner) {
+  .server_runtime_require_environment(x, owner)
 }
 
 .server_wiring_require_context <- function(ctx, owner) {
@@ -470,19 +475,21 @@ serverBindChatEngineRuntime <- function(input,
                                         output,
                                         session,
                                         runtime_ctx,
-                                        settings_data,
-                                        api_key,
-                                        user_config_rv,
-                                        perf_tracker,
-                                        ai_processor,
-                                        tts_processor,
-                                        tts_visualizer,
-                                        stt_data,
-                                        saved_chats_data,
+                                        chat_engine_deps = NULL,
+                                        settings_data = NULL,
+                                        api_key = NULL,
+                                        user_config_rv = NULL,
+                                        perf_tracker = NULL,
+                                        media_modules = NULL,
+                                        ai_processor = NULL,
+                                        tts_processor = NULL,
+                                        tts_visualizer = NULL,
+                                        stt_data = NULL,
+                                        saved_chats_data = NULL,
                                         feedback_modal = NULL,
-                                        send_message_fns,
-                                        send_message_proxy,
-                                        api_config,
+                                        send_message_fns = NULL,
+                                        send_message_proxy = NULL,
+                                        api_config = NULL,
                                         admin_pool = NULL,
                                         chat_runtime_init_fn = serverInitChatRuntime,
                                         llm_response_handlers_init_fn = llmResponseHandlersInit,
@@ -493,11 +500,44 @@ serverBindChatEngineRuntime <- function(input,
                                         send_message_init_fn = sendMessageInit) {
   .server_wiring_require_context(runtime_ctx, "serverBindChatEngineRuntime")
 
-  if (!is.environment(send_message_fns)) {
-    .server_wiring_stop(
-      "serverBindChatEngineRuntime: send_message_fns ortam olmalıdır."
-    )
-  }
+  chat_engine_deps <- .server_wiring_resolve_chat_engine_deps(
+    chat_engine_deps = chat_engine_deps,
+    settings_data = settings_data,
+    api_key = api_key,
+    user_config_rv = user_config_rv,
+    perf_tracker = perf_tracker,
+    saved_chats_data = saved_chats_data,
+    send_message_fns = send_message_fns,
+    send_message_proxy = send_message_proxy,
+    api_config = api_config,
+    media_modules = media_modules,
+    ai_processor = ai_processor,
+    tts_processor = tts_processor,
+    tts_visualizer = tts_visualizer,
+    stt_data = stt_data,
+    admin_pool = admin_pool,
+    feedback_modal = feedback_modal
+  )
+
+  settings_data <- chat_engine_deps$settings_data
+  api_key <- chat_engine_deps$api_key
+  user_config_rv <- chat_engine_deps$user_config_rv
+  perf_tracker <- chat_engine_deps$perf_tracker
+  ai_processor <- chat_engine_deps$ai_processor
+  tts_processor <- chat_engine_deps$tts_processor
+  tts_visualizer <- chat_engine_deps$tts_visualizer
+  stt_data <- chat_engine_deps$stt_data
+  saved_chats_data <- chat_engine_deps$saved_chats_data
+  send_message_fns <- chat_engine_deps$send_message_fns
+  send_message_proxy <- chat_engine_deps$send_message_proxy
+  api_config <- chat_engine_deps$api_config
+  admin_pool <- chat_engine_deps$admin_pool
+  feedback_modal <- chat_engine_deps$feedback_modal
+
+  .server_wiring_require_environment(
+    send_message_fns,
+    "serverBindChatEngineRuntime: send_message_fns"
+  )
 
   state <- serverRuntimeRequireState(
     runtime_ctx,
@@ -557,9 +597,6 @@ serverBindChatEngineRuntime <- function(input,
   ))
 
   .server_wiring_require_functions(list(
-    perf_tracker_track_error = perf_tracker$track_error,
-    perf_tracker_track_request = perf_tracker$track_request,
-    ai_processor_call_llm_non_streaming = ai_processor$call_llm_non_streaming,
     file_manager_refresh_persisted_files = file_runtime$file_manager_data$refresh_persisted_files,
     file_manager_file_contents = file_runtime$file_manager_data$file_contents
   ))

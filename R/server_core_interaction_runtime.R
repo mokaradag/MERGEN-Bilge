@@ -6,7 +6,7 @@
 # ==============================================================================
 
 .server_core_interaction_stop <- function(message) {
-  stop(message, call. = FALSE)
+  .server_runtime_stop(message)
 }
 
 .server_core_interaction_require_context <- function(runtime_ctx) {
@@ -20,45 +20,73 @@
 }
 
 .server_core_interaction_require_functions <- function(named_functions) {
-  missing <- names(named_functions)[!vapply(
+  .server_runtime_require_named_functions(
     named_functions,
-    is.function,
-    logical(1)
-  )]
-
-  if (length(missing) > 0L) {
-    .server_core_interaction_stop(sprintf(
-      "serverBindCoreInteractionRuntime eksik/geçersiz fonksiyon(lar): %s",
-      paste(missing, collapse = ", ")
-    ))
-  }
-
-  invisible(TRUE)
+    "serverBindCoreInteractionRuntime"
+  )
 }
 
 .server_core_interaction_require_values <- function(x, names, owner) {
-  missing <- names[vapply(
-    names,
-    function(nm) is.null(x[[nm]]),
-    logical(1)
-  )]
+  .server_runtime_require_values(x, names, owner)
+}
 
-  if (length(missing) > 0L) {
+.server_core_interaction_require_bundle <- function(core_bundle,
+                                                    owner = "core_interaction_bundle") {
+  if (!is.list(core_bundle)) {
     .server_core_interaction_stop(sprintf(
-      "%s eksik zorunlu alan(lar): %s",
-      owner,
-      paste(missing, collapse = ", ")
+      "%s liste olmalıdır.",
+      owner
     ))
   }
+
+  .server_core_interaction_require_values(
+    core_bundle,
+    c(
+      "settings_data",
+      "api_config",
+      "media_modules",
+      "render_welcome_screen",
+      "start_new_chat",
+      "send_message",
+      "load_chat_in_progress",
+      "welcome_fns",
+      "user_config_provider",
+      "user_first_name_fn"
+    ),
+    owner
+  )
+
+  if (!is.list(core_bundle$media_modules)) {
+    .server_core_interaction_stop(sprintf(
+      "%s$media_modules liste olmalıdır.",
+      owner
+    ))
+  }
+
+  .server_core_interaction_require_values(
+    core_bundle$media_modules,
+    c("ai_expert", "tts_processor"),
+    paste0(owner, "$media_modules")
+  )
+
+  .server_core_interaction_require_functions(list(
+    render_welcome_screen = core_bundle$render_welcome_screen,
+    start_new_chat = core_bundle$start_new_chat,
+    send_message = core_bundle$send_message,
+    load_chat_in_progress = core_bundle$load_chat_in_progress,
+    user_config_provider = core_bundle$user_config_provider,
+    user_first_name_fn = core_bundle$user_first_name_fn
+  ))
+
+  .server_runtime_require_environment(
+    core_bundle$welcome_fns,
+    paste0(owner, "$welcome_fns")
+  )
 
   invisible(TRUE)
 }
 
-serverBindCoreInteractionRuntime <- function(input,
-                                             output,
-                                             session,
-                                             runtime_ctx,
-                                             settings_data,
+serverBuildCoreInteractionBundle <- function(settings_data,
                                              api_config,
                                              media_modules,
                                              render_welcome_screen,
@@ -67,7 +95,72 @@ serverBindCoreInteractionRuntime <- function(input,
                                              load_chat_in_progress,
                                              welcome_fns,
                                              user_config_provider,
-                                             user_first_name_fn,
+                                             user_first_name_fn) {
+  core_bundle <- list(
+    settings_data = settings_data,
+    api_config = api_config,
+    media_modules = media_modules,
+    render_welcome_screen = render_welcome_screen,
+    start_new_chat = start_new_chat,
+    send_message = send_message,
+    load_chat_in_progress = load_chat_in_progress,
+    welcome_fns = welcome_fns,
+    user_config_provider = user_config_provider,
+    user_first_name_fn = user_first_name_fn
+  )
+
+  .server_core_interaction_require_bundle(core_bundle)
+
+  class(core_bundle) <- c("mergen_core_interaction_bundle", "list")
+
+  core_bundle
+}
+
+.server_core_interaction_resolve_bundle <- function(core_bundle,
+                                                    settings_data,
+                                                    api_config,
+                                                    media_modules,
+                                                    render_welcome_screen,
+                                                    start_new_chat,
+                                                    send_message,
+                                                    load_chat_in_progress,
+                                                    welcome_fns,
+                                                    user_config_provider,
+                                                    user_first_name_fn) {
+  if (!is.null(core_bundle)) {
+    .server_core_interaction_require_bundle(core_bundle)
+    return(core_bundle)
+  }
+
+  serverBuildCoreInteractionBundle(
+    settings_data = settings_data,
+    api_config = api_config,
+    media_modules = media_modules,
+    render_welcome_screen = render_welcome_screen,
+    start_new_chat = start_new_chat,
+    send_message = send_message,
+    load_chat_in_progress = load_chat_in_progress,
+    welcome_fns = welcome_fns,
+    user_config_provider = user_config_provider,
+    user_first_name_fn = user_first_name_fn
+  )
+}
+
+serverBindCoreInteractionRuntime <- function(input,
+                                             output,
+                                             session,
+                                             runtime_ctx,
+                                             core_bundle = NULL,
+                                             settings_data = NULL,
+                                             api_config = NULL,
+                                             media_modules = NULL,
+                                             render_welcome_screen = NULL,
+                                             start_new_chat = NULL,
+                                             send_message = NULL,
+                                             load_chat_in_progress = NULL,
+                                             welcome_fns = NULL,
+                                             user_config_provider = NULL,
+                                             user_first_name_fn = NULL,
                                              chat_rebind_all_charts_fn = chat_rebind_all_charts,
                                              chat_export_init_fn = chatExportInit,
                                              quick_actions_init_fn = quickActionsInit,
@@ -85,6 +178,31 @@ serverBindCoreInteractionRuntime <- function(input,
                                              chat_persistence_modules_fn = serverBindChatPersistenceModules,
                                              reactive_fn = shiny::reactive) {
   .server_core_interaction_require_context(runtime_ctx)
+
+  core_bundle <- .server_core_interaction_resolve_bundle(
+    core_bundle = core_bundle,
+    settings_data = settings_data,
+    api_config = api_config,
+    media_modules = media_modules,
+    render_welcome_screen = render_welcome_screen,
+    start_new_chat = start_new_chat,
+    send_message = send_message,
+    load_chat_in_progress = load_chat_in_progress,
+    welcome_fns = welcome_fns,
+    user_config_provider = user_config_provider,
+    user_first_name_fn = user_first_name_fn
+  )
+
+  settings_data <- core_bundle$settings_data
+  api_config <- core_bundle$api_config
+  media_modules <- core_bundle$media_modules
+  render_welcome_screen <- core_bundle$render_welcome_screen
+  start_new_chat <- core_bundle$start_new_chat
+  send_message <- core_bundle$send_message
+  load_chat_in_progress <- core_bundle$load_chat_in_progress
+  welcome_fns <- core_bundle$welcome_fns
+  user_config_provider <- core_bundle$user_config_provider
+  user_first_name_fn <- core_bundle$user_first_name_fn
 
   state <- serverRuntimeRequireState(
     runtime_ctx,
@@ -108,23 +226,9 @@ serverBindCoreInteractionRuntime <- function(input,
 
   values <- state$values
 
-  .server_core_interaction_require_values(
-    media_modules,
-    c(
-      "ai_expert",
-      "tts_processor"
-    ),
-    "media_modules"
-  )
-
   .server_core_interaction_require_functions(list(
     current_user_id_provider = identity$current_user_id_provider,
     current_user_display_name = identity$get_display_name,
-    render_welcome_screen = render_welcome_screen,
-    start_new_chat = start_new_chat,
-    send_message = send_message,
-    user_config_provider = user_config_provider,
-    user_first_name_fn = user_first_name_fn,
     chat_rebind_all_charts_fn = chat_rebind_all_charts_fn,
     chat_export_init_fn = chat_export_init_fn,
     quick_actions_init_fn = quick_actions_init_fn,

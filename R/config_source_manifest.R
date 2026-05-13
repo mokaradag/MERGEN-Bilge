@@ -205,6 +205,7 @@ source_manifest_after_future_paths <- c(
   "R/server_runtime_context.R",
   "R/server_runtime_function_slot.R",
   "R/server_module_wiring.R",
+  "R/server_chat_engine_dependencies.R",
   "R/server_init_session_state.R",
   "R/server_init_chat_runtime.R",
   "R/server_core_interaction_runtime.R",

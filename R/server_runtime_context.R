@@ -12,6 +12,8 @@
   ".server_runtime_require_context",
   ".server_runtime_require_values",
   ".server_runtime_require_functions",
+  ".server_runtime_require_named_functions",
+  ".server_runtime_require_environment",
   ".server_runtime_invoke_auth_ready_callback"
 )
 

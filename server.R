@@ -105,12 +105,7 @@ server <- function(input, output, session) {
     current_user_id_provider = current_user_id_provider
   )
 
-  feedback_modal <- media_modules$feedback_modal
-  ai_processor <- media_modules$ai_processor
-  tts_processor <- media_modules$tts_processor
-  tts_visualizer <- media_modules$tts_visualizer
-  ai_expert <- media_modules$ai_expert
-  stt_data <- media_modules$stt_data
+  # Medya çıktıları chat engine bağımlılık bundle'ında doğrulanır.
 
   # ============================================================================
   # BÖLÜM 6: DOSYA YÖNETİMİ VE ÖNİZLEME
@@ -175,11 +170,7 @@ server <- function(input, output, session) {
   # ============================================================================
   # BÖLÜM 8: GÖZLEMCİLER, DOSYA YÖNETİMİ VE SOHBET KALICILIĞI
   # ============================================================================
-  core_interaction <- serverBindCoreInteractionRuntime(
-    input = input,
-    output = output,
-    session = session,
-    runtime_ctx = runtime_ctx,
+  core_runtime_bundle <- serverBuildCoreInteractionBundle(
     settings_data = settings_data,
     api_config = api_config,
     media_modules = media_modules,
@@ -196,29 +187,38 @@ server <- function(input, output, session) {
     }
   )
 
+  core_interaction <- serverBindCoreInteractionRuntime(
+    input = input,
+    output = output,
+    session = session,
+    runtime_ctx = runtime_ctx,
+    core_bundle = core_runtime_bundle
+  )
+
   runtime_ctx <- core_interaction$runtime_ctx
   saved_chats_data <- core_interaction$saved_chats_data
   file_manager_data <- core_interaction$file_manager_data
   filePreview <- core_interaction$filePreview
+
+  chat_engine_deps <- serverBuildChatEngineDependencyBundle(
+    settings_data = settings_data,
+    api_key = api_key,
+    user_config_rv = user_config_rv,
+    perf_tracker = perf_tracker,
+    saved_chats_data = saved_chats_data,
+    send_message_fns = send_message_fns,
+    send_message_proxy = send_message,
+    api_config = api_config,
+    media_modules = media_modules,
+    admin_pool = admin_pool
+  )
 
   chat_engine <- serverBindChatEngineRuntime(
     input = input,
     output = output,
     session = session,
     runtime_ctx = runtime_ctx,
-    settings_data = settings_data,
-    api_key = api_key,
-    user_config_rv = user_config_rv,
-    perf_tracker = perf_tracker,
-    ai_processor = ai_processor,
-    tts_processor = tts_processor,
-    tts_visualizer = tts_visualizer,
-    stt_data = stt_data,
-    saved_chats_data = saved_chats_data,
-    send_message_fns = send_message_fns,
-    send_message_proxy = send_message,
-    api_config = api_config,
-    admin_pool = admin_pool
+    chat_engine_deps = chat_engine_deps
   )
 
   runtime_ctx <- chat_engine$runtime_ctx

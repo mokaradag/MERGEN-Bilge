@@ -184,23 +184,25 @@ test_that("serverBindCoreInteractionRuntime çekirdek bağlama sırasını korur
     output = list(),
     session = .fake_core_session(),
     runtime_ctx = runtime_ctx,
-    settings_data = list(enable_mcp_tools = TRUE),
-    api_config = list(),
-    media_modules = list(
-      ai_expert = list(),
-      tts_processor = list()
+    core_bundle = serverBuildCoreInteractionBundle(
+      settings_data = list(enable_mcp_tools = TRUE),
+      api_config = list(),
+      media_modules = list(
+        ai_expert = list(),
+        tts_processor = list()
+      ),
+      render_welcome_screen = function(...) TRUE,
+      start_new_chat = function(...) TRUE,
+      send_message = function(...) TRUE,
+      load_chat_in_progress = function(...) FALSE,
+      welcome_fns = new.env(parent = emptyenv()),
+      user_config_provider = function(default = NULL) {
+        runtime_ctx$identity$get_user_config(default = default)
+      },
+      user_first_name_fn = function(default = "") {
+        runtime_ctx$identity$get_first_name(default = default)
+      }
     ),
-    render_welcome_screen = function(...) TRUE,
-    start_new_chat = function(...) TRUE,
-    send_message = function(...) TRUE,
-    load_chat_in_progress = function(...) FALSE,
-    welcome_fns = new.env(parent = emptyenv()),
-    user_config_provider = function(default = NULL) {
-      runtime_ctx$identity$get_user_config(default = default)
-    },
-    user_first_name_fn = function(default = "") {
-      runtime_ctx$identity$get_first_name(default = default)
-    },
     chat_rebind_all_charts_fn = function(...) TRUE,
     chat_export_init_fn = function(..., user_display_name) {
       record("chat_export")

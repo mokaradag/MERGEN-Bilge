@@ -106,6 +106,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 	  "R/server_runtime_context.R",
 	  "R/server_runtime_function_slot.R",
 	  "R/server_module_wiring.R",
+	  "R/server_chat_engine_dependencies.R",
 	  "R/server_core_interaction_runtime.R",
 	  "R/server_handler_true_streaming.R",
 	  "R/server_send_message.R",
@@ -355,7 +356,11 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
 test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağlar", {
   server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
   core_text <- .read_text_quiet(file.path(.repo_root, "R", "server_core_interaction_runtime.R"))
-  wiring_text <- .read_text_quiet(file.path(.repo_root, "R", "server_module_wiring.R"))
+  wiring_text <- paste(
+    .read_text_quiet(file.path(.repo_root, "R", "server_module_wiring.R")),
+    .read_text_quiet(file.path(.repo_root, "R", "server_chat_engine_dependencies.R")),
+    sep = "\n"
+  )
 
   server_beklenenler <- c(
     "runtime_ctx <- serverRuntimeContextInit(",
