@@ -115,11 +115,19 @@
     return false;
   }
 
-  function targetUrl() {
-    var url = new URL("../", window.location.href);
-    url.searchParams.set("ux_smoke_target", String(Date.now()));
-    return url.toString();
-  }
+	function targetUrl() {
+	  var marker = "/smoke/ux-smoke.html";
+	  var href = window.location.href.split("?")[0].split("#")[0];
+
+	  var appHref = href.indexOf(marker) >= 0
+		? href.substring(0, href.indexOf(marker))
+		: new URL("../", window.location.href).toString();
+
+	  // Do not send a query string to the Shiny/reverse-proxy route.
+	  // The hash changes the iframe URL for reload purposes but is not sent to the server.
+	  appHref = appHref.replace(/\/$/, "");
+	  return appHref + "#ux_smoke_target=" + Date.now();
+	}
 
   async function loadFreshApp(label) {
     shinyEvents = [];
@@ -129,7 +137,9 @@
     frameEl.src = "about:blank";
     await wait(80);
 
-    frameEl.src = targetUrl();
+	var appTarget = targetUrl();
+	log("Iframe hedefi: " + appTarget);
+	frameEl.src = appTarget;
 
     await new Promise(function (resolve) {
       frameEl.onload = function () {
@@ -225,9 +235,15 @@
       return doc.querySelector(".modern-welcome-root");
     }, "modern welcome root", 15000);
 
-    var welcome = doc.querySelector("#welcome_fullscreen_container");
-    var root = doc.querySelector(".modern-welcome-root");
-    var rect = welcome.getBoundingClientRect();
+	var welcome = doc.querySelector("#welcome_fullscreen_container");
+	var root = doc.querySelector(".modern-welcome-root");
+
+	if (!welcome || !root) {
+	  fail("Welcome DOM bulunamadı; iframe muhtemelen app yerine hata sayfası yükledi.");
+	  return;
+	}
+
+	var rect = welcome.getBoundingClientRect();
 
     assert(!!root, "Ana Söyleşi welcome root var");
     assert(!!doc.querySelector(".modern-welcome-video-container"), "sol video alanı var");
