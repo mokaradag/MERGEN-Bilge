@@ -47,6 +47,10 @@ Current contract:
 - DB normalization is intentionally opt-in for mojibake repair. Use `normalize_db_params(..., repair_mojibake = TRUE)` or `normalize_db_value(..., repair_mojibake = TRUE)` only at user-visible text write boundaries such as chat titles, message content, reasoning content, edited message content, worker-saved assistant responses, and SSO/user display fields. Keep the default `repair_mojibake = FALSE` for technical parameters, IDs, flags, and non-user-visible values.
 - The SQL Server DB write boundary is production-sensitive on the Windows VM / SSO deployment. Do not force raw UTF-8 into DBI/ODBC parameter writes merely because the configured client encoding says UTF-8. That behavior can store Turkish text as mojibake across MB tables.
 - For the production VM, Turkish DB writes must preserve the stable Windows-native / `WINDOWS-1254` behavior. `DB_CLIENT_ENCODING=WINDOWS-1254` is the safe operational setting unless a live VM + SSMS validation proves otherwise.
+- `R/helpers_db_connection.R` must honor `DB_CLIENT_ENCODING` and `DB_NAME_ENCODING` from `.Renviron` before falling back to R options/defaults. Do not hard-code the production DB client encoding back to `UTF-8`; doing so can store Turkish message content in `MB_Messages.MessageContent` as mojibake.
+- `normalize_db_value()` must respect the resolved DB client encoding. When the DB client encoding is not UTF-8, user-visible Turkish text must be prepared for that DBI/ODBC parameter boundary instead of blindly returning UTF-8.
+- Keep the UTF-8 and non-UTF-8 DB parameter paths explicitly separated. The helper that detects UTF-8 DB client encoding, such as `db_client_encoding_is_utf8()`, is part of the encoding safety boundary.
+- This change protects future writes; it is not an automatic data migration. Existing mojibake rows must only be repaired after a DB backup, after the write path is confirmed fixed in SSMS, and through a separate one-time repair plan.
 - Treat emoji persistence as a separate DB capability question. Before changing DB write encoding for emoji, verify the relevant SQL Server column types (`nvarchar` vs `varchar`) and run a real write/read test through the app and SSMS. Do not trade Turkish text integrity for emoji display.
 - Read-side normalization may defensively repair display of older mojibake values, but it must not be used as an excuse to allow new mojibake writes. New records in `MB_Users`, `MB_Chats`, `MB_Messages`, `MB_Feedback`, and other MB tables must be validated at rest in SQL Server.
 - Test bootstrap must mirror runtime encoding order. `tests/testthat/helper_bootstrap.R` should source `R/utils_text_encoding.R` before DB helpers so isolated `testthat::test_file(...)` runs exercise the same mojibake repair path as the application.
@@ -76,11 +80,22 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 
+The latest DB encoding guardrail tightening keeps the checks inside `tests/testthat/test-db-normalization-contract.R`. That test now protects environment-based resolution of `DB_CLIENT_ENCODING` and `DB_NAME_ENCODING`, the `WINDOWS-1254` Turkish DB parameter path, and common Turkish mojibake repair examples such as `NasÄ±l`, `TÃ¼rkiye`, `baÅŸkent`, and `yardÄ±mcÄ±`. If this test fails, do not deploy to the Windows VM.
+
 VM-only manual validation after any DB encoding change:
 - Start the app on the Windows VM with SSO enabled.
 - Create a new chat message containing: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü
 - Add feedback tags/comments containing Turkish characters.
 - Verify the new rows directly in SSMS for `MB_Users`, `MB_Chats`, `MB_Messages`, and `MB_Feedback`.
+- Confirm the VM `.Renviron` explicitly contains `DB_CLIENT_ENCODING=WINDOWS-1254` and `DB_NAME_ENCODING=WINDOWS-1254`, then restart the R process completely. A browser refresh or Shiny session reload is not enough.
+- In SSMS, verify the relevant message/chat text column types before changing encoding behavior:
+  SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, COLLATION_NAME
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_NAME IN ('MB_Messages', 'MB_Chats')
+    AND COLUMN_NAME IN ('MessageContent', 'ReasoningContent', 'ChatTitle');
+- Create a new chat message containing: `Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü` and `Türkiye'nin başkenti neresidir?`
+- Check the newest `MB_Messages` rows in SSMS and reject the change if new values contain mojibake such as `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, `ÄŸ`, `Ã¼`, `NasÄ±l`, `TÃ¼rkiye`, or `yardÄ±mcÄ±`.
+- Do not run an automatic startup migration for existing corrupted rows. Old rows require backup and a separate one-time repair plan after new writes are proven correct.
 - Reject the change if SQL Server stores values like `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, or `ÄŸ`.
 
 ### 1A) Keep new code identifiers ASCII-safe when practical
