@@ -116,7 +116,7 @@
   }
 
   function targetUrl() {
-    var url = new URL("./", window.location.href);
+    var url = new URL("../", window.location.href);
     url.searchParams.set("ux_smoke_target", String(Date.now()));
     return url.toString();
   }
