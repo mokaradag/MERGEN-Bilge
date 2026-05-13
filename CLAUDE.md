@@ -126,6 +126,7 @@ The current source-manifest layers are:
 When adding, moving, or splitting a runtime file:
 
 - add the file to the correct position in `R/config_source_manifest.R`,
+- for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
 - when splitting Claude Code security helpers, preserve the order `R/helpers_claude_code_security_policy.R` before `R/helpers_claude_code_prompt_security_policy.R`, and keep both before the Claude Code runtime, process, streaming, lifecycle, and module files that call the policy helpers.
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
@@ -355,6 +356,67 @@ tests/testthat/test-maintainability-ratchet.R
 ```
 
 Current maintainability ratchet baseline after the latest send_message prompting extraction is: score `100/100`, at most `0` 800+ line files, at most `0` 25+ function files, `0` 1500+ line files, maximum runtime file length `792` when `R/library_queries.R` is ignored as the external SQL library holder, and maximum function count `24`. Do not loosen these limits without an explicit reason. The ratchet also locks the current budgets of near-limit runtime files such as `R/module_claude_code.R`, `R/server_send_message.R`, `R/module_admin_hata_analizi.R`, `R/module_image_generation.R`, `R/helpers_llm_sse.R`, and other high-line/high-function files so remaining headroom cannot be silently consumed. There is no remaining score-driven refactor candidate in the latest maintainability report; future refactors should be selected for concrete production reliability, race-condition reduction, or cohesive architectural risk reduction rather than score chasing. Small helper extraction is preferred when a near-limit runtime file would otherwise consume remaining headroom; the File Manager attach-state client helper is an example of this pattern. Recent file-resolution hardening required one File Manager function-count budget update after tests passed; do not loosen additional ratchet values unless the code change genuinely changes the measured baseline and the reason is documented. The prompt-path security split is part of this contract: keep `R/helpers_claude_code_prompt_security_policy.R` separate from the already dense core security policy helper, and keep `R/module_claude_code.R` delegating workdir/prompt safety to the lifecycle helper instead of growing inline security blocks.
+
+### Server runtime and module wiring contract
+
+The server runtime/module wiring boundary was split to reduce maintainability risk without moving behavior back into `server.R`.
+
+Current contract:
+
+- `server.R` must remain a thin orchestration layer. It may build named dependency bundles and pass `runtime_ctx`, but it must not regain module implementation logic.
+- `R/server_runtime_context.R` owns runtime context attachment and accessors for identity, state, cache, file runtime, chat runtime, registered modules, SSO auth-ready refresh hooks, and session-data exposure.
+- `R/helpers_server_runtime_contracts.R` contains the small core runtime contract helpers.
+- `R/helpers_server_runtime_named_contracts.R` contains named-function and environment validation helpers so the core contract file stays under the maintainability ratchet.
+- `R/server_module_wiring.R` owns medium-level service, settings, media, file prelude, file manager, image gallery, and chat persistence binding.
+- `R/server_chat_engine_dependencies.R` owns only the chat-engine dependency bundle contract through `serverBuildChatEngineDependencyBundle()` and `.server_wiring_resolve_chat_engine_deps()`.
+- `R/server_chat_engine_runtime.R` owns `serverBindChatEngineRuntime()` and the chat-engine observer/runtime wiring.
+- `R/server_core_interaction_runtime.R` owns the core interaction handoff and validates the core dependency bundle built by `serverBuildCoreInteractionBundle()`.
+
+Keep these dependency groups as named bundles rather than re-expanding long repeated parameter lists in `server.R`:
+
+- Core interaction bundle: `settings_data`, `api_config`, `media_modules`, welcome forward refs, send-message forward refs, load-chat state, and user display/config providers.
+- Chat engine dependency bundle: `settings_data`, `api_key`, `user_config_rv`, `perf_tracker`, media processors, `saved_chats_data`, `send_message_fns`, `send_message_proxy`, `api_config`, and optional admin/feedback references.
+
+Important constraints:
+
+- Do not move chat-engine runtime wiring back into `R/server_module_wiring.R`.
+- Do not move chat-engine dependency validation back into `server.R`.
+- Do not make `runtime_ctx` a god object. Identity, state, cache, file runtime, chat runtime, and registered modules belong there; external service/module dependencies should stay in small named bundles.
+- `api_key` is not required to be a plain function. Do not validate it with `.server_wiring_require_functions()`.
+- Optional `admin_pool` must be handled defensively. A missing `admin_pool` symbol must resolve to `NULL`, not crash the app.
+- Missing required bundle fields and functions should fail early with clear Turkish error messages.
+- Keep SSO/local user identity behavior provider-based. Do not pass stale `current_user_id` snapshots into user-scoped modules.
+
+Protected by:
+
+- `tests/testthat/test-source-manifest-contract.R`
+- `tests/testthat/test-production-contracts.R`
+- `tests/testthat/test-server-module-wiring-chat-engine.R`
+- `tests/testthat/test-server-core-interaction-runtime.R`
+- `tests/testthat/test-server-live-user-provider-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation:
+
+- `Sys.setenv(MERGEN_RUN_APP = "false")`
+- `source("app.R", encoding = "UTF-8")`
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-production-contracts.R")`
+- `testthat::test_file("tests/testthat/test-server-module-wiring-chat-engine.R")`
+- `testthat::test_file("tests/testthat/test-server-core-interaction-runtime.R")`
+- `testthat::test_file("tests/testthat/test-server-live-user-provider-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")`
+
+Manual validation after changing this boundary:
+
+- Start with SSO disabled and confirm welcome screen, new chat, quick actions, File Manager, saved chats, and history still work.
+- Start on the VM with SSO enabled and confirm login, user-specific saved chats, user-specific File Manager folder, and user-specific image gallery still work.
+- Confirm streaming answer, non-streaming answer, stop generation, and TTS-enabled answer still work.
+- Confirm there are no `current_user_id`, `streaming_state`, `ai_msg`, `admin_pool`, or `serverBuildChatEngineDependencyBundle` missing-object errors.
+
+Final check:
+After editing both files, ensure no unrelated documentation sections changed.
 
 ### send_message prompting and file-context contract
 
