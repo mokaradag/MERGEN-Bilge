@@ -115,7 +115,7 @@ Korunan davranışlar şunlardır:
 - Stop butonu yanıt üretimini, düşünce paneli durumunu ve aktif TTS çalmasını birlikte temizlemelidir.
 - Düşünen modellerde düşünce paneli görünmeli, otomatik kaydırma bozulmamalı ve tamamlanma/durdurma sonrasında panel yaşam döngüsü güvenli kalmalıdır.
 
-Bu sınırları korumak için hafif regresyon testleri `tests/testthat/test-ux-regression-guardrails.R` içinde toplanmıştır. İlgili değişikliklerden sonra en az şu odak testler çalıştırılmalıdır:
+Bu sınırları korumak için hafif regresyon testleri `tests/testthat/test-ux-regression-guardrails.R` içinde toplanmıştır. Buna ek olarak gerçek tarayıcı DOM’u üzerinde çalışan, üretim SSO/Keycloak ortamına uyumlu hafif smoke katmanı `www/smoke/ux-smoke.html` içinde tutulur; bu katmanı güncel tutan sözleşme testi `tests/testthat/test-browser-smoke-harness-contract.R` dosyasıdır. İlgili değişikliklerden sonra en az şu odak testler çalıştırılmalıdır:
 
 - `tests/testthat/test-ux-regression-guardrails.R`
 - `tests/testthat/test-e2e-boot-welcome-regression.R`
@@ -124,6 +124,23 @@ Bu sınırları korumak için hafif regresyon testleri `tests/testthat/test-ux-r
 - `tests/testthat/test-quick-action-intro.R`
 - `tests/testthat/test-quick-action-routing.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-browser-smoke-harness-contract.R`
+
+#### Tarayıcı düzeyi smoke doğrulaması
+
+Üretim SSO ortamında ek tarayıcı doğrulaması için aşağıdaki sayfa doğrudan açılabilir:
+
+- `https://mergen.aselsan.com.tr/bilge/smoke/ux-smoke.html`
+
+Başarılı çalışmanın beklenen sonucu şudur:
+
+- `UX_SMOKE_DONE:PASS`
+
+Bu smoke sayfası uygulamayı aynı origin içinde iframe olarak açar ve gerçek tarayıcı davranışı üzerinden şu başlıkları hızlıca doğrular: Ana Söyleşi hoş geldin ekranı, üst boşluk regresyonu olmaması, Enter/Shift+Enter/stop-mode giriş davranışları, otomatik kaydırma durumu, TTS/STT/arka plan müziği duck/restore akışı, kayıtlı sohbet yüklenince geçmiş TTS yanıtlarının otomatik oynatılmaması, düşünce paneli yaşam döngüsü, hızlı işlem kartında çift tıklamanın tek olay üretmesi ve tarayıcı konsolunda belirgin JS hatası olmaması.
+
+Bu katman bilinçli olarak hafif tutulmuştur; `shinytest2`, Playwright, Chromote, Selenium, Node veya npm bağımlılığı gerektirmez. Normal kullanıcı arayüzüne eklenmez ve `R/config_ui_assets.R` manifestine dahil edilmemelidir; yalnızca doğrudan smoke URL’si açıldığında çalışır.
+
+Üretim SSO/Keycloak yolunda iframe yeniden yüklemeleri kimlik doğrulama akışını etkileyebildiği için browser smoke, hızlı işlem intro mesajının görsel görünürlüğünü SSO ortamında bilinçli olarak atlar. Hızlı işlem intro mesajı, model ve araç modu sözleşmeleri deterministik odak testlerde korunmaya devam eder.
 
 Bu testler görsel tasarımın yerini almaz; ancak future refactor’ların mevcut Türkçe UX, animasyonlar, sesli etkileşimler ve hızlı işlem akışlarını yanlışlıkla azaltmasını erken yakalamak için sözleşme katmanı sağlar.
 

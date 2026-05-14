@@ -149,6 +149,7 @@ The current guardrail layer includes:
 - `tests/testthat/test-quick-action-intro.R`
 - `tests/testthat/test-quick-action-routing.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-browser-smoke-harness-contract.R`
 
 Focused validation after UX-sensitive refactors:
 
@@ -159,6 +160,19 @@ Focused validation after UX-sensitive refactors:
 - `testthat::test_file("tests/testthat/test-quick-action-intro.R")`
 - `testthat::test_file("tests/testthat/test-quick-action-routing.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")`
+
+Browser-level smoke validation:
+
+- The repo includes a lightweight browser smoke harness at `www/smoke/ux-smoke.html`.
+- The matching contract test is `tests/testthat/test-browser-smoke-harness-contract.R`; it must read `www/smoke/ux-smoke.html`, not the old root-level `www/ux-smoke.html` path.
+- The smoke harness is intentionally repo-local and dependency-free. Do not add `shinytest2`, Playwright, Chromote, Selenium, Node, npm, or another heavy browser-test dependency for this layer unless explicitly requested.
+- Do not add `www/smoke/ux-smoke.html` to `R/config_ui_assets.R`; it is not part of the normal production UI asset bundle and should only run when opened directly.
+- On the production SSO route, open `/bilge/smoke/ux-smoke.html` and wait for `UX_SMOKE_DONE:PASS`.
+- The smoke harness validates real browser behavior for welcome boot, no-top-gap layout, chat input, stop-mode guard, auto-scroll state, TTS/STT/music duck and restore behavior, saved-chat no historical TTS autoplay, reasoning panel lifecycle, quick-action double-click single-dispatch guard, and browser console sanity.
+- Production SSO/Keycloak routes can redirect repeated iframe reloads. For that reason, the smoke harness intentionally keeps browser quick-action coverage minimal and skips quick-action intro-message visibility in SSO mode. The deterministic focused tests remain the source of truth for all quick-action intro/model/tool contracts.
+- The contract test should protect the SSO-aware smoke behavior, including the `/smoke/ux-smoke.html` target marker, `isSsoEnabled`, the SSO intro-skip text, and the hash-based `#ux_smoke_target=` reload marker.
+- If this smoke test fails because of Keycloak redirection, iframe routing, or production proxy behavior, do not remove UX features to make it pass. Prefer a small defensive adjustment inside `www/smoke/ux-smoke.html` while preserving the focused test coverage.
 
 Manual validation after touching welcome, quick actions, media, TTS, STT, stop-button, streaming, or reasoning code:
 
@@ -169,6 +183,7 @@ Manual validation after touching welcome, quick actions, media, TTS, STT, stop-b
 - STT: open modal, confirm music pauses/ducks, cancel and confirm restore, reopen and submit and confirm restore.
 - Reasoning: use a thinking-capable model, confirm the panel appears, auto-scroll works, and cleanup happens after response/stop.
 - Browser console: confirm there are no JS errors, duplicate audio warnings, or missing element errors.
+- Browser smoke: open `/bilge/smoke/ux-smoke.html` on the target deployment and confirm `UX_SMOKE_DONE:PASS`; on SSO deployments, remember that quick-action intro visibility is covered by focused tests rather than the smoke page.
 
 ### 4) Do not create unnecessary new files
 This repo already has a lot of modules. New files should only be introduced when there is a clear benefit and the sourcing order in `global.R` is updated correctly.
