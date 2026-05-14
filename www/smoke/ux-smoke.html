@@ -240,6 +240,26 @@
 	  }
 	}
 
+	function hasSmokeFlag(flagName) {
+	  var search = window.location.search || "";
+	  var hash = window.location.hash || "";
+	  var params = new URLSearchParams(search);
+
+	  if (params.get(flagName) === "1" || params.get(flagName) === "true") {
+		return true;
+	  }
+
+	  if (hash.indexOf("?") >= 0) {
+		params = new URLSearchParams(hash.substring(hash.indexOf("?")));
+		if (params.get(flagName) === "1" || params.get(flagName) === "true") {
+		  return true;
+		}
+	  }
+
+	  return hash.indexOf(flagName + "=1") >= 0 ||
+			 hash.indexOf(flagName + "=true") >= 0;
+	}
+
   async function testWelcome(app) {
     var doc = app.doc;
 
