@@ -3251,6 +3251,17 @@ When `SSO_ENABLED=TRUE`:
 
 If anything “works locally but not on VM”, SSO and encoding are the first things to inspect.
 
+#### Windows VM / SSO / SQL Server Encoding Guardrails
+- In production-like Windows VM runs, `.Renviron` must define `DB_CLIENT_ENCODING=WINDOWS-1254` and `DB_NAME_ENCODING=WINDOWS-1254`.
+- Restart the full R process after changing these values; a browser refresh is not enough.
+- Route all user-visible DB text write/read boundaries through the central text/DB normalization helpers.
+- Do not mojibake-repair technical identifiers, flags, enums, paths, model IDs, usernames, email, sicil, Keycloak session IDs, or Keycloak subject IDs.
+- Keep SSO claim display fields separate from technical identity fields.
+- Treat support feedback/error text and image-gallery `MB_Messages.MessageContent` updates as protected DB boundaries.
+- Do not treat emoji persistence as solved by Turkish encoding fixes; verify SQL Server column types and ODBC read/write behavior first.
+- Do not add automatic migrations for old corrupted rows.
+- Required focused checks: `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`, `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`, `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`, `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`, `testthat::test_file("tests/testthat/test-production-contracts.R")`, `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`.
+
 ---
 
 ## Major Functional Systems
