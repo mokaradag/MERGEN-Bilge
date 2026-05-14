@@ -42,14 +42,31 @@ vm_encoding_preflight_norm_encoding <- function(value) {
 }
 
 vm_encoding_preflight_has_mojibake <- function(value) {
-  value <- paste(as.character(value %||% ""), collapse = "\n")
+  text <- paste(enc2utf8(as.character(value %||% "")), collapse = "\n")
 
-  grepl(
-    "Ã|Ä|Å|TÃ¼rkiye|NasÄ±l|yardÄ±mcÄ±|baÅŸkent|Ã§|Ã¶|Ã¼|ÅŸ|ÄŸ|Ä±",
-    value,
-    perl = TRUE,
-    useBytes = TRUE
+  mojibake_tokens <- c(
+    "Ã§",
+    "Ä±",
+    "Ã¶",
+    "ÅŸ",
+    "ÄŸ",
+    "Ã¼",
+    "Ã‡",
+    "Ä°",
+    "Ã–",
+    "Åž",
+    "Ãœ",
+    "TÃ¼rkiye",
+    "NasÄ±l",
+    "yardÄ±mcÄ±",
+    "baÅŸkent"
   )
+
+  any(vapply(
+    mojibake_tokens,
+    function(token) grepl(token, text, fixed = TRUE),
+    logical(1)
+  ))
 }
 
 vm_encoding_preflight_require_functions <- function(function_names) {
@@ -502,7 +519,7 @@ tryCatch({
         "Görüş: Türkçe karakterler SSMS tarafında mojibake olmamalı."
       )
 
-      read_back_text <- paste(as.character(raw_values), collapse = "\n")
+      read_back_text <- paste(enc2utf8(as.character(raw_values)), collapse = "\n")
 
       missing_expected <- expected_values[!vapply(
         expected_values,

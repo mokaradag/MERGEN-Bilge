@@ -207,12 +207,12 @@ test_that("SSO visible claims use central repair while technical claims avoid re
 })
 
 test_that("MB_Users SSO writes repair visible fields only", {
-  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_database.R")
+  db_txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_database.R")
+  helper_txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_user_encoding.R")
+  txt <- paste(db_txt, helper_txt, sep = "\n")
 
   expected <- c(
-    ".db_visible_text_for_write <- function(value)",
-    ".db_technical_text_for_write <- function(value)",
-    ".normalize_sso_claims_for_db <- function(sso_claims)",
+    "normalize_sso_claims_for_db <- function(sso_claims)",
     "\"full_name\"",
     "\"first_name\"",
     "\"last_name\"",
@@ -225,10 +225,10 @@ test_that("MB_Users SSO writes repair visible fields only", {
     "\"masraf_yeri_kodu\"",
     "\"keycloak_sid\"",
     "\"keycloak_sub\"",
-    "sso_claims[[field_name]] <- .db_visible_text_for_write(sso_claims[[field_name]])",
-    "sso_claims[[field_name]] <- .db_technical_text_for_write(sso_claims[[field_name]])",
-    "username <- .db_technical_text_for_write(username)",
-    "sso_claims <- .normalize_sso_claims_for_db(sso_claims)"
+    "sso_claims[[field_name]] <- normalize_db_visible_value(sso_claims[[field_name]])",
+    "sso_claims[[field_name]] <- normalize_db_technical_value(sso_claims[[field_name]])",
+    "username <- normalize_db_technical_value(username)",
+    "sso_claims <- normalize_sso_claims_for_db(sso_claims)"
   )
 
   found <- vapply(expected, function(needle) .has_boundary_text(txt, needle), logical(1))
@@ -242,12 +242,12 @@ test_that("MB_Users SSO writes repair visible fields only", {
   )
 
   expect_false(
-    .has_boundary_text(txt, "normalize_text_tree_utf8(sso_claims, repair_mojibake = TRUE)"),
+    .has_boundary_text(db_txt, "normalize_text_tree_utf8(sso_claims, repair_mojibake = TRUE)"),
     info = "SSO claim ağacının tamamı mojibake onarımına sokulmamalıdır."
   )
 
   expect_false(
-    .has_boundary_text(txt, "params = normalize_db_params(params, repair_mojibake = TRUE)"),
+    .has_boundary_text(db_txt, "params = normalize_db_params(params, repair_mojibake = TRUE)"),
     info = "MB_Users SSO alanları karma parametre listesiyle whole-list repair yapmamalıdır."
   )
 })
@@ -256,9 +256,9 @@ test_that("MB_Feedback extended writes repair tags/comments only", {
   txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_database.R")
 
   expected <- c(
-    "safe_tags <- .db_visible_text_for_write(safe_tags)",
-    "safe_comment <- .db_visible_text_for_write(safe_comment)",
-    "feedback_type <- .db_technical_text_for_write(feedback_type)"
+    "safe_tags <- normalize_db_visible_value(safe_tags)",
+    "safe_comment <- normalize_db_visible_value(safe_comment)",
+    "feedback_type <- normalize_db_technical_value(feedback_type)"
   )
 
   found <- vapply(expected, function(needle) .has_boundary_text(txt, needle), logical(1))
