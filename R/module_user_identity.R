@@ -72,15 +72,15 @@ resolveUserIdentity <- function(sso_claims = NULL) {
     query <- "SELECT KaynakAdi FROM DC01_user_base WHERE KullaniciAdi = ?"
     result <- dbGetQuery(conn, query, params = list(system_username))
 
-    if (nrow(result) > 0 && nzchar(result$KaynakAdi[1])) {
-      result$KaynakAdi[1]
-    } else {
+	if (nrow(result) > 0 && nzchar(result$KaynakAdi[1])) {
+	  normalize_db_visible_value(result$KaynakAdi[1])
+	} else {
       # DB'de kayıt yoksa MB_Users tablosundan dene
       query2 <- "SELECT KaynakAdi FROM MB_Users WHERE KullaniciAdi = ?"
       result2 <- dbGetQuery(conn, query2, params = list(system_username))
-      if (nrow(result2) > 0 && nzchar(result2$KaynakAdi[1])) {
-        result2$KaynakAdi[1]
-      } else {
+	  if (nrow(result2) > 0 && nzchar(result2$KaynakAdi[1])) {
+	    normalize_db_visible_value(result2$KaynakAdi[1])
+	  } else {
         NULL
       }
     }

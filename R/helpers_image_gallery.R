@@ -66,7 +66,7 @@ scan_user_images <- function(user_id) {
     # Açıklamayı dosya adına göre bul
     desc <- descriptions_map[[fname]] %||% ""
 
-	# Söyleşi başlığını bul
+    # Söyleşi başlığını bul
     chat_title <- if (!is.na(cid)) {
       get_chat_title_for_image(cid, user_id) %||% ""
     } else ""
@@ -96,6 +96,7 @@ scan_user_images <- function(user_id) {
 #' @return İsimli liste: dosya_adı -> açıklama
 load_image_descriptions_for_user <- function(user_id) {
   result_map <- list()
+
   tryCatch({
     conn_info <- get_connection()
     conn <- conn_info$conn
@@ -110,7 +111,12 @@ load_image_descriptions_for_user <- function(user_id) {
       WHERE c.UserID = ? AND c.IsDeleted = 0
         AND m.MessageContent LIKE '\\[GÖRSEL:%' ESCAPE '\\'
     "
-    rows <- DBI::dbGetQuery(conn, query, params = normalize_db_params(list(user_id)))
+
+    rows <- DBI::dbGetQuery(
+      conn,
+      query,
+      params = normalize_db_params(list(user_id))
+    )
 
     if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
       rows <- normalize_text_frame_utf8(rows, repair_mojibake = TRUE)
@@ -136,6 +142,7 @@ load_image_descriptions_for_user <- function(user_id) {
               AND MessageContent NOT LIKE '\\[GÖRSEL:%' ESCAPE '\\'
             ORDER BY MessageOrder ASC
           "
+
           next_row <- tryCatch({
             result <- DBI::dbGetQuery(
               conn,
@@ -162,6 +169,7 @@ load_image_descriptions_for_user <- function(user_id) {
   }, error = function(e) {
     cat("[IMAGE_GALLERY] Açıklama yükleme hatası:", e$message, "\n")
   })
+
   return(result_map)
 }
 
@@ -170,6 +178,7 @@ load_image_descriptions_for_user <- function(user_id) {
 #' @return Base64 data URL veya NULL
 get_image_thumbnail_base64 <- function(file_path) {
   if (is.null(file_path) || !file.exists(file_path)) return(NULL)
+
   tryCatch({
     img_data <- base64enc::base64encode(file_path)
     paste0("data:image/png;base64,", img_data)
@@ -204,9 +213,11 @@ delete_single_image <- function(file_path, user_id, chat_id) {
     if (file.exists(file_path)) {
       cat("[IMAGE_GALLERY] Dosya hâlâ mevcut, Sys.sleep sonrası tekrar deneniyor:", file_path, "\n")
       Sys.sleep(0.2)
+
       if (file.exists(file_path)) {
         unlink(file_path, force = TRUE)
       }
+
       if (file.exists(file_path)) {
         cat("[IMAGE_GALLERY] Dosya silinemedi (ikinci deneme):", file_path, "\n")
         return(FALSE)
@@ -247,6 +258,7 @@ delete_all_user_images <- function(user_id) {
 
   for (i in seq_len(nrow(images))) {
     row <- images[i, ]
+
     tryCatch({
       if (file.exists(row$file_path)) {
         removed <- file.remove(row$file_path)
@@ -268,12 +280,14 @@ delete_all_user_images <- function(user_id) {
   user_dir <- file.path(getwd(), "user_images", as.character(user_id))
   if (dir.exists(user_dir)) {
     chat_dirs <- list.dirs(user_dir, recursive = FALSE, full.names = TRUE)
+
     for (cd in chat_dirs) {
       remaining <- list.files(cd, recursive = FALSE)
       if (length(remaining) == 0) {
         unlink(cd, recursive = TRUE)
       }
     }
+
     remaining_dirs <- list.dirs(user_dir, recursive = FALSE)
     if (length(remaining_dirs) == 0) {
       remaining_files <- list.files(user_dir, recursive = FALSE)
@@ -306,6 +320,7 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
 
     query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE ?"
     search_pattern <- paste0("%", filename, "%")
+
     rows <- DBI::dbGetQuery(
       conn,
       query,
@@ -322,18 +337,29 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
         new_content <- gsub(
           "^\\[GÖRSEL:[^\\]]*\\]",
           "[İlgili görsel kullanıcı tarafından silinmiştir]",
-          old_content, perl = TRUE
+          old_content,
+          perl = TRUE
         )
+
         if (new_content != old_content) {
+          if (exists("normalize_db_visible_value", mode = "function", inherits = TRUE)) {
+            new_content <- normalize_db_visible_value(new_content)
+          } else if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+            new_content <- normalize_text_utf8(new_content, repair_mojibake = TRUE)
+          } else {
+            new_content <- enc2utf8(new_content)
+          }
+
           update_q <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
+
           DBI::dbExecute(
             conn,
             update_q,
             params = normalize_db_params(
-              list(new_content, rows$MessageID[j]),
-              repair_mojibake = TRUE
+              list(new_content, rows$MessageID[j])
             )
           )
+
           cat(sprintf("[IMAGE_GALLERY] Mesaj güncellendi (MessageID: %s)\n", rows$MessageID[j]))
         }
       }
@@ -359,6 +385,7 @@ update_messages_after_bulk_deletion <- function(chat_id) {
     on.exit(release_connection(conn_info))
 
     query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '[GÖRSEL:%'"
+
     rows <- DBI::dbGetQuery(
       conn,
       query,
@@ -372,15 +399,24 @@ update_messages_after_bulk_deletion <- function(chat_id) {
     if (nrow(rows) > 0) {
       for (j in seq_len(nrow(rows))) {
         old_content <- rows$MessageContent[j]
-        image_match <- regmatches(old_content, regexec("\\[GÖRSEL:([^\\]]+)\\]", old_content, perl = TRUE))[[1]]
+        image_match <- regmatches(
+          old_content,
+          regexec("\\[GÖRSEL:([^\\]]+)\\]", old_content, perl = TRUE)
+        )[[1]]
+
         if (length(image_match) >= 2) {
           img_path <- image_match[2]
+
           # Görselin hâlâ var olup olmadığını kontrol et
           resolved <- NULL
           if (file.exists(img_path)) {
             resolved <- img_path
           } else {
-            user_images_match <- regmatches(img_path, regexec("(user_images/.+)$", img_path))[[1]]
+            user_images_match <- regmatches(
+              img_path,
+              regexec("(user_images/.+)$", img_path)
+            )[[1]]
+
             if (length(user_images_match) >= 2) {
               candidate <- file.path(getwd(), user_images_match[2])
               if (file.exists(candidate)) resolved <- candidate
@@ -392,16 +428,26 @@ update_messages_after_bulk_deletion <- function(chat_id) {
             new_content <- gsub(
               "^\\[GÖRSEL:[^\\]]*\\]",
               "[İlgili görsel kullanıcı tarafından silinmiştir]",
-              old_content, perl = TRUE
+              old_content,
+              perl = TRUE
             )
+
             if (new_content != old_content) {
+              if (exists("normalize_db_visible_value", mode = "function", inherits = TRUE)) {
+                new_content <- normalize_db_visible_value(new_content)
+              } else if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+                new_content <- normalize_text_utf8(new_content, repair_mojibake = TRUE)
+              } else {
+                new_content <- enc2utf8(new_content)
+              }
+
               update_q <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
+
               DBI::dbExecute(
                 conn,
                 update_q,
                 params = normalize_db_params(
-                  list(new_content, rows$MessageID[j]),
-                  repair_mojibake = TRUE
+                  list(new_content, rows$MessageID[j])
                 )
               )
             }
@@ -432,6 +478,7 @@ get_chat_title_for_image <- function(chat_id, user_id) {
     on.exit(release_connection(conn_info))
 
     query <- "SELECT ChatTitle FROM MB_Chats WHERE ChatID = ? AND UserID = ? AND IsDeleted = 0"
+
     result <- DBI::dbGetQuery(
       conn,
       query,

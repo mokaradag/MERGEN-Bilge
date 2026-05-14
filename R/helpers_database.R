@@ -15,6 +15,80 @@
 # Database operation helpers
 # -------------------------
 
+.db_visible_text_for_write <- function(value) {
+  # Kullanıcıya görünen metinler DB parametre sınırına gelmeden onarılır.
+  # Teknik kimlik, enum, bayrak ve yol alanları bu yardımcıdan geçirilmemelidir.
+  if (is.null(value) || !is.character(value)) {
+    return(value)
+  }
+
+  if (exists("normalize_db_visible_value", mode = "function", inherits = TRUE)) {
+    return(normalize_db_visible_value(value))
+  }
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(value, repair_mojibake = TRUE))
+  }
+
+  enc2utf8(value)
+}
+
+.db_technical_text_for_write <- function(value) {
+  # Teknik karakter alanları UTF-8 olarak işaretlenir; mojibake onarımı yapılmaz.
+  if (is.null(value) || !is.character(value)) {
+    return(value)
+  }
+
+  if (exists("normalize_db_technical_value", mode = "function", inherits = TRUE)) {
+    return(normalize_db_technical_value(value))
+  }
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(value, repair_mojibake = FALSE))
+  }
+
+  enc2utf8(value)
+}
+
+.normalize_sso_claims_for_db <- function(sso_claims) {
+  # SSO claim ağacının tamamına mojibake onarımı uygulanmaz.
+  # Sadece kullanıcıya görünen alanlar onarılır; teknik claim'ler korunur.
+  if (is.null(sso_claims) || !is.list(sso_claims)) {
+    return(sso_claims)
+  }
+
+  visible_fields <- c(
+    "full_name",
+    "first_name",
+    "last_name",
+    "sektor",
+    "department",
+    "mudurluk"
+  )
+
+  technical_fields <- c(
+    "username",
+    "email",
+    "sicil",
+    "masraf_yeri_kodu",
+    "keycloak_sid",
+    "keycloak_sub",
+    "yetki",
+    "token_exp",
+    "token_iat"
+  )
+
+  for (field_name in intersect(visible_fields, names(sso_claims))) {
+    sso_claims[[field_name]] <- .db_visible_text_for_write(sso_claims[[field_name]])
+  }
+
+  for (field_name in intersect(technical_fields, names(sso_claims))) {
+    sso_claims[[field_name]] <- .db_technical_text_for_write(sso_claims[[field_name]])
+  }
+
+  sso_claims
+}
+
 # Kullanıcı al veya oluştur; tam sayı UserID döndürür
 # sso_claims: SSO aktifken Keycloak'tan gelen ek bilgiler (opsiyonel)
 get_or_create_user <- function(username, sso_claims = NULL) {
@@ -23,14 +97,8 @@ get_or_create_user <- function(username, sso_claims = NULL) {
   # Girdi doğrulama
   validate_username(username)
 
-  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    username <- normalize_text_utf8(username, repair_mojibake = TRUE)
-  }
-
-  if (!is.null(sso_claims) &&
-      exists("normalize_text_tree_utf8", mode = "function", inherits = TRUE)) {
-    sso_claims <- normalize_text_tree_utf8(sso_claims, repair_mojibake = TRUE)
-  }
+  username <- .db_technical_text_for_write(username)
+  sso_claims <- .normalize_sso_claims_for_db(sso_claims)
 
   conn_info <- get_connection()
   conn <- conn_info$conn
@@ -45,7 +113,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     user_details <- dbGetQuery(
       conn,
       user_details_query,
-      params = normalize_db_params(list(username), repair_mojibake = TRUE)
+      params = normalize_db_params(list(username))
     )
 
     if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
@@ -57,18 +125,24 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     }
   }
 
+  kaynak_adi <- .db_visible_text_for_write(kaynak_adi)
+
   user_id_query <- "SELECT UserID FROM MB_Users WHERE KullaniciAdi = ?"
-  user_id_result <- dbGetQuery(conn, user_id_query, params = normalize_db_params(list(username)))
+  user_id_result <- dbGetQuery(
+    conn,
+    user_id_query,
+    params = normalize_db_params(list(username))
+  )
 
   if (nrow(user_id_result) > 0) {
     user_id <- as.integer(user_id_result$UserID[1])
     update_query <- "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?"
+
     dbExecute(
       conn,
       update_query,
       params = normalize_db_params(
-        list(kaynak_adi, user_id),
-        repair_mojibake = TRUE
+        list(kaynak_adi, user_id)
       )
     )
 
@@ -80,14 +154,15 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     return(user_id)
   } else {
     insert_query <- "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate) OUTPUT INSERTED.UserID AS UserID VALUES (?, ?, GETDATE())"
+
     res <- dbGetQuery(
       conn,
       insert_query,
       params = normalize_db_params(
-        list(username, kaynak_adi),
-        repair_mojibake = TRUE
+        list(username, kaynak_adi)
       )
     )
+
     if (nrow(res) == 0) stop("Yeni kullanıcı oluşturulduktan sonra UserID alınamadı.")
     user_id <- as.integer(res$UserID[1])
 
@@ -103,10 +178,7 @@ get_or_create_user <- function(username, sso_claims = NULL) {
 # SSO ek alanlarını MB_Users tablosunda güncelle
 # Tablo bu sütunlara sahip değilse sessizce atla
 update_sso_fields <- function(conn, user_id, sso_claims) {
-  if (!is.null(sso_claims) &&
-      exists("normalize_text_tree_utf8", mode = "function", inherits = TRUE)) {
-    sso_claims <- normalize_text_tree_utf8(sso_claims, repair_mojibake = TRUE)
-  }
+  sso_claims <- .normalize_sso_claims_for_db(sso_claims)
 
   tryCatch({
     # Tabloda SSO sütunlarının varlığını kontrol et
@@ -124,42 +196,43 @@ update_sso_fields <- function(conn, user_id, sso_claims) {
 
     if ("Sicil" %in% existing_cols && !is.null(sso_claims$sicil)) {
       set_parts <- c(set_parts, "Sicil = ?")
-      params <- c(params, list(sso_claims$sicil))
+      params <- c(params, list(.db_technical_text_for_write(sso_claims$sicil)))
     }
     if ("Email" %in% existing_cols && !is.null(sso_claims$email)) {
       set_parts <- c(set_parts, "Email = ?")
-      params <- c(params, list(sso_claims$email))
+      params <- c(params, list(.db_technical_text_for_write(sso_claims$email)))
     }
     if ("Sektor" %in% existing_cols && !is.null(sso_claims$sektor)) {
       set_parts <- c(set_parts, "Sektor = ?")
-      params <- c(params, list(sso_claims$sektor))
+      params <- c(params, list(.db_visible_text_for_write(sso_claims$sektor)))
     }
     if ("Departman" %in% existing_cols && !is.null(sso_claims$department)) {
       set_parts <- c(set_parts, "Departman = ?")
-      params <- c(params, list(sso_claims$department))
+      params <- c(params, list(.db_visible_text_for_write(sso_claims$department)))
     }
     if ("Mudurluk" %in% existing_cols && !is.null(sso_claims$mudurluk)) {
       set_parts <- c(set_parts, "Mudurluk = ?")
-      params <- c(params, list(sso_claims$mudurluk))
+      params <- c(params, list(.db_visible_text_for_write(sso_claims$mudurluk)))
     }
     if ("MasrafYeriKodu" %in% existing_cols && !is.null(sso_claims$masraf_yeri_kodu)) {
       set_parts <- c(set_parts, "MasrafYeriKodu = ?")
-      params <- c(params, list(sso_claims$masraf_yeri_kodu))
+      params <- c(params, list(.db_technical_text_for_write(sso_claims$masraf_yeri_kodu)))
     }
     if ("SonGirisKaynagi" %in% existing_cols) {
       set_parts <- c(set_parts, "SonGirisKaynagi = ?")
-      params <- c(params, list("keycloak"))
+      params <- c(params, list(.db_technical_text_for_write("keycloak")))
     }
 
     if (length(set_parts) > 0) {
       query <- paste0("UPDATE MB_Users SET ", paste(set_parts, collapse = ", "), " WHERE UserID = ?")
       params <- c(params, list(user_id))
-      dbExecute(conn, query, params = normalize_db_params(params, repair_mojibake = TRUE))
+      dbExecute(conn, query, params = normalize_db_params(params))
     }
   }, error = function(e) {
     # SSO alanları güncellenemedi - kritik değil, sessizce devam et
     log_warn("SSO alanları güncellenemedi (UserID={user_id}): {e$message}")
   })
+
   invisible(NULL)
 }
 
@@ -175,6 +248,8 @@ save_feedback_to_db <- function(user_id, message_id, feedback_type) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
+  feedback_type <- .db_technical_text_for_write(feedback_type)
+
   query <- "
     MERGE MB_Feedback AS target
     USING (SELECT ? AS UserID, ? AS MessageID, ? AS FeedbackType) AS source
@@ -182,7 +257,14 @@ save_feedback_to_db <- function(user_id, message_id, feedback_type) {
     WHEN MATCHED THEN UPDATE SET FeedbackType = source.FeedbackType
     WHEN NOT MATCHED BY TARGET THEN INSERT (UserID, MessageID, FeedbackType) VALUES (source.UserID, source.MessageID, source.FeedbackType);
   "
-  dbExecute(conn, query, params = normalize_db_params(list(user_id, as.integer(message_id), feedback_type)))
+
+  dbExecute(
+    conn,
+    query,
+    params = normalize_db_params(
+      list(user_id, as.integer(message_id), feedback_type)
+    )
+  )
 }
 
 remove_feedback_from_db <- function(user_id, message_id) {
@@ -201,10 +283,18 @@ load_feedback_from_db <- function(user_id) {
 
   query <- "SELECT MessageID, FeedbackType FROM MB_Feedback WHERE UserID = ?"
   feedback_data <- dbGetQuery(conn, query, params = list(user_id))
-  if (nrow(feedback_data) == 0) return(list(liked = character(0), disliked = character(0)))
+
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    feedback_data <- normalize_text_frame_utf8(feedback_data, repair_mojibake = TRUE)
+  }
+
+  if (nrow(feedback_data) == 0) {
+    return(list(liked = character(0), disliked = character(0)))
+  }
+
   list(
-    liked = as.character(feedback_data$MessageID[feedback_data$FeedbackType == 'like']),
-    disliked = as.character(feedback_data$MessageID[feedback_data$FeedbackType == 'dislike'])
+    liked = as.character(feedback_data$MessageID[feedback_data$FeedbackType == "like"]),
+    disliked = as.character(feedback_data$MessageID[feedback_data$FeedbackType == "dislike"])
   )
 }
 
@@ -214,11 +304,20 @@ log_ai_usage <- function(chat_id, message_id, user_id, model_used, duration, suc
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
+  model_used <- .db_technical_text_for_write(model_used)
+
   query <- "
     INSERT INTO MB_Usage_Log (ChatID, MessageID, UserID, ModelUsed, ResponseDuration, ResponseSuccess)
     VALUES (?, ?, ?, ?, ?, ?)
   "
-  dbExecute(conn, query, params = normalize_db_params(list(chat_id, message_id, user_id, model_used, duration, success)))
+
+  dbExecute(
+    conn,
+    query,
+    params = normalize_db_params(
+      list(chat_id, message_id, user_id, model_used, duration, success)
+    )
+  )
 }
 
 # Sohbet silme ve worker-safe mesaj yazma yardımcıları
@@ -230,23 +329,28 @@ save_feedback_to_db_extended <- function(user_id, message_id, feedback_type, tag
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # NULL degerleri SQL NULL (NA) olarak isle
-  safe_tags <- if (is.null(tags) || length(tags) == 0) NA_character_ else as.character(tags)
-  safe_comment <- if (is.null(comment) || length(comment) == 0) NA_character_ else as.character(comment)
-
-  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    safe_tags <- normalize_text_utf8(safe_tags, repair_mojibake = TRUE)
-    safe_comment <- normalize_text_utf8(safe_comment, repair_mojibake = TRUE)
+  # NULL değerleri SQL NULL (NA) olarak işle
+  safe_tags <- if (is.null(tags) || length(tags) == 0) {
+    NA_character_
   } else {
-    safe_tags <- enc2utf8(safe_tags)
-    safe_comment <- enc2utf8(safe_comment)
+    as.character(tags)
   }
+
+  safe_comment <- if (is.null(comment) || length(comment) == 0) {
+    NA_character_
+  } else {
+    as.character(comment)
+  }
+
+  safe_tags <- .db_visible_text_for_write(safe_tags)
+  safe_comment <- .db_visible_text_for_write(safe_comment)
+  feedback_type <- .db_technical_text_for_write(feedback_type)
 
   query <- "
     MERGE MB_Feedback AS target
     USING (SELECT ? AS UserID, ? AS MessageID, ? AS FeedbackType, ? AS FeedbackTags, ? AS FeedbackComment) AS source
     ON (target.UserID = source.UserID AND target.MessageID = source.MessageID)
-	WHEN MATCHED THEN 
+    WHEN MATCHED THEN 
       UPDATE SET 
         FeedbackType = source.FeedbackType,
         FeedbackTags = source.FeedbackTags,
@@ -256,17 +360,20 @@ save_feedback_to_db_extended <- function(user_id, message_id, feedback_type, tag
       INSERT (UserID, MessageID, FeedbackType, FeedbackTags, FeedbackComment, FeedbackTimestamp) 
       VALUES (source.UserID, source.MessageID, source.FeedbackType, source.FeedbackTags, source.FeedbackComment, CAST(GETDATE() AS datetime2(0)));
   "
-  
-  dbExecute(conn, query, params = normalize_db_params(
-    list(
-      user_id,
-      as.integer(message_id),
-      feedback_type,
-      safe_tags,
-      safe_comment
-    ),
-    repair_mojibake = TRUE
-  ))
+
+  dbExecute(
+    conn,
+    query,
+    params = normalize_db_params(
+      list(
+        user_id,
+        as.integer(message_id),
+        feedback_type,
+        safe_tags,
+        safe_comment
+      )
+    )
+  )
 }
 
 # Geri bildirim detaylarını yükleme
@@ -281,7 +388,8 @@ load_feedback_details_from_db <- function(user_id, message_id) {
   if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
     result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
   }
-  
+
   if (nrow(result) == 0) return(NULL)
+
   as.list(result[1, ])
 }

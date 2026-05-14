@@ -37,11 +37,13 @@ vm_encoding_preflight_bool <- function(value, default = FALSE, env_name = "value
 }
 
 vm_encoding_preflight_norm_encoding <- function(value) {
-  toupper(gsub("_", "-", trimws(as.character(value[1])), fixed = TRUE))
+  value <- trimws(as.character(value[1] %||% ""))
+  toupper(gsub("_", "-", value, fixed = TRUE))
 }
 
 vm_encoding_preflight_has_mojibake <- function(value) {
   value <- paste(as.character(value %||% ""), collapse = "\n")
+
   grepl(
     "Ã|Ä|Å|TÃ¼rkiye|NasÄ±l|yardÄ±mcÄ±|baÅŸkent|Ã§|Ã¶|Ã¼|ÅŸ|ÄŸ|Ä±",
     value,
@@ -65,6 +67,52 @@ vm_encoding_preflight_require_functions <- function(function_names) {
   }
 
   invisible(TRUE)
+}
+
+vm_encoding_preflight_visible_text <- function(value) {
+  # Transactional probe, çalışma zamanı sözleşmesini taklit eder:
+  # önce sadece kullanıcıya görünen metin onarılır, sonra karma DB parametre
+  # listesi repair_mojibake=FALSE varsayılanıyla bağlanır.
+  if (is.null(value) || !is.character(value)) {
+    return(value)
+  }
+
+  if (exists("normalize_db_visible_value", envir = globalenv(), mode = "function", inherits = TRUE)) {
+    return(normalize_db_visible_value(value))
+  }
+
+  if (exists("normalize_text_utf8", envir = globalenv(), mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(value, repair_mojibake = TRUE))
+  }
+
+  enc2utf8(value)
+}
+
+vm_encoding_preflight_technical_text <- function(value) {
+  # Teknik alanlarda mojibake onarımı yapılmaz.
+  if (is.null(value) || !is.character(value)) {
+    return(value)
+  }
+
+  if (exists("normalize_db_technical_value", envir = globalenv(), mode = "function", inherits = TRUE)) {
+    return(normalize_db_technical_value(value))
+  }
+
+  if (exists("normalize_text_utf8", envir = globalenv(), mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(value, repair_mojibake = FALSE))
+  }
+
+  enc2utf8(value)
+}
+
+vm_encoding_preflight_query_scalar <- function(conn, query, params = list()) {
+  result <- DBI::dbGetQuery(conn, query, params = params)
+
+  if (nrow(result) == 0L || ncol(result) == 0L) {
+    return(NA_character_)
+  }
+
+  as.character(result[[1]][1])
 }
 
 .vm_encoding_preflight_env_to_restore <- c(
@@ -157,7 +205,9 @@ if (!identical(vm_encoding_preflight_norm_encoding(resolved_name), "WINDOWS-1254
 }
 
 if (isTRUE(db_client_encoding_is_utf8(resolved_client))) {
-  vm_encoding_preflight_stop("DB client encoding UTF-8 görünüyor; VM üretim Türkçe yazım sınırı için WINDOWS-1254 bekleniyor.")
+  vm_encoding_preflight_stop(
+    "DB client encoding UTF-8 görünüyor; VM üretim Türkçe yazım sınırı için WINDOWS-1254 bekleniyor."
+  )
 }
 
 probe_text <- "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü"
@@ -285,7 +335,10 @@ tryCatch({
   if (nrow(non_unicode) > 0L) {
     msg <- sprintf(
       "UYARI: Unicode olmayan metin sütunları var: %s",
-      paste(paste(non_unicode$TABLE_NAME, non_unicode$COLUMN_NAME, non_unicode$DATA_TYPE, sep = "."), collapse = ", ")
+      paste(
+        paste(non_unicode$TABLE_NAME, non_unicode$COLUMN_NAME, non_unicode$DATA_TYPE, sep = "."),
+        collapse = ", "
+      )
     )
 
     if (isTRUE(require_nvarchar)) {
@@ -309,13 +362,29 @@ tryCatch({
 
     tryCatch({
       probe_suffix <- format(Sys.time(), "%Y%m%d%H%M%S")
-      probe_username <- paste0("vm_preflight_encoding_", probe_suffix)
-      probe_name <- "VM Ön Kontrol Kullanıcısı"
-      probe_title <- "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü"
-      probe_message <- "Türkiye'nin başkenti neresidir? Nasıl yardımcı olabilirim?"
-      probe_reasoning <- "Düşünce ön kontrolü: ölçü, açıklama, şablon."
-      probe_feedback_tags <- "açıklama,öneri,şikayet-değil"
-      probe_feedback_comment <- "Görüş: Türkçe karakterler SSMS tarafında mojibake olmamalı."
+
+      probe_username <- vm_encoding_preflight_technical_text(
+        paste0("vm_preflight_encoding_", probe_suffix)
+      )
+      probe_name <- vm_encoding_preflight_visible_text(
+        "VM Ön Kontrol Kullanıcısı"
+      )
+      probe_title <- vm_encoding_preflight_visible_text(
+        "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü"
+      )
+      probe_message <- vm_encoding_preflight_visible_text(
+        "Türkiye'nin başkenti neresidir? Nasıl yardımcı olabilirim?"
+      )
+      probe_reasoning <- vm_encoding_preflight_visible_text(
+        "Düşünce ön kontrolü: ölçü, açıklama, şablon."
+      )
+      probe_feedback_type <- vm_encoding_preflight_technical_text("dislike")
+      probe_feedback_tags <- vm_encoding_preflight_visible_text(
+        "açıklama,öneri,şikayet-değil"
+      )
+      probe_feedback_comment <- vm_encoding_preflight_visible_text(
+        "Görüş: Türkçe karakterler SSMS tarafında mojibake olmamalı."
+      )
 
       user_res <- DBI::dbGetQuery(
         conn,
@@ -325,8 +394,7 @@ tryCatch({
           VALUES (?, ?, GETDATE())
         ",
         params = normalize_db_params(
-          list(probe_username, probe_name),
-          repair_mojibake = TRUE
+          list(probe_username, probe_name)
         )
       )
 
@@ -340,8 +408,7 @@ tryCatch({
           VALUES (?, ?)
         ",
         params = normalize_db_params(
-          list(probe_user_id, probe_title),
-          repair_mojibake = TRUE
+          list(probe_user_id, probe_title)
         )
       )
 
@@ -357,8 +424,7 @@ tryCatch({
             VALUES (?, ?, 'user', GETDATE(), 1, ?)
           ",
           params = normalize_db_params(
-            list(probe_chat_id, probe_message, probe_reasoning),
-            repair_mojibake = TRUE
+            list(probe_chat_id, probe_message, probe_reasoning)
           )
         ),
         error = function(e) {
@@ -371,8 +437,7 @@ tryCatch({
               VALUES (?, ?, 'user', GETDATE(), 1)
             ",
             params = normalize_db_params(
-              list(probe_chat_id, probe_message),
-              repair_mojibake = TRUE
+              list(probe_chat_id, probe_message)
             )
           )
         }
@@ -385,11 +450,16 @@ tryCatch({
         "
           INSERT INTO MB_Feedback
             (UserID, MessageID, FeedbackType, FeedbackTags, FeedbackComment, FeedbackTimestamp)
-          VALUES (?, ?, 'dislike', ?, ?, CAST(GETDATE() AS datetime2(0)))
+          VALUES (?, ?, ?, ?, ?, CAST(GETDATE() AS datetime2(0)))
         ",
         params = normalize_db_params(
-          list(probe_user_id, probe_message_id, probe_feedback_tags, probe_feedback_comment),
-          repair_mojibake = TRUE
+          list(
+            probe_user_id,
+            probe_message_id,
+            probe_feedback_type,
+            probe_feedback_tags,
+            probe_feedback_comment
+          )
         )
       )
 
@@ -402,6 +472,7 @@ tryCatch({
             c.ChatTitle,
             m.MessageContent,
             m.ReasoningContent,
+            f.FeedbackType,
             f.FeedbackTags,
             f.FeedbackComment
           FROM MB_Users u
@@ -410,7 +481,7 @@ tryCatch({
           LEFT JOIN MB_Feedback f ON f.MessageID = m.MessageID AND f.UserID = u.UserID
           WHERE u.UserID = ?
         ",
-        params = list(probe_user_id)
+        params = normalize_db_params(list(probe_user_id))
       )
 
       raw_values <- unlist(read_back, use.names = FALSE)
@@ -420,6 +491,29 @@ tryCatch({
         vm_encoding_preflight_stop(sprintf(
           "Transactional DB encoding write probe mojibake tespit etti: %s",
           paste(raw_values, collapse = " | ")
+        ))
+      }
+
+      expected_values <- c(
+        "VM Ön Kontrol Kullanıcısı",
+        "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü",
+        "Türkiye'nin başkenti neresidir? Nasıl yardımcı olabilirim?",
+        "açıklama,öneri,şikayet-değil",
+        "Görüş: Türkçe karakterler SSMS tarafında mojibake olmamalı."
+      )
+
+      read_back_text <- paste(as.character(raw_values), collapse = "\n")
+
+      missing_expected <- expected_values[!vapply(
+        expected_values,
+        function(expected) grepl(expected, read_back_text, fixed = TRUE, useBytes = FALSE),
+        logical(1)
+      )]
+
+      if (length(missing_expected) > 0L) {
+        vm_encoding_preflight_stop(sprintf(
+          "Transactional DB encoding write probe beklenen Türkçe metinleri geri okuyamadı: %s",
+          paste(missing_expected, collapse = " | ")
         ))
       }
 

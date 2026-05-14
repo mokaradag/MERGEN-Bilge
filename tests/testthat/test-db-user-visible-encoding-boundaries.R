@@ -59,6 +59,15 @@
   )))
 }
 
+.has_boundary_regex <- function(text, pattern) {
+  isTRUE(suppressWarnings(grepl(
+    pattern,
+    text,
+    perl = TRUE,
+    useBytes = TRUE
+  )))
+}
+
 .count_boundary_regex <- function(text, pattern) {
   matches <- gregexpr(pattern, text, perl = TRUE, useBytes = TRUE)[[1]]
   if (length(matches) == 1L && matches[1] < 0L) {
@@ -76,10 +85,12 @@ test_that("DB normalization repair remains opt-in for technical character values
   ))
 
   broken <- "TÃ¼rkiye"
+
   expect_identical(
     normalize_db_value(broken, repair_mojibake = FALSE),
     broken
   )
+
   expect_identical(
     normalize_db_value(broken, repair_mojibake = TRUE),
     "Türkiye"
@@ -138,7 +149,7 @@ test_that("support DB list/read helpers normalize display frames on read", {
   )
 })
 
-test_that("image gallery MB_Messages updates use central DB normalization", {
+test_that("image gallery MB_Messages updates repair only user-visible replacement text", {
   txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_image_gallery.R")
 
   expect_false(
@@ -154,10 +165,18 @@ test_that("image gallery MB_Messages updates use central DB normalization", {
   expect_gte(
     .count_boundary_regex(
       txt,
-      "normalize_db_params\\(\\s*list\\(\\s*new_content\\s*,\\s*rows\\$MessageID\\[j\\]\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE"
+      "new_content\\s*<-\\s*normalize_db_visible_value\\(new_content\\)"
     ),
     2L,
-    label = "Tekil ve toplu görsel silme mesaj güncellemeleri repair_mojibake=TRUE kullanmalıdır."
+    label = "Tekil ve toplu görsel silme mesaj güncellemeleri görünür metni önce onarmalıdır."
+  )
+
+  expect_false(
+    .has_boundary_regex(
+      txt,
+      "normalize_db_params\\(\\s*list\\(\\s*new_content\\s*,\\s*rows\\$MessageID\\[j\\]\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE"
+    ),
+    info = "MessageID teknik alandır; karma parametre listesinde repair_mojibake=TRUE kullanılmamalıdır."
   )
 })
 
@@ -184,5 +203,177 @@ test_that("SSO visible claims use central repair while technical claims avoid re
       "Eksik SSO görünür/teknik kodlama ayrımı:",
       paste(expected[!found], collapse = ", ")
     )
+  )
+})
+
+test_that("MB_Users SSO writes repair visible fields only", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_database.R")
+
+  expected <- c(
+    ".db_visible_text_for_write <- function(value)",
+    ".db_technical_text_for_write <- function(value)",
+    ".normalize_sso_claims_for_db <- function(sso_claims)",
+    "\"full_name\"",
+    "\"first_name\"",
+    "\"last_name\"",
+    "\"sektor\"",
+    "\"department\"",
+    "\"mudurluk\"",
+    "\"username\"",
+    "\"email\"",
+    "\"sicil\"",
+    "\"masraf_yeri_kodu\"",
+    "\"keycloak_sid\"",
+    "\"keycloak_sub\"",
+    "sso_claims[[field_name]] <- .db_visible_text_for_write(sso_claims[[field_name]])",
+    "sso_claims[[field_name]] <- .db_technical_text_for_write(sso_claims[[field_name]])",
+    "username <- .db_technical_text_for_write(username)",
+    "sso_claims <- .normalize_sso_claims_for_db(sso_claims)"
+  )
+
+  found <- vapply(expected, function(needle) .has_boundary_text(txt, needle), logical(1))
+
+  expect_true(
+    all(found),
+    label = paste(
+      "Eksik MB_Users SSO görünür/teknik ayrımı:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+
+  expect_false(
+    .has_boundary_text(txt, "normalize_text_tree_utf8(sso_claims, repair_mojibake = TRUE)"),
+    info = "SSO claim ağacının tamamı mojibake onarımına sokulmamalıdır."
+  )
+
+  expect_false(
+    .has_boundary_text(txt, "params = normalize_db_params(params, repair_mojibake = TRUE)"),
+    info = "MB_Users SSO alanları karma parametre listesiyle whole-list repair yapmamalıdır."
+  )
+})
+
+test_that("MB_Feedback extended writes repair tags/comments only", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_database.R")
+
+  expected <- c(
+    "safe_tags <- .db_visible_text_for_write(safe_tags)",
+    "safe_comment <- .db_visible_text_for_write(safe_comment)",
+    "feedback_type <- .db_technical_text_for_write(feedback_type)"
+  )
+
+  found <- vapply(expected, function(needle) .has_boundary_text(txt, needle), logical(1))
+
+  expect_true(
+    all(found),
+    label = paste(
+      "Eksik MB_Feedback görünür/teknik ayrımı:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+
+  expect_false(
+    .has_boundary_regex(
+      txt,
+      "normalize_db_params\\(\\s*list\\(\\s*user_id\\s*,\\s*as\\.integer\\(message_id\\)\\s*,\\s*feedback_type\\s*,\\s*safe_tags\\s*,\\s*safe_comment\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE"
+    ),
+    info = "FeedbackType teknik enum alanıdır; extended feedback karma parametre listesinde repair_mojibake=TRUE kullanılmamalıdır."
+  )
+})
+
+test_that("mixed chat DB write params do not enable whole-list mojibake repair", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_chat_mutations.R")
+
+  expected <- c(
+    "initial_title <- normalize_db_visible_value(initial_title)",
+    "msg$content <- normalize_db_visible_value(msg$content)",
+    "msg$type <- normalize_db_technical_value(msg$type)",
+    "reasoning_content <- normalize_db_visible_value(reasoning_content)",
+    "new_content <- normalize_db_visible_value(new_content)",
+    "new_title <- normalize_db_visible_value(new_title)",
+    "response_text <- normalize_db_visible_value(response_text)",
+    "message_type <- normalize_db_technical_value(message_type)",
+    "model_used <- normalize_db_technical_value(model_used)"
+  )
+
+  found <- vapply(expected, function(needle) .has_boundary_text(txt, needle), logical(1))
+
+  expect_true(
+    all(found),
+    label = paste(
+      "Eksik sohbet DB görünür/teknik normalizasyon sınırı:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+
+  forbidden_regex <- c(
+    "list\\(chat_id\\s*,\\s*msg\\$content\\s*,\\s*msg\\$type\\s*,\\s*ts\\s*,\\s*next_order\\s*,\\s*reasoning_content\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE",
+    "list\\(chat_id\\s*,\\s*msg\\$content\\s*,\\s*msg\\$type\\s*,\\s*ts\\s*,\\s*next_order\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE",
+    "list\\(new_content\\s*,\\s*as\\.integer\\(message_id\\)\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE",
+    "list\\(new_title\\s*,\\s*chat_id\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE",
+    "list\\(chat_id\\s*,\\s*response_text\\s*,\\s*message_type\\s*,\\s*timestamp_gmt3\\s*,\\s*next_order\\s*\\)\\s*,\\s*repair_mojibake\\s*=\\s*TRUE"
+  )
+
+  matched <- forbidden_regex[vapply(forbidden_regex, function(pattern) {
+    .has_boundary_regex(txt, pattern)
+  }, logical(1))]
+
+  expect_equal(
+    matched,
+    character(0),
+    label = paste(
+      "Karma sohbet DB parametre listelerinde whole-list repair_mojibake=TRUE kaldı:",
+      paste(matched, collapse = ", ")
+    )
+  )
+})
+
+test_that("chat DB readers normalize user-visible display frames on read", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_chat_readers.R")
+
+  expect_gte(
+    .count_boundary_regex(
+      txt,
+      "normalize_text_frame_utf8\\([^\\)]*repair_mojibake\\s*=\\s*TRUE"
+    ),
+    5L,
+    label = "Sohbet listeleme, mesaj hidratasyonu ve geçmiş okuma yolları görünür metni onarmalıdır."
+  )
+})
+
+test_that("identity display DB reads normalize KaynakAdi before UI use", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/module_user_identity.R")
+
+  expect_gte(
+    .count_boundary_regex(
+      txt,
+      "normalize_db_visible_value\\(result2?\\$KaynakAdi\\[1\\]\\)"
+    ),
+    2L,
+    label = "Yerel kimlik çözümlemede DC01_user_base ve MB_Users KaynakAdi görünür metin olarak normalize edilmelidir."
+  )
+})
+
+test_that("version history remains file-backed and UTF-8 safe, not DB-backed", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/config_version_history.R")
+
+  expected <- c(
+    "read_text_lines_utf8(",
+    "repair_mojibake = TRUE",
+    "normalize_text_utf8(trimmed, repair_mojibake = TRUE)"
+  )
+
+  found <- vapply(expected, function(needle) .has_boundary_text(txt, needle), logical(1))
+
+  expect_true(
+    all(found),
+    label = paste(
+      "Eksik version/Yenilikler UTF-8 okuma sözleşmesi:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+
+  expect_false(
+    .has_boundary_regex(txt, "SELECT\\s+.*version|MB_.*Version|MB_.*Surum|MB_.*Sürüm"),
+    info = "Yenilikler/sürüm geçmişi incelenen sözleşmede DB-backed olmamalıdır."
   )
 })

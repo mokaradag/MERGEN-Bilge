@@ -271,14 +271,19 @@ check_user_authorization <- function(username, sicil = NULL) {
     }
 
     if (nrow(result) > 0) {
-      row <- result[1, ]
-      log_info("SSO yetki: Kullanıcı bulundu - DB.KullaniciAdi='{row$KullaniciAdi}', Yetki='{row$Yetki}'")
-      list(
-        authorized      = TRUE,
-        yetki           = row$Yetki %||% "USER",
-        masraf_yeri_kodu = row$MasrafYeriKodu,
-        kaynak_adi      = row$KaynakAdi
-      )
+		row <- result[1, ]
+
+		kaynak_adi <- normalize_db_visible_value(row$KaynakAdi %||% "")
+		yetki <- normalize_db_technical_value(row$Yetki %||% "USER")
+		masraf_yeri_kodu <- normalize_db_technical_value(row$MasrafYeriKodu %||% "")
+
+		log_info("SSO yetki: Kullanıcı bulundu - DB.KullaniciAdi='{row$KullaniciAdi}', Yetki='{yetki}'")
+		list(
+		  authorized       = TRUE,
+		  yetki            = yetki,
+		  masraf_yeri_kodu = masraf_yeri_kodu,
+		  kaynak_adi       = kaynak_adi
+		)
     } else {
       log_warn("Kullanıcı DC01_user_base tablosunda bulunamadı: username='{username}', sicil='{sicil %||% 'YOK'}'")
       list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL)

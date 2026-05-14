@@ -129,6 +129,33 @@ normalize_db_value <- function(x, repair_mojibake = FALSE) {
   out_native
 }
 
+normalize_db_visible_value <- function(x) {
+  # Kullanıcıya görünen metinler DB parametre sınırına gelmeden onarılır.
+  # Teknik kimlik, enum, bayrak ve yol alanları bu yardımcıdan geçirilmemelidir.
+  if (is.null(x) || !is.character(x)) {
+    return(x)
+  }
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(x, repair_mojibake = TRUE))
+  }
+
+  enc2utf8(x)
+}
+
+normalize_db_technical_value <- function(x) {
+  # Teknik karakter alanları UTF-8 olarak işaretlenir; mojibake onarımı yapılmaz.
+  if (is.null(x) || !is.character(x)) {
+    return(x)
+  }
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(x, repair_mojibake = FALSE))
+  }
+
+  enc2utf8(x)
+}
+
 normalize_db_params <- function(params, repair_mojibake = FALSE) {
   lapply(params, normalize_db_value, repair_mojibake = repair_mojibake)
 }
