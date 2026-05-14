@@ -161,18 +161,26 @@ Focused validation after UX-sensitive refactors:
 - `testthat::test_file("tests/testthat/test-quick-action-routing.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 
 Browser-level smoke validation:
 
 - The repo includes a lightweight browser smoke harness at `www/smoke/ux-smoke.html`.
-- The matching contract test is `tests/testthat/test-browser-smoke-harness-contract.R`; it must read `www/smoke/ux-smoke.html`, not the old root-level `www/ux-smoke.html` path.
+- The matching contract test is `tests/testthat/test-browser-smoke-harness-contract.R`; it must read `www/smoke/ux-smoke.html`, not an old root-level `www/ux-smoke.html` path.
+- The optional local opener is `tests/scripts/open_ux_smoke.R`.
 - The smoke harness is intentionally repo-local and dependency-free. Do not add `shinytest2`, Playwright, Chromote, Selenium, Node, npm, or another heavy browser-test dependency for this layer unless explicitly requested.
 - Do not add `www/smoke/ux-smoke.html` to `R/config_ui_assets.R`; it is not part of the normal production UI asset bundle and should only run when opened directly.
-- On the production SSO route, open `/bilge/smoke/ux-smoke.html` and wait for `UX_SMOKE_DONE:PASS`.
-- The smoke harness validates real browser behavior for welcome boot, no-top-gap layout, chat input, stop-mode guard, auto-scroll state, TTS/STT/music duck and restore behavior, saved-chat no historical TTS autoplay, reasoning panel lifecycle, quick-action double-click single-dispatch guard, and browser console sanity.
-- Production SSO/Keycloak routes can redirect repeated iframe reloads. For that reason, the smoke harness intentionally keeps browser quick-action coverage minimal and skips quick-action intro-message visibility in SSO mode. The deterministic focused tests remain the source of truth for all quick-action intro/model/tool contracts.
-- The contract test should protect the SSO-aware smoke behavior, including the `/smoke/ux-smoke.html` target marker, `isSsoEnabled`, the SSO intro-skip text, and the hash-based `#ux_smoke_target=` reload marker.
-- If this smoke test fails because of Keycloak redirection, iframe routing, or production proxy behavior, do not remove UX features to make it pass. Prefer a small defensive adjustment inside `www/smoke/ux-smoke.html` while preserving the focused test coverage.
+- For local validation, start the app, then run:
+  - `Sys.setenv(MERGEN_SMOKE_BASE_URL = "http://127.0.0.1:3838")`
+  - `source("tests/scripts/open_ux_smoke.R", encoding = "UTF-8")`
+- On production or SSO/Keycloak deployments, open the smoke page through the same app origin, for example `/bilge/smoke/ux-smoke.html`. Do not point the iframe through a cross-origin Keycloak/login route; browser security will block DOM access and the smoke will correctly fail with a routing/origin diagnostic.
+- The expected browser result is `UX_SMOKE_DONE:PASS`.
+- The default smoke is VM-safe and single-session: it loads the app once, prepares smoke-only `localStorage` to skip the human Deep Space intro, validates the welcome screen, runs the synthetic reasoning fixture before real quick-action/chat side effects, then validates quick action, chat input, media, saved-chat no-autoplay, and console sanity.
+- The smoke must restore the original browser storage values after it finishes.
+- The smoke validates real browser behavior for welcome boot, no-top-gap layout, quick-action double-click single-dispatch, Enter/Shift+Enter/stop-mode input behavior, auto-scroll state, TTS/STT/music duck and restore behavior, saved-chat no historical TTS autoplay, reasoning panel lifecycle, and blocking console errors.
+- Quick-action intro-message visibility is intentionally non-blocking in the VM/browser smoke because SSO routing and timing can make that visual check brittle. Deterministic focused tests remain the source of truth for quick-action intro, model, and tool-mode contracts.
+- Known `Shiny.setInputValue` / `Shiny.setinputValue` timing noise may be treated as warning-only in the smoke harness, but do not broadly ignore unrelated console errors.
+- If this smoke test fails because of Keycloak redirection, iframe routing, Deep Space intro timing, or production proxy behavior, do not remove UX features to make it pass. Prefer a small defensive adjustment inside `www/smoke/ux-smoke.html` while preserving focused test coverage.
 
 Manual validation after touching welcome, quick actions, media, TTS, STT, stop-button, streaming, or reasoning code:
 
@@ -183,7 +191,7 @@ Manual validation after touching welcome, quick actions, media, TTS, STT, stop-b
 - STT: open modal, confirm music pauses/ducks, cancel and confirm restore, reopen and submit and confirm restore.
 - Reasoning: use a thinking-capable model, confirm the panel appears, auto-scroll works, and cleanup happens after response/stop.
 - Browser console: confirm there are no JS errors, duplicate audio warnings, or missing element errors.
-- Browser smoke: open `/bilge/smoke/ux-smoke.html` on the target deployment and confirm `UX_SMOKE_DONE:PASS`; on SSO deployments, remember that quick-action intro visibility is covered by focused tests rather than the smoke page.
+- Browser smoke: open the smoke page on the target deployment through the same app origin and confirm `UX_SMOKE_DONE:PASS`; on SSO deployments, remember that quick-action intro visibility is covered by focused tests rather than the smoke page. For local VM checks, prefer `tests/scripts/open_ux_smoke.R` with `MERGEN_SMOKE_BASE_URL` set to the app base URL.
 
 ### 4) Do not create unnecessary new files
 This repo already has a lot of modules. New files should only be introduced when there is a clear benefit and the sourcing order in `global.R` is updated correctly.
