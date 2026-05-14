@@ -65,7 +65,7 @@
 }
 
 testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalıdır", {
-  smoke_html <- .browser_smoke_read_text("www/ux-smoke.html")
+  smoke_html <- .browser_smoke_read_text("www/smoke/ux-smoke.html")
   ui_text <- .browser_smoke_read_text("ui.R")
   welcome_text <- .browser_smoke_read_text("R/welcome_screen_modern.R")
   input_js <- .browser_smoke_read_text("www/js/input_handlers.js")
@@ -86,22 +86,26 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
     "ui.R browser smoke anchor sözleşmesi eksik:"
   )
 
-  .browser_smoke_expect_all(
-    smoke_html,
-    c(
-      "#welcome_fullscreen_container",
-      "#chat_content_container",
-      "#user_input",
-      "#send_stop_btn",
-      ".modern-welcome-video-container",
-      ".modern-welcome-neural-canvas",
-      "#dynamic-greeting-text",
-      ".modern-welcome-action-btn",
-      "UX_SMOKE_DONE:PASS",
-      "UX_SMOKE_DONE:FAIL"
-    ),
-    "ux-smoke.html ana DOM sözleşmesi eksik:"
-  )
+	.browser_smoke_expect_all(
+	  smoke_html,
+	  c(
+		"#welcome_fullscreen_container",
+		"#chat_content_container",
+		"#user_input",
+		"#send_stop_btn",
+		".modern-welcome-video-container",
+		".modern-welcome-neural-canvas",
+		"#dynamic-greeting-text",
+		".modern-welcome-action-btn",
+		"/smoke/ux-smoke.html",
+		"isSsoEnabled",
+		"intro görünürlüğü SSO production smoke'ta atlandı",
+		"#ux_smoke_target=",
+		"UX_SMOKE_DONE:PASS",
+		"UX_SMOKE_DONE:FAIL"
+	  ),
+	  "ux-smoke.html ana DOM sözleşmesi eksik:"
+	)
 
   .browser_smoke_expect_all(
     welcome_text,
