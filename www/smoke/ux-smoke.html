@@ -128,6 +128,34 @@
 	  appHref = appHref.replace(/\/$/, "");
 	  return appHref + "#ux_smoke_target=" + Date.now();
 	}
+	
+  function getFrameAccess(appTarget) {
+    try {
+      var win = frameEl.contentWindow;
+      var doc = frameEl.contentDocument || (win && win.document);
+
+      if (!win || !doc) {
+        throw new Error("iframe document erişilemedi");
+      }
+
+      // Aynı-origin değilse bu satır SecurityError üretir.
+      var href = win.location.href;
+
+      return {
+        win: win,
+        doc: doc,
+        href: href
+      };
+    } catch (e) {
+      fail(
+        "Iframe app yerine cross-origin SSO/Keycloak sayfasına yönlenmiş görünüyor. " +
+        "Bu smoke harness iframe içindeki app DOM'unu okuyabilmek için aynı origin gerektirir. " +
+        "SSO VM üzerinde 127.0.0.1 yerine gerçek uygulama adresini MERGEN_SMOKE_BASE_URL ile kullanın. " +
+        "Hedef: " + appTarget + " / Hata: " + (e && e.message ? e.message : String(e))
+      );
+      throw e;
+    }
+  }
 
   async function loadFreshApp(label) {
     shinyEvents = [];
@@ -147,8 +175,9 @@
       };
     });
 
-    var win = frameEl.contentWindow;
-    var doc = frameEl.contentDocument;
+    var access = getFrameAccess(appTarget);
+    var win = access.win;
+    var doc = access.doc;
 
     installConsoleProbe(win);
     await waitFor(function () {
@@ -599,7 +628,18 @@
       app = await loadFreshApp("reasoning");
       await testReasoning(app);
 
-      await testOneQuickActionOnly();
+      var runFullQuickActions =
+        hasSmokeFlag("fullQuickActions") && !isSsoEnabled(app.doc);
+
+      if (runFullQuickActions) {
+        await testQuickActions();
+      } else {
+        if (hasSmokeFlag("fullQuickActions")) {
+          pass("fullQuickActions SSO ortamında tek hızlı işlem smoke moduna düşürüldü");
+        }
+        await testOneQuickActionOnly();
+      }
+
       testConsoleNoise();
     } catch (e) {
       fail(e && e.stack ? e.stack : String(e));
