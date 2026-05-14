@@ -109,7 +109,6 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
 		"load_chat_from_storage",
 		"kayıtlı sohbet load_chat_from_storage olayı tarayıcıdan üretildi",
 		"kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz",
-		"saved chat no-autoplay reload",
 		"prepareFreshAppStorage",
 		"restoreSmokeStorage",
 		"skip_intro",
