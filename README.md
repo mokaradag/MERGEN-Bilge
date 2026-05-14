@@ -67,6 +67,13 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Bilge Yolaç streaming kodu büyük yerel mojibake haritaları taşımak yerine bu ortak istemci yardımcısını kullanır; böylece kullanıcı deneyimi korunurken bakım yükü azaltılır.
 - Dosya Yönetimi görünen adları ve kalıcı dosya indeksi; Türkçe dosya adları, storage-prefix temizleme ve eski mojibake kayıtlarının okunabilir hâle getirilmesi için aynı merkezi normalizasyon hattını kullanır.
 
+#### Windows VM / SSO / SQL Server Türkçe Kodlama Güvencesi
+- Üretim benzeri Windows VM ortamında `.Renviron` içinde `DB_CLIENT_ENCODING=WINDOWS-1254` ve `DB_NAME_ENCODING=WINDOWS-1254` değerleri bulunmalıdır; değişiklikten sonra yalnızca tarayıcıyı yenilemek yeterli değildir, R süreci tamamen yeniden başlatılmalıdır.
+- Kullanıcıya görünen DB metinleri merkezi normalizasyon yardımcılarından geçmelidir; teknik kimlikler, bayraklar, enum değerleri, dosya yolları, model ID'leri, kullanıcı adı/e-posta/sicil/Keycloak ID gibi alanlarda mojibake onarımı yapılmamalıdır.
+- SSO claim işleme, görünür ad/etiket alanlarını teknik kimlik alanlarından ayrı tutmalıdır. Destek sayfası geri bildirim/hata metinleri ve görsel galeri `MB_Messages.MessageContent` güncellemeleri yalnızca kullanıcıya görünen metin sınırında onarılır.
+- Emoji kalıcılığı ayrı bir konudur; SQL Server sütun tipleri ve ODBC okuma/yazma davranışı doğrulanmadan bu kapsamda çözülmüş sayılmamalıdır. Eski bozuk satırlar için otomatik migration yoktur.
+- Odak test/preflight komutları: `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`, `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`, `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`, `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`, `testthat::test_file("tests/testthat/test-production-contracts.R")`, `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`.
+
 ---
 
 ## Sayfa Haritası
