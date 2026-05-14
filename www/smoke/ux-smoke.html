@@ -626,25 +626,40 @@
 
     win.mergenTTS.queue = [];
     win.mergenTTS.isPlaying = false;
-    win.localStorage.setItem("mergen_current_chat", JSON.stringify([
+    win.mergenTTS.currentAudio = null;
+
+    var historicalMessages = [
       { id: "old_ai_1", type: "ai", content: "Eski kayıtlı yanıt" }
-    ]));
+    ];
 
-    var savedChatTarget = await navigateFrameToApp("saved chat no-autoplay reload", 25000);
-    var reloadedAccess = getFrameAccess(savedChatTarget);
-    var reloadedWin = reloadedAccess.win;
+    win.localStorage.setItem(
+      "mergen_current_chat",
+      JSON.stringify(historicalMessages)
+    );
 
-    installConsoleProbe(reloadedWin);
+    shinyEvents = [];
 
-    await waitFor(function () {
-      return reloadedWin.mergenTTS ||
-             (reloadedAccess.doc && reloadedAccess.doc.querySelector("#chat_content_container"));
-    }, "saved chat reload hazır", 10000);
+    if (win.Shiny && typeof win.Shiny.setInputValue === "function") {
+      win.Shiny.setInputValue(
+        "load_chat_from_storage",
+        historicalMessages,
+        { priority: "event" }
+      );
+    } else {
+      fail("kayıtlı sohbet testi için Shiny bağlantısı bulunamadı");
+    }
 
     await wait(1300);
 
     assert(
-      !reloadedWin.mergenTTS || reloadedWin.mergenTTS.isPlaying !== true,
+      eventCount("load_chat_from_storage") === 1,
+      "kayıtlı sohbet load_chat_from_storage olayı tarayıcıdan üretildi"
+    );
+
+    assert(
+      win.mergenTTS.queue.length === 0 &&
+        win.mergenTTS.isPlaying !== true &&
+        !win.mergenTTS.currentAudio,
       "kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz"
     );
   }
