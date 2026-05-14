@@ -44,18 +44,21 @@ Current contract:
 - `R/utils_text_encoding.R` must be loaded early through `R/config_source_manifest.R`, before logging, DB helpers, and downstream text consumers.
 - `www/js/encoding_utils.js` must be loaded through `R/config_ui_assets.R` before `www/js/shiny_message_handlers.js` and before `www/js/claude_code_streaming.js`.
 - DB write parameters, DB read/hydration paths, saved chat reloads, version-history/Yenilikler reads, uploaded-file display names, Bilge Yolaç process/stream output, JSON/text boundaries, and logs should use the shared helper path instead of local encoding fixes.
-- DB normalization is intentionally opt-in for mojibake repair. Use `normalize_db_params(..., repair_mojibake = TRUE)` or `normalize_db_value(..., repair_mojibake = TRUE)` only at user-visible text write boundaries such as chat titles, message content, reasoning content, edited message content, worker-saved assistant responses, and SSO/user display fields. Keep the default `repair_mojibake = FALSE` for technical parameters, IDs, flags, and non-user-visible values.
+- DB normalization is intentionally opt-in for mojibake repair. User-visible DB text must be prepared explicitly with `normalize_db_visible_value()` before parameter binding. Technical string values must use `normalize_db_technical_value()` or remain on the default no-repair path. Do not apply `repair_mojibake = TRUE` to an entire mixed parameter list that also contains IDs, enums, flags, model names, usernames, emails, sicil values, Keycloak IDs, file paths, or other non-user-visible values.
 - The SQL Server DB write boundary is production-sensitive on the Windows VM / SSO deployment. Do not force raw UTF-8 into DBI/ODBC parameter writes merely because the configured client encoding says UTF-8. That behavior can store Turkish text as mojibake across MB tables.
 - For the production VM, Turkish DB writes must preserve the stable Windows-native / `WINDOWS-1254` behavior. `DB_CLIENT_ENCODING=WINDOWS-1254` is the safe operational setting unless a live VM + SSMS validation proves otherwise.
 - `R/helpers_db_connection.R` must honor `DB_CLIENT_ENCODING` and `DB_NAME_ENCODING` from `.Renviron` before falling back to R options/defaults. Do not hard-code the production DB client encoding back to `UTF-8`; doing so can store Turkish message content in `MB_Messages.MessageContent` as mojibake.
+- SSO / `MB_Users` visible-versus-technical normalization belongs in `R/helpers_db_user_encoding.R`. Keep `normalize_sso_claims_for_db()` and `update_sso_fields()` there, loaded immediately after `R/helpers_db_connection.R`. Do not move those helpers back into `R/helpers_database.R`; that file is protected by the maintainability ratchet and should stay focused on high-level DB operations.
 - `normalize_db_value()` must respect the resolved DB client encoding. When the DB client encoding is not UTF-8, user-visible Turkish text must be prepared for that DBI/ODBC parameter boundary instead of blindly returning UTF-8.
 - Keep the UTF-8 and non-UTF-8 DB parameter paths explicitly separated. The helper that detects UTF-8 DB client encoding, such as `db_client_encoding_is_utf8()`, is part of the encoding safety boundary.
 - This change protects future writes; it is not an automatic data migration. Existing mojibake rows must only be repaired after a DB backup, after the write path is confirmed fixed in SSMS, and through a separate one-time repair plan.
 - Treat emoji persistence as a separate DB capability question. Before changing DB write encoding for emoji, verify the relevant SQL Server column types (`nvarchar` vs `varchar`) and run a real write/read test through the app and SSMS. Do not trade Turkish text integrity for emoji display.
 - Read-side normalization may defensively repair display of older mojibake values, but it must not be used as an excuse to allow new mojibake writes. New records in `MB_Users`, `MB_Chats`, `MB_Messages`, `MB_Feedback`, and other MB tables must be validated at rest in SQL Server.
+- Image gallery message updates must repair only the user-visible replacement `MB_Messages.MessageContent` text. Technical values such as `MessageID` must not be included in a whole-list mojibake repair call.
 - Test bootstrap must mirror runtime encoding order. `tests/testthat/helper_bootstrap.R` should source `R/utils_text_encoding.R` before DB helpers so isolated `testthat::test_file(...)` runs exercise the same mojibake repair path as the application.
 - File Manager display-name repair depends on the shared text helper. Tests that source `R/config_file_store_index_mutation.R` in isolation must also load `R/utils_text_encoding.R`, otherwise mojibake filename fixtures can appear unchanged even though runtime behavior is correct.
 - Do not replace deterministic byte-built mojibake fixtures in tests with fragile console-dependent mojibake or emoji literals when the test must pass on Windows VM sessions.
+- R test files that must pass Windows VM parse sanity should avoid literal emoji in source strings; use `intToUtf8(...)` in tests instead. This is a parser-stability rule, not a product decision to remove emoji support.
 - Logging should pass user-visible text through the shared log normalization path so Turkish text stays readable and ANSI escape sequences are not made worse.
 - Bilge Yolaç streaming must keep the browser-side fallback, but `www/js/claude_code_streaming.js` must not grow another large local mojibake map. Use `window.MergenEncoding` from `www/js/encoding_utils.js`.
 - Do not replace UTF-8-safe byte reading helpers with plain `readLines(..., encoding = "UTF-8")` in Windows/VM-sensitive paths unless the regression tests prove it is safe.
@@ -70,12 +73,25 @@ Protected by:
 - `tests/testthat/test-maintainability-ratchet-contract.R`
 - `tests/testthat/test-claude-code-process-refactor-contract.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-db-user-visible-encoding-boundaries.R`
+- `tests/scripts/run_vm_encoding_preflight_real.R`
+- `tests/scripts/parse_sanity_check.R`
 
 Focused validation:
 
-- `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`
 - `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
+- `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
 - `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`
+- `testthat::test_file("tests/testthat/test-production-contracts.R")`
+- `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
+- `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
+- `Sys.setenv(MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST = "TRUE")`
+- `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
+- `Sys.setenv(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE")`
+- `source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")`
+- `source("tests/testthat.R", encoding = "UTF-8")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
@@ -84,19 +100,20 @@ The latest DB encoding guardrail tightening keeps the checks inside `tests/testt
 
 VM-only manual validation after any DB encoding change:
 - Start the app on the Windows VM with SSO enabled.
-- Create a new chat message containing: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü
+- Confirm `.Renviron` contains both `DB_CLIENT_ENCODING=WINDOWS-1254` and `DB_NAME_ENCODING=WINDOWS-1254`, then restart the full R process; a browser refresh is not enough.
+- Run the transactional VM encoding preflight with `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE` and confirm it rolls back the probe records.
+- Create a chat containing `Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü` and `Türkiye'nin başkenti neresidir?`.
 - Add feedback tags/comments containing Turkish characters.
+- Inspect newest `MB_Messages`, `MB_Chats.ChatTitle`, and `MB_Feedback` rows in SSMS.
 - Verify the new rows directly in SSMS for `MB_Users`, `MB_Chats`, `MB_Messages`, and `MB_Feedback`.
-- Confirm the VM `.Renviron` explicitly contains `DB_CLIENT_ENCODING=WINDOWS-1254` and `DB_NAME_ENCODING=WINDOWS-1254`, then restart the R process completely. A browser refresh or Shiny session reload is not enough.
+- Upload a file with a Turkish filename and verify the display name after a full app restart.
 - In SSMS, verify the relevant message/chat text column types before changing encoding behavior:
   SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, COLLATION_NAME
   FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_NAME IN ('MB_Messages', 'MB_Chats')
     AND COLUMN_NAME IN ('MessageContent', 'ReasoningContent', 'ChatTitle');
-- Create a new chat message containing: `Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü` and `Türkiye'nin başkenti neresidir?`
-- Check the newest `MB_Messages` rows in SSMS and reject the change if new values contain mojibake such as `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, `ÄŸ`, `Ã¼`, `NasÄ±l`, `TÃ¼rkiye`, or `yardÄ±mcÄ±`.
+- Reject the change if SSMS shows new mojibake such as `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, `ÄŸ`, `TÃ¼rkiye`, `NasÄ±l`, or `yardÄ±mcÄ±`.
 - Do not run an automatic startup migration for existing corrupted rows. Old rows require backup and a separate one-time repair plan after new writes are proven correct.
-- Reject the change if SQL Server stores values like `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, or `ÄŸ`.
 
 ### 1A) Keep new code identifiers ASCII-safe when practical
 Preserve Turkish text integrity in user-facing strings, docs, comments, DB text, JSON text, and rendered UI. However, for Windows VM parser robustness, **new code identifiers** should be ASCII-only where practical (variable/helper names, unquoted `data.frame(...)` column names, `$field_name` accessors, and similar code symbols that can become mojibake-sensitive). This is **not** permission to Latinize visible product text; it applies only to code symbols/identifiers.

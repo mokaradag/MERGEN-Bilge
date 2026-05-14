@@ -53,12 +53,14 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 ### Türkçe karakter, emoji ve kodlama dayanıklılığı
 - Türkçe karakterler, emoji ve yaygın mojibake bozulmaları için sunucu ve istemci tarafında ortak normalizasyon yardımcıları kullanılır.
 - Sunucu tarafında `R/utils_text_encoding.R`; DB okuma/yazma sınırları, kayıtlı söyleşi yükleme, dosya görünen adları, sürüm geçmişi/Yenilikler metinleri, Bilge Yolaç süreç/akış çıktıları ve log metinleri için merkezi UTF-8 koruması sağlar.
-- DB sınırında kullanıcıya görünen metinler için `normalize_db_params(..., repair_mojibake = TRUE)` ve `normalize_db_value(..., repair_mojibake = TRUE)` kullanılır; varsayılan onarım kapalı kaldığı için teknik/ID benzeri parametreler gereksiz dönüştürülmez.
+- DB yazım sınırında kullanıcıya görünen metinler önce açık biçimde `normalize_db_visible_value()` ile hazırlanır; teknik alanlar ise `normalize_db_technical_value()` ile onarımsız korunur. Karma DB parametre listelerinde `repair_mojibake = TRUE` tüm listeye uygulanmamalıdır. Böylece sohbet başlığı, mesaj içeriği, reasoning içeriği, düzenlenmiş mesaj, kayıtlı asistan yanıtı, kullanıcı görünen adı, geri bildirim etiketi/yorumu ve görsel galeri görünür mesaj metinleri korunurken ID, enum, bayrak, model adı, kullanıcı adı, e-posta, sicil, Keycloak ID ve dosya yolu benzeri teknik değerler gereksiz dönüştürülmez.
 - DB okuma tarafındaki normalizasyon, eski veya kısmen bozulmuş kayıtların ekranda okunabilir görünmesine yardımcı olabilir; ancak asıl sözleşme yeni kayıtların MB tablolarına doğru yazılmasıdır. Bu nedenle DB yazım sınırındaki değişiklikler mutlaka VM üzerinde SSMS ile doğrulanmalıdır.
 - Windows VM / SSO / SQL Server ODBC ortamında DB yazım sınırı özellikle hassastır. `normalize_db_value()` ve `normalize_db_params()` kullanıcıya görünen metni onarırken DBI/ODBC parametre yazımında ortamın güvenli sınırını korumalıdır; yalnızca bağlantı seçeneği UTF-8 görünüyor diye ham UTF-8 metin zorla DB’ye gönderilmemelidir.
 - Üretim VM ortamında Türkçe metin yazımları için `DB_CLIENT_ENCODING=WINDOWS-1254` davranışı korunur. Bu ayar Türkçe karakterlerin `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, `ÄŸ` gibi mojibake biçiminde MB tablolarına yazılmasını önlemek için kritik bir üretim sözleşmesidir.
 - DB bağlantı sınırında `DB_CLIENT_ENCODING` ve `DB_NAME_ENCODING` ortam değişkenleri artık doğrudan dikkate alınır; ortam değişkenleri yoksa mevcut R option/default davranışına düşülür. Bu nedenle üretim VM üzerinde `.Renviron` içinde `DB_CLIENT_ENCODING=WINDOWS-1254` ve `DB_NAME_ENCODING=WINDOWS-1254` değerleri açıkça korunmalıdır.
+- SSO / `MB_Users` yazım sınırı için görünür alan ve teknik claim ayrımı `R/helpers_db_user_encoding.R` içinde tutulur. `R/helpers_database.R` bu yardımcıyı kullanır ve yerel kodlama sarmalayıcıları taşımaz; bu hem kodlama sözleşmesini merkezileştirir hem de maintainability satır bütçesini korur.
 - `normalize_db_value()` yapılandırılmış DB istemci kodlamasını dikkate alır. DB istemci kodlaması UTF-8 değilse kullanıcıya görünen Türkçe metin, DBI/ODBC parametre sınırına uygun biçimde hazırlanır; böylece `MB_Messages.MessageContent`, `ReasoningContent`, sohbet başlıkları ve benzeri kullanıcıya görünen alanlarda yeni kayıtların `NasÄ±l`, `TÃ¼rkiye`, `baÅŸkent`, `yardÄ±mcÄ±` gibi mojibake biçiminde yazılması engellenir.
+- Görsel galeri silme/güncelleme akışlarında `MB_Messages.MessageContent` kullanıcıya görünen metin olarak onarılır; `MessageID` gibi teknik alanlara mojibake onarımı uygulanmaz. Bu kural, kullanıcıya gösterilen Türkçe uyarı metnini korurken teknik DB parametrelerinin bozulmasını engeller.
 - Bu düzeltme yeni yazımları korur; daha önce bozuk kaydedilmiş satırlar otomatik olarak değiştirilmez. Eski mojibake kayıtlar yalnızca DB yedeği alındıktan ve yeni yazım yolu SSMS üzerinde doğrulandıktan sonra ayrı bir tek-seferlik onarım planıyla ele alınmalıdır.
 - Bu sınır `tests/testthat/test-db-normalization-contract.R` içinde ortam değişkeni okuma, `WINDOWS-1254` parametre davranışı ve yaygın Türkçe mojibake onarımı örnekleriyle korunur.
 - Emoji desteği Türkçe karakter dayanıklılığından ayrı değerlendirilir. Emoji saklama davranışı, ilgili SQL Server kolon tipleri (`nvarchar` / `varchar`) ve gerçek ODBC yazma-okuma testi doğrulanmadan DB yazım sınırında yeni bir UTF-8 zorlama değişikliği yapılmamalıdır.
@@ -72,7 +74,24 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Kullanıcıya görünen DB metinleri merkezi normalizasyon yardımcılarından geçmelidir; teknik kimlikler, bayraklar, enum değerleri, dosya yolları, model ID'leri, kullanıcı adı/e-posta/sicil/Keycloak ID gibi alanlarda mojibake onarımı yapılmamalıdır.
 - SSO claim işleme, görünür ad/etiket alanlarını teknik kimlik alanlarından ayrı tutmalıdır. Destek sayfası geri bildirim/hata metinleri ve görsel galeri `MB_Messages.MessageContent` güncellemeleri yalnızca kullanıcıya görünen metin sınırında onarılır.
 - Emoji kalıcılığı ayrı bir konudur; SQL Server sütun tipleri ve ODBC okuma/yazma davranışı doğrulanmadan bu kapsamda çözülmüş sayılmamalıdır. Eski bozuk satırlar için otomatik migration yoktur.
-- Odak test/preflight komutları: `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`, `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`, `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`, `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`, `testthat::test_file("tests/testthat/test-production-contracts.R")`, `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`.
+- Gerçek VM doğrulaması için `tests/scripts/run_vm_encoding_preflight_real.R` kullanılmalıdır. Transactional write probe açıldığında görünür ve teknik alan ayrımını gerçek DB yazma/okuma sınırında test eder ve test kayıtlarını rollback eder.
+- VM preflight mojibake denetimi yalnızca açık mojibake tokenlarını aramalıdır; geçerli Türkçe çıktıyı Windows byte dizileri üzerinden yanlış pozitif sayacak geniş `useBytes` desenleri kullanılmamalıdır.
+- `tests/scripts/parse_sanity_check.R`, VM preflight içinde uygulama/runtime parse sağlığını doğrulamak içindir. Tam test davranışı ayrıca `source("tests/testthat.R", encoding = "UTF-8")` ile doğrulanmalıdır.
+- Parser hassasiyeti olan R test kaynaklarında literal emoji yerine `intToUtf8(...)` kullanılmalıdır. Bu kural emoji desteğini kaldırmaz; yalnızca Windows VM parse dayanıklılığını artırır.
+- Odak test/preflight komutları:
+  - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+  - `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`
+  - `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
+  - `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
+  - `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`
+  - `testthat::test_file("tests/testthat/test-production-contracts.R")`
+  - `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
+  - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
+  - `Sys.setenv(MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST = "TRUE")`
+  - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
+  - `Sys.setenv(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE")`
+  - `source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")`
+  - `source("tests/testthat.R", encoding = "UTF-8")`.
 
 ---
 
