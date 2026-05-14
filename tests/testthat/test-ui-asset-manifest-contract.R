@@ -112,6 +112,24 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   )
 
   deferred_paths <- asset_env$ui_asset_deferred_js_paths()
+  
+  expect_true("js/audio_lifecycle_guard.js" %in% deferred_paths)
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/music_manager.js"),
+    .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js")
+  )
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js"),
+    .ui_asset_contract_position(js_paths, "js/stt_client.js")
+  )
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js"),
+    .ui_asset_contract_position(js_paths, "js/tts_manager.js")
+  )
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js"),
+    .ui_asset_contract_position(js_paths, "js/ai_expert_manager.js")
+  )
 
   expect_false(any(grepl("^codemirror/", deferred_paths)))
   expect_false("js/sso_auth.js" %in% deferred_paths)

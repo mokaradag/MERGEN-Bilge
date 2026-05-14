@@ -286,7 +286,8 @@ build_tts_audio_ui <- function(message_id, audio_src, voice = NULL) {
   tags$audio(
       controls = "controls",
       preload = "auto",
-      src = audio_src
+      src = audio_src,
+      `data-mergen-audio-owner` = "tts_manual"
     )
   )
 }

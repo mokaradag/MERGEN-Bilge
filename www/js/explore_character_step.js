@@ -477,24 +477,25 @@
 
       // Giriş ekranını kapat, ardından Shiny'ye bildir
       setTimeout(function() {
+        var sendSelectionToShiny = function() {
+          if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+            Shiny.setInputValue('selected_experience_mode', {
+              mode: 'kesif',
+              character: selectedChar,
+              source: 'welcome_character_step',
+              timestamp: Date.now()
+            }, { priority: 'event' });
+          }
+
+          // Kilidi serbest bırak
+          _confirmInProgress = false;
+        };
+
         if (window.CinematicExplore) {
-          window.CinematicExplore.dismissDeepSpace();
+          window.CinematicExplore.dismissDeepSpace(sendSelectionToShiny);
+        } else {
+          sendSelectionToShiny();
         }
-
-        // Shiny'ye bildir: mod + karakter
-        // dismissDeepSpace çağrıldıktan sonra gönderilir, böylece
-        // giriş müziği önce kapanır, ardından ana tema müziği başlar
-        if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-          Shiny.setInputValue('selected_experience_mode', {
-            mode: 'kesif',
-            character: selectedChar,
-            source: 'welcome_character_step',
-            timestamp: Date.now()
-          }, { priority: 'event' });
-        }
-
-        // Kilidi serbest bırak
-        _confirmInProgress = false;
       }, 200);
     }
 

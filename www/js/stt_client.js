@@ -31,7 +31,8 @@ window.STT_Client = (function() {
     let isRecordingActive = false;
     let chunkTimer = null;
     let audioChunks = [];
-    let currentSegmentMaxRMS = 0; 
+    let currentSegmentMaxRMS = 0;
+    let lifecycleToken = 0;
     
     // --- SONIC PULSE VISUALIZER STATE ---
     const MODES = {
@@ -56,6 +57,13 @@ window.STT_Client = (function() {
     
 	function init(config) {
 		config = config || {};
+
+		// Önceki bekleyen mikrofon isteğini ve kayıt oturumunu geçersiz kıl
+		if (stream || mediaRecorder || audioContext || isRecordingActive) {
+			stopAndCleanup(config.nsPrefix || '');
+		}
+		const token = ++lifecycleToken;
+
 		// STT başlatılırken müziği tamamen sessize al - mikrofon paraziti önlenir
 		if (window.MusicManager) {
 			window.MusicManager.duckForSTT();
@@ -96,6 +104,11 @@ window.STT_Client = (function() {
         // Start Microphone
         navigator.mediaDevices.getUserMedia({ audio: true })
             .then(audioStream => {
+                if (token !== lifecycleToken || !canvasElement) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                    return;
+                }
+
                 stream = audioStream;
                 startVisualizer(stream);
                 
@@ -110,7 +123,9 @@ window.STT_Client = (function() {
                 draw(); 
             })
             .catch(err => {
-                console.error("Microphone access denied:", err);
+                if (token !== lifecycleToken) return;
+
+                console.warn("[STT] Mikrofon erişimi başlatılamadı:", err);
                 isRecordingActive = false;
                 currentMode = MODES.IDLE;
                 restoreMusicAfterSTT();
@@ -367,6 +382,7 @@ window.STT_Client = (function() {
     }
     
     function stopAndCleanup(nsPrefix) {
+        lifecycleToken++;
         isRecordingActive = false;
         currentMode = MODES.IDLE;
         if (chunkTimer) clearTimeout(chunkTimer);

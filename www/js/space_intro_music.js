@@ -19,6 +19,10 @@
     _duckedRatio: 0.12,    // Kısılan ses oranı
     _fadeTime: 1500,       // Solma süresi (ms)
     _intentionalStop: false,
+    _failedTrackUrls: {},
+    _consecutiveTrackErrors: 0,
+    _maxConsecutiveTrackErrors: 5,
+    _errorRetryDelay: 500,
 
     // Sunucudan playlist al ve çalmaya başla
     init: function(data) {
@@ -30,6 +34,8 @@
       }
 
       this._playlist = files;
+      this._failedTrackUrls = {};
+      this._consecutiveTrackErrors = 0;
       console.log('[SPACE-MUSIC] Playlist alındı:', files.length, 'parça');
 
       if (files.length > 0 && !this._active) {
@@ -43,8 +49,20 @@
     _playRandom: function() {
       if (!this._active || this._stopped || this._playlist.length === 0) return;
 
-      var idx = Math.floor(Math.random() * this._playlist.length);
-      var src = this._playlist[idx];
+      var self = this;
+      var available = this._playlist.filter(function(src) {
+        return !self._failedTrackUrls[src];
+      });
+
+      if (available.length === 0) {
+        console.warn('[SPACE-MUSIC] Intro playlist içindeki tüm parçalar hatalı; döngü durduruldu.');
+        this._active = false;
+        this._stopAudio();
+        return;
+      }
+
+      var idx = Math.floor(Math.random() * available.length);
+      var src = available[idx];
       this._playTrack(src);
     },
 
@@ -85,8 +103,27 @@
 
       audio.addEventListener('error', function() {
         if (self._intentionalStop || self._audio !== audio) return;
-        console.warn('[SPACE-MUSIC] Yükleme hatası, sonraki parçaya geçiliyor');
-        self._playRandom();
+
+        self._failedTrackUrls[src] = true;
+        self._consecutiveTrackErrors++;
+
+        console.warn(
+          '[SPACE-MUSIC] Yükleme hatası, sonraki parçaya geçiliyor',
+          '| Ardışık hata:',
+          self._consecutiveTrackErrors
+        );
+
+        if (self._consecutiveTrackErrors >= self._maxConsecutiveTrackErrors) {
+          console.warn('[SPACE-MUSIC] Çok fazla intro ses hatası; sonsuz döngü engellendi.');
+          self._active = false;
+          self._stopAudio();
+          return;
+        }
+
+        setTimeout(function() {
+          if (self._audio !== audio || self._stopped) return;
+          self._playRandom();
+        }, self._errorRetryDelay);
       }, { once: true });
 
       audio.load();
@@ -158,13 +195,21 @@
     // --- AÇIK API ---
 
     // Müziği tamamen durdur (mod seçildikten sonra, geri dönüşü yok)
-    fadeOutAndStop: function() {
-      if (this._stopped) return;
+    fadeOutAndStop: function(callback) {
+      if (this._stopped) {
+        if (typeof callback === 'function') callback();
+        return;
+      }
+
       this._stopped = true;
       this._active = false;
 
       var audio = this._audio;
       this._audio = null;
+
+      var finish = function() {
+        if (typeof callback === 'function') callback();
+      };
 
       if (audio) {
         var self = this;
@@ -177,8 +222,12 @@
             audio.load();
           } catch(e) {}
           setTimeout(function() { self._intentionalStop = false; }, 100);
+          finish();
         }, 2100);
+      } else {
+        finish();
       }
+
       console.log('[SPACE-MUSIC] Kalıcı durdurma (mod seçildi)');
     },
 

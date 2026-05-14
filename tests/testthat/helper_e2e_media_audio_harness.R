@@ -32,6 +32,7 @@ e2e_media_new_music_state <- function() {
     effective_volume = 0,
     is_ducked = FALSE,
     stt_active = FALSE,
+    duck_owners = character(),
     audio_token = NULL,
     track_src = NULL,
 	pending_request_id = 0L,
@@ -295,46 +296,38 @@ e2e_music_handle_track_ended <- function(state) {
   state
 }
 
-e2e_music_duck <- function(state) {
-  if (isTRUE(state$is_ducked)) {
-    return(state)
-  }
-
-  state$is_ducked <- TRUE
+e2e_music_sync_duck_state <- function(state) {
+  owners <- unique(state$duck_owners %||% character())
+  state$stt_active <- "stt" %in% owners
+  state$is_ducked <- length(owners) > 0L
   state$effective_volume <- e2e_music_effective_volume(state)
-  e2e_media_log(state, "music_duck")
+  state
 }
 
-e2e_music_unduck <- function(state) {
-  if (isTRUE(state$stt_active)) {
-    return(e2e_media_log(state, "music_unduck_blocked_by_stt"))
+e2e_music_duck <- function(state, owner = "external_audio") {
+  owner <- enc2utf8(as.character(owner)[1])
+  if (!owner %in% state$duck_owners) {
+    state$duck_owners <- unique(c(state$duck_owners, owner))
+    state <- e2e_media_log(state, paste0("music_duck:", owner))
   }
+  e2e_music_sync_duck_state(state)
+}
 
-  if (!isTRUE(state$is_ducked)) {
-    return(state)
+e2e_music_unduck <- function(state, owner = "external_audio") {
+  owner <- enc2utf8(as.character(owner)[1])
+  if (owner %in% state$duck_owners) {
+    state$duck_owners <- setdiff(state$duck_owners, owner)
+    state <- e2e_media_log(state, paste0("music_unduck:", owner))
   }
-
-  state$is_ducked <- FALSE
-  state$effective_volume <- e2e_music_effective_volume(state)
-  e2e_media_log(state, "music_unduck")
+  e2e_music_sync_duck_state(state)
 }
 
 e2e_music_duck_for_stt <- function(state) {
-  if (isTRUE(state$stt_active)) {
-    return(state)
-  }
-
-  state$stt_active <- TRUE
-  state$is_ducked <- TRUE
-  state$effective_volume <- 0
-  e2e_media_log(state, "music_duck_for_stt")
+  e2e_music_duck(state, "stt")
 }
 
 e2e_music_unduck_after_stt <- function(state) {
-  state$stt_active <- FALSE
-  state$is_ducked <- FALSE
-  state$effective_volume <- e2e_music_effective_volume(state)
-  e2e_media_log(state, "music_unduck_after_stt")
+  e2e_music_unduck(state, "stt")
 }
 
 e2e_tts_new_state <- function() {
@@ -381,7 +374,7 @@ e2e_tts_process_next <- function(tts, music) {
   tts$reported_playing <- TRUE
   tts$current_audio <- item
 
-  music <- e2e_music_duck(music)
+  music <- e2e_music_duck(music, "tts")
   tts <- e2e_media_log(tts, paste0("tts_play:", item$id))
 
   list(tts = tts, music = music)
@@ -398,7 +391,7 @@ e2e_tts_finish_current <- function(tts, music, status = "ended") {
   tts <- e2e_media_log(tts, paste0("tts_", status, ":", current_id))
 
   if (length(tts$queue) == 0L) {
-    music <- e2e_music_unduck(music)
+    music <- e2e_music_unduck(music, "tts")
     tts$reported_playing <- FALSE
     return(list(tts = tts, music = music))
   }
@@ -413,7 +406,7 @@ e2e_tts_stop <- function(tts, music) {
   tts$reported_playing <- FALSE
   tts <- e2e_media_log(tts, "tts_stop")
 
-  music <- e2e_music_unduck(music)
+  music <- e2e_music_unduck(music, "tts")
 
   list(tts = tts, music = music)
 }

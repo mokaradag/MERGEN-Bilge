@@ -238,6 +238,11 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
   llm_handlers_r <- .ux_guard_read_text("R/server_llm_response_handlers.R")
   messaging_r <- .ux_guard_read_text("R/helpers_messaging.R")
   module_tts_r <- .ux_guard_read_text("R/module_tts.R")
+  audio_guard_js <- .ux_guard_read_text("www/js/audio_lifecycle_guard.js")
+  intro_music_js <- .ux_guard_read_text("www/js/space_intro_music.js")
+  cinematic_js <- .ux_guard_read_text("www/js/explore_cinematic.js")
+  character_step_js <- .ux_guard_read_text("www/js/explore_character_step.js")
+  visualizer_js <- .ux_guard_read_text("www/js/tts_visualizer.js")
 
   .ux_guard_expect_all(
     music_js,
@@ -250,8 +255,10 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
       "decodeErr",
       "duckForSTT",
       "unduckAfterSTT",
-      "duck: function()",
-      "unduck: function()"
+      "duck: function(owner)",
+      "unduck: function(owner)",
+      "MergenAudioLifecycle.duck",
+      "MergenAudioLifecycle.release"
     ),
     "MusicManager tek-audio/duck sözleşmesi eksik:"
   )
@@ -265,8 +272,8 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
       "window.mergenTTS.stop()",
       "audio.onplay = null",
       "audio.removeAttribute('src')",
-      "MusicManager.duck()",
-      "MusicManager.unduck()",
+      "MusicManager.duck('tts')",
+      "MusicManager.unduck('tts')",
       "tts_is_playing"
     ),
     "TTS kuyruk/duck/stop sözleşmesi eksik:"
@@ -325,6 +332,56 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
       "src = audio_src"
     ),
     "Geçmiş mesajlarda autoplay yerine kontrollü audio UI sözleşmesi eksik:"
+  )
+  
+  .ux_guard_expect_all(
+    audio_guard_js,
+    c(
+      "window.MergenAudioLifecycle",
+      "duckOwners",
+      "activeDuckOwners",
+      "stopIntroBeforeMain",
+      "cleanupTransient",
+      "markAudio",
+      "getAudioOwner"
+    ),
+    "Audio lifecycle sahiplik koruması sözleşmesi eksik:"
+  )
+
+  .ux_guard_expect_all(
+    intro_music_js,
+    c(
+      "_failedTrackUrls",
+      "_consecutiveTrackErrors",
+      "_maxConsecutiveTrackErrors",
+      "_errorRetryDelay",
+      "fadeOutAndStop: function(callback)"
+    ),
+    "Intro müzik sonsuz hata döngüsü/handoff sözleşmesi eksik:"
+  )
+
+  .ux_guard_expect_all(
+    cinematic_js,
+    c(
+      "dismissDeepSpace(function()",
+      "stopIntroBeforeMain",
+      "afterIntroStopped"
+    ),
+    "Cinematic intro-main müzik handoff sözleşmesi eksik:"
+  )
+
+  .ux_guard_expect_all(
+    character_step_js,
+    c(
+      "sendSelectionToShiny",
+      "dismissDeepSpace(sendSelectionToShiny)"
+    ),
+    "Karakter seçim intro-main müzik handoff sözleşmesi eksik:"
+  )
+
+  testthat::expect_false(
+    .ux_guard_has_text(visualizer_js, "$('audio').each"),
+    info = "TTS görselleştirici tüm audio elemanlarını durdurmamalıdır."
   )
 })
 

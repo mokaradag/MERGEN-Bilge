@@ -217,15 +217,6 @@
     setTimeout(function() {
       closeCinematicModal();
 
-      // Modu Shiny'ye bildir
-      if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-        Shiny.setInputValue('selected_experience_mode', {
-          mode: mode,
-          source: 'welcome',
-          timestamp: Date.now()
-        }, { priority: 'event' });
-      }
-
       // localStorage'a kaydet
       try {
         var raw = localStorage.getItem('mergen_settings');
@@ -234,8 +225,16 @@
         localStorage.setItem('mergen_settings', JSON.stringify(settings));
       } catch(e) {}
 
-      // Giriş ekranını kapat
-      dismissDeepSpace();
+      // Giriş ekranını kapat; ana uygulama müziği intro durduktan sonra başlasın
+      dismissDeepSpace(function() {
+        if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+          Shiny.setInputValue('selected_experience_mode', {
+            mode: mode,
+            source: 'welcome',
+            timestamp: Date.now()
+          }, { priority: 'event' });
+        }
+      });
 
       // Durumu sıfırla
       _selectedModeId = null;
@@ -291,14 +290,25 @@
   }
 
   // Giriş ekranını kapat
-  function dismissDeepSpace() {
+  function dismissDeepSpace(afterIntroStopped) {
     var container = document.getElementById('deep-space-container');
-    if (!container) return;
 
-    // Giriş müziğini yumuşak geçişle durdur
-    if (window.SpaceIntroMusic && window.SpaceIntroMusic.fadeOutAndStop) {
-      window.SpaceIntroMusic.fadeOutAndStop();
+    function notifyAfterIntroStopped() {
+      if (typeof afterIntroStopped === 'function') {
+        afterIntroStopped();
+      }
     }
+
+    if (window.MergenAudioLifecycle &&
+        typeof window.MergenAudioLifecycle.stopIntroBeforeMain === 'function') {
+      window.MergenAudioLifecycle.stopIntroBeforeMain(notifyAfterIntroStopped);
+    } else if (window.SpaceIntroMusic && window.SpaceIntroMusic.fadeOutAndStop) {
+      window.SpaceIntroMusic.fadeOutAndStop(notifyAfterIntroStopped);
+    } else {
+      notifyAfterIntroStopped();
+    }
+
+    if (!container) return;
 
     container.classList.add('fade-out');
     setTimeout(function() {

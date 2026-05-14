@@ -81,6 +81,7 @@ const AIExpertManager = {
 
     if (!strip || !textEl) {
       console.warn('[AI_EXPERT] Altyazı elemanları bulunamadı');
+      this._forceCleanup();
       return;
     }
 
@@ -113,7 +114,7 @@ const AIExpertManager = {
 
     // Müzik ses kısma
     if (window.MusicManager) {
-      window.MusicManager.duck();
+      window.MusicManager.duck('ai_expert');
     }
 
     // TTS görselleştiricisini aktive et
@@ -165,6 +166,7 @@ const AIExpertManager = {
 
     if (!strip || !textEl) {
       console.warn('[AI_EXPERT] Altyazı elemanları bulunamadı');
+      this._forceCleanup();
       return;
     }
 
@@ -197,7 +199,7 @@ const AIExpertManager = {
 
     // Müzik ses kısma
     if (window.MusicManager) {
-      window.MusicManager.duck();
+      window.MusicManager.duck('ai_expert');
     }
 
     // TTS görselleştiricisini aktive et (ses olmasa bile animasyon göster)
@@ -305,6 +307,12 @@ const AIExpertManager = {
     if (!src) return;
 
     var audio = new Audio();
+    if (window.MergenAudioLifecycle &&
+        typeof window.MergenAudioLifecycle.markAudio === 'function') {
+      window.MergenAudioLifecycle.markAudio(audio, 'ai_expert');
+    } else if (audio.dataset) {
+      audio.dataset.mergenAudioOwner = 'ai_expert';
+    }
     audio.src = src;
     audio.volume = 1.0;
     audio.preload = 'auto';
@@ -539,8 +547,8 @@ const AIExpertManager = {
     }
 
     // Müzik sesini geri getir
-    if (window.MusicManager && !window.MusicManager.state._sttActive) {
-      window.MusicManager.unduck();
+    if (window.MusicManager) {
+      window.MusicManager.unduck('ai_expert');
     }
 
     // TTS görselleştiricisini durdur
@@ -585,8 +593,8 @@ const AIExpertManager = {
     }
 
     // Müzik sesini geri getir
-    if (window.MusicManager && !window.MusicManager.state._sttActive) {
-      window.MusicManager.unduck();
+    if (window.MusicManager) {
+      window.MusicManager.unduck('ai_expert');
     }
 
     // Altyazıyı hemen gizle
@@ -641,6 +649,14 @@ const AIExpertManager = {
       this.state.chunkWaitTimer = null;
     }
     this._stopAudio();
+
+    if (window.MusicManager) {
+      window.MusicManager.unduck('ai_expert');
+    }
+    if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+      window.ttsVisualizerState.setIdle();
+    }
+
     this.state.isSpeaking = false;
     this.state.stopRequested = false;
     this.state.sequenceMode = false;

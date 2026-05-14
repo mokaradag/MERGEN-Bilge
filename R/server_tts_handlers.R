@@ -39,7 +39,7 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     tts_warning_shown(FALSE)
   })
 
-  attach_tts_audio <- function(message_id, audio_src, voice_used = NULL) {
+  attach_tts_audio <- function(message_id, audio_src, voice_used = NULL, autoplay = FALSE) {
     if (is.null(message_id) || !nzchar(audio_src)) return(invisible(NULL))
 
     idx <- which(vapply(values$messages, function(m) m$id == message_id, logical(1)))
@@ -66,16 +66,19 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
           var audio = document.querySelector('#tts_audio_%s audio');
           if (audio) {
             audio.volume = 1.0;
-            var playPromise = audio.play();
-            if (playPromise !== undefined) {
-              playPromise.catch(error => {
-                console.log('Otomatik oynatma tarayıcı tarafından engellendi:', error);
-              });
+            audio.dataset.mergenAudioOwner = 'tts_manual';
+            if (%s) {
+              var playPromise = audio.play();
+              if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                  console.log('Otomatik oynatma tarayıcı tarafından engellendi:', error);
+                });
+              }
             }
           }
           window.smartScrollToBottom && window.smartScrollToBottom();
         }, 100);
-      ", message_id))
+      ", message_id, if (isTRUE(autoplay)) "true" else "false"))
     }
   }
 

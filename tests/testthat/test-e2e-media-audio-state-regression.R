@@ -359,18 +359,58 @@ test_that("STT full duck blocks premature TTS/music unduck until modal cleanup",
   expect_true(music$is_ducked)
   expect_equal(music$effective_volume, 0)
 
-  music <- e2e_music_unduck(music)
+  music <- e2e_music_unduck(music, "tts")
 
   expect_true(music$stt_active)
   expect_true(music$is_ducked)
   expect_equal(music$effective_volume, 0)
-  expect_true(any(grepl("music_unduck_blocked_by_stt", music$events, fixed = TRUE)))
+  expect_true(any(grepl("music_duck:stt", music$events, fixed = TRUE)))
 
   music <- e2e_music_unduck_after_stt(music)
 
   expect_false(music$stt_active)
   expect_false(music$is_ducked)
   expect_equal(music$effective_volume, 0.6)
+})
+
+test_that("duck ownership prevents premature music restore across TTS, STT and AI Expert", {
+  music <- e2e_media_new_music_state()
+  music <- e2e_music_init(music, enabled = TRUE, volume = 0.6)
+  music <- e2e_music_receive_playlist(
+    music,
+    type = "tema",
+    files = "tema_1.mp3",
+    request_id = 1L
+  )
+
+  music <- e2e_music_duck(music, "tts")
+  expect_true(music$is_ducked)
+  expect_false(music$stt_active)
+  expect_equal(music$effective_volume, 0.09)
+
+  music <- e2e_music_duck_for_stt(music)
+  expect_true(music$is_ducked)
+  expect_true(music$stt_active)
+  expect_equal(music$effective_volume, 0)
+
+  music <- e2e_music_unduck(music, "tts")
+  expect_true(music$is_ducked)
+  expect_true(music$stt_active)
+  expect_equal(music$effective_volume, 0)
+
+  music <- e2e_music_duck(music, "ai_expert")
+  music <- e2e_music_unduck_after_stt(music)
+
+  expect_true(music$is_ducked)
+  expect_false(music$stt_active)
+  expect_equal(music$effective_volume, 0.09)
+
+  music <- e2e_music_unduck(music, "ai_expert")
+
+  expect_false(music$is_ducked)
+  expect_false(music$stt_active)
+  expect_equal(music$effective_volume, 0.6)
+  expect_equal(music$duck_owners, character(0))
 })
 
 test_that("navigation cleanup leaves no stale TTS, STT, or music state", {

@@ -301,8 +301,8 @@ $(document).ready(function() {
             window.AIExpertManager.stopSubtitle({});
         }
 
-        // 4. Mevcut tüm ses elemanlarını zorla durdur
-        $('audio').each(function() {
+        // 4. Yalnızca TTS/AI Uzman seslerini durdur; arka plan müziğine dokunma
+        $('.tts-audio-wrapper audio, audio[data-mergen-audio-owner="tts"], audio[data-mergen-audio-owner="ai_expert"]').each(function() {
             try {
                 this.pause();
                 this.currentTime = 0;
@@ -391,23 +391,34 @@ $(document).ready(function() {
     }, 50);
   });
 
+  function isVisualizerAudio(audio) {
+    if (!audio || audio.tagName !== 'AUDIO') return false;
+
+    var owner = audio.dataset ? audio.dataset.mergenAudioOwner : '';
+    if (owner === 'tts' || owner === 'ai_expert' || owner === 'tts_manual') {
+      return true;
+    }
+
+    return $(audio).closest('.tts-audio-wrapper').length > 0;
+  }
+
   // --- Ses Olayı Dinleyicileri (Yedek) ---
   // Sayfadaki herhangi bir ses oynatıldığında görselleştiriciyi tetikle
   document.addEventListener('play', function(e) {
-    if(e.target && e.target.tagName === 'AUDIO') {
+    if(isVisualizerAudio(e.target)) {
       if (window._ttsTimer) clearTimeout(window._ttsTimer);
       if (window.ttsVisualizerState) window.ttsVisualizerState.setTalking();
     }
   }, true);
 
   document.addEventListener('pause', function(e) {
-    if(e.target && e.target.tagName === 'AUDIO') {
+    if(isVisualizerAudio(e.target)) {
       if (window.ttsVisualizerState) window.ttsVisualizerState.setIdle();
     }
   }, true);
 
   document.addEventListener('ended', function(e) {
-    if(e.target && e.target.tagName === 'AUDIO') {
+    if(isVisualizerAudio(e.target)) {
       if (window.ttsVisualizerState) window.ttsVisualizerState.setIdle();
     }
   }, true);

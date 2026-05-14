@@ -4,37 +4,101 @@ $(document).ready(function() {
   // -------------------------------------------------
   // TTS (Metin Okuma) Kuyruk Sistemi
   // -------------------------------------------------
+
+  const TTS_AUDIO_OWNER = 'tts';
+
+  function notifyTTSPlaying(isPlaying) {
+    try {
+      if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+        Shiny.setInputValue('tts_is_playing', !!isPlaying, { priority: 'event' });
+      }
+    } catch (e) {}
+  }
+
+  function setVisualizerTalking() {
+    if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
+      window.ttsVisualizerState.setTalking();
+    }
+  }
+
+  function setVisualizerPaused() {
+    if (window.ttsVisualizerState && window.ttsVisualizerState.setPaused) {
+      window.ttsVisualizerState.setPaused();
+    }
+  }
+
+  function setVisualizerIdle() {
+    if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+      window.ttsVisualizerState.setIdle();
+    }
+  }
+
+  function duckMusicForTTS() {
+    if (window.MusicManager && typeof window.MusicManager.duck === 'function') {
+      window.MusicManager.duck(TTS_AUDIO_OWNER);
+    }
+  }
+
+  function unduckMusicForTTS() {
+    if (window.MusicManager && typeof window.MusicManager.unduck === 'function') {
+      window.MusicManager.unduck(TTS_AUDIO_OWNER);
+    }
+  }
+
+  function releaseCurrentAudio(audio) {
+    if (!audio) return;
+
+    audio.onplay = null;
+    audio.onpause = null;
+    audio.onended = null;
+    audio.onerror = null;
+
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.removeAttribute('src');
+      audio.load();
+    } catch (e) {}
+  }
+
+  function finalizeTTSPlayback(options) {
+    options = options || {};
+
+    window.mergenTTS.isPlaying = false;
+
+    if (options.clearCurrent !== false) {
+      window.mergenTTS.currentAudio = null;
+    }
+
+    if (window.mergenTTS.queue.length === 0 || options.force === true) {
+      setVisualizerIdle();
+      unduckMusicForTTS();
+      notifyTTSPlaying(false);
+    }
+  }
+
   window.mergenTTS = {
     queue: [],
     isPlaying: false,
     currentAudio: null,
+
     stop: function() {
       if (this.currentAudio) {
-        const audio = this.currentAudio;
-        audio.onplay = null;
-        audio.onpause = null;
-        audio.onended = null;
-        audio.onerror = null;
-        try {
-          audio.pause();
-          audio.currentTime = 0;
-          audio.removeAttribute('src');
-          audio.load();
-        } catch (e) {}
+        releaseCurrentAudio(this.currentAudio);
         this.currentAudio = null;
       }
+
       this.queue = [];
       this.isPlaying = false;
-      if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-        window.ttsVisualizerState.setIdle();
-      }
+
+      setVisualizerIdle();
+
       // "Seslendirmeyi Durdur" basıldığında onended çalışmadığı için
-      // arka plan müziğini burada normale döndür
-      if (window.MusicManager) {
-        window.MusicManager.unduck();
-      }
+      // arka plan müziğini burada TTS sahibi adına normale döndür.
+      unduckMusicForTTS();
+
       // AI Uzman modülüne TTS durumunu bildir (yarış durumu önleme)
-      try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
+      notifyTTSPlaying(false);
     }
   };
 
@@ -66,93 +130,96 @@ $(document).ready(function() {
     const item = window.mergenTTS.queue.shift();
     window.mergenTTS.isPlaying = true;
 
-    if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
-      window.ttsVisualizerState.setTalking();
-    }
+    setVisualizerTalking();
 
     try {
-      window.mergenTTS.currentAudio = new Audio(item.src);
-      const audio = window.mergenTTS.currentAudio;
+      const audio = new Audio(item.src);
       audio.volume = 1.0;
 
-		audio.onplay = function() {
-		  if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
-			window.ttsVisualizerState.setTalking();
-		  }
-		  if (window.MusicManager) {
-			window.MusicManager.duck();
-		  }
-		  // AI Uzman modülüne TTS başladığını bildir (yarış durumu önleme)
-		  try { Shiny.setInputValue('tts_is_playing', true, { priority: 'event' }); } catch(e) {}
-		};
+      window.mergenTTS.currentAudio = audio;
+
+      audio.onplay = function() {
+        if (window.mergenTTS.currentAudio !== audio) return;
+
+        setVisualizerTalking();
+        duckMusicForTTS();
+
+        // AI Uzman modülüne TTS başladığını bildir (yarış durumu önleme)
+        notifyTTSPlaying(true);
+      };
 
       audio.onpause = function() {
-        if (!audio.ended && window.ttsVisualizerState && window.ttsVisualizerState.setPaused) {
-          window.ttsVisualizerState.setPaused();
+        if (window.mergenTTS.currentAudio !== audio) return;
+
+        if (!audio.ended) {
+          setVisualizerPaused();
         }
       };
 
-		audio.onended = function() {
-		  window.mergenTTS.isPlaying = false;
-		  if (window.mergenTTS.queue.length === 0) {
-			if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-			  window.ttsVisualizerState.setIdle();
-			}
-			if (window.MusicManager) {
-			  window.MusicManager.unduck();
-			}
-			// AI Uzman modülüne TTS bittiğini bildir
-			try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
-		  }
-		  processTTSQueue();
-		};
+      audio.onended = function() {
+        if (window.mergenTTS.currentAudio !== audio) return;
+
+        window.mergenTTS.currentAudio = null;
+        window.mergenTTS.isPlaying = false;
+
+        if (window.mergenTTS.queue.length === 0) {
+          finalizeTTSPlayback({ clearCurrent: false });
+        }
+
+        processTTSQueue();
+      };
 
       audio.onerror = function(e) {
-        console.warn("[MERGEN TTS] Ses hatası:", e);
+        if (window.mergenTTS.currentAudio !== audio) return;
+
+        console.warn('[MERGEN TTS] Ses hatası:', e);
+
+        window.mergenTTS.currentAudio = null;
         window.mergenTTS.isPlaying = false;
-        const kuyrukBos = window.mergenTTS.queue.length === 0;
-        if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-          window.ttsVisualizerState.setIdle();
+
+        if (window.mergenTTS.queue.length === 0) {
+          finalizeTTSPlayback({ clearCurrent: false });
         }
-        if (kuyrukBos && window.MusicManager) {
-          window.MusicManager.unduck();
-        }
-        if (kuyrukBos) {
-          try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
-        }
+
         processTTSQueue();
       };
 
       const playPromise = audio.play();
+
       if (playPromise !== undefined) {
         playPromise.then(() => {
-          console.log("[MERGEN TTS] Parça oynatılıyor", item.index);
+          if (window.mergenTTS.currentAudio !== audio) return;
+          console.log('[MERGEN TTS] Parça oynatılıyor', item.index);
         }).catch(error => {
-          console.warn("[MERGEN TTS] Otomatik oynatma engellendi:", error);
+          if (window.mergenTTS.currentAudio !== audio) return;
+
+          console.warn('[MERGEN TTS] Otomatik oynatma engellendi:', error);
+
+          releaseCurrentAudio(audio);
+          window.mergenTTS.currentAudio = null;
           window.mergenTTS.isPlaying = false;
-          const kuyrukBos = window.mergenTTS.queue.length === 0;
-          if (kuyrukBos && window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-            window.ttsVisualizerState.setIdle();
+
+          if (window.mergenTTS.queue.length === 0) {
+            finalizeTTSPlayback({ clearCurrent: false });
           }
-          if (kuyrukBos && window.MusicManager) {
-            window.MusicManager.unduck();
-          }
-          if (kuyrukBos) {
-            try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(e) {}
-          }
+
           processTTSQueue();
         });
       }
     } catch (e) {
-      console.error("[MERGEN TTS] İstisna:", e);
+      console.error('[MERGEN TTS] İstisna:', e);
+
+      if (window.mergenTTS.currentAudio) {
+        releaseCurrentAudio(window.mergenTTS.currentAudio);
+        window.mergenTTS.currentAudio = null;
+      }
+
       window.mergenTTS.isPlaying = false;
-      if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-        window.ttsVisualizerState.setIdle();
+
+      if (window.mergenTTS.queue.length === 0) {
+        finalizeTTSPlayback({ clearCurrent: false });
       }
-      if (window.MusicManager) {
-        window.MusicManager.unduck();
-      }
-      try { Shiny.setInputValue('tts_is_playing', false, { priority: 'event' }); } catch(setErr) {}
+
       processTTSQueue();
     }
   }

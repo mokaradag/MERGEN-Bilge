@@ -493,27 +493,43 @@ const MusicManager = {
   // Ses seviyesini ayarla
   setVolume: function(volume) {
     this.state.normalVolume = volume;
+
+    if (window.MergenAudioLifecycle &&
+        typeof window.MergenAudioLifecycle.applyMusicDuckState === 'function') {
+      window.MergenAudioLifecycle.applyMusicDuckState();
+      return;
+    }
+
     if (this._audio && !this.state.isDucked) {
       this._fadeToVolume(this._audio, volume, 500);
     }
   },
 
-  // Karakter videosu/TTS sırasında sesi kıs (tamamen kapatma, sadece alçalt)
-  duck: function() {
+  // Karakter videosu/TTS/AI Uzman sırasında sesi sahiplik bazlı kıs
+  duck: function(owner) {
+    if (window.MergenAudioLifecycle &&
+        typeof window.MergenAudioLifecycle.duck === 'function') {
+      window.MergenAudioLifecycle.duck(owner || 'external_audio');
+      return;
+    }
+
     if (this.state.isDucked) return;
     this.state.isDucked = true;
     if (this._audio) {
-      // Sesi tamamen kapatma, düşük seviyeye indir (yumuşak geçişle)
       var duckedVolume = Math.max(0.02, this.state.normalVolume * this.config.duckedVolumeRatio);
       this._fadeToVolume(this._audio, duckedVolume, 600);
     }
   },
 
-  // Karakter videosu/TTS bitince sesi geri getir (yumuşak geçişle)
-  unduck: function() {
-    // STT aktifken unduck yapma: kayıt bitmeden müzik geri gelmemeli
+  // Sahip bırakıldığında yalnızca başka sahip kalmadıysa sesi geri getir
+  unduck: function(owner) {
+    if (window.MergenAudioLifecycle &&
+        typeof window.MergenAudioLifecycle.release === 'function') {
+      window.MergenAudioLifecycle.release(owner || 'external_audio');
+      return;
+    }
+
     if (this.state._sttActive) return;
-    // AI Uzman konuşması devam ediyorsa unduck yapma (sayfa geçişlerinde korunur)
     if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) return;
     if (!this.state.isDucked) return;
     this.state.isDucked = false;
@@ -524,7 +540,13 @@ const MusicManager = {
 
   // STT kaydı sırasında sesi tamamen sıfırla - mikrofon parazitini önler
   duckForSTT: function() {
-    if (this.state._sttActive) return; // Zaten STT modunda
+    if (window.MergenAudioLifecycle &&
+        typeof window.MergenAudioLifecycle.duck === 'function') {
+      window.MergenAudioLifecycle.duck('stt');
+      return;
+    }
+
+    if (this.state._sttActive) return;
     this.state._sttActive = true;
     this.state.isDucked = true;
     if (this._audio) {
@@ -532,8 +554,14 @@ const MusicManager = {
     }
   },
 
-  // STT kaydı bitince sesi normale döndür (yumuşak geçişle)
+  // STT kaydı bitince yalnızca STT sahipliğini bırak
   unduckAfterSTT: function() {
+    if (window.MergenAudioLifecycle &&
+        typeof window.MergenAudioLifecycle.release === 'function') {
+      window.MergenAudioLifecycle.release('stt');
+      return;
+    }
+
     this.state._sttActive = false;
     this.state.isDucked = false;
     if (this._audio) {
@@ -578,20 +606,21 @@ $(document).ready(function() {
   // NOT: Video için CinematicVideoManager zaten duck/unduck çağırıyor
   document.addEventListener('play', function(e) {
     if (e.target && e.target.tagName === 'AUDIO' && !e.target.src.includes('/music/')) {
-      MusicManager.duck();
+      var owner = window.MergenAudioLifecycle
+        ? window.MergenAudioLifecycle.getAudioOwner(e.target)
+        : 'external_audio';
+      MusicManager.duck(owner);
     }
   }, true);
 
   document.addEventListener('pause', function(e) {
     if (e.target && e.target.tagName === 'AUDIO' && !e.target.src.includes('/music/')) {
-      // STT aktifken otomatik unduck yapma
-      if (MusicManager.state._sttActive) return;
-      // AI Uzman konuşması devam ediyorsa otomatik unduck yapma
-      if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) return;
+      var owner = window.MergenAudioLifecycle
+        ? window.MergenAudioLifecycle.getAudioOwner(e.target)
+        : 'external_audio';
+
       setTimeout(function() {
-        // Unduck öncesi son kontrol: AI hâlâ konuşuyor olabilir
-        if (window.AIExpertManager && window.AIExpertManager.state.isSpeaking) return;
-        MusicManager.unduck();
+        MusicManager.unduck(owner);
       }, 300);
     }
   }, true);
