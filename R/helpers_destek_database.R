@@ -4,6 +4,47 @@
 #            kayıt ekleme, listeleme ve silme işlemlerini yönetir.
 
 # ==============================================================================
+# DB METİN NORMALİZASYONU
+# ==============================================================================
+# Kullanıcıya görünen destek metinlerinde mojibake onarımı açıktır.
+# Teknik bayrak, durum, öncelik ve yol alanlarında onarım yapılmaz.
+destek_normalize_visible_db_text <- function(value) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(NA_character_)
+  }
+
+  value <- as.character(value)
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(value, repair_mojibake = TRUE))
+  }
+
+  enc2utf8(value)
+}
+
+destek_normalize_technical_db_text <- function(value) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(NA_character_)
+  }
+
+  value <- as.character(value)
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_utf8(value, repair_mojibake = FALSE))
+  }
+
+  enc2utf8(value)
+}
+
+destek_normalize_result_frame <- function(result) {
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    return(normalize_text_frame_utf8(result, repair_mojibake = TRUE))
+  }
+
+  result
+}
+
+# ==============================================================================
 # GERİ BİLDİRİM KAYDETME
 # ==============================================================================
 
@@ -27,9 +68,21 @@ destek_geri_bildirim_kaydet <- function(user_id, memnuniyet, nps_puan = NULL,
 
   # NULL değerleri SQL NULL olarak işle
   safe_nps <- if (is.null(nps_puan) || is.na(nps_puan)) NA_integer_ else as.integer(nps_puan)
-  safe_etiketler <- if (is.null(etiketler) || !nzchar(etiketler)) NA_character_ else as.character(etiketler)
-  safe_sevilen <- if (is.null(en_cok_sevilen) || !nzchar(en_cok_sevilen)) NA_character_ else as.character(en_cok_sevilen)
-  safe_gelistirme <- if (is.null(gelistirme) || !nzchar(gelistirme)) NA_character_ else as.character(gelistirme)
+  safe_etiketler <- if (is.null(etiketler) || !nzchar(etiketler)) {
+    NA_character_
+  } else {
+    destek_normalize_visible_db_text(etiketler)
+  }
+  safe_sevilen <- if (is.null(en_cok_sevilen) || !nzchar(en_cok_sevilen)) {
+    NA_character_
+  } else {
+    destek_normalize_visible_db_text(en_cok_sevilen)
+  }
+  safe_gelistirme <- if (is.null(gelistirme) || !nzchar(gelistirme)) {
+    NA_character_
+  } else {
+    destek_normalize_visible_db_text(gelistirme)
+  }
   safe_iletisim <- if (isTRUE(iletisim_izni)) 1L else 0L
 
   query <- "
@@ -40,15 +93,18 @@ destek_geri_bildirim_kaydet <- function(user_id, memnuniyet, nps_puan = NULL,
   "
 
   # Parametreleri veritabanı yazımı öncesinde merkezi kodlama normalizasyonundan geçir
-  res <- DBI::dbGetQuery(conn, query, params = normalize_db_params(list(
-    as.integer(user_id),
-    as.integer(memnuniyet),
-    safe_nps,
-    safe_etiketler,
-    safe_sevilen,
-    safe_gelistirme,
-    safe_iletisim
-  )))
+  res <- DBI::dbGetQuery(conn, query, params = normalize_db_params(
+    list(
+      as.integer(user_id),
+      as.integer(memnuniyet),
+      safe_nps,
+      safe_etiketler,
+      safe_sevilen,
+      safe_gelistirme,
+      safe_iletisim
+    ),
+    repair_mojibake = FALSE
+  ))
 
   if (nrow(res) == 0) stop("Geri bildirim kaydedilemedi.")
   return(as.integer(res$GeriBildirimID[1]))
@@ -74,7 +130,16 @@ destek_hata_bildir_kaydet <- function(user_id, konular, kategoriler, oncelik = "
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  safe_ek_dosyalar <- if (is.null(ek_dosya_yollari) || !nzchar(ek_dosya_yollari)) NA_character_ else as.character(ek_dosya_yollari)
+  safe_konular <- destek_normalize_visible_db_text(konular)
+  safe_kategoriler <- destek_normalize_visible_db_text(kategoriler)
+  safe_aciklama <- destek_normalize_visible_db_text(aciklama)
+
+  safe_ek_dosyalar <- if (is.null(ek_dosya_yollari) || !nzchar(ek_dosya_yollari)) {
+    NA_character_
+  } else {
+    destek_normalize_technical_db_text(ek_dosya_yollari)
+  }
+
   safe_oncelik <- if (is.null(oncelik) || !nzchar(oncelik)) "orta" else as.character(oncelik)
 
   query <- "
@@ -85,14 +150,17 @@ destek_hata_bildir_kaydet <- function(user_id, konular, kategoriler, oncelik = "
   "
 
   # Parametreleri veritabanı yazımı öncesinde merkezi kodlama normalizasyonundan geçir
-  res <- DBI::dbGetQuery(conn, query, params = normalize_db_params(list(
-    as.integer(user_id),
-    as.character(konular),
-    as.character(kategoriler),
-    safe_oncelik,
-    as.character(aciklama),
-    safe_ek_dosyalar
-  )))
+  res <- DBI::dbGetQuery(conn, query, params = normalize_db_params(
+    list(
+      as.integer(user_id),
+      safe_konular,
+      safe_kategoriler,
+      safe_oncelik,
+      safe_aciklama,
+      safe_ek_dosyalar
+    ),
+    repair_mojibake = FALSE
+  ))
 
   if (nrow(res) == 0) stop("Hata bildirimi kaydedilemedi.")
   return(as.integer(res$HataBildirimID[1]))
@@ -121,7 +189,8 @@ destek_geri_bildirim_listele <- function(limit = 100) {
     ORDER BY gb.OlusturmaTarihi DESC
   ", as.integer(limit))
 
-  DBI::dbGetQuery(conn, query)
+  result <- DBI::dbGetQuery(conn, query)
+  destek_normalize_result_frame(result)
 }
 
 # ==============================================================================
@@ -146,7 +215,8 @@ destek_hata_bildirim_listele <- function(limit = 100) {
     ORDER BY hb.OlusturmaTarihi DESC
   ", as.integer(limit))
 
-  DBI::dbGetQuery(conn, query)
+  result <- DBI::dbGetQuery(conn, query)
+  destek_normalize_result_frame(result)
 }
 
 # ==============================================================================
@@ -169,7 +239,8 @@ destek_kullanici_geri_bildirim <- function(user_id) {
     ORDER BY OlusturmaTarihi DESC
   "
 
-  DBI::dbGetQuery(conn, query, params = list(as.integer(user_id)))
+  result <- DBI::dbGetQuery(conn, query, params = list(as.integer(user_id)))
+  destek_normalize_result_frame(result)
 }
 
 # ==============================================================================
@@ -216,5 +287,6 @@ destek_kullanici_hata_bildirim <- function(user_id) {
     ORDER BY OlusturmaTarihi DESC
   "
 
-  DBI::dbGetQuery(conn, query, params = list(as.integer(user_id)))
+  result <- DBI::dbGetQuery(conn, query, params = list(as.integer(user_id)))
+  destek_normalize_result_frame(result)
 }

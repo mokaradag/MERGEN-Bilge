@@ -110,7 +110,11 @@ load_image_descriptions_for_user <- function(user_id) {
       WHERE c.UserID = ? AND c.IsDeleted = 0
         AND m.MessageContent LIKE '\\[GÖRSEL:%' ESCAPE '\\'
     "
-    rows <- DBI::dbGetQuery(conn, query, params = list(user_id))
+    rows <- DBI::dbGetQuery(conn, query, params = normalize_db_params(list(user_id)))
+
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      rows <- normalize_text_frame_utf8(rows, repair_mojibake = TRUE)
+    }
 
     if (nrow(rows) > 0) {
       for (i in seq_len(nrow(rows))) {
@@ -293,7 +297,15 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
 
     query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE ?"
     search_pattern <- paste0("%", filename, "%")
-    rows <- DBI::dbGetQuery(conn, query, params = list(chat_id_int, search_pattern))
+    rows <- DBI::dbGetQuery(
+      conn,
+      query,
+      params = normalize_db_params(list(chat_id_int, search_pattern))
+    )
+
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      rows <- normalize_text_frame_utf8(rows, repair_mojibake = TRUE)
+    }
 
     if (nrow(rows) > 0) {
       for (j in seq_len(nrow(rows))) {
@@ -305,7 +317,14 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
         )
         if (new_content != old_content) {
           update_q <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
-          DBI::dbExecute(conn, update_q, params = list(new_content, rows$MessageID[j]))
+          DBI::dbExecute(
+            conn,
+            update_q,
+            params = normalize_db_params(
+              list(new_content, rows$MessageID[j]),
+              repair_mojibake = TRUE
+            )
+          )
           cat(sprintf("[IMAGE_GALLERY] Mesaj güncellendi (MessageID: %s)\n", rows$MessageID[j]))
         }
       }
@@ -389,7 +408,16 @@ get_chat_title_for_image <- function(chat_id, user_id) {
     on.exit(release_connection(conn_info))
 
     query <- "SELECT ChatTitle FROM MB_Chats WHERE ChatID = ? AND UserID = ? AND IsDeleted = 0"
-    result <- DBI::dbGetQuery(conn, query, params = list(chat_id_int, user_id))
+    result <- DBI::dbGetQuery(
+      conn,
+      query,
+      params = normalize_db_params(list(chat_id_int, user_id))
+    )
+
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
+    }
+
     if (nrow(result) > 0) result$ChatTitle[1] else NULL
   }, error = function(e) {
     NULL

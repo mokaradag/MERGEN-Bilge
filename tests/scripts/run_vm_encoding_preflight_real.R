@@ -1,0 +1,442 @@
+# ==============================================================================
+# Dosya Yolu: tests/scripts/run_vm_encoding_preflight_real.R
+# Açıklama: Windows VM / SSO / SQL Server Türkçe kodlama sınırını gerçek
+#           ortam değişkenleri ve gerçek DB bağlantısı ile ön kontrolden geçirir.
+#           Varsayılan olarak veri yazmaz; opsiyonel transactional write probe
+#           MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE ile açılır.
+# ==============================================================================
+
+vm_encoding_preflight_stop <- function(message) {
+  stop(message, call. = FALSE)
+}
+
+vm_encoding_preflight_bool <- function(value, default = FALSE, env_name = "value") {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(default)
+  }
+
+  norm <- tolower(trimws(as.character(value[1])))
+
+  if (!nzchar(norm)) {
+    return(default)
+  }
+
+  if (norm %in% c("true", "t")) {
+    return(TRUE)
+  }
+
+  if (norm %in% c("false", "f")) {
+    return(FALSE)
+  }
+
+  vm_encoding_preflight_stop(sprintf(
+    "%s geçersiz: %s. TRUE/FALSE kullanın.",
+    env_name,
+    as.character(value[1])
+  ))
+}
+
+vm_encoding_preflight_norm_encoding <- function(value) {
+  toupper(gsub("_", "-", trimws(as.character(value[1])), fixed = TRUE))
+}
+
+vm_encoding_preflight_has_mojibake <- function(value) {
+  value <- paste(as.character(value %||% ""), collapse = "\n")
+  grepl(
+    "Ã|Ä|Å|TÃ¼rkiye|NasÄ±l|yardÄ±mcÄ±|baÅŸkent|Ã§|Ã¶|Ã¼|ÅŸ|ÄŸ|Ä±",
+    value,
+    perl = TRUE,
+    useBytes = TRUE
+  )
+}
+
+vm_encoding_preflight_require_functions <- function(function_names) {
+  missing <- function_names[!vapply(
+    function_names,
+    function(nm) exists(nm, envir = globalenv(), mode = "function", inherits = TRUE),
+    logical(1)
+  )]
+
+  if (length(missing) > 0L) {
+    vm_encoding_preflight_stop(sprintf(
+      "VM encoding preflight başarısız: eksik fonksiyon(lar): %s",
+      paste(missing, collapse = ", ")
+    ))
+  }
+
+  invisible(TRUE)
+}
+
+.vm_encoding_preflight_env_to_restore <- c(
+  "MERGEN_DISABLE_FUTURES",
+  "MERGEN_RUN_APP",
+  "MERGEN_SQL_LOADER_STRICT"
+)
+
+.vm_encoding_preflight_env_snapshot <- Sys.getenv(
+  .vm_encoding_preflight_env_to_restore,
+  unset = NA_character_
+)
+
+on.exit({
+  for (nm in names(.vm_encoding_preflight_env_snapshot)) {
+    old_value <- .vm_encoding_preflight_env_snapshot[[nm]]
+
+    if (is.na(old_value)) {
+      Sys.unsetenv(nm)
+    } else {
+      do.call(Sys.setenv, stats::setNames(list(old_value), nm))
+    }
+  }
+}, add = TRUE)
+
+Sys.setenv(
+  MERGEN_DISABLE_FUTURES = "true",
+  MERGEN_RUN_APP = "false",
+  MERGEN_SQL_LOADER_STRICT = "true"
+)
+
+source("app.R", encoding = "UTF-8")
+
+if (exists("validate_boot_state", envir = globalenv(), mode = "function", inherits = FALSE)) {
+  validate_boot_state()
+}
+
+vm_encoding_preflight_require_functions(c(
+  "resolve_db_client_encoding",
+  "resolve_db_name_encoding",
+  "db_client_encoding_is_utf8",
+  "normalize_db_value",
+  "normalize_db_params",
+  "get_connection",
+  "release_connection"
+))
+
+client_env <- Sys.getenv("DB_CLIENT_ENCODING", unset = "")
+name_env <- Sys.getenv("DB_NAME_ENCODING", unset = "")
+
+if (!identical(vm_encoding_preflight_norm_encoding(client_env), "WINDOWS-1254")) {
+  vm_encoding_preflight_stop(sprintf(
+    paste(
+      "VM encoding preflight başarısız:",
+      ".Renviron içinde DB_CLIENT_ENCODING=WINDOWS-1254 bekleniyor.",
+      "Gelen değer: '%s'",
+      "R sürecini tamamen yeniden başlatmadan devam etmeyin."
+    ),
+    client_env
+  ))
+}
+
+if (!identical(vm_encoding_preflight_norm_encoding(name_env), "WINDOWS-1254")) {
+  vm_encoding_preflight_stop(sprintf(
+    paste(
+      "VM encoding preflight başarısız:",
+      ".Renviron içinde DB_NAME_ENCODING=WINDOWS-1254 bekleniyor.",
+      "Gelen değer: '%s'",
+      "R sürecini tamamen yeniden başlatmadan devam etmeyin."
+    ),
+    name_env
+  ))
+}
+
+resolved_client <- resolve_db_client_encoding()
+resolved_name <- resolve_db_name_encoding()
+
+if (!identical(vm_encoding_preflight_norm_encoding(resolved_client), "WINDOWS-1254")) {
+  vm_encoding_preflight_stop(sprintf(
+    "resolve_db_client_encoding() WINDOWS-1254 döndürmedi. Gelen: %s",
+    resolved_client
+  ))
+}
+
+if (!identical(vm_encoding_preflight_norm_encoding(resolved_name), "WINDOWS-1254")) {
+  vm_encoding_preflight_stop(sprintf(
+    "resolve_db_name_encoding() WINDOWS-1254 döndürmedi. Gelen: %s",
+    resolved_name
+  ))
+}
+
+if (isTRUE(db_client_encoding_is_utf8(resolved_client))) {
+  vm_encoding_preflight_stop("DB client encoding UTF-8 görünüyor; VM üretim Türkçe yazım sınırı için WINDOWS-1254 bekleniyor.")
+}
+
+probe_text <- "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü"
+probe_param <- normalize_db_value(probe_text, repair_mojibake = TRUE)
+
+if (identical(charToRaw(probe_param), charToRaw(enc2utf8(probe_text)))) {
+  vm_encoding_preflight_stop(
+    "normalize_db_value() WINDOWS-1254 ortamında ham UTF-8 parametre döndürdü. Bu VM için risklidir."
+  )
+}
+
+probe_roundtrip <- iconv(probe_param, from = resolved_client, to = "UTF-8", sub = NA_character_)
+
+if (!identical(probe_roundtrip, probe_text)) {
+  vm_encoding_preflight_stop(sprintf(
+    "WINDOWS-1254 parametre roundtrip başarısız. Beklenen='%s', Gelen='%s'",
+    probe_text,
+    probe_roundtrip
+  ))
+}
+
+cat("OK: DB_CLIENT_ENCODING/DB_NAME_ENCODING ve WINDOWS-1254 parametre sınırı doğrulandı.\n")
+
+conn_info <- NULL
+
+tryCatch({
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+
+  column_query <- "
+    SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, COLLATION_NAME
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME IN (
+      'MB_Users',
+      'MB_Chats',
+      'MB_Messages',
+      'MB_Feedback',
+      'MB_Destek_Geri_Bildirim',
+      'MB_Destek_Hata_Bildir'
+    )
+      AND COLUMN_NAME IN (
+        'KullaniciAdi',
+        'KaynakAdi',
+        'Sicil',
+        'Email',
+        'Sektor',
+        'Departman',
+        'Mudurluk',
+        'MasrafYeriKodu',
+        'SonGirisKaynagi',
+        'ChatTitle',
+        'MessageContent',
+        'MessageType',
+        'ReasoningContent',
+        'FeedbackType',
+        'FeedbackTags',
+        'FeedbackComment',
+        'Etiketler',
+        'EnCokSevilen',
+        'Gelistirme',
+        'Konular',
+        'Kategoriler',
+        'Oncelik',
+        'Aciklama',
+        'EkDosyaYollari',
+        'Durum'
+      )
+    ORDER BY TABLE_NAME, COLUMN_NAME
+  "
+
+  columns <- DBI::dbGetQuery(conn, column_query)
+
+  required_columns <- data.frame(
+    TABLE_NAME = c(
+      "MB_Users",
+      "MB_Chats",
+      "MB_Messages",
+      "MB_Messages",
+      "MB_Feedback",
+      "MB_Feedback"
+    ),
+    COLUMN_NAME = c(
+      "KaynakAdi",
+      "ChatTitle",
+      "MessageContent",
+      "ReasoningContent",
+      "FeedbackTags",
+      "FeedbackComment"
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  missing_required <- required_columns[!vapply(seq_len(nrow(required_columns)), function(i) {
+    any(
+      columns$TABLE_NAME == required_columns$TABLE_NAME[i] &
+        columns$COLUMN_NAME == required_columns$COLUMN_NAME[i]
+    )
+  }, logical(1)), , drop = FALSE]
+
+  if (nrow(missing_required) > 0L) {
+    vm_encoding_preflight_stop(sprintf(
+      "Kritik metin sütunları eksik: %s",
+      paste(
+        paste(missing_required$TABLE_NAME, missing_required$COLUMN_NAME, sep = "."),
+        collapse = ", "
+      )
+    ))
+  }
+
+  cat("OK: Kritik SQL Server metin sütunları bulundu.\n")
+  print(columns)
+
+  require_nvarchar <- vm_encoding_preflight_bool(
+    Sys.getenv("MERGEN_PREFLIGHT_REQUIRE_NVARCHAR", "FALSE"),
+    default = FALSE,
+    env_name = "MERGEN_PREFLIGHT_REQUIRE_NVARCHAR"
+  )
+
+  non_unicode <- columns[
+    tolower(columns$DATA_TYPE) %in% c("varchar", "char", "text"),
+    ,
+    drop = FALSE
+  ]
+
+  if (nrow(non_unicode) > 0L) {
+    msg <- sprintf(
+      "UYARI: Unicode olmayan metin sütunları var: %s",
+      paste(paste(non_unicode$TABLE_NAME, non_unicode$COLUMN_NAME, non_unicode$DATA_TYPE, sep = "."), collapse = ", ")
+    )
+
+    if (isTRUE(require_nvarchar)) {
+      vm_encoding_preflight_stop(msg)
+    } else {
+      warning(msg, call. = FALSE)
+    }
+  }
+
+  write_probe <- vm_encoding_preflight_bool(
+    Sys.getenv("MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST", "FALSE"),
+    default = FALSE,
+    env_name = "MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST"
+  )
+
+  if (!isTRUE(write_probe)) {
+    cat("INFO: Transactional DB encoding write probe atlandı. Açmak için MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE ayarlayın.\n")
+  } else {
+    DBI::dbBegin(conn)
+    rollback_needed <- TRUE
+
+    tryCatch({
+      probe_suffix <- format(Sys.time(), "%Y%m%d%H%M%S")
+      probe_username <- paste0("vm_preflight_encoding_", probe_suffix)
+      probe_name <- "VM Ön Kontrol Kullanıcısı"
+      probe_title <- "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü"
+      probe_message <- "Türkiye'nin başkenti neresidir? Nasıl yardımcı olabilirim?"
+      probe_reasoning <- "Düşünce ön kontrolü: ölçü, açıklama, şablon."
+      probe_feedback_tags <- "açıklama,öneri,şikayet-değil"
+      probe_feedback_comment <- "Görüş: Türkçe karakterler SSMS tarafında mojibake olmamalı."
+
+      user_res <- DBI::dbGetQuery(
+        conn,
+        "
+          INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate)
+          OUTPUT INSERTED.UserID AS UserID
+          VALUES (?, ?, GETDATE())
+        ",
+        params = normalize_db_params(
+          list(probe_username, probe_name),
+          repair_mojibake = TRUE
+        )
+      )
+
+      probe_user_id <- as.integer(user_res$UserID[1])
+
+      chat_res <- DBI::dbGetQuery(
+        conn,
+        "
+          INSERT INTO MB_Chats (UserID, ChatTitle)
+          OUTPUT INSERTED.ChatID AS ChatID
+          VALUES (?, ?)
+        ",
+        params = normalize_db_params(
+          list(probe_user_id, probe_title),
+          repair_mojibake = TRUE
+        )
+      )
+
+      probe_chat_id <- as.integer(chat_res$ChatID[1])
+
+      message_res <- tryCatch(
+        DBI::dbGetQuery(
+          conn,
+          "
+            INSERT INTO MB_Messages
+              (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder, ReasoningContent)
+            OUTPUT INSERTED.MessageID AS MessageID
+            VALUES (?, ?, 'user', GETDATE(), 1, ?)
+          ",
+          params = normalize_db_params(
+            list(probe_chat_id, probe_message, probe_reasoning),
+            repair_mojibake = TRUE
+          )
+        ),
+        error = function(e) {
+          DBI::dbGetQuery(
+            conn,
+            "
+              INSERT INTO MB_Messages
+                (ChatID, MessageContent, MessageType, MessageTimestamp, MessageOrder)
+              OUTPUT INSERTED.MessageID AS MessageID
+              VALUES (?, ?, 'user', GETDATE(), 1)
+            ",
+            params = normalize_db_params(
+              list(probe_chat_id, probe_message),
+              repair_mojibake = TRUE
+            )
+          )
+        }
+      )
+
+      probe_message_id <- as.integer(message_res$MessageID[1])
+
+      DBI::dbExecute(
+        conn,
+        "
+          INSERT INTO MB_Feedback
+            (UserID, MessageID, FeedbackType, FeedbackTags, FeedbackComment, FeedbackTimestamp)
+          VALUES (?, ?, 'dislike', ?, ?, CAST(GETDATE() AS datetime2(0)))
+        ",
+        params = normalize_db_params(
+          list(probe_user_id, probe_message_id, probe_feedback_tags, probe_feedback_comment),
+          repair_mojibake = TRUE
+        )
+      )
+
+      read_back <- DBI::dbGetQuery(
+        conn,
+        "
+          SELECT
+            u.KullaniciAdi,
+            u.KaynakAdi,
+            c.ChatTitle,
+            m.MessageContent,
+            m.ReasoningContent,
+            f.FeedbackTags,
+            f.FeedbackComment
+          FROM MB_Users u
+          INNER JOIN MB_Chats c ON c.UserID = u.UserID
+          INNER JOIN MB_Messages m ON m.ChatID = c.ChatID
+          LEFT JOIN MB_Feedback f ON f.MessageID = m.MessageID AND f.UserID = u.UserID
+          WHERE u.UserID = ?
+        ",
+        params = list(probe_user_id)
+      )
+
+      raw_values <- unlist(read_back, use.names = FALSE)
+      raw_values <- raw_values[!is.na(raw_values)]
+
+      if (vm_encoding_preflight_has_mojibake(raw_values)) {
+        vm_encoding_preflight_stop(sprintf(
+          "Transactional DB encoding write probe mojibake tespit etti: %s",
+          paste(raw_values, collapse = " | ")
+        ))
+      }
+
+      DBI::dbRollback(conn)
+      rollback_needed <- FALSE
+
+      cat("OK: Transactional DB encoding write/read probe başarılı; test kayıtları rollback edildi.\n")
+      cat("INFO: Bu kontrol SSMS ile manuel app-flow doğrulamasının yerine geçmez.\n")
+    }, error = function(e) {
+      if (isTRUE(rollback_needed)) {
+        try(DBI::dbRollback(conn), silent = TRUE)
+      }
+      stop(e)
+    })
+  }
+}, finally = {
+  release_connection(conn_info)
+})
+
+cat("OK: Windows VM SQL Server encoding preflight başarıyla tamamlandı.\n")

@@ -146,34 +146,56 @@ extract_user_claims <- function(payload) {
   raw_session_id <- safe_claim("session_id")
   raw_subject    <- safe_claim("subject")
 
-  # Türkçe karakter düzeltmesi uygula (bozuk UTF-8 için)
-  full_name  <- fixTurkishEncoding(raw_full_name %||% "")
-  first_name <- fixTurkishEncoding(raw_first_name %||% "")
-  last_name  <- fixTurkishEncoding(raw_last_name %||% "")
-  sektor     <- fixTurkishEncoding(raw_sektor %||% "")
-  department <- fixTurkishEncoding(raw_department %||% "")
-  mudurluk   <- fixTurkishEncoding(raw_mudurluk %||% "")
+  normalize_sso_visible_claim <- function(value) {
+    value <- value %||% ""
+    if (!nzchar(value)) return("")
+
+    if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      return(normalize_text_utf8(value, repair_mojibake = TRUE))
+    }
+
+    fixTurkishEncoding(value)
+  }
+
+  normalize_sso_technical_claim <- function(value) {
+    value <- value %||% ""
+    if (!nzchar(value)) return(value)
+
+    if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      return(normalize_text_utf8(value, repair_mojibake = FALSE))
+    }
+
+    enc2utf8(value)
+  }
+
+  # Kullanıcı adı teknik anahtardır; mojibake onarımı sadece görünen alanlara uygulanır.
+  username <- tolower(normalize_sso_technical_claim(raw_username))
+
+  # Türkçe görünen SSO alanlarını merkezi metin yardımcısıyla düzelt.
+  full_name  <- normalize_sso_visible_claim(raw_full_name)
+  first_name <- normalize_sso_visible_claim(raw_first_name)
+  last_name  <- normalize_sso_visible_claim(raw_last_name)
+  sektor     <- normalize_sso_visible_claim(raw_sektor)
+  department <- normalize_sso_visible_claim(raw_department)
+  mudurluk   <- normalize_sso_visible_claim(raw_mudurluk)
 
   # İlk isim yoksa tam isimden çıkar
   if (!nzchar(first_name) && nzchar(full_name)) {
     first_name <- extractFirstName(full_name)
   }
 
-  # Kullanıcı adını küçük harfe çevir (tutarlılık için)
-  username <- tolower(raw_username %||% "")
-
   list(
     username       = username,
     full_name      = full_name,
     first_name     = first_name,
     last_name      = last_name,
-    email          = raw_email,
-    sicil          = raw_sicil,
+    email          = normalize_sso_technical_claim(raw_email),
+    sicil          = normalize_sso_technical_claim(raw_sicil),
     sektor         = sektor,
     department     = department,
     mudurluk       = mudurluk,
-    keycloak_sid   = raw_session_id,
-    keycloak_sub   = raw_subject,
+    keycloak_sid   = normalize_sso_technical_claim(raw_session_id),
+    keycloak_sub   = normalize_sso_technical_claim(raw_subject),
     # Token meta verileri
     token_exp      = payload[["exp"]],
     token_iat      = payload[["iat"]]
