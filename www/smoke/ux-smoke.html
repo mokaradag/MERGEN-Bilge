@@ -190,36 +190,58 @@
 	  return appHref + "#ux_smoke_target=" + Date.now();
 	}
 	
-  function waitForFrameLoad(label, timeoutMs) {
-    return new Promise(function (resolve, reject) {
-      var finished = false;
+  async function waitForFrameAccessible(appTarget, label, timeoutMs) {
+    var started = Date.now();
+    var lastError = null;
 
-      var timer = window.setTimeout(function () {
-        if (finished) return;
-        finished = true;
-        frameEl.onload = null;
-        reject(new Error("iframe load zaman aşımı: " + label));
-      }, timeoutMs || 25000);
+    while (Date.now() - started < (timeoutMs || 25000)) {
+      try {
+        var win = frameEl.contentWindow;
+        var doc = frameEl.contentDocument || (win && win.document);
 
-      frameEl.onload = function () {
-        if (finished) return;
-        finished = true;
-        window.clearTimeout(timer);
-        frameEl.onload = null;
-        resolve();
-      };
-    });
+        if (win && doc) {
+          // Aynı-origin değilse SecurityError üretir.
+          var href = win.location.href;
+
+          if (href && href !== "about:blank" && doc.readyState !== "loading") {
+            return {
+              win: win,
+              doc: doc,
+              href: href
+            };
+          }
+        }
+      } catch (e) {
+        lastError = e;
+      }
+
+      await wait(100);
+    }
+
+    throw new Error(
+      "iframe erişilebilir DOM zaman aşımı: " +
+      (label || "app iframe") +
+      " / Hedef: " +
+      appTarget +
+      (lastError ? " / Son hata: " + lastError.message : "")
+    );
   }
 
   async function navigateFrameToApp(label, timeoutMs) {
     frameEl.onload = null;
     frameEl.src = "about:blank";
-    await wait(80);
+    await wait(120);
 
     var appTarget = targetUrl();
     log("Iframe hedefi: " + appTarget);
 
-    await waitForFrameLoad(label || "app iframe", timeoutMs || 25000);
+    frameEl.src = appTarget;
+
+    await waitForFrameAccessible(
+      appTarget,
+      label || "app iframe",
+      timeoutMs || 25000
+    );
 
     return appTarget;
   }
