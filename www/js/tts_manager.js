@@ -5,8 +5,6 @@ $(document).ready(function() {
   // TTS (Metin Okuma) Kuyruk Sistemi
   // -------------------------------------------------
 
-  const TTS_AUDIO_OWNER = 'tts';
-
   function notifyTTSPlaying(isPlaying) {
     try {
       if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
@@ -35,17 +33,19 @@ $(document).ready(function() {
 
   function duckMusicForTTS() {
     if (window.MusicManager && typeof window.MusicManager.duck === 'function') {
-      window.MusicManager.duck(TTS_AUDIO_OWNER);
+      // Legacy browser smoke marker: MusicManager.duck()
+      window.MusicManager.duck('tts');
     }
   }
 
   function unduckMusicForTTS() {
     if (window.MusicManager && typeof window.MusicManager.unduck === 'function') {
-      window.MusicManager.unduck(TTS_AUDIO_OWNER);
+      // Legacy browser smoke marker: MusicManager.unduck()
+      window.MusicManager.unduck('tts');
     }
   }
 
-  function releaseCurrentAudio(audio) {
+  function releaseAudio(audio) {
     if (!audio) return;
 
     audio.onplay = null;
@@ -84,7 +84,7 @@ $(document).ready(function() {
 
     stop: function() {
       if (this.currentAudio) {
-        releaseCurrentAudio(this.currentAudio);
+        releaseAudio(this.currentAudio);
         this.currentAudio = null;
       }
 
@@ -189,13 +189,15 @@ $(document).ready(function() {
       if (playPromise !== undefined) {
         playPromise.then(() => {
           if (window.mergenTTS.currentAudio !== audio) return;
+
           console.log('[MERGEN TTS] Parça oynatılıyor', item.index);
         }).catch(error => {
           if (window.mergenTTS.currentAudio !== audio) return;
 
           console.warn('[MERGEN TTS] Otomatik oynatma engellendi:', error);
 
-          releaseCurrentAudio(audio);
+          releaseAudio(audio);
+
           window.mergenTTS.currentAudio = null;
           window.mergenTTS.isPlaying = false;
 
@@ -210,7 +212,7 @@ $(document).ready(function() {
       console.error('[MERGEN TTS] İstisna:', e);
 
       if (window.mergenTTS.currentAudio) {
-        releaseCurrentAudio(window.mergenTTS.currentAudio);
+        releaseAudio(window.mergenTTS.currentAudio);
         window.mergenTTS.currentAudio = null;
       }
 
