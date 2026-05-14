@@ -102,7 +102,7 @@ test_that("normalize_text_tree_utf8 iç içe payload metinlerini onarır", {
     title = "Ã‡alÄ±ÅŸma Ã¶zeti",
     nested = list(
       file = "ÅŸablon_gÃ¼ncelleme.pdf",
-      emoji = "ðŸš€"
+      emoji = intToUtf8(0x1F680)
     )
   )
 
@@ -110,16 +110,16 @@ test_that("normalize_text_tree_utf8 iç içe payload metinlerini onarır", {
 
   expect_equal(repaired$title, "Çalışma özeti")
   expect_equal(repaired$nested$file, "şablon_güncelleme.pdf")
-  expect_equal(repaired$nested$emoji, "🚀")
+  expect_equal(repaired$nested$emoji, intToUtf8(0x1F680))
 })
 
 test_that("normalize_text_for_log ANSI dizilerini temizler ve metni okunur tutar", {
   env <- .source_text_encoding_utils_for_test()
 
-  mojibake <- .mojibake_from_utf8_for_test("çalışıyor ✅")
+  mojibake <- .mojibake_from_utf8_for_test(paste0("çalışıyor ", intToUtf8(0x2705)))
   colored <- paste0("\033[1m", mojibake, "\033[0m")
 
-  expect_equal(env$normalize_text_for_log(colored), "çalışıyor ✅")
+  expect_equal(env$normalize_text_for_log(colored), paste0("çalışıyor ", intToUtf8(0x2705)))
 })
 
 test_that("read_text_lines_utf8 UTF-8 markdown satırlarını güvenli okur", {

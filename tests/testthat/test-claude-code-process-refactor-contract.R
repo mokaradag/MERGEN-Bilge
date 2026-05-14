@@ -220,7 +220,7 @@ test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
 
   parsed <- test_env$parse_claude_code_json_output(jsonl)
 
-  expect_equal(parsed$text_output, "Merhaba Çalışma 🚀")
+  expect_equal(parsed$text_output, paste0("Merhaba Çalışma ", intToUtf8(0x1F680)))
   expect_equal(parsed$session_id, "abc123")
   expect_type(parsed$tool_uses, "list")
 })
