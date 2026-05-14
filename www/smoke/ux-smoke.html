@@ -681,12 +681,26 @@
 
     assert(!!win.PremiumReasoning, "PremiumReasoning global API var");
 
-    var chat = doc.querySelector("#chat_content_container");
-    if (!doc.querySelector("#typing-animation-wrapper")) {
-      var typing = doc.createElement("div");
-      typing.id = "typing-animation-wrapper";
-      chat.appendChild(typing);
-    }
+    var chat = doc.querySelector("#chat_content_container") || doc.body;
+
+    // Smoke reasoning testi gerçek sohbet/quick-action DOM'u ile çakışmamalı.
+    // Bu yüzden kendi geçici fixture alanını kurar ve sonunda temizler.
+    try {
+      if (win.PremiumReasoning && typeof win.PremiumReasoning.onResetChatState === "function") {
+        win.PremiumReasoning.onResetChatState();
+      }
+    } catch (e) {}
+
+    Array.prototype.slice.call(
+      doc.querySelectorAll("#typing-animation-wrapper, #message_wrapper_ux_smoke_ai")
+    ).forEach(function (el) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
+
+    var typing = doc.createElement("div");
+    typing.id = "typing-animation-wrapper";
+    typing.setAttribute("data-ux-smoke", "reasoning-host");
+    chat.appendChild(typing);
 
     win.PremiumReasoning.start({
       requestId: "ux-smoke-reasoning",
@@ -694,23 +708,29 @@
       simulated: false
     });
 
-    await wait(150);
-    assert(!!doc.querySelector(".reasoning-panel.rp-live"), "thinking panel görünür");
+    var panelVisible = await waitFor(function () {
+      return !!typing.querySelector(".reasoning-panel.rp-live");
+    }, "thinking panel görünür", 2500, { failOnTimeout: false });
+
+    assert(panelVisible, "thinking panel görünür");
 
     win.PremiumReasoning.onReasoningDelta({
       requestId: "ux-smoke-reasoning",
       delta: "Plan hazırlanıyor.\n"
     });
 
-    await wait(150);
-    assert(
-      (doc.querySelector(".reasoning-panel") || {}).textContent.indexOf("Plan hazırlanıyor") >= 0,
-      "reasoning delta panel içine akar"
-    );
+    var deltaVisible = await waitFor(function () {
+      var panel = typing.querySelector(".reasoning-panel") ||
+                  doc.querySelector("#typing-animation-wrapper .reasoning-panel");
+      return panel && panel.textContent.indexOf("Plan hazırlanıyor") >= 0;
+    }, "reasoning delta panel içine akar", 2500, { failOnTimeout: false });
+
+    assert(deltaVisible, "reasoning delta panel içine akar");
 
     var wrapper = doc.createElement("div");
     wrapper.id = "message_wrapper_ux_smoke_ai";
-    wrapper.innerHTML = "<div class='message-bubble ai-message'><div class='message-content'>Yanıt</div></div>";
+    wrapper.innerHTML =
+      "<div class='message-bubble ai-message'><div class='message-content'>Yanıt</div></div>";
     chat.appendChild(wrapper);
 
     win.PremiumReasoning.onStreamStart({
@@ -718,11 +738,11 @@
       id: "ux_smoke_ai"
     });
 
-    await wait(150);
-    assert(
-      !!doc.querySelector("#message_wrapper_ux_smoke_ai .reasoning-panel"),
-      "thinking panel AI balonuna taşınır"
-    );
+    var movedToBubble = await waitFor(function () {
+      return !!doc.querySelector("#message_wrapper_ux_smoke_ai .reasoning-panel");
+    }, "thinking panel AI balonuna taşınır", 2500, { failOnTimeout: false });
+
+    assert(movedToBubble, "thinking panel AI balonuna taşınır");
 
     win.PremiumReasoning.onResetChatState();
     await wait(150);
@@ -731,6 +751,12 @@
       win.PremiumReasoning.getState() === "idle",
       "reasoning stop/finish sonrası state idle olur"
     );
+
+    Array.prototype.slice.call(
+      doc.querySelectorAll("#typing-animation-wrapper[data-ux-smoke='reasoning-host'], #message_wrapper_ux_smoke_ai")
+    ).forEach(function (el) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
   }
 
   function testConsoleNoise() {
@@ -785,6 +811,10 @@
       var app = await loadFreshApp("fresh welcome");
       await testWelcome(app);
 
+      // Reasoning testi sentetiktir; gerçek quick-action/chat yan etkileri
+      // DOM'u değiştirmeden önce çalıştırılır.
+      await testReasoning(app);
+
       if (hasSmokeFlag("fullQuickActions")) {
         pass("fullQuickActions tarayıcı modu VM smoke'ta atlandı; statik/focused testlerde kapsanıyor");
       }
@@ -792,7 +822,6 @@
       await testOneQuickActionOnCurrentWelcome(app);
       await testChatInput(app);
       await testMediaAndSavedChat(app);
-      await testReasoning(app);
 
       testConsoleNoise();
     } catch (e) {
