@@ -225,16 +225,29 @@
         localStorage.setItem('mergen_settings', JSON.stringify(settings));
       } catch(e) {}
 
-      // Giriş ekranını kapat; ana uygulama müziği intro durduktan sonra başlasın
-      dismissDeepSpace(function() {
-        if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-          Shiny.setInputValue('selected_experience_mode', {
-            mode: mode,
-            source: 'welcome',
-            timestamp: Date.now()
-          }, { priority: 'event' });
-        }
-      });
+		// Giriş ekranını kapat; Shiny mod seçimini intro audio callback'ine bağımlı bırakma.
+		// Callback yalnızca yedek olarak aynı tek-seferlik bildirimi yeniden dener.
+		var modeSelectionSent = false;
+
+		function sendModeSelectionToShiny() {
+		  if (modeSelectionSent) return;
+		  modeSelectionSent = true;
+
+		  if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+			Shiny.setInputValue('selected_experience_mode', {
+			  mode: mode,
+			  source: 'welcome',
+			  timestamp: Date.now()
+			}, { priority: 'event' });
+		  }
+		}
+
+		// Kritik: Ayarları hemen Shiny'ye gönder.
+		sendModeSelectionToShiny();
+
+		dismissDeepSpace(function afterIntroStopped() {
+		  sendModeSelectionToShiny();
+		});
 
       // Durumu sıfırla
       _selectedModeId = null;

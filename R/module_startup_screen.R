@@ -586,7 +586,7 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 		# Müzik karakterini güncelle (modun müzik ayarına göre)
 		# Deep-space intro müziği fade-out tamamlandıktan sonra ana müzik yöneticisini
 		# tek kez başlat. Böylece Ana Tema isteği karakter isteğiyle ezilmez.
-		shinyjs::delay(1400, {
+		shinyjs::delay(2400, {
 		  session$sendCustomMessage("toggleMusic", list(
 			enabled = isTRUE(settings_data$enable_background_music),
 			character = char_id

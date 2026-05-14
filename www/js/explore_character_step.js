@@ -475,28 +475,38 @@
         window.CinematicExplore.closeModal();
       }
 
-      // Giriş ekranını kapat, ardından Shiny'ye bildir
-      setTimeout(function() {
-        var sendSelectionToShiny = function() {
-          if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-            Shiny.setInputValue('selected_experience_mode', {
-              mode: 'kesif',
-              character: selectedChar,
-              source: 'welcome_character_step',
-              timestamp: Date.now()
-            }, { priority: 'event' });
-          }
+		// Giriş ekranını kapat; Shiny mod seçimini audio callback'ine bağımlı bırakma.
+		// Callback yalnızca yedek olarak aynı tek-seferlik bildirimi yeniden dener.
+		setTimeout(function() {
+		  var selectionSent = false;
 
-          // Kilidi serbest bırak
-          _confirmInProgress = false;
-        };
+		  var sendSelectionToShiny = function() {
+			if (selectionSent) return;
+			selectionSent = true;
 
-        if (window.CinematicExplore) {
-          window.CinematicExplore.dismissDeepSpace(sendSelectionToShiny);
-        } else {
-          sendSelectionToShiny();
-        }
-      }, 200);
+			if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+			  Shiny.setInputValue('selected_experience_mode', {
+				mode: 'kesif',
+				character: selectedChar,
+				source: 'welcome_character_step',
+				timestamp: Date.now()
+			  }, { priority: 'event' });
+			}
+
+			// Kilidi serbest bırak
+			_confirmInProgress = false;
+		  };
+
+		  // Kritik: Ayarları hemen Shiny'ye gönder.
+		  // Aksi halde intro audio callback yarışı, Kişiselleştirme sayfasını Odak'ta bırakabilir.
+		  sendSelectionToShiny();
+
+		  if (window.CinematicExplore) {
+			window.CinematicExplore.dismissDeepSpace(sendSelectionToShiny);
+		  } else {
+			sendSelectionToShiny();
+		  }
+		}, 200);
     }
 
     // Seçim videosunu oynat ve bittiğinde geçiş yap
