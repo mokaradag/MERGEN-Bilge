@@ -2,6 +2,9 @@
 # It should be added to your .gitignore file to prevent it from being
 # committed to version control.
 
+DB_CLIENT_ENCODING=WINDOWS-1254
+DB_NAME_ENCODING=WINDOWS-1254
+
 # ------------------------------------------------------------------------------
 # VERİTABANI BAĞLANTILARI (MULTI-DB SETUP)
 # ------------------------------------------------------------------------------

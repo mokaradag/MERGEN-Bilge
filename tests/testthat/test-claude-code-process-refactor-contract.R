@@ -202,7 +202,13 @@ test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
       auto_unbox = TRUE
     ),
     jsonlite::toJSON(
-      list(type = "text", content = "Ã‡alÄ±ÅŸma ðŸš€"),
+      list(
+        type = "text",
+        content = paste0(
+          "\u00c3\u2021al\u00c4\u00b1\u00c5\u0178ma ",
+          "\u00f0\u0178\u0161\u20ac"
+        )
+      ),
       auto_unbox = TRUE
     ),
     jsonlite::toJSON(

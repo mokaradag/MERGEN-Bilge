@@ -136,10 +136,19 @@ load_image_descriptions_for_user <- function(user_id) {
               AND MessageContent NOT LIKE '\\[GÖRSEL:%' ESCAPE '\\'
             ORDER BY MessageOrder ASC
           "
-          next_row <- tryCatch(
-            DBI::dbGetQuery(conn, next_msg_query, params = list(chat_id, msg_order)),
-            error = function(e) data.frame()
-          )
+          next_row <- tryCatch({
+            result <- DBI::dbGetQuery(
+              conn,
+              next_msg_query,
+              params = normalize_db_params(list(chat_id, msg_order))
+            )
+
+            if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+              result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
+            }
+
+            result
+          }, error = function(e) data.frame())
 
           # Öncelik: sonraki AI yanıtı > inline açıklama
           if (nrow(next_row) > 0 && nzchar(trimws(next_row$MessageContent[1]))) {
@@ -350,7 +359,15 @@ update_messages_after_bulk_deletion <- function(chat_id) {
     on.exit(release_connection(conn_info))
 
     query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '[GÖRSEL:%'"
-    rows <- DBI::dbGetQuery(conn, query, params = list(chat_id_int))
+    rows <- DBI::dbGetQuery(
+      conn,
+      query,
+      params = normalize_db_params(list(chat_id_int))
+    )
+
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      rows <- normalize_text_frame_utf8(rows, repair_mojibake = TRUE)
+    }
 
     if (nrow(rows) > 0) {
       for (j in seq_len(nrow(rows))) {
@@ -379,7 +396,14 @@ update_messages_after_bulk_deletion <- function(chat_id) {
             )
             if (new_content != old_content) {
               update_q <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
-              DBI::dbExecute(conn, update_q, params = list(new_content, rows$MessageID[j]))
+              DBI::dbExecute(
+                conn,
+                update_q,
+                params = normalize_db_params(
+                  list(new_content, rows$MessageID[j]),
+                  repair_mojibake = TRUE
+                )
+              )
             }
           }
         }

@@ -60,10 +60,21 @@
   }, character(1), USE.NAMES = FALSE), collapse = "")
 }
 
+.turkish_emoji_sample_for_test <- function() {
+  paste0(
+    "\u00e7 \u011f \u0131 \u0130 \u00f6 \u015f \u00fc ",
+    "\u00c7 \u011e I \u00d6 \u015e \u00dc",
+    " \u2014 \u201ct\u0131rnak\u201d \u2022 ",
+    intToUtf8(0x2705),
+    " ",
+    intToUtf8(0x1F680)
+  )
+}
+
 test_that("normalize_text_utf8 Türkçe karakter ve emojiyi korur", {
   env <- .source_text_encoding_utils_for_test()
 
-  sample_text <- "ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü — “tırnak” • ✅ 🚀"
+  sample_text <- .turkish_emoji_sample_for_test()
 
   expect_equal(
     env$normalize_text_utf8(sample_text, repair_mojibake = TRUE),
@@ -74,7 +85,7 @@ test_that("normalize_text_utf8 Türkçe karakter ve emojiyi korur", {
 test_that("normalize_text_utf8 yaygın Windows mojibake bozulmasını onarır", {
   env <- .source_text_encoding_utils_for_test()
 
-  sample_text <- "ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü — “tırnak” • ✅ 🚀"
+  sample_text <- .turkish_emoji_sample_for_test()
   mojibake <- .mojibake_from_utf8_for_test(sample_text)
 
   expect_false(identical(mojibake, sample_text))
@@ -115,8 +126,8 @@ test_that("read_text_lines_utf8 UTF-8 markdown satırlarını güvenli okur", {
   env <- .source_text_encoding_utils_for_test()
 
   sample_lines <- c(
-    "## v1.0 | 2026-05-12 | Türkçe Sürüm",
-    "- ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü — “tırnak” • ✅ 🚀"
+    "## v1.0 | 2026-05-12 | T\u00fcrk\u00e7e S\u00fcr\u00fcm",
+    paste0("- ", .turkish_emoji_sample_for_test())
   )
 
   tmp <- tempfile(fileext = ".md")
