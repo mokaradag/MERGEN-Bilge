@@ -10,6 +10,23 @@ sttUI <- function(id) {
 sttServer <- function(id, parent_session, settings) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    set_stt_modal_active_js <- function(active) {
+      active_js <- if (isTRUE(active)) "true" else "false"
+
+      shinyjs::runjs(sprintf(
+        "
+        (function() {
+          if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+            window.Shiny.setInputValue('stt_modal_active', %s, {priority: 'event'});
+          } else {
+            console.warn('[STT] Shiny.setInputValue hazır değil; stt_modal_active atlandı');
+          }
+        })();
+        ",
+        active_js
+      ))
+    }
     
     rv <- reactiveValues(
       transcription_history = "",
@@ -142,7 +159,7 @@ sttServer <- function(id, parent_session, settings) {
       ))
       
       # STT modalının açık olduğunu uygulama geneline bildir
-      shinyjs::runjs("Shiny.setInputValue('stt_modal_active', true, {priority: 'event'});")
+      set_stt_modal_active_js(TRUE)
       
       # JS Client'ı başlat
       shinyjs::delay(500, {
@@ -271,7 +288,7 @@ sttServer <- function(id, parent_session, settings) {
     
     observeEvent(input$accept_btn, {
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
-      shinyjs::runjs("Shiny.setInputValue('stt_modal_active', false, {priority: 'event'});")
+      set_stt_modal_active_js(FALSE)
       
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       text_to_send <- trimws(input$transcribed_text)
@@ -283,7 +300,7 @@ sttServer <- function(id, parent_session, settings) {
     
     observeEvent(input$dismiss_btn, {
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
-      shinyjs::runjs("Shiny.setInputValue('stt_modal_active', false, {priority: 'event'});")
+      set_stt_modal_active_js(FALSE)
       
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       removeModal()
