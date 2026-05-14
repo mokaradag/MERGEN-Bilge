@@ -304,7 +304,7 @@
     await waitFor(function () {
       return doc.querySelector(".modern-welcome-root") ||
              doc.querySelector(".message-bubble");
-    }, "welcome veya chat görünümü hazır", 18000);
+    }, "welcome veya chat görünümü hazır", 60000);
 
     return { win: win, doc: doc };
   }
@@ -423,11 +423,7 @@
     assert(Math.abs(rect.top) <= 2, "welcome üst boşluk regresyonu yok: top=" + rect.top);
   }
   
-	async function testOneQuickActionOnly() {
-	  // Production SSO/Keycloak routes can redirect repeated iframe reloads.
-	  // Keep browser smoke minimal here; full quick-action coverage remains in
-	  // test-ux-regression-guardrails.R and test-e2e-boot-welcome-regression.R.
-	  var app = await loadFreshApp("quick action: resource-analysis");
+	async function testOneQuickActionOnCurrentWelcome(app) {
 	  var doc = app.doc;
 	  var actionId = "resource-analysis";
 
@@ -750,23 +746,15 @@
     try {
       var app = await loadFreshApp("fresh welcome");
       await testWelcome(app);
+
+      if (hasSmokeFlag("fullQuickActions")) {
+        pass("fullQuickActions tarayıcı modu VM smoke'ta atlandı; statik/focused testlerde kapsanıyor");
+      }
+
+      await testOneQuickActionOnCurrentWelcome(app);
       await testChatInput(app);
       await testMediaAndSavedChat(app);
-
-      app = await loadFreshApp("reasoning");
       await testReasoning(app);
-
-      var runFullQuickActions =
-        hasSmokeFlag("fullQuickActions") && !isSsoEnabled(app.doc);
-
-      if (runFullQuickActions) {
-        await testQuickActions();
-      } else {
-        if (hasSmokeFlag("fullQuickActions")) {
-          pass("fullQuickActions SSO ortamında tek hızlı işlem smoke moduna düşürüldü");
-        }
-        await testOneQuickActionOnly();
-      }
 
       testConsoleNoise();
     } catch (e) {

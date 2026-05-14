@@ -99,6 +99,7 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
 		".modern-welcome-action-btn",
 		"/smoke/ux-smoke.html",
 		"isSsoEnabled",
+		"fullQuickActions tarayıcı modu VM smoke'ta atlandı",
 		"getFrameAccess",
 		"cross-origin SSO/Keycloak",
 		"MERGEN_SMOKE_BASE_URL",
@@ -159,7 +160,7 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
       "fullQuickActions",
       "hasSmokeFlag",
       "testQuickActions();",
-      "testOneQuickActionOnly();",
+      "testOneQuickActionOnCurrentWelcome(app);",
       "isSsoEnabled(app.doc)"
     ),
     "Browser smoke quick action/input kapsamı eksik:"
