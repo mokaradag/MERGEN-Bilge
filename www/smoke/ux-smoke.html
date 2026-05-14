@@ -203,7 +203,7 @@
           // Aynı-origin değilse SecurityError üretir.
           var href = win.location.href;
 
-          if (href && href !== "about:blank" && doc.readyState !== "loading") {
+          if (href && href !== "about:blank" && (doc.body || doc.documentElement)) {
             return {
               win: win,
               doc: doc,
@@ -219,7 +219,7 @@
     }
 
     throw new Error(
-      "iframe erişilebilir DOM zaman aşımı: " +
+      "iframe aynı-origin DOM erişimi zaman aşımı: " +
       (label || "app iframe") +
       " / Hedef: " +
       appTarget +
