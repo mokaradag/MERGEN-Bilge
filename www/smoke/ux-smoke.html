@@ -59,6 +59,67 @@
   var failures = [];
   var consoleEvents = [];
   var shinyEvents = [];
+  
+  var originalSmokeStorage = {
+    captured: false,
+    mergenSettings: null,
+    currentChat: null
+  };
+
+  function captureSmokeStorageOnce() {
+    if (originalSmokeStorage.captured) return;
+
+    originalSmokeStorage.captured = true;
+
+    try {
+      originalSmokeStorage.mergenSettings = localStorage.getItem("mergen_settings");
+      originalSmokeStorage.currentChat = localStorage.getItem("mergen_current_chat");
+    } catch (e) {
+      log("localStorage başlangıç durumu okunamadı: " + e.message, "fail");
+    }
+  }
+
+  function prepareFreshAppStorage() {
+    captureSmokeStorageOnce();
+
+    try {
+      var raw = localStorage.getItem("mergen_settings");
+      var settings = raw ? JSON.parse(raw) : {};
+
+      // Browser smoke gerçek Ana Söyleşi welcome ekranını test eder.
+      // Deep Space intro insan etkileşimi gerektirdiği için smoke sırasında atlanır.
+      settings.skip_intro = true;
+
+      localStorage.setItem("mergen_settings", JSON.stringify(settings));
+
+      // Fresh welcome testi kayıtlı localStorage sohbetiyle chat görünümüne düşmemeli.
+      localStorage.removeItem("mergen_current_chat");
+    } catch (e) {
+      fail("Smoke localStorage hazırlığı başarısız: " + e.message);
+    }
+  }
+
+  function restoreSmokeStorage() {
+    if (!originalSmokeStorage.captured) return;
+
+    try {
+      if (originalSmokeStorage.mergenSettings === null) {
+        localStorage.removeItem("mergen_settings");
+      } else {
+        localStorage.setItem("mergen_settings", originalSmokeStorage.mergenSettings);
+      }
+
+      if (originalSmokeStorage.currentChat === null) {
+        localStorage.removeItem("mergen_current_chat");
+      } else {
+        localStorage.setItem("mergen_current_chat", originalSmokeStorage.currentChat);
+      }
+    } catch (e) {
+      log("Smoke localStorage geri yükleme uyarısı: " + e.message, "fail");
+    }
+  }
+
+  window.addEventListener("beforeunload", restoreSmokeStorage);
 
   var QUICK_ACTION_EXPECTATIONS = {
     "project-process": "enable_process_tools",
@@ -161,6 +222,8 @@
     shinyEvents = [];
     consoleEvents = [];
     statusEl.textContent = "Yükleniyor: " + label;
+
+    prepareFreshAppStorage();
 
     frameEl.src = "about:blank";
     await wait(80);
@@ -644,6 +707,8 @@
     } catch (e) {
       fail(e && e.stack ? e.stack : String(e));
     }
+
+    restoreSmokeStorage();
 
     if (failures.length === 0) {
       statusEl.textContent = "UX_SMOKE_DONE:PASS";
