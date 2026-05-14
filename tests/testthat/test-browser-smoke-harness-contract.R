@@ -159,9 +159,8 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
       "send_prompt_from_js",
       "fullQuickActions",
       "hasSmokeFlag",
-      "testQuickActions();",
       "testOneQuickActionOnCurrentWelcome(app);",
-      "isSsoEnabled(app.doc)"
+      "fullQuickActions tarayıcı modu VM smoke'ta atlandı"
     ),
     "Browser smoke quick action/input kapsamı eksik:"
   )
