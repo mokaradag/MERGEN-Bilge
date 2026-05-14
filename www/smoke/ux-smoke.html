@@ -190,6 +190,40 @@
 	  return appHref + "#ux_smoke_target=" + Date.now();
 	}
 	
+  function waitForFrameLoad(label, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var finished = false;
+
+      var timer = window.setTimeout(function () {
+        if (finished) return;
+        finished = true;
+        frameEl.onload = null;
+        reject(new Error("iframe load zaman aşımı: " + label));
+      }, timeoutMs || 25000);
+
+      frameEl.onload = function () {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        frameEl.onload = null;
+        resolve();
+      };
+    });
+  }
+
+  async function navigateFrameToApp(label, timeoutMs) {
+    frameEl.onload = null;
+    frameEl.src = "about:blank";
+    await wait(80);
+
+    var appTarget = targetUrl();
+    log("Iframe hedefi: " + appTarget);
+
+    await waitForFrameLoad(label || "app iframe", timeoutMs || 25000);
+
+    return appTarget;
+  }
+	
   function getFrameAccess(appTarget) {
     try {
       var win = frameEl.contentWindow;
@@ -225,18 +259,7 @@
 
     prepareFreshAppStorage();
 
-    frameEl.src = "about:blank";
-    await wait(80);
-
-	var appTarget = targetUrl();
-	log("Iframe hedefi: " + appTarget);
-	frameEl.src = appTarget;
-
-    await new Promise(function (resolve) {
-      frameEl.onload = function () {
-        resolve();
-      };
-    });
+    var appTarget = await navigateFrameToApp(label, 25000);
 
     var access = getFrameAccess(appTarget);
     var win = access.win;
@@ -585,14 +608,19 @@
       { id: "old_ai_1", type: "ai", content: "Eski kayıtlı yanıt" }
     ]));
 
-    frameEl.src = targetUrl();
-    await new Promise(function (resolve) {
-      frameEl.onload = resolve;
-    });
+    var savedChatTarget = await navigateFrameToApp("saved chat no-autoplay reload", 25000);
+    var reloadedAccess = getFrameAccess(savedChatTarget);
+    var reloadedWin = reloadedAccess.win;
+
+    installConsoleProbe(reloadedWin);
+
+    await waitFor(function () {
+      return reloadedWin.mergenTTS ||
+             (reloadedAccess.doc && reloadedAccess.doc.querySelector("#chat_content_container"));
+    }, "saved chat reload hazır", 10000);
+
     await wait(1300);
 
-    var reloadedWin = frameEl.contentWindow;
-    installConsoleProbe(reloadedWin);
     assert(
       !reloadedWin.mergenTTS || reloadedWin.mergenTTS.isPlaying !== true,
       "kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz"
