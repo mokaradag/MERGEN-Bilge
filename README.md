@@ -125,22 +125,44 @@ Bu sınırları korumak için hafif regresyon testleri `tests/testthat/test-ux-r
 - `tests/testthat/test-quick-action-routing.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
 - `tests/testthat/test-browser-smoke-harness-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
 
 #### Tarayıcı düzeyi smoke doğrulaması
 
-Üretim SSO ortamında ek tarayıcı doğrulaması için aşağıdaki sayfa doğrudan açılabilir:
+Gerçek tarayıcı davranışını hızlıca doğrulamak için repo içinde hafif bir browser smoke katmanı bulunur:
 
-- `https://mergen.aselsan.com.tr/bilge/smoke/ux-smoke.html`
+- Smoke sayfası: `www/smoke/ux-smoke.html`
+- Sözleşme testi: `tests/testthat/test-browser-smoke-harness-contract.R`
+- Yerel açıcı betik: `tests/scripts/open_ux_smoke.R`
 
 Başarılı çalışmanın beklenen sonucu şudur:
 
 - `UX_SMOKE_DONE:PASS`
 
-Bu smoke sayfası uygulamayı aynı origin içinde iframe olarak açar ve gerçek tarayıcı davranışı üzerinden şu başlıkları hızlıca doğrular: Ana Söyleşi hoş geldin ekranı, üst boşluk regresyonu olmaması, Enter/Shift+Enter/stop-mode giriş davranışları, otomatik kaydırma durumu, TTS/STT/arka plan müziği duck/restore akışı, kayıtlı sohbet yüklenince geçmiş TTS yanıtlarının otomatik oynatılmaması, düşünce paneli yaşam döngüsü, hızlı işlem kartında çift tıklamanın tek olay üretmesi ve tarayıcı konsolunda belirgin JS hatası olmaması.
+Yerel geliştirme ortamında uygulama çalışırken smoke sayfasını açmak için:
 
-Bu katman bilinçli olarak hafif tutulmuştur; `shinytest2`, Playwright, Chromote, Selenium, Node veya npm bağımlılığı gerektirmez. Normal kullanıcı arayüzüne eklenmez ve `R/config_ui_assets.R` manifestine dahil edilmemelidir; yalnızca doğrudan smoke URL’si açıldığında çalışır.
+- `Sys.setenv(MERGEN_SMOKE_BASE_URL = "http://127.0.0.1:3838")`
+- `source("tests/scripts/open_ux_smoke.R", encoding = "UTF-8")`
 
-Üretim SSO/Keycloak yolunda iframe yeniden yüklemeleri kimlik doğrulama akışını etkileyebildiği için browser smoke, hızlı işlem intro mesajının görsel görünürlüğünü SSO ortamında bilinçli olarak atlar. Hızlı işlem intro mesajı, model ve araç modu sözleşmeleri deterministik odak testlerde korunmaya devam eder.
+Üretim veya SSO/Keycloak yolu üzerinde smoke doğrulaması yapılacaksa sayfa aynı origin üzerinden açılmalıdır. Örneğin uygulama `/bilge` altında yayınlanıyorsa `/bilge/smoke/ux-smoke.html` kullanılmalıdır. Cross-origin Keycloak/login yönlendirmesi iframe içindeki app DOM’unun okunmasını engeller; bu durumda smoke hatası uygulama UX regresyonu değil, yanlış origin/yönlendirme problemidir.
+
+Bu browser smoke katmanı bilinçli olarak tek oturumlu ve hafif tutulmuştur. Sayfa uygulamayı bir kez iframe içinde açar, insan etkileşimi gerektiren Deep Space başlangıç ekranını smoke’a özel `localStorage` hazırlığıyla atlar, Ana Söyleşi hoş geldin ekranını doğrular, sentetik reasoning fixture’ını gerçek hızlı işlem/sohbet yan etkilerinden önce izole biçimde çalıştırır ve ardından hızlı işlem, sohbet girişi, medya, kayıtlı sohbet TTS davranışı ve konsol sağlığını kontrol eder. Smoke sonunda kendi değiştirdiği `localStorage` değerlerini geri yükler.
+
+Doğrulanan başlıklar özetle şunlardır:
+
+- Ana Söyleşi hoş geldin ekranı, sol video alanı, neural canvas, dinamik karşılama, hızlı işlem kartları, Son Konuşmalar alanı ve üst boşluk regresyonu olmaması.
+- Hızlı işlem kartında gerçek tarayıcı dispatch’i, model/tool olayı ve hızlı çift tıklamada tek olay üretimi.
+- Enter ile gönderme, Shift+Enter ile yeni satır, stop-mode koruması ve otomatik kaydırma durumunun korunması.
+- TTS, STT ve arka plan müziği duck/restore akışı.
+- Kayıtlı sohbet yüklenince eski AI yanıtlarının otomatik TTS oynatmaması.
+- Düşünce panelinin izole fixture içinde görünmesi, delta alması, AI balonuna taşınması ve stop/finish sonrası temizlenmesi.
+- Tarayıcı konsolunda bloklayıcı JS hatası olmaması.
+
+Bu katman `shinytest2`, Playwright, Chromote, Selenium, Node veya npm bağımlılığı gerektirmez. Normal kullanıcı arayüzünün parçası değildir ve `R/config_ui_assets.R` manifestine eklenmemelidir; yalnızca doğrudan smoke URL’si açıldığında çalışır.
+
+Üretim VM/SSO zamanlamaları nedeniyle hızlı işlem intro mesajı görsel görünürlüğü browser smoke içinde bloklayıcı koşul değildir. Bu davranış warning/non-blocking tutulur; hızlı işlem intro, model ve araç modu sözleşmeleri deterministik odak testlerle korunmaya devam eder.
+
+Konsolda görülebilen bilinen `Shiny.setInputValue` / `Shiny.setinputValue` zamanlama uyarıları smoke içinde warning-only kabul edilir. Buna karşılık kullanıcıya yansıyan welcome, input, media, saved-chat TTS, reasoning veya quick-action dispatch davranışları bozulursa smoke başarısız olmalıdır.
 
 Bu testler görsel tasarımın yerini almaz; ancak future refactor’ların mevcut Türkçe UX, animasyonlar, sesli etkileşimler ve hızlı işlem akışlarını yanlışlıkla azaltmasını erken yakalamak için sözleşme katmanı sağlar.
 
