@@ -170,6 +170,19 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       calisma_dizini <- runtime_dizin$runtime_workdir %||% calisma_dizini
       mirror_kullanildi <- isTRUE(runtime_dizin$mirrored)
 
+      log_info(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "[RUNTIME_WORKDIR]",
+        "original =",
+        workdir_policy$path %||% "",
+        "| source =",
+        kaynak_calisma_dizini %||% "",
+        "| runtime =",
+        calisma_dizini %||% "",
+        "| mirrored =",
+        isTRUE(mirror_kullanildi)
+      ))
+
       dokuman_baglami <- prepare_claude_code_document_context(
         prompt = kullanici_prompt,
         runtime_workdir = calisma_dizini,

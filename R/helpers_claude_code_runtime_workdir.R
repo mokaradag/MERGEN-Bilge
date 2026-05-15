@@ -55,6 +55,63 @@ is_problematic_windows_workdir <- function(path) {
   isTRUE(unc_mi || ascii_disi_var_mi)
 }
 
+# Runtime aynalama için mevcut dizini relaxed şekilde çözer
+resolve_claude_runtime_source_dir <- function(workdir) {
+  ham_yol <- as.character(workdir %||% "")[1]
+  if (is.na(ham_yol) || !nzchar(ham_yol)) {
+    return("")
+  }
+
+  # 1) Bilge Yolaç yükleme klasörü helper'ındaki relaxed resolver varsa önce onu kullan.
+  # /rehisds/... gibi Shiny tarafında tek slash'a düşmüş ağ yolları burada
+  # //rehisds/... varyantıyla bulunabilir.
+  if (exists("cc_resolve_existing_dir_relaxed", mode = "function", inherits = TRUE)) {
+    relaxed <- tryCatch(
+      cc_resolve_existing_dir_relaxed(ham_yol),
+      error = function(e) ""
+    )
+
+    if (nzchar(relaxed)) {
+      return(relaxed)
+    }
+  }
+
+  # 2) Temel varyantları kendimiz üret.
+  yol_slash <- gsub("\\\\", "/", ham_yol, fixed = TRUE)
+
+  adaylar <- unique(Filter(nzchar, c(
+    ham_yol,
+    yol_slash,
+    enc2utf8(yol_slash),
+    enc2native(yol_slash),
+    if (grepl("^/[^/]", yol_slash) && !grepl("^//", yol_slash)) {
+      paste0("/", yol_slash)
+    } else {
+      NULL
+    },
+    tryCatch(normalize_mcp_path(ham_yol, must_exist = FALSE), error = function(e) ""),
+    tryCatch(normalize_mcp_path(yol_slash, must_exist = FALSE), error = function(e) "")
+  )))
+
+  for (aday in adaylar) {
+    var_mi <- tryCatch(
+      isTRUE(dir.exists(aday)) ||
+        isTRUE(fs::dir_exists(aday)) ||
+        isTRUE(path_exists_relaxed(aday)),
+      error = function(e) FALSE
+    )
+
+    if (!isTRUE(var_mi)) next
+
+    return(tryCatch(
+      normalize_mcp_path(aday, must_exist = FALSE),
+      error = function(e) aday
+    ))
+  }
+
+  ""
+}
+
 # Dizin içeriğini yerel çalışma alanına aynala
 mirror_directory_to_local_workspace <- function(source_dir, target_dir) {
   if (!dir.exists(target_dir)) {
@@ -157,17 +214,21 @@ prepare_claude_runtime_workdir <- function(workdir,
     ))
   }
 
-  source_dir <- tryCatch(
-    normalize_mcp_path(workdir, must_exist = FALSE),
-    error = function(e) as.character(workdir)
-  )
+  original_workdir <- as.character(workdir %||% "")[1]
 
-  dir_ok <- tryCatch(
-    isTRUE(dir.exists(source_dir)) || isTRUE(fs::dir_exists(source_dir)),
-    error = function(e) FALSE
-  )
+  source_dir <- resolve_claude_runtime_source_dir(original_workdir)
 
-  if (!isTRUE(dir_ok)) {
+  if (!nzchar(source_dir)) {
+    # Problemli ağ yolu algılandıysa CLI'a doğrudan göndermeyelim;
+    # ama gerçek dizin çözülemediği için kullanıcıya açık bir log bırakalım.
+    if (isTRUE(is_problematic_windows_workdir(original_workdir))) {
+      log_warn(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "Problemli çalışma dizini algılandı ancak yerel aynalama için çözülemedi:",
+        original_workdir
+      ))
+    }
+
     return(list(
       runtime_workdir = workdir,
       source_workdir = workdir,
@@ -175,7 +236,10 @@ prepare_claude_runtime_workdir <- function(workdir,
     ))
   }
 
-  if (!is_problematic_windows_workdir(source_dir)) {
+  problemli_mi <- isTRUE(is_problematic_windows_workdir(original_workdir)) ||
+    isTRUE(is_problematic_windows_workdir(source_dir))
+
+  if (!isTRUE(problemli_mi)) {
     return(list(
       runtime_workdir = source_dir,
       source_workdir = source_dir,

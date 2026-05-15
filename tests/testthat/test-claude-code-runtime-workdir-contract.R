@@ -209,3 +209,33 @@ test_that("module_claude_code.R çalışma request kimliğini runtime workdir to
     )
   )
 })
+
+test_that("runtime workdir tek slash ağ yolunu relaxed resolver ile aynalar", {
+  test_env <- .source_cc_runtime_workdir_for_test()
+
+  source_dir <- withr::local_tempdir()
+  writeLines("merhaba", file.path(source_dir, "girdi.txt"), useBytes = TRUE)
+
+  test_env$is_problematic_windows_workdir <- function(path) {
+    grepl("^/rehisds|^//rehisds", gsub("\\\\", "/", path), perl = TRUE)
+  }
+
+  test_env$cc_resolve_existing_dir_relaxed <- function(dir_path) {
+    if (identical(gsub("\\\\", "/", dir_path), "/rehisds/uygulamalar/Primavera/PY")) {
+      return(source_dir)
+    }
+
+    ""
+  }
+
+  sonuc <- test_env$prepare_claude_runtime_workdir(
+    "/rehisds/uygulamalar/Primavera/PY",
+    user_id = 42L,
+    runtime_token = "single-slash-network-path"
+  )
+
+  expect_true(isTRUE(sonuc$mirrored))
+  expect_true(dir.exists(sonuc$runtime_workdir))
+  expect_true(file.exists(file.path(sonuc$runtime_workdir, "girdi.txt")))
+  expect_equal(sonuc$source_workdir, source_dir)
+})
