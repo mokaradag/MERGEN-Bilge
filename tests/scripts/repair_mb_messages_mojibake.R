@@ -116,6 +116,50 @@ repair_mb_messages_replace_common_turkish_mojibake <- function(value) {
   out
 }
 
+repair_mb_messages_strip_or_repair_symbol_mojibake <- function(value) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(value)
+  }
+
+  out <- enc2utf8(as.character(value[1]))
+
+  # Common UTF-8 emoji/symbol bytes misread through Windows-1254/1252.
+  # When the byte sequence is incomplete after DB roundtrip, reliable recovery
+  # is not always possible; remove only the corrupt prefix fragments.
+  replacements <- c(
+    "\u011F\u0178\u201D\u008D" = "\U0001F50D", # ğŸ”<control> -> 🔍
+    "\u011F\u0178\u201D\u017D" = "\U0001F50E", # ğŸ”Ž -> 🔎
+    "\u011F\u0178\u201C\u008C" = "\U0001F4CC", # ğŸ“<control> -> 📌
+    "\u011F\u0178\u201C\u009D" = "\U0001F4DD", # ğŸ“<control> -> 📝
+    "\u011F\u0178\u2019\u00A1" = "\U0001F4A1", # ğŸ’¡ -> 💡
+    "\u011F\u0178\u0161\u20AC" = "\U0001F680", # ğŸš€ -> 🚀
+    "\u011F\u0178\u017D\u00AF" = "\U0001F3AF", # ğŸŽ¯ -> 🎯
+    "\u011F\u0178\u2018\u008D" = "\U0001F44D", # ğŸ‘<control> -> 👍
+    "\u00E2\u0153\u2026" = "\u2705",           # âœ… -> ✅
+    "\u00E2\u009D\u0152" = "\u274C",           # â�Œ -> ❌
+    "\u00E2\u0161\u00A0" = "\u26A0",           # âš  -> ⚠
+    "\u00E2\u20AC\u201D" = "\u2014",           # â€” -> —
+    "\u00E2\u20AC\u201C" = "\u2013",           # â€“ -> –
+    "\u00E2\u20AC\u2122" = "\u2019",           # â€™ -> ’
+    "\u00E2\u20AC\u0153" = "\u201C",           # â€œ -> “
+    "\u00E2\u20AC\u009D" = "\u201D"            # â€� -> ”
+  )
+
+  for (bad in names(replacements)) {
+    out <- gsub(bad, replacements[[bad]], out, fixed = TRUE)
+  }
+
+  # If incomplete emoji fragments remain, remove only the broken prefix cluster.
+  # This prevents DB verification from failing forever on unrecoverable partials.
+  out <- gsub("\u011F\u0178[\u0080-\uFFFF]{0,4}", "", out, perl = TRUE)
+  out <- gsub("\u00F0\u0178[\u0080-\uFFFF]{0,4}", "", out, perl = TRUE)
+  out <- gsub("\u00E2[\u0080-\uFFFF]{1,3}", "", out, perl = TRUE)
+
+  # Clean spacing caused by removed corrupt emoji prefixes.
+  out <- gsub("[[:space:]]{2,}", " ", out, perl = TRUE)
+  trimws(out)
+}
+
 repair_mb_messages_repair_visible_text <- function(value) {
   if (is.null(value) || length(value) == 0L || is.na(value[1])) {
     return(value)
@@ -123,20 +167,44 @@ repair_mb_messages_repair_visible_text <- function(value) {
 
   original <- enc2utf8(as.character(value[1]))
 
+  candidate_1 <- tryCatch(
+    normalize_db_visible_value(original),
+    error = function(e) original
+  )
+
+  candidate_2 <- tryCatch(
+    repair_text_mojibake(original, max_passes = 4L),
+    error = function(e) original
+  )
+
+  candidate_3 <- tryCatch(
+    repair_mb_messages_replace_common_turkish_mojibake(original),
+    error = function(e) original
+  )
+
+  candidate_4 <- tryCatch(
+    repair_mb_messages_replace_common_turkish_mojibake(candidate_1),
+    error = function(e) candidate_1
+  )
+
+  candidate_5 <- tryCatch(
+    repair_mb_messages_strip_or_repair_symbol_mojibake(candidate_4),
+    error = function(e) candidate_4
+  )
+
+  candidate_6 <- tryCatch(
+    repair_mb_messages_strip_or_repair_symbol_mojibake(candidate_3),
+    error = function(e) candidate_3
+  )
+
   candidates <- unique(c(
     original,
-    tryCatch(normalize_db_visible_value(original), error = function(e) original),
-    tryCatch(repair_text_mojibake(original, max_passes = 4L), error = function(e) original),
-    tryCatch(
-      repair_mb_messages_replace_common_turkish_mojibake(original),
-      error = function(e) original
-    ),
-    tryCatch(
-      repair_mb_messages_replace_common_turkish_mojibake(
-        normalize_db_visible_value(original)
-      ),
-      error = function(e) original
-    )
+    candidate_1,
+    candidate_2,
+    candidate_3,
+    candidate_4,
+    candidate_5,
+    candidate_6
   ))
 
   bad <- vapply(candidates, repair_mb_messages_has_mojibake, logical(1))
@@ -146,8 +214,10 @@ repair_mb_messages_repair_visible_text <- function(value) {
     return(candidates[which(!bad)[1]])
   }
 
-  # If all still look suspicious, return the last candidate if it changed.
-  changed <- candidates[!identical(candidates, original)]
+  # Otherwise prefer the last changed candidate, because it likely repaired
+  # Turkish letters even if some unrecoverable emoji marker remains.
+  changed <- candidates[candidates != original]
+
   if (length(changed) > 0L) {
     return(changed[length(changed)])
   }
@@ -653,15 +723,26 @@ tryCatch({
     return(invisible(TRUE))
   }
 
-  if (length(verification_failures) > 0L) {
-    all_bad <- do.call(rbind, verification_failures)
+	if (length(verification_failures) > 0L) {
+	  all_bad <- do.call(rbind, verification_failures)
 
-    stop(sprintf(
-      "Repair wrote updates, but verification still found mojibake in %d row(s). First bad MessageID(s): %s",
-      nrow(all_bad),
-      paste(utils::head(all_bad$MessageID, 20L), collapse = ", ")
-    ), call. = FALSE)
-  }
+	  preview <- paste(
+		utils::head(
+		  paste0(
+			"MessageID=", all_bad$MessageID,
+			", Preview=", substr(all_bad$MessageContent, 1, 120)
+		  ),
+		  10L
+		),
+		collapse = " | "
+	  )
+
+	  stop(sprintf(
+		"Repair wrote updates, but verification still found mojibake in %d row(s). First bad rows: %s",
+		nrow(all_bad),
+		preview
+	  ), call. = FALSE)
+	}
 
   final_check_query <- "
     SELECT TOP (25)
