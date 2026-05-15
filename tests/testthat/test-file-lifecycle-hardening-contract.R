@@ -192,10 +192,30 @@ test_that("kismi stale indeks varken ayni kullanici klasorundeki fiziksel dosyal
 
   expect_s3_class(listed, "data.frame")
   expect_true("rapor.pdf" %in% listed$name)
+  
 	expect_true(
 	  "dummy_test_data.xlsx" %in% listed$name,
 	  info = paste("Listed names:", paste(listed$name, collapse = ", "))
 	)
+	
+	expect_equal(
+	  sum(listed$name == "rapor.pdf"),
+	  1L,
+	  info = paste("Duplicate rapor.pdf rows:", paste(listed$name, collapse = ", "))
+	)
+
+	expect_equal(
+	  sum(listed$name == "dummy_test_data.xlsx"),
+	  1L,
+	  info = paste("Duplicate dummy_test_data.xlsx rows:", paste(listed$name, collapse = ", "))
+	)
+
+	expect_equal(
+	  nrow(listed),
+	  length(unique(listed$name)),
+	  info = paste("File manager list contains duplicate display names:", paste(listed$name, collapse = ", "))
+	)
+	
   expect_false(any(grepl("^\\d{8,20}[_-]", listed$name, perl = TRUE)))
 })
 

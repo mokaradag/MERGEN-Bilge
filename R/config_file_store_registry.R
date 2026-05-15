@@ -383,16 +383,20 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
 	if (nrow(df) > 0) {
 	  df <- .file_store_merge_same_user_filesystem(df, user_id, idx)
 
-	  out <- data.frame(
-		path = df$path,
-		name = vapply(df$name, normalize_file_display_name, character(1)),
-		stringsAsFactors = FALSE
-	  )
+		out <- data.frame(
+		  path = df$path,
+		  name = vapply(df$name, normalize_file_display_name, character(1)),
+		  stringsAsFactors = FALSE
+		)
 
-	  attr(out, "source") <- "index+filesystem"
-	  attr(out, "count") <- nrow(out)
-	  log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: index+filesystem)")
-	  return(out)
+		if (exists(".file_store_deduplicate_rows", mode = "function", inherits = TRUE)) {
+		  out <- .file_store_deduplicate_rows(out)
+		}
+
+		attr(out, "source") <- "index+filesystem"
+		attr(out, "count") <- nrow(out)
+		log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: index+filesystem)")
+		return(out)
 	}
   }
 
@@ -421,22 +425,26 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
 
   idx_cache <- .load_index()
 
-  out <- data.frame(
-    path = vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE),
-    name = vapply(
-      paths,
-      function(p) mergen_resolve_display_name(
-        p,
-        user_id = user_id,
-        idx = idx_cache
-      ),
-      character(1)
-    ),
-    stringsAsFactors = FALSE
-  )
+	out <- data.frame(
+	  path = vapply(paths, normalize_utf8_path, character(1), mustWork = FALSE),
+	  name = vapply(
+		paths,
+		function(p) mergen_resolve_display_name(
+		  p,
+		  user_id = user_id,
+		  idx = idx_cache
+		),
+		character(1)
+	  ),
+	  stringsAsFactors = FALSE
+	)
 
-  attr(out, "source") <- "filesystem"
-  attr(out, "count") <- nrow(out)
-  log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: filesystem)")
-  out
+	if (exists(".file_store_deduplicate_rows", mode = "function", inherits = TRUE)) {
+	  out <- .file_store_deduplicate_rows(out)
+	}
+
+	attr(out, "source") <- "filesystem"
+	attr(out, "count") <- nrow(out)
+	log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: filesystem)")
+	out
 }

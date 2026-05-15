@@ -177,30 +177,81 @@
   paths[nzchar(paths)]
 }
 
+.file_store_file_size_safe <- function(path) {
+  size <- suppressWarnings(file.info(path)$size[1])
+  if (is.na(size)) {
+    return(NA_real_)
+  }
+  as.numeric(size)
+}
+
+.file_store_lifecycle_key <- function(path, name = NULL) {
+  path_norm <- normalize_for_path_compare(path)
+  display <- normalize_file_display_name(name %||% recover_display_name_from_storage_name(path))
+  size <- .file_store_file_size_safe(path)
+
+  paste(
+    path_norm,
+    tolower(display),
+    if (is.na(size)) "" else format(size, scientific = FALSE, trim = TRUE),
+    sep = "||"
+  )
+}
+
+.file_store_deduplicate_rows <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) {
+    return(df)
+  }
+
+  keys <- vapply(
+    seq_len(nrow(df)),
+    function(i) .file_store_lifecycle_key(df$path[i], df$name[i]),
+    character(1)
+  )
+
+  df[!duplicated(keys), , drop = FALSE]
+}
+
 .file_store_merge_same_user_filesystem <- function(df, user_id, idx) {
+  df <- .file_store_deduplicate_rows(df)
+
   filesystem_paths <- .file_store_user_dir_paths(user_id)
   if (!length(filesystem_paths)) {
     return(df)
   }
 
-  existing_norm <- vapply(df$path, normalize_for_path_compare, character(1))
-  filesystem_norm <- vapply(filesystem_paths, normalize_for_path_compare, character(1))
-  extra_paths <- filesystem_paths[!(filesystem_norm %in% existing_norm)]
-
-  if (!length(extra_paths)) {
-    return(df)
-  }
-
-  extra_df <- data.frame(
-    key = tolower(basename(extra_paths)),
-    path = vapply(extra_paths, normalize_utf8_path, character(1), mustWork = FALSE),
+  filesystem_df <- data.frame(
+    key = tolower(basename(filesystem_paths)),
+    path = vapply(filesystem_paths, normalize_utf8_path, character(1), mustWork = FALSE),
     name = vapply(
-      extra_paths,
+      filesystem_paths,
       function(p) mergen_resolve_display_name(p, user_id = user_id, idx = idx),
       character(1)
     ),
     stringsAsFactors = FALSE
   )
 
-  rbind(df, extra_df[, c("key", "path", "name"), drop = FALSE])
+  filesystem_df <- .file_store_deduplicate_rows(filesystem_df)
+
+  existing_keys <- vapply(
+    seq_len(nrow(df)),
+    function(i) .file_store_lifecycle_key(df$path[i], df$name[i]),
+    character(1)
+  )
+
+  filesystem_keys <- vapply(
+    seq_len(nrow(filesystem_df)),
+    function(i) .file_store_lifecycle_key(filesystem_df$path[i], filesystem_df$name[i]),
+    character(1)
+  )
+
+  extra_df <- filesystem_df[!(filesystem_keys %in% existing_keys), , drop = FALSE]
+
+  if (!nrow(extra_df)) {
+    return(df)
+  }
+
+  .file_store_deduplicate_rows(
+    rbind(df, extra_df[, c("key", "path", "name"), drop = FALSE])
+  )
 }
