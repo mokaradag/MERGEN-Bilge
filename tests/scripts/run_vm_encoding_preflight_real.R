@@ -386,8 +386,10 @@ tryCatch({
 
       vm_encoding_preflight_stop(sprintf(
         paste(
-          "Son MB_Messages kayıtlarında mojibake tespit edildi.",
-          "İlk bozuk kayıtlar: %s"
+			"Son MB_Messages kayıtlarında mojibake tespit edildi.",
+			"Bu genellikle eski bozuk kayıtların temizlenmesi gerektiğini gösterir;",
+			"yeni yazma yolunu ayrıca MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE ile doğrulayın.",
+			"İlk bozuk kayıtlar: %s"
         ),
         paste(
           utils::head(
