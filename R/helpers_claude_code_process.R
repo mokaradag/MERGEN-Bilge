@@ -114,7 +114,11 @@ is_windows_unc_path <- function(path) {
   if (is.null(path) || !nzchar(path)) return(FALSE)
 
   aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
-  grepl("^//", aday)
+
+  # Windows VM / Shiny textInput bazı ağ yollarını //sunucu/paylasim yerine
+  # /sunucu/paylasim biçimine düşürebiliyor. cmd.exe için bu da UNC benzeri
+  # problemli yoldur ve processx wd olarak verilmemelidir.
+  grepl("^//", aday) || grepl("^/[^/]", aday)
 }
 
 # cmd.exe içinde kullanılacak çalışma dizinini Windows biçimine çevir
@@ -132,6 +136,114 @@ normalize_cmd_workdir <- function(path) {
   aday
 }
 
+# Windows cmd.exe yolunu güvenli şekilde çözer
+resolve_windows_cmd_path <- function() {
+  adaylar <- unique(Filter(nzchar, c(
+    Sys.getenv("ComSpec", ""),
+    file.path(Sys.getenv("SystemRoot", "C:/Windows"), "System32", "cmd.exe"),
+    Sys.which("cmd.exe"),
+    "C:/Windows/System32/cmd.exe",
+    "cmd.exe"
+  )))
+
+  for (aday in adaylar) {
+    aday <- as.character(aday)[1]
+    if (is.na(aday) || !nzchar(aday)) next
+
+    if (identical(tolower(aday), "cmd.exe")) {
+      return("cmd.exe")
+    }
+
+    if (file.exists(aday)) {
+      return(normalizePath(aday, winslash = "\\", mustWork = FALSE))
+    }
+  }
+
+  "cmd.exe"
+}
+
+# processx'in sadece süreci başlatmak için kullanacağı güvenli yerel dizin
+get_safe_processx_launch_workdir <- function(preferred = NULL) {
+  adaylar <- c(
+    preferred %||% "",
+    Sys.getenv("TEMP", ""),
+    Sys.getenv("TMP", ""),
+    tempdir(),
+    claude_code_config$default_workdir %||% ""
+  )
+
+  for (aday in adaylar) {
+    if (!nzchar(aday) || !dir.exists(aday)) next
+
+    aday_norm <- tryCatch(
+      normalizePath(aday, winslash = "/", mustWork = FALSE),
+      error = function(e) aday
+    )
+
+    # cmd.exe processx tarafından başlatılırken wd yerel ve basit olmalı.
+    # Gerçek çalışma dizinine komut satırı içinde cd /d veya pushd ile geçilecek.
+    if (.Platform$OS.type == "windows") {
+      aday_slash <- gsub("\\\\", "/", aday_norm, fixed = TRUE)
+      if (grepl("^//", aday_slash) || grepl("^/[^/]", aday_slash)) next
+      if (grepl("[^ -~]", enc2utf8(aday_norm), perl = TRUE)) next
+    }
+
+    return(aday_norm)
+  }
+
+  normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+}
+
+# cmd.exe içinde gerçek çalışma dizinine geçip .cmd dosyasını çalıştıracak satırı kurar
+build_windows_cmd_invocation_line <- function(cli_path, args, workdir = NULL) {
+  cli_cmd <- normalizePath(cli_path, winslash = "\\", mustWork = FALSE)
+
+  quoted_args <- vapply(
+    args,
+    function(x) shQuote(as.character(x), type = "cmd"),
+    character(1),
+    USE.NAMES = FALSE
+  )
+
+  if (is.null(workdir) || !nzchar(workdir)) {
+    return(paste(
+      c("call", shQuote(cli_cmd, type = "cmd"), quoted_args),
+      collapse = " "
+    ))
+  }
+
+  hedef_dizin <- normalize_cmd_workdir(workdir)
+
+  if (is_windows_unc_path(workdir)) {
+    return(paste(
+      c(
+        "pushd",
+        shQuote(hedef_dizin, type = "cmd"),
+        "&&",
+        "call",
+        shQuote(cli_cmd, type = "cmd"),
+        quoted_args,
+        "&",
+        "popd"
+      ),
+      collapse = " "
+    ))
+  }
+
+  paste(
+    c(
+      "cd",
+      "/d",
+      shQuote(hedef_dizin, type = "cmd"),
+      "&&",
+      "call",
+      shQuote(cli_cmd, type = "cmd"),
+      quoted_args
+    ),
+    collapse = " "
+  )
+}
+
 #' processx için komut ve argümanları hazırlar
 #' Windows'ta .cmd dosyalarını cmd.exe /c üzerinden sarar
 #'
@@ -141,7 +253,6 @@ normalize_cmd_workdir <- function(path) {
 #' @return Liste: command, args, env, wd
 build_processx_command <- function(cli_path, args, workdir = NULL) {
   if (.Platform$OS.type == "windows" && grepl("\\.cmd$", cli_path, ignore.case = TRUE)) {
-    # cmd.exe için Windows stilinde dizin kullan
     npm_dizini <- normalizePath(dirname(cli_path), winslash = "\\", mustWork = FALSE)
     node_yolu <- resolve_node_path()
     node_dizini <- if (!is.null(node_yolu)) {
@@ -167,55 +278,35 @@ build_processx_command <- function(cli_path, args, workdir = NULL) {
 
     env[[path_adi]] <- yeni_path
 
-    # UNC çalışma dizininde cmd.exe doğrudan başlatılırsa C:\Windows'a düşebilir.
-    # Bu yüzden ağ yolunu pushd ile geçici sürücüye eşleyip komutu orada çalıştır.
+    komut_satiri <- build_windows_cmd_invocation_line(
+      cli_path = cli_path,
+      args = args,
+      workdir = workdir
+    )
+
     if (is_windows_unc_path(workdir)) {
-      hedef_dizin <- normalize_cmd_workdir(workdir)
-      cli_cmd <- normalizePath(cli_path, winslash = "\\", mustWork = FALSE)
-      quoted_args <- vapply(
-        args,
-        function(x) shQuote(as.character(x), type = "cmd"),
-        character(1),
-        USE.NAMES = FALSE
-      )
-
-      komut_satiri <- paste(
-        c(
-          "pushd",
-          shQuote(hedef_dizin, type = "cmd"),
-          "&&",
-          "call",
-          shQuote(cli_cmd, type = "cmd"),
-          quoted_args,
-          "&",
-          "popd"
-        ),
-        collapse = " "
-      )
-
       log_info(paste(
         CLAUDE_CODE_LOG_PREFIX,
-        "UNC çalışma dizini pushd ile eşlendi:",
+        "UNC/ağ çalışma dizini cmd.exe içinde pushd ile eşlendi:",
         workdir
       ))
-
-      return(list(
-        command = Sys.getenv("ComSpec", "cmd.exe"),
-        args = c("/d", "/c", komut_satiri),
-        env = env,
-        wd = get_safe_claude_cli_workdir(workdir)
+    } else {
+      log_info(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "Windows .cmd çalıştırması güvenli yerel launch wd ile başlatılıyor. Gerçek çalışma dizini:",
+        workdir %||% ""
       ))
     }
 
-    list(
-      command = Sys.getenv("ComSpec", "cmd.exe"),
-      args = c("/d", "/c", normalizePath(cli_path, winslash = "\\", mustWork = FALSE), args),
+    return(list(
+      command = resolve_windows_cmd_path(),
+      args = c("/d", "/s", "/c", komut_satiri),
       env = env,
-      wd = workdir
-    )
-  } else {
-    list(command = cli_path, args = args, env = NULL, wd = workdir)
+      wd = get_safe_processx_launch_workdir()
+    ))
   }
+
+  list(command = cli_path, args = args, env = NULL, wd = workdir)
 }
 
 # ------------------------------------------------------------------------------
@@ -410,10 +501,16 @@ get_safe_claude_cli_workdir <- function(workdir = NULL) {
 
   for (aday in adaylar) {
     if (!nzchar(aday) || !dir.exists(aday)) next
-    if (
-      .Platform$OS.type == "windows" &&
-      (grepl("^\\\\\\\\", aday) || grepl("^//", gsub("\\\\", "/", aday)))
-    ) next
+	aday_slash <- gsub("\\\\", "/", aday)
+
+	if (
+	  .Platform$OS.type == "windows" &&
+	  (
+		grepl("^\\\\\\\\", aday) ||
+		  grepl("^//", aday_slash) ||
+		  grepl("^/[^/]", aday_slash)
+	  )
+	) next
     return(normalizePath(aday, winslash = "/", mustWork = FALSE))
   }
 

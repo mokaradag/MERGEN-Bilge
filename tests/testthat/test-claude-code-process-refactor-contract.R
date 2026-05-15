@@ -98,6 +98,9 @@ test_that("Claude Code process yardımcıları ayrı dosyaya taşınmıştır", 
     "ensure_utf8",
     "is_windows_unc_path",
     "normalize_cmd_workdir",
+    "resolve_windows_cmd_path",
+    "get_safe_processx_launch_workdir",
+    "build_windows_cmd_invocation_line",
     "build_processx_command",
     "parse_claude_code_json_output",
     "get_safe_claude_cli_workdir"
@@ -193,6 +196,25 @@ test_that("Claude Code process helper temel davranışları korunur", {
   expect_equal(cmd$wd, tmp)
 })
 
+test_that("Windows .cmd çalıştırması processx'e problemli wd vermez", {
+  test_env <- .source_claude_code_process_for_test()
+
+  skip_if_not(.Platform$OS.type == "windows")
+
+  komut <- test_env$build_processx_command(
+    cli_path = "C:/Users/test/AppData/Roaming/npm/claude.cmd",
+    args = c("--print", "--", "dosyaları incele"),
+    workdir = "//rehisds/uygulamalar/Primavera/PY"
+  )
+
+  expect_match(tolower(komut$command), "cmd\\.exe$")
+  expect_true(any(komut$args == "/c"))
+  expect_match(paste(komut$args, collapse = " "), "pushd")
+  expect_match(paste(komut$args, collapse = " "), "call")
+  expect_false(test_env$is_windows_unc_path(komut$wd))
+  expect_true(dir.exists(komut$wd))
+})
+
 test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
   test_env <- .source_claude_code_process_for_test()
 
@@ -205,8 +227,8 @@ test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
       list(
         type = "text",
         content = paste0(
-          "\u00c3\u2021al\u00c4\u00b1\u00c5\u0178ma ",
-          "\u00f0\u0178\u0161\u20ac"
+          "\\u00c3\\u2021al\\u00c4\\u00b1\\u00c5\\u0178ma ",
+          "\\u00f0\\u0178\\u0161\\u20ac"
         )
       ),
       auto_unbox = TRUE
