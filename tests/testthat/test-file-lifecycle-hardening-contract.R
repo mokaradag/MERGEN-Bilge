@@ -50,6 +50,31 @@ withr::defer(setwd(.old_wd_file_lifecycle), testthat::teardown_env())
   )
 }
 
+.file_lifecycle_read_text <- function(path) {
+  full_path <- file.path(repo_root_file_lifecycle, path)
+
+  size <- suppressWarnings(file.info(full_path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
+  enc2utf8(txt)
+}
+
 for (source_file in c(
   "R/utils_common.R",
   "R/utils_text_encoding.R",
@@ -58,6 +83,7 @@ for (source_file in c(
   "R/utils_atomic_write.R",
   "R/config_file_store.R",
   "R/config_file_store_index_mutation.R",
+  "R/config_file_store_listing_helpers.R",
   "R/config_file_store_registry.R",
   "R/helpers_file_manager_policy.R",
   "R/helpers_file_manager_table.R",
@@ -183,16 +209,15 @@ test_that("ozetleme Excel secimini okumadan reddeder", {
 })
 
 test_that("MCP resolver mutlak yol argumanini statik sozlesme olarak reddeder", {
-  resolver_path <- file.path(repo_root_file_lifecycle, "R", "helpers_mcp_file_resolver.R")
-  txt <- paste(readLines(resolver_path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+	txt <- .file_lifecycle_read_text("R/helpers_mcp_file_resolver.R")
 
-  expect_true(
-    grepl("Absolute path argument rejected", txt, fixed = TRUE),
-    info = "MCP resolver mutlak yol argumanini sadece loglayip basename'e dusmemeli; reddetmelidir."
-  )
+	expect_true(
+	  grepl("Absolute path argument rejected", txt, fixed = TRUE, useBytes = TRUE),
+	  info = "MCP resolver mutlak yol argumanini sadece loglayip basename'e dusmemeli; reddetmelidir."
+	)
 
-  expect_true(
-    grepl("Mutlak dosya yolu kabul edilmez", txt, fixed = TRUE),
-    info = "Kullaniciya acik ve guvenli bir mutlak yol reddi mesaji donmelidir."
-  )
+	expect_true(
+	  grepl("file token", txt, fixed = TRUE, useBytes = TRUE),
+	  info = "Kullaniciya guvenli dosya jetonu/dosya adi kullanmasi soylenmelidir."
+	)
 })

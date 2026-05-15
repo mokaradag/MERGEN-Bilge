@@ -100,6 +100,7 @@ test_that("file store public registry fonksiyonları config_file_store.R dışı
 
 test_that("file store indeks mutasyonları yarış koruması kullanır", {
   mutation_txt <- .read_file_store_contract_text("R/config_file_store_index_mutation.R")
+  listing_txt <- .read_file_store_contract_text("R/config_file_store_listing_helpers.R")
   registry_txt <- .read_file_store_contract_text("R/config_file_store_registry.R")
 
   expect_true(
@@ -122,20 +123,20 @@ test_that("file store indeks mutasyonları yarış koruması kullanır", {
     info = "Yükleme kaydı ve indeks silme işlemleri mutate helper üzerinden yapılmalıdır."
   )
 
-  expect_true(
-    grepl(".file_store_mutate_index(function(idx_local)", registry_txt, fixed = TRUE),
-    info = "Dosya listeleme içindeki stale prune/rehydrate yazımları mutate helper üzerinden yapılmalıdır."
-  )
+	expect_true(
+	  grepl(".file_store_mutate_index(function(idx_local)", listing_txt, fixed = TRUE),
+	  info = "Dosya listeleme içindeki stale prune/rehydrate yazımları mutate helper üzerinden yapılmalıdır."
+	)
 
-  expect_true(
-    grepl("same_missing_path", registry_txt, fixed = TRUE),
-    info = "Stale prune yeni yükleme girdisini silmemek için eski path karşılaştırması yapmalıdır."
-  )
+	expect_true(
+	  grepl("same_missing_path", listing_txt, fixed = TRUE),
+	  info = "Stale prune yeni yükleme girdisini silmemek için eski path karşılaştırması yapmalıdır."
+	)
 
-  expect_true(
-    grepl("old_path", registry_txt, fixed = TRUE),
-    info = "Rehydrate işlemi yeni path'i yalnızca eski path hâlâ aynıysa yazmalıdır."
-  )
+	expect_true(
+	  grepl("old_path", listing_txt, fixed = TRUE),
+	  info = "Rehydrate işlemi yeni path'i yalnızca eski path hâlâ aynıysa yazmalıdır."
+	)
 })
 
 test_that("file store refactor fonksiyon yoğunluğunu dosyalar arasında böler", {
