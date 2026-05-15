@@ -127,22 +127,22 @@ repair_mb_messages_strip_or_repair_symbol_mojibake <- function(value) {
   # When the byte sequence is incomplete after DB roundtrip, reliable recovery
   # is not always possible; remove only the corrupt prefix fragments.
   replacements <- c(
-    "\u011F\u0178\u201D\u008D" = "\U0001F50D", # ğŸ”<control> -> 🔍
-    "\u011F\u0178\u201D\u017D" = "\U0001F50E", # ğŸ”Ž -> 🔎
-    "\u011F\u0178\u201C\u008C" = "\U0001F4CC", # ğŸ“<control> -> 📌
-    "\u011F\u0178\u201C\u009D" = "\U0001F4DD", # ğŸ“<control> -> 📝
-    "\u011F\u0178\u2019\u00A1" = "\U0001F4A1", # ğŸ’¡ -> 💡
-    "\u011F\u0178\u0161\u20AC" = "\U0001F680", # ğŸš€ -> 🚀
-    "\u011F\u0178\u017D\u00AF" = "\U0001F3AF", # ğŸŽ¯ -> 🎯
-    "\u011F\u0178\u2018\u008D" = "\U0001F44D", # ğŸ‘<control> -> 👍
-    "\u00E2\u0153\u2026" = "\u2705",           # âœ… -> ✅
-    "\u00E2\u009D\u0152" = "\u274C",           # â�Œ -> ❌
-    "\u00E2\u0161\u00A0" = "\u26A0",           # âš  -> ⚠
-    "\u00E2\u20AC\u201D" = "\u2014",           # â€” -> —
-    "\u00E2\u20AC\u201C" = "\u2013",           # â€“ -> –
-    "\u00E2\u20AC\u2122" = "\u2019",           # â€™ -> ’
-    "\u00E2\u20AC\u0153" = "\u201C",           # â€œ -> “
-    "\u00E2\u20AC\u009D" = "\u201D"            # â€� -> ”
+    "\u011F\u0178\u201D\u008D" = "\U0001F50D",
+    "\u011F\u0178\u201D\u017D" = "\U0001F50E",
+    "\u011F\u0178\u201C\u008C" = "\U0001F4CC",
+    "\u011F\u0178\u201C\u009D" = "\U0001F4DD",
+    "\u011F\u0178\u2019\u00A1" = "\U0001F4A1",
+    "\u011F\u0178\u0161\u20AC" = "\U0001F680",
+    "\u011F\u0178\u017D\u00AF" = "\U0001F3AF",
+    "\u011F\u0178\u2018\u008D" = "\U0001F44D",
+    "\u00E2\u0153\u2026" = "\u2705",
+    "\u00E2\u009D\u0152" = "\u274C",
+    "\u00E2\u0161\u00A0" = "\u26A0",
+    "\u00E2\u20AC\u201D" = "\u2014",
+    "\u00E2\u20AC\u201C" = "\u2013",
+    "\u00E2\u20AC\u2122" = "\u2019",
+    "\u00E2\u20AC\u0153" = "\u201C",
+    "\u00E2\u20AC\u009D" = "\u201D"
   )
 
   for (bad in names(replacements)) {
