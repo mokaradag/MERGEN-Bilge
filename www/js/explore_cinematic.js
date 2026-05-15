@@ -245,7 +245,7 @@
 		// Kritik: Ayarları hemen Shiny'ye gönder.
 		sendModeSelectionToShiny();
 
-		dismissDeepSpace(function afterIntroStopped() {
+		dismissDeepSpace(function() {
 		  sendModeSelectionToShiny();
 		});
 
