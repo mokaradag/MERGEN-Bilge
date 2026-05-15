@@ -52,6 +52,11 @@ Current contract:
 - `normalize_db_value()` must respect the resolved DB client encoding. When the DB client encoding is not UTF-8, user-visible Turkish text must be prepared for that DBI/ODBC parameter boundary instead of blindly returning UTF-8.
 - Keep the UTF-8 and non-UTF-8 DB parameter paths explicitly separated. The helper that detects UTF-8 DB client encoding, such as `db_client_encoding_is_utf8()`, is part of the encoding safety boundary.
 - This change protects future writes; it is not an automatic data migration. Existing mojibake rows must only be repaired after a DB backup, after the write path is confirmed fixed in SSMS, and through a separate one-time repair plan.
+- New `MB_Messages` writes must be verified after insert and before commit. `save_message_to_db()` and `worker_save_assistant_response()` must call `assert_mb_message_visible_encoding_clean()` for the inserted message ID before committing. If the guard detects mojibake in `MessageContent` or `ReasoningContent`, the transaction must roll back.
+- Historical mojibake data and future write regressions are separate concerns. Do not weaken the post-insert guard because old rows are dirty. Old rows may remain as legacy data unless a backup-approved, one-time repair run is explicitly requested.
+- `tests/scripts/run_vm_encoding_preflight_real.R` must keep transactional new-write validation strict when `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE`. Recent/historical `MB_Messages` mojibake scan results are warning-only by default and become blocking only when `MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE=TRUE`.
+- `tests/scripts/repair_mb_messages_mojibake.R` is a maintenance-only, best-effort helper. It must be safe to run with `source(...)`, must not call `quit()`, and must not be treated as a guaranteed migration for every old corrupted fragment.
+- Do not add literal emoji to R test sources, maintenance scripts, or parser-sensitive comments. Use parser-safe construction such as `intToUtf8(...)` in tests when emoji fixtures are unavoidable.
 - Treat emoji persistence as a separate DB capability question. Before changing DB write encoding for emoji, verify the relevant SQL Server column types (`nvarchar` vs `varchar`) and run a real write/read test through the app and SSMS. Do not trade Turkish text integrity for emoji display.
 - Read-side normalization may defensively repair display of older mojibake values, but it must not be used as an excuse to allow new mojibake writes. New records in `MB_Users`, `MB_Chats`, `MB_Messages`, `MB_Feedback`, and other MB tables must be validated at rest in SQL Server.
 - Image gallery message updates must repair only the user-visible replacement `MB_Messages.MessageContent` text. Technical values such as `MessageID` must not be included in a whole-list mojibake repair call.
@@ -75,6 +80,7 @@ Protected by:
 - `tests/testthat/test-ui-asset-manifest-contract.R`
 - `tests/testthat/test-db-user-visible-encoding-boundaries.R`
 - `tests/scripts/run_vm_encoding_preflight_real.R`
+- `tests/scripts/repair_mb_messages_mojibake.R`
 - `tests/scripts/parse_sanity_check.R`
 
 Focused validation:
@@ -88,7 +94,10 @@ Focused validation:
 - `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
 - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
 - `Sys.setenv(MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST = "TRUE")`
+- `Sys.setenv(MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE = "FALSE")`
 - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
+- `Sys.setenv(MERGEN_REPAIR_MOJIBAKE_APPLY = "FALSE")`
+- `source("tests/scripts/repair_mb_messages_mojibake.R", encoding = "UTF-8")`
 - `Sys.setenv(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE")`
 - `source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")`
 - `source("tests/testthat.R", encoding = "UTF-8")`
@@ -102,6 +111,10 @@ VM-only manual validation after any DB encoding change:
 - Start the app on the Windows VM with SSO enabled.
 - Confirm `.Renviron` contains both `DB_CLIENT_ENCODING=WINDOWS-1254` and `DB_NAME_ENCODING=WINDOWS-1254`, then restart the full R process; a browser refresh is not enough.
 - Run the transactional VM encoding preflight with `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE` and confirm it rolls back the probe records.
+- Keep `MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE=FALSE` for normal acceptance when historical dirty rows are known to exist; use `TRUE` only when the goal is to block on all legacy mojibake.
+- Confirm that the latest newly inserted `MB_Messages` rows are clean in SSMS. Historical dirty rows may remain as legacy data and should not be confused with new write regressions.
+- If a one-time repair is attempted, run `tests/scripts/repair_mb_messages_mojibake.R` first with `MERGEN_REPAIR_MOJIBAKE_APPLY=FALSE`, review the preview, then use `TRUE` only after DB backup and approval.
+- Never add `quit()` to repository maintenance scripts that are expected to be run via `source(...)` in RStudio or on the VM.
 - Create a chat containing `Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü` and `Türkiye'nin başkenti neresidir?`.
 - Add feedback tags/comments containing Turkish characters.
 - Inspect newest `MB_Messages`, `MB_Chats.ChatTitle`, and `MB_Feedback` rows in SSMS.
