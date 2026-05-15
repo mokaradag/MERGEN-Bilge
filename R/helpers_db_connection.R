@@ -156,6 +156,104 @@ normalize_db_technical_value <- function(x) {
   enc2utf8(x)
 }
 
+db_visible_text_has_mojibake <- function(value) {
+  if (is.null(value) || length(value) == 0L) {
+    return(FALSE)
+  }
+
+  text <- paste(enc2utf8(as.character(value)), collapse = "\n")
+
+  if (!nzchar(text)) {
+    return(FALSE)
+  }
+
+  mojibake_tokens <- c(
+    "\u00C3\u00A7", # c cedilla corrupted
+    "\u00C3\u00B6", # o umlaut corrupted
+    "\u00C3\u00BC", # u umlaut corrupted
+    "\u00C4\u00B1", # dotless i corrupted
+    "\u00C4\u00B0", # dotted capital I corrupted
+    "\u00C4\u0178", # g breve corrupted
+    "\u00C5\u0178", # s cedilla corrupted
+    "\u00C3\u2021", # capital C cedilla corrupted
+    "\u00C3\u2013", # capital O umlaut corrupted
+    "\u00C3\u0153", # capital U umlaut corrupted
+    "\u00C4\u017E", # capital G breve corrupted
+    "\u00C5\u017E", # capital S cedilla corrupted
+    "T\u00C3\u00BCrkiye",
+    "Nas\u00C4\u00B1l",
+    "yard\u00C4\u00B1mc\u00C4\u00B1",
+    "ba\u00C5\u0178kent",
+    "te\u00C5\u0178ekk\u00C3\u00BCr"
+  )
+
+  any(vapply(
+    mojibake_tokens,
+    function(token) grepl(token, text, fixed = TRUE),
+    logical(1)
+  ))
+}
+
+assert_mb_message_visible_encoding_clean <- function(conn, message_id) {
+  if (is.null(conn) || is.null(message_id) || is.na(message_id)) {
+    return(invisible(TRUE))
+  }
+
+  has_reasoning_content <- tryCatch({
+    cols <- DBI::dbGetQuery(
+      conn,
+      "
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'MB_Messages'
+          AND COLUMN_NAME = 'ReasoningContent'
+      "
+    )
+    nrow(cols) > 0L
+  }, error = function(e) {
+    FALSE
+  })
+
+  query <- if (isTRUE(has_reasoning_content)) {
+    "
+      SELECT MessageContent, ReasoningContent
+      FROM MB_Messages
+      WHERE MessageID = ?
+    "
+  } else {
+    "
+      SELECT
+        MessageContent,
+        CAST(NULL AS NVARCHAR(MAX)) AS ReasoningContent
+      FROM MB_Messages
+      WHERE MessageID = ?
+    "
+  }
+
+  row <- DBI::dbGetQuery(
+    conn,
+    query,
+    params = normalize_db_params(list(as.integer(message_id)))
+  )
+
+  if (nrow(row) == 0L) {
+    return(invisible(TRUE))
+  }
+
+  if (db_visible_text_has_mojibake(row$MessageContent) ||
+      db_visible_text_has_mojibake(row$ReasoningContent)) {
+    stop(
+      sprintf(
+        "MB_Messages encoding guard failed after insert. MessageID=%s. Transaction will be rolled back.",
+        as.character(message_id)
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 normalize_db_params <- function(params, repair_mojibake = FALSE) {
   lapply(params, normalize_db_value, repair_mojibake = repair_mojibake)
 }

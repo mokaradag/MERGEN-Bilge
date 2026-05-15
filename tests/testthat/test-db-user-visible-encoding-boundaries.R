@@ -25,25 +25,6 @@
   stop("Repo kökü bulunamadı.", call. = FALSE)
 }
 
-test_that("chat visible DB normalization repairs observed Turkish AI-answer mojibake", {
-  skip_if_not(exists("normalize_db_visible_value", mode = "function", inherits = TRUE))
-
-  broken_ai_answer <- "Ä°yi, teÅŸekkÃ¼r ederim! Sen nasÄ±lsÄ±n? YardÄ±mcÄ± olabilirim."
-  expected_ai_answer <- "İyi, teşekkür ederim! Sen nasılsın? Yardımcı olabilirim."
-
-  repaired <- normalize_db_visible_value(broken_ai_answer)
-
-  expect_identical(
-    repaired,
-    expected_ai_answer
-  )
-
-  expect_false(
-    grepl("Ã|Ä|Å|Â|�", repaired, perl = TRUE),
-    info = "Kullanıcıya görünen AI yanıtı DB yazımı öncesinde mojibake içermemelidir."
-  )
-})
-
 .read_repo_text_for_db_encoding_boundary_tests <- function(path) {
   repo_root <- .find_repo_root_for_db_encoding_boundary_tests()
   full_path <- file.path(repo_root, path)
@@ -94,6 +75,25 @@ test_that("chat visible DB normalization repairs observed Turkish AI-answer moji
   }
   length(matches)
 }
+
+test_that("chat visible DB normalization repairs observed Turkish AI-answer mojibake", {
+  skip_if_not(exists("normalize_db_visible_value", mode = "function", inherits = TRUE))
+
+  broken_ai_answer <- "Ä°yi, teÅŸekkÃ¼r ederim! Sen nasÄ±lsÄ±n? YardÄ±mcÄ± olabilirim."
+  expected_ai_answer <- "İyi, teşekkür ederim! Sen nasılsın? Yardımcı olabilirim."
+
+  repaired <- normalize_db_visible_value(broken_ai_answer)
+
+  expect_identical(
+    repaired,
+    expected_ai_answer
+  )
+
+  expect_false(
+    grepl("Ã|Ä|Å|Â|\uFFFD", repaired, perl = TRUE),
+    info = "Kullanıcıya görünen AI yanıtı DB yazımı öncesinde mojibake içermemelidir."
+  )
+})
 
 test_that("DB normalization repair remains opt-in for technical character values", {
   skip_if_not(exists("normalize_db_value", mode = "function", inherits = TRUE))
@@ -343,6 +343,63 @@ test_that("mixed chat DB write params do not enable whole-list mojibake repair",
       "Karma sohbet DB parametre listelerinde whole-list repair_mojibake=TRUE kaldı:",
       paste(matched, collapse = ", ")
     )
+  )
+})
+
+test_that("new MB_Messages writes have a post-insert encoding guard", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_chat_mutations.R")
+  conn_txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_connection.R")
+
+  expect_true(
+    .has_boundary_text(conn_txt, "db_visible_text_has_mojibake <- function(value)"),
+    label = "Central mojibake detector must exist for DB-visible text."
+  )
+
+  expect_true(
+    .has_boundary_text(conn_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id)"),
+    label = "Post-insert MB_Messages encoding guard must exist."
+  )
+
+  expect_gte(
+    .count_boundary_regex(
+      txt,
+      "assert_mb_message_visible_encoding_clean\\(conn,\\s*(message_id|response_message_id)\\)"
+    ),
+    2L,
+    label = "Both main and worker MB_Messages write paths must verify encoding before commit."
+  )
+})
+
+test_that("VM encoding preflight treats legacy mojibake as warning unless strict flag is set", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("tests/scripts/run_vm_encoding_preflight_real.R")
+
+  expected <- c(
+    "MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE",
+    "Yeni yazma yolu MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE ile ayrıca doğrulanmalıdır.",
+    "if (isTRUE(fail_on_legacy))",
+    "vm_encoding_preflight_stop(legacy_message)",
+    "cat(legacy_message, \"\\n\")"
+  )
+
+  found <- vapply(expected, function(needle) .has_boundary_text(txt, needle), logical(1))
+
+  expect_true(
+    all(found),
+    label = paste(
+      "Eksik legacy mojibake preflight sözleşmesi:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+})
+
+test_that("maintenance mojibake repair script does not terminate RStudio sessions", {
+  txt <- .read_repo_text_for_db_encoding_boundary_tests(
+    "tests/scripts/repair_mb_messages_mojibake.R"
+  )
+
+  expect_false(
+    .has_boundary_regex(txt, "quit\\s*\\("),
+    info = "source() ile çalıştırılan bakım scriptleri quit() çağırmamalıdır."
   )
 })
 

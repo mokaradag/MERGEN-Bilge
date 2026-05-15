@@ -189,12 +189,18 @@ save_message_to_db <- function(chat_id, msg) {
     )
   })
 
-  if (nrow(res) == 0) stop("Failed to save message to DB.")
+	if (nrow(res) == 0) stop("Failed to save message to DB.")
 
-  DBI::dbCommit(conn)
-  committed <- TRUE
+	message_id <- as.integer(res$MessageID[1])
 
-  return(as.integer(res$MessageID[1]))
+	if (exists("assert_mb_message_visible_encoding_clean", mode = "function", inherits = TRUE)) {
+	  assert_mb_message_visible_encoding_clean(conn, message_id)
+	}
+
+	DBI::dbCommit(conn)
+	committed <- TRUE
+
+	return(message_id)
 }
 
 # Safe message saving with fallback logging
@@ -373,10 +379,15 @@ worker_save_assistant_response <- function(chat_id, response_text,
 	)
   )
 
-  response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_
+	response_message_id <- if (nrow(res) > 0) as.integer(res$MessageID[1]) else NA_integer_
 
-  DBI::dbCommit(conn)
-  committed <- TRUE
+	if (!is.na(response_message_id) &&
+		exists("assert_mb_message_visible_encoding_clean", mode = "function", inherits = TRUE)) {
+	  assert_mb_message_visible_encoding_clean(conn, response_message_id)
+	}
+
+	DBI::dbCommit(conn)
+	committed <- TRUE
 
   if (isTRUE(log_usage) && !is.na(response_message_id)) {
     tryCatch({
