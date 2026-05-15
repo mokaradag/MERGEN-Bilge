@@ -64,6 +64,7 @@
 test_that("file store public registry fonksiyonları config_file_store.R dışına taşınmıştır", {
   config_txt <- .read_file_store_contract_text("R/config_file_store.R")
   mutation_txt <- .read_file_store_contract_text("R/config_file_store_index_mutation.R")
+  listing_txt <- .read_file_store_contract_text("R/config_file_store_listing_helpers.R")
   registry_txt <- .read_file_store_contract_text("R/config_file_store_registry.R")
 
   mutation_functions <- c(
@@ -140,6 +141,7 @@ test_that("file store indeks mutasyonları yarış koruması kullanır", {
 test_that("file store refactor fonksiyon yoğunluğunu dosyalar arasında böler", {
   config_txt <- .read_file_store_contract_text("R/config_file_store.R")
   mutation_txt <- .read_file_store_contract_text("R/config_file_store_index_mutation.R")
+  listing_txt <- .read_file_store_contract_text("R/config_file_store_listing_helpers.R")
   registry_txt <- .read_file_store_contract_text("R/config_file_store_registry.R")
 
   expect_true(
@@ -155,5 +157,10 @@ test_that("file store refactor fonksiyon yoğunluğunu dosyalar arasında böler
   expect_true(
     .file_store_function_count(registry_txt) < 25L,
     info = "R/config_file_store_registry.R yeni function-heavy dosya olmamalıdır."
+  )
+  
+  expect_true(
+    .file_store_function_count(listing_txt) < 25L,
+    info = "R/config_file_store_listing_helpers.R yeni function-heavy dosya olmamalıdır."
   )
 })

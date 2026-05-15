@@ -28,6 +28,7 @@ source_manifest_after_future_paths <- c(
   "R/config_sso.R",
   "R/config_file_store.R",
   "R/config_file_store_index_mutation.R",
+  "R/config_file_store_listing_helpers.R",
   "R/config_file_store_registry.R",
   "R/config_characters.R",
   "R/config_version_history.R",

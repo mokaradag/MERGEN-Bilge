@@ -38,6 +38,10 @@ if (!exists("resolve_repo_root_for_tests", envir = globalenv(), inherits = FALSE
 
 repo_root_file_lifecycle <- resolve_repo_root_for_tests()
 
+.old_wd_file_lifecycle <- getwd()
+setwd(repo_root_file_lifecycle)
+withr::defer(setwd(.old_wd_file_lifecycle), testthat::teardown_env())
+
 .file_lifecycle_source <- function(path) {
   source(
     file.path(repo_root_file_lifecycle, path),

@@ -87,6 +87,18 @@ test_that("runtime manifest kritik helper'ları beklenen sırada içerir", {
   )
 })
 
+test_that("runtime manifest file store helper sırasını korur", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/config_file_store.R",
+      "R/config_file_store_index_mutation.R",
+      "R/config_file_store_listing_helpers.R",
+      "R/config_file_store_registry.R"
+    ),
+    label = "File store manifest source sırası bozulmuş:"
+  )
+})
+
 test_that("runtime manifest welcome ekranı kaynaklarını server_welcome_handlers öncesinde içerir", {
   expect_source_manifest_order_for_tests(
     c(
