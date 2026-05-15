@@ -152,16 +152,23 @@ test_that("kismi stale indeks varken ayni kullanici klasorundeki fiziksel dosyal
 
   temp_index <- file.path(temp_root, "index.json")
 
-  assign("MERGEN_INDEX_PATH", temp_index, envir = globalenv())
-  assign("MERGEN_UPLOADS_DIR", test_uploads_dir, envir = globalenv())
-  assign("MERGEN_MCP_BASE_DIR", test_mcp_base_dir, envir = globalenv())
+	assign("MERGEN_INDEX_PATH", temp_index, envir = globalenv())
+	assign("MERGEN_UPLOADS_DIR", test_uploads_dir, envir = globalenv())
+	assign("MERGEN_MCP_BASE_DIR", test_mcp_base_dir, envir = globalenv())
 
-  on.exit({
-    assign("MERGEN_INDEX_PATH", old_index_path, envir = globalenv())
-    assign("MERGEN_UPLOADS_DIR", old_uploads_dir, envir = globalenv())
-    assign("MERGEN_MCP_BASE_DIR", old_mcp_base_dir, envir = globalenv())
-    unlink(temp_root, recursive = TRUE, force = TRUE)
-  }, add = TRUE)
+	old_options <- options(
+	  mergen.index_path = temp_index,
+	  mergen.files_root = temp_root,
+	  mergen.mcp_base_dir = test_mcp_base_dir
+	)
+
+	on.exit({
+	  options(old_options)
+	  assign("MERGEN_INDEX_PATH", old_index_path, envir = globalenv())
+	  assign("MERGEN_UPLOADS_DIR", old_uploads_dir, envir = globalenv())
+	  assign("MERGEN_MCP_BASE_DIR", old_mcp_base_dir, envir = globalenv())
+	  unlink(temp_root, recursive = TRUE, force = TRUE)
+	}, add = TRUE)
 
   .save_index(list(
     "42" = list(
@@ -176,7 +183,10 @@ test_that("kismi stale indeks varken ayni kullanici klasorundeki fiziksel dosyal
 
   expect_s3_class(listed, "data.frame")
   expect_true("rapor.pdf" %in% listed$name)
-  expect_true("dummy_test_data.xlsx" %in% listed$name)
+	expect_true(
+	  "dummy_test_data.xlsx" %in% listed$name,
+	  info = paste("Listed names:", paste(listed$name, collapse = ", "))
+	)
   expect_false(any(grepl("^\\d{8,20}[_-]", listed$name, perl = TRUE)))
 })
 
