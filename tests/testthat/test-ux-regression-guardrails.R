@@ -305,9 +305,8 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
     useBytes = TRUE
   )[[1]]
 
-  testthat::expect_gt(
-    play_reject_pos,
-    0L,
+  testthat::expect_true(
+    play_reject_pos > 0L,
     info = "AI Expert autoplay rejection branch bulunmalıdır."
   )
 

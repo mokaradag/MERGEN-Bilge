@@ -331,24 +331,24 @@ const AIExpertManager = {
 
     var playPromise = audio.play();
     if (playPromise !== undefined) {
-      playPromise.catch(function(err) {
-        if (self.state.audioElement !== audio) return;
+		playPromise.catch(function(err) {
+		  if (self.state.audioElement !== audio) return;
 
-        console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
+		  console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
 
-        self._stopAudio();
+		  self._stopAudio();
 
-        if (window.MusicManager) {
-          window.MusicManager.unduck('ai_expert');
-        }
+		  if (window.MusicManager) {
+			window.MusicManager.unduck('ai_expert');
+		  }
 
-        if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-          window.ttsVisualizerState.setIdle();
-        }
+		  if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+			window.ttsVisualizerState.setIdle();
+		  }
 
-        // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma
-        self._scheduleHide(self._estimateReadTime(self.state.currentText));
-      });
+		  // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma
+		  self._scheduleHide(self._estimateReadTime(self.state.currentText));
+		});
     }
   },
   
