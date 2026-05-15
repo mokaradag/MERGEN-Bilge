@@ -301,8 +301,7 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
   play_reject_pos <- regexpr(
     "playPromise.catch(function(err)",
     ai_expert_js,
-    fixed = TRUE,
-    useBytes = TRUE
+    fixed = TRUE
   )[[1]]
 
   testthat::expect_true(
