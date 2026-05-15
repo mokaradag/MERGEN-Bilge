@@ -7,29 +7,40 @@
 #   Sys.setenv(MERGEN_REPAIR_MOJIBAKE_APPLY = "TRUE")
 # ==============================================================================
 
+local({
+
 repair_mb_messages_bool <- function(value, default = FALSE) {
   if (is.null(value) || length(value) == 0L || is.na(value[1])) return(default)
+
   norm <- tolower(trimws(as.character(value[1])))
+
   if (!nzchar(norm)) return(default)
   if (norm %in% c("true", "t", "1", "yes", "y")) return(TRUE)
   if (norm %in% c("false", "f", "0", "no", "n")) return(FALSE)
+
   default
 }
 
 repair_mb_messages_coalesce_text <- function(value) {
-  if (is.null(value) || length(value) == 0L || is.na(value[1])) return("")
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return("")
+  }
+
   as.character(value[1])
 }
 
 repair_mb_messages_has_mojibake <- function(value) {
   text <- paste(enc2utf8(as.character(value)), collapse = "\n")
-  if (!nzchar(text)) return(FALSE)
+
+  if (!nzchar(text)) {
+    return(FALSE)
+  }
 
   mojibake_tokens <- c(
-    "\u00C3",       # A-tilde marker, catches many UTF-8-as-1252 cases
+    "\u00C3",       # A-tilde marker
     "\u00C4",       # A-diaeresis marker
     "\u00C5",       # A-ring marker
-    "\u00C2",       # stray Â marker
+    "\u00C2",       # stray A-circumflex marker
     "\uFFFD",       # replacement character
     "T\u00C3\u00BCrkiye",
     "Nas\u00C4\u00B1l",
@@ -85,7 +96,10 @@ apply_changes <- repair_mb_messages_bool(
 )
 
 limit <- suppressWarnings(as.integer(Sys.getenv("MERGEN_REPAIR_MOJIBAKE_TOP", "5000")))
-if (is.na(limit) || limit <= 0L) limit <- 5000L
+
+if (is.na(limit) || limit <= 0L) {
+  limit <- 5000L
+}
 
 cat(sprintf(
   "INFO: MB_Messages mojibake repair starting. Mode=%s, TOP=%d\n",
@@ -116,7 +130,7 @@ tryCatch({
 
   if (nrow(rows) == 0L) {
     cat("OK: MB_Messages has no rows to inspect.\n")
-    quit(save = "no", status = 0)
+    return(invisible(TRUE))
   }
 
   candidate_idx <- vapply(seq_len(nrow(rows)), function(i) {
@@ -128,7 +142,7 @@ tryCatch({
 
   if (nrow(rows) == 0L) {
     cat("OK: No mojibake candidates found in inspected MB_Messages rows.\n")
-    quit(save = "no", status = 0)
+    return(invisible(TRUE))
   }
 
   cat(sprintf("INFO: %d mojibake candidate row(s) found.\n", nrow(rows)))
@@ -171,7 +185,7 @@ tryCatch({
 
   if (length(updates) == 0L) {
     cat("WARN: Mojibake candidates were found, but normalize_db_visible_value() produced no changes.\n")
-    quit(save = "no", status = 1)
+    return(invisible(FALSE))
   }
 
   cat(sprintf("INFO: %d row(s) look repairable.\n", length(updates)))
@@ -188,7 +202,7 @@ tryCatch({
 
   if (!isTRUE(apply_changes)) {
     cat("DRY_RUN: No updates were written. Set MERGEN_REPAIR_MOJIBAKE_APPLY=TRUE to apply.\n")
-    quit(save = "no", status = 0)
+    return(invisible(TRUE))
   }
 
   DBI::dbBegin(conn)
@@ -217,12 +231,16 @@ tryCatch({
     committed <- TRUE
 
     cat(sprintf("OK: %d MB_Messages row(s) repaired.\n", length(updates)))
+    invisible(TRUE)
   }, error = function(e) {
     if (!isTRUE(committed)) {
       try(DBI::dbRollback(conn), silent = TRUE)
     }
+
     stop(e)
   })
 }, finally = {
   release_connection(conn_info)
+})
+
 })
