@@ -83,6 +83,72 @@ repair_mb_messages_preview <- function(x, n = 160L) {
   substr(x, 1L, n)
 }
 
+repair_mb_messages_sql_unicode_expr <- function(value) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return("NULL")
+  }
+
+  value <- enc2utf8(as.character(value[1]))
+
+  if (!nzchar(value)) {
+    return("N''")
+  }
+
+  codepoints <- utf8ToInt(value)
+
+  if (length(codepoints) == 0L) {
+    return("N''")
+  }
+
+  flush_ascii <- function(buffer) {
+    if (!length(buffer)) return(character(0))
+    txt <- intToUtf8(buffer)
+    txt <- gsub("'", "''", txt, fixed = TRUE)
+    paste0("N'", txt, "'")
+  }
+
+  parts <- character(0)
+  ascii_buffer <- integer(0)
+
+  append_nchar <- function(cp) {
+    if (cp <= 0xFFFFL) {
+      return(sprintf("NCHAR(%d)", cp))
+    }
+
+    # UTF-16 surrogate pair for supplementary-plane code points.
+    cp2 <- cp - 0x10000L
+    high <- 0xD800L + (cp2 %/% 0x400L)
+    low <- 0xDC00L + (cp2 %% 0x400L)
+
+    sprintf("NCHAR(%d)+NCHAR(%d)", high, low)
+  }
+
+  for (cp in codepoints) {
+    # Keep printable ASCII as compact N'...' chunks.
+    # Use NCHAR for apostrophe and all non-ASCII/control characters.
+    if (cp >= 32L && cp <= 126L && cp != 39L) {
+      ascii_buffer <- c(ascii_buffer, cp)
+    } else {
+      if (length(ascii_buffer)) {
+        parts <- c(parts, flush_ascii(ascii_buffer))
+        ascii_buffer <- integer(0)
+      }
+
+      parts <- c(parts, append_nchar(cp))
+    }
+  }
+
+  if (length(ascii_buffer)) {
+    parts <- c(parts, flush_ascii(ascii_buffer))
+  }
+
+  if (!length(parts)) {
+    return("N''")
+  }
+
+  paste(parts, collapse = "+")
+}
+
 repair_mb_messages_safe_disconnect <- function(conn) {
   if (is.null(conn)) return(invisible(NULL))
 
@@ -407,37 +473,38 @@ tryCatch({
     committed <- FALSE
 
     tryCatch({
-      for (item in updates) {
-        if (isTRUE(has_reasoning_content)) {
-          affected <- DBI::dbExecute(
-            conn,
-            "
-              UPDATE MB_Messages
-              SET
-                MessageContent = ?,
-                ReasoningContent = ?
-              WHERE MessageID = ?
-            ",
-            params = normalize_db_params(list(
-              item$new_content,
-              item$new_reasoning,
-              as.integer(item$MessageID)
-            ))
-          )
-        } else {
-          affected <- DBI::dbExecute(
-            conn,
-            "
-              UPDATE MB_Messages
-              SET MessageContent = ?
-              WHERE MessageID = ?
-            ",
-            params = normalize_db_params(list(
-              item$new_content,
-              as.integer(item$MessageID)
-            ))
-          )
-        }
+		for (item in updates) {
+		  message_id_sql <- as.integer(item$MessageID)
+		  content_expr <- repair_mb_messages_sql_unicode_expr(item$new_content)
+
+		  if (isTRUE(has_reasoning_content)) {
+			reasoning_expr <- repair_mb_messages_sql_unicode_expr(item$new_reasoning)
+
+			update_sql <- sprintf(
+			  "
+				UPDATE MB_Messages
+				SET
+				  MessageContent = %s,
+				  ReasoningContent = %s
+				WHERE MessageID = %d
+			  ",
+			  content_expr,
+			  reasoning_expr,
+			  message_id_sql
+			)
+		  } else {
+			update_sql <- sprintf(
+			  "
+				UPDATE MB_Messages
+				SET MessageContent = %s
+				WHERE MessageID = %d
+			  ",
+			  content_expr,
+			  message_id_sql
+			)
+		  }
+
+		  affected <- DBI::dbExecute(conn, update_sql)
 
         if (!identical(as.integer(affected), 1L)) {
           warning(sprintf(
