@@ -144,16 +144,37 @@
 }
 
 .file_store_user_dir_paths <- function(user_id) {
-  user_dir <- tryCatch(mergen_user_upload_dir(user_id), error = function(e) "")
-  if (!nzchar(user_dir)) {
+  uid <- as.character(user_id)
+
+  candidate_dirs <- unique(Filter(nzchar, c(
+    tryCatch(mergen_user_upload_dir(uid), error = function(e) ""),
+    file.path(getOption("mergen.mcp_base_dir", ""), paste0("user_", uid)),
+    file.path(getOption("mergen.files_root", ""), paste0("user_", uid)),
+    if (exists("MERGEN_MCP_BASE_DIR", inherits = TRUE)) {
+      file.path(MERGEN_MCP_BASE_DIR, paste0("user_", uid))
+    } else {
+      ""
+    },
+    if (exists("MERGEN_UPLOADS_DIR", inherits = TRUE)) {
+      file.path(MERGEN_UPLOADS_DIR, paste0("user_", uid))
+    } else {
+      ""
+    }
+  )))
+
+  if (!length(candidate_dirs)) {
     return(character(0))
   }
 
-  if (!isTRUE(tryCatch(path_exists_relaxed(user_dir), error = function(e) FALSE))) {
-    return(character(0))
-  }
+  paths <- unique(unlist(lapply(candidate_dirs, function(user_dir) {
+    if (!isTRUE(tryCatch(path_exists_relaxed(user_dir), error = function(e) FALSE))) {
+      return(character(0))
+    }
 
-  .file_store_list_user_files_relaxed(user_dir)
+    .file_store_list_user_files_relaxed(user_dir)
+  }), use.names = FALSE))
+
+  paths[nzchar(paths)]
 }
 
 .file_store_merge_same_user_filesystem <- function(df, user_id, idx) {

@@ -156,6 +156,9 @@ test_that("kismi stale indeks varken ayni kullanici klasorundeki fiziksel dosyal
 	assign("MERGEN_UPLOADS_DIR", test_uploads_dir, envir = globalenv())
 	assign("MERGEN_MCP_BASE_DIR", test_mcp_base_dir, envir = globalenv())
 
+	old_mcp_files_base_env <- Sys.getenv("MCP_FILES_BASE", unset = NA_character_)
+	Sys.setenv(MCP_FILES_BASE = test_mcp_base_dir)
+
 	old_options <- options(
 	  mergen.index_path = temp_index,
 	  mergen.files_root = temp_root,
@@ -163,6 +166,12 @@ test_that("kismi stale indeks varken ayni kullanici klasorundeki fiziksel dosyal
 	)
 
 	on.exit({
+	  if (is.na(old_mcp_files_base_env)) {
+		Sys.unsetenv("MCP_FILES_BASE")
+	  } else {
+		Sys.setenv(MCP_FILES_BASE = old_mcp_files_base_env)
+	  }
+
 	  options(old_options)
 	  assign("MERGEN_INDEX_PATH", old_index_path, envir = globalenv())
 	  assign("MERGEN_UPLOADS_DIR", old_uploads_dir, envir = globalenv())
