@@ -1,9 +1,9 @@
 # ==============================================================================
-# Dosya Yolu: tests/scripts/repair_mb_messages_mojibake.R
-# Açıklama: MB_Messages içindeki kullanıcıya görünen mojibake kayıtlarını
-#           normalize_db_visible_value() ile onaran tek-seferlik bakım script'i.
+# File: tests/scripts/repair_mb_messages_mojibake.R
+# Purpose: One-time repair for mojibake in MB_Messages user-visible fields.
 #
-# Varsayılan DRY RUN'dır. Gerçek güncelleme için:
+# Default is DRY RUN.
+# Apply with:
 #   Sys.setenv(MERGEN_REPAIR_MOJIBAKE_APPLY = "TRUE")
 # ==============================================================================
 
@@ -16,14 +16,26 @@ repair_mb_messages_bool <- function(value, default = FALSE) {
   default
 }
 
+repair_mb_messages_coalesce_text <- function(value) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) return("")
+  as.character(value[1])
+}
+
 repair_mb_messages_has_mojibake <- function(value) {
-  text <- paste(enc2utf8(as.character(value %||% "")), collapse = "\n")
+  text <- paste(enc2utf8(as.character(value)), collapse = "\n")
+  if (!nzchar(text)) return(FALSE)
 
   mojibake_tokens <- c(
-    "Ã§", "Ä±", "Ã¶", "ÅŸ", "ÄŸ", "Ã¼",
-    "Ã‡", "Ä°", "Ã–", "Åž", "Ãœ",
-    "TÃ¼rkiye", "NasÄ±l", "yardÄ±mcÄ±", "baÅŸkent",
-    "teÅŸekkÃ¼r", "AÃ§", "Ã‡", "Å"
+    "\u00C3",       # A-tilde marker, catches many UTF-8-as-1252 cases
+    "\u00C4",       # A-diaeresis marker
+    "\u00C5",       # A-ring marker
+    "\u00C2",       # stray Â marker
+    "\uFFFD",       # replacement character
+    "T\u00C3\u00BCrkiye",
+    "Nas\u00C4\u00B1l",
+    "yard\u00C4\u00B1mc\u00C4\u00B1",
+    "ba\u00C5\u0178kent",
+    "te\u00C5\u0178ekk\u00C3\u00BCr"
   )
 
   any(vapply(
@@ -34,7 +46,7 @@ repair_mb_messages_has_mojibake <- function(value) {
 }
 
 repair_mb_messages_preview <- function(x, n = 140L) {
-  x <- as.character(x %||% "")[1]
+  x <- repair_mb_messages_coalesce_text(x)
   x <- gsub("[\r\n]+", " ", x)
   substr(x, 1L, n)
 }
@@ -62,7 +74,7 @@ missing <- required[!vapply(
 
 if (length(missing) > 0L) {
   stop(
-    sprintf("Eksik fonksiyon(lar): %s", paste(missing, collapse = ", ")),
+    sprintf("Missing function(s): %s", paste(missing, collapse = ", ")),
     call. = FALSE
   )
 }
@@ -76,7 +88,7 @@ limit <- suppressWarnings(as.integer(Sys.getenv("MERGEN_REPAIR_MOJIBAKE_TOP", "5
 if (is.na(limit) || limit <= 0L) limit <- 5000L
 
 cat(sprintf(
-  "INFO: MB_Messages mojibake repair başlıyor. Mode=%s, TOP=%d\n",
+  "INFO: MB_Messages mojibake repair starting. Mode=%s, TOP=%d\n",
   if (isTRUE(apply_changes)) "APPLY" else "DRY_RUN",
   limit
 ))
@@ -87,6 +99,8 @@ tryCatch({
   conn_info <- get_connection()
   conn <- conn_info$conn
 
+  # ASCII-safe: fetch recent rows, detect mojibake in R.
+  # This avoids fragile SQL strings containing literal mojibake characters.
   query <- sprintf("
     SELECT TOP (%d)
       MessageID,
@@ -95,28 +109,29 @@ tryCatch({
       ReasoningContent,
       MessageTimestamp
     FROM MB_Messages
-    WHERE
-      MessageContent LIKE N'%%Ã%%'
-      OR MessageContent LIKE N'%%Ä%%'
-      OR MessageContent LIKE N'%%Å%%'
-      OR MessageContent LIKE N'%%Â%%'
-      OR MessageContent LIKE N'%%�%%'
-      OR ReasoningContent LIKE N'%%Ã%%'
-      OR ReasoningContent LIKE N'%%Ä%%'
-      OR ReasoningContent LIKE N'%%Å%%'
-      OR ReasoningContent LIKE N'%%Â%%'
-      OR ReasoningContent LIKE N'%%�%%'
     ORDER BY MessageID DESC
   ", limit)
 
   rows <- DBI::dbGetQuery(conn, query)
 
   if (nrow(rows) == 0L) {
-    cat("OK: MB_Messages içinde mojibake adayı bulunmadı.\n")
+    cat("OK: MB_Messages has no rows to inspect.\n")
     quit(save = "no", status = 0)
   }
 
-  cat(sprintf("INFO: %d mojibake adayı bulundu.\n", nrow(rows)))
+  candidate_idx <- vapply(seq_len(nrow(rows)), function(i) {
+    repair_mb_messages_has_mojibake(rows$MessageContent[i]) ||
+      repair_mb_messages_has_mojibake(rows$ReasoningContent[i])
+  }, logical(1))
+
+  rows <- rows[candidate_idx, , drop = FALSE]
+
+  if (nrow(rows) == 0L) {
+    cat("OK: No mojibake candidates found in inspected MB_Messages rows.\n")
+    quit(save = "no", status = 0)
+  }
+
+  cat(sprintf("INFO: %d mojibake candidate row(s) found.\n", nrow(rows)))
 
   updates <- list()
 
@@ -155,11 +170,11 @@ tryCatch({
   }
 
   if (length(updates) == 0L) {
-    cat("WARN: Mojibake adayı bulundu ama normalize_db_visible_value() değişiklik üretmedi.\n")
+    cat("WARN: Mojibake candidates were found, but normalize_db_visible_value() produced no changes.\n")
     quit(save = "no", status = 1)
   }
 
-  cat(sprintf("INFO: %d kayıt onarılabilir görünüyor.\n", length(updates)))
+  cat(sprintf("INFO: %d row(s) look repairable.\n", length(updates)))
 
   for (item in utils::head(updates, 10L)) {
     cat(sprintf(
@@ -172,7 +187,7 @@ tryCatch({
   }
 
   if (!isTRUE(apply_changes)) {
-    cat("DRY_RUN: Güncelleme yapılmadı. Gerçek uygulama için MERGEN_REPAIR_MOJIBAKE_APPLY=TRUE ayarlayın.\n")
+    cat("DRY_RUN: No updates were written. Set MERGEN_REPAIR_MOJIBAKE_APPLY=TRUE to apply.\n")
     quit(save = "no", status = 0)
   }
 
@@ -201,7 +216,7 @@ tryCatch({
     DBI::dbCommit(conn)
     committed <- TRUE
 
-    cat(sprintf("OK: %d MB_Messages kaydı onarıldı.\n", length(updates)))
+    cat(sprintf("OK: %d MB_Messages row(s) repaired.\n", length(updates)))
   }, error = function(e) {
     if (!isTRUE(committed)) {
       try(DBI::dbRollback(conn), silent = TRUE)
