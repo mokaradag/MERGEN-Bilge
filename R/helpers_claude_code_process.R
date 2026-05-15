@@ -319,12 +319,12 @@ build_processx_command <- function(cli_path, args, workdir = NULL) {
       ))
     }
 
-    return(list(
-      command = resolve_windows_cmd_path(),
-      args = c("/d", "/s", "/c", komut_satiri),
-      env = env,
-      wd = get_safe_processx_launch_workdir()
-    ))
+	return(list(
+	  command = resolve_windows_cmd_path(),
+	  args = c("/d", "/c", komut_satiri),
+	  env = env,
+	  wd = get_safe_processx_launch_workdir()
+	))
   }
 
   list(command = cli_path, args = args, env = NULL, wd = workdir)

@@ -214,6 +214,7 @@ test_that("Windows .cmd çalıştırması processx'e problemli wd vermez", {
 
   expect_match(tolower(komut$command), "cmd\\.exe$")
   expect_true(any(komut$args == "/c"))
+  expect_false(any(komut$args == "/s"))
   expect_match(paste(komut$args, collapse = " "), "pushd")
   expect_match(paste(komut$args, collapse = " "), "call")
   expect_false(test_env$is_windows_unc_path(komut$wd))

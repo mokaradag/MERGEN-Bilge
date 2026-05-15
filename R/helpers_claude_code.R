@@ -198,8 +198,8 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
   tryCatch({
     # Windows UNC yolundan çalışırken cmd.exe hata verdiği için
     # durum kontrolünde güvenli yerel bir çalışma dizini kullan
-    komut <- build_processx_command(cli_path, c("--version"), workdir = workdir)
-    guvenli_wd <- get_safe_claude_cli_workdir(workdir)
+	komut <- build_processx_command(cli_path, c("--version"), workdir = NULL)
+	guvenli_wd <- get_safe_processx_launch_workdir()
 
     proc <- processx::process$new(
       command = komut$command,
@@ -262,7 +262,7 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
 #' @return Liste: success, message, details
 test_claude_code_connection <- function(cli_path = NULL,
                                         model = NULL,
-                                        workdir = tempdir()) {
+                                        workdir = get_safe_processx_launch_workdir()) {
   # Öncelikle CLI kontrolü yap
   durum <- check_claude_code_status(cli_path, workdir = workdir)
   if (!durum$installed) {
