@@ -157,6 +157,23 @@ normalize_cmd_workdir <- function(path) {
   aday
 }
 
+# cmd.exe /c tek satırında güvenli argüman tırnaklama
+quote_windows_cmd_token <- function(x) {
+  x <- as.character(x %||% "")[1]
+  if (is.na(x)) {
+    x <- ""
+  }
+
+  # Komut satırı tek satır olmalı; prompt içindeki satır kırılmaları cmd.exe
+  # ayrıştırmasını bozmasın.
+  x <- gsub("\r\n|\r|\n", " ", x, perl = TRUE)
+
+  # shQuote(type = "cmd") processx + cmd.exe /c kombinasyonunda bazen
+  # \"C:\...\claude.cmd\" üretir. cmd.exe bunu çalıştırılabilir yol değil,
+  # literal kaçış karakterli metin gibi yorumlayabilir.
+  paste0('"', gsub('"', '""', x, fixed = TRUE), '"')
+}
+
 # Windows cmd.exe yolunu güvenli şekilde çözer
 resolve_windows_cmd_path <- function() {
   adaylar <- unique(Filter(nzchar, c(
@@ -221,28 +238,31 @@ build_windows_cmd_invocation_line <- function(cli_path, args, workdir = NULL) {
 
   quoted_args <- vapply(
     args,
-    function(x) shQuote(as.character(x), type = "cmd"),
+    quote_windows_cmd_token,
     character(1),
     USE.NAMES = FALSE
   )
 
+  quoted_cli <- quote_windows_cmd_token(cli_cmd)
+
   if (is.null(workdir) || !nzchar(workdir)) {
     return(paste(
-      c("call", shQuote(cli_cmd, type = "cmd"), quoted_args),
+      c("call", quoted_cli, quoted_args),
       collapse = " "
     ))
   }
 
   hedef_dizin <- normalize_cmd_workdir(workdir)
+  quoted_workdir <- quote_windows_cmd_token(hedef_dizin)
 
   if (is_windows_unc_path(workdir)) {
     return(paste(
       c(
         "pushd",
-        shQuote(hedef_dizin, type = "cmd"),
+        quoted_workdir,
         "&&",
         "call",
-        shQuote(cli_cmd, type = "cmd"),
+        quoted_cli,
         quoted_args,
         "&",
         "popd"
@@ -255,10 +275,10 @@ build_windows_cmd_invocation_line <- function(cli_path, args, workdir = NULL) {
     c(
       "cd",
       "/d",
-      shQuote(hedef_dizin, type = "cmd"),
+      quoted_workdir,
       "&&",
       "call",
-      shQuote(cli_cmd, type = "cmd"),
+      quoted_cli,
       quoted_args
     ),
     collapse = " "
