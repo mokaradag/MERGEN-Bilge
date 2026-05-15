@@ -33,6 +33,8 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - STT ile sesli giriş
 - Arka plan müziği ve karakter temalı deneyim
 - Ana tema müziğinin tek seferlik çalınması, ardından seçili karaktere ait rastgele karakter müziklerine güvenli geçiş
+- STT modalı normal iptal/gönder yolları dışında kapansa bile tarayıcı tarafı kapanış yedeğiyle müzik durumu temizlenir ve geri yüklenir.
+- AI Uzman ses oynatımı tarayıcı autoplay engeline veya oynatma reddine takıldığında ses kaynağı temizlenir, müzik duck durumu bırakılır ve altyazı deneyimi korunur.
 
 ### Gelişmiş deneyim katmanları
 - Sinematik başlangıç ekranı
@@ -188,7 +190,7 @@ Doğrulanan başlıklar özetle şunlardır:
 - Ana Söyleşi hoş geldin ekranı, sol video alanı, neural canvas, dinamik karşılama, hızlı işlem kartları, Son Konuşmalar alanı ve üst boşluk regresyonu olmaması.
 - Hızlı işlem kartında gerçek tarayıcı dispatch’i, model/tool olayı ve hızlı çift tıklamada tek olay üretimi.
 - Enter ile gönderme, Shift+Enter ile yeni satır, stop-mode koruması ve otomatik kaydırma durumunun korunması.
-- TTS, STT ve arka plan müziği duck/restore akışı.
+- TTS, STT, AI Uzman sesi ve arka plan müziği duck/restore akışı; STT modal kapanış yedeği ve AI Uzman autoplay reddi sonrası müzik geri yükleme davranışı.
 - Kayıtlı sohbet yüklenince eski AI yanıtlarının otomatik TTS oynatmaması.
 - Düşünce panelinin izole fixture içinde görünmesi, delta alması, AI balonuna taşınması ve stop/finish sonrası temizlenmesi.
 - Tarayıcı konsolunda bloklayıcı JS hatası olmaması.
