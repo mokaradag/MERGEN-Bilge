@@ -162,6 +162,11 @@ test_that("Claude Code process helper temel davranışları korunur", {
   )
 
   expect_false(test_env$is_windows_unc_path("/tmp/test"))
+  
+  if (.Platform$OS.type == "windows") {
+    expect_true(test_env$is_windows_unc_path("//rehisds/uygulamalar/Primavera"))
+    expect_true(test_env$is_windows_unc_path("/rehisds/uygulamalar/Primavera"))
+  }
 
   cmd_workdir <- test_env$normalize_cmd_workdir("C:/tmp/test")
 
@@ -202,7 +207,7 @@ test_that("Windows .cmd çalıştırması processx'e problemli wd vermez", {
   skip_if_not(.Platform$OS.type == "windows")
 
   komut <- test_env$build_processx_command(
-    cli_path = "C:/Users/test/AppData/Roaming/npm/claude.cmd",
+    cli_path = "C:/ProgramData/npm/claude.cmd",
     args = c("--print", "--", "dosyaları incele"),
     workdir = "//rehisds/uygulamalar/Primavera/PY"
   )
@@ -226,10 +231,14 @@ test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
     jsonlite::toJSON(
       list(
         type = "text",
-        content = paste0(
-          "\\u00c3\\u2021al\\u00c4\\u00b1\\u00c5\\u0178ma ",
-          "\\u00f0\\u0178\\u0161\\u20ac"
-        )
+		content = paste0(
+		  intToUtf8(c(0x00C3, 0x2021)),
+		  "al",
+		  intToUtf8(c(0x00C4, 0x00B1)),
+		  intToUtf8(c(0x00C5, 0x0178)),
+		  "ma ",
+		  intToUtf8(c(0x00F0, 0x0178, 0x0161, 0x20AC))
+		)
       ),
       auto_unbox = TRUE
     ),

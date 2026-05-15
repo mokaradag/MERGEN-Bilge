@@ -31,14 +31,25 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
   normalizePath(user_dir, mustWork = FALSE)
 }
 
-# Windows cmd.exe için problem çıkarabilecek yol mu?
+# Windows cmd.exe / Claude Code CLI için problem çıkarabilecek yol mu?
 is_problematic_windows_workdir <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
   if (is.null(path) || !nzchar(path)) return(FALSE)
 
   aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
 
-  unc_mi <- grepl("^//", aday)
+  unc_mi <- if (exists("is_windows_unc_path", mode = "function", inherits = TRUE)) {
+    is_windows_unc_path(aday)
+  } else {
+    grepl("^//[^/]+/[^/]+", aday) ||
+      (
+        grepl("^/[^/]", aday) &&
+          !grepl("^/(tmp|temp|var|home|usr|opt|etc|bin|sbin|mnt|media|proc|sys|dev|run)(/|$)",
+                 tolower(aday),
+                 perl = TRUE)
+      )
+  }
+
   ascii_disi_var_mi <- grepl("[^ -~]", enc2utf8(aday), perl = TRUE)
 
   isTRUE(unc_mi || ascii_disi_var_mi)

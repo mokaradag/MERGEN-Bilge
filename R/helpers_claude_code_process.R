@@ -108,6 +108,29 @@ ensure_utf8 <- function(metin) {
 # processx bazı sunucu ortamlarında .cmd'yi doğrudan çalıştıramaz.
 # ------------------------------------------------------------------------------
 
+# Tek eğik çizgiyle gelen Windows ağ yolu benzeri değer mi?
+is_windows_single_slash_network_path <- function(path) {
+  if (.Platform$OS.type != "windows") return(FALSE)
+  if (is.null(path) || !nzchar(path)) return(FALSE)
+
+  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+
+  if (!grepl("^/[^/]", aday) || grepl("^//", aday)) {
+    return(FALSE)
+  }
+
+  ilk_parca <- tolower(sub("^/([^/]+).*$", "\\1", aday))
+
+  # /tmp/test gibi test/Unix-benzeri yolları UNC sayma.
+  unix_benzeri_kokler <- c(
+    "tmp", "temp", "var", "home", "usr", "opt", "etc",
+    "bin", "sbin", "mnt", "media", "proc", "sys",
+    "dev", "run"
+  )
+
+  !(ilk_parca %in% unix_benzeri_kokler)
+}
+
 # Windows UNC/ağ paylaşımı yolu mu?
 is_windows_unc_path <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
@@ -115,10 +138,8 @@ is_windows_unc_path <- function(path) {
 
   aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
 
-  # Windows VM / Shiny textInput bazı ağ yollarını //sunucu/paylasim yerine
-  # /sunucu/paylasim biçimine düşürebiliyor. cmd.exe için bu da UNC benzeri
-  # problemli yoldur ve processx wd olarak verilmemelidir.
-  grepl("^//", aday) || grepl("^/[^/]", aday)
+  grepl("^//[^/]+/[^/]+", aday) ||
+    is_windows_single_slash_network_path(aday)
 }
 
 # cmd.exe içinde kullanılacak çalışma dizinini Windows biçimine çevir
