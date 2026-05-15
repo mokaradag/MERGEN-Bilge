@@ -83,6 +83,78 @@ repair_mb_messages_preview <- function(x, n = 160L) {
   substr(x, 1L, n)
 }
 
+repair_mb_messages_replace_common_turkish_mojibake <- function(value) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(value)
+  }
+
+  out <- enc2utf8(as.character(value[1]))
+
+  replacements <- c(
+    "\u00C4\u00B0" = "\u0130", # Ä° -> İ
+    "\u00C4\u00B1" = "\u0131", # Ä± -> ı
+    "\u00C3\u00BC" = "\u00FC", # Ã¼ -> ü
+    "\u00C3\u0153" = "\u00DC", # Ãœ -> Ü
+    "\u00C3\u00B6" = "\u00F6", # Ã¶ -> ö
+    "\u00C3\u2013" = "\u00D6", # Ã– -> Ö
+    "\u00C3\u00A7" = "\u00E7", # Ã§ -> ç
+    "\u00C3\u2021" = "\u00C7", # Ã‡ -> Ç
+    "\u00C4\u0178" = "\u011F", # ÄŸ -> ğ
+    "\u00C4\u017E" = "\u011E", # Äž -> Ğ
+    "\u00C5\u0178" = "\u015F", # ÅŸ -> ş
+    "\u00C5\u017E" = "\u015E", # Åž -> Ş
+
+    # Some VM/console/ODBC paths surface the second byte marker through Â.
+    "\u00C2\u00B0" = "\u0130", # Â° -> İ
+    "\u00C2\u00B1" = "\u0131"  # Â± -> ı
+  )
+
+  for (bad in names(replacements)) {
+    out <- gsub(bad, replacements[[bad]], out, fixed = TRUE)
+  }
+
+  out
+}
+
+repair_mb_messages_repair_visible_text <- function(value) {
+  if (is.null(value) || length(value) == 0L || is.na(value[1])) {
+    return(value)
+  }
+
+  original <- enc2utf8(as.character(value[1]))
+
+  candidates <- unique(c(
+    original,
+    tryCatch(normalize_db_visible_value(original), error = function(e) original),
+    tryCatch(repair_text_mojibake(original, max_passes = 4L), error = function(e) original),
+    tryCatch(
+      repair_mb_messages_replace_common_turkish_mojibake(original),
+      error = function(e) original
+    ),
+    tryCatch(
+      repair_mb_messages_replace_common_turkish_mojibake(
+        normalize_db_visible_value(original)
+      ),
+      error = function(e) original
+    )
+  ))
+
+  bad <- vapply(candidates, repair_mb_messages_has_mojibake, logical(1))
+
+  # Prefer the first candidate that no longer has mojibake markers.
+  if (any(!bad)) {
+    return(candidates[which(!bad)[1]])
+  }
+
+  # If all still look suspicious, return the last candidate if it changed.
+  changed <- candidates[!identical(candidates, original)]
+  if (length(changed) > 0L) {
+    return(changed[length(changed)])
+  }
+
+  original
+}
+
 repair_mb_messages_sql_unicode_expr <- function(value) {
   if (is.null(value) || length(value) == 0L || is.na(value[1])) {
     return("NULL")
@@ -422,11 +494,11 @@ tryCatch({
       new_reasoning <- old_reasoning
 
       if (!is.na(old_content) && repair_mb_messages_has_mojibake(old_content)) {
-        new_content <- normalize_db_visible_value(old_content)
+        new_content <- repair_mb_messages_repair_visible_text(old_content)
       }
 
       if (!is.na(old_reasoning) && repair_mb_messages_has_mojibake(old_reasoning)) {
-        new_reasoning <- normalize_db_visible_value(old_reasoning)
+        new_reasoning <- repair_mb_messages_repair_visible_text(old_reasoning)
       }
 
       changed_content <- !identical(as.character(old_content), as.character(new_content))
@@ -446,9 +518,16 @@ tryCatch({
       }
     }
 
-    if (length(updates) == 0L) {
-      next
-    }
+	if (length(updates) == 0L) {
+	  cat(sprintf(
+		"WARN: batch=%d has %d mojibake candidate(s), but repair produced no changed values. First candidate MessageID=%s Preview=%s\n",
+		batch_no,
+		nrow(candidates),
+		as.character(candidates$MessageID[1]),
+		repair_mb_messages_preview(candidates$MessageContent[1])
+	  ))
+	  next
+	}
 
     repairable_rows <- repairable_rows + length(updates)
 
