@@ -218,12 +218,17 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
 	is_abs <- grepl("^([A-Za-z]:)?[\\/]", arg)
 	if (is_abs) {
 	  helpers_mcp_tools$mcp_debug_log(
-		"[RESOLVE] Absolute path argument ignored; resolving through session registry/user bucket only."
+		"[RESOLVE] Absolute path argument rejected; use selected file name or file token."
 	  )
+
+	  return(list(
+		ok = FALSE,
+		error = "Mutlak dosya yolu kabul edilmez. Lütfen Dosya Yönetimi'nde seçili dosya adını veya dosya jetonunu kullanın."
+	  ))
 	}
 
-  all_files <- session$userData$current_session_files
-  base_arg <- basename(arg)
+	all_files <- session$userData$current_session_files
+	base_arg <- basename(arg)
 
   if (!is.null(all_files) && length(all_files) > 0) {
     helpers_mcp_tools$mcp_debug_log("[RESOLVE] Checking ", length(all_files), " files in session")
@@ -389,33 +394,16 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     helpers_mcp_tools$mcp_debug_log("[RESOLVE] No files in session registry!")
   }
 
-  idx_path <- getOption("mergen.index_path")
-  uid <- helpers_mcp_tools$get_session_user_id(session)
-  uid_key <- if (!is.null(uid) && length(uid) > 0L) as.character(uid[1]) else NULL
+	idx_path <- getOption("mergen.index_path")
+	uid <- helpers_mcp_tools$get_session_user_id(session)
+	uid_key <- if (!is.null(uid) && length(uid) > 0L) as.character(uid[1]) else NULL
 
-  if (!is.null(idx_path) && file.exists(idx_path)) {
-    idx <- jsonlite::read_json(idx_path, simplifyVector = TRUE)
+	allow_cross_bucket_lookup <- isTRUE(getOption("mergen.mcp.allow_cross_bucket_lookup", FALSE)) ||
+	  tolower(trimws(Sys.getenv("MERGEN_MCP_ALLOW_CROSS_BUCKET_LOOKUP", "false"))) %in%
+		c("1", "true", "t", "yes", "y", "on")
 
-    if (!is.null(uid_key) && nzchar(uid_key) && !is.null(idx[[uid_key]])) {
-      entry <- idx[[uid_key]][[tolower(base_arg)]]
-      p <- entry
-      disp <- NULL
-
-      if (is.list(entry)) {
-        disp <- entry$display
-        if (!is.null(entry$path)) p <- entry$path
-      }
-
-      if (!is.null(p) && path_ok(p)) {
-        resolved_path <- resolve_existing_candidate(p) %||% p
-        display_val <- disp %||% basename(p)
-        return(list(ok = TRUE, path = resolved_path, display = display_val))
-      }
-    }
-
-    allow_cross_bucket_lookup <- isTRUE(getOption("mergen.mcp.allow_cross_bucket_lookup", FALSE)) ||
-      tolower(trimws(Sys.getenv("MERGEN_MCP_ALLOW_CROSS_BUCKET_LOOKUP", "false"))) %in%
-        c("1", "true", "t", "yes", "y", "on")
+	if (!is.null(idx_path) && file.exists(idx_path)) {
+	  idx <- jsonlite::read_json(idx_path, simplifyVector = TRUE)
 
     if (isTRUE(allow_cross_bucket_lookup)) {
       p2 <- idx[[tolower(base_arg)]]
@@ -458,19 +446,25 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     }
   }
 
-  if (!grepl("[/\\\\]", arg)) {
-    fb <- c(
-      getOption("mergen.files_root"),
-      getOption("mergen.mcp_base_dir")
-    )
-    fb <- fb[!is.null(fb) & nzchar(fb)]
+	if (!grepl("[/\\\\]", arg)) {
+	  fb <- character(0)
 
-    if (!is.null(uid_key) && nzchar(uid_key)) {
-      mcp_base <- getOption("mergen.mcp_base_dir")
-      if (!is.null(mcp_base) && nzchar(mcp_base)) {
-        fb <- c(file.path(mcp_base, paste0("user_", uid_key)), fb)
-      }
-    }
+	  if (!is.null(uid_key) && nzchar(uid_key)) {
+		mcp_base <- getOption("mergen.mcp_base_dir")
+		if (!is.null(mcp_base) && nzchar(mcp_base)) {
+		  fb <- c(fb, file.path(mcp_base, paste0("user_", uid_key)))
+		}
+	  }
+
+	  if (isTRUE(allow_cross_bucket_lookup)) {
+		fb <- c(
+		  fb,
+		  getOption("mergen.files_root"),
+		  getOption("mergen.mcp_base_dir")
+		)
+	  }
+
+	  fb <- fb[!is.null(fb) & nzchar(fb)]
 
     for (base_dir in unique(fb)) {
       candidate <- file.path(base_dir, base_arg)
@@ -482,8 +476,9 @@ helpers_mcp_tools$resolve_file_argument <- function(arg, session = NULL) {
     }
   }
 
-  if (exists("global_lookup_file", mode = "function")) {
-    p <- try(global_lookup_file(base_arg), silent = TRUE)
+if (isTRUE(allow_cross_bucket_lookup) &&
+    exists("global_lookup_file", mode = "function")) {
+  p <- try(global_lookup_file(base_arg), silent = TRUE)
 
     if (!inherits(p, "try-error") && is.character(p) && nzchar(p) && path_ok(p)) {
       helpers_mcp_tools$mcp_debug_log(

@@ -109,15 +109,17 @@ fileManagerServer <- function(
 		  # Summarization modunda sadece belirli formatlara izin ver
 		  ext <- tolower(tools::file_ext(fname))
 		  
-		  if (!ext %in% summarization_allowed) {
-			showToast(session, 
-					  sprintf("Dosya Özetleme modunda sadece şu formatlar desteklenir: %s.",
-							  paste(toupper(summarization_allowed), collapse = ", ")),
-					  "warning")
-			# Tiki hemen geri al
-			session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
-			return()
-		  }
+			if (!ext %in% summarization_allowed) {
+			  module_values$files_in_context[[fid]] <- NULL
+			  detach_in_parent(info$name %||% fname)
+
+			  showToast(session, 
+						sprintf("Dosya Özetleme modunda sadece şu formatlar desteklenir: %s.",
+								paste(toupper(summarization_allowed), collapse = ", ")),
+						"warning")
+			  session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+			  return()
+			}
 		}
 		
 		# MCP ON? allow only one AND check extension
@@ -125,12 +127,14 @@ fileManagerServer <- function(
 		  
 		  # Türkçe: Uzantı kontrolü - Sadece Excel
 		  ext <- tolower(tools::file_ext(fname))
-		  if (!ext %in% c("xls", "xlsx")) {
-			showToast(session, "MCP: Excel modunda sadece Excel dosyaları (.xls, .xlsx) seçilebilir.", "warning")
-			# Tiki hemen geri al
-			session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
-			return()
-		  }
+			if (!ext %in% c("xls", "xlsx")) {
+			  module_values$files_in_context[[fid]] <- NULL
+			  detach_in_parent(info$name %||% fname)
+
+			  showToast(session, "MCP: Excel modunda sadece Excel dosyaları (.xls, .xlsx) seçilebilir.", "warning")
+			  session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = FALSE))
+			  return()
+			}
 		  
 		  # Uncheck all other selected ones
 		  others <- names(module_values$files_in_context)

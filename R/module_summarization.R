@@ -22,12 +22,55 @@ prepare_summarization_request <- function(
     log_info("[SUMMARIZATION] Kullanıcı sorgusu alındı: {user_query}")
   }
 
-  if (length(file_list) == 0) {
-    return(list(
-      success = FALSE,
-      message = "Özetlenecek dosya bulunamadı. Lütfen Dosya Yönetimi sayfasından 'Model Bağlamı' seçeneği işaretli dosyaları ekleyin."
-    ))
-  }
+	allowed_summary_ext <- if (exists("fm_summarization_allowed_extensions", mode = "function", inherits = TRUE)) {
+	  fm_summarization_allowed_extensions()
+	} else {
+	  c("doc", "docx", "pdf", "txt")
+	}
+
+	selected_names <- names(file_list)
+	selected_names <- selected_names[nzchar(selected_names)]
+
+	unsupported_summary_files <- selected_names[
+	  !tolower(tools::file_ext(selected_names)) %in% allowed_summary_ext
+	]
+
+	if (length(unsupported_summary_files) > 0L) {
+	  log_warn(
+		"[SUMMARIZATION] Desteklenmeyen dosyalar özetleme isteğinden çıkarıldı: {paste(unsupported_summary_files, collapse = ', ')}"
+	  )
+
+	  for (unsupported_name in unsupported_summary_files) {
+		if (!is.null(session$userData$file_manager_data) &&
+			is.function(session$userData$file_manager_data$set_attachment_checked)) {
+		  try(session$userData$file_manager_data$set_attachment_checked(unsupported_name, FALSE), silent = TRUE)
+		}
+	  }
+
+	  file_list[unsupported_summary_files] <- NULL
+	}
+
+	if (length(file_list) == 0) {
+	  removed_msg <- if (length(unsupported_summary_files) > 0L) {
+		paste0(
+		  "\n\nDesteklenmeyen dosyalar seçimden çıkarıldı: ",
+		  paste(unsupported_summary_files, collapse = ", "),
+		  ". Dosya Özetleme modu yalnızca şu türleri destekler: ",
+		  paste(toupper(allowed_summary_ext), collapse = ", "),
+		  "."
+		)
+	  } else {
+		""
+	  }
+
+	  return(list(
+		success = FALSE,
+		message = paste0(
+		  "Özetlenecek dosya bulunamadı. Lütfen Dosya Yönetimi sayfasından 'Model Bağlamı' seçeneği işaretli dosyaları ekleyin.",
+		  removed_msg
+		)
+	  ))
+	}
 
   file_contents <- list()
   total_chars <- 0
@@ -291,13 +334,24 @@ prepare_summarization_request <- function(
     prep_duration
   ))
 
-  list(
-    success = TRUE,
-    messages = messages,
-    current_settings = current_settings,
-    selected_model = selected_model,
-    file_count = length(file_contents),
-    metadata_block = metadata_block,
-    prep_duration = prep_duration
-  )
+	if (length(unsupported_summary_files) > 0L) {
+	  metadata_block <- paste0(
+		metadata_block,
+		"\n\n---\n",
+		"_Not: Dosya Özetleme modu tarafından desteklenmeyen dosyalar seçimden çıkarıldı: ",
+		paste(unsupported_summary_files, collapse = ", "),
+		"._"
+	  )
+	}
+
+	list(
+	  success = TRUE,
+	  messages = messages,
+	  current_settings = current_settings,
+	  selected_model = selected_model,
+	  file_count = length(file_contents),
+	  metadata_block = metadata_block,
+	  unsupported_files = unsupported_summary_files,
+	  prep_duration = prep_duration
+	)
 }

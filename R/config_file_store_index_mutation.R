@@ -67,12 +67,6 @@ recover_display_name_from_storage_name <- function(file_path) {
   }
 
   # Kalıcı depolama adları kullanıcıya gösterilmemelidir.
-  # Desteklenen iç storage prefix örnekleri:
-  # - 20260505-120545_abcd1234_orijinal.pdf
-  # - 20260505120545_1234_orijinal.pdf
-  # - 20260505120545839_abcd1234_ef567890_orijinal.pdf
-  # Son örnek, aynı dosya aynı anda/çok hızlı yüklendiğinde hedef çakışmasını
-  # önlemek için eklenen ikinci benzersiz token'ı içerir.
   storage_prefix_patterns <- c(
     "^\\d{15,20}_[0-9A-Fa-f]{4,64}_[0-9A-Fa-f]{4,64}_",
     "^\\d{8}-?\\d{6}_[0-9A-Za-z]{4,64}_"
@@ -96,14 +90,64 @@ recover_display_name_from_storage_name <- function(file_path) {
   enc2utf8(base_name)
 }
 
+normalize_file_display_name <- function(file_name, file_info = NULL) {
+  candidates <- character(0)
+
+  if (is.list(file_info)) {
+    candidates <- c(
+      candidates,
+      file_info$display_name %||% "",
+      file_info$display %||% "",
+      file_info$original_name %||% "",
+      file_info$name %||% ""
+    )
+  }
+
+  candidates <- c(candidates, file_name %||% "")
+
+  for (candidate in candidates) {
+    candidate <- as.character(candidate %||% "")[1]
+    if (is.na(candidate) || !nzchar(candidate)) {
+      next
+    }
+
+    cleaned <- tryCatch(
+      recover_display_name_from_storage_name(candidate),
+      error = function(e) candidate
+    )
+
+    if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      cleaned <- normalize_text_utf8(cleaned, repair_mojibake = TRUE)
+    } else {
+      cleaned <- enc2utf8(cleaned)
+    }
+
+    if (!is.na(cleaned) && nzchar(cleaned)) {
+      return(cleaned)
+    }
+  }
+
+  ""
+}
+
 repair_index_display_names_from_path <- function() {
   fix_node <- function(node) {
-    if (is.list(node) && !is.null(node$path)) {
-      path_value <- as.character(node$path)[1]
-      node$path <- path_value
-      node$display <- recover_display_name_from_storage_name(path_value)
-      return(node)
-    }
+	if (is.list(node) && !is.null(node$path)) {
+	  path_value <- as.character(node$path)[1]
+	  existing_display <- as.character(node$display %||% "")[1]
+
+	  node$path <- path_value
+	  node$display <- normalize_file_display_name(
+		existing_display,
+		file_info = list(
+		  path = path_value,
+		  display = existing_display,
+		  name = path_value
+		)
+	  )
+
+	  return(node)
+	}
 
     if (is.list(node)) {
       for (nm in names(node)) {

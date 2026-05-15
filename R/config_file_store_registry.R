@@ -279,7 +279,11 @@ mergen_resolve_display_name <- function(file_path, user_id = NULL, idx = NULL) {
     }
   }
 
-  kovalar <- unique(c(oncelikli_kovalar, names(idx_all)))
+	kovalar <- if (length(oncelikli_kovalar) > 0L) {
+	  oncelikli_kovalar
+	} else {
+	  character(0)
+	}
 
   for (kova_adi in kovalar) {
     kova <- idx_all[[kova_adi]]
@@ -379,22 +383,28 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
   }
 
   if (!is.null(bucket) && length(bucket) > 0) {
-    entries <- lapply(names(bucket), function(key) {
-      val <- bucket[[key]]
-      list(
-        key = key,
-        path = normalize_utf8_path(if (is.list(val) && !is.null(val$path)) val$path else as.character(val), mustWork = FALSE),
-        name = {
-          disp <- if (is.list(val) && !is.null(val$display)) as.character(val$display) else NA_character_
-          disp <- disp %||% NA_character_
-          if (!is.na(disp) && nzchar(disp)) {
-            disp
-          } else {
-            as.character(key)
-          }
-        }
-      )
-    })
+	entries <- lapply(names(bucket), function(key) {
+	  val <- bucket[[key]]
+	  rec_path <- normalize_utf8_path(
+		if (is.list(val) && !is.null(val$path)) val$path else as.character(val),
+		mustWork = FALSE
+	  )
+
+	  rec_display <- if (is.list(val) && !is.null(val$display)) {
+		as.character(val$display)
+	  } else {
+		as.character(key)
+	  }
+
+	  list(
+		key = key,
+		path = rec_path,
+		name = normalize_file_display_name(
+		  rec_display,
+		  file_info = list(path = rec_path, display = rec_display, name = rec_display)
+		)
+	  )
+	})
 
     df <- do.call(rbind, lapply(entries, function(rec) {
       data.frame(key = rec$key, path = rec$path, name = rec$name, stringsAsFactors = FALSE)
@@ -461,18 +471,61 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
       drop_stale_entries(missing_df)
     }
 
-    df <- df[exists_vec, , drop = FALSE]
-    if (nrow(df) > 0) {
-      out <- data.frame(
-        path = df$path,
-        name = df$name,
-        stringsAsFactors = FALSE
-      )
-      attr(out, "source") <- "index"
-      attr(out, "count") <- nrow(out)
-      log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: index)")
-      return(out)
-    }
+	df <- df[exists_vec, , drop = FALSE]
+
+	if (nrow(df) > 0) {
+	  filesystem_paths <- character(0)
+	  user_dir_for_merge <- tryCatch(mergen_user_upload_dir(user_id), error = function(e) "")
+
+	  if (nzchar(user_dir_for_merge) &&
+		  isTRUE(tryCatch(path_exists_relaxed(user_dir_for_merge), error = function(e) FALSE))) {
+		filesystem_paths <- tryCatch(
+		  list.files(
+			user_dir_for_merge,
+			full.names = TRUE,
+			recursive = FALSE,
+			include.dirs = FALSE
+		  ),
+		  error = function(e) character(0)
+		)
+	  }
+
+	  if (length(filesystem_paths) > 0L) {
+		existing_norm <- vapply(df$path, normalize_for_path_compare, character(1))
+		filesystem_norm <- vapply(filesystem_paths, normalize_for_path_compare, character(1))
+		extra_paths <- filesystem_paths[!(filesystem_norm %in% existing_norm)]
+
+		if (length(extra_paths) > 0L) {
+		  extra_df <- data.frame(
+			key = tolower(basename(extra_paths)),
+			path = vapply(extra_paths, normalize_utf8_path, character(1), mustWork = FALSE),
+			name = vapply(
+			  extra_paths,
+			  function(p) mergen_resolve_display_name(
+				p,
+				user_id = user_id,
+				idx = idx
+			  ),
+			  character(1)
+			),
+			stringsAsFactors = FALSE
+		  )
+
+		  df <- rbind(df, extra_df[, c("key", "path", "name"), drop = FALSE])
+		}
+	  }
+
+	  out <- data.frame(
+		path = df$path,
+		name = vapply(df$name, normalize_file_display_name, character(1)),
+		stringsAsFactors = FALSE
+	  )
+
+	  attr(out, "source") <- "index+filesystem"
+	  attr(out, "count") <- nrow(out)
+	  log_info("[INDEX] user={uid} için {nrow(out)} dosya bulundu (kaynak: index+filesystem)")
+	  return(out)
+	}
   }
 
   dir <- mergen_user_upload_dir(user_id)

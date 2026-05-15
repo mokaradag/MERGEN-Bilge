@@ -16,18 +16,8 @@ fm_empty_files_df <- function() {
 }
 
 fm_clean_file_display_name <- function(file_name, file_info = NULL) {
-  explicit_display <- ""
-
-  if (is.list(file_info)) {
-    explicit_display <- file_info$display_name %||%
-      file_info$display %||%
-      file_info$original_name %||%
-      ""
-  }
-
-  explicit_display <- as.character(explicit_display %||% "")[1]
-  if (!is.na(explicit_display) && nzchar(explicit_display)) {
-    return(explicit_display)
+  if (exists("normalize_file_display_name", mode = "function", inherits = TRUE)) {
+    return(normalize_file_display_name(file_name, file_info = file_info))
   }
 
   display_name <- as.character(file_name %||% "")[1]
@@ -40,6 +30,12 @@ fm_clean_file_display_name <- function(file_name, file_info = NULL) {
       recover_display_name_from_storage_name(display_name),
       error = function(e) display_name
     )
+  }
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    display_name <- normalize_text_utf8(display_name, repair_mojibake = TRUE)
+  } else {
+    display_name <- enc2utf8(display_name)
   }
 
   display_name
