@@ -155,7 +155,8 @@ The following UX behaviors are protected contracts:
 - Quick action cards must select the correct model and tool mode, show the intro message, and avoid duplicate events on rapid double click.
 - Background music must keep one active track source at a time. Character music must not overlap theme music.
 - TTS must duck music while speaking and restore music after playback or failure.
-- STT must pause/duck music when the modal opens and restore music on cancel, submit, init failure, or microphone-denied paths.
+- STT must pause/duck music when the modal opens and restore music on cancel, submit, init failure, microphone-denied paths, and unexpected Bootstrap modal hidden/close paths.
+- AI Expert audio must duck music while speaking and must release its duck owner if playback fails or the browser rejects autoplay; subtitle fallback behavior must remain intact.
 - TTS autoplay must be limited to new AI responses. Loading saved or old chats must not auto-play historical answers.
 - The stop button must stop generation and also clean active TTS playback.
 - Reasoning/thinking panels must not break chat scroll, must appear for thinking-capable flows, and must clean up safely after completion or stop.
@@ -207,8 +208,9 @@ Browser-level smoke validation:
 - The expected browser result is `UX_SMOKE_DONE:PASS`.
 - The default smoke is VM-safe and single-session: it loads the app once, prepares smoke-only `localStorage` to skip the human Deep Space intro, validates the welcome screen, runs the synthetic reasoning fixture before real quick-action/chat side effects, then validates quick action, chat input, media, saved-chat no-autoplay, and console sanity.
 - The smoke must restore the original browser storage values after it finishes.
-- The smoke validates real browser behavior for welcome boot, no-top-gap layout, quick-action double-click single-dispatch, Enter/Shift+Enter/stop-mode input behavior, auto-scroll state, TTS/STT/music duck and restore behavior, saved-chat no historical TTS autoplay, reasoning panel lifecycle, and blocking console errors.
+- The smoke validates real browser behavior for welcome boot, no-top-gap layout, quick-action double-click single-dispatch, Enter/Shift+Enter/stop-mode input behavior, auto-scroll state, TTS/STT/music duck and restore behavior, STT hidden-modal cleanup, AI Expert autoplay rejection music restore, saved-chat no historical TTS autoplay, reasoning panel lifecycle, and blocking console errors.
 - Quick-action intro-message visibility is intentionally non-blocking in the VM/browser smoke because SSO routing and timing can make that visual check brittle. Deterministic focused tests remain the source of truth for quick-action intro, model, and tool-mode contracts.
+- When extracting UTF-8 JavaScript snippets in R tests, do not mix byte-position matching such as useBytes = TRUE with character-position substring functions such as substr(); use character-position matching or byte-safe extraction consistently to avoid false failures around Turkish text.
 - Known `Shiny.setInputValue` / `Shiny.setinputValue` timing noise may be treated as warning-only in the smoke harness, but do not broadly ignore unrelated console errors.
 - If this smoke test fails because of Keycloak redirection, iframe routing, Deep Space intro timing, or production proxy behavior, do not remove UX features to make it pass. Prefer a small defensive adjustment inside `www/smoke/ux-smoke.html` while preserving focused test coverage.
 
@@ -218,7 +220,8 @@ Manual validation after touching welcome, quick actions, media, TTS, STT, stop-b
 - Test every quick action once: confirm model/tool switch, intro message, and no duplicate behavior on rapid double click.
 - Music: toggle background music, switch modes, start character chat, start a new chat, and navigate away from Ana Söyleşi; confirm no overlapping audio.
 - TTS: enable TTS, send a new message, confirm the new answer is spoken, then load a saved chat and confirm old answers do not auto-play.
-- STT: open modal, confirm music pauses/ducks, cancel and confirm restore, reopen and submit and confirm restore.
+- STT: open modal, confirm music pauses/ducks, cancel and confirm restore, reopen and submit and confirm restore, then close the modal through an unexpected Bootstrap/browser close path and confirm music still restores.
+- AI Expert audio: simulate or observe an autoplay/play rejection path and confirm the audio element is cleaned, music returns to normal volume, and subtitles still hide through the fallback timer.
 - Reasoning: use a thinking-capable model, confirm the panel appears, auto-scroll works, and cleanup happens after response/stop.
 - Browser console: confirm there are no JS errors, duplicate audio warnings, or missing element errors.
 - Browser smoke: open the smoke page on the target deployment through the same app origin and confirm `UX_SMOKE_DONE:PASS`; on SSO deployments, remember that quick-action intro visibility is covered by focused tests rather than the smoke page. For local VM checks, prefer `tests/scripts/open_ux_smoke.R` with `MERGEN_SMOKE_BASE_URL` set to the app base URL.
