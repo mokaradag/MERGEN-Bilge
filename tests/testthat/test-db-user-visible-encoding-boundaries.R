@@ -25,6 +25,25 @@
   stop("Repo kökü bulunamadı.", call. = FALSE)
 }
 
+test_that("chat visible DB normalization repairs observed Turkish AI-answer mojibake", {
+  skip_if_not(exists("normalize_db_visible_value", mode = "function", inherits = TRUE))
+
+  broken_ai_answer <- "Ä°yi, teÅŸekkÃ¼r ederim! Sen nasÄ±lsÄ±n? YardÄ±mcÄ± olabilirim."
+  expected_ai_answer <- "İyi, teşekkür ederim! Sen nasılsın? Yardımcı olabilirim."
+
+  repaired <- normalize_db_visible_value(broken_ai_answer)
+
+  expect_identical(
+    repaired,
+    expected_ai_answer
+  )
+
+  expect_false(
+    grepl("Ã|Ä|Å|Â|�", repaired, perl = TRUE),
+    info = "Kullanıcıya görünen AI yanıtı DB yazımı öncesinde mojibake içermemelidir."
+  )
+})
+
 .read_repo_text_for_db_encoding_boundary_tests <- function(path) {
   repo_root <- .find_repo_root_for_db_encoding_boundary_tests()
   full_path <- file.path(repo_root, path)

@@ -336,6 +336,76 @@ tryCatch({
 
   cat("OK: Kritik SQL Server metin sütunları bulundu.\n")
   print(columns)
+  
+  scan_recent_messages <- vm_encoding_preflight_bool(
+    Sys.getenv("MERGEN_PREFLIGHT_SCAN_RECENT_MESSAGES", "TRUE"),
+    default = TRUE,
+    env_name = "MERGEN_PREFLIGHT_SCAN_RECENT_MESSAGES"
+  )
+
+  if (isTRUE(scan_recent_messages)) {
+    recent_messages <- DBI::dbGetQuery(
+      conn,
+      "
+        SELECT TOP (200)
+          MessageID,
+          ChatID,
+          MessageContent,
+          ReasoningContent,
+          MessageTimestamp
+        FROM MB_Messages
+        ORDER BY MessageID DESC
+      "
+    )
+
+    visible_values <- character(0)
+
+    if ("MessageContent" %in% names(recent_messages)) {
+      visible_values <- c(visible_values, recent_messages$MessageContent)
+    }
+
+    if ("ReasoningContent" %in% names(recent_messages)) {
+      visible_values <- c(visible_values, recent_messages$ReasoningContent)
+    }
+
+    visible_values <- visible_values[!is.na(visible_values)]
+
+    if (length(visible_values) > 0L && vm_encoding_preflight_has_mojibake(visible_values)) {
+      bad_rows <- recent_messages[
+        vapply(seq_len(nrow(recent_messages)), function(i) {
+          row_text <- paste(
+            recent_messages$MessageContent[i] %||% "",
+            recent_messages$ReasoningContent[i] %||% "",
+            collapse = "\n"
+          )
+          vm_encoding_preflight_has_mojibake(row_text)
+        }, logical(1)),
+        ,
+        drop = FALSE
+      ]
+
+      vm_encoding_preflight_stop(sprintf(
+        paste(
+          "Son MB_Messages kayıtlarında mojibake tespit edildi.",
+          "İlk bozuk kayıtlar: %s"
+        ),
+        paste(
+          utils::head(
+            paste0(
+              "MessageID=", bad_rows$MessageID,
+              ", ChatID=", bad_rows$ChatID,
+              ", Preview=",
+              substr(bad_rows$MessageContent %||% "", 1, 120)
+            ),
+            5
+          ),
+          collapse = " | "
+        )
+      ))
+    }
+
+    cat("OK: Son MB_Messages kayıtlarında mojibake bulunmadı.\\n")
+  }
 
   require_nvarchar <- vm_encoding_preflight_bool(
     Sys.getenv("MERGEN_PREFLIGHT_REQUIRE_NVARCHAR", "FALSE"),
