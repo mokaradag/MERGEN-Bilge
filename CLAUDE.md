@@ -128,6 +128,83 @@ VM-only manual validation after any DB encoding change:
 - Reject the change if SSMS shows new mojibake such as `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, `ÄŸ`, `TÃ¼rkiye`, `NasÄ±l`, or `yardÄ±mcÄ±`.
 - Do not run an automatic startup migration for existing corrupted rows. Old rows require backup and a separate one-time repair plan after new writes are proven correct.
 
+### 1C) File lifecycle and File Manager boundary contract
+
+Uploaded file lifecycle is a protected boundary. Do not trade security or user isolation for convenience.
+
+Current contract:
+
+- Storage names and display names are separate. Storage-prefixed filenames may exist on disk, but File Manager must show the original user-facing name.
+- Turkish original filenames must remain legible in the UI and logs after upload, browser refresh, and full app restart.
+- File Manager display names must pass through the central display-name helpers. Do not add local storage-prefix stripping logic in table rendering, MCP resolution, or summarization code.
+- The persistent JSON index remains the first source of truth for a user bucket.
+- If the index is missing, empty, or partially stale, same-user filesystem fallback is allowed only inside that same user's upload/MCP directories.
+- Same-user filesystem fallback must not reintroduce duplicate File Manager rows. When index and filesystem discovery both see the same logical file, the File Manager table must keep one row.
+- Cross-user and cross-bucket lookup must remain disabled by default. Any migration/admin opt-in must be explicit and must not leak into normal runtime flows.
+- MCP file tools must not resolve arbitrary absolute paths from normal user arguments. Users should refer to selected file names or file tokens, not raw filesystem paths.
+- Summarization mode must use only files selected for Model Bağlamı and only supported document extensions. Excel files must be excluded from summarization without removing or corrupting File Manager state.
+- Excel files remain valid for MCP Excel analysis when selected through the normal File Manager/MCP flow.
+- The upload size policy must remain centralized at getOption("mergen.upload_max_mb", 25L). Do not introduce another hard-coded upload limit.
+- Keep file lifecycle helpers small. If registry/listing logic grows, split focused helpers into a small sourced file rather than making R/config_file_store_registry.R function-heavy.
+- Any new runtime helper file must be added to R/config_source_manifest.R in dependency order and covered by manifest/order tests.
+
+Key files:
+
+- R/config_file_store.R
+- R/config_file_store_index_mutation.R
+- R/config_file_store_listing_helpers.R
+- R/config_file_store_registry.R
+- R/helpers_file_manager_table.R
+- R/helpers_file_manager_state_runtime.R
+- R/helpers_mcp_file_resolver.R
+- R/module_summarization.R
+- R/config_source_manifest.R
+
+Protected by:
+
+- tests/testthat/test-file-lifecycle-hardening-contract.R
+- tests/testthat/test-file-manager-display-name-contract.R
+- tests/testthat/test-file-resolution-security-contract.R
+- tests/testthat/test-resolve-uploaded-file.R
+- tests/testthat/test-mcp-excel-resolve.R
+- tests/testthat/test-file-store-index.R
+- tests/testthat/test-e2e-file-context-regression.R
+- tests/testthat/test-upload-size-policy.R
+- tests/testthat/test-upload-validator.R
+- tests/testthat/test-config-file-store-registry-refactor-contract.R
+- tests/testthat/test-global-source-manifest-contract.R
+- tests/testthat/test-maintainability-ratchet.R
+
+Focused validation after touching file lifecycle, File Manager, MCP file resolution, summarization file selection, upload limits, or source-manifest order:
+
+- testthat::test_file("tests/testthat/test-file-lifecycle-hardening-contract.R")
+- testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")
+- testthat::test_file("tests/testthat/test-file-resolution-security-contract.R")
+- testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
+- testthat::test_file("tests/testthat/test-mcp-excel-resolve.R")
+- testthat::test_file("tests/testthat/test-file-store-index.R")
+- testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")
+- testthat::test_file("tests/testthat/test-upload-size-policy.R")
+- testthat::test_file("tests/testthat/test-upload-validator.R")
+- testthat::test_file("tests/testthat/test-config-file-store-registry-refactor-contract.R")
+- testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")
+- testthat::test_file("tests/testthat/test-maintainability-ratchet.R")
+
+Manual validation after file lifecycle changes:
+
+- Upload PDF, DOCX, TXT, CSV, and XLSX locally.
+- Upload a Turkish filename such as Türkçe_çalışma_özeti_İstanbul.pdf.
+- Verify original display names before browser refresh.
+- Refresh the browser and verify the files still appear once.
+- Fully restart the app and verify the files still appear once.
+- Confirm storage-prefixed disk names do not leak into the File Manager table.
+- Select Model Bağlamı and run summarization with a supported document.
+- Select an Excel file in summarization mode and confirm it is excluded with a proper warning while File Manager state remains intact.
+- Run MCP Excel analysis with an XLSX selected through File Manager.
+- Confirm no cross-user files appear.
+- Attempt an absolute-path file reference and confirm it is rejected or ignored without arbitrary file access.
+- Inspect logs for readable Turkish filenames.
+
 ### 1A) Keep new code identifiers ASCII-safe when practical
 Preserve Turkish text integrity in user-facing strings, docs, comments, DB text, JSON text, and rendered UI. However, for Windows VM parser robustness, **new code identifiers** should be ASCII-only where practical (variable/helper names, unquoted `data.frame(...)` column names, `$field_name` accessors, and similar code symbols that can become mojibake-sensitive). This is **not** permission to Latinize visible product text; it applies only to code symbols/identifiers.
 
@@ -253,6 +330,7 @@ The current source-manifest layers are:
 When adding, moving, or splitting a runtime file:
 
 - add the file to the correct position in `R/config_source_manifest.R`,
+- for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
 - for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
 - when splitting Claude Code security helpers, preserve the order `R/helpers_claude_code_security_policy.R` before `R/helpers_claude_code_prompt_security_policy.R`, and keep both before the Claude Code runtime, process, streaming, lifecycle, and module files that call the policy helpers.

@@ -24,6 +24,12 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Dosyaların söyleşi bağlamına eklenmesi
 - Özetleme, analiz ve veri işleme akışları
 - MCP tabanlı araçlarla gelişmiş dosya işleme
+- Dosya Yönetimi yaşam döngüsü, yüklenen dosyaların tarayıcı yenilemesi ve tam uygulama yeniden başlatması sonrasında görünür kalmasını hedefler.
+- Kullanıcıya gösterilen dosya adları storage-prefix içeren kalıcı dosya adlarından ayrıdır; `dummy_test_data.xlsx` ve `Türkçe_çalışma_özeti_İstanbul.pdf` gibi özgün adlar Dosya Yönetimi tablosunda okunabilir biçimde korunur.
+- Kalıcı dosya indeksi kısmen eski kaldığında yalnızca aynı kullanıcı klasöründe güvenli filesystem fallback uygulanır; çapraz kullanıcı/çapraz bucket çözümleme varsayılan olarak kapalı kalır.
+- Dosya Yönetimi listeleme yolu, aynı fiziksel dosyanın indeks ve filesystem fallback üzerinden iki kez tabloya düşmesini engelleyecek şekilde görünen dosya adı kimliğiyle tekilleştirilir.
+- Dosya Özetleme modu yalnızca Model Bağlamı seçili ve desteklenen belge türlerini kullanır; Excel dosyaları özetleme bağlamından çıkarılır ve MCP Excel analiz akışında kullanılmaya devam eder.
+- MCP dosya çözümleme normal kullanıcı akışlarında mutlak dosya yolu argümanlarını kabul etmez; dosya adı veya seçili dosya jetonu kullanılmalıdır.
 - ChartLab tabanlı grafik üretimi; canlı sohbetlerde ve kayıtlı/yeniden yüklenen söyleşilerde aynı Shiny çıktı bağlama yolu ile grafiklerin yeniden gösterilmesi
 
 ### Görsel ve medya özellikleri
@@ -74,6 +80,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - İstemci tarafında `www/js/encoding_utils.js`; genel Shiny mesajları, HTML metin/öznitelik onarımı ve Bilge Yolaç canlı akışı için ortak mojibake düzeltme/fallback katmanı sağlar.
 - Bilge Yolaç streaming kodu büyük yerel mojibake haritaları taşımak yerine bu ortak istemci yardımcısını kullanır; böylece kullanıcı deneyimi korunurken bakım yükü azaltılır.
 - Dosya Yönetimi görünen adları ve kalıcı dosya indeksi; Türkçe dosya adları, storage-prefix temizleme ve eski mojibake kayıtlarının okunabilir hâle getirilmesi için aynı merkezi normalizasyon hattını kullanır.
+- Dosya yaşam döngüsü sertleştirmesi `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, `R/config_file_store_registry.R`, `R/helpers_file_manager_table.R`, `R/helpers_mcp_file_resolver.R` ve `R/module_summarization.R` sınırlarında korunur. Bu sözleşme storage adı ile görünen adın ayrılmasını, aynı kullanıcı filesystem fallback davranışını, yinelenen Dosya Yönetimi satırlarının engellenmesini, MCP mutlak yol reddini ve özetleme/Excel ayrımını kapsar.
 
 #### Windows VM / SSO / SQL Server Türkçe Kodlama Güvencesi
 - Üretim benzeri Windows VM ortamında `.Renviron` içinde `DB_CLIENT_ENCODING=WINDOWS-1254` ve `DB_NAME_ENCODING=WINDOWS-1254` değerleri bulunmalıdır; değişiklikten sonra yalnızca tarayıcıyı yenilemek yeterli değildir, R süreci tamamen yeniden başlatılmalıdır.
@@ -91,6 +98,14 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
   - `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
   - `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
   - `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`
+  - `testthat::test_file("tests/testthat/test-file-lifecycle-hardening-contract.R")`
+  - `testthat::test_file("tests/testthat/test-file-resolution-security-contract.R")`
+  - `testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")`
+  - `testthat::test_file("tests/testthat/test-mcp-excel-resolve.R")`
+  - `testthat::test_file("tests/testthat/test-e2e-file-context-regression.R")`
+  - `testthat::test_file("tests/testthat/test-upload-size-policy.R")`
+  - `testthat::test_file("tests/testthat/test-upload-validator.R")`
+  - `testthat::test_file("tests/testthat/test-config-file-store-registry-refactor-contract.R")`
   - `testthat::test_file("tests/testthat/test-production-contracts.R")`
   - `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
   - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
