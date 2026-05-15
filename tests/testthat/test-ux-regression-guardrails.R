@@ -243,6 +243,7 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
   cinematic_js <- .ux_guard_read_text("www/js/explore_cinematic.js")
   character_step_js <- .ux_guard_read_text("www/js/explore_character_step.js")
   visualizer_js <- .ux_guard_read_text("www/js/tts_visualizer.js")
+  ai_expert_js <- .ux_guard_read_text("www/js/ai_expert_manager.js")
 
   .ux_guard_expect_all(
     music_js,
@@ -289,9 +290,42 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
       "canvasCtx.setTransform",
       "MusicManager.duckForSTT()",
       "MusicManager.unduckAfterSTT()",
+      "bindModalHiddenCleanup",
+      "hidden.bs.modal.mergenSttCleanup",
+      "setSttModalInactive",
       "stopAndCleanup"
     ),
     "STT müzik pause/resume sözleşmesi eksik:"
+  )
+  
+  play_reject_pos <- regexpr(
+    "playPromise.catch(function(err)",
+    ai_expert_js,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  testthat::expect_gt(
+    play_reject_pos,
+    0L,
+    info = "AI Expert autoplay rejection branch bulunmalıdır."
+  )
+
+  play_reject_branch <- substr(
+    ai_expert_js,
+    play_reject_pos,
+    min(nchar(ai_expert_js), play_reject_pos + 1200L)
+  )
+
+  .ux_guard_expect_all(
+    play_reject_branch,
+    c(
+      "self._stopAudio();",
+      "MusicManager.unduck('ai_expert')",
+      "ttsVisualizerState.setIdle",
+      "self._scheduleHide(self._estimateReadTime(self.state.currentText))"
+    ),
+    "AI Expert autoplay rejection cleanup sözleşmesi eksik:"
   )
 
   .ux_guard_expect_all(

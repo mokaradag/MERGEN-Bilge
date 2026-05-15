@@ -33,6 +33,49 @@ window.STT_Client = (function() {
     let audioChunks = [];
     let currentSegmentMaxRMS = 0;
     let lifecycleToken = 0;
+	
+    let modalCleanupElement = null;
+
+    function setSttModalInactive() {
+        try {
+            if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+                window.Shiny.setInputValue('stt_modal_active', false, { priority: 'event' });
+            }
+        } catch (e) {}
+    }
+
+    function unbindModalHiddenCleanup() {
+        if (modalCleanupElement && window.jQuery) {
+            try {
+                window.jQuery(modalCleanupElement).off('hidden.bs.modal.mergenSttCleanup');
+            } catch (e) {}
+        }
+        modalCleanupElement = null;
+    }
+
+    function bindModalHiddenCleanup(nsPrefix) {
+        unbindModalHiddenCleanup();
+
+        if (!canvasElement || !window.jQuery) return;
+
+        const modal = canvasElement.closest('.modal');
+        if (!modal) return;
+
+        modalCleanupElement = modal;
+
+        window.jQuery(modal)
+            .off('hidden.bs.modal.mergenSttCleanup')
+            .one('hidden.bs.modal.mergenSttCleanup', function() {
+                console.log('[STT] Modal kapanış fallback temizliği çalıştı');
+                try {
+                    stopAndCleanup(nsPrefix || '');
+                } catch (e) {
+                    console.warn('[STT] Modal kapanış temizliği başarısız:', e);
+                    restoreMusicAfterSTT();
+                }
+                setSttModalInactive();
+            });
+    }
     
     // --- SONIC PULSE VISUALIZER STATE ---
     const MODES = {
@@ -90,6 +133,8 @@ window.STT_Client = (function() {
             restoreMusicAfterSTT();
             return;
         }
+
+        bindModalHiddenCleanup(nsPrefix || '');
         
         canvasCtx = canvasElement.getContext("2d");
         
@@ -381,10 +426,12 @@ window.STT_Client = (function() {
         }
     }
     
-    function stopAndCleanup(nsPrefix) {
-        lifecycleToken++;
-        isRecordingActive = false;
-        currentMode = MODES.IDLE;
+		function stopAndCleanup(nsPrefix) {
+			unbindModalHiddenCleanup();
+
+			lifecycleToken++;
+			isRecordingActive = false;
+			currentMode = MODES.IDLE;
         if (chunkTimer) clearTimeout(chunkTimer);
         if (timerInterval) clearInterval(timerInterval);
         if (animationId) cancelAnimationFrame(animationId);
