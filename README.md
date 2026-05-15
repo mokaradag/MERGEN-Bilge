@@ -62,6 +62,10 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - `normalize_db_value()` yapılandırılmış DB istemci kodlamasını dikkate alır. DB istemci kodlaması UTF-8 değilse kullanıcıya görünen Türkçe metin, DBI/ODBC parametre sınırına uygun biçimde hazırlanır; böylece `MB_Messages.MessageContent`, `ReasoningContent`, sohbet başlıkları ve benzeri kullanıcıya görünen alanlarda yeni kayıtların `NasÄ±l`, `TÃ¼rkiye`, `baÅŸkent`, `yardÄ±mcÄ±` gibi mojibake biçiminde yazılması engellenir.
 - Görsel galeri silme/güncelleme akışlarında `MB_Messages.MessageContent` kullanıcıya görünen metin olarak onarılır; `MessageID` gibi teknik alanlara mojibake onarımı uygulanmaz. Bu kural, kullanıcıya gösterilen Türkçe uyarı metnini korurken teknik DB parametrelerinin bozulmasını engeller.
 - Bu düzeltme yeni yazımları korur; daha önce bozuk kaydedilmiş satırlar otomatik olarak değiştirilmez. Eski mojibake kayıtlar yalnızca DB yedeği alındıktan ve yeni yazım yolu SSMS üzerinde doğrulandıktan sonra ayrı bir tek-seferlik onarım planıyla ele alınmalıdır.
+- Yeni `MB_Messages` yazımlarında yalnızca ön-normalizasyon yeterli kabul edilmez; mesaj DB’ye eklendikten sonra ve commit edilmeden önce `assert_mb_message_visible_encoding_clean()` ile `MessageContent` ve varsa `ReasoningContent` yeniden okunarak açık mojibake kalıntısı aranır. Bu kontrol hata verirse işlem rollback edilir ve yeni bozuk kayıt kalıcılaştırılmaz.
+- Bu koruma hem normal `save_message_to_db()` akışını hem de worker/future tarafındaki `worker_save_assistant_response()` akışını kapsar. Böylece geçmişteki bozuk kayıtlar ayrı bir veri bakım konusu olarak kalırken yeni sohbet ve AI yanıtlarının Türkçe karakterleri bozarak DB’ye yazılması engellenir.
+- `tests/scripts/run_vm_encoding_preflight_real.R` artık iki farklı sonucu ayırır: eski/historik `MB_Messages` mojibake kalıntıları varsayılan olarak uyarı üretir; `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE` ile çalışan transactional yeni yazım/okuma probu ise hâlâ kesin geçiş koşuludur. Eski kayıtları da bloklayıcı yapmak gerekirse `MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE=TRUE` kullanılabilir.
+- `tests/scripts/repair_mb_messages_mojibake.R` yalnızca bakım amaçlı, tek-seferlik ve best-effort bir yardımcıdır. `source(...)` ile çalıştırılabilecek şekilde R oturumunu kapatan `quit()` çağrıları içermemelidir. Eski bozuk kayıtların tamamının eksiksiz onarılması garanti edilmez; kabul kriteri yeni kayıtların bozulmaması ve transactional preflight yazım testinin geçmesidir.
 - Bu sınır `tests/testthat/test-db-normalization-contract.R` içinde ortam değişkeni okuma, `WINDOWS-1254` parametre davranışı ve yaygın Türkçe mojibake onarımı örnekleriyle korunur.
 - Emoji desteği Türkçe karakter dayanıklılığından ayrı değerlendirilir. Emoji saklama davranışı, ilgili SQL Server kolon tipleri (`nvarchar` / `varchar`) ve gerçek ODBC yazma-okuma testi doğrulanmadan DB yazım sınırında yeni bir UTF-8 zorlama değişikliği yapılmamalıdır.
 - Test ortamında da çalışma zamanı kaynak sırası korunur: `tests/testthat/helper_bootstrap.R`, DB yardımcılarından önce `R/utils_text_encoding.R` dosyasını yükler. Böylece tekil `testthat::test_file(...)` çalıştırmalarında da mojibake onarımı gerçek uygulama davranışıyla aynı kalır.
@@ -74,7 +78,8 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Kullanıcıya görünen DB metinleri merkezi normalizasyon yardımcılarından geçmelidir; teknik kimlikler, bayraklar, enum değerleri, dosya yolları, model ID'leri, kullanıcı adı/e-posta/sicil/Keycloak ID gibi alanlarda mojibake onarımı yapılmamalıdır.
 - SSO claim işleme, görünür ad/etiket alanlarını teknik kimlik alanlarından ayrı tutmalıdır. Destek sayfası geri bildirim/hata metinleri ve görsel galeri `MB_Messages.MessageContent` güncellemeleri yalnızca kullanıcıya görünen metin sınırında onarılır.
 - Emoji kalıcılığı ayrı bir konudur; SQL Server sütun tipleri ve ODBC okuma/yazma davranışı doğrulanmadan bu kapsamda çözülmüş sayılmamalıdır. Eski bozuk satırlar için otomatik migration yoktur.
-- Gerçek VM doğrulaması için `tests/scripts/run_vm_encoding_preflight_real.R` kullanılmalıdır. Transactional write probe açıldığında görünür ve teknik alan ayrımını gerçek DB yazma/okuma sınırında test eder ve test kayıtlarını rollback eder.
+- Gerçek VM doğrulaması için `tests/scripts/run_vm_encoding_preflight_real.R` kullanılmalıdır. `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE` açıldığında görünür ve teknik alan ayrımını gerçek DB yazma/okuma sınırında test eder ve test kayıtlarını rollback eder. Bu transactional yeni yazım probu başarısızsa değişiklik kabul edilmemelidir.
+- Preflight sırasında eski `MB_Messages` mojibake kalıntıları bulunursa varsayılan davranış uyarıdır; bu durum geçmiş veri bakımını işaret eder, tek başına yeni yazım yolunun bozuk olduğunu kanıtlamaz. Eski kayıtların da bloklayıcı olmasını isterseniz `MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE=TRUE` ayarlanmalıdır.
 - VM preflight mojibake denetimi yalnızca açık mojibake tokenlarını aramalıdır; geçerli Türkçe çıktıyı Windows byte dizileri üzerinden yanlış pozitif sayacak geniş `useBytes` desenleri kullanılmamalıdır.
 - `tests/scripts/parse_sanity_check.R`, VM preflight içinde uygulama/runtime parse sağlığını doğrulamak içindir. Tam test davranışı ayrıca `source("tests/testthat.R", encoding = "UTF-8")` ile doğrulanmalıdır.
 - Parser hassasiyeti olan R test kaynaklarında literal emoji yerine `intToUtf8(...)` kullanılmalıdır. Bu kural emoji desteğini kaldırmaz; yalnızca Windows VM parse dayanıklılığını artırır.
@@ -88,6 +93,10 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
   - `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
   - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
   - `Sys.setenv(MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST = "TRUE")`
+  - `Sys.setenv(MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE = "FALSE")`
+  - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
+  - `Sys.setenv(MERGEN_REPAIR_MOJIBAKE_APPLY = "FALSE")`
+  - `source("tests/scripts/repair_mb_messages_mojibake.R", encoding = "UTF-8")`
   - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
   - `Sys.setenv(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE")`
   - `source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")`
