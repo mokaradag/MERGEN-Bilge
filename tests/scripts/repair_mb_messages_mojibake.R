@@ -12,10 +12,10 @@
 #   Sys.setenv(MERGEN_REPAIR_MOJIBAKE_APPLY = "TRUE")
 #   source("tests/scripts/repair_mb_messages_mojibake.R", encoding = "UTF-8")
 #
-# By default this scans ALL rows.
+# By default this scans all rows.
 # Optional:
 #   MERGEN_REPAIR_MOJIBAKE_BATCH_SIZE = "1000"
-#   MERGEN_REPAIR_MOJIBAKE_MAX_ROWS   = "0"     # 0 means all rows
+#   MERGEN_REPAIR_MOJIBAKE_MAX_ROWS   = "0"
 # ==============================================================================
 
 local({
@@ -50,6 +50,26 @@ repair_mb_messages_coalesce_text <- function(value) {
   as.character(value[1])
 }
 
+repair_mb_messages_mojibake_tokens <- function() {
+  c(
+    "\u00C3",
+    "\u00C4",
+    "\u00C5",
+    "\u00C2",
+    "\u00E2\u0080",
+    "\u00F0\u009F",
+    "\u00F0\u0178",
+    "\u00EF\u00B8\u008F",
+    "\u0178",
+    "\uFFFD",
+    "T\u00C3\u00BCrkiye",
+    "Nas\u00C4\u00B1l",
+    "yard\u00C4\u00B1mc\u00C4\u00B1",
+    "ba\u00C5\u0178kent",
+    "te\u00C5\u0178ekk\u00C3\u00BCr"
+  )
+}
+
 repair_mb_messages_has_mojibake <- function(value) {
   text <- paste(enc2utf8(as.character(value)), collapse = "\n")
 
@@ -57,107 +77,132 @@ repair_mb_messages_has_mojibake <- function(value) {
     return(FALSE)
   }
 
-  mojibake_tokens <- c(
-    "\u00C3",       # Ã marker
-    "\u00C4",       # Ä marker
-    "\u00C5",       # Å marker
-    "\u00C2",       # Â marker
-    "\uFFFD",       # replacement character
-    "T\u00C3\u00BCrkiye",
-    "Nas\u00C4\u00B1l",
-    "yard\u00C4\u00B1mc\u00C4\u00B1",
-    "ba\u00C5\u0178kent",
-    "te\u00C5\u0178ekk\u00C3\u00BCr"
-  )
+  tokens <- repair_mb_messages_mojibake_tokens()
 
   any(vapply(
-    mojibake_tokens,
+    tokens,
     function(token) grepl(token, text, fixed = TRUE),
     logical(1)
   ))
 }
 
+repair_mb_messages_mojibake_score <- function(value) {
+  text <- paste(enc2utf8(as.character(value)), collapse = "\n")
+
+  if (!nzchar(text)) {
+    return(0L)
+  }
+
+  tokens <- repair_mb_messages_mojibake_tokens()
+
+  sum(vapply(
+    tokens,
+    function(token) {
+      if (grepl(token, text, fixed = TRUE)) 1L else 0L
+    },
+    integer(1)
+  ))
+}
+
+repair_mb_messages_console_safe <- function(value) {
+  out <- repair_mb_messages_coalesce_text(value)
+  out <- enc2utf8(out)
+
+  native <- suppressWarnings(
+    iconv(out, from = "UTF-8", to = "", sub = "?")
+  )
+
+  if (is.na(native)) {
+    native <- gsub("[^ -~]", "?", out, perl = TRUE)
+  }
+
+  native
+}
+
 repair_mb_messages_preview <- function(x, n = 160L) {
-  x <- repair_mb_messages_coalesce_text(x)
+  x <- repair_mb_messages_console_safe(x)
   x <- gsub("[\r\n]+", " ", x)
   substr(x, 1L, n)
 }
 
-repair_mb_messages_replace_common_turkish_mojibake <- function(value) {
+repair_mb_messages_strip_non_bmp <- function(value) {
   if (is.null(value) || length(value) == 0L || is.na(value[1])) {
     return(value)
   }
 
   out <- enc2utf8(as.character(value[1]))
+  cps <- tryCatch(utf8ToInt(out), error = function(e) integer(0))
 
-  replacements <- c(
-    "\u00C4\u00B0" = "\u0130", # Ä° -> İ
-    "\u00C4\u00B1" = "\u0131", # Ä± -> ı
-    "\u00C3\u00BC" = "\u00FC", # Ã¼ -> ü
-    "\u00C3\u0153" = "\u00DC", # Ãœ -> Ü
-    "\u00C3\u00B6" = "\u00F6", # Ã¶ -> ö
-    "\u00C3\u2013" = "\u00D6", # Ã– -> Ö
-    "\u00C3\u00A7" = "\u00E7", # Ã§ -> ç
-    "\u00C3\u2021" = "\u00C7", # Ã‡ -> Ç
-    "\u00C4\u0178" = "\u011F", # ÄŸ -> ğ
-    "\u00C4\u017E" = "\u011E", # Äž -> Ğ
-    "\u00C5\u0178" = "\u015F", # ÅŸ -> ş
-    "\u00C5\u017E" = "\u015E", # Åž -> Ş
-
-    # Some VM/console/ODBC paths surface the second byte marker through Â.
-    "\u00C2\u00B0" = "\u0130", # Â° -> İ
-    "\u00C2\u00B1" = "\u0131"  # Â± -> ı
-  )
-
-  for (bad in names(replacements)) {
-    out <- gsub(bad, replacements[[bad]], out, fixed = TRUE)
+  if (length(cps) == 0L) {
+    return(out)
   }
 
-  out
+  cps <- cps[cps <= 0xFFFFL]
+
+  if (length(cps) == 0L) {
+    return("")
+  }
+
+  intToUtf8(cps)
 }
 
-repair_mb_messages_strip_or_repair_symbol_mojibake <- function(value) {
+repair_mb_messages_replace_common_mojibake <- function(value) {
   if (is.null(value) || length(value) == 0L || is.na(value[1])) {
     return(value)
   }
 
   out <- enc2utf8(as.character(value[1]))
 
-  # Common UTF-8 emoji/symbol bytes misread through Windows-1254/1252.
-  # When the byte sequence is incomplete after DB roundtrip, reliable recovery
-  # is not always possible; remove only the corrupt prefix fragments.
   replacements <- c(
-    "\u011F\u0178\u201D\u008D" = "\U0001F50D",
-    "\u011F\u0178\u201D\u017D" = "\U0001F50E",
-    "\u011F\u0178\u201C\u008C" = "\U0001F4CC",
-    "\u011F\u0178\u201C\u009D" = "\U0001F4DD",
-    "\u011F\u0178\u2019\u00A1" = "\U0001F4A1",
-    "\u011F\u0178\u0161\u20AC" = "\U0001F680",
-    "\u011F\u0178\u017D\u00AF" = "\U0001F3AF",
-    "\u011F\u0178\u2018\u008D" = "\U0001F44D",
-    "\u00E2\u0153\u2026" = "\u2705",
-    "\u00E2\u009D\u0152" = "\u274C",
-    "\u00E2\u0161\u00A0" = "\u26A0",
-    "\u00E2\u20AC\u201D" = "\u2014",
-    "\u00E2\u20AC\u201C" = "\u2013",
-    "\u00E2\u20AC\u2122" = "\u2019",
-    "\u00E2\u20AC\u0153" = "\u201C",
-    "\u00E2\u20AC\u009D" = "\u201D"
+    "\u00C4\u00B0" = "\u0130",
+    "\u00C4\u00B1" = "\u0131",
+    "\u00C3\u00BC" = "\u00FC",
+    "\u00C3\u0153" = "\u00DC",
+    "\u00C3\u00B6" = "\u00F6",
+    "\u00C3\u2013" = "\u00D6",
+    "\u00C3\u00A7" = "\u00E7",
+    "\u00C3\u2021" = "\u00C7",
+    "\u00C4\u0178" = "\u011F",
+    "\u00C4\u017E" = "\u011E",
+    "\u00C5\u0178" = "\u015F",
+    "\u00C5\u017E" = "\u015E",
+    "\u00C2\u00B0" = "\u0130",
+    "\u00C2\u00B1" = "\u0131",
+    "\u00E2\u0080\u0099" = "'",
+    "\u00E2\u0080\u0098" = "'",
+    "\u00E2\u0080\u009C" = "\"",
+    "\u00E2\u0080\u009D" = "\"",
+    "\u00E2\u0080\u0093" = "-",
+    "\u00E2\u0080\u0094" = "-",
+    "\u00E2\u0080\u00A6" = "...",
+    "\u00C2\u00A0" = " ",
+    "\u00C2\u00AD" = "",
+    "\u00EF\u00B8\u008F" = "",
+    "g\u0178S" = "",
+    "g\u0178" = ""
   )
 
-  for (bad in names(replacements)) {
-    out <- gsub(bad, replacements[[bad]], out, fixed = TRUE)
+  for (pass in seq_len(6L)) {
+    before <- out
+
+    for (bad in names(replacements)) {
+      out <- gsub(bad, replacements[[bad]], out, fixed = TRUE)
+    }
+
+    out <- gsub("\u00F0\u009F[\u0080-\u00BF][\u0080-\u00BF]", "", out, perl = TRUE)
+    out <- gsub("\u00F0[\u0080-\u00BF]{3}", "", out, perl = TRUE)
+    out <- gsub("\u00F0\u0178[^[:space:]]{0,4}", "", out, perl = TRUE)
+    out <- gsub("[\u0080-\u009F]", "", out, perl = TRUE)
+    out <- gsub("\u0178", "", out, fixed = TRUE)
+    out <- gsub("\u00C2", "", out, fixed = TRUE)
+    out <- repair_mb_messages_strip_non_bmp(out)
+
+    if (identical(before, out)) {
+      break
+    }
   }
 
-  # If incomplete emoji fragments remain, remove only the broken prefix cluster.
-  # This prevents DB verification from failing forever on unrecoverable partials.
-  out <- gsub("\u011F\u0178[\u0080-\uFFFF]{0,4}", "", out, perl = TRUE)
-  out <- gsub("\u00F0\u0178[\u0080-\uFFFF]{0,4}", "", out, perl = TRUE)
-  out <- gsub("\u00E2[\u0080-\uFFFF]{1,3}", "", out, perl = TRUE)
-
-  # Clean spacing caused by removed corrupt emoji prefixes.
-  out <- gsub("[[:space:]]{2,}", " ", out, perl = TRUE)
-  trimws(out)
+  enc2utf8(out)
 }
 
 repair_mb_messages_repair_visible_text <- function(value) {
@@ -167,59 +212,54 @@ repair_mb_messages_repair_visible_text <- function(value) {
 
   original <- enc2utf8(as.character(value[1]))
 
-  candidate_1 <- tryCatch(
-    normalize_db_visible_value(original),
-    error = function(e) original
-  )
+  candidates <- character(0)
+  candidates <- c(candidates, original)
 
-  candidate_2 <- tryCatch(
-    repair_text_mojibake(original, max_passes = 4L),
-    error = function(e) original
-  )
+  candidate <- original
 
-  candidate_3 <- tryCatch(
-    repair_mb_messages_replace_common_turkish_mojibake(original),
-    error = function(e) original
-  )
+  for (pass in seq_len(6L)) {
+    before <- candidate
 
-  candidate_4 <- tryCatch(
-    repair_mb_messages_replace_common_turkish_mojibake(candidate_1),
-    error = function(e) candidate_1
-  )
+    candidate <- tryCatch(
+      normalize_db_visible_value(candidate),
+      error = function(e) candidate
+    )
+    candidates <- c(candidates, candidate)
 
-  candidate_5 <- tryCatch(
-    repair_mb_messages_strip_or_repair_symbol_mojibake(candidate_4),
-    error = function(e) candidate_4
-  )
+    if (exists("repair_text_mojibake", mode = "function", inherits = TRUE)) {
+      candidate <- tryCatch(
+        repair_text_mojibake(candidate, max_passes = 4L),
+        error = function(e) candidate
+      )
+      candidates <- c(candidates, candidate)
+    }
 
-  candidate_6 <- tryCatch(
-    repair_mb_messages_strip_or_repair_symbol_mojibake(candidate_3),
-    error = function(e) candidate_3
-  )
+    candidate <- tryCatch(
+      repair_mb_messages_replace_common_mojibake(candidate),
+      error = function(e) candidate
+    )
+    candidates <- c(candidates, candidate)
 
-  candidates <- unique(c(
-    original,
-    candidate_1,
-    candidate_2,
-    candidate_3,
-    candidate_4,
-    candidate_5,
-    candidate_6
-  ))
-
-  bad <- vapply(candidates, repair_mb_messages_has_mojibake, logical(1))
-
-  # Prefer the first candidate that no longer has mojibake markers.
-  if (any(!bad)) {
-    return(candidates[which(!bad)[1]])
+    if (identical(before, candidate)) {
+      break
+    }
   }
 
-  # Otherwise prefer the last changed candidate, because it likely repaired
-  # Turkish letters even if some unrecoverable emoji marker remains.
-  changed <- candidates[candidates != original]
+  candidates <- candidates[!is.na(candidates)]
+  candidates <- unique(candidates)
 
-  if (length(changed) > 0L) {
-    return(changed[length(changed)])
+  if (length(candidates) == 0L) {
+    return(original)
+  }
+
+  scores <- vapply(candidates, repair_mb_messages_mojibake_score, integer(1))
+  best_idx <- which.min(scores)
+  best <- candidates[best_idx]
+
+  original_score <- repair_mb_messages_mojibake_score(original)
+
+  if (scores[best_idx] <= original_score) {
+    return(best)
   }
 
   original
@@ -257,7 +297,6 @@ repair_mb_messages_sql_unicode_expr <- function(value) {
       return(sprintf("NCHAR(%d)", cp))
     }
 
-    # UTF-16 surrogate pair for supplementary-plane code points.
     cp2 <- cp - 0x10000L
     high <- 0xD800L + (cp2 %/% 0x400L)
     low <- 0xDC00L + (cp2 %% 0x400L)
@@ -266,8 +305,6 @@ repair_mb_messages_sql_unicode_expr <- function(value) {
   }
 
   for (cp in codepoints) {
-    # Keep printable ASCII as compact N'...' chunks.
-    # Use NCHAR for apostrophe and all non-ASCII/control characters.
     if (cp >= 32L && cp <= 126L && cp != 39L) {
       ascii_buffer <- c(ascii_buffer, cp)
     } else {
@@ -588,16 +625,16 @@ tryCatch({
       }
     }
 
-	if (length(updates) == 0L) {
-	  cat(sprintf(
-		"WARN: batch=%d has %d mojibake candidate(s), but repair produced no changed values. First candidate MessageID=%s Preview=%s\n",
-		batch_no,
-		nrow(candidates),
-		as.character(candidates$MessageID[1]),
-		repair_mb_messages_preview(candidates$MessageContent[1])
-	  ))
-	  next
-	}
+    if (length(updates) == 0L) {
+      cat(sprintf(
+        "WARN: batch=%d has %d candidate row(s), but no changed value was produced. First candidate MessageID=%s Preview=%s\n",
+        batch_no,
+        nrow(candidates),
+        as.character(candidates$MessageID[1]),
+        repair_mb_messages_preview(candidates$MessageContent[1])
+      ))
+      next
+    }
 
     repairable_rows <- repairable_rows + length(updates)
 
@@ -622,38 +659,38 @@ tryCatch({
     committed <- FALSE
 
     tryCatch({
-		for (item in updates) {
-		  message_id_sql <- as.integer(item$MessageID)
-		  content_expr <- repair_mb_messages_sql_unicode_expr(item$new_content)
+      for (item in updates) {
+        message_id_sql <- as.integer(item$MessageID)
+        content_expr <- repair_mb_messages_sql_unicode_expr(item$new_content)
 
-		  if (isTRUE(has_reasoning_content)) {
-			reasoning_expr <- repair_mb_messages_sql_unicode_expr(item$new_reasoning)
+        if (isTRUE(has_reasoning_content)) {
+          reasoning_expr <- repair_mb_messages_sql_unicode_expr(item$new_reasoning)
 
-			update_sql <- sprintf(
-			  "
-				UPDATE MB_Messages
-				SET
-				  MessageContent = %s,
-				  ReasoningContent = %s
-				WHERE MessageID = %d
-			  ",
-			  content_expr,
-			  reasoning_expr,
-			  message_id_sql
-			)
-		  } else {
-			update_sql <- sprintf(
-			  "
-				UPDATE MB_Messages
-				SET MessageContent = %s
-				WHERE MessageID = %d
-			  ",
-			  content_expr,
-			  message_id_sql
-			)
-		  }
+          update_sql <- sprintf(
+            "
+              UPDATE MB_Messages
+              SET
+                MessageContent = %s,
+                ReasoningContent = %s
+              WHERE MessageID = %d
+            ",
+            content_expr,
+            reasoning_expr,
+            message_id_sql
+          )
+        } else {
+          update_sql <- sprintf(
+            "
+              UPDATE MB_Messages
+              SET MessageContent = %s
+              WHERE MessageID = %d
+            ",
+            content_expr,
+            message_id_sql
+          )
+        }
 
-		  affected <- DBI::dbExecute(conn, update_sql)
+        affected <- DBI::dbExecute(conn, update_sql)
 
         if (!identical(as.integer(affected), 1L)) {
           warning(sprintf(
@@ -694,8 +731,9 @@ tryCatch({
       verification_failures[[length(verification_failures) + 1L]] <- verify_bad
 
       cat(sprintf(
-        "ERROR: Verification still sees mojibake after update. First bad MessageID=%s\n",
-        as.character(verify_bad$MessageID[1])
+        "ERROR: Verification still sees mojibake after update. First bad MessageID=%s Preview=%s\n",
+        as.character(verify_bad$MessageID[1]),
+        repair_mb_messages_preview(verify_bad$MessageContent[1])
       ))
     }
 
@@ -723,26 +761,15 @@ tryCatch({
     return(invisible(TRUE))
   }
 
-	if (length(verification_failures) > 0L) {
-	  all_bad <- do.call(rbind, verification_failures)
+  if (length(verification_failures) > 0L) {
+    all_bad <- do.call(rbind, verification_failures)
 
-	  preview <- paste(
-		utils::head(
-		  paste0(
-			"MessageID=", all_bad$MessageID,
-			", Preview=", substr(all_bad$MessageContent, 1, 120)
-		  ),
-		  10L
-		),
-		collapse = " | "
-	  )
-
-	  stop(sprintf(
-		"Repair wrote updates, but verification still found mojibake in %d row(s). First bad rows: %s",
-		nrow(all_bad),
-		preview
-	  ), call. = FALSE)
-	}
+    stop(sprintf(
+      "Repair wrote updates, but verification still found mojibake in %d row(s). First bad MessageID(s): %s",
+      nrow(all_bad),
+      paste(utils::head(all_bad$MessageID, 20L), collapse = ", ")
+    ), call. = FALSE)
+  }
 
   final_check_query <- "
     SELECT TOP (25)
