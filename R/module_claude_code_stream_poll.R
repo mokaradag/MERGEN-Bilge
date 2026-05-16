@@ -172,11 +172,6 @@ cc_bind_claude_code_stream_polling <- function(input,
           session_token = env$session_token
         )
 
-        indirme_html <- tryCatch(
-          format_claude_code_generated_downloads_html(olusan_dosyalar),
-          error = function(e) ""
-        )
-
         log_info(sprintf(
           "%s [DOWNLOADS] tespit edilen indirme sayisi=%d",
           CLAUDE_CODE_LOG_PREFIX,
@@ -306,25 +301,6 @@ cc_bind_claude_code_stream_polling <- function(input,
               conditionMessage(e)
             ))
           }
-        )
-      }
-
-      if (exists("cc_refresh_file_manager_after_generated_outputs",
-                 mode = "function", inherits = TRUE)) {
-        generated_original_paths <- vapply(
-          olusan_dosyalar %||% list(),
-          function(x) as.character(x$original_path %||% ""),
-          character(1)
-        )
-
-        try(
-          cc_refresh_file_manager_after_generated_outputs(
-            session = session,
-            user_id = env$user_id,
-            file_paths = generated_original_paths,
-            trigger = "bilge_yolac_stream_generated_output"
-          ),
-          silent = TRUE
         )
       }
 

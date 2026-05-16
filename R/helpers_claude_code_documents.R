@@ -131,30 +131,14 @@ build_claude_code_document_prompt <- function(orijinal_prompt,
                                               manifest_path = "",
                                               reader_template_path = "",
                                               unsupported_files = character(0),
-                                              inline_payload = "",
-                                              allow_output_file_creation = FALSE) {
-  cikti_dosyasi_yonergesi <- if (isTRUE(allow_output_file_creation)) {
-    c(
-      "Kullanıcı açıkça yeni bir çıktı dosyası istiyor.",
-      "Kaynak PDF/XLS/XLSX/DOCX dosyalarını binary olarak Read etme.",
-      "Yeni çıktı dosyası üretmek için gerekli yazma araçlarını kullanabilirsin.",
-      "Kaynak dokümanları değiştirme; yalnız kullanıcının istediği yeni çıktı dosyasını oluştur."
-    )
-  } else {
-    c(
-      "Kullanıcı yeni dosya oluşturmanı istemedi.",
-      "Yeni dosya oluşturma, düzenleme, kaydetme veya indirilebilir çıktı üretme.",
-      "Yanıtı yalnız sohbet metni olarak ver."
-    )
-  }
-
+                                              inline_payload = "") {
   satirlar <- c(
     "SİSTEM ÇALIŞMA NOTU:",
     "Bu görev ikili ofis dokümanları içeriyor.",
-    "PDF/XLS/XLSX/DOCX dosyalarını doğrudan ikili içerik olarak Read etme.",
+    "PDF/XLS/XLSX dosyalarını doğrudan ikili içerik olarak Read etme.",
     "Yalnızca düz metin çıkarımlarıyla çalış.",
-    "Gerekli içerik rehber dosyasında ve aşağıdaki hazır metin bloklarında zaten var.",
-    cikti_dosyasi_yonergesi
+    "Bu görev için Glob, Read, Grep veya başka bir araç çağırma.",
+    "Gerekli içerik rehber dosyasında ve aşağıdaki hazır metin bloklarında zaten var."
   )
 
   if (nzchar(manifest_path)) {
@@ -186,11 +170,7 @@ build_claude_code_document_prompt <- function(orijinal_prompt,
 
   satirlar <- c(
     satirlar,
-    if (isTRUE(allow_output_file_creation)) {
-      "Yanıtında oluşturduğun çıktı dosyasının adını kısa ve net belirt."
-    } else {
-      "Araç sonuçları veya binary document blokları üretme."
-    },
+    "Araç sonuçlarında yalnız metin döndür; binary document blokları üretme.",
     "Yanıtını yalnız hazır metin çıkarımlarına dayanarak ver."
   )
 
@@ -229,19 +209,10 @@ prepare_claude_code_document_context <- function(prompt,
     reader_template_path = "",
     support_dir = "",
     effective_workdir = runtime_workdir,
-    inline_payload = "",
-    output_file_requested = FALSE
+    inline_payload = ""
   )
 
   binary_exts <- get_claude_code_binary_doc_extensions()
-
-  sonuc$output_file_requested <- if (
-    exists("cc_prompt_requests_bilge_yolac_output_file", mode = "function", inherits = TRUE)
-  ) {
-    isTRUE(cc_prompt_requests_bilge_yolac_output_file(prompt))
-  } else {
-    FALSE
-  }
 
   # Önce yerel aynalanmış çalışma dizinini kontrol et
   runtime_dokuman_var <- isTRUE(
@@ -400,8 +371,7 @@ prepare_claude_code_document_context <- function(prompt,
     manifest_path = manifest_path,
     reader_template_path = reader_template_path,
     unsupported_files = sonuc$unsupported_files,
-    inline_payload = inline_payload,
-    allow_output_file_creation = isTRUE(sonuc$output_file_requested)
+    inline_payload = inline_payload
   )
 
   sonuc

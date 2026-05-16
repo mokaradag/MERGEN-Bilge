@@ -354,21 +354,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Zaman damgası (akış mesajları için)
       zaman_damgasi <- format(Sys.time(), "%H:%M:%S")
 	  
-      dokuman_cikti_dosyasi_istendi <- isTRUE(
-        dokuman_baglami$output_file_requested %||% FALSE
-      )
-
-      dokuman_ikili_cikti_istendi <- tryCatch(
-        isTRUE(prompt_requests_binary_document_creation(kullanici_prompt)),
-        error = function(e) FALSE
-      )
-
-      # Yerel özetleme yolu yalnız açıkça düz metin çıktı dosyası istendiğinde
-      # çalışsın. Normal içerik sorularında stream-json Claude Code akışı devam eder.
-      # Word/PDF/Excel/PPT gibi ikili çıktı isteklerinde de CLI araçları çalışsın.
-      dokuman_gorevi_yerel_ozet_modu <- isTRUE(dokuman_baglami$has_binary_docs) &&
-        isTRUE(dokuman_cikti_dosyasi_istendi) &&
-        !isTRUE(dokuman_ikili_cikti_istendi)
+      dokuman_gorevi_yerel_ozet_modu <- isTRUE(dokuman_baglami$has_binary_docs)
 
       if (isTRUE(dokuman_gorevi_yerel_ozet_modu)) {
         cc_handle_document_summary_run(
