@@ -195,6 +195,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       calistirma_promptu <- dokuman_baglami$prompt %||% kullanici_prompt
 
+      if (exists("augment_claude_code_downloadable_artifact_prompt", mode = "function")) {
+        calistirma_promptu <- augment_claude_code_downloadable_artifact_prompt(
+          prompt = calistirma_promptu,
+          workdir = calisma_dizini
+        )
+      }
+
       if (isTRUE(dokuman_baglami$text_sidecars_ready)) {
         calisma_dizini <- dokuman_baglami$effective_workdir %||%
           dokuman_baglami$support_dir %||%
@@ -413,6 +420,30 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         error = function(e) list()
       )
 
+      stream_env$source_workdir_snapshot <- tryCatch(
+        {
+          kaynak_norm <- normalizePath(
+            env$kaynak_calisma_dizini %||% "",
+            winslash = "/",
+            mustWork = FALSE
+          )
+          runtime_norm <- normalizePath(
+            env$calisma_dizini %||% "",
+            winslash = "/",
+            mustWork = FALSE
+          )
+
+          if (nzchar(kaynak_norm) &&
+              dir.exists(kaynak_norm) &&
+              !identical(tolower(kaynak_norm), tolower(runtime_norm))) {
+            snapshot_claude_code_workdir_files(kaynak_norm)
+          } else {
+            stream_env$workdir_snapshot
+          }
+        },
+        error = function(e) list()
+      )
+
       rv$stream_env <- stream_env
       rv$poll_state <- stream_env
 
@@ -624,22 +655,32 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           # oluşturduğu .docx ve .xlsx dosyalarını da yakalar. Ayrıca üretilen
           # .txt dosyalarının Türkçe karakter kodlamasını UTF-8 BOM olarak
           # normalize eder (Windows Notepad mojibake düzeltmesi).
-          olusan_dosyalar <- collect_claude_code_workdir_changes_downloads(
-            before_snapshot = env$workdir_snapshot,
-            tool_uses = ayristirma$tool_uses,
-            runtime_workdir = env$calisma_dizini,
-            source_workdir = env$kaynak_calisma_dizini,
-            user_id = env$user_id,
-            session_token = env$session_token
-          )
+          olusan_dosyalar <- if (exists("collect_claude_code_artifact_downloads", mode = "function")) {
+            collect_claude_code_artifact_downloads(
+              before_snapshot = env$workdir_snapshot,
+              source_before_snapshot = env$source_workdir_snapshot %||% list(),
+              tool_uses = ayristirma$tool_uses,
+              runtime_workdir = env$calisma_dizini,
+              source_workdir = env$kaynak_calisma_dizini,
+              run_started_at = env$baslangic,
+              user_id = env$user_id,
+              session_token = env$session_token
+            )
+          } else {
+            collect_claude_code_workdir_changes_downloads(
+              before_snapshot = env$workdir_snapshot,
+              tool_uses = ayristirma$tool_uses,
+              runtime_workdir = env$calisma_dizini,
+              source_workdir = env$kaynak_calisma_dizini,
+              user_id = env$user_id,
+              session_token = env$session_token
+            )
+          }
 
           # Akış mesajını sonlandır
           # stream-json modunda metin zaten anlık gösterildiği için
           # finalContent yalnızca yedek olarak gönderilir
-          son_icerik <- paste0(
-            format_claude_code_output(ayristirma$text_output),
-            format_claude_code_generated_downloads_html(olusan_dosyalar)
-          )
+          son_icerik <- format_claude_code_output(ayristirma$text_output)
 
           session$sendCustomMessage(
             type = "cc-stream-end",
@@ -651,6 +692,17 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
               characterName = env$karakter_adi
             )
           )
+
+          if (exists("cc_send_generated_downloads_message", mode = "function")) {
+            cc_send_generated_downloads_message(
+              session = session,
+              ns = ns,
+              downloads = olusan_dosyalar,
+              accent_color = env$karakter_renk,
+              character_name = env$karakter_adi,
+              welcome_id = ns("welcome_screen")
+            )
+          }
 
           # Sonucu sakla
           rv$last_result <- list(
