@@ -394,3 +394,137 @@ format_claude_code_generated_downloads_html <- function(downloads) {
     '</div>'
   )
 }
+
+#' Araç çağrılarındaki yazma yollarını yedek olarak indirilebilir kayıtlara çevir
+#'
+#' Snapshot/diff yolu sessiz kaldığında (örn. Windows kısa ad eşleşmesi, UNC
+#' normalizasyon farkı veya zamanlama) araç çağrılarındaki Write/Edit/MultiEdit
+#' mutlak yollarını doğrudan tarayıp diskte gerçekten bulunanları indirilebilir
+#' kayıtlara dönüştürür. Politika kontrolü için kaynak çalışma dizinini de
+#' izinli köklere ekler; böylece aynalanmış UNC akışlarında dosya runtime
+#' aynasında veya kaynak dizinde olduğunda da kart oluşturulabilir.
+#'
+#' @param tool_uses Claude Code araç kullanımları
+#' @param runtime_workdir Claude Code runtime dizini
+#' @param source_workdir Kullanıcının seçtiği/asıl kaynak dizin
+#' @param user_id Kullanıcı kimliği
+#' @param session_token Shiny oturum anahtarı
+#' @return İndirme kayıtları listesi
+cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
+                                                       runtime_workdir = "",
+                                                       source_workdir = "",
+                                                       user_id = 0L,
+                                                       session_token = "") {
+  if (!length(tool_uses)) return(list())
+
+  allowed_roots <- cc_policy_allowed_output_roots(
+    user_id = user_id,
+    workdir = runtime_workdir %||% source_workdir
+  )
+
+  # Aynalamada runtime ve kaynak farklı olabilir; ikisi de izinli kabul edilir.
+  if (nzchar(source_workdir %||% "")) {
+    source_root <- cc_policy_normalize_path(source_workdir, must_exist = FALSE)
+    if (nzchar(source_root)) {
+      allowed_roots <- unique(c(allowed_roots, source_root))
+    }
+  }
+
+  yollar <- character(0)
+
+  for (arac in tool_uses) {
+    arac_adi <- tolower(as.character(arac$name %||% "")[1])
+    if (!nzchar(arac_adi)) next
+    if (!grepl("write|edit|file_write", arac_adi, perl = TRUE)) next
+
+    girdi <- arac$input %||% list()
+    raw_yol <- as.character(girdi$path %||% girdi$file_path %||% "")[1]
+    if (!nzchar(raw_yol)) next
+
+    aday <- normalizePath(raw_yol, winslash = "/", mustWork = FALSE)
+
+    if (isTRUE(file.exists(aday)) && !isTRUE(dir.exists(aday))) {
+      yollar <- c(yollar, aday)
+    }
+  }
+
+  yollar <- unique(yollar[nzchar(yollar)])
+  if (!length(yollar)) return(list())
+
+  yollar <- cc_policy_filter_generated_file_paths(
+    yollar,
+    allowed_roots = allowed_roots,
+    context = "araç çağrısından üretilen dosya"
+  )
+
+  if (!length(yollar)) return(list())
+
+  indirmeler <- tryCatch(
+    stage_claude_code_downloads(
+      file_paths = yollar,
+      user_id = user_id,
+      session_token = session_token,
+      allowed_roots = allowed_roots
+    ),
+    error = function(e) list()
+  )
+
+  if (!length(indirmeler)) return(list())
+
+  for (i in seq_along(indirmeler)) {
+    indirmeler[[i]]$display_path <- tryCatch(
+      build_claude_code_display_path(
+        file_path = indirmeler[[i]]$original_path,
+        runtime_workdir = runtime_workdir,
+        source_workdir = source_workdir
+      ),
+      error = function(e) basename(indirmeler[[i]]$original_path %||% "")
+    )
+  }
+
+  indirmeler
+}
+
+#' Akış çalıştırması için indirilebilir dosya kayıtlarını birincil + yedek topla
+#'
+#' Önce snapshot/diff + araç çağrısı tabanlı birincil yolu dener
+#' (collect_claude_code_workdir_changes_downloads). Sonuç boşsa araç çağrılarındaki
+#' mutlak Write/Edit/MultiEdit yollarını fiziksel olarak diskte ararak yedek
+#' kayıtlar üretir. Böylece kart yalnızca primary yol başarılı olduğunda değil,
+#' Claude'un yazdığı dosya disk üzerinde varsa da kullanıcıya gösterilir.
+#'
+#' @param before_snapshot Çalıştırma öncesi snapshot
+#' @param tool_uses Claude Code araç kullanımları
+#' @param runtime_workdir Claude Code runtime dizini
+#' @param source_workdir Kullanıcının seçtiği kaynak dizin
+#' @param user_id Kullanıcı kimliği
+#' @param session_token Shiny oturum anahtarı
+#' @return İndirme kayıtları listesi
+cc_collect_streaming_run_downloads <- function(before_snapshot,
+                                               tool_uses = list(),
+                                               runtime_workdir = "",
+                                               source_workdir = "",
+                                               user_id = 0L,
+                                               session_token = "") {
+  birincil <- tryCatch(
+    collect_claude_code_workdir_changes_downloads(
+      before_snapshot = before_snapshot,
+      tool_uses = tool_uses,
+      runtime_workdir = runtime_workdir,
+      source_workdir = source_workdir,
+      user_id = user_id,
+      session_token = session_token
+    ),
+    error = function(e) list()
+  )
+
+  if (length(birincil)) return(birincil)
+
+  cc_stage_tool_use_write_paths_as_downloads(
+    tool_uses = tool_uses,
+    runtime_workdir = runtime_workdir,
+    source_workdir = source_workdir,
+    user_id = user_id,
+    session_token = session_token
+  )
+}

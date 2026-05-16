@@ -647,9 +647,25 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             list(role = "assistant", content = ayristirma$text_output)
           ))
 
-          # Akış mesajını sonlandır. stream-json modunda metin zaten anlık
-          # gösterildiği için finalContent yalnızca yedek olarak gönderilir;
-          # indirme kartları her durumda son içeriğe eklenir.
+          # Üretilen dosyaları yerel indirme bağlantılarına dönüştür; snapshot/diff
+          # sessiz kalırsa araç çağrılarındaki mutlak yolları yedek olarak topla.
+          olusan_dosyalar <- cc_collect_streaming_run_downloads(
+            before_snapshot = env$workdir_snapshot,
+            tool_uses = ayristirma$tool_uses,
+            runtime_workdir = env$calisma_dizini,
+            source_workdir = env$kaynak_calisma_dizini,
+            user_id = env$user_id,
+            session_token = env$session_token
+          )
+
+          log_info(sprintf(
+            "%s [DOWNLOADS] tespit edilen indirme sayisi=%d",
+            CLAUDE_CODE_LOG_PREFIX, length(olusan_dosyalar)
+          ))
+
+          # Akış mesajını sonlandır
+          # stream-json modunda metin zaten anlık gösterildiği için
+          # finalContent yalnızca yedek olarak gönderilir
           son_icerik <- paste0(
             format_claude_code_output(ayristirma$text_output),
             indirme_html
