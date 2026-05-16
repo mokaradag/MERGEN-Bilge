@@ -424,6 +424,15 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       rv$stream_env <- stream_env
       rv$poll_state <- stream_env
 
+      # Kullanıcı dosya çıktısı istediyse modele açık talimat ver:
+      # Onay sorma, gerçekten dosya oluştur; oluşturmadıysan oluşturuldu deme.
+      if (exists("cc_append_file_output_instruction", mode = "function")) {
+        calistirma_promptu <- cc_append_file_output_instruction(
+          prompt = calistirma_promptu,
+          output_dir = kaynak_calisma_dizini %||% calisma_dizini
+        )
+      }
+
       # CLI argümanlarını merkezi güvenlik ilkesinden oluştur
       # stream-json formatı olayları gerçek zamanlı olarak satır satır verir
       # include-partial-messages ile metin parçaları da anlık gelir
@@ -641,6 +650,20 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             user_id = env$user_id,
             session_token = env$session_token
           )
+
+          # Model dosya istediğini söyleyip gerçekten dosya üretmediyse:
+          # cevap metninden seçili/asıl klasöre .txt fallback üret ve linkle.
+          if (exists("cc_ensure_generated_file_download", mode = "function")) {
+            olusan_dosyalar <- cc_ensure_generated_file_download(
+              downloads = olusan_dosyalar,
+              prompt = env$prompt,
+              assistant_text = ayristirma$text_output,
+              runtime_workdir = env$calisma_dizini,
+              source_workdir = env$kaynak_calisma_dizini,
+              user_id = env$user_id,
+              session_token = env$session_token
+            )
+          }
 
           # Akış mesajını sonlandır
           # stream-json modunda metin zaten anlık gösterildiği için

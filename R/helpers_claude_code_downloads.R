@@ -481,3 +481,190 @@ cc_send_generated_downloads_message <- function(session,
 
   invisible(TRUE)
 }
+
+#' Prompt dosya çıktısı istiyor mu?
+#'
+#' @param prompt Kullanıcı prompt'u
+#' @return TRUE/FALSE
+cc_prompt_requests_file_output <- function(prompt) {
+  metin <- tolower(enc2utf8(paste(as.character(prompt %||% ""), collapse = " ")))
+  if (!nzchar(metin)) return(FALSE)
+
+  dosya_deseni <- paste(
+    c(
+      "\\.txt", "\\.md", "\\.csv", "\\.log", "\\.html", "\\.htm",
+      "\\.docx", "\\.doc\\b", "\\.pdf", "\\.xlsx", "\\.xls\\b",
+      "\\btxt\\b", "\\btext\\b", "\\bword\\b", "\\bdocx\\b",
+      "\\bpdf\\b", "\\bexcel\\b", "\\brapor\\b", "\\bdosya\\b"
+    ),
+    collapse = "|"
+  )
+
+  eylem_deseni <- paste(
+    c(
+      "kaydet", "oluştur", "olustur", "hazırla", "hazirla",
+      "yaz", "üret", "uret", "export", "create", "save",
+      "write", "generate", "produce"
+    ),
+    collapse = "|"
+  )
+
+  grepl(dosya_deseni, metin, perl = TRUE) &&
+    grepl(eylem_deseni, metin, perl = TRUE)
+}
+
+#' Dosya istendiği halde doğrulanmış çıktı yoksa cevap metninden .txt üretir
+#'
+#' @param downloads Mevcut indirme kayıtları
+#' @param prompt Kullanıcı prompt'u
+#' @param assistant_text Asistan cevabı
+#' @param runtime_workdir Runtime çalışma dizini
+#' @param source_workdir Kaynak/asıl çalışma dizini
+#' @param user_id Kullanıcı kimliği
+#' @param session_token Shiny oturum anahtarı
+#' @return İndirme kayıtları listesi
+cc_ensure_generated_file_download <- function(downloads,
+                                              prompt,
+                                              assistant_text,
+                                              runtime_workdir = "",
+                                              source_workdir = "",
+                                              user_id = 0L,
+                                              session_token = "") {
+  if (length(downloads)) return(downloads)
+  if (!isTRUE(cc_prompt_requests_file_output(prompt))) return(downloads)
+
+  cevap <- enc2utf8(paste(as.character(assistant_text %||% ""), collapse = "\n"))
+  if (!nzchar(trimws(cevap))) return(downloads)
+
+  # Model yalnız onay istiyorsa boş/yanlış dosya üretmeyelim.
+  onay_deseni <- paste(
+    c(
+      "would you like me to proceed",
+      "shall i proceed",
+      "devam edeyim mi",
+      "onaylıyor musunuz",
+      "onayliyor musunuz",
+      "onay verirseniz",
+      "confirm"
+    ),
+    collapse = "|"
+  )
+
+  if (grepl(onay_deseni, tolower(cevap), perl = TRUE)) {
+    return(downloads)
+  }
+
+  hedef_dizin <- source_workdir %||% runtime_workdir
+  if (!nzchar(hedef_dizin) || !dir.exists(hedef_dizin)) {
+    hedef_dizin <- runtime_workdir
+  }
+
+  if (!nzchar(hedef_dizin) || !dir.exists(hedef_dizin)) {
+    return(downloads)
+  }
+
+  hedef_dizin <- normalizePath(hedef_dizin, winslash = "/", mustWork = FALSE)
+
+  allowed_roots <- unique(c(
+    cc_policy_allowed_output_roots(user_id = user_id, workdir = hedef_dizin),
+    if (nzchar(runtime_workdir)) {
+      cc_policy_allowed_output_roots(user_id = user_id, workdir = runtime_workdir)
+    } else {
+      character(0)
+    },
+    if (nzchar(source_workdir)) {
+      cc_policy_allowed_output_roots(user_id = user_id, workdir = source_workdir)
+    } else {
+      character(0)
+    }
+  ))
+
+  if (!cc_policy_path_inside_roots(hedef_dizin, allowed_roots, must_exist = FALSE)) {
+    return(downloads)
+  }
+
+  prompt_text <- enc2utf8(paste(as.character(prompt %||% ""), collapse = " "))
+
+  eslesmeler <- regmatches(
+    prompt_text,
+    gregexpr(
+      "[^[:space:]\"'`]+\\.(txt|md|csv|log|html|htm)",
+      prompt_text,
+      perl = TRUE,
+      ignore.case = TRUE
+    )
+  )[[1]]
+
+  dosya_adi <- if (length(eslesmeler)) {
+    basename(gsub("\\\\", "/", eslesmeler[length(eslesmeler)], fixed = TRUE))
+  } else {
+    "bilge_yolac_cikti.txt"
+  }
+
+  dosya_adi <- sanitize_claude_code_download_segment(
+    dosya_adi,
+    fallback = "bilge_yolac_cikti.txt"
+  )
+
+  uzanti <- tolower(tools::file_ext(dosya_adi))
+  if (!(uzanti %in% c("txt", "md", "csv", "log", "html", "htm"))) {
+    dosya_adi <- paste0(tools::file_path_sans_ext(dosya_adi), ".txt")
+  }
+
+  hedef_yol <- file.path(hedef_dizin, dosya_adi)
+
+  if (file.exists(hedef_yol)) {
+    hedef_yol <- file.path(
+      hedef_dizin,
+      paste0(format(Sys.time(), "%Y%m%d-%H%M%S"), "_", dosya_adi)
+    )
+  }
+
+  yazildi <- tryCatch({
+    writeLines(cevap, hedef_yol, useBytes = TRUE)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!isTRUE(yazildi) || !file.exists(hedef_yol)) {
+    return(downloads)
+  }
+
+  tryCatch(
+    normalize_claude_code_text_files(
+      file_paths = hedef_yol,
+      extensions = c("txt", "md", "csv", "log")
+    ),
+    error = function(e) NULL
+  )
+
+  collect_claude_code_downloads_from_paths(
+    file_paths = hedef_yol,
+    runtime_workdir = runtime_workdir,
+    source_workdir = source_workdir,
+    user_id = user_id,
+    session_token = session_token
+  )
+}
+
+#' Dosya üretim prompt'una doğrulama talimatı ekler
+#'
+#' @param prompt Çalıştırılacak prompt
+#' @param output_dir Hedef çalışma dizini
+#' @return Güçlendirilmiş prompt
+cc_append_file_output_instruction <- function(prompt, output_dir = "") {
+  if (!isTRUE(cc_prompt_requests_file_output(prompt))) {
+    return(prompt)
+  }
+
+  paste(
+    prompt,
+    "",
+    "ZORUNLU DOSYA ÇIKTI TALİMATI:",
+    "- Kullanıcı dosya oluşturmayı/kaydetmeyi istediyse onay sorma; dosyayı doğrudan oluştur.",
+    "- Dosyayı seçili çalışma dizinine kaydet.",
+    paste0("- Seçili çalışma dizini: ", output_dir %||% ""),
+    "- Dosya gerçekten oluşmadıysa 'oluşturuldu' veya 'kaydedildi' deme.",
+    "- Cevabın sonunda yalnızca gerçekten oluşturduğun dosyanın adını belirt.",
+    sep = "\n"
+  )
+}

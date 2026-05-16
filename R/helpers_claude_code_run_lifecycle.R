@@ -357,7 +357,28 @@ cc_handle_document_summary_run <- function(session,
           )
         }
 
-        assistant_html <- format_claude_code_output(sonuc$output %||% "")
+        if (exists("cc_ensure_generated_file_download", mode = "function")) {
+          doc_downloads <- cc_ensure_generated_file_download(
+            downloads = doc_downloads,
+            prompt = kullanici_prompt,
+            assistant_text = sonuc$output %||% "",
+            runtime_workdir = target_dir,
+            source_workdir = target_dir,
+            user_id = effective_user_id,
+            session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+          )
+
+          sonuc$generated_downloads <- doc_downloads
+          sonuc$generated_downloads_html <- tryCatch(
+            format_claude_code_generated_downloads_html(doc_downloads),
+            error = function(e) ""
+          )
+        }
+
+        assistant_html <- paste0(
+          format_claude_code_output(sonuc$output %||% ""),
+          format_claude_code_generated_downloads_html(doc_downloads)
+        )
 
         session$sendCustomMessage(
           type = "cc-add-message",
@@ -371,17 +392,6 @@ cc_handle_document_summary_run <- function(session,
             welcomeId = ns("welcome_screen")
           )
         )
-
-        if (exists("cc_send_generated_downloads_message", mode = "function")) {
-          cc_send_generated_downloads_message(
-            session = session,
-            ns = ns,
-            downloads = doc_downloads,
-            accent_color = karakter_renk,
-            character_name = karakter$display_name,
-            welcome_id = ns("welcome_screen")
-          )
-        }
 
         rv$last_result <- sonuc
 
