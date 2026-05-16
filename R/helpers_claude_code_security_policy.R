@@ -161,6 +161,29 @@ cc_policy_normalize_path <- function(path, must_exist = FALSE) {
   path <- as.character(path %||% "")[1]
   if (is.na(path) || !nzchar(path)) return("")
 
+  # UNC yolları (\\server\share veya //server/share) Windows VM'de mapped
+  # drive harfine çözülebiliyor (örn. //rehisds/... -> M:/rehisds/...). Çözülen
+  # M:/ formu is_problematic_windows_workdir tarafından UNC olarak algılanmadığı
+  # için runtime aynalama atlanır ve processx'in spawn ettiği cmd.exe oturumu
+  # M:/ drive haritalamasına sahip değilse "directory is empty" veya
+  # "The system cannot find the path specified" hatasıyla biter. Bu yüzden
+  # güvenlik politikası katmanı UNC yollarını UNC olarak korur.
+  candidate_slash <- gsub("\\\\", "/", path, fixed = TRUE)
+  is_unc_path <- grepl("^//[^/]+/[^/]+", candidate_slash)
+  if (isTRUE(is_unc_path)) {
+    if (exists("normalize_mcp_path", mode = "function", inherits = TRUE)) {
+      return(
+        tryCatch(
+          normalize_mcp_path(path, must_exist = must_exist),
+          error = function(e) sub("/+$", "", candidate_slash, perl = TRUE)
+        )
+      )
+    }
+
+    cleaned <- paste0("//", sub("^/+", "", candidate_slash))
+    return(sub("/+$", "", cleaned, perl = TRUE))
+  }
+
   sonuc <- tryCatch(
     normalizePath(path, winslash = "/", mustWork = isTRUE(must_exist)),
     error = function(e) {
