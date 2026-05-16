@@ -216,6 +216,120 @@ test_that("module_claude_code.R çalışma request kimliğini runtime workdir to
   )
 })
 
+test_that("prepare_claude_runtime_workdir mevcut runtime workdir verildiğinde yeniden kullanır", {
+  test_env <- .source_cc_runtime_workdir_for_test()
+
+  # Kaynak dizin: takip eden çağrılar arasında değişen bir dosya simüle et
+  source_dir <- withr::local_tempdir()
+  writeLines("ilk", file.path(source_dir, "girdi.txt"), useBytes = TRUE)
+
+  test_env$is_problematic_windows_workdir <- function(path) TRUE
+
+  ilk <- test_env$prepare_claude_runtime_workdir(
+    source_dir,
+    user_id = 42L,
+    runtime_token = "first-request"
+  )
+
+  expect_true(isTRUE(ilk$mirrored))
+  expect_false(isTRUE(ilk$reused %||% FALSE))
+  expect_true(dir.exists(ilk$runtime_workdir))
+
+  # Aynı sohbette gelen takip çağrısında runtime workdir'i yeniden kullan:
+  # Claude CLI --resume oturum metadatası buraya bağlı olduğundan yeni
+  # runtime klasörü "No conversation found with session ID" hatasına yol açar.
+  writeLines("yeni", file.path(source_dir, "ek.txt"), useBytes = TRUE)
+
+  ikinci <- test_env$prepare_claude_runtime_workdir(
+    source_dir,
+    user_id = 42L,
+    runtime_token = "second-request",
+    existing_runtime_workdir = ilk$runtime_workdir
+  )
+
+  expect_true(isTRUE(ikinci$mirrored))
+  expect_true(isTRUE(ikinci$reused))
+  expect_identical(ikinci$runtime_workdir, ilk$runtime_workdir)
+
+  # Kaynaktaki yeni dosya runtime klasörüne de yansımalı (re-mirror).
+  expect_true(file.exists(file.path(ikinci$runtime_workdir, "girdi.txt")))
+  expect_true(file.exists(file.path(ikinci$runtime_workdir, "ek.txt")))
+})
+
+test_that("prepare_claude_runtime_workdir farklı kullanıcı kovasındaki runtime'ı yeniden kullanmaz", {
+  test_env <- .source_cc_runtime_workdir_for_test()
+
+  source_dir <- withr::local_tempdir()
+  writeLines("merhaba", file.path(source_dir, "girdi.txt"), useBytes = TRUE)
+
+  test_env$is_problematic_windows_workdir <- function(path) TRUE
+
+  # Başka kullanıcının runtime klasörünü taklit eden geçici bir yol oluştur.
+  baska_user_runtime <- file.path(
+    tempdir(),
+    "claude_code_runtime",
+    "user_999",
+    "run_other"
+  )
+  dir.create(baska_user_runtime, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(baska_user_runtime, recursive = TRUE, force = TRUE), add = TRUE)
+
+  sonuc <- test_env$prepare_claude_runtime_workdir(
+    source_dir,
+    user_id = 42L,
+    runtime_token = "fresh-request",
+    existing_runtime_workdir = baska_user_runtime
+  )
+
+  # Başka kullanıcının runtime klasörü güvenlik nedeniyle kullanılmamalı;
+  # taze bir klasör oluşturulmalı.
+  expect_true(isTRUE(sonuc$mirrored))
+  expect_false(isTRUE(sonuc$reused %||% FALSE))
+  expect_false(identical(sonuc$runtime_workdir, baska_user_runtime))
+})
+
+test_that("module_claude_code.R Claude CLI runtime workdir'ini takip çağrıları için yeniden kullanır", {
+  module_text <- .read_repo_text_cc_runtime_workdir_contract(
+    "R/module_claude_code.R"
+  )
+
+  expect_true(
+    grepl(
+      "existing_runtime_workdir\\s*=\\s*mevcut_runtime_workdir",
+      module_text,
+      perl = TRUE
+    ),
+    info = paste(
+      "R/module_claude_code.R prepare_claude_runtime_workdir() çağrısında",
+      "mevcut runtime klasörünü existing_runtime_workdir ile geçmelidir."
+    )
+  )
+
+  expect_true(
+    grepl(
+      "rv\\$active_runtime_workdir\\s*<-",
+      module_text,
+      perl = TRUE
+    ),
+    info = paste(
+      "R/module_claude_code.R aynalama yapıldığında runtime klasörünü",
+      "rv$active_runtime_workdir alanında saklamalıdır."
+    )
+  )
+
+  expect_true(
+    grepl(
+      "rv\\$active_runtime_source\\s*<-",
+      module_text,
+      perl = TRUE
+    ),
+    info = paste(
+      "R/module_claude_code.R aynalama yapıldığında kaynak workdir'i",
+      "rv$active_runtime_source alanında saklamalıdır."
+    )
+  )
+})
+
 test_that("runtime workdir tek slash ağ yolunu relaxed resolver ile aynalar", {
   test_env <- .source_cc_runtime_workdir_for_test()
 

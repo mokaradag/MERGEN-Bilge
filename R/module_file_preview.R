@@ -395,19 +395,85 @@ filePreviewServer <- function(id) {
           }
 
         } else if (file_ext %in% c("txt", "csv", "json", "log", "md", "r", "py", "js", "html", "css")) {
-          # Metin ve Kod Dosyaları İçin Önizleme
-          content <- tryCatch(
-            readLines(datapath, warn = FALSE, encoding = "UTF-8"),
-            error = function(e) readLines(datapath, warn = FALSE)
-          )
+          # Metin ve Kod Dosyaları İçin Önizleme.
+          # Bilge Yolaç tarafından üretilen dosya_aciklamalari.txt gibi dosyalar
+          # UTF-8 BOM ile yazılır. readLines bazı Windows yerel ayarlarında BOM
+          # ve karışık satır sonları yüzünden boş içerik döndürebilir. Bu yüzden
+          # önce ham baytları oku, BOM'u kaldır ve UTF-8'e güvenli şekilde çevir.
+          raw_bytes <- tryCatch({
+            finfo <- file.info(datapath)
+            if (!is.null(finfo) && !is.na(finfo$size[1])) {
+              readBin(datapath, what = "raw", n = as.integer(finfo$size[1]))
+            } else {
+              readBin(datapath, what = "raw", n = .Machine$integer.max)
+            }
+          }, error = function(e) raw(0))
+
+          # UTF-8 BOM (EF BB BF) varsa kaldır
+          if (length(raw_bytes) >= 3 &&
+              identical(raw_bytes[1], as.raw(0xEF)) &&
+              identical(raw_bytes[2], as.raw(0xBB)) &&
+              identical(raw_bytes[3], as.raw(0xBF))) {
+            raw_bytes <- raw_bytes[-(1:3)]
+          }
+
+          # NUL baytları rawToChar'ı kırdığı için temizle (metin dosyalarında
+          # beklenmez; varsa kullanıcının okunabilirliğini bozmadan filtrele).
+          raw_bytes <- raw_bytes[raw_bytes != as.raw(0L)]
+
+          full_text <- tryCatch({
+            txt <- rawToChar(raw_bytes)
+            Encoding(txt) <- "UTF-8"
+            valid_utf8 <- !is.na(iconv(txt, from = "UTF-8", to = "UTF-8"))
+            if (isTRUE(valid_utf8)) {
+              txt
+            } else {
+              # Yerel kodlamadan UTF-8'e çevir (Windows-1254 vb.). Bilinmeyen
+              # baytları işarete dönüştür.
+              iconv(
+                rawToChar(raw_bytes),
+                from = "",
+                to = "UTF-8",
+                sub = "byte"
+              )
+            }
+          }, error = function(e) {
+            tryCatch(
+              iconv(
+                rawToChar(raw_bytes),
+                from = "",
+                to = "UTF-8",
+                sub = "byte"
+              ),
+              error = function(e2) ""
+            )
+          })
+
+          content <- if (nzchar(full_text)) {
+            strsplit(full_text, "\r\n|\r|\n", perl = TRUE)[[1]]
+          } else {
+            character(0)
+          }
+
           # Eğer içerik 1000 satırdan fazlaysa kırp ve bilgi ekle
           if (length(content) > 1000) {
             content <- c(content[1:1000], "...", paste("(", length(content) - 1000, "satır daha)"))
           }
+
+          preview_body <- if (length(content) > 0) {
+            tags$pre(paste(content, collapse = "\n"), class = "file-preview-text")
+          } else {
+            tags$div(
+              class = "file-preview-empty",
+              style = "text-align:center; padding: 30px; color:#9ca3af;",
+              tags$i(class = "fas fa-file-alt fa-2x", style = "margin-bottom:10px; display:block;"),
+              tags$p("Dosya içeriği boş veya görüntülenemiyor.")
+            )
+          }
+
           showModal(modalDialog(
             title = modalTitle,
-            div(style = "max-height: 500px; overflow-y: auto;",
-                tags$pre(paste(content, collapse = "\n"), class = "file-preview-text")),
+            div(style = "max-height: 500px; overflow-y: auto;", preview_body),
             size = "l", easyClose = TRUE, footer = footer
           ))
 
