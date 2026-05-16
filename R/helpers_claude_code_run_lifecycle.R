@@ -334,56 +334,66 @@ cc_handle_document_summary_run <- function(session,
           list(list(role = "assistant", content = sonuc$output %||% ""))
         )
 
-        # Yedek tıklanabilir indirme kartı: worker tarafında staging başarısız
-        # olduysa (örn. helpers_claude_code_downloads bağımlılıkları async
-        # worker'a aktarılmadıysa) ana oturumda dosyayı doğrudan indirilebilir
-        # alana taşı ve standart cc-generated-file-card kartı oluştur.
-        son_indirme_html <- sonuc$generated_downloads_html %||% ""
+        # KRİTİK: Bu akışta dosya zaten kullanıcı yükleme klasöründe oluşuyor.
+        # Kopyalama/staging yapma. Var olan dosyanın kendisine doğrudan link üret.
+        son_indirme_html <- ""
 
-        if (!nzchar(son_indirme_html) &&
-            nzchar(sonuc$generated_summary_path %||% "") &&
-            exists("cc_stage_tool_use_write_paths_as_downloads", mode = "function") &&
-            exists("format_claude_code_generated_downloads_html", mode = "function")) {
-          yedek_indirmeler <- tryCatch(
-            cc_stage_tool_use_write_paths_as_downloads(
-              tool_uses = list(list(
-                name = "file_write",
-                input = list(path = sonuc$generated_summary_path)
-              )),
-              runtime_workdir = target_dir,
-              source_workdir = target_dir,
-              user_id = effective_user_id,
-              session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
-            ),
-            error = function(e) list()
-          )
+        if (nzchar(sonuc$output %||% "") &&
+            exists("format_claude_code_existing_file_link_html", mode = "function")) {
 
-          if (length(yedek_indirmeler)) {
+          ozet_yolu <- tryCatch({
+            hedef_yol <- file.path(target_dir, "dosya_aciklamalari.txt")
+
+            # Ana Shiny oturumunda senkron yaz.
+            writeLines(enc2utf8(sonuc$output %||% ""), hedef_yol, useBytes = TRUE)
+
+            if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) {
+              stop("Özet dosyası fiziksel olarak oluşturulamadı: ", hedef_yol)
+            }
+
+            normalizePath(hedef_yol, winslash = "/", mustWork = TRUE)
+          }, error = function(e) {
+            log_warn(paste(
+              CLAUDE_CODE_LOG_PREFIX,
+              "Doküman özeti ana oturumda yazılamadı:",
+              conditionMessage(e)
+            ))
+            ""
+          })
+
+          if (nzchar(ozet_yolu)) {
+            sonuc$generated_summary_path <- ozet_yolu
+
+            dogrudan_allowed_roots <- unique(Filter(nzchar, c(
+              target_dir,
+              dirname(ozet_yolu),
+              tryCatch(
+                cc_policy_allowed_output_roots(
+                  user_id = effective_user_id,
+                  workdir = target_dir
+                ),
+                error = function(e) character(0)
+              )
+            )))
+
             son_indirme_html <- tryCatch(
-              format_claude_code_generated_downloads_html(yedek_indirmeler),
-              error = function(e) ""
+              format_claude_code_existing_file_link_html(
+                file_path = ozet_yolu,
+                user_id = effective_user_id,
+                session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S"),
+                allowed_roots = dogrudan_allowed_roots,
+                display_path = basename(ozet_yolu)
+              ),
+              error = function(e) {
+                log_warn(paste(
+                  CLAUDE_CODE_LOG_PREFIX,
+                  "Var olan doküman özeti için doğrudan link üretilemedi:",
+                  conditionMessage(e)
+                ))
+                ""
+              }
             )
-            sonuc$generated_downloads <- yedek_indirmeler
-            sonuc$generated_downloads_html <- son_indirme_html
           }
-        }
-
-        # Hâlâ kart üretilemediyse, en azından üretilen dosyanın yolunu metin
-        # olarak göster (eski davranış korunur).
-        if (!nzchar(son_indirme_html) &&
-            nzchar(sonuc$generated_summary_path %||% "")) {
-          son_indirme_html <- paste0(
-            '<div class="cc-generated-files">',
-            '<div class="cc-generated-files-title">',
-            '<i class="fas fa-file-alt"></i> Oluşturulan Dosya',
-            '</div>',
-            '<div class="cc-tool-content">',
-            '<span class="cc-tool-path">',
-            htmltools::htmlEscape(sonuc$generated_summary_path),
-            '</span>',
-            '</div>',
-            '</div>'
-          )
         }
 
         assistant_html <- paste0(
