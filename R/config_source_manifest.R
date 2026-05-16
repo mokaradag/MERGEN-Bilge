@@ -110,6 +110,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_claude_code_streaming.R",
   "R/helpers_claude_code_formatters.R",
   "R/helpers_claude_code_downloads.R",
+  "R/helpers_claude_code_existing_file_link.R",
   "R/helpers_claude_code_workdir_scan.R",
   "R/helpers_claude_code_workdir_snapshot.R",
   "R/helpers_claude_code_plugins.R",
@@ -164,6 +165,7 @@ source_manifest_after_future_paths <- c(
   "R/module_claude_code_plugins.R",
   "R/module_claude_code_ui.R",
   "R/module_claude_code_akis.R",
+  "R/module_claude_code_stream_poll.R",
   "R/module_claude_code.R",
 
   "R/module_proje_kaynak_analizi.R",
