@@ -73,6 +73,44 @@ test_that("Bilge Yolaç güvenlik ilkesi helper dosyası manifestte doğru yerde
   )
 })
 
+test_that("cc_policy_normalize_path UNC yollarını drive harfine çevirmez", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  # Windows VM'de normalizePath("//rehisds/...") mapped drive harfine
+  # (örn. M:/rehisds/...) çözülebiliyor. UNC formu korunmazsa
+  # is_problematic_windows_workdir UNC olarak algılamaz, runtime aynalama
+  # atlanır ve cmd.exe spawn'lı CLI dizini boş görür.
+  unc_input <- "//rehisds/uygulamalar/Primavera/PYB"
+  unc_input_backslash <- "\\\\rehisds\\uygulamalar\\Primavera\\PYB"
+
+  unc_forward <- test_env$cc_policy_normalize_path(unc_input, must_exist = FALSE)
+  unc_backslash <- test_env$cc_policy_normalize_path(
+    unc_input_backslash,
+    must_exist = FALSE
+  )
+
+  expect_true(
+    grepl("^//", unc_forward, perl = TRUE),
+    info = paste0(
+      "cc_policy_normalize_path UNC yolunu UNC olarak korumalıdır: ",
+      unc_forward
+    )
+  )
+
+  expect_true(
+    grepl("^//", unc_backslash, perl = TRUE),
+    info = paste0(
+      "cc_policy_normalize_path ters slash UNC yolunu UNC olarak korumalıdır: ",
+      unc_backslash
+    )
+  )
+
+  expect_false(
+    grepl("^[A-Za-z]:/", unc_forward, perl = TRUE),
+    info = "UNC yol drive harfine çevrilmemelidir."
+  )
+})
+
 test_that("CLI argümanları varsayılan olarak tehlikeli izin atlama içermez", {
   test_env <- .source_cc_security_policy_for_test()
 

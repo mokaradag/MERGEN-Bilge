@@ -70,6 +70,24 @@ mirror_directory_to_local_workspace <- function(source_dir, target_dir) {
     error = function(e) character(0)
   )
 
+  # UNC / ağ paylaşımı kaynaklı dizinlerde base R list.files bazen boş
+  # döner; fs::dir_ls aynı paylaşımı genellikle başarıyla listeler.
+  # Aksi halde mirror sessizce boş runtime klasörü üretir ve CLI dizini
+  # "completely empty" olarak görür.
+  if (!length(ogeler)) {
+    dirs_fs <- tryCatch(
+      as.character(fs::dir_ls(source_dir, recurse = FALSE, type = "directory")),
+      error = function(e) character(0)
+    )
+
+    files_fs <- tryCatch(
+      as.character(fs::dir_ls(source_dir, recurse = FALSE, type = "file")),
+      error = function(e) character(0)
+    )
+
+    ogeler <- unique(c(dirs_fs, files_fs))
+  }
+
   if (!length(ogeler)) {
     return(invisible(TRUE))
   }
