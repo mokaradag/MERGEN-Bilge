@@ -317,6 +317,40 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
     file_paths = c(yeni_dosyalar, arac_yollari)
   )
 
+  # Yalnızca kullanıcıya indirilebilir çıktı/artifact dosyalarını yakala.
+  # Mevcut proje kaynak dosyaları (.R, .py, .js vb.) analiz edilmiş veya okunmuş
+  # olabilir; bunlar "oluşturulan dosya" olarak gösterilmemelidir.
+  indirilebilir_uzantilar <- c(
+    "txt", "md", "csv", "log", "json", "html", "htm", "rtf",
+    "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf",
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "zip"
+  )
+
+  tum_yollar <- tum_yollar[
+    tolower(tools::file_ext(tum_yollar)) %in% indirilebilir_uzantilar
+  ]
+
+  # Bilge Yolaç iç yardımcı çıktıları ve staging klasörü kullanıcı çıktısı değildir.
+  if (length(tum_yollar)) {
+    tum_yollar_norm <- gsub("\\\\", "/", tum_yollar)
+
+    haric_desenler <- c(
+      "/BILGE_YOLAC_DOKUMAN_REHBERI\\.md$",
+      "/document_support/",
+      "/\\.document_support/",
+      "/bilge_yolac_downloads/"
+    )
+
+    for (desen in haric_desenler) {
+      tum_yollar <- tum_yollar[
+        !grepl(desen, tum_yollar_norm, perl = TRUE)
+      ]
+      tum_yollar_norm <- gsub("\\\\", "/", tum_yollar)
+    }
+  }
+
+  if (!length(tum_yollar)) return(list())
+
   allowed_roots <- cc_policy_allowed_output_roots(
     user_id = user_id,
     workdir = runtime_workdir %||% source_workdir

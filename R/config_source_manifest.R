@@ -112,7 +112,6 @@ source_manifest_after_future_paths <- c(
   "R/helpers_claude_code_downloads.R",
   "R/helpers_claude_code_workdir_scan.R",
   "R/helpers_claude_code_workdir_snapshot.R",
-  "R/helpers_claude_code_artifact_links.R",
   "R/helpers_claude_code_plugins.R",
   "R/helpers_claude_code_document_extractors.R",
   "R/helpers_claude_code_documents.R",
