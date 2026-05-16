@@ -397,6 +397,19 @@ cc_handle_document_summary_run <- function(session,
                 ""
               }
             )
+
+            if (exists("cc_refresh_file_manager_after_generated_outputs",
+                       mode = "function", inherits = TRUE)) {
+              try(
+                cc_refresh_file_manager_after_generated_outputs(
+                  session = session,
+                  user_id = effective_user_id,
+                  file_paths = ozet_yolu,
+                  trigger = "bilge_yolac_document_summary"
+                ),
+                silent = TRUE
+              )
+            }
           }
         }
 
