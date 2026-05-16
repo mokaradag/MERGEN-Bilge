@@ -51,6 +51,10 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Bilge Yolaç sayfası ile kod odaklı ajan deneyimi
 - Bilge Yolaç, Windows VM / SSO ortamında kullanıcı yükleme klasörleri ve ağ paylaşımı benzeri çalışma dizinleri için daha dayanıklı çalışır; `/rehisds/...`, `//rehisds/...`, UNC ve ASCII dışı karakter içeren yollar gerektiğinde yerel geçici runtime çalışma alanına aynalanır.
 - Claude Code CLI bağlantı ve çalıştırma yolu Windows `.cmd` sarmalayıcıları için güvenli yerel başlatma dizini, doğru komut tırnaklama ve `processx` verbatim argüman davranışıyla korunur; böylece "Bağlantı Yok", `cmd.exe` invalid directory ve escaped quote kaynaklı CLI hataları azaltılır.
+- Bilge Yolaç doküman özeti akışı, kullanıcı klasöründe oluşturulan `dosya_aciklamalari.txt` dosyasını kopyalama/staging adımına bağımlı kalmadan doğrudan tıklanabilir indirme kartına dönüştürür. Bu davranış, dosya fiziksel olarak oluştuğu halde bağlantı kartının hazırlanamaması sorununu önler.
+- Bilge Yolaç tarafından indirilebilir `.txt` özet dosyaları UTF-8 BOM ile yazılır; böylece Windows VM, Explorer, Notepad ve kurumsal istemci ortamlarında Türkçe karakterlerin mojibake biçimine dönüşmesi engellenir.
+
+Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönderim gözlemcileri `R/module_claude_code_stream_poll.R` içinde tutulur. Ana modül `R/module_claude_code.R`, bu yardımcıyı bağlayarak davranışı korur; böylece kullanıcı deneyimi değişmeden 800+ satır ve fonksiyon yoğunluğu eşikleri aşılmaz.
 
 ### Kurumsal ve yönetimsel bileşenler
 - SSO / Keycloak desteği
@@ -81,6 +85,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Test ortamında da çalışma zamanı kaynak sırası korunur: `tests/testthat/helper_bootstrap.R`, DB yardımcılarından önce `R/utils_text_encoding.R` dosyasını yükler. Böylece tekil `testthat::test_file(...)` çalıştırmalarında da mojibake onarımı gerçek uygulama davranışıyla aynı kalır.
 - İstemci tarafında `www/js/encoding_utils.js`; genel Shiny mesajları, HTML metin/öznitelik onarımı ve Bilge Yolaç canlı akışı için ortak mojibake düzeltme/fallback katmanı sağlar.
 - Bilge Yolaç streaming kodu büyük yerel mojibake haritaları taşımak yerine bu ortak istemci yardımcısını kullanır; böylece kullanıcı deneyimi korunurken bakım yükü azaltılır.
+- Bilge Yolaç doküman özeti indirme sınırında `.txt` dosyaları `write_claude_code_utf8_bom_text_file()` ile UTF-8 BOM içerecek şekilde yazılır. Bu yalnızca indirilebilir metin dosyası algılamasını güçlendirir; DB yazım kodlaması, `DB_CLIENT_ENCODING` sözleşmesi ve SQL Server/ODBC sınırıyla karıştırılmamalıdır.
 - Dosya Yönetimi görünen adları ve kalıcı dosya indeksi; Türkçe dosya adları, storage-prefix temizleme ve eski mojibake kayıtlarının okunabilir hâle getirilmesi için aynı merkezi normalizasyon hattını kullanır.
 - Dosya yaşam döngüsü sertleştirmesi `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, `R/config_file_store_registry.R`, `R/helpers_file_manager_table.R`, `R/helpers_mcp_file_resolver.R` ve `R/module_summarization.R` sınırlarında korunur. Bu sözleşme storage adı ile görünen adın ayrılmasını, aynı kullanıcı filesystem fallback davranışını, yinelenen Dosya Yönetimi satırlarının engellenmesini, MCP mutlak yol reddini ve özetleme/Excel ayrımını kapsar.
 
@@ -96,6 +101,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Parser hassasiyeti olan R test kaynaklarında literal emoji yerine `intToUtf8(...)` kullanılmalıdır. Bu kural emoji desteğini kaldırmaz; yalnızca Windows VM parse dayanıklılığını artırır.
 - Odak test/preflight komutları:
   - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+  - `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
   - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
   - `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
   - `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`

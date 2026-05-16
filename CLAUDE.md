@@ -66,6 +66,9 @@ Current contract:
 - R test files that must pass Windows VM parse sanity should avoid literal emoji in source strings; use `intToUtf8(...)` in tests instead. This is a parser-stability rule, not a product decision to remove emoji support.
 - Logging should pass user-visible text through the shared log normalization path so Turkish text stays readable and ANSI escape sequences are not made worse.
 - Bilge Yolaç streaming must keep the browser-side fallback, but `www/js/claude_code_streaming.js` must not grow another large local mojibake map. Use `window.MergenEncoding` from `www/js/encoding_utils.js`.
+- Bilge Yolaç document-summary downloads are a protected encoding boundary. The generated `dosya_aciklamalari.txt` file must be written with `write_claude_code_utf8_bom_text_file()` so Windows Explorer, Notepad, and enterprise VM clients reliably detect Turkish text as UTF-8.
+- Do not replace the UTF-8 BOM writer for downloadable `.txt` summaries with plain `writeLines(..., useBytes = TRUE)` or any locale-dependent text writer unless `tests/testthat/test-claude-code-document-download-link-encoding.R` is updated and still proves Turkish characters survive the download/open path.
+- The UTF-8 BOM rule applies to downloadable Bilge Yolaç text artifacts. It does not change the SQL Server/ODBC DB write encoding contract, and it must not be used as justification to change `DB_CLIENT_ENCODING` behavior.
 - Do not replace UTF-8-safe byte reading helpers with plain `readLines(..., encoding = "UTF-8")` in Windows/VM-sensitive paths unless the regression tests prove it is safe.
 - Be careful with R constants: use exactly `NA_character_`. A typo such as `NA_character__` can break app startup through DB parameter normalization.
 - Do not add CDN or external dependencies for encoding repair.
@@ -77,6 +80,7 @@ Protected by:
 - `tests/testthat/test-file-manager-display-name-contract.R`
 - `tests/testthat/test-maintainability-ratchet-contract.R`
 - `tests/testthat/test-claude-code-process-refactor-contract.R`
+- `tests/testthat/test-claude-code-document-download-link-encoding.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
 - `tests/testthat/test-db-user-visible-encoding-boundaries.R`
 - `tests/scripts/run_vm_encoding_preflight_real.R`
@@ -86,6 +90,7 @@ Protected by:
 Focused validation:
 
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
 - `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`
 - `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
 - `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
@@ -204,6 +209,31 @@ Manual validation after file lifecycle changes:
 - Confirm no cross-user files appear.
 - Attempt an absolute-path file reference and confirm it is rejected or ignored without arbitrary file access.
 - Inspect logs for readable Turkish filenames.
+
+### Bilge Yolaç document download and stream-poll contract
+
+Current contract:
+
+- `R/helpers_claude_code_existing_file_link.R` owns the direct existing-file download card for files that are already created in the user-selected/upload folder.
+- The document-summary flow must not depend on copying `dosya_aciklamalari.txt` into `bilge_yolac_downloads` before showing a link. If the file already exists in the allowed user folder, create a direct Shiny resource link to that existing file.
+- Do not reintroduce the old fallback message `İndirme kartı hazırlanamadı` as the normal success path for document summaries.
+- `R/module_claude_code_stream_poll.R` owns the live stream polling, stop observer, and prompt-submit observer extracted from `R/module_claude_code.R`.
+- Do not move the stream polling block back into `R/module_claude_code.R`; the maintainability ratchet expects the module to stay below the near-limit runtime budget.
+- Any new helper file in this area must be added to `R/config_source_manifest.R` in dependency order.
+
+Protected by:
+
+- `tests/testthat/test-claude-code-document-download-link-encoding.R`
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+- `tests/testthat/test-global-source-manifest-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
 
 ### 1A) Keep new code identifiers ASCII-safe when practical
 Preserve Turkish text integrity in user-facing strings, docs, comments, DB text, JSON text, and rendered UI. However, for Windows VM parser robustness, **new code identifiers** should be ASCII-only where practical (variable/helper names, unquoted `data.frame(...)` column names, `$field_name` accessors, and similar code symbols that can become mojibake-sensitive). This is **not** permission to Latinize visible product text; it applies only to code symbols/identifiers.
