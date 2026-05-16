@@ -224,34 +224,27 @@ prepare_claude_code_document_context <- function(prompt,
     workdir_has_binary_documents(source_workdir, binary_exts)
   )
 
-  dokuman_gorevi <- isTRUE(prompt_mentions_binary_document_type(prompt)) ||
-    (
-      isTRUE(prompt_requests_document_operation(prompt)) &&
-        isTRUE(runtime_dokuman_var || source_dokuman_var)
-    )
+  # Doküman özet/okuma yolu (yerel metne çıkarma + non-streaming özet) yalnızca
+  # kullanıcı AÇIKÇA mevcut bir dokümanın okunmasını/özetlenmesini istediğinde
+  # devreye girer. "Bu dosyada ne var?" gibi içerik soruları artık doğrudan
+  # canlı akış üzerinden Claude Code CLI'ya iletilir.
+  # Üretim niyeti (örn. "Word dökümanı oluştur") açıkça okumadan ayrılır.
+  okuma_niyeti_belirgin <- tryCatch(
+    isTRUE(prompt_requests_existing_document_reading(prompt)),
+    error = function(e) FALSE
+  )
+
+  olusturma_niyeti <- tryCatch(
+    isTRUE(prompt_requests_binary_document_creation(prompt)),
+    error = function(e) FALSE
+  )
+
+  dokuman_gorevi <- isTRUE(okuma_niyeti_belirgin) &&
+    !isTRUE(olusturma_niyeti) &&
+    isTRUE(runtime_dokuman_var || source_dokuman_var)
 
   if (!isTRUE(dokuman_gorevi)) {
     return(sonuc)
-  }
-
-  # Kullanıcı mevcut ikili dokümanı OKUMAK değil YENİ bir ikili doküman
-  # ÜRETMEK istiyorsa doküman modunu (metne düşürme yolunu) devre dışı bırak.
-  # Aksi halde Claude Code'a "binary üretimi yasaktır" yönergesi enjekte
-  # ediliyor ve .docx/.xlsx üretimi engelleniyor.
-  if (exists("prompt_requests_binary_document_creation", mode = "function")) {
-    olusturma_niyeti <- tryCatch(
-      isTRUE(prompt_requests_binary_document_creation(prompt)),
-      error = function(e) FALSE
-    )
-
-    okuma_niyeti_belirgin <- tryCatch(
-      isTRUE(prompt_requests_existing_document_reading(prompt)),
-      error = function(e) FALSE
-    )
-
-    if (isTRUE(olusturma_niyeti) && !isTRUE(okuma_niyeti_belirgin)) {
-      return(sonuc)
-    }
   }
 
   sonuc$document_task_detected <- TRUE

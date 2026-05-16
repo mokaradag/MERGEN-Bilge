@@ -307,6 +307,14 @@ cc_bind_claude_code_stream_polling <- function(input,
       observe_dir_contents(
         dizin = env$kaynak_calisma_dizini %||% env$calisma_dizini
       )
+
+      # Canlı akış kullanıcının yükleme klasörü içinde yeni dosya ürettiyse
+      # Dosya Yönetimi tablosunun bu yeni dosyayı sayfa yenilemeden görmesi
+      # için File Manager'a yumuşak bir yenileme sinyali gönder.
+      cc_refresh_user_file_manager_after_run(
+        session = session,
+        user_id = env$user_id
+      )
     }
   })
 

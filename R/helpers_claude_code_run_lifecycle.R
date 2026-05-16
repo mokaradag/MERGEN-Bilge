@@ -220,6 +220,40 @@ cc_reset_document_summary_session_context <- function(rv, model) {
   invisible(TRUE)
 }
 
+# Bilge Yolaç başarıyla tamamlandığında ve oluşturulan dosyalar kullanıcının
+# yükleme klasörü içine yazıldığında Dosya Yönetimi tablosunu sayfa yenilemesi
+# olmadan tazeler. Yenileme fonksiyonu yoksa sessizce çıkar; File Manager kendi
+# refresh guard'ı ile eş zamanlı çağrıları korur.
+cc_refresh_user_file_manager_after_run <- function(session, user_id = NULL) {
+  if (is.null(session) || is.null(session$userData)) {
+    return(invisible(FALSE))
+  }
+
+  fm_data <- session$userData$file_manager_data
+  if (is.null(fm_data)) {
+    return(invisible(FALSE))
+  }
+
+  refresh_fn <- fm_data$refresh_persisted_files
+  if (!is.function(refresh_fn)) {
+    return(invisible(FALSE))
+  }
+
+  tryCatch(
+    refresh_fn("bilge_yolac_generated"),
+    error = function(e) {
+      log_warn(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "Dosya Yönetimi tazeleme başarısız:",
+        conditionMessage(e)
+      ))
+      NULL
+    }
+  )
+
+  invisible(TRUE)
+}
+
 cc_handle_document_summary_run <- function(session,
                                            ns,
                                            rv,
@@ -469,6 +503,14 @@ cc_handle_document_summary_run <- function(session,
         request_id = run_request_id,
         observe_dir_contents = observe_dir_contents,
         dizin = target_dir
+      )
+
+      # Doküman özetleme yolu kullanıcının yükleme klasörüne dosya yazdığında
+      # Dosya Yönetimi tablosunun yeni dosyayı oturum yenilemeden görmesi için
+      # File Manager'a yumuşak bir yenileme sinyali gönder.
+      cc_refresh_user_file_manager_after_run(
+        session = session,
+        user_id = effective_user_id
       )
 
       NULL
