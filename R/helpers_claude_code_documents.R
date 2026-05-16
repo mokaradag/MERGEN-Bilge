@@ -437,6 +437,24 @@ resolve_claude_code_document_detail_level <- function(prompt) {
   "orta"
 }
 
+write_claude_code_utf8_bom_text_file <- function(text, file_path) {
+  text <- enc2utf8(paste(as.character(text %||% ""), collapse = "\n"))
+  file_path <- as.character(file_path %||% "")[1]
+
+  if (!nzchar(file_path)) {
+    return(FALSE)
+  }
+
+  con <- file(file_path, open = "wb")
+  on.exit(close(con), add = TRUE)
+
+  # UTF-8 BOM: makes Windows/Notepad/Office reliably detect Turkish text.
+  writeBin(as.raw(c(0xEF, 0xBB, 0xBF)), con)
+  writeBin(charToRaw(text), con)
+
+  TRUE
+}
+
 write_claude_code_document_summary_file <- function(summary_text,
                                                     output_dir,
                                                     file_name = "dosya_aciklamalari.txt") {
@@ -449,7 +467,9 @@ write_claude_code_document_summary_file <- function(summary_text,
 
   hedef_yol <- file.path(output_dir, file_name)
 
-  writeLines(summary_text, hedef_yol, useBytes = TRUE)
+  if (!isTRUE(write_claude_code_utf8_bom_text_file(summary_text, hedef_yol))) {
+    return("")
+  }
 
   normalizePath(hedef_yol, winslash = "/", mustWork = FALSE)
 }

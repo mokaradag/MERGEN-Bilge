@@ -345,7 +345,11 @@ cc_handle_document_summary_run <- function(session,
             hedef_yol <- file.path(target_dir, "dosya_aciklamalari.txt")
 
             # Ana Shiny oturumunda senkron yaz.
-            writeLines(enc2utf8(sonuc$output %||% ""), hedef_yol, useBytes = TRUE)
+			if (exists("write_claude_code_utf8_bom_text_file", mode = "function")) {
+			  write_claude_code_utf8_bom_text_file(sonuc$output %||% "", hedef_yol)
+			} else {
+			  writeLines(enc2utf8(sonuc$output %||% ""), hedef_yol, useBytes = TRUE)
+			}
 
             if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) {
               stop("Özet dosyası fiziksel olarak oluşturulamadı: ", hedef_yol)
