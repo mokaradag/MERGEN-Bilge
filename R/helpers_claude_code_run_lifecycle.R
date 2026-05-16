@@ -334,50 +334,26 @@ cc_handle_document_summary_run <- function(session,
           list(list(role = "assistant", content = sonuc$output %||% ""))
         )
 
-        doc_downloads <- sonuc$generated_downloads %||% list()
-
-        if (!length(doc_downloads) &&
-            nzchar(sonuc$generated_summary_path %||% "") &&
-            exists("collect_claude_code_downloads_from_paths", mode = "function")) {
-          doc_downloads <- tryCatch(
-            collect_claude_code_downloads_from_paths(
-              file_paths = sonuc$generated_summary_path,
-              runtime_workdir = target_dir,
-              source_workdir = target_dir,
-              user_id = effective_user_id,
-              session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
-            ),
-            error = function(e) list()
-          )
-
-          sonuc$generated_downloads <- doc_downloads
-          sonuc$generated_downloads_html <- tryCatch(
-            format_claude_code_generated_downloads_html(doc_downloads),
-            error = function(e) ""
-          )
-        }
-
-        if (exists("cc_ensure_generated_file_download", mode = "function")) {
-          doc_downloads <- cc_ensure_generated_file_download(
-            downloads = doc_downloads,
-            prompt = kullanici_prompt,
-            assistant_text = sonuc$output %||% "",
-            runtime_workdir = target_dir,
-            source_workdir = target_dir,
-            user_id = effective_user_id,
-            session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
-          )
-
-          sonuc$generated_downloads <- doc_downloads
-          sonuc$generated_downloads_html <- tryCatch(
-            format_claude_code_generated_downloads_html(doc_downloads),
-            error = function(e) ""
-          )
-        }
-
         assistant_html <- paste0(
           format_claude_code_output(sonuc$output %||% ""),
-          format_claude_code_generated_downloads_html(doc_downloads)
+          sonuc$generated_downloads_html %||% "",
+          if (!nzchar(sonuc$generated_downloads_html %||% "") &&
+              nzchar(sonuc$generated_summary_path %||% "")) {
+            paste0(
+              '<div class="cc-generated-files">',
+              '<div class="cc-generated-files-title">',
+              '<i class="fas fa-file-alt"></i> Oluşturulan Dosya',
+              '</div>',
+              '<div class="cc-tool-content">',
+              '<span class="cc-tool-path">',
+              htmltools::htmlEscape(sonuc$generated_summary_path),
+              '</span>',
+              '</div>',
+              '</div>'
+            )
+          } else {
+            ""
+          }
         )
 
         session$sendCustomMessage(

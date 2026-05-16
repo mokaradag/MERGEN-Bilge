@@ -405,33 +405,16 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       stream_env$durduruldu <- FALSE
       stream_env$oturum_id <- NULL  # stream-json olaylarından gelecek
 
-      # Çalıştırma öncesi runtime + kaynak dizin anlık görüntüsü.
-      # Amaç: yalnızca BU çalıştırmada yeni oluşan/değişen dosyaları yakalamak.
+      # Çalıştırma öncesi çalışma dizini anlık görüntüsü
+      # (Claude Code'un ürettiği .docx/.xlsx gibi dosyaları bash yoluyla
+      # oluştursa bile tespit edebilmek için)
       stream_env$workdir_snapshot <- tryCatch(
         snapshot_claude_code_workdir_files(calisma_dizini),
         error = function(e) list()
       )
 
-      stream_env$source_workdir_snapshot <- tryCatch({
-        kaynak_dizin <- kaynak_calisma_dizini %||% ""
-        if (nzchar(kaynak_dizin) && dir.exists(kaynak_dizin)) {
-          snapshot_claude_code_workdir_files(kaynak_dizin)
-        } else {
-          list()
-        }
-      }, error = function(e) list())
-
       rv$stream_env <- stream_env
       rv$poll_state <- stream_env
-
-      # Kullanıcı dosya çıktısı istediyse modele açık talimat ver:
-      # Onay sorma, gerçekten dosya oluştur; oluşturmadıysan oluşturuldu deme.
-      if (exists("cc_append_file_output_instruction", mode = "function")) {
-        calistirma_promptu <- cc_append_file_output_instruction(
-          prompt = calistirma_promptu,
-          output_dir = kaynak_calisma_dizini %||% calisma_dizini
-        )
-      }
 
       # CLI argümanlarını merkezi güvenlik ilkesinden oluştur
       # stream-json formatı olayları gerçek zamanlı olarak satır satır verir
@@ -643,27 +626,12 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           # normalize eder (Windows Notepad mojibake düzeltmesi).
           olusan_dosyalar <- collect_claude_code_workdir_changes_downloads(
             before_snapshot = env$workdir_snapshot,
-            source_before_snapshot = env$source_workdir_snapshot,
             tool_uses = ayristirma$tool_uses,
             runtime_workdir = env$calisma_dizini,
             source_workdir = env$kaynak_calisma_dizini,
             user_id = env$user_id,
             session_token = env$session_token
           )
-
-          # Model dosya istediğini söyleyip gerçekten dosya üretmediyse:
-          # cevap metninden seçili/asıl klasöre .txt fallback üret ve linkle.
-          if (exists("cc_ensure_generated_file_download", mode = "function")) {
-            olusan_dosyalar <- cc_ensure_generated_file_download(
-              downloads = olusan_dosyalar,
-              prompt = env$prompt,
-              assistant_text = ayristirma$text_output,
-              runtime_workdir = env$calisma_dizini,
-              source_workdir = env$kaynak_calisma_dizini,
-              user_id = env$user_id,
-              session_token = env$session_token
-            )
-          }
 
           # Akış mesajını sonlandır
           # stream-json modunda metin zaten anlık gösterildiği için

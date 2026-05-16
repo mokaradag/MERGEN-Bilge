@@ -277,44 +277,12 @@ normalize_claude_code_text_files <- function(file_paths,
 #' @param session_token Shiny oturum anahtarı
 #' @return İndirme kayıtları listesi
 collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
-                                                           source_before_snapshot = NULL,
                                                            tool_uses = list(),
                                                            runtime_workdir = "",
                                                            source_workdir = "",
                                                            user_id = 0L,
                                                            session_token = "") {
-  runtime_norm <- tryCatch(
-    normalizePath(runtime_workdir, winslash = "/", mustWork = FALSE),
-    error = function(e) runtime_workdir
-  )
-
-  source_norm <- tryCatch(
-    normalizePath(source_workdir, winslash = "/", mustWork = FALSE),
-    error = function(e) source_workdir
-  )
-
-  same_runtime_source <- nzchar(runtime_norm) &&
-    nzchar(source_norm) &&
-    identical(tolower(runtime_norm), tolower(source_norm))
-
-  allowed_roots <- unique(c(
-    cc_policy_allowed_output_roots(
-      user_id = user_id,
-      workdir = runtime_workdir %||% source_workdir
-    ),
-    if (nzchar(source_workdir)) {
-      cc_policy_allowed_output_roots(user_id = user_id, workdir = source_workdir)
-    } else {
-      character(0)
-    },
-    if (nzchar(runtime_workdir)) {
-      cc_policy_allowed_output_roots(user_id = user_id, workdir = runtime_workdir)
-    } else {
-      character(0)
-    }
-  ))
-
-  # 1) Runtime dizininde yeni/değişmiş dosyaları bul
+  # 1) Çalışma dizini taraması ile yeni/değişmiş dosyaları bul
   yeni_dosyalar <- character(0)
 
   if (nzchar(runtime_workdir) && dir.exists(runtime_workdir)) {
@@ -327,29 +295,12 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
     )
   }
 
-  # 1B) Kaynak/asıl dizinde yeni/değişmiş dosyaları da bul.
-  # Bazı durumlarda model dosyayı doğrudan kaynak klasöre yazabilir.
-  kaynak_yeni_dosyalar <- character(0)
-
-  if (!isTRUE(same_runtime_source) &&
-      nzchar(source_workdir) &&
-      dir.exists(source_workdir)) {
-    kaynak_yeni_dosyalar <- tryCatch(
-      diff_claude_code_workdir_snapshot(
-        before_snapshot = source_before_snapshot %||% list(),
-        workdir = source_workdir
-      ),
-      error = function(e) character(0)
-    )
-  }
-
   # 2) Araç kullanımlarından gelen yolları da ekle (yedek)
   arac_yollari <- tryCatch(
     list_claude_code_generated_file_paths(
       tool_uses = tool_uses,
       runtime_workdir = runtime_workdir,
       source_workdir = source_workdir,
-      allowed_roots = allowed_roots,
       user_id = user_id
     ),
     error = function(e) character(0)
@@ -363,42 +314,13 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
   # süre oynayabilir. Normalizasyon veya staging başlamadan önce kısa ve
   # davranış-koruyucu bir kararlılık kontrolü uygula.
   tum_yollar <- wait_for_stable_claude_code_file_paths(
-    file_paths = c(yeni_dosyalar, kaynak_yeni_dosyalar, arac_yollari)
+    file_paths = c(yeni_dosyalar, arac_yollari)
   )
 
-  # Yalnızca kullanıcıya indirilebilir çıktı/artifact dosyalarını yakala.
-  # Mevcut proje kaynak dosyaları (.R, .py, .js vb.) analiz edilmiş veya okunmuş
-  # olabilir; bunlar "oluşturulan dosya" olarak gösterilmemelidir.
-  indirilebilir_uzantilar <- c(
-    "txt", "md", "csv", "log", "json", "html", "htm", "rtf",
-    "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf",
-    "png", "jpg", "jpeg", "gif", "webp", "svg", "zip"
+  allowed_roots <- cc_policy_allowed_output_roots(
+    user_id = user_id,
+    workdir = runtime_workdir %||% source_workdir
   )
-
-  tum_yollar <- tum_yollar[
-    tolower(tools::file_ext(tum_yollar)) %in% indirilebilir_uzantilar
-  ]
-
-  # Bilge Yolaç iç yardımcı çıktıları ve staging klasörü kullanıcı çıktısı değildir.
-  if (length(tum_yollar)) {
-    tum_yollar_norm <- gsub("\\\\", "/", tum_yollar)
-
-    haric_desenler <- c(
-      "/BILGE_YOLAC_DOKUMAN_REHBERI\\.md$",
-      "/document_support/",
-      "/\\.document_support/",
-      "/bilge_yolac_downloads/"
-    )
-
-    for (desen in haric_desenler) {
-      tum_yollar <- tum_yollar[
-        !grepl(desen, tum_yollar_norm, perl = TRUE)
-      ]
-      tum_yollar_norm <- gsub("\\\\", "/", tum_yollar)
-    }
-  }
-
-  if (!length(tum_yollar)) return(list())
 
   tum_yollar <- cc_policy_filter_generated_file_paths(
     tum_yollar,
