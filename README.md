@@ -49,6 +49,8 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Üç farklı deneyim modu
 - AI Uzman rehberliği
 - Bilge Yolaç sayfası ile kod odaklı ajan deneyimi
+- Bilge Yolaç, Windows VM / SSO ortamında kullanıcı yükleme klasörleri ve ağ paylaşımı benzeri çalışma dizinleri için daha dayanıklı çalışır; `/rehisds/...`, `//rehisds/...`, UNC ve ASCII dışı karakter içeren yollar gerektiğinde yerel geçici runtime çalışma alanına aynalanır.
+- Claude Code CLI bağlantı ve çalıştırma yolu Windows `.cmd` sarmalayıcıları için güvenli yerel başlatma dizini, doğru komut tırnaklama ve `processx` verbatim argüman davranışıyla korunur; böylece "Bağlantı Yok", `cmd.exe` invalid directory ve escaped quote kaynaklı CLI hataları azaltılır.
 
 ### Kurumsal ve yönetimsel bileşenler
 - SSO / Keycloak desteği
@@ -94,6 +96,8 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Parser hassasiyeti olan R test kaynaklarında literal emoji yerine `intToUtf8(...)` kullanılmalıdır. Bu kural emoji desteğini kaldırmaz; yalnızca Windows VM parse dayanıklılığını artırır.
 - Odak test/preflight komutları:
   - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+  - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
+  - `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
   - `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`
   - `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
   - `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
