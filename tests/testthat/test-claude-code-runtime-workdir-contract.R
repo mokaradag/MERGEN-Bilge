@@ -69,6 +69,12 @@
   }
 
   source(
+    file.path(repo_root, "R", "helpers_claude_code_runtime_resolver.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  source(
     file.path(repo_root, "R", "helpers_claude_code_runtime_workdir.R"),
     encoding = "UTF-8",
     local = test_env
@@ -76,7 +82,6 @@
 
   test_env
 }
-
 test_that("Claude Code runtime workdir yardımcıları ayrı dosyaya taşınmıştır", {
   repo_root <- resolve_repo_root_for_tests()
 
@@ -126,6 +131,7 @@ test_that("Claude Code runtime workdir helper source sırası korunur", {
   expect_source_manifest_order_for_tests(
     c(
       "R/helpers_claude_code_process.R",
+      "R/helpers_claude_code_runtime_resolver.R",
       "R/helpers_claude_code_runtime_workdir.R",
       "R/helpers_claude_code.R",
       "R/helpers_claude_code_server_setup.R"

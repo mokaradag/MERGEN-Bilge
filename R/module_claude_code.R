@@ -170,16 +170,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       calisma_dizini <- runtime_dizin$runtime_workdir %||% calisma_dizini
       mirror_kullanildi <- isTRUE(runtime_dizin$mirrored)
 
-      log_info(paste(
-        CLAUDE_CODE_LOG_PREFIX,
-        "[RUNTIME_WORKDIR]",
-        "original =",
-        workdir_policy$path %||% "",
-        "| source =",
-        kaynak_calisma_dizini %||% "",
-        "| runtime =",
-        calisma_dizini %||% "",
-        "| mirrored =",
+      log_info(sprintf(
+        "%s [RUNTIME_WORKDIR] original=%s | source=%s | runtime=%s | mirrored=%s",
+        CLAUDE_CODE_LOG_PREFIX, workdir_policy$path %||% "",
+        kaynak_calisma_dizini %||% "", calisma_dizini %||% "",
         isTRUE(mirror_kullanildi)
       ))
 
@@ -190,21 +184,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         user_id = effective_user_id
       )
 
-      log_info(paste(
-        CLAUDE_CODE_LOG_PREFIX,
-        "[DOC_DEBUG_1] Doküman bağlamı oluşturuldu.",
-        "document_task_detected =", isTRUE(dokuman_baglami$document_task_detected),
-        "| has_binary_docs =", isTRUE(dokuman_baglami$has_binary_docs),
-        "| text_sidecars_ready =", isTRUE(dokuman_baglami$text_sidecars_ready),
-        "| prepared_files =", length(dokuman_baglami$prepared_files %||% list()),
-        "| support_dir =", dokuman_baglami$support_dir %||% "",
-        "| effective_workdir =", dokuman_baglami$effective_workdir %||% "",
-        "| extraction_errors =",
-        if (length(dokuman_baglami$extraction_errors %||% character(0))) {
-          paste(dokuman_baglami$extraction_errors, collapse = " || ")
-        } else {
-          "(yok)"
-        }
+      log_info(sprintf(
+        "%s [DOC_DEBUG_1] detected=%s | binary=%s | sidecars=%s | files=%d | errors=%d",
+        CLAUDE_CODE_LOG_PREFIX, isTRUE(dokuman_baglami$document_task_detected),
+        isTRUE(dokuman_baglami$has_binary_docs),
+        isTRUE(dokuman_baglami$text_sidecars_ready),
+        length(dokuman_baglami$prepared_files %||% list()),
+        length(dokuman_baglami$extraction_errors %||% character(0))
       ))
 
       calistirma_promptu <- dokuman_baglami$prompt %||% kullanici_prompt
