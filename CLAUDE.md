@@ -303,6 +303,45 @@ Manual validation after touching welcome, quick actions, media, TTS, STT, stop-b
 - Browser console: confirm there are no JS errors, duplicate audio warnings, or missing element errors.
 - Browser smoke: open the smoke page on the target deployment through the same app origin and confirm `UX_SMOKE_DONE:PASS`; on SSO deployments, remember that quick-action intro visibility is covered by focused tests rather than the smoke page. For local VM checks, prefer `tests/scripts/open_ux_smoke.R` with `MERGEN_SMOKE_BASE_URL` set to the app base URL.
 
+### 3C) Bilge Yolaç Windows runtime and Claude Code CLI contract
+
+Bilge Yolaç runs Claude Code from an R/Shiny process and is sensitive to Windows VM, SSO, network-share, and `.cmd` invocation behavior. Keep the following contract intact:
+
+- User-selected upload/project folders may appear as `/rehisds/...`, `//rehisds/...`, UNC paths, or paths containing non-ASCII characters. These paths must not be passed blindly as the `processx` launch working directory on Windows.
+- Problematic Windows workdirs must be resolved through the relaxed runtime resolver and, when needed, mirrored into a local temporary runtime directory before Claude Code is launched.
+- The runtime resolver lives in `R/helpers_claude_code_runtime_resolver.R`; runtime mirroring and sync-back logic lives in `R/helpers_claude_code_runtime_workdir.R`. Keep these files separate to preserve the maintainability ratchet.
+- `R/config_source_manifest.R` must load `R/helpers_claude_code_runtime_resolver.R` after `R/helpers_claude_code_process.R` and before `R/helpers_claude_code_runtime_workdir.R`.
+- Windows `.cmd` execution must go through `build_processx_command()` and `build_windows_cmd_invocation_line()` in `R/helpers_claude_code_process.R`.
+- For Windows `.cmd` execution, keep the safe local launch working directory and pass `windows_verbatim_args = TRUE` to every `processx::process$new()` call that consumes a command object returned by `build_processx_command()`.
+- Do not reintroduce `cmd.exe /s /c` for the Claude Code `.cmd` wrapper. The current wrapper uses `/d /c` and relies on explicit token quoting plus verbatim argument passing.
+- Claude Code status checks such as `claude.cmd --version` must not depend on the selected project/upload folder. They should run from a safe local launch directory.
+- If Bilge Yolaç can answer document questions but the top-right connection badge shows disconnected, check the CLI status path first; if both fail, check the runtime workdir mirror path.
+
+Protected by:
+
+- `tests/testthat/test-claude-code-process-refactor-contract.R`
+- `tests/testthat/test-claude-code-runtime-workdir-contract.R`
+- `tests/testthat/test-global-source-manifest-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation after touching Bilge Yolaç process launch, runtime workdir resolution, document-folder handling, source-manifest order, or Claude Code connection status:
+
+- `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
+- `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+
+Manual validation on the Windows VM:
+
+- Start the app with SSO enabled.
+- Open Bilge Yolaç.
+- Click the upload-folder/project-folder navigation button so the project directory points to a `/rehisds/...` or `//rehisds/...` path.
+- Ask a question about files in that folder.
+- Confirm the response is produced without `cmd.exe` invalid directory errors, `The specified path is invalid`, or escaped quote errors such as `\"C:\...\claude.cmd\" is not recognized`.
+- Open Yapılandırma and run the Claude Code connection test.
+- Confirm the CLI status is connected and the top-right badge no longer shows `Bağlantı Yok`.
+- Check logs for `[RUNTIME_WORKDIR]` and confirm problematic source paths are mirrored to a local temp runtime path when required.
+
 ### 4) Do not create unnecessary new files
 This repo already has a lot of modules. New files should only be introduced when there is a clear benefit and the sourcing order in `global.R` is updated correctly.
 
