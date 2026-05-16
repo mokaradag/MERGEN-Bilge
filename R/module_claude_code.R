@@ -618,13 +618,9 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             list(role = "assistant", content = ayristirma$text_output)
           ))
 
-          # Üretilen dosyaları yerel indirme bağlantılarına dönüştür.
-          # Çalıştırma öncesi snapshot ile dizin farkını alarak Claude Code'un
-          # Bash aracılığıyla python-docx / openpyxl / officer gibi yollarla
-          # oluşturduğu .docx ve .xlsx dosyalarını da yakalar. Ayrıca üretilen
-          # .txt dosyalarının Türkçe karakter kodlamasını UTF-8 BOM olarak
-          # normalize eder (Windows Notepad mojibake düzeltmesi).
-          olusan_dosyalar <- collect_claude_code_workdir_changes_downloads(
+          # Üretilen dosyaları yerel indirme bağlantılarına dönüştür; snapshot/diff
+          # sessiz kalırsa araç çağrılarındaki mutlak yolları yedek olarak topla.
+          olusan_dosyalar <- cc_collect_streaming_run_downloads(
             before_snapshot = env$workdir_snapshot,
             tool_uses = ayristirma$tool_uses,
             runtime_workdir = env$calisma_dizini,
@@ -632,6 +628,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
             user_id = env$user_id,
             session_token = env$session_token
           )
+
+          log_info(sprintf(
+            "%s [DOWNLOADS] tespit edilen indirme sayisi=%d",
+            CLAUDE_CODE_LOG_PREFIX, length(olusan_dosyalar)
+          ))
 
           # Akış mesajını sonlandır
           # stream-json modunda metin zaten anlık gösterildiği için

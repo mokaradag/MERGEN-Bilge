@@ -334,26 +334,61 @@ cc_handle_document_summary_run <- function(session,
           list(list(role = "assistant", content = sonuc$output %||% ""))
         )
 
+        # Yedek tıklanabilir indirme kartı: worker tarafında staging başarısız
+        # olduysa (örn. helpers_claude_code_downloads bağımlılıkları async
+        # worker'a aktarılmadıysa) ana oturumda dosyayı doğrudan indirilebilir
+        # alana taşı ve standart cc-generated-file-card kartı oluştur.
+        son_indirme_html <- sonuc$generated_downloads_html %||% ""
+
+        if (!nzchar(son_indirme_html) &&
+            nzchar(sonuc$generated_summary_path %||% "") &&
+            exists("cc_stage_tool_use_write_paths_as_downloads", mode = "function") &&
+            exists("format_claude_code_generated_downloads_html", mode = "function")) {
+          yedek_indirmeler <- tryCatch(
+            cc_stage_tool_use_write_paths_as_downloads(
+              tool_uses = list(list(
+                name = "file_write",
+                input = list(path = sonuc$generated_summary_path)
+              )),
+              runtime_workdir = target_dir,
+              source_workdir = target_dir,
+              user_id = effective_user_id,
+              session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+            ),
+            error = function(e) list()
+          )
+
+          if (length(yedek_indirmeler)) {
+            son_indirme_html <- tryCatch(
+              format_claude_code_generated_downloads_html(yedek_indirmeler),
+              error = function(e) ""
+            )
+            sonuc$generated_downloads <- yedek_indirmeler
+            sonuc$generated_downloads_html <- son_indirme_html
+          }
+        }
+
+        # Hâlâ kart üretilemediyse, en azından üretilen dosyanın yolunu metin
+        # olarak göster (eski davranış korunur).
+        if (!nzchar(son_indirme_html) &&
+            nzchar(sonuc$generated_summary_path %||% "")) {
+          son_indirme_html <- paste0(
+            '<div class="cc-generated-files">',
+            '<div class="cc-generated-files-title">',
+            '<i class="fas fa-file-alt"></i> Oluşturulan Dosya',
+            '</div>',
+            '<div class="cc-tool-content">',
+            '<span class="cc-tool-path">',
+            htmltools::htmlEscape(sonuc$generated_summary_path),
+            '</span>',
+            '</div>',
+            '</div>'
+          )
+        }
+
         assistant_html <- paste0(
           format_claude_code_output(sonuc$output %||% ""),
-          sonuc$generated_downloads_html %||% "",
-          if (!nzchar(sonuc$generated_downloads_html %||% "") &&
-              nzchar(sonuc$generated_summary_path %||% "")) {
-            paste0(
-              '<div class="cc-generated-files">',
-              '<div class="cc-generated-files-title">',
-              '<i class="fas fa-file-alt"></i> Oluşturulan Dosya',
-              '</div>',
-              '<div class="cc-tool-content">',
-              '<span class="cc-tool-path">',
-              htmltools::htmlEscape(sonuc$generated_summary_path),
-              '</span>',
-              '</div>',
-              '</div>'
-            )
-          } else {
-            ""
-          }
+          son_indirme_html
         )
 
         session$sendCustomMessage(
