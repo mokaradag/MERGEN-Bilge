@@ -604,6 +604,35 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         cikis_kodu <- proc$get_exit_status()
         sure <- round(as.numeric(difftime(Sys.time(), env$baslangic, units = "secs")), 1)
 
+        # Çıkış kodundan bağımsız olarak çalışma dizininde yeni/değişen dosyaları topla.
+        # Böylece Claude Code başarıyla bitse de, hata/iptal/zaman aşımı ile dönse de
+        # kullanıcı oluşan dosyalara indirme bağlantısı üzerinden erişebilir.
+        # Snapshot/diff yolu Write/Edit araçlarını ve Bash içinden çağrılan
+        # python-docx / officer / echo gibi tüm üretim biçimlerini yakalar.
+        olusan_dosyalar <- tryCatch(
+          collect_claude_code_workdir_changes_downloads(
+            before_snapshot = env$workdir_snapshot,
+            tool_uses = ayristirma$tool_uses,
+            runtime_workdir = env$calisma_dizini,
+            source_workdir = env$kaynak_calisma_dizini,
+            user_id = env$user_id,
+            session_token = env$session_token
+          ),
+          error = function(e) list()
+        )
+
+        indirme_html <- tryCatch(
+          format_claude_code_generated_downloads_html(olusan_dosyalar),
+          error = function(e) ""
+        )
+
+        log_info(sprintf(
+          "%s [DOWNLOADS] cikis_kodu=%s | tespit edilen dosya sayisi=%d",
+          CLAUDE_CODE_LOG_PREFIX,
+          as.character(cikis_kodu %||% ""),
+          length(olusan_dosyalar)
+        ))
+
         if (identical(cikis_kodu, 0L)) {
           log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış tamamlandı - Süre:", sure, "sn"))
 
@@ -639,7 +668,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           # finalContent yalnızca yedek olarak gönderilir
           son_icerik <- paste0(
             format_claude_code_output(ayristirma$text_output),
-            format_claude_code_generated_downloads_html(olusan_dosyalar)
+            indirme_html
           )
 
           session$sendCustomMessage(
@@ -687,6 +716,33 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
               timestamp = format(Sys.time(), "%H:%M:%S"),
               welcomeId = ns("welcome_screen")
             )
+          )
+
+          # Hata olsa bile Claude dosyaları üretmiş olabilir; indirme bağlantıları
+          # varsa ayrı bir asistan mesajı olarak gönder.
+          if (nzchar(indirme_html)) {
+            session$sendCustomMessage(
+              type = "cc-add-message",
+              message = list(
+                target = ns("output_area"),
+                type = "ai",
+                content = indirme_html,
+                timestamp = format(Sys.time(), "%H:%M:%S"),
+                welcomeId = ns("welcome_screen"),
+                accentColor = env$karakter_renk,
+                characterName = env$karakter_adi
+              )
+            )
+          }
+
+          rv$last_result <- list(
+            success = FALSE,
+            output = "",
+            error = hata_mesaji,
+            duration = sure,
+            tool_uses = ayristirma$tool_uses,
+            session_id = env$oturum_id %||% ayristirma$session_id,
+            generated_downloads = olusan_dosyalar
           )
 
           finalize_streaming("Hata", "exclamation-triangle", "#E57373", sure, request_id = env$request_id)
