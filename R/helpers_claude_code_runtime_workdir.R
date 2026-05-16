@@ -10,7 +10,6 @@
 #           eşzamanlı veya hızlı ardışık çalıştırmaları birbirinin active_dir
 #           klasörünü silmez.
 # ==============================================================================
-
 # Kullanıcı için izole bir çalışma alanı oluşturur veya mevcut olanı döndürür
 get_user_workspace <- function(user_id, base_dir = NULL) {
   if (is.null(base_dir) || !nzchar(base_dir)) {
@@ -30,7 +29,6 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
 
   normalizePath(user_dir, mustWork = FALSE)
 }
-
 # Windows cmd.exe / Claude Code CLI için problem çıkarabilecek yol mu?
 is_problematic_windows_workdir <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
