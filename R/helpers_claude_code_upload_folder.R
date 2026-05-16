@@ -37,9 +37,17 @@ cc_resolve_existing_dir_relaxed <- function(dir_path) {
     if (grepl("^/[^/]", dir_chr)) paste0("/", dir_chr) else NULL
   )))
 
+  # Windows VM / UNC / ağ paylaşımı yollarında base R dir.exists() bazen
+  # FALSE döner ama list_directory_contents() path_exists_relaxed üzerinden
+  # aynı dizini başarıyla listeler. Resolver de aynı geniş kontrol setini
+  # kullanmazsa runtime workdir aynalama atlanır ve cmd.exe doğrudan UNC
+  # yolunu alarak "The system cannot find the path specified" hatası verir.
   for (aday in adaylar) {
     var_mi <- tryCatch(
-      isTRUE(dir.exists(aday)) || isTRUE(fs::dir_exists(aday)),
+      isTRUE(dir.exists(aday)) ||
+        isTRUE(fs::dir_exists(aday)) ||
+        (exists("path_exists_relaxed", mode = "function", inherits = TRUE) &&
+           isTRUE(path_exists_relaxed(aday))),
       error = function(e) FALSE
     )
 

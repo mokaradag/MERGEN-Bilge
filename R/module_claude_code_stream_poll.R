@@ -178,9 +178,48 @@ cc_bind_claude_code_stream_polling <- function(input,
           length(olusan_dosyalar)
         ))
 
+        # Bilge Yolaç başarıyla tamamlandı sayılsa bile, kullanıcı dosya
+        # oluşturma/değiştirme istediğinde model gerçekten araç çağrısı
+        # yapmadıysa ve çalışma dizininde yeni dosya da oluşmadıysa,
+        # cevabın "yaptım" demesi kullanıcıyı yanıltıcı olabilir. Bunu
+        # kullanıcıya açık bir not olarak göster ve loglara da kaydet.
+        no_tool_kullanildi <- length(ayristirma$tool_uses %||% list()) == 0L
+        no_dosya_uretildi <- length(olusan_dosyalar %||% list()) == 0L
+        yazma_niyeti_var <- tryCatch(
+          isTRUE(cc_policy_prompt_has_write_intent(env$prompt)),
+          error = function(e) FALSE
+        )
+
+        arac_uyarisi_html <- ""
+        if (isTRUE(yazma_niyeti_var) &&
+            isTRUE(no_tool_kullanildi) &&
+            isTRUE(no_dosya_uretildi)) {
+          log_warn(paste(
+            CLAUDE_CODE_LOG_PREFIX,
+            "Kullanıcı dosya oluşturma/değiştirme istedi ancak hiç araç",
+            "kullanımı (tool_use) algılanmadı ve çalışma dizininde yeni dosya",
+            "üretilmedi. On-prem LLM proxy araç olaylarını üretmiyor olabilir."
+          ))
+
+          arac_uyarisi_html <- paste0(
+            '<div class="cc-tool-warning" ',
+            'style="margin-top:12px; padding:10px 14px; border-left:3px solid #FFB74D; ',
+            'background:rgba(255,183,77,0.08); color:#FFB74D; ',
+            'border-radius:6px; font-size:13px;">',
+            '<i class="fas fa-triangle-exclamation"></i> ',
+            'Model bir dosya oluşturma/değiştirme isteğine yanıt verdi ancak ',
+            'gerçekte hiçbir araç (Read/Write/Edit vb.) çağrısı yapılmadı ve ',
+            'çalışma dizininde yeni bir dosya algılanmadı. Yanıttaki bilgiler ',
+            'yalnızca metin tabanlı olabilir; gerçek bir dosya işlemi ',
+            'beklediyseniz lütfen isteğinizi netleştirip yeniden deneyin.',
+            '</div>'
+          )
+        }
+
         son_icerik <- paste0(
           format_claude_code_output(ayristirma$text_output),
-          indirme_html
+          indirme_html,
+          arac_uyarisi_html
         )
 
         session$sendCustomMessage(

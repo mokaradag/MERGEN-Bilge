@@ -35,7 +35,11 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       active_process = NULL,          # Aktif processx süreci (durdurma için)
       poll_state = NULL,              # Yoklama durumu (ortam değişkeni, durdurma için)
       stream_env = NULL,              # Akış durumu (yoklama gözlemcisi için)
-      active_request_id = NULL        # Async/poll callback'leri için aktif çalışma kimliği
+      active_request_id = NULL,       # Async/poll callback'leri için aktif çalışma kimliği
+      # Takip eden sorularda Claude CLI --resume oturumunun bozulmaması için
+      # aynalanmış runtime klasörünü ve onun kaynak workdir eşleşmesini sakla.
+      active_runtime_workdir = NULL,
+      active_runtime_source = NULL
     )
 	
     dir_refresh_guard <- cc_create_dir_refresh_guard()
@@ -160,15 +164,36 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       # Windows + UNC + Türkçe karakterli dizinlerde cmd.exe kararsız çalışabildiği için
       # gerekirse yerel ASCII çalışma alanına aynala.
+      # Aynı sohbette aynı kaynak için yapılan takip çağrılarında mevcut runtime
+      # klasörünü yeniden kullan: Claude CLI --resume oturum metadatası bu klasöre
+      # bağlı olduğundan her run için yeni runtime klasörü açmak
+      # "No conversation found with session ID" hatasına yol açar.
+      mevcut_runtime_workdir <- NULL
+      if (!is.null(rv$active_runtime_source) &&
+          !is.null(rv$active_runtime_workdir) &&
+          identical(
+            as.character(rv$active_runtime_source),
+            as.character(calisma_dizini)
+          )) {
+        mevcut_runtime_workdir <- rv$active_runtime_workdir
+      }
+
       runtime_dizin <- prepare_claude_runtime_workdir(
         calisma_dizini,
         user_id = effective_user_id,
-        runtime_token = run_request_id
+        runtime_token = run_request_id,
+        existing_runtime_workdir = mevcut_runtime_workdir
       )
 
       kaynak_calisma_dizini <- runtime_dizin$source_workdir %||% calisma_dizini
       calisma_dizini <- runtime_dizin$runtime_workdir %||% calisma_dizini
       mirror_kullanildi <- isTRUE(runtime_dizin$mirrored)
+
+      # Aynalama yapıldıysa takip çağrılarında yeniden kullanmak üzere kaydet.
+      if (isTRUE(mirror_kullanildi)) {
+        rv$active_runtime_workdir <- calisma_dizini
+        rv$active_runtime_source <- workdir_policy$path %||% kaynak_calisma_dizini
+      }
 
       log_info(sprintf(
         "%s [RUNTIME_WORKDIR] original=%s | source=%s | runtime=%s | mirrored=%s",
@@ -261,6 +286,10 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
           !identical(rv$current_runtime_model, efektif_model)) {
         rv$cli_session_id <- NULL
         rv$conversation_context <- list()
+        # Çalıştırılan model farklıysa Claude CLI oturumu yeni modelde yeniden
+        # kurulacak; bu yüzden önceki runtime klasörünü de yeniden kullanma.
+        rv$active_runtime_workdir <- NULL
+        rv$active_runtime_source <- NULL
 
         log_info(paste(
           CLAUDE_CODE_LOG_PREFIX,

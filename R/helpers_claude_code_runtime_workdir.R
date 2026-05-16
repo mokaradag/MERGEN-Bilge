@@ -143,10 +143,38 @@ mirror_directory_to_local_workspace <- function(source_dir, target_dir) {
   paste0("run_", token)
 }
 
-# Problemli ağ/Unicode dizinlerini yerel ASCII çalışma klasörüne taşır
+# Var olan runtime workdir aynı kullanıcı kovasında ve aynı kaynak için
+# yeniden kullanılabilir mi? Claude CLI oturum kimliği (--resume) runtime
+# çalışma dizinine göre saklandığı için takip eden sorularda aynı klasörü
+# yeniden kullanmak oturum sürekliliğini korur.
+.cc_runtime_workdir_reusable <- function(existing_runtime_workdir, user_id = NULL) {
+  yol <- as.character(existing_runtime_workdir %||% "")[1]
+  if (is.na(yol) || !nzchar(yol)) return(FALSE)
+
+  yol_slash <- gsub("\\\\", "/", yol, fixed = TRUE)
+
+  # Yalnızca runtime alanı altında olan klasörler yeniden kullanılabilir.
+  beklenen_kullanici_segmenti <- paste0(
+    "/claude_code_runtime/user_",
+    as.character(user_id %||% "default"),
+    "/"
+  )
+
+  if (!grepl(beklenen_kullanici_segmenti, yol_slash, fixed = TRUE)) {
+    return(FALSE)
+  }
+
+  isTRUE(tryCatch(dir.exists(yol), error = function(e) FALSE))
+}
+
+# Problemli ağ/Unicode dizinlerini yerel ASCII çalışma klasörüne taşır.
+# existing_runtime_workdir verilirse ve aynı kullanıcı kovası altında geçerli
+# bir klasörse yeniden kullanılır; bu sayede Claude CLI --resume oturumu
+# takip eden sorularda kaybolmaz.
 prepare_claude_runtime_workdir <- function(workdir,
                                            user_id = NULL,
-                                           runtime_token = NULL) {
+                                           runtime_token = NULL,
+                                           existing_runtime_workdir = NULL) {
   if (is.null(workdir) || !nzchar(workdir)) {
     return(list(
       runtime_workdir = workdir,
@@ -188,6 +216,46 @@ prepare_claude_runtime_workdir <- function(workdir,
     ))
   }
 
+  # Takip eden sorularda mevcut runtime klasörünü yeniden kullan: Claude CLI
+  # oturum metadatası bu klasöre bağlı olduğundan yeni runtime klasörü her
+  # seferinde "No conversation found with session ID" hatasına yol açar.
+  if (isTRUE(.cc_runtime_workdir_reusable(existing_runtime_workdir, user_id))) {
+    reuse_yol <- normalizePath(
+      existing_runtime_workdir,
+      winslash = "/",
+      mustWork = FALSE
+    )
+
+    # Kaynak dizinin yeni dosyaları runtime klasörüne yansısın diye yeniden
+    # aynala; mevcut runtime içeriği korunur, eksik veya değişen dosyalar
+    # üzerine yazılır.
+    tryCatch(
+      mirror_directory_to_local_workspace(source_dir, reuse_yol),
+      error = function(e) {
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Mevcut runtime workdir yeniden aynalanamadı:",
+          conditionMessage(e)
+        ))
+      }
+    )
+
+    log_info(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Mevcut runtime workdir yeniden kullanıldı:",
+      source_dir,
+      "->",
+      reuse_yol
+    ))
+
+    return(list(
+      runtime_workdir = reuse_yol,
+      source_workdir = source_dir,
+      mirrored = TRUE,
+      reused = TRUE
+    ))
+  }
+
   run_dir <- .cc_runtime_workdir_token(runtime_token)
 
   local_base <- file.path(
@@ -214,7 +282,8 @@ prepare_claude_runtime_workdir <- function(workdir,
   list(
     runtime_workdir = local_base,
     source_workdir = source_dir,
-    mirrored = TRUE
+    mirrored = TRUE,
+    reused = FALSE
   )
 }
 

@@ -268,6 +268,11 @@ cc_bind_server_setup <- function(input,
     if (!is.null(rv$current_model) && !identical(rv$current_model, input$model)) {
       rv$cli_session_id <- NULL
       rv$conversation_context <- list()
+      # Model değiştiğinde CLI oturumu farklı bir oturuma bağlanacağı için
+      # önceki aynalanmış runtime klasörünü yeniden kullanma; taze bir
+      # runtime klasörü oluşturulsun.
+      rv$active_runtime_workdir <- NULL
+      rv$active_runtime_source <- NULL
 
       log_info(paste(
         CLAUDE_CODE_LOG_PREFIX,
@@ -376,6 +381,11 @@ cc_bind_server_setup <- function(input,
   observeEvent(input$workdir, {
     rv$cli_session_id <- NULL
     rv$conversation_context <- list()
+    # Yeni proje dizini seçildiğinde önceki aynalanmış runtime klasörünün
+    # yeniden kullanılmaması gerekir; aksi halde yeni kaynağa ait Claude CLI
+    # oturumu farklı runtime klasöründe oluşur ve takip çağrıları başarısız olur.
+    rv$active_runtime_workdir <- NULL
+    rv$active_runtime_source <- NULL
     observe_dir_contents()
   }, ignoreInit = TRUE)
 
@@ -384,6 +394,10 @@ cc_bind_server_setup <- function(input,
     rv$has_messages <- FALSE
     rv$conversation_context <- list()
     rv$cli_session_id <- NULL
+    # Sohbet sıfırlanırken aynalanmış runtime klasörünü de unut; bir sonraki
+    # çalıştırmada Claude CLI taze bir oturum kuracaktır.
+    rv$active_runtime_workdir <- NULL
+    rv$active_runtime_source <- NULL
 
     session$sendCustomMessage(
       type = "cc-clear-output",
