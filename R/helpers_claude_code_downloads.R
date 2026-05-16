@@ -394,3 +394,90 @@ format_claude_code_generated_downloads_html <- function(downloads) {
     '</div>'
   )
 }
+
+#' Verilen dosya yollarından doğrudan indirme kayıtları üretir
+#'
+#' @param file_paths Dosya yolları
+#' @param runtime_workdir Runtime çalışma dizini
+#' @param source_workdir Kaynak çalışma dizini
+#' @param user_id Kullanıcı kimliği
+#' @param session_token Shiny oturum anahtarı
+#' @return İndirme kayıtları listesi
+collect_claude_code_downloads_from_paths <- function(file_paths,
+                                                     runtime_workdir = "",
+                                                     source_workdir = "",
+                                                     user_id = 0L,
+                                                     session_token = "") {
+  file_paths <- unique(Filter(nzchar, as.character(file_paths %||% character(0))))
+  if (!length(file_paths)) return(list())
+
+  allowed_roots <- unique(c(
+    cc_policy_allowed_output_roots(
+      user_id = user_id,
+      workdir = runtime_workdir %||% source_workdir
+    ),
+    if (nzchar(source_workdir)) {
+      cc_policy_allowed_output_roots(user_id = user_id, workdir = source_workdir)
+    } else {
+      character(0)
+    },
+    if (nzchar(runtime_workdir)) {
+      cc_policy_allowed_output_roots(user_id = user_id, workdir = runtime_workdir)
+    } else {
+      character(0)
+    }
+  ))
+
+  indirmeler <- stage_claude_code_downloads(
+    file_paths = file_paths,
+    user_id = user_id,
+    session_token = session_token,
+    allowed_roots = allowed_roots
+  )
+
+  if (!length(indirmeler)) return(list())
+
+  for (i in seq_along(indirmeler)) {
+    indirmeler[[i]]$display_path <- build_claude_code_display_path(
+      file_path = indirmeler[[i]]$original_path,
+      runtime_workdir = runtime_workdir,
+      source_workdir = source_workdir
+    )
+  }
+
+  indirmeler
+}
+
+#' Oluşturulan dosya indirme kartlarını ayrı mesaj olarak gönderir
+#'
+#' @param session Shiny session
+#' @param ns Namespace fonksiyonu
+#' @param downloads İndirme kayıtları
+#' @param accent_color Karakter rengi
+#' @param character_name Karakter adı
+#' @param welcome_id Karşılama ekranı ID
+#' @return TRUE/FALSE
+cc_send_generated_downloads_message <- function(session,
+                                                ns,
+                                                downloads,
+                                                accent_color = "#7C4DFF",
+                                                character_name = "Bilge Yolaç",
+                                                welcome_id = NULL) {
+  html <- format_claude_code_generated_downloads_html(downloads)
+  if (!nzchar(html)) return(invisible(FALSE))
+
+  session$sendCustomMessage(
+    type = "cc-add-message",
+    message = list(
+      target = ns("output_area"),
+      type = "assistant",
+      content = html,
+      timestamp = format(Sys.time(), "%H:%M:%S"),
+      accentColor = accent_color,
+      characterName = character_name,
+      welcomeId = welcome_id
+    )
+  )
+
+  invisible(TRUE)
+}
