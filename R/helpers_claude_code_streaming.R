@@ -86,16 +86,17 @@ run_claude_code_streaming <- function(prompt,
     # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
     komut <- build_processx_command(cli_path, args, workdir = workdir)
 
-    proc <- processx::process$new(
-      command = komut$command,
-      args = komut$args,
-      env = komut$env,
-      wd = workdir,
-      stdout = "|",
-      stderr = "|",
-      cleanup = TRUE,
-      cleanup_tree = TRUE
-    )
+	proc <- processx::process$new(
+	  command = komut$command,
+	  args = komut$args,
+	  env = komut$env,
+	  wd = komut$wd %||% workdir,
+	  stdout = "|",
+	  stderr = "|",
+	  cleanup = TRUE,
+	  cleanup_tree = TRUE,
+	  windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
+	)
 
     # Sonuç biriktirici
     tum_cikti <- ""

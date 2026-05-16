@@ -452,16 +452,17 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
         komut <- build_processx_command(cli_yolu, cli_args, workdir = calisma_dizini)
 
-        proc <- processx::process$new(
-          command = komut$command,
-          args = komut$args,
-          env = komut$env,
-          wd = komut$wd %||% calisma_dizini,
-          stdout = "|",
-          stderr = "|",
-          cleanup = TRUE,
-          cleanup_tree = TRUE
-        )
+		proc <- processx::process$new(
+		  command = komut$command,
+		  args = komut$args,
+		  env = komut$env,
+		  wd = komut$wd %||% calisma_dizini,
+		  stdout = "|",
+		  stderr = "|",
+		  cleanup = TRUE,
+		  cleanup_tree = TRUE,
+		  windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
+		)
 
         # Süreç referansını sakla (yoklama gözlemcisi ve durdurma için)
         rv$active_process <- proc

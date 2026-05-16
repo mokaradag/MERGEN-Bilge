@@ -90,16 +90,17 @@ run_claude_code <- function(prompt,
     log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI çalıştırılıyor:",
                    cli_path, paste(args[1:min(3, length(args))], collapse = " "), "..."))
 
-    proc <- processx::process$new(
-      command = komut$command,
-      args = komut$args,
-      env = komut$env,
-      wd = komut$wd %||% workdir,
-      stdout = "|",
-      stderr = "|",
-      cleanup = TRUE,
-      cleanup_tree = TRUE
-    )
+	proc <- processx::process$new(
+	  command = komut$command,
+	  args = komut$args,
+	  env = komut$env,
+	  wd = komut$wd %||% workdir,
+	  stdout = "|",
+	  stderr = "|",
+	  cleanup = TRUE,
+	  cleanup_tree = TRUE,
+	  windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
+	)
 
     proc$wait(timeout = timeout_sec * 1000)
 
@@ -201,16 +202,17 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
 	komut <- build_processx_command(cli_path, c("--version"), workdir = NULL)
 	guvenli_wd <- get_safe_processx_launch_workdir()
 
-    proc <- processx::process$new(
-      command = komut$command,
-      args = komut$args,
-      env = komut$env,
-      wd = komut$wd %||% guvenli_wd,
-      stdout = "|",
-      stderr = "|",
-      cleanup = TRUE,
-      cleanup_tree = TRUE
-    )
+	proc <- processx::process$new(
+	  command = komut$command,
+	  args = komut$args,
+	  env = komut$env,
+	  wd = komut$wd %||% guvenli_wd,
+	  stdout = "|",
+	  stderr = "|",
+	  cleanup = TRUE,
+	  cleanup_tree = TRUE,
+	  windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
+	)
 	
     proc$wait(timeout = 10000)
 

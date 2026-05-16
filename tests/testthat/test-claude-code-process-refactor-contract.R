@@ -98,6 +98,7 @@ test_that("Claude Code process yardımcıları ayrı dosyaya taşınmıştır", 
     "ensure_utf8",
     "is_windows_unc_path",
     "normalize_cmd_workdir",
+    "quote_windows_cmd_token",
     "resolve_windows_cmd_path",
     "get_safe_processx_launch_workdir",
     "build_windows_cmd_invocation_line",
@@ -212,11 +213,15 @@ test_that("Windows .cmd çalıştırması processx'e problemli wd vermez", {
     workdir = "//rehisds/uygulamalar/Primavera/PY"
   )
 
+  komut_satiri <- paste(komut$args, collapse = " ")
+
   expect_match(tolower(komut$command), "cmd\\.exe$")
   expect_true(any(komut$args == "/c"))
   expect_false(any(komut$args == "/s"))
-  expect_match(paste(komut$args, collapse = " "), "pushd")
-  expect_match(paste(komut$args, collapse = " "), "call")
+  expect_true(isTRUE(komut$windows_verbatim_args))
+  expect_match(komut_satiri, "pushd")
+  expect_match(komut_satiri, "call")
+  expect_false(grepl("\\\\\"", komut_satiri))
   expect_false(test_env$is_windows_unc_path(komut$wd))
   expect_true(dir.exists(komut$wd))
 })

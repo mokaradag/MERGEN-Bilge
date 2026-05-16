@@ -343,7 +343,8 @@ build_processx_command <- function(cli_path, args, workdir = NULL) {
 	  command = resolve_windows_cmd_path(),
 	  args = c("/d", "/c", komut_satiri),
 	  env = env,
-	  wd = get_safe_processx_launch_workdir()
+	  wd = get_safe_processx_launch_workdir(),
+	  windows_verbatim_args = TRUE
 	))
   }
 
