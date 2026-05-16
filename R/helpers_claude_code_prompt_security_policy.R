@@ -130,6 +130,27 @@ cc_policy_validate_prompt_file_intent <- function(prompt,
 
     hedef <- cc_policy_normalize_path(token_norm, must_exist = FALSE)
 
+    # Path token extractor regex sözcük sınırlarını korumadığı için kullanıcı
+    # `C:\...\Deneme Bu projedeki...` yazdığında token `C:\...\DenemeBu` olarak
+    # yakalanabiliyor. Uzantısız ve diskte var olmayan tokenlar genellikle
+    # gerçek bir yazma hedefi değil, proje konumuna yönelik bir başvurudur
+    # (örn. boşluksuz cümle veya typo). Bu tokenları engellemek false-positive
+    # yaratıyor; Claude CLI'ın kendi izin sistemi ve workdir kısıtı yazma
+    # operasyonunu zaten gerçek hedefe göre değerlendirir.
+    uzanti <- tryCatch(
+      tolower(tools::file_ext(hedef)),
+      error = function(e) ""
+    )
+
+    exists_now <- tryCatch(
+      isTRUE(path_exists_relaxed(hedef)),
+      error = function(e) FALSE
+    )
+
+    if (!nzchar(uzanti) && !isTRUE(exists_now)) {
+      next
+    }
+
     if (!cc_policy_path_inside_roots(
       hedef,
       allowed_roots,
