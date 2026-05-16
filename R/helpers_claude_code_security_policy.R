@@ -168,19 +168,43 @@ cc_policy_normalize_path <- function(path, must_exist = FALSE) {
   # M:/ drive haritalamasına sahip değilse "directory is empty" veya
   # "The system cannot find the path specified" hatasıyla biter. Bu yüzden
   # güvenlik politikası katmanı UNC yollarını UNC olarak korur.
-  candidate_slash <- gsub("\\\\", "/", path, fixed = TRUE)
-  is_unc_path <- grepl("^//[^/]+/[^/]+", candidate_slash)
-  if (isTRUE(is_unc_path)) {
+  #
+  # NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+  # eşler; bu yüzden \\server\share\sub gibi tek aralık ters slash'lı UNC'ler
+  # için yanlış pozitif/negatif üretebilir. is_windows_unc_path hem çift slash
+  # hem de tek slash ağ yolu varyantlarını birlikte tanır; mevcutsa onu
+  # kullanırız. Yoksa yedek olarak tüm ters slash'ları forward slash'a çevirip
+  # yeniden test ederiz.
+  is_unc <- FALSE
+  if (exists("is_windows_unc_path", mode = "function", inherits = TRUE)) {
+    is_unc <- tryCatch(
+      isTRUE(is_windows_unc_path(path)),
+      error = function(e) FALSE
+    )
+  }
+
+  if (!isTRUE(is_unc)) {
+    candidate_slash <- gsub("\\", "/", path, fixed = TRUE)
+    is_unc <- grepl("^//[^/]+/[^/]+", candidate_slash, perl = TRUE)
+  }
+
+  if (isTRUE(is_unc)) {
     if (exists("normalize_mcp_path", mode = "function", inherits = TRUE)) {
-      return(
-        tryCatch(
-          normalize_mcp_path(path, must_exist = must_exist),
-          error = function(e) sub("/+$", "", candidate_slash, perl = TRUE)
-        )
+      cozulen <- tryCatch(
+        normalize_mcp_path(path, must_exist = must_exist),
+        error = function(e) NA_character_
       )
+
+      if (!is.na(cozulen) && nzchar(cozulen)) {
+        cozulen_slash <- gsub("\\", "/", cozulen, fixed = TRUE)
+        if (grepl("^//", cozulen_slash, perl = TRUE)) {
+          return(sub("/+$", "", cozulen_slash, perl = TRUE))
+        }
+      }
     }
 
-    cleaned <- paste0("//", sub("^/+", "", candidate_slash))
+    cleaned <- gsub("\\", "/", path, fixed = TRUE)
+    cleaned <- paste0("//", sub("^/+", "", cleaned))
     return(sub("/+$", "", cleaned, perl = TRUE))
   }
 

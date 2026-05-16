@@ -153,16 +153,24 @@ normalize_mcp_path <- function(candidate, must_exist = FALSE) {
     p
   }
 
-  candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
+  # NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+  # eşler. Kullanıcı `\\server\share\sub` yazdığında girdi belleğinde 2 ters
+  # slash (baştaki "\\") + tek ters slash'lar (segment arası) olur. Eski tek
+  # geçişli gsub bu durumda sadece baştaki çifti dönüştürdüğü için sonuç
+  # `/server\share\sub` olarak kalır; UNC regex'i eşleşmediği için yol
+  # normalize_utf8_path -> normalizePath'e düşer ve Windows'ta UNC mapped
+  # drive harfine çözülür. UNC tespitini önce TÜM ters slash'ları forward
+  # slash'a çevirip yap, ardından mevcut UNC dalını koru.
+  candidate_full_slash <- gsub("\\", "/", candidate, fixed = TRUE)
+  is_unc_path <- grepl("^//[^/]+/[^/]+", candidate_full_slash, perl = TRUE)
 
-  # UNC yolları: sadece çift eğik çizgi ile başlayan ağ yollarını yakala.
-  # Tek eğik çizgi ile başlayan /tmp/... gibi Unix mutlak yollar UNC değildir.
-  is_unc_path <- grepl("^//[^/]+/[^/]+", candidate)
   if (is_unc_path) {
-    cleaned <- paste0("//", sub("^/+", "", candidate))
+    cleaned <- paste0("//", sub("^/+", "", candidate_full_slash))
     cleaned <- dedupe_leading_pair(cleaned)
     return(cleaned)
   }
+
+  candidate <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
   normalize_utf8_path(candidate, mustWork = must_exist)
 }
