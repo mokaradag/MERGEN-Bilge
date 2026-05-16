@@ -306,8 +306,8 @@ test_that("module_claude_code.R doküman özetleme akışını lifecycle helper'
   )
 })
 
-test_that("module_claude_code.R normal streaming finalization request id ile korunur", {
-  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
+test_that("module_claude_code_stream_poll.R normal streaming finalization request id ile korunur", {
+  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code_stream_poll.R")
 
   expect_true(
     grepl(
@@ -347,43 +347,39 @@ test_that("module_claude_code.R normal streaming finalization request id ile kor
 })
 
 test_that("Bilge Yolaç stop observer UI finalization'ı poll observer'a bırakmaz", {
-  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code.R")
+  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code_stream_poll.R")
 
-  m <- regexpr(
-    "observeEvent\\(input\\$stop_command, \\{[\\s\\S]+?\\n    \\}\\)",
-    txt,
-    perl = TRUE
+  expect_true(
+    grepl("shiny::observeEvent\\(input\\$stop_command", txt, perl = TRUE),
+    info = "input$stop_command observer bloğu stream poll helper içinde bulunmalıdır."
   )
 
   expect_true(
-    m[1] > 0,
-    info = "input$stop_command observer bloğu bulunmalıdır."
-  )
-
-  block <- regmatches(txt, m)[[1]]
-
-  expect_true(
-    grepl("finalize_streaming\\(", block, perl = TRUE),
+    grepl("finalize_streaming\\(", txt, perl = TRUE),
     info = "Stop observer, poll observer'a güvenmeden finalize_streaming() çağırmalıdır."
   )
 
   expect_true(
-    grepl("\"Durduruldu\"", block, fixed = TRUE),
+    grepl("\"Durduruldu\"", txt, fixed = TRUE),
     info = "Stop observer kullanıcıya Durduruldu durumunu göndermelidir."
   )
 
   expect_true(
-    grepl("cc-stream-end", block, fixed = TRUE),
+    grepl("cc-stream-end", txt, fixed = TRUE),
     info = "Stop observer istemcide açık stream mesajını kapatmalıdır."
   )
 
   expect_false(
-    grepl("rv\\$active_process\\s*<-\\s*NULL", block, perl = TRUE),
+    grepl("rv\\$active_process\\s*<-\\s*NULL", txt, perl = TRUE),
     info = "Stop observer active_process'i elle NULL yapmamalı; state temizliği finalize_streaming() içinde kalmalıdır."
   )
 
   expect_true(
-    grepl("request_id\\s*=\\s*request_id", block, perl = TRUE),
+    grepl(
+      'finalize_streaming\\(\\s*"Durduruldu"\\s*,\\s*"stop-circle"\\s*,\\s*"#FFB74D"\\s*,\\s*request_id\\s*=\\s*request_id',
+      txt,
+      perl = TRUE
+    ),
     info = "Stop observer stale finalize koruması için request_id ile finalize etmelidir."
   )
 })
