@@ -508,8 +508,19 @@ parse_claude_code_json_output <- function(ham_cikti) {
         }
 
       } else if (tur == "assistant") {
-        if (!is.null(nesne$content) && is.list(nesne$content)) {
-          for (blok in nesne$content) {
+        # Claude Code CLI stream-json çıktısında asistan içerik blokları
+        # genelde nesne$message$content altında gelir
+        # ({"type":"assistant","message":{"content":[...]}}). Eski kod yalnızca
+        # nesne$content yolundan okuduğu için tool_use blokları gözden
+        # kaçıyor ve ARAÇ KULLANIMLARI sayacı (0) görünüyordu. Her iki yolu
+        # da destekleyerek tool_use bloklarını doğru topla.
+        icerik_bloklari <- nesne$message$content
+        if (is.null(icerik_bloklari)) {
+          icerik_bloklari <- nesne$content
+        }
+
+        if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
+          for (blok in icerik_bloklari) {
             blok_tur <- blok$type %||% ""
             if (blok_tur == "text") {
               blok_metin <- blok$text %||% ""
@@ -518,12 +529,67 @@ parse_claude_code_json_output <- function(ham_cikti) {
                 metin_zaten_toplandi <- TRUE
               }
             } else if (blok_tur == "tool_use") {
-              arac <- list(
-                id = blok$id %||% "",
-                name = blok$name %||% "",
-                input = blok$input %||% list()
-              )
-              sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
+              arac_id <- blok$id %||% ""
+              zaten_var <- FALSE
+              if (nzchar(arac_id)) {
+                for (j in seq_along(sonuc$tool_uses)) {
+                  if (identical(sonuc$tool_uses[[j]]$id, arac_id)) {
+                    zaten_var <- TRUE
+                    break
+                  }
+                }
+              }
+
+              # stream_event yolu aynı tool_use'u zaten eklediyse tekrar ekleme.
+              if (!isTRUE(zaten_var)) {
+                arac <- list(
+                  id = arac_id,
+                  name = blok$name %||% "",
+                  input = blok$input %||% list()
+                )
+                sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
+              }
+            }
+          }
+        }
+
+        # session_id asistan mesajının sarmalayıcısında da gelebilir
+        if (!is.null(nesne$session_id) && nzchar(nesne$session_id %||% "")) {
+          sonuc$session_id <- nesne$session_id
+        }
+
+      } else if (tur == "user") {
+        # Tool result'lar Claude Code CLI'da user blokları içinde gelir
+        # ({"type":"user","message":{"content":[{"type":"tool_result",...}]}}).
+        # Bu olayları yakalayıp ilgili tool_use'a result alanını ekleyelim.
+        icerik_bloklari <- nesne$message$content
+        if (is.null(icerik_bloklari)) {
+          icerik_bloklari <- nesne$content
+        }
+
+        if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
+          for (blok in icerik_bloklari) {
+            blok_tur <- blok$type %||% ""
+            if (blok_tur != "tool_result") next
+
+            arac_id <- blok$tool_use_id %||% ""
+            tr_icerik <- blok$content %||% ""
+
+            if (is.list(tr_icerik)) {
+              parca_listesi <- character(0)
+              for (parca in tr_icerik) {
+                if (is.list(parca)) {
+                  parca_listesi <- c(parca_listesi, as.character(parca$text %||% ""))
+                }
+              }
+              tr_icerik <- paste(parca_listesi, collapse = "")
+            }
+
+            for (j in seq_along(sonuc$tool_uses)) {
+              if (identical(sonuc$tool_uses[[j]]$id, arac_id)) {
+                sonuc$tool_uses[[j]]$result <- tr_icerik
+                break
+              }
             }
           }
         }

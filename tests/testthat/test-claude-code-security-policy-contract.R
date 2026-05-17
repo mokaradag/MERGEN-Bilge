@@ -43,6 +43,14 @@
     local = test_env
   )
 
+  # Yol/kök doğrulama helper'ları artık ayrı dosyada; testin bunlara da
+  # erişebilmesi için path_policy yardımcılarını test ortamına yükle.
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_path_policy.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
   source(
     file.path(repo_root, "R", "helpers_claude_code_prompt_security_policy.R"),
     encoding = "UTF-8",
@@ -65,6 +73,7 @@ test_that("Bilge Yolaç güvenlik ilkesi helper dosyası manifestte doğru yerde
     c(
       "R/helpers_claude_code_runtime_workdir.R",
       "R/helpers_claude_code_security_policy.R",
+      "R/helpers_claude_code_path_policy.R",
       "R/helpers_claude_code_prompt_security_policy.R",
       "R/helpers_claude_code.R",
       "R/helpers_claude_code_streaming.R"

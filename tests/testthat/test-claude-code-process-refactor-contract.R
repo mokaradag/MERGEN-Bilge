@@ -283,3 +283,157 @@ test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
   expect_equal(parsed$session_id, "abc123")
   expect_type(parsed$tool_uses, "list")
 })
+
+test_that("parse_claude_code_json_output asistan mesajındaki tool_use bloklarını yakalar", {
+  test_env <- .source_claude_code_process_for_test()
+
+  # Claude Code CLI'ın --output-format stream-json çıktısında tool_use blokları
+  # genelde asistan mesajının ALTINDA gelir:
+  # {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash",...}]}}
+  # Eski parser yalnızca nesne$content yolundan okuduğu için nesne$message$content
+  # altındaki tool_use'lar kaçıyor ve ARAÇ KULLANIMLARI sayacı (0) gözüküyordu.
+  jsonl <- paste(
+    jsonlite::toJSON(
+      list(
+        type = "system",
+        subtype = "init",
+        session_id = "sess_abc"
+      ),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
+      list(
+        type = "assistant",
+        message = list(
+          role = "assistant",
+          content = list(
+            list(type = "text", text = "Şimdi komutu çalıştırıyorum."),
+            list(
+              type = "tool_use",
+              id = "toolu_001",
+              name = "Bash",
+              input = list(command = "ls -la")
+            )
+          )
+        ),
+        session_id = "sess_abc"
+      ),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
+      list(
+        type = "user",
+        message = list(
+          role = "user",
+          content = list(
+            list(
+              type = "tool_result",
+              tool_use_id = "toolu_001",
+              content = "dosya1.txt\ndosya2.txt",
+              is_error = FALSE
+            )
+          )
+        ),
+        session_id = "sess_abc"
+      ),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
+      list(
+        type = "result",
+        subtype = "success",
+        result = "Liste tamamlandı",
+        session_id = "sess_abc"
+      ),
+      auto_unbox = TRUE
+    ),
+    sep = "\n"
+  )
+
+  parsed <- test_env$parse_claude_code_json_output(jsonl)
+
+  expect_equal(length(parsed$tool_uses), 1L,
+               info = "Asistan mesajındaki Bash tool_use yakalanmalıdır.")
+  expect_equal(parsed$tool_uses[[1]]$name, "Bash")
+  expect_equal(parsed$tool_uses[[1]]$id, "toolu_001")
+  expect_equal(parsed$tool_uses[[1]]$input$command, "ls -la")
+
+  # Tool result da yakalanmalı (user mesajı altında)
+  expect_equal(
+    parsed$tool_uses[[1]]$result,
+    "dosya1.txt\ndosya2.txt",
+    info = "User mesajındaki tool_result ilgili tool_use'a eklenmelidir."
+  )
+
+  expect_equal(parsed$session_id, "sess_abc")
+})
+
+test_that("parse_claude_code_json_output stream_event ve assistant yollarını birlikte dedupe eder", {
+  test_env <- .source_claude_code_process_for_test()
+
+  # Hem stream_event/content_block_start (granular) hem de asistan blok (toplu)
+  # aynı tool_use için yayılırsa parser ikisini de görüp tek kayıt yapmalıdır;
+  # aksi halde sayaç çift sayar.
+  jsonl <- paste(
+    jsonlite::toJSON(
+      list(
+        type = "stream_event",
+        event = list(
+          type = "content_block_start",
+          index = 0,
+          content_block = list(
+            type = "tool_use",
+            id = "toolu_dup",
+            name = "Read",
+            input = list()
+          )
+        ),
+        session_id = "sess_dup"
+      ),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
+      list(
+        type = "stream_event",
+        event = list(
+          type = "content_block_stop",
+          index = 0
+        ),
+        session_id = "sess_dup"
+      ),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
+      list(
+        type = "assistant",
+        message = list(
+          role = "assistant",
+          content = list(
+            list(
+              type = "tool_use",
+              id = "toolu_dup",
+              name = "Read",
+              input = list(file_path = "/tmp/x.txt")
+            )
+          )
+        ),
+        session_id = "sess_dup"
+      ),
+      auto_unbox = TRUE
+    ),
+    sep = "\n"
+  )
+
+  parsed <- test_env$parse_claude_code_json_output(jsonl)
+
+  expect_equal(
+    length(parsed$tool_uses),
+    1L,
+    info = paste(
+      "Aynı tool_use hem stream_event hem asistan blokta görünse de",
+      "parser tekil kayıt tutmalıdır."
+    )
+  )
+  expect_equal(parsed$tool_uses[[1]]$name, "Read")
+  expect_equal(parsed$tool_uses[[1]]$id, "toolu_dup")
+})
