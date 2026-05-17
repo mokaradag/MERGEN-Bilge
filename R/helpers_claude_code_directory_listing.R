@@ -5,15 +5,23 @@
 # ==============================================================================
 
 # UNC/ağ paylaşımı/kodlama farkları için aynı dizinin olası varyasyonlarını üretir.
+# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+# eşler. Kullanıcı `\\server\share\sub` yazdığında baştaki çift slash + segment
+# arası tek slash bulunur; eski gsub sonuç olarak `/server\share\sub` üretir.
+# Tek ters slash'a göre değiştirme kanonik UNC formunu doğru kurar ve orijinal
+# ters slash formunu da aday olarak korur.
 cc_build_dir_variants <- function(dir_path) {
-  dir_chr <- gsub("\\\\", "/", as.character(dir_path %||% ""), fixed = TRUE)
-  if (!nzchar(dir_chr)) return(character(0))
+  dir_raw <- as.character(dir_path %||% "")
+  if (!length(dir_raw) || !nzchar(dir_raw[1])) return(character(0))
+
+  dir_chr <- gsub("\\", "/", dir_raw, fixed = TRUE)
 
   unique(Filter(nzchar, c(
     dir_chr,
+    dir_raw,
     enc2utf8(dir_chr),
     enc2native(dir_chr),
-    if (grepl("^/[^/]", dir_chr)) paste0("/", dir_chr) else NULL
+    if (grepl("^/[^/]", dir_chr) && !grepl("^//", dir_chr)) paste0("/", dir_chr) else NULL
   )))
 }
 

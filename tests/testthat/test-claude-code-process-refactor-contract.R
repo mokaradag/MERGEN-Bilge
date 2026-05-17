@@ -163,10 +163,32 @@ test_that("Claude Code process helper temel davranışları korunur", {
   )
 
   expect_false(test_env$is_windows_unc_path("/tmp/test"))
-  
+
   if (.Platform$OS.type == "windows") {
     expect_true(test_env$is_windows_unc_path("//rehisds/uygulamalar/Primavera"))
     expect_true(test_env$is_windows_unc_path("/rehisds/uygulamalar/Primavera"))
+
+    # Regresyon: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters
+    # slash'ı eşler; `\\server\share\sub` formunda baştaki iki ters slash +
+    # segment arası tek ters slash bulunduğundan eski gsub sonucu
+    # `/server\share\sub` olarak bozuyordu ve UNC tespiti kaybediyordu.
+    # Tek ters slash'a göre değiştirme tüm UNC varyantlarını yakalamalıdır.
+    expect_true(
+      test_env$is_windows_unc_path("\\\\rehisds\\gruplar\\MAYM\\R"),
+      info = paste(
+        "is_windows_unc_path baştaki çift + segment arası tek ters slash",
+        "içeren UNC yolunu tanımalıdır."
+      )
+    )
+
+    expect_true(
+      test_env$is_windows_unc_path(
+        "\\\\rehisds\\gruplar\\MAYM\\PROJE YÖNETİMİ\\PYÖP Durumu"
+      ),
+      info = paste(
+        "is_windows_unc_path Türkçe karakterli UNC yolunu tanımalıdır."
+      )
+    )
   }
 
   cmd_workdir <- test_env$normalize_cmd_workdir("C:/tmp/test")

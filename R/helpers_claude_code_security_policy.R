@@ -218,7 +218,10 @@ cc_policy_normalize_path <- function(path, must_exist = FALSE) {
     }
   )
 
-  sonuc <- gsub("\\\\", "/", sonuc, fixed = TRUE)
+  # NOT: normalizePath winslash="/" ile zaten forward slash üretir ama herhangi
+  # bir karma slash kalırsa tek ters slash'a göre değiştirme yaparız (çiftli
+  # gsub baştaki çift slash dışında diğer ters slash'ları kaçırırdı).
+  sonuc <- gsub("\\", "/", sonuc, fixed = TRUE)
   sub("/+$", "", sonuc, perl = TRUE)
 }
 

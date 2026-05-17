@@ -109,11 +109,14 @@ ensure_utf8 <- function(metin) {
 # ------------------------------------------------------------------------------
 
 # Tek eğik çizgiyle gelen Windows ağ yolu benzeri değer mi?
+# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+# eşler. Kanonik UNC tespiti için TÜM ters slash'ları forward slash'a çevirip
+# `^//server/share` desenini doğru yakalarız.
 is_windows_single_slash_network_path <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
   if (is.null(path) || !nzchar(path)) return(FALSE)
 
-  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+  aday <- gsub("\\", "/", as.character(path[1]), fixed = TRUE)
 
   if (!grepl("^/[^/]", aday) || grepl("^//", aday)) {
     return(FALSE)
@@ -132,11 +135,16 @@ is_windows_single_slash_network_path <- function(path) {
 }
 
 # Windows UNC/ağ paylaşımı yolu mu?
+# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+# eşler. `\\server\share\sub` girdisini doğru `//server/share/sub`'a
+# çevirebilmek için tek ters slash'a göre değiştirme yaparız; bu hem
+# `\\server\share`, hem `//server/share`, hem de karışık slash varyantlarını
+# kanonik UNC formuna getirir.
 is_windows_unc_path <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
   if (is.null(path) || !nzchar(path)) return(FALSE)
 
-  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+  aday <- gsub("\\", "/", as.character(path[1]), fixed = TRUE)
 
   grepl("^//[^/]+/[^/]+", aday) ||
     is_windows_single_slash_network_path(aday)
@@ -220,8 +228,10 @@ get_safe_processx_launch_workdir <- function(preferred = NULL) {
 
     # cmd.exe processx tarafından başlatılırken wd yerel ve basit olmalı.
     # Gerçek çalışma dizinine komut satırı içinde cd /d veya pushd ile geçilecek.
+    # NOT: UNC/ağ paylaşımı kontrolünde tek ters slash'a göre değiştirme yapılır;
+    # böylece hem `\\server\share` hem `//server/share` formları yakalanır.
     if (.Platform$OS.type == "windows") {
-      aday_slash <- gsub("\\\\", "/", aday_norm, fixed = TRUE)
+      aday_slash <- gsub("\\", "/", aday_norm, fixed = TRUE)
       if (grepl("^//", aday_slash) || grepl("^/[^/]", aday_slash)) next
       if (grepl("[^ -~]", enc2utf8(aday_norm), perl = TRUE)) next
     }
@@ -543,16 +553,19 @@ get_safe_claude_cli_workdir <- function(workdir = NULL) {
 
   for (aday in adaylar) {
     if (!nzchar(aday) || !dir.exists(aday)) next
-	aday_slash <- gsub("\\\\", "/", aday)
+    # NOT: Tüm ters slash'ları forward slash'a çevirerek UNC/ağ paylaşımı
+    # varyantlarını tek bir kontrolde reddederiz. CLI durum kontrolü için
+    # güvenli yerel dizin gerekir; UNC yolları cmd.exe spawn bağlamında
+    # tutarsız davranır.
+    aday_slash <- gsub("\\", "/", aday, fixed = TRUE)
 
-	if (
-	  .Platform$OS.type == "windows" &&
-	  (
-		grepl("^\\\\\\\\", aday) ||
-		  grepl("^//", aday_slash) ||
-		  grepl("^/[^/]", aday_slash)
-	  )
-	) next
+    if (
+      .Platform$OS.type == "windows" &&
+      (
+        grepl("^//", aday_slash) ||
+          grepl("^/[^/]", aday_slash)
+      )
+    ) next
     return(normalizePath(aday, winslash = "/", mustWork = FALSE))
   }
 

@@ -351,10 +351,19 @@ cc_bind_server_setup <- function(input,
 
     yeni_yol <- input$dir_navigate
     if (dir.exists(yeni_yol)) {
+      # NOT: normalizePath() Windows VM'de UNC yolunu mapped drive harfine
+      # (örn. //rehisds/... -> M:/rehisds/...) çözüyor. Mapped harf yerel
+      # makinede geçerli olsa da on-prem sunucuda farklı (S:/) veya tanımsız
+      # olabilir; bu durumda cmd.exe spawn'lı CLI "The system cannot find the
+      # path specified" hatasıyla biter. normalize_mcp_path UNC formunu korur.
+      yeni_norm <- tryCatch(
+        normalize_mcp_path(yeni_yol, must_exist = FALSE),
+        error = function(e) normalizePath(yeni_yol, winslash = "/", mustWork = FALSE)
+      )
       updateTextInput(
         session,
         "workdir",
-        value = normalizePath(yeni_yol, winslash = "/", mustWork = FALSE)
+        value = yeni_norm
       )
     }
   })
@@ -365,10 +374,17 @@ cc_bind_server_setup <- function(input,
     if (!is.null(yol) && nzchar(yol)) {
       ust <- dirname(yol)
       if (dir.exists(ust) && ust != yol) {
+        # UNC formunu korumak için normalize_mcp_path kullan; aksi halde
+        # normalizePath bir üst dizine çıkış sırasında UNC'yi drive harfine
+        # çevirebilir.
+        ust_norm <- tryCatch(
+          normalize_mcp_path(ust, must_exist = FALSE),
+          error = function(e) normalizePath(ust, winslash = "/", mustWork = FALSE)
+        )
         updateTextInput(
           session,
           "workdir",
-          value = normalizePath(ust, winslash = "/", mustWork = FALSE)
+          value = ust_norm
         )
       }
     }
