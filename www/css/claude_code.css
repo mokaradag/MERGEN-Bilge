@@ -413,6 +413,18 @@
   color: #E57373;
 }
 
+/* Yenileme butonu tıklandığında anlık görsel geri bildirim.
+   www/js/claude_code.js capture-phase tıklama dinleyicisi tarafından
+   eklenir; Shiny output güncellemesi yer tutucuyu kaldırır. */
+.cc-dir-loading {
+  color: var(--cc-theme-accent, #64B5F6) !important;
+  opacity: 0.85;
+}
+
+.cc-dir-loading .fa-spinner {
+  margin-right: 6px;
+}
+
 /* --- Sağ Panel: Terminal (sabit düzen) --- */
 .cc-terminal-panel {
   flex: 1;
@@ -1107,4 +1119,12 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--cc-theme-accent);
+}
+
+/* İndirme kartı tıklandığında anlık geri bildirim. JS handler kısa süre
+   sonra orijinal "İndir" yazısına döner; tarayıcı download başlatımı
+   bu sürede normal akışıyla devam eder. */
+.cc-generated-file-action-loading {
+  color: var(--text-secondary, #aaa) !important;
+  opacity: 0.85;
 }

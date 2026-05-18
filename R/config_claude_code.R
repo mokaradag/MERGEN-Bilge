@@ -41,10 +41,14 @@ claude_code_config <- list(
   permission_mode = Sys.getenv("CLAUDE_CODE_PERMISSION_MODE", "acceptEdits"),
 
   # Ek izin istemeden kullanılabilecek Claude Code araçları.
-  # Bash varsayılan değildir; gerekiyorsa .Renviron ile açıkça ekleyin.
+  # MERGEN Bilge kurumsal/on-prem ortamda çalıştığı için Bash dahil tüm
+  # standart araçlar varsayılan olarak izinlidir. Böylece model gerçek
+  # zamanlı kabuk komutu çalıştırabilir ve ARAÇ KULLANIMLARI sayacı
+  # gerçek araç kullanımlarını yansıtır. Kapatmak için .Renviron'da
+  # CLAUDE_CODE_ALLOWED_TOOLS değerini istenen alt küme ile geçersiz kılın.
   allowed_tools = Sys.getenv(
     "CLAUDE_CODE_ALLOWED_TOOLS",
-    "Read;Write;Edit;MultiEdit;Glob;Grep;LS"
+    "Read;Write;Edit;MultiEdit;Glob;Grep;LS;Bash"
   ),
 
   # Açıkça yasaklanacak Claude Code araçları.

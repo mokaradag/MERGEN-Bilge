@@ -511,8 +511,8 @@ Current execution contract:
 - When dangerous mode is enabled, it must be logged clearly.
 - Normal UX must not require repeated Claude permission prompts for ordinary in-workdir read/write/edit tasks.
 - The safe default is `--permission-mode acceptEdits`.
-- Default extra allowed tools are `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep`, and `LS`.
-- `Bash` must not be allowed by default. Add it only through explicit configuration in controlled trusted internal development environments.
+- Default extra allowed tools are `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep`, `LS`, and `Bash`.
+- MERGEN Bilge runs as a controlled internal corporate / on-prem deployment, so `Bash` is part of the default `CLAUDE_CODE_ALLOWED_TOOLS` baseline. This is required for the model to execute live shell commands and for the ARAÇ KULLANIMLARI counter to reflect actual tool usage. Operators that need a stricter profile may override `CLAUDE_CODE_ALLOWED_TOOLS` in `.Renviron` to a narrower subset; do not silently re-remove `Bash` from the source-level default.
 - Do not pass policy prose to Claude as part of the user prompt.
 - Do not inject Bilge Yolaç policy text through `--append-system-prompt` unless a future change explicitly proves it is safe and updates the regression tests. The current contract is no policy/system prompt injection.
 - Preserve the exact user prompt as the final prompt argument.
@@ -544,7 +544,7 @@ Recommended safe environment baseline:
     CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS=FALSE
     CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS=TRUE
     CLAUDE_CODE_PERMISSION_MODE=acceptEdits
-    CLAUDE_CODE_ALLOWED_TOOLS=Read;Write;Edit;MultiEdit;Glob;Grep;LS
+    CLAUDE_CODE_ALLOWED_TOOLS=Read;Write;Edit;MultiEdit;Glob;Grep;LS;Bash
     CLAUDE_CODE_DISALLOWED_TOOLS=
 
 Protected by:
