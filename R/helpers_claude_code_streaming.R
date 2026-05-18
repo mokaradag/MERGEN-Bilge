@@ -287,8 +287,17 @@ parse_streaming_chunk <- function(satir) {
         icerik_bloklari <- nesne$content
       }
 
+      # Bazı on-prem proxy varyantları içerik bloğunu tek nesne olarak
+      # gönderebiliyor; standart Anthropic formatı her zaman dizidir.
+      if (!is.null(icerik_bloklari) &&
+          is.list(icerik_bloklari) &&
+          !is.null(icerik_bloklari$type)) {
+        icerik_bloklari <- list(icerik_bloklari)
+      }
+
       if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
         for (blok in icerik_bloklari) {
+          if (!is.list(blok)) next
           blok_tur <- blok$type %||% ""
           if (blok_tur == "tool_use") {
             bloklar <- c(bloklar, list(parse_tool_use_nesne(blok)))
@@ -308,8 +317,16 @@ parse_streaming_chunk <- function(satir) {
         icerik_bloklari <- nesne$content
       }
 
+      # Tek nesne formunu da destekle (bazı proxy varyantları için)
+      if (!is.null(icerik_bloklari) &&
+          is.list(icerik_bloklari) &&
+          !is.null(icerik_bloklari$type)) {
+        icerik_bloklari <- list(icerik_bloklari)
+      }
+
       if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
         for (blok in icerik_bloklari) {
+          if (!is.list(blok)) next
           if ((blok$type %||% "") != "tool_result") next
 
           tr_icerik <- blok$content %||% ""

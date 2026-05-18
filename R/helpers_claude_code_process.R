@@ -519,8 +519,19 @@ parse_claude_code_json_output <- function(ham_cikti) {
           icerik_bloklari <- nesne$content
         }
 
+        # Bazı on-prem proxy varyantları içerik bloklarını tek nesne olarak
+        # ({"type":"tool_use",...}) gönderebiliyor; standart Anthropic formatı
+        # ise her zaman dizidir. Tek nesne ise listeye sar ki standart iterasyon
+        # çalışsın.
+        if (!is.null(icerik_bloklari) &&
+            is.list(icerik_bloklari) &&
+            !is.null(icerik_bloklari$type)) {
+          icerik_bloklari <- list(icerik_bloklari)
+        }
+
         if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
           for (blok in icerik_bloklari) {
+            if (!is.list(blok)) next
             blok_tur <- blok$type %||% ""
             if (blok_tur == "text") {
               # --include-partial-messages açıkken aynı metin önce
@@ -574,8 +585,16 @@ parse_claude_code_json_output <- function(ham_cikti) {
           icerik_bloklari <- nesne$content
         }
 
+        # Tek nesne formunu da destekle (bazı proxy varyantları için)
+        if (!is.null(icerik_bloklari) &&
+            is.list(icerik_bloklari) &&
+            !is.null(icerik_bloklari$type)) {
+          icerik_bloklari <- list(icerik_bloklari)
+        }
+
         if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
           for (blok in icerik_bloklari) {
+            if (!is.list(blok)) next
             blok_tur <- blok$type %||% ""
             if (blok_tur != "tool_result") next
 
