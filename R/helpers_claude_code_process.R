@@ -523,6 +523,13 @@ parse_claude_code_json_output <- function(ham_cikti) {
           for (blok in icerik_bloklari) {
             blok_tur <- blok$type %||% ""
             if (blok_tur == "text") {
+              # --include-partial-messages açıkken aynı metin önce
+              # content_block_delta text_delta olarak stream_event akışında
+              # geldi; sonra asistan toplu bloku tekrar geliyor. Sayaç olarak
+              # metin_zaten_toplandi = TRUE ise asistan bloktaki metni
+              # tekrar eklemeyiz, aksi halde son metin iki kere yazılır.
+              if (isTRUE(metin_zaten_toplandi)) next
+
               blok_metin <- blok$text %||% ""
               if (nzchar(blok_metin)) {
                 metin_parcalari <- c(metin_parcalari, blok_metin)

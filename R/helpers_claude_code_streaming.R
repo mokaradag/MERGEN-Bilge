@@ -275,6 +275,12 @@ parse_streaming_chunk <- function(satir) {
       # genelde nesne$message$content altında gelir; eski kod yalnızca
       # nesne$content yolundan okuduğu için tool_use blokları canlı akışta
       # araç bloğu olarak gözükmüyordu.
+      #
+      # --include-partial-messages açıkken aynı metin önce content_block_delta
+      # text_delta olarak granular akıştan geldi; sonra asistan toplu bloku
+      # tekrar metin içeriyor. Canlı akışta metin parçalarını tekrar yayarsak
+      # son mesaj iki kere görünür. Bu yüzden asistan blokunda yalnızca
+      # tool_use kayıtlarını yayınla (text bloklarını yoksay).
       bloklar <- list()
       icerik_bloklari <- nesne$message$content
       if (is.null(icerik_bloklari)) {
@@ -284,11 +290,11 @@ parse_streaming_chunk <- function(satir) {
       if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
         for (blok in icerik_bloklari) {
           blok_tur <- blok$type %||% ""
-          if (blok_tur == "text") {
-            bloklar <- c(bloklar, list(list(tip = "text", icerik = blok$text %||% "")))
-          } else if (blok_tur == "tool_use") {
+          if (blok_tur == "tool_use") {
             bloklar <- c(bloklar, list(parse_tool_use_nesne(blok)))
           }
+          # text bloklarını yoksay; canlı akış zaten content_block_delta
+          # üzerinden text_delta parçalarını gönderdi.
         }
       }
       return(list(tip = "assistant", bloklar = bloklar))
