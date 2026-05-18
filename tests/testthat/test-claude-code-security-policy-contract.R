@@ -43,6 +43,14 @@
     local = test_env
   )
 
+  # Yol/kök doğrulama helper'ları artık ayrı dosyada; testin bunlara da
+  # erişebilmesi için path_policy yardımcılarını test ortamına yükle.
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_path_policy.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
   source(
     file.path(repo_root, "R", "helpers_claude_code_prompt_security_policy.R"),
     encoding = "UTF-8",
@@ -65,6 +73,7 @@ test_that("Bilge Yolaç güvenlik ilkesi helper dosyası manifestte doğru yerde
     c(
       "R/helpers_claude_code_runtime_workdir.R",
       "R/helpers_claude_code_security_policy.R",
+      "R/helpers_claude_code_path_policy.R",
       "R/helpers_claude_code_prompt_security_policy.R",
       "R/helpers_claude_code.R",
       "R/helpers_claude_code_streaming.R"
@@ -108,6 +117,48 @@ test_that("cc_policy_normalize_path UNC yollarını drive harfine çevirmez", {
   expect_false(
     grepl("^[A-Za-z]:/", unc_forward, perl = TRUE),
     info = "UNC yol drive harfine çevrilmemelidir."
+  )
+})
+
+test_that("cc_policy_normalize_path baştaki çift + segment arası tek slash UNC'yi düzgün çevirir", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  # Regresyon: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters
+  # slash'ı eşler. Kullanıcı `\\rehisds\gruplar\MAYM\R` yazdığında baştaki iki
+  # ters slash + segment arası tek ters slash bulunur; eski gsub yalnızca
+  # baştaki çifti dönüştürdüğü için sonuç `/rehisds\gruplar\MAYM\R` olarak
+  # bozuluyordu. Bu malformed yol downstream UNC tespit kayıplarına ve
+  # cmd.exe'de "The system cannot find the path specified" hatasına yol açıyordu.
+  ham_unc <- "\\\\rehisds\\gruplar\\MAYM\\R"
+  beklenen <- "//rehisds/gruplar/MAYM/R"
+
+  cozulen <- test_env$cc_policy_normalize_path(ham_unc, must_exist = FALSE)
+
+  expect_equal(
+    cozulen,
+    beklenen,
+    info = paste0(
+      "Baştaki çift + segment arası tek ters slash içeren UNC yolu kanonik ",
+      "forward slash UNC formuna çevrilmelidir."
+    )
+  )
+
+  # Türkçe karakterli daha derin UNC yolları da korunmalı
+  turkce_unc <- "\\\\rehisds\\gruplar\\MAYM\\PROJE YÖNETİMİ\\PYÖP Durumu"
+  turkce_beklenen <- "//rehisds/gruplar/MAYM/PROJE YÖNETİMİ/PYÖP Durumu"
+
+  turkce_cozulen <- test_env$cc_policy_normalize_path(
+    turkce_unc,
+    must_exist = FALSE
+  )
+
+  expect_equal(
+    turkce_cozulen,
+    turkce_beklenen,
+    info = paste0(
+      "Türkçe karakterli UNC yolu da kanonik UNC formunu korumalıdır: ",
+      turkce_cozulen
+    )
   )
 })
 

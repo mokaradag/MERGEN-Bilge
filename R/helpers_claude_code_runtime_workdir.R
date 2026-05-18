@@ -30,11 +30,15 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
   normalizePath(user_dir, mustWork = FALSE)
 }
 # Windows cmd.exe / Claude Code CLI için problem çıkarabilecek yol mu?
+# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+# eşler. `\\rehisds\share\sub` girdisinde baştaki çift slash + segment arası
+# tek slash bulunduğundan eski gsub UNC tespitini kaçırıyordu. Tek ters slash'a
+# göre değiştirme tüm UNC varyantlarını kanonik forma getirir.
 is_problematic_windows_workdir <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
   if (is.null(path) || !nzchar(path)) return(FALSE)
 
-  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+  aday <- gsub("\\", "/", as.character(path[1]), fixed = TRUE)
 
   unc_mi <- if (exists("is_windows_unc_path", mode = "function", inherits = TRUE)) {
     is_windows_unc_path(aday)
@@ -169,7 +173,10 @@ mirror_directory_to_local_workspace <- function(source_dir, target_dir) {
   yol <- as.character(existing_runtime_workdir %||% "")[1]
   if (is.na(yol) || !nzchar(yol)) return(FALSE)
 
-  yol_slash <- gsub("\\\\", "/", yol, fixed = TRUE)
+  # NOT: Karma slash bağlamlarında segment karşılaştırması doğru çalışsın diye
+  # tek ters slash'a göre değiştirme yapılır; çiftli gsub yalnızca baştaki çift
+  # slash'ı yakalardı.
+  yol_slash <- gsub("\\", "/", yol, fixed = TRUE)
 
   # Yalnızca runtime alanı altında olan klasörler yeniden kullanılabilir.
   beklenen_kullanici_segmenti <- paste0(

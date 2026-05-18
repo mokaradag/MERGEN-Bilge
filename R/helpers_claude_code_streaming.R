@@ -271,15 +271,57 @@ parse_streaming_chunk <- function(satir) {
       ))
 
     } else if (tur == "assistant") {
+      # Claude Code CLI stream-json çıktısında asistan içerik blokları
+      # genelde nesne$message$content altında gelir; eski kod yalnızca
+      # nesne$content yolundan okuduğu için tool_use blokları canlı akışta
+      # araç bloğu olarak gözükmüyordu.
       bloklar <- list()
-      if (!is.null(nesne$content) && is.list(nesne$content)) {
-        for (blok in nesne$content) {
+      icerik_bloklari <- nesne$message$content
+      if (is.null(icerik_bloklari)) {
+        icerik_bloklari <- nesne$content
+      }
+
+      if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
+        for (blok in icerik_bloklari) {
           blok_tur <- blok$type %||% ""
           if (blok_tur == "text") {
             bloklar <- c(bloklar, list(list(tip = "text", icerik = blok$text %||% "")))
           } else if (blok_tur == "tool_use") {
             bloklar <- c(bloklar, list(parse_tool_use_nesne(blok)))
           }
+        }
+      }
+      return(list(tip = "assistant", bloklar = bloklar))
+
+    } else if (tur == "user") {
+      # Tool result blokları Claude Code CLI'da user mesajı altında gelir;
+      # canlı akışta tool sonucu olarak göster.
+      bloklar <- list()
+      icerik_bloklari <- nesne$message$content
+      if (is.null(icerik_bloklari)) {
+        icerik_bloklari <- nesne$content
+      }
+
+      if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
+        for (blok in icerik_bloklari) {
+          if ((blok$type %||% "") != "tool_result") next
+
+          tr_icerik <- blok$content %||% ""
+          if (is.list(tr_icerik)) {
+            parca_listesi <- character(0)
+            for (parca in tr_icerik) {
+              if (is.list(parca)) {
+                parca_listesi <- c(parca_listesi, as.character(parca$text %||% ""))
+              }
+            }
+            tr_icerik <- paste(parca_listesi, collapse = "")
+          }
+
+          bloklar <- c(bloklar, list(list(
+            tip = "tool_result",
+            arac_id = blok$tool_use_id %||% "",
+            icerik = tr_icerik
+          )))
         }
       }
       return(list(tip = "assistant", bloklar = bloklar))

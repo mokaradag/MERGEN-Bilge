@@ -27,14 +27,24 @@ cc_normalize_positive_user_id <- function(user_id) {
 }
 
 cc_resolve_existing_dir_relaxed <- function(dir_path) {
-  dir_chr <- gsub("\\\\", "/", as.character(dir_path %||% "")[1], fixed = TRUE)
-  if (is.na(dir_chr) || !nzchar(dir_chr)) return("")
+  dir_raw <- as.character(dir_path %||% "")[1]
+  if (is.na(dir_raw) || !nzchar(dir_raw)) return("")
+
+  # NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+  # eşler. Kullanıcı `\\rehisds\gruplar\sub` yazdığında R belleğinde baştaki
+  # iki ters slash + segment arasındaki tek ters slash bulunur; eski gsub
+  # yalnızca baştaki çifti dönüştürdüğü için sonuç `/rehisds\gruplar\sub`
+  # olarak kalıyordu. Bu malformed yol Windows'ta dir.exists hataları ve
+  # downstream UNC tespit kayıpları üretiyor. Tüm ters slash'ları forward
+  # slash'a çevirip kanonik UNC formuna ulaşırız.
+  dir_chr <- gsub("\\", "/", dir_raw, fixed = TRUE)
 
   adaylar <- unique(Filter(nzchar, c(
     dir_chr,
+    dir_raw,
     enc2utf8(dir_chr),
     enc2native(dir_chr),
-    if (grepl("^/[^/]", dir_chr)) paste0("/", dir_chr) else NULL
+    if (grepl("^/[^/]", dir_chr) && !grepl("^//", dir_chr)) paste0("/", dir_chr) else NULL
   )))
 
   # Windows VM / UNC / ağ paylaşımı yollarında base R dir.exists() bazen

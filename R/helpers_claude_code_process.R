@@ -109,11 +109,14 @@ ensure_utf8 <- function(metin) {
 # ------------------------------------------------------------------------------
 
 # Tek eğik çizgiyle gelen Windows ağ yolu benzeri değer mi?
+# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+# eşler. Kanonik UNC tespiti için TÜM ters slash'ları forward slash'a çevirip
+# `^//server/share` desenini doğru yakalarız.
 is_windows_single_slash_network_path <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
   if (is.null(path) || !nzchar(path)) return(FALSE)
 
-  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+  aday <- gsub("\\", "/", as.character(path[1]), fixed = TRUE)
 
   if (!grepl("^/[^/]", aday) || grepl("^//", aday)) {
     return(FALSE)
@@ -132,11 +135,16 @@ is_windows_single_slash_network_path <- function(path) {
 }
 
 # Windows UNC/ağ paylaşımı yolu mu?
+# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+# eşler. `\\server\share\sub` girdisini doğru `//server/share/sub`'a
+# çevirebilmek için tek ters slash'a göre değiştirme yaparız; bu hem
+# `\\server\share`, hem `//server/share`, hem de karışık slash varyantlarını
+# kanonik UNC formuna getirir.
 is_windows_unc_path <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
   if (is.null(path) || !nzchar(path)) return(FALSE)
 
-  aday <- gsub("\\\\", "/", as.character(path[1]), fixed = TRUE)
+  aday <- gsub("\\", "/", as.character(path[1]), fixed = TRUE)
 
   grepl("^//[^/]+/[^/]+", aday) ||
     is_windows_single_slash_network_path(aday)
@@ -220,8 +228,10 @@ get_safe_processx_launch_workdir <- function(preferred = NULL) {
 
     # cmd.exe processx tarafından başlatılırken wd yerel ve basit olmalı.
     # Gerçek çalışma dizinine komut satırı içinde cd /d veya pushd ile geçilecek.
+    # NOT: UNC/ağ paylaşımı kontrolünde tek ters slash'a göre değiştirme yapılır;
+    # böylece hem `\\server\share` hem `//server/share` formları yakalanır.
     if (.Platform$OS.type == "windows") {
-      aday_slash <- gsub("\\\\", "/", aday_norm, fixed = TRUE)
+      aday_slash <- gsub("\\", "/", aday_norm, fixed = TRUE)
       if (grepl("^//", aday_slash) || grepl("^/[^/]", aday_slash)) next
       if (grepl("[^ -~]", enc2utf8(aday_norm), perl = TRUE)) next
     }
@@ -498,8 +508,19 @@ parse_claude_code_json_output <- function(ham_cikti) {
         }
 
       } else if (tur == "assistant") {
-        if (!is.null(nesne$content) && is.list(nesne$content)) {
-          for (blok in nesne$content) {
+        # Claude Code CLI stream-json çıktısında asistan içerik blokları
+        # genelde nesne$message$content altında gelir
+        # ({"type":"assistant","message":{"content":[...]}}). Eski kod yalnızca
+        # nesne$content yolundan okuduğu için tool_use blokları gözden
+        # kaçıyor ve ARAÇ KULLANIMLARI sayacı (0) görünüyordu. Her iki yolu
+        # da destekleyerek tool_use bloklarını doğru topla.
+        icerik_bloklari <- nesne$message$content
+        if (is.null(icerik_bloklari)) {
+          icerik_bloklari <- nesne$content
+        }
+
+        if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
+          for (blok in icerik_bloklari) {
             blok_tur <- blok$type %||% ""
             if (blok_tur == "text") {
               blok_metin <- blok$text %||% ""
@@ -508,12 +529,67 @@ parse_claude_code_json_output <- function(ham_cikti) {
                 metin_zaten_toplandi <- TRUE
               }
             } else if (blok_tur == "tool_use") {
-              arac <- list(
-                id = blok$id %||% "",
-                name = blok$name %||% "",
-                input = blok$input %||% list()
-              )
-              sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
+              arac_id <- blok$id %||% ""
+              zaten_var <- FALSE
+              if (nzchar(arac_id)) {
+                for (j in seq_along(sonuc$tool_uses)) {
+                  if (identical(sonuc$tool_uses[[j]]$id, arac_id)) {
+                    zaten_var <- TRUE
+                    break
+                  }
+                }
+              }
+
+              # stream_event yolu aynı tool_use'u zaten eklediyse tekrar ekleme.
+              if (!isTRUE(zaten_var)) {
+                arac <- list(
+                  id = arac_id,
+                  name = blok$name %||% "",
+                  input = blok$input %||% list()
+                )
+                sonuc$tool_uses <- c(sonuc$tool_uses, list(arac))
+              }
+            }
+          }
+        }
+
+        # session_id asistan mesajının sarmalayıcısında da gelebilir
+        if (!is.null(nesne$session_id) && nzchar(nesne$session_id %||% "")) {
+          sonuc$session_id <- nesne$session_id
+        }
+
+      } else if (tur == "user") {
+        # Tool result'lar Claude Code CLI'da user blokları içinde gelir
+        # ({"type":"user","message":{"content":[{"type":"tool_result",...}]}}).
+        # Bu olayları yakalayıp ilgili tool_use'a result alanını ekleyelim.
+        icerik_bloklari <- nesne$message$content
+        if (is.null(icerik_bloklari)) {
+          icerik_bloklari <- nesne$content
+        }
+
+        if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
+          for (blok in icerik_bloklari) {
+            blok_tur <- blok$type %||% ""
+            if (blok_tur != "tool_result") next
+
+            arac_id <- blok$tool_use_id %||% ""
+            tr_icerik <- blok$content %||% ""
+
+            if (is.list(tr_icerik)) {
+              parca_listesi <- character(0)
+              for (parca in tr_icerik) {
+                if (is.list(parca)) {
+                  parca_listesi <- c(parca_listesi, as.character(parca$text %||% ""))
+                }
+              }
+              tr_icerik <- paste(parca_listesi, collapse = "")
+            }
+
+            for (j in seq_along(sonuc$tool_uses)) {
+              if (identical(sonuc$tool_uses[[j]]$id, arac_id)) {
+                sonuc$tool_uses[[j]]$result <- tr_icerik
+                break
+              }
             }
           }
         }
@@ -543,16 +619,19 @@ get_safe_claude_cli_workdir <- function(workdir = NULL) {
 
   for (aday in adaylar) {
     if (!nzchar(aday) || !dir.exists(aday)) next
-	aday_slash <- gsub("\\\\", "/", aday)
+    # NOT: Tüm ters slash'ları forward slash'a çevirerek UNC/ağ paylaşımı
+    # varyantlarını tek bir kontrolde reddederiz. CLI durum kontrolü için
+    # güvenli yerel dizin gerekir; UNC yolları cmd.exe spawn bağlamında
+    # tutarsız davranır.
+    aday_slash <- gsub("\\", "/", aday, fixed = TRUE)
 
-	if (
-	  .Platform$OS.type == "windows" &&
-	  (
-		grepl("^\\\\\\\\", aday) ||
-		  grepl("^//", aday_slash) ||
-		  grepl("^/[^/]", aday_slash)
-	  )
-	) next
+    if (
+      .Platform$OS.type == "windows" &&
+      (
+        grepl("^//", aday_slash) ||
+          grepl("^/[^/]", aday_slash)
+      )
+    ) next
     return(normalizePath(aday, winslash = "/", mustWork = FALSE))
   }
 

@@ -22,7 +22,10 @@ resolve_claude_runtime_source_dir <- function(workdir) {
     }
   }
 
-  yol_slash <- gsub("\\\\", "/", ham_yol, fixed = TRUE)
+  # NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
+  # eşler. `\\server\share\sub` girdisini kanonik `//server/share/sub` formuna
+  # çevirebilmek için tek ters slash'a göre değiştirme yaparız.
+  yol_slash <- gsub("\\", "/", ham_yol, fixed = TRUE)
 
   adaylar <- unique(Filter(nzchar, c(
     ham_yol,
