@@ -20,7 +20,7 @@
     default_workdir = "",
     allow_dangerous_permissions = FALSE,
     permission_mode = "acceptEdits",
-    allowed_tools = "Read;Write;Edit;MultiEdit;Glob;Grep;LS",
+    allowed_tools = "Read;Write;Edit;MultiEdit;Glob;Grep;LS;Bash",
     disallowed_tools = "",
     allowed_workdir_roots = "",
     allow_user_selected_workdirs = TRUE,
@@ -194,6 +194,44 @@ test_that("CLI argümanları varsayılan olarak tehlikeli izin atlama içermez",
   expect_true("--verbose" %in% args)
   expect_true("--include-partial-messages" %in% args)
   expect_true("stream-json" %in% args)
+})
+
+test_that("varsayılan izinli araçlar Bash dahil tüm standart Claude Code araçlarını içerir", {
+  # MERGEN Bilge kurumsal/on-prem ortamda çalıştığı için Bash dahil standart
+  # araçlar varsayılan olarak izinli olmalıdır. Aksi halde model gerçek
+  # zamanlı kabuk komutları çalıştıramaz, kullanıcı ARAÇ KULLANIMLARI
+  # listesinde canlı kabuk komutu göremez ve sayaç 0 gözükür.
+  test_env <- .source_cc_security_policy_for_test()
+
+  args <- test_env$cc_policy_build_cli_args(
+    prompt = "ls -la çalıştır",
+    output_format = "stream-json",
+    include_partial_messages = TRUE,
+    verbose = TRUE
+  )
+
+  allowed_index <- which(args == "--allowedTools")
+  expect_length(allowed_index, 1L)
+
+  separator_index <- which(args == "--")
+  expect_length(separator_index, 1L)
+
+  allowed_tokens <- args[(allowed_index + 1L):(separator_index - 1L)]
+
+  beklenen_araclar <- c(
+    "Read", "Write", "Edit", "MultiEdit",
+    "Glob", "Grep", "LS", "Bash"
+  )
+
+  for (arac in beklenen_araclar) {
+    expect_true(
+      arac %in% allowed_tokens,
+      info = sprintf(
+        "%s aracı varsayılan izinli araçlar listesinde bulunmalıdır.",
+        arac
+      )
+    )
+  }
 })
 
 test_that("allowedTools prompt argümanını yutamaz", {

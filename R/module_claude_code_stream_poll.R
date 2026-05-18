@@ -243,12 +243,29 @@ cc_bind_claude_code_stream_polling <- function(input,
           arac_uyarisi_html
         )
 
+        # ARAÇ KULLANIMLARI bölümünü canlı akıştan bağımsız olarak garanti et:
+        # Bazı on-prem LLM proxy varyantlarında canlı stream tool_use parçaları
+        # boş HTML ile gelebilir veya hiç emit edilmeyebilir; bu durumda sayaç
+        # 0 görünür. cc-stream-end ile birlikte final tool_uses bloğunun
+        # sunumunu da gönder; istemci eksik/boş canlı bölümü bu HTML ile
+        # tamamlar veya yenisini ekler. Tool_use bulunamadıysa boş string
+        # gönderilir; bu durumda istemci hiçbir bölüm oluşturmaz.
+        son_arac_kullanim_html <- tryCatch(
+          if (length(ayristirma$tool_uses %||% list()) > 0L) {
+            format_tool_uses_html_enhanced(ayristirma$tool_uses)
+          } else {
+            ""
+          },
+          error = function(e) ""
+        )
+
         session$sendCustomMessage(
           type = "cc-stream-end",
           message = list(
             target = ns("output_area"),
             duration = sure,
             finalContent = son_icerik,
+            finalToolUsesHtml = son_arac_kullanim_html,
             accentColor = env$karakter_renk,
             characterName = env$karakter_adi
           )

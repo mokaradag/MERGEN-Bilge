@@ -508,6 +508,47 @@
         }
       }
 
+      // ARAÇ KULLANIMLARI bölümünü güvene al:
+      // Canlı akış chunk'ları araç bloklarını eksik veya hiç yayınlamadıysa
+      // ya da on-prem LLM proxy varyantı tool_use'ları farklı biçimde
+      // emit ettiyse, sunucudan gelen final HTML ile mevcut/eksik bölümü
+      // yeniden kur. data.finalToolUsesHtml boş string ise hiçbir bölüm
+      // oluşturulmaz; sunucu zaten "araç kullanımı tespit edilmedi" durumu
+      // için boş gönderir.
+      if (typeof data.finalToolUsesHtml === 'string') {
+        var existingSection = streamingMsg.querySelector('.cc-tool-section');
+        var trimmedFinal = data.finalToolUsesHtml.replace(/^\s+|\s+$/g, '');
+
+        if (trimmedFinal.length > 0) {
+          // Var olan canlı akış bölümünü kaldır ve sunucudan gelen final
+          // HTML ile değiştir. Böylece sayaç gerçek tool_use sayısını yansıtır.
+          if (existingSection) {
+            existingSection.remove();
+          }
+
+          var wrapper = document.createElement('div');
+          wrapper.innerHTML = fixHtmlMojibake(trimmedFinal);
+          var newSection = wrapper.firstElementChild;
+
+          if (newSection) {
+            var bodyEl = streamingMsg.querySelector('.cc-message-body');
+            if (bodyEl) {
+              streamingMsg.insertBefore(newSection, bodyEl);
+            } else {
+              streamingMsg.appendChild(newSection);
+            }
+          }
+        } else if (existingSection) {
+          // Sunucu gerçek tool_use bulamadı; eğer canlı akış boş bir araç
+          // bölümü bıraktıysa (hiç blok olmadan) bunu kaldır ki kullanıcı
+          // yanıltıcı bir (0) sayaç görmesin.
+          var liveBlocks = existingSection.querySelectorAll('.cc-tool-block');
+          if (!liveBlocks || liveBlocks.length === 0) {
+            existingSection.remove();
+          }
+        }
+      }
+
       // Mesaj gövdesini son içerikle güncelle
       // HTML içindeki metin düğümlerinde mojibake düzeltmesi uygula
       if (data.finalContent) {
