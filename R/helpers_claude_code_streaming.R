@@ -521,15 +521,51 @@ detect_tool_type <- function(arac_adi) {
 # sayacının gerçekleşen dosya işlemini yansıtabilmesi için sentetik bir
 # Write araç bloğu yayınlanır. Bu blok canlı akış UI'sına eklenir ve
 # tool_uses listesine kaydedilir.
+#
+# YENİ DAVRANIŞ: Synthesis artık ek bir koşul kullanır. Mevcut tool_uses
+# listesinde dosya yolu zaten kapsanmış üretilen dosyalar için sentetik
+# eklenmez (aksi halde aynı dosya iki kez listelenir). Ancak parser bazı
+# dosyaları kaçırdıysa (örn. on-prem proxy yalnızca bir kısmını emit
+# ettiyse), bu fonksiyon kapsanmamış dosyalar için ek sentetik blok üretir.
 # ------------------------------------------------------------------------------
+
+#' Mevcut tool_use'larda kapsanan dosya yollarını topla
+#'
+#' @param tool_uses ayristirma$tool_uses içeriği
+#' @return Normalize edilmiş dosya yolu vektörü
+cc_collect_covered_tool_paths <- function(tool_uses) {
+  if (!length(tool_uses %||% list())) return(character(0))
+
+  kapsanan <- character(0)
+
+  for (arac in tool_uses) {
+    if (!is.list(arac)) next
+    girdi <- arac$input %||% list()
+    if (!is.list(girdi)) next
+
+    yol_adaylari <- c(
+      girdi$file_path %||% "",
+      girdi$path %||% "",
+      girdi$new_file %||% "",
+      girdi$file %||% ""
+    )
+
+    for (yol in yol_adaylari) {
+      yol <- as.character(yol %||% "")[1]
+      if (is.na(yol) || !nzchar(yol)) next
+      kapsanan <- c(kapsanan, tolower(yol))
+    }
+  }
+
+  unique(kapsanan)
+}
 
 #' İndirme listesinden sentetik Write araç kullanımları üret
 #'
-#' @description Eğer parser tool_use bloku yakalamadıysa ama dosya
-#'   oluşturma snapshot diff'i ile algılandıysa, kullanıcı geri bildirim
-#'   için sentetik Write tool_use entries oluşturur ve canlı akışa
-#'   yayar. Modelin metin tabanlı "kaydettim" yanıtı yerine gerçekleşen
-#'   dosya işlemini görsel olarak yansıtır.
+#' @description Mevcut tool_uses bulunsa bile, parser'ın kaçırdığı dosyalar
+#'   için sentetik Write tool_use üretir. Böylece ARAÇ KULLANIMLARI sayacı
+#'   gerçekten oluşturulan tüm dosyaları yansıtır. Aynı dosya hem gerçek hem
+#'   sentetik olarak listelenmesin diye dosya yolu eşleştirmesi yapılır.
 #'
 #' @param session Shiny session
 #' @param ns Namespace function
@@ -542,13 +578,16 @@ cc_synthesize_tool_uses_from_downloads <- function(session,
                                                     env,
                                                     ayristirma,
                                                     olusan_dosyalar) {
-  if (length(ayristirma$tool_uses %||% list()) > 0L) {
-    return(list())
-  }
-
   if (!length(olusan_dosyalar %||% list())) {
     return(list())
   }
+
+  # Halihazırda parser'ın yakaladığı tool_use'ların dosya yolu setini al.
+  # Aynı yol için ikinci kez sentetik üretme.
+  kapsanan_yollar <- tryCatch(
+    cc_collect_covered_tool_paths(ayristirma$tool_uses %||% list()),
+    error = function(e) character(0)
+  )
 
   sentetik_araclar <- list()
 
@@ -556,6 +595,8 @@ cc_synthesize_tool_uses_from_downloads <- function(session,
     dosya <- olusan_dosyalar[[i]]
     yol <- as.character(dosya$original_path %||% "")[1]
     if (is.na(yol) || !nzchar(yol)) next
+
+    if (tolower(yol) %in% kapsanan_yollar) next
 
     dosya_adi <- basename(yol)
 

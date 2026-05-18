@@ -145,6 +145,75 @@ cc_bind_claude_code_stream_polling <- function(input,
         length(olusan_dosyalar)
       ))
 
+      # ARAÇ_KULLANIMI tanılaması: parser'ın ham CLI çıktısından kaç tool_use
+      # yakaladığını ve ham çıktıda kaç stream-json olay türü olduğunu loga
+      # yaz. Bu, on-prem proxy CLI'sının hangi formatı emit ettiğini sahada
+      # debug etmek için kritiktir. ARAÇ KULLANIMLARI (0) raporlandığında
+      # logs/mergen_*.log içinden bu satırlara bakılır.
+      tryCatch({
+        ham_satir_sayisi <- length(env$tum_satirlar)
+        ilk_n <- min(3L, ham_satir_sayisi)
+        ornek_ozet <- if (ilk_n > 0L) {
+          paste(
+            substr(env$tum_satirlar[seq_len(ilk_n)], 1L, 200L),
+            collapse = " || "
+          )
+        } else {
+          "(ham satır yok)"
+        }
+
+        olay_turleri <- character(0)
+        tryCatch({
+          if (ham_satir_sayisi > 0L) {
+            for (satir in env$tum_satirlar) {
+              if (!nzchar(satir)) next
+              nesne <- tryCatch(
+                jsonlite::fromJSON(satir, simplifyVector = FALSE),
+                error = function(e) NULL
+              )
+              if (is.null(nesne)) next
+              tur <- as.character(nesne$type %||% "")
+              if (identical(tur, "stream_event")) {
+                tur <- paste0(
+                  "stream_event:",
+                  as.character(nesne$event$type %||% "")
+                )
+              }
+              olay_turleri <- c(olay_turleri, tur)
+            }
+          }
+        }, error = function(e) NULL)
+
+        olay_ozeti <- if (length(olay_turleri)) {
+          olay_say <- table(olay_turleri)
+          paste(
+            sprintf("%s=%d", names(olay_say), as.integer(olay_say)),
+            collapse = ","
+          )
+        } else {
+          "(olay tespit edilmedi)"
+        }
+
+        log_info(sprintf(
+          "%s [TOOL_USE_DEBUG] ham_satir=%d | parsed_tool_uses=%d | olay_dagilimi=%s",
+          CLAUDE_CODE_LOG_PREFIX,
+          ham_satir_sayisi,
+          length(ayristirma$tool_uses %||% list()),
+          olay_ozeti
+        ))
+
+        if (length(ayristirma$tool_uses %||% list()) == 0L &&
+            length(olusan_dosyalar %||% list()) > 0L) {
+          log_warn(sprintf(
+            "%s [TOOL_USE_DEBUG] Parser tool_use yakalamadı ama %d dosya üretildi. İlk %d ham JSONL örneği: %s",
+            CLAUDE_CODE_LOG_PREFIX,
+            length(olusan_dosyalar),
+            ilk_n,
+            gsub("[{}]", "", ornek_ozet)
+          ))
+        }
+      }, error = function(e) NULL)
+
       if (identical(cikis_kodu, 0L)) {
         log_info(paste(
           CLAUDE_CODE_LOG_PREFIX,
@@ -258,6 +327,14 @@ cc_bind_claude_code_stream_polling <- function(input,
           },
           error = function(e) ""
         )
+
+        log_info(sprintf(
+          "%s [TOOL_USE_DEBUG] final_tool_uses=%d | final_html_len=%d | sentetik_eklendi=%d",
+          CLAUDE_CODE_LOG_PREFIX,
+          length(ayristirma$tool_uses %||% list()),
+          nchar(son_arac_kullanim_html %||% ""),
+          length(sentetik_arac_eklendi %||% list())
+        ))
 
         session$sendCustomMessage(
           type = "cc-stream-end",

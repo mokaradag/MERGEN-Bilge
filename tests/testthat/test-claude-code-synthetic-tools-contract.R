@@ -114,7 +114,7 @@ test_that("cc_synthesize_tool_uses_from_downloads boş tool_uses + algılanan do
   )
 })
 
-test_that("cc_synthesize_tool_uses_from_downloads model tool_use yaydığında sentetik üretmez", {
+test_that("cc_synthesize_tool_uses_from_downloads aynı dosya yolu için tekrar sentetik üretmez", {
   test_env <- .source_cc_synthetic_tools_for_test()
 
   session <- .cc_fake_session_for_synth()
@@ -157,16 +157,110 @@ test_that("cc_synthesize_tool_uses_from_downloads model tool_use yaydığında s
     length(sonuc),
     0L,
     info = paste(
-      "Model zaten tool_use yaydıysa sentetik üretilmemelidir; aksi halde",
-      "kullanıcı aynı dosya işlemi için iki kart görür."
+      "Gerçek tool_use aynı dosya yolu için zaten varsa sentetik üretilmemelidir;",
+      "aksi halde kullanıcı aynı dosya işlemi için iki kart görür."
     )
   )
 
   expect_equal(
     length(session$mesajlar),
     0L,
-    info = "Mevcut tool_use varken cc-stream-chunk mesajı yayınlanmamalıdır."
+    info = "Aynı dosya yolu kapsandığında cc-stream-chunk mesajı yayınlanmamalıdır."
   )
+})
+
+test_that("cc_synthesize_tool_uses_from_downloads gerçek tool_use kapsamadığı dosyalar için sentetik üretir", {
+  # Parser bir tool_use yakaladıysa (örn. Read), ama snapshot diff başka
+  # dosyalar (örn. Write çıktıları) tespit ettiyse, kapsanmamış dosyalar
+  # için sentetik Write üretilmelidir. Aksi halde model gerçek anlamda
+  # dosyaları üretmiş olsa bile ARAÇ KULLANIMLARI sayacı yetersiz görünür.
+  test_env <- .source_cc_synthetic_tools_for_test()
+
+  session <- .cc_fake_session_for_synth()
+
+  env <- new.env(parent = emptyenv())
+  env$karakter_renk <- "#81C784"
+  env$karakter_adi <- "Mergen"
+  env$zaman_damgasi <- "10:00:00"
+
+  ayristirma <- list(
+    text_output = "Okudum ve özetledim.",
+    tool_uses = list(
+      list(
+        id = "toolu_read",
+        name = "Read",
+        input = list(file_path = "/tmp/test/girdi.pdf")
+      )
+    ),
+    session_id = "sess_read"
+  )
+
+  olusan_dosyalar <- list(
+    list(
+      original_path = "/tmp/test/ozet_1.txt",
+      display_name = "ozet_1.txt",
+      size = 100
+    ),
+    list(
+      original_path = "/tmp/test/ozet_2.txt",
+      display_name = "ozet_2.txt",
+      size = 200
+    )
+  )
+
+  sonuc <- test_env$cc_synthesize_tool_uses_from_downloads(
+    session = session,
+    ns = session$ns,
+    env = env,
+    ayristirma = ayristirma,
+    olusan_dosyalar = olusan_dosyalar
+  )
+
+  expect_equal(
+    length(sonuc),
+    2L,
+    info = paste(
+      "Read tool_use mevcut olsa bile, snapshot diff'in tespit ettiği iki",
+      "yeni dosya için sentetik Write üretilmelidir."
+    )
+  )
+
+  arac_mesajlari <- Filter(
+    function(m) identical(m$type, "cc-stream-chunk") &&
+                 identical(m$message$chunkType, "tool_use"),
+    session$mesajlar
+  )
+
+  expect_equal(length(arac_mesajlari), 2L)
+})
+
+test_that("cc_collect_covered_tool_paths tool_use girdilerinden dosya yollarını çıkarır", {
+  test_env <- .source_cc_synthetic_tools_for_test()
+
+  tool_uses <- list(
+    list(
+      id = "toolu_a",
+      name = "Write",
+      input = list(file_path = "/tmp/a.txt")
+    ),
+    list(
+      id = "toolu_b",
+      name = "Edit",
+      input = list(path = "/tmp/b.md")
+    ),
+    list(
+      id = "toolu_c",
+      name = "Bash",
+      input = list(command = "ls")
+    )
+  )
+
+  yollar <- test_env$cc_collect_covered_tool_paths(tool_uses)
+
+  expect_true("/tmp/a.txt" %in% yollar)
+  expect_true("/tmp/b.md" %in% yollar)
+  expect_equal(length(yollar), 2L,
+               info = "Bash gibi dosya yolu olmayan tool_use'lar yol setine eklenmemelidir.")
 })
 
 test_that("cc_synthesize_tool_uses_from_downloads boş dosya listesi için boş döner", {
