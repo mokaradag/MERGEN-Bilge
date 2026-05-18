@@ -482,3 +482,35 @@ test_that("config_claude_code.R varsayılan allowed_tools listesi Bash içerir",
     )
   )
 })
+
+test_that("claude_code_streaming.js shellVisible değişkenini açıkça bildirir (ReferenceError regresyon koruması)", {
+  # Kritik bug: 'use strict' altındaki IIFE içinde shellVisible bildirilmemişti.
+  # handleToolUseChunk içinde 'if (!shellVisible)' satırı çalıştığında strict
+  # mode ReferenceError fırlatıyor, append işlemi yarıda kesiliyordu. Sonuç:
+  # .cc-tool-section oluşturuluyor ama içine cc-tool-block eklenmiyor; sayaç
+  # canlı akışta "(0)" ve içerik boş kalıyordu. Bloklar yalnızca cc-stream-end
+  # finalToolUsesHtml ile toplu olarak görünüyordu.
+  txt <- .read_repo_text_cc_final_tool_uses_contract("www/js/claude_code_streaming.js")
+
+  expect_true(
+    grepl("var\\s+shellVisible\\s*=", txt, perl = TRUE),
+    info = paste(
+      "shellVisible IIFE kapsamında 'var shellVisible = ...' ile bildirilmelidir;",
+      "aksi halde strict mode ReferenceError fırlatır ve canlı araç bloğu",
+      "akışı kesilir."
+    )
+  )
+
+  # shellVisible'a okuma ve yazma erişimi olduğunu doğrula; ileride
+  # değişkenin bildiriliyor ama hiç kullanılmıyor olarak silinmediğinden
+  # emin olmak için.
+  expect_true(
+    grepl("if\\s*\\(\\s*!\\s*shellVisible\\s*\\)", txt, perl = TRUE),
+    info = "handleToolUseChunk shellVisible flag'ini kontrol etmelidir."
+  )
+
+  expect_true(
+    grepl("shellVisible\\s*=\\s*!shellVisible", txt, perl = TRUE),
+    info = "ccToggleShellVisibility shellVisible flag'ini tersine çevirmelidir."
+  )
+})

@@ -9,6 +9,17 @@
   'use strict';
 
   // ---------------------------------------------------------------------------
+  // KABUK GÖRÜNÜRLÜK DURUMU
+  // window.ccToggleShellVisibility ve handleToolUseChunk kapsamlarından
+  // erişilen modül-yerel durum. Strict mode'da bildirilmemiş değişkene
+  // erişmek ReferenceError fırlatır; bu olursa handleToolUseChunk yarıda
+  // kesilir ve canlı araç bloğu .cc-tool-section'a hiç eklenmez. Sonuç:
+  // bölüm başlığı "ARAÇ KULLANIMLARI (0)" şeklinde boş kalır ve bloklar
+  // ancak cc-stream-end finalToolUsesHtml düştüğünde toplu görünür.
+  // Varsayılan true: kabuk komutları başlangıçta görünür.
+  var shellVisible = true;
+
+  // ---------------------------------------------------------------------------
   // ORTAK KODLAMA YARDIMCISI
   // Asıl mojibake onarımı www/js/encoding_utils.js içindedir. Bu dosyada
   // yalnızca Bilge Yolaç'a özgü geriye uyumlu sarmalayıcılar tutulur.

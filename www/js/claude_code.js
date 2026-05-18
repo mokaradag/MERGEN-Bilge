@@ -758,7 +758,16 @@
       var container = runBtn.closest('.cc-terminal-panel') || runBtn.closest('.claude-code-container');
       if (container) {
         var statusEl = container.querySelector('.cc-status-text');
-        if (statusEl) statusEl.innerHTML = '';
+        if (statusEl) {
+          // Anlık görsel geri bildirim: kullanıcı tıkladığı anda durum çubuğu
+          // "Hazırlanıyor..." göstersin. Sunucu workdir doğrulama, doküman
+          // bağlamı hazırlama gibi işlemleri synchronous yaptığı için
+          // cc-thinking-start mesajı bu işlemler bittiğinde gelir. Bu boşluk
+          // UNC ağ paylaşımında birkaç yüz ms tutabilir.
+          statusEl.innerHTML =
+            '<i class="fas fa-spinner fa-spin" style="color:#64B5F6;"></i> ' +
+            '<span style="color:#64B5F6;">Hazırlanıyor...</span>';
+        }
 
         var durationEl = container.querySelector('.cc-duration-text');
         if (durationEl) durationEl.textContent = '';
@@ -795,5 +804,65 @@
       }
     }
   });
+
+  // -------------------------------------------------------------------------
+  // ANLIK GÖRSEL GERİ BİLDİRİM - UI GECİKME GİZLEME
+  //
+  // Shiny observers senkron çalışır. UNC ağ paylaşımındaki dizin listeleme,
+  // çalışma dizini hazırlama veya dosya kopyalama gibi işlemler 200ms ile
+  // birkaç saniye sürebilir. Bu sürede kullanıcı düğmeye bastığında hiçbir
+  // şey olmadığını sanır. Capture-phase tıklama dinleyicileri, Shiny event
+  // işleme başlamadan ÖNCE çalışarak anlık görsel geri bildirim verir.
+  // Geri bildirim Shiny output güncellemesi DOM'u yeniden çizdiğinde veya
+  // bir zamanlayıcı süresi dolduğunda otomatik olarak kaldırılır.
+  // -------------------------------------------------------------------------
+
+  document.addEventListener('click', function(e) {
+    // 1) Dizin İçeriği yenileme düğmesi: ikon hemen spin animasyonu kazansın
+    //    ve içerik alanı kısa süre Yenileniyor... yazsın. Asenkron listeleme
+    //    bittiğinde renderUI yeni içeriği yerleştirerek yer tutucuyu siler.
+    var refreshBtn = e.target.closest('.cc-refresh-btn');
+    if (refreshBtn && !refreshBtn.disabled) {
+      var icon = refreshBtn.querySelector('i.fa-sync, i.fa-sync-alt, i');
+      if (icon) {
+        icon.classList.add('fa-spin');
+        setTimeout(function() {
+          if (icon) icon.classList.remove('fa-spin');
+        }, 4000);
+      }
+
+      // En yakın panel içindeki dizin içeriği alanını bul (multi-instance güvenli)
+      var panel = refreshBtn.closest('.cc-folder-panel, .cc-folder-section, .cc-sidebar-panel, .cc-side-panel') ||
+                  refreshBtn.closest('.claude-code-container') ||
+                  document;
+      var dirContents = panel.querySelector('[id$="dir_contents_ui"]');
+      if (dirContents) {
+        dirContents.innerHTML =
+          '<p class="cc-dir-empty cc-dir-loading">' +
+          '<i class="fas fa-spinner fa-spin"></i> Yenileniyor...' +
+          '</p>';
+      }
+    }
+
+    // 2) Üretilen dosya indirme kartı: anlık olarak "Hazırlanıyor..." göster.
+    //    Tarayıcı download başlattığında varsayılan davranış sürdürülür.
+    var downloadCard = e.target.closest('.cc-generated-file-card');
+    if (downloadCard) {
+      var action = downloadCard.querySelector('.cc-generated-file-action');
+      if (action && action.getAttribute('data-original-text') === null) {
+        action.setAttribute('data-original-text', action.textContent || 'İndir');
+        action.textContent = 'Hazırlanıyor...';
+        action.classList.add('cc-generated-file-action-loading');
+        setTimeout(function() {
+          var original = action.getAttribute('data-original-text');
+          if (original !== null) {
+            action.textContent = original;
+            action.removeAttribute('data-original-text');
+          }
+          action.classList.remove('cc-generated-file-action-loading');
+        }, 1500);
+      }
+    }
+  }, true);
 
 })();
