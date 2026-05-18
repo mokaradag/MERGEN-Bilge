@@ -275,20 +275,35 @@ parse_streaming_chunk <- function(satir) {
       # genelde nesne$message$content altında gelir; eski kod yalnızca
       # nesne$content yolundan okuduğu için tool_use blokları canlı akışta
       # araç bloğu olarak gözükmüyordu.
+      #
+      # --include-partial-messages açıkken aynı metin önce content_block_delta
+      # text_delta olarak granular akıştan geldi; sonra asistan toplu bloku
+      # tekrar metin içeriyor. Canlı akışta metin parçalarını tekrar yayarsak
+      # son mesaj iki kere görünür. Bu yüzden asistan blokunda yalnızca
+      # tool_use kayıtlarını yayınla (text bloklarını yoksay).
       bloklar <- list()
       icerik_bloklari <- nesne$message$content
       if (is.null(icerik_bloklari)) {
         icerik_bloklari <- nesne$content
       }
 
+      # Bazı on-prem proxy varyantları içerik bloğunu tek nesne olarak
+      # gönderebiliyor; standart Anthropic formatı her zaman dizidir.
+      if (!is.null(icerik_bloklari) &&
+          is.list(icerik_bloklari) &&
+          !is.null(icerik_bloklari$type)) {
+        icerik_bloklari <- list(icerik_bloklari)
+      }
+
       if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
         for (blok in icerik_bloklari) {
+          if (!is.list(blok)) next
           blok_tur <- blok$type %||% ""
-          if (blok_tur == "text") {
-            bloklar <- c(bloklar, list(list(tip = "text", icerik = blok$text %||% "")))
-          } else if (blok_tur == "tool_use") {
+          if (blok_tur == "tool_use") {
             bloklar <- c(bloklar, list(parse_tool_use_nesne(blok)))
           }
+          # text bloklarını yoksay; canlı akış zaten content_block_delta
+          # üzerinden text_delta parçalarını gönderdi.
         }
       }
       return(list(tip = "assistant", bloklar = bloklar))
@@ -302,8 +317,16 @@ parse_streaming_chunk <- function(satir) {
         icerik_bloklari <- nesne$content
       }
 
+      # Tek nesne formunu da destekle (bazı proxy varyantları için)
+      if (!is.null(icerik_bloklari) &&
+          is.list(icerik_bloklari) &&
+          !is.null(icerik_bloklari$type)) {
+        icerik_bloklari <- list(icerik_bloklari)
+      }
+
       if (!is.null(icerik_bloklari) && is.list(icerik_bloklari)) {
         for (blok in icerik_bloklari) {
+          if (!is.list(blok)) next
           if ((blok$type %||% "") != "tool_result") next
 
           tr_icerik <- blok$content %||% ""
@@ -490,4 +513,103 @@ detect_tool_type <- function(arac_adi) {
   } else {
     return("other")
   }
+}
+# ------------------------------------------------------------------------------
+# SENTETİK ARAÇ KULLANIMI ÇIKARSAMA
+# Model proxy katmanında Anthropic tool_use bloklarını yaymadığı halde
+# Bilge Yolaç snapshot diff'i yeni dosya algıladığında, ARAÇ KULLANIMLARI
+# sayacının gerçekleşen dosya işlemini yansıtabilmesi için sentetik bir
+# Write araç bloğu yayınlanır. Bu blok canlı akış UI'sına eklenir ve
+# tool_uses listesine kaydedilir.
+# ------------------------------------------------------------------------------
+
+#' İndirme listesinden sentetik Write araç kullanımları üret
+#'
+#' @description Eğer parser tool_use bloku yakalamadıysa ama dosya
+#'   oluşturma snapshot diff'i ile algılandıysa, kullanıcı geri bildirim
+#'   için sentetik Write tool_use entries oluşturur ve canlı akışa
+#'   yayar. Modelin metin tabanlı "kaydettim" yanıtı yerine gerçekleşen
+#'   dosya işlemini görsel olarak yansıtır.
+#'
+#' @param session Shiny session
+#' @param ns Namespace function
+#' @param env Akış ortamı (stream_env)
+#' @param ayristirma parse_claude_code_json_output sonucu
+#' @param olusan_dosyalar İndirme/üretilen dosya listesi
+#' @return Eklenen sentetik tool_use entry listesi (boş olabilir)
+cc_synthesize_tool_uses_from_downloads <- function(session,
+                                                    ns,
+                                                    env,
+                                                    ayristirma,
+                                                    olusan_dosyalar) {
+  if (length(ayristirma$tool_uses %||% list()) > 0L) {
+    return(list())
+  }
+
+  if (!length(olusan_dosyalar %||% list())) {
+    return(list())
+  }
+
+  sentetik_araclar <- list()
+
+  for (i in seq_along(olusan_dosyalar)) {
+    dosya <- olusan_dosyalar[[i]]
+    yol <- as.character(dosya$original_path %||% "")[1]
+    if (is.na(yol) || !nzchar(yol)) next
+
+    dosya_adi <- basename(yol)
+
+    sentetik_id <- paste0(
+      "synth_write_",
+      gsub("[^A-Za-z0-9_-]+", "_", dosya_adi, perl = TRUE),
+      "_",
+      i
+    )
+
+    sentetik_arac <- list(
+      id = sentetik_id,
+      name = "Write",
+      input = list(file_path = yol),
+      result = "Algılandı: çalışma dizini snapshot diff'i ile yeni dosya tespit edildi."
+    )
+
+    sentetik_parca <- list(
+      tip = "tool_use",
+      arac_id = sentetik_id,
+      arac_adi = "Write",
+      arac_turu = "file_write",
+      girdi = sentetik_arac$input,
+      komut = "",
+      dosya_yolu = yol,
+      dosya_icerigi = ""
+    )
+
+    fmt <- tryCatch(
+      format_streaming_chunk_html(sentetik_parca),
+      error = function(e) NULL
+    )
+
+    if (!is.null(fmt) && nzchar(fmt$html %||% "")) {
+      tryCatch(
+        session$sendCustomMessage(
+          type = "cc-stream-chunk",
+          message = list(
+            target = ns("output_area"),
+            welcomeId = ns("welcome_screen"),
+            chunkType = fmt$tip,
+            html = fmt$html,
+            toolId = fmt$arac_id %||% sentetik_id,
+            accentColor = env$karakter_renk,
+            characterName = env$karakter_adi,
+            timestamp = env$zaman_damgasi
+          )
+        ),
+        error = function(e) NULL
+      )
+    }
+
+    sentetik_araclar <- c(sentetik_araclar, list(sentetik_arac))
+  }
+
+  sentetik_araclar
 }

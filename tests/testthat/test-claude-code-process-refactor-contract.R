@@ -368,6 +368,68 @@ test_that("parse_claude_code_json_output asistan mesajındaki tool_use blokları
   expect_equal(parsed$session_id, "sess_abc")
 })
 
+test_that("parse_claude_code_json_output asistan metin tekrar yazımını engeller", {
+  test_env <- .source_claude_code_process_for_test()
+
+  # --include-partial-messages açıkken metin önce stream_event content_block_delta
+  # text_delta olarak parça parça gelir; sonra asistan toplu bloku tekrar tüm
+  # metni içerir. Eski fix metin parçalarını her iki yoldan da eklediği için
+  # son sonuçta aynı metin iki kere yazılıyordu. metin_zaten_toplandi=TRUE
+  # asistan blokunun metni eklemesini engellemelidir.
+  jsonl <- paste(
+    jsonlite::toJSON(
+      list(
+        type = "stream_event",
+        event = list(
+          type = "content_block_delta",
+          index = 0,
+          delta = list(type = "text_delta", text = "Merhaba ")
+        ),
+        session_id = "sess_dup"
+      ),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
+      list(
+        type = "stream_event",
+        event = list(
+          type = "content_block_delta",
+          index = 0,
+          delta = list(type = "text_delta", text = "dünya")
+        ),
+        session_id = "sess_dup"
+      ),
+      auto_unbox = TRUE
+    ),
+    jsonlite::toJSON(
+      list(
+        type = "assistant",
+        message = list(
+          role = "assistant",
+          content = list(
+            list(type = "text", text = "Merhaba dünya")
+          )
+        ),
+        session_id = "sess_dup"
+      ),
+      auto_unbox = TRUE
+    ),
+    sep = "\n"
+  )
+
+  parsed <- test_env$parse_claude_code_json_output(jsonl)
+
+  expect_equal(
+    parsed$text_output,
+    "Merhaba dünya",
+    info = paste(
+      "stream_event text_delta'ları zaten metin biriktirdiyse asistan toplu",
+      "metin bloku tekrar eklenmemelidir; aksi halde son metin iki kere",
+      "görünür."
+    )
+  )
+})
+
 test_that("parse_claude_code_json_output stream_event ve assistant yollarını birlikte dedupe eder", {
   test_env <- .source_claude_code_process_for_test()
 
