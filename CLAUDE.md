@@ -221,10 +221,47 @@ Current contract:
 - Do not move the stream polling block back into `R/module_claude_code.R`; the maintainability ratchet expects the module to stay below the near-limit runtime budget.
 - Any new helper file in this area must be added to `R/config_source_manifest.R` in dependency order.
 
+### Tool-use visibility and stream-json compatibility
+
+Current contract:
+
+- Live `cc-stream-chunk` tool-use events are the preferred display path, but stream completion must also send `finalToolUsesHtml` through `cc-stream-end`. The client may use this final HTML to replace or complete a stale live tool-use section.
+- If there are no final tool uses, the client should remove misleading empty or zero-count tool sections instead of leaving `ARAÇ KULLANIMLARI (0)` visible.
+- When generated/downloadable files are detected but the on-prem proxy does not emit complete Anthropic `tool_use` blocks, the server may synthesize `Write` tool-use entries from generated-file paths so the UI reflects real file creation.
+- Synthetic tool uses must be additive and path-deduplicated. If an existing real tool_use already covers a generated file path through `file_path`, `path`, `new_file`, or `file`, do not create a duplicate synthetic `Write` entry for the same file.
+- Keep `[TOOL_USE_DEBUG]` logging around raw stream-json line counts, parsed tool-use counts, event distributions, final HTML length, and synthetic additions. These logs are the field diagnostic path for on-prem proxy format differences.
+- `www/js/claude_code_streaming.js` must keep `shellVisible` explicitly declared in the streaming IIFE before it is read or toggled. In strict mode, an undeclared variable can break live tool block insertion.
+- Immediate UI feedback for Bilge Yolaç refresh/run/download actions is protected UX. Do not remove the refresh spinner/loading placeholder, run “preparing” state, or generated-file download “preparing” state unless an equivalent replacement is provided.
+
+### Stream-json parser compatibility
+
+Current contract:
+
+- `parse_claude_code_json_output()` and `parse_streaming_chunk()` must read assistant content from `message.content` first and fall back to `content`.
+- Assistant/user `content` may arrive either as a list/array or as a single object. Normalize the single-object form before iterating.
+- Assistant `tool_use` blocks and user `tool_result` blocks must be captured even when granular `content_block_start` events are missing.
+- If `stream_event` / `content_block_delta` has already accumulated assistant text, aggregate assistant text blocks must not be appended again. This prevents duplicate AI answer text while still preserving tool_use parsing.
+- Tool result text should be attached back to the related tool_use result when possible.
+
+### Windows VM, UNC, and runtime workdir compatibility
+
+Current contract:
+
+- UNC and network-share paths must be preserved in UNC-like form; do not let `normalizePath()` silently convert them into mapped drive-letter paths.
+- Backslash normalization must handle both the leading UNC marker and single backslashes between path segments.
+- Runtime workdirs may be reused for follow-up questions in the same conversation when they refer to the same source. This preserves Claude CLI session/resume metadata and avoids “No conversation found with session ID” regressions.
+- UNC directory existence and listing on the Windows VM may require relaxed checks or `fs` fallback behavior when base R returns false negatives.
+- Prompt path-intent validation must still reject real unsafe absolute/outside-root paths, but should not block accidental non-existent, extensionless typo tokens as if they were real file paths.
+
 Protected by:
 
 - `tests/testthat/test-claude-code-document-download-link-encoding.R`
 - `tests/testthat/test-claude-code-run-lifecycle-contract.R`
+- `tests/testthat/test-claude-code-synthetic-tools-contract.R`
+- `tests/testthat/test-claude-code-process-refactor-contract.R`
+- `tests/testthat/test-claude-code-runtime-workdir-contract.R`
+- `tests/testthat/test-claude-code-security-policy-contract.R`
+- `tests/testthat/test-claude-code-policy-split-contract.R`
 - `tests/testthat/test-maintainability-ratchet.R`
 - `tests/testthat/test-global-source-manifest-contract.R`
 
@@ -232,6 +269,11 @@ Focused validation:
 
 - `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-synthetic-tools-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-security-policy-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-policy-split-contract.R")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 - `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
 
@@ -553,6 +595,7 @@ Protected by:
 - `tests/testthat/test-claude-code-run-lifecycle-contract.R`
 - `tests/testthat/test-claude-code-process-refactor-contract.R`
 - `tests/testthat/test-claude-code-runtime-workdir-contract.R`
+- `tests/testthat/test-claude-code-policy-split-contract.R`
 - `tests/testthat/test-claude-code-workdir-scan-contract.R`
 - `tests/testthat/test-maintainability-ratchet.R`
 
@@ -562,6 +605,7 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-policy-split-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-workdir-scan-contract.R")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 
