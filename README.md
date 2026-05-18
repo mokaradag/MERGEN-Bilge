@@ -54,6 +54,12 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Bilge Yolaç doküman özeti akışı, kullanıcı klasöründe oluşturulan `dosya_aciklamalari.txt` dosyasını kopyalama/staging adımına bağımlı kalmadan doğrudan tıklanabilir indirme kartına dönüştürür. Bu davranış, dosya fiziksel olarak oluştuğu halde bağlantı kartının hazırlanamaması sorununu önler.
 - Bilge Yolaç tarafından indirilebilir `.txt` özet dosyaları UTF-8 BOM ile yazılır; böylece Windows VM, Explorer, Notepad ve kurumsal istemci ortamlarında Türkçe karakterlerin mojibake biçimine dönüşmesi engellenir.
 
+Bilge Yolaç canlı araç kullanımı ve dosya üretimi görünürlüğü de güçlendirilmiştir. Kurumsal/on-prem varsayılan profilde Read, Write, Edit, MultiEdit, Glob, Grep, LS ve Bash araçları izinlidir; daha sıkı ortamlar için CLAUDE_CODE_ALLOWED_TOOLS `.Renviron` üzerinden daraltılabilir. Araç blokları canlı akışta gösterilir, akış sonunda finalToolUsesHtml ile eksik veya boş sayaçlar tamamlanır ve on-prem proxy tool_use bloklarını yayınlamadığında çalışma dizini farkından sentetik Write kayıtları üretilerek ARAÇ KULLANIMLARI bölümü gerçek dosya üretimini yansıtır.
+
+Bilge Yolaç parser katmanı Claude Code stream-json varyasyonlarına karşı daha dayanıklıdır: assistant.message.content, tek nesneli content blokları ve tool_result çıktıları yakalanır; stream_event ile parça parça gelen metnin toplu assistant bloğu üzerinden ikinci kez yazılması engellenir. Windows VM/SSO ortamında UNC ve ağ paylaşımı yolları mapped-drive biçimine zorlanmadan korunur; aynı söyleşide runtime çalışma alanı yeniden kullanılır ve Türkçe/BOM metin önizleme ile dizin listeleme daha güvenli çalışır.
+
+Bilge Yolaç kullanıcı deneyiminde yükleme klasörü içerik soruları gerektiğinde canlı akışta yanıtlanır, başarılı çalışma veya doküman özeti sonrası Dosya Yönetimi yumuşak biçimde yenilenir, Dizin İçeriği yenileme/Çalıştır/İndir eylemleri kullanıcıya anında “hazırlanıyor” veya “yenileniyor” geri bildirimi verir. TOOL_USE_DEBUG logları, on-prem proxy’nin stream-json olay dağılımını ve araç kullanımı yakalama durumunu sahada incelemek için kullanılabilir.
+
 Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönderim gözlemcileri `R/module_claude_code_stream_poll.R` içinde tutulur. Ana modül `R/module_claude_code.R`, bu yardımcıyı bağlayarak davranışı korur; böylece kullanıcı deneyimi değişmeden 800+ satır ve fonksiyon yoğunluğu eşikleri aşılmaz.
 
 ### Kurumsal ve yönetimsel bileşenler
@@ -104,6 +110,9 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
   - `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
   - `testthat::test_file("tests/testthat/test-claude-code-process-refactor-contract.R")`
   - `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
+  - `testthat::test_file("tests/testthat/test-claude-code-security-policy-contract.R")`
+  - `testthat::test_file("tests/testthat/test-claude-code-synthetic-tools-contract.R")`
+  - `testthat::test_file("tests/testthat/test-claude-code-policy-split-contract.R")`
   - `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`
   - `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`
   - `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`
