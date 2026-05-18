@@ -178,6 +178,27 @@ cc_bind_claude_code_stream_polling <- function(input,
           length(olusan_dosyalar)
         ))
 
+        # Eğer model proxy katmanında Anthropic tool_use blokları yaymadıysa
+        # (ayristirma$tool_uses boş) ama snapshot diff yeni dosya algıladıysa,
+        # gerçekleşen dosya işlemini ARAÇ KULLANIMLARI sayacına yansıtmak için
+        # sentetik bir Write araç bloğu yayınla. Bu, on-prem LLM proxy
+        # tool_use bloklarını farklı sarmaladığında veya yalnızca text
+        # response döndürdüğünde dahi kullanıcının "araç kullanıldı" geri
+        # bildirimi almasını sağlar.
+        sentetik_arac_eklendi <- cc_synthesize_tool_uses_from_downloads(
+          session = session,
+          ns = ns,
+          env = env,
+          ayristirma = ayristirma,
+          olusan_dosyalar = olusan_dosyalar
+        )
+        if (length(sentetik_arac_eklendi)) {
+          ayristirma$tool_uses <- c(
+            ayristirma$tool_uses,
+            sentetik_arac_eklendi
+          )
+        }
+
         # Bilge Yolaç başarıyla tamamlandı sayılsa bile, kullanıcı dosya
         # oluşturma/değiştirme istediğinde model gerçekten araç çağrısı
         # yapmadıysa ve çalışma dizininde yeni dosya da oluşmadıysa,

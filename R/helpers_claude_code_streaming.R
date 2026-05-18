@@ -514,3 +514,102 @@ detect_tool_type <- function(arac_adi) {
     return("other")
   }
 }
+# ------------------------------------------------------------------------------
+# SENTETİK ARAÇ KULLANIMI ÇIKARSAMA
+# Model proxy katmanında Anthropic tool_use bloklarını yaymadığı halde
+# Bilge Yolaç snapshot diff'i yeni dosya algıladığında, ARAÇ KULLANIMLARI
+# sayacının gerçekleşen dosya işlemini yansıtabilmesi için sentetik bir
+# Write araç bloğu yayınlanır. Bu blok canlı akış UI'sına eklenir ve
+# tool_uses listesine kaydedilir.
+# ------------------------------------------------------------------------------
+
+#' İndirme listesinden sentetik Write araç kullanımları üret
+#'
+#' @description Eğer parser tool_use bloku yakalamadıysa ama dosya
+#'   oluşturma snapshot diff'i ile algılandıysa, kullanıcı geri bildirim
+#'   için sentetik Write tool_use entries oluşturur ve canlı akışa
+#'   yayar. Modelin metin tabanlı "kaydettim" yanıtı yerine gerçekleşen
+#'   dosya işlemini görsel olarak yansıtır.
+#'
+#' @param session Shiny session
+#' @param ns Namespace function
+#' @param env Akış ortamı (stream_env)
+#' @param ayristirma parse_claude_code_json_output sonucu
+#' @param olusan_dosyalar İndirme/üretilen dosya listesi
+#' @return Eklenen sentetik tool_use entry listesi (boş olabilir)
+cc_synthesize_tool_uses_from_downloads <- function(session,
+                                                    ns,
+                                                    env,
+                                                    ayristirma,
+                                                    olusan_dosyalar) {
+  if (length(ayristirma$tool_uses %||% list()) > 0L) {
+    return(list())
+  }
+
+  if (!length(olusan_dosyalar %||% list())) {
+    return(list())
+  }
+
+  sentetik_araclar <- list()
+
+  for (i in seq_along(olusan_dosyalar)) {
+    dosya <- olusan_dosyalar[[i]]
+    yol <- as.character(dosya$original_path %||% "")[1]
+    if (is.na(yol) || !nzchar(yol)) next
+
+    dosya_adi <- basename(yol)
+
+    sentetik_id <- paste0(
+      "synth_write_",
+      gsub("[^A-Za-z0-9_-]+", "_", dosya_adi, perl = TRUE),
+      "_",
+      i
+    )
+
+    sentetik_arac <- list(
+      id = sentetik_id,
+      name = "Write",
+      input = list(file_path = yol),
+      result = "Algılandı: çalışma dizini snapshot diff'i ile yeni dosya tespit edildi."
+    )
+
+    sentetik_parca <- list(
+      tip = "tool_use",
+      arac_id = sentetik_id,
+      arac_adi = "Write",
+      arac_turu = "file_write",
+      girdi = sentetik_arac$input,
+      komut = "",
+      dosya_yolu = yol,
+      dosya_icerigi = ""
+    )
+
+    fmt <- tryCatch(
+      format_streaming_chunk_html(sentetik_parca),
+      error = function(e) NULL
+    )
+
+    if (!is.null(fmt) && nzchar(fmt$html %||% "")) {
+      tryCatch(
+        session$sendCustomMessage(
+          type = "cc-stream-chunk",
+          message = list(
+            target = ns("output_area"),
+            welcomeId = ns("welcome_screen"),
+            chunkType = fmt$tip,
+            html = fmt$html,
+            toolId = fmt$arac_id %||% sentetik_id,
+            accentColor = env$karakter_renk,
+            characterName = env$karakter_adi,
+            timestamp = env$zaman_damgasi
+          )
+        ),
+        error = function(e) NULL
+      )
+    }
+
+    sentetik_araclar <- c(sentetik_araclar, list(sentetik_arac))
+  }
+
+  sentetik_araclar
+}
