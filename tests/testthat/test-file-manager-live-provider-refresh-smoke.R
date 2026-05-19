@@ -34,6 +34,27 @@ if (!exists("resolve_repo_root_for_tests", envir = globalenv(), inherits = FALSE
 
 repo_root_fm_live <- resolve_repo_root_for_tests()
 
+.fm_live_source_once <- function(path, required_function = NULL) {
+  if (!is.null(required_function) &&
+      exists(required_function, envir = globalenv(), inherits = TRUE)) {
+    return(invisible(TRUE))
+  }
+
+  source(
+    file.path(repo_root_fm_live, path),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
+  invisible(TRUE)
+}
+
+.fm_live_source_once("R/utils_common.R", "%||%")
+.fm_live_source_once("R/helpers_file_manager_table.R", "fm_empty_files_df")
+.fm_live_source_once("R/helpers_file_manager_refresh_guard.R", "fm_create_refresh_request_guard")
+.fm_live_source_once("R/helpers_file_manager_storage.R", "fm_create_server_storage_helpers")
+.fm_live_source_once("R/helpers_file_manager_state_runtime.R", "fm_create_refresh_from_user_folder")
+
 .fm_live_fake_session <- function(session_user_id = 0L) {
   session <- new.env(parent = emptyenv())
   session$userData <- new.env(parent = emptyenv())
@@ -50,8 +71,9 @@ repo_root_fm_live <- resolve_repo_root_for_tests()
   values
 }
 
-.fm_live_process_restored_file <- function(values) {
+.fm_live_process_restored_file <- function(values, session = NULL) {
   force(values)
+  force(session)
 
   function(finfo) {
     file_id <- paste0("restored_", length(values$file_contents) + 1L)
@@ -68,14 +90,22 @@ repo_root_fm_live <- resolve_repo_root_for_tests()
     )
 
     values$files <- rbind(values$files, row)
-    values$file_contents[[file_id]] <- list(
+
+    restored <- list(
       id = file_id,
       name = enc2utf8(finfo$name),
       datapath = finfo$datapath,
       persisted_path = finfo$datapath
     )
 
-    values$file_contents[[file_id]]
+    values$file_contents[[file_id]] <- restored
+
+    if (!is.null(session) && !is.null(session$userData)) {
+      session$userData$current_session_files <- session$userData$current_session_files %||% list()
+      session$userData$current_session_files[[restored$name]] <- restored
+    }
+
+    restored
   }
 }
 
@@ -151,19 +181,25 @@ test_that("File Manager refresh skips SSO placeholder and restores Turkish displ
 	  envir = globalenv()
 	)
 
-  refresh_from_user_folder <- fm_create_refresh_from_user_folder(
-    session = session,
-    module_values = values,
-    module_user_id_chr = function() current_uid,
-    is_auth_ready = function() auth_ready,
-    fm_debug = function(...) invisible(NULL),
-    set_parent_files_context = function(x) {
-      session$userData$parent_files_context <- x
-      invisible(NULL)
-    },
-    process_uploaded_file_callback = .fm_live_process_restored_file(values),
-    refresh_guard = refresh_guard
-  )
+	refresh_from_user_folder <- fm_create_refresh_from_user_folder(
+	  session = session,
+	  ns = function(id) id,
+	  module_values_provider = function() values,
+	  module_user_id_chr = function() current_uid,
+	  is_auth_ready = function() auth_ready,
+	  ensure_session_registry = function() {
+		session$userData$current_session_files <- session$userData$current_session_files %||% list()
+		invisible(TRUE)
+	  },
+	  attach_in_parent = function(file_obj) {
+		session$userData$parent_files_context <- session$userData$parent_files_context %||% list()
+		session$userData$parent_files_context[[file_obj$name]] <- file_obj
+		invisible(TRUE)
+	  },
+	  process_uploaded_file_callback = .fm_live_process_restored_file(values, session),
+	  refresh_guard = refresh_guard,
+	  fm_debug = function(...) invisible(NULL)
+	)
 
   refresh_from_user_folder("initial-before-auth")
 
@@ -179,5 +215,9 @@ test_that("File Manager refresh skips SSO placeholder and restores Turkish displ
   expect_equal(nrow(values$files), 1L)
   expect_identical(enc2utf8(values$files$Dosya_Adi[[1]]), original_name)
   expect_false(grepl("^\\d{8}[-_]\\d{6}", values$files$Dosya_Adi[[1]]))
-  expect_true(original_name %in% names(session$userData$parent_files_context))
+  expect_true(original_name %in% names(session$userData$current_session_files))
+  expect_identical(
+    enc2utf8(session$userData$current_session_files[[original_name]]$name),
+    original_name
+  )
 })
