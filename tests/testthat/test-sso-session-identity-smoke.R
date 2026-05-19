@@ -132,6 +132,10 @@ testthat::test_that("SSO placeholder user_id=0 gerçek kimliğe canlı geçer", 
     identity <- session$userData$.identity
     sso_state <- session$userData$.sso_state
 
+    # observeEvent(..., ignoreInit = TRUE) ilk reaktif turu yutacağı için
+    # SSO TRUE sinyalinden önce observer'ın başlangıç turunu tamamlat.
+    session$flushReact()
+
     testthat::expect_false(identity$is_auth_ready())
     testthat::expect_identical(identity$get_current_user_id_snapshot(), 0L)
     testthat::expect_identical(session$userData$user_id, 0L)

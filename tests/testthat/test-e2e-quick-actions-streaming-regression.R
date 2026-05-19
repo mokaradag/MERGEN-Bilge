@@ -524,7 +524,9 @@ test_that("production true streaming abort path remains wired to cleanup and res
     true_streaming_r,
     c(
       "finalize_error_or_abort <- function(result)",
-      "isTRUE(result$aborted)",
+      "abort_plan <- mergen_stream_abort_cleanup_plan(",
+      "identical(abort_plan$action, \"finalize_partial\")",
+      "isTRUE(abort_plan$track_error)",
       "remove_placeholder_message()",
       "cleanup_streaming_state()",
       "ctx$reset_chat_state_fn()"
