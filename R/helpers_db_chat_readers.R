@@ -86,7 +86,9 @@ load_chats_preview_from_db <- function(user_id, limit = 30L) {
     params = normalize_db_params(list(safe_user_id))
   )
 
-  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+  if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+    preview_data <- normalize_db_read_visible_frame(preview_data, repair_mojibake = TRUE)
+  } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
     preview_data <- normalize_text_frame_utf8(preview_data, repair_mojibake = TRUE)
   }
 
@@ -152,7 +154,9 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
       params = normalize_db_params(list(safe_user_id))
     )
 
-    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+      summary_data <- normalize_db_read_visible_frame(summary_data, repair_mojibake = TRUE)
+    } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
       summary_data <- normalize_text_frame_utf8(summary_data, repair_mojibake = TRUE)
     }
 
@@ -212,7 +216,9 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     params = normalize_db_params(list(safe_user_id))
   )
 
-  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+  if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+    all_data <- normalize_db_read_visible_frame(all_data, repair_mojibake = TRUE)
+  } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
     all_data <- normalize_text_frame_utf8(all_data, repair_mojibake = TRUE)
   }
 
@@ -338,7 +344,9 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
     params = query_params
   )
 
-  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+  if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+    chat_df <- normalize_db_read_visible_frame(chat_df, repair_mojibake = TRUE)
+  } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
     chat_df <- normalize_text_frame_utf8(chat_df, repair_mojibake = TRUE)
   }
 
@@ -440,7 +448,9 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
     params = normalize_db_params(param_values)
   )
 
-  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+  if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+    result <- normalize_db_read_visible_frame(result, repair_mojibake = TRUE)
+  } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
     result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
   }
 
@@ -610,7 +620,9 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
     params = normalize_db_params(param_values)
   )
 
-  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+  if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+    result <- normalize_db_read_visible_frame(result, repair_mojibake = TRUE)
+  } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
     result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
   }
 

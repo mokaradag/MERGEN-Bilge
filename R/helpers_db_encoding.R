@@ -91,16 +91,33 @@ normalize_db_value <- function(x, repair_mojibake = FALSE) {
 
     # WINDOWS-1254 Türkçe karakterleri temsil eder; ancak bazı Unicode sembolleri
     # temsil edemez. Böyle bir karakter tüm string için iconv sonucunu NA yaparsa,
-    # ham UTF-8'e düşmek yerine temsil edilemeyen karakterleri DB sınırında çıkarırız.
-    # Bu, MB_Messages yazımında Türkçe metnin mojibake olmasını engeller.
+    # ham UTF-8'e düşmek yerine temsil edilemeyen karakterleri ASCII kaçış
+    # belirteçlerine dönüştürürüz. UI okuma sınırında bu belirteçler geri açılır.
     if (any(failed)) {
-      stripped_values <- tryCatch(
-        iconv(out_utf8[failed], from = "UTF-8", to = client_encoding, sub = ""),
-        error = function(e) rep("", sum(failed))
+      escaped_values <- if (exists("db_unicode_escape_for_client_encoding", mode = "function", inherits = TRUE)) {
+        db_unicode_escape_for_client_encoding(out_utf8[failed], client_encoding)
+      } else {
+        iconv(out_utf8[failed], from = "UTF-8", to = client_encoding, sub = "")
+      }
+
+      escaped_client <- tryCatch(
+        iconv(escaped_values, from = "UTF-8", to = client_encoding, sub = NA_character_),
+        error = function(e) rep(NA_character_, length(escaped_values))
       )
 
-      stripped_values[is.na(stripped_values)] <- ""
-      out_client[failed] <- stripped_values
+      still_failed <- is.na(escaped_client) & !is.na(escaped_values)
+
+      if (any(still_failed)) {
+        escaped_client[still_failed] <- iconv(
+          escaped_values[still_failed],
+          from = "UTF-8",
+          to = client_encoding,
+          sub = ""
+        )
+      }
+
+      escaped_client[is.na(escaped_client)] <- ""
+      out_client[failed] <- escaped_client
     }
 
     if (any(!is.na(out_client))) {

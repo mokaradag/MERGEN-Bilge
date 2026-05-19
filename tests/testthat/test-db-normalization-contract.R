@@ -27,6 +27,12 @@
   repo_root <- resolve_repo_root_for_tests()
 
   source(
+    file.path(repo_root, "R", "helpers_db_unicode_escape.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  source(
     file.path(repo_root, "R", "helpers_db_encoding.R"),
     encoding = "UTF-8",
     local = test_env
@@ -198,7 +204,7 @@ test_that("WINDOWS-1254 DB client encoding Türkçe metni UTF-8 olarak bırakmaz
   )
 })
 
-test_that("WINDOWS-1254 DB client encoding temsil edilemeyen Unicode sembollerini DB sınırında çıkarır", {
+test_that("WINDOWS-1254 DB client encoding temsil edilemeyen Unicode sembollerini kaçış belirtecine dönüştürür", {
   test_env <- new.env(parent = globalenv())
 
   test_env$normalize_text_utf8 <- normalize_text_utf8
@@ -216,19 +222,18 @@ test_that("WINDOWS-1254 DB client encoding temsil edilemeyen Unicode sembollerin
     intToUtf8(0x1F680),
     " Türkiye"
   )
-  expected_text <- "Durum: çalışıyor  Türkiye"
+  expected_db_text <- "Durum: çalışıyor [[MERGEN-U+1F680]] Türkiye"
 
   sonuc <- test_env$normalize_db_value(sample_text, repair_mojibake = TRUE)
 
-  expected_raw <- charToRaw(
-    iconv(expected_text, from = "UTF-8", to = "WINDOWS-1254")
-  )
-
-  expect_identical(charToRaw(sonuc), expected_raw)
-
   expect_equal(
     iconv(sonuc, from = "WINDOWS-1254", to = "UTF-8"),
-    expected_text
+    expected_db_text
+  )
+
+  expect_equal(
+    test_env$db_unicode_restore_escapes(expected_db_text),
+    sample_text
   )
 })
 
@@ -241,7 +246,7 @@ test_that("normalize_db_params kullanıcıya görünen DB metnini repair bayrağ
   expected_db <- expected_visible
 
   if (!isTRUE(db_client_encoding_is_utf8(resolve_db_client_encoding()))) {
-    expected_db[2] <- "Yönetici görüşü "
+    expected_db[2] <- "Yönetici görüşü [[MERGEN-U+1F680]]"
   }
 
   mojibake <- vapply(
@@ -267,4 +272,35 @@ test_that("normalize_db_params kullanıcıya görünen DB metnini repair bayrağ
       expected_db[2]
     )
   }
+})
+
+test_that("DB Unicode kaçış belirteçleri UI okuma sınırında geri açılır", {
+  test_env <- new.env(parent = globalenv())
+
+  test_env$normalize_text_utf8 <- normalize_text_utf8
+  test_env$l10n_info <- function() stats::setNames(list(TRUE), "UTF-8")
+
+  withr::local_envvar(c(
+    DB_CLIENT_ENCODING = "WINDOWS-1254",
+    DB_NAME_ENCODING = "WINDOWS-1254"
+  ))
+
+  .source_db_encoding_for_local_test(test_env)
+
+  original <- paste0(
+    "Yanıt hazır ",
+    intToUtf8(0x2705),
+    " devam ",
+    intToUtf8(0x1F680)
+  )
+
+  stored <- test_env$normalize_db_value(original, repair_mojibake = TRUE)
+  stored_utf8 <- iconv(stored, from = "WINDOWS-1254", to = "UTF-8")
+
+  expect_match(stored_utf8, "\\[\\[MERGEN-U\\+2705\\]\\]")
+  expect_match(stored_utf8, "\\[\\[MERGEN-U\\+1F680\\]\\]")
+
+  restored <- test_env$normalize_db_read_visible_value(stored_utf8)
+
+  expect_equal(restored, original)
 })

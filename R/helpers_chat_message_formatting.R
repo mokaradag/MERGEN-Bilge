@@ -182,8 +182,13 @@ db_message_format_row <- function(row) {
   content_text <- row$MessageContent %||% ""
   msg_type <- row$MessageType %||% "user"
 
-  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+  if (exists("normalize_db_read_visible_value", mode = "function", inherits = TRUE)) {
+    content_text <- normalize_db_read_visible_value(content_text, repair_mojibake = TRUE)
+  } else if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
     content_text <- normalize_text_utf8(content_text, repair_mojibake = TRUE)
+  }
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
     msg_type <- normalize_text_utf8(msg_type, repair_mojibake = FALSE)
   }
 
@@ -253,7 +258,9 @@ db_message_format_row <- function(row) {
         length(rc_val) == 1 &&
         !is.na(rc_val) &&
         nzchar(rc_val)) {
-      reasoning_text_saved <- if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      reasoning_text_saved <- if (exists("normalize_db_read_visible_value", mode = "function", inherits = TRUE)) {
+        normalize_db_read_visible_value(as.character(rc_val), repair_mojibake = TRUE)
+      } else if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
         normalize_text_utf8(as.character(rc_val), repair_mojibake = TRUE)
       } else {
         as.character(rc_val)

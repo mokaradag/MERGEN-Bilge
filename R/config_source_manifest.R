@@ -38,6 +38,7 @@ source_manifest_after_future_paths <- c(
   "R/config_claude_code_plugins.R",
   "R/config_ui_assets.R",
 
+  "R/helpers_db_unicode_escape.R",
   "R/helpers_db_encoding.R",
   "R/helpers_db_connection.R",
   "R/helpers_db_user_encoding.R",

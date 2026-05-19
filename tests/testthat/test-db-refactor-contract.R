@@ -1,8 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-db-refactor-contract.R
-# Açıklama: helpers_database.R dosyasından DB bağlantı ve doğrulama katmanlarının
-#           ayrı dosyalara taşındığını, source sırasının korunduğunu ve eski
-#           monolitik yapının geri dönmediğini doğrular.
+# Açıklama: helpers_database.R dosyasından DB kodlama, bağlantı, doğrulama,
+#           sohbet okuma ve sohbet yazma katmanlarının ayrı dosyalara taşındığını,
+#           source sırasının korunduğunu ve eski monolitik yapının geri dönmediğini
+#           doğrular.
 # ==============================================================================
 
 .read_repo_text_db_refactor_contract <- function(path) {
@@ -36,9 +37,10 @@
   if (is.na(pos) || pos < 0L) NA_integer_ else as.integer(pos)
 }
 
-test_that("DB kodlama, bağlantı, doğrulama, sohbet okuma ve sohbet yazma dosyaları repoda var", {
+test_that("DB Unicode kaçış, kodlama, bağlantı, doğrulama, sohbet okuma ve sohbet yazma dosyaları repoda var", {
   repo_root <- resolve_repo_root_for_tests()
 
+  expect_true(file.exists(file.path(repo_root, "R", "helpers_db_unicode_escape.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_db_encoding.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_db_connection.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_db_validation.R")))
@@ -51,6 +53,7 @@ test_that("DB kodlama, bağlantı, doğrulama, sohbet okuma ve sohbet yazma dosy
 test_that("runtime manifest DB dosyalarını doğru sırada source eder", {
   expect_source_manifest_order_for_tests(
     c(
+      "R/helpers_db_unicode_escape.R",
       "R/helpers_db_encoding.R",
       "R/helpers_db_connection.R",
       "R/helpers_db_validation.R",
@@ -69,6 +72,7 @@ test_that("test bootstrap DB dosyalarını üretim sırasına uyumlu yükler", {
   bootstrap_text <- .read_repo_text_db_refactor_contract("tests/testthat/helper_bootstrap.R")
 
   expected_order <- c(
+    '"helpers_db_unicode_escape.R"',
     '"helpers_db_encoding.R"',
     '"helpers_db_connection.R"',
     '"helpers_db_validation.R"',
@@ -96,6 +100,34 @@ test_that("test bootstrap DB dosyalarını üretim sırasına uyumlu yükler", {
   expect_true(
     all(diff(positions) > 0L),
     info = "helper_bootstrap.R DB source sırası üretim sırası ile uyumlu değil."
+  )
+})
+
+test_that("helpers_db_unicode_escape.R beklenen Unicode kaçış yardımcılarını içerir", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_unicode_escape.R")
+
+  expected <- c(
+    "db_unicode_escape_token <- function",
+    "db_unicode_codepoint_supported_by_encoding <- function",
+    "db_unicode_escape_scalar_for_encoding <- function",
+    "db_unicode_escape_for_client_encoding <- function",
+    "db_unicode_restore_escapes <- function",
+    "normalize_db_read_visible_value <- function",
+    "normalize_db_read_visible_frame <- function"
+  )
+
+  found <- vapply(
+    expected,
+    function(pattern) grepl(pattern, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )
+
+  expect_true(
+    all(found),
+    info = paste(
+      "helpers_db_unicode_escape.R içinde eksik Unicode kaçış fonksiyonları:",
+      paste(expected[!found], collapse = ", ")
+    )
   )
 })
 
@@ -162,7 +194,9 @@ test_that("helpers_db_connection.R kodlama monolitini geri almıyor", {
     "normalize_db_value <- function",
     "normalize_db_params <- function",
     "normalize_db_visible_value <- function",
-    "assert_mb_message_visible_encoding_clean <- function"
+    "assert_mb_message_visible_encoding_clean <- function",
+    "db_unicode_escape_for_client_encoding <- function",
+    "normalize_db_read_visible_value <- function"
   )
 
   matched <- forbidden[vapply(
@@ -175,7 +209,7 @@ test_that("helpers_db_connection.R kodlama monolitini geri almıyor", {
     matched,
     character(0),
     info = paste(
-      "DB kodlama yardımcıları helpers_db_connection.R içine geri taşınmamalıdır:",
+      "DB kodlama/Unicode kaçış yardımcıları helpers_db_connection.R içine geri taşınmamalıdır:",
       paste(matched, collapse = ", ")
     )
   )
@@ -295,6 +329,34 @@ test_that("helpers_db_chat_readers.R etkinlik zamanına göre sohbet sıralama s
   expect_true(
     grepl("last_message_timestamp %||% chat$timestamp", txt, fixed = TRUE, useBytes = TRUE),
     info = "Toplu hidratasyon sıralaması last_message_timestamp değerini kullanmalıdır."
+  )
+})
+
+test_that("helpers_db_chat_readers.R DB Unicode kaçışlarını okuma sınırında geri açar", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_chat_readers.R")
+
+  expect_true(
+    grepl("normalize_db_read_visible_frame", txt, fixed = TRUE, useBytes = TRUE),
+    info = "Sohbet DB okuma yolları Unicode kaçışlarını UI görünür metne geri açmalıdır."
+  )
+
+  expect_true(
+    grepl("normalize_text_frame_utf8", txt, fixed = TRUE, useBytes = TRUE),
+    info = "Sohbet DB okuma yolları eski UTF-8 normalizasyon fallback'ini korumalıdır."
+  )
+})
+
+test_that("helpers_chat_message_formatting.R DB Unicode kaçışlarını mesaj biçimlendirme sınırında geri açar", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_chat_message_formatting.R")
+
+  expect_true(
+    grepl("normalize_db_read_visible_value(content_text", txt, fixed = TRUE, useBytes = TRUE),
+    info = "Mesaj içeriği HTML'e dönüştürülmeden önce DB Unicode kaçışları geri açılmalıdır."
+  )
+
+  expect_true(
+    grepl("normalize_db_read_visible_value(as.character(rc_val)", txt, fixed = TRUE, useBytes = TRUE),
+    info = "ReasoningContent UI'ya verilmeden önce DB Unicode kaçışları geri açılmalıdır."
   )
 })
 
