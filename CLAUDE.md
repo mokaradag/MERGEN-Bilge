@@ -193,6 +193,9 @@ Current contract:
 
 - Storage names and display names are separate. Storage-prefixed filenames may exist on disk, but File Manager must show the original user-facing name.
 - Turkish original filenames must remain legible in the UI and logs after upload, browser refresh, and full app restart.
+- File Manager refresh must use the live current user provider at refresh time. In SSO mode, placeholder identities such as `0`, `unknown`, or not-yet-ready authentication state must not trigger persistent file refresh or wipe an existing valid table.
+- File Manager restart/refresh restoration must preserve user-facing display names, including Turkish filenames such as `Türkçe_çalışma_özeti_İstanbul.pdf`. Storage-prefixed physical names must not leak into the table.
+- The lightweight live-provider smoke test must stay close to the real helper seams and must not require the full Shiny app, DB, browser, or SSO server to launch.
 - File Manager display names must pass through the central display-name helpers. Do not add local storage-prefix stripping logic in table rendering, MCP resolution, or summarization code.
 - The persistent JSON index remains the first source of truth for a user bucket.
 - If the index is missing, empty, or partially stale, same-user filesystem fallback is allowed only inside that same user's upload/MCP directories.
@@ -221,6 +224,9 @@ Protected by:
 
 - tests/testthat/test-file-lifecycle-hardening-contract.R
 - tests/testthat/test-file-manager-display-name-contract.R
+- tests/testthat/test-file-manager-live-provider-refresh-smoke.R
+- tests/scripts/run_fragile_flow_manual_preflight.R
+- tests/testthat/test-fragile-flow-manual-preflight-contract.R
 - tests/testthat/test-file-resolution-security-contract.R
 - tests/testthat/test-resolve-uploaded-file.R
 - tests/testthat/test-mcp-excel-resolve.R
@@ -236,6 +242,9 @@ Focused validation after touching file lifecycle, File Manager, MCP file resolut
 
 - testthat::test_file("tests/testthat/test-file-lifecycle-hardening-contract.R")
 - testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")
+- testthat::test_file("tests/testthat/test-file-manager-live-provider-refresh-smoke.R")
+- testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")
+- source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")
 - testthat::test_file("tests/testthat/test-file-resolution-security-contract.R")
 - testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
 - testthat::test_file("tests/testthat/test-mcp-excel-resolve.R")
@@ -261,6 +270,33 @@ Manual validation after file lifecycle changes:
 - Confirm no cross-user files appear.
 - Attempt an absolute-path file reference and confirm it is rejected or ignored without arbitrary file access.
 - Inspect logs for readable Turkish filenames.
+
+### Fragile-flow manual preflight
+
+Some user flows require a real local or Windows VM/SSO browser session because they depend on authentication, browser media policy, microphone permission, TTS playback, background music, file persistence, and Turkish filename rendering. Do not add a heavy browser automation dependency just to cover these flows unless there is a separate approved decision.
+
+Use `tests/scripts/run_fragile_flow_manual_preflight.R` for a repeatable manual checklist. The script does not launch the app. It records PASS/FAIL/SKIP evidence as UTF-8 CSV under `logs/`.
+
+The checklist covers:
+
+- local `SSO_ENABLED=FALSE` streaming send and stop behavior,
+- local PDF/DOCX/TXT/CSV/XLSX upload, browser refresh, and full app restart visibility,
+- saved chat reload without autoplaying old TTS,
+- Windows VM/SSO authenticated identity and user-scoped recent chats/history/saved chats/gallery rows,
+- Turkish filename persistence for `Türkçe_çalışma_özeti_İstanbul.pdf`,
+- TTS/STT/background music single-playback and duck/unduck recovery,
+- optional `/smoke/ux-smoke.html` browser smoke confirmation.
+
+Protected by:
+
+- tests/scripts/run_fragile_flow_manual_preflight.R
+- tests/testthat/test-fragile-flow-manual-preflight-contract.R
+- www/smoke/ux-smoke.html
+
+Focused validation:
+
+- testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")
+- source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")
 
 ### Bilge Yolaç document download and stream-poll contract
 
@@ -3933,6 +3969,16 @@ This area is especially sensitive to:
 - incremental HTML rendering,
 - shell block toggling,
 - partial JSON parsing.
+
+### Streaming stop/cancel regression boundary
+
+Streaming stop/cancel behavior is a protected user-flow boundary. A stopped or aborted stream must return the send button to normal, clear sending and typing/thinking state, clear or finalize the active request safely, and must not create duplicate assistant messages.
+
+This is covered by deterministic smoke coverage in `tests/testthat/test-e2e-quick-actions-streaming-regression.R`. Do not weaken the abort cleanup tokens or the `chat_reset_state()` assertions to make tests pass. If the implementation changes, update the test to assert the new real cleanup path rather than removing the coverage.
+
+Focused validation:
+
+- testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")
 
 ### Bilge Yolaç Plugin Subsystem
 
