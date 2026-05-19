@@ -79,6 +79,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_file_manager_attach_client.R",
   "R/helpers_chat_runtime.R",
   "R/helpers_send_message_request_lifecycle.R",
+  "R/helpers_streaming_abort_lifecycle.R",
   "R/helpers_send_message_core.R",
   "R/helpers_send_message_prompting.R",
   "R/helpers_quick_action_intro_messages.R",

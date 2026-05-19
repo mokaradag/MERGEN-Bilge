@@ -136,6 +136,13 @@ $(document).ready(function() {
       const audio = new Audio(item.src);
       audio.volume = 1.0;
 
+      if (window.MergenAudioLifecycle &&
+          typeof window.MergenAudioLifecycle.markAudio === 'function') {
+        window.MergenAudioLifecycle.markAudio(audio, 'tts');
+      } else if (audio.dataset) {
+        audio.dataset.mergenAudioOwner = 'tts';
+      }
+
       window.mergenTTS.currentAudio = audio;
 
       audio.onplay = function() {

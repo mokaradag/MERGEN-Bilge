@@ -349,20 +349,26 @@ handle_true_streaming_mode <- function(ctx) {
       return(invisible(NULL))
     }
 
-    sure_degeri <- result$duration %||% as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
-    kismi_metin <- enc2utf8(normalize_llm_scalar_content(stream_env$accumulated_text))
+    abort_plan <- mergen_stream_abort_cleanup_plan(
+      accumulated_text = stream_env$accumulated_text,
+      result = result,
+      normalize_fn = normalize_llm_scalar_content
+    )
 
-    if (nzchar(kismi_metin)) {
+    sure_degeri <- abort_plan$duration %||%
+      as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
+
+    if (identical(abort_plan$action, "finalize_partial")) {
       finalize_stream_message(
-        final_text = kismi_metin,
+        final_text = abort_plan$final_text,
         followups = NULL,
-        request_success = FALSE,
+        request_success = abort_plan$request_success,
         duration_value = sure_degeri
       )
 
-      if (!isTRUE(result$aborted) && nzchar(result$error %||% "")) {
+      if (isTRUE(abort_plan$track_error)) {
         perf_tracker$track_error()
-        showToast(session, result$error, "warning")
+        showToast(session, abort_plan$error, abort_plan$toast_type)
       }
 
       return(invisible(NULL))
@@ -370,9 +376,9 @@ handle_true_streaming_mode <- function(ctx) {
 
     remove_placeholder_message()
 
-    if (!isTRUE(result$aborted) && nzchar(result$error %||% "")) {
+    if (isTRUE(abort_plan$track_error)) {
       perf_tracker$track_error()
-      showToast(session, result$error, "error")
+      showToast(session, abort_plan$error, abort_plan$toast_type)
     }
 
     cleanup_streaming_state()
