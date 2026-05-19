@@ -384,14 +384,14 @@ source_manifest_required_order <- list(
 
   c("R/library_queries.R", "R/config_sql_loader.R"),
 
-  c("R/helpers_mcp_context.R", "R/helpers_mcp_table_readers.R"),
+  c("R/helpers_mcp_context.R", "R/helpers_mcp_bootstrap.R"),
+  c("R/helpers_mcp_bootstrap.R", "R/helpers_mcp_table_readers.R"),
   c("R/helpers_mcp_table_readers.R", "R/helpers_mcp_file_resolver.R"),
   c("R/helpers_mcp_file_resolver.R", "R/helpers_mcp_schema_helpers.R"),
   c("R/helpers_mcp_schema_helpers.R", "R/helpers_mcp_basic_tools.R"),
   c("R/helpers_mcp_basic_tools.R", "R/helpers_mcp_chart_tools.R"),
   c("R/helpers_mcp_chart_tools.R", "R/helpers_mcp_analyze_visualize.R"),
-  c("R/helpers_mcp_analyze_visualize.R", "R/helpers_mcp_bootstrap.R"),
-  c("R/helpers_mcp_bootstrap.R", "R/helpers_mcp_tools.R"),
+  c("R/helpers_mcp_analyze_visualize.R", "R/helpers_mcp_tools.R"),
   c("R/helpers_mcp_tools.R", "R/helpers_chartlab_spec.R"),
   c("R/helpers_chartlab_spec.R", "R/helpers_chartlab.R"),
   c("R/helpers_mcp_file_resolver.R", "R/module_summarization.R"),

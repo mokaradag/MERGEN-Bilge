@@ -1,7 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_mcp_bootstrap.R
-# Açıklama: MCP araç ortamı için manifest tabanlı sözleşme doğrulama ve
-#           worker ortamı yol yardımcılarını hazırlar.
+# Açıklama: MCP araç ortamı için manifest tabanlı erken bootstrap yardımcıları.
+#           Bu dosya yalnızca helpers_mcp_tools ortamını ve yol fallback
+#           fonksiyonlarını hazırlar; downstream MCP helper dosyalarını source etmez.
 # ==============================================================================
 
 if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
@@ -63,10 +64,6 @@ helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FA
 
 # ------------------------------------------------------------------------------
 # Yol yardımcıları
-# ------------------------------------------------------------------------------
-# Uygulama runtime'ında bu fonksiyonlar erken manifest dosyalarından gelmelidir.
-# Yine de worker/test ortamlarında davranışı korumak için yalnızca yerel fallback
-# fonksiyonları tanımlanır; burada hiçbir kaynak dosya source edilmez.
 # ------------------------------------------------------------------------------
 .mcp_bootstrap_assign_global_function("path_exists_relaxed")
 .mcp_bootstrap_assign_global_function("normalize_excel_path")
@@ -197,51 +194,37 @@ if (!.mcp_bootstrap_has_tool_function("normalize_excel_path")) {
 )
 
 # ------------------------------------------------------------------------------
-# Manifestten önceden yüklenmiş olması gereken MCP destek helper'ları
+# Erken bootstrap hazır mı?
 # ------------------------------------------------------------------------------
-.mcp_bootstrap_require_tool_functions(
-  c("safe_read_excel_table", "safe_read_table_generic", "create_md_table"),
-  "MCP tablo okuyucu"
-)
+mcp_tools_bootstrap_core_ready <- function() {
+  if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) {
+    return(FALSE)
+  }
 
-.mcp_bootstrap_require_tool_functions(
-  c("ensure_session_file_registry", "register_uploaded_file", "resolve_file_argument"),
-  "MCP dosya çözümleyici"
-)
+  tools_env <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
+  if (!is.environment(tools_env)) {
+    return(FALSE)
+  }
 
-.mcp_bootstrap_require_tool_functions(
-  c(
-    "extract_mcp_file_schema",
-    "find_matching_column",
-    "normalize_args",
-    "normalize_chart_type",
-    "prettify_column_name"
-  ),
-  "MCP şema/kolon helper"
-)
+  required_functions <- c(
+    "mcp_debug_log",
+    "get_session_user_id",
+    "path_exists_relaxed",
+    "normalize_excel_path",
+    "resolve_readable_path"
+  )
 
-.mcp_bootstrap_require_tool_functions(
-  c(
-    "analyze_uploaded_file",
-    "get_column_statistics",
-    "sql_query_uploaded_file",
-    "safe_has_duckdb"
-  ),
-  "MCP temel araç"
-)
-
-.mcp_bootstrap_require_tool_functions(
-  "prepare_chart_data",
-  "MCP grafik aracı"
-)
-
-.mcp_bootstrap_require_tool_functions(
-  "analyze_and_visualize",
-  "MCP analyze/visualize aracı"
-)
+  all(vapply(required_functions, function(fn) {
+    exists(fn, envir = tools_env, inherits = FALSE) &&
+      is.function(get(fn, envir = tools_env, inherits = FALSE))
+  }, logical(1)))
+}
 
 # ------------------------------------------------------------------------------
-# Dış dosyaların ve helpers_mcp_tools.R'nin kontrol edeceği nihai sözleşme
+# Nihai MCP sözleşmesi.
+# Bu fonksiyon bootstrap source edilirken TRUE olmak zorunda değildir.
+# R/helpers_mcp_tools.R yüklendiğinde, manifest sırası gereği downstream helper'lar
+# artık yüklenmiş olacağı için TRUE olmalıdır.
 # ------------------------------------------------------------------------------
 mcp_tools_bootstrap_ready <- function() {
   if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) {
@@ -284,8 +267,8 @@ mcp_tools_bootstrap_ready <- function() {
   }, logical(1)))
 }
 
-if (!isTRUE(mcp_tools_bootstrap_ready())) {
-  stop("MCP bootstrap sözleşmesi eksik.", call. = FALSE)
+if (!isTRUE(mcp_tools_bootstrap_core_ready())) {
+  stop("MCP bootstrap çekirdek sözleşmesi eksik.", call. = FALSE)
 }
 
 rm(

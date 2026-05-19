@@ -100,17 +100,17 @@ test_that("runtime manifest file store helper sırasını korur", {
   )
 })
 
-test_that("runtime manifest MCP bootstrap doğrulamasını destek helper'larından sonra çalıştırır", {
+test_that("runtime manifest MCP bootstrap yol helper'larını tablo okuyuculardan önce hazırlar", {
   expect_source_manifest_order_for_tests(
     c(
       "R/helpers_mcp_context.R",
+      "R/helpers_mcp_bootstrap.R",
       "R/helpers_mcp_table_readers.R",
       "R/helpers_mcp_file_resolver.R",
       "R/helpers_mcp_schema_helpers.R",
       "R/helpers_mcp_basic_tools.R",
       "R/helpers_mcp_chart_tools.R",
       "R/helpers_mcp_analyze_visualize.R",
-      "R/helpers_mcp_bootstrap.R",
       "R/helpers_mcp_tools.R"
     ),
     label = "MCP manifest source sırası bozulmuş:"
