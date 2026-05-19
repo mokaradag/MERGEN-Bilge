@@ -133,6 +133,49 @@ VM-only manual validation after any DB encoding change:
 - Reject the change if SSMS shows new mojibake such as `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, `ÄŸ`, `TÃ¼rkiye`, `NasÄ±l`, or `yardÄ±mcÄ±`.
 - Do not run an automatic startup migration for existing corrupted rows. Old rows require backup and a separate one-time repair plan after new writes are proven correct.
 
+
+### Source manifest and MCP load-order contract
+
+Runtime R files must be loaded through the explicit source manifest. Do not add hidden or dynamic sourcing to bypass dependency order.
+
+Current MCP load order is protected and must remain:
+
+- `R/helpers_mcp_context.R`
+- `R/helpers_mcp_bootstrap.R`
+- `R/helpers_mcp_table_readers.R`
+- `R/helpers_mcp_file_resolver.R`
+- `R/helpers_mcp_schema_helpers.R`
+- `R/helpers_mcp_basic_tools.R`
+- `R/helpers_mcp_chart_tools.R`
+- `R/helpers_mcp_analyze_visualize.R`
+- `R/helpers_mcp_tools.R`
+
+Rules:
+
+- `R/helpers_mcp_bootstrap.R` prepares the MCP helper environment and core path helpers only.
+- `R/helpers_mcp_bootstrap.R` must not dynamically source downstream MCP helper files.
+- Downstream MCP helper files must be declared explicitly in `R/config_source_manifest.R` in dependency order.
+- `R/helpers_mcp_tools.R` must load after the downstream MCP helpers and should remain the final tool/router layer.
+- Any test that manually sources MCP helper files must use the same order and keep `R/helpers_mcp_tools.R` last.
+- Source-manifest rules must not be stale: every order-rule target must either be in the runtime manifest or in the explicit boot allowlist.
+- Do not weaken `tests/testthat/test-source-manifest-contract.R`, `tests/testthat/test-global-source-manifest-contract.R`, or the MCP refactor tests to hide a load-order issue.
+
+Focused validation after touching runtime source order or MCP helper files:
+
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-bootstrap-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-table-readers-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-file-resolver-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-schema-helpers-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-basic-tools-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-chart-tools-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-analyze-visualize-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-mcp-excel-resolve.R")`
+- `Sys.setenv(MERGEN_RUN_APP = "false", MERGEN_DISABLE_FUTURES = "true")`
+- `source("app.R", encoding = "UTF-8")`
+- `source("tests/testthat.R", encoding = "UTF-8")`
+
 ### 1C) File lifecycle and File Manager boundary contract
 
 Uploaded file lifecycle is a protected boundary. Do not trade security or user isolation for convenience.

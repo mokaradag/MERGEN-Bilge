@@ -95,6 +95,12 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Dosya Yönetimi görünen adları ve kalıcı dosya indeksi; Türkçe dosya adları, storage-prefix temizleme ve eski mojibake kayıtlarının okunabilir hâle getirilmesi için aynı merkezi normalizasyon hattını kullanır.
 - Dosya yaşam döngüsü sertleştirmesi `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, `R/config_file_store_registry.R`, `R/helpers_file_manager_table.R`, `R/helpers_mcp_file_resolver.R` ve `R/module_summarization.R` sınırlarında korunur. Bu sözleşme storage adı ile görünen adın ayrılmasını, aynı kullanıcı filesystem fallback davranışını, yinelenen Dosya Yönetimi satırlarının engellenmesini, MCP mutlak yol reddini ve özetleme/Excel ayrımını kapsar.
 
+### Kaynak manifesti ve MCP yükleme sırası
+- Çalışma zamanı R kaynakları `R/config_source_manifest.R` üzerinden açık ve sıralı biçimde yüklenir; yeni runtime yardımcı dosyaları bu manifeste bağımlılık sırasıyla eklenmelidir.
+- MCP yardımcı zincirinde yükleme sırası korunur: context, bootstrap, table readers, file resolver, schema helpers, basic tools, chart tools, analyze/visualize ve en son `helpers_mcp_tools.R`.
+- `R/helpers_mcp_bootstrap.R` yalnızca MCP ortamını ve temel yol yardımcılarını hazırlar; downstream MCP helper dosyalarını gizli/dinamik biçimde source etmez.
+- Bu sözleşme `test-source-manifest-contract.R`, `test-global-source-manifest-contract.R` ve MCP refactor testleriyle korunur; amaç kullanıcı deneyimini değiştirmeden boot/load-order kırılganlığını azaltmaktır.
+
 #### Windows VM / SSO / SQL Server Türkçe Kodlama Güvencesi
 - Üretim benzeri Windows VM ortamında `.Renviron` içinde `DB_CLIENT_ENCODING=WINDOWS-1254` ve `DB_NAME_ENCODING=WINDOWS-1254` değerleri bulunmalıdır; değişiklikten sonra yalnızca tarayıcıyı yenilemek yeterli değildir, R süreci tamamen yeniden başlatılmalıdır.
 - Kullanıcıya görünen DB metinleri merkezi normalizasyon yardımcılarından geçmelidir; teknik kimlikler, bayraklar, enum değerleri, dosya yolları, model ID'leri, kullanıcı adı/e-posta/sicil/Keycloak ID gibi alanlarda mojibake onarımı yapılmamalıdır.
