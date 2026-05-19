@@ -18,6 +18,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Farklı model ve araç aileleriyle çalışma
 - Düşünebilen modeller (`thinking=TRUE`) için premium akıl yürütme kartı ve canlı düşünce akışı paneli
 - Streaming durdurma/iptal akışı regresyon testleriyle korunur: gönder düğmesi normal duruma döner, typing/thinking göstergesi temizlenir, aktif istek durumu sıfırlanır ve kısmi/iptal edilmiş akışlar yinelenen asistan mesajı üretmez.
+- Streaming iptal/abort karar mantığı `R/helpers_streaming_abort_lifecycle.R` içindeki saf `mergen_stream_abort_cleanup_plan()` yardımcısıyla test edilebilir hâle getirilmiştir; `tests/testthat/test-streaming-abort-lifecycle-smoke.R` kısmi yanıtı sonlandırma, boş placeholder temizleme, hata/iptal ayrımı ve UI reset sözleşmesini Shiny/DB/LLM başlatmadan doğrular.
 
 ### Dosya ve veri odaklı çalışma
 - Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
@@ -43,6 +44,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Ana tema müziğinin tek seferlik çalınması, ardından seçili karaktere ait rastgele karakter müziklerine güvenli geçiş
 - STT modalı normal iptal/gönder yolları dışında kapansa bile tarayıcı tarafı kapanış yedeğiyle müzik durumu temizlenir ve geri yüklenir.
 - AI Uzman ses oynatımı tarayıcı autoplay engeline veya oynatma reddine takıldığında ses kaynağı temizlenir, müzik duck durumu bırakılır ve altyazı deneyimi korunur.
+- TTS ses nesneleri tarayıcı tarafında `MergenAudioLifecycle` üzerinde `tts` sahibiyle işaretlenir; böylece global audio play/pause olayları TTS'i `external_audio` gibi ele almaz ve TTS/STT/arka plan müziği duck/unduck yaşam döngüsü `tests/testthat/test-audio-lifecycle-owner-smoke.R` ile hafif biçimde korunur.
 
 ### Gelişmiş deneyim katmanları
 - Sinematik başlangıç ekranı
@@ -67,6 +69,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 ### Kurumsal ve yönetimsel bileşenler
 - SSO / Keycloak desteği
 - Kullanıcı bazlı sohbet ve dosya ayrımı
+- SSO oturum kimliği için odak smoke testi bulunur: `tests/testthat/test-sso-session-identity-smoke.R`, SSO başlangıcındaki `user_id = 0` placeholder değerinin kimlik doğrulama tamamlandıktan sonra canlı `current_user_id` sağlayıcısı üzerinden gerçek kullanıcı kimliğine geçtiğini doğrular.
 - Destek merkezi
 - Geri bildirim ve hata bildirimi
 - Sürüm bilgilendirme sayfası
@@ -118,6 +121,9 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - `tests/scripts/parse_sanity_check.R`, VM preflight içinde uygulama/runtime parse sağlığını doğrulamak içindir. Tam test davranışı ayrıca `source("tests/testthat.R", encoding = "UTF-8")` ile doğrulanmalıdır.
 - `testthat::test_file("tests/testthat/test-file-manager-live-provider-refresh-smoke.R")`
 - `testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")`
+- `testthat::test_file("tests/testthat/test-sso-session-identity-smoke.R")`
+- `testthat::test_file("tests/testthat/test-streaming-abort-lifecycle-smoke.R")`
+- `testthat::test_file("tests/testthat/test-audio-lifecycle-owner-smoke.R")`
 - `testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")`
 - `source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")`
 - Parser hassasiyeti olan R test kaynaklarında literal emoji yerine `intToUtf8(...)` kullanılmalıdır. Bu kural emoji desteğini kaldırmaz; yalnızca Windows VM parse dayanıklılığını artırır.

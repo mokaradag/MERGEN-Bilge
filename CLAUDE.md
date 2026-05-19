@@ -293,6 +293,8 @@ Protected by:
 - tests/testthat/test-fragile-flow-manual-preflight-contract.R
 - www/smoke/ux-smoke.html
 
+Additional lightweight smoke tests now complement the manual preflight without launching the full app: `test-sso-session-identity-smoke.R` covers SSO placeholder-to-real-user transition, `test-streaming-abort-lifecycle-smoke.R` covers true streaming abort cleanup decisions, and `test-audio-lifecycle-owner-smoke.R` covers TTS/STT/music owner-based duck recovery contracts. These tests do not replace the Windows VM/manual browser checks.
+
 Focused validation:
 
 - testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")
@@ -392,10 +394,12 @@ The following UX behaviors are protected contracts:
 - Quick action cards must select the correct model and tool mode, show the intro message, and avoid duplicate events on rapid double click.
 - Background music must keep one active track source at a time. Character music must not overlap theme music.
 - TTS must duck music while speaking and restore music after playback or failure.
+- TTS `Audio` objects must be marked with the `MergenAudioLifecycle` owner `tts` before playback, so document-level audio play/pause handlers do not treat TTS as generic `external_audio`.
 - STT must pause/duck music when the modal opens and restore music on cancel, submit, init failure, microphone-denied paths, and unexpected Bootstrap modal hidden/close paths.
 - AI Expert audio must duck music while speaking and must release its duck owner if playback fails or the browser rejects autoplay; subtitle fallback behavior must remain intact.
 - TTS autoplay must be limited to new AI responses. Loading saved or old chats must not auto-play historical answers.
 - The stop button must stop generation and also clean active TTS playback.
+- True streaming abort/cancel decisions must stay delegated to `mergen_stream_abort_cleanup_plan()` in `R/helpers_streaming_abort_lifecycle.R`; do not move this logic back into an untestable inline branch.
 - Reasoning/thinking panels must not break chat scroll, must appear for thinking-capable flows, and must clean up safely after completion or stop.
 
 Implementation constraints:
@@ -418,6 +422,9 @@ The current guardrail layer includes:
 - `tests/testthat/test-quick-action-routing.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
 - `tests/testthat/test-browser-smoke-harness-contract.R`
+- `tests/testthat/test-sso-session-identity-smoke.R`
+- `tests/testthat/test-streaming-abort-lifecycle-smoke.R`
+- `tests/testthat/test-audio-lifecycle-owner-smoke.R`
 
 Focused validation after UX-sensitive refactors:
 
@@ -429,6 +436,9 @@ Focused validation after UX-sensitive refactors:
 - `testthat::test_file("tests/testthat/test-quick-action-routing.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")`
+- `testthat::test_file("tests/testthat/test-sso-session-identity-smoke.R")`
+- `testthat::test_file("tests/testthat/test-streaming-abort-lifecycle-smoke.R")`
+- `testthat::test_file("tests/testthat/test-audio-lifecycle-owner-smoke.R")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 
 Browser-level smoke validation:
@@ -532,6 +542,7 @@ When adding, moving, or splitting a runtime file:
 - for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
 - for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
+- Keep `R/helpers_streaming_abort_lifecycle.R` loaded before `R/server_handler_true_streaming.R`; the true streaming handler depends on the abort cleanup plan helper.
 - when splitting Claude Code security helpers, preserve the order `R/helpers_claude_code_security_policy.R` before `R/helpers_claude_code_prompt_security_policy.R`, and keep both before the Claude Code runtime, process, streaming, lifecycle, and module files that call the policy helpers.
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
 - keep `global.R` validating `R/config_source_manifest.R` before sourcing it and loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,
@@ -1066,6 +1077,9 @@ Current files:
 
 - `tests/testthat/helper_e2e_race_harness.R`
 - `tests/testthat/test-e2e-quick-actions-streaming-regression.R`
+- `tests/testthat/test-sso-session-identity-smoke.R`
+- `tests/testthat/test-streaming-abort-lifecycle-smoke.R`
+- `tests/testthat/test-audio-lifecycle-owner-smoke.R`
 
 The quick-action/streaming slice also protects the browser-side duplicate-click boundary for welcome quick-action buttons. `www/js/shiny_message_handlers.js` must debounce the same action/model pair before calling `Shiny.setInputValue('quick_template', ...)`, temporarily disable the clicked button with `aria-disabled`, and then restore it after the debounce window. The deterministic harness in `helper_e2e_race_harness.R` models this client gate, and `test-e2e-quick-actions-streaming-regression.R` checks both the state behavior and the static JS token order so the debounce guard remains before the Shiny event.
 
