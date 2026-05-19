@@ -36,9 +36,10 @@
   if (is.na(pos) || pos < 0L) NA_integer_ else as.integer(pos)
 }
 
-test_that("DB bağlantı, doğrulama, sohbet okuma ve sohbet yazma dosyaları repoda var", {
+test_that("DB kodlama, bağlantı, doğrulama, sohbet okuma ve sohbet yazma dosyaları repoda var", {
   repo_root <- resolve_repo_root_for_tests()
 
+  expect_true(file.exists(file.path(repo_root, "R", "helpers_db_encoding.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_db_connection.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_db_validation.R")))
   expect_true(file.exists(file.path(repo_root, "R", "helpers_chat_message_formatting.R")))
@@ -50,6 +51,7 @@ test_that("DB bağlantı, doğrulama, sohbet okuma ve sohbet yazma dosyaları re
 test_that("runtime manifest DB dosyalarını doğru sırada source eder", {
   expect_source_manifest_order_for_tests(
     c(
+      "R/helpers_db_encoding.R",
       "R/helpers_db_connection.R",
       "R/helpers_db_validation.R",
       "R/helpers_chat_message_formatting.R",
@@ -67,6 +69,7 @@ test_that("test bootstrap DB dosyalarını üretim sırasına uyumlu yükler", {
   bootstrap_text <- .read_repo_text_db_refactor_contract("tests/testthat/helper_bootstrap.R")
 
   expected_order <- c(
+    '"helpers_db_encoding.R"',
     '"helpers_db_connection.R"',
     '"helpers_db_validation.R"',
     '"helpers_chat_message_formatting.R"',
@@ -96,12 +99,40 @@ test_that("test bootstrap DB dosyalarını üretim sırasına uyumlu yükler", {
   )
 })
 
+test_that("helpers_db_encoding.R beklenen kodlama yardımcılarını içerir", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_encoding.R")
+
+  expected <- c(
+    "resolve_db_client_encoding <- function",
+    "resolve_db_name_encoding <- function",
+    "db_client_encoding_is_utf8 <- function",
+    "normalize_db_value <- function",
+    "normalize_db_visible_value <- function",
+    "normalize_db_technical_value <- function",
+    "db_visible_text_has_mojibake <- function",
+    "assert_mb_message_visible_encoding_clean <- function",
+    "normalize_db_params <- function"
+  )
+
+  found <- vapply(
+    expected,
+    function(pattern) grepl(pattern, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )
+
+  expect_true(
+    all(found),
+    info = paste(
+      "helpers_db_encoding.R içinde eksik kodlama fonksiyonları:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+})
+
 test_that("helpers_db_connection.R beklenen bağlantı yardımcılarını içerir", {
   txt <- .read_repo_text_db_refactor_contract("R/helpers_db_connection.R")
 
   expected <- c(
-    "normalize_db_value <- function",
-    "normalize_db_params <- function",
     "get_pool_info <- function",
     "db_pool_healthy <- function",
     "get_connection <- function",
@@ -120,6 +151,32 @@ test_that("helpers_db_connection.R beklenen bağlantı yardımcılarını içeri
     info = paste(
       "helpers_db_connection.R içinde eksik fonksiyonlar:",
       paste(expected[!found], collapse = ", ")
+    )
+  )
+})
+
+test_that("helpers_db_connection.R kodlama monolitini geri almıyor", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_connection.R")
+
+  forbidden <- c(
+    "normalize_db_value <- function",
+    "normalize_db_params <- function",
+    "normalize_db_visible_value <- function",
+    "assert_mb_message_visible_encoding_clean <- function"
+  )
+
+  matched <- forbidden[vapply(
+    forbidden,
+    function(pattern) grepl(pattern, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    matched,
+    character(0),
+    info = paste(
+      "DB kodlama yardımcıları helpers_db_connection.R içine geri taşınmamalıdır:",
+      paste(matched, collapse = ", ")
     )
   )
 })

@@ -1,7 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-db-normalization-contract.R
-# Açıklama: DB parametre normalizasyonunun NA, vektör, Türkçe karakter ve
-#           karakter dışı girdilerde uyarısız ve kayıpsız çalıştığını doğrular.
+# Açıklama: DB parametre normalizasyonunun NA, vektör, Türkçe karakter,
+#           mojibake onarımı ve DB istemci kodlaması sınırlarında uyarısız
+#           ve güvenli çalıştığını doğrular.
 # ==============================================================================
 
 .db_mojibake_from_utf8_for_test <- function(text) {
@@ -20,6 +21,36 @@
     }
     intToUtf8(win1252[byte - 0x7FL])
   }, character(1), USE.NAMES = FALSE), collapse = "")
+}
+
+.source_db_encoding_for_local_test <- function(test_env) {
+  repo_root <- resolve_repo_root_for_tests()
+
+  source(
+    file.path(repo_root, "R", "helpers_db_encoding.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  invisible(test_env)
+}
+
+.source_db_encoding_and_connection_for_local_test <- function(test_env) {
+  repo_root <- resolve_repo_root_for_tests()
+
+  source(
+    file.path(repo_root, "R", "helpers_db_encoding.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  source(
+    file.path(repo_root, "R", "helpers_db_connection.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  invisible(test_env)
 }
 
 test_that("normalize_db_value karakter dışı girdileri değiştirmeden döndürür", {
@@ -65,7 +96,8 @@ test_that("normalize_db_value karakter vektörlerinde uzunluğu ve NA konumunu k
   expect_false(any(is.na(sonuc[-3])))
 
   # UTF-8 oturumlarında Türkçe karakterler bozulmamalıdır.
-  if (isTRUE(l10n_info()[["UTF-8"]])) {
+  if (isTRUE(l10n_info()[["UTF-8"]]) &&
+      isTRUE(db_client_encoding_is_utf8(resolve_db_client_encoding()))) {
     expect_identical(sonuc[1], "İstanbul")
     expect_identical(sonuc[4], "Çalışma")
   }
@@ -79,7 +111,7 @@ test_that("DB okuma/yazma sınırı yaygın Türkçe mojibake örneklerini onar�
     "Ã‡alÄ±ÅŸma, Ã–lÃ§Ã¼m ve Ä°zleme"
   )
 
-  expected <- c(
+  expected_utf8 <- c(
     "Nasıl yardımcı olabilirim?",
     "Türkiye'nin başkenti Ankara'dır.",
     "Açıklama ve özet görüşü hazırlandı.",
@@ -88,7 +120,18 @@ test_that("DB okuma/yazma sınırı yaygın Türkçe mojibake örneklerini onar�
 
   repaired <- normalize_db_value(samples, repair_mojibake = TRUE)
 
-  expect_equal(repaired, expected)
+  if (isTRUE(db_client_encoding_is_utf8(resolve_db_client_encoding()))) {
+    expect_equal(repaired, expected_utf8)
+  } else {
+    roundtrip <- iconv(
+      repaired,
+      from = resolve_db_client_encoding(),
+      to = "UTF-8",
+      sub = NA_character_
+    )
+
+    expect_equal(roundtrip, expected_utf8)
+  }
 })
 
 test_that("normalize_db_params liste yapısını ve sıra bilgisini korur", {
@@ -112,7 +155,6 @@ test_that("normalize_db_params liste yapısını ve sıra bilgisini korur", {
 })
 
 test_that("DB client encoding ortam değişkeninden okunur", {
-  repo_root <- resolve_repo_root_for_tests()
   test_env <- new.env(parent = globalenv())
 
   test_env$normalize_text_utf8 <- normalize_text_utf8
@@ -123,11 +165,7 @@ test_that("DB client encoding ortam değişkeninden okunur", {
     DB_NAME_ENCODING = "WINDOWS-1254"
   ))
 
-  source(
-    file.path(repo_root, "R", "helpers_db_connection.R"),
-    encoding = "UTF-8",
-    local = test_env
-  )
+  .source_db_encoding_and_connection_for_local_test(test_env)
 
   expect_identical(test_env$resolve_db_client_encoding(), "WINDOWS-1254")
   expect_identical(test_env$resolve_db_name_encoding(), "WINDOWS-1254")
@@ -136,7 +174,6 @@ test_that("DB client encoding ortam değişkeninden okunur", {
 })
 
 test_that("WINDOWS-1254 DB client encoding Türkçe metni UTF-8 olarak bırakmaz", {
-  repo_root <- resolve_repo_root_for_tests()
   test_env <- new.env(parent = globalenv())
 
   test_env$normalize_text_utf8 <- normalize_text_utf8
@@ -147,11 +184,7 @@ test_that("WINDOWS-1254 DB client encoding Türkçe metni UTF-8 olarak bırakmaz
     DB_NAME_ENCODING = "WINDOWS-1254"
   ))
 
-  source(
-    file.path(repo_root, "R", "helpers_db_connection.R"),
-    encoding = "UTF-8",
-    local = test_env
-  )
+  .source_db_encoding_for_local_test(test_env)
 
   sample_text <- "Türkçe test: ç ğ ı İ ö ş ü Ç Ğ I Ö Ş Ü"
   sonuc <- test_env$normalize_db_value(sample_text, repair_mojibake = TRUE)
@@ -166,7 +199,6 @@ test_that("WINDOWS-1254 DB client encoding Türkçe metni UTF-8 olarak bırakmaz
 })
 
 test_that("WINDOWS-1254 DB client encoding temsil edilemeyen Unicode sembollerini DB sınırında çıkarır", {
-  repo_root <- resolve_repo_root_for_tests()
   test_env <- new.env(parent = globalenv())
 
   test_env$normalize_text_utf8 <- normalize_text_utf8
@@ -177,11 +209,7 @@ test_that("WINDOWS-1254 DB client encoding temsil edilemeyen Unicode sembollerin
     DB_NAME_ENCODING = "WINDOWS-1254"
   ))
 
-  source(
-    file.path(repo_root, "R", "helpers_db_connection.R"),
-    encoding = "UTF-8",
-    local = test_env
-  )
+  .source_db_encoding_for_local_test(test_env)
 
   sample_text <- paste0(
     "Durum: çalışıyor ",
@@ -205,13 +233,19 @@ test_that("WINDOWS-1254 DB client encoding temsil edilemeyen Unicode sembollerin
 })
 
 test_that("normalize_db_params kullanıcıya görünen DB metnini repair bayrağıyla onarır", {
-  expected <- c(
+  expected_visible <- c(
     "Çalışma özeti",
     paste0("Yönetici görüşü ", intToUtf8(0x1F680))
   )
 
+  expected_db <- expected_visible
+
+  if (!isTRUE(db_client_encoding_is_utf8(resolve_db_client_encoding()))) {
+    expected_db[2] <- "Yönetici görüşü "
+  }
+
   mojibake <- vapply(
-    expected,
+    expected_visible,
     .db_mojibake_from_utf8_for_test,
     character(1),
     USE.NAMES = FALSE
@@ -222,7 +256,15 @@ test_that("normalize_db_params kullanıcıya görünen DB metnini repair bayrağ
     repair_mojibake = TRUE
   )
 
-  expect_equal(params[[1]], expected[1])
+  expect_equal(params[[1]], expected_db[1])
   expect_identical(params[[2]], 42L)
-  expect_equal(params[[3]], expected[2])
+
+  if (isTRUE(db_client_encoding_is_utf8(resolve_db_client_encoding()))) {
+    expect_equal(params[[3]], expected_db[2])
+  } else {
+    expect_equal(
+      iconv(params[[3]], from = resolve_db_client_encoding(), to = "UTF-8"),
+      expected_db[2]
+    )
+  }
 })
