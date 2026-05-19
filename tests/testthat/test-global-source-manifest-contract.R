@@ -67,9 +67,10 @@ test_that("runtime manifest kritik helper'ları beklenen sırada içerir", {
   expected_order <- c(
     "R/config_packages.R",
     "R/utils_common.R",
+    "R/utils_text_encoding.R",
     "R/config_logging.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R",
+    "R/helpers_worker_monitor.R",,
     "R/utils_path_helpers.R",
     "R/utils_safe_path.R",
     "R/utils_atomic_write.R",
@@ -99,11 +100,28 @@ test_that("runtime manifest file store helper sırasını korur", {
   )
 })
 
+test_that("runtime manifest MCP bootstrap doğrulamasını destek helper'larından sonra çalıştırır", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_mcp_context.R",
+      "R/helpers_mcp_table_readers.R",
+      "R/helpers_mcp_file_resolver.R",
+      "R/helpers_mcp_schema_helpers.R",
+      "R/helpers_mcp_basic_tools.R",
+      "R/helpers_mcp_chart_tools.R",
+      "R/helpers_mcp_analyze_visualize.R",
+      "R/helpers_mcp_bootstrap.R",
+      "R/helpers_mcp_tools.R"
+    ),
+    label = "MCP manifest source sırası bozulmuş:"
+  )
+})
+
 test_that("runtime manifest welcome ekranı kaynaklarını server_welcome_handlers öncesinde içerir", {
   expect_source_manifest_order_for_tests(
     c(
-      "welcome_screen.R",
       "R/welcome_screen_modern.R",
+      "welcome_screen.R",
       "R/server_welcome_handlers.R"
     ),
     label = "Welcome screen kaynak sırası bozulmuş:"

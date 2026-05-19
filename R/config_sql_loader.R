@@ -194,13 +194,13 @@
   stop(sprintf("SQL dosyasi uygun kodlama ile okunamadi: %s", path_to_use))
 }
 
-# --- library_queries.R yuklu degilse yukle ---
-if (!exists("query_library", inherits = TRUE)) {
-  safe_source("R/library_queries.R", encoding = "UTF-8")
-}
-
-if (!exists("query_library", inherits = TRUE) || !is.list(query_library)) {
-  stop("[SQL_LOADER] HATA: query_library bulunamadi veya gecerli bir liste degil.")
+# --- library_queries.R manifest sırası ile önceden yüklenmiş olmalı ---
+if (!exists("query_library", envir = globalenv(), inherits = FALSE) ||
+    !is.list(get("query_library", envir = globalenv(), inherits = FALSE))) {
+  stop(
+    "[SQL_LOADER] HATA: query_library bulunamadı. R/library_queries.R, R/config_sql_loader.R öncesinde manifestten yüklenmelidir.",
+    call. = FALSE
+  )
 }
 
 # --- SAYACLAR ---

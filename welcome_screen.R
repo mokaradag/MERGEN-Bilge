@@ -1,7 +1,12 @@
 # welcome_screen.R
 # Modern karşılama ekranı yardımcı fonksiyonları
 
-safe_source("R/welcome_screen_modern.R", encoding = "UTF-8")
+if (!exists("createModernWelcomeScreen", mode = "function", inherits = TRUE)) {
+  stop(
+    "Welcome ekranı yükleme sırası hatalı: R/welcome_screen_modern.R önce yüklenmelidir.",
+    call. = FALSE
+  )
+}
 
 MAIN_ACTIONS_DATA <- build_main_actions_data_from_config(api_config)
 

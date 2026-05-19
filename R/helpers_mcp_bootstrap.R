@@ -1,180 +1,174 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_mcp_bootstrap.R
-# Açıklama: MCP araç ortamı için destek dosyası yükleme, yol fallback ve
-#           sözleşme doğrulama yardımcılarını toplar.
+# Açıklama: MCP araç ortamı için manifest tabanlı sözleşme doğrulama ve
+#           worker ortamı yol yardımcılarını hazırlar.
 # ==============================================================================
 
-mcp_tools_find_support_file <- function(relative_path) {
-  relative_path <- gsub("\\\\", "/", relative_path, fixed = TRUE)
-
-  candidate_roots <- c(
-    getwd(),
-    dirname(getwd()),
-    dirname(dirname(getwd())),
-    Sys.getenv("MERGEN_REPO_ROOT", unset = ""),
-    if (exists("repo_root_for_tests", envir = globalenv(), inherits = TRUE)) {
-      get("repo_root_for_tests", envir = globalenv(), inherits = TRUE)
-    } else {
-      ""
-    }
+if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
+    !is.environment(get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE))) {
+  stop(
+    "MCP helper ortamı başlatılamadı. R/helpers_mcp_context.R önce manifestten yüklenmelidir.",
+    call. = FALSE
   )
+}
 
-  candidate_roots <- unique(candidate_roots[nzchar(candidate_roots)])
+helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
 
-  candidates <- unique(c(
-    relative_path,
-    file.path(candidate_roots, relative_path)
-  ))
+.mcp_bootstrap_has_tool_function <- function(name) {
+  exists(name, envir = helpers_mcp_tools, inherits = FALSE) &&
+    is.function(get(name, envir = helpers_mcp_tools, inherits = FALSE))
+}
 
-  for (candidate in candidates) {
-    candidate <- tryCatch(
-      normalizePath(candidate, winslash = "/", mustWork = FALSE),
-      error = function(e) candidate
+.mcp_bootstrap_assign_global_function <- function(name) {
+  if (exists(name, envir = globalenv(), inherits = TRUE) &&
+      is.function(get(name, envir = globalenv(), inherits = TRUE))) {
+    assign(
+      name,
+      get(name, envir = globalenv(), inherits = TRUE),
+      envir = helpers_mcp_tools
     )
-
-    if (file.exists(candidate)) {
-      return(candidate)
-    }
   }
 
-  ""
+  invisible(TRUE)
 }
 
-.mcp_context_ready <- FALSE
-if (exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) {
-  helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
-  .mcp_context_ready <- is.environment(helpers_mcp_tools) &&
-    exists("mcp_debug_log", envir = helpers_mcp_tools, inherits = FALSE) &&
-    exists("get_session_user_id", envir = helpers_mcp_tools, inherits = FALSE)
-}
+.mcp_bootstrap_require_tool_functions <- function(required_functions, label) {
+  missing_functions <- required_functions[!vapply(
+    required_functions,
+    .mcp_bootstrap_has_tool_function,
+    logical(1)
+  )]
 
-if (!isTRUE(.mcp_context_ready)) {
-  .mcp_context_path <- mcp_tools_find_support_file("R/helpers_mcp_context.R")
-
-  if (!nzchar(.mcp_context_path)) {
+  if (length(missing_functions) > 0L) {
     stop(
       sprintf(
-        "R/helpers_mcp_context.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
+        "%s sözleşmesi eksik. Manifest sırası bozuk olabilir. Eksik: %s",
+        label,
+        paste(missing_functions, collapse = ", ")
       ),
       call. = FALSE
     )
   }
 
-  source(.mcp_context_path, encoding = "UTF-8", local = globalenv())
+  invisible(TRUE)
 }
 
-if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
-    !is.environment(get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE))) {
-  stop("MCP helper ortamı başlatılamadı.", call. = FALSE)
-}
+# ------------------------------------------------------------------------------
+# MCP context sözleşmesi
+# ------------------------------------------------------------------------------
+.mcp_bootstrap_require_tool_functions(
+  c("mcp_debug_log", "get_session_user_id"),
+  "MCP context helper"
+)
 
-helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
+# ------------------------------------------------------------------------------
+# Yol yardımcıları
+# ------------------------------------------------------------------------------
+# Uygulama runtime'ında bu fonksiyonlar erken manifest dosyalarından gelmelidir.
+# Yine de worker/test ortamlarında davranışı korumak için yalnızca yerel fallback
+# fonksiyonları tanımlanır; burada hiçbir kaynak dosya source edilmez.
+# ------------------------------------------------------------------------------
+.mcp_bootstrap_assign_global_function("path_exists_relaxed")
+.mcp_bootstrap_assign_global_function("normalize_excel_path")
+.mcp_bootstrap_assign_global_function("resolve_readable_path")
 
-if (!exists("mcp_debug_log", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("get_session_user_id", envir = helpers_mcp_tools, inherits = FALSE)) {
-  stop("MCP context helper sözleşmesi eksik.", call. = FALSE)
-}
-
-rm(.mcp_context_ready)
-
-if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "path_exists_relaxed",
-    get("path_exists_relaxed", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
-}
-
-if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
-  if (exists("path_exists_relaxed", envir = globalenv(), inherits = TRUE)) {
-    assign(
-      "path_exists_relaxed",
-      get("path_exists_relaxed", envir = globalenv(), inherits = TRUE),
-      envir = helpers_mcp_tools
-    )
-  }
-}
-
-if (!exists("path_exists_relaxed", envir = helpers_mcp_tools, inherits = FALSE)) {
+if (!.mcp_bootstrap_has_tool_function("path_exists_relaxed")) {
   helpers_mcp_tools$path_exists_relaxed <- function(path) {
-    if (is.null(path) || length(path) == 0) return(FALSE)
+    if (is.null(path) || length(path) == 0L) {
+      return(FALSE)
+    }
 
     candidate <- as.character(path[1])
-    if (!nzchar(candidate)) return(FALSE)
+    if (is.na(candidate) || !nzchar(candidate)) {
+      return(FALSE)
+    }
 
     cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
-    variants <- unique(trimws(Filter(nzchar, c(
+    raw_variants <- c(
       candidate,
       cand_slash,
       sub("^//\\?/UNC", "//", cand_slash, perl = TRUE),
       sub("^//\\?/", "//", cand_slash, perl = TRUE),
       if (grepl("^/[^/]", cand_slash)) paste0("/", cand_slash) else NULL,
       gsub("/", "\\\\", cand_slash, fixed = TRUE)
-    ))))
+    )
+
+    raw_variants <- raw_variants[!is.na(raw_variants) & nzchar(raw_variants)]
+    variants <- unique(trimws(raw_variants))
+    fs_available <- requireNamespace("fs", quietly = TRUE)
 
     for (chk in variants) {
-      if (tryCatch(isTRUE(file.exists(chk)), error = function(e) FALSE)) return(TRUE)
-      if (tryCatch(isTRUE(fs::file_exists(chk)), error = function(e) FALSE)) return(TRUE)
+      if (tryCatch(isTRUE(file.exists(chk)), error = function(e) FALSE)) {
+        return(TRUE)
+      }
+
+      if (isTRUE(fs_available) &&
+          tryCatch(isTRUE(fs::file_exists(chk)), error = function(e) FALSE)) {
+        return(TRUE)
+      }
 
       chk_utf8 <- tryCatch(enc2utf8(chk), error = function(e) chk)
-      if (tryCatch(isTRUE(file.exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
-      if (tryCatch(isTRUE(fs::file_exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
+
+      if (tryCatch(isTRUE(file.exists(chk_utf8)), error = function(e) FALSE)) {
+        return(TRUE)
+      }
+
+      if (isTRUE(fs_available) &&
+          tryCatch(isTRUE(fs::file_exists(chk_utf8)), error = function(e) FALSE)) {
+        return(TRUE)
+      }
     }
 
     FALSE
   }
 }
 
-if (exists("normalize_excel_path", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "normalize_excel_path",
-    get("normalize_excel_path", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
-}
-
-if (exists("resolve_readable_path", envir = globalenv(), inherits = TRUE)) {
-  assign(
-    "resolve_readable_path",
-    get("resolve_readable_path", envir = globalenv(), inherits = TRUE),
-    envir = helpers_mcp_tools
-  )
-}
-
-if (!exists("resolve_readable_path", envir = helpers_mcp_tools, inherits = FALSE)) {
+if (!.mcp_bootstrap_has_tool_function("resolve_readable_path")) {
   helpers_mcp_tools$resolve_readable_path <- function(path) {
-    if (is.null(path) || !nzchar(path)) return(path)
+    if (is.null(path) || length(path) == 0L) {
+      return(path)
+    }
 
     p <- as.character(path[1])
+    if (is.na(p) || !nzchar(p)) {
+      return(p)
+    }
 
-    if (tryCatch(isTRUE(file.exists(p)), error = function(e) FALSE)) return(p)
+    if (tryCatch(isTRUE(file.exists(p)), error = function(e) FALSE)) {
+      return(p)
+    }
 
     p_bs <- gsub("/", "\\\\", p, fixed = TRUE)
-    if (tryCatch(isTRUE(file.exists(p_bs)), error = function(e) FALSE)) return(p_bs)
+    if (tryCatch(isTRUE(file.exists(p_bs)), error = function(e) FALSE)) {
+      return(p_bs)
+    }
 
     p_fwd <- gsub("\\\\", "/", p, fixed = TRUE)
     if (grepl("^/[^/]", p_fwd)) {
       p_unc <- paste0("/", p_fwd)
-      if (tryCatch(isTRUE(file.exists(p_unc)), error = function(e) FALSE)) return(p_unc)
+      if (tryCatch(isTRUE(file.exists(p_unc)), error = function(e) FALSE)) {
+        return(p_unc)
+      }
 
       p_unc_bs <- gsub("/", "\\\\", p_unc, fixed = TRUE)
-      if (tryCatch(isTRUE(file.exists(p_unc_bs)), error = function(e) FALSE)) return(p_unc_bs)
+      if (tryCatch(isTRUE(file.exists(p_unc_bs)), error = function(e) FALSE)) {
+        return(p_unc_bs)
+      }
     }
 
     p
   }
 }
 
-if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)) {
+if (!.mcp_bootstrap_has_tool_function("normalize_excel_path")) {
   helpers_mcp_tools$normalize_excel_path <- function(path, must_exist = FALSE) {
     if (is.null(path) || length(path) == 0L) {
       return("")
     }
 
     p <- as.character(path[1])
-    if (!nzchar(p)) {
+    if (is.na(p) || !nzchar(p)) {
       return("")
     }
 
@@ -197,193 +191,58 @@ if (!exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)
   }
 }
 
-if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("safe_read_table_generic", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("create_md_table", envir = helpers_mcp_tools, inherits = FALSE)) {
+.mcp_bootstrap_require_tool_functions(
+  c("path_exists_relaxed", "normalize_excel_path", "resolve_readable_path"),
+  "MCP yol helper"
+)
 
-  .mcp_table_readers_path <- mcp_tools_find_support_file("R/helpers_mcp_table_readers.R")
+# ------------------------------------------------------------------------------
+# Manifestten önceden yüklenmiş olması gereken MCP destek helper'ları
+# ------------------------------------------------------------------------------
+.mcp_bootstrap_require_tool_functions(
+  c("safe_read_excel_table", "safe_read_table_generic", "create_md_table"),
+  "MCP tablo okuyucu"
+)
 
-  if (!nzchar(.mcp_table_readers_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_table_readers.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
+.mcp_bootstrap_require_tool_functions(
+  c("ensure_session_file_registry", "register_uploaded_file", "resolve_file_argument"),
+  "MCP dosya çözümleyici"
+)
 
-  source(.mcp_table_readers_path, encoding = "UTF-8", local = globalenv())
-}
+.mcp_bootstrap_require_tool_functions(
+  c(
+    "extract_mcp_file_schema",
+    "find_matching_column",
+    "normalize_args",
+    "normalize_chart_type",
+    "prettify_column_name"
+  ),
+  "MCP şema/kolon helper"
+)
 
-if (!exists("safe_read_excel_table", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$safe_read_excel_table) ||
-    !exists("safe_read_table_generic", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$safe_read_table_generic) ||
-    !exists("create_md_table", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$create_md_table)) {
-  stop("MCP tablo okuyucu sözleşmesi eksik.", call. = FALSE)
-}
+.mcp_bootstrap_require_tool_functions(
+  c(
+    "analyze_uploaded_file",
+    "get_column_statistics",
+    "sql_query_uploaded_file",
+    "safe_has_duckdb"
+  ),
+  "MCP temel araç"
+)
 
-if (!exists("ensure_session_file_registry", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("register_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("resolve_file_argument", envir = helpers_mcp_tools, inherits = FALSE)) {
+.mcp_bootstrap_require_tool_functions(
+  "prepare_chart_data",
+  "MCP grafik aracı"
+)
 
-  .mcp_file_resolver_path <- mcp_tools_find_support_file("R/helpers_mcp_file_resolver.R")
+.mcp_bootstrap_require_tool_functions(
+  "analyze_and_visualize",
+  "MCP analyze/visualize aracı"
+)
 
-  if (!nzchar(.mcp_file_resolver_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_file_resolver.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_file_resolver_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("ensure_session_file_registry", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$ensure_session_file_registry) ||
-    !exists("register_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$register_uploaded_file) ||
-    !exists("resolve_file_argument", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$resolve_file_argument)) {
-  stop("MCP dosya çözümleyici sözleşmesi eksik.", call. = FALSE)
-}
-
-if (!exists("extract_mcp_file_schema", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("find_matching_column", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("normalize_args", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("normalize_chart_type", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("prettify_column_name", envir = helpers_mcp_tools, inherits = FALSE)) {
-
-  .mcp_schema_helpers_path <- mcp_tools_find_support_file("R/helpers_mcp_schema_helpers.R")
-
-  if (!nzchar(.mcp_schema_helpers_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_schema_helpers.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_schema_helpers_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("extract_mcp_file_schema", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$extract_mcp_file_schema) ||
-    !exists("find_matching_column", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$find_matching_column) ||
-    !exists("normalize_args", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$normalize_args) ||
-    !exists("normalize_chart_type", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$normalize_chart_type) ||
-    !exists("prettify_column_name", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$prettify_column_name)) {
-  stop("MCP şema/kolon helper sözleşmesi eksik.", call. = FALSE)
-}
-
-if (exists(".mcp_table_readers_path", inherits = FALSE)) {
-  rm(.mcp_table_readers_path)
-}
-
-if (exists(".mcp_file_resolver_path", inherits = FALSE)) {
-  rm(.mcp_file_resolver_path)
-}
-
-if (exists(".mcp_schema_helpers_path", inherits = FALSE)) {
-  rm(.mcp_schema_helpers_path)
-}
-
-if (!exists("analyze_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("get_column_statistics", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("sql_query_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !exists("safe_has_duckdb", envir = helpers_mcp_tools, inherits = FALSE)) {
-
-  .mcp_basic_tools_path <- mcp_tools_find_support_file("R/helpers_mcp_basic_tools.R")
-
-  if (!nzchar(.mcp_basic_tools_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_basic_tools.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_basic_tools_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("analyze_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$analyze_uploaded_file) ||
-    !exists("get_column_statistics", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$get_column_statistics) ||
-    !exists("sql_query_uploaded_file", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$sql_query_uploaded_file) ||
-    !exists("safe_has_duckdb", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$safe_has_duckdb)) {
-  stop("MCP temel araç sözleşmesi eksik.", call. = FALSE)
-}
-
-if (exists(".mcp_basic_tools_path", inherits = FALSE)) {
-  rm(.mcp_basic_tools_path)
-}
-
-if (!exists("prepare_chart_data", envir = helpers_mcp_tools, inherits = FALSE)) {
-  .mcp_chart_tools_path <- mcp_tools_find_support_file("R/helpers_mcp_chart_tools.R")
-
-  if (!nzchar(.mcp_chart_tools_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_chart_tools.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_chart_tools_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("prepare_chart_data", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$prepare_chart_data)) {
-  stop("MCP grafik aracı sözleşmesi eksik.", call. = FALSE)
-}
-
-if (exists(".mcp_chart_tools_path", inherits = FALSE)) {
-  rm(.mcp_chart_tools_path)
-}
-
-if (!exists("analyze_and_visualize", envir = helpers_mcp_tools, inherits = FALSE)) {
-  .mcp_analyze_visualize_path <- mcp_tools_find_support_file("R/helpers_mcp_analyze_visualize.R")
-
-  if (!nzchar(.mcp_analyze_visualize_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_analyze_visualize.R bulunamadı; helpers_mcp_bootstrap.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_analyze_visualize_path, encoding = "UTF-8", local = globalenv())
-}
-
-if (!exists("analyze_and_visualize", envir = helpers_mcp_tools, inherits = FALSE) ||
-    !is.function(helpers_mcp_tools$analyze_and_visualize)) {
-  stop("MCP analyze/visualize aracı sözleşmesi eksik.", call. = FALSE)
-}
-
-if (exists(".mcp_analyze_visualize_path", inherits = FALSE)) {
-  rm(.mcp_analyze_visualize_path)
-}
-
+# ------------------------------------------------------------------------------
+# Dış dosyaların ve helpers_mcp_tools.R'nin kontrol edeceği nihai sözleşme
+# ------------------------------------------------------------------------------
 mcp_tools_bootstrap_ready <- function() {
   if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) {
     return(FALSE)
@@ -428,3 +287,9 @@ mcp_tools_bootstrap_ready <- function() {
 if (!isTRUE(mcp_tools_bootstrap_ready())) {
   stop("MCP bootstrap sözleşmesi eksik.", call. = FALSE)
 }
+
+rm(
+  .mcp_bootstrap_assign_global_function,
+  .mcp_bootstrap_has_tool_function,
+  .mcp_bootstrap_require_tool_functions
+)

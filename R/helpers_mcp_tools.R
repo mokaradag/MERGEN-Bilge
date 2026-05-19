@@ -5,67 +5,21 @@
 # ==============================================================================
 
 # MCP bootstrap/source-order yardımcıları ayrı dosyada tutulur.
-# helpers_mcp_tools.R tek başına source edildiğinde de eski davranışı korumak için
-# burada çalışma dizini bağımsız fallback source uygulanır.
-.mcp_find_bootstrap_file <- function(relative_path) {
-  relative_path <- gsub("\\\\", "/", relative_path, fixed = TRUE)
-
-  candidate_roots <- c(
-    getwd(),
-    dirname(getwd()),
-    dirname(dirname(getwd())),
-    Sys.getenv("MERGEN_REPO_ROOT", unset = ""),
-    if (exists("repo_root_for_tests", envir = globalenv(), inherits = TRUE)) {
-      get("repo_root_for_tests", envir = globalenv(), inherits = TRUE)
-    } else {
-      ""
-    }
-  )
-
-  candidate_roots <- unique(candidate_roots[nzchar(candidate_roots)])
-
-  candidates <- unique(c(
-    relative_path,
-    file.path(candidate_roots, relative_path)
-  ))
-
-  for (candidate in candidates) {
-    candidate <- tryCatch(
-      normalizePath(candidate, winslash = "/", mustWork = FALSE),
-      error = function(e) candidate
-    )
-
-    if (file.exists(candidate)) {
-      return(candidate)
-    }
-  }
-
-  ""
-}
-
+# Bu dosya yalnızca açık manifest sırası doğruysa yüklenmelidir.
 if (!exists("mcp_tools_bootstrap_ready", mode = "function", inherits = TRUE) ||
     !isTRUE(mcp_tools_bootstrap_ready())) {
-
-  .mcp_bootstrap_path <- .mcp_find_bootstrap_file("R/helpers_mcp_bootstrap.R")
-
-  if (!nzchar(.mcp_bootstrap_path)) {
-    stop(
-      sprintf(
-        "R/helpers_mcp_bootstrap.R bulunamadı; helpers_mcp_tools.R yüklenemiyor. Çalışma dizini: %s",
-        getwd()
-      ),
-      call. = FALSE
-    )
-  }
-
-  source(.mcp_bootstrap_path, encoding = "UTF-8", local = globalenv())
+  stop(
+    "MCP araçları yükleme sırası hatalı: R/helpers_mcp_bootstrap.R önce yüklenmeli ve başarılı doğrulama yapmalıdır.",
+    call. = FALSE
+  )
 }
 
-if (exists(".mcp_bootstrap_path", inherits = FALSE)) {
-  rm(.mcp_bootstrap_path)
+if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
+    !is.environment(get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE))) {
+  stop("MCP helper ortamı eksik.", call. = FALSE)
 }
 
-rm(.mcp_find_bootstrap_file)
+helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
 
 if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
     !is.environment(get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)) ||
