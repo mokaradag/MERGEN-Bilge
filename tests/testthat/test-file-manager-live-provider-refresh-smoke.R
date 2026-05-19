@@ -50,6 +50,7 @@ repo_root_fm_live <- resolve_repo_root_for_tests()
 }
 
 .fm_live_source_once("R/utils_common.R", "%||%")
+.fm_live_source_once("R/helpers_file_manager_policy.R", "fm_file_ext_icon_html")
 .fm_live_source_once("R/helpers_file_manager_table.R", "fm_empty_files_df")
 .fm_live_source_once("R/helpers_file_manager_refresh_guard.R", "fm_create_refresh_request_guard")
 .fm_live_source_once("R/helpers_file_manager_storage.R", "fm_create_server_storage_helpers")
@@ -78,14 +79,18 @@ repo_root_fm_live <- resolve_repo_root_for_tests()
   function(finfo) {
     file_id <- paste0("restored_", length(values$file_contents) + 1L)
 
+    file_info <- list(
+      name = enc2utf8(finfo$name),
+      datapath = finfo$datapath,
+      size = finfo$size %||% 0,
+      type = finfo$type %||% "application/octet-stream"
+    )
+
     row <- fm_build_file_table_row(
+      file_name = file_info$name,
+      file_size = file_info$size,
+      file_info = file_info,
       file_id = file_id,
-      file_name = finfo$name,
-      file_path = finfo$datapath,
-      file_size = finfo$size %||% 0,
-      file_type = finfo$type %||% "application/octet-stream",
-      in_context = FALSE,
-      attached = FALSE,
       ns = function(id) id
     )
 
@@ -93,9 +98,11 @@ repo_root_fm_live <- resolve_repo_root_for_tests()
 
     restored <- list(
       id = file_id,
-      name = enc2utf8(finfo$name),
-      datapath = finfo$datapath,
-      persisted_path = finfo$datapath
+      name = file_info$name,
+      datapath = file_info$datapath,
+      persisted_path = file_info$datapath,
+      size = file_info$size,
+      type = file_info$type
     )
 
     values$file_contents[[file_id]] <- restored
@@ -213,7 +220,10 @@ test_that("File Manager refresh skips SSO placeholder and restores Turkish displ
 
   expect_identical(listed_user_ids, "4242")
   expect_equal(nrow(values$files), 1L)
-  expect_identical(enc2utf8(values$files$Dosya_Adi[[1]]), original_name)
+
+  if (nrow(values$files) > 0L) {
+    expect_identical(enc2utf8(values$files$Dosya_Adi[[1]]), original_name)
+  }
   expect_false(grepl("^\\d{8}[-_]\\d{6}", values$files$Dosya_Adi[[1]]))
   expect_true(original_name %in% names(session$userData$current_session_files))
   expect_identical(
