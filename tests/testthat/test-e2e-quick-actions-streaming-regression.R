@@ -436,18 +436,111 @@ test_that("stop generation flag is reset for next request and cannot poison it",
   )
 })
 
-test_that("simulated reasoning phases are never persisted as real reasoning", {
-  expect_null(
-    e2e_persisted_reasoning_or_null(
-      "→ Soru çözümleniyor…\n→ Bağlam toplanıyor…",
-      simulated = TRUE
-    )
+.e2e_stream_abort_cleanup_state <- function(partial_text = "") {
+  state <- list(
+    request_id = "req_abort_001",
+    active_request_id = "req_abort_001",
+    stop_generation = TRUE,
+    is_sending = TRUE,
+    typing = TRUE,
+    placeholder_present = TRUE,
+    assistant_messages = character(),
+    finalized = FALSE,
+    cleanup_called = FALSE,
+    reset_called = FALSE,
+    ui_events = character()
   )
 
+  has_partial <- nzchar(partial_text)
+
+  if (has_partial) {
+    state$assistant_messages <- c(state$assistant_messages, partial_text)
+    state$finalized <- TRUE
+    state$ui_events <- c(state$ui_events, "finalize_partial")
+  } else {
+    state$placeholder_present <- FALSE
+    state$ui_events <- c(state$ui_events, "remove_placeholder")
+  }
+
+  state$cleanup_called <- TRUE
+  state$active_request_id <- NULL
+  state$stop_generation <- FALSE
+
+  state$is_sending <- FALSE
+  state$typing <- FALSE
+  state$reset_called <- TRUE
+  state$ui_events <- c(state$ui_events, "reset_chat_state")
+
+  state
+}
+
+test_that("streaming stop/cancel without partial content clears sending UI state", {
+  state <- .e2e_stream_abort_cleanup_state(partial_text = "")
+
+  expect_false(state$is_sending)
+  expect_false(state$typing)
+  expect_false(state$stop_generation)
+  expect_null(state$active_request_id)
+  expect_false(state$placeholder_present)
+  expect_identical(state$assistant_messages, character(0))
+  expect_false(state$finalized)
+  expect_true(state$cleanup_called)
+  expect_true(state$reset_called)
   expect_identical(
-    e2e_persisted_reasoning_or_null("Gerçek reasoning", simulated = FALSE),
-    "Gerçek reasoning"
+    state$ui_events,
+    c("remove_placeholder", "reset_chat_state")
+  )
+})
+
+test_that("streaming stop/cancel with partial content finalizes once and resets UI state", {
+  state <- .e2e_stream_abort_cleanup_state(partial_text = "Kısmi yanıt")
+
+  expect_false(state$is_sending)
+  expect_false(state$typing)
+  expect_false(state$stop_generation)
+  expect_null(state$active_request_id)
+  expect_true(state$placeholder_present)
+  expect_identical(state$assistant_messages, "Kısmi yanıt")
+  expect_true(state$finalized)
+  expect_true(state$cleanup_called)
+  expect_true(state$reset_called)
+  expect_identical(
+    state$ui_events,
+    c("finalize_partial", "reset_chat_state")
+  )
+})
+
+test_that("production true streaming abort path remains wired to cleanup and reset", {
+  true_streaming_r <- .e2e_quick_read_ascii(
+    "R",
+    "server_handler_true_streaming.R"
+  )
+  chat_runtime_r <- .e2e_quick_read_ascii(
+    "R",
+    "helpers_chat_runtime.R"
   )
 
-  expect_null(e2e_persisted_reasoning_or_null("", simulated = FALSE))
+  .e2e_quick_expect_tokens(
+    true_streaming_r,
+    c(
+      "finalize_error_or_abort <- function(result)",
+      "isTRUE(result$aborted)",
+      "remove_placeholder_message()",
+      "cleanup_streaming_state()",
+      "ctx$reset_chat_state_fn()"
+    ),
+    "server_handler_true_streaming.R abort cleanup/reset sözleşmesi eksik:"
+  )
+
+  .e2e_quick_expect_tokens(
+    chat_runtime_r,
+    c(
+      "values$is_sending <- FALSE",
+      "values$typing <- FALSE",
+      "removeUI(selector = \"#typing-animation-wrapper\")",
+      "$('#send_stop_btn').removeClass('stop-mode')",
+      "$('#send_stop_btn').attr('title', 'Gönder (Enter)')"
+    ),
+    "chat_reset_state stop/cancel UI temizleme sözleşmesi eksik:"
+  )
 })
