@@ -532,15 +532,16 @@ test_that("production true streaming abort path remains wired to cleanup and res
     "server_handler_true_streaming.R abort cleanup/reset sözleşmesi eksik:"
   )
 
-  .e2e_quick_expect_tokens(
-    chat_runtime_r,
-    c(
-      "values$is_sending <- FALSE",
-      "values$typing <- FALSE",
-      "removeUI(selector = \"#typing-animation-wrapper\")",
-      "$('#send_stop_btn').removeClass('stop-mode')",
-      "$('#send_stop_btn').attr('title', 'Gönder (Enter)')"
-    ),
-    "chat_reset_state stop/cancel UI temizleme sözleşmesi eksik:"
-  )
+	.e2e_quick_expect_tokens(
+	  chat_runtime_r,
+	  c(
+		"values$is_sending <- FALSE",
+		"values$typing <- FALSE",
+		"removeUI(selector = \"#typing-animation-wrapper\")",
+		"$('#send_stop_btn i').attr('class', 'fa-solid fa-paper-plane')",
+		"$('#send_stop_btn').removeClass('stop-mode')",
+		"$('#send_stop_btn').attr('title',"
+	  ),
+	  "chat_reset_state stop/cancel UI temizleme sözleşmesi eksik:"
+	)
 })

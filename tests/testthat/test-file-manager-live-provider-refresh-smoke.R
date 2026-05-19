@@ -113,21 +113,43 @@ test_that("File Manager refresh skips SSO placeholder and restores Turkish displ
 
   refresh_guard <- fm_create_refresh_request_guard()
 
-  withr::local_bindings(
-    SSO_ENABLED = TRUE,
-    mergen_list_user_files = function(user_id, prune_missing = TRUE) {
-      listed_user_ids <<- c(listed_user_ids, as.character(user_id))
+	old_sso_exists <- exists("SSO_ENABLED", envir = globalenv(), inherits = FALSE)
+	old_sso_value <- if (old_sso_exists) get("SSO_ENABLED", envir = globalenv()) else NULL
 
-      data.frame(
-        name = original_name,
-        path = probe_file,
-        size = file.info(probe_file)$size,
-        type = "application/pdf",
-        stringsAsFactors = FALSE
-      )
-    },
-    .env = globalenv()
-  )
+	old_list_exists <- exists("mergen_list_user_files", envir = globalenv(), inherits = FALSE)
+	old_list_value <- if (old_list_exists) get("mergen_list_user_files", envir = globalenv()) else NULL
+
+	on.exit({
+	  if (old_sso_exists) {
+		assign("SSO_ENABLED", old_sso_value, envir = globalenv())
+	  } else if (exists("SSO_ENABLED", envir = globalenv(), inherits = FALSE)) {
+		rm("SSO_ENABLED", envir = globalenv())
+	  }
+
+	  if (old_list_exists) {
+		assign("mergen_list_user_files", old_list_value, envir = globalenv())
+	  } else if (exists("mergen_list_user_files", envir = globalenv(), inherits = FALSE)) {
+		rm("mergen_list_user_files", envir = globalenv())
+	  }
+	}, add = TRUE)
+
+	assign("SSO_ENABLED", TRUE, envir = globalenv())
+
+	assign(
+	  "mergen_list_user_files",
+	  function(user_id, prune_missing = TRUE) {
+		listed_user_ids <<- c(listed_user_ids, as.character(user_id))
+
+		data.frame(
+		  name = original_name,
+		  path = probe_file,
+		  size = file.info(probe_file)$size,
+		  type = "application/pdf",
+		  stringsAsFactors = FALSE
+		)
+	  },
+	  envir = globalenv()
+	)
 
   refresh_from_user_folder <- fm_create_refresh_from_user_folder(
     session = session,
