@@ -348,16 +348,22 @@ test_that("mixed chat DB write params do not enable whole-list mojibake repair",
 
 test_that("new MB_Messages writes have a post-insert encoding guard", {
   txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_chat_mutations.R")
+  encoding_txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_encoding.R")
   conn_txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_connection.R")
 
   expect_true(
-    .has_boundary_text(conn_txt, "db_visible_text_has_mojibake <- function(value)"),
+    .has_boundary_text(encoding_txt, "db_visible_text_has_mojibake <- function(value)"),
     label = "Central mojibake detector must exist for DB-visible text."
   )
 
   expect_true(
-    .has_boundary_text(conn_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id)"),
+    .has_boundary_text(encoding_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id)"),
     label = "Post-insert MB_Messages encoding guard must exist."
+  )
+
+  expect_false(
+    .has_boundary_text(conn_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id)"),
+    label = "Post-insert MB_Messages encoding guard should stay in helpers_db_encoding.R, not helpers_db_connection.R."
   )
 
   expect_gte(
