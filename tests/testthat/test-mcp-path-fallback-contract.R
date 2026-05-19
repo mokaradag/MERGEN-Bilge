@@ -39,7 +39,7 @@ test_that("MCP bootstrap normalize_excel_path için yerel fallback tanımlar", {
   txt <- .read_repo_text_quiet_mcp_path("R/helpers_mcp_bootstrap.R")
 
   beklenenler <- c(
-    'exists("normalize_excel_path", envir = helpers_mcp_tools, inherits = FALSE)',
+    '.mcp_bootstrap_has_tool_function("normalize_excel_path")',
     "helpers_mcp_tools$normalize_excel_path <- function(path, must_exist = FALSE)",
     "helpers_mcp_tools$resolve_readable_path(p)",
     "helpers_mcp_tools$path_exists_relaxed(resolved)"

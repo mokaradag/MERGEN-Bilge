@@ -1,7 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-mcp-bootstrap-refactor-contract.R
-# Açıklama: MCP bootstrap/fallback source sorumluluğunun helpers_mcp_tools
-#           monolitinden ayrı dosyada kaldığını doğrular.
+# Açıklama: MCP bootstrap dosyasının yalnızca erken yol/helper sözleşmesini
+#           hazırladığını; downstream MCP helper'ların manifest sırası ile
+#           yüklendiğini doğrular.
 # ==============================================================================
 
 .read_repo_text_quiet_mcp_bootstrap <- function(path) {
@@ -42,10 +43,16 @@ local({
     file.path(repo_root_for_tests, "R", "helpers_files_path.R"),
     file.path(repo_root_for_tests, "R", "helpers_files.R"),
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
+
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_bootstrap.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_chart_tools.R")
+    file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_file_resolver.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_schema_helpers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_basic_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_chart_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_analyze_visualize.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R")
   )
 
   for (dosya in gerekli_dosyalar) {
@@ -53,32 +60,54 @@ local({
   }
 })
 
-test_that("MCP bootstrap sorumluluğu ayrı dosyada tutulur", {
-  tools_txt <- .read_repo_text_quiet_mcp_bootstrap("R/helpers_mcp_tools.R")
+test_that("MCP bootstrap yalnızca erken yol/helper sözleşmesini hazırlar", {
   bootstrap_txt <- .read_repo_text_quiet_mcp_bootstrap("R/helpers_mcp_bootstrap.R")
+  tools_txt <- .read_repo_text_quiet_mcp_bootstrap("R/helpers_mcp_tools.R")
 
-  moved_defs <- c(
-    "mcp_tools_find_support_file <- function",
+  expected_bootstrap_defs <- c(
     "helpers_mcp_tools$path_exists_relaxed <- function",
     "helpers_mcp_tools$resolve_readable_path <- function",
     "helpers_mcp_tools$normalize_excel_path <- function",
+    "mcp_tools_bootstrap_core_ready <- function",
     "mcp_tools_bootstrap_ready <- function"
   )
 
   bootstrap_has_defs <- vapply(
-    moved_defs,
+    expected_bootstrap_defs,
     function(x) grepl(x, bootstrap_txt, fixed = TRUE, useBytes = TRUE),
     logical(1)
   )
 
   expect_true(
     all(bootstrap_has_defs),
-    info = paste("Eksik MCP bootstrap tanımları:", paste(moved_defs[!bootstrap_has_defs], collapse = ", "))
+    info = paste(
+      "Eksik MCP bootstrap tanımları:",
+      paste(expected_bootstrap_defs[!bootstrap_has_defs], collapse = ", ")
+    )
   )
 
-  expect_true(
-    grepl("R/helpers_mcp_bootstrap.R", tools_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_tools.R tekil source bağlamları için bootstrap dosyasını güvenli şekilde yüklemelidir."
+  forbidden_dynamic_source_tokens <- c(
+    "mcp_tools_find_support_file <- function",
+    "source(.mcp_table_readers_path",
+    "source(.mcp_file_resolver_path",
+    "source(.mcp_schema_helpers_path",
+    "source(.mcp_basic_tools_path",
+    "source(.mcp_chart_tools_path",
+    "source(.mcp_analyze_visualize_path"
+  )
+
+  bootstrap_has_forbidden <- vapply(
+    forbidden_dynamic_source_tokens,
+    function(x) grepl(x, bootstrap_txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )
+
+  expect_false(
+    any(bootstrap_has_forbidden),
+    info = paste(
+      "helpers_mcp_bootstrap.R artık downstream helper dosyalarını source etmemelidir:",
+      paste(forbidden_dynamic_source_tokens[bootstrap_has_forbidden], collapse = ", ")
+    )
   )
 
   forbidden_inline_defs <- c(
@@ -104,8 +133,11 @@ test_that("MCP bootstrap sorumluluğu ayrı dosyada tutulur", {
   )
 })
 
-test_that("MCP bootstrap source edildiğinde worker ortamı sözleşmesi hazır olur", {
+test_that("MCP bootstrap core sözleşmesi ve nihai MCP sözleşmesi hazır olur", {
+  expect_true(exists("mcp_tools_bootstrap_core_ready", mode = "function", inherits = TRUE))
   expect_true(exists("mcp_tools_bootstrap_ready", mode = "function", inherits = TRUE))
+
+  expect_true(isTRUE(mcp_tools_bootstrap_core_ready()))
   expect_true(isTRUE(mcp_tools_bootstrap_ready()))
 
   expected_functions <- c(
@@ -129,7 +161,8 @@ test_that("MCP bootstrap source edildiğinde worker ortamı sözleşmesi hazır 
     "get_column_statistics",
     "sql_query_uploaded_file",
     "safe_has_duckdb",
-    "prepare_chart_data"
+    "prepare_chart_data",
+    "analyze_and_visualize"
   )
 
   for (fn in expected_functions) {

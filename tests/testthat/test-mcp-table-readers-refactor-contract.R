@@ -39,12 +39,19 @@ local({
   gerekli_dosyalar <- c(
     file.path(repo_root_for_tests, "R", "utils_common.R"),
     file.path(repo_root_for_tests, "R", "utils_path_helpers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_files_path.R"),
     file.path(repo_root_for_tests, "R", "helpers_files.R"),
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
+
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_bootstrap.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R")
+    file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_file_resolver.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_schema_helpers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_basic_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_chart_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_analyze_visualize.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R")
   )
 
   for (dosya in gerekli_dosyalar) {
@@ -84,20 +91,10 @@ test_that("MCP tablo okuyucuları ayrı dosyada tutulur", {
     grepl("R/helpers_mcp_bootstrap.R", tools_txt, fixed = TRUE, useBytes = TRUE),
     info = "helpers_mcp_tools.R tekil source/test bağlamları için MCP bootstrap dosyasını güvenli şekilde yüklemelidir."
   )
-
-  expect_true(
-    grepl("R/helpers_mcp_table_readers.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R tablo okuyucu dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
-  )
   
-  expect_true(
-    grepl("mcp_tools_find_support_file", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R tablo okuyucu dosyasını working-directory bağımsız çözmelidir."
-  )
-
-  expect_true(
-    grepl('exists(".mcp_table_readers_path"', bootstrap_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R .mcp_table_readers_path temizliğini değişken varsa yapmalıdır."
+  expect_false(
+    grepl("R/helpers_mcp_table_readers.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
+    info = "helpers_mcp_bootstrap.R artık tablo okuyucu dosyasını source etmemelidir; manifest açık sırayı yönetmelidir."
   )
 
   expect_false(

@@ -70,7 +70,7 @@ test_that("runtime manifest kritik helper'ları beklenen sırada içerir", {
     "R/utils_text_encoding.R",
     "R/config_logging.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R",,
+    "R/helpers_worker_monitor.R",
     "R/utils_path_helpers.R",
     "R/utils_safe_path.R",
     "R/utils_atomic_write.R",

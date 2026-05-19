@@ -52,11 +52,6 @@ test_that("MCP analyze/visualize tool ayrı dosyada tutulur", {
   )
 
   expect_true(
-    grepl("R/helpers_mcp_analyze_visualize.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R analyze/visualize helper dosyasını izole/worker bağlamında yüklemelidir."
-  )
-
-  expect_true(
     grepl("\"analyze_and_visualize\"", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
     info = "mcp_tools_bootstrap_ready() analyze_and_visualize public fonksiyonunu doğrulamalıdır."
   )

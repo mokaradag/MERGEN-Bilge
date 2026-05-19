@@ -39,7 +39,6 @@
 test_that("MCP chart tool ayrı dosyada tutulur", {
   chart_txt <- .read_repo_text_quiet_mcp_chart("R/helpers_mcp_chart_tools.R")
   tools_txt <- .read_repo_text_quiet_mcp_chart("R/helpers_mcp_tools.R")
-  bootstrap_txt <- .read_repo_text_quiet_mcp_chart("R/helpers_mcp_bootstrap.R")
 
   expect_true(
     grepl("helpers_mcp_tools\\$prepare_chart_data <-", chart_txt, perl = TRUE, useBytes = TRUE),
@@ -49,11 +48,6 @@ test_that("MCP chart tool ayrı dosyada tutulur", {
   expect_false(
     grepl("helpers_mcp_tools\\$prepare_chart_data <- function", tools_txt, perl = TRUE, useBytes = TRUE),
     info = "prepare_chart_data fonksiyonu helpers_mcp_tools.R içine geri taşınmamalıdır."
-  )
-
-  expect_true(
-    grepl("R/helpers_mcp_chart_tools.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R chart helper dosyasını izole/worker bağlamında yüklemelidir."
   )
 
   expect_source_manifest_contains_for_tests(

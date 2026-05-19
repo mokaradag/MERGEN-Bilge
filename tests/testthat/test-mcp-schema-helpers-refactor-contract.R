@@ -39,14 +39,19 @@ local({
   gerekli_dosyalar <- c(
     file.path(repo_root_for_tests, "R", "utils_common.R"),
     file.path(repo_root_for_tests, "R", "utils_path_helpers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_files_path.R"),
     file.path(repo_root_for_tests, "R", "helpers_files.R"),
     file.path(repo_root_for_tests, "R", "utils_excel_reader.R"),
+
     file.path(repo_root_for_tests, "R", "helpers_mcp_context.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_bootstrap.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_table_readers.R"),
     file.path(repo_root_for_tests, "R", "helpers_mcp_file_resolver.R"),
-    file.path(repo_root_for_tests, "R", "helpers_mcp_schema_helpers.R")
+    file.path(repo_root_for_tests, "R", "helpers_mcp_schema_helpers.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_basic_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_chart_tools.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_analyze_visualize.R"),
+    file.path(repo_root_for_tests, "R", "helpers_mcp_tools.R")
   )
 
   for (dosya in gerekli_dosyalar) {
@@ -56,7 +61,6 @@ local({
 
 test_that("MCP şema ve argüman yardımcıları ayrı dosyada tutulur", {
   tools_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_tools.R")
-  bootstrap_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_bootstrap.R")
   schema_txt <- .read_repo_text_quiet_mcp_schema("R/helpers_mcp_schema_helpers.R")
 
   expected_defs <- c(
@@ -96,26 +100,16 @@ test_that("MCP şema ve argüman yardımcıları ayrı dosyada tutulur", {
     info = "helpers_mcp_tools.R tekil source/test bağlamları için MCP bootstrap dosyasını güvenli şekilde yüklemelidir."
   )
 
-  expect_true(
-    grepl("R/helpers_mcp_schema_helpers.R", bootstrap_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R şema helper dosyasını tekil source/test bağlamları için güvenli şekilde yüklemelidir."
-  )
-
-  expect_true(
-    grepl('exists(".mcp_schema_helpers_path"', bootstrap_txt, fixed = TRUE, useBytes = TRUE),
-    info = "helpers_mcp_bootstrap.R .mcp_schema_helpers_path temizliğini değişken varsa yapmalıdır."
-  )
-
   expect_source_manifest_order_for_tests(
     c(
       "R/helpers_mcp_context.R",
       "R/helpers_mcp_bootstrap.R",
-      "R/helpers_mcp_tools.R",
       "R/helpers_mcp_table_readers.R",
       "R/helpers_mcp_file_resolver.R",
-      "R/helpers_mcp_schema_helpers.R"
+      "R/helpers_mcp_schema_helpers.R",
+      "R/helpers_mcp_tools.R"
     ),
-    label = "MCP source sırası context -> bootstrap -> tools -> table_readers -> file_resolver -> schema_helpers olmalıdır:"
+    label = "MCP source sırası context -> bootstrap -> table_readers -> file_resolver -> schema_helpers -> tools olmalıdır:"
   )
 })
 
