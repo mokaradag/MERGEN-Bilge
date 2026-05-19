@@ -165,6 +165,45 @@ test_that("WINDOWS-1254 DB client encoding Türkçe metni UTF-8 olarak bırakmaz
   )
 })
 
+test_that("WINDOWS-1254 DB client encoding temsil edilemeyen Unicode sembollerini DB sınırında çıkarır", {
+  repo_root <- resolve_repo_root_for_tests()
+  test_env <- new.env(parent = globalenv())
+
+  test_env$normalize_text_utf8 <- normalize_text_utf8
+  test_env$l10n_info <- function() stats::setNames(list(TRUE), "UTF-8")
+
+  withr::local_envvar(c(
+    DB_CLIENT_ENCODING = "WINDOWS-1254",
+    DB_NAME_ENCODING = "WINDOWS-1254"
+  ))
+
+  source(
+    file.path(repo_root, "R", "helpers_db_connection.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  sample_text <- paste0(
+    "Durum: çalışıyor ",
+    intToUtf8(0x1F680),
+    " Türkiye"
+  )
+  expected_text <- "Durum: çalışıyor  Türkiye"
+
+  sonuc <- test_env$normalize_db_value(sample_text, repair_mojibake = TRUE)
+
+  expected_raw <- charToRaw(
+    iconv(expected_text, from = "UTF-8", to = "WINDOWS-1254")
+  )
+
+  expect_identical(charToRaw(sonuc), expected_raw)
+
+  expect_equal(
+    iconv(sonuc, from = "WINDOWS-1254", to = "UTF-8"),
+    expected_text
+  )
+})
+
 test_that("normalize_db_params kullanıcıya görünen DB metnini repair bayrağıyla onarır", {
   expected <- c(
     "Çalışma özeti",

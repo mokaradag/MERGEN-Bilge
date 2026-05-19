@@ -95,14 +95,22 @@ normalize_db_value <- function(x, repair_mojibake = FALSE) {
 
     failed <- is.na(out_client) & !is.na(out_utf8)
 
-    if (any(!failed & !is.na(out_client))) {
-      Encoding(out_client[!failed & !is.na(out_client)]) <- "unknown"
+    # WINDOWS-1254 Türkçe karakterleri temsil eder; ancak bazı Unicode sembolleri
+    # temsil edemez. Böyle bir karakter tüm string için iconv sonucunu NA yaparsa,
+    # ham UTF-8'e düşmek yerine temsil edilemeyen karakterleri DB sınırında çıkarırız.
+    # Bu, MB_Messages yazımında Türkçe metnin mojibake olmasını engeller.
+    if (any(failed)) {
+      stripped_values <- tryCatch(
+        iconv(out_utf8[failed], from = "UTF-8", to = client_encoding, sub = ""),
+        error = function(e) rep("", sum(failed))
+      )
+
+      stripped_values[is.na(stripped_values)] <- ""
+      out_client[failed] <- stripped_values
     }
 
-    # WINDOWS-1254 Türkçe karakterleri temsil eder; emoji gibi temsil edilemeyen
-    # karakterlerde değeri tamamen NA yapmamak için UTF-8 değeri koruruz.
-    if (any(failed)) {
-      out_client[failed] <- out_utf8[failed]
+    if (any(!is.na(out_client))) {
+      Encoding(out_client[!is.na(out_client)]) <- "unknown"
     }
 
     out_client[is.na(x)] <- NA_character_
