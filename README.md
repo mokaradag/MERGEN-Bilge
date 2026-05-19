@@ -17,6 +17,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Yapılandırma üzerinden açılıp kapatılabilen, streaming yanıtlar sonrasında da güvenilir çalışan takip sorusu önerileri ve mesaj eylemleri
 - Farklı model ve araç aileleriyle çalışma
 - Düşünebilen modeller (`thinking=TRUE`) için premium akıl yürütme kartı ve canlı düşünce akışı paneli
+- Streaming durdurma/iptal akışı regresyon testleriyle korunur: gönder düğmesi normal duruma döner, typing/thinking göstergesi temizlenir, aktif istek durumu sıfırlanır ve kısmi/iptal edilmiş akışlar yinelenen asistan mesajı üretmez.
 
 ### Dosya ve veri odaklı çalışma
 - Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
@@ -26,6 +27,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - MCP tabanlı araçlarla gelişmiş dosya işleme
 - Dosya Yönetimi yaşam döngüsü, yüklenen dosyaların tarayıcı yenilemesi ve tam uygulama yeniden başlatması sonrasında görünür kalmasını hedefler.
 - Kullanıcıya gösterilen dosya adları storage-prefix içeren kalıcı dosya adlarından ayrıdır; `dummy_test_data.xlsx` ve `Türkçe_çalışma_özeti_İstanbul.pdf` gibi özgün adlar Dosya Yönetimi tablosunda okunabilir biçimde korunur.
+- Dosya Yönetimi canlı kullanıcı kimliği sınırı hafif smoke testleriyle korunur: SSO geçişinde placeholder `user_id = 0` kalıcı dosya yenilemesini tetiklemez, yenileme canlı `current_user_id` sağlayıcısını kullanır ve `Türkçe_çalışma_özeti_İstanbul.pdf` gibi görünen adlar yenileme/yeniden başlatma mantığında okunabilir kalır.
 - Kalıcı dosya indeksi kısmen eski kaldığında yalnızca aynı kullanıcı klasöründe güvenli filesystem fallback uygulanır; çapraz kullanıcı/çapraz bucket çözümleme varsayılan olarak kapalı kalır.
 - Dosya Yönetimi listeleme yolu, aynı fiziksel dosyanın indeks ve filesystem fallback üzerinden iki kez tabloya düşmesini engelleyecek şekilde görünen dosya adı kimliğiyle tekilleştirilir.
 - Dosya Özetleme modu yalnızca Model Bağlamı seçili ve desteklenen belge türlerini kullanır; Excel dosyaları özetleme bağlamından çıkarılır ve MCP Excel analiz akışında kullanılmaya devam eder.
@@ -114,7 +116,16 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Preflight sırasında eski `MB_Messages` mojibake kalıntıları bulunursa varsayılan davranış uyarıdır; bu durum geçmiş veri bakımını işaret eder, tek başına yeni yazım yolunun bozuk olduğunu kanıtlamaz. Eski kayıtların da bloklayıcı olmasını isterseniz `MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE=TRUE` ayarlanmalıdır.
 - VM preflight mojibake denetimi yalnızca açık mojibake tokenlarını aramalıdır; geçerli Türkçe çıktıyı Windows byte dizileri üzerinden yanlış pozitif sayacak geniş `useBytes` desenleri kullanılmamalıdır.
 - `tests/scripts/parse_sanity_check.R`, VM preflight içinde uygulama/runtime parse sağlığını doğrulamak içindir. Tam test davranışı ayrıca `source("tests/testthat.R", encoding = "UTF-8")` ile doğrulanmalıdır.
+- `testthat::test_file("tests/testthat/test-file-manager-live-provider-refresh-smoke.R")`
+- `testthat::test_file("tests/testthat/test-e2e-quick-actions-streaming-regression.R")`
+- `testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")`
+- `source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")`
 - Parser hassasiyeti olan R test kaynaklarında literal emoji yerine `intToUtf8(...)` kullanılmalıdır. Bu kural emoji desteğini kaldırmaz; yalnızca Windows VM parse dayanıklılığını artırır.
+
+Kırılgan kullanıcı akışları için ek manuel preflight:
+- Yerel modda `SSO_ENABLED=FALSE` ile streaming mesaj gönderme, streaming sırasında durdurma, PDF/DOCX/TXT/CSV/XLSX yükleme, tarayıcı yenileme, tam uygulama yeniden başlatma ve kayıtlı sohbet yüklemede eski TTS otomatik oynatmama kontrol edilmelidir.
+- Windows VM / SSO modunda `SSO_ENABLED=TRUE` ile doğrulanmış kullanıcı kimliği, kullanıcıya özel son sohbet/geçmiş/kayıtlı sohbet/galeri satırları, Türkçe dosya adı yenileme/yeniden başlatma dayanıklılığı ve TTS/STT/arka plan müziği tekil playback/ducking davranışı kontrol edilmelidir.
+- Bu adımların tekrarlanabilir kaydı için `tests/scripts/run_fragile_flow_manual_preflight.R` kullanılabilir; betik uygulamayı başlatmaz, ağır tarayıcı otomasyonu eklemez ve sonucu UTF-8 CSV olarak yazar.
 - Odak test/preflight komutları:
   - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
   - `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
