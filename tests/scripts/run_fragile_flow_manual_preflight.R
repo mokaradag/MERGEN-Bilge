@@ -5,6 +5,54 @@
 #           Tarayıcı otomasyon bağımlılığı eklemez.
 # ==============================================================================
 
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0L || is.na(x[1])) y else x
+}
+
+manual_preflight_readline <- function(prompt = "",
+                                      default = "",
+                                      allow_empty = TRUE) {
+  # Explicit automation override:
+  # Sys.setenv(MERGEN_PREFLIGHT_ASSUME_STATUS = "PASS")
+  override <- Sys.getenv("MERGEN_PREFLIGHT_ASSUME_STATUS", "")
+  if (nzchar(override)) {
+    if (nzchar(prompt)) cat(prompt)
+    cat(override, "\n")
+    return(enc2utf8(override))
+  }
+
+  value <- tryCatch(
+    {
+      base::readline(prompt = prompt)
+    },
+    error = function(e) {
+      # RStudio/Windows console fallback. readline() bazı ortamlarda
+      # "unknown type #29" hatası verebiliyor.
+      if (nzchar(prompt)) cat(prompt)
+
+      tryCatch(
+        {
+          line <- readLines("stdin", n = 1L, warn = FALSE)
+          if (length(line) == 0L) "" else line[[1]]
+        },
+        error = function(e2) default
+      )
+    }
+  )
+
+  if (length(value) == 0L || is.na(value[1])) {
+    value <- default
+  }
+
+  value <- enc2utf8(as.character(value[1]))
+
+  if (!allow_empty && !nzchar(trimws(value))) {
+    return(default)
+  }
+
+  value
+}
+
 normalize_manual_answer <- function(value) {
   value <- toupper(trimws(as.character(value %||% "")))
   if (value %in% c("P", "PASS", "OK", "GEÇTİ", "GECTI")) return("PASS")
@@ -33,18 +81,33 @@ collect_manual_preflight_context <- function() {
 ask_manual_step <- function(mode, step_id, instruction, context = collect_manual_preflight_context()) {
   cat("\n", strrep("-", 78), "\n", sep = "")
   cat(sprintf("[%s] %s\n%s\n", mode, step_id, instruction))
-  cat("Sonuç girin: PASS / FAIL / SKIP: ")
+  answer <- if (interactive()) {
+    manual_preflight_readline(
+      prompt = "Sonuç girin: PASS / FAIL / SKIP: ",
+      default = "SKIP",
+      allow_empty = FALSE
+    )
+  } else {
+    "SKIP"
+  }
 
-  answer <- if (interactive()) readline() else "SKIP"
   status <- normalize_manual_answer(answer)
 
   note <- ""
   evidence <- ""
+
   if (interactive()) {
-    cat("Kısa not/kanıt girin (opsiyonel): ")
-    note <- readline()
-    cat("Kanıt dosyası / ekran görüntüsü yolu (opsiyonel): ")
-    evidence <- readline()
+    note <- manual_preflight_readline(
+      prompt = "Kısa not/kanıt girin (opsiyonel): ",
+      default = "",
+      allow_empty = TRUE
+    )
+
+    evidence <- manual_preflight_readline(
+      prompt = "Kanıt dosyası / ekran görüntüsü yolu (opsiyonel): ",
+      default = "",
+      allow_empty = TRUE
+    )
   }
 
   cbind(
