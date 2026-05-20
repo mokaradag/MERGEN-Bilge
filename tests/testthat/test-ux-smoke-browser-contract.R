@@ -17,13 +17,24 @@ test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
     "MusicManager global API var",
     "TTS global API var",
     "STT global API var",
-    "duckForSTT()",
-    "unduckAfterSTT()",
-    "TTS/play olayı müziği duck eder",
-    "STT cleanup müziği restore eder",
+
+    # TTS/media duck probe: use ASCII structural anchors instead of Turkish
+    # assertion text so Windows native encoding cannot break the contract.
+    "ttsAudio.dispatchEvent(new win.Event(\"play\"",
+    "win.MusicManager.state.isDucked === true",
+
+    # STT cleanup/restore probe.
+    "win.MusicManager.duckForSTT();",
+    "win.MusicManager.unduckAfterSTT();",
+    "win.MusicManager.state._sttActive === false",
+    "win.MusicManager.state.isDucked === false",
+
+    # Saved-chat historical TTS non-autoplay probe.
     "load_chat_from_storage",
     "historicalMessages",
-    "kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz"
+    "win.mergenTTS.queue.length === 0",
+    "win.mergenTTS.isPlaying !== true",
+    "!win.mergenTTS.currentAudio"
   )
 
   missing <- required_tokens[!vapply(
