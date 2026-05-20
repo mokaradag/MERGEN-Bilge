@@ -263,9 +263,34 @@ test_that("runtime files keep saved chat, history and gallery race contracts wir
     info = paste("Kayıtlı söyleşi race sözleşmesi eksik:", paste(missing_saved, collapse = ", "))
   )
 
-  expect_false(
-    grepl("trigger_tts", saved_observers, fixed = TRUE, useBytes = TRUE),
-    info = "Kayıtlı söyleşi yükleme akışı eski sohbetleri TTS ile otomatik oynatmamalı."
+  forbidden_saved_chat_tts_patterns <- c(
+    "trigger_tts",
+    "trigger_tts_for_message",
+    "playAudioMessage",
+    "sendCustomMessage(\"playAudioMessage\"",
+    "sendCustomMessage('playAudioMessage'",
+    "attach_tts_audio(",
+    "autoplay = TRUE"
+  )
+
+  forbidden_hits <- forbidden_saved_chat_tts_patterns[vapply(
+    forbidden_saved_chat_tts_patterns,
+    function(pattern) grepl(pattern, saved_observers, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    forbidden_hits,
+    character(0),
+    info = paste(
+      "Kayıtlı söyleşi yükleme akışı eski AI mesajlarını TTS/autoplay ile başlatmamalı:",
+      paste(forbidden_hits, collapse = ", ")
+    )
+  )
+
+  expect_true(
+    grepl("render_message_bubble_ui(", saved_observers, fixed = TRUE, useBytes = TRUE),
+    info = "Kayıtlı söyleşi yükleme eski mesajları sadece UI render yoluyla eklemeli."
   )
 
   required_module_patterns <- c(

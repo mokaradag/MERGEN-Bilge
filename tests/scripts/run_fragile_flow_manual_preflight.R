@@ -13,7 +13,24 @@ normalize_manual_answer <- function(value) {
   "UNKNOWN"
 }
 
-ask_manual_step <- function(mode, step_id, instruction) {
+collect_manual_preflight_context <- function() {
+  git_ref <- tryCatch(
+    system2("git", c("rev-parse", "--short", "HEAD"), stdout = TRUE, stderr = FALSE),
+    error = function(e) ""
+  )
+  git_ref <- enc2utf8(paste(git_ref, collapse = ""))
+
+  data.frame(
+    operator = enc2utf8(Sys.getenv("USERNAME", Sys.getenv("USER", ""))),
+    git_ref = git_ref,
+    app_url = enc2utf8(Sys.getenv("MERGEN_APP_URL", "")),
+    sso_enabled_env = enc2utf8(Sys.getenv("SSO_ENABLED", "")),
+    mcp_files_base = enc2utf8(Sys.getenv("MCP_FILES_BASE", "")),
+    stringsAsFactors = FALSE
+  )
+}
+
+ask_manual_step <- function(mode, step_id, instruction, context = collect_manual_preflight_context()) {
   cat("\n", strrep("-", 78), "\n", sep = "")
   cat(sprintf("[%s] %s\n%s\n", mode, step_id, instruction))
   cat("Sonuç girin: PASS / FAIL / SKIP: ")
@@ -22,19 +39,26 @@ ask_manual_step <- function(mode, step_id, instruction) {
   status <- normalize_manual_answer(answer)
 
   note <- ""
+  evidence <- ""
   if (interactive()) {
     cat("Kısa not/kanıt girin (opsiyonel): ")
     note <- readline()
+    cat("Kanıt dosyası / ekran görüntüsü yolu (opsiyonel): ")
+    evidence <- readline()
   }
 
-  data.frame(
-    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
-    mode = mode,
-    step_id = step_id,
-    status = status,
-    note = enc2utf8(note),
-    instruction = enc2utf8(instruction),
-    stringsAsFactors = FALSE
+  cbind(
+    data.frame(
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
+      mode = mode,
+      step_id = step_id,
+      status = status,
+      note = enc2utf8(note),
+      evidence = enc2utf8(evidence),
+      instruction = enc2utf8(instruction),
+      stringsAsFactors = FALSE
+    ),
+    context
   )
 }
 
@@ -82,12 +106,14 @@ cat("Bu betik uygulamayı başlatmaz; gözlemlerinizi UTF-8 CSV olarak kaydeder.
 cat("Ağır browser automation bağımlılığı eklenmez.\n")
 
 results <- list()
+preflight_context <- collect_manual_preflight_context()
 
 for (id in names(local_steps)) {
   results[[length(results) + 1L]] <- ask_manual_step(
     "LOCAL",
     id,
-    local_steps[[id]]
+    local_steps[[id]],
+    context = preflight_context
   )
 }
 
@@ -95,7 +121,8 @@ for (id in names(vm_sso_steps)) {
   results[[length(results) + 1L]] <- ask_manual_step(
     "WINDOWS_VM_SSO",
     id,
-    vm_sso_steps[[id]]
+    vm_sso_steps[[id]],
+    context = preflight_context
   )
 }
 

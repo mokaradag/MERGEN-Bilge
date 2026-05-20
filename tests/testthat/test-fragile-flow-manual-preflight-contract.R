@@ -66,6 +66,12 @@ test_that("fragile-flow manual preflight keeps required local and VM checks", {
     "run_vm_preflight_real.R",
     "MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE",
     "UX_SMOKE_DONE:PASS",
+    "collect_manual_preflight_context",
+    "MERGEN_APP_URL",
+    "git_ref",
+    "sso_enabled_env",
+    "mcp_files_base",
+    "evidence",
     "fileEncoding = \"UTF-8\""
   )
 
