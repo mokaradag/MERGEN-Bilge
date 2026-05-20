@@ -231,3 +231,108 @@ test_that("File Manager refresh skips SSO placeholder and restores Turkish displ
     original_name
   )
 })
+
+test_that("File Manager refresh preserves current table on empty/error results and skips invalid user id", {
+  session <- .fm_live_fake_session(session_user_id = 0L)
+  values <- .fm_live_fake_values()
+  session$userData$current_session_files <- list()
+
+  current_uid <- "4242"
+  auth_ready <- TRUE
+  refresh_mode <- "ok"
+  listed_user_ids <- character()
+
+  original_name <- enc2utf8("kalıcı_refresh_koruma.txt")
+  probe_file <- tempfile("fm_refresh_preserve_", fileext = ".txt")
+  writeLines(enc2utf8("refresh preserve smoke: ğüşİÖÇ"), probe_file, useBytes = TRUE)
+  on.exit(unlink(probe_file, force = TRUE), add = TRUE)
+
+  old_sso_exists <- exists("SSO_ENABLED", envir = globalenv(), inherits = FALSE)
+  old_sso_value <- if (old_sso_exists) get("SSO_ENABLED", envir = globalenv()) else NULL
+
+  old_list_exists <- exists("mergen_list_user_files", envir = globalenv(), inherits = FALSE)
+  old_list_value <- if (old_list_exists) get("mergen_list_user_files", envir = globalenv()) else NULL
+
+  on.exit({
+    if (old_sso_exists) {
+      assign("SSO_ENABLED", old_sso_value, envir = globalenv())
+    } else if (exists("SSO_ENABLED", envir = globalenv(), inherits = FALSE)) {
+      rm("SSO_ENABLED", envir = globalenv())
+    }
+
+    if (old_list_exists) {
+      assign("mergen_list_user_files", old_list_value, envir = globalenv())
+    } else if (exists("mergen_list_user_files", envir = globalenv(), inherits = FALSE)) {
+      rm("mergen_list_user_files", envir = globalenv())
+    }
+  }, add = TRUE)
+
+  assign("SSO_ENABLED", TRUE, envir = globalenv())
+
+  assign(
+    "mergen_list_user_files",
+    function(user_id, prune_missing = TRUE) {
+      listed_user_ids <<- c(listed_user_ids, as.character(user_id))
+
+      if (identical(refresh_mode, "empty")) {
+        return(data.frame(path = character(), name = character(), stringsAsFactors = FALSE))
+      }
+
+      if (identical(refresh_mode, "error")) {
+        stop("sentetik listeleme hatası")
+      }
+
+      data.frame(
+        name = original_name,
+        path = probe_file,
+        size = file.info(probe_file)$size,
+        type = "text/plain",
+        stringsAsFactors = FALSE
+      )
+    },
+    envir = globalenv()
+  )
+
+  refresh_from_user_folder <- fm_create_refresh_from_user_folder(
+    session = session,
+    ns = function(id) id,
+    module_values_provider = function() values,
+    module_user_id_chr = function() current_uid,
+    is_auth_ready = function() auth_ready,
+    ensure_session_registry = function() {
+      session$userData$current_session_files <- session$userData$current_session_files %||% list()
+      invisible(TRUE)
+    },
+    attach_in_parent = function(file_obj) invisible(TRUE),
+    process_uploaded_file_callback = .fm_live_process_restored_file(values, session),
+    refresh_guard = fm_create_refresh_request_guard(),
+    fm_debug = function(...) invisible(NULL)
+  )
+
+  refresh_from_user_folder("initial-ok")
+
+  expect_equal(nrow(values$files), 1L)
+  expect_identical(enc2utf8(values$files$Dosya_Adi[[1]]), original_name)
+  expect_identical(listed_user_ids, "4242")
+
+  refresh_mode <- "empty"
+  refresh_from_user_folder("empty-preserve")
+
+  expect_equal(nrow(values$files), 1L)
+  expect_identical(enc2utf8(values$files$Dosya_Adi[[1]]), original_name)
+
+  refresh_mode <- "error"
+  refresh_from_user_folder("error-preserve")
+
+  expect_equal(nrow(values$files), 1L)
+  expect_identical(enc2utf8(values$files$Dosya_Adi[[1]]), original_name)
+
+  before_invalid <- length(listed_user_ids)
+  current_uid <- "0"
+  refresh_mode <- "ok"
+
+  refresh_from_user_folder("invalid-user-skip")
+
+  expect_identical(length(listed_user_ids), before_invalid)
+  expect_equal(nrow(values$files), 1L)
+})

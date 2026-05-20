@@ -692,24 +692,66 @@
     ttsAudio.src = "tts/smoke-test.mp3";
     doc.body.appendChild(ttsAudio);
 
+    if (win.MergenAudioLifecycle &&
+        typeof win.MergenAudioLifecycle.releaseAll === "function") {
+      win.MergenAudioLifecycle.releaseAll("ux-smoke-start");
+    }
+
     ttsAudio.dispatchEvent(new win.Event("play", { bubbles: true }));
     await wait(150);
     assert(win.MusicManager.state.isDucked === true, "TTS/play olayı müziği duck eder");
 
+    if (win.MergenAudioLifecycle &&
+        typeof win.MergenAudioLifecycle.activeDuckOwners === "function") {
+      assert(
+        win.MergenAudioLifecycle.activeDuckOwners().indexOf("external_audio") >= 0,
+        "TTS/play external_audio owner kaydeder"
+      );
+    }
+
     ttsAudio.dispatchEvent(new win.Event("pause", { bubbles: true }));
     await wait(450);
+
+    if (win.MergenAudioLifecycle &&
+        typeof win.MergenAudioLifecycle.activeDuckOwners === "function") {
+      assert(
+        win.MergenAudioLifecycle.activeDuckOwners().indexOf("external_audio") < 0,
+        "TTS pause external_audio owner temizler"
+      );
+    }
+
     assert(win.MusicManager.state._sttActive !== true, "TTS pause sonrası STT aktif değilse restore yolu serbest");
 
+    win.MusicManager.duck("tts");
     win.MusicManager.duckForSTT();
+
+    if (win.MergenAudioLifecycle &&
+        typeof win.MergenAudioLifecycle.activeDuckOwners === "function") {
+      var owners = win.MergenAudioLifecycle.activeDuckOwners();
+
+      assert(
+        owners.indexOf("tts") >= 0 && owners.indexOf("stt") >= 0,
+        "TTS ve STT sahipleri aynı anda korunur"
+      );
+    }
+
     assert(win.MusicManager.state._sttActive === true, "STT müziği tam duck durumuna alır");
     assert(win.MusicManager.state.isDucked === true, "STT duck state korunur");
 
-    win.MusicManager.unduck();
-    assert(win.MusicManager.state.isDucked === true, "STT aktifken normal unduck müziği geri getirmez");
+    win.MusicManager.unduck("tts");
+    assert(win.MusicManager.state.isDucked === true, "STT owner dururken TTS release müziği erken restore etmez");
 
     win.MusicManager.unduckAfterSTT();
     assert(win.MusicManager.state._sttActive === false, "STT cleanup aktif bayrağı temizler");
     assert(win.MusicManager.state.isDucked === false, "STT cleanup müziği restore eder");
+
+    if (win.MergenAudioLifecycle &&
+        typeof win.MergenAudioLifecycle.activeDuckOwners === "function") {
+      assert(
+        win.MergenAudioLifecycle.activeDuckOwners().length === 0,
+        "TTS/STT cleanup sonrası aktif duck owner kalmaz"
+      );
+    }
 
     win.mergenTTS.queue = [];
     win.mergenTTS.isPlaying = false;

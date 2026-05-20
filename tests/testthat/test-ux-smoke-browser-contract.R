@@ -22,9 +22,18 @@ test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
     # assertion text so Windows native encoding cannot break the contract.
     "ttsAudio.dispatchEvent(new win.Event(\"play\"",
     "win.MusicManager.state.isDucked === true",
+    "win.MergenAudioLifecycle.activeDuckOwners()",
+    "win.MergenAudioLifecycle.releaseAll(\"ux-smoke-start\")",
+
+    # Overlapping owner probe: TTS release must not restore while STT owns duck.
+    "win.MusicManager.duck(\"tts\")",
+    "win.MusicManager.duckForSTT();",
+    "owners.indexOf(\"tts\") >= 0",
+    "owners.indexOf(\"stt\") >= 0",
+    "win.MusicManager.unduck(\"tts\")",
+    "activeDuckOwners().length === 0",
 
     # STT cleanup/restore probe.
-    "win.MusicManager.duckForSTT();",
     "win.MusicManager.unduckAfterSTT();",
     "win.MusicManager.state._sttActive === false",
     "win.MusicManager.state.isDucked === false",
