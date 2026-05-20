@@ -182,13 +182,21 @@ testthat::test_that("saved chat reload runtime smoke renders historical AI messa
       )
     )
 
+    # observeEvent(..., ignoreInit = TRUE) başlangıç turunu yutmasın.
+    # Önce observer kayıtlarının ilk reaktif turunu tamamlat.
+    session$flushReact()
+
     session$setInputs(load_chat_from_storage = historical_messages)
     session$flushReact()
 
     values <- session$userData$.values
 
     testthat::expect_equal(length(values$messages), 1L)
-    testthat::expect_identical(values$messages[[1]]$id, "old_ai_1")
+
+    if (length(values$messages) > 0L) {
+      testthat::expect_identical(values$messages[[1]]$id, "old_ai_1")
+    }
+
     testthat::expect_false(isTRUE(tts_called))
     testthat::expect_equal(session$userData$.chart_rebind_count(), 1L)
   })

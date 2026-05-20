@@ -47,4 +47,24 @@ if (!exists("mergen_register_uploaded_file", envir = globalenv(), inherits = FAL
     encoding = "UTF-8",
     local = globalenv()
   )
+
+  # Public File Store fonksiyonları refactor sonrası ayrı dosyalardadır.
+  # Bu helper bu public API'yi isteyen smoke testler için tamamını yüklemelidir.
+  source(
+    file.path(repo_root_for_tests, "R", "config_file_store_index_mutation.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
+  source(
+    file.path(repo_root_for_tests, "R", "config_file_store_listing_helpers.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
+  source(
+    file.path(repo_root_for_tests, "R", "config_file_store_registry.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
 }
