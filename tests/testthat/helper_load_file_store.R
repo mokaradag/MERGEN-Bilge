@@ -5,7 +5,19 @@
 # Bu helper yalnızca ilk çağrıda dosya deposunu global ortama yükler.
 # ==============================================================================
 
-if (!exists("mergen_register_uploaded_file", envir = globalenv(), inherits = FALSE)) {
+file_store_helpers_ready <- all(vapply(
+  c(
+    "mergen_register_uploaded_file",
+    "mergen_list_user_files",
+    "resolve_uploaded_file",
+    "mergen_remove_from_index",
+    "normalize_for_path_compare"
+  ),
+  function(fn) exists(fn, envir = globalenv(), mode = "function", inherits = TRUE),
+  logical(1)
+))
+
+if (!isTRUE(file_store_helpers_ready)) {
   # utils_common.R içinde tanımlı %||%, normalize_utf8_text vb. gereklidir.
   source(
     file.path(repo_root_for_tests, "R", "utils_common.R"),
@@ -29,6 +41,14 @@ if (!exists("mergen_register_uploaded_file", envir = globalenv(), inherits = FAL
   # Path yardımcıları config_file_store.R'den önce yüklenmelidir.
   source(
     file.path(repo_root_for_tests, "R", "utils_path_helpers.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
+  # File Store listeleme/rehydrate yardımcıları normalize_for_path_compare()
+  # kullanır. Bu fonksiyon R/helpers_files_path.R içinde tanımlıdır.
+  source(
+    file.path(repo_root_for_tests, "R", "helpers_files_path.R"),
     encoding = "UTF-8",
     local = globalenv()
   )
