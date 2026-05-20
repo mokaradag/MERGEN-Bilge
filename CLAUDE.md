@@ -292,12 +292,18 @@ Protected by:
 - tests/scripts/run_fragile_flow_manual_preflight.R
 - tests/testthat/test-fragile-flow-manual-preflight-contract.R
 - www/smoke/ux-smoke.html
+- tests/testthat/test-ux-smoke-browser-contract.R
 
 Additional lightweight smoke tests now complement the manual preflight without launching the full app: `test-sso-session-identity-smoke.R` covers SSO placeholder-to-real-user transition, `test-streaming-abort-lifecycle-smoke.R` covers true streaming abort cleanup decisions, and `test-audio-lifecycle-owner-smoke.R` covers TTS/STT/music owner-based duck recovery contracts. These tests do not replace the Windows VM/manual browser checks.
+
+`tests/testthat/test-ux-smoke-browser-contract.R` protects the browser smoke page itself. It intentionally matches ASCII structural anchors rather than Turkish assertion sentences so Windows/Turkish-locale byte matching cannot fail while the real `/smoke/ux-smoke.html` runner still passes.
+
+- Browser-smoke contract tests should prefer stable implementation anchors such as function names, Shiny input names, and state predicates over exact Turkish UI/assertion text. Exact Turkish text is acceptable in the real smoke page, but the static contract must not depend on byte-identical Turkish strings on Windows VM sessions.
 
 Focused validation:
 
 - testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")
+- testthat::test_file("tests/testthat/test-ux-smoke-browser-contract.R")
 - source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")
 
 ### Bilge Yolaç document download and stream-poll contract
