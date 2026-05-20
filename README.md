@@ -31,6 +31,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Dosya Yönetimi yaşam döngüsü, yüklenen dosyaların tarayıcı yenilemesi ve tam uygulama yeniden başlatması sonrasında görünür kalmasını hedefler.
 - Kullanıcıya gösterilen dosya adları storage-prefix içeren kalıcı dosya adlarından ayrıdır; `dummy_test_data.xlsx` ve `Türkçe_çalışma_özeti_İstanbul.pdf` gibi özgün adlar Dosya Yönetimi tablosunda okunabilir biçimde korunur.
 - Dosya Yönetimi canlı kullanıcı kimliği sınırı hafif smoke testleriyle korunur: SSO geçişinde placeholder `user_id = 0` kalıcı dosya yenilemesini tetiklemez, yenileme canlı `current_user_id` sağlayıcısını kullanır ve `Türkçe_çalışma_özeti_İstanbul.pdf` gibi görünen adlar yenileme/yeniden başlatma mantığında okunabilir kalır.
+- `tests/testthat/test-file-store-persistence-roundtrip-smoke.R`, PDF/DOCX/TXT/CSV/XLSX ve Türkçe dosya adları için tekrarlı listeleme/yenileme-benzeri çağrılarda görünen ad kalıcılığını doğrular; adların okunabilir ve tekil kaldığını, storage zaman damgası/hex adlarının UI'a sızmadığını güvenceye alır.
 - Kalıcı dosya indeksi kısmen eski kaldığında yalnızca aynı kullanıcı klasöründe güvenli filesystem fallback uygulanır; çapraz kullanıcı/çapraz bucket çözümleme varsayılan olarak kapalı kalır.
 - Dosya Yönetimi listeleme yolu, aynı fiziksel dosyanın indeks ve filesystem fallback üzerinden iki kez tabloya düşmesini engelleyecek şekilde görünen dosya adı kimliğiyle tekilleştirilir.
 - Dosya Özetleme modu yalnızca Model Bağlamı seçili ve desteklenen belge türlerini kullanır; Excel dosyaları özetleme bağlamından çıkarılır ve MCP Excel analiz akışında kullanılmaya devam eder.
@@ -47,8 +48,8 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - STT modalı normal iptal/gönder yolları dışında kapansa bile tarayıcı tarafı kapanış yedeğiyle müzik durumu temizlenir ve geri yüklenir.
 - AI Uzman ses oynatımı tarayıcı autoplay engeline veya oynatma reddine takıldığında ses kaynağı temizlenir, müzik duck durumu bırakılır ve altyazı deneyimi korunur.
 - TTS ses nesneleri tarayıcı tarafında `MergenAudioLifecycle` üzerinde `tts` sahibiyle işaretlenir; böylece global audio play/pause olayları TTS'i `external_audio` gibi ele almaz ve TTS/STT/arka plan müziği duck/unduck yaşam döngüsü `tests/testthat/test-audio-lifecycle-owner-smoke.R` ile hafif biçimde korunur.
-- Tarayıcı tarafı medya ve kayıtlı sohbet smoke kapsamı `www/smoke/ux-smoke.html` ile, bu smoke sayfasının kapsamı ise `tests/testthat/test-ux-smoke-browser-contract.R` ile korunur. Bu sözleşme testi Windows/Türkçe locale kırılganlığını azaltmak için Türkçe log/metin cümlelerini byte düzeyinde eşleştirmek yerine ASCII yapısal anchor'ları kullanır; TTS play olayının müziği duck etmesi, STT duck/cleanup sonrası müzik durumunun geri dönmesi ve kayıtlı sohbet yüklenince eski AI mesajlarının TTS autoplay başlatmaması korunur.
-- Kayıtlı sohbet yeniden yükleme yolu ayrıca `tests/testthat/test-saved-chat-reload-no-tts-contract.R` ile korunur; `load_chat_from_storage` observer’ı tarihsel mesajları yalnızca render etmeli, `playAudioMessage` veya TTS sentezleme yolunu tetiklememelidir.
+- Tarayıcı tarafı medya ve kayıtlı sohbet smoke kapsamı `www/smoke/ux-smoke.html` ile, bu smoke sayfasının kapsamı ise `tests/testthat/test-ux-smoke-browser-contract.R` ile korunur. Bu sözleşme testi Windows/Türkçe locale kırılganlığını azaltmak için Türkçe log/metin cümlelerini byte düzeyinde eşleştirmek yerine ASCII yapısal anchor'ları kullanır; TTS play olayının müziği duck etmesi, STT duck/cleanup sonrası müzik durumunun geri dönmesi, üst üste binen TTS+STT duck owner'larında STT aktifken TTS bırakılınca müziğin erken dönmemesi, cleanup sonrası aktif duck owner kalmaması ve kayıtlı sohbet yüklenince eski AI mesajlarının TTS autoplay başlatmaması korunur.
+- Kayıtlı sohbet yeniden yükleme yolu ayrıca `tests/testthat/test-saved-chat-reload-no-tts-contract.R` ile korunur; yapısal/statik kontrollerin yanında hafif bir `shiny::testServer` runtime smoke da içerir ve `load_chat_from_storage` observer’ının tarihsel mesajları yalnızca render edip `playAudioMessage` veya TTS sentezleme yolunu tetiklememesini doğrular.
 
 ### Gelişmiş deneyim katmanları
 - Sinematik başlangıç ekranı
@@ -162,6 +163,7 @@ Kırılgan kullanıcı akışları için ek manuel preflight:
   - `testthat::test_file("tests/testthat/test-production-contracts.R")`
   - `testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")`
   - `testthat::test_file("tests/testthat/test-saved-chat-reload-no-tts-contract.R")`
+  - `testthat::test_file("tests/testthat/test-file-store-persistence-roundtrip-smoke.R")`
   - `testthat::test_file("tests/testthat/test-ux-smoke-browser-contract.R")`
   - `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
   - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
@@ -377,7 +379,7 @@ MCP Excel dosya çözümleme hattı da aynı güvenlik sınırını izler. Araç
 
 Bu sınır `tests/testthat/test-resolve-uploaded-file.R`, `tests/testthat/test-mcp-excel-resolve.R`, `tests/testthat/test-file-resolution-security-contract.R`, `tests/testthat/test-upload-size-policy.R` ve VM preflight içindeki File Store izolasyon kontrolleriyle korunur.
 
-Son dosya yolu ve görüntüleme bakım güncellemesinde, dosya/UNC/path karşılaştırma yardımcıları `R/helpers_files_path.R` dosyasına ayrılmıştır. Böylece `R/helpers_files.R` dosyası dosya içerik okuma ve MCP kalıcı yükleme/kopyalama akışlarına odaklanır. Kalıcı depolamada çakışma riskini azaltmak için dosya adlarında zaman damgası ve benzersiz token içeren iç storage adları kullanılabilir; ancak bu adlar kullanıcı arayüzüne sızdırılmaz. Dosya Yönetimi tablosu ve `Model Bağlamı` checkbox metadata alanları kullanıcıya yalnızca temiz/orijinal dosya adını gösterir. Bu davranış `test-helpers-files-path-contract.R`, `test-file-manager-display-name-contract.R`, `test-source-manifest-contract.R` ve `test-maintainability-ratchet.R` ile korunur.
+Son dosya yolu ve görüntüleme bakım güncellemesinde, dosya/UNC/path karşılaştırma yardımcıları `R/helpers_files_path.R` dosyasına ayrılmıştır. Böylece `R/helpers_files.R` dosyası dosya içerik okuma ve MCP kalıcı yükleme/kopyalama akışlarına odaklanır. Kalıcı depolamada çakışma riskini azaltmak için dosya adlarında zaman damgası ve benzersiz token içeren iç storage adları kullanılabilir; ancak bu adlar kullanıcı arayüzüne sızdırılmaz. Dosya Yönetimi tablosu ve `Model Bağlamı` checkbox metadata alanları kullanıcıya yalnızca temiz/orijinal dosya adını gösterir. Bu davranış `test-helpers-files-path-contract.R`, `test-file-manager-display-name-contract.R`, `test-source-manifest-contract.R` ve `test-maintainability-ratchet.R` ile korunur. Test ortamında File Store public API yükleme sırası `tests/testthat/helper_load_file_store.R` ile korunur; izole smoke testleri için `normalize_for_path_compare` ve registry/mutation yardımcıları hazır olsun diye `R/helpers_files_path.R`, bölünmüş `config_file_store_*` public API dosyalarından önce yüklenir.
 
 ### Ayarlar
 İki alt sayfa içerir:
