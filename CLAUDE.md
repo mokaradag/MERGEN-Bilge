@@ -303,9 +303,10 @@ Protected by:
 - tests/testthat/test-browser-smoke-harness-contract.R
 - tests/testthat/test-saved-chat-reload-no-tts-contract.R
 
-Additional lightweight smoke tests now complement the manual preflight without launching the full app: `test-sso-session-identity-smoke.R` (SSO identity smoke), `test-file-manager-live-provider-refresh-smoke.R` (File Manager live-provider refresh smoke), `test-file-store-persistence-roundtrip-smoke.R` (File Store persistence roundtrip smoke), `test-streaming-abort-lifecycle-smoke.R` (streaming abort lifecycle smoke), `test-saved-chat-reload-no-tts-contract.R` (saved-chat reload no-TTS contract + lightweight runtime smoke), `test-audio-lifecycle-owner-smoke.R` (audio lifecycle owner smoke), and `test-ux-smoke-browser-contract.R` (browser UX smoke contract). These tests do not replace the Windows VM/manual browser checks.
+Additional lightweight smoke tests now complement the manual preflight without launching the full app: `test-sso-session-identity-smoke.R` (SSO identity smoke), `test-file-manager-live-provider-refresh-smoke.R` (File Manager live-provider refresh smoke), `test-file-store-persistence-roundtrip-smoke.R` (File Store persistence roundtrip smoke), `test-streaming-abort-lifecycle-smoke.R` (streaming abort lifecycle smoke), `test-saved-chat-reload-no-tts-contract.R` (saved-chat reload no-TTS contract + lightweight runtime smoke), `test-audio-lifecycle-owner-smoke.R` (audio lifecycle owner smoke), `test-true-streaming-reset-ui-contract.R` (server/client true-streaming reset/finalize contract without launching full app, DB, LLM, or browser), and `test-ux-smoke-browser-contract.R` (browser UX smoke contract). These tests do not replace the Windows VM/manual browser checks.
 
 - Browser-side streaming lifecycle is also protected without launching a real LLM request. `www/js/streaming_manager.js` exposes the smoke-only `window.MergenStreamingSmoke` seam, and `www/smoke/ux-smoke.html` drives a synthetic init → delta → stale delta rejection → finalize sequence.
+- True-streaming stop/cancel regressions are also protected by `tests/testthat/test-true-streaming-reset-ui-contract.R`. Keep server-side cleanup, stop-file signaling, `ctx$reset_chat_state_fn()`, `finalizeStreamingMessage`, request-id propagation, stale delta rejection, finalized state, action-button restore, and pending followup cleanup aligned. Do not make this path depend on a live LLM request for basic contract coverage.
 - Do not remove or rename `window.MergenStreamingSmoke`, `handleInitStreamingMessage`, `handleStreamingDelta`, `handleStreamingUpdate`, or `handleFinalizeStreamingMessage` unless the browser smoke and contract tests are updated in the same change.
 - Saved-chat reload must remain a render-only historical path. `R/server_observers_storage.R` must not call TTS synthesis or send `playAudioMessage` from the `load_chat_from_storage` observer; this contract is protected by static checks plus a lightweight `shiny::testServer` runtime smoke.
 - The manual preflight script may use `MERGEN_PREFLIGHT_ASSUME_STATUS=PASS` only as an explicit operator shortcut after the steps have already been manually verified. It should not be treated as automated proof that the browser or VM was actually exercised.
@@ -419,6 +420,7 @@ The following UX behaviors are protected contracts:
 - TTS must duck music while speaking and restore music after playback or failure.
 - TTS `Audio` objects must be marked with the `MergenAudioLifecycle` owner `tts` before playback, so document-level audio play/pause handlers do not treat TTS as generic `external_audio`.
 - TTS/STT/background music lifecycle uses owner-based ducking; browser smoke validates overlapping owners so releasing TTS while STT is still active must not restore music early, and final cleanup must leave no active duck owners.
+- Background music must keep a single active `Audio` instance. `MusicManager._playTrack()` must stop the current audio before creating a new `Audio(src)`, stale audio events must be guarded with `self._audio !== audio`, and stale playlist responses must be rejected through `_pendingRequestId`.
 - Do not collapse this owner model into a single boolean duck flag.
 - STT must pause/duck music when the modal opens and restore music on cancel, submit, init failure, microphone-denied paths, and unexpected Bootstrap modal hidden/close paths.
 - AI Expert audio must duck music while speaking and must release its duck owner if playback fails or the browser rejects autoplay; subtitle fallback behavior must remain intact.
@@ -450,6 +452,7 @@ The current guardrail layer includes:
 - `tests/testthat/test-sso-session-identity-smoke.R`
 - `tests/testthat/test-streaming-abort-lifecycle-smoke.R`
 - `tests/testthat/test-audio-lifecycle-owner-smoke.R`
+- `tests/testthat/test-true-streaming-reset-ui-contract.R`
 
 Focused validation after UX-sensitive refactors:
 
@@ -464,6 +467,7 @@ Focused validation after UX-sensitive refactors:
 - `testthat::test_file("tests/testthat/test-sso-session-identity-smoke.R")`
 - `testthat::test_file("tests/testthat/test-streaming-abort-lifecycle-smoke.R")`
 - `testthat::test_file("tests/testthat/test-audio-lifecycle-owner-smoke.R")`
+- `testthat::test_file("tests/testthat/test-true-streaming-reset-ui-contract.R")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 
 Browser-level smoke validation:
@@ -482,7 +486,7 @@ Browser-level smoke validation:
 - The smoke must restore the original browser storage values after it finishes.
 - The smoke validates real browser behavior for welcome boot, no-top-gap layout, quick-action double-click single-dispatch, Enter/Shift+Enter/stop-mode input behavior, auto-scroll state, TTS/STT/music duck and restore behavior, STT hidden-modal cleanup, AI Expert autoplay rejection music restore, saved-chat no historical TTS autoplay, reasoning panel lifecycle, and blocking console errors.
 - Quick-action intro-message visibility is intentionally non-blocking in the VM/browser smoke because SSO routing and timing can make that visual check brittle. Deterministic focused tests remain the source of truth for quick-action intro, model, and tool-mode contracts.
-- When extracting UTF-8 JavaScript snippets in R tests, do not mix byte-position matching such as useBytes = TRUE with character-position substring functions such as substr(); use character-position matching or byte-safe extraction consistently to avoid false failures around Turkish text.
+- When extracting snippets from UTF-8 JavaScript files in R tests, do not mix byte-position matching such as `useBytes = TRUE` with character-position substring functions such as `substr()`. Turkish multibyte text before the target can shift byte offsets and create false test failures. Use character-position matching or consistently byte-safe extraction.
 - Known `Shiny.setInputValue` / `Shiny.setinputValue` timing noise may be treated as warning-only in the smoke harness, but do not broadly ignore unrelated console errors.
 - If this smoke test fails because of Keycloak redirection, iframe routing, Deep Space intro timing, or production proxy behavior, do not remove UX features to make it pass. Prefer a small defensive adjustment inside `www/smoke/ux-smoke.html` while preserving focused test coverage.
 
