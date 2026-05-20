@@ -244,6 +244,8 @@ Focused validation after touching file lifecycle, File Manager, MCP file resolut
 - testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")
 - testthat::test_file("tests/testthat/test-file-manager-live-provider-refresh-smoke.R")
 - testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")
+- testthat::test_file("tests/testthat/test-saved-chat-reload-no-tts-contract.R")
+- testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")
 - source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")
 - testthat::test_file("tests/testthat/test-file-resolution-security-contract.R")
 - testthat::test_file("tests/testthat/test-resolve-uploaded-file.R")
@@ -293,16 +295,26 @@ Protected by:
 - tests/testthat/test-fragile-flow-manual-preflight-contract.R
 - www/smoke/ux-smoke.html
 - tests/testthat/test-ux-smoke-browser-contract.R
+- tests/testthat/test-browser-smoke-harness-contract.R
+- tests/testthat/test-saved-chat-reload-no-tts-contract.R
 
 Additional lightweight smoke tests now complement the manual preflight without launching the full app: `test-sso-session-identity-smoke.R` covers SSO placeholder-to-real-user transition, `test-streaming-abort-lifecycle-smoke.R` covers true streaming abort cleanup decisions, and `test-audio-lifecycle-owner-smoke.R` covers TTS/STT/music owner-based duck recovery contracts. These tests do not replace the Windows VM/manual browser checks.
+
+- Browser-side streaming lifecycle is also protected without launching a real LLM request. `www/js/streaming_manager.js` exposes the smoke-only `window.MergenStreamingSmoke` seam, and `www/smoke/ux-smoke.html` drives a synthetic init → delta → stale delta rejection → finalize sequence.
+- Do not remove or rename `window.MergenStreamingSmoke`, `handleInitStreamingMessage`, `handleStreamingDelta`, `handleStreamingUpdate`, or `handleFinalizeStreamingMessage` unless the browser smoke and contract tests are updated in the same change.
+- Saved-chat reload must remain render-only for historical messages. `R/server_observers_storage.R` must not call TTS synthesis or send `playAudioMessage` from the `load_chat_from_storage` observer.
+- The manual preflight script may use `MERGEN_PREFLIGHT_ASSUME_STATUS=PASS` only as an explicit operator shortcut after the steps have already been manually verified. It should not be treated as automated proof that the browser or VM was actually exercised.
 
 `tests/testthat/test-ux-smoke-browser-contract.R` protects the browser smoke page itself. It intentionally matches ASCII structural anchors rather than Turkish assertion sentences so Windows/Turkish-locale byte matching cannot fail while the real `/smoke/ux-smoke.html` runner still passes.
 
 - Browser-smoke contract tests should prefer stable implementation anchors such as function names, Shiny input names, and state predicates over exact Turkish UI/assertion text. Exact Turkish text is acceptable in the real smoke page, but the static contract must not depend on byte-identical Turkish strings on Windows VM sessions.
+- For streaming browser smoke coverage, prefer stable anchors such as `window.MergenStreamingSmoke`, handler function names, request-id stale checks, finalized state, and action-button restore behavior. Do not make the static contract depend on exact Turkish assertion sentences from the smoke page.
 
 Focused validation:
 
 - testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")
+- testthat::test_file("tests/testthat/test-saved-chat-reload-no-tts-contract.R")
+- testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")
 - testthat::test_file("tests/testthat/test-ux-smoke-browser-contract.R")
 - source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")
 
