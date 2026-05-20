@@ -51,6 +51,7 @@ test_that("fragile-flow manual preflight keeps required local and VM checks", {
     "SSO_ENABLED=TRUE",
     "Press stop during streaming",
     "send button returns to normal",
+    "typing/thinking wrapper disappears or resolves cleanly",
     "no duplicate assistant message appears",
     "Upload PDF, DOCX, TXT, CSV, XLSX",
     "Refresh browser and verify files remain visible once",

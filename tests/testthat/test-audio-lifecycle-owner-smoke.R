@@ -145,3 +145,67 @@ testthat::test_that("STT and music manager use lifecycle owners for duck recover
     "MusicManager lifecycle sözleşmesi eksik:"
   )
 })
+
+testthat::test_that("MusicManager keeps single-audio and stale-playlist ordering contract", {
+  music_js <- .audio_owner_read_text("www", "js", "music_manager.js")
+
+  .audio_owner_expect_all(
+    music_js,
+    c(
+      "_playTrack: function(src)",
+      "this._stopAudio();",
+      "var audio = new Audio(src);",
+      "this._audio = audio;",
+      "if (self._audio !== audio)",
+      "data.requestId && data.requestId < this._pendingRequestId",
+      "this._pendingRequestId++",
+      "this._pendingRequestType = null"
+    ),
+    "MusicManager single-audio/stale-playlist sözleşmesi eksik:"
+  )
+
+  play_track_pos <- regexpr(
+    "_playTrack: function(src)",
+    music_js,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  stop_audio_pos <- regexpr(
+    "this._stopAudio();",
+    substr(music_js, play_track_pos, nchar(music_js)),
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  new_audio_pos <- regexpr(
+    "var audio = new Audio(src);",
+    substr(music_js, play_track_pos, nchar(music_js)),
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  assign_audio_pos <- regexpr(
+    "this._audio = audio;",
+    substr(music_js, play_track_pos, nchar(music_js)),
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  testthat::expect_true(play_track_pos > 0L)
+  testthat::expect_true(stop_audio_pos > 0L)
+  testthat::expect_true(new_audio_pos > stop_audio_pos)
+  testthat::expect_true(assign_audio_pos > new_audio_pos)
+
+  stale_guard_count <- gregexpr(
+    "if (self._audio !== audio)",
+    music_js,
+    fixed = TRUE,
+    useBytes = TRUE
+  )[[1]]
+
+  testthat::expect_true(
+    length(stale_guard_count[stale_guard_count > 0L]) >= 3L,
+    info = "canplaythrough/ended/error gibi eski audio event'leri stale guard ile korunmalıdır."
+  )
+})
