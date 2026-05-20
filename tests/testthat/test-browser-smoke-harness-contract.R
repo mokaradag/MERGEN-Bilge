@@ -73,6 +73,7 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
   music_js <- .browser_smoke_read_text("www/js/music_manager.js")
   tts_js <- .browser_smoke_read_text("www/js/tts_manager.js")
   stt_js <- .browser_smoke_read_text("www/js/stt_client.js")
+  streaming_js <- .browser_smoke_read_text("www/js/streaming_manager.js")
   reasoning_js <- .browser_smoke_read_text("www/js/premium_reasoning.js")
 
   .browser_smoke_expect_all(
@@ -107,10 +108,19 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
 		"navigateFrameToApp",
 		"doc.body || doc.documentElement",
 		"iframe aynı-origin DOM erişimi zaman aşımı",
-		"load_chat_from_storage",
-		"kayıtlı sohbet load_chat_from_storage olayı tarayıcıdan üretildi",
-		"kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz",
-		"failOnTimeout",
+        "load_chat_from_storage",
+        "kayıtlı sohbet load_chat_from_storage olayı tarayıcıdan üretildi",
+        "kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz",
+
+        "testStreamingLifecycle",
+        "MergenStreamingSmoke",
+        "streaming delta görünür içeriğe işlendi",
+        "stale requestId delta yoksayılır",
+        "stream finalize dataset temizler",
+        "stream action butonları geri açılır",
+        "stream finalize duplicate mesaj üretmez",
+
+        "failOnTimeout",
 		"VM zamanlamasında görünmedi",
 		"Console ignored",
 		"bloklayıcı JS hatası yok",
@@ -227,6 +237,21 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
       "MusicManager.unduckAfterSTT()"
     ),
     "STT browser smoke hedefleri eksik:"
+  )
+
+  .browser_smoke_expect_all(
+    streaming_js,
+    c(
+      "window.MergenStreamingSmoke",
+      "handleInitStreamingMessage",
+      "handleStreamingDelta",
+      "handleFinalizeStreamingMessage",
+      "isStaleStreamingPayload",
+      "state.finalized = true",
+      "messageDiv.dataset.streaming = \"false\"",
+      "btn.disabled = false"
+    ),
+    "Streaming browser smoke hedefleri eksik:"
   )
 
   .browser_smoke_expect_all(

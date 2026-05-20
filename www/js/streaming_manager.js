@@ -66,7 +66,7 @@ $(document).ready(function() {
     }
 
     // Akış (Streaming) mesajını başlat - Mesaj kutusunu hazırlar
-    Shiny.addCustomMessageHandler('initStreamingMessage', function(data) {
+    function handleInitStreamingMessage(data) {
         const messageDiv = document.getElementById(data.id);
         if (messageDiv) {
             messageDiv.innerHTML = '<div class="streaming-content" data-streaming="true"></div>';
@@ -76,6 +76,7 @@ $(document).ready(function() {
             state.accumulatedText = data.content || '';
             state.requestId = normalizeRequestId(data.requestId);
             state.finalized = false;
+
             if (state.renderTimer) {
                 clearTimeout(state.renderTimer);
                 state.renderTimer = null;
@@ -89,10 +90,12 @@ $(document).ready(function() {
                 });
             }
         }
-    });
+    }
+
+    Shiny.addCustomMessageHandler('initStreamingMessage', handleInitStreamingMessage);
 
     // Hızlı delta ekleme işleyicisi
-    Shiny.addCustomMessageHandler('streamingDelta', function(data) {
+    function handleStreamingDelta(data) {
         const messageDiv = document.getElementById(data.id);
         if (!messageDiv) return;
 
@@ -105,22 +108,28 @@ $(document).ready(function() {
 
         state.accumulatedText += delta;
         scheduleStreamingRender(messageDiv, false);
-    });
+    }
+
+    Shiny.addCustomMessageHandler('streamingDelta', handleStreamingDelta);
 
     // Geriye dönük uyumlu tam içerik güncelleme işleyicisi
-    Shiny.addCustomMessageHandler('streamingUpdate', function(data) {
+    function handleStreamingUpdate(data) {
         const messageDiv = document.getElementById(data.id);
         if (!messageDiv) return;
 
         const state = getStreamingState(messageDiv);
         if (state.finalized || isStaleStreamingPayload(state, data)) return;
 
-        state.accumulatedText = typeof data.text === 'string' ? data.text : (state.accumulatedText || '');
+        state.accumulatedText = typeof data.text === 'string'
+            ? data.text
+            : (state.accumulatedText || '');
 
         if (data.isPartial) {
             scheduleStreamingRender(messageDiv, false);
         }
-    });
+    }
+
+    Shiny.addCustomMessageHandler('streamingUpdate', handleStreamingUpdate);
 
     // Eski tip akış işleyicisi (Geriye dönük uyumluluk için)
     Shiny.addCustomMessageHandler('streamUpdate', function(message) {
@@ -140,7 +149,7 @@ $(document).ready(function() {
     });
 
     // Akış mesajını sonlandırma ve temizleme
-    Shiny.addCustomMessageHandler('finalizeStreamingMessage', function(data) {
+    function handleFinalizeStreamingMessage(data) {
         const messageDiv = document.getElementById(data.id);
         if (!messageDiv) return;
 
@@ -189,10 +198,13 @@ $(document).ready(function() {
         const kullaniciAltaYakinMi = (typeof window.isNearBottom === 'function')
             ? window.isNearBottom()
             : false;
+
         if (kullaniciAltaYakinMi && typeof window.smartScrollToBottom === 'function') {
             window.smartScrollToBottom();
         }
-    });
+    }
+
+    Shiny.addCustomMessageHandler('finalizeStreamingMessage', handleFinalizeStreamingMessage);
 
     // Akış bitti sinyali (Alternatif bitiş)
     Shiny.addCustomMessageHandler('streamEnd', function(message) {
@@ -209,4 +221,18 @@ $(document).ready(function() {
             console.error("streamEnd hatası:", e);
         }
     });
+
+    // Browser smoke test seam:
+    // Üretim UX davranışını değiştirmez; yalnızca mevcut handler'ları
+    // www/smoke/ux-smoke.html içinden sentetik olarak çağırmayı sağlar.
+    window.MergenStreamingSmoke = {
+        init: handleInitStreamingMessage,
+        delta: handleStreamingDelta,
+        update: handleStreamingUpdate,
+        finalize: handleFinalizeStreamingMessage,
+        getState: function(id) {
+            const messageDiv = document.getElementById(id);
+            return messageDiv ? getStreamingState(messageDiv) : null;
+        }
+    };
 });

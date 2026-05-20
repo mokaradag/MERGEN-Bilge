@@ -600,6 +600,82 @@
     assert(typeof app.win.isNearBottom === "boolean", "auto-scroll yakınlık durumu bozulmadan kalır");
   }
 
+  async function testStreamingLifecycle(app) {
+    var win = app.win;
+    var doc = app.doc;
+
+    assert(!!win.MergenStreamingSmoke, "Streaming smoke API var");
+
+    var chat = doc.querySelector("#chat_content_container") || doc.body;
+
+    Array.prototype.slice.call(
+      doc.querySelectorAll("#message_wrapper_ux_stream_ai")
+    ).forEach(function (el) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
+
+    var wrapper = doc.createElement("div");
+    wrapper.id = "message_wrapper_ux_stream_ai";
+    wrapper.innerHTML =
+      "<div class='message-bubble ai-message streaming-message'>" +
+        "<div id='ux_stream_ai'></div>" +
+        "<button class='streaming-hidden' disabled>copy</button>" +
+      "</div>";
+    chat.appendChild(wrapper);
+
+    win.MergenStreamingSmoke.init({
+      id: "ux_stream_ai",
+      content: "",
+      requestId: "req-stream-1"
+    });
+
+    win.MergenStreamingSmoke.delta({
+      id: "ux_stream_ai",
+      delta: "Merhaba ",
+      requestId: "req-stream-1"
+    });
+
+    await wait(80);
+
+    assert(
+      doc.getElementById("ux_stream_ai").textContent.indexOf("Merhaba") >= 0,
+      "streaming delta görünür içeriğe işlendi"
+    );
+
+    win.MergenStreamingSmoke.delta({
+      id: "ux_stream_ai",
+      delta: "STALE",
+      requestId: "req-stream-old"
+    });
+
+    await wait(80);
+
+    assert(
+      doc.getElementById("ux_stream_ai").textContent.indexOf("STALE") < 0,
+      "stale requestId delta yoksayılır"
+    );
+
+    win.MergenStreamingSmoke.finalize({
+      id: "ux_stream_ai",
+      html: "<p>Final yanıt</p>",
+      hasCode: false,
+      requestId: "req-stream-1"
+    });
+
+    await wait(80);
+
+    var messageDiv = doc.getElementById("ux_stream_ai");
+    var state = win.MergenStreamingSmoke.getState("ux_stream_ai");
+    var actionButton = wrapper.querySelector("button");
+
+    assert(messageDiv.dataset.streaming === "false", "stream finalize dataset temizler");
+    assert(state && state.finalized === true, "stream finalize state finalized yapar");
+    assert(actionButton && actionButton.disabled === false, "stream action butonları geri açılır");
+    assert(wrapper.querySelectorAll("#ux_stream_ai").length === 1, "stream finalize duplicate mesaj üretmez");
+
+    if (wrapper && wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+  }
+
   async function testMediaAndSavedChat(app) {
     var win = app.win;
     var doc = app.doc;
@@ -821,6 +897,7 @@
 
       await testOneQuickActionOnCurrentWelcome(app);
       await testChatInput(app);
+      await testStreamingLifecycle(app);
       await testMediaAndSavedChat(app);
 
       testConsoleNoise();
