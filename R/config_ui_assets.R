@@ -189,6 +189,7 @@ ui_asset_js_groups <- list(
     "js/explore_character_video.js",
     "js/explore_character_step.js",
     "js/surum_bilgilendirme.js",
+    "js/claude_code_pixel_chars.js",
     "js/claude_code.js",
     "js/claude_code_streaming.js",
     "js/claude_code_plugins.js"
@@ -334,6 +335,7 @@ ui_asset_js_order_rules <- list(
   c("js/image_tools.js", "js/summarization_tools.js"),
   c("js/summarization_tools.js", "js/analysis_tools.js"),
 
+  c("js/claude_code_pixel_chars.js", "js/claude_code.js"),
   c("js/claude_code.js", "js/claude_code_streaming.js"),
   c("js/claude_code_streaming.js", "js/claude_code_plugins.js"),
 

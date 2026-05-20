@@ -118,6 +118,16 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
     .ui_asset_contract_position(js_paths, "js/music_manager.js"),
     .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js")
   )
+
+  expect_true("js/claude_code_pixel_chars.js" %in% deferred_paths)
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/claude_code_pixel_chars.js"),
+    .ui_asset_contract_position(js_paths, "js/claude_code.js")
+  )
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/claude_code.js"),
+    .ui_asset_contract_position(js_paths, "js/claude_code_streaming.js")
+  )
   expect_lt(
     .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js"),
     .ui_asset_contract_position(js_paths, "js/stt_client.js")
