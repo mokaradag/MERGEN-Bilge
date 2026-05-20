@@ -45,6 +45,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - STT modalı normal iptal/gönder yolları dışında kapansa bile tarayıcı tarafı kapanış yedeğiyle müzik durumu temizlenir ve geri yüklenir.
 - AI Uzman ses oynatımı tarayıcı autoplay engeline veya oynatma reddine takıldığında ses kaynağı temizlenir, müzik duck durumu bırakılır ve altyazı deneyimi korunur.
 - TTS ses nesneleri tarayıcı tarafında `MergenAudioLifecycle` üzerinde `tts` sahibiyle işaretlenir; böylece global audio play/pause olayları TTS'i `external_audio` gibi ele almaz ve TTS/STT/arka plan müziği duck/unduck yaşam döngüsü `tests/testthat/test-audio-lifecycle-owner-smoke.R` ile hafif biçimde korunur.
+- Tarayıcı tarafı medya ve kayıtlı sohbet smoke kapsamı `www/smoke/ux-smoke.html` ile, bu smoke sayfasının kapsamı ise `tests/testthat/test-ux-smoke-browser-contract.R` ile korunur. Bu sözleşme testi Windows/Türkçe locale kırılganlığını azaltmak için Türkçe log/metin cümlelerini byte düzeyinde eşleştirmek yerine ASCII yapısal anchor'ları kullanır; TTS play olayının müziği duck etmesi, STT duck/cleanup sonrası müzik durumunun geri dönmesi ve kayıtlı sohbet yüklenince eski AI mesajlarının TTS autoplay başlatmaması korunur.
 
 ### Gelişmiş deneyim katmanları
 - Sinematik başlangıç ekranı
