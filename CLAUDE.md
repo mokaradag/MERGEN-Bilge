@@ -207,6 +207,10 @@ Current contract:
 - The upload size policy must remain centralized at getOption("mergen.upload_max_mb", 25L). Do not introduce another hard-coded upload limit.
 - Keep file lifecycle helpers small. If registry/listing logic grows, split focused helpers into a small sourced file rather than making R/config_file_store_registry.R function-heavy.
 - Any new runtime helper file must be added to R/config_source_manifest.R in dependency order and covered by manifest/order tests.
+- Isolated File Store tests must load the refactored public API through `tests/testthat/helper_load_file_store.R`.
+- That helper must source `R/helpers_files_path.R` before the split `config_file_store_*` files so `normalize_for_path_compare` is available.
+- Do not re-inline these helper sources directly into individual tests.
+- Do not re-merge `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, and `R/config_file_store_registry.R` back into `R/config_file_store.R`.
 
 Key files:
 
@@ -245,6 +249,7 @@ Focused validation after touching file lifecycle, File Manager, MCP file resolut
 - testthat::test_file("tests/testthat/test-file-manager-live-provider-refresh-smoke.R")
 - testthat::test_file("tests/testthat/test-fragile-flow-manual-preflight-contract.R")
 - testthat::test_file("tests/testthat/test-saved-chat-reload-no-tts-contract.R")
+- testthat::test_file("tests/testthat/test-file-store-persistence-roundtrip-smoke.R")
 - testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")
 - source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")
 - testthat::test_file("tests/testthat/test-file-resolution-security-contract.R")
@@ -298,11 +303,11 @@ Protected by:
 - tests/testthat/test-browser-smoke-harness-contract.R
 - tests/testthat/test-saved-chat-reload-no-tts-contract.R
 
-Additional lightweight smoke tests now complement the manual preflight without launching the full app: `test-sso-session-identity-smoke.R` covers SSO placeholder-to-real-user transition, `test-streaming-abort-lifecycle-smoke.R` covers true streaming abort cleanup decisions, and `test-audio-lifecycle-owner-smoke.R` covers TTS/STT/music owner-based duck recovery contracts. These tests do not replace the Windows VM/manual browser checks.
+Additional lightweight smoke tests now complement the manual preflight without launching the full app: `test-sso-session-identity-smoke.R` (SSO identity smoke), `test-file-manager-live-provider-refresh-smoke.R` (File Manager live-provider refresh smoke), `test-file-store-persistence-roundtrip-smoke.R` (File Store persistence roundtrip smoke), `test-streaming-abort-lifecycle-smoke.R` (streaming abort lifecycle smoke), `test-saved-chat-reload-no-tts-contract.R` (saved-chat reload no-TTS contract + lightweight runtime smoke), `test-audio-lifecycle-owner-smoke.R` (audio lifecycle owner smoke), and `test-ux-smoke-browser-contract.R` (browser UX smoke contract). These tests do not replace the Windows VM/manual browser checks.
 
 - Browser-side streaming lifecycle is also protected without launching a real LLM request. `www/js/streaming_manager.js` exposes the smoke-only `window.MergenStreamingSmoke` seam, and `www/smoke/ux-smoke.html` drives a synthetic init → delta → stale delta rejection → finalize sequence.
 - Do not remove or rename `window.MergenStreamingSmoke`, `handleInitStreamingMessage`, `handleStreamingDelta`, `handleStreamingUpdate`, or `handleFinalizeStreamingMessage` unless the browser smoke and contract tests are updated in the same change.
-- Saved-chat reload must remain render-only for historical messages. `R/server_observers_storage.R` must not call TTS synthesis or send `playAudioMessage` from the `load_chat_from_storage` observer.
+- Saved-chat reload must remain a render-only historical path. `R/server_observers_storage.R` must not call TTS synthesis or send `playAudioMessage` from the `load_chat_from_storage` observer; this contract is protected by static checks plus a lightweight `shiny::testServer` runtime smoke.
 - The manual preflight script may use `MERGEN_PREFLIGHT_ASSUME_STATUS=PASS` only as an explicit operator shortcut after the steps have already been manually verified. It should not be treated as automated proof that the browser or VM was actually exercised.
 
 `tests/testthat/test-ux-smoke-browser-contract.R` protects the browser smoke page itself. It intentionally matches ASCII structural anchors rather than Turkish assertion sentences so Windows/Turkish-locale byte matching cannot fail while the real `/smoke/ux-smoke.html` runner still passes.
@@ -413,6 +418,8 @@ The following UX behaviors are protected contracts:
 - Background music must keep one active track source at a time. Character music must not overlap theme music.
 - TTS must duck music while speaking and restore music after playback or failure.
 - TTS `Audio` objects must be marked with the `MergenAudioLifecycle` owner `tts` before playback, so document-level audio play/pause handlers do not treat TTS as generic `external_audio`.
+- TTS/STT/background music lifecycle uses owner-based ducking; browser smoke validates overlapping owners so releasing TTS while STT is still active must not restore music early, and final cleanup must leave no active duck owners.
+- Do not collapse this owner model into a single boolean duck flag.
 - STT must pause/duck music when the modal opens and restore music on cancel, submit, init failure, microphone-denied paths, and unexpected Bootstrap modal hidden/close paths.
 - AI Expert audio must duck music while speaking and must release its duck owner if playback fails or the browser rejects autoplay; subtitle fallback behavior must remain intact.
 - TTS autoplay must be limited to new AI responses. Loading saved or old chats must not auto-play historical answers.
