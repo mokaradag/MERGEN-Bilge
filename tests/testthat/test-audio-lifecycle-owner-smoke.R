@@ -164,38 +164,40 @@ testthat::test_that("MusicManager keeps single-audio and stale-playlist ordering
     "MusicManager single-audio/stale-playlist sözleşmesi eksik:"
   )
 
-  play_track_pos <- regexpr(
-    "_playTrack: function(src)",
-    music_js,
-    fixed = TRUE,
-    useBytes = TRUE
-  )[[1]]
+	# Do not use useBytes=TRUE here:
+	# regexpr(byte offset) + substr(character offset) breaks when the JS file
+	# contains Turkish multibyte characters before _playTrack.
+	play_track_pos <- regexpr(
+	  "_playTrack: function(src)",
+	  music_js,
+	  fixed = TRUE
+	)[[1]]
 
-  stop_audio_pos <- regexpr(
-    "this._stopAudio();",
-    substr(music_js, play_track_pos, nchar(music_js)),
-    fixed = TRUE,
-    useBytes = TRUE
-  )[[1]]
+	testthat::expect_true(play_track_pos > 0L)
 
-  new_audio_pos <- regexpr(
-    "var audio = new Audio(src);",
-    substr(music_js, play_track_pos, nchar(music_js)),
-    fixed = TRUE,
-    useBytes = TRUE
-  )[[1]]
+	play_track_block <- substr(music_js, play_track_pos, nchar(music_js))
 
-  assign_audio_pos <- regexpr(
-    "this._audio = audio;",
-    substr(music_js, play_track_pos, nchar(music_js)),
-    fixed = TRUE,
-    useBytes = TRUE
-  )[[1]]
+	stop_audio_pos <- regexpr(
+	  "this._stopAudio();",
+	  play_track_block,
+	  fixed = TRUE
+	)[[1]]
 
-  testthat::expect_true(play_track_pos > 0L)
-  testthat::expect_true(stop_audio_pos > 0L)
-  testthat::expect_true(new_audio_pos > stop_audio_pos)
-  testthat::expect_true(assign_audio_pos > new_audio_pos)
+	new_audio_pos <- regexpr(
+	  "var audio = new Audio(src);",
+	  play_track_block,
+	  fixed = TRUE
+	)[[1]]
+
+	assign_audio_pos <- regexpr(
+	  "this._audio = audio;",
+	  play_track_block,
+	  fixed = TRUE
+	)[[1]]
+
+	testthat::expect_true(stop_audio_pos > 0L)
+	testthat::expect_true(new_audio_pos > stop_audio_pos)
+	testthat::expect_true(assign_audio_pos > new_audio_pos)
 
   stale_guard_count <- gregexpr(
     "if (self._audio !== audio)",
