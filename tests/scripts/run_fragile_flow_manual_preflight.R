@@ -25,12 +25,12 @@ manual_preflight_readline <- function(prompt = "",
     {
       base::readline(prompt = prompt)
     },
-    error = function(e) {
-      # RStudio/Windows console fallback. readline() bazı ortamlarda
-      # "unknown type #29" hatası verebiliyor.
-      if (nzchar(prompt)) cat(prompt)
+	error = function(e) {
+	  # RStudio/Windows console fallback. readline() bazı ortamlarda
+	  # "unknown type #29" hatası verebiliyor.
+	  # readline() prompt'u zaten bastığı için burada tekrar yazdırmıyoruz.
 
-      tryCatch(
+	  tryCatch(
         {
           line <- readLines("stdin", n = 1L, warn = FALSE)
           if (length(line) == 0L) "" else line[[1]]
