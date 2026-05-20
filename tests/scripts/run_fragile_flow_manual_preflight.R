@@ -62,10 +62,10 @@ normalize_manual_answer <- function(value) {
 }
 
 collect_manual_preflight_context <- function() {
-  git_ref <- tryCatch(
+  git_ref <- suppressWarnings(tryCatch(
     system2("git", c("rev-parse", "--short", "HEAD"), stdout = TRUE, stderr = FALSE),
     error = function(e) ""
-  )
+  ))
   git_ref <- enc2utf8(paste(git_ref, collapse = ""))
 
   data.frame(
