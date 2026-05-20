@@ -19,6 +19,8 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Düşünebilen modeller (`thinking=TRUE`) için premium akıl yürütme kartı ve canlı düşünce akışı paneli
 - Streaming durdurma/iptal akışı regresyon testleriyle korunur: gönder düğmesi normal duruma döner, typing/thinking göstergesi temizlenir, aktif istek durumu sıfırlanır ve kısmi/iptal edilmiş akışlar yinelenen asistan mesajı üretmez.
 - Streaming iptal/abort karar mantığı `R/helpers_streaming_abort_lifecycle.R` içindeki saf `mergen_stream_abort_cleanup_plan()` yardımcısıyla test edilebilir hâle getirilmiştir; `tests/testthat/test-streaming-abort-lifecycle-smoke.R` kısmi yanıtı sonlandırma, boş placeholder temizleme, hata/iptal ayrımı ve UI reset sözleşmesini Shiny/DB/LLM başlatmadan doğrular.
+- Tarayıcı tarafı streaming yaşam döngüsü de hafif smoke kapsamına alınmıştır: `www/js/streaming_manager.js`, yalnızca test amaçlı `window.MergenStreamingSmoke` arayüzünü sağlar; `www/smoke/ux-smoke.html` sentetik olarak init → delta → stale delta reddi → finalize akışını doğrular.
+- Bu tarayıcı streaming sözleşmesi `tests/testthat/test-browser-smoke-harness-contract.R` ile korunur; amaç gerçek LLM çağrısı başlatmadan finalize sonrası streaming state, action button geri açılması ve yinelenen mesaj üretilmemesi risklerini yakalamaktır.
 
 ### Dosya ve veri odaklı çalışma
 - Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
@@ -46,6 +48,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - AI Uzman ses oynatımı tarayıcı autoplay engeline veya oynatma reddine takıldığında ses kaynağı temizlenir, müzik duck durumu bırakılır ve altyazı deneyimi korunur.
 - TTS ses nesneleri tarayıcı tarafında `MergenAudioLifecycle` üzerinde `tts` sahibiyle işaretlenir; böylece global audio play/pause olayları TTS'i `external_audio` gibi ele almaz ve TTS/STT/arka plan müziği duck/unduck yaşam döngüsü `tests/testthat/test-audio-lifecycle-owner-smoke.R` ile hafif biçimde korunur.
 - Tarayıcı tarafı medya ve kayıtlı sohbet smoke kapsamı `www/smoke/ux-smoke.html` ile, bu smoke sayfasının kapsamı ise `tests/testthat/test-ux-smoke-browser-contract.R` ile korunur. Bu sözleşme testi Windows/Türkçe locale kırılganlığını azaltmak için Türkçe log/metin cümlelerini byte düzeyinde eşleştirmek yerine ASCII yapısal anchor'ları kullanır; TTS play olayının müziği duck etmesi, STT duck/cleanup sonrası müzik durumunun geri dönmesi ve kayıtlı sohbet yüklenince eski AI mesajlarının TTS autoplay başlatmaması korunur.
+- Kayıtlı sohbet yeniden yükleme yolu ayrıca `tests/testthat/test-saved-chat-reload-no-tts-contract.R` ile korunur; `load_chat_from_storage` observer’ı tarihsel mesajları yalnızca render etmeli, `playAudioMessage` veya TTS sentezleme yolunu tetiklememelidir.
 
 ### Gelişmiş deneyim katmanları
 - Sinematik başlangıç ekranı
@@ -133,6 +136,8 @@ Kırılgan kullanıcı akışları için ek manuel preflight:
 - Yerel modda `SSO_ENABLED=FALSE` ile streaming mesaj gönderme, streaming sırasında durdurma, PDF/DOCX/TXT/CSV/XLSX yükleme, tarayıcı yenileme, tam uygulama yeniden başlatma ve kayıtlı sohbet yüklemede eski TTS otomatik oynatmama kontrol edilmelidir.
 - Windows VM / SSO modunda `SSO_ENABLED=TRUE` ile doğrulanmış kullanıcı kimliği, kullanıcıya özel son sohbet/geçmiş/kayıtlı sohbet/galeri satırları, Türkçe dosya adı yenileme/yeniden başlatma dayanıklılığı ve TTS/STT/arka plan müziği tekil playback/ducking davranışı kontrol edilmelidir.
 - Bu adımların tekrarlanabilir kaydı için `tests/scripts/run_fragile_flow_manual_preflight.R` kullanılabilir; betik uygulamayı başlatmaz, ağır tarayıcı otomasyonu eklemez ve sonucu UTF-8 CSV olarak yazar.
+- RStudio / Windows VM konsolunda `readline()` kaynaklı geçici giriş hatalarına karşı manuel preflight betiği güvenli giriş yardımcısı kullanır; bu davranış gerçek uygulama akışını değiştirmez, yalnızca preflight kaydının kesilmesini önler.
+- Tüm adımlar daha önce manuel olarak doğrulandıysa, tekrarlı girişleri hızlandırmak için bilinçli olarak `MERGEN_PREFLIGHT_ASSUME_STATUS=PASS` kullanılabilir. Bu mod yalnızca preflight CSV kaydını doldurur; gerçek manuel doğrulamanın yerine geçecek şekilde kullanılmamalıdır.
 - Odak test/preflight komutları:
   - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
   - `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
@@ -155,6 +160,9 @@ Kırılgan kullanıcı akışları için ek manuel preflight:
   - `testthat::test_file("tests/testthat/test-upload-validator.R")`
   - `testthat::test_file("tests/testthat/test-config-file-store-registry-refactor-contract.R")`
   - `testthat::test_file("tests/testthat/test-production-contracts.R")`
+  - `testthat::test_file("tests/testthat/test-browser-smoke-harness-contract.R")`
+  - `testthat::test_file("tests/testthat/test-saved-chat-reload-no-tts-contract.R")`
+  - `testthat::test_file("tests/testthat/test-ux-smoke-browser-contract.R")`
   - `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
   - `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`
   - `Sys.setenv(MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST = "TRUE")`
