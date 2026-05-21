@@ -118,6 +118,13 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - `R/helpers_mcp_bootstrap.R` yalnızca MCP ortamını ve temel yol yardımcılarını hazırlar; downstream MCP helper dosyalarını gizli/dinamik biçimde source etmez.
 - Bu sözleşme `test-source-manifest-contract.R`, `test-global-source-manifest-contract.R` ve MCP refactor testleriyle korunur; amaç kullanıcı deneyimini değiştirmeden boot/load-order kırılganlığını azaltmaktır.
 
+### Ön yüz varlık manifesti ve bakım koruması
+- Çalışma zamanı CSS/JS varlıkları `R/config_ui_assets.R` üzerinden açık ve sıralı biçimde yüklenir; CDN, bundle/minify veya gizli kaynak yükleme kullanılmaz.
+- Ön yüz bakım raporu `tests/scripts/frontend_maintainability_report.R` ile üretilir. Bu rapor JS/CSS dosya boyutlarını, yaklaşık fonksiyon ve event handler yoğunluğunu, manifest dışı app-owned varlıkları, yinelenen CSS seçicileri ve yasak eski seçici kalıntılarını görünür kılar.
+- `tests/testthat/test-frontend-maintainability-ratchet.R`, mevcut ön yüz taban çizgisinin sessizce büyümesini engeller. Vendor/minified dosyalar app-owned dosyalardan ayrı değerlendirilir.
+- Ana Söyleşi hoş geldin ekranındaki hızlı işlem tooltip davranışı `www/js/welcome_tooltip_manager.js` içine ayrılmıştır. Bu dosya `www/js/app_core.js` sonrasında ve `www/js/streaming_manager.js` öncesinde yüklenir; böylece kullanıcı deneyimi değişmeden `app_core.js` çekirdek uygulama yaşam döngüsüne daha odaklı kalır.
+- Bu sınır `tests/testthat/test-ui-asset-manifest-contract.R`, `tests/testthat/test-frontend-selector-contract.R`, `tests/testthat/test-frontend-maintainability-ratchet.R` ve `tests/testthat/test-maintainability-ratchet.R` ile korunur.
+
 #### Windows VM / SSO / SQL Server Türkçe Kodlama Güvencesi
 - Üretim benzeri Windows VM ortamında `.Renviron` içinde `DB_CLIENT_ENCODING=WINDOWS-1254` ve `DB_NAME_ENCODING=WINDOWS-1254` değerleri bulunmalıdır; değişiklikten sonra yalnızca tarayıcıyı yenilemek yeterli değildir, R süreci tamamen yeniden başlatılmalıdır.
 - Kullanıcıya görünen DB metinleri merkezi normalizasyon yardımcılarından geçmelidir; teknik kimlikler, bayraklar, enum değerleri, dosya yolları, model ID'leri, kullanıcı adı/e-posta/sicil/Keycloak ID gibi alanlarda mojibake onarımı yapılmamalıdır.
