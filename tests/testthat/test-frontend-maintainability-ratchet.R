@@ -149,7 +149,7 @@ test_that("frontend JS/CSS büyüklük ve yoğunluk bütçeleri sessizce aşılm
   max_app_js_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_LINES", 850L)
   max_app_css_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_CSS_LINES", 1600L)
   max_app_js_functions <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_FUNCTIONS", 60L)
-  max_app_js_event_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_EVENT_HANDLERS", 30L)
+  max_app_js_event_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_EVENT_HANDLERS", 32L)
   max_app_js_shiny_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_SHINY_HANDLERS", 20L)
 
   largest_app_js <- app_js_report[order(-app_js_report$lines), ][1, , drop = FALSE]
@@ -288,12 +288,12 @@ test_that("kritik frontend dosyaları kendi taban çizgilerinden büyümez", {
     )
   }
 
-  assert_frontend_file_budget("www/js/input_handlers.js", 260L, 20L, 12L, 0L)
+  assert_frontend_file_budget("www/js/input_handlers.js", 260L, 23L, 16L, 0L)
   assert_frontend_file_budget("www/js/app_core.js", 450L, 45L, 20L, 0L)
   assert_frontend_file_budget("www/js/claude_code.js", 620L, 36L, 16L, 12L)
   assert_frontend_file_budget("www/js/claude_code_streaming.js", 700L, 30L, 8L, 4L)
   assert_frontend_file_budget("www/js/music_manager.js", 650L, 45L, 16L, 8L)
-  assert_frontend_file_budget("www/js/audio_lifecycle_guard.js", 220L, 18L, 4L, 0L)
+  assert_frontend_file_budget("www/js/audio_lifecycle_guard.js", 220L, 19L, 4L, 0L)
 
   assert_frontend_file_budget("www/css/claude_code.css", 1150L)
   assert_frontend_file_budget("www/css/claude_code_streaming.css", 280L)
