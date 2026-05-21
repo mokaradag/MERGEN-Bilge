@@ -166,6 +166,7 @@ source_manifest_after_future_paths <- c(
   "R/module_performance.R",
   "R/module_user_identity.R",
   "R/module_startup_screen.R",
+  "R/module_app_loading.R",
   "R/module_quick_actions.R",
   "R/module_claude_code_plugins.R",
   "R/module_claude_code_ui.R",

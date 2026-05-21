@@ -274,6 +274,32 @@
     });
 
     overlay.classList.add('active');
+
+    // Bütünleşik mod karakter adımındaki gecikmeyi azaltmak için varsayılan
+    // karakterin video verisini ve giriş dosyasını şimdiden ön yükle.
+    preloadDefaultCharacterVideo();
+  }
+
+  // Varsayılan karakterin video verisini sunucudan iste (ön yükleme).
+  // Yanıt explore_character_step.js tarafından önbelleğe alınır ve giriş
+  // videosu dosyası tarayıcı önbelleğine prefetch edilir; böylece kullanıcı
+  // Bütünleşik modu seçtiğinde video beklemeden oynar.
+  function preloadDefaultCharacterVideo() {
+    if (typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
+
+    var charId = 'mergen';
+    try {
+      var raw = localStorage.getItem('mergen_settings');
+      if (raw) {
+        var s = JSON.parse(raw);
+        if (s && s.selected_character) charId = s.selected_character;
+      }
+    } catch (e) {}
+
+    Shiny.setInputValue('explore_request_char_video', {
+      character: charId,
+      timestamp: Date.now()
+    }, { priority: 'event' });
   }
 
   function closeCinematicModal() {

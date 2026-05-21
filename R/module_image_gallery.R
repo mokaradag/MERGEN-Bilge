@@ -367,9 +367,10 @@ imageGalleryServer <- function(id, current_user_id) {
     })
 
     observeEvent(input$refresh_gallery, {
+      # Galeri zaten önbellekten anında görünür; sekme geçişinde sessizce
+      # yeniden taranır. Görünür fadeOut/fadeIn ve her geçişte tekrar eden
+      # bilgi mesajı kaldırıldı (gereksiz titreme/UX bozulması önlendi).
       refresh_trigger(refresh_trigger() + 1)
-      shinyjs::runjs(sprintf("$('#%s').fadeOut(200).fadeIn(200);", ns("gallery_content")))
-      showToast(session, "Galeri yenilendi.", "info")
     })
 
     return(list(
