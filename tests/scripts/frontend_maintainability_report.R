@@ -116,12 +116,24 @@ frontend_files <- c(
 frontend_files <- unique(normalizePath(frontend_files, winslash = "/", mustWork = TRUE))
 
 relative_path <- function(path) {
-  sub(
-    paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"),
-    "",
-    normalizePath(path, winslash = "/", mustWork = TRUE),
-    perl = TRUE
-  )
+  root_norm <- enc2utf8(normalizePath(repo_root, winslash = "/", mustWork = TRUE))
+  path_norm <- enc2utf8(normalizePath(path, winslash = "/", mustWork = TRUE))
+
+  root_prefix <- paste0(root_norm, "/")
+
+  if (startsWith(path_norm, root_prefix)) {
+    return(substring(path_norm, nchar(root_prefix) + 1L))
+  }
+
+  # Windows/network path safety: if casing differs, still strip the same prefix.
+  root_lower <- tolower(root_prefix)
+  path_lower <- tolower(path_norm)
+
+  if (startsWith(path_lower, root_lower)) {
+    return(substring(path_norm, nchar(root_prefix) + 1L))
+  }
+
+  path_norm
 }
 
 report <- lapply(frontend_files, function(path) {
