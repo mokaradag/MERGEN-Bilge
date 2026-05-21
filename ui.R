@@ -62,6 +62,10 @@ ui <- dashboardPage(
   # --- Ana Gövde (Body) ---
   dashboardBody(
     useShinyjs(), # shinyjs'i başlat (JavaScript etkileşimleri için)
+
+    # Modern çok aşamalı açılış yükleme ekranı (tüm boot süresince ekranı kaplar)
+    appLoadingUI(),
+
     sttUI("stt_module"),
     
     # --- Gizli widget bağımlılık yükleyicileri (Metin olarak eklenen çıktılar için kritik) ---

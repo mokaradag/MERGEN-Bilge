@@ -16,6 +16,9 @@
   // Karakter video verileri (R tarafından doldurulacak)
   var _characterVideoData = {};
 
+  // Tarayıcı önbelleğine alınan video dosyası URL'leri (tekrar prefetch önlenir)
+  var _prefetchedVideoUrls = {};
+
   // Adım durumu
   var _currentStep = 1;
 
@@ -41,6 +44,26 @@
   function loadCharacterVideoData(data) {
     if (data && data.character) {
       _characterVideoData[data.character] = data;
+      prefetchCharacterIntroVideo(data);
+    }
+  }
+
+  // Giriş videosu dosyasını tarayıcı önbelleğine al. Böylece karakter adımı
+  // açıldığında video sunucu round-trip'i ve dosya indirme beklemesi olmadan
+  // anında oynar (Bütünleşik mod gecikmesi giderilir).
+  function prefetchCharacterIntroVideo(data) {
+    try {
+      var intro = (data && data.videos) ? data.videos.intro : null;
+      var url = (intro && intro.length) ? intro[0] : null;
+      if (!url || _prefetchedVideoUrls[url]) return;
+      _prefetchedVideoUrls[url] = true;
+      var link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.as = 'video';
+      link.href = url;
+      document.head.appendChild(link);
+    } catch (e) {
+      // Ön yükleme başarısızlığı sessiz geçilir (kritik değil)
     }
   }
 

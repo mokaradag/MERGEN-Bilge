@@ -15,6 +15,7 @@ window.WelcomePersonalGreeting = (function() {
   var _timeouts = [];
   var _destroyed = false;
   var _isFirstTransition = true; // İlk geçişte küçülme animasyonunu atla
+  var _greetingGen = 0;          // Yeniden tetiklemede eski bekleme döngülerini iptal eder
 
   // --- Saate göre selamlama mesajları ve FontAwesome ikon eşlemeleri ---
   function getTimeBasedGreeting() {
@@ -285,17 +286,39 @@ window.WelcomePersonalGreeting = (function() {
       destroy();
       _destroyed = false;
 
-      _iconBox = document.querySelector('.modern-welcome-icon-box');
-      _titleGroup = document.querySelector('.modern-welcome-title-group');
-      _greetingText = document.getElementById('dynamic-greeting-text');
-
-      if (!_iconBox || !_titleGroup) return;
-
-      _iconBox.classList.add('personal-icon-animated');
-      _titleGroup.classList.add('personal-title-animated');
-
       var firstName = (data && data.first_name) ? data.first_name : '';
-      startGreetingSequence(firstName);
+      _greetingGen++;
+      var myGen = _greetingGen;
+
+      // Karşılama ekranı görünür olana kadar bekle. Deep-space kapanışı
+      // sırasında veya 0-boyutlu karşılama ekranında selamlama fazları
+      // gizliyken akıp gitmemeli; kullanıcı 1. fazı (el sallama) kaçırmamalı.
+      var attempts = 0;
+      function beginGreeting() {
+        if (_destroyed || myGen !== _greetingGen) return;
+
+        var iconBox = document.querySelector('.modern-welcome-icon-box');
+        var titleGroup = document.querySelector('.modern-welcome-title-group');
+        var visible = !!(iconBox && titleGroup && iconBox.offsetParent !== null);
+
+        if (!visible && attempts < 80) {
+          attempts++;
+          _setTimeout(beginGreeting, 60);
+          return;
+        }
+        if (!iconBox || !titleGroup) return;
+
+        _iconBox = iconBox;
+        _titleGroup = titleGroup;
+        _greetingText = document.getElementById('dynamic-greeting-text');
+
+        _iconBox.classList.add('personal-icon-animated');
+        _titleGroup.classList.add('personal-title-animated');
+
+        startGreetingSequence(firstName);
+      }
+
+      beginGreeting();
     });
   }
 
