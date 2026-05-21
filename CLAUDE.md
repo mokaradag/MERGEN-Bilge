@@ -143,6 +143,61 @@ VM-only manual validation after any DB encoding change:
 - Do not run an automatic startup migration for existing corrupted rows. Old rows require backup and a separate one-time repair plan after new writes are proven correct.
 
 
+
+### Bilge Yolaç / Claude Code security regression contract
+
+Bilge Yolaç security hardening is protected by focused tests. Do not weaken these contracts to fix a failing test.
+
+Current contract:
+
+- Direct existing-file download links must require explicit allowed roots. A caller that does not provide allowed roots must receive an empty link. The document-summary flow may still pass its explicit allowed roots so the real `dosya_aciklamalari.txt` download card continues to work.
+- Prompt path-intent validation must continue to block traversal and forbidden absolute write targets before the Claude Code CLI starts.
+- Prompt path-intent validation must not over-block ordinary prose. Extensionless, non-existent, path-like text that is not a real write target should remain allowed.
+- Streaming/tool-use HTML must escape tool names, tool IDs, commands, paths, previews, and tool results before the browser inserts server-generated HTML.
+- Synthetic tool-use entries must continue to improve visibility when generated files are detected from workdir diffs, without weakening download-root filtering.
+- Generated-file and existing-file download behavior must preserve Turkish filenames, Turkish paths, UNC/network-share paths, selected-workdir scoping, and normal generated file cards.
+- Keep the policy split intact. Do not move path-policy helpers back into `R/helpers_claude_code_security_policy.R`, and do not move downloads HTML helpers back into `R/helpers_claude_code_downloads.R`.
+
+Protected by:
+
+- `tests/testthat/test-claude-code-security-policy-contract.R`
+- `tests/testthat/test-claude-code-document-download-link-encoding.R`
+- `tests/testthat/test-claude-code-stream-html-safety-contract.R`
+- `tests/testthat/test-claude-code-synthetic-tools-contract.R`
+- `tests/testthat/test-claude-code-policy-split-contract.R`
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`
+- `tests/testthat/test-claude-code-runtime-workdir-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-claude-code-security-policy-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-document-download-link-encoding.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-stream-html-safety-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-synthetic-tools-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-policy-split-contract.R")`
+
+
+### Log redaction and secret-fixture contract
+
+Logs must not expose raw secrets, bearer tokens, API keys, or secret-like test fixtures.
+
+Current contract:
+
+- `R/utils_log_redact.R` masks JWT-like values, Bearer/Basic authorization values, URL query secret parameters, generic key-value secrets such as `api_key`, `token`, `password`, and `client_secret`, and known Claude/API-related environment variable values.
+- URL query redaction must preserve unrelated query parameters. For example, masking `token=...` must not remove `id=42`.
+- Redaction tests must not commit realistic secret-looking literals such as real API-key prefixes. Use safe fake values and build sensitive-looking key names with runtime string construction when necessary so `test-secret-leak-contract.R` remains meaningful.
+- Do not loosen `tests/testthat/test-secret-leak-contract.R` to make redaction tests pass. Fix the fixture instead.
+
+Protected by:
+
+- `tests/testthat/test-log-redact.R`
+- `tests/testthat/test-secret-leak-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-log-redact.R")`
+- `testthat::test_file("tests/testthat/test-secret-leak-contract.R")`
+
 ### Source manifest and MCP load-order contract
 
 Runtime R files must be loaded through the explicit source manifest. Do not add hidden or dynamic sourcing to bypass dependency order.

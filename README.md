@@ -79,6 +79,11 @@ Bilge Yolaç kullanıcı deneyiminde yükleme klasörü içerik soruları gerekt
 
 Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönderim gözlemcileri `R/module_claude_code_stream_poll.R` içinde tutulur. Ana modül `R/module_claude_code.R`, bu yardımcıyı bağlayarak davranışı korur; böylece kullanıcı deneyimi değişmeden 800+ satır ve fonksiyon yoğunluğu eşikleri aşılmaz.
 
+- Bilge Yolaç güvenlik sözleşmeleri ek regresyon testleriyle güçlendirilmiştir: seçili çalışma dizini, izinli çıktı kökleri, traversal/absolute path engelleri, prompt path-intent doğrulaması, doğrudan mevcut dosya indirme linkleri, stream/tool-use HTML kaçışı ve sentetik araç kullanımı görünürlüğü korunur.
+- Doğrudan mevcut dosya indirme linkleri artık açık izinli kökler olmadan üretilmez; buna rağmen doküman özeti akışında kullanıcı klasöründe gerçekten oluşturulan `dosya_aciklamalari.txt` için mevcut tıklanabilir indirme kartı davranışı korunur.
+- Prompt güvenliği, `../outside/sonuc.txt` ve izinli kök dışındaki absolute yazma hedeflerini CLI başlamadan engeller; buna karşılık uzantısız, diskte var olmayan ve normal metin gibi kullanılan path-benzeri ifadeler gereksiz yere bloke edilmez.
+- Bilge Yolaç tool-use ve stream HTML çıktıları, dosya yolu/komut/önizleme/sonuç alanlarında HTML kaçış sözleşmesiyle korunur; bu sayede araç blokları görünür kalırken istemci tarafına ham HTML/script sızması engellenir.
+
 ### Kurumsal ve yönetimsel bileşenler
 - SSO / Keycloak desteği
 - Kullanıcı bazlı sohbet ve dosya ayrımı
@@ -91,6 +96,9 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 ### Türkçe karakter, emoji ve kodlama dayanıklılığı
 - Türkçe karakterler, emoji ve yaygın mojibake bozulmaları için sunucu ve istemci tarafında ortak normalizasyon yardımcıları kullanılır.
 - Sunucu tarafında `R/utils_text_encoding.R`; DB okuma/yazma sınırları, kayıtlı söyleşi yükleme, dosya görünen adları, sürüm geçmişi/Yenilikler metinleri, Bilge Yolaç süreç/akış çıktıları ve log metinleri için merkezi UTF-8 koruması sağlar.
+- Log redaction katmanı, JWT ve Bearer/Basic değerlerine ek olarak URL query secret parametrelerini, generic key-value biçimindeki `api_key`, `token`, `password`, `client_secret` benzeri alanları ve Claude/API ilişkili ortam değişkeni değerlerini maskeleyecek şekilde genişletilmiştir.
+- URL query redaction, yalnızca hassas parametre değerini maskeleyip `id=42` gibi normal query parametrelerini koruyacak biçimde test edilir.
+- Test fixture’larında gerçek anahtar biçimine benzeyen örneklerin repoya girmemesi `test-secret-leak-contract.R` ile korunur; redaction testleri secret scanner’ı atlatmak için çalışma zamanında oluşturulan güvenli sahte değerler kullanır.
 - DB yazım sınırında kullanıcıya görünen metinler önce açık biçimde `normalize_db_visible_value()` ile hazırlanır; teknik alanlar ise `normalize_db_technical_value()` ile onarımsız korunur. Karma DB parametre listelerinde `repair_mojibake = TRUE` tüm listeye uygulanmamalıdır. Böylece sohbet başlığı, mesaj içeriği, reasoning içeriği, düzenlenmiş mesaj, kayıtlı asistan yanıtı, kullanıcı görünen adı, geri bildirim etiketi/yorumu ve görsel galeri görünür mesaj metinleri korunurken ID, enum, bayrak, model adı, kullanıcı adı, e-posta, sicil, Keycloak ID ve dosya yolu benzeri teknik değerler gereksiz dönüştürülmez.
 - DB okuma tarafındaki normalizasyon, eski veya kısmen bozulmuş kayıtların ekranda okunabilir görünmesine yardımcı olabilir; ancak asıl sözleşme yeni kayıtların MB tablolarına doğru yazılmasıdır. Bu nedenle DB yazım sınırındaki değişiklikler mutlaka VM üzerinde SSMS ile doğrulanmalıdır.
 - Windows VM / SSO / SQL Server ODBC ortamında DB yazım sınırı özellikle hassastır. `normalize_db_value()` ve `normalize_db_params()` kullanıcıya görünen metni onarırken DBI/ODBC parametre yazımında ortamın güvenli sınırını korumalıdır; yalnızca bağlantı seçeneği UTF-8 görünüyor diye ham UTF-8 metin zorla DB’ye gönderilmemelidir.
