@@ -16,7 +16,11 @@
     "LOCAL_LLM_API_KEY",
     "LOCAL_LLM_ENDPOINT_ALT_API_KEY",
     "LOCAL_TTS_API_KEY",
-    "SERVICE_DESK_API_KEY_URL"
+    "SERVICE_DESK_API_KEY_URL",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_API_KEY",
+    "CLAUDE_API_KEY",
+    "OPENAI_API_KEY"
   )
 }
 
@@ -67,6 +71,15 @@ redact_sensitive_text <- function(x) {
     metin <- gsub(
       "(?i)([?&](?:token|password|passwd|api[_-]?key|apikey|secret|access[_-]?token)=)[^&#\\s]+",
       "\\1<redacted>",
+      metin,
+      perl = TRUE
+    )
+
+    # 3B) Header / key-value biçimindeki sırları maskele:
+    # api_key = ..., x-api-key: ..., password: ..., client_secret=...
+    metin <- gsub(
+      "(?i)\\b(api[_-]?key|apikey|x-api-key|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|password|passwd)(\\s*[:=]\\s*)([\"']?)[^\"'\\s,;}{]{6,}\\3",
+      "\\1\\2<redacted>",
       metin,
       perl = TRUE
     )

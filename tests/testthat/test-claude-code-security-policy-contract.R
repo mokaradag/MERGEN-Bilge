@@ -427,3 +427,28 @@ test_that("prompt içindeki dış yazma hedefleri CLI başlamadan engellenir", {
   expect_match(traversal_check$error, "güvenlik ilkesi")
   expect_match(absolute_check$error, "güvenlik ilkesi")
 })
+
+test_that("prompt path-intent validation uzantısız ve var olmayan prose tokenlarını engellemez", {
+  test_env <- .source_cc_security_policy_for_test()
+
+  root <- withr::local_tempdir()
+  allowed <- file.path(root, "allowed")
+  dir.create(allowed, recursive = TRUE)
+
+  prose_check <- test_env$cc_policy_validate_prompt_file_intent(
+    prompt = paste(
+      "Bu raporu oluştur ama şu ifadeyi normal metin olarak değerlendir:",
+      "C:/BuSadeceMetinGibiGorunenBirIfade"
+    ),
+    workdir = allowed,
+    allowed_roots = allowed
+  )
+
+  expect_true(
+    isTRUE(prose_check$ok),
+    info = paste(
+      "Uzantısız ve diskte var olmayan path-benzeri metinler",
+      "normal kullanıcı ifadesi olarak geçmelidir."
+    )
+  )
+})

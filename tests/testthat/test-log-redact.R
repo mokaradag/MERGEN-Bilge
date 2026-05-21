@@ -58,6 +58,31 @@ test_that("redact_sensitive_text bilinen env anahtar değerini maskeler", {
   expect_false(grepl("supersekretkey_abcdef1234", sonuc, fixed = TRUE))
 })
 
+test_that("redact_sensitive_text key-value biçimindeki sırları maskeler", {
+  giris <- c(
+    "api_key = sk-ant-abcdef123456",
+    "password: cokgizli_12345",
+    "x-api-key: abcdef123456789",
+    "client_secret=secret_deger_98765"
+  )
+
+  sonuc <- redact_sensitive_text(giris)
+
+  expect_true(all(grepl("<redacted>", sonuc, fixed = TRUE)))
+  expect_false(any(grepl("sk-ant-abcdef123456|cokgizli_12345|abcdef123456789|secret_deger_98765", sonuc, perl = TRUE)))
+})
+
+test_that("redact_sensitive_text Claude özgü env anahtar değerini maskeler", {
+  eski <- Sys.getenv("ANTHROPIC_API_KEY", unset = "")
+  Sys.setenv(ANTHROPIC_API_KEY = "sk-ant-testsecret123456")
+  on.exit(Sys.setenv(ANTHROPIC_API_KEY = eski), add = TRUE)
+
+  sonuc <- redact_sensitive_text("Claude key yüklendi: sk-ant-testsecret123456")
+
+  expect_true(grepl("<ANTHROPIC_API_KEY:redacted>", sonuc, fixed = TRUE))
+  expect_false(grepl("sk-ant-testsecret123456", sonuc, fixed = TRUE))
+})
+
 test_that("redact_sensitive_text normal metni değiştirmez", {
   m <- "Kullanıcı Mehmet oturum açtı; süre 120s; Ankara saati."
   sonuc <- redact_sensitive_text(m)

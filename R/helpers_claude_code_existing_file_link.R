@@ -36,13 +36,21 @@ format_claude_code_existing_file_link_html <- function(file_path,
     return("")
   }
 
-  if (length(allowed_roots) &&
-      exists("cc_policy_path_inside_roots", mode = "function", inherits = TRUE) &&
-      !cc_policy_path_inside_roots(dosya_norm, allowed_roots, must_exist = TRUE)) {
+  if (!length(allowed_roots)) {
     log_warn(paste(
       CLAUDE_CODE_LOG_PREFIX,
-      "Doğrudan link üretimi izin verilen köklerin dışında bırakıldı:",
-      gsub("[{}]", "", dosya_norm)
+      "Doğrudan link üretimi izinli kök verilmediği için engellendi:",
+      basename(dosya_norm)
+    ))
+    return("")
+  }
+
+  if (exists("cc_policy_path_inside_roots", mode = "function", inherits = TRUE) &&
+      !cc_policy_path_inside_roots(dosya_norm, allowed_roots)) {
+    log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Doğrudan link üretimi izinli kök dışında engellendi:",
+      dosya_norm
     ))
     return("")
   }

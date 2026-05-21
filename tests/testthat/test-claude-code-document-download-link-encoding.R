@@ -108,6 +108,30 @@ test_that("Bilge Yolaç existing summary file link uses the real created file", 
   expect_match(html, "cc-generated-file-card", fixed = TRUE)
   expect_match(html, "Olu\u015fturulan Dosyalar", fixed = TRUE)
   expect_match(html, "dosya_aciklamalari.txt", fixed = TRUE)
-  expect_match(html, "\u0130ndir", fixed = TRUE)
-  expect_false(grepl("\u0130ndirme kart\u0131 haz\u0131rlanamad\u0131", html, fixed = TRUE))
+  expect_match(html, "\\u0130ndir", fixed = TRUE)
+  expect_false(grepl("\\u0130ndirme kart\\u0131 haz\\u0131rlanamad\\u0131", html, fixed = TRUE))
+})
+
+test_that("Bilge Yolaç existing summary file link requires explicit allowed roots", {
+  env <- .source_cc_document_download_helpers_for_test()
+
+  tmp_dir <- tempfile("bilge_yolac_existing_guard_")
+  dir.create(tmp_dir, recursive = TRUE)
+
+  tmp_file <- file.path(tmp_dir, "dosya_aciklamalari.txt")
+
+  expect_true(
+    env$write_claude_code_utf8_bom_text_file("güvenli özet", tmp_file)
+  )
+  expect_true(file.exists(tmp_file))
+
+  html <- env$format_claude_code_existing_file_link_html(
+    file_path = tmp_file,
+    user_id = 1L,
+    session_token = paste0("test_", as.integer(Sys.time())),
+    allowed_roots = character(0),
+    display_path = basename(tmp_file)
+  )
+
+  expect_identical(html, "")
 })
