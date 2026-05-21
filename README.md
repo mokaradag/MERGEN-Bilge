@@ -43,6 +43,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 ### Görsel ve medya özellikleri
 - Yapay zeka ile görsel oluşturma
 - Görsel galerisi
+- Görsel Galerisi yenilemesi gereksiz fade/toast üretmeden sessiz biçimde yapılır; böylece sekme geçişlerinde titreme ve tekrarlı bilgilendirme mesajları azaltılır.
 - TTS ile sesli yanıt
 - STT ile sesli giriş
 - Arka plan müziği ve karakter temalı deneyim
@@ -56,6 +57,10 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 
 ### Gelişmiş deneyim katmanları
 - Sinematik başlangıç ekranı
+- Uygulama açılışında SSO kimlik doğrulaması, Shiny bağlantısı, oturum kurulumu ve çalışma alanı hazırlığı boyunca tüm ekranı kaplayan modern, çok aşamalı yükleme katmanı gösterilir.
+- Açılış yükleme katmanı satır içi CSS/JS ile erken görünür hâle gelir; `skip_intro` ayarını, azaltılmış hareket tercihini ve olağan dışı durumlar için güvenlik zaman aşımını dikkate alır.
+- Hoş geldin selamlaması ekran gerçekten görünür olmadan başlamaz; tekrar tetiklenmelerde eski zamanlayıcılar iptal edilerek deep-space geçişi sırasında kaybolan animasyonlar engellenir.
+- Bütünleşik mod ve karakter giriş videoları önden istenerek karakter adımındaki algılanan bekleme azaltılır.
 - Hoş geldin ekranı
 - Karakter seçimi
 - Üç farklı deneyim modu
@@ -113,6 +118,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 
 ### Kaynak manifesti ve MCP yükleme sırası
 - Çalışma zamanı R kaynakları `R/config_source_manifest.R` üzerinden açık ve sıralı biçimde yüklenir; yeni runtime yardımcı dosyaları bu manifeste bağımlılık sırasıyla eklenmelidir.
+- Açılış yükleme modülü `R/module_app_loading.R`, `R/config_source_manifest.R` içinde `R/module_startup_screen.R` sonrasında ve `R/module_quick_actions.R` öncesinde yüklenmelidir; `appLoadingUI()` ise `ui.R` içinde mümkün olan en erken noktada, `dashboardBody()` başlangıcında çağrılır.
 - DB yardımcıları için açık sıra korunmalıdır: `R/utils_text_encoding.R` erken yüklenir; ardından `R/helpers_db_unicode_escape.R`, `R/helpers_db_encoding.R`, `R/helpers_db_connection.R`, `R/helpers_db_user_encoding.R`, `R/helpers_db_validation.R`, `R/helpers_chat_message_formatting.R`, `R/helpers_db_chat_readers.R`, `R/helpers_db_chat_mutations.R` ve `R/helpers_database.R` gelir.
 - MCP yardımcı zincirinde yükleme sırası korunur: context, bootstrap, table readers, file resolver, schema helpers, basic tools, chart tools, analyze/visualize ve en son `helpers_mcp_tools.R`.
 - `R/helpers_mcp_bootstrap.R` yalnızca MCP ortamını ve temel yol yardımcılarını hazırlar; downstream MCP helper dosyalarını gizli/dinamik biçimde source etmez.

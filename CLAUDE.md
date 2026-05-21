@@ -167,6 +167,7 @@ Rules:
 - `R/helpers_mcp_tools.R` must load after the downstream MCP helpers and should remain the final tool/router layer.
 - Any test that manually sources MCP helper files must use the same order and keep `R/helpers_mcp_tools.R` last.
 - Source-manifest rules must not be stale: every order-rule target must either be in the runtime manifest or in the explicit boot allowlist.
+- `R/module_app_loading.R` is part of the startup path and must remain explicitly declared in `R/config_source_manifest.R` after `R/module_startup_screen.R` and before `R/module_quick_actions.R`. Do not dynamically source it or move it later in the manifest; `ui.R` depends on `appLoadingUI()` being available when `dashboardBody()` is built.
 - Do not weaken `tests/testthat/test-source-manifest-contract.R`, `tests/testthat/test-global-source-manifest-contract.R`, or the MCP refactor tests to hide a load-order issue.
 
 Focused validation after touching runtime source order or MCP helper files:
@@ -203,6 +204,16 @@ Current contract:
 - Welcome quick-action tooltip behavior for the Ana Söyleşi welcome screen lives in `www/js/welcome_tooltip_manager.js`, not in `www/js/app_core.js`. Do not move that tooltip/event-observer block back into `app_core.js`; the split keeps `app_core.js` focused on core app lifecycle, message observers, reconnection handling, and capability-message submission.
 - `www/js/input_handlers.js`, `www/js/app_core.js`, `www/js/welcome_tooltip_manager.js`, `www/js/claude_code.js`, `www/js/claude_code_streaming.js`, `www/js/music_manager.js`, `www/js/audio_lifecycle_guard.js`, `www/css/claude_code.css`, and `www/css/claude_code_streaming.css` have file-specific budget protection. If one fails, inspect the report before changing thresholds. Current accepted frontend split baselines include `www/js/app_core.js` at 270 lines / 28 approximate functions / 8 event handlers / 0 Shiny handlers, and `www/js/welcome_tooltip_manager.js` at 260 lines / 22 approximate functions / 14 event handlers / 0 Shiny handlers.
 
+Startup loading overlay contract:
+
+- The startup loading overlay is implemented in `R/module_app_loading.R` and inserted early in `ui.R` through `appLoadingUI()`.
+- Keep its CSS and JavaScript inline because it must appear before external app-owned CSS/JS assets finish loading.
+- The overlay must remain SSO-aware: it watches the SSO config/overlay elements, Shiny connection/session events, and advances only forward through the startup stages.
+- Preserve `mergen_settings.skip_intro` handling and the `html.mergen-skip-intro` behavior so the deep-space intro can be bypassed cleanly.
+- Preserve the 22-second safety timeout and `prefers-reduced-motion` handling.
+- Keep `window.MergenAppLoading` as the small external control surface for startup loading state.
+- Do not move this startup overlay into normal frontend asset manifests, CDN assets, bundled files, or delayed scripts.
+
 Protected by:
 
 - `tests/scripts/frontend_maintainability_report.R`
@@ -222,6 +233,14 @@ Focused validation after touching frontend JS/CSS, frontend selectors, or `R/con
 Manual UI validation after frontend JS/CSS changes:
 
 - Hard refresh the browser with Ctrl+F5 or Ctrl+Shift+R.
+
+Manual validation after startup or intro/welcome changes:
+- Start the app with SSO disabled and confirm the loading overlay appears immediately, advances, and dismisses into the welcome screen.
+- Start the app with SSO enabled on the VM and confirm the overlay stays visible through authentication and session initialization, then dismisses without leaving a blank or frozen screen.
+- Test with `skip_intro=true` in `mergen_settings` and confirm the deep-space layer is bypassed cleanly.
+- Confirm the welcome greeting starts only after the welcome screen is visible and is not lost during the deep-space-to-welcome transition.
+- Open the cinematic flow and Integrated mode; confirm the default/selected character intro video starts without the previous noticeable delay.
+- Open Görsel Galerisi and refresh/switch back to it; confirm there is no unnecessary flicker and no repeated refresh toast.
 - Open Ana Söyleşi.
 - Verify textarea auto-height, Enter send, Shift+Enter newline, Escape clear, send/stop mode, and file drag/drop.
 - Click each quick action and verify the expected tool control panel appears and disappears.
