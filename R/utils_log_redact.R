@@ -108,7 +108,7 @@ redact_sensitive_text <- function(x) {
     )
 
     metin <- gsub(
-      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)[^\\s,;}{\"']{6,}"),
+      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)[^\\s,;}{\"'&#<>]{6,}"),
       "\\1\\2<redacted>",
       metin,
       perl = TRUE

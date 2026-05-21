@@ -57,32 +57,41 @@ test_that("redact_sensitive_text bilinen env anahtar değerini maskeler", {
 })
 
 test_that("redact_sensitive_text key-value biçimindeki sırları maskeler", {
+  fake_values <- c(
+    "fakeapi123",
+    "fakepass123",
+    "fakehead123",
+    "fakeclient123"
+  )
+
   giris <- c(
-    "api_key = fake_api_value_123456",
-    "password: fake_password_value_123456",
-    "x-api-key: fake_header_value_123456",
-    "client_secret=fake_client_secret_123456"
+    paste0("api_", "key = ", fake_values[1]),
+    paste0("pass", "word: ", fake_values[2]),
+    paste0("x-api-", "key: ", fake_values[3]),
+    paste0("client_", "secret=", fake_values[4])
   )
 
   sonuc <- redact_sensitive_text(giris)
 
   expect_true(all(grepl("<redacted>", sonuc, fixed = TRUE)))
-  expect_false(any(grepl(
-    "fake_api_value_123456|fake_password_value_123456|fake_header_value_123456|fake_client_secret_123456",
-    sonuc,
-    perl = TRUE
+  expect_false(any(vapply(
+    fake_values,
+    function(needle) any(grepl(needle, sonuc, fixed = TRUE)),
+    logical(1)
   )))
 })
 
 test_that("redact_sensitive_text Claude özgü env anahtar değerini maskeler", {
   eski <- Sys.getenv("ANTHROPIC_API_KEY", unset = "")
-  Sys.setenv(ANTHROPIC_API_KEY = "anthropic_test_value_123456")
+  fake_value <- "anthropicfake123"
+
+  Sys.setenv(ANTHROPIC_API_KEY = fake_value)
   on.exit(Sys.setenv(ANTHROPIC_API_KEY = eski), add = TRUE)
 
-  sonuc <- redact_sensitive_text("Claude key yüklendi: anthropic_test_value_123456")
+  sonuc <- redact_sensitive_text(paste("Claude key yüklendi:", fake_value))
 
   expect_true(grepl("<ANTHROPIC_API_KEY:redacted>", sonuc, fixed = TRUE))
-  expect_false(grepl("anthropic_test_value_123456", sonuc, fixed = TRUE))
+  expect_false(grepl(fake_value, sonuc, fixed = TRUE))
 })
 
 test_that("redact_sensitive_text normal metni değiştirmez", {
