@@ -77,8 +77,38 @@ redact_sensitive_text <- function(x) {
 
     # 3B) Header / key-value biçimindeki sırları maskele:
     # api_key = ..., x-api-key: ..., password: ..., client_secret=...
+    secret_key_pattern <- paste(
+      c(
+        "api[_-]?key",
+        "apikey",
+        "x-api-key",
+        "token",
+        "access[_-]?token",
+        "refresh[_-]?token",
+        "secret",
+        "client[_-]?secret",
+        "password",
+        "passwd"
+      ),
+      collapse = "|"
+    )
+
     metin <- gsub(
-      "(?i)\\b(api[_-]?key|apikey|x-api-key|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|password|passwd)(\\s*[:=]\\s*)([\"']?)[^\"'\\s,;}{]{6,}\\3",
+      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)\"[^\"]{6,}\""),
+      "\\1\\2\"<redacted>\"",
+      metin,
+      perl = TRUE
+    )
+
+    metin <- gsub(
+      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)'[^']{6,}'"),
+      "\\1\\2'<redacted>'",
+      metin,
+      perl = TRUE
+    )
+
+    metin <- gsub(
+      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)[^\\s,;}{\"']{6,}"),
       "\\1\\2<redacted>",
       metin,
       perl = TRUE

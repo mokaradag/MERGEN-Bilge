@@ -132,6 +132,12 @@ test_that("Bilge Yolaç streaming finalizasyonu tekrar çağrıldığında no-op
   }
 
   source(
+    file.path(repo_root, "R", "helpers_claude_code_run_lifecycle.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  source(
     file.path(repo_root, "R", "module_claude_code_akis.R"),
     encoding = "UTF-8",
     local = test_env

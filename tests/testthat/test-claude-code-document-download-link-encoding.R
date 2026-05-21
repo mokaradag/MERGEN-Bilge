@@ -108,8 +108,8 @@ test_that("Bilge Yolaç existing summary file link uses the real created file", 
   expect_match(html, "cc-generated-file-card", fixed = TRUE)
   expect_match(html, "Olu\u015fturulan Dosyalar", fixed = TRUE)
   expect_match(html, "dosya_aciklamalari.txt", fixed = TRUE)
-  expect_match(html, "\\u0130ndir", fixed = TRUE)
-  expect_false(grepl("\\u0130ndirme kart\\u0131 haz\\u0131rlanamad\\u0131", html, fixed = TRUE))
+  expect_match(html, paste0(intToUtf8(0x0130), "ndir"), fixed = TRUE)
+  expect_false(grepl("hazırlanamadı", html, fixed = TRUE))
 })
 
 test_that("Bilge Yolaç existing summary file link requires explicit allowed roots", {

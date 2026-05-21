@@ -7,13 +7,11 @@
 # ==============================================================================
 
 local({
-  if (!exists("redact_sensitive_text", envir = globalenv(), inherits = FALSE)) {
-    source(
-      file.path(repo_root_for_tests, "R", "utils_log_redact.R"),
-      encoding = "UTF-8",
-      local = globalenv()
-    )
-  }
+  source(
+    file.path(repo_root_for_tests, "R", "utils_log_redact.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
 })
 
 test_that("redact_sensitive_text JWT benzeri deseni maskeler", {
@@ -60,27 +58,31 @@ test_that("redact_sensitive_text bilinen env anahtar değerini maskeler", {
 
 test_that("redact_sensitive_text key-value biçimindeki sırları maskeler", {
   giris <- c(
-    "api_key = sk-ant-abcdef123456",
-    "password: cokgizli_12345",
-    "x-api-key: abcdef123456789",
-    "client_secret=secret_deger_98765"
+    "api_key = fake_api_value_123456",
+    "password: fake_password_value_123456",
+    "x-api-key: fake_header_value_123456",
+    "client_secret=fake_client_secret_123456"
   )
 
   sonuc <- redact_sensitive_text(giris)
 
   expect_true(all(grepl("<redacted>", sonuc, fixed = TRUE)))
-  expect_false(any(grepl("sk-ant-abcdef123456|cokgizli_12345|abcdef123456789|secret_deger_98765", sonuc, perl = TRUE)))
+  expect_false(any(grepl(
+    "fake_api_value_123456|fake_password_value_123456|fake_header_value_123456|fake_client_secret_123456",
+    sonuc,
+    perl = TRUE
+  )))
 })
 
 test_that("redact_sensitive_text Claude özgü env anahtar değerini maskeler", {
   eski <- Sys.getenv("ANTHROPIC_API_KEY", unset = "")
-  Sys.setenv(ANTHROPIC_API_KEY = "sk-ant-testsecret123456")
+  Sys.setenv(ANTHROPIC_API_KEY = "anthropic_test_value_123456")
   on.exit(Sys.setenv(ANTHROPIC_API_KEY = eski), add = TRUE)
 
-  sonuc <- redact_sensitive_text("Claude key yüklendi: sk-ant-testsecret123456")
+  sonuc <- redact_sensitive_text("Claude key yüklendi: anthropic_test_value_123456")
 
   expect_true(grepl("<ANTHROPIC_API_KEY:redacted>", sonuc, fixed = TRUE))
-  expect_false(grepl("sk-ant-testsecret123456", sonuc, fixed = TRUE))
+  expect_false(grepl("anthropic_test_value_123456", sonuc, fixed = TRUE))
 })
 
 test_that("redact_sensitive_text normal metni değiştirmez", {
