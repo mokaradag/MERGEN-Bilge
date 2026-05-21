@@ -145,7 +145,13 @@ vendor_frontend_files <- c(
 allowlisted_unmanifested_frontend_files <- c(
   # Loaded directly by R/helpers_admin_analytics.R via tags$head().
   # Keep visible, but do not force global manifest loading in this patch.
-  "www/css/admin_analytics.css"
+  "www/css/admin_analytics.css",
+  # Açılış yükleme ekranı varlıkları: R/module_app_loading.R tarafından ilk
+  # boyamada satır içine gömülür; bilinçli olarak UI manifestine eklenmez.
+  "www/css/app_loading.css",
+  "www/js/app_loading.js",
+  "www/js/app_loading_codestream.js",
+  "www/js/app_loading_snippets.js"
 )
 
 is_vendor_frontend_asset <- function(rel_path) {

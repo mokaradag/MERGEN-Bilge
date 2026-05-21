@@ -462,6 +462,16 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 		))
 	  }
 
+      # Giriş atlandığında, kayıtlı moda göre uygulama arka plan müziğini
+      # ayarla. Derin uzay intro müziği bu akışta hiç çalmaz; yalnızca
+      # MusicManager ana teması önceki mod tercihine göre başlatılır.
+      shinyjs::delay(450, {
+        session$sendCustomMessage("toggleMusic", list(
+          enabled = isTRUE(settings_data$enable_background_music),
+          character = char_id
+        ))
+      })
+
       # Karşılama ekranı zaten arkada kurulmuşsa tekrar yükleme yapma
       ensure_welcome_screen_ready()
 	  

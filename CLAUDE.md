@@ -262,11 +262,13 @@ Current contract:
 Startup loading overlay contract:
 
 - The startup loading overlay is implemented in `R/module_app_loading.R` and inserted early in `ui.R` through `appLoadingUI()`.
-- Keep its CSS and JavaScript inline because it must appear before external app-owned CSS/JS assets finish loading.
+- The overlay CSS/JS source lives in dedicated `www` files (`www/css/app_loading.css`, `www/js/app_loading_snippets.js`, `www/js/app_loading_codestream.js`, `www/js/app_loading.js`). `R/module_app_loading.R` reads these files at UI build time and inlines them into the overlay markup, so `R/module_app_loading.R` stays small while the rendered overlay still ships its CSS/JS inline. The overlay must keep appearing before external app-owned CSS/JS assets finish loading; do not convert the inlined assets back into external `<link>`/`<script>` references.
+- These overlay assets are intentionally kept out of the `R/config_ui_assets.R` manifest. They are allowlisted in `tests/scripts/frontend_maintainability_report.R` (`allowlisted_unmanifested_frontend_files`); keep that allowlist entry when touching these files.
 - The overlay must remain SSO-aware: it watches the SSO config/overlay elements, Shiny connection/session events, and advances only forward through the startup stages.
 - Preserve `mergen_settings.skip_intro` handling and the `html.mergen-skip-intro` behavior so the deep-space intro can be bypassed cleanly.
 - Preserve the 22-second safety timeout and `prefers-reduced-motion` handling.
 - Keep `window.MergenAppLoading` as the small external control surface for startup loading state.
+- The corporate heptagon emblem, ASELSAN colour palette and the atmospheric code-stream layer are part of the intended look; do not strip them to simplify the file.
 - Do not move this startup overlay into normal frontend asset manifests, CDN assets, bundled files, or delayed scripts.
 
 Protected by:
