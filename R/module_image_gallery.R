@@ -76,6 +76,16 @@ imageGalleryServer <- function(id, current_user_id) {
     clear_all_trigger <- reactiveVal(0)
     navigate_to_chat_trigger <- reactiveVal(NULL)
 
+    # İki galeri tarama sonucunun aynı görselleri içerip içermediğini karşılaştır
+    gallery_images_same <- function(a, b) {
+      if (!is.data.frame(a) || !is.data.frame(b)) return(FALSE)
+      if (nrow(a) != nrow(b)) return(FALSE)
+      if (nrow(a) == 0) return(TRUE)
+      a_key <- paste(a$file_path, a$file_size, sep = "|")
+      b_key <- paste(b$file_path, b$file_size, sep = "|")
+      setequal(a_key, b_key)
+    }
+
     refresh_gallery_cache <- function() {
       uid <- coerce_user_id(resolve_current_user_id())
       effective_user_id(uid)
@@ -85,7 +95,15 @@ imageGalleryServer <- function(id, current_user_id) {
         return(invisible(NULL))
       }
 
-      cached_images(scan_user_images(uid))
+      scanned <- scan_user_images(uid)
+
+      # Tarama sonucu mevcut önbellekle aynıysa reaktif güncelleme yapma.
+      # Galeri zaten önbellekten anında görünür; sekme geçişlerinde gereksiz
+      # yeniden render ve titreme bu sayede önlenir. Yeni veya silinen görsel
+      # olduğunda tarama farklı olur ve önbellek güncellenir.
+      if (!gallery_images_same(isolate(cached_images()), scanned)) {
+        cached_images(scanned)
+      }
       invisible(NULL)
     }
 
@@ -108,8 +126,10 @@ imageGalleryServer <- function(id, current_user_id) {
 
     # Arama: açıklama, dosya adı, ay etiketi ve sohbet başlığı üzerinden filtrele
     filtered_images <- reactive({
+      # refresh_trigger bağımlılığı bilinçli olarak kaldırıldı: tarama sonucu
+      # değişmediğinde cached_images güncellenmez, böylece sekme geçişlerinde
+      # galeri gereksiz yere yeniden render edilmez (titreme önlenir).
       imgs <- cached_images()
-      refresh_trigger()
       term <- search_term_debounced()
 
       if (nrow(imgs) == 0) return(imgs)

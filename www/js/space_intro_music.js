@@ -261,6 +261,19 @@
 
   // HTML'deki gömülü veri ve Shiny mesaj dinleyicisi
   $(document).ready(function() {
+    // Giriş animasyonu kapalıysa (skip_intro) derin uzay intro müziği hiç
+    // başlamamalı. Kullanıcı doğrudan karşılama ekranına iner ve orada
+    // yalnızca uygulama arka plan müziği (mod tercihine göre) çalar.
+    try {
+      var introPref = localStorage.getItem('mergen_settings');
+      if (introPref) {
+        var introCfg = JSON.parse(introPref);
+        if (introCfg && introCfg.skip_intro === true) {
+          SpaceIntroMusic._stopped = true;
+        }
+      }
+    } catch (e) {}
+
     // Önce HTML'de gömülü müzik verisini kontrol et (sunucu mesajını beklemeden hemen başlat)
     var embeddedData = document.getElementById('intro-music-data');
     if (embeddedData) {

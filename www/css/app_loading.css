@@ -1,0 +1,432 @@
+/* ==========================================================================
+   www/css/app_loading.css
+   MERGEN Bilge - Açılış yükleme ekranı stilleri.
+   Kurumsal koyu uzay teması: yedigen amblem, akan kod katmanı ve
+   ASELSAN renk paleti ile uyumlu zarif geçişler.
+   Bu dosya R/module_app_loading.R tarafından ilk boyamada satır içine
+   gömülür; harici CSS varlıkları yüklenmeden ekran tutarlı görünür.
+   ========================================================================== */
+
+#app-loading-overlay {
+  /* Kurumsal renk paleti (koyu tema için ayarlanmış tonlar) */
+  --alo-bg-0: #04060e;
+  --alo-bg-1: #0a1026;
+  --alo-bg-2: #060912;
+  --alo-blue-deep: #002d7a;
+  --alo-blue: #3f6fc4;
+  --alo-teal: #097880;
+  --alo-teal-bright: #2bc3c9;
+  --alo-orange: #ff5620;
+  --alo-orange-soft: #ff8022;
+  --alo-text: #eef1f8;
+  --alo-text-dim: #8b95b8;
+  --alo-line: rgba(168, 182, 224, 0.14);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-family: "Segoe UI", "Calibri", "Trebuchet MS", system-ui, -apple-system, sans-serif;
+  opacity: 1;
+  transition: opacity 0.7s ease, visibility 0.7s ease;
+}
+
+#app-loading-overlay.app-loading-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Giriş animasyonu kapalıyken derin uzay sahnesi parlamamalı */
+html.mergen-skip-intro #deep-space-container {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   Arka plan katmanları
+   -------------------------------------------------------------------------- */
+
+#app-loading-overlay .alo-aurora {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 760px;
+  height: 760px;
+  max-width: 120vw;
+  max-height: 120vh;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background:
+    radial-gradient(circle, rgba(0, 45, 122, 0.40), transparent 58%),
+    radial-gradient(circle at 60% 60%, rgba(9, 120, 128, 0.18), transparent 62%);
+  filter: blur(34px);
+  animation: aloAurora 9s ease-in-out infinite;
+}
+
+#app-loading-overlay .alo-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    radial-gradient(1.4px 1.4px at 14% 20%, rgba(220, 230, 255, 0.9), transparent),
+    radial-gradient(1.1px 1.1px at 76% 14%, rgba(180, 200, 255, 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 62% 72%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1.1px 1.1px at 30% 84%, rgba(150, 180, 255, 0.7), transparent),
+    radial-gradient(1.3px 1.3px at 88% 58%, rgba(210, 224, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 44% 40%, rgba(190, 205, 255, 0.7), transparent),
+    radial-gradient(1.2px 1.2px at 8% 62%, rgba(255, 230, 210, 0.6), transparent);
+  animation: aloTwinkle 7s ease-in-out infinite;
+}
+
+#app-loading-overlay .alo-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 44%, transparent 38%, rgba(2, 4, 10, 0.86) 100%);
+}
+
+/* Kurumsal yedigen amblemi - köşede kısmen görünür çeyrek */
+#app-loading-overlay .alo-corner {
+  position: absolute;
+  top: -190px;
+  right: -190px;
+  width: 540px;
+  height: 540px;
+  pointer-events: none;
+  opacity: 0.16;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  background-image: url("data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20fill='none'%20viewBox='-147.15%205.9%20266.39%20264.03'%3e%3cpath%20d='M4.07617%2068.3876C-6.36271%2063.3152%20-18.4952%2063.0941%20-29.1006%2067.7626L-29.6045%2067.9891L-57.3223%2080.6552C-68.1177%2085.5882%20-76.1136%2095.1087%20-79.1162%20106.571L-79.2559%20107.119L-85.7109%20133.281C-88.5535%20144.801%20-86.0648%20156.979%20-78.9541%20166.453L-78.6123%20166.902L-57.3623%20194.391C-49.8822%20204.067%20-38.3416%20209.732%20-26.1113%20209.732H-1.2832C10.7559%20209.732%2022.126%20204.242%2029.6133%20194.841L29.9678%20194.391L50.8477%20167.38C58.3082%20157.729%2060.8848%20145.183%2057.8535%20133.39L57.7051%20132.828L50.3564%20105.882C47.4521%2095.233%2040.2303%2086.3015%2030.4648%2081.2264L29.5117%2080.7479L4.07617%2068.3876Z'%20stroke='%23097880'/%3e%3cpath%20d='M3.79175%2089.1091C-6.6471%2084.0367%20-18.7796%2083.8158%20-29.385%2088.4841L-29.8889%2088.7107L-40.4153%2093.5203C-51.2109%2098.4533%20-59.2067%20107.975%20-62.2092%20119.437L-62.3479%20119.984L-64.4778%20128.613C-67.3204%20140.133%20-64.8314%20152.311%20-57.7209%20161.785L-57.3782%20162.234L-48.5383%20173.67C-41.0582%20183.346%20-29.5175%20189.011%20-17.2874%20189.011H-10.1067C1.93233%20189.011%2013.3025%20183.521%2020.7898%20174.12L21.1433%20173.67L29.614%20162.713C37.0746%20153.062%2039.6513%20140.515%2036.6199%20128.721L36.4714%20128.161L33.905%20118.748C31.0008%20108.099%2023.7782%2099.1676%2014.0125%2094.0925L13.0603%2093.613L3.79175%2089.1091Z'%20stroke='%23097880'/%3e%3cpath%20d='M4.32886%2050.0105C-6.10996%2044.9381%20-18.2425%2044.7172%20-28.8479%2049.3855L-29.3518%2049.6121L-72.3176%2069.2449C-83.1133%2074.178%20-91.1091%2083.6991%20-94.1116%2095.1619L-94.2502%2095.7087L-104.543%20137.422C-107.386%20148.942%20-104.897%20161.119%20-97.7864%20170.594L-97.4446%20171.043L-65.1877%20212.768C-57.7076%20222.444%20-46.167%20228.11%20-33.9368%20228.11H6.54175C18.5808%20228.11%2029.9519%20222.62%2037.4392%20213.219L37.7927%20212.768L69.6794%20171.52C77.14%20161.87%2079.7165%20149.323%2076.6853%20137.53L76.5369%20136.969L64.947%2094.4724C62.0428%2083.8235%2054.821%2074.8923%2045.0554%2069.8171L44.1023%2069.3376L4.32886%2050.0105Z'%20stroke='%23097880'/%3e%3cpath%20d='M7.98242%2032.6036C-4.5705%2026.504%20-19.1598%2026.238%20-31.9131%2031.8517L-32.5195%2032.1241L-84.3486%2055.8077C-97.3306%2061.7399%20-106.946%2073.1886%20-110.557%2086.9728L-110.724%2087.631L-123.143%20137.962C-126.561%20151.816%20-123.569%20166.459%20-115.018%20177.853L-114.606%20178.393L-75.7041%20228.716C-66.7091%20240.352%20-52.8311%20247.165%20-38.124%20247.165H10.7295C25.2068%20247.165%2038.8801%20240.563%2047.8838%20229.258L48.3096%20228.716L86.7686%20178.966C95.7401%20167.361%2098.8386%20152.273%2095.1934%20138.091L95.0156%20137.416L81.0322%2086.1447C77.4835%2073.1325%2068.5735%2062.253%2056.541%2056.2042L55.9658%2055.9191L7.98242%2032.6036Z'%20stroke='%23FF5620'/%3e%3cpath%20d='M11.6797%2011.9863C-2.98763%204.85926%20-20.0342%204.54795%20-34.9355%2011.1074L-35.6436%2011.4248L-99%2040.376C-114.169%2047.3072%20-125.403%2060.6852%20-129.622%2076.791L-129.817%2077.5596L-145.033%20139.226C-149.027%20155.412%20-145.531%20172.523%20-135.54%20185.835L-135.06%20186.466L-87.5869%20247.875C-77.0769%20261.47%20-60.862%20269.431%20-43.6777%20269.431H16.2832C33.199%20269.431%2049.1751%20261.717%2059.6953%20248.508L60.1924%20247.875L107.148%20187.135C117.631%20173.575%20121.251%20155.946%20116.992%20139.376L116.783%20138.587L99.666%2075.8242C95.5196%2060.6205%2085.1088%2047.9083%2071.0498%2040.8408L70.3779%2040.5078L11.6797%2011.9863Z'%20stroke='%23FF5620'/%3e%3c/svg%3e");
+  animation: aloCornerDrift 90s linear infinite;
+}
+
+#app-loading-overlay .alo-corner-mirror {
+  top: auto;
+  right: auto;
+  bottom: -210px;
+  left: -210px;
+  opacity: 0.09;
+  transform: rotate(180deg);
+  animation-direction: reverse;
+}
+
+/* Akan kod katmanı - JS tarafından doldurulur */
+#app-loading-overlay .alo-codestream {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Merkez sahne
+   -------------------------------------------------------------------------- */
+
+#app-loading-overlay .alo-stage {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 28px;
+  animation: aloStageIn 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Yedigen yükleme amblemi */
+#app-loading-overlay .alo-mark {
+  position: relative;
+  width: 228px;
+  height: 228px;
+  margin-bottom: 34px;
+  animation: aloMarkBreathe 6.5s ease-in-out infinite;
+}
+
+#app-loading-overlay .alo-mark-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+#app-loading-overlay .alo-hept {
+  fill: none;
+  stroke-linejoin: round;
+  /* viewBox merkezine göre döndür - yedigen gerçek merkezinde döner */
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+
+#app-loading-overlay .alo-hept-outer {
+  stroke: var(--alo-orange);
+  stroke-width: 1;
+  opacity: 0.26;
+  stroke-dasharray: 3 9;
+  animation: aloSpin 54s linear infinite;
+}
+
+#app-loading-overlay .alo-hept-track {
+  stroke: var(--alo-line);
+  stroke-width: 3;
+}
+
+#app-loading-overlay .alo-hept-progress {
+  stroke: url(#aloProgressGrad);
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(255, 86, 32, 0.55));
+  transition: stroke-dashoffset 0.85s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#app-loading-overlay .alo-hept-inner {
+  stroke: var(--alo-teal-bright);
+  stroke-width: 1.25;
+  opacity: 0.4;
+  stroke-dasharray: 2 7;
+  animation: aloSpinRev 38s linear infinite;
+}
+
+#app-loading-overlay .alo-mark-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 132px;
+  height: 132px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(63, 111, 196, 0.32), transparent 68%);
+  animation: aloCorePulse 3.4s ease-in-out infinite;
+}
+
+#app-loading-overlay .alo-mark-readout {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: baseline;
+  font-family: "Consolas", "Cascadia Code", "JetBrains Mono", monospace;
+  color: var(--alo-text);
+}
+
+#app-loading-overlay .alo-readout-num {
+  font-size: 38px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+#app-loading-overlay .alo-readout-pct {
+  font-size: 15px;
+  font-weight: 500;
+  margin-left: 3px;
+  color: var(--alo-orange-soft);
+}
+
+/* Marka adı */
+#app-loading-overlay .alo-wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 0.34em;
+  font-size: 33px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+#app-loading-overlay .alo-wordmark-primary {
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--alo-text);
+}
+
+#app-loading-overlay .alo-wordmark-accent {
+  font-weight: 300;
+  letter-spacing: 0.14em;
+  color: var(--alo-orange);
+}
+
+/* İnce kurumsal ayraç */
+#app-loading-overlay .alo-divider {
+  width: 0;
+  height: 1px;
+  margin: 18px 0 4px;
+  background: linear-gradient(90deg, transparent, rgba(255, 86, 32, 0.65), var(--alo-teal-bright), transparent);
+  animation: aloDivider 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
+}
+
+/* Durum satırı */
+#app-loading-overlay .alo-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  min-height: 18px;
+}
+
+#app-loading-overlay .alo-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--alo-teal-bright);
+  box-shadow: 0 0 9px 1px rgba(43, 195, 201, 0.75);
+  animation: aloStatusBlink 1.5s ease-in-out infinite;
+}
+
+#app-loading-overlay .alo-status-text {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--alo-text-dim);
+  transition: opacity 0.3s ease;
+}
+
+#app-loading-overlay .alo-status-text.alo-status-fade {
+  opacity: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Akan kod öğeleri
+   -------------------------------------------------------------------------- */
+
+#app-loading-overlay .alo-code-item {
+  position: absolute;
+  max-width: 30vw;
+  padding: 4px 0;
+  font-family: "Consolas", "Cascadia Code", "JetBrains Mono", "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.62;
+  white-space: pre;
+  opacity: 0;
+  filter: blur(0);
+  transform: translateY(6px);
+  transition: opacity 1s ease, filter 1.1s ease, transform 1.1s ease;
+}
+
+#app-loading-overlay .alo-code-item.alo-code-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#app-loading-overlay .alo-code-item.alo-code-out {
+  opacity: 0;
+  filter: blur(3.5px);
+  transform: translateY(-10px);
+}
+
+#app-loading-overlay .alo-code-lang {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(139, 149, 184, 0.5);
+}
+
+#app-loading-overlay .alo-code-line {
+  display: block;
+  color: #6b769c;
+}
+
+#app-loading-overlay .alo-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--alo-orange);
+  animation: aloCursor 0.9s steps(1) infinite;
+}
+
+/* Sözdizimi renkleri - koyu tema ile uyumlu, düşük yoğunluklu */
+#app-loading-overlay .alo-tok-comment { color: #495269; font-style: italic; }
+#app-loading-overlay .alo-tok-keyword { color: #ff8a5c; }
+#app-loading-overlay .alo-tok-string  { color: #3fb6ad; }
+#app-loading-overlay .alo-tok-number  { color: #6f93d6; }
+#app-loading-overlay .alo-tok-func    { color: #c7b27d; }
+#app-loading-overlay .alo-tok-punct   { color: #5a6688; }
+
+/* --------------------------------------------------------------------------
+   Animasyonlar
+   -------------------------------------------------------------------------- */
+
+@keyframes aloSpin { to { transform: rotate(360deg); } }
+@keyframes aloSpinRev { to { transform: rotate(-360deg); } }
+
+@keyframes aloCorePulse {
+  0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.92); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+@keyframes aloMarkBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
+}
+
+@keyframes aloAurora {
+  0%, 100% { opacity: 0.62; transform: translate(-50%, -50%) scale(0.94); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+@keyframes aloTwinkle {
+  0%, 100% { opacity: 0.34; }
+  50% { opacity: 0.62; }
+}
+
+@keyframes aloStatusBlink {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes aloCursor {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+@keyframes aloCornerDrift { to { transform: rotate(360deg); } }
+
+@keyframes aloStageIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes aloDivider {
+  to { width: 196px; }
+}
+
+/* Tamamlanma vurgusu */
+#app-loading-overlay.alo-complete .alo-hept-progress {
+  filter: drop-shadow(0 0 11px rgba(255, 86, 32, 0.85));
+}
+
+#app-loading-overlay.alo-complete .alo-status-dot {
+  background: var(--alo-orange);
+  box-shadow: 0 0 11px 2px rgba(255, 86, 32, 0.8);
+  animation: none;
+}
+
+/* --------------------------------------------------------------------------
+   Erişilebilirlik - hareket azaltma
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  #app-loading-overlay .alo-hept-outer,
+  #app-loading-overlay .alo-hept-inner,
+  #app-loading-overlay .alo-mark,
+  #app-loading-overlay .alo-mark-glow,
+  #app-loading-overlay .alo-aurora,
+  #app-loading-overlay .alo-stars,
+  #app-loading-overlay .alo-corner,
+  #app-loading-overlay .alo-status-dot {
+    animation: none !important;
+  }
+  #app-loading-overlay .alo-code-item { transition: opacity 0.5s ease; }
+}
+
+/* Küçük ekran uyumu */
+@media (max-width: 640px) {
+  #app-loading-overlay .alo-mark { width: 178px; height: 178px; }
+  #app-loading-overlay .alo-wordmark { font-size: 26px; }
+  #app-loading-overlay .alo-code-item { max-width: 64vw; font-size: 11px; }
+  #app-loading-overlay .alo-corner { width: 360px; height: 360px; }
+}
