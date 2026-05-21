@@ -185,6 +185,50 @@ Focused validation after touching runtime source order or MCP helper files:
 - `source("app.R", encoding = "UTF-8")`
 - `source("tests/testthat.R", encoding = "UTF-8")`
 
+### Frontend asset manifest and maintainability ratchet contract
+
+Frontend assets are now protected by an explicit maintainability report and ratchet. This contract is separate from the R maintainability score and must not be weakened to hide frontend growth.
+
+Current contract:
+
+- Runtime CSS and JS assets must continue to be loaded through `R/config_ui_assets.R` unless there is an intentionally documented page-local exception.
+- Preserve asset load order. In particular, keep the existing ordering relationships around `www/js/encoding_utils.js`, `www/js/shiny_message_handlers.js`, `www/js/input_handlers.js`, `www/js/app_core.js`, `www/js/streaming_manager.js`, `www/js/claude_code.js`, `www/js/claude_code_streaming.js`, `www/js/music_manager.js`, and `www/js/audio_lifecycle_guard.js`.
+- Do not introduce CDN dependencies, bundling, minification, runtime downloads, or hidden source loading to bypass frontend file-size pressure.
+- `tests/scripts/frontend_maintainability_report.R` is a reporting script, not runtime code. It scans `www/js/*.js` and `www/css/*.css`, reads `R/config_ui_assets.R`, and reports line counts, byte counts, approximate JS function counts, event handler counts, Shiny custom message handler counts, manifest membership, app/vendor/allowlisted budget scope, duplicate CSS selectors, and forbidden legacy selector hits.
+- `tests/testthat/test-frontend-maintainability-ratchet.R` protects the current frontend baseline. Its first baseline must respect the current real report values; after that, growth should fail until the relevant frontend code is split or refactored.
+- App-owned frontend assets are budgeted separately from vendor/minified assets. Do not loosen app-owned thresholds merely because a third-party/minified file is large.
+- New app-owned runtime CSS/JS files must not silently remain outside `R/config_ui_assets.R`. Add them to the manifest in the correct local/offline load order and update manifest/order tests when needed.
+- Forbidden legacy selectors such as `message_input`, `chat_content_wrapper`, and `#_content_container` must not be reintroduced.
+- For large or mixed frontend files, prefer one focused local split at a time instead of adding more unrelated behavior to the same file. Good split candidates should preserve UX and cascade/order behavior.
+- `www/js/input_handlers.js`, `www/js/app_core.js`, `www/js/claude_code.js`, `www/js/claude_code_streaming.js`, `www/js/music_manager.js`, `www/js/audio_lifecycle_guard.js`, `www/css/claude_code.css`, and `www/css/claude_code_streaming.css` have file-specific budget protection. If one fails, inspect the report before changing thresholds.
+
+Protected by:
+
+- `tests/scripts/frontend_maintainability_report.R`
+- `tests/testthat/test-frontend-maintainability-ratchet.R`
+- `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation after touching frontend JS/CSS, frontend selectors, or `R/config_ui_assets.R`:
+
+- `source("tests/scripts/frontend_maintainability_report.R", encoding = "UTF-8")`
+- `testthat::test_file("tests/testthat/test-frontend-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+
+Manual UI validation after frontend JS/CSS changes:
+
+- Hard refresh the browser with Ctrl+F5 or Ctrl+Shift+R.
+- Open Ana Söyleşi.
+- Verify textarea auto-height, Enter send, Shift+Enter newline, Escape clear, send/stop mode, and file drag/drop.
+- Click each quick action and verify the expected tool control panel appears and disappears.
+- Open Bilge Yolaç and run a simple prompt; confirm live streaming still works.
+- Validate TTS, STT, and background music lifecycle.
+- Open Görsel Galerisi, Dosya Yönetimi, Kayıtlı Söyleşiler, and Yenilikler.
+- Check the browser console for JavaScript errors.
+
 ### 1C) File lifecycle and File Manager boundary contract
 
 Uploaded file lifecycle is a protected boundary. Do not trade security or user isolation for convenience.

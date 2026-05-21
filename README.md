@@ -188,6 +188,13 @@ Kırılgan kullanıcı akışları için ek manuel preflight:
 
 Uygulamadaki ana sayfalar aşağıdaki gibidir:
 
+### Frontend varlık manifesti ve bakım koruması
+- Ön yüz CSS/JS varlıkları `R/config_ui_assets.R` üzerinden açık gruplar ve açık yükleme sırası ile yönetilir; çevrimdışı/on-prem çalışma sözleşmesi gereği CDN, bundling veya minification tabanlı gizli kaynak akışı kullanılmaz.
+- `tests/scripts/frontend_maintainability_report.R`, `www/js/*.js` ve `www/css/*.css` dosyaları için satır, byte, yaklaşık fonksiyon sayısı, event handler sayısı, Shiny özel mesaj handler sayısı, manifestte yer alma durumu, CSS tekrar eden seçiciler ve yasak eski seçici eşleşmelerini raporlar.
+- `tests/testthat/test-frontend-maintainability-ratchet.R`, mevcut üretim taban çizgisini bozmadan app-owned frontend dosyalarının sessizce büyümesini, yeni runtime CSS/JS dosyalarının manifest dışında kalmasını ve eski kırılgan seçicilerin geri dönmesini engeller.
+- Vendor/minified varlıklar raporda görünür kalır, ancak app-owned dosyalar için ayrı ve daha anlamlı bütçeler kullanılır. Bu koruma kullanıcı deneyimini değiştirmez; yalnızca bakım sınırını testlerle görünür hâle getirir.
+- Frontend değişikliklerinden sonra odak doğrulama için şu kontroller çalıştırılmalıdır: `source("tests/scripts/frontend_maintainability_report.R", encoding = "UTF-8")`, `testthat::test_file("tests/testthat/test-frontend-maintainability-ratchet.R")`, `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`, `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")` ve `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`.
+
 ### Ana Söyleşi
 Ana sohbet ekranıdır. Kullanıcı burada:
 - soru sorabilir,
