@@ -568,7 +568,7 @@ sendMessageInit <- function(
             api_config, followup_tools, fallback_followup_tool
           )
 
-          local_char_id <- current_settings$selected_character %||% "mergen"
+          local_char_id <- normalize_character_id(current_settings$selected_character)
           local_chars_data <- get_characters_data()
           local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
           resolved_voice <- if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"

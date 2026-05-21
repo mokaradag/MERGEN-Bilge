@@ -11,56 +11,57 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
+  // Persona atış profilleri - her persona kendi modern çalışma tarzı mermisini kullanır
   var OYUNCU_PROFILLERI = {
-    mergen: {
-      tur: "ok",
+    emre: {
+      tur: "cozum_dalgasi",
       hiz: 5.8,
-      genislik: 18,
-      yukseklik: 5,
+      genislik: 16,
+      yukseklik: 8,
       hasar: 10,
-      renk: "#C7A95A",
-      izRenk: "rgba(255,240,180,0.55)",
-      varlikId: "mergen"
+      renk: "#A47DFF",
+      izRenk: "rgba(164,125,255,0.55)",
+      varlikId: "emre"
     },
-    ulgen: {
-      tur: "gok_parlama",
+    selin: {
+      tur: "sinyal_taramasi",
       hiz: 4.6,
       genislik: 12,
       yukseklik: 12,
       hasar: 9,
       renk: "#A7E2FF",
       izRenk: "rgba(167,226,255,0.60)",
-      varlikId: "ulgen"
+      varlikId: "selin"
     },
-    kayra: {
-      tur: "runkure",
+    deniz: {
+      tur: "rota_projesi",
       hiz: 4.2,
       genislik: 14,
       yukseklik: 14,
       hasar: 8,
       renk: "#86F0B6",
       izRenk: "rgba(134,240,182,0.58)",
-      varlikId: "kayra"
+      varlikId: "deniz"
     },
-    erlik: {
-      tur: "bozulma_kirigi",
+    can: {
+      tur: "dogrulama_isini",
       hiz: 4.9,
-      genislik: 12,
-      yukseklik: 10,
+      genislik: 16,
+      yukseklik: 6,
       hasar: 11,
-      renk: "#FF5D86",
-      izRenk: "rgba(255,93,134,0.60)",
-      varlikId: "erlik"
+      renk: "#E0A85A",
+      izRenk: "rgba(224,168,90,0.58)",
+      varlikId: "can"
     },
-    umay_ana: {
-      tur: "koruyucu_darbe",
+    ipek: {
+      tur: "rehber_halkasi",
       hiz: 4.0,
       genislik: 16,
       yukseklik: 16,
       hasar: 6,
-      renk: "#FFD6F0",
-      izRenk: "rgba(255,214,240,0.60)",
-      varlikId: "umay_ana"
+      renk: "#F5B6C8",
+      izRenk: "rgba(245,182,200,0.60)",
+      varlikId: "ipek"
     }
   };
 
@@ -137,7 +138,7 @@
     if (!karakter) return null;
     secenekler = secenekler || {};
 
-    var profil = OYUNCU_PROFILLERI[karakter.id] || OYUNCU_PROFILLERI.mergen;
+    var profil = OYUNCU_PROFILLERI[karakter.id] || OYUNCU_PROFILLERI.emre;
     var kaynakX = secenekler.kaynakX || (karakter.x + karakter.genislik * 0.55);
     var kaynakY = secenekler.kaynakY || (karakter.y + karakter.yukseklik * 0.42);
     var yayilma = secenekler.yayilma || 0;
@@ -208,18 +209,20 @@
     ctx.translate(ekranX, m.y);
     ctx.rotate(m.aci || 0);
 
-    if (m.tur === "ok") {
-      ctx.fillStyle = "#E6D1A3";
-      ctx.fillRect(-8, -1, 12, 2);
-      ctx.fillStyle = "#B28A3D";
-      ctx.fillRect(3, -2, 4, 4);
+    if (m.tur === "cozum_dalgasi") {
+      // Emre - çözüm dalgası: ilerleyen enerji dalgası
+      ctx.strokeStyle = m.renk;
+      ctx.shadowColor = m.renk;
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(8, 0);
-      ctx.lineTo(3, -3);
-      ctx.lineTo(3, 3);
-      ctx.closePath();
-      ctx.fill();
-    } else if (m.tur === "gok_parlama") {
+      ctx.arc(-2, 0, 6, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(2, 0, 4, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+    } else if (m.tur === "sinyal_taramasi") {
+      // Selin - sinyal taraması: artı biçimli tarama darbesi
       ctx.fillStyle = m.renk;
       ctx.shadowColor = m.renk;
       ctx.shadowBlur = 8;
@@ -234,7 +237,8 @@
       ctx.moveTo(0, -7);
       ctx.lineTo(0, 7);
       ctx.stroke();
-    } else if (m.tur === "runkure") {
+    } else if (m.tur === "rota_projesi") {
+      // Deniz - rota projeksiyonu: yapısal kare blok
       ctx.fillStyle = m.renk;
       ctx.beginPath();
       ctx.arc(0, 0, 6, 0, Math.PI * 2);
@@ -243,14 +247,24 @@
       ctx.lineWidth = 1;
       ctx.strokeRect(-3, -3, 6, 6);
       ctx.strokeRect(-5, -1, 10, 2);
-    } else if (m.tur === "bozulma_kirigi" || m.tur === "glitch_kaosu") {
+    } else if (m.tur === "glitch_kaosu") {
+      // Düşman glitch mermisi
       ctx.fillStyle = m.renk;
       ctx.fillRect(-6, -2, 12, 4);
       ctx.fillRect(-2, -6, 4, 12);
       ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(-5, 1, 6, 2);
       ctx.fillRect(1, -5, 2, 6);
-    } else if (m.tur === "koruyucu_darbe" || m.tur === "karistirma_nabzi" || m.tur === "cekirdek_patlamasi") {
+    } else if (m.tur === "dogrulama_isini") {
+      // Can - doğrulama ışını: keskin hedef ışını
+      ctx.fillStyle = m.renk;
+      ctx.shadowColor = m.renk;
+      ctx.shadowBlur = 6;
+      ctx.fillRect(-8, -1.5, 16, 3);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(2, -0.5, 6, 1);
+    } else if (m.tur === "rehber_halkasi" || m.tur === "karistirma_nabzi" || m.tur === "cekirdek_patlamasi") {
+      // İpek - rehber halkası ve halka biçimli düşman mermileri
       ctx.strokeStyle = m.renk;
       ctx.shadowColor = m.renk;
       ctx.shadowBlur = 6;

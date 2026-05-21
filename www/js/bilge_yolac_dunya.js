@@ -10,64 +10,64 @@
 
   var SEVIYELER = [
     {
-      id: "mergen",
-      isim: "Mergen Sınır Tapınağı",
-      altBaslik: "Tapınak sınırı • radar karakolu • taş kalıntılar",
+      id: "emre",
+      isim: "Çözüm Vadisi",
+      altBaslik: "Sakin veri ovası • analiz kuleleri • net rota işaretleri",
       gokyuzu: { ust: "#08111E", alt: "#21304A" },
       zemin: { ust: "#2A2630", alt: "#151218" },
       aksan: "#7ED5FF",
       sis: "rgba(126,213,255,0.08)",
       siluet1: "#102035",
       siluet2: "#1B2C40",
-      detay: "steppe"
+      detay: "veri"
     },
     {
-      id: "ulgen",
-      isim: "Ülgen Göksel Kalesi",
-      altBaslik: "Semavi kuleler • ışıklı düzen • yüksek nizam",
+      id: "selin",
+      isim: "Sinyal Sahası",
+      altBaslik: "Sinyal kuleleri • veri akış hatları • aydınlık düzen",
       gokyuzu: { ust: "#040B1B", alt: "#172B58" },
       zemin: { ust: "#151C30", alt: "#090E17" },
       aksan: "#AEE8FF",
       sis: "rgba(174,232,255,0.10)",
       siluet1: "#102041",
       siluet2: "#1A3261",
-      detay: "light"
+      detay: "sinyal"
     },
     {
-      id: "kayra",
-      isim: "Kayra Kutsal Ormanı",
-      altBaslik: "Runik harabeler • bilgeliğin kökleri • mistik doğa",
+      id: "deniz",
+      isim: "Strateji Platosu",
+      altBaslik: "Geniş plan platosu • yol haritası katmanları • karar noktaları",
       gokyuzu: { ust: "#07130C", alt: "#1D4029" },
       zemin: { ust: "#112016", alt: "#08110B" },
       aksan: "#89F0B9",
       sis: "rgba(137,240,185,0.08)",
       siluet1: "#0B1D12",
       siluet2: "#163321",
-      detay: "forest"
+      detay: "strateji"
     },
     {
-      id: "erlik",
-      isim: "Erlik Bozulma Mabedi",
-      altBaslik: "Çöküş • gölge yarıkları • bozulmuş tapınak",
-      gokyuzu: { ust: "#12030A", alt: "#3A0C18" },
-      zemin: { ust: "#241019", alt: "#12070E" },
-      aksan: "#FF6B9C",
-      sis: "rgba(255,107,156,0.08)",
-      siluet1: "#210812",
-      siluet2: "#37121E",
-      detay: "corruption"
+      id: "can",
+      isim: "Doğrulama Hattı",
+      altBaslik: "Denetim istasyonları • risk işaretleri • kontrol noktaları",
+      gokyuzu: { ust: "#1A0F05", alt: "#3A220C" },
+      zemin: { ust: "#241B10", alt: "#120C07" },
+      aksan: "#E0A85A",
+      sis: "rgba(224,168,90,0.08)",
+      siluet1: "#1F1408",
+      siluet2: "#352311",
+      detay: "denetim"
     },
     {
-      id: "umay",
-      isim: "Umay Şifa Mabedi",
-      altBaslik: "Koruyucu biyom • kutsal bahçe • onarıcı ışık",
+      id: "ipek",
+      isim: "Rehberlik Atölyesi",
+      altBaslik: "Öğrenme alanı • adım adım yönergeler • örnek panoları",
       gokyuzu: { ust: "#0A1220", alt: "#2C405F" },
       zemin: { ust: "#1B2433", alt: "#0E141B" },
       aksan: "#FFD6F0",
       sis: "rgba(255,214,240,0.10)",
       siluet1: "#1A2133",
       siluet2: "#2A3650",
-      detay: "healing"
+      detay: "rehber"
     }
   ];
 
@@ -229,30 +229,30 @@
 
     ctx.save();
 
-    if (detay === "steppe") {
+    if (detay === "veri") {
       ctx.fillStyle = "rgba(166, 196, 158, 0.20)";
       for (var i = 0; i < state.canvasGenislik; i += 12) {
         var h = 2 + Math.sin((i + arkaPlanKayma * 1000) * 0.1) * 2;
         ctx.fillRect(i, state.zeminY + 2, 2, h + 3);
       }
-    } else if (detay === "light") {
+    } else if (detay === "sinyal") {
       ctx.fillStyle = "rgba(180, 220, 255, 0.20)";
       for (var j = 0; j < state.canvasGenislik; j += 18) {
         ctx.fillRect(j, state.zeminY + 5 + Math.sin(j * 0.04) * 3, 8, 2);
         ctx.fillRect(j + 4, state.zeminY + 10, 2, 8);
       }
-    } else if (detay === "forest") {
+    } else if (detay === "strateji") {
       ctx.fillStyle = "rgba(118, 194, 123, 0.22)";
       for (var k = 0; k < state.canvasGenislik; k += 10) {
         ctx.fillRect(k, state.zeminY + 2, 2, 4 + Math.sin(k * 0.1) * 3);
       }
-    } else if (detay === "corruption") {
-      ctx.fillStyle = "rgba(255, 96, 144, 0.18)";
+    } else if (detay === "denetim") {
+      ctx.fillStyle = "rgba(224, 168, 90, 0.20)";
       for (var g = 0; g < state.canvasGenislik; g += 16) {
         ctx.fillRect(g, state.zeminY + 6, 8, 2);
         if (g % 48 === 0) ctx.fillRect(g + 2, state.zeminY + 2, 2, 10);
       }
-    } else if (detay === "healing") {
+    } else if (detay === "rehber") {
       ctx.fillStyle = "rgba(255, 220, 244, 0.22)";
       for (var u = 0; u < state.canvasGenislik; u += 14) {
         ctx.fillRect(u, state.zeminY + 3, 2, 6);
@@ -276,30 +276,30 @@
     var state = BY.state;
 
     ctx.save();
-    if (seviye.id === "mergen") {
+    if (seviye.id === "emre") {
       ctx.strokeStyle = "rgba(126,213,255,0.18)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(state.canvasGenislik * 0.82, state.zeminY * 0.28, 18 + Math.sin(zaman * 0.004) * 4, Math.PI * 1.1, Math.PI * 1.9);
       ctx.stroke();
-    } else if (seviye.id === "ulgen") {
+    } else if (seviye.id === "selin") {
       ctx.fillStyle = "rgba(174,232,255,0.12)";
       ctx.fillRect(state.canvasGenislik * 0.68, state.zeminY * 0.16, 10, state.zeminY * 0.40);
       ctx.fillRect(state.canvasGenislik * 0.71, state.zeminY * 0.22, 4, state.zeminY * 0.30);
-    } else if (seviye.id === "kayra") {
+    } else if (seviye.id === "deniz") {
       ctx.fillStyle = "rgba(137,240,185,0.14)";
       ctx.beginPath();
       ctx.arc(state.canvasGenislik * 0.22, state.zeminY * 0.24, 18 + Math.sin(zaman * 0.003) * 3, 0, Math.PI * 2);
       ctx.fill();
-    } else if (seviye.id === "erlik") {
-      ctx.strokeStyle = "rgba(255,107,156,0.18)";
+    } else if (seviye.id === "can") {
+      ctx.strokeStyle = "rgba(224,168,90,0.18)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(state.canvasGenislik * 0.68, state.zeminY * 0.16);
       ctx.lineTo(state.canvasGenislik * 0.74, state.zeminY * 0.28);
       ctx.lineTo(state.canvasGenislik * 0.70, state.zeminY * 0.38);
       ctx.stroke();
-    } else if (seviye.id === "umay") {
+    } else if (seviye.id === "ipek") {
       ctx.strokeStyle = "rgba(255,214,240,0.18)";
       ctx.lineWidth = 2;
       ctx.beginPath();

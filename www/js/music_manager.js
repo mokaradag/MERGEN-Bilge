@@ -6,7 +6,7 @@ const MusicManager = {
   // Tek global durum
   state: {
     enabled: false,          // Müzik açık mı
-    character: 'mergen',     // Aktif karakter
+    character: 'emre',       // Aktif persona (varsayılan: emre)
     phase: 'idle',           // 'idle' | 'theme' | 'character' | 'waiting_character'
     normalVolume: 0.3,
     isDucked: false,
@@ -47,7 +47,7 @@ const MusicManager = {
   init: function(settings) {
     this.state.enabled = settings.enabled || false;
     this.state.normalVolume = settings.volume || 0.3;
-    this.state.character = settings.character || 'mergen';
+    this.state.character = settings.character || 'emre';
 
     console.log('[MUSIC] Başlatıldı:', this.state.enabled ? 'AÇIK' : 'KAPALI',
                 '| Karakter:', this.state.character);

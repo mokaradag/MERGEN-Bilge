@@ -223,13 +223,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       cat(sprintf("[SAVED_CHATS] Araç tespit edildi ve etkinleştirildi: %s\n", detected_tool))
     }
 
-    # Karakter verisini al
-    selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-    chars_data <- get_characters_data()
-    character_data <- if (!is.null(chars_data)) {
-      Find(function(x) x$id == selected_char_id, chars_data$styles)
-    } else NULL
-    
+    # Persona verisini al (eski kimlikler normalleştirilerek çözülür)
+    character_data <- get_character_record(isolate(settings_data$selected_character))
+
     # Mesajları UI'ya ekle
     for (i in seq_along(values$messages)) {
       msg <- values$messages[[i]]

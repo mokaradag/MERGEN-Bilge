@@ -44,8 +44,8 @@ storageObserversInit <- function(input, session, output, values, settings_data,
           msg <- values$messages[[i]]
           is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
           
-          # Karakter verisini al
-          selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+          # Persona verisini al (eski kimlikler normalleştirilir)
+          selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
           chars_data <- get_characters_data()
           character_data <- if (!is.null(chars_data)) {
             Find(function(x) x$id == selected_char_id, chars_data$styles)

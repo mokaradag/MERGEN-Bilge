@@ -12,8 +12,8 @@
 
   var SEVIYE_VERILERI = [
     {
-      isim: "Mergen Sınır Tapınağı",
-      dunyaId: "mergen",
+      isim: "Çözüm Vadisi",
+      dunyaId: "emre",
       dunyaGenislik: 3600,
       tema: 0,
       platformlar: [
@@ -53,8 +53,8 @@
       cikisNoktasi: { x: 3480 }
     },
     {
-      isim: "Ülgen Göksel Kalesi",
-      dunyaId: "ulgen",
+      isim: "Sinyal Sahası",
+      dunyaId: "selin",
       dunyaGenislik: 3900,
       tema: 1,
       platformlar: [
@@ -95,8 +95,8 @@
       cikisNoktasi: { x: 3740 }
     },
     {
-      isim: "Kayra Kutsal Ormanı",
-      dunyaId: "kayra",
+      isim: "Strateji Platosu",
+      dunyaId: "deniz",
       dunyaGenislik: 4050,
       tema: 2,
       platformlar: [
@@ -139,8 +139,8 @@
       cikisNoktasi: { x: 3900 }
     },
     {
-      isim: "Erlik Bozulma Mabedi",
-      dunyaId: "erlik",
+      isim: "Doğrulama Hattı",
+      dunyaId: "can",
       dunyaGenislik: 4250,
       tema: 3,
       platformlar: [
@@ -185,8 +185,8 @@
       cikisNoktasi: { x: 4140 }
     },
     {
-      isim: "Umay Şifa Mabedi",
-      dunyaId: "umay",
+      isim: "Rehberlik Atölyesi",
+      dunyaId: "ipek",
       dunyaGenislik: 4520,
       tema: 4,
       platformlar: [

@@ -21,12 +21,35 @@
   (sürümleri ayırmak için)
 -->
 
-## v1.0 | 2026-03-07 | MERGEN Bilge Resmi Lansman
+## v1.1 | 2026-05-21 | Modern Asistan Persona Sistemi
 badge: Yeni
 
 ### Öne Çıkanlar
+- Karakter sistemi modern kurumsal AI persona'larıyla yenilendi: Emre, Selin, Deniz, Can ve İpek
+- Her persona farklı bir çalışma tarzını temsil eder
+- Eski kayıtlı karakter tercihleri otomatik olarak yeni persona'lara taşınır
+
+### Yeni Özellikler | sparkles
+- Emre Onat — Ana Asistan: dengeli ve pratik yardımcı
+- Selin Sezgin — Yapıcı Uzman: sorunu çerçeveler, çözüm önerir
+- Deniz Özgün — Stratejist: büyük resim, yol haritası, karar matrisi
+- Can Yalın — Eleştirel Eş: varsayım ve risk doğrulayıcı
+- İpek Duru — Rehber: sade dil, adım adım öğretici
+
+### İyileştirmeler | arrow-up-right-dots
+- Persona kimliği artık tek kaynak `R/config_characters.R` üzerinden yönetiliyor
+- Varsayılan persona Emre Onat olarak güncellendi
+
+### Teknik | code
+- `normalize_character_id()` ile eski karakter kimlikleri güvenle yeni persona'lara çevrilir
+
+---
+
+## v1.0 | 2026-03-07 | MERGEN Bilge Resmi Lansman
+
+### Öne Çıkanlar
 - Bütünleşik mod ile tam özellikli deneyim
-- 5 benzersiz AI karakter ve sinematik seçim ekranı
+- 5 AI persona ve sinematik seçim ekranı
 - Proje ve Kaynak Analizi aracı ile akıllı veri sorgulama
 - Görsel oluşturma ve galeri yönetimi
 - Destek merkezi, geri bildirim ve hata bildirimi

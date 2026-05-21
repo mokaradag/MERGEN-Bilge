@@ -16,7 +16,7 @@
     "Dünya katman katman açılıyor.",
     "Retro ruh, yeni derinlik.",
     "Her dünya ayrı bir düzen.",
-    "Ok, ışık, run, kaos ve kalkan.",
+    "Çözüm, sinyal, rota, doğrulama, rehberlik.",
     "Bilge düşünür, takım uygular.",
     "Sınırı geç, ritmi yakala."
   ];

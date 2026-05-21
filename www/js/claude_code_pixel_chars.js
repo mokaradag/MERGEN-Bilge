@@ -1,7 +1,8 @@
 // =============================================================================
 // Dosya Yolu: www/js/claude_code_pixel_chars.js
-// Açıklama: Bilge Yolaç küçültülmüş 16x16 piksel karakter frame verileri.
-//           Yalnızca statik veri içerir; çalışma zamanı davranışı
+// Açıklama: Bilge Yolaç küçültülmüş 16x16 piksel asistan persona frame verileri.
+//           Modern AI asistan persona'ları (emre, selin, deniz, can, ipek) için
+//           statik piksel verisi içerir; çalışma zamanı davranışı
 //           www/js/claude_code.js içinde kalır.
 // =============================================================================
 
@@ -9,7 +10,7 @@
   'use strict';
 
   window.MergenClaudeCodePixelCharsMini = {
-    mergen: {
+    emre: {
       frames: [
         // Kare 1: Durağan poz (idle)
         [[0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0],
@@ -65,7 +66,7 @@
       ],
       color: '#7C4DFF', darkColor: '#5635B2', lightColor: '#A47DFF'
     },
-    ulgen: {
+    selin: {
       frames: [
         [[0,0,0,3,0,0,0,0,0,0,0,3,0,0,0,0],
          [0,0,3,0,3,0,0,3,0,0,3,0,3,0,0,0],
@@ -118,7 +119,7 @@
       ],
       color: '#2F6DF6', darkColor: '#1E4DB0', lightColor: '#6B9BFF'
     },
-    kayra: {
+    deniz: {
       frames: [
         [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
          [0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0],
@@ -171,7 +172,7 @@
       ],
       color: '#12A97B', darkColor: '#0C7A58', lightColor: '#6EE89B'
     },
-    erlik: {
+    can: {
       frames: [
         [[0,0,0,0,0,3,0,3,0,3,0,0,0,0,0,0],
          [0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0],
@@ -222,9 +223,9 @@
          [0,0,0,0,0,1,2,0,2,1,0,0,0,0,0,0],
          [0,0,0,0,0,2,2,0,2,2,0,0,0,0,0,0]]
       ],
-      color: '#E74C3C', darkColor: '#B53A2E', lightColor: '#F08070'
+      color: '#B66A2C', darkColor: '#8F5321', lightColor: '#C27A3D'
     },
-    umay: {
+    ipek: {
       frames: [
         [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
          [0,0,0,0,0,1,3,3,3,1,0,0,0,0,0,0],

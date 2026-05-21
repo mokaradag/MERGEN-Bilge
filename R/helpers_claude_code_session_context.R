@@ -7,30 +7,15 @@
 
 cc_create_active_character_reactive <- function(settings_data = NULL) {
   reactive({
-    karakter_id <- "mergen"
+    secili_id <- NULL
 
     if (!is.null(settings_data) && !is.null(settings_data$selected_character)) {
-      secili <- settings_data$selected_character
-      if (!is.null(secili) && nzchar(secili)) {
-        karakter_id <- secili
-      }
+      secili_id <- settings_data$selected_character
     }
 
-    karakterler <- get_characters_data()
-    secili <- NULL
-
-    for (s in karakterler$styles) {
-      if (s$id == karakter_id) {
-        secili <- s
-        break
-      }
-    }
-
-    if (is.null(secili)) {
-      secili <- karakterler$styles[[1]]
-    }
-
-    secili
+    # get_character_record() NULL/boş/eski kimlikleri normalleştirir ve
+    # varsayılan personaya (emre) düşer.
+    get_character_record(secili_id)
   })
 }
 

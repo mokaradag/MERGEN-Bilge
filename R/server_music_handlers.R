@@ -6,11 +6,11 @@
 # Klasör yapısı:
 #   www/music/intro/          -> Giriş ekranı uzay müzikleri
 #   www/music/Ana Tema/       -> Ana tema müzikleri (bir kez çalınır)
-#   www/music/Karakter/mergen/ -> MERGEN karakter müzikleri
-#   www/music/Karakter/ulgen/  -> ÜLGEN karakter müzikleri
-#   www/music/Karakter/kayra/  -> KAYRA karakter müzikleri
-#   www/music/Karakter/erlik/  -> ERLİK karakter müzikleri
-#   www/music/Karakter/umay/   -> UMAY ANA karakter müzikleri
+#   www/music/Karakter/emre/  -> Emre Onat persona müzikleri
+#   www/music/Karakter/selin/ -> Selin Sezgin persona müzikleri
+#   www/music/Karakter/deniz/ -> Deniz Özgün persona müzikleri
+#   www/music/Karakter/can/   -> Can Yalın persona müzikleri
+#   www/music/Karakter/ipek/  -> İpek Duru persona müzikleri
 
 #' Native/Windows encoding değerlerini güvenli UTF-8'e çevir
 #' @description Özellikle Windows VM + Türkçe locale ortamında Ü gibi karakterlerin
@@ -27,8 +27,8 @@ music_force_utf8 <- function(x) {
 
 #' UTF-8 path segment URL encoder
 #' @description Her path segmentini ayrı encode eder; "/" ayraç olarak kalır.
-#'              Örn: Ülgen, Endless Skyforge (1).mp3 ->
-#'              %C3%9Clgen%2C%20Endless%20Skyforge%20%281%29.mp3
+#'              Türkçe karakterler UTF-8 percent-encoding ile kodlanır
+#'              (ör. Ü -> %C3%9C, ş -> %C5%9F).
 music_url_encode_segment_utf8 <- function(x) {
   x <- music_force_utf8(x)
 
@@ -81,7 +81,7 @@ musicHandlersInit <- function(input, session, settings_data) {
     session$sendCustomMessage("initMusicManager", list(
       enabled = if (intro_atlanmis) isTRUE(shiny::isolate(settings_data$enable_background_music)) else FALSE,
       volume = shiny::isolate(settings_data$music_volume) %||% 0.3,
-      character = shiny::isolate(settings_data$selected_character) %||% "mergen"
+      character = normalize_character_id(shiny::isolate(settings_data$selected_character))
     ))
   }, once = TRUE)
 
@@ -93,12 +93,10 @@ musicHandlersInit <- function(input, session, settings_data) {
     base_path <- file.path("www", "music")
     request_type <- msg$type %||% "tema"
     request_id <- msg$requestId %||% 0
-	character_name <- msg$character %||% shiny::isolate(settings_data$selected_character) %||% "mergen"
-	character_name <- tolower(trimws(enc2utf8(character_name)))
-
-	if (identical(character_name, "umay ana")) {
-	  character_name <- "umay"
-	}
+	# Persona kimliğini yeni biçime normalleştir (eski kimlikler de çözülür)
+	character_name <- normalize_character_id(
+	  msg$character %||% shiny::isolate(settings_data$selected_character)
+	)
 
     target_sub <- NULL
     playlist_type <- request_type

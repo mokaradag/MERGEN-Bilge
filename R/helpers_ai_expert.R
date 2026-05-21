@@ -486,7 +486,7 @@ build_ai_expert_system_prompt <- function(character_data, scenario = "greeting",
     )
   }
 
-  char_name <- safe_trimws(character_data$display_name %||% "MERGEN")
+  char_name <- safe_trimws(character_data$display_name %||% "EMRE ONAT")
   char_style <- safe_trimws(character_data$style_tr %||% "")
   page_name <- safe_trimws(page_name %||% "")
   user_name <- safe_trimws(user_name %||% "")

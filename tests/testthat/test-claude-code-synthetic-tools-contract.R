@@ -61,7 +61,7 @@ test_that("cc_synthesize_tool_uses_from_downloads boş tool_uses + algılanan do
 
   env <- new.env(parent = emptyenv())
   env$karakter_renk <- "#81C784"
-  env$karakter_adi <- "Mergen"
+  env$karakter_adi <- "Emre"
   env$zaman_damgasi <- "10:00:00"
 
   ayristirma <- list(
@@ -121,7 +121,7 @@ test_that("cc_synthesize_tool_uses_from_downloads aynı dosya yolu için tekrar 
 
   env <- new.env(parent = emptyenv())
   env$karakter_renk <- "#81C784"
-  env$karakter_adi <- "Mergen"
+  env$karakter_adi <- "Emre"
   env$zaman_damgasi <- "10:00:00"
 
   ayristirma <- list(
@@ -180,7 +180,7 @@ test_that("cc_synthesize_tool_uses_from_downloads gerçek tool_use kapsamadığ�
 
   env <- new.env(parent = emptyenv())
   env$karakter_renk <- "#81C784"
-  env$karakter_adi <- "Mergen"
+  env$karakter_adi <- "Emre"
   env$zaman_damgasi <- "10:00:00"
 
   ayristirma <- list(
@@ -270,7 +270,7 @@ test_that("cc_synthesize_tool_uses_from_downloads boş dosya listesi için boş 
 
   env <- new.env(parent = emptyenv())
   env$karakter_renk <- "#81C784"
-  env$karakter_adi <- "Mergen"
+  env$karakter_adi <- "Emre"
   env$zaman_damgasi <- "10:00:00"
 
   ayristirma <- list(
@@ -298,7 +298,7 @@ test_that("cc_synthesize_tool_uses_from_downloads birden fazla dosya için her b
 
   env <- new.env(parent = emptyenv())
   env$karakter_renk <- "#81C784"
-  env$karakter_adi <- "Mergen"
+  env$karakter_adi <- "Emre"
   env$zaman_damgasi <- "10:00:00"
 
   ayristirma <- list(

@@ -7,13 +7,13 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  // Renk kodları: 0=boş, 1=ana, 2=koyu, 3=açık, 4=ten, 5=sakal/saç, 6=aksesuarRenk, 7=silahRenk
-  // Her karakter için idle, walk ve attack kareleri tanımlanıyor
+  // Renk kodları: 0=boş, 1=ana, 2=koyu, 3=açık, 4=yüz, 5=saç, 6=aksesuar, 7=vurgu
+  // Her persona için idle ve walk kareleri tanımlanıyor
 
   var SPRITE_VERILERI = {
 
-    // MERGEN (Mor) - Okçu savaşçı, miğferli, yay ve ok
-    mergen: {
+    // EMRE (Mor-mavi) - Ana Asistan persona silüeti
+    emre: {
       renkler: {
         1: "#7C4DFF", 2: "#5B2FCF", 3: "#A47DFF",
         4: "#D4A574", 5: "#2C2C2C", 6: "#8C8C9C",
@@ -57,8 +57,8 @@
       ]
     },
 
-    // ÜLGEN (Mavi) - Gök hâkimi, geyik boynuzlu taç, cüppeli kral
-    ulgen: {
+    // SELİN (Mavi) - Yapıcı Uzman persona silüeti
+    selin: {
       renkler: {
         1: "#2F6DF6", 2: "#1A4DC0", 3: "#6B9BFF",
         4: "#D4A574", 5: "#B0B0B0", 6: "#DAA520",
@@ -102,8 +102,8 @@
       ]
     },
 
-    // KAYRA (Yeşil) - Bilge ihtiyar, asalı, parlayan küre
-    kayra: {
+    // DENİZ (Yeşil-turkuaz) - Stratejist persona silüeti
+    deniz: {
       renkler: {
         1: "#2ECC71", 2: "#1A9C54", 3: "#6EE89B",
         4: "#D4A574", 5: "#E0E0E0", 6: "#8B6914",
@@ -147,8 +147,8 @@
       ]
     },
 
-    // ERLİK (Kırmızı) - Taçlı kral, asalı, tehditkâr
-    erlik: {
+    // CAN (Amber) - Eleştirel Eş persona silüeti
+    can: {
       renkler: {
         1: "#E74C3C", 2: "#B53A2E", 3: "#F08070",
         4: "#D4A574", 5: "#E0E0E0", 6: "#DAA520",
@@ -192,8 +192,8 @@
       ]
     },
 
-    // UMAY ANA (Pembe) - Koruyucu ana, başlıklı, kucağında bebek
-    umay_ana: {
+    // İPEK (Mercan) - Rehber persona silüeti
+    ipek: {
       renkler: {
         1: "#E98686", 2: "#C05F5F", 3: "#F5ABAB",
         4: "#D4A574", 5: "#C08050", 6: "#DAA520",
@@ -238,13 +238,13 @@
     }
   };
 
-  // Karakter isimleri ve yetenek tanımları
+  // Persona isimleri ve modern çalışma tarzı yetenek tanımları
   var KARAKTER_BILGILERI = {
-    mergen:   { isim: "MERGEN",   yetenek: "ok_atisi",     yetenekSuresi: 90, aciklama: "Okçu" },
-    ulgen:    { isim: "ÜLGEN",    yetenek: "gok_dalgasi",  yetenekSuresi: 80, aciklama: "Gök Hakimi" },
-    kayra:    { isim: "KAYRA",    yetenek: "kure_olustur", yetenekSuresi: 100, aciklama: "Yaratıcı" },
-    erlik:    { isim: "ERLİK",    yetenek: "kaos_saldiri", yetenekSuresi: 85, aciklama: "Kaos Gücü" },
-    umay_ana: { isim: "UMAY ANA", yetenek: "kalkan_kur",   yetenekSuresi: 95, aciklama: "Koruyucu" }
+    emre:  { isim: "EMRE",  yetenek: "cozum_dalgasi",   yetenekSuresi: 90,  aciklama: "Ana Asistan" },
+    selin: { isim: "SELİN", yetenek: "sinyal_taramasi", yetenekSuresi: 80,  aciklama: "Yapıcı Uzman" },
+    deniz: { isim: "DENİZ", yetenek: "rota_projesi",    yetenekSuresi: 100, aciklama: "Stratejist" },
+    can:   { isim: "CAN",   yetenek: "dogrulama_isini", yetenekSuresi: 85,  aciklama: "Eleştirel Eş" },
+    ipek:  { isim: "İPEK",  yetenek: "rehber_halkasi",  yetenekSuresi: 95,  aciklama: "Rehber" }
   };
 
   // Animasyon durumları
@@ -539,7 +539,7 @@
     baslat: function() {
       var state = BY.state;
       state.karakterler = [];
-      var ids = ["mergen", "ulgen", "kayra", "erlik", "umay_ana"];
+      var ids = ["emre", "selin", "deniz", "can", "ipek"];
       for (var i = 0; i < ids.length; i++) {
         state.karakterler.push(karakterOlustur(ids[i], i));
       }

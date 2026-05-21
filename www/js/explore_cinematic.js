@@ -287,7 +287,7 @@
   function preloadDefaultCharacterVideo() {
     if (typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
 
-    var charId = 'mergen';
+    var charId = 'emre';
     try {
       var raw = localStorage.getItem('mergen_settings');
       if (raw) {

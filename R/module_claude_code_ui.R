@@ -34,7 +34,7 @@ claudeCodeUI <- function(id) {
   tagList(
     div(
       class = "claude-code-container",
-      `data-character` = "mergen",
+      `data-character` = "emre",
 
       div(
         class = "chat-header settings-header-fixed",

@@ -26,7 +26,7 @@ e2e_media_log <- function(state, event) {
 e2e_media_new_music_state <- function() {
   list(
     enabled = FALSE,
-    character = "mergen",
+    character = "emre",
     phase = "idle",
     normal_volume = 0.3,
     effective_volume = 0,
@@ -124,7 +124,7 @@ e2e_music_start_from_beginning <- function(state) {
 e2e_music_init <- function(state,
                            enabled = FALSE,
                            volume = 0.3,
-                           character = "mergen") {
+                           character = "emre") {
   volume <- suppressWarnings(as.numeric(volume)[1])
   if (is.na(volume)) {
     volume <- 0.3

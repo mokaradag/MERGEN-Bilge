@@ -132,7 +132,7 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
     }, ignoreInit = TRUE)
 
     # Geçici seçimler (kaydedilene kadar uygulanmaz)
-    temp_selected_character <- reactiveVal("mergen")
+    temp_selected_character <- reactiveVal(CHARACTER_DEFAULT_ID)
     temp_experience_mode <- reactiveVal("odak")
     # Kullanıcı mod kartına tıkladı mı (aynı mod tekrar seçildiğinde uygulama için)
     mode_was_clicked <- reactiveVal(FALSE)
@@ -182,10 +182,9 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
     # olmayan bağlamdan (onFlushed) çağrılabilir. get_characters_data() düz
     # bir fonksiyondur (reaktif değil), bu yüzden her iki bağlamda da güvenlidir.
     update_character_display <- function(char_id) {
-      chars <- get_characters_data()
-      if (is.null(chars)) return()
-
-      char <- Find(function(x) x$id == char_id, chars$styles)
+      # Eski kimlikler de güvenle çözülsün diye normalleştir
+      char_id <- normalize_character_id(char_id)
+      char <- get_character_record(char_id)
       if (is.null(char)) return()
 
       # Buton durumlarını güncelle
@@ -196,17 +195,8 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
         accent_hover  = char$accent_hover
       ))
 
-      # Karakter resim dosya isimlerini belirle
-      img_filename <- switch(char_id,
-         "mergen" = "Mergen_resim_original.png",
-         "ulgen" = "Ulgen_resim_original.png",
-         "kayra" = "Kayra_resim_original.png",
-         "erlik" = "Erlik_resim_original.png",
-         "umay" = "Umay_Ana_resim_original.png",
-         paste0(tools::toTitleCase(char_id), "_resim_original.png")
-      )
-
-      full_img_path <- file.path("characters", "resim", img_filename)
+      # Persona görseli config'ten gelir; modül kendi dosya adı switch'ini yazmaz
+      full_img_path <- char$image
 
       # Resim geçişi
       session$sendCustomMessage("transitionCharacterImage", list(
@@ -269,11 +259,8 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
 
 	# Giriş ekranı veya dış akışlardan gelen karakter değişimini senkronize et
 	observeEvent(settings$selected_character, {
-	  char_id <- settings$selected_character
-
-	  if (is.null(char_id) || !nzchar(char_id)) {
-		char_id <- "mergen"
-	  }
+	  # Dış akışlardan gelen kimliği yeni persona kimliğine normalleştir
+	  char_id <- normalize_character_id(settings$selected_character)
 
 	  current <- temp_selected_character()
 

@@ -144,11 +144,8 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     full_text <- as.character(content)[1]
     if (!nzchar(full_text)) return(invisible(NULL))
 
-    selected_char_id <- shiny::isolate(settings_data$selected_character) %||% "mergen"
-    chars_data <- get_characters_data()
-    character_data <- if (!is.null(chars_data)) {
-      Find(function(x) x$id == selected_char_id, chars_data$styles)
-    } else NULL
+    # Persona verisini al (eski kimlikler normalleştirilerek çözülür)
+    character_data <- get_character_record(shiny::isolate(settings_data$selected_character))
     voice_sel <- if (!is.null(character_data) && !is.null(character_data$tts_voice)) {
       character_data$tts_voice
     } else {

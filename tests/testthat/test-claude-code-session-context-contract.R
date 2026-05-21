@@ -15,24 +15,12 @@
   test_env$reactive <- shiny::reactive
   test_env$is.reactive <- shiny::is.reactive
 
-  test_env$get_characters_data <- function() {
-    list(
-      styles = list(
-        list(
-          id = "mergen",
-          display_name = "Mergen",
-          accent = "#7c3aed",
-          accent_hover = "#6d28d9"
-        ),
-        list(
-          id = "kayra",
-          display_name = "Kayra",
-          accent = "#10b981",
-          accent_hover = "#059669"
-        )
-      )
-    )
-  }
+  # Gerçek persona config'ini test ortamına yükle (tek kaynak: config_characters.R)
+  source(
+    file.path(repo_root, "R", "config_characters.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
 
   source(
     file.path(repo_root, "R", "helpers_claude_code_session_context.R"),
@@ -43,19 +31,19 @@
   test_env
 }
 
-test_that("Bilge Yolaç aktif karakter bağlamı helper üzerinden çözülür", {
+test_that("Bilge Yolaç aktif persona bağlamı helper üzerinden çözülür", {
   test_env <- .source_cc_session_context_for_test()
 
-  settings_data <- list(selected_character = "kayra")
+  settings_data <- list(selected_character = "deniz")
   active_character <- test_env$cc_create_active_character_reactive(settings_data)
 
   karakter <- shiny::isolate(active_character())
 
-  expect_equal(karakter$id, "kayra")
-  expect_equal(karakter$display_name, "Kayra")
+  expect_equal(karakter$id, "deniz")
+  expect_equal(karakter$display_name, "DENİZ ÖZGÜN")
 })
 
-test_that("Bilge Yolaç aktif karakter bağlamı varsayılan karaktere düşer", {
+test_that("Bilge Yolaç aktif persona bağlamı varsayılan personaya düşer", {
   test_env <- .source_cc_session_context_for_test()
 
   settings_data <- list(selected_character = "bilinmeyen")
@@ -63,8 +51,20 @@ test_that("Bilge Yolaç aktif karakter bağlamı varsayılan karaktere düşer",
 
   karakter <- shiny::isolate(active_character())
 
-  expect_equal(karakter$id, "mergen")
-  expect_equal(karakter$display_name, "Mergen")
+  expect_equal(karakter$id, "emre")
+  expect_equal(karakter$display_name, "EMRE ONAT")
+})
+
+test_that("Bilge Yolaç aktif persona bağlamı eski kimliği normalleştirir", {
+  test_env <- .source_cc_session_context_for_test()
+
+  # Eski mitolojik kimlik (kayra) yeni persona kimliğine (deniz) taşınmalı
+  settings_data <- list(selected_character = "kayra")
+  active_character <- test_env$cc_create_active_character_reactive(settings_data)
+
+  karakter <- shiny::isolate(active_character())
+
+  expect_equal(karakter$id, "deniz")
 })
 
 test_that("Bilge Yolaç kullanıcı adı öncelik sırası korunur", {

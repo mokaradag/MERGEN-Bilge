@@ -150,11 +150,8 @@ chat_add_message <- function(session, values, settings_data, output,
   is_last_user_msg <- (new_message$type == "user" && length(values$messages) > 0 &&
                          tail(values$messages, 1)[[1]]$id == new_message$id)
 
-  selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-  chars_data <- get_characters_data()
-  character_data <- if (!is.null(chars_data)) {
-    Find(function(x) x$id == selected_char_id, chars_data$styles)
-  } else NULL
+  selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
+  character_data <- get_character_record(selected_char_id)
 
   # Oturum-yerel user_config'i settings'e ekle (çoklu kullanıcı güvenliği)
   if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
@@ -259,11 +256,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   timestamp <- format_timestamp()
   
   # Character and settings resolution
-  selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
-  chars_data <- get_characters_data()
-  character_data <- if (!is.null(chars_data)) {
-    Find(function(x) x$id == selected_char_id, chars_data$styles)
-  } else NULL
+  selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
+  character_data <- get_character_record(selected_char_id)
 
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
   # This function runs ONLY when we are ready to show text (after audio is ready)

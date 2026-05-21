@@ -59,13 +59,12 @@ ttsVisualizerServer <- function(id, settings_data) {
     #' @param state Durum ("idle", "talking", "stop")
     #' @param duration Konuşma süresi (saniye)
     send_state <- function(state = "idle", duration = NULL) {
-      char_id <- settings_data$selected_character %||% "mergen"
-      chars_list <- get_characters_data()$styles
-      char_info <- Find(function(x) x$id == char_id, chars_list)
+      char_id <- normalize_character_id(settings_data$selected_character)
+      char_info <- get_character_record(char_id)
 
-      display_name <- if (!is.null(char_info)) char_info$display_name else "MERGEN"
+      display_name <- if (!is.null(char_info)) char_info$display_name else "EMRE ONAT"
       accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
-      avatar_src <- if (!is.null(char_info) && !is.null(char_info$avatar)) char_info$avatar else "img/mergen_avatar.png"
+      avatar_src <- if (!is.null(char_info) && !is.null(char_info$avatar)) char_info$avatar else "characters/avatar/emre/avatar.png"
 
       # 1. İçeriği Güncelle (Resim, İsim, Renkler)
       shinyjs::runjs(sprintf("$('#%s').attr('src', '%s');", ns("char_avatar"), avatar_src))

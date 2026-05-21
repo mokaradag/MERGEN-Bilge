@@ -26,7 +26,7 @@
   function drawMiniCharacter(canvas, characterId, frame) {
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
-    var charData = PIXEL_CHARS_MINI[characterId] || PIXEL_CHARS_MINI.mergen;
+    var charData = PIXEL_CHARS_MINI[characterId] || PIXEL_CHARS_MINI.emre;
     var frameIdx = Math.floor(frame / 20) % charData.frames.length;
     var pixels = charData.frames[frameIdx];
     var pixelSize = 3;
@@ -337,7 +337,7 @@
       currentDurationEl.textContent = elapsedSec + ' sn';
     }, 1000);
 
-    startMiniAnimation(data.canvasId, data.characterId || 'mergen');
+    startMiniAnimation(data.canvasId, data.characterId || 'emre');
 
     // Düşünme mesajını periyodik değiştir (3 saniyede bir)
     // Sunucu tarafına istek göndererek yeni mesaj al
@@ -420,7 +420,7 @@
     var container = document.querySelector('.claude-code-container');
     if (!container) return;
 
-    container.setAttribute('data-character', data.characterId || 'mergen');
+    container.setAttribute('data-character', data.characterId || 'emre');
 
     // CSS değişkenlerini güncelle
     var accent = data.accentColor || '#7C4DFF';

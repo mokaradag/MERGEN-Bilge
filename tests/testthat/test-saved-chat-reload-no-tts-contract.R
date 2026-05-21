@@ -108,7 +108,7 @@ testthat::test_that("saved chat reload runtime smoke renders historical AI messa
   assign(
     "get_characters_data",
     function() {
-      list(styles = list(list(id = "mergen", display_name = "MERGEN")))
+      list(styles = list(list(id = "emre", display_name = "EMRE ONAT")))
     },
     envir = globalenv()
   )
@@ -153,7 +153,7 @@ testthat::test_that("saved chat reload runtime smoke renders historical AI messa
     )
 
     settings_data <- shiny::reactiveValues(
-      selected_character = "mergen"
+      selected_character = "emre"
     )
 
     chart_rebind_count <- 0L

@@ -237,7 +237,7 @@
     ] },
     { lang: "Python", lines: [
       "sozluk = {",
-      "    'ad': 'Mergen',",
+      "    'ad': 'Asistan',",
       "    'puan': 98,",
       "    'aktif': True",
       "}"
