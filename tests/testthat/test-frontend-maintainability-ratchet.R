@@ -99,72 +99,113 @@ test_that("frontend JS/CSS büyüklük ve yoğunluk bütçeleri sessizce aşılm
   score_report <- attr(report, "score_report", exact = TRUE)
 
   expect_true(is.data.frame(score_report))
+  expect_true(all(c("budget_scope", "is_vendor") %in% names(score_report)))
 
-  # İlk frontend taban çizgisi mevcut üretim durumunu kırmamalıdır.
-  # Amaç hemen refactor zorlamak değil, bundan sonraki sessiz büyümeyi yakalamaktır.
-  max_js_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_JS_LINES", 1250L)
-  max_css_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_CSS_LINES", 1600L)
-  max_js_functions <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_JS_FUNCTIONS", 200L)
-  max_js_event_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_JS_EVENT_HANDLERS", 80L)
-  max_very_large_files <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_1500_LINE_FILES", 1L)
+  # Geniş tüm-dosya tabanı korunur; vendor/minified dosyalar da görünür kalır.
+  max_js_lines_all <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_JS_LINES", 1250L)
+  max_css_lines_all <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_CSS_LINES", 1600L)
+  max_very_large_files_all <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_1500_LINE_FILES", 1L)
 
-  js_report <- subset(score_report, type == "js")
-  css_report <- subset(score_report, type == "css")
+  all_js_report <- subset(score_report, type == "js")
+  all_css_report <- subset(score_report, type == "css")
 
-  largest_js <- js_report[order(-js_report$lines), ][1, , drop = FALSE]
-  largest_css <- css_report[order(-css_report$lines), ][1, , drop = FALSE]
-  most_function_heavy_js <- js_report[order(-js_report$functions), ][1, , drop = FALSE]
-  most_event_heavy_js <- js_report[order(-js_report$event_handlers), ][1, , drop = FALSE]
+  largest_js_all <- all_js_report[order(-all_js_report$lines), ][1, , drop = FALSE]
+  largest_css_all <- all_css_report[order(-all_css_report$lines), ][1, , drop = FALSE]
 
-  actual_max_js_lines <- largest_js$lines[1]
-  actual_max_css_lines <- largest_css$lines[1]
-  actual_max_js_functions <- most_function_heavy_js$functions[1]
-  actual_max_js_event_handlers <- most_event_heavy_js$event_handlers[1]
-  actual_very_large_files <- sum(score_report$lines >= 1500)
-  
   expect_true(
-    actual_max_js_lines <= max_js_lines,
+    largest_js_all$lines[1] <= max_js_lines_all,
     info = sprintf(
       "En büyük JS dosyası büyüdü: %s = %d > %d.",
-      largest_js$file[1],
-      actual_max_js_lines,
-      max_js_lines
+      largest_js_all$file[1],
+      largest_js_all$lines[1],
+      max_js_lines_all
     )
   )
 
   expect_true(
-    actual_max_css_lines <= max_css_lines,
+    largest_css_all$lines[1] <= max_css_lines_all,
     info = sprintf(
       "En büyük CSS dosyası büyüdü: %s = %d > %d.",
-      largest_css$file[1],
-      actual_max_css_lines,
-      max_css_lines
+      largest_css_all$file[1],
+      largest_css_all$lines[1],
+      max_css_lines_all
     )
   )
 
   expect_true(
-    actual_max_js_functions <= max_js_functions,
+    sum(score_report$lines >= 1500) <= max_very_large_files_all,
     info = sprintf(
-      "En yoğun JS fonksiyon sayısı arttı: %s = %d > %d.",
-      most_function_heavy_js$file[1],
-      actual_max_js_functions,
-      max_js_functions
+      "1500+ satır frontend dosya sayısı arttı: %d > %d.",
+      sum(score_report$lines >= 1500),
+      max_very_large_files_all
     )
   )
 
+  # App-owned dosyalar için daha sıkı ve pratik koruma.
+  app_report <- subset(score_report, budget_scope == "app")
+  app_js_report <- subset(app_report, type == "js")
+  app_css_report <- subset(app_report, type == "css")
+
+  max_app_js_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_LINES", 850L)
+  max_app_css_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_CSS_LINES", 1600L)
+  max_app_js_functions <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_FUNCTIONS", 60L)
+  max_app_js_event_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_EVENT_HANDLERS", 30L)
+  max_app_js_shiny_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_SHINY_HANDLERS", 20L)
+
+  largest_app_js <- app_js_report[order(-app_js_report$lines), ][1, , drop = FALSE]
+  largest_app_css <- app_css_report[order(-app_css_report$lines), ][1, , drop = FALSE]
+  most_function_heavy_app_js <- app_js_report[order(-app_js_report$functions), ][1, , drop = FALSE]
+  most_event_heavy_app_js <- app_js_report[order(-app_js_report$event_handlers), ][1, , drop = FALSE]
+  most_shiny_heavy_app_js <- app_js_report[order(-app_js_report$shiny_handlers), ][1, , drop = FALSE]
+
   expect_true(
-    actual_max_js_event_handlers <= max_js_event_handlers,
+    largest_app_js$lines[1] <= max_app_js_lines,
     info = sprintf(
-      "En yoğun JS event/handler sayısı arttı: %s = %d > %d.",
-      most_event_heavy_js$file[1],
-      actual_max_js_event_handlers,
-      max_js_event_handlers
+      "En büyük app-owned JS dosyası büyüdü: %s = %d > %d.",
+      largest_app_js$file[1],
+      largest_app_js$lines[1],
+      max_app_js_lines
     )
   )
 
   expect_true(
-    actual_very_large_files <= max_very_large_files,
-    info = sprintf("1500+ satır frontend dosya sayısı arttı: %d > %d.", actual_very_large_files, max_very_large_files)
+    largest_app_css$lines[1] <= max_app_css_lines,
+    info = sprintf(
+      "En büyük app-owned CSS dosyası büyüdü: %s = %d > %d.",
+      largest_app_css$file[1],
+      largest_app_css$lines[1],
+      max_app_css_lines
+    )
+  )
+
+  expect_true(
+    most_function_heavy_app_js$functions[1] <= max_app_js_functions,
+    info = sprintf(
+      "En yoğun app-owned JS fonksiyon sayısı arttı: %s = %d > %d.",
+      most_function_heavy_app_js$file[1],
+      most_function_heavy_app_js$functions[1],
+      max_app_js_functions
+    )
+  )
+
+  expect_true(
+    most_event_heavy_app_js$event_handlers[1] <= max_app_js_event_handlers,
+    info = sprintf(
+      "En yoğun app-owned JS event/handler sayısı arttı: %s = %d > %d.",
+      most_event_heavy_app_js$file[1],
+      most_event_heavy_app_js$event_handlers[1],
+      max_app_js_event_handlers
+    )
+  )
+
+  expect_true(
+    most_shiny_heavy_app_js$shiny_handlers[1] <= max_app_js_shiny_handlers,
+    info = sprintf(
+      "En yoğun app-owned JS Shiny handler sayısı arttı: %s = %d > %d.",
+      most_shiny_heavy_app_js$file[1],
+      most_shiny_heavy_app_js$shiny_handlers[1],
+      max_app_js_shiny_handlers
+    )
   )
 })
 
@@ -190,4 +231,70 @@ test_that("frontend eski seçicileri geri getirmez ve CSS tekrar raporu üretir"
     all(c("selector", "count", "files") %in% names(duplicate_selectors)),
     info = "CSS tekrar seçici raporu selector/count/files kolonlarını üretmelidir."
   )
+})
+
+test_that("yeni app-owned frontend varlıkları manifest dışında sessizce kalmaz", {
+  report <- .load_frontend_maint_report()
+  unmanifested_app_assets <- attr(report, "unmanifested_app_assets", exact = TRUE)
+
+  expect_true(is.data.frame(unmanifested_app_assets))
+
+  expect_equal(
+    nrow(unmanifested_app_assets),
+    0L,
+    info = paste(
+      "Manifest dışında yeni app-owned frontend varlığı bulundu.",
+      "Yeni runtime CSS/JS dosyaları R/config_ui_assets.R içine açık sırayla eklenmelidir.",
+      paste(utils::capture.output(print(unmanifested_app_assets, row.names = FALSE)), collapse = "\n"),
+      sep = "\n"
+    )
+  )
+})
+
+test_that("kritik frontend dosyaları kendi taban çizgilerinden büyümez", {
+  report <- .load_frontend_maint_report()
+
+  assert_frontend_file_budget <- function(path,
+                                          max_lines,
+                                          max_functions = Inf,
+                                          max_event_handlers = Inf,
+                                          max_shiny_handlers = Inf) {
+    row <- report[report$file == path, , drop = FALSE]
+
+    expect_equal(
+      nrow(row),
+      1L,
+      info = sprintf("%s frontend bakım raporunda tek satır olarak görünmelidir.", path)
+    )
+
+    expect_true(
+      row$lines[1] <= max_lines,
+      info = sprintf("%s satır bütçesini aştı: %d > %d.", path, row$lines[1], max_lines)
+    )
+
+    expect_true(
+      row$functions[1] <= max_functions,
+      info = sprintf("%s fonksiyon bütçesini aştı: %d > %d.", path, row$functions[1], max_functions)
+    )
+
+    expect_true(
+      row$event_handlers[1] <= max_event_handlers,
+      info = sprintf("%s event/handler bütçesini aştı: %d > %d.", path, row$event_handlers[1], max_event_handlers)
+    )
+
+    expect_true(
+      row$shiny_handlers[1] <= max_shiny_handlers,
+      info = sprintf("%s Shiny handler bütçesini aştı: %d > %d.", path, row$shiny_handlers[1], max_shiny_handlers)
+    )
+  }
+
+  assert_frontend_file_budget("www/js/input_handlers.js", 260L, 20L, 12L, 0L)
+  assert_frontend_file_budget("www/js/app_core.js", 450L, 45L, 20L, 0L)
+  assert_frontend_file_budget("www/js/claude_code.js", 620L, 36L, 16L, 12L)
+  assert_frontend_file_budget("www/js/claude_code_streaming.js", 700L, 30L, 8L, 4L)
+  assert_frontend_file_budget("www/js/music_manager.js", 650L, 45L, 16L, 8L)
+  assert_frontend_file_budget("www/js/audio_lifecycle_guard.js", 220L, 18L, 4L, 0L)
+
+  assert_frontend_file_budget("www/css/claude_code.css", 1150L)
+  assert_frontend_file_budget("www/css/claude_code_streaming.css", 280L)
 })

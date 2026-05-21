@@ -64,9 +64,19 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   asset_env <- .source_ui_asset_config_for_tests()
   root <- resolve_repo_root_for_tests()
 
-  css_paths <- asset_env$ui_asset_all_css()
-  js_paths <- asset_env$ui_asset_all_js()
-  all_paths <- c(css_paths, js_paths)
+	css_paths <- asset_env$ui_asset_all_css()
+	js_paths <- asset_env$ui_asset_all_js()
+	all_paths <- c(css_paths, js_paths)
+
+	expect_lt(
+	  .ui_asset_contract_position(css_paths, "css/claude_code.css"),
+	  .ui_asset_contract_position(css_paths, "css/claude_code_generated_files.css")
+	)
+
+	expect_lt(
+	  .ui_asset_contract_position(css_paths, "css/claude_code_generated_files.css"),
+	  .ui_asset_contract_position(css_paths, "css/claude_code_streaming.css")
+	)
 
   expect_equal(asset_env$ui_asset_duplicate_paths(css_paths), character(0))
   expect_equal(asset_env$ui_asset_duplicate_paths(js_paths), character(0))

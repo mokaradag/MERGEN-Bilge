@@ -73,11 +73,12 @@ ui_asset_css_groups <- list(
     "css/admin_yanit_analizi.css",
     "css/explore_character_step.css",
     "css/surum_bilgilendirme.css",
-    "css/sso_auth.css",
-    "css/claude_code.css",
-    "css/claude_code_streaming.css",
-    "css/claude_code_plugins.css",
-    "css/bilge_yolac_welcome.css"
+	"css/sso_auth.css",
+	"css/claude_code.css",
+	"css/claude_code_generated_files.css",
+	"css/claude_code_streaming.css",
+	"css/claude_code_plugins.css",
+	"css/bilge_yolac_welcome.css"
   ),
   codemirror = c(
     "codemirror/codemirror.min.css",

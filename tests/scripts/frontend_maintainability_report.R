@@ -136,15 +136,50 @@ relative_path <- function(path) {
   path_norm
 }
 
+vendor_frontend_files <- c(
+  "www/js/highlight.min.js",
+  "www/js/fontfaceobserver.js",
+  "www/css/all.min.css"
+)
+
+allowlisted_unmanifested_frontend_files <- c(
+  # Loaded directly by R/helpers_admin_analytics.R via tags$head().
+  # Keep visible, but do not force global manifest loading in this patch.
+  "www/css/admin_analytics.css"
+)
+
+is_vendor_frontend_asset <- function(rel_path) {
+  rel_path %in% vendor_frontend_files ||
+    grepl("(^|/)www/(lib|codemirror)/", rel_path, perl = TRUE) ||
+    grepl("\\.min\\.(js|css)$", rel_path, perl = TRUE)
+}
+
+frontend_budget_scope <- function(rel_path, manifest_listed) {
+  if (is_vendor_frontend_asset(rel_path)) {
+    return("vendor")
+  }
+
+  if (rel_path %in% allowlisted_unmanifested_frontend_files) {
+    return("allowlisted_unmanifested")
+  }
+
+  "app"
+}
+
 report <- lapply(frontend_files, function(path) {
   text <- read_text(path)
   lines <- strsplit(text, "\n", fixed = TRUE)[[1]]
   ext <- tolower(tools::file_ext(path))
+  rel_path <- relative_path(path)
+  manifest_listed <- normalizePath(path, winslash = "/", mustWork = TRUE) %in% manifest_paths
+  scope <- frontend_budget_scope(rel_path, manifest_listed)
 
   data.frame(
-    file = relative_path(path),
+    file = rel_path,
     type = ext,
-    manifest_listed = normalizePath(path, winslash = "/", mustWork = TRUE) %in% manifest_paths,
+    manifest_listed = manifest_listed,
+    budget_scope = scope,
+    is_vendor = identical(scope, "vendor"),
     lines = length(lines),
     bytes = suppressWarnings(file.info(path)$size[1]),
     functions = if (identical(ext, "js")) count_js_functions(text) else 0L,
@@ -254,8 +289,17 @@ print(utils::head(duplicate_selectors, 25), row.names = FALSE)
 cat("\nYasak eski seçici eşleşmeleri:\n")
 print(legacy_hits, row.names = FALSE)
 
+unmanifested_app_assets <- subset(
+  report,
+  budget_scope == "app" & !manifest_listed,
+  select = c("file", "type", "lines", "bytes", "functions", "event_handlers", "shiny_handlers")
+)
+
 attr(report, "score_report") <- report
 attr(report, "css_duplicate_selectors") <- duplicate_selectors
 attr(report, "legacy_selector_hits") <- legacy_hits
+attr(report, "unmanifested_app_assets") <- unmanifested_app_assets
+attr(report, "vendor_frontend_files") <- vendor_frontend_files
+attr(report, "allowlisted_unmanifested_frontend_files") <- allowlisted_unmanifested_frontend_files
 
 invisible(report)
