@@ -143,6 +143,7 @@ ui_asset_js_groups <- list(
     "js/input_handlers.js",
     "js/interaction_handlers.js",
     "js/app_core.js",
+    "js/welcome_tooltip_manager.js",
     "js/streaming_manager.js",
     "js/premium_reasoning.js",
     "js/toast.js",
@@ -313,6 +314,8 @@ ui_asset_js_order_rules <- list(
   c("js/encoding_utils.js", "js/claude_code_streaming.js"),
   c("js/utils.js", "js/input_handlers.js"),
   c("js/input_handlers.js", "js/app_core.js"),
+  c("js/app_core.js", "js/welcome_tooltip_manager.js"),
+  c("js/welcome_tooltip_manager.js", "js/streaming_manager.js"),
 
   c("js/shiny_message_handlers.js", "js/health_dashboard.js"),
   c("js/shiny_message_handlers.js", "js/neural_welcome.js"),

@@ -138,6 +138,17 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
     .ui_asset_contract_position(js_paths, "js/claude_code.js"),
     .ui_asset_contract_position(js_paths, "js/claude_code_streaming.js")
   )
+
+  expect_true("js/welcome_tooltip_manager.js" %in% asset_env$ui_asset_js_groups$critical)
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/app_core.js"),
+    .ui_asset_contract_position(js_paths, "js/welcome_tooltip_manager.js")
+  )
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/welcome_tooltip_manager.js"),
+    .ui_asset_contract_position(js_paths, "js/streaming_manager.js")
+  )
+
   expect_lt(
     .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js"),
     .ui_asset_contract_position(js_paths, "js/stt_client.js")

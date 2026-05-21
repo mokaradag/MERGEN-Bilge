@@ -71,6 +71,7 @@ test_that("frontend maintainability report JS/CSS dosyalarını kapsar", {
   required_files <- c(
     "www/js/input_handlers.js",
     "www/js/app_core.js",
+    "www/js/welcome_tooltip_manager.js",
     "www/js/claude_code_pixel_chars.js",
     "www/js/claude_code.js",
     "www/js/claude_code_streaming.js",
@@ -289,7 +290,8 @@ test_that("kritik frontend dosyaları kendi taban çizgilerinden büyümez", {
   }
 
   assert_frontend_file_budget("www/js/input_handlers.js", 260L, 23L, 16L, 0L)
-  assert_frontend_file_budget("www/js/app_core.js", 450L, 45L, 20L, 0L)
+  assert_frontend_file_budget("www/js/app_core.js", 260L, 24L, 8L, 0L)
+  assert_frontend_file_budget("www/js/welcome_tooltip_manager.js", 260L, 22L, 14L, 0L)
   assert_frontend_file_budget("www/js/claude_code.js", 620L, 36L, 16L, 12L)
   assert_frontend_file_budget("www/js/claude_code_streaming.js", 700L, 30L, 8L, 4L)
   assert_frontend_file_budget("www/js/music_manager.js", 650L, 45L, 16L, 8L)
