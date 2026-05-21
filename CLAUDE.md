@@ -1007,6 +1007,25 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
 - `testthat::test_file("tests/testthat/test-e2e-health-dashboard-regression.R")`
 
+### Frontend asset and maintainability ratchet contract
+
+Frontend JS/CSS assets are protected by the explicit UI asset manifest and by a lightweight maintainability ratchet. Keep all frontend assets local/offline and loaded through `R/config_ui_assets.R`. Do not bundle, minify, hide source code, or introduce CDN dependencies.
+
+Bilge Yolaç pixel character frame data is intentionally split from runtime behavior:
+- `www/js/claude_code_pixel_chars.js` contains only static 16x16 pixel character frame data exposed through `window.MergenClaudeCodePixelCharsMini`.
+- `www/js/claude_code.js` owns runtime behavior: animation drawing, message rendering, thinking/status UI, prompt syncing, keyboard shortcuts, and click feedback.
+- Do not move runtime behavior into the static pixel-data file.
+- Do not inline the static pixel data back into `claude_code.js` unless the asset-order contract and frontend maintainability ratchet are deliberately updated.
+- `R/config_ui_assets.R` must load `js/claude_code_pixel_chars.js` before `js/claude_code.js`, and `js/claude_code.js` before `js/claude_code_streaming.js`.
+
+Frontend maintainability is measured by `tests/scripts/frontend_maintainability_report.R` and protected by `tests/testthat/test-frontend-maintainability-ratchet.R`. The report shows the largest JS/CSS files, approximate JS function and event-handler counts, Shiny custom message handlers, duplicate CSS selectors, and forbidden legacy selector hits. The ratchet is intentionally baseline-aware: it should prevent silent growth without forcing an immediate large refactor of existing frontend files. Duplicate CSS selectors are reported for visibility; do not make broad CSS rewrites only to satisfy cosmetics unless a targeted refactor is planned.
+
+Focused validation after touching frontend JS/CSS assets, UI asset order, or Bilge Yolaç frontend files:
+- `source("tests/scripts/frontend_maintainability_report.R", encoding = "UTF-8")`
+- `testthat::test_file("tests/testthat/test-frontend-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+
 ### Media and background music contract
 
 Background music is a race-sensitive and encoding-sensitive boundary. Keep the current architecture intact:
