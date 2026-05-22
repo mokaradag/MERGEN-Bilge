@@ -89,7 +89,11 @@ test_that("save_message_safely fallback log redaction contract korunur", {
   path <- file.path(repo_root, "R", "helpers_db_chat_mutations.R")
   txt <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
-  expect_true(grepl("redact_sensitive_text(log_json)", txt, fixed = TRUE))
+  expect_true(grepl(
+    "redact_sensitive_text\\s*\\(\\s*log_json\\s*\\)",
+    txt,
+    perl = TRUE
+  ))
 })
 
 test_that("redact_sensitive_text key-value biçimindeki sırları maskeler", {

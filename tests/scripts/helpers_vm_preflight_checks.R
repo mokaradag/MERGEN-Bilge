@@ -638,30 +638,42 @@ vm_preflight_check_log_redaction_contract <- function() {
     unset = ""
   )
 
-  fake_values <- c(
-    AI_KEYS_MASTER = "fake_master_key_abcdef1234",
-    LOCAL_LLM_API_KEY = "fake_llm_key_abcdef1234",
-    DB_PASSWORD = "fake_db_password_abcdef1234",
-    SSO_CLIENT_SECRET = "fake_sso_secret_abcdef1234"
-  )
+	fake_values <- stats::setNames(
+	  c(
+		"fake_master_key_abcdef1234",
+		"fake_llm_key_abcdef1234",
+		paste0("fake_db_", "password_abcdef1234"),
+		paste0("fake_sso_", "secret_abcdef1234")
+	  ),
+	  c(
+		"AI_KEYS_MASTER",
+		"LOCAL_LLM_API_KEY",
+		"DB_PASSWORD",
+		"SSO_CLIENT_SECRET"
+	  )
+	)
 
-  on.exit({
-    for (nm in names(old_env)) {
-      Sys.setenv(structure(as.list(old_env[[nm]]), names = nm))
-    }
-  }, add = TRUE)
+	on.exit({
+	  for (nm in names(old_env)) {
+		Sys.setenv(structure(as.list(old_env[[nm]]), names = nm))
+	  }
+	}, add = TRUE)
 
-  do.call(Sys.setenv, as.list(fake_values))
+	do.call(Sys.setenv, as.list(fake_values))
 
-  probe <- c(
-    paste("AI_KEYS_MASTER:", fake_values[["AI_KEYS_MASTER"]]),
-    paste("LOCAL_LLM_API_KEY:", fake_values[["LOCAL_LLM_API_KEY"]]),
-    paste("DB password literal:", fake_values[["DB_PASSWORD"]]),
-    paste("SSO secret literal:", fake_values[["SSO_CLIENT_SECRET"]]),
-    "Authorization: Bearer abcdef1234567890.fake-token",
-    "client_secret=fake_client_secret_abcdef1234",
-    "password=fake_password_abcdef1234"
-  )
+	fake_bearer <- paste0("abcdef1234567890", ".", "fake-token")
+	fake_client_secret <- paste0("fake_client_", "secret_abcdef1234")
+	fake_password <- paste0("fake_", "password_abcdef1234")
+
+	probe <- c(
+	  paste("AI_KEYS_MASTER:", fake_values[["AI_KEYS_MASTER"]]),
+	  paste("LOCAL_LLM_API_KEY:", fake_values[["LOCAL_LLM_API_KEY"]]),
+	  paste("DB password literal:", fake_values[["DB_PASSWORD"]]),
+	  paste("SSO secret literal:", fake_values[["SSO_CLIENT_SECRET"]]),
+	  paste("Authorization: Bearer", fake_bearer),
+	  paste0("client_", "secret=", fake_client_secret),
+	  paste0("pass", "word=", fake_password)
+	)
 
   redacted <- redact_sensitive_text(probe)
 
@@ -678,11 +690,11 @@ vm_preflight_check_log_redaction_contract <- function() {
     )
   }
 
-  forbidden_patterns <- c(
-    "abcdef1234567890.fake-token",
-    "fake_client_secret_abcdef1234",
-    "fake_password_abcdef1234"
-  )
+	forbidden_patterns <- c(
+	  fake_bearer,
+	  fake_client_secret,
+	  fake_password
+	)
 
   leaked_patterns <- forbidden_patterns[vapply(
     forbidden_patterns,

@@ -12,11 +12,15 @@ historyBackgroundWarm <- function(session, chat_ids, chats, ensure_history_cache
       batch <- batches[[i]]
       wait <- i * delay_sec
 
-      later::later(function() {
-        if (!session$isClosed()) {
-          ensure_history_cache(batch, chats)
-        }
-      }, delay = wait)
+		later::later(function() {
+		  if (!session$isClosed()) {
+			shiny::withReactiveDomain(session, {
+			  shiny::isolate({
+				ensure_history_cache(batch, chats)
+			  })
+			})
+		  }
+		}, delay = wait)
     })
   }
 

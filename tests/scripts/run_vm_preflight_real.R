@@ -206,12 +206,12 @@ cat("OK: app.R source edildi, validate_boot_state() geçti ve shiny.appobj oluş
 # ----------------------------------------------------------------------
 # Dosya sistemi / yazılabilirlik / UTF-8 / File Store / canlı kimlik on kontrolleri
 # ----------------------------------------------------------------------
-vm_preflight_check_core_writable_paths()
-vm_preflight_check_atomic_write()
-vm_preflight_check_utf8_file_roundtrip()
+preflight_paths <- vm_preflight_check_core_writable_paths()
+vm_preflight_check_atomic_write_probe(preflight_paths$active_log_dir)
+vm_preflight_check_utf8_roundtrip(preflight_paths$active_log_dir)
 vm_preflight_check_log_redaction_contract()
 
-if (isTRUE(check_file_store)) {
+if (isTRUE(preflight_check_file_store)) {
   vm_preflight_check_file_store_roundtrip()
   vm_preflight_check_file_resolution_isolation()
 } else {

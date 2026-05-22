@@ -39,13 +39,14 @@ test_that("VM preflight helper kritik fonksiyonları tanımlar", {
     file.path("tests", "scripts", "helpers_vm_preflight_checks.R")
   )
 
-  expected_definitions <- c(
-    "vm_preflight_check_core_writable_paths <- function",
-    "vm_preflight_check_atomic_write_probe <- function",
-    "vm_preflight_check_utf8_roundtrip <- function",
-    "vm_preflight_check_file_store_roundtrip <- function",
-    "vm_preflight_check_live_user_id_provider_contract <- function"
-  )
+	expected_definitions <- c(
+	  "vm_preflight_check_core_writable_paths <- function",
+	  "vm_preflight_check_atomic_write_probe <- function",
+	  "vm_preflight_check_utf8_roundtrip <- function",
+	  "vm_preflight_check_log_redaction_contract <- function",
+	  "vm_preflight_check_file_store_roundtrip <- function",
+	  "vm_preflight_check_live_user_id_provider_contract <- function"
+	)
 
   found <- vapply(
     expected_definitions,
@@ -67,17 +68,18 @@ test_that("run_vm_preflight_real helper dosyasını kaynaklar ve kritik kontroll
     file.path("tests", "scripts", "run_vm_preflight_real.R")
   )
 
-  expected_calls <- c(
-    'source("tests/scripts/helpers_vm_preflight_checks.R"',
-    "preflight_paths <- vm_preflight_check_core_writable_paths()",
-    "vm_preflight_check_atomic_write_probe(preflight_paths$active_log_dir)",
-    "vm_preflight_check_utf8_roundtrip(preflight_paths$active_log_dir)",
-    "preflight_check_file_store <- normalize_preflight_bool",
-    "MERGEN_PREFLIGHT_CHECK_FILE_STORE",
-    "if (isTRUE(preflight_check_file_store))",
-    "vm_preflight_check_file_store_roundtrip()",
-    "vm_preflight_check_live_user_id_provider_contract()"
-  )
+	expected_calls <- c(
+	  'source("tests/scripts/helpers_vm_preflight_checks.R"',
+	  "preflight_paths <- vm_preflight_check_core_writable_paths()",
+	  "vm_preflight_check_atomic_write_probe(preflight_paths$active_log_dir)",
+	  "vm_preflight_check_utf8_roundtrip(preflight_paths$active_log_dir)",
+	  "vm_preflight_check_log_redaction_contract()",
+	  "preflight_check_file_store <- normalize_preflight_bool",
+	  "MERGEN_PREFLIGHT_CHECK_FILE_STORE",
+	  "if (isTRUE(preflight_check_file_store))",
+	  "vm_preflight_check_file_store_roundtrip()",
+	  "vm_preflight_check_live_user_id_provider_contract()"
+	)
 
   found <- vapply(
     expected_calls,
