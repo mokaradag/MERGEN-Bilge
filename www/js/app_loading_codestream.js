@@ -1,9 +1,11 @@
 // www/js/app_loading_codestream.js
 // Dosya Yolu: www/js/app_loading_codestream.js
-// Açıklama: Açılış yükleme ekranındaki akan kod katmanı motoru.
-//   Kod parçalarını ekranın kenar bantlarında rastgele konumlandırır,
-//   karakter karakter yazar, hafif sözdizimi renklendirmesi uygular ve
-//   yavaşça eriterek kaybeder. Havuz www/js/app_loading_snippets.js'tedir.
+// Açıklama: Açılış yükleme ekranındaki akan içerik katmanı motoru.
+//   İçerik parçalarını (kod ve düz metin) ekranın kenar bantlarındaki
+//   sabit ŞERİTLERE yerleştirir; öğeler asla üst üste binmez. Her görünür
+//   karakter ayrı bir kapsayıcıdadır ve sırayla yumuşakça belirir
+//   (sürekli fade-in). Düzen baştan sabit olduğundan yazıldıkça blok kaymaz.
+//   Havuz: www/js/app_loading_snippets.js + www/js/app_loading_content.js.
 //   Bu dosya R/module_app_loading.R tarafından satır içine gömülür.
 
 (function () {
@@ -18,7 +20,7 @@
     "val new delete import from package namespace using include this self super " +
     "true false nil null none and or not in is then begin async await yield match " +
     "case switch break continue with as defun select where group order by join " +
-    "left right inner outer having rank over count sum avg distinct guard where"
+    "left right inner outer having rank over count sum avg distinct guard data"
   ).split(" ").forEach(function (kw) { KEYWORDS[kw] = true; });
 
   // Dile göre satır yorum işaretleri
@@ -28,28 +30,55 @@
     "JavaScript": ["//"], "TypeScript": ["//"], "C++": ["//"], "C#": ["//"],
     "Java": ["//"], "Go": ["//"], "Rust": ["//"], "Kotlin": ["//"],
     "Swift": ["//"], "SQL": ["--"], "Lisp": [";"], "Fortran": ["!"],
-    "MATLAB": ["%"]
+    "MATLAB": ["%"], "ABAP": ["*"], "JQL": []
   };
 
   var IDENT_START = /[A-Za-z_$]/;
   var IDENT_BODY = /[A-Za-z0-9_$]/;
+  var MAX_DISPLAY_LINES = 5;
 
   var container = null;
   var items = [];
+  var lanes = [];
   var spawnTimer = null;
   var running = false;
   var reducedMotion = false;
-  var MAX_ITEMS = 6;
+  var MAX_ITEMS = 4;
 
-  function escapeHtml(text) {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+  // --------------------------------------------------------------------------
+  // Şerit (lane) düzeni - kod/metin öğeleri asla üst üste binmez
+  // --------------------------------------------------------------------------
+
+  function buildLanes() {
+    lanes = [];
+    // Sol ve sağ bantlardaki dikey şerit konumları (vh). Bantlar yatayda
+    // ayrı taraflarda olduğundan sol-sağ çakışması da imkansızdır.
+    var leftTops = [7, 35, 63];
+    var rightTops = [19, 47, 75];
+    var i;
+    for (i = 0; i < leftTops.length; i++) {
+      lanes.push({ side: "left", top: leftTops[i], busy: false });
+    }
+    for (i = 0; i < rightTops.length; i++) {
+      lanes.push({ side: "right", top: rightTops[i], busy: false });
+    }
   }
 
-  // Tek satırı sözdizimi belirteçlerine ayır
-  function tokenizeLine(text, marks) {
+  function pickFreeLane() {
+    var free = [];
+    for (var i = 0; i < lanes.length; i++) {
+      if (!lanes[i].busy) free.push(lanes[i]);
+    }
+    if (free.length === 0) return null;
+    return free[Math.floor(Math.random() * free.length)];
+  }
+
+  // --------------------------------------------------------------------------
+  // Belirteçleme
+  // --------------------------------------------------------------------------
+
+  // Tek kod satırını sözdizimi belirteçlerine ayır
+  function tokenizeCodeLine(text, marks) {
     var tokens = [];
     var i = 0;
     var n = text.length;
@@ -66,7 +95,7 @@
 
       var isComment = false;
       for (var m = 0; m < marks.length; m++) {
-        if (text.substr(i, marks[m].length) === marks[m]) {
+        if (marks[m].length && text.substr(i, marks[m].length) === marks[m]) {
           tokens.push({ t: text.slice(i), c: "comment" });
           i = n;
           isComment = true;
@@ -115,106 +144,120 @@
     return tokens;
   }
 
-  // Belirteç dizisini en fazla `limit` karaktere kadar HTML'e dönüştür
-  function tokensToHtml(tokens, limit) {
-    var html = "";
-    var used = 0;
-
-    for (var i = 0; i < tokens.length; i++) {
-      var tok = tokens[i];
-      if (used >= limit) break;
-
-      var slice = tok.t;
-      if (used + slice.length > limit) {
-        slice = slice.slice(0, limit - used);
-      }
-      used += slice.length;
-
-      if (tok.c === "plain") {
-        html += escapeHtml(slice);
-      } else {
-        html += '<span class="alo-tok-' + tok.c + '">' + escapeHtml(slice) + "</span>";
+  // Düz metin / soru-yanıt satırı: baştaki kısa "Etiket:" öneki ayrı renklenir
+  function tokenizeNoteLine(text) {
+    var colon = text.indexOf(": ");
+    if (colon > 0 && colon <= 14) {
+      var label = text.slice(0, colon + 1);
+      // Etiket tek kelime olmalı (en çok bir boşluk içermeli)
+      if (label.replace(/[^ ]/g, "").length <= 1) {
+        return [
+          { t: label, c: "qmark" },
+          { t: text.slice(colon + 1), c: "prose" }
+        ];
       }
     }
-
-    return html;
+    return [{ t: text, c: "prose" }];
   }
 
-  function lineLength(tokens) {
-    var total = 0;
-    for (var i = 0; i < tokens.length; i++) total += tokens[i].t.length;
-    return total;
-  }
+  // --------------------------------------------------------------------------
+  // Öğe oluşturma ve karakter belirme
+  // --------------------------------------------------------------------------
 
-  // Kod öğesini kenar bantlarına yerleştir (merkez sahne korunur)
-  function placeItem(el) {
-    var side = Math.random() < 0.5 ? "left" : "right";
-    var top = 7 + Math.random() * 77;
+  // Öğe DOM'unu baştan tamamen kurar: her görünür karakter ayrı bir span'dir
+  // ve düzendeki yerini hemen alır. Belirme sadece opaklığı değiştirir,
+  // bu yüzden yazıldıkça hiçbir blok yatayda kaymaz.
+  function buildItem(snippet) {
+    var isNote = !!snippet.tag;
+    var lines = snippet.lines.slice(0, MAX_DISPLAY_LINES);
+    var marks = COMMENT_MARKS[snippet.lang] || ["#", "//"];
 
-    if (side === "left") {
-      el.style.left = (1 + Math.random() * 22).toFixed(1) + "vw";
-    } else {
-      el.style.right = (1 + Math.random() * 21).toFixed(1) + "vw";
-    }
-    el.style.top = top.toFixed(1) + "vh";
-  }
+    var el = document.createElement("div");
+    el.className = "alo-code-item" + (isNote ? " alo-code-note" : "");
 
-  function renderItem(item) {
-    var html = "";
-    if (item.lang) {
-      html += '<span class="alo-code-lang">' + escapeHtml(item.lang) + "</span>";
+    var label = isNote ? snippet.tag : snippet.lang;
+    if (label) {
+      var langEl = document.createElement("span");
+      langEl.className = "alo-code-lang" + (isNote ? " alo-lang-note" : "");
+      langEl.textContent = label;
+      el.appendChild(langEl);
     }
 
-    for (var i = 0; i <= item.lineIndex && i < item.lines.length; i++) {
-      var limit = i < item.lineIndex ? Infinity : item.charInLine;
-      var inner = tokensToHtml(item.lines[i], limit);
-      if (i === item.lineIndex && !item.done) {
-        inner += '<span class="alo-cursor"></span>';
+    var charSpans = [];
+    for (var li = 0; li < lines.length; li++) {
+      var lineEl = document.createElement("span");
+      lineEl.className = "alo-code-line";
+
+      var tokens = isNote
+        ? tokenizeNoteLine(lines[li])
+        : tokenizeCodeLine(lines[li], marks);
+
+      for (var ti = 0; ti < tokens.length; ti++) {
+        var tok = tokens[ti];
+        var cls = (tok.c && tok.c !== "plain")
+          ? "alo-ch alo-tok-" + tok.c
+          : "alo-ch";
+
+        for (var ci = 0; ci < tok.t.length; ci++) {
+          var chr = tok.t.charAt(ci);
+          var span = document.createElement("span");
+          span.className = cls;
+          span.textContent = chr;
+          if (chr === " " || chr === "\t") {
+            // Boşluklar anında "açık"; belirme sırası yalnızca görünür
+            // karakterleri kapsar, böylece efekt akıcı kalır.
+            span.className = cls + " alo-ch-on";
+          } else {
+            charSpans.push(span);
+          }
+          lineEl.appendChild(span);
+        }
       }
-      html += '<span class="alo-code-line">' + (inner || "&nbsp;") + "</span>";
+
+      if (!lineEl.firstChild) {
+        lineEl.appendChild(document.createTextNode(" "));
+      }
+      el.appendChild(lineEl);
     }
 
-    item.el.innerHTML = html;
+    return { el: el, charSpans: charSpans };
   }
 
   function dissolveItem(item) {
+    if (item.dissolved) return;
+    item.dissolved = true;
     item.el.classList.add("alo-code-out");
     item.timer = window.setTimeout(function () {
       if (item.el && item.el.parentNode) {
         item.el.parentNode.removeChild(item.el);
+      }
+      // Şerit yalnızca eriyen öğe DOM'dan tamamen silindikten sonra
+      // serbest kalır; böylece erime sırasında bir öğe başka bir öğeyle
+      // aynı şeride yerleşip üst üste binemez.
+      if (item.lane) {
+        item.lane.busy = false;
       }
       var idx = items.indexOf(item);
       if (idx >= 0) items.splice(idx, 1);
     }, 1300);
   }
 
-  function typeStep(item) {
-    if (!running) return;
+  // Sıradaki karakteri belirginleştir - sürekli fade-in
+  function revealNext(item) {
+    if (!running || item.dissolved) return;
 
-    var line = item.lines[item.lineIndex];
-    item.charInLine++;
-
-    if (item.charInLine >= item.lineLengths[item.lineIndex]) {
-      item.charInLine = item.lineLengths[item.lineIndex];
-      renderItem(item);
-      item.lineIndex++;
-
-      if (item.lineIndex >= item.lines.length) {
-        item.done = true;
-        renderItem(item);
-        item.timer = window.setTimeout(function () {
-          if (running) dissolveItem(item);
-        }, 2300 + Math.random() * 1500);
-        return;
-      }
-
-      item.charInLine = 0;
-      item.timer = window.setTimeout(function () { typeStep(item); }, 150 + Math.random() * 170);
+    if (item.revealIndex >= item.charSpans.length) {
+      item.timer = window.setTimeout(function () {
+        if (running) dissolveItem(item);
+      }, 2400 + Math.random() * 1700);
       return;
     }
 
-    renderItem(item);
-    item.timer = window.setTimeout(function () { typeStep(item); }, 13 + Math.random() * 22);
+    item.charSpans[item.revealIndex].classList.add("alo-ch-on");
+    item.revealIndex++;
+    item.timer = window.setTimeout(function () {
+      revealNext(item);
+    }, 15 + Math.random() * 15);
   }
 
   function spawnItem() {
@@ -223,46 +266,55 @@
     var pool = window.MergenLoadingSnippets;
     if (!pool || !pool.length) return;
 
+    var lane = pickFreeLane();
+    if (!lane) return;
+
     var snippet = pool[Math.floor(Math.random() * pool.length)];
-    var marks = COMMENT_MARKS[snippet.lang] || ["#", "//"];
+    if (!snippet || !snippet.lines || !snippet.lines.length) return;
 
-    var el = document.createElement("div");
-    el.className = "alo-code-item";
-    placeItem(el);
+    var built = buildItem(snippet);
+    var el = built.el;
+
+    lane.busy = true;
+    el.style.top = lane.top.toFixed(1) + "vh";
+    if (lane.side === "left") {
+      el.style.left = (2 + Math.random() * 9).toFixed(1) + "vw";
+    } else {
+      el.style.right = (2 + Math.random() * 9).toFixed(1) + "vw";
+    }
+
     container.appendChild(el);
-
-    var tokenLines = snippet.lines.map(function (text) {
-      return tokenizeLine(text, marks);
-    });
 
     var item = {
       el: el,
-      lang: snippet.lang,
-      lines: tokenLines,
-      lineLengths: tokenLines.map(lineLength),
-      lineIndex: 0,
-      charInLine: 0,
-      done: false,
+      lane: lane,
+      charSpans: built.charSpans,
+      revealIndex: 0,
+      dissolved: false,
       timer: null
     };
     items.push(item);
 
     if (reducedMotion) {
-      // Hareket azaltma: yazma efekti olmadan tüm bloğu göster
-      item.lineIndex = item.lines.length - 1;
-      item.charInLine = item.lineLengths[item.lineIndex];
-      item.done = true;
-      renderItem(item);
-      window.requestAnimationFrame(function () { el.classList.add("alo-code-in"); });
-      item.timer = window.setTimeout(function () {
-        if (running) dissolveItem(item);
-      }, 3600 + Math.random() * 2200);
-      return;
+      for (var i = 0; i < built.charSpans.length; i++) {
+        built.charSpans[i].classList.add("alo-ch-on");
+      }
+      item.revealIndex = built.charSpans.length;
     }
 
-    renderItem(item);
-    window.requestAnimationFrame(function () { el.classList.add("alo-code-in"); });
-    item.timer = window.setTimeout(function () { typeStep(item); }, 220 + Math.random() * 260);
+    window.requestAnimationFrame(function () {
+      el.classList.add("alo-code-in");
+    });
+
+    if (reducedMotion) {
+      item.timer = window.setTimeout(function () {
+        if (running) dissolveItem(item);
+      }, 4200 + Math.random() * 2400);
+    } else {
+      item.timer = window.setTimeout(function () {
+        revealNext(item);
+      }, 240 + Math.random() * 260);
+    }
   }
 
   function scheduleSpawn() {
@@ -272,7 +324,9 @@
       spawnItem();
     }
 
-    var delay = reducedMotion ? 2600 + Math.random() * 1800 : 760 + Math.random() * 620;
+    var delay = reducedMotion
+      ? 3200 + Math.random() * 2000
+      : 1100 + Math.random() * 900;
     spawnTimer = window.setTimeout(scheduleSpawn, delay);
   }
 
@@ -283,12 +337,12 @@
     running = true;
     reducedMotion = !!(window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-    MAX_ITEMS = reducedMotion ? 3 : 6;
+    MAX_ITEMS = reducedMotion ? 2 : 4;
+    buildLanes();
 
-    // İlk birkaç öğeyi kademeli olarak başlat
     spawnItem();
-    window.setTimeout(function () { if (running) spawnItem(); }, 520);
-    spawnTimer = window.setTimeout(scheduleSpawn, 1100);
+    window.setTimeout(function () { if (running) spawnItem(); }, 700);
+    spawnTimer = window.setTimeout(scheduleSpawn, 1500);
   }
 
   function stop() {
@@ -301,6 +355,7 @@
       if (items[i].timer) window.clearTimeout(items[i].timer);
     }
     items = [];
+    lanes = [];
     container = null;
   }
 

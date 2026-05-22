@@ -151,7 +151,8 @@ allowlisted_unmanifested_frontend_files <- c(
   "www/css/app_loading.css",
   "www/js/app_loading.js",
   "www/js/app_loading_codestream.js",
-  "www/js/app_loading_snippets.js"
+  "www/js/app_loading_snippets.js",
+  "www/js/app_loading_content.js"
 )
 
 is_vendor_frontend_asset <- function(rel_path) {

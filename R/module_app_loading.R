@@ -7,6 +7,7 @@
 #   Stil ve betikler artık ayrı www varlık dosyalarında tutulur:
 #     www/css/app_loading.css
 #     www/js/app_loading_snippets.js
+#     www/js/app_loading_content.js
 #     www/js/app_loading_codestream.js
 #     www/js/app_loading.js
 #   Bu dosyalar derleme anında okunup ilk boyamada satır içine gömülür; bu
@@ -79,7 +80,11 @@ app_loading_mark_svg <- function() {
     app_loading_heptagon_points(106), '"/>',
     '<polygon class="alo-hept alo-hept-track" points="',
     app_loading_heptagon_points(80), '"/>',
-    '<polygon class="alo-hept alo-hept-progress" id="alo-progress-hept" points="',
+    # pathLength=100: yedigen çevresi 0-100 birime ölçeklenir; ilerleme JS
+    # tarafından stroke-dashoffset ile sürülür. Satır içi başlangıç %0 (boş)
+    # olduğundan ilk boyamada sıçrama/geri sarma görülmez.
+    '<polygon class="alo-hept alo-hept-progress" id="alo-progress-hept" ',
+    'pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" points="',
     app_loading_heptagon_points(80), '"/>',
     '<polygon class="alo-hept alo-hept-inner" points="',
     app_loading_heptagon_points(52), '"/>',
@@ -137,6 +142,7 @@ appLoadingUI <- function() {
       # Satır içi stil ve betikler (ayrı www dosyalarından okunur)
       tags$style(HTML(app_loading_asset("css/app_loading.css"))),
       tags$script(HTML(app_loading_asset("js/app_loading_snippets.js"))),
+      tags$script(HTML(app_loading_asset("js/app_loading_content.js"))),
       tags$script(HTML(app_loading_asset("js/app_loading_codestream.js"))),
       tags$script(HTML(app_loading_asset("js/app_loading.js")))
     )
