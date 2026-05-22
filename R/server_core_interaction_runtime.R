@@ -238,6 +238,7 @@ serverBindCoreInteractionRuntime <- function(input,
 
   values <- state$values
   boot_ready <- bootReadinessInit(session)
+  runtime_ctx$modules$boot_ready <- boot_ready
 
   .server_core_interaction_require_functions(list(
     current_user_id_provider = identity$current_user_id_provider,
@@ -296,20 +297,16 @@ serverBindCoreInteractionRuntime <- function(input,
     activity_inputs = c("user_input", "send_stop_btn", "send_prompt_from_js")
   )
 
-	file_manager_runtime <- .server_core_call_with_optional_boot_ready(
-	  fn = file_manager_runtime_fn,
-	  args = list(
-		runtime_ctx = runtime_ctx,
-		new_file_trigger = reactive_fn({ state$file_to_add() }),
-		session_files_reactive = state$session_files,
-		mcp_enabled_reactive = reactive_fn({
-		  isTRUE(settings_data$enable_mcp_tools)
-		}),
-		settings_data = settings_data,
-		user_id_provider = identity$current_user_id_provider
-	  ),
-	  boot_ready = boot_ready
-	)
+  file_manager_runtime <- file_manager_runtime_fn(
+    runtime_ctx = runtime_ctx,
+    new_file_trigger = reactive_fn({ state$file_to_add() }),
+    session_files_reactive = state$session_files,
+    mcp_enabled_reactive = reactive_fn({
+      isTRUE(settings_data$enable_mcp_tools)
+    }),
+    settings_data = settings_data,
+    user_id_provider = identity$current_user_id_provider
+  )
 
   runtime_ctx <- file_manager_runtime$runtime_ctx
 

@@ -241,7 +241,7 @@ serverBindFileManagerRuntime <- function(runtime_ctx,
                                          mcp_enabled_reactive,
                                          settings_data,
                                          user_id_provider,
-                                         boot_ready = NULL,
+                                         boot_ready = runtime_ctx$modules$boot_ready,
                                          file_manager_server_fn = fileManagerServer,
                                          observe_event_fn = shiny::observeEvent,
                                          req_fn = shiny::req) {

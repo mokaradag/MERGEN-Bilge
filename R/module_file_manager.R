@@ -13,12 +13,6 @@ fileManagerServer <- function(
   moduleServer(id, function(input, output, session) {
   ns <- session$ns
 
-  mark_boot <- function(key, label = key, detail = NULL) {
-    if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
-      boot_ready$mark(key, label = label, detail = detail)
-    }
-  }
-
   runtime_helpers <- fm_create_server_runtime_helpers(
     session = session,
     user_id = user_id,
@@ -715,12 +709,8 @@ fileManagerServer <- function(
 		refresh_persisted_files  = function(trigger = "manual") {
 		  refresh_from_user_folder(trigger)
 
-		  if (trigger %in% c("initial", "auth_ready", "startup")) {
-			mark_boot(
-			  "file_index_ready",
-			  "Dosyalar hazır",
-			  detail = list(count = length(module_values$file_contents))
-			)
+		  if (trigger %in% c("initial", "auth_ready", "startup") && !is.null(boot_ready) && is.function(boot_ready$mark)) {
+			boot_ready$mark("file_index_ready", label = "Dosyalar hazır", detail = list(count = length(module_values$file_contents)))
 		  }
 
 		  invisible(TRUE)
