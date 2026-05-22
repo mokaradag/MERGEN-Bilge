@@ -7,10 +7,17 @@ fileManagerServer <- function(
   mcp_enabled_reactive = reactive({ FALSE }),
   user_id = NULL,
   settings_data = NULL,
-  auth_ready_provider = NULL
+  auth_ready_provider = NULL,
+  boot_ready = NULL
 ) {
   moduleServer(id, function(input, output, session) {
   ns <- session$ns
+
+  mark_boot <- function(key, label = key, detail = NULL) {
+    if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
+      boot_ready$mark(key, label = label, detail = detail)
+    }
+  }
 
   runtime_helpers <- fm_create_server_runtime_helpers(
     session = session,
@@ -705,9 +712,19 @@ fileManagerServer <- function(
 	  remove_file_from_manager = function(filename) { remove_file_by_name(filename, quiet = TRUE) },
 	  set_attachment_checked   = set_attachment_checked,
 	  sync_file_to_context     = sync_file_to_context,
-	  refresh_persisted_files  = function(trigger = "manual") {
-		refresh_from_user_folder(trigger)
-	  },
+		refresh_persisted_files  = function(trigger = "manual") {
+		  refresh_from_user_folder(trigger)
+
+		  if (trigger %in% c("initial", "auth_ready", "startup")) {
+			mark_boot(
+			  "file_index_ready",
+			  "Dosyalar hazır",
+			  detail = list(count = length(module_values$file_contents))
+			)
+		  }
+
+		  invisible(TRUE)
+		},
 	  reset_attachment_state   = function() {
 		ids <- names(module_values$files_in_context)
 		if (length(ids) > 0) {

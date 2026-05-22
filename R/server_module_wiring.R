@@ -261,16 +261,25 @@ serverBindFileManagerRuntime <- function(runtime_ctx,
     owner = "serverBindFileManagerRuntime identity"
   )
 
-	file_manager_data <- file_manager_server_fn(
-	  "file_manager_module",
+	file_manager_args <- list(
+	  id = "file_manager_module",
 	  new_file_trigger = new_file_trigger,
 	  session_files_reactive = session_files_reactive,
 	  mcp_enabled_reactive = mcp_enabled_reactive,
 	  user_id = user_id_provider,
 	  settings_data = settings_data,
-	  auth_ready_provider = identity$is_auth_ready,
-	  boot_ready = boot_ready
+	  auth_ready_provider = identity$is_auth_ready
 	)
+
+	server_fn_formals <- names(formals(file_manager_server_fn))
+	accepts_dots <- "..." %in% server_fn_formals
+
+	if (!is.null(boot_ready) &&
+		("boot_ready" %in% server_fn_formals || accepts_dots)) {
+	  file_manager_args$boot_ready <- boot_ready
+	}
+
+	file_manager_data <- do.call(file_manager_server_fn, file_manager_args)
 
   runtime_ctx <- serverRuntimeAttachRefreshableModule(
     ctx = runtime_ctx,
