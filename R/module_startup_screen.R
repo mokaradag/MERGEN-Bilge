@@ -344,7 +344,7 @@ createStartupScreenUI <- function() {
                     autoplay = FALSE,
                     playsinline = TRUE,
                     muted = TRUE,
-                    preload = "none",
+                    preload = "auto",
                     style = "display: none;"
                   ),
                   tags$img(
@@ -390,7 +390,7 @@ createStartupScreenUI <- function() {
 #' @param input Shiny input nesnesi
 #' @param session Shiny session nesnesi
 #' @param settings_data Ayarlar modülünden dönen reaktif ayarlar
-startupScreenObserversInit <- function(input, session, settings_data) {
+startupScreenObserversInit <- function(input, session, settings_data, boot_ready = NULL) {
 
   # Giriş ekranını başlat (Shiny bağlantısı kurulduğunda)
   session$onFlushed(function() {
@@ -612,20 +612,44 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 	
 	}, ignoreInit = TRUE)
 
-  # Giriş ekranı karakter adımından video verisi talebi
-  observeEvent(input$explore_request_char_video, {
-    req(input$explore_request_char_video)
-    char_id <- input$explore_request_char_video$character
-    if (!is.null(char_id) && nzchar(char_id)) {
-      video_data <- tryCatch(get_character_video_data(char_id), error = function(e) NULL)
-      if (!is.null(video_data)) {
-        session$sendCustomMessage("loadExploreCharVideo", video_data)
-      }
-    }
-  }, ignoreInit = TRUE)
+	# Giriş ekranı karakter adımından video verisi talebi
+	observeEvent(input$explore_request_char_video, {
+	  req(input$explore_request_char_video)
+	  char_id <- input$explore_request_char_video$character
+	  if (!is.null(char_id) && nzchar(char_id)) {
+		video_data <- tryCatch(get_character_video_data(char_id), error = function(e) NULL)
+		if (!is.null(video_data)) {
+		  session$sendCustomMessage("loadExploreCharVideo", video_data)
+		}
+	  }
+	}, ignoreInit = TRUE)
 
-  # Animasyonu atlama onay kutusu değişikliği (giriş ekranındaki checkbox)
-  observeEvent(input$skip_intro_changed, {
+	# Açılış sırasında tüm karakter/persona videolarını ön yükleme talebi
+	observeEvent(input$explore_request_all_char_videos, {
+	  all_video_data <- lapply(CHARACTER_VALID_IDS, function(id) {
+		tryCatch(get_character_video_data(id), error = function(e) NULL)
+	  })
+	  all_video_data <- Filter(Negate(is.null), all_video_data)
+
+	  session$sendCustomMessage(
+		"loadExploreAllCharVideos",
+		list(characters = all_video_data)
+	  )
+	}, ignoreInit = TRUE)
+
+	# İstemci tarafı karakter medya ön yüklemesi tamamlandı bildirimi
+	observeEvent(input$character_media_preload_ready, {
+	  if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
+		boot_ready$mark(
+		  "character_media_ready",
+		  "Asistan medyası hazır",
+		  detail = input$character_media_preload_ready
+		)
+	  }
+	}, ignoreInit = TRUE)
+
+	# Animasyonu atlama onay kutusu değişikliği (giriş ekranındaki checkbox)
+	observeEvent(input$skip_intro_changed, {
     req(input$skip_intro_changed)
     skip <- isTRUE(input$skip_intro_changed$skip)
 

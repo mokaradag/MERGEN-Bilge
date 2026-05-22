@@ -241,6 +241,7 @@ serverBindFileManagerRuntime <- function(runtime_ctx,
                                          mcp_enabled_reactive,
                                          settings_data,
                                          user_id_provider,
+                                         boot_ready = NULL,
                                          file_manager_server_fn = fileManagerServer,
                                          observe_event_fn = shiny::observeEvent,
                                          req_fn = shiny::req) {
@@ -260,15 +261,16 @@ serverBindFileManagerRuntime <- function(runtime_ctx,
     owner = "serverBindFileManagerRuntime identity"
   )
 
-  file_manager_data <- file_manager_server_fn(
-    "file_manager_module",
-    new_file_trigger = new_file_trigger,
-    session_files_reactive = session_files_reactive,
-    mcp_enabled_reactive = mcp_enabled_reactive,
-    user_id = user_id_provider,
-    settings_data = settings_data,
-    auth_ready_provider = identity$is_auth_ready
-  )
+	file_manager_data <- file_manager_server_fn(
+	  "file_manager_module",
+	  new_file_trigger = new_file_trigger,
+	  session_files_reactive = session_files_reactive,
+	  mcp_enabled_reactive = mcp_enabled_reactive,
+	  user_id = user_id_provider,
+	  settings_data = settings_data,
+	  auth_ready_provider = identity$is_auth_ready,
+	  boot_ready = boot_ready
+	)
 
   runtime_ctx <- serverRuntimeAttachRefreshableModule(
     ctx = runtime_ctx,

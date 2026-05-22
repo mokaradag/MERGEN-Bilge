@@ -11,7 +11,9 @@
 #' @param values Ana reaktif değerler
 #' @param render_welcome_screen Karşılama ekranı render fonksiyonu
 #' @param current_user_id Mevcut kullanıcı ID'si
-startupObserversInit <- function(input, session, values, render_welcome_screen, current_user_id, sso_state = NULL) {
+startupObserversInit <- function(input, session, values, render_welcome_screen,
+                                 current_user_id, sso_state = NULL,
+                                 boot_ready = NULL) {
   
   # Karşılama ekranını başlat (widget bağımlılıkları ui.R'de statik olarak tanımlı)
   observeEvent(TRUE, {
@@ -50,26 +52,42 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
 		render_welcome_screen(values$saved_chats, replace_existing = FALSE)
 	  }
 	}, ignoreInit = TRUE)
-  
-  # SSO akışında başlangıçta current_user_id=0 gelebilir.
-  # Bu nedenle kullanıcı ID'sini her yükleme anında oturumdan çöz.
-  resolve_current_user_id <- function() {
-    resolve_effective_user_id(
-      session = session,
-      current_user_id = current_user_id
-    )
-  }
+
+	observeEvent(input$welcome_client_ready, {
+	  mark_boot(
+		"welcome_client_ready",
+		"Ana Söyleşi görsel bileşenleri hazır",
+		detail = input$welcome_client_ready
+	  )
+	}, ignoreInit = TRUE)
+
+	# SSO akışında başlangıçta current_user_id=0 gelebilir.
+	# Bu nedenle kullanıcı ID'sini her yükleme anında oturumdan çöz.
+	resolve_current_user_id <- function() {
+		resolve_effective_user_id(
+		  session = session,
+		  current_user_id = current_user_id
+		)
+	}
   
   startup_state <- new.env(parent = emptyenv())
   startup_state$initial_saved_chats_status <- "idle"
+  
+	mark_boot <- function(key, label = key, pct = NULL, detail = NULL) {
+	  if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
+		boot_ready$mark(key, label = label, pct = pct, detail = detail)
+	  }
+	}
 
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
 
-    if (is.na(effective_user_id) || effective_user_id <= 0) {
-      cat("[STARTUP] Geçerli kullanıcı kimliği yok, kayıtlı sohbet yüklemesi atlandı\n")
-      return(invisible(NULL))
-    }
+	if (is.na(effective_user_id) || effective_user_id <= 0) {
+	  cat("[STARTUP] Geçerli kullanıcı kimliği yok, kayıtlı sohbet yüklemesi atlandı\n")
+	  return(invisible(NULL))
+	}
+
+	mark_boot("auth_ready", "Kimlik doğrulandı")
 
 	if (!identical(startup_state$initial_saved_chats_status, "idle")) {
 	  cat(sprintf(
@@ -103,10 +121,21 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
 	  }
 	)
 
-    if (length(preview_chats) > 0) {
-      values$saved_chats <- preview_chats
-      refresh_welcome_if_needed(preview_chats)
-    }
+	if (length(preview_chats) > 0) {
+	  values$saved_chats <- preview_chats
+	  mark_boot(
+		"saved_chats_preview_ready",
+		"Son konuşmalar hazır",
+		detail = list(count = length(preview_chats))
+	  )
+	  refresh_welcome_if_needed(preview_chats)
+	} else {
+	  mark_boot(
+		"saved_chats_preview_ready",
+		"Son konuşma yok",
+		detail = list(count = 0L)
+	  )
+	}
 
 	session$userData$initial_saved_chats_promise <- promises::then(
 	  tracked_future_promise(
@@ -116,16 +145,22 @@ startupObserversInit <- function(input, session, values, render_welcome_screen, 
 		task_type = "startup_saved_chats",
 		session_token = session$token
 	  ),
-	  onFulfilled = function(chats) {
-		startup_state$initial_saved_chats_status <- "done"
+		onFulfilled = function(chats) {
+		  startup_state$initial_saved_chats_status <- "done"
 
-		chats <- chats %||% list()
-		values$saved_chats <- chats
+		  chats <- chats %||% list()
+		  values$saved_chats <- chats
 
-		# Tam liste geldiğinde karşılama ekranını güncelle.
-		refresh_welcome_if_needed(chats)
-		NULL
-	  },
+		  mark_boot(
+			"saved_chats_full_loaded",
+			"Tüm söyleşiler arka planda hazır",
+			detail = list(count = length(chats))
+		  )
+
+		  # Tam liste geldiğinde karşılama ekranını güncelle.
+		  refresh_welcome_if_needed(chats)
+		  NULL
+		},
 	  onRejected = function(err) {
 		startup_state$initial_saved_chats_status <- "idle"
 		warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))

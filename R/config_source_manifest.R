@@ -132,6 +132,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_llm_worker_tool_results.R",
   "R/helpers_llm_worker.R",
 
+  "R/module_chat_history_background.R",
   "R/module_chat_history.R",
   "R/module_saved_chats.R",
   "R/module_message_search.R",
@@ -165,6 +166,7 @@ source_manifest_after_future_paths <- c(
   "R/module_session_timeout.R",
   "R/module_performance.R",
   "R/module_user_identity.R",
+  "R/module_boot_readiness.R",
   "R/module_startup_screen.R",
   "R/module_app_loading.R",
   "R/module_quick_actions.R",

@@ -124,17 +124,52 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 
 	  session$userData$welcome_screen_attached <- TRUE
 
-	  # Animasyonları başlat (yalnızca gerçek full render'da çağrılmalı)
-	  shinyjs::delay(40, {
-		session$sendCustomMessage("initModernWelcome", list())
+		# Animasyonları başlat (yalnızca gerçek full render'da çağrılmalı)
+		shinyjs::delay(40, {
+		  session$sendCustomMessage("initModernWelcome", list())
 
-		# Kişiselleştirilmiş karşılama animasyonunu başlat
-		shinyjs::delay(80, {
-          session$sendCustomMessage("initPersonalGreeting", list(
-            first_name = resolve_user_first_name()
-          ))
+		  # Kişiselleştirilmiş karşılama animasyonunu başlat
+		  shinyjs::delay(80, {
+			session$sendCustomMessage("initPersonalGreeting", list(
+			  first_name = resolve_user_first_name()
+			))
+		  })
+
+		  # Açılış yükleme ekranı, welcome istemci bileşenleri gerçekten hazır
+		  # olmadan kapanmasın: sol video, dinamik karşılama ve Son Konuşmalar
+		  # bölümü DOM/oynatma açısından kontrol edilir.
+		  shinyjs::delay(220, {
+			shinyjs::runjs("
+			  (function() {
+				var attempts = 0;
+				var timer = setInterval(function() {
+				  attempts += 1;
+
+				  var videos = Array.prototype.slice.call(
+					document.querySelectorAll('.modern-welcome-video')
+				  );
+
+				  var bgPlaying = videos.some(function(v) {
+					return v.readyState >= 2 && !v.paused;
+				  });
+
+				  var greetingReady = !!document.getElementById('dynamic-greeting-text');
+				  var recentReady = !!document.querySelector('.modern-welcome-footer-section');
+
+				  if ((bgPlaying && greetingReady && recentReady) || attempts >= 30) {
+					clearInterval(timer);
+					Shiny.setInputValue('welcome_client_ready', {
+					  bg_playing: bgPlaying,
+					  greeting_ready: greetingReady,
+					  recent_ready: recentReady,
+					  timestamp: Date.now()
+					}, { priority: 'event' });
+				  }
+				}, 100);
+			  })();
+			")
+		  })
 		})
-	  })
 	}
  
   # Yeni sohbet başlat

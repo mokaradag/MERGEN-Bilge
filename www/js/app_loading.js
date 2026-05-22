@@ -17,12 +17,15 @@
   // Aşamalar: her anahtar gerçek bir boot kontrol noktasıdır. Yüzdeler
   // yalnızca artar; ilerleme asla geri gitmez.
   var STAGES = [
-    { key: "boot", label: "Başlatılıyor", pct: 14 },
-    { key: "connect", label: "Bağlantı kuruluyor", pct: 32 },
-    { key: "auth", label: "Kimlik doğrulanıyor", pct: 50 },
-    { key: "session", label: "Oturum hazırlanıyor", pct: 70 },
-    { key: "workspace", label: "Çalışma alanı hazırlanıyor", pct: 88 },
-    { key: "ready", label: "Hazır", pct: 96 }
+    { key: "boot", label: "Başlatılıyor", pct: 5 },
+    { key: "connect", label: "Bağlantı kuruluyor", pct: 18 },
+    { key: "auth_ready", label: "Kimlik doğrulandı", pct: 32 },
+    { key: "saved_chats_preview_ready", label: "Son konuşmalar hazırlanıyor", pct: 48 },
+    { key: "file_index_ready", label: "Dosyalar hazırlanıyor", pct: 62 },
+    { key: "character_media_ready", label: "Asistan medyası hazırlanıyor", pct: 76 },
+    { key: "welcome_shell_ready", label: "Ana Söyleşi hazırlanıyor", pct: 88 },
+    { key: "welcome_client_ready", label: "Görsel bileşenler başlatılıyor", pct: 96 },
+    { key: "ready", label: "Hazır", pct: 99 }
   ];
 
   var stageIndex = -1;
@@ -138,6 +141,27 @@
         statusText.classList.remove("alo-status-fade");
       }, 200);
     }
+  }
+  
+  function installBootReadinessHandler() {
+    if (!window.Shiny || !Shiny.addCustomMessageHandler) {
+	  window.setTimeout(installBootReadinessHandler, 50);
+	  return;
+    }
+
+    if (window.__mergenBootReadinessHandlerInstalled) return;
+    window.__mergenBootReadinessHandlerInstalled = true;
+
+    Shiny.addCustomMessageHandler("bootReadinessCheckpoint", function(msg) {
+	  if (!msg || !msg.key) return;
+
+	  setStage(msg.key);
+
+	  if (msg.ready === true) {
+	    setStage("ready");
+	    window.setTimeout(finish, 260);
+	  }
+    });
   }
 
   function cleanup() {
@@ -256,28 +280,29 @@
     holder.style.cssText =
       "position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;";
 
-    for (var i = 1; i <= 6; i++) {
-      (function (index) {
-        window.setTimeout(function () {
-          if (finished) return;
-          var video = document.createElement("video");
-          video.preload = "auto";
-          video.muted = true;
-          video.playsInline = true;
-          video.addEventListener("error", function () {
-            if (video.parentNode) video.parentNode.removeChild(video);
-          });
-          video.src = "videos/cinematic/video" + index + ".mp4";
-          holder.appendChild(video);
-        }, index * 240);
-      })(i);
-    }
+  for (var i = 1; i <= 6; i++) {
+    (function (index) {
+	  window.setTimeout(function () {
+	    if (finished) return;
+	    var video = document.createElement("video");
+	    video.preload = "auto";
+	    video.muted = true;
+	    video.playsInline = true;
+	    video.addEventListener("error", function () {
+		  if (video.parentNode) video.parentNode.removeChild(video);
+	    });
+	    video.src = "videos/cinematic/video" + index + ".mp4";
+	    holder.appendChild(video);
+	  }, index * 240);
+    })(i);
+  }
 
     overlay.appendChild(holder);
   }
 
   function boot() {
-    setStage("boot");
+   setStage("boot");
+    installBootReadinessHandler();
 
     if (window.MergenLoadingCodestream) {
       var stream = overlay.querySelector(".alo-codestream");

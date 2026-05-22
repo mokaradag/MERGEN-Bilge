@@ -164,8 +164,13 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     }
 	
     refresh_history_cache <- function(chats = latest_chats(), force = FALSE) {
-      chats <- chats %||% list()
-      chat_ids <- setdiff(names(chats), "current_chat")
+		chats <- chats %||% list()
+
+		all_chat_ids <- setdiff(names(chats), "current_chat")
+		initial_limit <- getOption("mergen.history_initial_limit", 120L)
+
+		chat_ids <- head(all_chat_ids, initial_limit)
+		remaining_chat_ids <- setdiff(all_chat_ids, chat_ids)
 
       if (isTRUE(force)) {
         messages_cache(list())
@@ -183,6 +188,12 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       }
 
       ensure_history_cache(chat_ids, chats)
+		historyBackgroundWarm(
+		  session = session,
+		  chat_ids = remaining_chat_ids,
+		  chats = chats,
+		  ensure_history_cache = ensure_history_cache
+		)
       invisible(NULL)
     }
 
