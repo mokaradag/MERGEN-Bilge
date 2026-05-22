@@ -70,6 +70,75 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       }
     }
 
+    history_chat_activity_day_num <- function(chat_info) {
+      stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
+
+      if (inherits(stamp_obj, "POSIXt")) {
+        return(as.numeric(as.Date(stamp_obj)))
+      }
+
+      if (inherits(stamp_obj, "Date")) {
+        return(as.numeric(stamp_obj))
+      }
+
+      stamp_chr <- as.character(stamp_obj %||% "")
+      if (!nzchar(stamp_chr) || is.na(stamp_chr)) {
+        return(NA_real_)
+      }
+
+      parsed_time <- suppressWarnings(as.POSIXct(
+        stamp_chr,
+        tz = Sys.timezone(),
+        tryFormats = c(
+          "%Y-%m-%d %H:%M:%S",
+          "%Y-%m-%d %H:%M",
+          "%Y-%m-%d",
+          "%d.%m.%Y - %H:%M",
+          "%d.%m.%Y %H:%M",
+          "%d/%m/%Y"
+        )
+      ))
+
+      if (!is.na(parsed_time)) {
+        return(as.numeric(as.Date(parsed_time)))
+      }
+
+      parsed_date <- suppressWarnings(as.Date(
+        stamp_chr,
+        tryFormats = c("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y")
+      ))
+
+      if (!is.na(parsed_date)) {
+        return(as.numeric(parsed_date))
+      }
+
+      NA_real_
+    }
+
+    history_chat_ids_for_date_range <- function(chats, date_range = NULL) {
+      all_chat_ids <- setdiff(names(chats %||% list()), "current_chat")
+
+      if (length(all_chat_ids) == 0L) {
+        return(character(0))
+      }
+
+      if (is.null(date_range) || length(date_range) != 2L ||
+          any(is.na(as.Date(date_range)))) {
+        return(all_chat_ids)
+      }
+
+      start_num <- as.numeric(as.Date(date_range[1]))
+      end_num <- as.numeric(as.Date(date_range[2]))
+
+      chat_days <- vapply(
+        all_chat_ids,
+        function(chat_id) history_chat_activity_day_num(chats[[chat_id]]),
+        numeric(1)
+      )
+
+      all_chat_ids[!is.na(chat_days) & chat_days >= start_num & chat_days <= end_num]
+    }
+
     build_history_rows <- function(chat_title, messages) {
       if (length(messages) == 0) {
         return(list())
@@ -163,14 +232,11 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       invisible(NULL)
     }
 	
-    refresh_history_cache <- function(chats = latest_chats(), force = FALSE) {
+    refresh_history_cache <- function(chats = latest_chats(), force = FALSE, date_range = NULL) {
 		chats <- chats %||% list()
 
-		all_chat_ids <- setdiff(names(chats), "current_chat")
-		initial_limit <- getOption("mergen.history_initial_limit", 120L)
-
-		chat_ids <- head(all_chat_ids, initial_limit)
-		remaining_chat_ids <- setdiff(all_chat_ids, chat_ids)
+        active_date_range <- date_range %||% shiny::isolate(input$date_range)
+		chat_ids <- history_chat_ids_for_date_range(chats, active_date_range)
 
       if (isTRUE(force)) {
         messages_cache(list())
@@ -188,23 +254,6 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       }
 
       ensure_history_cache(chat_ids, chats, invalidate = TRUE)
-
-      # Sayfa seçimi / Yenile düğmesi gibi force=TRUE akışlarda ikinci
-      # DataTable render'ı üretme. Bu durumda ilk görünür pencere korunur.
-      # Arka plan tam yükleme yalnızca force=FALSE iç güncellemelerde çalışır.
-      if (!isTRUE(force) && length(remaining_chat_ids) > 0L) {
-        historyBackgroundWarm(
-          session = session,
-          chat_ids = remaining_chat_ids,
-          chats = chats,
-          ensure_history_cache = function(batch_ids, batch_chats) {
-            ensure_history_cache(batch_ids, batch_chats, invalidate = FALSE)
-          },
-          on_complete = function() {
-            trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
-          }
-        )
-      }
 
       invisible(NULL)
     }
@@ -224,9 +273,22 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       # Geçmiş sekmesi henüz açılmadıysa başlangıçta ağır ön yükleme yapma.
       # Kullanıcı geçmişi ilk kez açtığında veya elle yenilediğinde doldurulacak.
       if (length(messages_cache()) > 0) {
-        refresh_history_cache(chats, force = FALSE)
+        refresh_history_cache(
+          chats = chats,
+          force = FALSE,
+          date_range = shiny::isolate(input$date_range)
+        )
       }
     }, ignoreNULL = FALSE, priority = 1)
+
+    observeEvent(input$date_range, {
+      req(input$date_range)
+      refresh_history_cache(
+        chats = latest_chats(),
+        force = TRUE,
+        date_range = input$date_range
+      )
+    }, ignoreInit = TRUE)
 	
     filtered_history <- reactive({
       req(all_messages())
