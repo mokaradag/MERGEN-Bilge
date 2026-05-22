@@ -86,6 +86,18 @@
   invisible(TRUE)
 }
 
+.server_core_call_with_optional_boot_ready <- function(fn, args, boot_ready) {
+  fn_formals <- names(formals(fn))
+  accepts_dots <- "..." %in% fn_formals
+
+  if (!is.null(boot_ready) &&
+      ("boot_ready" %in% fn_formals || accepts_dots)) {
+    args$boot_ready <- boot_ready
+  }
+
+  do.call(fn, args)
+}
+
 serverBuildCoreInteractionBundle <- function(settings_data,
                                              api_config,
                                              media_modules,
@@ -284,15 +296,18 @@ serverBindCoreInteractionRuntime <- function(input,
     activity_inputs = c("user_input", "send_stop_btn", "send_prompt_from_js")
   )
 
-	file_manager_runtime <- file_manager_runtime_fn(
-	  runtime_ctx = runtime_ctx,
-	  new_file_trigger = reactive_fn({ state$file_to_add() }),
-	  session_files_reactive = state$session_files,
-	  mcp_enabled_reactive = reactive_fn({
-		isTRUE(settings_data$enable_mcp_tools)
-	  }),
-	  settings_data = settings_data,
-	  user_id_provider = identity$current_user_id_provider,
+	file_manager_runtime <- .server_core_call_with_optional_boot_ready(
+	  fn = file_manager_runtime_fn,
+	  args = list(
+		runtime_ctx = runtime_ctx,
+		new_file_trigger = reactive_fn({ state$file_to_add() }),
+		session_files_reactive = state$session_files,
+		mcp_enabled_reactive = reactive_fn({
+		  isTRUE(settings_data$enable_mcp_tools)
+		}),
+		settings_data = settings_data,
+		user_id_provider = identity$current_user_id_provider
+	  ),
 	  boot_ready = boot_ready
 	)
 
@@ -323,20 +338,26 @@ serverBindCoreInteractionRuntime <- function(input,
     render_welcome_screen
   )
 
-	startup_observers_init_fn(
-	  input = input,
-	  session = session,
-	  values = values,
-	  render_welcome_screen = render_welcome_screen,
-	  current_user_id = identity$current_user_id_provider,
-	  sso_state = runtime_ctx$sso_state,
+	.server_core_call_with_optional_boot_ready(
+	  fn = startup_observers_init_fn,
+	  args = list(
+		input = input,
+		session = session,
+		values = values,
+		render_welcome_screen = render_welcome_screen,
+		current_user_id = identity$current_user_id_provider,
+		sso_state = runtime_ctx$sso_state
+	  ),
 	  boot_ready = boot_ready
 	)
 
-	startup_screen_observers_init_fn(
-	  input,
-	  session,
-	  settings_data,
+	.server_core_call_with_optional_boot_ready(
+	  fn = startup_screen_observers_init_fn,
+	  args = list(
+		input = input,
+		session = session,
+		settings_data = settings_data
+	  ),
 	  boot_ready = boot_ready
 	)
 

@@ -57,6 +57,18 @@ source(
 )
 
 source(
+  file.path(repo_root_e2e_sso, "R", "helpers_server_runtime_named_contracts.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+source(
+  file.path(repo_root_e2e_sso, "R", "server_runtime_context.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+source(
   file.path(repo_root_e2e_sso, "R", "server_runtime_context.R"),
   encoding = "UTF-8",
   local = globalenv()

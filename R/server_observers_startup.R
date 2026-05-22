@@ -14,8 +14,14 @@
 startupObserversInit <- function(input, session, values, render_welcome_screen,
                                  current_user_id, sso_state = NULL,
                                  boot_ready = NULL) {
-  
-  # Karşılama ekranını başlat (widget bağımlılıkları ui.R'de statik olarak tanımlı)
+
+  mark_boot <- function(key, label = key, pct = NULL, detail = NULL) {
+    if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
+      boot_ready$mark(key, label = label, pct = pct, detail = detail)
+    }
+  }
+
+  # Karşılama ekranını başlat...
   observeEvent(TRUE, {
     if (isTRUE(values$show_welcome)) {
       render_welcome_screen(values$saved_chats)
@@ -73,12 +79,6 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
   startup_state <- new.env(parent = emptyenv())
   startup_state$initial_saved_chats_status <- "idle"
   
-	mark_boot <- function(key, label = key, pct = NULL, detail = NULL) {
-	  if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
-		boot_ready$mark(key, label = label, pct = pct, detail = detail)
-	  }
-	}
-
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
 
