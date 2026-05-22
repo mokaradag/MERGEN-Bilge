@@ -101,9 +101,9 @@ claude_code_model_tiers <- list(
 claude_code_varsayilan_etiket <- "Varsayılan"
 
 # ------------------------------------------------------------------------------
-# DÜŞÜNME MESAJLARI (Türkçe, eğlenceli, karakter temalı)
-# Her karakter için ayrı düşünme mesajları tanımlanır.
-# 8-bit tema ile uyumlu kısa ve esprili mesajlar.
+# DÜŞÜNME MESAJLARI (Türkçe, persona temalı)
+# Her persona için ayrı düşünme mesajları tanımlanır.
+# 8-bit tema ile uyumlu kısa ve canlı mesajlar.
 # ------------------------------------------------------------------------------
 
 claude_code_thinking_messages <- list(
@@ -131,64 +131,64 @@ claude_code_thinking_messages <- list(
     "Yığın izini takip ediyor..."
   ),
 
-  # Mergen - Keskin ve pratik
-  mergen = c(
-    "Mergen oku gerdi, hedefe nişanlanıyor...",
-    "Kodun özünü süzdürüyorum...",
-    "Okun ucu çözüme yöneldi...",
-    "Bilgi okunu bileyliyor...",
-    "Hedef kilitlendi, analiz ediliyor...",
-    "Sadağından yeni bir ok çekiyor...",
-    "Rüzgarı hesaplıyor, nişanı ayarlıyor...",
-    "Ok yaydan fırlamak üzere..."
+  # Emre - Ana Asistan (dengeli ve pratik)
+  emre = c(
+    "Önce konuyu berraklaştırıyorum...",
+    "Net bir özet hazırlıyorum...",
+    "Uygulanabilir adımları sıralıyorum...",
+    "Dengeli bir plan kuruyorum...",
+    "Çözümü sadeleştiriyorum...",
+    "Pratik yolu seçiyorum...",
+    "Önceliği belirliyorum...",
+    "Sonucu derleyip topluyorum..."
   ),
 
-  # Ülgen - Yapıcı ve ilham verici
-  ulgen = c(
-    "Ülgen gökyüzünden bakıyor...",
-    "Işık yolunu araştırıyor...",
-    "Çözüm alternatiflerini tartıyorum...",
-    "Göğün ışığında kod inceleniyor...",
-    "Yaratıcı seçenekler üretiyor...",
-    "Bulutların arasından süzülüyor...",
-    "Yıldızlardan ilham alıyor...",
-    "Gök kubbeyi tarayıp çözüm arıyor..."
+  # Selin - Yapıcı Uzman (çözüm odaklı)
+  selin = c(
+    "Sorunu doğru çerçeveye oturtuyorum...",
+    "Seçenekleri tek tek çıkarıyorum...",
+    "Artıları ve eksileri tartıyorum...",
+    "En pratik çözümü arıyorum...",
+    "Yapıcı bir yol öneriyorum...",
+    "Alternatifleri kıyaslıyorum...",
+    "Uygulama adımlarını netleştiriyorum...",
+    "Çözüm taslağını hazırlıyorum..."
   ),
 
-  # Kayra - Stratejik ve vizyoner
-  kayra = c(
-    "Kayra Han büyük resmi kuruyor...",
-    "Strateji haritası çiziliyor...",
-    "Evrenin düzeni analiz ediliyor...",
-    "Fazlı plan oluşturuluyor...",
-    "Kilometre taşları belirleniyor...",
-    "Hamleleri önceden hesaplıyor...",
-    "Satranç tahtasını kuruyor...",
-    "Stratejik derinliğe dalıyor..."
+  # Deniz - Stratejist (uzun vadeli ve yapısal)
+  deniz = c(
+    "Büyük resmi kuruyorum...",
+    "Hedefleri ve ilkeleri hizalıyorum...",
+    "Karar matrisini çiziyorum...",
+    "Yol haritasını fazlara bölüyorum...",
+    "Riskleri ve seçenekleri tartıyorum...",
+    "Kilometre taşlarını belirliyorum...",
+    "Uzun vadeli planı oturtuyorum...",
+    "Önceliklendirme yapıyorum..."
   ),
 
-  # Erlik - Eleştirici ve keskin
-  erlik = c(
-    "Erlik varsayımları avlıyor...",
-    "Kör noktalar kontrol ediliyor...",
+  # Can - Eleştirel Eş (risk ve varsayım odaklı)
+  can = c(
+    "Varsayımları görünür kılıyorum...",
     "Riskleri tarıyorum...",
-    "Zayıf halkaları güçlendiriyorum...",
-    "Perde aralandırılıyor...",
-    "Gizli hataları ortaya çıkarıyor...",
-    "Kod derinliklerini kazıyor...",
-    "Her taşın altına bakıyor..."
+    "Zayıf noktaları kontrol ediyorum...",
+    "Karşı örnekleri düşünüyorum...",
+    "Eksik verileri işaretliyorum...",
+    "Doğrulama listesi hazırlıyorum...",
+    "Kararı sağlamlaştırıyorum...",
+    "Kanıtları gözden geçiriyorum..."
   ),
 
-  # Umay Ana - Şefkatli ve öğretici
-  umay = c(
-    "Umay Ana şefkatle bakıyor...",
-    "Adımları küçük lokmalara bölüyorum...",
-    "Yeni başlayanlar için ipuçları hazırlıyorum...",
-    "Nazikçe yol gösteriyorum...",
-    "Bereket tohumları ekiliyor...",
-    "Sabırla her adımı açıklıyor...",
-    "Bilgelik ışığını paylaşıyor...",
-    "Koruyucu kanatlarını açıyor..."
+  # İpek - Rehber (sade ve öğretici)
+  ipek = c(
+    "Konuyu küçük adımlara bölüyorum...",
+    "Sade bir anlatım hazırlıyorum...",
+    "Örnekleri derliyorum...",
+    "Sık yapılan hataları not ediyorum...",
+    "Adım adım rehberi kuruyorum...",
+    "Anlaşılır bir dil seçiyorum...",
+    "Yeni başlayanlar için sadeleştiriyorum...",
+    "Yol gösterici ipuçları ekliyorum..."
   )
 )
 

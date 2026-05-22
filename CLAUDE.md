@@ -520,6 +520,28 @@ Preserve Turkish text integrity in user-facing strings, docs, comments, DB text,
 ### 2) Comments added to code must be in Turkish
 If you add comments in code, write them in Turkish.
 
+### 2A) Character / persona system contract
+
+The application uses a modern, corporate-safe, fictional Turkish AI persona system. It must NOT use mythological, religious, Ottoman, or pre-Islamic framing.
+
+The five canonical personas and their canonical lowercase ASCII ids are:
+
+- `emre` — Emre Onat — Ana Asistan (default, balanced assistant)
+- `selin` — Selin Sezgin — Yapıcı Uzman (constructive expert)
+- `deniz` — Deniz Özgün — Stratejist (strategist)
+- `can` — Can Yalın — Eleştirel Eş (critical partner / verifier)
+- `ipek` — İpek Duru — Rehber (guide / teacher)
+
+Rules:
+
+- The single source of truth for persona identity is `R/config_characters.R`. New modules must not write their own character-name or folder switch; use `get_characters_data()`, `get_character_record()`, `get_character_asset_paths()`, and `normalize_character_id()`.
+- The default selected persona is `emre`. No startup, settings, music, video, or game code may default to `mergen` anymore.
+- Old mythological character ids (`mergen`, `ulgen`, `ülgen`, `kayra`, `erlik`, `umay`, `umay_ana`, `umay ana`) are supported ONLY at the `normalize_character_id()` boundary, so old saved user preferences migrate cleanly: `mergen→emre`, `ulgen→selin`, `kayra→deniz`, `erlik→can`, `umay/umay_ana→ipek`.
+- "MERGEN Bilge" is the product/brand name and must be preserved. `MERGEN` is allowed only as the product name; it is not a selectable persona.
+- Do not rename technical keys such as `mergen_settings`, `mergen_uploads`, `MergenAudioLifecycle`, the `mergen-skip-intro` class, log prefixes, or product-level helper namespaces.
+- Persona asset folders use the canonical ASCII ids: `www/characters/avatar/<id>/`, `www/characters/resim/<id>/`, `www/characters/video/<id>/{intro,loop,select}/`, `www/music/Karakter/<id>/`, `www/assets/bilge_yolac/worlds/<id>/`, and `www/assets/bilge_yolac/projectiles/<id>/`.
+- The Bilge Yolaç game layer must use the new persona ids, modern ability/projectile types (`cozum_dalgasi`, `sinyal_taramasi`, `rota_projesi`, `dogrulama_isini`, `rehber_halkasi`), and modern world packages; it must not reintroduce mythological labels.
+
 ### 3) Prefer surgical changes
 Do not perform wide refactors unless the user explicitly asks for them.
 
@@ -1103,7 +1125,7 @@ Current contract:
 - Keep the background music lifecycle single-source. `MusicManager` should own one active audio element and must not allow overlapping main-theme, character-theme, TTS, STT, or intro music paths.
 - Keep the startup music sequence deterministic: intro music belongs to `SpaceIntroMusic`; after the deep-space intro is dismissed, `MusicManager` starts the main theme once and then moves to randomized character music.
 - Do not let duplicate `toggleMusic(TRUE)` calls skip the main theme. If a theme playlist request is pending, another same-state enabled toggle must not issue an early character playlist request or invalidate the pending theme request.
-- Character music folders under `www/music/Karakter/` use stable lowercase character ids: `mergen`, `ulgen`, `kayra`, `erlik`, and `umay`. Do not rename these folders to visible labels such as `Ülgen` or `Umay Ana`.
+- Character music folders under `www/music/Karakter/` use stable lowercase persona ids: `emre`, `selin`, `deniz`, `can`, and `ipek`. Do not rename these folders to visible labels such as `Selin Sezgin`.
 - Keep welcome startup dependencies ordered so `js/shiny_message_handlers.js` owns the boot handler and `js/welcome_video_player.js`, `js/welcome_neural_modern.js`, `js/welcome_greeting.js`, and `js/welcome_greeting_personal.js` are available through the retry-based `initModernWelcome` path.
 - Keep `js/encoding_utils.js` before `js/shiny_message_handlers.js` and before `js/claude_code_streaming.js`; both general Shiny messages and Bilge Yolaç streaming depend on the shared client-side encoding fallback.
 - Keep deferred welcome handlers resilient to first-connect timing. `www/js/welcome_neural_modern.js` must register `updateNeuralColor` idempotently even when the script loads after the initial `shiny:connected` event; do not move this handler behind a connect-only registration that can be missed until reconnect.
@@ -1158,9 +1180,9 @@ Background music is a race-sensitive and encoding-sensitive boundary. Keep the c
 - Same-state duplicate `toggleMusic(TRUE)` calls must be idempotent while a theme playlist request is pending.
 - Playlist responses must remain request-id guarded so stale responses cannot overwrite a newer music state.
 - Audio load errors must remain bounded. Do not reintroduce a tight error -> next track -> error loop that can freeze the browser tab.
-- Character music URL generation must encode each path segment as UTF-8. On Windows/Turkish locale, `Ülgen` filenames must produce `%C3%9C`, not native-byte `%DC`.
+- Character music URL generation must encode each path segment as UTF-8. On Windows/Turkish locale, Turkish characters in music filenames must produce UTF-8 percent-encoding (for example `Ü` -> `%C3%9C`), not native-byte `%DC`.
 - Do not call `URLencode()` on a full native-encoded relative path for music files. Use the existing UTF-8 music URL helper path in `R/server_music_handlers.R`.
-- Keep user-visible Turkish labels separate from stable character ids. The character id `ulgen` may correspond to visible text `Ülgen`, but the filesystem folder remains `www/music/Karakter/ulgen`.
+- Keep user-visible Turkish labels separate from stable persona ids. Persona ids are ASCII (`emre`, `selin`, `deniz`, `can`, `ipek`) and the filesystem folders use the same ASCII ids, for example `www/music/Karakter/emre`.
 
 Protected by:
 
@@ -3806,42 +3828,52 @@ Treat quick-action logic as behavioral infrastructure.
 
 ---
 
-## 2) Character System
+## 2) Character / Persona System
 
-Characters are defined in `R/config_characters.R`.
+Personas are defined in `R/config_characters.R`. The system uses modern,
+corporate-safe, fictional Turkish AI personas representing different working
+styles. There is no mythological framing.
 
-Current roster:
+Current roster (id — full name — role):
 
-- `Mergen`
-- `Ülgen`
-- `Kayra`
-- `Erlik`
-- `Umay Ana`
+- `emre` — Emre Onat — Ana Asistan (default, balanced assistant)
+- `selin` — Selin Sezgin — Yapıcı Uzman (constructive expert)
+- `deniz` — Deniz Özgün — Stratejist (strategist)
+- `can` — Can Yalın — Eleştirel Eş (critical partner / verifier)
+- `ipek` — İpek Duru — Rehber (guide / teacher)
 
-Each character includes:
+Each persona includes:
 
-- id
-- display labels
-- avatar path
-- image path
-- accent colors
-- lore
-- style description
-- profile metrics
-- signature moves
-- system prompt
-- TTS voice
+- id, label, full_name, display_name, subtitle
+- avatar path, image path
+- accent colors (accent / accent_hover / accent_active)
+- lore (`lore_tr`)
+- style description (`style_tr`)
+- profile metrics, signature moves
+- system prompt (`system_prompt_en`)
+- parameters, TTS voice
+- video_key, music_key
 
 ### Default
-`Mergen` is the default style.
+`emre` (Emre Onat) is the default persona.
+
+### Helpers (single source of truth)
+Use `get_characters_data()`, `get_character_record()`,
+`get_character_asset_paths()`, and `normalize_character_id()`. New modules must
+not write their own character-name or folder switch.
+
+### Migration
+Old mythological ids are accepted only at the `normalize_character_id()`
+boundary: `mergen→emre`, `ulgen→selin`, `kayra→deniz`, `erlik→can`,
+`umay/umay_ana→ipek`. Old saved user preferences migrate automatically.
 
 ### Practical note
-Many visual and behavioral systems depend on the selected character:
+Many visual and behavioral systems depend on the selected persona:
 
 - welcome visuals,
 - accent colors,
 - AI Expert tone,
-- character videos,
+- persona videos,
 - Bilge Yolaç thinking flavor,
 - TTS voice defaults.
 

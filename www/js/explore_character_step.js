@@ -7,8 +7,8 @@
 (function() {
   'use strict';
 
-  // Seçili karakter ID
-  var _selectedCharId = 'mergen';
+  // Seçili persona kimliği (varsayılan: emre)
+  var _selectedCharId = 'emre';
 
   // Karakter verileri (R tarafından doldurulacak)
   var _charactersData = null;

@@ -4,36 +4,22 @@
 #           Karakter değişimlerinde ilgili video dosyalarını tarar ve 
 #           JavaScript tarafındaki CinematicVideoManager'a veri iletir.
 
-#' Karakter Video Verilerini Getir
+#' Persona Video Verilerini Getir
 #'
-#' @param char_id Karakterin benzersiz kimliği (mergen, ulgen, vb.)
-#' @return Karakterin görsel yollarını ve video listelerini (intro, loop, select) içeren liste
+#' @param char_id Persona kimliği (emre, selin, deniz, can, ipek). Eski
+#'        kimlikler de normalize_character_id() ile güvenle çözülür.
+#' @return Personanın görsel yollarını ve video listelerini (intro, loop, select) içeren liste
 get_character_video_data <- function(char_id) {
-  # Karakter kimliğini standart formata getir
-  char_key <- tolower(trimws(char_id))
-  if (char_key == "umay ana") char_key <- "umay"
-  
+  # Persona kimliğini yeni biçime normalleştir (eski kimlikler de çözülür)
+  char_key <- normalize_character_id(char_id)
+
   cat(sprintf("[VIDEO R] get_character_video_data çağrıldı: '%s' -> '%s'\n", char_id, char_key))
-  
-  # Karakterlerin orijinal statik resim dosya eşleştirmeleri
-  # (config_characters.R ile tutarlı: alt çizgi kullanımı)
-  image_map <- list(
-    "mergen" = "Mergen_resim_original.png",
-    "ulgen" = "Ulgen_resim_original.png",
-    "kayra" = "Kayra_resim_original.png",
-    "erlik" = "Erlik_resim_original.png",
-    "umay" = "Umay_Ana_resim_original.png"
-  )
-  
-  # Resim yolunu oluştur (URL-safe: boşluk ve özel karakterler kodlanır)
-  img_filename <- image_map[[char_key]]
-  if (is.null(img_filename)) {
-    # Bulunamazsa boş bırak veya varsayılan mantığa dön
-    image_path <- ""
-  } else {
-    image_path <- paste0("characters/resim/", utils::URLencode(img_filename))
-  }
-  
+
+  # Statik görsel yolu config_characters.R'den gelir; modül kendi dosya adı
+  # switch'ini yazmaz (tek kaynak: get_character_record).
+  char_record <- get_character_record(char_key)
+  image_path <- char_record$image %||% ""
+
   # Belirli bir tipteki (intro, loop, select) video dosyalarını dizinden tarayan iç fonksiyon
 	scan_videos <- function(type) {
 	  # Fiziksel dosya yolunu belirle

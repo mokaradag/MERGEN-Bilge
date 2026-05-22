@@ -194,7 +194,7 @@ createStartupScreenUI <- function() {
                     tags$i(class = "fas fa-bell-slash")
                   ),
                   tags$div(class = "cinematic-feature-icon off", `data-feature` = "character",
-                    `data-tooltip` = "Karakter Sistemi: Kapalı",
+                    `data-tooltip` = "Asistan Karakteri: Kapalı",
                     tags$i(class = "fas fa-user-slash")
                   )
                 ),
@@ -240,7 +240,7 @@ createStartupScreenUI <- function() {
                     tags$i(class = "fas fa-bell")
                   ),
                   tags$div(class = "cinematic-feature-icon off", `data-feature` = "character",
-                    `data-tooltip` = "Karakter Sistemi: Kapalı",
+                    `data-tooltip` = "Asistan Karakteri: Kapalı",
                     tags$i(class = "fas fa-user-slash")
                   )
                 ),
@@ -286,7 +286,7 @@ createStartupScreenUI <- function() {
                     tags$i(class = "fas fa-bell")
                   ),
                   tags$div(class = "cinematic-feature-icon on", `data-feature` = "character",
-                    `data-tooltip` = "Karakter Sistemi: Aktif",
+                    `data-tooltip` = "Asistan Karakteri: Aktif",
                     tags$i(class = "fas fa-user-astronaut")
                   )
                 ),
@@ -316,7 +316,7 @@ createStartupScreenUI <- function() {
               class = "cinematic-char-step-header",
               tags$div(
                 tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
-                tags$p(class = "cinematic-char-step-subtitle", "HER KARAKTERİN BENZERSİZ BİR KİŞİLİĞİ VARDIR")
+                tags$p(class = "cinematic-char-step-subtitle", "HER ASİSTANIN FARKLI BİR ÇALIŞMA TARZI VARDIR")
               ),
               # Karakter butonları - başlık satırının sağ tarafında
               tags$div(
@@ -349,16 +349,16 @@ createStartupScreenUI <- function() {
                   ),
                   tags$img(
                     id = "cinematic-char-preview-img",
-                    src = "characters/resim/Mergen_resim_original.png",
-                    alt = "Karakter"
+                    src = "characters/resim/emre/portrait.png",
+                    alt = "Asistan"
                   )
                 )
               ),
               # Sağ: Bilgi (isim ve alt başlık üst kısımda, hikaye yazma efektiyle)
               tags$div(
                 class = "cinematic-char-info",
-                tags$h3(class = "cinematic-char-display-name", "MERGEN"),
-                tags$p(class = "cinematic-char-subtitle-text", "Standart"),
+                tags$h3(class = "cinematic-char-display-name", "EMRE ONAT"),
+                tags$p(class = "cinematic-char-subtitle-text", "Ana Asistan"),
                 tags$div(class = "cinematic-char-lore"),
                 tags$div(class = "cinematic-char-metrics"),
                 tags$div(class = "cinematic-char-signatures")
@@ -446,12 +446,9 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 	  # Ayarlar sayfasındaki onay kutusunu da senkronize et
 	  updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
 
-	  # Giriş atlandığında varsayılan karakterin rengini uygula
-	  char_id <- settings_data$selected_character %||% "mergen"
-	  chars_data <- get_characters_data()
-	  char <- if (!is.null(chars_data)) {
-		Find(function(x) x$id == char_id, chars_data$styles)
-	  } else NULL
+	  # Giriş atlandığında varsayılan personanın rengini uygula
+	  char_id <- normalize_character_id(settings_data$selected_character)
+	  char <- get_character_record(char_id)
 	  if (!is.null(char)) {
 		session$sendCustomMessage("updateNeuralColor", list(accent = char$accent))
 		session$sendCustomMessage("updateCharacterButtons", list(
@@ -560,24 +557,22 @@ startupScreenObserversInit <- function(input, session, settings_data) {
 	  # Ayarlar sayfasındaki mod kartlarını güncelle
 	  session$sendCustomMessage("updateSettingsMode", list(mode = mode))
 
-	  # Karakter seçimi: Bütünleşik modda 2. adımdan gelir,
-	  # diğer modlarda varsayılan "mergen" kullanılır
+	  # Persona seçimi: Bütünleşik modda 2. adımdan gelir,
+	  # diğer modlarda mevcut/varsayılan persona (emre) kullanılır
 	  char_id <- mode_data$character
 	  if (is.null(char_id) || !nzchar(char_id)) {
-		char_id <- settings_data$selected_character %||% "mergen"
+		char_id <- settings_data$selected_character
 	  }
-	  cat(sprintf("[STARTUP] Karakter belirlendi: %s (mod: %s)\n", char_id, mode))
+	  char_id <- normalize_character_id(char_id)
+	  cat(sprintf("[STARTUP] Persona belirlendi: %s (mod: %s)\n", char_id, mode))
 
 	  # Karakter ayarlarını güncelle
 	  settings_data$selected_character <- char_id
 
 	  {
 
-		# Karakter verilerini al
-		chars_data <- get_characters_data()
-		char <- if (!is.null(chars_data)) {
-		  Find(function(x) x$id == char_id, chars_data$styles)
-		} else NULL
+		# Persona verilerini al (kimlik zaten normalleştirildi)
+		char <- get_character_record(char_id)
 
 		if (!is.null(char)) {
 		  # Yapılandırma sayfasındaki karakter butonlarını güncelle
@@ -696,7 +691,7 @@ apply_experience_mode <- function(session, settings_data, mode, sync_music = TRU
 	if (isTRUE(sync_music)) {
 	  session$sendCustomMessage("toggleMusic", list(
 		enabled = isTRUE(settings_data$enable_background_music),
-		character = settings_data$selected_character %||% "mergen"
+		character = normalize_character_id(settings_data$selected_character)
 	  ))
 	}
 

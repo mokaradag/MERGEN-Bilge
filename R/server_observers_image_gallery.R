@@ -109,7 +109,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     values$current_chat_id <- chat_id_int
     values$show_welcome <- FALSE
 
-    selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+    selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
     chars_data <- get_characters_data()
     character_data <- if (!is.null(chars_data)) {
       Find(function(x) x$id == selected_char_id, chars_data$styles)
@@ -276,7 +276,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
 
           # Aktif söyleşinin DOM'unu yeniden oluştur
           shinyjs::runjs("$('#chat_content_container').empty();")
-          selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+          selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
           chars_data <- get_characters_data()
           character_data <- if (!is.null(chars_data)) {
             Find(function(x) x$id == selected_char_id, chars_data$styles)

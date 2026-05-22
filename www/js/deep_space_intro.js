@@ -39,13 +39,13 @@ window.DeepSpaceIntro = (function() {
   var MOON_ORBIT_SPEED = EARTH_DAY_SPEED * 0.15;
   var CLOUD_SPEED_OFFSET = 1.02;
 
-  // Karakter renkleri - config_characters.R ile eşleştirilmiş
+  // Persona renkleri - config_characters.R ile eşleştirilmiş
   var CHARACTER_COLORS = {
-    mergen: 0x7C4DFF,  // Mor
-    ulgen:  0x2F6DF6,  // Mavi
-    kayra:  0x12A97B,  // Turkuaz/Yeşil
-    erlik:  0xB66A2C,  // Turuncu/Kahve
-    umay:   0xE98686   // Pembe/Kırmızı
+    emre:  0x7C4DFF,  // Mor-mavi
+    selin: 0x2F6DF6,  // Mavi
+    deniz: 0x12A97B,  // Yeşil-turkuaz
+    can:   0xB66A2C,  // Amber/bakır
+    ipek:  0xE98686   // Mercan/pembe
   };
 
   // Yardımcı: Kepler hızı

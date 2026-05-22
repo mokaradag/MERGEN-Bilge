@@ -267,9 +267,8 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 
       if (!tts_available) return(invisible(FALSE))
 
-      char_id <- selected_char_id %||% isolate(settings_data$selected_character) %||% "mergen"
-      chars_data <- get_characters_data()
-      char_info <- Find(function(x) x$id == char_id, chars_data$styles)
+      char_id <- normalize_character_id(selected_char_id %||% isolate(settings_data$selected_character))
+      char_info <- get_character_record(char_id)
 
       voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
         char_info$tts_voice
@@ -343,12 +342,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 	  is_speaking(TRUE)
 	  last_speak_time(Sys.time())
 
-	  # Karakter bilgilerini al
-	  char_id <- isolate(settings_data$selected_character) %||% "mergen"
-	  chars_data <- get_characters_data()
-	  char_info <- Find(function(x) x$id == char_id, chars_data$styles)
+	  # Persona bilgilerini al (eski kimlikler normalleştirilir)
+	  char_id <- normalize_character_id(isolate(settings_data$selected_character))
+	  char_info <- get_character_record(char_id)
 
-	  avatar_src <- if (!is.null(char_info)) char_info$avatar else "img/mergen_avatar.png"
+	  avatar_src <- if (!is.null(char_info)) char_info$avatar else "characters/avatar/emre/avatar.png"
 	  accent_color <- if (!is.null(char_info)) char_info$accent else "#7C4DFF"
 
 	  # Yazı tipi boyutunu ayarlardan al

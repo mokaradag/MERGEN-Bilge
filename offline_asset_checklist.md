@@ -46,8 +46,8 @@ Aşağıdaki şablonu kullanın:
 
 - `plateau_far_01.png`
 - `temple_frontier_01.png`
-- `mergen_boss_strip.png`
-- `precision_arrow_strip.png`
+- `emre_boss_strip.png`
+- `cozum_dalgasi_strip.png`
 - `glitch_bloom_strip.png`
 
 ---
@@ -57,16 +57,16 @@ Aşağıdaki şablonu kullanın:
 ### Zorunlu
 | Kategori | Ne indirilecek | Arama terimi | Lisans | Format | Yerel klasör | Dosya adı |
 |---|---|---|---|---|---|---|
-| Mergen uzak arka plan | plato / steppe silüeti | `CC0 pixel art plateau background 32x32` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/mergen/backgrounds/` | `plateau_far_01.png` |
-| Mergen ikinci silüet | kaya sırtı / sınır hattı | `CC0 pixel art rocky ridge background` | CC0 / PD / CC-BY | PNG | aynı | `ridge_far_01.png` |
-| Ülgen gök silüeti | ışıklı kuleler / semavi kale | `CC0 pixel art celestial tower skyline` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/ulgen/backgrounds/` | `celestial_spires_01.png` |
-| Ülgen ikinci arka katman | yüksek düzen / fortress skyline | `CC0 pixel art fantasy fortress skyline` | CC0 / PD / CC-BY | PNG | aynı | `fortress_skyline_01.png` |
-| Kayra orman tepesi | canopy / orman silüeti | `CC0 pixel art forest canopy background` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/kayra/backgrounds/` | `forest_canopy_01.png` |
-| Kayra ikinci arka katman | runik tepeler | `CC0 pixel art mystic hills background` | CC0 / PD / CC-BY | PNG | aynı | `runic_hills_01.png` |
-| Erlik arka plan | abyss / underworld spires | `CC0 pixel art underworld background` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/erlik/backgrounds/` | `abyss_spires_01.png` |
-| Erlik ikinci arka katman | corrupted depth / dark ridge | `CC0 pixel art corrupted cave skyline` | CC0 / PD / CC-BY | PNG | aynı | `corrupted_depth_01.png` |
-| Umay arka plan | halo / sanctuary ışık silüeti | `CC0 pixel art sanctuary background` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/umay/backgrounds/` | `sanctuary_halo_01.png` |
-| Umay ikinci arka katman | healing garden silhouette | `CC0 pixel art healing garden background` | CC0 / PD / CC-BY | PNG | aynı | `healing_garden_01.png` |
+| Emre (Çözüm Vadisi) uzak arka plan | sakin ova / plato silüeti | `CC0 pixel art plateau background 32x32` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/emre/backgrounds/` | `plateau_far_01.png` |
+| Emre ikinci silüet | düşük tepe sırtı | `CC0 pixel art rocky ridge background` | CC0 / PD / CC-BY | PNG | aynı | `ridge_far_01.png` |
+| Selin (Sinyal Sahası) gök silüeti | sinyal kuleleri / aydınlık hat | `CC0 pixel art sci-fi tower skyline` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/selin/backgrounds/` | `celestial_spires_01.png` |
+| Selin ikinci arka katman | düzenli yapı silüeti | `CC0 pixel art tech skyline background` | CC0 / PD / CC-BY | PNG | aynı | `fortress_skyline_01.png` |
+| Deniz (Strateji Platosu) tepe silüeti | geniş plato / katmanlı arazi | `CC0 pixel art plateau layers background` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/deniz/backgrounds/` | `forest_canopy_01.png` |
+| Deniz ikinci arka katman | tepe katmanları | `CC0 pixel art layered hills background` | CC0 / PD / CC-BY | PNG | aynı | `runic_hills_01.png` |
+| Can (Doğrulama Hattı) arka plan | denetim istasyonu silüeti | `CC0 pixel art industrial background` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/can/backgrounds/` | `abyss_spires_01.png` |
+| Can ikinci arka katman | kontrol kuleleri sırtı | `CC0 pixel art factory skyline background` | CC0 / PD / CC-BY | PNG | aynı | `corrupted_depth_01.png` |
+| İpek (Rehberlik Atölyesi) arka plan | aydınlık öğrenme alanı silüeti | `CC0 pixel art bright studio background` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/ipek/backgrounds/` | `sanctuary_halo_01.png` |
+| İpek ikinci arka katman | sakin bahçe silüeti | `CC0 pixel art calm garden background` | CC0 / PD / CC-BY | PNG | aynı | `healing_garden_01.png` |
 
 ### İsteğe bağlı
 - Gece gökyüzü ek overlay
@@ -80,23 +80,23 @@ Aşağıdaki şablonu kullanın:
 ### Zorunlu
 | Dünya | Ne indirilecek | Arama terimi | Lisans | Format | Yerel klasör | Dosya adı |
 |---|---|---|---|---|---|---|
-| Mergen | tapınak cephesi / ruins | `CC0 pixel art temple ruins png` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/mergen/midground/` | `temple_frontier_01.png` |
-| Mergen | radar karakolu / dish tower | `CC0 pixel art radar tower` | CC0 / PD / CC-BY | PNG | aynı | `radar_outpost_01.png` |
-| Ülgen | ışıklı kule | `CC0 pixel art luminous tower` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/ulgen/midground/` | `luminous_tower_01.png` |
-| Ülgen | enerji kapısı / kalekapı | `CC0 pixel art fantasy energy gate` | CC0 / PD / CC-BY | PNG | aynı | `energy_fort_01.png` |
-| Kayra | kutsal ağaç | `CC0 pixel art sacred tree` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/kayra/midground/` | `sacred_tree_01.png` |
-| Kayra | runik harabe | `CC0 pixel art runic ruin` | CC0 / PD / CC-BY | PNG | aynı | `runic_ruin_01.png` |
-| Erlik | glitch tapınağı / kırık karanlık yapı | `CC0 pixel art dark temple ruin` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/erlik/midground/` | `glitch_temple_01.png` |
-| Erlik | yarık / portal | `CC0 pixel art portal sprite sheet` veya `CC0 pixel art dark portal` | CC0 / PD / CC-BY | PNG | aynı | `portal_rift_01.png` |
-| Umay | şifa kapısı / kutsal kemer | `CC0 pixel art sanctuary gate` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/umay/midground/` | `sanctuary_gate_01.png` |
-| Umay | yaşam havuzu / kutsal su | `CC0 pixel art magic pool` | CC0 / PD / CC-BY | PNG | aynı | `life_pool_01.png` |
+| Emre | analiz yapısı / modern bina | `CC0 pixel art modern building png` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/emre/midground/` | `temple_frontier_01.png` |
+| Emre | radar karakolu / dish tower | `CC0 pixel art radar tower` | CC0 / PD / CC-BY | PNG | aynı | `radar_outpost_01.png` |
+| Selin | sinyal kulesi | `CC0 pixel art signal tower` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/selin/midground/` | `luminous_tower_01.png` |
+| Selin | enerji geçidi / veri kapısı | `CC0 pixel art sci-fi gate` | CC0 / PD / CC-BY | PNG | aynı | `energy_fort_01.png` |
+| Deniz | plan panosu / büyük yapı | `CC0 pixel art large structure` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/deniz/midground/` | `sacred_tree_01.png` |
+| Deniz | katmanlı yapı / kademeli plato | `CC0 pixel art layered structure` | CC0 / PD / CC-BY | PNG | aynı | `runic_ruin_01.png` |
+| Can | denetim istasyonu / kontrol yapısı | `CC0 pixel art control station` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/can/midground/` | `glitch_temple_01.png` |
+| Can | tarama geçidi | `CC0 pixel art scanner gate sprite sheet` | CC0 / PD / CC-BY | PNG | aynı | `portal_rift_01.png` |
+| İpek | rehber panosu / öğrenme yapısı | `CC0 pixel art studio structure` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/ipek/midground/` | `sanctuary_gate_01.png` |
+| İpek | bilgi havuzu / örnek panosu | `CC0 pixel art info panel` | CC0 / PD / CC-BY | PNG | aynı | `life_pool_01.png` |
 
 ### İsteğe bağlı
-- Mergen için taş sütun / sınır gözetleme direği
-- Ülgen için ikinci kule / hover platform
-- Kayra için bilgi kemeri / eski tablet
-- Erlik için kırık sütun / glitch sütunu
-- Umay için ward tower / küçük mabet sütunu
+- Emre için sınır gözetleme direği
+- Selin için ikinci sinyal kulesi / röle platformu
+- Deniz için plan kemeri / kademe panosu
+- Can için kontrol sütunu / tarama panosu
+- İpek için rehber kulesi / küçük örnek sütunu
 
 ---
 
@@ -105,16 +105,16 @@ Aşağıdaki şablonu kullanın:
 ### Zorunlu
 | Dünya | Ne indirilecek | Arama terimi | Lisans | Format | Yerel klasör | Dosya adı |
 |---|---|---|---|---|---|---|
-| Mergen | steppe otu / taş / direk | `CC0 pixel art grass tuft` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/mergen/foreground/` | `steppe_grass_01.png` |
-| Mergen | sinyal direği | `CC0 pixel art utility pole` | CC0 / PD / CC-BY | PNG | aynı | `signal_pole_01.png` |
-| Ülgen | ışık kristali | `CC0 pixel art crystal` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/ulgen/foreground/` | `light_crystal_01.png` |
-| Ülgen | röle / küçük kule | `CC0 pixel art sci fi relay` | CC0 / PD / CC-BY | PNG | aynı | `hover_relay_01.png` |
-| Kayra | eğrelti / bitki | `CC0 pixel art fern` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/kayra/foreground/` | `fern_01.png` |
-| Kayra | runik taş | `CC0 pixel art standing stone` | CC0 / PD / CC-BY | PNG | aynı | `rune_stone_01.png` |
-| Erlik | diken / karanlık flora | `CC0 pixel art dark thorn` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/erlik/foreground/` | `shadow_thorn_01.png` |
-| Erlik | glitch kristali | `CC0 pixel art corrupted crystal` | CC0 / PD / CC-BY | PNG | aynı | `glitch_crystal_01.png` |
-| Umay | ışıklı flora | `CC0 pixel art glowing flower` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/umay/foreground/` | `luminous_flora_01.png` |
-| Umay | şifa çiçeği | `CC0 pixel art healing bloom` | CC0 / PD / CC-BY | PNG | aynı | `healing_bloom_01.png` |
+| Emre | ot / taş / direk | `CC0 pixel art grass tuft` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/emre/foreground/` | `steppe_grass_01.png` |
+| Emre | sinyal direği | `CC0 pixel art utility pole` | CC0 / PD / CC-BY | PNG | aynı | `signal_pole_01.png` |
+| Selin | sinyal kristali | `CC0 pixel art crystal` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/selin/foreground/` | `light_crystal_01.png` |
+| Selin | röle / küçük kule | `CC0 pixel art sci fi relay` | CC0 / PD / CC-BY | PNG | aynı | `hover_relay_01.png` |
+| Deniz | bitki / küçük pano | `CC0 pixel art fern` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/deniz/foreground/` | `fern_01.png` |
+| Deniz | plan taşı / işaret | `CC0 pixel art standing stone` | CC0 / PD / CC-BY | PNG | aynı | `rune_stone_01.png` |
+| Can | kontrol işareti | `CC0 pixel art warning marker` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/can/foreground/` | `shadow_thorn_01.png` |
+| Can | tarama kristali | `CC0 pixel art scanner crystal` | CC0 / PD / CC-BY | PNG | aynı | `glitch_crystal_01.png` |
+| İpek | aydınlık bitki | `CC0 pixel art glowing flower` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/worlds/ipek/foreground/` | `luminous_flora_01.png` |
+| İpek | örnek panosu çiçeği | `CC0 pixel art bloom` | CC0 / PD / CC-BY | PNG | aynı | `healing_bloom_01.png` |
 
 ---
 
@@ -125,11 +125,11 @@ Bunlar uzun vadede platform çizimini de zenginleştirir.
 
 | Dünya | Arama terimi | Yerel klasör | Dosya adı önerisi |
 |---|---|---|---|
-| Mergen | `CC0 pixel art ruins tileset` | `www/assets/bilge_yolac/worlds/mergen/tiles/` | `ruin_tileset_01.png` |
-| Ülgen | `CC0 pixel art sci fi temple tileset` | `www/assets/bilge_yolac/worlds/ulgen/tiles/` | `celestial_tileset_01.png` |
-| Kayra | `CC0 pixel art forest temple tileset` | `www/assets/bilge_yolac/worlds/kayra/tiles/` | `forest_runic_tileset_01.png` |
-| Erlik | `CC0 pixel art underworld tileset` | `www/assets/bilge_yolac/worlds/erlik/tiles/` | `corruption_tileset_01.png` |
-| Umay | `CC0 pixel art shrine tileset` | `www/assets/bilge_yolac/worlds/umay/tiles/` | `sanctuary_tileset_01.png` |
+| Emre | `CC0 pixel art modern tileset` | `www/assets/bilge_yolac/worlds/emre/tiles/` | `ruin_tileset_01.png` |
+| Selin | `CC0 pixel art sci fi tileset` | `www/assets/bilge_yolac/worlds/selin/tiles/` | `celestial_tileset_01.png` |
+| Deniz | `CC0 pixel art plateau tileset` | `www/assets/bilge_yolac/worlds/deniz/tiles/` | `forest_runic_tileset_01.png` |
+| Can | `CC0 pixel art industrial tileset` | `www/assets/bilge_yolac/worlds/can/tiles/` | `corruption_tileset_01.png` |
+| İpek | `CC0 pixel art studio tileset` | `www/assets/bilge_yolac/worlds/ipek/tiles/` | `sanctuary_tileset_01.png` |
 
 ---
 
@@ -146,11 +146,11 @@ Bunlar uzun vadede platform çizimini de zenginleştirir.
 ### Dünya özel varyantları (isteğe bağlı ama çok önerilir)
 | Dosya adı | Anlamı |
 |---|---|
-| `mergen_drone_strip.png` | sınır / radar temalı drone |
-| `ulgen_drone_strip.png` | ışıklı / semavi drone |
-| `kayra_drone_strip.png` | runik / doğal drone |
-| `erlik_drone_strip.png` | bozulmuş drone |
-| `umay_drone_strip.png` | kutsal alan bozulmuş gözcü varyantı |
+| `emre_drone_strip.png` | Çözüm Vadisi temalı drone |
+| `selin_drone_strip.png` | Sinyal Sahası temalı drone |
+| `deniz_drone_strip.png` | Strateji Platosu temalı drone |
+| `can_drone_strip.png` | Doğrulama Hattı temalı drone |
+| `ipek_drone_strip.png` | Rehberlik Atölyesi temalı drone |
 
 ---
 
@@ -161,24 +161,24 @@ Her dünya için ayrı bir boss strip’i indirin.
 
 | Dünya | Arama terimi | Lisans | Format | Yerel klasör | Dosya adı |
 |---|---|---|---|---|---|
-| Mergen | `CC0 pixel art guardian boss sprite sheet` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/enemies/bosses/` | `mergen_boss_strip.png` |
-| Ülgen | `CC0 pixel art celestial boss sprite sheet` | CC0 / PD / CC-BY | PNG | aynı | `ulgen_boss_strip.png` |
-| Kayra | `CC0 pixel art forest guardian boss sprite` | CC0 / PD / CC-BY | PNG | aynı | `kayra_boss_strip.png` |
-| Erlik | `CC0 pixel art demon glitch boss sprite` | CC0 / PD / CC-BY | PNG | aynı | `erlik_boss_strip.png` |
-| Umay | `CC0 pixel art shrine guardian boss sprite` | CC0 / PD / CC-BY | PNG | aynı | `umay_boss_strip.png` |
+| Emre (Karmaşa Çekirdeği) | `CC0 pixel art boss sprite sheet` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/enemies/bosses/` | `emre_boss_strip.png` |
+| Selin (Belirsizlik Bloğu) | `CC0 pixel art tech boss sprite sheet` | CC0 / PD / CC-BY | PNG | aynı | `selin_boss_strip.png` |
+| Deniz (Dağınık Plan Yığını) | `CC0 pixel art large boss sprite` | CC0 / PD / CC-BY | PNG | aynı | `deniz_boss_strip.png` |
+| Can (Gizli Varsayım) | `CC0 pixel art glitch boss sprite` | CC0 / PD / CC-BY | PNG | aynı | `can_boss_strip.png` |
+| İpek (Bilgi Kalabalığı) | `CC0 pixel art boss sprite sheet` | CC0 / PD / CC-BY | PNG | aynı | `ipek_boss_strip.png` |
 
 ---
 
 ## 7) Oyuncu mermi sprite sheet’leri
 
 ### Zorunlu
-| Karakter | Ne indirilecek | Arama terimi | Lisans | Format | Yerel klasör | Dosya adı |
+| Persona | Ne indirilecek | Arama terimi | Lisans | Format | Yerel klasör | Dosya adı |
 |---|---|---|---|---|---|---|
-| Mergen | ok / precision bolt | `CC0 pixel art arrow projectile sprite` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/mergen/` | `precision_arrow_strip.png` |
-| Ülgen | semavi patlama / radiant blast | `CC0 pixel art holy projectile sprite` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/ulgen/` | `celestial_blast_strip.png` |
-| Kayra | runik küre / bilgi tohumu | `CC0 pixel art magic orb projectile` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/kayra/` | `rune_orb_strip.png` |
-| Erlik | glitch shard / shadow bolt | `CC0 pixel art dark projectile sprite` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/erlik/` | `glitch_shard_strip.png` |
-| Umay Ana | protective pulse / shield wave | `CC0 pixel art shield projectile sprite` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/umay/` | `protective_pulse_strip.png` |
+| Emre | çözüm dalgası / enerji dalgası | `CC0 pixel art wave projectile sprite` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/emre/` | `cozum_dalgasi_strip.png` |
+| Selin | sinyal taraması / tarama darbesi | `CC0 pixel art scan pulse projectile` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/selin/` | `sinyal_taramasi_strip.png` |
+| Deniz | rota projeksiyonu / yapısal blok | `CC0 pixel art geometric projectile` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/deniz/` | `rota_projesi_strip.png` |
+| Can | doğrulama ışını / hedef ışını | `CC0 pixel art beam projectile sprite` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/can/` | `dogrulama_isini_strip.png` |
+| İpek | rehber halkası / destek halkası | `CC0 pixel art ring projectile sprite` | CC0 / PD / CC-BY | PNG | `www/assets/bilge_yolac/projectiles/ipek/` | `rehber_halkasi_strip.png` |
 
 ---
 
@@ -257,7 +257,7 @@ CC-BY varlık indirirseniz şu dosyayı proje içinde tutun:
 
 Örnek satır:
 
-- `celestial_blast_strip.png` — Sanatçı: ... — Lisans: CC-BY 4.0 — Kaynak: ... — İndirme tarihi: ...
+- `sinyal_taramasi_strip.png` — Sanatçı: ... — Lisans: CC-BY 4.0 — Kaynak: ... — İndirme tarihi: ...
 
 ---
 

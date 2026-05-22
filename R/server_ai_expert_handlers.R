@@ -94,7 +94,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Yardımcı: Ortak LLM çağrı parametrelerini hazırla ---
     prepare_llm_params <- function(selected_char_id = NULL) {
-      char_id <- selected_char_id %||% isolate(settings_data$selected_character) %||% "mergen"
+      char_id <- normalize_character_id(selected_char_id %||% isolate(settings_data$selected_character))
 	  model_name <- safe_trimws(Sys.getenv("AI_EXPERT_MODEL", ""))
 	  endpoint <- safe_trimws(Sys.getenv("LOCAL_LLM_ENDPOINT", ""))
 	  api_key <- safe_trimws(Sys.getenv("LOCAL_LLM_API_KEY", ""))
@@ -206,7 +206,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Yardımcı: Karşılama konuşmasını ön hazırla ---
   warm_greeting <- function(selected_char_id = NULL, play_when_ready = FALSE) {
-    char_id <- selected_char_id %||% isolate(settings_data$selected_character) %||% "mergen"
+    char_id <- normalize_character_id(selected_char_id %||% isolate(settings_data$selected_character))
 
     cached <- get_cached_greeting(char_id)
     if (!is.null(cached)) {
@@ -302,7 +302,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         ai_expert$prewarm_speaking(greeting_text, selected_char_id = char_id)
 
         if (isTRUE(greeting_waiting_to_play()) &&
-            identical(isolate(settings_data$selected_character) %||% "mergen", char_id) &&
+            identical(normalize_character_id(isolate(settings_data$selected_character)), char_id) &&
             !isTRUE(greeting_done())) {
           play_greeting_text(greeting_text)
         }
@@ -363,7 +363,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     cat("[AI_EXPERT] Karşılama konuşması tetikleniyor...\n")
 
-    selected_char_id <- isolate(settings_data$selected_character) %||% "mergen"
+    selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
     cached <- get_cached_greeting(selected_char_id)
 
     if (!is.null(cached)) {

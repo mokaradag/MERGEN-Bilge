@@ -154,33 +154,39 @@
     var merkezY = karakter.y + karakter.yukseklik / 2;
     var renk = karakter.renkler.ana;
 
+    // Persona yetenek efektleri - modern çalışma tarzı temaları
     switch (karakter.yetenekTuru) {
-      case "ok_atisi":
-        parcacikOlustur(merkezX, merkezY, "#E6D1A3", "kivilcim", 8);
+      case "cozum_dalgasi":
+        // Emre - çözüm dalgası
+        parcacikOlustur(merkezX, merkezY, karakter.renkler.acik, "kivilcim", 8);
         radarDarbesiEkle(merkezX, merkezY, karakter.renkler.acik);
         karakterVurusuOlustur(karakter, 3, 0.14, 14);
         break;
 
-      case "gok_dalgasi":
+      case "sinyal_taramasi":
+        // Selin - sinyal taraması
         radarDarbesiEkle(merkezX, merkezY, renk);
         radarDarbesiEkle(merkezX, merkezY - 8, karakter.renkler.acik);
         parcacikOlustur(merkezX, merkezY - 18, karakter.renkler.acik, "yukari", 12);
         karakterVurusuOlustur(karakter, 5, 0.22, 11);
         break;
 
-      case "kure_olustur":
+      case "rota_projesi":
+        // Deniz - rota projeksiyonu
         parcacikOlustur(merkezX, merkezY, karakter.renkler.acik, "daire", 14);
         radarDarbesiEkle(merkezX, merkezY, renk);
         karakterVurusuOlustur(karakter, 4, 0.18, 10);
         break;
 
-      case "kaos_saldiri":
+      case "dogrulama_isini":
+        // Can - doğrulama ışını
         parcacikOlustur(merkezX, merkezY, renk, "kivilcim", 18);
         parcacikOlustur(merkezX, merkezY, "#FFFFFF", "kivilcim", 4);
         karakterVurusuOlustur(karakter, 3, 0.20, 18);
         break;
 
-      case "kalkan_kur":
+      case "rehber_halkasi":
+        // İpek - rehber halkası (takıma destek/onarım)
         radarDarbesiEkle(merkezX, merkezY, renk);
         radarDarbesiEkle(merkezX, merkezY, karakter.renkler.acik);
         parcacikOlustur(merkezX, merkezY, karakter.renkler.acik, "daire", 10);

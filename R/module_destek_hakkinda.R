@@ -26,7 +26,7 @@ destekHakkindaUI <- function(id) {
             "MERGEN Bilge ile Tanışın"
           ),
           p(class = "destek-hakkinda-subtitle",
-            "Türk ve Altay mitolojisinden esinlenen, kurumsal ortamlar için tasarlanmış gelişmiş yapay zeka asistanınız."
+            "Kurumsal ortamlar için tasarlanmış, Türkçe odaklı gelişmiş yapay zeka asistanınız."
           )
         )
       ),
@@ -66,14 +66,14 @@ destekHakkindaUI <- function(id) {
             h4("Akıllı Dosya Analizi"),
             p("Excel, PDF, Word, RData ve daha birçok format desteklenir. MCP araçlarıyla derinlemesine analiz, özetleme ve veri işleme yetenekleri.")
           ),
-          # Kart 4: Çoklu Karakter
+          # Kart 4: Asistan Persona'ları
           div(
             class = "destek-feature-card destek-feature-purple",
             div(class = "destek-feature-icon",
               icon("globe")
             ),
-            h4("5 Benzersiz Karakter"),
-            p("Türk ve Altay mitolojisinden esinlenen 5 farklı karakter. Her biri farklı uzmanlık alanı ve iletişim tarzına sahip.")
+            h4("5 Modern AI Persona"),
+            p("Farklı çalışma tarzlarını temsil eden 5 modern asistan persona'sı. Her biri kendi yaklaşımı ve iletişim tarzıyla farklı bir destek sunar.")
           )
         )
       ),

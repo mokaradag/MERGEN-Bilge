@@ -21,7 +21,7 @@ test_that("safe_source UTF-8 BOM ve Türkçe karakter içeren dosyayı yükler",
   target_file <- file.path(tmp_dir, "turkce_bom_test.R")
 
   code <- paste0(
-    "turkce_deger <- \"İşçi, görüş, çağrı, Ülgen, Mergen\"\n",
+    "turkce_deger <- \"İşçi, görüş, çağrı, ölçüm, değer\"\n",
     "turkce_fonksiyon <- function() turkce_deger\n"
   )
 
@@ -44,7 +44,7 @@ test_that("safe_source UTF-8 BOM ve Türkçe karakter içeren dosyayı yükler",
 
   expect_identical(
     get("turkce_fonksiyon", envir = env)(),
-    "İşçi, görüş, çağrı, Ülgen, Mergen"
+    "İşçi, görüş, çağrı, ölçüm, değer"
   )
 })
 

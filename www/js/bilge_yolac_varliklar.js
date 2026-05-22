@@ -60,8 +60,8 @@
   }
 
   var DUNYA_PAKETLERI = {
-    mergen: {
-      isim: "Mergen Dünyası",
+    emre: {
+      isim: "Emre Dünyası",
       arkaKatmanlar: [
         { dosya: "backgrounds/plateau_far_01.png", hiz: 0.08, saydamlik: 0.9, y: 0.18, olcek: 1.0, yedekTur: "plateau" },
         { dosya: "backgrounds/ridge_far_01.png", hiz: 0.14, saydamlik: 0.75, y: 0.28, olcek: 1.0, yedekTur: "ridge" }
@@ -76,8 +76,8 @@
       ],
       kaplama: "steppe"
     },
-    ulgen: {
-      isim: "Ülgen Dünyası",
+    selin: {
+      isim: "Selin Dünyası",
       arkaKatmanlar: [
         { dosya: "backgrounds/celestial_spires_01.png", hiz: 0.07, saydamlik: 0.88, y: 0.16, olcek: 1.0, yedekTur: "spire" },
         { dosya: "backgrounds/fortress_skyline_01.png", hiz: 0.14, saydamlik: 0.80, y: 0.24, olcek: 1.0, yedekTur: "fortress" }
@@ -92,8 +92,8 @@
       ],
       kaplama: "light"
     },
-    kayra: {
-      isim: "Kayra Dünyası",
+    deniz: {
+      isim: "Deniz Dünyası",
       arkaKatmanlar: [
         { dosya: "backgrounds/forest_canopy_01.png", hiz: 0.10, saydamlik: 0.88, y: 0.18, olcek: 1.0, yedekTur: "canopy" },
         { dosya: "backgrounds/runic_hills_01.png", hiz: 0.16, saydamlik: 0.76, y: 0.28, olcek: 1.0, yedekTur: "runic_hills" }
@@ -108,8 +108,8 @@
       ],
       kaplama: "forest"
     },
-    erlik: {
-      isim: "Erlik Dünyası",
+    can: {
+      isim: "Can Dünyası",
       arkaKatmanlar: [
         { dosya: "backgrounds/abyss_spires_01.png", hiz: 0.08, saydamlik: 0.86, y: 0.18, olcek: 1.0, yedekTur: "abyss" },
         { dosya: "backgrounds/corrupted_depth_01.png", hiz: 0.14, saydamlik: 0.75, y: 0.26, olcek: 1.0, yedekTur: "corrupted_ridge" }
@@ -124,8 +124,8 @@
       ],
       kaplama: "corruption"
     },
-    umay: {
-      isim: "Umay Dünyası",
+    ipek: {
+      isim: "İpek Dünyası",
       arkaKatmanlar: [
         { dosya: "backgrounds/sanctuary_halo_01.png", hiz: 0.08, saydamlik: 0.88, y: 0.16, olcek: 1.0, yedekTur: "halo" },
         { dosya: "backgrounds/healing_garden_01.png", hiz: 0.16, saydamlik: 0.78, y: 0.26, olcek: 1.0, yedekTur: "garden_ridge" }
@@ -146,11 +146,11 @@
     drone: {
       temelYol: dusmanYolu("drone", "drone_strip.png"),
       dunyaYollari: {
-        mergen: dusmanYolu("drone", "mergen_drone_strip.png"),
-        ulgen: dusmanYolu("drone", "ulgen_drone_strip.png"),
-        kayra: dusmanYolu("drone", "kayra_drone_strip.png"),
-        erlik: dusmanYolu("drone", "erlik_drone_strip.png"),
-        umay: dusmanYolu("drone", "umay_drone_strip.png")
+        emre: dusmanYolu("drone", "emre_drone_strip.png"),
+        selin: dusmanYolu("drone", "selin_drone_strip.png"),
+        deniz: dusmanYolu("drone", "deniz_drone_strip.png"),
+        can: dusmanYolu("drone", "can_drone_strip.png"),
+        ipek: dusmanYolu("drone", "ipek_drone_strip.png")
       }
     },
     jammer: {
@@ -167,20 +167,21 @@
     }
   };
 
+  // Boss'lar modern iş engellerini temsil eder; her dünya için bir engel.
   var BOSS_GORUNUMLERI = {
-    mergen: { yol: bossYolu("mergen_boss_strip.png"), isim: "Hudut Muhafızı" },
-    ulgen: { yol: bossYolu("ulgen_boss_strip.png"), isim: "Semavi Kalegard" },
-    kayra: { yol: bossYolu("kayra_boss_strip.png"), isim: "Runik Orman Nöbetçisi" },
-    erlik: { yol: bossYolu("erlik_boss_strip.png"), isim: "Bozulma Hâkimi" },
-    umay: { yol: bossYolu("umay_boss_strip.png"), isim: "Eşik Muhafızı" }
+    emre: { yol: bossYolu("emre_boss_strip.png"), isim: "Karmaşa Çekirdeği" },
+    selin: { yol: bossYolu("selin_boss_strip.png"), isim: "Belirsizlik Bloğu" },
+    deniz: { yol: bossYolu("deniz_boss_strip.png"), isim: "Dağınık Plan Yığını" },
+    can: { yol: bossYolu("can_boss_strip.png"), isim: "Gizli Varsayım" },
+    ipek: { yol: bossYolu("ipek_boss_strip.png"), isim: "Bilgi Kalabalığı" }
   };
 
   var MERMI_GORUNUMLERI = {
-    mergen: { yol: mermiYolu("mergen", "precision_arrow_strip.png") },
-    ulgen: { yol: mermiYolu("ulgen", "celestial_blast_strip.png") },
-    kayra: { yol: mermiYolu("kayra", "rune_orb_strip.png") },
-    erlik: { yol: mermiYolu("erlik", "glitch_shard_strip.png") },
-    umay_ana: { yol: mermiYolu("umay", "protective_pulse_strip.png") },
+    emre: { yol: mermiYolu("emre", "cozum_dalgasi_strip.png") },
+    selin: { yol: mermiYolu("selin", "sinyal_taramasi_strip.png") },
+    deniz: { yol: mermiYolu("deniz", "rota_projesi_strip.png") },
+    can: { yol: mermiYolu("can", "dogrulama_isini_strip.png") },
+    ipek: { yol: mermiYolu("ipek", "rehber_halkasi_strip.png") },
     drone: { yol: mermiYolu("enemies", "drone_bolt_strip.png") },
     jammer: { yol: mermiYolu("enemies", "jammer_pulse_strip.png") },
     sentinel: { yol: mermiYolu("enemies", "sentinel_lance_strip.png") },
@@ -193,11 +194,11 @@
       var veri = BY.seviye.mevcutVeriAl();
       if (veri && veri.dunyaId) return veri.dunyaId;
     }
-    return "mergen";
+    return "emre";
   }
 
   function dunyaPaketiAl(dunyaId) {
-    return DUNYA_PAKETLERI[dunyaId] || DUNYA_PAKETLERI.mergen;
+    return DUNYA_PAKETLERI[dunyaId] || DUNYA_PAKETLERI.emre;
   }
 
   function cizResim(ctx, kayit, x, y, g, h, saydamlik) {
@@ -343,7 +344,7 @@
   }
 
   function bossVarligiAl(dunyaId) {
-    var kayit = BOSS_GORUNUMLERI[dunyaId] || BOSS_GORUNUMLERI.mergen;
+    var kayit = BOSS_GORUNUMLERI[dunyaId] || BOSS_GORUNUMLERI.emre;
     return {
       isim: kayit.isim,
       yol: kayit.yol,

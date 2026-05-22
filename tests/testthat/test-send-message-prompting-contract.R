@@ -36,7 +36,7 @@ source(file.path(repo_root_send_message_prompting, "R/helpers_send_message_promp
       list(
         styles = list(
           list(
-            id = "mergen",
+            id = "emre",
             system_prompt_en = "BASE_PROMPT",
             parameters = list(temperature = 0.7)
           )
@@ -63,7 +63,7 @@ test_that("send message style helper karakter, sıcaklık ve kaynakça sözleşm
       tool_family = "none",
       uploaded_count = 2L,
       settings_data = list(
-        selected_character = "mergen",
+        selected_character = "emre",
         enable_coding_tools = FALSE,
         enable_image_tools = FALSE
       ),
@@ -72,7 +72,7 @@ test_that("send message style helper karakter, sıcaklık ve kaynakça sözleşm
       )
     )
 
-    expect_identical(plan$selected_char_id, "mergen")
+    expect_identical(plan$selected_char_id, "emre")
     expect_identical(plan$temperature_value, 0.7)
     expect_identical(plan$messages_to_process[[1]]$type, "system")
     expect_match(plan$messages_to_process[[1]]$content, "BASE_PROMPT", fixed = TRUE)
@@ -87,7 +87,7 @@ test_that("send message style helper SQL system promptunu çoğaltmadan birleşt
       tool_family = "sql_analysis",
       uploaded_count = 0L,
       settings_data = list(
-        selected_character = "mergen",
+        selected_character = "emre",
         enable_coding_tools = FALSE,
         enable_image_tools = FALSE
       ),

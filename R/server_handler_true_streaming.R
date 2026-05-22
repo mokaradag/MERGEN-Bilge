@@ -29,7 +29,7 @@ handle_true_streaming_mode <- function(ctx) {
   stop_generation(FALSE)
   values$is_sending <- TRUE
 
-  selected_char_id <- settings_data$selected_character %||% "mergen"
+  selected_char_id <- normalize_character_id(settings_data$selected_character)
   chars_data <- get_characters_data()
   character_data <- if (!is.null(chars_data)) {
     Find(function(x) x$id == selected_char_id, chars_data$styles)

@@ -21,11 +21,11 @@
     KAMERA_YUMUSAMA: 0.08,
     KAMERA_ONE_BAKIS: 70,
     KARAKTER_RENKLERI: {
-      mergen:   { ana: "#7C4DFF", koyu: "#5B2FCF", acik: "#A47DFF", parlama: "rgba(124,77,255,0.3)" },
-      ulgen:    { ana: "#2F6DF6", koyu: "#1A4DC0", acik: "#6B9BFF", parlama: "rgba(47,109,246,0.3)" },
-      kayra:    { ana: "#2ECC71", koyu: "#1A9C54", acik: "#6EE89B", parlama: "rgba(46,204,113,0.3)" },
-      erlik:    { ana: "#E74C3C", koyu: "#B53A2E", acik: "#F08070", parlama: "rgba(231,76,60,0.3)" },
-      umay_ana: { ana: "#E98686", koyu: "#C05F5F", acik: "#F5ABAB", parlama: "rgba(233,134,134,0.3)" }
+      emre:  { ana: "#7C4DFF", koyu: "#5B2FCF", acik: "#A47DFF", parlama: "rgba(124,77,255,0.3)" },
+      selin: { ana: "#2F6DF6", koyu: "#1A4DC0", acik: "#6B9BFF", parlama: "rgba(47,109,246,0.3)" },
+      deniz: { ana: "#12A97B", koyu: "#0C8C63", acik: "#6EE89B", parlama: "rgba(18,169,123,0.3)" },
+      can:   { ana: "#B66A2C", koyu: "#8F5321", acik: "#C27A3D", parlama: "rgba(182,106,44,0.3)" },
+      ipek:  { ana: "#E98686", koyu: "#C05F5F", acik: "#F5ABAB", parlama: "rgba(233,134,134,0.3)" }
     },
     DUSMAN_RENKLERI: {
       drone:    { ana: "#00E5FF", koyu: "#0099AA", acik: "#66F0FF" },
@@ -93,7 +93,7 @@
     yildizlar: [],
 
     giris: bosGirisDurumu(),
-    aktifDunyaId: "mergen",
+    aktifDunyaId: "emre",
     takimYon: 1
   };
 
@@ -215,7 +215,7 @@
       state.temaRenk = "#7C4DFF";
       state.yildizlar = [];
       state.giris = bosGirisDurumu();
-      state.aktifDunyaId = "mergen";
+      state.aktifDunyaId = "emre";
       state.takimYon = 1;
 
       this.boyutAyarla();

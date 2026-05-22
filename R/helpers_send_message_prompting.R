@@ -27,7 +27,7 @@ mergen_prepare_send_message_prompting <- function(tool_family,
                                                   uploaded_count,
                                                   settings_data,
                                                   messages_to_process) {
-  selected_char_id <- settings_data$selected_character %||% "mergen"
+  selected_char_id <- normalize_character_id(settings_data$selected_character)
   chars_data <- get_characters_data()
 
   character_data <- if (!is.null(chars_data)) {

@@ -80,11 +80,11 @@
   function renkHaritasiOlustur(tip, dunyaId) {
     var temel = BY.config.DUSMAN_RENKLERI[tip] || BY.config.DUSMAN_RENKLERI.drone;
     var vurgu = temel.acik;
-    if (dunyaId === "mergen") vurgu = "#C6E6FF";
-    if (dunyaId === "ulgen") vurgu = "#D8F1FF";
-    if (dunyaId === "kayra") vurgu = "#A8FFC9";
-    if (dunyaId === "erlik") vurgu = "#FF7BA8";
-    if (dunyaId === "umay") vurgu = "#FFDDF3";
+    if (dunyaId === "emre") vurgu = "#C6E6FF";
+    if (dunyaId === "selin") vurgu = "#D8F1FF";
+    if (dunyaId === "deniz") vurgu = "#A8FFC9";
+    if (dunyaId === "can") vurgu = "#F4D6A8";
+    if (dunyaId === "ipek") vurgu = "#FFDDF3";
     return { 1: temel.ana, 2: temel.koyu, 3: vurgu, 4: "#FFFFFF" };
   }
 
@@ -93,7 +93,7 @@
       var boss = BY.varliklar.bossVarligiAl(dunyaId);
       if (boss && boss.isim) return boss.isim;
     }
-    return "Muhafız";
+    return "Engel";
   }
 
   function dusmanOlustur(x, tip) {
@@ -101,7 +101,7 @@
     var state = BY.state;
     var piksel = BY.config.PIKSEL_BOYUT;
     var boyut = tanim.boyut * piksel;
-    var dunyaId = state.aktifDunyaId || "mergen";
+    var dunyaId = state.aktifDunyaId || "emre";
 
     var y = tanim.ucan ? state.zeminY * (0.28 + Math.random() * 0.28) : state.zeminY - boyut;
 

@@ -17,7 +17,7 @@ settingsInit <- function(session, parent_session = NULL) {
   # Tüm ayarların merkezi reaktif değerleri
   settings <- reactiveValues(
     model_selection         = api_config$local_models[1],
-    selected_character      = "mergen",
+    selected_character      = CHARACTER_DEFAULT_ID,
     enable_animations       = TRUE,
     enable_timestamps       = TRUE,
     enable_typing_indicator = TRUE,
@@ -70,10 +70,12 @@ settingsInit <- function(session, parent_session = NULL) {
     loaded <- session$input$loaded_settings
 
     # --- Kişiselleştirme ayarlarını yükle ---
+    # Eski kayıtlı persona tercihi (örn. "mergen") yeni kimliğe normalleştirilir
     if (!is.null(loaded$selected_character)) {
-      settings$selected_character <- loaded$selected_character
-      kisisel$temp_selected_character(loaded$selected_character)
-      kisisel$update_character_display(loaded$selected_character)
+      normalized_char <- normalize_character_id(loaded$selected_character)
+      settings$selected_character <- normalized_char
+      kisisel$temp_selected_character(normalized_char)
+      kisisel$update_character_display(normalized_char)
     }
 
     if (!is.null(loaded$experience_mode) && loaded$experience_mode %in% c("odak", "denge", "kesif")) {
@@ -240,7 +242,7 @@ settingsInit <- function(session, parent_session = NULL) {
         settings$enable_background_music <- music_checkbox_val
         session$sendCustomMessage("toggleMusic", list(
           enabled = music_checkbox_val,
-          character = settings$selected_character %||% "mergen"
+          character = normalize_character_id(settings$selected_character)
         ))
         cat(sprintf("[MUSIC] Müzik durumu kaydedildi: %s\n", music_checkbox_val))
       }
@@ -266,7 +268,7 @@ settingsInit <- function(session, parent_session = NULL) {
 
     # Karakter değişikliği müzik yöneticisine bildir
     session$sendCustomMessage("setMusicCharacter", list(
-      character = settings$selected_character %||% "mergen"
+      character = normalize_character_id(settings$selected_character)
     ))
 
     cat(sprintf("[SETTINGS] Ayarlar kaydediliyor. Model: %s, Karakter: %s, Görsel Boyutu: %s, HD: %s, Özet Detay: %s, Özet Odak: %s, Analiz Derin: %s, Analiz Detay: %s\n",
@@ -324,7 +326,7 @@ settingsInit <- function(session, parent_session = NULL) {
 
     # Tüm ayarları varsayılana döndür
     settings$model_selection          <- default_model
-    settings$selected_character       <- "mergen"
+    settings$selected_character       <- CHARACTER_DEFAULT_ID
     settings$enable_animations        <- TRUE
     settings$enable_timestamps        <- TRUE
     settings$enable_typing_indicator  <- TRUE
@@ -356,9 +358,9 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$analysis_detail_level    <- "standart"
 
     # Kişiselleştirme geçici değerlerini sıfırla
-    kisisel$temp_selected_character("mergen")
+    kisisel$temp_selected_character(CHARACTER_DEFAULT_ID)
     kisisel$temp_experience_mode("odak")
-    kisisel$update_character_display("mergen")
+    kisisel$update_character_display(CHARACTER_DEFAULT_ID)
     session$sendCustomMessage("updateSettingsMode", list(mode = "odak"))
 
     # Yapılandırma geçici değerlerini sıfırla

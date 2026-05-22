@@ -10,7 +10,7 @@
 
 MERGEN Bilge, kurumsal kullanım için tasarlanmış, Türkçe odaklı gelişmiş bir yapay zeka asistanı uygulamasıdır. Uygulama; akıllı sohbet, dosya analizi, özetleme, görsel oluşturma, süreç rehberliği, kod desteği, sesli etkileşim, destek merkezi ve yönetimsel analiz ekranları gibi çok sayıda özelliği tek bir arayüzde bir araya getirir.
 
-MERGEN adı, Türk ve Altay mitolojisinde bilgeliği, doğru hedefi bulmayı ve yol göstericiliği çağrıştırır. Uygulamanın karakter sistemi de bu mitolojik çerçeveyi temel alır.
+MERGEN Bilge, modern kurumsal kullanım için tasarlanmış bir asistan platformudur. Karakter sistemi, mitolojik temalar yerine farklı çalışma tarzlarını temsil eden modern ve kurgusal Türk AI persona'larından oluşur.
 
 MERGEN Bilge, yalnızca soru-cevap veren bir sohbet ekranı değildir. Aynı zamanda:
 - dosyalarla çalışan,
@@ -108,22 +108,22 @@ Kod ve dosya sistemi odaklı ayrı bir ajan ekranı bulunur. Bu sayfa standart s
 
 ## 4. Karakter Sistemi
 
-MERGEN Bilge içinde beş ana karakter bulunur.
+MERGEN Bilge içinde, farklı çalışma tarzlarını temsil eden beş modern AI persona bulunur. Persona sistemi mitolojik temalar içermez; her persona kurumsal ortama uygun, kurgusal bir asistan kimliğidir.
 
-### 4.1 Mergen
-Rolü, dengeli ve pragmatik rehber olmaktır. Kısa özet, net plan ve uygulanabilir yanıtlar verir. Varsayılan karakterdir.
+### 4.1 Emre Onat — Ana Asistan
+Dengeli ve pragmatik yardımcıdır. Önce kısa bir özet verir, ardından uygulanabilir adımları sıralar. Yanıt tarzı sakin, net ve profesyoneldir. Varsayılan persona'dır.
 
-### 4.2 Ülgen
-Yapıcı ve seçenek üretmeye yatkın bir uzmandır. Alternatifleri karşılaştırır, daha olumlu ve yapıcı bir ton taşır.
+### 4.2 Selin Sezgin — Yapıcı Uzman
+Çözüm odaklı ve yapıcı bir uzmandır. Sorunu doğru çerçeveye oturtur, seçenekleri kıyaslar ve uygulanabilir bir çözüm önerir. Tonu profesyonel, olumlu ve ilerleticidir.
 
-### 4.3 Kayra
-Stratejik bakış açısı güçlüdür. Büyük resmi kurar, fazlı yol haritaları ve karar çerçeveleri üretmeye yatkındır.
+### 4.3 Deniz Özgün — Stratejist
+Uzun vadeli ve yapısal düşünür. Hedefleri, ilkeleri ve seçenekleri aynı çerçevede toplar; karar matrisi ve fazlı yol haritası üretir.
 
-### 4.4 Erlik
-Eleştirel ortak gibi davranır. Varsayımları sorgular, riskleri görünür kılar ve planın zayıf halkalarını yakalamaya çalışır.
+### 4.4 Can Yalın — Eleştirel Eş
+Saygılı bir eleştirel ortaktır. Sessiz varsayımları görünür kılar, riskleri ve eksik verileri işaretler, doğrulama listesiyle kararı sağlamlaştırır. Sert değil, nettir.
 
-### 4.5 Umay Ana
-Öğretici ve destekleyici roldedir. Karmaşık konuları basitleştirir, yeni başlayanları rahatlatan bir ton kullanır.
+### 4.5 İpek Duru — Rehber
+Öğretici ve destekleyici roldedir. Karmaşık konuları küçük adımlara böler, sade bir dil kullanır, örnekler ve sık hata noktaları sunar.
 
 ---
 
@@ -353,13 +353,13 @@ Ayrıca kullanıcıya, yüklenen dosyalar ve seçilen bağlamın sayfa yenileme/
 ## 7.7 Ayarlar - Kişiselleştirme
 
 Bu sayfa:
-- karakter seçimi,
+- asistan persona seçimi,
 - deneyim modu seçimi,
 - kişisel kullanım stilinin belirlenmesi
 
 için kullanılır.
 
-AI Uzman bu sayfayı açıklarken, karakterin yalnızca kozmetik bir seçim olmadığını; ton, his ve rehberlik stilini etkilediğini anlatmalıdır.
+AI Uzman bu sayfayı açıklarken, persona seçiminin yalnızca kozmetik bir seçim olmadığını; ton, yaklaşım ve rehberlik stilini etkilediğini anlatmalıdır. Persona'lar (Emre, Selin, Deniz, Can, İpek) farklı çalışma tarzlarını temsil eder.
 
 ---
 

@@ -422,12 +422,16 @@ format_tool_uses_html <- function(tool_uses) {
 # RASTGELE DÜŞÜNME MESAJI SEÇ
 # ------------------------------------------------------------------------------
 
-#' Aktif karaktere göre rastgele bir düşünme mesajı döndürür
+#' Aktif personaya göre rastgele bir düşünme mesajı döndürür
 #'
-#' @param karakter_id Aktif karakter kimliği (mergen, ulgen, kayra, erlik, umay)
+#' @param karakter_id Aktif persona kimliği (emre, selin, deniz, can, ipek).
+#'        Eski kimlikler normalize_character_id() ile çözülür.
 #' @return Düşünme mesajı metni
-get_thinking_message <- function(karakter_id = "mergen") {
-  # Karakter mesajlarını al
+get_thinking_message <- function(karakter_id = CHARACTER_DEFAULT_ID) {
+  # Persona kimliğini yeni biçime normalleştir (eski kimlikler de çözülür)
+  karakter_id <- normalize_character_id(karakter_id)
+
+  # Persona mesajlarını al
   karakter_mesajlari <- claude_code_thinking_messages[[karakter_id]]
 
   # Genel mesajlarla birleştir

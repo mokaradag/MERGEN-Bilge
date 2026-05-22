@@ -122,27 +122,27 @@ test_that("media JS contracts expose offline-safe audio state hooks", {
   expect_true(has_regex(reasoning_js, "fadeOutAndRemove\\s*\\(\\s*panel\\s*\\)"))
 })
 
-test_that("music playlist URLs encode Ülgen filenames as UTF-8 percent-encoding", {
+test_that("music playlist URLs encode Turkish filenames as UTF-8 percent-encoding", {
   expect_true(exists("music_url_path_utf8", mode = "function"))
 
   url <- music_url_path_utf8(
     c(
       "music",
       "Karakter",
-      "ulgen",
-      "Ülgen, Endless Skyforge (1).mp3"
+      "selin",
+      "Üst Tema (1).mp3"
     )
   )
 
-  expect_true(grepl("%C3%9Clgen", url, fixed = TRUE))
-  expect_false(grepl("%DClgen", url, fixed = TRUE))
+  expect_true(grepl("%C3%9Cst", url, fixed = TRUE))
+  expect_false(grepl("%DCst", url, fixed = TRUE))
   expect_false(grepl("%DC", url, fixed = TRUE))
 
-  expect_true(grepl("Endless%20Skyforge", url, fixed = TRUE))
+  expect_true(grepl("Tema%20", url, fixed = TRUE))
   expect_true(grepl("%281%29.mp3", url, fixed = TRUE))
   expect_identical(
     url,
-    "music/Karakter/ulgen/%C3%9Clgen%2C%20Endless%20Skyforge%20%281%29.mp3"
+    "music/Karakter/selin/%C3%9Cst%20Tema%20%281%29.mp3"
   )
 })
 
@@ -154,7 +154,7 @@ test_that("duplicate startup toggle does not skip main theme while theme playlis
     music,
     enabled = FALSE,
     volume = 0.4,
-    character = "mergen"
+    character = "emre"
   )
 
   expect_false(music$enabled)
@@ -164,7 +164,7 @@ test_that("duplicate startup toggle does not skip main theme while theme playlis
 
   # Dinamik/Bütünleşik mod seçimi sonrası ilk toggle:
   # Ana Tema playlist'i istenmeli.
-  music <- e2e_music_toggle(music, TRUE, character = "mergen")
+  music <- e2e_music_toggle(music, TRUE, character = "emre")
 
   expect_true(music$enabled)
   expect_identical(music$phase, "idle")
@@ -177,7 +177,7 @@ test_that("duplicate startup toggle does not skip main theme while theme playlis
   # Regresyonun özü:
   # Ana Tema playlist yanıtı henüz gelmeden ikinci toggleMusic(TRUE) gelirse
   # karakter playlist'i istenmemeli, request_id artmamalı, Ana Tema beklenmeli.
-  music <- e2e_music_toggle(music, TRUE, character = "mergen")
+  music <- e2e_music_toggle(music, TRUE, character = "emre")
 
   expect_identical(music$phase, "idle")
   expect_identical(music$pending_request_id, 1L)
@@ -221,7 +221,7 @@ test_that("music playlist races keep exactly one active background track", {
     music,
     enabled = TRUE,
     volume = 0.4,
-    character = "mergen"
+    character = "emre"
   )
 
   expect_identical(music$pending_request_id, 1L)
@@ -253,19 +253,19 @@ test_that("music playlist races keep exactly one active background track", {
   music <- e2e_music_receive_playlist(
     music,
     type = "karakter",
-    files = "mergen_1.mp3",
+    files = "emre_1.mp3",
     request_id = 1L
   )
   music <- e2e_music_handle_track_ended(music)
 
   expect_identical(music$phase, "character")
-  expect_identical(music$track_src, "mergen_1.mp3")
+  expect_identical(music$track_src, "emre_1.mp3")
   expect_false(identical(first_audio_token, music$audio_token))
   expect_identical(e2e_media_current_track_count(music), 1L)
 
-  music <- e2e_music_toggle(music, TRUE, character = "umay")
+  music <- e2e_music_toggle(music, TRUE, character = "ipek")
 
-  expect_identical(music$character, "umay")
+  expect_identical(music$character, "ipek")
   expect_identical(music$phase, "waiting_character")
   expect_null(music$audio_token)
   expect_identical(music$pending_request_id, 2L)
@@ -273,22 +273,22 @@ test_that("music playlist races keep exactly one active background track", {
   music <- e2e_music_receive_playlist(
     music,
     type = "karakter",
-    files = "stale_mergen.mp3",
+    files = "stale_emre.mp3",
     request_id = 1L
   )
 
   expect_null(music$audio_token)
-  expect_false(identical(music$track_src, "stale_mergen.mp3"))
+  expect_false(identical(music$track_src, "stale_emre.mp3"))
 
   music <- e2e_music_receive_playlist(
     music,
     type = "karakter",
-    files = "umay_1.mp3",
+    files = "ipek_1.mp3",
     request_id = 2L
   )
 
   expect_identical(music$phase, "character")
-  expect_identical(music$track_src, "umay_1.mp3")
+  expect_identical(music$track_src, "ipek_1.mp3")
   expect_identical(e2e_media_current_track_count(music), 1L)
 })
 

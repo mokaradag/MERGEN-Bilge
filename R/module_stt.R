@@ -41,12 +41,9 @@ sttServer <- function(id, parent_session, settings) {
       rv$is_recording <- TRUE
       rv$accept_chunks <- TRUE
       
-      # 1. Ayarlardan Karakter Bilgisini Al
+      # 1. Ayarlardan persona bilgisini al (eski kimlikler normalleştirilir)
       chars <- tryCatch(get_characters_data(), error = function(e) NULL)
-      selected_id <- "mergen"
-      if (!is.null(settings$selected_character)) {
-        selected_id <- settings$selected_character
-      }
+      selected_id <- normalize_character_id(settings$selected_character)
       
       char_info <- NULL
       if (!is.null(chars) && !is.null(chars$styles)) {
@@ -58,10 +55,10 @@ sttServer <- function(id, parent_session, settings) {
         }
         if (is.null(char_info)) char_info <- chars$styles[[1]]
       } else {
-        # Fallback
+        # Yedek: varsayılan persona (Emre) bilgisi
         char_info <- list(
-          display_name = "MERGEN", 
-          image = "img/mergen_avatar.png", # Varsayılan yolunuz neyse
+          display_name = "EMRE ONAT",
+          image = "characters/avatar/emre/avatar.png",
           accent = "#7C4DFF"
         )
       }
