@@ -331,6 +331,14 @@ Son sunucu çalışma zamanı ve modül bağlama bakımında `server.R` dosyası
 
 Bu akışlar kullanıcı bazlı veri ayrımıyla çalışır. Eski bir söyleşi yeniden aktif kullanıldığında, son aktiviteye göre son listelere tekrar yukarı taşınabilir.
 
+Söyleşi Geçmişi davranışı, seçilen tarih aralığına göre çalışır. Sayfa ilk açıldığında varsayılan tarih aralığı olan son 30 gün hızlı biçimde yüklenir; tablo sabit bir ilk 120/125 sohbet sınırına bağlı kalmamalıdır. Kullanıcı tarih aralığını genişlettiğinde veya değiştirdiğinde, tablo seçilen zaman aralığı için yeniden yüklenir. Sayfa seçimi sırasında arka plan ısıtma nedeniyle ikinci bir DataTable render/titreme oluşmamalıdır.
+
+Söyleşi Geçmişi bakım sınırında, eski arka plan ısıtma yaklaşımının iki riski vardır: sayfa seçildiğinde ikinci render üretmek veya background yükleme kapatıldığında tabloyu ilk 120/125 sohbetle sınırlamak. Gelecek değişikliklerde bu iki regresyon tekrar edilmemelidir; hızlı ilk yükleme tarih aralığına göre yapılmalı, genişletilmiş tarih aralıkları ise kullanıcı değişikliğiyle açıkça yenilenmelidir.
+
+Log güvenliği ve üretim preflight kapsamı güçlendirilmiştir. Başarısız mesaj kaydı fallback logları dosyaya yazılmadan önce `redact_sensitive_text()` üzerinden geçirilmelidir. VM preflight log redaction kontrolü gerçek sırlar yerine çalışma zamanında üretilen güvenli sahte değerlerle yapılmalı ve repoya secret scanner desenleriyle eşleşen sahte password/secret literal’leri eklenmemelidir.
+
+VM encoding preflight, eski/historik mojibake kalıntılarını varsayılan olarak uyarı kabul eder; yeni yazım yolu ise `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE` transactional write/read/rollback probu ile kesin olarak doğrulanır. Eski kayıtların varlığı yeni yazım regresyonuyla karıştırılmamalıdır.
+
 ### Bilge Yolaç
 Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfasıdır. Klasör seçimi, senaryo şablonları, model katmanları ve canlı akışlı araç kullanım görünümü içerir.
 

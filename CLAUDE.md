@@ -3789,6 +3789,20 @@ If anything “works locally but not on VM”, SSO and encoding are the first th
 - Do not add automatic migrations for old corrupted rows.
 - Required focused checks: `testthat::test_file("tests/testthat/test-text-encoding-utils.R")`, `testthat::test_file("tests/testthat/test-db-normalization-contract.R")`, `testthat::test_file("tests/testthat/test-db-user-visible-encoding-boundaries.R")`, `testthat::test_file("tests/testthat/test-file-manager-display-name-contract.R")`, `testthat::test_file("tests/testthat/test-production-contracts.R")`, `source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")`.
 
+Chat History / Söyleşi Geçmişi guardrail:
+- The history page must be date-range driven, not fixed-count driven.
+- On page selection, it should quickly load the currently selected range; the default range is the last 30 days.
+- Do not reintroduce a hard first-120/125-chat cap as the final table result.
+- Do not start background warming on page selection in a way that causes a second DataTable render or visible flicker.
+- When the user changes or extends the date range, explicitly refresh the cache/table for that selected time frame.
+- The previous regression pattern was: disabling background warming stopped flicker but left the table capped at about 125 entries; enabling background warming restored full loading but caused a second rerender. Future fixes must avoid both.
+
+Production preflight and log safety guardrail:
+- Failed-message fallback logs must redact `log_json` with `redact_sensitive_text()` before writing to disk.
+- Redaction tests should read files in a Windows/VM-safe byte/UTF-8-tolerant way; do not assume `readLines(..., encoding = "UTF-8")` always yields valid UTF-8 on the VM.
+- VM preflight redaction probes must use generated fake values and must not commit literal fake password/secret strings that match repository secret-scanner patterns.
+- Encoding preflight must keep legacy mojibake findings separate from new-write regressions. Legacy recent-row scans may warn by default, but the transactional DB write/read/rollback probe remains the strict gate for new Turkish text writes.
+
 ---
 
 ## Major Functional Systems
