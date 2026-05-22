@@ -978,6 +978,12 @@ Important constraints:
 - Missing required bundle fields and functions should fail early with clear Turkish error messages.
 - Keep SSO/local user identity behavior provider-based. Do not pass stale `current_user_id` snapshots into user-scoped modules.
 
+- File Manager auth readiness is also provider-based. `serverBindFileManagerRuntime()` must obtain `identity$is_auth_ready` through `serverRuntimeRequireIdentity(...)` and pass it into `fileManagerServer()` as `auth_ready_provider = identity$is_auth_ready`. Do not make File Manager read `session$userData$auth_initialized` directly for the primary readiness decision.
+- Keep the core File Manager delegation in `serverBindCoreInteractionRuntime()` as a direct call using the literal assignment `file_manager_runtime <- file_manager_runtime_fn(...)`. Tests and injected fake runtimes rely on this contract; do not wrap the call in another helper just to pass optional boot metadata.
+- If File Manager needs boot readiness metadata, attach it to `runtime_ctx$modules$boot_ready` before the direct File Manager runtime call and let `serverBindFileManagerRuntime()` resolve it through its default `boot_ready` argument. Do not add extra required parameters to injected runtime functions.
+- `R/module_file_manager.R` is near the maintainability ratchet limit. Do not add local helper functions or multi-line lifecycle glue there for boot marking; prefer existing helper modules, runtime wiring, or compact guarded calls that preserve the current behavior and budget.
+- File Manager should mark `file_index_ready` only after `refresh_persisted_files()` runs for startup-style triggers such as `initial`, `auth_ready`, or `startup`, and only when `boot_ready$mark` is available.
+
 Protected by:
 
 - `tests/testthat/test-source-manifest-contract.R`
@@ -986,8 +992,10 @@ Protected by:
 - `tests/testthat/test-server-core-interaction-runtime.R`
 - `tests/testthat/test-server-live-user-provider-contract.R`
 - `tests/testthat/test-maintainability-ratchet.R`
+- `tests/testthat/test-file-manager-module-policy-wiring.R`
 
 Focused validation:
+- `testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")`
 
 - `Sys.setenv(MERGEN_RUN_APP = "false")`
 - `source("app.R", encoding = "UTF-8")`
