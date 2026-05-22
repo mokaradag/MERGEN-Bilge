@@ -189,11 +189,10 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
 
       ensure_history_cache(chat_ids, chats, invalidate = TRUE)
 
-      # İlk 120 sohbet hızlı gösterilir; kalanlar arka planda yüklenir.
-      # Arka plan partileri tabloyu tek tek invalidate etmez. Tüm partiler
-      # bitince tek bir yenileme yapılır; böylece binlerce kayıt görünür olur
-      # ama DataTable sürekli yeniden çizilmez.
-      if (length(remaining_chat_ids) > 0L) {
+      # Sayfa seçimi / Yenile düğmesi gibi force=TRUE akışlarda ikinci
+      # DataTable render'ı üretme. Bu durumda ilk görünür pencere korunur.
+      # Arka plan tam yükleme yalnızca force=FALSE iç güncellemelerde çalışır.
+      if (!isTRUE(force) && length(remaining_chat_ids) > 0L) {
         historyBackgroundWarm(
           session = session,
           chat_ids = remaining_chat_ids,
