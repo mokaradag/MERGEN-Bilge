@@ -188,12 +188,18 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       }
 
       ensure_history_cache(chat_ids, chats)
-		historyBackgroundWarm(
-		  session = session,
-		  chat_ids = remaining_chat_ids,
-		  chats = chats,
-		  ensure_history_cache = ensure_history_cache
-		)
+
+      # Kullanıcının doğrudan gördüğü yenilemelerde ikinci DataTable render'ı
+      # üretme. Arka plan ısıtma yalnızca force=FALSE iç güncellemelerde çalışır.
+      if (!isTRUE(force) && length(remaining_chat_ids) > 0L) {
+        historyBackgroundWarm(
+          session = session,
+          chat_ids = remaining_chat_ids,
+          chats = chats,
+          ensure_history_cache = ensure_history_cache
+        )
+      }
+
       invisible(NULL)
     }
 

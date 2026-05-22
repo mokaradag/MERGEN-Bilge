@@ -88,12 +88,19 @@ test_that("save_message_safely fallback log redaction contract korunur", {
   repo_root <- resolve_repo_root_for_tests()
   path <- file.path(repo_root, "R", "helpers_db_chat_mutations.R")
   txt <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  txt_compact <- gsub("[[:space:]]+", "", txt, perl = TRUE)
 
-  expect_true(grepl(
-    "redact_sensitive_text\\s*\\(\\s*log_json\\s*\\)",
-    txt,
-    perl = TRUE
-  ))
+  expect_true(
+    grepl(
+      "log_json<-redact_sensitive_text(log_json)",
+      txt_compact,
+      fixed = TRUE
+    ),
+    info = paste(
+      "save_message_safely fallback log path must redact log_json before cat().",
+      "Expected compact call: log_json<-redact_sensitive_text(log_json)"
+    )
+  )
 })
 
 test_that("redact_sensitive_text key-value biçimindeki sırları maskeler", {
