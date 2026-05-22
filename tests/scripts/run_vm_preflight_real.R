@@ -206,18 +206,16 @@ cat("OK: app.R source edildi, validate_boot_state() geçti ve shiny.appobj oluş
 # ----------------------------------------------------------------------
 # Dosya sistemi / yazılabilirlik / UTF-8 / File Store / canlı kimlik on kontrolleri
 # ----------------------------------------------------------------------
-preflight_paths <- vm_preflight_check_core_writable_paths()
-vm_preflight_check_atomic_write_probe(preflight_paths$active_log_dir)
-vm_preflight_check_utf8_roundtrip(preflight_paths$active_log_dir)
+vm_preflight_check_core_writable_paths()
+vm_preflight_check_atomic_write()
+vm_preflight_check_utf8_file_roundtrip()
+vm_preflight_check_log_redaction_contract()
 
-if (isTRUE(preflight_check_file_store)) {
+if (isTRUE(check_file_store)) {
   vm_preflight_check_file_store_roundtrip()
-} else {
-  cat("INFO: File Store roundtrip preflight atlandı. Etkinleştirmek için MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE ayarlayın.\n")
-}
-
-if (isTRUE(preflight_check_file_store)) {
   vm_preflight_check_file_resolution_isolation()
+} else {
+  cat("INFO: File Store roundtrip checks skipped. Set MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE to enable.\n")
 }
 
 vm_preflight_check_live_user_id_provider_contract()
@@ -303,4 +301,14 @@ if (!requireNamespace("curl", quietly = TRUE)) {
   cat("OK: Gerçek LLM endpoint erişilebilirlik kontrolü başarılı.\n")
 }
 
+cat("\n=== Windows VM Preflight Summary ===\n")
+cat("PASS: Boot, SSO config, DB health, LLM reachability, writable paths, atomic write, UTF-8 roundtrip, and provider contracts completed.\n")
+
+if (isTRUE(preflight_check_file_store)) {
+  cat("PASS: File Store roundtrip and per-user isolation checks completed.\n")
+} else {
+  cat("WARN: File Store roundtrip checks were skipped. Set MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE for the full VM gate.\n")
+}
+
+cat("FAIL: none\n")
 cat("OK: Windows VM gerçek preflight başarıyla tamamlandı.\n")

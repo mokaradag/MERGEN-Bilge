@@ -628,6 +628,76 @@ vm_preflight_check_sso_auth_ready_refresh_contract <- function() {
   invisible(TRUE)
 }
 
+vm_preflight_check_log_redaction_contract <- function() {
+  if (!exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+    stop("redact_sensitive_text() not loaded; log redaction cannot be verified.", call. = FALSE)
+  }
+
+  old_env <- Sys.getenv(
+    c("AI_KEYS_MASTER", "LOCAL_LLM_API_KEY", "DB_PASSWORD", "SSO_CLIENT_SECRET"),
+    unset = ""
+  )
+
+  fake_values <- c(
+    AI_KEYS_MASTER = "fake_master_key_abcdef1234",
+    LOCAL_LLM_API_KEY = "fake_llm_key_abcdef1234",
+    DB_PASSWORD = "fake_db_password_abcdef1234",
+    SSO_CLIENT_SECRET = "fake_sso_secret_abcdef1234"
+  )
+
+  on.exit({
+    for (nm in names(old_env)) {
+      Sys.setenv(structure(as.list(old_env[[nm]]), names = nm))
+    }
+  }, add = TRUE)
+
+  do.call(Sys.setenv, as.list(fake_values))
+
+  probe <- c(
+    paste("AI_KEYS_MASTER:", fake_values[["AI_KEYS_MASTER"]]),
+    paste("LOCAL_LLM_API_KEY:", fake_values[["LOCAL_LLM_API_KEY"]]),
+    paste("DB password literal:", fake_values[["DB_PASSWORD"]]),
+    paste("SSO secret literal:", fake_values[["SSO_CLIENT_SECRET"]]),
+    "Authorization: Bearer abcdef1234567890.fake-token",
+    "client_secret=fake_client_secret_abcdef1234",
+    "password=fake_password_abcdef1234"
+  )
+
+  redacted <- redact_sensitive_text(probe)
+
+  leaked <- fake_values[vapply(
+    fake_values,
+    function(value) any(grepl(value, redacted, fixed = TRUE)),
+    logical(1)
+  )]
+
+  if (length(leaked) > 0L) {
+    stop(
+      sprintf("Log redaction failed for env value(s): %s", paste(names(leaked), collapse = ", ")),
+      call. = FALSE
+    )
+  }
+
+  forbidden_patterns <- c(
+    "abcdef1234567890.fake-token",
+    "fake_client_secret_abcdef1234",
+    "fake_password_abcdef1234"
+  )
+
+  leaked_patterns <- forbidden_patterns[vapply(
+    forbidden_patterns,
+    function(value) any(grepl(value, redacted, fixed = TRUE)),
+    logical(1)
+  )]
+
+  if (length(leaked_patterns) > 0L) {
+    stop("Log redaction failed for bearer/key-value secret pattern.", call. = FALSE)
+  }
+
+  cat("OK: Log redaction contract verified with fake API/DB/SSO secrets.\n")
+  invisible(TRUE)
+}
+
 vm_preflight_check_file_resolution_isolation <- function() {
   vm_preflight_required_functions(
     c(

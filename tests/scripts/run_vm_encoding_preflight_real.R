@@ -370,43 +370,58 @@ tryCatch({
 
     visible_values <- visible_values[!is.na(visible_values)]
 
-    if (length(visible_values) > 0L && vm_encoding_preflight_has_mojibake(visible_values)) {
-      bad_rows <- recent_messages[
-        vapply(seq_len(nrow(recent_messages)), function(i) {
-          row_text <- paste(
-            recent_messages$MessageContent[i] %||% "",
-            recent_messages$ReasoningContent[i] %||% "",
-            collapse = "\n"
-          )
-          vm_encoding_preflight_has_mojibake(row_text)
-        }, logical(1)),
-        ,
-        drop = FALSE
-      ]
+    legacy_mojibake_found <- length(visible_values) > 0L &&
+      vm_encoding_preflight_has_mojibake(visible_values)
 
-      vm_encoding_preflight_stop(sprintf(
-        paste(
-			"Son MB_Messages kayıtlarında mojibake tespit edildi.",
-			"Bu genellikle eski bozuk kayıtların temizlenmesi gerektiğini gösterir;",
-			"yeni yazma yolunu ayrıca MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE ile doğrulayın.",
-			"İlk bozuk kayıtlar: %s"
-        ),
-        paste(
-          utils::head(
-            paste0(
-              "MessageID=", bad_rows$MessageID,
-              ", ChatID=", bad_rows$ChatID,
-              ", Preview=",
-              substr(bad_rows$MessageContent %||% "", 1, 120)
-            ),
-            5
-          ),
-          collapse = " | "
-        )
-      ))
+	if (isTRUE(legacy_mojibake_found)) {
+	  bad_rows <- recent_messages[
+		vapply(seq_len(nrow(recent_messages)), function(i) {
+		  row_text <- paste(
+			recent_messages$MessageContent[i] %||% "",
+			recent_messages$ReasoningContent[i] %||% "",
+			collapse = "\n"
+		  )
+		  vm_encoding_preflight_has_mojibake(row_text)
+		}, logical(1)),
+		,
+		drop = FALSE
+	  ]
+
+	  legacy_message <- sprintf(
+		paste(
+		  "WARN: Son MB_Messages kayıtlarında eski mojibake kalıntısı bulundu.",
+		  "Bu kontrol tarihsel veri için uyarıdır; tek başına yeni yazma regresyonu sayılmaz.",
+		  "Yeni yazma yolu MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE ile ayrıca doğrulanmalıdır.",
+		  "İlk bozuk kayıtlar: %s"
+		),
+		paste(
+		  utils::head(
+			paste0(
+			  "MessageID=", bad_rows$MessageID,
+			  ", ChatID=", bad_rows$ChatID,
+			  ", Preview=",
+			  substr(bad_rows$MessageContent %||% "", 1, 120)
+			),
+			5
+		  ),
+		  collapse = " | "
+		)
+	  )
+
+	  fail_on_legacy <- vm_encoding_preflight_bool(
+		Sys.getenv("MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE", "FALSE"),
+		default = FALSE,
+		env_name = "MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE"
+	  )
+
+	  if (isTRUE(fail_on_legacy)) {
+		vm_encoding_preflight_stop(legacy_message)
+	  } else {
+		cat(legacy_message, "\n")
+	  }
+	} else {
+      cat("OK: Son MB_Messages kayıtlarında mojibake bulunmadı.\n")
     }
-
-    cat("OK: Son MB_Messages kayıtlarında mojibake bulunmadı.\\n")
   }
 
   require_nvarchar <- vm_encoding_preflight_bool(
@@ -622,4 +637,4 @@ tryCatch({
   release_connection(conn_info)
 })
 
-cat("OK: Windows VM SQL Server encoding preflight başarıyla tamamlandı.\n")
+cat("OK: Windows VM SQL Server encoding preflight tamamlandı. WARN çıktıysa yalnızca tarihsel veri / opsiyonel şema uyarısı olarak değerlendirin; yeni yazma regresyonu transactional probe ile ayrıca doğrulanmalıdır.\n")

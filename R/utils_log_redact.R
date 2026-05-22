@@ -20,7 +20,26 @@
     "ANTHROPIC_API_KEY",
     "CLAUDE_CODE_API_KEY",
     "CLAUDE_API_KEY",
-    "OPENAI_API_KEY"
+    "OPENAI_API_KEY",
+
+    # DB / ODBC secrets. The current app primarily uses DSN names, but VM
+    # profiles may still define password-like env vars for drivers/scripts.
+    "DB_PASSWORD",
+    "DB_PASS",
+    "DB_PWD",
+    "ODBC_PASSWORD",
+    "ODBC_PWD",
+    "SQL_PASSWORD",
+    "SQLSERVER_PASSWORD",
+    "MSSQL_PASSWORD",
+
+    # SSO / OIDC / Keycloak secrets. The current implicit-flow config does not
+    # require one, but this keeps logs safe if a secret is later introduced.
+    "SSO_CLIENT_SECRET",
+    "SSO_KEYCLOAK_CLIENT_SECRET",
+    "KEYCLOAK_CLIENT_SECRET",
+    "OIDC_CLIENT_SECRET",
+    "SSO_SECRET"
   )
 }
 

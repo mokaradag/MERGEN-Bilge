@@ -56,6 +56,42 @@ test_that("redact_sensitive_text bilinen env anahtar değerini maskeler", {
   expect_false(grepl("supersekretkey_abcdef1234", sonuc, fixed = TRUE))
 })
 
+test_that("redact_sensitive_text DB ve SSO env sırlarını literal değer olarak maskeler", {
+  old_db <- Sys.getenv("DB_PASSWORD", unset = "")
+  old_sso <- Sys.getenv("SSO_CLIENT_SECRET", unset = "")
+
+  fake_db <- "fake_db_password_abcdef1234"
+  fake_sso <- "fake_sso_secret_abcdef1234"
+
+  Sys.setenv(
+    DB_PASSWORD = fake_db,
+    SSO_CLIENT_SECRET = fake_sso
+  )
+
+  on.exit({
+    Sys.setenv(DB_PASSWORD = old_db)
+    Sys.setenv(SSO_CLIENT_SECRET = old_sso)
+  }, add = TRUE)
+
+  sonuc <- redact_sensitive_text(c(
+    paste("DB bağlantı hatası:", fake_db),
+    paste("SSO yapılandırması:", fake_sso)
+  ))
+
+  expect_false(any(grepl(fake_db, sonuc, fixed = TRUE)))
+  expect_false(any(grepl(fake_sso, sonuc, fixed = TRUE)))
+  expect_true(any(grepl("<DB_PASSWORD:redacted>", sonuc, fixed = TRUE)))
+  expect_true(any(grepl("<SSO_CLIENT_SECRET:redacted>", sonuc, fixed = TRUE)))
+})
+
+test_that("save_message_safely fallback log redaction contract korunur", {
+  repo_root <- resolve_repo_root_for_tests()
+  path <- file.path(repo_root, "R", "helpers_db_chat_mutations.R")
+  txt <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_true(grepl("redact_sensitive_text(log_json)", txt, fixed = TRUE))
+})
+
 test_that("redact_sensitive_text key-value biçimindeki sırları maskeler", {
   fake_values <- c(
     "fakeapi123",
