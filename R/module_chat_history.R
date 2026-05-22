@@ -93,7 +93,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       })
     }
 
-    ensure_history_cache <- function(chat_ids, chats) {
+	ensure_history_cache <- function(chat_ids, chats, invalidate = TRUE) {
       if (length(chat_ids) == 0) {
         return(invisible(NULL))
       }
@@ -157,7 +157,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       }
 
       messages_cache(cache)
-      if (length(to_fetch) > 0) {
+      if (isTRUE(invalidate) && length(to_fetch) > 0) {
         trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
       }
       invisible(NULL)
@@ -187,16 +187,23 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         return(invisible(NULL))
       }
 
-      ensure_history_cache(chat_ids, chats)
+      ensure_history_cache(chat_ids, chats, invalidate = TRUE)
 
-      # Kullanıcının doğrudan gördüğü yenilemelerde ikinci DataTable render'ı
-      # üretme. Arka plan ısıtma yalnızca force=FALSE iç güncellemelerde çalışır.
-      if (!isTRUE(force) && length(remaining_chat_ids) > 0L) {
+      # İlk 120 sohbet hızlı gösterilir; kalanlar arka planda yüklenir.
+      # Arka plan partileri tabloyu tek tek invalidate etmez. Tüm partiler
+      # bitince tek bir yenileme yapılır; böylece binlerce kayıt görünür olur
+      # ama DataTable sürekli yeniden çizilmez.
+      if (length(remaining_chat_ids) > 0L) {
         historyBackgroundWarm(
           session = session,
           chat_ids = remaining_chat_ids,
           chats = chats,
-          ensure_history_cache = ensure_history_cache
+          ensure_history_cache = function(batch_ids, batch_chats) {
+            ensure_history_cache(batch_ids, batch_chats, invalidate = FALSE)
+          },
+          on_complete = function() {
+            trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
+          }
         )
       }
 

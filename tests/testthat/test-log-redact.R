@@ -84,17 +84,42 @@ test_that("redact_sensitive_text DB ve SSO env sırlarını literal değer olara
   expect_true(any(grepl("<SSO_CLIENT_SECRET:redacted>", sonuc, fixed = TRUE)))
 })
 
+.read_log_redact_text_utf8 <- function(path) {
+  size <- suppressWarnings(file.info(path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE, useBytes = TRUE)
+  Encoding(txt) <- "UTF-8"
+  txt
+}
+
 test_that("save_message_safely fallback log redaction contract korunur", {
   repo_root <- resolve_repo_root_for_tests()
   path <- file.path(repo_root, "R", "helpers_db_chat_mutations.R")
-  txt <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-  txt_compact <- gsub("[[:space:]]+", "", txt, perl = TRUE)
+  txt <- .read_log_redact_text_utf8(path)
+  txt_compact <- gsub("[[:space:]]+", "", txt, perl = TRUE, useBytes = TRUE)
 
   expect_true(
     grepl(
       "log_json<-redact_sensitive_text(log_json)",
       txt_compact,
-      fixed = TRUE
+      fixed = TRUE,
+      useBytes = TRUE
     ),
     info = paste(
       "save_message_safely fallback log path must redact log_json before cat().",
