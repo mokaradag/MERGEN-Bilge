@@ -708,11 +708,8 @@ fileManagerServer <- function(
 	  sync_file_to_context     = sync_file_to_context,
 		refresh_persisted_files  = function(trigger = "manual") {
 		  refresh_from_user_folder(trigger)
-
-		  if (trigger %in% c("initial", "auth_ready", "startup") && !is.null(boot_ready) && is.function(boot_ready$mark)) {
-			boot_ready$mark("file_index_ready", label = "Dosyalar hazır", detail = list(count = length(module_values$file_contents)))
-		  }
-
+		  should_mark_boot <- trigger %in% c("initial", "auth_ready", "startup") && !is.null(boot_ready) && is.function(boot_ready$mark)
+		  if (should_mark_boot) boot_ready$mark("file_index_ready", label = "Dosyalar hazır", detail = list(count = length(module_values$file_contents)))
 		  invisible(TRUE)
 		},
 	  reset_attachment_state   = function() {
