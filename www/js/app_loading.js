@@ -1,9 +1,10 @@
 // www/js/app_loading.js
 // Dosya Yolu: www/js/app_loading.js
 // Açıklama: Açılış yükleme ekranı denetleyicisi. Gerçek boot olaylarını
-//   (SSO, Shiny bağlantısı, oturum) izleyerek aşamaları ilerletir,
-//   yedigen ilerleme halkasını ve yüzde göstergesini günceller, akan kod
-//   katmanını başlatır ve karşılama ekranı varlıklarını önceden yükler.
+//   (SSO, Shiny bağlantısı, oturum) kontrol noktası olarak izler, yedigen
+//   ilerleme halkasını 0'dan 100'e MONOTON ve saat yönünde doldurur,
+//   yüzde göstergesini günceller, akan kod katmanını başlatır ve karşılama
+//   ekranı varlıklarını önceden yükler.
 //   Bu dosya R/module_app_loading.R tarafından satır içine gömülür; bu
 //   nedenle harici varlıklar yüklenmeden önce çalışır.
 
@@ -13,31 +14,35 @@
   var overlay = document.getElementById("app-loading-overlay");
   if (!overlay) return;
 
-  // Aşamalar: anahtar -> görünen etiket ve hedef yüzde
+  // Aşamalar: her anahtar gerçek bir boot kontrol noktasıdır. Yüzdeler
+  // yalnızca artar; ilerleme asla geri gitmez.
   var STAGES = [
-    { key: "boot", label: "Başlatılıyor", pct: 12 },
-    { key: "connect", label: "Bağlantı kuruluyor", pct: 30 },
-    { key: "auth", label: "Kimlik doğrulanıyor", pct: 48 },
-    { key: "session", label: "Oturum hazırlanıyor", pct: 66 },
-    { key: "workspace", label: "Çalışma alanı hazırlanıyor", pct: 86 },
-    { key: "ready", label: "Hazır", pct: 97 }
+    { key: "boot", label: "Başlatılıyor", pct: 14 },
+    { key: "connect", label: "Bağlantı kuruluyor", pct: 32 },
+    { key: "auth", label: "Kimlik doğrulanıyor", pct: 50 },
+    { key: "session", label: "Oturum hazırlanıyor", pct: 70 },
+    { key: "workspace", label: "Çalışma alanı hazırlanıyor", pct: 88 },
+    { key: "ready", label: "Hazır", pct: 96 }
   ];
 
   var stageIndex = -1;
   var finished = false;
+  var fadeStarted = false;
   var shinyReady = false;
   var ssoActive = false;
   var ssoResolved = false;
   var skipIntro = false;
   var appReadyAt = 0;
+
+  // İlerleme durumu: displayPct her zaman targetPct'e doğru ilerler ve
+  // asla azalmaz. targetPct yalnızca aşamalarla veya finish() ile artar.
   var displayPct = 0;
-  var ceilPct = 0;
-  var ticker = null;
+  var targetPct = 0;
+  var rafId = null;
 
   var statusText = overlay.querySelector(".alo-status-text");
   var readoutNum = overlay.querySelector(".alo-readout-num");
   var progressHept = document.getElementById("alo-progress-hept");
-  var heptLen = 0;
 
   // Giriş animasyonu tercihini oku
   try {
@@ -51,41 +56,68 @@
     document.documentElement.classList.add("mergen-skip-intro");
   }
 
-  // İlerleme yedigeninin çizgi uzunluğunu hazırla
-  if (progressHept) {
-    try {
-      heptLen = progressHept.getTotalLength();
-    } catch (e) {
-      heptLen = 0;
-    }
-    if (!heptLen || !isFinite(heptLen)) {
-      heptLen = 486; // r=80 yedigen çevresi için yedek değer
-    }
-    progressHept.style.strokeDasharray = String(heptLen);
-    progressHept.style.strokeDashoffset = String(heptLen);
-  }
-
+  // İlerleme yedigeni pathLength="100" ile ölçeklenir: stroke-dashoffset
+  // 100 -> boş, 0 -> tam çevre. Başlangıç değeri SVG'de satır içi gelir.
   function applyProgress() {
-    var p = Math.max(0, Math.min(100, displayPct));
-    if (progressHept && heptLen) {
-      progressHept.style.strokeDashoffset = String(heptLen * (1 - p / 100));
+    var p = displayPct < 0 ? 0 : (displayPct > 100 ? 100 : displayPct);
+    if (progressHept) {
+      progressHept.style.strokeDashoffset = String(100 - p);
     }
     if (readoutNum) {
       readoutNum.textContent = String(Math.round(p));
     }
   }
 
-  function startTicker() {
-    if (ticker) return;
-    ticker = window.setInterval(function () {
-      var diff = ceilPct - displayPct;
-      if (Math.abs(diff) < 0.15) {
-        displayPct = ceilPct;
-      } else {
-        displayPct += diff * (finished ? 0.24 : 0.07);
-      }
+  // Tek bir requestAnimationFrame karesi: hedefe doğru yumuşak ilerle.
+  function progressFrame() {
+    var diff = targetPct - displayPct;
+
+    if (diff <= 0.05) {
+      displayPct = targetPct;
       applyProgress();
-    }, 80);
+      rafId = null;
+      // Ekran ancak yedigen tam %100 dolduktan sonra erimeye başlar.
+      if (finished && displayPct >= 99.95 && !fadeStarted) {
+        fadeStarted = true;
+        window.setTimeout(function () {
+          overlay.classList.add("app-loading-hidden");
+          window.setTimeout(function () {
+            if (overlay) overlay.style.display = "none";
+            cleanup();
+          }, 760);
+        }, 470);
+      }
+      return;
+    }
+
+    // finish() sonrası daha hızlı; ayrıca minimum adım asimptotik takılmayı
+    // önler, böylece %100'e kesin olarak ulaşılır.
+    var ease = finished ? 0.16 : 0.075;
+    var minStep = finished ? 0.65 : 0.14;
+    var step = diff * ease;
+    if (step < minStep) {
+      step = minStep;
+    }
+    if (step > diff) {
+      step = diff;
+    }
+    displayPct += step;
+    if (displayPct > targetPct) {
+      displayPct = targetPct;
+    }
+    applyProgress();
+    rafId = window.requestAnimationFrame(progressFrame);
+  }
+
+  // Hedefi yalnızca ileri al (monoton garanti) ve gerekiyorsa rAF ilerleme
+  // döngüsünü uyandır. Döngü hedefe ulaşınca progressFrame içinde durur.
+  function setTarget(pct) {
+    if (pct > targetPct) {
+      targetPct = pct > 100 ? 100 : pct;
+      if (rafId === null && displayPct < targetPct) {
+        rafId = window.requestAnimationFrame(progressFrame);
+      }
+    }
   }
 
   function setStage(key) {
@@ -98,7 +130,7 @@
     }
     if (idx < 0 || idx <= stageIndex || finished) return;
     stageIndex = idx;
-    ceilPct = STAGES[idx].pct;
+    setTarget(STAGES[idx].pct);
     if (statusText) {
       statusText.classList.add("alo-status-fade");
       window.setTimeout(function () {
@@ -109,9 +141,9 @@
   }
 
   function cleanup() {
-    if (ticker) {
-      window.clearInterval(ticker);
-      ticker = null;
+    if (rafId !== null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
     }
     try {
       if (window.MergenLoadingCodestream) {
@@ -128,11 +160,11 @@
     if (finished) return;
     finished = true;
     overlay.classList.add("alo-complete");
-    ceilPct = 100;
     if (statusText) {
       statusText.textContent = "Hazır";
     }
-    // Giriş atlandıysa derin uzay intro müziği için kalıcı durdurma güvenlik ağı
+    // Giriş atlandıysa derin uzay intro müziği karşılama ekranına devretmeden
+    // burada yumuşakça durdurulur (uygulama arka plan müziğine geçiş).
     if (skipIntro) {
       try {
         if (window.SpaceIntroMusic) {
@@ -140,18 +172,9 @@
         }
       } catch (e) {}
     }
-    window.setTimeout(function () {
-      overlay.classList.add("app-loading-hidden");
-      window.setTimeout(function () {
-        if (overlay) overlay.style.display = "none";
-        cleanup();
-      }, 760);
-    }, 620);
-  }
-
-  function welcomeVisible() {
-    var root = document.querySelector(".modern-welcome-root");
-    return !!(root && root.offsetParent !== null);
+    // İlerleme kesin olarak %100'e sürülür; ekran yalnızca yedigen tamamen
+    // dolduktan sonra progressFrame içinden eritilir.
+    setTarget(100);
   }
 
   // Boot tamamlanma koşullarını değerlendir
@@ -162,9 +185,10 @@
 
     if (skipIntro) {
       // Giriş ekranı yok: karşılama ekranı gerçekten görünene kadar bekle
-      if (welcomeVisible()) {
+      var welcomeRoot = document.querySelector(".modern-welcome-root");
+      if (welcomeRoot && welcomeRoot.offsetParent !== null) {
         setStage("ready");
-        window.setTimeout(finish, 620);
+        window.setTimeout(finish, 520);
         return;
       }
       var body = document.body;
@@ -173,13 +197,13 @@
           appReadyAt = Date.now();
         } else if (Date.now() - appReadyAt > 2600) {
           setStage("ready");
-          window.setTimeout(finish, 300);
+          window.setTimeout(finish, 280);
         }
       }
     } else {
       // Derin uzay giriş ekranına devredilecek
       setStage("ready");
-      window.setTimeout(finish, 620);
+      window.setTimeout(finish, 560);
     }
   }
 
@@ -253,7 +277,6 @@
   }
 
   function boot() {
-    startTicker();
     setStage("boot");
 
     if (window.MergenLoadingCodestream) {
