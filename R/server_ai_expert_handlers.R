@@ -395,7 +395,19 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     # Yasaklı sayfalarda konuşma
     muted <- c("settings_kisisel", "admin_analytics", "health")
-    if (page %in% muted) return()
+    if (page %in% muted) {
+      # Yasaklı sayfaya geçişte aktif AI Uzman konuşması varsa onu nazikçe durdur.
+      # Özellikle Kişiselleştirme sayfasında kullanıcı karakter seçimi yaptığında
+      # karakter intro videosu hemen oynamaya başlar; bu sırada konuşan AI Uzman
+      # ses akışı ve altyazısı bu deneyimi bozar. Burada stop_speaking çağrısı,
+      # ses elementini durdurur, altyazıyı yumuşak (CSS exiting animasyonu)
+      # olarak gizler ve müzik ducking durumunu serbest bırakır.
+      if (isTRUE(ai_expert$is_speaking())) {
+        cat(sprintf("[AI_EXPERT] Yasaklı sayfaya geçiş (%s), aktif konuşma durduruluyor.\n", page))
+        ai_expert$stop_speaking(0)
+      }
+      return()
+    }
 
     # Özellik kontrolü
     if (!isTRUE(settings_data$enable_ai_expert)) return()

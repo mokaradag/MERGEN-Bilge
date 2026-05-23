@@ -101,7 +101,7 @@ test_that("API model config helper public fonksiyonları source sonrası mevcutt
   )
 })
 
-test_that("thinking model capability çıkarımı ve request override davranışı korunur", {
+test_that("thinking model capability config bildirimi ve request override davranışı korunur", {
   fake_config <- list(
     local_model_capabilities = list(
       "plain-model" = list(
@@ -122,11 +122,27 @@ test_that("thinking model capability çıkarımı ve request override davranış
     )
   )
 
-  inferred <- get_local_model_capabilities("qwen3-prod-model", config = fake_config)
-  expect_true(isTRUE(inferred$thinking))
-  expect_true(isTRUE(inferred$omit_temperature))
-  expect_true(isTRUE(inferred$stream_reasoning))
-  expect_true(isTRUE(inferred$allow_reasoning_fallback))
+  # Config'te açıkça thinking=TRUE olarak bildirilen model
+  declared <- get_local_model_capabilities("custom-thinking", config = fake_config)
+  expect_true(isTRUE(declared$thinking))
+  expect_true(isTRUE(declared$omit_temperature))
+  expect_true(isTRUE(declared$stream_reasoning))
+  expect_true(isTRUE(declared$allow_reasoning_fallback))
+
+  # Config'te açıkça thinking=FALSE olarak bildirilen model
+  plain <- get_local_model_capabilities("plain-model", config = fake_config)
+  expect_false(isTRUE(plain$thinking))
+  expect_false(isTRUE(plain$omit_temperature))
+  expect_false(isTRUE(plain$stream_reasoning))
+  expect_false(isTRUE(plain$allow_reasoning_fallback))
+
+  # Config'te bildirilmemiş model -> varsayılan olarak thinking=FALSE
+  # Eski regex tabanlı tahmin (qwen3/qwq/deepseek-r1 vs.) artık devrede değil.
+  unknown <- get_local_model_capabilities("qwen3-prod-model", config = fake_config)
+  expect_false(isTRUE(unknown$thinking))
+  expect_false(isTRUE(unknown$omit_temperature))
+  expect_false(isTRUE(unknown$stream_reasoning))
+  expect_false(isTRUE(unknown$allow_reasoning_fallback))
 
   body <- list(
     model = "custom-thinking",

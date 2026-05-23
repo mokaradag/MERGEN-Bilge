@@ -260,6 +260,13 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       text <- trimws(as.character(text %||% ""))
       if (!nzchar(text)) return(invisible(FALSE))
 
+      # Telaffuz/yazım düzeltmesi: start_speaking ile aynı metnin önbelleğe
+      # alındığından emin olmak için burada da uygulanır. Aksi halde cache
+      # anahtarı farklı olur ve prewarm'in TTS önbelleği bulunmaz.
+      if (exists("sanitize_ai_expert_pronunciation", mode = "function", inherits = TRUE)) {
+        text <- tryCatch(sanitize_ai_expert_pronunciation(text), error = function(e) text)
+      }
+
       tts_available <- FALSE
       tryCatch({
         tts_available <- isTRUE(tts_processor$tts_available())
@@ -338,6 +345,14 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 	start_speaking <- function(text, cooldown_secs = COOLDOWN_AFTER_PAGE) {
 	  if (is.null(text) || !nzchar(text)) return(invisible(NULL))
 	  if (isTRUE(is_speaking())) return(invisible(NULL))
+
+	  # Telaffuz/yazım düzeltmesini güvenlik ağı olarak burada da uygula.
+	  # call_ai_expert_llm zaten bu düzeltmeyi yapar; ancak doğrudan
+	  # start_speaking çağıran yollar olursa "Bilge Yola" -> "Bilge Yolaç"
+	  # düzeltmesi yine de yapılır.
+	  if (exists("sanitize_ai_expert_pronunciation", mode = "function", inherits = TRUE)) {
+	    text <- tryCatch(sanitize_ai_expert_pronunciation(text), error = function(e) text)
+	  }
 
 	  is_speaking(TRUE)
 	  last_speak_time(Sys.time())

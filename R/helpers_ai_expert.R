@@ -5,6 +5,40 @@
 #            karşılama metni oluşturur ve LLM API çağrılarını yönetir.
 #            Kullanıcı adı DB'den alınarak doğal bir etkileşim sağlanır.
 
+# --- AI Uzman metni telaffuz/yazım düzeltici ---
+# LLM modelleri bazen "Bilge Yolaç" yerine "Bilge Yola" üretir; bu hem altyazıyı
+# (kullanıcı "Bilge Yola" görür) hem de TTS telaffuzunu (ses olarak "Yola"
+# okur) bozar. Burada yapılan düzeltme her iki kanalı da düzeltir, çünkü
+# AI Uzman'da aynı metin hem alt yazı hem TTS için kullanılır.
+#
+# Regex açıklaması: "Bilge Yola" eşleşmesi sadece arkasından bir harf gelmiyor
+# ise (yani "Yolaç" / "Yolarda" / "Yolası" değilse) "Bilge Yolaç" ile değiştirilir.
+# Türkçe harfler (ç, ğ, ı, İ, ö, ş, ü) negatif lookahead'e açık kimliklerle
+# eklenmiştir; bu sayede "Yolaç" / "Yolarda" gibi zaten doğru ya da farklı
+# kelimeler bozulmaz.
+sanitize_ai_expert_pronunciation <- function(text) {
+  if (is.null(text)) return(text)
+
+  raw_text <- tryCatch(as.character(text)[1], error = function(e) NA_character_)
+  if (is.na(raw_text) || !nzchar(raw_text)) return(text)
+
+  # "Bilge Yola" arkasından harf gelmiyorsa "Bilge Yolaç"
+  pattern <- "Bilge Yola(?![A-Za-zçÇğĞıİöÖşŞüÜ])"
+  fixed <- tryCatch(
+    gsub(pattern, "Bilge Yolaç", raw_text, perl = TRUE),
+    error = function(e) raw_text
+  )
+
+  # Küçük harf varyantı (cümle ortasında geçebilir, ama sapmalar mümkün)
+  pattern_lower <- "bilge yola(?![A-Za-zçÇğĞıİöÖşŞüÜ])"
+  fixed <- tryCatch(
+    gsub(pattern_lower, "bilge yolaç", fixed, perl = TRUE),
+    error = function(e) fixed
+  )
+
+  fixed
+}
+
 # --- AI Uzman için LLM çağrı fonksiyonu ---
 # Bu fonksiyon, AI Uzman konuşma metni oluşturmak için LLM API'sini çağırır.
 # Worker-safe: Tüm reaktif değerler önceden yakalanmış olmalıdır.
@@ -126,6 +160,10 @@ call_ai_expert_llm <- function(system_prompt, user_context, model_name,
     cat("[AI_EXPERT] API yanıtı boş.\n")
     return(NULL)
   }
+
+  # Telaffuz/yazım düzeltmesi: "Bilge Yola" -> "Bilge Yolaç" gibi.
+  # Bu adım hem altyazıda görünen metni hem TTS'ye gönderilen metni düzeltir.
+  ai_text <- sanitize_ai_expert_pronunciation(ai_text)
 
   cat(sprintf("[AI_EXPERT] Konuşma metni oluşturuldu (%d karakter)\n", nchar(ai_text)))
   return(ai_text)

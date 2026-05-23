@@ -4,6 +4,119 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
+# UTF-8 SINIR TARAYICISI
+# ------------------------------------------------------------------------------
+# SSE parçaları çoklu baytlı UTF-8 karakterlerin ortasında bölünebilir.
+# Bu yardımcı, verilen ham bayt dizisinin sonunda kaç byte'a kadar TAM bir
+# UTF-8 karakter olduğunu döndürür. Yarım kalan baytlar bir sonraki parçanın
+# başına aktarılabilir; böylece "input string 1 is invalid UTF-8" hatası
+# akış sırasında oluşmaz.
+find_last_utf8_boundary <- function(bytes) {
+  n <- length(bytes)
+  if (n == 0L) return(0L)
+
+  last_byte <- as.integer(bytes[n])
+  # ASCII (0xxxxxxx): tek baytlı tam karakter
+  if (bitwAnd(last_byte, 0x80L) == 0L) {
+    return(n)
+  }
+
+  # Son bayt continuation veya lead - en fazla 4 bayt geriye tara
+  scan_start <- max(1L, n - 3L)
+  for (i in n:scan_start) {
+    byte <- as.integer(bytes[i])
+
+    # Continuation byte (10xxxxxx): geriye devam et
+    if (bitwAnd(byte, 0xC0L) == 0x80L) {
+      next
+    }
+
+    # ASCII (0xxxxxxx): geriye doğru ASCII bulunduysa devam eden continuation
+    # baytları geçersiz; lead byte beklenirdi. Yine de iconv ile temizlenir.
+    if (bitwAnd(byte, 0x80L) == 0L) {
+      return(n)
+    }
+
+    # Lead byte tipini belirle
+    needed <- if (bitwAnd(byte, 0xF8L) == 0xF0L) 4L
+              else if (bitwAnd(byte, 0xF0L) == 0xE0L) 3L
+              else if (bitwAnd(byte, 0xE0L) == 0xC0L) 2L
+              else 0L
+
+    if (needed == 0L) {
+      # Geçersiz lead byte - hepsini gönder, iconv temizler
+      return(n)
+    }
+
+    have <- n - i + 1L
+    if (have >= needed) {
+      # Multi-byte karakter tamamlanmış
+      return(n)
+    }
+    # Yarım kalan karakter - lead byte'tan önceki son tam karakterde kes
+    return(i - 1L)
+  }
+
+  # 4 bayt continuation - veri muhtemelen bozuk, iconv ile temizleyelim
+  return(n)
+}
+
+# ------------------------------------------------------------------------------
+# DURUMLU UTF-8 PARÇA ÇÖZÜCÜ
+# ------------------------------------------------------------------------------
+# SSE callback'i çağrıları arasında yarım UTF-8 baytlarını buffer'lar.
+# Her çağrıda yalnızca tam karakterler içeren metni döndürür.
+create_utf8_stream_decoder <- function() {
+  partial_buffer <- raw(0)
+
+  decode <- function(raw_chunk) {
+    if (length(raw_chunk) == 0L) return("")
+
+    combined <- if (length(partial_buffer) > 0L) c(partial_buffer, raw_chunk) else raw_chunk
+
+    cut_at <- find_last_utf8_boundary(combined)
+
+    if (cut_at < length(combined)) {
+      partial_buffer <<- combined[(cut_at + 1L):length(combined)]
+    } else {
+      partial_buffer <<- raw(0)
+    }
+
+    if (cut_at == 0L) return("")
+
+    complete_bytes <- combined[seq_len(cut_at)]
+    txt <- tryCatch(rawToChar(complete_bytes), error = function(e) "")
+    Encoding(txt) <- "UTF-8"
+
+    # Geçersiz UTF-8 baytları (örn. eksik continuation) güvenle temizlenir
+    sanitized <- tryCatch(
+      iconv(txt, from = "UTF-8", to = "UTF-8", sub = ""),
+      error = function(e) ""
+    )
+    if (is.na(sanitized)) "" else sanitized
+  }
+
+  reset <- function() {
+    partial_buffer <<- raw(0)
+  }
+
+  flush <- function() {
+    if (length(partial_buffer) == 0L) return("")
+    txt <- tryCatch(rawToChar(partial_buffer), error = function(e) "")
+    partial_buffer <<- raw(0)
+    if (!nzchar(txt)) return("")
+    Encoding(txt) <- "UTF-8"
+    sanitized <- tryCatch(
+      iconv(txt, from = "UTF-8", to = "UTF-8", sub = ""),
+      error = function(e) ""
+    )
+    if (is.na(sanitized)) "" else sanitized
+  }
+
+  list(decode = decode, reset = reset, flush = flush)
+}
+
+# ------------------------------------------------------------------------------
 # AKIŞ SATIRI YAZICI FABRİKASI
 # ------------------------------------------------------------------------------
 

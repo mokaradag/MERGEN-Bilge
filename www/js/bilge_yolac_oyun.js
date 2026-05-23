@@ -92,7 +92,12 @@
       k.yon = state.takimYon || k.yon || 1;
 
       if (hareket !== 0) {
-        k.hizX += hereket * 0.42;
+        // KRİTİK DÜZELTME: "hereket" yazım hatası "hareket" olarak düzeltildi.
+        // Strict mode altında undefined "hereket" değişkenine erişim
+        // ReferenceError fırlatır; bu hata takimKontroluUygula fonksiyonunun
+        // erken sonlanmasına ve klavye girdileri ardından oyun döngüsünün
+        // bozulmasına neden oluyordu.
+        k.hizX += hareket * 0.42;
         if (Math.abs(k.hizX) > 3.4) k.hizX = 3.4 * hareket;
         if (!k.yetenekAktif) k.animasyonDurumu = "walk";
       } else if (!k.yetenekAktif && Math.abs(k.hizX) < 0.18) {

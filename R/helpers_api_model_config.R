@@ -32,29 +32,10 @@ get_local_model_capabilities <- function(model_id = NULL, config = api_config) {
     caps <- list()
   }
 
-  # Gerçek model kimlikleri config'teki placeholder/teknik adlarla birebir
-  # eşleşmediğinde düşünme paneli yanlışlıkla simulated moda düşmesin.
-  # Bu sadece model adı açıkça reasoning/thinking ailesine işaret ediyorsa
-  # devreye girer.
-  inferred_thinking <- grepl(
-    "(?i)(think|thinking|reason|reasoning|qwen3|qwq|deepseek[-_ ]?r1|\\br1\\b)",
-    model_id,
-    perl = TRUE
-  )
-
-  if (isTRUE(inferred_thinking)) {
-    caps <- utils::modifyList(
-      list(
-        thinking = TRUE,
-        omit_temperature = TRUE,
-        stream_reasoning = TRUE,
-        allow_reasoning_fallback = TRUE
-      ),
-      caps,
-      keep.null = TRUE
-    )
-  }
-
+  # Düşünme yetenekleri yalnızca config$local_model_capabilities içinde açıkça
+  # bildirilen modeller için belirlenir. R/config_api.R artık her teknik modelin
+  # thinking/omit_temperature/stream_reasoning/allow_reasoning_fallback değerlerini
+  # net olarak tanımladığı için model adı üzerinden regex tabanlı tahmin yapılmaz.
   utils::modifyList(defaults, caps, keep.null = TRUE)
 }
 

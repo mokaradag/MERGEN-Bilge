@@ -276,8 +276,11 @@ test_that("thinking panel plan gerçek streaming dışındaki yollarda simulated
     }
   }, add = TRUE)
 
-  assign("resolve_tool_model_for_family", function(tool_family, fallback_model) "qwen-reason", envir = globalenv())
-  assign("is_thinking_model", function(model_id) identical(model_id, "qwen-reason"), envir = globalenv())
+  # Test mock: gerçek is_thinking_model fonksiyonunu geçici olarak değiştir.
+  # Model adı semantik değil; sadece is_thinking_model TRUE döndürdüğü için panel
+  # plan'inin thinking davranışını üretmesi beklenir.
+  assign("resolve_tool_model_for_family", function(tool_family, fallback_model) "test-thinking-model", envir = globalenv())
+  assign("is_thinking_model", function(model_id) identical(model_id, "test-thinking-model"), envir = globalenv())
 
   streaming_plan <- mergen_build_thinking_panel_plan(
     tool_family = "none",

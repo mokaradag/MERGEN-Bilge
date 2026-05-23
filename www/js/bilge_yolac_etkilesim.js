@@ -94,12 +94,27 @@
     var state = BY.state;
     var karakterler = state.karakterler;
 
+    // Tıklama noktasına doğru tüm hayatta olan karakterlerden mermi fırlat.
+    // Daha önce yalnızca yetenek tetikleniyor ve parçacık efekti ekleniyordu;
+    // bu nedenle kullanıcı mouse ile tıkladığında düşmanlara hasar veremiyordu.
+    // Otomatik ateş takimAtesEt() ile en yakın düşmanı hedeflerken, bu fonksiyon
+    // ikincil saldırı olarak kullanıcı tıkladığı noktaya doğru ateş eder.
     for (var i = 0; i < karakterler.length; i++) {
       var k = karakterler[i];
+      // Kullanıcı tıklamasında karakter yeteneklerini tetikle
       if (BY.karakterler && BY.karakterler.yetenekCalistir) {
         BY.karakterler.yetenekCalistir(k);
       }
+      // Hafif zıplama efekti (görsel geri bildirim)
       if (k.hizY === 0) k.hizY = -2.5 - Math.random() * 1.5;
+
+      // Tıklanan noktaya doğru mermi fırlat
+      if (BY.cephanelik && typeof BY.cephanelik.oyuncuAtisiOlustur === "function") {
+        var yayilma = (i - 2) * 0.05; // hafif yayılma, formasyondaki sıraya göre
+        BY.cephanelik.oyuncuAtisiOlustur(k, tiklaX, tiklaY, {
+          yayilma: yayilma
+        });
+      }
     }
 
     if (BY.efektler && BY.efektler.parcacikOlustur) {

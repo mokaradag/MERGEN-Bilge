@@ -17,11 +17,23 @@ rm(.helpers_llm_sse_stream_io_path)
 # ------------------------------------------------------------------------------
 # RAW PARÇAYI UTF-8 OLARAK ÇÖZ
 # ------------------------------------------------------------------------------
+# NOT: SSE parçaları çoklu baytlı UTF-8 karakterlerinin ortasında bölünebilir.
+# Bu durumda enc2utf8 sonrası yapılacak gsub/strsplit/nchar gibi işlemler
+# "input string 1 is invalid UTF-8" hatasını fırlatır. Bu fonksiyon durumsuz
+# bir güvenli çözücüdür ve geçersiz baytları siler. Durumlu (yarım baytları
+# bir sonraki parçaya taşıyan) versiyon için R/helpers_llm_stream_io.R içindeki
+# create_utf8_stream_decoder() yardımcısı kullanılır.
 
 decode_utf8_raw_chunk <- function(raw_chunk) {
-  txt <- rawToChar(raw_chunk)
+  if (length(raw_chunk) == 0L) return("")
+  txt <- tryCatch(rawToChar(raw_chunk), error = function(e) "")
+  if (!nzchar(txt)) return("")
   Encoding(txt) <- "UTF-8"
-  enc2utf8(txt)
+  sanitized <- tryCatch(
+    iconv(txt, from = "UTF-8", to = "UTF-8", sub = ""),
+    error = function(e) ""
+  )
+  if (is.na(sanitized)) "" else sanitized
 }
 
 # ------------------------------------------------------------------------------
@@ -694,6 +706,18 @@ call_local_llm_sse_worker <- function(chat_history,
       timeout_ms = 300000
     )
 
+    # Durumlu UTF-8 çözücü: SSE parçaları çoklu baytlı karakterlerin ortasında
+    # bölünebilir. Yarım baytlar bir sonraki parçanın başına aktarılır; böylece
+    # "input string 1 is invalid UTF-8" hatası akış sırasında üretilmez.
+    chunk_decoder <- if (exists("create_utf8_stream_decoder", mode = "function", inherits = TRUE)) {
+      create_utf8_stream_decoder()
+    } else {
+      list(
+        decode = function(raw_chunk) decode_utf8_raw_chunk(raw_chunk),
+        flush = function() ""
+      )
+    }
+
     response_meta <- curl::curl_fetch_stream(
       api_url,
       fun = function(raw_chunk) {
@@ -702,7 +726,7 @@ call_local_llm_sse_worker <- function(chat_history,
         }
 
         chunk_text <- tryCatch(
-          decode_utf8_raw_chunk(raw_chunk),
+          chunk_decoder$decode(raw_chunk),
           error = function(e) ""
         )
 
@@ -723,6 +747,12 @@ call_local_llm_sse_worker <- function(chat_history,
       },
       handle = h
     )
+
+    # Akış bittikten sonra buffer'da kalan tam baytları işle
+    tail_text <- tryCatch(chunk_decoder$flush(), error = function(e) "")
+    if (nzchar(tail_text)) {
+      event_buffer <- paste0(event_buffer, tail_text)
+    }
 
     process_event_buffer(force = TRUE)
 

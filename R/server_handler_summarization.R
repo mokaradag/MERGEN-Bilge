@@ -24,20 +24,16 @@ handle_summarization_mode <- function(ctx) {
   }
 
   ctx$values$typing <- TRUE
-  if (isTRUE(ctx$settings_data$enable_typing_indicator)) {
-    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-    insertUI(
-      selector = "#chat_content_container",
-      where = "beforeEnd",
-      ui = div(
-        id = "typing-animation-wrapper",
-        class = "message-bubble",
-        style = "display: flex; justify-content: center; padding: 20px;",
-        div(class = "ring", "Belgeleriniz özetleniyor", span())
-      ),
-      immediate = TRUE
-    )
-  }
+
+  # ÖNEMLİ: send_message() içinde mergen_show_send_message_thinking_wrapper
+  # zaten çağrılmıştır ve #typing-animation-wrapper içerisinde premium reasoning
+  # paneli (simulated modda) görüntülenmektedir. Özetleme modeli düşünmeyen bir
+  # model olduğu için panel simulated modda başlatılır ve dönen sentetik aşama
+  # metinleri ("Belgeler değerlendiriliyor", "İçerik özetleniyor", vb.) gösterir.
+  # Burada paneli kaldırıp yerine eski tek satırlık halka animasyonunu koymak
+  # kullanıcıya tutarsız bir düşünme deneyimi sunar; bu yüzden mevcut panel
+  # korunur. Eğer ileride basit bir gösterim gerekirse send_message tarafındaki
+  # mergen_build_thinking_panel_plan içinde özelleştirme yapılmalıdır.
 
   if (nchar(ctx$user_message_text) > 0) {
     ctx$current_session_files$user_query <- ctx$user_message_text
