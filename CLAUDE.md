@@ -247,13 +247,15 @@ The Admin Hata Analizi heatmap data preparation is a protected small-helper boun
 Current contract:
 
 - `R/helpers_admin_hata_heatmap_data.R` owns `admin_ha_prepare_heatmap_data()`.
-- The helper is pure data preparation only: no Shiny, no highcharter, no DB calls, no reactive state, no observers, and no file I/O.
-- The helper receives the raw priority/category count frame plus category and priority label maps, then returns `kategoriler`, `oncelikler`, and `heatmap_data` for the existing highcharter renderer.
-- `R/module_admin_hata_analizi.R` still owns the Shiny server flow, `renderHighchart`, detailed notification table, attachment preview modal, and status update modal.
-- `R/helpers_admin_hata_analizi.R` still owns shared labels, query helpers, category counting, and tab UI helpers. Do not turn it into a mixed chart-rendering module.
-- `R/config_source_manifest.R` must load `R/helpers_admin_hata_heatmap_data.R` after `R/helpers_admin_hata_analizi.R` and before `R/module_admin_hata_analizi.R`.
-- Do not relax maintainability ratchet thresholds for this area. If the admin module grows again, extract another focused, testable helper instead of increasing file budgets.
-- Preserve Turkish labels such as `Düşük`, `Orta`, `Yüksek`, `Kritik`, `Belirtilmedi`, `Arayüz / Tasarım`, and `Çökme / Hata`.
+- The heatmap helper is pure data preparation only: no Shiny, no highcharter, no DB calls, no reactive state, no observers, and no file I/O.
+- The heatmap helper receives the raw priority/category count frame plus category and priority label maps, then returns `kategoriler`, `oncelikler`, and `heatmap_data` for the existing highcharter renderer.
+- `R/helpers_admin_hata_detail_runtime.R` owns the Admin Hata Analizi detail runtime boundary: detail table preparation/rendering support, priority/status badge HTML, attachment preview/download card helpers, attachment modal runtime, status update modal runtime, and `admin_ha_register_detail_runtime()`.
+- `R/module_admin_hata_analizi.R` must stay focused on the Shiny module shell, reactive data providers, tab routing, and chart renderers. It should register the detail runtime through `admin_ha_register_detail_runtime()` instead of growing the dense detail table/modal/status observer block again.
+- `R/helpers_admin_hata_analizi.R` still owns shared labels, query helpers, category counting, and tab UI helpers. Do not turn it into a mixed chart-rendering or modal-runtime module.
+- `R/config_source_manifest.R` must load the files in this order: `R/helpers_admin_hata_analizi.R`, then `R/helpers_admin_hata_heatmap_data.R`, then `R/helpers_admin_hata_detail_runtime.R`, then `R/module_admin_hata_analizi.R`.
+- Do not relax maintainability ratchet thresholds for this area. The current protected budgets are `R/module_admin_hata_analizi.R <= 640 lines / <= 7 functions` and `R/helpers_admin_hata_detail_runtime.R <= 380 lines / <= 12 functions`.
+- Preserve Turkish labels and user-facing strings such as `Düşük`, `Orta`, `Yüksek`, `Kritik`, `Belirtilmedi`, `Arayüz / Tasarım`, `Çökme / Hata`, `Açık`, `İncelemede`, `Çözüldü`, `Kapandı`, and `Reddedildi`.
+- R tests that access Turkish column names in this area should prefer parser-safe column lookup with `out[[column_name]]` and Unicode escape construction where necessary, instead of using non-ASCII `$` symbols such as `out$Kullanıcı` in parser-sensitive tests.
 
 Protected by:
 
@@ -266,12 +268,10 @@ Protected by:
 
 Focused validation after touching Admin Hata Analizi heatmap preparation, source order, or maintainability budgets:
 
-- `testthat::test_file("tests/testthat/test-admin-hata-analizi-refactor-contract.R")`
-- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
-- `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
-- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
-- `testthat::test_file("tests/testthat/test-production-contracts.R")`
 - `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
+- `testthat::test_file("tests/testthat/test-admin-hata-analizi-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
 
 Manual validation after touching this area:
 
