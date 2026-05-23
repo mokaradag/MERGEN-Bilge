@@ -206,40 +206,11 @@ ttsProcessingServer <- function(id) {
           if (is.null(audio_src)) {
             audio_raw <- httr::content(resp, as = "raw")
             worker_log(sprintf("İKİLİ İÇERİK: %d bayt alındı", length(audio_raw)))
-
-            # MP3 sihirli baytları (ID3 etiketi veya MPEG frame senkronizasyonu)
-            # ile gerçek ses olup olmadığını doğrula. Endpoint 200 OK döndürse
-            # bile gövde HTML hata sayfası veya boş olabilir.
-            is_valid_mp3 <- FALSE
-            if (length(audio_raw) >= 3) {
-              first3 <- as.integer(audio_raw[1:3])
-              # "ID3" başlığı
-              has_id3 <- identical(first3, c(0x49L, 0x44L, 0x33L))
-              # MPEG frame senkronizasyonu: 0xFF ve sonraki baytın üst 3 biti 111
-              has_sync <- (first3[1] == 0xFFL) && (bitwAnd(first3[2], 0xE0L) == 0xE0L)
-              is_valid_mp3 <- has_id3 || has_sync
-            }
-
-            if (length(audio_raw) > 0 && isTRUE(is_valid_mp3)) {
+            
+            if (length(audio_raw) > 0) {
+                # base64enc paketini doğrudan kullan
                 audio_b64 <- base64enc::base64encode(audio_raw)
                 audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
-                cat(sprintf("[TTS] Geçerli MP3 alındı: %d bayt (mime=%s)\n",
-                            length(audio_raw), mime_type))
-            } else if (length(audio_raw) > 0) {
-                # Bayt var ama MP3 değil: muhtemelen JSON hata, HTML hata sayfası
-                # ya da text/plain bir yanıt. İlk 200 baytı log dosyasına yaz.
-                preview <- tryCatch(
-                  rawToChar(audio_raw[1:min(200, length(audio_raw))]),
-                  error = function(e) "<binary>"
-                )
-                worker_log(sprintf("GEÇERSİZ MP3: %d bayt; önizleme=%s",
-                                   length(audio_raw), preview))
-                cat(sprintf("[TTS] HATA: Endpoint geçerli MP3 dönmedi (%d bayt, mime=%s). İlk baytlar: %s\n",
-                            length(audio_raw), mime_type,
-                            paste(sprintf("%02X", as.integer(audio_raw[1:min(8, length(audio_raw))])),
-                                  collapse = " ")))
-                # Geçersiz baytları tarayıcıya göndermek "no sound" semptomunu
-                # üretir. audio_src'ı NULL bırak ki success=FALSE'a düşsün.
             }
           }
 

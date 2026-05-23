@@ -325,19 +325,7 @@ const AIExpertManager = {
 
     audio.addEventListener('error', function() {
       if (self.state.audioElement !== audio) return;
-      var errCode = (audio.error && audio.error.code) ? audio.error.code : 'unknown';
-      var srcLen  = src ? src.length : 0;
-      console.warn('[AI_EXPERT] Ses oynatma hatası: kod=' + errCode + ' srcLen=' + srcLen);
-      try {
-        if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-          Shiny.setInputValue('ai_expert_browser_diag', {
-            kind: 'audio_error',
-            code: errCode,
-            srcLen: srcLen,
-            ts: Date.now()
-          }, { priority: 'event' });
-        }
-      } catch (_) {}
+      console.warn('[AI_EXPERT] Ses oynatma hatası');
       self._onAudioEnded();
     }, { once: true });
 
@@ -346,20 +334,7 @@ const AIExpertManager = {
 		playPromise.catch(function(err) {
 		  if (self.state.audioElement !== audio) return;
 
-		  var errName = err && err.name ? err.name : 'PlayError';
-		  var errMsg  = err && err.message ? err.message : String(err);
-		  console.warn('[AI_EXPERT] play() reddedildi: ' + errName + ' - ' + errMsg);
-		  try {
-			if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-			  Shiny.setInputValue('ai_expert_browser_diag', {
-				kind: 'play_rejected',
-				name: errName,
-				message: errMsg,
-				srcLen: src ? src.length : 0,
-				ts: Date.now()
-			  }, { priority: 'event' });
-			}
-		  } catch (_) {}
+		  console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
 
 		  self._stopAudio();
 

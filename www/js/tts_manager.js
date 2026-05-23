@@ -179,21 +179,7 @@ $(document).ready(function() {
       audio.onerror = function(e) {
         if (window.mergenTTS.currentAudio !== audio) return;
 
-        // Tarayıcı medya hatası kodu (MediaError.MEDIA_ERR_*) ve src uzunluğunu
-        // R konsoluna kadar yükselt, böylece sunucu tarafından da görünür olur.
-        var errCode = (audio.error && audio.error.code) ? audio.error.code : 'unknown';
-        var srcLen = (item && item.src) ? item.src.length : 0;
-        console.warn('[MERGEN TTS] Ses hatası: kod=' + errCode + ' srcLen=' + srcLen, e);
-        try {
-          if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-            Shiny.setInputValue('tts_browser_diag', {
-              kind: 'audio_error',
-              code: errCode,
-              srcLen: srcLen,
-              ts: Date.now()
-            }, { priority: 'event' });
-          }
-        } catch (_) {}
+        console.warn('[MERGEN TTS] Ses hatası:', e);
 
         window.mergenTTS.currentAudio = null;
         window.mergenTTS.isPlaying = false;
@@ -215,22 +201,7 @@ $(document).ready(function() {
         }).catch(error => {
           if (window.mergenTTS.currentAudio !== audio) return;
 
-          // Hata adını (NotAllowedError / NotSupportedError / AbortError ...)
-          // R konsoluna kadar yükselt; sessiz başarısızlıkları bitir.
-          var errName = error && error.name ? error.name : 'PlayError';
-          var errMsg  = error && error.message ? error.message : String(error);
-          console.warn('[MERGEN TTS] play() reddedildi: ' + errName + ' - ' + errMsg);
-          try {
-            if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-              Shiny.setInputValue('tts_browser_diag', {
-                kind: 'play_rejected',
-                name: errName,
-                message: errMsg,
-                srcLen: (item && item.src) ? item.src.length : 0,
-                ts: Date.now()
-              }, { priority: 'event' });
-            }
-          } catch (_) {}
+          console.warn('[MERGEN TTS] Otomatik oynatma engellendi:', error);
 
           releaseAudio(audio);
 
