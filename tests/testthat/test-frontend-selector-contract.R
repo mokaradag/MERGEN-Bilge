@@ -53,6 +53,7 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   server_core_interaction_runtime_r <- .read_repo_text_frontend_selector_contract("R/server_core_interaction_runtime.R")
   file_manager_table_r <- .read_repo_text_frontend_selector_contract("R/helpers_file_manager_table.R")
   file_manager_module_r <- .read_repo_text_frontend_selector_contract("R/module_file_manager.R")
+  file_manager_table_runtime_r <- .read_repo_text_frontend_selector_contract("R/helpers_file_manager_table_runtime.R")
   file_manager_attach_client_r <- .read_repo_text_frontend_selector_contract("R/helpers_file_manager_attach_client.R")
   stt_module_r <- .read_repo_text_frontend_selector_contract("R/module_stt.R")
   stt_client_js <- .read_repo_text_frontend_selector_contract("www/js/stt_client.js")
@@ -126,10 +127,19 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   expect_true(.frontend_selector_has_text(file_handlers_js, "getFileManagerDropZone()"))
 
   expect_true(.frontend_selector_has_text(file_manager_table_r, 'class = "attach-checkbox"'))
+
+  # Sunucu tarafındaki ek seçimi olayı bilinçli olarak modül dosyasında kalır.
   expect_true(.frontend_selector_has_text(file_manager_module_r, "input$attach_toggled"))
-  expect_true(.frontend_selector_has_text(file_manager_module_r, "change.attach"))
-  expect_true(.frontend_selector_has_text(file_manager_module_r, "drawCallback"))
-  expect_true(.frontend_selector_has_text(file_manager_module_r, "fm_register_attach_state_client_handler(session = session, ns = ns)"))
+
+  # DT tablo çizim geri çağrısı ve checkbox JS bağlama mantığı
+  # R/module_file_manager.R dosyasından
+  # R/helpers_file_manager_table_runtime.R dosyasına taşındı.
+  expect_true(.frontend_selector_has_text(file_manager_table_runtime_r, "change.attach"))
+  expect_true(.frontend_selector_has_text(file_manager_table_runtime_r, "drawCallback"))
+  expect_true(.frontend_selector_has_text(file_manager_table_runtime_r, "fm_register_attach_state_client_handler(session = session, ns = ns)"))
+
+  # setAttachState istemci mesaj işleyicisi modülde değil,
+  # özel attach client helper dosyasında tanımlı kalmalıdır.
   expect_true(.frontend_selector_lacks_text(file_manager_module_r, "Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState'"))
   expect_true(.frontend_selector_has_text(file_manager_attach_client_r, "Shiny.addCustomMessageHandler(nsPrefix + 'setAttachState'"))
   expect_true(.frontend_selector_has_text(shiny_handlers_js, "input.attach-checkbox[data-filename]"))
