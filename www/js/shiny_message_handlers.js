@@ -276,9 +276,12 @@ $(document).ready(function() {
 		return;
 	  }
 
-	  if (window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-		window.WelcomeVideoPlayer.destroy();
-	  }
+	  // Video oynatıcı, aynı konteyner yeniden gönderildiğinde (kullanıcı
+	  // başka sekmeden Ana Söyleşi'ye dönerken) yeniden başlatılmamalıdır.
+	  // WelcomeVideoPlayer.init() aynı konteyner ile çağrıldığında otomatik
+	  // olarak mevcut videoyu sürdürür (ensureActiveVideoPlaying). Bu yüzden
+	  // burada zorla destroy çağırmıyoruz; sadece yeni konteyner için
+	  // gerekli olduğunda iç tarafta yeniden kurulum yapılır.
 	  if (window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
 		window.WelcomeNeuralNetwork.destroy();
 	  }
@@ -287,16 +290,31 @@ $(document).ready(function() {
 	  }
 
 	  if (videoContainer) {
+		// Aynı konteyner için init() içinde "halen çalışıyor" yolu devreye
+		// girer; videoyu yeniden başlatmak yerine yumuşak biçimde sürdürür.
+		// Farklı konteyner için ise dahili olarak destroy + setup zinciri
+		// otomatik tetiklenir.
 		window.WelcomeVideoPlayer.init(videoContainer);
-		// Bazı durumlarda init sonrası ilk attemptPlay tarayıcı autoplay
-		// politikası nedeniyle sessizce başarısız olur. Konteyner görünür
-		// olduktan kısa süre sonra videonun gerçekten oynamadığını fark
-		// edip yeniden init'i tetikle. Bu kontrol neural canvas her zaman
-		// görünürken videonun bazen donuk kalmasının önüne geçer.
+		// Tarayıcı autoplay politikası ilk play çağrısını sessizce
+		// reddedebilir. Kısa süre sonra video gerçekten oynamıyor mu diye
+		// bak; sadece o durumda iddiasız bir resume denemesi yap. Yeniden
+		// init çağırırken aynı konteyner kullanılır; bu sayede init()
+		// içindeki ensureActiveVideoPlaying yolu çalışır ve sahnede aktif
+		// olan video kesilmez (çift video oynatımı önlenir).
 		setTimeout(function() {
 		  if (!videoContainer || !document.contains(videoContainer)) return;
-		  var firstVideo = videoContainer.querySelector('.modern-welcome-video[data-index="0"]');
-		  if (firstVideo && firstVideo.paused) {
+		  // Çapraz geçişli iki videodan herhangi biri oynuyor mu?
+		  // (data-index 0 ve 1 dönüşümlü olur; sadece index=0 üzerinden
+		  // karar verirsek çalışan videoyu durdurabiliriz.)
+		  var oynuyorMu = false;
+		  var videos = videoContainer.querySelectorAll('.modern-welcome-video');
+		  for (var i = 0; i < videos.length; i++) {
+			if (!videos[i].paused && videos[i].currentTime > 0) {
+			  oynuyorMu = true;
+			  break;
+			}
+		  }
+		  if (!oynuyorMu) {
 			if (window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.init) {
 			  window.WelcomeVideoPlayer.init(videoContainer);
 			}

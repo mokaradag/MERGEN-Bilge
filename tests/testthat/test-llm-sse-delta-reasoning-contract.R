@@ -47,6 +47,11 @@
   source(file.path(repo_root, "R", "helpers_llm_response_postprocess.R"),
          encoding = "UTF-8", local = globalenv())
 
+  # SSE olay/delta ayrıştırma yardımcıları ayrı dosyaya alındı; izole testte
+  # önce yüklenmesi gerekir, aksi halde extract_llm_delta_bundle bulunamaz.
+  source(file.path(repo_root, "R", "helpers_llm_sse_events.R"),
+         encoding = "UTF-8", local = globalenv())
+
   source(file.path(repo_root, "R", "helpers_llm_sse.R"),
          encoding = "UTF-8", local = globalenv())
 

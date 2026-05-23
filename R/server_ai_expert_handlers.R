@@ -1,24 +1,13 @@
 # R/server_ai_expert_handlers.R
-# Dosya Yolu: R/server_ai_expert_handlers.R
-# Açıklama: AI Uzman (AI Expert) sunucu tarafındaki işleyiciler.
-#            Karşılama, sayfa rehberliği, boşta konuşma ve kullanıcı adıyla
-#            kişiselleştirilmiş etkileşim mantığını yönetir.
-#            Yarış durumu (race condition) önleme mekanizmalarını içerir.
-#            Boşta konuşma zinciri her zaman yeniden planlanır (kırılmaz).
-#            Sayfa rehberliği gecikmesiz başlatılır (LLM çağrısı hemen tetiklenir).
+# AI Uzman (AI Expert) sunucu tarafı işleyicileri.
+# Karşılama, sayfa rehberliği, boşta konuşma ve kişiselleştirme mantığını
+# yönetir; yarış durumu önleme mekanizmalarını içerir.
 
 #' AI Uzman İşleyicilerini Başlat
 #'
-#' @description AI Uzman konuşma tetikleyicilerini ve observer'larını kurar.
-#'   Karşılama, sayfa rehberliği ve boşta kalma konuşmaları yönetilir.
-#'   Kullanıcının adı DB'den alınarak kişiselleştirilmiş deneyim sağlanır.
-#' @param input Shiny input nesnesi
-#' @param session Shiny session nesnesi
-#' @param values Ana reaktif değerler
-#' @param settings_data Ayarlar modülünden dönen reaktif ayarlar
-#' @param ai_expert AI Uzman modülü (module_ai_expert.R'den)
-#' @param tts_processor TTS işleme modülü
-#' @param current_user_id Mevcut kullanıcı ID'si
+#' @param input Shiny input; session Shiny session; values reaktif değerler;
+#'   settings_data ayarlar; ai_expert AI Uzman modülü; tts_processor TTS
+#'   işleme; current_user_id kullanıcı kimliği; chat_history_rv (opsiyonel).
 #' @return Görünmez NULL
 aiExpertHandlersInit <- function(input, session, values, settings_data,
                                   ai_expert, tts_processor,
@@ -52,10 +41,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	  uid
 	}
 
-  # Boşta konuşma arası (ms) - ayarlardan okunur
-  IDLE_INTERVAL_MS   <- 35000   # 35 saniye (varsayılan, ayarlarla güncellenir)
-  
-  # İlk boşta konuşma gecikmesini de sıklık ayarına bağla
+  # İlk boşta konuşma gecikmesini sıklık ayarına bağla
   get_first_idle_delay_ms <- function() {
     freq <- isolate(settings_data$ai_expert_talk_frequency) %||% "orta"
     switch(freq,

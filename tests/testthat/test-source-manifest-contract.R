@@ -231,12 +231,14 @@ test_that("LLM/SSE/worker yükleme sırası korunuyor", {
   pos <- function(path) match(path, paths)
 
   expect_false(is.na(pos("R/helpers_llm_stream_io.R")))
+  expect_false(is.na(pos("R/helpers_llm_sse_events.R")))
   expect_false(is.na(pos("R/helpers_llm_worker_payload.R")))
   expect_false(is.na(pos("R/helpers_llm_worker_tool_results.R")))
 
   expect_lt(pos("R/helpers_llm_response_postprocess.R"), pos("R/helpers_llm_api.R"))
   expect_lt(pos("R/helpers_llm_api.R"), pos("R/helpers_llm_stream_io.R"))
-  expect_lt(pos("R/helpers_llm_stream_io.R"), pos("R/helpers_llm_sse.R"))
+  expect_lt(pos("R/helpers_llm_stream_io.R"), pos("R/helpers_llm_sse_events.R"))
+  expect_lt(pos("R/helpers_llm_sse_events.R"), pos("R/helpers_llm_sse.R"))
   expect_lt(pos("R/helpers_llm_sse.R"), pos("R/helpers_llm_worker_payload.R"))
   expect_lt(pos("R/helpers_llm_worker_payload.R"), pos("R/helpers_llm_worker_tool_results.R"))
   expect_lt(pos("R/helpers_llm_worker_tool_results.R"), pos("R/helpers_llm_worker.R"))

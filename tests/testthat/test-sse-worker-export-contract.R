@@ -58,6 +58,7 @@ test_that("runtime manifest SSE worker yardımcılarını true streaming handler
       "R/helpers_llm_response_postprocess.R",
       "R/helpers_llm_api.R",
       "R/helpers_llm_stream_io.R",
+      "R/helpers_llm_sse_events.R",
       "R/helpers_llm_sse.R",
       "R/helpers_llm_worker_payload.R",
       "R/helpers_llm_worker_tool_results.R",

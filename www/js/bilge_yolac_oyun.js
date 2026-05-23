@@ -8,8 +8,11 @@
   var BY = window.BilgeYolac;
   if (!BY) return;
 
-  var otomatikAtesSayaci = 0;
-  var dashBekleme = 0;
+  // KRİTİK: Otomatik ateş kaldırıldı. Kullanıcı BOŞLUK (ATEŞ) veya fare
+  // tıklamasıyla açıkça tetiklediğinde takım ateş eder. Bu, "ateş tuşuna
+  // basmadığım halde sürekli ateş ediyorlar" şikayetini giderir.
+  var atesBeklemeKaresi = 0;          // Atış arası minimum kare (ardarda tuş basışı koruması)
+  var ATES_COOLDOWN_KARELERI = 12;    // ~5 atış/saniye üst sınırı
   var bossOlusturuldu = false;
   var zaferBekleme = 0;
 
@@ -67,10 +70,17 @@
     var merkez = takimMerkeziAl();
     if (!merkez) return;
 
+    // KRİTİK DÜZELTME: takimMerkeziAl() karakter merkezlerinin ortalamasını
+    // döndürür (x + genislik/2). FORMASYON ofsetleri de merkez tabanlıdır.
+    // Önceki kod hedef merkezi doğrudan k.x (sol kenar) ile karşılaştırıyordu;
+    // bu da her karede sabit genislik/2 kadar fark oluşturup tüm takımı
+    // sürekli sağa kaydırıyordu (kullanıcı hiçbir tuşa basmadan sağa akış).
+    // Şimdi karakter merkezini hedef merkez ile karşılaştırıyoruz.
     for (var i = 0; i < karakterler.length; i++) {
       var k = karakterler[i];
-      var hedefX = merkez.x + FORMASYON[i];
-      var fark = hedefX - k.x;
+      var hedefMerkezX = merkez.x + FORMASYON[i];
+      var kMerkezX = k.x + k.genislik / 2;
+      var fark = hedefMerkezX - kMerkezX;
       k.hizX += fark * 0.012;
     }
   }
@@ -92,11 +102,6 @@
       k.yon = state.takimYon || k.yon || 1;
 
       if (hareket !== 0) {
-        // KRİTİK DÜZELTME: "hereket" yazım hatası "hareket" olarak düzeltildi.
-        // Strict mode altında undefined "hereket" değişkenine erişim
-        // ReferenceError fırlatır; bu hata takimKontroluUygula fonksiyonunun
-        // erken sonlanmasına ve klavye girdileri ardından oyun döngüsünün
-        // bozulmasına neden oluyordu.
         k.hizX += hareket * 0.42;
         if (Math.abs(k.hizX) > 3.4) k.hizX = 3.4 * hareket;
         if (!k.yetenekAktif) k.animasyonDurumu = "walk";
@@ -132,19 +137,12 @@
       }
     }
 
-    if (giris.boslukTetik && dashBekleme <= 0) {
-      dashBekleme = 70;
-      for (var d = 0; d < karakterler.length; d++) {
-        karakterler[d].hizX += (state.takimYon || 1) * 4.6;
-        if (Math.abs(karakterler[d].hizX) > 5.8) karakterler[d].hizX = 5.8 * (state.takimYon || 1);
-        if ((karakterler[d].zemindeMi || Math.abs(karakterler[d].hizY || 0) < 0.05)) {
-          karakterler[d].hizY = -3.2;
-        }
-      }
-      if (BY.efektler && BY.efektler.parcacikOlustur) {
-        var merkezDash = takimMerkeziAl();
-        if (merkezDash) BY.efektler.parcacikOlustur(merkezDash.x, merkezDash.y, "#FFFFFF", "kivilcim", 10);
-      }
+    // BOŞLUK artık ATEŞ tuşudur (dash kaldırıldı). Sadece tetik olayında
+    // ve cooldown sona erdiğinde takım ateş eder. Tuş basılı tutulursa
+    // ATES_COOLDOWN_KARELERI sınırı içinde sürekli atış yapılabilir.
+    if (giris.bosluk && atesBeklemeKaresi <= 0) {
+      atesBeklemeKaresi = ATES_COOLDOWN_KARELERI;
+      takimAtesEt();
     }
 
     karakterFormasyonunuKoru();
@@ -253,8 +251,7 @@
 
   BY.oyun = {
     baslat: function() {
-      otomatikAtesSayaci = 0;
-      dashBekleme = 0;
+      atesBeklemeKaresi = 0;
       bossOlusturuldu = false;
       zaferBekleme = 0;
     },
@@ -267,8 +264,7 @@
       state.kameraX = 0;
       bossOlusturuldu = false;
       zaferBekleme = 0;
-      otomatikAtesSayaci = 0;
-      dashBekleme = 0;
+      atesBeklemeKaresi = 0;
 
       if (BY.seviye && BY.seviye.yukle) BY.seviye.yukle(state.mevcutSeviye || 0);
 
@@ -287,7 +283,7 @@
 
     guncelle: function() {
       var state = BY.state;
-      if (dashBekleme > 0) dashBekleme--;
+      if (atesBeklemeKaresi > 0) atesBeklemeKaresi--;
 
       if (state.oyunDurumu !== "oynuyor" && state.oyunDurumu !== "boss" && state.oyunDurumu !== "zafer") {
         girisSifirla();
@@ -306,13 +302,9 @@
         return;
       }
 
+      // takimKontroluUygula içinde BOŞLUK basılı/tetiklenmişse takim ateş eder.
+      // Otomatik (kullanıcı tuşa basmadan) ateş yoktur.
       takimKontroluUygula();
-
-      otomatikAtesSayaci++;
-      if (otomatikAtesSayaci > 26) {
-        otomatikAtesSayaci = 0;
-        takimAtesEt();
-      }
 
       bossuTetikle();
       seviyeCikisiniKontrolEt();

@@ -152,7 +152,7 @@ sendMessageInit <- function(
       effective_user_id = effective_user_id,
       request_start_time = request_start_time,
       defer_chat_creation = defer_chat_creation,
-      generate_title_from_prompt = generate_title_from_prompt
+      generate_title_from_prompt = chat_generate_title_from_prompt
     )
 
     if (!isTRUE(chat_prepare$ok)) {
@@ -656,10 +656,9 @@ sendMessageInit <- function(
     invisible(NULL)
   }
 
-  # Başlık üretici yardımcı fonksiyonu
-  generate_title_from_prompt <- function(prompt, max_len = 60) {
-    chat_generate_title_from_prompt(prompt, max_len)
-  }
+  # Başlık üreticisi olarak doğrudan paylaşılan yardımcı kullanılır;
+  # yerel sarmalayıcı fonksiyon eklenmez (regex tabanlı fonksiyon sayım
+  # bütçesini gereksiz yere şişirmemek için).
 
   # Fonksiyonları döndür
   list(
