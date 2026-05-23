@@ -95,6 +95,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Geri bildirim ve hata bildirimi
 - Sürüm bilgilendirme sayfası
 - Yönetici paneli ve analitik ekranlar
+- Hata Analizi ekranındaki Öncelik ve Kategori ısı haritası için veri hazırlama mantığı `R/helpers_admin_hata_heatmap_data.R` içine ayrılmıştır. Bu yardımcı yalnızca kategori/öncelik etiketlerini ve heatmap matrisini hazırlar; Shiny çıktı üretimi, highcharter çizimi, detay tablosu, ek dosya modalı ve durum güncelleme davranışı `R/module_admin_hata_analizi.R` içinde kalır. Böylece kullanıcıya görünen yönetici paneli davranışı değişmeden yakın-limit modül karmaşıklığı azaltılmıştır.
 
 ### Türkçe karakter, emoji ve kodlama dayanıklılığı
 - Türkçe karakterler, emoji ve yaygın mojibake bozulmaları için sunucu ve istemci tarafında ortak normalizasyon yardımcıları kullanılır.
