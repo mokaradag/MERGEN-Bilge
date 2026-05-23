@@ -10,6 +10,7 @@
 #     www/js/app_loading_content.js
 #     www/js/app_loading_codestream.js
 #     www/js/app_loading.js
+#     www/js/app_loading_media.js
 #   Bu dosyalar derleme anında okunup ilk boyamada satır içine gömülür; bu
 #   sayede harici varlık yüklenmesini beklemeden ekran tutarlı görünür ve
 #   R dosyası küçük/okunabilir kalır. Bu varlıklar bilinçli olarak normal
@@ -144,7 +145,8 @@ appLoadingUI <- function() {
       tags$script(HTML(app_loading_asset("js/app_loading_snippets.js"))),
       tags$script(HTML(app_loading_asset("js/app_loading_content.js"))),
       tags$script(HTML(app_loading_asset("js/app_loading_codestream.js"))),
-      tags$script(HTML(app_loading_asset("js/app_loading.js")))
+      tags$script(HTML(app_loading_asset("js/app_loading.js"))),
+      tags$script(HTML(app_loading_asset("js/app_loading_media.js")))
     )
   )
 }

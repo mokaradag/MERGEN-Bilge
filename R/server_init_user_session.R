@@ -118,6 +118,15 @@ serverInitUserSession <- function(session,
       auth_source = "keycloak"
     )
 
+    # Önemli: Bu observer yüksek öncelikle çalışır. SSO doğrulandığında
+    # (sso_state$authenticated FALSE -> TRUE) birden çok observer aynı
+    # flush turunda tetiklenir: kayıtlı sohbetler, dosya yöneticisi
+    # yenilemesi, geri bildirim yüklemesi, görsel galerisi. Bunların
+    # hepsi kimlik kurulumunun (user_id ve auth_ready) tamamlanmış
+    # olmasına bağlıdır. priority yüksek tutularak kimlik kurulumunun
+    # her zaman diğer auth observer'larından ÖNCE çalışması garanti
+    # edilir; aksi halde ilk girişte dosya/sohbet yüklemesi user_id=0
+    # ile atlanabilir ve yalnızca tarayıcı yenilemesinde düzelir.
     observeEvent(sso_state$authenticated, {
       req(isTRUE(sso_state$authenticated))
 
@@ -136,7 +145,7 @@ serverInitUserSession <- function(session,
       log_info(
         "SSO oturum kuruldu: kullanıcı={system_username}, id={uid}, yetki={user_identity$auth_level}"
       )
-    }, ignoreInit = TRUE, once = TRUE)
+    }, ignoreInit = TRUE, once = TRUE, priority = 1000L)
   }
 
   get_user_config <- function(default = NULL) {

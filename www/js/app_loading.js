@@ -1,10 +1,18 @@
 // www/js/app_loading.js
 // Dosya Yolu: www/js/app_loading.js
 // Açıklama: Açılış yükleme ekranı denetleyicisi. Gerçek boot olaylarını
-//   (SSO, Shiny bağlantısı, oturum) kontrol noktası olarak izler, yedigen
-//   ilerleme halkasını 0'dan 100'e MONOTON ve saat yönünde doldurur,
-//   yüzde göstergesini günceller, akan kod katmanını başlatır ve karşılama
-//   ekranı varlıklarını önceden yükler.
+//   (Shiny bağlantısı, kimlik doğrulama, oturum kurulumu, dosya/sohbet/medya
+//   hazırlığı) kontrol noktası olarak izler, yedigen ilerleme halkasını
+//   0'dan 100'e MONOTON ve saat yönünde doldurur, yüzde göstergesini
+//   günceller, akan kod katmanını başlatır ve karşılama ekranı varlıklarını
+//   önceden yükler.
+//
+//   Önemli: İlerleme yalnızca server tarafından gönderilen
+//   "bootReadinessCheckpoint" mesajlarıyla ilerler ve YALNIZCA tüm zorunlu
+//   kontrol noktaları tamamlandığında (ready=true) %100'e ulaşıp kapanır.
+//   Böylece ekran erken kapanmaz; deep-space sahnesine geçildiğinde dosyalar,
+//   son konuşmalar ve karakter medyası gerçekten hazırdır.
+//
 //   Bu dosya R/module_app_loading.R tarafından satır içine gömülür; bu
 //   nedenle harici varlıklar yüklenmeden önce çalışır.
 
@@ -15,27 +23,25 @@
   if (!overlay) return;
 
   // Aşamalar: her anahtar gerçek bir boot kontrol noktasıdır. Yüzdeler
-  // yalnızca artar; ilerleme asla geri gitmez.
+  // yalnızca artar; ilerleme asla geri gitmez. Sıralama, kontrol
+  // noktalarının tipik tamamlanma sırasına göredir; en yavaş olan
+  // (karakter medyası) sona yakın konumlandırılır ki çubuk pürüzsüz aksın.
   var STAGES = [
-    { key: "boot", label: "Başlatılıyor", pct: 5 },
+    { key: "boot", label: "Başlatılıyor", pct: 6 },
     { key: "connect", label: "Bağlantı kuruluyor", pct: 18 },
     { key: "auth_ready", label: "Kimlik doğrulandı", pct: 32 },
-    { key: "saved_chats_preview_ready", label: "Son konuşmalar hazırlanıyor", pct: 48 },
-    { key: "file_index_ready", label: "Dosyalar hazırlanıyor", pct: 62 },
-    { key: "character_media_ready", label: "Asistan medyası hazırlanıyor", pct: 76 },
-    { key: "welcome_shell_ready", label: "Ana Söyleşi hazırlanıyor", pct: 88 },
-    { key: "welcome_client_ready", label: "Görsel bileşenler başlatılıyor", pct: 96 },
+    { key: "saved_chats_preview_ready", label: "Son konuşmalar hazırlanıyor", pct: 46 },
+    { key: "file_index_ready", label: "Dosyalar hazırlanıyor", pct: 60 },
+    { key: "welcome_client_ready", label: "Görsel bileşenler başlatılıyor", pct: 74 },
+    { key: "character_media_ready", label: "Asistan medyası hazırlanıyor", pct: 91 },
     { key: "ready", label: "Hazır", pct: 99 }
   ];
 
   var stageIndex = -1;
   var finished = false;
   var fadeStarted = false;
-  var shinyReady = false;
   var ssoActive = false;
-  var ssoResolved = false;
   var skipIntro = false;
-  var appReadyAt = 0;
 
   // İlerleme durumu: displayPct her zaman targetPct'e doğru ilerler ve
   // asla azalmaz. targetPct yalnızca aşamalarla veya finish() ile artar.
@@ -60,7 +66,8 @@
   }
 
   // İlerleme yedigeni pathLength="100" ile ölçeklenir: stroke-dashoffset
-  // 100 -> boş, 0 -> tam çevre. Başlangıç değeri SVG'de satır içi gelir.
+  // 100 -> boş, 0 -> tam çevre. Köşeler saat yönünde sıralı olduğundan
+  // halka tepeden başlayarak saat yönünde dolar.
   function applyProgress() {
     var p = displayPct < 0 ? 0 : (displayPct > 100 ? 100 : displayPct);
     if (progressHept) {
@@ -131,6 +138,7 @@
         break;
       }
     }
+    // Bilinmeyen veya geriye dönük aşamalar yok sayılır (monoton ilerleme).
     if (idx < 0 || idx <= stageIndex || finished) return;
     stageIndex = idx;
     setTarget(STAGES[idx].pct);
@@ -142,25 +150,27 @@
       }, 200);
     }
   }
-  
+
+  // Server tarafı boot kontrol noktası mesajlarını dinle. İlerleme tamamen
+  // bu mesajlarla sürülür; ekran ancak ready=true geldiğinde kapanır.
   function installBootReadinessHandler() {
     if (!window.Shiny || !Shiny.addCustomMessageHandler) {
-	  window.setTimeout(installBootReadinessHandler, 50);
-	  return;
+      window.setTimeout(installBootReadinessHandler, 50);
+      return;
     }
 
     if (window.__mergenBootReadinessHandlerInstalled) return;
     window.__mergenBootReadinessHandlerInstalled = true;
 
-    Shiny.addCustomMessageHandler("bootReadinessCheckpoint", function(msg) {
-	  if (!msg || !msg.key) return;
+    Shiny.addCustomMessageHandler("bootReadinessCheckpoint", function (msg) {
+      if (!msg || !msg.key) return;
 
-	  setStage(msg.key);
+      setStage(msg.key);
 
-	  if (msg.ready === true) {
-	    setStage("ready");
-	    window.setTimeout(finish, 260);
-	  }
+      if (msg.ready === true) {
+        setStage("ready");
+        window.setTimeout(finish, 260);
+      }
     });
   }
 
@@ -199,38 +209,13 @@
     // İlerleme kesin olarak %100'e sürülür; ekran yalnızca yedigen tamamen
     // dolduktan sonra progressFrame içinden eritilir.
     setTarget(100);
-  }
-
-  // Boot tamamlanma koşullarını değerlendir
-  function evaluate() {
-    if (finished) return;
-    if (!shinyReady || !ssoResolved) return;
-    setStage("workspace");
-
-    if (skipIntro) {
-      // Giriş ekranı yok: karşılama ekranı gerçekten görünene kadar bekle
-      var welcomeRoot = document.querySelector(".modern-welcome-root");
-      if (welcomeRoot && welcomeRoot.offsetParent !== null) {
-        setStage("ready");
-        window.setTimeout(finish, 520);
-        return;
-      }
-      var body = document.body;
-      if (body && body.classList.contains("app-ready")) {
-        if (!appReadyAt) {
-          appReadyAt = Date.now();
-        } else if (Date.now() - appReadyAt > 2600) {
-          setStage("ready");
-          window.setTimeout(finish, 280);
-        }
-      }
-    } else {
-      // Derin uzay giriş ekranına devredilecek
-      setStage("ready");
-      window.setTimeout(finish, 560);
+    if (rafId === null && displayPct < targetPct) {
+      rafId = window.requestAnimationFrame(progressFrame);
     }
   }
 
+  // SSO etkinse yalnızca kimlik doğrulama HATASINI izle: hata ekranı
+  // gösterildiğinde yükleme katmanını kapat ki kullanıcı hatayı görebilsin.
   function startSsoWatch() {
     var ssoTimer = window.setInterval(function () {
       if (finished) {
@@ -241,16 +226,8 @@
       if (ssoErr && window.getComputedStyle(ssoErr).display !== "none") {
         window.clearInterval(ssoTimer);
         finish();
-        return;
       }
-      var ssoOv = document.getElementById("sso_module-sso_overlay");
-      if (ssoOv && ssoOv.classList.contains("sso-auth-hidden")) {
-        window.clearInterval(ssoTimer);
-        ssoResolved = true;
-        setStage("session");
-        evaluate();
-      }
-    }, 150);
+    }, 200);
   }
 
   function detectSso() {
@@ -263,45 +240,42 @@
     } catch (e) {}
 
     if (ssoActive) {
-      setStage("auth");
       startSsoWatch();
-    } else {
-      ssoResolved = true;
     }
-    evaluate();
   }
 
-  // Karşılama ekranı sinematik videolarını önceden yükle (tarayıcı önbelleği
-  // ısıtılır; yükleme bitince sol video gecikmesiz başlar). Eksik dosyalar
-  // sessizce yok sayılır.
+  // Karşılama ekranı sinematik arka plan videolarını önceden yükle (tarayıcı
+  // önbelleği ısıtılır; karşılama ekranı görseli gecikmesiz başlar). Eksik
+  // dosyalar sessizce yok sayılır. Karakter persona videoları ayrı dosya
+  // www/js/app_loading_media.js tarafından önceden yüklenir.
   function preloadWelcomeMedia() {
     var holder = document.createElement("div");
     holder.className = "alo-preload";
     holder.style.cssText =
       "position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;";
 
-  for (var i = 1; i <= 6; i++) {
-    (function (index) {
-	  window.setTimeout(function () {
-	    if (finished) return;
-	    var video = document.createElement("video");
-	    video.preload = "auto";
-	    video.muted = true;
-	    video.playsInline = true;
-	    video.addEventListener("error", function () {
-		  if (video.parentNode) video.parentNode.removeChild(video);
-	    });
-	    video.src = "videos/cinematic/video" + index + ".mp4";
-	    holder.appendChild(video);
-	  }, index * 240);
-    })(i);
-  }
+    for (var i = 1; i <= 6; i++) {
+      (function (index) {
+        window.setTimeout(function () {
+          if (finished) return;
+          var video = document.createElement("video");
+          video.preload = "auto";
+          video.muted = true;
+          video.playsInline = true;
+          video.addEventListener("error", function () {
+            if (video.parentNode) video.parentNode.removeChild(video);
+          });
+          video.src = "videos/cinematic/video" + index + ".mp4";
+          holder.appendChild(video);
+        }, index * 240);
+      })(i);
+    }
 
     overlay.appendChild(holder);
   }
 
   function boot() {
-   setStage("boot");
+    setStage("boot");
     installBootReadinessHandler();
 
     if (window.MergenLoadingCodestream) {
@@ -325,28 +299,16 @@
   }
 
   document.addEventListener("shiny:connected", function () {
-    setStage(ssoActive ? "auth" : "connect");
-  });
-
-  document.addEventListener("shiny:sessioninitialized", function () {
-    shinyReady = true;
-    if (!ssoActive) setStage("session");
-    evaluate();
+    setStage("connect");
   });
 
   document.addEventListener("shiny:disconnected", function () {
     finish();
   });
 
-  var pollTimer = window.setInterval(function () {
-    if (finished) {
-      window.clearInterval(pollTimer);
-      return;
-    }
-    evaluate();
-  }, 140);
-
-  // Güvenlik zaman aşımı: hiçbir koşul gerçekleşmezse 22 sn sonra kapat
+  // Güvenlik zaman aşımı: hiçbir kontrol noktası tamamlanmazsa 22 sn sonra
+  // ekranı yine de kapat (boot kontrol noktaları normalde çok daha hızlı
+  // tamamlanır; bu yalnızca son çare backstop'tur).
   window.setTimeout(function () {
     finish();
   }, 22000);

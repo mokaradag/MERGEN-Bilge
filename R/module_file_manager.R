@@ -219,6 +219,12 @@ fileManagerServer <- function(
       # SSO açıkken doğrulama tamamlanmadan erken tarama yapma
       if (isTRUE(SSO_ENABLED) && !is_auth_ready()) return()
       refresh_from_user_folder("initial")
+      # Yerel modda dosya indeks boot kontrol noktası burada işaretlenir.
+      # SSO modunda bu observer yukarıda erken döner; işaretleme auth
+      # sonrası refresh_persisted_files("auth_ready") akışıyla yapılır.
+      if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
+        boot_ready$mark("file_index_ready", label = "Dosyalar hazır")
+      }
     }, once = TRUE, ignoreNULL = TRUE)
 
     # Not: SSO sonrası tetikleme server.R tarafından tek sefer yönetilir
