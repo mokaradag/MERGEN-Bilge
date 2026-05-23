@@ -604,71 +604,12 @@ fileManagerServer <- function(
       shinyjs::delay(100, { all_files_cleared(FALSE) })
     }, ignoreInit = TRUE)
                    
-	output$files_table <- DT::renderDT({
-	  dat <- module_values$files
-	  if (nrow(dat) == 0) dat <- dat[0, ]
-	  DT::datatable(
-		dat,
-		escape = FALSE,
-		rownames = FALSE,
-		selection = "none",
-		colnames = c("Dosya Adı", "Boyut", "Tür", "Yükleme Tarihi", "İşlemler", "Model Bağlamı"),
-		options = list(
-		  # Keep default server-side processing; just show the controls:
-		  pageLength = 10,                           # default page size (adjust if you prefer 5)
-		  lengthMenu = list(c(5, 10, 25, 50, 100),   # page size dropdown
-							c('5', '10', '25', '50', '100')),
-		  language = list(
-			lengthMenu = "Sayfa başına _MENU_ kayıt göster",
-			info       = "_TOTAL_ kayıttan _START_ - _END_ arası gösteriliyor",
-			infoEmpty  = "Gösterilecek kayıt yok",
-			paginate   = list(previous = "Önceki", `next` = "Sonraki")
-		  ),
-		  paging = TRUE,                             # make it explicit
-		  dom = 'l tip',                             # l=length, t=table, i=info, p=pager
-		  columnDefs = list(
-			list(orderable = FALSE, targets = c(ncol(dat) - 2, ncol(dat) - 1)),  # last TWO cols not sortable
-			list(className = 'dt-center', targets = ncol(dat) - 1)               # center last col (cells + header)
-		  ),
-		  drawCallback = DT::JS(
-			sprintf("
-			  function(settings){
-				var tbl = this.api().table().container();
-				try{Shiny.unbindAll(tbl);}catch(e){}
-				try{Shiny.bindAll(tbl);}catch(e){}
-
-				// (Re)bind attach checkbox events
-				var ns = '%s';
-				var $tbl = $(tbl);
-				$tbl.find('input.attach-checkbox').off('change.attach').on('change.attach', function(){
-				  var fid = this.getAttribute('data-file-id');
-				  var fname = this.getAttribute('data-filename');
-				  var checked = this.checked ? true : false;
-				  Shiny.setInputValue(ns + 'attach_toggled', { id: fid, filename: fname, checked: checked, nonce: Math.random() }, {priority:'event'});
-				});
-				
-				// (Re)init Bootstrap tooltip on the attach checkboxes (uses native title attribute)
-				if ($.fn && $.fn.tooltip) {
-				  $tbl.find('input.attach-checkbox').tooltip({container:'body', placement:'top', trigger:'hover'});
-				}
-			  }
-			", ns(""))
-		  )
-		),
-		callback = DT::JS("
-		  var tbl = table.table().container();
-		  try{Shiny.unbindAll(tbl);}catch(e){}
-		  try{Shiny.bindAll(tbl);}catch(e){}
-		")
-	  )
-	})
-	
-	# one-time JS handler for silent checkbox state updates
-	observeEvent(TRUE, {
-	  session$sendCustomMessage("initAttachHandlerOnce", list(ns_prefix = ns("")))
-	}, once = TRUE)
-
-	fm_register_attach_state_client_handler(session = session, ns = ns)
+    fm_register_file_manager_table_runtime(
+      session = session,
+      output = output,
+      ns = ns,
+      module_values_provider = function() module_values
+    )
 
     session$onSessionEnded(function() {
       tf <- session$userData$temp_files
@@ -677,27 +618,13 @@ fileManagerServer <- function(
       session$userData$temp_files <- list()
     })
 	
-	set_attachment_checked <- function(filename, checked) {
-	  # find row by name
-	  fid <- NULL
-	  for (id in names(module_values$file_contents)) {
-		if (identical(module_values$file_contents[[id]]$name, filename)) { fid <- id; break }
-	  }
-	  if (is.null(fid)) return(invisible(FALSE))
-
-	  # Update local selection model
-	  if (isTRUE(checked)) {
-		module_values$files_in_context[[fid]] <- TRUE
-		attach_in_parent(module_values$file_contents[[fid]])
-	  } else {
-		module_values$files_in_context[[fid]] <- NULL
-		detach_in_parent(filename)
-	  }
-
-	  # Update checkbox in UI silently (no change event)
-	  session$sendCustomMessage(ns("setAttachState"), list(ids = fid, checked = isTRUE(checked)))
-	  invisible(TRUE)
-	}
+    set_attachment_checked <- fm_create_file_manager_attachment_setter(
+      session = session,
+      ns = ns,
+      module_values_provider = function() module_values,
+      attach_in_parent = attach_in_parent,
+      detach_in_parent = detach_in_parent
+    )
 
     # expose to parent
 	list(

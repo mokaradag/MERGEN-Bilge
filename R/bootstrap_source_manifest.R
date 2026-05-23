@@ -406,7 +406,9 @@ source_manifest_required_order <- list(
   c("R/helpers_file_manager_runtime.R", "R/helpers_file_manager_storage.R"),
   c("R/helpers_file_manager_storage.R", "R/helpers_file_manager_state_runtime.R"),
   c("R/helpers_file_manager_state_runtime.R", "R/helpers_file_manager_attach_client.R"),
+  c("R/helpers_file_manager_attach_client.R", "R/helpers_file_manager_table_runtime.R"),
   c("R/helpers_file_manager_state_runtime.R", "R/module_file_manager_ui.R"),
+  c("R/helpers_file_manager_table_runtime.R", "R/module_file_manager.R"),
   c("R/helpers_file_manager_attach_client.R", "R/module_file_manager.R"),
   c("R/module_file_manager_ui.R", "R/module_file_manager.R"),
 
