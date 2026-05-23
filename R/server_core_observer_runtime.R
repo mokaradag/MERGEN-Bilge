@@ -5,13 +5,9 @@
 #           açık sözleşmeli bir runtime yardımcıda toplar.
 # ==============================================================================
 
-.server_core_observer_stop <- function(message) {
-  .server_runtime_stop(message)
-}
-
 .server_core_observer_require_context <- function(runtime_ctx) {
   if (!is_server_runtime_context(runtime_ctx)) {
-    .server_core_observer_stop(
+    .server_runtime_stop(
       "serverBindCoreObserverRuntime: Geçerli bir server runtime context bekleniyor."
     )
   }
@@ -30,7 +26,7 @@
 
 .server_core_observer_require_bundle <- function(core_bundle) {
   if (!is.list(core_bundle)) {
-    .server_core_observer_stop(
+    .server_runtime_stop(
       "serverBindCoreObserverRuntime: core_bundle liste olmalıdır."
     )
   }
@@ -49,7 +45,7 @@
   )
 
   if (!is.list(core_bundle$media_modules)) {
-    .server_core_observer_stop(
+    .server_runtime_stop(
       "serverBindCoreObserverRuntime: core_bundle$media_modules liste olmalıdır."
     )
   }

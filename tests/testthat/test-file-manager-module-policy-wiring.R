@@ -129,6 +129,7 @@ test_that("file manager auth readiness kararını provider üzerinden alıyor", 
   runtime_txt <- .read_repo_text_file_manager_module("R/helpers_file_manager_runtime.R")
   root_server_txt <- .read_repo_text_file_manager_module("server.R")
   core_txt <- .read_repo_text_file_manager_module("R/server_core_interaction_runtime.R")
+  observer_txt <- .read_repo_text_file_manager_module("R/server_core_observer_runtime.R")
   wiring_txt <- .read_repo_text_file_manager_module("R/server_module_wiring.R")
 
   expect_true(grepl("auth_ready_provider = NULL", server_txt, fixed = TRUE))
@@ -143,18 +144,28 @@ test_that("file manager auth readiness kararını provider üzerinden alıyor", 
   # bu helper üzerinden server_module_wiring katmanına aktarılır.
   expect_true(grepl("serverBindCoreInteractionRuntime(", root_server_txt, fixed = TRUE))
   expect_true(grepl(
-    "file_manager_runtime_fn = serverBindFileManagerRuntime",
+    "core_observer_runtime_fn = serverBindCoreObserverRuntime",
     core_txt,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "core_observer_runtime <- core_observer_runtime_fn(",
+    core_txt,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "file_manager_runtime_fn = serverBindFileManagerRuntime",
+    observer_txt,
     fixed = TRUE
   ))
   expect_true(grepl(
     "file_manager_runtime <- file_manager_runtime_fn(",
-    core_txt,
+    observer_txt,
     fixed = TRUE
   ))
   expect_true(grepl(
     "user_id_provider = identity$current_user_id_provider",
-    core_txt,
+    observer_txt,
     fixed = TRUE
   ))
   expect_true(grepl(

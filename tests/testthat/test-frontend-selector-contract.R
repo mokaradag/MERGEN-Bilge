@@ -51,6 +51,7 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   chart_renderer_js <- .read_repo_text_frontend_selector_contract("www/js/chart_renderer.js")
   neural_welcome_js <- .read_repo_text_frontend_selector_contract("www/js/neural_welcome.js")
   server_core_interaction_runtime_r <- .read_repo_text_frontend_selector_contract("R/server_core_interaction_runtime.R")
+  server_core_observer_runtime_r <- .read_repo_text_frontend_selector_contract("R/server_core_observer_runtime.R")
   file_manager_table_r <- .read_repo_text_frontend_selector_contract("R/helpers_file_manager_table.R")
   file_manager_module_r <- .read_repo_text_frontend_selector_contract("R/module_file_manager.R")
   file_manager_table_runtime_r <- .read_repo_text_frontend_selector_contract("R/helpers_file_manager_table_runtime.R")
@@ -88,8 +89,12 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   expect_true(.frontend_selector_has_text(app_core_js, "window.getMergenChatInputElement"))
   expect_true(.frontend_selector_has_text(ui_text, 'inputId = "send_stop_btn"'))
   expect_true(.frontend_selector_has_text(input_js, "#send_stop_btn"))
-  expect_true(.frontend_selector_has_text(server_core_interaction_runtime_r, 'activity_inputs = c("user_input", "send_stop_btn", "send_prompt_from_js")'))
-  expect_true(.frontend_selector_lacks_text(server_core_interaction_runtime_r, '"send_btn"'))
+  expect_true(.frontend_selector_has_text(server_core_interaction_runtime_r, "core_observer_runtime_fn = serverBindCoreObserverRuntime"))
+  expect_true(.frontend_selector_has_text(server_core_observer_runtime_r, 'activity_inputs = c("user_input", "send_stop_btn", "send_prompt_from_js")'))
+  expect_true(.frontend_selector_lacks_text(
+    paste(server_core_interaction_runtime_r, server_core_observer_runtime_r, sep = "\n"),
+    '"send_btn"'
+  ))
 
   expect_true(.frontend_selector_has_text(ui_text, 'id = "welcome_fullscreen_container"'))
   expect_true(.frontend_selector_has_text(shiny_handlers_js, "#welcome_fullscreen_container"))

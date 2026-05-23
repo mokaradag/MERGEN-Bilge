@@ -359,6 +359,7 @@ test_that("test runner Shiny/future başlatmayı kapatan env bayraklarını içe
 test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağlar", {
   server_text <- .read_text_quiet(file.path(.repo_root, "server.R"))
   core_text <- .read_text_quiet(file.path(.repo_root, "R", "server_core_interaction_runtime.R"))
+  core_observer_text <- .read_text_quiet(file.path(.repo_root, "R", "server_core_observer_runtime.R"))
   wiring_text <- paste(
     .read_text_quiet(file.path(.repo_root, "R", "server_module_wiring.R")),
     .read_text_quiet(file.path(.repo_root, "R", "server_chat_engine_dependencies.R")),
@@ -401,14 +402,16 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
 
   core_beklenenler <- c(
     "serverBindCoreInteractionRuntime <- function(",
+    "core_observer_runtime_fn = serverBindCoreObserverRuntime",
     "file_manager_runtime_fn = serverBindFileManagerRuntime",
     "chat_persistence_modules_fn = serverBindChatPersistenceModules",
-    "file_manager_runtime <- file_manager_runtime_fn(",
-    "runtime_ctx <- file_manager_runtime$runtime_ctx",
+    "core_observer_runtime <- core_observer_runtime_fn(",
+    "runtime_ctx <- core_observer_runtime$runtime_ctx",
+    "file_runtime <- core_observer_runtime$file_runtime",
+    "file_manager_data <- core_observer_runtime$file_manager_data",
     "chat_persistence <- chat_persistence_modules_fn(",
     "runtime_ctx <- chat_persistence$runtime_ctx",
     "saved_chats_data = chat_persistence$saved_chats_data",
-    "user_id_provider = identity$current_user_id_provider",
     "current_user_id_provider = identity$current_user_id_provider"
   )
 
@@ -416,6 +419,30 @@ test_that("server.R erken boot nesnelerini ServerRuntimeContext üzerinden bağl
     core_beklenenler,
     function(beklenen) .has_text(core_text, beklenen),
     logical(1)
+  )
+  
+  core_observer_beklenenler <- c(
+    "serverBindCoreObserverRuntime <- function(",
+    "file_manager_runtime_fn = serverBindFileManagerRuntime",
+    "file_manager_runtime <- file_manager_runtime_fn(",
+    "runtime_ctx <- file_manager_runtime$runtime_ctx",
+    "file_manager_data <- file_runtime$file_manager_data",
+    "user_id_provider = identity$current_user_id_provider",
+    'activity_inputs = c("user_input", "send_stop_btn", "send_prompt_from_js")'
+  )
+
+  core_observer_bulunanlar <- vapply(
+    core_observer_beklenenler,
+    function(beklenen) .has_text(core_observer_text, beklenen),
+    logical(1)
+  )
+
+  expect_true(
+    all(core_observer_bulunanlar),
+    label = paste(
+      "server_core_observer_runtime.R çekirdek observer/File Manager delegasyon sözleşmesi eksik:",
+      paste(core_observer_beklenenler[!core_observer_bulunanlar], collapse = ", ")
+    )
   )
 
   expect_true(
