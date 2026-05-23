@@ -43,3 +43,8 @@ Desktop.ini
 # R temporary files
 *.utf8.md
 *.knit.md
+artifacts/ai-validation/
+.ai/proposed_answer.md
+.ai/*.tmp.md
+.ai/*.log
+!.ai/.gitkeep
