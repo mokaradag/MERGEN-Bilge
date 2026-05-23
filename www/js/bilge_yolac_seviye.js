@@ -234,7 +234,11 @@
 
   BY.seviye = {
     yukle: function(seviyeNo) {
-      if (seviyeNo < 0 || seviyeNo >= SEVIYE_VERILERI.length) seviyeNo = 0;
+      // Seviye no NaN/undefined/negatif/aşırı büyük olabilir; güvenli varsayılana
+      // çevir. Aksi halde SEVIYE_VERILERI[NaN] gibi undefined erişimi sonraki
+      // satırlarda TypeError üretir ve seviye geçişi yarıda kalır.
+      seviyeNo = parseInt(seviyeNo, 10);
+      if (isNaN(seviyeNo) || seviyeNo < 0 || seviyeNo >= SEVIYE_VERILERI.length) seviyeNo = 0;
 
       var veri = SEVIYE_VERILERI[seviyeNo];
       state.dunyaGenislik = veri.dunyaGenislik;

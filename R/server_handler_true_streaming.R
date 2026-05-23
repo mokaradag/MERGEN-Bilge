@@ -438,6 +438,8 @@ handle_true_streaming_mode <- function(ctx) {
       normalize_llm_scalar_content = normalize_llm_scalar_content,
       strip_planner_text = strip_planner_text,
       decode_utf8_raw_chunk = decode_utf8_raw_chunk,
+      create_utf8_stream_decoder = create_utf8_stream_decoder,
+      find_last_utf8_boundary = find_last_utf8_boundary,
       parse_llm_sse_event = parse_llm_sse_event,
       extract_llm_delta_text = extract_llm_delta_text,
       extract_llm_event_sources = extract_llm_event_sources,
@@ -479,9 +481,17 @@ handle_true_streaming_mode <- function(ctx) {
     }
 
     if (file.exists(stream_env$stream_file)) {
+      # Akış dosyası tek baytlı base64 JSON satırları içerir. Yine de Windows VM
+      # ortamında readLines bazen geçersiz UTF-8 baytları gördüğünde hata atabilir;
+      # bu yüzden tryCatch içine alıyoruz ve gerekirse byte modunda fallback yapıyoruz.
       satirlar <- tryCatch(
         suppressWarnings(readLines(stream_env$stream_file, warn = FALSE, encoding = "UTF-8")),
-        error = function(e) character(0)
+        error = function(e) {
+          tryCatch(
+            suppressWarnings(readLines(stream_env$stream_file, warn = FALSE)),
+            error = function(e2) character(0)
+          )
+        }
       )
 
       if (length(satirlar) > stream_env$processed_line_count) {

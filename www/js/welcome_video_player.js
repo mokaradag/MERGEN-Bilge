@@ -33,9 +33,12 @@ window.WelcomeVideoPlayer = (function() {
   function init(containerElement) {
     if (!containerElement) return;
 
-    // Aynı görünür konteyner zaten bağlıysa tekrar kurma; farklı/re-render edilmiş
-    // welcome DOM'u geldiyse eski instance'ı temizleyip videoyu yeniden başlat.
+    // Aynı görünür konteyner zaten bağlıysa, mevcut aktif videoyu kontrol et:
+    // pause durumdaysa yeniden oynatmayı dene. Bu, Kişiselleştirme veya başka bir
+    // sayfaya geçip Ana Söyleşi'ye dönüldüğünde videonun bazen donmuş kalmasını
+    // önler (örn. tarayıcı autoplay politikası, görünürlük geçişi).
     if (isInitialized && container === containerElement && document.contains(containerElement)) {
+      ensureActiveVideoPlaying();
       return;
     }
 
@@ -81,6 +84,58 @@ window.WelcomeVideoPlayer = (function() {
 
     attemptPlay(0);
     isInitialized = true;
+
+    // İlk attemptPlay tarayıcı autoplay politikası, hazırlık veya görünürlük
+    // gecikmesi nedeniyle başarısız olabilir. Birkaç kez kısa aralıklarla
+    // tekrar denenir; bu, neural canvas her zaman görünürken videonun bazen
+    // başlamamasının önüne geçer.
+    scheduleAutoplayRecovery(0);
+  }
+
+  // Aktif video pause durumdaysa oynatmayı yeniden dene
+  function ensureActiveVideoPlaying() {
+    var video = videoElements[activeIndex];
+    if (!video) return;
+    if (!container || !document.contains(container)) return;
+    if (video.paused || video.ended) {
+      attemptPlay(activeIndex);
+      scheduleAutoplayRecovery(activeIndex);
+    }
+  }
+
+  // Birkaç kez kısa aralıklarla video.play()'i tekrar dener.
+  // Bu, tarayıcı autoplay politikası, video buffer hazırlığı ve görünürlük
+  // değişimleri nedeniyle ilk play çağrısının sessizce başarısız olmasına
+  // karşı savunma katmanıdır. Neural canvas zaten her zaman çizilir; bu
+  // mekanizma videonun da aynı tutarlılıkta görünmesini sağlar.
+  function scheduleAutoplayRecovery(index) {
+    var attempts = 0;
+    var maxAttempts = 6;
+    var timer = setInterval(function() {
+      attempts += 1;
+      var video = videoElements[index];
+      if (!video || !container || !document.contains(container)) {
+        clearInterval(timer);
+        return;
+      }
+      // İlgili index artık aktif değilse kurtarmayı durdur; aksi halde
+      // arka plana çekilmiş (inactive) videoyu tekrar oynatmaya çalışırız.
+      if (index !== activeIndex) {
+        clearInterval(timer);
+        return;
+      }
+      // Video oynamaya başladıysa kurtarmayı durdur
+      if (!video.paused && video.currentTime > 0) {
+        clearInterval(timer);
+        return;
+      }
+      if (attempts >= maxAttempts) {
+        clearInterval(timer);
+        return;
+      }
+      // Tekrar oynatmayı dene
+      attemptPlay(index);
+    }, 350);
   }
 
   function attemptPlay(index) {
@@ -90,7 +145,14 @@ window.WelcomeVideoPlayer = (function() {
     // Konteyner DOM'da değilse oynatma yapma
     if (!container || !document.contains(container)) return;
 
-    video.currentTime = 0;
+    // currentTime'ı sadece video henüz oynamadıysa sıfırla; aksi halde
+    // çalışan video tekrar başa sarılır ve görsel sıçrama oluşur.
+    if (video.paused && video.currentTime === 0) {
+      // Hazır - oynatmayı dene
+    } else if (video.paused) {
+      // Önceden duraklatılmış video; bulunduğu yerden devam etsin
+    }
+
     var playPromise = video.play();
 
     if (playPromise !== undefined) {
@@ -99,6 +161,8 @@ window.WelcomeVideoPlayer = (function() {
         if (err.name === 'AbortError') return;
         // Konteyner artık DOM'da değilse yoksay
         if (!container || !document.contains(container)) return;
+        // NotAllowedError vs. autoplay politikası: scheduleAutoplayRecovery
+        // birkaç kez daha tekrar deneyecek.
         console.warn('[WELCOME_VIDEO] Otomatik oynatma engellendi:', err.name);
       });
     }

@@ -429,8 +429,13 @@ sendMessageInit <- function(
       model_selected <- api_config$local_models[1]
     }
 
-	# Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır
-	thinking_model_detected <- grepl("(?i)(think|reason|qwen3\\.5)", model_selected, perl = TRUE)
+	# Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır.
+	# Model yetenekleri R/config_api.R içindeki local_model_capabilities tarafından
+	# bildirilir; burada regex tabanlı tahmin yapılmaz.
+	thinking_model_detected <- tryCatch(
+	  isTRUE(is_thinking_model(model_selected)),
+	  error = function(e) FALSE
+	)
 	force_non_streaming_sql <- identical(tool_family, "sql_analysis") && thinking_model_detected
 
     stream_profile <- mergen_build_stream_profile(

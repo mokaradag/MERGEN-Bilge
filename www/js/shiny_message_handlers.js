@@ -288,6 +288,20 @@ $(document).ready(function() {
 
 	  if (videoContainer) {
 		window.WelcomeVideoPlayer.init(videoContainer);
+		// Bazı durumlarda init sonrası ilk attemptPlay tarayıcı autoplay
+		// politikası nedeniyle sessizce başarısız olur. Konteyner görünür
+		// olduktan kısa süre sonra videonun gerçekten oynamadığını fark
+		// edip yeniden init'i tetikle. Bu kontrol neural canvas her zaman
+		// görünürken videonun bazen donuk kalmasının önüne geçer.
+		setTimeout(function() {
+		  if (!videoContainer || !document.contains(videoContainer)) return;
+		  var firstVideo = videoContainer.querySelector('.modern-welcome-video[data-index="0"]');
+		  if (firstVideo && firstVideo.paused) {
+			if (window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.init) {
+			  window.WelcomeVideoPlayer.init(videoContainer);
+			}
+		  }
+		}, 800);
 	  }
 
 	  if (neuralCanvas) {

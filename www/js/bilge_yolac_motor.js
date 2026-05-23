@@ -176,6 +176,19 @@
     init: function(containerId) {
       var state = BY.state;
 
+      // KRİTİK DÜZELTME: Önceki çalışmadan kalan animasyon karesi ve
+      // calisiyor bayrağı sıfırlanmalıdır. Aksi halde tekrar init/baslat
+      // çağrıldığında motor.baslat() içindeki "if (state.calisiyor) return"
+      // erken çıkışı tetiklenir; bu da karakterler.baslat() ve diğer
+      // alt sistemlerin baslat() çağrılarının atlanmasına ve karakterlerin
+      // hiç oluşmamasına (görünmez kalmasına) yol açar. Özellikle "Çıktıyı
+      // Temizle" butonu sonrası yeniden başlatma yolunu etkiliyordu.
+      if (state.animFrameId) {
+        try { cancelAnimationFrame(state.animFrameId); } catch (e) {}
+        state.animFrameId = null;
+      }
+      state.calisiyor = false;
+
       state.containerId = containerId;
       var container = document.getElementById(containerId);
       if (!container) return false;
@@ -321,8 +334,19 @@
 
           state.kameraX = 0;
 
+          // KRİTİK DÜZELTME: Karakterleri yalnızca x ekseninde değil, y ekseni
+          // ve hızlar dahil tam olarak sıfırla. Önceki davranış sadece x'i
+          // değiştiriyordu; bu da önceki seviye sonunda zemin altında veya
+          // ekran dışında kalmış y değerlerinin sonraki seviyeye taşınmasına
+          // ve karakterlerin görünmemesine yol açıyordu. Ayrıca aralık değeri
+          // oyunuBaslat ile tutarlı şekilde 42 olarak güncellendi.
           for (var i = 0; i < state.karakterler.length; i++) {
-            state.karakterler[i].x = 60 + i * 40;
+            var kr = state.karakterler[i];
+            kr.x = 60 + i * 42;
+            kr.y = state.zeminY - kr.yukseklik;
+            kr.hizX = 0;
+            kr.hizY = 0;
+            kr.yon = 1;
           }
         }
 
