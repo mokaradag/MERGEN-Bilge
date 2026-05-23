@@ -189,7 +189,8 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
 
   assert_current_budget("R/module_claude_code.R", 780L, 11L)
   assert_current_budget("R/server_send_message.R", 760L, 14L)
-  assert_current_budget("R/module_admin_hata_analizi.R", 792L, 9L)
+  assert_current_budget("R/module_admin_hata_analizi.R", 640L, 7L)
+  assert_current_budget("R/helpers_admin_hata_detail_runtime.R", 320L, 12L)
   assert_current_budget("R/module_image_generation.R", 765L, 22L)
   assert_current_budget("R/helpers_llm_sse.R", 762L, 20L)
   assert_current_budget("R/module_admin_geri_bildirim.R", 760L, 5L)
@@ -627,12 +628,12 @@ test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınma
     info = "R/module_admin_hata_analizi.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_hata_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_ANALIZI_LINES", 799L)
+  max_hata_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_ANALIZI_LINES", 640L)
 
   expect_true(
     hata_row$lines[1] <= max_hata_lines,
     info = sprintf(
-      "module_admin_hata_analizi.R helper extraction sonrası 800 satır altı kalmalıdır: %d > %d.",
+      "module_admin_hata_analizi.R detail runtime extraction sonrası küçük kalmalıdır: %d > %d.",
       hata_row$lines[1],
       max_hata_lines
     )
@@ -650,6 +651,12 @@ test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınma
     drop = FALSE
   ]
 
+  detail_runtime_row <- report[
+    grepl("(^|/)R/helpers_admin_hata_detail_runtime\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
   expect_equal(
     nrow(helper_row),
     1L,
@@ -662,10 +669,18 @@ test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınma
     info = "R/helpers_admin_hata_heatmap_data.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
+  expect_equal(
+    nrow(detail_runtime_row),
+    1L,
+    info = "R/helpers_admin_hata_detail_runtime.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
   max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HELPER_LINES", 799L)
   max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HELPER_FUNCTIONS", 20L)
   max_heatmap_helper_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HEATMAP_HELPER_LINES", 120L)
   max_heatmap_helper_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HEATMAP_HELPER_FUNCTIONS", 2L)
+  max_detail_runtime_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_DETAIL_RUNTIME_LINES", 320L)
+  max_detail_runtime_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_DETAIL_RUNTIME_FUNCTIONS", 12L)
 
   expect_true(
     helper_row$lines[1] <= max_helper_lines,
@@ -700,6 +715,24 @@ test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınma
       "helpers_admin_hata_heatmap_data.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
       heatmap_helper_row$functions[1],
       max_heatmap_helper_functions
+    )
+  )
+
+  expect_true(
+    detail_runtime_row$lines[1] <= max_detail_runtime_lines,
+    info = sprintf(
+      "helpers_admin_hata_detail_runtime.R küçük detay runtime helper dosyası olarak kalmalıdır: %d > %d.",
+      detail_runtime_row$lines[1],
+      max_detail_runtime_lines
+    )
+  )
+
+  expect_true(
+    detail_runtime_row$functions[1] <= max_detail_runtime_functions,
+    info = sprintf(
+      "helpers_admin_hata_detail_runtime.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
+      detail_runtime_row$functions[1],
+      max_detail_runtime_functions
     )
   )
 })

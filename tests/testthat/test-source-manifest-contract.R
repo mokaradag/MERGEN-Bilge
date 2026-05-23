@@ -446,13 +446,14 @@ test_that("admin geri bildirim helper dosyaları modülden önce yükleniyor", {
   )
 })
 
-test_that("admin hata analizi helper dosyası modülden önce yükleniyor", {
+test_that("admin hata analizi helper dosyaları modülden önce yükleniyor", {
   paths <- .load_source_manifest_paths_for_contract()
 
   pos <- function(path) match(path, paths)
 
   expect_false(is.na(pos("R/helpers_admin_hata_analizi.R")))
   expect_false(is.na(pos("R/helpers_admin_hata_heatmap_data.R")))
+  expect_false(is.na(pos("R/helpers_admin_hata_detail_runtime.R")))
   expect_false(is.na(pos("R/module_admin_hata_analizi.R")))
 
   expect_lt(
@@ -462,6 +463,11 @@ test_that("admin hata analizi helper dosyası modülden önce yükleniyor", {
 
   expect_lt(
     pos("R/helpers_admin_hata_heatmap_data.R"),
+    pos("R/helpers_admin_hata_detail_runtime.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_admin_hata_detail_runtime.R"),
     pos("R/module_admin_hata_analizi.R")
   )
 })
