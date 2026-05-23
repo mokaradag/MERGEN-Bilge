@@ -281,6 +281,7 @@ run_step(
 
 quick_tests <- c(
   "tests/testthat/test-source-manifest-contract.R",
+  "tests/testthat/test-server-core-observer-runtime-contract.R",
   "tests/testthat/test-global-source-manifest-contract.R",
   "tests/testthat/test-ui-asset-manifest-contract.R",
   "tests/testthat/test-maintainability-ratchet-contract.R",

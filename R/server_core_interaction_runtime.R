@@ -86,18 +86,6 @@
   invisible(TRUE)
 }
 
-.server_core_call_with_optional_boot_ready <- function(fn, args, boot_ready) {
-  fn_formals <- names(formals(fn))
-  accepts_dots <- "..." %in% fn_formals
-
-  if (!is.null(boot_ready) &&
-      ("boot_ready" %in% fn_formals || accepts_dots)) {
-    args$boot_ready <- boot_ready
-  }
-
-  do.call(fn, args)
-}
-
 serverBuildCoreInteractionBundle <- function(settings_data,
                                              api_config,
                                              media_modules,
@@ -178,6 +166,7 @@ serverBindCoreInteractionRuntime <- function(input,
                                              quick_actions_init_fn = quickActionsInit,
                                              settings_observers_init_fn = settingsObserversInit,
                                              session_timeout_server_fn = sessionTimeoutServer,
+                                             core_observer_runtime_fn = serverBindCoreObserverRuntime,
                                              file_manager_runtime_fn = serverBindFileManagerRuntime,
                                              chat_ui_observers_init_fn = chatUIObserversInit,
                                              navigation_observers_init_fn = navigationObserversInit,
@@ -243,6 +232,7 @@ serverBindCoreInteractionRuntime <- function(input,
   .server_core_interaction_require_functions(list(
     current_user_id_provider = identity$current_user_id_provider,
     current_user_display_name = identity$get_display_name,
+    core_observer_runtime_fn = core_observer_runtime_fn,
     chat_rebind_all_charts_fn = chat_rebind_all_charts_fn,
     chat_export_init_fn = chat_export_init_fn,
     quick_actions_init_fn = quick_actions_init_fn,
@@ -261,141 +251,32 @@ serverBindCoreInteractionRuntime <- function(input,
     reactive_fn = reactive_fn
   ))
 
-  file_runtime <- serverRuntimeRequireFileRuntime(
-    runtime_ctx,
-    require_prelude = TRUE,
-    require_manager = FALSE
-  )
-
-  chat_export_init_fn(
-    input,
-    output,
-    session,
-    values,
-    user_display_name = function() {
-      identity$get_display_name(default = "Kullanıcı")
-    }
-  )
-
-  quick_actions_init_fn(
+  core_observer_runtime <- core_observer_runtime_fn(
     input = input,
-    session = session,
-    values = values,
-    settings_data = settings_data,
-    session_files = state$session_files,
-    quick_action_skip_mcp = state$quick_action_skip_mcp,
     output = output,
-    current_user_id = identity$current_user_id_provider,
-    send_message_fn = send_message
-  )
-
-  settings_observers_init_fn(input, session, values, settings_data)
-
-  session_timeout_server_fn(
-    "session_timeout",
-    idle_minutes    = 30,
-    activity_inputs = c("user_input", "send_stop_btn", "send_prompt_from_js")
-  )
-
-  file_manager_runtime <- file_manager_runtime_fn(
+    session = session,
     runtime_ctx = runtime_ctx,
-    new_file_trigger = reactive_fn({ state$file_to_add() }),
-    session_files_reactive = state$session_files,
-    mcp_enabled_reactive = reactive_fn({
-      isTRUE(settings_data$enable_mcp_tools)
-    }),
-    settings_data = settings_data,
-    user_id_provider = identity$current_user_id_provider
+    core_bundle = core_bundle,
+    chat_rebind_all_charts_fn = chat_rebind_all_charts_fn,
+    chat_export_init_fn = chat_export_init_fn,
+    quick_actions_init_fn = quick_actions_init_fn,
+    settings_observers_init_fn = settings_observers_init_fn,
+    session_timeout_server_fn = session_timeout_server_fn,
+    file_manager_runtime_fn = file_manager_runtime_fn,
+    chat_ui_observers_init_fn = chat_ui_observers_init_fn,
+    navigation_observers_init_fn = navigation_observers_init_fn,
+    startup_observers_init_fn = startup_observers_init_fn,
+    startup_screen_observers_init_fn = startup_screen_observers_init_fn,
+    ai_expert_handlers_init_fn = ai_expert_handlers_init_fn,
+    storage_observers_init_fn = storage_observers_init_fn,
+    file_observers_init_fn = file_observers_init_fn,
+    file_click_observers_init_fn = file_click_observers_init_fn,
+    reactive_fn = reactive_fn
   )
 
-  runtime_ctx <- file_manager_runtime$runtime_ctx
-
-  file_runtime <- serverRuntimeRequireFileRuntime(
-    runtime_ctx,
-    require_prelude = TRUE,
-    require_manager = TRUE
-  )
-
-  file_manager_data <- file_runtime$file_manager_data
-
-  chat_ui_observers_init_fn(
-    input,
-    session,
-    values,
-    start_new_chat,
-    send_message,
-    render_welcome_screen,
-    settings_data
-  )
-
-  navigation_observers_init_fn(
-    input,
-    session,
-    values,
-    render_welcome_screen
-  )
-
-	.server_core_call_with_optional_boot_ready(
-	  fn = startup_observers_init_fn,
-	  args = list(
-		input = input,
-		session = session,
-		values = values,
-		render_welcome_screen = render_welcome_screen,
-		current_user_id = identity$current_user_id_provider,
-		sso_state = runtime_ctx$sso_state
-	  ),
-	  boot_ready = boot_ready
-	)
-
-	.server_core_call_with_optional_boot_ready(
-	  fn = startup_screen_observers_init_fn,
-	  args = list(
-		input = input,
-		session = session,
-		settings_data = settings_data
-	  ),
-	  boot_ready = boot_ready
-	)
-
-  ai_expert_handlers_init_fn(
-    input,
-    session,
-    values,
-    settings_data,
-    media_modules$ai_expert,
-    media_modules$tts_processor,
-    identity$current_user_id_provider,
-    chat_history_rv = reactive_fn(values$messages)
-  )
-
-  storage_observers_init_fn(
-    input,
-    session,
-    output,
-    values,
-    settings_data,
-    chat_rebind_all_charts_fn
-  )
-
-  file_observers_init_fn(
-    input,
-    session,
-    settings_data,
-    state$session_files,
-    file_manager_data,
-    identity$current_user_id_provider
-  )
-
-  file_click_observers_init_fn(
-    input,
-    session,
-    settings_data,
-    api_config,
-    file_runtime$filePreview,
-    file_manager_data,
-    state$session_files
-  )
+  runtime_ctx <- core_observer_runtime$runtime_ctx
+  file_runtime <- core_observer_runtime$file_runtime
+  file_manager_data <- core_observer_runtime$file_manager_data
 
   chat_persistence <- chat_persistence_modules_fn(
     input = input,

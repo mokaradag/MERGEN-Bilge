@@ -226,6 +226,7 @@ source_manifest_after_future_paths <- c(
   "R/server_chat_engine_runtime.R",
   "R/server_init_session_state.R",
   "R/server_init_chat_runtime.R",
+  "R/server_core_observer_runtime.R",
   "R/server_core_interaction_runtime.R",
   "R/server_outputs_chat.R",
   "R/server_outputs_downloads.R",
