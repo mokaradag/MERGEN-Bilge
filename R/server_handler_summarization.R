@@ -1,12 +1,10 @@
 # ==============================================================================
 # Dosya Yolu: R/server_handler_summarization.R
 # Açıklama: Dosya özetleme modunun işleyici fonksiyonu.
-#           server_send_message.R'den ayrıştırılarak modülerlik artırılmıştır.
+#           Hazırlık aşamasını yerel olarak yapar, ardından uygun ise
+#           hızlı gerçek SSE akışına geçer.
 # ==============================================================================
 
-# Dosya özetleme modunu işle
-# ctx: mesaj gönderme bağlamındaki tüm gerekli değişkenleri içeren liste
-# Döndürür: TRUE (işlendi ve erken dönüş yapılmalı) veya FALSE (işlenmedi)
 handle_summarization_mode <- function(ctx) {
 
   if (ctx$uploaded_count == 0) {
@@ -17,24 +15,14 @@ handle_summarization_mode <- function(ctx) {
     return(TRUE)
   }
 
-  log_debug("[SUMMARIZATION] Dosya Özetleme modu aktif, özetleme başlatılıyor. Dosya sayısı: {ctx$uploaded_count}")
+  log_debug("[SUMMARIZATION] Dosya Özetleme modu aktif, hazırlık başlatılıyor. Dosya sayısı: {ctx$uploaded_count}")
 
-  if (!exists("process_summarization_request", mode = "function")) {
+  if (!exists("prepare_summarization_request", mode = "function")) {
     safe_source("R/module_summarization.R", encoding = "UTF-8")
   }
 
   ctx$values$typing <- TRUE
-
-  # ÖNEMLİ: send_message() içinde mergen_show_send_message_thinking_wrapper
-  # zaten çağrılmıştır ve #typing-animation-wrapper içerisinde premium reasoning
-  # paneli (simulated modda) görüntülenmektedir. Özetleme modeli düşünmeyen bir
-  # model olduğu için panel simulated modda başlatılır ve dönen sentetik aşama
-  # metinleri ("Belgeler değerlendiriliyor", "İçerik özetleniyor", vb.) gösterir.
-  # Burada paneli kaldırıp yerine eski tek satırlık halka animasyonunu koymak
-  # kullanıcıya tutarsız bir düşünme deneyimi sunar; bu yüzden mevcut panel
-  # korunur. Eğer ileride basit bir gösterim gerekirse send_message tarafındaki
-  # mergen_build_thinking_panel_plan içinde özelleştirme yapılmalıdır.
-
+  
   if (nchar(ctx$user_message_text) > 0) {
     ctx$current_session_files$user_query <- ctx$user_message_text
     log_debug("[SUMMARIZATION] Kullanıcı sorgusu özetlemeye eklendi: {ctx$user_message_text}")
@@ -59,13 +47,24 @@ handle_summarization_mode <- function(ctx) {
 
   log_debug("[SUMMARIZATION] Mod parametreleri - Detay: {summary_detail}, Odak: {summary_focus}")
 
-  # Promise ile özetleme
-  p <- tryCatch(
-    process_summarization_request(
+  api_key_val <- tryCatch(as.character(ctx$session$userData$ai_api_key)[1], error = function(e) "")
+  if (!nzchar(api_key_val)) {
+    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+    ctx$values$typing <- FALSE
+    showToast(
+      ctx$session,
+      "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
+      "error"
+    )
+    ctx$reset_chat_state_fn()
+    return(TRUE)
+  }
+
+  prep_result <- tryCatch(
+    prepare_summarization_request(
       file_list = ctx$current_session_files,
       session = ctx$session,
       settings = ctx$settings_data,
-      ai_processor = ctx$ai_processor,
       max_chars_per_file = if (grepl("256k|256K", ctx$settings_data$model_selection %||% "")) {
         200000
       } else {
@@ -75,12 +74,75 @@ handle_summarization_mode <- function(ctx) {
       focus_mode = summary_focus
     ),
     error = function(e) {
-      # Senkron hata durumunda promise olarak sar
-      promises::promise_resolve(list(
+      list(
         success = FALSE,
-        message = paste("Özetleme başlatılamadı:", conditionMessage(e))
-      ))
+        message = paste("Özetleme hazırlığı başarısız:", conditionMessage(e))
+      )
     }
+  )
+
+  if (!isTRUE(prep_result$success)) {
+    removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
+    ctx$values$typing <- FALSE
+    showToast(ctx$session, prep_result$message, "error")
+    ctx$reset_chat_state_fn()
+    return(TRUE)
+  }
+
+  prep_result$current_settings$api_key_override <- api_key_val
+  prep_result$current_settings$shiny_session <- ctx$session
+
+  use_fast_stream <- isTRUE(prep_result$current_settings$enable_streaming) &&
+    !isTRUE(ctx$settings_data$enable_tts_audio)
+
+  if (isTRUE(use_fast_stream)) {
+    log_info(sprintf(
+      "[SUMMARIZATION PERF] Hızlı akış başlatılıyor - hazırlık=%.3f sn",
+      prep_result$prep_duration %||% 0
+    ))
+
+    true_stream_ctx <- list(
+      session = ctx$session,
+      input = ctx$input,
+      output = ctx$output,
+      values = ctx$values,
+      settings_data = ctx$settings_data,
+      stop_generation = ctx$stop_generation,
+      active_request_id = ctx$active_request_id,
+      perf_tracker = ctx$perf_tracker,
+      api_config = ctx$api_config,
+      current_user_id = ctx$current_user_id,
+      current_settings = prep_result$current_settings,
+      model_selected = prep_result$selected_model,
+      messages_to_process = prep_result$messages,
+      user_message_text = ctx$user_message_text,
+      user_prompt_msg = ctx$user_prompt_msg,
+      chat_id_val = ctx$chat_id_val,
+      pending_chat_title = NULL,
+      saved_chats_data = ctx$saved_chats_data,
+      add_message_fn = ctx$add_message_fn,
+      reset_chat_state_fn = ctx$reset_chat_state_fn,
+      followup_tools = ctx$followup_tools,
+      fallback_followup_tool = ctx$fallback_followup_tool,
+      request_start_time = ctx$request_start_time,
+      stream_profile = list(
+        label = "summarization_fast",
+        use_delta_transport = TRUE,
+        poll_interval_ms = 15L
+      ),
+      final_text_suffix = prep_result$metadata_block
+    )
+
+    handle_true_streaming_mode(true_stream_ctx)
+    return(TRUE)
+  }
+
+  log_info("[SUMMARIZATION PERF] Non-streaming yedek yol kullanılıyor")
+
+  p <- ctx$ai_processor$call_llm_non_streaming(
+    prep_result$messages,
+    prep_result$current_settings,
+    prep_result$selected_model
   )
 
   promises::then(
@@ -90,15 +152,15 @@ handle_summarization_mode <- function(ctx) {
       ctx$values$typing <- FALSE
 
       if (!result$success) {
-        showToast(ctx$session, result$message, "error")
+        showToast(ctx$session, paste("Özetleme başarısız:", result$error), "error")
         ctx$reset_chat_state_fn()
         return(invisible(NULL))
       }
 
-      ctx$add_message_fn(result$summary, "ai")
+      final_summary <- paste0(result$content, prep_result$metadata_block %||% "")
+      ctx$add_message_fn(final_summary, "ai")
 
-      showToast(ctx$session, paste(result$file_count, "dosya başarıyla özetlendi."), "success")
-
+      showToast(ctx$session, paste(prep_result$file_count, "dosya başarıyla özetlendi."), "success")
       ctx$reset_chat_state_fn()
     },
     onRejected = function(err) {
