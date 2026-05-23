@@ -239,6 +239,40 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")`
 
+### Server core observer runtime refactor contract
+
+The core interaction runtime has a protected second-level orchestration boundary. Do not move the extracted observer and File Manager runtime binding code back into `R/server_core_interaction_runtime.R`.
+
+Current contract:
+
+- `R/server_core_interaction_runtime.R` owns the high-level core interaction flow: resolving the core bundle, validating runtime state and identity, delegating core observer binding, and handing off to chat persistence.
+- `R/server_core_observer_runtime.R` owns the extracted core observer runtime boundary: boot readiness, chat export binding, quick actions, settings observers, session timeout, File Manager runtime binding, chat UI observers, navigation observers, startup observers, AI Expert handlers, storage observers, file observers, and file-click observers.
+- `R/server_core_observer_runtime.R` must call `serverBindFileManagerRuntime` through the injected `file_manager_runtime_fn` and pass `user_id_provider = identity$current_user_id_provider`.
+- `R/server_core_observer_runtime.R` owns the session timeout activity selector contract: `user_input`, `send_stop_btn`, and `send_prompt_from_js`. Do not reintroduce legacy `send_btn` selector assumptions.
+- `R/server_core_interaction_runtime.R` should delegate through `core_observer_runtime_fn = serverBindCoreObserverRuntime` and consume `core_observer_runtime$runtime_ctx`, `core_observer_runtime$file_runtime`, and `core_observer_runtime$file_manager_data`.
+- `R/config_source_manifest.R` must load `R/server_core_observer_runtime.R` after `R/server_init_chat_runtime.R` and before `R/server_core_interaction_runtime.R`.
+- Do not raise the maintainability ratchet to hide growth in this area. Keep `R/server_core_observer_runtime.R` small and focused; remove trivial wrapper functions before increasing budgets.
+- Static contract tests must follow the new ownership boundary. If a string moved from `R/server_core_interaction_runtime.R` into `R/server_core_observer_runtime.R`, update the test to assert the new owner rather than moving runtime code back.
+
+Protected by:
+
+- `tests/testthat/test-server-core-observer-runtime-contract.R`
+- `tests/testthat/test-file-manager-module-policy-wiring.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+- `tests/testthat/test-production-contracts.R`
+- `tests/testthat/test-source-manifest-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-server-core-observer-runtime-contract.R")`
+- `testthat::test_file("tests/testthat/test-file-manager-module-policy-wiring.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+- `testthat::test_file("tests/testthat/test-production-contracts.R")`
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
+
 
 ### Admin Hata Analizi heatmap data boundary contract
 
