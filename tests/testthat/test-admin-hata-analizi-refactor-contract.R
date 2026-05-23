@@ -39,6 +39,12 @@
     local = env
   )
 
+  source(
+    file.path(repo_root, "R", "helpers_admin_hata_heatmap_data.R"),
+    encoding = "UTF-8",
+    local = env
+  )
+
   env
 }
 
@@ -76,6 +82,35 @@ test_that("admin hata kategori sayımı Türkçe etiketleri ve boş girdileri ko
   expect_equal(
     out$kategori_tr[out$kategori == "cokme"],
     "Çökme / Hata"
+  )
+})
+
+test_that("admin hata heatmap helper kategori ve öncelik matrisini korur", {
+  env <- .source_admin_hata_helper_for_test()
+
+  data <- data.frame(
+    Oncelik = c("kritik", "dusuk", "kritik"),
+    Kategoriler = c("arayuz, performans", "cokme", "arayuz"),
+    cnt = c(2L, 1L, 3L),
+    stringsAsFactors = FALSE
+  )
+
+  out <- env$admin_ha_prepare_heatmap_data(
+    data = data,
+    kategori_cevirisi = env$admin_ha_category_labels(),
+    oncelik_cevirisi = env$admin_ha_priority_labels()
+  )
+
+  expect_equal(out$kategoriler, c("Arayüz / Tasarım", "Çökme / Hata"))
+  expect_equal(out$oncelikler, c("Düşük", "Kritik"))
+  expect_equal(
+    out$heatmap_data,
+    list(
+      list(0, 0, 0),
+      list(0, 1, 5L),
+      list(1, 0, 1L),
+      list(1, 1, 0)
+    )
   )
 })
 

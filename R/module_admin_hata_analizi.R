@@ -271,32 +271,15 @@ adminHataAnaliziServer <- function(id) {
       data <- ha_data()$oncelik_kategori
       if (nrow(data) == 0) return(highcharter::highchart())
 
-      # Kategorileri çözümle (ilk kategoriyi al, virgülle ayrılmışsa)
-      data$ilk_kategori <- sapply(strsplit(data$Kategoriler, ","), function(x) trimws(x[1]))
-      data$kategori_tr <- ifelse(
-        data$ilk_kategori %in% names(kategori_cevirisi),
-        kategori_cevirisi[data$ilk_kategori],
-        data$ilk_kategori
-      )
-      data$oncelik_tr <- ifelse(
-        data$Oncelik %in% names(oncelik_cevirisi),
-        oncelik_cevirisi[data$Oncelik],
-        data$Oncelik
+      heatmap <- admin_ha_prepare_heatmap_data(
+        data = data,
+        kategori_cevirisi = kategori_cevirisi,
+        oncelik_cevirisi = oncelik_cevirisi
       )
 
-      # Benzersiz kategoriler ve öncelikler
-      kategoriler <- unique(data$kategori_tr)
-      oncelikler <- c("Düşük", "Orta", "Yüksek", "Kritik", "Belirtilmedi")
-      oncelikler <- oncelikler[oncelikler %in% unique(data$oncelik_tr)]
-
-      # Heatmap verisini oluştur
-      heatmap_data <- list()
-      for (i in seq_along(kategoriler)) {
-        for (j in seq_along(oncelikler)) {
-          val <- sum(data$cnt[data$kategori_tr == kategoriler[i] & data$oncelik_tr == oncelikler[j]])
-          heatmap_data <- c(heatmap_data, list(list(i - 1, j - 1, val)))
-        }
-      }
+      kategoriler <- heatmap$kategoriler
+      oncelikler <- heatmap$oncelikler
+      heatmap_data <- heatmap$heatmap_data
 
       highcharter::highchart() %>%
         highcharter::hc_chart(type = "heatmap", backgroundColor = "transparent") %>%

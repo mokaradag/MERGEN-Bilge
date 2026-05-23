@@ -452,10 +452,16 @@ test_that("admin hata analizi helper dosyası modülden önce yükleniyor", {
   pos <- function(path) match(path, paths)
 
   expect_false(is.na(pos("R/helpers_admin_hata_analizi.R")))
+  expect_false(is.na(pos("R/helpers_admin_hata_heatmap_data.R")))
   expect_false(is.na(pos("R/module_admin_hata_analizi.R")))
 
   expect_lt(
     pos("R/helpers_admin_hata_analizi.R"),
+    pos("R/helpers_admin_hata_heatmap_data.R")
+  )
+
+  expect_lt(
+    pos("R/helpers_admin_hata_heatmap_data.R"),
     pos("R/module_admin_hata_analizi.R")
   )
 })

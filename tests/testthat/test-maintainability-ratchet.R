@@ -644,14 +644,28 @@ test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınma
     drop = FALSE
   ]
 
+  heatmap_helper_row <- report[
+    grepl("(^|/)R/helpers_admin_hata_heatmap_data\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
   expect_equal(
     nrow(helper_row),
     1L,
     info = "R/helpers_admin_hata_analizi.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
+  expect_equal(
+    nrow(heatmap_helper_row),
+    1L,
+    info = "R/helpers_admin_hata_heatmap_data.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
   max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HELPER_LINES", 799L)
   max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HELPER_FUNCTIONS", 20L)
+  max_heatmap_helper_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HEATMAP_HELPER_LINES", 120L)
+  max_heatmap_helper_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HEATMAP_HELPER_FUNCTIONS", 2L)
 
   expect_true(
     helper_row$lines[1] <= max_helper_lines,
@@ -668,6 +682,24 @@ test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınma
       "helpers_admin_hata_analizi.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
       helper_row$functions[1],
       max_helper_functions
+    )
+  )
+
+  expect_true(
+    heatmap_helper_row$lines[1] <= max_heatmap_helper_lines,
+    info = sprintf(
+      "helpers_admin_hata_heatmap_data.R küçük saf helper dosyası olarak kalmalıdır: %d > %d.",
+      heatmap_helper_row$lines[1],
+      max_heatmap_helper_lines
+    )
+  )
+
+  expect_true(
+    heatmap_helper_row$functions[1] <= max_heatmap_helper_functions,
+    info = sprintf(
+      "helpers_admin_hata_heatmap_data.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
+      heatmap_helper_row$functions[1],
+      max_heatmap_helper_functions
     )
   )
 })
