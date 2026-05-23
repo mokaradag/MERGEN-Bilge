@@ -440,7 +440,8 @@ source_manifest_required_order <- list(
 
   c("R/helpers_llm_response_postprocess.R", "R/helpers_llm_api.R"),
   c("R/helpers_llm_api.R", "R/helpers_llm_stream_io.R"),
-  c("R/helpers_llm_stream_io.R", "R/helpers_llm_sse.R"),
+  c("R/helpers_llm_stream_io.R", "R/helpers_llm_sse_events.R"),
+  c("R/helpers_llm_sse_events.R", "R/helpers_llm_sse.R"),
   c("R/helpers_llm_sse.R", "R/helpers_llm_worker_payload.R"),
   c("R/helpers_llm_worker_payload.R", "R/helpers_llm_worker_tool_results.R"),
   c("R/helpers_llm_worker_tool_results.R", "R/helpers_llm_worker.R"),

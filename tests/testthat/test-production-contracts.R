@@ -100,6 +100,7 @@ test_that("kritik üretim giriş dosyaları UTF-8 ile parse edilebilir", {
 	  "R/helpers_worker_monitor.R",
 	  "R/helpers_llm_response_postprocess.R",
 	  "R/helpers_llm_api.R",
+	  "R/helpers_llm_sse_events.R",
 	  "R/helpers_llm_sse.R",
 	  "R/helpers_llm_worker.R",
 	  "R/server_init_user_session.R",

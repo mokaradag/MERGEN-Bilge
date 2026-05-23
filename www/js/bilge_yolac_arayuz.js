@@ -128,7 +128,8 @@
   function sloganCiz(ctx, merkezX) {
     var state = BY.state;
     var y = state.canvasYukseklik * 0.22;
-    var boyut = Math.max(11, Math.min(16, state.canvasGenislik * 0.022));
+    // Slogan boyutu büyütüldü (okunabilirlik için).
+    var boyut = Math.max(16, Math.min(22, state.canvasGenislik * 0.028));
     var seviye = BY.dunya ? BY.dunya.mevcutSeviyeAl() : null;
     var renk = seviye ? seviye.aksan : "#00E5FF";
     var metin = SLOGANLAR[mevcutSloganIndex];
@@ -155,12 +156,14 @@
     if (!seviye) return;
 
     ctx.save();
-    ctx.font = "9px monospace";
+    // Seviye bilgisi font boyutu büyütüldü.
+    ctx.font = "bold 13px monospace";
     ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
-    ctx.fillText("Seviye " + (state.mevcutSeviye + 1) + "/5: " + seviye.isim, 12, state.canvasYukseklik - 22);
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    ctx.fillText(seviye.altBaslik || "", 12, state.canvasYukseklik - 10);
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillText("Seviye " + (state.mevcutSeviye + 1) + "/5: " + seviye.isim, 14, state.canvasYukseklik - 30);
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillText(seviye.altBaslik || "", 14, state.canvasYukseklik - 14);
     ctx.restore();
   }
 
@@ -169,7 +172,8 @@
     var seviye = BY.dunya ? BY.dunya.mevcutSeviyeAl() : null;
     var merkezX = state.canvasGenislik / 2;
     var baslikY = state.canvasYukseklik * 0.12;
-    var baslikBoyut = Math.max(18, Math.min(36, state.canvasGenislik * 0.05));
+    // Başlık boyutu büyütüldü.
+    var baslikBoyut = Math.max(26, Math.min(46, state.canvasGenislik * 0.062));
     var baslikRenk = seviye ? seviye.aksan : "#00E5FF";
 
     baslikParlama = 4 + Math.sin(performance.now() * 0.002) * 3;
@@ -187,19 +191,19 @@
     pikselYaziCiz(ctx, "BİLGE YOLAÇ", merkezX, baslikY, baslikBoyut, "#FFFFFF", true, baslikParlama);
 
     ctx.save();
-    ctx.font = Math.max(10, baslikBoyut * 0.35) + "px monospace";
+    ctx.font = Math.max(14, baslikBoyut * 0.40) + "px monospace";
     ctx.textAlign = "center";
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.fillText("[ RETRO AJAN ALANI ]", merkezX, baslikY + baslikBoyut * 0.6);
     ctx.restore();
 
     if (seviye) {
       ctx.save();
-      ctx.font = "bold 12px monospace";
+      ctx.font = "bold 16px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = seviye.aksan;
-      ctx.globalAlpha = 0.8;
-      ctx.fillText(seviye.isim, merkezX, baslikY + baslikBoyut + 18);
+      ctx.globalAlpha = 0.9;
+      ctx.fillText(seviye.isim, merkezX, baslikY + baslikBoyut + 24);
       ctx.restore();
     }
 
@@ -209,11 +213,12 @@
     tiklaYanipSonme = 0.5 + Math.sin(performance.now() * 0.003) * 0.4;
     ctx.save();
     ctx.globalAlpha = tiklaYanipSonme;
-    ctx.font = "bold 11px monospace";
+    // "Başlat" çağrısı font boyutu büyütüldü.
+    ctx.font = "bold 16px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#FFFFFF";
     ctx.shadowColor = "#FFFFFF";
-    ctx.shadowBlur = 4;
+    ctx.shadowBlur = 6;
     ctx.fillText("BAŞLAT: TIKLA veya BOŞLUK", merkezX, altY);
     ctx.restore();
 
@@ -242,46 +247,54 @@
 
   function takimSaglikCiz(ctx) {
     var state = BY.state;
-    var x = 12;
-    var y = 10;
-    var genislik = 150;
-    var yukseklik = 12;
+    // HUD: Takım can çubuğu büyütüldü, etiketler okunabilir hale getirildi.
+    var x = 14;
+    var y = 14;
+    var genislik = 200;
+    var yukseklik = 18;
     var can = (typeof state.takimCan === "number" && !isNaN(state.takimCan)) ? state.takimCan : 0;
     var max = (typeof state.takimMaxCan === "number" && state.takimMaxCan > 0) ? state.takimMaxCan : 100;
 
     ctx.save();
-    ctx.font = "bold 9px monospace";
+    ctx.font = "bold 13px monospace";
     ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.fillText("TAKIM", x, y - 2);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.shadowColor = "rgba(0,0,0,0.7)";
+    ctx.shadowBlur = 2;
+    ctx.fillText("TAKIM", x, y - 3);
     ctx.restore();
 
     saglikCubugu(ctx, x, y, genislik, yukseklik, can / max);
     ctx.save();
-    ctx.font = "bold 8px monospace";
+    ctx.font = "bold 12px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillText(Math.ceil(can) + "/" + max, x + genislik / 2, y + yukseklik - 2);
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 2;
+    ctx.fillText(Math.ceil(can) + "/" + max, x + genislik / 2, y + yukseklik - 4);
     ctx.restore();
   }
 
   function skorVeSeviyeCiz(ctx) {
     var state = BY.state;
-    var sagX = state.canvasGenislik - 12;
+    var sagX = state.canvasGenislik - 14;
+    // HUD: Skor ve seviye font boyutları büyütüldü.
     ctx.save();
-    ctx.font = "bold 11px monospace";
+    ctx.font = "bold 16px monospace";
     ctx.textAlign = "right";
     ctx.fillStyle = "#FFD700";
     ctx.shadowColor = "#FFD700";
-    ctx.shadowBlur = 3;
-    ctx.fillText("SKOR: " + (state.skor || 0), sagX, 18);
+    ctx.shadowBlur = 4;
+    ctx.fillText("SKOR: " + (state.skor || 0), sagX, 22);
     ctx.restore();
 
     ctx.save();
-    ctx.font = "9px monospace";
+    ctx.font = "bold 13px monospace";
     ctx.textAlign = "right";
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText("SEVİYE: " + (state.mevcutSeviye + 1) + "/5", sagX, 30);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.shadowColor = "rgba(0,0,0,0.7)";
+    ctx.shadowBlur = 2;
+    ctx.fillText("SEVİYE: " + (state.mevcutSeviye + 1) + "/5", sagX, 40);
     ctx.restore();
   }
 
@@ -327,10 +340,13 @@
     if (state.oyunDurumu !== "oynuyor" && state.oyunDurumu !== "boss") return;
 
     ctx.save();
-    ctx.font = "8px monospace";
+    // Kontrol ipuçları font boyutu büyütüldü; BOŞLUK = ATEŞ olarak güncellendi.
+    ctx.font = "bold 12px monospace";
     ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.fillText("← → HAREKET  |  ↑ ZIPLA  |  ↓ İN / ETKİLEŞ  |  BOŞLUK ATIL  |  TIKLA İKİNCİL SALDIRI", 12, state.canvasYukseklik - 8);
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.shadowColor = "rgba(0,0,0,0.7)";
+    ctx.shadowBlur = 2;
+    ctx.fillText("← → HAREKET   |   ↑ ZIPLA   |   ↓ İN   |   BOŞLUK ATEŞ   |   TIKLA HEDEFLİ ATEŞ", 14, state.canvasYukseklik - 12);
     ctx.restore();
   }
 
@@ -343,19 +359,20 @@
     if (!boss) return;
 
     var merkezX = BY.state.canvasGenislik / 2;
-    var barGenislik = 220;
-    var y = 8;
+    // Boss can çubuğu ve başlık metni okunabilir boyuta büyütüldü.
+    var barGenislik = 300;
+    var y = 14;
 
     ctx.save();
-    ctx.font = "bold 10px monospace";
+    ctx.font = "bold 16px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#FFD700";
     ctx.shadowColor = "#FFD700";
-    ctx.shadowBlur = 4;
-    ctx.fillText(boss.isim || "BOSS", merkezX, y - 1);
+    ctx.shadowBlur = 6;
+    ctx.fillText(boss.isim || "BOSS", merkezX, y);
     ctx.restore();
 
-    saglikCubugu(ctx, merkezX - barGenislik / 2, y + 2, barGenislik, 14, (boss.can || 0) / (boss.maxCan || 1), "#FFD700");
+    saglikCubugu(ctx, merkezX - barGenislik / 2, y + 6, barGenislik, 18, (boss.can || 0) / (boss.maxCan || 1), "#FFD700");
   }
 
   function zaferEkraniCiz(ctx) {
@@ -366,22 +383,25 @@
     var yildizSayisi = saglikOrani > 0.8 ? 3 : (saglikOrani > 0.5 ? 2 : 1);
 
     ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.fillRect(0, 0, state.canvasGenislik, state.canvasYukseklik);
     ctx.restore();
 
-    pikselYaziCiz(ctx, "SEVİYE TAMAMLANDI!", merkezX, merkezY, Math.max(16, Math.min(28, state.canvasGenislik * 0.04)), "#FFD700", true, 8);
+    // "SEVİYE TAMAMLANDI" başlığı büyütüldü.
+    pikselYaziCiz(ctx, "SEVİYE TAMAMLANDI!", merkezX, merkezY, Math.max(26, Math.min(40, state.canvasGenislik * 0.055)), "#FFD700", true, 10);
 
     ctx.save();
-    ctx.font = "bold 14px monospace";
+    ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillText("SKOR: " + (state.skor || 0), merkezX, merkezY + 35);
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 4;
+    ctx.fillText("SKOR: " + (state.skor || 0), merkezX, merkezY + 48);
     ctx.restore();
 
-    var yildizY = merkezY + 65;
+    var yildizY = merkezY + 92;
     for (var i = 0; i < 3; i++) {
-      yildizCiz(ctx, merkezX - 30 + i * 30, yildizY, 12, "#FFD700", i < yildizSayisi);
+      yildizCiz(ctx, merkezX - 44 + i * 44, yildizY, 18, "#FFD700", i < yildizSayisi);
     }
   }
 

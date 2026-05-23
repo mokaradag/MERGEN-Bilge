@@ -2473,13 +2473,14 @@ tests/testthat/test-maintainability-ratchet.R
 
 ### LLM SSE stream I/O contract
 
-The true-streaming LLM layer keeps the stream-file JSONL protocol separate from SSE parsing and worker orchestration. Preserve this source order in `R/config_source_manifest.R`:
+The true-streaming LLM layer keeps the stream-file JSONL protocol separate from SSE event/delta parsing and worker orchestration. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_llm_tool_formatters.R",      encoding = "UTF-8")
 safe_source("R/helpers_llm_response_postprocess.R", encoding = "UTF-8")
 safe_source("R/helpers_llm_api.R",                  encoding = "UTF-8")
 safe_source("R/helpers_llm_stream_io.R",            encoding = "UTF-8")
+safe_source("R/helpers_llm_sse_events.R",           encoding = "UTF-8")
 safe_source("R/helpers_llm_sse.R",                  encoding = "UTF-8")
 safe_source("R/helpers_llm_worker_payload.R",       encoding = "UTF-8")
 safe_source("R/helpers_llm_worker.R",               encoding = "UTF-8")
@@ -2489,7 +2490,9 @@ Responsibilities:
 
 R/helpers_llm_stream_io.R: stream JSONL delta/reasoning line writing, base64 payload decoding, and stop-file cancellation checks.
 
-R/helpers_llm_sse.R: SSE event parsing, delta/reasoning extraction, HTTP stream handling, and worker orchestration.
+R/helpers_llm_sse_events.R: SSE olay/delta ayrıştırma yardımcıları (`decode_utf8_raw_chunk`, `parse_llm_sse_event`, `extract_llm_delta_bundle`, `extract_llm_delta_text`, `extract_llm_event_sources`). Yan etkisiz, salt parse katmanı.
+
+R/helpers_llm_sse.R: HTTP/SSE worker orchestration (`call_local_llm_sse_worker`); event/delta ayrıştırma çağrılarını `helpers_llm_sse_events.R` üzerinden yapar. SSE olay/delta yardımcıları tekrar bu dosyaya taşınmamalıdır; aksi halde dosya 800 satır ve 25 fonksiyon eşiklerini sessizce tüketebilir.
 
 ### LLM worker payload helper contract
 
@@ -3646,6 +3649,7 @@ Shared utilities used across modules:
 - `R/helpers_health_runtime_checks.R`
 - `R/helpers_health_checks.R`
 - `R/helpers_ai_expert.R`
+- `R/helpers_ai_expert_chunking.R`
 - `R/helpers_claude_code_upload_folder.R`
 - `R/helpers_claude_code_model_config.R`
 - `R/helpers_claude_code_session_context.R`
@@ -3666,6 +3670,8 @@ Model calls, tool formatting, SSE, worker execution:
 - `R/helpers_llm_tool_formatters.R`
 - `R/helpers_llm_response_postprocess.R`
 - `R/helpers_llm_api.R`
+- `R/helpers_llm_stream_io.R`
+- `R/helpers_llm_sse_events.R`
 - `R/helpers_llm_sse.R`
 - `R/helpers_llm_worker.R`
 

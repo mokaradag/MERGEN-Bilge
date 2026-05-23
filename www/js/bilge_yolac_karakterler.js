@@ -385,10 +385,24 @@
     }
 
     // Oyun durumuna göre sınır ve AI davranışı
-    var oyunAktif = (state.oyunDurumu === "oynuyor" || state.oyunDurumu === "boss");
+    // ÖNEMLİ DÜZELTME:
+    // Önceki kodda "zafer" durumu da demo (bekleme) yoluna düşüyordu. Bu
+    // durumda karakterler ekran sınırına kelepçeleniyor ve rastgele AI ile
+    // hedef noktaya yöneliyordu. Karakterler çıkış bölgesinden çıkınca
+    // seviyeCikisiniKontrolEt() içindeki "zaferBekleme=0" dalı sürekli
+    // tetikleniyor ve geçiş asla başlamıyordu (kullanıcı seviye 2'ye
+    // geçemiyor). Ayrıca zafer ekranı arkada "demo mod" çalışıyor gibi
+    // görünüyordu. Artık "zafer" ve "gecis" durumları da dünya sınırlarını
+    // kullanır ve demo AI çalışmaz; karakterler oldukları yerde kalır.
+    var oyunIcinde = (
+      state.oyunDurumu === "oynuyor" ||
+      state.oyunDurumu === "boss" ||
+      state.oyunDurumu === "zafer" ||
+      state.oyunDurumu === "gecis"
+    );
 
-    if (oyunAktif) {
-      // ── Oyun sırasında: dünya sınırlarını kullan ──
+    if (oyunIcinde) {
+      // ── Oyun/zafer/geçiş sırasında: dünya sınırlarını kullan ──
       var solSinirDunya = 0;
       var sagSinirDunya = state.dunyaGenislik - karakter.genislik;
       if (karakter.x < solSinirDunya) {
@@ -401,7 +415,7 @@
       }
       // Oyun sırasında idle AI çalışmaz — hareket oyun modülü tarafından yönetilir
     } else {
-      // ── Bekleme / zafer durumunda: ekran sınırlarını kullan ──
+      // ── Sadece bekleme (başlık ekranı) durumunda: ekran sınırı + demo AI ──
       var solSinir = 20;
       var sagSinir = state.canvasGenislik - karakter.genislik - 20;
       if (karakter.x < solSinir) {
@@ -415,7 +429,7 @@
         karakter.yon = -1;
       }
 
-      // Hareket AI (yalnızca bekleme/zafer durumunda)
+      // Hareket AI (yalnızca başlık/bekleme ekranında)
       if (karakter.animasyonDurumu === "idle" || karakter.animasyonDurumu === "walk") {
         karakter.hareketBekleme--;
         if (karakter.hareketBekleme <= 0) {
