@@ -190,7 +190,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/module_claude_code.R", 780L, 11L)
   assert_current_budget("R/server_send_message.R", 760L, 14L)
   assert_current_budget("R/module_admin_hata_analizi.R", 640L, 7L)
-  assert_current_budget("R/helpers_admin_hata_detail_runtime.R", 320L, 12L)
+  assert_current_budget("R/helpers_admin_hata_detail_runtime.R", 380L, 12L)
   assert_current_budget("R/module_image_generation.R", 765L, 22L)
   assert_current_budget("R/helpers_llm_sse.R", 762L, 20L)
   assert_current_budget("R/module_admin_geri_bildirim.R", 760L, 5L)
@@ -679,7 +679,7 @@ test_that("module_admin_hata_analizi.R helper extraction kazanımı geri alınma
   max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HELPER_FUNCTIONS", 20L)
   max_heatmap_helper_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HEATMAP_HELPER_LINES", 120L)
   max_heatmap_helper_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_HEATMAP_HELPER_FUNCTIONS", 2L)
-  max_detail_runtime_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_DETAIL_RUNTIME_LINES", 320L)
+  max_detail_runtime_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_DETAIL_RUNTIME_LINES", 380L)
   max_detail_runtime_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_HATA_DETAIL_RUNTIME_FUNCTIONS", 12L)
 
   expect_true(

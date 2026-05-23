@@ -120,16 +120,21 @@ test_that("admin hata heatmap helper kategori ve öncelik matrisini korur", {
   )
 })
 
-test_that("admin hata detay tablo helperı isim alanı, Türkçe etiket ve aksiyon HTML sözleşmesini korur", {
+test_that("admin hata detay tablo helperi namespace, label ve aksiyon HTML sozlesmesini korur", {
   testthat::skip_if_not_installed("shiny")
 
   env <- .source_admin_hata_helper_for_test()
   ns <- shiny::NS("admin_hata_test")
 
+  kullanici_col <- "Kullan\u0131c\u0131"
+  oncelik_col <- "\u00d6ncelik"
+  aciklama_col <- "A\u00e7\u0131klama"
+  islem_col <- "\u0130\u015flem"
+
   detail_data <- data.frame(
     HataBildirimID = 42L,
-    KullaniciAdi = "Ayşe Yılmaz",
-    Konular = "Giriş sorunu",
+    KullaniciAdi = "Ay\u015fe Y\u0131lmaz",
+    Konular = "Giri\u015f sorunu",
     Kategoriler = "arayuz, cokme",
     Oncelik = "kritik",
     Durum = "acik",
@@ -149,18 +154,29 @@ test_that("admin hata detay tablo helperı isim alanı, Türkçe etiket ve aksiy
 
   expect_equal(
     names(out),
-    c("#", "Kullanıcı", "Konular", "Kategori", "Öncelik", "Durum",
-      "Açıklama", "Dosyalar", "İşlem", "Tarih", "tarih_sort")
+    c(
+      "#",
+      kullanici_col,
+      "Konular",
+      "Kategori",
+      oncelik_col,
+      "Durum",
+      aciklama_col,
+      "Dosyalar",
+      islem_col,
+      "Tarih",
+      "tarih_sort"
+    )
   )
 
-  expect_equal(out$Kullanıcı[1], "Ayşe Yılmaz")
-  expect_true(grepl("Arayüz / Tasarım", out$Kategori[1], fixed = TRUE))
-  expect_true(grepl("Çökme / Hata", out$Kategori[1], fixed = TRUE))
-  expect_true(grepl("Kritik", out$Öncelik[1], fixed = TRUE))
-  expect_true(grepl("Açık", out$Durum[1], fixed = TRUE))
-  expect_true(grepl("admin_hata_test-dosya_goster", out$Dosyalar[1], fixed = TRUE))
-  expect_true(grepl("admin_hata_test-durum_guncelle", out$İşlem[1], fixed = TRUE))
-  expect_true(nchar(out$Açıklama[1]) <= 103L)
+  expect_equal(out[[kullanici_col]][1], "Ay\u015fe Y\u0131lmaz")
+  expect_true(grepl("Aray\u00fcz / Tasar\u0131m", out[["Kategori"]][1], fixed = TRUE))
+  expect_true(grepl("\u00c7\u00f6kme / Hata", out[["Kategori"]][1], fixed = TRUE))
+  expect_true(grepl("Kritik", out[[oncelik_col]][1], fixed = TRUE))
+  expect_true(grepl("A\u00e7\u0131k", out[["Durum"]][1], fixed = TRUE))
+  expect_true(grepl("admin_hata_test-dosya_goster", out[["Dosyalar"]][1], fixed = TRUE))
+  expect_true(grepl("admin_hata_test-durum_guncelle", out[[islem_col]][1], fixed = TRUE))
+  expect_true(nchar(out[[aciklama_col]][1]) <= 103L)
 })
 
 test_that("admin hata ek dosya helperı destek_uploads yolunu ve indirme kartını korur", {
