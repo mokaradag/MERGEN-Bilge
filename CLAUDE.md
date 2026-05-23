@@ -239,6 +239,50 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")`
 
+
+### Admin Hata Analizi heatmap data boundary contract
+
+The Admin Hata Analizi heatmap data preparation is a protected small-helper boundary. Do not move this pure transformation logic back into the main module just to make a chart change.
+
+Current contract:
+
+- `R/helpers_admin_hata_heatmap_data.R` owns `admin_ha_prepare_heatmap_data()`.
+- The helper is pure data preparation only: no Shiny, no highcharter, no DB calls, no reactive state, no observers, and no file I/O.
+- The helper receives the raw priority/category count frame plus category and priority label maps, then returns `kategoriler`, `oncelikler`, and `heatmap_data` for the existing highcharter renderer.
+- `R/module_admin_hata_analizi.R` still owns the Shiny server flow, `renderHighchart`, detailed notification table, attachment preview modal, and status update modal.
+- `R/helpers_admin_hata_analizi.R` still owns shared labels, query helpers, category counting, and tab UI helpers. Do not turn it into a mixed chart-rendering module.
+- `R/config_source_manifest.R` must load `R/helpers_admin_hata_heatmap_data.R` after `R/helpers_admin_hata_analizi.R` and before `R/module_admin_hata_analizi.R`.
+- Do not relax maintainability ratchet thresholds for this area. If the admin module grows again, extract another focused, testable helper instead of increasing file budgets.
+- Preserve Turkish labels such as `Düşük`, `Orta`, `Yüksek`, `Kritik`, `Belirtilmedi`, `Arayüz / Tasarım`, and `Çökme / Hata`.
+
+Protected by:
+
+- `tests/testthat/test-admin-hata-analizi-refactor-contract.R`
+- `tests/testthat/test-source-manifest-contract.R`
+- `tests/testthat/test-global-source-manifest-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+- `tests/testthat/test-production-contracts.R`
+- `tests/scripts/parse_sanity_check.R`
+
+Focused validation after touching Admin Hata Analizi heatmap preparation, source order, or maintainability budgets:
+
+- `testthat::test_file("tests/testthat/test-admin-hata-analizi-refactor-contract.R")`
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-production-contracts.R")`
+- `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
+
+Manual validation after touching this area:
+
+- Open the admin panel.
+- Open Hata Analizi.
+- Confirm Genel Bakış charts still render.
+- Open Öncelik & Kategori.
+- Confirm the priority chart, category treemap, and priority x category heatmap still render.
+- Confirm heatmap labels remain Turkish and the priority ordering remains stable.
+- Open Detaylı Bildirimler and confirm badges, attachment preview, and status update modal still work.
+
 ### Source manifest and MCP load-order contract
 
 Runtime R files must be loaded through the explicit source manifest. Do not add hidden or dynamic sourcing to bypass dependency order.
