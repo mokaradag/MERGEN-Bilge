@@ -10,8 +10,10 @@ fileManagerServer <- function(
   auth_ready_provider = NULL,
   boot_ready = NULL
 ) {
-  moduleServer(id, function(input, output, session) {
+moduleServer(id, function(input, output, session) {
   ns <- session$ns
+
+  get_module_values <- function() module_values
 
   runtime_helpers <- fm_create_server_runtime_helpers(
     session = session,
@@ -20,7 +22,7 @@ fileManagerServer <- function(
     session_files_reactive = session_files_reactive,
     mcp_enabled_reactive = mcp_enabled_reactive,
     ns = ns,
-    module_values_provider = function() module_values,
+    module_values_provider = get_module_values,
     auth_ready_provider = auth_ready_provider
   )
 
@@ -195,7 +197,7 @@ fileManagerServer <- function(
   refresh_from_user_folder <- fm_create_refresh_from_user_folder(
     session = session,
     ns = ns,
-    module_values_provider = function() module_values,
+    module_values_provider = get_module_values,
     module_user_id_chr = module_user_id_chr,
     is_auth_ready = is_auth_ready,
     ensure_session_registry = ensure_session_registry,
@@ -275,7 +277,7 @@ fileManagerServer <- function(
     file_action_helpers <- fm_create_file_action_helpers(
       session = session,
       ns = ns,
-      module_values_provider = function() module_values,
+      module_values_provider = get_module_values,
       get_summarization_mode = get_summarization_mode,
       resolve_allowed_extensions = resolve_allowed_extensions,
       show_unsupported_extension_toast = show_unsupported_extension_toast,
@@ -608,7 +610,7 @@ fileManagerServer <- function(
       session = session,
       output = output,
       ns = ns,
-      module_values_provider = function() module_values
+      module_values_provider = get_module_values
     )
 
     session$onSessionEnded(function() {
@@ -621,7 +623,7 @@ fileManagerServer <- function(
     set_attachment_checked <- fm_create_file_manager_attachment_setter(
       session = session,
       ns = ns,
-      module_values_provider = function() module_values,
+      module_values_provider = get_module_values,
       attach_in_parent = attach_in_parent,
       detach_in_parent = detach_in_parent
     )
