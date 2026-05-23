@@ -149,16 +149,25 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  startup_state$initial_saved_chats_status <- "done"
 
 		  chats <- chats %||% list()
-		  values$saved_chats <- chats
 
-		  mark_boot(
-			"saved_chats_full_loaded",
-			"Tüm söyleşiler arka planda hazır",
-			detail = list(count = length(chats))
-		  )
+		  # Promise geri çağrısı reaktif bağlam dışında çalışır; values
+		  # okumaları ve render_welcome_screen gibi reaktif değer
+		  # bağımlılıkları olan akışlar isolate ile sarmalanmalıdır. Aksi
+		  # halde "Can't access reactive value 'authenticated'" gibi
+		  # bağlam dışı reaktif okuma hataları üretebilir.
+		  shiny::isolate({
+			values$saved_chats <- chats
 
-		  # Tam liste geldiğinde karşılama ekranını güncelle.
-		  refresh_welcome_if_needed(chats)
+			mark_boot(
+			  "saved_chats_full_loaded",
+			  "Tüm söyleşiler arka planda hazır",
+			  detail = list(count = length(chats))
+			)
+
+			# Tam liste geldiğinde karşılama ekranını güncelle.
+			refresh_welcome_if_needed(chats)
+		  })
+
 		  NULL
 		},
 	  onRejected = function(err) {
