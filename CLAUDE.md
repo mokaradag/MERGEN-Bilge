@@ -164,6 +164,20 @@ Preferred validation escalation:
 - full profile for code changes or production-sensitive behavior,
 - full profile plus boot smoke for app boot/runtime confidence.
 
+### Bilge Yolaç game behavior contract
+
+The Bilge Yolaç mini-game should preserve the recent control and level-flow fixes:
+- no unintended rightward team drift when no key is pressed,
+- no automatic firing loop,
+- SPACE is manual fire with cooldown,
+- mouse click fires toward the clicked target,
+- "Çıktıyı Temizle" / reset must reinitialize running state and animation frame state,
+- level transitions must reset character x/y positions and movement values,
+- demo AI must not move characters during victory or transition states,
+- invalid or NaN level input must fall back safely.
+
+Keep HUD, title, level, and victory text readable; do not shrink the recently enlarged game text sizes without a deliberate UI reason.
+
 ### Bilge Yolaç / Claude Code security regression contract
 
 Bilge Yolaç security hardening is protected by focused tests. Do not weaken these contracts to fix a failing test.
@@ -2490,9 +2504,22 @@ Responsibilities:
 
 R/helpers_llm_stream_io.R: stream JSONL delta/reasoning line writing, base64 payload decoding, and stop-file cancellation checks.
 
-R/helpers_llm_sse_events.R: SSE olay/delta ayrıştırma yardımcıları (`decode_utf8_raw_chunk`, `parse_llm_sse_event`, `extract_llm_delta_bundle`, `extract_llm_delta_text`, `extract_llm_event_sources`). Yan etkisiz, salt parse katmanı.
+R/helpers_llm_sse_events.R: SSE event/delta parsing helpers (`decode_utf8_raw_chunk`, `parse_llm_sse_event`, `extract_llm_delta_bundle`, `extract_llm_delta_text`, `extract_llm_event_sources`). This is a side-effect-free pure parsing layer.
 
-R/helpers_llm_sse.R: HTTP/SSE worker orchestration (`call_local_llm_sse_worker`); event/delta ayrıştırma çağrılarını `helpers_llm_sse_events.R` üzerinden yapar. SSE olay/delta yardımcıları tekrar bu dosyaya taşınmamalıdır; aksi halde dosya 800 satır ve 25 fonksiyon eşiklerini sessizce tüketebilir.
+R/helpers_llm_sse.R: HTTP/SSE worker orchestration (`call_local_llm_sse_worker`); event/delta parsing calls must go through `helpers_llm_sse_events.R`. Do not move SSE event/delta helpers back into this file, otherwise it can silently consume the 800-line and 25-function maintainability thresholds.
+
+
+### UTF-8 streaming chunk contract
+
+SSE chunks may split multi-byte UTF-8 characters across curl callbacks. Keep the stateful UTF-8 decoding boundary in `R/helpers_llm_stream_io.R`: `find_last_utf8_boundary()` and `create_utf8_stream_decoder()` must carry partial bytes into the next chunk instead of decoding each raw callback independently.
+
+`R/helpers_llm_sse.R` should use the stateful decoder inside `call_local_llm_sse_worker()` and flush remaining bytes after the stream completes. Do not regress this path back to direct per-chunk `rawToChar()` / `enc2utf8()` decoding, because that can reintroduce `input string 1 is invalid UTF-8` failures on Windows VM / Turkish text streams.
+
+### Thinking model capability contract
+
+Thinking capability must be declared through `config$local_model_capabilities`; do not infer it from model-name regexes such as `qwen3`, `thinking`, `reasoning`, `r1`, or similar substrings.
+
+SQL analysis and other model-sensitive branches should use `is_thinking_model(model_selected)` rather than direct `grepl()` checks. Unknown models should default to non-thinking behavior unless explicitly declared in configuration.
 
 ### LLM worker payload helper contract
 
@@ -4947,6 +4974,20 @@ Recent production-hardening coverage adds focused contract tests for source mani
 
 If a patch touches path-validation helpers, confirm behavior with Windows-style separators and Turkish-character file names, and avoid platform-brittle assertions for embedded NUL character construction.
 
+
+
+### AI Expert speech and pronunciation contract
+
+`sanitize_ai_expert_pronunciation()` owns the central correction for the common `Bilge Yola` -> `Bilge Yolaç` model output. Apply this correction before subtitles, TTS playback, and TTS prewarm/cache keys so visible text and spoken text stay aligned.
+
+When navigation moves to muted pages such as `settings_kisisel`, `admin_analytics`, or `health`, active AI Expert speech must be stopped gracefully and any music ducking owner must be released. This prevents AI Expert audio/subtitles from overlapping character intro videos or muted administrative pages.
+
+
+### AI Expert TTS chunking helper boundary
+
+`R/helpers_ai_expert_chunking.R` owns pure text chunking helpers for AI Expert TTS, including `split_text_for_ai_expert_tts()` and `.ai_expert_split_long_piece()`. Keep this helper free of Shiny session access, reactive reads, filesystem writes, HTTP calls, database calls, and mutable runtime state.
+
+Do not move these chunking helpers back into `R/module_ai_expert.R`; the separation protects the module's maintainability budget while keeping TTS startup responsive.
 ### Audio
 - TTS still plays,
 - STT modal still opens,

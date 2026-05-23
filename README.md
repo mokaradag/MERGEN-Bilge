@@ -24,6 +24,9 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Gerçek streaming reset/finalize sözleşmesi artık ayrı bir odak testle de korunur: `tests/testthat/test-true-streaming-reset-ui-contract.R`, sunucu tarafında aktif istek temizliği, `reset_chat_state_fn()` çağrısı, stop dosyası üretimi ve `finalizeStreamingMessage` mesajını; istemci tarafında request-id stale delta reddi, finalized state, action button geri açılması ve pending followup temizliğini doğrular. Bu test gerçek LLM, DB veya tarayıcı başlatmadan stop/cancel sonrası UI'ın gönderim modunda takılı kalması riskini yakalar.
 - Sohbet girişindeki durdurma düğmesinin gerçek observer yolu da hafif smoke testiyle korunur: tests/testthat/test-chat-input-stop-button-smoke.R, tam uygulamayı, DB'yi, LLM'i, tarayıcıyı veya ses uç noktalarını başlatmadan send_stop_btn olayını shiny::testServer ile tetikler; stop sinyali, cancelled_* aktif istek kimliği, reset_chat_state çağrısı, is_sending/typing temizliği ve durdurma toast'ı doğrulanır.
 
+- Dosya Özetleme akışında mevcut premium düşünme paneli korunur; özetleme için eski tek satırlık halka göstergesine geri dönülmez ve simulated aşama metinleri tutarlı biçimde gösterilir.
+- Düşünme modeli tespiti, model adı regex tahminlerine değil yalnızca `R/config_api.R` içindeki `local_model_capabilities` bildirimlerine dayanır.
+- Bakım sınırında `R/helpers_llm_sse_events.R` SSE olay/delta ayrıştırmasını, `R/helpers_ai_expert_chunking.R` ise AI Uzman TTS metin parçalama yardımcılarını taşır; bu ayrımlar dosya satır/fonksiyon bütçesini korumak için geri alınmamalıdır.
 ### Dosya ve veri odaklı çalışma
 - Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
 - Dosya önizleme
@@ -60,6 +63,8 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Tarayıcı tarafı medya ve kayıtlı sohbet smoke kapsamı `www/smoke/ux-smoke.html` ile, bu smoke sayfasının kapsamı ise `tests/testthat/test-ux-smoke-browser-contract.R` ile korunur. Bu sözleşme testi Windows/Türkçe locale kırılganlığını azaltmak için Türkçe log/metin cümlelerini byte düzeyinde eşleştirmek yerine ASCII yapısal anchor'ları kullanır; TTS play olayının müziği duck etmesi, STT duck/cleanup sonrası müzik durumunun geri dönmesi, üst üste binen TTS+STT duck owner'larında STT aktifken TTS bırakılınca müziğin erken dönmemesi, cleanup sonrası aktif duck owner kalmaması ve kayıtlı sohbet yüklenince eski AI mesajlarının TTS autoplay başlatmaması korunur.
 - Kayıtlı sohbet yeniden yükleme yolu ayrıca `tests/testthat/test-saved-chat-reload-no-tts-contract.R` ile korunur; yapısal/statik kontrollerin yanında hafif bir `shiny::testServer` runtime smoke da içerir ve `load_chat_from_storage` observer’ının tarihsel mesajları yalnızca render edip `playAudioMessage` veya TTS sentezleme yolunu tetiklememesini doğrular.
 
+- AI Uzman konuşması, `settings_kisisel`, `admin_analytics` ve `health` sayfalarına geçişte etkinse nazikçe durdurulur; altyazı gizlenir ve müzik ducking durumu serbest bırakılır.
+- AI Uzman metinlerinde `Bilge Yolaç` adının `Bilge Yola` olarak üretilmesi altyazı ve TTS öncesinde merkezi olarak düzeltilir.
 ### Gelişmiş deneyim katmanları
 - Sinematik başlangıç ekranı
 - Uygulama açılışında SSO kimlik doğrulaması, Shiny bağlantısı, oturum kurulumu ve çalışma alanı hazırlığı boyunca tüm ekranı kaplayan modern, çok aşamalı yükleme katmanı gösterilir.
@@ -89,6 +94,9 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Prompt güvenliği, `../outside/sonuc.txt` ve izinli kök dışındaki absolute yazma hedeflerini CLI başlamadan engeller; buna karşılık uzantısız, diskte var olmayan ve normal metin gibi kullanılan path-benzeri ifadeler gereksiz yere bloke edilmez.
 - Bilge Yolaç tool-use ve stream HTML çıktıları, dosya yolu/komut/önizleme/sonuç alanlarında HTML kaçış sözleşmesiyle korunur; bu sayede araç blokları görünür kalırken istemci tarafına ham HTML/script sızması engellenir.
 
+- Ana Söyleşi'ye geri dönüldüğünde hoş geldin arka plan videosu gereksiz destroy/init döngüsüyle kesilmez; aktif video sürdürülür ve duraklamışsa autoplay recovery ile yeniden başlatılması denenir.
+- Bilge Yolaç mini oyununda ekip kayması, otomatik ateş, fare hedefli ateş, `Çıktıyı Temizle` sonrası görünmeme ve seviye geçiş kilitlenmesi gibi akışlar düzeltilmiştir; BOŞLUK artık cooldown'lu manuel ateş tuşudur.
+- Bilge Yolaç oyun HUD, başlık, seviye ve galibiyet ekranı yazıları daha okunabilir boyutlara çıkarılmıştır.
 ### Kurumsal ve yönetimsel bileşenler
 - SSO / Keycloak desteği
 - Kullanıcı bazlı sohbet ve dosya ayrımı
@@ -131,6 +139,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Dosya Yönetimi görünen adları ve kalıcı dosya indeksi; Türkçe dosya adları, storage-prefix temizleme ve eski mojibake kayıtlarının okunabilir hâle getirilmesi için aynı merkezi normalizasyon hattını kullanır.
 - Dosya yaşam döngüsü sertleştirmesi `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, `R/config_file_store_registry.R`, `R/helpers_file_manager_table.R`, `R/helpers_mcp_file_resolver.R` ve `R/module_summarization.R` sınırlarında korunur. Bu sözleşme storage adı ile görünen adın ayrılmasını, aynı kullanıcı filesystem fallback davranışını, yinelenen Dosya Yönetimi satırlarının engellenmesini, MCP mutlak yol reddini ve özetleme/Excel ayrımını kapsar.
 
+- SSE streaming katmanı, çok baytlı UTF-8 karakterler iki akış parçası arasında bölünse bile durumlu çözücüyle parçaları birleştirir; `input string 1 is invalid UTF-8` hatası azaltılır.
 ### Kaynak manifesti ve MCP yükleme sırası
 - Çalışma zamanı R kaynakları `R/config_source_manifest.R` üzerinden açık ve sıralı biçimde yüklenir; yeni runtime yardımcı dosyaları bu manifeste bağımlılık sırasıyla eklenmelidir.
 - Açılış yükleme modülü `R/module_app_loading.R`, `R/config_source_manifest.R` içinde `R/module_startup_screen.R` sonrasında ve `R/module_quick_actions.R` öncesinde yüklenmelidir; `appLoadingUI()` ise `ui.R` içinde mümkün olan en erken noktada, `dashboardBody()` başlangıcında çağrılır.
