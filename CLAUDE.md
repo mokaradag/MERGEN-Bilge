@@ -218,6 +218,27 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-log-redact.R")`
 - `testthat::test_file("tests/testthat/test-secret-leak-contract.R")`
 
+### File Manager table runtime refactor contract
+
+The File Manager module is protected by the maintainability ratchet. Do not move table-rendering or attach-checkbox client binding code back into `R/module_file_manager.R` just to satisfy a selector test.
+
+Current contract:
+
+- `R/module_file_manager.R` owns the server-side File Manager flow, including the `input$attach_toggled` observer.
+- `R/helpers_file_manager_table_runtime.R` owns the DT table runtime: `renderDT`, `drawCallback`, `change.attach`, `initAttachHandlerOnce`, and the call to `fm_register_attach_state_client_handler(session = session, ns = ns)`.
+- `R/helpers_file_manager_attach_client.R` owns the `setAttachState` custom message handler.
+- `R/config_source_manifest.R` must load `R/helpers_file_manager_table_runtime.R` after `R/helpers_file_manager_attach_client.R` and before `R/module_file_manager.R`.
+- `R/bootstrap_source_manifest.R` must keep source-order rules that enforce the same boundary.
+- `tests/testthat/test-frontend-selector-contract.R` must look for `drawCallback`, `change.attach`, and `fm_register_attach_state_client_handler(session = session, ns = ns)` in `R/helpers_file_manager_table_runtime.R`, not in `R/module_file_manager.R`.
+- Do not raise the `R/module_file_manager.R` line/function budget in `tests/testthat/test-maintainability-ratchet.R` to hide growth. Split code into focused helpers instead.
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+- `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+- `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")`
+
 ### Source manifest and MCP load-order contract
 
 Runtime R files must be loaded through the explicit source manifest. Do not add hidden or dynamic sourcing to bypass dependency order.
