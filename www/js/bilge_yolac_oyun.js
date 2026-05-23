@@ -81,11 +81,11 @@
     var karakterler = hayattaOlanKarakterler();
     if (karakterler.length === 0) return;
 
-    var hereket = 0;
-    if (giris.sol && !giris.sag) hereket = -1;
-    else if (giris.sag && !giris.sol) hereket = 1;
+    var hareket = 0;
+    if (giris.sol && !giris.sag) hareket = -1;
+    else if (giris.sag && !giris.sol) hareket = 1;
 
-    if (hareket !== 0) state.takimYon = hereket;
+    if (hareket !== 0) state.takimYon = hareket;
 
     for (var i = 0; i < karakterler.length; i++) {
       var k = karakterler[i];

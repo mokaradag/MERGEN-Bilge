@@ -19,10 +19,34 @@
     return BY.state.giris;
   }
 
+  function oyunGirdisiniAktiflestir() {
+    var canvas = BY.state && BY.state.canvas;
+    if (!canvas) return;
+
+    // Canvas normalde focus alamaz. Focus alamazsa ok tuşları chat input/textarea'da kalır
+    // ve klavye hareketi hiç çalışmaz.
+    if (!canvas.hasAttribute("tabindex")) {
+      canvas.setAttribute("tabindex", "0");
+    }
+
+    try {
+      canvas.focus({ preventScroll: true });
+    } catch (e) {
+      try { canvas.focus(); } catch (_) {}
+    }
+  }
+
+  function oyunCanvasAktifMi() {
+    var canvas = BY.state && BY.state.canvas;
+    return !!canvas && document.activeElement === canvas;
+  }
+
   function fareHareketIsle(e) {
     var state = BY.state;
     var canvas = state.canvas;
     if (!canvas) return;
+
+    oyunGirdisiniAktiflestir();
 
     var rect = canvas.getBoundingClientRect();
     state.fareX = e.clientX - rect.left;
@@ -93,6 +117,8 @@
     var canvas = state.canvas;
     if (!canvas) return;
 
+    oyunGirdisiniAktiflestir();
+
     if (state.oyunDurumu === "bekleme") {
       if (BY.oyun && typeof BY.oyun.oyunuBaslat === "function") {
         BY.oyun.oyunuBaslat();
@@ -149,26 +175,31 @@
 
   function klavyeBasIsle(e) {
     var state = BY.state;
-    if (!state.calisiyor || girisAlaniMi()) return;
+    if (!state.calisiyor) return;
+
+    // Oyun canvas'ı aktif değilken chat input/textarea içinde yazmayı bozma.
+    // Canvas aktifse ok tuşları/WASD oyuna gider.
+    if (girisAlaniMi() && !oyunCanvasAktifMi()) return;
 
     var giris = girisDurumuAl();
     var code = e.code || e.key;
+    var key = (e.key || "").toLowerCase();
 
-    if (code === "ArrowLeft" || e.key === "ArrowLeft") {
+    if (code === "ArrowLeft" || key === "arrowleft" || code === "KeyA" || key === "a") {
       e.preventDefault();
       giris.sol = true;
-    } else if (code === "ArrowRight" || e.key === "ArrowRight") {
+    } else if (code === "ArrowRight" || key === "arrowright" || code === "KeyD" || key === "d") {
       e.preventDefault();
       giris.sag = true;
-    } else if (code === "ArrowUp" || e.key === "ArrowUp") {
+    } else if (code === "ArrowUp" || key === "arrowup" || code === "KeyW" || key === "w") {
       e.preventDefault();
       if (!giris.yukari) giris.yukariTetik = true;
       giris.yukari = true;
-    } else if (code === "ArrowDown" || e.key === "ArrowDown") {
+    } else if (code === "ArrowDown" || key === "arrowdown" || code === "KeyS" || key === "s") {
       e.preventDefault();
       if (!giris.asagi) giris.asagiTetik = true;
       giris.asagi = true;
-    } else if (code === "Space" || e.keyCode === 32) {
+    } else if (code === "Space" || e.keyCode === 32 || key === " ") {
       e.preventDefault();
       if (!giris.bosluk) giris.boslukTetik = true;
       giris.bosluk = true;
@@ -182,16 +213,17 @@
   function klavyeBirakIsle(e) {
     var giris = girisDurumuAl();
     var code = e.code || e.key;
+    var key = (e.key || "").toLowerCase();
 
-    if (code === "ArrowLeft" || e.key === "ArrowLeft") {
+    if (code === "ArrowLeft" || key === "arrowleft" || code === "KeyA" || key === "a") {
       giris.sol = false;
-    } else if (code === "ArrowRight" || e.key === "ArrowRight") {
+    } else if (code === "ArrowRight" || key === "arrowright" || code === "KeyD" || key === "d") {
       giris.sag = false;
-    } else if (code === "ArrowUp" || e.key === "ArrowUp") {
+    } else if (code === "ArrowUp" || key === "arrowup" || code === "KeyW" || key === "w") {
       giris.yukari = false;
-    } else if (code === "ArrowDown" || e.key === "ArrowDown") {
+    } else if (code === "ArrowDown" || key === "arrowdown" || code === "KeyS" || key === "s") {
       giris.asagi = false;
-    } else if (code === "Space" || e.keyCode === 32) {
+    } else if (code === "Space" || e.keyCode === 32 || key === " ") {
       giris.bosluk = false;
     }
   }
@@ -210,10 +242,17 @@
       klavyeBasRef = klavyeBasIsle;
       klavyeBirakRef = klavyeBirakIsle;
 
+      canvas.setAttribute("tabindex", "0");
+      canvas.setAttribute("role", "application");
+      canvas.setAttribute("aria-label", "Bilge Yolaç oyun alanı");
+
       canvas.addEventListener("mousemove", fareHareketRef);
       canvas.addEventListener("click", fareTiklaRef);
       canvas.addEventListener("mouseleave", fareAyrilRef);
       canvas.addEventListener("touchstart", dokunmaBaslaRef, { passive: true });
+
+      // Pointer down click'ten önce gelir; böylece ilk klavye girdisi doğrudan oyuna gider.
+      canvas.addEventListener("pointerdown", oyunGirdisiniAktiflestir);
 
       document.addEventListener("keydown", klavyeBasRef);
       document.addEventListener("keyup", klavyeBirakRef);
@@ -231,6 +270,7 @@
         if (fareTiklaRef) canvas.removeEventListener("click", fareTiklaRef);
         if (fareAyrilRef) canvas.removeEventListener("mouseleave", fareAyrilRef);
         if (dokunmaBaslaRef) canvas.removeEventListener("touchstart", dokunmaBaslaRef);
+        canvas.removeEventListener("pointerdown", oyunGirdisiniAktiflestir);
       }
 
       if (klavyeBasRef) document.removeEventListener("keydown", klavyeBasRef);

@@ -337,7 +337,13 @@
 
       kameraGuncelle();
 
-      var guncellemeSirasi = ["dunya", "fizik", "karakterler", "dusmanlar", "efektler", "oyun", "arayuz", "etkilesim"];
+      // ÖNEMLİ:
+      // Oyun girdisi ve takım kontrolü karakter fiziğinden önce çalışmalı.
+      // Eski sırada "karakterler" önce, "oyun" sonra çalışıyordu; bu da
+      // hareket hızının konuma ancak sonraki karede yansımasına ve bazı
+      // odak/input durumlarında karakterlerin yerinde kalmış gibi görünmesine yol açıyordu.
+      var guncellemeSirasi = ["dunya", "oyun", "fizik", "karakterler", "dusmanlar", "efektler", "arayuz", "etkilesim"];
+
       for (var j = 0; j < guncellemeSirasi.length; j++) {
         var alt = BY[guncellemeSirasi[j]];
         if (alt && typeof alt.guncelle === "function") {
