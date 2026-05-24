@@ -51,7 +51,7 @@ destekYardimUI <- function(id) {
                   "Konu: \n",
                   "Açıklama: \n\n",
                   "İyi çalışmalar dilerim,\n\n",
-                  "Uygulama: MERGEN Bilge v0.9\n",
+                  "Uygulama: ", get_app_version_full_label(), "\n",
                   "Tarih: ", format(Sys.Date(), "%d.%m.%Y")
                 ))
               ),

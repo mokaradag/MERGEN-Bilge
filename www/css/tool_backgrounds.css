@@ -1,0 +1,237 @@
+/* ============================================================
+ * Başlık: Araç Bağlamlı Sohbet Arka Plan Animasyonları
+ * Dosya: www/css/tool_backgrounds.css
+ * Açıklama: Karşılama ekranından bir araç seçildiğinde Ana Söyleşi arka
+ *           planında yer alan hafif heptagon + bağlama uygun kod/parçacık
+ *           animasyon katmanlarının stilleri. Tüm katmanlar pointer-events
+ *           tutamaz; metin seçimi, tıklama ve kaydırma etkilenmez.
+ *           Hareket azaltma tercihi (prefers-reduced-motion) saygıyla
+ *           ele alınır.
+ * ============================================================ */
+
+/* Ana sarmalayıcı: chat_main_wrapper üzerinde araç aktifken aktif olur */
+.tool-bg-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 600ms ease;
+}
+
+/* #chat_main_wrapper zaten welcome_modern.css içinde position: relative tanımlı.
+ * Tool-bg-layer position: absolute kullanır; bu nedenle stack context'inin
+ * üstünde diğer çocukların doğru sırada görünmesi için chat-header ve
+ * chat_content_container'a hafif z-index ile beraber relative pozisyon verilir.
+ * input-container ve floating-actions kendi fixed/absolute pozisyonlarıyla
+ * zaten üstte kalır; bu yüzden onlara dokunulmaz. */
+#chat_main_wrapper > .chat-header {
+  position: relative;
+  z-index: 1;
+}
+
+#chat_main_wrapper > #chat_content_container {
+  position: relative;
+  z-index: 1;
+}
+
+/* Araç aktifken arka plan görünür hale gelir; chat_main_wrapper üzerinde
+ * data-tool-bg attribute'u bulunduğunda devreye girer. Karşılama ekranı
+ * (welcome_fullscreen_container) z-index 1000 ve katı arka plan ile bu
+ * katmanı zaten örter; ayrıca istemci tarafı snippet'ler welcome görünürken
+ * temizlenir. */
+#chat_main_wrapper[data-tool-bg]:not([data-tool-bg=""]) .tool-bg-layer {
+  opacity: 1;
+}
+
+/* Yapılandırma ayarı kapalıyken layer asla görünmez */
+#chat_main_wrapper.tool-bg-disabled .tool-bg-layer {
+  opacity: 0 !important;
+  visibility: hidden;
+}
+
+/* ============================================================
+ * 1. Heptagon (yedigen) çekirdek arka plan
+ * ============================================================ */
+.tool-bg-heptagon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tool-bg-heptagon svg {
+  position: absolute;
+  width: 76vmin;
+  max-width: 1100px;
+  max-height: 1100px;
+  opacity: 0.10;
+  filter: blur(0.3px);
+  transform-origin: center center;
+  animation: toolBgHeptagonSpin 60s linear infinite;
+}
+
+html[data-theme="light"] .tool-bg-heptagon svg {
+  opacity: 0.10;
+}
+
+.tool-bg-heptagon svg:nth-child(2) {
+  width: 52vmin;
+  opacity: 0.07;
+  animation-duration: 95s;
+  animation-direction: reverse;
+}
+
+.tool-bg-heptagon svg:nth-child(3) {
+  width: 32vmin;
+  opacity: 0.05;
+  animation-duration: 130s;
+}
+
+.tool-bg-heptagon polygon {
+  fill: none;
+  stroke: var(--tool-bg-accent, #ff8a55);
+  stroke-width: 1.2;
+}
+
+html[data-theme="light"] .tool-bg-heptagon polygon {
+  stroke: var(--tool-bg-accent-light, #003087);
+}
+
+@keyframes toolBgHeptagonSpin {
+  0%   { transform: rotate(0deg);   }
+  100% { transform: rotate(360deg); }
+}
+
+/* Hafif radyal halo: heptagonun arkasında renk akışı */
+.tool-bg-heptagon::before {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  background:
+    radial-gradient(circle at 50% 50%,
+                    rgba(255, 138, 85, 0.10),
+                    transparent 55%);
+  filter: blur(40px);
+  opacity: 0.55;
+  animation: toolBgHaloPulse 12s ease-in-out infinite;
+}
+
+html[data-theme="light"] .tool-bg-heptagon::before {
+  background:
+    radial-gradient(circle at 50% 50%,
+                    rgba(0, 48, 135, 0.10),
+                    transparent 55%);
+  opacity: 0.6;
+}
+
+@keyframes toolBgHaloPulse {
+  0%, 100% { transform: scale(1);    opacity: 0.55; }
+  50%      { transform: scale(1.06); opacity: 0.78; }
+}
+
+/* ============================================================
+ * 2. Bağlam parçacıkları (snippet'ler)
+ * ============================================================ */
+.tool-bg-snippets {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tool-bg-snippet {
+  position: absolute;
+  font-family: var(--font-mono, 'JetBrains Mono', 'Consolas', monospace);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.18);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 6px rgba(255, 138, 85, 0.18);
+  user-select: none;
+  will-change: transform, opacity;
+  animation: toolBgSnippetDrift linear infinite;
+  opacity: 0;
+}
+
+html[data-theme="light"] .tool-bg-snippet {
+  color: rgba(0, 48, 135, 0.30);
+  text-shadow: 0 0 8px rgba(0, 48, 135, 0.06);
+}
+
+@keyframes toolBgSnippetDrift {
+  0%   { opacity: 0;    transform: translateY(8px) translateX(0); }
+  8%   { opacity: 0.7;  }
+  92%  { opacity: 0.7;  }
+  100% { opacity: 0;    transform: translateY(-12vh) translateX(2vw); }
+}
+
+/* Sohbet alanı içeriğinin okunabilirliği için snippet'ler kenarlara çekilir */
+.tool-bg-snippet[data-side="left"]  { left: 2vw;  }
+.tool-bg-snippet[data-side="right"] { right: 2vw; }
+
+/* Aile bazlı renk tonları (CSS custom property ile temaya uyumlu) */
+#chat_main_wrapper[data-tool-bg="coding"] {
+  --tool-bg-accent: #f59e0b;
+  --tool-bg-accent-light: #b45309;
+}
+#chat_main_wrapper[data-tool-bg="app_expert"] {
+  --tool-bg-accent: #8b5cf6;
+  --tool-bg-accent-light: #5b21b6;
+}
+#chat_main_wrapper[data-tool-bg="mcp_excel"] {
+  --tool-bg-accent: #10b981;
+  --tool-bg-accent-light: #047857;
+}
+#chat_main_wrapper[data-tool-bg="sql_analysis"] {
+  --tool-bg-accent: #06b6d4;
+  --tool-bg-accent-light: #0e7490;
+}
+#chat_main_wrapper[data-tool-bg="process"] {
+  --tool-bg-accent: #3b82f6;
+  --tool-bg-accent-light: #1d4ed8;
+}
+#chat_main_wrapper[data-tool-bg="summarization"] {
+  --tool-bg-accent: #6366f1;
+  --tool-bg-accent-light: #3730a3;
+}
+#chat_main_wrapper[data-tool-bg="image"] {
+  --tool-bg-accent: #ec4899;
+  --tool-bg-accent-light: #9d174d;
+}
+
+#chat_main_wrapper[data-tool-bg] .tool-bg-snippet {
+  text-shadow: 0 0 8px color-mix(in srgb, var(--tool-bg-accent, #ff8a55) 22%, transparent);
+}
+
+/* ============================================================
+ * 3. Performans ve erişilebilirlik
+ * ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .tool-bg-heptagon svg,
+  .tool-bg-heptagon::before {
+    animation: none !important;
+  }
+  .tool-bg-snippet {
+    animation: none !important;
+    /* Hareketsiz modda hafif sabit gri görünüm */
+    opacity: 0.18;
+  }
+}
+
+/* Geniş ekran modunda sohbet sarmalayıcı genişlerse arka plan da uyumlu kalır */
+.chat-container.widescreen ~ .tool-bg-layer,
+#chat_main_wrapper.widescreen .tool-bg-layer {
+  /* layer mutlak konumlu, ek kural gerekmez ama isim kararlılığı için */
+}
+
+/* Düşük performans cihazlar için optimize: animasyon süresini uzat */
+@media (max-width: 768px) {
+  .tool-bg-heptagon svg {
+    animation-duration: 95s;
+  }
+  .tool-bg-snippet {
+    font-size: 11px;
+  }
+}

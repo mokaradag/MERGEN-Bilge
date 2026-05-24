@@ -152,7 +152,41 @@ get_version_history <- function() {
 }
 
 #' Mevcut Sürüm Numarasını Getir
-#' @return Karakter türünde sürüm numarası
+#'
+#' @description MERGEN Bilge uygulamasının görünür sürüm numarasının
+#'   TEK doğru kaynağıdır. Tüm sidebar, Hakkında sayfası, karşılama
+#'   ekranı, sürüm rozet ve modalı bu değeri kullanır.
+#'   version_history.md dosyasında en üstteki en yeni "## v..." satırı
+#'   uygulamanın güncel sürümünü belirler.
+#'
+#' @return Karakter türünde sürüm numarası (örn. "1.1")
 get_current_version <- function() {
   get_version_history()$current_version
+}
+
+#' Görünür sürüm etiketini getir (örn. "v1.1")
+#'
+#' @description Sidebar, hakkında, karşılama gibi görünür alanlarda
+#'   kullanılan "v<sayı>" biçimindeki etikettir. Versiyon değişikliği
+#'   tek bir noktadan (version_history.md) yapıldığında bu helper
+#'   tüm yerleri otomatik günceller.
+#'
+#' @return Karakter etiket (örn. "v1.1"); sürüm boşsa "v?"
+get_app_version_label <- function() {
+  v <- tryCatch(get_current_version(), error = function(e) NULL)
+  if (is.null(v) || !nzchar(as.character(v)[1])) {
+    return("v?")
+  }
+  paste0("v", as.character(v)[1])
+}
+
+#' Görünür sürüm ürün etiketini getir (örn. "MERGEN Bilge v1.1")
+#'
+#' @description Ürün adıyla birlikte tam sürüm etiketini döndürür.
+#'   Görünür yerlerde tutarlılığı korumak için sürüm referansları
+#'   doğrudan dize gömmek yerine bu helper'dan alınmalıdır.
+#'
+#' @return Karakter etiket (örn. "MERGEN Bilge v1.1")
+get_app_version_full_label <- function() {
+  paste("MERGEN Bilge", get_app_version_label())
 }

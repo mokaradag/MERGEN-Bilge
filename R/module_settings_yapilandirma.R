@@ -259,6 +259,15 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
     observeEvent(input$enable_ai_expert,        { settings$enable_ai_expert        <- isTRUE(input$enable_ai_expert) })
     observeEvent(input$enable_followups,        { settings$enable_followups        <- isTRUE(input$enable_followups) })
 
+    # Araç arka plan animasyonları: anlık güncelleme + istemciye uygula.
+    # Kullanıcı checkbox'ı değiştirdiğinde sohbet ekranındaki heptagon ve
+    # parçacık katmanı kayıt aşamasını beklemeden açılır/kapatılır.
+    observeEvent(input$enable_tool_backgrounds, {
+      flag <- mb_tool_bg_coerce_enabled(input$enable_tool_backgrounds)
+      settings$enable_tool_backgrounds <- flag
+      mb_tool_bg_apply_to_client(session, flag)
+    }, ignoreInit = TRUE)
+
     # AI Uzman konuşma ayarları - anlık güncelleme
     observeEvent(input$ai_expert_talk_length,   { settings$ai_expert_talk_length   <- input$ai_expert_talk_length })
     observeEvent(input$ai_expert_talk_frequency, { settings$ai_expert_talk_frequency <- input$ai_expert_talk_frequency })
