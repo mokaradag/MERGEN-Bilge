@@ -397,9 +397,19 @@ html:not([data-theme="light"]) .highcharts-grid-line {
 }
 
 .modern-welcome-action-btn {
-  overflow: hidden;
+  /* Snake trail bilinçli olarak inset:-3px ile dışarı taşar; bu yüzden
+   * overflow visible olmalı. Border-radius keskinliği iç katmanların
+   * (welcome_modern.css) border-radius ile sağlanır. Eski overflow:hidden
+   * snake trail'in 3px dışarı taşan ucunu kırpıyordu. */
+  overflow: visible;
   position: relative;
 }
+
+/* İç katmanlar yuvarlak köşeleri kendi border-radius'unu taşır
+ * (welcome_modern.css zaten 14px tanımlı). Light tema bağlamında ek
+ * köşe yuvarlama gerekliliği yok; overflow:visible iç katmanlardaki
+ * keskin görünümü etkilemez çünkü her iç eleman border-radius ile gelir.
+ */
 
 .modern-welcome-action-btn > *,
 .modern-welcome-action-btn .modern-welcome-action-icon-box,
