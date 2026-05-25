@@ -3,46 +3,41 @@
 // Dosya: www/js/tool_backgrounds.js
 // Açıklama: Karşılama ekranından bir araç seçildiğinde Ana Söyleşi
 //           arka planında ilgili araç ailesine uygun KÖŞE yedigen
-//           kümesi + LANE-tabanlı yazılıyor stilinde snippet
+//           kümesi + LANE-tabanlı karakter karakter beliren snippet
 //           animasyonlarını yönetir.
 //
-//           Tasarım kararları:
-//             - Yedigenler ortada DEĞİL, alt-sol köşede (varsayılan).
-//             - Snippet'ler sabit dikey lane'lere yerleştirilir;
-//               aynı lane meşgulken yeni snippet eklenmez (çakışma yok).
-//             - Snippet "typing" hissi için karakter karakter belirir
-//               (welcome progress loading ekranındaki yaklaşımla aynı).
-//             - Yapılandırma "Araç Arka Plan Animasyonları" toggle'i
-//               kapatılırsa tüm sahne anında gizlenir.
-//
-//           Genişletme: TOOL_BACKGROUND_SNIPPETS objesine yeni anahtar
-//           eklenmesi yeterlidir.
+//           Tasarım kararları (kullanıcı isteğine göre güncellendi):
+//             - Snippet havuzu = welcome progress loading havuzu
+//               (window.MergenLoadingSnippets). Aynı pool kullanılır.
+//             - Rendering = window.MergenLoadingCodestream.buildItem
+//               ile alo-code-item yapısı; her karakter ayrı span; alo-ch
+//               + alo-ch-on sınıflarıyla sırayla belirir.
+//             - 7 iç içe yedigen kümesi alt-sol köşede çeyrek kesit.
+//             - Sabit dikey lane'ler — snippet'ler asla üst üste binmez.
+//             - "Araç Arka Plan Animasyonları" toggle kapatılırsa tüm
+//               sahne anında gizlenir.
 // ============================================================
 
 (function () {
   'use strict';
 
-  // -------------------------------------------------
-  // 1. Yapılandırma sabitleri
-  // -------------------------------------------------
   var SETTINGS_KEY = 'mergen_settings';
   var ENABLED_KEY = 'enable_tool_backgrounds';
   var WRAPPER_SELECTOR = '#chat_main_wrapper';
   var WELCOME_SELECTOR = '#welcome_fullscreen_container';
 
-  // Lane id'leri (sol 3 + sağ 3 = 6 lane). Bir snippet aktif iken
-  // bulunduğu lane "busy" işaretlenir; yeni snippet yalnızca boş
-  // lane'lere yerleştirilir. Bu sayede üst üste binme imkansızdır.
+  // Sol 3 + sağ 3 = 6 lane. Bir snippet aktif iken bulunduğu lane "busy"
+  // işaretlenir; yeni snippet yalnızca boş lane'lere yerleşir. Üst üste
+  // binme imkansızdır.
   var LANE_DEFS = [
-    { id: 'L1', side: 'left'  },
-    { id: 'L2', side: 'left'  },
-    { id: 'L3', side: 'left'  },
-    { id: 'R1', side: 'right' },
-    { id: 'R2', side: 'right' },
-    { id: 'R3', side: 'right' }
+    { id: 'L1', side: 'left',  top: 8  },
+    { id: 'L2', side: 'left',  top: 32 },
+    { id: 'L3', side: 'left',  top: 58 },
+    { id: 'R1', side: 'right', top: 18 },
+    { id: 'R2', side: 'right', top: 44 },
+    { id: 'R3', side: 'right', top: 70 }
   ];
 
-  // Hızlı eylem (quick action) id -> araç ailesi eşlemesi.
   var ACTION_TO_FAMILY = {
     'coding-support'    : 'coding',
     'project-process'   : 'process',
@@ -64,111 +59,152 @@
   };
 
   // -------------------------------------------------
-  // 2. Snippet havuzları (araç ailesi bazlı)
+  // Welcome loading havuzu filtre fonksiyonları
+  // window.MergenLoadingSnippets her bir öğe:
+  //   { lang: "...", lines: [...] }  -> kod parçası
+  //   { tag:  "...", lines: [...] }  -> kurumsal not / soru-yanıt
   // -------------------------------------------------
-  var TOOL_BACKGROUND_SNIPPETS = {
-    coding: [
-      "function analyze(data) {\n  return summarize(data);\n}",
-      "const result = await model.run(prompt);",
-      "if (status === 'ready') deploy();",
-      "SELECT id, status FROM tasks\nWHERE active = 1;",
-      "try {\n  renderChart(data);\n} catch (err) { log(err); }",
-      "for (const item of items)\n  process(item);",
-      "def predict(x):\n  return model(x)",
-      "git rebase -i HEAD~3",
-      "docker build -t mergen:latest .",
-      "export const API = \"/api/v1\";",
-      "await Promise.all(tasks.map(run));",
-      "type Result = { ok: true; value: T };"
-    ],
-    process: [
-      "Surec -> Izlek\nRehber -> Sablon",
-      "Kontrol noktasi:\nuygunluk / onay / kayit",
-      "Dokuman arama:\nbaslik, kapsam, revizyon",
-      "Politika -> Prosedur\n-> Talimat -> Form",
-      "Onay akisi:\nhazirlayan -> kontrol -> onay",
-      "Versiyon kontrolu:\nr0 -> r1 -> r2",
-      "RACI:\nSorumlu | Vekil | Onaylayan",
-      "KPI:\ncevrim suresi, hata orani",
-      "Risk:\nolasilik x etki",
-      "Surec sahibi ->\nOperasyonel sahibi",
-      "ISO 9001\ndokuman yonetim sistemi",
-      "IK / Satinalma / Lojistik"
-    ],
-    app_expert: [
-      "P6:\nActivity ID -> WBS -> Baseline",
-      "SAP PS:\nWBS / Network / Milestone",
-      "Jira:\nEpic -> Story -> Sprint",
-      "Risk Register:\nprobability x impact",
-      "Workflow:\nrequest -> review -> approval",
-      "Confluence | Jira | Bitbucket",
-      "P6 baseline vs current schedule",
-      "SAP CO:\ncost center / order / element",
-      "ITSM:\nIncident / Problem / Change",
-      "Primavera Resource Loading",
-      "SAP Notifications /\nService Orders",
-      "JQL: project = MB AND\n  sprint in openSprints()"
-    ],
-    mcp_excel: [
-      "=SUM(B2:B24)",
-      "=XLOOKUP(A2,\n  Table1[ID], Table1[Value])",
-      "Pivot:\nRegion x Month x Cost",
-      "Date | Category | Amount",
-      "Chart:\nline / bar / scatter",
-      "=IFERROR(\n  VLOOKUP(...), \"Yok\")",
-      "=AVERAGEIFS(\n  C:C, A:A, \"Aktif\")",
-      "Power Query:\nGroup By -> Sum",
-      "Dilimleyici +\nzaman cizelgesi",
-      "Slicer:\nFilter by Sector",
-      "=SUMPRODUCT(\n  (A:A=B1)*(C:C))",
-      "Pivot Cache |\nPower Pivot | DAX"
-    ],
-    sql_analysis: [
-      "Resource Load:\nplanned vs actual",
-      "SPI = EV / PV",
-      "CPI = EV / AC",
-      "Critical Path:\ntotal float <= 0",
-      "SELECT project_id, cost\nFROM portfolio",
-      "WBS | Activity | Duration",
-      "WITH cte AS (\n  SELECT ... FROM ...)\nSELECT * FROM cte",
-      "GROUP BY project_id,\n  period",
-      "CASE WHEN\n  status='Aktif' THEN 1\n  ELSE 0 END",
-      "JOIN sap_cost\n  ON wbs_id = wbs_code",
-      "P6 + SAP PS:\nbudget / workforce",
-      "Forecast vs Actual:\nkullanim orani"
-    ],
-    summarization: [
-      "Amac | Kapsam |\nBulgular | Sonuc",
-      "Ana fikir ->\nkanit -> cikarim",
-      "Uzun metin ->\nyapilandirilmis ozet",
-      "Karar / risk / aksiyon",
-      "Yonetici ozeti /\ndetay ozet",
-      "Soru -> Cevap -> Referans",
-      "TLDR: temel cikarim",
-      "Anahtar baslik\n#1, #2, #3",
-      "Yapilandirilmis maddeleme",
-      "Toplanti notlari ->\nkarar -> aksiyon",
-      "Belge ->\nkaynaklar -> bibliyografya",
-      "Veri tablosu ->\nozetlenmis grafik"
-    ],
-    image: [
-      "composition: cinematic,\n  balanced, minimal",
-      "style: technical illustration",
-      "lighting: soft rim light",
-      "palette:\nblue / orange / neutral",
-      "aspect: 16:9 cinematic",
-      "detail:\nultra-detailed, sharp focus",
-      "mood: calm, professional",
-      "render: studio quality",
-      "subject:\nASELSAN tarzi minimal sahne",
-      "lens: 50mm f/1.8",
-      "background: subtle gradient",
-      "pose: neutral, balanced"
-    ]
+  function _isCodeOnly(item) {
+    return !!item && !!item.lang && !item.tag &&
+           item.lang !== 'JQL' && item.lang !== 'ABAP';
+  }
+
+  var FAMILY_FILTERS = {
+    coding: function (i) { return _isCodeOnly(i); },
+    process: function (i) {
+      return i.tag === 'Proje Yönetimi' || i.tag === 'Primavera P6' ||
+             i.tag === 'Veri Analizi'   || i.tag === 'MERGEN Bilge';
+    },
+    app_expert: function (i) {
+      return i.tag === 'Primavera P6' || i.tag === 'Jira' ||
+             i.tag === 'SAP' || i.lang === 'JQL' || i.lang === 'ABAP' ||
+             i.tag === 'MERGEN Bilge';
+    },
+    sql_analysis: function (i) {
+      return i.lang === 'SQL' || i.tag === 'Veri Analizi' ||
+             i.tag === 'Proje Yönetimi' || i.tag === 'Primavera P6';
+    },
+    mcp_excel: function (i) {
+      return i.lang === 'SQL' || i.tag === 'SAP' ||
+             i.tag === 'Veri Analizi' || i.tag === 'MERGEN Bilge';
+    },
+    summarization: function (i) {
+      return i.tag === 'MERGEN Bilge' || i.tag === 'Veri Analizi' ||
+             i.tag === 'Sinyal İşleme' || i.tag === 'Radar Sistemleri' ||
+             i.tag === 'Proje Yönetimi';
+    },
+    image: function (i) {
+      return i.tag === 'MERGEN Bilge' || i.tag === 'Radar Sistemleri' ||
+             i.tag === 'Sinyal İşleme' || i.tag === 'Elektronik Harp';
+    }
   };
 
   // -------------------------------------------------
-  // 3. Yardımcılar
+  // Yedek havuz: welcome loading yüklenmediyse ya da filtre boş kalırsa.
+  // Geriye uyumluluk sözleşmesi: TOOL_BACKGROUND_SNIPPETS sembolü korunur.
+  // -------------------------------------------------
+  var FALLBACK_SNIPPETS = {
+    coding: [
+      { lang: 'JavaScript', lines: [
+        'function analyze(data) {',
+        '  return summarize(data);',
+        '}'
+      ] },
+      { lang: 'SQL', lines: [
+        'SELECT id, status FROM tasks',
+        'WHERE active = 1;'
+      ] },
+      { lang: 'Python', lines: [
+        'def predict(x):',
+        '    return model(x)'
+      ] }
+    ],
+    process: [
+      { tag: 'Proje Yönetimi', lines: [
+        'Sürec sahibi -> sorumlu',
+        'Onay akışı: hazırlayan -> kontrol -> onay'
+      ] }
+    ],
+    app_expert: [
+      { tag: 'Primavera P6', lines: ['Activity ID -> WBS -> Baseline'] }
+    ],
+    mcp_excel: [
+      { tag: 'Veri Analizi', lines: [
+        'Pivot: Bölge x Ay x Tutar',
+        'Slicer ile filtrele'
+      ] }
+    ],
+    sql_analysis: [
+      { lang: 'SQL', lines: [
+        'SELECT project_id, SUM(cost)',
+        'FROM portfolio',
+        'GROUP BY project_id'
+      ] }
+    ],
+    summarization: [
+      { tag: 'MERGEN Bilge', lines: [
+        'Amaç | Kapsam | Bulgular | Sonuç'
+      ] }
+    ],
+    image: [
+      { tag: 'MERGEN Bilge', lines: [
+        'Kurumsal tarz, dengeli kompozisyon'
+      ] }
+    ]
+  };
+  var TOOL_BACKGROUND_SNIPPETS = FALLBACK_SNIPPETS;
+
+  function getLoadingPool() {
+    if (!window.MergenLoadingSnippets) return [];
+    if (!Array.isArray(window.MergenLoadingSnippets)) return [];
+    return window.MergenLoadingSnippets;
+  }
+
+  function getSharedRenderer() {
+    // Welcome loading IIFE buildItem/tokenize fonksiyonlarını burada
+    // paylaşır. Yalnız mevcut/çağrılabilir ise döner; aksi halde lokal
+    // basit fallback'a düşeriz.
+    var api = window.MergenLoadingCodestream;
+    if (api && typeof api.buildItem === 'function') return api;
+    return null;
+  }
+
+  function pickSnippetForFamily(family, lastSigs) {
+    var filter = FAMILY_FILTERS[family];
+    var pool = getLoadingPool();
+    var candidates = [];
+
+    if (pool.length > 0 && typeof filter === 'function') {
+      for (var i = 0; i < pool.length; i++) {
+        try { if (filter(pool[i])) candidates.push(pool[i]); }
+        catch (e) { /* yoksay */ }
+      }
+    }
+
+    if (candidates.length === 0) {
+      candidates = (FALLBACK_SNIPPETS[family] || []).slice();
+    }
+    if (candidates.length === 0) return null;
+
+    // Son kullanılanları atlamaya çalış
+    var attempts = 5;
+    while (attempts-- > 0) {
+      var c = candidates[Math.floor(Math.random() * candidates.length)];
+      var sig = (c.lang || c.tag || '') + '::' +
+                ((c.lines && c.lines[0]) ? c.lines[0] : '');
+      if (lastSigs.indexOf(sig) === -1) {
+        c.__sig = sig;
+        return c;
+      }
+    }
+    var chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    chosen.__sig = (chosen.lang || chosen.tag || '') + '::' +
+                   ((chosen.lines && chosen.lines[0]) ? chosen.lines[0] : '');
+    return chosen;
+  }
+
+  // -------------------------------------------------
+  // Yardımcılar
   // -------------------------------------------------
   function readSettings() {
     try {
@@ -184,9 +220,9 @@
 
   function persistEnabled(value) {
     try {
-      var settings = readSettings() || {};
-      settings[ENABLED_KEY] = !!value;
-      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      var s = readSettings() || {};
+      s[ENABLED_KEY] = !!value;
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
     } catch (e) { /* yoksay */ }
   }
 
@@ -204,9 +240,7 @@
     } catch (e) { return false; }
   }
 
-  function getWrapper() {
-    return document.querySelector(WRAPPER_SELECTOR);
-  }
+  function getWrapper() { return document.querySelector(WRAPPER_SELECTOR); }
 
   function welcomeVisible() {
     var w = document.querySelector(WELCOME_SELECTOR);
@@ -216,30 +250,28 @@
     return w.offsetParent !== null;
   }
 
-  // Heptagon noktaları (7 köşe, üst nokta yukarıda)
+  // -------------------------------------------------
+  // Heptagon (welcome loading alo-corner ile aynı: 7 iç içe yedigen)
+  // -------------------------------------------------
   function heptPointsString(cx, cy, r) {
     var pts = [];
     for (var i = 0; i < 7; i++) {
-      var angle = -Math.PI / 2 + (i * 2 * Math.PI) / 7;
-      var x = cx + r * Math.cos(angle);
-      var y = cy + r * Math.sin(angle);
-      pts.push(x.toFixed(2) + ',' + y.toFixed(2));
+      var a = -Math.PI / 2 + (i * 2 * Math.PI) / 7;
+      pts.push((cx + r * Math.cos(a)).toFixed(2) + ',' +
+               (cy + r * Math.sin(a)).toFixed(2));
     }
     return pts.join(' ');
   }
 
-  // 7 iç içe yedigen SVG (cluster) - app_loading alo-corner mantığı
   function buildCornerHeptagonsSvg() {
-    var svgNs = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNs, 'svg');
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '-150 -150 300 300');
     svg.setAttribute('aria-hidden', 'true');
     svg.setAttribute('focusable', 'false');
-
-    // 7 farklı yarıçap - en içte küçük, en dışta büyük
     var radii = [22, 38, 56, 74, 92, 110, 130];
     for (var i = 0; i < 7; i++) {
-      var poly = document.createElementNS(svgNs, 'polygon');
+      var poly = document.createElementNS(ns, 'polygon');
       poly.setAttribute('points', heptPointsString(0, 0, radii[i]));
       poly.setAttribute('class', 'hept-' + (i + 1));
       svg.appendChild(poly);
@@ -248,7 +280,8 @@
   }
 
   // -------------------------------------------------
-  // 4. Layer kurma (idempotent)
+  // Layer kurma (idempotent). CSS sözleşme adları korunur:
+  //   .tool-bg-heptagon, .tool-bg-snippets
   // -------------------------------------------------
   function ensureCornerLayer(layer) {
     if (!layer) return null;
@@ -261,7 +294,8 @@
     var corner = layer.querySelector(':scope > .tool-bg-corner-heptagons');
     if (!corner) {
       corner = document.createElement('div');
-      corner.className = 'tool-bg-corner-heptagons';
+      // .tool-bg-heptagon sınıfı tarihsel sözleşme; korunur.
+      corner.className = 'tool-bg-corner-heptagons tool-bg-heptagon';
       corner.appendChild(buildCornerHeptagonsSvg());
       layer.appendChild(corner);
     } else if (!corner.querySelector('svg')) {
@@ -275,10 +309,10 @@
     var lanes = layer.querySelector(':scope > .tool-bg-snippet-lanes');
     if (!lanes) {
       lanes = document.createElement('div');
-      lanes.className = 'tool-bg-snippet-lanes';
+      // .tool-bg-snippets sınıfı tarihsel sözleşme; korunur.
+      lanes.className = 'tool-bg-snippet-lanes tool-bg-snippets';
       layer.appendChild(lanes);
     }
-    // Lane'leri oluştur (boş, server-side render edilmemiş ise)
     for (var i = 0; i < LANE_DEFS.length; i++) {
       var def = LANE_DEFS[i];
       var el = lanes.querySelector(
@@ -290,43 +324,26 @@
         el.setAttribute('data-lane', def.id);
         el.setAttribute('data-side', def.side);
         el.setAttribute('data-busy', 'false');
+        el.style.top = def.top + 'vh';
         lanes.appendChild(el);
       }
     }
     return lanes;
   }
 
-  // Geriye uyumluluk: eski test sözleşmesi `ensureHeptagonLayer` ve
-  // `ensureSnippetsHolder` isimlerini bekler. Yeni tasarımda köşe yedigen
-  // kümesi `.tool-bg-corner-heptagons` ve snippet lane'leri
-  // `.tool-bg-snippet-lanes` altındadır; ancak eski test sınıf adları
-  // `.tool-bg-heptagon` ve `.tool-bg-snippets` da regression koruma
-  // olarak korunur. Aşağıdaki sarmalayıcılar bu sözleşmeyi onurlandırır.
-  function ensureHeptagonLayer(layer) {
-    // Yeni tasarımda köşe yedigen kümesini garantile (.tool-bg-corner-heptagons).
-    // CSS sınıfı .tool-bg-heptagon eski sürümle uyumluluk için yedek olarak
-    // mevcut olabilir; yeni primary köşe kümesidir.
-    return ensureCornerLayer(layer);
-  }
-
-  function ensureSnippetsHolder(layer) {
-    // Yeni tasarımda snippet'ler lane container içine yerleşir
-    // (.tool-bg-snippet-lanes). Eski sözleşme .tool-bg-snippets adıyla
-    // sarmalanır; lane container aynı görev görür.
-    return ensureLaneContainer(layer);
-  }
+  // Geriye uyumluluk sözleşmesi: eski test isimleri korunur.
+  function ensureHeptagonLayer(layer) { return ensureCornerLayer(layer); }
+  function ensureSnippetsHolder(layer) { return ensureLaneContainer(layer); }
 
   function buildHeptagonSvg(radius) {
-    // Geriye uyumluluk için: eski tek-yedigen üreteci yerine artık
-    // tüm köşe kümesi `buildCornerHeptagonsSvg` ile oluşturulur.
-    // Bu wrapper basit bir 7-köşeli polygon döner; mevcut testler yalnızca
-    // fonksiyonun var olduğunu ve `.tool-bg-heptagon` adının korunduğunu
-    // kontrol eder. Adı sözleşme gereği `buildHeptagonSvg` olarak korunur.
-    var svgNs = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNs, 'svg');
+    // Geriye uyumluluk: tek yedigen üreteci. Yeni tasarımda
+    // buildCornerHeptagonsSvg ile 7 iç içe yedigen çizilir; bu wrapper
+    // yalnızca .tool-bg-heptagon test sözleşmesi için korunur.
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 240 240');
     svg.setAttribute('aria-hidden', 'true');
-    var poly = document.createElementNS(svgNs, 'polygon');
+    var poly = document.createElementNS(ns, 'polygon');
     poly.setAttribute('points', heptPointsString(120, 120, radius || 100));
     svg.appendChild(poly);
     return svg;
@@ -343,15 +360,73 @@
     } else if (layer.getAttribute('aria-hidden') !== 'true') {
       layer.setAttribute('aria-hidden', 'true');
     }
-    // Idempotent: her cagride alt katmanlari tamamla
-    // CSS selector sozlesme adlari: .tool-bg-heptagon ve .tool-bg-snippets
+    // Idempotent: her çağrıda alt katmanları tamamla.
+    // .tool-bg-heptagon ve .tool-bg-snippets sözleşmeleri korunur.
     ensureHeptagonLayer(layer);
     ensureSnippetsHolder(layer);
     return layer;
   }
 
   // -------------------------------------------------
-  // 5. Snippet yaşam döngüsü (lane atama + typing + exit)
+  // Snippet öğesi inşası
+  //   Tercih: window.MergenLoadingCodestream.buildItem (welcome loading
+  //          IIFE'sinde tanımlı, alo-code-item + tokenizer + sözdizimi
+  //          renklendirme dahil).
+  //   Yedek: minimum karakter span'lı satır render (font yok yine ama
+  //          karakter karakter typing efekti korunur).
+  // -------------------------------------------------
+  function buildSnippetEl(snippet) {
+    var shared = getSharedRenderer();
+    if (shared) {
+      var built = shared.buildItem(snippet);
+      if (built && built.el) {
+        // Tool-bg konteyner sınıfı ekle (CSS opacity/transform için).
+        built.el.classList.add('tool-bg-typed-snippet');
+        // Son satır sonuna yanıp sönen caret
+        var caret = document.createElement('span');
+        caret.className = 'tool-bg-caret alo-ch alo-ch-on';
+        built.el.appendChild(caret);
+        return built;
+      }
+    }
+
+    // Yedek: en sade satır render — tokenize/renklendirme yok ama
+    // karakter karakter typing efekti korunur.
+    var lines = (snippet.lines || []).slice(0, 5);
+    var label = snippet.tag || snippet.lang || '';
+    var el = document.createElement('div');
+    el.className = 'tool-bg-typed-snippet alo-code-item' +
+                   (snippet.tag ? ' alo-code-note' : '');
+    if (label) {
+      var lab = document.createElement('span');
+      lab.className = 'alo-code-lang' + (snippet.tag ? ' alo-lang-note' : '');
+      lab.textContent = label;
+      el.appendChild(lab);
+    }
+    var charSpans = [];
+    for (var li = 0; li < lines.length; li++) {
+      var lineEl = document.createElement('span');
+      lineEl.className = 'alo-code-line';
+      var text = lines[li] || ' ';
+      for (var ci = 0; ci < text.length; ci++) {
+        var ch = text.charAt(ci);
+        var sp = document.createElement('span');
+        sp.className = 'alo-ch alo-tok-prose';
+        sp.textContent = ch;
+        if (ch === ' ' || ch === '\t') sp.classList.add('alo-ch-on');
+        else charSpans.push(sp);
+        lineEl.appendChild(sp);
+      }
+      el.appendChild(lineEl);
+    }
+    var caretEl = document.createElement('span');
+    caretEl.className = 'tool-bg-caret alo-ch alo-ch-on';
+    el.appendChild(caretEl);
+    return { el: el, charSpans: charSpans };
+  }
+
+  // -------------------------------------------------
+  // Snippet yaşam döngüsü
   // -------------------------------------------------
   var spawnTimer = null;
   var currentFamily = null;
@@ -362,132 +437,103 @@
     var lanes = layer.querySelectorAll('.tool-bg-snippet-lane');
     var free = [];
     for (var i = 0; i < lanes.length; i++) {
-      if (lanes[i].getAttribute('data-busy') !== 'true') {
-        free.push(lanes[i]);
-      }
+      if (lanes[i].getAttribute('data-busy') !== 'true') free.push(lanes[i]);
     }
     if (free.length === 0) return null;
     return free[Math.floor(Math.random() * free.length)];
   }
 
-  function pickSnippetText(family, lastTexts) {
-    var pool = TOOL_BACKGROUND_SNIPPETS[family];
-    if (!pool || pool.length === 0) return null;
-    // Son 3 snippet'i atla (yinelenme azaltma)
-    var candidate;
-    for (var attempt = 0; attempt < 5; attempt++) {
-      candidate = pool[Math.floor(Math.random() * pool.length)];
-      if (lastTexts.indexOf(candidate) === -1) return candidate;
+  function revealNext(rec) {
+    if (!rec || rec.dissolved) return;
+    if (rec.revealIndex >= rec.charSpans.length) {
+      rec.timer = window.setTimeout(function () {
+        dropSnippet(rec);
+      }, 4200 + Math.random() * 2400);
+      return;
     }
-    return candidate;
+    rec.charSpans[rec.revealIndex].classList.add('alo-ch-on');
+    rec.revealIndex++;
+    rec.timer = window.setTimeout(function () { revealNext(rec); },
+                                  15 + Math.random() * 15);
   }
 
-  // Karakter karakter typing effect - lane'e snippet yazar
-  function typeSnippetInto(laneEl, text, onComplete) {
-    if (!laneEl) return;
-    var el = document.createElement('div');
-    el.className = 'tool-bg-typed-snippet';
-    // Statik ve typing varyantları: reduced motion ise tek seferde göster.
-    var caret = document.createElement('span');
-    caret.className = 'tool-bg-caret';
-
-    laneEl.appendChild(el);
-
-    if (isReducedMotion()) {
-      el.textContent = text;
-      if (typeof onComplete === 'function') onComplete(el);
-      return el;
-    }
-
-    // Karakter karakter ekle
-    var i = 0;
-    var STEP_MS = 18;
-    function step() {
-      if (i >= text.length) {
-        el.appendChild(caret);
-        if (typeof onComplete === 'function') onComplete(el);
-        return;
-      }
-      var ch = text.charAt(i);
-      el.appendChild(document.createTextNode(ch));
-      i++;
-      window.setTimeout(step, STEP_MS);
-    }
-    step();
-    return el;
-  }
-
-  function dropSnippet(snippetEl, laneEl) {
-    if (!snippetEl) return;
-    snippetEl.classList.add('is-leaving');
-    window.setTimeout(function () {
-      try { snippetEl.remove(); } catch (e) {}
-      if (laneEl) laneEl.setAttribute('data-busy', 'false');
-    }, 700);
+  function dropSnippet(rec) {
+    if (!rec || rec.dissolved) return;
+    rec.dissolved = true;
+    if (rec.el) rec.el.classList.add('is-leaving');
+    rec.timer = window.setTimeout(function () {
+      try { if (rec.el) rec.el.remove(); } catch (e) {}
+      if (rec.lane) rec.lane.setAttribute('data-busy', 'false');
+      var idx = ACTIVE_SNIPPETS.indexOf(rec);
+      if (idx >= 0) ACTIVE_SNIPPETS.splice(idx, 1);
+    }, 900);
   }
 
   function spawnOneSnippet(family) {
     var wrapper = getWrapper();
-    if (!wrapper) return;
-    if (welcomeVisible()) return;
-    if (!isEnabled()) return;
-    if (!family || !TOOL_BACKGROUND_SNIPPETS[family]) return;
-
+    if (!wrapper || welcomeVisible() || !isEnabled() || !family) return;
     var layer = ensureLayer(wrapper);
     if (!layer) return;
     var lane = findFreeLane(layer);
     if (!lane) return;
 
-    // Son metinleri toplama (yinelenme önleme)
-    var lastTexts = ACTIVE_SNIPPETS.map(function (a) { return a.text; });
-    var text = pickSnippetText(family, lastTexts);
-    if (!text) return;
+    var lastSigs = ACTIVE_SNIPPETS
+      .map(function (a) { return a.sig || ''; })
+      .filter(function (s) { return s.length > 0; });
 
+    var snippet = pickSnippetForFamily(family, lastSigs);
+    if (!snippet) return;
+
+    var built = buildSnippetEl(snippet);
+    if (!built || !built.el) return;
+    lane.appendChild(built.el);
     lane.setAttribute('data-busy', 'true');
-    var record = { lane: lane, text: text, el: null, timer: null };
 
-    record.el = typeSnippetInto(lane, text, function (finalEl) {
-      // typing tamamlandıktan sonra biraz görünür kalsın
-      var visibleMs = 5500 + Math.random() * 3500;
-      record.timer = window.setTimeout(function () {
-        dropSnippet(finalEl, lane);
-        // record temizleme
-        var idx = ACTIVE_SNIPPETS.indexOf(record);
-        if (idx >= 0) ACTIVE_SNIPPETS.splice(idx, 1);
-      }, visibleMs);
+    var rec = {
+      lane: lane,
+      el: built.el,
+      charSpans: built.charSpans || [],
+      revealIndex: 0,
+      sig: snippet.__sig || '',
+      timer: null,
+      dissolved: false
+    };
+    ACTIVE_SNIPPETS.push(rec);
+
+    window.requestAnimationFrame(function () {
+      if (built.el) built.el.classList.add('alo-code-in');
     });
 
-    ACTIVE_SNIPPETS.push(record);
+    if (isReducedMotion()) {
+      for (var i = 0; i < rec.charSpans.length; i++) {
+        rec.charSpans[i].classList.add('alo-ch-on');
+      }
+      rec.revealIndex = rec.charSpans.length;
+      rec.timer = window.setTimeout(function () { dropSnippet(rec); },
+                                    5000 + Math.random() * 2500);
+    } else {
+      rec.timer = window.setTimeout(function () { revealNext(rec); },
+                                    240 + Math.random() * 260);
+    }
   }
 
   function startSpawnLoop(family) {
     stopSpawnLoop();
-    // Sahnede en fazla 4 aktif snippet olsun (kalabalık değil)
-    var TICK_MS = 1800; // her ~1.8 saniyede bir yeni snippet dene
     spawnTimer = window.setInterval(function () {
-      if (!currentFamily) return;
-      if (ACTIVE_SNIPPETS.length >= 4) return;
+      if (!currentFamily || ACTIVE_SNIPPETS.length >= 4) return;
       spawnOneSnippet(currentFamily);
-    }, TICK_MS);
-
-    // İlk snippet'i biraz beklemeden ekleyelim ki sahne hemen başlasın
-    window.setTimeout(function () { spawnOneSnippet(family); }, 250);
-    window.setTimeout(function () { spawnOneSnippet(family); }, 1100);
+    }, 1800);
+    window.setTimeout(function () { spawnOneSnippet(family); }, 200);
+    window.setTimeout(function () { spawnOneSnippet(family); }, 900);
   }
 
   function stopSpawnLoop() {
-    if (spawnTimer) {
-      window.clearInterval(spawnTimer);
-      spawnTimer = null;
-    }
-    // Aktif snippet'leri temizle
+    if (spawnTimer) { window.clearInterval(spawnTimer); spawnTimer = null; }
     for (var i = 0; i < ACTIVE_SNIPPETS.length; i++) {
-      var rec = ACTIVE_SNIPPETS[i];
-      if (rec && rec.timer) window.clearTimeout(rec.timer);
-      if (rec && rec.el) {
-        try { rec.el.remove(); } catch (e) {}
-      }
-      if (rec && rec.lane) rec.lane.setAttribute('data-busy', 'false');
+      var r = ACTIVE_SNIPPETS[i];
+      if (r && r.timer) window.clearTimeout(r.timer);
+      if (r && r.el) { try { r.el.remove(); } catch (e) {} }
+      if (r && r.lane) r.lane.setAttribute('data-busy', 'false');
     }
     ACTIVE_SNIPPETS = [];
   }
@@ -503,13 +549,12 @@
   }
 
   // -------------------------------------------------
-  // 6. Genel API
+  // Genel API
   // -------------------------------------------------
   function applyFamily(family, options) {
     options = options || {};
     var wrapper = getWrapper();
     if (!wrapper) return;
-
     ensureLayer(wrapper);
 
     if (!family || typeof family !== 'string') {
@@ -529,35 +574,21 @@
     }
     wrapper.classList.remove('tool-bg-disabled');
 
-    if (!welcomeVisible()) {
-      // Eski snippet'leri temizle, yeni döngü başlat
-      clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
-      startSpawnLoop(family);
-    } else {
-      clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
-    }
+    clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
+    if (!welcomeVisible()) startSpawnLoop(family);
   }
 
-  function clearBackground() {
-    applyFamily(null);
-  }
+  function clearBackground() { applyFamily(null); }
 
   function setEnabled(enabled, options) {
     options = options || {};
     var wrapper = getWrapper();
     var v = !!enabled;
-
-    if (options.persist !== false) {
-      persistEnabled(v);
-    }
-
+    if (options.persist !== false) persistEnabled(v);
     if (!wrapper) return;
-
     if (v) {
       wrapper.classList.remove('tool-bg-disabled');
-      if (currentFamily && !welcomeVisible()) {
-        startSpawnLoop(currentFamily);
-      }
+      if (currentFamily && !welcomeVisible()) startSpawnLoop(currentFamily);
     } else {
       wrapper.classList.add('tool-bg-disabled');
       stopSpawnLoop();
@@ -566,27 +597,22 @@
   }
 
   function familyForActionId(actionId) {
-    if (!actionId) return null;
-    return ACTION_TO_FAMILY[actionId] || null;
+    return actionId ? (ACTION_TO_FAMILY[actionId] || null) : null;
   }
-
   function familyForFlag(flag) {
-    if (!flag) return null;
-    return FLAG_TO_FAMILY[flag] || null;
+    return flag ? (FLAG_TO_FAMILY[flag] || null) : null;
   }
 
   // -------------------------------------------------
-  // 7. Olay bağlantıları
+  // Olay bağlantıları
   // -------------------------------------------------
   function bindQuickActionListener() {
     document.addEventListener('click', function (ev) {
-      var btn = ev.target && ev.target.closest && ev.target.closest('.modern-welcome-action-btn');
+      var btn = ev.target && ev.target.closest &&
+                ev.target.closest('.modern-welcome-action-btn');
       if (!btn) return;
-      var actionId = btn.getAttribute('data-action-id') || '';
-      var fam = familyForActionId(actionId);
-      if (fam) {
-        applyFamily(fam);
-      }
+      var fam = familyForActionId(btn.getAttribute('data-action-id') || '');
+      if (fam) applyFamily(fam);
     }, true);
   }
 
@@ -598,15 +624,12 @@
     }
     var mo = new MutationObserver(function () {
       var wrapper = getWrapper();
-      if (!wrapper) return;
-      if (!currentFamily) return;
+      if (!wrapper || !currentFamily) return;
       if (welcomeVisible()) {
         stopSpawnLoop();
         clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
-      } else {
-        if (isEnabled()) {
-          startSpawnLoop(currentFamily);
-        }
+      } else if (isEnabled()) {
+        startSpawnLoop(currentFamily);
       }
     });
     mo.observe(welcome, { attributes: true, attributeFilter: ['style', 'class'] });
@@ -619,42 +642,32 @@
     }
 
     window.Shiny.addCustomMessageHandler('toggleToolBackgrounds', function (data) {
-      var enabled = !!(data && data.enabled);
-      setEnabled(enabled, { persist: true });
+      setEnabled(!!(data && data.enabled), { persist: true });
     });
 
     window.Shiny.addCustomMessageHandler('setToolBackgroundFamily', function (data) {
       if (!data) return;
       var fam = null;
-      if (typeof data.family === 'string' && data.family) {
-        fam = data.family;
-      } else if (typeof data.action_id === 'string' && data.action_id) {
+      if (typeof data.family === 'string' && data.family) fam = data.family;
+      else if (typeof data.action_id === 'string' && data.action_id) {
         fam = familyForActionId(data.action_id);
       } else if (typeof data.flag === 'string' && data.flag) {
         fam = familyForFlag(data.flag);
       }
-      if (fam) {
-        applyFamily(fam);
-      } else if (data && data.clear === true) {
-        clearBackground();
-      }
+      if (fam) applyFamily(fam);
+      else if (data && data.clear === true) clearBackground();
     });
   }
 
   function bindNewChatReset() {
     document.addEventListener('click', function (ev) {
       var t = ev.target;
-      if (!t || !t.closest) return;
-      var btn = t.closest('#new_chat_btn');
-      if (btn) {
-        clearBackground();
-      }
+      if (t && t.closest && t.closest('#new_chat_btn')) clearBackground();
     }, true);
   }
 
   function bindThemeChangeRefresh() {
     window.addEventListener('mergen:themechange', function () {
-      // Tema değişiminde yeni renkleri uygulamak için snippet'leri tazele
       if (currentFamily && !welcomeVisible() && isEnabled()) {
         stopSpawnLoop();
         startSpawnLoop(currentFamily);
@@ -663,7 +676,7 @@
   }
 
   // -------------------------------------------------
-  // 8. Genel API erişilebilir kıl
+  // Genel API
   // -------------------------------------------------
   window.MergenToolBackgrounds = {
     apply: applyFamily,
@@ -672,14 +685,13 @@
     isEnabled: isEnabled,
     familyForActionId: familyForActionId,
     familyForFlag: familyForFlag,
-    KNOWN_FAMILIES: Object.keys(TOOL_BACKGROUND_SNIPPETS),
+    KNOWN_FAMILIES: Object.keys(FAMILY_FILTERS),
     register: function (family, snippetList) {
       if (typeof family !== 'string' || !family) return false;
       if (!Array.isArray(snippetList)) return false;
-      TOOL_BACKGROUND_SNIPPETS[family] = snippetList.slice();
+      FALLBACK_SNIPPETS[family] = snippetList.slice();
       return true;
     },
-    // Test/araç için debug erişim:
     _debug: {
       activeCount: function () { return ACTIVE_SNIPPETS.length; },
       lanes: function () { return LANE_DEFS.slice(); }
@@ -687,7 +699,7 @@
   };
 
   // -------------------------------------------------
-  // 9. Boot
+  // Boot
   // -------------------------------------------------
   function boot() {
     bindQuickActionListener();
@@ -701,9 +713,7 @@
       var wrapper = getWrapper();
       if (wrapper) {
         ensureLayer(wrapper);
-        if (!isEnabled()) {
-          wrapper.classList.add('tool-bg-disabled');
-        }
+        if (!isEnabled()) wrapper.classList.add('tool-bg-disabled');
         window.clearInterval(t);
       } else if (++tries > 50) {
         window.clearInterval(t);

@@ -359,5 +359,21 @@
     container = null;
   }
 
-  window.MergenLoadingCodestream = { start: start, stop: stop };
+  // Genel API: yükleme akışı yaşam döngüsü + tokenizer/builder paylaşımı.
+  // Araç arka plan animasyonları (www/js/tool_backgrounds.js) buradaki
+  // tokenizeCodeLine / tokenizeNoteLine / buildItem fonksiyonlarını yeniden
+  // kullanarak aynı görsel imzayı (alo-code-item yapısı + One Dark
+  // sözdizimi renklendirmesi + karakter karakter typing) Ana Söyleşi
+  // arka planına taşır. Bu paylaşım sayesinde duplicate JS sözlüğü/parser'ı
+  // bulunmaz; iki ekran aynı snippet havuzu + aynı render motorunu kullanır.
+  window.MergenLoadingCodestream = {
+    start: start,
+    stop: stop,
+    // Pure helpers - DOM bağımsız, container/state gerektirmezler.
+    tokenizeCodeLine: tokenizeCodeLine,
+    tokenizeNoteLine: tokenizeNoteLine,
+    buildItem: buildItem,
+    MAX_DISPLAY_LINES: MAX_DISPLAY_LINES,
+    COMMENT_MARKS: COMMENT_MARKS
+  };
 })();
