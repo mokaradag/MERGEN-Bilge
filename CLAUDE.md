@@ -44,7 +44,7 @@ Current contract:
 - DB parameter encoding, visible/technical DB normalization, mojibake detection, and the `MB_Messages` post-insert guard belong in `R/helpers_db_encoding.R`.
 - `R/helpers_db_connection.R` must stay focused on connection, pool, and worker connection helpers. Do not move Unicode escape, DB normalization, or mojibake guard helpers back into it.
 - Client-side defensive mojibake fallback belongs in `www/js/encoding_utils.js`.
-- `R/utils_text_encoding.R` must be loaded early through `R/config_source_manifest.R`, before logging, DB helpers, and downstream text consumers. The DB helper order must remain explicit: `R/helpers_db_unicode_escape.R`, then `R/helpers_db_encoding.R`, then `R/helpers_db_connection.R`, followed by DB user encoding, validation, chat formatting, chat readers, chat mutations, and `R/helpers_database.R`.
+- `R/utils_text_encoding.R` must be loaded early through `R/config_source_manifest.R`, before logging, DB helpers, and downstream text consumers. The DB helper order must remain explicit: `R/helpers_db_unicode_escape.R`, then `R/helpers_db_encoding.R`, then `R/helpers_db_connection.R`, followed by DB user encoding, validation, chat formatting, chat readers, chat mutations, `R/helpers_db_feedback.R`, and `R/helpers_database.R`.
 - `www/js/encoding_utils.js` must be loaded through `R/config_ui_assets.R` before `www/js/shiny_message_handlers.js` and before `www/js/claude_code_streaming.js`.
 - DB write parameters, DB read/hydration paths, saved chat reloads, version-history/Yenilikler reads, uploaded-file display names, Bilge Yolaç process/stream output, JSON/text boundaries, and logs should use the shared helper path instead of local encoding fixes.
 - DB normalization is intentionally opt-in for mojibake repair. User-visible DB text must be prepared explicitly with `normalize_db_visible_value()` before parameter binding. Technical string values must use `normalize_db_technical_value()` or remain on the default no-repair path. Do not apply `repair_mojibake = TRUE` to an entire mixed parameter list that also contains IDs, enums, flags, model names, usernames, emails, sicil values, Keycloak IDs, file paths, or other non-user-visible values.
@@ -52,6 +52,7 @@ Current contract:
 - For the production VM, Turkish DB writes must preserve the stable Windows-native / `WINDOWS-1254` behavior. `DB_CLIENT_ENCODING=WINDOWS-1254` is the safe operational setting unless a live VM + SSMS validation proves otherwise.
 - `R/helpers_db_connection.R` must honor `DB_CLIENT_ENCODING` and `DB_NAME_ENCODING` from `.Renviron` before falling back to R options/defaults. Do not hard-code the production DB client encoding back to `UTF-8`; doing so can store Turkish message content in `MB_Messages.MessageContent` as mojibake.
 - SSO / `MB_Users` visible-versus-technical normalization belongs in `R/helpers_db_user_encoding.R`. Keep `normalize_sso_claims_for_db()` and `update_sso_fields()` there, loaded immediately after `R/helpers_db_connection.R`. Do not move those helpers back into `R/helpers_database.R`; that file is protected by the maintainability ratchet and should stay focused on high-level DB operations.
+- `MB_Feedback` and `MB_Usage_Log` write helpers belong in `R/helpers_db_feedback.R`, loaded after chat mutations and before `R/helpers_database.R`. Do not move feedback helpers back into `R/helpers_database.R`. Extended feedback tags/comments are user-visible values and must use `normalize_db_visible_value()`, while `FeedbackType` is a technical enum and must use `normalize_db_technical_value()`. Do not apply whole-list `repair_mojibake = TRUE` to the mixed extended feedback parameter list.
 - `normalize_db_value()` must respect the resolved DB client encoding. When the DB client encoding is not UTF-8, user-visible Turkish text must be prepared for that DBI/ODBC parameter boundary instead of blindly returning UTF-8.
 - When the DB client encoding is not UTF-8, `normalize_db_value()` must never fall back to raw UTF-8 for strings containing unsupported Unicode. It must use the DB Unicode escape helper so the stored value remains ASCII/DB-client-safe while read paths can restore the original user-visible character.
 - Keep the UTF-8 and non-UTF-8 DB parameter paths explicitly separated. The helper that detects UTF-8 DB client encoding, such as `db_client_encoding_is_utf8()`, is part of the encoding safety boundary.
@@ -200,16 +201,18 @@ Preferred validation escalation:
 
 ### Tool contextual background animation contract
 
-- Runtime/settings ownership: `R/module_tool_background_settings.R`, `www/js/tool_backgrounds.js`, and `www/css/tool_backgrounds.css`.
+- Runtime/settings ownership: `R/module_tool_background_settings.R`, `www/js/tool_backgrounds_snippets.js`, `www/js/tool_backgrounds.js`, and `www/css/tool_backgrounds.css`.
 - Quick action handlers are server-authoritative for `setToolBackgroundFamily`; client click handling may only be an early visual hint.
 - New Chat must send clear/reset behavior so stale tool background families do not leak into new conversations.
 - The lower-left heptagon cluster must stay decorative and non-blocking; no centered heptagon overlay.
 - Snippets must use lane/busy-state logic to avoid overlap.
 - Tool background snippets should share the welcome loading codestream renderer exposed from `www/js/app_loading_codestream.js`, including `window.MergenLoadingCodestream.buildItem`, tokenizers, and comment marks.
+- Snippet family filters and fallback snippet catalogs belong in `www/js/tool_backgrounds_snippets.js`. Keep this file loaded immediately before `www/js/tool_backgrounds.js` in `R/config_ui_assets.R`.
+- Do not move the snippet catalog or family filter functions back into `www/js/tool_backgrounds.js`; the split protects the app-owned frontend function budget while preserving the public `window.MergenToolBackgrounds` API.
 - Preserve backward-compatible helper/class names such as `ensureLayer`, `ensureHeptagonLayer`, `ensureSnippetsHolder`, `buildHeptagonSvg`, `.tool-bg-heptagon`, and `.tool-bg-snippets` unless the tests are intentionally updated.
 - Respect `prefers-reduced-motion`; decorative layers must not capture pointer events.
 - Keep `www/js/tool_backgrounds.js` under the current app-owned JS budget noted by the tests.
-- Protected test: `test-tool-backgrounds-contract.R`.
+- Protected tests: `test-tool-backgrounds-contract.R`, `test-frontend-maintainability-ratchet.R`, and `test-source-manifest-contract.R`.
 
 ### Bilge Yolaç game behavior contract
 
