@@ -21,9 +21,13 @@ ui_asset_css_groups <- list(
   ),
   page = c(
     "css/variables.css",
+    "css/theme_tokens.css",
+    "css/theme_light.css",
     "css/animations.css",
     "css/layout.css",
     "css/components.css",
+    "css/sidebar_user_panel.css",
+    "css/tool_backgrounds.css",
     "css/code_highlighting.css",
     "css/welcome_screen.css",
     "css/datatables.css",
@@ -138,6 +142,7 @@ ui_asset_js_groups <- list(
   critical = c(
     "js/utils.js",
     "js/encoding_utils.js",
+    "js/theme_manager.js",
 	"js/shiny_message_handlers.js",
 	"js/explore_media_preload.js",
 	"js/ui_init.js",
@@ -149,7 +154,8 @@ ui_asset_js_groups <- list(
     "js/premium_reasoning.js",
     "js/toast.js",
     "js/markdown-parser.js",
-    "js/layout-manager.js"
+    "js/layout-manager.js",
+    "js/tool_backgrounds.js"
   ),
   deferred = c(
     "js/code-collapse.js",
@@ -311,12 +317,15 @@ ui_asset_js_order_rules <- list(
 
   c("js/sso_auth.js", "js/utils.js"),
   c("js/utils.js", "js/encoding_utils.js"),
+  c("js/encoding_utils.js", "js/theme_manager.js"),
+  c("js/theme_manager.js", "js/shiny_message_handlers.js"),
   c("js/encoding_utils.js", "js/shiny_message_handlers.js"),
   c("js/encoding_utils.js", "js/claude_code_streaming.js"),
   c("js/utils.js", "js/input_handlers.js"),
   c("js/input_handlers.js", "js/app_core.js"),
   c("js/app_core.js", "js/welcome_tooltip_manager.js"),
   c("js/welcome_tooltip_manager.js", "js/streaming_manager.js"),
+  c("js/app_core.js", "js/tool_backgrounds.js"),
 
   c("js/shiny_message_handlers.js", "js/health_dashboard.js"),
   c("js/shiny_message_handlers.js", "js/neural_welcome.js"),

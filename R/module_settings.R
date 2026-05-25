@@ -18,11 +18,13 @@ settingsInit <- function(session, parent_session = NULL) {
   settings <- reactiveValues(
     model_selection         = api_config$local_models[1],
     selected_character      = CHARACTER_DEFAULT_ID,
+    theme                   = "dark",
     enable_animations       = TRUE,
     enable_timestamps       = TRUE,
     enable_typing_indicator = TRUE,
     enable_streaming        = TRUE,
     enable_widescreen       = TRUE,
+    enable_tool_backgrounds = TRUE,
     enable_tts_audio        = FALSE,
     enable_rdata_tools      = FALSE,
     enable_mcp_tools        = FALSE,
@@ -102,6 +104,24 @@ settingsInit <- function(session, parent_session = NULL) {
     }
     if (!is.null(loaded$enable_widescreen)) {
       settings$enable_widescreen <- loaded$enable_widescreen
+    }
+    # Araç arka plan animasyonları tercihi: varsayılan açık.
+    # Yüklenen değer yoksa veya geçersizse helper varsayılana düşer.
+    {
+      tool_bg_loaded <- mb_tool_bg_coerce_enabled(
+        loaded$enable_tool_backgrounds,
+        default = mb_tool_bg_default_enabled()
+      )
+      settings$enable_tool_backgrounds <- tool_bg_loaded
+      mb_tool_bg_apply_to_client(session, tool_bg_loaded)
+    }
+    # Tema tercihi: varsayılan koyu. Geçerli değerler: "dark" / "light".
+    if (!is.null(loaded$theme) && loaded$theme %in% c("dark", "light")) {
+      settings$theme <- loaded$theme
+    } else if (is.null(loaded$theme)) {
+      # localStorage'da hiç tema yoksa koyu kalır; istemci tarafı zaten
+      # data-theme="dark" uygular.
+      settings$theme <- "dark"
     }
     if (!is.null(loaded$enable_tts_audio)) {
       settings$enable_tts_audio <- isTRUE(loaded$enable_tts_audio)
@@ -327,11 +347,14 @@ settingsInit <- function(session, parent_session = NULL) {
     # Tüm ayarları varsayılana döndür
     settings$model_selection          <- default_model
     settings$selected_character       <- CHARACTER_DEFAULT_ID
+    # Tema varsayılanı: koyu (mevcut görünüm korunur)
+    settings$theme                    <- "dark"
     settings$enable_animations        <- TRUE
     settings$enable_timestamps        <- TRUE
     settings$enable_typing_indicator  <- TRUE
     settings$enable_streaming         <- TRUE
     settings$enable_widescreen        <- TRUE
+    settings$enable_tool_backgrounds  <- mb_tool_bg_default_enabled()
     settings$enable_tts_audio         <- TRUE
     settings$enable_rdata_tools       <- FALSE
     settings$enable_mcp_tools         <- FALSE
@@ -390,8 +413,16 @@ settingsInit <- function(session, parent_session = NULL) {
     ))
     session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
 
-    # localStorage'ı temizle
+    # localStorage'ı önce temizle. Aşağıdaki tema ve araç arka plan ayarları
+    # varsayılana çekilirken yeniden persist edilir; sıralama korunmalıdır.
     session$sendCustomMessage("clearSettings", list())
+
+    # Temayı koyu varsayılana döndür (istemci tarafı animasyon ile uygular)
+    session$sendCustomMessage("setMergenTheme", list(theme = "dark"))
+
+    # Araç arka plan animasyonlarını varsayılana (açık) döndür ve uygula
+    mb_tool_bg_apply_to_client(session, mb_tool_bg_default_enabled())
+
     showToast(session, "Ayarlar sıfırlandı!", "info")
   }
 

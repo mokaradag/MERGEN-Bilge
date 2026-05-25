@@ -66,6 +66,16 @@ server <- function(input, output, session) {
 	current_user_first_name <- identity$get_first_name
 	current_user_display_name <- identity$get_display_name
 
+	# Sidebar alt kullanıcı paneli (avatar, tam ad, tema anahtarı, sürüm).
+	# Kimlik live provider'ları üzerinden render edildiğinden SSO oturumu
+	# hazırlandığında otomatik güncellenir.
+	mb_sidebar_user_panel_server(
+	  output = output,
+	  identity = identity,
+	  sso_state = sso_state,
+	  output_id = "sidebar_user_panel"
+	)
+
   # API anahtarı modülünü bağla
   api_key <- apiKeyServer("api_key", serviceDesk = SERVICE_DESK, api_config = api_config)
 

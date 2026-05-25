@@ -1,0 +1,535 @@
+/* ============================================================
+ * Başlık: Açık Tema Bileşen Uyarlamaları
+ * Dosya: www/css/theme_light.css
+ * Açıklama: Açık tema (light) için kurumsal renk paletine dayalı bileşen
+ *           uyarlamaları. Bu dosya yalnızca <html data-theme="light">
+ *           uygulandığında etkilidir. Koyu tema varsayılan olarak korunur
+ *           ve burada açıkça değiştirilmez.
+ *           Erişilebilirlik: navigasyon, butonlar, formlar ve sohbet için
+ *           okunabilir kontrast hedeflenir. Turuncu yalnızca ikincil vurgu.
+ * ============================================================ */
+
+/* ============================================================
+ * 1. Temel Yüzeyler ve Tipografi
+ * ============================================================ */
+html[data-theme="light"] body,
+html[data-theme="light"] .content-wrapper,
+html[data-theme="light"] .right-side {
+  background-color: var(--color-bg) !important;
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] body {
+  background-image:
+    radial-gradient(circle at 8% 0%, rgba(0, 48, 135, 0.06), transparent 35%),
+    radial-gradient(circle at 90% 100%, rgba(255, 86, 32, 0.04), transparent 40%);
+}
+
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] h4,
+html[data-theme="light"] h5,
+html[data-theme="light"] h6 {
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] p,
+html[data-theme="light"] span,
+html[data-theme="light"] div,
+html[data-theme="light"] label {
+  color: inherit;
+}
+
+html[data-theme="light"] .page-title,
+html[data-theme="light"] .current-page-title {
+  color: var(--color-text) !important;
+}
+
+/* ============================================================
+ * 2. Üst Bilgi (Header) ve Marka
+ * ============================================================ */
+html[data-theme="light"] .main-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f3f5fa 100%) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .brand-text-primary {
+  color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .brand-text-secondary {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .header-btn {
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .header-btn:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary) !important;
+}
+
+/* ============================================================
+ * 3. Yan Menü (Sidebar)
+ * ============================================================ */
+html[data-theme="light"] .main-sidebar {
+  background: linear-gradient(180deg, var(--color-sidebar-bg-top) 0%, var(--color-sidebar-bg-bottom) 100%) !important;
+  border-right: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .sidebar-menu > li > a {
+  color: #2a3855 !important;
+  border-left-color: transparent;
+}
+
+html[data-theme="light"] .sidebar-menu > li > a:hover,
+html[data-theme="light"] .sidebar-menu > li.active > a {
+  background: var(--color-sidebar-active-bg) !important;
+  color: var(--mb-brand-primary) !important;
+  border-left-color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .sidebar-menu .treeview-menu {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .sidebar-menu .treeview-menu > li > a {
+  color: #46506a !important;
+}
+
+html[data-theme="light"] .sidebar-menu .treeview-menu > li > a:hover,
+html[data-theme="light"] .sidebar-menu .treeview-menu > li.active > a {
+  background: rgba(0, 48, 135, 0.05) !important;
+  color: var(--mb-brand-primary) !important;
+}
+
+/* Sidebar alt bilgi (versiyon, telif) açık temada da okunaklı kalır */
+html[data-theme="light"] .sidebar-version {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .sidebar-copyright {
+  color: #8590a8 !important;
+}
+
+/* ============================================================
+ * 4. Sohbet (Chat) Alanı
+ * ============================================================ */
+html[data-theme="light"] .chat-container,
+html[data-theme="light"] #chat_content_container {
+  background-color: var(--color-bg) !important;
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .chat-header {
+  background: var(--color-surface) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .input-container {
+  background: var(--color-surface) !important;
+  border-top: 1px solid var(--color-border) !important;
+  box-shadow: 0 -2px 16px rgba(15, 28, 51, 0.04);
+}
+
+html[data-theme="light"] .input-wrapper {
+  background: var(--color-surface-2) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .input-wrapper:focus-within {
+  border-color: var(--mb-brand-primary) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.15) !important;
+}
+
+html[data-theme="light"] .chat-input {
+  background: transparent !important;
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .chat-input::placeholder {
+  color: var(--color-muted) !important;
+}
+
+/* Sohbet baloncukları */
+html[data-theme="light"] .message-bubble {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .ai-message,
+html[data-theme="light"] .user-message {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .message-content {
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .message-author {
+  color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .message-time {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .message-actions .btn {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .message-actions .btn:hover {
+  color: var(--mb-brand-primary) !important;
+  background: rgba(0, 48, 135, 0.06) !important;
+}
+
+/* Code blocks açık temada */
+html[data-theme="light"] pre,
+html[data-theme="light"] code,
+html[data-theme="light"] .code-container {
+  background: #0f1e3d !important;
+  color: #d6e0f5 !important;
+  border-color: rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] p code,
+html[data-theme="light"] li code {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary-alt) !important;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ============================================================
+ * 5. Butonlar
+ * ============================================================ */
+html[data-theme="light"] .btn-modern.btn-primary,
+html[data-theme="light"] .send-button {
+  background: linear-gradient(135deg, var(--mb-brand-primary) 0%, var(--mb-brand-primary-alt) 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 6px 14px rgba(0, 48, 135, 0.22);
+}
+
+html[data-theme="light"] .btn-modern.btn-primary:hover,
+html[data-theme="light"] .send-button:hover {
+  background: linear-gradient(135deg, var(--mb-brand-primary-alt) 0%, #001f5c 100%) !important;
+  box-shadow: 0 8px 18px rgba(0, 48, 135, 0.28);
+}
+
+html[data-theme="light"] .btn-modern.btn-secondary {
+  background: var(--color-surface-2) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .btn-modern.btn-secondary:hover {
+  background: var(--color-surface-3) !important;
+  border-color: var(--mb-brand-primary) !important;
+  color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .btn-modern.btn-success {
+  background: linear-gradient(135deg, #16a34a, #0f7a36) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .btn-modern.btn-info {
+  background: linear-gradient(135deg, var(--mb-brand-support-teal), #045a60) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .action-btn,
+html[data-theme="light"] .file-btn,
+html[data-theme="light"] .voice-btn {
+  background: var(--color-surface-2) !important;
+  color: var(--mb-brand-primary) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .action-btn:hover,
+html[data-theme="light"] .file-btn:hover,
+html[data-theme="light"] .voice-btn:hover {
+  background: rgba(0, 48, 135, 0.08) !important;
+  border-color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .fab-button {
+  background: var(--color-surface) !important;
+  color: var(--mb-brand-primary) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .fab-button:hover {
+  background: var(--mb-brand-primary) !important;
+  color: #ffffff !important;
+}
+
+/* ============================================================
+ * 6. Kartlar / Paneller / Modaller
+ * ============================================================ */
+html[data-theme="light"] .settings-card,
+html[data-theme="light"] .destek-feature-card,
+html[data-theme="light"] .destek-guide-card,
+html[data-theme="light"] .destek-contact-card,
+html[data-theme="light"] .destek-chatbot-container,
+html[data-theme="light"] .destek-hakkinda-container,
+html[data-theme="light"] .destek-hakkinda-stats {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .settings-title,
+html[data-theme="light"] .destek-hakkinda-section-title,
+html[data-theme="light"] .setting-subtitle {
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .setting-description {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .modal-content {
+  background: var(--color-surface) !important;
+  color: var(--color-text-soft) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .modal-header,
+html[data-theme="light"] .modal-footer {
+  border-color: var(--color-border) !important;
+}
+
+html[data-theme="light"] .modal-title {
+  color: var(--color-text) !important;
+}
+
+/* ============================================================
+ * 7. Formlar
+ * ============================================================ */
+html[data-theme="light"] .form-control,
+html[data-theme="light"] .form-select,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] input[type="text"],
+html[data-theme="light"] input[type="email"],
+html[data-theme="light"] input[type="number"],
+html[data-theme="light"] input[type="password"],
+html[data-theme="light"] input[type="search"] {
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .form-control:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus {
+  border-color: var(--mb-brand-primary) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.15) !important;
+  outline: none;
+}
+
+html[data-theme="light"] .image-size-select,
+html[data-theme="light"] .summary-detail-select,
+html[data-theme="light"] .summary-focus-select,
+html[data-theme="light"] .analysis-detail-select {
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] label,
+html[data-theme="light"] .control-label {
+  color: var(--color-text) !important;
+}
+
+/* Onay kutuları / radio butonları */
+html[data-theme="light"] .checkbox label,
+html[data-theme="light"] .radio label {
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .checkbox input[type="checkbox"],
+html[data-theme="light"] .radio input[type="radio"] {
+  accent-color: var(--mb-brand-primary);
+}
+
+/* ============================================================
+ * 8. Tablolar / DataTables
+ * ============================================================ */
+html[data-theme="light"] .dataTables_wrapper,
+html[data-theme="light"] table.dataTable {
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] table.dataTable thead th,
+html[data-theme="light"] table.dataTable thead td {
+  background: var(--color-surface-2) !important;
+  color: var(--color-text) !important;
+  border-bottom: 2px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] table.dataTable tbody tr {
+  background: var(--color-surface) !important;
+}
+
+html[data-theme="light"] table.dataTable tbody tr:hover {
+  background: rgba(0, 48, 135, 0.04) !important;
+}
+
+html[data-theme="light"] table.dataTable tbody td {
+  border-color: var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .dataTables_info,
+html[data-theme="light"] .dataTables_length,
+html[data-theme="light"] .dataTables_filter {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .dataTables_paginate .paginate_button {
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .dataTables_paginate .paginate_button.current {
+  background: var(--mb-brand-primary) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary) !important;
+}
+
+/* ============================================================
+ * 9. Toast / Bildirim
+ * ============================================================ */
+html[data-theme="light"] .toast-container .toast {
+  background: var(--color-surface) !important;
+  color: var(--color-text-soft) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-elevated);
+}
+
+/* ============================================================
+ * 10. Dosya Yöneticisi
+ * ============================================================ */
+html[data-theme="light"] .file-manager-table {
+  background: var(--color-surface) !important;
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .file-manager-empty {
+  background: var(--color-surface) !important;
+  color: var(--color-text-soft) !important;
+  border: 1px dashed var(--color-border) !important;
+}
+
+/* ============================================================
+ * 11. Söyleşi Yönetimi (Kayıtlı/Geçmiş/Galeri)
+ * ============================================================ */
+html[data-theme="light"] .saved-chat-card,
+html[data-theme="light"] .history-chat-card,
+html[data-theme="light"] .image-gallery-item {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .saved-chat-card:hover,
+html[data-theme="light"] .history-chat-card:hover,
+html[data-theme="light"] .image-gallery-item:hover {
+  border-color: var(--mb-brand-primary) !important;
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ============================================================
+ * 12. Karşılama (Welcome) Ekranı
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-root {
+  background: linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%);
+  color: var(--color-text);
+}
+
+html[data-theme="light"] .modern-welcome-card {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-elevated);
+}
+
+html[data-theme="light"] .modern-welcome-actions-title,
+html[data-theme="light"] .modern-welcome-recent-title {
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .modern-welcome-greeting-text {
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-btn {
+  background: var(--color-surface-2) !important;
+  color: var(--color-text-soft) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-btn:hover {
+  background: rgba(0, 48, 135, 0.04) !important;
+  border-color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-title {
+  color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .modern-welcome-action-bg {
+  background: var(--color-surface-2) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+/* ============================================================
+ * 13. Kod Vurgulama (HighlightJS) - açık tema uyumlu üstüne yazım
+ * ============================================================ */
+html[data-theme="light"] .hljs {
+  background: #0f1e3d !important;
+  color: #e6ecf8 !important;
+}
+
+/* ============================================================
+ * 14. Erişilebilirlik İyileştirmeleri
+ * ============================================================ */
+html[data-theme="light"] :focus-visible {
+  outline: 2px solid var(--mb-brand-primary) !important;
+  outline-offset: 2px;
+}
+
+html[data-theme="light"] ::selection {
+  background: rgba(0, 48, 135, 0.18);
+  color: var(--color-text);
+}
+
+/* ============================================================
+ * 15. Kaydırma Çubukları (Scrollbar)
+ * ============================================================ */
+html[data-theme="light"] * {
+  scrollbar-color: #b8c2d5 #eef2f8;
+}
+
+html[data-theme="light"] *::-webkit-scrollbar {
+  background: #eef2f8;
+}
+
+html[data-theme="light"] *::-webkit-scrollbar-thumb {
+  background: #b8c2d5;
+  border-radius: 6px;
+}
+
+html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  background: var(--mb-brand-primary-60);
+}

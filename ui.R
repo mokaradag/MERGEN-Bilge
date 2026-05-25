@@ -51,12 +51,10 @@ ui <- dashboardPage(
       ),
       menuItemOutput("admin_menu_item")
     ),
-    # Yan menünün alt kısmındaki sabit altbilgi (footer).
-    div(
-      class = "sidebar-footer",
-      p("MERGEN AI v0.9", class = "sidebar-version"),
-      p(sprintf("© %s Tüm hakları saklıdır", format(Sys.Date(), "%Y")), class = "sidebar-copyright")
-    )
+    # Yan menünün alt kısmındaki kullanıcı paneli + tema anahtarı + sürüm.
+    # Görünür sürüm etiketi ve kullanıcı bilgileri merkezi helper'lardan gelir;
+    # buraya doğrudan sabit sürüm/kullanıcı bilgisi yazılmamalıdır.
+    mb_sidebar_user_panel_ui("sidebar_user_panel")
   ),
   
   # --- Ana Gövde (Body) ---
@@ -80,10 +78,27 @@ ui <- dashboardPage(
     # --- Başlık İçeriği (Head Content) ---
   tags$head(
     tags$script(HTML("document.documentElement.lang = 'tr'")),
+    # Tema önyüklemesi: tema_manager.js'den önce çalışır, FOUC azaltır.
+    # localStorage'da kayıtlı tema varsa hemen <html data-theme="..."> uygulanır;
+    # aksi halde varsayılan koyu tema korunur.
+    tags$script(HTML(paste(
+      "(function(){try{",
+      "var raw=localStorage.getItem('mergen_settings');",
+      "var t=null;",
+      "if(raw){var s=JSON.parse(raw); if(s && (s.theme==='light'||s.theme==='dark')){t=s.theme;}}",
+      "if(!t){var legacy=localStorage.getItem('mergen_theme');",
+      "if(legacy==='light'||legacy==='dark'){t=legacy;}}",
+      "if(!t){t='dark';}",
+      "document.documentElement.setAttribute('data-theme', t);",
+      "document.documentElement.classList.add('theme-'+t);",
+      "}catch(e){document.documentElement.setAttribute('data-theme','dark');",
+      "document.documentElement.classList.add('theme-dark');}})();",
+      sep = ""
+    ))),
     tags$meta(charset = "UTF-8"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
     tags$link(rel = "icon", type = "image/png", href = "img/mergen_avatar.png"),
-    
+
     # --- Yerel UI varlıkları ---
     ui_asset_tags(),
 
@@ -118,6 +133,10 @@ ui <- dashboardPage(
         tabName = "chat",
         div(
           id = "chat_main_wrapper",
+          # Araç bağlamlı arka plan animasyon katmanı (heptagon + parçacık).
+          # İstemci tarafı (www/js/tool_backgrounds.js) içeriği yönetir;
+          # araç aktifken görünür, aksi halde gizli kalır. pointer-events yok.
+          div(class = "tool-bg-layer", `aria-hidden` = "true"),
           div(id = "welcome_fullscreen_container", class = "welcome-fullscreen-wrapper"),
           div(
             class = "chat-header",

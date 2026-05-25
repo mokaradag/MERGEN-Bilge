@@ -284,7 +284,17 @@ settingsYapilandirmaUIImpl <- function(id) {
                         div(class = "checkbox-item", checkboxInput(ns("enable_typing_indicator"), "Yazma Göstergesi", value = TRUE)),
                         div(class = "checkbox-item", checkboxInput(ns("enable_animations"), "Animasyonlar", value = TRUE)),
                         div(class = "checkbox-item", checkboxInput(ns("enable_widescreen"), "Geniş Ekran", value = TRUE)),
-                        div(class = "checkbox-item", checkboxInput(ns("enable_streaming"), "Akış Modu", value = TRUE))
+                        div(class = "checkbox-item", checkboxInput(ns("enable_streaming"), "Akış Modu", value = TRUE)),
+                        # Araç bağlamlı sohbet arka plan animasyonları açma/kapama anahtarı.
+                        # Aktif olduğunda welcome ekranından bir araç seçildiğinde sohbet
+                        # arka planında ilgili araç temasına uygun hafif heptagon ve
+                        # bağlam parçacık animasyonları görüntülenir.
+                        div(class = "checkbox-item", checkboxInput(ns("enable_tool_backgrounds"), "Araç Arka Plan Animasyonları", value = TRUE)),
+                        tags$p(
+                          "Araç sohbetlerinde heptagon ve bağlama uygun arka plan parçacıklarını gösterir.",
+                          class = "setting-description",
+                          style = "margin-top: 2px; margin-bottom: 6px; padding-left: 24px;"
+                        )
                       )
                     ),
                     div(

@@ -172,6 +172,8 @@ source_manifest_after_future_paths <- c(
   "R/module_boot_readiness.R",
   "R/module_startup_screen.R",
   "R/module_app_loading.R",
+  "R/module_tool_background_settings.R",
+  "R/module_sidebar_user_panel.R",
   "R/module_quick_actions.R",
   "R/module_claude_code_plugins.R",
   "R/module_claude_code_ui.R",
